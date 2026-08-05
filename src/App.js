@@ -30,7 +30,8 @@ import { resolveUserId } from './utils/userIdentity';
 import { getDefaultOutbound } from './utils/outbound';
 import { getAllCompliance } from './utils/storage';
 import { getACV } from './utils/ledgerEngine';
-import { getTeamUsers, saveTeamUsers, getFrontier, saveFrontier, getAccounts, saveAccountsToDb, saveComplianceToDb, getUserApprovalStatus, getPendingUsers, getBdrAssignments } from './utils/db';
+import { getTeamUsers, saveTeamUsers, getFrontier, saveFrontier, getAccounts, saveAccountsToDb, saveComplianceToDb, getUserApprovalStatus, getPendingUsers, getBdrAssignments, getProjectsForUser } from './utils/db';
+import ProjectsHomePage from './components/ProjectsHomePage';
 import { isSupabaseEnabled } from './utils/supabase';
 
 // Stage-change debug logger — remove once root cause is confirmed
@@ -967,6 +968,32 @@ export default function App() {
     return () => clearInterval(iv);
   }, [approvalStatus]);
 
+  // ── Projects (real-supabase-auth-v1 not finished yet - "current user" is
+  // still user.email off the localStorage-backed prospector_user blob, not a
+  // real auth session. Swap this for the real session's email once that lands.) ──
+  const [myProjects, setMyProjects] = useState([]);
+  const [activeProject, setActiveProjectRaw] = useState(null);
+  const [projectsLoading, setProjectsLoading] = useState(true);
+  const setActiveProject = (project) => {
+    setActiveProjectRaw(project);
+    try { if (project?.id) localStorage.setItem('prospector_active_project_id', project.id); } catch {}
+  };
+  useEffect(() => {
+    if (!user?.email) { setProjectsLoading(false); return; }
+    let cancelled = false;
+    setProjectsLoading(true);
+    getProjectsForUser(user.email).then(projects => {
+      if (cancelled) return;
+      setMyProjects(projects);
+      let storedId = null;
+      try { storedId = localStorage.getItem('prospector_active_project_id'); } catch {}
+      const match = storedId ? projects.find(p => p.id === storedId) : null;
+      setActiveProjectRaw(match || null);
+      setProjectsLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [user?.email]);
+
   // ── Gmail thread indexer — background, fire-and-forget ────────────────────
   const threadIndexerRan = useRef(false);
   useEffect(() => {
@@ -1209,6 +1236,21 @@ export default function App() {
     }, 200);
   }}/>;
 
+  if (projectsLoading) return (
+    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <span style={{ ...mono, fontSize:13, color:C.dim }}>Loading projects…</span>
+    </div>
+  );
+
+  if (!activeProject) return (
+    <ProjectsHomePage
+      projects={myProjects}
+      userEmail={user.email}
+      onSelect={setActiveProject}
+      onCreated={project => { setMyProjects(prev => [...prev, project]); setActiveProject(project); }}
+    />
+  );
+
   // Wizard / banner visibility
   const isAE = (user?.role||"AE") === "AE";
   const sfdcConnected   = !!localStorage.getItem("sfdc_access_token");
@@ -1234,7 +1276,7 @@ export default function App() {
 
   return(
     <div style={{ display:"flex", background:C.bg, minHeight:"100vh", width:"100%" }}>
-      <Sidebar page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();dismissPendingApprovals();}if(p!=="accounts")setAccountsSubPage("territory");}} activeRole={activeRole} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} accountsSubPage={accountsSubPage} setAccountsSubPage={setAccountsSubPage} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} pendingApprovalCount={pendingApprovalCount} newNuggetCount={newNuggetCount} onUpdateTeamUser={(id,patch)=>setTeamUsers(prev=>{const next=prev.map(u=>u.id===id?{...u,...patch}:u);localStorage.setItem("prospector_team_users",JSON.stringify(next));return next;})} />
+      <Sidebar page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();dismissPendingApprovals();}if(p!=="accounts")setAccountsSubPage("territory");}} activeRole={activeRole} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} accountsSubPage={accountsSubPage} setAccountsSubPage={setAccountsSubPage} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} pendingApprovalCount={pendingApprovalCount} newNuggetCount={newNuggetCount} onUpdateTeamUser={(id,patch)=>setTeamUsers(prev=>{const next=prev.map(u=>u.id===id?{...u,...patch}:u);localStorage.setItem("prospector_team_users",JSON.stringify(next));return next;})} activeProject={activeProject} onGoToProjects={()=>setActiveProjectRaw(null)} />
       <div style={{ flex:1, padding:"18px 20px", overflowY:"auto", minWidth:0 }}>
         {approvalStatus === 'pending' && <PendingApprovalBanner user={user} pinged={!!localStorage.getItem('prospector_admin_pinged')} pinging={false} onPing={()=>{ fetch('/api/notify-pending',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:user?.name||'',email:user?.email||'',role:user?.role||'AE'})}).catch(()=>{}); try{localStorage.setItem('prospector_admin_pinged','1');}catch{} }}/>}
         <AssayBanner/>
