@@ -39,7 +39,8 @@ COMMIT;
 -- have one from Step 1 (i.e. if there happened to be existing accounts data for
 -- that email).
 INSERT INTO public.projects (owner_email, name, color)
-SELECT 'jack@humankindcollective.app', 'HumanKind', '#6366f1'
+SELECT v.owner_email, v.name, v.color
+FROM (VALUES ('jack@humankindcollective.app', 'HumanKind', '#6366f1')) AS v(owner_email, name, color)
 WHERE NOT EXISTS (
   SELECT 1 FROM public.projects WHERE owner_email = 'jack@humankindcollective.app'
 );
