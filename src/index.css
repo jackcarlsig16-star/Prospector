@@ -1,0 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Josefin+Slab:wght@400;600&display=swap');
+
+:root {
+  --c-bg: #0D0F12; --c-sur: #161A22; --c-card: #1E2330;
+  --c-txt: #F2F4F8; --c-mut: #9098AA; --c-dim: #606878;
+}
+
+body.mode-straight-shooter {
+  --c-bg: #FFFFFF; --c-sur: #F2F4F6; --c-card: #EAEDF3;
+  --c-txt: #1A1C28; --c-mut: #505868; --c-dim: #808898;
+  background: #FFFFFF;
+}
+
+body {
+  margin: 0;
+  font-family: 'SF Mono', ui-monospace, 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-size: 13px;
+  letter-spacing: -0.01em;
+  background: var(--c-bg);
+}
+
+* { box-sizing: border-box; }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
