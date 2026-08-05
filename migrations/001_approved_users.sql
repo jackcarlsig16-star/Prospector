@@ -17,7 +17,7 @@ create table if not exists approved_users (
 
 -- Seed with your own approved emails
 insert into approved_users (email, auto_approve, role, created_by) values
-  ('admin@example.com', true, 'Admin', 'seed')
+  ('jackcarlsig16@gmail.com', true, 'Admin', 'seed')
 on conflict (email) do nothing;
 
 -- Read policy: anyone authenticated can read (or anon if you want OAuth-less reads)
