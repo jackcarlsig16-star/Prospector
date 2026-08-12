@@ -30,8 +30,10 @@ import { resolveUserId } from './utils/userIdentity';
 import { getDefaultOutbound } from './utils/outbound';
 import { getAllCompliance } from './utils/storage';
 import { getACV } from './utils/ledgerEngine';
-import { getTeamUsers, saveTeamUsers, getFrontier, saveFrontier, getAccounts, saveAccountsToDb, saveComplianceToDb, getUserApprovalStatus, getPendingUsers, getBdrAssignments, getProjectsForUser } from './utils/db';
+import { getTeamUsers, saveTeamUsers, getFrontier, saveFrontier, getAccounts, saveAccountsToDb, saveComplianceToDb, getUserApprovalStatus, getPendingUsers, getBdrAssignments, getProjectsForUser, getBusinessesForUser } from './utils/db';
 import ProjectsHomePage from './components/ProjectsHomePage';
+import BusinessesHomePage from './components/BusinessesHomePage';
+import BusinessDetailPage from './components/BusinessDetailPage';
 import { isSupabaseEnabled } from './utils/supabase';
 
 // Stage-change debug logger — remove once root cause is confirmed
@@ -994,6 +996,23 @@ export default function App() {
     return () => { cancelled = true; };
   }, [user?.email]);
 
+  // ── Businesses (standalone from projects - separate tree, same
+  // real-supabase-auth-v1-not-finished caveat as above) ──────────────────
+  const [myBusinesses, setMyBusinesses] = useState([]);
+  const [activeBusiness, setActiveBusiness] = useState(null);
+  const [businessesLoading, setBusinessesLoading] = useState(true);
+  useEffect(() => {
+    if (!user?.email) { setBusinessesLoading(false); return; }
+    let cancelled = false;
+    setBusinessesLoading(true);
+    getBusinessesForUser(user.email).then(businesses => {
+      if (cancelled) return;
+      setMyBusinesses(businesses);
+      setBusinessesLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [user?.email]);
+
   // ── Gmail thread indexer — background, fire-and-forget ────────────────────
   const threadIndexerRan = useRef(false);
   useEffect(() => {
@@ -1191,8 +1210,12 @@ export default function App() {
 
   // Must be above all early returns — hooks can't be conditional, navTo used in OAuth callbacks
   const visibleNav=NAV.filter(n=>(NAV_ROLES[n.id]||[]).includes(activeRole));
+  // businesses-home/business-detail are reached via their own Sidebar button, not
+  // the role-filtered NAV list — exempt them or this redirect bounces page back
+  // to visibleNav[0] the instant navTo('businesses-home') runs.
+  const NON_NAV_PAGES=['businesses-home','business-detail'];
   useEffect(()=>{
-    if(!visibleNav.find(n=>n.id===page)&&visibleNav.length) setPage(visibleNav[0].id);
+    if(!visibleNav.find(n=>n.id===page)&&!NON_NAV_PAGES.includes(page)&&visibleNav.length) setPage(visibleNav[0].id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[page,activeRole]);
   const navTo=(pg,tab)=>{
@@ -1276,7 +1299,7 @@ export default function App() {
 
   return(
     <div style={{ display:"flex", background:C.bg, minHeight:"100vh", width:"100%" }}>
-      <Sidebar page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();dismissPendingApprovals();}if(p!=="accounts")setAccountsSubPage("territory");}} activeRole={activeRole} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} accountsSubPage={accountsSubPage} setAccountsSubPage={setAccountsSubPage} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} pendingApprovalCount={pendingApprovalCount} newNuggetCount={newNuggetCount} onUpdateTeamUser={(id,patch)=>setTeamUsers(prev=>{const next=prev.map(u=>u.id===id?{...u,...patch}:u);localStorage.setItem("prospector_team_users",JSON.stringify(next));return next;})} activeProject={activeProject} onGoToProjects={()=>setActiveProjectRaw(null)} />
+      <Sidebar page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();dismissPendingApprovals();}if(p!=="accounts")setAccountsSubPage("territory");}} activeRole={activeRole} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} accountsSubPage={accountsSubPage} setAccountsSubPage={setAccountsSubPage} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} pendingApprovalCount={pendingApprovalCount} newNuggetCount={newNuggetCount} onUpdateTeamUser={(id,patch)=>setTeamUsers(prev=>{const next=prev.map(u=>u.id===id?{...u,...patch}:u);localStorage.setItem("prospector_team_users",JSON.stringify(next));return next;})} activeProject={activeProject} onGoToProjects={()=>setActiveProjectRaw(null)} onGoToBusinesses={()=>navTo('businesses-home')} />
       <div style={{ flex:1, padding:"18px 20px", overflowY:"auto", minWidth:0 }}>
         {approvalStatus === 'pending' && <PendingApprovalBanner user={user} pinged={!!localStorage.getItem('prospector_admin_pinged')} pinging={false} onPing={()=>{ fetch('/api/notify-pending',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:user?.name||'',email:user?.email||'',role:user?.role||'AE'})}).catch(()=>{}); try{localStorage.setItem('prospector_admin_pinged','1');}catch{} }}/>}
         <AssayBanner/>
@@ -1320,6 +1343,8 @@ export default function App() {
         {page==="ledger"&&<LedgerPage accounts={accounts} setAccounts={setAccounts} teamUsers={teamUsers} activeUser={activeUser} tasks={tasks} winsLog={winsLog} setWinsLog={setWinsLog} managerSelectedAeId={managerScopedAeId}/>}
         {page==="tools"&&<ToolsPage accounts={accounts} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} launchAccountId={toolsLaunchId} onLaunched={()=>setToolsLaunchId(null)} activeTool={toolsActiveTool} onToolSelect={setToolsActiveTool} onCreateTask={(prefill)=>setTaskModal(prefill||{})}/>}
         {page==="admin"&&isAdmin(user)&&<AdminPage teamUsers={teamUsers} onSaveUsers={setTeamUsers} currentUser={user} onUpdateCurrentUser={patch=>{setUser(u=>{const next=applyOwnerRole({...u,...patch});localStorage.setItem("prospector_user",JSON.stringify(next));return next;});}} rolePerms={rolePerms} onSaveRolePerms={setRolePerms} onSave={saveAccounts} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} onSaveBatch={saveBatch} accounts={accounts} removedBlocklist={removedBlocklist} onRestoreAccount={entry=>setRemovedBlocklist(bl=>bl.filter(x=>x.id!==entry.id))} nuggets={nuggets} onSaveNuggets={setNuggets} seedTeam={SMB_TEAM}/>}
+        {page==="businesses-home"&&<BusinessesHomePage businesses={myBusinesses} loading={businessesLoading} userEmail={user.email} onSelect={b=>{setActiveBusiness(b);navTo('business-detail');}} onCreated={b=>{setMyBusinesses(prev=>[b,...prev]);setActiveBusiness(b);navTo('business-detail');}}/>}
+        {page==="business-detail"&&activeBusiness&&<BusinessDetailPage business={activeBusiness} userEmail={user.email} onBack={()=>navTo('businesses-home')} onUpdated={b=>{setActiveBusiness(b);setMyBusinesses(prev=>prev.map(x=>x.id===b.id?b:x));}}/>}
         {page==="handoffs"&&<HandoffsPage accounts={accounts} onAddAccount={acc=>{setAccounts(a=>[acc,...a]);trackStat("accounts_added");trackDailyStat("accounts_added");}} activeUser={activeUser} activeRole={activeRole} teamUsers={teamUsers}/>}
         </Suspense>
       </div>

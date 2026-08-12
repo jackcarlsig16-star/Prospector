@@ -1,0 +1,195 @@
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { C, mono } from '../constants/colors';
+
+const SOURCE_LABEL = { manual: 'Manual', research_site: 'Site research', research_web: 'Web research' };
+
+const fmtDate = iso => { try { return new Date(iso).toLocaleString("en-US", { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }); } catch { return "—"; } };
+
+const inp = { fontSize:13, padding:"8px 11px", background:C.bg, border:`1.5px solid ${C.brdM}`, borderRadius:6, color:C.txt, outline:"none", width:"100%", boxSizing:"border-box", ...mono };
+const btn = { ...mono, fontSize:12, padding:"7px 18px", background:C.gold, border:`1px solid ${C.gold}`, borderRadius:6, color:C.bg, cursor:"pointer", fontWeight:700 };
+const sectionLabel = { ...mono, fontSize:12, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 };
+
+function ProfileBlock({ label, value }) {
+  if (!value) return null;
+  return (
+    <div style={{ marginBottom:16 }}>
+      <div style={sectionLabel}>{label}</div>
+      <p style={{ ...mono, fontSize:13, color:C.txt, margin:0, lineHeight:1.6 }}>{value}</p>
+    </div>
+  );
+}
+
+export default function BusinessDetailPage({ business: businessProp, userEmail, onBack, onUpdated }) {
+  const [business, setBusiness] = useState(businessProp);
+  const [profile, setProfile] = useState(null);
+  const [intelEntries, setIntelEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [retrying, setRetrying] = useState(false);
+
+  const [newEntry, setNewEntry] = useState('');
+  const [savingEntry, setSavingEntry] = useState(false);
+  const [entryError, setEntryError] = useState('');
+  const [updatedFlash, setUpdatedFlash] = useState(false);
+
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [logOpen, setLogOpen] = useState(false);
+
+  const pollRef = useRef(null);
+
+  const load = useCallback(async () => {
+    const res = await fetch(`/api/businesses/${business.id}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    setBusiness(data.business);
+    setProfile(data.profile);
+    setIntelEntries(data.intelEntries);
+    setLoading(false);
+    onUpdated?.(data.business);
+    return data.business;
+  }, [business.id, onUpdated]);
+
+  useEffect(() => { load(); }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (business.research_status !== 'researching') {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      return;
+    }
+    pollRef.current = setInterval(async () => {
+      const updated = await load();
+      if (updated && updated.research_status !== 'researching') {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    }, 3000);
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+  }, [business.research_status, load]);
+
+  const handleRetry = async () => {
+    setRetrying(true);
+    await fetch(`/api/businesses/${business.id}/retry-research`, { method: 'POST' });
+    setRetrying(false);
+    load();
+  };
+
+  const handleAddEntry = async () => {
+    if (!newEntry.trim() || savingEntry) return;
+    setSavingEntry(true);
+    setEntryError('');
+    try {
+      const res = await fetch(`/api/businesses/${business.id}/intel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newEntry.trim(), created_by: userEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to add intel');
+      setProfile(data.profile);
+      setNewEntry('');
+      setUpdatedFlash(true);
+      setTimeout(() => setUpdatedFlash(false), 2500);
+      load();
+    } catch (e) {
+      setEntryError(e.message);
+    } finally {
+      setSavingEntry(false);
+    }
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", background:C.bg, padding:"48px 40px" }}>
+      <div style={{ maxWidth:700, margin:"0 auto" }}>
+        <button onClick={onBack} style={{ ...mono, fontSize:11, color:C.dim, background:"transparent", border:"none", cursor:"pointer", padding:0, marginBottom:20 }}>
+          ← All Businesses
+        </button>
+
+        <div style={{ display:"flex", alignItems:"flex-start", gap:16, marginBottom:32 }}>
+          <div style={{ width:56, height:56, borderRadius:10, background:business.color||C.gold, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
+            <span style={{ ...mono, fontSize:22, color:C.bg, fontWeight:700 }}>{(business.name||'?')[0].toUpperCase()}</span>
+          </div>
+          <div style={{ flex:1, minWidth:0 }}>
+            <h1 style={{ ...mono, fontSize:20, color:C.txt, fontWeight:700, margin:"0 0 4px" }}>{business.name}</h1>
+            {business.tagline && <p style={{ ...mono, fontSize:12, color:C.dim, margin:"0 0 6px" }}>{business.tagline}</p>}
+            <a href={business.website_url} target="_blank" rel="noreferrer" style={{ ...mono, fontSize:11, color:C.blue }}>
+              {business.website_url}
+            </a>
+          </div>
+        </div>
+
+        {business.research_status === 'researching' && (
+          <div style={{ padding:"16px 18px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, marginBottom:32 }}>
+            <p style={{ ...mono, fontSize:13, color:C.txt, margin:0 }}>Researching {business.name}…</p>
+          </div>
+        )}
+
+        {business.research_status === 'error' && (
+          <div style={{ padding:"16px 18px", background:`${C.red}10`, border:`1px solid ${C.red}44`, borderRadius:8, marginBottom:32 }}>
+            <p style={{ ...mono, fontSize:12, color:C.red, margin:"0 0 10px" }}>⚠ {business.research_error || 'Research failed.'}</p>
+            <button onClick={handleRetry} disabled={retrying} style={btn}>{retrying ? "Retrying…" : "Retry Research"}</button>
+          </div>
+        )}
+
+        {business.research_status === 'ready' && profile && (
+          <div style={{ marginBottom:32 }}>
+            <h2 style={{ ...mono, fontSize:13, color:C.txt, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", margin:"0 0 16px" }}>Profile</h2>
+            <ProfileBlock label="Vision" value={profile.vision} />
+            <ProfileBlock label="Positioning" value={profile.positioning} />
+            <ProfileBlock label="ICP" value={profile.icp} />
+            <ProfileBlock label="GTM Strategy" value={profile.gtm_strategy} />
+            <ProfileBlock label="Competitors" value={profile.competitors} />
+
+            {profile.raw_synthesis && (
+              <div style={{ marginTop:16 }}>
+                <button onClick={()=>setNotesOpen(o=>!o)} style={{ ...mono, fontSize:11, color:C.dim, background:"transparent", border:"none", cursor:"pointer", padding:0 }}>
+                  {notesOpen ? "▾" : "▸"} Full notes
+                </button>
+                {notesOpen && (
+                  <p style={{ ...mono, fontSize:12, color:C.dim, whiteSpace:"pre-wrap", marginTop:8, lineHeight:1.6 }}>{profile.raw_synthesis}</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ marginBottom:32 }}>
+          <textarea
+            placeholder="Add intel…" value={newEntry} onChange={e=>setNewEntry(e.target.value)}
+            rows={3} style={{ ...inp, resize:"vertical", marginBottom:8 }}
+          />
+          {entryError && <div style={{ ...mono, fontSize:11, color:C.red, marginBottom:8 }}>⚠ {entryError}</div>}
+          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+            <button onClick={handleAddEntry} disabled={!newEntry.trim()||savingEntry} style={{ ...btn, opacity:newEntry.trim()?1:0.5 }}>
+              {savingEntry ? "Adding…" : "Add Intel"}
+            </button>
+            {updatedFlash && <span style={{ ...mono, fontSize:11, color:C.green }}>✓ Profile updated</span>}
+          </div>
+        </div>
+
+        <div>
+          <button onClick={()=>setLogOpen(o=>!o)} style={{ ...mono, fontSize:12, color:C.dim, background:"transparent", border:"none", cursor:"pointer", padding:0, marginBottom:10 }}>
+            {logOpen ? "▾" : "▸"} Intel log ({intelEntries.length})
+          </button>
+          {logOpen && (
+            loading ? (
+              <p style={{ ...mono, fontSize:12, color:C.dim }}>Loading…</p>
+            ) : (
+              <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                {intelEntries.map(entry => (
+                  <div key={entry.id} style={{ padding:"10px 12px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8 }}>
+                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
+                      <span style={{ ...mono, fontSize:9, padding:"2px 7px", borderRadius:9, background:`${C.blue}18`, border:`1px solid ${C.blue}44`, color:C.blue }}>
+                        {SOURCE_LABEL[entry.source] || entry.source}
+                      </span>
+                      <span style={{ ...mono, fontSize:10, color:C.dim }}>{fmtDate(entry.created_at)}</span>
+                    </div>
+                    <p style={{ ...mono, fontSize:12, color:C.txt, margin:0, whiteSpace:"pre-wrap" }}>{entry.content}</p>
+                  </div>
+                ))}
+              </div>
+            )
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

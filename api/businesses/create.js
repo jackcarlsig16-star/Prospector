@@ -1,0 +1,31 @@
+export const config = { maxDuration: 30 };
+import { getSupabase, runResearch } from './shared.js';
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  const { name, website_url, tagline, color, owner_email } = req.body || {};
+  if (!name || !website_url || !owner_email) {
+    return res.status(400).json({ error: 'name, website_url, and owner_email are required' });
+  }
+
+  const supabase = getSupabase();
+  if (!supabase) return res.status(500).json({ error: 'Supabase is not configured' });
+
+  const { data: business, error } = await supabase
+    .from('businesses')
+    .insert({
+      name,
+      website_url,
+      tagline: tagline || null,
+      color,
+      owner_email: owner_email.toLowerCase(),
+      research_status: 'pending',
+    })
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+
+  res.status(200).json({ business });
+
+  runResearch(supabase, business).catch(e => console.error('[businesses] background research crashed:', e));
+}

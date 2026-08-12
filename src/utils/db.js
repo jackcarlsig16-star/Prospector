@@ -470,3 +470,25 @@ export async function createProject({ name, color, ownerEmail }) {
     return { error: e.message };
   }
 }
+
+// ── Businesses ────────────────────────────────────────────────────────────────
+// Standalone layer - separate from projects/project_members/prospects. Does not
+// touch or depend on any of that. Creation, intel entries, and profile
+// generation go through /api/businesses/* server routes (they call the
+// Anthropic API), not direct Supabase writes here - see api/businesses/.
+
+export async function getBusinessesForUser(email) {
+  if (!isSupabaseEnabled() || !email) return [];
+  try {
+    const { data, error } = await supabase
+      .from('businesses')
+      .select('*')
+      .eq('owner_email', email.toLowerCase())
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.warn('[db] getBusinessesForUser failed:', e.message);
+    return [];
+  }
+}

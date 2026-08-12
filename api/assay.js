@@ -122,7 +122,7 @@ function detectSignals(text) {
 }
 
 // ── Fetch site content — try Jina first, fall back to direct ─────────────────
-async function fetchSiteContent(web) {
+export async function fetchSiteContent(web) {
   const url = web.startsWith("http") ? web : `https://${web}`;
 
   // 1. Try Jina reader (best at extracting text from JS-heavy sites)

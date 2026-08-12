@@ -1,12 +1,10 @@
 import { useState } from 'react';
-import { C, mono } from '../constants/colors';
+import { C, mono, PRESET_SWATCH_COLORS } from '../constants/colors';
 import { createProject } from '../utils/db';
-
-const PRESET_COLORS = ['#6366f1','#3b82f6','#14b8a6','#22c55e','#eab308','#f97316','#ef4444','#ec4899','#8b5cf6'];
 
 function CreateProjectModal({ userEmail, onClose, onCreated }) {
   const [name, setName] = useState('');
-  const [color, setColor] = useState(PRESET_COLORS[0]);
+  const [color, setColor] = useState(PRESET_SWATCH_COLORS[0]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -43,7 +41,7 @@ function CreateProjectModal({ userEmail, onClose, onCreated }) {
         <div style={{ marginBottom:22 }}>
           <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>Color</div>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-            {PRESET_COLORS.map(c => (
+            {PRESET_SWATCH_COLORS.map(c => (
               <button key={c} onClick={()=>setColor(c)} aria-label={c}
                 style={{
                   width:28, height:28, borderRadius:"50%", background:c, cursor:"pointer", padding:0,

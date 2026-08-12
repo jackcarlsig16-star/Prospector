@@ -12,7 +12,7 @@ function readImgPref(key) {
 
 const ROLE_LEVEL = { Owner:5, Admin:4, Manager:3, AE:2, BDR:1 };
 
-export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, setToolsActiveTool, accountsSubPage, setAccountsSubPage, viewAs, setViewAs, activeInitials, hasUnviewedBadges, onOpenProfile, diamonds, activeUser, teamUsers, newJoinCount=0, onUpdateTeamUser, pendingApprovalCount=0, newNuggetCount=0, activeProject, onGoToProjects }) {
+export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, setToolsActiveTool, accountsSubPage, setAccountsSubPage, viewAs, setViewAs, activeInitials, hasUnviewedBadges, onOpenProfile, diamonds, activeUser, teamUsers, newJoinCount=0, onUpdateTeamUser, pendingApprovalCount=0, newNuggetCount=0, activeProject, onGoToProjects, onGoToBusinesses }) {
   const [sidebarPrefs, setSidebarPrefs] = useState(readSidebarPrefs);
   const [avatarImage, setAvatarImage] = useState(()=>readImgPref("avatarImage"));
   const [companyLogo, setCompanyLogo] = useState(()=>readImgPref("companyLogo"));
@@ -47,6 +47,15 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
           <span style={{ ...mono, fontSize:10, color:C.dim }}>All Projects ↗</span>
         </button>
       )}
+      <button onClick={onGoToBusinesses} title="Businesses" style={{
+        display:"flex", alignItems:"center", gap:8, width:"100%", padding:"10px 14px",
+        background: page==="businesses-home"||page==="business-detail" ? C.card : "transparent",
+        border:"none", borderBottom:`1px solid ${C.brd}`,
+        borderLeft: page==="businesses-home"||page==="business-detail" ? `3px solid ${C.gold}` : "3px solid transparent",
+        cursor:"pointer", textAlign:"left",
+      }}>
+        <span style={{ ...mono, fontSize:12, color:C.txt, fontWeight:600 }}>🏢 Businesses</span>
+      </button>
       <div style={{ flex:1, padding:"6px 0", overflowY:"auto" }}>
         {NAV.filter(n=>(NAV_ROLES[n.id]||[]).includes(activeRole)).map(n=>{
         const parentActive = page===n.id || (n.id==="intelligence" && page==="analytics");

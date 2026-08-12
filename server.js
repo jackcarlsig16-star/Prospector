@@ -413,6 +413,10 @@ app.post('/api/databricks/gong-calls',    esHandler('./api/databricks/gong-calls
 app.post('/api/databricks/gong-enrich',  esHandler('./api/databricks/gong-enrich.js'));
 app.post('/api/databricks/gong-trends',  esHandler('./api/databricks/gong-trends.js'));
 app.post('/api/notify-approved',          esHandler('./api/notify-approved.js'));
+app.post('/api/businesses',                    esHandler('./api/businesses/create.js'));
+app.get('/api/businesses/:id',                 esHandler('./api/businesses/detail.js'));
+app.post('/api/businesses/:id/intel',          esHandler('./api/businesses/intel.js'));
+app.post('/api/businesses/:id/retry-research', esHandler('./api/businesses/retry.js'));
 app.post('/api/notify-pending', async (req, res) => {
   const { name, email, role } = req.body || {};
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;

@@ -16,3 +16,5 @@ export const TS = {
   Slag: { c: C.slag, bg: C.slagBg, b: C.slagBdr, t: C.slag, i: "×" },
 };
 export const mono = { fontFamily: "'SF Mono', ui-monospace, monospace" };
+// Shared preset swatch picker values - projects and businesses create modals both use this set.
+export const PRESET_SWATCH_COLORS = ['#6366f1','#3b82f6','#14b8a6','#22c55e','#eab308','#f97316','#ef4444','#ec4899','#8b5cf6'];
