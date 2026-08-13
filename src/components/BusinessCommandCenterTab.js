@@ -3,26 +3,38 @@ import { C, mono } from '../constants/colors';
 import { T } from '../constants/tokens';
 import { staleDays, isStale, isWarn } from '../utils/staleness';
 import { getAccountsForBusiness } from '../utils/db';
+import ScoutCommandBar from './ScoutCommandBar';
+import TodayGoals from './TodayGoals';
+import SalesCalendarWidget from './CalendarWidget';
+import BriefPanel from './BriefPanel';
 
-// Business-scoped Command Center — Deal Alerts + Diamonds in the Rough only
-// (Option A, per Jack). Today's Goals and Calendar/Brief stay on the global
-// Home page: they're built on a single per-user daily counter and a single
-// Gmail OAuth connection, not on account data, so there's no per-business
-// version of them to build.
+// Business Command Center — full dashboard shape, matching the global
+// HomePage layout (business-nav-architecture-v1 follow-up, per Jack:
+// Option 2). Two different kinds of widget live here:
 //
-// The gem-detection heuristic in the legacy HomePage additionally gates on a
-// hardcoded set of fintech verticals (GEM_VERTS) - deliberately dropped here.
-// What's left (tier/score/staleness) still works on any business's accounts,
-// but tiers themselves come from assay.js's fintech-tuned scoring, so a
-// non-Plaid business will likely surface fewer diamonds until that scoring
-// is generalized (generalize-legacy-functions-v1, not this SPEC).
+// - Scout, Today's Goals, Calendar, Brief: genuinely per-user/global (one
+//   Gmail OAuth connection, one date-keyed daily counter) - these reuse the
+//   EXACT SAME components and state App.js's global HomePage uses (passed
+//   down as sharedAccounts/sharedTasks/dailyStats/etc.), not a duplicated
+//   or business-scoped copy. Labeled "Shared across all businesses" so
+//   that's honest rather than implied to be this business's own numbers.
+// - Deal Alerts, Diamonds in the Rough: genuinely business-scoped, computed
+//   from this business's own accounts (unchanged from the prior version).
 
 const lastTouch = acc => acc.last;
 const CARD = () => ({ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: '12px 14px' });
 const SH = () => ({ ...mono, fontSize: 10, color: T.cyan, textTransform: 'uppercase', letterSpacing: '0.09em', fontWeight: 600, marginBottom: 8 });
 const TIER_HEX = { Gold: T.tier.gold, Silver: T.tier.silver, Tin: T.tier.tin, Slag: T.tier.slag };
 
-export default function BusinessCommandCenterTab({ business }) {
+function SharedLabel() {
+  return (
+    <span style={{ ...mono, fontSize: 9, color: C.dim, background: `${C.dim}18`, border: `1px solid ${C.dim}44`, borderRadius: 9, padding: '1px 7px', marginBottom: 6, display: 'inline-block' }}>
+      🌐 Shared across all businesses
+    </span>
+  );
+}
+
+export default function BusinessCommandCenterTab({ business, sharedAccounts=[], sharedTasks=[], setSharedTasks, dailyStats={}, activeUser, onNav, onUpdateAccount }) {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -55,7 +67,49 @@ export default function BusinessCommandCenterTab({ business }) {
   const topGems = gems.slice(0, 5);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div>
+        <SharedLabel />
+        <ScoutCommandBar
+          accounts={sharedAccounts}
+          onNav={onNav}
+          onCreateTask={task => setSharedTasks && setSharedTasks(prev => [task, ...prev])}
+          activeUser={activeUser}
+        />
+      </div>
+
+      <div>
+        <SharedLabel />
+        <TodayGoals dailyStats={dailyStats} accounts={sharedAccounts} tasks={sharedTasks} />
+      </div>
+
+      <div>
+        <SharedLabel />
+        <div style={{ display: 'flex', gap: 16, alignItems: 'stretch' }}>
+          <div style={{ flex: '1 1 50%', minWidth: 0, display: 'flex' }}>
+            <SalesCalendarWidget
+              accounts={sharedAccounts}
+              onNav={onNav}
+              tasks={sharedTasks}
+              authError={localStorage.getItem('prospector_gmail_auth_error') || null}
+              onEventsLoaded={()=>{}}
+              onCreateTask={t => setSharedTasks && setSharedTasks(prev => [{ ...t, source: t.source || 'calendar' }, ...prev])}
+              onUpdateAccount={onUpdateAccount}
+            />
+          </div>
+          <div style={{ flex: '1 1 50%', minWidth: 0, display: 'flex' }}>
+            <BriefPanel
+              accounts={sharedAccounts}
+              tasks={sharedTasks}
+              activeUser={activeUser}
+              onNav={onNav}
+              onCreateTask={t => setSharedTasks && setSharedTasks(prev => [t, ...prev])}
+              onUpdateTask={(id, patch) => setSharedTasks && setSharedTasks(prev => prev.map(t => t.id === id ? { ...t, ...patch } : t))}
+            />
+          </div>
+        </div>
+      </div>
+
       <div style={CARD()}>
         <p style={{ ...SH(), marginBottom: 8 }}>Deal Alerts</p>
         {alerts.length === 0 ? (

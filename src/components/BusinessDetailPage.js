@@ -114,7 +114,7 @@ function ProjectsSection({ business, userEmail, projects, onProjectCreated }) {
   );
 }
 
-export default function BusinessDetailPage({ business: businessProp, userEmail, projects=[], view='command-center', onUpdated, onProjectCreated }) {
+export default function BusinessDetailPage({ business: businessProp, userEmail, projects=[], view='command-center', onUpdated, onProjectCreated, sharedAccounts, sharedTasks, setSharedTasks, dailyStats, activeUser, onNav, onUpdateAccount }) {
   const [business, setBusiness] = useState(businessProp);
   const [profile, setProfile] = useState(null);
   const [intelEntries, setIntelEntries] = useState([]);
@@ -235,7 +235,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
           </div>
         </div>
 
-        {view === 'command-center' && <BusinessCommandCenterTab business={business} />}
+        {view === 'command-center' && <BusinessCommandCenterTab business={business} sharedAccounts={sharedAccounts} sharedTasks={sharedTasks} setSharedTasks={setSharedTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={onNav} onUpdateAccount={onUpdateAccount} />}
         {view === 'accounts' && <BusinessAccountsTab business={business} userEmail={userEmail} />}
         {view === 'search' && <BusinessSearchTab business={business} userEmail={userEmail} />}
         {view === 'generation' && <BusinessGenerationTab business={business} />}
