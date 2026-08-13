@@ -4,9 +4,11 @@ import { createProject } from '../utils/db';
 import BusinessAccountsTab from './BusinessAccountsTab';
 import BusinessSearchTab from './BusinessSearchTab';
 import BusinessGenerationTab from './BusinessGenerationTab';
+import BusinessCommandCenterTab from './BusinessCommandCenterTab';
 
 const TABS = [
   { id: 'overview', label: 'Overview' },
+  { id: 'command-center', label: 'Command Center' },
   { id: 'accounts', label: 'Accounts' },
   { id: 'search', label: 'Search' },
   { id: 'generation', label: 'Generation' },
@@ -216,7 +218,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
     }
   };
 
-  const wideTab = activeTab === 'accounts' || activeTab === 'search' || activeTab === 'generation';
+  const wideTab = activeTab === 'accounts' || activeTab === 'search' || activeTab === 'generation' || activeTab === 'command-center';
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, padding:"48px 40px" }}>
@@ -249,6 +251,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
           ))}
         </div>
 
+        {activeTab === 'command-center' && <BusinessCommandCenterTab business={business} />}
         {activeTab === 'accounts' && <BusinessAccountsTab business={business} userEmail={userEmail} />}
         {activeTab === 'search' && <BusinessSearchTab business={business} userEmail={userEmail} />}
         {activeTab === 'generation' && <BusinessGenerationTab business={business} />}
