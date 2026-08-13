@@ -6,15 +6,6 @@ import BusinessSearchTab from './BusinessSearchTab';
 import BusinessGenerationTab from './BusinessGenerationTab';
 import BusinessCommandCenterTab from './BusinessCommandCenterTab';
 
-const TABS = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'command-center', label: 'Command Center' },
-  { id: 'accounts', label: 'Accounts' },
-  { id: 'search', label: 'Search' },
-  { id: 'generation', label: 'Generation' },
-  { id: 'projects', label: 'Projects' },
-];
-
 const SOURCE_LABEL = { manual: 'Manual', research_site: 'Site research', research_web: 'Web research' };
 
 const fmtDate = iso => { try { return new Date(iso).toLocaleString("en-US", { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }); } catch { return "—"; } };
@@ -123,7 +114,7 @@ function ProjectsSection({ business, userEmail, projects, onProjectCreated }) {
   );
 }
 
-export default function BusinessDetailPage({ business: businessProp, userEmail, projects=[], onBack, onUpdated, onProjectCreated }) {
+export default function BusinessDetailPage({ business: businessProp, userEmail, projects=[], view='command-center', onUpdated, onProjectCreated }) {
   const [business, setBusiness] = useState(businessProp);
   const [profile, setProfile] = useState(null);
   const [intelEntries, setIntelEntries] = useState([]);
@@ -138,7 +129,6 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   const [notesOpen, setNotesOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [pollTimedOut, setPollTimedOut] = useState(false);
-  const [activeTab, setActiveTab] = useState('overview');
 
   const pollRef = useRef(null);
   const pollAttemptsRef = useRef(0);
@@ -218,16 +208,12 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
     }
   };
 
-  const wideTab = activeTab === 'accounts' || activeTab === 'search' || activeTab === 'generation' || activeTab === 'command-center';
+  const wideView = view === 'accounts' || view === 'search' || view === 'generation' || view === 'command-center';
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, padding:"48px 40px" }}>
-      <div style={{ maxWidth: wideTab ? 1100 : 700, margin:"0 auto" }}>
-        <button onClick={onBack} style={{ ...mono, fontSize:11, color:C.dim, background:"transparent", border:"none", cursor:"pointer", padding:0, marginBottom:20 }}>
-          ← All Businesses
-        </button>
-
-        <div style={{ display:"flex", alignItems:"flex-start", gap:16, marginBottom:24 }}>
+      <div style={{ maxWidth: wideView ? 1100 : 700, margin:"0 auto" }}>
+        <div style={{ display:"flex", alignItems:"flex-start", gap:16, marginBottom:28 }}>
           <div style={{ width:56, height:56, borderRadius:10, background:business.color||C.gold, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
             <span style={{ ...mono, fontSize:22, color:C.bg, fontWeight:700 }}>{(business.name||'?')[0].toUpperCase()}</span>
           </div>
@@ -240,26 +226,15 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
           </div>
         </div>
 
-        <div style={{ display:"flex", gap:4, borderBottom:`1px solid ${C.brd}`, marginBottom:28 }}>
-          {TABS.map(t => (
-            <button key={t.id} onClick={()=>setActiveTab(t.id)}
-              style={{ ...mono, fontSize:12, fontWeight:600, padding:"9px 14px", background:"transparent",
-                border:"none", borderBottom:`2px solid ${activeTab===t.id?C.gold:"transparent"}`,
-                color:activeTab===t.id?C.txt:C.dim, cursor:"pointer" }}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {activeTab === 'command-center' && <BusinessCommandCenterTab business={business} />}
-        {activeTab === 'accounts' && <BusinessAccountsTab business={business} userEmail={userEmail} />}
-        {activeTab === 'search' && <BusinessSearchTab business={business} userEmail={userEmail} />}
-        {activeTab === 'generation' && <BusinessGenerationTab business={business} />}
-        {activeTab === 'projects' && (
+        {view === 'command-center' && <BusinessCommandCenterTab business={business} />}
+        {view === 'accounts' && <BusinessAccountsTab business={business} userEmail={userEmail} />}
+        {view === 'search' && <BusinessSearchTab business={business} userEmail={userEmail} />}
+        {view === 'generation' && <BusinessGenerationTab business={business} />}
+        {view === 'projects' && (
           <ProjectsSection business={business} userEmail={userEmail} projects={projects} onProjectCreated={onProjectCreated} />
         )}
 
-        {activeTab === 'overview' && (<>
+        {view === 'overview' && (<>
         {business.research_status === 'researching' && !pollTimedOut && (
           <div style={{ padding:"16px 18px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, marginBottom:32 }}>
             <p style={{ ...mono, fontSize:13, color:C.txt, margin:0 }}>Researching {business.name}…</p>

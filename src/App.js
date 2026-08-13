@@ -992,6 +992,10 @@ export default function App() {
   // real-supabase-auth-v1-not-finished caveat as above) ──────────────────
   const [myBusinesses, setMyBusinesses] = useState([]);
   const [activeBusiness, setActiveBusiness] = useState(null);
+  // Sub-nav for a selected business's own workspace (business-nav-architecture-v1),
+  // same pattern as accountsSubPage/toolsActiveTool - lifted here so both Sidebar
+  // (renders the nav) and BusinessDetailPage (renders the matching view) read it.
+  const [businessPage, setBusinessPage] = useState('command-center');
   const [businessesLoading, setBusinessesLoading] = useState(true);
   useEffect(() => {
     if (!user?.email) { setBusinessesLoading(false); return; }
@@ -1220,6 +1224,13 @@ export default function App() {
     else if(dest==="tools"&&tabStr==="pricing"){setToolsActiveTool("deal");}
     else if(dest==="tools"&&tabStr){setToolsLaunchId(tabStr);setToolsActiveTool("deal");}
   };
+  // Selecting a business always lands on its Command Center, whether coming
+  // from the sidebar list, the businesses gallery, or creating a new one.
+  const selectBusiness=(b)=>{
+    setActiveBusiness(b);
+    setBusinessPage('command-center');
+    navTo('business-detail');
+  };
 
   // Initial load only: show PendingScreen full-block while we resolve status from Supabase.
   // Once we know status is 'pending', render the app + slim banner instead — empty-state UX.
@@ -1276,7 +1287,7 @@ export default function App() {
 
   return(
     <div style={{ display:"flex", background:C.bg, minHeight:"100vh", width:"100%" }}>
-      <Sidebar page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();dismissPendingApprovals();}if(p!=="accounts")setAccountsSubPage("territory");}} activeRole={activeRole} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} accountsSubPage={accountsSubPage} setAccountsSubPage={setAccountsSubPage} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} pendingApprovalCount={pendingApprovalCount} newNuggetCount={newNuggetCount} onUpdateTeamUser={(id,patch)=>setTeamUsers(prev=>{const next=prev.map(u=>u.id===id?{...u,...patch}:u);localStorage.setItem("prospector_team_users",JSON.stringify(next));return next;})} businesses={myBusinesses} onSelectBusiness={b=>{setActiveBusiness(b);navTo('business-detail');}} onGoToBusinesses={()=>navTo('businesses-home')} />
+      <Sidebar page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();dismissPendingApprovals();}if(p!=="accounts")setAccountsSubPage("territory");}} activeRole={activeRole} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} accountsSubPage={accountsSubPage} setAccountsSubPage={setAccountsSubPage} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} pendingApprovalCount={pendingApprovalCount} newNuggetCount={newNuggetCount} onUpdateTeamUser={(id,patch)=>setTeamUsers(prev=>{const next=prev.map(u=>u.id===id?{...u,...patch}:u);localStorage.setItem("prospector_team_users",JSON.stringify(next));return next;})} businesses={myBusinesses} onSelectBusiness={selectBusiness} onGoToBusinesses={()=>navTo('businesses-home')} activeBusiness={activeBusiness} businessPage={businessPage} setBusinessPage={setBusinessPage} />
       <div style={{ flex:1, padding:"18px 20px", overflowY:"auto", minWidth:0 }}>
         {approvalStatus === 'pending' && <PendingApprovalBanner user={user} pinged={!!localStorage.getItem('prospector_admin_pinged')} pinging={false} onPing={()=>{ fetch('/api/notify-pending',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:user?.name||'',email:user?.email||'',role:user?.role||'AE'})}).catch(()=>{}); try{localStorage.setItem('prospector_admin_pinged','1');}catch{} }}/>}
         <AssayBanner/>
@@ -1320,8 +1331,8 @@ export default function App() {
         {page==="ledger"&&<LedgerPage accounts={accounts} setAccounts={setAccounts} teamUsers={teamUsers} activeUser={activeUser} tasks={tasks} winsLog={winsLog} setWinsLog={setWinsLog} managerSelectedAeId={managerScopedAeId}/>}
         {page==="tools"&&<ToolsPage accounts={accounts} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} launchAccountId={toolsLaunchId} onLaunched={()=>setToolsLaunchId(null)} activeTool={toolsActiveTool} onToolSelect={setToolsActiveTool} onCreateTask={(prefill)=>setTaskModal(prefill||{})}/>}
         {page==="admin"&&isAdmin(user)&&<AdminPage teamUsers={teamUsers} onSaveUsers={setTeamUsers} currentUser={user} onUpdateCurrentUser={patch=>{setUser(u=>{const next=applyOwnerRole({...u,...patch});localStorage.setItem("prospector_user",JSON.stringify(next));return next;});}} rolePerms={rolePerms} onSaveRolePerms={setRolePerms} onSave={saveAccounts} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} onSaveBatch={saveBatch} accounts={accounts} removedBlocklist={removedBlocklist} onRestoreAccount={entry=>setRemovedBlocklist(bl=>bl.filter(x=>x.id!==entry.id))} nuggets={nuggets} onSaveNuggets={setNuggets} seedTeam={SMB_TEAM}/>}
-        {page==="businesses-home"&&<BusinessesHomePage businesses={myBusinesses} loading={businessesLoading} projects={myProjects} userEmail={user.email} onSelect={b=>{setActiveBusiness(b);navTo('business-detail');}} onCreated={b=>{setMyBusinesses(prev=>[b,...prev]);setActiveBusiness(b);navTo('business-detail');}}/>}
-        {page==="business-detail"&&activeBusiness&&<BusinessDetailPage business={activeBusiness} userEmail={user.email} projects={myProjects.filter(p=>p.business_id===activeBusiness.id)} onBack={()=>navTo('businesses-home')} onUpdated={b=>{setActiveBusiness(b);setMyBusinesses(prev=>prev.map(x=>x.id===b.id?b:x));}} onProjectCreated={p=>setMyProjects(prev=>[p,...prev])}/>}
+        {page==="businesses-home"&&<BusinessesHomePage businesses={myBusinesses} loading={businessesLoading} projects={myProjects} userEmail={user.email} onSelect={selectBusiness} onCreated={b=>{setMyBusinesses(prev=>[b,...prev]);selectBusiness(b);}}/>}
+        {page==="business-detail"&&activeBusiness&&<BusinessDetailPage business={activeBusiness} userEmail={user.email} projects={myProjects.filter(p=>p.business_id===activeBusiness.id)} view={businessPage} onUpdated={b=>{setActiveBusiness(b);setMyBusinesses(prev=>prev.map(x=>x.id===b.id?b:x));}} onProjectCreated={p=>setMyProjects(prev=>[p,...prev])}/>}
         {page==="handoffs"&&<HandoffsPage accounts={accounts} onAddAccount={acc=>{setAccounts(a=>[acc,...a]);trackStat("accounts_added");trackDailyStat("accounts_added");}} activeUser={activeUser} activeRole={activeRole} teamUsers={teamUsers}/>}
         </Suspense>
       </div>

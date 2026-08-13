@@ -12,7 +12,23 @@ function readImgPref(key) {
 
 const ROLE_LEVEL = { Owner:5, Admin:4, Manager:3, AE:2, BDR:1 };
 
-export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, setToolsActiveTool, accountsSubPage, setAccountsSubPage, viewAs, setViewAs, activeInitials, hasUnviewedBadges, onOpenProfile, diamonds, activeUser, teamUsers, newJoinCount=0, onUpdateTeamUser, pendingApprovalCount=0, newNuggetCount=0, businesses=[], onSelectBusiness, onGoToBusinesses }) {
+// Live inside a business's own nav once selected - Command Center is the
+// landing view (business-nav-architecture-v1), matching the global app's
+// own "Command Center is home" pattern.
+const BUSINESS_NAV = [
+  { id: "command-center", ic: "⌂", lb: "Command Center" },
+  { id: "overview",       ic: "◉", lb: "Overview" },
+  { id: "accounts",       ic: "◈", lb: "Accounts" },
+  { id: "search",         ic: "🔍", lb: "Search" },
+  { id: "generation",     ic: "✉", lb: "Generation" },
+  { id: "projects",       ic: "▣", lb: "Projects" },
+];
+// Legacy tools not yet business-scoped (per the reusability audit, several
+// are Plaid-specific) - shown disabled rather than faked or hidden. Derived
+// from the global NAV so it can't drift out of sync with it.
+const DISABLED_BUSINESS_NAV = NAV.filter(n => !["home","accounts","admin"].includes(n.id));
+
+export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, setToolsActiveTool, accountsSubPage, setAccountsSubPage, viewAs, setViewAs, activeInitials, hasUnviewedBadges, onOpenProfile, diamonds, activeUser, teamUsers, newJoinCount=0, onUpdateTeamUser, pendingApprovalCount=0, newNuggetCount=0, businesses=[], onSelectBusiness, onGoToBusinesses, activeBusiness=null, businessPage, setBusinessPage }) {
   const [sidebarPrefs, setSidebarPrefs] = useState(readSidebarPrefs);
   const [avatarImage, setAvatarImage] = useState(()=>readImgPref("avatarImage"));
   const [companyLogo, setCompanyLogo] = useState(()=>readImgPref("companyLogo"));
@@ -58,6 +74,35 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
           <p style={{ ...mono, fontSize:11, color:C.dim, margin:"4px 14px 0" }}>No businesses yet</p>
         )}
       </div>
+      {page==="business-detail"&&activeBusiness ? (
+        <>
+          <button onClick={onGoToBusinesses} style={{ ...mono, display:"flex", alignItems:"center", gap:6, width:"100%", padding:"9px 14px", fontSize:11, color:C.dim, background:"transparent", border:"none", borderBottom:`1px solid ${C.brd}`, cursor:"pointer", textAlign:"left" }}>
+            ← All Businesses
+          </button>
+          <p style={{ ...mono, margin:0, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.1em", padding:"10px 14px 2px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{activeBusiness.name}</p>
+          <div style={{ padding:"6px 0" }}>
+            {BUSINESS_NAV.map(n=>{
+              const active = businessPage===n.id;
+              return (
+                <div key={n.id} onClick={()=>setBusinessPage?.(n.id)} style={{ padding:"7px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:8, background:active?C.card:"transparent", borderLeft:`3px solid ${active?C.gold:"transparent"}` }}>
+                  <span style={{ ...mono, fontSize:14, color:active?C.gold:C.mut }}>{n.ic}</span>
+                  <span style={{ fontSize:13, color:active?C.txt:C.mut, whiteSpace:"nowrap", flex:1 }}>{n.lb}</span>
+                </div>
+              );
+            })}
+          </div>
+          <p style={{ ...mono, margin:0, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.1em", padding:"10px 14px 2px" }}>Not Yet Available</p>
+          <div style={{ flex:1, padding:"6px 0", overflowY:"auto" }}>
+            {DISABLED_BUSINESS_NAV.map(n=>(
+              <div key={n.id} title={`${n.lb} isn't scoped per-business yet — coming in a future update.`} style={{ padding:"7px 12px", display:"flex", alignItems:"center", gap:8, cursor:"default", opacity:0.4 }}>
+                <span style={{ ...mono, fontSize:14, color:C.dim }}>{n.ic}</span>
+                <span style={{ fontSize:13, color:C.dim, whiteSpace:"nowrap", flex:1 }}>{n.lb}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+      <>
       <p style={{ ...mono, margin:0, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.1em", padding:"10px 14px 2px" }}>Prospector Tools</p>
       <div style={{ flex:1, padding:"6px 0", overflowY:"auto" }}>
         {NAV.filter(n=>(NAV_ROLES[n.id]||[]).includes(activeRole)).map(n=>{
@@ -129,6 +174,8 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
         );
         })}
       </div>
+      </>
+      )}
       {/* Profile switcher */}
       <div style={{ padding:"10px 12px", borderTop:`1px solid ${C.brd}` }}>
         {companyLogo && (
