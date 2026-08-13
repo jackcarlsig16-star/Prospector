@@ -15,8 +15,17 @@ export default async function handler(req, res) {
 
   const { data: business, error } = await supabase.from('businesses').select('*').eq('id', id).single();
   if (error) return res.status(404).json({ error: 'Business not found' });
+  if (business.research_status === 'researching') {
+    return res.status(409).json({ error: 'Research is already running for this business' });
+  }
+
+  // Flip status synchronously before responding, not inside runResearch()'s
+  // first async step - closes the window where a fast double-click could fire
+  // two concurrent research runs before the client's next poll sees the change.
+  const { error: statusError } = await supabase.from('businesses').update({ research_status: 'researching' }).eq('id', id);
+  if (statusError) return res.status(500).json({ error: statusError.message });
 
   res.status(200).json({ ok: true });
 
-  runResearch(supabase, business).catch(e => console.error('[businesses] retry research crashed:', e));
+  runResearch(supabase, { ...business, research_status: 'researching' }).catch(e => console.error('[businesses] retry research crashed:', e));
 }

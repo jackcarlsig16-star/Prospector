@@ -33,8 +33,14 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
 
   const [notesOpen, setNotesOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  const [pollTimedOut, setPollTimedOut] = useState(false);
 
   const pollRef = useRef(null);
+  const pollAttemptsRef = useRef(0);
+  // Server-side, a research run is bounded by two 90s Anthropic timeouts plus a
+  // 10s site fetch (~190s worst case). This caps polling well above that so a
+  // stuck/hung server-side run can't leave the tab polling forever.
+  const MAX_POLL_ATTEMPTS = 70; // 70 * 3s = 210s
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/businesses/${business.id}`);
@@ -53,9 +59,19 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   useEffect(() => {
     if (business.research_status !== 'researching') {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      pollAttemptsRef.current = 0;
       return;
     }
+    setPollTimedOut(false);
+    pollAttemptsRef.current = 0;
     pollRef.current = setInterval(async () => {
+      pollAttemptsRef.current += 1;
+      if (pollAttemptsRef.current > MAX_POLL_ATTEMPTS) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+        setPollTimedOut(true);
+        return;
+      }
       const updated = await load();
       if (updated && updated.research_status !== 'researching') {
         clearInterval(pollRef.current);
@@ -67,6 +83,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
 
   const handleRetry = async () => {
     setRetrying(true);
+    setPollTimedOut(false);
     await fetch(`/api/businesses/${business.id}/retry-research`, { method: 'POST' });
     setRetrying(false);
     load();
@@ -116,9 +133,18 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
           </div>
         </div>
 
-        {business.research_status === 'researching' && (
+        {business.research_status === 'researching' && !pollTimedOut && (
           <div style={{ padding:"16px 18px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, marginBottom:32 }}>
             <p style={{ ...mono, fontSize:13, color:C.txt, margin:0 }}>Researching {business.name}…</p>
+          </div>
+        )}
+
+        {business.research_status === 'researching' && pollTimedOut && (
+          <div style={{ padding:"16px 18px", background:`${C.orange}10`, border:`1px solid ${C.orange}44`, borderRadius:8, marginBottom:32 }}>
+            <p style={{ ...mono, fontSize:12, color:C.orange, margin:"0 0 10px" }}>
+              This is taking longer than expected (over 3 minutes) — the automatic check-in has stopped so this tab doesn't poll forever.
+            </p>
+            <button onClick={load} style={btn}>Check again</button>
           </div>
         )}
 

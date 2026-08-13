@@ -18,6 +18,7 @@ async function callAnthropic({ system, messages, tools, max_tokens }) {
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
+    signal: AbortSignal.timeout(90000), // every other Anthropic/external call in this app bounds its fetch - this one was the one gap
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': key,
