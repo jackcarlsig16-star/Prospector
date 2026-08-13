@@ -102,12 +102,17 @@ function CreateBusinessModal({ userEmail, onClose, onCreated }) {
   );
 }
 
-export default function BusinessesHomePage({ businesses, loading, userEmail, onSelect, onCreated }) {
+export default function BusinessesHomePage({ businesses, loading, userEmail, onSelect, onCreated, onGoToProjects }) {
   const [modalOpen, setModalOpen] = useState(false);
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, padding:"48px 40px" }}>
       <div style={{ maxWidth:900, margin:"0 auto" }}>
+        {onGoToProjects && (
+          <button onClick={onGoToProjects} style={{ ...mono, fontSize:11, color:C.dim, background:"transparent", border:"none", cursor:"pointer", padding:0, marginBottom:20 }}>
+            ← My Projects
+          </button>
+        )}
         <h1 style={{ ...mono, fontSize:20, color:C.txt, fontWeight:700, margin:"0 0 24px" }}>Businesses</h1>
 
         {loading ? (

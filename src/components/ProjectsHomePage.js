@@ -67,13 +67,20 @@ function CreateProjectModal({ userEmail, onClose, onCreated }) {
   );
 }
 
-export default function ProjectsHomePage({ projects, userEmail, onSelect, onCreated }) {
+export default function ProjectsHomePage({ projects, userEmail, onSelect, onCreated, onGoToBusinesses }) {
   const [modalOpen, setModalOpen] = useState(false);
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, padding:"48px 40px" }}>
       <div style={{ maxWidth:900, margin:"0 auto" }}>
-        <h1 style={{ ...mono, fontSize:20, color:C.txt, fontWeight:700, margin:"0 0 24px" }}>My Projects</h1>
+        <div style={{ display:"flex", alignItems:"center", marginBottom:24 }}>
+          <h1 style={{ ...mono, fontSize:20, color:C.txt, fontWeight:700, margin:0 }}>My Projects</h1>
+          {onGoToBusinesses && (
+            <button onClick={onGoToBusinesses} style={{ ...mono, marginLeft:"auto", fontSize:12, color:C.dim, background:"transparent", border:`1px solid ${C.brd}`, borderRadius:6, padding:"6px 14px", cursor:"pointer" }}>
+              🏢 Businesses
+            </button>
+          )}
+        </div>
 
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))", gap:16 }}>
           {projects.map(p => (

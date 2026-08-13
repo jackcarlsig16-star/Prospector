@@ -1265,12 +1265,37 @@ export default function App() {
     </div>
   );
 
+  // Businesses is a standalone tree, separate from projects (every SPEC's own
+  // wording) - it must be reachable without ever creating/selecting a project.
+  // Checked before the ProjectsHomePage fallback below, still gated by
+  // !activeProject so the in-project Sidebar path (with its own "All
+  // Projects"/"Businesses" buttons) is untouched.
+  if (!activeProject && page === 'businesses-home') return (
+    <BusinessesHomePage
+      businesses={myBusinesses}
+      loading={businessesLoading}
+      userEmail={user.email}
+      onSelect={b=>{setActiveBusiness(b);navTo('business-detail');}}
+      onCreated={b=>{setMyBusinesses(prev=>[b,...prev]);setActiveBusiness(b);navTo('business-detail');}}
+      onGoToProjects={()=>navTo('home')}
+    />
+  );
+  if (!activeProject && page === 'business-detail' && activeBusiness) return (
+    <BusinessDetailPage
+      business={activeBusiness}
+      userEmail={user.email}
+      onBack={()=>navTo('businesses-home')}
+      onUpdated={b=>{setActiveBusiness(b);setMyBusinesses(prev=>prev.map(x=>x.id===b.id?b:x));}}
+    />
+  );
+
   if (!activeProject) return (
     <ProjectsHomePage
       projects={myProjects}
       userEmail={user.email}
       onSelect={setActiveProject}
       onCreated={project => { setMyProjects(prev => [...prev, project]); setActiveProject(project); }}
+      onGoToBusinesses={()=>navTo('businesses-home')}
     />
   );
 
