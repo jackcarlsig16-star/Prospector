@@ -39,10 +39,41 @@ async function callAnthropic({ system, messages, tools, max_tokens }) {
   return data;
 }
 
+const LIGHT_SYSTEM_PROMPT = `You track recent changes for a company Jack does outreach on behalf of, based on its own site content and notes - not a prospect he's researching. Respond with ONLY a JSON object, no other text.
+
+Return exactly this shape:
+{
+  "raw_synthesis": "2-4 short sentences on what appears new, changed, or worth knowing since the last check - new offerings, messaging shifts, notable site changes. This is quick context for an outreach conversation, not a strategic document. If nothing meaningfully new stands out, say so plainly rather than padding."
+}`;
+
+const FULL_SYSTEM_PROMPT = `You synthesize accumulated research and notes about a company into a structured business profile. Respond with ONLY a JSON object, no other text.
+
+Return exactly this shape:
+{
+  "vision": "the company's stated or inferred vision/mission, 2-3 sentences",
+  "positioning": "how the company positions itself in its market, 2-3 sentences",
+  "icp": "the company's ideal customer profile, 2-3 sentences",
+  "gtm_strategy": "the company's go-to-market strategy, 2-3 sentences",
+  "competitors": "known or likely competitors, comma-separated or short list",
+  "raw_synthesis": "a fuller markdown synthesis covering anything the fields above don't capture"
+}
+
+Base every field on the intel log provided - do not invent facts it doesn't support. Where the log is thin on a field, give a clearly-labeled best inference rather than leaving it empty.`;
+
 // PROFILE GENERATION — pulls the full intel log and synthesizes it into
 // business_profiles. Called from both the research pipeline and the manual
-// intel-add path.
+// intel-add path, so it looks up research_depth itself rather than trusting
+// the caller to pass it - a light business getting a manual intel entry
+// must still get the light resynthesis, not the full GTM writeup.
 export async function generateProfile(supabase, businessId) {
+  const { data: business, error: businessError } = await supabase
+    .from('businesses')
+    .select('name, research_depth')
+    .eq('id', businessId)
+    .single();
+  if (businessError) throw businessError;
+  const isLight = business.research_depth === 'light';
+
   const { data: entries, error: entriesError } = await supabase
     .from('business_intel_entries')
     .select('content, source, created_at')
@@ -55,21 +86,9 @@ export async function generateProfile(supabase, businessId) {
     .join('\n\n---\n\n') || '(no intel yet)';
 
   const data = await callAnthropic({
-    max_tokens: 4096,
-    system: `You synthesize accumulated research and notes about a company into a structured business profile. Respond with ONLY a JSON object, no other text.
-
-Return exactly this shape:
-{
-  "vision": "the company's stated or inferred vision/mission, 2-3 sentences",
-  "positioning": "how the company positions itself in its market, 2-3 sentences",
-  "icp": "the company's ideal customer profile, 2-3 sentences",
-  "gtm_strategy": "the company's go-to-market strategy, 2-3 sentences",
-  "competitors": "known or likely competitors, comma-separated or short list",
-  "raw_synthesis": "a fuller markdown synthesis covering anything the fields above don't capture"
-}
-
-Base every field on the intel log provided - do not invent facts it doesn't support. Where the log is thin on a field, give a clearly-labeled best inference rather than leaving it empty.`,
-    messages: [{ role: 'user', content: `INTEL LOG for this company, oldest to newest:\n\n${intelLog}` }],
+    max_tokens: isLight ? 1024 : 4096,
+    system: isLight ? LIGHT_SYSTEM_PROMPT : FULL_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: `INTEL LOG for ${business.name}, oldest to newest:\n\n${intelLog}` }],
   });
 
   const textBlock = (data.content || []).find(b => b.type === 'text');
@@ -80,11 +99,11 @@ Base every field on the intel log provided - do not invent facts it doesn't supp
 
   const { error: upsertError } = await supabase.from('business_profiles').upsert({
     business_id: businessId,
-    vision: parsed.vision || null,
-    positioning: parsed.positioning || null,
-    icp: parsed.icp || null,
-    gtm_strategy: parsed.gtm_strategy || null,
-    competitors: parsed.competitors || null,
+    vision: isLight ? null : (parsed.vision || null),
+    positioning: isLight ? null : (parsed.positioning || null),
+    icp: isLight ? null : (parsed.icp || null),
+    gtm_strategy: isLight ? null : (parsed.gtm_strategy || null),
+    competitors: isLight ? null : (parsed.competitors || null),
     raw_synthesis: parsed.raw_synthesis || null,
     model_version: MODELS.STANDARD,
     generated_at: new Date().toISOString(),
@@ -111,23 +130,28 @@ export async function runResearch(supabase, business) {
     });
     if (siteEntryError) throw siteEntryError;
 
-    const webData = await callAnthropic({
-      max_tokens: 4096,
-      system: 'You are researching a company for a business intelligence profile. Use web search to find recent news, competitors, market position, and social presence. Respond with a concise plain-text synthesis of your findings - no preamble, no JSON.',
-      messages: [{ role: 'user', content: `Company: ${business.name}\nWebsite: ${business.website_url}` }],
-      tools: [{ type: 'web_search_20260209', name: 'web_search' }],
-    });
-    const webFindings = (webData.content || [])
-      .filter(b => b.type === 'text')
-      .map(b => b.text)
-      .join('\n\n') || 'No web findings available.';
+    // Light (own-company) businesses skip web_search entirely - no call, no
+    // retry, nothing. Prospects (full) keep the existing pipeline unchanged,
+    // web_search hang included - that's a separate, tracked issue.
+    if (business.research_depth !== 'light') {
+      const webData = await callAnthropic({
+        max_tokens: 4096,
+        system: 'You are researching a company for a business intelligence profile. Use web search to find recent news, competitors, market position, and social presence. Respond with a concise plain-text synthesis of your findings - no preamble, no JSON.',
+        messages: [{ role: 'user', content: `Company: ${business.name}\nWebsite: ${business.website_url}` }],
+        tools: [{ type: 'web_search_20260209', name: 'web_search' }],
+      });
+      const webFindings = (webData.content || [])
+        .filter(b => b.type === 'text')
+        .map(b => b.text)
+        .join('\n\n') || 'No web findings available.';
 
-    const { error: webEntryError } = await supabase.from('business_intel_entries').insert({
-      business_id: business.id,
-      source: 'research_web',
-      content: webFindings,
-    });
-    if (webEntryError) throw webEntryError;
+      const { error: webEntryError } = await supabase.from('business_intel_entries').insert({
+        business_id: business.id,
+        source: 'research_web',
+        content: webFindings,
+      });
+      if (webEntryError) throw webEntryError;
+    }
 
     await generateProfile(supabase, business.id);
 
