@@ -137,10 +137,19 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   // stuck/hung server-side run can't leave the tab polling forever.
   const MAX_POLL_ATTEMPTS = 70; // 70 * 3s = 210s
 
+  // Guards against a stale fetch from a previously-viewed business landing
+  // after switching away (App.js keys this component by business.id, so a
+  // switch unmounts this instance - without this guard, a slow in-flight
+  // /api/businesses/:id response for the OLD business would still call
+  // onUpdated() and stomp App.js's activeBusiness back to the wrong one).
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   const load = useCallback(async () => {
     const res = await fetch(`/api/businesses/${business.id}`);
-    if (!res.ok) return;
+    if (!mountedRef.current || !res.ok) return;
     const data = await res.json();
+    if (!mountedRef.current) return;
     setBusiness(data.business);
     setProfile(data.profile);
     setIntelEntries(data.intelEntries);
