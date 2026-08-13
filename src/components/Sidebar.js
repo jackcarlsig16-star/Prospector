@@ -12,7 +12,7 @@ function readImgPref(key) {
 
 const ROLE_LEVEL = { Owner:5, Admin:4, Manager:3, AE:2, BDR:1 };
 
-export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, setToolsActiveTool, accountsSubPage, setAccountsSubPage, viewAs, setViewAs, activeInitials, hasUnviewedBadges, onOpenProfile, diamonds, activeUser, teamUsers, newJoinCount=0, onUpdateTeamUser, pendingApprovalCount=0, newNuggetCount=0, activeProject, onGoToProjects, onGoToBusinesses }) {
+export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, setToolsActiveTool, accountsSubPage, setAccountsSubPage, viewAs, setViewAs, activeInitials, hasUnviewedBadges, onOpenProfile, diamonds, activeUser, teamUsers, newJoinCount=0, onUpdateTeamUser, pendingApprovalCount=0, newNuggetCount=0, businesses=[], onSelectBusiness, onGoToBusinesses }) {
   const [sidebarPrefs, setSidebarPrefs] = useState(readSidebarPrefs);
   const [avatarImage, setAvatarImage] = useState(()=>readImgPref("avatarImage"));
   const [companyLogo, setCompanyLogo] = useState(()=>readImgPref("companyLogo"));
@@ -34,28 +34,31 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
           <p style={{ ...mono, margin:0, fontSize:11, color:C.mut, letterSpacing:"0.05em" }}>PROSPECT INTELLIGENCE</p>
         </div>
       </div>
-      {activeProject && (
-        <button onClick={onGoToProjects} title="All Projects" style={{
-          display:"flex", alignItems:"center", gap:8, width:"100%", padding:"10px 14px",
-          background:"transparent", border:"none", borderBottom:`1px solid ${C.brd}`,
+      <div style={{ borderBottom:`1px solid ${C.brd}`, padding:"8px 0" }}>
+        <button onClick={onGoToBusinesses} title="Businesses" style={{
+          display:"flex", alignItems:"center", gap:8, width:"100%", padding:"6px 14px",
+          background: page==="businesses-home"||page==="business-detail" ? C.card : "transparent",
+          border:"none",
+          borderLeft: page==="businesses-home"||page==="business-detail" ? `3px solid ${C.gold}` : "3px solid transparent",
           cursor:"pointer", textAlign:"left",
         }}>
-          <span style={{ width:10, height:10, borderRadius:"50%", background:activeProject.color||C.gold, flexShrink:0 }} />
-          <span style={{ ...mono, fontSize:12, color:C.txt, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", flex:1 }}>
-            {activeProject.name}
-          </span>
-          <span style={{ ...mono, fontSize:10, color:C.dim }}>All Projects ↗</span>
+          <span style={{ ...mono, fontSize:12, color:C.txt, fontWeight:600 }}>🏢 Businesses</span>
         </button>
-      )}
-      <button onClick={onGoToBusinesses} title="Businesses" style={{
-        display:"flex", alignItems:"center", gap:8, width:"100%", padding:"10px 14px",
-        background: page==="businesses-home"||page==="business-detail" ? C.card : "transparent",
-        border:"none", borderBottom:`1px solid ${C.brd}`,
-        borderLeft: page==="businesses-home"||page==="business-detail" ? `3px solid ${C.gold}` : "3px solid transparent",
-        cursor:"pointer", textAlign:"left",
-      }}>
-        <span style={{ ...mono, fontSize:12, color:C.txt, fontWeight:600 }}>🏢 Businesses</span>
-      </button>
+        {businesses.length > 0 ? (
+          <div style={{ paddingLeft:20, borderLeft:`3px solid ${C.gold}33`, marginLeft:14, maxHeight:180, overflowY:"auto" }}>
+            {businesses.map(b => (
+              <div key={b.id} onClick={()=>onSelectBusiness?.(b)}
+                style={{ padding:"5px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:8 }}>
+                <span style={{ width:8, height:8, borderRadius:"50%", background:b.color||C.gold, flexShrink:0 }} />
+                <span style={{ ...mono, fontSize:12, color:C.mut, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{b.name}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p style={{ ...mono, fontSize:11, color:C.dim, margin:"4px 14px 0" }}>No businesses yet</p>
+        )}
+      </div>
+      <p style={{ ...mono, margin:0, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.1em", padding:"10px 14px 2px" }}>Prospector Tools</p>
       <div style={{ flex:1, padding:"6px 0", overflowY:"auto" }}>
         {NAV.filter(n=>(NAV_ROLES[n.id]||[]).includes(activeRole)).map(n=>{
         const parentActive = page===n.id || (n.id==="intelligence" && page==="analytics");

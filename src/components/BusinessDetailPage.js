@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { C, mono } from '../constants/colors';
+import { C, mono, PRESET_SWATCH_COLORS } from '../constants/colors';
+import { createProject } from '../utils/db';
 
 const SOURCE_LABEL = { manual: 'Manual', research_site: 'Site research', research_web: 'Web research' };
 
@@ -19,7 +20,97 @@ function ProfileBlock({ label, value }) {
   );
 }
 
-export default function BusinessDetailPage({ business: businessProp, userEmail, onBack, onUpdated }) {
+function CreateProjectModal({ businessId, userEmail, onClose, onCreated }) {
+  const [name, setName] = useState('');
+  const [color, setColor] = useState(PRESET_SWATCH_COLORS[0]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleCreate = async () => {
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    setError('');
+    const { project, error: err } = await createProject({ name: name.trim(), color, ownerEmail: userEmail, businessId });
+    setSaving(false);
+    if (err) { setError(err); return; }
+    onCreated(project);
+  };
+
+  return (
+    <div onClick={e=>{if(e.target===e.currentTarget) onClose();}} style={{ position:"fixed", inset:0, zIndex:1000, background:"#00000099", display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ background:C.card, border:`1px solid ${C.brd}`, borderRadius:12, padding:"22px 26px", width:380, boxShadow:"0 20px 60px #000c" }}>
+        <div style={{ display:"flex", alignItems:"center", marginBottom:20 }}>
+          <span style={{ ...mono, fontSize:14, color:C.txt, fontWeight:700 }}>New project</span>
+          <button onClick={onClose} style={{ marginLeft:"auto", background:"transparent", border:"none", color:C.mut, fontSize:18, cursor:"pointer" }}>✕</button>
+        </div>
+        <div style={{ marginBottom:16 }}>
+          <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>Name</div>
+          <input type="text" placeholder="Q3 outbound push" value={name} onChange={e=>setName(e.target.value)}
+            onKeyDown={e=>e.key==="Enter" && name.trim() && handleCreate()} style={inp} />
+        </div>
+        <div style={{ marginBottom:22 }}>
+          <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>Color</div>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+            {PRESET_SWATCH_COLORS.map(c => (
+              <button key={c} onClick={()=>setColor(c)} aria-label={c}
+                style={{ width:28, height:28, borderRadius:"50%", background:c, cursor:"pointer", padding:0,
+                  border: color===c ? `2px solid ${C.txt}` : "2px solid transparent",
+                  boxShadow: color===c ? `0 0 0 2px ${C.card}` : "none" }} />
+            ))}
+          </div>
+        </div>
+        {error && <div style={{ ...mono, fontSize:11, color:C.red, marginBottom:12 }}>⚠ {error}</div>}
+        <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+          <button onClick={onClose} style={{ ...mono, fontSize:12, padding:"7px 16px", background:"transparent", border:`1px solid ${C.brd}`, borderRadius:6, color:C.mut, cursor:"pointer" }}>Cancel</button>
+          <button onClick={handleCreate} disabled={!name.trim()||saving}
+            style={{ ...mono, fontSize:12, padding:"7px 20px", background:name.trim()?C.gold:"transparent", border:`1px solid ${name.trim()?C.gold:C.brd}`, borderRadius:6, color:name.trim()?C.bg:C.dim, cursor:name.trim()&&!saving?"pointer":"default", fontWeight:700 }}>
+            {saving ? "Creating…" : "Create →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProjectsSection({ business, userEmail, projects, onProjectCreated }) {
+  const [open, setOpen] = useState(true);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  return (
+    <div style={{ marginBottom:32 }}>
+      <button onClick={()=>setOpen(o=>!o)} style={{ ...mono, fontSize:12, color:C.dim, background:"transparent", border:"none", cursor:"pointer", padding:0, marginBottom:10 }}>
+        {open ? "▾" : "▸"} Projects ({projects.length})
+      </button>
+      {open && (
+        <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+          {projects.map(p => (
+            <div key={p.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8 }}>
+              <span style={{ width:10, height:10, borderRadius:"50%", background:p.color||C.gold, flexShrink:0 }} />
+              <span style={{ ...mono, fontSize:13, color:C.txt, flex:1 }}>{p.name}</span>
+              <span style={{ ...mono, fontSize:10, color:C.dim }}>{fmtDate(p.created_at)}</span>
+            </div>
+          ))}
+          {projects.length === 0 && (
+            <p style={{ ...mono, fontSize:12, color:C.dim, margin:0 }}>No projects yet for {business.name}.</p>
+          )}
+          <button onClick={()=>setModalOpen(true)} style={{ ...mono, fontSize:12, color:C.dim, background:"transparent", border:`1.5px dashed ${C.brd}`, borderRadius:8, padding:"9px 12px", cursor:"pointer", textAlign:"left" }}>
+            + New Project
+          </button>
+        </div>
+      )}
+      {modalOpen && (
+        <CreateProjectModal
+          businessId={business.id}
+          userEmail={userEmail}
+          onClose={()=>setModalOpen(false)}
+          onCreated={project => { setModalOpen(false); onProjectCreated(project); }}
+        />
+      )}
+    </div>
+  );
+}
+
+export default function BusinessDetailPage({ business: businessProp, userEmail, projects=[], onBack, onUpdated, onProjectCreated }) {
   const [business, setBusiness] = useState(businessProp);
   const [profile, setProfile] = useState(null);
   const [intelEntries, setIntelEntries] = useState([]);
@@ -188,6 +279,8 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
             </div>
           )
         )}
+
+        <ProjectsSection business={business} userEmail={userEmail} projects={projects} onProjectCreated={onProjectCreated} />
 
         <div style={{ marginBottom:32 }}>
           <textarea

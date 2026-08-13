@@ -444,12 +444,12 @@ export async function getProjectsForUser(email) {
   }
 }
 
-export async function createProject({ name, color, ownerEmail }) {
+export async function createProject({ name, color, ownerEmail, businessId }) {
   if (!isSupabaseEnabled() || !ownerEmail) return { error: 'Supabase is not available.' };
   try {
     const { data: project, error: projectError } = await supabase
       .from('projects')
-      .insert({ name, color, owner_email: ownerEmail.toLowerCase() })
+      .insert({ name, color, owner_email: ownerEmail.toLowerCase(), business_id: businessId || null })
       .select()
       .single();
     if (projectError) throw projectError;

@@ -31,7 +31,6 @@ import { getDefaultOutbound } from './utils/outbound';
 import { getAllCompliance } from './utils/storage';
 import { getACV } from './utils/ledgerEngine';
 import { getTeamUsers, saveTeamUsers, getFrontier, saveFrontier, getAccounts, saveAccountsToDb, saveComplianceToDb, getUserApprovalStatus, getPendingUsers, getBdrAssignments, getProjectsForUser, getBusinessesForUser } from './utils/db';
-import ProjectsHomePage from './components/ProjectsHomePage';
 import BusinessesHomePage from './components/BusinessesHomePage';
 import BusinessDetailPage from './components/BusinessDetailPage';
 import { isSupabaseEnabled } from './utils/supabase';
@@ -973,25 +972,18 @@ export default function App() {
   // ── Projects (real-supabase-auth-v1 not finished yet - "current user" is
   // still user.email off the localStorage-backed prospector_user blob, not a
   // real auth session. Swap this for the real session's email once that lands.) ──
+  // Projects now nest under a business (business_id) rather than gating the
+  // whole app - see navigation-restructure-v1. myProjects stays loaded here
+  // (same prop-drilled-from-App.js pattern as myBusinesses) so BusinessDetailPage
+  // can filter to its own projects and BusinessesHomePage can surface any
+  // legacy rows that predate business_id as "Unassigned".
   const [myProjects, setMyProjects] = useState([]);
-  const [activeProject, setActiveProjectRaw] = useState(null);
-  const [projectsLoading, setProjectsLoading] = useState(true);
-  const setActiveProject = (project) => {
-    setActiveProjectRaw(project);
-    try { if (project?.id) localStorage.setItem('prospector_active_project_id', project.id); } catch {}
-  };
   useEffect(() => {
-    if (!user?.email) { setProjectsLoading(false); return; }
+    if (!user?.email) { return; }
     let cancelled = false;
-    setProjectsLoading(true);
     getProjectsForUser(user.email).then(projects => {
       if (cancelled) return;
       setMyProjects(projects);
-      let storedId = null;
-      try { storedId = localStorage.getItem('prospector_active_project_id'); } catch {}
-      const match = storedId ? projects.find(p => p.id === storedId) : null;
-      setActiveProjectRaw(match || null);
-      setProjectsLoading(false);
     });
     return () => { cancelled = true; };
   }, [user?.email]);
@@ -1259,46 +1251,6 @@ export default function App() {
     }, 200);
   }}/>;
 
-  if (projectsLoading) return (
-    <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <span style={{ ...mono, fontSize:13, color:C.dim }}>Loading projects…</span>
-    </div>
-  );
-
-  // Businesses is a standalone tree, separate from projects (every SPEC's own
-  // wording) - it must be reachable without ever creating/selecting a project.
-  // Checked before the ProjectsHomePage fallback below, still gated by
-  // !activeProject so the in-project Sidebar path (with its own "All
-  // Projects"/"Businesses" buttons) is untouched.
-  if (!activeProject && page === 'businesses-home') return (
-    <BusinessesHomePage
-      businesses={myBusinesses}
-      loading={businessesLoading}
-      userEmail={user.email}
-      onSelect={b=>{setActiveBusiness(b);navTo('business-detail');}}
-      onCreated={b=>{setMyBusinesses(prev=>[b,...prev]);setActiveBusiness(b);navTo('business-detail');}}
-      onGoToProjects={()=>navTo('home')}
-    />
-  );
-  if (!activeProject && page === 'business-detail' && activeBusiness) return (
-    <BusinessDetailPage
-      business={activeBusiness}
-      userEmail={user.email}
-      onBack={()=>navTo('businesses-home')}
-      onUpdated={b=>{setActiveBusiness(b);setMyBusinesses(prev=>prev.map(x=>x.id===b.id?b:x));}}
-    />
-  );
-
-  if (!activeProject) return (
-    <ProjectsHomePage
-      projects={myProjects}
-      userEmail={user.email}
-      onSelect={setActiveProject}
-      onCreated={project => { setMyProjects(prev => [...prev, project]); setActiveProject(project); }}
-      onGoToBusinesses={()=>navTo('businesses-home')}
-    />
-  );
-
   // Wizard / banner visibility
   const isAE = (user?.role||"AE") === "AE";
   const sfdcConnected   = !!localStorage.getItem("sfdc_access_token");
@@ -1324,7 +1276,7 @@ export default function App() {
 
   return(
     <div style={{ display:"flex", background:C.bg, minHeight:"100vh", width:"100%" }}>
-      <Sidebar page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();dismissPendingApprovals();}if(p!=="accounts")setAccountsSubPage("territory");}} activeRole={activeRole} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} accountsSubPage={accountsSubPage} setAccountsSubPage={setAccountsSubPage} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} pendingApprovalCount={pendingApprovalCount} newNuggetCount={newNuggetCount} onUpdateTeamUser={(id,patch)=>setTeamUsers(prev=>{const next=prev.map(u=>u.id===id?{...u,...patch}:u);localStorage.setItem("prospector_team_users",JSON.stringify(next));return next;})} activeProject={activeProject} onGoToProjects={()=>setActiveProjectRaw(null)} onGoToBusinesses={()=>navTo('businesses-home')} />
+      <Sidebar page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();dismissPendingApprovals();}if(p!=="accounts")setAccountsSubPage("territory");}} activeRole={activeRole} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} accountsSubPage={accountsSubPage} setAccountsSubPage={setAccountsSubPage} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} pendingApprovalCount={pendingApprovalCount} newNuggetCount={newNuggetCount} onUpdateTeamUser={(id,patch)=>setTeamUsers(prev=>{const next=prev.map(u=>u.id===id?{...u,...patch}:u);localStorage.setItem("prospector_team_users",JSON.stringify(next));return next;})} businesses={myBusinesses} onSelectBusiness={b=>{setActiveBusiness(b);navTo('business-detail');}} onGoToBusinesses={()=>navTo('businesses-home')} />
       <div style={{ flex:1, padding:"18px 20px", overflowY:"auto", minWidth:0 }}>
         {approvalStatus === 'pending' && <PendingApprovalBanner user={user} pinged={!!localStorage.getItem('prospector_admin_pinged')} pinging={false} onPing={()=>{ fetch('/api/notify-pending',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:user?.name||'',email:user?.email||'',role:user?.role||'AE'})}).catch(()=>{}); try{localStorage.setItem('prospector_admin_pinged','1');}catch{} }}/>}
         <AssayBanner/>
@@ -1368,8 +1320,8 @@ export default function App() {
         {page==="ledger"&&<LedgerPage accounts={accounts} setAccounts={setAccounts} teamUsers={teamUsers} activeUser={activeUser} tasks={tasks} winsLog={winsLog} setWinsLog={setWinsLog} managerSelectedAeId={managerScopedAeId}/>}
         {page==="tools"&&<ToolsPage accounts={accounts} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} launchAccountId={toolsLaunchId} onLaunched={()=>setToolsLaunchId(null)} activeTool={toolsActiveTool} onToolSelect={setToolsActiveTool} onCreateTask={(prefill)=>setTaskModal(prefill||{})}/>}
         {page==="admin"&&isAdmin(user)&&<AdminPage teamUsers={teamUsers} onSaveUsers={setTeamUsers} currentUser={user} onUpdateCurrentUser={patch=>{setUser(u=>{const next=applyOwnerRole({...u,...patch});localStorage.setItem("prospector_user",JSON.stringify(next));return next;});}} rolePerms={rolePerms} onSaveRolePerms={setRolePerms} onSave={saveAccounts} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} onSaveBatch={saveBatch} accounts={accounts} removedBlocklist={removedBlocklist} onRestoreAccount={entry=>setRemovedBlocklist(bl=>bl.filter(x=>x.id!==entry.id))} nuggets={nuggets} onSaveNuggets={setNuggets} seedTeam={SMB_TEAM}/>}
-        {page==="businesses-home"&&<BusinessesHomePage businesses={myBusinesses} loading={businessesLoading} userEmail={user.email} onSelect={b=>{setActiveBusiness(b);navTo('business-detail');}} onCreated={b=>{setMyBusinesses(prev=>[b,...prev]);setActiveBusiness(b);navTo('business-detail');}}/>}
-        {page==="business-detail"&&activeBusiness&&<BusinessDetailPage business={activeBusiness} userEmail={user.email} onBack={()=>navTo('businesses-home')} onUpdated={b=>{setActiveBusiness(b);setMyBusinesses(prev=>prev.map(x=>x.id===b.id?b:x));}}/>}
+        {page==="businesses-home"&&<BusinessesHomePage businesses={myBusinesses} loading={businessesLoading} projects={myProjects} userEmail={user.email} onSelect={b=>{setActiveBusiness(b);navTo('business-detail');}} onCreated={b=>{setMyBusinesses(prev=>[b,...prev]);setActiveBusiness(b);navTo('business-detail');}}/>}
+        {page==="business-detail"&&activeBusiness&&<BusinessDetailPage business={activeBusiness} userEmail={user.email} projects={myProjects.filter(p=>p.business_id===activeBusiness.id)} onBack={()=>navTo('businesses-home')} onUpdated={b=>{setActiveBusiness(b);setMyBusinesses(prev=>prev.map(x=>x.id===b.id?b:x));}} onProjectCreated={p=>setMyProjects(prev=>[p,...prev])}/>}
         {page==="handoffs"&&<HandoffsPage accounts={accounts} onAddAccount={acc=>{setAccounts(a=>[acc,...a]);trackStat("accounts_added");trackDailyStat("accounts_added");}} activeUser={activeUser} activeRole={activeRole} teamUsers={teamUsers}/>}
         </Suspense>
       </div>

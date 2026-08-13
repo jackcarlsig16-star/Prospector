@@ -102,17 +102,13 @@ function CreateBusinessModal({ userEmail, onClose, onCreated }) {
   );
 }
 
-export default function BusinessesHomePage({ businesses, loading, userEmail, onSelect, onCreated, onGoToProjects }) {
+export default function BusinessesHomePage({ businesses, loading, projects=[], userEmail, onSelect, onCreated }) {
   const [modalOpen, setModalOpen] = useState(false);
+  const unassignedProjects = projects.filter(p => !p.business_id);
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, padding:"48px 40px" }}>
       <div style={{ maxWidth:900, margin:"0 auto" }}>
-        {onGoToProjects && (
-          <button onClick={onGoToProjects} style={{ ...mono, fontSize:11, color:C.dim, background:"transparent", border:"none", cursor:"pointer", padding:0, marginBottom:20 }}>
-            ← My Projects
-          </button>
-        )}
         <h1 style={{ ...mono, fontSize:20, color:C.txt, fontWeight:700, margin:"0 0 24px" }}>Businesses</h1>
 
         {loading ? (
@@ -156,6 +152,24 @@ export default function BusinessesHomePage({ businesses, loading, userEmail, onS
             <span style={{ ...mono, fontSize:13, color:C.dim, fontWeight:600 }}>+ New Business</span>
           </button>
         </div>
+
+        {unassignedProjects.length > 0 && (
+          <div style={{ marginTop:32 }}>
+            <h2 style={{ ...mono, fontSize:13, color:C.dim, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", margin:"0 0 12px" }}>Unassigned Projects</h2>
+            <p style={{ ...mono, fontSize:11, color:C.dim, margin:"0 0 12px" }}>
+              These projects predate business-level tracking and aren't linked to a business yet.
+            </p>
+            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+              {unassignedProjects.map(p => (
+                <div key={p.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8 }}>
+                  <span style={{ width:10, height:10, borderRadius:"50%", background:p.color||C.gold, flexShrink:0 }} />
+                  <span style={{ ...mono, fontSize:13, color:C.txt, flex:1 }}>{p.name}</span>
+                  <span style={{ ...mono, fontSize:9, padding:"2px 7px", borderRadius:9, background:`${C.dim}18`, border:`1px solid ${C.dim}44`, color:C.dim }}>Unassigned</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {modalOpen && (
