@@ -156,25 +156,37 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
         )}
 
         {business.research_status === 'ready' && profile && (
-          <div style={{ marginBottom:32 }}>
-            <h2 style={{ ...mono, fontSize:13, color:C.txt, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", margin:"0 0 16px" }}>Profile</h2>
-            <ProfileBlock label="Vision" value={profile.vision} />
-            <ProfileBlock label="Positioning" value={profile.positioning} />
-            <ProfileBlock label="ICP" value={profile.icp} />
-            <ProfileBlock label="GTM Strategy" value={profile.gtm_strategy} />
-            <ProfileBlock label="Competitors" value={profile.competitors} />
-
-            {profile.raw_synthesis && (
-              <div style={{ marginTop:16 }}>
-                <button onClick={()=>setNotesOpen(o=>!o)} style={{ ...mono, fontSize:11, color:C.dim, background:"transparent", border:"none", cursor:"pointer", padding:0 }}>
-                  {notesOpen ? "▾" : "▸"} Full notes
-                </button>
-                {notesOpen && (
-                  <p style={{ ...mono, fontSize:12, color:C.dim, whiteSpace:"pre-wrap", marginTop:8, lineHeight:1.6 }}>{profile.raw_synthesis}</p>
-                )}
+          business.research_depth === 'light' ? (
+            <div style={{ marginBottom:32 }}>
+              <h2 style={{ ...mono, fontSize:13, color:C.gold, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", margin:"0 0 12px" }}>What's New</h2>
+              <div style={{ padding:"14px 16px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8 }}>
+                <p style={{ ...mono, fontSize:13, color:C.txt, margin:0, lineHeight:1.6, whiteSpace:"pre-wrap" }}>{profile.raw_synthesis}</p>
               </div>
-            )}
-          </div>
+              {profile.generated_at && (
+                <p style={{ ...mono, fontSize:10, color:C.dim, margin:"8px 0 0" }}>Last checked {fmtDate(profile.generated_at)}</p>
+              )}
+            </div>
+          ) : (
+            <div style={{ marginBottom:32 }}>
+              <h2 style={{ ...mono, fontSize:13, color:C.txt, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", margin:"0 0 16px" }}>Profile</h2>
+              <ProfileBlock label="Vision" value={profile.vision} />
+              <ProfileBlock label="Positioning" value={profile.positioning} />
+              <ProfileBlock label="ICP" value={profile.icp} />
+              <ProfileBlock label="GTM Strategy" value={profile.gtm_strategy} />
+              <ProfileBlock label="Competitors" value={profile.competitors} />
+
+              {profile.raw_synthesis && (
+                <div style={{ marginTop:16 }}>
+                  <button onClick={()=>setNotesOpen(o=>!o)} style={{ ...mono, fontSize:11, color:C.dim, background:"transparent", border:"none", cursor:"pointer", padding:0 }}>
+                    {notesOpen ? "▾" : "▸"} Full notes
+                  </button>
+                  {notesOpen && (
+                    <p style={{ ...mono, fontSize:12, color:C.dim, whiteSpace:"pre-wrap", marginTop:8, lineHeight:1.6 }}>{profile.raw_synthesis}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )
         )}
 
         <div style={{ marginBottom:32 }}>
