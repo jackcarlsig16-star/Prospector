@@ -12,7 +12,7 @@ export function getSupabase() {
 
 const SITE_TEXT_TRUNCATE_CHARS = 6000;
 
-async function callAnthropic({ system, messages, tools, max_tokens }) {
+async function callAnthropic({ system, messages, tools, max_tokens, supabase, businessId, callType }) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('ANTHROPIC_API_KEY not configured');
 
@@ -36,6 +36,19 @@ async function callAnthropic({ system, messages, tools, max_tokens }) {
 
   const data = await response.json();
   if (data.type === 'error') throw new Error(data.error?.message || 'Anthropic API error');
+
+  // Non-fatal: cost accounting must never take down a research run.
+  if (supabase && data.usage) {
+    const { error: usageError } = await supabase.from('business_anthropic_usage').insert({
+      business_id: businessId || null,
+      call_type: callType || 'unknown',
+      input_tokens: data.usage.input_tokens ?? null,
+      output_tokens: data.usage.output_tokens ?? null,
+      model: MODELS.STANDARD,
+    });
+    if (usageError) console.warn('[businesses] usage log failed:', usageError.message);
+  }
+
   return data;
 }
 
@@ -81,7 +94,11 @@ export async function generateProfile(supabase, businessId) {
     .order('created_at', { ascending: true });
   if (entriesError) throw entriesError;
 
-  const intelLog = (entries || [])
+  // Light businesses only need "what's changed since last check" - the full
+  // accumulated history isn't relevant to that and just burns input tokens.
+  // Full-depth profiles genuinely need the complete log for an accurate GTM writeup.
+  const relevantEntries = isLight ? (entries || []).slice(-2) : (entries || []);
+  const intelLog = relevantEntries
     .map(e => `[${e.source}] ${e.content}`)
     .join('\n\n---\n\n') || '(no intel yet)';
 
@@ -89,6 +106,9 @@ export async function generateProfile(supabase, businessId) {
     max_tokens: isLight ? 1024 : 4096,
     system: isLight ? LIGHT_SYSTEM_PROMPT : FULL_SYSTEM_PROMPT,
     messages: [{ role: 'user', content: `INTEL LOG for ${business.name}, oldest to newest:\n\n${intelLog}` }],
+    supabase,
+    businessId,
+    callType: isLight ? 'profile_light' : 'profile_full',
   });
 
   const textBlock = (data.content || []).find(b => b.type === 'text');
@@ -139,6 +159,9 @@ export async function runResearch(supabase, business) {
         system: 'You are researching a company for a business intelligence profile. Use web search to find recent news, competitors, market position, and social presence. Respond with a concise plain-text synthesis of your findings - no preamble, no JSON.',
         messages: [{ role: 'user', content: `Company: ${business.name}\nWebsite: ${business.website_url}` }],
         tools: [{ type: 'web_search_20260209', name: 'web_search' }],
+        supabase,
+        businessId: business.id,
+        callType: 'web_search',
       });
       const webFindings = (webData.content || [])
         .filter(b => b.type === 'text')
