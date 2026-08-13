@@ -158,7 +158,7 @@ export async function runResearch(supabase, business) {
         max_tokens: 4096,
         system: 'You are researching a company for a business intelligence profile. Use web search to find recent news, competitors, market position, and social presence. Respond with a concise plain-text synthesis of your findings - no preamble, no JSON.',
         messages: [{ role: 'user', content: `Company: ${business.name}\nWebsite: ${business.website_url}` }],
-        tools: [{ type: 'web_search_20260209', name: 'web_search' }],
+        tools: [{ type: 'web_search_20260209', name: 'web_search', allowed_callers: ['direct'] }],
         supabase,
         businessId: business.id,
         callType: 'web_search',
