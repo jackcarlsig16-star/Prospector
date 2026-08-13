@@ -170,6 +170,62 @@ export async function saveAccountsToDb(ownerEmail, accounts) {
   }
 }
 
+// ── Business-scoped accounts (business-workspace-v1) ───────────────────────────
+// Separate from the global owner_email-keyed accounts above - each business's
+// account list is independent, keyed by business_id instead of owner_email.
+// A brand-new business genuinely has zero accounts; there is no seeding or
+// shared default list.
+
+const bizAccountsKey = businessId => `prospector_accounts_biz_${businessId}`;
+
+export async function getAccountsForBusiness(businessId) {
+  if (!businessId) return [];
+  if (!isSupabaseEnabled()) {
+    try { return JSON.parse(localStorage.getItem(bizAccountsKey(businessId)) || '[]'); } catch { return []; }
+  }
+  try {
+    const { data, error } = await supabase
+      .from('accounts')
+      .select('data')
+      .eq('business_id', businessId)
+      .order('updated_at', { ascending: true });
+    if (error) throw error;
+    return (data || []).map(r => r.data).filter(Boolean);
+  } catch(e) {
+    console.warn('[db] getAccountsForBusiness Supabase failed, using localStorage:', e.message);
+    try { return JSON.parse(localStorage.getItem(bizAccountsKey(businessId)) || '[]'); } catch { return []; }
+  }
+}
+
+export async function saveAccountsForBusiness(businessId, ownerEmail, accounts) {
+  if (!businessId) return;
+  try { localStorage.setItem(bizAccountsKey(businessId), JSON.stringify(accounts)); } catch {}
+  if (!isSupabaseEnabled()) return;
+  try {
+    if (accounts.length === 0) {
+      await supabase.from('accounts').delete().eq('business_id', businessId);
+      return;
+    }
+    const rows = accounts.map(a => ({
+      id: String(a.id),
+      owner_email: ownerEmail || '',
+      business_id: businessId,
+      data: a,
+      updated_at: new Date().toISOString(),
+    }));
+    const { error: upsertErr } = await supabase
+      .from('accounts')
+      .upsert(rows, { onConflict: 'id' });
+    if (upsertErr) throw upsertErr;
+    const ids = accounts.map(a => String(a.id)).join(',');
+    await supabase.from('accounts').delete()
+      .eq('business_id', businessId)
+      .not('id', 'in', `(${ids})`);
+  } catch(e) {
+    console.warn('[db] saveAccountsForBusiness Supabase failed:', e.message);
+  }
+}
+
 export function subscribeToAccounts(ownerEmail, onChange) {
   if (!isSupabaseEnabled() || !ownerEmail) return () => {};
   const channel = supabase

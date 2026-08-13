@@ -1,6 +1,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { C, mono, PRESET_SWATCH_COLORS } from '../constants/colors';
 import { createProject } from '../utils/db';
+import BusinessAccountsTab from './BusinessAccountsTab';
+import BusinessSearchTab from './BusinessSearchTab';
+import BusinessGenerationTab from './BusinessGenerationTab';
+
+const TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'accounts', label: 'Accounts' },
+  { id: 'search', label: 'Search' },
+  { id: 'generation', label: 'Generation' },
+  { id: 'projects', label: 'Projects' },
+];
 
 const SOURCE_LABEL = { manual: 'Manual', research_site: 'Site research', research_web: 'Web research' };
 
@@ -125,6 +136,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   const [notesOpen, setNotesOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [pollTimedOut, setPollTimedOut] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
 
   const pollRef = useRef(null);
   const pollAttemptsRef = useRef(0);
@@ -204,14 +216,16 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
     }
   };
 
+  const wideTab = activeTab === 'accounts' || activeTab === 'search' || activeTab === 'generation';
+
   return (
     <div style={{ minHeight:"100vh", background:C.bg, padding:"48px 40px" }}>
-      <div style={{ maxWidth:700, margin:"0 auto" }}>
+      <div style={{ maxWidth: wideTab ? 1100 : 700, margin:"0 auto" }}>
         <button onClick={onBack} style={{ ...mono, fontSize:11, color:C.dim, background:"transparent", border:"none", cursor:"pointer", padding:0, marginBottom:20 }}>
           ← All Businesses
         </button>
 
-        <div style={{ display:"flex", alignItems:"flex-start", gap:16, marginBottom:32 }}>
+        <div style={{ display:"flex", alignItems:"flex-start", gap:16, marginBottom:24 }}>
           <div style={{ width:56, height:56, borderRadius:10, background:business.color||C.gold, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
             <span style={{ ...mono, fontSize:22, color:C.bg, fontWeight:700 }}>{(business.name||'?')[0].toUpperCase()}</span>
           </div>
@@ -224,6 +238,25 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
           </div>
         </div>
 
+        <div style={{ display:"flex", gap:4, borderBottom:`1px solid ${C.brd}`, marginBottom:28 }}>
+          {TABS.map(t => (
+            <button key={t.id} onClick={()=>setActiveTab(t.id)}
+              style={{ ...mono, fontSize:12, fontWeight:600, padding:"9px 14px", background:"transparent",
+                border:"none", borderBottom:`2px solid ${activeTab===t.id?C.gold:"transparent"}`,
+                color:activeTab===t.id?C.txt:C.dim, cursor:"pointer" }}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {activeTab === 'accounts' && <BusinessAccountsTab business={business} userEmail={userEmail} />}
+        {activeTab === 'search' && <BusinessSearchTab business={business} userEmail={userEmail} />}
+        {activeTab === 'generation' && <BusinessGenerationTab business={business} />}
+        {activeTab === 'projects' && (
+          <ProjectsSection business={business} userEmail={userEmail} projects={projects} onProjectCreated={onProjectCreated} />
+        )}
+
+        {activeTab === 'overview' && (<>
         {business.research_status === 'researching' && !pollTimedOut && (
           <div style={{ padding:"16px 18px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, marginBottom:32 }}>
             <p style={{ ...mono, fontSize:13, color:C.txt, margin:0 }}>Researching {business.name}…</p>
@@ -280,8 +313,6 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
           )
         )}
 
-        <ProjectsSection business={business} userEmail={userEmail} projects={projects} onProjectCreated={onProjectCreated} />
-
         <div style={{ marginBottom:32 }}>
           <textarea
             placeholder="Add intel…" value={newEntry} onChange={e=>setNewEntry(e.target.value)}
@@ -320,6 +351,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
             )
           )}
         </div>
+        </>)}
       </div>
     </div>
   );
