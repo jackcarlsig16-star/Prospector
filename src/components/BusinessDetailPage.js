@@ -5,6 +5,7 @@ import BusinessAccountsTab from './BusinessAccountsTab';
 import BusinessSearchTab from './BusinessSearchTab';
 import BusinessGenerationTab from './BusinessGenerationTab';
 import BusinessCommandCenterTab from './BusinessCommandCenterTab';
+import MembersPermissionsTab from './MembersPermissionsTab';
 
 const SOURCE_LABEL = { manual: 'Manual', research_site: 'Site research', research_web: 'Web research' };
 
@@ -217,7 +218,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
     }
   };
 
-  const wideView = view === 'accounts' || view === 'search' || view === 'generation' || view === 'command-center';
+  const wideView = view === 'accounts' || view === 'search' || view === 'generation' || view === 'command-center' || view === 'members';
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, padding:"48px 40px" }}>
@@ -242,6 +243,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
         {view === 'projects' && (
           <ProjectsSection business={business} userEmail={userEmail} projects={projects} onProjectCreated={onProjectCreated} />
         )}
+        {view === 'members' && <MembersPermissionsTab business={business} viewerEmail={userEmail} />}
 
         {view === 'overview' && (<>
         {business.research_status === 'researching' && !pollTimedOut && (

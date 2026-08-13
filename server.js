@@ -417,6 +417,8 @@ app.post('/api/businesses',                    esHandler('./api/businesses/creat
 app.get('/api/businesses/:id',                 esHandler('./api/businesses/detail.js'));
 app.post('/api/businesses/:id/intel',          esHandler('./api/businesses/intel.js'));
 app.post('/api/businesses/:id/retry-research', esHandler('./api/businesses/retry.js'));
+app.get('/api/businesses/join/:code',          esHandler('./api/businesses/join.js'));
+app.post('/api/businesses/join',                esHandler('./api/businesses/join.js'));
 app.post('/api/notify-pending', async (req, res) => {
   const { name, email, role } = req.body || {};
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;

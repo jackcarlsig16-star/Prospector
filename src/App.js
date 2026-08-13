@@ -5,6 +5,8 @@ import { URGENCY_OPTIONS, setBdrList } from './components/AccountCard';
 import DealSummaryModal from './components/AccountCardPricingSummary';
 import ToolsPage from './components/ToolsPage';
 import OnboardingPage from './components/OnboardingPage';
+import JoinBusinessPage from './components/JoinBusinessPage';
+import MemberShell from './components/MemberShell';
 import PendingScreen from './components/PendingScreen';
 import PendingApprovalBanner from './components/PendingApprovalBanner';
 import AssayBanner from './components/AssayBanner';
@@ -99,6 +101,11 @@ export default function App() {
 
   const forceOnboarding=new URLSearchParams(window.location.search).has("onboarding");
   const [user,setUser]=useState(()=>{if(forceOnboarding)return null;try{const s=localStorage.getItem("prospector_user");return s?applyOwnerRole(JSON.parse(s)):null;}catch{return null;}});
+  // Members joining via /join/:code get their own email-keyed identity here,
+  // fully separate from prospector_user (business-lists-and-permissions-v1).
+  const joinCode=(()=>{try{const m=window.location.pathname.match(/^\/join\/([^/]+)/);return m?decodeURIComponent(m[1]):null;}catch{return null;}})();
+  const [memberSession,setMemberSession]=useState(()=>{try{const s=localStorage.getItem("prospector_member");return s?JSON.parse(s):null;}catch{return null;}});
+  const [joinedBusiness,setJoinedBusiness]=useState(null);
   const [page,setPage]=useState("home");
   const [accounts,setAccounts]=useState(()=>{
     try{
@@ -1231,6 +1238,21 @@ export default function App() {
     setBusinessPage('command-center');
     navTo('business-detail');
   };
+
+  // Member sessions (business-lists-and-permissions-v1) pre-empt Jack's own
+  // user/onboarding/approval flow entirely - a joining member never becomes
+  // a `user`, so this must run before any of those checks below.
+  if(joinCode && !memberSession) return <JoinBusinessPage code={joinCode} onJoined={(member,business)=>{
+    try{localStorage.setItem("prospector_member",JSON.stringify({email:member.email,name:member.name}));}catch{}
+    setMemberSession({email:member.email,name:member.name});
+    setJoinedBusiness(business);
+    try{window.history.replaceState({},"","/");}catch{}
+  }}/>;
+  if(memberSession) return <MemberShell identity={memberSession} initialBusiness={joinedBusiness} onExit={()=>{
+    try{localStorage.removeItem("prospector_member");}catch{}
+    setMemberSession(null);
+    setJoinedBusiness(null);
+  }}/>;
 
   // Initial load only: show PendingScreen full-block while we resolve status from Supabase.
   // Once we know status is 'pending', render the app + slim banner instead — empty-state UX.

@@ -548,3 +548,133 @@ export async function getBusinessesForUser(email) {
     return [];
   }
 }
+
+// ── Member sessions (business-lists-and-permissions-v1) ────────────────────────
+// Joining members (via /join/:code) aren't Jack - they get their own email-keyed
+// identity, separate from the legacy owner_email/user model above. A member's
+// businesses are the union of what they own outright (same owner_email path as
+// Jack) and what they've joined as a permissioned member.
+
+export async function getBusinessesForMember(email) {
+  if (!isSupabaseEnabled() || !email) return [];
+  const lower = email.toLowerCase();
+  try {
+    const [ownedRes, memberRowsRes] = await Promise.all([
+      supabase.from('businesses').select('*').eq('owner_email', lower),
+      supabase.from('business_members').select('business_id').eq('email', lower),
+    ]);
+    if (ownedRes.error) throw ownedRes.error;
+    if (memberRowsRes.error) throw memberRowsRes.error;
+
+    const memberBusinessIds = (memberRowsRes.data || []).map(r => r.business_id);
+    let joined = [];
+    if (memberBusinessIds.length) {
+      const { data, error } = await supabase.from('businesses').select('*').in('id', memberBusinessIds);
+      if (error) throw error;
+      joined = data || [];
+    }
+
+    const byId = new Map();
+    [...(ownedRes.data || []), ...joined].forEach(b => byId.set(b.id, b));
+    return [...byId.values()].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  } catch (e) {
+    console.warn('[db] getBusinessesForMember failed:', e.message);
+    return [];
+  }
+}
+
+// ── Lists + member permissions (business-lists-and-permissions-v1) ─────────────
+// Owner-only settings screen: create/rename/delete lists, grant/revoke
+// per-member-per-list view/edit. Direct Supabase writes from the browser -
+// same permissive-RLS posture as every other CRUD path in this app
+// (ProjectsSection/createProject etc.), no server route needed.
+
+export async function getListsForBusiness(businessId) {
+  if (!isSupabaseEnabled() || !businessId) return [];
+  try {
+    const { data, error } = await supabase.from('lists').select('*').eq('business_id', businessId).order('created_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.warn('[db] getListsForBusiness failed:', e.message);
+    return [];
+  }
+}
+
+export async function createList(businessId, name) {
+  try {
+    const { data, error } = await supabase.from('lists').insert({ business_id: businessId, name: name.trim() }).select().single();
+    if (error) throw error;
+    return { list: data };
+  } catch (e) {
+    console.warn('[db] createList failed:', e.message);
+    return { error: e.message };
+  }
+}
+
+export async function renameList(listId, name) {
+  try {
+    const { error } = await supabase.from('lists').update({ name: name.trim() }).eq('id', listId);
+    if (error) throw error;
+    return { error: null };
+  } catch (e) {
+    console.warn('[db] renameList failed:', e.message);
+    return { error: e.message };
+  }
+}
+
+export async function deleteList(listId) {
+  try {
+    const { error } = await supabase.from('lists').delete().eq('id', listId);
+    if (error) throw error;
+    return { error: null };
+  } catch (e) {
+    console.warn('[db] deleteList failed:', e.message);
+    return { error: e.message };
+  }
+}
+
+export async function getMembersForBusiness(businessId) {
+  if (!isSupabaseEnabled() || !businessId) return [];
+  try {
+    const { data, error } = await supabase.from('business_members').select('*').eq('business_id', businessId).order('created_at', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.warn('[db] getMembersForBusiness failed:', e.message);
+    return [];
+  }
+}
+
+export async function getPermissionsForMembers(memberIds) {
+  if (!isSupabaseEnabled() || !memberIds?.length) return [];
+  try {
+    const { data, error } = await supabase.from('member_list_permissions').select('*').in('member_id', memberIds);
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.warn('[db] getPermissionsForMembers failed:', e.message);
+    return [];
+  }
+}
+
+// level: 'none' | 'view' | 'edit'. 'none' deletes the row - absence of a row
+// already means no access, so this keeps the table minimal (no dead false/false rows).
+export async function setMemberListPermission(memberId, listId, level) {
+  try {
+    if (level === 'none') {
+      const { error } = await supabase.from('member_list_permissions').delete().eq('member_id', memberId).eq('list_id', listId);
+      if (error) throw error;
+      return { error: null };
+    }
+    const { error } = await supabase.from('member_list_permissions').upsert(
+      { member_id: memberId, list_id: listId, can_view: true, can_edit: level === 'edit' },
+      { onConflict: 'member_id,list_id' }
+    );
+    if (error) throw error;
+    return { error: null };
+  } catch (e) {
+    console.warn('[db] setMemberListPermission failed:', e.message);
+    return { error: e.message };
+  }
+}

@@ -346,10 +346,21 @@ export default function ProspectorGate({ children }) {
   };
 
   // ── Unlocked state ─────────────────────────────────────────────────────────
-  if (unlocked) {
+  // /join/:code visitors are members joining a specific business, not Jack -
+  // they never see the invite-code screen, onboarding, or approval gate
+  // (business-lists-and-permissions-v1). App.js handles the code itself.
+  // hasMemberSession (not just isJoinLink) matters because App.js replaces
+  // the URL back to "/" right after joining - this component's own intro
+  // typewriter effect re-renders it independently every ~40ms regardless of
+  // unlocked/bypass state, so isJoinLink alone would flip false on the very
+  // next tick and this would render the lock screen over an active member
+  // session (confirmed live: the pickaxe screen replaced MemberShell).
+  const isJoinLink = (() => { try { return window.location.pathname.startsWith('/join/'); } catch { return false; } })();
+  const hasMemberSession = (() => { try { return !!localStorage.getItem('prospector_member'); } catch { return false; } })();
+  if (unlocked || isJoinLink || hasMemberSession) {
     return (
       <>
-        {masterBannerCode && (
+        {unlocked && masterBannerCode && (
           <MasterCodeBanner
             code={masterBannerCode}
             copied={bannerCopied}

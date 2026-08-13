@@ -1,6 +1,13 @@
 export const config = { maxDuration: 30 };
 import { getSupabase, runResearch } from './shared.js';
 
+const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I, matches invites.js
+function generateAccessCode() {
+  let s = '';
+  for (let i = 0; i < 8; i++) s += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+  return s;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const { name, website_url, tagline, color, owner_email } = req.body || {};
@@ -19,6 +26,7 @@ export default async function handler(req, res) {
       tagline: tagline || null,
       color,
       owner_email: owner_email.toLowerCase(),
+      access_code: generateAccessCode(),
       research_status: 'pending',
     })
     .select()

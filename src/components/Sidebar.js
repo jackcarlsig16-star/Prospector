@@ -22,6 +22,7 @@ const BUSINESS_NAV = [
   { id: "search",         ic: "🔍", lb: "Search" },
   { id: "generation",     ic: "✉", lb: "Generation" },
   { id: "projects",       ic: "▣", lb: "Projects" },
+  { id: "members",        ic: "👥", lb: "Members", ownerOnly: true },
 ];
 // Legacy tools not yet business-scoped (per the reusability audit, several
 // are Plaid-specific) - shown disabled rather than faked or hidden. Derived
@@ -81,7 +82,7 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
           </button>
           <p style={{ ...mono, margin:0, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.1em", padding:"10px 14px 2px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{activeBusiness.name}</p>
           <div style={{ padding:"6px 0" }}>
-            {BUSINESS_NAV.map(n=>{
+            {BUSINESS_NAV.filter(n=>!n.ownerOnly || (activeBusiness.owner_email||"").toLowerCase()===(activeUser?.email||"").toLowerCase()).map(n=>{
               const active = businessPage===n.id;
               return (
                 <div key={n.id} onClick={()=>setBusinessPage?.(n.id)} style={{ padding:"7px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:8, background:active?C.card:"transparent", borderLeft:`3px solid ${active?C.gold:"transparent"}` }}>
