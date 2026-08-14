@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ROLE_PERMS } from '../constants/appConfig';
 import { C, mono } from '../constants/colors';
-import { getAccountsForBusiness, saveAccountsForBusiness, getListsForBusiness, getMembersForBusiness, getPermissionsForMembers, getAccountListMapForBusiness, linkAccountToLists } from '../utils/db';
+import { getAccountsForBusiness, saveAccountsForBusiness, getListsForBusiness, getMembersForBusiness, getPermissionsForMembers, getAccountListMapForBusiness, linkAccountToLists, getInfluencerDetails } from '../utils/db';
 import AccountsPage from './AccountsPage';
 import DealSummaryModal from './AccountCardPricingSummary';
 import CsvImportModal from './CsvImportModal';
+import InfluencerAddModal from './InfluencerAddModal';
 
 // Every capability false - a member with only view access on the lists in
 // scope gets a real read-only UI, not just a role label (business-lists-and-permissions-v1).
@@ -27,21 +28,36 @@ export default function BusinessAccountsTab({ business, userEmail }) {
   const [tasks, setTasks] = useState([]);
   const [dealSummaryAccId, setDealSummaryAccId] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [influencerAddOpen, setInfluencerAddOpen] = useState(false);
+  // Default 'all' (mixed) rather than business-only - matches this app's
+  // general default of not hiding data ("All accessible" is the default
+  // list filter too). Business-only-by-default was the alternative
+  // considered (influencer-accounts-v1, Phase 4).
+  const [segment, setSegment] = useState('all'); // 'all' | 'business' | 'influencer'
   const [selectedListId, setSelectedListId] = useState(null); // null = all accessible; UNLISTED = zero-list accounts
   const [accessibleListIds, setAccessibleListIds] = useState(null); // null = owner, no restriction
   const [editableListIds, setEditableListIds] = useState(null);
 
   const isOwner = (business.owner_email || '').toLowerCase() === (userEmail || '').toLowerCase();
 
-  const reload = useCallback(() => {
-    setLoading(true);
+  // silent=true skips the loading flag - used when refreshing in the
+  // background (e.g. after CSV import or influencer add) while a success
+  // modal is still open. The whole render tree below is gated behind
+  // `!loading`, including any open modal - setting loading=true while a
+  // modal is showing its own success/done state would unmount it out from
+  // under the user, wiping that state, even though the underlying write
+  // already succeeded. Confirmed live, not hypothetical (influencer-accounts-v1).
+  const reload = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
     return Promise.all([
       getAccountsForBusiness(business.id),
       getListsForBusiness(business.id),
       getAccountListMapForBusiness(business.id),
       isOwner ? Promise.resolve(null) : getMembersForBusiness(business.id),
     ]).then(async ([accs, listRows, listMap, memberRows]) => {
-      setAccounts(accs);
+      const influencerIds = accs.filter(a => a.accountKind === 'influencer').map(a => a.id);
+      const detailMap = influencerIds.length ? await getInfluencerDetails(influencerIds) : {};
+      setAccounts(accs.map(a => detailMap[a.id] ? { ...a, influencerDetail: detailMap[a.id] } : a));
       setLists(listRows);
       setAccountListMap(listMap);
       if (!isOwner) {
@@ -117,8 +133,9 @@ export default function BusinessAccountsTab({ business, userEmail }) {
     if (!isOwner && accessibleListIds) list = list.filter(a => listIdsFor(a).some(id => accessibleListIds.has(id)));
     if (selectedListId === UNLISTED) list = list.filter(a => listIdsFor(a).length === 0);
     else if (selectedListId) list = list.filter(a => listIdsFor(a).includes(selectedListId));
+    if (segment !== 'all') list = list.filter(a => (a.accountKind || 'business') === segment);
     return list;
-  }, [accounts, isOwner, accessibleListIds, selectedListId, listIdsFor]);
+  }, [accounts, isOwner, accessibleListIds, selectedListId, listIdsFor, segment]);
 
   // Whether to surface edit controls at all for the current filter - real
   // per-account enforcement happens in persist()/removeAccount() above
@@ -163,21 +180,37 @@ export default function BusinessAccountsTab({ business, userEmail }) {
           )}
         </div>
       )}
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, flexWrap:"wrap" }}>
+        {[['all','All'],['business','Business'],['influencer','Influencer']].map(([id,label]) => (
+          <button key={id} onClick={()=>setSegment(id)} style={{
+            ...mono, fontSize:11, padding:"5px 12px", borderRadius:20, cursor:"pointer",
+            background: segment===id ? C.blue : "transparent", color: segment===id ? C.bg : C.dim,
+            border:`1px solid ${segment===id ? C.blue : C.brd}`, fontWeight: segment===id ? 700 : 400,
+          }}>{label}</button>
+        ))}
+      </div>
       {!canEditCurrentView && !isOwner && (
         <p style={{ ...mono, fontSize:11, color:C.dim, margin:"0 0 14px" }}>
           View-only — you don't have edit access to any list shown here.
         </p>
       )}
       {canEditCurrentView && (
-        <div style={{ marginBottom:14 }}>
+        <div style={{ display:"flex", gap:8, marginBottom:14 }}>
           <button onClick={()=>setImportOpen(true)} style={{ ...mono, fontSize:11, padding:"5px 12px", background:"transparent", border:`1px solid ${C.brd}`, borderRadius:6, color:C.dim, cursor:"pointer" }}>
             ↑ Import CSV
+          </button>
+          <button onClick={()=>setInfluencerAddOpen(true)} style={{ ...mono, fontSize:11, padding:"5px 12px", background:"transparent", border:`1px solid ${C.brd}`, borderRadius:6, color:C.dim, cursor:"pointer" }}>
+            + Add Influencer(s)
           </button>
         </div>
       )}
       {importOpen && (
         <CsvImportModal business={business} userEmail={userEmail} onClose={()=>setImportOpen(false)}
-          onImported={reload} />
+          onImported={()=>reload(true)} />
+      )}
+      {influencerAddOpen && (
+        <InfluencerAddModal business={business} userEmail={userEmail} lists={lists} onClose={()=>setInfluencerAddOpen(false)}
+          onAdded={()=>reload(true)} />
       )}
       <AccountsPage
         accounts={visibleAccounts}

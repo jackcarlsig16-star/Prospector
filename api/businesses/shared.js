@@ -90,6 +90,56 @@ Return exactly this shape:
 
 // PROFILE GENERATION — pulls the full intel log and synthesizes it into
 // business_profiles. Called from both the research pipeline and the manual
+const INFLUENCER_SYSTEM_PROMPT = `You synthesize an Instagram influencer's bio text into a compact strategy-relevant assessment. Respond with ONLY a JSON object, no other text.
+
+Return exactly this shape:
+{
+  "category": "the influencer's niche/category in a few words (e.g. 'fitness & wellness', 'home renovation', 'personal finance')",
+  "content_type": "what kind of content they post, inferred from the bio (e.g. 'short-form video tips', 'lifestyle photography', 'product reviews')",
+  "audience_read": "1-2 sentences on who their audience likely is, based on the bio",
+  "summary": "1-2 sentences summarizing why this account might be strategically relevant, based only on what the bio actually says"
+}
+
+Base every field on the bio text provided - do not invent facts it doesn't support. If the bio is too thin to say something meaningful, say so plainly in that field rather than padding.`;
+
+// Synthesizes from a human-pasted bio, not a fetched one - Instagram profile
+// fetching (even via Jina Reader with a real API key) is confirmed blocked
+// by Instagram's own login wall, tested live with three real handles
+// (influencer-accounts-v1, Phase 0). Same synthesis-engine shape as
+// generateProfile() otherwise. Deliberately does NOT touch
+// last_touched_by/last_touched_at - this is automated categorization of
+// text Jack pasted, not a logged human contact with the influencer.
+export async function assessInfluencerAccount(supabase, accountId, bioText, followerCount) {
+  await supabase.from('account_influencer_details').update({ assessment_status: 'assessing' }).eq('account_id', accountId);
+  try {
+    const data = await callAnthropic({
+      max_tokens: 600,
+      system: INFLUENCER_SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: `BIO:\n${bioText}` }],
+      supabase,
+      callType: 'influencer_assess',
+    });
+    const textBlock = (data.content || []).find(b => b.type === 'text');
+    if (!textBlock) throw new Error('No text in influencer assessment response');
+    const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) throw new Error('No JSON in influencer assessment response');
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    const { data: updated, error } = await supabase.from('account_influencer_details').update({
+      bio_snapshot: bioText,
+      niche_assessment: parsed,
+      follower_count: Number.isFinite(followerCount) ? followerCount : null,
+      assessment_status: 'ready',
+      assessed_at: new Date().toISOString(),
+    }).eq('account_id', accountId).select().single();
+    if (error) throw error;
+    return updated;
+  } catch (e) {
+    await supabase.from('account_influencer_details').update({ assessment_status: 'error' }).eq('account_id', accountId);
+    throw e;
+  }
+}
+
 // intel-add path, so it looks up research_depth itself rather than trusting
 // the caller to pass it - a light business getting a manual intel entry
 // must still get the light resynthesis, not the full GTM writeup.

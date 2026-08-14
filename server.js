@@ -422,6 +422,7 @@ app.post('/api/businesses/join',                esHandler('./api/businesses/join
 app.post('/api/businesses/:id/intake',          esHandler('./api/businesses/intake.js'));
 app.post('/api/businesses/:id/intake/confirm',  esHandler('./api/businesses/intake-confirm.js'));
 app.post('/api/businesses/:id/import/classify', esHandler('./api/businesses/import-classify.js'));
+app.post('/api/businesses/:id/influencer/assess', esHandler('./api/businesses/influencer-assess.js'));
 app.post('/api/notify-pending', async (req, res) => {
   const { name, email, role } = req.body || {};
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;

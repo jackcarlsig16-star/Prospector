@@ -186,14 +186,14 @@ export async function getAccountsForBusiness(businessId) {
   try {
     const { data, error } = await supabase
       .from('accounts')
-      .select('data, last_touched_by, last_touched_at')
+      .select('data, last_touched_by, last_touched_at, account_kind')
       .eq('business_id', businessId)
       .order('updated_at', { ascending: true });
     if (error) throw error;
-    // last_touched_by/at are real columns (denormalized activity cache,
-    // accounts-lists-and-activity-model-v1), not part of the data blob -
-    // merge them in so callers see one flat account object either way.
-    return (data || []).filter(r => r.data).map(r => ({ ...r.data, lastTouchedBy: r.last_touched_by || null, lastTouchedAt: r.last_touched_at || null }));
+    // last_touched_by/at and account_kind are real columns, not part of the
+    // data blob - merge them in so callers see one flat account object
+    // either way (accounts-lists-and-activity-model-v1, influencer-accounts-v1).
+    return (data || []).filter(r => r.data).map(r => ({ ...r.data, lastTouchedBy: r.last_touched_by || null, lastTouchedAt: r.last_touched_at || null, accountKind: r.account_kind || 'business' }));
   } catch(e) {
     console.warn('[db] getAccountsForBusiness Supabase failed, using localStorage:', e.message);
     try { return JSON.parse(localStorage.getItem(bizAccountsKey(businessId)) || '[]'); } catch { return []; }
@@ -270,6 +270,58 @@ export async function bulkCreateAccountsForBusiness(businessId, ownerEmail, memb
 
 // Links an already-existing (deduped) account to one or more additional
 // lists, without creating a second account row - "adding via a list either
+// Strips @ / URL wrapper down to a bare handle so "https://instagram.com/nasa/",
+// "@nasa", and "nasa" all dedupe to the same key (influencer-accounts-v1).
+export function normalizeInstagramHandle(raw) {
+  if (!raw) return '';
+  let h = raw.trim();
+  const urlMatch = h.match(/instagram\.com\/([^/?#]+)/i);
+  if (urlMatch) h = urlMatch[1];
+  return h.replace(/^@/, '').toLowerCase().trim();
+}
+
+// Creates an account (account_kind='influencer') + its 1:1 detail row.
+// Dedup keys on instagram_handle, not name/website - a separate mode from
+// the business-account exact-match dedup in normAccount.js, since a handle
+// is the real identity here (influencer-accounts-v1, Phase 0 audit finding
+// that the existing dedup logic needed a second mode, not a rewrite).
+export async function findExistingInfluencerByHandle(businessId, handle) {
+  const norm = normalizeInstagramHandle(handle);
+  if (!norm || !businessId) return null;
+  const { data, error } = await supabase.from('account_influencer_details').select('account_id, instagram_handle');
+  if (error) { console.warn('[db] findExistingInfluencerByHandle failed:', error.message); return null; }
+  const match = (data || []).find(d => normalizeInstagramHandle(d.instagram_handle) === norm);
+  if (!match) return null;
+  const { data: acc } = await supabase.from('accounts').select('id, data').eq('id', match.account_id).eq('business_id', businessId).maybeSingle();
+  return acc ? { id: acc.id, name: acc.data?.name } : null;
+}
+
+export async function createInfluencerAccount(businessId, ownerEmail, handle, listIds = []) {
+  const norm = normalizeInstagramHandle(handle);
+  const id = `influencer_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const now = new Date().toISOString();
+  const accountData = { id, name: `@${norm}`, addedSource: 'influencer_add', addedAt: now };
+  const { error: accErr } = await supabase.from('accounts').insert({
+    id, owner_email: ownerEmail || '', business_id: businessId, account_kind: 'influencer', data: accountData, updated_at: now,
+  });
+  if (accErr) return { error: accErr.message };
+  const { error: detErr } = await supabase.from('account_influencer_details').insert({
+    account_id: id, instagram_handle: norm, instagram_url: `https://instagram.com/${norm}/`, assessment_status: 'pending',
+  });
+  if (detErr) return { error: detErr.message };
+  if (listIds.length) await linkAccountToLists(id, listIds);
+  return { account: accountData };
+}
+
+export async function getInfluencerDetails(accountIds) {
+  if (!accountIds?.length || !isSupabaseEnabled()) return {};
+  const { data, error } = await supabase.from('account_influencer_details').select('*').in('account_id', accountIds);
+  if (error) { console.warn('[db] getInfluencerDetails failed:', error.message); return {}; }
+  const map = {};
+  (data || []).forEach(d => { map[d.account_id] = d; });
+  return map;
+}
+
 // creates it, or links the existing deduped account to that list"
 // (accounts-lists-and-activity-model-v1). Ignores lists it's already on.
 export async function linkAccountToLists(accountId, listIds) {
