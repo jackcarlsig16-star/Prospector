@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { C, mono, PRESET_SWATCH_COLORS } from '../constants/colors';
-import { createProject, updateProjectOutreachGuidance, createList, setProjectListId } from '../utils/db';
+import { createProject, createList, setProjectListId, getAccountsForBusiness, linkAccountToLists } from '../utils/db';
 import BusinessAccountsTab from './BusinessAccountsTab';
 import BusinessSearchTab from './BusinessSearchTab';
 import BusinessGenerationTab from './BusinessGenerationTab';
@@ -10,6 +10,8 @@ import SmartIntakeBox from './SmartIntakeBox';
 import CallLogSection from './CallLogSection';
 import AssayCriteriaCard from './AssayCriteriaCard';
 import OutreachRulesCard from './OutreachRulesCard';
+import ProjectGuidanceCard from './ProjectGuidanceCard';
+import AccountPicker from './AccountPicker';
 import BulkOutreachModal from './BulkOutreachModal';
 
 const SOURCE_LABEL = { manual: 'Manual', research_site: 'Site research', research_web: 'Web research', call: 'Call log' };
@@ -33,34 +35,49 @@ function ProfileBlock({ label, value }) {
 function CreateProjectModal({ businessId, userEmail, onClose, onCreated }) {
   const [name, setName] = useState('');
   const [color, setColor] = useState(PRESET_SWATCH_COLORS[0]);
+  const [objective, setObjective] = useState('');
+  const [targetType, setTargetType] = useState('');
+  const [askType, setAskType] = useState('');
+  const [projectHook, setProjectHook] = useState('');
+  const [exclusions, setExclusions] = useState('');
+  const [accounts, setAccounts] = useState([]);
+  const [selectedAccountIds, setSelectedAccountIds] = useState([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => { getAccountsForBusiness(businessId).then(setAccounts); }, [businessId]);
+
+  const canCreate = name.trim() && objective.trim() && !saving;
+
   const handleCreate = async () => {
-    if (!name.trim() || saving) return;
+    if (!canCreate) return;
     setSaving(true);
     setError('');
     const { list, error: listErr } = await createList(businessId, name.trim());
     if (listErr) { setSaving(false); setError(listErr); return; }
-    const { project, error: err } = await createProject({ name: name.trim(), color, ownerEmail: userEmail, businessId, listId: list.id });
+    const { project, error: err } = await createProject({
+      name: name.trim(), color, ownerEmail: userEmail, businessId, listId: list.id,
+      objective: objective.trim(), targetType: targetType.trim(), askType: askType.trim(),
+      projectHook: projectHook.trim(), exclusions: exclusions.trim(),
+    });
+    if (err) { setSaving(false); setError(err); return; }
+    for (const accountId of selectedAccountIds) await linkAccountToLists(accountId, [list.id]);
     setSaving(false);
-    if (err) { setError(err); return; }
     onCreated(project);
   };
 
   return (
-    <div onClick={e=>{if(e.target===e.currentTarget) onClose();}} style={{ position:"fixed", inset:0, zIndex:1000, background:"#00000099", display:"flex", alignItems:"center", justifyContent:"center" }}>
-      <div style={{ background:C.card, border:`1px solid ${C.brd}`, borderRadius:12, padding:"22px 26px", width:380, boxShadow:"0 20px 60px #000c" }}>
+    <div onClick={e=>{if(e.target===e.currentTarget) onClose();}} style={{ position:"fixed", inset:0, zIndex:1000, background:"#00000099", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div style={{ background:C.card, border:`1px solid ${C.brd}`, borderRadius:12, padding:"22px 26px", width:420, maxHeight:"85vh", overflowY:"auto", boxShadow:"0 20px 60px #000c" }}>
         <div style={{ display:"flex", alignItems:"center", marginBottom:20 }}>
           <span style={{ ...mono, fontSize:14, color:C.txt, fontWeight:700 }}>New project</span>
           <button onClick={onClose} style={{ marginLeft:"auto", background:"transparent", border:"none", color:C.mut, fontSize:18, cursor:"pointer" }}>✕</button>
         </div>
-        <div style={{ marginBottom:16 }}>
+        <div style={{ marginBottom:14 }}>
           <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>Name</div>
-          <input type="text" placeholder="Q3 outbound push" value={name} onChange={e=>setName(e.target.value)}
-            onKeyDown={e=>e.key==="Enter" && name.trim() && handleCreate()} style={inp} />
+          <input type="text" placeholder="Q3 outbound push" value={name} onChange={e=>setName(e.target.value)} style={inp} />
         </div>
-        <div style={{ marginBottom:22 }}>
+        <div style={{ marginBottom:14 }}>
           <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>Color</div>
           <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
             {PRESET_SWATCH_COLORS.map(c => (
@@ -71,11 +88,35 @@ function CreateProjectModal({ businessId, userEmail, onClose, onCreated }) {
             ))}
           </div>
         </div>
+        <div style={{ marginBottom:14 }}>
+          <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>Objective *</div>
+          <textarea rows={2} placeholder="What this campaign is trying to accomplish…" value={objective} onChange={e=>setObjective(e.target.value)} style={{ ...inp, resize:"vertical" }} />
+        </div>
+        <div style={{ marginBottom:14 }}>
+          <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>Target type</div>
+          <input type="text" placeholder="Who this project is reaching…" value={targetType} onChange={e=>setTargetType(e.target.value)} style={inp} />
+        </div>
+        <div style={{ marginBottom:14 }}>
+          <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>Ask / offer / CTA</div>
+          <input type="text" placeholder="What the outreach is asking for…" value={askType} onChange={e=>setAskType(e.target.value)} style={inp} />
+        </div>
+        <div style={{ marginBottom:14 }}>
+          <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>Hook (optional)</div>
+          <input type="text" placeholder="An opening angle specific to this project…" value={projectHook} onChange={e=>setProjectHook(e.target.value)} style={inp} />
+        </div>
+        <div style={{ marginBottom:14 }}>
+          <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>Exclusions (optional)</div>
+          <input type="text" placeholder="Anything outreach for this project should avoid…" value={exclusions} onChange={e=>setExclusions(e.target.value)} style={inp} />
+        </div>
+        <div style={{ marginBottom:20 }}>
+          <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>Accounts (optional)</div>
+          <AccountPicker accounts={accounts} selected={selectedAccountIds} onToggle={id=>setSelectedAccountIds(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id])} />
+        </div>
         {error && <div style={{ ...mono, fontSize:11, color:C.red, marginBottom:12 }}>⚠ {error}</div>}
         <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
           <button onClick={onClose} style={{ ...mono, fontSize:12, padding:"7px 16px", background:"transparent", border:`1px solid ${C.brd}`, borderRadius:6, color:C.mut, cursor:"pointer" }}>Cancel</button>
-          <button onClick={handleCreate} disabled={!name.trim()||saving}
-            style={{ ...mono, fontSize:12, padding:"7px 20px", background:name.trim()?C.gold:"transparent", border:`1px solid ${name.trim()?C.gold:C.brd}`, borderRadius:6, color:name.trim()?C.bg:C.dim, cursor:name.trim()&&!saving?"pointer":"default", fontWeight:700 }}>
+          <button onClick={handleCreate} disabled={!canCreate}
+            style={{ ...mono, fontSize:12, padding:"7px 20px", background:canCreate?C.gold:"transparent", border:`1px solid ${canCreate?C.gold:C.brd}`, borderRadius:6, color:canCreate?C.bg:C.dim, cursor:canCreate?"pointer":"default", fontWeight:700 }}>
             {saving ? "Creating…" : "Create →"}
           </button>
         </div>
@@ -84,32 +125,43 @@ function CreateProjectModal({ businessId, userEmail, onClose, onCreated }) {
   );
 }
 
-function ProjectOutreachGuidance({ project, onUpdated }) {
-  const [draft, setDraft] = useState({ outreach_prompt: project.outreach_prompt || '', outreach_example: project.outreach_example || '' });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+// project-guidance-and-creation-flow-v1 — forward direction of two-way
+// linking, the project's own "Add accounts" action. Reverse direction
+// (account -> project) lives on the account card itself, see
+// accountCard/LinkedProjects.js. Same underlying write either way.
+function AddAccountsToProject({ project, businessId, onDone }) {
+  const [open, setOpen] = useState(false);
+  const [accounts, setAccounts] = useState([]);
+  const [selectedAccountIds, setSelectedAccountIds] = useState([]);
+  const [linking, setLinking] = useState(false);
 
-  const save = async () => {
-    setSaving(true);
-    setError('');
-    const { project: updated, error: err } = await updateProjectOutreachGuidance(project.id, draft);
-    setSaving(false);
-    if (err) { setError(err); return; }
-    onUpdated(updated);
+  const toggleOpen = () => {
+    if (!open) getAccountsForBusiness(businessId).then(setAccounts);
+    setOpen(o => !o);
+  };
+
+  const confirm = async () => {
+    setLinking(true);
+    for (const accountId of selectedAccountIds) await linkAccountToLists(accountId, [project.list_id]);
+    setLinking(false);
+    setOpen(false);
+    setSelectedAccountIds([]);
+    onDone?.();
   };
 
   return (
-    <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.brd}` }}>
-      <div style={{ ...mono, fontSize:10, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Outreach prompt</div>
-      <textarea rows={2} value={draft.outreach_prompt} onChange={e=>setDraft(d=>({ ...d, outreach_prompt: e.target.value }))}
-        placeholder="A general prompt/guidance for outreach generated within this project…"
-        style={{ fontSize:12, padding:"7px 10px", background:C.bg, border:`1.5px solid ${C.brdM}`, borderRadius:6, color:C.txt, outline:"none", width:"100%", boxSizing:"border-box", resize:"vertical", marginBottom:8, ...mono }} />
-      <div style={{ ...mono, fontSize:10, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Example</div>
-      <textarea rows={2} value={draft.outreach_example} onChange={e=>setDraft(d=>({ ...d, outreach_example: e.target.value }))}
-        placeholder="An example message that reads the way outreach for this project should…"
-        style={{ fontSize:12, padding:"7px 10px", background:C.bg, border:`1.5px solid ${C.brdM}`, borderRadius:6, color:C.txt, outline:"none", width:"100%", boxSizing:"border-box", resize:"vertical", marginBottom:8, ...mono }} />
-      {error && <div style={{ ...mono, fontSize:11, color:C.red, marginBottom:8 }}>⚠ {error}</div>}
-      <button onClick={save} disabled={saving} style={{ ...mono, fontSize:11, padding:"6px 14px", background:C.gold, border:`1px solid ${C.gold}`, color:C.bg, fontWeight:700, borderRadius:6, cursor:"pointer" }}>{saving ? 'Saving…' : 'Save'}</button>
+    <div style={{ marginTop:10 }}>
+      <button onClick={toggleOpen} style={{ ...mono, fontSize:11, padding:"6px 14px", background:"transparent", border:`1px solid ${C.brd}`, color:C.dim, borderRadius:6, cursor:"pointer" }}>
+        {open ? 'Cancel' : '+ Add accounts'}
+      </button>
+      {open && (
+        <div style={{ marginTop:8 }}>
+          <AccountPicker accounts={accounts} selected={selectedAccountIds} onToggle={id=>setSelectedAccountIds(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id])} />
+          <button onClick={confirm} disabled={!selectedAccountIds.length || linking} style={{ ...mono, fontSize:11, padding:"6px 14px", background:C.gold, border:`1px solid ${C.gold}`, color:C.bg, fontWeight:700, borderRadius:6, cursor:"pointer", marginTop:8, opacity: selectedAccountIds.length?1:0.5 }}>
+            {linking ? 'Adding…' : `Add ${selectedAccountIds.length || ''}`.trim()}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -143,7 +195,7 @@ function BackfillProjectList({ project, businessId, onLinked }) {
   );
 }
 
-function ProjectsSection({ business, userEmail, activeUser, projects, onProjectCreated, onProjectUpdated }) {
+function ProjectsSection({ business, userEmail, activeUser, projects, outreachRules, onProjectCreated, onProjectUpdated }) {
   const [open, setOpen] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
@@ -168,11 +220,14 @@ function ProjectsSection({ business, userEmail, activeUser, projects, onProjectC
               </p>
               {expandedId === p.id && (
                 <>
-                  <ProjectOutreachGuidance project={p} onUpdated={updated => onProjectUpdated?.(updated)} />
+                  <ProjectGuidanceCard project={p} businessName={business.name} userEmail={userEmail} outreachRules={outreachRules} onUpdated={updated => onProjectUpdated?.(updated)} />
                   {p.list_id ? (
-                    <button onClick={()=>setOutreachProject(p)} style={{ ...mono, fontSize:11, padding:"6px 14px", background:"transparent", border:`1px solid ${C.gold}66`, color:C.gold, borderRadius:6, cursor:"pointer", marginTop:10 }}>
-                      Generate Outreach for this project's list
-                    </button>
+                    <>
+                      <AddAccountsToProject project={p} businessId={business.id} onDone={()=>{}} />
+                      <button onClick={()=>setOutreachProject(p)} style={{ ...mono, fontSize:11, padding:"6px 14px", background:"transparent", border:`1px solid ${C.gold}66`, color:C.gold, borderRadius:6, cursor:"pointer", marginTop:10 }}>
+                        Generate for {p.name}
+                      </button>
+                    </>
                   ) : (
                     <BackfillProjectList project={p} businessId={business.id} onLinked={updated => onProjectUpdated?.(updated)} />
                   )}
@@ -339,7 +394,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
         {view === 'search' && <BusinessSearchTab business={business} userEmail={userEmail} />}
         {view === 'generation' && <BusinessGenerationTab business={business} />}
         {view === 'projects' && (
-          <ProjectsSection business={business} userEmail={userEmail} activeUser={activeUser} projects={projects} onProjectCreated={onProjectCreated} onProjectUpdated={onProjectUpdated} />
+          <ProjectsSection business={business} userEmail={userEmail} activeUser={activeUser} projects={projects} outreachRules={profile?.outreach_rules} onProjectCreated={onProjectCreated} onProjectUpdated={onProjectUpdated} />
         )}
         {view === 'members' && <MembersPermissionsTab business={business} viewerEmail={userEmail} />}
 

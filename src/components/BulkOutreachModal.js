@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { C, mono } from '../constants/colors';
-import { getAccountsForProjectList } from '../utils/db';
+import { getAccountsForProjectList, getVoiceProfileForEmail } from '../utils/db';
 import { getActiveIntel } from '../utils/assay';
 
 const PROGRESS_KEY_PREFIX = "prospector_outreach_gen_progress_";
@@ -23,13 +23,16 @@ export default function BulkOutreachModal({ business, project, userEmail, active
   const [copiedId, setCopiedId] = useState(null);
   const [copiedAll, setCopiedAll] = useState(false);
 
+  const [voiceProfile, setVoiceProfile] = useState(null);
+
   const stopRef = useRef(false);
   const pauseRef = useRef(false);
   const progressKey = `${PROGRESS_KEY_PREFIX}${project.id}`;
 
   useEffect(() => {
     getAccountsForProjectList(business.id, project.list_id).then(a => { setAccounts(a); setLoading(false); });
-  }, [business.id, project.list_id]);
+    getVoiceProfileForEmail(userEmail).then(setVoiceProfile);
+  }, [business.id, project.list_id, userEmail]);
 
   const getSavedProgress = () => {
     try {
@@ -151,7 +154,10 @@ export default function BulkOutreachModal({ business, project, userEmail, active
           <p style={{ ...mono, fontSize:12, color:C.dim }}>No accounts linked to this project's list yet.</p>
         ) : (
           <>
-            <p style={{ ...mono, fontSize:11, color:C.dim, marginBottom:14 }}>{accounts.length} account{accounts.length===1?"":"s"} in this project's list. Review-first — nothing is sent automatically.</p>
+            <p style={{ ...mono, fontSize:10, color:C.dim, marginBottom:6 }}>
+              Project: {project.name} · Voice: {voiceProfile ? (voiceProfile.tone || 'learned') : 'default'}{project.ask_type ? ` · CTA: ${project.ask_type.slice(0, 60)}` : ''}
+            </p>
+            <p style={{ ...mono, fontSize:11, color:C.dim, marginBottom:14 }}>{accounts.length} account{accounts.length===1?"":"s"}. Review-first — nothing is sent automatically.</p>
 
             {!running && !results.length && !savedProgress && (
               <button onClick={()=>runGeneration()} style={{ ...btn, background:C.gold, border:`1px solid ${C.gold}`, color:C.bg, fontWeight:700 }}>Generate for all {accounts.length}</button>

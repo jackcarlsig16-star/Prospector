@@ -28,6 +28,7 @@ import DealWorkspace, { IntelligenceSummary } from './accountCard/business/DealW
 import { buildBusinessStateItems, DEAL_STAGES } from './accountCard/business/BusinessStateControls';
 
 import CreatorFitRelationship, { FitSummary } from './accountCard/influencer/CreatorFitRelationship';
+import LinkedProjects from './accountCard/LinkedProjects';
 import { setBdrList, URGENCY_OPTIONS } from '../utils/assignHelper';
 
 // Unified Account Card — account-card-full-redesign-v2. Shared shell
@@ -43,7 +44,7 @@ export default function AccountCard({
   isFav, onToggleFav, onRemove, assignedEntry, onAssign, onUnassign, onFlagRemoval,
   onOpenPricing, onOpenRoi, onOpenDealSummary, onCreateTask, onUpdateTask,
   tasks = [], activeUser = {}, parentName = null, onRequestLinkParent, onUnlinkParent,
-  userEmail, canEdit, onUpdated,
+  userEmail, canEdit, onUpdated, projects = [], accountListIds = [], onAccountLinkedToProject,
 }) {
   const isInfluencer = acc.accountKind === 'influencer';
   const kind = kindTokens(acc.accountKind);
@@ -177,6 +178,8 @@ export default function AccountCard({
             )}
           </AccountIntelligence>
 
+          {business && <LinkedProjects accountId={acc.id} accountListIds={accountListIds} projects={projects} onLinked={listId => onAccountLinkedToProject?.(acc.id, listId)} />}
+
           <AccountActivityPanel acc={acc} />
 
         </div>
@@ -189,6 +192,7 @@ export default function AccountCard({
           persona={isInfluencer ? null : (acc.personas || [])[0] || null}
           accountKind={acc.accountKind}
           autoStart={false}
+          projects={projects}
           onClose={() => setOutreachOpen(false)}
         />
       )}

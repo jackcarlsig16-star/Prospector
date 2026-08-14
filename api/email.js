@@ -52,6 +52,18 @@ async function scrapeWebsite(website) {
   }
 }
 
+// project-guidance-and-creation-flow-v1 — this is the ONE generation path.
+// Project-level generate (BulkOutreachModal.js), account-level generate
+// (EmailModal.js), and bulk/list generate all call this same handler with
+// different selected inputs (accountId(s) + optional projectId) - never
+// three separate implementations. Project-level fields (objective/
+// target_type/ask_type/project_hook/exclusions/outreach_example, read below
+// via projectId) define HOW to communicate; account-level fields (name/
+// businessModel/signals/etc, passed per-call) define WHO. This function's
+// job is only to combine the two. If a future entry point needs generation,
+// it calls this handler with the right inputs - it does not get its own
+// prompt-building logic. (Standing landmine flagged this session: fragmented
+// per-entry-point generators are the exact failure mode to guard against.)
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -103,15 +115,18 @@ export default async function handler(req, res) {
     } catch { /* fall through with no business-fit grounding */ }
   }
 
-  // Project Outreach Guidance layers on top of, does not replace, the
-  // business-level layers above - only fetched when a bulk/project-scoped
-  // caller actually passes projectId (single-account EmailModal.js has no
-  // project context today and never sends one).
+  // project-guidance-and-creation-flow-v1 — structured project guidance
+  // layers on top of, does not replace, the business-level layers above.
+  // Replaces the old free-text outreach_prompt field: objective/target_type/
+  // ask_type/project_hook/exclusions map directly onto prompt sections
+  // instead of one undifferentiated blob. outreach_prompt itself is left
+  // live in the schema but intentionally unread here - confirmed 0 rows
+  // populated before this change, nothing to migrate.
   let projectGuidance = null;
   if (projectId && supabase) {
     try {
-      const { data } = await supabase.from('projects').select('outreach_prompt, outreach_example').eq('id', projectId).maybeSingle();
-      if (data && (data.outreach_prompt || data.outreach_example)) projectGuidance = data;
+      const { data } = await supabase.from('projects').select('objective, target_type, ask_type, project_hook, exclusions, outreach_example').eq('id', projectId).maybeSingle();
+      if (data && Object.values(data).some(Boolean)) projectGuidance = data;
     } catch { /* fall through with no project-level guidance */ }
   }
 
@@ -165,8 +180,12 @@ Do: ${outreachRules.dos || "(not specified)"}
 Don't: ${outreachRules.donts || "(not specified)"}
 ${outreachRules.example_snippets ? `Echo this kind of language where it fits naturally: ${outreachRules.example_snippets}` : ""}` : "",
     projectGuidance ? `PROJECT-SPECIFIC GUIDANCE — layers on top of everything above, for this campaign specifically:
-${projectGuidance.outreach_prompt || ""}
-${projectGuidance.outreach_example ? `Example of how this project's outreach should read:\n${projectGuidance.outreach_example}` : ""}` : "",
+${projectGuidance.objective ? `Objective: ${projectGuidance.objective}` : ""}
+${projectGuidance.target_type ? `Target type: ${projectGuidance.target_type}` : ""}
+${projectGuidance.ask_type ? `Ask/offer/CTA: ${projectGuidance.ask_type}` : ""}
+${projectGuidance.project_hook ? `Hook to work in where it fits naturally: ${projectGuidance.project_hook}` : ""}
+${projectGuidance.exclusions ? `Avoid: ${projectGuidance.exclusions}` : ""}
+${projectGuidance.outreach_example ? `Example of how this project's outreach should read:\n${projectGuidance.outreach_example}` : ""}`.trim() : "",
     voiceExamples ? `VOICE EXAMPLES — match this tone and length exactly:\n${voiceExamples.slice(0, 1500)}` : "",
   ].filter(Boolean).join("\n\n");
 

@@ -3,7 +3,7 @@ import { C, mono } from '../constants/colors';
 import { getActiveIntel } from '../utils/assay';
 import { getActiveVoice, getVoiceProfile, voiceProfileKey } from '../constants/voice';
 import { UCS_DATA } from '../constants/products';
-import { getListsForBusiness, linkAccountToLists, saveVoiceProfile } from '../utils/db';
+import { getListsForBusiness, linkAccountToLists, saveVoiceProfile, getListIdsForAccount } from '../utils/db';
 
 // account-card-color-fix-and-guided-generate-v1 Part B
 const MESSAGE_TYPES = [
@@ -13,7 +13,7 @@ const MESSAGE_TYPES = [
   { id: 'custom', label: 'Custom' },
 ];
 
-export default function EmailModal({ account, persona, onClose, onSaveEmail, accountKind, business, autoStart = true }) {
+export default function EmailModal({ account, persona, onClose, onSaveEmail, accountKind, business, autoStart = true, projects = [] }) {
   const [email,setEmail]=useState("");
   const [loading,setLoading]=useState(autoStart);
   const [copied,setCopied]=useState(false);
@@ -34,10 +34,29 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
   const [selectedListId, setSelectedListId] = useState('');
   const contextRef = useRef(null);
 
+  // project-guidance-and-creation-flow-v1 — project-selector-on-ambiguity.
+  // account_lists is many-to-many, so an account can sit in more than one
+  // project's list. Exactly one match auto-selects silently; more than one
+  // requires an explicit pick before Generate is allowed - never silently
+  // guess which project's guidance should apply.
+  const [matchedProjects, setMatchedProjects] = useState([]);
+  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const projectsWithLists = projects.filter(p => p.list_id);
+
   useEffect(() => {
     if (autoStart || !business?.id) return;
     getListsForBusiness(business.id).then(setLists);
-  }, [autoStart, business?.id]);
+    if (!projectsWithLists.length) return;
+    getListIdsForAccount(account.id).then(accountListIds => {
+      const matches = projectsWithLists.filter(p => accountListIds.includes(p.list_id));
+      setMatchedProjects(matches);
+      if (matches.length === 1) setSelectedProjectId(matches[0].id);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart, business?.id, account.id]);
+
+  const projectAmbiguous = matchedProjects.length > 1 && !selectedProjectId;
+  const activeProject = projects.find(p => p.id === selectedProjectId) || null;
 
   useEffect(()=>{
     if (!started) return;
@@ -60,6 +79,7 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
         voiceProfile:getVoiceProfile(voiceUserName),
         accountKind:kind,
         businessId:business?.id,
+        projectId: selectedProjectId || undefined,
         messageType: !autoStart ? messageType : undefined,
         note: !autoStart && context.trim() ? context.trim() : undefined,
         ...(isInfluencer ? {
@@ -87,6 +107,7 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
   const copy=()=>{navigator.clipboard.writeText(email);setCopied(true);setTimeout(()=>setCopied(false),2000);};
 
   const generate = async () => {
+    if (projectAmbiguous) return;
     if (selectedListId) {
       try { await linkAccountToLists(account.id, [selectedListId]); } catch {}
     }
@@ -125,7 +146,26 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
         </>
       )}
 
-      <button onClick={generate} style={{ ...mono, width:"100%", fontSize:13, fontWeight:600, padding:"10px 14px", background:C.goldBg, border:`1px solid ${C.goldBdr}`, color:C.gold, borderRadius:6, cursor:"pointer" }}>
+      {projectAmbiguous && (
+        <div style={{ marginBottom:16, padding:"10px 12px", background:`${C.orange||"#f5a623"}0f`, border:`1px solid ${C.orange||"#f5a623"}40`, borderRadius:6 }}>
+          <p style={{ ...mono, margin:"0 0 8px", fontSize:11, color:C.mut }}>This account belongs to more than one project — pick which one's guidance applies:</p>
+          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+            {matchedProjects.map(p => (
+              <button key={p.id} onClick={()=>setSelectedProjectId(p.id)} style={{ ...mono, fontSize:12, padding:"6px 12px", borderRadius:6, cursor:"pointer", background:"transparent", border:`1px solid ${C.brd}`, color:C.txt }}>
+                {p.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!projectAmbiguous && (
+        <p style={{ ...mono, fontSize:10, color:C.dim, marginBottom:12 }}>
+          {activeProject ? `Project: ${activeProject.name} · ` : ''}Voice: {voiceUserName || 'default'}{activeProject?.ask_type ? ` · CTA: ${activeProject.ask_type.slice(0, 60)}` : ''}
+        </p>
+      )}
+
+      <button onClick={generate} disabled={projectAmbiguous} style={{ ...mono, width:"100%", fontSize:13, fontWeight:600, padding:"10px 14px", background:C.goldBg, border:`1px solid ${C.goldBdr}`, color:C.gold, borderRadius:6, cursor:projectAmbiguous?"not-allowed":"pointer", opacity:projectAmbiguous?0.5:1 }}>
         ✦ Generate
       </button>
     </div>

@@ -175,14 +175,22 @@ export default function BusinessAccountsTab({ business, userEmail, projects=[] }
           }}>All accessible</button>
           {listSwitcherOptions.map(l => {
             const proj = projectByListId[l.id];
+            // project-guidance-and-creation-flow-v1 - the auto-created list is
+            // named after its project (project-list-linking-v1), so "· Name"
+            // read as "Name · Name" for every project-linked list. A leading
+            // marker plus the name once (falling back to "· ProjectName" only
+            // when a list has since been renamed away from its project's name)
+            // carries the same info without the echo.
+            const sameName = proj && proj.name === l.name;
             return (
               <button key={l.id} onClick={()=>setSelectedListId(l.id)} title={proj ? `Project: ${proj.name}` : undefined} style={{
                 ...mono, fontSize:11, padding:"5px 12px", borderRadius:20, cursor:"pointer",
                 background: selectedListId===l.id ? C.gold : "transparent", color: selectedListId===l.id ? C.bg : C.dim,
                 border:`1px solid ${selectedListId===l.id ? (proj ? proj.color||C.gold : C.gold) : (proj ? `${proj.color||C.gold}88` : C.brd)}`, fontWeight: selectedListId===l.id ? 700 : 400,
               }}>
-                {l.name}
-                {proj && <span style={{ opacity:0.75 }}> · {proj.name}</span>}
+                {proj && <span style={{ marginRight:4 }}>▣</span>}
+                {sameName ? proj.name : l.name}
+                {proj && !sameName && <span style={{ opacity:0.75 }}> · {proj.name}</span>}
               </button>
             );
           })}
@@ -240,6 +248,9 @@ export default function BusinessAccountsTab({ business, userEmail, projects=[] }
         onUpdateTask={(id, patch) => setTasks(ts => ts.map(t => t.id === id ? { ...t, ...patch } : t))}
         tasks={tasks}
         business={business}
+        projects={projects}
+        accountListMap={accountListMap}
+        onAccountLinkedToProject={(accountId, listId) => setAccountListMap(prev => ({ ...prev, [accountId]: [...(prev[accountId] || []), listId] }))}
         onInfluencerUpdated={()=>reload(true)}
       />
       {dealSummaryAccId && (

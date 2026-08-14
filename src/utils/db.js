@@ -368,12 +368,13 @@ export async function getVoiceProfileForEmail(userEmail) {
   return data.profile;
 }
 
-// outreach-intelligence-v1 Section 2 — deliberately plain fields, no
-// generate/regenerate concept (unlike outreach_rules/assay_criteria) — the
-// person types it, it stays until they change it, no auto-overwrite risk.
-export async function updateProjectOutreachGuidance(projectId, patch) {
+// project-guidance-and-creation-flow-v1 — structured guidance fields
+// (objective/target_type/ask_type/project_hook/exclusions/outreach_example),
+// same "person types it, stays until changed" posture as the outreach_prompt
+// field this replaces - no generate/regenerate, no auto-overwrite risk.
+export async function updateProjectGuidance(projectId, patch) {
   if (!isSupabaseEnabled() || !projectId) return { error: null };
-  const { data, error } = await supabase.from('projects').update(patch).eq('id', projectId).select().single();
+  const { data, error } = await supabase.from('projects').update({ ...patch, guidance_updated_at: new Date().toISOString() }).eq('id', projectId).select().single();
   if (error) return { error: error.message };
   return { project: data };
 }
@@ -740,12 +741,17 @@ export async function setProjectListId(projectId, listId) {
   }
 }
 
-export async function createProject({ name, color, ownerEmail, businessId, listId }) {
+export async function createProject({ name, color, ownerEmail, businessId, listId, objective, targetType, askType, projectHook, exclusions }) {
   if (!isSupabaseEnabled() || !ownerEmail) return { error: 'Supabase is not available.' };
   try {
     const { data: project, error: projectError } = await supabase
       .from('projects')
-      .insert({ name, color, owner_email: ownerEmail.toLowerCase(), business_id: businessId || null, list_id: listId || null })
+      .insert({
+        name, color, owner_email: ownerEmail.toLowerCase(), business_id: businessId || null, list_id: listId || null,
+        objective: objective || null, target_type: targetType || null, ask_type: askType || null,
+        project_hook: projectHook || null, exclusions: exclusions || null,
+        guidance_updated_at: objective ? new Date().toISOString() : null,
+      })
       .select()
       .single();
     if (projectError) throw projectError;
