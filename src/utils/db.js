@@ -729,6 +729,17 @@ export async function getProjectsForUser(email) {
   }
 }
 
+export async function setProjectListId(projectId, listId) {
+  try {
+    const { data, error } = await supabase.from('projects').update({ list_id: listId }).eq('id', projectId).select().single();
+    if (error) throw error;
+    return { project: data };
+  } catch (e) {
+    console.warn('[db] setProjectListId failed:', e.message);
+    return { error: e.message };
+  }
+}
+
 export async function createProject({ name, color, ownerEmail, businessId, listId }) {
   if (!isSupabaseEnabled() || !ownerEmail) return { error: 'Supabase is not available.' };
   try {

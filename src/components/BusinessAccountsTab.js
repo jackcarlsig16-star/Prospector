@@ -20,7 +20,7 @@ const UNLISTED = '__unlisted__';
 // compliance workflow (those are Plaid-specific, out of scope until
 // generalize-legacy-functions-v1). A brand-new business starts with zero
 // accounts; nothing seeds or copies data across businesses.
-export default function BusinessAccountsTab({ business, userEmail }) {
+export default function BusinessAccountsTab({ business, userEmail, projects=[] }) {
   const [accounts, setAccounts] = useState([]);
   const [lists, setLists] = useState([]);
   const [accountListMap, setAccountListMap] = useState({}); // accountId -> [listId, ...]
@@ -148,6 +148,15 @@ export default function BusinessAccountsTab({ business, userEmail }) {
 
   const perms = canEditCurrentView ? ROLE_PERMS.Owner : VIEW_ONLY_PERMS;
 
+  // project-list-linking-v1 — a list tab whose list_id matches a project's
+  // list_id makes the "add account to this list" action an intentional
+  // "add to project X", not a coincidence of the two sharing an id.
+  const projectByListId = useMemo(() => {
+    const map = {};
+    projects.forEach(p => { if (p.list_id) map[p.list_id] = p; });
+    return map;
+  }, [projects]);
+
   if (loading) {
     return <p style={{ fontFamily: 'monospace', fontSize: 13, color: '#888' }}>Loading accounts…</p>;
   }
@@ -164,13 +173,19 @@ export default function BusinessAccountsTab({ business, userEmail }) {
             background: !selectedListId ? C.gold : "transparent", color: !selectedListId ? C.bg : C.dim,
             border:`1px solid ${!selectedListId ? C.gold : C.brd}`, fontWeight: !selectedListId ? 700 : 400,
           }}>All accessible</button>
-          {listSwitcherOptions.map(l => (
-            <button key={l.id} onClick={()=>setSelectedListId(l.id)} style={{
-              ...mono, fontSize:11, padding:"5px 12px", borderRadius:20, cursor:"pointer",
-              background: selectedListId===l.id ? C.gold : "transparent", color: selectedListId===l.id ? C.bg : C.dim,
-              border:`1px solid ${selectedListId===l.id ? C.gold : C.brd}`, fontWeight: selectedListId===l.id ? 700 : 400,
-            }}>{l.name}</button>
-          ))}
+          {listSwitcherOptions.map(l => {
+            const proj = projectByListId[l.id];
+            return (
+              <button key={l.id} onClick={()=>setSelectedListId(l.id)} title={proj ? `Project: ${proj.name}` : undefined} style={{
+                ...mono, fontSize:11, padding:"5px 12px", borderRadius:20, cursor:"pointer",
+                background: selectedListId===l.id ? C.gold : "transparent", color: selectedListId===l.id ? C.bg : C.dim,
+                border:`1px solid ${selectedListId===l.id ? (proj ? proj.color||C.gold : C.gold) : (proj ? `${proj.color||C.gold}88` : C.brd)}`, fontWeight: selectedListId===l.id ? 700 : 400,
+              }}>
+                {l.name}
+                {proj && <span style={{ opacity:0.75 }}> · {proj.name}</span>}
+              </button>
+            );
+          })}
           {isOwner && unlistedCount > 0 && (
             <button onClick={()=>setSelectedListId(UNLISTED)} style={{
               ...mono, fontSize:11, padding:"5px 12px", borderRadius:20, cursor:"pointer",

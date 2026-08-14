@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { C, mono, PRESET_SWATCH_COLORS } from '../constants/colors';
-import { createProject, updateProjectOutreachGuidance } from '../utils/db';
+import { createProject, updateProjectOutreachGuidance, createList, setProjectListId } from '../utils/db';
 import BusinessAccountsTab from './BusinessAccountsTab';
 import BusinessSearchTab from './BusinessSearchTab';
 import BusinessGenerationTab from './BusinessGenerationTab';
@@ -40,7 +40,9 @@ function CreateProjectModal({ businessId, userEmail, onClose, onCreated }) {
     if (!name.trim() || saving) return;
     setSaving(true);
     setError('');
-    const { project, error: err } = await createProject({ name: name.trim(), color, ownerEmail: userEmail, businessId });
+    const { list, error: listErr } = await createList(businessId, name.trim());
+    if (listErr) { setSaving(false); setError(listErr); return; }
+    const { project, error: err } = await createProject({ name: name.trim(), color, ownerEmail: userEmail, businessId, listId: list.id });
     setSaving(false);
     if (err) { setError(err); return; }
     onCreated(project);
@@ -112,6 +114,35 @@ function ProjectOutreachGuidance({ project, onUpdated }) {
   );
 }
 
+// project-list-linking-v1 — backfill for projects created before every
+// project auto-got a list (CreateProjectModal). Same create-list-then-attach
+// sequence as project creation, just run after the fact.
+function BackfillProjectList({ project, businessId, onLinked }) {
+  const [linking, setLinking] = useState(false);
+  const [error, setError] = useState('');
+
+  const link = async () => {
+    setLinking(true);
+    setError('');
+    const { list, error: listErr } = await createList(businessId, project.name);
+    if (listErr) { setLinking(false); setError(listErr); return; }
+    const { project: updated, error: err } = await setProjectListId(project.id, list.id);
+    setLinking(false);
+    if (err) { setError(err); return; }
+    onLinked(updated);
+  };
+
+  return (
+    <div style={{ marginTop:10 }}>
+      <p style={{ ...mono, fontSize:10, color:C.dim, margin:"0 0 8px" }}>This project has no linked list yet — bulk outreach generation needs one.</p>
+      {error && <div style={{ ...mono, fontSize:11, color:C.red, marginBottom:8 }}>⚠ {error}</div>}
+      <button onClick={link} disabled={linking} style={{ ...mono, fontSize:11, padding:"6px 14px", background:"transparent", border:`1px solid ${C.brd}`, color:C.dim, borderRadius:6, cursor:"pointer" }}>
+        {linking ? 'Linking…' : 'Link a list to this project'}
+      </button>
+    </div>
+  );
+}
+
 function ProjectsSection({ business, userEmail, activeUser, projects, onProjectCreated, onProjectUpdated }) {
   const [open, setOpen] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -143,7 +174,7 @@ function ProjectsSection({ business, userEmail, activeUser, projects, onProjectC
                       Generate Outreach for this project's list
                     </button>
                   ) : (
-                    <p style={{ ...mono, fontSize:10, color:C.dim, marginTop:10 }}>This project has no linked list yet — bulk outreach generation needs one.</p>
+                    <BackfillProjectList project={p} businessId={business.id} onLinked={updated => onProjectUpdated?.(updated)} />
                   )}
                 </>
               )}
@@ -304,7 +335,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
             onProfileUpdated={setProfile} onProjectUpdated={onProjectUpdated} />
           <BusinessCommandCenterTab business={business} sharedAccounts={sharedAccounts} sharedTasks={sharedTasks} setSharedTasks={setSharedTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={onNav} onUpdateAccount={onUpdateAccount} />
         </>)}
-        {view === 'accounts' && <BusinessAccountsTab business={business} userEmail={userEmail} />}
+        {view === 'accounts' && <BusinessAccountsTab business={business} userEmail={userEmail} projects={projects} />}
         {view === 'search' && <BusinessSearchTab business={business} userEmail={userEmail} />}
         {view === 'generation' && <BusinessGenerationTab business={business} />}
         {view === 'projects' && (
