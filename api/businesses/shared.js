@@ -142,7 +142,12 @@ export async function assessInfluencerAccount(supabase, accountId, bioText, foll
     }
 
     const data = await callAnthropic({
-      max_tokens: 800,
+      // 800 wasn't enough once fit_score/fit_signals/fit_rationale were added
+      // on top of the original 4 fields - confirmed live, this model runs
+      // with adaptive thinking enabled (STANDARD tier) and was getting cut
+      // off before ever emitting a text block (influencer-card-v2, Phase 5
+      // finding: "No text in influencer assessment response" in production).
+      max_tokens: 2048,
       system: INFLUENCER_SYSTEM_PROMPT,
       messages: [{ role: 'user', content: `BUSINESS PROFILE (the business considering this influencer):\n${businessContext}\n\nINFLUENCER BIO:\n${bioText}` }],
       supabase,
