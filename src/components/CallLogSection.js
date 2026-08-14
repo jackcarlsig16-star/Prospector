@@ -89,7 +89,12 @@ function CallLogForm({ business, userEmail, onFiled }) {
         body: JSON.stringify({
           transcript: transcript.trim(),
           call_platform: platform,
-          call_date: callDate ? new Date(callDate).toISOString() : undefined,
+          // Anchor to local noon before converting - new Date('YYYY-MM-DD')
+          // parses as UTC midnight, which rolls back to the previous
+          // calendar day once rendered in any timezone behind UTC (caught
+          // live via browser test: picking "08/14" filed and displayed as
+          // "Aug 13").
+          call_date: callDate ? new Date(`${callDate}T12:00:00`).toISOString() : undefined,
           call_duration_seconds: durationMinutes ? Math.round(Number(durationMinutes) * 60) : undefined,
           call_participants: participants.filter(p => p.email.trim()),
           created_by: userEmail,
