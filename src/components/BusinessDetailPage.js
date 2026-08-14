@@ -7,8 +7,9 @@ import BusinessGenerationTab from './BusinessGenerationTab';
 import BusinessCommandCenterTab from './BusinessCommandCenterTab';
 import MembersPermissionsTab from './MembersPermissionsTab';
 import SmartIntakeBox from './SmartIntakeBox';
+import CallLogSection from './CallLogSection';
 
-const SOURCE_LABEL = { manual: 'Manual', research_site: 'Site research', research_web: 'Web research' };
+const SOURCE_LABEL = { manual: 'Manual', research_site: 'Site research', research_web: 'Web research', call: 'Call log' };
 
 const fmtDate = iso => { try { return new Date(iso).toLocaleString("en-US", { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }); } catch { return "—"; } };
 
@@ -350,6 +351,8 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
             )
           )}
         </div>
+
+        <CallLogSection business={business} userEmail={userEmail} intelEntries={intelEntries} projects={projects} onReload={load} />
         </>)}
       </div>
     </div>

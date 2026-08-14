@@ -429,6 +429,8 @@ app.post('/api/businesses/:id/intake',          esHandler('./api/businesses/inta
 app.post('/api/businesses/:id/intake/confirm',  esHandler('./api/businesses/intake-confirm.js'));
 app.post('/api/businesses/:id/import/classify', esHandler('./api/businesses/import-classify.js'));
 app.post('/api/businesses/:id/influencer/assess', esHandler('./api/businesses/influencer-assess.js'));
+app.post('/api/businesses/:id/call-log', esHandler('./api/businesses/call-log.js'));
+app.post('/api/businesses/:id/call-log/:entryId/reassign', esHandler('./api/businesses/call-log-reassign.js'));
 app.post('/api/zoom/webhook', esHandler('./api/zoom/webhook.js'));
 app.post('/api/notify-pending', async (req, res) => {
   const { name, email, role } = req.body || {};
