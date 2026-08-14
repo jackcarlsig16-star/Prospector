@@ -14,6 +14,7 @@ const select = { ...mono, fontSize:11, padding:"5px 8px", background:C.bg, borde
 const DESTINATIONS = [
   { id: 'company_intel', label: 'Company intel' },
   { id: 'new_project', label: 'Project' },
+  { id: 'new_account', label: 'New account(s)' },
   { id: 'existing_account', label: 'Existing account note' },
   { id: 'influencer', label: 'New influencer account' },
 ];
@@ -123,6 +124,7 @@ function InfluencerConfirm({ proposal, lists, submitting, onCreate }) {
 const DESCRIBE = {
   company_intel: 'file under this business',
   new_project: 'create a new project',
+  new_account: p => (p?.names?.length ? `create account${p.names.length > 1 ? 's' : ''} ${p.names.join(', ')}` : 'create new account(s)'),
   existing_account: 'add a note to an existing account',
   influencer: p => `create influencer account @${p?.handle || '?'}`,
   ambiguous: 'unclear — pick a destination',

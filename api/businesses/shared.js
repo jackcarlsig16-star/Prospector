@@ -321,7 +321,7 @@ Rules:
 - Use "new_project" only if the text reads as a genuinely new initiative/effort worth tracking on its own, not just a one-off note.
 - Use "new_account" if the text mentions one or more companies/accounts not in the existing list - list every distinct one you find in new_account_names.
 - Use "company_intel" for general company-level notes that don't fit a specific project or account.
-- Use "ambiguous" only if you genuinely cannot tell what this belongs to - it will be filed as company-level intel as a safe fallback, so prefer a real classification when there's a reasonable read.`;
+- Use "ambiguous" only if you genuinely cannot tell what this belongs to - a human will be asked to pick the destination, so prefer a real classification when there's a reasonable read and only fall back to "ambiguous" for text that's genuinely too thin or unclear to route (e.g. a single word, or text with no discernible subject).`;
 
 // Deterministic pre-check, not an AI judgment call - a raw scraped Instagram
 // profile block (or a bare instagram.com URL) is structurally distinctive
