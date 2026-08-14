@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { C, mono } from '../constants/colors';
-import { getBusinessesForMember } from '../utils/db';
+import { getBusinessesForMember, getProjectsForUser } from '../utils/db';
 import BusinessesHomePage from './BusinessesHomePage';
 import BusinessDetailPage from './BusinessDetailPage';
 
@@ -10,7 +10,7 @@ import BusinessDetailPage from './BusinessDetailPage';
 // teamUsers, roles, admin badges - none of which exist for a joined member).
 const BUSINESS_NAV = [
   { id: "command-center", ic: "⌂", lb: "Command Center" },
-  { id: "overview",       ic: "◉", lb: "Overview" },
+  { id: "overview",       ic: "◉", lb: "Business Intel & Strategy" },
   { id: "accounts",       ic: "◈", lb: "Accounts" },
   { id: "search",         ic: "🔍", lb: "Search" },
   { id: "generation",     ic: "✉", lb: "Generation" },
@@ -54,7 +54,7 @@ function MemberSidebar({ identity, businesses, activeBusiness, onSelectBusiness,
             return (
               <div key={n.id} onClick={()=>setBusinessPage(n.id)} style={{ padding:"7px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:8, background:active?C.card:"transparent", borderLeft:`3px solid ${active?C.gold:"transparent"}` }}>
                 <span style={{ ...mono, fontSize:14, color:active?C.gold:C.mut }}>{n.ic}</span>
-                <span style={{ fontSize:13, color:active?C.txt:C.mut, whiteSpace:"nowrap", flex:1 }}>{n.lb}</span>
+                <span style={{ fontSize:13, color:active?C.txt:C.mut, flex:1, lineHeight:1.3 }}>{n.lb}</span>
               </div>
             );
           })}
@@ -75,6 +75,7 @@ export default function MemberShell({ identity, initialBusiness=null, onExit }) 
   const [loading, setLoading] = useState(true);
   const [activeBusiness, setActiveBusiness] = useState(initialBusiness);
   const [businessPage, setBusinessPage] = useState('command-center');
+  const [projects, setProjects] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,6 +84,11 @@ export default function MemberShell({ identity, initialBusiness=null, onExit }) 
       setBusinesses(list);
       setLoading(false);
     });
+    // Projects are still owner_email-scoped app-wide (same as Jack's own path
+    // in App.js) - a member only sees projects for businesses they themselves
+    // own, not ones they've merely joined. Matches existing behavior, not a
+    // new limitation introduced here.
+    getProjectsForUser(identity.email).then(list => { if (!cancelled) setProjects(list); });
     return () => { cancelled = true; };
   }, [identity.email]);
 
@@ -108,7 +114,9 @@ export default function MemberShell({ identity, initialBusiness=null, onExit }) 
             userEmail={identity.email}
             view={businessPage}
             onUpdated={b=>{ setActiveBusiness(b); setBusinesses(prev=>prev.map(x=>x.id===b.id?b:x)); }}
-            onProjectCreated={()=>{}}
+            projects={projects.filter(p=>p.business_id===activeBusiness.id)}
+            onProjectCreated={p=>setProjects(prev=>[p, ...prev])}
+            onProjectUpdated={p=>setProjects(prev=>prev.map(x=>x.id===p.id?p:x))}
             sharedAccounts={[]}
             sharedTasks={[]}
             setSharedTasks={()=>{}}

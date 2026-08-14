@@ -6,6 +6,7 @@ import BusinessSearchTab from './BusinessSearchTab';
 import BusinessGenerationTab from './BusinessGenerationTab';
 import BusinessCommandCenterTab from './BusinessCommandCenterTab';
 import MembersPermissionsTab from './MembersPermissionsTab';
+import SmartIntakeBox from './SmartIntakeBox';
 
 const SOURCE_LABEL = { manual: 'Manual', research_site: 'Site research', research_web: 'Web research' };
 
@@ -89,10 +90,15 @@ function ProjectsSection({ business, userEmail, projects, onProjectCreated }) {
       {open && (
         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
           {projects.map(p => (
-            <div key={p.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8 }}>
-              <span style={{ width:10, height:10, borderRadius:"50%", background:p.color||C.gold, flexShrink:0 }} />
-              <span style={{ ...mono, fontSize:13, color:C.txt, flex:1 }}>{p.name}</span>
-              <span style={{ ...mono, fontSize:10, color:C.dim }}>{fmtDate(p.created_at)}</span>
+            <div key={p.id} style={{ padding:"9px 12px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                <span style={{ width:10, height:10, borderRadius:"50%", background:p.color||C.gold, flexShrink:0 }} />
+                <span style={{ ...mono, fontSize:13, color:C.txt, flex:1 }}>{p.name}</span>
+                <span style={{ ...mono, fontSize:10, color:C.dim }}>{fmtDate(p.created_at)}</span>
+              </div>
+              <p style={{ ...mono, fontSize:11, color:p.strategy_synthesis?C.mut:C.dim, margin:"6px 0 0 20px", lineHeight:1.5, fontStyle:p.strategy_synthesis?"normal":"italic" }}>
+                {p.strategy_synthesis || "No strategy yet — notes filed to this project will synthesize one automatically."}
+              </p>
             </div>
           ))}
           {projects.length === 0 && (
@@ -115,7 +121,7 @@ function ProjectsSection({ business, userEmail, projects, onProjectCreated }) {
   );
 }
 
-export default function BusinessDetailPage({ business: businessProp, userEmail, projects=[], view='command-center', onUpdated, onProjectCreated, sharedAccounts, sharedTasks, setSharedTasks, dailyStats, activeUser, onNav, onUpdateAccount }) {
+export default function BusinessDetailPage({ business: businessProp, userEmail, projects=[], view='command-center', onUpdated, onProjectCreated, onProjectUpdated, sharedAccounts, sharedTasks, setSharedTasks, dailyStats, activeUser, onNav, onUpdateAccount }) {
   const [business, setBusiness] = useState(businessProp);
   const [profile, setProfile] = useState(null);
   const [intelEntries, setIntelEntries] = useState([]);
@@ -246,6 +252,8 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
         {view === 'members' && <MembersPermissionsTab business={business} viewerEmail={userEmail} />}
 
         {view === 'overview' && (<>
+        <SmartIntakeBox business={business} projects={projects} userEmail={userEmail}
+          onProfileUpdated={setProfile} onProjectUpdated={onProjectUpdated} />
         {business.research_status === 'researching' && !pollTimedOut && (
           <div style={{ padding:"16px 18px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, marginBottom:32 }}>
             <p style={{ ...mono, fontSize:13, color:C.txt, margin:0 }}>Researching {business.name}…</p>
@@ -271,10 +279,10 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
         {business.research_status === 'ready' && profile && (
           business.research_depth === 'light' ? (
             <div style={{ marginBottom:32 }}>
-              <h2 style={{ ...mono, fontSize:13, color:C.gold, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", margin:"0 0 12px" }}>What's New</h2>
-              <div style={{ padding:"14px 16px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8 }}>
-                <p style={{ ...mono, fontSize:13, color:C.txt, margin:0, lineHeight:1.6, whiteSpace:"pre-wrap" }}>{profile.raw_synthesis}</p>
-              </div>
+              <h2 style={{ ...mono, fontSize:13, color:C.txt, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", margin:"0 0 16px" }}>Profile</h2>
+              <ProfileBlock label="Vision" value={profile.vision} />
+              <ProfileBlock label="Current Strategy" value={profile.gtm_strategy} />
+              <ProfileBlock label="Recent Changes" value={profile.raw_synthesis} />
               {profile.generated_at && (
                 <p style={{ ...mono, fontSize:10, color:C.dim, margin:"8px 0 0" }}>Last checked {fmtDate(profile.generated_at)}</p>
               )}

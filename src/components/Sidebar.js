@@ -17,7 +17,7 @@ const ROLE_LEVEL = { Owner:5, Admin:4, Manager:3, AE:2, BDR:1 };
 // own "Command Center is home" pattern.
 const BUSINESS_NAV = [
   { id: "command-center", ic: "⌂", lb: "Command Center" },
-  { id: "overview",       ic: "◉", lb: "Overview" },
+  { id: "overview",       ic: "◉", lb: "Business Intel & Strategy" },
   { id: "accounts",       ic: "◈", lb: "Accounts" },
   { id: "search",         ic: "🔍", lb: "Search" },
   { id: "generation",     ic: "✉", lb: "Generation" },
@@ -87,7 +87,7 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
               return (
                 <div key={n.id} onClick={()=>setBusinessPage?.(n.id)} style={{ padding:"7px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:8, background:active?C.card:"transparent", borderLeft:`3px solid ${active?C.gold:"transparent"}` }}>
                   <span style={{ ...mono, fontSize:14, color:active?C.gold:C.mut }}>{n.ic}</span>
-                  <span style={{ fontSize:13, color:active?C.txt:C.mut, whiteSpace:"nowrap", flex:1 }}>{n.lb}</span>
+                  <span style={{ fontSize:13, color:active?C.txt:C.mut, flex:1, lineHeight:1.3 }}>{n.lb}</span>
                 </div>
               );
             })}

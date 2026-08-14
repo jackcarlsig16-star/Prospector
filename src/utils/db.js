@@ -485,41 +485,37 @@ export async function saveComplianceToDb(accId, data, accName) {
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 
+// Routes through projects.owner_email directly, same pattern as
+// getBusinessesForUser - project_members (the old multi-user membership
+// table) has been broken (PGRST205, not in schema cache) since early
+// August and is abandoned, not fixed. A real project-membership feature
+// is a planned follow-up using the business_members/permissions pattern
+// instead (smart-intake-and-intelligence-v1).
 export async function getProjectsForUser(email) {
   if (!isSupabaseEnabled() || !email) return [];
   try {
     const { data, error } = await supabase
-      .from('project_members')
-      .select('role, projects(*)')
-      .eq('user_email', email.toLowerCase());
+      .from('projects')
+      .select('*')
+      .eq('owner_email', email.toLowerCase())
+      .order('created_at', { ascending: false });
     if (error) throw error;
-    return (data || []).filter(r => r.projects).map(r => ({ ...r.projects, role: r.role }));
+    return data || [];
   } catch (e) {
     console.warn('[db] getProjectsForUser failed:', e.message);
     return [];
   }
 }
 
-export async function createProject({ name, color, ownerEmail, businessId }) {
+export async function createProject({ name, color, ownerEmail, businessId, listId }) {
   if (!isSupabaseEnabled() || !ownerEmail) return { error: 'Supabase is not available.' };
   try {
     const { data: project, error: projectError } = await supabase
       .from('projects')
-      .insert({ name, color, owner_email: ownerEmail.toLowerCase(), business_id: businessId || null })
+      .insert({ name, color, owner_email: ownerEmail.toLowerCase(), business_id: businessId || null, list_id: listId || null })
       .select()
       .single();
     if (projectError) throw projectError;
-
-    const { error: memberError } = await supabase
-      .from('project_members')
-      .insert({
-        project_id: project.id,
-        user_email: ownerEmail.toLowerCase(),
-        role: 'owner',
-        accepted_at: new Date().toISOString(),
-      });
-    if (memberError) throw memberError;
-
     return { project };
   } catch (e) {
     console.warn('[db] createProject failed:', e.message);

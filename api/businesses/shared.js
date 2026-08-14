@@ -12,7 +12,7 @@ export function getSupabase() {
 
 const SITE_TEXT_TRUNCATE_CHARS = 6000;
 
-async function callAnthropic({ system, messages, tools, max_tokens, supabase, businessId, callType }) {
+async function callAnthropic({ system, messages, tools, max_tokens, supabase, businessId, callType, model = MODELS.STANDARD }) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('ANTHROPIC_API_KEY not configured');
 
@@ -25,7 +25,7 @@ async function callAnthropic({ system, messages, tools, max_tokens, supabase, bu
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: MODELS.STANDARD,
+      model,
       max_tokens,
       thinking: { type: 'adaptive' },
       system,
@@ -44,7 +44,7 @@ async function callAnthropic({ system, messages, tools, max_tokens, supabase, bu
       call_type: callType || 'unknown',
       input_tokens: data.usage.input_tokens ?? null,
       output_tokens: data.usage.output_tokens ?? null,
-      model: MODELS.STANDARD,
+      model,
     });
     if (usageError) console.warn('[businesses] usage log failed:', usageError.message);
   }
@@ -52,12 +52,16 @@ async function callAnthropic({ system, messages, tools, max_tokens, supabase, bu
   return data;
 }
 
-const LIGHT_SYSTEM_PROMPT = `You track recent changes for a company Jack does outreach on behalf of, based on its own site content and notes - not a prospect he's researching. Respond with ONLY a JSON object, no other text.
+const LIGHT_SYSTEM_PROMPT = `You maintain a compact, current profile of a company Jack does outreach on behalf of, based on its own site content and notes - not a prospect he's researching. Respond with ONLY a JSON object, no other text.
 
 Return exactly this shape:
 {
-  "raw_synthesis": "2-4 short sentences on what appears new, changed, or worth knowing since the last check - new offerings, messaging shifts, notable site changes. This is quick context for an outreach conversation, not a strategic document. If nothing meaningfully new stands out, say so plainly rather than padding."
-}`;
+  "vision": "the company's vision or mission as it currently reads from the notes provided, 1-2 sentences. If nothing meaningful is known yet, say so plainly rather than inventing one.",
+  "current_strategy": "the company's current strategy or direction right now, 1-2 sentences, based only on the notes provided.",
+  "recent_changes": "2-4 short sentences on what appears new, changed, or worth knowing since the last check - new offerings, messaging shifts, notable site changes. This is quick context for an outreach conversation, not a strategic document. If nothing meaningfully new stands out, say so plainly rather than padding."
+}
+
+Base every field on the notes provided - do not invent facts they don't support. Keep this compact - this is a lightweight running profile, not a full strategic writeup.`;
 
 const FULL_SYSTEM_PROMPT = `You synthesize accumulated research and notes about a company into a structured business profile. Respond with ONLY a JSON object, no other text.
 
@@ -73,6 +77,13 @@ Return exactly this shape:
 
 Base every field on the intel log provided - do not invent facts it doesn't support. Where the log is thin on a field, give a clearly-labeled best inference rather than leaving it empty.`;
 
+const PROJECT_STRATEGY_SYSTEM_PROMPT = `You track the strategy and direction of a specific project or initiative within a company Jack does outreach on behalf of, based solely on notes filed for that project. Respond with ONLY a JSON object, no other text.
+
+Return exactly this shape:
+{
+  "strategy_synthesis": "2-4 short sentences on this project's current strategy, direction, and any notable recent developments, based only on the notes filed for it. If there isn't enough yet to say anything meaningful, say so plainly rather than padding."
+}`;
+
 // PROFILE GENERATION — pulls the full intel log and synthesizes it into
 // business_profiles. Called from both the research pipeline and the manual
 // intel-add path, so it looks up research_depth itself rather than trusting
@@ -87,18 +98,21 @@ export async function generateProfile(supabase, businessId) {
   if (businessError) throw businessError;
   const isLight = business.research_depth === 'light';
 
+  // project_id IS NULL - company-level synthesis must never pull in
+  // project-scoped notes (smart-intake-and-intelligence-v1). Full history
+  // for both depths now: light needs enough context to keep "vision" and
+  // "current_strategy" stable across resyntheses, not just the latest 2
+  // entries - "lightweight" now means compact prompt/output, not a starved
+  // context window.
   const { data: entries, error: entriesError } = await supabase
     .from('business_intel_entries')
     .select('content, source, created_at')
     .eq('business_id', businessId)
+    .is('project_id', null)
     .order('created_at', { ascending: true });
   if (entriesError) throw entriesError;
 
-  // Light businesses only need "what's changed since last check" - the full
-  // accumulated history isn't relevant to that and just burns input tokens.
-  // Full-depth profiles genuinely need the complete log for an accurate GTM writeup.
-  const relevantEntries = isLight ? (entries || []).slice(-2) : (entries || []);
-  const intelLog = relevantEntries
+  const intelLog = (entries || [])
     .map(e => `[${e.source}] ${e.content}`)
     .join('\n\n---\n\n') || '(no intel yet)';
 
@@ -117,18 +131,157 @@ export async function generateProfile(supabase, businessId) {
   if (!jsonMatch) throw new Error('No JSON in profile generation response');
   const parsed = JSON.parse(jsonMatch[0]);
 
+  // Light and full ask for different JSON field names but share the same
+  // business_profiles columns - light's current_strategy/recent_changes map
+  // onto the same gtm_strategy/raw_synthesis columns full's own field names
+  // already target, so both depths render through the same ProfileBlock UI.
   const { error: upsertError } = await supabase.from('business_profiles').upsert({
     business_id: businessId,
-    vision: isLight ? null : (parsed.vision || null),
+    vision: parsed.vision || null,
     positioning: isLight ? null : (parsed.positioning || null),
     icp: isLight ? null : (parsed.icp || null),
-    gtm_strategy: isLight ? null : (parsed.gtm_strategy || null),
+    gtm_strategy: isLight ? (parsed.current_strategy || null) : (parsed.gtm_strategy || null),
     competitors: isLight ? null : (parsed.competitors || null),
-    raw_synthesis: parsed.raw_synthesis || null,
+    raw_synthesis: isLight ? (parsed.recent_changes || null) : (parsed.raw_synthesis || null),
     model_version: MODELS.STANDARD,
     generated_at: new Date().toISOString(),
   }, { onConflict: 'business_id' });
   if (upsertError) throw upsertError;
+}
+
+// PROJECT STRATEGY — mirrors generateProfile but scoped strictly to a single
+// project's own intel entries (project_id match), never the company-wide
+// log. Compact by design - a project doesn't need the full profile shape,
+// just a direction/strategy summary (smart-intake-and-intelligence-v1).
+export async function generateProjectStrategy(supabase, projectId) {
+  const { data: project, error: projectError } = await supabase
+    .from('projects')
+    .select('name, business_id')
+    .eq('id', projectId)
+    .single();
+  if (projectError) throw projectError;
+
+  const { data: entries, error: entriesError } = await supabase
+    .from('business_intel_entries')
+    .select('content, source, created_at')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: true });
+  if (entriesError) throw entriesError;
+
+  if (!entries || entries.length === 0) return;
+
+  const intelLog = entries.map(e => `[${e.source}] ${e.content}`).join('\n\n---\n\n');
+
+  const data = await callAnthropic({
+    max_tokens: 512,
+    system: PROJECT_STRATEGY_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: `NOTES for project "${project.name}", oldest to newest:\n\n${intelLog}` }],
+    supabase,
+    businessId: project.business_id,
+    callType: 'project_strategy',
+  });
+
+  const textBlock = (data.content || []).find(b => b.type === 'text');
+  if (!textBlock) throw new Error('No text in project strategy response');
+  const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('No JSON in project strategy response');
+  const parsed = JSON.parse(jsonMatch[0]);
+
+  const { error: updateError } = await supabase.from('projects').update({
+    strategy_synthesis: parsed.strategy_synthesis || null,
+    strategy_generated_at: new Date().toISOString(),
+  }).eq('id', projectId);
+  if (updateError) throw updateError;
+}
+
+// FILING PRIMITIVES — the three ways a piece of text ends up attached to
+// this app's data, each usable standalone. Originally inlined separately in
+// api/businesses/intel.js (manual add), intake.js (auto-file), and
+// intake-confirm.js (confirmed new project/redirect) - extracted so all
+// three (and any future caller, e.g. a bulk-import mode) share one path
+// instead of drifting independently (smart-intake-and-intelligence-v1,
+// modular-tools discipline).
+
+export async function fileCompanyIntel(supabase, businessId, text, createdBy) {
+  const { error } = await supabase.from('business_intel_entries')
+    .insert({ business_id: businessId, project_id: null, source: 'manual', content: text, created_by: createdBy || null });
+  if (error) throw error;
+  await generateProfile(supabase, businessId);
+  const { data: profile, error: profileError } = await supabase.from('business_profiles').select('*').eq('business_id', businessId).maybeSingle();
+  if (profileError) throw profileError;
+  return profile;
+}
+
+export async function fileProjectIntel(supabase, projectId, text, createdBy) {
+  const { data: project, error: projectError } = await supabase.from('projects').select('business_id').eq('id', projectId).single();
+  if (projectError) throw projectError;
+  const { error } = await supabase.from('business_intel_entries')
+    .insert({ business_id: project.business_id, project_id: projectId, source: 'manual', content: text, created_by: createdBy || null });
+  if (error) throw error;
+  await generateProjectStrategy(supabase, projectId);
+  const { data: updated, error: updatedError } = await supabase.from('projects').select('*').eq('id', projectId).single();
+  if (updatedError) throw updatedError;
+  return updated;
+}
+
+export async function fileAccountNote(supabase, accountId, text) {
+  const { data: account, error: accountError } = await supabase.from('accounts').select('*').eq('id', accountId).single();
+  if (accountError) throw accountError;
+  const existingNotes = account.data?.handoffNotes || '';
+  const nextNotes = existingNotes ? `${existingNotes}\n\n[${new Date().toLocaleDateString()}] ${text}` : text;
+  const { error } = await supabase.from('accounts')
+    .update({ data: { ...account.data, handoffNotes: nextNotes }, updated_at: new Date().toISOString() })
+    .eq('id', accountId);
+  if (error) throw error;
+  return account.data?.name || '';
+}
+
+const INTAKE_SYSTEM_PROMPT = `You classify a piece of free-text context Jack just typed about a business, and route it to the right place. Respond with ONLY a JSON object, no other text.
+
+Return exactly this shape:
+{
+  "classification": "company_intel" | "existing_project" | "new_project" | "existing_account" | "new_account" | "ambiguous",
+  "project_id": "the matching project's id if classification is existing_project, else null",
+  "inferred_project_name": "a short inferred name if classification is new_project, else null",
+  "account_id": "the matching account's id if classification is existing_account, else null",
+  "new_account_names": ["array of company/account names mentioned if classification is new_account, else empty array"],
+  "related_project_id": "if classification is new_account and the text also clearly references one of the existing projects listed, that project's id, else null"
+}
+
+Rules:
+- Only use "existing_project" or "existing_account" if the text clearly refers to one of the exact projects/accounts listed below - do not guess a fuzzy match.
+- Use "new_project" only if the text reads as a genuinely new initiative/effort worth tracking on its own, not just a one-off note.
+- Use "new_account" if the text mentions one or more companies/accounts not in the existing list - list every distinct one you find in new_account_names.
+- Use "company_intel" for general company-level notes that don't fit a specific project or account.
+- Use "ambiguous" only if you genuinely cannot tell what this belongs to - it will be filed as company-level intel as a safe fallback, so prefer a real classification when there's a reasonable read.`;
+
+// SMART INTAKE — classifies free text against this business's current
+// projects/accounts (id+name only, kept light) so the caller can route it.
+// Read-only: makes no writes itself, callers decide what to file based on
+// the classification (smart-intake-and-intelligence-v1).
+export async function classifyIntake(supabase, businessId, text) {
+  const [{ data: projects }, { data: accounts }] = await Promise.all([
+    supabase.from('projects').select('id, name').eq('business_id', businessId),
+    supabase.from('accounts').select('id, data').eq('business_id', businessId),
+  ]);
+  const projectList = (projects || []).map(p => `${p.id}: ${p.name}`).join('\n') || '(none yet)';
+  const accountList = (accounts || []).map(a => `${a.id}: ${a.data?.name || '(unnamed)'}`).join('\n') || '(none yet)';
+
+  const data = await callAnthropic({
+    model: MODELS.FAST,
+    max_tokens: 500,
+    system: INTAKE_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: `EXISTING PROJECTS:\n${projectList}\n\nEXISTING ACCOUNTS:\n${accountList}\n\nTEXT TO CLASSIFY:\n${text}` }],
+    supabase,
+    businessId,
+    callType: 'intake_classify',
+  });
+
+  const textBlock = (data.content || []).find(b => b.type === 'text');
+  if (!textBlock) throw new Error('No text in intake classification response');
+  const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('No JSON in intake classification response');
+  return JSON.parse(jsonMatch[0]);
 }
 
 // Full research pipeline: site fetch -> web search -> profile generation.
