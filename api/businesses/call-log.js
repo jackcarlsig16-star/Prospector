@@ -14,7 +14,10 @@ import { getSupabase, classifyIntake, fileCompanyIntel, fileProjectIntel, record
 
 const VALID_PLATFORMS = ['zoom', 'google_meet', 'manual'];
 
-function normalizeDomain(web) {
+// Exported for reuse by zoom-meet-auto-ingest-v1's Tier 2 attribution
+// (api/lib/zoomAttribution.js), which needs the same domain normalization
+// but searches accounts across all businesses, not one.
+export function normalizeDomain(web) {
   if (!web) return null;
   return web.toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/.*$/, '').trim() || null;
 }
@@ -47,16 +50,93 @@ async function matchAccountByParticipants(supabase, businessId, participants) {
   return { accountId: null, reason: 'multiple_matches' };
 }
 
+// Core filing logic, callable directly (in-process) by anything that already
+// knows the businessId - the HTTP handler below is a thin validation wrapper
+// around this. Extracted for zoom-meet-auto-ingest-v1 (Step 4): the webhook
+// pipeline calls this function directly rather than doing a self HTTP round
+// trip, since it runs in the same server.js process (CLAUDE.md: "extract to
+// a util before the second caller is written").
+//
+// preMatchedAccountId: Tier 2 zoom attribution resolves business AND account
+// in one step (matched via an account's own domain, not the business's) -
+// when set, this skips matchAccountByParticipants() entirely rather than
+// re-deriving a match that's already known, per the confirmed design.
+export async function fileCallLog(supabase, businessId, { transcript, call_platform, call_date, call_duration_seconds, call_participants, created_by, preMatchedAccountId } = {}) {
+  const platform = call_platform || 'manual';
+  if (!VALID_PLATFORMS.includes(platform)) {
+    throw new Error(`call_platform must be one of ${VALID_PLATFORMS.join(', ')}`);
+  }
+
+  const { data: business, error: businessError } = await supabase.from('businesses').select('id').eq('id', businessId).maybeSingle();
+  if (businessError) throw businessError;
+  if (!business) throw new Error('Business not found');
+
+  let accountId, matchReason;
+  if (preMatchedAccountId !== undefined) {
+    accountId = preMatchedAccountId;
+    matchReason = preMatchedAccountId ? 'zoom_tier2_domain_match' : 'no_match';
+  } else {
+    ({ accountId, reason: matchReason } = await matchAccountByParticipants(supabase, businessId, call_participants));
+  }
+
+  const { data: entry, error: insertError } = await supabase.from('business_intel_entries').insert({
+    business_id: businessId,
+    source: 'call',
+    source_type: 'call',
+    content: transcript.trim(),
+    call_platform: platform,
+    call_date: call_date || new Date().toISOString(),
+    call_duration_seconds: call_duration_seconds ?? null,
+    call_participants: call_participants || null,
+    account_id: accountId,
+    created_by: created_by || null,
+  }).select().single();
+  if (insertError) throw insertError;
+
+  // business_intel_entries has no fileAccountNote() primitive (confirmed
+  // live, Phase 0: recordAccountActivity() is the only account-touch
+  // mechanism, and it writes into accounts.data.handoffNotes directly -
+  // zero dependency on this table). The insert above and this call are
+  // two independent writes to two independent tables; neither implies
+  // the other.
+  let accountName = null;
+  if (accountId) {
+    const participantNames = (call_participants || []).map(p => p.name).filter(Boolean).join(', ');
+    const durationNote = call_duration_seconds ? `${Math.round(call_duration_seconds / 60)} min` : null;
+    const noteParts = [`Call logged via ${platform}`, durationNote, participantNames && `with ${participantNames}`].filter(Boolean);
+    accountName = await recordAccountActivity(supabase, accountId, created_by, 'call_log', noteParts.join(' — '));
+  }
+
+  // Same classifyIntake() Smart Intake already uses. Only its company/
+  // project outcomes apply here - existing_account/new_account/
+  // influencer/ambiguous are skipped: account attribution for a call is
+  // already handled above via participant matching, a stronger signal
+  // than an LLM guessing an account from transcript prose. Acting on both
+  // would double-log the same call onto the same account. Non-fatal: the
+  // call-log row above is already filed either way.
+  let classification = null;
+  try {
+    const result = await classifyIntake(supabase, businessId, transcript.trim());
+    classification = result.classification;
+    if (classification === 'existing_project' && result.project_id) {
+      const { data: project } = await supabase.from('projects').select('id').eq('id', result.project_id).eq('business_id', businessId).maybeSingle();
+      if (project) await fileProjectIntel(supabase, project.id, transcript.trim(), created_by);
+    } else if (classification === 'company_intel') {
+      await fileCompanyIntel(supabase, businessId, transcript.trim(), created_by);
+    }
+  } catch (e) {
+    console.warn('[call-log] classifyIntake/company-project filing failed (non-fatal):', e.message);
+  }
+
+  return { entry, matched: !!accountId, accountId, accountName, matchReason, classification };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const { id: businessId } = req.params;
   const { transcript, call_platform, call_date, call_duration_seconds, call_participants, created_by } = req.body || {};
 
   if (!transcript?.trim()) return res.status(400).json({ error: 'transcript is required' });
-  const platform = call_platform || 'manual';
-  if (!VALID_PLATFORMS.includes(platform)) {
-    return res.status(400).json({ error: `call_platform must be one of ${VALID_PLATFORMS.join(', ')}` });
-  }
   if (call_participants !== undefined && call_participants !== null && !Array.isArray(call_participants)) {
     return res.status(400).json({ error: 'call_participants must be an array of { name, email }' });
   }
@@ -68,63 +148,10 @@ export default async function handler(req, res) {
   if (!supabase) return res.status(500).json({ error: 'Supabase is not configured' });
 
   try {
-    const { data: business, error: businessError } = await supabase.from('businesses').select('id').eq('id', businessId).maybeSingle();
-    if (businessError) throw businessError;
-    if (!business) return res.status(404).json({ error: 'Business not found' });
-
-    const { accountId, reason: matchReason } = await matchAccountByParticipants(supabase, businessId, call_participants);
-
-    const { data: entry, error: insertError } = await supabase.from('business_intel_entries').insert({
-      business_id: businessId,
-      source: 'call',
-      source_type: 'call',
-      content: transcript.trim(),
-      call_platform: platform,
-      call_date: call_date || new Date().toISOString(),
-      call_duration_seconds: call_duration_seconds ?? null,
-      call_participants: call_participants || null,
-      account_id: accountId,
-      created_by: created_by || null,
-    }).select().single();
-    if (insertError) throw insertError;
-
-    // business_intel_entries has no fileAccountNote() primitive (confirmed
-    // live, Phase 0: recordAccountActivity() is the only account-touch
-    // mechanism, and it writes into accounts.data.handoffNotes directly -
-    // zero dependency on this table). The insert above and this call are
-    // two independent writes to two independent tables; neither implies
-    // the other.
-    let accountName = null;
-    if (accountId) {
-      const participantNames = (call_participants || []).map(p => p.name).filter(Boolean).join(', ');
-      const durationNote = call_duration_seconds ? `${Math.round(call_duration_seconds / 60)} min` : null;
-      const noteParts = [`Call logged via ${platform}`, durationNote, participantNames && `with ${participantNames}`].filter(Boolean);
-      accountName = await recordAccountActivity(supabase, accountId, created_by, 'call_log', noteParts.join(' — '));
-    }
-
-    // Same classifyIntake() Smart Intake already uses. Only its company/
-    // project outcomes apply here - existing_account/new_account/
-    // influencer/ambiguous are skipped: account attribution for a call is
-    // already handled above via participant matching, a stronger signal
-    // than an LLM guessing an account from transcript prose. Acting on both
-    // would double-log the same call onto the same account. Non-fatal: the
-    // call-log row above is already filed either way.
-    let classification = null;
-    try {
-      const result = await classifyIntake(supabase, businessId, transcript.trim());
-      classification = result.classification;
-      if (classification === 'existing_project' && result.project_id) {
-        const { data: project } = await supabase.from('projects').select('id').eq('id', result.project_id).eq('business_id', businessId).maybeSingle();
-        if (project) await fileProjectIntel(supabase, project.id, transcript.trim(), created_by);
-      } else if (classification === 'company_intel') {
-        await fileCompanyIntel(supabase, businessId, transcript.trim(), created_by);
-      }
-    } catch (e) {
-      console.warn('[call-log] classifyIntake/company-project filing failed (non-fatal):', e.message);
-    }
-
-    return res.status(200).json({ entry, matched: !!accountId, accountId, accountName, matchReason, classification });
+    const result = await fileCallLog(supabase, businessId, { transcript: transcript.trim(), call_platform, call_date, call_duration_seconds, call_participants, created_by });
+    return res.status(200).json(result);
   } catch (e) {
-    return res.status(500).json({ error: e.message });
+    const status = e.message === 'Business not found' ? 404 : 500;
+    return res.status(status).json({ error: e.message });
   }
 }

@@ -432,6 +432,8 @@ app.post('/api/businesses/:id/influencer/assess', esHandler('./api/businesses/in
 app.post('/api/businesses/:id/call-log', esHandler('./api/businesses/call-log.js'));
 app.post('/api/businesses/:id/call-log/:entryId/reassign', esHandler('./api/businesses/call-log-reassign.js'));
 app.post('/api/zoom/webhook', esHandler('./api/zoom/webhook.js'));
+app.get('/api/zoom/events', esHandler('./api/zoom/events.js'));
+app.post('/api/zoom/events/:eventId/reassign', esHandler('./api/zoom/events-reassign.js'));
 app.post('/api/notify-pending', async (req, res) => {
   const { name, email, role } = req.body || {};
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;

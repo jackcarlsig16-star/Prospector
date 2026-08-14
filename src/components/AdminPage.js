@@ -9,7 +9,7 @@ import {
   getMasterCodeHash, generateMasterCode, setMasterCode,
   generateCode,
 } from '../utils/invites';
-import { saveTeamUsers, saveFrontier, approveUser, patchUser } from '../utils/db';
+import { saveTeamUsers, saveFrontier, approveUser, patchUser, getAccountsForBusiness } from '../utils/db';
 import { isSupabaseEnabled } from '../utils/supabase';
 import { mapSfdcStage } from '../utils/stageMap';
 
@@ -110,6 +110,132 @@ function AccessLogTab() {
               <span style={{ ...mono, fontSize:10, color:C.mut }}>{fmtUA(e.user_agent)}</span>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Zoom Events Tab (zoom-meet-auto-ingest-v1, Step 5) ──────────────────────
+// Reconciliation view over zoom_webhook_events - every recording.completed /
+// recording.transcript_completed event received, whether it auto-matched to
+// a business/account or is sitting unmatched for manual assignment.
+function ZoomReassignRow({ event, businesses, onReassigned }) {
+  const [businessId, setBusinessId] = useState('');
+  const [accountId, setAccountId] = useState('');
+  const [accounts, setAccounts] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!businessId) { setAccounts([]); return; }
+    getAccountsForBusiness(businessId).then(setAccounts);
+  }, [businessId]);
+
+  const handleAssign = async () => {
+    if (!businessId || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/zoom/events/${event.id}/reassign`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ business_id: businessId, account_id: accountId || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to assign');
+      onReassigned();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div style={{ display:'flex', alignItems:'center', gap:8, marginTop:8, flexWrap:'wrap' }}>
+      <select value={businessId} onChange={e=>{setBusinessId(e.target.value);setAccountId('');}} style={{ ...mono, fontSize:11, padding:'5px 8px', background:C.bg, border:`1px solid ${C.brd}`, borderRadius:5, color:C.txt }}>
+        <option value="">— assign business —</option>
+        {businesses.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+      </select>
+      <select value={accountId} onChange={e=>setAccountId(e.target.value)} disabled={!businessId} style={{ ...mono, fontSize:11, padding:'5px 8px', background:C.bg, border:`1px solid ${C.brd}`, borderRadius:5, color:C.txt }}>
+        <option value="">— no account —</option>
+        {accounts.map(a => <option key={a.id} value={a.id}>{a.name || '(unnamed)'}</option>)}
+      </select>
+      <button onClick={handleAssign} disabled={!businessId||saving} style={{ ...mono, fontSize:11, padding:'5px 12px', background:businessId?C.gold:'transparent', border:`1px solid ${businessId?C.gold:C.brd}`, borderRadius:5, color:businessId?C.bg:C.dim, cursor:businessId?'pointer':'default', fontWeight:600 }}>
+        {saving ? 'Assigning…' : 'Assign & File'}
+      </button>
+      {error && <span style={{ ...mono, fontSize:10, color:C.red }}>⚠ {error}</span>}
+    </div>
+  );
+}
+
+function ZoomEventsTab() {
+  const [events, setEvents] = useState(null);
+  const [businesses, setBusinesses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+
+  const load = () => {
+    setLoading(true);
+    fetch('/api/zoom/events')
+      .then(r => r.json())
+      .then(d => {
+        if (d.error) { setError(d.error); setLoading(false); return; }
+        setEvents(d.events || []);
+        setBusinesses(d.businesses || []);
+        setLoading(false);
+      })
+      .catch(e => { setError(e.message); setLoading(false); });
+  };
+  useEffect(() => { load(); }, []);
+
+  const fmtTime = ts => { try { return new Date(ts).toLocaleString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }); } catch { return '-'; } };
+
+  return (
+    <div>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
+        <div>
+          <p style={{ ...mono, margin:'0 0 2px', fontSize:13, fontWeight:600, color:C.txt }}>Zoom Events</p>
+          <p style={{ ...mono, margin:0, fontSize:11, color:C.dim }}>recording.completed / recording.transcript_completed - matched, unmatched, and errored</p>
+        </div>
+        <button onClick={load} style={{ ...mono, fontSize:11, padding:'5px 12px', background:'transparent', border:`1px solid ${C.brd}`, borderRadius:5, color:C.mut, cursor:'pointer' }}>Refresh</button>
+      </div>
+      {loading && <p style={{ ...mono, fontSize:12, color:C.dim, padding:'20px 0' }}>Loading…</p>}
+      {error && <p style={{ ...mono, fontSize:12, color:C.red }}>{error}</p>}
+      {!loading && !error && events && (
+        events.length === 0 ? <p style={{ ...mono, fontSize:12, color:C.dim }}>No Zoom events received yet.</p> :
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          {events.map(e => {
+            const expanded = expandedId === e.id;
+            const statusColor = e.processingError ? C.red : e.processed ? C.green : C.orange;
+            const statusLabel = e.processingError ? 'Error' : e.processed ? 'Filed' : (e.matchedBusinessId ? 'Matching' : 'Unmatched');
+            return (
+              <div key={e.id} style={{ padding:'10px 12px', background:C.card, border:`1px solid ${C.brd}`, borderRadius:8 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap', marginBottom:6 }}>
+                  <span style={{ ...mono, fontSize:9, padding:'2px 7px', borderRadius:9, background:`${C.purple}18`, border:`1px solid ${C.purple}44`, color:C.purple }}>{e.eventType}</span>
+                  <span style={{ ...mono, fontSize:10, color:C.dim }}>{fmtTime(e.receivedAt)}</span>
+                  <span style={{ ...mono, fontSize:9, padding:'2px 7px', borderRadius:9, background:`${statusColor}18`, border:`1px solid ${statusColor}44`, color:statusColor }}>{statusLabel}</span>
+                  {e.matchedBusinessName && <span style={{ ...mono, fontSize:10, color:C.txt }}>{e.matchedBusinessName}{e.matchedAccountName ? ` → ${e.matchedAccountName}` : ''}</span>}
+                  {e.matchReason && <span style={{ ...mono, fontSize:9, color:C.dim }}>({e.matchReason})</span>}
+                </div>
+                <p style={{ ...mono, fontSize:11, color:C.mut, margin:'0 0 4px' }}>
+                  {e.topic ? `"${e.topic}"` : '(no topic)'} · host: {e.hostEmail || '-'}
+                </p>
+                {e.processingError && <p style={{ ...mono, fontSize:11, color:C.red, margin:'0 0 4px' }}>⚠ {e.processingError}</p>}
+                {e.hasTranscript && (
+                  <p style={{ ...mono, fontSize:11, color:C.txt, margin:0, whiteSpace:'pre-wrap', cursor:'pointer' }} onClick={()=>setExpandedId(expanded?null:e.id)}>
+                    {expanded ? e.transcriptText : `${(e.transcriptText||'').slice(0,140)}${(e.transcriptText||'').length>140?'…':''}`}
+                    {!expanded && (e.transcriptText||'').length>140 && <span style={{ color:C.dim }}> (click to expand)</span>}
+                  </p>
+                )}
+                {!e.processed && !e.callLogEntryId && e.hasTranscript && (
+                  <ZoomReassignRow event={e} businesses={businesses} onReassigned={load} />
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -482,6 +608,7 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
             ["pricing",    "💰 Pricing"],
             ["access",     "⛏ Invites"],
             ["accesslog",  "📋 Access Log"],
+            ["zoomevents", "☎ Zoom Events"],
             ["onboarding", `⛏ Onboarding${pendingApprovalsCount>0?` (${pendingApprovalsCount})`:""}`],
           ]},
           { label:"DATA", tabs:[
@@ -923,6 +1050,7 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
 
       {/* ── ACCESS LOG TAB ── */}
       {tab==="accesslog"&&<AccessLogTab/>}
+      {tab==="zoomevents"&&<ZoomEventsTab/>}
 
       {/* ── ONBOARDING TAB ── */}
       {tab==="onboarding"&&<OnboardingTab users={users} setUsers={setUsers} onSaveUsers={onSaveUsers} invites={invites} setInvites={setInvites}/>}
