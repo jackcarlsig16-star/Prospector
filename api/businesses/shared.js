@@ -228,13 +228,27 @@ export async function fileProjectIntel(supabase, projectId, text, createdBy) {
   return updated;
 }
 
-export async function fileAccountNote(supabase, accountId, text) {
+// Server-side twin of db.js's recordAccountActivity (client-side) - the
+// same logic, but this runtime (Node, service key) can't share a literal
+// module with the browser runtime, so this app has one canonical version
+// per side rather than one call site reimplementing it per feature
+// (accounts-lists-and-activity-model-v1). Appends a stamped note to the
+// account's running handoffNotes log and updates the last_touched_by/at
+// cache - called for every write that touches an existing account
+// (smart intake account notes, CSV re-import matches, future call log).
+export async function recordAccountActivity(supabase, accountId, memberEmail, type, note) {
   const { data: account, error: accountError } = await supabase.from('accounts').select('*').eq('id', accountId).single();
   if (accountError) throw accountError;
   const existingNotes = account.data?.handoffNotes || '';
-  const nextNotes = existingNotes ? `${existingNotes}\n\n[${new Date().toLocaleDateString()}] ${text}` : text;
+  const stamp = `[${type} · ${new Date().toLocaleDateString()}] ${note}`;
+  const nextNotes = existingNotes ? `${existingNotes}\n\n${stamp}` : stamp;
   const { error } = await supabase.from('accounts')
-    .update({ data: { ...account.data, handoffNotes: nextNotes }, updated_at: new Date().toISOString() })
+    .update({
+      data: { ...account.data, handoffNotes: nextNotes },
+      last_touched_by: memberEmail || null,
+      last_touched_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', accountId);
   if (error) throw error;
   return account.data?.name || '';

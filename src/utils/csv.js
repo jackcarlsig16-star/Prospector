@@ -1,8 +1,14 @@
-// Shared CSV parsing + fuzzy name matching - extracted from UploadsPage.js's
-// inline implementation so csv-account-import-v1 doesn't duplicate a second
-// hand-rolled parser/matcher. UploadsPage.js itself is untouched (legacy,
-// owner_email-scoped, working) - this is the shared home for any future
-// caller, starting with the business-scoped importer (modular-tools discipline).
+// Shared CSV parsing - extracted from UploadsPage.js's inline implementation
+// so csv-account-import-v1 doesn't duplicate a second hand-rolled parser.
+// UploadsPage.js itself is untouched (legacy, owner_email-scoped, working) -
+// this is the shared home for any future caller, starting with the
+// business-scoped importer (modular-tools discipline).
+//
+// Name/domain matching lives in normAccount.js, not here - that's the
+// canonical dedup logic already used by App.js's merge pass and the manual
+// DEDUPE button; the CSV importer was changed to call that directly instead
+// of carrying its own separate fuzzy-matching heuristic
+// (accounts-lists-and-activity-model-v1, Phase 0 audit finding).
 
 export function parseCsvLine(line) {
   const cols = [];
@@ -37,17 +43,3 @@ export function parseCsv(text) {
   });
   return { headers, rows };
 }
-
-export const normName = n => (n || "").toLowerCase()
-  .replace(/\b(inc|llc|ltd|corp|co|company|group|holdings|tech|technologies|solutions|services|global|international|the)\b/g, '')
-  .replace(/[^a-z0-9 ]/g, ' ')
-  .replace(/\s+/g, ' ')
-  .trim();
-
-export const nameSim = (a, b) => {
-  const na = normName(a), nb = normName(b);
-  if (na === nb) return 1;
-  const ta = new Set(na.split(' ').filter(Boolean)), tb = new Set(nb.split(' ').filter(Boolean));
-  const inter = [...ta].filter(t => tb.has(t)).length, union = new Set([...ta, ...tb]).size;
-  return union > 0 ? inter / union : 0;
-};

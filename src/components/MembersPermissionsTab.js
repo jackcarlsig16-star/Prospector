@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { C, mono } from '../constants/colors';
-import { getListsForBusiness, createList, renameList, deleteList, getMembersForBusiness, getPermissionsForMembers, setMemberListPermission } from '../utils/db';
+import { getListsForBusiness, createList, renameList, deleteList, getMembersForBusiness, getPermissionsForMembers, setMemberListPermission, getAccountCountForList } from '../utils/db';
 
 const inp = { fontSize:13, padding:"7px 10px", background:C.bg, border:`1.5px solid ${C.brdM}`, borderRadius:6, color:C.txt, outline:"none", boxSizing:"border-box", ...mono };
 const sectionLabel = { ...mono, fontSize:12, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:10 };
@@ -17,10 +17,55 @@ function levelFor(permissions, memberId, listId) {
   return row.can_edit ? 'edit' : row.can_view ? 'view' : 'none';
 }
 
+// Type-to-confirm rather than a plain yes/no click - deleting a list feels
+// destructive even though the underlying accounts are always safe (cascade
+// only ever touches list_id-scoped rows, never accounts themselves)
+// (accounts-lists-and-activity-model-v1, Phase 7).
+function DeleteListConfirm({ list, onClose, onConfirmed }) {
+  const [count, setCount] = useState(null);
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => { getAccountCountForList(list.id).then(setCount); }, [list.id]);
+
+  const confirmed = typed.trim() === list.name;
+
+  const handleDelete = async () => {
+    setBusy(true);
+    await deleteList(list.id);
+    setBusy(false);
+    onConfirmed(list.id);
+  };
+
+  return (
+    <div onClick={e=>{if(e.target===e.currentTarget) onClose();}} style={{ position:"fixed", inset:0, zIndex:1000, background:"#00000099", display:"flex", alignItems:"center", justifyContent:"center" }}>
+      <div style={{ background:C.card, border:`1px solid ${C.red}55`, borderRadius:12, padding:"22px 26px", width:400, boxShadow:"0 20px 60px #000c" }}>
+        <p style={{ ...mono, fontSize:14, color:C.txt, fontWeight:700, margin:"0 0 12px" }}>Delete "{list.name}"?</p>
+        <p style={{ ...mono, fontSize:12, color:C.dim, margin:"0 0 16px", lineHeight:1.6 }}>
+          {count === null ? 'Checking account count…' : (
+            <>This list has <span style={{ color:C.txt, fontWeight:700 }}>{count}</span> account{count !== 1 ? 's' : ''}. Deleting it won't delete the accounts — they'll stay in the repository, just with one fewer list. Type the list name to confirm.</>
+          )}
+        </p>
+        <input autoFocus value={typed} onChange={e=>setTyped(e.target.value)} placeholder={list.name}
+          onKeyDown={e=>e.key==='Enter' && confirmed && !busy && handleDelete()}
+          style={{ ...inp, marginBottom:16 }} disabled={busy} />
+        <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+          <button onClick={onClose} style={{ ...mono, fontSize:12, padding:"7px 16px", background:"transparent", border:`1px solid ${C.brd}`, borderRadius:6, color:C.mut, cursor:"pointer" }}>Cancel</button>
+          <button onClick={handleDelete} disabled={!confirmed||busy}
+            style={{ ...mono, fontSize:12, padding:"7px 18px", background:confirmed?C.red:"transparent", border:`1px solid ${confirmed?C.red:C.brd}`, borderRadius:6, color:confirmed?"#fff":C.dim, cursor:confirmed&&!busy?"pointer":"default", fontWeight:700 }}>
+            {busy ? "Deleting…" : "Delete list"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ListRow({ list, onRenamed, onDeleted }) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(list.name);
   const [busy, setBusy] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const commit = async () => {
     if (!name.trim() || name.trim() === list.name) { setEditing(false); setName(list.name); return; }
@@ -40,9 +85,12 @@ function ListRow({ list, onRenamed, onDeleted }) {
       ) : (
         <span onClick={()=>setEditing(true)} style={{ ...mono, fontSize:13, color:C.txt, flex:1, cursor:"pointer" }}>{list.name}</span>
       )}
-      <button onClick={()=>{ if(window.confirm(`Delete "${list.name}"? Accounts on this list will become unassigned.`)) onDeleted(list.id); }}
+      <button onClick={()=>setConfirmingDelete(true)}
         style={{ ...mono, fontSize:11, color:C.dim, background:"transparent", border:"none", cursor:"pointer", padding:"2px 6px" }}
         onMouseEnter={e=>e.currentTarget.style.color=C.red} onMouseLeave={e=>e.currentTarget.style.color=C.dim}>✕</button>
+      {confirmingDelete && (
+        <DeleteListConfirm list={list} onClose={()=>setConfirmingDelete(false)} onConfirmed={onDeleted} />
+      )}
     </div>
   );
 }
@@ -96,10 +144,12 @@ export default function MembersPermissionsTab({ business, viewerEmail }) {
     setCreating(false);
   };
 
-  const handleDeleteList = async (listId) => {
+  // The actual delete already ran inside DeleteListConfirm's verify-stage
+  // flow (real count shown, type-to-confirm) - this just reconciles local
+  // state afterward, doesn't delete a second time.
+  const handleDeleteList = (listId) => {
     setLists(prev => prev.filter(l => l.id !== listId));
     setPermissions(prev => prev.filter(p => p.list_id !== listId));
-    await deleteList(listId);
   };
 
   const handleLevelChange = async (memberId, listId, level) => {

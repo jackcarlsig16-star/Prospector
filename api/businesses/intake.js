@@ -1,5 +1,5 @@
 export const config = { maxDuration: 30 };
-import { getSupabase, classifyIntake, fileCompanyIntel, fileProjectIntel, fileAccountNote } from './shared.js';
+import { getSupabase, classifyIntake, fileCompanyIntel, fileProjectIntel, recordAccountActivity } from './shared.js';
 
 // High-confidence cases (company intel, existing project, existing account,
 // and the ambiguous fallback) file immediately and return status:'filed'.
@@ -37,7 +37,7 @@ export default async function handler(req, res) {
       if (accErr) throw accErr;
       if (!account) throw new Error('Classified account not found on this business');
 
-      const accountName = await fileAccountNote(supabase, account.id, text.trim());
+      const accountName = await recordAccountActivity(supabase, account.id, created_by, 'smart_intake', text.trim());
       return res.status(200).json({ status: 'filed', classification: 'existing_account', accountName });
     }
 

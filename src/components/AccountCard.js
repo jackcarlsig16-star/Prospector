@@ -276,6 +276,10 @@ function AccountCard({ acc, expanded, onToggle, onReassay, reassaying, onUpdate,
           {assignedEntry&&<span title={`In Frontier — ${assignedEntry.assignedTo||''}`} style={{ fontSize:11, color:T.cyan, background:`${T.cyan}14`, border:`1px solid ${T.cyan}55`, borderRadius:3, padding:T.spacing.pill, letterSpacing:"0.06em", textShadow:`0 0 6px ${T.cyan}55` }}>◆ OUTBOUND</span>}
           {stale&&<span style={{ fontSize:11, color:T.red }}>⚠ {days}d at risk</span>}
           {warn&&!stale&&<span style={{ fontSize:11, color:T.amber }}>{days}d warn</span>}
+          {/* Activity-derived last contact (accounts-lists-and-activity-model-v1) -
+              only ever set on accounts created/touched through the new
+              lists/activity model, so this is a no-op for every legacy account. */}
+          {acc.lastTouchedBy && <span title={acc.lastTouchedAt ? new Date(acc.lastTouchedAt).toLocaleString() : undefined} style={{ fontSize:11, color:T.text.muted }}>Last contact: {acc.lastTouchedBy} · {staleDays(acc.lastTouchedAt)===0?"today":`${staleDays(acc.lastTouchedAt)}d ago`}</span>}
           {hasBankConnect(acc)&&<span title="Bank connect signal" style={{ fontSize:13, lineHeight:1 }}>🐷</span>}
           {acc.distributionMultiplier&&<span title={`Distribution multiplier — ${acc.estimatedDownstreamUsers||"downstream reach detected"}`} style={{ fontSize:13, lineHeight:1 }}>📦</span>}
           {acc.isEstablished&&!acc.distributionMultiplier&&<span title={`Established — ${(acc.tractionSignals||[]).slice(0,2).join(", ")||"active customer base"}`} style={{ fontSize:13, lineHeight:1 }}>✅</span>}

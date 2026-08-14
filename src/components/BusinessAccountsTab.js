@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ROLE_PERMS } from '../constants/appConfig';
 import { C, mono } from '../constants/colors';
-import { getAccountsForBusiness, saveAccountsForBusiness, getListsForBusiness, getMembersForBusiness, getPermissionsForMembers } from '../utils/db';
+import { getAccountsForBusiness, saveAccountsForBusiness, getListsForBusiness, getMembersForBusiness, getPermissionsForMembers, getAccountListMapForBusiness, linkAccountToLists } from '../utils/db';
 import AccountsPage from './AccountsPage';
 import DealSummaryModal from './AccountCardPricingSummary';
 import CsvImportModal from './CsvImportModal';
@@ -13,6 +13,8 @@ import CsvImportModal from './CsvImportModal';
 // write directly via the anon key; real enforcement lands with Supabase Auth.
 const VIEW_ONLY_PERMS = { canUpload:false, canStealth:false, canReassay:false, canRemove:false, canEditStage:false, canAdmin:false, canFlagRemoval:false, canClaim:false };
 
+const UNLISTED = '__unlisted__';
+
 // Business-scoped accounts - independent list per business, no SFDC sync or
 // compliance workflow (those are Plaid-specific, out of scope until
 // generalize-legacy-functions-v1). A brand-new business starts with zero
@@ -20,80 +22,125 @@ const VIEW_ONLY_PERMS = { canUpload:false, canStealth:false, canReassay:false, c
 export default function BusinessAccountsTab({ business, userEmail }) {
   const [accounts, setAccounts] = useState([]);
   const [lists, setLists] = useState([]);
+  const [accountListMap, setAccountListMap] = useState({}); // accountId -> [listId, ...]
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState([]);
   const [dealSummaryAccId, setDealSummaryAccId] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
-  const [selectedListId, setSelectedListId] = useState(null); // null = all accessible lists
+  const [selectedListId, setSelectedListId] = useState(null); // null = all accessible; UNLISTED = zero-list accounts
   const [accessibleListIds, setAccessibleListIds] = useState(null); // null = owner, no restriction
   const [editableListIds, setEditableListIds] = useState(null);
 
   const isOwner = (business.owner_email || '').toLowerCase() === (userEmail || '').toLowerCase();
 
-  useEffect(() => {
-    let cancelled = false;
+  const reload = useCallback(() => {
     setLoading(true);
-    Promise.all([
+    return Promise.all([
       getAccountsForBusiness(business.id),
       getListsForBusiness(business.id),
+      getAccountListMapForBusiness(business.id),
       isOwner ? Promise.resolve(null) : getMembersForBusiness(business.id),
-    ]).then(async ([accs, listRows, memberRows]) => {
-      if (cancelled) return;
+    ]).then(async ([accs, listRows, listMap, memberRows]) => {
       setAccounts(accs);
       setLists(listRows);
+      setAccountListMap(listMap);
       if (!isOwner) {
         const me = (memberRows || []).find(m => m.email.toLowerCase() === (userEmail || '').toLowerCase());
         const perms = me ? await getPermissionsForMembers([me.id]) : [];
-        if (cancelled) return;
         setAccessibleListIds(new Set(perms.filter(p => p.can_view).map(p => p.list_id)));
         setEditableListIds(new Set(perms.filter(p => p.can_edit).map(p => p.list_id)));
       }
       setLoading(false);
     });
-    return () => { cancelled = true; };
   }, [business.id, isOwner, userEmail]);
 
+  useEffect(() => { let cancelled = false; reload().catch(()=>{}); return () => { cancelled = true; }; }, [reload]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const listIdsFor = useCallback(acc => accountListMap[acc.id] || [], [accountListMap]);
+
+  // Union rule (accounts-lists-and-activity-model-v1, Phase 4): a member can
+  // edit an account if they have edit access on ANY list it belongs to, not
+  // just the currently-selected one - checked across all its account_lists
+  // rows, not a single list.
+  const canEditAccount = useCallback(acc => {
+    if (isOwner) return true;
+    if (!editableListIds) return false;
+    return listIdsFor(acc).some(id => editableListIds.has(id));
+  }, [isOwner, editableListIds, listIdsFor]);
+
+  // persist merges by id into the FULL business account set rather than
+  // replacing it outright - AccountsPage's internal edit flows (e.g.
+  // handleAccountUpdate) call onSave with whatever `accounts` prop they were
+  // given, which is visibleAccounts (list-filtered). Replacing wholesale
+  // would silently delete every account outside the current filter via
+  // saveAccountsForBusiness's delete-not-in-set behavior - a real bug found
+  // while wiring this up, not a hypothetical. Also enforces per-account
+  // union edit access as a second layer, since AccountsPage can't gate
+  // individual rows without a much larger rewrite (flagged trade-off, not
+  // silent - a member may see an edit control on a row they can't actually
+  // change; the write itself is still correctly rejected here).
   const persist = useCallback((next) => {
-    setAccounts(next);
-    saveAccountsForBusiness(business.id, userEmail, next);
-  }, [business.id, userEmail]);
+    setAccounts(prevFull => {
+      const byId = new Map(prevFull.map(a => [a.id, a]));
+      next.forEach(a => { if (canEditAccount(a)) byId.set(a.id, a); });
+      const merged = [...byId.values()];
+      saveAccountsForBusiness(business.id, userEmail, merged);
+      return merged;
+    });
+  }, [business.id, userEmail, canEditAccount]);
+
+  const removeAccount = useCallback(id => {
+    const acc = accounts.find(a => a.id === id);
+    if (acc && !canEditAccount(acc)) return;
+    const filtered = accounts.filter(a => a.id !== id);
+    setAccounts(filtered);
+    saveAccountsForBusiness(business.id, userEmail, filtered);
+  }, [accounts, business.id, userEmail, canEditAccount]);
+
+  const handleAdd = useCallback((acc) => {
+    setAccounts(prev => [acc, ...prev]);
+    saveAccountsForBusiness(business.id, userEmail, [acc, ...accounts]);
+    const targetListId = selectedListId && selectedListId !== UNLISTED ? selectedListId : null;
+    if (targetListId) {
+      linkAccountToLists(String(acc.id), [targetListId]).then(() => {
+        setAccountListMap(prev => ({ ...prev, [acc.id]: [...(prev[acc.id]||[]), targetListId] }));
+      });
+    }
+  }, [accounts, business.id, userEmail, selectedListId]);
 
   // Owner sees everything, unfiltered by list access. A member only ever sees
-  // accounts on lists they've been granted at least view on - unassigned
-  // accounts (no list yet) are excluded for members, since there's no list to
-  // have been granted access to.
+  // accounts on lists they've been granted at least view on - unlisted
+  // accounts (zero lists) are owner-only, since there's no list a member
+  // could have been granted access to.
   const visibleAccounts = useMemo(() => {
     let list = accounts;
-    if (!isOwner && accessibleListIds) list = list.filter(a => a.listId && accessibleListIds.has(a.listId));
-    if (selectedListId) list = list.filter(a => a.listId === selectedListId);
+    if (!isOwner && accessibleListIds) list = list.filter(a => listIdsFor(a).some(id => accessibleListIds.has(id)));
+    if (selectedListId === UNLISTED) list = list.filter(a => listIdsFor(a).length === 0);
+    else if (selectedListId) list = list.filter(a => listIdsFor(a).includes(selectedListId));
     return list;
-  }, [accounts, isOwner, accessibleListIds, selectedListId]);
+  }, [accounts, isOwner, accessibleListIds, selectedListId, listIdsFor]);
 
-  // Whether the current view is fully editable. Owner: always. Member on a
-  // specific list: that list's own edit grant. Member on "All accessible"
-  // (a mixed set): only if every accessible list is also editable - a single
-  // view-only list mixed in defaults the whole view to read-only rather than
-  // risk exposing edit actions on an account the member can't actually edit.
+  // Whether to surface edit controls at all for the current filter - real
+  // per-account enforcement happens in persist()/removeAccount() above
+  // regardless of this. Owner: always. Member: true if they have edit
+  // access to at least one list touching the current view.
   const canEditCurrentView = isOwner || (editableListIds && (
-    selectedListId ? editableListIds.has(selectedListId)
-      : accessibleListIds && accessibleListIds.size > 0 && [...accessibleListIds].every(id => editableListIds.has(id))
+    selectedListId && selectedListId !== UNLISTED ? editableListIds.has(selectedListId)
+      : visibleAccounts.some(a => canEditAccount(a))
   ));
 
   const perms = canEditCurrentView ? ROLE_PERMS.Owner : VIEW_ONLY_PERMS;
-
-  const handleAdd = useCallback((acc) => {
-    persist([{ ...acc, listId: selectedListId || acc.listId || null }, ...accounts]);
-  }, [accounts, persist, selectedListId]);
 
   if (loading) {
     return <p style={{ fontFamily: 'monospace', fontSize: 13, color: '#888' }}>Loading accounts…</p>;
   }
 
   const listSwitcherOptions = isOwner ? lists : lists.filter(l => accessibleListIds?.has(l.id));
+  const unlistedCount = isOwner ? accounts.filter(a => listIdsFor(a).length === 0).length : 0;
 
   return (
     <>
-      {listSwitcherOptions.length > 0 && (
+      {(listSwitcherOptions.length > 0 || unlistedCount > 0) && (
         <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, flexWrap:"wrap" }}>
           <button onClick={()=>setSelectedListId(null)} style={{
             ...mono, fontSize:11, padding:"5px 12px", borderRadius:20, cursor:"pointer",
@@ -107,11 +154,18 @@ export default function BusinessAccountsTab({ business, userEmail }) {
               border:`1px solid ${selectedListId===l.id ? C.gold : C.brd}`, fontWeight: selectedListId===l.id ? 700 : 400,
             }}>{l.name}</button>
           ))}
+          {isOwner && unlistedCount > 0 && (
+            <button onClick={()=>setSelectedListId(UNLISTED)} style={{
+              ...mono, fontSize:11, padding:"5px 12px", borderRadius:20, cursor:"pointer",
+              background: selectedListId===UNLISTED ? C.gold : "transparent", color: selectedListId===UNLISTED ? C.bg : C.dim,
+              border:`1px solid ${selectedListId===UNLISTED ? C.gold : C.brd}`, fontWeight: selectedListId===UNLISTED ? 700 : 400,
+            }}>Unlisted ({unlistedCount})</button>
+          )}
         </div>
       )}
       {!canEditCurrentView && !isOwner && (
         <p style={{ ...mono, fontSize:11, color:C.dim, margin:"0 0 14px" }}>
-          View-only — you don't have edit access to every list shown here. Switch to a single list you can edit to make changes.
+          View-only — you don't have edit access to any list shown here.
         </p>
       )}
       {canEditCurrentView && (
@@ -123,13 +177,13 @@ export default function BusinessAccountsTab({ business, userEmail }) {
       )}
       {importOpen && (
         <CsvImportModal business={business} userEmail={userEmail} onClose={()=>setImportOpen(false)}
-          onImported={()=>getAccountsForBusiness(business.id).then(setAccounts)} />
+          onImported={reload} />
       )}
       <AccountsPage
         accounts={visibleAccounts}
         onSave={canEditCurrentView ? persist : undefined}
         onAddAccount={canEditCurrentView ? handleAdd : undefined}
-        onRemoveAccount={canEditCurrentView ? (id => persist(accounts.filter(a => a.id !== id))) : undefined}
+        onRemoveAccount={canEditCurrentView ? removeAccount : undefined}
         perms={perms}
         activeRole="Owner"
         activeUser={{ name: userEmail, email: userEmail, role: 'Owner' }}

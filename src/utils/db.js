@@ -186,11 +186,14 @@ export async function getAccountsForBusiness(businessId) {
   try {
     const { data, error } = await supabase
       .from('accounts')
-      .select('data')
+      .select('data, last_touched_by, last_touched_at')
       .eq('business_id', businessId)
       .order('updated_at', { ascending: true });
     if (error) throw error;
-    return (data || []).map(r => r.data).filter(Boolean);
+    // last_touched_by/at are real columns (denormalized activity cache,
+    // accounts-lists-and-activity-model-v1), not part of the data blob -
+    // merge them in so callers see one flat account object either way.
+    return (data || []).filter(r => r.data).map(r => ({ ...r.data, lastTouchedBy: r.last_touched_by || null, lastTouchedAt: r.last_touched_at || null }));
   } catch(e) {
     console.warn('[db] getAccountsForBusiness Supabase failed, using localStorage:', e.message);
     try { return JSON.parse(localStorage.getItem(bizAccountsKey(businessId)) || '[]'); } catch { return []; }
@@ -229,27 +232,95 @@ export async function saveAccountsForBusiness(businessId, ownerEmail, accounts) 
 // Chunked pure-insert for CSV import - unlike saveAccountsForBusiness (which
 // replaces the whole account set for a business), this only adds new rows
 // and never touches existing ones. Chunked so a large CSV doesn't attempt
-// one massive insert (csv-account-import-v1).
+// one massive insert (csv-account-import-v1). listIds is per-account now -
+// lists are a many-to-many grouping lens, never ownership
+// (accounts-lists-and-activity-model-v1) - each new account gets a row in
+// account_lists per list it was imported into, plus last_touched_by/at
+// stamped directly (cheaper than an insert-then-update round trip for a
+// brand new row - recordAccountActivity is reserved for touches on an
+// account that already exists).
 const IMPORT_CHUNK_SIZE = 200;
-export async function bulkCreateAccountsForBusiness(businessId, ownerEmail, accountObjects) {
+export async function bulkCreateAccountsForBusiness(businessId, ownerEmail, memberEmail, accountObjects) {
   if (!businessId || !accountObjects?.length) return { inserted: 0, error: null };
   if (!isSupabaseEnabled()) return { inserted: 0, error: 'Supabase is not available.' };
   let inserted = 0;
   for (let i = 0; i < accountObjects.length; i += IMPORT_CHUNK_SIZE) {
     const chunk = accountObjects.slice(i, i + IMPORT_CHUNK_SIZE);
+    const now = new Date().toISOString();
     const rows = chunk.map(a => ({
       id: String(a.id),
       owner_email: ownerEmail || '',
       business_id: businessId,
-      list_id: a.listId || null,
+      last_touched_by: memberEmail || null,
+      last_touched_at: now,
       data: a,
-      updated_at: new Date().toISOString(),
+      updated_at: now,
     }));
     const { error } = await supabase.from('accounts').insert(rows);
     if (error) return { inserted, error: error.message };
+    const linkRows = chunk.flatMap(a => (a.listIds || []).map(listId => ({ account_id: String(a.id), list_id: listId })));
+    if (linkRows.length) {
+      const { error: linkErr } = await supabase.from('account_lists').insert(linkRows);
+      if (linkErr) return { inserted, error: linkErr.message };
+    }
     inserted += chunk.length;
   }
   return { inserted, error: null };
+}
+
+// Links an already-existing (deduped) account to one or more additional
+// lists, without creating a second account row - "adding via a list either
+// creates it, or links the existing deduped account to that list"
+// (accounts-lists-and-activity-model-v1). Ignores lists it's already on.
+export async function linkAccountToLists(accountId, listIds) {
+  if (!accountId || !listIds?.length) return { error: null };
+  const rows = listIds.map(listId => ({ account_id: accountId, list_id: listId }));
+  const { error } = await supabase.from('account_lists').upsert(rows, { onConflict: 'account_id,list_id', ignoreDuplicates: true });
+  return { error: error?.message || null };
+}
+
+export async function getListIdsForAccount(accountId) {
+  if (!accountId || !isSupabaseEnabled()) return [];
+  const { data, error } = await supabase.from('account_lists').select('list_id').eq('account_id', accountId);
+  if (error) { console.warn('[db] getListIdsForAccount failed:', error.message); return []; }
+  return (data || []).map(r => r.list_id);
+}
+
+// Every account_lists row for a business's accounts in one query, keyed by
+// account_id -> [list_id, ...] - avoids N+1 queries when rendering a list
+// filter over many accounts.
+export async function getAccountListMapForBusiness(businessId) {
+  if (!businessId || !isSupabaseEnabled()) return {};
+  const { data: accs, error: accErr } = await supabase.from('accounts').select('id').eq('business_id', businessId);
+  if (accErr || !accs?.length) return {};
+  const ids = accs.map(a => a.id);
+  const { data, error } = await supabase.from('account_lists').select('account_id, list_id').in('account_id', ids);
+  if (error) { console.warn('[db] getAccountListMapForBusiness failed:', error.message); return {}; }
+  const map = {};
+  (data || []).forEach(r => { (map[r.account_id] = map[r.account_id] || []).push(r.list_id); });
+  return map;
+}
+
+export async function removeAccountFromList(accountId, listId) {
+  if (!accountId || !listId) return { error: null };
+  const { error } = await supabase.from('account_lists').delete().eq('account_id', accountId).eq('list_id', listId);
+  return { error: error?.message || null };
+}
+
+// Client-side twin of shared.js's recordAccountActivity (server-side) - see
+// that function's comment for why this app has one per runtime instead of
+// one shared module (accounts-lists-and-activity-model-v1).
+export async function recordAccountActivity(accountId, memberEmail, type, note) {
+  const { data: account, error: fetchErr } = await supabase.from('accounts').select('data').eq('id', accountId).single();
+  if (fetchErr) return { error: fetchErr.message };
+  const existingNotes = account.data?.handoffNotes || '';
+  const stamp = `[${type} · ${new Date().toLocaleDateString()}] ${note}`;
+  const nextNotes = existingNotes ? `${existingNotes}\n\n${stamp}` : stamp;
+  const now = new Date().toISOString();
+  const { error } = await supabase.from('accounts')
+    .update({ data: { ...account.data, handoffNotes: nextNotes }, last_touched_by: memberEmail || null, last_touched_at: now, updated_at: now })
+    .eq('id', accountId);
+  return { error: error?.message || null };
 }
 
 export function subscribeToAccounts(ownerEmail, onChange) {
@@ -645,6 +716,19 @@ export async function renameList(listId, name) {
   }
 }
 
+export async function getAccountCountForList(listId) {
+  if (!listId || !isSupabaseEnabled()) return 0;
+  const { count, error } = await supabase.from('account_lists').select('*', { count: 'exact', head: true }).eq('list_id', listId);
+  if (error) { console.warn('[db] getAccountCountForList failed:', error.message); return 0; }
+  return count || 0;
+}
+
+// Safe by construction, not by app-level care: account_lists.list_id and
+// member_list_permissions.list_id both cascade ON DELETE from lists (id) -
+// deleting a list only ever removes its own row, its account_lists links,
+// and its member_list_permissions rows. Accounts themselves have no FK to
+// lists at all anymore (join table, not ownership) so they're structurally
+// unreachable by this delete (accounts-lists-and-activity-model-v1, Phase 7).
 export async function deleteList(listId) {
   try {
     const { error } = await supabase.from('lists').delete().eq('id', listId);
