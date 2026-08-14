@@ -198,17 +198,19 @@ ${projectGuidance.outreach_example ? `Example of how this project's outreach sho
     note              ? `AE context: ${note}` : null,
     // outreach-intelligence-v1 Section 0b follow-up — customIntel is
     // getActiveIntel()'s raw output: global, not business-scoped, still
-    // holding the original fintech product docs (Core Verify etc). Live-
-    // tested against HumanKind/The Coconut Cult: even with correct
-    // assayCriteria grounding in the system prompt, this raw product-doc
-    // text in the user message overrode it and produced ACH/Core Verify
-    // copy for a wellness-sponsorship business. Same root cause and same
-    // fix as buildGeneralizedPrompt() in src/utils/assay.js - only include
-    // it when there's no real business-fit context to replace it with
-    // (Claim Jumper's pool, Frontier stealth entries, influencer accounts,
-    // or a business that hasn't generated assay_criteria yet all keep
-    // getting customIntel exactly as before).
-    customIntel && !assayCriteria ? `Additional intel:\n${customIntel.slice(0, 800)}` : null,
+    // holding the original fintech product docs (Core Verify etc). Gated on
+    // !assayCriteria at first, but assayCriteria is never fetched at all for
+    // influencer accounts (isInfluencer skips that query entirely) - so a
+    // real businessId on an influencer account still let customIntel through
+    // unconditionally. Live-tested against HumanKind's real influencer
+    // accounts (bulk generation across a real project list): got "Core
+    // Verify"/"ACH flow" pitches sent to Chicago wellness creators. Gate on
+    // !businessId instead - any real businessId means a real, non-fintech
+    // business context exists, regardless of whether assay_criteria has been
+    // generated yet or the account is an influencer. Only Claim Jumper's
+    // pool and Frontier stealth entries (genuinely no businessId at all)
+    // keep getting customIntel exactly as before.
+    customIntel && !businessId ? `Additional intel:\n${customIntel.slice(0, 800)}` : null,
     isInfluencer
       ? (isLinkedIn
           ? `Write a ${formatLabel} that opens with genuine curiosity about their content/audience — not a generic pitch. Use the creator context above to identify something specific.`
