@@ -76,7 +76,9 @@ export default function AccountCard({
     ? { label: "Generate Outreach", icon: "✦", onClick: () => setOutreachOpen(true) }
     : isInfluencer
       ? { label: "Assess this creator first", icon: "◆", disabled: true }
-      : { label: reassaying ? "Analyzing…" : "Run Assay first", icon: "◆", disabled: true, loading: reassaying };
+      : onReassay
+        ? { label: reassaying ? "Analyzing…" : "Run Assay first", icon: "◆", onClick: () => onReassay(acc), loading: reassaying, disabled: reassaying }
+        : { label: "Run Assay first", icon: "◆", disabled: true };
 
   // ── Tier 2/3/4 — business (Ask lives in QuickAskBar above, not this row) ─
   const businessActions = !isInfluencer ? [
@@ -89,6 +91,7 @@ export default function AccountCard({
     onOpenPricing ? { tier: 3, key: 'pricing', icon: '$', label: 'Pricing', onClick: () => onOpenPricing(acc.id) } : null,
     onOpenRoi ? { tier: 3, key: 'roi', icon: '📈', label: 'ROI', onClick: () => onOpenRoi(acc.id) } : null,
     onOpenDealSummary ? { tier: 3, key: 'dealsummary', icon: '★', label: 'Deal Summary', onClick: () => onOpenDealSummary(acc.id) } : null,
+    onReassay ? { tier: 3, key: 'reassay', icon: '↻', label: reassaying ? 'Analyzing…' : 'Re-assay', onClick: () => onReassay(acc), disabled: reassaying } : null,
   ].filter(Boolean) : [];
 
   const tiers = groupByTier(businessActions);

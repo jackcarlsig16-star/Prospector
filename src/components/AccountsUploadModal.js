@@ -16,7 +16,7 @@ const VERT_C = {
 const normName   = n   => (n||"").toLowerCase().replace(/[^a-z0-9]/g," ").replace(/\s+/g," ").trim();
 const normDomain = web => (web||"").replace(/^https?:\/\//i,"").replace(/^www\./i,"").replace(/\/.*$/,"").toLowerCase().trim();
 
-export function AddAccountModal({ onAdd, onClose, prefill = {} }) {
+export function AddAccountModal({ onAdd, onClose, prefill = {}, businessId }) {
   const hasPrefill = !!(prefill.name || prefill.vertical || prefill.context);
   const [name,   setName]   = useState(prefill.name || "");
   const [web,    setWeb]    = useState(prefill.web || "");
@@ -76,7 +76,7 @@ export function AddAccountModal({ onAdd, onClose, prefill = {} }) {
     setScoring(true); setErr(null);
     try {
       const combinedIntel = [ctx.trim(), getActiveIntel()].filter(Boolean).join("\n\n---\n\n");
-      const parsed = await clientAssay({ name: name.trim(), web: web.trim(), vert, sub, customIntel: combinedIntel, exampleAccts: getActiveExamples(), stage });
+      const parsed = await clientAssay({ name: name.trim(), web: web.trim(), vert, sub, customIntel: combinedIntel, exampleAccts: getActiveExamples(), stage, businessId });
       onAdd({
         id: Date.now(), name: name.trim(), web: web.trim(), vert, stage,
         tier: parsed.tier || null, score: parsed.score || null,

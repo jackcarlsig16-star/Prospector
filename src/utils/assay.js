@@ -79,28 +79,13 @@ export async function fetchSiteContentClient(web) {
   return { content: null, method: "failed" };
 }
 
-export async function clientAssay({ name, web, vert, sub, customIntel, exampleAccts, stage }) {
-  let siteContent = "", linkedin = null, signalBreakdown = null, fetchMethod = "none";
-  if (web) {
-    const { content, method } = await fetchSiteContentClient(web);
-    fetchMethod = method;
-    if (content) {
-      siteContent = content;
-      const liMatch = siteContent.match(/https?:\/\/(?:www\.)?linkedin\.com\/company\/[a-zA-Z0-9_\-\.]+\/?/i);
-      if (liMatch) linkedin = liMatch[0].replace(/\/$/, "") + "/";
-      signalBreakdown = detectSignals(siteContent);
-    } else { siteContent = "Site unreachable after fetch attempt"; }
-  }
-  const signalSummary = signalBreakdown ? `\nPRE-DETECTED SIGNALS:\n${JSON.stringify(signalBreakdown,null,2)}\n` : "";
-
-  const response = await fetch("/proxy/anthropic/messages", {
-    method: "POST",
-    headers: { "Content-Type":"application/json", "anthropic-version":"2023-06-01" },
-    signal: AbortSignal.timeout(45000),
-    body: JSON.stringify({
-      model: MODELS.FAST,
-      max_tokens: 900,
-      system: `You are a product fit scoring engine for an SMB AE. Respond with ONLY a JSON object, no other text.
+// assay-engine-generalization-v1 — the original hardcoded fintech scoring
+// prompt, preserved verbatim as the deliberate fallback for when no business
+// context is available (Claim Jumper's not-yet-assigned pool scoring) or a
+// business hasn't generated Assay Criteria yet. Do NOT "fix" this away —
+// see clientAssay()'s comment for why this path is intentional, not a bug.
+function buildLegacyFintechPrompt(customIntel, exampleAccts) {
+  return `You are a product fit scoring engine for an SMB AE. Respond with ONLY a JSON object, no other text.
 
 SCORING: 1=Gold(strong direct product fit), 2=Silver(solid indirect fit), 3=Tin(weak/speculative fit), 4=Slag(defunct OR zero fintech angle).
 Be generous: payments, lending, banking, crypto, insurance, wealth, PFM, payroll, EWA, rent, HR with payments = Gold or Silver.
@@ -150,7 +135,84 @@ RULE: A Gold score requires at least one HIGH CONFIDENCE product with clear evid
 
 ${customIntel ? `ADDITIONAL CONTEXT FROM AE:\n${customIntel.slice(0,2000)}\n` : ""}${exampleAccts ? `\nCALIBRATION EXAMPLES:\n${exampleAccts.slice(0,1500)}\n` : ""}
 Return ONLY this JSON:
-{"score":1,"tier":"Gold","businessModel":"2 sentences","productFit":"2 sentences","useCases":["payments"],"products":["Core Verify","Balance Insights"],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"bankConnectSignal":false,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"signalBreakdown":{"paymentSignals":[],"onboardingSignals":[],"scaleSignals":[],"platformSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`,
+{"score":1,"tier":"Gold","businessModel":"2 sentences","productFit":"2 sentences","useCases":["payments"],"products":["Core Verify","Balance Insights"],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"bankConnectSignal":false,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"signalBreakdown":{"paymentSignals":[],"onboardingSignals":[],"scaleSignals":[],"platformSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
+}
+
+// assay-engine-generalization-v1 — business-criteria-driven prompt, used
+// whenever a business has generated Assay Criteria (src/components/AssayCriteriaCard.js).
+// Same output JSON shape as the legacy prompt (downstream UI reads these exact
+// field names) but the fit/disqualifier/tier reasoning comes from that business's
+// own criteria instead of hardcoded fintech verticals and a fixed product catalog —
+// this business may not sell verification products at all.
+function buildGeneralizedPrompt(criteria, customIntel, exampleAccts) {
+  return `You are a product/partnership fit scoring engine for an AE, scoring how well a prospect account fits the specific business below. Respond with ONLY a JSON object, no other text.
+
+SCORING: 1=Gold(strong direct fit), 2=Silver(solid indirect fit), 3=Tin(weak/speculative fit), 4=Slag(defunct OR no meaningful fit).
+If site unreachable but the company's name/vertical suggests a fit per the criteria below, score based on that — do NOT score 4 just because the site failed to load.
+
+THIS BUSINESS'S FIT CRITERIA — apply these instead of any generic vertical assumptions:
+FIT SIGNALS: ${criteria.fit_signals || "(not specified)"}
+DISQUALIFIERS: ${criteria.disqualifiers || "(not specified)"}
+TIER GUIDANCE: ${criteria.tier_guidance || "(not specified)"}
+
+DISTRIBUTION MULTIPLIER — CRITICAL OVERRIDE:
+If the company is a PLATFORM or B2B2C play that serves other businesses as customers, score them Gold (1) regardless of company size. Look for: "SMB customers", "small business platform", "marketplace", "white-label", "embedded", "powered by", serving 1000+ downstream businesses.
+Set distributionMultiplier=true and note downstream reach in estimatedDownstreamUsers.
+
+DEFUNCT / ACQUIRED: Score 4=Slag and set isActive=false if site mentions "acquired by", "now part of", "no longer operating", "sunset", or is a holding page.
+Set disqualifier as a free-text one-sentence explanation grounded in the DISQUALIFIERS criteria above (e.g. "wrong audience — this business's ICP is X, this account serves Y"). If active and not disqualified, disqualifier must be null.
+
+SITE UNREACHABLE POLICY: Score based on company name + vertical + the fit criteria above. Set confidence="Low". Do NOT set disqualifier to "site unreachable".
+
+USE CASES: return 1-4 short free-text tags describing how this account could fit this business, grounded in FIT SIGNALS above — not a fixed enum, whatever's actually relevant here.
+PRODUCTS: this business may not have a fixed product catalog — if FIT SIGNALS references specific offerings, use those exact names; otherwise return an empty array rather than inventing product names.
+
+${customIntel ? `ADDITIONAL CONTEXT FROM AE:\n${customIntel.slice(0,2000)}\n` : ""}${exampleAccts ? `\nCALIBRATION EXAMPLES:\n${exampleAccts.slice(0,1500)}\n` : ""}
+Return ONLY this JSON:
+{"score":1,"tier":"Gold","businessModel":"2 sentences","productFit":"2 sentences — fit rationale against this business's criteria","useCases":["tag1"],"products":[],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"bankConnectSignal":false,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"signalBreakdown":{"paymentSignals":[],"onboardingSignals":[],"scaleSignals":[],"platformSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
+}
+
+// businessId is optional (Claim Jumper's not-yet-assigned pool scoring has
+// none — deliberate, see below). When present, fetches that business's
+// cached Assay Criteria (cheap read, not a fresh generation — see
+// AssayCriteriaCard.js/generateAssayCriteria() for the generation side) and
+// scores against it instead of the hardcoded fintech prompt. Falls back to
+// the legacy fintech prompt when businessId is absent OR the business hasn't
+// generated criteria yet — this fallback is intentional, documented
+// behavior for the pool-scoring path, not a bug to "fix" away later.
+export async function clientAssay({ name, web, vert, sub, customIntel, exampleAccts, stage, businessId }) {
+  let siteContent = "", linkedin = null, signalBreakdown = null, fetchMethod = "none";
+  if (web) {
+    const { content, method } = await fetchSiteContentClient(web);
+    fetchMethod = method;
+    if (content) {
+      siteContent = content;
+      const liMatch = siteContent.match(/https?:\/\/(?:www\.)?linkedin\.com\/company\/[a-zA-Z0-9_\-\.]+\/?/i);
+      if (liMatch) linkedin = liMatch[0].replace(/\/$/, "") + "/";
+      signalBreakdown = detectSignals(siteContent);
+    } else { siteContent = "Site unreachable after fetch attempt"; }
+  }
+  const signalSummary = signalBreakdown ? `\nPRE-DETECTED SIGNALS:\n${JSON.stringify(signalBreakdown,null,2)}\n` : "";
+
+  let assayCriteria = null;
+  if (businessId) {
+    try {
+      const r = await fetch(`/api/businesses/${businessId}/assay-criteria`);
+      if (r.ok) { const d = await r.json(); assayCriteria = d.assay_criteria || null; }
+    } catch { /* fall through to legacy prompt */ }
+  }
+  const systemPrompt = assayCriteria
+    ? buildGeneralizedPrompt(assayCriteria, customIntel, exampleAccts)
+    : buildLegacyFintechPrompt(customIntel, exampleAccts);
+
+  const response = await fetch("/proxy/anthropic/messages", {
+    method: "POST",
+    headers: { "Content-Type":"application/json", "anthropic-version":"2023-06-01" },
+    signal: AbortSignal.timeout(45000),
+    body: JSON.stringify({
+      model: MODELS.FAST,
+      max_tokens: 900,
+      system: systemPrompt,
       messages: [{ role:"user", content:`Score product fit:\nCompany: ${name}\nWebsite: ${web||"none"}\nVertical: ${vert||"unknown"}\nSubvertical: ${sub||"unknown"}\nPipeline stage: ${stage||"Prospecting"}\nWebsite content (fetch method: ${fetchMethod}): ${siteContent||"not available"}\n${signalSummary}\nReturn ONLY the JSON.` }],
     }),
   });

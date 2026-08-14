@@ -8,6 +8,7 @@ import BusinessCommandCenterTab from './BusinessCommandCenterTab';
 import MembersPermissionsTab from './MembersPermissionsTab';
 import SmartIntakeBox from './SmartIntakeBox';
 import CallLogSection from './CallLogSection';
+import AssayCriteriaCard from './AssayCriteriaCard';
 
 const SOURCE_LABEL = { manual: 'Manual', research_site: 'Site research', research_web: 'Web research', call: 'Call log' };
 
@@ -311,6 +312,16 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
               )}
             </div>
           )
+        )}
+
+        {profile && (
+          <AssayCriteriaCard
+            businessId={business.id}
+            criteria={profile.assay_criteria}
+            updatedAt={profile.assay_criteria_updated_at}
+            editedManually={profile.assay_criteria_edited_manually}
+            onUpdated={patch => setProfile(p => ({ ...p, ...patch }))}
+          />
         )}
 
         <div style={{ marginBottom:32 }}>

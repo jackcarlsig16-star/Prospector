@@ -385,7 +385,6 @@ const esHandler = (rel) => async (req, res) => {
 
 app.get('/api/access-log',     esHandler('./api/access-log.js'));
 app.post('/api/access-log',    esHandler('./api/access-log.js'));
-app.post('/api/assay',         esHandler('./api/assay.js'));
 app.post('/api/personas',      esHandler('./api/personas.js'));
 app.post('/api/stealth',       esHandler('./api/stealth.js'));
 app.post('/api/lookalike',     esHandler('./api/lookalike.js'));
@@ -429,6 +428,9 @@ app.post('/api/businesses/:id/intake',          esHandler('./api/businesses/inta
 app.post('/api/businesses/:id/intake/confirm',  esHandler('./api/businesses/intake-confirm.js'));
 app.post('/api/businesses/:id/import/classify', esHandler('./api/businesses/import-classify.js'));
 app.post('/api/businesses/:id/influencer/assess', esHandler('./api/businesses/influencer-assess.js'));
+app.post('/api/businesses/:id/assay-criteria/generate', esHandler('./api/businesses/assay-criteria-generate.js'));
+app.put('/api/businesses/:id/assay-criteria',   esHandler('./api/businesses/assay-criteria-save.js'));
+app.get('/api/businesses/:id/assay-criteria',   esHandler('./api/businesses/assay-criteria-get.js'));
 app.post('/api/businesses/:id/call-log', esHandler('./api/businesses/call-log.js'));
 app.post('/api/businesses/:id/call-log/:entryId/reassign', esHandler('./api/businesses/call-log-reassign.js'));
 app.post('/api/zoom/webhook', esHandler('./api/zoom/webhook.js'));

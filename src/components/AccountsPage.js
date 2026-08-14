@@ -254,7 +254,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
   const reassay=useCallback(async(acc)=>{
     setReassaying(acc.id);
     try{
-      const parsed=await clientAssay({name:acc.name,web:acc.web,vert:acc.vert,customIntel:getActiveIntel(),exampleAccts:getActiveExamples(),stage:acc.stage||"Prospecting"});
+      const parsed=await clientAssay({name:acc.name,web:acc.web,vert:acc.vert,customIntel:getActiveIntel(),exampleAccts:getActiveExamples(),stage:acc.stage||"Prospecting",businessId:business?.id});
       if(acc.tier==="Slag"&&parsed.tier==="Gold") trackStat("reassay_upgrades");
       // If web was overridden (site unreachable workaround), persist the new URL
       const webPatch=acc.web!==accounts.find(a=>a.id===acc.id)?.web?{web:acc.web}:{};
@@ -290,7 +290,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
   const isRateLimit=(err)=>/429|rate.?limit|too many/i.test(err?.message||err||"");
 
   const assayOneWithRetry=async(acc,customIntel,exampleAccts,onStatus)=>{
-    const run=()=>clientAssay({name:acc.name,web:acc.web,vert:acc.vert,customIntel,exampleAccts,stage:acc.stage||"Prospecting"});
+    const run=()=>clientAssay({name:acc.name,web:acc.web,vert:acc.vert,customIntel,exampleAccts,stage:acc.stage||"Prospecting",businessId:business?.id});
     try{
       return await run();
     }catch(e1){
@@ -932,7 +932,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
         />
       )}
       </>}
-      {showAddModal&&onAddAccount&&<AddAccountModal onAdd={acc=>{onAddAccount(acc);}} onClose={()=>setShowAddModal(false)}/>}
+      {showAddModal&&onAddAccount&&<AddAccountModal onAdd={acc=>{onAddAccount(acc);}} onClose={()=>setShowAddModal(false)} businessId={business?.id}/>}
       {showDedupeModal&&onSave&&<DedupeModal accounts={accounts} onMerge={(merged,removeId)=>{onSave(accounts.map(a=>a.id===merged.id?merged:a).filter(a=>a.id!==removeId));}} onClose={()=>setShowDedupeModal(false)}/>}
       {showSfdcModal&&<SfdcImportModal opps={unmatchedSfdcOpps} accounts={accounts} onImport={handleImportSfdc} onClose={()=>{ setShowSfdcModal(false); dismissSfdcOpps(unmatchedSfdcOpps); }}/>}
       {showAssayModal&&(()=>{

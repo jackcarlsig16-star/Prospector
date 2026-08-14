@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { fetchSiteContent } from '../assay.js';
+import { fetchSiteContent } from '../lib/fetchSiteContent.js';
 import { MODELS } from '../../src/config/models.js';
 
 // Same pattern as api/sfdc/sync-compliance.js
@@ -104,13 +104,29 @@ Return exactly this shape:
 
 Base every field on the bio text and business profile provided - do not invent facts either doesn't support. If the bio is too thin to say something meaningful, say so plainly in that field rather than padding. If the business profile below is thin or empty, say so in fit_rationale rather than guessing - a low-information fit_score should read as uncertain, not confidently wrong.`;
 
+// assay-engine-generalization-v1 — distills a business profile into the
+// compact scoring criteria clientAssay() reads on every call. Generated
+// once (or on explicit Regenerate), not re-derived per-call, so the real
+// LLM cost is paid once per business rather than on every reassay/CSV
+// import/pool-scoring run.
+const ASSAY_CRITERIA_SYSTEM_PROMPT = `You distill a business's profile into compact scoring criteria an automated account-scoring tool will use to evaluate prospect accounts for fit with this business. Respond with ONLY a JSON object, no other text.
+
+Return exactly this shape:
+{
+  "fit_signals": "what makes a prospect account a strong fit for this business - concrete, specific traits, verticals, or behaviors to look for. 2-4 sentences.",
+  "disqualifiers": "what makes a prospect account NOT a fit for this business - concrete disqualifying traits. 2-4 sentences.",
+  "tier_guidance": "how to map fit strength onto scoring tiers (Gold = strong direct fit, Silver = solid indirect fit, Tin = weak/speculative fit, Slag = no fit or defunct) for THIS business specifically - what earns each tier. 2-4 sentences."
+}
+
+Base every field on the business profile provided - do not invent facts it doesn't support. If the profile is thin, give general-but-honest criteria rather than fabricating specifics, and let the thinness show in how general the criteria are rather than padding with invented detail.`;
+
 // vision/positioning/icp/gtm_strategy are the structured fields
 // generateProfile() fills in, but a business on 'light' research depth (or
 // one whose site research came back thin - confirmed live for both
 // HomeLover and Master Magnetics as of influencer-card-v2's Phase 0 check)
 // can have all four blank while raw_synthesis still holds real content.
 // Fall back to it rather than handing the fit prompt an empty profile.
-function buildBusinessFitContext(profile) {
+export function buildBusinessFitContext(profile) {
   if (!profile) return '(no business profile available yet)';
   const parts = [
     profile.vision && `Vision: ${profile.vision}`,
@@ -240,6 +256,50 @@ export async function generateProfile(supabase, businessId) {
     generated_at: new Date().toISOString(),
   }, { onConflict: 'business_id' });
   if (upsertError) throw upsertError;
+}
+
+// ASSAY CRITERIA — assay-engine-generalization-v1. Reuses buildBusinessFitContext's
+// existing raw_synthesis-fallback (a business on 'light' research depth can have
+// vision/positioning/icp/gtm_strategy all blank) at criteria-generation time, not
+// at every clientAssay() call. Requires a business_profiles row to already exist —
+// run company research (generateProfile) first; this doesn't create one.
+export async function generateAssayCriteria(supabase, businessId) {
+  const { data: business, error: businessError } = await supabase.from('businesses').select('name').eq('id', businessId).single();
+  if (businessError) throw businessError;
+
+  const { data: profile, error: profileError } = await supabase.from('business_profiles').select('vision, positioning, icp, gtm_strategy, raw_synthesis').eq('business_id', businessId).maybeSingle();
+  if (profileError) throw profileError;
+  if (!profile) throw new Error('No business profile found for this business yet — run company research first.');
+
+  const businessContext = buildBusinessFitContext(profile);
+
+  const data = await callAnthropic({
+    max_tokens: 1024,
+    system: ASSAY_CRITERIA_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: `BUSINESS: ${business.name}\n\nBUSINESS PROFILE:\n${businessContext}` }],
+    supabase,
+    businessId,
+    callType: 'assay_criteria',
+  });
+  const textBlock = (data.content || []).find(b => b.type === 'text');
+  if (!textBlock) throw new Error('No text in assay criteria generation response');
+  const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('No JSON in assay criteria generation response');
+  const parsed = JSON.parse(jsonMatch[0]);
+  const assay_criteria = {
+    fit_signals: parsed.fit_signals || '',
+    disqualifiers: parsed.disqualifiers || '',
+    tier_guidance: parsed.tier_guidance || '',
+  };
+
+  const { error: updateError } = await supabase.from('business_profiles').update({
+    assay_criteria,
+    assay_criteria_updated_at: new Date().toISOString(),
+    assay_criteria_edited_manually: false,
+  }).eq('business_id', businessId);
+  if (updateError) throw updateError;
+
+  return assay_criteria;
 }
 
 // PROJECT STRATEGY — mirrors generateProfile but scoped strictly to a single
