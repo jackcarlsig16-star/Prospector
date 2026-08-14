@@ -242,7 +242,11 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
           </div>
         </div>
 
-        {view === 'command-center' && <BusinessCommandCenterTab business={business} sharedAccounts={sharedAccounts} sharedTasks={sharedTasks} setSharedTasks={setSharedTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={onNav} onUpdateAccount={onUpdateAccount} />}
+        {view === 'command-center' && (<>
+          <SmartIntakeBox business={business} projects={projects} userEmail={userEmail}
+            onProfileUpdated={setProfile} onProjectUpdated={onProjectUpdated} />
+          <BusinessCommandCenterTab business={business} sharedAccounts={sharedAccounts} sharedTasks={sharedTasks} setSharedTasks={setSharedTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={onNav} onUpdateAccount={onUpdateAccount} />
+        </>)}
         {view === 'accounts' && <BusinessAccountsTab business={business} userEmail={userEmail} />}
         {view === 'search' && <BusinessSearchTab business={business} userEmail={userEmail} />}
         {view === 'generation' && <BusinessGenerationTab business={business} />}
@@ -252,8 +256,6 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
         {view === 'members' && <MembersPermissionsTab business={business} viewerEmail={userEmail} />}
 
         {view === 'overview' && (<>
-        <SmartIntakeBox business={business} projects={projects} userEmail={userEmail}
-          onProfileUpdated={setProfile} onProjectUpdated={onProjectUpdated} />
         {business.research_status === 'researching' && !pollTimedOut && (
           <div style={{ padding:"16px 18px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, marginBottom:32 }}>
             <p style={{ ...mono, fontSize:13, color:C.txt, margin:0 }}>Researching {business.name}…</p>
