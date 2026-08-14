@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { C, TS, mono } from '../constants/colors';
 import { T } from '../constants/tokens';
 import { voiceDocsKey, voiceProfileKey } from '../constants/voice';
+import { saveVoiceProfile } from '../utils/db';
 import FrontierEmailPanel from './frontier/FrontierEmailPanel';
 import IntentFeed from './intent/IntentFeed';
 import OutboundCard from './OutboundCard';
@@ -51,7 +52,7 @@ const HUD = {
 };
 const TIER_BORDER = { Gold: T.tier.gold, Silver: T.tier.silver, Tin: T.tier.tin };
 
-async function learnVoiceFromText(text, userName) {
+async function learnVoiceFromText(text, userName, userEmail) {
   if (!text || text.length < 50 || !userName) return;
   try {
     const key = voiceDocsKey(userName);
@@ -62,7 +63,10 @@ async function learnVoiceFromText(text, userName) {
     const corpus = updated.filter(d=>d.active).map(d=>d.content).join("\n\n---\n\n");
     const res = await fetch("/api/analyze-voice", { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ emailText:corpus }) });
     const data = await res.json();
-    if (data.profile) localStorage.setItem(voiceProfileKey(userName), JSON.stringify(data.profile));
+    if (data.profile) {
+      localStorage.setItem(voiceProfileKey(userName), JSON.stringify(data.profile));
+      saveVoiceProfile(userEmail, data.profile);
+    }
   } catch {}
 }
 
@@ -562,12 +566,13 @@ function OutboundPage({ accounts, onNav, user, activeUser, perms={}, stealthList
     setLoggedConfirmId(id);
     setTimeout(() => setLoggedConfirmId(c => c===id ? null : c), 2000);
     const bdrName = isBDR ? myName : null;
-    if (bdrName) learnVoiceFromText(text, bdrName);
+    if (bdrName) learnVoiceFromText(text, bdrName, myEmail);
   };
 
   // Frontier rows visible to this role
-  const myName = activeUser?.name || user?.name || "AE";
-  const myId   = activeUser?.id   || user?.id   || null;
+  const myName  = activeUser?.name  || user?.name  || "AE";
+  const myEmail = activeUser?.email || user?.email || "";
+  const myId    = activeUser?.id    || user?.id    || null;
   const ownerFiltered = isBDR
     ? (()=>{
         // BDR sees items assigned to them — match by ID, always fall back to name

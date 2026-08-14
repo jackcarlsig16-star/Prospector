@@ -3,7 +3,7 @@ import { C, mono } from '../constants/colors';
 import { getActiveIntel } from '../utils/assay';
 import { getActiveVoice, getVoiceProfile, voiceProfileKey } from '../constants/voice';
 import { UCS_DATA } from '../constants/products';
-import { getListsForBusiness, linkAccountToLists } from '../utils/db';
+import { getListsForBusiness, linkAccountToLists, saveVoiceProfile } from '../utils/db';
 
 // account-card-color-fix-and-guided-generate-v1 Part B
 const MESSAGE_TYPES = [
@@ -21,6 +21,7 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
   const [teaching,setTeaching]=useState(false);
   const [taught,setTaught]=useState(false);
   const voiceUserName=(()=>{try{return JSON.parse(localStorage.getItem("prospector_user")||"{}").name||"";}catch{return "";}})();
+  const voiceUserEmail=(()=>{try{return JSON.parse(localStorage.getItem("prospector_user")||"{}").email||"";}catch{return "";}})();
   const kind = accountKind || account.accountKind || 'business';
   const isInfluencer = kind === 'influencer';
   const influencerDetail = account.influencerDetail || null;
@@ -58,6 +59,7 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
         voiceExamples:getActiveVoice(voiceUserName),
         voiceProfile:getVoiceProfile(voiceUserName),
         accountKind:kind,
+        businessId:business?.id,
         messageType: !autoStart ? messageType : undefined,
         note: !autoStart && context.trim() ? context.trim() : undefined,
         ...(isInfluencer ? {
@@ -181,7 +183,7 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
                           existingProfile:getVoiceProfile(voiceUserName),
                         })});
                         const d=await r.json();
-                        if(d.profile){localStorage.setItem(voiceProfileKey(voiceUserName),JSON.stringify(d.profile));setTaught(true);}
+                        if(d.profile){localStorage.setItem(voiceProfileKey(voiceUserName),JSON.stringify(d.profile));saveVoiceProfile(voiceUserEmail,d.profile);setTaught(true);}
                       }catch{}
                       setTeaching(false);
                     }} style={{ ...mono, fontSize:11, padding:"2px 8px", background:`${C.blue}12`, border:`1px solid ${C.blue}30`, color:C.blue, borderRadius:4, cursor:"pointer" }}>

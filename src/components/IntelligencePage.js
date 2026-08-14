@@ -5,10 +5,12 @@ import { detectIntelCategory } from '../utils/assay';
 import { SEED_INTEL_DOCS, UCS_DATA, PRODUCTS_DATA } from '../constants/products';
 import { PRODUCT_IMPORT_SOURCES } from './AccountCard';
 import { MODELS } from '../config/models';
+import { saveVoiceProfile } from '../utils/db';
 
 
 function IntelligencePage({ user, activeUser }) {
   const voiceUserName = activeUser?.name || user?.name || "";
+  const voiceUserEmail = activeUser?.email || user?.email || "";
   const [tab,setTab]=useState("Use Cases");
   const [voiceProfile,setVoiceProfileState]=useState(()=>getVoiceProfile(voiceUserName));
   const [vpLoading,setVpLoading]=useState(false);
@@ -138,6 +140,7 @@ function IntelligencePage({ user, activeUser }) {
       if(d.error){setVpError(d.error);}
       else if(d.profile){
         localStorage.setItem(voiceProfileKey(voiceUserName),JSON.stringify(d.profile));
+        saveVoiceProfile(voiceUserEmail,d.profile);
         if(d.newAccessToken)localStorage.setItem("gmail_access_token",d.newAccessToken);
         setVoiceProfileState(d.profile);
       }else{setVpError(d.message||"No profile returned");}
@@ -187,6 +190,7 @@ Return ONLY a valid JSON object — no explanation, no markdown, just the JSON:
       profile.source="paste";
       profile.teachCount=0;
       localStorage.setItem(voiceProfileKey(voiceUserName),JSON.stringify(profile));
+      saveVoiceProfile(voiceUserEmail,profile);
       setVoiceProfileState(profile);
       setPasteText("");
     }catch(e){setVpError(e.message);}

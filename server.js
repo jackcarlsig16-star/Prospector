@@ -432,6 +432,9 @@ app.post('/api/businesses/:id/influencer/assess', esHandler('./api/businesses/in
 app.post('/api/businesses/:id/assay-criteria/generate', esHandler('./api/businesses/assay-criteria-generate.js'));
 app.put('/api/businesses/:id/assay-criteria',   esHandler('./api/businesses/assay-criteria-save.js'));
 app.get('/api/businesses/:id/assay-criteria',   esHandler('./api/businesses/assay-criteria-get.js'));
+app.post('/api/businesses/:id/outreach-rules/generate', esHandler('./api/businesses/outreach-rules-generate.js'));
+app.put('/api/businesses/:id/outreach-rules',   esHandler('./api/businesses/outreach-rules-save.js'));
+app.get('/api/businesses/:id/outreach-rules',   esHandler('./api/businesses/outreach-rules-get.js'));
 app.post('/api/businesses/:id/call-log', esHandler('./api/businesses/call-log.js'));
 app.post('/api/businesses/:id/call-log/:entryId/reassign', esHandler('./api/businesses/call-log-reassign.js'));
 app.post('/api/zoom/webhook', esHandler('./api/zoom/webhook.js'));

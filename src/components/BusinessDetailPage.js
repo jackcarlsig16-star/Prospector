@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { C, mono, PRESET_SWATCH_COLORS } from '../constants/colors';
-import { createProject } from '../utils/db';
+import { createProject, updateProjectOutreachGuidance } from '../utils/db';
 import BusinessAccountsTab from './BusinessAccountsTab';
 import BusinessSearchTab from './BusinessSearchTab';
 import BusinessGenerationTab from './BusinessGenerationTab';
@@ -9,6 +9,8 @@ import MembersPermissionsTab from './MembersPermissionsTab';
 import SmartIntakeBox from './SmartIntakeBox';
 import CallLogSection from './CallLogSection';
 import AssayCriteriaCard from './AssayCriteriaCard';
+import OutreachRulesCard from './OutreachRulesCard';
+import BulkOutreachModal from './BulkOutreachModal';
 
 const SOURCE_LABEL = { manual: 'Manual', research_site: 'Site research', research_web: 'Web research', call: 'Call log' };
 
@@ -80,9 +82,41 @@ function CreateProjectModal({ businessId, userEmail, onClose, onCreated }) {
   );
 }
 
-function ProjectsSection({ business, userEmail, projects, onProjectCreated }) {
+function ProjectOutreachGuidance({ project, onUpdated }) {
+  const [draft, setDraft] = useState({ outreach_prompt: project.outreach_prompt || '', outreach_example: project.outreach_example || '' });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const save = async () => {
+    setSaving(true);
+    setError('');
+    const { project: updated, error: err } = await updateProjectOutreachGuidance(project.id, draft);
+    setSaving(false);
+    if (err) { setError(err); return; }
+    onUpdated(updated);
+  };
+
+  return (
+    <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.brd}` }}>
+      <div style={{ ...mono, fontSize:10, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Outreach prompt</div>
+      <textarea rows={2} value={draft.outreach_prompt} onChange={e=>setDraft(d=>({ ...d, outreach_prompt: e.target.value }))}
+        placeholder="A general prompt/guidance for outreach generated within this project…"
+        style={{ fontSize:12, padding:"7px 10px", background:C.bg, border:`1.5px solid ${C.brdM}`, borderRadius:6, color:C.txt, outline:"none", width:"100%", boxSizing:"border-box", resize:"vertical", marginBottom:8, ...mono }} />
+      <div style={{ ...mono, fontSize:10, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Example</div>
+      <textarea rows={2} value={draft.outreach_example} onChange={e=>setDraft(d=>({ ...d, outreach_example: e.target.value }))}
+        placeholder="An example message that reads the way outreach for this project should…"
+        style={{ fontSize:12, padding:"7px 10px", background:C.bg, border:`1.5px solid ${C.brdM}`, borderRadius:6, color:C.txt, outline:"none", width:"100%", boxSizing:"border-box", resize:"vertical", marginBottom:8, ...mono }} />
+      {error && <div style={{ ...mono, fontSize:11, color:C.red, marginBottom:8 }}>⚠ {error}</div>}
+      <button onClick={save} disabled={saving} style={{ ...mono, fontSize:11, padding:"6px 14px", background:C.gold, border:`1px solid ${C.gold}`, color:C.bg, fontWeight:700, borderRadius:6, cursor:"pointer" }}>{saving ? 'Saving…' : 'Save'}</button>
+    </div>
+  );
+}
+
+function ProjectsSection({ business, userEmail, activeUser, projects, onProjectCreated, onProjectUpdated }) {
   const [open, setOpen] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
+  const [outreachProject, setOutreachProject] = useState(null);
 
   return (
     <div style={{ marginBottom:32 }}>
@@ -93,7 +127,7 @@ function ProjectsSection({ business, userEmail, projects, onProjectCreated }) {
         <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
           {projects.map(p => (
             <div key={p.id} style={{ padding:"9px 12px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8 }}>
-              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer" }} onClick={()=>setExpandedId(id=>id===p.id?null:p.id)}>
                 <span style={{ width:10, height:10, borderRadius:"50%", background:p.color||C.gold, flexShrink:0 }} />
                 <span style={{ ...mono, fontSize:13, color:C.txt, flex:1 }}>{p.name}</span>
                 <span style={{ ...mono, fontSize:10, color:C.dim }}>{fmtDate(p.created_at)}</span>
@@ -101,6 +135,18 @@ function ProjectsSection({ business, userEmail, projects, onProjectCreated }) {
               <p style={{ ...mono, fontSize:11, color:p.strategy_synthesis?C.mut:C.dim, margin:"6px 0 0 20px", lineHeight:1.5, fontStyle:p.strategy_synthesis?"normal":"italic" }}>
                 {p.strategy_synthesis || "No strategy yet — notes filed to this project will synthesize one automatically."}
               </p>
+              {expandedId === p.id && (
+                <>
+                  <ProjectOutreachGuidance project={p} onUpdated={updated => onProjectUpdated?.(updated)} />
+                  {p.list_id ? (
+                    <button onClick={()=>setOutreachProject(p)} style={{ ...mono, fontSize:11, padding:"6px 14px", background:"transparent", border:`1px solid ${C.gold}66`, color:C.gold, borderRadius:6, cursor:"pointer", marginTop:10 }}>
+                      Generate Outreach for this project's list
+                    </button>
+                  ) : (
+                    <p style={{ ...mono, fontSize:10, color:C.dim, marginTop:10 }}>This project has no linked list yet — bulk outreach generation needs one.</p>
+                  )}
+                </>
+              )}
             </div>
           ))}
           {projects.length === 0 && (
@@ -117,6 +163,15 @@ function ProjectsSection({ business, userEmail, projects, onProjectCreated }) {
           userEmail={userEmail}
           onClose={()=>setModalOpen(false)}
           onCreated={project => { setModalOpen(false); onProjectCreated(project); }}
+        />
+      )}
+      {outreachProject && (
+        <BulkOutreachModal
+          business={business}
+          project={outreachProject}
+          userEmail={userEmail}
+          activeUser={activeUser}
+          onClose={()=>setOutreachProject(null)}
         />
       )}
     </div>
@@ -253,7 +308,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
         {view === 'search' && <BusinessSearchTab business={business} userEmail={userEmail} />}
         {view === 'generation' && <BusinessGenerationTab business={business} />}
         {view === 'projects' && (
-          <ProjectsSection business={business} userEmail={userEmail} projects={projects} onProjectCreated={onProjectCreated} />
+          <ProjectsSection business={business} userEmail={userEmail} activeUser={activeUser} projects={projects} onProjectCreated={onProjectCreated} onProjectUpdated={onProjectUpdated} />
         )}
         {view === 'members' && <MembersPermissionsTab business={business} viewerEmail={userEmail} />}
 
@@ -320,6 +375,16 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
             criteria={profile.assay_criteria}
             updatedAt={profile.assay_criteria_updated_at}
             editedManually={profile.assay_criteria_edited_manually}
+            onUpdated={patch => setProfile(p => ({ ...p, ...patch }))}
+          />
+        )}
+
+        {profile && (
+          <OutreachRulesCard
+            businessId={business.id}
+            rules={profile.outreach_rules}
+            updatedAt={profile.outreach_rules_updated_at}
+            editedManually={profile.outreach_rules_edited_manually}
             onUpdated={patch => setProfile(p => ({ ...p, ...patch }))}
           />
         )}

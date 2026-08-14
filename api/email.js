@@ -1,4 +1,5 @@
 import { MODELS } from '../src/config/models.js';
+import { getSupabase, getVoiceProfileForUser } from './businesses/shared.js';
 
 export const config = { maxDuration: 30 };
 
@@ -18,27 +19,7 @@ const AVOID_ALWAYS = [
   "synergies", "solutions", "leverage", "excited to connect",
   "hope this finds you well", "reach out", "touch base",
   "circle back", "innovative", "best-in-class", "seamlessly",
-  "Core Verify", "Core Verify Plus", "Balance Insights",
 ];
-
-// Placeholder — replace with your own customer list for social-proof name-drops
-const SOCIAL_PROOF = {
-  pfm:      ["Northstar Finance", "Ledgerly", "Brightpath"],
-  payments: ["Payflow", "Cardless", "Instapay"],
-  lending:  ["Lendwell", "Fairstone Loans", "Bridgefund"],
-  ewa:      ["Wagelink", "EarlyPay"],
-  default:  ["Northstar Finance", "Lendwell", "Payflow"],
-};
-
-function getSocialProof(businessModel, useCase) {
-  const bm = (businessModel || "").toLowerCase();
-  const uc = (useCase || "").toLowerCase();
-  if (bm.includes("lending") || uc.includes("lending")) return SOCIAL_PROOF.lending;
-  if (bm.includes("ewa") || uc.includes("earned wage") || uc.includes("ewa")) return SOCIAL_PROOF.ewa;
-  if (bm.includes("payment") || uc.includes("payment")) return SOCIAL_PROOF.payments;
-  if (bm.includes("pfm") || uc.includes("personal finance") || uc.includes("pfm")) return SOCIAL_PROOF.pfm;
-  return SOCIAL_PROOF.default;
-}
 
 function jinaTimeoutSignal(ms) {
   if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
@@ -57,6 +38,7 @@ async function scrapeWebsite(website) {
       headers: {
         "Accept": "text/plain",
         "User-Agent": "Mozilla/5.0 (compatible; Prospector/1.0)",
+        ...(process.env.JINA_API_KEY ? { "Authorization": `Bearer ${process.env.JINA_API_KEY}` } : {}),
       },
       signal: jinaTimeoutSignal(8000),
     });
@@ -76,11 +58,12 @@ export default async function handler(req, res) {
   const {
     name, businessModel, productFit, useCase, products,
     personaName, personaTitle,
-    customIntel, senderName, voiceExamples, voiceProfile,
+    customIntel, senderName, voiceExamples,
     signals, note, web, website,
-    format, accountKind, messageType,
+    format, accountKind, messageType, businessId, projectId, runningUserEmail,
     fitRationale, fitSignals, nicheAssessment, bioSnapshot,
   } = req.body;
+  let { voiceProfile } = req.body;
 
   const isInfluencer = accountKind === 'influencer';
   const messageTypeGuidance = MESSAGE_TYPE_GUIDANCE[messageType] || "";
@@ -89,9 +72,48 @@ export default async function handler(req, res) {
   const wordLimit = isLinkedIn ? 50 : 60;
   const formatLabel = isLinkedIn ? "LinkedIn message" : "email";
   const personaFirstName = personaName ? personaName.split(" ")[0] : null;
-  const proof = getSocialProof(businessModel, useCase);
   const websiteUrl = web || website || null;
   const websiteContent = await scrapeWebsite(websiteUrl);
+
+  const supabase = getSupabase();
+
+  // outreach-intelligence-v1 Section 0a — bulk/background generation passes
+  // runningUserEmail instead of a client-supplied voiceProfile object, so
+  // the server pulls the running user's own voice fresh from voice_profiles
+  // rather than trusting whatever the client happened to send. Interactive
+  // single-account callers (EmailModal.js) keep passing voiceProfile
+  // directly, unchanged - only used when voiceProfile itself is absent.
+  if (!voiceProfile && runningUserEmail && supabase) {
+    try { voiceProfile = await getVoiceProfileForUser(supabase, runningUserEmail); } catch { /* proceed voiceless */ }
+  }
+
+  // outreach-intelligence-v1 Section 3 — composition order: voice (above) ->
+  // account intel/assay_criteria -> business outreach_rules -> project
+  // guidance, each layer optional/graceful. businessId absent (Claim
+  // Jumper's pool, Frontier stealth entries — neither has business context)
+  // or the business hasn't generated criteria/rules yet both fall through to
+  // these staying null; the prompt just omits that layer in that case.
+  let assayCriteria = null;
+  let outreachRules = null;
+  if (businessId && !isInfluencer && supabase) {
+    try {
+      const { data } = await supabase.from('business_profiles').select('assay_criteria, outreach_rules').eq('business_id', businessId).maybeSingle();
+      assayCriteria = data?.assay_criteria || null;
+      outreachRules = data?.outreach_rules || null;
+    } catch { /* fall through with no business-fit grounding */ }
+  }
+
+  // Project Outreach Guidance layers on top of, does not replace, the
+  // business-level layers above - only fetched when a bulk/project-scoped
+  // caller actually passes projectId (single-account EmailModal.js has no
+  // project context today and never sends one).
+  let projectGuidance = null;
+  if (projectId && supabase) {
+    try {
+      const { data } = await supabase.from('projects').select('outreach_prompt, outreach_example').eq('id', projectId).maybeSingle();
+      if (data && (data.outreach_prompt || data.outreach_example)) projectGuidance = data;
+    } catch { /* fall through with no project-level guidance */ }
+  }
 
   const greeting = voiceProfile?.greeting || `Hey ${personaFirstName || "[First Name]"},`;
   const closing  = voiceProfile?.closing  || `- ${sender}`;
@@ -131,8 +153,20 @@ export default async function handler(req, res) {
     voiceRules,
     outputFormat,
     messageTypeGuidance,
-    !isInfluencer ? `PRODUCT LANGUAGE: Never mention our products by name (Core Verify, Core Verify Plus, Balance Insights, etc.). Describe what the solution does in plain language (e.g. "instant account verification" not "Core Verify", "bank account balance checks" not "Balance Insights").` : "",
-    !isInfluencer ? `SOCIAL PROOF: You may name-drop 1-2 of these real customers in the same space: ${proof.slice(0, 3).join(", ")}. Only use if it fits naturally. Never force it.` : "",
+    !isInfluencer && assayCriteria ? `THIS BUSINESS'S FIT CONTEXT — ground the pitch in this, not generic assumptions:
+FIT SIGNALS: ${assayCriteria.fit_signals || "(not specified)"}
+${assayCriteria.disqualifiers ? `Avoid language that contradicts: ${assayCriteria.disqualifiers}` : ""}
+PRODUCT LANGUAGE: don't invent specific product names — describe what's offered in plain language grounded in the fit signals above.` : "",
+    outreachRules ? `THIS BUSINESS'S OUTREACH RULES — apply these on top of the voice rules above:
+Tone: ${outreachRules.tone || "(not specified)"}
+Structure: ${outreachRules.structure || "(not specified)"}
+Key points to surface: ${outreachRules.key_points || "(not specified)"}
+Do: ${outreachRules.dos || "(not specified)"}
+Don't: ${outreachRules.donts || "(not specified)"}
+${outreachRules.example_snippets ? `Echo this kind of language where it fits naturally: ${outreachRules.example_snippets}` : ""}` : "",
+    projectGuidance ? `PROJECT-SPECIFIC GUIDANCE — layers on top of everything above, for this campaign specifically:
+${projectGuidance.outreach_prompt || ""}
+${projectGuidance.outreach_example ? `Example of how this project's outreach should read:\n${projectGuidance.outreach_example}` : ""}` : "",
     voiceExamples ? `VOICE EXAMPLES — match this tone and length exactly:\n${voiceExamples.slice(0, 1500)}` : "",
   ].filter(Boolean).join("\n\n");
 

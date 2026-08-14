@@ -345,6 +345,39 @@ export async function getInfluencerDetails(accountIds) {
 // use (influencer-card-v2, Phase 3-4). Only a stage change is a real logged
 // action; temperature/priority/next_action/tags are lower-stakes manual
 // triage fields that don't warrant an activity-log entry on every edit.
+// outreach-intelligence-v1 Section 0a — voice profiles were localStorage-only
+// (keyed by display name), invisible to any server-side flow. Dual-write:
+// this runs alongside the existing localStorage write, never replaces it.
+export async function saveVoiceProfile(userEmail, profile) {
+  if (!isSupabaseEnabled() || !userEmail) return { error: null };
+  const row = {
+    user_email: userEmail.toLowerCase(),
+    profile,
+    learned_at: profile.learnedAt || null,
+    email_count: profile.emailCount || null,
+    teach_count: profile.teachCount || 0,
+  };
+  const { error } = await supabase.from('voice_profiles').upsert(row, { onConflict: 'user_email' });
+  return { error: error?.message || null };
+}
+
+export async function getVoiceProfileForEmail(userEmail) {
+  if (!isSupabaseEnabled() || !userEmail) return null;
+  const { data, error } = await supabase.from('voice_profiles').select('profile').eq('user_email', userEmail.toLowerCase()).maybeSingle();
+  if (error || !data) return null;
+  return data.profile;
+}
+
+// outreach-intelligence-v1 Section 2 — deliberately plain fields, no
+// generate/regenerate concept (unlike outreach_rules/assay_criteria) — the
+// person types it, it stays until they change it, no auto-overwrite risk.
+export async function updateProjectOutreachGuidance(projectId, patch) {
+  if (!isSupabaseEnabled() || !projectId) return { error: null };
+  const { data, error } = await supabase.from('projects').update(patch).eq('id', projectId).select().single();
+  if (error) return { error: error.message };
+  return { project: data };
+}
+
 export async function updateInfluencerRelationship(accountId, memberEmail, patch) {
   const { data: updated, error } = await supabase.from('account_influencer_details').update(patch).eq('account_id', accountId).select().single();
   if (error) return { error: error.message };
@@ -373,6 +406,20 @@ export async function getListIdsForAccount(accountId) {
 // Every account_lists row for a business's accounts in one query, keyed by
 // account_id -> [list_id, ...] - avoids N+1 queries when rendering a list
 // filter over many accounts.
+// outreach-intelligence-v1 Section 4 — resolves "accounts in this project"
+// via project.list_id -> account_lists -> accounts. accounts.project_id
+// exists in the schema but is never written by any application code
+// (confirmed live, grep across src/ and api/) - not a usable path.
+export async function getAccountsForProjectList(businessId, listId) {
+  if (!businessId || !listId || !isSupabaseEnabled()) return [];
+  const { data: links, error: linkError } = await supabase.from('account_lists').select('account_id').eq('list_id', listId);
+  if (linkError || !links?.length) return [];
+  const ids = links.map(l => l.account_id);
+  const { data, error } = await supabase.from('accounts').select('id, data, last_touched_by, last_touched_at, account_kind').eq('business_id', businessId).in('id', ids);
+  if (error) return [];
+  return (data || []).filter(r => r.data).map(r => ({ ...r.data, id: r.id, lastTouchedBy: r.last_touched_by || null, lastTouchedAt: r.last_touched_at || null, accountKind: r.account_kind || 'business' }));
+}
+
 export async function getAccountListMapForBusiness(businessId) {
   if (!businessId || !isSupabaseEnabled()) return {};
   const { data: accs, error: accErr } = await supabase.from('accounts').select('id').eq('business_id', businessId);

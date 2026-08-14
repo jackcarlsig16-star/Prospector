@@ -120,6 +120,65 @@ Return exactly this shape:
 
 Base every field on the business profile provided - do not invent facts it doesn't support. If the profile is thin, give general-but-honest criteria rather than fabricating specifics, and let the thinness show in how general the criteria are rather than padding with invented detail.`;
 
+// outreach-intelligence-v1 Section 1 — same cache-once pattern as
+// ASSAY_CRITERIA_SYSTEM_PROMPT, but the input is a pasted outreach-training
+// document rather than a derived business profile (a business's messaging
+// rules aren't something company research infers on its own).
+const OUTREACH_RULES_SYSTEM_PROMPT = `You distill a pasted outreach-training document into compact messaging rules an automated outreach-generation tool will use to write emails for this business. Respond with ONLY a JSON object, no other text.
+
+Return exactly this shape:
+{
+  "tone": "the intended tone/voice for outreach from this business - concrete, not generic. 1-3 sentences.",
+  "structure": "how messages should be structured - opener style, length, paragraph shape, CTA style. 1-3 sentences.",
+  "key_points": "the recurring points/value props/hooks this business wants surfaced in outreach. 2-4 sentences.",
+  "dos": "specific things to do - phrases, framings, or moves the document calls out as effective. 2-4 sentences.",
+  "donts": "specific things to avoid - phrases, framings, or mistakes the document calls out. 2-4 sentences.",
+  "example_snippets": "1-3 short verbatim or near-verbatim snippets from the document worth echoing directly, quoted."
+}
+
+Base every field on the pasted document - do not invent rules it doesn't support. If the document is thin on a given field, give a short honest answer rather than padding with invented detail.`;
+
+// businessId must already have a business_profiles row (same requirement as
+// generateAssayCriteria) - the columns live there, and there's no sensible
+// standalone "outreach rules" table shape without one.
+export async function generateOutreachRules(supabase, businessId, pastedText) {
+  const { data: profile, error: profileError } = await supabase.from('business_profiles').select('id').eq('business_id', businessId).maybeSingle();
+  if (profileError) throw profileError;
+  if (!profile) throw new Error('No business profile found for this business yet — run company research first.');
+  if (!pastedText || !pastedText.trim()) throw new Error('Paste an outreach-training document to distill rules from.');
+
+  const data = await callAnthropic({
+    max_tokens: 1024,
+    system: OUTREACH_RULES_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: pastedText.slice(0, 8000) }],
+    supabase,
+    businessId,
+    callType: 'outreach_rules',
+  });
+  const textBlock = (data.content || []).find(b => b.type === 'text');
+  if (!textBlock) throw new Error('No text in outreach rules generation response');
+  const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('No JSON in outreach rules generation response');
+  const parsed = JSON.parse(jsonMatch[0]);
+  const outreach_rules = {
+    tone: parsed.tone || '',
+    structure: parsed.structure || '',
+    key_points: parsed.key_points || '',
+    dos: parsed.dos || '',
+    donts: parsed.donts || '',
+    example_snippets: parsed.example_snippets || '',
+  };
+
+  const { error: updateError } = await supabase.from('business_profiles').update({
+    outreach_rules,
+    outreach_rules_updated_at: new Date().toISOString(),
+    outreach_rules_edited_manually: false,
+  }).eq('business_id', businessId);
+  if (updateError) throw updateError;
+
+  return outreach_rules;
+}
+
 // vision/positioning/icp/gtm_strategy are the structured fields
 // generateProfile() fills in, but a business on 'light' research depth (or
 // one whose site research came back thin - confirmed live for both
@@ -300,6 +359,16 @@ export async function generateAssayCriteria(supabase, businessId) {
   if (updateError) throw updateError;
 
   return assay_criteria;
+}
+
+// outreach-intelligence-v1 Section 0a — server-side bulk generation must
+// never trust a client-supplied voice profile; it pulls the running user's
+// own profile fresh from voice_profiles by email instead.
+export async function getVoiceProfileForUser(supabase, userEmail) {
+  if (!userEmail) return null;
+  const { data, error } = await supabase.from('voice_profiles').select('profile').eq('user_email', userEmail.toLowerCase()).maybeSingle();
+  if (error || !data) return null;
+  return data.profile;
 }
 
 // PROJECT STRATEGY — mirrors generateProfile but scoped strictly to a single
