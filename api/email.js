@@ -196,7 +196,19 @@ ${projectGuidance.outreach_example ? `Example of how this project's outreach sho
     products?.length  ? `Relevant products: ${products.join(", ")}` : null,
     signals?.length   ? `Account signals: ${signals.join(", ")}` : null,
     note              ? `AE context: ${note}` : null,
-    customIntel       ? `Additional intel:\n${customIntel.slice(0, 800)}` : null,
+    // outreach-intelligence-v1 Section 0b follow-up — customIntel is
+    // getActiveIntel()'s raw output: global, not business-scoped, still
+    // holding the original fintech product docs (Core Verify etc). Live-
+    // tested against HumanKind/The Coconut Cult: even with correct
+    // assayCriteria grounding in the system prompt, this raw product-doc
+    // text in the user message overrode it and produced ACH/Core Verify
+    // copy for a wellness-sponsorship business. Same root cause and same
+    // fix as buildGeneralizedPrompt() in src/utils/assay.js - only include
+    // it when there's no real business-fit context to replace it with
+    // (Claim Jumper's pool, Frontier stealth entries, influencer accounts,
+    // or a business that hasn't generated assay_criteria yet all keep
+    // getting customIntel exactly as before).
+    customIntel && !assayCriteria ? `Additional intel:\n${customIntel.slice(0, 800)}` : null,
     isInfluencer
       ? (isLinkedIn
           ? `Write a ${formatLabel} that opens with genuine curiosity about their content/audience — not a generic pitch. Use the creator context above to identify something specific.`
