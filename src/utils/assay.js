@@ -191,15 +191,3 @@ Return ONLY this JSON:
 
   return { ...parsed, linkedin, fetchMethod };
 }
-
-export const buildVoiceContext = (vp) => {
-  if (!vp) return "";
-  return [
-    `Greeting: ${vp.greeting || "Hey [First Name],"}`,
-    `Closing: ${vp.closing || "- AE"}`,
-    `Tone: ${vp.tone || "direct"} · Length: ${vp.avgEmailLength || "brief"} · Formality: ${vp.formalityLevel || 2}/5`,
-    vp.commonPhrases?.length ? `Common phrases: ${vp.commonPhrases.join(", ")}` : null,
-    vp.avoidPhrases?.length ? `Never use: ${vp.avoidPhrases.join(", ")}` : null,
-    vp.keyTraits?.length ? `Traits: ${vp.keyTraits.join(", ")}` : null,
-  ].filter(Boolean).join("\n");
-};

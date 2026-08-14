@@ -7,7 +7,6 @@ import { ROI_KEY } from '../utils/storageKeys';
 import { productMonthlyCost, monthUsersAt } from '../utils/pricingMath';
 import { PROD_COLOR } from '../constants/products';
 import { trackDailyStat } from '../utils/stats';
-import { getDealStageLabel } from '../utils/stageMap';
 import { DealComplianceTracker, ComplianceMiniBar } from './AccountCardCompliance';
 import DealStageBar from './AccountCardDealStage';
 import GiftModal from './GiftModal';

@@ -385,12 +385,6 @@ export async function getAccountListMapForBusiness(businessId) {
   return map;
 }
 
-export async function removeAccountFromList(accountId, listId) {
-  if (!accountId || !listId) return { error: null };
-  const { error } = await supabase.from('account_lists').delete().eq('account_id', accountId).eq('list_id', listId);
-  return { error: error?.message || null };
-}
-
 // Client-side twin of shared.js's recordAccountActivity (server-side) - see
 // that function's comment for why this app has one per runtime instead of
 // one shared module (accounts-lists-and-activity-model-v1).

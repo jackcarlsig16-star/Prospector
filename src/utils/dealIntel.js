@@ -1,8 +1,6 @@
-import { getActiveIntel } from './assay';
 import { MODELS } from '../config/models';
 import { getCallContext } from './callContext';
 import { scoreAccount } from './radarScoring';
-import { ROI_KEY } from './storageKeys';
 
 export const GONG_RUBRIC = [
   { key:"opening_agenda",   label:"Opening — Agenda Setting",      max:3,  cat:"opening" },

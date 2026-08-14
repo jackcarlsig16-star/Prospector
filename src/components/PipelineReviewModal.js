@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { C, mono } from '../constants/colors';
+import { mono } from '../constants/colors';
 import { T } from '../constants/tokens';
 import { MODELS } from '../config/models';
 

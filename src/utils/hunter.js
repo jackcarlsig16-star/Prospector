@@ -87,21 +87,6 @@ export async function searchDomain({ domain, department, limit }) {
   }
 }
 
-export async function getHunterAccount() {
-  try {
-    const r = await fetch("/api/hunter/account");
-    const data = await r.json();
-    if (!r.ok) return { error: data?.error || `http_${r.status}` };
-    return data;
-  } catch (err) {
-    return { error: err.message };
-  }
-}
-
-export function clearHunterCache() {
-  try { localStorage.removeItem(CACHE_KEY); } catch {}
-}
-
 // Return all cached domain-search contacts for the given website/URL,
 // sorted by confidence (highest first). Internal helper.
 function getCachedContactsSorted(websiteOrDomain) {

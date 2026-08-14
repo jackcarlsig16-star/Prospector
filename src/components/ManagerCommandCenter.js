@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { C, TS, mono } from '../constants/colors';
-import { T } from '../constants/tokens';
 import { staleDays } from '../utils/staleness';
 import ScoutCommandBar from './ScoutCommandBar';
 

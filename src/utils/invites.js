@@ -12,10 +12,6 @@ const WORD_LIST  = ["GOLD","MINE","VEIN","ORE","LODE","PICK","PAN","DUST","CLAIM
 // No 0/O/1/I to avoid visual confusion
 const SAFE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
-// Any prefix-suffix code matching this pattern is structurally valid.
-// Existence/redemption checks are still done against the invites table.
-export const CODE_FORMAT_RE = /^[A-Z]+-[A-Z0-9]+$/;
-
 // ── Code generation ───────────────────────────────────────────────────────────
 
 // generateCode(existingCodes, { prefix, suffixLen }) — both optional
@@ -44,11 +40,6 @@ export function generateMasterCode(opts = {}) {
   let suffix = "";
   for (let i = 0; i < suffixLen; i++) suffix += SAFE_CHARS[Math.floor(Math.random() * SAFE_CHARS.length)];
   return `${prefix}-${suffix}`;
-}
-
-export function isWellFormedCode(code) {
-  if (!code) return false;
-  return CODE_FORMAT_RE.test(code.toUpperCase());
 }
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
@@ -110,14 +101,6 @@ export function setMasterCode(plainCode) {
   try {
     const prefs = JSON.parse(localStorage.getItem(PREFS_KEY) || "{}");
     prefs.masterCode = btoa(plainCode.toUpperCase());
-    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
-  } catch {}
-}
-
-export function clearMasterCode() {
-  try {
-    const prefs = JSON.parse(localStorage.getItem(PREFS_KEY) || "{}");
-    delete prefs.masterCode;
     localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
   } catch {}
 }
