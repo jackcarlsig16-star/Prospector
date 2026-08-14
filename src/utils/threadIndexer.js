@@ -13,7 +13,6 @@ function setStatus(patch) {
   status = { ...status, ...patch };
   listeners.forEach(fn => { try { fn(status); } catch {} });
 }
-export function getIndexerStatus() { return status; }
 export function subscribeIndexerStatus(fn) {
   listeners.add(fn);
   fn(status);

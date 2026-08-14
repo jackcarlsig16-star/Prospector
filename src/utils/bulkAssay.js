@@ -12,7 +12,6 @@ const PER_ACCOUNT_DELAY_MS = 1500;
 let runner = null;
 
 export function isBulkAssayRunning() { return !!runner; }
-export function cancelBulkAssay() { if (runner) runner.cancelled = true; }
 
 export function loadAssayProgress() {
   try { return JSON.parse(localStorage.getItem(PROGRESS_KEY) || 'null'); } catch { return null; }

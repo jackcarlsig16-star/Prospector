@@ -3,7 +3,6 @@ import { C, mono } from '../../constants/colors';
 import { MODELS } from '../../config/models';
 
 export const NUGGET_WORKFLOWS = ["Territory management","Account research","Meeting prep","Stealth pipeline","Analytics","Bulk assay","Task tracking","Email/outreach","Admin/settings","Other"];
-export const NUGGET_CATS = ["Feature Request","Workflow Improvement","Integration","Analytics","Automation","Bug Report"];
 export const NUGGET_STATUS_COLORS = {"pending":C.mut,"reviewing":C.purple,"planned":C.blue||"#4A9EFF","shipped":C.green,"rejected":C.red};
 export const NUGGET_PRIORITY_COLORS = {"High":C.red,"Medium":C.orange,"Low":C.mut};
 

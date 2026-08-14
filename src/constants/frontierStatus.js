@@ -44,5 +44,3 @@ export const STATUS_EMOJI = {
   "Reach back out later": "⏰",
   "Not interested":       "🚫",
 };
-
-export const STATUS_BOLD = new Set(["Meeting Booked", "NO SHOW"]);

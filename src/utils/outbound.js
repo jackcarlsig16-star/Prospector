@@ -26,23 +26,6 @@ export function migrateOutboundEntry(entry) {
   return { ...entry, outbound: getDefaultOutbound({ id: entry.id, web: entry.web }) };
 }
 
-export function advanceCadence(entry, stepIdx) {
-  const steps = [...(entry.outbound?.cadence?.steps || [])];
-  if (steps[stepIdx]) steps[stepIdx] = { ...steps[stepIdx], sentAt: new Date().toISOString() };
-  return {
-    ...entry,
-    outbound: {
-      ...entry.outbound,
-      cadence: {
-        ...entry.outbound.cadence,
-        state: 'in_sequence',
-        currentStepIdx: stepIdx + 1,
-        steps,
-      },
-    },
-  };
-}
-
 // Match the frontier entry to an account either by stored sourceAccountId or
 // by name (fallback for legacy entries migrated without an id).
 function findSourceAccount(entry, accounts = []) {

@@ -326,30 +326,6 @@ export function buildIntelExport(acc, user) {
   return lines.join("\n");
 }
 
-export function stampNextSteps(nextSteps, callDate) {
-  if (!nextSteps?.length) return [];
-  const base = callDate ? new Date(callDate + 'T12:00:00') : new Date();
-  return nextSteps.map(ns => {
-    const text = typeof ns === 'string' ? ns : (ns?.text || '');
-    const owner = typeof ns === 'object' ? (ns.owner || 'AE') : 'AE';
-    if (typeof ns === 'object' && ns?.dueDate) return { text, dueDate: ns.dueDate, owner };
-    const lower = text.toLowerCase();
-    const d = new Date(base);
-    const dow = d.getDay();
-    if (/\btoday\b/.test(lower)) { /* same day */ }
-    else if (/\btomorrow\b/.test(lower)) { d.setDate(d.getDate() + 1); }
-    else if (/\bend of week\b|\beow\b|\bthis week\b/.test(lower)) { d.setDate(d.getDate() + (5 - dow + 7) % 7 || 7); }
-    else if (/\bmonday\b/.test(lower)) { d.setDate(d.getDate() + (1 - dow + 7) % 7 || 7); }
-    else if (/\btuesday\b/.test(lower)) { d.setDate(d.getDate() + (2 - dow + 7) % 7 || 7); }
-    else if (/\bwednesday\b/.test(lower)) { d.setDate(d.getDate() + (3 - dow + 7) % 7 || 7); }
-    else if (/\bthursday\b/.test(lower)) { d.setDate(d.getDate() + (4 - dow + 7) % 7 || 7); }
-    else if (/\bfriday\b/.test(lower)) { d.setDate(d.getDate() + (5 - dow + 7) % 7 || 7); }
-    else if (/\bnext week\b/.test(lower)) { d.setDate(d.getDate() + 7); }
-    else { d.setDate(d.getDate() + 2); }
-    return { text, dueDate: d.toISOString().split('T')[0], owner };
-  });
-}
-
 export async function clientDebrief(transcript, acc, callDate, opts = {}) {
 
   const resp = await fetch("/proxy/anthropic/messages", {
@@ -605,17 +581,6 @@ Rules:
   }
   return parsed;
 }
-
-export const TASK_PLAYBOOK = [
-  { category: 'Production Request', defaultAction: 'Chatter team to assess, send PR link to prospect' },
-  { category: 'Payment Partners',   defaultAction: 'Recommend three payment partners relevant to use case' },
-  { category: 'Pricing',            defaultAction: 'Build deck and pricing model / quote' },
-  { category: 'Security Review',    defaultAction: 'Send security questionnaire, loop in SE' },
-  { category: 'Partner Access',     defaultAction: 'Set up partner portal access' },
-  { category: 'Follow-up Call',     defaultAction: 'Schedule next call with agenda' },
-  { category: 'VC Recommendations', defaultAction: 'Send curated VC list relevant to stage and vertical' },
-  { category: 'Technical Review',   defaultAction: 'Loop in solutions engineer for integration scoping' },
-];
 
 export function getGleanPrompt(category, acc) {
   const vert  = acc?.vert  || 'their vertical';
