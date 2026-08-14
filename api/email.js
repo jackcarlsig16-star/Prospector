@@ -1,6 +1,8 @@
+import { MODELS } from '../src/config/models.js';
+
 export const config = { maxDuration: 30 };
 
-const MODEL = process.env.ANTHROPIC_MODEL_FAST || "claude-haiku-4-5-20251001";
+const MODEL = MODELS.FAST;
 
 const AVOID_ALWAYS = [
   "synergies", "solutions", "leverage", "excited to connect",
@@ -66,9 +68,11 @@ export default async function handler(req, res) {
     personaName, personaTitle,
     customIntel, senderName, voiceExamples, voiceProfile,
     signals, note, web, website,
-    format,
+    format, accountKind,
+    fitRationale, fitSignals, nicheAssessment, bioSnapshot,
   } = req.body;
 
+  const isInfluencer = accountKind === 'influencer';
   const sender = senderName || "your rep";
   const isLinkedIn = format === "linkedin_note";
   const wordLimit = isLinkedIn ? 50 : 60;
@@ -110,29 +114,50 @@ export default async function handler(req, res) {
 - No fluff, flattery, or filler — every sentence earns its place`;
 
   const systemPrompt = [
-    `You are ${sender} writing first-touch outbound ${formatLabel}s.`,
+    isInfluencer
+      ? `You are ${sender} writing a first-touch outbound ${formatLabel} to a content creator, pitching a partnership/collaboration — not a product sale.`
+      : `You are ${sender} writing first-touch outbound ${formatLabel}s.`,
     voiceRules,
     outputFormat,
-    `PRODUCT LANGUAGE: Never mention our products by name (Core Verify, Core Verify Plus, Balance Insights, etc.). Describe what the solution does in plain language (e.g. "instant account verification" not "Core Verify", "bank account balance checks" not "Balance Insights").`,
-    `SOCIAL PROOF: You may name-drop 1-2 of these real customers in the same space: ${proof.slice(0, 3).join(", ")}. Only use if it fits naturally. Never force it.`,
+    !isInfluencer ? `PRODUCT LANGUAGE: Never mention our products by name (Core Verify, Core Verify Plus, Balance Insights, etc.). Describe what the solution does in plain language (e.g. "instant account verification" not "Core Verify", "bank account balance checks" not "Balance Insights").` : "",
+    !isInfluencer ? `SOCIAL PROOF: You may name-drop 1-2 of these real customers in the same space: ${proof.slice(0, 3).join(", ")}. Only use if it fits naturally. Never force it.` : "",
     voiceExamples ? `VOICE EXAMPLES — match this tone and length exactly:\n${voiceExamples.slice(0, 1500)}` : "",
   ].filter(Boolean).join("\n\n");
 
+  const creatorContext = isInfluencer
+    ? [
+        bioSnapshot                        ? `Creator bio: ${bioSnapshot}` : null,
+        nicheAssessment?.category          ? `Niche: ${nicheAssessment.category}` : null,
+        nicheAssessment?.content_type      ? `Content type: ${nicheAssessment.content_type}` : null,
+        nicheAssessment?.audience_read     ? `Audience: ${nicheAssessment.audience_read}` : null,
+        fitRationale                       ? `Why this could be a fit: ${fitRationale}` : null,
+        Array.isArray(fitSignals) && fitSignals.length
+          ? `Fit signals: ${fitSignals.map(s => `${s.axis}: ${s.note}`).join("; ")}`
+          : null,
+      ].filter(Boolean).join("\n")
+    : null;
+
   const userMessage = [
-    websiteContent
-      ? `WEBSITE CONTENT (scraped from ${websiteUrl}):\n${websiteContent}`
-      : `Company: ${name}\nBusiness model: ${businessModel || "fintech"}\nproduct fit: ${productFit || "relevant fintech use cases"}`,
+    isInfluencer
+      ? [creatorContext, websiteContent ? `WEBSITE/PROFILE CONTENT (scraped from ${websiteUrl}):\n${websiteContent}` : null].filter(Boolean).join("\n\n") || `Creator: ${name}`
+      : (websiteContent
+          ? `WEBSITE CONTENT (scraped from ${websiteUrl}):\n${websiteContent}`
+          : `Company: ${name}\nBusiness model: ${businessModel || "fintech"}\nproduct fit: ${productFit || "relevant fintech use cases"}`),
     personaName
       ? `Recipient: ${personaName}${personaTitle ? `, ${personaTitle}` : ""} at ${name}`
-      : `Recipient: [First Name] at ${name}`,
+      : isInfluencer ? `Recipient: ${name}` : `Recipient: [First Name] at ${name}`,
     useCase           ? `Top use case: ${useCase}` : null,
     products?.length  ? `Relevant products: ${products.join(", ")}` : null,
     signals?.length   ? `Account signals: ${signals.join(", ")}` : null,
     note              ? `AE context: ${note}` : null,
     customIntel       ? `Additional intel:\n${customIntel.slice(0, 800)}` : null,
-    isLinkedIn
-      ? `Write a ${formatLabel} that opens with genuine curiosity about a real operational challenge this company faces — not a generic pitch. Use the website content above to identify something specific about how they operate.`
-      : `Write a ${formatLabel} with a Subject line and body. The subject must reference something specific from the website content or signals (not a generic "Intro + ${name}"). The opener should show genuine curiosity about a real operational challenge this company faces — not a generic pitch.`,
+    isInfluencer
+      ? (isLinkedIn
+          ? `Write a ${formatLabel} that opens with genuine curiosity about their content/audience — not a generic pitch. Use the creator context above to identify something specific.`
+          : `Write a ${formatLabel} with a Subject line and body. The subject must reference something specific from the creator context above (not a generic "Intro + ${name}"). The opener should show genuine curiosity about their content — not a generic pitch.`)
+      : (isLinkedIn
+          ? `Write a ${formatLabel} that opens with genuine curiosity about a real operational challenge this company faces — not a generic pitch. Use the website content above to identify something specific about how they operate.`
+          : `Write a ${formatLabel} with a Subject line and body. The subject must reference something specific from the website content or signals (not a generic "Intro + ${name}"). The opener should show genuine curiosity about a real operational challenge this company faces — not a generic pitch.`),
   ].filter(Boolean).join("\n\n");
 
   try {

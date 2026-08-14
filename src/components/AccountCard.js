@@ -13,9 +13,12 @@ import GiftModal from './GiftModal';
 import WinReasonPanel from './WinReasonPanel';
 import { loadWinReason } from '../utils/winReasons';
 import { SignalLegendButton } from './SignalLegend';
-import AccountCardActionBar from './AccountCardActionBar';
+import AccountCardActionBar, { QuickAskBar } from './AccountCardActionBar';
 import AccountCardCompetition from './AccountCardCompetition';
 import AccountCardRawEdit from './AccountCardRawEdit';
+import AccountActivityTimeline from './AccountActivityTimeline';
+import EmailModal from './EmailModal';
+import { updateInfluencerRelationship } from '../utils/db';
 
 const trackStat=(key,by=1)=>{
   try{
@@ -66,6 +69,19 @@ function Badge({ label, color, bg, border, size = 11 }) {
 
 function Dot({ on }) {
   return <span style={{ display:"inline-block", width:6, height:6, borderRadius:"50%", background:on?C.green:C.red, flexShrink:0 }} />;
+}
+
+// account-card-unification-and-outreach-v1 — small kind pill next to the name,
+// visually distinct for influencer accounts so lists stay scannable at a glance.
+const INFLUENCER_ACCENT = "#c026d3";
+function KindBadge({ isInfluencer }) {
+  return isInfluencer
+    ? <span style={{ ...mono, fontSize:9, fontWeight:700, letterSpacing:"0.06em", color:"#e879f9", background:`${INFLUENCER_ACCENT}1c`, border:`1px solid ${INFLUENCER_ACCENT}66`, borderRadius:3, padding:"1px 6px", flexShrink:0 }}>INFLUENCER</span>
+    : <span style={{ ...mono, fontSize:9, fontWeight:600, letterSpacing:"0.06em", color:"#666", background:"transparent", border:"1px solid #333", borderRadius:3, padding:"1px 6px", flexShrink:0 }}>BUSINESS</span>;
+}
+
+function ZoneLabel({ children }) {
+  return <p style={{ ...mono, fontSize:9, fontWeight:700, color:"#555", textTransform:"uppercase", letterSpacing:"0.14em", margin:"0 0 8px", paddingBottom:5, borderBottom:"0.5px solid #1e1e1e" }}>{children}</p>;
 }
 
 const loadRoiFiles = () => { try { return JSON.parse(localStorage.getItem(ROI_KEY)||"{}"); } catch { return {}; } };
@@ -160,7 +176,190 @@ const PRODUCT_IMPORT_SOURCES = [
   { url:"https://docs.example.com/products/balance-insights/", name:"Balance Insights",        id:"live_balance_insights" },
 ];
 
-function AccountCard({ acc, expanded, onToggle, onReassay, reassaying, onUpdate, isFav, onToggleFav, onRemove, assignedEntry, onAssign, onUnassign, onFlagRemoval, onOpenPricing, onOpenRoi, onOpenDealSummary, onCreateTask, onUpdateTask, tasks=[], activeUser={}, parentName=null, onRequestLinkParent, onUnlinkParent }) {
+// ── Influencer-side helpers + sub-components (relocated from InfluencerCard.js, unchanged) ──
+
+const STAGE_OPTIONS = ['not_contacted','contacted','replied','interested','negotiating','partnered','declined','do_not_contact'];
+const STAGE_COLOR = {
+  not_contacted: C.dim, contacted: C.blue, replied: C.blue, interested: C.gold,
+  negotiating: C.orange, partnered: C.green, declined: C.red, do_not_contact: C.red,
+};
+const TEMP_OPTIONS = ['warm','familiar','cold'];
+const TEMP_COLOR = { warm: C.orange, familiar: C.gold, cold: C.blue };
+const PRIORITY_OPTIONS = ['low','medium','high'];
+const PRIORITY_COLOR = { low: C.dim, medium: C.gold, high: C.red };
+
+const fitColor = (score) => score == null ? C.dim : score >= 70 ? C.green : score >= 40 ? C.gold : C.red;
+
+const infLabel = s => (s || '').replace(/_/g, ' ');
+
+const infPill = (color) => ({ ...mono, fontSize:10, padding:"2px 8px", borderRadius:20, background:`${color}18`, border:`1px solid ${color}55`, color, whiteSpace:"nowrap" });
+const infSelect = { ...mono, fontSize:11, padding:"4px 8px", background:C.bg, border:`1px solid ${C.brdM}`, borderRadius:5, color:C.txt, outline:"none", cursor:"pointer" };
+const infInput = { ...mono, fontSize:12, padding:"7px 10px", background:C.bg, border:`1.5px solid ${C.brdM}`, borderRadius:6, color:C.txt, outline:"none", boxSizing:"border-box", width:"100%" };
+
+function FitBlock({ detail }) {
+  const fit = detail?.fit_score;
+  const signals = detail?.fit_signals;
+  if (detail?.assessment_status !== 'ready') {
+    return <p style={{ ...mono, fontSize:11, color:C.dim, margin:0 }}>No fit assessment yet — add a bio below and run assessment.</p>;
+  }
+  return (
+    <>
+      <div style={{ display:"flex", alignItems:"baseline", gap:10, marginBottom:8 }}>
+        <span style={{ ...mono, fontSize:24, fontWeight:700, color:fitColor(fit) }}>{fit ?? '—'}</span>
+        <span style={{ ...mono, fontSize:10, color:C.dim }}>/ 100 fit</span>
+      </div>
+      {detail.fit_rationale && <p style={{ ...mono, fontSize:12, color:C.txt, lineHeight:1.6, margin:"0 0 10px" }}>{detail.fit_rationale}</p>}
+      {Array.isArray(signals) && signals.length > 0 && (
+        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+          {signals.map((s, i) => (
+            <div key={i} style={{ display:"flex", gap:8, alignItems:"baseline" }}>
+              <span style={{ ...mono, fontSize:10, color:C.gold, textTransform:"uppercase", letterSpacing:"0.04em", flexShrink:0 }}>{s.axis}</span>
+              <span style={{ ...mono, fontSize:11, color:C.mut, lineHeight:1.5 }}>{s.note}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+function AssessBioForm({ business, acc, detail, onAssessed }) {
+  const [bio, setBio] = useState(detail?.bio_snapshot || '');
+  const [followerCount, setFollowerCount] = useState(detail?.follower_count || '');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const run = async () => {
+    if (!bio.trim() || busy) return;
+    setBusy(true); setError('');
+    try {
+      const res = await fetch(`/api/businesses/${business.id}/influencer/assess`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId: acc.id, bioText: bio.trim(), followerCount: followerCount ? Number(followerCount) : null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Assessment failed');
+      onAssessed(data.detail);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop:10 }}>
+      <textarea value={bio} onChange={e=>setBio(e.target.value)} rows={3} placeholder="Paste their bio to assess (or re-assess with an updated bio)"
+        style={{ ...infInput, resize:"vertical", marginBottom:8 }} disabled={busy} />
+      <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+        <input type="number" value={followerCount} onChange={e=>setFollowerCount(e.target.value)} placeholder="followers (optional)" style={{ ...infInput, width:160 }} disabled={busy} />
+        <button onClick={run} disabled={!bio.trim()||busy} style={{ ...mono, fontSize:11, padding:"7px 14px", background:C.gold, border:`1px solid ${C.gold}`, borderRadius:6, color:C.bg, cursor:"pointer", fontWeight:700, opacity:bio.trim()?1:0.5 }}>
+          {busy ? "Assessing…" : detail?.assessment_status === 'ready' ? "Re-run assessment →" : "Run assessment →"}
+        </button>
+      </div>
+      {error && <p style={{ ...mono, fontSize:11, color:C.red, margin:"8px 0 0" }}>⚠ {error}</p>}
+    </div>
+  );
+}
+
+function RelationshipBlock({ acc, detail, userEmail, canEdit, onUpdated }) {
+  const [saving, setSaving] = useState(false);
+  const [nextAction, setNextAction] = useState(detail?.next_action || '');
+  const [declineReason, setDeclineReason] = useState(detail?.decline_reason || '');
+  const [tagInput, setTagInput] = useState('');
+  const tags = Array.isArray(detail?.tags) ? detail.tags : [];
+
+  const apply = async (patch) => {
+    setSaving(true);
+    const { detail: updated, error } = await updateInfluencerRelationship(acc.id, userEmail, patch);
+    setSaving(false);
+    if (!error) onUpdated(updated);
+  };
+
+  return (
+    <>
+      <div style={{ display:"flex", gap:16, flexWrap:"wrap", marginBottom:12 }}>
+        <div>
+          <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Stage</div>
+          {canEdit ? (
+            <select value={detail?.relationship_stage || 'not_contacted'} disabled={saving} onChange={e=>apply({ relationship_stage: e.target.value })} style={{ ...infSelect, color:STAGE_COLOR[detail?.relationship_stage]||C.txt }}>
+              {STAGE_OPTIONS.map(s => <option key={s} value={s}>{infLabel(s)}</option>)}
+            </select>
+          ) : <span style={infPill(STAGE_COLOR[detail?.relationship_stage]||C.dim)}>{infLabel(detail?.relationship_stage||'not_contacted')}</span>}
+        </div>
+        <div>
+          <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Temperature</div>
+          {canEdit ? (
+            <select value={detail?.relationship_temperature || ''} disabled={saving} onChange={e=>apply({ relationship_temperature: e.target.value || null })} style={infSelect}>
+              <option value="">—</option>
+              {TEMP_OPTIONS.map(t => <option key={t} value={t}>{infLabel(t)}</option>)}
+            </select>
+          ) : <span style={infPill(TEMP_COLOR[detail?.relationship_temperature]||C.dim)}>{infLabel(detail?.relationship_temperature||'—')}</span>}
+        </div>
+        <div>
+          <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Priority</div>
+          {canEdit ? (
+            <select value={detail?.priority || ''} disabled={saving} onChange={e=>apply({ priority: e.target.value || null })} style={infSelect}>
+              <option value="">—</option>
+              {PRIORITY_OPTIONS.map(p => <option key={p} value={p}>{infLabel(p)}</option>)}
+            </select>
+          ) : <span style={infPill(PRIORITY_COLOR[detail?.priority]||C.dim)}>{infLabel(detail?.priority||'—')}</span>}
+        </div>
+      </div>
+
+      <div style={{ marginBottom:10 }}>
+        <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Next action</div>
+        {canEdit ? (
+          <div style={{ display:"flex", gap:6 }}>
+            <input value={nextAction} onChange={e=>setNextAction(e.target.value)} placeholder="e.g. Send outreach DM" style={infInput} disabled={saving} />
+            <button onClick={()=>apply({ next_action: nextAction.trim() || null })} disabled={saving} style={{ ...mono, fontSize:11, padding:"0 12px", background:"transparent", border:`1px solid ${C.brd}`, borderRadius:6, color:C.dim, cursor:"pointer" }}>Save</button>
+          </div>
+        ) : <p style={{ ...mono, fontSize:12, color:C.txt, margin:0 }}>{detail?.next_action || '—'}</p>}
+      </div>
+
+      {(detail?.relationship_stage === 'declined' || detail?.relationship_stage === 'do_not_contact') && (
+        <div style={{ marginBottom:10 }}>
+          <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Decline reason</div>
+          {canEdit ? (
+            <div style={{ display:"flex", gap:6 }}>
+              <input value={declineReason} onChange={e=>setDeclineReason(e.target.value)} placeholder="Why this didn't work out" style={infInput} disabled={saving} />
+              <button onClick={()=>apply({ decline_reason: declineReason.trim() || null })} disabled={saving} style={{ ...mono, fontSize:11, padding:"0 12px", background:"transparent", border:`1px solid ${C.brd}`, borderRadius:6, color:C.dim, cursor:"pointer" }}>Save</button>
+            </div>
+          ) : <p style={{ ...mono, fontSize:12, color:C.txt, margin:0 }}>{detail?.decline_reason || '—'}</p>}
+        </div>
+      )}
+
+      <div>
+        <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:6 }}>Tags</div>
+        <div style={{ display:"flex", gap:6, flexWrap:"wrap", alignItems:"center" }}>
+          {tags.map(t => (
+            <span key={t} style={infPill(C.purple)}>
+              {t}
+              {canEdit && <button onClick={()=>apply({ tags: tags.filter(x=>x!==t) })} disabled={saving} style={{ background:"transparent", border:"none", color:C.purple, cursor:"pointer", marginLeft:6, padding:0, fontSize:11 }}>✕</button>}
+            </span>
+          ))}
+          {canEdit && (
+            <input value={tagInput} onChange={e=>setTagInput(e.target.value)}
+              onKeyDown={e=>{ if(e.key==='Enter' && tagInput.trim()){ apply({ tags:[...tags, tagInput.trim()] }); setTagInput(''); } }}
+              placeholder="+ tag" style={{ ...infInput, width:100, padding:"3px 8px", fontSize:11 }} disabled={saving} />
+          )}
+          {!tags.length && !canEdit && <span style={{ ...mono, fontSize:11, color:C.dim }}>—</span>}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Unified component (account-card-unification-and-outreach-v1) ──────────────
+// Business (legacy Assay/Gold-Silver-Tin) and influencer accounts now share one
+// two-zone shell (ActionsZone -> IntelZone). Business internals reused unchanged
+// via AccountCardActionBar + its existing sub-panels; influencer internals reused
+// unchanged via AssessBioForm/FitBlock/RelationshipBlock above (relocated from
+// the now-deleted InfluencerCard.js, not rewritten).
+function AccountCard({ acc, business=null, expanded, onToggle, onReassay, reassaying, onUpdate, isFav, onToggleFav, onRemove, assignedEntry, onAssign, onUnassign, onFlagRemoval, onOpenPricing, onOpenRoi, onOpenDealSummary, onCreateTask, onUpdateTask, tasks=[], activeUser={}, parentName=null, onRequestLinkParent, onUnlinkParent, userEmail, canEdit, onUpdated }) {
+  const isInfluencer = acc.accountKind === 'influencer';
+
+  // ── business-only state (unchanged) ──
   const [confirmRemove,setConfirmRemove]=useState(false);
   const [giftModalOpen,setGiftModalOpen]=useState(false);
   const [webOverride,setWebOverride]=useState("");
@@ -170,8 +369,17 @@ function AccountCard({ acc, expanded, onToggle, onReassay, reassaying, onUpdate,
   const [winReasonModal,setWinReasonModal]=useState(false);
   const [winReason,setWinReason]=useState(()=>loadWinReason(acc.id));
   const isClosedWon = (acc.stage||"") === "Closed Won";
-
   const actionBarRef = useRef(null);
+
+  // ── influencer-only state ──
+  const [detail, setDetail] = useState(acc.influencerDetail || null);
+  // Same pattern InfluencerCard.js used: update this card's own view immediately,
+  // then trigger a silent reload upstream so last_touched_by/at doesn't go stale
+  // in BusinessAccountsTab's cached account list.
+  const applyDetailUpdate = (updated) => { setDetail(updated); onUpdated?.(); };
+
+  // ── shared: Generate Outreach (account-card-unification-and-outreach-v1) ──
+  const [outreachOpen, setOutreachOpen] = useState(false);
 
   const ts = TS[acc.tier] || TS.Slag;
   const gold = acc.score === 1, silver = acc.tier === "Silver", tin = acc.tier === "Tin", slag = acc.score === 4;
@@ -179,7 +387,6 @@ function AccountCard({ acc, expanded, onToggle, onReassay, reassaying, onUpdate,
   const days = staleDays(lastTouch(acc));
   const missingData = !acc.score || !acc.linkedin || !acc.prods || acc.prods.length === 0;
   const isActiveDealEarly = acc.stage === "Active Deal";
-  // Left border stays tier-color identity always; Active Deal signal is wash + inset shadow only
   const tierColor = gold ? T.tier.gold : silver ? T.tier.silver : tin ? T.tier.tin : slag ? T.tier.slag : "#444";
   const cardBg = isActiveDealEarly
     ? (expanded ? T.bg.cardExpanded : `${T.neon}08`)
@@ -206,102 +413,197 @@ function AccountCard({ acc, expanded, onToggle, onReassay, reassaying, onUpdate,
   };
   const SH = { ...mono, fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: "#555" };
 
+  // ── influencer header display fields ──
+  const handle = detail?.instagram_handle || (acc.name || '').replace(/^@/, '');
+
+  const outerStyle = isInfluencer
+    ? { border:`1px solid ${C.brd}`, borderLeft:`4px solid ${INFLUENCER_ACCENT}88`, borderRadius:6, background:C.card, marginBottom:6, overflow:"hidden" }
+    : { border:`1px solid ${cardBorder}`, borderLeft:`4px solid ${expanded?tierColor:restingTierBorder}`, borderRadius:6, background:cardBg, marginBottom:6, overflow:"hidden", boxShadow:cardGlow, position:"relative", transition:"background 0.15s, border-color 0.15s, box-shadow 0.15s" };
+
   return (
-    <div id={`acct-${acc.id}`} style={{ border:`1px solid ${cardBorder}`, borderLeft:`4px solid ${expanded?tierColor:restingTierBorder}`, borderRadius:6, background:cardBg, marginBottom:6, overflow:"hidden", boxShadow:cardGlow, position:"relative", transition:"background 0.15s, border-color 0.15s, box-shadow 0.15s" }}
-      onMouseEnter={e=>{ if(!expanded){ e.currentTarget.style.background=isActiveDealEarly?`${T.neon}10`:T.bg.cardExpanded; e.currentTarget.style.borderLeftColor=tierColor; }}}
-      onMouseLeave={e=>{ if(!expanded){ e.currentTarget.style.background=restingBg; e.currentTarget.style.borderLeftColor=restingTierBorder; }}}>
-      {intelFlash&&<div style={{ position:"absolute", top:8, right:12, zIndex:10, pointerEvents:"none", ...mono, fontSize:10, color:intelFlash.startsWith('⚠')?T.amber:T.neon, fontWeight:500, opacity:1, transition:"opacity 0.3s" }}>{intelFlash===true?'✦ Intel updated':intelFlash}</div>}
+    <div id={`acct-${acc.id}`} style={outerStyle}
+      onMouseEnter={isInfluencer ? undefined : e=>{ if(!expanded){ e.currentTarget.style.background=isActiveDealEarly?`${T.neon}10`:T.bg.cardExpanded; e.currentTarget.style.borderLeftColor=tierColor; }}}
+      onMouseLeave={isInfluencer ? undefined : e=>{ if(!expanded){ e.currentTarget.style.background=restingBg; e.currentTarget.style.borderLeftColor=restingTierBorder; }}}>
+      {!isInfluencer && intelFlash&&<div style={{ position:"absolute", top:8, right:12, zIndex:10, pointerEvents:"none", ...mono, fontSize:10, color:intelFlash.startsWith('⚠')?T.amber:T.neon, fontWeight:500, opacity:1, transition:"opacity 0.3s" }}>{intelFlash===true?'✦ Intel updated':intelFlash}</div>}
 
       {/* ── Header row ── */}
-      <div onClick={onToggle} style={{ padding:T.spacing.row, cursor:"pointer", display:"flex", alignItems:"center", gap:T.spacing.gap.md, ...(expanded?{borderBottom:`1px solid ${tierColor}33`}:{}) }}>
-        <Dot on={true} />
-        <div style={{ flex:"0 0 150px", minWidth:0 }}>
-          <p style={{ margin:0, fontWeight:500, fontSize:15, color:gold?C.goldTxt:slag?C.slag:T.text.primary, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{acc.name}</p>
-          <p style={{ ...mono, margin:0, fontSize:11, color:T.text.muted }}>{[acc.web, [acc.city, acc.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ') || "—"}</p>
+      {isInfluencer ? (
+        <div onClick={onToggle} style={{ padding:"10px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:14 }}>
+          <Dot on={true} />
+          <div style={{ flex:"0 0 200px", minWidth:0 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <p style={{ margin:0, fontWeight:500, fontSize:14, color:C.txt, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>@{handle}</p>
+              <KindBadge isInfluencer />
+            </div>
+            <p style={{ ...mono, margin:0, fontSize:10, color:C.dim }}>
+              {detail?.follower_count != null ? `${detail.follower_count.toLocaleString()} followers` : '—'}
+              {detail?.niche_assessment?.category ? ` · ${detail.niche_assessment.category}` : ''}
+            </p>
+          </div>
+          <div style={{ flex:"0 0 auto" }}>
+            {detail?.assessment_status === 'ready' ? (
+              <span style={{ ...mono, fontSize:16, fontWeight:700, color:fitColor(detail.fit_score) }}>{detail.fit_score ?? '—'}<span style={{ fontSize:9, color:C.dim, fontWeight:400 }}> fit</span></span>
+            ) : (
+              <span style={{ ...mono, fontSize:10, color:C.dim }}>
+                {detail?.assessment_status === 'assessing' ? 'assessing…' : detail?.assessment_status === 'error' ? 'assessment failed' : 'no bio yet'}
+              </span>
+            )}
+          </div>
+          {detail?.priority && <span style={infPill(PRIORITY_COLOR[detail.priority])}>{infLabel(detail.priority)} priority</span>}
+          <span style={infPill(STAGE_COLOR[detail?.relationship_stage]||C.dim)}>{infLabel(detail?.relationship_stage||'not_contacted')}</span>
+          {detail?.instagram_url && <a href={detail.instagram_url} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{ ...mono, fontSize:10, color:C.tin, textDecoration:"none" }}>↗ profile</a>}
+          <span style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:8 }}>
+            <button onClick={e=>{e.stopPropagation();onToggleFav&&onToggleFav(acc.id);}} style={{ background:"transparent",border:"none",fontSize:14,color:isFav?C.gold:T.border.muted,cursor:"pointer",padding:"0 2px",lineHeight:1,flexShrink:0 }}>★</button>
+            <span style={{ ...mono, fontSize:10, color:C.dim }}>{expanded?"▲":"▼"}</span>
+          </span>
         </div>
-        <Divider />
-        <div style={{ display:"flex", alignItems:"center", gap:T.spacing.gap.md, flex:"0 0 auto" }}>
-          <div style={{ height:24, display:"flex", alignItems:"center" }}>{acc.tier?<Badge label={`${ts.i} ${acc.tier}`} color={ts.t} bg={ts.bg} border={ts.b} size={12}/>:<span style={{ fontSize:12, color:T.text.dim }}>—</span>}</div>
-          <Divider />
-          <div style={{ height:24, display:"flex", alignItems:"center" }} onClick={e=>e.stopPropagation()}>
-            {onUpdate
-              ? <select value={acc.stage||"Prospecting"} onChange={e=>{
-                  const newStage=e.target.value;
-                  const stageNow=new Date().toISOString();
-                  console.warn(`[STAGE CHANGE] manual dropdown | ${acc.name} | ${acc.stage||'Prospecting'} → ${newStage}`);
-                  onUpdate({...acc,stage:newStage,...(newStage==="Active Deal"&&acc.stage!=="Active Deal"?{activeDealAt:stageNow}:{})});
-                  trackDailyStat("accounts_touched");
-                  if(newStage==="Active Deal"&&acc.stage!=="Active Deal"){
-                    if(!getCompliance(acc.id)){
-                      saveCompliance(acc.id,{type:"standard",steps:STANDARD_STEPS.map(s=>({id:s.id,status:"Not Started",days:0,notes:"",startedAt:null,completedAt:null}))});
-                    }
-                    if(onCreateTask){
-                      const today=new Date().toISOString().split("T")[0];
-                      onCreateTask({id:Date.now(),title:`Check production request status for ${acc.name}`,type:"Follow up",accId:acc.id,accName:acc.name,priority:"High",assignee:"AE",status:"Open",dueDate:today,pricingFileId:null,pricingFileName:null,notes:"",createdAt:today});
-                    }
-                  }
-                  if(newStage==="Closed Won"){
-                    setGiftModalOpen(true);
-                    if(onCreateTask){
-                      const now=new Date().toISOString();
-                      const existing=tasks||[];
-                      const CLOSED_WON_TASKS=[
-                        {title:"Account Manager Intro",type:"Other"},
-                        {title:"Turn on Production",type:"Salesforce"},
-                      ];
-                      CLOSED_WON_TASKS.forEach((tmpl,i)=>{
-                        const dupe=existing.some(t=>t.title===tmpl.title&&t.accId===acc.id);
-                        if(!dupe) onCreateTask({id:Date.now()+i,title:tmpl.title,type:tmpl.type,accId:acc.id,accName:acc.name,priority:"High",status:"Open",dueDate:null,createdAt:now});
-                      });
-                    }
-                  }
-                }} style={{ fontSize:12,padding:"0 5px",background:C.bg,border:`1px solid ${C.brd}`,borderRadius:4,color:DEAL_STAGES.find(d=>d.id===(acc.stage||"Prospecting"))?.c||T.text.muted,outline:"none",cursor:"pointer",height:24 }}>
-                  {DEAL_STAGES.map(s=><option key={s.id} value={s.id}>{s.id}</option>)}
-                </select>
-              : <span style={{ fontSize:12,color:DEAL_STAGES.find(d=>d.id===acc.stage)?.c||T.text.muted }}>{acc.stage||"Prospecting"}</span>
-            }
+      ) : (
+        <div onClick={onToggle} style={{ padding:T.spacing.row, cursor:"pointer", display:"flex", alignItems:"center", gap:T.spacing.gap.md, ...(expanded?{borderBottom:`1px solid ${tierColor}33`}:{}) }}>
+          <Dot on={true} />
+          <div style={{ flex:"0 0 150px", minWidth:0 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <p style={{ margin:0, fontWeight:500, fontSize:15, color:gold?C.goldTxt:slag?C.slag:T.text.primary, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>{acc.name}</p>
+              <KindBadge isInfluencer={false} />
+            </div>
+            <p style={{ ...mono, margin:0, fontSize:11, color:T.text.muted }}>{[acc.web, [acc.city, acc.state].filter(Boolean).join(', ')].filter(Boolean).join(' · ') || "—"}</p>
           </div>
           <Divider />
-          <div style={{ height:24, display:"flex", alignItems:"center" }}><span style={{ fontSize:12, color:vertColor }}>{acc.vert||"—"}</span></div>
+          <div style={{ display:"flex", alignItems:"center", gap:T.spacing.gap.md, flex:"0 0 auto" }}>
+            <div style={{ height:24, display:"flex", alignItems:"center" }}>{acc.tier?<Badge label={`${ts.i} ${acc.tier}`} color={ts.t} bg={ts.bg} border={ts.b} size={12}/>:<span style={{ fontSize:12, color:T.text.dim }}>—</span>}</div>
+            <Divider />
+            <div style={{ height:24, display:"flex", alignItems:"center" }} onClick={e=>e.stopPropagation()}>
+              {onUpdate
+                ? <select value={acc.stage||"Prospecting"} onChange={e=>{
+                    const newStage=e.target.value;
+                    const stageNow=new Date().toISOString();
+                    console.warn(`[STAGE CHANGE] manual dropdown | ${acc.name} | ${acc.stage||'Prospecting'} → ${newStage}`);
+                    onUpdate({...acc,stage:newStage,...(newStage==="Active Deal"&&acc.stage!=="Active Deal"?{activeDealAt:stageNow}:{})});
+                    trackDailyStat("accounts_touched");
+                    if(newStage==="Active Deal"&&acc.stage!=="Active Deal"){
+                      if(!getCompliance(acc.id)){
+                        saveCompliance(acc.id,{type:"standard",steps:STANDARD_STEPS.map(s=>({id:s.id,status:"Not Started",days:0,notes:"",startedAt:null,completedAt:null}))});
+                      }
+                      if(onCreateTask){
+                        const today=new Date().toISOString().split("T")[0];
+                        onCreateTask({id:Date.now(),title:`Check production request status for ${acc.name}`,type:"Follow up",accId:acc.id,accName:acc.name,priority:"High",assignee:"AE",status:"Open",dueDate:today,pricingFileId:null,pricingFileName:null,notes:"",createdAt:today});
+                      }
+                    }
+                    if(newStage==="Closed Won"){
+                      setGiftModalOpen(true);
+                      if(onCreateTask){
+                        const now=new Date().toISOString();
+                        const existing=tasks||[];
+                        const CLOSED_WON_TASKS=[
+                          {title:"Account Manager Intro",type:"Other"},
+                          {title:"Turn on Production",type:"Salesforce"},
+                        ];
+                        CLOSED_WON_TASKS.forEach((tmpl,i)=>{
+                          const dupe=existing.some(t=>t.title===tmpl.title&&t.accId===acc.id);
+                          if(!dupe) onCreateTask({id:Date.now()+i,title:tmpl.title,type:tmpl.type,accId:acc.id,accName:acc.name,priority:"High",status:"Open",dueDate:null,createdAt:now});
+                        });
+                      }
+                    }
+                  }} style={{ fontSize:12,padding:"0 5px",background:C.bg,border:`1px solid ${C.brd}`,borderRadius:4,color:DEAL_STAGES.find(d=>d.id===(acc.stage||"Prospecting"))?.c||T.text.muted,outline:"none",cursor:"pointer",height:24 }}>
+                    {DEAL_STAGES.map(s=><option key={s.id} value={s.id}>{s.id}</option>)}
+                  </select>
+                : <span style={{ fontSize:12,color:DEAL_STAGES.find(d=>d.id===acc.stage)?.c||T.text.muted }}>{acc.stage||"Prospecting"}</span>
+              }
+            </div>
+            <Divider />
+            <div style={{ height:24, display:"flex", alignItems:"center" }}><span style={{ fontSize:12, color:vertColor }}>{acc.vert||"—"}</span></div>
+          </div>
+          <Divider />
+          <div style={{ flex:1, display:"flex", gap:T.spacing.gap.sm, flexWrap:"wrap", alignItems:"center", minWidth:0 }}>
+            {acc.prods&&acc.prods.slice(0,3).map(p=><span key={p} style={{ fontSize:11, color:PROD_COLOR[p]||T.text.muted, background:C.bg, border:`1px solid ${C.brd}`, borderRadius:3, padding:T.spacing.pill }}>{p}</span>)}
+            {acc.stage==="Active Deal"&&!expanded&&<ComplianceMiniBar accId={acc.id}/>}
+          </div>
+          <Divider />
+          <div style={{ display:"flex", alignItems:"center", gap:T.spacing.gap.md, flexShrink:0 }}>
+            {assignedEntry&&<span title={`In Frontier — ${assignedEntry.assignedTo||''}`} style={{ fontSize:11, color:T.cyan, background:`${T.cyan}14`, border:`1px solid ${T.cyan}55`, borderRadius:3, padding:T.spacing.pill, letterSpacing:"0.06em", textShadow:`0 0 6px ${T.cyan}55` }}>◆ OUTBOUND</span>}
+            {stale&&<span style={{ fontSize:11, color:T.red }}>⚠ {days}d at risk</span>}
+            {warn&&!stale&&<span style={{ fontSize:11, color:T.amber }}>{days}d warn</span>}
+            {acc.lastTouchedBy && <span title={acc.lastTouchedAt ? new Date(acc.lastTouchedAt).toLocaleString() : undefined} style={{ fontSize:11, color:T.text.muted }}>Last contact: {acc.lastTouchedBy} · {staleDays(acc.lastTouchedAt)===0?"today":`${staleDays(acc.lastTouchedAt)}d ago`}</span>}
+            {hasBankConnect(acc)&&<span title="Bank connect signal" style={{ fontSize:13, lineHeight:1 }}>🐷</span>}
+            {acc.distributionMultiplier&&<span title={`Distribution multiplier — ${acc.estimatedDownstreamUsers||"downstream reach detected"}`} style={{ fontSize:13, lineHeight:1 }}>📦</span>}
+            {acc.isEstablished&&!acc.distributionMultiplier&&<span title={`Established — ${(acc.tractionSignals||[]).slice(0,2).join(", ")||"active customer base"}`} style={{ fontSize:13, lineHeight:1 }}>✅</span>}
+            {acc.isHandoff&&<span title="NBA handoff — notes pre-loaded" style={{ fontSize:11, color:C.gold, background:`${C.gold}18`, border:`1px solid ${C.gold}44`, borderRadius:3, padding:T.spacing.pill }}>NBA</span>}
+            {(assignedEntry||stale||warn||acc.isHandoff||hasBankConnect(acc)||acc.distributionMultiplier||acc.isEstablished)&&<Divider />}
+            {acc.stealthOrigin&&<span title="Stealth origin" style={{ fontSize:13, color:C.purple, lineHeight:1, cursor:"default", opacity:0.75 }}>⬟</span>}
+            {isActiveDeal&&onUpdate&&<button onClick={e=>{e.stopPropagation();onUpdate({...acc,isGaming:!acc.isGaming});}} title={acc.isGaming?"Remove gaming track":"Add gaming track"} style={{ background:"transparent",border:"none",fontSize:13,color:acc.isGaming?T.amber2:T.border.muted,cursor:"pointer",padding:"0 2px",lineHeight:1,flexShrink:0,transition:"color 0.1s",opacity:acc.isGaming?1:0.45 }}>🎲</button>}
+            {hasPricingFor(acc.id)&&<span title="Pricing sheet saved" style={{ fontSize:13, color:C.gold, lineHeight:1, cursor:"default" }}>$</span>}
+            {acc.source&&acc.source!=="Cold"&&<span title={`Source: ${acc.source}`} style={{ fontSize:11, color:SOURCE_C[acc.source]||T.text.dim, cursor:"default" }}>{SOURCE_IC[acc.source]||"·"}</span>}
+            {missingData&&!expanded&&<span title="Missing data" style={{ fontSize:11, color:C.orange }}>◌</span>}
+            {assignedEntry&&bdrInitials&&<span title={`BDR — ${assignedEntry.assignedTo}`} style={{ width:18, height:18, borderRadius:"50%", background:`${T.cyan}18`, border:`1px solid ${T.cyan}44`, color:T.cyan, fontSize:9, fontWeight:500, display:"inline-flex", alignItems:"center", justifyContent:"center", flexShrink:0, letterSpacing:"0.02em" }}>{bdrInitials}</span>}
+            <button onClick={e=>{e.stopPropagation();onToggleFav&&onToggleFav(acc.id);}} style={{ background:"transparent",border:"none",fontSize:14,color:isFav?C.gold:T.border.muted,cursor:"pointer",padding:"0 2px",lineHeight:1,flexShrink:0,transition:"color 0.1s" }}>★</button>
+            <span onClick={e=>e.stopPropagation()}><SignalLegendButton style={{ fontSize:9, padding:"1px 5px", opacity:0.55, border:"none" }} /></span>
+            {acc.parentId&&parentName&&<span title="Click to unlink from parent" onClick={e=>{e.stopPropagation();onUnlinkParent&&onUnlinkParent();}} style={{ ...mono, fontSize:10, padding:"1px 6px", background:T.bg.surface, border:`1px solid ${T.border.subtle}`, color:T.text.muted, borderRadius:3, cursor:onUnlinkParent?"pointer":"default", flexShrink:0 }}>↑ {parentName}</span>}
+            {acc.childIds&&acc.childIds.length>0&&<span title={`${acc.childIds.length} child account${acc.childIds.length===1?"":"s"}`} style={{ ...mono, fontSize:10, padding:"1px 6px", background:T.bg.surface, border:`1px solid ${T.border.subtle}`, color:T.text.muted, borderRadius:3, flexShrink:0, cursor:"default" }}>↓ {acc.childIds.length} linked</span>}
+            <span style={{ fontSize:10, color:T.text.dim }}>{expanded?"▲":"▼"}</span>
+          </div>
         </div>
-        <Divider />
-        <div style={{ flex:1, display:"flex", gap:T.spacing.gap.sm, flexWrap:"wrap", alignItems:"center", minWidth:0 }}>
-          {acc.prods&&acc.prods.slice(0,3).map(p=><span key={p} style={{ fontSize:11, color:PROD_COLOR[p]||T.text.muted, background:C.bg, border:`1px solid ${C.brd}`, borderRadius:3, padding:T.spacing.pill }}>{p}</span>)}
-          {acc.stage==="Active Deal"&&!expanded&&<ComplianceMiniBar accId={acc.id}/>}
-        </div>
-        <Divider />
-        <div style={{ display:"flex", alignItems:"center", gap:T.spacing.gap.md, flexShrink:0 }}>
-          {/* Left of divider — action-needed status signals */}
-          {assignedEntry&&<span title={`In Frontier — ${assignedEntry.assignedTo||''}`} style={{ fontSize:11, color:T.cyan, background:`${T.cyan}14`, border:`1px solid ${T.cyan}55`, borderRadius:3, padding:T.spacing.pill, letterSpacing:"0.06em", textShadow:`0 0 6px ${T.cyan}55` }}>◆ OUTBOUND</span>}
-          {stale&&<span style={{ fontSize:11, color:T.red }}>⚠ {days}d at risk</span>}
-          {warn&&!stale&&<span style={{ fontSize:11, color:T.amber }}>{days}d warn</span>}
-          {/* Activity-derived last contact (accounts-lists-and-activity-model-v1) -
-              only ever set on accounts created/touched through the new
-              lists/activity model, so this is a no-op for every legacy account. */}
-          {acc.lastTouchedBy && <span title={acc.lastTouchedAt ? new Date(acc.lastTouchedAt).toLocaleString() : undefined} style={{ fontSize:11, color:T.text.muted }}>Last contact: {acc.lastTouchedBy} · {staleDays(acc.lastTouchedAt)===0?"today":`${staleDays(acc.lastTouchedAt)}d ago`}</span>}
-          {hasBankConnect(acc)&&<span title="Bank connect signal" style={{ fontSize:13, lineHeight:1 }}>🐷</span>}
-          {acc.distributionMultiplier&&<span title={`Distribution multiplier — ${acc.estimatedDownstreamUsers||"downstream reach detected"}`} style={{ fontSize:13, lineHeight:1 }}>📦</span>}
-          {acc.isEstablished&&!acc.distributionMultiplier&&<span title={`Established — ${(acc.tractionSignals||[]).slice(0,2).join(", ")||"active customer base"}`} style={{ fontSize:13, lineHeight:1 }}>✅</span>}
-          {acc.isHandoff&&<span title="NBA handoff — notes pre-loaded" style={{ fontSize:11, color:C.gold, background:`${C.gold}18`, border:`1px solid ${C.gold}44`, borderRadius:3, padding:T.spacing.pill }}>NBA</span>}
-          {(assignedEntry||stale||warn||acc.isHandoff||hasBankConnect(acc)||acc.distributionMultiplier||acc.isEstablished)&&<Divider />}
+      )}
 
-          {/* Right of divider — metadata icons (reference only) */}
-          {acc.stealthOrigin&&<span title="Stealth origin" style={{ fontSize:13, color:C.purple, lineHeight:1, cursor:"default", opacity:0.75 }}>⬟</span>}
-          {isActiveDeal&&onUpdate&&<button onClick={e=>{e.stopPropagation();onUpdate({...acc,isGaming:!acc.isGaming});}} title={acc.isGaming?"Remove gaming track":"Add gaming track"} style={{ background:"transparent",border:"none",fontSize:13,color:acc.isGaming?T.amber2:T.border.muted,cursor:"pointer",padding:"0 2px",lineHeight:1,flexShrink:0,transition:"color 0.1s",opacity:acc.isGaming?1:0.45 }}>🎲</button>}
-          {hasPricingFor(acc.id)&&<span title="Pricing sheet saved" style={{ fontSize:13, color:C.gold, lineHeight:1, cursor:"default" }}>$</span>}
-          {acc.source&&acc.source!=="Cold"&&<span title={`Source: ${acc.source}`} style={{ fontSize:11, color:SOURCE_C[acc.source]||T.text.dim, cursor:"default" }}>{SOURCE_IC[acc.source]||"·"}</span>}
-          {missingData&&!expanded&&<span title="Missing data" style={{ fontSize:11, color:C.orange }}>◌</span>}
-          {assignedEntry&&bdrInitials&&<span title={`BDR — ${assignedEntry.assignedTo}`} style={{ width:18, height:18, borderRadius:"50%", background:`${T.cyan}18`, border:`1px solid ${T.cyan}44`, color:T.cyan, fontSize:9, fontWeight:500, display:"inline-flex", alignItems:"center", justifyContent:"center", flexShrink:0, letterSpacing:"0.02em" }}>{bdrInitials}</span>}
-          <button onClick={e=>{e.stopPropagation();onToggleFav&&onToggleFav(acc.id);}} style={{ background:"transparent",border:"none",fontSize:14,color:isFav?C.gold:T.border.muted,cursor:"pointer",padding:"0 2px",lineHeight:1,flexShrink:0,transition:"color 0.1s" }}>★</button>
-          <span onClick={e=>e.stopPropagation()}><SignalLegendButton style={{ fontSize:9, padding:"1px 5px", opacity:0.55, border:"none" }} /></span>
-          {acc.parentId&&parentName&&<span title="Click to unlink from parent" onClick={e=>{e.stopPropagation();onUnlinkParent&&onUnlinkParent();}} style={{ ...mono, fontSize:10, padding:"1px 6px", background:T.bg.surface, border:`1px solid ${T.border.subtle}`, color:T.text.muted, borderRadius:3, cursor:onUnlinkParent?"pointer":"default", flexShrink:0 }}>↑ {parentName}</span>}
-          {acc.childIds&&acc.childIds.length>0&&<span title={`${acc.childIds.length} child account${acc.childIds.length===1?"":"s"}`} style={{ ...mono, fontSize:10, padding:"1px 6px", background:T.bg.surface, border:`1px solid ${T.border.subtle}`, color:T.text.muted, borderRadius:3, flexShrink:0, cursor:"default" }}>↓ {acc.childIds.length} linked</span>}
-          <span style={{ fontSize:10, color:T.text.dim }}>{expanded?"▲":"▼"}</span>
-        </div>
-      </div>
+      {expanded && isInfluencer && (
+        <div style={{ borderTop:`1px solid ${C.brd}`, padding:"14px 16px", display:"flex", flexDirection:"column", gap:16 }}>
 
-      {expanded&&(
+          <div>
+            <ZoneLabel>Actions</ZoneLabel>
+            <QuickAskBar acc={acc} />
+            <button onClick={()=>setOutreachOpen(true)}
+              style={{ ...mono, fontSize:11, height:28, padding:'0 14px', background:`${INFLUENCER_ACCENT}14`, border:`1px solid ${INFLUENCER_ACCENT}`, color:'#e879f9', borderRadius:4, cursor:'pointer', fontWeight:600, letterSpacing:'0.04em' }}>✦ Generate Outreach</button>
+            {outreachOpen && (
+              <EmailModal account={acc} persona={null} accountKind="influencer" onClose={()=>setOutreachOpen(false)} />
+            )}
+          </div>
+
+          <div>
+            <ZoneLabel>Intel</ZoneLabel>
+            <div>
+              <p style={SH}>Creator</p>
+              <p style={{ ...mono, fontSize:12, color:C.txt, lineHeight:1.6, margin:"0 0 6px" }}>{detail?.niche_assessment?.audience_read || '—'}</p>
+              <div style={{ display:"flex", gap:16, flexWrap:"wrap" }}>
+                <span style={{ ...mono, fontSize:11, color:C.mut }}><b style={{ color:C.dim }}>Category:</b> {detail?.niche_assessment?.category || '—'}</span>
+                <span style={{ ...mono, fontSize:11, color:C.mut }}><b style={{ color:C.dim }}>Content:</b> {detail?.niche_assessment?.content_type || '—'}</span>
+              </div>
+              <AssessBioForm business={business} acc={acc} detail={detail} onAssessed={applyDetailUpdate} />
+            </div>
+
+            <div style={{ marginTop:16 }}>
+              <p style={SH}>Fit</p>
+              <FitBlock detail={detail} />
+            </div>
+
+            <div style={{ marginTop:16 }}>
+              <p style={SH}>Relationship</p>
+              <RelationshipBlock acc={acc} detail={detail} userEmail={userEmail} canEdit={canEdit} onUpdated={applyDetailUpdate} />
+            </div>
+
+            <div style={{ marginTop:16 }}>
+              <p style={SH}>Activity</p>
+              <AccountActivityTimeline acc={acc} />
+            </div>
+          </div>
+
+          {onRemove && (
+            <div style={{ paddingTop:8, borderTop:`0.5px solid ${C.brd}` }}>
+              {confirmRemove ? (
+                <span style={{ display:"flex", alignItems:"center", gap:8 }}>
+                  <span style={{ ...mono, fontSize:10, color:C.red }}>Remove?</span>
+                  <button onClick={()=>onRemove(acc.id)} style={{ ...mono, fontSize:10, padding:"4px 9px", background:"#1a0a0a", border:`1px solid ${C.red}`, color:C.red, borderRadius:4, cursor:"pointer" }}>Confirm</button>
+                  <button onClick={()=>setConfirmRemove(false)} style={{ ...mono, fontSize:10, padding:"4px 8px", background:"transparent", border:"0.5px solid #2a2a2a", color:C.dim, borderRadius:4, cursor:"pointer" }}>Cancel</button>
+                </span>
+              ) : (
+                <button onClick={()=>setConfirmRemove(true)} style={{ ...mono, fontSize:10, padding:"4px 9px", background:`${C.red}12`, border:`1px solid ${C.red}55`, color:C.red, borderRadius:4, cursor:"pointer" }}>✕ Remove</button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {expanded && !isInfluencer && (
         <div style={{ borderTop:`1px solid ${C.brd}`, padding:"12px 14px" }}>
+
+          <ZoneLabel>Actions</ZoneLabel>
 
           {/* ── Action bar: Quick Ask, Next Steps, buttons, all panels ── */}
           <AccountCardActionBar
@@ -330,8 +632,10 @@ function AccountCard({ acc, expanded, onToggle, onReassay, reassaying, onUpdate,
             <GiftModal acc={acc} onClose={()=>setGiftModalOpen(false)} onUpdate={onUpdate} userName={(()=>{try{return JSON.parse(localStorage.getItem("prospector_user")||"{}").name||"AE";}catch{return "AE";}})()}/>
           )}
 
+          <ZoneLabel>Intel</ZoneLabel>
+
           {/* ── Intelligence section ── */}
-          <div style={{ marginTop:12, ...SEC.softAmber, paddingTop:8, paddingBottom:8 }}>
+          <div style={{ marginTop:0, ...SEC.softAmber, paddingTop:8, paddingBottom:8 }}>
             <p style={{ ...SH, color:"#c8922a", margin:"0 0 8px" }}>Intelligence</p>
             <div style={{ display:"grid", gridTemplateColumns:"1fr 0.5px 1fr", gap:0, marginBottom:8 }}>
               {[["Business Model",acc.bm||"Not yet analyzed"],["Product Fit",acc.pf||"Run assay to analyze"]].map(([l,v],idx)=>{
@@ -423,37 +727,6 @@ function AccountCard({ acc, expanded, onToggle, onReassay, reassaying, onUpdate,
             </div>
           )}
 
-          {/* ── Bottom utility row ── */}
-          <div style={{ marginTop:10, paddingTop:8, borderTop:"0.5px solid #1e1e1e", display:"flex", alignItems:"center", gap:6 }}>
-            {onFlagRemoval&&<button onClick={e=>{e.stopPropagation();onFlagRemoval(acc,"");}} style={{ ...mono, fontSize:10, height:24, padding:"0 9px", background:"transparent", border:`1px solid ${C.orange}44`, color:C.orange+"99", borderRadius:4, cursor:"pointer" }}>🚩 Flag</button>}
-            {onRemove&&(confirmRemove
-              ? <><span style={{ ...mono, fontSize:10, color:C.red }}>Remove?</span>
-                  <button onClick={e=>{e.stopPropagation();onRemove(acc.id);}} style={{ ...mono, fontSize:10, height:24, padding:"0 9px", background:"#1a0a0a", border:`1px solid ${C.red}`, color:C.red, borderRadius:4, cursor:"pointer" }}>Confirm</button>
-                  <button onClick={e=>{e.stopPropagation();setConfirmRemove(false);}} style={{ ...mono, fontSize:10, height:24, padding:"0 8px", background:"transparent", border:"0.5px solid #2a2a2a", color:C.dim, borderRadius:4, cursor:"pointer" }}>Cancel</button></>
-              : <button onClick={e=>{e.stopPropagation();setConfirmRemove(true);}} style={{ ...mono, fontSize:10, height:24, padding:"0 9px", background:`${C.red}12`, border:`1px solid ${C.red}55`, color:C.red+"bb", borderRadius:4, cursor:"pointer" }}>✕ Remove</button>
-            )}
-            {onUpdate&&<div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:5 }}>
-              <span style={{ ...mono, fontSize:10, color:"#666" }}>Source</span>
-              <select value={acc.source||"Cold"} onChange={e=>onUpdate({...acc,source:e.target.value})} onClick={e=>e.stopPropagation()} style={{ ...mono, fontSize:10, height:24, padding:"0 5px", background:C.sur, border:"0.5px solid #2a2a2a", borderRadius:4, color:SOURCE_C[acc.source||"Cold"]||C.dim, outline:"none", cursor:"pointer" }}>
-                {ACCOUNT_SOURCES.map(s=><option key={s} value={s}>{SOURCE_IC[s]} {s}</option>)}
-              </select>
-            </div>}
-          </div>
-
-          {(onRequestLinkParent||onUnlinkParent)&&(
-            <div style={{ marginTop:10, display:"flex", alignItems:"center", gap:6 }}>
-              {!acc.parentId&&!(acc.childIds&&acc.childIds.length>0)&&onRequestLinkParent&&(
-                <button onClick={e=>{e.stopPropagation();onRequestLinkParent();}} style={{ ...mono, fontSize:10, padding:"3px 9px", background:"transparent", border:`1px solid ${T.border.muted}`, color:T.text.muted, borderRadius:3, cursor:"pointer" }}>⊕ Link parent</button>
-              )}
-              {acc.parentId&&parentName&&onUnlinkParent&&(
-                <button onClick={e=>{e.stopPropagation();onUnlinkParent();}} style={{ ...mono, fontSize:10, padding:"3px 9px", background:"transparent", border:`1px solid ${T.border.muted}`, color:T.text.muted, borderRadius:3, cursor:"pointer" }}>⊖ Unlink from parent</button>
-              )}
-              {acc.childIds&&acc.childIds.length>0&&!acc.parentId&&(
-                <span style={{ ...mono, fontSize:10, color:T.text.dim }}>This account has {acc.childIds.length} child{acc.childIds.length===1?"":"ren"} — cannot itself become a child</span>
-              )}
-            </div>
-          )}
-
           {onUpdate && (
             <AccountCardCompetition acc={acc} onUpdate={patch=>onUpdate({...acc,...patch})} />
           )}
@@ -505,11 +778,48 @@ function AccountCard({ acc, expanded, onToggle, onReassay, reassaying, onUpdate,
             </div>
           )}
 
+          {/* ── Activity — parity win, previously influencer-only (account-card-unification-and-outreach-v1) ── */}
+          <div style={{ marginTop:12 }}>
+            <p style={SH}>Activity</p>
+            <AccountActivityTimeline acc={acc} />
+          </div>
+
+          {/* ── Bottom utility row ── */}
+          <div style={{ marginTop:10, paddingTop:8, borderTop:"0.5px solid #1e1e1e", display:"flex", alignItems:"center", gap:6 }}>
+            {onFlagRemoval&&<button onClick={e=>{e.stopPropagation();onFlagRemoval(acc,"");}} style={{ ...mono, fontSize:10, height:24, padding:"0 9px", background:"transparent", border:`1px solid ${C.orange}44`, color:C.orange+"99", borderRadius:4, cursor:"pointer" }}>🚩 Flag</button>}
+            {onRemove&&(confirmRemove
+              ? <><span style={{ ...mono, fontSize:10, color:C.red }}>Remove?</span>
+                  <button onClick={e=>{e.stopPropagation();onRemove(acc.id);}} style={{ ...mono, fontSize:10, height:24, padding:"0 9px", background:"#1a0a0a", border:`1px solid ${C.red}`, color:C.red, borderRadius:4, cursor:"pointer" }}>Confirm</button>
+                  <button onClick={e=>{e.stopPropagation();setConfirmRemove(false);}} style={{ ...mono, fontSize:10, height:24, padding:"0 8px", background:"transparent", border:"0.5px solid #2a2a2a", color:C.dim, borderRadius:4, cursor:"pointer" }}>Cancel</button></>
+              : <button onClick={e=>{e.stopPropagation();setConfirmRemove(true);}} style={{ ...mono, fontSize:10, height:24, padding:"0 9px", background:`${C.red}12`, border:`1px solid ${C.red}55`, color:C.red+"bb", borderRadius:4, cursor:"pointer" }}>✕ Remove</button>
+            )}
+            {onUpdate&&<div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:5 }}>
+              <span style={{ ...mono, fontSize:10, color:"#666" }}>Source</span>
+              <select value={acc.source||"Cold"} onChange={e=>onUpdate({...acc,source:e.target.value})} onClick={e=>e.stopPropagation()} style={{ ...mono, fontSize:10, height:24, padding:"0 5px", background:C.sur, border:"0.5px solid #2a2a2a", borderRadius:4, color:SOURCE_C[acc.source||"Cold"]||C.dim, outline:"none", cursor:"pointer" }}>
+                {ACCOUNT_SOURCES.map(s=><option key={s} value={s}>{SOURCE_IC[s]} {s}</option>)}
+              </select>
+            </div>}
+          </div>
+
+          {(onRequestLinkParent||onUnlinkParent)&&(
+            <div style={{ marginTop:10, display:"flex", alignItems:"center", gap:6 }}>
+              {!acc.parentId&&!(acc.childIds&&acc.childIds.length>0)&&onRequestLinkParent&&(
+                <button onClick={e=>{e.stopPropagation();onRequestLinkParent();}} style={{ ...mono, fontSize:10, padding:"3px 9px", background:"transparent", border:`1px solid ${T.border.muted}`, color:T.text.muted, borderRadius:3, cursor:"pointer" }}>⊕ Link parent</button>
+              )}
+              {acc.parentId&&parentName&&onUnlinkParent&&(
+                <button onClick={e=>{e.stopPropagation();onUnlinkParent();}} style={{ ...mono, fontSize:10, padding:"3px 9px", background:"transparent", border:`1px solid ${T.border.muted}`, color:T.text.muted, borderRadius:3, cursor:"pointer" }}>⊖ Unlink from parent</button>
+              )}
+              {acc.childIds&&acc.childIds.length>0&&!acc.parentId&&(
+                <span style={{ ...mono, fontSize:10, color:T.text.dim }}>This account has {acc.childIds.length} child{acc.childIds.length===1?"":"ren"} — cannot itself become a child</span>
+              )}
+            </div>
+          )}
+
         </div>
       )}
 
-      {/* Standalone win-reason modal */}
-      {winReasonModal && (
+      {/* Standalone win-reason modal (business only) */}
+      {!isInfluencer && winReasonModal && (
         <div onClick={()=>setWinReasonModal(false)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.76)", zIndex:3000, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
           <div onClick={e=>e.stopPropagation()} style={{ width:560, maxHeight:"90vh", overflowY:"auto", background:C.card, border:`1px solid ${C.gold}55`, borderRadius:12, padding:"22px 24px", boxShadow:"0 24px 64px rgba(0,0,0,0.6)" }}>
             <div style={{ display:"flex", alignItems:"center", marginBottom:14 }}>

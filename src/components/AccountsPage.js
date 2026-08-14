@@ -4,7 +4,6 @@ import { isStale, isWarn } from '../utils/staleness';
 import { getActiveIntel, getActiveExamples, clientAssay } from '../utils/assay';
 import { PROD_COLOR, ALL_PRODUCTS } from '../constants/products';
 import AccountCard, { DEAL_STAGES } from './AccountCard';
-import InfluencerCard from './InfluencerCard';
 import LinkParentModal from './LinkParentModal';
 import { AddAccountModal, DedupeModal, SfdcImportModal } from './AccountsUploadModal';
 export { AddAccountModal } from './AccountsUploadModal';
@@ -892,11 +891,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
                 </select>
               </div>
             )}
-            {a.accountKind==='influencer' ? (
-              <InfluencerCard acc={a} business={business} expanded={isExpanded} onToggle={()=>setExpanded(isExpanded?null:a.id)} onRemove={onRemoveAccount||undefined} userEmail={activeUser?.email} canEdit={!!onSave} onUpdated={onInfluencerUpdated}/>
-            ) : (
-              <AccountCard acc={a} expanded={isExpanded} onToggle={()=>setExpanded(isExpanded?null:a.id)} onReassay={perms.canReassay?reassay:undefined} reassaying={reassaying===a.id} onUpdate={onSave?handleAccountUpdate:undefined} isFav={favorites.has(a.id)} onToggleFav={toggleFav} onRemove={onRemoveAccount||undefined} assignedEntry={assignedEntry||null} onAssign={onAssignToBDR} onUnassign={onUnassignFromFrontier} onFlagRemoval={onFlagRemoval} onOpenPricing={onNav?openPricing:undefined} onOpenRoi={onNav?openRoi:undefined} onOpenDealSummary={onOpenDealSummary||undefined} onCreateTask={onCreateTask} onUpdateTask={onUpdateTask} tasks={tasks} activeUser={activeUser} parentName={resolvedParentName} onRequestLinkParent={onSave?()=>setLinkModalAcc(a):undefined} onUnlinkParent={onSave?()=>handleUnlink(a.id):undefined}/>
-            )}
+            <AccountCard acc={a} business={business} expanded={isExpanded} onToggle={()=>setExpanded(isExpanded?null:a.id)} onReassay={perms.canReassay?reassay:undefined} reassaying={reassaying===a.id} onUpdate={onSave?handleAccountUpdate:undefined} isFav={favorites.has(a.id)} onToggleFav={toggleFav} onRemove={onRemoveAccount||undefined} assignedEntry={assignedEntry||null} onAssign={onAssignToBDR} onUnassign={onUnassignFromFrontier} onFlagRemoval={onFlagRemoval} onOpenPricing={onNav?openPricing:undefined} onOpenRoi={onNav?openRoi:undefined} onOpenDealSummary={onOpenDealSummary||undefined} onCreateTask={onCreateTask} onUpdateTask={onUpdateTask} tasks={tasks} activeUser={activeUser} parentName={resolvedParentName} onRequestLinkParent={onSave?()=>setLinkModalAcc(a):undefined} onUnlinkParent={onSave?()=>handleUnlink(a.id):undefined} userEmail={activeUser?.email} canEdit={!!onSave} onUpdated={onInfluencerUpdated}/>
             {/* Manager notes section — only visible to Manager */}
             {isManager && isExpanded && (
               <div style={{ margin:"0 0 6px 0", padding:"10px 14px", background:`${C.gold}06`, border:`1px solid ${C.gold}22`, borderTop:"none", borderRadius:"0 0 8px 8px" }}>

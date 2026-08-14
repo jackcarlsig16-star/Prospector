@@ -4,7 +4,7 @@ import { getActiveIntel } from '../utils/assay';
 import { getActiveVoice, getVoiceProfile, voiceProfileKey } from '../constants/voice';
 import { UCS_DATA } from '../constants/products';
 
-export default function EmailModal({ account, persona, onClose, onSaveEmail }) {
+export default function EmailModal({ account, persona, onClose, onSaveEmail, accountKind }) {
   const [email,setEmail]=useState("");
   const [loading,setLoading]=useState(true);
   const [copied,setCopied]=useState(false);
@@ -12,6 +12,9 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail }) {
   const [teaching,setTeaching]=useState(false);
   const [taught,setTaught]=useState(false);
   const voiceUserName=(()=>{try{return JSON.parse(localStorage.getItem("prospector_user")||"{}").name||"";}catch{return "";}})();
+  const kind = accountKind || account.accountKind || 'business';
+  const isInfluencer = kind === 'influencer';
+  const influencerDetail = account.influencerDetail || null;
 
   useEffect(()=>{
     const customIntel=getActiveIntel();
@@ -31,6 +34,13 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail }) {
         senderName:user.name||"",
         voiceExamples:getActiveVoice(voiceUserName),
         voiceProfile:getVoiceProfile(voiceUserName),
+        accountKind:kind,
+        ...(isInfluencer ? {
+          fitRationale:influencerDetail?.fit_rationale||"",
+          fitSignals:influencerDetail?.fit_signals||[],
+          nicheAssessment:influencerDetail?.niche_assessment||null,
+          bioSnapshot:influencerDetail?.bio_snapshot||"",
+        } : {}),
       })
     })
     .then(r=>r.json())
@@ -56,7 +66,8 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail }) {
             <p style={{ margin:"0 0 4px",fontSize:15,fontWeight:500,color:C.txt }}>{account.name}</p>
             <div style={{ display:"flex",gap:8,flexWrap:"wrap",alignItems:"center" }}>
               {persona&&<span style={{ fontSize:12,color:C.green,fontWeight:500 }}>→ {persona.name} · {persona.title}</span>}
-              {!persona&&<span style={{ fontSize:12,color:C.dim }}>No persona selected — using [First Name]</span>}
+              {!persona&&isInfluencer&&<span style={{ fontSize:12,color:C.dim }}>Generating directly for this creator</span>}
+              {!persona&&!isInfluencer&&<span style={{ fontSize:12,color:C.dim }}>No persona selected — using [First Name]</span>}
             </div>
           </div>
           <button onClick={onClose} style={{ background:"transparent",border:"none",color:C.mut,fontSize:18,cursor:"pointer",padding:"0 4px",lineHeight:1 }}>✕</button>
