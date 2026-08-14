@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { C, mono } from '../constants/colors';
 import { NAV, NAV_ROLES, initials, isAdmin } from '../constants/appConfig';
+import { BUSINESS_NAV } from '../constants/businessNav';
+import NavRow from './NavRow';
 import { upsertBdrAssignment, removeBdrAssignment } from '../utils/db';
 
 function readSidebarPrefs() {
@@ -12,18 +14,6 @@ function readImgPref(key) {
 
 const ROLE_LEVEL = { Owner:5, Admin:4, Manager:3, AE:2, BDR:1 };
 
-// Live inside a business's own nav once selected - Command Center is the
-// landing view (business-nav-architecture-v1), matching the global app's
-// own "Command Center is home" pattern.
-const BUSINESS_NAV = [
-  { id: "command-center", ic: "⌂", lb: "Command Center" },
-  { id: "overview",       ic: "◉", lb: "Business Intel & Strategy" },
-  { id: "accounts",       ic: "◈", lb: "Accounts" },
-  { id: "search",         ic: "🔍", lb: "Search" },
-  { id: "generation",     ic: "✉", lb: "Generation" },
-  { id: "projects",       ic: "▣", lb: "Projects" },
-  { id: "members",        ic: "👥", lb: "Members", ownerOnly: true },
-];
 // Legacy tools not yet business-scoped (per the reusability audit, several
 // are Plaid-specific) - shown disabled rather than faked or hidden. Derived
 // from the global NAV so it can't drift out of sync with it.
@@ -75,23 +65,33 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
           <p style={{ ...mono, fontSize:11, color:C.dim, margin:"4px 14px 0" }}>No businesses yet</p>
         )}
       </div>
-      {page==="business-detail"&&activeBusiness ? (
-        <>
+      {page==="business-detail"&&activeBusiness ? (()=>{
+        const accent = activeBusiness.color || C.gold;
+        const otherBusinesses = businesses.filter(b=>b.id!==activeBusiness.id);
+        return (
+        <div style={{ borderLeft:`3px solid ${accent}`, display:"flex", flexDirection:"column", flex:1, minHeight:0 }}>
           <button onClick={onGoToBusinesses} style={{ ...mono, display:"flex", alignItems:"center", gap:6, width:"100%", padding:"9px 14px", fontSize:11, color:C.dim, background:"transparent", border:"none", borderBottom:`1px solid ${C.brd}`, cursor:"pointer", textAlign:"left" }}>
             ← All Businesses
           </button>
-          <p style={{ ...mono, margin:0, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.1em", padding:"10px 14px 2px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{activeBusiness.name}</p>
+          <p style={{ ...mono, margin:0, fontSize:9, color:accent, textTransform:"uppercase", letterSpacing:"0.1em", padding:"10px 14px 2px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontWeight:600 }}>{activeBusiness.name}</p>
           <div style={{ padding:"6px 0" }}>
-            {BUSINESS_NAV.filter(n=>!n.ownerOnly || (activeBusiness.owner_email||"").toLowerCase()===(activeUser?.email||"").toLowerCase()).map(n=>{
-              const active = businessPage===n.id;
-              return (
-                <div key={n.id} onClick={()=>setBusinessPage?.(n.id)} style={{ padding:"7px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:8, background:active?C.card:"transparent", borderLeft:`3px solid ${active?C.gold:"transparent"}` }}>
-                  <span style={{ ...mono, fontSize:14, color:active?C.gold:C.mut }}>{n.ic}</span>
-                  <span style={{ fontSize:13, color:active?C.txt:C.mut, flex:1, lineHeight:1.3 }}>{n.lb}</span>
-                </div>
-              );
-            })}
+            {BUSINESS_NAV.filter(n=>!n.ownerOnly || (activeBusiness.owner_email||"").toLowerCase()===(activeUser?.email||"").toLowerCase()).map(n=>(
+              <NavRow key={n.id} icon={n.ic} label={n.lb} active={businessPage===n.id} onClick={()=>setBusinessPage?.(n.id)} accent={accent} />
+            ))}
           </div>
+          {otherBusinesses.length > 0 && (
+            <>
+              <p style={{ ...mono, margin:0, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.1em", padding:"10px 14px 2px" }}>Other Workspaces</p>
+              <div style={{ padding:"4px 0" }}>
+                {otherBusinesses.map(b=>(
+                  <div key={b.id} onClick={()=>onSelectBusiness?.(b)} style={{ padding:"5px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:8 }}>
+                    <span style={{ width:8, height:8, borderRadius:"50%", background:b.color||C.gold, flexShrink:0 }} />
+                    <span style={{ ...mono, fontSize:12, color:C.mut, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{b.name}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
           <p style={{ ...mono, margin:0, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.1em", padding:"10px 14px 2px" }}>Not Yet Available</p>
           <div style={{ flex:1, padding:"6px 0", overflowY:"auto" }}>
             {DISABLED_BUSINESS_NAV.map(n=>(
@@ -101,12 +101,21 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
               </div>
             ))}
           </div>
-        </>
-      ) : (
+        </div>
+        );
+      })() : (
       <>
       <p style={{ ...mono, margin:0, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.1em", padding:"10px 14px 2px" }}>Prospector Tools</p>
       <div style={{ flex:1, padding:"6px 0", overflowY:"auto" }}>
         {NAV.filter(n=>(NAV_ROLES[n.id]||[]).includes(activeRole)).map(n=>{
+        if (n.disabled) {
+          return (
+            <div key={n.id} title={`${n.lb} isn't built yet — coming in a future update.`} style={{ padding:"7px 12px", display:"flex", alignItems:"center", gap:8, cursor:"default", opacity:0.4 }}>
+              <span style={{ ...mono, fontSize:14, color:C.dim }}>{n.ic}</span>
+              <span style={{ fontSize:13, color:C.dim, whiteSpace:"nowrap", flex:1 }}>{n.lb}</span>
+            </div>
+          );
+        }
         const parentActive = page===n.id || (n.id==="intelligence" && page==="analytics");
         return (
           <div key={n.id}>

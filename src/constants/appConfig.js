@@ -5,8 +5,14 @@
 // at build time to your org's domain.
 export const COMPANY_EMAIL_DOMAIN = (process.env.REACT_APP_COMPANY_DOMAIN || "example.com").toLowerCase();
 
+// global-workspace-navigation-v1 — "home" relabeled Portfolio to stop
+// colliding with the per-business "Command Center" label (BUSINESS_NAV);
+// content/id/route unchanged, still the legacy Territory view. "calendar"
+// is a new placeholder — real cross-business calendar aggregation is a
+// future SPEC candidate, not built here; Sidebar.js renders `disabled`
+// items dimmed and non-interactive, same treatment as DISABLED_BUSINESS_NAV.
 export const NAV = [
-  { id: "home",         ic: "⌂", lb: "Command Center" },
+  { id: "home",         ic: "⌂", lb: "Portfolio" },
   { id: "accounts",     ic: "◈", lb: "Accounts" },
   { id: "veinmap",      ic: "⛏", lb: "Vein Map" },
   { id: "ledger",       ic: "≡", lb: "Ledger" },
@@ -15,6 +21,7 @@ export const NAV = [
   { id: "handoffs",     ic: "🤝", lb: "Handoffs" },
   { id: "intelligence", ic: "⬟", lb: "Intelligence" },
   { id: "tools",        ic: "⚒", lb: "Tool Chest" },
+  { id: "calendar",     ic: "📅", lb: "Calendar", disabled: true },
   { id: "admin",        ic: "⚙", lb: "Admin" },
 ];
 
@@ -37,6 +44,7 @@ export const NAV_ROLES = {
   handoffs:     ["AE","Manager","Admin","Owner"],
   intelligence: ["AE","BDR","Manager","Admin","Owner"],
   tools:        ["AE","Manager","Admin","Owner"],
+  calendar:     ["AE","BDR","Manager","Admin","Owner"],
   admin:        ["Admin","Owner"],
   // Hidden from nav but still routable (no NAV entry)
   claimjumper:  ["AE","BDR","Manager","Admin","Owner"],

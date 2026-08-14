@@ -1,22 +1,10 @@
 import { useState, useEffect } from 'react';
 import { C, mono } from '../constants/colors';
 import { getBusinessesForMember, getProjectsForUser } from '../utils/db';
+import { BUSINESS_NAV } from '../constants/businessNav';
+import NavRow from './NavRow';
 import BusinessesHomePage from './BusinessesHomePage';
 import BusinessDetailPage from './BusinessDetailPage';
-
-// Nav for a selected business - same items as business-nav-architecture-v1's
-// BUSINESS_NAV in Sidebar.js, duplicated here rather than imported because a
-// member session never renders Sidebar (which assumes a full Jack `user` -
-// teamUsers, roles, admin badges - none of which exist for a joined member).
-const BUSINESS_NAV = [
-  { id: "command-center", ic: "⌂", lb: "Command Center" },
-  { id: "overview",       ic: "◉", lb: "Business Intel & Strategy" },
-  { id: "accounts",       ic: "◈", lb: "Accounts" },
-  { id: "search",         ic: "🔍", lb: "Search" },
-  { id: "generation",     ic: "✉", lb: "Generation" },
-  { id: "projects",       ic: "▣", lb: "Projects" },
-  { id: "members",        ic: "👥", lb: "Members", ownerOnly: true },
-];
 
 function MemberSidebar({ identity, businesses, activeBusiness, onSelectBusiness, onGoToBusinesses, businessPage, setBusinessPage, onExit }) {
   const isOwner = activeBusiness && (activeBusiness.owner_email||"").toLowerCase()===(identity.email||"").toLowerCase();
@@ -46,20 +34,29 @@ function MemberSidebar({ identity, businesses, activeBusiness, onSelectBusiness,
           </div>
         )}
       </div>
-      {activeBusiness && (
-        <div style={{ padding:"6px 0" }}>
-          <p style={{ ...mono, margin:0, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.1em", padding:"4px 14px 6px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{activeBusiness.name}</p>
-          {BUSINESS_NAV.filter(n=>!n.ownerOnly || isOwner).map(n => {
-            const active = businessPage===n.id;
-            return (
-              <div key={n.id} onClick={()=>setBusinessPage(n.id)} style={{ padding:"7px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:8, background:active?C.card:"transparent", borderLeft:`3px solid ${active?C.gold:"transparent"}` }}>
-                <span style={{ ...mono, fontSize:14, color:active?C.gold:C.mut }}>{n.ic}</span>
-                <span style={{ fontSize:13, color:active?C.txt:C.mut, flex:1, lineHeight:1.3 }}>{n.lb}</span>
-              </div>
-            );
-          })}
+      {activeBusiness && (()=>{
+        const accent = activeBusiness.color || C.gold;
+        const otherBusinesses = businesses.filter(b=>b.id!==activeBusiness.id);
+        return (
+        <div style={{ borderLeft:`3px solid ${accent}`, padding:"6px 0" }}>
+          <p style={{ ...mono, margin:0, fontSize:9, color:accent, textTransform:"uppercase", letterSpacing:"0.1em", padding:"4px 14px 6px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontWeight:600 }}>{activeBusiness.name}</p>
+          {BUSINESS_NAV.filter(n=>!n.ownerOnly || isOwner).map(n => (
+            <NavRow key={n.id} icon={n.ic} label={n.lb} active={businessPage===n.id} onClick={()=>setBusinessPage(n.id)} accent={accent} />
+          ))}
+          {otherBusinesses.length > 0 && (
+            <>
+              <p style={{ ...mono, margin:0, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.1em", padding:"10px 14px 2px" }}>Other Workspaces</p>
+              {otherBusinesses.map(b => (
+                <div key={b.id} onClick={()=>onSelectBusiness(b)} style={{ padding:"5px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:8 }}>
+                  <span style={{ width:8, height:8, borderRadius:"50%", background:b.color||C.gold, flexShrink:0 }} />
+                  <span style={{ ...mono, fontSize:12, color:C.mut, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{b.name}</span>
+                </div>
+              ))}
+            </>
+          )}
         </div>
-      )}
+        );
+      })()}
       <div style={{ flex:1 }} />
       <div style={{ padding:"10px 12px", borderTop:`1px solid ${C.brd}` }}>
         <p style={{ ...mono, margin:"0 0 2px", fontSize:12, color:C.txt }}>{identity.name}</p>

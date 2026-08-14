@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { C, mono, PRESET_SWATCH_COLORS } from '../constants/colors';
+import { getAccountsForBusiness } from '../utils/db';
+import { isStale } from '../utils/staleness';
 
 const STATUS_PILL = {
   researching: { label: 'Researching…', color: C.orange },
@@ -102,14 +104,61 @@ function CreateBusinessModal({ userEmail, onClose, onCreated }) {
   );
 }
 
+// global-workspace-navigation-v1 Section 5 — cross-business rollup built
+// only from real queries (getAccountsForBusiness, already used elsewhere
+// for the per-business Accounts tab) rather than fabricated metrics.
+// "At risk" reuses the same isStale threshold (90d since last touch) the
+// account card itself uses, so the number means the same thing here as
+// it does inside a workspace.
+function StatTile({ label, value, color }) {
+  return (
+    <div style={{ padding:"10px 16px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, minWidth:100 }}>
+      <div style={{ ...mono, fontSize:20, fontWeight:700, color: color || C.txt }}>{value}</div>
+      <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginTop:2 }}>{label}</div>
+    </div>
+  );
+}
+
 export default function BusinessesHomePage({ businesses, loading, projects=[], userEmail, onSelect, onCreated }) {
   const [modalOpen, setModalOpen] = useState(false);
   const unassignedProjects = projects.filter(p => !p.business_id);
+  const [rollup, setRollup] = useState(null);
+  const businessIdsKey = businesses.map(b=>b.id).join(',');
+
+  useEffect(() => {
+    if (!businesses.length) { setRollup(null); return; }
+    let cancelled = false;
+    Promise.all(businesses.map(b => getAccountsForBusiness(b.id).then(accs => ({ id: b.id, accs }))))
+      .then(results => {
+        if (cancelled) return;
+        let total = 0, atRisk = 0;
+        const perBusiness = {};
+        results.forEach(({ id, accs }) => {
+          const risk = accs.filter(a => isStale(a.lastTouchedAt)).length;
+          total += accs.length;
+          atRisk += risk;
+          perBusiness[id] = { total: accs.length, atRisk: risk };
+        });
+        setRollup({ total, atRisk, perBusiness });
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [businessIdsKey]);
+
+  const researchingCount = businesses.filter(b=>b.research_status==='researching').length;
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, padding:"48px 40px" }}>
       <div style={{ maxWidth:900, margin:"0 auto" }}>
         <h1 style={{ ...mono, fontSize:20, color:C.txt, fontWeight:700, margin:"0 0 24px" }}>Businesses</h1>
+
+        {rollup && (
+          <div style={{ display:"flex", gap:12, marginBottom:24, flexWrap:"wrap" }}>
+            <StatTile label="Total Accounts" value={rollup.total} />
+            <StatTile label="Accounts At Risk" value={rollup.atRisk} color={rollup.atRisk>0?C.red:C.green} />
+            {researchingCount > 0 && <StatTile label="Still Researching" value={researchingCount} color={C.orange} />}
+          </div>
+        )}
 
         {loading ? (
           <p style={{ ...mono, fontSize:13, color:C.dim, margin:"0 0 20px" }}>Loading…</p>
@@ -122,6 +171,7 @@ export default function BusinessesHomePage({ businesses, loading, projects=[], u
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))", gap:16 }}>
           {businesses.map(b => {
             const pill = STATUS_PILL[b.research_status];
+            const atRisk = rollup?.perBusiness?.[b.id]?.atRisk || 0;
             return (
               <button key={b.id} onClick={()=>onSelect(b)}
                 style={{
@@ -134,6 +184,11 @@ export default function BusinessesHomePage({ businesses, loading, projects=[], u
                 <div style={{ position:"absolute", top:16, right:16, width:32, height:32, borderRadius:6, background:b.color||C.gold, display:"flex", alignItems:"center", justifyContent:"center" }}>
                   <span style={{ ...mono, fontSize:14, color:C.bg, fontWeight:700 }}>{(b.name||'?')[0].toUpperCase()}</span>
                 </div>
+                {atRisk > 0 && (
+                  <span title={`${atRisk} account${atRisk===1?'':'s'} not touched in 90+ days`} style={{ ...mono, position:"absolute", top:16, right:56, fontSize:9, padding:"2px 6px", borderRadius:9, background:`${C.red}18`, border:`1px solid ${C.red}44`, color:C.red }}>
+                    ⚠ {atRisk}
+                  </span>
+                )}
                 {pill && (
                   <span style={{ ...mono, fontSize:9, padding:"2px 7px", borderRadius:9, background:`${pill.color}18`, border:`1px solid ${pill.color}44`, color:pill.color, alignSelf:"flex-start", marginBottom:6 }}>
                     {pill.label}
