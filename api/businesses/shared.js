@@ -323,11 +323,33 @@ Rules:
 - Use "company_intel" for general company-level notes that don't fit a specific project or account.
 - Use "ambiguous" only if you genuinely cannot tell what this belongs to - it will be filed as company-level intel as a safe fallback, so prefer a real classification when there's a reasonable read.`;
 
+// Deterministic pre-check, not an AI judgment call - a raw scraped Instagram
+// profile block (or a bare instagram.com URL) is structurally distinctive
+// enough that a regex catches it more reliably than hoping the classifier
+// prompt happens to recognize it, and skips burning a model call entirely
+// when it does match. This is exactly the shape that got misfiled as
+// company_intel before this existed (smart-intake-classification-confirm-v1,
+// Phase 0 finding: aldknudsen43 test paste).
+function detectInstagramProfileBlock(text) {
+  const urlMatch = text.match(/instagram\.com\/([a-zA-Z0-9._]+)/i);
+  const looksLikeScrapedProfile = /\d[\d,]*\s*followers/i.test(text) && /\d[\d,]*\s*following/i.test(text) && /\bposts\b/i.test(text);
+  if (!urlMatch && !looksLikeScrapedProfile) return null;
+  const atMatch = text.match(/@([a-zA-Z0-9._]+)/);
+  const handle = urlMatch?.[1] || atMatch?.[1] || null;
+  return { handle, bioText: text };
+}
+
 // SMART INTAKE — classifies free text against this business's current
 // projects/accounts (id+name only, kept light) so the caller can route it.
 // Read-only: makes no writes itself, callers decide what to file based on
-// the classification (smart-intake-and-intelligence-v1).
+// the classification (smart-intake-and-intelligence-v1). influencer is
+// detected before ever calling the model - see detectInstagramProfileBlock.
 export async function classifyIntake(supabase, businessId, text) {
+  const instagramMatch = detectInstagramProfileBlock(text);
+  if (instagramMatch) {
+    return { classification: 'influencer', handle: instagramMatch.handle, bio_text: instagramMatch.bioText };
+  }
+
   const [{ data: projects }, { data: accounts }] = await Promise.all([
     supabase.from('projects').select('id, name').eq('business_id', businessId),
     supabase.from('accounts').select('id, data').eq('business_id', businessId),

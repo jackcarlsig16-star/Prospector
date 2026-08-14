@@ -1,5 +1,5 @@
 export const config = { maxDuration: 30 };
-import { getSupabase, fileCompanyIntel, fileProjectIntel } from './shared.js';
+import { getSupabase, fileCompanyIntel, fileProjectIntel, recordAccountActivity } from './shared.js';
 
 // Commits the confirm-required intake cases (new_project, new_account) after
 // Jack has confirmed/adjusted them client-side, plus two escape hatches:
@@ -45,13 +45,31 @@ export default async function handler(req, res) {
           id: acctId,
           owner_email: '',
           business_id: id,
-          data: { id: acctId, name, listId: action.listId || null, addedSource: 'intake', addedAt: new Date().toISOString(), handoffNotes: (text || '').trim() || null },
+          data: { id: acctId, name, addedSource: 'intake', addedAt: new Date().toISOString(), handoffNotes: (text || '').trim() || null },
           updated_at: new Date().toISOString(),
         };
       });
       const { data: accounts, error: insErr } = await supabase.from('accounts').insert(rows).select();
       if (insErr) throw insErr;
+      // Real account_lists row, not just data.listId - this path predated
+      // accounts-lists-and-activity-model-v1's join-table migration and was
+      // never updated, so a list picked here never actually took effect.
+      // Fixed in passing while touching this exact function
+      // (smart-intake-classification-confirm-v1).
+      if (action.listId) {
+        const { error: linkErr } = await supabase.from('account_lists').insert(rows.map(r => ({ account_id: r.id, list_id: action.listId })));
+        if (linkErr) throw linkErr;
+      }
       return res.status(200).json({ accounts: accounts.map(a => a.data) });
+    }
+
+    if (action.type === 'existing_account') {
+      if (!action.accountId) return res.status(400).json({ error: 'action.accountId is required' });
+      const { data: account, error: accErr } = await supabase.from('accounts').select('id, data').eq('id', action.accountId).eq('business_id', id).maybeSingle();
+      if (accErr) throw accErr;
+      if (!account) return res.status(404).json({ error: 'Account not found on this business' });
+      const accountName = await recordAccountActivity(supabase, account.id, created_by, 'smart_intake', (text || '').trim());
+      return res.status(200).json({ accountName });
     }
 
     if (action.type === 'company_intel') {

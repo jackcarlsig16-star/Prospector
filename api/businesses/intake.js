@@ -1,11 +1,16 @@
 export const config = { maxDuration: 30 };
 import { getSupabase, classifyIntake, fileCompanyIntel, fileProjectIntel, recordAccountActivity } from './shared.js';
 
-// High-confidence cases (company intel, existing project, existing account,
-// and the ambiguous fallback) file immediately and return status:'filed'.
-// new_project/new_account never write here - they return status:'confirm'
-// with a proposal for the client to confirm/adjust via intake-confirm.js
-// (smart-intake-and-intelligence-v1).
+// High-confidence cases (company intel, existing project, existing account)
+// file immediately and return status:'filed' - unchanged, so the working
+// path doesn't get slower for the common case. new_project/new_account/
+// influencer never write here - they return status:'confirm' with a
+// proposal for the client to confirm/adjust via intake-confirm.js. ambiguous
+// now also holds for confirm instead of silently guessing company_intel -
+// it's the closest thing this classifier has to "low confidence," and
+// auto-filing it was exactly how a misidentified Instagram paste corrupted
+// real company intel before this existed
+// (smart-intake-and-intelligence-v1, smart-intake-classification-confirm-v1).
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const { id } = req.params;
@@ -49,7 +54,15 @@ export default async function handler(req, res) {
       return res.status(200).json({ status: 'confirm', classification: 'new_account', proposal: { names: (classification.new_account_names || []).filter(Boolean), relatedProjectId: classification.related_project_id || null } });
     }
 
-    // company_intel or ambiguous - safe fallback, files as company-level intel
+    if (classification.classification === 'influencer') {
+      return res.status(200).json({ status: 'confirm', classification: 'influencer', proposal: { handle: classification.handle, bioText: classification.bio_text || text.trim() } });
+    }
+
+    if (classification.classification === 'ambiguous') {
+      return res.status(200).json({ status: 'confirm', classification: 'ambiguous', proposal: {} });
+    }
+
+    // company_intel only - the one remaining auto-file case
     const profile = await fileCompanyIntel(supabase, id, text.trim(), created_by);
     return res.status(200).json({ status: 'filed', classification: 'company_intel', profile });
   } catch (e) {
