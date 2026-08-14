@@ -188,7 +188,19 @@ ${projectGuidance.outreach_example ? `Example of how this project's outreach sho
       ? [creatorContext, websiteContent ? `WEBSITE/PROFILE CONTENT (scraped from ${websiteUrl}):\n${websiteContent}` : null].filter(Boolean).join("\n\n") || `Creator: ${name}`
       : (websiteContent
           ? `WEBSITE CONTENT (scraped from ${websiteUrl}):\n${websiteContent}`
-          : `Company: ${name}\nBusiness model: ${businessModel || "fintech"}\nproduct fit: ${productFit || "relevant fintech use cases"}`),
+          // outreach-intelligence-v1 follow-up — same bug class as the
+          // customIntel gate: an unanalyzed account (empty businessModel/
+          // productFit) with an unreachable site used to fall back to
+          // hardcoded fintech defaults here even when the system prompt
+          // above had a real, correct, non-fintech assayCriteria grounding
+          // block - a direct contradiction inside the same prompt. Gate on
+          // businessId the same way: a real business context means no
+          // fintech assumption belongs here even if this account's own
+          // fields are still empty. Only genuinely context-free callers
+          // (no businessId at all) keep the fintech-flavored default.
+          : (businessId
+              ? `Company: ${name}${businessModel ? `\nBusiness model: ${businessModel}` : ""}${productFit ? `\nproduct fit: ${productFit}` : ""}`
+              : `Company: ${name}\nBusiness model: ${businessModel || "fintech"}\nproduct fit: ${productFit || "relevant fintech use cases"}`)),
     personaName
       ? `Recipient: ${personaName}${personaTitle ? `, ${personaTitle}` : ""} at ${name}`
       : isInfluencer ? `Recipient: ${name}` : `Recipient: [First Name] at ${name}`,

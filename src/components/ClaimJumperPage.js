@@ -181,6 +181,13 @@ function ClaimJumperPage({ pool=[], accounts=[], onClaim, onClaimMultiple, onRem
   const generateEmail=async(a)=>{
     setEmailLoading(a.id);setEmailOpen(a.id);setEmailBody("");
     try{
+      // Known, pre-existing since the repo's first commit: this nested
+      // {account:{...}} shape doesn't match api/email.js's flat destructure
+      // (name/web/businessModel/etc), so only senderName/voiceProfile ever
+      // actually reach the prompt - customIntel isn't even included here.
+      // Claim Jumper is legacy; intentionally not fixed now. Candidate for
+      // a future cleanup-pass decision (fix the payload contract vs. remove
+      // this feature entirely), not acted on here.
       const res=await fetch("/api/email",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({account:{name:a.name,web:a.web,vert:a.vert,bm:a.bm,pf:a.pf,sigs:a.sigs,ucs:a.ucs,prods:a.prods},senderName:activeUser?.name||"AE",voiceProfile:getVoiceProfile(activeUser?.name)})});
       const d=await res.json();
       setEmailBody(d.email||d.body||"");
