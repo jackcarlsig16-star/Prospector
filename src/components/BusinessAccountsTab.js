@@ -4,6 +4,7 @@ import { C, mono } from '../constants/colors';
 import { getAccountsForBusiness, saveAccountsForBusiness, getListsForBusiness, getMembersForBusiness, getPermissionsForMembers } from '../utils/db';
 import AccountsPage from './AccountsPage';
 import DealSummaryModal from './AccountCardPricingSummary';
+import CsvImportModal from './CsvImportModal';
 
 // Every capability false - a member with only view access on the lists in
 // scope gets a real read-only UI, not just a role label (business-lists-and-permissions-v1).
@@ -22,6 +23,7 @@ export default function BusinessAccountsTab({ business, userEmail }) {
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState([]);
   const [dealSummaryAccId, setDealSummaryAccId] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [selectedListId, setSelectedListId] = useState(null); // null = all accessible lists
   const [accessibleListIds, setAccessibleListIds] = useState(null); // null = owner, no restriction
   const [editableListIds, setEditableListIds] = useState(null);
@@ -111,6 +113,17 @@ export default function BusinessAccountsTab({ business, userEmail }) {
         <p style={{ ...mono, fontSize:11, color:C.dim, margin:"0 0 14px" }}>
           View-only — you don't have edit access to every list shown here. Switch to a single list you can edit to make changes.
         </p>
+      )}
+      {canEditCurrentView && (
+        <div style={{ marginBottom:14 }}>
+          <button onClick={()=>setImportOpen(true)} style={{ ...mono, fontSize:11, padding:"5px 12px", background:"transparent", border:`1px solid ${C.brd}`, borderRadius:6, color:C.dim, cursor:"pointer" }}>
+            ↑ Import CSV
+          </button>
+        </div>
+      )}
+      {importOpen && (
+        <CsvImportModal business={business} userEmail={userEmail} onClose={()=>setImportOpen(false)}
+          onImported={()=>getAccountsForBusiness(business.id).then(setAccounts)} />
       )}
       <AccountsPage
         accounts={visibleAccounts}

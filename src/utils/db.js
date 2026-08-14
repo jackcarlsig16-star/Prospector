@@ -226,6 +226,32 @@ export async function saveAccountsForBusiness(businessId, ownerEmail, accounts) 
   }
 }
 
+// Chunked pure-insert for CSV import - unlike saveAccountsForBusiness (which
+// replaces the whole account set for a business), this only adds new rows
+// and never touches existing ones. Chunked so a large CSV doesn't attempt
+// one massive insert (csv-account-import-v1).
+const IMPORT_CHUNK_SIZE = 200;
+export async function bulkCreateAccountsForBusiness(businessId, ownerEmail, accountObjects) {
+  if (!businessId || !accountObjects?.length) return { inserted: 0, error: null };
+  if (!isSupabaseEnabled()) return { inserted: 0, error: 'Supabase is not available.' };
+  let inserted = 0;
+  for (let i = 0; i < accountObjects.length; i += IMPORT_CHUNK_SIZE) {
+    const chunk = accountObjects.slice(i, i + IMPORT_CHUNK_SIZE);
+    const rows = chunk.map(a => ({
+      id: String(a.id),
+      owner_email: ownerEmail || '',
+      business_id: businessId,
+      list_id: a.listId || null,
+      data: a,
+      updated_at: new Date().toISOString(),
+    }));
+    const { error } = await supabase.from('accounts').insert(rows);
+    if (error) return { inserted, error: error.message };
+    inserted += chunk.length;
+  }
+  return { inserted, error: null };
+}
+
 export function subscribeToAccounts(ownerEmail, onChange) {
   if (!isSupabaseEnabled() || !ownerEmail) return () => {};
   const channel = supabase

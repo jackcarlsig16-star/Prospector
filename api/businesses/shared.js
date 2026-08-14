@@ -288,6 +288,53 @@ export async function classifyIntake(supabase, businessId, text) {
   return JSON.parse(jsonMatch[0]);
 }
 
+const ACCOUNT_FIELDS = ['name', 'web', 'vert', 'stage', 'linkedin', 'sfdc'];
+
+const IMPORT_MAPPING_SYSTEM_PROMPT = `You map CSV columns from an account-list import onto a fixed set of known account fields, and (if the file has a per-row ownership/assignment column) match its values to a business's existing lists. Respond with ONLY a JSON object, no other text.
+
+Known account fields you can map a column to: ${ACCOUNT_FIELDS.join(', ')} ("name" is company/account name - always try hardest to find this one; "web" is website/URL; "vert" is industry/vertical; "stage" is deal/pipeline stage; "linkedin" is a LinkedIn URL; "sfdc" is a Salesforce ID/link).
+
+Return exactly this shape:
+{
+  "fieldMapping": { "<csv column header>": "<one of: ${ACCOUNT_FIELDS.join('|')}|ignore>" },
+  "ownershipColumn": "<the csv column header that indicates who owns/is assigned each row, or null if none>",
+  "valueToListId": { "<a distinct raw value seen in the ownership column>": "<the matching list's id from the list provided below>" },
+  "unmatchedValues": ["<any distinct ownership-column values that don't confidently match any existing list>"]
+}
+
+Rules:
+- Map every CSV column that reasonably corresponds to a known account field. Columns that don't map to anything go to "ignore" (or omit them).
+- Only set ownershipColumn if a column clearly indicates who owns/is assigned/is the rep for each row (e.g. "Owner", "Rep", "Assigned To", "AE") - not if it's just a generic status field.
+- If ownershipColumn is set, match its distinct values against the existing lists by name (fuzzy - e.g. "Jack", "jack@company.com", "J. Carlson" should all match a list literally named "Jack"). Only include a value in valueToListId if you're genuinely confident which list it means - anything else goes in unmatchedValues instead of guessing.
+- If there's no clear ownership column, leave ownershipColumn null and both value maps empty - the caller will offer a single-list picker instead.`;
+
+// IMPORT MAPPING — proposes a CSV column -> account field mapping, plus an
+// optional per-row ownership-column -> list mapping, from just the headers
+// and a small sample of rows (never the whole file). Read-only, makes no
+// writes - the caller shows this as an editable proposal before any commit
+// (csv-account-import-v1).
+export async function classifyImportMapping(supabase, businessId, headers, sampleRows) {
+  const { data: lists } = await supabase.from('lists').select('id, name').eq('business_id', businessId);
+  const listText = (lists || []).map(l => `${l.id}: ${l.name}`).join('\n') || '(no lists yet on this business)';
+  const sampleText = sampleRows.map((r, i) => `Row ${i + 1}: ${JSON.stringify(r)}`).join('\n');
+
+  const data = await callAnthropic({
+    model: MODELS.FAST,
+    max_tokens: 800,
+    system: IMPORT_MAPPING_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: `CSV COLUMNS:\n${headers.join(', ')}\n\nSAMPLE ROWS:\n${sampleText}\n\nEXISTING LISTS ON THIS BUSINESS:\n${listText}` }],
+    supabase,
+    businessId,
+    callType: 'import_mapping_classify',
+  });
+
+  const textBlock = (data.content || []).find(b => b.type === 'text');
+  if (!textBlock) throw new Error('No text in import mapping response');
+  const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('No JSON in import mapping response');
+  return JSON.parse(jsonMatch[0]);
+}
+
 // Full research pipeline: site fetch -> web search -> profile generation.
 // Never throws - always resolves research_status to 'ready' or 'error' so
 // nothing gets stuck on 'researching'. Runs after the HTTP response has
