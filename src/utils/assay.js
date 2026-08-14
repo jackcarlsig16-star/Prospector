@@ -144,7 +144,17 @@ Return ONLY this JSON:
 // field names) but the fit/disqualifier/tier reasoning comes from that business's
 // own criteria instead of hardcoded fintech verticals and a fixed product catalog —
 // this business may not sell verification products at all.
-function buildGeneralizedPrompt(criteria, customIntel, exampleAccts) {
+//
+// Deliberately does not take customIntel/exampleAccts (unlike the legacy prompt):
+// those are global AE-level state (prospector_intel_docs / SEED_INTEL_DOCS,
+// prospector_example_accts), not scoped per business, and still hold the
+// original fintech product docs (Core Verify etc). Injecting them here bled
+// fintech language into every other business's scoring regardless of that
+// business's own criteria (confirmed live against HumanKind/The Coconut Cult).
+// assay_criteria is the intended full substitute for business-specific
+// context in this path — don't re-add these params without giving AEs a
+// business-scoped equivalent first.
+function buildGeneralizedPrompt(criteria) {
   return `You are a product/partnership fit scoring engine for an AE, scoring how well a prospect account fits the specific business below. Respond with ONLY a JSON object, no other text.
 
 SCORING: 1=Gold(strong direct fit), 2=Silver(solid indirect fit), 3=Tin(weak/speculative fit), 4=Slag(defunct OR no meaningful fit).
@@ -167,7 +177,6 @@ SITE UNREACHABLE POLICY: Score based on company name + vertical + the fit criter
 USE CASES: return 1-4 short free-text tags describing how this account could fit this business, grounded in FIT SIGNALS above — not a fixed enum, whatever's actually relevant here.
 PRODUCTS: this business may not have a fixed product catalog — if FIT SIGNALS references specific offerings, use those exact names; otherwise return an empty array rather than inventing product names.
 
-${customIntel ? `ADDITIONAL CONTEXT FROM AE:\n${customIntel.slice(0,2000)}\n` : ""}${exampleAccts ? `\nCALIBRATION EXAMPLES:\n${exampleAccts.slice(0,1500)}\n` : ""}
 Return ONLY this JSON:
 {"score":1,"tier":"Gold","businessModel":"2 sentences","productFit":"2 sentences — fit rationale against this business's criteria","useCases":["tag1"],"products":[],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"bankConnectSignal":false,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"signalBreakdown":{"paymentSignals":[],"onboardingSignals":[],"scaleSignals":[],"platformSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
 }
@@ -202,7 +211,7 @@ export async function clientAssay({ name, web, vert, sub, customIntel, exampleAc
     } catch { /* fall through to legacy prompt */ }
   }
   const systemPrompt = assayCriteria
-    ? buildGeneralizedPrompt(assayCriteria, customIntel, exampleAccts)
+    ? buildGeneralizedPrompt(assayCriteria)
     : buildLegacyFintechPrompt(customIntel, exampleAccts);
 
   const response = await fetch("/proxy/anthropic/messages", {
