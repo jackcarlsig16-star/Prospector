@@ -131,6 +131,7 @@ export async function fetchSiteContent(web) {
       headers: {
         "Accept": "text/plain",
         "User-Agent": "Mozilla/5.0 (compatible; Prospector/1.0)",
+        ...(process.env.JINA_API_KEY ? { "Authorization": `Bearer ${process.env.JINA_API_KEY}` } : {}),
       },
       signal: AbortSignal.timeout(10000),
     });
