@@ -128,10 +128,17 @@ export async function getAccounts(ownerEmails) {
     try { return JSON.parse(localStorage.getItem(ACCOUNTS_KEY) || 'null') || null; } catch { return null; }
   }
   try {
+    // business_id IS NULL - without this, business-scoped accounts sharing
+    // this owner_email (any account on a business this user owns) load into
+    // the legacy Territory view too, undifferentiated from real legacy data
+    // (territory-business-scope-fix-v1, confirmed live: both real accounts
+    // on this DB under jackcarlsig16@gmail.com were business-scoped leaks,
+    // not genuine legacy rows).
     const { data, error } = await supabase
       .from('accounts')
       .select('data')
       .in('owner_email', emails)
+      .is('business_id', null)
       .order('updated_at', { ascending: true });
     if (error) throw error;
     const accs = (data || []).map(r => r.data).filter(Boolean);
@@ -146,8 +153,17 @@ export async function saveAccountsToDb(ownerEmail, accounts) {
   try { localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts)); } catch {}
   if (!isSupabaseEnabled() || !ownerEmail) return;
   try {
+    // business_id IS NULL on every delete below - this is the write-side
+    // half of the same fix as getAccounts() above. Without it, this
+    // function's delete-not-in-set (and the empty-array full-delete) would
+    // treat any business-scoped account sharing this owner_email as "not in
+    // the current legacy set" and silently wipe it from Supabase on a
+    // routine Territory autosave (territory-business-scope-fix-v1) - a real
+    // risk, not hypothetical: this was the actual mechanism that could have
+    // deleted The Coconut Cult / @aldknudsen43 the next time Territory's
+    // in-memory list dropped them for any reason.
     if (accounts.length === 0) {
-      await supabase.from('accounts').delete().eq('owner_email', ownerEmail);
+      await supabase.from('accounts').delete().eq('owner_email', ownerEmail).is('business_id', null);
       return;
     }
     const rows = accounts.map(a => ({
@@ -164,6 +180,7 @@ export async function saveAccountsToDb(ownerEmail, accounts) {
     const ids = accounts.map(a => String(a.id)).join(',');
     await supabase.from('accounts').delete()
       .eq('owner_email', ownerEmail)
+      .is('business_id', null)
       .not('id', 'in', `(${ids})`);
   } catch(e) {
     console.warn('[db] saveAccounts Supabase failed:', e.message);
