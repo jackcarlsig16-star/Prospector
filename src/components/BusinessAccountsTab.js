@@ -224,6 +224,8 @@ export default function BusinessAccountsTab({ business, userEmail }) {
         onCreateTask={task => setTasks(ts => [task, ...ts])}
         onUpdateTask={(id, patch) => setTasks(ts => ts.map(t => t.id === id ? { ...t, ...patch } : t))}
         tasks={tasks}
+        business={business}
+        onInfluencerUpdated={()=>reload(true)}
       />
       {dealSummaryAccId && (
         <DealSummaryModal accId={dealSummaryAccId} accounts={accounts} onClose={() => setDealSummaryAccId(null)} />

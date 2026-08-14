@@ -6,6 +6,7 @@ import { getSupabase, assessInfluencerAccount } from './shared.js';
 // Never touches last_touched_by/last_touched_at (influencer-accounts-v1).
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  const { id: businessId } = req.params;
   const { accountId, bioText, followerCount } = req.body || {};
   if (!accountId || !bioText?.trim()) return res.status(400).json({ error: 'accountId and bioText are required' });
 
@@ -13,7 +14,7 @@ export default async function handler(req, res) {
   if (!supabase) return res.status(500).json({ error: 'Supabase is not configured' });
 
   try {
-    const detail = await assessInfluencerAccount(supabase, accountId, bioText.trim(), Number(followerCount) || null);
+    const detail = await assessInfluencerAccount(supabase, accountId, bioText.trim(), Number(followerCount) || null, businessId);
     res.status(200).json({ detail });
   } catch (e) {
     res.status(500).json({ error: e.message });

@@ -322,6 +322,21 @@ export async function getInfluencerDetails(accountIds) {
   return map;
 }
 
+// Relationship fields (stage/temperature/priority/next_action/decline_reason/
+// tags) live on account_influencer_details, not accounts.data - a separate
+// write path from the generic onUpdate()/persist() flow business accounts
+// use (influencer-card-v2, Phase 3-4). Only a stage change is a real logged
+// action; temperature/priority/next_action/tags are lower-stakes manual
+// triage fields that don't warrant an activity-log entry on every edit.
+export async function updateInfluencerRelationship(accountId, memberEmail, patch) {
+  const { data: updated, error } = await supabase.from('account_influencer_details').update(patch).eq('account_id', accountId).select().single();
+  if (error) return { error: error.message };
+  if (patch.relationship_stage) {
+    await recordAccountActivity(accountId, memberEmail, 'relationship_stage', `Relationship stage → ${patch.relationship_stage.replace(/_/g, ' ')}`);
+  }
+  return { detail: updated };
+}
+
 // creates it, or links the existing deduped account to that list"
 // (accounts-lists-and-activity-model-v1). Ignores lists it's already on.
 export async function linkAccountToLists(accountId, listIds) {

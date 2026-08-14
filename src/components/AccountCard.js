@@ -280,19 +280,6 @@ function AccountCard({ acc, expanded, onToggle, onReassay, reassaying, onUpdate,
               only ever set on accounts created/touched through the new
               lists/activity model, so this is a no-op for every legacy account. */}
           {acc.lastTouchedBy && <span title={acc.lastTouchedAt ? new Date(acc.lastTouchedAt).toLocaleString() : undefined} style={{ fontSize:11, color:T.text.muted }}>Last contact: {acc.lastTouchedBy} · {staleDays(acc.lastTouchedAt)===0?"today":`${staleDays(acc.lastTouchedAt)}d ago`}</span>}
-          {/* Influencer accounts (influencer-accounts-v1) - handle, follower
-              count, niche assessment/status. account_kind='influencer' only,
-              so a no-op for every business account. */}
-          {acc.accountKind==='influencer' && acc.influencerDetail && (
-            <span style={{ fontSize:11, color:T.purple||C.purple }} title={acc.influencerDetail.bio_snapshot||undefined}>
-              @{acc.influencerDetail.instagram_handle}
-              {acc.influencerDetail.follower_count!=null && ` · ${acc.influencerDetail.follower_count.toLocaleString()} followers`}
-              {acc.influencerDetail.assessment_status==='ready' && acc.influencerDetail.niche_assessment?.category && ` · ${acc.influencerDetail.niche_assessment.category}`}
-              {acc.influencerDetail.assessment_status==='pending' && ` · no bio yet`}
-              {acc.influencerDetail.assessment_status==='assessing' && ` · assessing…`}
-              {acc.influencerDetail.assessment_status==='error' && ` · assessment failed`}
-            </span>
-          )}
           {hasBankConnect(acc)&&<span title="Bank connect signal" style={{ fontSize:13, lineHeight:1 }}>🐷</span>}
           {acc.distributionMultiplier&&<span title={`Distribution multiplier — ${acc.estimatedDownstreamUsers||"downstream reach detected"}`} style={{ fontSize:13, lineHeight:1 }}>📦</span>}
           {acc.isEstablished&&!acc.distributionMultiplier&&<span title={`Established — ${(acc.tractionSignals||[]).slice(0,2).join(", ")||"active customer base"}`} style={{ fontSize:13, lineHeight:1 }}>✅</span>}

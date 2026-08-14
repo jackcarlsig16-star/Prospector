@@ -90,17 +90,37 @@ Return exactly this shape:
 
 // PROFILE GENERATION — pulls the full intel log and synthesizes it into
 // business_profiles. Called from both the research pipeline and the manual
-const INFLUENCER_SYSTEM_PROMPT = `You synthesize an Instagram influencer's bio text into a compact strategy-relevant assessment. Respond with ONLY a JSON object, no other text.
+const INFLUENCER_SYSTEM_PROMPT = `You synthesize an Instagram influencer's bio text into a compact strategy-relevant assessment for a specific business considering working with them. Respond with ONLY a JSON object, no other text.
 
 Return exactly this shape:
 {
   "category": "the influencer's niche/category in a few words (e.g. 'fitness & wellness', 'home renovation', 'personal finance')",
   "content_type": "what kind of content they post, inferred from the bio (e.g. 'short-form video tips', 'lifestyle photography', 'product reviews')",
   "audience_read": "1-2 sentences on who their audience likely is, based on the bio",
-  "summary": "1-2 sentences summarizing why this account might be strategically relevant, based only on what the bio actually says"
+  "fit_score": "integer 0-100 - how strong a fit this influencer is for THIS business specifically, given its profile below. 0 = no discernible fit, 100 = ideal fit. Be honest and differentiated - most real accounts should land well short of either extreme",
+  "fit_signals": "array of 2-4 objects, each { \\"axis\\": short label, \\"note\\": one grounded sentence }. Choose whichever axes actually matter for THIS business and THIS influencer - e.g. audience overlap, geography, brand tone, category adjacency, price point - do not use a fixed template of axes across every assessment. Ground every note in specifics from the bio and business profile, not generic reasoning",
+  "fit_rationale": "one sentence, evidence-based, stating the single biggest reason for the fit_score - reference something concrete from the bio and/or the business profile, not a generic statement"
 }
 
-Base every field on the bio text provided - do not invent facts it doesn't support. If the bio is too thin to say something meaningful, say so plainly in that field rather than padding.`;
+Base every field on the bio text and business profile provided - do not invent facts either doesn't support. If the bio is too thin to say something meaningful, say so plainly in that field rather than padding. If the business profile below is thin or empty, say so in fit_rationale rather than guessing - a low-information fit_score should read as uncertain, not confidently wrong.`;
+
+// vision/positioning/icp/gtm_strategy are the structured fields
+// generateProfile() fills in, but a business on 'light' research depth (or
+// one whose site research came back thin - confirmed live for both
+// HomeLover and Master Magnetics as of influencer-card-v2's Phase 0 check)
+// can have all four blank while raw_synthesis still holds real content.
+// Fall back to it rather than handing the fit prompt an empty profile.
+function buildBusinessFitContext(profile) {
+  if (!profile) return '(no business profile available yet)';
+  const parts = [
+    profile.vision && `Vision: ${profile.vision}`,
+    profile.positioning && `Positioning: ${profile.positioning}`,
+    profile.icp && `ICP: ${profile.icp}`,
+    profile.gtm_strategy && `GTM strategy: ${profile.gtm_strategy}`,
+  ].filter(Boolean);
+  if (!parts.length && profile.raw_synthesis) return profile.raw_synthesis;
+  return parts.length ? parts.join('\n') : '(no business profile available yet)';
+}
 
 // Synthesizes from a human-pasted bio, not a fetched one - Instagram profile
 // fetching (even via Jina Reader with a real API key) is confirmed blocked
@@ -109,14 +129,24 @@ Base every field on the bio text provided - do not invent facts it doesn't suppo
 // generateProfile() otherwise. Deliberately does NOT touch
 // last_touched_by/last_touched_at - this is automated categorization of
 // text Jack pasted, not a logged human contact with the influencer.
-export async function assessInfluencerAccount(supabase, accountId, bioText, followerCount) {
+// businessId drives the fit_score/fit_signals/fit_rationale context
+// (influencer-card-v2, Phase 2) - without it those fields would just be
+// generic, which defeats the point of scoring fit per-business.
+export async function assessInfluencerAccount(supabase, accountId, bioText, followerCount, businessId) {
   await supabase.from('account_influencer_details').update({ assessment_status: 'assessing' }).eq('account_id', accountId);
   try {
+    let businessContext = '(no business profile available yet)';
+    if (businessId) {
+      const { data: profile } = await supabase.from('business_profiles').select('vision, positioning, icp, gtm_strategy, raw_synthesis').eq('business_id', businessId).maybeSingle();
+      businessContext = buildBusinessFitContext(profile);
+    }
+
     const data = await callAnthropic({
-      max_tokens: 600,
+      max_tokens: 800,
       system: INFLUENCER_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: `BIO:\n${bioText}` }],
+      messages: [{ role: 'user', content: `BUSINESS PROFILE (the business considering this influencer):\n${businessContext}\n\nINFLUENCER BIO:\n${bioText}` }],
       supabase,
+      businessId,
       callType: 'influencer_assess',
     });
     const textBlock = (data.content || []).find(b => b.type === 'text');
@@ -124,10 +154,14 @@ export async function assessInfluencerAccount(supabase, accountId, bioText, foll
     const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON in influencer assessment response');
     const parsed = JSON.parse(jsonMatch[0]);
+    const { fit_score, fit_signals, fit_rationale, ...niche_assessment } = parsed;
 
     const { data: updated, error } = await supabase.from('account_influencer_details').update({
       bio_snapshot: bioText,
-      niche_assessment: parsed,
+      niche_assessment,
+      fit_score: Number.isFinite(fit_score) ? Math.max(0, Math.min(100, Math.round(fit_score))) : null,
+      fit_signals: fit_signals || null,
+      fit_rationale: fit_rationale || null,
       follower_count: Number.isFinite(followerCount) ? followerCount : null,
       assessment_status: 'ready',
       assessed_at: new Date().toISOString(),
