@@ -204,7 +204,7 @@ export default function AccountCard({
       {!isInfluencer && (
         <DebriefWorkspace
           ref={debriefRef}
-          acc={acc} onUpdate={onUpdate} tasks={tasks} activeUser={activeUser} onCreateTask={onCreateTask}
+          acc={acc} business={business} onUpdate={onUpdate} tasks={tasks} activeUser={activeUser} onCreateTask={onCreateTask}
           setIntelFlash={setIntelFlash} onNewlyDetectedProds={setNewlyDetectedProds}
           open={debriefOpen} onClose={() => setDebriefOpen(false)}
         />
@@ -212,7 +212,7 @@ export default function AccountCard({
 
       {!isInfluencer && (
         <IntelWorkspace
-          acc={acc} onUpdate={onUpdate} tasks={tasks} activeUser={activeUser}
+          acc={acc} business={business} projects={projects} onUpdate={onUpdate} tasks={tasks} activeUser={activeUser}
           open={intelOpen} onClose={() => setIntelOpen(false)}
           newlyDetectedProds={newlyDetectedProds}
           debriefHandle={debriefRef.current}

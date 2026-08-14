@@ -450,7 +450,7 @@ app.post('/api/notify-pending', async (req, res) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: `🪙 *New Prospector access request*\n*Name:* ${name}\n*Email:* ${email}\n*Role:* ${role}\nApprove at: https://prospector.onrender.com → Admin tab`,
+          text: `🪙 *New Prospector access request*\n*Name:* ${name}\n*Email:* ${email}\n*Role:* ${role}\nApprove at: https://prospector-chtj.onrender.com → Admin tab`,
         }),
       });
     } catch (e) {

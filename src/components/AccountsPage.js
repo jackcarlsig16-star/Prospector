@@ -936,9 +936,18 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
       {showDedupeModal&&onSave&&<DedupeModal accounts={accounts} onMerge={(merged,removeId)=>{onSave(accounts.map(a=>a.id===merged.id?merged:a).filter(a=>a.id!==removeId));}} onClose={()=>setShowDedupeModal(false)}/>}
       {showSfdcModal&&<SfdcImportModal opps={unmatchedSfdcOpps} accounts={accounts} onImport={handleImportSfdc} onClose={()=>{ setShowSfdcModal(false); dismissSfdcOpps(unmatchedSfdcOpps); }}/>}
       {showAssayModal&&(()=>{
-        const unassayed=accounts.filter(a=>!a.score&&!a.assay_failed);
-        const currentView=filtered.filter(a=>!a.assay_failed);
-        const everything=accounts.filter(a=>!a.assay_failed);
+        // Assay's fit/disqualifier logic is entirely business-shaped (no
+        // creator-specific fields exist in clientAssay's prompt) - influencer
+        // accounts have their own real assessment (CreatorFitRelationship),
+        // not a hidden/disabled copy of this one. Confirmed live 2026-08-14:
+        // all 26 of HumanKind's influencer accounts had picked up a stray,
+        // meaningless business-fit score via this modal before this filter
+        // existed. Match the single-card gating (AccountCard.js's
+        // businessActions/reassay are already !isInfluencer-only).
+        const isBiz=a=>(a.accountKind||'business')!=='influencer';
+        const unassayed=accounts.filter(a=>isBiz(a)&&!a.score&&!a.assay_failed);
+        const currentView=filtered.filter(a=>isBiz(a)&&!a.assay_failed);
+        const everything=accounts.filter(a=>isBiz(a)&&!a.assay_failed);
         const opts=[
           { id:"new", label:"New accounts only", desc:"Accounts that haven't been scored yet", count:unassayed.length, c:C.green, target:()=>new Set(unassayed.map(a=>a.id)) },
           { id:"view", label:"Current view", desc:"Only accounts matching your active filters", count:currentView.length, c:C.blue, target:()=>new Set(currentView.map(a=>a.id)) },

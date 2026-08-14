@@ -13,9 +13,25 @@ const MESSAGE_TYPES = [
   { id: 'custom', label: 'Custom' },
 ];
 
+// project-guidance-and-creation-flow-v1 — shared by the guided panel and
+// the autoStart minimal gate below, same picker either way.
+function ProjectAmbiguityPicker({ matchedProjects, onPick }) {
+  return (
+    <div style={{ marginBottom:16, padding:"10px 12px", background:`${C.orange||"#f5a623"}0f`, border:`1px solid ${C.orange||"#f5a623"}40`, borderRadius:6 }}>
+      <p style={{ ...mono, margin:"0 0 8px", fontSize:11, color:C.mut }}>This account belongs to more than one project — pick which one's guidance applies:</p>
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+        {matchedProjects.map(p => (
+          <button key={p.id} onClick={()=>onPick(p.id)} style={{ ...mono, fontSize:12, padding:"6px 12px", borderRadius:6, cursor:"pointer", background:"transparent", border:`1px solid ${C.brd}`, color:C.txt }}>
+            {p.name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function EmailModal({ account, persona, onClose, onSaveEmail, accountKind, business, autoStart = true, projects = [] }) {
   const [email,setEmail]=useState("");
-  const [loading,setLoading]=useState(autoStart);
   const [copied,setCopied]=useState(false);
   const [originalEmail,setOriginalEmail]=useState("");
   const [teaching,setTeaching]=useState(false);
@@ -27,7 +43,13 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
   const influencerDetail = account.influencerDetail || null;
 
   // ── Guided pre-generation panel (Part B) ──────────────────────────────
-  const [started, setStarted] = useState(autoStart);
+  // started/loading no longer default straight from autoStart - an
+  // autoStart caller still needs project resolution to run first (below)
+  // so an ambiguous account doesn't silently fire against the wrong
+  // project's guidance. The effect after the resolution one flips these
+  // once it's safe to actually generate.
+  const [started, setStarted] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [messageType, setMessageType] = useState('cold_outreach');
   const [context, setContext] = useState('');
   const [lists, setLists] = useState([]);
@@ -36,27 +58,42 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
 
   // project-guidance-and-creation-flow-v1 — project-selector-on-ambiguity.
   // account_lists is many-to-many, so an account can sit in more than one
-  // project's list. Exactly one match auto-selects silently; more than one
-  // requires an explicit pick before Generate is allowed - never silently
-  // guess which project's guidance should apply.
+  // project's list. Runs regardless of autoStart - an instant-generate
+  // entry point (persona click) still needs this resolved before firing,
+  // not just the guided panel. Exactly one match auto-selects silently;
+  // more than one requires an explicit pick before generation proceeds.
   const [matchedProjects, setMatchedProjects] = useState([]);
   const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [projectResolutionDone, setProjectResolutionDone] = useState(false);
   const projectsWithLists = projects.filter(p => p.list_id);
 
   useEffect(() => {
-    if (autoStart || !business?.id) return;
-    getListsForBusiness(business.id).then(setLists);
-    if (!projectsWithLists.length) return;
+    if (!business?.id || !projectsWithLists.length) { setProjectResolutionDone(true); return; }
     getListIdsForAccount(account.id).then(accountListIds => {
       const matches = projectsWithLists.filter(p => accountListIds.includes(p.list_id));
       setMatchedProjects(matches);
       if (matches.length === 1) setSelectedProjectId(matches[0].id);
+      setProjectResolutionDone(true);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoStart, business?.id, account.id]);
+  }, [business?.id, account.id]);
+
+  useEffect(() => {
+    if (autoStart || !business?.id) return;
+    getListsForBusiness(business.id).then(setLists);
+  }, [autoStart, business?.id]);
 
   const projectAmbiguous = matchedProjects.length > 1 && !selectedProjectId;
   const activeProject = projects.find(p => p.id === selectedProjectId) || null;
+
+  // autoStart callers fire automatically once resolution clears and there's
+  // no ambiguity to block on - same "instant" behavior as before for the
+  // common (0 or 1 project) case, just no longer racing the resolution.
+  useEffect(() => {
+    if (!autoStart || started || !projectResolutionDone || projectAmbiguous) return;
+    setLoading(true);
+    setStarted(true);
+  }, [autoStart, started, projectResolutionDone, projectAmbiguous]);
 
   useEffect(()=>{
     if (!started) return;
@@ -146,18 +183,7 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
         </>
       )}
 
-      {projectAmbiguous && (
-        <div style={{ marginBottom:16, padding:"10px 12px", background:`${C.orange||"#f5a623"}0f`, border:`1px solid ${C.orange||"#f5a623"}40`, borderRadius:6 }}>
-          <p style={{ ...mono, margin:"0 0 8px", fontSize:11, color:C.mut }}>This account belongs to more than one project — pick which one's guidance applies:</p>
-          <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-            {matchedProjects.map(p => (
-              <button key={p.id} onClick={()=>setSelectedProjectId(p.id)} style={{ ...mono, fontSize:12, padding:"6px 12px", borderRadius:6, cursor:"pointer", background:"transparent", border:`1px solid ${C.brd}`, color:C.txt }}>
-                {p.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {projectAmbiguous && <ProjectAmbiguityPicker matchedProjects={matchedProjects} onPick={setSelectedProjectId} />}
 
       {!projectAmbiguous && (
         <p style={{ ...mono, fontSize:10, color:C.dim, marginBottom:12 }}>
@@ -187,7 +213,11 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
         </div>
         <div style={{ flex:1,overflowY:"auto",padding:"16px 20px" }}>
           {!started
-            ? guidedPanel
+            ? (autoStart
+                ? (projectAmbiguous
+                    ? <ProjectAmbiguityPicker matchedProjects={matchedProjects} onPick={setSelectedProjectId} />
+                    : <p style={{ ...mono,fontSize:13,color:C.purple }}>⬡ Generating email…</p>)
+                : guidedPanel)
             : (loading
                 ? <p style={{ ...mono,fontSize:13,color:C.purple }}>⬡ Generating email…</p>
                 : <textarea value={email} onChange={e=>setEmail(e.target.value)} style={{ width:"100%",height:300,fontSize:13,lineHeight:1.9,background:C.bg,border:`1px solid ${C.brd}`,borderRadius:6,color:C.txt,padding:"12px 14px",resize:"vertical",outline:"none",fontFamily:"inherit",boxSizing:"border-box" }}/>

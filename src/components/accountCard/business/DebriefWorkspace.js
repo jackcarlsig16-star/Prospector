@@ -3,8 +3,8 @@ import { GONG_RUBRIC, BEHAVIOR_RUBRIC, clientDebrief, quickUpdateExtract } from 
 import { extractIntelligenceFromCall } from '../../../utils/intelligenceEngine';
 import { runPathToCloseUpdate } from '../../../utils/pathToClose';
 import { getValidGmailToken } from '../../../utils/getValidGmailToken';
-import { getVoiceProfile } from '../../../constants/voice';
-import { MODELS } from '../../../config/models';
+import { getVoiceProfile, getActiveVoice } from '../../../constants/voice';
+import { getActiveIntel } from '../../../utils/assay';
 import DebriefPanel from '../../debrief/DebriefPanel';
 import FollowUpEmailModal from '../../FollowUpEmailModal';
 
@@ -21,7 +21,7 @@ const isTranscript = (text) => {
 // Owns Debrief + Quick Update + the auto-generated follow-up email that
 // fires after either — relocated verbatim from the old AccountCardActionBar.js
 // (account-card-unification-and-outreach-v1 / -full-redesign-v2). Business-only.
-const DebriefWorkspace = forwardRef(function DebriefWorkspace({ acc, onUpdate, tasks, activeUser, onCreateTask, setIntelFlash, onNewlyDetectedProds, open, onClose }, ref) {
+const DebriefWorkspace = forwardRef(function DebriefWorkspace({ acc, business, onUpdate, tasks, activeUser, onCreateTask, setIntelFlash, onNewlyDetectedProds, open, onClose }, ref) {
   const [debriefMode, setDebriefMode] = useState(null); // null | 'call' | 'quick'
   const [debriefText, setDebriefText] = useState("");
   const [debriefLoading, setDebriefLoading] = useState(false);
@@ -67,21 +67,37 @@ const DebriefWorkspace = forwardRef(function DebriefWorkspace({ acc, onUpdate, t
     } catch {}
   };
 
+  // project-guidance-and-creation-flow-v1 follow-up — this used to build its
+  // own prompt and hit /proxy/anthropic/messages directly, a second
+  // generation implementation bypassing voice/assay/outreach-rules/project-
+  // guidance entirely. Routed through /api/email's real messageType:
+  // 'follow_up' handling instead - same single generation path as every
+  // other entry point, this is just a different selected input (call-record
+  // context folded into `note`), not a different engine.
   const generateFollowUpEmail = async (callRecord) => {
     const voiceUserName = (() => { try { return JSON.parse(localStorage.getItem('prospector_user') || '{}').name || 'AE'; } catch { return 'AE'; } })();
     const voiceProfile = getVoiceProfile ? getVoiceProfile(voiceUserName) : null;
-    const voiceNote = voiceProfile?.summary ? `\n\nVoice guidance: ${voiceProfile.summary}` : '';
     const nextStepsList = (callRecord.nextSteps || []).map(ns => typeof ns === 'string' ? ns : (ns?.text || '')).join('\n');
     const painList = (callRecord.painPoints || []).map(p => typeof p === 'string' ? p : (p?.topic || '')).join(', ');
     const productsList = (callRecord.productsDiscussed || []).map(p => `${p.product} (${p.interestLevel})`).join(', ');
-    const prompt = `Write a brief post-meeting follow-up email in the following person's voice.${voiceNote}\n\nMeeting with: ${acc.name}\nPain points discussed: ${painList || 'N/A'}\nProducts discussed: ${productsList || 'N/A'}\nNext steps: ${nextStepsList || 'N/A'}\nDecision maker: ${callRecord.decisionMaker || 'N/A'}\n\nRequirements:\n- Friendly but professional\n- One-line thank you opener\n- 2-3 bullet summary of what was discussed\n- Clear next steps section\n- Short closing with a clear ask\n- NO generic filler phrases like "I hope this email finds you well"\n- Keep it under 200 words\n\nRespond with JSON: {"subject":"...","body":"..."}`;
+    const note = `Post-meeting follow-up. Pain points discussed: ${painList || 'N/A'}. Products discussed: ${productsList || 'N/A'}. Next steps: ${nextStepsList || 'N/A'}. Decision maker: ${callRecord.decisionMaker || 'N/A'}.`;
     try {
-      const res = await fetch('/proxy/anthropic/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model: MODELS.FAST, max_tokens: 600, messages: [{ role: 'user', content: prompt }] }) });
+      const res = await fetch('/api/email', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: acc.name, businessModel: acc.bm || '', productFit: acc.pf || '',
+          personaName: topPersona?.name || '', personaTitle: topPersona?.title || '',
+          customIntel: getActiveIntel(), senderName: voiceUserName,
+          voiceExamples: getActiveVoice(voiceUserName), voiceProfile,
+          note, web: acc.web, accountKind: acc.accountKind,
+          businessId: business?.id, messageType: 'follow_up',
+        }),
+      });
       const d = await res.json();
-      const raw = d.content?.[0]?.text || '';
-      const match = raw.match(/\{[\s\S]*\}/);
-      if (match) {
-        const parsed = JSON.parse(match[0]);
+      const raw = d.email || '';
+      const match = raw.match(/^\s*Subject:\s*(.+?)\r?\n\r?\n([\s\S]*)$/);
+      const parsed = match ? { subject: match[1].trim(), body: match[2].trim() } : { subject: `Following up, ${acc.name}`, body: raw };
+      if (parsed.body) {
         setFollowUpEmail(parsed); setFollowUpCopied(false); setFollowUpSkipped(false); setFollowUpDraftUrl(null);
         const gtoken = await getValidGmailToken();
         if (gtoken) {

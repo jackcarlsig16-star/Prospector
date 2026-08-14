@@ -9,7 +9,7 @@ const toSfdcUrl = v => {
   return null;
 };
 
-export default function PersonasSection({ acc, onUpdate }) {
+export default function PersonasSection({ acc, business, projects=[], onUpdate }) {
   const [loading,setLoading]=useState(false);
   const [emailModal,setEmailModal]=useState(null);
   const [manualForm,setManualForm]=useState({name:"",title:"",linkedinUrl:""});
@@ -45,7 +45,7 @@ export default function PersonasSection({ acc, onUpdate }) {
 
   return(
     <div style={{ marginTop:12, borderLeft:"2px solid #0f6e56", paddingLeft:12, paddingTop:8, paddingBottom:8 }}>
-      {emailModal&&<EmailModal account={acc} persona={emailModal} onClose={()=>setEmailModal(null)} onSaveEmail={saveEmail}/>}
+      {emailModal&&<EmailModal account={acc} business={business} projects={projects} persona={emailModal} onClose={()=>setEmailModal(null)} onSaveEmail={saveEmail}/>}
       <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8 }}>
         <span style={{ fontFamily:"monospace", fontSize:9, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.1em", color:"#0f6e56" }}>Personas {personas.length>0&&`(${personas.length})`}</span>
         <button onClick={e=>{e.stopPropagation();findPersonas();}} disabled={loading} style={{ fontFamily:"monospace", fontSize:10, padding:"2px 8px", background:"transparent", border:"0.5px solid #2a2a2a", color:loading?"#0f6e56":"#555", borderRadius:4, cursor:loading?"not-allowed":"pointer" }}>{loading?"⬡ Searching...":personas.length>0?"↻ Refresh":"Find personas"}</button>
