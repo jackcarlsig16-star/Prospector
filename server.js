@@ -18,7 +18,13 @@ const GOOGLE_SCOPES  = 'https://www.googleapis.com/auth/gmail.modify https://www
 
 const app = express();
 app.set('trust proxy', 1); // Render terminates TLS — trust X-Forwarded-Proto
-app.use(express.json({ limit: '20mb' }));
+// verify captures the raw request bytes as req.rawBody - needed for webhook
+// HMAC signature verification (api/lib/webhookHandler.js), since the
+// re-serialized parsed body isn't guaranteed to match what a provider signed.
+// Harmless for every other route - nothing else reads req.rawBody.
+app.use(express.json({ limit: '20mb', verify: (req, res, buf) => { req.rawBody = buf.toString('utf8'); } }));
+
+import('./api/lib/checkCredentials.js').then(({ checkCredentials }) => checkCredentials());
 
 // ── Anthropic proxy ───────────────────────────────────────────────────────────
 app.post('/proxy/anthropic/messages', async (req, res) => {
@@ -423,6 +429,7 @@ app.post('/api/businesses/:id/intake',          esHandler('./api/businesses/inta
 app.post('/api/businesses/:id/intake/confirm',  esHandler('./api/businesses/intake-confirm.js'));
 app.post('/api/businesses/:id/import/classify', esHandler('./api/businesses/import-classify.js'));
 app.post('/api/businesses/:id/influencer/assess', esHandler('./api/businesses/influencer-assess.js'));
+app.post('/api/zoom/webhook', esHandler('./api/zoom/webhook.js'));
 app.post('/api/notify-pending', async (req, res) => {
   const { name, email, role } = req.body || {};
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;
