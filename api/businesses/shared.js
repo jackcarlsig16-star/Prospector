@@ -27,7 +27,11 @@ async function callAnthropic({ system, messages, tools, max_tokens, supabase, bu
     body: JSON.stringify({
       model,
       max_tokens,
-      thinking: { type: 'adaptive' },
+      // adaptive thinking isn't supported on the fast tier (confirmed live -
+      // classifyIntake's MODELS.FAST call 500'd in production with "adaptive
+      // thinking is not supported on this model"). It stays on for
+      // STANDARD/REASONING synthesis calls, which is what it was added for.
+      ...(model !== MODELS.FAST ? { thinking: { type: 'adaptive' } } : {}),
       system,
       messages,
       ...(tools ? { tools } : {}),
