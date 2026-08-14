@@ -4,6 +4,16 @@ export const config = { maxDuration: 30 };
 
 const MODEL = MODELS.FAST;
 
+// account-card-color-fix-and-guided-generate-v1 Part B — message_type meaningfully
+// changes tone/structure, not just a logged label. Undefined/unknown messageType
+// (every pre-existing caller — AccountCardPersonas.js, FrontierEmailPanel.js) gets
+// no guidance block at all, so their output is byte-identical to before this change.
+const MESSAGE_TYPE_GUIDANCE = {
+  cold_outreach: `MESSAGE TYPE — Cold Outreach: this is a first-touch message, no prior contact of any kind. Keep it short, one clear CTA, no assumption of familiarity. Never reference "as discussed," a prior call, or any earlier exchange.`,
+  follow_up: `MESSAGE TYPE — Follow-up: prior contact/context already exists between sender and recipient. Reference a prior touchpoint naturally (a call, an email, a signup, a prior conversation) even generically if no specifics are given in the context below, and write as a continuation of an existing relationship, not a first introduction. Do not use a "nice to meet you" or "reaching out to introduce myself" style opener.`,
+  warm_intro: `MESSAGE TYPE — Warm Intro: this message is being sent via, or references, a warm introduction rather than cold. Open warmer and more personally than a cold email would. If an introduction source or connector is mentioned in the context below, reference it naturally early in the message.`,
+};
+
 const AVOID_ALWAYS = [
   "synergies", "solutions", "leverage", "excited to connect",
   "hope this finds you well", "reach out", "touch base",
@@ -68,11 +78,12 @@ export default async function handler(req, res) {
     personaName, personaTitle,
     customIntel, senderName, voiceExamples, voiceProfile,
     signals, note, web, website,
-    format, accountKind,
+    format, accountKind, messageType,
     fitRationale, fitSignals, nicheAssessment, bioSnapshot,
   } = req.body;
 
   const isInfluencer = accountKind === 'influencer';
+  const messageTypeGuidance = MESSAGE_TYPE_GUIDANCE[messageType] || "";
   const sender = senderName || "your rep";
   const isLinkedIn = format === "linkedin_note";
   const wordLimit = isLinkedIn ? 50 : 60;
@@ -119,6 +130,7 @@ export default async function handler(req, res) {
       : `You are ${sender} writing first-touch outbound ${formatLabel}s.`,
     voiceRules,
     outputFormat,
+    messageTypeGuidance,
     !isInfluencer ? `PRODUCT LANGUAGE: Never mention our products by name (Core Verify, Core Verify Plus, Balance Insights, etc.). Describe what the solution does in plain language (e.g. "instant account verification" not "Core Verify", "bank account balance checks" not "Balance Insights").` : "",
     !isInfluencer ? `SOCIAL PROOF: You may name-drop 1-2 of these real customers in the same space: ${proof.slice(0, 3).join(", ")}. Only use if it fits naturally. Never force it.` : "",
     voiceExamples ? `VOICE EXAMPLES — match this tone and length exactly:\n${voiceExamples.slice(0, 1500)}` : "",

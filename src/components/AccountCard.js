@@ -182,8 +182,10 @@ export default function AccountCard({
       {outreachOpen && (
         <EmailModal
           account={acc}
+          business={business}
           persona={isInfluencer ? null : (acc.personas || [])[0] || null}
           accountKind={acc.accountKind}
+          autoStart={false}
           onClose={() => setOutreachOpen(false)}
         />
       )}

@@ -1,12 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { C, mono } from '../constants/colors';
 import { getActiveIntel } from '../utils/assay';
 import { getActiveVoice, getVoiceProfile, voiceProfileKey } from '../constants/voice';
 import { UCS_DATA } from '../constants/products';
+import { getListsForBusiness, linkAccountToLists } from '../utils/db';
 
-export default function EmailModal({ account, persona, onClose, onSaveEmail, accountKind }) {
+// account-card-color-fix-and-guided-generate-v1 Part B
+const MESSAGE_TYPES = [
+  { id: 'cold_outreach', label: 'Cold Outreach' },
+  { id: 'follow_up', label: 'Follow-up' },
+  { id: 'warm_intro', label: 'Warm Intro' },
+  { id: 'custom', label: 'Custom' },
+];
+
+export default function EmailModal({ account, persona, onClose, onSaveEmail, accountKind, business, autoStart = true }) {
   const [email,setEmail]=useState("");
-  const [loading,setLoading]=useState(true);
+  const [loading,setLoading]=useState(autoStart);
   const [copied,setCopied]=useState(false);
   const [originalEmail,setOriginalEmail]=useState("");
   const [teaching,setTeaching]=useState(false);
@@ -16,7 +25,21 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
   const isInfluencer = kind === 'influencer';
   const influencerDetail = account.influencerDetail || null;
 
+  // ── Guided pre-generation panel (Part B) ──────────────────────────────
+  const [started, setStarted] = useState(autoStart);
+  const [messageType, setMessageType] = useState('cold_outreach');
+  const [context, setContext] = useState('');
+  const [lists, setLists] = useState([]);
+  const [selectedListId, setSelectedListId] = useState('');
+  const contextRef = useRef(null);
+
+  useEffect(() => {
+    if (autoStart || !business?.id) return;
+    getListsForBusiness(business.id).then(setLists);
+  }, [autoStart, business?.id]);
+
   useEffect(()=>{
+    if (!started) return;
     const customIntel=getActiveIntel();
     const user=JSON.parse(localStorage.getItem("prospector_user")||"{}");
     fetch("/api/email",{
@@ -35,6 +58,8 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
         voiceExamples:getActiveVoice(voiceUserName),
         voiceProfile:getVoiceProfile(voiceUserName),
         accountKind:kind,
+        messageType: !autoStart ? messageType : undefined,
+        note: !autoStart && context.trim() ? context.trim() : undefined,
         ...(isInfluencer ? {
           fitRationale:influencerDetail?.fit_rationale||"",
           fitSignals:influencerDetail?.fit_signals||[],
@@ -54,9 +79,55 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
       }
     })
     .catch(e=>{setEmail("Error: "+e.message);setLoading(false);});
-  },[]);// eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[started]);
 
   const copy=()=>{navigator.clipboard.writeText(email);setCopied(true);setTimeout(()=>setCopied(false),2000);};
+
+  const generate = async () => {
+    if (selectedListId) {
+      try { await linkAccountToLists(account.id, [selectedListId]); } catch {}
+    }
+    setLoading(true);
+    setStarted(true);
+  };
+
+  const guidedPanel = !started && (
+    <div>
+      <p style={{ ...mono, margin:"0 0 8px", fontSize:11, fontWeight:600, color:C.mut, textTransform:"uppercase", letterSpacing:"0.06em" }}>Message type</p>
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:16 }}>
+        {MESSAGE_TYPES.map(t => (
+          <button key={t.id} onClick={()=>{ setMessageType(t.id); if (t.id === 'custom') contextRef.current?.focus(); }}
+            style={{ ...mono, fontSize:12, padding:"7px 14px", borderRadius:6, cursor:"pointer",
+              background: messageType===t.id ? `${C.gold}18` : "transparent",
+              border: `1px solid ${messageType===t.id ? C.gold : C.brd}`,
+              color: messageType===t.id ? C.gold : C.mut, fontWeight: messageType===t.id?600:400 }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <p style={{ ...mono, margin:"0 0 8px", fontSize:11, fontWeight:600, color:C.mut, textTransform:"uppercase", letterSpacing:"0.06em" }}>Additional context <span style={{ fontWeight:400, textTransform:"none", letterSpacing:0, color:C.dim }}>(optional)</span></p>
+      <textarea ref={contextRef} value={context} onChange={e=>setContext(e.target.value)} rows={3}
+        placeholder="e.g. mention their recent funding round"
+        style={{ width:"100%", fontSize:13, lineHeight:1.6, padding:"10px 12px", background:C.bg, border:`1px solid ${C.brd}`, borderRadius:6, color:C.txt, outline:"none", resize:"vertical", fontFamily:"inherit", boxSizing:"border-box", marginBottom:16 }}/>
+
+      {business?.id && (
+        <>
+          <p style={{ ...mono, margin:"0 0 8px", fontSize:11, fontWeight:600, color:C.mut, textTransform:"uppercase", letterSpacing:"0.06em" }}>Assign to list <span style={{ fontWeight:400, textTransform:"none", letterSpacing:0, color:C.dim }}>(optional)</span></p>
+          <select value={selectedListId} onChange={e=>setSelectedListId(e.target.value)}
+            style={{ ...mono, fontSize:13, padding:"7px 10px", background:C.bg, border:`1px solid ${C.brd}`, borderRadius:6, color:C.txt, outline:"none", width:"100%", marginBottom:16, cursor:"pointer" }}>
+            <option value="">— no change —</option>
+            {lists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        </>
+      )}
+
+      <button onClick={generate} style={{ ...mono, width:"100%", fontSize:13, fontWeight:600, padding:"10px 14px", background:C.goldBg, border:`1px solid ${C.goldBdr}`, color:C.gold, borderRadius:6, cursor:"pointer" }}>
+        ✦ Generate
+      </button>
+    </div>
+  );
 
   return(
     <div onClick={onClose} style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000 }}>
@@ -73,51 +144,56 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
           <button onClick={onClose} style={{ background:"transparent",border:"none",color:C.mut,fontSize:18,cursor:"pointer",padding:"0 4px",lineHeight:1 }}>✕</button>
         </div>
         <div style={{ flex:1,overflowY:"auto",padding:"16px 20px" }}>
-          {loading
-            ? <p style={{ ...mono,fontSize:13,color:C.purple }}>⬡ Generating email…</p>
-            : <textarea value={email} onChange={e=>setEmail(e.target.value)} style={{ width:"100%",height:300,fontSize:13,lineHeight:1.9,background:C.bg,border:`1px solid ${C.brd}`,borderRadius:6,color:C.txt,padding:"12px 14px",resize:"vertical",outline:"none",fontFamily:"inherit",boxSizing:"border-box" }}/>
+          {!started
+            ? guidedPanel
+            : (loading
+                ? <p style={{ ...mono,fontSize:13,color:C.purple }}>⬡ Generating email…</p>
+                : <textarea value={email} onChange={e=>setEmail(e.target.value)} style={{ width:"100%",height:300,fontSize:13,lineHeight:1.9,background:C.bg,border:`1px solid ${C.brd}`,borderRadius:6,color:C.txt,padding:"12px 14px",resize:"vertical",outline:"none",fontFamily:"inherit",boxSizing:"border-box" }}/>
+              )
           }
         </div>
-        <div style={{ padding:"12px 20px",borderTop:`1px solid ${C.brd}`,display:"flex",flexDirection:"column",gap:8 }}>
-          <div style={{ display:"flex",gap:8 }}>
-            <button onClick={copy} disabled={loading} style={{ fontSize:13,padding:"7px 16px",background:C.goldBg,border:`1px solid ${C.goldBdr}`,color:C.gold,borderRadius:6,cursor:loading?"not-allowed":"pointer",fontWeight:500 }}>
-              {copied?"✓ Copied":"Copy to clipboard"}
-            </button>
-            <button onClick={onClose} style={{ fontSize:13,padding:"7px 14px",background:"transparent",border:`1px solid ${C.brd}`,color:C.mut,borderRadius:6,cursor:"pointer" }}>Close</button>
+        {started && (
+          <div style={{ padding:"12px 20px",borderTop:`1px solid ${C.brd}`,display:"flex",flexDirection:"column",gap:8 }}>
+            <div style={{ display:"flex",gap:8 }}>
+              <button onClick={copy} disabled={loading} style={{ fontSize:13,padding:"7px 16px",background:C.goldBg,border:`1px solid ${C.goldBdr}`,color:C.gold,borderRadius:6,cursor:loading?"not-allowed":"pointer",fontWeight:500 }}>
+                {copied?"✓ Copied":"Copy to clipboard"}
+              </button>
+              <button onClick={onClose} style={{ fontSize:13,padding:"7px 14px",background:"transparent",border:`1px solid ${C.brd}`,color:C.mut,borderRadius:6,cursor:"pointer" }}>Close</button>
+            </div>
+            {!loading&&email&&!email.startsWith("Error")&&(()=>{
+              const vp=getVoiceProfile(voiceUserName);
+              return(
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, flexWrap:"wrap" }}>
+                  {vp&&(
+                    <span style={{ ...mono, fontSize:11, color:C.green, background:`${C.green}12`, border:`1px solid ${C.green}30`, borderRadius:4, padding:"2px 8px", display:"flex", alignItems:"center", gap:4 }}>
+                      ✓ Written in your voice
+                      <span style={{ color:C.dim }}>·</span>
+                      <span style={{ color:C.dim }}>{(vp.keyTraits||[]).slice(0,2).join(", ")||vp.tone||"direct"}</span>
+                    </span>
+                  )}
+                  {vp&&email!==originalEmail&&!taught&&(
+                    <button onClick={async()=>{
+                      setTeaching(true);
+                      try{
+                        const r=await fetch("/api/learn-voice",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
+                          accessToken:localStorage.getItem("gmail_access_token")||"",
+                          mode:"teach", original:originalEmail, edited:email,
+                          existingProfile:getVoiceProfile(voiceUserName),
+                        })});
+                        const d=await r.json();
+                        if(d.profile){localStorage.setItem(voiceProfileKey(voiceUserName),JSON.stringify(d.profile));setTaught(true);}
+                      }catch{}
+                      setTeaching(false);
+                    }} style={{ ...mono, fontSize:11, padding:"2px 8px", background:`${C.blue}12`, border:`1px solid ${C.blue}30`, color:C.blue, borderRadius:4, cursor:"pointer" }}>
+                      {teaching?"Teaching…":"Teach from my edits ↺"}
+                    </button>
+                  )}
+                  {taught&&<span style={{ ...mono, fontSize:11, color:C.green }}>✓ Voice updated</span>}
+                </div>
+              );
+            })()}
           </div>
-          {!loading&&email&&!email.startsWith("Error")&&(()=>{
-            const vp=getVoiceProfile(voiceUserName);
-            return(
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, flexWrap:"wrap" }}>
-                {vp&&(
-                  <span style={{ ...mono, fontSize:11, color:C.green, background:`${C.green}12`, border:`1px solid ${C.green}30`, borderRadius:4, padding:"2px 8px", display:"flex", alignItems:"center", gap:4 }}>
-                    ✓ Written in your voice
-                    <span style={{ color:C.dim }}>·</span>
-                    <span style={{ color:C.dim }}>{(vp.keyTraits||[]).slice(0,2).join(", ")||vp.tone||"direct"}</span>
-                  </span>
-                )}
-                {vp&&email!==originalEmail&&!taught&&(
-                  <button onClick={async()=>{
-                    setTeaching(true);
-                    try{
-                      const r=await fetch("/api/learn-voice",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-                        accessToken:localStorage.getItem("gmail_access_token")||"",
-                        mode:"teach", original:originalEmail, edited:email,
-                        existingProfile:getVoiceProfile(voiceUserName),
-                      })});
-                      const d=await r.json();
-                      if(d.profile){localStorage.setItem(voiceProfileKey(voiceUserName),JSON.stringify(d.profile));setTaught(true);}
-                    }catch{}
-                    setTeaching(false);
-                  }} style={{ ...mono, fontSize:11, padding:"2px 8px", background:`${C.blue}12`, border:`1px solid ${C.blue}30`, color:C.blue, borderRadius:4, cursor:"pointer" }}>
-                    {teaching?"Teaching…":"Teach from my edits ↺"}
-                  </button>
-                )}
-                {taught&&<span style={{ ...mono, fontSize:11, color:C.green }}>✓ Voice updated</span>}
-              </div>
-            );
-          })()}
-        </div>
+        )}
       </div>
     </div>
   );
