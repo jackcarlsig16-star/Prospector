@@ -15,6 +15,7 @@ Prospector is a React SPA (Create React App) deployed on Render, built as a sale
 | `/split` | Split a large component into smaller ones |
 | `/panel` | Scaffold a new intel panel |
 | `/wire` | Wire up a new API route end-to-end |
+| `/cleanup` | Repo-wide dead-file/duplicate-logic/scratch-artifact hygiene pass — reports findings and waits for approval before removing anything. Opt-in only, run manually when Jack wants a pass — never runs automatically. |
 
 Always run `/ship` to deploy. Never push without building first.
 
