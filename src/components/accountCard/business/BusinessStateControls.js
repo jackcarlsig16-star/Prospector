@@ -1,5 +1,5 @@
 import { mono } from '../../../constants/colors';
-import { CARD, RADIUS } from '../tokens';
+import { CARD, RADIUS, ROLE, GLOW_FOCUS_CLASS, GLOW_FOCUS_STYLE } from '../tokens';
 import { STANDARD_STEPS, getCompliance, saveCompliance } from '../../../utils/storage';
 import { trackDailyStat } from '../../../utils/stats';
 
@@ -14,10 +14,10 @@ export const DEAL_STAGES = [
 ];
 
 export const ACCOUNT_SOURCES = ["Cold", "Inbound", "Referral", "Partner", "6sense", "SFDC"];
-const SOURCE_C = { Cold: CARD.textMuted, Inbound: "#56A8F8", Referral: "#42E890", Partner: "#A878F0", "6sense": "#0099DD", SFDC: "#F5A050" };
+const SOURCE_C = { Cold: ROLE.neutralGray, Inbound: "#56A8F8", Referral: "#42E890", Partner: "#A878F0", "6sense": "#0099DD", SFDC: "#F5A050" };
 const SOURCE_IC = { Cold: "○", Inbound: "↘", Referral: "🤝", Partner: "⬡", "6sense": "◎", SFDC: "☁" };
 
-const selectStyle = color => ({ ...mono, fontSize: 11, height: 24, padding: "0 6px", background: CARD.surface, border: `1px solid ${CARD.border}`, borderRadius: RADIUS.sm, color, outline: "none", cursor: "pointer" });
+const selectStyle = (color, borderColor) => ({ ...mono, fontSize: 11, height: 24, padding: "0 6px", background: CARD.surface, border: `1px solid ${borderColor || CARD.border}`, borderRadius: RADIUS.sm, color, outline: "none", cursor: "pointer" });
 
 // Feeds AccountStateBar's `items` for business accounts — Stage select,
 // Gaming track toggle, Source select. Relocated verbatim (side effects on
@@ -29,7 +29,9 @@ export function buildBusinessStateItems({ acc, onUpdate, tasks, onCreateTask, on
     {
       key: 'stage',
       control: (
-        <select value={acc.stage || "Prospecting"} onChange={e => {
+        <>
+          <style>{GLOW_FOCUS_STYLE}</style>
+          <select className={GLOW_FOCUS_CLASS} value={acc.stage || "Prospecting"} onChange={e => {
           const newStage = e.target.value;
           const stageNow = new Date().toISOString();
           onUpdate({ ...acc, stage: newStage, ...(newStage === "Active Deal" && acc.stage !== "Active Deal" ? { activeDealAt: stageNow } : {}) });
@@ -52,15 +54,16 @@ export function buildBusinessStateItems({ acc, onUpdate, tasks, onCreateTask, on
               });
             }
           }
-        }} style={selectStyle(DEAL_STAGES.find(d => d.id === (acc.stage || "Prospecting"))?.c || CARD.textMuted)}>
-          {DEAL_STAGES.map(s => <option key={s.id} value={s.id}>{s.id}</option>)}
-        </select>
+        }} style={selectStyle(ROLE.stageAccent, `${ROLE.stageAccent}66`)}>
+            {DEAL_STAGES.map(s => <option key={s.id} value={s.id}>{s.id}</option>)}
+          </select>
+        </>
       ),
     },
     {
       key: 'source',
       control: (
-        <select value={acc.source || "Cold"} onChange={e => onUpdate({ ...acc, source: e.target.value })} style={selectStyle(SOURCE_C[acc.source || "Cold"] || CARD.textMuted)}>
+        <select className={GLOW_FOCUS_CLASS} value={acc.source || "Cold"} onChange={e => onUpdate({ ...acc, source: e.target.value })} style={selectStyle(SOURCE_C[acc.source || "Cold"] || ROLE.neutralGray, CARD.border)}>
           {ACCOUNT_SOURCES.map(s => <option key={s} value={s}>{SOURCE_IC[s]} {s}</option>)}
         </select>
       ),

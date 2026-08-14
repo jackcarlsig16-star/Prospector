@@ -3,7 +3,9 @@ import { CARD, RADIUS } from './tokens';
 
 // Generic small pill primitive reused across header/state-bar/actions.
 // `tone` accepts a hex color and derives bg/border from it; omit for neutral.
-export default function AccountBadge({ children, tone, size = 10, filled = false, onClick, title }) {
+// `glow` (A1b) adds a faint tone-matched glow — reserved for identity
+// badges (kind BUSINESS/INFLUENCER), not signal/state pills in general.
+export default function AccountBadge({ children, tone, size = 10, filled = false, onClick, title, glow = false }) {
   const color = tone || CARD.textSecondary;
   const style = {
     ...mono,
@@ -20,6 +22,7 @@ export default function AccountBadge({ children, tone, size = 10, filled = false
     alignItems: "center",
     gap: 4,
     cursor: onClick ? "pointer" : "default",
+    boxShadow: glow && tone ? `0 0 5px ${color}66` : "none",
   };
   return <span style={style} onClick={onClick} title={title}>{children}</span>;
 }

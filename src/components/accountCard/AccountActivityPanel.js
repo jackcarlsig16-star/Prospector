@@ -14,11 +14,10 @@ export default function AccountActivityPanel({ acc }) {
   return (
     <div>
       <p style={{ ...mono, margin: "0 0 8px", fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: CARD.textSubtle }}>Activity</p>
-      <div style={{ maxHeight: open ? "none" : COLLAPSED_HEIGHT, overflow: "hidden", position: "relative" }}>
+      {/* A2 — hard cutoff, no fade mask: the default preview must stay fully
+          readable, "show full history" is the only expand affordance. */}
+      <div style={{ maxHeight: open ? "none" : COLLAPSED_HEIGHT, overflow: "hidden" }}>
         <AccountActivityTimeline acc={acc} />
-        {!open && (
-          <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 28, background: `linear-gradient(transparent, ${CARD.surface2})` }} />
-        )}
       </div>
       <button onClick={() => setOpen(o => !o)} style={{ ...mono, marginTop: 6, fontSize: 10, color: CARD.textMuted, background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>
         {open ? "▲ show less" : "▼ show full history"}

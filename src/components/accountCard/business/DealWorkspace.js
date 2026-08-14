@@ -1,6 +1,6 @@
 import { useState, forwardRef, useImperativeHandle } from 'react';
 import { mono } from '../../../constants/colors';
-import { CARD, RADIUS } from '../tokens';
+import { CARD, RADIUS, ROLE } from '../tokens';
 import { DealComplianceTracker } from '../../AccountCardCompliance';
 import DealStageBar from '../../AccountCardDealStage';
 import GiftModal from '../../GiftModal';
@@ -52,7 +52,7 @@ const DealWorkspace = forwardRef(function DealWorkspace({ acc, onUpdate, tasks, 
     <>
       {(acc.dealStage || acc.stage === "Active Deal") && (
         <div style={{ marginTop: 12 }}>
-          <p style={SH}>Deal Stage</p>
+          <p style={{ ...SH, color: ROLE.dealStageLabel }}>Deal Stage</p>
           <div style={{ marginTop: 6 }}>
             <DealStageBar acc={acc} onUpdate={onUpdate} />
             {acc.stage === "Active Deal" && <DealComplianceTracker accId={acc.id} accName={acc.name} acc={acc} tasks={tasks} onUpdateTask={onUpdateTask} onUpdateAcc={onUpdate} />}

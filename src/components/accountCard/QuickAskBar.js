@@ -65,7 +65,7 @@ export function QuickAskBar({ acc }) {
               onBlur={() => setQuickFocus(false)}
               onKeyDown={e => e.key === 'Enter' && askQuick()}
               placeholder=""
-              style={{ ...mono, width: '100%', boxSizing: 'border-box', fontSize: 12, padding: '6px 10px', background: T.bg.base, border: `1px solid ${quickFocus ? T.neon : `${T.neon}33`}`, borderRadius: 4, color: '#cfe8d4', outline: 'none', transition: 'border-color 0.15s', caretColor: T.neon }}
+              style={{ ...mono, width: '100%', boxSizing: 'border-box', fontSize: 12, padding: '6px 10px', background: T.bg.base, border: `1px solid ${quickFocus ? T.neon : `${T.neon}33`}`, borderRadius: 4, color: '#cfe8d4', outline: 'none', transition: 'border-color 0.15s, box-shadow 0.15s', caretColor: T.neon, boxShadow: quickFocus ? `0 0 6px ${T.neon}55` : 'none' }}
             />
             {!quickQuery && !quickFocus && (
               <span style={{ ...mono, position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', fontSize: 12, color: `${T.neon}66`, pointerEvents: 'none', whiteSpace: 'nowrap' }}>

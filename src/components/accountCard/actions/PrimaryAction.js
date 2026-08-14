@@ -22,6 +22,10 @@ export default function PrimaryAction({ accountKind, action }) {
         cursor: action.disabled || action.loading ? "default" : "pointer",
         letterSpacing: "0.02em",
         opacity: action.disabled ? 0.5 : 1,
+        // A1b — subtle neon glow so the primary action reads as "alive", not flat
+        boxShadow: action.disabled ? "none" : `0 0 8px ${kind.accent}55`,
+        textShadow: action.disabled ? "none" : `0 0 6px ${kind.accent}66`,
+        transition: "box-shadow 0.15s, text-shadow 0.15s",
       }}
     >
       {action.loading ? "…" : `${action.icon || "✦"} ${action.label}`}

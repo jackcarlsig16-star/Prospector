@@ -29,7 +29,7 @@ export default function AccountHeader({
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <p style={{ margin: 0, fontSize: 16, fontWeight: 600, color: CARD.textPrimary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{name}</p>
-          <AccountBadge tone={kind.accent}>{kind.label}</AccountBadge>
+          <AccountBadge tone={kind.accent} glow>{kind.label}</AccountBadge>
         </div>
         {meta && <p style={{ ...mono, margin: "2px 0 0", fontSize: 12, color: CARD.textMuted }}>{meta}</p>}
         {signals.length > 0 && (

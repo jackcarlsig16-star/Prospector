@@ -1,5 +1,5 @@
 import { mono } from '../../constants/colors';
-import { CARD, RADIUS } from './tokens';
+import { CARD, RADIUS, ROLE } from './tokens';
 
 // Section 12 — generic Intelligence section frame. Business/influencer
 // content (compact summary + drawer trigger, or the Creator/Fit/Relationship
@@ -9,7 +9,7 @@ export default function AccountIntelligence({ children, action }) {
   return (
     <div style={{ background: CARD.surface, border: `1px solid ${CARD.border}`, borderRadius: RADIUS.lg, padding: "12px 14px" }}>
       <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
-        <p style={{ ...mono, margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: CARD.textSubtle, flex: 1 }}>Intelligence</p>
+        <p style={{ ...mono, margin: 0, fontSize: 10, fontWeight: 700, letterSpacing: "0.06em", textTransform: "uppercase", color: ROLE.intelligenceLabel, flex: 1 }}>Intelligence</p>
         {action}
       </div>
       {children}

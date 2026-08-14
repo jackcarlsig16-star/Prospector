@@ -32,6 +32,26 @@ export const KIND = {
 
 export const kindTokens = (accountKind) => KIND[accountKind] || KIND.business;
 
+// account-card-color-fix-and-guided-generate-v1 (Part A1) — role colors
+// restored from the exact pre-redesign values (git show 0f6d605), not
+// invented. Green/magenta stay reserved for kind identity + the primary
+// action; these mark specific control roles instead.
+export const ROLE = {
+  intelligenceLabel: "#c8922a", // pre-redesign "Intelligence" section label
+  dealStageLabel: "#f59e0b",    // pre-redesign "Deal Stage" section label
+  stageAccent: "#56A8F8",       // blue/teal — Stage control identity
+  neutralGray: "#9aa0a6",       // true neutral (no green cast) — Source/Cold
+};
+
+// A1b — restrained neon-glow-on-focus for interactive/important elements
+// only (primary action, focused inputs, kind badges) — never body text,
+// section labels, or the Tier 3 utility row. `currentColor` picks up
+// whatever `color` the element already has, so one rule covers every
+// accent (Stage's blue, Source's per-source hue, etc.) without per-case
+// plumbing.
+export const GLOW_FOCUS_CLASS = "ac-glow-focus";
+export const GLOW_FOCUS_STYLE = `.${GLOW_FOCUS_CLASS}:focus{box-shadow:0 0 6px currentColor;border-color:currentColor !important;outline:none;}`;
+
 export const SPACE = { xs: 4, sm: 6, md: 8, lg: 12, xl: 16, xxl: 20, xxxl: 24 };
 
 export const TYPE = {
