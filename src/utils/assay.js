@@ -70,14 +70,44 @@ export function detectSignals(text) {
   return{paymentSignals,onboardingSignals:[...onboardingSignals,...creditSignals],scaleSignals,platformSignals,slagSignals,signalScore,topSignal};
 }
 
+// audit-triage-v1 follow-up — was 4000. Confirmed live that real pages
+// return far more (Bilt Rewards: 71,982 real chars, only ~5.6% of it was
+// reaching the model). 10000 is a deliberate middle ground: MODELS.FAST has
+// plenty of headroom for it, but Assay runs per-account at bulk scale (up to
+// ~100/hour per the product's own Phase-1 goal), so this isn't raised to the
+// max just because tokens are cheap - a much larger cap would add real
+// latency/cost multiplied across a bulk run for diminishing signal past this
+// point (most useful page content live-tested was front-loaded).
 export async function fetchSiteContentClient(web) {
   const url = web.startsWith("http") ? web : `https://${web}`;
   try {
     const r = await fetch(`/proxy/jina?url=${encodeURIComponent(url)}`, { signal:AbortSignal.timeout(15000) });
-    if (r.ok) { const text = await r.text(); if (text && text.length > 100 && !text.toLowerCase().includes("jina.ai error")) return { content: text.slice(0, 4000), method: "jina" }; }
+    if (r.ok) { const text = await r.text(); if (text && text.length > 100 && !text.toLowerCase().includes("jina.ai error")) return { content: text.slice(0, 10000), method: "jina" }; }
   } catch (_) {}
   return { content: null, method: "failed" };
 }
+
+// audit-triage-v1 follow-up — live diagnostic this session found a real
+// hallucination class: Coconut Cult's fetched page never mentioned "Chicago"
+// anywhere, but the model asserted "Chicago-area wellness food brand" at
+// confidence:High anyway. Shared by both prompt builders below - the model
+// must distinguish "stated in the retrieved content" from "recalled/
+// inferred" and surface the difference, not just assert everything as fact.
+const GROUNDING_DISCIPLINE = `GROUNDING DISCIPLINE — this is the most important rule in this prompt:
+Only state a specific factual claim (location, funding status, team size, customer count, named partnerships, "based in X", etc.) as fact if it is EXPLICITLY present in the website content or web search results provided below. Do not fill gaps with background knowledge or a plausible-sounding inference and present it as verified fact.
+If you want to reference something you believe is likely true but that is not explicitly stated in the retrieved content, either omit it, or phrase it as a hedge ("appears to be", "likely") in the relevant field AND list the specific claim in "ungroundedClaims".
+"ungroundedClaims": array of short strings — one per specific claim used anywhere in businessModel/productFit/keySignals that is not directly stated in the retrieved website/search content. Empty array if every specific claim used is directly sourced from that content.
+If ungroundedClaims is non-empty, confidence must NOT be "High" — cap it at "Medium" or lower, since part of the reasoning rests on unverified inference rather than confirmed content.`;
+
+// Same reasoning/framing already proven live in runResearch() (this file
+// family, api/businesses/shared.js) - "recent news, competitors, market
+// position" - extended per Jack's ask to also surface motto/founder info
+// where findable. Tool version matches CallPrepModal.js's client-side
+// precedent (web_search_20250305), not runResearch()'s server-side
+// web_search_20260209 - confirmed those are different tool versions for
+// client vs server /proxy paths, the client one is what actually works
+// through the same /proxy/anthropic/messages call clientAssay() uses below.
+const WEB_SEARCH_GUIDANCE = `WEB SEARCH — use it to find recent news, competitors, market position, and the company's motto/founder info where findable, on top of (not instead of) the fetched website content below. Only surface search findings in businessModel/productFit/keySignals if genuinely relevant to fit — don't pad with filler, and the same GROUNDING DISCIPLINE above applies to anything found via search: state it as fact only if the search result actually said it.`;
 
 // assay-engine-generalization-v1 — the original hardcoded fintech scoring
 // prompt, preserved verbatim as the deliberate fallback for when no business
@@ -99,6 +129,10 @@ DEFUNCT / ACQUIRED: Score 4=Slag and set isActive=false if site mentions "acquir
 Set disqualifier as: "reason_code — one sentence explanation." Reason codes: dead_site | wrong_vertical | no_fiat_rail | acquired | crypto_no_bank | b2c_only | no_fintech | coming_soon | suspended | stale. Example: "acquired — absorbed by Stripe in 2022, no longer an independent prospect." If active, disqualifier must be null.
 
 SITE UNREACHABLE POLICY: Score based on company name + vertical + industry knowledge. Set confidence="Low". Do NOT set disqualifier to "site unreachable".
+
+${WEB_SEARCH_GUIDANCE}
+
+${GROUNDING_DISCIPLINE}
 
 VERTICAL-SPECIFIC SCORING RULES — apply these before finalizing score:
 
@@ -135,7 +169,7 @@ RULE: A Gold score requires at least one HIGH CONFIDENCE product with clear evid
 
 ${customIntel ? `ADDITIONAL CONTEXT FROM AE:\n${customIntel.slice(0,2000)}\n` : ""}${exampleAccts ? `\nCALIBRATION EXAMPLES:\n${exampleAccts.slice(0,1500)}\n` : ""}
 Return ONLY this JSON:
-{"score":1,"tier":"Gold","businessModel":"2 sentences","productFit":"2 sentences","useCases":["payments"],"products":["Core Verify","Balance Insights"],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"bankConnectSignal":false,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"signalBreakdown":{"paymentSignals":[],"onboardingSignals":[],"scaleSignals":[],"platformSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
+{"score":1,"tier":"Gold","businessModel":"2 sentences","productFit":"2 sentences","useCases":["payments"],"products":["Core Verify","Balance Insights"],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"bankConnectSignal":false,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"ungroundedClaims":[],"signalBreakdown":{"paymentSignals":[],"onboardingSignals":[],"scaleSignals":[],"platformSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
 }
 
 // assay-engine-generalization-v1 — business-criteria-driven prompt, used
@@ -174,11 +208,15 @@ Set disqualifier as a free-text one-sentence explanation grounded in the DISQUAL
 
 SITE UNREACHABLE POLICY: Score based on company name + vertical + the fit criteria above. Set confidence="Low". Do NOT set disqualifier to "site unreachable".
 
+${WEB_SEARCH_GUIDANCE}
+
+${GROUNDING_DISCIPLINE}
+
 USE CASES: return 1-4 short free-text tags describing how this account could fit this business, grounded in FIT SIGNALS above — not a fixed enum, whatever's actually relevant here.
 PRODUCTS: this business may not have a fixed product catalog — if FIT SIGNALS references specific offerings, use those exact names; otherwise return an empty array rather than inventing product names.
 
 Return ONLY this JSON:
-{"score":1,"tier":"Gold","businessModel":"2 sentences","productFit":"2 sentences — fit rationale against this business's criteria","useCases":["tag1"],"products":[],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"bankConnectSignal":false,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"signalBreakdown":{"paymentSignals":[],"onboardingSignals":[],"scaleSignals":[],"platformSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
+{"score":1,"tier":"Gold","businessModel":"2 sentences","productFit":"2 sentences — fit rationale against this business's criteria","useCases":["tag1"],"products":[],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"bankConnectSignal":false,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"ungroundedClaims":[],"signalBreakdown":{"paymentSignals":[],"onboardingSignals":[],"scaleSignals":[],"platformSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
 }
 
 // businessId is optional (Claim Jumper's not-yet-assigned pool scoring has
@@ -220,8 +258,14 @@ export async function clientAssay({ name, web, vert, sub, customIntel, exampleAc
     signal: AbortSignal.timeout(45000),
     body: JSON.stringify({
       model: MODELS.FAST,
-      max_tokens: 900,
+      // Raised from 900 - web_search tool-use/result blocks count against
+      // this budget too (confirmed via CallPrepModal.js's precedent, which
+      // uses 2500 for a comparable web_search+JSON task), and there needs to
+      // be enough left over after up to 3 search rounds to still emit the
+      // full final JSON.
+      max_tokens: 1600,
       system: systemPrompt,
+      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
       messages: [{ role:"user", content:`Score product fit:\nCompany: ${name}\nWebsite: ${web||"none"}\nVertical: ${vert||"unknown"}\nSubvertical: ${sub||"unknown"}\nPipeline stage: ${stage||"Prospecting"}\nWebsite content (fetch method: ${fetchMethod}): ${siteContent||"not available"}\n${signalSummary}\nReturn ONLY the JSON.` }],
     }),
   });
@@ -255,6 +299,10 @@ export async function clientAssay({ name, web, vert, sub, customIntel, exampleAc
   if (parsed.distributionMultiplier && parsed.score > 1 && parsed.isActive !== false) { parsed.score = 1; parsed.tier = "Gold"; }
   if (parsed.disqualifier && /unreachable|site.*fail|cannot.*access|failed to load/i.test(parsed.disqualifier)) { parsed.disqualifier = null; parsed.confidence = "Low"; }
   if (!Array.isArray(parsed.tractionSignals)) parsed.tractionSignals = [];
+  if (!Array.isArray(parsed.ungroundedClaims)) parsed.ungroundedClaims = [];
+  // Hard override, not just prompt instruction - don't trust the model to
+  // self-enforce its own confidence cap every time.
+  if (parsed.ungroundedClaims.length && parsed.confidence === "High") parsed.confidence = "Medium";
   // Bundle normalization: Core Verify Plus supersedes Core Verify; remove Core Verify if both present
   if (Array.isArray(parsed.products) && parsed.products.includes("Core Verify Plus")) {
     parsed.products = parsed.products.filter(p => p !== "Core Verify");

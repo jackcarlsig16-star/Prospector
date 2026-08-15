@@ -10,7 +10,14 @@ export function getSupabase() {
   return createClient(url, key);
 }
 
-const SITE_TEXT_TRUNCATE_CHARS = 6000;
+// audit-triage-v1 follow-up — raised independently from assay.js's cap
+// (10000), not copied blindly: this feeds a one-time-per-business deep
+// profile synthesis (vision/positioning/ICP/gtm_strategy), persisted as a
+// business_intel_entries row other features build on - not a per-account
+// bulk-scale operation like Assay, so there's no "multiplied across 100
+// accounts/hour" latency cost to weigh against a bigger cap here. Given
+// that, it's allowed more headroom than Assay's quicker per-account check.
+const SITE_TEXT_TRUNCATE_CHARS = 12000;
 
 async function callAnthropic({ system, messages, tools, max_tokens, supabase, businessId, callType, model = MODELS.STANDARD }) {
   const key = process.env.ANTHROPIC_API_KEY;
