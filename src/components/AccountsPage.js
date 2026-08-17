@@ -277,11 +277,16 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
       // utils/db.js). The generic full-array autosave still fires too via
       // setAccounts/onSave above — left as-is, not narrowed (audited safe
       // today; see specs/assay-safety-and-intel-visibility-v1.md Part 1).
-      if(updatedAcc) await updateAccountRow(acc.id, updatedAcc);
-      // account-business-details-v1 — dual-write, narrow scope (this call
-      // site only). accounts.data above is unchanged; this is the new
-      // table becoming the real source of truth for the account card.
-      upsertAccountBusinessDetails(acc.id, mapAssayResultToBusinessDetails(parsed)).catch(()=>{});
+      // Both writes below are now awaited (were previously fire-and-forget
+      // with errors swallowed) so a failed save surfaces to the user instead
+      // of the UI silently showing a result that never persisted.
+      const [rowResult,detailResult]=await Promise.all([
+        updatedAcc?updateAccountRow(acc.id,updatedAcc):Promise.resolve({error:null}),
+        upsertAccountBusinessDetails(acc.id,mapAssayResultToBusinessDetails(parsed)),
+      ]);
+      if(rowResult.error||detailResult.error){
+        alert(`Re-assay for "${acc.name}" completed but failed to save: ${rowResult.error||detailResult.error}\n\nThe new result is showing on screen but was NOT persisted — it will revert on next reload.`);
+      }
     }catch(e){console.error(e);}
     setReassaying(null);
   },[accounts,onSave]);
@@ -348,6 +353,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
     let batchTimes=[];
     let completedIds=[...resumeCompletedIds];
     let failedIds=[...resumeFailedIds];
+    let persistFailedNames=[];
 
     for(let i=resumeFrom;i<queue.length;i++){
       if(stopRef.current){clearProgress();break;}
@@ -376,11 +382,16 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
         current=applyResult(current,acc,parsed,true);
         completedIds.push(acc.id);
         // assay-safety-and-intel-visibility-v1 — same targeted single-row
-        // write as reassay() above.
+        // write as reassay() above, awaited so a failed persist is caught
+        // instead of the UI just moving on. Accumulated silently per-account
+        // (an alert per row in a bulk loop would be unusable) and reported
+        // once as a summary after the run finishes.
         const updatedAcc=current.find(a=>a.id===acc.id);
-        if(updatedAcc) await updateAccountRow(acc.id, updatedAcc);
-        // account-business-details-v1 — same dual-write as single re-assay.
-        upsertAccountBusinessDetails(acc.id, mapAssayResultToBusinessDetails(parsed)).catch(()=>{});
+        const [rowResult,detailResult]=await Promise.all([
+          updatedAcc?updateAccountRow(acc.id,updatedAcc):Promise.resolve({error:null}),
+          upsertAccountBusinessDetails(acc.id,mapAssayResultToBusinessDetails(parsed)),
+        ]);
+        if(rowResult.error||detailResult.error) persistFailedNames.push(acc.name);
       }else{
         current=current.map(a=>a.id===acc.id?{...a,assay_failed:true}:a);
         failedIds.push(acc.id);
@@ -407,6 +418,9 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
     setBulkRunning(false);
     setBulkProgress(null);
     stopRef.current=false;
+    if(persistFailedNames.length){
+      alert(`${persistFailedNames.length} account(s) re-assayed but failed to save and will revert on next reload: ${persistFailedNames.join(", ")}`);
+    }
   };
   const filtered=useMemo(()=>{
     let r=[...visibleAccounts];
