@@ -60,6 +60,7 @@ export default function AccountCard({
   const [commsOpen, setCommsOpen] = useState(false);
   const [extractOpen, setExtractOpen] = useState(false);
   const [timelineOpen, setTimelineOpen] = useState(false);
+  const [fullIntelOpen, setFullIntelOpen] = useState(false);
 
   const debriefRef = useRef(null);
   const dealRef = useRef(null);
@@ -184,6 +185,23 @@ export default function AccountCard({
           {business && <LinkedProjects accountId={acc.id} accountListIds={accountListIds} projects={projects} onLinked={listId => onAccountLinkedToProject?.(acc.id, listId)} />}
 
           <AccountActivityPanel acc={acc} />
+
+          {/* assay-safety-and-intel-visibility-v1 — bare raw dump of
+              account_business_details, unstyled on purpose. Exists so any
+              future Assay schema expansion is immediately visible here
+              without a separate UI pass. */}
+          {!isInfluencer && (
+            <div style={{ marginTop: 12 }}>
+              <button onClick={() => setFullIntelOpen(o => !o)} style={{ ...mono, fontSize: 10, color: "#888", background: "transparent", border: "1px solid #444", borderRadius: 3, padding: "3px 8px", cursor: "pointer" }}>
+                {fullIntelOpen ? "▲ Hide Full Intel (raw)" : "▼ Full Intel (raw)"}
+              </button>
+              {fullIntelOpen && (
+                <pre style={{ marginTop: 6, fontSize: 10, color: "#ccc", background: "#111", padding: 10, borderRadius: 4, maxHeight: 400, overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                  {JSON.stringify(acc.businessDetail || null, null, 2)}
+                </pre>
+              )}
+            </div>
+          )}
 
         </div>
       )}
