@@ -62,66 +62,49 @@ const CONVENTION_LOADED = {
   'src/setupTests.js': 'auto-loaded by CRA\'s Jest config via exact filename convention',
 };
 
-function main() {
-  const target = process.argv[2];
-  if (!target) {
-    console.error('Usage: node scripts/check-dead-file.js <path>');
-    process.exit(1);
-  }
-  const relTarget = path.relative(process.cwd(), path.resolve(target)).replace(/\\/g, '/');
-  if (!fs.existsSync(relTarget)) {
-    console.error(`File not found: ${relTarget}`);
-    process.exit(1);
-  }
+// Extracted so --sweep can reuse it without re-printing per-file detail.
+// verbose=true keeps the original single-file CLI output exactly as before.
+function checkOne(relTarget, verbose) {
   if (CONVENTION_LOADED[relTarget]) {
-    console.log(`Checking: ${relTarget}\n`);
-    console.log(`VERDICT: LIVE (build-tool convention)`);
-    console.log(`Reason: ${CONVENTION_LOADED[relTarget]}`);
-    return;
+    if (verbose) { console.log(`Checking: ${relTarget}\n`); console.log(`VERDICT: LIVE (build-tool convention)`); console.log(`Reason: ${CONVENTION_LOADED[relTarget]}`); }
+    return { verdict: 'LIVE (build-tool convention)', reason: CONVENTION_LOADED[relTarget] };
   }
   if (/\.test\.js$/.test(relTarget)) {
-    console.log(`Checking: ${relTarget}\n`);
-    console.log(`VERDICT: LIVE (test file)`);
-    console.log(`Reason: picked up by Jest's test glob (*.test.js), never imported by app code - that's correct, not dead`);
-    return;
+    const reason = "picked up by Jest's test glob (*.test.js), never imported by app code - that's correct, not dead";
+    if (verbose) { console.log(`Checking: ${relTarget}\n`); console.log(`VERDICT: LIVE (test file)`); console.log(`Reason: ${reason}`); }
+    return { verdict: 'LIVE (test file)', reason };
   }
+
   const basename = path.basename(relTarget, path.extname(relTarget));
   const escaped = basename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const isApiFile = relTarget.startsWith('api/');
   const excludeSelf = f => path.resolve(f) !== path.resolve(relTarget);
 
-  console.log(`Checking: ${relTarget}`);
-  console.log(`Basename: ${basename}${isApiFile ? ' (api/ file — route registration check applies)' : ''}\n`);
+  if (verbose) { console.log(`Checking: ${relTarget}`); console.log(`Basename: ${basename}${isApiFile ? ' (api/ file — route registration check applies)' : ''}\n`); }
 
-  // 1. Plain identifier grep — catches string refs, comments, non-import usage
   const plainHits = grepFiles(`\\b${escaped}\\b`).filter(excludeSelf);
-  console.log(`1. Plain identifier grep: ${plainHits.length} file(s)`);
-  plainHits.slice(0, 10).forEach(f => console.log(`     ${f}`));
-  if (plainHits.length > 10) console.log(`     ... and ${plainHits.length - 10} more`);
+  if (verbose) {
+    console.log(`1. Plain identifier grep: ${plainHits.length} file(s)`);
+    plainHits.slice(0, 10).forEach(f => console.log(`     ${f}`));
+    if (plainHits.length > 10) console.log(`     ... and ${plainHits.length - 10} more`);
+  }
 
-  // 2. Dynamic import()
   const dynamicHits = grepFiles(`import\\(['"\`][^'"\`]*${escaped}(\\.js)?['"\`]\\)`).filter(excludeSelf);
-  console.log(`2. Dynamic import(): ${dynamicHits.length} file(s)`);
-  dynamicHits.forEach(f => console.log(`     ${f}`));
+  if (verbose) { console.log(`2. Dynamic import(): ${dynamicHits.length} file(s)`); dynamicHits.forEach(f => console.log(`     ${f}`)); }
 
-  // 3. Relative-path import/require — matches regardless of caller's own depth
   const relativeHits = grepFiles(`(from|require\\()\\s*['"\`][./][^'"\`]*${escaped}(\\.js)?['"\`]`).filter(excludeSelf);
-  console.log(`3. Relative-path import/require: ${relativeHits.length} file(s)`);
-  relativeHits.forEach(f => console.log(`     ${f}`));
+  if (verbose) { console.log(`3. Relative-path import/require: ${relativeHits.length} file(s)`); relativeHits.forEach(f => console.log(`     ${f}`)); }
 
-  // 4. server.js route registration (api/ files only)
-  let routeRegistered = false;
-  let routeLine = null;
+  let routeRegistered = false, routeLine = null;
   if (isApiFile) {
     const serverSrc = fs.readFileSync('server.js', 'utf8');
     const routeRe = new RegExp(`['"\`]\\.?/?${relTarget.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"\`]`);
     const lines = serverSrc.split('\n');
     const idx = lines.findIndex(l => routeRe.test(l));
     if (idx !== -1) { routeRegistered = true; routeLine = idx + 1; }
-    console.log(`4. server.js route registration: ${routeRegistered ? `YES (server.js:${routeLine})` : 'NOT FOUND'}`);
+    if (verbose) console.log(`4. server.js route registration: ${routeRegistered ? `YES (server.js:${routeLine})` : 'NOT FOUND'}`);
   }
 
-  // Verdict
   const strongLiveSignal = relativeHits.length > 0 || dynamicHits.length > 0 || routeRegistered;
   const weakSignal = plainHits.length > 0;
   let verdict, reason;
@@ -136,9 +119,92 @@ function main() {
     reason = 'zero references found across all four checks';
   }
 
-  console.log(`\nVERDICT: ${verdict}`);
-  console.log(`Reason: ${reason}`);
-  console.log(`\n(This tool only reports — it never deletes anything.)`);
+  if (verbose) { console.log(`\nVERDICT: ${verdict}`); console.log(`Reason: ${reason}`); console.log(`\n(This tool only reports — it never deletes anything.)`); }
+  return { verdict, reason };
+}
+
+function listJsFiles(dir) {
+  const out = [];
+  (function walk(d) {
+    for (const entry of fs.readdirSync(d, { withFileTypes: true })) {
+      if (['node_modules', '.git', 'build'].includes(entry.name)) continue;
+      const p = path.join(d, entry.name);
+      if (entry.isDirectory()) walk(p);
+      else if (entry.name.endsWith('.js')) out.push(p.replace(/\\/g, '/'));
+    }
+  })(dir);
+  return out;
+}
+
+// --sweep <dir...> — scope-bounded testing convention (CLAUDE.md "Diagnostic
+// / audit script conventions"): declare scope + a cost estimate up front,
+// then watch actual pace against it instead of running silently. Built
+// after this exact tool's own first full sweep ran toward 30+ minutes
+// before the node_modules exclude-dir fix was found - the fix made it fast,
+// but nothing would have caught a *different* slowdown early if this
+// safeguard hadn't existed. MEASURED_SEC_PER_FILE below is from a real
+// timed run post-fix (248 files in 55s) - update it if the tool's own
+// per-file cost changes meaningfully.
+const MEASURED_SEC_PER_FILE = 55 / 248;
+const WARN_MULTIPLE = 3;
+
+function sweep(dirs) {
+  const files = dirs.flatMap(d => fs.existsSync(d) ? listJsFiles(d) : []);
+  const estimateSec = Math.round(files.length * MEASURED_SEC_PER_FILE);
+  console.log(`Sweep scope: ${files.length} files across [${dirs.join(', ')}]`);
+  console.log(`Estimated cost: ~${estimateSec}s at ${MEASURED_SEC_PER_FILE.toFixed(2)}s/file (measured baseline)`);
+  console.log(`Will warn if actual pace exceeds ${WARN_MULTIPLE}x this estimate.\n`);
+
+  const start = Date.now();
+  let warned = false;
+  const results = { LIVE: 0, DEAD: [], AMBIGUOUS: [] };
+
+  files.forEach((f, i) => {
+    const { verdict } = checkOne(f, false);
+    if (verdict.startsWith('DEAD')) results.DEAD.push(f);
+    else if (verdict.startsWith('AMBIGUOUS')) results.AMBIGUOUS.push(f);
+    else results.LIVE++;
+
+    if (!warned && i > 0 && i % 25 === 0) {
+      const elapsed = (Date.now() - start) / 1000;
+      const projectedTotal = (elapsed / i) * files.length;
+      if (projectedTotal > estimateSec * WARN_MULTIPLE) {
+        warned = true;
+        console.warn(`\n⚠ WARNING: ${i}/${files.length} done in ${elapsed.toFixed(0)}s - projected total ~${Math.round(projectedTotal)}s, over ${WARN_MULTIPLE}x the ${estimateSec}s estimate. Something's slower than expected - consider Ctrl-C and investigating before letting this run to completion.\n`);
+      }
+    }
+  });
+
+  const totalSec = (Date.now() - start) / 1000;
+  console.log(`\nSwept ${files.length} files in ${totalSec.toFixed(1)}s.`);
+  console.log(`LIVE: ${results.LIVE}`);
+  console.log(`DEAD (${results.DEAD.length}):`);
+  results.DEAD.forEach(f => console.log(`  ${f}`));
+  console.log(`AMBIGUOUS (${results.AMBIGUOUS.length}):`);
+  results.AMBIGUOUS.forEach(f => console.log(`  ${f}`));
+  console.log(`\n(Report only - nothing was deleted.)`);
+}
+
+function main() {
+  const args = process.argv.slice(2);
+  if (args[0] === '--sweep') {
+    const dirs = args.slice(1).filter(a => !a.startsWith('--'));
+    sweep(dirs.length ? dirs : ['src', 'api']);
+    return;
+  }
+
+  const target = args[0];
+  if (!target) {
+    console.error('Usage: node scripts/check-dead-file.js <path>');
+    console.error('       node scripts/check-dead-file.js --sweep [dir ...]   (default: src api)');
+    process.exit(1);
+  }
+  const relTarget = path.relative(process.cwd(), path.resolve(target)).replace(/\\/g, '/');
+  if (!fs.existsSync(relTarget)) {
+    console.error(`File not found: ${relTarget}`);
+    process.exit(1);
+  }
+  checkOne(relTarget, true);
 }
 
 main();

@@ -1,6 +1,6 @@
 # Prospector — Claude Code Instructions
 
-Prospector is a React SPA (Create React App) deployed on Render, built as a sales intelligence tool for account executive teams. The backend is serverless API routes under `/api/`, proxied through Vercel/Render. Supabase is used for persistence. There is no Express server.
+Prospector is a React SPA (Create React App) deployed on Render, built as a sales intelligence tool for account executive teams. The backend is serverless-style API routes under `/api/`, but they run inside `server.js` — a real, persistent Express process (`render.yaml`'s `startCommand: npm start` → `node server.js`). Files under `api/` are not auto-routed; `server.js` wires each route by hand (directly or via a dynamic-dispatch `esHandler` map). Supabase is used for persistence.
 
 ---
 
@@ -112,3 +112,17 @@ Always set `max_tokens` explicitly on every AI call. Never omit it.
 - `Production_Request_Compliance_Stage__c` must be `.toUpperCase()` before comparing to `"APPROVED"` — the raw SFDC value is mixed case. `Security_Diligence_SDR_Status__c` already does this; prod request does not yet (known bug, fix pending).
 - SFDC opp query: `LIMIT 500` with pagination loop — do not reduce this limit.
 - `syncSfdc` patches existing accounts by matching on `sfdcOppId`, `sfdcAccountId`, or name — it does not replace the full account array.
+
+---
+
+## Diagnostic / audit script conventions
+
+Adopted 2026-08-17 after two real incidents: a full-repo dead-code sweep silently ran toward 2.5 hours before a bottleneck was caught, and a heavy day of live-verification testing (real Playwright sessions, real repeated Supabase queries) is the leading suspect behind an unexplained Supabase egress spike. Same root cause both times — verification work that wasn't scoped or bounded before it ran.
+
+Before running any new diagnostic/audit/test script against the live app or live DB, declare:
+
+- **Expected scope** — how many rows/files/accounts it will touch, stated up front, not discovered mid-run.
+- **Estimated cost** — rough runtime, and for anything hitting the live DB repeatedly, rough data volume too.
+- **A hard cap** — default to a bounded sample (e.g., 10 accounts, not every account in the business) unless a full sweep is explicitly requested. If actual scope or pace comes in over ~3x the declared estimate, warn loudly (or abort) rather than continuing silently — that gap is exactly what let the 2.5-hour sweep run unnoticed.
+
+`scripts/check-dead-file.js --sweep [dir ...]` implements this directly: prints file count + a measured-baseline time estimate before starting, warns if actual pace exceeds 3x that estimate partway through. `scripts/live-audit.js`'s existing commands (`table`/`schema`/`rls`) are already single-table/single-row-scoped by construction — the convention applies to *wrapping* them in a loop across many tables/accounts (as Step-0-style audits do), not to the tool itself. No functional retrofit needed there, just apply this checklist before writing that kind of wrapper.
