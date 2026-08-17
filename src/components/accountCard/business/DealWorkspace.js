@@ -33,11 +33,11 @@ export function IntelligenceSummary({ acc }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div>
           <p style={SH}>Business Model</p>
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: CARD.textSecondary, lineHeight: 1.6 }}>{businessModel ? businessModel.slice(0, 160) + (businessModel.length > 160 ? "…" : "") : "Not yet analyzed"}</p>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: CARD.textSecondary, lineHeight: 1.6, maxHeight: 200, overflowY: "auto" }}>{businessModel || "Not yet analyzed"}</p>
         </div>
         <div>
           <p style={SH}>Product Fit</p>
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: CARD.textSecondary, lineHeight: 1.6 }}>{fitRationale ? fitRationale.slice(0, 160) + (fitRationale.length > 160 ? "…" : "") : "Run assay to analyze"}</p>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: CARD.textSecondary, lineHeight: 1.6, maxHeight: 200, overflowY: "auto" }}>{fitRationale || "Run assay to analyze"}</p>
         </div>
       </div>
       {products?.length > 0 && (
