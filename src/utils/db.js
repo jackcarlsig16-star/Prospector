@@ -187,6 +187,29 @@ export async function saveAccountsToDb(ownerEmail, accounts) {
   }
 }
 
+// assay-safety-and-intel-visibility-v1 — targeted single-row write for
+// re-assay, which used to rely entirely on the generic saveAccountsToDb
+// effect (full-array upsert) as its only path to Supabase. That effect is
+// fire-and-forget and untracked from the caller's side, so a re-assay result
+// could silently fail to persist with no signal to the user. This gives
+// re-assay a real, awaitable write it can confirm and surface errors from.
+// Does not replace the generic autosave (still fires via setAccounts as
+// before, for every other flow that depends on it) - additive, not a
+// narrowing of saveAccountsToDb's own behavior.
+export async function updateAccountRow(accountId, data) {
+  if (!isSupabaseEnabled()) return { error: null };
+  try {
+    const { error } = await supabase
+      .from('accounts')
+      .update({ data, updated_at: new Date().toISOString() })
+      .eq('id', String(accountId));
+    if (error) return { error: error.message };
+    return { error: null };
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
 // ── Business-scoped accounts (business-workspace-v1) ───────────────────────────
 // Separate from the global owner_email-keyed accounts above - each business's
 // account list is independent, keyed by business_id instead of owner_email.

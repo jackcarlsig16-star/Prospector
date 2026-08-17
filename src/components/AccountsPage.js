@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { C, mono } from '../constants/colors';
 import { isStale, isWarn } from '../utils/staleness';
 import { getActiveIntel, getActiveExamples, clientAssay, mapAssayResultToBusinessDetails } from '../utils/assay';
-import { upsertAccountBusinessDetails } from '../utils/db';
+import { upsertAccountBusinessDetails, updateAccountRow } from '../utils/db';
 import { PROD_COLOR, ALL_PRODUCTS } from '../constants/products';
 import AccountCard, { DEAL_STAGES } from './AccountCard';
 import LinkParentModal from './LinkParentModal';
@@ -266,7 +266,18 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
       if(acc.tier==="Slag"&&parsed.tier==="Gold") trackStat("reassay_upgrades");
       // If web was overridden (site unreachable workaround), persist the new URL
       const webPatch=acc.web!==accounts.find(a=>a.id===acc.id)?.web?{web:acc.web}:{};
-      onSave(accounts.map(a=>a.id===acc.id?{...a,...webPatch,...parsed,sigs:parsed.keySignals?.length?parsed.keySignals:(a.sigs||[]),ucs:parsed.useCases?.length?parsed.useCases:(a.ucs||[]),prods:parsed.products?.length?parsed.products:(a.prods||[]),bm:parsed.businessModel||a.bm||"",pf:parsed.productFit||a.pf||"",dis:parsed.disqualifier!==undefined?parsed.disqualifier:a.dis,linkedin:parsed.linkedin||a.linkedin||"",analyzed:true,businessDetail:localBusinessDetail(acc.id,parsed)}:a));
+      let updatedAcc=null;
+      onSave(accounts.map(a=>{
+        if(a.id!==acc.id) return a;
+        updatedAcc={...a,...webPatch,...parsed,sigs:parsed.keySignals?.length?parsed.keySignals:(a.sigs||[]),ucs:parsed.useCases?.length?parsed.useCases:(a.ucs||[]),prods:parsed.products?.length?parsed.products:(a.prods||[]),bm:parsed.businessModel||a.bm||"",pf:parsed.productFit||a.pf||"",dis:parsed.disqualifier!==undefined?parsed.disqualifier:a.dis,linkedin:parsed.linkedin||a.linkedin||"",analyzed:true,businessDetail:localBusinessDetail(acc.id,parsed)};
+        return updatedAcc;
+      }));
+      // assay-safety-and-intel-visibility-v1 — targeted single-row write,
+      // the real confirmed persistence for this result (updateAccountRow,
+      // utils/db.js). The generic full-array autosave still fires too via
+      // setAccounts/onSave above — left as-is, not narrowed (audited safe
+      // today; see specs/assay-safety-and-intel-visibility-v1.md Part 1).
+      if(updatedAcc) await updateAccountRow(acc.id, updatedAcc);
       // account-business-details-v1 — dual-write, narrow scope (this call
       // site only). accounts.data above is unchanged; this is the new
       // table becoming the real source of truth for the account card.
@@ -364,6 +375,10 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
       if(parsed){
         current=applyResult(current,acc,parsed,true);
         completedIds.push(acc.id);
+        // assay-safety-and-intel-visibility-v1 — same targeted single-row
+        // write as reassay() above.
+        const updatedAcc=current.find(a=>a.id===acc.id);
+        if(updatedAcc) await updateAccountRow(acc.id, updatedAcc);
         // account-business-details-v1 — same dual-write as single re-assay.
         upsertAccountBusinessDetails(acc.id, mapAssayResultToBusinessDetails(parsed)).catch(()=>{});
       }else{
