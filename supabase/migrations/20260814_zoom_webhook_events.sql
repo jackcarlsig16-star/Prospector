@@ -41,3 +41,15 @@ create table if not exists public.zoom_webhook_events (
 create index if not exists idx_zoom_webhook_events_meeting_uuid on public.zoom_webhook_events(zoom_meeting_uuid);
 create index if not exists idx_zoom_webhook_events_processed on public.zoom_webhook_events(processed);
 create index if not exists idx_zoom_webhook_events_unmatched on public.zoom_webhook_events(matched_business_id) where matched_business_id is null;
+
+-- audit-triage-v1 follow-up (2026-08-17) — RLS: enabled, zero anon
+-- policies, same as access_log. Every real consumer (api/zoom/webhook.js,
+-- events.js, events-reassign.js) uses the service-role key. Confirmed live:
+-- anon insert throws 42501 as expected; anon select returns an empty set
+-- (not an error) - standard Postgres RLS behavior for a policyless table,
+-- not a read bypass - real row count was 0 at the time of this check either
+-- way. Deliberately left locked, not opened to match this app's usual
+-- permissive-RLS default: raw webhook payloads/transcripts are more
+-- sensitive than most tables here and nothing client-side needs to touch
+-- this table. If a future feature needs client-side read/write, add a
+-- narrowly-scoped policy then - don't default to permissive.
