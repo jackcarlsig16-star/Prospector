@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { ROLE_PERMS } from '../constants/appConfig';
 import { C, mono } from '../constants/colors';
-import { getAccountsForBusiness, saveAccountsForBusiness, getListsForBusiness, getMembersForBusiness, getPermissionsForMembers, getAccountListMapForBusiness, linkAccountToLists, getInfluencerDetails } from '../utils/db';
+import { getAccountsForBusiness, saveAccountsForBusiness, getListsForBusiness, getMembersForBusiness, getPermissionsForMembers, getAccountListMapForBusiness, linkAccountToLists, getInfluencerDetails, getBusinessDetails } from '../utils/db';
 import AccountsPage from './AccountsPage';
 import DealSummaryModal from './AccountCardPricingSummary';
 import CsvImportModal from './CsvImportModal';
@@ -56,8 +56,17 @@ export default function BusinessAccountsTab({ business, userEmail, projects=[] }
       isOwner ? Promise.resolve(null) : getMembersForBusiness(business.id),
     ]).then(async ([accs, listRows, listMap, memberRows]) => {
       const influencerIds = accs.filter(a => a.accountKind === 'influencer').map(a => a.id);
-      const detailMap = influencerIds.length ? await getInfluencerDetails(influencerIds) : {};
-      setAccounts(accs.map(a => detailMap[a.id] ? { ...a, influencerDetail: detailMap[a.id] } : a));
+      const businessIds = accs.filter(a => (a.accountKind || 'business') === 'business').map(a => a.id);
+      const [detailMap, businessDetailMap] = await Promise.all([
+        influencerIds.length ? getInfluencerDetails(influencerIds) : {},
+        businessIds.length ? getBusinessDetails(businessIds) : {},
+      ]);
+      setAccounts(accs.map(a => {
+        let next = a;
+        if (detailMap[a.id]) next = { ...next, influencerDetail: detailMap[a.id] };
+        if (businessDetailMap[a.id]) next = { ...next, businessDetail: businessDetailMap[a.id] };
+        return next;
+      }));
       setLists(listRows);
       setAccountListMap(listMap);
       if (!isOwner) {

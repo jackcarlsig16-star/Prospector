@@ -114,7 +114,10 @@ export default function AccountCard({
   const signals = [];
   if (!isInfluencer && stale) signals.push(<AccountBadge key="stale" tone="#F06060">⚠ at risk</AccountBadge>);
   if (!isInfluencer && assignedEntry) signals.push(<AccountBadge key="outbound" tone="#00b4d8">◆ OUTBOUND — {assignedEntry.assignedTo}</AccountBadge>);
-  if (!isInfluencer && acc.tier) signals.push(<AccountBadge key="tier" tone={kind.accent}>{acc.tier}</AccountBadge>);
+  // account-business-details-v1 — new table first, legacy field as fallback
+  // for accounts not yet re-assayed since this shipped (dual-write).
+  const displayTier = acc.businessDetail?.tier || acc.tier;
+  if (!isInfluencer && displayTier) signals.push(<AccountBadge key="tier" tone={kind.accent}>{displayTier}</AccountBadge>);
   if (isInfluencer && detail?.priority) signals.push(<AccountBadge key="priority" tone={detail.priority === 'high' ? '#F06060' : detail.priority === 'medium' ? '#f5c542' : undefined}>{detail.priority} priority</AccountBadge>);
   if (isInfluencer) signals.push(<AccountBadge key="stage" tone={kind.accent}>{(detail?.relationship_stage || 'not_contacted').replace(/_/g, ' ')}</AccountBadge>);
 

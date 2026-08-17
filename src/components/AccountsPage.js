@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { C, mono } from '../constants/colors';
 import { isStale, isWarn } from '../utils/staleness';
-import { getActiveIntel, getActiveExamples, clientAssay } from '../utils/assay';
+import { getActiveIntel, getActiveExamples, clientAssay, mapAssayResultToBusinessDetails } from '../utils/assay';
+import { upsertAccountBusinessDetails } from '../utils/db';
 import { PROD_COLOR, ALL_PRODUCTS } from '../constants/products';
 import AccountCard, { DEAL_STAGES } from './AccountCard';
 import LinkParentModal from './LinkParentModal';
@@ -238,6 +239,12 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
   const bulkStartTime  = useRef(null);
 
   const todayStr=()=>new Date().toISOString().split("T")[0];
+  // account-business-details-v1 — constructed client-side from the same
+  // mapping the actual DB write uses (mapAssayResultToBusinessDetails), so
+  // the account card shows the fresh result instantly instead of waiting on
+  // a reload to re-fetch from account_business_details. The real upsert
+  // happens separately (fire-and-forget) right after each onSave call.
+  const localBusinessDetail=(accId,parsed)=>({account_id:accId,assessment_status:'assessed',last_assayed_at:new Date().toISOString(),...mapAssayResultToBusinessDetails(parsed)});
   const applyResult=(accs,acc,parsed,bulk=false)=>accs.map(a=>a.id===acc.id?{
     ...a,...parsed,
     sigs:parsed.keySignals?.length?parsed.keySignals:(a.sigs||[]),
@@ -248,6 +255,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
     dis:parsed.disqualifier!==undefined?parsed.disqualifier:a.dis,
     linkedin:parsed.linkedin||a.linkedin||"",
     analyzed:true,
+    businessDetail:localBusinessDetail(acc.id,parsed),
     ...(bulk?{lastBulkAssayed:todayStr()}:{})
   }:a);
 
@@ -258,7 +266,11 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
       if(acc.tier==="Slag"&&parsed.tier==="Gold") trackStat("reassay_upgrades");
       // If web was overridden (site unreachable workaround), persist the new URL
       const webPatch=acc.web!==accounts.find(a=>a.id===acc.id)?.web?{web:acc.web}:{};
-      onSave(accounts.map(a=>a.id===acc.id?{...a,...webPatch,...parsed,sigs:parsed.keySignals?.length?parsed.keySignals:(a.sigs||[]),ucs:parsed.useCases?.length?parsed.useCases:(a.ucs||[]),prods:parsed.products?.length?parsed.products:(a.prods||[]),bm:parsed.businessModel||a.bm||"",pf:parsed.productFit||a.pf||"",dis:parsed.disqualifier!==undefined?parsed.disqualifier:a.dis,linkedin:parsed.linkedin||a.linkedin||"",analyzed:true}:a));
+      onSave(accounts.map(a=>a.id===acc.id?{...a,...webPatch,...parsed,sigs:parsed.keySignals?.length?parsed.keySignals:(a.sigs||[]),ucs:parsed.useCases?.length?parsed.useCases:(a.ucs||[]),prods:parsed.products?.length?parsed.products:(a.prods||[]),bm:parsed.businessModel||a.bm||"",pf:parsed.productFit||a.pf||"",dis:parsed.disqualifier!==undefined?parsed.disqualifier:a.dis,linkedin:parsed.linkedin||a.linkedin||"",analyzed:true,businessDetail:localBusinessDetail(acc.id,parsed)}:a));
+      // account-business-details-v1 — dual-write, narrow scope (this call
+      // site only). accounts.data above is unchanged; this is the new
+      // table becoming the real source of truth for the account card.
+      upsertAccountBusinessDetails(acc.id, mapAssayResultToBusinessDetails(parsed)).catch(()=>{});
     }catch(e){console.error(e);}
     setReassaying(null);
   },[accounts,onSave]);
@@ -352,6 +364,8 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
       if(parsed){
         current=applyResult(current,acc,parsed,true);
         completedIds.push(acc.id);
+        // account-business-details-v1 — same dual-write as single re-assay.
+        upsertAccountBusinessDetails(acc.id, mapAssayResultToBusinessDetails(parsed)).catch(()=>{});
       }else{
         current=current.map(a=>a.id===acc.id?{...a,assay_failed:true}:a);
         failedIds.push(acc.id);

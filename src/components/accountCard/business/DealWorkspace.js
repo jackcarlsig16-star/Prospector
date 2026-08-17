@@ -18,22 +18,31 @@ const SH = { ...mono, fontSize: 9, fontWeight: 600, textTransform: "uppercase", 
 // unchanged internals — AccountCardCompliance/AccountCardDealStage/
 // GiftModal/WinReasonPanel/AccountCardCompetition/AccountCardRawEdit are
 // not touched, only how they're triggered.
+// account-business-details-v1 — reads acc.businessDetail (the new
+// account_business_details row) first, falls back to the legacy bm/pf/prods
+// flat fields for any account not yet re-assayed since this shipped (dual-
+// write means legacy fields stay correct too, just not the source of truth
+// going forward).
 export function IntelligenceSummary({ acc }) {
+  const detail = acc.businessDetail;
+  const businessModel = detail?.business_model || acc.bm;
+  const fitRationale = detail?.fit_rationale || acc.pf;
+  const products = detail?.fit_signals?.products?.length ? detail.fit_signals.products : acc.prods;
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div>
           <p style={SH}>Business Model</p>
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: CARD.textSecondary, lineHeight: 1.6 }}>{acc.bm ? acc.bm.slice(0, 160) + (acc.bm.length > 160 ? "…" : "") : "Not yet analyzed"}</p>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: CARD.textSecondary, lineHeight: 1.6 }}>{businessModel ? businessModel.slice(0, 160) + (businessModel.length > 160 ? "…" : "") : "Not yet analyzed"}</p>
         </div>
         <div>
           <p style={SH}>Product Fit</p>
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: CARD.textSecondary, lineHeight: 1.6 }}>{acc.pf ? acc.pf.slice(0, 160) + (acc.pf.length > 160 ? "…" : "") : "Run assay to analyze"}</p>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: CARD.textSecondary, lineHeight: 1.6 }}>{fitRationale ? fitRationale.slice(0, 160) + (fitRationale.length > 160 ? "…" : "") : "Run assay to analyze"}</p>
         </div>
       </div>
-      {acc.prods?.length > 0 && (
+      {products?.length > 0 && (
         <div style={{ marginTop: 8, display: "flex", gap: 4, flexWrap: "wrap" }}>
-          {acc.prods.map(p => <span key={p} style={{ ...mono, fontSize: 10, color: CARD.textMuted, background: CARD.surface, border: `1px solid ${CARD.border}`, borderRadius: 3, padding: "2px 6px" }}>{p}</span>)}
+          {products.map(p => <span key={p} style={{ ...mono, fontSize: 10, color: CARD.textMuted, background: CARD.surface, border: `1px solid ${CARD.border}`, borderRadius: 3, padding: "2px 6px" }}>{p}</span>)}
         </div>
       )}
     </div>

@@ -339,6 +339,28 @@ export async function getInfluencerDetails(accountIds) {
   return map;
 }
 
+// account-business-details-v1 — mirrors getInfluencerDetails exactly.
+export async function getBusinessDetails(accountIds) {
+  if (!accountIds?.length || !isSupabaseEnabled()) return {};
+  const { data, error } = await supabase.from('account_business_details').select('*').in('account_id', accountIds);
+  if (error) { console.warn('[db] getBusinessDetails failed:', error.message); return {}; }
+  const map = {};
+  (data || []).forEach(d => { map[d.account_id] = d; });
+  return map;
+}
+
+// account-business-details-v1 — the narrow-scope write path (single +
+// bulk re-assay in AccountsPage.js only, per Jack's Option 3 decision).
+// Upsert, not insert - a re-assay on an already-assessed account replaces
+// its one current snapshot, no history kept (deliberately deferred).
+export async function upsertAccountBusinessDetails(accountId, patch) {
+  if (!isSupabaseEnabled() || !accountId) return { error: null };
+  const row = { account_id: accountId, assessment_status: 'assessed', last_assayed_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...patch };
+  const { data, error } = await supabase.from('account_business_details').upsert(row, { onConflict: 'account_id' }).select().single();
+  if (error) { console.warn('[db] upsertAccountBusinessDetails failed:', error.message); return { error: error.message }; }
+  return { detail: data };
+}
+
 // Relationship fields (stage/temperature/priority/next_action/decline_reason/
 // tags) live on account_influencer_details, not accounts.data - a separate
 // write path from the generic onUpdate()/persist() flow business accounts

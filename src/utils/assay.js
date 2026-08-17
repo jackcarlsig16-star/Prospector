@@ -310,3 +310,42 @@ export async function clientAssay({ name, web, vert, sub, customIntel, exampleAc
 
   return { ...parsed, linkedin, fetchMethod };
 }
+
+// account-business-details-v1 — converts a clientAssay() result into
+// account_business_details' row shape. Narrow-scope decision (Jack,
+// 2026-08-17): only AccountsPage.js's single/bulk re-assay call this and
+// write the result to the new table; clientAssay() itself stays a pure
+// function with its accounts.data-writing behavior completely unchanged,
+// so Claim Jumper's pool scoring and any other clientAssay() caller outside
+// that narrow scope are unaffected. business_model/fit_rationale get their
+// own columns (was businessModel/bm and productFit/pf - two names for the
+// same value, now one each); disqualifier/score/tier keep their names
+// unchanged. Everything else clientAssay() returns is supporting evidence
+// behind the fit call, not dropped - nested under fit_signals instead of
+// 14 more top-level columns.
+export function mapAssayResultToBusinessDetails(parsed) {
+  return {
+    score: parsed.score ?? null,
+    tier: parsed.tier || null,
+    business_model: parsed.businessModel || null,
+    fit_rationale: parsed.productFit || null,
+    disqualifier: parsed.disqualifier ?? null,
+    ungrounded_claims: Array.isArray(parsed.ungroundedClaims) && parsed.ungroundedClaims.length ? parsed.ungroundedClaims : null,
+    fit_signals: {
+      key_signals: parsed.keySignals || [],
+      signal_breakdown: parsed.signalBreakdown || null,
+      traction_signals: parsed.tractionSignals || [],
+      confidence: parsed.confidence || null,
+      is_active: parsed.isActive,
+      bank_connect_signal: parsed.bankConnectSignal,
+      business_model_pattern: parsed.businessModelPattern || null,
+      estimated_downstream_users: parsed.estimatedDownstreamUsers || null,
+      is_established: parsed.isEstablished,
+      distribution_multiplier: parsed.distributionMultiplier,
+      use_cases: parsed.useCases || [],
+      products: parsed.products || [],
+      fetch_method: parsed.fetchMethod || null,
+      linkedin: parsed.linkedin || null,
+    },
+  };
+}
