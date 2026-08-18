@@ -82,6 +82,7 @@ Return exactly this shape:
   "products": ["array of up to 6 of the company's actual named products/product lines, as they appear in the notes"],
   "value_props": ["array of 2-4 short value propositions the company itself emphasizes"],
   "motto": "a short tagline/motto if one appears in the notes, else null",
+  "emoji": "a single emoji that visually represents this business or what it sells (e.g. a magnet emoji for a magnetics company, a coffee bean for a coffee brand) - pick the single best, most recognizable one, not a generic building/briefcase emoji",
   "field_sources": { "<field name from above, e.g. \\"vision\\">": ["<the [id:...] tag(s) of the note(s) that field is actually grounded in>"] }
 }
 
@@ -106,6 +107,7 @@ Return exactly this shape:
   "value_props": ["array of 2-4 value propositions the company itself emphasizes"],
   "motto": "a short tagline/motto if one appears in the log, else null",
   "strategic_philosophy": "1-3 sentences on any business-specific strategic doctrine or framing that shows up in the notes (e.g. an explicit prioritization approach, a stated operating philosophy) - leave this genuinely null if nothing like that appears rather than inventing generic strategy language",
+  "emoji": "a single emoji that visually represents this business or what it sells (e.g. a magnet emoji for a magnetics company, a coffee bean for a coffee brand) - pick the single best, most recognizable one, not a generic building/briefcase emoji",
   "field_sources": { "<field name from above, e.g. \\"vision\\">": ["<the [id:...] tag(s) of the log entries that field is actually grounded in>"] }
 }
 
@@ -392,6 +394,7 @@ export async function generateProfile(supabase, businessId) {
     value_props: parsed.value_props || null,
     motto: parsed.motto || null,
     strategic_philosophy: isLight ? null : (parsed.strategic_philosophy || null),
+    emoji: parsed.emoji || null,
   };
   // Only the 7 new fields get manual-edit protection in this SPEC - the
   // original six (vision/positioning/icp/gtm_strategy/competitors/

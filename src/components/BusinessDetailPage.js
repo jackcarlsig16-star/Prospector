@@ -415,6 +415,13 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
               {business.website_url}
             </a>
           </div>
+          {/* business-profile-emoji-v1 - AI-picked, piggybacks on
+              generateProfile()'s existing synthesis output (same call as
+              motto/industry). Top-right of the shared header, visible on
+              every sub-view. */}
+          {profile?.emoji && (
+            <span style={{ fontSize:32, lineHeight:1, flexShrink:0 }} title={`${business.name}`}>{profile.emoji}</span>
+          )}
         </div>
 
         {view === 'command-center' && (<>
