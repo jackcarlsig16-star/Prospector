@@ -10,27 +10,18 @@ import SmartIntakeBox from './SmartIntakeBox';
 import CallLogSection from './CallLogSection';
 import AssayCriteriaCard from './AssayCriteriaCard';
 import OutreachRulesCard from './OutreachRulesCard';
+import ProfileFieldBlock from './ProfileFieldBlock';
 import ProjectGuidanceCard from './ProjectGuidanceCard';
 import AccountPicker from './AccountPicker';
 import BulkOutreachModal from './BulkOutreachModal';
 
 const SOURCE_LABEL = { manual: 'Manual', research_site: 'Site research', research_web: 'Web research', call: 'Call log' };
+const CONTENT_TYPE_LABEL = { strategy_doc: 'Strategy', marketing_asset: 'Marketing', pricing: 'Pricing', competitive: 'Competitive', other: 'Other' };
 
 const fmtDate = iso => { try { return new Date(iso).toLocaleString("en-US", { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }); } catch { return "—"; } };
 
 const inp = { fontSize:13, padding:"8px 11px", background:C.bg, border:`1.5px solid ${C.brdM}`, borderRadius:6, color:C.txt, outline:"none", width:"100%", boxSizing:"border-box", ...mono };
 const btn = { ...mono, fontSize:12, padding:"7px 18px", background:C.gold, border:`1px solid ${C.gold}`, borderRadius:6, color:C.bg, cursor:"pointer", fontWeight:700 };
-const sectionLabel = { ...mono, fontSize:12, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 };
-
-function ProfileBlock({ label, value }) {
-  if (!value) return null;
-  return (
-    <div style={{ marginBottom:16 }}>
-      <div style={sectionLabel}>{label}</div>
-      <p style={{ ...mono, fontSize:13, color:C.txt, margin:0, lineHeight:1.6 }}>{value}</p>
-    </div>
-  );
-}
 
 function CreateProjectModal({ businessId, userEmail, onClose, onCreated }) {
   const [name, setName] = useState('');
@@ -279,6 +270,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   const [notesOpen, setNotesOpen] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
   const [pollTimedOut, setPollTimedOut] = useState(false);
+  const [highlightedEntryId, setHighlightedEntryId] = useState(null);
 
   const pollRef = useRef(null);
   const pollAttemptsRef = useRef(0);
@@ -425,9 +417,14 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
           business.research_depth === 'light' ? (
             <div style={{ marginBottom:32 }}>
               <h2 style={{ ...mono, fontSize:13, color:C.txt, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", margin:"0 0 16px" }}>Profile</h2>
-              <ProfileBlock label="Vision" value={profile.vision} />
-              <ProfileBlock label="Current Strategy" value={profile.gtm_strategy} />
-              <ProfileBlock label="Recent Changes" value={profile.raw_synthesis} />
+              <ProfileFieldBlock field="vision" label="Vision" value={profile.vision} sources={profile.field_sources?.vision} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
+              <ProfileFieldBlock field="gtm_strategy" label="Current Strategy" value={profile.gtm_strategy} sources={profile.field_sources?.gtm_strategy} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
+              <ProfileFieldBlock field="raw_synthesis" label="Recent Changes" value={profile.raw_synthesis} sources={profile.field_sources?.raw_synthesis} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
+              <ProfileFieldBlock field="industry" label="Industry" value={profile.industry} sources={profile.field_sources?.industry} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.industry_edited_manually} conflict={profile.field_conflicts?.industry} onSaved={setProfile} />
+              <ProfileFieldBlock field="core_problem" label="Core Problem" value={profile.core_problem} sources={profile.field_sources?.core_problem} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.core_problem_edited_manually} conflict={profile.field_conflicts?.core_problem} onSaved={setProfile} />
+              <ProfileFieldBlock field="products" label="Products" value={profile.products} isArrayField sources={profile.field_sources?.products} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.products_edited_manually} conflict={profile.field_conflicts?.products} onSaved={setProfile} />
+              <ProfileFieldBlock field="value_props" label="Value Props" value={profile.value_props} isArrayField sources={profile.field_sources?.value_props} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.value_props_edited_manually} conflict={profile.field_conflicts?.value_props} onSaved={setProfile} />
+              <ProfileFieldBlock field="motto" label="Motto" value={profile.motto} sources={profile.field_sources?.motto} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.motto_edited_manually} conflict={profile.field_conflicts?.motto} onSaved={setProfile} />
               {profile.generated_at && (
                 <p style={{ ...mono, fontSize:10, color:C.dim, margin:"8px 0 0" }}>Last checked {fmtDate(profile.generated_at)}</p>
               )}
@@ -435,11 +432,18 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
           ) : (
             <div style={{ marginBottom:32 }}>
               <h2 style={{ ...mono, fontSize:13, color:C.txt, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", margin:"0 0 16px" }}>Profile</h2>
-              <ProfileBlock label="Vision" value={profile.vision} />
-              <ProfileBlock label="Positioning" value={profile.positioning} />
-              <ProfileBlock label="ICP" value={profile.icp} />
-              <ProfileBlock label="GTM Strategy" value={profile.gtm_strategy} />
-              <ProfileBlock label="Competitors" value={profile.competitors} />
+              <ProfileFieldBlock field="vision" label="Vision" value={profile.vision} sources={profile.field_sources?.vision} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
+              <ProfileFieldBlock field="positioning" label="Positioning" value={profile.positioning} sources={profile.field_sources?.positioning} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
+              <ProfileFieldBlock field="icp" label="ICP" value={profile.icp} sources={profile.field_sources?.icp} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
+              <ProfileFieldBlock field="gtm_strategy" label="GTM Strategy" value={profile.gtm_strategy} sources={profile.field_sources?.gtm_strategy} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
+              <ProfileFieldBlock field="competitors" label="Competitors" value={profile.competitors} sources={profile.field_sources?.competitors} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
+              <ProfileFieldBlock field="industry" label="Industry" value={profile.industry} sources={profile.field_sources?.industry} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.industry_edited_manually} conflict={profile.field_conflicts?.industry} onSaved={setProfile} />
+              <ProfileFieldBlock field="core_problem" label="Core Problem" value={profile.core_problem} sources={profile.field_sources?.core_problem} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.core_problem_edited_manually} conflict={profile.field_conflicts?.core_problem} onSaved={setProfile} />
+              <ProfileFieldBlock field="sub_issues" label="Sub-Issues" value={profile.sub_issues} isArrayField sources={profile.field_sources?.sub_issues} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.sub_issues_edited_manually} conflict={profile.field_conflicts?.sub_issues} onSaved={setProfile} />
+              <ProfileFieldBlock field="products" label="Products" value={profile.products} isArrayField sources={profile.field_sources?.products} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.products_edited_manually} conflict={profile.field_conflicts?.products} onSaved={setProfile} />
+              <ProfileFieldBlock field="value_props" label="Value Props" value={profile.value_props} isArrayField sources={profile.field_sources?.value_props} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.value_props_edited_manually} conflict={profile.field_conflicts?.value_props} onSaved={setProfile} />
+              <ProfileFieldBlock field="motto" label="Motto" value={profile.motto} sources={profile.field_sources?.motto} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.motto_edited_manually} conflict={profile.field_conflicts?.motto} onSaved={setProfile} />
+              <ProfileFieldBlock field="strategic_philosophy" label="Strategic Philosophy" value={profile.strategic_philosophy} sources={profile.field_sources?.strategic_philosophy} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.strategic_philosophy_edited_manually} conflict={profile.field_conflicts?.strategic_philosophy} onSaved={setProfile} />
 
               {profile.raw_synthesis && (
                 <div style={{ marginTop:16 }}>
@@ -498,17 +502,33 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
               <p style={{ ...mono, fontSize:12, color:C.dim }}>Loading…</p>
             ) : (
               <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                {intelEntries.map(entry => (
-                  <div key={entry.id} style={{ padding:"10px 12px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8 }}>
-                    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
-                      <span style={{ ...mono, fontSize:9, padding:"2px 7px", borderRadius:9, background:`${C.blue}18`, border:`1px solid ${C.blue}44`, color:C.blue }}>
-                        {SOURCE_LABEL[entry.source] || entry.source}
-                      </span>
-                      <span style={{ ...mono, fontSize:10, color:C.dim }}>{fmtDate(entry.created_at)}</span>
+                {intelEntries.map(entry => {
+                  // Derived N fields — reverse-index over field_sources, so
+                  // it's visible at a glance which entries actually
+                  // contributed vs. which contributed nothing (e.g. a
+                  // password-walled site scan) - business-intel-smart-upload-v1.
+                  const derivedCount = Object.values(profile?.field_sources || {}).filter(ids => Array.isArray(ids) && ids.includes(entry.id)).length;
+                  const highlighted = highlightedEntryId === entry.id;
+                  return (
+                    <div key={entry.id} style={{ padding:"10px 12px", background:highlighted ? `${C.blue}0F` : C.card, border:`1px solid ${highlighted ? C.blue : C.brd}`, borderRadius:8, transition:"background 0.15s, border-color 0.15s" }}>
+                      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6, flexWrap:"wrap" }}>
+                        <span style={{ ...mono, fontSize:9, padding:"2px 7px", borderRadius:9, background:`${C.blue}18`, border:`1px solid ${C.blue}44`, color:C.blue }}>
+                          {SOURCE_LABEL[entry.source] || entry.source}
+                        </span>
+                        {entry.content_type && (
+                          <span style={{ ...mono, fontSize:9, padding:"2px 7px", borderRadius:9, background:`${C.purple}18`, border:`1px solid ${C.purple}44`, color:C.purple }}>
+                            {CONTENT_TYPE_LABEL[entry.content_type] || entry.content_type}
+                          </span>
+                        )}
+                        <span style={{ ...mono, fontSize:10, color:C.dim }}>{fmtDate(entry.created_at)}</span>
+                        <span style={{ ...mono, fontSize:10, color:derivedCount > 0 ? C.green : C.dim, marginLeft:"auto" }}>
+                          {derivedCount > 0 ? `Derived ${derivedCount} field${derivedCount > 1 ? 's' : ''}` : 'Derived nothing'}
+                        </span>
+                      </div>
+                      <p style={{ ...mono, fontSize:12, color:C.txt, margin:0, whiteSpace:"pre-wrap" }}>{entry.content}</p>
                     </div>
-                    <p style={{ ...mono, fontSize:12, color:C.txt, margin:0, whiteSpace:"pre-wrap" }}>{entry.content}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )
           )}
