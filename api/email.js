@@ -13,6 +13,14 @@ const MESSAGE_TYPE_GUIDANCE = {
   cold_outreach: `MESSAGE TYPE — Cold Outreach: this is a first-touch message, no prior contact of any kind. Keep it short, one clear CTA, no assumption of familiarity. Never reference "as discussed," a prior call, or any earlier exchange.`,
   follow_up: `MESSAGE TYPE — Follow-up: prior contact/context already exists between sender and recipient. Reference a prior touchpoint naturally (a call, an email, a signup, a prior conversation) even generically if no specifics are given in the context below, and write as a continuation of an existing relationship, not a first introduction. Do not use a "nice to meet you" or "reaching out to introduce myself" style opener.`,
   warm_intro: `MESSAGE TYPE — Warm Intro: this message is being sent via, or references, a warm introduction rather than cold. Open warmer and more personally than a cold email would. If an introduction source or connector is mentioned in the context below, reference it naturally early in the message.`,
+  // generation-engine-consolidation-v1 Stage 1 - real new type, not a force-fit
+  // of AccountCardComms.js's old "reply" onto follow_up. Replying to a specific
+  // inbound message is a different task than writing a proactive follow-up:
+  // it must respond to what the other side actually said, never invent a
+  // recap of things they didn't write. The inbound message itself belongs in
+  // the Directive field below (paste it in) - this guidance is just how to
+  // treat it once it's there.
+  reply: `MESSAGE TYPE — Reply: this is a direct reply to a specific inbound message from the recipient (its content, if provided, is in the Directive section below). Read what they actually said and respond to that — never invent a meeting recap, summary, or next step that isn't grounded in their actual message. If they're deferring to a future timeline (funding, bandwidth, a specific quarter/month, "circle back," "reconnect later"), keep the reply brief and gracious, confirm their stated timeline exactly, and do not propose a call or add a near-term CTA. Otherwise, answer their question or address their concern directly, under 200 words.`,
 };
 
 const AVOID_ALWAYS = [
@@ -62,8 +70,10 @@ async function scrapeWebsite(website) {
 // businessModel/signals/etc, passed per-call) define WHO. This function's
 // job is only to combine the two. If a future entry point needs generation,
 // it calls this handler with the right inputs - it does not get its own
-// prompt-building logic. (Standing landmine flagged this session: fragmented
-// per-entry-point generators are the exact failure mode to guard against.)
+// prompt-building logic. (This landmine was real, not hypothetical:
+// generation-engine-consolidation-v1 found and retired a second, fully
+// independent generator that had grown on AccountCardComms.js's Comms
+// panel - own prompts, own vocabulary, zero connection to any of this.)
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
@@ -71,9 +81,13 @@ export default async function handler(req, res) {
     name, businessModel, productFit, useCase, products,
     personaName, personaTitle,
     customIntel, senderName, voiceExamples,
-    signals, note, web, website,
+    signals, web, website,
     format, accountKind, messageType, businessId, projectId, runningUserEmail,
     fitRationale, fitSignals, nicheAssessment, bioSnapshot,
+    // generation-engine-consolidation-v1 - directive replaces the old `note`
+    // field name (same free-text per-generation steering input, formalized
+    // as a named provider below); accountIntel is new (Stage 4).
+    directive, accountIntel,
   } = req.body;
   let { voiceProfile } = req.body;
 
@@ -161,32 +175,78 @@ export default async function handler(req, res) {
 - Soft CTA only — suggest a 15-min call, don't demand it
 - No fluff, flattery, or filler — every sentence earns its place`;
 
-  const systemPrompt = [
-    isInfluencer
-      ? `You are ${sender} writing a first-touch outbound ${formatLabel} to a content creator, pitching a partnership/collaboration — not a product sale.`
-      : `You are ${sender} writing first-touch outbound ${formatLabel}s.`,
-    voiceRules,
-    outputFormat,
-    messageTypeGuidance,
-    !isInfluencer && assayCriteria ? `THIS BUSINESS'S FIT CONTEXT — ground the pitch in this, not generic assumptions:
+  // generation-engine-consolidation-v1 — composition assembled as a named,
+  // ordered list of context providers instead of positional ad hoc blocks,
+  // so a future 6th source (My Profile - see the reserved, currently-empty
+  // entry below) is a new entry here, not a rewrite of the other five. Each
+  // provider is independent: adding, reordering, or removing one doesn't
+  // touch the others' logic. This is the one composition step in the app -
+  // every real generation call site (EmailModal.js, BulkOutreachModal.js,
+  // DebriefWorkspace.js, FrontierEmailPanel.js, and AccountCardComms.js as
+  // of this SPEC) feeds this same list.
+  const CONTEXT_PROVIDERS = [
+    { name: 'voice', text: voiceRules },
+    {
+      name: 'companyIntel',
+      text: !isInfluencer && assayCriteria ? `THIS BUSINESS'S FIT CONTEXT — ground the pitch in this, not generic assumptions:
 FIT SIGNALS: ${assayCriteria.fit_signals || "(not specified)"}
 ${assayCriteria.disqualifiers ? `Avoid language that contradicts: ${assayCriteria.disqualifiers}` : ""}
-PRODUCT LANGUAGE: don't invent specific product names — describe what's offered in plain language grounded in the fit signals above.` : "",
-    outreachRules ? `THIS BUSINESS'S OUTREACH RULES — apply these on top of the voice rules above:
+PRODUCT LANGUAGE: don't invent specific product names — describe what's offered in plain language grounded in the fit signals above.` : null,
+    },
+    {
+      name: 'companyOutreachRules',
+      text: outreachRules ? `THIS BUSINESS'S OUTREACH RULES — apply these on top of the voice rules above:
 Tone: ${outreachRules.tone || "(not specified)"}
 Structure: ${outreachRules.structure || "(not specified)"}
 Key points to surface: ${outreachRules.key_points || "(not specified)"}
 Do: ${outreachRules.dos || "(not specified)"}
 Don't: ${outreachRules.donts || "(not specified)"}
-${outreachRules.example_snippets ? `Echo this kind of language where it fits naturally: ${outreachRules.example_snippets}` : ""}` : "",
-    projectGuidance ? `PROJECT-SPECIFIC GUIDANCE — layers on top of everything above, for this campaign specifically:
+${outreachRules.example_snippets ? `Echo this kind of language where it fits naturally: ${outreachRules.example_snippets}` : ""}` : null,
+    },
+    // Stage 4 — the account's own stored context (handoffNotes, recent call
+    // summary, MEDPICC), built client-side (buildAccountIntel, utils/
+    // accountIntel.js) and sent as one field. Not gated on businessId, unlike
+    // customIntel below — this is the account's own data, not the AE's
+    // global product docs, so the cross-business-leak guard that gates
+    // customIntel doesn't apply here.
+    {
+      name: 'accountIntel',
+      text: accountIntel ? `ACCOUNT CONTEXT — real, stored context specific to this account:\n${accountIntel.slice(0, 1500)}` : null,
+    },
+    {
+      name: 'project',
+      text: projectGuidance ? `PROJECT-SPECIFIC GUIDANCE — layers on top of everything above, for this campaign specifically:
 ${projectGuidance.objective ? `Objective: ${projectGuidance.objective}` : ""}
 ${projectGuidance.target_type ? `Target type: ${projectGuidance.target_type}` : ""}
 ${projectGuidance.ask_type ? `Ask/offer/CTA: ${projectGuidance.ask_type}` : ""}
 ${projectGuidance.project_hook ? `Hook to work in where it fits naturally: ${projectGuidance.project_hook}` : ""}
 ${projectGuidance.exclusions ? `Avoid: ${projectGuidance.exclusions}` : ""}
-${projectGuidance.outreach_example ? `Example of how this project's outreach should read:\n${projectGuidance.outreach_example}` : ""}`.trim() : "",
-    voiceExamples ? `VOICE EXAMPLES — match this tone and length exactly:\n${voiceExamples.slice(0, 1500)}` : "",
+${projectGuidance.outreach_example ? `Example of how this project's outreach should read:\n${projectGuidance.outreach_example}` : ""}`.trim() : null,
+    },
+    // Stage 3 — free-text, per-generation steering (was `note`/"AE context",
+    // renamed and formalized as its own provider). Optional, additive - an
+    // absent directive falls back to Project's structured fields alone,
+    // exactly as before this SPEC. Placed after Project so it reads as the
+    // most specific, most recent instruction, explicitly allowed to override
+    // where the two conflict (e.g. "keep this one under 80 words").
+    {
+      name: 'directive',
+      text: directive ? `GENERATION DIRECTIVE — an explicit instruction for this specific message. Treat this as taking priority over the general guidance above where they conflict:\n${directive.slice(0, 800)}` : null,
+    },
+    // Reserved for "My Profile" (per-person role/objective per business) -
+    // not built yet, no schema exists. Wiring it in later means filling in
+    // this provider's text, not restructuring the other five.
+    { name: 'userProfile', text: null },
+    { name: 'voiceExamples', text: voiceExamples ? `VOICE EXAMPLES — match this tone and length exactly:\n${voiceExamples.slice(0, 1500)}` : null },
+  ];
+
+  const systemPrompt = [
+    isInfluencer
+      ? `You are ${sender} writing a first-touch outbound ${formatLabel} to a content creator, pitching a partnership/collaboration — not a product sale.`
+      : `You are ${sender} writing first-touch outbound ${formatLabel}s.`,
+    outputFormat,
+    messageTypeGuidance,
+    ...CONTEXT_PROVIDERS.map(p => p.text),
   ].filter(Boolean).join("\n\n");
 
   const creatorContext = isInfluencer
@@ -226,7 +286,6 @@ ${projectGuidance.outreach_example ? `Example of how this project's outreach sho
     useCase           ? `Top use case: ${useCase}` : null,
     products?.length  ? `Relevant products: ${products.join(", ")}` : null,
     signals?.length   ? `Account signals: ${signals.join(", ")}` : null,
-    note              ? `AE context: ${note}` : null,
     // outreach-intelligence-v1 Section 0b follow-up — customIntel is
     // getActiveIntel()'s raw output: global, not business-scoped, still
     // holding the original fintech product docs (Core Verify etc). Gated on

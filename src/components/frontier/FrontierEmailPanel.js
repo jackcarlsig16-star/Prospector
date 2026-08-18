@@ -87,7 +87,7 @@ export default function FrontierEmailPanel({ entry, onClose, activeUser, onLogSe
       useCase:entry.useCase||"", products:entry.products||[],
       personaName:entry.contactName||"", personaTitle:entry.contactTitle||"",
       customIntel:getActiveIntel(), senderName, voiceExamples:getActiveVoice(senderName), voiceProfile:getVoiceProfile(senderName, isBDR ? BDR_DEFAULT_VOICE : undefined),
-      signals:entry.signals||[], note:entry.note||"", web:entry.web||entry.website||"",
+      signals:entry.signals||[], directive:entry.note||"", web:entry.web||entry.website||"",
     })}).then(r=>r.json()).then(d=>{
       const raw = d.email || d.error || "Failed.";
       const m = raw.match(/^\s*Subject:\s*(.+?)\r?\n\r?\n([\s\S]*)$/);
@@ -105,7 +105,7 @@ export default function FrontierEmailPanel({ entry, onClose, activeUser, onLogSe
       useCase:entry.useCase||"", products:entry.products||[],
       personaName:entry.contactName||"", personaTitle:entry.contactTitle||"",
       customIntel:getActiveIntel(), senderName, voiceExamples:getActiveVoice(senderName), voiceProfile:getVoiceProfile(senderName, isBDR ? BDR_DEFAULT_VOICE : undefined),
-      signals:entry.signals||[], note:entry.note||"", web:entry.web||entry.website||"",
+      signals:entry.signals||[], directive:entry.note||"", web:entry.web||entry.website||"",
       format:"linkedin_note",
     })}).then(r=>r.json()).then(d=>{
       const raw = d.email || "";

@@ -4,11 +4,17 @@ import { getActiveIntel } from '../utils/assay';
 import { getActiveVoice, getVoiceProfile, voiceProfileKey } from '../constants/voice';
 import { UCS_DATA } from '../constants/products';
 import { getListsForBusiness, linkAccountToLists, saveVoiceProfile, getListIdsForAccount } from '../utils/db';
+import { buildAccountIntel } from '../utils/accountIntel';
 
 // account-card-color-fix-and-guided-generate-v1 Part B
+// generation-engine-consolidation-v1 Stage 1 - 'reply' added, real new
+// messageType (a reply to a specific inbound message, not a proactive
+// follow-up) rather than force-fitting AccountCardComms.js's old "reply"
+// case onto follow_up.
 const MESSAGE_TYPES = [
   { id: 'cold_outreach', label: 'Cold Outreach' },
   { id: 'follow_up', label: 'Follow-up' },
+  { id: 'reply', label: 'Reply' },
   { id: 'warm_intro', label: 'Warm Intro' },
   { id: 'custom', label: 'Custom' },
 ];
@@ -118,7 +124,8 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
         businessId:business?.id,
         projectId: selectedProjectId || undefined,
         messageType: !autoStart ? messageType : undefined,
-        note: !autoStart && context.trim() ? context.trim() : undefined,
+        directive: !autoStart && context.trim() ? context.trim() : undefined,
+        accountIntel: buildAccountIntel(account),
         ...(isInfluencer ? {
           fitRationale:influencerDetail?.fit_rationale||"",
           fitSignals:influencerDetail?.fit_signals||[],
@@ -157,7 +164,7 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
       <p style={{ ...mono, margin:"0 0 8px", fontSize:11, fontWeight:600, color:C.mut, textTransform:"uppercase", letterSpacing:"0.06em" }}>Message type</p>
       <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:16 }}>
         {MESSAGE_TYPES.map(t => (
-          <button key={t.id} onClick={()=>{ setMessageType(t.id); if (t.id === 'custom') contextRef.current?.focus(); }}
+          <button key={t.id} onClick={()=>{ setMessageType(t.id); if (t.id === 'custom' || t.id === 'reply') contextRef.current?.focus(); }}
             style={{ ...mono, fontSize:12, padding:"7px 14px", borderRadius:6, cursor:"pointer",
               background: messageType===t.id ? `${C.gold}18` : "transparent",
               border: `1px solid ${messageType===t.id ? C.gold : C.brd}`,
@@ -167,9 +174,9 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
         ))}
       </div>
 
-      <p style={{ ...mono, margin:"0 0 8px", fontSize:11, fontWeight:600, color:C.mut, textTransform:"uppercase", letterSpacing:"0.06em" }}>Additional context <span style={{ fontWeight:400, textTransform:"none", letterSpacing:0, color:C.dim }}>(optional)</span></p>
+      <p style={{ ...mono, margin:"0 0 8px", fontSize:11, fontWeight:600, color:C.mut, textTransform:"uppercase", letterSpacing:"0.06em" }}>Directive <span style={{ fontWeight:400, textTransform:"none", letterSpacing:0, color:C.dim }}>(optional)</span></p>
       <textarea ref={contextRef} value={context} onChange={e=>setContext(e.target.value)} rows={3}
-        placeholder="e.g. mention their recent funding round"
+        placeholder={messageType === 'reply' ? "Paste the message you're replying to" : "e.g. mention their recent funding round, keep this one under 80 words"}
         style={{ width:"100%", fontSize:13, lineHeight:1.6, padding:"10px 12px", background:C.bg, border:`1px solid ${C.brd}`, borderRadius:6, color:C.txt, outline:"none", resize:"vertical", fontFamily:"inherit", boxSizing:"border-box", marginBottom:16 }}/>
 
       {business?.id && (

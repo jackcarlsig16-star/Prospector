@@ -5,6 +5,7 @@ import { runPathToCloseUpdate } from '../../../utils/pathToClose';
 import { getValidGmailToken } from '../../../utils/getValidGmailToken';
 import { getVoiceProfile, getActiveVoice } from '../../../constants/voice';
 import { getActiveIntel } from '../../../utils/assay';
+import { buildAccountIntel } from '../../../utils/accountIntel';
 import DebriefPanel from '../../debrief/DebriefPanel';
 import FollowUpEmailModal from '../../FollowUpEmailModal';
 
@@ -89,7 +90,7 @@ const DebriefWorkspace = forwardRef(function DebriefWorkspace({ acc, business, o
           personaName: topPersona?.name || '', personaTitle: topPersona?.title || '',
           customIntel: getActiveIntel(), senderName: voiceUserName,
           voiceExamples: getActiveVoice(voiceUserName), voiceProfile,
-          note, web: acc.web, accountKind: acc.accountKind,
+          directive: note, accountIntel: buildAccountIntel(acc), web: acc.web, accountKind: acc.accountKind,
           businessId: business?.id, messageType: 'follow_up',
         }),
       });

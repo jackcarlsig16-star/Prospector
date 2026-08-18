@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { C, mono } from '../constants/colors';
 import { getAccountsForProjectList, getVoiceProfileForEmail } from '../utils/db';
 import { getActiveIntel } from '../utils/assay';
+import { buildAccountIntel } from '../utils/accountIntel';
 
 const PROGRESS_KEY_PREFIX = "prospector_outreach_gen_progress_";
 const isRateLimit = err => /429|rate.?limit|too many/i.test(err?.message || err || "");
@@ -53,7 +54,7 @@ export default function BulkOutreachModal({ business, project, userEmail, active
       body: JSON.stringify({
         name: acc.name, businessModel: acc.bm || "", productFit: acc.pf || "",
         useCase: acc.useCase || "", products: acc.prods || [], signals: acc.sigs || [],
-        customIntel, web: acc.web,
+        customIntel, accountIntel: buildAccountIntel(acc), web: acc.web,
         businessId: business.id, projectId: project.id, runningUserEmail: userEmail,
         senderName: activeUser?.name || userEmail, messageType: 'cold_outreach', accountKind: acc.accountKind,
       }),
