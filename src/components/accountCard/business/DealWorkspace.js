@@ -23,11 +23,33 @@ const SH = { ...mono, fontSize: 9, fontWeight: 600, textTransform: "uppercase", 
 // flat fields for any account not yet re-assayed since this shipped (dual-
 // write means legacy fields stay correct too, just not the source of truth
 // going forward).
+const PILL_STYLE = { ...mono, fontSize: 10, color: CARD.textMuted, background: CARD.surface, border: `1px solid ${CARD.border}`, borderRadius: 3, padding: "2px 6px" };
+
+// surface-existing-intel-v1 — internal-only helper for Signal Breakdown's
+// four sub-arrays, which repeat the same labeled-pill-row shape. Not a
+// shared/exported Pill component (explicitly out of scope) - scoped to this
+// file, just avoiding four near-identical blocks inline.
+function SignalSubGroup({ label, items }) {
+  if (!items?.length) return null;
+  return (
+    <div style={{ marginTop: 6 }}>
+      <p style={{ ...mono, fontSize: 9, color: CARD.textMuted }}>{label}</p>
+      <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>
+        {items.map((s, i) => <span key={i} style={PILL_STYLE}>{s}</span>)}
+      </div>
+    </div>
+  );
+}
+
 export function IntelligenceSummary({ acc }) {
   const detail = acc.businessDetail;
   const businessModel = detail?.business_model || acc.bm;
   const fitRationale = detail?.fit_rationale || acc.pf;
   const products = detail?.fit_signals?.products?.length ? detail.fit_signals.products : acc.prods;
+  const keySignals = detail?.fit_signals?.key_signals || [];
+  const tractionSignals = detail?.fit_signals?.traction_signals || [];
+  const breakdown = detail?.fit_signals?.signal_breakdown;
+  const disqualifier = detail?.disqualifier;
   return (
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
@@ -42,7 +64,45 @@ export function IntelligenceSummary({ acc }) {
       </div>
       {products?.length > 0 && (
         <div style={{ marginTop: 8, display: "flex", gap: 4, flexWrap: "wrap" }}>
-          {products.map(p => <span key={p} style={{ ...mono, fontSize: 10, color: CARD.textMuted, background: CARD.surface, border: `1px solid ${CARD.border}`, borderRadius: 3, padding: "2px 6px" }}>{p}</span>)}
+          {products.map(p => <span key={p} style={PILL_STYLE}>{p}</span>)}
+        </div>
+      )}
+      {disqualifier && (
+        <div style={{ marginTop: 12 }}>
+          <p style={SH}>Disqualifier</p>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: CARD.textSecondary, lineHeight: 1.6 }}>{disqualifier}</p>
+        </div>
+      )}
+      {keySignals.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <p style={SH}>Key Signals</p>
+          <div style={{ marginTop: 8, display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {keySignals.map((s, i) => <span key={i} style={PILL_STYLE}>{s}</span>)}
+          </div>
+        </div>
+      )}
+      {tractionSignals.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <p style={SH}>Traction Signals</p>
+          <div style={{ marginTop: 8, display: "flex", gap: 4, flexWrap: "wrap" }}>
+            {tractionSignals.map((s, i) => <span key={i} style={PILL_STYLE}>{s}</span>)}
+          </div>
+        </div>
+      )}
+      {breakdown && (
+        <div style={{ marginTop: 12 }}>
+          <p style={SH}>Signal Breakdown</p>
+          {(breakdown.topSignal || breakdown.signalScore != null) && (
+            <p style={{ margin: "4px 0 0", fontSize: 12, color: CARD.textSecondary }}>
+              {breakdown.topSignal ? `Top Signal: ${breakdown.topSignal}` : ""}
+              {breakdown.topSignal && breakdown.signalScore != null ? " · " : ""}
+              {breakdown.signalScore != null ? `Score: ${breakdown.signalScore}` : ""}
+            </p>
+          )}
+          <SignalSubGroup label="Payment Signals" items={breakdown.paymentSignals} />
+          <SignalSubGroup label="Onboarding Signals" items={breakdown.onboardingSignals} />
+          <SignalSubGroup label="Scale Signals" items={breakdown.scaleSignals} />
+          <SignalSubGroup label="Platform Signals" items={breakdown.platformSignals} />
         </div>
       )}
     </div>
