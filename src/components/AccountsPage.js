@@ -181,6 +181,10 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
   const [riskF,setRiskF]=useState(false);
   const [search,setSearch]=useState("");
   const [stageFilters,setStageFilters]=useState([]);
+  // account-taxonomy-and-creation-upgrade-v1 Stage 8 - single-select, not
+  // multi like tierFilters/stageFilters (mirrors the Tier row's own
+  // All/single-select pattern). 'All' = no filtering.
+  const [relFilter,setRelFilter]=useState('All');
   const toggleFilter=(setArr,v)=>setArr(prev=>prev.includes(v)?prev.filter(x=>x!==v):[...prev,v]);
   const [favF,setFavF]=useState(false);
   const [assignedBdrF,setAssignedBdrF]=useState(null);
@@ -458,16 +462,21 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
         a.personas?.some(p=>p.name?.toLowerCase().includes(q))
       );
     }
+    if(relFilter!=='All')r=r.filter(a=>(a.relationshipType||'Prospect/Lead')===relFilter);
     if(tierFilters.length>0)r=r.filter(a=>tierFilters.includes(a.tier));
     if(productFilters.length>0)r=r.filter(a=>productFilters.some(p=>a.prods?.includes(p)));
-    if(stageFilters.length>0)r=r.filter(a=>stageFilters.includes(a.stage||"Prospecting"));
+    // Stage only applies within Prospect/Lead - a Client/Partner/Competitor
+    // filter view has no stage pills to filter by (see the row below), so
+    // an active stageFilters selection from a prior Prospect/Lead view
+    // shouldn't silently filter out every account in a different view.
+    if(stageFilters.length>0&&(relFilter==='All'||relFilter==='Prospect/Lead'))r=r.filter(a=>stageFilters.includes(a.stage||"Prospecting"));
     if(riskF)r=r.filter(a=>isStale(lastTouch(a))||isWarn(lastTouch(a)));
     if(favF)r=r.filter(a=>favorites.has(a.id));
     if(aeF!=="all")r=r.filter(a=>a.aeId===aeF);
     if(assignedBdrF)r=r.filter(a=>frontier.some(f=>f.name.toLowerCase()===a.name.toLowerCase()&&(f.assignedToId===assignedBdrF.id||f.assignedTo===assignedBdrF.name)));
     if(managerSelectedAeId&&managerSelectedAeId!=='all')r=r.filter(a=>a.aeId===managerSelectedAeId);
     return r.sort((a,b)=>(a.score||9)-(b.score||9));
-  },[visibleAccounts,tierFilters,productFilters,riskF,stageFilters,favF,favorites,search,aeF,assignedBdrF,frontier,managerSelectedAeId]);
+  },[visibleAccounts,relFilter,tierFilters,productFilters,riskF,stageFilters,favF,favorites,search,aeF,assignedBdrF,frontier,managerSelectedAeId]);
 
   const childIdSet=useMemo(()=>new Set(filtered.flatMap(a=>a.childIds||[])),[filtered]);
   const topLevel=useMemo(()=>filtered.filter(a=>!childIdSet.has(a.id)),[filtered,childIdSet]);
@@ -710,6 +719,33 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
       {pageTab === 'accounts' && <>
       <style>{`@keyframes apBlink{50%{opacity:0}}`}</style>
 
+      {/* ── ROW 0 — Relationship Type (top-level segment, account-taxonomy-
+          and-creation-upgrade-v1 Stage 8) — Stage only means anything
+          within Prospect/Lead, so it's the outermost filter, everything
+          else (Tier/Stage/Product/etc.) filters within whatever segment is
+          selected here. ── */}
+      <div style={{ display:"flex", gap:6, marginBottom:8, flexWrap:"wrap", alignItems:"center" }}>
+        {[
+          { id:'All',           c:NEON },
+          { id:'Prospect/Lead', c:NEON },
+          { id:'Client',        c:C.green },
+          { id:'Partner',       c:C.purple },
+          { id:'Competitor',    c:C.red },
+        ].map(({ id, c })=>{
+          const active = relFilter===id;
+          return (
+            <button key={id} onClick={()=>setRelFilter(id)}
+              style={{ ...mono, height:26, fontSize:11, padding:'0 12px', borderRadius:2, letterSpacing:'0.04em',
+                border:`1px solid ${active?c:'#222'}`,
+                background:active?`${c}14`:'transparent',
+                color:active?c:'#666',
+                cursor:'pointer', textShadow:active?`0 0 6px ${c}55`:'none', transition:'all 0.12s' }}>
+              {id}
+            </button>
+          );
+        })}
+      </div>
+
       {/* ── ROW 1 — Search + Tier + Favorites + At Risk ──────────────────── */}
       <div style={{ display:"flex", gap:6, marginBottom:8, flexWrap:"wrap", alignItems:"center" }}>
         {/* Terminal search */}
@@ -809,9 +845,17 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
         const Divider = () => <span style={{ width:1, height:14, background:'#222', margin:'0 6px', alignSelf:'center' }}/>;
         const Label = ({ children }) => <span style={{ ...mono, fontSize:10, color:'#555', textTransform:'uppercase', letterSpacing:'0.1em', marginRight:5 }}>{children}</span>;
 
+        // Stage 8 - Stage only means anything within Prospect/Lead. Omitted
+        // entirely (not disabled) for the same reason the edit-view Stage
+        // control was omitted in Stage 4 - a visible-but-irrelevant filter
+        // row would just invite confusion in the Client/Partner/Competitor
+        // views.
+        const showStage = relFilter==='All'||relFilter==='Prospect/Lead';
+
         return (
           <div style={{ display:'flex', gap:4, marginBottom:8, flexWrap:'wrap', alignItems:'center' }}>
             {/* STAGE */}
+            {showStage && <>
             <Label>Stage</Label>
             {DEAL_STAGES.map(s=>{
               const active = stageFilters.includes(s.id);
@@ -826,6 +870,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
                 </button>
               );
             })}
+            </>}
 
             {/* ASSIGNED — only when AE has assigned BDRs */}
             {bdrUsers.length > 0 && (
@@ -888,7 +933,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
       )}
 
       {/* Active filter summary — slim single line, only when filters active */}
-      {(tierFilters.length>0||productFilters.length>0||stageFilters.length>0||riskF||favF||search||assignedBdrF)&&(()=>{
+      {(relFilter!=='All'||tierFilters.length>0||productFilters.length>0||stageFilters.length>0||riskF||favF||search||assignedBdrF)&&(()=>{
         const chip = (key, label, onRemove) => (
           <span key={key} style={{ ...mono, fontSize:10, padding:'2px 7px', border:`1px solid ${NEON}55`, borderRadius:2, color:NEON, display:'inline-flex', alignItems:'center', gap:5, letterSpacing:'0.04em' }}>
             {label}
@@ -902,13 +947,14 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
             </span>
             <span style={{ color:'#222' }}>·</span>
             {search && chip('q', `"${search}"`, ()=>setSearch(''))}
+            {relFilter!=='All' && chip('rel', relFilter, ()=>setRelFilter('All'))}
             {tierFilters.map(t => chip(`t-${t}`, t, ()=>setTierFilters(prev=>prev.filter(x=>x!==t))))}
             {stageFilters.map(sId => chip(`s-${sId}`, sId, ()=>setStageFilters(prev=>prev.filter(x=>x!==sId))))}
             {productFilters.map(p => chip(`p-${p}`, p, ()=>setProductFilters(prev=>prev.filter(x=>x!==p))))}
             {riskF && chip('risk', '⚠ At Risk', ()=>setRiskF(false))}
             {favF && chip('fav', '★ Favorites', ()=>setFavF(false))}
             {assignedBdrF && chip('bdr', `👤 ${assignedBdrF.name.split(' ')[0]}`, ()=>setAssignedBdrF(null))}
-            <button onClick={()=>{setTierFilters([]);setProductFilters([]);setStageFilters([]);setRiskF(false);setFavF(false);setSearch('');setAssignedBdrF(null);}} style={{ ...mono, fontSize:10, padding:'2px 7px', background:'transparent', border:`1px solid #333`, color:'#5a6a5a', borderRadius:2, cursor:'pointer' }}>Clear all ×</button>
+            <button onClick={()=>{setRelFilter('All');setTierFilters([]);setProductFilters([]);setStageFilters([]);setRiskF(false);setFavF(false);setSearch('');setAssignedBdrF(null);}} style={{ ...mono, fontSize:10, padding:'2px 7px', background:'transparent', border:`1px solid #333`, color:'#5a6a5a', borderRadius:2, cursor:'pointer' }}>Clear all ×</button>
           </div>
         );
       })()}
