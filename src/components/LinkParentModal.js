@@ -1,8 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { mono } from '../constants/colors';
+import { mono, TIER_COLOR } from '../constants/colors';
 import { T } from '../constants/tokens';
-
-const TIER_COLOR = { Gold: T.tier.gold, Silver: T.tier.silver, Tin: T.tier.tin, Slag: T.tier.slag };
 
 export default function LinkParentModal({ acc, allAccounts = [], onPick, onClose }) {
   const [query, setQuery] = useState("");

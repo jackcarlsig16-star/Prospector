@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { C, mono } from '../constants/colors';
+import { C, mono, TIER_COLOR } from '../constants/colors';
 import { T } from '../constants/tokens';
 import { STANDARD_STEPS, PARTNER_STEPS, GAMING_STEPS, STEP_STATUSES, getAllCompliance, getCompliance, saveCompliance } from '../utils/storage';
 import { syncComplianceFromSFDC } from '../utils/sfdcSync';
@@ -539,8 +539,7 @@ export default function ProductionRequestsPage({ accounts=[], setAccounts, onNav
 
           {rows.map(({ acc, comp, steps, stepData, isBlocked, allApproved, currentStep, daysInStep, linkedTask, doneTask, trackIds, isStale, gamingStepData, gamingPrereqsMet }) => {
             const tier = acc.tier;
-            const TIER_C = { Gold:C.gold, Silver:"#9CA3AF", Bronze:"#CD7F32" };
-            const tc = TIER_C[tier] || C.dim;
+            const tc = TIER_COLOR[tier] || C.dim;
             const ids = acc.clientIds || [];
             const isIdDropOpen = openIdDropdown === acc.id;
             const sfUrl = toSfdcUrl(acc.sfdc);

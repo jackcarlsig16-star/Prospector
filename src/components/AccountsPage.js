@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { C, mono } from '../constants/colors';
+import { C, mono, TIER_COLOR } from '../constants/colors';
 import { isStale, isWarn } from '../utils/staleness';
 import { getActiveIntel, getActiveExamples, clientAssay, mapAssayResultToBusinessDetails } from '../utils/assay';
 import { upsertAccountBusinessDetails, updateAccountRow } from '../utils/db';
@@ -19,7 +19,6 @@ import { T } from '../constants/tokens';
 const NEON  = T.neon;
 const AMBER = T.amber;
 const RED   = T.red;
-const TIER_HEX = { Gold: T.tier.gold, Silver: T.tier.silver, Tin: T.tier.tin, Slag: T.tier.slag };
 const BDR_SELECTED_AE_KEY = 'prospector_bdr_selected_ae';
 
 const loadManagerNotes = () => { try { return JSON.parse(localStorage.getItem("prospector_manager_notes")||"{}"); } catch { return {}; } };
@@ -679,7 +678,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
         <div title={`Gold ${cnt.Gold||0} · Silver ${cnt.Silver||0} · Tin ${cnt.Tin||0} · Slag ${cnt.Slag||0}`}
           style={{ height:3, background:'#0a0f0a', display:"flex", overflow:"hidden", gap:0, marginBottom:12, borderRadius:1 }}>
           {["Gold","Silver","Tin","Slag"].map(t=>(
-            <div key={t} style={{ width:`${tot>0?(cnt[t]/tot)*100:0}%`, background:TIER_HEX[t], transition:"width 0.3s" }}/>
+            <div key={t} style={{ width:`${tot>0?(cnt[t]/tot)*100:0}%`, background:TIER_COLOR[t], transition:"width 0.3s" }}/>
           ))}
         </div>
       )}
@@ -724,7 +723,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
           return tierPills.map(({ t, ic })=>{
             const isAll = t==='All';
             const active = isAll ? tierFilters.length===0 : tierFilters.includes(t);
-            const color = isAll ? NEON : TIER_HEX[t];
+            const color = isAll ? NEON : TIER_COLOR[t];
             return (
               <button key={t} onClick={()=>isAll?setTierFilters([]):toggleFilter(setTierFilters,t)}
                 style={{ ...mono, height:28, fontSize:11, padding:'0 12px', borderRadius:2, letterSpacing:'0.04em',

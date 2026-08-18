@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { C, mono } from '../constants/colors';
+import { C, mono, TIER_COLOR } from '../constants/colors';
 import { T } from '../constants/tokens';
 import { staleDays, isStale, isWarn } from '../utils/staleness';
 import { getAccountsForBusiness } from '../utils/db';
@@ -25,7 +25,6 @@ import BriefPanel from './BriefPanel';
 const lastTouch = acc => acc.last;
 const CARD = () => ({ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: '12px 14px' });
 const SH = () => ({ ...mono, fontSize: 10, color: T.cyan, textTransform: 'uppercase', letterSpacing: '0.09em', fontWeight: 600, marginBottom: 8 });
-const TIER_HEX = { Gold: T.tier.gold, Silver: T.tier.silver, Tin: T.tier.tin, Slag: T.tier.slag };
 
 function SharedLabel() {
   return (
@@ -125,7 +124,7 @@ export default function BusinessCommandCenterTab({ business, sharedAccounts=[], 
         ) : (
           topGems.map(({ acc: a, reason }) => (
             <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #1e293b22' }}>
-              <span style={{ ...mono, fontSize: 10, color: TIER_HEX[a.tier] || '#6b7280', border: `1px solid ${C.brd}`, borderRadius: 3, padding: '1px 5px', flexShrink: 0 }}>{a.tier || 'unscored'}</span>
+              <span style={{ ...mono, fontSize: 10, color: TIER_COLOR[a.tier] || '#6b7280', border: `1px solid ${C.brd}`, borderRadius: 3, padding: '1px 5px', flexShrink: 0 }}>{a.tier || 'unscored'}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12, color: '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</div>
                 <div style={{ ...mono, fontSize: 10, color: '#6b7280' }}>{reason}</div>

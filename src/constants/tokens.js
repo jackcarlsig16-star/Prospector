@@ -9,10 +9,14 @@ export const T = {
   cyan:    '#00F5FF',
   magenta: '#FF3DFF',
   red:     '#FF4444',
+  // tier-badge-metal-colors-v1 - tin nudged off silver's blue-grey hue
+  // (was #8899AA, read as "darker silver" not a distinct metal) toward a
+  // duller, warmer grey so all four tiers are distinguishable by hue, not
+  // just lightness.
   tier: {
     gold:   '#FFD700',
     silver: '#7EB8D4',
-    tin:    '#8899AA',
+    tin:    '#8C8C82',
     slag:   '#555566',
   },
   bg: {

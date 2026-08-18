@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { C, mono } from '../constants/colors';
+import { C, mono, TIER_COLOR } from '../constants/colors';
 import { productMonthlyCost, monthUsersAt } from '../utils/pricingMath';
 import { CARD, kindTokens } from './accountCard/tokens';
 import AccountBadge from './accountCard/AccountBadge';
@@ -118,7 +118,7 @@ export default function AccountCard({
   // account-business-details-v1 — new table first, legacy field as fallback
   // for accounts not yet re-assayed since this shipped (dual-write).
   const displayTier = acc.businessDetail?.tier || acc.tier;
-  if (!isInfluencer && displayTier) signals.push(<AccountBadge key="tier" tone={kind.accent}>{displayTier}</AccountBadge>);
+  if (!isInfluencer && displayTier) signals.push(<AccountBadge key="tier" tone={TIER_COLOR[displayTier] || kind.accent}>{displayTier}</AccountBadge>);
   // surface-existing-intel-v1 — score was stored (account_business_details.score)
   // but never rendered anywhere on this card, only the derived tier label.
   const displayScore = acc.businessDetail?.score ?? acc.score;

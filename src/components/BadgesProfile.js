@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { C } from '../constants/colors';
+import { C, TIER_COLOR } from '../constants/colors';
 import { mono } from '../constants/colors';
 import { staleDays } from '../utils/staleness';
 
@@ -486,7 +486,7 @@ function ProfilePanel({ user, accounts=[], tasks=[], snapshots=[], stats={}, ear
                     <div key={w.id} style={{ display:"flex", alignItems:"center", gap:8, padding:"5px 8px", background:C.sur, borderRadius:5 }}>
                       <span style={{ fontSize:13, lineHeight:1 }}>{w.claimJumper?"🎯":"🏅"}</span>
                       <span style={{ ...mono, fontSize:11, color:C.txt, flex:1 }}>{w.accountName}</span>
-                      {w.tier&&<span style={{ ...mono, fontSize:9, padding:"1px 6px", background:`${w.tier==="Gold"?C.gold:w.tier==="Silver"?C.tin:C.dim}22`, border:`1px solid ${w.tier==="Gold"?C.gold:w.tier==="Silver"?C.tin:C.dim}44`, color:w.tier==="Gold"?C.gold:w.tier==="Silver"?C.tin:C.mut, borderRadius:3 }}>{w.tier}</span>}
+                      {w.tier&&<span style={{ ...mono, fontSize:9, padding:"1px 6px", background:`${TIER_COLOR[w.tier]||C.dim}22`, border:`1px solid ${TIER_COLOR[w.tier]||C.dim}44`, color:TIER_COLOR[w.tier]||C.mut, borderRadius:3 }}>{w.tier}</span>}
                       {w.closedAt&&<span style={{ ...mono, fontSize:9, color:C.dim, flexShrink:0 }}>{new Date(w.closedAt).toLocaleDateString("en-US",{month:"short",day:"numeric",year:"2-digit"})}</span>}
                     </div>
                   ))}

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { C, mono } from '../constants/colors';
+import { C, mono, TIER_COLOR } from '../constants/colors';
 import { staleDays } from '../utils/staleness';
 import BriefItems from './BriefItems';
 import { MODELS } from '../config/models';
@@ -26,8 +26,6 @@ const LOADING_MSGS = [
 
 const DAYS   = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-
-const TIER_C = { Gold: C.gold, Silver: "#9CA3AF", Bronze: "#CD7F32" };
 
 function fmtHeader() {
   const d = new Date();
@@ -537,7 +535,7 @@ export default function DailyDigest({ accounts=[], tasks=[], firstName="AE", onN
                           {company}
                         </span>
                         {acc?.tier && (
-                          <Badge color={TIER_C[acc.tier] || C.dim}>{acc.tier}</Badge>
+                          <Badge color={TIER_COLOR[acc.tier] || C.dim}>{acc.tier}</Badge>
                         )}
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 3 }}>
@@ -616,7 +614,7 @@ export default function DailyDigest({ accounts=[], tasks=[], firstName="AE", onN
                     <>
                       {atRiskAccounts.slice(0, 5).map(a => (
                         <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 5 }}>
-                          <Badge color={TIER_C[a.tier] || C.dim}>{a.tier}</Badge>
+                          <Badge color={TIER_COLOR[a.tier] || C.dim}>{a.tier}</Badge>
                           <span style={{ ...mono, fontSize: 11, color: C.txt, flex: 1,
                             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                             {a.name}

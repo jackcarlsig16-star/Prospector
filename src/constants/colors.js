@@ -15,6 +15,12 @@ export const TS = {
   Tin: { c: C.tin, bg: C.tinBg, b: C.tinBdr, t: C.tin, i: "○" },
   Slag: { c: C.slag, bg: C.slagBg, b: C.slagBdr, t: C.slag, i: "×" },
 };
+// tier-badge-metal-colors-v1 - the single flat tier->color lookup. Several
+// call sites had drifted into their own local Gold/Silver/Tin/Slag maps
+// (some wrong - e.g. one swapped Silver/Tin, another only had Gold/Silver/
+// Bronze and fell back to a neutral color for Tin/Slag). This is the one
+// source of truth; import this instead of redefining locally.
+export const TIER_COLOR = { Gold: TS.Gold.c, Silver: TS.Silver.c, Tin: TS.Tin.c, Slag: TS.Slag.c };
 export const mono = { fontFamily: "'SF Mono', ui-monospace, monospace" };
 // business-intel-strategy-visual-redesign-v1 — narrative body text (profile
 // field values) reads better as sans-serif; mono stays reserved for data/

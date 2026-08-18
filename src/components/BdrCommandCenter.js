@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { C, mono } from '../constants/colors';
+import { C, mono, TIER_COLOR } from '../constants/colors';
 import DailyDigest from './DailyDigest';
 import SalesCalendarWidget from './CalendarWidget';
 import { daysSinceIso } from '../utils/dates';
 import { MODELS } from '../config/models';
 
 const daysSince = (dt) => daysSinceIso(dt) ?? 999;
-const TIER_C = { Gold: C.gold, Silver: C.tin, Tin: C.mut, Slag: C.red };
 
 function Section({ title, count, color = C.mut, children, empty }) {
   return (
@@ -211,7 +210,7 @@ export default function BdrCommandCenter({
           {card.answer && <p style={{ ...mono, margin: '0 0 8px', fontSize: 11, color: '#94a3b8' }}>{card.answer}</p>}
           {(card.results || []).slice(0, 4).map((r, i) => {
             const acc = accounts.find(a => String(a.id) === String(r.account_id) || a.name === r.account_name);
-            const tc = r.tier === 'Gold' ? C.gold : r.tier === 'Silver' ? '#94a3b8' : C.dim;
+            const tc = TIER_COLOR[r.tier] || C.dim;
             return (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderTop: i === 0 ? 'none' : `1px solid #1e293b22` }}>
                 {r.tier && <span style={{ ...mono, fontSize: 9, color: tc, border: `1px solid ${tc}44`, borderRadius: 3, padding: '1px 5px', flexShrink: 0 }}>{r.tier}</span>}
@@ -237,7 +236,7 @@ export default function BdrCommandCenter({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
           {diamonds.map(acc => (
             <div key={acc.id} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 12px', background: C.card, border: `1px solid ${C.brd}`, borderRadius: 7, marginBottom: 5 }}>
-              <span style={{ ...mono, fontSize: 10, padding: '1px 6px', borderRadius: 3, background: `${TIER_C[acc.tier] || C.dim}18`, border: `1px solid ${TIER_C[acc.tier] || C.dim}44`, color: TIER_C[acc.tier] || C.dim, flexShrink: 0 }}>{acc.tier}</span>
+              <span style={{ ...mono, fontSize: 10, padding: '1px 6px', borderRadius: 3, background: `${TIER_COLOR[acc.tier] || C.dim}18`, border: `1px solid ${TIER_COLOR[acc.tier] || C.dim}44`, color: TIER_COLOR[acc.tier] || C.dim, flexShrink: 0 }}>{acc.tier}</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <p style={{ margin: 0, fontSize: 13, color: C.txt, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{acc.name}</p>
                 <p style={{ ...mono, margin: 0, fontSize: 11, color: C.mut }}>{daysSince(acc.last) < 999 ? `${daysSince(acc.last)}d since last touch` : 'No activity'}</p>
