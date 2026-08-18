@@ -327,17 +327,23 @@ export async function generateProfile(supabase, businessId) {
   // business-intel-smart-upload-v1 grew the output schema from 6 fields to
   // 13 plus a field_sources citation map covering all of them, and adaptive
   // thinking shares this same token budget. Confirmed live, twice, against
-  // real dense pasted docs (a Master Magnetics product deck, then a 15-slide
-  // decision brief): first at 4096/90s (truncated, no closing brace at all -
-  // "No JSON in profile generation response"), then again at 8192/150s on
-  // the second, even denser document. raw_synthesis had no length cap in
-  // the prompt ("a fuller synthesis covering anything else") - against rich
-  // enough source material the model tried to write a genuinely long
-  // summary instead of staying compact, which is what actually ate the
-  // budget. Now capped at ~300-500 words in the prompt itself, with these
-  // numbers raised further as headroom on top of that, not instead of it.
+  // real dense pasted docs: first at 4096 (truncated - "No JSON in profile
+  // generation response"), then again at 8192 on a denser document.
+  // raw_synthesis had no length cap in the prompt then either - now capped
+  // at ~300-500 words, with this number as headroom on top of that fix, not
+  // instead of it. Real usage since (business_anthropic_usage, all real
+  // calls): 1846, 4096(capped/failed), 5857, 8192(capped/failed), 5718,
+  // 4447, 9796 output tokens as the input log has grown from 6k to 22k
+  // tokens - the largest real output so far (9796) was already 82% of the
+  // prior 12000 cap. Fixed, not dynamic: input size (and therefore output
+  // size) keeps climbing under the current full-log-resend architecture
+  // regardless of what cap is set here, and that's the thing the
+  // delta-synthesis design (business-intel-smart-upload-v1 Step 3) is
+  // meant to actually fix - a dynamic formula here would mostly become
+  // dead code once that ships. 20000 gives >2x headroom over the largest
+  // real output seen, comfortably inside Sonnet's real output ceiling.
   const data = await callAnthropic({
-    max_tokens: isLight ? 2048 : 12000,
+    max_tokens: isLight ? 2048 : 20000,
     timeoutMs: isLight ? 90000 : 180000,
     system: isLight ? LIGHT_SYSTEM_PROMPT : FULL_SYSTEM_PROMPT,
     messages: [{ role: 'user', content: `INTEL LOG for ${business.name}, oldest to newest:\n\n${intelLog}` }],
