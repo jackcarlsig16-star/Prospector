@@ -19,13 +19,13 @@ export function getSupabase() {
 // that, it's allowed more headroom than Assay's quicker per-account check.
 const SITE_TEXT_TRUNCATE_CHARS = 12000;
 
-async function callAnthropic({ system, messages, tools, max_tokens, supabase, businessId, callType, model = MODELS.STANDARD }) {
+async function callAnthropic({ system, messages, tools, max_tokens, supabase, businessId, callType, model = MODELS.STANDARD, timeoutMs = 90000 }) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('ANTHROPIC_API_KEY not configured');
 
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
-    signal: AbortSignal.timeout(90000), // every other Anthropic/external call in this app bounds its fetch - this one was the one gap
+    signal: AbortSignal.timeout(timeoutMs), // every other Anthropic/external call in this app bounds its fetch - this one was the one gap. Per-call override (business-intel-smart-upload-v1) - confirmed live that the full-depth profile synthesis (8192 tokens, adaptive thinking, a real dense doc) can genuinely exceed the 90s default other/faster calls are fine with.
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': key,
@@ -332,6 +332,7 @@ export async function generateProfile(supabase, businessId) {
   // generation response") at the old 4096 cap.
   const data = await callAnthropic({
     max_tokens: isLight ? 2048 : 8192,
+    timeoutMs: isLight ? 90000 : 150000,
     system: isLight ? LIGHT_SYSTEM_PROMPT : FULL_SYSTEM_PROMPT,
     messages: [{ role: 'user', content: `INTEL LOG for ${business.name}, oldest to newest:\n\n${intelLog}` }],
     supabase,
