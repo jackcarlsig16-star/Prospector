@@ -14,6 +14,17 @@ const CANDIDATES = [
   { field: 'products',     label: 'Products',     kind: 'array', limit: 2 },
 ];
 
+// Reported real (Master Magnetics' core_problem was landing mid-word) -
+// a plain character slice doesn't respect word boundaries. Trim back to
+// the last full word instead of cutting wherever the count lands.
+function truncateAtWord(text, max) {
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
+  const lastSpace = cut.lastIndexOf(' ');
+  const trimmed = (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).replace(/[.,;:]+$/, '');
+  return trimmed + '…';
+}
+
 export default function BusinessIntelKpiStrip({ profile, accent = C.gold }) {
   if (!profile) return null;
 
@@ -24,7 +35,7 @@ export default function BusinessIntelKpiStrip({ profile, accent = C.gold }) {
       return items.length ? { ...c, display: items.slice(0, c.limit) } : null;
     }
     if (!raw) return null;
-    const display = c.truncate && raw.length > c.truncate ? raw.slice(0, c.truncate) + '…' : raw;
+    const display = c.truncate ? truncateAtWord(raw, c.truncate) : raw;
     return { ...c, display };
   }).filter(Boolean);
 
