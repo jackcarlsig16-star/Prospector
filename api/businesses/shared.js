@@ -89,6 +89,8 @@ Base every field on the notes provided - do not invent facts they don't support.
 
 const FULL_SYSTEM_PROMPT = `You synthesize accumulated research and notes about a company into a structured business profile. Respond with ONLY a JSON object, no other text.
 
+This is a well-defined extraction and synthesis task, not one requiring extensive open-ended exploration - reason efficiently and move directly to producing the JSON once you have enough grounding for each field, rather than deliberating at length.
+
 Return exactly this shape:
 {
   "vision": "the company's stated or inferred vision/mission, 2-3 sentences",
