@@ -8,6 +8,7 @@ import AccountHeader from './accountCard/AccountHeader';
 import AccountStateBar from './accountCard/AccountStateBar';
 import AccountIntelligence from './accountCard/AccountIntelligence';
 import AccountActivityPanel from './accountCard/AccountActivityPanel';
+import AddNoteBox from './accountCard/AddNoteBox';
 import { groupByTier } from './accountCard/actions/ActionRegistry';
 import PrimaryAction from './accountCard/actions/PrimaryAction';
 import ActionGroup from './accountCard/actions/ActionGroup';
@@ -195,6 +196,7 @@ export default function AccountCard({
           {business && <LinkedProjects accountId={acc.id} accountListIds={accountListIds} projects={projects} onLinked={listId => onAccountLinkedToProject?.(acc.id, listId)} />}
 
           <AccountActivityPanel acc={acc} />
+          {!isInfluencer && onUpdate && <AddNoteBox acc={acc} userEmail={userEmail} onUpdate={onUpdate} />}
 
           {/* assay-safety-and-intel-visibility-v1 — bare raw dump of
               account_business_details, unstyled on purpose. Exists so any

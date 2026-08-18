@@ -46,9 +46,14 @@ export async function startBulkAssay({ accounts, onSaveAccounts }) {
   for (const acc of queue) {
     if (runner.cancelled) break;
     try {
+      // account-taxonomy-and-creation-upgrade-v1 Stage 7 - per-account
+      // combine, same reasoning as AccountsPage.js's assayOneWithRetry:
+      // customIntel is the shared global library for this whole background
+      // run, combined per-account here rather than shared across accounts.
+      const combinedIntel = [acc.handoffNotes, customIntel].filter(Boolean).join('\n\n---\n\n');
       const parsed = await clientAssay({
         name: acc.name, web: acc.web, vert: acc.vert,
-        customIntel, exampleAccts, stage: acc.stage || 'Prospecting',
+        customIntel: combinedIntel, exampleAccts, stage: acc.stage || 'Prospecting',
       });
       current = current.map(a => a.id === acc.id ? {
         ...a, ...parsed,

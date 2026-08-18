@@ -272,7 +272,13 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
   const reassay=useCallback(async(acc)=>{
     setReassaying(acc.id);
     try{
-      const parsed=await clientAssay({name:acc.name,web:acc.web,vert:acc.vert,customIntel:getActiveIntel(),exampleAccts:getActiveExamples(),stage:acc.stage||"Prospecting",businessId:business?.id});
+      // account-taxonomy-and-creation-upgrade-v1 Stage 7 - reassay previously
+      // only resent the global product-intel library (getActiveIntel()), not
+      // this account's own handoffNotes, so "add a note, then reassay" never
+      // actually worked. Same combine pattern AddAccountModal.submit() already
+      // uses at creation time (account context first, then global intel).
+      const combinedIntel=[acc.handoffNotes,getActiveIntel()].filter(Boolean).join("\n\n---\n\n");
+      const parsed=await clientAssay({name:acc.name,web:acc.web,vert:acc.vert,customIntel:combinedIntel,exampleAccts:getActiveExamples(),stage:acc.stage||"Prospecting",businessId:business?.id});
       if(acc.tier==="Slag"&&parsed.tier==="Gold") trackStat("reassay_upgrades");
       // If web was overridden (site unreachable workaround), persist the new URL
       const webPatch=acc.web!==accounts.find(a=>a.id===acc.id)?.web?{web:acc.web}:{};
@@ -328,7 +334,14 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
   const isRateLimit=(err)=>/429|rate.?limit|too many/i.test(err?.message||err||"");
 
   const assayOneWithRetry=async(acc,customIntel,exampleAccts,onStatus)=>{
-    const run=()=>clientAssay({name:acc.name,web:acc.web,vert:acc.vert,customIntel,exampleAccts,stage:acc.stage||"Prospecting",businessId:business?.id});
+    // account-taxonomy-and-creation-upgrade-v1 Stage 7 - customIntel here is
+    // the shared global product-intel library, computed once for the whole
+    // bulk batch (same reassay gap as the single-account path, but combined
+    // per-account inside this function rather than shared across the loop -
+    // sharing one account's notes with every other account in the batch
+    // would be a real leak, not a fix).
+    const combinedIntel=[acc.handoffNotes,customIntel].filter(Boolean).join("\n\n---\n\n");
+    const run=()=>clientAssay({name:acc.name,web:acc.web,vert:acc.vert,customIntel:combinedIntel,exampleAccts,stage:acc.stage||"Prospecting",businessId:business?.id});
     try{
       return await run();
     }catch(e1){
