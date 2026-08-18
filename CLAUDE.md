@@ -126,3 +126,25 @@ Before running any new diagnostic/audit/test script against the live app or live
 - **A hard cap** — default to a bounded sample (e.g., 10 accounts, not every account in the business) unless a full sweep is explicitly requested. If actual scope or pace comes in over ~3x the declared estimate, warn loudly (or abort) rather than continuing silently — that gap is exactly what let the 2.5-hour sweep run unnoticed.
 
 `scripts/check-dead-file.js --sweep [dir ...]` implements this directly: prints file count + a measured-baseline time estimate before starting, warns if actual pace exceeds 3x that estimate partway through. `scripts/live-audit.js`'s existing commands (`table`/`schema`/`rls`) are already single-table/single-row-scoped by construction — the convention applies to *wrapping* them in a loop across many tables/accounts (as Step-0-style audits do), not to the tool itself. No functional retrofit needed there, just apply this checklist before writing that kind of wrapper.
+
+---
+
+## Pasteable content format
+
+Adopted 2026-08-18 after repeated confusion over SQL/commands/snippets meant for Jack to paste elsewhere getting buried mid-paragraph. Claude Code has no ability to write to Jack's OS clipboard directly — this is about how content meant to be copied is *presented*, not an actual clipboard action.
+
+Whenever giving Jack something he's meant to copy and paste elsewhere (SQL for the Supabase dashboard, shell commands, code snippets, anything else headed to a different tool or chat), use this exact block, every time, no exceptions:
+
+```
+📋 COPY THIS — [one short label for what it is]
+──────────────────────────────────────────────
+[the exact content, shown in full, not summarized]
+──────────────────────────────────────────────
+→ [one line: what to do with it, and where]
+```
+
+Requirements:
+- The `📋 COPY THIS` marker is on its own line — never buried inside a sentence.
+- Always show the actual content in full below the marker, even if it was already given earlier in the conversation. Jack often copies the whole response and pastes it elsewhere (e.g. into another chat), so if the content isn't visibly present in this response, it's effectively lost to that workflow.
+- Always end with an explicit next-action line — where it goes, what to run, what confirms it worked. Don't leave that to be inferred from context.
+- Applies to anything meant to be copied out, not just SQL — commands, code, config, whatever.
