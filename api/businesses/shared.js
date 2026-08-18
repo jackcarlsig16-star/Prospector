@@ -324,8 +324,14 @@ export async function generateProfile(supabase, businessId) {
     .map(e => `[id:${e.id}] [${e.source}] ${e.content}`)
     .join('\n\n---\n\n') || '(no intel yet)';
 
+  // Raised from 1024/4096 - business-intel-smart-upload-v1 grew the output
+  // schema from 6 fields to 13 plus a field_sources citation map covering
+  // all of them, and adaptive thinking shares this same budget. Confirmed
+  // live: a real dense pasted doc against a 'deep' business truncated the
+  // response with no closing brace anywhere ("No JSON in profile
+  // generation response") at the old 4096 cap.
   const data = await callAnthropic({
-    max_tokens: isLight ? 1024 : 4096,
+    max_tokens: isLight ? 2048 : 8192,
     system: isLight ? LIGHT_SYSTEM_PROMPT : FULL_SYSTEM_PROMPT,
     messages: [{ role: 'user', content: `INTEL LOG for ${business.name}, oldest to newest:\n\n${intelLog}` }],
     supabase,
