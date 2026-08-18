@@ -3,7 +3,6 @@ import { ROLE_PERMS } from '../constants/appConfig';
 import { C, mono } from '../constants/colors';
 import { getAccountsForBusiness, saveAccountsForBusiness, getListsForBusiness, getMembersForBusiness, getPermissionsForMembers, getAccountListMapForBusiness, linkAccountToLists, getInfluencerDetails, getBusinessDetails } from '../utils/db';
 import AccountsPage from './AccountsPage';
-import DealSummaryModal from './AccountCardPricingSummary';
 import CsvImportModal from './CsvImportModal';
 import InfluencerAddModal from './InfluencerAddModal';
 
@@ -26,7 +25,6 @@ export default function BusinessAccountsTab({ business, userEmail, projects=[] }
   const [accountListMap, setAccountListMap] = useState({}); // accountId -> [listId, ...]
   const [loading, setLoading] = useState(true);
   const [tasks, setTasks] = useState([]);
-  const [dealSummaryAccId, setDealSummaryAccId] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [influencerAddOpen, setInfluencerAddOpen] = useState(false);
   // Default 'all' (mixed) rather than business-only - matches this app's
@@ -203,7 +201,6 @@ export default function BusinessAccountsTab({ business, userEmail, projects=[] }
         perms={perms}
         activeRole="Owner"
         activeUser={{ name: userEmail, email: userEmail, role: 'Owner' }}
-        onOpenDealSummary={id => setDealSummaryAccId(id)}
         onCreateTask={task => setTasks(ts => [task, ...ts])}
         onUpdateTask={(id, patch) => setTasks(ts => ts.map(t => t.id === id ? { ...t, ...patch } : t))}
         tasks={tasks}
@@ -226,9 +223,6 @@ export default function BusinessAccountsTab({ business, userEmail, projects=[] }
           { key: 'addinf', label: '+ Add Influencer(s)', onClick: () => setInfluencerAddOpen(true) },
         ] : []}
       />
-      {dealSummaryAccId && (
-        <DealSummaryModal accId={dealSummaryAccId} accounts={accounts} onClose={() => setDealSummaryAccId(null)} />
-      )}
     </>
   );
 }

@@ -18,7 +18,6 @@ import AdminOverflowMenu from './accountCard/actions/AdminOverflowMenu';
 import { QuickAskBar } from './accountCard/QuickAskBar';
 import EmailModal from './EmailModal';
 import CallPrepModal from './CallPrepModal';
-import DealTimeline from './DealTimeline';
 import AccountCardComms from './AccountCardComms';
 import AccountCardExtract from './AccountCardExtract';
 
@@ -36,14 +35,14 @@ import { setBdrList, URGENCY_OPTIONS } from '../utils/assignHelper';
 // (Header -> State -> Actions -> Intelligence -> Activity) with business
 // and influencer modules composed in. Every heavy panel below
 // (CallPrepModal, DebriefWorkspace/IntelWorkspace's IntelPanel, Comms,
-// Extract, Timeline, DealWorkspace's DealStageBar/Compliance/WinReason/
+// Extract, DealWorkspace's DealStageBar/Compliance/WinReason/
 // Gift/Competition/RawEdit, EmailModal, QuickAskBar) is reused unchanged
 // internally — this file only owns which tier a trigger lives in and
 // which boolean flag opens which panel.
 export default function AccountCard({
   acc, business = null, expanded, onToggle, onReassay, reassaying, onUpdate,
   isFav, onToggleFav, onRemove, assignedEntry, onAssign, onUnassign, onFlagRemoval,
-  onOpenPricing, onOpenRoi, onOpenDealSummary, onCreateTask, onUpdateTask,
+  onOpenPricing, onOpenRoi, onCreateTask, onUpdateTask,
   tasks = [], activeUser = {}, parentName = null, onRequestLinkParent, onUnlinkParent,
   userEmail, canEdit, onUpdated, projects = [], accountListIds = [], onAccountLinkedToProject,
   onRelationshipTypeChange,
@@ -61,7 +60,6 @@ export default function AccountCard({
   const [intelOpen, setIntelOpen] = useState(false);
   const [commsOpen, setCommsOpen] = useState(false);
   const [extractOpen, setExtractOpen] = useState(false);
-  const [timelineOpen, setTimelineOpen] = useState(false);
   const [fullIntelOpen, setFullIntelOpen] = useState(false);
 
   const debriefRef = useRef(null);
@@ -95,10 +93,12 @@ export default function AccountCard({
     { tier: 2, key: 'intel', icon: '◆', label: 'Intel', onClick: () => setIntelOpen(o => !o), active: intelOpen },
     { tier: 2, key: 'comms', icon: '💬', label: 'Comms', onClick: () => setCommsOpen(o => !o), active: commsOpen },
     { tier: 3, key: 'extract', icon: '⬇', label: 'Extract', onClick: () => setExtractOpen(o => !o), active: extractOpen },
-    { tier: 3, key: 'timeline', icon: '📅', label: 'Timeline', onClick: () => setTimelineOpen(o => !o), active: timelineOpen },
+    // account-card-cleanup-v1 Stage 4 - Timeline button removed from the card
+    // (not deleted - DealTimeline.js is still live in LedgerPage.js). This is
+    // a deliberate hold: Jack likes it as a generative feature and wants to
+    // revisit it later, not a rejection of the feature.
     onOpenPricing ? { tier: 3, key: 'pricing', icon: '$', label: 'Pricing', onClick: () => onOpenPricing(acc.id) } : null,
     onOpenRoi ? { tier: 3, key: 'roi', icon: '📈', label: 'ROI', onClick: () => onOpenRoi(acc.id) } : null,
-    onOpenDealSummary ? { tier: 3, key: 'dealsummary', icon: '★', label: 'Deal Summary', onClick: () => onOpenDealSummary(acc.id) } : null,
     onReassay ? { tier: 3, key: 'reassay', icon: '↻', label: reassaying ? 'Analyzing…' : 'Re-assay', onClick: () => onReassay(acc), disabled: reassaying } : null,
   ].filter(Boolean) : [];
 
@@ -270,10 +270,6 @@ export default function AccountCard({
 
       {!isInfluencer && extractOpen && (
         <AccountCardExtract acc={acc} tasks={tasks} activeUser={activeUser} onClose={() => setExtractOpen(false)} />
-      )}
-
-      {!isInfluencer && timelineOpen && (
-        <div style={{ margin: "0 14px 12px" }}><DealTimeline acc={acc} onUpdate={onUpdate} /></div>
       )}
 
       {!isInfluencer && (
