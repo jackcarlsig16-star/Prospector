@@ -36,7 +36,7 @@ import { setBdrList, URGENCY_OPTIONS } from '../utils/assignHelper';
 // and influencer modules composed in. Every heavy panel below
 // (CallPrepModal, DebriefWorkspace/IntelWorkspace's IntelPanel, Comms,
 // Extract, DealWorkspace's DealStageBar/Compliance/WinReason/
-// Gift/Competition/RawEdit, EmailModal, QuickAskBar) is reused unchanged
+// Competition/RawEdit, EmailModal, QuickAskBar) is reused unchanged
 // internally — this file only owns which tier a trigger lives in and
 // which boolean flag opens which panel.
 export default function AccountCard({
@@ -63,7 +63,6 @@ export default function AccountCard({
   const [fullIntelOpen, setFullIntelOpen] = useState(false);
 
   const debriefRef = useRef(null);
-  const dealRef = useRef(null);
 
   // Influencer detail — same pattern the old InfluencerCard.js used: update
   // the local view immediately, then trigger a silent reload upstream.
@@ -142,11 +141,11 @@ export default function AccountCard({
   const stateItems = isInfluencer ? [] : buildBusinessStateItems({
     acc, onUpdate, tasks, onCreateTask,
     // account-taxonomy-and-creation-upgrade-v1 Stage 4 - Closed Won auto-
-    // converts relationship_type to Client, same trigger point as the
-    // existing gift-modal side effect (no extra guard added beyond what
-    // this trigger already has - re-selecting Closed Won re-fires both,
-    // consistent with existing behavior, not a new bug).
-    onEnterClosedWon: () => { dealRef.current?.openGift(); onRelationshipTypeChange?.(acc.id, 'Client'); },
+    // converts relationship_type to Client (re-selecting Closed Won re-fires
+    // this, consistent with existing behavior, not a new bug). The gift-modal
+    // side effect that used to also fire here was removed - GiftModal.js is
+    // archived, see below.
+    onEnterClosedWon: () => { onRelationshipTypeChange?.(acc.id, 'Client'); },
     // account-taxonomy-gaps-fix-v1 Stage 1 - the manual control itself.
     onRelationshipTypeChange,
   });
@@ -277,7 +276,6 @@ export default function AccountCard({
 
       {!isInfluencer && (
         <DealWorkspace
-          ref={dealRef}
           acc={acc} onUpdate={onUpdate} tasks={tasks} onUpdateTask={onUpdateTask} onRemove={onRemove}
           adminOpen={adminOpen} onAdminClose={() => setAdminOpen(null)}
           onRelationshipTypeChange={onRelationshipTypeChange}

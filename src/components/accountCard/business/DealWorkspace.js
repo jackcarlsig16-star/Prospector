@@ -1,9 +1,8 @@
-import { useState, forwardRef, useImperativeHandle } from 'react';
+import { useState } from 'react';
 import { mono } from '../../../constants/colors';
 import { CARD, RADIUS, ROLE } from '../tokens';
 import { DealComplianceTracker } from '../../AccountCardCompliance';
 import DealStageBar from '../../AccountCardDealStage';
-import GiftModal from '../../GiftModal';
 import WinReasonPanel from '../../WinReasonPanel';
 import AccountCardCompetition from '../../AccountCardCompetition';
 import AccountCardRawEdit from '../../AccountCardRawEdit';
@@ -16,8 +15,9 @@ const SH = { ...mono, fontSize: 9, fontWeight: 600, textTransform: "uppercase", 
 // drawer (Active Deal compliance, Win Reason) and the Tier-4 admin panels
 // (Competition, Raw Edit) triggered from AdminOverflowMenu. Relocated
 // unchanged internals — AccountCardCompliance/AccountCardDealStage/
-// GiftModal/WinReasonPanel/AccountCardCompetition/AccountCardRawEdit are
-// not touched, only how they're triggered.
+// WinReasonPanel/AccountCardCompetition/AccountCardRawEdit are
+// not touched, only how they're triggered. (GiftModal was also triggered
+// from here - removed, see outreach-intelligence-doctrine-v1 follow-up.)
 // account-business-details-v1 — reads acc.businessDetail (the new
 // account_business_details row) first, falls back to the legacy bm/pf/prods
 // flat fields for any account not yet re-assayed since this shipped (dual-
@@ -109,13 +109,10 @@ export function IntelligenceSummary({ acc }) {
   );
 }
 
-const DealWorkspace = forwardRef(function DealWorkspace({ acc, onUpdate, tasks, onUpdateTask, onRemove, adminOpen, onAdminClose, onRelationshipTypeChange }, ref) {
-  const [giftModalOpen, setGiftModalOpen] = useState(false);
+function DealWorkspace({ acc, onUpdate, tasks, onUpdateTask, onRemove, adminOpen, onAdminClose, onRelationshipTypeChange }) {
   const [winReasonModal, setWinReasonModal] = useState(false);
   const [winReason, setWinReason] = useState(() => loadWinReason(acc.id));
   const isClosedWon = (acc.stage || "") === "Closed Won";
-
-  useImperativeHandle(ref, () => ({ openGift: () => setGiftModalOpen(true) }));
 
   return (
     <>
@@ -143,10 +140,6 @@ const DealWorkspace = forwardRef(function DealWorkspace({ acc, onUpdate, tasks, 
             </>
           )}
         </div>
-      )}
-
-      {giftModalOpen && onUpdate && (
-        <GiftModal acc={acc} onClose={() => setGiftModalOpen(false)} onUpdate={onUpdate} userName={(() => { try { return JSON.parse(localStorage.getItem("prospector_user") || "{}").name || "AE"; } catch { return "AE"; } })()} />
       )}
 
       {winReasonModal && (
@@ -180,6 +173,6 @@ const DealWorkspace = forwardRef(function DealWorkspace({ acc, onUpdate, tasks, 
       )}
     </>
   );
-});
+}
 
 export default DealWorkspace;
