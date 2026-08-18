@@ -41,6 +41,13 @@ export const ROLE = {
   dealStageLabel: "#f59e0b",    // pre-redesign "Deal Stage" section label
   stageAccent: "#56A8F8",       // blue/teal — Stage control identity
   neutralGray: "#9aa0a6",       // true neutral (no green cast) — Source/Cold
+  // account-card-cleanup-v1 Stage 1 — warm, saturated "orange creamsicle,"
+  // deliberately distinct from C.orange (#F5A050, already load-bearing as a
+  // warning/attention color elsewhere) and ROLE.dealStageLabel/Comms amber
+  // (#f59e0b). Reserved for Generate-type actions only — meant to become
+  // the app's trusted "this is accurate, generated output" signal, so it
+  // must not get diluted by reuse elsewhere.
+  generateAccent: "#FF8A3D",
 };
 
 // A1b — restrained neon-glow-on-focus for interactive/important elements

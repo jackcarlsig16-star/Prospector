@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { C, mono, TIER_COLOR } from '../constants/colors';
 import { productMonthlyCost, monthUsersAt } from '../utils/pricingMath';
-import { CARD, kindTokens } from './accountCard/tokens';
+import { CARD, kindTokens, ROLE } from './accountCard/tokens';
 import AccountBadge from './accountCard/AccountBadge';
 import AccountCardShell from './accountCard/AccountCardShell';
 import AccountHeader from './accountCard/AccountHeader';
@@ -77,7 +77,7 @@ export default function AccountCard({
 
   // ── Tier 1 — primary action ──────────────────────────────────────────
   const primaryAction = hasAnalysis
-    ? { label: "Generate Outreach", icon: "✦", onClick: () => setOutreachOpen(true) }
+    ? { label: "Generate Outreach", icon: "✦", variant: 'generate', onClick: () => setOutreachOpen(true) }
     : isInfluencer
       ? { label: "Assess this creator first", icon: "◆", disabled: true }
       : onReassay
@@ -175,7 +175,7 @@ export default function AccountCard({
 
           {isInfluencer ? (
             <div>
-              <button onClick={() => setOutreachOpen(true)} style={{ ...mono, fontSize: 11, height: 28, padding: '0 14px', background: `${kind.accent}16`, border: `1px solid ${kind.accent}`, color: kind.accent, borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>✦ Generate Outreach</button>
+              <button onClick={() => setOutreachOpen(true)} style={{ ...mono, fontSize: 11, height: 28, padding: '0 14px', background: `${ROLE.generateAccent}16`, border: `1px solid ${ROLE.generateAccent}`, color: ROLE.generateAccent, borderRadius: 4, cursor: 'pointer', fontWeight: 600 }}>✦ Generate Outreach</button>
             </div>
           ) : (
             <>
