@@ -299,7 +299,7 @@ export async function assessInfluencerAccount(supabase, accountId, bioText, foll
 // hints only, never a fetch target - Instagram scraping is a confirmed
 // dead end (login wall, tested 3x already), LinkedIn direct fetch is
 // deliberately out of scope for this pass too.
-function formatSocialLinksContext(socialLinks) {
+export function formatSocialLinksContext(socialLinks) {
   if (!socialLinks) return '';
   const entries = Object.entries(socialLinks).filter(([, v]) => v);
   if (!entries.length) return '';
