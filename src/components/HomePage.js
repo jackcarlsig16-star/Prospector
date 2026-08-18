@@ -29,9 +29,7 @@ const SH   = (extra={}) => ({ ...mono, fontSize:10, color:TEAL, textTransform:"u
 
 const STEALTH_STATUSES = ["Seeded","Outbounded","Replied","Meeting Booked","In Pipeline","Won"];
 const STEALTH_STATUS_C = { "Seeded":C.dim,"Outbounded":C.blue,"Replied":C.tin,"Meeting Booked":C.green,"In Pipeline":C.purple,"Won":C.gold };
-const GEM_VERTS = new Set(["PFM","Consumer Payments","Banks","Wealth","BFM","Lending","Payroll","Insurance","Crypto","EWA"]);
 const GEM_REASONS = {
-  unanalyzed_fintech: "Unanalyzed Fintech — high potential, no score yet",
   gold_unworked:      "Gold account — not in Frontier or active pipeline",
   silver_unworked:    "Silver account — worth a closer look",
   stale_gold:         "Gold account — 60+ days since last touch",
@@ -218,9 +216,15 @@ function HomePage({ accounts, onNav, activeBatch, firstName="there", snapshots=[
   const ACTIVE_STAGES   = new Set(["Engaged","Active Deal","Qualified","Closed Won","Closed Lost"]);
   const notActive = a => !ACTIVE_STAGES.has(a.stage||"Prospecting");
   const notWorked = a => !inFrontierNames.has(a.name.toLowerCase())&&notActive(a);
+  // account-taxonomy-and-creation-upgrade-v1 Stage 1 - the "unanalyzed
+  // fintech" gem rule (GEM_VERTS-gated) is removed, not adapted: it was a
+  // hardcoded list of old fintech vertical names that will never match the
+  // new universal industry taxonomy, and there's no equivalent "which
+  // industries count as high-value" list decided yet. The other 4 gem
+  // rules (tier/staleness/product-count based) don't depend on vertical at
+  // all and are unaffected.
   const gems = (() => {
     const gs = [];
-    accounts.filter(a=>!a.score&&GEM_VERTS.has(a.vert)&&notWorked(a)).slice(0,3).forEach(a=>gs.push({acc:a,reason:GEM_REASONS.unanalyzed_fintech}));
     accounts.filter(a=>a.tier==="Gold"&&notWorked(a)).forEach(a=>gs.push({acc:a,reason:GEM_REASONS.gold_unworked}));
     accounts.filter(a=>a.tier==="Silver"&&notWorked(a)).slice(0,2).forEach(a=>gs.push({acc:a,reason:GEM_REASONS.silver_unworked}));
     accounts.filter(a=>a.tier==="Gold"&&notActive(a)&&staleDays(lastTouch(a))>=60&&!gs.find(g=>g.acc.id===a.id)).forEach(a=>gs.push({acc:a,reason:GEM_REASONS.stale_gold}));
