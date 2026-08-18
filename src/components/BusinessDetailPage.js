@@ -381,6 +381,10 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, padding:"48px 40px" }}>
       <div style={{ maxWidth: wideView ? 1100 : 700, margin:"0 auto" }}>
+        {/* nav-active-state-v1 - the more prominent "which business am I in"
+            signal for when you're looking at content, not the sidebar.
+            Present on every sub-view, not just overview. */}
+        <div style={{ height:3, borderRadius:2, marginBottom:24, background:`linear-gradient(90deg, ${business.color||C.gold}, ${business.color||C.gold}00)` }} />
         <div style={{ display:"flex", alignItems:"flex-start", gap:16, marginBottom:28 }}>
           <div style={{ width:56, height:56, borderRadius:10, background:business.color||C.gold, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
             <span style={{ ...mono, fontSize:22, color:C.bg, fontWeight:700 }}>{(business.name||'?')[0].toUpperCase()}</span>

@@ -53,13 +53,17 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
         </button>
         {businesses.length > 0 ? (
           <div style={{ paddingLeft:20, borderLeft:`3px solid ${C.gold}33`, marginLeft:14, maxHeight:180, overflowY:"auto" }}>
-            {businesses.map(b => (
-              <div key={b.id} onClick={()=>onSelectBusiness?.(b)}
-                style={{ padding:"5px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:8 }}>
-                <span style={{ width:8, height:8, borderRadius:"50%", background:b.color||C.gold, flexShrink:0 }} />
-                <span style={{ ...mono, fontSize:12, color:C.mut, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{b.name}</span>
-              </div>
-            ))}
+            {businesses.map(b => {
+              const isActive = page==="business-detail" && activeBusiness?.id===b.id;
+              const accent = b.color || C.gold;
+              return (
+                <div key={b.id} onClick={()=>onSelectBusiness?.(b)}
+                  style={{ padding:"5px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:8, background:isActive?`${accent}33`:"transparent", borderLeft:`5px solid ${isActive?accent:"transparent"}`, boxShadow:isActive?`inset 10px 0 16px -12px ${accent}`:"none", transition:"background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease" }}>
+                  <span style={{ width:8, height:8, borderRadius:"50%", background:accent, flexShrink:0 }} />
+                  <span style={{ ...mono, fontSize:12, color:isActive?C.txt:C.mut, fontWeight:isActive?600:400, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", transition:"color 0.18s ease" }}>{b.name}</span>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <p style={{ ...mono, fontSize:11, color:C.dim, margin:"4px 14px 0" }}>No businesses yet</p>
@@ -69,7 +73,7 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
         const accent = activeBusiness.color || C.gold;
         const otherBusinesses = businesses.filter(b=>b.id!==activeBusiness.id);
         return (
-        <div style={{ borderLeft:`3px solid ${accent}`, display:"flex", flexDirection:"column", flex:1, minHeight:0 }}>
+        <div style={{ borderLeft:`5px solid ${accent}`, boxShadow:`inset 10px 0 20px -14px ${accent}`, display:"flex", flexDirection:"column", flex:1, minHeight:0 }}>
           <button onClick={onGoToBusinesses} style={{ ...mono, display:"flex", alignItems:"center", gap:6, width:"100%", padding:"9px 14px", fontSize:11, color:C.dim, background:"transparent", border:"none", borderBottom:`1px solid ${C.brd}`, cursor:"pointer", textAlign:"left" }}>
             ← All Businesses
           </button>
