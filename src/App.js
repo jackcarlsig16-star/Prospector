@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, Suspense } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback, Suspense } from "react";
 import { C, mono } from './constants/colors';
 import { staleDays } from './utils/staleness';
 import { URGENCY_OPTIONS, setBdrList } from './components/AccountCard';
@@ -999,6 +999,21 @@ export default function App() {
   // real-supabase-auth-v1-not-finished caveat as above) ──────────────────
   const [myBusinesses, setMyBusinesses] = useState([]);
   const [activeBusiness, setActiveBusiness] = useState(null);
+  // Stable identity (empty deps - setActiveBusiness/setMyBusinesses are
+  // React state setters, always stable regardless of render) - passing an
+  // inline closure here instead was a real, live infinite-fetch loop:
+  // BusinessDetailPage's load() useCallback depends on this prop, an
+  // unstable identity on every App.js render made load() re-identify every
+  // render too, its useEffect([load]) re-fired every render, load() called
+  // this same handler again -> setActiveBusiness -> another App.js render,
+  // forever, gated only by network round-trip time (~230ms observed live).
+  // Confirmed via a real network capture: ~4-5 req/s to /api/businesses/:id
+  // on a completely idle business-detail page, for as long as it stayed
+  // open, on any business, unrelated to any single feature.
+  const onBusinessUpdated = useCallback(b => {
+    setActiveBusiness(b);
+    setMyBusinesses(prev => prev.map(x => x.id === b.id ? b : x));
+  }, []);
   // Sub-nav for a selected business's own workspace (business-nav-architecture-v1),
   // same pattern as accountsSubPage/toolsActiveTool - lifted here so both Sidebar
   // (renders the nav) and BusinessDetailPage (renders the matching view) read it.
@@ -1354,7 +1369,7 @@ export default function App() {
         {page==="tools"&&<ToolsPage accounts={accounts} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} launchAccountId={toolsLaunchId} onLaunched={()=>setToolsLaunchId(null)} activeTool={toolsActiveTool} onToolSelect={setToolsActiveTool} onCreateTask={(prefill)=>setTaskModal(prefill||{})}/>}
         {page==="admin"&&isAdmin(user)&&<AdminPage teamUsers={teamUsers} onSaveUsers={setTeamUsers} currentUser={user} onUpdateCurrentUser={patch=>{setUser(u=>{const next=applyOwnerRole({...u,...patch});localStorage.setItem("prospector_user",JSON.stringify(next));return next;});}} rolePerms={rolePerms} onSaveRolePerms={setRolePerms} onSave={saveAccounts} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} onSaveBatch={saveBatch} accounts={accounts} removedBlocklist={removedBlocklist} onRestoreAccount={entry=>setRemovedBlocklist(bl=>bl.filter(x=>x.id!==entry.id))} nuggets={nuggets} onSaveNuggets={setNuggets} seedTeam={SMB_TEAM}/>}
         {page==="businesses-home"&&<BusinessesHomePage businesses={myBusinesses} loading={businessesLoading} projects={myProjects} userEmail={user.email} onSelect={selectBusiness} onCreated={b=>{setMyBusinesses(prev=>[b,...prev]);selectBusiness(b);}}/>}
-        {page==="business-detail"&&activeBusiness&&<BusinessDetailPage key={activeBusiness.id} business={activeBusiness} userEmail={user.email} projects={myProjects.filter(p=>p.business_id===activeBusiness.id)} view={businessPage} onUpdated={b=>{setActiveBusiness(b);setMyBusinesses(prev=>prev.map(x=>x.id===b.id?b:x));}} onProjectCreated={p=>setMyProjects(prev=>[p,...prev])} onProjectUpdated={p=>setMyProjects(prev=>prev.map(x=>x.id===p.id?p:x))} sharedAccounts={accounts} sharedTasks={tasks} setSharedTasks={setTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={navTo} onUpdateAccount={perms.canEditStage?(id,patch)=>setAccounts(as=>as.map(a=>a.id===id?{...a,...patch}:a)):undefined}/>}
+        {page==="business-detail"&&activeBusiness&&<BusinessDetailPage key={activeBusiness.id} business={activeBusiness} userEmail={user.email} projects={myProjects.filter(p=>p.business_id===activeBusiness.id)} view={businessPage} onUpdated={onBusinessUpdated} onProjectCreated={p=>setMyProjects(prev=>[p,...prev])} onProjectUpdated={p=>setMyProjects(prev=>prev.map(x=>x.id===p.id?p:x))} sharedAccounts={accounts} sharedTasks={tasks} setSharedTasks={setTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={navTo} onUpdateAccount={perms.canEditStage?(id,patch)=>setAccounts(as=>as.map(a=>a.id===id?{...a,...patch}:a)):undefined}/>}
         {page==="handoffs"&&<HandoffsPage accounts={accounts} onAddAccount={acc=>{setAccounts(a=>[acc,...a]);trackStat("accounts_added");trackDailyStat("accounts_added");}} activeUser={activeUser} activeRole={activeRole} teamUsers={teamUsers}/>}
         </Suspense>
       </div>
