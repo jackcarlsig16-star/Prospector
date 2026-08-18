@@ -7,7 +7,6 @@ import { DEAL_STAGES } from './AccountCard';
 import { getAllCompliance, STANDARD_STEPS, PARTNER_STEPS } from '../utils/storage';
 import { NUGGET_STATUS_COLORS } from './frontier/GoldenNuggetsTab';
 import { MiniBar, DonutChartLegacy, Sparkline, GRADE_THRESHOLDS } from './BadgesProfile';
-import SmartTaskPanel from './TaskPanel';
 import TodayGoals from './TodayGoals';
 import SalesCalendarWidget from './CalendarWidget';
 import BdrCommandCenter from './BdrCommandCenter';

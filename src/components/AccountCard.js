@@ -28,7 +28,7 @@ import LinksAndOutbound from './accountCard/business/LinksAndOutbound';
 import DealWorkspace, { IntelligenceSummary } from './accountCard/business/DealWorkspace';
 import { buildBusinessStateItems, DEAL_STAGES } from './accountCard/business/BusinessStateControls';
 
-import CreatorFitRelationship, { FitSummary } from './accountCard/influencer/CreatorFitRelationship';
+import CreatorFitRelationship from './accountCard/influencer/CreatorFitRelationship';
 import LinkedProjects from './accountCard/LinkedProjects';
 import { setBdrList, URGENCY_OPTIONS } from '../utils/assignHelper';
 

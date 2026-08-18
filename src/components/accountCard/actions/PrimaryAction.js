@@ -1,5 +1,5 @@
 import { mono } from '../../../constants/colors';
-import { CARD, kindTokens, RADIUS } from '../tokens';
+import { kindTokens, RADIUS } from '../tokens';
 
 // Tier 1 — one dominant action per Section 10.
 export default function PrimaryAction({ accountKind, action }) {
