@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { C, mono } from '../constants/colors';
 import { getListsForBusiness, getAccountsForBusiness, createInfluencerAccount, findExistingInfluencerByHandle, linkAccountToLists } from '../utils/db';
 
@@ -140,6 +140,8 @@ const DESCRIBE = {
 export default function SmartIntakeBox({ business, projects, userEmail, onProfileUpdated, onProjectUpdated }) {
   const [text, setText] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [submittingElapsed, setSubmittingElapsed] = useState(0);
+  const submittingTimerRef = useRef(null);
   const [toast, setToast] = useState('');
   const [confirmState, setConfirmState] = useState(null); // { classification, proposal, text, overrideType }
   const [error, setError] = useState('');
@@ -151,11 +153,18 @@ export default function SmartIntakeBox({ business, projects, userEmail, onProfil
     getAccountsForBusiness(business.id).then(setAccounts);
   }, [business.id]);
 
+  // Auto-filing as company_intel runs the full profile resynthesis
+  // server-side before this ever resolves, which can genuinely take
+  // 30-150s+ on a real document - cleared in every exit path, same
+  // discipline as the App.js infinite-loop fix (business-intel-smart-upload-v1).
+  useEffect(() => () => { if (submittingTimerRef.current) clearInterval(submittingTimerRef.current); }, []);
+
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 4000); };
 
   const submit = async () => {
     if (!text.trim() || submitting) return;
-    setSubmitting(true); setError('');
+    setSubmitting(true); setSubmittingElapsed(0); setError('');
+    submittingTimerRef.current = setInterval(() => setSubmittingElapsed(s => s + 1), 1000);
     try {
       const res = await fetch(`/api/businesses/${business.id}/intake`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -175,6 +184,8 @@ export default function SmartIntakeBox({ business, projects, userEmail, onProfil
     } catch (e) {
       setError(e.message);
     } finally {
+      clearInterval(submittingTimerRef.current);
+      submittingTimerRef.current = null;
       setSubmitting(false);
     }
   };
@@ -248,11 +259,19 @@ export default function SmartIntakeBox({ business, projects, userEmail, onProfil
       />
       {error && <div style={{ ...mono, fontSize:11, color:C.red, marginTop:8 }}>⚠ {error}</div>}
       {!confirmState && (
-        <div style={{ display:"flex", alignItems:"center", gap:12, marginTop:8 }}>
-          <button onClick={submit} disabled={!text.trim()||submitting} style={{ ...btn, opacity: text.trim()?1:0.5, cursor: text.trim()&&!submitting?"pointer":"default" }}>
-            {submitting ? "Filing…" : "File →"}
-          </button>
-          {toast && <span style={{ ...mono, fontSize:11, color:C.green }}>✓ {toast}</span>}
+        <div style={{ marginTop:8 }}>
+          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+            <button onClick={submit} disabled={!text.trim()||submitting} style={{ ...btn, opacity: text.trim()?1:0.5, cursor: text.trim()&&!submitting?"pointer":"default" }}>
+              {submitting ? `Filing… ${submittingElapsed}s` : "File →"}
+            </button>
+            {toast && <span style={{ ...mono, fontSize:11, color:C.green }}>✓ {toast}</span>}
+          </div>
+          {submitting && (
+            <div style={{ marginTop:8, height:3, background:C.brd, borderRadius:2, overflow:"hidden", position:"relative" }}>
+              <div style={{ position:"absolute", top:0, left:"-30%", height:"100%", width:"30%", background:C.gold, borderRadius:2, animation:"intelFileBarSlide 1.1s ease-in-out infinite" }} />
+              <style>{`@keyframes intelFileBarSlide { 0% { left: -30%; } 100% { left: 100%; } }`}</style>
+            </div>
+          )}
         </div>
       )}
 

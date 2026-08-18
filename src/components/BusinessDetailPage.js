@@ -264,6 +264,14 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
 
   const [newEntry, setNewEntry] = useState('');
   const [savingEntry, setSavingEntry] = useState(false);
+  const [savingElapsed, setSavingElapsed] = useState(0);
+  const savingTimerRef = useRef(null);
+  // Full-depth profile synthesis can genuinely take 30-150s+ on a real
+  // dense document - a static "Adding…" label gives an impatient user
+  // nothing to go on. Cleared in every exit path (success, error, AND
+  // unmount) - same discipline as the App.js infinite-loop fix earlier
+  // today, this is exactly the kind of interval that leaks if you miss one.
+  useEffect(() => () => { if (savingTimerRef.current) clearInterval(savingTimerRef.current); }, []);
   const [entryError, setEntryError] = useState('');
   const [updatedFlash, setUpdatedFlash] = useState(false);
 
@@ -338,7 +346,9 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   const handleAddEntry = async () => {
     if (!newEntry.trim() || savingEntry) return;
     setSavingEntry(true);
+    setSavingElapsed(0);
     setEntryError('');
+    savingTimerRef.current = setInterval(() => setSavingElapsed(s => s + 1), 1000);
     try {
       const res = await fetch(`/api/businesses/${business.id}/intel`, {
         method: 'POST',
@@ -355,6 +365,8 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
     } catch (e) {
       setEntryError(e.message);
     } finally {
+      clearInterval(savingTimerRef.current);
+      savingTimerRef.current = null;
       setSavingEntry(false);
     }
   };
@@ -404,10 +416,16 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
           {entryError && <div style={{ ...mono, fontSize:11, color:C.red, marginBottom:8 }}>⚠ {entryError}</div>}
           <div style={{ display:"flex", alignItems:"center", gap:12 }}>
             <button onClick={handleAddEntry} disabled={!newEntry.trim()||savingEntry} style={{ ...btn, opacity:newEntry.trim()?1:0.5 }}>
-              {savingEntry ? "Adding…" : "Add Intel"}
+              {savingEntry ? `Adding… ${savingElapsed}s` : "Add Intel"}
             </button>
             {updatedFlash && <span style={{ ...mono, fontSize:11, color:C.green }}>✓ Profile updated</span>}
           </div>
+          {savingEntry && (
+            <div style={{ marginTop:8, height:3, background:C.brd, borderRadius:2, overflow:"hidden", position:"relative" }}>
+              <div style={{ position:"absolute", top:0, left:"-30%", height:"100%", width:"30%", background:C.gold, borderRadius:2, animation:"intelAddBarSlide 1.1s ease-in-out infinite" }} />
+              <style>{`@keyframes intelAddBarSlide { 0% { left: -30%; } 100% { left: 100%; } }`}</style>
+            </div>
+          )}
         </div>
 
         {business.research_status === 'researching' && !pollTimedOut && (
