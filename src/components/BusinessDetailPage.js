@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { C, mono, PRESET_SWATCH_COLORS } from '../constants/colors';
 import { createProject, createList, setProjectListId, getAccountsForBusiness, linkAccountToLists } from '../utils/db';
 import BusinessAccountsTab from './BusinessAccountsTab';
-import BusinessGenerationTab from './BusinessGenerationTab';
 import BusinessCommandCenterTab from './BusinessCommandCenterTab';
 import MembersPermissionsTab from './MembersPermissionsTab';
 import SmartIntakeBox from './SmartIntakeBox';
@@ -440,7 +439,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   // but now renders 13 profile fields plus Assay Criteria/Outreach
   // Rules/Add Intel/the Intel log. Same 1100 the other dense views here
   // already use, not a new value.
-  const wideView = view === 'accounts' || view === 'generation' || view === 'command-center' || view === 'members' || view === 'overview';
+  const wideView = view === 'accounts' || view === 'command-center' || view === 'members' || view === 'overview';
   // business-intel-strategy-visual-redesign-v1 — the same accent already
   // used for this business's gradient bar/avatar, reused for chip/panel
   // accents instead of a new color system.
@@ -516,7 +515,6 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
           <BusinessCommandCenterTab business={business} sharedAccounts={sharedAccounts} sharedTasks={sharedTasks} setSharedTasks={setSharedTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={onNav} onUpdateAccount={onUpdateAccount} />
         </>)}
         {view === 'accounts' && <BusinessAccountsTab business={business} userEmail={userEmail} projects={projects} />}
-        {view === 'generation' && <BusinessGenerationTab business={business} />}
         {view === 'projects' && (
           <ProjectsSection business={business} userEmail={userEmail} activeUser={activeUser} projects={projects} outreachRules={profile?.outreach_rules} onProjectCreated={onProjectCreated} onProjectUpdated={onProjectUpdated} />
         )}

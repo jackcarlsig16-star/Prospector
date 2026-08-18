@@ -3,7 +3,6 @@ import { C, mono } from '../constants/colors';
 import { getActiveIntel, getActiveExamples } from '../utils/assay';
 import { PROD_COLOR } from '../constants/products';
 import DealWorkspace from './DealWorkspace';
-import EmailSystemPage from './EmailGenerator';
 import BlueprintTool from './pricing/BlueprintTool';
 
 // ─── Lookalike Finder ────────────────────────────────────────────────────────
@@ -270,10 +269,11 @@ function SalesforceToolsPage() {
 
 // ─── Tools ────────────────────────────────────────────────────────────────────
 function ToolsPage({ accounts=[], pool=[], launchAccountId=null, onLaunched, activeTool="deal", onToolSelect, onCreateTask }) {
+  // generation-engine-consolidation-v1 Stage 2 - "Email System" tab removed
+  // (EmailGenerator.js retired - static fintech-hardcoded templates, not AI).
   const TOOLS = [
     { id:"deal",       lb:"Deal Workspace",       ic:"$"  },
     { id:"lookalike",  lb:"Account Lookalike",    ic:"◈"  },
-    { id:"email",      lb:"Email System",         ic:"✉"  },
     { id:"blueprints", lb:"Deck Blueprints",      ic:"📊" },
     { id:"sfdc",       lb:"Salesforce Tools",     ic:"☁"  },
   ];
@@ -293,7 +293,6 @@ function ToolsPage({ accounts=[], pool=[], launchAccountId=null, onLaunched, act
       </div>
       {active === "deal"       && <DealWorkspace accounts={accounts} onCreateTask={onCreateTask} launchAccountId={launchAccountId} onLaunched={onLaunched}/>}
       {active === "lookalike"  && <LookalikeTool accounts={accounts} pool={pool}/>}
-      {active === "email"      && <EmailSystemPage accounts={accounts} pool={pool}/>}
       {active === "blueprints" && <BlueprintTool accounts={accounts}/>}
       {active === "sfdc"       && <SalesforceToolsPage/>}
     </div>
