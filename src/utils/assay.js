@@ -109,11 +109,15 @@ If ungroundedClaims is non-empty, confidence must NOT be "High" — cap it at "M
 // through the same /proxy/anthropic/messages call clientAssay() uses below.
 const WEB_SEARCH_GUIDANCE = `WEB SEARCH — use it to find recent news, competitors, market position, and the company's motto/founder info where findable, on top of (not instead of) the fetched website content below. Only surface search findings in businessModel/productFit/keySignals if genuinely relevant to fit — don't pad with filler, and the same GROUNDING DISCIPLINE above applies to anything found via search: state it as fact only if the search result actually said it.`;
 
-// assay-engine-generalization-v1 — the original hardcoded fintech scoring
-// prompt, preserved verbatim as the deliberate fallback for when no business
-// context is available (Claim Jumper's not-yet-assigned pool scoring) or a
-// business hasn't generated Assay Criteria yet. Do NOT "fix" this away —
-// see clientAssay()'s comment for why this path is intentional, not a bug.
+// assay-engine-generalization-v1, narrowed by account-taxonomy-and-
+// creation-upgrade-v1 Stage 2 — the original hardcoded fintech scoring
+// prompt. As of Stage 2 this is ONLY reachable via Claim Jumper's
+// not-yet-assigned pool scoring (no business object at all) — a real
+// business with no Assay Criteria yet now gets buildGeneralizedPrompt({})
+// instead (see clientAssay()'s comment). Do NOT "fix" this away for the
+// pool path without a separate decision about ClaimJumperPage.js itself
+// (already a flagged legacy-removal candidate) — this is intentionally
+// scoped narrower now, not a bug.
 function buildLegacyFintechPrompt(customIntel, exampleAccts) {
   return `You are a product fit scoring engine for an SMB AE. Respond with ONLY a JSON object, no other text.
 
@@ -223,10 +227,26 @@ Return ONLY this JSON:
 // none — deliberate, see below). When present, fetches that business's
 // cached Assay Criteria (cheap read, not a fresh generation — see
 // AssayCriteriaCard.js/generateAssayCriteria() for the generation side) and
-// scores against it instead of the hardcoded fintech prompt. Falls back to
-// the legacy fintech prompt when businessId is absent OR the business hasn't
-// generated criteria yet — this fallback is intentional, documented
-// behavior for the pool-scoring path, not a bug to "fix" away later.
+// scores against it instead of the hardcoded fintech prompt.
+//
+// account-taxonomy-and-creation-upgrade-v1 Stage 2 — real-data check found
+// the legacy fintech prompt (buildLegacyFintechPrompt) is NOT hypothetical
+// dead code: 3 of 4 real businesses already have Assay Criteria, but Kopi
+// Kita does not yet, and any brand-new business (which this same SPEC makes
+// easier to create) always transits through "no criteria yet" before its
+// first generation. That prompt's vertical-keyed rules and fixed product
+// catalog (Core Verify/Balance Insights) are fintech-specific by
+// construction, not just its vertical NAMES — patching the names in place
+// would still leave Kopi Kita-shaped businesses being scored against
+// bank-verification product fit. So: a businessId with no criteria yet now
+// falls through to buildGeneralizedPrompt() with empty criteria (honest
+// "no fit signals defined yet" scoring, same function already proven not to
+// leak global fintech customIntel/exampleAccts into per-business scoring)
+// instead of the fintech prompt. The fintech prompt itself is UNCHANGED and
+// still used for the one remaining businessId-less case — Claim Jumper's
+// pool, which isn't tied to any live business object and is itself a
+// separately-flagged legacy-removal candidate, not something to redesign
+// here.
 export async function clientAssay({ name, web, vert, sub, customIntel, exampleAccts, stage, businessId }) {
   let siteContent = "", linkedin = null, signalBreakdown = null, fetchMethod = "none";
   if (web) {
@@ -246,11 +266,13 @@ export async function clientAssay({ name, web, vert, sub, customIntel, exampleAc
     try {
       const r = await fetch(`/api/businesses/${businessId}/assay-criteria`);
       if (r.ok) { const d = await r.json(); assayCriteria = d.assay_criteria || null; }
-    } catch { /* fall through to legacy prompt */ }
+    } catch { /* fall through */ }
   }
   const systemPrompt = assayCriteria
     ? buildGeneralizedPrompt(assayCriteria)
-    : buildLegacyFintechPrompt(customIntel, exampleAccts);
+    : businessId
+      ? buildGeneralizedPrompt({}) // real business, no criteria generated yet - honest empty-criteria scoring, not fintech rules
+      : buildLegacyFintechPrompt(customIntel, exampleAccts); // Claim Jumper pool only - no business object at all
 
   const response = await fetch("/proxy/anthropic/messages", {
     method: "POST",
