@@ -79,7 +79,7 @@ Return exactly this shape:
   "recent_changes": "2-4 short sentences on what appears new, changed, or worth knowing since the last check - new offerings, messaging shifts, notable site changes. This is quick context for an outreach conversation, not a strategic document. If nothing meaningfully new stands out, say so plainly rather than padding.",
   "industry": "the company's industry/vertical in a few words",
   "core_problem": "the main problem this business solves for its customers, 1-2 sentences",
-  "products": ["array of the company's actual named products/product lines, as they appear in the notes"],
+  "products": ["array of up to 6 of the company's actual named products/product lines, as they appear in the notes"],
   "value_props": ["array of 2-4 short value propositions the company itself emphasizes"],
   "motto": "a short tagline/motto if one appears in the notes, else null",
   "field_sources": { "<field name from above, e.g. \\"vision\\">": ["<the [id:...] tag(s) of the note(s) that field is actually grounded in>"] }
@@ -96,11 +96,11 @@ Return exactly this shape:
   "icp": "the company's ideal customer profile, 2-3 sentences",
   "gtm_strategy": "the company's go-to-market strategy, 2-3 sentences",
   "competitors": "known or likely competitors, comma-separated or short list",
-  "raw_synthesis": "a fuller markdown synthesis covering anything the fields above don't capture",
+  "raw_synthesis": "a fuller markdown synthesis covering anything the fields above don't capture - roughly 300-500 words even when the log is rich. This is supporting context, not a reproduction of the source documents - summarize and prioritize, don't transcribe",
   "industry": "the company's industry/vertical in a few words",
   "core_problem": "the main problem this business solves for its customers, 1-2 sentences",
   "sub_issues": ["array of 2-5 more specific sub-problems or pain points within the core problem, grounded in the intel log"],
-  "products": ["array of the company's actual named products/product lines"],
+  "products": ["array of up to 6 of the company's actual named products/product lines, most important or representative first"],
   "value_props": ["array of 2-4 value propositions the company itself emphasizes"],
   "motto": "a short tagline/motto if one appears in the log, else null",
   "strategic_philosophy": "1-3 sentences on any business-specific strategic doctrine or framing that shows up in the notes (e.g. an explicit prioritization approach, a stated operating philosophy) - leave this genuinely null if nothing like that appears rather than inventing generic strategy language",
@@ -324,15 +324,21 @@ export async function generateProfile(supabase, businessId) {
     .map(e => `[id:${e.id}] [${e.source}] ${e.content}`)
     .join('\n\n---\n\n') || '(no intel yet)';
 
-  // Raised from 1024/4096 - business-intel-smart-upload-v1 grew the output
-  // schema from 6 fields to 13 plus a field_sources citation map covering
-  // all of them, and adaptive thinking shares this same budget. Confirmed
-  // live: a real dense pasted doc against a 'deep' business truncated the
-  // response with no closing brace anywhere ("No JSON in profile
-  // generation response") at the old 4096 cap.
+  // business-intel-smart-upload-v1 grew the output schema from 6 fields to
+  // 13 plus a field_sources citation map covering all of them, and adaptive
+  // thinking shares this same token budget. Confirmed live, twice, against
+  // real dense pasted docs (a Master Magnetics product deck, then a 15-slide
+  // decision brief): first at 4096/90s (truncated, no closing brace at all -
+  // "No JSON in profile generation response"), then again at 8192/150s on
+  // the second, even denser document. raw_synthesis had no length cap in
+  // the prompt ("a fuller synthesis covering anything else") - against rich
+  // enough source material the model tried to write a genuinely long
+  // summary instead of staying compact, which is what actually ate the
+  // budget. Now capped at ~300-500 words in the prompt itself, with these
+  // numbers raised further as headroom on top of that, not instead of it.
   const data = await callAnthropic({
-    max_tokens: isLight ? 2048 : 8192,
-    timeoutMs: isLight ? 90000 : 150000,
+    max_tokens: isLight ? 2048 : 12000,
+    timeoutMs: isLight ? 90000 : 180000,
     system: isLight ? LIGHT_SYSTEM_PROMPT : FULL_SYSTEM_PROMPT,
     messages: [{ role: 'user', content: `INTEL LOG for ${business.name}, oldest to newest:\n\n${intelLog}` }],
     supabase,
