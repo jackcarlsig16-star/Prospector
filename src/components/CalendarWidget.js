@@ -1062,7 +1062,6 @@ function SalesCalendarWidget({ accounts=[], onNav, authError=null, tasks=[], onC
         prefill={{
           name:        creatingFromStaged.evTitle,
           vertical:    creatingFromStaged.vertical,
-          subVertical: creatingFromStaged.subVertical,
           context:     creatingFromStaged.context,
           web:         creatingFromStaged.web,
         }}

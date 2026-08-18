@@ -247,7 +247,7 @@ Return ONLY this JSON:
 // pool, which isn't tied to any live business object and is itself a
 // separately-flagged legacy-removal candidate, not something to redesign
 // here.
-export async function clientAssay({ name, web, vert, sub, customIntel, exampleAccts, stage, businessId }) {
+export async function clientAssay({ name, web, vert, customIntel, exampleAccts, stage, businessId }) {
   let siteContent = "", linkedin = null, signalBreakdown = null, fetchMethod = "none";
   if (web) {
     const { content, method } = await fetchSiteContentClient(web);
@@ -288,7 +288,7 @@ export async function clientAssay({ name, web, vert, sub, customIntel, exampleAc
       max_tokens: 1600,
       system: systemPrompt,
       tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
-      messages: [{ role:"user", content:`Score product fit:\nCompany: ${name}\nWebsite: ${web||"none"}\nVertical: ${vert||"unknown"}\nSubvertical: ${sub||"unknown"}\nPipeline stage: ${stage||"Prospecting"}\nWebsite content (fetch method: ${fetchMethod}): ${siteContent||"not available"}\n${signalSummary}\nReturn ONLY the JSON.` }],
+      messages: [{ role:"user", content:`Score product fit:\nCompany: ${name}\nWebsite: ${web||"none"}\nVertical: ${vert||"unknown"}\nPipeline stage: ${stage||"Prospecting"}\nWebsite content (fetch method: ${fetchMethod}): ${siteContent||"not available"}\n${signalSummary}\nReturn ONLY the JSON.` }],
     }),
   });
   const data = await response.json();

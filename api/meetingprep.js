@@ -130,7 +130,7 @@ export default async function handler(req, res) {
     account.tier ? `Tier: ${account.tier} (score ${account.score}/4)` : null,
     account.stage ? `Stage: ${account.stage}` : null,
     account.last ? `Last activity: ${account.last}` : null,
-    account.vert ? `Vertical: ${account.vert}${account.sub ? " / " + account.sub : ""}` : null,
+    account.vert ? `Vertical: ${account.vert}` : null,
     account.state ? `HQ state: ${account.state}` : null,
   ].filter(Boolean).join("\n");
 

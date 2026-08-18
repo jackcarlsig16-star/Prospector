@@ -116,7 +116,7 @@ function UploadsPage({ accounts, onSave, onSaveBatch, onBatchUpdate, onSaveToPoo
         const idx=i+bi;
         list[idx]={...list[idx],analyzing:true};setRows([...list]);
         try{
-          const parsed=await clientAssay({name:acc.name,web:acc.web,vert:acc.vert,sub:acc.sub,customIntel:getActiveIntel(),exampleAccts:getActiveExamples(),stage:acc.stage||"Prospecting"});
+          const parsed=await clientAssay({name:acc.name,web:acc.web,vert:acc.vert,customIntel:getActiveIntel(),exampleAccts:getActiveExamples(),stage:acc.stage||"Prospecting"});
           list[idx]={...list[idx],...parsed,sigs:parsed.keySignals||[],ucs:parsed.useCases||[],prods:parsed.products||[],bm:parsed.businessModel||"",pf:parsed.productFit||"",dis:parsed.disqualifier||null,linkedin:parsed.linkedin||"",analyzing:false,analyzed:true};
         }catch(err){
           list[idx]={...list[idx],score:4,tier:"Slag",bm:`Failed: ${err.message}`,analyzing:false,analyzed:true};

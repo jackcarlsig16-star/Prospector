@@ -14,7 +14,6 @@ export function AddAccountModal({ onAdd, onClose, prefill = {}, businessId }) {
   const [name,   setName]   = useState(prefill.name || "");
   const [web,    setWeb]    = useState(prefill.web || "");
   const [vert,   setVert]   = useState(prefill.vertical || "");
-  const [sub,    setSub]    = useState(prefill.subVertical || "");
   const [stage,  setStage]  = useState("Prospecting");
   const [ctx,    setCtx]    = useState(prefill.context || "");
   const [sfdc,   setSfdc]   = useState("");
@@ -39,7 +38,7 @@ export function AddAccountModal({ onAdd, onClose, prefill = {}, businessId }) {
           body: JSON.stringify({
             model: MODELS.FAST,
             max_tokens: 100,
-            system: `You are a sales classifier. Given a brief company description or handoff note, return only a JSON object with two fields: vertical and subvertical. Vertical must be one of: ${VERTS.join(", ")}, Unknown. Subvertical is a short 2-4 word phrase describing the specific niche (e.g. 'BNPL', 'HOA management', 'EWA payroll', 'B2B payments'). Return only valid JSON, no explanation.`,
+            system: `You are a sales classifier. Given a brief company description or handoff note, return only a JSON object with one field: vertical. Vertical must be one of: ${VERTS.join(", ")}, Unknown. Return only valid JSON, no explanation.`,
             messages: [{ role: "user", content: ctx }],
           }),
         });
@@ -47,9 +46,8 @@ export function AddAccountModal({ onAdd, onClose, prefill = {}, businessId }) {
         const data = await resp.json();
         const raw = data?.content?.[0]?.text?.trim();
         const parsed = JSON.parse(raw);
-        if (parsed?.vertical && parsed?.subvertical) {
+        if (parsed?.vertical) {
           if (VERTS.includes(parsed.vertical)) setVert(parsed.vertical);
-          setSub(parsed.subvertical);
           setAutoDetected(true);
         }
       } catch {
@@ -62,14 +60,13 @@ export function AddAccountModal({ onAdd, onClose, prefill = {}, businessId }) {
   }, [ctx, vertManuallySet]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleVertChange = (e) => { setVert(e.target.value); setVertManuallySet(true); setAutoDetected(false); };
-  const handleSubChange  = (e) => { setSub(e.target.value);  setVertManuallySet(true); setAutoDetected(false); };
 
   const submit = async () => {
     if (!name.trim()) { setErr("Name is required"); return; }
     setScoring(true); setErr(null);
     try {
       const combinedIntel = [ctx.trim(), getActiveIntel()].filter(Boolean).join("\n\n---\n\n");
-      const parsed = await clientAssay({ name: name.trim(), web: web.trim(), vert, sub, customIntel: combinedIntel, exampleAccts: getActiveExamples(), stage, businessId });
+      const parsed = await clientAssay({ name: name.trim(), web: web.trim(), vert, customIntel: combinedIntel, exampleAccts: getActiveExamples(), stage, businessId });
       onAdd({
         id: Date.now(), name: name.trim(), web: web.trim(), vert, stage,
         tier: parsed.tier || null, score: parsed.score || null,
@@ -114,7 +111,7 @@ export function AddAccountModal({ onAdd, onClose, prefill = {}, businessId }) {
               <input value={web} onChange={e=>setWeb(e.target.value)} placeholder="acme.com" style={inp}/>
             </div>
           </div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12 }}>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
             <div>
               <span style={lbl}>
                 Vertical
@@ -126,11 +123,6 @@ export function AddAccountModal({ onAdd, onClose, prefill = {}, businessId }) {
                 <option value="">Unknown</option>
                 {VERTS.map(v=><option key={v} value={v}>{v}</option>)}
               </select>
-            </div>
-            <div>
-              <span style={lbl}>Subvertical</span>
-              <input value={sub} onChange={handleSubChange} placeholder="e.g. HOA mgmt"
-                style={{ ...inp, borderColor: detecting ? `${C.goldBdr}55` : C.brdM, transition:"border-color 0.2s" }}/>
             </div>
             <div>
               <span style={lbl}>Stage</span>

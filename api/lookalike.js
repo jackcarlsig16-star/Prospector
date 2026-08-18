@@ -12,7 +12,7 @@ export default async function handler(req, res) {
   const profile = [
     `Company: ${account.name}`,
     account.web ? `Website: ${account.web}` : null,
-    account.vert ? `Vertical: ${account.vert}${account.sub ? " / " + account.sub : ""}` : null,
+    account.vert ? `Vertical: ${account.vert}` : null,
     account.bm ? `Business model: ${account.bm}` : null,
     account.pf ? `product fit: ${account.pf}` : null,
     account.ucs?.length ? `Use cases: ${account.ucs.join(", ")}` : null,
