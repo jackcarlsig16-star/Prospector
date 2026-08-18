@@ -1,8 +1,15 @@
 import { useState, useEffect } from 'react';
 import { mono } from '../constants/colors';
 import { T } from '../constants/tokens';
+import { RELATIONSHIP_TYPES } from './accountCard/business/BusinessStateControls';
 
-const EDITABLE_FIELDS = ["name", "web", "vert", "linkedin", "stage", "tier", "score", "bm", "pf", "ucs", "headline", "blurb", "handoffNotes"];
+// account-taxonomy-gaps-fix-v1 Stage 1 - relationshipType included here for
+// consistency/visibility with every other field, but it's a real accounts
+// column (not part of the data blob, see db.js's updateAccountRelationshipType),
+// so save() special-cases it below rather than folding it into the generic
+// patch - the generic path would silently write it into data.relationshipType
+// instead of the real column, which the next real read would ignore.
+const EDITABLE_FIELDS = ["name", "web", "vert", "linkedin", "stage", "relationshipType", "tier", "score", "bm", "pf", "ucs", "headline", "blurb", "handoffNotes"];
 const READONLY_FIELDS = ["id", "addedAt", "assayedAt", "source", "sfdc", "sfdcOppId", "sfdcAccountId", "parentId", "childIds"];
 
 const renderReadonly = (v) => {
@@ -25,7 +32,7 @@ const dedupeLines = (text) => {
   return out.join("\n");
 };
 
-export default function AccountCardRawEdit({ acc, onUpdate, onDelete }) {
+export default function AccountCardRawEdit({ acc, onUpdate, onDelete, onRelationshipTypeChange }) {
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState({});
   const [parseError, setParseError] = useState("");
@@ -74,11 +81,19 @@ export default function AccountCardRawEdit({ acc, onUpdate, onDelete }) {
     const patch = {};
     EDITABLE_FIELDS.forEach(f => {
       const v = draft[f];
+      if (f === "relationshipType") return; // real column, handled separately below
       if (v === "") { patch[f] = undefined; return; }
       if (f === "score") { const n = Number(v); patch[f] = Number.isFinite(n) ? n : v; return; }
       if (f === "ucs") { patch[f] = v.split(",").map(s => s.trim()).filter(Boolean); return; }
       patch[f] = v;
     });
+    const nextRelType = draft.relationshipType?.trim();
+    if (nextRelType && RELATIONSHIP_TYPES.includes(nextRelType) && nextRelType !== (acc.relationshipType || 'Prospect/Lead')) {
+      onRelationshipTypeChange?.(acc.id, nextRelType);
+    } else if (nextRelType && !RELATIONSHIP_TYPES.includes(nextRelType)) {
+      setParseError(`relationshipType must be one of: ${RELATIONSHIP_TYPES.join(', ')}`);
+      return;
+    }
     for (const f of SUBOBJECT_FIELDS) {
       const raw = draft[f] || "";
       if (!raw.trim()) { patch[f] = []; continue; }

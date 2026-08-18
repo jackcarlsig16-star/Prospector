@@ -142,6 +142,8 @@ export default function AccountCard({
     // this trigger already has - re-selecting Closed Won re-fires both,
     // consistent with existing behavior, not a new bug).
     onEnterClosedWon: () => { dealRef.current?.openGift(); onRelationshipTypeChange?.(acc.id, 'Client'); },
+    // account-taxonomy-gaps-fix-v1 Stage 1 - the manual control itself.
+    onRelationshipTypeChange,
   });
 
   return (
@@ -275,6 +277,7 @@ export default function AccountCard({
           ref={dealRef}
           acc={acc} onUpdate={onUpdate} tasks={tasks} onUpdateTask={onUpdateTask} onRemove={onRemove}
           adminOpen={adminOpen} onAdminClose={() => setAdminOpen(null)}
+          onRelationshipTypeChange={onRelationshipTypeChange}
         />
       )}
     </AccountCardShell>

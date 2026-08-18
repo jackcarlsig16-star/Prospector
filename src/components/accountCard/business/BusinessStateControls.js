@@ -13,11 +13,36 @@ export const DEAL_STAGES = [
   { id: "Closed Lost", c: "#F06060" },
 ];
 
-export const ACCOUNT_SOURCES = ["Cold", "Inbound", "Referral", "Partner", "6sense", "SFDC"];
-const SOURCE_C = { Cold: ROLE.neutralGray, Inbound: "#56A8F8", Referral: "#42E890", Partner: "#A878F0", "6sense": "#0099DD", SFDC: "#F5A050" };
-const SOURCE_IC = { Cold: "○", Inbound: "↘", Referral: "🤝", Partner: "⬡", "6sense": "◎", SFDC: "☁" };
+// account-taxonomy-gaps-fix-v1 Stage 2 - "Partner Referral" (was "Partner")
+// so this channel/source value no longer shares a bare word with
+// relationship_type's "Partner" value - two genuinely different concepts
+// (how we found this account vs. what it is to us) that read as connected
+// sitting in adjacent dropdowns otherwise. SFDC sync (AccountsPage.js:508)
+// writes the literal string, not a lookup key, so this rename takes effect
+// immediately for any account synced after this ships - no separate
+// mapping to update.
+export const ACCOUNT_SOURCES = ["Cold", "Inbound", "Referral", "Partner Referral", "6sense", "SFDC"];
+const SOURCE_C = { Cold: ROLE.neutralGray, Inbound: "#56A8F8", Referral: "#42E890", "Partner Referral": "#A878F0", "6sense": "#0099DD", SFDC: "#F5A050" };
+const SOURCE_IC = { Cold: "○", Inbound: "↘", Referral: "🤝", "Partner Referral": "⬡", "6sense": "◎", SFDC: "☁" };
+
+// account-taxonomy-gaps-fix-v1 Stage 1 - the manual relationship_type
+// control the parent SPEC's own Stage 6 named as future work but never
+// built. Same dropdown pattern as Stage/Source right next to it.
+export const RELATIONSHIP_TYPES = ["Prospect/Lead", "Client", "Partner", "Competitor"];
+const REL_C = { "Prospect/Lead": CARD.textMuted, Client: "#42E890", Partner: "#A878F0", Competitor: "#F06060" };
 
 const selectStyle = (color, borderColor) => ({ ...mono, fontSize: 11, height: 24, padding: "0 6px", background: CARD.surface, border: `1px solid ${borderColor || CARD.border}`, borderRadius: RADIUS.sm, color, outline: "none", cursor: "pointer" });
+const captionStyle = { ...mono, fontSize: 8, color: CARD.textSubtle, textTransform: "uppercase", letterSpacing: "0.07em" };
+// account-taxonomy-gaps-fix-v1 Stage 2 - small caption above each control so
+// TYPE (relationship_type) and SOURCE (lead channel) read as clearly
+// different things rather than two unlabeled dropdowns that happen to sit
+// next to each other. Labeling/clarity fix only, not a layout change.
+const Captioned = ({ label, children }) => (
+  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+    <span style={captionStyle}>{label}</span>
+    {children}
+  </div>
+);
 
 // Feeds AccountStateBar's `items` for business accounts — Stage select,
 // Gaming track toggle, Source select. Relocated verbatim (side effects on
@@ -31,14 +56,32 @@ const selectStyle = (color, borderColor) => ({ ...mono, fontSize: 11, height: 24
 // confusion about whether it does something).
 const isProspectOrLead = acc => (acc.relationshipType || 'Prospect/Lead') === 'Prospect/Lead';
 
-export function buildBusinessStateItems({ acc, onUpdate, tasks, onCreateTask, onEnterClosedWon }) {
+export function buildBusinessStateItems({ acc, onUpdate, tasks, onCreateTask, onEnterClosedWon, onRelationshipTypeChange }) {
   if (!onUpdate) return [];
+  const relType = acc.relationshipType || 'Prospect/Lead';
   const items = [
+    // account-taxonomy-gaps-fix-v1 Stage 1 - the manual control. Calls
+    // onRelationshipTypeChange (the real handleRelationshipTypeChange /
+    // updateAccountRelationshipType path, same one the automatic Closed Won
+    // conversion already uses) directly - not onUpdate, since this field
+    // lives in a real accounts column, not the data blob (see db.js).
+    {
+      key: 'relType',
+      control: (
+        <Captioned label="Type">
+          <select className={GLOW_FOCUS_CLASS} value={relType} onChange={e => onRelationshipTypeChange?.(acc.id, e.target.value)}
+            style={selectStyle(REL_C[relType] || ROLE.neutralGray, `${REL_C[relType] || ROLE.neutralGray}66`)}>
+            {RELATIONSHIP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </Captioned>
+      ),
+    },
     ...(isProspectOrLead(acc) ? [{
       key: 'stage',
       control: (
         <>
           <style>{GLOW_FOCUS_STYLE}</style>
+          <Captioned label="Stage">
           <select className={GLOW_FOCUS_CLASS} value={acc.stage || "Prospecting"} onChange={e => {
           const newStage = e.target.value;
           const stageNow = new Date().toISOString();
@@ -65,15 +108,18 @@ export function buildBusinessStateItems({ acc, onUpdate, tasks, onCreateTask, on
         }} style={selectStyle(ROLE.stageAccent, `${ROLE.stageAccent}66`)}>
             {DEAL_STAGES.map(s => <option key={s.id} value={s.id}>{s.id}</option>)}
           </select>
+          </Captioned>
         </>
       ),
     }] : []),
     {
       key: 'source',
       control: (
-        <select className={GLOW_FOCUS_CLASS} value={acc.source || "Cold"} onChange={e => onUpdate({ ...acc, source: e.target.value })} style={selectStyle(SOURCE_C[acc.source || "Cold"] || ROLE.neutralGray, CARD.border)}>
-          {ACCOUNT_SOURCES.map(s => <option key={s} value={s}>{SOURCE_IC[s]} {s}</option>)}
-        </select>
+        <Captioned label="Source">
+          <select className={GLOW_FOCUS_CLASS} value={acc.source || "Cold"} onChange={e => onUpdate({ ...acc, source: e.target.value })} style={selectStyle(SOURCE_C[acc.source || "Cold"] || ROLE.neutralGray, CARD.border)}>
+            {ACCOUNT_SOURCES.map(s => <option key={s} value={s}>{SOURCE_IC[s]} {s}</option>)}
+          </select>
+        </Captioned>
       ),
     },
   ];

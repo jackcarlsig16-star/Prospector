@@ -15,10 +15,16 @@ function mapSfdcStage(sfdcStage) {
   return map[sfdcStage] || "Prospecting";
 }
 
+// account-taxonomy-gaps-fix-v1 Stage 2 - "Partner" (Prospector's account
+// source value) renamed to "Partner Referral" so it no longer collides
+// with relationship_type's own "Partner" value. This is the real SFDC
+// leadSource -> Prospector source mapping (consumed client-side in
+// AccountsPage.js's handleImportSfdc) - the rename has to happen here too,
+// not just in the dropdown's option list.
 function mapLeadSource(leadSource, dealSource) {
   const ds = (dealSource || "").toLowerCase();
   if (ds.includes("inbound") || ds.includes("nba")) return "Inbound";
-  if (leadSource === "Partner")  return "Partner";
+  if (leadSource === "Partner")  return "Partner Referral";
   if (leadSource === "Referral") return "Referral";
   return "SFDC";
 }

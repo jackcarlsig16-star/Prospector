@@ -109,7 +109,7 @@ export function IntelligenceSummary({ acc }) {
   );
 }
 
-const DealWorkspace = forwardRef(function DealWorkspace({ acc, onUpdate, tasks, onUpdateTask, onRemove, adminOpen, onAdminClose }, ref) {
+const DealWorkspace = forwardRef(function DealWorkspace({ acc, onUpdate, tasks, onUpdateTask, onRemove, adminOpen, onAdminClose, onRelationshipTypeChange }, ref) {
   const [giftModalOpen, setGiftModalOpen] = useState(false);
   const [winReasonModal, setWinReasonModal] = useState(false);
   const [winReason, setWinReason] = useState(() => loadWinReason(acc.id));
@@ -174,7 +174,7 @@ const DealWorkspace = forwardRef(function DealWorkspace({ acc, onUpdate, tasks, 
         <div onClick={e => e.stopPropagation()} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.76)", zIndex: 3000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClickCapture={e => { if (e.target === e.currentTarget) onAdminClose(); }}>
           <div style={{ width: 560, maxHeight: "85vh", overflowY: "auto", background: CARD.surface2, border: `1px solid ${CARD.borderStrong}`, borderRadius: 12, padding: "18px 20px" }}>
             <div style={{ display: "flex", marginBottom: 10 }}><span style={{ ...mono, fontSize: 11, color: CARD.textSecondary, flex: 1 }}>Raw Edit — {acc.name}</span><button onClick={onAdminClose} style={{ background: "transparent", border: "none", color: CARD.textMuted, cursor: "pointer" }}>✕</button></div>
-            <AccountCardRawEdit acc={acc} onUpdate={patch => onUpdate({ ...acc, ...patch })} onDelete={onRemove ? () => onRemove(acc.id) : undefined} />
+            <AccountCardRawEdit acc={acc} onUpdate={patch => onUpdate({ ...acc, ...patch })} onDelete={onRemove ? () => onRemove(acc.id) : undefined} onRelationshipTypeChange={onRelationshipTypeChange} />
           </div>
         </div>
       )}
