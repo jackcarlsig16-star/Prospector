@@ -737,6 +737,82 @@ export async function classifyImportMapping(supabase, businessId, headers, sampl
   return JSON.parse(jsonMatch[0]);
 }
 
+// generation-engine-consolidation-v1 Stage 5 - genuinely new capability, no
+// precedent in this codebase (confirmed by the prior audit): a free-text
+// human instruction translated into a uniform field:value override applied
+// to every row of an import, e.g. "assign all these as Partners" ->
+// relationship_type: "Partner" for every row. Deliberately narrow scope,
+// matching the concrete ask: one directive -> one set of overrides for the
+// whole import, not a per-row-conditional classifier (e.g. "mark the ones
+// with a .edu email as Nonprofit" is out of scope - would need a fundamentally
+// different, per-row-aware design). Values duplicated here rather than
+// imported - RELATIONSHIP_TYPES/DEAL_STAGES live in BusinessStateControls.js
+// (a React component) and INDUSTRIES (constants/industries.js) transitively
+// imports extension-less relative paths (colors.js -> tokens.js) that don't
+// resolve under this file's plain-Node ESM runtime, unlike config/models.js
+// above (a leaf file, no further imports) - confirmed by a real failing
+// import during this build, not assumed. Keep these three lists in sync with
+// their real source files by hand, same convention ACCOUNT_FIELDS above
+// already follows against CsvImportModal.js's own copy.
+const DIRECTIVE_FIELD_VALUES = {
+  relationship_type: ['Prospect/Lead', 'Client', 'Partner', 'Competitor'],
+  vert: [
+    'Consumer / Retail', 'E-commerce', 'Wellness & Health', 'Real Estate', 'Financial Services',
+    'Manufacturing / Industrial', 'Food & Beverage', 'Hospitality', 'Media & Entertainment',
+    'Technology / Software', 'Professional Services', 'Nonprofit / Association', 'Education',
+    'Government / Public Sector', 'Other',
+  ],
+  stage: ['Prospecting', 'Engaged', 'Needs Follow-up', 'Active Deal', 'Qualified', 'Closed Won', 'Closed Lost'],
+};
+
+const DIRECTIVE_SYSTEM_PROMPT = `You translate a short human instruction into a uniform field override to apply to every row of a CSV account import. Respond with ONLY a JSON object, no other text.
+
+Valid fields and their exact allowed values (the value in your response must match one of these exactly, verbatim):
+- relationship_type: ${DIRECTIVE_FIELD_VALUES.relationship_type.join(', ')}
+- vert (industry): ${DIRECTIVE_FIELD_VALUES.vert.join(', ')}
+- stage: ${DIRECTIVE_FIELD_VALUES.stage.join(', ')}
+
+Return exactly this shape:
+{ "fieldOverrides": { "<field>": "<exact value from the list above>" } }
+
+Rules:
+- Only include a field if the instruction actually implies a value for it. Omit anything not mentioned.
+- The value must be an exact match from the allowed list above - if the instruction implies something close but not an exact match (e.g. "mark these as vendors" with no "Vendor" value available), omit that field rather than guessing the closest one.
+- If the instruction doesn't map to any of these fields at all, respond { "fieldOverrides": {} }.
+- This override applies uniformly to every row - it does not vary per row.`;
+
+// Directive-driven overrides win over inferred column mapping - an explicit
+// human instruction is a stronger signal than a heuristic column-name guess.
+// The caller applies DIRECTIVE_FIELD_VALUES overrides on top of
+// classifyImportMapping's per-row fields, not the other way around.
+export async function classifyImportDirective(supabase, businessId, directive) {
+  if (!directive || !directive.trim()) return { fieldOverrides: {} };
+
+  const data = await callAnthropic({
+    model: MODELS.FAST,
+    max_tokens: 200,
+    system: DIRECTIVE_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: directive.trim() }],
+    supabase,
+    businessId,
+    callType: 'import_directive_classify',
+  });
+
+  const textBlock = (data.content || []).find(b => b.type === 'text');
+  if (!textBlock) throw new Error('No text in directive classification response');
+  const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('No JSON in directive classification response');
+  const raw = JSON.parse(jsonMatch[0])?.fieldOverrides || {};
+
+  // Validated server-side, not trusted blind - only keep fields/values that
+  // are real, exact matches against the allowed lists above.
+  const fieldOverrides = {};
+  Object.entries(raw).forEach(([field, value]) => {
+    if (DIRECTIVE_FIELD_VALUES[field]?.includes(value)) fieldOverrides[field] = value;
+  });
+  return { fieldOverrides };
+}
+
 // Full research pipeline: site fetch -> web search -> profile generation.
 // Never throws - always resolves research_status to 'ready' or 'error' so
 // nothing gets stuck on 'researching'. Runs after the HTTP response has

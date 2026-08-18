@@ -316,6 +316,15 @@ export async function bulkCreateAccountsForBusiness(businessId, ownerEmail, memb
       last_touched_at: now,
       data: a,
       updated_at: now,
+      // generation-engine-consolidation-v1 Stage 5 - relationship_type is a
+      // real, dedicated column (never read from data.relationshipType, see
+      // getAccountsForBusiness below), so a CSV-import directive setting it
+      // has to land here at insert time, not just inside the data blob. Safe
+      // to set unconditionally on insert (unlike saveAccountsForBusiness's
+      // bulk upsert, which deliberately omits it to avoid resetting an
+      // existing value nobody touched) - these are brand-new rows, nothing
+      // to reset.
+      ...(a.relationshipType ? { relationship_type: a.relationshipType } : {}),
     }));
     const { error } = await supabase.from('accounts').insert(rows);
     if (error) return { inserted, error: error.message };

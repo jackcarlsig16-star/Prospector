@@ -428,6 +428,7 @@ app.post('/api/businesses/join',                esHandler('./api/businesses/join
 app.post('/api/businesses/:id/intake',          esHandler('./api/businesses/intake.js'));
 app.post('/api/businesses/:id/intake/confirm',  esHandler('./api/businesses/intake-confirm.js'));
 app.post('/api/businesses/:id/import/classify', esHandler('./api/businesses/import-classify.js'));
+app.post('/api/businesses/:id/import/directive', esHandler('./api/businesses/import-directive.js'));
 app.post('/api/businesses/:id/influencer/assess', esHandler('./api/businesses/influencer-assess.js'));
 app.post('/api/businesses/:id/assay-criteria/generate', esHandler('./api/businesses/assay-criteria-generate.js'));
 app.put('/api/businesses/:id/assay-criteria',   esHandler('./api/businesses/assay-criteria-save.js'));

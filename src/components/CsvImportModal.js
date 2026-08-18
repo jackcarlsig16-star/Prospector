@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { C, mono } from '../constants/colors';
 import { parseCsv } from '../utils/csv';
 import { normName, normDomain } from '../utils/normAccount';
-import { getListsForBusiness, getAccountsForBusiness, bulkCreateAccountsForBusiness, linkAccountToLists, recordAccountActivity } from '../utils/db';
+import { getListsForBusiness, getAccountsForBusiness, bulkCreateAccountsForBusiness, linkAccountToLists, recordAccountActivity, updateAccountRelationshipType } from '../utils/db';
 import ListCheckboxes from './ListCheckboxes';
 
 const ACCOUNT_FIELDS = [
@@ -53,6 +53,10 @@ export default function CsvImportModal({ business, userEmail, onClose, onImporte
   const [lists, setLists] = useState([]);
   const [existingAccounts, setExistingAccounts] = useState([]);
   const [fieldMapping, setFieldMapping] = useState({});
+  const [directiveText, setDirectiveText] = useState('');
+  const [directiveOverrides, setDirectiveOverrides] = useState({});
+  const [directiveLoading, setDirectiveLoading] = useState(false);
+  const [directiveError, setDirectiveError] = useState('');
   const [ownershipColumn, setOwnershipColumn] = useState(null);
   const [valueListMap, setValueListMap] = useState({}); // value -> [listId, ...]
   const [singleListIds, setSingleListIds] = useState([]);
@@ -109,12 +113,35 @@ export default function CsvImportModal({ business, userEmail, onClose, onImporte
 
   const resolveListIds = (row) => ownershipColumn ? (valueListMap[row[ownershipColumn]] || []) : singleListIds;
 
+  // generation-engine-consolidation-v1 Stage 5 - directiveOverrides applied
+  // last so an explicit human instruction wins over an inferred column
+  // mapping, per the spec's explicit precedence call.
   const resolveFields = (row) => {
     const out = {};
     Object.entries(fieldMapping).forEach(([header, field]) => {
       if (field && field !== 'ignore' && row[header]) out[field] = row[header];
     });
-    return out;
+    return { ...out, ...directiveOverrides };
+  };
+
+  const applyDirective = async () => {
+    if (!directiveText.trim()) { setDirectiveOverrides({}); return; }
+    setDirectiveLoading(true);
+    setDirectiveError('');
+    try {
+      const res = await fetch(`/api/businesses/${business.id}/import/directive`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ directive: directiveText.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to classify directive');
+      setDirectiveOverrides(data.fieldOverrides || {});
+      if (!Object.keys(data.fieldOverrides || {}).length) setDirectiveError("Didn't match a supported field (industry, relationship type, or stage) — nothing applied.");
+    } catch (e) {
+      setDirectiveError(e.message);
+      setDirectiveOverrides({});
+    }
+    setDirectiveLoading(false);
   };
 
   const toggleListForValue = (value, listId) => setValueListMap(prev => {
@@ -130,7 +157,7 @@ export default function CsvImportModal({ business, userEmail, onClose, onImporte
       const willLink = !!match && !createAsNew[i];
       return { i, row, fields, listIds, match, willLink };
     });
-  }, [rows, fieldMapping, ownershipColumn, valueListMap, singleListIds, existingAccounts, createAsNew]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rows, fieldMapping, ownershipColumn, valueListMap, singleListIds, existingAccounts, createAsNew, directiveOverrides]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const listName = (id) => lists.find(l => l.id === id)?.name || '—';
   const linkCount = previewData.filter(p => p.willLink).length;
@@ -148,6 +175,11 @@ export default function CsvImportModal({ business, userEmail, onClose, onImporte
       stage: p.fields.stage || 'Prospecting',
       linkedin: p.fields.linkedin || '',
       sfdc: p.fields.sfdc || '',
+      // generation-engine-consolidation-v1 Stage 5 - only ever set via a
+      // directive override (no column ever maps here, relationship_type
+      // isn't in ACCOUNT_FIELDS) - undefined otherwise, same DB default
+      // ('Prospect/Lead') as every other creation path.
+      relationshipType: p.fields.relationship_type || undefined,
       listIds: p.listIds,
       addedSource: 'csv_import',
       addedAt: new Date().toISOString(),
@@ -159,6 +191,13 @@ export default function CsvImportModal({ business, userEmail, onClose, onImporte
     const toLink = previewData.filter(p => p.willLink);
     for (const p of toLink) {
       if (p.listIds.length) await linkAccountToLists(p.match.id, p.listIds);
+      // A directive is an explicit instruction - applies to matched/linked
+      // existing accounts too, not just newly created rows. vert/stage
+      // overrides deliberately do NOT extend to existing accounts here
+      // (would silently overwrite real, already-set data outside this
+      // import flow) - relationship_type is a narrower, safer, single-
+      // column update via the same real function the manual editor uses.
+      if (directiveOverrides.relationship_type) await updateAccountRelationshipType(p.match.id, directiveOverrides.relationship_type);
       await recordAccountActivity(p.match.id, userEmail, 'csv_import',
         `Re-imported via CSV${p.listIds.length ? `, linked to ${p.listIds.map(listName).join(', ')}` : ''}.`);
     }
@@ -206,6 +245,21 @@ export default function CsvImportModal({ business, userEmail, onClose, onImporte
                 </div>
               ))}
             </div>
+
+            <p style={{ ...mono, fontSize:11, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", margin:"0 0 10px" }}>Bulk directive — optional, applies to every row</p>
+            <div style={{ display:"flex", gap:8, marginBottom:8 }}>
+              <input value={directiveText} onChange={e=>setDirectiveText(e.target.value)}
+                placeholder='e.g. "assign all these as Partners"'
+                onKeyDown={e=>{ if (e.key === 'Enter') applyDirective(); }}
+                style={{ ...mono, flex:1, fontSize:12, padding:"6px 10px", background:C.bg, border:`1px solid ${C.brd}`, borderRadius:6, color:C.txt, outline:"none" }} />
+              <button onClick={applyDirective} disabled={directiveLoading} style={{ ...ghostBtn, cursor:directiveLoading?"default":"pointer" }}>{directiveLoading ? "…" : "Apply →"}</button>
+            </div>
+            {directiveError && <p style={{ ...mono, fontSize:11, color:C.orange, margin:"0 0 10px" }}>⚠ {directiveError}</p>}
+            {!directiveError && Object.keys(directiveOverrides).length > 0 && (
+              <p style={{ ...mono, fontSize:11, color:C.green, margin:"0 0 10px" }}>
+                ✓ Every row will get: {Object.entries(directiveOverrides).map(([f,v])=>`${f} → ${v}`).join(', ')} — overrides any column mapping for that field.
+              </p>
+            )}
 
             <p style={{ ...mono, fontSize:11, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", margin:"0 0 10px" }}>List assignment — select one or more</p>
             <div style={{ display:"flex", gap:8, marginBottom:14 }}>
