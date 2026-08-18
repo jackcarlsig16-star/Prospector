@@ -267,7 +267,7 @@ export default function AccountCard({
             <span style={{ ...mono, fontSize: 11, fontWeight: 500, color: "#f59e0b" }}>✉ Comms — {acc.name}</span>
             <button onClick={() => setCommsOpen(false)} style={{ marginLeft: "auto", background: "transparent", border: "none", color: CARD.textMuted, fontSize: 14, cursor: "pointer" }}>✕</button>
           </div>
-          <AccountCardComms acc={acc} tasks={tasks} activeUser={activeUser} onUpdate={onUpdate} />
+          <AccountCardComms acc={acc} tasks={tasks} activeUser={activeUser} onUpdate={onUpdate} business={business} projects={projects} />
         </div>
       )}
 

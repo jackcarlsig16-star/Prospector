@@ -36,7 +36,7 @@ function ProjectAmbiguityPicker({ matchedProjects, onPick }) {
   );
 }
 
-export default function EmailModal({ account, persona, onClose, onSaveEmail, accountKind, business, autoStart = true, projects = [] }) {
+export default function EmailModal({ account, persona, onClose, onSaveEmail, accountKind, business, autoStart = true, projects = [], initialMessageType = 'cold_outreach' }) {
   const [email,setEmail]=useState("");
   const [copied,setCopied]=useState(false);
   const [originalEmail,setOriginalEmail]=useState("");
@@ -56,7 +56,7 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
   // once it's safe to actually generate.
   const [started, setStarted] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [messageType, setMessageType] = useState('cold_outreach');
+  const [messageType, setMessageType] = useState(initialMessageType);
   const [context, setContext] = useState('');
   const [lists, setLists] = useState([]);
   const [selectedListId, setSelectedListId] = useState('');
