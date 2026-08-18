@@ -48,6 +48,15 @@ export const ROLE = {
   // the app's trusted "this is accurate, generated output" signal, so it
   // must not get diluted by reuse elsewhere.
   generateAccent: "#FF8A3D",
+  // generation-modal-advanced-inputs-v1 — Project's own accent family,
+  // established as a real reusable token (not an inline hex) per the spec's
+  // explicit instruction, so LinkedProjects.js or anywhere else Project
+  // context appears can pick it up later without re-deriving a color.
+  // Deliberately a different red from C.red (#F06060, already load-bearing
+  // for danger/error/Competitor elsewhere) - Project is a category, not a
+  // warning, and needs to read distinctly from ROLE.generateAccent's orange
+  // when the two sit side by side in the same panel.
+  projectAccent: "#E5484D",
 };
 
 // A1b — restrained neon-glow-on-focus for interactive/important elements

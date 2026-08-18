@@ -1050,3 +1050,21 @@ export async function updateOutreachDoctrineRule(id, patch) {
     return { rule: null, error: e.message };
   }
 }
+
+// generation-modal-advanced-inputs-v1 — same columns, same table, same
+// filter as api/email.js's server-side read (api/email.js:124-129) - not a
+// parallel derivation, just making that same real read reachable client-
+// side so EmailModal.js's Advanced panel can show what generation actually
+// composes with. Fetched lazily (only when Advanced is opened), not on
+// every modal open - business_profiles isn't otherwise loaded here.
+export async function getBusinessProfileSummary(businessId) {
+  if (!isSupabaseEnabled() || !businessId) return null;
+  try {
+    const { data, error } = await supabase.from('business_profiles').select('assay_criteria, outreach_rules').eq('business_id', businessId).maybeSingle();
+    if (error) throw error;
+    return data || null;
+  } catch (e) {
+    console.warn('[db] getBusinessProfileSummary failed:', e.message);
+    return null;
+  }
+}
