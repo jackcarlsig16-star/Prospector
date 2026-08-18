@@ -152,19 +152,17 @@ export default function AccountCardExtract({ acc, tasks = [], activeUser, onClos
     nudgePr: async () => {
       setLoading("nudgePr");
       const res = await sendNudgeEmail(acc, "Production Request");
-      setNudged("nudgePr");
       setLoading(null);
-      setTimeout(() => setNudged(null), 2000);
-      if (!res.sent) setCopied("nudgePr");
+      if (res.sent) { setNudged("nudgePr"); setTimeout(() => setNudged(null), 2000); }
+      else { setCopied("nudgePr"); setTimeout(() => setCopied(null), 2000); }
     },
 
     nudgeSecQ: async () => {
       setLoading("nudgeSecQ");
       const res = await sendNudgeEmail(acc, "Security Questionnaire");
-      setNudged("nudgeSecQ");
       setLoading(null);
-      setTimeout(() => setNudged(null), 2000);
-      if (!res.sent) setCopied("nudgeSecQ");
+      if (res.sent) { setNudged("nudgeSecQ"); setTimeout(() => setNudged(null), 2000); }
+      else { setCopied("nudgeSecQ"); setTimeout(() => setCopied(null), 2000); }
     },
   };
 
@@ -372,14 +370,14 @@ Rules:
             <button
               onClick={handlers.nudgePr}
               disabled={!!loading}
-              style={{ ...mono, fontSize: 10, height: 26, padding: "0 10px", background: nudged === "nudgePr" ? `${C.green}18` : "transparent", border: `1px solid ${nudged === "nudgePr" ? C.green + "55" : C.brd}`, color: nudged === "nudgePr" ? C.green : C.dim, borderRadius: 4, cursor: loading ? "default" : "pointer", whiteSpace: "nowrap", transition: "all 0.15s", opacity: loading === "nudgePr" ? 0.6 : 1 }}>
-              {nudged === "nudgePr" ? "✓ Sent" : loading === "nudgePr" ? "…" : "📧 Nudge PR"}
+              style={{ ...mono, fontSize: 10, height: 26, padding: "0 10px", background: nudged === "nudgePr" ? `${C.green}18` : copied === "nudgePr" ? `${C.orange}18` : "transparent", border: `1px solid ${nudged === "nudgePr" ? C.green + "55" : copied === "nudgePr" ? C.orange + "55" : C.brd}`, color: nudged === "nudgePr" ? C.green : copied === "nudgePr" ? C.orange : C.dim, borderRadius: 4, cursor: loading ? "default" : "pointer", whiteSpace: "nowrap", transition: "all 0.15s", opacity: loading === "nudgePr" ? 0.6 : 1 }}>
+              {nudged === "nudgePr" ? "✓ Sent" : copied === "nudgePr" ? "⚠ Not sent — copied" : loading === "nudgePr" ? "…" : "📧 Nudge PR"}
             </button>
             <button
               onClick={handlers.nudgeSecQ}
               disabled={!!loading}
-              style={{ ...mono, fontSize: 10, height: 26, padding: "0 10px", background: nudged === "nudgeSecQ" ? `${C.green}18` : "transparent", border: `1px solid ${nudged === "nudgeSecQ" ? C.green + "55" : C.brd}`, color: nudged === "nudgeSecQ" ? C.green : C.dim, borderRadius: 4, cursor: loading ? "default" : "pointer", whiteSpace: "nowrap", transition: "all 0.15s", opacity: loading === "nudgeSecQ" ? 0.6 : 1 }}>
-              {nudged === "nudgeSecQ" ? "✓ Sent" : loading === "nudgeSecQ" ? "…" : "📧 Nudge Sec Q"}
+              style={{ ...mono, fontSize: 10, height: 26, padding: "0 10px", background: nudged === "nudgeSecQ" ? `${C.green}18` : copied === "nudgeSecQ" ? `${C.orange}18` : "transparent", border: `1px solid ${nudged === "nudgeSecQ" ? C.green + "55" : copied === "nudgeSecQ" ? C.orange + "55" : C.brd}`, color: nudged === "nudgeSecQ" ? C.green : copied === "nudgeSecQ" ? C.orange : C.dim, borderRadius: 4, cursor: loading ? "default" : "pointer", whiteSpace: "nowrap", transition: "all 0.15s", opacity: loading === "nudgeSecQ" ? 0.6 : 1 }}>
+              {nudged === "nudgeSecQ" ? "✓ Sent" : copied === "nudgeSecQ" ? "⚠ Not sent — copied" : loading === "nudgeSecQ" ? "…" : "📧 Nudge Sec Q"}
             </button>
           </div>
           {!clientId && (
