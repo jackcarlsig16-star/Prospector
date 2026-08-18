@@ -119,6 +119,10 @@ export default function AccountCard({
   // for accounts not yet re-assayed since this shipped (dual-write).
   const displayTier = acc.businessDetail?.tier || acc.tier;
   if (!isInfluencer && displayTier) signals.push(<AccountBadge key="tier" tone={kind.accent}>{displayTier}</AccountBadge>);
+  // surface-existing-intel-v1 — score was stored (account_business_details.score)
+  // but never rendered anywhere on this card, only the derived tier label.
+  const displayScore = acc.businessDetail?.score ?? acc.score;
+  if (!isInfluencer && displayScore != null) signals.push(<AccountBadge key="score" tone={kind.accent}>{`Score: ${displayScore}`}</AccountBadge>);
   if (isInfluencer && detail?.priority) signals.push(<AccountBadge key="priority" tone={detail.priority === 'high' ? '#F06060' : detail.priority === 'medium' ? '#f5c542' : undefined}>{detail.priority} priority</AccountBadge>);
   if (isInfluencer) signals.push(<AccountBadge key="stage" tone={kind.accent}>{(detail?.relationship_stage || 'not_contacted').replace(/_/g, ' ')}</AccountBadge>);
 
