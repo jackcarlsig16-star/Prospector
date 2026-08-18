@@ -11,6 +11,7 @@ import CallLogSection from './CallLogSection';
 import AssayCriteriaCard from './AssayCriteriaCard';
 import OutreachRulesCard from './OutreachRulesCard';
 import ProfileFieldBlock from './ProfileFieldBlock';
+import BusinessSocialLinksPopover from './BusinessSocialLinksPopover';
 import ProjectGuidanceCard from './ProjectGuidanceCard';
 import AccountPicker from './AccountPicker';
 import BulkOutreachModal from './BulkOutreachModal';
@@ -279,6 +280,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   const [logOpen, setLogOpen] = useState(false);
   const [pollTimedOut, setPollTimedOut] = useState(false);
   const [highlightedEntryId, setHighlightedEntryId] = useState(null);
+  const [socialPopoverOpen, setSocialPopoverOpen] = useState(false);
 
   const pollRef = useRef(null);
   const pollAttemptsRef = useRef(0);
@@ -386,8 +388,25 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
             Present on every sub-view, not just overview. */}
         <div style={{ height:3, borderRadius:2, marginBottom:24, background:`linear-gradient(90deg, ${business.color||C.gold}, ${business.color||C.gold}00)` }} />
         <div style={{ display:"flex", alignItems:"flex-start", gap:16, marginBottom:28 }}>
-          <div style={{ width:56, height:56, borderRadius:10, background:business.color||C.gold, flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center" }}>
-            <span style={{ ...mono, fontSize:22, color:C.bg, fontWeight:700 }}>{(business.name||'?')[0].toUpperCase()}</span>
+          <div style={{ position:"relative", flexShrink:0 }}>
+            <div
+              onClick={() => setSocialPopoverOpen(o => !o)}
+              title="Edit social links"
+              style={{ width:56, height:56, borderRadius:10, background:business.color||C.gold, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
+            >
+              <span style={{ ...mono, fontSize:22, color:C.bg, fontWeight:700 }}>{(business.name||'?')[0].toUpperCase()}</span>
+            </div>
+            {socialPopoverOpen && (
+              <>
+                <div onClick={() => setSocialPopoverOpen(false)} style={{ position:"fixed", inset:0, zIndex:19 }} />
+                <BusinessSocialLinksPopover
+                  businessId={business.id}
+                  socialLinks={business.social_links}
+                  onSaved={links => setBusiness(b => ({ ...b, social_links: links }))}
+                  onClose={() => setSocialPopoverOpen(false)}
+                />
+              </>
+            )}
           </div>
           <div style={{ flex:1, minWidth:0 }}>
             <h1 style={{ ...mono, fontSize:20, color:C.txt, fontWeight:700, margin:"0 0 4px" }}>{business.name}</h1>

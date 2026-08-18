@@ -294,13 +294,25 @@ export async function assessInfluencerAccount(supabase, accountId, bioText, foll
   }
 }
 
+// business-social-links-v1 - shared by generateProfile() and runResearch()'s
+// web_research call so the two don't drift on formatting. Context/seed
+// hints only, never a fetch target - Instagram scraping is a confirmed
+// dead end (login wall, tested 3x already), LinkedIn direct fetch is
+// deliberately out of scope for this pass too.
+function formatSocialLinksContext(socialLinks) {
+  if (!socialLinks) return '';
+  const entries = Object.entries(socialLinks).filter(([, v]) => v);
+  if (!entries.length) return '';
+  return entries.map(([k, v]) => `${k}: ${v}`).join(', ');
+}
+
 // intel-add path, so it looks up research_depth itself rather than trusting
 // the caller to pass it - a light business getting a manual intel entry
 // must still get the light resynthesis, not the full GTM writeup.
 export async function generateProfile(supabase, businessId) {
   const { data: business, error: businessError } = await supabase
     .from('businesses')
-    .select('name, research_depth')
+    .select('name, research_depth, social_links')
     .eq('id', businessId)
     .single();
   if (businessError) throw businessError;
@@ -344,11 +356,12 @@ export async function generateProfile(supabase, businessId) {
   // meant to actually fix - a dynamic formula here would mostly become
   // dead code once that ships. 20000 gives >2x headroom over the largest
   // real output seen, comfortably inside Sonnet's real output ceiling.
+  const socialContext = formatSocialLinksContext(business.social_links);
   const data = await callAnthropic({
     max_tokens: isLight ? 2048 : 20000,
     timeoutMs: isLight ? 90000 : 180000,
     system: isLight ? LIGHT_SYSTEM_PROMPT : FULL_SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: `INTEL LOG for ${business.name}, oldest to newest:\n\n${intelLog}` }],
+    messages: [{ role: 'user', content: `INTEL LOG for ${business.name}, oldest to newest:\n\n${intelLog}${socialContext ? `\n\nKnown social profiles (context/reference only, not fetched - factor into vision/positioning/etc where relevant): ${socialContext}` : ''}` }],
     supabase,
     businessId,
     callType: isLight ? 'profile_light' : 'profile_full',
@@ -747,10 +760,11 @@ export async function runResearch(supabase, business) {
     // retry, nothing. Prospects (full) keep the existing pipeline unchanged,
     // web_search hang included - that's a separate, tracked issue.
     if (business.research_depth !== 'light') {
+      const socialSeedContext = formatSocialLinksContext(business.social_links);
       const webData = await callAnthropic({
         max_tokens: 4096,
         system: 'You are researching a company for a business intelligence profile. Use web search to find recent news, competitors, market position, and social presence. Respond with a concise plain-text synthesis of your findings - no preamble, no JSON.',
-        messages: [{ role: 'user', content: `Company: ${business.name}\nWebsite: ${business.website_url}` }],
+        messages: [{ role: 'user', content: `Company: ${business.name}\nWebsite: ${business.website_url}${socialSeedContext ? `\nKnown social profiles (use as search anchors, not a fetch target): ${socialSeedContext}` : ''}` }],
         tools: [{ type: 'web_search_20260209', name: 'web_search', allowed_callers: ['direct'] }],
         supabase,
         businessId: business.id,
