@@ -101,6 +101,11 @@ export default function AccountCardExtract({ acc, tasks = [], activeUser, onClos
   const [loading, setLoading] = useState(null);
   const [nudged,  setNudged]  = useState(null);
   const [requestModal, setRequestModal] = useState(null);
+  // account-card-cleanup-v1 Stage 3 - the real bug here was silent error
+  // swallowing (console.error only, no visible state) on the LLM-backed
+  // handlers below, not the panel toggle itself (that already worked).
+  const [extractError, setExtractError] = useState(null);
+  const flashError = (msg) => { setExtractError(msg); setTimeout(() => setExtractError(null), 5000); };
 
   // AM Handoff state
   const [amName,       setAmName]       = useState('');
@@ -119,7 +124,7 @@ export default function AccountCardExtract({ acc, tasks = [], activeUser, onClos
     navigator.clipboard.writeText(text).then(() => {
       setCopied(key);
       setTimeout(() => setCopied(null), 2000);
-    }).catch(() => {});
+    }).catch(() => flashError("Copy failed — clipboard permission blocked?"));
   };
 
   const handlers = {
@@ -130,7 +135,8 @@ export default function AccountCardExtract({ acc, tasks = [], activeUser, onClos
       try {
         const text = await fetchSfdcUpdate(acc, tasks, activeUser);
         if (text) copy("sfdc", text);
-      } catch (e) { console.error("[Extract] SFDC error:", e); }
+        else flashError("SFDC update came back empty — try again.");
+      } catch (e) { console.error("[Extract] SFDC error:", e); flashError(`SFDC update failed: ${e.message}`); }
       setLoading(null);
     },
 
@@ -232,7 +238,8 @@ Rules:
       const data = await res.json();
       const text = data.content?.[0]?.text?.trim() || '';
       if (text) { await navigator.clipboard.writeText(text); setEmailCopied(true); setTimeout(() => setEmailCopied(false), 2000); }
-    } catch (e) { console.error('[Extract] Customer email error:', e); }
+      else flashError("Customer email came back empty — try again.");
+    } catch (e) { console.error('[Extract] Customer email error:', e); flashError(`Customer email failed: ${e.message}`); }
     setLoadingEmail(false);
   };
 
@@ -319,7 +326,8 @@ Rules:
       const data = await res.json();
       const text = data.content?.[0]?.text?.trim() || '';
       if (text) { await navigator.clipboard.writeText(text); setSlackCopied(true); setTimeout(() => setSlackCopied(false), 2000); }
-    } catch (e) { console.error('[Extract] Slack brief error:', e); }
+      else flashError("Slack brief came back empty — try again.");
+    } catch (e) { console.error('[Extract] Slack brief error:', e); flashError(`Slack brief failed: ${e.message}`); }
     setLoadingSlack(false);
   };
 
@@ -334,6 +342,12 @@ Rules:
         <span style={{ ...mono, fontSize: 11, fontWeight: 600, color: C.green, textTransform: "uppercase", letterSpacing: "0.08em" }}>⬡ Extract — {acc.name}</span>
         <button onClick={onClose} style={{ marginLeft: "auto", background: "transparent", border: "none", color: C.dim, fontSize: 14, cursor: "pointer", padding: 0 }}>✕</button>
       </div>
+
+      {extractError && (
+        <div style={{ ...mono, fontSize: 10, color: C.red, background: `${C.red}12`, border: `1px solid ${C.red}44`, borderRadius: 4, padding: "5px 9px", marginBottom: 8 }}>
+          ⚠ {extractError}
+        </div>
+      )}
 
       {/* Two-column layout */}
       <div style={{ display: "flex", gap: 0, alignItems: "flex-start" }}>
