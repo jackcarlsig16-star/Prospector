@@ -9,6 +9,18 @@ const MODEL = MODELS.FAST;
 // changes tone/structure, not just a logged label. Undefined/unknown messageType
 // (every pre-existing caller — AccountCardPersonas.js, FrontierEmailPanel.js) gets
 // no guidance block at all, so their output is byte-identical to before this change.
+// outreach-intelligence-doctrine-v1 Stage 2 - deliberately NOT migrated into
+// outreach_doctrine, unlike AVOID_ALWAYS and outputFormat's CTA rule below.
+// This map is conditional on messageType (cold_outreach says never reference
+// a prior call; follow_up says the opposite: reference one naturally) -
+// outreach_doctrine has no messageType-scoping column, and injecting all 4
+// entries unconditionally into every generation (the way doctrine rows work)
+// would put directly contradictory instructions in the same prompt. This is
+// genuinely parameterized behavior, not a flat platform rule, so it stays
+// here. The one real universal principle underneath cold_outreach's and
+// reply's rules - never fabricate a prior interaction - was extracted as a
+// real doctrine row instead (see the 'grounding' category rule, seeded
+// Stage 2), since that generalizes cleanly across every message type.
 const MESSAGE_TYPE_GUIDANCE = {
   cold_outreach: `MESSAGE TYPE — Cold Outreach: this is a first-touch message, no prior contact of any kind. Keep it short, one clear CTA, no assumption of familiarity. Never reference "as discussed," a prior call, or any earlier exchange.`,
   follow_up: `MESSAGE TYPE — Follow-up: prior contact/context already exists between sender and recipient. Reference a prior touchpoint naturally (a call, an email, a signup, a prior conversation) even generically if no specifics are given in the context below, and write as a continuation of an existing relationship, not a first introduction. Do not use a "nice to meet you" or "reaching out to introduce myself" style opener.`,
@@ -22,12 +34,6 @@ const MESSAGE_TYPE_GUIDANCE = {
   // treat it once it's there.
   reply: `MESSAGE TYPE — Reply: this is a direct reply to a specific inbound message from the recipient (its content, if provided, is in the Directive section below). Read what they actually said and respond to that — never invent a meeting recap, summary, or next step that isn't grounded in their actual message. If they're deferring to a future timeline (funding, bandwidth, a specific quarter/month, "circle back," "reconnect later"), keep the reply brief and gracious, confirm their stated timeline exactly, and do not propose a call or add a near-term CTA. Otherwise, answer their question or address their concern directly, under 200 words.`,
 };
-
-const AVOID_ALWAYS = [
-  "synergies", "solutions", "leverage", "excited to connect",
-  "hope this finds you well", "reach out", "touch base",
-  "circle back", "innovative", "best-in-class", "seamlessly",
-];
 
 function jinaTimeoutSignal(ms) {
   if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
@@ -144,35 +150,55 @@ export default async function handler(req, res) {
     } catch { /* fall through with no project-level guidance */ }
   }
 
+  // outreach-intelligence-doctrine-v1 Stage 3 — platform-wide doctrine,
+  // real per-call fetch (not a longer-lived process cache) despite being
+  // the same for every business. Deliberate: this table exists specifically
+  // so Jack can "continually train" it from the new admin tab and see it
+  // take effect - a cache with any real TTL works directly against that
+  // ("I just added a rule and it's not showing up"). The table is tiny
+  // (a handful of rows), so the read itself isn't a real cost problem to
+  // trade that freshness away for. Revisit only if this table grows large
+  // or the read is ever a measured bottleneck.
+  let doctrineHard = [];
+  let doctrineDefault = [];
+  if (supabase) {
+    try {
+      const { data } = await supabase.from('outreach_doctrine').select('category, rule_text, is_hard_constraint').eq('active', true);
+      (data || []).forEach(r => (r.is_hard_constraint ? doctrineHard : doctrineDefault).push(r.rule_text));
+    } catch { /* fall through with no platform doctrine */ }
+  }
+
   const greeting = voiceProfile?.greeting || `Hey ${personaFirstName || "[First Name]"},`;
   const closing  = voiceProfile?.closing  || `- ${sender}`;
-  const avoidList = [...AVOID_ALWAYS, ...((voiceProfile?.avoidPhrases) || [])].join(", ");
+  // outreach-intelligence-doctrine-v1 Stage 3 - AVOID_ALWAYS (the old
+  // hardcoded platform banned-phrase list) is migrated into outreach_doctrine
+  // (the 'tone' hard-constraint row seeded in Stage 2) and now arrives via
+  // the doctrineHard provider below, not duplicated here. avoidPhrases is a
+  // genuinely different, still-real concept - a specific AE's own personally
+  // learned avoid-list from "Teach from my edits" (EmailModal.js) - kept.
+  const avoidList = (voiceProfile?.avoidPhrases || []).join(", ");
 
   const voiceRules = voiceProfile
     ? `VOICE RULES — match ${sender}'s writing style precisely:
 - Open with "${greeting}"
 - Tone: ${voiceProfile.tone || "direct"} · Sentence length: ${voiceProfile.avgSentenceLength || "short"}
 - Key traits: ${(voiceProfile.keyTraits || []).join(", ")}
-- Close with "${closing}"
-- NEVER use: ${avoidList}
+- Close with "${closing}"${avoidList ? `\n- NEVER use: ${avoidList}` : ""}
 - Sound exactly like ${sender}, not marketing copy`
     : `VOICE RULES:
-- Short punchy sentences. Max 2 sentences per paragraph.
-- Never say: ${avoidList}
+- Short punchy sentences. Max 2 sentences per paragraph.${avoidList ? `\n- Never say: ${avoidList}` : ""}
 - Sound like a human, not a press release`;
 
   const outputFormat = isLinkedIn
     ? `OUTPUT FORMAT:
 - Message body only — 1-2 short paragraphs. No greeting header line.
 - Hard limit: ${wordLimit} words total (LinkedIn caps connection notes at 300 chars)
-- Soft CTA only — suggest a quick chat, don't demand it
 - No fluff, flattery, or filler`
     : `OUTPUT FORMAT:
 - Start with a single "Subject: <line>" — specific to ${name}, references something concrete from the website or signals
 - Blank line, then the email body
 - Body: opener, 2-3 short paragraphs, sign-off
 - Hard limit: ${wordLimit} words total in the body (excluding subject)
-- Soft CTA only — suggest a 15-min call, don't demand it
 - No fluff, flattery, or filler — every sentence earns its place`;
 
   // generation-engine-consolidation-v1 — composition assembled as a named,
@@ -185,6 +211,24 @@ export default async function handler(req, res) {
   // DebriefWorkspace.js, FrontierEmailPanel.js, and AccountCardComms.js as
   // of this SPEC) feeds this same list.
   const CONTEXT_PROVIDERS = [
+    // outreach-intelligence-doctrine-v1 Stage 3 - real structural separation,
+    // not another flattened prose block: two distinctly-labeled sections
+    // instead of merging into voice/companyIntel/etc like everything else.
+    // This IS the point of this stage - the audit found zero hard-vs-default
+    // distinction anywhere in the prompt before this. Placed first: hard
+    // constraints are highest-authority regardless of position (the label
+    // itself asserts that), and doctrineDefault is the most generic/
+    // overridable layer, so everything more specific below (voice, company,
+    // account, project, directive) naturally reads as refining it, not the
+    // reverse.
+    {
+      name: 'doctrineHard',
+      text: doctrineHard.length ? `NON-NEGOTIABLE (must follow, no exceptions):\n${doctrineHard.map(r => `- ${r}`).join('\n')}` : null,
+    },
+    {
+      name: 'doctrineDefault',
+      text: doctrineDefault.length ? `PLATFORM DEFAULTS (prefer these; business-specific guidance below may refine or override):\n${doctrineDefault.map(r => `- ${r}`).join('\n')}` : null,
+    },
     { name: 'voice', text: voiceRules },
     {
       name: 'companyIntel',
