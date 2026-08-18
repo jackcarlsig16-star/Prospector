@@ -5,6 +5,7 @@ import { getActiveVoice, getVoiceProfile, voiceProfileKey } from '../constants/v
 import { UCS_DATA } from '../constants/products';
 import { getListsForBusiness, linkAccountToLists, saveVoiceProfile, getListIdsForAccount } from '../utils/db';
 import { buildAccountIntel } from '../utils/accountIntel';
+import { ROLE, RADIUS } from './accountCard/tokens';
 
 // account-card-color-fix-and-guided-generate-v1 Part B
 // generation-engine-consolidation-v1 Stage 1 - 'reply' added, real new
@@ -198,7 +199,21 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
         </p>
       )}
 
-      <button onClick={generate} disabled={projectAmbiguous} style={{ ...mono, width:"100%", fontSize:13, fontWeight:600, padding:"10px 14px", background:C.goldBg, border:`1px solid ${C.goldBdr}`, color:C.gold, borderRadius:6, cursor:projectAmbiguous?"not-allowed":"pointer", opacity:projectAmbiguous?0.5:1 }}>
+      {/* account-card-cleanup-v1 Stage 1 follow-up - this is the button that
+          actually triggers generation (the outer card trigger just opens
+          this modal). Stage 1 only resized/recolored the outer trigger;
+          this one was missed - same treatment applied here now, matching
+          PrimaryAction.js exactly (size, ROLE.generateAccent, glow). */}
+      <button onClick={generate} disabled={projectAmbiguous} style={{
+        ...mono, fontSize:12, fontWeight:600, height:32, padding:"0 16px",
+        display:"inline-flex", alignItems:"center", gap:6,
+        background:`${ROLE.generateAccent}16`, border:`1px solid ${ROLE.generateAccent}`, color:ROLE.generateAccent,
+        borderRadius:RADIUS.md, cursor:projectAmbiguous?"not-allowed":"pointer", letterSpacing:"0.02em",
+        opacity:projectAmbiguous?0.5:1,
+        boxShadow:projectAmbiguous?"none":`0 0 8px ${ROLE.generateAccent}55`,
+        textShadow:projectAmbiguous?"none":`0 0 6px ${ROLE.generateAccent}66`,
+        transition:"box-shadow 0.15s, text-shadow 0.15s",
+      }}>
         ✦ Generate
       </button>
     </div>
