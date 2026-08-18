@@ -87,8 +87,12 @@ export default function AccountCard({
   // ── Tier 2/3/4 — business (Ask lives in QuickAskBar above, not this row) ─
   const businessActions = !isInfluencer ? [
     { tier: 2, key: 'callprep', icon: '☎', label: 'Call Prep', onClick: () => setCallPrepOpen(true), active: callPrepOpen },
-    { tier: 2, key: 'debrief', icon: '📋', label: 'Debrief', badge: callCount || null, onClick: () => setDebriefOpen(true), active: debriefOpen },
-    { tier: 2, key: 'intel', icon: '◆', label: 'Intel', onClick: () => setIntelOpen(true), active: intelOpen },
+    // account-card-cleanup-v1 Stage 2 - closing must go through DebriefWorkspace's
+    // real closeDebrief() (also resets debriefMode/quickUpdateText/etc, same as its
+    // own "x"), not a raw boolean flip - Intel has no equivalent extra state so a
+    // plain toggle is correct there, Debrief isn't a copy-paste of that pattern.
+    { tier: 2, key: 'debrief', icon: '📋', label: 'Debrief', badge: callCount || null, onClick: () => { if (debriefOpen) debriefRef.current?.closeDebrief?.(); else setDebriefOpen(true); }, active: debriefOpen },
+    { tier: 2, key: 'intel', icon: '◆', label: 'Intel', onClick: () => setIntelOpen(o => !o), active: intelOpen },
     { tier: 2, key: 'comms', icon: '💬', label: 'Comms', onClick: () => setCommsOpen(o => !o), active: commsOpen },
     { tier: 3, key: 'extract', icon: '⬇', label: 'Extract', onClick: () => setExtractOpen(o => !o), active: extractOpen },
     { tier: 3, key: 'timeline', icon: '📅', label: 'Timeline', onClick: () => setTimelineOpen(o => !o), active: timelineOpen },

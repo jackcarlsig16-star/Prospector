@@ -237,6 +237,7 @@ const DebriefWorkspace = forwardRef(function DebriefWorkspace({ acc, business, o
 
   useImperativeHandle(ref, () => ({
     generateFollowUpEmail, setPendingActions, setEditedActions, setSelectedActionIdxs, setActionsPushed,
+    closeDebrief,
   }));
 
   return (
