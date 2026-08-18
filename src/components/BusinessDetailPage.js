@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { C, mono, PRESET_SWATCH_COLORS } from '../constants/colors';
 import { createProject, createList, setProjectListId, getAccountsForBusiness, linkAccountToLists } from '../utils/db';
 import BusinessAccountsTab from './BusinessAccountsTab';
@@ -11,6 +11,10 @@ import AssayCriteriaCard from './AssayCriteriaCard';
 import OutreachRulesCard from './OutreachRulesCard';
 import ProfileFieldBlock from './ProfileFieldBlock';
 import BusinessSocialLinksPopover from './BusinessSocialLinksPopover';
+
+// emoji-picker-react is ~75kB gzipped - lazy so it only loads when the
+// picker is actually opened, not on every page's initial bundle.
+const BusinessEmojiPicker = lazy(() => import('./BusinessEmojiPicker'));
 import ProjectGuidanceCard from './ProjectGuidanceCard';
 import AccountPicker from './AccountPicker';
 import BulkOutreachModal from './BulkOutreachModal';
@@ -280,6 +284,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   const [pollTimedOut, setPollTimedOut] = useState(false);
   const [highlightedEntryId, setHighlightedEntryId] = useState(null);
   const [socialPopoverOpen, setSocialPopoverOpen] = useState(false);
+  const [emojiPopoverOpen, setEmojiPopoverOpen] = useState(false);
 
   // business-profile-refresh-v1 - "just resynthesize from what we already
   // have," no new entry, no site fetch, no runResearch(). Same
@@ -442,13 +447,33 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
               {business.website_url}
             </a>
           </div>
-          {/* business-profile-emoji-v1 - AI-picked, piggybacks on
-              generateProfile()'s existing synthesis output (same call as
-              motto/industry). Top-right of the shared header, visible on
-              every sub-view. */}
-          {profile?.emoji && (
-            <span style={{ fontSize:32, lineHeight:1, flexShrink:0 }} title={`${business.name}`}>{profile.emoji}</span>
-          )}
+          {/* business-emoji-manual-picker-v1 - manually picked, no longer
+              AI-generated (see shared.js). Top-right of the shared header,
+              visible on every sub-view. */}
+          <div style={{ position:"relative", flexShrink:0 }}>
+            <button
+              onClick={() => setEmojiPopoverOpen(o => !o)}
+              title={profile?.emoji ? "Change emoji" : "Pick an emoji"}
+              style={{ width:36, height:36, borderRadius:8, background:"transparent", border:profile?.emoji ? "none" : `1.5px dashed ${C.brdM}`, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}
+            >
+              {profile?.emoji
+                ? <span style={{ fontSize:28, lineHeight:1 }}>{profile.emoji}</span>
+                : <span style={{ fontSize:16, color:C.dim }}>+</span>}
+            </button>
+            {emojiPopoverOpen && (
+              <>
+                <div onClick={() => setEmojiPopoverOpen(false)} style={{ position:"fixed", inset:0, zIndex:19 }} />
+                <Suspense fallback={<div style={{ position:"absolute", top:"100%", right:0, marginTop:8, zIndex:20, ...mono, fontSize:11, color:C.dim, background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, padding:"10px 14px" }}>Loading…</div>}>
+                  <BusinessEmojiPicker
+                    businessId={business.id}
+                    emoji={profile?.emoji}
+                    onSaved={refreshedProfile => setProfile(refreshedProfile)}
+                    onClose={() => setEmojiPopoverOpen(false)}
+                  />
+                </Suspense>
+              </>
+            )}
+          </div>
         </div>
 
         {view === 'command-center' && (<>
