@@ -63,13 +63,25 @@ async function callAnthropic({ system, messages, tools, max_tokens, supabase, bu
   return data;
 }
 
+// industry/core_problem/products/motto/value_props are derivable straight
+// from a company's own site content, so light depth still asks for them.
+// sub_issues and strategic_philosophy need more interpretive synthesis
+// than a light-depth pass is meant to do (same reasoning FULL_SYSTEM_PROMPT's
+// positioning/icp/competitors already use to justify staying full-only) -
+// generateProfile() nulls those two on the light path
+// (business-intel-smart-upload-v1).
 const LIGHT_SYSTEM_PROMPT = `You maintain a compact, current profile of a company Jack does outreach on behalf of, based on its own site content and notes - not a prospect he's researching. Respond with ONLY a JSON object, no other text.
 
 Return exactly this shape:
 {
   "vision": "the company's vision or mission as it currently reads from the notes provided, 1-2 sentences. If nothing meaningful is known yet, say so plainly rather than inventing one.",
   "current_strategy": "the company's current strategy or direction right now, 1-2 sentences, based only on the notes provided.",
-  "recent_changes": "2-4 short sentences on what appears new, changed, or worth knowing since the last check - new offerings, messaging shifts, notable site changes. This is quick context for an outreach conversation, not a strategic document. If nothing meaningfully new stands out, say so plainly rather than padding."
+  "recent_changes": "2-4 short sentences on what appears new, changed, or worth knowing since the last check - new offerings, messaging shifts, notable site changes. This is quick context for an outreach conversation, not a strategic document. If nothing meaningfully new stands out, say so plainly rather than padding.",
+  "industry": "the company's industry/vertical in a few words",
+  "core_problem": "the main problem this business solves for its customers, 1-2 sentences",
+  "products": ["array of the company's actual named products/product lines, as they appear in the notes"],
+  "value_props": ["array of 2-4 short value propositions the company itself emphasizes"],
+  "motto": "a short tagline/motto if one appears in the notes, else null"
 }
 
 Base every field on the notes provided - do not invent facts they don't support. Keep this compact - this is a lightweight running profile, not a full strategic writeup.`;
@@ -83,10 +95,17 @@ Return exactly this shape:
   "icp": "the company's ideal customer profile, 2-3 sentences",
   "gtm_strategy": "the company's go-to-market strategy, 2-3 sentences",
   "competitors": "known or likely competitors, comma-separated or short list",
-  "raw_synthesis": "a fuller markdown synthesis covering anything the fields above don't capture"
+  "raw_synthesis": "a fuller markdown synthesis covering anything the fields above don't capture",
+  "industry": "the company's industry/vertical in a few words",
+  "core_problem": "the main problem this business solves for its customers, 1-2 sentences",
+  "sub_issues": ["array of 2-5 more specific sub-problems or pain points within the core problem, grounded in the intel log"],
+  "products": ["array of the company's actual named products/product lines"],
+  "value_props": ["array of 2-4 value propositions the company itself emphasizes"],
+  "motto": "a short tagline/motto if one appears in the log, else null",
+  "strategic_philosophy": "1-3 sentences on any business-specific strategic doctrine or framing that shows up in the notes (e.g. an explicit prioritization approach, a stated operating philosophy) - leave this genuinely null if nothing like that appears rather than inventing generic strategy language"
 }
 
-Base every field on the intel log provided - do not invent facts it doesn't support. Where the log is thin on a field, give a clearly-labeled best inference rather than leaving it empty.`;
+Base every field on the intel log provided - do not invent facts it doesn't support. Where the log is thin on a field, give a clearly-labeled best inference rather than leaving it empty - except strategic_philosophy, which should stay null rather than be padded with generic inference.`;
 
 const PROJECT_STRATEGY_SYSTEM_PROMPT = `You track the strategy and direction of a specific project or initiative within a company Jack does outreach on behalf of, based solely on notes filed for that project. Respond with ONLY a JSON object, no other text.
 
@@ -318,6 +337,13 @@ export async function generateProfile(supabase, businessId) {
     gtm_strategy: isLight ? (parsed.current_strategy || null) : (parsed.gtm_strategy || null),
     competitors: isLight ? null : (parsed.competitors || null),
     raw_synthesis: isLight ? (parsed.recent_changes || null) : (parsed.raw_synthesis || null),
+    industry: parsed.industry || null,
+    core_problem: parsed.core_problem || null,
+    sub_issues: isLight ? null : (parsed.sub_issues || null),
+    products: parsed.products || null,
+    value_props: parsed.value_props || null,
+    motto: parsed.motto || null,
+    strategic_philosophy: isLight ? null : (parsed.strategic_philosophy || null),
     model_version: MODELS.STANDARD,
     generated_at: new Date().toISOString(),
   }, { onConflict: 'business_id' });
