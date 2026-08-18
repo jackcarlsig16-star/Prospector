@@ -359,7 +359,12 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
     }
   };
 
-  const wideView = view === 'accounts' || view === 'search' || view === 'generation' || view === 'command-center' || view === 'members';
+  // 'overview' added business-intel-smart-upload-v1 follow-up - it used to
+  // be a short vision/positioning/gtm_strategy prose page (700 was fine),
+  // but now renders 13 profile fields plus Assay Criteria/Outreach
+  // Rules/Add Intel/the Intel log. Same 1100 the other dense views here
+  // already use, not a new value.
+  const wideView = view === 'accounts' || view === 'search' || view === 'generation' || view === 'command-center' || view === 'members' || view === 'overview';
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, padding:"48px 40px" }}>
@@ -391,6 +396,20 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
         {view === 'members' && <MembersPermissionsTab business={business} viewerEmail={userEmail} />}
 
         {view === 'overview' && (<>
+        <div style={{ marginBottom:32 }}>
+          <textarea
+            placeholder="Add intel…" value={newEntry} onChange={e=>setNewEntry(e.target.value)}
+            rows={3} style={{ ...inp, resize:"vertical", marginBottom:8 }}
+          />
+          {entryError && <div style={{ ...mono, fontSize:11, color:C.red, marginBottom:8 }}>⚠ {entryError}</div>}
+          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+            <button onClick={handleAddEntry} disabled={!newEntry.trim()||savingEntry} style={{ ...btn, opacity:newEntry.trim()?1:0.5 }}>
+              {savingEntry ? "Adding…" : "Add Intel"}
+            </button>
+            {updatedFlash && <span style={{ ...mono, fontSize:11, color:C.green }}>✓ Profile updated</span>}
+          </div>
+        </div>
+
         {business.research_status === 'researching' && !pollTimedOut && (
           <div style={{ padding:"16px 18px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, marginBottom:32 }}>
             <p style={{ ...mono, fontSize:13, color:C.txt, margin:0 }}>Researching {business.name}…</p>
@@ -478,20 +497,6 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
             onUpdated={patch => setProfile(p => ({ ...p, ...patch }))}
           />
         )}
-
-        <div style={{ marginBottom:32 }}>
-          <textarea
-            placeholder="Add intel…" value={newEntry} onChange={e=>setNewEntry(e.target.value)}
-            rows={3} style={{ ...inp, resize:"vertical", marginBottom:8 }}
-          />
-          {entryError && <div style={{ ...mono, fontSize:11, color:C.red, marginBottom:8 }}>⚠ {entryError}</div>}
-          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-            <button onClick={handleAddEntry} disabled={!newEntry.trim()||savingEntry} style={{ ...btn, opacity:newEntry.trim()?1:0.5 }}>
-              {savingEntry ? "Adding…" : "Add Intel"}
-            </button>
-            {updatedFlash && <span style={{ ...mono, fontSize:11, color:C.green }}>✓ Profile updated</span>}
-          </div>
-        </div>
 
         <div>
           <button onClick={()=>setLogOpen(o=>!o)} style={{ ...mono, fontSize:12, color:C.dim, background:"transparent", border:"none", cursor:"pointer", padding:0, marginBottom:10 }}>
