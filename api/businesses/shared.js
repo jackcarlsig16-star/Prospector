@@ -220,6 +220,16 @@ export function buildBusinessFitContext(profile) {
     profile.positioning && `Positioning: ${profile.positioning}`,
     profile.icp && `ICP: ${profile.icp}`,
     profile.gtm_strategy && `GTM strategy: ${profile.gtm_strategy}`,
+    // business-intel-smart-upload-v1 - same single-row read, no added
+    // model strain at score/fit-assessment time, shared by both callers
+    // of this function (generateAssayCriteria, assessInfluencerAccount).
+    profile.industry && `Industry: ${profile.industry}`,
+    profile.core_problem && `Core problem solved: ${profile.core_problem}`,
+    Array.isArray(profile.sub_issues) && profile.sub_issues.length > 0 && `Sub-issues: ${profile.sub_issues.join('; ')}`,
+    Array.isArray(profile.products) && profile.products.length > 0 && `Products: ${profile.products.join(', ')}`,
+    Array.isArray(profile.value_props) && profile.value_props.length > 0 && `Value props: ${profile.value_props.join('; ')}`,
+    profile.motto && `Motto: "${profile.motto}"`,
+    profile.strategic_philosophy && `Strategic philosophy: ${profile.strategic_philosophy}`,
   ].filter(Boolean);
   if (!parts.length && profile.raw_synthesis) return profile.raw_synthesis;
   return parts.length ? parts.join('\n') : '(no business profile available yet)';
@@ -240,7 +250,7 @@ export async function assessInfluencerAccount(supabase, accountId, bioText, foll
   try {
     let businessContext = '(no business profile available yet)';
     if (businessId) {
-      const { data: profile } = await supabase.from('business_profiles').select('vision, positioning, icp, gtm_strategy, raw_synthesis').eq('business_id', businessId).maybeSingle();
+      const { data: profile } = await supabase.from('business_profiles').select('vision, positioning, icp, gtm_strategy, raw_synthesis, industry, core_problem, sub_issues, products, value_props, motto, strategic_philosophy').eq('business_id', businessId).maybeSingle();
       businessContext = buildBusinessFitContext(profile);
     }
 
@@ -404,7 +414,7 @@ export async function generateAssayCriteria(supabase, businessId) {
   const { data: business, error: businessError } = await supabase.from('businesses').select('name').eq('id', businessId).single();
   if (businessError) throw businessError;
 
-  const { data: profile, error: profileError } = await supabase.from('business_profiles').select('vision, positioning, icp, gtm_strategy, raw_synthesis').eq('business_id', businessId).maybeSingle();
+  const { data: profile, error: profileError } = await supabase.from('business_profiles').select('vision, positioning, icp, gtm_strategy, raw_synthesis, industry, core_problem, sub_issues, products, value_props, motto, strategic_philosophy').eq('business_id', businessId).maybeSingle();
   if (profileError) throw profileError;
   if (!profile) throw new Error('No business profile found for this business yet — run company research first.');
 
