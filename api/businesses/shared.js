@@ -531,9 +531,18 @@ export async function generateProjectStrategy(supabase, projectId) {
 // BusinessDetailPage.js and intake-confirm.js's ambiguous-then-confirmed
 // path, both of which reach fileCompanyIntel() without a fresh
 // classification (business-intel-smart-upload-v1).
+// "pricing" is a legacy category from a previous system - not something
+// worth engineering real detection for right now, so it's left out of this
+// heuristic entirely rather than tightened. The old bare "$[\d,]+" check
+// false-matched on any document citing a dollar figure at all (a budget
+// ask, a market-size stat), which is most real documents, not just pricing
+// sheets. Re-add a real detector if pricing classification becomes
+// something this app actually needs (business-intel-smart-upload-v1
+// follow-up). classifyIntake()'s model-driven content_type (Smart Intake)
+// still offers "pricing" as an option - only this deterministic fallback
+// drops it.
 function detectContentType(text) {
   const t = text.toLowerCase();
-  if (/\$[\d,]+|pricing|price per|per seat|per month|cost structure|discount/.test(t)) return 'pricing';
   if (/competitor|vs\.|versus|alternative to|battlecard|battle card/.test(t)) return 'competitive';
   if (/flyer|campaign|ad copy|social post|press release|marketing asset|brochure/.test(t)) return 'marketing_asset';
   if (/strategy|roadmap|vision|mission|\bokrs?\b|board deck|strategic plan|doctrine/.test(t)) return 'strategy_doc';
