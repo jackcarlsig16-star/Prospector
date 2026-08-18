@@ -9,6 +9,7 @@ import AccountBadge from './AccountBadge';
 export default function AccountHeader({
   accountKind, name, meta, signals = [],
   isFav, onToggleFav, expanded, onToggle, onOpenOverflow,
+  onReassay, reassaying,
 }) {
   const kind = kindTokens(accountKind);
 
@@ -41,6 +42,17 @@ export default function AccountHeader({
 
       <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
         <button onClick={() => onToggleFav && onToggleFav()} style={{ background: "transparent", border: "none", fontSize: 14, color: isFav ? "#f5c542" : CARD.textSubtle, cursor: "pointer", padding: "0 2px", lineHeight: 1 }}>★</button>
+        {/* account-card-cleanup-v1 Stage 5 — Re-assay relocated here from the
+            Tier-3 utility row, matching the star/overflow icon-button
+            treatment instead of a full labeled button. */}
+        {onReassay && (
+          <button
+            onClick={() => onReassay()}
+            disabled={reassaying}
+            title={reassaying ? "Analyzing…" : "Re-assay"}
+            style={{ background: "transparent", border: "none", fontSize: 14, color: CARD.textSubtle, cursor: reassaying ? "default" : "pointer", padding: "0 2px", lineHeight: 1, opacity: reassaying ? 0.5 : 1, display: "inline-block", animation: reassaying ? "spin 0.7s linear infinite" : "none" }}
+          >↻</button>
+        )}
         {onOpenOverflow && (
           <button onClick={onOpenOverflow} style={{ background: "transparent", border: "none", fontSize: 14, color: CARD.textMuted, cursor: "pointer", padding: "2px 4px", lineHeight: 1 }} title="More">•••</button>
         )}

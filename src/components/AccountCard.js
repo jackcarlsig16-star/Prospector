@@ -99,7 +99,8 @@ export default function AccountCard({
     // revisit it later, not a rejection of the feature.
     onOpenPricing ? { tier: 3, key: 'pricing', icon: '$', label: 'Pricing', onClick: () => onOpenPricing(acc.id) } : null,
     onOpenRoi ? { tier: 3, key: 'roi', icon: '📈', label: 'ROI', onClick: () => onOpenRoi(acc.id) } : null,
-    onReassay ? { tier: 3, key: 'reassay', icon: '↻', label: reassaying ? 'Analyzing…' : 'Re-assay', onClick: () => onReassay(acc), disabled: reassaying } : null,
+    // account-card-cleanup-v1 Stage 5 - Re-assay moved to AccountHeader's
+    // icon row (near star/overflow), no longer a Tier-3 action.
   ].filter(Boolean) : [];
 
   const tiers = groupByTier(businessActions);
@@ -164,6 +165,8 @@ export default function AccountCard({
         expanded={expanded}
         onToggle={onToggle}
         onOpenOverflow={() => setOverflowOpen(o => !o)}
+        onReassay={!isInfluencer && onReassay ? () => onReassay(acc) : undefined}
+        reassaying={reassaying}
       />
 
       <AdminOverflowMenu open={overflowOpen} onClose={() => setOverflowOpen(false)} actions={adminActions} />
