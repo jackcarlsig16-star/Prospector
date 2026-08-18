@@ -431,9 +431,24 @@ export async function generateProjectStrategy(supabase, projectId) {
 // instead of drifting independently (smart-intake-and-intelligence-v1,
 // modular-tools discipline).
 
-export async function fileCompanyIntel(supabase, businessId, text, createdBy) {
+// Cheap deterministic fallback, no model call - used whenever the caller
+// doesn't already have a content_type from classifyIntake()'s own
+// (already-paid-for) model call, e.g. the "Add Intel" textarea on
+// BusinessDetailPage.js and intake-confirm.js's ambiguous-then-confirmed
+// path, both of which reach fileCompanyIntel() without a fresh
+// classification (business-intel-smart-upload-v1).
+function detectContentType(text) {
+  const t = text.toLowerCase();
+  if (/\$[\d,]+|pricing|price per|per seat|per month|cost structure|discount/.test(t)) return 'pricing';
+  if (/competitor|vs\.|versus|alternative to|battlecard|battle card/.test(t)) return 'competitive';
+  if (/flyer|campaign|ad copy|social post|press release|marketing asset|brochure/.test(t)) return 'marketing_asset';
+  if (/strategy|roadmap|vision|mission|\bokrs?\b|board deck|strategic plan|doctrine/.test(t)) return 'strategy_doc';
+  return 'other';
+}
+
+export async function fileCompanyIntel(supabase, businessId, text, createdBy, contentType) {
   const { error } = await supabase.from('business_intel_entries')
-    .insert({ business_id: businessId, project_id: null, source: 'manual', content: text, created_by: createdBy || null });
+    .insert({ business_id: businessId, project_id: null, source: 'manual', content: text, created_by: createdBy || null, content_type: contentType || detectContentType(text) });
   if (error) throw error;
   await generateProfile(supabase, businessId);
   const { data: profile, error: profileError } = await supabase.from('business_profiles').select('*').eq('business_id', businessId).maybeSingle();
@@ -488,7 +503,8 @@ Return exactly this shape:
   "inferred_project_name": "a short inferred name if classification is new_project, else null",
   "account_id": "the matching account's id if classification is existing_account, else null",
   "new_account_names": ["array of company/account names mentioned if classification is new_account, else empty array"],
-  "related_project_id": "if classification is new_account and the text also clearly references one of the existing projects listed, that project's id, else null"
+  "related_project_id": "if classification is new_account and the text also clearly references one of the existing projects listed, that project's id, else null",
+  "content_type": "strategy_doc" | "marketing_asset" | "pricing" | "competitive" | "other"
 }
 
 Rules:
@@ -496,7 +512,8 @@ Rules:
 - Use "new_project" only if the text reads as a genuinely new initiative/effort worth tracking on its own, not just a one-off note.
 - Use "new_account" if the text mentions one or more companies/accounts not in the existing list - list every distinct one you find in new_account_names.
 - Use "company_intel" for general company-level notes that don't fit a specific project or account.
-- Use "ambiguous" only if you genuinely cannot tell what this belongs to - a human will be asked to pick the destination, so prefer a real classification when there's a reasonable read and only fall back to "ambiguous" for text that's genuinely too thin or unclear to route (e.g. a single word, or text with no discernible subject).`;
+- Use "ambiguous" only if you genuinely cannot tell what this belongs to - a human will be asked to pick the destination, so prefer a real classification when there's a reasonable read and only fall back to "ambiguous" for text that's genuinely too thin or unclear to route (e.g. a single word, or text with no discernible subject).
+- content_type is a best-guess document-kind tag, independent of classification - set it regardless of what classification you picked (it's only actually stored when the text ends up filed as company intel, but always attempt a real guess rather than defaulting to "other"). "strategy_doc" = vision/roadmap/positioning/doctrine, "marketing_asset" = campaign/ad/social/press copy, "pricing" = pricing/cost/discount structure, "competitive" = competitor comparisons/battlecards, "other" = anything that doesn't fit those four.`;
 
 // Deterministic pre-check, not an AI judgment call - a raw scraped Instagram
 // profile block (or a bare instagram.com URL) is structurally distinctive

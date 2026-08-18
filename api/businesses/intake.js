@@ -63,7 +63,7 @@ export default async function handler(req, res) {
     }
 
     // company_intel only - the one remaining auto-file case
-    const profile = await fileCompanyIntel(supabase, id, text.trim(), created_by);
+    const profile = await fileCompanyIntel(supabase, id, text.trim(), created_by, classification.content_type);
     return res.status(200).json({ status: 'filed', classification: 'company_intel', profile });
   } catch (e) {
     return res.status(500).json({ error: e.message });
