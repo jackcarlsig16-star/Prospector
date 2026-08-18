@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { C, mono } from '../constants/colors';
 
 const inp = { fontSize:12, padding:"6px 9px", background:C.bg, border:`1.5px solid ${C.brdM}`, borderRadius:5, color:C.txt, outline:"none", width:"100%", boxSizing:"border-box", ...mono };
@@ -16,6 +16,11 @@ const FIELDS = [
 // hints fed into generateProfile()/web_research, never scraped directly
 // (Instagram: confirmed dead end, login wall, tested 3x already; LinkedIn:
 // deliberately out of scope for this pass too).
+//
+// business-profile-refresh-v1 - saving now also triggers a real
+// resynthesis (see social-links-save.js), so this can take as long as a
+// full profile refresh - same elapsed-counter + progress-bar treatment as
+// Add Intel/Smart Intake, not a static "Saving…" label.
 export default function BusinessSocialLinksPopover({ businessId, socialLinks, onSaved, onClose }) {
   const [draft, setDraft] = useState(() => ({
     instagram: socialLinks?.instagram || '',
@@ -24,10 +29,15 @@ export default function BusinessSocialLinksPopover({ businessId, socialLinks, on
     facebook: socialLinks?.facebook || '',
   }));
   const [saving, setSaving] = useState(false);
+  const [savingElapsed, setSavingElapsed] = useState(0);
+  const savingTimerRef = useRef(null);
   const [error, setError] = useState('');
 
+  useEffect(() => () => { if (savingTimerRef.current) clearInterval(savingTimerRef.current); }, []);
+
   const save = async () => {
-    setSaving(true); setError('');
+    setSaving(true); setSavingElapsed(0); setError('');
+    savingTimerRef.current = setInterval(() => setSavingElapsed(s => s + 1), 1000);
     try {
       const cleaned = Object.fromEntries(Object.entries(draft).map(([k, v]) => [k, v.trim() || null]));
       const res = await fetch(`/api/businesses/${businessId}/social-links`, {
@@ -37,11 +47,13 @@ export default function BusinessSocialLinksPopover({ businessId, socialLinks, on
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save');
-      onSaved(data.business.social_links);
+      onSaved(data.business.social_links, data.profile);
       onClose();
     } catch (e) {
       setError(e.message);
     } finally {
+      clearInterval(savingTimerRef.current);
+      savingTimerRef.current = null;
       setSaving(false);
     }
   };
@@ -60,9 +72,16 @@ export default function BusinessSocialLinksPopover({ businessId, socialLinks, on
       ))}
       {error && <div style={{ ...mono, fontSize:11, color:C.red, margin:"4px 0 8px" }}>⚠ {error}</div>}
       <div style={{ display:"flex", gap:8, marginTop:4 }}>
-        <button onClick={save} disabled={saving} style={{ ...smallBtn, background:C.gold, border:`1px solid ${C.gold}`, color:C.bg, fontWeight:700 }}>{saving ? "Saving…" : "Save"}</button>
+        <button onClick={save} disabled={saving} style={{ ...smallBtn, background:C.gold, border:`1px solid ${C.gold}`, color:C.bg, fontWeight:700 }}>{saving ? `Saving… ${savingElapsed}s` : "Save"}</button>
         <button onClick={onClose} disabled={saving} style={{ ...smallBtn, background:"transparent", border:`1px solid ${C.brd}`, color:C.mut }}>Cancel</button>
       </div>
+      {saving && (
+        <div style={{ marginTop:8, height:3, background:C.brd, borderRadius:2, overflow:"hidden", position:"relative" }}>
+          <div style={{ position:"absolute", top:0, left:"-30%", height:"100%", width:"30%", background:C.gold, borderRadius:2, animation:"socialSaveBarSlide 1.1s ease-in-out infinite" }} />
+          <style>{`@keyframes socialSaveBarSlide { 0% { left: -30%; } 100% { left: 100%; } }`}</style>
+        </div>
+      )}
+      {saving && <p style={{ ...mono, fontSize:9, color:C.dim, margin:"6px 0 0" }}>Saving and refreshing the profile from current intel…</p>}
     </div>
   );
 }

@@ -282,6 +282,34 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   const [highlightedEntryId, setHighlightedEntryId] = useState(null);
   const [socialPopoverOpen, setSocialPopoverOpen] = useState(false);
 
+  // business-profile-refresh-v1 - "just resynthesize from what we already
+  // have," no new entry, no site fetch, no runResearch(). Same
+  // elapsed-counter/progress-bar/cleanup discipline as everywhere else
+  // that calls generateProfile().
+  const [refreshingProfile, setRefreshingProfile] = useState(false);
+  const [refreshElapsed, setRefreshElapsed] = useState(0);
+  const [refreshError, setRefreshError] = useState('');
+  const refreshTimerRef = useRef(null);
+  useEffect(() => () => { if (refreshTimerRef.current) clearInterval(refreshTimerRef.current); }, []);
+
+  const refreshProfile = async () => {
+    if (refreshingProfile) return;
+    setRefreshingProfile(true); setRefreshElapsed(0); setRefreshError('');
+    refreshTimerRef.current = setInterval(() => setRefreshElapsed(s => s + 1), 1000);
+    try {
+      const res = await fetch(`/api/businesses/${business.id}/profile-refresh`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to refresh profile');
+      setProfile(data.profile);
+    } catch (e) {
+      setRefreshError(e.message);
+    } finally {
+      clearInterval(refreshTimerRef.current);
+      refreshTimerRef.current = null;
+      setRefreshingProfile(false);
+    }
+  };
+
   const pollRef = useRef(null);
   const pollAttemptsRef = useRef(0);
   // Server-side, a research run is bounded by two 90s Anthropic timeouts plus a
@@ -402,7 +430,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
                 <BusinessSocialLinksPopover
                   businessId={business.id}
                   socialLinks={business.social_links}
-                  onSaved={links => setBusiness(b => ({ ...b, social_links: links }))}
+                  onSaved={(links, refreshedProfile) => { setBusiness(b => ({ ...b, social_links: links })); if (refreshedProfile) setProfile(refreshedProfile); }}
                   onClose={() => setSocialPopoverOpen(false)}
                 />
               </>
@@ -483,7 +511,19 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
         {business.research_status === 'ready' && profile && (
           business.research_depth === 'light' ? (
             <div style={{ marginBottom:32 }}>
-              <h2 style={{ ...mono, fontSize:13, color:C.txt, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", margin:"0 0 16px" }}>Profile</h2>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+                <h2 style={{ ...mono, fontSize:13, color:C.txt, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", margin:0 }}>Profile</h2>
+                <button onClick={refreshProfile} disabled={refreshingProfile} style={{ ...mono, fontSize:11, padding:"5px 12px", borderRadius:5, cursor:refreshingProfile?"default":"pointer", background:"transparent", border:`1px solid ${refreshingProfile?C.brd:C.gold+"66"}`, color:refreshingProfile?C.dim:C.gold, opacity:refreshingProfile?0.6:1 }}>
+                  {refreshingProfile ? `↺ Refreshing… ${refreshElapsed}s` : "↺ Refresh profile"}
+                </button>
+              </div>
+              {refreshError && <div style={{ ...mono, fontSize:11, color:C.red, marginBottom:10 }}>⚠ {refreshError}</div>}
+              {refreshingProfile && (
+                <div style={{ marginBottom:16, height:3, background:C.brd, borderRadius:2, overflow:"hidden", position:"relative" }}>
+                  <div style={{ position:"absolute", top:0, left:"-30%", height:"100%", width:"30%", background:C.gold, borderRadius:2, animation:"profileRefreshBarSlide 1.1s ease-in-out infinite" }} />
+                  <style>{`@keyframes profileRefreshBarSlide { 0% { left: -30%; } 100% { left: 100%; } }`}</style>
+                </div>
+              )}
               <ProfileFieldBlock field="vision" label="Vision" value={profile.vision} sources={profile.field_sources?.vision} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
               <ProfileFieldBlock field="gtm_strategy" label="Current Strategy" value={profile.gtm_strategy} sources={profile.field_sources?.gtm_strategy} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
               <ProfileFieldBlock field="raw_synthesis" label="Recent Changes" value={profile.raw_synthesis} sources={profile.field_sources?.raw_synthesis} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
@@ -498,7 +538,19 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
             </div>
           ) : (
             <div style={{ marginBottom:32 }}>
-              <h2 style={{ ...mono, fontSize:13, color:C.txt, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", margin:"0 0 16px" }}>Profile</h2>
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", marginBottom:16 }}>
+                <h2 style={{ ...mono, fontSize:13, color:C.txt, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", margin:0 }}>Profile</h2>
+                <button onClick={refreshProfile} disabled={refreshingProfile} style={{ ...mono, fontSize:11, padding:"5px 12px", borderRadius:5, cursor:refreshingProfile?"default":"pointer", background:"transparent", border:`1px solid ${refreshingProfile?C.brd:C.gold+"66"}`, color:refreshingProfile?C.dim:C.gold, opacity:refreshingProfile?0.6:1 }}>
+                  {refreshingProfile ? `↺ Refreshing… ${refreshElapsed}s` : "↺ Refresh profile"}
+                </button>
+              </div>
+              {refreshError && <div style={{ ...mono, fontSize:11, color:C.red, marginBottom:10 }}>⚠ {refreshError}</div>}
+              {refreshingProfile && (
+                <div style={{ marginBottom:16, height:3, background:C.brd, borderRadius:2, overflow:"hidden", position:"relative" }}>
+                  <div style={{ position:"absolute", top:0, left:"-30%", height:"100%", width:"30%", background:C.gold, borderRadius:2, animation:"profileRefreshBarSlide 1.1s ease-in-out infinite" }} />
+                  <style>{`@keyframes profileRefreshBarSlide { 0% { left: -30%; } 100% { left: 100%; } }`}</style>
+                </div>
+              )}
               <ProfileFieldBlock field="vision" label="Vision" value={profile.vision} sources={profile.field_sources?.vision} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
               <ProfileFieldBlock field="positioning" label="Positioning" value={profile.positioning} sources={profile.field_sources?.positioning} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
               <ProfileFieldBlock field="icp" label="ICP" value={profile.icp} sources={profile.field_sources?.icp} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
