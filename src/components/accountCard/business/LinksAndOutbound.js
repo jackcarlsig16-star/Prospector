@@ -20,7 +20,7 @@ const toSfdcUrl = v => {
 // else. Business-only.
 export default function LinksAndOutbound({ acc, onUpdate, tasks, activeUser, assignedEntry, onAssign, onUnassign }) {
   const [linksEdit, setLinksEdit] = useState(false);
-  const [linksDraft, setLinksDraft] = useState({ web: '', sfdc: '', linkedin: '' });
+  const [linksDraft, setLinksDraft] = useState({ web: '', sfdc: '', linkedin: '', clientIds: '' });
   const [clientIdsEdit, setClientIdsEdit] = useState(false);
   const [clientIdsInput, setClientIdsInput] = useState("");
   const [outboundPickerOpen, setOutboundPickerOpen] = useState(false);
@@ -58,9 +58,9 @@ export default function LinksAndOutbound({ acc, onUpdate, tasks, activeUser, ass
   return (
     <div onClick={e => e.stopPropagation()}>
       <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-        <button onClick={askSfdc} disabled={sfdcLoading} title={sfdcLoading ? 'Generating…' : sfdcCopied ? 'Copied to clipboard' : 'Copy SFDC Update'}
+        <button onClick={askSfdc} disabled={sfdcLoading} title={sfdcLoading ? 'Generating…' : sfdcCopied ? 'Copied to clipboard' : 'Generate an SFDC update note and copy it to clipboard'}
           style={{ ...itemStyle, borderColor: sfdcCopied ? "#3ba0c9" : CARD.border, color: sfdcCopied ? "#3ba0c9" : CARD.textMuted }}>
-          {sfdcLoading ? '⟳' : sfdcCopied ? '✓ SFDC' : '⎘ SFDC'}
+          {sfdcLoading ? '⟳' : sfdcCopied ? '✓ Copied' : '⎘ SFDC Note'}
         </button>
 
         {linksEdit ? (
@@ -68,15 +68,24 @@ export default function LinksAndOutbound({ acc, onUpdate, tasks, activeUser, ass
             <input autoFocus value={linksDraft.web} onChange={e => setLinksDraft(d => ({ ...d, web: e.target.value }))} placeholder="Website URL" style={{ ...mono, fontSize: 11, padding: "2px 7px", background: CARD.surface, border: `1px solid ${CARD.border}`, borderRadius: 4, color: CARD.textPrimary, outline: "none", width: 130 }} />
             <input value={linksDraft.linkedin} onChange={e => setLinksDraft(d => ({ ...d, linkedin: e.target.value }))} placeholder="LinkedIn URL" style={{ ...mono, fontSize: 11, padding: "2px 7px", background: CARD.surface, border: `1px solid ${CARD.border}`, borderRadius: 4, color: CARD.textPrimary, outline: "none", width: 130 }} />
             <input value={linksDraft.sfdc} onChange={e => setLinksDraft(d => ({ ...d, sfdc: e.target.value }))} placeholder="SFDC URL or ID" style={{ ...mono, fontSize: 11, padding: "2px 7px", background: CARD.surface, border: `1px solid ${CARD.border}`, borderRadius: 4, color: CARD.textPrimary, outline: "none", width: 130 }} />
-            <button onClick={() => { onUpdate && onUpdate({ ...acc, web: linksDraft.web, sfdc: linksDraft.sfdc, linkedin: linksDraft.linkedin }); setLinksEdit(false); }} style={itemStyle}>Save</button>
+            {/* account-card-button-cleanup-v1 — clientIds folded into this
+                same form so the dedicated Client ID button can be removed
+                in a later pass once this path is confirmed working. */}
+            <input value={linksDraft.clientIds} onChange={e => setLinksDraft(d => ({ ...d, clientIds: e.target.value }))} placeholder="Client ID(s), comma-separated" style={{ ...mono, fontSize: 11, padding: "2px 7px", background: CARD.surface, border: `1px solid ${CARD.border}`, borderRadius: 4, color: CARD.textPrimary, outline: "none", width: 130 }} />
+            <button onClick={() => { onUpdate && onUpdate({ ...acc, web: linksDraft.web, sfdc: linksDraft.sfdc, linkedin: linksDraft.linkedin, clientIds: linksDraft.clientIds.split(",").map(s => s.trim()).filter(Boolean) }); setLinksEdit(false); }} style={itemStyle}>Save</button>
             <button onClick={() => setLinksEdit(false)} style={itemStyle}>Cancel</button>
           </span>
         ) : (
           <>
             {webUrl && <a href={webUrl} target="_blank" rel="noreferrer" style={itemStyle}>↗ Website</a>}
             <a href={liUrl} target="_blank" rel="noreferrer" style={itemStyle}>in LinkedIn</a>
-            {toSfdcUrl(acc.sfdc) ? <a href={toSfdcUrl(acc.sfdc)} target="_blank" rel="noreferrer" style={itemStyle}>⬡ Salesforce</a> : <button onClick={() => { if (onUpdate) { setLinksDraft({ web: acc.web || '', sfdc: acc.sfdc || '', linkedin: acc.linkedin || '' }); setLinksEdit(true); } }} style={itemStyle}>⬡ SF</button>}
-            {onUpdate && <button onClick={() => { setLinksDraft({ web: acc.web || '', sfdc: acc.sfdc || '', linkedin: acc.linkedin || '' }); setLinksEdit(true); }} style={itemStyle} title="Edit links">✏</button>}
+            {/* account-card-button-cleanup-v1 — the invalid-state "⬡ SF"
+                edit-trigger was removed (redundant with ✏ below, which opens
+                the identical form). The valid-state real link is kept — it's
+                genuine navigation to a real SFDC record, not redundant with
+                anything else on this card. */}
+            {toSfdcUrl(acc.sfdc) && <a href={toSfdcUrl(acc.sfdc)} target="_blank" rel="noreferrer" style={itemStyle}>⬡ Salesforce</a>}
+            {onUpdate && <button onClick={() => { setLinksDraft({ web: acc.web || '', sfdc: acc.sfdc || '', linkedin: acc.linkedin || '', clientIds: (acc.clientIds || []).join(', ') }); setLinksEdit(true); }} style={itemStyle} title="Edit links">✏</button>}
           </>
         )}
 
