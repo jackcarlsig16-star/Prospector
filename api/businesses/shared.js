@@ -81,10 +81,11 @@ Return exactly this shape:
   "core_problem": "the main problem this business solves for its customers, 1-2 sentences",
   "products": ["array of the company's actual named products/product lines, as they appear in the notes"],
   "value_props": ["array of 2-4 short value propositions the company itself emphasizes"],
-  "motto": "a short tagline/motto if one appears in the notes, else null"
+  "motto": "a short tagline/motto if one appears in the notes, else null",
+  "field_sources": { "<field name from above, e.g. \\"vision\\">": ["<the [id:...] tag(s) of the note(s) that field is actually grounded in>"] }
 }
 
-Base every field on the notes provided - do not invent facts they don't support. Keep this compact - this is a lightweight running profile, not a full strategic writeup.`;
+Base every field on the notes provided - do not invent facts they don't support. Keep this compact - this is a lightweight running profile, not a full strategic writeup. Every note in the log is prefixed with its own [id:...] tag - field_sources must cite the real ids of the notes each field actually drew on. A field with no real grounding should be left empty/null rather than given a made-up citation.`;
 
 const FULL_SYSTEM_PROMPT = `You synthesize accumulated research and notes about a company into a structured business profile. Respond with ONLY a JSON object, no other text.
 
@@ -102,10 +103,11 @@ Return exactly this shape:
   "products": ["array of the company's actual named products/product lines"],
   "value_props": ["array of 2-4 value propositions the company itself emphasizes"],
   "motto": "a short tagline/motto if one appears in the log, else null",
-  "strategic_philosophy": "1-3 sentences on any business-specific strategic doctrine or framing that shows up in the notes (e.g. an explicit prioritization approach, a stated operating philosophy) - leave this genuinely null if nothing like that appears rather than inventing generic strategy language"
+  "strategic_philosophy": "1-3 sentences on any business-specific strategic doctrine or framing that shows up in the notes (e.g. an explicit prioritization approach, a stated operating philosophy) - leave this genuinely null if nothing like that appears rather than inventing generic strategy language",
+  "field_sources": { "<field name from above, e.g. \\"vision\\">": ["<the [id:...] tag(s) of the log entries that field is actually grounded in>"] }
 }
 
-Base every field on the intel log provided - do not invent facts it doesn't support. Where the log is thin on a field, give a clearly-labeled best inference rather than leaving it empty - except strategic_philosophy, which should stay null rather than be padded with generic inference.`;
+Base every field on the intel log provided - do not invent facts it doesn't support. Where the log is thin on a field, give a clearly-labeled best inference rather than leaving it empty - except strategic_philosophy, which should stay null rather than be padded with generic inference. Every entry in the log is prefixed with its own [id:...] tag - field_sources must cite the real ids of the entries each field actually drew on, not a guess. A field with no real grounding should be left empty/null rather than given a made-up citation.`;
 
 const PROJECT_STRATEGY_SYSTEM_PROMPT = `You track the strategy and direction of a specific project or initiative within a company Jack does outreach on behalf of, based solely on notes filed for that project. Respond with ONLY a JSON object, no other text.
 
@@ -300,14 +302,16 @@ export async function generateProfile(supabase, businessId) {
   // context window.
   const { data: entries, error: entriesError } = await supabase
     .from('business_intel_entries')
-    .select('content, source, created_at')
+    .select('id, content, source, created_at')
     .eq('business_id', businessId)
     .is('project_id', null)
     .order('created_at', { ascending: true });
   if (entriesError) throw entriesError;
 
+  // [id:...] tags let the model cite real entry ids in field_sources below -
+  // business-intel-smart-upload-v1's field-level traceability.
   const intelLog = (entries || [])
-    .map(e => `[${e.source}] ${e.content}`)
+    .map(e => `[id:${e.id}] [${e.source}] ${e.content}`)
     .join('\n\n---\n\n') || '(no intel yet)';
 
   const data = await callAnthropic({
@@ -324,13 +328,13 @@ export async function generateProfile(supabase, businessId) {
   const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) throw new Error('No JSON in profile generation response');
   const parsed = JSON.parse(jsonMatch[0]);
+  const candidateSources = parsed.field_sources || {};
 
   // Light and full ask for different JSON field names but share the same
   // business_profiles columns - light's current_strategy/recent_changes map
   // onto the same gtm_strategy/raw_synthesis columns full's own field names
   // already target, so both depths render through the same ProfileBlock UI.
-  const { error: upsertError } = await supabase.from('business_profiles').upsert({
-    business_id: businessId,
+  const candidateValues = {
     vision: parsed.vision || null,
     positioning: isLight ? null : (parsed.positioning || null),
     icp: isLight ? null : (parsed.icp || null),
@@ -344,9 +348,50 @@ export async function generateProfile(supabase, businessId) {
     value_props: parsed.value_props || null,
     motto: parsed.motto || null,
     strategic_philosophy: isLight ? null : (parsed.strategic_philosophy || null),
-    model_version: MODELS.STANDARD,
-    generated_at: new Date().toISOString(),
-  }, { onConflict: 'business_id' });
+  };
+  // Only the 7 new fields get manual-edit protection in this SPEC - the
+  // original six (vision/positioning/icp/gtm_strategy/competitors/
+  // raw_synthesis) don't have *_edited_manually columns and are always
+  // overwritten by the next resynthesis, unchanged from today's behavior
+  // (business-intel-smart-upload-v1 - explicitly out of scope to retrofit).
+  const EDITABLE_FIELDS = ['industry', 'core_problem', 'sub_issues', 'products', 'value_props', 'motto', 'strategic_philosophy'];
+
+  const { data: current } = await supabase.from('business_profiles').select('*').eq('business_id', businessId).maybeSingle();
+
+  const update = { business_id: businessId, model_version: MODELS.STANDARD, generated_at: new Date().toISOString() };
+  const nextFieldSources = { ...(current?.field_sources || {}) };
+  const nextConflicts = { ...(current?.field_conflicts || {}) };
+
+  for (const [field, candidateValue] of Object.entries(candidateValues)) {
+    const currentValue = current?.[field] ?? null;
+    const valueUnchanged = JSON.stringify(candidateValue) === JSON.stringify(currentValue);
+
+    if (EDITABLE_FIELDS.includes(field) && current?.[`${field}_edited_manually`]) {
+      // Protected - never silently overwrite a manual edit. If the fresh
+      // synthesis actually disagrees with what the user kept, record it as
+      // a pending conflict for the UI (Section 5) to surface; if it now
+      // agrees, clear any stale conflict record.
+      if (valueUnchanged) delete nextConflicts[field];
+      else nextConflicts[field] = { candidate_value: candidateValue, candidate_sources: candidateSources[field] || [], detected_at: new Date().toISOString() };
+      continue;
+    }
+
+    update[field] = candidateValue;
+    if (!valueUnchanged) {
+      // Diff-check on write: only a field whose VALUE actually changed gets
+      // a new citation set. An unchanged field keeps whatever field_sources
+      // it already had, instead of getting a possibly-different citation
+      // just because this run happened to phrase it differently - this is
+      // the whole fix for citation flicker (business-intel-smart-upload-v1).
+      nextFieldSources[field] = candidateSources[field] || [];
+      delete nextConflicts[field];
+    }
+  }
+
+  update.field_sources = nextFieldSources;
+  update.field_conflicts = nextConflicts;
+
+  const { error: upsertError } = await supabase.from('business_profiles').upsert(update, { onConflict: 'business_id' });
   if (upsertError) throw upsertError;
 }
 
