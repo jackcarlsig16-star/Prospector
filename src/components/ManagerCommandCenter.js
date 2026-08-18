@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import { C, TS, mono } from '../constants/colors';
 import { staleDays } from '../utils/staleness';
-import ScoutCommandBar from './ScoutCommandBar';
 
 // ── localStorage helpers ──────────────────────────────────────────────────────
 export const loadManagerConfig = () => {
@@ -71,7 +70,7 @@ export function AESetupPanel({ managerConfig, onSave, compact=false }) {
 }
 
 // ── Manager Command Center ────────────────────────────────────────────────────
-function ManagerCommandCenter({ accounts=[], tasks=[], onNav, activeUser, onCreateTask, teamUsers=[], selectedAeId='all', setSelectedAeId, teamAEs: teamAEsProp }) {
+function ManagerCommandCenter({ accounts=[], tasks=[], onNav, activeUser, teamUsers=[], selectedAeId='all', setSelectedAeId, teamAEs: teamAEsProp }) {
   const [drillAeId, setDrillAeId] = useState(null);
 
   // teamAEs comes from App.js (lifted state for cross-page scope). Fall back
@@ -81,19 +80,6 @@ function ManagerCommandCenter({ accounts=[], tasks=[], onNav, activeUser, onCrea
     if (!activeUser?.id) return [];
     return teamUsers.filter(u => u.role === 'AE' && u.reportsTo === activeUser.id);
   }, [teamAEsProp, teamUsers, activeUser]);
-
-  const aeMap = useMemo(() => Object.fromEntries(teamAEs.map(ae => [ae.id, ae.name])), [teamAEs]);
-
-  const teamAccounts = useMemo(() => {
-    if (!teamAEs.length) return [];
-    const ids = new Set(teamAEs.map(ae => ae.id));
-    return accounts.filter(a => a.aeId && ids.has(a.aeId));
-  }, [accounts, teamAEs]);
-
-  const scopedAccounts = useMemo(() =>
-    selectedAeId === 'all' ? teamAccounts : teamAccounts.filter(a => a.aeId === selectedAeId),
-    [teamAccounts, selectedAeId]
-  );
 
   // Per-AE stats now derived from teamAEs (reportsTo), not the manual form.
   const aeStats = useMemo(() => {
@@ -149,18 +135,6 @@ function ManagerCommandCenter({ accounts=[], tasks=[], onNav, activeUser, onCrea
         </div>
         {onNav && <button onClick={()=>onNav("admin")} style={{ ...mono, fontSize:11, padding:"5px 12px", background:"transparent", border:`1px solid ${C.brd}`, color:C.mut, borderRadius:5, cursor:"pointer" }}>⚙ Org Chart →</button>}
         {onNav && <button onClick={()=>onNav("accounts")} style={{ ...mono, fontSize:11, padding:"5px 12px", background:C.goldBg, border:`1px solid ${C.goldBdr}`, color:C.gold, borderRadius:5, cursor:"pointer" }}>◈ Accounts →</button>}
-      </div>
-
-      {/* Scout — same component AE/Owner use, with aeMap so it can attribute deals to AEs in answers.
-          (AE scope toggle pills now live in the App-level banner so they persist across pages.) */}
-      <div style={{ marginBottom:16 }}>
-        <ScoutCommandBar
-          accounts={scopedAccounts}
-          onNav={onNav}
-          onCreateTask={onCreateTask}
-          activeUser={activeUser}
-          aeMap={aeMap}
-        />
       </div>
 
       {/* Empty state */}

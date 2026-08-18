@@ -83,7 +83,7 @@ const KEYFRAMES = `
 @keyframes scoutBarPulse { 0%,100% { opacity:0.3 } 50% { opacity:1 } }
 `;
 
-export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, activeUser, aeMap = {} }) {
+export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, activeUser, aeMap = {}, onOpenChange }) {
   const [query, setQuery] = useState('');
   const [focused, setFocused] = useState(false);
   const [response, setResponse] = useState('');
@@ -104,6 +104,15 @@ export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, ac
   const threadRef = useRef([]);
 
   useEffect(() => subscribeIndexerStatus(setIndexer), []);
+
+  // Reports "engaged" (not "closed") — a caller wrapping this in a persistent
+  // shell uses this to decide when to show scope UI above the bar. Only fires
+  // true transitions; collapsing back to idle is the caller's own concern
+  // (e.g. click-outside on its own wrapper), so it doesn't fight this
+  // component's internal focus/escape handling below.
+  useEffect(() => {
+    if (focused || response || loading || error) onOpenChange?.(true);
+  }, [focused, response, loading, error, onOpenChange]);
 
   // Auto-scroll response area
   useEffect(() => {

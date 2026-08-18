@@ -9,6 +9,8 @@ import JoinBusinessPage from './components/JoinBusinessPage';
 import MemberShell from './components/MemberShell';
 import PendingScreen from './components/PendingScreen';
 import PendingApprovalBanner from './components/PendingApprovalBanner';
+import PersistentScout from './components/PersistentScout';
+import { getManagerScopedAccounts, getAeMap } from './utils/managerScope';
 import AssayBanner from './components/AssayBanner';
 import { startBulkAssay, isBulkAssayRunning } from './utils/bulkAssay';
 import SetupWizard, { SetupBanner, StaleSfdcBanner } from './components/SetupWizard';
@@ -1157,6 +1159,28 @@ export default function App() {
 
   const managerScopedAeId = activeRole === 'Manager' ? selectedAeId : null;
 
+  // scout-global-persistent-v1 — the persistent Scout mount's "Territory"
+  // scope (non-business pages): same accounts a Manager already sees
+  // elsewhere (team + optional single-AE filter via the pill row above),
+  // otherwise the plain territory list unchanged from before consolidation.
+  const scoutTerritoryAccounts = useMemo(
+    () => activeRole === 'Manager' ? getManagerScopedAccounts(accounts, managerTeamAEs, selectedAeId) : accounts,
+    [activeRole, accounts, managerTeamAEs, selectedAeId]
+  );
+  const scoutAeMap = useMemo(
+    () => activeRole === 'Manager' ? getAeMap(managerTeamAEs) : {},
+    [activeRole, managerTeamAEs]
+  );
+  const scoutAllBusinessesConfirmed = !!teamUsers.find(u => u.id === activeUser?.id)?.scoutAllBusinessesConfirmed;
+
+  const updateTeamUser = useCallback((id, patch) => {
+    setTeamUsers(prev => {
+      const next = prev.map(u => u.id === id ? { ...u, ...patch } : u);
+      try { localStorage.setItem("prospector_team_users", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
   const syncSfdc = async () => {
     const tok  = localStorage.getItem("sfdc_access_token");
     const inst = localStorage.getItem("sfdc_instance_url");
@@ -1324,9 +1348,21 @@ export default function App() {
 
   return(
     <div style={{ display:"flex", background:C.bg, minHeight:"100vh", width:"100%" }}>
-      <Sidebar page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();dismissPendingApprovals();}if(p!=="accounts")setAccountsSubPage("territory");}} activeRole={activeRole} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} accountsSubPage={accountsSubPage} setAccountsSubPage={setAccountsSubPage} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} pendingApprovalCount={pendingApprovalCount} newNuggetCount={newNuggetCount} onUpdateTeamUser={(id,patch)=>setTeamUsers(prev=>{const next=prev.map(u=>u.id===id?{...u,...patch}:u);localStorage.setItem("prospector_team_users",JSON.stringify(next));return next;})} businesses={myBusinesses} onSelectBusiness={selectBusiness} onGoToBusinesses={()=>navTo('businesses-home')} activeBusiness={activeBusiness} businessPage={businessPage} setBusinessPage={setBusinessPage} />
+      <Sidebar page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();dismissPendingApprovals();}if(p!=="accounts")setAccountsSubPage("territory");}} activeRole={activeRole} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} accountsSubPage={accountsSubPage} setAccountsSubPage={setAccountsSubPage} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} pendingApprovalCount={pendingApprovalCount} newNuggetCount={newNuggetCount} onUpdateTeamUser={updateTeamUser} businesses={myBusinesses} onSelectBusiness={selectBusiness} onGoToBusinesses={()=>navTo('businesses-home')} activeBusiness={activeBusiness} businessPage={businessPage} setBusinessPage={setBusinessPage} />
       <div style={{ flex:1, padding:"18px 20px", overflowY:"auto", minWidth:0 }}>
         {approvalStatus === 'pending' && <PendingApprovalBanner user={user} pinged={!!localStorage.getItem('prospector_admin_pinged')} pinging={false} onPing={()=>{ fetch('/api/notify-pending',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:user?.name||'',email:user?.email||'',role:user?.role||'AE'})}).catch(()=>{}); try{localStorage.setItem('prospector_admin_pinged','1');}catch{} }}/>}
+        <PersistentScout
+          isBusinessContext={page==="business-detail"&&!!activeBusiness}
+          activeBusiness={activeBusiness}
+          businesses={myBusinesses}
+          territoryAccounts={scoutTerritoryAccounts}
+          activeUser={activeUser}
+          aeMap={scoutAeMap}
+          allBusinessesConfirmed={scoutAllBusinessesConfirmed}
+          onConfirmAllBusinesses={()=>updateTeamUser(activeUser.id,{scoutAllBusinessesConfirmed:true})}
+          onNav={navTo}
+          onCreateTask={task=>setTasks(ts=>[...ts,task])}
+        />
         <AssayBanner/>
         {showStaleBanner && !staleDismissed && <StaleSfdcBanner onDismiss={()=>setStaleDismissed(true)} />}
         {showBanner && !bannerDismissed && <SetupBanner onDismiss={()=>setBannerDismissed(true)} />}
@@ -1354,7 +1390,7 @@ export default function App() {
             })}
           </div>
         )}
-        {page==="home"&&(activeRole==="Manager"?<ManagerCommandCenter accounts={accounts} tasks={tasks} onNav={navTo} activeUser={activeUser} onCreateTask={task=>setTasks(ts=>[...ts,task])} teamUsers={teamUsers} selectedAeId={selectedAeId} setSelectedAeId={setSelectedAeId} teamAEs={managerTeamAEs}/>:<HomePage accounts={accounts} onNav={navTo} activeBatch={activeBatch} firstName={firstName} snapshots={snapshots} stealthList={stealthList} onSfStatus={setSfStatus} perms={perms} frontier={frontier} activeUser={activeUser} removalQueue={removalQueue} onConfirmRemoval={confirmRemoval} onDismissRemoval={dismissRemoval} tasks={tasks} setTasks={setTasks} onOpenTaskModal={setTaskModal} dailyStats={dailyStats} onRemoveAccount={perms.canRemove?id=>{const rem=accounts.find(x=>x.id===id);if(rem){addToBlocklist(rem);if(rem.tier==="Slag")trackStat("slag_removed");}setAccounts(as=>as.filter(x=>x.id!==id).map(a=>{let next=a;if(a.parentId===id){next={...next};delete next.parentId;}if(a.childIds?.includes(id))next={...next,childIds:a.childIds.filter(cid=>cid!==id)};return next;}));}:undefined} onKeepAccount={perms.canEditStage?id=>setAccounts(as=>as.map(a=>a.id===id?{...a,keepOverride:true,last:new Date().toISOString().slice(0,10)}:a)):undefined} onFlagForBDR={perms.canEditStage?acc=>assignToBDR(acc,BDR_LIST[0]?.id||""):undefined} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} onClaimAccount={perms.canClaim?(id=>claimAccount(id,activeUser?.name||firstName)):undefined} onSkipPoolAccount={perms.canClaim?id=>setClaimJumper(p=>p.map(x=>x.id===id?{...x,poolSkip:true}:x)):undefined} onUpdateAccount={perms.canEditStage?(id,patch)=>setAccounts(as=>as.map(a=>a.id===id?{...a,...patch}:a)):undefined} nuggets={nuggets} activeRole={activeRole} teamUsers={teamUsers} compliance={getAllCompliance()}/>)}
+        {page==="home"&&(activeRole==="Manager"?<ManagerCommandCenter accounts={accounts} tasks={tasks} onNav={navTo} activeUser={activeUser} teamUsers={teamUsers} selectedAeId={selectedAeId} setSelectedAeId={setSelectedAeId} teamAEs={managerTeamAEs}/>:<HomePage accounts={accounts} onNav={navTo} activeBatch={activeBatch} firstName={firstName} snapshots={snapshots} stealthList={stealthList} onSfStatus={setSfStatus} perms={perms} frontier={frontier} activeUser={activeUser} removalQueue={removalQueue} onConfirmRemoval={confirmRemoval} onDismissRemoval={dismissRemoval} tasks={tasks} setTasks={setTasks} onOpenTaskModal={setTaskModal} dailyStats={dailyStats} onRemoveAccount={perms.canRemove?id=>{const rem=accounts.find(x=>x.id===id);if(rem){addToBlocklist(rem);if(rem.tier==="Slag")trackStat("slag_removed");}setAccounts(as=>as.filter(x=>x.id!==id).map(a=>{let next=a;if(a.parentId===id){next={...next};delete next.parentId;}if(a.childIds?.includes(id))next={...next,childIds:a.childIds.filter(cid=>cid!==id)};return next;}));}:undefined} onKeepAccount={perms.canEditStage?id=>setAccounts(as=>as.map(a=>a.id===id?{...a,keepOverride:true,last:new Date().toISOString().slice(0,10)}:a)):undefined} onFlagForBDR={perms.canEditStage?acc=>assignToBDR(acc,BDR_LIST[0]?.id||""):undefined} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} onClaimAccount={perms.canClaim?(id=>claimAccount(id,activeUser?.name||firstName)):undefined} onSkipPoolAccount={perms.canClaim?id=>setClaimJumper(p=>p.map(x=>x.id===id?{...x,poolSkip:true}:x)):undefined} onUpdateAccount={perms.canEditStage?(id,patch)=>setAccounts(as=>as.map(a=>a.id===id?{...a,...patch}:a)):undefined} nuggets={nuggets} activeRole={activeRole} teamUsers={teamUsers} compliance={getAllCompliance()}/>)}
         <Suspense fallback={<div style={{padding:'2rem',color:'#555',fontFamily:'monospace'}}>Loading...</div>}>
         {page==="accounts"&&accountsSubPage==="territory"&&<AccountsPage managerSelectedAeId={managerScopedAeId} accounts={accounts} onSave={perms.canEditStage?setAccounts:undefined} onAddAccount={acc=>{setAccounts(a=>[acc,...a]);trackStat("accounts_added");trackDailyStat("accounts_added");}} onRemoveAccount={perms.canRemove?id=>{const rem=accounts.find(x=>x.id===id);if(rem){addToBlocklist(rem);if(rem.tier==="Slag")trackStat("slag_removed");}setAccounts(as=>as.filter(x=>x.id!==id).map(a=>{let next=a;if(a.parentId===id){next={...next};delete next.parentId;}if(a.childIds?.includes(id))next={...next,childIds:a.childIds.filter(cid=>cid!==id)};return next;}));}:undefined} perms={perms} frontier={frontier} onAssignToBDR={perms.canEditStage?assignToBDR:undefined} onUnassignFromFrontier={perms.canEditStage?unassignFromFrontier:undefined} onFlagRemoval={perms.canFlagRemoval?(acc,reason)=>flagForRemoval(acc,reason,activeUser?.name||"BDR"):undefined} jumpToId={accountsJumpId} onJumped={()=>setAccountsJumpId(null)} onNav={navTo} onOpenDealSummary={id=>setDealSummaryAccId(id)} onCreateTask={task=>setTasks(ts=>[...ts,task])} onUpdateTask={handleUpdateTask} tasks={tasks} activeRole={activeRole} activeUser={activeUser} teamUsers={teamUsers} sfdcOpps={sfdcOpps} onSyncSfdc={syncSfdc} sfdcSyncing={sfdcSyncing} onSfdcOppsImported={imported=>setSfdcOpps(prev=>prev.filter(o=>!imported.some(i=>i.name===o.name)))}/>}
         {page==="accounts"&&accountsSubPage==="prod_requests"&&<ProductionRequestsPage managerSelectedAeId={managerScopedAeId} accounts={accounts} setAccounts={setAccounts} tasks={tasks} setTasks={setTasks} onNav={(pg,id)=>{setAccountsSubPage("territory");navTo(pg,id);}} onGoHome={()=>navTo("home")} activeUser={activeUser}/>}

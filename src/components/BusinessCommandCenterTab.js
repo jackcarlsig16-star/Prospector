@@ -3,7 +3,6 @@ import { C, mono } from '../constants/colors';
 import { T } from '../constants/tokens';
 import { staleDays, isStale, isWarn } from '../utils/staleness';
 import { getAccountsForBusiness } from '../utils/db';
-import ScoutCommandBar from './ScoutCommandBar';
 import TodayGoals from './TodayGoals';
 import SalesCalendarWidget from './CalendarWidget';
 import BriefPanel from './BriefPanel';
@@ -12,12 +11,14 @@ import BriefPanel from './BriefPanel';
 // HomePage layout (business-nav-architecture-v1 follow-up, per Jack:
 // Option 2). Two different kinds of widget live here:
 //
-// - Scout, Today's Goals, Calendar, Brief: genuinely per-user/global (one
-//   Gmail OAuth connection, one date-keyed daily counter) - these reuse the
+// - Today's Goals, Calendar, Brief: genuinely per-user/global (one Gmail
+//   OAuth connection, one date-keyed daily counter) - these reuse the
 //   EXACT SAME components and state App.js's global HomePage uses (passed
 //   down as sharedAccounts/sharedTasks/dailyStats/etc.), not a duplicated
 //   or business-scoped copy. Labeled "Shared across all businesses" so
 //   that's honest rather than implied to be this business's own numbers.
+//   (Scout itself now lives in App.js's persistent global mount, not here -
+//   scout-global-persistent-v1.)
 // - Deal Alerts, Diamonds in the Rough: genuinely business-scoped, computed
 //   from this business's own accounts (unchanged from the prior version).
 
@@ -68,16 +69,6 @@ export default function BusinessCommandCenterTab({ business, sharedAccounts=[], 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div>
-        <SharedLabel />
-        <ScoutCommandBar
-          accounts={sharedAccounts}
-          onNav={onNav}
-          onCreateTask={task => setSharedTasks && setSharedTasks(prev => [task, ...prev])}
-          activeUser={activeUser}
-        />
-      </div>
-
       <div>
         <SharedLabel />
         <TodayGoals dailyStats={dailyStats} accounts={sharedAccounts} tasks={sharedTasks} />

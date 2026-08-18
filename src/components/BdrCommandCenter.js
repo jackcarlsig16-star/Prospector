@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { C, mono } from '../constants/colors';
-import ScoutCommandBar from './ScoutCommandBar';
 import DailyDigest from './DailyDigest';
 import SalesCalendarWidget from './CalendarWidget';
 import { daysSinceIso } from '../utils/dates';
@@ -273,13 +272,6 @@ export default function BdrCommandCenter({
         </div>
       </Section>
 
-      {/* G — Scout (unified command bar — same surface as AE home) */}
-      <ScoutCommandBar
-        accounts={accounts}
-        onNav={onNav}
-        onCreateTask={t=>setTasks&&setTasks(prev=>[t,...prev])}
-        activeUser={activeUser}
-      />
     </div>
   );
 }

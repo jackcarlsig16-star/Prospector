@@ -11,7 +11,6 @@ import TodayGoals from './TodayGoals';
 import SalesCalendarWidget from './CalendarWidget';
 import BdrCommandCenter from './BdrCommandCenter';
 import BriefPanel from './BriefPanel';
-import ScoutCommandBar from './ScoutCommandBar';
 import { loadAssayProgress } from '../utils/bulkAssay';
 
 const SF_BASE = "https://your-org.lightning.force.com/lightning/r/Account/";
@@ -298,14 +297,6 @@ function HomePage({ accounts, onNav, activeBatch, firstName="there", snapshots=[
           )}
         </div>
       )}
-
-      {/* ── Scout Command Bar ── */}
-      <ScoutCommandBar
-        accounts={accounts}
-        onNav={onNav}
-        onCreateTask={task=>setTasks&&setTasks(prev=>[task,...prev])}
-        activeUser={activeUser}
-      />
 
       {/* ── Header row ── */}
       <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>

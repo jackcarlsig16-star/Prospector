@@ -6,7 +6,6 @@ export const BUSINESS_NAV = [
   { id: "command-center", ic: "⌂", lb: "Command Center" },
   { id: "overview",       ic: "◉", lb: "Business Intel & Strategy" },
   { id: "accounts",       ic: "◈", lb: "Accounts" },
-  { id: "search",         ic: "🔍", lb: "Search" },
   { id: "generation",     ic: "✉", lb: "Generation" },
   { id: "projects",       ic: "▣", lb: "Projects" },
   { id: "members",        ic: "👥", lb: "Members", ownerOnly: true },

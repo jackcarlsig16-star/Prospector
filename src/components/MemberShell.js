@@ -5,6 +5,7 @@ import { BUSINESS_NAV } from '../constants/businessNav';
 import NavRow from './NavRow';
 import BusinessesHomePage from './BusinessesHomePage';
 import BusinessDetailPage from './BusinessDetailPage';
+import PersistentScout from './PersistentScout';
 
 function MemberSidebar({ identity, businesses, activeBusiness, onSelectBusiness, onGoToBusinesses, businessPage, setBusinessPage, onExit }) {
   const isOwner = activeBusiness && (activeBusiness.owner_email||"").toLowerCase()===(identity.email||"").toLowerCase();
@@ -73,6 +74,10 @@ export default function MemberShell({ identity, initialBusiness=null, onExit }) 
   const [activeBusiness, setActiveBusiness] = useState(initialBusiness);
   const [businessPage, setBusinessPage] = useState('command-center');
   const [projects, setProjects] = useState([]);
+  // Members have no team_users row to persist a preference against - this
+  // resets every session rather than being remembered, a deliberate Phase 1
+  // simplification (scout-global-persistent-v1).
+  const [allBusinessesConfirmed, setAllBusinessesConfirmed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,6 +109,16 @@ export default function MemberShell({ identity, initialBusiness=null, onExit }) 
         onExit={onExit}
       />
       <div style={{ flex:1, minWidth:0 }}>
+        <PersistentScout
+          isBusinessContext={!!activeBusiness}
+          activeBusiness={activeBusiness}
+          businesses={businesses}
+          territoryAccounts={[]}
+          activeUser={{ name: identity.name, email: identity.email }}
+          allBusinessesConfirmed={allBusinessesConfirmed}
+          onConfirmAllBusinesses={()=>setAllBusinessesConfirmed(true)}
+          onNav={()=>{}}
+        />
         {activeBusiness ? (
           <BusinessDetailPage
             key={activeBusiness.id}

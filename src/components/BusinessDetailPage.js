@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { C, mono, PRESET_SWATCH_COLORS } from '../constants/colors';
 import { createProject, createList, setProjectListId, getAccountsForBusiness, linkAccountToLists } from '../utils/db';
 import BusinessAccountsTab from './BusinessAccountsTab';
-import BusinessSearchTab from './BusinessSearchTab';
 import BusinessGenerationTab from './BusinessGenerationTab';
 import BusinessCommandCenterTab from './BusinessCommandCenterTab';
 import MembersPermissionsTab from './MembersPermissionsTab';
@@ -406,7 +405,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   // but now renders 13 profile fields plus Assay Criteria/Outreach
   // Rules/Add Intel/the Intel log. Same 1100 the other dense views here
   // already use, not a new value.
-  const wideView = view === 'accounts' || view === 'search' || view === 'generation' || view === 'command-center' || view === 'members' || view === 'overview';
+  const wideView = view === 'accounts' || view === 'generation' || view === 'command-center' || view === 'members' || view === 'overview';
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, padding:"48px 40px" }}>
@@ -458,7 +457,6 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
           <BusinessCommandCenterTab business={business} sharedAccounts={sharedAccounts} sharedTasks={sharedTasks} setSharedTasks={setSharedTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={onNav} onUpdateAccount={onUpdateAccount} />
         </>)}
         {view === 'accounts' && <BusinessAccountsTab business={business} userEmail={userEmail} projects={projects} />}
-        {view === 'search' && <BusinessSearchTab business={business} userEmail={userEmail} />}
         {view === 'generation' && <BusinessGenerationTab business={business} />}
         {view === 'projects' && (
           <ProjectsSection business={business} userEmail={userEmail} activeUser={activeUser} projects={projects} outreachRules={profile?.outreach_rules} onProjectCreated={onProjectCreated} onProjectUpdated={onProjectUpdated} />
