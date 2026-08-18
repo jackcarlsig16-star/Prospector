@@ -173,68 +173,19 @@ export default function BusinessAccountsTab({ business, userEmail, projects=[] }
   const listSwitcherOptions = isOwner ? lists : lists.filter(l => accessibleListIds?.has(l.id));
   const unlistedCount = isOwner ? accounts.filter(a => listIdsFor(a).length === 0).length : 0;
 
+  // account-taxonomy-gaps-fix-v1 Stage 3 - list switcher, segment pills, and
+  // creation/import actions moved into AccountsPage's own Row 1 / tools
+  // drawer instead of rendering here, so a business-scoped view and the
+  // standalone Territory view (App.js, no `business` prop) share one filter
+  // bar implementation rather than two. This component still owns the
+  // underlying state/data (list membership, segment, modals) - only the
+  // rendering moved.
   return (
     <>
-      {(listSwitcherOptions.length > 0 || unlistedCount > 0) && (
-        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, flexWrap:"wrap" }}>
-          <button onClick={()=>setSelectedListId(null)} style={{
-            ...mono, fontSize:11, padding:"5px 12px", borderRadius:20, cursor:"pointer",
-            background: !selectedListId ? C.gold : "transparent", color: !selectedListId ? C.bg : C.dim,
-            border:`1px solid ${!selectedListId ? C.gold : C.brd}`, fontWeight: !selectedListId ? 700 : 400,
-          }}>All accessible</button>
-          {listSwitcherOptions.map(l => {
-            const proj = projectByListId[l.id];
-            // project-guidance-and-creation-flow-v1 - the auto-created list is
-            // named after its project (project-list-linking-v1), so "· Name"
-            // read as "Name · Name" for every project-linked list. A leading
-            // marker plus the name once (falling back to "· ProjectName" only
-            // when a list has since been renamed away from its project's name)
-            // carries the same info without the echo.
-            const sameName = proj && proj.name === l.name;
-            return (
-              <button key={l.id} onClick={()=>setSelectedListId(l.id)} title={proj ? `Project: ${proj.name}` : undefined} style={{
-                ...mono, fontSize:11, padding:"5px 12px", borderRadius:20, cursor:"pointer",
-                background: selectedListId===l.id ? C.gold : "transparent", color: selectedListId===l.id ? C.bg : C.dim,
-                border:`1px solid ${selectedListId===l.id ? (proj ? proj.color||C.gold : C.gold) : (proj ? `${proj.color||C.gold}88` : C.brd)}`, fontWeight: selectedListId===l.id ? 700 : 400,
-              }}>
-                {proj && <span style={{ marginRight:4 }}>▣</span>}
-                {sameName ? proj.name : l.name}
-                {proj && !sameName && <span style={{ opacity:0.75 }}> · {proj.name}</span>}
-              </button>
-            );
-          })}
-          {isOwner && unlistedCount > 0 && (
-            <button onClick={()=>setSelectedListId(UNLISTED)} style={{
-              ...mono, fontSize:11, padding:"5px 12px", borderRadius:20, cursor:"pointer",
-              background: selectedListId===UNLISTED ? C.gold : "transparent", color: selectedListId===UNLISTED ? C.bg : C.dim,
-              border:`1px solid ${selectedListId===UNLISTED ? C.gold : C.brd}`, fontWeight: selectedListId===UNLISTED ? 700 : 400,
-            }}>Unlisted ({unlistedCount})</button>
-          )}
-        </div>
-      )}
-      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, flexWrap:"wrap" }}>
-        {[['all','All'],['business','Business'],['influencer','Influencer']].map(([id,label]) => (
-          <button key={id} onClick={()=>setSegment(id)} style={{
-            ...mono, fontSize:11, padding:"5px 12px", borderRadius:20, cursor:"pointer",
-            background: segment===id ? C.blue : "transparent", color: segment===id ? C.bg : C.dim,
-            border:`1px solid ${segment===id ? C.blue : C.brd}`, fontWeight: segment===id ? 700 : 400,
-          }}>{label}</button>
-        ))}
-      </div>
       {!canEditCurrentView && !isOwner && (
         <p style={{ ...mono, fontSize:11, color:C.dim, margin:"0 0 14px" }}>
           View-only — you don't have edit access to any list shown here.
         </p>
-      )}
-      {canEditCurrentView && (
-        <div style={{ display:"flex", gap:8, marginBottom:14 }}>
-          <button onClick={()=>setImportOpen(true)} style={{ ...mono, fontSize:11, padding:"5px 12px", background:"transparent", border:`1px solid ${C.brd}`, borderRadius:6, color:C.dim, cursor:"pointer" }}>
-            ↑ Import CSV
-          </button>
-          <button onClick={()=>setInfluencerAddOpen(true)} style={{ ...mono, fontSize:11, padding:"5px 12px", background:"transparent", border:`1px solid ${C.brd}`, borderRadius:6, color:C.dim, cursor:"pointer" }}>
-            + Add Influencer(s)
-          </button>
-        </div>
       )}
       {importOpen && (
         <CsvImportModal business={business} userEmail={userEmail} onClose={()=>setImportOpen(false)}
@@ -261,6 +212,19 @@ export default function BusinessAccountsTab({ business, userEmail, projects=[] }
         accountListMap={accountListMap}
         onAccountLinkedToProject={(accountId, listId) => setAccountListMap(prev => ({ ...prev, [accountId]: [...(prev[accountId] || []), listId] }))}
         onInfluencerUpdated={()=>reload(true)}
+        listSwitcherProps={{
+          options: listSwitcherOptions,
+          selectedListId,
+          onSelectList: setSelectedListId,
+          unlistedCount,
+          isOwner,
+          projectByListId,
+        }}
+        segmentProps={{ segment, setSegment }}
+        extraDrawerActions={canEditCurrentView ? [
+          { key: 'import', label: '↑ Import CSV', onClick: () => setImportOpen(true) },
+          { key: 'addinf', label: '+ Add Influencer(s)', onClick: () => setInfluencerAddOpen(true) },
+        ] : []}
       />
       {dealSummaryAccId && (
         <DealSummaryModal accId={dealSummaryAccId} accounts={accounts} onClose={() => setDealSummaryAccId(null)} />

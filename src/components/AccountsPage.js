@@ -3,10 +3,11 @@ import { C, mono, TIER_COLOR } from '../constants/colors';
 import { isStale, isWarn } from '../utils/staleness';
 import { getActiveIntel, getActiveExamples, clientAssay, mapAssayResultToBusinessDetails } from '../utils/assay';
 import { upsertAccountBusinessDetails, updateAccountRow, updateAccountRelationshipType } from '../utils/db';
-import { PROD_COLOR, ALL_PRODUCTS } from '../constants/products';
 import AccountCard, { DEAL_STAGES } from './AccountCard';
 import LinkParentModal from './LinkParentModal';
 import { AddAccountModal, DedupeModal, SfdcImportModal } from './AccountsUploadModal';
+import FilterPill from './FilterPill';
+import ToolsDrawer from './accountsToolsDrawer/ToolsDrawer';
 export { AddAccountModal } from './AccountsUploadModal';
 import { loadManagerConfig } from './ManagerCommandCenter';
 import { SignalLegendButton } from './SignalLegend';
@@ -42,7 +43,18 @@ const normName   = n   => (n||"").toLowerCase().replace(/[^a-z0-9]/g," ").replac
 const normDomain = web => (web||"").replace(/^https?:\/\//i,"").replace(/^www\./i,"").replace(/\/.*$/,"").toLowerCase().trim();
 
 
-function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={}, frontier=[], onAssignToBDR, onUnassignFromFrontier, onFlagRemoval, jumpToId=null, onJumped, onNav, onOpenDealSummary, onCreateTask, onUpdateTask, tasks=[], activeRole="AE", activeUser={}, teamUsers=[], sfdcOpps=[], onSyncSfdc, sfdcSyncing=false, onSfdcOppsImported, managerSelectedAeId=null, business=null, onInfluencerUpdated, projects=[], accountListMap={}, onAccountLinkedToProject }) {
+function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={}, frontier=[], onAssignToBDR, onUnassignFromFrontier, onFlagRemoval, jumpToId=null, onJumped, onNav, onOpenDealSummary, onCreateTask, onUpdateTask, tasks=[], activeRole="AE", activeUser={}, teamUsers=[], sfdcOpps=[], onSyncSfdc, sfdcSyncing=false, onSfdcOppsImported, managerSelectedAeId=null, business=null, onInfluencerUpdated, projects=[], accountListMap={}, onAccountLinkedToProject,
+  // account-taxonomy-gaps-fix-v1 Stage 3 - the real cross-component
+  // bridge. AccountsPage renders standalone (App.js, Territory context -
+  // no business, no lists) and business-scoped (wrapped by
+  // BusinessAccountsTab.js, which owns list-membership/segment/CSV-import/
+  // Add-Influencer state). Rather than teaching AccountsPage about lists/
+  // segments/influencers directly (it shouldn't need to know those exist
+  // in the Territory case), the parent injects rendered content for the
+  // one shared "Owner/List" dropdown slot, the segment pill bar, and any
+  // extra drawer actions - all optional, all no-ops when absent.
+  listSwitcherProps=null, segmentProps=null, extraDrawerActions=[],
+}) {
   const isManager = activeRole === "Manager";
   const isBDR = activeRole === "BDR";
   const [pageTab, setPageTab] = useState("accounts"); // "accounts" | "action_items"
@@ -177,7 +189,6 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
     },80);
   },[jumpToId]);
   const [tierFilters,setTierFilters]=useState([]);
-  const [productFilters,setProductFilters]=useState([]);
   const [riskF,setRiskF]=useState(false);
   const [search,setSearch]=useState("");
   const [stageFilters,setStageFilters]=useState([]);
@@ -188,7 +199,6 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
   const toggleFilter=(setArr,v)=>setArr(prev=>prev.includes(v)?prev.filter(x=>x!==v):[...prev,v]);
   const [favF,setFavF]=useState(false);
   const [assignedBdrF,setAssignedBdrF]=useState(null);
-  const [prodExpanded,setProdExpanded]=useState(false);
   const [searchFocus,setSearchFocus]=useState(false);
   const [searchGhostIdx,setSearchGhostIdx]=useState(0);
   useEffect(() => {
@@ -464,7 +474,6 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
     }
     if(relFilter!=='All')r=r.filter(a=>(a.relationshipType||'Prospect/Lead')===relFilter);
     if(tierFilters.length>0)r=r.filter(a=>tierFilters.includes(a.tier));
-    if(productFilters.length>0)r=r.filter(a=>productFilters.some(p=>a.prods?.includes(p)));
     // Stage only applies within Prospect/Lead - a Client/Partner/Competitor
     // filter view has no stage pills to filter by (see the row below), so
     // an active stageFilters selection from a prior Prospect/Lead view
@@ -476,7 +485,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
     if(assignedBdrF)r=r.filter(a=>frontier.some(f=>f.name.toLowerCase()===a.name.toLowerCase()&&(f.assignedToId===assignedBdrF.id||f.assignedTo===assignedBdrF.name)));
     if(managerSelectedAeId&&managerSelectedAeId!=='all')r=r.filter(a=>a.aeId===managerSelectedAeId);
     return r.sort((a,b)=>(a.score||9)-(b.score||9));
-  },[visibleAccounts,relFilter,tierFilters,productFilters,riskF,stageFilters,favF,favorites,search,aeF,assignedBdrF,frontier,managerSelectedAeId]);
+  },[visibleAccounts,relFilter,tierFilters,riskF,stageFilters,favF,favorites,search,aeF,assignedBdrF,frontier,managerSelectedAeId]);
 
   const childIdSet=useMemo(()=>new Set(filtered.flatMap(a=>a.childIds||[])),[filtered]);
   const topLevel=useMemo(()=>filtered.filter(a=>!childIdSet.has(a.id)),[filtered,childIdSet]);
@@ -525,6 +534,14 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
   const tot=visibleAccounts.length;
   const cnt={Gold:0,Silver:0,Tin:0,Slag:0};
   visibleAccounts.forEach(a=>{if(cnt[a.tier]!==undefined)cnt[a.tier]++;});
+  // account-taxonomy-gaps-fix-v1 Stage 3 - which axis the consolidated
+  // Owner/List dropdown shows. Mutually exclusive by role/context already
+  // (a business-scoped view takes priority when present; Manager/BDR
+  // AE-scoping only ever applied in the Territory context anyway), so one
+  // prioritized select is genuinely correct here, not a simplification that
+  // loses a real case.
+  const ownerListMode = listSwitcherProps ? 'list' : (isManager && mgAes.length>0) ? 'manager-ae' : (isBDR && assignedAEs.length>=2) ? 'bdr-ae' : null;
+  const selectStyle = { ...mono, height:26, fontSize:11, padding:'0 8px', borderRadius:4, border:'1px solid #333', background:'transparent', color:'#ccc', cursor:'pointer', letterSpacing:'0.02em' };
   return (
     <div>
       <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:12 }}>
@@ -535,78 +552,91 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
           ))}
         </div>
         <div style={{ flex:1 }}/>
-        {/* Connection status dots — visible to AE and Admin */}
-        {!isBDR && !isManager && (
-          <>
-            <ConnectionDot
-              service="SF"
-              status={sfdcStatus}
-              tooltip={
-                sfdcStatus === 'connected'
-                  ? `Salesforce connected · ${localStorage.getItem('sfdc_user_name') || ''}`
-                  : sfdcStatus === 'expiring'
-                  ? 'Salesforce token expiring · Click to reconnect'
-                  : 'Salesforce disconnected · Click to connect'
-              }
-              detail={localStorage.getItem('sfdc_user_name') || ''}
-              lastSync={localStorage.getItem('sfdc_synced_at')}
-              onClick={handleSfdcReconnect}
-              onDisconnect={handleSfdcDisconnect}
-            />
-            <ConnectionDot
-              service="Gmail"
-              status={gmailStatus}
-              tooltip={
-                gmailStatus === 'connected'
-                  ? `Gmail connected · ${localStorage.getItem('gmail_email') || ''}`
-                  : gmailStatus === 'expiring'
-                  ? 'Gmail token expiring · Click to reconnect'
-                  : 'Gmail disconnected · Click to connect'
-              }
-              detail={localStorage.getItem('gmail_email') || ''}
-              onClick={() => { window.location.href = '/api/gmail/auth'; }}
-              onDisconnect={() => {
-                ['gmail_access_token','gmail_refresh_token','gmail_token_expiry','gmail_email'].forEach(k => localStorage.removeItem(k));
-                setGmailStatus('disconnected');
-              }}
-            />
-            {sfdcConnected && onSyncSfdc && (
-              <button onClick={onSyncSfdc} disabled={sfdcSyncing}
-                style={{ ...mono, fontSize:11, padding:'4px 10px', background:'transparent', border:`1px solid ${sfdcSyncing?NEON:'#333'}`, color:sfdcSyncing?NEON:'#888', borderRadius:2, cursor:sfdcSyncing?'default':'pointer', letterSpacing:'0.04em' }}>
-                {sfdcSyncing ? 'SYNCING…' : '↻ SYNC'}
-              </button>
-            )}
-          </>
-        )}
-        {onAddAccount&&<button onClick={()=>setShowAddModal(true)} style={{ ...mono, fontSize:11, padding:'4px 10px', background:'transparent', border:'1px solid #333', color:'#888', borderRadius:2, cursor:'pointer', letterSpacing:'0.04em' }}>+ ADD ACCOUNT</button>}
-        {onSave&&<button onClick={()=>setShowDedupeModal(true)} style={{ ...mono, fontSize:11, padding:'4px 10px', background:'transparent', border:'1px solid #333', color:'#888', borderRadius:2, cursor:'pointer', letterSpacing:'0.04em' }}>⊕ DEDUPE</button>}
-        <SignalLegendButton />
-        {perms.canReassay&&(bulkRunning
-          ? <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
-              <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
-                <span style={{ ...mono, fontSize:11, color:bulkProgress?.status==="ratelimit"?C.orange:C.purple, whiteSpace:"nowrap" }}>
-                  {bulkProgress?.status==="ratelimit"?"⏳ Rate limited — waiting 10s…":bulkProgress?.status==="retry"?"↺ Retrying…":`⬡ Assaying ${bulkProgress?.done||0} of ${bulkProgress?.total||0}${bulkProgress?.resumed?" (resumed)":""}`}
-                </span>
-                <span style={{ ...mono, fontSize:10, color:C.dim, whiteSpace:"nowrap" }}>
-                  {bulkProgress?.name||"..."} · {bulkProgress?.eta||"calculating…"}
-                </span>
-              </div>
-              <div style={{ width:`${bulkProgress?.total?Math.round((bulkProgress.done/bulkProgress.total)*100):0}%`, minWidth:60, maxWidth:120, height:4, background:C.purple, borderRadius:2, transition:"width 0.3s" }}/>
-              <button onClick={()=>{pauseRef.current=true;}} style={{ ...mono, fontSize:11, padding:"4px 10px", background:"transparent", border:`1px solid ${C.orange}`, color:C.orange, borderRadius:4, cursor:"pointer" }}>⏸ Pause</button>
-              <button onClick={()=>{stopRef.current=true;}} style={{ ...mono, fontSize:11, padding:"4px 10px", background:"transparent", border:`1px solid ${C.red}`, color:C.red, borderRadius:4, cursor:"pointer" }}>✕ Stop</button>
+        {/* Live bulk-assay progress stays inline in the header even with
+            everything else moved to the drawer - it's time-sensitive status
+            the user should see without an extra click, not a static utility
+            action like the others below. */}
+        {perms.canReassay && bulkRunning && (
+          <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+            <div style={{ display:"flex", flexDirection:"column", gap:1 }}>
+              <span style={{ ...mono, fontSize:11, color:bulkProgress?.status==="ratelimit"?C.orange:C.purple, whiteSpace:"nowrap" }}>
+                {bulkProgress?.status==="ratelimit"?"⏳ Rate limited — waiting 10s…":bulkProgress?.status==="retry"?"↺ Retrying…":`⬡ Assaying ${bulkProgress?.done||0} of ${bulkProgress?.total||0}${bulkProgress?.resumed?" (resumed)":""}`}
+              </span>
+              <span style={{ ...mono, fontSize:10, color:C.dim, whiteSpace:"nowrap" }}>
+                {bulkProgress?.name||"..."} · {bulkProgress?.eta||"calculating…"}
+              </span>
             </div>
-          : (()=>{
-              const saved=getSavedProgress();
-              return <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                {saved&&(
-                  <button onClick={()=>{setBulkPaused(false);reassayAll(saved.lastCompletedIndex||0,saved.completedIds||[],saved.failedIds||[]);}} style={{ ...mono, fontSize:12, padding:"5px 12px", background:`${C.purple}18`, border:`1px solid ${C.purple}44`, color:C.purple, borderRadius:5, cursor:"pointer", fontWeight:500 }}>
-                    ▶ Resume assay ({saved.completed}/{saved.total} complete)
-                  </button>
-                )}
-                <button onClick={()=>setShowAssayModal(true)} style={{ ...mono, fontSize:12, padding:"5px 12px", background:C.sur, border:`1px solid ${C.brd}`, color:C.mut, borderRadius:5, cursor:"pointer" }}>⬡ Assay…</button>
-              </div>;
-            })()
+            <div style={{ width:`${bulkProgress?.total?Math.round((bulkProgress.done/bulkProgress.total)*100):0}%`, minWidth:60, maxWidth:120, height:4, background:C.purple, borderRadius:2, transition:"width 0.3s" }}/>
+            <button onClick={()=>{pauseRef.current=true;}} style={{ ...mono, fontSize:11, padding:"4px 10px", background:"transparent", border:`1px solid ${C.orange}`, color:C.orange, borderRadius:4, cursor:"pointer" }}>⏸ Pause</button>
+            <button onClick={()=>{stopRef.current=true;}} style={{ ...mono, fontSize:11, padding:"4px 10px", background:"transparent", border:`1px solid ${C.red}`, color:C.red, borderRadius:4, cursor:"pointer" }}>✕ Stop</button>
+          </div>
         )}
+        {/* account-taxonomy-gaps-fix-v1 Stage 3 - Add Account/Dedupe/Assay/
+            SF+Gmail status/Import CSV/Add Influencer(s) all relocated here -
+            creation/import/utility actions, not filters, don't need to be
+            always-visible. This is what makes the row reduction genuine
+            (real relocation) rather than a relabeling. */}
+        <ToolsDrawer>
+          {!isBDR && !isManager && (
+            <>
+              <ConnectionDot
+                service="SF"
+                status={sfdcStatus}
+                tooltip={
+                  sfdcStatus === 'connected'
+                    ? `Salesforce connected · ${localStorage.getItem('sfdc_user_name') || ''}`
+                    : sfdcStatus === 'expiring'
+                    ? 'Salesforce token expiring · Click to reconnect'
+                    : 'Salesforce disconnected · Click to connect'
+                }
+                detail={localStorage.getItem('sfdc_user_name') || ''}
+                lastSync={localStorage.getItem('sfdc_synced_at')}
+                onClick={handleSfdcReconnect}
+                onDisconnect={handleSfdcDisconnect}
+              />
+              <ConnectionDot
+                service="Gmail"
+                status={gmailStatus}
+                tooltip={
+                  gmailStatus === 'connected'
+                    ? `Gmail connected · ${localStorage.getItem('gmail_email') || ''}`
+                    : gmailStatus === 'expiring'
+                    ? 'Gmail token expiring · Click to reconnect'
+                    : 'Gmail disconnected · Click to connect'
+                }
+                detail={localStorage.getItem('gmail_email') || ''}
+                onClick={() => { window.location.href = '/api/gmail/auth'; }}
+                onDisconnect={() => {
+                  ['gmail_access_token','gmail_refresh_token','gmail_token_expiry','gmail_email'].forEach(k => localStorage.removeItem(k));
+                  setGmailStatus('disconnected');
+                }}
+              />
+              {sfdcConnected && onSyncSfdc && (
+                <button onClick={onSyncSfdc} disabled={sfdcSyncing}
+                  style={{ ...mono, fontSize:11, padding:'4px 10px', background:'transparent', border:`1px solid ${sfdcSyncing?NEON:'#333'}`, color:sfdcSyncing?NEON:'#888', borderRadius:2, cursor:sfdcSyncing?'default':'pointer', letterSpacing:'0.04em' }}>
+                  {sfdcSyncing ? 'SYNCING…' : '↻ SYNC'}
+                </button>
+              )}
+            </>
+          )}
+          {onAddAccount&&<button onClick={()=>setShowAddModal(true)} style={{ ...mono, fontSize:11, padding:'6px 10px', background:'transparent', border:'1px solid #333', color:'#ccc', borderRadius:4, cursor:'pointer', letterSpacing:'0.04em', textAlign:'left' }}>+ Add Account</button>}
+          {onSave&&<button onClick={()=>setShowDedupeModal(true)} style={{ ...mono, fontSize:11, padding:'6px 10px', background:'transparent', border:'1px solid #333', color:'#ccc', borderRadius:4, cursor:'pointer', letterSpacing:'0.04em', textAlign:'left' }}>⊕ Dedupe</button>}
+          <SignalLegendButton />
+          {perms.canReassay && !bulkRunning && (()=>{
+            const saved=getSavedProgress();
+            return <>
+              {saved&&(
+                <button onClick={()=>{setBulkPaused(false);reassayAll(saved.lastCompletedIndex||0,saved.completedIds||[],saved.failedIds||[]);}} style={{ ...mono, fontSize:11, padding:"6px 10px", background:`${C.purple}18`, border:`1px solid ${C.purple}44`, color:C.purple, borderRadius:4, cursor:"pointer", fontWeight:500, textAlign:'left' }}>
+                  ▶ Resume assay ({saved.completed}/{saved.total})
+                </button>
+              )}
+              <button onClick={()=>setShowAssayModal(true)} style={{ ...mono, fontSize:11, padding:"6px 10px", background:'transparent', border:`1px solid #333`, color:'#ccc', borderRadius:4, cursor:"pointer", textAlign:'left' }}>⬡ Assay…</button>
+            </>;
+          })()}
+          {extraDrawerActions.map(a => (
+            <button key={a.key} onClick={a.onClick} style={{ ...mono, fontSize:11, padding:'6px 10px', background:'transparent', border:'1px solid #333', color:'#ccc', borderRadius:4, cursor:'pointer', letterSpacing:'0.04em', textAlign:'left' }}>{a.label}</button>
+          ))}
+        </ToolsDrawer>
       </div>
       {/* SFDC import banner */}
       {!sfdcBannerDismissed && unmatchedSfdcOpps.length > 0 && (
@@ -664,41 +694,12 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
         </div>
       )}
 
-      {/* Manager: AE filter bar */}
-      {isManager && mgAes.length > 0 && (
-        <div style={{ display:"flex", gap:6, alignItems:"center", marginBottom:10, flexWrap:"wrap" }}>
-          <span style={{ ...mono, fontSize:10, color:C.dim, textTransform:"uppercase", letterSpacing:"0.07em", marginRight:2 }}>AE</span>
-          {[{id:"all",name:"All AEs"},...mgAes].map(ae=>{
-            const active=aeF===ae.id;
-            const cnt=ae.id==="all"?accounts.length:accounts.filter(a=>a.aeId===ae.id).length;
-            return(
-              <button key={ae.id} onClick={()=>setAeF(ae.id)}
-                style={{ ...mono, fontSize:12, padding:"4px 11px", borderRadius:20, border:`1px solid ${active?C.blue:C.brd}`, background:active?`${C.blue}18`:"transparent", color:active?C.blue:C.mut, cursor:"pointer", display:"flex", alignItems:"center", gap:5, transition:"all 0.1s" }}>
-                {ae.name}{ae.id!=="all"&&<span style={{ fontSize:10, opacity:0.7 }}>{cnt}</span>}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* BDR: assigned AE toggle strip */}
+      {/* Manager AE-filter and BDR assigned-AE toggle - previously two
+          separate pill rows here, now folded into the single consolidated
+          Owner/List dropdown in Row 1 below (ownerListMode). */}
       {isBDR && assignedAEs.length === 0 && (
         <div style={{ padding:"18px 0", marginBottom:10, textAlign:"center" }}>
           <span style={{ ...mono, fontSize:13, color:C.mut }}>No AEs assigned — contact your admin.</span>
-        </div>
-      )}
-      {isBDR && assignedAEs.length >= 2 && (
-        <div style={{ display:"flex", gap:6, alignItems:"center", marginBottom:10, flexWrap:"wrap" }}>
-          <span style={{ ...mono, fontSize:10, color:C.dim, textTransform:"uppercase", letterSpacing:"0.07em", marginRight:2 }}>AE</span>
-          {assignedAEs.map(ae=>{
-            const active = validSelectedAEId === ae.id;
-            return (
-              <button key={ae.id} onClick={()=>setSelectedAEId(ae.id)}
-                style={{ ...mono, fontSize:12, padding:"4px 11px", borderRadius:20, border:`1px solid ${active?C.blue:C.brd}`, background:active?`${C.blue}18`:"transparent", color:active?C.blue:C.mut, cursor:"pointer", transition:"all 0.1s" }}>
-                {ae.name}
-              </button>
-            );
-          })}
         </div>
       )}
 
@@ -719,37 +720,11 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
       {pageTab === 'accounts' && <>
       <style>{`@keyframes apBlink{50%{opacity:0}}`}</style>
 
-      {/* ── ROW 0 — Relationship Type (top-level segment, account-taxonomy-
-          and-creation-upgrade-v1 Stage 8) — Stage only means anything
-          within Prospect/Lead, so it's the outermost filter, everything
-          else (Tier/Stage/Product/etc.) filters within whatever segment is
-          selected here. ── */}
+      {/* ── ROW 2 (rendered first — Jack's explicit "put search at the
+          top") — Search, Health & Status. Tier/Favorites/At Risk stay
+          always-visible here, not moved to the drawer - used constantly. ── */}
       <div style={{ display:"flex", gap:6, marginBottom:8, flexWrap:"wrap", alignItems:"center" }}>
-        {[
-          { id:'All',           c:NEON },
-          { id:'Prospect/Lead', c:NEON },
-          { id:'Client',        c:C.green },
-          { id:'Partner',       c:C.purple },
-          { id:'Competitor',    c:C.red },
-        ].map(({ id, c })=>{
-          const active = relFilter===id;
-          return (
-            <button key={id} onClick={()=>setRelFilter(id)}
-              style={{ ...mono, height:26, fontSize:11, padding:'0 12px', borderRadius:2, letterSpacing:'0.04em',
-                border:`1px solid ${active?c:'#222'}`,
-                background:active?`${c}14`:'transparent',
-                color:active?c:'#666',
-                cursor:'pointer', textShadow:active?`0 0 6px ${c}55`:'none', transition:'all 0.12s' }}>
-              {id}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ── ROW 1 — Search + Tier + Favorites + At Risk ──────────────────── */}
-      <div style={{ display:"flex", gap:6, marginBottom:8, flexWrap:"wrap", alignItems:"center" }}>
-        {/* Terminal search */}
-        <div style={{ display:'flex', alignItems:'center', gap:6, height:28 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:6, height:26 }}>
           <span style={{ ...mono, fontSize:10, color:`${NEON}66`, letterSpacing:'0.08em', flexShrink:0 }}>◆ SEARCH</span>
           <div style={{ position:'relative', width:200 }}>
             <input
@@ -757,7 +732,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
               onChange={e=>setSearch(e.target.value)}
               onFocus={()=>setSearchFocus(true)}
               onBlur={()=>setSearchFocus(false)}
-              style={{ ...mono, width:'100%', boxSizing:'border-box', height:28, fontSize:13, padding:'0 28px 0 10px', background:T.bg.base, border:`1px solid ${searchFocus?NEON:`${NEON}33`}`, borderRadius:2, color:'#fff', outline:'none', caretColor:NEON, transition:'border-color 0.15s' }}
+              style={{ ...mono, width:'100%', boxSizing:'border-box', height:26, fontSize:13, padding:'0 28px 0 10px', background:T.bg.base, border:`1px solid ${searchFocus?NEON:`${NEON}33`}`, borderRadius:4, color:'#fff', outline:'none', caretColor:NEON, transition:'border-color 0.15s' }}
             />
             {!search && !searchFocus && (
               <span aria-hidden="true" style={{ ...mono, position:'absolute', left:11, top:'50%', transform:'translateY(-50%)', fontSize:13, color:`${NEON}4D`, pointerEvents:'none', whiteSpace:'nowrap' }}>
@@ -771,62 +746,28 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
           </div>
         </div>
 
-        {/* Tier pills — outline only */}
-        {(()=>{
-          const tierPills = [
-            { t:'All' },
-            { t:'Gold',   ic:'◆' },
-            { t:'Silver', ic:'◇' },
-            { t:'Tin',    ic:'○' },
-            { t:'Slag',   ic:'×' },
-          ];
-          return tierPills.map(({ t, ic })=>{
-            const isAll = t==='All';
-            const active = isAll ? tierFilters.length===0 : tierFilters.includes(t);
-            const color = isAll ? NEON : TIER_COLOR[t];
-            return (
-              <button key={t} onClick={()=>isAll?setTierFilters([]):toggleFilter(setTierFilters,t)}
-                style={{ ...mono, height:28, fontSize:11, padding:'0 12px', borderRadius:2, letterSpacing:'0.04em',
-                  border:`1px solid ${active?color:'#222'}`,
-                  background:active?`${color}14`:'transparent',
-                  color:active?color:'#666',
-                  cursor:'pointer', display:'inline-flex', alignItems:'center', gap:5,
-                  textShadow:active?`0 0 6px ${color}55`:'none', transition:'all 0.12s' }}>
-                {isAll ? 'All' : <><span>{ic}</span> {t}</>}
-                {!isAll && <span style={{ fontSize:10, opacity:0.7 }}>{cnt[t]||0}</span>}
-              </button>
-            );
-          });
-        })()}
+        {[{ t:'All' },{ t:'Gold', ic:'◆' },{ t:'Silver', ic:'◇' },{ t:'Tin', ic:'○' },{ t:'Slag', ic:'×' }].map(({ t, ic })=>{
+          const isAll = t==='All';
+          const active = isAll ? tierFilters.length===0 : tierFilters.includes(t);
+          const color = isAll ? NEON : TIER_COLOR[t];
+          return (
+            <FilterPill key={t} active={active} color={color} icon={ic} onClick={()=>isAll?setTierFilters([]):toggleFilter(setTierFilters,t)} count={!isAll ? (cnt[t]||0) : null}>
+              {t}
+            </FilterPill>
+          );
+        })}
 
         <span style={{ width:1, height:16, background:'#222', margin:'0 4px' }}/>
 
-        <button onClick={()=>setFavF(!favF)}
-          style={{ ...mono, height:28, fontSize:11, padding:'0 12px', borderRadius:2, letterSpacing:'0.04em',
-            border:`1px solid ${favF?T.tier.gold:'#222'}`,
-            background:favF?`${T.tier.gold}14`:'transparent',
-            color:favF?T.tier.gold:'#666',
-            cursor:'pointer', display:'inline-flex', alignItems:'center', gap:5,
-            textShadow:favF?`0 0 6px ${T.tier.gold}55`:'none' }}>
-          <span>★</span> Favorites
-          {favorites.size>0 && <span style={{ fontSize:10, opacity:0.7 }}>{favorites.size}</span>}
-        </button>
-
-        <button onClick={()=>setRiskF(!riskF)}
-          style={{ ...mono, height:28, fontSize:11, padding:'0 12px', borderRadius:2, letterSpacing:'0.04em',
-            border:`1px solid ${riskF?AMBER:'#222'}`,
-            background:riskF?`${AMBER}14`:'transparent',
-            color:riskF?AMBER:'#666',
-            cursor:'pointer', display:'inline-flex', alignItems:'center', gap:5,
-            textShadow:riskF?`0 0 6px ${AMBER}55`:'none' }}>
-          <span>⚠</span> At Risk
-          {(atRiskCount+warnCount)>0 && <span style={{ fontSize:10, opacity:0.7 }}>{atRiskCount+warnCount}</span>}
-        </button>
+        <FilterPill active={favF} color={T.tier.gold} icon="★" onClick={()=>setFavF(!favF)} count={favorites.size>0 ? favorites.size : null}>Favorites</FilterPill>
+        <FilterPill active={riskF} color={AMBER} icon="⚠" onClick={()=>setRiskF(!riskF)} count={(atRiskCount+warnCount)>0 ? (atRiskCount+warnCount) : null}>At Risk</FilterPill>
       </div>
 
-      {/* ── ROW 2 — Stage · Assigned · Product (inline with | dividers) ──── */}
+      {/* ── ROW 1 — Filter & View Controls: Owner/List · Business/Influencer
+          segment · Relationship Type · Stage (Prospect/Lead only) ·
+          Assigned. Everything here shares the org-scoping/taxonomy axis;
+          Row 2 above is search/health, a different concern. ── */}
       {(()=>{
-        // AE-scoped: BDRs assigned to this AE only. BDR: not shown (they have AE toggle instead).
         const myId = activeUser?.id || null;
         const myName = activeUser?.name || null;
         const isMine = (bdr) => myId
@@ -839,87 +780,75 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
           isMine(u) &&
           frontier.some(f => f.assignedToId === u.id || f.assignedTo === u.name)
         );
-        const shownProds = prodExpanded ? ALL_PRODUCTS : ALL_PRODUCTS.slice(0, 6);
-        const hiddenCount = ALL_PRODUCTS.length - 6;
-
-        const Divider = () => <span style={{ width:1, height:14, background:'#222', margin:'0 6px', alignSelf:'center' }}/>;
-        const Label = ({ children }) => <span style={{ ...mono, fontSize:10, color:'#555', textTransform:'uppercase', letterSpacing:'0.1em', marginRight:5 }}>{children}</span>;
-
-        // Stage 8 - Stage only means anything within Prospect/Lead. Omitted
-        // entirely (not disabled) for the same reason the edit-view Stage
-        // control was omitted in Stage 4 - a visible-but-irrelevant filter
-        // row would just invite confusion in the Client/Partner/Competitor
-        // views.
         const showStage = relFilter==='All'||relFilter==='Prospect/Lead';
 
         return (
-          <div style={{ display:'flex', gap:4, marginBottom:8, flexWrap:'wrap', alignItems:'center' }}>
-            {/* STAGE */}
+          <div style={{ display:'flex', gap:6, marginBottom:8, flexWrap:'wrap', alignItems:'center' }}>
+            {/* Owner/List — one consolidated dropdown, replaces the three
+                previously-separate pill rows (Manager AE-filter, BDR
+                assigned-AE toggle, business list switcher). Native select
+                trades away the list switcher's per-project color marker for
+                real consolidation - a real trade-off, not free. */}
+            {ownerListMode==='list' && (
+              <select value={listSwitcherProps.selectedListId || ''} onChange={e=>listSwitcherProps.onSelectList(e.target.value || null)} style={selectStyle}>
+                <option value="">All accessible</option>
+                {listSwitcherProps.options.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                {listSwitcherProps.isOwner && listSwitcherProps.unlistedCount>0 && <option value="__unlisted__">Unlisted ({listSwitcherProps.unlistedCount})</option>}
+              </select>
+            )}
+            {ownerListMode==='manager-ae' && (
+              <select value={aeF} onChange={e=>setAeF(e.target.value)} style={selectStyle}>
+                <option value="all">All AEs</option>
+                {mgAes.map(ae => <option key={ae.id} value={ae.id}>{ae.name}</option>)}
+              </select>
+            )}
+            {ownerListMode==='bdr-ae' && (
+              <select value={validSelectedAEId||''} onChange={e=>setSelectedAEId(e.target.value)} style={selectStyle}>
+                {assignedAEs.map(ae => <option key={ae.id} value={ae.id}>{ae.name}</option>)}
+              </select>
+            )}
+
+            {/* Business/Influencer segment */}
+            {segmentProps && [['all','All'],['business','Business'],['influencer','Influencer']].map(([id,label])=>(
+              <FilterPill key={id} active={segmentProps.segment===id} color={C.blue} onClick={()=>segmentProps.setSegment(id)}>{label}</FilterPill>
+            ))}
+
+            {(ownerListMode || segmentProps) && <span style={{ width:1, height:16, background:'#222', margin:'0 4px' }}/>}
+
+            {/* Relationship Type */}
+            {[
+              { id:'All',           c:NEON },
+              { id:'Prospect/Lead', c:NEON },
+              { id:'Client',        c:C.green },
+              { id:'Partner',       c:C.purple },
+              { id:'Competitor',    c:C.red },
+            ].map(({ id, c })=>(
+              <FilterPill key={id} active={relFilter===id} color={c} onClick={()=>setRelFilter(id)}>{id}</FilterPill>
+            ))}
+
+            {/* Stage — only within the Prospect/Lead segment, same gating
+                already built for the account-card's own Stage control. */}
             {showStage && <>
-            <Label>Stage</Label>
-            {DEAL_STAGES.map(s=>{
-              const active = stageFilters.includes(s.id);
-              return (
-                <button key={s.id} onClick={()=>toggleFilter(setStageFilters,s.id)}
-                  style={{ ...mono, fontSize:11, padding:'3px 9px', borderRadius:2, letterSpacing:'0.04em',
-                    border:`1px solid ${active?s.c:`${s.c}33`}`,
-                    background:active?`${s.c}1E`:'transparent',
-                    color:active?s.c:`${s.c}AA`,
-                    cursor:'pointer' }}>
-                  {s.id}
-                </button>
-              );
-            })}
+              <span style={{ width:1, height:16, background:'#222', margin:'0 4px' }}/>
+              {DEAL_STAGES.map(s=>(
+                <FilterPill key={s.id} active={stageFilters.includes(s.id)} color={s.c} onClick={()=>toggleFilter(setStageFilters,s.id)}>{s.id}</FilterPill>
+              ))}
             </>}
 
-            {/* ASSIGNED — only when AE has assigned BDRs */}
-            {bdrUsers.length > 0 && (
-              <>
-                <Divider/>
-                <Label>Assigned</Label>
-                {bdrUsers.map(bdr=>{
-                  const active = assignedBdrF?.id === bdr.id;
-                  const initials = (bdr.name||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
-                  const bdrCnt = frontier.filter(f => f.assignedToId===bdr.id || f.assignedTo===bdr.name).length;
-                  return (
-                    <button key={bdr.id} onClick={()=>setAssignedBdrF(active?null:bdr)}
-                      style={{ ...mono, fontSize:11, padding:'3px 9px', borderRadius:2, letterSpacing:'0.04em',
-                        border:`1px solid ${active?T.cyan:'#222'}`,
-                        background:active?`${T.cyan}14`:'transparent',
-                        color:active?T.cyan:'#666',
-                        cursor:'pointer', display:'inline-flex', alignItems:'center', gap:5 }}>
-                      <span style={{ width:15, height:15, borderRadius:'50%', background:active?`${T.cyan}22`:'#0a1818', border:`1px solid ${active?T.cyan:'#1a3a3a'}`, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:8, color:active?T.cyan:'#5a7a7a', fontWeight:600 }}>{initials}</span>
-                      {bdr.name.split(' ')[0]}
-                      <span style={{ fontSize:10, opacity:0.7 }}>{bdrCnt}</span>
-                    </button>
-                  );
-                })}
-              </>
-            )}
-
-            {/* PRODUCT */}
-            <Divider/>
-            <Label>Product</Label>
-            {shownProds.map(p=>{
-              const active = productFilters.includes(p);
-              const pc = PROD_COLOR[p] || NEON;
-              return (
-                <button key={p} onClick={()=>toggleFilter(setProductFilters,p)}
-                  style={{ ...mono, fontSize:11, padding:'3px 9px', borderRadius:2, letterSpacing:'0.04em',
-                    border:`1px solid ${active?pc:'#222'}`,
-                    background:active?`${pc}22`:'transparent',
-                    color:active?pc:'#666',
-                    cursor:'pointer' }}>
-                  {p}
-                </button>
-              );
-            })}
-            {!prodExpanded && hiddenCount>0 && (
-              <button onClick={()=>setProdExpanded(true)} style={{ ...mono, fontSize:11, padding:'3px 9px', borderRadius:2, border:'1px solid #222', background:'transparent', color:'#666', cursor:'pointer' }}>+{hiddenCount} more</button>
-            )}
-            {prodExpanded && (
-              <button onClick={()=>setProdExpanded(false)} style={{ ...mono, fontSize:11, padding:'3px 9px', borderRadius:2, border:'1px solid #222', background:'transparent', color:'#666', cursor:'pointer' }}>Show less</button>
-            )}
+            {/* Assigned — only when AE has assigned BDRs */}
+            {bdrUsers.length > 0 && <>
+              <span style={{ width:1, height:16, background:'#222', margin:'0 4px' }}/>
+              {bdrUsers.map(bdr=>{
+                const active = assignedBdrF?.id === bdr.id;
+                const initials = (bdr.name||'?').split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2);
+                const bdrCnt = frontier.filter(f => f.assignedToId===bdr.id || f.assignedTo===bdr.name).length;
+                return (
+                  <FilterPill key={bdr.id} active={active} color={T.cyan} onClick={()=>setAssignedBdrF(active?null:bdr)} count={bdrCnt} icon={
+                    <span style={{ width:15, height:15, borderRadius:'50%', background:active?`${T.cyan}22`:'#0a1818', border:`1px solid ${active?T.cyan:'#1a3a3a'}`, display:'inline-flex', alignItems:'center', justifyContent:'center', fontSize:8, color:active?T.cyan:'#5a7a7a', fontWeight:600 }}>{initials}</span>
+                  }>{bdr.name.split(' ')[0]}</FilterPill>
+                );
+              })}
+            </>}
           </div>
         );
       })()}
@@ -933,7 +862,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
       )}
 
       {/* Active filter summary — slim single line, only when filters active */}
-      {(relFilter!=='All'||tierFilters.length>0||productFilters.length>0||stageFilters.length>0||riskF||favF||search||assignedBdrF)&&(()=>{
+      {(relFilter!=='All'||tierFilters.length>0||stageFilters.length>0||riskF||favF||search||assignedBdrF)&&(()=>{
         const chip = (key, label, onRemove) => (
           <span key={key} style={{ ...mono, fontSize:10, padding:'2px 7px', border:`1px solid ${NEON}55`, borderRadius:2, color:NEON, display:'inline-flex', alignItems:'center', gap:5, letterSpacing:'0.04em' }}>
             {label}
@@ -950,11 +879,10 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
             {relFilter!=='All' && chip('rel', relFilter, ()=>setRelFilter('All'))}
             {tierFilters.map(t => chip(`t-${t}`, t, ()=>setTierFilters(prev=>prev.filter(x=>x!==t))))}
             {stageFilters.map(sId => chip(`s-${sId}`, sId, ()=>setStageFilters(prev=>prev.filter(x=>x!==sId))))}
-            {productFilters.map(p => chip(`p-${p}`, p, ()=>setProductFilters(prev=>prev.filter(x=>x!==p))))}
             {riskF && chip('risk', '⚠ At Risk', ()=>setRiskF(false))}
             {favF && chip('fav', '★ Favorites', ()=>setFavF(false))}
             {assignedBdrF && chip('bdr', `👤 ${assignedBdrF.name.split(' ')[0]}`, ()=>setAssignedBdrF(null))}
-            <button onClick={()=>{setRelFilter('All');setTierFilters([]);setProductFilters([]);setStageFilters([]);setRiskF(false);setFavF(false);setSearch('');setAssignedBdrF(null);}} style={{ ...mono, fontSize:10, padding:'2px 7px', background:'transparent', border:`1px solid #333`, color:'#5a6a5a', borderRadius:2, cursor:'pointer' }}>Clear all ×</button>
+            <button onClick={()=>{setRelFilter('All');setTierFilters([]);setStageFilters([]);setRiskF(false);setFavF(false);setSearch('');setAssignedBdrF(null);}} style={{ ...mono, fontSize:10, padding:'2px 7px', background:'transparent', border:`1px solid #333`, color:'#5a6a5a', borderRadius:2, cursor:'pointer' }}>Clear all ×</button>
           </div>
         );
       })()}
