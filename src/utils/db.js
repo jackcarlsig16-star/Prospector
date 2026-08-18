@@ -210,6 +210,26 @@ export async function updateAccountRow(accountId, data) {
   }
 }
 
+// account-taxonomy-and-creation-upgrade-v1 Stage 4 - targeted single-column
+// update, same shape as updateAccountRow but for the real relationship_type
+// column instead of the data blob. Deliberately not folded into the bulk
+// saveAccountsForBusiness() upsert (which omits account_kind for the same
+// reason) - a routine "save all accounts" shouldn't silently reset a value
+// nobody touched.
+export async function updateAccountRelationshipType(accountId, relationshipType) {
+  if (!isSupabaseEnabled()) return { error: null };
+  try {
+    const { error } = await supabase
+      .from('accounts')
+      .update({ relationship_type: relationshipType, updated_at: new Date().toISOString() })
+      .eq('id', String(accountId));
+    if (error) return { error: error.message };
+    return { error: null };
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
 // ── Business-scoped accounts (business-workspace-v1) ───────────────────────────
 // Separate from the global owner_email-keyed accounts above - each business's
 // account list is independent, keyed by business_id instead of owner_email.
@@ -226,14 +246,15 @@ export async function getAccountsForBusiness(businessId) {
   try {
     const { data, error } = await supabase
       .from('accounts')
-      .select('data, last_touched_by, last_touched_at, account_kind')
+      .select('data, last_touched_by, last_touched_at, account_kind, relationship_type')
       .eq('business_id', businessId)
       .order('updated_at', { ascending: true });
     if (error) throw error;
-    // last_touched_by/at and account_kind are real columns, not part of the
-    // data blob - merge them in so callers see one flat account object
-    // either way (accounts-lists-and-activity-model-v1, influencer-accounts-v1).
-    return (data || []).filter(r => r.data).map(r => ({ ...r.data, lastTouchedBy: r.last_touched_by || null, lastTouchedAt: r.last_touched_at || null, accountKind: r.account_kind || 'business' }));
+    // last_touched_by/at, account_kind, and relationship_type are real
+    // columns, not part of the data blob - merge them in so callers see one
+    // flat account object either way (accounts-lists-and-activity-model-v1,
+    // influencer-accounts-v1, account-taxonomy-and-creation-upgrade-v1).
+    return (data || []).filter(r => r.data).map(r => ({ ...r.data, lastTouchedBy: r.last_touched_by || null, lastTouchedAt: r.last_touched_at || null, accountKind: r.account_kind || 'business', relationshipType: r.relationship_type || 'Prospect/Lead' }));
   } catch(e) {
     console.warn('[db] getAccountsForBusiness Supabase failed, using localStorage:', e.message);
     try { return JSON.parse(localStorage.getItem(bizAccountsKey(businessId)) || '[]'); } catch { return []; }
@@ -461,9 +482,9 @@ export async function getAccountsForProjectList(businessId, listId) {
   const { data: links, error: linkError } = await supabase.from('account_lists').select('account_id').eq('list_id', listId);
   if (linkError || !links?.length) return [];
   const ids = links.map(l => l.account_id);
-  const { data, error } = await supabase.from('accounts').select('id, data, last_touched_by, last_touched_at, account_kind').eq('business_id', businessId).in('id', ids);
+  const { data, error } = await supabase.from('accounts').select('id, data, last_touched_by, last_touched_at, account_kind, relationship_type').eq('business_id', businessId).in('id', ids);
   if (error) return [];
-  return (data || []).filter(r => r.data).map(r => ({ ...r.data, id: r.id, lastTouchedBy: r.last_touched_by || null, lastTouchedAt: r.last_touched_at || null, accountKind: r.account_kind || 'business' }));
+  return (data || []).filter(r => r.data).map(r => ({ ...r.data, id: r.id, lastTouchedBy: r.last_touched_by || null, lastTouchedAt: r.last_touched_at || null, accountKind: r.account_kind || 'business', relationshipType: r.relationship_type || 'Prospect/Lead' }));
 }
 
 export async function getAccountListMapForBusiness(businessId) {

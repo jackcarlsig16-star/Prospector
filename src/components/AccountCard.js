@@ -45,6 +45,7 @@ export default function AccountCard({
   onOpenPricing, onOpenRoi, onOpenDealSummary, onCreateTask, onUpdateTask,
   tasks = [], activeUser = {}, parentName = null, onRequestLinkParent, onUnlinkParent,
   userEmail, canEdit, onUpdated, projects = [], accountListIds = [], onAccountLinkedToProject,
+  onRelationshipTypeChange,
 }) {
   const isInfluencer = acc.accountKind === 'influencer';
   const kind = kindTokens(acc.accountKind);
@@ -134,7 +135,12 @@ export default function AccountCard({
 
   const stateItems = isInfluencer ? [] : buildBusinessStateItems({
     acc, onUpdate, tasks, onCreateTask,
-    onEnterClosedWon: () => dealRef.current?.openGift(),
+    // account-taxonomy-and-creation-upgrade-v1 Stage 4 - Closed Won auto-
+    // converts relationship_type to Client, same trigger point as the
+    // existing gift-modal side effect (no extra guard added beyond what
+    // this trigger already has - re-selecting Closed Won re-fires both,
+    // consistent with existing behavior, not a new bug).
+    onEnterClosedWon: () => { dealRef.current?.openGift(); onRelationshipTypeChange?.(acc.id, 'Client'); },
   });
 
   return (

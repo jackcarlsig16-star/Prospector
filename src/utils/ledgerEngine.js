@@ -42,8 +42,17 @@ export const getForecastSummary = (accounts, winsLog, prefs) => {
     return s;
   }, 0);
 
+  // account-taxonomy-and-creation-upgrade-v1 Stage 4 - forward pipeline
+  // forecast, not historical revenue (closedWonQTD above reads winsLog, not
+  // accounts.stage, so it's already unaffected either way). Defensive
+  // relationship_type guard: no real account can currently be both
+  // "Active Deal" staged and a converted Client/Partner/Competitor at once
+  // (conversion only fires on the Closed Won transition, which also changes
+  // stage away from "Active Deal"), but a future manual relationship_type
+  // editor could produce that combination - a non-prospect account
+  // shouldn't count toward prospect pipeline forecast regardless.
   const weightedForecast = (accounts || [])
-    .filter(a => a.stage === "Active Deal")
+    .filter(a => a.stage === "Active Deal" && (a.relationshipType || "Prospect/Lead") === "Prospect/Lead")
     .reduce((s, a) => {
       const acv = getACV(a);
       const prob = a.closeProbability ?? null;

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { C, mono, TIER_COLOR } from '../constants/colors';
 import { isStale, isWarn } from '../utils/staleness';
 import { getActiveIntel, getActiveExamples, clientAssay, mapAssayResultToBusinessDetails } from '../utils/assay';
-import { upsertAccountBusinessDetails, updateAccountRow } from '../utils/db';
+import { upsertAccountBusinessDetails, updateAccountRow, updateAccountRelationshipType } from '../utils/db';
 import { PROD_COLOR, ALL_PRODUCTS } from '../constants/products';
 import AccountCard, { DEAL_STAGES } from './AccountCard';
 import LinkParentModal from './LinkParentModal';
@@ -198,6 +198,17 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
   const handleAccountUpdate=useCallback((updated)=>{
     if(!onSave)return;
     onSave(accounts.map(x=>x.id===updated.id?updated:x));
+  },[accounts,onSave]);
+
+  // account-taxonomy-and-creation-upgrade-v1 Stage 4 - relationship_type is
+  // a real accounts column (like account_kind), not part of the data blob,
+  // so it needs its own targeted write rather than riding through the
+  // generic onSave->saveAccountsForBusiness bulk upsert (which deliberately
+  // omits non-data columns, same reason account_kind is excluded from it).
+  const handleRelationshipTypeChange=useCallback((accountId,relationshipType)=>{
+    updateAccountRelationshipType(accountId,relationshipType);
+    if(!onSave)return;
+    onSave(accounts.map(x=>x.id===accountId?{...x,relationshipType}:x));
   },[accounts,onSave]);
 
   const [linkModalAcc,setLinkModalAcc]=useState(null);
@@ -933,7 +944,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
                 </select>
               </div>
             )}
-            <AccountCard acc={a} business={business} expanded={isExpanded} onToggle={()=>setExpanded(isExpanded?null:a.id)} onReassay={perms.canReassay?reassay:undefined} reassaying={reassaying===a.id} onUpdate={onSave?handleAccountUpdate:undefined} isFav={favorites.has(a.id)} onToggleFav={toggleFav} onRemove={onRemoveAccount||undefined} assignedEntry={assignedEntry||null} onAssign={onAssignToBDR} onUnassign={onUnassignFromFrontier} onFlagRemoval={onFlagRemoval} onOpenPricing={onNav?openPricing:undefined} onOpenRoi={onNav?openRoi:undefined} onOpenDealSummary={onOpenDealSummary||undefined} onCreateTask={onCreateTask} onUpdateTask={onUpdateTask} tasks={tasks} activeUser={activeUser} parentName={resolvedParentName} onRequestLinkParent={onSave?()=>setLinkModalAcc(a):undefined} onUnlinkParent={onSave?()=>handleUnlink(a.id):undefined} userEmail={activeUser?.email} canEdit={!!onSave} onUpdated={onInfluencerUpdated} projects={business?projects:[]} accountListIds={accountListMap[a.id]||[]} onAccountLinkedToProject={onAccountLinkedToProject}/>
+            <AccountCard acc={a} business={business} expanded={isExpanded} onToggle={()=>setExpanded(isExpanded?null:a.id)} onReassay={perms.canReassay?reassay:undefined} reassaying={reassaying===a.id} onUpdate={onSave?handleAccountUpdate:undefined} onRelationshipTypeChange={onSave?handleRelationshipTypeChange:undefined} isFav={favorites.has(a.id)} onToggleFav={toggleFav} onRemove={onRemoveAccount||undefined} assignedEntry={assignedEntry||null} onAssign={onAssignToBDR} onUnassign={onUnassignFromFrontier} onFlagRemoval={onFlagRemoval} onOpenPricing={onNav?openPricing:undefined} onOpenRoi={onNav?openRoi:undefined} onOpenDealSummary={onOpenDealSummary||undefined} onCreateTask={onCreateTask} onUpdateTask={onUpdateTask} tasks={tasks} activeUser={activeUser} parentName={resolvedParentName} onRequestLinkParent={onSave?()=>setLinkModalAcc(a):undefined} onUnlinkParent={onSave?()=>handleUnlink(a.id):undefined} userEmail={activeUser?.email} canEdit={!!onSave} onUpdated={onInfluencerUpdated} projects={business?projects:[]} accountListIds={accountListMap[a.id]||[]} onAccountLinkedToProject={onAccountLinkedToProject}/>
             {/* Manager notes section — only visible to Manager */}
             {isManager && isExpanded && (
               <div style={{ margin:"0 0 6px 0", padding:"10px 14px", background:`${C.gold}06`, border:`1px solid ${C.gold}22`, borderTop:"none", borderRadius:"0 0 8px 8px" }}>

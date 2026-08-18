@@ -23,10 +23,18 @@ const selectStyle = (color, borderColor) => ({ ...mono, fontSize: 11, height: 24
 // Gaming track toggle, Source select. Relocated verbatim (side effects on
 // stage change: compliance seeding, task creation, gift-modal trigger) from
 // the old AccountCard.js.
+// account-taxonomy-and-creation-upgrade-v1 Stage 4 - Stage only
+// meaningfully applies to Prospect/Lead accounts going forward. Client/
+// Partner/Competitor accounts don't get the Stage control at all here
+// (rather than showing it disabled/greyed - there's no "stage" concept for
+// an existing client, so a visible-but-inert control would just invite
+// confusion about whether it does something).
+const isProspectOrLead = acc => (acc.relationshipType || 'Prospect/Lead') === 'Prospect/Lead';
+
 export function buildBusinessStateItems({ acc, onUpdate, tasks, onCreateTask, onEnterClosedWon }) {
   if (!onUpdate) return [];
   const items = [
-    {
+    ...(isProspectOrLead(acc) ? [{
       key: 'stage',
       control: (
         <>
@@ -59,7 +67,7 @@ export function buildBusinessStateItems({ acc, onUpdate, tasks, onCreateTask, on
           </select>
         </>
       ),
-    },
+    }] : []),
     {
       key: 'source',
       control: (
