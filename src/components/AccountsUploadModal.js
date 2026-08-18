@@ -16,7 +16,6 @@ export function AddAccountModal({ onAdd, onClose, prefill = {}, businessId }) {
   const [vert,   setVert]   = useState(prefill.vertical || "");
   const [stage,  setStage]  = useState("Prospecting");
   const [ctx,    setCtx]    = useState(prefill.context || "");
-  const [sfdc,   setSfdc]   = useState("");
   const [scoring,setScoring]= useState(false);
   const [err,    setErr]    = useState(null);
   const [detecting,        setDetecting]        = useState(false);
@@ -73,20 +72,29 @@ export function AddAccountModal({ onAdd, onClose, prefill = {}, businessId }) {
         bm: parsed.businessModel || "", pf: parsed.productFit || "",
         sigs: parsed.keySignals || [], ucs: parsed.useCases || [],
         prods: parsed.products || [], dis: parsed.disqualifier || null,
-        linkedin: parsed.linkedin || "", analyzed: true, sfdc: sfdc.trim() || "",
+        linkedin: parsed.linkedin || "", analyzed: true,
         handoffNotes: ctx.trim() || null, last: new Date().toISOString().slice(0, 10),
         addedAt: new Date().toISOString(), addedSource: "manual",
       });
       onClose();
     } catch(e) {
       setErr("Scoring failed — account saved unscored");
-      onAdd({ id:Date.now(), name:name.trim(), web:web.trim(), vert, stage, sfdc:sfdc.trim()||"", analyzed:false, handoffNotes:ctx.trim()||null, last:new Date().toISOString().slice(0,10), addedAt:new Date().toISOString(), addedSource:"manual" });
+      onAdd({ id:Date.now(), name:name.trim(), web:web.trim(), vert, stage, analyzed:false, handoffNotes:ctx.trim()||null, last:new Date().toISOString().slice(0,10), addedAt:new Date().toISOString(), addedSource:"manual" });
       onClose();
     }
   };
 
   const inp = { fontSize:13, padding:"6px 10px", background:C.bg, border:`1px solid ${C.brdM}`, borderRadius:5, color:C.txt, outline:"none", width:"100%", boxSizing:"border-box" };
   const lbl = { ...mono, margin:"0 0 4px", fontSize:10, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", display:"block" };
+  // account-taxonomy-and-creation-upgrade-v1 Stage 6 — Company Name +
+  // Website are the only fields that matter to get started; everything
+  // else already didn't block submission (confirmed by the audit), this
+  // just makes that visually true too. Bigger/bolder primary inputs,
+  // Vertical/Stage demoted to a small muted row below Handoff Context
+  // rather than sharing top billing with Name/Website.
+  const primaryInp = { ...inp, fontSize:15, padding:"10px 12px" };
+  const secondaryLbl = { ...mono, margin:"0 0 3px", fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", display:"block" };
+  const secondaryInp = { ...inp, fontSize:12, padding:"5px 9px", background:"transparent", borderColor:C.brd, color:C.mut };
 
   return (
     <div style={{ position:"fixed", inset:0, background:"#000000AA", zIndex:1000, display:"flex", alignItems:"center", justifyContent:"center" }} onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -98,52 +106,46 @@ export function AddAccountModal({ onAdd, onClose, prefill = {}, businessId }) {
         <div style={{ display:"flex", flexDirection:"column", gap:13 }}>
           {hasPrefill && (
             <div style={{ ...mono, fontSize:11, color:C.gold, background:`${C.gold}10`, border:`1px solid ${C.goldBdr}44`, borderRadius:5, padding:"7px 10px" }}>
-              ✦ Pre-filled from your research notes — add SF link and website to complete
+              ✦ Pre-filled from your research notes
             </div>
           )}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-            <div>
-              <span style={lbl}>Company name *</span>
-              <input value={name} onChange={e=>setName(e.target.value)} placeholder="Acme Corp" style={inp} autoFocus/>
-            </div>
-            <div>
-              <span style={lbl}>Website</span>
-              <input value={web} onChange={e=>setWeb(e.target.value)} placeholder="acme.com" style={inp}/>
-            </div>
-          </div>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-            <div>
-              <span style={lbl}>
-                Vertical
-                {detecting && <span style={{ marginLeft:5, color:C.dim, fontSize:9, fontWeight:400, textTransform:"none", letterSpacing:0 }}>detecting…</span>}
-                {autoDetected && !vertManuallySet && !detecting && <span style={{ marginLeft:5, color:C.gold, opacity:0.65, fontSize:9, fontWeight:400, textTransform:"none", letterSpacing:0 }}>✦ Auto-detected</span>}
-              </span>
-              <select value={vert} onChange={handleVertChange}
-                style={{ ...inp, cursor:"pointer", borderColor: detecting ? `${C.goldBdr}55` : C.brdM, transition:"border-color 0.2s" }}>
-                <option value="">Unknown</option>
-                {VERTS.map(v=><option key={v} value={v}>{v}</option>)}
-              </select>
-            </div>
-            <div>
-              <span style={lbl}>Stage</span>
-              <select value={stage} onChange={e=>setStage(e.target.value)} style={{ ...inp, cursor:"pointer" }}>
-                {DEAL_STAGES.map(s=><option key={s.id} value={s.id}>{s.id}</option>)}
-              </select>
-            </div>
+          <div>
+            <span style={lbl}>Company name *</span>
+            <input value={name} onChange={e=>setName(e.target.value)} placeholder="Acme Corp" style={primaryInp} autoFocus/>
           </div>
           <div>
-            <span style={lbl}>Salesforce URL</span>
-            <input value={sfdc} onChange={e=>setSfdc(e.target.value)} placeholder="https://your-org.lightning.force.com/lightning/r/Account/..." style={inp}/>
+            <span style={lbl}>Website</span>
+            <input value={web} onChange={e=>setWeb(e.target.value)} placeholder="acme.com" style={primaryInp}/>
           </div>
           <div>
             <span style={lbl}>Handoff context — why is this qualified? what did they say?</span>
             <textarea
               value={ctx} onChange={e=>setCtx(e.target.value)}
-              placeholder={"e.g. HOA management platform — collects dues via ACH, wants to reduce NSF fees and speed up bank verification at sign-up. Already qualified by NB rep, budget confirmed."}
+              placeholder={"e.g. HOA management platform — collects dues via ACH, wants to reduce NSF fees and speed up bank verification at sign-up. Already qualified by NB rep, budget confirmed. Paste anything relevant — social links, notes, whatever you've got."}
               rows={4}
               style={{ ...inp, resize:"vertical", lineHeight:1.55, fontFamily:"inherit", fontSize:12 }}
             />
-            <p style={{ ...mono, margin:"4px 0 0", fontSize:10, color:C.dim }}>This is sent directly to the scoring model — more context = better score</p>
+            <p style={{ ...mono, margin:"4px 0 0", fontSize:10, color:C.dim }}>Sent directly to the scoring model — more context = better score</p>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, paddingTop:2, borderTop:`1px solid ${C.brd}` }}>
+            <div>
+              <span style={secondaryLbl}>
+                Industry (optional)
+                {detecting && <span style={{ marginLeft:5, color:C.dim, fontWeight:400, textTransform:"none", letterSpacing:0 }}>detecting…</span>}
+                {autoDetected && !vertManuallySet && !detecting && <span style={{ marginLeft:5, color:C.gold, opacity:0.65, fontWeight:400, textTransform:"none", letterSpacing:0 }}>✦ Auto-detected</span>}
+              </span>
+              <select value={vert} onChange={handleVertChange}
+                style={{ ...secondaryInp, cursor:"pointer", borderColor: detecting ? `${C.goldBdr}55` : C.brd, transition:"border-color 0.2s" }}>
+                <option value="">Unknown</option>
+                {VERTS.map(v=><option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+            <div>
+              <span style={secondaryLbl}>Stage (optional)</span>
+              <select value={stage} onChange={e=>setStage(e.target.value)} style={{ ...secondaryInp, cursor:"pointer" }}>
+                {DEAL_STAGES.map(s=><option key={s.id} value={s.id}>{s.id}</option>)}
+              </select>
+            </div>
           </div>
           {err && <p style={{ ...mono, margin:0, fontSize:11, color:C.red }}>{err}</p>}
           <div style={{ display:"flex", gap:8, justifyContent:"flex-end", marginTop:4 }}>
