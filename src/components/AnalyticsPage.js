@@ -3,6 +3,7 @@ import { C, TS, mono } from '../constants/colors';
 import { staleDays } from '../utils/staleness';
 import { DEAL_STAGES } from './AccountCard';
 import ManagerAnalytics from './ManagerAnalytics';
+import { INDUSTRY_COLOR as VERT_C } from '../constants/industries';
 
 // Small pure helpers duplicated from App.js (defined there at module scope)
 const lastTouch = (acc) => acc.last;
@@ -10,14 +11,6 @@ const initials = n => (n||"?").split(" ").map(w=>w[0]).join("").toUpperCase().sl
 
 const STEALTH_STATUSES = ["Seeded","Outbounded","Replied","Meeting Booked","In Pipeline","Won"];
 const STEALTH_STATUS_C = { "Seeded":C.dim, "Outbounded":C.blue, "Replied":C.tin, "Meeting Booked":C.green, "In Pipeline":C.purple, "Won":C.gold };
-
-const VERT_C = {
-  "Banks": "#60A8F0", "BFM": "#F5A050", "PFM": "#A878F0",
-  "Wealth": "#F5C842", "Consumer Payments": "#42E890", "Technology": "#56C8E0",
-  "Lending": "#F06060", "Insurance": "#E878C0", "Crypto": "#50C8A0",
-  "Payroll": "#E8C870", "Real Estate": "#90C878", "Healthcare": "#78D0B0",
-  "Commerce": "#E8A050", "Investment": "#F5C842", "Fintech": "#A878F0",
-};
 
 const GTM_SEG_C = { SMB:"#42E890", Fintech:"#A878F0", "B&W":"#60A8F0", ENT:"#F5C842" };
 

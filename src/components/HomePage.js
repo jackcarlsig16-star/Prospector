@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { C, TS, mono } from '../constants/colors';
 import { staleDays, isStale, isWarn } from '../utils/staleness';
 import { UCS_DATA, PROD_COLOR, ALL_PRODUCTS } from '../constants/products';
+import { INDUSTRY_COLOR as VERT_C } from '../constants/industries';
 import { DEAL_STAGES } from './AccountCard';
 import { getAllCompliance, STANDARD_STEPS, PARTNER_STEPS } from '../utils/storage';
 import { NUGGET_STATUS_COLORS } from './frontier/GoldenNuggetsTab';
@@ -26,13 +27,6 @@ const TEAL = "#2dd4bf";
 const CARD = (extra={}) => ({ background:"#0f172a", border:"1px solid #1e293b", borderRadius:8, padding:"12px 14px", ...extra });
 const SH   = (extra={}) => ({ ...mono, fontSize:10, color:TEAL, textTransform:"uppercase", letterSpacing:"0.09em", fontWeight:600, marginBottom:8, ...extra });
 
-const VERT_C = {
-  "Banks":"#60A8F0","BFM":"#F5A050","PFM":"#A878F0",
-  "Wealth":"#F5C842","Consumer Payments":"#42E890","Technology":"#56C8E0",
-  "Lending":"#F06060","Insurance":"#E878C0","Crypto":"#50C8A0",
-  "Payroll":"#E8C870","Real Estate":"#90C878","Healthcare":"#78D0B0",
-  "Commerce":"#E8A050","Investment":"#F5C842","Fintech":"#A878F0",
-};
 const STEALTH_STATUSES = ["Seeded","Outbounded","Replied","Meeting Booked","In Pipeline","Won"];
 const STEALTH_STATUS_C = { "Seeded":C.dim,"Outbounded":C.blue,"Replied":C.tin,"Meeting Booked":C.green,"In Pipeline":C.purple,"Won":C.gold };
 const GEM_VERTS = new Set(["PFM","Consumer Payments","Banks","Wealth","BFM","Lending","Payroll","Insurance","Crypto","EWA"]);

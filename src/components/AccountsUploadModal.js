@@ -4,14 +4,7 @@ import { getActiveIntel, getActiveExamples, clientAssay } from '../utils/assay';
 import { DEAL_STAGES } from './AccountCard';
 import { MODELS } from '../config/models';
 import { normName as normAccountName, normDomain as normAccountDomain, contextScore as scoreAccountContext } from '../utils/normAccount';
-
-const VERT_C = {
-  "Banks": "#60A8F0", "BFM": "#F5A050", "PFM": "#A878F0",
-  "Wealth": "#F5C842", "Consumer Payments": "#42E890", "Technology": "#56C8E0",
-  "Lending": "#F06060", "Insurance": "#E878C0", "Crypto": "#50C8A0",
-  "Payroll": "#E8C870", "Real Estate": "#90C878", "Healthcare": "#78D0B0",
-  "Commerce": "#E8A050", "Investment": "#F5C842", "Fintech": "#A878F0",
-};
+import { INDUSTRY_COLOR as VERT_C } from '../constants/industries';
 
 const normName   = n   => (n||"").toLowerCase().replace(/[^a-z0-9]/g," ").replace(/\s+/g," ").trim();
 const normDomain = web => (web||"").replace(/^https?:\/\//i,"").replace(/^www\./i,"").replace(/\/.*$/,"").toLowerCase().trim();

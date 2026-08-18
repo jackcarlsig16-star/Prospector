@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { C, mono } from '../../constants/colors';
 import { MODELS } from '../../config/models';
-
-const CAL_VERTS = ["Banks","BFM","PFM","Wealth","Consumer Payments","Technology","Lending","Insurance","Crypto","Payroll","Real Estate","Healthcare","Commerce","Investment","Fintech"];
+import { INDUSTRIES as CAL_VERTS } from '../../constants/industries';
 
 export default function PreCallResearchPanel({ ev, extAtt, existing, onSave, onClose }) {
   const [context,      setContext]      = useState(existing?.context || "");

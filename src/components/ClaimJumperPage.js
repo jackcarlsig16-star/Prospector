@@ -3,6 +3,7 @@ import { C, TS, mono } from '../constants/colors';
 import { clientAssay, getActiveIntel, getActiveExamples } from '../utils/assay';
 import { UCS_DATA, PROD_COLOR } from '../constants/products';
 import { getVoiceProfile } from '../constants/voice';
+import { INDUSTRY_COLOR as VERT_C } from '../constants/industries';
 
 // ── GTM segment helpers ───────────────────────────────────────────────────────
 const GTM_SEGMENTS = ["SMB","Fintech","B&W","ENT"];
@@ -36,15 +37,6 @@ const toSfdcUrl = v => {
   if (v.startsWith("http")) return v.trim();
   if (/^001[A-Za-z0-9]{12,15}$/.test(v.trim())) return `${SF_BASE}${v.trim()}/view`;
   return null;
-};
-
-// ── Vertical color map ────────────────────────────────────────────────────────
-const VERT_C = {
-  "Banks": "#60A8F0", "BFM": "#F5A050", "PFM": "#A878F0",
-  "Wealth": "#F5C842", "Consumer Payments": "#42E890", "Technology": "#56C8E0",
-  "Lending": "#F06060", "Insurance": "#E878C0", "Crypto": "#50C8A0",
-  "Payroll": "#E8C870", "Real Estate": "#90C878", "Healthcare": "#78D0B0",
-  "Commerce": "#E8A050", "Investment": "#F5C842", "Fintech": "#A878F0",
 };
 
 // ── Dedupe helpers ────────────────────────────────────────────────────────────
