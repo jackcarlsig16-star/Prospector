@@ -9,21 +9,10 @@ import { C, mono, sans } from '../constants/colors';
 // hardcoded per-business list.
 const CANDIDATES = [
   { field: 'industry',     label: 'Industry',     kind: 'text' },
-  { field: 'core_problem', label: 'Core Problem', kind: 'text', truncate: 90 },
+  { field: 'core_problem', label: 'Core Problem', kind: 'text' },
   { field: 'value_props',  label: 'Value Props',  kind: 'array', limit: 2 },
   { field: 'products',     label: 'Products',     kind: 'array', limit: 2 },
 ];
-
-// Reported real (Master Magnetics' core_problem was landing mid-word) -
-// a plain character slice doesn't respect word boundaries. Trim back to
-// the last full word instead of cutting wherever the count lands.
-function truncateAtWord(text, max) {
-  if (text.length <= max) return text;
-  const cut = text.slice(0, max);
-  const lastSpace = cut.lastIndexOf(' ');
-  const trimmed = (lastSpace > 0 ? cut.slice(0, lastSpace) : cut).replace(/[.,;:]+$/, '');
-  return trimmed + '…';
-}
 
 export default function BusinessIntelKpiStrip({ profile, accent = C.gold }) {
   if (!profile) return null;
@@ -34,15 +23,16 @@ export default function BusinessIntelKpiStrip({ profile, accent = C.gold }) {
       const items = Array.isArray(raw) ? raw.filter(Boolean) : [];
       return items.length ? { ...c, display: items.slice(0, c.limit) } : null;
     }
-    if (!raw) return null;
-    const display = c.truncate ? truncateAtWord(raw, c.truncate) : raw;
-    return { ...c, display };
+    return raw ? { ...c, display: raw } : null;
   }).filter(Boolean);
 
   if (!cards.length) return null;
 
+  // alignItems:flex-start - a longer field (core_problem, unbounded, wraps
+  // naturally now) shouldn't stretch its short siblings (Industry, chip
+  // cards) to match its height, which is flexbox's default behavior.
   return (
-    <div style={{ display:"flex", flexWrap:"wrap", gap:10, marginBottom:24 }}>
+    <div style={{ display:"flex", flexWrap:"wrap", alignItems:"flex-start", gap:10, marginBottom:24 }}>
       {cards.map(c => (
         <div key={c.field} style={{ flex:"1 1 200px", minWidth:180, padding:"12px 14px", background:C.card, border:`1px solid ${C.brd}`, borderTop:`2px solid ${accent}`, borderRadius:8 }}>
           <p style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", margin:"0 0 6px" }}>{c.label}</p>
