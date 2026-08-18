@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { C, mono } from '../constants/colors';
+import { C, mono, sans } from '../constants/colors';
 
 const sectionLabel = { ...mono, fontSize:12, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 };
 const inp = { fontSize:13, padding:"7px 10px", background:C.bg, border:`1.5px solid ${C.brdM}`, borderRadius:6, color:C.txt, outline:"none", width:"100%", boxSizing:"border-box", resize:"vertical", ...mono };
@@ -13,6 +13,34 @@ function displayValue(value) {
   return value || '';
 }
 
+// business-intel-strategy-visual-redesign-v1 — bolds the opening phrase of
+// each sentence in a prose field (up to the first comma/colon, or first 5
+// words if none) rather than restructuring the underlying text. Short
+// sentences (<8 words) are left plain so the bolding doesn't swallow the
+// whole sentence.
+function ProseWithLeadBold({ text }) {
+  if (!text) return null;
+  const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
+  return sentences.map((s, i) => {
+    const words = s.split(' ');
+    const sep = i < sentences.length - 1 ? ' ' : '';
+    if (words.length < 8) return <span key={i}>{s}{sep}</span>;
+    const commaIdx = s.search(/[,;:]/);
+    const leadLen = commaIdx > 0 && commaIdx < 60 ? commaIdx + 1 : words.slice(0, 5).join(' ').length;
+    return <span key={i}><strong style={{ color:C.txt }}>{s.slice(0, leadLen)}</strong>{s.slice(leadLen)}{sep}</span>;
+  });
+}
+
+function ChipList({ items, accent }) {
+  return (
+    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+      {items.map((item, i) => (
+        <span key={i} style={{ ...mono, fontSize:11, padding:"3px 10px", borderRadius:12, background:`${accent}18`, border:`1px solid ${accent}44`, color:accent }}>{item}</span>
+      ))}
+    </div>
+  );
+}
+
 // business-intel-smart-upload-v1 Fix 6 — one field of the Business Profile
 // view: label + value (same look as the plain ProfileBlock the original 6
 // fields still use), plus three things only the 7 new fields get:
@@ -24,9 +52,10 @@ function displayValue(value) {
 //
 // sources/entries/onHoverSource are shared by BOTH old and new fields
 // (field_sources tracks all of generateProfile()'s output, not just the
-// new columns) - hovering the source badge highlights the matching Intel
-// log row(s) already rendered below, no separate source viewer built.
-export default function ProfileFieldBlock({ field, label, value, sources, entries, editable, editedManually, conflict, businessId, onSaved, onHoverSource, isArrayField }) {
+// new columns) - click-to-expand accordion (business-intel-strategy-
+// visual-redesign-v1; was hover-popover before), hovering an expanded
+// source row highlights the matching Intel log row already rendered below.
+export default function ProfileFieldBlock({ field, label, value, sources, entries, editable, editedManually, conflict, businessId, onSaved, onHoverSource, isArrayField, accent = C.gold }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(() => displayValue(value));
   const [saving, setSaving] = useState(false);
@@ -34,6 +63,7 @@ export default function ProfileFieldBlock({ field, label, value, sources, entrie
   const [showSources, setShowSources] = useState(false);
 
   const sourceEntries = (sources || []).map(id => entries?.find(e => e.id === id)).filter(Boolean);
+  const arrayItems = isArrayField && Array.isArray(value) ? value.filter(Boolean) : null;
 
   if (!value && !editing && !editable) return null;
   if (!value && !editing && editable && !conflict) {
@@ -102,28 +132,39 @@ export default function ProfileFieldBlock({ field, label, value, sources, entrie
       <div style={{ display:"flex", alignItems:"center", gap:8 }}>
         <div style={sectionLabel}>{label}</div>
         {sourceEntries.length > 0 && (
-          <span
-            onMouseEnter={() => { setShowSources(true); onHoverSource?.(sourceEntries[0].id); }}
-            onMouseLeave={() => { setShowSources(false); onHoverSource?.(null); }}
-            style={{ ...mono, fontSize:9, color:C.blue, cursor:"default", position:"relative", paddingBottom:2 }}
+          <button
+            onClick={() => setShowSources(s => !s)}
+            style={{ ...mono, fontSize:9, color:C.blue, cursor:"pointer", background:"transparent", border:"none", padding:0, display:"inline-flex", alignItems:"center", gap:3 }}
           >
-            · {sourceEntries.length} source{sourceEntries.length > 1 ? 's' : ''}
-            {showSources && (
-              <div style={{ position:"absolute", top:"100%", left:0, zIndex:5, marginTop:4, minWidth:220, maxWidth:320, background:C.card, border:`1px solid ${C.brd}`, borderRadius:6, padding:"8px 10px", boxShadow:"0 4px 12px rgba(0,0,0,0.3)" }}>
-                {sourceEntries.map(e => (
-                  <div key={e.id} style={{ ...mono, fontSize:10, color:C.mut, marginBottom:4, lineHeight:1.4 }}>
-                    <span style={{ color:C.dim }}>{fmtDate(e.created_at)}</span> — {(e.content || '').slice(0, 70)}{(e.content || '').length > 70 ? '…' : ''}
-                  </div>
-                ))}
-              </div>
-            )}
-          </span>
+            · {sourceEntries.length} source{sourceEntries.length > 1 ? 's' : ''} {showSources ? '▲' : '▼'}
+          </button>
         )}
         {editedManually && <span style={{ ...mono, fontSize:9, color:C.gold }}>· edited</span>}
       </div>
-      <p style={{ ...mono, fontSize:13, color:C.txt, margin:0, lineHeight:1.6 }}>{displayValue(value) || '—'}</p>
+
+      {showSources && (
+        <div style={{ margin:"6px 0 8px", paddingLeft:10, borderLeft:`2px solid ${C.brd}` }}>
+          {sourceEntries.map(e => (
+            <div key={e.id}
+              onMouseEnter={() => onHoverSource?.(e.id)}
+              onMouseLeave={() => onHoverSource?.(null)}
+              style={{ ...mono, fontSize:10, color:C.mut, marginBottom:4, lineHeight:1.4, cursor:"default" }}
+            >
+              <span style={{ color:C.dim }}>{fmtDate(e.created_at)}</span> — {(e.content || '').slice(0, 90)}{(e.content || '').length > 90 ? '…' : ''}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {arrayItems && arrayItems.length > 0 ? (
+        <ChipList items={arrayItems} accent={accent} />
+      ) : (
+        <p style={{ ...sans, fontSize:13, color:C.txt, margin:0, lineHeight:1.65 }}>
+          {value ? <ProseWithLeadBold text={displayValue(value)} /> : '—'}
+        </p>
+      )}
       {editable && (
-        <button onClick={startEdit} style={{ ...ghostBtn, marginTop:6, fontSize:10, padding:"2px 8px" }}>Edit</button>
+        <button onClick={startEdit} style={{ ...ghostBtn, marginTop:8, fontSize:10, padding:"2px 8px" }}>Edit</button>
       )}
 
       {conflict && (

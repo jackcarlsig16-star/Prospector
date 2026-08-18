@@ -16,6 +16,10 @@ export const TS = {
   Slag: { c: C.slag, bg: C.slagBg, b: C.slagBdr, t: C.slag, i: "×" },
 };
 export const mono = { fontFamily: "'SF Mono', ui-monospace, monospace" };
+// business-intel-strategy-visual-redesign-v1 — narrative body text (profile
+// field values) reads better as sans-serif; mono stays reserved for data/
+// keys/tags/metrics, unchanged everywhere else in the app.
+export const sans = { fontFamily: "'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif" };
 // Shared preset swatch picker values - projects and businesses create modals both use this set.
 // Second row (earth tones) added on request - same flat hex-array structure,
 // no named layer, wraps into its own row via the picker's existing

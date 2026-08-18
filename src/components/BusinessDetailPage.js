@@ -10,6 +10,7 @@ import CallLogSection from './CallLogSection';
 import AssayCriteriaCard from './AssayCriteriaCard';
 import OutreachRulesCard from './OutreachRulesCard';
 import ProfileFieldBlock from './ProfileFieldBlock';
+import BusinessIntelKpiStrip from './BusinessIntelKpiStrip';
 import BusinessSocialLinksPopover from './BusinessSocialLinksPopover';
 
 // emoji-picker-react is ~75kB gzipped - lazy so it only loads when the
@@ -26,6 +27,19 @@ const fmtDate = iso => { try { return new Date(iso).toLocaleString("en-US", { mo
 
 const inp = { fontSize:13, padding:"8px 11px", background:C.bg, border:`1.5px solid ${C.brdM}`, borderRadius:6, color:C.txt, outline:"none", width:"100%", boxSizing:"border-box", ...mono };
 const btn = { ...mono, fontSize:12, padding:"7px 18px", background:C.gold, border:`1px solid ${C.gold}`, borderRadius:6, color:C.bg, cursor:"pointer", fontWeight:700 };
+
+// business-intel-strategy-visual-redesign-v1 — groups fields into subtle
+// bordered panels instead of one flat list under an uppercase header.
+// Matches AssayCriteriaCard/OutreachRulesCard's existing bordered-panel
+// convention (same padding/border/radius) rather than inventing a new one.
+function Panel({ title, children }) {
+  return (
+    <div style={{ padding:"16px 18px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, marginBottom:16 }}>
+      <p style={{ ...mono, fontSize:10, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", margin:"0 0 12px" }}>{title}</p>
+      {children}
+    </div>
+  );
+}
 
 function CreateProjectModal({ businessId, userEmail, onClose, onCreated }) {
   const [name, setName] = useState('');
@@ -267,6 +281,22 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   const [retrying, setRetrying] = useState(false);
 
   const [newEntry, setNewEntry] = useState('');
+  const addIntelRef = useRef(null);
+  // business-intel-strategy-visual-redesign-v1 — no existing ⌘K binding
+  // anywhere else in the app (checked), safe to wire for real rather than
+  // cosmetic-only. Scoped to the overview view so it doesn't fire from
+  // other tabs on this page.
+  useEffect(() => {
+    if (view !== 'overview') return;
+    const onKeyDown = e => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        addIntelRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [view]);
   const [savingEntry, setSavingEntry] = useState(false);
   const [savingElapsed, setSavingElapsed] = useState(0);
   const savingTimerRef = useRef(null);
@@ -411,6 +441,10 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   // Rules/Add Intel/the Intel log. Same 1100 the other dense views here
   // already use, not a new value.
   const wideView = view === 'accounts' || view === 'generation' || view === 'command-center' || view === 'members' || view === 'overview';
+  // business-intel-strategy-visual-redesign-v1 — the same accent already
+  // used for this business's gradient bar/avatar, reused for chip/panel
+  // accents instead of a new color system.
+  const accent = business.color || C.gold;
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, padding:"48px 40px" }}>
@@ -418,13 +452,13 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
         {/* nav-active-state-v1 - the more prominent "which business am I in"
             signal for when you're looking at content, not the sidebar.
             Present on every sub-view, not just overview. */}
-        <div style={{ height:3, borderRadius:2, marginBottom:24, background:`linear-gradient(90deg, ${business.color||C.gold}, ${business.color||C.gold}00)` }} />
+        <div style={{ height:3, borderRadius:2, marginBottom:24, background:`linear-gradient(90deg, ${accent}, ${accent}00)` }} />
         <div style={{ display:"flex", alignItems:"flex-start", gap:16, marginBottom:28 }}>
           <div style={{ position:"relative", flexShrink:0 }}>
             <div
               onClick={() => setSocialPopoverOpen(o => !o)}
               title="Edit social links"
-              style={{ width:56, height:56, borderRadius:10, background:business.color||C.gold, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
+              style={{ width:56, height:56, borderRadius:10, background:accent, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
             >
               <span style={{ ...mono, fontSize:22, color:C.bg, fontWeight:700 }}>{(business.name||'?')[0].toUpperCase()}</span>
             </div>
@@ -490,10 +524,14 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
 
         {view === 'overview' && (<>
         <div style={{ marginBottom:32 }}>
-          <textarea
-            placeholder="Add intel…" value={newEntry} onChange={e=>setNewEntry(e.target.value)}
-            rows={3} style={{ ...inp, resize:"vertical", marginBottom:8 }}
-          />
+          <div style={{ position:"relative" }}>
+            <span style={{ ...mono, position:"absolute", left:11, top:10, fontSize:13, color:accent, pointerEvents:"none" }}>›</span>
+            <textarea
+              ref={addIntelRef}
+              placeholder="Add intel or prompt AI… ⌘K" value={newEntry} onChange={e=>setNewEntry(e.target.value)}
+              rows={3} style={{ ...inp, resize:"vertical", marginBottom:8, paddingLeft:24 }}
+            />
+          </div>
           {entryError && <div style={{ ...mono, fontSize:11, color:C.red, marginBottom:8 }}>⚠ {entryError}</div>}
           <div style={{ display:"flex", alignItems:"center", gap:12 }}>
             <button onClick={handleAddEntry} disabled={!newEntry.trim()||savingEntry} style={{ ...btn, opacity:newEntry.trim()?1:0.5 }}>
@@ -547,14 +585,21 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
                   <style>{`@keyframes profileRefreshBarSlide { 0% { left: -30%; } 100% { left: 100%; } }`}</style>
                 </div>
               )}
-              <ProfileFieldBlock field="vision" label="Vision" value={profile.vision} sources={profile.field_sources?.vision} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
-              <ProfileFieldBlock field="gtm_strategy" label="Current Strategy" value={profile.gtm_strategy} sources={profile.field_sources?.gtm_strategy} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
-              <ProfileFieldBlock field="raw_synthesis" label="Recent Changes" value={profile.raw_synthesis} sources={profile.field_sources?.raw_synthesis} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
-              <ProfileFieldBlock field="industry" label="Industry" value={profile.industry} sources={profile.field_sources?.industry} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.industry_edited_manually} conflict={profile.field_conflicts?.industry} onSaved={setProfile} />
-              <ProfileFieldBlock field="core_problem" label="Core Problem" value={profile.core_problem} sources={profile.field_sources?.core_problem} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.core_problem_edited_manually} conflict={profile.field_conflicts?.core_problem} onSaved={setProfile} />
-              <ProfileFieldBlock field="products" label="Products" value={profile.products} isArrayField sources={profile.field_sources?.products} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.products_edited_manually} conflict={profile.field_conflicts?.products} onSaved={setProfile} />
-              <ProfileFieldBlock field="value_props" label="Value Props" value={profile.value_props} isArrayField sources={profile.field_sources?.value_props} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.value_props_edited_manually} conflict={profile.field_conflicts?.value_props} onSaved={setProfile} />
-              <ProfileFieldBlock field="motto" label="Motto" value={profile.motto} sources={profile.field_sources?.motto} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.motto_edited_manually} conflict={profile.field_conflicts?.motto} onSaved={setProfile} />
+              <BusinessIntelKpiStrip profile={profile} accent={accent} />
+              <Panel title="Overview">
+                <ProfileFieldBlock field="vision" label="Vision" value={profile.vision} sources={profile.field_sources?.vision} entries={intelEntries} onHoverSource={setHighlightedEntryId} accent={accent} />
+                <ProfileFieldBlock field="industry" label="Industry" value={profile.industry} sources={profile.field_sources?.industry} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.industry_edited_manually} conflict={profile.field_conflicts?.industry} onSaved={setProfile} accent={accent} />
+                <ProfileFieldBlock field="motto" label="Motto" value={profile.motto} sources={profile.field_sources?.motto} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.motto_edited_manually} conflict={profile.field_conflicts?.motto} onSaved={setProfile} accent={accent} />
+              </Panel>
+              <Panel title="Current State">
+                <ProfileFieldBlock field="gtm_strategy" label="Current Strategy" value={profile.gtm_strategy} sources={profile.field_sources?.gtm_strategy} entries={intelEntries} onHoverSource={setHighlightedEntryId} accent={accent} />
+                <ProfileFieldBlock field="raw_synthesis" label="Recent Changes" value={profile.raw_synthesis} sources={profile.field_sources?.raw_synthesis} entries={intelEntries} onHoverSource={setHighlightedEntryId} accent={accent} />
+              </Panel>
+              <Panel title="Problem & Value">
+                <ProfileFieldBlock field="core_problem" label="Core Problem" value={profile.core_problem} sources={profile.field_sources?.core_problem} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.core_problem_edited_manually} conflict={profile.field_conflicts?.core_problem} onSaved={setProfile} accent={accent} />
+                <ProfileFieldBlock field="products" label="Products" value={profile.products} isArrayField sources={profile.field_sources?.products} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.products_edited_manually} conflict={profile.field_conflicts?.products} onSaved={setProfile} accent={accent} />
+                <ProfileFieldBlock field="value_props" label="Value Props" value={profile.value_props} isArrayField sources={profile.field_sources?.value_props} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.value_props_edited_manually} conflict={profile.field_conflicts?.value_props} onSaved={setProfile} accent={accent} />
+              </Panel>
               {profile.generated_at && (
                 <p style={{ ...mono, fontSize:10, color:C.dim, margin:"8px 0 0" }}>Last checked {fmtDate(profile.generated_at)}</p>
               )}
@@ -574,18 +619,27 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
                   <style>{`@keyframes profileRefreshBarSlide { 0% { left: -30%; } 100% { left: 100%; } }`}</style>
                 </div>
               )}
-              <ProfileFieldBlock field="vision" label="Vision" value={profile.vision} sources={profile.field_sources?.vision} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
-              <ProfileFieldBlock field="positioning" label="Positioning" value={profile.positioning} sources={profile.field_sources?.positioning} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
-              <ProfileFieldBlock field="icp" label="ICP" value={profile.icp} sources={profile.field_sources?.icp} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
-              <ProfileFieldBlock field="gtm_strategy" label="GTM Strategy" value={profile.gtm_strategy} sources={profile.field_sources?.gtm_strategy} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
-              <ProfileFieldBlock field="competitors" label="Competitors" value={profile.competitors} sources={profile.field_sources?.competitors} entries={intelEntries} onHoverSource={setHighlightedEntryId} />
-              <ProfileFieldBlock field="industry" label="Industry" value={profile.industry} sources={profile.field_sources?.industry} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.industry_edited_manually} conflict={profile.field_conflicts?.industry} onSaved={setProfile} />
-              <ProfileFieldBlock field="core_problem" label="Core Problem" value={profile.core_problem} sources={profile.field_sources?.core_problem} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.core_problem_edited_manually} conflict={profile.field_conflicts?.core_problem} onSaved={setProfile} />
-              <ProfileFieldBlock field="sub_issues" label="Sub-Issues" value={profile.sub_issues} isArrayField sources={profile.field_sources?.sub_issues} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.sub_issues_edited_manually} conflict={profile.field_conflicts?.sub_issues} onSaved={setProfile} />
-              <ProfileFieldBlock field="products" label="Products" value={profile.products} isArrayField sources={profile.field_sources?.products} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.products_edited_manually} conflict={profile.field_conflicts?.products} onSaved={setProfile} />
-              <ProfileFieldBlock field="value_props" label="Value Props" value={profile.value_props} isArrayField sources={profile.field_sources?.value_props} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.value_props_edited_manually} conflict={profile.field_conflicts?.value_props} onSaved={setProfile} />
-              <ProfileFieldBlock field="motto" label="Motto" value={profile.motto} sources={profile.field_sources?.motto} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.motto_edited_manually} conflict={profile.field_conflicts?.motto} onSaved={setProfile} />
-              <ProfileFieldBlock field="strategic_philosophy" label="Strategic Philosophy" value={profile.strategic_philosophy} sources={profile.field_sources?.strategic_philosophy} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.strategic_philosophy_edited_manually} conflict={profile.field_conflicts?.strategic_philosophy} onSaved={setProfile} />
+              <BusinessIntelKpiStrip profile={profile} accent={accent} />
+              <Panel title="Overview">
+                <ProfileFieldBlock field="vision" label="Vision" value={profile.vision} sources={profile.field_sources?.vision} entries={intelEntries} onHoverSource={setHighlightedEntryId} accent={accent} />
+                <ProfileFieldBlock field="positioning" label="Positioning" value={profile.positioning} sources={profile.field_sources?.positioning} entries={intelEntries} onHoverSource={setHighlightedEntryId} accent={accent} />
+                <ProfileFieldBlock field="industry" label="Industry" value={profile.industry} sources={profile.field_sources?.industry} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.industry_edited_manually} conflict={profile.field_conflicts?.industry} onSaved={setProfile} accent={accent} />
+                <ProfileFieldBlock field="motto" label="Motto" value={profile.motto} sources={profile.field_sources?.motto} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.motto_edited_manually} conflict={profile.field_conflicts?.motto} onSaved={setProfile} accent={accent} />
+              </Panel>
+              <Panel title="Customer & Problem">
+                <ProfileFieldBlock field="icp" label="ICP" value={profile.icp} sources={profile.field_sources?.icp} entries={intelEntries} onHoverSource={setHighlightedEntryId} accent={accent} />
+                <ProfileFieldBlock field="core_problem" label="Core Problem" value={profile.core_problem} sources={profile.field_sources?.core_problem} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.core_problem_edited_manually} conflict={profile.field_conflicts?.core_problem} onSaved={setProfile} accent={accent} />
+                <ProfileFieldBlock field="sub_issues" label="Sub-Issues" value={profile.sub_issues} isArrayField sources={profile.field_sources?.sub_issues} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.sub_issues_edited_manually} conflict={profile.field_conflicts?.sub_issues} onSaved={setProfile} accent={accent} />
+              </Panel>
+              <Panel title="Strategy & Market">
+                <ProfileFieldBlock field="gtm_strategy" label="GTM Strategy" value={profile.gtm_strategy} sources={profile.field_sources?.gtm_strategy} entries={intelEntries} onHoverSource={setHighlightedEntryId} accent={accent} />
+                <ProfileFieldBlock field="competitors" label="Competitors" value={profile.competitors} sources={profile.field_sources?.competitors} entries={intelEntries} onHoverSource={setHighlightedEntryId} accent={accent} />
+                <ProfileFieldBlock field="strategic_philosophy" label="Strategic Philosophy" value={profile.strategic_philosophy} sources={profile.field_sources?.strategic_philosophy} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.strategic_philosophy_edited_manually} conflict={profile.field_conflicts?.strategic_philosophy} onSaved={setProfile} accent={accent} />
+              </Panel>
+              <Panel title="Products & Value">
+                <ProfileFieldBlock field="products" label="Products" value={profile.products} isArrayField sources={profile.field_sources?.products} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.products_edited_manually} conflict={profile.field_conflicts?.products} onSaved={setProfile} accent={accent} />
+                <ProfileFieldBlock field="value_props" label="Value Props" value={profile.value_props} isArrayField sources={profile.field_sources?.value_props} entries={intelEntries} onHoverSource={setHighlightedEntryId} businessId={business.id} editable editedManually={profile.value_props_edited_manually} conflict={profile.field_conflicts?.value_props} onSaved={setProfile} accent={accent} />
+              </Panel>
 
               {profile.raw_synthesis && (
                 <div style={{ marginTop:16 }}>
