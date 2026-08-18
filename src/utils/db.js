@@ -1001,3 +1001,52 @@ export async function setMemberListPermission(memberId, listId, level) {
     return { error: e.message };
   }
 }
+
+// ── Outreach Doctrine (outreach-intelligence-doctrine-v1) ──────────────────────
+// Platform-scope (no business_id) - one shared set of rows every business's
+// generation reads, not per-business like outreach_rules. Returns every row,
+// active and inactive, so the admin tab can show deactivated history -
+// callers filter to active themselves (api/email.js does .eq('active', true)
+// server-side instead, since it only ever wants the live set).
+
+export async function getOutreachDoctrine() {
+  if (!isSupabaseEnabled()) return [];
+  try {
+    const { data, error } = await supabase.from('outreach_doctrine').select('*').order('category').order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.warn('[db] getOutreachDoctrine failed:', e.message);
+    return [];
+  }
+}
+
+export async function createOutreachDoctrineRule({ category, ruleText, isHardConstraint, sourceAttribution, createdBy, aiAssisted }) {
+  if (!isSupabaseEnabled()) return { rule: null, error: 'Supabase is not available.' };
+  try {
+    const { data, error } = await supabase.from('outreach_doctrine').insert({
+      category, rule_text: ruleText, is_hard_constraint: !!isHardConstraint,
+      source_attribution: sourceAttribution || null, created_by: createdBy || null,
+      ai_assisted: !!aiAssisted,
+    }).select().maybeSingle();
+    if (error) throw error;
+    return { rule: data, error: null };
+  } catch (e) {
+    return { rule: null, error: e.message };
+  }
+}
+
+// Same targeted-update shape as updateAccountRelationshipType - only the
+// fields actually passed get touched, updated_at stamped either way.
+export async function updateOutreachDoctrineRule(id, patch) {
+  if (!isSupabaseEnabled()) return { rule: null, error: 'Supabase is not available.' };
+  try {
+    const { data, error } = await supabase.from('outreach_doctrine').update({
+      ...patch, updated_at: new Date().toISOString(),
+    }).eq('id', id).select().maybeSingle();
+    if (error) throw error;
+    return { rule: data, error: null };
+  } catch (e) {
+    return { rule: null, error: e.message };
+  }
+}

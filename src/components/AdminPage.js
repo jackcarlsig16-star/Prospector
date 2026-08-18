@@ -9,7 +9,7 @@ import {
   getMasterCodeHash, generateMasterCode, setMasterCode,
   generateCode,
 } from '../utils/invites';
-import { saveTeamUsers, saveFrontier, approveUser, patchUser, getAccountsForBusiness } from '../utils/db';
+import { saveTeamUsers, saveFrontier, approveUser, patchUser, getAccountsForBusiness, getOutreachDoctrine, createOutreachDoctrineRule, updateOutreachDoctrineRule } from '../utils/db';
 import { isSupabaseEnabled } from '../utils/supabase';
 import { mapSfdcStage } from '../utils/stageMap';
 
@@ -238,6 +238,176 @@ function ZoomEventsTab() {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Outreach Intelligence Tab (outreach-intelligence-doctrine-v1) ──────────────
+// Platform-wide doctrine — hard constraints and defaults api/email.js's
+// doctrineHard/doctrineDefault providers read on every generation, every
+// business. Interaction shape deliberately mirrors BusinessDetailPage.js's
+// Intel Log (append-and-review, Supabase-backed) per the audit's confirmed
+// recommendation — not the Intel Library or Settings tab's localStorage
+// pattern, both confirmed wrong fits. Meant to be returned to regularly, not
+// seeded once — kept to one page, no multi-step flow, so adding a rule stays
+// fast.
+const DOCTRINE_CATEGORIES = ['grounding', 'cta', 'structure', 'proof', 'tone', 'format'];
+const CAT_LABEL = { grounding: 'Grounding', cta: 'CTA', structure: 'Structure', proof: 'Proof', tone: 'Tone', format: 'Format' };
+
+function OutreachIntelligenceTab({ currentUser }) {
+  const [rules, setRules] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [showInactive, setShowInactive] = useState(false);
+
+  const [ruleText, setRuleText] = useState('');
+  const [category, setCategory] = useState(DOCTRINE_CATEGORIES[0]);
+  const [isHard, setIsHard] = useState(false);
+  const [sourceAttribution, setSourceAttribution] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const [editingId, setEditingId] = useState(null);
+  const [editDraft, setEditDraft] = useState({});
+
+  const load = () => { setLoading(true); getOutreachDoctrine().then(data => { setRules(data); setLoading(false); }); };
+  useEffect(() => { load(); }, []);
+
+  const addRule = async () => {
+    if (!ruleText.trim()) return;
+    setSaving(true); setError('');
+    const { rule, error: err } = await createOutreachDoctrineRule({
+      category, ruleText: ruleText.trim(), isHardConstraint: isHard,
+      sourceAttribution: sourceAttribution.trim() || null, createdBy: currentUser?.email || null,
+    });
+    setSaving(false);
+    if (err) { setError(err); return; }
+    setRules(rs => [rule, ...(rs || [])]);
+    setRuleText(''); setSourceAttribution(''); setIsHard(false);
+  };
+
+  const startEdit = (r) => { setEditingId(r.id); setEditDraft({ category: r.category, rule_text: r.rule_text, is_hard_constraint: r.is_hard_constraint, source_attribution: r.source_attribution || '' }); setError(''); };
+  const saveEdit = async (id) => {
+    setError('');
+    const { rule, error: err } = await updateOutreachDoctrineRule(id, {
+      category: editDraft.category, rule_text: editDraft.rule_text,
+      is_hard_constraint: editDraft.is_hard_constraint, source_attribution: editDraft.source_attribution.trim() || null,
+    });
+    if (err) { setError(err); return; }
+    setRules(rs => rs.map(r => r.id === id ? rule : r));
+    setEditingId(null);
+  };
+  // Soft-delete only — active:false, never a hard delete. Same rationale as
+  // business-level edits: preserves history rather than destroying it.
+  const toggleActive = async (r) => {
+    setError('');
+    const { rule, error: err } = await updateOutreachDoctrineRule(r.id, { active: !r.active });
+    if (err) { setError(err); return; }
+    setRules(rs => rs.map(x => x.id === r.id ? rule : x));
+  };
+
+  const visibleRules = (rules || []).filter(r => showInactive || r.active);
+  const grouped = DOCTRINE_CATEGORIES
+    .map(cat => ({ cat, items: visibleRules.filter(r => r.category === cat) }))
+    .filter(g => g.items.length > 0);
+  const otherItems = visibleRules.filter(r => !DOCTRINE_CATEGORIES.includes(r.category));
+  if (otherItems.length) grouped.push({ cat: null, items: otherItems });
+
+  const inp = { ...mono, fontSize: 12, padding: '7px 10px', background: C.bg, border: `1.5px solid ${C.brdM}`, borderRadius: 6, color: C.txt, outline: 'none', width: '100%', boxSizing: 'border-box', resize: 'vertical' };
+  const btn = { ...mono, fontSize: 12, padding: '6px 14px', background: 'transparent', border: `1px solid ${C.brd}`, borderRadius: 6, color: C.mut, cursor: 'pointer' };
+
+  return (
+    <div>
+      <div style={{ marginBottom: 18 }}>
+        <p style={{ ...mono, margin: '0 0 2px', fontSize: 13, fontWeight: 600, color: C.txt }}>Outreach Intelligence</p>
+        <p style={{ ...mono, margin: 0, fontSize: 11, color: C.dim }}>
+          Platform-wide doctrine — every business's generation reads this. Non-negotiable rules and defaults are separate; business-level voice/style stays in each business's own Outreach Rules card.
+        </p>
+      </div>
+
+      {/* ── Add a rule ── */}
+      <div style={{ background: C.card, border: `1px solid ${C.brd}`, borderRadius: 8, padding: '14px 16px', marginBottom: 20 }}>
+        <textarea rows={2} value={ruleText} onChange={e => setRuleText(e.target.value)}
+          placeholder="e.g. Never claim a case study or specific result that wasn't provided in the account context"
+          style={{ ...inp, marginBottom: 10 }} />
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+          <select value={category} onChange={e => setCategory(e.target.value)} style={{ ...inp, width: 'auto' }}>
+            {DOCTRINE_CATEGORIES.map(c => <option key={c} value={c}>{CAT_LABEL[c]}</option>)}
+          </select>
+          <input value={sourceAttribution} onChange={e => setSourceAttribution(e.target.value)} placeholder="Source (optional) — e.g. Braun 4-T framework"
+            style={{ ...inp, width: 220 }} />
+          <button onClick={() => setIsHard(h => !h)} style={{ ...btn, background: isHard ? `${C.red}18` : 'transparent', borderColor: isHard ? C.red : C.brd, color: isHard ? C.red : C.mut, fontWeight: isHard ? 700 : 400 }}>
+            {isHard ? '⛔ Hard constraint' : '○ Default (overridable)'}
+          </button>
+        </div>
+        {error && <div style={{ ...mono, fontSize: 11, color: C.red, marginBottom: 10 }}>⚠ {error}</div>}
+        <button onClick={addRule} disabled={!ruleText.trim() || saving} style={{ ...btn, background: C.gold, border: `1px solid ${C.gold}`, color: C.bg, fontWeight: 700, opacity: ruleText.trim() ? 1 : 0.5 }}>
+          {saving ? 'Adding…' : '+ Add rule'}
+        </button>
+      </div>
+
+      {/* ── Review ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+        <span style={{ ...mono, fontSize: 11, color: C.dim, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          {visibleRules.length} rule{visibleRules.length === 1 ? '' : 's'}
+        </span>
+        <button onClick={() => setShowInactive(s => !s)} style={{ ...mono, fontSize: 11, color: showInactive ? C.gold : C.dim, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0 }}>
+          {showInactive ? '✓ showing deactivated' : 'show deactivated'}
+        </button>
+      </div>
+
+      {loading && <p style={{ ...mono, fontSize: 12, color: C.dim }}>Loading…</p>}
+      {!loading && !visibleRules.length && <p style={{ ...mono, fontSize: 12, color: C.dim }}>No rules yet — add the first one above.</p>}
+
+      {!loading && grouped.map(({ cat, items }) => (
+        <div key={cat || '_other'} style={{ marginBottom: 18 }}>
+          <p style={{ ...mono, fontSize: 10, color: C.dim, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 8px' }}>{cat ? CAT_LABEL[cat] || cat : 'Other'}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {items.map(r => {
+              const editing = editingId === r.id;
+              return (
+                <div key={r.id} style={{ padding: '10px 12px', background: !r.active ? `${C.brd}0A` : r.is_hard_constraint ? `${C.red}08` : C.card, border: `1px solid ${!r.active ? C.brd : r.is_hard_constraint ? `${C.red}44` : C.brd}`, borderRadius: 8, opacity: r.active ? 1 : 0.6 }}>
+                  {editing ? (
+                    <div>
+                      <textarea rows={2} value={editDraft.rule_text} onChange={e => setEditDraft(d => ({ ...d, rule_text: e.target.value }))} style={{ ...inp, marginBottom: 8 }} />
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+                        <select value={editDraft.category} onChange={e => setEditDraft(d => ({ ...d, category: e.target.value }))} style={{ ...inp, width: 'auto' }}>
+                          {DOCTRINE_CATEGORIES.map(c => <option key={c} value={c}>{CAT_LABEL[c]}</option>)}
+                        </select>
+                        <input value={editDraft.source_attribution} onChange={e => setEditDraft(d => ({ ...d, source_attribution: e.target.value }))} placeholder="Source (optional)" style={{ ...inp, width: 200 }} />
+                        <button onClick={() => setEditDraft(d => ({ ...d, is_hard_constraint: !d.is_hard_constraint }))} style={{ ...btn, background: editDraft.is_hard_constraint ? `${C.red}18` : 'transparent', borderColor: editDraft.is_hard_constraint ? C.red : C.brd, color: editDraft.is_hard_constraint ? C.red : C.mut }}>
+                          {editDraft.is_hard_constraint ? '⛔ Hard constraint' : '○ Default'}
+                        </button>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => saveEdit(r.id)} style={{ ...btn, background: C.gold, border: `1px solid ${C.gold}`, color: C.bg, fontWeight: 700 }}>Save</button>
+                        <button onClick={() => setEditingId(null)} style={btn}>Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                        <span style={{ ...mono, fontSize: 9, padding: '2px 7px', borderRadius: 9, background: r.is_hard_constraint ? `${C.red}18` : `${C.blue}18`, border: `1px solid ${r.is_hard_constraint ? C.red : C.blue}44`, color: r.is_hard_constraint ? C.red : C.blue, fontWeight: 700 }}>
+                          {r.is_hard_constraint ? '⛔ HARD CONSTRAINT' : '○ DEFAULT'}
+                        </span>
+                        {!r.active && <span style={{ ...mono, fontSize: 9, padding: '2px 7px', borderRadius: 9, background: `${C.dim}18`, border: `1px solid ${C.brd}`, color: C.dim }}>DEACTIVATED</span>}
+                        {r.source_attribution && <span style={{ ...mono, fontSize: 10, color: C.purple }}>{r.source_attribution}</span>}
+                        <span style={{ ...mono, fontSize: 10, color: C.dim, marginLeft: 'auto' }}>{r.ai_assisted ? 'AI-assisted' : r.created_by ? `added by ${r.created_by}` : 'manual'}</span>
+                      </div>
+                      <p style={{ ...mono, fontSize: 12, color: C.txt, margin: '0 0 8px', lineHeight: 1.6 }}>{r.rule_text}</p>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button onClick={() => startEdit(r)} style={{ ...btn, fontSize: 11, padding: '3px 10px' }}>Edit</button>
+                        <button onClick={() => toggleActive(r)} style={{ ...btn, fontSize: 11, padding: '3px 10px', color: r.active ? C.orange : C.green, borderColor: r.active ? `${C.orange}66` : `${C.green}66` }}>
+                          {r.active ? 'Deactivate' : 'Reactivate'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -609,6 +779,7 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
             ["access",     "⛏ Invites"],
             ["accesslog",  "📋 Access Log"],
             ["zoomevents", "☎ Zoom Events"],
+            ["doctrine",   "✉ Outreach Intelligence"],
             ["onboarding", `⛏ Onboarding${pendingApprovalsCount>0?` (${pendingApprovalsCount})`:""}`],
           ]},
           { label:"DATA", tabs:[
@@ -1051,6 +1222,9 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
       {/* ── ACCESS LOG TAB ── */}
       {tab==="accesslog"&&<AccessLogTab/>}
       {tab==="zoomevents"&&<ZoomEventsTab/>}
+
+      {/* ── OUTREACH INTELLIGENCE TAB ── */}
+      {tab==="doctrine"&&<OutreachIntelligenceTab currentUser={currentUser}/>}
 
       {/* ── ONBOARDING TAB ── */}
       {tab==="onboarding"&&<OnboardingTab users={users} setUsers={setUsers} onSaveUsers={onSaveUsers} invites={invites} setInvites={setInvites}/>}
