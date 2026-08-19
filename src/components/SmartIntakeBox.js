@@ -17,6 +17,7 @@ const DESTINATIONS = [
   { id: 'new_account', label: 'New account(s)' },
   { id: 'existing_account', label: 'Existing account note' },
   { id: 'influencer', label: 'New influencer account' },
+  { id: 'internal_meeting', label: 'Internal meeting' },
 ];
 
 function DetectedHeader({ label, description }) {
@@ -121,12 +122,48 @@ function InfluencerConfirm({ proposal, lists, submitting, onCreate }) {
   );
 }
 
+// smart-intake-internal-meeting-v1 - the one real multi-target case in this
+// box. When the classifier found a related project, both destinations are
+// independently checkable (company intel, checked by default since it's
+// always a valid place for internal notes; the matched project, also
+// checked by default since a real match was found). No match found (the
+// normal case for general/company-level internal discussion) collapses to
+// exactly the same single-button shape as company_intel - deliberately not
+// showing a disabled/empty second option, per smart-intake-internal-
+// meeting-v1's explicit requirement.
+function InternalMeetingConfirm({ proposal, projects, submitting, onCreate }) {
+  const relatedProject = proposal.relatedProjectId ? projects.find(p => p.id === proposal.relatedProjectId) : null;
+  const [confirmCompanyIntel, setConfirmCompanyIntel] = useState(true);
+  const [confirmProject, setConfirmProject] = useState(true);
+
+  if (!relatedProject) {
+    return <button onClick={()=>onCreate(true, null)} disabled={submitting} style={btn}>File as company intel →</button>;
+  }
+
+  return (
+    <>
+      <label style={{ display:"flex", alignItems:"center", gap:8, marginBottom:8, cursor:"pointer" }}>
+        <input type="checkbox" checked={confirmCompanyIntel} onChange={e=>setConfirmCompanyIntel(e.target.checked)} disabled={submitting} />
+        <span style={{ ...mono, fontSize:12, color:C.txt }}>Company intel</span>
+      </label>
+      <label style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10, cursor:"pointer" }}>
+        <input type="checkbox" checked={confirmProject} onChange={e=>setConfirmProject(e.target.checked)} disabled={submitting} />
+        <span style={{ ...mono, fontSize:12, color:C.txt }}>Project — {relatedProject.name}</span>
+      </label>
+      <button onClick={()=>onCreate(confirmCompanyIntel, confirmProject ? relatedProject.id : null)} disabled={submitting || (!confirmCompanyIntel && !confirmProject)} style={{ ...btn, opacity: (!confirmCompanyIntel && !confirmProject) ? 0.5 : 1 }}>
+        File →
+      </button>
+    </>
+  );
+}
+
 const DESCRIBE = {
   company_intel: 'file under this business',
   new_project: 'create a new project',
   new_account: p => (p?.names?.length ? `create account${p.names.length > 1 ? 's' : ''} ${p.names.join(', ')}` : 'create new account(s)'),
   existing_account: 'add a note to an existing account',
   influencer: p => `create influencer account @${p?.handle || '?'}`,
+  internal_meeting: p => (p?.relatedProjectId ? 'file to company intel and/or the matched project' : 'file under this business'),
   ambiguous: 'unclear — pick a destination',
 };
 
@@ -199,7 +236,15 @@ export default function SmartIntakeBox({ business, projects, userEmail, onProfil
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to file');
-      if (data.project) { onProjectUpdated?.(data.project); showToast(`Filed to project "${data.project.name}"`); }
+      // smart-intake-internal-meeting-v1 - the one action that can return
+      // both `project` and `profile` together (dual-confirm). Checked first
+      // and combined into one toast; every pre-existing single-result shape
+      // below is untouched, so no other action type's copy changes.
+      if (data.project && data.profile) {
+        onProjectUpdated?.(data.project); onProfileUpdated?.(data.profile);
+        showToast(`Filed to project "${data.project.name}" and company intel`);
+      }
+      else if (data.project) { onProjectUpdated?.(data.project); showToast(`Filed to project "${data.project.name}"`); }
       else if (data.accounts) { showToast(`Added ${data.accounts.length} new account${data.accounts.length > 1 ? 's' : ''}`); }
       else if (data.accountName) { showToast(`Added notes to ${data.accountName}`); }
       else if (data.profile) { onProfileUpdated?.(data.profile); showToast('Filed as company intel'); }
@@ -298,6 +343,10 @@ export default function SmartIntakeBox({ business, projects, userEmail, onProfil
           )}
           {confirmState.overrideType === 'company_intel' && (
             <button onClick={()=>confirmAction({ type:'company_intel' })} disabled={submitting} style={btn}>File as company intel →</button>
+          )}
+          {confirmState.overrideType === 'internal_meeting' && (
+            <InternalMeetingConfirm proposal={confirmState.proposal.relatedProjectId !== undefined ? confirmState.proposal : {}} projects={projects} submitting={submitting}
+              onCreate={(confirmCompanyIntel, projectId) => confirmAction({ type:'internal_meeting', confirmCompanyIntel, projectId })} />
           )}
 
           <ChangeDestination value={confirmState.overrideType} onChange={t=>setConfirmState(prev=>({ ...prev, overrideType: t }))} />

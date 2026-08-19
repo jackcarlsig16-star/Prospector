@@ -766,12 +766,13 @@ const INTAKE_SYSTEM_PROMPT = `You classify a piece of free-text context Jack jus
 
 Return exactly this shape:
 {
-  "classification": "company_intel" | "existing_project" | "new_project" | "existing_account" | "new_account" | "ambiguous",
+  "classification": "company_intel" | "existing_project" | "new_project" | "existing_account" | "new_account" | "internal_meeting" | "ambiguous",
   "project_id": "the matching project's id if classification is existing_project, else null",
   "inferred_project_name": "a short inferred name if classification is new_project, else null",
   "account_id": "the matching account's id if classification is existing_account, else null",
   "new_account_names": ["array of company/account names mentioned if classification is new_account, else empty array"],
   "related_project_id": "if classification is new_account and the text also clearly references one of the existing projects listed, that project's id, else null",
+  "internal_meeting_project_id": "if classification is internal_meeting and the text clearly relates to one of the exact existing projects listed, that project's id, else null - a null here is a normal, valid outcome for general/company-level internal discussion, not an error",
   "content_type": "strategy_doc" | "marketing_asset" | "pricing" | "competitive" | "other"
 }
 
@@ -779,7 +780,8 @@ Rules:
 - Only use "existing_project" or "existing_account" if the text clearly refers to one of the exact projects/accounts listed below - do not guess a fuzzy match.
 - Use "new_project" only if the text reads as a genuinely new initiative/effort worth tracking on its own, not just a one-off note.
 - Use "new_account" if the text mentions one or more companies/accounts not in the existing list - list every distinct one you find in new_account_names.
-- Use "company_intel" for general company-level notes that don't fit a specific project or account.
+- Use "internal_meeting" for internal team discussion - a strategy conversation, project planning notes, an internal call transcript - about how Jack's team is thinking or planning internally, not a customer/prospect interaction and not general company-level facts (that's still company_intel). If the text also clearly refers to one of the exact projects listed below, set internal_meeting_project_id to that project's id using the same match-only-exact-references discipline as existing_project - otherwise leave it null.
+- Use "company_intel" for general company-level notes that don't fit a specific project or account and aren't internal team discussion.
 - Use "ambiguous" only if you genuinely cannot tell what this belongs to - a human will be asked to pick the destination, so prefer a real classification when there's a reasonable read and only fall back to "ambiguous" for text that's genuinely too thin or unclear to route (e.g. a single word, or text with no discernible subject).
 - content_type is a best-guess document-kind tag, independent of classification - set it regardless of what classification you picked (it's only actually stored when the text ends up filed as company intel, but always attempt a real guess rather than defaulting to "other"). "strategy_doc" = vision/roadmap/positioning/doctrine, "marketing_asset" = campaign/ad/social/press copy, "pricing" = pricing/cost/discount structure, "competitive" = competitor comparisons/battlecards, "other" = anything that doesn't fit those four.`;
 

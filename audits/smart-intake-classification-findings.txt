@@ -1,0 +1,165 @@
+smart-intake-classification-audit-v1 — findings
+Run: 2026-08-19. AUDIT ONLY, no code/schema changes made.
+
+============================================================
+Q1 — HOW DOES CLASSIFICATION ACTUALLY WORK TODAY?
+============================================================
+Flow: SmartIntakeBox.js (client) -> POST /api/businesses/:id/intake
+(api/businesses/intake.js) -> classifyIntake() (api/businesses/shared.js:807).
+
+classifyIntake() first runs a deterministic pre-check, detectInstagramProfileBlock()
+(shared.js:788) - regex-only, no model call, catches scraped Instagram profile
+blocks before they can be misclassified as company_intel (this existed because
+that exact misfiling happened for real once - "aldknudsen43 test paste",
+smart-intake-classification-confirm-v1). If that doesn't match, it fetches the
+business's current projects and accounts (id+name only) and sends one MODELS.FAST
+call (INTAKE_SYSTEM_PROMPT, shared.js:765-782) with the pasted text plus those
+lists.
+
+Real returned JSON schema (shared.js:767-776):
+{
+  "classification": "company_intel" | "existing_project" | "new_project" |
+                     "existing_account" | "new_account" | "ambiguous",
+  "project_id": string|null,          // set only for existing_project
+  "inferred_project_name": string|null, // set only for new_project
+  "account_id": string|null,          // set only for existing_account
+  "new_account_names": string[],      // set only for new_account
+  "related_project_id": string|null,  // set only for new_account, see Q3
+  "content_type": "strategy_doc"|"marketing_asset"|"pricing"|"competitive"|"other"
+}
+Plus the deterministic influencer short-circuit returns a 7th shape:
+{ classification: 'influencer', handle, bio_text }.
+
+So 7 total classifications exist today: company_intel, existing_project,
+new_project, existing_account, new_account, ambiguous, influencer.
+
+"Detected: X -> file under Y" UI: SmartIntakeBox.js:146 holds one
+confirmState = { classification, proposal, text, overrideType }. overrideType
+starts equal to classification (ambiguous defaults to company_intel,
+SmartIntakeBox.js:182). Render is a strict if/else on overrideType
+(SmartIntakeBox.js:282-303), one section at a time - see Q3.
+
+============================================================
+Q2 — WHAT DOES "FILE AS X" ACTUALLY DO PER CATEGORY?
+============================================================
+Routing is bespoke per-category, not centralized. Two files, both a chain of
+explicit if-blocks (no shared dispatch map/table):
+
+intake.js (auto-file path, high-confidence cases only):
+- existing_project -> fileProjectIntel() (shared.js:727) -> inserts into
+  business_intel_entries with project_id set -> triggers generateProjectStrategy()
+- existing_account -> recordAccountActivity() (shared.js:747) -> appends to
+  that account's handoffNotes, no new row
+- company_intel -> fileCompanyIntel() (shared.js:717) -> inserts into
+  business_intel_entries with project_id NULL -> triggers generateProfile()
+- new_project / new_account / influencer / ambiguous -> none of these write
+  anything; they return status:'confirm' with a proposal object for the
+  client to finish via a second call.
+
+intake-confirm.js (confirm-required path, 5 action.type branches):
+- new_project -> inserts a real projects row, then fileProjectIntel() if text given
+- redirect_to_project -> fileProjectIntel() against an existing project instead
+- new_accounts -> inserts N real accounts rows (plural - can create several
+  at once from new_account_names), optionally links them to a list
+- existing_account -> recordAccountActivity()
+- company_intel -> fileCompanyIntel() (the escape-hatch/manual-override path)
+
+Each branch has its own distinct table/field shape. Nothing here is
+theoretically capable of multi-target today without new code - every branch
+writes to exactly one destination.
+
+============================================================
+Q3 — WHAT WOULD "INTERNAL MEETING" NEED THAT DOESN'T EXIST YET?
+============================================================
+Real, concrete finding: the classifier already computes a SECOND target id in
+one case - new_account's related_project_id (shared.js:774, prompt: "if
+classification is new_account and the text also clearly references one of the
+existing projects listed, that project's id"). intake.js:54 passes it through
+to the client as proposal.relatedProjectId. But grep across the entire repo
+(src/ and api/) shows relatedProjectId/related_project_id is read NOWHERE else
+- not in SmartIntakeBox.js, not in intake-confirm.js's new_accounts handler
+(which only reads action.names and action.listId). It is real, computed,
+carried to the client, and then silently dropped. This is the closest thing
+to multi-target awareness anywhere in the system, and it was never wired to an
+actual second write.
+
+Project identification itself is NOT missing infrastructure - classifyIntake
+already does real project-matching (by feeding the model the current project
+list and asking it to pick a match for existing_project, or infer a name for
+new_project). The SAME mechanism could plausibly identify which project an
+Internal Meeting note relates to. What's missing is everything downstream of
+that identification: a schema shape for "this text has two real destinations,"
+and routing/UI code to act on both.
+
+Confirmation UI is single-target by construction, not just visually:
+confirmState/overrideType (SmartIntakeBox.js:146) is one string, rendered via
+mutually-exclusive === branches (lines 282-303), with a ChangeDestination
+picker (DESTINATIONS, lines 14-20: company_intel/new_project/new_account/
+existing_account/influencer) that lets a person override to a different SINGLE
+destination - reinforcing that "exactly one destination" is the model this
+whole UI was built around, including its own error-correction path.
+
+============================================================
+Q4 — OVERLAP WITH THE QUEUED "BULK-IMPORT MODE" ITEM?
+============================================================
+Found the actual queued reference: feedback_modular_tools_discipline.md:13 -
+"the smart-intake classifier (classifyIntake in api/businesses/shared.js,
+smart-intake-and-intelligence-v1) is meant to be reusable by both the
+single-note flow and a later bulk-import mode, not duplicated per caller."
+No SPEC file exists for it (grepped specs/ - zero hits for smart intake bulk
+work). The only other "bulk-import" reference in memory
+(project_add_account_modal_audit.md) is CSV account-list import
+(UploadsPage.js) - a completely different, already-built feature, not this.
+
+That queued description is about REUSING the existing single-target
+classifyIntake() function across many separately-pasted notes in a batch UI -
+each note still gets its own independent single classification and single
+destination. It is NOT described anywhere as "segment one large paste into
+multiple discrete pieces" - that framing doesn't appear in the actual queued
+memory; it's a different shape than what's documented.
+
+So there are three distinct shapes in play, not two:
+1. Today's system: one paste -> one classification -> one destination.
+2. The actually-queued "bulk-import mode": many separate pastes/notes, each
+   still one paste -> one destination, just batched through the same
+   single-target classifier repeatedly. Same mechanism as today, more calls.
+3. "Internal Meeting" as described by Jack: one paste -> ONE piece of content
+   that needs to write to TWO destinations simultaneously (project-level
+   fields AND business-level internal intel) from a single classification.
+
+(2) and (3) are genuinely different problems that only superficially rhyme
+("multiple things happen from intake"). Building (2) would not incidentally
+give you (3) - batching the existing single-target classifier N times never
+produces a single call that writes to two destinations at once.
+
+============================================================
+RECOMMENDATION
+============================================================
+Adding "Internal Meeting" is NOT a small extension of the existing
+classification system - it requires genuinely new multi-target routing
+infrastructure that doesn't exist today at any layer:
+- Schema: INTAKE_SYSTEM_PROMPT's response shape has no field for "here are two
+  real destinations," only single optional ids per category (and the one
+  case that's closest, related_project_id, is dead/unused - see Q3).
+- Server routing: both intake.js and intake-confirm.js are chains of
+  mutually-exclusive if-blocks, each writing to exactly one destination. None
+  of the five existing action.type branches touch two tables/records in one
+  call the way Internal Meeting would need to.
+- Client UI: confirmState/overrideType is a single string with mutually
+  exclusive render branches - would need real restructuring (an array of
+  destinations, not one), not just a sixth DESTINATIONS entry.
+
+It should be scoped as its own SPEC, not folded into the queued bulk-import
+item - that item, as actually documented, is a different, narrower problem
+(reusing the existing single-target classifier across a batch of separate
+notes) that doesn't produce or require dual-destination routing as a
+byproduct. Building Internal Meeting's routing logic first might even make a
+future bulk-import mode easier (it already needs to loop the single-target
+classifier N times either way), but not the reverse.
+
+One real, reusable asset already exists for the "which project" half of this:
+classifyIntake's existing project-list-matching approach (feed the model the
+current project list, let it match/infer) - the same technique should extend
+cleanly to Internal Meeting's project identification, this part is not new
+territory. The genuinely new part is the dual-write schema/routing/UI, all
+three layers.

@@ -1,0 +1,163 @@
+homelover-intake-confirm-502 — findings
+Run: 2026-08-19
+Type: AUDIT ONLY, no code/schema changes made.
+
+============================================================
+Q1 — REAL ROUTE TRACE
+============================================================
+server.js:429 — POST /api/businesses/:id/intake/confirm →
+api/businesses/intake-confirm.js.
+
+"File as company intel" sends action.type === 'company_intel'
+(intake-confirm.js:75-78), which calls:
+  fileCompanyIntel(supabase, id, text, created_by)  [shared.js:717]
+
+fileCompanyIntel (shared.js:717-725):
+  1. Inserts a row into business_intel_entries (718-719)
+  2. Calls generateProfile(supabase, businessId) (721)  <- see Q2
+  3. Re-selects and returns the business_profiles row (722-724)
+
+============================================================
+Q2 — IS THIS A REGRESSION FROM intel-generation-light-depth-
+     truncation-fix-v1 (6dafc88)?
+============================================================
+YES, confirmed real call-path connection - not assumption, not
+coincidence-by-business-id.
+
+fileCompanyIntel -> generateProfile(supabase, businessId)
+(shared.js:721) is the EXACT SAME function 6dafc88 modified
+(light-depth max_tokens 2048->8192, thinking disabled for light).
+HomeLover is research_depth:'light' (confirmed earlier today), so this
+route runs through the exact branch that commit changed.
+
+Also confirmed NOT touched by the later project-scoped-outreach-
+examples-v1 commits (38033a9/16c5de5) - those added
+segmentProjectOutreachExamples/distillProjectOutreachExamples, neither
+of which fileCompanyIntel or intake-confirm.js calls. Real, but
+unrelated to this bug.
+
+This does NOT mean 6dafc88 broke this route on its own terms (it made
+generateProfile's light path more likely to *succeed* by fixing the
+truncation) - but it does mean this route's latency profile is
+entirely inherited from generateProfile's real behavior, unchanged by
+this audit finding anything new in the intake-confirm layer itself.
+
+============================================================
+Q3 — REAL RENDER SERVER LOG
+============================================================
+NOT ANSWERABLE with real evidence. No `render` CLI installed, no
+RENDER_API_KEY/RENDER_TOKEN in .env, no ~/.render config - same
+blocker confirmed on the homelover-intel-generation-500 audit earlier
+today. Did not fabricate or guess log content. Would need CLI/API
+access to pull the real stack trace/timing from Render's own logs.
+
+============================================================
+Q4 — LIVE REPRODUCTION
+============================================================
+Reproduced the call path live against prod (curl, no auth required,
+same method used to verify every fix shipped today). Did NOT get an
+actual 502 in 3 attempts, but got something arguably more useful: real
+timing data showing this call path lives dangerously close to
+whatever the real failure threshold is.
+
+  Call 1 - HomeLover (bc69beab...), first call this session: 200,
+    68.0s wall clock (in=17385, out=1148 real tokens)
+  Call 2 - HomeLover, immediate second call (server warm, ruling out
+    cold-start as sole explanation): 200, 35.3s
+  Call 3 - HumanKind (981b790c...), different business: 200, 26.8s
+
+All three succeeded, but all three took 27-68 real seconds - 2 of 3
+exceeded intake-confirm.js's own `config.maxDuration: 30` outright,
+and none of them are "content-specific": HomeLover and HumanKind, two
+different real pastes, both landed in the same slow range. This is a
+latency problem inherent to this call path (fileCompanyIntel ->
+generateProfile), not a bug specific to whatever text was pasted the
+day this was reported. A real production 502 is very plausible as
+normal tail-latency variance (Anthropic API response time, network
+conditions) occasionally pushing an already-25-70s call over whatever
+Render's real proxy/timeout ceiling is - this reads as an intermittent,
+timing-dependent failure, not a deterministic one.
+
+Real data created by this reproduction (NOT deleted - audit only, left
+for Jack to decide):
+  business_intel_entries id ea01c4be-63aa-480d-8695-1378a8209cd3
+    (HumanKind, 981b790c-a3b0-4265-b32e-1f701d5731ff)
+  business_intel_entries id f2181ceb-3cd8-45e4-84bf-9a11a94144af
+    (HomeLover, bc69beab-effd-452d-9e81-fd652333bb95)
+  business_intel_entries id 1e553139-f3cb-4153-8c07-9f225ee7508c
+    (HomeLover, bc69beab-effd-452d-9e81-fd652333bb95)
+All three content-prefixed "[verification note, homelover-intake-
+confirm-502 audit]", created_by='claude-audit-verification' - easy to
+find/remove. Each also triggered a real business_profiles resynthesis
+on the affected business (the normal fileCompanyIntel side effect).
+
+============================================================
+Q5 — APP-SERVER 502 vs RENDER PROXY/INFRA 502
+============================================================
+Strong evidence this is a proxy/infra-layer 502, not an app-level one.
+
+intake-confirm.js:81-83 wraps its entire body in try/catch and always
+returns JSON on failure: `catch (e) { return res.status(500).json({
+error: e.message }); }`. A normal thrown error - including
+callAnthropic's own AbortSignal.timeout() firing at 90s
+(shared.js:445, isLight ? 90000 : 180000) - is a regular JS error that
+this catch block would receive and turn into a clean JSON 500, not an
+HTML 502. The reported symptom (HTML DOCTYPE page, "Unexpected token
+'<'") is the classic signature of a response that never reached this
+handler's own res.json() call at all - Render's proxy/load balancer
+returning its own generic error page because the upstream connection
+was cut, the worker didn't respond in time, or the worker
+crashed/restarted mid-request.
+
+Compounding real finding: intake-confirm.js declares `config.maxDuration
+= 30` (30 seconds) while the function it calls can legitimately run up
+to 90 seconds (generateProfile's own internal AbortSignal timeout for
+light depth) - and real live timing today (Q4) shows normal calls
+already landing in the 27-68s range, some already past the declared 30s
+figure. Whether `config.maxDuration` is actually enforced anywhere in
+this app's real Express/Render runtime (CLAUDE.md confirms api/ files
+run inside a real persistent server.js process, not literal Vercel
+serverless functions, so this field may be inert/vestigial) could not
+be confirmed without Render log/config access (see Q3) - but even if
+it's inert, the real 27-68s call durations measured live today are
+independently long enough to be a real, plausible target for whatever
+Render's actual platform-level request timeout is.
+
+============================================================
+ROOT CAUSE THEORY
+============================================================
+HIGH confidence on mechanism, MEDIUM confidence on exact numeric
+threshold (blocked by no Render log access):
+
+This is a proxy/infra-level timeout, not an application bug and not a
+content-specific parsing/logic failure. fileCompanyIntel ->
+generateProfile's real, live, measured latency (27-68s across 3 real
+calls today, 2 different businesses) already sits close to whatever
+Render's real request-timeout ceiling is. On the day this was
+reported, a real Anthropic call for HomeLover's "File as company
+intel" action likely ran slow enough (Anthropic-side latency, HomeLover's
+growing intel log making the call itself take longer, or both) to
+exceed that ceiling, causing Render's proxy to cut the connection and
+return its own generic 502 HTML page before Express's own JSON error
+path (which would have fired cleanly on any ordinary JS error) ever got
+the chance to run.
+
+NOT ruled out but LOWER confidence: a genuine app-level crash (OOM,
+uncaught async exception outside the try/catch, e.g. in code that runs
+during Express's response-serialization step) causing a real worker
+restart. Real Render log access would be needed to distinguish this
+from the timeout theory definitively - flagged, not resolved, per Q3.
+
+This is real, load-bearing evidence that this route's latency profile
+- not this session's earlier code changes specifically - is the actual
+risk surface. 6dafc88 and the outreach-examples commits are confirmed
+NOT to have introduced new failure modes here; they're just sharing
+the same pre-existing generateProfile call that has apparently always
+run this slow (or slower, pre-6dafc88, when the same call could
+truncate at 2048 tokens and get retried/reasoned-over via adaptive
+thinking - itself a candidate for EVEN SLOWER pre-fix latency, though
+that's speculative without pre-fix timing data, which wasn't
+collected).
+
+No code or schema changes made. Test data listed above left in place
+for Jack's decision.

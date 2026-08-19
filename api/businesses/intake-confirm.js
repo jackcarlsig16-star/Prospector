@@ -77,6 +77,20 @@ export default async function handler(req, res) {
       return res.status(200).json({ profile });
     }
 
+    // smart-intake-internal-meeting-v1 - the one real multi-target case in
+    // this router. Composes the two existing single-target writes
+    // (fileCompanyIntel/fileProjectIntel) rather than a new storage
+    // mechanism; whichever destination(s) were confirmed client-side are
+    // written, independently - never both required, never neither (client
+    // disables the submit button on zero-selected, this is the real guard).
+    if (action.type === 'internal_meeting') {
+      if (!action.confirmCompanyIntel && !action.projectId) return res.status(400).json({ error: 'At least one destination must be selected' });
+      const result = {};
+      if (action.confirmCompanyIntel) result.profile = await fileCompanyIntel(supabase, id, (text || '').trim(), created_by, 'internal_meeting');
+      if (action.projectId) result.project = await fileProjectIntel(supabase, action.projectId, (text || '').trim(), created_by);
+      return res.status(200).json(result);
+    }
+
     return res.status(400).json({ error: `Unknown action.type: ${action.type}` });
   } catch (e) {
     return res.status(500).json({ error: e.message });

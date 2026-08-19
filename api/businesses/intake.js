@@ -58,6 +58,15 @@ export default async function handler(req, res) {
       return res.status(200).json({ status: 'confirm', classification: 'influencer', proposal: { handle: classification.handle, bioText: classification.bio_text || text.trim() } });
     }
 
+    // smart-intake-internal-meeting-v1 - always confirm, never auto-file:
+    // unlike company_intel, this can resolve to two real destinations
+    // (company intel and/or a matched project), and even the common
+    // no-match case still deserves the same review-before-filing discipline
+    // every other confirm-required category gets here.
+    if (classification.classification === 'internal_meeting') {
+      return res.status(200).json({ status: 'confirm', classification: 'internal_meeting', proposal: { relatedProjectId: classification.internal_meeting_project_id || null } });
+    }
+
     if (classification.classification === 'ambiguous') {
       return res.status(200).json({ status: 'confirm', classification: 'ambiguous', proposal: {} });
     }

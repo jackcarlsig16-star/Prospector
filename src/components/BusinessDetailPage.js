@@ -20,7 +20,7 @@ import AccountPicker from './AccountPicker';
 import BulkOutreachModal from './BulkOutreachModal';
 
 const SOURCE_LABEL = { manual: 'Manual', research_site: 'Site research', research_web: 'Web research', call: 'Call log' };
-const CONTENT_TYPE_LABEL = { strategy_doc: 'Strategy', marketing_asset: 'Marketing', pricing: 'Pricing', competitive: 'Competitive', other: 'Other' };
+const CONTENT_TYPE_LABEL = { strategy_doc: 'Strategy', marketing_asset: 'Marketing', pricing: 'Pricing', competitive: 'Competitive', internal_meeting: 'Internal Meeting', other: 'Other' };
 
 const fmtDate = iso => { try { return new Date(iso).toLocaleString("en-US", { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }); } catch { return "—"; } };
 
