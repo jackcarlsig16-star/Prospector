@@ -908,6 +908,16 @@ export async function getCampaignsForProjects(projectIds) {
   }
 }
 
+// intake-field-extraction-and-bulk-split-v1 — single-campaign read,
+// mirrors getProject() above exactly, for polling field_extraction_status
+// while a background extraction is in flight.
+export async function getCampaign(campaignId) {
+  if (!isSupabaseEnabled() || !campaignId) return null;
+  const { data, error } = await supabase.from('campaigns').select('*').eq('id', campaignId).maybeSingle();
+  if (error) return null;
+  return data;
+}
+
 // ── Businesses ────────────────────────────────────────────────────────────────
 // Standalone layer - separate from projects/project_members/prospects. Does not
 // touch or depend on any of that. Creation, intel entries, and profile

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { C, mono } from '../constants/colors';
-import { updateProjectGuidance, getVoiceProfileForEmail } from '../utils/db';
+import { updateProjectGuidance, getVoiceProfileForEmail, getProject } from '../utils/db';
 import OutreachExamplesEditor from './shared/OutreachExamplesEditor';
+import FieldExtractionPanel from './shared/FieldExtractionPanel';
 
 const fmtDate = iso => { try { return new Date(iso).toLocaleString("en-US", { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }); } catch { return "—"; } };
 
@@ -65,6 +66,17 @@ export default function ProjectGuidanceCard({ project, businessName, userEmail, 
           Outreach rules: {outreachRules?.tone || 'not set'}
         </div>
       </div>
+
+      <FieldExtractionPanel
+        entity={project}
+        apiBase={`/api/projects/${project.id}`}
+        fields={FIELD_LABELS}
+        getEntity={getProject}
+        draft={draft}
+        onAcceptField={(key, value) => setDraft(d => ({ ...d, [key]: value }))}
+        onEntityUpdated={onUpdated}
+        scopeLabel="project"
+      />
 
       {FIELD_LABELS.map(f => (
         <div key={f.key} style={{ marginBottom:8 }}>

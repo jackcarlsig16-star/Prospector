@@ -75,11 +75,15 @@ export default function OutreachExamplesEditor({ examples, onExamplesChange, ent
         body: JSON.stringify({ pastedText: bulkText }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to segment paste');
+      // intake-field-extraction-and-bulk-split-v1 Stage 2 - a thrown
+      // request failure (parse/segmentation error, e.g. "No JSON in
+      // examples segmentation response") and a genuine "model found 0
+      // examples" result used to show the exact same copy. Distinct
+      // messages now; the fallback mechanism below (addWholePasteAsOne)
+      // is unchanged and still covers both.
+      if (!res.ok) throw new Error(data.error ? "Couldn't automatically split this into examples — add it as one example instead, or try again." : 'Failed to segment paste');
       if (!data.examples || data.examples.length === 0) {
-        // addendum point 1 - found nothing splittable, not an error; the
-        // "add whole paste as one example" fallback below covers this.
-        setSegmentError("Couldn't find clear separate examples in this paste.");
+        setSegmentError('No individual examples detected in this text.');
         return;
       }
       // addendum point 3 - flag duplicates (within this batch, and against

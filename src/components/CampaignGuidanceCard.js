@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { C, mono } from '../constants/colors';
-import { updateCampaign } from '../utils/db';
+import { updateCampaign, getCampaign } from '../utils/db';
 import OutreachExamplesEditor from './shared/OutreachExamplesEditor';
+import FieldExtractionPanel from './shared/FieldExtractionPanel';
 
 const fmtDate = iso => { try { return new Date(iso).toLocaleString("en-US", { month:"short", day:"numeric", hour:"numeric", minute:"2-digit" }); } catch { return "—"; } };
 
@@ -41,6 +42,17 @@ export default function CampaignGuidanceCard({ campaign, onUpdated }) {
 
   return (
     <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.brd}` }}>
+      <FieldExtractionPanel
+        entity={campaign}
+        apiBase={`/api/campaigns/${campaign.id}`}
+        fields={FIELD_LABELS}
+        getEntity={getCampaign}
+        draft={draft}
+        onAcceptField={(key, value) => setDraft(d => ({ ...d, [key]: value }))}
+        onEntityUpdated={onUpdated}
+        scopeLabel="campaign"
+      />
+
       {FIELD_LABELS.map(f => (
         <div key={f.key} style={{ marginBottom:8 }}>
           <div style={sectionLabel}>{f.label}</div>

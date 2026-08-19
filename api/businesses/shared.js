@@ -214,11 +214,35 @@ const SEGMENT_PASTE_MAX_CHARS = 30000;
 // campaign-layer-v1 — parameterized to accept either a project or a
 // campaign (both tables carry business_id + outreach_examples in the same
 // shape), rather than forking a second copy of this function.
+// intake-field-extraction-and-bulk-split-v1 Stage 1 — well-anchored
+// delimiter patterns only, tried in order. Deliberately not a numbered-
+// list heuristic (e.g. bare "1.", "2.") - that risks false splits on
+// text that happens to contain numbers unrelated to example boundaries.
+// Returns null (not an empty array) when it can't confidently split, so
+// the caller can tell "found nothing to split on" apart from "found a
+// real 0/1-segment result" and fall through to the AI call unchanged.
+function deterministicSplitExamples(pastedText) {
+  let segments = null;
+  if (/^-{3,}\s*$/m.test(pastedText)) {
+    segments = pastedText.split(/^-{3,}\s*$/m);
+  } else if (/^(EXAMPLE|EMAIL)\s*#?\d+[:.]?\s*$/im.test(pastedText)) {
+    segments = pastedText.split(/^(?:EXAMPLE|EMAIL)\s*#?\d+[:.]?\s*$/im);
+  }
+  if (!segments) return null;
+  const trimmed = segments.map(s => s.trim()).filter(Boolean);
+  return trimmed.length >= 2 ? trimmed : null;
+}
+
 export async function segmentOutreachExamples(supabase, { table = 'projects', id }, pastedText) {
   if (!pastedText || !pastedText.trim()) throw new Error('Paste the messages to split first.');
   if (pastedText.length > SEGMENT_PASTE_MAX_CHARS) {
     throw new Error(`Paste is too large to segment reliably (${pastedText.length.toLocaleString()} chars, max ${SEGMENT_PASTE_MAX_CHARS.toLocaleString()}). Split it into smaller batches and paste separately.`);
   }
+
+  // Stage 1 — skip the AI call entirely when a well-anchored delimiter
+  // pattern alone confidently yields 2+ segments.
+  const deterministic = deterministicSplitExamples(pastedText);
+  if (deterministic) return deterministic;
 
   const { data: entity, error: entityError } = await supabase.from(table).select('business_id').eq('id', id).single();
   if (entityError) throw entityError;
@@ -687,6 +711,102 @@ export async function distillOutreachExamples(supabase, { table = 'projects', id
   if (updateError) throw updateError;
 
   return distilled;
+}
+
+// intake-field-extraction-and-bulk-split-v1 Stage 3/4 — one shared
+// field-extraction function for both entities (parameterized the same
+// way distillOutreachExamples/segmentOutreachExamples already are),
+// modeled on generateProfile's proven multi-field-extraction-from-text
+// pattern (shared.js FULL_SYSTEM_PROMPT/LIGHT_SYSTEM_PROMPT) rather than
+// inventing a new approach. Field set differs per table since Project
+// and Campaign have different structured fields (decision #1 in the
+// project vs. campaign schema).
+const EXTRACT_FIELDS_SPEC = {
+  projects: {
+    fields: ['objective', 'target_type', 'ask_type', 'project_hook', 'exclusions'],
+    fieldMeanings: `- objective: what this project is trying to accomplish
+- target_type: who this project is reaching
+- ask_type: what the outreach is asking for - the offer/CTA
+- project_hook: an opening angle specific to this project
+- exclusions: anything outreach for this project should avoid`,
+  },
+  campaigns: {
+    fields: ['recipient_description', 'doctrine'],
+    fieldMeanings: `- recipient_description: who this campaign targets - a specific pitch angle to a specific type of recipient
+- doctrine: what should drive messaging for this recipient - key facts, talking points, or angle from the source text`,
+  },
+};
+
+function extractFieldsSystemPrompt(table) {
+  const spec = EXTRACT_FIELDS_SPEC[table];
+  return `You extract structured fields from pasted free text (e.g. a sales deck, notes, a brief) for a specific ${table === 'campaigns' ? 'campaign' : 'project'}. Respond with ONLY a JSON object, no other text.
+
+Return exactly this shape:
+{
+${spec.fields.map(f => `  "${f}": "extracted value for this field, or null if the text doesn't support it"`).join(',\n')},
+  "field_sources": { "<field name from above>": "a short quoted or paraphrased snippet from the text grounding that field, or null if the field is null" }
+}
+
+Field meanings:
+${spec.fieldMeanings}
+
+Base every field on the text provided - do not invent facts it doesn't support. If the text doesn't give enough to fill a field confidently, return null for that field rather than guessing.`;
+}
+
+// max_tokens starts at 8192 (matches generateProfile's light-depth
+// post-fix value, given this extracts fewer fields than light's 8 or
+// full's 13) - a starting value, not permanently settled. generateProfile
+// itself needed raising twice on real production data as input grew
+// (light: 2048 -> 8192 after 3 real truncation failures; full: 4096 ->
+// 8192 -> 20000) - watch business_anthropic_usage for the same pattern
+// here before assuming 8192 is enough long-term.
+export async function extractEntityFields(supabase, { table = 'projects', id }, rawText) {
+  if (!rawText || !rawText.trim()) throw new Error('Paste some text to extract from first.');
+
+  const { data: entity, error: entityError } = await supabase.from(table).select('business_id').eq('id', id).single();
+  if (entityError) throw entityError;
+
+  const spec = EXTRACT_FIELDS_SPEC[table];
+  const data = await callAnthropic({
+    max_tokens: 8192,
+    system: extractFieldsSystemPrompt(table),
+    messages: [{ role: 'user', content: rawText.trim().slice(0, 30000) }],
+    supabase,
+    businessId: entity.business_id,
+    callType: table === 'campaigns' ? 'campaign_field_extraction' : 'project_field_extraction',
+  });
+  const textBlock = (data.content || []).find(b => b.type === 'text');
+  if (!textBlock) throw new Error('No text in field extraction response');
+  const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('No JSON in field extraction response');
+  const parsed = JSON.parse(jsonMatch[0]);
+
+  const result = {};
+  spec.fields.forEach(f => { result[f] = parsed[f] || null; });
+  result.field_sources = parsed.field_sources || {};
+  return result;
+}
+
+// Fire-and-forget-then-poll, mirroring beginProfileSync/runProfileSync
+// (above) exactly - confirmed live before writing this (businesses.
+// intel_sync_status/intel_sync_error, projects.strategy_sync_status/
+// strategy_sync_error both real columns; SmartIntakeBox.js:239-259's
+// pollSyncStatus is the real client precedent). field_extraction_result
+// is a staging column only - never written into objective/target_type/
+// etc (or recipient_description/doctrine) directly; the client reads it
+// to render a diff-preview and only an explicit per-field Accept +
+// existing Save button (updateProjectGuidance/updateCampaign) commits
+// anything, per decision #1.
+export async function beginFieldExtractionSync(supabase, { table = 'projects', id }) {
+  await supabase.from(table).update({ field_extraction_status: 'syncing', field_extraction_error: null }).eq('id', id);
+}
+export function runFieldExtractionSync(supabase, { table = 'projects', id }, rawText) {
+  extractEntityFields(supabase, { table, id }, rawText)
+    .then(result => supabase.from(table).update({ field_extraction_status: 'ready', field_extraction_error: null, field_extraction_result: result }).eq('id', id))
+    .catch(e => {
+      console.error(`[field-extraction] ${table} ${id} failed:`, e);
+      supabase.from(table).update({ field_extraction_status: 'error', field_extraction_error: String(e.message || e).slice(0, 500) }).eq('id', id).catch(() => {});
+    });
 }
 
 // FILING PRIMITIVES — the three ways a piece of text ends up attached to
