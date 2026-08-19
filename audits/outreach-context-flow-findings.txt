@@ -1,0 +1,365 @@
+outreach-context-flow-audit-v1 — findings
+Run: 2026-08-19
+Type: AUDIT ONLY, no code/schema changes made.
+
+============================================================
+CORRECTION TO THE AUDIT'S OWN PREMISE — READ FIRST
+============================================================
+The audit prompt assumes `outreach_examples` exists as a real table
+("per-business approved/sent examples, selected 2-4 by outcome/substyle
+match"). It does not exist anywhere — not in code, not in the live
+Supabase schema:
+
+  node query: sb.from('outreach_examples').select('*').limit(1)
+  => ERROR: Could not find the table 'public.outreach_examples' in the
+     schema cache
+
+  grep -rn "outreach_examples" (all .js files, whole repo) => zero hits
+
+The audit prompt also frames `outreach_rules` as its own table. It's
+real, but it's a JSONB column on `business_profiles`
+(`business_profiles.outreach_rules`), not a standalone table — confirmed
+both by a failed `sb.from('outreach_rules')` query and by every real
+code reference (`api/email.js:141`, `api/businesses/outreach-rules-*.js`,
+`OutreachRulesCard.js`).
+
+What DOES exist under the "examples" idea is unrelated to what the
+prompt described: `voiceExamples`, a per-AE, localStorage-only, NOT
+business-scoped set of "voice docs" (`src/constants/voice.js`,
+`prospector_voice_docs_<username>` key). There is no selection logic at
+all — `getActiveVoice()` concatenates every doc with `active:true`
+verbatim (`voice.js:29-39`). Nothing picks "2-4 by outcome/substyle
+match"; that mechanism does not exist in this codebase in any form.
+
+============================================================
+Q1 — FULL CONTEXT_PROVIDERS MAP
+============================================================
+Source: `api/email.js:222-294`, single 390-line file, read in full.
+
+Composition order (`CONTEXT_PROVIDERS` array, `email.js:222-294`), each
+entry is `{name, text}`, nulls filtered out before joining with `\n\n`:
+
+1. `doctrineHard` — `outreach_doctrine` table, `is_hard_constraint=true`
+   rows, `.eq('active', true)` (email.js:171-178). Labeled
+   "NON-NEGOTIABLE (must follow, no exceptions)". ~4 rows today, ~150
+   tokens.
+2. `doctrineDefault` — same table, `is_hard_constraint=false`. Labeled
+   "PLATFORM DEFAULTS (prefer these; business-specific guidance below
+   may refine or override)". 0 rows today (all 4 real doctrine rows are
+   hard constraints) — this section renders `text: null` and is dropped
+   entirely in practice right now.
+3. `voice` — `voiceProfile` object (client-supplied, or server-fetched
+   via `getVoiceProfileForUser` for bulk/background calls,
+   email.js:127-129) + `voiceProfile.avoidPhrases`. ~80-150 tokens.
+4. `companyIntel` — `business_profiles.assay_criteria`
+   (`fit_signals`/`disqualifiers`), fetched email.js:141-142. ~50-150
+   tokens, business-dependent.
+5. `companyOutreachRules` — `business_profiles.outreach_rules` (the
+   JSONB column, not a table — see correction above). ~100-400 tokens
+   when populated (HumanKind's real row is ~350 tokens; 3 of 4
+   businesses have none, see Q5).
+6. `accountIntel` — client-built `accountIntel` string (handoff notes,
+   call summary, MEDPICC — built by `buildAccountIntel()`,
+   `utils/accountIntel.js`, not read here), capped at 1500 chars
+   (~375 tokens) at email.js:267.
+7. `project` — `projects` table: `objective, target_type, ask_type,
+   project_hook, exclusions, outreach_example`, fetched
+   email.js:157. ~100-400 tokens when populated (only 1 of 4 businesses'
+   projects have any of these fields set — see Q5).
+8. `directive` — free-text, per-call, from request body only. NEVER
+   persisted anywhere (see Q2). Capped at 800 chars (~200 tokens).
+9. `userProfile` — reserved, `text: null` always. Confirmed zero rows,
+   zero schema, zero wiring — a stub for a not-yet-built "My Profile"
+   feature (email.js:289-292, explicit comment).
+10. `voiceExamples` — the per-AE localStorage voice docs described
+    above. Capped at 1500 chars (~375 tokens).
+
+Plus, ahead of `CONTEXT_PROVIDERS` in the final `systemPrompt` array
+(email.js:296-303): a one-line role statement, `outputFormat` (word
+limit/structure rules), and `messageTypeGuidance`
+(`MESSAGE_TYPE_GUIDANCE`, email.js:25-37 — cold_outreach/follow_up/
+warm_intro/reply, hardcoded, NOT in outreach_doctrine by deliberate
+design per the comment at email.js:13-24: doctrine has no
+messageType-scoping column, so parameterized-by-type guidance stays in
+code to avoid injecting contradictory instructions for all 4 types into
+every generation).
+
+**Hard-vs-default separation**: confirmed it survives structurally
+intact into the final prompt. Two distinctly-labeled blocks, not merged
+prose (email.js:233-240) — this was explicitly the point of
+`outreach-intelligence-doctrine-v1` Stage 3 per its own comment
+(email.js:223-232), and it's real: the labels ("NON-NEGOTIABLE" vs
+"PLATFORM DEFAULTS... may refine or override") are the only enforcement
+mechanism — there's no structural/API-level priority, just prompt text
+asserting itself as highest-authority. Whether the model actually
+honors that hierarchy when a business-level rule conflicts with it is
+untested by this audit (would require live generation calls, out of
+scope for a read-only pass) — see the real conflict case in Q3.
+
+============================================================
+Q2 — WHERE DOES EACH LAYER GET ENTERED, BY WHOM
+============================================================
+
+**outreach_doctrine** — `AdminPage.js`, "Outreach Intelligence" tab
+(`AdminPage.js:245` section start, `line 782`: `["doctrine", "✉ Outreach
+Intelligence"]` in the tab list). Real enforcement: the entire Admin
+page is gated by `isAdmin(user)` at the render site
+(`App.js:1404`: `{page==="admin"&&isAdmin(user)&&<AdminPage .../>}`),
+and `isAdmin()` is `user.role === 'Admin' || user.role === 'Owner'`
+(`appConfig.js:56`). This is the one layer with real, enforced,
+restricted editorship — Admin/Owner only, not assumed.
+
+**outreach_rules (business_profiles.outreach_rules)** —
+`OutreachRulesCard.js`, rendered on `BusinessDetailPage.js:669` inside
+the Business Intel & Strategy page. NO role/permission gate anywhere in
+this path — `OutreachRulesCard.js` itself has no role prop or check at
+all, and `BusinessDetailPage.js`'s render site
+(`App.js:1406`) only requires `activeBusiness` to exist, no role
+condition. Real finding: any team member with access to a business
+workspace can view AND edit that business's outreach rules — this is
+NOT admin-only in practice, despite being one layer below the
+Admin-gated platform doctrine.
+
+**Project guidance fields** (`objective/target_type/ask_type/
+project_hook/exclusions/outreach_example`) — `ProjectGuidanceCard.js`.
+Same pattern: no role/permission check anywhere in the component
+(confirmed via grep for role/isAdmin/canEdit — zero hits). Open to
+whoever can reach the project.
+
+**Directive** — free-text `<textarea>` in `EmailModal.js:253`
+(`context` state, `EmailModal.js:62`), sent as `directive` in the
+generate request (`EmailModal.js:192`) only when the Advanced panel's
+guided flow is active (`!autoStart`). **Never persisted anywhere** —
+no table, no column, purely per-request state. This directly
+contradicts the audit prompt's framing of Directive as something with a
+"CSV bulk directive" counterpart in the same system — see next
+paragraph, they are unrelated.
+
+**"CSV bulk directive" is a different mechanism entirely**, not a
+variant of the same Directive concept. It lives in `CsvImportModal.js`
+(`directiveText`/`applyDirective`, lines 56-137) and calls
+`/api/businesses/:id/import/directive` — a one-time LLM classification
+step at CSV-import time that sets `relationship_type`/`vert`/`stage`
+overrides on the imported accounts (`generation-engine-consolidation-v1`
+Stage 5, per the code comment at `CsvImportModal.js:116`). It has
+nothing to do with `api/email.js`'s generation prompt composition and
+never touches the `directive` context provider. The audit prompt's
+"Directive (per-generation instruction, including CSV bulk directive)"
+framing conflates two same-named-but-unrelated features.
+
+**Voice** — two separate mechanisms, both per-AE (`userName`-keyed
+localStorage), neither business-scoped, neither role-gated:
+`voiceProfile` (structured: greeting/tone/avoidPhrases/keyTraits,
+`getVoiceProfile()`) and `voiceExamples`/voice docs (`getActiveVoice()`,
+described above). Editable by whichever AE is logged in, for their own
+voice only — no cross-user editing surface exists, so there's nothing
+to gate.
+
+============================================================
+Q3 — REAL REDUNDANCY / OVERLAP CHECK
+============================================================
+Only HumanKind (of the 4 businesses) has both a populated
+`outreach_rules` AND a populated project (`Q3 Jack's Outbound
+Strategy`) — the only real cross-layer comparison available. Full real
+content for both pulled directly from Supabase (see raw data below).
+
+**Real, concrete overlap found**: `outreach_rules.key_points` ("HumanKind
+is a free community wellness platform live in Chicago where members
+complete verified challenges...") and the project's `project_hook`
+("I'm Jack, COO at HumanKind - a free community wellness platform live
+now in Chicago. We're at 1,000+ members and 4,000+ verified challenge
+completions...") describe the same core company positioning in
+different, independently-typed words. Neither references or inherits
+from the other — `project_hook` is free text on the `projects` table,
+`outreach_rules.key_points` is free text on `business_profiles`, no
+code path connects them. If HumanKind starts a second project, Jack
+would plausibly retype a similar hook a third time. This is real
+duplicated effort, not hypothetical — same underlying fact (what
+HumanKind is) entered twice already, in two different layers, in two
+different sentences.
+
+**Real, concrete potential contradiction found**: `outreach_doctrine`'s
+hard-constraint "cta" rules (both email and LinkedIn variants) state,
+unconditionally: "end with a soft, low-friction CTA — suggest a
+15-minute call, never demand one." HumanKind's business-level
+`outreach_rules.dos` says: "Match the ask to the commitment level - ask
+directly for a reward/raffle, propose a short call for a larger
+sponsorship." These are in real tension: doctrine's hard constraint
+applies "no exceptions" to every generation regardless of business, but
+HumanKind's own real, human-written business rule explicitly calls for
+a *direct* ask in the reward/raffle case, not a soft suggested-call CTA.
+Per `CONTEXT_PROVIDERS`' real composition order, `doctrineHard` is
+placed first specifically because "hard constraints are highest-
+authority regardless of position" (email.js:227-228) — so on paper
+doctrine should win. But this is asserted by prompt-text labeling only,
+not enforced structurally (no code checks the model's output against
+either rule) — whether the model actually resolves this in doctrine's
+favor is untested by this audit (that would require a live generation
+call, explicitly out of scope for a read-only pass). This is the one
+concrete, real example of the kind of contradiction the audit asked
+about — not constructed, found directly in production data.
+
+**Not overlapping** (checked and ruled out): the project's
+`outreach_example` field (a full worked draft email) and
+`outreach_rules.example_snippets` (three short meta-commentary quotes
+about *what makes* a good pitch, not draft copy itself) serve genuinely
+different purposes and don't duplicate each other.
+
+============================================================
+Q4 — IS OUTBOUND BEST-PRACTICES KNOWLEDGE ACTUALLY WIRED IN?
+============================================================
+**No — confirmed absent, not Jack's assumption holding true.**
+
+Grep across `api/`, `src/utils/`, `src/components/` for every named
+framework/book in the audit prompt (SPIN Selling, 4-T Framework,
+Predictable Revenue, Fanatical Prospecting, Never Split the Difference,
+Josh Braun, Nick Abraham, Matthew Lucero, signal-based selling,
+message-market fit, TAM diagnosis, Outbound Efficiency Triangle, Gong
+research) plus generic equivalents (objection handling, BANT, MEDDIC/
+MEDDPICC — the last already confirmed in an earlier audit today to be
+DealWorkspace's unrelated manual call-scoring rubric, not a generation
+input): **zero real matches** anywhere in prompt-construction code or
+generation-adjacent utilities.
+
+The single hit in the entire repo is a UI placeholder string,
+`AdminPage.js:336`: `placeholder="Source (optional) — e.g. Braun 4-T
+framework"` — this is a hint text on the doctrine-entry form's
+`sourceAttribution` input, suggesting Jack *could* cite a framework
+when adding a rule. It is not an actual populated value. Confirmed
+directly against the 4 real doctrine rows: every one has
+`source_attribution: null` (see raw query output below) — the
+capability exists in the form, it has never actually been used.
+
+Real content check of all 4 active `outreach_doctrine` rows: each row's
+`created_by` field literally reads `migrated:api/email.js:<location>` —
+`AVOID_ALWAYS`, `outputFormat(email)`, `outputFormat(linkedin)`,
+`MESSAGE_TYPE_GUIDANCE(distilled universal principle)`. These are
+Jack's own pre-existing hardcoded platform rules (a banned-word list, a
+soft-CTA convention, a "don't fabricate prior contact" principle),
+migrated verbatim from code into a queryable table by
+`outreach-intelligence-doctrine-v1` earlier this session — not derived
+from, attributed to, or resembling any named external sales
+methodology. `ai_assisted: false` on all 4 rows confirms they were
+hand-authored/migrated, not AI-synthesized from source material either.
+
+**Plain statement**: outbound best-practices knowledge from the named
+frameworks is not represented anywhere in the generation system today.
+What exists (`outreach_doctrine`) is exclusively Jack's own house
+rules, self-derived, migrated from code. The system has a real,
+working *mechanism* that could hold framework-derived content (the
+`source_attribution` field is built for exactly this), but nothing has
+been put in it yet.
+
+============================================================
+Q5 — DATA-ENTRY EFFICIENCY / REAL FRICTION
+============================================================
+Real row counts, per layer, across the 4 real businesses:
+
+| Layer | Storage | HumanKind | HomeLover | Master Magnetics | Kopi Kita |
+|---|---|---|---|---|---|
+| outreach_doctrine | 1 shared table, platform-wide | 4 rows (shared by ALL 4 businesses, entered once) |
+| outreach_rules | business_profiles column | populated (~350 tok) | none | none | none |
+| Project guidance | projects table | 1 project, guidance populated | 1 project, 0 guidance fields set | 0 projects | 0 projects |
+| Directive | not persisted | n/a | n/a | n/a | n/a |
+| Voice | localStorage, per-AE | not business-scoped at all — shared or re-entered per AE, not per business |
+
+**Platform-shared layer works as designed**: `outreach_doctrine`'s 4
+rows genuinely apply to all 4 businesses simultaneously with zero
+re-entry — this is the one part of the system actually avoiding
+duplicated effort across businesses, and it does so correctly (single
+table, no business_id column, global `.eq('active', true)` read in
+email.js:175).
+
+**Everything else is re-entered per business by design, and mostly just
+isn't entered at all yet**: 3 of 4 businesses have never had
+`outreach_rules` populated, and 3 of 4 have no project guidance either
+(Master Magnetics and Kopi Kita have zero projects at all). This isn't
+evidence of a redundancy problem — it's evidence these businesses
+haven't been onboarded into the guidance layers yet, a coverage gap, not
+a duplication-of-effort gap. The one real duplication case found is the
+`project_hook`/`outreach_rules.key_points` overlap in Q3, which would
+recur per additional project, not per additional business.
+
+**Real path for duplication found**: as detailed in Q3, project-level
+`project_hook`/`outreach_example` and business-level `outreach_rules`
+have no inheritance or cross-reference between them in code — a new
+project for an already-configured business (HumanKind) requires
+re-describing company positioning that already exists one layer down,
+because nothing pre-fills `project_hook` from `outreach_rules.key_points`.
+This is real, current, and would repeat for every new project on every
+business that has both layers populated.
+
+============================================================
+RECOMMENDATION
+============================================================
+
+**1. Real redundancy exists, but narrowly** — not a systemic layering
+problem. The specific, confirmed case is `project_hook` vs
+`outreach_rules.key_points` (company positioning entered twice, no
+inheritance). A future SPEC could pre-fill new projects' `project_hook`
+from the business's `outreach_rules.key_points` when both exist, rather
+than collapsing the layers themselves — they serve genuinely different
+scopes (campaign-specific vs business-wide) and shouldn't be merged.
+Separately, there's a real (not yet observed live) contradiction risk
+between `doctrineHard`'s unconditional soft-CTA rule and
+business-specific CTA guidance like HumanKind's calibrated-by-commitment
+rule — worth a live-generation check before assuming doctrine's
+"NON-NEGOTIABLE" label is actually being honored by the model when a
+business rule pulls the other way.
+
+**2. Outbound best-practices knowledge is genuinely absent from
+generation today** — stated plainly, not hedged. This is not
+represented anywhere in `outreach_doctrine`, `outreach_rules`, or any
+prompt-construction code. What exists under "doctrine" is entirely
+Jack's own pre-existing house rules, migrated from code, self-derived —
+zero connection to any named framework. The one place a framework
+citation *could* live (`source_attribution` on doctrine rows) has never
+been used. This was Jack's own assumption to verify, not something the
+audit needed to invent — confirmed false as an assumption, real as a
+gap.
+
+**3. The current data-entry model is not creating duplicated effort
+across the 4 businesses** — `outreach_doctrine` is correctly shared
+platform-wide with zero re-entry, exactly as designed. The real
+friction found is a coverage gap (3 of 4 businesses have no
+`outreach_rules` yet, 2 of 4 have no projects at all) rather than a
+duplication problem, plus the one narrow project/business-level overlap
+in point 1. A SPEC aimed at "reducing redundant layers" would be
+solving a problem this audit didn't actually find at scale — a SPEC
+aimed at (a) onboarding the other 3 businesses into `outreach_rules`,
+(b) pre-filling project guidance from business-level rules, and (c)
+actually populating doctrine with framework-derived content where Jack
+wants it, would be solving problems this audit did find.
+
+============================================================
+RAW DATA REFERENCE
+============================================================
+
+outreach_doctrine (4 active rows):
+- tone | HARD | source_attribution=null | created_by=migrated:api/email.js:AVOID_ALWAYS
+  "Never use these words or phrases: synergies, solutions, leverage, excited to connect, hope this finds you well, reach out, touch base, circle back, innovative, best-in-class, seamlessly."
+- cta | HARD | source_attribution=null | created_by=migrated:api/email.js:outputFormat(email)
+  "For email generation, end with a soft, low-friction CTA — suggest a 15-minute call, never demand one."
+- cta | HARD | source_attribution=null | created_by=migrated:api/email.js:outputFormat(linkedin)
+  "For LinkedIn message generation, end with a soft, low-friction CTA — suggest a quick chat, never demand one."
+- grounding | HARD | source_attribution=null | created_by=migrated:api/email.js:MESSAGE_TYPE_GUIDANCE(distilled universal principle)
+  "Never fabricate or imply a prior interaction, meeting, phone call, or conversation that didn't actually happen..."
+
+HumanKind outreach_rules (business_profiles, full real content):
+  tone: "Plain, human, concise, and confident - never salesy, pressuring, or using fake urgency..."
+  structure: "Subject line follows 'HumanKind x [Company] - [clear descriptor]'..."
+  key_points: "HumanKind is a free community wellness platform live in Chicago where members complete verified challenges..."
+  dos: "Open with 1-2 sentences that establish why this specific prospect was chosen... Match the ask to the commitment level - ask directly for a reward/raffle, propose a short call for a larger sponsorship."
+  donts: "Never use pressure, guilt, fake urgency, or curiosity-bait..."
+  example_snippets: [3 meta-commentary quotes, not draft copy]
+
+HumanKind's one project ("Q3 Jack's Outbound Strategy"):
+  objective: "Get outbound small business sponsors and people willing to pay for sponsoring challenges on humankind"
+  target_type: "Small businesses in chicago"
+  ask_type: "talk for 15 minutes about how human kind can drive foot tracffic and or sales to your business"
+  project_hook: "I'm Jack, COO at HumanKind - a free community wellness platform live now in Chicago. We're at 1,000+ members and 4,000+ verified challenge completions since launch..."
+  exclusions: (empty)
+  outreach_example: [full real drafted email, ~150 words]
+
+HomeLover / Master Magnetics / Kopi Kita outreach_rules: all (none).
+Master Magnetics / Kopi Kita projects: 0 rows each.

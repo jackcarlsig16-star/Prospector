@@ -151,10 +151,17 @@ export default async function handler(req, res) {
   // instead of one undifferentiated blob. outreach_prompt itself is left
   // live in the schema but intentionally unread here - confirmed 0 rows
   // populated before this change, nothing to migrate.
+  // project-scoped-outreach-examples-v1 — outreach_example (single text)
+  // replaced by outreach_examples_distilled (cached summary of the
+  // project's own up-to-20-item example list, see the dedicated
+  // projectExamples provider below). outreach_example itself is left live
+  // in the schema but intentionally unread here, same precedent as
+  // outreach_prompt above - its one real populated row was migrated
+  // forward into outreach_examples at migration time, not lost.
   let projectGuidance = null;
   if (projectId && supabase) {
     try {
-      const { data } = await supabase.from('projects').select('objective, target_type, ask_type, project_hook, exclusions, outreach_example').eq('id', projectId).maybeSingle();
+      const { data } = await supabase.from('projects').select('objective, target_type, ask_type, project_hook, exclusions, outreach_examples_distilled').eq('id', projectId).maybeSingle();
       if (data && Object.values(data).some(Boolean)) projectGuidance = data;
     } catch { /* fall through with no project-level guidance */ }
   }
@@ -273,8 +280,17 @@ ${projectGuidance.objective ? `Objective: ${projectGuidance.objective}` : ""}
 ${projectGuidance.target_type ? `Target type: ${projectGuidance.target_type}` : ""}
 ${projectGuidance.ask_type ? `Ask/offer/CTA: ${projectGuidance.ask_type}` : ""}
 ${projectGuidance.project_hook ? `Hook to work in where it fits naturally: ${projectGuidance.project_hook}` : ""}
-${projectGuidance.exclusions ? `Avoid: ${projectGuidance.exclusions}` : ""}
-${projectGuidance.outreach_example ? `Example of how this project's outreach should read:\n${projectGuidance.outreach_example}` : ""}`.trim() : null,
+${projectGuidance.exclusions ? `Avoid: ${projectGuidance.exclusions}` : ""}`.trim() : null,
+    },
+    // project-scoped-outreach-examples-v1 — distilled from this project's
+    // own outreach_examples array (up to 20 real past sent/approved
+    // messages for this specific campaign), distinct from voiceExamples
+    // below (per-AE, not business/project-scoped, no selection logic).
+    // Placed immediately after `project` so project-level context stays
+    // grouped together in the final prompt rather than scattered.
+    {
+      name: 'projectExamples',
+      text: projectGuidance?.outreach_examples_distilled ? `THIS PROJECT'S OWN PAST EXAMPLES — real messages sent for this specific campaign, match this pattern:\n${projectGuidance.outreach_examples_distilled}` : null,
     },
     // Stage 3 — free-text, per-generation steering (was `note`/"AE context",
     // renamed and formalized as its own provider). Optional, additive - an

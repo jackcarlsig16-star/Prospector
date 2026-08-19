@@ -171,6 +171,70 @@ Return exactly this shape:
 
 Base every field on the pasted document - do not invent rules it doesn't support. If the document is thin on a given field, give a short honest answer rather than padding with invented detail.`;
 
+// project-scoped-outreach-examples-v1 — same cache-once distill pattern as
+// OUTREACH_RULES_SYSTEM_PROMPT, but the input is a project's own ordered
+// list of real past outreach messages (outreach_examples) rather than a
+// pasted training document. Single-field output, not OUTREACH_RULES'
+// six-field shape - a set of example messages doesn't decompose into
+// tone/structure/dos/don'ts, it needs a compact prose description of what
+// makes them recognizable as a set.
+const PROJECT_EXAMPLES_SYSTEM_PROMPT = `You distill a set of real past outreach messages for a specific campaign into a compact summary an automated outreach-generation tool will use to write new messages that read consistent with them. Respond with ONLY a JSON object, no other text.
+
+Return exactly this shape:
+{
+  "distilled_examples": "3-6 sentences capturing the recurring structure, tone, and phrasing patterns across these examples - concrete enough that a model could write a new message consistent with them. Quote 1-2 short verbatim phrases if there's a distinctive one worth preserving exactly. If the examples vary widely in style, say so honestly rather than forcing a single description."
+}
+
+Base this only on the real examples given - do not invent patterns they don't support.`;
+
+// project-scoped-outreach-examples-v1 addendum — bulk-paste entry path,
+// alongside the manual one-at-a-time "+ Add" the UI already has. Explicit
+// choice (addendum point 2): strip reply-chain quotes, headers, and
+// signature blocks before returning each example - the distillation step
+// is trying to capture THIS sender's own voice/structure, and that noise
+// would pollute it, not inform it.
+const PROJECT_EXAMPLES_SEGMENT_SYSTEM_PROMPT = `You split a pasted block of text containing one or more past outreach messages into individual, clean examples for a specific campaign. Respond with ONLY a JSON object, no other text.
+
+Return exactly this shape:
+{
+  "examples": ["array of individual message strings - one per real distinct message found. For each, strip reply-chain quote blocks (e.g. lines starting with '>', or 'On [date], [name] wrote:' and everything after), email headers (From/To/Subject/Date lines), and signature blocks/legal disclaimers - keep only the core sent message body itself."]
+}
+
+Only split where boundaries between separate messages are genuinely clear (distinct subject lines, clear separators, distinct greetings/signoffs, etc). Do not merge unrelated messages into one example, and do not split a single message into fragments. If you can't confidently find clear boundaries - e.g. the paste reads as one continuous message, or the boundaries are too ambiguous to trust - return an empty examples array rather than guessing.`;
+
+// addendum point 4 - hard reject over silent truncation. A paste this
+// large risks the segmentation call itself losing accuracy near the
+// truncation point (mid-example), which is worse than just asking for a
+// smaller batch - unlike OUTREACH_RULES_SYSTEM_PROMPT's pasted-document
+// path (a single document, truncation only trims trailing detail),
+// segmentation's correctness depends on seeing every real boundary.
+const SEGMENT_PASTE_MAX_CHARS = 30000;
+
+export async function segmentProjectOutreachExamples(supabase, projectId, pastedText) {
+  if (!pastedText || !pastedText.trim()) throw new Error('Paste the messages to split first.');
+  if (pastedText.length > SEGMENT_PASTE_MAX_CHARS) {
+    throw new Error(`Paste is too large to segment reliably (${pastedText.length.toLocaleString()} chars, max ${SEGMENT_PASTE_MAX_CHARS.toLocaleString()}). Split it into smaller batches and paste separately.`);
+  }
+
+  const { data: project, error: projectError } = await supabase.from('projects').select('business_id').eq('id', projectId).single();
+  if (projectError) throw projectError;
+
+  const data = await callAnthropic({
+    max_tokens: 4096,
+    system: PROJECT_EXAMPLES_SEGMENT_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: pastedText }],
+    supabase,
+    businessId: project.business_id,
+    callType: 'project_examples_segment',
+  });
+  const textBlock = (data.content || []).find(b => b.type === 'text');
+  if (!textBlock) throw new Error('No text in examples segmentation response');
+  const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('No JSON in examples segmentation response');
+  const parsed = JSON.parse(jsonMatch[0]);
+  return Array.isArray(parsed.examples) ? parsed.examples.filter(e => e && e.trim()) : [];
+}
+
 // businessId must already have a business_profiles row (same requirement as
 // generateAssayCriteria) - the columns live there, and there's no sensible
 // standalone "outreach rules" table shape without one.
@@ -556,6 +620,66 @@ export async function generateProjectStrategy(supabase, projectId) {
     strategy_generated_at: new Date().toISOString(),
   }).eq('id', projectId);
   if (updateError) throw updateError;
+}
+
+// project-scoped-outreach-examples-v1 — mirrors generateOutreachRules'
+// distill-and-cache shape, but the source is the project's own
+// outreach_examples array (added/reordered directly in the UI), not a
+// pasted document, so this re-fetches from the projects row itself rather
+// than taking examples as a param - single source of truth, no risk of
+// distilling a stale client-held copy.
+//
+// outreach-context-flow-audit-v1 Q3 found a real, untested tension between
+// outreach_doctrine's hard CTA rule ("soft, never demand") and a business's
+// own outreach_rules. This SPEC doesn't attempt to resolve doctrine vs.
+// rules vs. examples precedence (a real open question left to a future
+// pass) - it only surfaces the same class of conflict if it shows up in a
+// project's own examples, via a server log line, not a blocking check or
+// a third silent injection layer.
+const HARD_SELL_CTA_PATTERN = /\b(act now|buy now|book now|call now|sign up today|schedule .{0,15}(call|demo) (today|now)|you must|you need to (book|schedule|call)|don'?t wait|limited time)\b/i;
+export async function distillProjectOutreachExamples(supabase, projectId) {
+  const { data: project, error: projectError } = await supabase
+    .from('projects')
+    .select('name, business_id, outreach_examples')
+    .eq('id', projectId)
+    .single();
+  if (projectError) throw projectError;
+
+  const examples = (project.outreach_examples || []).filter(e => e && e.trim());
+  if (examples.length === 0) throw new Error('Add at least one example before distilling.');
+
+  const examplesText = examples.map((e, i) => `Example ${i + 1}:\n${e}`).join('\n\n---\n\n');
+
+  const data = await callAnthropic({
+    max_tokens: 1024,
+    system: PROJECT_EXAMPLES_SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: `EXAMPLES for project "${project.name}":\n\n${examplesText.slice(0, 16000)}` }],
+    supabase,
+    businessId: project.business_id,
+    callType: 'project_examples',
+  });
+  const textBlock = (data.content || []).find(b => b.type === 'text');
+  if (!textBlock) throw new Error('No text in project examples distillation response');
+  const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('No JSON in project examples distillation response');
+  const parsed = JSON.parse(jsonMatch[0]);
+  const distilled = parsed.distilled_examples || '';
+
+  if (distilled && HARD_SELL_CTA_PATTERN.test(distilled)) {
+    const { data: ctaDoctrine } = await supabase.from('outreach_doctrine').select('rule_text').eq('category', 'cta').eq('is_hard_constraint', true).eq('active', true);
+    if (ctaDoctrine?.length) {
+      console.warn(`[outreach-examples] project ${projectId} ("${project.name}") distilled examples contain hard-sell CTA language that may conflict with outreach_doctrine hard constraint(s): ${ctaDoctrine.map(r => r.rule_text).join(' | ')}`);
+    }
+  }
+
+  const { error: updateError } = await supabase.from('projects').update({
+    outreach_examples_distilled: distilled || null,
+    outreach_examples_distilled_at: new Date().toISOString(),
+    outreach_examples_distilled_edited_manually: false,
+  }).eq('id', projectId);
+  if (updateError) throw updateError;
+
+  return distilled;
 }
 
 // FILING PRIMITIVES — the three ways a piece of text ends up attached to

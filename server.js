@@ -441,6 +441,9 @@ app.post('/api/businesses/:id/profile-refresh', esHandler('./api/businesses/prof
 app.post('/api/businesses/:id/outreach-rules/generate', esHandler('./api/businesses/outreach-rules-generate.js'));
 app.put('/api/businesses/:id/outreach-rules',   esHandler('./api/businesses/outreach-rules-save.js'));
 app.get('/api/businesses/:id/outreach-rules',   esHandler('./api/businesses/outreach-rules-get.js'));
+app.post('/api/projects/:id/outreach-examples/generate', esHandler('./api/projects/outreach-examples-generate.js'));
+app.put('/api/projects/:id/outreach-examples-distilled', esHandler('./api/projects/outreach-examples-save.js'));
+app.post('/api/projects/:id/outreach-examples/segment', esHandler('./api/projects/outreach-examples-segment.js'));
 app.post('/api/businesses/:id/call-log', esHandler('./api/businesses/call-log.js'));
 app.post('/api/businesses/:id/call-log/:entryId/reassign', esHandler('./api/businesses/call-log-reassign.js'));
 app.post('/api/zoom/webhook', esHandler('./api/zoom/webhook.js'));
