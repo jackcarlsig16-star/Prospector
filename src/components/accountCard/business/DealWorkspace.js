@@ -7,6 +7,7 @@ import WinReasonPanel from '../../WinReasonPanel';
 import AccountCardCompetition from '../../AccountCardCompetition';
 import AccountCardRawEdit from '../../AccountCardRawEdit';
 import { loadWinReason } from '../../../utils/winReasons';
+import { stripCitationMarkup } from '../../../utils/textSanitize';
 
 const SH = { ...mono, fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: CARD.textSubtle };
 
@@ -43,8 +44,10 @@ function SignalSubGroup({ label, items }) {
 
 export function IntelligenceSummary({ acc }) {
   const detail = acc.businessDetail;
-  const businessModel = detail?.business_model || acc.bm;
-  const fitRationale = detail?.fit_rationale || acc.pf;
+  // assay-citation-leak-and-raw-edit-dual-write-v1 Fix 1 (belt-and-suspenders,
+  // display-side) - covers rows written before the write-side fix existed.
+  const businessModel = stripCitationMarkup(detail?.business_model || acc.bm);
+  const fitRationale = stripCitationMarkup(detail?.fit_rationale || acc.pf);
   const products = detail?.fit_signals?.products?.length ? detail.fit_signals.products : acc.prods;
   const keySignals = detail?.fit_signals?.key_signals || [];
   const tractionSignals = detail?.fit_signals?.traction_signals || [];

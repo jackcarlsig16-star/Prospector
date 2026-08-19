@@ -1,5 +1,6 @@
 import { SEED_INTEL_DOCS } from '../constants/products';
 import { MODELS } from '../config/models';
+import { stripCitationMarkup } from './textSanitize';
 
 export const detectIntelCategory = (text) => {
   const t = text.toLowerCase();
@@ -109,6 +110,16 @@ If ungroundedClaims is non-empty, confidence must NOT be "High" — cap it at "M
 // through the same /proxy/anthropic/messages call clientAssay() uses below.
 const WEB_SEARCH_GUIDANCE = `WEB SEARCH — use it to find recent news, competitors, market position, and the company's motto/founder info where findable, on top of (not instead of) the fetched website content below. Only surface search findings in businessModel/productFit/keySignals if genuinely relevant to fit — don't pad with filler, and the same GROUNDING DISCIPLINE above applies to anything found via search: state it as fact only if the search result actually said it.`;
 
+// assay-citation-leak-and-raw-edit-dual-write-v1 Fix 1 — real bug found live:
+// web_search results carry their own inline citation markup
+// (<cite index="X-Y">...</cite>), and without an explicit instruction not to,
+// the model sometimes echoes that markup verbatim into businessModel/
+// productFit instead of writing plain prose. Confirmed on 2 of 20 real
+// accounts. Unambiguous and direct on purpose, not a subtle phrasing - this
+// exact failure mode already happened once with a softer implicit
+// expectation.
+const CITATION_FORMAT_INSTRUCTION = `OUTPUT FORMAT — businessModel and productFit must be plain prose only. Do not include citation tags, source markers, or any XML-like annotations such as <cite>, </cite>, <cite index="...">, or similar - write the content itself, never the citation wrapper around it.`;
+
 // assay-engine-generalization-v1, narrowed by account-taxonomy-and-
 // creation-upgrade-v1 Stage 2 — the original hardcoded fintech scoring
 // prompt. As of Stage 2 this is ONLY reachable via Claim Jumper's
@@ -135,6 +146,8 @@ Set disqualifier as: "reason_code — one sentence explanation." Reason codes: d
 SITE UNREACHABLE POLICY: Score based on company name + vertical + industry knowledge. Set confidence="Low". Do NOT set disqualifier to "site unreachable".
 
 ${WEB_SEARCH_GUIDANCE}
+
+${CITATION_FORMAT_INSTRUCTION}
 
 ${GROUNDING_DISCIPLINE}
 
@@ -213,6 +226,8 @@ Set disqualifier as a free-text one-sentence explanation grounded in the DISQUAL
 SITE UNREACHABLE POLICY: Score based on company name + vertical + the fit criteria above. Set confidence="Low". Do NOT set disqualifier to "site unreachable".
 
 ${WEB_SEARCH_GUIDANCE}
+
+${CITATION_FORMAT_INSTRUCTION}
 
 ${GROUNDING_DISCIPLINE}
 
@@ -329,6 +344,16 @@ export async function clientAssay({ name, web, vert, customIntel, exampleAccts, 
   if (Array.isArray(parsed.products) && parsed.products.includes("Core Verify Plus")) {
     parsed.products = parsed.products.filter(p => p !== "Core Verify");
   }
+
+  // Fix 1 (belt-and-suspenders) - CITATION_FORMAT_INSTRUCTION above should
+  // stop this at the source, but a prompt instruction isn't a hard guarantee
+  // (confirmed live: it leaked before this instruction existed). Stripped
+  // here, at the single point every real caller's bm/pf ultimately derives
+  // from (AccountsPage.js's reassay, bulkAssay.js, ClaimJumperPage.js all
+  // read parsed.businessModel/productFit from this return value) - one fix,
+  // not one per call site.
+  if (parsed.businessModel) parsed.businessModel = stripCitationMarkup(parsed.businessModel);
+  if (parsed.productFit) parsed.productFit = stripCitationMarkup(parsed.productFit);
 
   return { ...parsed, linkedin, fetchMethod };
 }

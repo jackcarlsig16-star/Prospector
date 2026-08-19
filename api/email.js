@@ -1,5 +1,6 @@
 import { MODELS } from '../src/config/models.js';
 import { getSupabase, getVoiceProfileForUser } from './businesses/shared.js';
+import { stripCitationMarkup } from '../src/utils/textSanitize.js';
 
 export const config = { maxDuration: 30 };
 
@@ -96,6 +97,14 @@ export default async function handler(req, res) {
     directive, accountIntel,
   } = req.body;
   let { voiceProfile } = req.body;
+  // assay-citation-leak-and-raw-edit-dual-write-v1 Fix 1 (belt-and-suspenders,
+  // read-side) - businessModel/productFit reach this composition point
+  // regardless of which client sent them; the write-side fix in
+  // clientAssay() covers new/re-assayed data, this covers anything already
+  // stored before that fix existed or written by a path this session hasn't
+  // audited.
+  const businessModelClean = stripCitationMarkup(businessModel);
+  const productFitClean = stripCitationMarkup(productFit);
 
   const isInfluencer = accountKind === 'influencer';
   const messageTypeGuidance = MESSAGE_TYPE_GUIDANCE[messageType] || "";
@@ -322,8 +331,8 @@ ${projectGuidance.outreach_example ? `Example of how this project's outreach sho
           // fields are still empty. Only genuinely context-free callers
           // (no businessId at all) keep the fintech-flavored default.
           : (businessId
-              ? `Company: ${name}${businessModel ? `\nBusiness model: ${businessModel}` : ""}${productFit ? `\nproduct fit: ${productFit}` : ""}`
-              : `Company: ${name}\nBusiness model: ${businessModel || "fintech"}\nproduct fit: ${productFit || "relevant fintech use cases"}`)),
+              ? `Company: ${name}${businessModelClean ? `\nBusiness model: ${businessModelClean}` : ""}${productFitClean ? `\nproduct fit: ${productFitClean}` : ""}`
+              : `Company: ${name}\nBusiness model: ${businessModelClean || "fintech"}\nproduct fit: ${productFitClean || "relevant fintech use cases"}`)),
     personaName
       ? `Recipient: ${personaName}${personaTitle ? `, ${personaTitle}` : ""} at ${name}`
       : isInfluencer ? `Recipient: ${name}` : `Recipient: [First Name] at ${name}`,
