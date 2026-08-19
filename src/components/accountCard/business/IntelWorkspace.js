@@ -8,7 +8,7 @@ import IntelPanel from '../../intel/IntelPanel';
 // the old AccountCardActionBar.js. Business-only. `onRelaunchFollowUp`
 // comes from DebriefWorkspace's ref so the two stay wired without either
 // one owning the other's state.
-const IntelWorkspace = forwardRef(function IntelWorkspace({ acc, business, projects, onUpdate, tasks, activeUser, open, onClose, newlyDetectedProds, debriefHandle }, ref) {
+const IntelWorkspace = forwardRef(function IntelWorkspace({ acc, business, projects, campaigns, onUpdate, tasks, activeUser, open, onClose, newlyDetectedProds, debriefHandle }, ref) {
   const [callHistoryOpen, setCallHistoryOpen] = useState(false);
   const [callScoreOpen, setCallScoreOpen] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
@@ -104,7 +104,7 @@ const IntelWorkspace = forwardRef(function IntelWorkspace({ acc, business, proje
 
   return (
     <IntelPanel
-      acc={acc} business={business} projects={projects} tasks={tasks} activeUser={activeUser} onUpdate={onUpdate}
+      acc={acc} business={business} projects={projects} campaigns={campaigns} tasks={tasks} activeUser={activeUser} onUpdate={onUpdate}
       setIntelOpen={v => { if (!v) onClose(); }}
       callHistoryOpen={callHistoryOpen} setCallHistoryOpen={setCallHistoryOpen}
       callScoreOpen={callScoreOpen} setCallScoreOpen={setCallScoreOpen}

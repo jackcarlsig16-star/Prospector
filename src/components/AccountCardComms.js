@@ -44,7 +44,7 @@ const SEC_LBL = { ...mono, fontSize: 9, fontWeight: 700, color: '#444', textTran
 // projects are required to reach EmailModal's real project-guidance
 // resolution - previously unreachable from here since this panel never had
 // them at all.
-export default function AccountCardComms({ acc, tasks, activeUser, onUpdate, business, projects = [] }) {
+export default function AccountCardComms({ acc, tasks, activeUser, onUpdate, business, projects = [], campaigns = [] }) {
   const [billingCopied,  setBillingCopied]  = useState(false);
   const [linksCopied,    setLinksCopied]    = useState(false);
   const [billingVals,    setBillingVals]    = useState(() => acc.billing || {});
@@ -121,6 +121,7 @@ export default function AccountCardComms({ acc, tasks, activeUser, onUpdate, bus
           autoStart={false}
           initialMessageType={callCount > 0 ? 'follow_up' : 'cold_outreach'}
           projects={projects}
+          campaigns={campaigns}
           onClose={() => setGenerateOpen(false)}
         />
       )}

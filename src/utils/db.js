@@ -848,6 +848,66 @@ export async function createProject({ name, color, ownerEmail, businessId, listI
   }
 }
 
+// campaign-layer-v1 — a Campaign is a nested pitch angle under a Project.
+// Plain field writes, no server route, mirroring createProject()'s direct-
+// client-to-Supabase pattern exactly (confirmed via live audit: Project
+// create/update has no server route at all — only the AI-calling
+// outreach-examples endpoints do). businessId is required on campaigns
+// (not nullable, unlike projects.business_id) since a Campaign only ever
+// exists nested under a business-scoped Project.
+export async function createCampaign({ projectId, businessId, listId, name, recipientDescription, doctrine }) {
+  if (!isSupabaseEnabled() || !projectId || !businessId) return { error: 'Supabase is not available.' };
+  try {
+    const { data: campaign, error: campaignError } = await supabase
+      .from('campaigns')
+      .insert({
+        project_id: projectId, business_id: businessId, list_id: listId || null,
+        name, recipient_description: recipientDescription || null, doctrine: doctrine || null,
+      })
+      .select()
+      .single();
+    if (campaignError) throw campaignError;
+    return { campaign };
+  } catch (e) {
+    console.warn('[db] createCampaign failed:', e.message);
+    return { error: e.message };
+  }
+}
+
+export async function updateCampaign(campaignId, patch) {
+  if (!isSupabaseEnabled() || !campaignId) return { error: null };
+  const { data, error } = await supabase.from('campaigns').update({ ...patch, updated_at: new Date().toISOString() }).eq('id', campaignId).select().single();
+  if (error) return { error: error.message };
+  return { campaign: data };
+}
+
+export async function setCampaignListId(campaignId, listId) {
+  try {
+    const { data, error } = await supabase.from('campaigns').update({ list_id: listId }).eq('id', campaignId).select().single();
+    if (error) throw error;
+    return { campaign: data };
+  } catch (e) {
+    console.warn('[db] setCampaignListId failed:', e.message);
+    return { error: e.message };
+  }
+}
+
+export async function getCampaignsForProjects(projectIds) {
+  if (!isSupabaseEnabled() || !projectIds?.length) return [];
+  try {
+    const { data, error } = await supabase
+      .from('campaigns')
+      .select('*')
+      .in('project_id', projectIds)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  } catch (e) {
+    console.warn('[db] getCampaignsForProjects failed:', e.message);
+    return [];
+  }
+}
+
 // ── Businesses ────────────────────────────────────────────────────────────────
 // Standalone layer - separate from projects/project_members/prospects. Does not
 // touch or depend on any of that. Creation, intel entries, and profile

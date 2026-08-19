@@ -444,6 +444,9 @@ app.get('/api/businesses/:id/outreach-rules',   esHandler('./api/businesses/outr
 app.post('/api/projects/:id/outreach-examples/generate', esHandler('./api/projects/outreach-examples-generate.js'));
 app.put('/api/projects/:id/outreach-examples-distilled', esHandler('./api/projects/outreach-examples-save.js'));
 app.post('/api/projects/:id/outreach-examples/segment', esHandler('./api/projects/outreach-examples-segment.js'));
+app.post('/api/campaigns/:id/outreach-examples/generate', esHandler('./api/campaigns/outreach-examples-generate.js'));
+app.put('/api/campaigns/:id/outreach-examples-distilled', esHandler('./api/campaigns/outreach-examples-save.js'));
+app.post('/api/campaigns/:id/outreach-examples/segment', esHandler('./api/campaigns/outreach-examples-segment.js'));
 app.post('/api/businesses/:id/call-log', esHandler('./api/businesses/call-log.js'));
 app.post('/api/businesses/:id/call-log/:entryId/reassign', esHandler('./api/businesses/call-log-reassign.js'));
 app.post('/api/zoom/webhook', esHandler('./api/zoom/webhook.js'));

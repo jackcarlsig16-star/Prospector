@@ -38,7 +38,7 @@ function ProjectAmbiguityPicker({ matchedProjects, onPick }) {
   );
 }
 
-export default function EmailModal({ account, persona, onClose, onSaveEmail, accountKind, business, autoStart = true, projects = [], initialMessageType = 'cold_outreach' }) {
+export default function EmailModal({ account, persona, onClose, onSaveEmail, accountKind, business, autoStart = true, projects = [], campaigns = [], initialMessageType = 'cold_outreach' }) {
   const [email,setEmail]=useState("");
   const [copied,setCopied]=useState(false);
   const [originalEmail,setOriginalEmail]=useState("");
@@ -91,6 +91,13 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
   const [projectResolutionDone, setProjectResolutionDone] = useState(false);
   const projectsWithLists = projects.filter(p => p.list_id);
 
+  // campaign-layer-v1 — nested under the Project picker, optional; "no
+  // campaign" preserves exact current project-level behavior (decision #3).
+  // Only ever offered once a Project with at least one Campaign is
+  // selected — CONFIRMED placement per live audit, not LinkedProjects.js.
+  const [selectedCampaignId, setSelectedCampaignId] = useState(null);
+  const campaignsForProject = campaigns.filter(c => c.project_id === selectedProjectId);
+
   // generation-modal-project-promotion-and-visual-pass-v1 Bug 1/2 - real
   // one-off account-to-project assignment, promoted out of Advanced into
   // the default view. projectListOverrides tracks any project this
@@ -115,6 +122,7 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
   // account<->project write path in the app; reusing it here means this
   // modal's assignment shows up everywhere LinkedProjects.js's does too.
   const selectProject = async (projectId) => {
+    setSelectedCampaignId(null);
     if (!projectId) { setSelectedProjectId(null); setProjectAssignError(''); return; }
     const project = allProjectsMerged.find(p => p.id === projectId);
     if (!project || !business?.id) return;
@@ -188,6 +196,7 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
         accountKind:kind,
         businessId:business?.id,
         projectId: selectedProjectId || undefined,
+        campaignId: selectedCampaignId || undefined,
         messageType: !autoStart ? messageType : undefined,
         directive: !autoStart && context.trim() ? context.trim() : undefined,
         accountIntel: buildAccountIntel(account),
@@ -269,6 +278,21 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
           {assigningProject && <p style={{ ...mono, fontSize:10, color:ROLE.projectAccent, margin:"6px 0 0" }}>Assigning…</p>}
           {!assigningProject && projectAssignError && <p style={{ ...mono, fontSize:10, color:C.red, margin:"6px 0 0" }}>⚠ {projectAssignError}</p>}
           {!assigningProject && !projectAssignError && activeProject?.objective && <p style={{ ...mono, fontSize:10, color:C.dim, margin:"6px 0 0", fontStyle:"italic" }}>{activeProject.objective}</p>}
+        </div>
+      )}
+
+      {/* campaign-layer-v1 — nested under Project, only offered once the
+          selected Project has at least one Campaign (decision #3: "no
+          campaign" is the default and preserves exact prior behavior). */}
+      {selectedProjectId && campaignsForProject.length > 0 && (
+        <div style={{ marginBottom:16 }}>
+          <p style={{ ...mono, margin:"0 0 8px", fontSize:11, fontWeight:600, color:ROLE.projectAccent, textTransform:"uppercase", letterSpacing:"0.06em" }}>Campaign <span style={{ fontWeight:400, textTransform:"none", letterSpacing:0, color:C.dim }}>(optional)</span></p>
+          <select value={selectedCampaignId || ''} onChange={e=>setSelectedCampaignId(e.target.value || null)}
+            style={{ ...mono, fontSize:13, padding:"7px 10px", background:C.bg, border:`1px solid ${ROLE.projectAccent}55`, borderRadius:6, color:C.txt, outline:"none", width:"100%", cursor:"pointer" }}>
+            <option value="">— none —</option>
+            {campaignsForProject.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+          {selectedCampaignId && (() => { const c = campaignsForProject.find(x => x.id === selectedCampaignId); return c?.recipient_description ? <p style={{ ...mono, fontSize:10, color:C.dim, margin:"6px 0 0", fontStyle:"italic" }}>{c.recipient_description}</p> : null; })()}
         </div>
       )}
 

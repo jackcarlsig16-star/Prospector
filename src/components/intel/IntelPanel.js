@@ -8,7 +8,7 @@ import AccountCardDealReview from '../AccountCardDealReview';
 import PersonasSection from '../AccountCardPersonas';
 
 export default function IntelPanel({
-  acc, business, projects=[], tasks=[], activeUser, onUpdate,
+  acc, business, projects=[], campaigns=[], tasks=[], activeUser, onUpdate,
   setIntelOpen,
   // Sub-tab open state
   callHistoryOpen, setCallHistoryOpen,
@@ -240,7 +240,7 @@ export default function IntelPanel({
         </div>
       )}
 
-      {personasTabOpen && onUpdate && (<div style={{ marginTop:8 }}><PersonasSection acc={acc} business={business} projects={projects} onUpdate={onUpdate}/></div>)}
+      {personasTabOpen && onUpdate && (<div style={{ marginTop:8 }}><PersonasSection acc={acc} business={business} projects={projects} campaigns={campaigns} onUpdate={onUpdate}/></div>)}
 
       {onUpdate && (
         <div style={{ borderTop:`1px solid ${C.brd}`, paddingTop:10, marginTop:4 }}>

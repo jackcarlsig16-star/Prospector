@@ -44,7 +44,7 @@ export default function AccountCard({
   isFav, onToggleFav, onRemove, assignedEntry, onAssign, onUnassign, onFlagRemoval,
   onOpenPricing, onOpenRoi, onCreateTask, onUpdateTask,
   tasks = [], activeUser = {}, parentName = null, onRequestLinkParent, onUnlinkParent,
-  userEmail, canEdit, onUpdated, projects = [], accountListIds = [], onAccountLinkedToProject,
+  userEmail, canEdit, onUpdated, projects = [], campaigns = [], accountListIds = [], onAccountLinkedToProject,
   onRelationshipTypeChange,
 }) {
   const isInfluencer = acc.accountKind === 'influencer';
@@ -235,6 +235,7 @@ export default function AccountCard({
           accountKind={acc.accountKind}
           autoStart={false}
           projects={projects}
+          campaigns={campaigns}
           onClose={() => setOutreachOpen(false)}
         />
       )}
@@ -254,7 +255,7 @@ export default function AccountCard({
 
       {!isInfluencer && (
         <IntelWorkspace
-          acc={acc} business={business} projects={projects} onUpdate={onUpdate} tasks={tasks} activeUser={activeUser}
+          acc={acc} business={business} projects={projects} campaigns={campaigns} onUpdate={onUpdate} tasks={tasks} activeUser={activeUser}
           open={intelOpen} onClose={() => setIntelOpen(false)}
           newlyDetectedProds={newlyDetectedProds}
           debriefHandle={debriefRef.current}
@@ -267,7 +268,7 @@ export default function AccountCard({
             <span style={{ ...mono, fontSize: 11, fontWeight: 500, color: "#f59e0b" }}>✉ Comms — {acc.name}</span>
             <button onClick={() => setCommsOpen(false)} style={{ marginLeft: "auto", background: "transparent", border: "none", color: CARD.textMuted, fontSize: 14, cursor: "pointer" }}>✕</button>
           </div>
-          <AccountCardComms acc={acc} tasks={tasks} activeUser={activeUser} onUpdate={onUpdate} business={business} projects={projects} />
+          <AccountCardComms acc={acc} tasks={tasks} activeUser={activeUser} onUpdate={onUpdate} business={business} projects={projects} campaigns={campaigns} />
         </div>
       )}
 

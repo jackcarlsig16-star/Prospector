@@ -89,7 +89,7 @@ export default async function handler(req, res) {
     personaName, personaTitle,
     customIntel, senderName, voiceExamples,
     signals, web, website,
-    format, accountKind, messageType, businessId, projectId, runningUserEmail,
+    format, accountKind, messageType, businessId, projectId, campaignId, runningUserEmail,
     fitRationale, fitSignals, nicheAssessment, bioSnapshot,
     // generation-engine-consolidation-v1 - directive replaces the old `note`
     // field name (same free-text per-generation steering input, formalized
@@ -164,6 +164,20 @@ export default async function handler(req, res) {
       const { data } = await supabase.from('projects').select('objective, target_type, ask_type, project_hook, exclusions, outreach_examples_distilled').eq('id', projectId).maybeSingle();
       if (data && Object.values(data).some(Boolean)) projectGuidance = data;
     } catch { /* fall through with no project-level guidance */ }
+  }
+
+  // campaign-layer-v1 — a Campaign is a nested pitch angle under a Project.
+  // Its doctrine layers ON TOP of projectGuidance above (does not replace
+  // it); its examples fully REPLACE projectExamples for this generation
+  // (decision #3 — mixing project-level and campaign-level examples risks
+  // muddying the actual writing voice). See the campaignDoctrine/
+  // campaignExamples providers below.
+  let campaignGuidance = null;
+  if (campaignId && supabase) {
+    try {
+      const { data } = await supabase.from('campaigns').select('doctrine, recipient_description, outreach_examples_distilled').eq('id', campaignId).maybeSingle();
+      if (data && Object.values(data).some(Boolean)) campaignGuidance = data;
+    } catch { /* fall through with no campaign-level guidance */ }
   }
 
   // outreach-intelligence-doctrine-v1 Stage 3 — platform-wide doctrine,
@@ -275,22 +289,40 @@ ${outreachRules.example_snippets ? `Echo this kind of language where it fits nat
     },
     {
       name: 'project',
-      text: projectGuidance ? `PROJECT-SPECIFIC GUIDANCE — layers on top of everything above, for this campaign specifically:
+      text: projectGuidance ? `PROJECT-SPECIFIC GUIDANCE — layers on top of everything above, for this project specifically:
 ${projectGuidance.objective ? `Objective: ${projectGuidance.objective}` : ""}
 ${projectGuidance.target_type ? `Target type: ${projectGuidance.target_type}` : ""}
 ${projectGuidance.ask_type ? `Ask/offer/CTA: ${projectGuidance.ask_type}` : ""}
 ${projectGuidance.project_hook ? `Hook to work in where it fits naturally: ${projectGuidance.project_hook}` : ""}
 ${projectGuidance.exclusions ? `Avoid: ${projectGuidance.exclusions}` : ""}`.trim() : null,
     },
+    // campaign-layer-v1 decision #2 — layered, not isolated: renders after
+    // `project` and takes priority where they'd otherwise conflict, but
+    // project's own guidance above still renders too.
+    {
+      name: 'campaignDoctrine',
+      text: campaignGuidance ? `CAMPAIGN-SPECIFIC GUIDANCE — this specific pitch angle, takes priority over the project guidance above where they conflict:
+${campaignGuidance.recipient_description ? `Recipient: ${campaignGuidance.recipient_description}` : ""}
+${campaignGuidance.doctrine ? `Doctrine: ${campaignGuidance.doctrine}` : ""}`.trim() : null,
+    },
+    // campaign-layer-v1 decision #3 — examples do NOT layer: a selected
+    // campaign's own examples fully replace projectExamples below (guarded
+    // out when campaignId is present), rather than mixing both voices.
+    {
+      name: 'campaignExamples',
+      text: campaignGuidance?.outreach_examples_distilled ? `THIS CAMPAIGN'S OWN PAST EXAMPLES — real messages sent for this specific pitch angle, match this pattern:\n${campaignGuidance.outreach_examples_distilled}` : null,
+    },
     // project-scoped-outreach-examples-v1 — distilled from this project's
     // own outreach_examples array (up to 20 real past sent/approved
-    // messages for this specific campaign), distinct from voiceExamples
-    // below (per-AE, not business/project-scoped, no selection logic).
-    // Placed immediately after `project` so project-level context stays
-    // grouped together in the final prompt rather than scattered.
+    // messages for this project), distinct from voiceExamples below
+    // (per-AE, not business/project-scoped, no selection logic). Placed
+    // immediately after `project` so project-level context stays grouped
+    // together in the final prompt rather than scattered. campaign-layer-v1
+    // decision #3 — no-ops when a campaign is selected; campaignExamples
+    // above takes over instead of layering with this.
     {
       name: 'projectExamples',
-      text: projectGuidance?.outreach_examples_distilled ? `THIS PROJECT'S OWN PAST EXAMPLES — real messages sent for this specific campaign, match this pattern:\n${projectGuidance.outreach_examples_distilled}` : null,
+      text: (!campaignId && projectGuidance?.outreach_examples_distilled) ? `THIS PROJECT'S OWN PAST EXAMPLES — real messages sent for this project, match this pattern:\n${projectGuidance.outreach_examples_distilled}` : null,
     },
     // Stage 3 — free-text, per-generation steering (was `note`/"AE context",
     // renamed and formalized as its own provider). Optional, additive - an

@@ -87,7 +87,7 @@ export default function OutreachRulesCard({ businessId, rules, updatedAt, edited
           <p style={{ ...mono, fontSize:10, color:C.dim, margin:0 }}>
             {rules
               ? `${editedManually ? 'Manually edited' : 'Distilled from a pasted document'}${updatedAt ? ` · last updated ${fmtDate(updatedAt)}` : ''}`
-              : 'Not yet generated — paste an outreach-training document to distill campaign-level messaging rules for this business.'}
+              : 'Not yet generated — paste an outreach-training document to distill business-level messaging rules.'}
           </p>
         </div>
       </div>
@@ -109,7 +109,7 @@ export default function OutreachRulesCard({ businessId, rules, updatedAt, edited
       ) : pasteOpen ? (
         <div>
           <div style={sectionLabel}>Paste outreach-training document</div>
-          <textarea rows={8} value={pasteText} onChange={e=>setPasteText(e.target.value)} style={{ ...inp, marginBottom:10 }} placeholder="Paste the doc here — tone guide, past campaign notes, example emails, whatever describes how outreach for this business should read." />
+          <textarea rows={8} value={pasteText} onChange={e=>setPasteText(e.target.value)} style={{ ...inp, marginBottom:10 }} placeholder="Paste the doc here — tone guide, past outreach notes, example emails, whatever describes how outreach for this business should read." />
           {error && <div style={{ ...mono, fontSize:11, color:C.red, marginBottom:10 }}>⚠ {error}</div>}
           <div style={{ display:"flex", gap:8 }}>
             <button onClick={generate} disabled={generating || !pasteText.trim()} style={{ ...btn, background:C.gold, border:`1px solid ${C.gold}`, color:C.bg, fontWeight:700 }}>{generating ? 'Distilling…' : 'Generate rules'}</button>

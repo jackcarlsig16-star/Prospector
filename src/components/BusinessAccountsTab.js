@@ -19,7 +19,7 @@ const UNLISTED = '__unlisted__';
 // compliance workflow (those are Plaid-specific, out of scope until
 // generalize-legacy-functions-v1). A brand-new business starts with zero
 // accounts; nothing seeds or copies data across businesses.
-export default function BusinessAccountsTab({ business, userEmail, projects=[] }) {
+export default function BusinessAccountsTab({ business, userEmail, projects=[], campaigns=[] }) {
   const [accounts, setAccounts] = useState([]);
   const [lists, setLists] = useState([]);
   const [accountListMap, setAccountListMap] = useState({}); // accountId -> [listId, ...]
@@ -206,6 +206,7 @@ export default function BusinessAccountsTab({ business, userEmail, projects=[] }
         tasks={tasks}
         business={business}
         projects={projects}
+        campaigns={campaigns}
         accountListMap={accountListMap}
         onAccountLinkedToProject={(accountId, listId) => setAccountListMap(prev => ({ ...prev, [accountId]: [...(prev[accountId] || []), listId] }))}
         onInfluencerUpdated={()=>reload(true)}

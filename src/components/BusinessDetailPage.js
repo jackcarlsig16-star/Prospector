@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { C, mono, PRESET_SWATCH_COLORS } from '../constants/colors';
-import { createProject, createList, setProjectListId, getAccountsForBusiness, linkAccountToLists } from '../utils/db';
+import { createProject, createList, setProjectListId, getAccountsForBusiness, linkAccountToLists, createCampaign, setCampaignListId } from '../utils/db';
 import BusinessAccountsTab from './BusinessAccountsTab';
 import BusinessCommandCenterTab from './BusinessCommandCenterTab';
 import MembersPermissionsTab from './MembersPermissionsTab';
@@ -16,6 +16,7 @@ import BusinessSocialLinksPopover from './BusinessSocialLinksPopover';
 // picker is actually opened, not on every page's initial bundle.
 const BusinessEmojiPicker = lazy(() => import('./BusinessEmojiPicker'));
 import ProjectGuidanceCard from './ProjectGuidanceCard';
+import CampaignGuidanceCard from './CampaignGuidanceCard';
 import AccountPicker from './AccountPicker';
 import BulkOutreachModal from './BulkOutreachModal';
 
@@ -98,7 +99,7 @@ function CreateProjectModal({ businessId, userEmail, onClose, onCreated }) {
         </div>
         <div style={{ marginBottom:14 }}>
           <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>Objective *</div>
-          <textarea rows={2} placeholder="What this campaign is trying to accomplish…" value={objective} onChange={e=>setObjective(e.target.value)} style={{ ...inp, resize:"vertical" }} />
+          <textarea rows={2} placeholder="What this project is trying to accomplish…" value={objective} onChange={e=>setObjective(e.target.value)} style={{ ...inp, resize:"vertical" }} />
         </div>
         <div style={{ marginBottom:14 }}>
           <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>Target type</div>
@@ -203,7 +204,198 @@ function BackfillProjectList({ project, businessId, onLinked }) {
   );
 }
 
-function ProjectsSection({ business, userEmail, activeUser, projects, outreachRules, onProjectCreated, onProjectUpdated }) {
+// campaign-layer-v1 — mirrors CreateProjectModal exactly (name/list/
+// account-picker at creation), scoped to a Campaign's own field set
+// (recipient_description/doctrine instead of objective/target_type/
+// ask_type/project_hook/exclusions — those stay Project-level, decision
+// #1). list_id mechanism mirrors Project's 1:1 (decision #6) — no third
+// account-association mechanism.
+function CreateCampaignModal({ project, businessId, onClose, onCreated }) {
+  const [name, setName] = useState('');
+  const [recipientDescription, setRecipientDescription] = useState('');
+  const [doctrine, setDoctrine] = useState('');
+  const [accounts, setAccounts] = useState([]);
+  const [selectedAccountIds, setSelectedAccountIds] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => { getAccountsForBusiness(businessId).then(setAccounts); }, [businessId]);
+
+  const canCreate = name.trim() && !saving;
+
+  const handleCreate = async () => {
+    if (!canCreate) return;
+    setSaving(true);
+    setError('');
+    const { list, error: listErr } = await createList(businessId, `${project.name} — ${name.trim()}`);
+    if (listErr) { setSaving(false); setError(listErr); return; }
+    const { campaign, error: err } = await createCampaign({
+      projectId: project.id, businessId, listId: list.id,
+      name: name.trim(), recipientDescription: recipientDescription.trim(), doctrine: doctrine.trim(),
+    });
+    if (err) { setSaving(false); setError(err); return; }
+    for (const accountId of selectedAccountIds) await linkAccountToLists(accountId, [list.id]);
+    setSaving(false);
+    onCreated(campaign);
+  };
+
+  return (
+    <div onClick={e=>{if(e.target===e.currentTarget) onClose();}} style={{ position:"fixed", inset:0, zIndex:1000, background:"#00000099", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div style={{ background:C.card, border:`1px solid ${C.brd}`, borderRadius:12, padding:"22px 26px", width:420, maxHeight:"85vh", overflowY:"auto", boxShadow:"0 20px 60px #000c" }}>
+        <div style={{ display:"flex", alignItems:"center", marginBottom:20 }}>
+          <span style={{ ...mono, fontSize:14, color:C.txt, fontWeight:700 }}>New campaign in {project.name}</span>
+          <button onClick={onClose} style={{ marginLeft:"auto", background:"transparent", border:"none", color:C.mut, fontSize:18, cursor:"pointer" }}>✕</button>
+        </div>
+        <div style={{ marginBottom:14 }}>
+          <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>Name</div>
+          <input type="text" placeholder="Employers offering employee benefits" value={name} onChange={e=>setName(e.target.value)} style={inp} />
+        </div>
+        <div style={{ marginBottom:14 }}>
+          <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>Recipient description</div>
+          <textarea rows={3} placeholder="Who this campaign targets — a specific pitch angle to a specific type of recipient…" value={recipientDescription} onChange={e=>setRecipientDescription(e.target.value)} style={{ ...inp, resize:"vertical" }} />
+        </div>
+        <div style={{ marginBottom:14 }}>
+          <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>Doctrine (optional)</div>
+          <textarea rows={6} placeholder="Paste a deck's text, key talking points, anything specific to this pitch…" value={doctrine} onChange={e=>setDoctrine(e.target.value)} style={{ ...inp, resize:"vertical" }} />
+        </div>
+        <div style={{ marginBottom:20 }}>
+          <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>Accounts (optional)</div>
+          <AccountPicker accounts={accounts} selected={selectedAccountIds} onToggle={id=>setSelectedAccountIds(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id])} />
+        </div>
+        {error && <div style={{ ...mono, fontSize:11, color:C.red, marginBottom:12 }}>⚠ {error}</div>}
+        <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
+          <button onClick={onClose} style={{ ...mono, fontSize:12, padding:"7px 16px", background:"transparent", border:`1px solid ${C.brd}`, borderRadius:6, color:C.mut, cursor:"pointer" }}>Cancel</button>
+          <button onClick={handleCreate} disabled={!canCreate}
+            style={{ ...mono, fontSize:12, padding:"7px 20px", background:canCreate?C.gold:"transparent", border:`1px solid ${canCreate?C.gold:C.brd}`, borderRadius:6, color:canCreate?C.bg:C.dim, cursor:canCreate?"pointer":"default", fontWeight:700 }}>
+            {saving ? "Creating…" : "Create →"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// campaign-layer-v1 — mirrors AddAccountsToProject 1:1, scoped to a
+// campaign's own list_id.
+function AddAccountsToCampaign({ campaign, businessId, onDone }) {
+  const [open, setOpen] = useState(false);
+  const [accounts, setAccounts] = useState([]);
+  const [selectedAccountIds, setSelectedAccountIds] = useState([]);
+  const [linking, setLinking] = useState(false);
+
+  const toggleOpen = () => {
+    if (!open) getAccountsForBusiness(businessId).then(setAccounts);
+    setOpen(o => !o);
+  };
+
+  const confirm = async () => {
+    setLinking(true);
+    for (const accountId of selectedAccountIds) await linkAccountToLists(accountId, [campaign.list_id]);
+    setLinking(false);
+    setOpen(false);
+    setSelectedAccountIds([]);
+    onDone?.();
+  };
+
+  return (
+    <div style={{ marginTop:10 }}>
+      <button onClick={toggleOpen} style={{ ...mono, fontSize:11, padding:"6px 14px", background:"transparent", border:`1px solid ${C.brd}`, color:C.dim, borderRadius:6, cursor:"pointer" }}>
+        {open ? 'Cancel' : '+ Add accounts'}
+      </button>
+      {open && (
+        <div style={{ marginTop:8 }}>
+          <AccountPicker accounts={accounts} selected={selectedAccountIds} onToggle={id=>setSelectedAccountIds(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id])} />
+          <button onClick={confirm} disabled={!selectedAccountIds.length || linking} style={{ ...mono, fontSize:11, padding:"6px 14px", background:C.gold, border:`1px solid ${C.gold}`, color:C.bg, fontWeight:700, borderRadius:6, cursor:"pointer", marginTop:8, opacity: selectedAccountIds.length?1:0.5 }}>
+            {linking ? 'Adding…' : `Add ${selectedAccountIds.length || ''}`.trim()}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// campaign-layer-v1 — mirrors BackfillProjectList 1:1, for campaigns
+// created before this account-linking mechanism (shouldn't happen given
+// CreateCampaignModal always creates a list, but kept for the same
+// resilience Project's own backfill provides).
+function BackfillCampaignList({ campaign, businessId, onLinked }) {
+  const [linking, setLinking] = useState(false);
+  const [error, setError] = useState('');
+
+  const link = async () => {
+    setLinking(true);
+    setError('');
+    const { list, error: listErr } = await createList(businessId, campaign.name);
+    if (listErr) { setLinking(false); setError(listErr); return; }
+    const { campaign: updated, error: err } = await setCampaignListId(campaign.id, list.id);
+    setLinking(false);
+    if (err) { setError(err); return; }
+    onLinked(updated);
+  };
+
+  return (
+    <div style={{ marginTop:10 }}>
+      <p style={{ ...mono, fontSize:10, color:C.dim, margin:"0 0 8px" }}>This campaign has no linked list yet — account assignment needs one.</p>
+      {error && <div style={{ ...mono, fontSize:11, color:C.red, marginBottom:8 }}>⚠ {error}</div>}
+      <button onClick={link} disabled={linking} style={{ ...mono, fontSize:11, padding:"6px 14px", background:"transparent", border:`1px solid ${C.brd}`, color:C.dim, borderRadius:6, cursor:"pointer" }}>
+        {linking ? 'Linking…' : 'Link a list to this campaign'}
+      </button>
+    </div>
+  );
+}
+
+// campaign-layer-v1 — nested inside each expanded project row in
+// ProjectsSection below (CONFIRMED placement via live audit: same block
+// ProjectGuidanceCard already renders in).
+function CampaignsSection({ project, businessId, campaigns, onCampaignCreated, onCampaignUpdated }) {
+  const [modalOpen, setModalOpen] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
+
+  return (
+    <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.brd}` }}>
+      <div style={{ ...mono, fontSize:11, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:8 }}>Campaigns ({campaigns.length})</div>
+      <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
+        {campaigns.map(c => (
+          <div key={c.id} style={{ padding:"8px 10px", background:C.bg, border:`1px solid ${C.brd}`, borderRadius:6 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10, cursor:"pointer" }} onClick={()=>setExpandedId(id=>id===c.id?null:c.id)}>
+              <span style={{ ...mono, fontSize:12, color:C.txt, flex:1 }}>{c.name}</span>
+              <span style={{ ...mono, fontSize:10, color:C.dim }}>{fmtDate(c.created_at)}</span>
+            </div>
+            {c.recipient_description && (
+              <p style={{ ...mono, fontSize:11, color:C.mut, margin:"6px 0 0", lineHeight:1.5 }}>{c.recipient_description}</p>
+            )}
+            {expandedId === c.id && (
+              <>
+                <CampaignGuidanceCard campaign={c} onUpdated={updated => onCampaignUpdated?.(updated)} />
+                {c.list_id ? (
+                  <AddAccountsToCampaign campaign={c} businessId={businessId} onDone={()=>{}} />
+                ) : (
+                  <BackfillCampaignList campaign={c} businessId={businessId} onLinked={updated => onCampaignUpdated?.(updated)} />
+                )}
+              </>
+            )}
+          </div>
+        ))}
+        {campaigns.length === 0 && (
+          <p style={{ ...mono, fontSize:11, color:C.dim, margin:0 }}>No campaigns yet in {project.name}.</p>
+        )}
+        <button onClick={()=>setModalOpen(true)} style={{ ...mono, fontSize:11, color:C.dim, background:"transparent", border:`1.5px dashed ${C.brd}`, borderRadius:6, padding:"7px 10px", cursor:"pointer", textAlign:"left" }}>
+          + New Campaign
+        </button>
+      </div>
+      {modalOpen && (
+        <CreateCampaignModal
+          project={project}
+          businessId={businessId}
+          onClose={()=>setModalOpen(false)}
+          onCreated={campaign => { setModalOpen(false); onCampaignCreated(campaign); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ProjectsSection({ business, userEmail, activeUser, projects, campaigns=[], outreachRules, onProjectCreated, onProjectUpdated, onCampaignCreated, onCampaignUpdated }) {
   const [open, setOpen] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
@@ -229,6 +421,7 @@ function ProjectsSection({ business, userEmail, activeUser, projects, outreachRu
               {expandedId === p.id && (
                 <>
                   <ProjectGuidanceCard project={p} businessName={business.name} userEmail={userEmail} outreachRules={outreachRules} onUpdated={updated => onProjectUpdated?.(updated)} />
+                  <CampaignsSection project={p} businessId={business.id} campaigns={campaigns.filter(c=>c.project_id===p.id)} onCampaignCreated={onCampaignCreated} onCampaignUpdated={onCampaignUpdated} />
                   {p.list_id ? (
                     <>
                       <AddAccountsToProject project={p} businessId={business.id} onDone={()=>{}} />
@@ -272,7 +465,7 @@ function ProjectsSection({ business, userEmail, activeUser, projects, outreachRu
   );
 }
 
-export default function BusinessDetailPage({ business: businessProp, userEmail, projects=[], view='command-center', onUpdated, onProjectCreated, onProjectUpdated, sharedAccounts, sharedTasks, setSharedTasks, dailyStats, activeUser, onNav, onUpdateAccount }) {
+export default function BusinessDetailPage({ business: businessProp, userEmail, projects=[], campaigns=[], view='command-center', onUpdated, onProjectCreated, onProjectUpdated, onCampaignCreated, onCampaignUpdated, sharedAccounts, sharedTasks, setSharedTasks, dailyStats, activeUser, onNav, onUpdateAccount }) {
   const [business, setBusiness] = useState(businessProp);
   const [profile, setProfile] = useState(null);
   const [intelEntries, setIntelEntries] = useState([]);
@@ -514,9 +707,9 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
             onProfileUpdated={setProfile} onProjectUpdated={onProjectUpdated} />
           <BusinessCommandCenterTab business={business} sharedAccounts={sharedAccounts} sharedTasks={sharedTasks} setSharedTasks={setSharedTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={onNav} onUpdateAccount={onUpdateAccount} />
         </>)}
-        {view === 'accounts' && <BusinessAccountsTab business={business} userEmail={userEmail} projects={projects} />}
+        {view === 'accounts' && <BusinessAccountsTab business={business} userEmail={userEmail} projects={projects} campaigns={campaigns} />}
         {view === 'projects' && (
-          <ProjectsSection business={business} userEmail={userEmail} activeUser={activeUser} projects={projects} outreachRules={profile?.outreach_rules} onProjectCreated={onProjectCreated} onProjectUpdated={onProjectUpdated} />
+          <ProjectsSection business={business} userEmail={userEmail} activeUser={activeUser} projects={projects} campaigns={campaigns} outreachRules={profile?.outreach_rules} onProjectCreated={onProjectCreated} onProjectUpdated={onProjectUpdated} onCampaignCreated={onCampaignCreated} onCampaignUpdated={onCampaignUpdated} />
         )}
         {view === 'members' && <MembersPermissionsTab business={business} viewerEmail={userEmail} />}
 
