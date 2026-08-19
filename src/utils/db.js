@@ -447,6 +447,17 @@ export async function getVoiceProfileForEmail(userEmail) {
 // (objective/target_type/ask_type/project_hook/exclusions/outreach_example),
 // same "person types it, stays until changed" posture as the outreach_prompt
 // field this replaces - no generate/regenerate, no auto-overwrite risk.
+// intake-confirm-proxy-timeout-v1 — single-project read, for polling
+// strategy_sync_status while a background resynthesis is in flight
+// (SmartIntakeBox's internal_meeting confirm). No existing "get one
+// project" helper - every other project read in this file returns a list.
+export async function getProject(projectId) {
+  if (!isSupabaseEnabled() || !projectId) return null;
+  const { data, error } = await supabase.from('projects').select('*').eq('id', projectId).maybeSingle();
+  if (error) return null;
+  return data;
+}
+
 export async function updateProjectGuidance(projectId, patch) {
   if (!isSupabaseEnabled() || !projectId) return { error: null };
   const { data, error } = await supabase.from('projects').update({ ...patch, guidance_updated_at: new Date().toISOString() }).eq('id', projectId).select().single();

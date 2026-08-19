@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { C, mono } from '../constants/colors';
-import { getListsForBusiness, getAccountsForBusiness, createInfluencerAccount, findExistingInfluencerByHandle, linkAccountToLists } from '../utils/db';
+import { getListsForBusiness, getAccountsForBusiness, createInfluencerAccount, findExistingInfluencerByHandle, linkAccountToLists, getProject } from '../utils/db';
 
 const inp = { fontSize:13, padding:"10px 12px", background:C.bg, border:`1.5px solid ${C.brdM}`, borderRadius:6, color:C.txt, outline:"none", boxSizing:"border-box", width:"100%", ...mono };
 const btn = { ...mono, fontSize:12, padding:"7px 16px", background:C.gold, border:`1px solid ${C.gold}`, borderRadius:6, color:C.bg, cursor:"pointer", fontWeight:700 };
@@ -227,6 +227,37 @@ export default function SmartIntakeBox({ business, projects, userEmail, onProfil
     }
   };
 
+  // intake-confirm-proxy-timeout-v1 - company_intel/internal_meeting now
+  // respond as soon as the entry is filed and intel_sync_status/
+  // strategy_sync_status flip to 'syncing', not once generateProfile()/
+  // generateProjectStrategy() finish (that's the fix - it was a real 502,
+  // real 27-68s measured latency against a route this app can't guarantee
+  // stays under whatever Render's real ceiling turns out to be). Poll
+  // interval/attempt count give ~2 minutes of real headroom over that
+  // measured range before surfacing a timeout message instead of silently
+  // hanging forever.
+  const SYNC_POLL_INTERVAL_MS = 3000;
+  const MAX_SYNC_POLL_ATTEMPTS = 40;
+  const pollSyncStatus = async ({ businessId, projectId }) => {
+    let businessDone = !businessId, projectDone = !projectId;
+    let finalBusinessData = null, finalProject = null;
+    for (let i = 0; i < MAX_SYNC_POLL_ATTEMPTS && (!businessDone || !projectDone); i++) {
+      await new Promise(r => setTimeout(r, SYNC_POLL_INTERVAL_MS));
+      if (!businessDone) {
+        const res = await fetch(`/api/businesses/${businessId}`);
+        if (res.ok) {
+          const d = await res.json();
+          if (d.business?.intel_sync_status && d.business.intel_sync_status !== 'syncing') { businessDone = true; finalBusinessData = d; }
+        }
+      }
+      if (!projectDone) {
+        const p = await getProject(projectId);
+        if (p?.strategy_sync_status && p.strategy_sync_status !== 'syncing') { projectDone = true; finalProject = p; }
+      }
+    }
+    return { businessDone, projectDone, finalBusinessData, finalProject };
+  };
+
   const confirmAction = async (action) => {
     setSubmitting(true); setError('');
     try {
@@ -236,6 +267,28 @@ export default function SmartIntakeBox({ business, projects, userEmail, onProfil
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to file');
+
+      if (data.status === 'syncing') {
+        setConfirmState(null);
+        setText('');
+        showToast('Filed — syncing…');
+        pollSyncStatus({ businessId: data.businessId, projectId: data.projectId }).then(({ businessDone, projectDone, finalBusinessData, finalProject }) => {
+          const parts = [];
+          if (data.businessId) {
+            if (finalBusinessData?.business?.intel_sync_status === 'ready') { onProfileUpdated?.(finalBusinessData.profile); parts.push('company intel'); }
+            else if (finalBusinessData?.business?.intel_sync_status === 'error') parts.push(`company intel failed (${finalBusinessData.business.intel_sync_error || 'unknown error'})`);
+            else if (!businessDone) parts.push('company intel sync still running — check back shortly');
+          }
+          if (data.projectId) {
+            if (finalProject?.strategy_sync_status === 'ready') { onProjectUpdated?.(finalProject); parts.push(`project "${finalProject.name}"`); }
+            else if (finalProject?.strategy_sync_status === 'error') parts.push(`project sync failed (${finalProject.strategy_sync_error || 'unknown error'})`);
+            else if (!projectDone) parts.push('project sync still running — check back shortly');
+          }
+          if (parts.length) showToast(`Synced: ${parts.join(', ')}`);
+        });
+        return;
+      }
+
       // smart-intake-internal-meeting-v1 - the one action that can return
       // both `project` and `profile` together (dual-confirm). Checked first
       // and combined into one toast; every pre-existing single-result shape

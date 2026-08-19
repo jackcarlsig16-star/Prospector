@@ -714,10 +714,29 @@ function detectContentType(text) {
   return 'other';
 }
 
-export async function fileCompanyIntel(supabase, businessId, text, createdBy, contentType) {
+// intake-confirm-proxy-timeout-v1 — split out the fast, no-model-call half
+// of fileCompanyIntel/fileProjectIntel so intake-confirm.js's two
+// resynthesis-triggering actions (company_intel, internal_meeting) can
+// insert synchronously, respond to the client immediately, and run
+// generateProfile/generateProjectStrategy in the background - while every
+// existing caller of fileCompanyIntel/fileProjectIntel (intake.js's
+// auto-file paths, call-log.js, intake-confirm.js's other actions) keeps
+// its exact current synchronous behavior unchanged, since those wrapper
+// functions still do the same insert-then-resynthesize sequence internally.
+export async function insertCompanyIntelEntry(supabase, businessId, text, createdBy, contentType) {
   const { error } = await supabase.from('business_intel_entries')
     .insert({ business_id: businessId, project_id: null, source: 'manual', content: text, created_by: createdBy || null, content_type: contentType || detectContentType(text) });
   if (error) throw error;
+}
+
+export async function insertProjectIntelEntry(supabase, projectId, businessId, text, createdBy) {
+  const { error } = await supabase.from('business_intel_entries')
+    .insert({ business_id: businessId, project_id: projectId, source: 'manual', content: text, created_by: createdBy || null });
+  if (error) throw error;
+}
+
+export async function fileCompanyIntel(supabase, businessId, text, createdBy, contentType) {
+  await insertCompanyIntelEntry(supabase, businessId, text, createdBy, contentType);
   await generateProfile(supabase, businessId);
   const { data: profile, error: profileError } = await supabase.from('business_profiles').select('*').eq('business_id', businessId).maybeSingle();
   if (profileError) throw profileError;
@@ -727,13 +746,44 @@ export async function fileCompanyIntel(supabase, businessId, text, createdBy, co
 export async function fileProjectIntel(supabase, projectId, text, createdBy) {
   const { data: project, error: projectError } = await supabase.from('projects').select('business_id').eq('id', projectId).single();
   if (projectError) throw projectError;
-  const { error } = await supabase.from('business_intel_entries')
-    .insert({ business_id: project.business_id, project_id: projectId, source: 'manual', content: text, created_by: createdBy || null });
-  if (error) throw error;
+  await insertProjectIntelEntry(supabase, projectId, project.business_id, text, createdBy);
   await generateProjectStrategy(supabase, projectId);
   const { data: updated, error: updatedError } = await supabase.from('projects').select('*').eq('id', projectId).single();
   if (updatedError) throw updatedError;
   return updated;
+}
+
+// intake-confirm-proxy-timeout-v1 — background resynthesis + status
+// resolution, mirroring runResearch()'s own discipline (never leave the
+// status stuck on "syncing" - always resolves to ready or error) and its
+// same real precondition: this only works because server.js is a
+// persistent Express process, not serverless, so work started after
+// res.status(200) has already been sent reliably continues to completion.
+// Status flips to 'syncing' synchronously, before the caller responds -
+// same reasoning as retry.js's research_status flip: closes the window
+// where a fast double-submit could race two concurrent syncs before the
+// client's first poll sees the change.
+export async function beginProfileSync(supabase, businessId) {
+  await supabase.from('businesses').update({ intel_sync_status: 'syncing', intel_sync_error: null }).eq('id', businessId);
+}
+export function runProfileSync(supabase, businessId) {
+  generateProfile(supabase, businessId)
+    .then(() => supabase.from('businesses').update({ intel_sync_status: 'ready', intel_sync_error: null }).eq('id', businessId))
+    .catch(e => {
+      console.error('[intake-confirm] profile sync failed:', e);
+      supabase.from('businesses').update({ intel_sync_status: 'error', intel_sync_error: String(e.message || e).slice(0, 500) }).eq('id', businessId).catch(() => {});
+    });
+}
+export async function beginStrategySync(supabase, projectId) {
+  await supabase.from('projects').update({ strategy_sync_status: 'syncing', strategy_sync_error: null }).eq('id', projectId);
+}
+export function runStrategySync(supabase, projectId) {
+  generateProjectStrategy(supabase, projectId)
+    .then(() => supabase.from('projects').update({ strategy_sync_status: 'ready', strategy_sync_error: null }).eq('id', projectId))
+    .catch(e => {
+      console.error('[intake-confirm] strategy sync failed:', e);
+      supabase.from('projects').update({ strategy_sync_status: 'error', strategy_sync_error: String(e.message || e).slice(0, 500) }).eq('id', projectId).catch(() => {});
+    });
 }
 
 // Server-side twin of db.js's recordAccountActivity (client-side) - the
