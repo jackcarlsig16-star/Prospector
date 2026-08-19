@@ -125,10 +125,11 @@ export default function AccountCard({
   // for accounts not yet re-assayed since this shipped (dual-write).
   const displayTier = acc.businessDetail?.tier || acc.tier;
   if (!isInfluencer && displayTier) signals.push(<AccountBadge key="tier" tone={TIER_COLOR[displayTier] || kind.accent}>{displayTier}</AccountBadge>);
-  // surface-existing-intel-v1 — score was stored (account_business_details.score)
-  // but never rendered anywhere on this card, only the derived tier label.
-  const displayScore = acc.businessDetail?.score ?? acc.score;
-  if (!isInfluencer && displayScore != null) signals.push(<AccountBadge key="score" tone={kind.accent}>{`Score: ${displayScore}`}</AccountBadge>);
+  // account-card-score-to-confidence-swap-v1 — raw score duplicated tier
+  // (1=Gold..4=Slag, same model output shown twice); confidence is the
+  // real independently-varying signal, swapped in at the same position.
+  const displayConfidence = acc.businessDetail?.fit_signals?.confidence;
+  if (!isInfluencer && displayConfidence) signals.push(<AccountBadge key="confidence" tone={kind.accent}>{`Confidence: ${displayConfidence}`}</AccountBadge>);
   if (isInfluencer && detail?.priority) signals.push(<AccountBadge key="priority" tone={detail.priority === 'high' ? '#F06060' : detail.priority === 'medium' ? '#f5c542' : undefined}>{detail.priority} priority</AccountBadge>);
   if (isInfluencer) signals.push(<AccountBadge key="stage" tone={kind.accent}>{(detail?.relationship_stage || 'not_contacted').replace(/_/g, ' ')}</AccountBadge>);
 

@@ -1,0 +1,204 @@
+account-score-tier-display-audit-v1 — findings
+Run: 2026-08-18
+Type: AUDIT ONLY, no code/schema changes made.
+
+============================================================
+Q1 — WHAT IS "SCORE" STRUCTURALLY, AND HOW DOES IT RELATE TO TIER?
+============================================================
+Score is NOT a fit-strength metric. It is the numeric enum code that IS
+the tier, on an inverted scale (lower = better):
+
+  src/utils/assay.js:135 (buildLegacyFintechPrompt) and :211
+  (buildGeneralizedPrompt) — identical scoring line in both prompts:
+  "SCORING: 1=Gold(strong direct fit), 2=Silver(solid indirect fit),
+   3=Tin(weak/speculative fit), 4=Slag(defunct OR no meaningful fit)."
+
+The model returns {"score":1,"tier":"Gold",...} as one atomic pair in a
+single JSON response (assay.js:189, :238 — both prompt templates' example
+output literally shows "score":1,"tier":"Gold" together). Post-processing
+(assay.js:320-336) only ever sets score and tier TOGETHER, never one
+without the other — e.g. the distribution-multiplier override at line 336:
+`if (parsed.distributionMultiplier && parsed.score > 1 ...) { parsed.score
+= 1; parsed.tier = "Gold"; }`.
+
+Storage: mapAssayResultToBusinessDetails() (assay.js:373-398) writes both
+`score` and `tier` as sibling columns on account_business_details, sourced
+from the same parsed response, never computed independently.
+
+Display: AccountCard.js:126,130 reads both from the same fallback chain
+(`acc.businessDetail?.tier || acc.tier` and `acc.businessDetail?.score ??
+acc.score`) — same object, same moment, same underlying value.
+
+CONCLUSION: Tier is not derived FROM Score by separate logic — they are
+the same model output represented twice (word label vs. its numeric code).
+Displaying both is genuine redundancy, not two independent metrics.
+
+============================================================
+Q2 — IS THE GOLD + SCORE:1 PAIRING EXPECTED OR A BUG?
+============================================================
+EXPECTED — confirmed against 100% of live production data, not a bug.
+
+Live query against account_business_details (all 20 rows in the table —
+full read, within the declared ≤20-row bound, no sampling needed):
+
+  score=1 → tier=Gold   (7 rows, 0 exceptions)
+  score=2 → tier=Silver (2 rows, 0 exceptions)
+  score=3 → tier=Tin    (4 rows, 0 exceptions)
+  score=4 → tier=Slag   (7 rows, 0 exceptions)
+
+Every single row is internally consistent with the 1=Gold/2=Silver/3=Tin/
+4=Slag mapping defined in the prompt. Zero drift, zero staleness, zero
+mismatch between the two fields anywhere in real data.
+
+Why it LOOKS like a bug: "Score: 1" with no context reads to a human as
+"low/bad" (most fit/quality scores in this app and elsewhere are
+higher-is-better), but this particular Score is actually a rank/grade
+code where 1 is the best rank (like "1st place"), not a 0-100 strength
+value. The display gives no unit or context to signal that, so the
+juxtaposition with "Gold" (which the AE already correctly reads as
+"best tier") reads as contradictory when it is actually the same
+information stated twice, once in a misleading numeric form.
+
+Root cause of the confusing pairing existing at all: spec
+`specs/surface-existing-intel-v1.md` item #4 (shipped in commit
+51c5fb0), written by Jack in an earlier session, explicitly asked to
+"Add the raw numeric score next to the existing tier badge" believing
+it was previously-hidden signal (comment at AccountCard.js:128-129:
+"score was stored ... but never rendered anywhere on this card, only
+the derived tier label"). That framing was accurate about visibility
+but didn't register that the raw score and the tier are the same value
+— so a deliberate, spec'd decision surfaced a genuinely redundant/
+confusing field, not an accidental leftover or drift bug.
+
+============================================================
+Q3 — WHAT OTHER METRICS EXIST THAT COULD REPLACE/SUPPLEMENT THIS?
+============================================================
+YES — a real, already-computed, already-stored confidence value exists
+and is NOT currently shown as a badge on the account card:
+
+  `confidence` (Low/Medium/High) — assay.js:146,226 prompt instruction,
+  hard-capped by post-processing at assay.js:342 ("if
+  parsed.ungroundedClaims.length && parsed.confidence === 'High')
+  parsed.confidence = 'Medium'" — a real enforced ceiling, not just a
+  prompt ask). Stored at account_business_details.fit_signals.confidence
+  (assay.js:385, mapAssayResultToBusinessDetails).
+
+Live data confirms it's populated on every one of the 20 real rows
+(High/Medium/Low, non-null in 100% of rows checked) — this is a
+genuinely distinct signal from Score/Tier: it measures how much of the
+scoring reasoning rests on directly-sourced facts vs. inference,
+independent of which tier the account landed in. Example: several Gold
+accounts in the live data carry confidence:"Medium" (not "High"),
+proving tier and confidence vary independently — real, non-redundant
+signal.
+
+There is also a SEPARATE, differently-scoped "Score" elsewhere in the
+codebase (see Q4) — `signalBreakdown.signalScore`, a 0-100 heuristic
+computed client-side by keyword pattern matching in `detectSignals()`
+(assay.js:50-72, base 50 +/- weighted hits for payment/onboarding/
+credit/scale/platform/slag keyword signals). This is a genuinely
+distinct numeric value from the 1-4 score, already computed on every
+assay run, already stored (account_business_details.fit_signals.
+signal_breakdown.signalScore) — but it is NOT what's currently labeled
+"Score: N" on the account card; it renders only inside DealWorkspace.js
+under "Signal Breakdown" (see Q4).
+
+CONCLUSION: confidence already exists, is real signal (not redundant
+with tier), is already computed and stored, and would need zero new
+computation to surface on the account card in place of the current
+Score badge — a straight relabel/reroute, not a build.
+
+============================================================
+Q4 — WHERE ELSE DOES "Score: N" RENDER?
+============================================================
+Exhaustive grep across src/ for "Score:" found exactly TWO real render
+sites (plus unrelated same-word hits in DealIntel's Gong call-scoring
+feature, which is a completely different domain — call quality
+rubrics, not account fit — and out of scope, listed below for
+completeness only):
+
+1. src/components/AccountCard.js:131 — the badge in question. Reads
+   the 1-4 tier-code as `Score: ${displayScore}`, rendered as an
+   AccountBadge sitting directly next to the Tier badge (line 127).
+   THIS is the confusing pairing Jack observed in production.
+
+2. src/components/accountCard/business/DealWorkspace.js:102 — a
+   DIFFERENT value (`breakdown.signalScore`, the 0-100 heuristic from
+   Q3), rendered as "Score: N" inside a clearly-labeled "Signal
+   Breakdown" section (line 97: `<p style={SH}>Signal Breakdown</p>`),
+   alongside "Top Signal: [text]". Context here disambiguates it (it's
+   explicitly under a heading naming what kind of score this is), so
+   this site is not contributing to the observed confusion, but it IS
+   a second, unrelated field that also happens to be labeled "Score" —
+   worth knowing about if any future fix touches "the Score field"
+   generically, since there are two different ones in the codebase.
+
+Not real render sites (same word, unrelated domain, do not touch):
+- src/components/intel/IntelPanel.js:131,164 — "gongScore"/"totalScore"
+  from the manual call-quality rubric (Debrief workspace), no "Score:"
+  string in either.
+- src/utils/dealIntel.js:407-408 — prompt text describing the gongScore/
+  behaviorScore rubric to the model, not a UI render.
+- src/components/accountCard/business/DebriefWorkspace.js:137 — same
+  gongScore/behaviorScore object construction, no display string.
+- src/components/UploadsPage.js:149 — `originalScore:na.score`, an
+  internal diff-tracking field for the CSV upload merge preview, never
+  rendered as "Score:" text anywhere.
+
+CONCLUSION: only one render site (AccountCard.js:131) needs to change
+if the fix is "stop showing the redundant tier-code next to Tier."
+DealWorkspace's Signal Breakdown "Score:" is a different field and
+should be left alone (or independently relabeled for clarity, but
+that's a separate, lower-priority concern — it isn't misleading in
+its current context).
+
+============================================================
+Q5 — WHICH SCORING PATH ARE THE AFFECTED ACCOUNTS ACTUALLY ON?
+============================================================
+NONE of the affected (or any) live accounts are on the legacy fintech
+path. All 20 rows in account_business_details join to a real, non-null
+`business_id` on their `accounts` row:
+
+  business_id bc69beab-effd-452d-9e81-fd652333bb95 — 9 accounts
+    (Piñata, Gravy, Roots, RentPlus, RentTrack, LenderHomePage,
+     Bilt Rewards, Incentco)
+  business_id 981b790c-a3b0-4265-b32e-1f701d5731ff — 11 accounts
+    (Lettuce Entertain You, GT's Living Foods, The Coconut Cult,
+     Simple Mills, IQ Bar, Foxtrot, Studio Three, Chicago Cares,
+     Chicago Cubs, Intelligentsia Coffee, One Off Hospitality Group,
+     Equinox)
+
+Per assay.js:280-290, a non-null businessId ALWAYS routes to
+buildGeneralizedPrompt() (either with real assay_criteria if generated,
+or `{}` empty-criteria as an honest fallback) — buildLegacyFintechPrompt
+is only reachable when businessId is completely absent, which is only
+Claim Jumper's not-yet-assigned pool. Zero of the 20 real rows have a
+null business_id, so zero are on the legacy path.
+
+CONCLUSION: 100% of the Gold+Score:1 (and every other tier+score)
+pairing in live data was produced by the current taxonomy-driven
+(business-criteria) engine, not the legacy fintech path. The legacy
+path is not implicated in this finding at all — this is a
+current-engine characteristic (by design, per Q1/Q2), not a legacy-path
+artifact.
+
+============================================================
+RECOMMENDATION
+============================================================
+Score (as currently displayed on AccountCard.js:131) IS genuinely
+redundant with Tier — same underlying value, same moment of computation,
+100%-consistent mapping confirmed across all live data. Safe to remove
+that specific badge; it carries zero information Tier doesn't already
+convey, and its numeric/inverted-scale presentation actively invites
+misreading (looks like a quality score, is actually a rank code).
+
+Recommended replacement, not just removal: swap that badge for the
+`confidence` field (Low/Medium/High), which already exists, is already
+computed on every assay, is already stored per-account, and is a real,
+independent signal (tier and confidence vary independently in live
+data) — this would be a pure relabel/reroute of an existing stored
+value, not new computation or a new SPEC needing model changes.
+
+This is a factual/display finding only — per the audit's scope, no code
+change made here. A SPEC to actually swap the badge would be a separate,
+short follow-up if Jack wants to act on this.
