@@ -3,9 +3,10 @@ import { C, mono } from '../constants/colors';
 import { getActiveIntel } from '../utils/assay';
 import { getActiveVoice, getVoiceProfile, voiceProfileKey } from '../constants/voice';
 import { UCS_DATA } from '../constants/products';
-import { getListsForBusiness, linkAccountToLists, saveVoiceProfile, getListIdsForAccount } from '../utils/db';
+import { getListsForBusiness, linkAccountToLists, saveVoiceProfile, getListIdsForAccount, getBusinessProfileSummary } from '../utils/db';
 import { buildAccountIntel } from '../utils/accountIntel';
 import { ROLE, RADIUS } from './accountCard/tokens';
+import AdvancedGenerationPanel from './accountCard/AdvancedGenerationPanel';
 
 // account-card-color-fix-and-guided-generate-v1 Part B
 // generation-engine-consolidation-v1 Stage 1 - 'reply' added, real new
@@ -63,6 +64,22 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
   const [selectedListId, setSelectedListId] = useState('');
   const contextRef = useRef(null);
 
+  // generation-modal-advanced-inputs-v1 — Project/Account Intel/Voice all
+  // reuse data already resolved elsewhere in this component (no new fetch);
+  // Company Intel is the one genuinely new read, and it's lazy - only fires
+  // once Advanced is actually opened, so a person who never opens it gets
+  // the exact same network behavior as before this SPEC.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [businessProfileSummary, setBusinessProfileSummary] = useState(null);
+  const [loadingBusinessProfile, setLoadingBusinessProfile] = useState(false);
+
+  useEffect(() => {
+    if (!advancedOpen || !business?.id || businessProfileSummary) return;
+    setLoadingBusinessProfile(true);
+    getBusinessProfileSummary(business.id).then(data => { setBusinessProfileSummary(data || {}); setLoadingBusinessProfile(false); });
+  }, [advancedOpen, business?.id, businessProfileSummary]);
+
   // project-guidance-and-creation-flow-v1 — project-selector-on-ambiguity.
   // account_lists is many-to-many, so an account can sit in more than one
   // project's list. Runs regardless of autoStart - an instant-generate
@@ -119,8 +136,11 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
         personaTitle:persona?.title||"",
         customIntel,
         senderName:user.name||"",
-        voiceExamples:getActiveVoice(voiceUserName),
-        voiceProfile:getVoiceProfile(voiceUserName),
+        // generation-modal-advanced-inputs-v1 - voiceEnabled defaults true
+        // and only has a UI to change it in the guided (!autoStart) Advanced
+        // panel, so autoStart callers behave exactly as before this SPEC.
+        voiceExamples: voiceEnabled ? getActiveVoice(voiceUserName) : "",
+        voiceProfile: voiceEnabled ? getVoiceProfile(voiceUserName) : null,
         accountKind:kind,
         businessId:business?.id,
         projectId: selectedProjectId || undefined,
@@ -193,10 +213,19 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
 
       {projectAmbiguous && <ProjectAmbiguityPicker matchedProjects={matchedProjects} onPick={setSelectedProjectId} />}
 
+      {/* generation-modal-advanced-inputs-v1 - "off" now reads as genuinely
+          off (explicit "none selected" / "off") instead of just omitting a
+          clause, so it's clear at a glance nothing extra is layered in
+          unless Advanced is opened and something's actually changed there. */}
       {!projectAmbiguous && (
-        <p style={{ ...mono, fontSize:10, color:C.dim, marginBottom:12 }}>
-          {activeProject ? `Project: ${activeProject.name} · ` : ''}Voice: {voiceUserName || 'default'}{activeProject?.ask_type ? ` · CTA: ${activeProject.ask_type.slice(0, 60)}` : ''}
-        </p>
+        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8, marginBottom:12 }}>
+          <p style={{ ...mono, fontSize:10, color:C.dim, margin:0 }}>
+            Project: {activeProject ? activeProject.name : 'none selected'} · Voice: {voiceEnabled ? (voiceUserName || 'default') : 'off'}
+          </p>
+          <button onClick={()=>setAdvancedOpen(o=>!o)} style={{ ...mono, fontSize:11, color:advancedOpen?C.txt:C.dim, background:"transparent", border:"none", cursor:"pointer", padding:0 }}>
+            {advancedOpen ? "▾ Advanced" : "▸ Advanced"}
+          </button>
+        </div>
       )}
 
       {/* account-card-cleanup-v1 Stage 1 follow-up - this is the button that
@@ -219,9 +248,17 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
     </div>
   );
 
+  // generation-modal-advanced-inputs-v1 - Advanced only ever shows during
+  // the guided pre-generation phase (started/autoStart callers never had
+  // this control to begin with), and stays hidden while project ambiguity
+  // is unresolved so there aren't two different project pickers on screen
+  // at once. A person who never opens it gets the exact same width/layout
+  // as before this SPEC - the modal only widens when this is true.
+  const showAdvancedPanel = advancedOpen && !started && !autoStart && !projectAmbiguous;
+
   return(
     <div onClick={onClose} style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000 }}>
-      <div onClick={e=>e.stopPropagation()} style={{ width:580,maxHeight:"85vh",background:C.sur,border:`1px solid ${C.brd}`,borderRadius:12,display:"flex",flexDirection:"column",overflow:"hidden" }}>
+      <div onClick={e=>e.stopPropagation()} style={{ width:showAdvancedPanel?920:580,maxWidth:"95vw",maxHeight:"85vh",background:C.sur,border:`1px solid ${C.brd}`,borderRadius:12,display:"flex",flexDirection:"column",overflow:"hidden",transition:"width 0.15s" }}>
         <div style={{ padding:"16px 20px",borderBottom:`1px solid ${C.brd}`,display:"flex",alignItems:"flex-start",justifyContent:"space-between" }}>
           <div>
             <p style={{ margin:"0 0 4px",fontSize:15,fontWeight:500,color:C.txt }}>{account.name}</p>
@@ -233,13 +270,33 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
           </div>
           <button onClick={onClose} style={{ background:"transparent",border:"none",color:C.mut,fontSize:18,cursor:"pointer",padding:"0 4px",lineHeight:1 }}>✕</button>
         </div>
-        <div style={{ flex:1,overflowY:"auto",padding:"16px 20px" }}>
+        <div style={{ flex:1,overflowY:"auto",padding:"16px 20px",display:"flex",gap:20 }}>
           {!started
             ? (autoStart
                 ? (projectAmbiguous
                     ? <ProjectAmbiguityPicker matchedProjects={matchedProjects} onPick={setSelectedProjectId} />
                     : <p style={{ ...mono,fontSize:13,color:C.purple }}>⬡ Generating email…</p>)
-                : guidedPanel)
+                : (
+                  <>
+                    <div style={{ flex:showAdvancedPanel?"0 0 auto":1, width:showAdvancedPanel?400:"100%", minWidth:0 }}>{guidedPanel}</div>
+                    {showAdvancedPanel && (
+                      <div style={{ borderLeft:`1px solid ${C.brd}`, paddingLeft:20 }}>
+                        <AdvancedGenerationPanel
+                          projectsWithLists={projectsWithLists}
+                          selectedProjectId={selectedProjectId}
+                          onSelectProject={setSelectedProjectId}
+                          accountIntelText={buildAccountIntel(account)}
+                          voiceProfile={getVoiceProfile(voiceUserName)}
+                          voiceEnabled={voiceEnabled}
+                          onToggleVoice={()=>setVoiceEnabled(v=>!v)}
+                          businessProfileSummary={businessProfileSummary}
+                          loadingBusinessProfile={loadingBusinessProfile}
+                          businessName={business?.name}
+                        />
+                      </div>
+                    )}
+                  </>
+                ))
             : (loading
                 ? <p style={{ ...mono,fontSize:13,color:C.purple }}>⬡ Generating email…</p>
                 : <textarea value={email} onChange={e=>setEmail(e.target.value)} style={{ width:"100%",height:300,fontSize:13,lineHeight:1.9,background:C.bg,border:`1px solid ${C.brd}`,borderRadius:6,color:C.txt,padding:"12px 14px",resize:"vertical",outline:"none",fontFamily:"inherit",boxSizing:"border-box" }}/>
