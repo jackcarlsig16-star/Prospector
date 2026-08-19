@@ -57,6 +57,14 @@ export const ROLE = {
   // warning, and needs to read distinctly from ROLE.generateAccent's orange
   // when the two sit side by side in the same panel.
   projectAccent: "#E5484D",
+  // generation-modal-project-picker-and-advanced-visibility-v1 — third
+  // terminal accent, same family logic as generateAccent (orange) and
+  // projectAccent (red): glow-not-fill, thin border, monospace label.
+  // Deliberately distinct from the #2dd4bf teal already scattered around
+  // the app (AccountCardComms's old email-type toggle, plan-type toggles)
+  // - this is a real named accent for "this is an expansion/disclosure
+  // control," not a restyle of an existing ad hoc teal usage.
+  advancedAccent: "#22D3EE",
 };
 
 // A1b — restrained neon-glow-on-focus for interactive/important elements

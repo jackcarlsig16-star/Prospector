@@ -222,7 +222,21 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
           <p style={{ ...mono, fontSize:10, color:C.dim, margin:0 }}>
             Project: {activeProject ? activeProject.name : 'none selected'} · Voice: {voiceEnabled ? (voiceUserName || 'default') : 'off'}
           </p>
-          <button onClick={()=>setAdvancedOpen(o=>!o)} style={{ ...mono, fontSize:11, color:advancedOpen?C.txt:C.dim, background:"transparent", border:"none", cursor:"pointer", padding:0 }}>
+          {/* generation-modal-project-picker-and-advanced-visibility-v1 -
+              was plain C.dim/C.txt text, no border, no glow - invisible at
+              a glance (confirmed live). Real third terminal accent now
+              (ROLE.advancedAccent, cyan), same glow-not-fill grammar as the
+              orange Generate button and red Project panel - always-cyan,
+              not just when active, so it reads as clickable before you've
+              ever clicked it. */}
+          <button onClick={()=>setAdvancedOpen(o=>!o)} style={{
+            ...mono, fontSize:11, fontWeight:600, padding:"3px 10px",
+            background: advancedOpen ? `${ROLE.advancedAccent}18` : "transparent",
+            border:`1px solid ${advancedOpen ? ROLE.advancedAccent : ROLE.advancedAccent+"66"}`,
+            borderRadius:RADIUS.sm, color:ROLE.advancedAccent, cursor:"pointer",
+            letterSpacing:"0.02em", textShadow:`0 0 6px ${ROLE.advancedAccent}55`,
+            transition:"background 0.15s, border-color 0.15s",
+          }}>
             {advancedOpen ? "▾ Advanced" : "▸ Advanced"}
           </button>
         </div>
