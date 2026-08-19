@@ -11,7 +11,7 @@ Prospector is a React SPA (Create React App) deployed on Render, built as a sale
 | `/ship [msg]` | `npm run build` → `git add -A` → commit → `git push origin main` |
 | `/deadcode ComponentName` | Scan component for dead code, list candidates, remove on approval |
 | `/audit` | Security/quality audit |
-| `/spec` | Generate an implementation spec |
+| `/spec` | Implements a spec file |
 | `/split` | Split a large component into smaller ones |
 | `/panel` | Scaffold a new intel panel |
 | `/wire` | Wire up a new API route end-to-end |
