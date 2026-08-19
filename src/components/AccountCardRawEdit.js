@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { mono } from '../constants/colors';
 import { T } from '../constants/tokens';
 import { RELATIONSHIP_TYPES } from './accountCard/business/BusinessStateControls';
+import { upsertAccountBusinessDetails } from '../utils/db';
 
 // account-taxonomy-gaps-fix-v1 Stage 1 - relationshipType included here for
 // consistency/visibility with every other field, but it's a real accounts
@@ -77,7 +78,18 @@ export default function AccountCardRawEdit({ acc, onUpdate, onDelete, onRelation
     setField(field, dedupeLines(draft[field]));
   };
 
-  const save = () => {
+  // assay-citation-leak-and-raw-edit-dual-write-v1 Fix 2 - bm/pf edits here
+  // used to only reach the legacy acc.bm/acc.pf fields via onUpdate(patch)
+  // (the generic merge every other field already uses). The card's own
+  // IntelligenceSummary display prefers businessDetail.business_model/
+  // fit_rationale over those legacy fields, so a manual correction here was
+  // invisible on the card even though it correctly reached generation
+  // (which reads acc.bm/acc.pf directly). Reuses the same real dual-write
+  // function AccountsPage.js's reassay already calls
+  // (upsertAccountBusinessDetails) - confirmed live against a real row that
+  // its partial-payload upsert only touches the columns actually passed
+  // (score/tier/fit_signals survive untouched), not a full-row replace.
+  const save = async () => {
     const patch = {};
     EDITABLE_FIELDS.forEach(f => {
       const v = draft[f];
@@ -102,6 +114,16 @@ export default function AccountCardRawEdit({ acc, onUpdate, onDelete, onRelation
     }
     setParseError("");
     onUpdate(patch);
+    const bmChanged = (patch.bm || '') !== (acc.bm || '');
+    const pfChanged = (patch.pf || '') !== (acc.pf || '');
+    if (bmChanged || pfChanged) {
+      const { error } = await upsertAccountBusinessDetails(acc.id, {
+        business_model: patch.bm || null, fit_rationale: patch.pf || null,
+      });
+      // Legacy fields already saved via onUpdate above regardless - this is
+      // a best-effort sync of the display-preferred copy, not blocking.
+      if (error) { setParseError(`Saved, but the card's own display may still show the old value: ${error}`); return; }
+    }
     setOpen(false);
   };
 
