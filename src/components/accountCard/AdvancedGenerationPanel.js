@@ -42,20 +42,28 @@ export default function AdvancedGenerationPanel({
             <p style={offText}>Project: auto-detected — none found for this account</p>
           )}
         </div>
-        {projectsWithLists.length > 1 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
-            <span style={{ ...mono, fontSize: 9, color: CARD.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Override</span>
-            {projectsWithLists.map(p => (
-              <button key={p.id} onClick={() => onSelectProject(p.id === selectedProjectId ? null : p.id)}
-                style={{ ...mono, fontSize: 11, padding: '5px 8px', textAlign: 'left', borderRadius: RADIUS.sm, cursor: 'pointer',
-                  background: p.id === selectedProjectId ? `${ROLE.projectAccent}18` : 'transparent',
-                  border: `1px solid ${p.id === selectedProjectId ? ROLE.projectAccent : CARD.border}`,
-                  color: p.id === selectedProjectId ? ROLE.projectAccent : CARD.textSecondary }}>
-                {p.name}
-              </button>
-            ))}
-          </div>
-        )}
+        {/* generation-modal-project-picker-and-advanced-visibility-v1 - was
+            gated behind projectsWithLists.length > 1, so any business with
+            0 or 1 real projects never saw a selector at all (confirmed live
+            on Bilt Rewards). Real, always-on dropdown now - works with
+            zero projects (shows disabled with an explanatory label), one,
+            or many, not just toggling between 2+ auto-detected candidates. */}
+        <div style={{ marginTop: 8 }}>
+          <span style={{ ...mono, fontSize: 9, color: CARD.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 4 }}>
+            {projectsWithLists.length ? 'Select or override' : 'No projects with a linked list on this business yet'}
+          </span>
+          <select
+            value={selectedProjectId || ''}
+            onChange={e => onSelectProject(e.target.value || null)}
+            disabled={!projectsWithLists.length}
+            style={{ ...mono, fontSize: 11, padding: '6px 8px', width: '100%', boxSizing: 'border-box',
+              background: CARD.surface, border: `1px solid ${ROLE.projectAccent}44`, borderRadius: RADIUS.sm,
+              color: projectsWithLists.length ? CARD.textPrimary : CARD.textSubtle,
+              outline: 'none', cursor: projectsWithLists.length ? 'pointer' : 'default' }}>
+            <option value="">— none —</option>
+            {projectsWithLists.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
       </Section>
 
       {/* ── ACCOUNT INTEL — read-only, real content ── */}
