@@ -15,9 +15,13 @@ const FIELD_LABELS = [
 const MAX_EXAMPLES = 20;
 
 // addendum point 3 - cheap, explainable normalize-and-exact-match, not a
-// fuzzy-matching library. Catches true duplicates and near-identical
-// reposts (whitespace/casing differences) without new dependencies.
-const normalizeForDedup = s => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+// fuzzy-matching library. Catches true duplicates, whitespace/casing
+// reposts, and the most common real "near-exact variant" - the same
+// templated message re-sent to a different recipient with only the
+// greeting name changed (live-verified against a real segmented paste:
+// "Hi Sarah," / "Hi Marcus," followed by identical bodies) - by dropping
+// the leading greeting line before comparing.
+const normalizeForDedup = s => (s || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/^(hi|hey|hello)\s+[a-z][\w'-]*,?\s*/i, '');
 
 const sectionLabel = { ...mono, fontSize:12, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 };
 const inp = { fontSize:12, padding:"7px 10px", background:C.bg, border:`1.5px solid ${C.brdM}`, borderRadius:6, color:C.txt, outline:"none", width:"100%", boxSizing:"border-box", resize:"vertical", ...mono };
