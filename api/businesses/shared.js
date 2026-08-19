@@ -19,7 +19,7 @@ export function getSupabase() {
 // that, it's allowed more headroom than Assay's quicker per-account check.
 const SITE_TEXT_TRUNCATE_CHARS = 12000;
 
-async function callAnthropic({ system, messages, tools, max_tokens, supabase, businessId, callType, model = MODELS.STANDARD, timeoutMs = 90000 }) {
+async function callAnthropic({ system, messages, tools, max_tokens, supabase, businessId, callType, model = MODELS.STANDARD, timeoutMs = 90000, thinking = true }) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('ANTHROPIC_API_KEY not configured');
 
@@ -37,8 +37,11 @@ async function callAnthropic({ system, messages, tools, max_tokens, supabase, bu
       // adaptive thinking isn't supported on the fast tier (confirmed live -
       // classifyIntake's MODELS.FAST call 500'd in production with "adaptive
       // thinking is not supported on this model"). It stays on for
-      // STANDARD/REASONING synthesis calls, which is what it was added for.
-      ...(model !== MODELS.FAST ? { thinking: { type: 'adaptive' } } : {}),
+      // STANDARD/REASONING synthesis calls, which is what it was added for -
+      // except where a caller explicitly opts out (thinking: false) because
+      // reasoning tokens would eat into a max_tokens budget that's meant
+      // entirely for compact output (intel-generation-light-depth-truncation-fix-v1).
+      ...(model !== MODELS.FAST && thinking ? { thinking: { type: 'adaptive' } } : {}),
       system,
       messages,
       ...(tools ? { tools } : {}),
@@ -356,10 +359,27 @@ export async function generateProfile(supabase, businessId) {
   // meant to actually fix - a dynamic formula here would mostly become
   // dead code once that ships. 20000 gives >2x headroom over the largest
   // real output seen, comfortably inside Sonnet's real output ceiling.
+  // intel-generation-light-depth-truncation-fix-v1 - light's 2048 cap was
+  // hit exactly (truncated, "No JSON in profile generation response") by
+  // real production calls on both HomeLover and HumanKind as their intel
+  // logs grew (business_anthropic_usage: real successful outputs already
+  // sitting at 1786-2043, three real calls capped/failed at exactly 2048).
+  // Two fixes together: adaptive thinking was silently sharing this budget
+  // with the actual JSON output (light doesn't need reasoning tokens for a
+  // compact fixed-shape summary), and the cap itself hadn't been revisited
+  // since 1024->2048 while full-depth's has been raised three times for the
+  // same underlying reason. 8192 matches full-depth's own first-stage cap
+  // for a comparably-structured JSON synthesis call - real >4x headroom
+  // over every real light-depth output seen to date. Fixed, not dynamic,
+  // for the same reason full-depth's 20000 stayed fixed (see comment above
+  // FULL_SYSTEM_PROMPT's callAnthropic call): a growth-scaled formula here
+  // would mostly become dead code once delta-synthesis (business-intel-
+  // smart-upload-v1 Step 3) ships and stops resending the full log.
   const socialContext = formatSocialLinksContext(business.social_links);
   const data = await callAnthropic({
-    max_tokens: isLight ? 2048 : 20000,
+    max_tokens: isLight ? 8192 : 20000,
     timeoutMs: isLight ? 90000 : 180000,
+    thinking: !isLight,
     system: isLight ? LIGHT_SYSTEM_PROMPT : FULL_SYSTEM_PROMPT,
     messages: [{ role: 'user', content: `INTEL LOG for ${business.name}, oldest to newest:\n\n${intelLog}${socialContext ? `\n\nKnown social profiles (context/reference only, not fetched - factor into vision/positioning/etc where relevant): ${socialContext}` : ''}` }],
     supabase,
