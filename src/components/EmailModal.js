@@ -3,7 +3,7 @@ import { C, mono } from '../constants/colors';
 import { getActiveIntel } from '../utils/assay';
 import { getActiveVoice, getVoiceProfile, voiceProfileKey } from '../constants/voice';
 import { UCS_DATA } from '../constants/products';
-import { getListsForBusiness, linkAccountToLists, saveVoiceProfile, getListIdsForAccount, getBusinessProfileSummary } from '../utils/db';
+import { getListsForBusiness, linkAccountToLists, saveVoiceProfile, getListIdsForAccount, getBusinessProfileSummary, createList, setProjectListId } from '../utils/db';
 import { buildAccountIntel } from '../utils/accountIntel';
 import { ROLE, RADIUS } from './accountCard/tokens';
 import AdvancedGenerationPanel from './accountCard/AdvancedGenerationPanel';
@@ -91,6 +91,50 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
   const [projectResolutionDone, setProjectResolutionDone] = useState(false);
   const projectsWithLists = projects.filter(p => p.list_id);
 
+  // generation-modal-project-promotion-and-visual-pass-v1 Bug 1/2 - real
+  // one-off account-to-project assignment, promoted out of Advanced into
+  // the default view. projectListOverrides tracks any project this
+  // component itself just backfilled a list for, merged into the picker's
+  // options so the UI reflects it immediately without needing the projects
+  // prop to refresh from its App.js-level source.
+  const [projectListOverrides, setProjectListOverrides] = useState({});
+  const [assigningProject, setAssigningProject] = useState(false);
+  const [projectAssignError, setProjectAssignError] = useState('');
+  const allProjectsMerged = projects.map(p => projectListOverrides[p.id] ? { ...p, list_id: projectListOverrides[p.id] } : p);
+
+  // Bug 1: shows ALL real projects, not just list-having ones (the bug -
+  // LinkedProjects.js-style filtering excluded any project that predates
+  // project-list-linking-v1 and was never backfilled). Selecting a
+  // list-less project silently backfills one first, reusing
+  // BusinessDetailPage.js's real BackfillProjectList logic
+  // (createList -> setProjectListId) rather than a new mechanism - the
+  // person never sees "list" language, it just works.
+  // Bug 2: actually assigns the account (linkAccountToLists), the same
+  // real write LinkedProjects.js uses - not just steering this one
+  // generation. Confirmed via the flow audit this was the only real
+  // account<->project write path in the app; reusing it here means this
+  // modal's assignment shows up everywhere LinkedProjects.js's does too.
+  const selectProject = async (projectId) => {
+    if (!projectId) { setSelectedProjectId(null); setProjectAssignError(''); return; }
+    const project = allProjectsMerged.find(p => p.id === projectId);
+    if (!project || !business?.id) return;
+    setProjectAssignError('');
+    setAssigningProject(true);
+    let listId = project.list_id;
+    if (!listId) {
+      const { list, error: listErr } = await createList(business.id, project.name);
+      if (listErr) { setAssigningProject(false); setProjectAssignError("Couldn't assign this project — try again."); console.error('[EmailModal] project backfill (createList) failed:', listErr); return; }
+      const { error: spErr } = await setProjectListId(project.id, list.id);
+      if (spErr) { setAssigningProject(false); setProjectAssignError("Couldn't assign this project — try again."); console.error('[EmailModal] project backfill (setProjectListId) failed:', spErr); return; }
+      listId = list.id;
+      setProjectListOverrides(o => ({ ...o, [project.id]: listId }));
+    }
+    const { error: linkErr } = await linkAccountToLists(account.id, [listId]);
+    setAssigningProject(false);
+    if (linkErr) { setProjectAssignError("Couldn't assign this project — try again."); console.error('[EmailModal] linkAccountToLists failed:', linkErr); return; }
+    setSelectedProjectId(projectId);
+  };
+
   useEffect(() => {
     if (!business?.id || !projectsWithLists.length) { setProjectResolutionDone(true); return; }
     getListIdsForAccount(account.id).then(accountListIds => {
@@ -108,7 +152,7 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
   }, [autoStart, business?.id]);
 
   const projectAmbiguous = matchedProjects.length > 1 && !selectedProjectId;
-  const activeProject = projects.find(p => p.id === selectedProjectId) || null;
+  const activeProject = allProjectsMerged.find(p => p.id === selectedProjectId) || null;
 
   // autoStart callers fire automatically once resolution clears and there's
   // no ambiguity to block on - same "instant" behavior as before for the
@@ -180,29 +224,57 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
     setStarted(true);
   };
 
+  // generation-modal-project-promotion-and-visual-pass-v1 Change 2 - shared
+  // warm label style, extending orange as the modal's ambient identity
+  // (frame + section labels + the active Message Type state) rather than
+  // leaving it living only on the Generate button. Real inputs (Directive,
+  // Assign to List) stay neutral-bordered on purpose - this is about the
+  // base identity/chrome, not painting every element orange, which would
+  // read as harsh rather than "creamsicle."
+  const sectionLabel = { ...mono, margin:"0 0 8px", fontSize:11, fontWeight:600, color:`${ROLE.generateAccent}cc`, textTransform:"uppercase", letterSpacing:"0.06em" };
+
   const guidedPanel = !started && (
     <div>
-      <p style={{ ...mono, margin:"0 0 8px", fontSize:11, fontWeight:600, color:C.mut, textTransform:"uppercase", letterSpacing:"0.06em" }}>Message type</p>
+      <p style={sectionLabel}>Message type</p>
       <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:16 }}>
         {MESSAGE_TYPES.map(t => (
           <button key={t.id} onClick={()=>{ setMessageType(t.id); if (t.id === 'custom' || t.id === 'reply') contextRef.current?.focus(); }}
             style={{ ...mono, fontSize:12, padding:"7px 14px", borderRadius:6, cursor:"pointer",
-              background: messageType===t.id ? `${C.gold}18` : "transparent",
-              border: `1px solid ${messageType===t.id ? C.gold : C.brd}`,
-              color: messageType===t.id ? C.gold : C.mut, fontWeight: messageType===t.id?600:400 }}>
+              background: messageType===t.id ? `${ROLE.generateAccent}18` : "transparent",
+              border: `1px solid ${messageType===t.id ? ROLE.generateAccent : C.brd}`,
+              color: messageType===t.id ? ROLE.generateAccent : C.mut, fontWeight: messageType===t.id?600:400,
+              textShadow: messageType===t.id ? `0 0 6px ${ROLE.generateAccent}55` : "none" }}>
             {t.label}
           </button>
         ))}
       </div>
 
-      <p style={{ ...mono, margin:"0 0 8px", fontSize:11, fontWeight:600, color:C.mut, textTransform:"uppercase", letterSpacing:"0.06em" }}>Directive <span style={{ fontWeight:400, textTransform:"none", letterSpacing:0, color:C.dim }}>(optional)</span></p>
+      <p style={sectionLabel}>Directive <span style={{ fontWeight:400, textTransform:"none", letterSpacing:0, color:C.dim }}>(optional)</span></p>
       <textarea ref={contextRef} value={context} onChange={e=>setContext(e.target.value)} rows={3}
         placeholder={messageType === 'reply' ? "Paste the message you're replying to" : "e.g. mention their recent funding round, keep this one under 80 words"}
         style={{ width:"100%", fontSize:13, lineHeight:1.6, padding:"10px 12px", background:C.bg, border:`1px solid ${C.brd}`, borderRadius:6, color:C.txt, outline:"none", resize:"vertical", fontFamily:"inherit", boxSizing:"border-box", marginBottom:16 }}/>
 
+      {/* Change 1 - promoted out of Advanced, core interaction not optional
+          complexity. Kept in Project's own established red identity
+          (ROLE.projectAccent), not orange - it's its own category, per
+          Change 2's explicit "don't dilute the other two accents." */}
+      {business?.id && (
+        <div style={{ marginBottom:16 }}>
+          <p style={{ ...mono, margin:"0 0 8px", fontSize:11, fontWeight:600, color:ROLE.projectAccent, textTransform:"uppercase", letterSpacing:"0.06em" }}>Project <span style={{ fontWeight:400, textTransform:"none", letterSpacing:0, color:C.dim }}>(optional)</span></p>
+          <select value={selectedProjectId || ''} onChange={e=>selectProject(e.target.value || null)} disabled={assigningProject}
+            style={{ ...mono, fontSize:13, padding:"7px 10px", background:C.bg, border:`1px solid ${ROLE.projectAccent}55`, borderRadius:6, color:C.txt, outline:"none", width:"100%", cursor:assigningProject?"default":"pointer" }}>
+            <option value="">— none —</option>
+            {allProjectsMerged.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+          {assigningProject && <p style={{ ...mono, fontSize:10, color:ROLE.projectAccent, margin:"6px 0 0" }}>Assigning…</p>}
+          {!assigningProject && projectAssignError && <p style={{ ...mono, fontSize:10, color:C.red, margin:"6px 0 0" }}>⚠ {projectAssignError}</p>}
+          {!assigningProject && !projectAssignError && activeProject?.objective && <p style={{ ...mono, fontSize:10, color:C.dim, margin:"6px 0 0", fontStyle:"italic" }}>{activeProject.objective}</p>}
+        </div>
+      )}
+
       {business?.id && (
         <>
-          <p style={{ ...mono, margin:"0 0 8px", fontSize:11, fontWeight:600, color:C.mut, textTransform:"uppercase", letterSpacing:"0.06em" }}>Assign to list <span style={{ fontWeight:400, textTransform:"none", letterSpacing:0, color:C.dim }}>(optional)</span></p>
+          <p style={sectionLabel}>Assign to list <span style={{ fontWeight:400, textTransform:"none", letterSpacing:0, color:C.dim }}>(optional)</span></p>
           <select value={selectedListId} onChange={e=>setSelectedListId(e.target.value)}
             style={{ ...mono, fontSize:13, padding:"7px 10px", background:C.bg, border:`1px solid ${C.brd}`, borderRadius:6, color:C.txt, outline:"none", width:"100%", marginBottom:16, cursor:"pointer" }}>
             <option value="">— no change —</option>
@@ -214,13 +286,14 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
       {projectAmbiguous && <ProjectAmbiguityPicker matchedProjects={matchedProjects} onPick={setSelectedProjectId} />}
 
       {/* generation-modal-advanced-inputs-v1 - "off" now reads as genuinely
-          off (explicit "none selected" / "off") instead of just omitting a
-          clause, so it's clear at a glance nothing extra is layered in
-          unless Advanced is opened and something's actually changed there. */}
+          off (explicit "off") instead of just omitting a clause. Project
+          dropped from this line (generation-modal-project-promotion-and-
+          visual-pass-v1 Change 1) - it has its own real section above now,
+          repeating it here would just be redundant. */}
       {!projectAmbiguous && (
         <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8, marginBottom:12 }}>
           <p style={{ ...mono, fontSize:10, color:C.dim, margin:0 }}>
-            Project: {activeProject ? activeProject.name : 'none selected'} · Voice: {voiceEnabled ? (voiceUserName || 'default') : 'off'}
+            Voice: {voiceEnabled ? (voiceUserName || 'default') : 'off'}
           </p>
           {/* generation-modal-project-picker-and-advanced-visibility-v1 -
               was plain C.dim/C.txt text, no border, no glow - invisible at
@@ -272,8 +345,12 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
 
   return(
     <div onClick={onClose} style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000 }}>
-      <div onClick={e=>e.stopPropagation()} style={{ width:showAdvancedPanel?920:580,maxWidth:"95vw",maxHeight:"85vh",background:C.sur,border:`1px solid ${C.brd}`,borderRadius:12,display:"flex",flexDirection:"column",overflow:"hidden",transition:"width 0.15s" }}>
-        <div style={{ padding:"16px 20px",borderBottom:`1px solid ${C.brd}`,display:"flex",alignItems:"flex-start",justifyContent:"space-between" }}>
+      {/* Change 2 - orange as the modal's ambient/base identity: a warm
+          outer border + soft ambient glow (not harsh/neon - creamsicle,
+          matching the tone already established on the Generate button
+          itself) instead of the prior plain neutral-gray frame. */}
+      <div onClick={e=>e.stopPropagation()} style={{ width:showAdvancedPanel?920:580,maxWidth:"95vw",maxHeight:"85vh",background:C.sur,border:`1px solid ${ROLE.generateAccent}40`,borderRadius:12,display:"flex",flexDirection:"column",overflow:"hidden",transition:"width 0.15s",boxShadow:`0 0 60px -20px ${ROLE.generateAccent}33` }}>
+        <div style={{ padding:"16px 20px",borderBottom:`1px solid ${ROLE.generateAccent}30`,display:"flex",alignItems:"flex-start",justifyContent:"space-between" }}>
           <div>
             <p style={{ margin:"0 0 4px",fontSize:15,fontWeight:500,color:C.txt }}>{account.name}</p>
             <div style={{ display:"flex",gap:8,flexWrap:"wrap",alignItems:"center" }}>
@@ -296,9 +373,6 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
                     {showAdvancedPanel && (
                       <div style={{ borderLeft:`1px solid ${C.brd}`, paddingLeft:20 }}>
                         <AdvancedGenerationPanel
-                          projectsWithLists={projectsWithLists}
-                          selectedProjectId={selectedProjectId}
-                          onSelectProject={setSelectedProjectId}
                           accountIntelText={buildAccountIntel(account)}
                           voiceProfile={getVoiceProfile(voiceUserName)}
                           voiceEnabled={voiceEnabled}

@@ -1,13 +1,19 @@
 import { mono } from '../../constants/colors';
-import { CARD, ROLE, RADIUS } from './tokens';
+import { CARD, RADIUS } from './tokens';
 
-// generation-modal-advanced-inputs-v1 — the four inputs the engine already
+// generation-modal-advanced-inputs-v1 — the inputs the engine already
 // composes with (CONTEXT_PROVIDERS, generation-engine-consolidation-v1),
-// made visible/reviewable/overridable instead of resolving silently.
-// Read-only for Account Intel and Company Intel (editing those belongs on
-// the account card / Business Intel & Strategy page, not here) - Project
-// and Voice are real, functional overrides that change what
-// EmailModal.js actually sends to /api/email.
+// made visible/reviewable instead of resolving silently. Read-only for
+// Account Intel and Company Intel (editing those belongs on the account
+// card / Business Intel & Strategy page, not here) - Voice is a real
+// functional override.
+//
+// generation-modal-project-promotion-and-visual-pass-v1 Change 1 - Project
+// moved out of here into EmailModal.js's default (non-Advanced) view. It
+// was core interaction (a real one-off assignment with real side effects,
+// per Bug 1/2 of that spec), not optional/secondary complexity - this
+// panel is genuinely reference/secondary material now: Account Intel,
+// Voice, Company Intel.
 
 const secLbl = (color) => ({ ...mono, fontSize: 10, fontWeight: 700, color, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8, display: 'block' });
 const offText = { ...mono, fontSize: 11, color: CARD.textSubtle, fontStyle: 'italic', margin: 0 };
@@ -18,53 +24,12 @@ function Section({ children }) {
 }
 
 export default function AdvancedGenerationPanel({
-  projectsWithLists, selectedProjectId, onSelectProject,
   accountIntelText,
   voiceProfile, voiceEnabled, onToggleVoice,
   businessProfileSummary, loadingBusinessProfile, businessName,
 }) {
-  const activeProject = projectsWithLists.find(p => p.id === selectedProjectId) || null;
-
   return (
     <div style={{ width: 320, flexShrink: 0 }}>
-
-      {/* ── PROJECT — red accent family, its own visual category ── */}
-      <Section>
-        <span style={secLbl(ROLE.projectAccent)}>▣ Project</span>
-        <div style={{ background: `${ROLE.projectAccent}0c`, border: `1px solid ${ROLE.projectAccent}44`, borderRadius: RADIUS.md, padding: '10px 12px' }}>
-          {activeProject ? (
-            <>
-              <p style={{ ...mono, fontSize: 12, fontWeight: 600, color: ROLE.projectAccent, margin: '0 0 6px' }}>{activeProject.name}</p>
-              {activeProject.objective && <p style={{ ...body, marginBottom: 4 }}>{activeProject.objective}</p>}
-              {activeProject.project_hook && <p style={{ ...mono, fontSize: 10, color: CARD.textMuted, margin: 0, fontStyle: 'italic' }}>Hook: {activeProject.project_hook}</p>}
-            </>
-          ) : (
-            <p style={offText}>Project: auto-detected — none found for this account</p>
-          )}
-        </div>
-        {/* generation-modal-project-picker-and-advanced-visibility-v1 - was
-            gated behind projectsWithLists.length > 1, so any business with
-            0 or 1 real projects never saw a selector at all (confirmed live
-            on Bilt Rewards). Real, always-on dropdown now - works with
-            zero projects (shows disabled with an explanatory label), one,
-            or many, not just toggling between 2+ auto-detected candidates. */}
-        <div style={{ marginTop: 8 }}>
-          <span style={{ ...mono, fontSize: 9, color: CARD.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em', display: 'block', marginBottom: 4 }}>
-            {projectsWithLists.length ? 'Select or override' : 'No projects with a linked list on this business yet'}
-          </span>
-          <select
-            value={selectedProjectId || ''}
-            onChange={e => onSelectProject(e.target.value || null)}
-            disabled={!projectsWithLists.length}
-            style={{ ...mono, fontSize: 11, padding: '6px 8px', width: '100%', boxSizing: 'border-box',
-              background: CARD.surface, border: `1px solid ${ROLE.projectAccent}44`, borderRadius: RADIUS.sm,
-              color: projectsWithLists.length ? CARD.textPrimary : CARD.textSubtle,
-              outline: 'none', cursor: projectsWithLists.length ? 'pointer' : 'default' }}>
-            <option value="">— none —</option>
-            {projectsWithLists.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
-        </div>
-      </Section>
 
       {/* ── ACCOUNT INTEL — read-only, real content ── */}
       <Section>
