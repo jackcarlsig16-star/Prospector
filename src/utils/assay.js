@@ -234,8 +234,15 @@ ${GROUNDING_DISCIPLINE}
 USE CASES: return 1-4 short free-text tags describing how this account could fit this business, grounded in FIT SIGNALS above — not a fixed enum, whatever's actually relevant here.
 PRODUCTS: this business may not have a fixed product catalog — if FIT SIGNALS references specific offerings, use those exact names; otherwise return an empty array rather than inventing product names.
 
+SIGNAL BREAKDOWN — fill signalBreakdown's arrays with short evidence strings pulled from the site content/search results above (not the FIT CRITERIA text itself, which is business-level context, not per-account evidence):
+scaleSignals: company size, customer base, or market reach evidence (e.g. "40+ named customers", "multi-state operations").
+fitSignals: technical, operational, or structural characteristics indicating whether this business's product would actually fit THIS prospect, grounded in the FIT CRITERIA above — generic to whatever this business sells, not payment/platform-specific.
+adoptionSignals: evidence of buying readiness, onboarding complexity/timing, or general purchase-intent signals — not narrowly identity-verification/KYC-specific.
+slagSignals: signs the company is inactive, defunct, or a clear non-fit (parked domain, shutdown/acquisition language, template placeholder site, etc).
+signalScore: 0-100 rough confidence-in-fit score derived from the above. topSignal: the single strongest piece of evidence found, or "" if none.
+
 Return ONLY this JSON:
-{"score":1,"tier":"Gold","businessModel":"2 sentences","productFit":"2 sentences — fit rationale against this business's criteria","useCases":["tag1"],"products":[],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"bankConnectSignal":false,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"ungroundedClaims":[],"signalBreakdown":{"paymentSignals":[],"onboardingSignals":[],"scaleSignals":[],"platformSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
+{"score":1,"tier":"Gold","businessModel":"2 sentences","productFit":"2 sentences — fit rationale against this business's criteria","useCases":["tag1"],"products":[],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"bankConnectSignal":false,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"ungroundedClaims":[],"signalBreakdown":{"fitSignals":[],"adoptionSignals":[],"scaleSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
 }
 
 // businessId is optional (Claim Jumper's not-yet-assigned pool scoring has

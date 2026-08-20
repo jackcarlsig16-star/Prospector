@@ -102,10 +102,12 @@ export function IntelligenceSummary({ acc }) {
               {breakdown.signalScore != null ? `Score: ${breakdown.signalScore}` : ""}
             </p>
           )}
-          <SignalSubGroup label="Payment Signals" items={breakdown.paymentSignals} />
-          <SignalSubGroup label="Onboarding Signals" items={breakdown.onboardingSignals} />
           <SignalSubGroup label="Scale Signals" items={breakdown.scaleSignals} />
-          <SignalSubGroup label="Platform Signals" items={breakdown.platformSignals} />
+          {/* assay-standard-signal-categories-v1 — old rows carry paymentSignals/
+              platformSignals/onboardingSignals instead of fitSignals/adoptionSignals;
+              display-only fallback, no data migration. */}
+          <SignalSubGroup label="Fit Signals" items={breakdown.fitSignals?.length ? breakdown.fitSignals : [...(breakdown.paymentSignals || []), ...(breakdown.platformSignals || [])]} />
+          <SignalSubGroup label="Adoption Signals" items={breakdown.adoptionSignals?.length ? breakdown.adoptionSignals : breakdown.onboardingSignals} />
         </div>
       )}
     </div>
