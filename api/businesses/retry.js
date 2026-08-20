@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   // Flip status synchronously before responding, not inside runResearch()'s
   // first async step - closes the window where a fast double-click could fire
   // two concurrent research runs before the client's next poll sees the change.
-  const { error: statusError } = await supabase.from('businesses').update({ research_status: 'researching' }).eq('id', id);
+  const { error: statusError } = await supabase.from('businesses').update({ research_status: 'researching', research_started_at: new Date().toISOString() }).eq('id', id);
   if (statusError) return res.status(500).json({ error: statusError.message });
 
   res.status(200).json({ ok: true });

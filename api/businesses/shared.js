@@ -1151,7 +1151,11 @@ export async function classifyImportDirective(supabase, businessId, directive) {
 // not serverless, so background work here reliably completes).
 export async function runResearch(supabase, business) {
   try {
-    await supabase.from('businesses').update({ research_status: 'researching' }).eq('id', business.id);
+    // research-poll-egress-fix-v1 Stage 2 - research_started_at is what lets
+    // the read side reconcile a row this function can never fix itself: the
+    // terminal writes below both live inside try/catch, so a process death
+    // (OOM kill) leaves research_status stuck at 'researching' forever.
+    await supabase.from('businesses').update({ research_status: 'researching', research_started_at: new Date().toISOString() }).eq('id', business.id);
 
     const { content: siteText } = await fetchSiteContent(business.website_url);
     const truncated = (siteText || 'Site unreachable after multiple fetch attempts').slice(0, SITE_TEXT_TRUNCATE_CHARS);

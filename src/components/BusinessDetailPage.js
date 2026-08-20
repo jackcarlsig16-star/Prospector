@@ -548,6 +548,15 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   // stuck/hung server-side run can't leave the tab polling forever.
   const MAX_POLL_ATTEMPTS = 70; // 70 * 3s = 210s
 
+  // research-poll-egress-fix-v1 Stage 2 - a run whose process died never
+  // writes a terminal status, so treat one that started too long ago as
+  // failed rather than trusting the row. PROPOSED VALUE, pending Jack's
+  // call: real observed run was 58s (web_search -> profile_full, Kopi Kita,
+  // business_anthropic_usage); server-side worst case is ~190s per the
+  // MAX_POLL_ATTEMPTS note above. 15min is ~4.7x that worst case - far
+  // enough clear that a slow-but-live run is never misread as dead.
+  const RESEARCH_STALE_MS = 15 * 60 * 1000;
+
   // Guards against a stale fetch from a previously-viewed business landing
   // after switching away (App.js keys this component by business.id, so a
   // switch unmounts this instance - without this guard, a slow in-flight
@@ -571,8 +580,25 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
 
   useEffect(() => { load(); }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // research-poll-egress-fix-v1 Stage 1 - the poll's own fetch. load() pulls
+  // the full page payload (business + profile + every business_intel_entries
+  // row, scraped page content included: 157.5 KB measured on HumanKind); the
+  // poll only needs research_status. This costs a few hundred bytes instead.
+  const loadStatus = useCallback(async () => {
+    const res = await fetch(`/api/businesses/${business.id}/status`);
+    if (!mountedRef.current || !res.ok) return null;
+    return res.json();
+  }, [business.id]);
+
+  // Applied on read so a stuck row resolves itself without the dead process
+  // coming back. A null research_started_at (row predating the migration)
+  // reads as not-stale, so behaviour is unchanged for those.
+  const researchStale = business.research_status === 'researching'
+    && !!business.research_started_at
+    && (Date.now() - new Date(business.research_started_at).getTime()) > RESEARCH_STALE_MS;
+
   useEffect(() => {
-    if (business.research_status !== 'researching') {
+    if (business.research_status !== 'researching' || researchStale) {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
       pollAttemptsRef.current = 0;
       return;
@@ -587,14 +613,16 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
         setPollTimedOut(true);
         return;
       }
-      const updated = await load();
-      if (updated && updated.research_status !== 'researching') {
+      const status = await loadStatus();
+      if (status && status.research_status !== 'researching') {
         clearInterval(pollRef.current);
         pollRef.current = null;
+        // Status flipped - now (and only now) pull the full payload once.
+        load();
       }
     }, 3000);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
-  }, [business.research_status, load]);
+  }, [business.research_status, researchStale, loadStatus, load]);
 
   const handleRetry = async () => {
     setRetrying(true);
@@ -790,18 +818,37 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
           {copyContextFlash && <span style={{ ...mono, fontSize:11, color:copyContextFlash.startsWith('⚠') ? C.red : C.green }}>{copyContextFlash}</span>}
         </div>
 
-        {business.research_status === 'researching' && !pollTimedOut && (
+        {business.research_status === 'researching' && !pollTimedOut && !researchStale && (
           <div style={{ padding:"16px 18px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, marginBottom:32 }}>
             <p style={{ ...mono, fontSize:13, color:C.txt, margin:0 }}>Researching {business.name}…</p>
           </div>
         )}
 
-        {business.research_status === 'researching' && pollTimedOut && (
+        {/* research-poll-egress-fix-v1 Stage 2 - a run that started long ago and
+            never reached a terminal status did not survive; say so plainly and
+            offer the retry, rather than polling a row nothing will ever update. */}
+        {researchStale && (
+          <div style={{ padding:"16px 18px", background:`${C.red}10`, border:`1px solid ${C.red}44`, borderRadius:8, marginBottom:32 }}>
+            <p style={{ ...mono, fontSize:12, color:C.red, margin:"0 0 10px" }}>
+              Research did not complete — the run started {new Date(business.research_started_at).toLocaleString()} and never finished, so the server process most likely died mid-run. Nothing is running now.
+            </p>
+            <button onClick={handleRetry} disabled={retrying} style={btn}>{retrying ? "Retrying…" : "Retry Research"}</button>
+          </div>
+        )}
+
+        {/* research-poll-egress-fix-v1 Stage 3 - was "taking longer than
+            expected", which reads as still-working. After 210s with no
+            terminal status the run is not slow, it has failed to report -
+            say that, or nobody looks for eight days. */}
+        {business.research_status === 'researching' && pollTimedOut && !researchStale && (
           <div style={{ padding:"16px 18px", background:`${C.orange}10`, border:`1px solid ${C.orange}44`, borderRadius:8, marginBottom:32 }}>
             <p style={{ ...mono, fontSize:12, color:C.orange, margin:"0 0 10px" }}>
-              This is taking longer than expected (over 3 minutes) — the automatic check-in has stopped so this tab doesn't poll forever.
+              Research did not complete within 3.5 minutes and stopped reporting. It may have failed server-side. Checking again is safe; if it stays like this, retry the research.
             </p>
-            <button onClick={load} style={btn}>Check again</button>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={load} style={btn}>Check again</button>
+              <button onClick={handleRetry} disabled={retrying} style={{ ...btn, background:"transparent", border:`1px solid ${C.orange}66`, color:C.orange }}>{retrying ? "Retrying…" : "Retry Research"}</button>
+            </div>
           </div>
         )}
 
