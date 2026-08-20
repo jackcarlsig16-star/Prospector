@@ -12,6 +12,7 @@ import ProfileFieldBlock from './ProfileFieldBlock';
 import BusinessIntelKpiStrip from './BusinessIntelKpiStrip';
 import BusinessSocialLinksPopover from './BusinessSocialLinksPopover';
 import BusinessWebsiteUrlPopover from './BusinessWebsiteUrlPopover';
+import { buildBusinessContextMarkdown } from '../utils/businessContextExport';
 
 // emoji-picker-react is ~75kB gzipped - lazy so it only loads when the
 // picker is actually opened, not on every page's initial bundle.
@@ -509,6 +510,8 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   const [socialPopoverOpen, setSocialPopoverOpen] = useState(false);
   const [emojiPopoverOpen, setEmojiPopoverOpen] = useState(false);
   const [websiteUrlPopoverOpen, setWebsiteUrlPopoverOpen] = useState(false);
+  const [copyingContext, setCopyingContext] = useState(false);
+  const [copyContextFlash, setCopyContextFlash] = useState(null);
 
   // business-profile-refresh-v1 - "just resynthesize from what we already
   // have," no new entry, no site fetch, no runResearch(). Same
@@ -599,6 +602,26 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
     await fetch(`/api/businesses/${business.id}/retry-research`, { method: 'POST' });
     setRetrying(false);
     load();
+  };
+
+  // company-intel-extraction-v1 — standard clipboard API directly, matching
+  // AccountCardExtract.js's copy()/EmailModal.js's copy() pattern; that
+  // helper is local to its own component, not a shared util, so this
+  // doesn't import across a component boundary for it.
+  const handleCopyContext = async () => {
+    setCopyingContext(true); setCopyContextFlash(null);
+    try {
+      const markdown = await buildBusinessContextMarkdown(business.id);
+      if (!markdown) throw new Error('Nothing to copy yet.');
+      await navigator.clipboard.writeText(markdown);
+      const chars = markdown.length;
+      setCopyContextFlash(`✓ Copied — ${chars.toLocaleString()} chars, ~${Math.round(chars / 4).toLocaleString()} tokens`);
+    } catch (e) {
+      setCopyContextFlash(`⚠ ${e.message || 'Copy failed'}`);
+    } finally {
+      setCopyingContext(false);
+      setTimeout(() => setCopyContextFlash(null), 5000);
+    }
   };
 
   const handleAddEntry = async () => {
@@ -758,6 +781,13 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
               <style>{`@keyframes intelAddBarSlide { 0% { left: -30%; } 100% { left: 100%; } }`}</style>
             </div>
           )}
+        </div>
+
+        <div style={{ display:"flex", alignItems:"center", gap:12, marginBottom:32 }}>
+          <button onClick={handleCopyContext} disabled={copyingContext} style={{ ...btn, background:"transparent", border:`1px solid ${C.gold}66`, color:C.gold, opacity:copyingContext?0.6:1 }}>
+            {copyingContext ? "Assembling…" : "📋 Copy Business Context"}
+          </button>
+          {copyContextFlash && <span style={{ ...mono, fontSize:11, color:copyContextFlash.startsWith('⚠') ? C.red : C.green }}>{copyContextFlash}</span>}
         </div>
 
         {business.research_status === 'researching' && !pollTimedOut && (
