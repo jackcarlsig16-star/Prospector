@@ -11,6 +11,7 @@ import OutreachRulesCard from './OutreachRulesCard';
 import ProfileFieldBlock from './ProfileFieldBlock';
 import BusinessIntelKpiStrip from './BusinessIntelKpiStrip';
 import BusinessSocialLinksPopover from './BusinessSocialLinksPopover';
+import BusinessWebsiteUrlPopover from './BusinessWebsiteUrlPopover';
 
 // emoji-picker-react is ~75kB gzipped - lazy so it only loads when the
 // picker is actually opened, not on every page's initial bundle.
@@ -507,6 +508,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   const [highlightedEntryId, setHighlightedEntryId] = useState(null);
   const [socialPopoverOpen, setSocialPopoverOpen] = useState(false);
   const [emojiPopoverOpen, setEmojiPopoverOpen] = useState(false);
+  const [websiteUrlPopoverOpen, setWebsiteUrlPopoverOpen] = useState(false);
 
   // business-profile-refresh-v1 - "just resynthesize from what we already
   // have," no new entry, no site fetch, no runResearch(). Same
@@ -669,9 +671,29 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
           <div style={{ flex:1, minWidth:0 }}>
             <h1 style={{ ...mono, fontSize:20, color:C.txt, fontWeight:700, margin:"0 0 4px" }}>{business.name}</h1>
             {business.tagline && <p style={{ ...mono, fontSize:12, color:C.dim, margin:"0 0 6px" }}>{business.tagline}</p>}
-            <a href={business.website_url} target="_blank" rel="noreferrer" style={{ ...mono, fontSize:11, color:C.blue }}>
-              {business.website_url}
-            </a>
+            <div style={{ position:"relative", display:"inline-block" }}>
+              <a href={business.website_url} target="_blank" rel="noreferrer" style={{ ...mono, fontSize:11, color:C.blue }}>
+                {business.website_url}
+              </a>
+              <button
+                onClick={() => setWebsiteUrlPopoverOpen(o => !o)}
+                title="Edit website URL"
+                style={{ ...mono, fontSize:10, color:C.dim, background:"transparent", border:"none", cursor:"pointer", marginLeft:6, padding:0 }}
+              >
+                ✎
+              </button>
+              {websiteUrlPopoverOpen && (
+                <>
+                  <div onClick={() => setWebsiteUrlPopoverOpen(false)} style={{ position:"fixed", inset:0, zIndex:19 }} />
+                  <BusinessWebsiteUrlPopover
+                    businessId={business.id}
+                    websiteUrl={business.website_url}
+                    onSaved={url => setBusiness(b => ({ ...b, website_url: url }))}
+                    onClose={() => setWebsiteUrlPopoverOpen(false)}
+                  />
+                </>
+              )}
+            </div>
           </div>
           {/* business-emoji-manual-picker-v1 - manually picked, no longer
               AI-generated (see shared.js). Top-right of the shared header,
