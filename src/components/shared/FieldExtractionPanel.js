@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { C, mono } from '../../constants/colors';
+import { ROLE } from '../accountCard/tokens';
 
 const sectionLabel = { ...mono, fontSize:12, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 };
 const inp = { fontSize:12, padding:"7px 10px", background:C.bg, border:`1.5px solid ${C.brdM}`, borderRadius:6, color:C.txt, outline:"none", width:"100%", boxSizing:"border-box", resize:"vertical", ...mono };
@@ -37,6 +38,11 @@ export default function FieldExtractionPanel({ entity, apiBase, fields, getEntit
 
   const extractionResult = !dismissedResult && entity.field_extraction_status === 'ready' ? entity.field_extraction_result : null;
   const extractionFailed = entity.field_extraction_status === 'error';
+  // project-guidance-textarea-and-callout-polish-v1 — the callout used the
+  // same yellow/warning border whether real differing values were found or
+  // the result was a genuine no-op (confirmed live via screenshot: reads as
+  // more alarming than it needs to). Dismiss stays the same either way.
+  const isNoOp = extractionResult && fields.every(f => !extractionResult[f.key] || extractionResult[f.key] === draft[f.key]);
 
   const pollStatus = async () => {
     cancelledRef.current = false;
@@ -83,7 +89,9 @@ export default function FieldExtractionPanel({ entity, apiBase, fields, getEntit
   return (
     <div style={{ marginBottom:8 }}>
       {!open && (
-        <button onClick={()=>setOpen(true)} style={{ ...btnGhost, padding:"4px 10px" }}>⇱ Paste deck or notes to auto-fill</button>
+        // project-guidance-textarea-and-callout-polish-v1 — reuses the same
+        // accent as Generate Outreach (AccountCard.js), not a new color.
+        <button onClick={()=>setOpen(true)} style={{ ...mono, fontSize:11, padding:"4px 10px", background:`${ROLE.generateAccent}16`, border:`1px solid ${ROLE.generateAccent}`, color:ROLE.generateAccent, borderRadius:6, cursor:"pointer" }}>⇱ Paste deck or notes to auto-fill</button>
       )}
       {open && (
         <div style={{ background:C.bg, border:`1px solid ${C.brd}`, borderRadius:6, padding:10, marginBottom:8 }}>
@@ -104,7 +112,7 @@ export default function FieldExtractionPanel({ entity, apiBase, fields, getEntit
       )}
 
       {extractionResult && (
-        <div style={{ background:C.bg, border:`1px solid ${C.gold}66`, borderRadius:6, padding:10, marginBottom:8 }}>
+        <div style={{ background:C.bg, border:`1px solid ${isNoOp ? C.brd : C.gold + '66'}`, borderRadius:6, padding:10, marginBottom:8 }}>
           <div style={{ ...sectionLabel, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
             <span>Extracted — review each field</span>
             <button onClick={()=>setDismissedResult(true)} style={{ ...mono, fontSize:10, color:C.dim, background:"transparent", border:"none", cursor:"pointer" }}>✕ Dismiss</button>
@@ -122,7 +130,7 @@ export default function FieldExtractionPanel({ entity, apiBase, fields, getEntit
               </div>
             );
           })}
-          {fields.every(f => !extractionResult[f.key] || extractionResult[f.key] === draft[f.key]) && (
+          {isNoOp && (
             <p style={{ ...mono, fontSize:11, color:C.dim, margin:0 }}>Nothing new found that differs from the current fields.</p>
           )}
         </div>

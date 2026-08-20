@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { C, mono } from '../../constants/colors';
+import { ROLE } from '../accountCard/tokens';
 
 const MAX_EXAMPLES = 20;
 
@@ -188,8 +189,10 @@ export default function OutreachExamplesEditor({ examples, onExamplesChange, ent
           </div>
         )}
 
+        {/* project-guidance-textarea-and-callout-polish-v1 — reuses the same
+            accent as Generate Outreach (AccountCard.js), not a new color. */}
         {!bulkOpen && !reviewCandidates && examples.length < MAX_EXAMPLES && (
-          <button onClick={()=>setBulkOpen(true)} style={{ ...iconBtn, padding:"4px 10px" }}>⇱ Paste multiple examples</button>
+          <button onClick={()=>setBulkOpen(true)} style={{ ...mono, fontSize:11, padding:"4px 10px", background:`${ROLE.generateAccent}16`, border:`1px solid ${ROLE.generateAccent}`, color:ROLE.generateAccent, borderRadius:4, cursor:"pointer" }}>⇱ Paste multiple examples</button>
         )}
 
         {bulkOpen && !reviewCandidates && (

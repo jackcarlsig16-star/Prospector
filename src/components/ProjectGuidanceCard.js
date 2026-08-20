@@ -15,7 +15,12 @@ const FIELD_LABELS = [
 ];
 
 const sectionLabel = { ...mono, fontSize:12, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 };
-const inp = { fontSize:12, padding:"7px 10px", background:C.bg, border:`1.5px solid ${C.brdM}`, borderRadius:6, color:C.txt, outline:"none", width:"100%", boxSizing:"border-box", resize:"vertical", ...mono };
+// project-guidance-textarea-and-callout-polish-v1 — fixed rows={2} clipped
+// long content (confirmed live: HomeLover's "Employers" project cut off
+// the Hook field mid-line). field-sizing:content grows the box to fit
+// real content instead of a hardcoded row count; rows stays as the
+// graceful-degradation floor for browsers without field-sizing support.
+const inp = { fontSize:12, padding:"7px 10px", background:C.bg, border:`1.5px solid ${C.brdM}`, borderRadius:6, color:C.txt, outline:"none", width:"100%", boxSizing:"border-box", resize:"vertical", fieldSizing:"content", ...mono };
 const btn = { ...mono, fontSize:11, padding:"6px 14px", background:C.gold, border:`1px solid ${C.gold}`, color:C.bg, fontWeight:700, borderRadius:6, cursor:"pointer" };
 
 // project-guidance-and-creation-flow-v1 — mirrors AssayCriteriaCard's shell
