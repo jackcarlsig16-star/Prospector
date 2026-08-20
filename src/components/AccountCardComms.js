@@ -6,6 +6,7 @@ import { clientDebrief } from '../utils/dealIntel';
 import { extractIntelligenceFromCall } from '../utils/intelligenceEngine';
 import { FILES_KEY } from '../utils/storageKeys';
 import EmailModal from './EmailModal';
+import { ROLE } from './accountCard/tokens';
 
 const PRODUCT_DOCS = {
   "Core Verify":      { label: "Core Verify",      url: "https://docs.example.com/core-verify/",      desc: "Instantly retrieve bank verified account and routing numbers" },
@@ -54,6 +55,9 @@ export default function AccountCardComms({ acc, tasks, activeUser, onUpdate, bus
   const [sentLogged,     setSentLogged]     = useState(false);
   const [intelExtracting,setIntelExtracting]=useState(false);
   const [intelDoneFlash, setIntelDoneFlash] = useState(false);
+  // generation-flow-fixes-v1 Stage 3 — Saved Drafts viewer/editor state.
+  const [editingDraftIdx,setEditingDraftIdx]=useState(null);
+  const [draftEdit,      setDraftEdit]      =useState({ subject:'', body:'' });
 
   const pFile = (() => {
     try { return JSON.parse(localStorage.getItem(FILES_KEY) || "{}")[acc.id] || null; }
@@ -123,6 +127,10 @@ export default function AccountCardComms({ acc, tasks, activeUser, onUpdate, bus
           projects={projects}
           campaigns={campaigns}
           onClose={() => setGenerateOpen(false)}
+          // generation-flow-fixes-v1 Stage 3 — same saveEmail shape/wiring
+          // as AccountCardPersonas.js's saveEmail; all 3 real entry points
+          // behave identically now instead of only one.
+          onSaveEmail={onUpdate ? (email => onUpdate({ ...acc, emails: [{ ...email }, ...(acc.emails || [])].slice(0, 10) })) : undefined}
         />
       )}
 
@@ -201,6 +209,62 @@ export default function AccountCardComms({ acc, tasks, activeUser, onUpdate, bus
           </div>
         )}
       </div>
+
+      {/* ── Section 1c: Saved Drafts (generation-flow-fixes-v1 Stage 3) ───
+          acc.emails - a separate, unrelated array from acc.sentEmails above
+          (that's a manual "what I actually sent" paste that triggers
+          clientDebrief's AI intel-extraction pipeline; this is generated
+          drafts saved via EmailModal.js's explicit "Save to Account"
+          button). Previously write-only - AccountCardPersonas.js:53 only
+          ever rendered a count badge, nothing viewed or edited it. */}
+      {(acc.emails || []).length > 0 && (
+        <div style={SECTION_STYLE}>
+          <span style={{ ...SEC_LBL, color: `${ROLE.generateAccent}88` }}>Saved Drafts ({acc.emails.length})</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {acc.emails.map((e, i) => {
+              const isEditing = editingDraftIdx === i;
+              return (
+                <div key={i} style={{ background: '#0a0a0f', border: '0.5px solid #1e1e1e', borderRadius: 4, padding: '7px 10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span style={{ ...mono, fontSize: 10, color: ROLE.generateAccent }}>{e.date}</span>
+                    <span style={{ ...mono, fontSize: 10, color: C.dim }}>{e.persona}</span>
+                    <button
+                      onClick={() => { if (isEditing) { setEditingDraftIdx(null); } else { setEditingDraftIdx(i); setDraftEdit({ subject: e.subject || '', body: e.body || '' }); } }}
+                      style={{ marginLeft: 'auto', ...mono, fontSize: 10, padding: '1px 6px', background: 'transparent', border: `1px solid ${C.brd}`, color: C.dim, borderRadius: 4, cursor: 'pointer' }}>
+                      {isEditing ? 'Cancel' : 'Edit'}
+                    </button>
+                    <button
+                      onClick={() => onUpdate && onUpdate({ ...acc, emails: acc.emails.filter((_, j) => j !== i) })}
+                      style={{ background: 'transparent', border: 'none', color: C.dim, fontSize: 11, cursor: 'pointer', padding: '0 2px' }}>✕</button>
+                  </div>
+                  {isEditing ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {(e.subject || draftEdit.subject) && (
+                        <input value={draftEdit.subject} onChange={ev => setDraftEdit(d => ({ ...d, subject: ev.target.value }))} placeholder="Subject"
+                          style={{ width: '100%', boxSizing: 'border-box', background: '#0a0a0f', border: '1px solid #1e2030', borderRadius: 4, color: '#c8cdd8', fontSize: 11, fontWeight: 600, padding: '6px 8px', fontFamily: 'inherit', outline: 'none' }}/>
+                      )}
+                      <textarea value={draftEdit.body} onChange={ev => setDraftEdit(d => ({ ...d, body: ev.target.value }))}
+                        style={{ width: '100%', boxSizing: 'border-box', minHeight: 100, background: '#0a0a0f', border: '1px solid #1e2030', borderRadius: 4, color: '#c8cdd8', fontSize: 11, lineHeight: 1.5, padding: '6px 8px', fontFamily: 'ui-monospace,"SF Mono",Menlo,monospace', outline: 'none', resize: 'vertical', fieldSizing: 'content' }}/>
+                      <button
+                        onClick={() => { onUpdate && onUpdate({ ...acc, emails: acc.emails.map((x, j) => j === i ? { ...x, subject: draftEdit.subject, body: draftEdit.body } : x) }); setEditingDraftIdx(null); }}
+                        style={{ ...mono, fontSize: 10, padding: '4px 10px', background: `${ROLE.generateAccent}16`, border: `1px solid ${ROLE.generateAccent}`, color: ROLE.generateAccent, borderRadius: 4, cursor: 'pointer', alignSelf: 'flex-start' }}>
+                        Save
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      {e.subject && <p style={{ ...mono, fontSize: 11, color: '#c8c8c0', margin: '0 0 3px', fontWeight: 600 }}>{e.subject}</p>}
+                      <p style={{ ...mono, fontSize: 11, color: '#888', margin: 0, lineHeight: 1.5, whiteSpace: 'pre-wrap', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
+                        {e.body}
+                      </p>
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── Section 2: Resource Links ─────────────────────────────────────── */}
       <div style={SECTION_STYLE}>

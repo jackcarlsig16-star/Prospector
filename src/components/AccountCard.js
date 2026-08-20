@@ -237,6 +237,11 @@ export default function AccountCard({
           projects={projects}
           campaigns={campaigns}
           onClose={() => setOutreachOpen(false)}
+          // generation-flow-fixes-v1 Stage 3 — same saveEmail shape/wiring
+          // as AccountCardPersonas.js's saveEmail (the one entry point that
+          // already had this); all 3 real entry points behave identically
+          // now instead of only one.
+          onSaveEmail={onUpdate ? (email => onUpdate({ ...acc, emails: [{ ...email }, ...(acc.emails || [])].slice(0, 10) })) : undefined}
         />
       )}
 

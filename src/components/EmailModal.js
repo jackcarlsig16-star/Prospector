@@ -3,7 +3,7 @@ import { C, mono } from '../constants/colors';
 import { getActiveIntel } from '../utils/assay';
 import { getActiveVoice, getVoiceProfile, voiceProfileKey } from '../constants/voice';
 import { UCS_DATA } from '../constants/products';
-import { getListsForBusiness, linkAccountToLists, saveVoiceProfile, getListIdsForAccount, getBusinessProfileSummary, createList, setProjectListId } from '../utils/db';
+import { linkAccountToLists, saveVoiceProfile, getListIdsForAccount, getBusinessProfileSummary, createList, setProjectListId } from '../utils/db';
 import { buildAccountIntel } from '../utils/accountIntel';
 import { ROLE, RADIUS } from './accountCard/tokens';
 import AdvancedGenerationPanel from './accountCard/AdvancedGenerationPanel';
@@ -38,9 +38,26 @@ function ProjectAmbiguityPicker({ matchedProjects, onPick }) {
   );
 }
 
+// generation-flow-fixes-v1 Stage 3 — /api/email returns one combined
+// string ({email: cleaned}), confirmed by real inspection of api/email.js
+// just now, not memory — the prompt literally instructs the model to
+// "Write a ${formatLabel} with a Subject line and body," so the response
+// has "Subject: ..." as its first line, body following. Parsed client-side
+// rather than changing the backend response contract (Frontier's
+// generateLi() also reads {email: cleaned} unchanged - a contract change
+// would risk that consumer for no reason). LinkedIn-format responses have
+// no Subject line at all, so the no-match fallback covers that case too.
+function parseEmailResponse(raw) {
+  const m = (raw || '').match(/^Subject:\s*(.+?)\r?\n+([\s\S]*)$/i);
+  if (m) return { subject: m[1].trim(), body: m[2].trim() };
+  return { subject: '', body: (raw || '').trim() };
+}
+
 export default function EmailModal({ account, persona, onClose, onSaveEmail, accountKind, business, autoStart = true, projects = [], campaigns = [], initialMessageType = 'cold_outreach' }) {
   const [email,setEmail]=useState("");
+  const [subject,setSubject]=useState("");
   const [copied,setCopied]=useState(false);
+  const [saved,setSaved]=useState(false);
   const [originalEmail,setOriginalEmail]=useState("");
   const [teaching,setTeaching]=useState(false);
   const [taught,setTaught]=useState(false);
@@ -59,9 +76,11 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
   const [started, setStarted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [messageType, setMessageType] = useState(initialMessageType);
+  // generation-flow-fixes-v1 Stage 2 — named "Channel" specifically to
+  // avoid reading as a second meaning of the real Campaign entity already
+  // selectable in this same modal (audit-flagged collision risk).
+  const [channel, setChannel] = useState('email');
   const [context, setContext] = useState('');
-  const [lists, setLists] = useState([]);
-  const [selectedListId, setSelectedListId] = useState('');
   const contextRef = useRef(null);
 
   // generation-modal-advanced-inputs-v1 — Project/Account Intel/Voice all
@@ -154,11 +173,6 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [business?.id, account.id]);
 
-  useEffect(() => {
-    if (autoStart || !business?.id) return;
-    getListsForBusiness(business.id).then(setLists);
-  }, [autoStart, business?.id]);
-
   const projectAmbiguous = matchedProjects.length > 1 && !selectedProjectId;
   const activeProject = allProjectsMerged.find(p => p.id === selectedProjectId) || null;
 
@@ -199,6 +213,12 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
         campaignId: selectedCampaignId || undefined,
         messageType: !autoStart ? messageType : undefined,
         directive: !autoStart && context.trim() ? context.trim() : undefined,
+        // generation-flow-fixes-v1 Stage 2 — reuses api/email.js's existing
+        // format branch exactly as FrontierEmailPanel.js's generateLi()
+        // already does. autoStart callers never had a channel picker, so
+        // this stays undefined for them - byte-identical to before this
+        // SPEC. channel defaults to 'email', which also sends undefined.
+        format: !autoStart && channel === 'linkedin' ? 'linkedin_note' : undefined,
         accountIntel: buildAccountIntel(account),
         ...(isInfluencer ? {
           fitRationale:influencerDetail?.fit_rationale||"",
@@ -210,27 +230,58 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
     })
     .then(r=>r.json())
     .then(d=>{
-      const body=d.email||d.error||"Failed to generate.";
-      setEmail(body);
-      setOriginalEmail(body);
-      setLoading(false);
-      if(d.email&&onSaveEmail){
-        onSaveEmail({date:new Date().toLocaleDateString(),persona:persona?`${persona.name} · ${persona.title}`:"No persona",body:d.email});
+      if (d.email) {
+        const { subject: parsedSubject, body: parsedBody } = parseEmailResponse(d.email);
+        setSubject(parsedSubject);
+        setEmail(parsedBody);
+        setOriginalEmail(parsedBody);
+      } else {
+        setSubject("");
+        setEmail(d.error||"Failed to generate.");
+        setOriginalEmail("");
       }
+      setLoading(false);
+      // generation-flow-fixes-v1 Stage 3 — no longer auto-fires onSaveEmail
+      // on every successful generation. Saving is now the explicit "Save to
+      // Account" button below (locked decision #4).
     })
-    .catch(e=>{setEmail("Error: "+e.message);setLoading(false);});
+    .catch(e=>{setEmail("Error: "+e.message);setSubject("");setLoading(false);});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[started]);
 
-  const copy=()=>{navigator.clipboard.writeText(email);setCopied(true);setTimeout(()=>setCopied(false),2000);};
+  const copy=()=>{navigator.clipboard.writeText(subject?`Subject: ${subject}\n\n${email}`:email);setCopied(true);setTimeout(()=>setCopied(false),2000);};
+
+  // generation-flow-fixes-v1 Stage 3 — explicit save action, wired
+  // identically from all 3 real generation entry points via onSaveEmail.
+  // Reuses acc.emails' existing shape, extended with subject (locked
+  // decision #5) - callers append {date, persona, subject, body} the same
+  // way AccountCardPersonas.js's saveEmail already does.
+  const saveToAccount = () => {
+    if (!onSaveEmail || !email) return;
+    onSaveEmail({date:new Date().toLocaleDateString(),persona:persona?`${persona.name} · ${persona.title}`:"No persona",subject,body:email});
+    setSaved(true);
+    setTimeout(()=>setSaved(false),2000);
+  };
 
   const generate = async () => {
     if (projectAmbiguous) return;
-    if (selectedListId) {
-      try { await linkAccountToLists(account.id, [selectedListId]); } catch {}
-    }
     setLoading(true);
     setStarted(true);
+  };
+
+  // generation-flow-fixes-v1 Stage 1 — Campaign selection didn't auto-link
+  // its list, unlike Project (selectProject above); same real primitive,
+  // no backfill needed here since every campaign is created with a real
+  // list_id already (BusinessDetailPage.js's createList -> createCampaign
+  // sequence, confirmed via schema + real call-site read) - guarded anyway
+  // in case that ever isn't true.
+  const selectCampaign = async (campaignId) => {
+    setSelectedCampaignId(campaignId);
+    if (!campaignId) return;
+    const campaign = campaignsForProject.find(c => c.id === campaignId);
+    if (campaign?.list_id) {
+      try { await linkAccountToLists(account.id, [campaign.list_id]); } catch {}
+    }
   };
 
   // generation-modal-project-promotion-and-visual-pass-v1 Change 2 - shared
@@ -254,6 +305,24 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
               color: messageType===t.id ? ROLE.generateAccent : C.mut, fontWeight: messageType===t.id?600:400,
               textShadow: messageType===t.id ? `0 0 6px ${ROLE.generateAccent}55` : "none" }}>
             {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* generation-flow-fixes-v1 Stage 2 — Channel toggle, defaults to
+          Email = today's unchanged behavior. Labeled "Channel," not
+          "Campaign" (audit-flagged collision risk with the real Campaign
+          entity below). */}
+      <p style={sectionLabel}>Channel</p>
+      <div style={{ display:"flex", gap:8, flexWrap:"wrap", marginBottom:16 }}>
+        {[{ id:'email', label:'Single Email' }, { id:'linkedin', label:'LinkedIn Message' }].map(c => (
+          <button key={c.id} onClick={()=>setChannel(c.id)}
+            style={{ ...mono, fontSize:12, padding:"7px 14px", borderRadius:6, cursor:"pointer",
+              background: channel===c.id ? `${ROLE.generateAccent}18` : "transparent",
+              border: `1px solid ${channel===c.id ? ROLE.generateAccent : C.brd}`,
+              color: channel===c.id ? ROLE.generateAccent : C.mut, fontWeight: channel===c.id?600:400,
+              textShadow: channel===c.id ? `0 0 6px ${ROLE.generateAccent}55` : "none" }}>
+            {c.label}
           </button>
         ))}
       </div>
@@ -287,7 +356,7 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
       {selectedProjectId && campaignsForProject.length > 0 && (
         <div style={{ marginBottom:16 }}>
           <p style={{ ...mono, margin:"0 0 8px", fontSize:11, fontWeight:600, color:ROLE.projectAccent, textTransform:"uppercase", letterSpacing:"0.06em" }}>Campaign <span style={{ fontWeight:400, textTransform:"none", letterSpacing:0, color:C.dim }}>(optional)</span></p>
-          <select value={selectedCampaignId || ''} onChange={e=>setSelectedCampaignId(e.target.value || null)}
+          <select value={selectedCampaignId || ''} onChange={e=>selectCampaign(e.target.value || null)}
             style={{ ...mono, fontSize:13, padding:"7px 10px", background:C.bg, border:`1px solid ${ROLE.projectAccent}55`, borderRadius:6, color:C.txt, outline:"none", width:"100%", cursor:"pointer" }}>
             <option value="">— none —</option>
             {campaignsForProject.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -296,16 +365,14 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
         </div>
       )}
 
-      {business?.id && (
-        <>
-          <p style={sectionLabel}>Assign to list <span style={{ fontWeight:400, textTransform:"none", letterSpacing:0, color:C.dim }}>(optional)</span></p>
-          <select value={selectedListId} onChange={e=>setSelectedListId(e.target.value)}
-            style={{ ...mono, fontSize:13, padding:"7px 10px", background:C.bg, border:`1px solid ${C.brd}`, borderRadius:6, color:C.txt, outline:"none", width:"100%", marginBottom:16, cursor:"pointer" }}>
-            <option value="">— no change —</option>
-            {lists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </select>
-        </>
-      )}
+      {/* generation-flow-fixes-v1 Stage 1 — standalone "Assign to list"
+          dropdown removed. It wasn't a separate concept from Project/
+          Campaign above (both are the same lists table, surfaced twice) -
+          nothing to reconcile, only to remove. Orphan-list assignment
+          (an account -> a list with no Project/Campaign) is still covered
+          elsewhere (BusinessAccountsTab.js's list-view add flow, CSV
+          import) - flagged to Jack as an assumption to confirm, not
+          independently verified this pass. */}
 
       {projectAmbiguous && <ProjectAmbiguityPicker matchedProjects={matchedProjects} onPick={setSelectedProjectId} />}
 
@@ -411,7 +478,19 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
                 ))
             : (loading
                 ? <p style={{ ...mono,fontSize:13,color:C.purple }}>⬡ Generating email…</p>
-                : <textarea value={email} onChange={e=>setEmail(e.target.value)} style={{ width:"100%",height:300,fontSize:13,lineHeight:1.9,background:C.bg,border:`1px solid ${C.brd}`,borderRadius:6,color:C.txt,padding:"12px 14px",resize:"vertical",outline:"none",fontFamily:"inherit",boxSizing:"border-box" }}/>
+                // generation-flow-fixes-v1 Stage 3 — Subject split into its
+                // own field (only rendered when present — LinkedIn-format
+                // responses have none), body auto-expands via
+                // field-sizing:content instead of clipping at a fixed
+                // height:300 (confirmed live via screenshot: Tenvera's Hook
+                // content was cut off at the box's bottom edge).
+                : <div style={{ width:"100%", display:"flex", flexDirection:"column", gap:8 }}>
+                    {subject && (
+                      <input value={subject} onChange={e=>setSubject(e.target.value)} placeholder="Subject"
+                        style={{ width:"100%",fontSize:13,fontWeight:600,background:C.bg,border:`1px solid ${C.brd}`,borderRadius:6,color:C.txt,padding:"10px 14px",outline:"none",fontFamily:"inherit",boxSizing:"border-box" }}/>
+                    )}
+                    <textarea value={email} onChange={e=>setEmail(e.target.value)} style={{ width:"100%",minHeight:200,fontSize:13,lineHeight:1.9,background:C.bg,border:`1px solid ${C.brd}`,borderRadius:6,color:C.txt,padding:"12px 14px",resize:"vertical",outline:"none",fontFamily:"inherit",boxSizing:"border-box",fieldSizing:"content" }}/>
+                  </div>
               )
           }
         </div>
@@ -421,6 +500,15 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
               <button onClick={copy} disabled={loading} style={{ fontSize:13,padding:"7px 16px",background:C.goldBg,border:`1px solid ${C.goldBdr}`,color:C.gold,borderRadius:6,cursor:loading?"not-allowed":"pointer",fontWeight:500 }}>
                 {copied?"✓ Copied":"Copy to clipboard"}
               </button>
+              {/* generation-flow-fixes-v1 Stage 3 — explicit save action,
+                  replacing the old implicit auto-fire-on-generate behavior.
+                  Only rendered when a caller passes onSaveEmail - after this
+                  stage all 3 real entry points do. */}
+              {onSaveEmail && !loading && email && !email.startsWith("Error") && (
+                <button onClick={saveToAccount} style={{ fontSize:13,padding:"7px 16px",background:`${ROLE.generateAccent}16`,border:`1px solid ${ROLE.generateAccent}`,color:ROLE.generateAccent,borderRadius:6,cursor:"pointer",fontWeight:500 }}>
+                  {saved?"✓ Saved":"Save to Account"}
+                </button>
+              )}
               <button onClick={onClose} style={{ fontSize:13,padding:"7px 14px",background:"transparent",border:`1px solid ${C.brd}`,color:C.mut,borderRadius:6,cursor:"pointer" }}>Close</button>
             </div>
             {!loading&&email&&!email.startsWith("Error")&&(()=>{
