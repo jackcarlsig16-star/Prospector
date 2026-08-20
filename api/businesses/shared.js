@@ -567,13 +567,21 @@ export async function generateAssayCriteria(supabase, businessId) {
   const businessContext = buildBusinessFitContext(profile);
 
   const data = await callAnthropic({
-    max_tokens: 1024,
+    // assay-signal-schema-coherence-and-token-budget-v1 Stage 2 - raised
+    // from 1024. Last 5 real production calls measured 778/887/909/874/983
+    // output tokens, an upward trend that left only 41 tokens of headroom
+    // at 1024 - the same pre-failure pattern generateProfile() already hit
+    // twice before needing real raises. 2048 is a starting value (~2x the
+    // observed 983 peak), not a measured one - flag back if real usage
+    // approaches it rather than silently raising again.
+    max_tokens: 2048,
     system: ASSAY_CRITERIA_SYSTEM_PROMPT,
     messages: [{ role: 'user', content: `BUSINESS: ${business.name}\n\nBUSINESS PROFILE:\n${businessContext}` }],
     supabase,
     businessId,
     callType: 'assay_criteria',
   });
+  console.log(`[assay_criteria] businessId=${businessId} output_tokens=${data.usage?.output_tokens ?? 'unknown'}`);
   const textBlock = (data.content || []).find(b => b.type === 'text');
   if (!textBlock) throw new Error('No text in assay criteria generation response');
   const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);

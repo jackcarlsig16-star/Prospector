@@ -278,7 +278,15 @@ export async function clientAssay({ name, web, vert, customIntel, exampleAccts, 
       siteContent = content;
       const liMatch = siteContent.match(/https?:\/\/(?:www\.)?linkedin\.com\/company\/[a-zA-Z0-9_\-\.]+\/?/i);
       if (liMatch) linkedin = liMatch[0].replace(/\/$/, "") + "/";
-      signalBreakdown = detectSignals(siteContent);
+      // assay-signal-schema-coherence-and-token-budget-v1 Stage 1 - detectSignals()
+      // is a hardcoded fintech-term detector (ach/kyc/bank transfer/etc); its
+      // old-schema output (paymentSignals/platformSignals/onboardingSignals)
+      // contradicted buildGeneralizedPrompt's fitSignals/adoptionSignals
+      // vocabulary and let fintech noise read as real fit signals for
+      // non-fintech businesses. Real businesses (businessId present) skip it
+      // entirely; Claim Jumper's pool (no businessId) keeps it - fintech
+      // detection is genuinely appropriate there.
+      if (!businessId) signalBreakdown = detectSignals(siteContent);
     } else { siteContent = "Site unreachable after fetch attempt"; }
   }
   const signalSummary = signalBreakdown ? `\nPRE-DETECTED SIGNALS:\n${JSON.stringify(signalBreakdown,null,2)}\n` : "";
