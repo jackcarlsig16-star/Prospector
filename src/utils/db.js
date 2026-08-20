@@ -150,6 +150,7 @@ export async function getAccounts(ownerEmails) {
 }
 
 export async function saveAccountsToDb(ownerEmail, accounts) {
+  invalidateAccountsCache();
   try { localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts)); } catch {}
   if (!isSupabaseEnabled() || !ownerEmail) return;
   try {
@@ -197,6 +198,7 @@ export async function saveAccountsToDb(ownerEmail, accounts) {
 // before, for every other flow that depends on it) - additive, not a
 // narrowing of saveAccountsToDb's own behavior.
 export async function updateAccountRow(accountId, data) {
+  invalidateAccountsCache();
   if (!isSupabaseEnabled()) return { error: null };
   try {
     const { error } = await supabase
@@ -217,6 +219,7 @@ export async function updateAccountRow(accountId, data) {
 // reason) - a routine "save all accounts" shouldn't silently reset a value
 // nobody touched.
 export async function updateAccountRelationshipType(accountId, relationshipType) {
+  invalidateAccountsCache();
   if (!isSupabaseEnabled()) return { error: null };
   try {
     const { error } = await supabase
@@ -238,8 +241,41 @@ export async function updateAccountRelationshipType(accountId, relationshipType)
 
 const bizAccountsKey = businessId => `prospector_accounts_biz_${businessId}`;
 
+// getaccounts-for-business-cascade-dedupe-v1 — real measured problem: three
+// components mount together on a business page and each independently calls
+// this helper for the same business_id. Traced on HomeLover's Command Center:
+// 4 byte-identical fetches of the same 62 rows, 170,481 bytes each, inside
+// 675ms (SmartIntakeBox.js:190 + BusinessCommandCenterTab.js:43 once each,
+// PersistentScout.js:106 twice - its own cacheRef only populates after the
+// await, so two rapid effect fires both miss it).
+//
+// The cached value is the PROMISE, not the resolved array, which is what
+// collapses a concurrent burst into one request. The short TTL then covers
+// the non-overlapping tail of that same burst without holding data long
+// enough to go stale - deliberately not a long-lived cache, because accounts
+// are also created server-side (api/businesses/intake-confirm.js:52) where a
+// client-side invalidation hook could never fire.
+const accountsCache = new Map();
+const ACCOUNTS_CACHE_TTL_MS = 10000;
+
+// Cleared by every account-mutating write below. Takes no argument on
+// purpose: several of those writes are keyed by accountId with no business_id
+// in scope, and clearing all of it just costs one refetch.
+export function invalidateAccountsCache() {
+  accountsCache.clear();
+}
+
 export async function getAccountsForBusiness(businessId) {
   if (!businessId) return [];
+  const hit = accountsCache.get(businessId);
+  if (hit && Date.now() - hit.at < ACCOUNTS_CACHE_TTL_MS) return hit.promise;
+  const promise = fetchAccountsForBusiness(businessId);
+  accountsCache.set(businessId, { at: Date.now(), promise });
+  promise.catch(() => accountsCache.delete(businessId));
+  return promise;
+}
+
+async function fetchAccountsForBusiness(businessId) {
   if (!isSupabaseEnabled()) {
     try { return JSON.parse(localStorage.getItem(bizAccountsKey(businessId)) || '[]'); } catch { return []; }
   }
@@ -262,6 +298,7 @@ export async function getAccountsForBusiness(businessId) {
 }
 
 export async function saveAccountsForBusiness(businessId, ownerEmail, accounts) {
+  invalidateAccountsCache();
   if (!businessId) return;
   try { localStorage.setItem(bizAccountsKey(businessId), JSON.stringify(accounts)); } catch {}
   if (!isSupabaseEnabled()) return;
@@ -302,6 +339,7 @@ export async function saveAccountsForBusiness(businessId, ownerEmail, accounts) 
 // account that already exists).
 const IMPORT_CHUNK_SIZE = 200;
 export async function bulkCreateAccountsForBusiness(businessId, ownerEmail, memberEmail, accountObjects) {
+  invalidateAccountsCache();
   if (!businessId || !accountObjects?.length) return { inserted: 0, error: null };
   if (!isSupabaseEnabled()) return { inserted: 0, error: 'Supabase is not available.' };
   let inserted = 0;
@@ -367,6 +405,7 @@ export async function findExistingInfluencerByHandle(businessId, handle) {
 }
 
 export async function createInfluencerAccount(businessId, ownerEmail, handle, listIds = []) {
+  invalidateAccountsCache();
   const norm = normalizeInstagramHandle(handle);
   const id = `influencer_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const now = new Date().toISOString();
@@ -523,6 +562,7 @@ export async function getAccountListMapForBusiness(businessId) {
 // that function's comment for why this app has one per runtime instead of
 // one shared module (accounts-lists-and-activity-model-v1).
 export async function recordAccountActivity(accountId, memberEmail, type, note) {
+  invalidateAccountsCache();
   const { data: account, error: fetchErr } = await supabase.from('accounts').select('data').eq('id', accountId).single();
   if (fetchErr) return { error: fetchErr.message };
   const existingNotes = account.data?.handoffNotes || '';
