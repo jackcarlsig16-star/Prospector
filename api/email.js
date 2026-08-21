@@ -114,89 +114,119 @@ export default async function handler(req, res) {
   const formatLabel = isLinkedIn ? "LinkedIn message" : "email";
   const personaFirstName = personaName ? personaName.split(" ")[0] : null;
   const websiteUrl = web || website || null;
-  const websiteContent = await scrapeWebsite(websiteUrl);
-
   const supabase = getSupabase();
 
-  // outreach-intelligence-v1 Section 0a — bulk/background generation passes
-  // runningUserEmail instead of a client-supplied voiceProfile object, so
-  // the server pulls the running user's own voice fresh from voice_profiles
-  // rather than trusting whatever the client happened to send. Interactive
-  // single-account callers (EmailModal.js) keep passing voiceProfile
-  // directly, unchanged - only used when voiceProfile itself is absent.
-  if (!voiceProfile && runningUserEmail && supabase) {
-    try { voiceProfile = await getVoiceProfileForUser(supabase, runningUserEmail); } catch { /* proceed voiceless */ }
-  }
-
-  // outreach-intelligence-v1 Section 3 — composition order: voice (above) ->
-  // account intel/assay_criteria -> business outreach_rules -> project
-  // guidance, each layer optional/graceful. businessId absent (Claim
-  // Jumper's pool, Frontier stealth entries — neither has business context)
-  // or the business hasn't generated criteria/rules yet both fall through to
-  // these staying null; the prompt just omits that layer in that case.
+  // generation-provider-fetch-parallelization-v1 — these six reads used to run
+  // as six sequential awaits. Measured serial on the deepest chain (project +
+  // campaign): 2802ms across 6 calls, wall span 2829ms - i.e. almost exactly
+  // the sum, no overlap at all. They are mutually independent: every one is
+  // keyed only on values already present in req.body before the chain starts
+  // (runningUserEmail, businessId, projectId, campaignId, websiteUrl), and
+  // none reads another's result. Each keeps its own guard and its own
+  // try/catch below, so a single provider failing degrades exactly as it did
+  // before - that layer is omitted, the others are unaffected - and
+  // Promise.all never rejects here because nothing rethrows.
   let assayCriteria = null;
   let outreachRules = null;
-  if (businessId && !isInfluencer && supabase) {
-    try {
-      const { data } = await supabase.from('business_profiles').select('assay_criteria, outreach_rules').eq('business_id', businessId).maybeSingle();
-      assayCriteria = data?.assay_criteria || null;
-      outreachRules = data?.outreach_rules || null;
-    } catch { /* fall through with no business-fit grounding */ }
-  }
-
-  // project-guidance-and-creation-flow-v1 — structured project guidance
-  // layers on top of, does not replace, the business-level layers above.
-  // Replaces the old free-text outreach_prompt field: objective/target_type/
-  // ask_type/project_hook/exclusions map directly onto prompt sections
-  // instead of one undifferentiated blob. outreach_prompt itself is left
-  // live in the schema but intentionally unread here - confirmed 0 rows
-  // populated before this change, nothing to migrate.
-  // project-scoped-outreach-examples-v1 — outreach_example (single text)
-  // replaced by outreach_examples_distilled (cached summary of the
-  // project's own up-to-20-item example list, see the dedicated
-  // projectExamples provider below). outreach_example itself is left live
-  // in the schema but intentionally unread here, same precedent as
-  // outreach_prompt above - its one real populated row was migrated
-  // forward into outreach_examples at migration time, not lost.
   let projectGuidance = null;
-  if (projectId && supabase) {
-    try {
-      const { data } = await supabase.from('projects').select('objective, target_type, ask_type, project_hook, exclusions, outreach_examples_distilled').eq('id', projectId).maybeSingle();
-      if (data && Object.values(data).some(Boolean)) projectGuidance = data;
-    } catch { /* fall through with no project-level guidance */ }
-  }
-
-  // campaign-layer-v1 — a Campaign is a nested pitch angle under a Project.
-  // Its doctrine layers ON TOP of projectGuidance above (does not replace
-  // it); its examples fully REPLACE projectExamples for this generation
-  // (decision #3 — mixing project-level and campaign-level examples risks
-  // muddying the actual writing voice). See the campaignDoctrine/
-  // campaignExamples providers below.
   let campaignGuidance = null;
-  if (campaignId && supabase) {
-    try {
-      const { data } = await supabase.from('campaigns').select('doctrine, recipient_description, outreach_examples_distilled').eq('id', campaignId).maybeSingle();
-      if (data && Object.values(data).some(Boolean)) campaignGuidance = data;
-    } catch { /* fall through with no campaign-level guidance */ }
-  }
-
-  // outreach-intelligence-doctrine-v1 Stage 3 — platform-wide doctrine,
-  // real per-call fetch (not a longer-lived process cache) despite being
-  // the same for every business. Deliberate: this table exists specifically
-  // so Jack can "continually train" it from the new admin tab and see it
-  // take effect - a cache with any real TTL works directly against that
-  // ("I just added a rule and it's not showing up"). The table is tiny
-  // (a handful of rows), so the read itself isn't a real cost problem to
-  // trade that freshness away for. Revisit only if this table grows large
-  // or the read is ever a measured bottleneck.
   let doctrineHard = [];
   let doctrineDefault = [];
-  if (supabase) {
-    try {
-      const { data } = await supabase.from('outreach_doctrine').select('category, rule_text, is_hard_constraint').eq('active', true);
-      (data || []).forEach(r => (r.is_hard_constraint ? doctrineHard : doctrineDefault).push(r.rule_text));
-    } catch { /* fall through with no platform doctrine */ }
-  }
+  let websiteContent = null;
+
+  await Promise.all([
+    // scrapeWebsite() is an external Jina fetch, not Supabase, but it sat in
+    // the same serial chain (429ms measured) and is independent on the same
+    // terms, so it parallelizes with the rest. It swallows its own errors and
+    // returns null (see its definition above).
+    (async () => { websiteContent = await scrapeWebsite(websiteUrl); })(),
+
+    // outreach-intelligence-v1 Section 0a — bulk/background generation passes
+    // runningUserEmail instead of a client-supplied voiceProfile object, so
+    // the server pulls the running user's own voice fresh from voice_profiles
+    // rather than trusting whatever the client happened to send. Interactive
+    // single-account callers (EmailModal.js) keep passing voiceProfile
+    // directly, unchanged - only used when voiceProfile itself is absent.
+    (async () => {
+      if (!voiceProfile && runningUserEmail && supabase) {
+        try { voiceProfile = await getVoiceProfileForUser(supabase, runningUserEmail); } catch { /* proceed voiceless */ }
+      }
+    })(),
+
+    // outreach-intelligence-v1 Section 3 — composition order: voice (above) ->
+    // account intel/assay_criteria -> business outreach_rules -> project
+    // guidance, each layer optional/graceful. businessId absent (Claim
+    // Jumper's pool, Frontier stealth entries — neither has business context)
+    // or the business hasn't generated criteria/rules yet both fall through to
+    // these staying null; the prompt just omits that layer in that case.
+    (async () => {
+      if (businessId && !isInfluencer && supabase) {
+        try {
+          const { data } = await supabase.from('business_profiles').select('assay_criteria, outreach_rules').eq('business_id', businessId).maybeSingle();
+          assayCriteria = data?.assay_criteria || null;
+          outreachRules = data?.outreach_rules || null;
+        } catch { /* fall through with no business-fit grounding */ }
+      }
+    })(),
+
+    // project-guidance-and-creation-flow-v1 — structured project guidance
+    // layers on top of, does not replace, the business-level layers above.
+    // Replaces the old free-text outreach_prompt field: objective/target_type/
+    // ask_type/project_hook/exclusions map directly onto prompt sections
+    // instead of one undifferentiated blob. outreach_prompt itself is left
+    // live in the schema but intentionally unread here - confirmed 0 rows
+    // populated before this change, nothing to migrate.
+    // project-scoped-outreach-examples-v1 — outreach_example (single text)
+    // replaced by outreach_examples_distilled (cached summary of the
+    // project's own up-to-20-item example list, see the dedicated
+    // projectExamples provider below). outreach_example itself is left live
+    // in the schema but intentionally unread here, same precedent as
+    // outreach_prompt above - its one real populated row was migrated
+    // forward into outreach_examples at migration time, not lost.
+    (async () => {
+      if (projectId && supabase) {
+        try {
+          const { data } = await supabase.from('projects').select('objective, target_type, ask_type, project_hook, exclusions, outreach_examples_distilled').eq('id', projectId).maybeSingle();
+          if (data && Object.values(data).some(Boolean)) projectGuidance = data;
+        } catch { /* fall through with no project-level guidance */ }
+      }
+    })(),
+
+    // campaign-layer-v1 — a Campaign is a nested pitch angle under a Project.
+    // Its doctrine layers ON TOP of projectGuidance above (does not replace
+    // it); its examples fully REPLACE projectExamples for this generation
+    // (decision #3 — mixing project-level and campaign-level examples risks
+    // muddying the actual writing voice). See the campaignDoctrine/
+    // campaignExamples providers below.
+    (async () => {
+      if (campaignId && supabase) {
+        try {
+          const { data } = await supabase.from('campaigns').select('doctrine, recipient_description, outreach_examples_distilled').eq('id', campaignId).maybeSingle();
+          if (data && Object.values(data).some(Boolean)) campaignGuidance = data;
+        } catch { /* fall through with no campaign-level guidance */ }
+      }
+    })(),
+
+    // outreach-intelligence-doctrine-v1 Stage 3 — platform-wide doctrine,
+    // real per-call fetch (not a longer-lived process cache) despite being
+    // the same for every business. Deliberate: this table exists specifically
+    // so Jack can "continually train" it from the new admin tab and see it
+    // take effect - a cache with any real TTL works directly against that
+    // ("I just added a rule and it's not showing up"). The table is tiny
+    // (a handful of rows), so the read itself isn't a real cost problem to
+    // trade that freshness away for. Revisit only if this table grows large
+    // or the read is ever a measured bottleneck.
+    // Refetched every generation on purpose (see the comment above) - that
+    // freshness tradeoff is unchanged here, it just no longer waits its turn.
+    (async () => {
+      if (supabase) {
+        try {
+          const { data } = await supabase.from('outreach_doctrine').select('category, rule_text, is_hard_constraint').eq('active', true);
+          (data || []).forEach(r => (r.is_hard_constraint ? doctrineHard : doctrineDefault).push(r.rule_text));
+        } catch { /* fall through with no platform doctrine */ }
+      }
+    })(),
+  ]);
 
   const greeting = voiceProfile?.greeting || `Hey ${personaFirstName || "[First Name]"},`;
   const closing  = voiceProfile?.closing  || `- ${sender}`;
