@@ -110,7 +110,14 @@ export default async function handler(req, res) {
   const messageTypeGuidance = MESSAGE_TYPE_GUIDANCE[messageType] || "";
   const sender = senderName || "your rep";
   const isLinkedIn = format === "linkedin_note";
-  const wordLimit = isLinkedIn ? 50 : 60;
+  // word-limit-structure-conflict-v1 — was 60, which contradicted the rest of
+  // the prompt: companyOutreachRules sends each business's Structure field
+  // whole (HumanKind's is a six-part flow ending in a standalone community
+  // link), and projectExamples/campaignExamples tell the model to match a
+  // proven example — the one real example on file runs 173 words. 60 could
+  // hold neither. LinkedIn stays 50; that cap is a real platform limit
+  // (300 chars), not part of this conflict.
+  const wordLimit = isLinkedIn ? 50 : 150;
   const formatLabel = isLinkedIn ? "LinkedIn message" : "email";
   const personaFirstName = personaName ? personaName.split(" ")[0] : null;
   const websiteUrl = web || website || null;
