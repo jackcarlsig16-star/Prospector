@@ -18,6 +18,7 @@ export default async function handler(req, res) {
       outreach_examples_distilled: outreach_examples_distilled || '',
       outreach_examples_distilled_at: new Date().toISOString(),
       outreach_examples_distilled_edited_manually: true,
+      updated_at: new Date().toISOString(),
     }).eq('id', projectId).select().maybeSingle();
     if (error) throw error;
     if (!data) return res.status(404).json({ error: 'Project not found' });

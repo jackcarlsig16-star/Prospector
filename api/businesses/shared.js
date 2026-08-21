@@ -654,6 +654,7 @@ export async function generateProjectStrategy(supabase, projectId) {
   const { error: updateError } = await supabase.from('projects').update({
     strategy_synthesis: parsed.strategy_synthesis || null,
     strategy_generated_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   }).eq('id', projectId);
   if (updateError) throw updateError;
 }

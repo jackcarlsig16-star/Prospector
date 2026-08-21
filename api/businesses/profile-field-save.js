@@ -27,10 +27,16 @@ export default async function handler(req, res) {
     const nextConflicts = { ...(current.field_conflicts || {}) };
     delete nextConflicts[field];
 
+    // project-timestamp-staleness-fix-v1 — generated_at was only ever written
+    // by generateProfile(), so a manual edit to one of these 7 fields left
+    // BusinessDetailPage's "Last checked {date}" label showing the last AI
+    // synthesis instead of this edit. A human edit is a real change to the
+    // profile's content, so it moves the timestamp too.
     const { data, error } = await supabase.from('business_profiles').update({
       [field]: value ?? null,
       [`${field}_edited_manually`]: true,
       field_conflicts: nextConflicts,
+      generated_at: new Date().toISOString(),
     }).eq('business_id', businessId).select().single();
     if (error) throw error;
     res.status(200).json({ profile: data });

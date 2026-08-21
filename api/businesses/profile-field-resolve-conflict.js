@@ -36,6 +36,10 @@ export default async function handler(req, res) {
       patch[field] = conflict.candidate_value;
       patch[`${field}_edited_manually`] = false;
       patch.field_sources = { ...(current.field_sources || {}), [field]: conflict.candidate_sources || [] };
+      // project-timestamp-staleness-fix-v1 — accepting a candidate changes the
+      // stored field, so "Last checked" has to move with it. Only on accept:
+      // dismissing a conflict leaves the profile content untouched.
+      patch.generated_at = new Date().toISOString();
     }
 
     const { data, error } = await supabase.from('business_profiles').update(patch).eq('business_id', businessId).select().single();

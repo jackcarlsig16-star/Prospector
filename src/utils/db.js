@@ -497,9 +497,14 @@ export async function getProject(projectId) {
   return data;
 }
 
+// project-timestamp-staleness-fix-v1 — updated_at is set explicitly here (and
+// on every other real projects content write) because nothing maintains it
+// automatically: there is no Postgres trigger anywhere in supabase/migrations,
+// so the column only ever held its insert-time default and read as
+// "created_at" forever. Matches updateCampaign's existing convention.
 export async function updateProjectGuidance(projectId, patch) {
   if (!isSupabaseEnabled() || !projectId) return { error: null };
-  const { data, error } = await supabase.from('projects').update({ ...patch, guidance_updated_at: new Date().toISOString() }).eq('id', projectId).select().single();
+  const { data, error } = await supabase.from('projects').update({ ...patch, guidance_updated_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('id', projectId).select().single();
   if (error) return { error: error.message };
   return { project: data };
 }
@@ -858,7 +863,7 @@ export async function getProjectsForUser(email) {
 
 export async function setProjectListId(projectId, listId) {
   try {
-    const { data, error } = await supabase.from('projects').update({ list_id: listId }).eq('id', projectId).select().single();
+    const { data, error } = await supabase.from('projects').update({ list_id: listId, updated_at: new Date().toISOString() }).eq('id', projectId).select().single();
     if (error) throw error;
     return { project: data };
   } catch (e) {
