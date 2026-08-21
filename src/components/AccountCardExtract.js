@@ -1,9 +1,22 @@
 import { useState } from 'react';
 import { C, mono } from '../constants/colors';
 import { buildIntelExport } from '../utils/dealIntel';
-import RequestModal from './RequestModal';
-import { MODELS } from '../config/models';
-import { fetchSentEmailsForAccount, buildNsPrompt } from '../utils/nsCopy';
+
+// extract-panel-redesign-v1 — was an inline panel that mounted ~719px below
+// its own trigger button (outside AccountCard's expanded block), so clicking
+// Extract changed nothing in the viewport and read as a dead button. It's a
+// modal now, which sidesteps the mount-placement problem entirely rather than
+// fixing it in place.
+//
+// Removed per Jack, 2026-08-21: AM Handoff, Compliance (Chatter Msg, Client
+// ID, Nudge PR, Nudge Sec Q), Requests (SE, Credit), Copy SFDC Update, and
+// PR Email. The two Nudge actions genuinely sent email rather than copying -
+// they are gone from this surface entirely, flagged at the time as the part
+// most likely to be missed.
+//
+// Copy Intel became three targeted copy-types instead of one blob. "Full
+// Intel" is the previous Copy Intel behaviour (buildIntelExport) kept intact
+// so nothing that worked before is lost.
 
 const PREP_SECTIONS = [
   { key: "objective",  label: "Objective"           },
@@ -14,111 +27,118 @@ const PREP_SECTIONS = [
   { key: "attendees",  label: "Attendees"           },
 ];
 
-const PR_EMAIL_KEY       = "prospector_pr_email_template";
-const DEFAULT_PR_TEMPLATE = `Subject: Next Step: Submit Your Production Request\n\nHi [First Name],\n\nThanks for creating your dashboard account — you're one step closer to going live!\n\nThe next step is to submit your Production Request, which kicks off the due diligence review. This is a straightforward process, but I'm happy to walk you through it if it would be helpful.\n\nJust reply to this email and we can find a time, or I can send over a quick guide.`;
-
-function getTemplate() { return localStorage.getItem(PR_EMAIL_KEY) || DEFAULT_PR_TEMPLATE; }
-
-function buildChatterText(acc) {
-  const prods = [...new Set((acc?.calls || []).flatMap(c =>
-    (c.productsDiscussed || []).map(p => typeof p === "string" ? p : p?.product)
-  ).filter(Boolean))].join(", ") || "N/A";
-  return [
-    `🚀 PR Review — ${acc?.name || ""}`,
-    `SFDC: ${acc?.sfdc || "N/A"}`,
-    `Website: ${acc?.web || "N/A"}`,
-    `Products: ${prods}`,
-    `Use Case: ${(acc?.ucs || []).join(", ") || "N/A"}`,
-    `Business Model: ${acc?.bm || "N/A"}`,
-    `Timing: ${acc?.medpicc?.timeline || "N/A"}`,
-  ].join("\n");
-}
-
-async function fetchSfdcUpdate(acc, tasks, activeUser) {
-  const now         = new Date();
-  const todayFmt    = `${now.getMonth() + 1}/${now.getDate()}`;
-  const todayISO    = now.toISOString().split('T')[0];
-  const twoWeeksOut = (()=>{ const d=new Date(now); d.setDate(d.getDate()+14); return `${d.getMonth()+1}/${d.getDate()}`; })();
-  const sentEmails  = await fetchSentEmailsForAccount(acc.name);
-  const { prompt }  = buildNsPrompt({ acc, tasks, activeUser, sentEmails, todayFmt, todayISO, twoWeeksOut });
-  const r = await fetch("/proxy/anthropic/messages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: MODELS.STANDARD, max_tokens: 280, messages: [{ role: "user", content: prompt }] }) });
-  const d = await r.json();
-  return d.content?.[0]?.text?.trim() || "";
-}
-
-async function sendNudgeEmail(acc, stepLabel) {
-  const contactFirst = (acc?.personas || [])[0]?.name?.split(" ")[0] || "";
-  const subject      = `Re: ${acc.name} — ${stepLabel} Update`;
-  const body         = `Hi${contactFirst ? ` ${contactFirst}` : ""},\n\nJust checking in on the status of your ${stepLabel} — happy to help if there are any blockers on your end. Let me know!\n\nBest,\n[Your Name]`;
-  const token        = localStorage.getItem("gmail_access_token");
-  if (token) {
-    try {
-      const raw = btoa(unescape(encodeURIComponent(
-        `Subject: ${subject}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${body}`
-      ))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-      const r = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/drafts", {
-        method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ message: { raw } }),
-      });
-      if (r.ok) return { sent: true };
-    } catch {}
-  }
-  navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`).catch(() => {});
-  return { sent: false };
-}
-
 function SectionLabel({ children }) {
   return (
-    <div style={{ ...mono, fontSize: 9, color: C.mut, textTransform: "uppercase", letterSpacing: "0.09em", fontWeight: 600, marginBottom: 6, marginTop: 12 }}>
+    <p style={{ ...mono, fontSize: 10, fontWeight: 600, color: C.mut, textTransform: "uppercase", letterSpacing: "0.08em", margin: "14px 0 6px" }}>
       {children}
-    </div>
+    </p>
   );
 }
 
-function ExtractBtn({ id, copied, onCopy, label, loading, disabled, accent = C.blue }) {
-  const active = copied === id;
+function CopyBtn({ id, copied, onCopy, label, sublabel, accent, disabled }) {
+  const isCopied = copied === id;
   return (
     <button
-      onClick={() => !loading && !disabled && onCopy(id)}
-      disabled={!!loading || !!disabled}
+      onClick={onCopy}
+      disabled={!!disabled}
+      title={disabled ? String(disabled) : undefined}
       style={{
-        ...mono, fontSize: 10, height: 26, padding: "0 10px",
-        background: active ? `${accent}18` : "transparent",
-        border: `1px solid ${active ? accent + "55" : C.brd}`,
-        color: active ? accent : disabled ? C.dim + "55" : C.dim,
-        borderRadius: 4, cursor: loading || disabled ? "default" : "pointer",
-        whiteSpace: "nowrap", opacity: loading ? 0.6 : 1,
-        transition: "all 0.15s",
+        ...mono, fontSize: 11, textAlign: "left", width: "100%",
+        padding: "9px 12px",
+        background: isCopied ? `${accent}18` : "transparent",
+        border: `1px solid ${isCopied ? accent : C.brd}`,
+        color: disabled ? C.dim : isCopied ? accent : C.txt,
+        borderRadius: 5, cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.55 : 1, transition: "all 0.15s",
       }}
     >
-      {active ? "✓ Copied" : loading === id ? "…" : label}
+      <span style={{ fontWeight: 600 }}>{isCopied ? "✓ Copied" : label}</span>
+      {sublabel && <span style={{ display: "block", fontSize: 9, color: C.dim, marginTop: 3 }}>{sublabel}</span>}
     </button>
   );
 }
 
-export default function AccountCardExtract({ acc, tasks = [], activeUser, onClose }) {
-  const [copied,  setCopied]  = useState(null);
-  const [loading, setLoading] = useState(null);
-  const [nudged,  setNudged]  = useState(null);
-  const [requestModal, setRequestModal] = useState(null);
-  // account-card-cleanup-v1 Stage 3 - the real bug here was silent error
-  // swallowing (console.error only, no visible state) on the LLM-backed
-  // handlers below, not the panel toggle itself (that already worked).
+// Composes the fit narrative from account_business_details (the real source
+// this card's Intelligence panel reads), falling back to the legacy flat
+// fields for accounts not re-assayed since account-business-details-v1.
+function buildCompanyContext(acc) {
+  const d = acc.businessDetail || {};
+  const fs = d.fit_signals || {};
+  const L = [];
+  L.push(`COMPANY CONTEXT — ${acc.name}`);
+  if (acc.web) L.push(`Website: ${acc.web}`);
+  if (acc.vert) L.push(`Vertical: ${acc.vert}`);
+  if (d.tier || d.score != null) L.push(`Fit: ${d.tier || "—"}${d.score != null ? ` (score ${d.score})` : ""}${fs.confidence ? ` · confidence ${fs.confidence}` : ""}`);
+  L.push("");
+  const bm = d.business_model || acc.bm;
+  const pf = d.fit_rationale || acc.pf;
+  if (bm) { L.push("BUSINESS MODEL"); L.push(bm); L.push(""); }
+  if (pf) { L.push("PRODUCT FIT"); L.push(pf); L.push(""); }
+  if (d.disqualifier) { L.push("DISQUALIFIER"); L.push(d.disqualifier); L.push(""); }
+  const sb = fs.signal_breakdown || {};
+  const group = (label, arr) => { if (arr?.length) { L.push(label); arr.forEach(s => L.push(`- ${s}`)); L.push(""); } };
+  group("DISQUALIFYING SIGNALS", sb.slagSignals);
+  group("SCALE SIGNALS", sb.scaleSignals);
+  group("FIT SIGNALS", sb.fitSignals);
+  group("ADOPTION SIGNALS", sb.adoptionSignals);
+  group("KEY SIGNALS", fs.key_signals);
+  group("TRACTION SIGNALS", fs.traction_signals);
+  if (fs.products?.length) group("PRODUCTS", fs.products);
+  return L.join("\n").trim();
+}
+
+// Jack's call, 2026-08-21: this button only renders when there is real
+// relationship data. Measured at decision time, 1 of 62 HomeLover accounts
+// had any calls/emails/personas and none had handoff notes - an
+// always-visible button would have produced an empty document almost every
+// time and read as broken.
+function relationshipParts(acc) {
+  const calls = acc.calls || [];
+  const emails = acc.emails || [];
+  const personas = acc.personas || [];
+  const medpicc = acc.medpicc && Object.values(acc.medpicc).some(v => (v || "").trim());
+  return { calls, emails, personas, medpicc, has: !!(calls.length || emails.length || personas.length || acc.handoffNotes || medpicc) };
+}
+
+function buildRelationshipContext(acc) {
+  const { calls, emails, personas, medpicc } = relationshipParts(acc);
+  const L = [];
+  L.push(`RELATIONSHIP CONTEXT — ${acc.name}`);
+  L.push(`Stage: ${acc.stage || "Prospecting"}${acc.relationshipType ? ` · ${acc.relationshipType}` : ""}`);
+  if (acc.lastTouchedAt) L.push(`Last touched: ${acc.lastTouchedAt}${acc.lastTouchedBy ? ` by ${acc.lastTouchedBy}` : ""}`);
+  L.push("");
+  if (personas.length) {
+    L.push("CONTACTS");
+    personas.forEach(p => L.push(`- ${p.name || "?"}${p.title ? `, ${p.title}` : ""}${p.email ? ` <${p.email}>` : ""}${p.angle ? ` — ${p.angle}` : ""}`));
+    L.push("");
+  }
+  if (calls.length) {
+    L.push("CALL HISTORY");
+    calls.slice(-5).forEach((c, i) => {
+      L.push(`Call ${i + 1} (${c.date || "unknown date"}): ${c.summary || "no summary"}`);
+      const ns = (c.nextSteps || []).map(s => typeof s === "string" ? s : s?.text).filter(Boolean);
+      if (ns.length) L.push(`  Next steps: ${ns.join("; ")}`);
+    });
+    L.push("");
+  }
+  if (emails.length) {
+    L.push("RECENT EMAILS");
+    emails.slice(0, 5).forEach(e => L.push(`- ${e.date || ""} ${e.subject ? `"${e.subject}"` : ""}`.trim()));
+    L.push("");
+  }
+  if (medpicc) {
+    L.push("MEDPICC");
+    Object.entries(acc.medpicc).forEach(([k, v]) => { if ((v || "").trim()) L.push(`${k}: ${v}`); });
+    L.push("");
+  }
+  if (acc.handoffNotes) { L.push("HANDOFF NOTES"); L.push(acc.handoffNotes); }
+  return L.join("\n").trim();
+}
+
+export default function AccountCardExtract({ acc, activeUser, onClose }) {
+  const [copied, setCopied] = useState(null);
   const [extractError, setExtractError] = useState(null);
   const flashError = (msg) => { setExtractError(msg); setTimeout(() => setExtractError(null), 5000); };
-
-  // AM Handoff state
-  const [amName,       setAmName]       = useState('');
-  const [planType,     setPlanType]     = useState('custom');
-  const [loadingEmail, setLoadingEmail] = useState(false);
-  const [loadingSlack, setLoadingSlack] = useState(false);
-  const [emailCopied,  setEmailCopied]  = useState(false);
-  const [slackCopied,  setSlackCopied]  = useState(false);
-
-  const allCompliance = (() => { try { return JSON.parse(localStorage.getItem('prospector_compliance') || '{}'); } catch { return {}; } })();
-  const compliance    = allCompliance[acc.id] || {};
-  const prStatus      = compliance?.steps?.find?.(s => s.id === 'prod_request')?.status || 'Not Started';
-  const sqStatus      = compliance?.steps?.find?.(s => s.id === 'security_q')?.status   || 'Not Started';
 
   const copy = (key, text) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -127,367 +147,60 @@ export default function AccountCardExtract({ acc, tasks = [], activeUser, onClos
     }).catch(() => flashError("Copy failed — clipboard permission blocked?"));
   };
 
-  const handlers = {
-    intel: () => copy("intel", buildIntelExport(acc)),
+  const rel = relationshipParts(acc);
+  const hasBrief = !!(() => { try { return localStorage.getItem(`prospector_meeting_prep_${acc.id}`) || acc.meetingPrepData; } catch { return null; } })();
 
-    sfdc: async () => {
-      setLoading("sfdc");
-      try {
-        const text = await fetchSfdcUpdate(acc, tasks, activeUser);
-        if (text) copy("sfdc", text);
-        else flashError("SFDC update came back empty — try again.");
-      } catch (e) { console.error("[Extract] SFDC error:", e); flashError(`SFDC update failed: ${e.message}`); }
-      setLoading(null);
-    },
-
-    brief: () => {
-      const stored = (() => { try { const s = localStorage.getItem(`prospector_meeting_prep_${acc.id}`); return s ? JSON.parse(s) : acc.meetingPrepData || null; } catch { return null; } })();
-      if (!stored) { copy("brief", "(none)"); return; }
-      const lines = PREP_SECTIONS.filter(s => stored[s.key]).map(s => `${s.label.toUpperCase()}\n${stored[s.key]}`);
-      if (!lines.length) return;
-      copy("brief", `★ Pre-Call Brief — ${acc.name}\n\n${lines.join("\n\n")}`);
-    },
-
-    chatter: () => copy("chatter", buildChatterText(acc)),
-
-    clientId: () => {
-      const id = (acc.clientIds || [])[0];
-      if (id) copy("clientId", id);
-    },
-
-    nudgePr: async () => {
-      setLoading("nudgePr");
-      const res = await sendNudgeEmail(acc, "Production Request");
-      setLoading(null);
-      if (res.sent) { setNudged("nudgePr"); setTimeout(() => setNudged(null), 2000); }
-      else { setCopied("nudgePr"); setTimeout(() => setCopied(null), 2000); }
-    },
-
-    nudgeSecQ: async () => {
-      setLoading("nudgeSecQ");
-      const res = await sendNudgeEmail(acc, "Security Questionnaire");
-      setLoading(null);
-      if (res.sent) { setNudged("nudgeSecQ"); setTimeout(() => setNudged(null), 2000); }
-      else { setCopied("nudgeSecQ"); setTimeout(() => setCopied(null), 2000); }
-    },
+  const copyBrief = () => {
+    const stored = (() => { try { const s = localStorage.getItem(`prospector_meeting_prep_${acc.id}`); return s ? JSON.parse(s) : acc.meetingPrepData || null; } catch { return null; } })();
+    if (!stored) { flashError("No pre-call brief generated for this account yet."); return; }
+    const lines = PREP_SECTIONS.filter(s => stored[s.key]).map(s => `${s.label.toUpperCase()}\n${stored[s.key]}`);
+    if (!lines.length) { flashError("Pre-call brief is empty."); return; }
+    copy("brief", `★ Pre-Call Brief — ${acc.name}\n\n${lines.join("\n\n")}`);
   };
-
-  // AM Handoff — Customer Email
-  // Remember: CC ${amName}, BCC your growth/AM distribution list
-  const handleCustomerEmail = async () => {
-    setLoadingEmail(true);
-    const launchDate = acc.dealTimeline?.predictions?.days_to_signature
-      ? (() => { const d = new Date(); d.setDate(d.getDate() + acc.dealTimeline.predictions.days_to_signature); return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }); })()
-      : '{{Launch Date}}';
-    const champion  = acc.medpicc?.champion || '';
-    const firstName = champion.split(' ')[0] || 'there';
-    const context = `Account: ${acc.name}
-Champion / Primary Contact: ${champion || 'unknown'}
-Plan type: ${planType} (${planType === 'growth' ? 'standardized self-serve, click-through MSA, dashboard-driven' : 'negotiated contract, DocuSign/Ironclad, custom pricing'})
-Products purchased: ${acc.prods?.join(', ') || 'unknown'}
-Launch date: ${launchDate}
-AM Name: ${amName}
-Compliance state:
-  Production Request: ${prStatus}
-  Security Q: ${sqStatus}
-Use case: ${acc.medpicc?.identify_pain || 'unknown'}
-ACV: ${acc.acvOverride ? '$' + acc.acvOverride.toLocaleString() : 'unknown'}`;
-
-    const prompt = `${context}
-
-Generate a personalized AE → Customer intro/handoff email using this template as the base:
-
----
-Hi {{first_name}},
-
-Excited to get you to the finish line! A few things need to happen before {{Launch Date}} and I want to make sure nothing slips.
-
-1. Compliance Center (Do this First!) - {{Compliance Center URL}}
-   This is required to unlock full access to our network.
-2. Privacy Policy (Required)
-   Per Section 1.4 of the MSA (attached), you'll need to update your privacy policy to disclose our data usage and obtain end-user consent.
-3. Technical support
-   For technical or integration questions, submit a support ticket through our dashboard for fastest resolution.
-4. Billing & production access
-   Billing starts on {{Launch Date}} per your agreement. Production access turns on automatically that day. If you're ready early, we can enable it up to 30 days ahead.
-
-Lastly, I'd like to introduce you to {{AM Name}}, cc'd here. They will be your main point of contact from here on out. {{AM Name}} will be reaching out shortly to schedule a kickoff call and ensure you have everything you need to hit {{Launch Date}}.
-
-Looking forward to seeing you live.
-Best,
-${activeUser?.name || '{{Your Name}}'}
----
-
-Rules:
-- Replace {{first_name}} with ${firstName}
-- Replace {{Launch Date}} with ${launchDate}
-- Replace {{AM Name}} with ${amName}
-- Replace {{Compliance Center URL}} with your compliance center URL
-- Personalize the opening line to reference their specific use case (${acc.medpicc?.identify_pain || acc.prods?.[0] || 'our integration'})
-- If compliance items are already done (status Submitted or Approved), skip or shorten those steps
-- ${planType === 'growth' ? 'This is a Growth plan — standard self-serve, no custom contract to reference' : 'This is a Custom plan — reference the MSA and Order Form as attached documents'}
-- Keep the structure but make it feel personal, not templated
-- Output the email only, no preamble`;
-
-    try {
-      const res = await fetch('/proxy/anthropic/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: MODELS.STANDARD, max_tokens: 600, messages: [{ role: 'user', content: prompt }] }),
-      });
-      const data = await res.json();
-      const text = data.content?.[0]?.text?.trim() || '';
-      if (text) { await navigator.clipboard.writeText(text); setEmailCopied(true); setTimeout(() => setEmailCopied(false), 2000); }
-      else flashError("Customer email came back empty — try again.");
-    } catch (e) { console.error('[Extract] Customer email error:', e); flashError(`Customer email failed: ${e.message}`); }
-    setLoadingEmail(false);
-  };
-
-  // AM Handoff — Slack Brief
-  // Remember: CC ${amName}, BCC your growth/AM distribution list
-  const handleSlackBrief = async () => {
-    setLoadingSlack(true);
-    const context = `Account: ${acc.name}
-Website: ${acc.web || 'not captured'}
-ACV: ${acc.acvOverride ? '$' + acc.acvOverride.toLocaleString() : 'not captured'}
-Plan type: ${planType}
-Products: ${acc.prods?.join(', ') || 'not captured'}
-Use case / pain: ${acc.medpicc?.identify_pain || 'not captured'}
-Champion: ${acc.medpicc?.champion || 'not captured'}
-Economic Buyer: ${acc.medpicc?.economic_buyer || 'not captured'}
-Decision Process: ${acc.medpicc?.decision_process || 'not captured'}
-Decision Criteria: ${acc.medpicc?.decision_criteria || 'not captured'}
-Competition: ${acc.medpicc?.competition || 'none mentioned'}
-Metrics / success criteria: ${acc.medpicc?.metrics || 'not captured'}
-Tier: ${acc.tier || 'unscored'}
-Stage: ${acc.stage || 'unknown'}
-Compliance:
-  Production Request: ${prStatus}
-  Security Q: ${sqStatus}
-Recent call context: ${acc.calls?.slice(0, 2).map(c => c.summary?.slice(0, 200)).filter(Boolean).join(' | ') || 'none'}
-Next steps from last call: ${(acc.calls?.[0]?.nextSteps || []).map(ns => typeof ns === 'string' ? ns : ns?.text || '').filter(Boolean).join('; ') || 'none'}
-AM Name: ${amName}
-Salesforce: ${acc.sfdc || 'not linked'}`;
-
-    const sfdcUrl = acc.sfdc
-      ? (/^006/.test(acc.sfdc) ? `https://your-org.lightning.force.com/lightning/r/Opportunity/${acc.sfdc}/view` : acc.sfdc)
-      : 'not linked';
-
-    const prompt = `${context}
-
-Generate an internal AE → AM Slack handoff brief. Be specific and concise — this is for an Account Manager taking over the relationship.
-
-Format exactly as:
-
-🚨 *AE → AM HANDOFF: ${acc.name}*
-
-*ACV:* $X | *Plan:* ${planType === 'growth' ? 'Growth (self-serve)' : 'Custom (negotiated)'} | *Risk:* Low/Medium/High
-
-*👥 Key Stakeholders*
-• Champion: [name, title, support level 1-5, communication style]
-• Economic Buyer: [name/title or not captured]
-• Technical Lead: [if known]
-
-*🎯 Why They Bought*
-• Use case: [specific, not generic]
-• Business urgency: [why now]
-• Success metric: [what does win look like for them]
-
-*⚠️ Risks / Watchouts*
-• [2-3 specific risks based on context — compliance gaps, competition, engineering bandwidth, etc]
-
-*🛠 Implementation Notes*
-• Products: [list]
-• Compliance: PR ${prStatus} | Security Q ${sqStatus}
-• Integration complexity: [low/medium/high + one line why]
-
-*💰 Commercial*
-• ACV: [amount] | ${planType === 'growth' ? 'Growth plan — standard terms' : 'Custom contract — negotiated terms'}
-• Expansion signals: [any future use cases mentioned]
-
-*📞 Recommended AM Motion*
-• [2-3 specific recommendations based on deal context]
-
-*📂 Links*
-• SFDC: ${sfdcUrl}
-
-Rules:
-- Be specific, not generic
-- Infer risk level from compliance state, competition, and call context
-- If data is unknown, say "not captured" not "unknown"
-- Output the brief only, no preamble`;
-
-    try {
-      const res = await fetch('/proxy/anthropic/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: MODELS.STANDARD, max_tokens: 800, messages: [{ role: 'user', content: prompt }] }),
-      });
-      const data = await res.json();
-      const text = data.content?.[0]?.text?.trim() || '';
-      if (text) { await navigator.clipboard.writeText(text); setSlackCopied(true); setTimeout(() => setSlackCopied(false), 2000); }
-      else flashError("Slack brief came back empty — try again.");
-    } catch (e) { console.error('[Extract] Slack brief error:', e); flashError(`Slack brief failed: ${e.message}`); }
-    setLoadingSlack(false);
-  };
-
-  const hasBrief   = !!(() => { try { return localStorage.getItem(`prospector_meeting_prep_${acc.id}`) || acc.meetingPrepData; } catch { return null; } })();
-  const clientId   = (acc.clientIds || [])[0];
-  const prTemplate = getTemplate().replace(/\[First Name\]/g, (acc?.personas || [])[0]?.name?.split(" ")[0] || "[First Name]");
 
   return (
-    <div style={{ marginBottom: 12, background: `${C.green}06`, border: `1px solid ${C.green}22`, borderRadius: 7, padding: "12px 14px" }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <span style={{ ...mono, fontSize: 11, fontWeight: 600, color: C.green, textTransform: "uppercase", letterSpacing: "0.08em" }}>⬡ Extract — {acc.name}</span>
-        <button onClick={onClose} style={{ marginLeft: "auto", background: "transparent", border: "none", color: C.dim, fontSize: 14, cursor: "pointer", padding: 0 }}>✕</button>
+    <div
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      style={{ position: "fixed", inset: 0, zIndex: 1000, background: "#00000099", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+    >
+      <div onClick={e => e.stopPropagation()} style={{ width: 460, maxHeight: "85vh", overflowY: "auto", background: C.card, border: `1px solid ${C.brd}`, borderRadius: 10, padding: "18px 20px", boxShadow: "0 20px 60px #000c" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <span style={{ ...mono, fontSize: 12, fontWeight: 700, color: C.green, textTransform: "uppercase", letterSpacing: "0.08em" }}>⬡ Extract — {acc.name}</span>
+          <button onClick={onClose} style={{ marginLeft: "auto", background: "transparent", border: "none", color: C.dim, fontSize: 16, cursor: "pointer", padding: 0 }}>✕</button>
+        </div>
+        <p style={{ ...mono, fontSize: 10, color: C.dim, margin: 0 }}>Copy context for this account into a chat, email, or doc.</p>
+
+        {extractError && (
+          <div style={{ ...mono, fontSize: 10, color: C.red, background: `${C.red}12`, border: `1px solid ${C.red}44`, borderRadius: 4, padding: "6px 9px", marginTop: 10 }}>
+            ⚠ {extractError}
+          </div>
+        )}
+
+        <SectionLabel>Intel</SectionLabel>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <CopyBtn id="company" copied={copied} accent={C.gold}
+            onCopy={() => copy("company", buildCompanyContext(acc))}
+            label="⎘ Company Context"
+            sublabel="Business model, product fit, disqualifier, signals" />
+          {rel.has && (
+            <CopyBtn id="relationship" copied={copied} accent={C.blue}
+              onCopy={() => copy("relationship", buildRelationshipContext(acc))}
+              label="⎘ Relationship Context"
+              sublabel="Contacts, call history, emails, MEDPICC, handoff notes" />
+          )}
+          <CopyBtn id="full" copied={copied} accent={C.purple}
+            onCopy={() => copy("full", buildIntelExport(acc, activeUser))}
+            label="⎘ Full Intel"
+            sublabel="Everything above plus scoring, tasks and deal signals" />
+        </div>
+
+        <SectionLabel>Outreach</SectionLabel>
+        <CopyBtn id="brief" copied={copied} accent={C.green}
+          onCopy={copyBrief}
+          label="⎘ Pre-Call Brief"
+          sublabel={hasBrief ? "Objective, agenda, questions, leave-with" : undefined}
+          disabled={!hasBrief && "Generate a Pre-Call Brief first (☎ Call Prep)"} />
       </div>
-
-      {extractError && (
-        <div style={{ ...mono, fontSize: 10, color: C.red, background: `${C.red}12`, border: `1px solid ${C.red}44`, borderRadius: 4, padding: "5px 9px", marginBottom: 8 }}>
-          ⚠ {extractError}
-        </div>
-      )}
-
-      {/* Two-column layout */}
-      <div style={{ display: "flex", gap: 0, alignItems: "flex-start" }}>
-
-        {/* ── Left column: existing sections ── */}
-        <div style={{ flex: 1, minWidth: 0, paddingRight: 14 }}>
-
-          {/* INTEL */}
-          <SectionLabel>Intel</SectionLabel>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            <ExtractBtn id="intel" copied={copied} onCopy={handlers.intel} label="⎘ Copy Intel"       accent={C.gold}  loading={loading} />
-            <ExtractBtn id="sfdc"  copied={copied} onCopy={handlers.sfdc}  label="⎘ Copy SFDC Update" accent={C.green} loading={loading} />
-          </div>
-
-          {/* OUTREACH */}
-          <SectionLabel>Outreach</SectionLabel>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            <ExtractBtn id="brief" copied={copied} onCopy={handlers.brief} label="⎘ Pre-Call Brief" accent={C.purple} loading={loading} disabled={!hasBrief && "brief"} />
-            <button
-              onClick={() => copy("prEmail", prTemplate)}
-              style={{ ...mono, fontSize: 10, height: 26, padding: "0 10px", background: copied === "prEmail" ? `${C.orange}18` : "transparent", border: `1px solid ${copied === "prEmail" ? C.orange + "55" : C.brd}`, color: copied === "prEmail" ? C.orange : C.dim, borderRadius: 4, cursor: "pointer", whiteSpace: "nowrap", transition: "all 0.15s" }}>
-              {copied === "prEmail" ? "✓ Copied" : "⎘ PR Email"}
-            </button>
-          </div>
-          {!hasBrief && (
-            <div style={{ ...mono, fontSize: 9, color: C.dim, marginTop: 4, fontStyle: "italic" }}>Generate Pre-Call Brief first (★ Pre-Call button)</div>
-          )}
-
-          {/* COMPLIANCE */}
-          <SectionLabel>Compliance</SectionLabel>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            <ExtractBtn id="chatter"  copied={copied} onCopy={handlers.chatter}  label="⎘ Chatter Msg" accent={C.blue} loading={loading} />
-            <ExtractBtn id="clientId" copied={copied} onCopy={handlers.clientId} label="⎘ Client ID"    accent={C.blue} loading={loading} disabled={!clientId && "clientId"} />
-            <button
-              onClick={handlers.nudgePr}
-              disabled={!!loading}
-              style={{ ...mono, fontSize: 10, height: 26, padding: "0 10px", background: nudged === "nudgePr" ? `${C.green}18` : copied === "nudgePr" ? `${C.orange}18` : "transparent", border: `1px solid ${nudged === "nudgePr" ? C.green + "55" : copied === "nudgePr" ? C.orange + "55" : C.brd}`, color: nudged === "nudgePr" ? C.green : copied === "nudgePr" ? C.orange : C.dim, borderRadius: 4, cursor: loading ? "default" : "pointer", whiteSpace: "nowrap", transition: "all 0.15s", opacity: loading === "nudgePr" ? 0.6 : 1 }}>
-              {nudged === "nudgePr" ? "✓ Sent" : copied === "nudgePr" ? "⚠ Not sent — copied" : loading === "nudgePr" ? "…" : "📧 Nudge PR"}
-            </button>
-            <button
-              onClick={handlers.nudgeSecQ}
-              disabled={!!loading}
-              style={{ ...mono, fontSize: 10, height: 26, padding: "0 10px", background: nudged === "nudgeSecQ" ? `${C.green}18` : copied === "nudgeSecQ" ? `${C.orange}18` : "transparent", border: `1px solid ${nudged === "nudgeSecQ" ? C.green + "55" : copied === "nudgeSecQ" ? C.orange + "55" : C.brd}`, color: nudged === "nudgeSecQ" ? C.green : copied === "nudgeSecQ" ? C.orange : C.dim, borderRadius: 4, cursor: loading ? "default" : "pointer", whiteSpace: "nowrap", transition: "all 0.15s", opacity: loading === "nudgeSecQ" ? 0.6 : 1 }}>
-              {nudged === "nudgeSecQ" ? "✓ Sent" : copied === "nudgeSecQ" ? "⚠ Not sent — copied" : loading === "nudgeSecQ" ? "…" : "📧 Nudge Sec Q"}
-            </button>
-          </div>
-          {!clientId && (
-            <div style={{ ...mono, fontSize: 9, color: C.dim, marginTop: 4, fontStyle: "italic" }}>No client ID on file</div>
-          )}
-
-          {/* REQUESTS */}
-          <SectionLabel>Requests</SectionLabel>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            <button onClick={() => setRequestModal({ type: "se",     account: acc })}
-              style={{ ...mono, fontSize: 10, height: 26, padding: "0 10px", background: `${C.blue}12`,   border: `1px solid ${C.blue}44`,   color: C.blue,   borderRadius: 4, cursor: "pointer", whiteSpace: "nowrap" }}>
-              ⚙ SE Request
-            </button>
-            <button onClick={() => setRequestModal({ type: "credit", account: acc })}
-              style={{ ...mono, fontSize: 10, height: 26, padding: "0 10px", background: `${C.purple}12`, border: `1px solid ${C.purple}44`, color: C.purple, borderRadius: 4, cursor: "pointer", whiteSpace: "nowrap" }}>
-              💳 Credit Request
-            </button>
-          </div>
-        </div>
-
-        {/* Divider */}
-        <div style={{ width: 1, background: '#1e293b', opacity: 0.6, alignSelf: 'stretch', margin: '4px 0', flexShrink: 0 }} />
-
-        {/* ── Right column: AM Handoff ── */}
-        <div style={{ flex: 1, minWidth: 0, paddingLeft: 14, background: '#0d1117', borderRadius: 6, padding: '10px 14px' }}>
-          <SectionLabel>AM Handoff</SectionLabel>
-
-          {/* AM Name input */}
-          <input
-            type="text"
-            placeholder="AM Name"
-            value={amName}
-            onChange={e => setAmName(e.target.value)}
-            style={{ ...mono, fontSize: 11, width: '100%', boxSizing: 'border-box', background: '#0f172a', border: '1px solid #475569', borderRadius: 4, color: '#e2e8f0', padding: '4px 8px', outline: 'none', marginBottom: 8 }}
-          />
-
-          {/* Plan type toggle */}
-          <div style={{ display: 'flex', gap: 4, marginBottom: 10 }}>
-            {[['custom', 'Custom'], ['growth', 'Growth']].map(([key, label]) => (
-              <button key={key} onClick={() => setPlanType(key)}
-                style={{ ...mono, fontSize: 10, flex: 1, height: 26, padding: '0 8px', borderRadius: 4, cursor: 'pointer', transition: 'all 0.15s',
-                  background: planType === key ? '#2dd4bf30' : '#1e293b',
-                  border: `1px solid ${planType === key ? '#2dd4bf' : '#475569'}`,
-                  color: planType === key ? '#2dd4bf' : '#94a3b8',
-                  fontWeight: planType === key ? 600 : 400,
-                }}>
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {/* Generate buttons */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <button
-              onClick={handleCustomerEmail}
-              disabled={!amName.trim() || loadingEmail}
-              style={{ ...mono, fontSize: 10, height: 28, padding: '0 10px', borderRadius: 4, cursor: !amName.trim() || loadingEmail ? 'default' : 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
-                background: emailCopied ? `${C.gold}18` : '#1e293b',
-                border: `1px solid ${emailCopied ? C.gold + '55' : '#475569'}`,
-                color: emailCopied ? C.gold : !amName.trim() ? '#475569' : '#e2e8f0',
-                opacity: loadingEmail ? 0.6 : 1,
-              }}>
-              {loadingEmail ? '⟳ Generating…' : emailCopied ? '✓ Copied!' : '✉ Customer Email'}
-            </button>
-            <button
-              onClick={handleSlackBrief}
-              disabled={!amName.trim() || loadingSlack}
-              style={{ ...mono, fontSize: 10, height: 28, padding: '0 10px', borderRadius: 4, cursor: !amName.trim() || loadingSlack ? 'default' : 'pointer', transition: 'all 0.15s', whiteSpace: 'nowrap',
-                background: slackCopied ? '#2dd4bf18' : '#1e293b',
-                border: `1px solid ${slackCopied ? '#2dd4bf' : '#475569'}`,
-                color: slackCopied ? '#2dd4bf' : !amName.trim() ? '#475569' : '#e2e8f0',
-                opacity: loadingSlack ? 0.6 : 1,
-              }}>
-              {loadingSlack ? '⟳ Generating…' : slackCopied ? '✓ Copied!' : '💬 AM Slack Brief'}
-            </button>
-          </div>
-
-          {!amName.trim() && (
-            <div style={{ ...mono, fontSize: 9, color: '#94a3b8', marginTop: 6, fontStyle: 'italic' }}>Enter AM name to enable</div>
-          )}
-
-          {/* BCC reminder */}
-          {amName.trim() && (
-            <div style={{ ...mono, fontSize: 9, color: '#94a3b8', marginTop: 8, lineHeight: 1.5 }}>
-              Remember: CC {amName}<br />BCC your growth/AM distribution list
-            </div>
-          )}
-        </div>
-      </div>
-
-      <RequestModal
-        type={requestModal?.type}
-        account={requestModal?.account}
-        isOpen={!!requestModal}
-        onClose={() => setRequestModal(null)}
-      />
     </div>
   );
 }

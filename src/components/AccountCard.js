@@ -286,7 +286,7 @@ export default function AccountCard({
       )}
 
       {!isInfluencer && extractOpen && (
-        <AccountCardExtract acc={acc} tasks={tasks} activeUser={activeUser} onClose={() => setExtractOpen(false)} />
+        <AccountCardExtract acc={acc} activeUser={activeUser} onClose={() => setExtractOpen(false)} />
       )}
 
       {!isInfluencer && (
