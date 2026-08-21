@@ -164,7 +164,7 @@ function ClaimJumperPage({ pool=[], accounts=[], onClaim, onClaimMultiple, onRem
     if(assaying)return;
     setAssaying(a.id);
     try{
-      const parsed=await clientAssay({name:a.name,web:a.web,vert:a.vert,customIntel:getActiveIntel(),exampleAccts:getActiveExamples(),stage:a.stage||"Prospecting"});
+      const parsed=await clientAssay({name:a.name,web:a.web,vert:a.vert,customIntel:getActiveIntel(),exampleAccts:getActiveExamples(),stage:a.stage||"Prospecting",relationshipType:a.relationshipType});
       onUpdatePoolEntry&&onUpdatePoolEntry(a.id,{...parsed,sigs:parsed.keySignals||[],ucs:parsed.useCases||[],prods:parsed.products||[],bm:parsed.businessModel||"",pf:parsed.productFit||"",dis:parsed.disqualifier||null,linkedin:parsed.linkedin||a.linkedin||"",analyzed:true,siteInactive:parsed.isActive===false});
     }catch(e){console.error(e);}
     setAssaying(null);
@@ -245,7 +245,7 @@ function ClaimJumperPage({ pool=[], accounts=[], onClaim, onClaimMultiple, onRem
                 const a=pool.find(x=>x.id===ids[i]);
                 if(!a)continue;
                 try{
-                  const parsed=await clientAssay({name:a.name,web:a.web,vert:a.vert,customIntel:getActiveIntel(),exampleAccts:getActiveExamples(),stage:a.stage||"Prospecting"});
+                  const parsed=await clientAssay({name:a.name,web:a.web,vert:a.vert,customIntel:getActiveIntel(),exampleAccts:getActiveExamples(),stage:a.stage||"Prospecting",relationshipType:a.relationshipType});
                   onUpdatePoolEntry&&onUpdatePoolEntry(ids[i],{...parsed,sigs:parsed.keySignals||[],ucs:parsed.useCases||[],prods:parsed.products||[],bm:parsed.businessModel||"",pf:parsed.productFit||"",dis:parsed.disqualifier||null,linkedin:parsed.linkedin||a.linkedin||"",analyzed:true,siteInactive:parsed.isActive===false});
                 }catch(e){}
                 setBulkScoring({done:i+1,total:ids.length});
@@ -601,7 +601,7 @@ function ClaimJumperPage({ pool=[], accounts=[], onClaim, onClaimMultiple, onRem
                 for(let i=0;i<unscored.length;i++){
                   const a=unscored[i];
                   try{
-                    const parsed=await clientAssay({name:a.name,web:a.web,vert:a.vert,customIntel:getActiveIntel(),exampleAccts:getActiveExamples(),stage:a.stage||"Prospecting"});
+                    const parsed=await clientAssay({name:a.name,web:a.web,vert:a.vert,customIntel:getActiveIntel(),exampleAccts:getActiveExamples(),stage:a.stage||"Prospecting",relationshipType:a.relationshipType});
                     onUpdatePoolEntry&&onUpdatePoolEntry(a.id,{...parsed,sigs:parsed.keySignals||[],ucs:parsed.useCases||[],prods:parsed.products||[],bm:parsed.businessModel||"",pf:parsed.productFit||"",dis:parsed.disqualifier||null,linkedin:parsed.linkedin||a.linkedin||"",analyzed:true});
                   }catch(e){}
                   setBulkScoring({done:i+1,total:unscored.length});

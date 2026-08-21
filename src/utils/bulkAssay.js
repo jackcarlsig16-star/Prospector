@@ -54,6 +54,7 @@ export async function startBulkAssay({ accounts, onSaveAccounts }) {
       const parsed = await clientAssay({
         name: acc.name, web: acc.web, vert: acc.vert,
         customIntel: combinedIntel, exampleAccts, stage: acc.stage || 'Prospecting',
+        relationshipType: acc.relationshipType,
       });
       current = current.map(a => a.id === acc.id ? {
         ...a, ...parsed,

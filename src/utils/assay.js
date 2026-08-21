@@ -205,11 +205,21 @@ Return ONLY this JSON:
 // assay_criteria is the intended full substitute for business-specific
 // context in this path — don't re-add these params without giving AEs a
 // business-scoped equivalent first.
-function buildGeneralizedPrompt(criteria) {
+function buildGeneralizedPrompt(criteria, relationshipType) {
+  const isCompetitor = relationshipType === 'Competitor';
   return `You are a product/partnership fit scoring engine for an AE, scoring how well a prospect account fits the specific business below. Respond with ONLY a JSON object, no other text.
 
-SCORING: 1=Gold(strong direct fit), 2=Silver(solid indirect fit), 3=Tin(weak/speculative fit), 4=Slag(defunct OR no meaningful fit).
+SCORING: 1=Gold(strong direct fit), 2=Silver(solid indirect fit), 3=Tin(weak/speculative fit), 4=Slag(weak or no meaningful fit).
+Score is a SPECTRUM, not a qualify/disqualify gate. Every account gets a real, reasoned score somewhere on it. A low score is a legitimate outcome; refusing to evaluate is not.
 If site unreachable but the company's name/vertical suggests a fit per the criteria below, score based on that — do NOT score 4 just because the site failed to load.
+
+ACCOUNT TYPE: ${relationshipType || 'Prospect/Lead'}
+${isCompetitor
+  ? `This account is explicitly typed a COMPETITOR. That is the one hard exclusion: score 4=Slag and set disqualifier to "competitor — <one sentence on how they compete>".`
+  : `This account is NOT typed a competitor. Assume it is a potential prospect or customer. Do NOT treat it as a competitor or as categorically excluded on the basis of what it sells. Being in an unrelated industry is a reason for a LOW score with a clear rationale, never a reason to skip real evaluation.`}
+
+BEFORE concluding any category-based non-fit, check the FIT SIGNALS below against what this account actually IS, not just what it sells. If the criteria describe traits an account can possess independently of its product — an employee base, a member or workforce population, a customer roster, a distribution channel — look for evidence of THAT trait and record what you find in fitSignals. A company whose product is unrelated may still match on the trait the criteria actually asks about. Only conclude non-fit after that check, and say in productFit which specific FIT SIGNALS criterion it fails.
+fitSignals and keySignals must not be left empty just because the score is low — a low score still needs the evidence it was reasoned from.
 
 THIS BUSINESS'S FIT CRITERIA — apply these instead of any generic vertical assumptions:
 FIT SIGNALS: ${criteria.fit_signals || "(not specified)"}
@@ -221,7 +231,12 @@ If the company is a PLATFORM or B2B2C play that serves other businesses as custo
 Set distributionMultiplier=true and note downstream reach in estimatedDownstreamUsers.
 
 DEFUNCT / ACQUIRED: Score 4=Slag and set isActive=false if site mentions "acquired by", "now part of", "no longer operating", "sunset", or is a holding page.
-Set disqualifier as a free-text one-sentence explanation grounded in the DISQUALIFIERS criteria above (e.g. "wrong audience — this business's ICP is X, this account serves Y"). If active and not disqualified, disqualifier must be null.
+
+DISQUALIFIER — three different things, do not conflate them:
+- defunct/dormant (company no longer operating) — a hard exclusion.
+- competitor — a hard exclusion, but ONLY when ACCOUNT TYPE above says Competitor. Never infer it from what the account sells.
+- weak or partial fit against the DISQUALIFIERS criteria — NOT an exclusion. Score it low on the spectrum and explain why in productFit.
+Set disqualifier only for the first two, or where the DISQUALIFIERS criteria are unambiguously met on their own terms; otherwise leave it null and let the low score carry the message. It is a one-sentence free-text explanation naming the specific criterion met (e.g. "wrong audience — this business's ICP is X, this account serves Y"). A live, non-competitor account that is merely a poor fit gets disqualifier null and a low score, not a disqualifier.
 
 SITE UNREACHABLE POLICY: Score based on company name + vertical + the fit criteria above. Set confidence="Low". Do NOT set disqualifier to "site unreachable".
 
@@ -269,7 +284,7 @@ Return ONLY this JSON:
 // pool, which isn't tied to any live business object and is itself a
 // separately-flagged legacy-removal candidate, not something to redesign
 // here.
-export async function clientAssay({ name, web, vert, customIntel, exampleAccts, stage, businessId }) {
+export async function clientAssay({ name, web, vert, customIntel, exampleAccts, stage, businessId, relationshipType }) {
   let siteContent = "", linkedin = null, signalBreakdown = null, fetchMethod = "none";
   if (web) {
     const { content, method } = await fetchSiteContentClient(web);
@@ -299,9 +314,9 @@ export async function clientAssay({ name, web, vert, customIntel, exampleAccts, 
     } catch { /* fall through */ }
   }
   const systemPrompt = assayCriteria
-    ? buildGeneralizedPrompt(assayCriteria)
+    ? buildGeneralizedPrompt(assayCriteria, relationshipType)
     : businessId
-      ? buildGeneralizedPrompt({}) // real business, no criteria generated yet - honest empty-criteria scoring, not fintech rules
+      ? buildGeneralizedPrompt({}, relationshipType) // real business, no criteria generated yet - honest empty-criteria scoring, not fintech rules
       : buildLegacyFintechPrompt(customIntel, exampleAccts); // Claim Jumper pool only - no business object at all
 
   const response = await fetch("/proxy/anthropic/messages", {

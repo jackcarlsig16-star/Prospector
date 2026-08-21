@@ -292,7 +292,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
       // actually worked. Same combine pattern AddAccountModal.submit() already
       // uses at creation time (account context first, then global intel).
       const combinedIntel=[acc.handoffNotes,getActiveIntel()].filter(Boolean).join("\n\n---\n\n");
-      const parsed=await clientAssay({name:acc.name,web:acc.web,vert:acc.vert,customIntel:combinedIntel,exampleAccts:getActiveExamples(),stage:acc.stage||"Prospecting",businessId:business?.id});
+      const parsed=await clientAssay({name:acc.name,web:acc.web,vert:acc.vert,customIntel:combinedIntel,exampleAccts:getActiveExamples(),stage:acc.stage||"Prospecting",businessId:business?.id,relationshipType:acc.relationshipType});
       if(acc.tier==="Slag"&&parsed.tier==="Gold") trackStat("reassay_upgrades");
       // If web was overridden (site unreachable workaround), persist the new URL
       const webPatch=acc.web!==accounts.find(a=>a.id===acc.id)?.web?{web:acc.web}:{};
@@ -355,7 +355,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
     // sharing one account's notes with every other account in the batch
     // would be a real leak, not a fix).
     const combinedIntel=[acc.handoffNotes,customIntel].filter(Boolean).join("\n\n---\n\n");
-    const run=()=>clientAssay({name:acc.name,web:acc.web,vert:acc.vert,customIntel:combinedIntel,exampleAccts,stage:acc.stage||"Prospecting",businessId:business?.id});
+    const run=()=>clientAssay({name:acc.name,web:acc.web,vert:acc.vert,customIntel:combinedIntel,exampleAccts,stage:acc.stage||"Prospecting",businessId:business?.id,relationshipType:acc.relationshipType});
     try{
       return await run();
     }catch(e1){

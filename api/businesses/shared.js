@@ -148,8 +148,12 @@ Return exactly this shape:
 {
   "fit_signals": "what makes a prospect account a strong fit for this business - concrete, specific traits, verticals, or behaviors to look for. 2-4 sentences.",
   "disqualifiers": "what makes a prospect account NOT a fit for this business - concrete disqualifying traits. 2-4 sentences.",
-  "tier_guidance": "how to map fit strength onto scoring tiers (Gold = strong direct fit, Silver = solid indirect fit, Tin = weak/speculative fit, Slag = no fit or defunct) for THIS business specifically - what earns each tier. 2-4 sentences."
+  "tier_guidance": "how to map fit strength onto scoring tiers (Gold = strong direct fit, Silver = solid indirect fit, Tin = weak/speculative fit, Slag = weak or no meaningful fit) for THIS business specifically - what earns each tier. 2-4 sentences."
 }
+
+The tiers are a SPECTRUM of fit strength. Do not write tier_guidance that turns Slag into a catch-all exclusion bucket: keep "weak or no fit against the criteria", "defunct or dormant", and "direct competitor" as SEPARATE, independently-stated conditions rather than one OR-list, because they are unrelated and an automated scorer that sees them merged will treat an ordinary poor fit as if it were a dead company or a competitor.
+
+State fit_signals as traits an account can be checked for on its own terms - who it employs, serves, or reaches - not as "sells something like what we sell". Two companies in unrelated industries can both match a workforce-based or audience-based criterion.
 
 Base every field on the business profile provided - do not invent facts it doesn't support. If the profile is thin, give general-but-honest criteria rather than fabricating specifics, and let the thinness show in how general the criteria are rather than padding with invented detail.`;
 
