@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { mono } from '../../../constants/colors';
-import { CARD, RADIUS, TYPE } from '../tokens';
+import { CARD, RADIUS } from '../tokens';
 import { BDR_LIST, URGENCY_OPTIONS } from '../../../utils/assignHelper';
 import { getCachedTopContact, getCachedAlternateContacts } from '../../../utils/hunter';
 
@@ -38,10 +38,14 @@ export default function LinksAndOutbound({ acc, onUpdate, tasks, activeUser, ass
   };
 
   const itemStyle = { ...mono, fontSize: 10, height: 24, padding: "0 9px", display: "inline-flex", alignItems: "center", gap: 4, background: "transparent", border: `1px solid ${CARD.border}`, color: CARD.textMuted, borderRadius: RADIUS.sm, textDecoration: "none", cursor: "pointer", whiteSpace: "nowrap" };
+  // account-card-density-v1 — square icon-only variant for the field links,
+  // per the mockup's 27x27 boxes. Every one carries a title, since dropping
+  // the text label takes the affordance with it.
+  const iconStyle = { ...itemStyle, width: 27, height: 27, padding: 0, justifyContent: "center", color: "#7d8a7d", fontSize: 11 };
 
   return (
-    <div onClick={e => e.stopPropagation()}>
-      <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+    <div onClick={e => e.stopPropagation()} style={{ display: "contents" }}>
+      <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
         {/* account-card-button-cleanup-v1 — the invalid-state "⬡ SF"
             edit-trigger was removed (redundant with the ✏ below, which
             opens the identical form). The valid-state real link is kept —
@@ -83,14 +87,14 @@ export default function LinksAndOutbound({ acc, onUpdate, tasks, activeUser, ass
         )}
       </div>
 
-      {/* account-card-cleanup-v1 Stage 6 — Website/LinkedIn/Email regrouped
-          into a visually distinct "editable fields" section, separated from
-          the action row above — these are data fields to view/edit, not
-          actions to trigger. Same edit mechanism as before (unchanged),
-          just relocated + given its own container. */}
-      <div style={{ marginTop: 8, padding: "8px 10px", background: CARD.surface, border: `1px solid ${CARD.border}`, borderRadius: RADIUS.sm }}>
-        <div style={{ ...TYPE.sectionLbl, color: CARD.textSubtle, marginBottom: 6 }}>Fields</div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+      {/* account-card-density-v1 — the bordered "Fields" panel and its
+          section label are gone; these sit in the shared action strip now,
+          icon-only, as the approved mockup shows. The ✏ trigger stays: it
+          opens the only editor for web/linkedin/sfdc/clientIds, and the
+          mockup omitting it was a mockup simplification, not a decision to
+          drop field editing. */}
+      <span style={{ width: 1, height: 16, background: CARD.borderStrong, margin: "0 3px" }} />
+      <div style={{ display: "flex", gap: 5, alignItems: "center", flexWrap: "wrap" }}>
           {linksEdit ? (
             <span style={{ display: "inline-flex", gap: 4, alignItems: "center", flexWrap: "wrap" }}>
               <input autoFocus value={linksDraft.web} onChange={e => setLinksDraft(d => ({ ...d, web: e.target.value }))} placeholder="Website URL" style={{ ...mono, fontSize: 11, padding: "2px 7px", background: CARD.surface2, border: `1px solid ${CARD.border}`, borderRadius: 4, color: CARD.textPrimary, outline: "none", width: 130 }} />
@@ -104,13 +108,14 @@ export default function LinksAndOutbound({ acc, onUpdate, tasks, activeUser, ass
             </span>
           ) : (
             <>
-              {webUrl ? <a href={webUrl} target="_blank" rel="noreferrer" style={itemStyle}>↗ Website</a> : <span style={{ ...itemStyle, cursor: "default", opacity: 0.6 }}>↗ No website</span>}
-              <a href={liUrl} target="_blank" rel="noreferrer" style={itemStyle}>in LinkedIn</a>
-              <button onClick={openEmail} style={itemStyle}>✉ Email</button>
-              {onUpdate && <button onClick={() => { setLinksDraft({ web: acc.web || '', sfdc: acc.sfdc || '', linkedin: acc.linkedin || '', clientIds: (acc.clientIds || []).join(', ') }); setLinksEdit(true); }} style={itemStyle} title="Edit fields">✏</button>}
+              {webUrl
+                ? <a href={webUrl} target="_blank" rel="noreferrer" style={iconStyle} title={acc.web}>↗</a>
+                : <span style={{ ...iconStyle, cursor: "default", opacity: 0.45 }} title="No website">↗</span>}
+              <a href={liUrl} target="_blank" rel="noreferrer" style={iconStyle} title="LinkedIn">in</a>
+              <button onClick={openEmail} style={iconStyle} title="Email">✉</button>
+              {onUpdate && <button onClick={() => { setLinksDraft({ web: acc.web || '', sfdc: acc.sfdc || '', linkedin: acc.linkedin || '', clientIds: (acc.clientIds || []).join(', ') }); setLinksEdit(true); }} style={iconStyle} title="Edit fields">✏</button>}
             </>
           )}
-        </div>
       </div>
     </div>
   );

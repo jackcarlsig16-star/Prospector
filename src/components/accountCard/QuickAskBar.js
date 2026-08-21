@@ -54,7 +54,11 @@ export function QuickAskBar({ acc }) {
   return (
     <>
       <style>{`@keyframes prospectorBlink{50%{opacity:0}} @keyframes prospectorPulse{0%,100%{opacity:.35}50%{opacity:1}}`}</style>
-      <div style={{ padding: '12px 16px', borderBottom: `1px solid #1a3a1a`, background: '#050f05', margin: '-12px -14px 12px' }}>
+      {/* account-card-density-v1 — this was a full-bleed banner (negative
+          margins out to the card edges, its own bottom border and 12px of
+          separation). It's an inline control in the toolbar row now, sitting
+          beside Generate Outreach, so the bleed and the separator are gone. */}
+      <div style={{ flex: 1, minWidth: 220 }}>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', position: 'relative' }}>
           <span style={{ ...mono, fontSize: 12, color: T.neon, flexShrink: 0, opacity: 0.7 }}>▸</span>
           <div style={{ flex: 1, position: 'relative' }}>

@@ -7,7 +7,10 @@ import { CARD } from './tokens';
 export default function AccountStateBar({ items = [] }) {
   if (!items.length) return null;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "0 14px 12px" }} onClick={e => e.stopPropagation()}>
+    // account-card-density-v1 — the card-level padding and 12px bottom
+    // margin belonged to this being a standalone row under the header. It
+    // sits inside the expanded toolbar now, which owns its own spacing.
+    <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }} onClick={e => e.stopPropagation()}>
       {items.map((item, i) => (
         <div key={item.key || i} style={{ display: "flex", alignItems: "center", gap: 6 }}>
           {item.control}

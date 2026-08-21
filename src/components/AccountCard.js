@@ -124,12 +124,25 @@ export default function AccountCard({
   // account-business-details-v1 — new table first, legacy field as fallback
   // for accounts not yet re-assayed since this shipped (dual-write).
   const displayTier = acc.businessDetail?.tier || acc.tier;
-  if (!isInfluencer && displayTier) signals.push(<AccountBadge key="tier" tone={TIER_COLOR[displayTier] || kind.accent}>{displayTier}</AccountBadge>);
+  // account-card-density-v1 — tier and confidence moved out of the header
+  // into the expanded toolbar, per the approved mockup. "at risk" and
+  // OUTBOUND deliberately stay in the header: they're urgency flags worth
+  // seeing on a collapsed card while scanning the list, where tier and
+  // confidence are classification the assay already sorts by.
+  const classification = [];
   // account-card-score-to-confidence-swap-v1 — raw score duplicated tier
   // (1=Gold..4=Slag, same model output shown twice); confidence is the
   // real independently-varying signal, swapped in at the same position.
   const displayConfidence = acc.businessDetail?.fit_signals?.confidence;
-  if (!isInfluencer && displayConfidence) signals.push(<AccountBadge key="confidence" tone={kind.accent}>{`Confidence: ${displayConfidence}`}</AccountBadge>);
+  if (!isInfluencer && displayTier) {
+    const tierColor = TIER_COLOR[displayTier] || kind.accent;
+    // Slag's own token is #555566 — dark enough that AccountBadge's default
+    // "text = tone" made the label barely readable on its own tint. The
+    // mockup's lifted label colour is applied here rather than changing the
+    // tier token, which is load-bearing elsewhere.
+    classification.push(<AccountBadge key="tier" tone={tierColor} textTone={displayTier === 'Slag' ? '#8c8ca0' : undefined}>{displayTier}</AccountBadge>);
+  }
+  if (!isInfluencer && displayConfidence) classification.push(<AccountBadge key="confidence" tone={kind.accent}>{`Confidence: ${displayConfidence}`}</AccountBadge>);
   if (isInfluencer && detail?.priority) signals.push(<AccountBadge key="priority" tone={detail.priority === 'high' ? '#F06060' : detail.priority === 'medium' ? '#f5c542' : undefined}>{detail.priority} priority</AccountBadge>);
   if (isInfluencer) signals.push(<AccountBadge key="stage" tone={kind.accent}>{(detail?.relationship_stage || 'not_contacted').replace(/_/g, ' ')}</AccountBadge>);
 
@@ -171,14 +184,32 @@ export default function AccountCard({
 
       <AdminOverflowMenu open={overflowOpen} onClose={() => setOverflowOpen(false)} actions={adminActions} />
 
-      {!isInfluencer && onUpdate && <AccountStateBar items={stateItems} />}
+      {/* account-card-density-v1 — the state bar used to render here, outside
+          {expanded}, so Type/Stage/Source showed on collapsed cards too. It
+          moved into the toolbar below on Jack's explicit call; collapsed
+          cards no longer carry it. */}
 
       {expanded && (
-        <div style={{ padding: "0 14px 14px", display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ padding: "0 14px 13px", display: "flex", flexDirection: "column", gap: 7 }}>
 
-          <PrimaryAction accountKind={acc.accountKind} action={primaryAction} />
-
-          <QuickAskBar acc={acc} />
+          {/* Dense toolbar — selectors, classification badges, Generate and
+              the ask bar as ONE block on a 5px internal rhythm, instead of
+              four margin-separated rows. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+            {(stateItems.length > 0 || classification.length > 0) && (
+              <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                {!isInfluencer && onUpdate && <AccountStateBar items={stateItems} />}
+                {classification.length > 0 && stateItems.length > 0 && onUpdate && !isInfluencer && (
+                  <span style={{ width: 1, height: 13, background: CARD.borderStrong, margin: "0 1px" }} />
+                )}
+                {classification}
+              </div>
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <PrimaryAction accountKind={acc.accountKind} action={primaryAction} />
+              <QuickAskBar acc={acc} />
+            </div>
+          </div>
 
           {isInfluencer ? (
             <div>
@@ -186,7 +217,18 @@ export default function AccountCard({
             </div>
           ) : (
             <>
-              <ActionGroup actions={tiers[2]} />
+              {/* account-card-density-v1 — tier 2, tier 3 and the field links
+                  were three separate stacked rows. They share one strip now,
+                  divided rather than stacked. The tier split itself is
+                  unchanged (groupByTier still owns it) — only the layout is,
+                  so UtilityRow keeps its quieter treatment and Pricing/ROI
+                  still flow into it conditionally. */}
+              <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                <ActionGroup actions={tiers[2]} />
+                {tiers[3].length > 0 && <span style={{ width: 1, height: 16, background: CARD.borderStrong, margin: "0 3px" }} />}
+                <UtilityRow actions={tiers[3]} />
+                <LinksAndOutbound acc={acc} onUpdate={onUpdate} tasks={tasks} activeUser={activeUser} assignedEntry={assignedEntry} onAssign={onAssign} onUnassign={onUnassign} />
+              </div>
 
               {/* account-card-layout-and-readability-fixes-v1 — these mounted
                   ~700px below their own trigger buttons (after the intelligence
@@ -214,8 +256,6 @@ export default function AccountCard({
                 </div>
               )}
 
-              <UtilityRow actions={tiers[3]} />
-              <LinksAndOutbound acc={acc} onUpdate={onUpdate} tasks={tasks} activeUser={activeUser} assignedEntry={assignedEntry} onAssign={onAssign} onUnassign={onUnassign} />
             </>
           )}
 

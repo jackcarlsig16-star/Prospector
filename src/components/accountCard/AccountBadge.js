@@ -5,14 +5,17 @@ import { CARD, RADIUS } from './tokens';
 // `tone` accepts a hex color and derives bg/border from it; omit for neutral.
 // `glow` (A1b) adds a faint tone-matched glow — reserved for identity
 // badges (kind BUSINESS/INFLUENCER), not signal/state pills in general.
-export default function AccountBadge({ children, tone, size = 10, filled = false, onClick, title, glow = false }) {
+// `textTone` overrides the label colour only — for tones dark enough that
+// using them as text (the default) falls below readable contrast on their
+// own tint, e.g. the Slag tier's #555566.
+export default function AccountBadge({ children, tone, size = 10, filled = false, onClick, title, glow = false, textTone }) {
   const color = tone || CARD.textSecondary;
   const style = {
     ...mono,
     fontSize: size,
     fontWeight: 600,
     letterSpacing: "0.04em",
-    color: filled ? CARD.bg : color,
+    color: filled ? CARD.bg : (textTone || color),
     background: filled ? color : `${color}14`,
     border: `1px solid ${tone ? `${color}55` : CARD.border}`,
     borderRadius: RADIUS.sm,

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { mono } from '../../../constants/colors';
+import { T } from '../../../constants/tokens';
 import { CARD, RADIUS, ROLE } from '../tokens';
 import { DealComplianceTracker } from '../../AccountCardCompliance';
 import DealStageBar from '../../AccountCardDealStage';
@@ -29,17 +30,23 @@ const SH = { ...mono, fontSize: 10, fontWeight: 600, textTransform: "uppercase",
 // going forward).
 const PILL_STYLE = { ...mono, fontSize: 10, color: CARD.textSecondary, background: CARD.surface, border: `1px solid ${CARD.border}`, borderRadius: 3, padding: "2px 6px" };
 
+// account-card-density-v1 — disqualifying evidence read as the same neutral
+// gray as every other signal group, making the one thing that kills an
+// account the hardest thing on the card to find. Red is scoped to the
+// disqualifier block and its pills only, so it stays a real signal.
+const DANGER_PILL_STYLE = { ...PILL_STYLE, color: "#ff9d9d", background: "rgba(255,68,68,0.08)", border: `1px solid ${T.red}55` };
+
 // surface-existing-intel-v1 — internal-only helper for Signal Breakdown's
 // four sub-arrays, which repeat the same labeled-pill-row shape. Not a
 // shared/exported Pill component (explicitly out of scope) - scoped to this
 // file, just avoiding four near-identical blocks inline.
-function SignalSubGroup({ label, items }) {
+function SignalSubGroup({ label, items, danger = false }) {
   if (!items?.length) return null;
   return (
     <div style={{ marginTop: 6 }}>
-      <p style={{ ...mono, fontSize: 9, color: CARD.textMuted }}>{label}</p>
+      <p style={{ ...mono, fontSize: 9, color: danger ? "#ff8080" : CARD.textMuted }}>{label}</p>
       <div style={{ marginTop: 4, display: "flex", gap: 4, flexWrap: "wrap" }}>
-        {items.map((s, i) => <span key={i} style={PILL_STYLE}>{s}</span>)}
+        {items.map((s, i) => <span key={i} style={danger ? DANGER_PILL_STYLE : PILL_STYLE}>{s}</span>)}
       </div>
     </div>
   );
@@ -74,8 +81,8 @@ export function IntelligenceSummary({ acc }) {
         </div>
       )}
       {disqualifier && (
-        <div style={{ marginTop: 12 }}>
-          <p style={SH}>Disqualifier</p>
+        <div style={{ marginTop: 12, borderLeft: `2px solid ${T.red}`, background: "rgba(255,68,68,0.05)", padding: "7px 11px", borderRadius: "0 4px 4px 0" }}>
+          <p style={{ ...SH, color: "#ff8080" }}>Disqualifier</p>
           <p style={{ margin: "4px 0 0", fontSize: 12, color: CARD.textSecondary, lineHeight: 1.6 }}>{disqualifier}</p>
         </div>
       )}
@@ -115,7 +122,7 @@ export function IntelligenceSummary({ acc }) {
           )}
           {/* The disqualifying evidence itself - fetched all along, but only
               reachable via the collapsed raw-JSON dump until now. */}
-          <SignalSubGroup label="Disqualifying Signals" items={breakdown.slagSignals} />
+          <SignalSubGroup label="Disqualifying Signals" items={breakdown.slagSignals} danger />
           <SignalSubGroup label="Scale Signals" items={breakdown.scaleSignals} />
           {/* assay-standard-signal-categories-v1 — old rows carry paymentSignals/
               platformSignals/onboardingSignals instead of fitSignals/adoptionSignals;
