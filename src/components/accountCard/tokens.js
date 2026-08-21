@@ -76,8 +76,6 @@ export const ROLE = {
 export const GLOW_FOCUS_CLASS = "ac-glow-focus";
 export const GLOW_FOCUS_STYLE = `.${GLOW_FOCUS_CLASS}:focus{box-shadow:0 0 6px currentColor;border-color:currentColor !important;outline:none;}`;
 
-export const SPACE = { xs: 4, sm: 6, md: 8, lg: 12, xl: 16, xxl: 20, xxxl: 24 };
-
 export const TYPE = {
   name:        { fontSize: 16, fontWeight: 600 },
   metaPrimary: { fontSize: 13, fontWeight: 400 },

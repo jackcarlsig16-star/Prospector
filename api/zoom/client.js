@@ -14,10 +14,6 @@ function encodeMeetingId(meetingId) {
   return /^\d+$/.test(meetingId) ? meetingId : encodeURIComponent(encodeURIComponent(meetingId));
 }
 
-export async function getZoomMeetingRecordings(meetingId) {
-  return callExternalApi({ integration: 'zoom', method: 'GET', path: `/meetings/${encodeMeetingId(meetingId)}/recordings` });
-}
-
 // zoom-meet-auto-ingest-v1, Step 2/3 - the webhook payload has no
 // participant list (confirmed live, Phase 0 audit), so this Reports API
 // call is the only source of real attendee emails for Tier 1/2 attribution.
