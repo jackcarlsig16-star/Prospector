@@ -14,7 +14,6 @@ export const COMPANY_EMAIL_DOMAIN = (process.env.REACT_APP_COMPANY_DOMAIN || "ex
 export const NAV = [
   { id: "home",         ic: "⌂", lb: "Portfolio" },
   { id: "accounts",     ic: "◈", lb: "Accounts" },
-  { id: "veinmap",      ic: "⛏", lb: "Vein Map" },
   { id: "ledger",       ic: "≡", lb: "Ledger" },
   { id: "outbound",     ic: "◎", lb: "Outbound" },
   { id: "ideas",        ic: "◆", lb: "Ideas" },
@@ -37,7 +36,6 @@ export const ROLE_PERMS = {
 export const NAV_ROLES = {
   home:         ["AE","BDR","Manager","Admin","Owner"],
   accounts:     ["AE","BDR","Manager","Admin","Owner"],
-  veinmap:      ["AE","BDR","Manager","Admin","Owner"],
   ledger:       ["AE","Manager","Admin","Owner"],
   outbound:     ["AE","BDR","Manager","Admin","Owner"],
   ideas:        ["AE","BDR","Manager","Admin","Owner"],

@@ -57,7 +57,6 @@ const logStageBatch = (trigger, prev, next) => {
 const AccountsPage          = React.lazy(() => import('./components/AccountsPage'));
 const ProductionRequestsPage = React.lazy(() => import('./components/ProductionRequestsPage'));
 const IntelligencePage      = React.lazy(() => import('./components/IntelligencePage'));
-const VeinMap               = React.lazy(() => import('./components/VeinMap'));
 const AnalyticsPage         = React.lazy(() => import('./components/AnalyticsPage'));
 const UploadsPage           = React.lazy(() => import('./components/UploadsPage'));
 const ClaimJumperPage       = React.lazy(() => import('./components/ClaimJumperPage'));
@@ -1411,7 +1410,6 @@ export default function App() {
         {page==="uploads"&&<UploadsPage accounts={accounts} onSave={saveAccounts} onSaveBatch={saveBatch} onBatchUpdate={setActiveBatch} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} activeUser={activeUser} onEnrichLog={logTerritoryEvent}/>}
         {page==="analytics"&&<AnalyticsPage accounts={accounts} tasks={tasks} stealthList={stealthList} frontier={frontier} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} teamUsers={teamUsers} currentUser={user} activeRole={activeRole}/>}
         {page==="intelligence"&&<IntelligencePage user={user} activeUser={activeUser}/>}
-        {page==="veinmap"&&<VeinMap accounts={accounts} activeUser={activeUser||user} managerSelectedAeId={managerScopedAeId}/>}
         {(page==="outbound"||page==="team")&&<OutboundPage accounts={accounts} onNav={navTo} user={user} activeUser={activeUser} perms={perms} stealthList={stealthList} onSaveStealthList={setStealthList} onPromoteToAccount={promoteToAccount} onSfStatus={setSfStatus} frontier={frontier} onSaveFrontier={setFrontier} onAssignToBDR={assignToBDR} onUnassignFromFrontier={unassignFromFrontier} onSetFrontierStatus={setFrontierStatus} onRemoveDemoAccount={()=>setFrontier(fl=>fl.filter(f=>!f.isDemo))} onHandoff={f=>{setAccounts(as=>as.map(a=>{if(a.name.toLowerCase()!==f.name.toLowerCase())return a;logStageChange('onHandoff (OutboundPage)',a.name,a.stage,'Engaged');return {...a,stage:"Engaged",last:new Date().toISOString().slice(0,10)};}));setFrontier(fl=>fl.filter(x=>x.id!==f.id));trackStat("tasks_assigned_to_bdr");}} teamUsers={teamUsers} setAccounts={setAccounts} onCreateTask={task=>setTasks(ts=>[...ts,task])}/>}
         {page==="ideas"&&<IdeasPage nuggets={nuggets} onSaveNuggets={setNuggets} activeUser={activeUser} onViewIdeas={onViewIdeas}/>}
         {page==="ledger"&&<LedgerPage accounts={accounts} setAccounts={setAccounts} teamUsers={teamUsers} activeUser={activeUser} tasks={tasks} winsLog={winsLog} setWinsLog={setWinsLog} managerSelectedAeId={managerScopedAeId}/>}

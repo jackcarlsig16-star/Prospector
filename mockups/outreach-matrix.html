@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<script type="application/json" id="cowork-artifact-meta">
+{
+  "name": "Outreach Matrix Mockup",
+  "schemaVersion": 1,
+  "description": "Outreach Matrix concept mockup for the Accounts tab — vertical account rows, 4-week (28-day) horizontal calendar with weekend shading, color+shape-coded cadence states (generated/sent/scheduled/overdue/meeting booked), filters, and a click-through cadence detail drawer. Mock data only.",
+  "mcpTools": [],
+  "mcpServerNames": []
+}
+</script>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Outreach Matrix — Concept Mockup</title>
+<style>
+  :root { color-scheme: light; }
+  .viz-root {
+    --surface-1:      #fcfcfb;
+    --surface-2:      #f9f9f7;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted:     #898781;
+    --gridline:       #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --weekend-bg:      #efeee9;
+
+    --blue:           #2a78d6;
+    --blue-soft:      #cde2fb;
+    --orange:         #eb6834;
+    --orange-soft:    #fbe0d2;
+    --red:            #d03b3b;
+    --red-soft:       #f8d9d9;
+    --green:          #0ca30c;
+    --green-soft:     #d9f0d9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1:      #1a1a19;
+      --surface-2:      #0d0d0d;
+      --text-primary:   #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted:     #898781;
+      --gridline:       #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --weekend-bg:      #232320;
+
+      --blue:           #3987e5;
+      --blue-soft:      #1c3a5c;
+      --orange:         #d95926;
+      --orange-soft:    #4a2c1c;
+      --red:            #e66767;
+      --red-soft:       #4a2222;
+      --green:          #0ca30c;
+      --green-soft:     #1c3a1c;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-1:      #1a1a19;
+    --surface-2:      #0d0d0d;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --gridline:       #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --weekend-bg:      #232320;
+
+    --blue:           #3987e5;
+    --blue-soft:      #1c3a5c;
+    --orange:         #d95926;
+    --orange-soft:    #4a2c1c;
+    --red:            #e66767;
+    --red-soft:       #4a2222;
+    --green:          #0ca30c;
+    --green-soft:     #1c3a1c;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--surface-2);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .viz-root {
+    background: var(--surface-2);
+    color: var(--text-primary);
+    padding: 28px 28px 40px;
+    min-height: 100vh;
+  }
+  .card {
+    max-width: 1180px;
+    margin: 0 auto;
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  /* ---------- Header ---------- */
+  .top {
+    padding: 20px 24px 16px;
+    border-bottom: 1px solid var(--gridline);
+  }
+  .top-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .title-block h1 {
+    font-size: 19px;
+    font-weight: 650;
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  .title-block p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .demo-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 7px;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    vertical-align: 1px;
+  }
+  .period-nav {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .period-nav button {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface-1);
+    color: var(--text-primary);
+    font-size: 14px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .period-nav button:hover:not(:disabled) { background: var(--weekend-bg); }
+  .period-nav button:disabled { opacity: 0.35; cursor: default; }
+  .period-label {
+    font-size: 13px;
+    font-weight: 600;
+    min-width: 168px;
+    text-align: center;
+  }
+  .period-today-btn {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--blue);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px 6px;
+  }
+
+  /* ---------- Legend ---------- */
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    margin-top: 14px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .legend-swatch {
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 9px;
+    color: #fff;
+  }
+  .legend-swatch.generated { background: var(--orange); }
+  .legend-swatch.sent { background: var(--blue); }
+  .legend-swatch.scheduled { background: transparent; border: 2px dashed var(--blue); }
+  .legend-swatch.overdue { background: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+  .legend-swatch.meeting { background: var(--green); border-radius: 4px; transform: rotate(45deg); width: 13px; height: 13px; }
+
+  /* ---------- Filter bar ---------- */
+  .filters {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 14px 24px;
+    border-bottom: 1px solid var(--gridline);
+    background: var(--surface-1);
+  }
+  .search-box {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 6px 10px;
+    background: var(--surface-2);
+    min-width: 190px;
+  }
+  .search-box svg { flex-shrink: 0; opacity: 0.5; }
+  .search-box input {
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 13px;
+    color: var(--text-primary);
+    width: 100%;
+  }
+  .search-box input::placeholder { color: var(--text-muted); }
+
+  .chip-group { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    font-size: 12.5px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text-secondary);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .chip:hover { background: var(--weekend-bg); }
+  .chip.active {
+    background: var(--text-primary);
+    color: var(--surface-1);
+    border-color: var(--text-primary);
+  }
+  .chip.toggle.active.overdue-chip { background: var(--red); border-color: var(--red); color: #fff; }
+  .chip.toggle.active.active-chip { background: var(--green); border-color: var(--green); color: #fff; }
+
+  .filters-spacer { flex: 1; }
+  .clear-filters {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--blue);
+    background: none;
+    border: none;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .result-count {
+    font-size: 12px;
+    color: var(--text-muted);
+    padding: 8px 24px 0;
+  }
+
+  /* ---------- Matrix ---------- */
+  .matrix-wrap { padding: 12px 0 20px; }
+  .matrix-scroll {
+    position: relative;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 290px repeat(28, 32px);
+    width: max-content;
+    min-width: 100%;
+  }
+  .cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 44px;
+    border-bottom: 1px solid var(--gridline);
+    position: relative;
+  }
+  .head-spacer, .head-name {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    background: var(--surface-1);
+    justify-content: flex-start;
+    padding-left: 20px;
+  }
+  .head-week {
+    grid-column: span 7;
+    height: 26px;
+    font-size: 11px;
+    font-weight: 650;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: none;
+    justify-content: center;
+  }
+  .head-spacer { height: 26px; border-bottom: none; }
+  .head-day {
+    height: 30px;
+    flex-direction: column;
+    gap: 1px;
+    font-size: 10.5px;
+    color: var(--text-muted);
+    line-height: 1.2;
+  }
+  .head-day .dow { font-weight: 600; letter-spacing: 0.02em; }
+  .head-day.weekend { background: var(--weekend-bg); }
+  .head-day.is-today { color: var(--blue); font-weight: 700; }
+  .head-name {
+    height: 30px;
+    font-size: 11px;
+    font-weight: 650;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .row-name {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: var(--surface-1);
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 6px 14px 6px 16px;
+    height: 60px;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+  }
+  .row-name:hover { background: var(--weekend-bg); }
+  .row-name.is-active-cycle { border-left-color: var(--green); }
+  .avatar {
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    background: var(--weekend-bg);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .row-name-text { min-width: 0; }
+  .row-name-text .acct { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 225px; }
+  .row-name-text .biz { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; margin-top: 2px; }
+  .active-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+
+  .day-cell { height: 60px; }
+  .day-cell.weekend { background: var(--weekend-bg); }
+
+  .mark {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+    color: #fff;
+    cursor: pointer;
+    font-weight: 700;
+  }
+  .mark.sent { background: var(--blue); }
+  .mark.generated { background: var(--orange); }
+  .mark.scheduled {
+    background: transparent;
+    border: 2px dashed var(--blue);
+    color: var(--blue);
+  }
+  .mark.overdue {
+    background: var(--red);
+    animation: pulse-glow 1.8s ease-in-out infinite;
+  }
+  .mark.meeting {
+    border-radius: 5px;
+    transform: rotate(45deg);
+    background: var(--green);
+    width: 16px; height: 16px;
+  }
+  .mark.meeting .glyph { transform: rotate(-45deg); }
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(208,59,59,0.55); }
+    50% { box-shadow: 0 0 0 6px rgba(208,59,59,0); }
+  }
+
+  .today-line {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 0;
+    border-left: 2px dashed var(--blue);
+    z-index: 1;
+    pointer-events: none;
+  }
+  .today-flag {
+    position: absolute;
+    top: 4px;
+    transform: translateX(-50%);
+    background: var(--blue);
+    color: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 4px;
+    white-space: nowrap;
+    z-index: 4;
+  }
+
+  .empty-state {
+    padding: 40px 24px;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+
+  /* ---------- Tooltip ---------- */
+  .tooltip {
+    position: fixed;
+    pointer-events: none;
+    background: var(--text-primary);
+    color: var(--surface-1);
+    font-size: 11.5px;
+    line-height: 1.45;
+    padding: 8px 10px;
+    border-radius: 8px;
+    max-width: 220px;
+    z-index: 50;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  }
+  .tooltip.show { opacity: 1; }
+  .tooltip b { display: block; margin-bottom: 2px; }
+  .tooltip .tt-status { display: inline-block; margin-top: 4px; font-weight: 600; }
+
+  /* ---------- Drawer ---------- */
+  .overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.35);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+    z-index: 60;
+  }
+  .overlay.open { opacity: 1; pointer-events: auto; }
+
+  .drawer {
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    width: 380px;
+    max-width: 92vw;
+    background: var(--surface-1);
+    color: var(--text-primary);
+    box-shadow: -8px 0 32px rgba(0,0,0,0.25);
+    transform: translateX(100%);
+    transition: transform 0.22s ease;
+    z-index: 61;
+    display: flex;
+    flex-direction: column;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .drawer.open { transform: translateX(0); }
+  .drawer-head {
+    padding: 20px 20px 16px;
+    border-bottom: 1px solid var(--gridline);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .drawer-head .avatar { width: 38px; height: 38px; font-size: 13px; border-radius: 10px; }
+  .drawer-title { flex: 1; min-width: 0; }
+  .drawer-title .name { font-size: 15px; font-weight: 700; }
+  .drawer-title .biz { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .drawer-close {
+    width: 26px; height: 26px;
+    border-radius: 7px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+  .drawer-body { padding: 16px 20px 24px; overflow-y: auto; flex: 1; }
+
+  .action-banner {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border-radius: 10px;
+    font-size: 12.5px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    line-height: 1.4;
+  }
+  .action-banner.warn { background: var(--red-soft); color: var(--red); }
+  .action-banner.ready { background: var(--orange-soft); color: var(--orange); }
+  .action-banner.ok { background: var(--green-soft); color: var(--green); }
+
+  .timeline-label {
+    font-size: 11px;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin: 4px 0 10px;
+  }
+  .step {
+    display: flex;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--gridline);
+    transition: background 0.4s ease;
+  }
+  .step:last-child { border-bottom: none; }
+  .step.highlight { background: var(--weekend-bg); border-radius: 8px; padding-left: 8px; padding-right: 8px; margin: 0 -8px; }
+  .step-mark { flex-shrink: 0; margin-top: 2px; }
+  .step-body { min-width: 0; flex: 1; }
+  .step-date { font-size: 11px; color: var(--text-muted); margin-bottom: 2px; }
+  .step-title { font-size: 13px; font-weight: 650; }
+  .step-subject { font-size: 12px; color: var(--text-secondary); margin-top: 3px; font-style: italic; }
+  .step-status-pill {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 2px 7px;
+    border-radius: 20px;
+    margin-top: 6px;
+  }
+  .step-status-pill.sent { background: var(--blue-soft); color: var(--blue); }
+  .step-status-pill.generated { background: var(--orange-soft); color: var(--orange); }
+  .step-status-pill.scheduled { background: var(--weekend-bg); color: var(--text-secondary); }
+  .step-status-pill.overdue { background: var(--red-soft); color: var(--red); }
+  .step-status-pill.meeting { background: var(--green-soft); color: var(--green); }
+
+  @media (max-width: 720px) {
+    .viz-root { padding: 16px; }
+    .top-row { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+<div class="viz-root">
+  <div class="card">
+
+    <div class="top">
+      <div class="top-row">
+        <div class="title-block">
+          <h1>Outreach Matrix <span class="demo-badge">Concept mockup</span></h1>
+          <p>Accounts tab · every business · cadence tracking &amp; planning, one 4-week view at a time</p>
+        </div>
+        <div class="period-nav">
+          <button id="prevPeriod" title="Previous 4 weeks">‹</button>
+          <div class="period-label" id="periodLabel"></div>
+          <button id="nextPeriod" title="Next 4 weeks">›</button>
+          <button class="period-today-btn" id="jumpToday">Today</button>
+        </div>
+      </div>
+
+      <div class="legend">
+        <div class="legend-item"><span class="legend-swatch generated">✎</span>Email generated</div>
+        <div class="legend-item"><span class="legend-swatch sent">✓</span>Sent</div>
+        <div class="legend-item"><span class="legend-swatch scheduled"></span>Scheduled / upcoming</div>
+        <div class="legend-item"><span class="legend-swatch overdue">!</span>Overdue — not sent</div>
+        <div class="legend-item"><span class="legend-swatch meeting"></span>Meeting booked / active cycle</div>
+      </div>
+    </div>
+
+    <div class="filters">
+      <div class="search-box">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="searchInput" placeholder="Search accounts…">
+      </div>
+      <div class="chip-group" id="bizChips"></div>
+      <div class="chip-group">
+        <button class="chip toggle overdue-chip" id="overdueChip">Overdue only</button>
+        <button class="chip toggle active-chip" id="activeChip">Active cycles only</button>
+      </div>
+      <div class="filters-spacer"></div>
+      <button class="clear-filters" id="clearFilters" style="display:none;">Clear filters</button>
+    </div>
+
+    <div class="result-count" id="resultCount"></div>
+
+    <div class="matrix-wrap">
+      <div class="matrix-scroll" id="matrixScroll">
+        <div class="grid" id="grid"></div>
+      </div>
+      <div class="empty-state" id="emptyState" style="display:none;">No accounts match these filters.</div>
+    </div>
+
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+<div class="overlay" id="overlay"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-head">
+    <div class="avatar" id="drawerAvatar"></div>
+    <div class="drawer-title">
+      <div class="name" id="drawerName"></div>
+      <div class="biz" id="drawerBiz"></div>
+    </div>
+    <button class="drawer-close" id="drawerClose">✕</button>
+  </div>
+  <div class="drawer-body" id="drawerBody"></div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ---------------- Mock data ---------------- */
+  // Day index 0-27 = the 4-week window, Monday-start.
+  // Window anchor: period 0 starts 2026-08-03 (a Monday). "Today" = 2026-08-21 = index 18.
+  var ANCHOR_START = new Date(2026, 7, 3); // Aug 3 2026
+  var TODAY_INDEX_IN_ANCHOR = 18;
+
+  var BUSINESSES = ["HumanKind", "HomeLover", "Master Magnetics", "Kopi Kita"];
+
+  var STATUS_LABEL = {
+    sent: "Sent",
+    generated: "Generated — ready to send",
+    scheduled: "Scheduled",
+    overdue: "Overdue — not sent",
+    meeting: "Meeting booked"
+  };
+
+  function initials(name) {
+    return name.split(" ").filter(Boolean).slice(0, 2).map(function (w) { return w[0]; }).join("").toUpperCase();
+  }
+
+  var ACCOUNTS = [
+    {
+      id: "oura", name: "Oura Health", business: "HumanKind", activeCycle: true,
+      steps: [
+        { day: 2, type: "email", status: "sent", label: "Step 1 — Cold intro", subject: "Wellness perks Chicago employers are adding this fall" },
+        { day: 9, type: "email", status: "sent", label: "Step 2 — Value follow-up", subject: "How HumanKind partners are using this with HR teams" },
+        { day: 16, type: "email", status: "overdue", label: "Step 3 — Case study nudge", subject: "One more thing before we lose this quarter's window" },
+        { day: 23, type: "email", status: "scheduled", label: "Step 4 — Breakup email", subject: "Should I close this out for now?" },
+        { day: 11, type: "meeting", status: "meeting", label: "Discovery call booked", subject: "30 min with their partnerships lead" }
+      ]
+    },
+    {
+      id: "peloton", name: "Peloton Corporate Wellness", business: "HumanKind", activeCycle: false,
+      steps: [
+        { day: 1, type: "email", status: "sent", label: "Step 1 — Cold intro", subject: "A Chicago wellness angle for corporate accounts" },
+        { day: 18, type: "email", status: "generated", label: "Step 2 — Proof points", subject: "Draft ready — includes the HumanKind member stats" },
+        { day: 25, type: "email", status: "scheduled", label: "Step 3 — Check-in", subject: "Still worth a quick call?" }
+      ]
+    },
+    {
+      id: "meridian", name: "Meridian Property Group", business: "HomeLover", activeCycle: true,
+      steps: [
+        { day: 3, type: "email", status: "sent", label: "Step 1 — Cold intro", subject: "Employee housing benefit that costs you nothing" },
+        { day: 10, type: "email", status: "sent", label: "Step 2 — Social proof", subject: "How 3 other property groups rolled this out" },
+        { day: 17, type: "email", status: "overdue", label: "Step 3 — Direct ask", subject: "15 minutes this week?" },
+        { day: 14, type: "meeting", status: "meeting", label: "Discovery call booked", subject: "Intro call with their VP of Ops" }
+      ]
+    },
+    {
+      id: "cornerstone", name: "Cornerstone Realty Partners", business: "HomeLover", activeCycle: false,
+      steps: [
+        { day: 7, type: "email", status: "sent", label: "Step 1 — Cold intro", subject: "A relocation perk your renters will actually use" },
+        { day: 14, type: "email", status: "sent", label: "Step 2 — Value follow-up", subject: "The ROI math on this, roughly" },
+        { day: 21, type: "email", status: "scheduled", label: "Step 3 — Case study nudge", subject: "One more example before I follow up again" }
+      ]
+    },
+    {
+      id: "ace", name: "Ace Hardware Co-op", business: "Master Magnetics", activeCycle: false,
+      steps: [
+        { day: 4, type: "email", status: "sent", label: "Step 1 — Cold intro", subject: "Magnetic fixtures for co-op member stores" },
+        { day: 11, type: "email", status: "sent", label: "Step 2 — Product fit", subject: "Sized for your current shelf sets" },
+        { day: 18, type: "email", status: "generated", label: "Step 3 — Pricing nudge", subject: "Draft ready — includes co-op volume pricing" },
+        { day: 25, type: "email", status: "scheduled", label: "Step 4 — Check-in", subject: "Worth a sample order?" }
+      ]
+    },
+    {
+      id: "truevalue", name: "True Value Distribution", business: "Master Magnetics", activeCycle: false,
+      steps: [
+        { day: 9, type: "email", status: "sent", label: "Step 1 — Cold intro", subject: "Distribution terms for magnetic hardware lines" },
+        { day: 16, type: "email", status: "overdue", label: "Step 2 — Value follow-up", subject: "Quick numbers on freight + lead time" },
+        { day: 23, type: "email", status: "scheduled", label: "Step 3 — Direct ask", subject: "Can we get 15 minutes with procurement?" }
+      ]
+    },
+    {
+      id: "bluebottle", name: "Blue Bottle Wholesale", business: "Kopi Kita", activeCycle: true,
+      steps: [
+        { day: 2, type: "email", status: "sent", label: "Step 1 — Cold intro", subject: "Single-origin lots for your wholesale program" },
+        { day: 9, type: "email", status: "sent", label: "Step 2 — Sample offer", subject: "Sending 3 lots for cupping this week" },
+        { day: 16, type: "email", status: "sent", label: "Step 3 — Follow-up on samples", subject: "What'd the cupping panel think?" },
+        { day: 23, type: "email", status: "scheduled", label: "Step 4 — Direct ask", subject: "Ready to talk volume pricing?" },
+        { day: 12, type: "meeting", status: "meeting", label: "Discovery call booked", subject: "Call with their sourcing lead" }
+      ]
+    },
+    {
+      id: "cornercoffee", name: "Corner Coffee Collective", business: "Kopi Kita", activeCycle: false,
+      steps: [
+        { day: 10, type: "email", status: "sent", label: "Step 1 — Cold intro", subject: "A sourcing story your regulars would like" },
+        { day: 17, type: "email", status: "overdue", label: "Step 2 — Value follow-up", subject: "The farm-direct angle, one more time" },
+        { day: 24, type: "email", status: "scheduled", label: "Step 3 — Case study nudge", subject: "One roaster's numbers after switching" }
+      ]
+    }
+  ];
+
+  /* ---------------- State ---------------- */
+  var state = {
+    business: "all",
+    query: "",
+    overdueOnly: false,
+    activeOnly: false,
+    periodOffset: 0,
+    selectedAccountId: null,
+    highlightKey: null
+  };
+
+  var MIN_OFFSET = -2, MAX_OFFSET = 2;
+
+  /* ---------------- Date helpers ---------------- */
+  function addDays(date, n) {
+    var d = new Date(date.getTime());
+    d.setDate(d.getDate() + n);
+    return d;
+  }
+  function fmtShort(d) {
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  }
+  function fmtLong(d) {
+    return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  }
+  var DOW = ["S", "M", "T", "W", "T", "F", "S"];
+
+  function windowStart() {
+    return addDays(ANCHOR_START, state.periodOffset * 28);
+  }
+  function dayDate(idx) {
+    return addDays(windowStart(), idx);
+  }
+  function isWeekend(idx) {
+    var dow = dayDate(idx).getDay();
+    return dow === 0 || dow === 6;
+  }
+  function todayIndexForCurrentWindow() {
+    return state.periodOffset === 0 ? TODAY_INDEX_IN_ANCHOR : null;
+  }
+
+  /* ---------------- Rendering ---------------- */
+  var gridEl = document.getElementById("grid");
+  var resultCountEl = document.getElementById("resultCount");
+  var emptyStateEl = document.getElementById("emptyState");
+  var matrixScrollEl = document.getElementById("matrixScroll");
+
+  function visibleAccounts() {
+    return ACCOUNTS.filter(function (a) {
+      if (state.business !== "all" && a.business !== state.business) return false;
+      if (state.query && a.name.toLowerCase().indexOf(state.query.toLowerCase()) === -1) return false;
+      if (state.overdueOnly && !a.steps.some(function (s) { return s.status === "overdue"; })) return false;
+      if (state.activeOnly && !a.activeCycle) return false;
+      return true;
+    });
+  }
+
+  function el(tag, className, attrs) {
+    var e = document.createElement(tag);
+    if (className) e.className = className;
+    if (attrs) {
+      Object.keys(attrs).forEach(function (k) {
+        if (k === "text") e.textContent = attrs[k];
+        else if (k === "html") e.innerHTML = attrs[k];
+        else e.setAttribute(k, attrs[k]);
+      });
+    }
+    return e;
+  }
+
+  function markGlyph(status) {
+    if (status === "sent") return "✓";
+    if (status === "generated") return "✎";
+    if (status === "overdue") return "!";
+    return "";
+  }
+
+  function buildMark(step, accountId) {
+    var wrap = el("div", "mark " + step.status + (step.type === "meeting" ? " meeting" : ""));
+    var glyph = el("span", step.type === "meeting" ? "glyph" : "", { text: step.type === "meeting" ? "★" : markGlyph(step.status) });
+    wrap.appendChild(glyph);
+    wrap.dataset.accountId = accountId;
+    wrap.dataset.stepKey = accountId + "-" + step.day + "-" + step.label;
+    wrap.addEventListener("mouseenter", function (ev) { showTooltip(ev, step); });
+    wrap.addEventListener("mousemove", moveTooltip);
+    wrap.addEventListener("mouseleave", hideTooltip);
+    wrap.addEventListener("click", function (ev) {
+      ev.stopPropagation();
+      openDrawer(accountId, wrap.dataset.stepKey);
+    });
+    return wrap;
+  }
+
+  function render() {
+    gridEl.innerHTML = "";
+    var start = windowStart();
+    var end = addDays(start, 27);
+    document.getElementById("periodLabel").textContent = fmtShort(start) + " – " + fmtShort(end) + ", " + end.getFullYear();
+    document.getElementById("prevPeriod").disabled = state.periodOffset <= MIN_OFFSET;
+    document.getElementById("nextPeriod").disabled = state.periodOffset >= MAX_OFFSET;
+
+    // Row 1: week group labels
+    gridEl.appendChild(el("div", "cell head-spacer"));
+    for (var w = 0; w < 4; w++) {
+      var wStart = addDays(start, w * 7);
+      gridEl.appendChild(el("div", "cell head-week", { text: "Week of " + fmtShort(wStart) }));
+    }
+
+    // Row 2: day sub-header
+    var todayIdx = todayIndexForCurrentWindow();
+    gridEl.appendChild(el("div", "cell head-name", { text: "Accounts" }));
+    for (var i = 0; i < 28; i++) {
+      var d = dayDate(i);
+      var cls = "cell head-day" + (isWeekend(i) ? " weekend" : "") + (i === todayIdx ? " is-today" : "");
+      var cell = el("div", cls);
+      cell.appendChild(el("div", "dow", { text: DOW[d.getDay()] }));
+      cell.appendChild(el("div", "num", { text: String(d.getDate()) }));
+      gridEl.appendChild(cell);
+    }
+
+    // Account rows
+    var accounts = visibleAccounts();
+    accounts.forEach(function (a) {
+      var nameCell = el("div", "cell row-name" + (a.activeCycle ? " is-active-cycle" : ""));
+      nameCell.appendChild(el("div", "avatar", { text: initials(a.name) }));
+      var textWrap = el("div", "row-name-text");
+      textWrap.appendChild(el("div", "acct", { text: a.name }));
+      var bizRow = el("div", "biz");
+      if (a.activeCycle) bizRow.appendChild(el("span", "active-dot"));
+      bizRow.appendChild(document.createTextNode(a.business + (a.activeCycle ? " · Active cycle" : "")));
+      textWrap.appendChild(bizRow);
+      nameCell.appendChild(textWrap);
+      nameCell.addEventListener("click", function (acctId) {
+        return function () { openDrawer(acctId, null); };
+      }(a.id));
+      gridEl.appendChild(nameCell);
+
+      var stepsByDay = {};
+      a.steps.forEach(function (s) {
+        if (!stepsByDay[s.day]) stepsByDay[s.day] = [];
+        stepsByDay[s.day].push(s);
+      });
+
+      for (var di = 0; di < 28; di++) {
+        var dCell = el("div", "cell day-cell" + (isWeekend(di) ? " weekend" : ""));
+        var daySteps = stepsByDay[di];
+        if (daySteps) {
+          daySteps.forEach(function (s) { dCell.appendChild(buildMark(s, a.id)); });
+        }
+        gridEl.appendChild(dCell);
+      }
+    });
+
+    // Empty state
+    emptyStateEl.style.display = accounts.length === 0 ? "block" : "none";
+    matrixScrollEl.style.display = accounts.length === 0 ? "none" : "block";
+
+    // Today line
+    var oldLine = document.querySelector(".today-line");
+    if (oldLine) oldLine.remove();
+    if (todayIdx !== null && accounts.length > 0) {
+      var left = 290 + todayIdx * 32 + 16;
+      var line = el("div", "today-line");
+      line.style.left = left + "px";
+      matrixScrollEl.appendChild(line);
+    }
+
+    // Result count
+    var total = ACCOUNTS.length;
+    resultCountEl.textContent = "Showing " + accounts.length + " of " + total + " accounts";
+
+    // Clear filters visibility
+    var filtered = state.business !== "all" || state.query || state.overdueOnly || state.activeOnly;
+    document.getElementById("clearFilters").style.display = filtered ? "inline-block" : "none";
+  }
+
+  /* ---------------- Filters UI ---------------- */
+  var bizChipsEl = document.getElementById("bizChips");
+  function renderChips() {
+    bizChipsEl.innerHTML = "";
+    var all = el("button", "chip" + (state.business === "all" ? " active" : ""), { text: "All businesses" });
+    all.addEventListener("click", function () { state.business = "all"; renderChips(); render(); });
+    bizChipsEl.appendChild(all);
+    BUSINESSES.forEach(function (b) {
+      var chip = el("button", "chip" + (state.business === b ? " active" : ""), { text: b });
+      chip.addEventListener("click", function () { state.business = b; renderChips(); render(); });
+      bizChipsEl.appendChild(chip);
+    });
+  }
+  renderChips();
+
+  document.getElementById("searchInput").addEventListener("input", function (e) {
+    state.query = e.target.value;
+    render();
+  });
+  document.getElementById("overdueChip").addEventListener("click", function () {
+    state.overdueOnly = !state.overdueOnly;
+    this.classList.toggle("active", state.overdueOnly);
+    render();
+  });
+  document.getElementById("activeChip").addEventListener("click", function () {
+    state.activeOnly = !state.activeOnly;
+    this.classList.toggle("active", state.activeOnly);
+    render();
+  });
+  document.getElementById("clearFilters").addEventListener("click", function () {
+    state.business = "all"; state.query = ""; state.overdueOnly = false; state.activeOnly = false;
+    document.getElementById("searchInput").value = "";
+    document.getElementById("overdueChip").classList.remove("active");
+    document.getElementById("activeChip").classList.remove("active");
+    renderChips(); render();
+  });
+
+  document.getElementById("prevPeriod").addEventListener("click", function () {
+    if (state.periodOffset > MIN_OFFSET) { state.periodOffset--; render(); }
+  });
+  document.getElementById("nextPeriod").addEventListener("click", function () {
+    if (state.periodOffset < MAX_OFFSET) { state.periodOffset++; render(); }
+  });
+  document.getElementById("jumpToday").addEventListener("click", function () {
+    state.periodOffset = 0; render();
+  });
+
+  /* ---------------- Tooltip ---------------- */
+  var tooltipEl = document.getElementById("tooltip");
+  function showTooltip(ev, step) {
+    var d = dayDate(step.day);
+    tooltipEl.innerHTML = "<b>" + step.label + "</b>" +
+      fmtLong(d) + "<br>“" + step.subject + "”" +
+      "<span class='tt-status'>" + STATUS_LABEL[step.status] + "</span>";
+    tooltipEl.classList.add("show");
+    moveTooltip(ev);
+  }
+  function moveTooltip(ev) {
+    var x = ev.clientX + 14, y = ev.clientY + 14;
+    var maxX = window.innerWidth - 236, maxY = window.innerHeight - 100;
+    tooltipEl.style.left = Math.min(x, maxX) + "px";
+    tooltipEl.style.top = Math.min(y, maxY) + "px";
+  }
+  function hideTooltip() { tooltipEl.classList.remove("show"); }
+
+  /* ---------------- Drawer ---------------- */
+  var overlayEl = document.getElementById("overlay");
+  var drawerEl = document.getElementById("drawer");
+
+  function openDrawer(accountId, highlightKey) {
+    var a = ACCOUNTS.filter(function (x) { return x.id === accountId; })[0];
+    if (!a) return;
+    state.selectedAccountId = accountId;
+    state.highlightKey = highlightKey;
+
+    document.getElementById("drawerAvatar").textContent = initials(a.name);
+    document.getElementById("drawerName").textContent = a.name;
+    document.getElementById("drawerBiz").textContent = a.business + (a.activeCycle ? " · Active sales cycle" : "");
+
+    var body = document.getElementById("drawerBody");
+    body.innerHTML = "";
+
+    // Action banner: pick most urgent state
+    var todayIdx = todayIndexForCurrentWindow();
+    var overdue = a.steps.filter(function (s) { return s.status === "overdue"; });
+    var ready = a.steps.filter(function (s) { return s.status === "generated"; });
+    if (overdue.length) {
+      var d0 = dayDate(overdue[0].day);
+      body.appendChild(el("div", "action-banner warn", { text: "⚠ " + overdue[0].label + " was due " + fmtShort(d0) + " — not yet marked sent." }));
+    } else if (ready.length) {
+      body.appendChild(el("div", "action-banner ready", { text: "✎ " + ready[0].label + " has a draft ready — send it today." }));
+    } else if (a.activeCycle) {
+      body.appendChild(el("div", "action-banner ok", { text: "✓ In an active sales cycle — cadence is on track." }));
+    }
+
+    body.appendChild(el("div", "timeline-label", { text: "Cadence timeline" }));
+
+    var sorted = a.steps.slice().sort(function (x, y) { return x.day - y.day; });
+    sorted.forEach(function (s) {
+      var key = accountId + "-" + s.day + "-" + s.label;
+      var row = el("div", "step" + (key === highlightKey ? " highlight" : ""));
+      var markWrap = el("div", "step-mark");
+      markWrap.appendChild(buildStaticMark(s));
+      row.appendChild(markWrap);
+      var b = el("div", "step-body");
+      b.appendChild(el("div", "step-date", { text: fmtLong(dayDate(s.day)) }));
+      b.appendChild(el("div", "step-title", { text: s.label }));
+      b.appendChild(el("div", "step-subject", { text: "“" + s.subject + "”" }));
+      var pill = el("span", "step-status-pill " + s.status, { text: STATUS_LABEL[s.status] });
+      b.appendChild(pill);
+      row.appendChild(b);
+      body.appendChild(row);
+      if (key === highlightKey) {
+        setTimeout(function () { row.scrollIntoView({ block: "center", behavior: "smooth" }); }, 60);
+      }
+    });
+
+    overlayEl.classList.add("open");
+    drawerEl.classList.add("open");
+  }
+
+  function buildStaticMark(step) {
+    var wrap = el("div", "mark " + step.status + (step.type === "meeting" ? " meeting" : ""));
+    wrap.style.cursor = "default";
+    wrap.appendChild(el("span", step.type === "meeting" ? "glyph" : "", { text: step.type === "meeting" ? "★" : markGlyph(step.status) }));
+    return wrap;
+  }
+
+  function closeDrawer() {
+    overlayEl.classList.remove("open");
+    drawerEl.classList.remove("open");
+    state.selectedAccountId = null;
+    state.highlightKey = null;
+  }
+
+  document.getElementById("drawerClose").addEventListener("click", closeDrawer);
+  overlayEl.addEventListener("click", closeDrawer);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeDrawer(); });
+
+  /* ---------------- Init ---------------- */
+  render();
+})();
+</script>
+</body>
+</html>

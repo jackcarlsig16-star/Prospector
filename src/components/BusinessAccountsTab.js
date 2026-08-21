@@ -5,6 +5,7 @@ import { getAccountsForBusiness, saveAccountsForBusiness, getListsForBusiness, g
 import AccountsPage from './AccountsPage';
 import CsvImportModal from './CsvImportModal';
 import InfluencerAddModal from './InfluencerAddModal';
+import OutreachMatrix from './OutreachMatrix';
 
 // Every capability false - a member with only view access on the lists in
 // scope gets a real read-only UI, not just a role label (business-lists-and-permissions-v1).
@@ -33,6 +34,7 @@ export default function BusinessAccountsTab({ business, userEmail, projects=[], 
   // considered (influencer-accounts-v1, Phase 4).
   const [segment, setSegment] = useState('all'); // 'all' | 'business' | 'influencer'
   const [selectedListId, setSelectedListId] = useState(null); // null = all accessible; UNLISTED = zero-list accounts
+  const [view, setView] = useState('accounts'); // 'accounts' | 'outreach_matrix'
   const [accessibleListIds, setAccessibleListIds] = useState(null); // null = owner, no restriction
   const [editableListIds, setEditableListIds] = useState(null);
 
@@ -193,6 +195,18 @@ export default function BusinessAccountsTab({ business, userEmail, projects=[], 
         <InfluencerAddModal business={business} userEmail={userEmail} lists={lists} onClose={()=>setInfluencerAddOpen(false)}
           onAdded={()=>reload(true)} />
       )}
+      <div style={{ display:"flex", gap:6, margin:"0 0 14px" }}>
+        {[{ id:'accounts', lb:'Accounts' }, { id:'outreach_matrix', lb:'Outreach Matrix' }].map(v => (
+          <button key={v.id} onClick={()=>setView(v.id)} style={{
+            ...mono, fontSize:12, padding:"6px 14px", borderRadius:6, cursor:"pointer",
+            background: view===v.id ? `${C.gold}14` : "transparent",
+            border: `1px solid ${view===v.id ? C.gold : C.brd}`,
+            color: view===v.id ? C.gold : C.mut,
+            fontWeight: view===v.id ? 600 : 400,
+          }}>{v.lb}</button>
+        ))}
+      </div>
+      {view === 'outreach_matrix' ? <OutreachMatrix accounts={visibleAccounts} business={business} /> : (
       <AccountsPage
         accounts={visibleAccounts}
         onSave={canEditCurrentView ? persist : undefined}
@@ -224,6 +238,7 @@ export default function BusinessAccountsTab({ business, userEmail, projects=[], 
           { key: 'addinf', label: '+ Add Influencer(s)', onClick: () => setInfluencerAddOpen(true) },
         ] : []}
       />
+      )}
     </>
   );
 }
