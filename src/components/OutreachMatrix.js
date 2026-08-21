@@ -1,157 +1,152 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { C } from '../constants/colors';
+import { pillStyle } from './FilterPill';
 
-// outreach-matrix-veinmap-repurpose-v1 — ported from mockups/outreach-matrix.html.
-// The mockup ships both a light and a dark palette behind prefers-color-scheme;
-// this app is unconditionally dark, so only the mockup's dark values are used
-// here. Every selector is prefixed .om-root so these generic class names
-// (.card, .grid, .cell, .chip) can't collide with anything global.
-const CSS = `
+// outreach-matrix-veinmap-repurpose-v1 — grid mechanics ported from
+// mockups/outreach-matrix.html.
+// outreach-matrix-theme-and-architecture-correction-v1 — chrome restyled off
+// the app's real tokens. Surfaces/text/gridlines read the same --c-* CSS
+// variables C.bg/sur/card/txt/mut/dim resolve to (src/index.css:5-6), so this
+// tracks the app's theme instead of the mockup's invented palette. The five
+// status colors below are Jack's spec and are deliberately left exactly as
+// shipped, including .mark.overdue's glow rgba.
+const STATUS_CSS = `
 .om-root {
-  --surface-1:      #1a1a19;
-  --surface-2:      #0d0d0d;
-  --text-primary:   #ffffff;
-  --text-secondary: #c3c2b7;
-  --text-muted:     #898781;
-  --gridline:       #2c2c2a;
-  --baseline:       #383835;
-  --border:         rgba(255,255,255,0.10);
-  --weekend-bg:     #232320;
-  --blue:           #3987e5;
-  --blue-soft:      #1c3a5c;
-  --orange:         #d95926;
-  --orange-soft:    #4a2c1c;
-  --red:            #e66767;
-  --red-soft:       #4a2222;
-  --green:          #0ca30c;
-  --green-soft:     #1c3a1c;
-  background: var(--surface-2);
-  color: var(--text-primary);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --om-generated:      #d95926;
+  --om-generated-soft: #4a2c1c;
+  --om-sent:           #3987e5;
+  --om-sent-soft:      #1c3a5c;
+  --om-overdue:        #e66767;
+  --om-overdue-soft:   #4a2222;
+  --om-meeting:        #0ca30c;
+  --om-meeting-soft:   #1c3a1c;
 }
+`;
+
+const CSS = `
+.om-root, .om-drawer, .om-overlay, .om-tooltip {
+  --om-surface:  var(--c-bg);
+  --om-panel:    var(--c-sur);
+  --om-line:     #2E3548;
+  --om-txt:      var(--c-txt);
+  --om-mut:      var(--c-mut);
+  --om-dim:      var(--c-dim);
+  font-family: 'SF Mono', ui-monospace, monospace;
+}
+.om-root { color: var(--om-txt); }
 .om-root * { box-sizing: border-box; }
-.om-root .card {
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  overflow: hidden;
+.om-root .panel { border: 1px solid var(--om-line); border-radius: 7px; overflow: hidden; }
+.om-root .top { padding: 12px 14px 10px; border-bottom: 1px solid var(--om-line); }
+.om-root .top-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.om-root .title-block h1 {
+  font-size: 12px; font-weight: 600; margin: 0 0 3px;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--om-txt);
 }
-.om-root .top { padding: 20px 24px 16px; border-bottom: 1px solid var(--gridline); }
-.om-root .top-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
-.om-root .title-block h1 { font-size: 19px; font-weight: 650; margin: 0 0 4px; letter-spacing: -0.01em; }
-.om-root .title-block p { margin: 0; font-size: 13px; color: var(--text-secondary); }
+.om-root .title-block p { margin: 0; font-size: 11px; color: var(--om-dim); }
 .om-root .period-nav { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 .om-root .period-nav button {
-  width: 28px; height: 28px; border-radius: 8px;
-  border: 1px solid var(--border); background: var(--surface-1);
-  color: var(--text-primary); font-size: 14px; cursor: pointer;
+  width: 26px; height: 26px; border-radius: 4px;
+  border: 1px solid #333; background: transparent;
+  color: #ccc; font-size: 12px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
 }
-.om-root .period-nav button:hover:not(:disabled) { background: var(--weekend-bg); }
+.om-root .period-nav button:hover:not(:disabled) { border-color: var(--om-line); background: var(--om-panel); }
 .om-root .period-nav button:disabled { opacity: 0.35; cursor: default; }
-.om-root .period-label { font-size: 13px; font-weight: 600; min-width: 168px; text-align: center; }
+.om-root .period-label { font-size: 11px; font-weight: 500; min-width: 160px; text-align: center; color: var(--om-mut); letter-spacing: 0.04em; }
 .om-root .period-today-btn {
-  font-size: 12px; font-weight: 600; color: var(--blue);
-  background: none; border: none; cursor: pointer; padding: 4px 6px;
+  font-size: 11px; font-weight: 500; color: var(--om-sent);
+  background: none; border: none; cursor: pointer; padding: 4px 6px; letter-spacing: 0.04em;
 }
 .om-root .placeholder-banner {
   display: flex; align-items: flex-start; gap: 8px;
-  margin: 14px 0 0; padding: 10px 12px; border-radius: 10px;
-  background: var(--orange-soft); color: var(--orange);
-  font-size: 12.5px; font-weight: 600; line-height: 1.4;
+  margin: 10px 0 0; padding: 8px 12px; border-radius: 7px;
+  background: rgba(245,160,80,0.07); border: 1px solid rgba(245,160,80,0.27);
+  color: #F5A050; font-size: 11px; line-height: 1.45;
 }
-.om-root .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 14px; }
-.om-root .legend-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--text-secondary); }
+.om-root .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; }
+.om-root .legend-item { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--om-mut); letter-spacing: 0.03em; }
 .om-root .legend-swatch {
-  width: 16px; height: 16px; border-radius: 50%;
+  width: 14px; height: 14px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0; font-size: 9px; color: #fff;
+  flex-shrink: 0; font-size: 8px; color: #fff;
 }
-.om-root .legend-swatch.generated { background: var(--orange); }
-.om-root .legend-swatch.sent { background: var(--blue); }
-.om-root .legend-swatch.scheduled { background: transparent; border: 2px dashed var(--blue); }
-.om-root .legend-swatch.overdue { background: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
-.om-root .legend-swatch.meeting { background: var(--green); border-radius: 4px; transform: rotate(45deg); width: 13px; height: 13px; }
+.om-root .legend-swatch.generated { background: var(--om-generated); }
+.om-root .legend-swatch.sent { background: var(--om-sent); }
+.om-root .legend-swatch.scheduled { background: transparent; border: 2px dashed var(--om-sent); }
+.om-root .legend-swatch.overdue { background: var(--om-overdue); box-shadow: 0 0 0 3px var(--om-overdue-soft); }
+.om-root .legend-swatch.meeting { background: var(--om-meeting); border-radius: 3px; transform: rotate(45deg); width: 11px; height: 11px; }
 .om-root .filters {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 14px 24px; border-bottom: 1px solid var(--gridline); background: var(--surface-1);
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 10px 14px; border-bottom: 1px solid var(--om-line);
 }
-.om-root .search-box {
-  display: flex; align-items: center; gap: 6px;
-  border: 1px solid var(--border); border-radius: 8px;
-  padding: 6px 10px; background: var(--surface-2); min-width: 190px;
-}
-.om-root .search-box svg { flex-shrink: 0; opacity: 0.5; }
 .om-root .search-box input {
-  border: none; outline: none; background: transparent;
-  font-size: 13px; color: var(--text-primary); width: 100%;
+  font-family: 'SF Mono', ui-monospace, monospace;
+  height: 26px; min-width: 190px; padding: 0 10px;
+  border: 1px solid #333; border-radius: 4px;
+  background: transparent; color: #ccc; font-size: 11px;
+  outline: none; letter-spacing: 0.04em;
 }
-.om-root .search-box input::placeholder { color: var(--text-muted); }
-.om-root .chip-group { display: flex; gap: 6px; flex-wrap: wrap; }
-.om-root .chip {
-  font-size: 12.5px; font-weight: 500; padding: 6px 12px; border-radius: 20px;
-  border: 1px solid var(--border); background: var(--surface-2);
-  color: var(--text-secondary); cursor: pointer; white-space: nowrap;
-}
-.om-root .chip:hover { background: var(--weekend-bg); }
-.om-root .chip.toggle.active.overdue-chip { background: var(--red); border-color: var(--red); color: #fff; }
-.om-root .chip.toggle.active.active-chip { background: var(--green); border-color: var(--green); color: #fff; }
+.om-root .search-box input:focus { border-color: var(--om-line); }
+.om-root .search-box input::placeholder { color: var(--om-dim); }
 .om-root .filters-spacer { flex: 1; }
 .om-root .clear-filters {
-  font-size: 12.5px; font-weight: 600; color: var(--blue);
-  background: none; border: none; cursor: pointer; white-space: nowrap;
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 10px; padding: 2px 7px; border-radius: 2px;
+  background: transparent; border: 1px solid #333; color: #5a6a5a;
+  cursor: pointer; white-space: nowrap;
 }
-.om-root .result-count { font-size: 12px; color: var(--text-muted); padding: 8px 24px 0; }
-.om-root .matrix-wrap { padding: 12px 0 20px; }
+.om-root .result-count { font-size: 10px; color: var(--om-dim); padding: 8px 14px 0; letter-spacing: 0.04em; }
+.om-root .matrix-wrap { padding: 10px 0 14px; }
 .om-root .matrix-scroll { position: relative; overflow-x: auto; padding-bottom: 4px; }
 .om-root .grid { display: grid; grid-template-columns: 290px repeat(28, 32px); width: max-content; min-width: 100%; }
 .om-root .cell {
   display: flex; align-items: center; justify-content: center;
-  height: 44px; border-bottom: 1px solid var(--gridline); position: relative;
+  height: 44px; border-bottom: 1px solid var(--om-line); position: relative;
 }
 .om-root .head-spacer, .om-root .head-name {
-  position: sticky; left: 0; z-index: 3; background: var(--surface-1);
-  justify-content: flex-start; padding-left: 20px;
+  position: sticky; left: 0; z-index: 3; background: var(--om-surface);
+  justify-content: flex-start; padding-left: 14px;
 }
 .om-root .head-week {
-  grid-column: span 7; height: 26px; font-size: 11px; font-weight: 650;
-  color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;
+  grid-column: span 7; height: 24px; font-size: 10px; font-weight: 600;
+  color: var(--om-dim); text-transform: uppercase; letter-spacing: 0.06em;
   border-bottom: none; justify-content: center;
 }
-.om-root .head-spacer { height: 26px; border-bottom: none; }
-.om-root .head-day { height: 30px; flex-direction: column; gap: 1px; font-size: 10.5px; color: var(--text-muted); line-height: 1.2; }
+.om-root .head-spacer { height: 24px; border-bottom: none; }
+.om-root .head-day { height: 28px; flex-direction: column; gap: 1px; font-size: 10px; color: var(--om-dim); line-height: 1.2; }
 .om-root .head-day .dow { font-weight: 600; letter-spacing: 0.02em; }
-.om-root .head-day.weekend { background: var(--weekend-bg); }
-.om-root .head-day.is-today { color: var(--blue); font-weight: 700; }
-.om-root .head-name { height: 30px; font-size: 11px; font-weight: 650; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.om-root .head-day.weekend { background: var(--om-panel); }
+.om-root .head-day.is-today { color: var(--om-sent); font-weight: 700; }
+.om-root .head-name { height: 28px; font-size: 10px; font-weight: 600; color: var(--om-dim); text-transform: uppercase; letter-spacing: 0.06em; }
 .om-root .row-name {
-  position: sticky; left: 0; z-index: 2; background: var(--surface-1);
-  justify-content: flex-start; gap: 10px; padding: 6px 14px 6px 16px;
+  position: sticky; left: 0; z-index: 2; background: var(--om-surface);
+  justify-content: flex-start; gap: 9px; padding: 6px 12px 6px 11px;
   height: 60px; cursor: pointer; border-left: 3px solid transparent;
 }
-.om-root .row-name:hover { background: var(--weekend-bg); }
-.om-root .row-name.is-active-cycle { border-left-color: var(--green); }
+.om-root .row-name:hover { background: var(--om-panel); }
+.om-root .row-name.is-active-cycle { border-left-color: var(--om-meeting); }
 .om-root .avatar {
-  width: 30px; height: 30px; border-radius: 8px;
-  background: var(--weekend-bg); color: var(--text-secondary);
-  font-size: 11px; font-weight: 700;
+  width: 28px; height: 28px; border-radius: 4px;
+  background: var(--c-card); color: var(--om-mut);
+  font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .om-root .row-name-text { min-width: 0; }
-.om-root .row-name-text .acct { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 225px; }
-.om-root .row-name-text .biz { font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 5px; margin-top: 2px; }
-.om-root .active-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+.om-root .row-name-text .acct { font-size: 12px; font-weight: 500; color: var(--om-txt); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 225px; }
+.om-root .row-name-text .biz { font-size: 10px; color: var(--om-dim); display: flex; align-items: center; gap: 5px; margin-top: 3px; letter-spacing: 0.04em; }
+.om-root .active-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--om-meeting); flex-shrink: 0; }
 .om-root .day-cell { height: 60px; }
-.om-root .day-cell.weekend { background: var(--weekend-bg); }
+.om-root .day-cell.weekend { background: var(--om-panel); }
 .om-root .mark {
   width: 20px; height: 20px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   font-size: 10px; color: #fff; cursor: pointer; font-weight: 700;
 }
-.om-root .mark.sent { background: var(--blue); }
-.om-root .mark.generated { background: var(--orange); }
-.om-root .mark.scheduled { background: transparent; border: 2px dashed var(--blue); color: var(--blue); }
-.om-root .mark.overdue { background: var(--red); animation: om-pulse-glow 1.8s ease-in-out infinite; }
-.om-root .mark.meeting { border-radius: 5px; transform: rotate(45deg); background: var(--green); width: 16px; height: 16px; }
+.om-root .mark.sent { background: var(--om-sent); }
+.om-root .mark.generated { background: var(--om-generated); }
+.om-root .mark.scheduled { background: transparent; border: 2px dashed var(--om-sent); color: var(--om-sent); }
+.om-root .mark.overdue { background: var(--om-overdue); animation: om-pulse-glow 1.8s ease-in-out infinite; }
+.om-root .mark.meeting { border-radius: 5px; transform: rotate(45deg); background: var(--om-meeting); width: 16px; height: 16px; }
 .om-root .mark.meeting .glyph { transform: rotate(-45deg); }
 @keyframes om-pulse-glow {
   0%, 100% { box-shadow: 0 0 0 0 rgba(208,59,59,0.55); }
@@ -159,96 +154,94 @@ const CSS = `
 }
 .om-root .today-line {
   position: absolute; top: 0; bottom: 0; width: 0;
-  border-left: 2px dashed var(--blue); z-index: 1; pointer-events: none;
+  border-left: 2px dashed var(--om-sent); z-index: 1; pointer-events: none;
 }
-.om-root .empty-state { padding: 40px 24px; text-align: center; color: var(--text-muted); font-size: 13px; }
+.om-root .empty-state { padding: 32px 14px; text-align: center; color: var(--om-dim); font-size: 11px; letter-spacing: 0.04em; }
 .om-tooltip {
   position: fixed; pointer-events: none;
-  background: #ffffff; color: #1a1a19;
-  font-size: 11.5px; line-height: 1.45; padding: 8px 10px;
-  border-radius: 8px; max-width: 220px; z-index: 50;
+  background: var(--c-sur); color: var(--c-txt);
+  border: 1px solid #2E3548;
+  font-size: 10.5px; line-height: 1.5; padding: 8px 10px;
+  border-radius: 4px; max-width: 230px; z-index: 50;
   opacity: 0; transition: opacity 0.1s ease;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
 }
 .om-tooltip.show { opacity: 1; }
-.om-tooltip b { display: block; margin-bottom: 2px; }
-.om-tooltip .tt-status { display: inline-block; margin-top: 4px; font-weight: 600; }
+.om-tooltip b { display: block; margin-bottom: 3px; font-weight: 600; }
+.om-tooltip .tt-date { color: var(--c-mut); }
+.om-tooltip .tt-status { display: inline-block; margin-top: 5px; font-weight: 600; }
 .om-overlay {
-  position: fixed; inset: 0; background: rgba(0,0,0,0.35);
+  position: fixed; inset: 0; background: rgba(0,0,0,0.55);
   opacity: 0; pointer-events: none; transition: opacity 0.18s ease; z-index: 60;
 }
 .om-overlay.open { opacity: 1; pointer-events: auto; }
 .om-drawer {
   position: fixed; top: 0; right: 0; bottom: 0;
   width: 380px; max-width: 92vw;
-  background: #1a1a19; color: #ffffff;
-  box-shadow: -8px 0 32px rgba(0,0,0,0.25);
+  background: var(--c-sur); color: var(--c-txt);
+  border-left: 1px solid #2E3548;
+  box-shadow: -8px 0 32px rgba(0,0,0,0.5);
   transform: translateX(100%); transition: transform 0.22s ease;
   z-index: 61; display: flex; flex-direction: column;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 .om-drawer.open { transform: translateX(0); }
 .om-drawer .drawer-head {
-  padding: 20px 20px 16px; border-bottom: 1px solid var(--gridline);
-  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px 14px 12px; border-bottom: 1px solid #2E3548;
+  display: flex; align-items: flex-start; gap: 10px;
 }
-.om-drawer .avatar { width: 38px; height: 38px; font-size: 13px; border-radius: 10px; }
+.om-drawer .avatar {
+  width: 34px; height: 34px; border-radius: 4px;
+  background: var(--c-card); color: var(--c-mut);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
 .om-drawer .drawer-title { flex: 1; min-width: 0; }
-.om-drawer .drawer-title .name { font-size: 15px; font-weight: 700; }
-.om-drawer .drawer-title .biz { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.om-drawer .drawer-title .name { font-size: 13px; font-weight: 600; }
+.om-drawer .drawer-title .biz { font-size: 10px; color: var(--c-dim); margin-top: 3px; letter-spacing: 0.04em; }
 .om-drawer .drawer-close {
-  width: 26px; height: 26px; border-radius: 7px;
-  border: 1px solid var(--border); background: var(--surface-2);
-  cursor: pointer; font-size: 13px; color: var(--text-secondary); flex-shrink: 0;
+  width: 24px; height: 24px; border-radius: 4px;
+  border: 1px solid #333; background: transparent;
+  cursor: pointer; font-size: 12px; color: var(--c-mut); flex-shrink: 0;
 }
-.om-drawer .drawer-body { padding: 16px 20px 24px; overflow-y: auto; flex: 1; }
+.om-drawer .drawer-body { padding: 12px 14px 20px; overflow-y: auto; flex: 1; }
 .om-drawer .action-banner {
   display: flex; gap: 8px; align-items: flex-start;
-  padding: 10px 12px; border-radius: 10px;
-  font-size: 12.5px; font-weight: 600; margin-bottom: 16px; line-height: 1.4;
+  padding: 8px 12px; border-radius: 7px;
+  font-size: 11px; margin-bottom: 14px; line-height: 1.45;
 }
-.om-drawer .action-banner.warn { background: var(--red-soft); color: var(--red); }
-.om-drawer .action-banner.ready { background: var(--orange-soft); color: var(--orange); }
-.om-drawer .action-banner.ok { background: var(--green-soft); color: var(--green); }
+.om-drawer .action-banner.warn { background: var(--om-overdue-soft); color: var(--om-overdue); }
+.om-drawer .action-banner.ready { background: var(--om-generated-soft); color: var(--om-generated); }
+.om-drawer .action-banner.ok { background: var(--om-meeting-soft); color: var(--om-meeting); }
 .om-drawer .timeline-label {
-  font-size: 11px; font-weight: 650; text-transform: uppercase;
-  letter-spacing: 0.04em; color: var(--text-muted); margin: 4px 0 10px;
+  font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--c-dim); margin: 4px 0 10px;
 }
 .om-drawer .step {
   display: flex; gap: 10px; padding: 10px 0;
-  border-bottom: 1px solid var(--gridline); transition: background 0.4s ease;
+  border-bottom: 1px solid #2E3548; transition: background 0.4s ease;
 }
 .om-drawer .step:last-child { border-bottom: none; }
-.om-drawer .step.highlight { background: var(--weekend-bg); border-radius: 8px; padding-left: 8px; padding-right: 8px; margin: 0 -8px; }
+.om-drawer .step.highlight { background: var(--c-card); border-radius: 4px; padding-left: 8px; padding-right: 8px; margin: 0 -8px; }
 .om-drawer .step-mark { flex-shrink: 0; margin-top: 2px; }
 .om-drawer .step-mark .mark { cursor: default; }
 .om-drawer .step-body { min-width: 0; flex: 1; }
-.om-drawer .step-date { font-size: 11px; color: var(--text-muted); margin-bottom: 2px; }
-.om-drawer .step-title { font-size: 13px; font-weight: 650; }
-.om-drawer .step-subject { font-size: 12px; color: var(--text-secondary); margin-top: 3px; font-style: italic; }
+.om-drawer .step-date { font-size: 10px; color: var(--c-dim); margin-bottom: 3px; letter-spacing: 0.04em; }
+.om-drawer .step-title { font-size: 12px; font-weight: 500; }
+.om-drawer .step-subject { font-size: 11px; color: var(--c-mut); margin-top: 3px; }
 .om-drawer .step-status-pill {
-  display: inline-block; font-size: 10px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.03em;
-  padding: 2px 7px; border-radius: 20px; margin-top: 6px;
+  display: inline-block; font-size: 9px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  padding: 2px 7px; border-radius: 2px; margin-top: 6px;
 }
-.om-drawer .step-status-pill.sent { background: var(--blue-soft); color: var(--blue); }
-.om-drawer .step-status-pill.generated { background: var(--orange-soft); color: var(--orange); }
-.om-drawer .step-status-pill.scheduled { background: var(--weekend-bg); color: var(--text-secondary); }
-.om-drawer .step-status-pill.overdue { background: var(--red-soft); color: var(--red); }
-.om-drawer .step-status-pill.meeting { background: var(--green-soft); color: var(--green); }
-.om-drawer, .om-overlay, .om-tooltip {
-  --surface-1: #1a1a19; --surface-2: #0d0d0d;
-  --text-secondary: #c3c2b7; --text-muted: #898781;
-  --gridline: #2c2c2a; --border: rgba(255,255,255,0.10); --weekend-bg: #232320;
-  --blue: #3987e5; --blue-soft: #1c3a5c;
-  --orange: #d95926; --orange-soft: #4a2c1c;
-  --red: #e66767; --red-soft: #4a2222;
-  --green: #0ca30c; --green-soft: #1c3a1c;
-}
+.om-drawer .step-status-pill.sent { background: var(--om-sent-soft); color: var(--om-sent); }
+.om-drawer .step-status-pill.generated { background: var(--om-generated-soft); color: var(--om-generated); }
+.om-drawer .step-status-pill.scheduled { background: var(--c-card); color: var(--c-mut); }
+.om-drawer .step-status-pill.overdue { background: var(--om-overdue-soft); color: var(--om-overdue); }
+.om-drawer .step-status-pill.meeting { background: var(--om-meeting-soft); color: var(--om-meeting); }
 `;
 
 const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+const WINDOW_DAYS = 28;
 const MIN_OFFSET = -2;
 const MAX_OFFSET = 2;
 const STATUS_LABEL = {
@@ -258,6 +251,29 @@ const STATUS_LABEL = {
   overdue: 'Overdue — not sent',
   meeting: 'Meeting booked',
 };
+
+const addDays = (date, n) => {
+  const d = new Date(date.getTime());
+  d.setDate(d.getDate() + n);
+  return d;
+};
+const dayDiff = (a, b) => Math.round((a.getTime() - b.getTime()) / 86400000);
+const fmtShort = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const fmtLong = (d) => d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+const initials = (name) => (name || '?').split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+const markGlyph = (status) => (status === 'sent' ? '✓' : status === 'generated' ? '✎' : status === 'overdue' ? '!' : '');
+
+// ── Cadence event source ─────────────────────────────────────────────────────
+// The ONE place account cadence data comes from. Everything below this line
+// consumes Event[] and knows nothing about how the events were produced -
+// swapping this for a real per-account query is a single-function change.
+//
+// Event: { id, date: Date, type: 'email'|'meeting', status, label, subject }
+//
+// PLACEHOLDER, not real data: Prospector has no per-account generated/sent/
+// step model yet (no table, no column, no logging in api/email.js). Derived
+// from a hash of the account id so a given account keeps the same pattern
+// across renders and page loads rather than flickering a new one each time.
 
 const STEP_LABELS = [
   'Step 1 — Cold intro',
@@ -272,74 +288,83 @@ const STEP_SUBJECTS = [
   'Should I close this out for now?',
 ];
 
-const addDays = (date, n) => {
-  const d = new Date(date.getTime());
-  d.setDate(d.getDate() + n);
-  return d;
-};
-const fmtShort = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-const fmtLong = (d) => d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-const initials = (name) => (name || '?').split(' ').filter(Boolean).slice(0, 2).map(w => w[0]).join('').toUpperCase();
-const markGlyph = (status) => (status === 'sent' ? '✓' : status === 'generated' ? '✎' : status === 'overdue' ? '!' : '');
-
 const hashOf = (str) => {
   let h = 0;
   for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
   return Math.abs(h);
 };
 
-// Placeholder cadence, NOT real data - no per-account generated/sent/step
-// model exists yet (see the banner this renders alongside). Derived from a
-// hash of the account id so a given account keeps the same pattern across
-// renders and page loads instead of flickering a new one each time. Steps
-// are stored relative to today so paging through periods moves through real
-// time rather than repeating the same marks in every window.
-function placeholderCadence(account) {
-  const h = hashOf(String(account.id || account.name || ''));
+export function getPlaceholderCadenceEvents(accountId, dateWindow) {
+  const { today } = dateWindow;
+  const h = hashOf(String(accountId || ''));
   const count = 3 + (h % 2);
   const firstRel = -(14 + (h % 4));
-  const steps = [];
+
+  const events = [];
   for (let i = 0; i < count; i++) {
     const rel = firstRel + i * 7;
-    let status;
-    if (rel > 0) status = 'scheduled';
-    else if (rel > -2) status = 'generated';
-    else status = 'sent';
-    steps.push({ rel, type: 'email', status, label: STEP_LABELS[i], subject: STEP_SUBJECTS[i % STEP_SUBJECTS.length] });
+    const status = rel > 0 ? 'scheduled' : rel > -2 ? 'generated' : 'sent';
+    events.push({
+      id: `${accountId}-e${i}`,
+      date: addDays(today, rel),
+      type: 'email',
+      status,
+      label: STEP_LABELS[i],
+      subject: STEP_SUBJECTS[i % STEP_SUBJECTS.length],
+    });
   }
-  const pastEmails = steps.filter(s => s.status === 'sent');
-  if (h % 3 === 0 && pastEmails.length) pastEmails[pastEmails.length - 1].status = 'overdue';
-  const activeCycle = h % 4 === 0;
-  if (activeCycle) {
-    steps.push({ rel: firstRel + 5, type: 'meeting', status: 'meeting', label: 'Discovery call booked', subject: '30 min intro call' });
+
+  const delivered = events.filter(e => e.status === 'sent');
+  if (h % 3 === 0 && delivered.length) delivered[delivered.length - 1].status = 'overdue';
+
+  if (h % 4 === 0) {
+    events.push({
+      id: `${accountId}-m0`,
+      date: addDays(today, firstRel + 5),
+      type: 'meeting',
+      status: 'meeting',
+      label: 'Discovery call booked',
+      subject: '30 min intro call',
+    });
   }
-  return { steps, activeCycle };
+  return events;
 }
 
-function Mark({ step, onHover, onMove, onLeave, onClick }) {
-  const cls = `mark ${step.status}${step.type === 'meeting' ? ' meeting' : ''}`;
+// ── Grid ─────────────────────────────────────────────────────────────────────
+
+function Mark({ event, onHover, onMove, onLeave, onClick }) {
   return (
     <div
-      className={cls}
+      className={`mark ${event.status}${event.type === 'meeting' ? ' meeting' : ''}`}
       onMouseEnter={onHover}
       onMouseMove={onMove}
       onMouseLeave={onLeave}
       onClick={onClick}
     >
-      <span className={step.type === 'meeting' ? 'glyph' : ''}>
-        {step.type === 'meeting' ? '★' : markGlyph(step.status)}
+      <span className={event.type === 'meeting' ? 'glyph' : ''}>
+        {event.type === 'meeting' ? '★' : markGlyph(event.status)}
       </span>
     </div>
   );
 }
 
-export default function OutreachMatrix({ accounts = [], business }) {
+function StaticMark({ event }) {
+  return (
+    <div className={`mark ${event.status}${event.type === 'meeting' ? ' meeting' : ''}`}>
+      <span className={event.type === 'meeting' ? 'glyph' : ''}>
+        {event.type === 'meeting' ? '★' : markGlyph(event.status)}
+      </span>
+    </div>
+  );
+}
+
+export default function OutreachMatrix({ accounts = [], business, eventsFor = getPlaceholderCadenceEvents }) {
   const [query, setQuery] = useState('');
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [activeOnly, setActiveOnly] = useState(false);
   const [periodOffset, setPeriodOffset] = useState(0);
   const [selectedId, setSelectedId] = useState(null);
-  const [highlightKey, setHighlightKey] = useState(null);
+  const [highlightId, setHighlightId] = useState(null);
   const [tooltip, setTooltip] = useState(null);
   const tooltipRef = useRef(null);
 
@@ -348,43 +373,50 @@ export default function OutreachMatrix({ accounts = [], business }) {
     return new Date(n.getFullYear(), n.getMonth(), n.getDate());
   }, []);
 
-  // Anchor the 28-day window to the Monday two weeks before the current
-  // week, so "today" lands in week 3 the way the mockup shows it.
-  const anchorStart = useMemo(() => {
+  // Anchor the 28-day window to the Monday two weeks before the current week,
+  // so today lands in week 3 the way the mockup shows it.
+  const dateWindow = useMemo(() => {
     const dow = today.getDay();
-    return addDays(today, (dow === 0 ? -6 : 1 - dow) - 14);
-  }, [today]);
-
-  const windowStart = useMemo(() => addDays(anchorStart, periodOffset * 28), [anchorStart, periodOffset]);
-  const todayIndex = Math.round((today.getTime() - windowStart.getTime()) / 86400000);
-  const todayIdx = todayIndex >= 0 && todayIndex <= 27 ? todayIndex : null;
+    const anchor = addDays(today, (dow === 0 ? -6 : 1 - dow) - 14);
+    const start = addDays(anchor, periodOffset * WINDOW_DAYS);
+    return { start, days: WINDOW_DAYS, today };
+  }, [today, periodOffset]);
 
   const rows = useMemo(() => accounts.map(a => {
-    const { steps, activeCycle } = placeholderCadence(a);
-    return { id: String(a.id), name: a.name || '(unnamed)', activeCycle, steps };
-  }), [accounts]);
+    const id = String(a.id);
+    const events = eventsFor(id, dateWindow);
+    return {
+      id,
+      name: a.name || '(unnamed)',
+      events,
+      activeCycle: events.some(e => e.type === 'meeting'),
+    };
+  }), [accounts, eventsFor, dateWindow]);
 
   const visible = useMemo(() => rows.filter(r => {
     if (query && r.name.toLowerCase().indexOf(query.toLowerCase()) === -1) return false;
-    if (overdueOnly && !r.steps.some(s => s.status === 'overdue')) return false;
+    if (overdueOnly && !r.events.some(e => e.status === 'overdue')) return false;
     if (activeOnly && !r.activeCycle) return false;
     return true;
   }), [rows, query, overdueOnly, activeOnly]);
 
-  const dayDate = useCallback((idx) => addDays(windowStart, idx), [windowStart]);
+  const dayDate = useCallback((idx) => addDays(dateWindow.start, idx), [dateWindow]);
   const isWeekend = useCallback((idx) => {
     const dow = dayDate(idx).getDay();
     return dow === 0 || dow === 6;
   }, [dayDate]);
-  const stepDate = useCallback((step) => addDays(today, step.rel), [today]);
-  const indexInWindow = useCallback((step) => {
-    const idx = Math.round((stepDate(step).getTime() - windowStart.getTime()) / 86400000);
-    return idx >= 0 && idx <= 27 ? idx : null;
-  }, [stepDate, windowStart]);
+  const columnOf = useCallback((event) => {
+    const idx = dayDiff(event.date, dateWindow.start);
+    return idx >= 0 && idx < WINDOW_DAYS ? idx : null;
+  }, [dateWindow]);
 
-  const selected = visible.find(r => r.id === selectedId) || rows.find(r => r.id === selectedId) || null;
+  const todayColumn = useMemo(() => {
+    const idx = dayDiff(today, dateWindow.start);
+    return idx >= 0 && idx < WINDOW_DAYS ? idx : null;
+  }, [today, dateWindow]);
 
-  const closeDrawer = useCallback(() => { setSelectedId(null); setHighlightKey(null); }, []);
+  const selected = rows.find(r => r.id === selectedId) || null;
+  const closeDrawer = useCallback(() => { setSelectedId(null); setHighlightId(null); }, []);
 
   useEffect(() => {
     if (!selectedId) return undefined;
@@ -396,38 +428,33 @@ export default function OutreachMatrix({ accounts = [], business }) {
   const moveTooltip = (ev) => {
     const el = tooltipRef.current;
     if (!el) return;
-    const x = Math.min(ev.clientX + 14, window.innerWidth - 236);
-    const y = Math.min(ev.clientY + 14, window.innerHeight - 100);
-    el.style.left = `${x}px`;
-    el.style.top = `${y}px`;
+    el.style.left = `${Math.min(ev.clientX + 14, window.innerWidth - 246)}px`;
+    el.style.top = `${Math.min(ev.clientY + 14, window.innerHeight - 100)}px`;
   };
-
-  const showTooltip = (ev, step) => {
-    setTooltip({ label: step.label, date: fmtLong(stepDate(step)), subject: step.subject, status: STATUS_LABEL[step.status] });
+  const showTooltip = (ev, event) => {
+    setTooltip({ label: event.label, date: fmtLong(event.date), subject: event.subject, status: STATUS_LABEL[event.status] });
     moveTooltip(ev);
   };
 
   const clearFilters = () => { setQuery(''); setOverdueOnly(false); setActiveOnly(false); };
   const filtered = !!query || overdueOnly || activeOnly;
 
-  const stepKey = (rowId, step) => `${rowId}-${step.rel}-${step.label}`;
-
-  const weekStarts = [0, 1, 2, 3].map(w => addDays(windowStart, w * 7));
-  const windowEnd = addDays(windowStart, 27);
+  const weekStarts = [0, 1, 2, 3].map(w => addDays(dateWindow.start, w * 7));
+  const windowEnd = addDays(dateWindow.start, WINDOW_DAYS - 1);
 
   return (
     <div className="om-root">
-      <style>{CSS}</style>
-      <div className="card">
+      <style>{STATUS_CSS}{CSS}</style>
+      <div className="panel">
         <div className="top">
           <div className="top-row">
             <div className="title-block">
               <h1>Outreach Matrix</h1>
-              <p>{business?.name || 'Accounts'} · cadence tracking &amp; planning, one 4-week view at a time</p>
+              <p>{`${business?.name || 'Accounts'} · cadence tracking & planning, one 4-week view at a time`}</p>
             </div>
             <div className="period-nav">
               <button onClick={() => setPeriodOffset(o => Math.max(MIN_OFFSET, o - 1))} disabled={periodOffset <= MIN_OFFSET} title="Previous 4 weeks">‹</button>
-              <div className="period-label">{`${fmtShort(windowStart)} – ${fmtShort(windowEnd)}, ${windowEnd.getFullYear()}`}</div>
+              <div className="period-label">{`${fmtShort(dateWindow.start)} – ${fmtShort(windowEnd)}, ${windowEnd.getFullYear()}`}</div>
               <button onClick={() => setPeriodOffset(o => Math.min(MAX_OFFSET, o + 1))} disabled={periodOffset >= MAX_OFFSET} title="Next 4 weeks">›</button>
               <button className="period-today-btn" onClick={() => setPeriodOffset(0)}>Today</button>
             </div>
@@ -449,15 +476,12 @@ export default function OutreachMatrix({ accounts = [], business }) {
 
         <div className="filters">
           <div className="search-box">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>
             <input type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search accounts…" />
           </div>
-          <div className="chip-group">
-            <button className={`chip toggle overdue-chip${overdueOnly ? ' active' : ''}`} onClick={() => setOverdueOnly(v => !v)}>Overdue only</button>
-            <button className={`chip toggle active-chip${activeOnly ? ' active' : ''}`} onClick={() => setActiveOnly(v => !v)}>Active cycles only</button>
-          </div>
+          <button style={pillStyle(overdueOnly, C.red)} onClick={() => setOverdueOnly(v => !v)}>Overdue only</button>
+          <button style={pillStyle(activeOnly, C.green)} onClick={() => setActiveOnly(v => !v)}>Active cycles only</button>
           <div className="filters-spacer" />
-          {filtered && <button className="clear-filters" onClick={clearFilters}>Clear filters</button>}
+          {filtered && <button className="clear-filters" onClick={clearFilters}>Clear all ×</button>}
         </div>
 
         <div className="result-count">{`Showing ${visible.length} of ${rows.length} accounts`}</div>
@@ -472,10 +496,10 @@ export default function OutreachMatrix({ accounts = [], business }) {
                 {weekStarts.map((w, i) => <div key={i} className="cell head-week">{`Week of ${fmtShort(w)}`}</div>)}
 
                 <div className="cell head-name">Accounts</div>
-                {Array.from({ length: 28 }, (_, i) => {
+                {Array.from({ length: WINDOW_DAYS }, (_, i) => {
                   const d = dayDate(i);
                   return (
-                    <div key={i} className={`cell head-day${isWeekend(i) ? ' weekend' : ''}${i === todayIdx ? ' is-today' : ''}`}>
+                    <div key={i} className={`cell head-day${isWeekend(i) ? ' weekend' : ''}${i === todayColumn ? ' is-today' : ''}`}>
                       <div className="dow">{DOW[d.getDay()]}</div>
                       <div className="num">{d.getDate()}</div>
                     </div>
@@ -483,15 +507,15 @@ export default function OutreachMatrix({ accounts = [], business }) {
                 })}
 
                 {visible.map(r => {
-                  const byDay = {};
-                  r.steps.forEach(s => {
-                    const idx = indexInWindow(s);
-                    if (idx === null) return;
-                    (byDay[idx] = byDay[idx] || []).push(s);
+                  const byColumn = {};
+                  r.events.forEach(e => {
+                    const col = columnOf(e);
+                    if (col === null) return;
+                    (byColumn[col] = byColumn[col] || []).push(e);
                   });
                   return (
                     <div key={r.id} style={{ display: 'contents' }}>
-                      <div className={`cell row-name${r.activeCycle ? ' is-active-cycle' : ''}`} onClick={() => { setSelectedId(r.id); setHighlightKey(null); }}>
+                      <div className={`cell row-name${r.activeCycle ? ' is-active-cycle' : ''}`} onClick={() => { setSelectedId(r.id); setHighlightId(null); }}>
                         <div className="avatar">{initials(r.name)}</div>
                         <div className="row-name-text">
                           <div className="acct">{r.name}</div>
@@ -501,16 +525,16 @@ export default function OutreachMatrix({ accounts = [], business }) {
                           </div>
                         </div>
                       </div>
-                      {Array.from({ length: 28 }, (_, di) => (
-                        <div key={di} className={`cell day-cell${isWeekend(di) ? ' weekend' : ''}`}>
-                          {(byDay[di] || []).map(s => (
+                      {Array.from({ length: WINDOW_DAYS }, (_, col) => (
+                        <div key={col} className={`cell day-cell${isWeekend(col) ? ' weekend' : ''}`}>
+                          {(byColumn[col] || []).map(e => (
                             <Mark
-                              key={stepKey(r.id, s)}
-                              step={s}
-                              onHover={e => showTooltip(e, s)}
+                              key={e.id}
+                              event={e}
+                              onHover={ev => showTooltip(ev, e)}
                               onMove={moveTooltip}
                               onLeave={() => setTooltip(null)}
-                              onClick={e => { e.stopPropagation(); setSelectedId(r.id); setHighlightKey(stepKey(r.id, s)); }}
+                              onClick={ev => { ev.stopPropagation(); setSelectedId(r.id); setHighlightId(e.id); }}
                             />
                           ))}
                         </div>
@@ -519,7 +543,7 @@ export default function OutreachMatrix({ accounts = [], business }) {
                   );
                 })}
               </div>
-              {todayIdx !== null && <div className="today-line" style={{ left: 290 + todayIdx * 32 + 16 }} />}
+              {todayColumn !== null && <div className="today-line" style={{ left: 290 + todayColumn * 32 + 16 }} />}
             </div>
           )}
         </div>
@@ -529,7 +553,7 @@ export default function OutreachMatrix({ accounts = [], business }) {
         {tooltip && (
           <>
             <b>{tooltip.label}</b>
-            {tooltip.date}<br />“{tooltip.subject}”
+            <span className="tt-date">{tooltip.date}</span><br />“{tooltip.subject}”
             <span className="tt-status">{tooltip.status}</span>
           </>
         )}
@@ -537,16 +561,16 @@ export default function OutreachMatrix({ accounts = [], business }) {
 
       <div className={`om-overlay${selected ? ' open' : ''}`} onClick={closeDrawer} />
       <div className={`om-drawer${selected ? ' open' : ''}`}>
-        {selected && <Drawer row={selected} business={business} highlightKey={highlightKey} stepDate={stepDate} stepKey={stepKey} onClose={closeDrawer} />}
+        {selected && <CadenceDrawer row={selected} business={business} highlightId={highlightId} onClose={closeDrawer} />}
       </div>
     </div>
   );
 }
 
-function Drawer({ row, business, highlightKey, stepDate, stepKey, onClose }) {
-  const sorted = [...row.steps].sort((a, b) => a.rel - b.rel);
-  const overdue = sorted.filter(s => s.status === 'overdue');
-  const ready = sorted.filter(s => s.status === 'generated');
+function CadenceDrawer({ row, business, highlightId, onClose }) {
+  const sorted = [...row.events].sort((a, b) => a.date - b.date);
+  const overdue = sorted.filter(e => e.status === 'overdue');
+  const ready = sorted.filter(e => e.status === 'generated');
 
   return (
     <>
@@ -560,7 +584,7 @@ function Drawer({ row, business, highlightKey, stepDate, stepKey, onClose }) {
       </div>
       <div className="drawer-body">
         {overdue.length ? (
-          <div className="action-banner warn">{`⚠ ${overdue[0].label} was due ${fmtShort(stepDate(overdue[0]))} — not yet marked sent.`}</div>
+          <div className="action-banner warn">{`⚠ ${overdue[0].label} was due ${fmtShort(overdue[0].date)} — not yet marked sent.`}</div>
         ) : ready.length ? (
           <div className="action-banner ready">{`✎ ${ready[0].label} has a draft ready — send it today.`}</div>
         ) : row.activeCycle ? (
@@ -568,24 +592,17 @@ function Drawer({ row, business, highlightKey, stepDate, stepKey, onClose }) {
         ) : null}
 
         <div className="timeline-label">Cadence timeline</div>
-        {sorted.map(s => {
-          const key = stepKey(row.id, s);
-          return (
-            <div key={key} className={`step${key === highlightKey ? ' highlight' : ''}`}>
-              <div className="step-mark">
-                <div className={`mark ${s.status}${s.type === 'meeting' ? ' meeting' : ''}`}>
-                  <span className={s.type === 'meeting' ? 'glyph' : ''}>{s.type === 'meeting' ? '★' : markGlyph(s.status)}</span>
-                </div>
-              </div>
-              <div className="step-body">
-                <div className="step-date">{fmtLong(stepDate(s))}</div>
-                <div className="step-title">{s.label}</div>
-                <div className="step-subject">“{s.subject}”</div>
-                <span className={`step-status-pill ${s.status}`}>{STATUS_LABEL[s.status]}</span>
-              </div>
+        {sorted.map(e => (
+          <div key={e.id} className={`step${e.id === highlightId ? ' highlight' : ''}`}>
+            <div className="step-mark"><StaticMark event={e} /></div>
+            <div className="step-body">
+              <div className="step-date">{fmtLong(e.date)}</div>
+              <div className="step-title">{e.label}</div>
+              <div className="step-subject">“{e.subject}”</div>
+              <span className={`step-status-pill ${e.status}`}>{STATUS_LABEL[e.status]}</span>
             </div>
-          );
-        })}
+          </div>
+        ))}
       </div>
     </>
   );

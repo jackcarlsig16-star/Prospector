@@ -16,6 +16,13 @@ const VIEW_ONLY_PERMS = { canUpload:false, canStealth:false, canReassay:false, c
 
 const UNLISTED = '__unlisted__';
 
+// outreach-matrix-theme-and-architecture-correction-v1 — the hide-FIX this
+// was meant to inherit (outreach-matrix-hide-until-real-data-v1) never landed
+// in this repo, so the switcher shipped reachable. Gated here instead: the
+// matrix renders placeholder cadence marks and stays hidden until Jack signs
+// off on the look and flips this on.
+const OUTREACH_MATRIX_ENABLED = false;
+
 // Business-scoped accounts - independent list per business, no SFDC sync or
 // compliance workflow (those are Plaid-specific, out of scope until
 // generalize-legacy-functions-v1). A brand-new business starts with zero
@@ -195,7 +202,7 @@ export default function BusinessAccountsTab({ business, userEmail, projects=[], 
         <InfluencerAddModal business={business} userEmail={userEmail} lists={lists} onClose={()=>setInfluencerAddOpen(false)}
           onAdded={()=>reload(true)} />
       )}
-      <div style={{ display:"flex", gap:6, margin:"0 0 14px" }}>
+      {OUTREACH_MATRIX_ENABLED && <div style={{ display:"flex", gap:6, margin:"0 0 14px" }}>
         {[{ id:'accounts', lb:'Accounts' }, { id:'outreach_matrix', lb:'Outreach Matrix' }].map(v => (
           <button key={v.id} onClick={()=>setView(v.id)} style={{
             ...mono, fontSize:12, padding:"6px 14px", borderRadius:6, cursor:"pointer",
@@ -205,8 +212,8 @@ export default function BusinessAccountsTab({ business, userEmail, projects=[], 
             fontWeight: view===v.id ? 600 : 400,
           }}>{v.lb}</button>
         ))}
-      </div>
-      {view === 'outreach_matrix' ? <OutreachMatrix accounts={visibleAccounts} business={business} /> : (
+      </div>}
+      {OUTREACH_MATRIX_ENABLED && view === 'outreach_matrix' ? <OutreachMatrix accounts={visibleAccounts} business={business} /> : (
       <AccountsPage
         accounts={visibleAccounts}
         onSave={canEditCurrentView ? persist : undefined}
