@@ -16,12 +16,11 @@ const VIEW_ONLY_PERMS = { canUpload:false, canStealth:false, canReassay:false, c
 
 const UNLISTED = '__unlisted__';
 
-// outreach-matrix-theme-and-architecture-correction-v1 — the hide-FIX this
-// was meant to inherit (outreach-matrix-hide-until-real-data-v1) never landed
-// in this repo, so the switcher shipped reachable. Gated here instead: the
-// matrix renders placeholder cadence marks and stays hidden until Jack signs
-// off on the look and flips this on.
-const OUTREACH_MATRIX_ENABLED = false;
+// The matrix still renders PLACEHOLDER cadence marks (no per-account
+// generated/sent/step model exists yet), behind its own in-view banner. This
+// switch stays so it can be pulled back out of sight in one edit if the
+// placeholder layer ever reads as real data to someone.
+const OUTREACH_MATRIX_ENABLED = true;
 
 // Business-scoped accounts - independent list per business, no SFDC sync or
 // compliance workflow (those are Plaid-specific, out of scope until
