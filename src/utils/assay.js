@@ -220,6 +220,7 @@ ${isCompetitor
 
 BEFORE concluding any category-based non-fit, check the FIT SIGNALS below against what this account actually IS, not just what it sells. If the criteria describe traits an account can possess independently of its product — an employee base, a member or workforce population, a customer roster, a distribution channel — look for evidence of THAT trait and record what you find in fitSignals. A company whose product is unrelated may still match on the trait the criteria actually asks about. Only conclude non-fit after that check, and say in productFit which specific FIT SIGNALS criterion it fails.
 fitSignals and keySignals must not be left empty just because the score is low — a low score still needs the evidence it was reasoned from.
+Claiming an ABSENCE is a factual claim and needs evidence like any other. Do not conclude "no workforce", "no employees", "no members", or "no benefits function" from the fact that a company sells to consumers — nearly every operating company employs people. If a criterion turns on headcount or membership, search for the real number and put it in fitSignals; if you genuinely cannot find one, say so and set confidence="Low" rather than asserting the absence.
 
 THIS BUSINESS'S FIT CRITERIA — apply these instead of any generic vertical assumptions:
 FIT SIGNALS: ${criteria.fit_signals || "(not specified)"}
@@ -232,7 +233,9 @@ Set distributionMultiplier=true and note downstream reach in estimatedDownstream
 
 DEFUNCT / ACQUIRED: Score 4=Slag and set isActive=false if site mentions "acquired by", "now part of", "no longer operating", "sunset", or is a holding page.
 
-DISQUALIFIER — three different things, do not conflate them:
+${isCompetitor ? `DISQUALIFIER — this account is typed Competitor, so that is the answer: score 4=Slag and disqualifier MUST begin with "competitor — ". Do not substitute an audience or category rationale for it; the rules below about weak fits do not apply to a competitor.
+
+` : ''}DISQUALIFIER — three different things, do not conflate them:
 - defunct/dormant (company no longer operating) — a hard exclusion.
 - competitor — a hard exclusion, but ONLY when ACCOUNT TYPE above says Competitor. Never infer it from what the account sells.
 - weak or partial fit against the DISQUALIFIERS criteria — NOT an exclusion. Score it low on the spectrum and explain why in productFit.
@@ -345,6 +348,21 @@ export async function clientAssay({ name, web, vert, customIntel, exampleAccts, 
 
   // Post-processing (mirrors server)
   if (!parsed.signalBreakdown && signalBreakdown) parsed.signalBreakdown = signalBreakdown;
+
+  // Hard override, not just a prompt instruction - same reasoning as the
+  // confidence cap below. Verified live: a Competitor-typed account with
+  // strong fit evidence came back score 1/Gold, disqualifier null, despite
+  // the prompt stating the competitor rule twice including "MUST begin with
+  // competitor —". Evidence of fit outweighs one instruction, so the gate
+  // can't live in the prompt. Type is the only competitor gate; it is set
+  // by a human on the account, so it is trusted over the model's read.
+  if (relationshipType === 'Competitor') {
+    parsed.score = 4;
+    parsed.tier = "Slag";
+    if (!/^competitor\b/i.test(parsed.disqualifier || '')) {
+      parsed.disqualifier = `competitor — typed as a competitor on the account${parsed.disqualifier ? `; model note: ${parsed.disqualifier}` : ''}`;
+    }
+  }
 
   // Hard override: local signal detection found parked/dead/acquired signals
   if (signalBreakdown?.slagSignals?.some(s => /(parked|expired|suspended|shutdown|acquisition|absorbed)/.test(s))) {
