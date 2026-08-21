@@ -23,6 +23,15 @@ export default function PrimaryAction({ accountKind, action }) {
         height: 32,
         padding: "0 16px",
         display: "inline-flex",
+        // account-card-layout-and-readability-fixes-v1 — the parent
+        // (AccountCard.js's expanded body) is a column flex container, so its
+        // default align-items:stretch was widening this to the full card
+        // (measured 1068px vs Call Prep's 99px), overriding the inline-flex
+        // above and contradicting this component's own sizing intent. Set on
+        // the child rather than flipping the parent's align-items, because
+        // every sibling (QuickAskBar, ActionGroup, LinksAndOutbound, the
+        // intelligence panels) does rely on stretching to full width.
+        alignSelf: "flex-start",
         alignItems: "center",
         gap: 6,
         background: `${accent}16`,

@@ -9,7 +9,10 @@ import AccountCardRawEdit from '../../AccountCardRawEdit';
 import { loadWinReason } from '../../../utils/winReasons';
 import { stripCitationMarkup } from '../../../utils/textSanitize';
 
-const SH = { ...mono, fontSize: 9, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: CARD.textSubtle };
+// account-card-layout-and-readability-fixes-v1 — was 9px/textSubtle, measured
+// 2.97:1 against CARD.bg, below the 3:1 WCAG floor for any text. textMuted at
+// 10px measures 4.39:1. Existing tokens only, no new palette values.
+const SH = { ...mono, fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: CARD.textMuted };
 
 // Section 12's business Intelligence content (compact summary text) plus
 // the deal-workflow surfaces that stay visible inline rather than behind a
@@ -24,7 +27,7 @@ const SH = { ...mono, fontSize: 9, fontWeight: 600, textTransform: "uppercase", 
 // flat fields for any account not yet re-assayed since this shipped (dual-
 // write means legacy fields stay correct too, just not the source of truth
 // going forward).
-const PILL_STYLE = { ...mono, fontSize: 10, color: CARD.textMuted, background: CARD.surface, border: `1px solid ${CARD.border}`, borderRadius: 3, padding: "2px 6px" };
+const PILL_STYLE = { ...mono, fontSize: 10, color: CARD.textSecondary, background: CARD.surface, border: `1px solid ${CARD.border}`, borderRadius: 3, padding: "2px 6px" };
 
 // surface-existing-intel-v1 — internal-only helper for Signal Breakdown's
 // four sub-arrays, which repeat the same labeled-pill-row shape. Not a
@@ -55,14 +58,14 @@ export function IntelligenceSummary({ acc }) {
   const disqualifier = detail?.disqualifier;
   return (
     <div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12 }}>
         <div>
           <p style={SH}>Business Model</p>
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: CARD.textSecondary, lineHeight: 1.6, maxHeight: 200, overflowY: "auto" }}>{businessModel || "Not yet analyzed"}</p>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: CARD.textSecondary, lineHeight: 1.6 }}>{businessModel || "Not yet analyzed"}</p>
         </div>
         <div>
           <p style={SH}>Product Fit</p>
-          <p style={{ margin: "4px 0 0", fontSize: 12, color: CARD.textSecondary, lineHeight: 1.6, maxHeight: 200, overflowY: "auto" }}>{fitRationale || "Run assay to analyze"}</p>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: CARD.textSecondary, lineHeight: 1.6 }}>{fitRationale || "Run assay to analyze"}</p>
         </div>
       </div>
       {products?.length > 0 && (
@@ -95,13 +98,24 @@ export function IntelligenceSummary({ acc }) {
       {breakdown && (
         <div style={{ marginTop: 12 }}>
           <p style={SH}>Signal Breakdown</p>
-          {(breakdown.topSignal || breakdown.signalScore != null) && (
+          {/* account-card-layout-and-readability-fixes-v1 — this used to read a
+              bare "Score: 0". That 0 is signalScore, a different field from the
+              fit score: Oura really is signalScore 0 but score 4 / tier Slag, so
+              an unlabelled 0 read as "barely scored" when the account had in
+              fact been scored decisively. Both are labelled explicitly now, and
+              the fit score is shown next to it so the two can't be confused. */}
+          {(breakdown.topSignal || breakdown.signalScore != null || detail?.score != null) && (
             <p style={{ margin: "4px 0 0", fontSize: 12, color: CARD.textSecondary }}>
-              {breakdown.topSignal ? `Top Signal: ${breakdown.topSignal}` : ""}
-              {breakdown.topSignal && breakdown.signalScore != null ? " · " : ""}
-              {breakdown.signalScore != null ? `Score: ${breakdown.signalScore}` : ""}
+              {[
+                breakdown.topSignal ? `Top Signal: ${breakdown.topSignal}` : null,
+                detail?.score != null ? `Fit Score: ${detail.score}${detail.tier ? ` (${detail.tier})` : ""}` : null,
+                breakdown.signalScore != null ? `Signal Score: ${breakdown.signalScore}` : null,
+              ].filter(Boolean).join(" · ")}
             </p>
           )}
+          {/* The disqualifying evidence itself - fetched all along, but only
+              reachable via the collapsed raw-JSON dump until now. */}
+          <SignalSubGroup label="Disqualifying Signals" items={breakdown.slagSignals} />
           <SignalSubGroup label="Scale Signals" items={breakdown.scaleSignals} />
           {/* assay-standard-signal-categories-v1 — old rows carry paymentSignals/
               platformSignals/onboardingSignals instead of fitSignals/adoptionSignals;

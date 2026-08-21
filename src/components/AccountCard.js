@@ -187,6 +187,33 @@ export default function AccountCard({
           ) : (
             <>
               <ActionGroup actions={tiers[2]} />
+
+              {/* account-card-layout-and-readability-fixes-v1 — these mounted
+                  ~700px below their own trigger buttons (after the intelligence
+                  panel, linked projects, activity and the raw-intel dump), so
+                  clicking Intel or Comms produced no visible change in the
+                  viewport and read as a dead button. They render immediately
+                  under the row that opens them now. Both self-manage
+                  visibility off `open`, so this is purely a DOM position
+                  change. Extract deliberately not moved here - it becomes a
+                  modal in extract-panel-redesign-v1. */}
+              <IntelWorkspace
+                acc={acc} business={business} projects={projects} campaigns={campaigns} onUpdate={onUpdate} tasks={tasks} activeUser={activeUser}
+                open={intelOpen} onClose={() => setIntelOpen(false)}
+                newlyDetectedProds={newlyDetectedProds}
+                debriefHandle={debriefRef.current}
+              />
+
+              {commsOpen && (
+                <div style={{ background: "#f59e0b06", border: "1px solid #f59e0b22", borderRadius: 7, padding: "12px 14px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                    <span style={{ ...mono, fontSize: 11, fontWeight: 500, color: "#f59e0b" }}>✉ Comms — {acc.name}</span>
+                    <button onClick={() => setCommsOpen(false)} style={{ marginLeft: "auto", background: "transparent", border: "none", color: CARD.textMuted, fontSize: 14, cursor: "pointer" }}>✕</button>
+                  </div>
+                  <AccountCardComms acc={acc} tasks={tasks} activeUser={activeUser} onUpdate={onUpdate} business={business} projects={projects} campaigns={campaigns} />
+                </div>
+              )}
+
               <UtilityRow actions={tiers[3]} />
               <LinksAndOutbound acc={acc} onUpdate={onUpdate} tasks={tasks} activeUser={activeUser} assignedEntry={assignedEntry} onAssign={onAssign} onUnassign={onUnassign} />
             </>
@@ -256,25 +283,6 @@ export default function AccountCard({
           setIntelFlash={setIntelFlash} onNewlyDetectedProds={setNewlyDetectedProds}
           open={debriefOpen} onClose={() => setDebriefOpen(false)}
         />
-      )}
-
-      {!isInfluencer && (
-        <IntelWorkspace
-          acc={acc} business={business} projects={projects} campaigns={campaigns} onUpdate={onUpdate} tasks={tasks} activeUser={activeUser}
-          open={intelOpen} onClose={() => setIntelOpen(false)}
-          newlyDetectedProds={newlyDetectedProds}
-          debriefHandle={debriefRef.current}
-        />
-      )}
-
-      {!isInfluencer && commsOpen && (
-        <div style={{ margin: "0 14px 12px", background: "#f59e0b06", border: "1px solid #f59e0b22", borderRadius: 7, padding: "12px 14px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-            <span style={{ ...mono, fontSize: 11, fontWeight: 500, color: "#f59e0b" }}>✉ Comms — {acc.name}</span>
-            <button onClick={() => setCommsOpen(false)} style={{ marginLeft: "auto", background: "transparent", border: "none", color: CARD.textMuted, fontSize: 14, cursor: "pointer" }}>✕</button>
-          </div>
-          <AccountCardComms acc={acc} tasks={tasks} activeUser={activeUser} onUpdate={onUpdate} business={business} projects={projects} campaigns={campaigns} />
-        </div>
       )}
 
       {!isInfluencer && extractOpen && (
