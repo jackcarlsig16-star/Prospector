@@ -220,7 +220,22 @@ are deliberate, documented tradeoffs (freshness over caching, for instance).
 Check the surrounding comments before reporting anything as a problem —
 report it as a candidate, and quote the comment if one exists.
 
-**H1 — same table + same column set fetched from 2+ sites.**
+**Scope + cost for this section specifically:** every `.js` file under `src/`
+and `api/` (~276 files), read from disk by `grep` and `perl`. **No live DB, no
+network, no live-app calls** — nothing here queries Supabase, so this section
+contributes zero egress and zero API spend. Roughly 20-40 seconds. Expect
+~95 candidates at current repo size; if a run returns wildly more, a heuristic
+has broken and is matching too broadly — say so rather than dumping the list.
+
+**Do not narrow a check to reduce noise.** Checks C2 and C5 are deliberately
+broad and overlap each other. Tightening them (e.g. only reporting queries
+that are both unfiltered *and* unlimited) cuts the candidate count by more
+than half and silently drops real cases — 21 filtered `.select('*')` calls,
+several pulling every column of a wide table where the caller needs three.
+Signal-to-noise is Jack's call to make on real output, not the script's call
+to make by pre-filtering.
+
+**C1 — same table + same column set fetched from 2+ sites.**
 ```
 grep -rhoE "from\('[a-z_]+'\)\.select\('[^']*'\)" src/ api/ | sort | uniq -c | sort -rn | awk '$1>1'
 ```
@@ -228,24 +243,39 @@ Then locate each with `grep -rn "<the matched string>" src/ api/`. Two callers
 pulling identical columns for the same key inside one request path is a
 redundant-fetch candidate.
 
-**H2/H5 — unfiltered AND unlimited reads.** Query chains here span multiple
-lines, so a line-based grep misses most of them. This reconstructs the chain
-from `.from(` to the terminating `;`:
+**C2 — every `.select('*')`, filtered or not.** Report all of them. The
+question a `.select('*')` raises is whether the caller actually uses every
+column, and having an `.eq()` on it doesn't answer that — a single-row
+`.select('*')` on a wide table still pulls every large text column when the
+caller may want three. Do not pre-filter this to the unfiltered subset.
+```
+grep -rn "\.select('\*')" src/ api/ | grep -v "^[^:]*:[0-9]*: *//"
+```
+For each, check what the caller destructures downstream before saying
+anything about it. Some are correct.
+
+**C5 — any read with no explicit `.limit()`.** Broad on purpose, and it
+overlaps C2. Query chains span multiple lines here, so a line-based grep
+misses most of them; this reconstructs the chain from `.from(` to the
+terminating `;`:
 ```
 for f in $(find src api -name "*.js"); do
   perl -0777 -ne '
     while (/(?:supabase|sb)\s*\n?\s*\.from\(\s*'"'"'([a-z_]+)'"'"'\s*\)((?:[^;]|\n)*?);/g) {
       my ($tbl,$chain)=($1,$2); my $pre=substr($_,0,pos($_)); my $ln=($pre=~tr/\n//)+1;
       next unless $chain =~ /\.select\(/;
-      next if $chain =~ /\.eq\(|\.in\(|\.match\(|\.filter\(|\.limit\(|ingle\(\)/;
-      print "$ARGV:$ln\t$tbl\tREPORT ONLY - unfiltered + unlimited read\n";
+      next if $chain =~ /\.limit\(|ingle\(\)/;
+      my $unfiltered = ($chain =~ /\.eq\(|\.in\(|\.match\(|\.filter\(/) ? "" : "  <-- ALSO UNFILTERED, highest priority";
+      print "$ARGV:$ln\t$tbl\tREPORT ONLY - no explicit limit$unfiltered\n";
     }' "$f"
 done
 ```
-Cheap today is not the test — a table with 0 rows returning 2 bytes still
-scales linearly the moment it holds data.
+Some unlimited queries are correct — this is for review, not a conclusion.
+The unfiltered-and-unlimited intersection flagged above is the highest-value
+subset, but the rest still get reported. Cheap today is not the test: a table
+with 0 rows returning 2 bytes still scales linearly the moment it holds data.
 
-**H3 — await on a DB/network call inside a loop body (N+1 candidate).**
+**C3 — await on a DB/network call inside a loop body (N+1 candidate).**
 ```
 for f in $(find src api -name "*.js"); do
   perl -0777 -ne '
@@ -258,7 +288,7 @@ for f in $(find src api -name "*.js"); do
 done | sort -u
 ```
 
-**H4 — query whose filters are ALL literals (result cannot vary per item).**
+**C4 — query whose filters are ALL literals (result cannot vary per item).**
 If every `.eq()` argument is a constant, the result is identical on every
 iteration and every request. Inside a per-account or per-generation path,
 that's a hoist-or-batch candidate.
@@ -278,12 +308,17 @@ done
 
 **Seed cases — these three are real and must all be caught.** If a change to
 this section stops flagging any of them, the pattern is wrong:
-- H1 must flag `from('business_profiles').select('assay_criteria, outreach_rules')`
+- C1 must flag `from('business_profiles').select('assay_criteria, outreach_rules')`
   appearing twice (`api/email.js` + `src/utils/db.js`).
-- H4 must flag `api/email.js`'s `outreach_doctrine` read. Note its comment
+- C4 must flag `api/email.js`'s `outreach_doctrine` read. Note its comment
   documents the refetch as deliberate — correct behavior is to report it as a
   candidate *and quote that comment*, not to call it a defect.
-- H2/H5 must flag `src/utils/db.js`'s `handoff_intel` read.
+- C5 must flag `src/utils/db.js`'s `handoff_intel` read, marked
+  `<-- ALSO UNFILTERED`.
+- C2 must flag `api/businesses/shared.js`'s `business_profiles.select('*')`
+  reads. These have an `.eq()` on them, so a version of C2 narrowed to
+  unfiltered queries would miss them — that regression is the reason C2 is
+  specified broadly.
 
 ## Report format
 
