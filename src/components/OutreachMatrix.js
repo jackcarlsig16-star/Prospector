@@ -266,68 +266,37 @@ const markGlyph = (status) => (status === 'sent' ? '✓' : status === 'generated
 // ── Cadence event source ─────────────────────────────────────────────────────
 // The ONE place account cadence data comes from. Everything below this line
 // consumes Event[] and knows nothing about how the events were produced -
-// swapping this for a real per-account query is a single-function change.
+// swapping this for a richer query is a single-function change.
 //
 // Event: { id, date: Date, type: 'email'|'meeting', status, label, subject }
 //
-// PLACEHOLDER, not real data: Prospector has no per-account generated/sent/
-// step model yet (no table, no column, no logging in api/email.js). Derived
-// from a hash of the account id so a given account keeps the same pattern
-// across renders and page loads rather than flickering a new one each time.
+// Only ONE of the five mark states has a real source today: 'generated',
+// from accounts.data.emails[] - the array EmailModal's save button appends to
+// (AccountCard.js:311, capped at 10). Its `date` is a toLocaleDateString()
+// display string, not a timestamp, so it parses to day precision only.
+//
+// 'sent', 'scheduled', 'overdue' and 'meeting' have NO source anywhere in
+// Prospector: nothing marks an email sent, there is no scheduled/step model,
+// and no per-account booked-meeting flag exists. They stay in the legend as
+// the intended vocabulary and light up on their own once a real cadence
+// model lands. last_touched_at is deliberately NOT used here - it is a
+// single denormalized last-contact cache, not a step history.
 
-const STEP_LABELS = [
-  'Step 1 — Cold intro',
-  'Step 2 — Value follow-up',
-  'Step 3 — Case study nudge',
-  'Step 4 — Breakup email',
-];
-const STEP_SUBJECTS = [
-  'Opening note — worth a quick look?',
-  'A couple of proof points before I follow up again',
-  'One more example, then I will leave it alone',
-  'Should I close this out for now?',
-];
-
-const hashOf = (str) => {
-  let h = 0;
-  for (let i = 0; i < str.length; i++) h = (h * 31 + str.charCodeAt(i)) | 0;
-  return Math.abs(h);
-};
-
-export function getPlaceholderCadenceEvents(accountId, dateWindow) {
-  const { today } = dateWindow;
-  const h = hashOf(String(accountId || ''));
-  const count = 3 + (h % 2);
-  const firstRel = -(14 + (h % 4));
-
-  const events = [];
-  for (let i = 0; i < count; i++) {
-    const rel = firstRel + i * 7;
-    const status = rel > 0 ? 'scheduled' : rel > -2 ? 'generated' : 'sent';
+export function getGeneratedEmailEvents(account) {
+  const entries = Array.isArray(account?.emails) ? account.emails : [];
+  return entries.reduce((events, entry, i) => {
+    const date = new Date(entry?.date);
+    if (Number.isNaN(date.getTime())) return events;
     events.push({
-      id: `${accountId}-e${i}`,
-      date: addDays(today, rel),
+      id: `${account.id}-gen${i}`,
+      date: new Date(date.getFullYear(), date.getMonth(), date.getDate()),
       type: 'email',
-      status,
-      label: STEP_LABELS[i],
-      subject: STEP_SUBJECTS[i % STEP_SUBJECTS.length],
+      status: 'generated',
+      label: 'Email generated',
+      subject: entry.subject || entry.persona || '(no subject)',
     });
-  }
-
-  const delivered = events.filter(e => e.status === 'sent');
-  if (h % 3 === 0 && delivered.length) delivered[delivered.length - 1].status = 'overdue';
-
-  if (h % 4 === 0) {
-    events.push({
-      id: `${accountId}-m0`,
-      date: addDays(today, firstRel + 5),
-      type: 'meeting',
-      status: 'meeting',
-      label: 'Discovery call booked',
-      subject: '30 min intro call',
-    });
-  }
-  return events;
+    return events;
+  }, []);
 }
 
 // ── Grid ─────────────────────────────────────────────────────────────────────
@@ -358,7 +327,7 @@ function StaticMark({ event }) {
   );
 }
 
-export default function OutreachMatrix({ accounts = [], business, eventsFor = getPlaceholderCadenceEvents }) {
+export default function OutreachMatrix({ accounts = [], business, eventsFor = getGeneratedEmailEvents }) {
   const [query, setQuery] = useState('');
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [activeOnly, setActiveOnly] = useState(false);
@@ -383,10 +352,9 @@ export default function OutreachMatrix({ accounts = [], business, eventsFor = ge
   }, [today, periodOffset]);
 
   const rows = useMemo(() => accounts.map(a => {
-    const id = String(a.id);
-    const events = eventsFor(id, dateWindow);
+    const events = eventsFor(a, dateWindow);
     return {
-      id,
+      id: String(a.id),
       name: a.name || '(unnamed)',
       events,
       activeCycle: events.some(e => e.type === 'meeting'),
@@ -436,6 +404,11 @@ export default function OutreachMatrix({ accounts = [], business, eventsFor = ge
     moveTooltip(ev);
   };
 
+  const marksInWindow = useMemo(
+    () => visible.reduce((n, r) => n + r.events.filter(e => columnOf(e) !== null).length, 0),
+    [visible, columnOf],
+  );
+
   const clearFilters = () => { setQuery(''); setOverdueOnly(false); setActiveOnly(false); };
   const filtered = !!query || overdueOnly || activeOnly;
 
@@ -462,7 +435,7 @@ export default function OutreachMatrix({ accounts = [], business, eventsFor = ge
 
           <div className="placeholder-banner">
             <span>⚠</span>
-            <span>Cadence data not yet connected — the marks below are a sample pattern, not tracked activity. Account names and count are real.</span>
+            <span>Only generated emails are tracked today — every mark below is a real record. Sent, scheduled, overdue and meeting states have no source yet, so they stay empty until cadence tracking is built.</span>
           </div>
 
           <div className="legend">
@@ -484,7 +457,7 @@ export default function OutreachMatrix({ accounts = [], business, eventsFor = ge
           {filtered && <button className="clear-filters" onClick={clearFilters}>Clear all ×</button>}
         </div>
 
-        <div className="result-count">{`Showing ${visible.length} of ${rows.length} accounts`}</div>
+        <div className="result-count">{`Showing ${visible.length} of ${rows.length} accounts · ${marksInWindow} tracked event${marksInWindow === 1 ? '' : 's'} in this window`}</div>
 
         <div className="matrix-wrap">
           {visible.length === 0 ? (
