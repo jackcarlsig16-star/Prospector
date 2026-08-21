@@ -580,6 +580,12 @@ export async function recordAccountActivity(accountId, memberEmail, type, note) 
   return { error: error?.message || null };
 }
 
+// ── Real-time subscriptions ───────────────────────────────────────────────────
+// The three subscribeTo* functions below are deliberately unwired groundwork for
+// future multi-user support — inert by design, NOT dead code. They have zero
+// callers today and that is expected; do not remove them on zero-caller grep
+// evidence alone. A dead-code scan has already flagged them once.
+
 export function subscribeToAccounts(ownerEmail, onChange) {
   if (!isSupabaseEnabled() || !ownerEmail) return () => {};
   const channel = supabase
@@ -588,8 +594,6 @@ export function subscribeToAccounts(ownerEmail, onChange) {
     .subscribe();
   return () => supabase.removeChannel(channel);
 }
-
-// ── Real-time subscriptions ───────────────────────────────────────────────────
 
 export function subscribeToTeamUsers(onChange) {
   if (!isSupabaseEnabled()) return () => {};
