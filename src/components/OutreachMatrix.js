@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { C } from '../constants/colors';
 import { pillStyle } from './FilterPill';
+import { KIND, kindTokens } from './accountCard/tokens';
 
 // outreach-matrix-veinmap-repurpose-v1 — grid mechanics ported from
 // mockups/outreach-matrix.html.
@@ -329,6 +330,7 @@ function StaticMark({ event }) {
 
 export default function OutreachMatrix({ accounts = [], business, eventsFor = getGeneratedEmailEvents }) {
   const [query, setQuery] = useState('');
+  const [kindFilter, setKindFilter] = useState('all'); // 'all' | 'business' | 'influencer'
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [activeOnly, setActiveOnly] = useState(false);
   const [periodOffset, setPeriodOffset] = useState(0);
@@ -351,22 +353,29 @@ export default function OutreachMatrix({ accounts = [], business, eventsFor = ge
     return { start, days: WINDOW_DAYS, today };
   }, [today, periodOffset]);
 
+  // Grouped by kind so the two account types read as two blocks rather than
+  // interleaving - influencers and businesses are worked differently.
   const rows = useMemo(() => accounts.map(a => {
     const events = eventsFor(a, dateWindow);
+    const kind = a.accountKind === 'influencer' ? 'influencer' : 'business';
     return {
       id: String(a.id),
       name: a.name || '(unnamed)',
+      kind,
+      accent: kindTokens(kind).accent,
       events,
       activeCycle: events.some(e => e.type === 'meeting'),
     };
-  }), [accounts, eventsFor, dateWindow]);
+  }).sort((a, b) => (a.kind === b.kind ? a.name.localeCompare(b.name) : a.kind === 'business' ? -1 : 1)),
+  [accounts, eventsFor, dateWindow]);
 
   const visible = useMemo(() => rows.filter(r => {
+    if (kindFilter !== 'all' && r.kind !== kindFilter) return false;
     if (query && r.name.toLowerCase().indexOf(query.toLowerCase()) === -1) return false;
     if (overdueOnly && !r.events.some(e => e.status === 'overdue')) return false;
     if (activeOnly && !r.activeCycle) return false;
     return true;
-  }), [rows, query, overdueOnly, activeOnly]);
+  }), [rows, kindFilter, query, overdueOnly, activeOnly]);
 
   const dayDate = useCallback((idx) => addDays(dateWindow.start, idx), [dateWindow]);
   const isWeekend = useCallback((idx) => {
@@ -404,13 +413,18 @@ export default function OutreachMatrix({ accounts = [], business, eventsFor = ge
     moveTooltip(ev);
   };
 
+  const kindCounts = useMemo(() => ({
+    business: rows.filter(r => r.kind === 'business').length,
+    influencer: rows.filter(r => r.kind === 'influencer').length,
+  }), [rows]);
+
   const marksInWindow = useMemo(
     () => visible.reduce((n, r) => n + r.events.filter(e => columnOf(e) !== null).length, 0),
     [visible, columnOf],
   );
 
-  const clearFilters = () => { setQuery(''); setOverdueOnly(false); setActiveOnly(false); };
-  const filtered = !!query || overdueOnly || activeOnly;
+  const clearFilters = () => { setQuery(''); setKindFilter('all'); setOverdueOnly(false); setActiveOnly(false); };
+  const filtered = !!query || kindFilter !== 'all' || overdueOnly || activeOnly;
 
   const weekStarts = [0, 1, 2, 3].map(w => addDays(dateWindow.start, w * 7));
   const windowEnd = addDays(dateWindow.start, WINDOW_DAYS - 1);
@@ -451,6 +465,9 @@ export default function OutreachMatrix({ accounts = [], business, eventsFor = ge
           <div className="search-box">
             <input type="text" value={query} onChange={e => setQuery(e.target.value)} placeholder="Search accounts…" />
           </div>
+          <button style={pillStyle(kindFilter === 'all', C.mut)} onClick={() => setKindFilter('all')}>All</button>
+          <button style={pillStyle(kindFilter === 'business', KIND.business.accent)} onClick={() => setKindFilter(kindFilter === 'business' ? 'all' : 'business')}>{`Business ${kindCounts.business}`}</button>
+          <button style={pillStyle(kindFilter === 'influencer', KIND.influencer.accent)} onClick={() => setKindFilter(kindFilter === 'influencer' ? 'all' : 'influencer')}>{`Influencer ${kindCounts.influencer}`}</button>
           <button style={pillStyle(overdueOnly, C.red)} onClick={() => setOverdueOnly(v => !v)}>Overdue only</button>
           <button style={pillStyle(activeOnly, C.green)} onClick={() => setActiveOnly(v => !v)}>Active cycles only</button>
           <div className="filters-spacer" />
@@ -488,13 +505,13 @@ export default function OutreachMatrix({ accounts = [], business, eventsFor = ge
                   });
                   return (
                     <div key={r.id} style={{ display: 'contents' }}>
-                      <div className={`cell row-name${r.activeCycle ? ' is-active-cycle' : ''}`} onClick={() => { setSelectedId(r.id); setHighlightId(null); }}>
-                        <div className="avatar">{initials(r.name)}</div>
+                      <div className="cell row-name" style={{ borderLeftColor: r.accent }} onClick={() => { setSelectedId(r.id); setHighlightId(null); }}>
+                        <div className="avatar" style={{ background: `${r.accent}18`, color: r.accent }}>{initials(r.name)}</div>
                         <div className="row-name-text">
                           <div className="acct">{r.name}</div>
                           <div className="biz">
-                            {r.activeCycle && <span className="active-dot" />}
-                            {`${business?.name || ''}${r.activeCycle ? ' · Active cycle' : ''}`}
+                            <span style={{ color: r.accent }}>{kindTokens(r.kind).label}</span>
+                            {`· ${business?.name || ''}${r.activeCycle ? ' · Active cycle' : ''}`}
                           </div>
                         </div>
                       </div>
@@ -548,10 +565,10 @@ function CadenceDrawer({ row, business, highlightId, onClose }) {
   return (
     <>
       <div className="drawer-head">
-        <div className="avatar">{initials(row.name)}</div>
+        <div className="avatar" style={{ background: `${row.accent}18`, color: row.accent }}>{initials(row.name)}</div>
         <div className="drawer-title">
           <div className="name">{row.name}</div>
-          <div className="biz">{`${business?.name || ''}${row.activeCycle ? ' · Active sales cycle' : ''}`}</div>
+          <div className="biz"><span style={{ color: row.accent }}>{kindTokens(row.kind).label}</span>{` · ${business?.name || ''}${row.activeCycle ? ' · Active sales cycle' : ''}`}</div>
         </div>
         <button className="drawer-close" onClick={onClose}>✕</button>
       </div>
