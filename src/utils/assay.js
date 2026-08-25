@@ -402,6 +402,29 @@ export async function clientAssay({ name, web, vert, customIntel, exampleAccts, 
   // asserted with no evidence behind it cannot be high-confidence. Generalized
   // path only; Claim Jumper's legacy prompt has no fitSignals array at all.
   if (businessId && parsed.confidence === "High" && !parsed.signalBreakdown?.fitSignals?.length) parsed.confidence = "Low";
+  // Same evidence requirement, applied to the disqualifier itself rather than
+  // only to confidence. Real case: Ramp (>1,000 employees) came back with
+  // disqualifier "Wrong audience — ... it has no employee or member
+  // constituency" and fitSignals: [] - a false absence claim rendering as
+  // stated fact. An exclusion asserted with no evidence behind it is not an
+  // exclusion; the low score and Low confidence already carry the message.
+  // Two exemptions, both deliberate: a Competitor disqualifier is set from
+  // human-typed Type just above and is never the model's read, and a defunct
+  // claim is left alone because it is NOT independently evidenced on this path
+  // (detectSignals' hard override above is gated !businessId, so for a real
+  // business defunct rests on the model's own isActive/slagSignals) - nulling
+  // it here would weaken a genuine defunct exclusion rather than an unevidenced
+  // one. Exemption is intentionally generous: any defunct hint preserves it.
+  if (
+    businessId &&
+    parsed.disqualifier &&
+    relationshipType !== 'Competitor' &&
+    parsed.isActive !== false &&
+    !parsed.signalBreakdown?.slagSignals?.length &&
+    !parsed.signalBreakdown?.fitSignals?.length
+  ) {
+    parsed.disqualifier = null;
+  }
   // Bundle normalization: Core Verify Plus supersedes Core Verify; remove Core
   // Verify if both present. Gated on !businessId - these are buildLegacyFintechPrompt's
   // product names, so only Claim Jumper's pool can legitimately return them.
