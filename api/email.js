@@ -306,7 +306,7 @@ PRODUCT LANGUAGE: don't invent specific product names — describe what's offere
     },
     {
       name: 'companyOutreachRules',
-      text: outreachRules ? `THIS BUSINESS'S OUTREACH RULES — apply these on top of the voice rules above:
+      text: outreachRules ? `THIS BUSINESS'S OUTREACH RULES — apply these on top of the voice rules above. They refine the OUTPUT FORMAT above where the two differ on shape; the word limit stated there is a hard ceiling this section cannot raise:
 Tone: ${outreachRules.tone || "(not specified)"}
 Structure: ${outreachRules.structure || "(not specified)"}
 Key points to surface: ${outreachRules.key_points || "(not specified)"}
@@ -324,9 +324,13 @@ ${outreachRules.example_snippets ? `Echo this kind of language where it fits nat
       name: 'accountIntel',
       text: accountIntel ? `ACCOUNT CONTEXT — real, stored context specific to this account:\n${accountIntel.slice(0, 1500)}` : null,
     },
+    // generation-business-project-precedence-v1 — business-level -> project was
+    // the one boundary in this chain with no conflict rule, while every other
+    // (doctrineHard, doctrineDefault->business, project->campaign, ->directive)
+    // had one. Resolved most-specific-wins, matching the rest of the chain.
     {
       name: 'project',
-      text: projectGuidance ? `PROJECT-SPECIFIC GUIDANCE — layers on top of everything above, for this project specifically:
+      text: projectGuidance ? `PROJECT-SPECIFIC GUIDANCE — for this project specifically. Layers on top of everything above, and takes priority over the business-level guidance above where they conflict:
 ${projectGuidance.objective ? `Objective: ${projectGuidance.objective}` : ""}
 ${projectGuidance.target_type ? `Target type: ${projectGuidance.target_type}` : ""}
 ${projectGuidance.ask_type ? `Ask/offer/CTA: ${projectGuidance.ask_type}` : ""}
