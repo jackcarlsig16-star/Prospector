@@ -271,11 +271,11 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
   const localBusinessDetail=(accId,parsed)=>({account_id:accId,assessment_status:'assessed',last_assayed_at:new Date().toISOString(),...mapAssayResultToBusinessDetails(parsed)});
   const applyResult=(accs,acc,parsed,bulk=false)=>accs.map(a=>a.id===acc.id?{
     ...a,...parsed,
-    sigs:parsed.keySignals?.length?parsed.keySignals:(a.sigs||[]),
-    ucs:parsed.useCases?.length?parsed.useCases:(a.ucs||[]),
-    prods:[...new Set(parsed.products?.length?parsed.products:(a.prods||[]))],
-    bm:parsed.businessModel||a.bm||"",
-    pf:parsed.productFit||a.pf||"",
+    sigs:parsed.keySignals||[],
+    ucs:parsed.useCases||[],
+    prods:[...new Set(parsed.products||[])],
+    bm:parsed.businessModel||"",
+    pf:parsed.productFit||"",
     dis:parsed.disqualifier!==undefined?parsed.disqualifier:a.dis,
     linkedin:parsed.linkedin||a.linkedin||"",
     analyzed:true,
@@ -299,7 +299,14 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
       let updatedAcc=null;
       onSave(accounts.map(a=>{
         if(a.id!==acc.id) return a;
-        updatedAcc={...a,...webPatch,...parsed,sigs:parsed.keySignals?.length?parsed.keySignals:(a.sigs||[]),ucs:parsed.useCases?.length?parsed.useCases:(a.ucs||[]),prods:parsed.products?.length?parsed.products:(a.prods||[]),bm:parsed.businessModel||a.bm||"",pf:parsed.productFit||a.pf||"",dis:parsed.disqualifier!==undefined?parsed.disqualifier:a.dis,linkedin:parsed.linkedin||a.linkedin||"",analyzed:true,businessDetail:localBusinessDetail(acc.id,parsed)};
+        // accounts-reassay-fallback-precision-v1 — clientAssay() throws on a
+        // failed call, so reaching here means `parsed` IS the real answer.
+        // The old `parsed.x?.length ? parsed.x : (a.x||[])` fallback could not
+        // tell "model correctly returned empty" from "call failed", so a
+        // correct empty result silently restored stale values - which is
+        // exactly how fintech-era prods survived every re-assay. Assign
+        // directly; the thrown-error branch below keeps the account untouched.
+        updatedAcc={...a,...webPatch,...parsed,sigs:parsed.keySignals||[],ucs:parsed.useCases||[],prods:parsed.products||[],bm:parsed.businessModel||"",pf:parsed.productFit||"",dis:parsed.disqualifier!==undefined?parsed.disqualifier:a.dis,linkedin:parsed.linkedin||a.linkedin||"",analyzed:true,businessDetail:localBusinessDetail(acc.id,parsed)};
         return updatedAcc;
       }));
       // assay-safety-and-intel-visibility-v1 — targeted single-row write,
