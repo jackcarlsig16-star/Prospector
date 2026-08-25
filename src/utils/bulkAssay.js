@@ -56,13 +56,18 @@ export async function startBulkAssay({ accounts, onSaveAccounts }) {
         customIntel: combinedIntel, exampleAccts, stage: acc.stage || 'Prospecting',
         relationshipType: acc.relationshipType,
       });
+      // accounts-reassay-fallback-precision-v1's pattern, applied here too:
+      // clientAssay() throws on failure, so reaching this line means `parsed`
+      // is the real answer. The old `parsed.x?.length ? parsed.x : (a.x||[])`
+      // shape could not tell a correct empty result from a failed call, so it
+      // only ever restored stale values. The catch below is the failure path.
       current = current.map(a => a.id === acc.id ? {
         ...a, ...parsed,
-        sigs:  parsed.keySignals?.length ? parsed.keySignals : (a.sigs || []),
-        ucs:   parsed.useCases?.length   ? parsed.useCases   : (a.ucs  || []),
-        prods: [...new Set(parsed.products?.length ? parsed.products : (a.prods || []))],
-        bm:    parsed.businessModel || a.bm || '',
-        pf:    parsed.productFit || a.pf || '',
+        sigs:  parsed.keySignals || [],
+        ucs:   parsed.useCases   || [],
+        prods: [...new Set(parsed.products || [])],
+        bm:    parsed.businessModel || '',
+        pf:    parsed.productFit || '',
         dis:   parsed.disqualifier !== undefined ? parsed.disqualifier : a.dis,
         linkedin: parsed.linkedin || a.linkedin || '',
         analyzed: true,
