@@ -26,3 +26,6 @@ yarn-error.log*
 
 # Local-only Claude Code slash commands (verify, stubs, migrate-storage, etc.)
 .claude/commands/
+
+# assay-legacy-fintech-data-cleanup-v1 backups — contain real account data
+.backup-legacy-fintech-*.json
