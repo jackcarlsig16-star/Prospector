@@ -396,6 +396,12 @@ export async function clientAssay({ name, web, vert, customIntel, exampleAccts, 
   // Hard override, not just prompt instruction - don't trust the model to
   // self-enforce its own confidence cap every time.
   if (parsed.ungroundedClaims.length && parsed.confidence === "High") parsed.confidence = "Medium";
+  // Same class: the prompt above already asks for confidence="Low" when no
+  // fitSignals evidence was found, and it did not hold - 30 of 73 analyzed
+  // accounts came back with fitSignals: [] AND confidence: "High". An absence
+  // asserted with no evidence behind it cannot be high-confidence. Generalized
+  // path only; Claim Jumper's legacy prompt has no fitSignals array at all.
+  if (businessId && parsed.confidence === "High" && !parsed.signalBreakdown?.fitSignals?.length) parsed.confidence = "Low";
   // Bundle normalization: Core Verify Plus supersedes Core Verify; remove Core
   // Verify if both present. Gated on !businessId - these are buildLegacyFintechPrompt's
   // product names, so only Claim Jumper's pool can legitimately return them.
