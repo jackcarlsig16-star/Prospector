@@ -117,7 +117,12 @@ export default async function handler(req, res) {
   // proven example — the one real example on file runs 173 words. 60 could
   // hold neither. LinkedIn stays 50; that cap is a real platform limit
   // (300 chars), not part of this conflict.
-  const wordLimit = isLinkedIn ? 50 : 150;
+  // email-word-limit-200-v1 — raised 150 -> 200 (Jack). The cap is stated in
+  // one place only; outputFormat below interpolates it for both formats. Note
+  // this is a cap change, not enforcement: nothing in code measures output
+  // length, so a generation can still exceed 200 the way it exceeded 150 (8
+  // real HumanKind generations spanned 141-193 words under the 150 cap).
+  const wordLimit = isLinkedIn ? 50 : 200;
   const formatLabel = isLinkedIn ? "LinkedIn message" : "email";
   const personaFirstName = personaName ? personaName.split(" ")[0] : null;
   const websiteUrl = web || website || null;
