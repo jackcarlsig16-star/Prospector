@@ -348,6 +348,18 @@ export async function clientAssay({ name, web, vert, customIntel, exampleAccts, 
       max_tokens: 1600,
       system: systemPrompt,
       tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
+      // assay-mandatory-evidence-search-v1 — the model would not call
+      // web_search on its own. Instrumented on prod: tools sent correctly,
+      // stop_reason end_turn, 640/1600 output tokens, zero server_tool_use
+      // blocks - it read the company's own marketing site and wrote the JSON
+      // without searching, so headcount and any third-party fact were never
+      // available. An explicit "You MUST call web_search" directive changed
+      // nothing (still zero). tool_choice is an API-level constraint the
+      // prompt cannot substitute for. Costs ~3.4x input tokens (8,650 ->
+      // 28,915) because results enter the context; accepted deliberately.
+      // Generalized path only - the legacy fintech prompt (Claim Jumper's
+      // pool, no businessId) has no headcount criterion to satisfy.
+      ...(businessId ? { tool_choice: { type: "any" } } : {}),
       messages: [{ role:"user", content:`Score product fit:\nCompany: ${name}\nWebsite: ${web||"none"}\nVertical: ${vert||"unknown"}\nPipeline stage: ${stage||"Prospecting"}\nWebsite content (fetch method: ${fetchMethod}): ${siteContent||"not available"}\n${signalSummary}\nReturn ONLY the JSON.` }],
     }),
   });
