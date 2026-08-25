@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { C, mono } from '../constants/colors';
 import { getActiveIntel } from '../utils/assay';
 import { getActiveVoice, getVoiceProfile, voiceProfileKey } from '../constants/voice';
-import { UCS_DATA } from '../constants/products';
 import { linkAccountToLists, saveVoiceProfile, getListIdsForAccount, getBusinessProfileSummary, createList, setProjectListId } from '../utils/db';
 import { buildAccountIntel } from '../utils/accountIntel';
 import { ROLE, RADIUS } from './accountCard/tokens';
@@ -196,7 +195,7 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
         name:account.name,
         businessModel:account.bm||"",
         productFit:account.pf||"",
-        useCase:account.useCase||(account.ucs?.[0]?UCS_DATA.find(u=>u.id===account.ucs[0])?.lb:"")||"",
+        useCase:account.useCase||"",
         products:account.prods||[],
         personaName:persona?.name||"",
         personaTitle:persona?.title||"",

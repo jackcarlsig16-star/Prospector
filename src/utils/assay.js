@@ -376,7 +376,11 @@ export async function clientAssay({ name, web, vert, customIntel, exampleAccts, 
     }
   }
 
-  if (!parsed.bankConnectSignal && Array.isArray(parsed.keySignals)) {
+  // Same !businessId gate detectSignals() already uses - fintech-term matching
+  // only belongs on Claim Jumper's pool. Verified against the real assay path:
+  // keySignals like "Instant ACH bank verification at signup" forced this true
+  // for a non-fintech business before the gate.
+  if (!businessId && !parsed.bankConnectSignal && Array.isArray(parsed.keySignals)) {
     const sigText = parsed.keySignals.join(" ").toLowerCase();
     if (/bank.{0,15}(connect|link|verif)|connect.{0,10}bank|instant.{0,5}(bank|ach)|open.?banking|pay.{0,5}bank|link.{0,10}account/.test(sigText)) parsed.bankConnectSignal = true;
   }
@@ -388,8 +392,10 @@ export async function clientAssay({ name, web, vert, customIntel, exampleAccts, 
   // Hard override, not just prompt instruction - don't trust the model to
   // self-enforce its own confidence cap every time.
   if (parsed.ungroundedClaims.length && parsed.confidence === "High") parsed.confidence = "Medium";
-  // Bundle normalization: Core Verify Plus supersedes Core Verify; remove Core Verify if both present
-  if (Array.isArray(parsed.products) && parsed.products.includes("Core Verify Plus")) {
+  // Bundle normalization: Core Verify Plus supersedes Core Verify; remove Core
+  // Verify if both present. Gated on !businessId - these are buildLegacyFintechPrompt's
+  // product names, so only Claim Jumper's pool can legitimately return them.
+  if (!businessId && Array.isArray(parsed.products) && parsed.products.includes("Core Verify Plus")) {
     parsed.products = parsed.products.filter(p => p !== "Core Verify");
   }
 
@@ -432,7 +438,6 @@ export function mapAssayResultToBusinessDetails(parsed) {
       traction_signals: parsed.tractionSignals || [],
       confidence: parsed.confidence || null,
       is_active: parsed.isActive,
-      bank_connect_signal: parsed.bankConnectSignal,
       business_model_pattern: parsed.businessModelPattern || null,
       estimated_downstream_users: parsed.estimatedDownstreamUsers || null,
       is_established: parsed.isEstablished,
