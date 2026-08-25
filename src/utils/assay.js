@@ -264,7 +264,7 @@ slagSignals: signs the company is inactive, defunct, or a clear non-fit (parked 
 signalScore: 0-100 rough confidence-in-fit score derived from the above. topSignal: the single strongest piece of evidence found, or "" if none — state it as a real fact established about the company, never as a summary of what the company lacks.
 
 Return ONLY this JSON:
-{"score":1,"tier":"Gold","businessModel":"2 sentences","productFit":"2 sentences — fit rationale against this business's criteria","useCases":["tag1"],"products":[],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"bankConnectSignal":false,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"ungroundedClaims":[],"signalBreakdown":{"fitSignals":[],"adoptionSignals":[],"scaleSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
+{"score":1,"tier":"Gold","businessModel":"2 sentences","productFit":"2 sentences — fit rationale against this business's criteria","useCases":["tag1"],"products":[],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"ungroundedClaims":[],"signalBreakdown":{"fitSignals":[],"adoptionSignals":[],"scaleSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
 }
 
 // businessId is optional (Claim Jumper's not-yet-assigned pool scoring has
