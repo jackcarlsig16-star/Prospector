@@ -207,7 +207,13 @@ Return ONLY this JSON:
 // business-scoped equivalent first.
 function buildGeneralizedPrompt(criteria, relationshipType) {
   const isCompetitor = relationshipType === 'Competitor';
-  return `You are a product/partnership fit scoring engine for an AE, scoring how well a prospect account fits the specific business below. Respond with ONLY a JSON object, no other text.
+  return `You research a company from its real online presence for an AE, then assess how that company aligns with the specific business below. Respond with ONLY a JSON object, no other text.
+
+TWO PHASES, IN THIS ORDER — do not merge them:
+PHASE 1 — COLLECT. Research this company on its own terms, independent of the business below and its criteria. Establish what it does, what it sells, who it serves, how many people it employs, where and at what scale it operates. Use the website content and web search to find real facts. businessModel, employeeCount, keySignals and scaleSignals are phase-1 output: they must stand alone as an accurate profile of the company, readable and useful to someone who has never heard of the business below, and must contain no fit language at all.
+PHASE 2 — ALIGN. Only once phase 1 is complete, lay the business's criteria over what you found and produce productFit, the score/tier, fitSignals, and any disqualifier.
+You MUST call web_search at least once during phase 1, before writing any output, even when the fetched website content looks comprehensive. That content is the company's own marketing copy: it reliably describes products and locations and reliably does NOT state headcount, revenue, or any third-party fact. Search at minimum for the company's employee count (e.g. "<company name> number of employees"), plus whatever else phase 1 needs that the site does not state. A long site fetch is not a reason to skip the search - verified live, the site alone produces an empty phase 1.
+Phase 2 must never truncate phase 1. Concluding early that an account aligns weakly is NOT a reason to stop researching it — a weak-fit company still gets a complete, accurate profile. An empty or thin phase 1 is a failure of the research, not a finding about the company.
 
 SCORING: 1=Gold(strong direct fit), 2=Silver(solid indirect fit), 3=Tin(weak/speculative fit), 4=Slag(weak or no meaningful fit).
 Score is a SPECTRUM, not a qualify/disqualify gate. Every account gets a real, reasoned score somewhere on it. A low score is a legitimate outcome; refusing to evaluate is not.
@@ -222,7 +228,7 @@ BEFORE concluding any category-based non-fit, check the FIT SIGNALS below agains
 fitSignals and keySignals must not be left empty just because the score is low — a low score still needs the evidence it was reasoned from.
 Claiming an ABSENCE is a factual claim and needs evidence like any other. Do not conclude "no workforce", "no employees", "no members", or "no benefits function" from the fact that a company sells to consumers — nearly every operating company employs people. If a criterion turns on headcount or membership, search for the real number and put it in fitSignals; if you genuinely cannot find one, say so and set confidence="Low" rather than asserting the absence.
 
-NARRATIVE FRAMING — businessModel and productFit are where the AE reads what this company actually IS. Lead with the real, researched facts about the company on its own terms: what it does, who it employs or serves, how large it is, how it operates. Then treat alignment with this business as ADDITIVE — what a genuine match would unlock — rather than as a test the account passes or fails. The company's own intel is the primary content; the fit read is a lens applied on top of it.
+NARRATIVE FRAMING — businessModel is pure phase-1 intel: describe the company only, with no reference to the business below or to fit. productFit is phase 2, and must still OPEN by stating what the company actually is and does in its own terms before any alignment language appears; the fit read comes after that, never as the first clause. Treat alignment as ADDITIVE — what a genuine match would unlock — rather than as a test the account passes or fails. The company's own intel is the primary content; the fit read is a lens laid over it.
 Reserve exclusionary language ("no fit", "no meaningful fit", "wrong vertical", "not a fit", "disqualified") for an account that actually and specifically meets one of the DISQUALIFIERS conditions below. Absent that, an account that merely aligns weakly is "not the strongest fit today" with the reason stated plainly, and the fit verdict is carried by score and tier — not asserted in prose.
 This governs how the reasoning is WRITTEN, not what it concludes: a weakly-aligned account still scores low.
 
@@ -266,7 +272,7 @@ slagSignals: signs the company is inactive, defunct, or a clear non-fit (parked 
 signalScore: 0-100 rough confidence-in-fit score derived from the above. topSignal: the single strongest piece of evidence found, or "" if none — state it as a real fact established about the company, never as a summary of what the company lacks.
 
 Return ONLY this JSON:
-{"score":1,"tier":"Gold","businessModel":"2 sentences","productFit":"2 sentences — fit rationale against this business's criteria","useCases":["tag1"],"products":[],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"employeeCount":null,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"ungroundedClaims":[],"signalBreakdown":{"fitSignals":[],"adoptionSignals":[],"scaleSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
+{"score":1,"tier":"Gold","businessModel":"2 sentences describing only the company itself, no fit language","productFit":"2-3 sentences — opens by stating what the company is/does, then the alignment read","useCases":["tag1"],"products":[],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"employeeCount":null,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"ungroundedClaims":[],"signalBreakdown":{"fitSignals":[],"adoptionSignals":[],"scaleSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
 }
 
 // businessId is optional (Claim Jumper's not-yet-assigned pool scoring has
