@@ -135,6 +135,7 @@ export default async function handler(req, res) {
   // Promise.all never rejects here because nothing rethrows.
   let assayCriteria = null;
   let outreachRules = null;
+  let salesMethodology = null;
   let projectGuidance = null;
   let campaignGuidance = null;
   let doctrineHard = [];
@@ -173,6 +174,21 @@ export default async function handler(req, res) {
           assayCriteria = data?.assay_criteria || null;
           outreachRules = data?.outreach_rules || null;
         } catch { /* fall through with no business-fit grounding */ }
+      }
+    })(),
+
+    // generation-engine-rebuild-v1 Stage 3 — deliberately its own query rather
+    // than another column on the select above. If this code ships before the
+    // migration runs, an unknown column would fail that whole select and its
+    // shared catch would silently null assayCriteria AND outreachRules, wiping
+    // two live providers out of every prompt. Isolated, a missing column costs
+    // only this one provider.
+    (async () => {
+      if (businessId && supabase) {
+        try {
+          const { data } = await supabase.from('business_profiles').select('sales_methodology').eq('business_id', businessId).maybeSingle();
+          salesMethodology = data?.sales_methodology || null;
+        } catch { /* column not migrated yet, or no profile - provider omits itself */ }
       }
     })(),
 
@@ -291,6 +307,13 @@ export default async function handler(req, res) {
     {
       name: 'doctrineHard',
       text: doctrineHard.length ? `NON-NEGOTIABLE (must follow, no exceptions):\n${doctrineHard.map(r => `- ${r}`).join('\n')}` : null,
+    },
+    // generation-engine-rebuild-v1 Stage 3 — sits directly after doctrineHard,
+    // above the platform defaults, so a business's own selling method outranks
+    // generic platform guidance instead of arriving behind it.
+    {
+      name: 'salesMethodology',
+      text: salesMethodology ? `THIS BUSINESS'S SALES METHODOLOGY — how this business sells. Apply it to the whole message, and prefer it over the platform defaults below wherever they differ:\n${salesMethodology}` : null,
     },
     {
       name: 'doctrineDefault',

@@ -442,6 +442,7 @@ app.put('/api/businesses/:id/website-url',      esHandler('./api/businesses/webs
 app.post('/api/businesses/:id/profile-refresh', esHandler('./api/businesses/profile-refresh.js'));
 app.post('/api/businesses/:id/outreach-rules/generate', esHandler('./api/businesses/outreach-rules-generate.js'));
 app.put('/api/businesses/:id/outreach-rules',   esHandler('./api/businesses/outreach-rules-save.js'));
+app.put('/api/businesses/:id/sales-methodology', esHandler('./api/businesses/sales-methodology-save.js'));
 app.get('/api/businesses/:id/outreach-rules',   esHandler('./api/businesses/outreach-rules-get.js'));
 app.post('/api/projects/:id/outreach-examples/generate', esHandler('./api/projects/outreach-examples-generate.js'));
 app.put('/api/projects/:id/outreach-examples-distilled', esHandler('./api/projects/outreach-examples-save.js'));

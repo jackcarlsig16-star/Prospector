@@ -116,6 +116,17 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
   const [selectedCampaignId, setSelectedCampaignId] = useState(null);
   const campaignsForProject = campaigns.filter(c => c.project_id === selectedProjectId);
 
+  // generation-engine-rebuild-v1 Stage 5 — campaigns were opt-in with an empty
+  // default, which is most of why adoption is zero. The first campaign for the
+  // selected project is now pre-selected. Sets state directly rather than going
+  // through selectCampaign(): that helper also calls linkAccountToLists(), and a
+  // default the user never chose must not silently assign the account to a list.
+  // An explicit pick still routes through selectCampaign and still writes.
+  useEffect(() => {
+    if (!selectedProjectId || selectedCampaignId) return;
+    if (campaignsForProject.length) setSelectedCampaignId(campaignsForProject[0].id);
+  }, [selectedProjectId, selectedCampaignId, campaignsForProject]);
+
   // generation-modal-project-promotion-and-visual-pass-v1 Bug 1/2 - real
   // one-off account-to-project assignment, promoted out of Advanced into
   // the default view. projectListOverrides tracks any project this

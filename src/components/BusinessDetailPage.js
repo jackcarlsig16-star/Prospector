@@ -8,6 +8,7 @@ import SmartIntakeBox from './SmartIntakeBox';
 import CallLogSection from './CallLogSection';
 import AssayCriteriaCard from './AssayCriteriaCard';
 import OutreachRulesCard from './OutreachRulesCard';
+import SalesMethodologyCard from './SalesMethodologyCard';
 import ProfileFieldBlock from './ProfileFieldBlock';
 import BusinessIntelKpiStrip from './BusinessIntelKpiStrip';
 import BusinessSocialLinksPopover from './BusinessSocialLinksPopover';
@@ -951,6 +952,15 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
             criteria={profile.assay_criteria}
             updatedAt={profile.assay_criteria_updated_at}
             editedManually={profile.assay_criteria_edited_manually}
+            onUpdated={patch => setProfile(p => ({ ...p, ...patch }))}
+          />
+        )}
+
+        {profile && (
+          <SalesMethodologyCard
+            businessId={business.id}
+            methodology={profile.sales_methodology}
+            updatedAt={profile.sales_methodology_updated_at}
             onUpdated={patch => setProfile(p => ({ ...p, ...patch }))}
           />
         )}
