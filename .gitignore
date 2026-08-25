@@ -29,3 +29,4 @@ yarn-error.log*
 
 # assay-legacy-fintech-data-cleanup-v1 backups — contain real account data
 .backup-legacy-fintech-*.json
+.backup-legacy-signalbreakdown-*.json

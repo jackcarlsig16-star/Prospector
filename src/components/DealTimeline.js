@@ -179,8 +179,8 @@ PRICING & QUOTE STATE:
 ACCOUNT SIGNAL SCORE:
   Tier: ${acc.tier || 'unknown'} (score: ${acc.signalBreakdown?.signalScore ?? acc.score ?? 'unknown'})
   Top signal: ${acc.signalBreakdown?.topSignal || 'none'}
-  Payment signals: ${acc.signalBreakdown?.paymentSignals?.join(', ') || 'none'}
-  Onboarding signals: ${acc.signalBreakdown?.onboardingSignals?.join(', ') || 'none'}
+  Fit signals: ${acc.signalBreakdown?.fitSignals?.join(', ') || 'none'}
+  Adoption signals: ${acc.signalBreakdown?.adoptionSignals?.join(', ') || 'none'}
   Scale signals: ${acc.signalBreakdown?.scaleSignals?.join(', ') || 'none'}
 
 CONTEXT QUALITY:
