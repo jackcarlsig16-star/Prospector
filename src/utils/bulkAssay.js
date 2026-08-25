@@ -2,7 +2,7 @@
 // localStorage cooperatively shared with AccountsPage's user-triggered bulk loop.
 // Emits `prospector_assay_updated` window events so the AssayBanner stays live.
 
-import { clientAssay, getActiveIntel, getActiveExamples } from './assay';
+import { clientAssay, getActiveIntel, getActiveExamples, preserveManualEdits } from './assay';
 
 const PROGRESS_KEY = 'prospector_assay_progress';
 const EVENT_NAME = 'prospector_assay_updated';
@@ -62,7 +62,7 @@ export async function startBulkAssay({ accounts, onSaveAccounts }) {
       // shape could not tell a correct empty result from a failed call, so it
       // only ever restored stale values. The catch below is the failure path.
       current = current.map(a => a.id === acc.id ? {
-        ...a, ...parsed,
+        ...a, ...preserveManualEdits(a, parsed),
         sigs:  parsed.keySignals || [],
         ucs:   parsed.useCases   || [],
         prods: [...new Set(parsed.products || [])],

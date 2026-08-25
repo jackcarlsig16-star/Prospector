@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { C, mono, TIER_COLOR } from '../constants/colors';
 import { isStale, isWarn } from '../utils/staleness';
-import { getActiveIntel, getActiveExamples, clientAssay, mapAssayResultToBusinessDetails } from '../utils/assay';
+import { getActiveIntel, getActiveExamples, clientAssay, mapAssayResultToBusinessDetails, preserveManualEdits } from '../utils/assay';
 import { upsertAccountBusinessDetails, updateAccountRow, updateAccountRelationshipType } from '../utils/db';
 import AccountCard, { DEAL_STAGES } from './AccountCard';
 import LinkParentModal from './LinkParentModal';
@@ -270,7 +270,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
   // happens separately (fire-and-forget) right after each onSave call.
   const localBusinessDetail=(accId,parsed)=>({account_id:accId,assessment_status:'assessed',last_assayed_at:new Date().toISOString(),...mapAssayResultToBusinessDetails(parsed)});
   const applyResult=(accs,acc,parsed,bulk=false)=>accs.map(a=>a.id===acc.id?{
-    ...a,...parsed,
+    ...a,...preserveManualEdits(a,parsed),
     sigs:parsed.keySignals||[],
     ucs:parsed.useCases||[],
     prods:[...new Set(parsed.products||[])],
@@ -306,7 +306,7 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
         // correct empty result silently restored stale values - which is
         // exactly how fintech-era prods survived every re-assay. Assign
         // directly; the thrown-error branch below keeps the account untouched.
-        updatedAcc={...a,...webPatch,...parsed,sigs:parsed.keySignals||[],ucs:parsed.useCases||[],prods:parsed.products||[],bm:parsed.businessModel||"",pf:parsed.productFit||"",dis:parsed.disqualifier!==undefined?parsed.disqualifier:a.dis,linkedin:parsed.linkedin||a.linkedin||"",analyzed:true,businessDetail:localBusinessDetail(acc.id,parsed)};
+        updatedAcc={...a,...webPatch,...preserveManualEdits(a,parsed),sigs:parsed.keySignals||[],ucs:parsed.useCases||[],prods:parsed.products||[],bm:parsed.businessModel||"",pf:parsed.productFit||"",dis:parsed.disqualifier!==undefined?parsed.disqualifier:a.dis,linkedin:parsed.linkedin||a.linkedin||"",analyzed:true,businessDetail:localBusinessDetail(acc.id,parsed)};
         return updatedAcc;
       }));
       // assay-safety-and-intel-visibility-v1 — targeted single-row write,

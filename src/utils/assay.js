@@ -461,6 +461,19 @@ export async function clientAssay({ name, web, vert, customIntel, exampleAccts, 
   return { ...parsed, linkedin, fetchMethod };
 }
 
+// assay-employee-count-metric-v1 REVISION 2 — mirrors generateProfile's
+// EDITABLE_FIELDS skip (api/businesses/shared.js:589), the codebase's only
+// real overwrite protection: a manually-entered value is never silently
+// replaced by an automated re-assay. NOT the assay_criteria_edited_manually
+// pattern, which is a provenance label that regeneration deliberately resets.
+// Lives here rather than inside clientAssay() because clientAssay is a pure
+// function of the fresh result and never sees the existing account; every
+// merge site calls this instead of spreading `parsed` directly.
+export function preserveManualEdits(existing, parsed) {
+  if (!existing?.employeeCountEditedManually) return parsed;
+  return { ...parsed, employeeCount: existing.employeeCount ?? null, employeeCountEditedManually: true };
+}
+
 // account-business-details-v1 — converts a clientAssay() result into
 // account_business_details' row shape. Narrow-scope decision (Jack,
 // 2026-08-17): only AccountsPage.js's single/bulk re-assay call this and

@@ -224,7 +224,7 @@ export default function AccountCard({
                   unchanged (groupByTier still owns it) — only the layout is,
                   so UtilityRow keeps its quieter treatment and Pricing/ROI
                   still flow into it conditionally. */}
-              <CompanyMetrics acc={acc} />
+              <CompanyMetrics acc={acc} onUpdate={onUpdate} />
 
               <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
                 <ActionGroup actions={tiers[2]} />
