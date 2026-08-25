@@ -414,13 +414,15 @@ export async function clientAssay({ name, web, vert, customIntel, exampleAccts, 
   // (detectSignals' hard override above is gated !businessId, so for a real
   // business defunct rests on the model's own isActive/slagSignals) - nulling
   // it here would weaken a genuine defunct exclusion rather than an unevidenced
-  // one. Exemption is intentionally generous: any defunct hint preserves it.
+  // one. isActive is the defunct signal and the only one usable here: the
+  // prompt defines slagSignals as "inactive, defunct, OR a clear non-fit", so
+  // it is not defunct-specific - verified live, Ramp returned two non-fit
+  // slagSignals and an earlier version of this guard exempted it on that basis.
   if (
     businessId &&
     parsed.disqualifier &&
     relationshipType !== 'Competitor' &&
     parsed.isActive !== false &&
-    !parsed.signalBreakdown?.slagSignals?.length &&
     !parsed.signalBreakdown?.fitSignals?.length
   ) {
     parsed.disqualifier = null;
