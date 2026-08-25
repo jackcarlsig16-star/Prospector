@@ -262,6 +262,8 @@ ${GROUNDING_DISCIPLINE}
 USE CASES: return 1-4 short free-text tags describing how this account could fit this business, grounded in FIT SIGNALS above — not a fixed enum, whatever's actually relevant here.
 PRODUCTS: this business may not have a fixed product catalog — if FIT SIGNALS references specific offerings, use those exact names; otherwise return an empty array rather than inventing product names.
 
+CONSISTENCY — never assert in productFit, businessModel or topSignal that a company lacks employees, a workforce, a member population or a constituency when employeeCount is non-null. A found headcount settles that question; if it is set, the company demonstrably has a workforce, and any remaining weakness is about distribution or infrastructure, which is a different and narrower claim. Say that narrower thing instead.
+
 COMPANY METRICS — employeeCount: the company's real total headcount as an integer, when the website content or a search result actually states one (e.g. "26,000 employees" -> 26000). Use the company-wide figure, not a single site or department, and strip commas/ranges to a single number (a range like "500-1,000" -> its midpoint, 750). This is an extraction field, not an estimate: if no source actually states a number, return null. Do NOT infer headcount from revenue, office count, funding stage, or company age, and do NOT guess a plausible figure - null is the correct answer whenever no real number was found, and it is never a reason to lower the score on its own.
 
 SIGNAL BREAKDOWN — fill signalBreakdown's arrays with short evidence strings pulled from the site content/search results above (not the FIT CRITERIA text itself, which is business-level context, not per-account evidence):
@@ -419,6 +421,52 @@ export async function clientAssay({ name, web, vert, customIntel, exampleAccts, 
   parsed.employeeCount = Number.isFinite(ec) && ec > 0 ? Math.round(ec) : null;
   if (!Array.isArray(parsed.tractionSignals)) parsed.tractionSignals = [];
   if (!Array.isArray(parsed.ungroundedClaims)) parsed.ungroundedClaims = [];
+  // assay-additive-fit-framing-v1 REVISION 3 — phase 2 kept asserting an
+  // absence that phase 1 had just disproved: real Hertz output read "no
+  // identifiable employee population... While the company operates at
+  // significant scale with approximately 26,000 employees globally" in one
+  // paragraph. employeeCount and fitSignals are filled by separate,
+  // unconnected instructions (COMPANY METRICS vs SIGNAL BREAKDOWN), so a
+  // found headcount never reached the evidence array the confidence guard
+  // reads, and nothing stopped the narrative contradicting it. Prompt-only
+  // has failed three times today, so both halves are enforced in code.
+  if (parsed.employeeCount) {
+    // A real headcount IS fit evidence when the criteria turn on workforce
+    // size. Without this the confidence guard below sees an empty array and
+    // downgrades a result that did find hard evidence.
+    const fsArr = parsed.signalBreakdown?.fitSignals;
+    if (Array.isArray(fsArr) && fsArr.length === 0) {
+      fsArr.push(`${parsed.employeeCount.toLocaleString('en-US')} employees (headcount found during research)`);
+    }
+    // Drop only sentences that deny a workforce EXISTS - negation + a
+    // workforce noun + a population noun together, and no figure of their
+    // own. Narrower claims ("no HR benefits function", "no member services
+    // team") are about infrastructure, aren't contradicted by a headcount,
+    // and are deliberately left standing.
+    // The negation must directly govern the workforce noun-phrase - no verb or
+    // preposition may sit between them. That is what separates "no employee
+    // population" (denies the workforce exists, and a found headcount
+    // disproves it) from "no HR function serving employee populations" (an
+    // infrastructure gap a headcount says nothing about, left standing). A
+    // sentence citing its own figure is already reconciling with the number.
+    const DENY = /\b(?:no|neither|nor|without|lacks?|lacking)\s+(?:(?!serving|for|to|across|among|within|through)\w+\s+){0,3}(?:employee|workforce|member|staff)s?\b(?:\s+(?:or|and|nor)\s+\w+)?[^.,;]{0,24}?\b(?:population|base|constituenc\w+|constituent)s?\b/i;
+    const denies = t => DENY.test(t) && !/\d/.test(t);
+    const scrub = text => {
+      if (!text) return text;
+      const kept = String(text).split(/(?<=[.!?])\s+/).filter(sent => !denies(sent));
+      return kept.join(' ').trim();
+    };
+    for (const field of ['productFit', 'businessModel']) {
+      const next = scrub(parsed[field]);
+      if (next !== parsed[field]) {
+        parsed.ungroundedClaims.push(`Removed an absence-of-workforce claim from ${field} contradicted by employeeCount ${parsed.employeeCount}`);
+        parsed[field] = next;
+      }
+    }
+    if (parsed.signalBreakdown?.topSignal && denies(parsed.signalBreakdown.topSignal)) {
+      parsed.signalBreakdown.topSignal = `${parsed.employeeCount.toLocaleString('en-US')} employees`;
+    }
+  }
   // Hard override, not just prompt instruction - don't trust the model to
   // self-enforce its own confidence cap every time.
   if (parsed.ungroundedClaims.length && parsed.confidence === "High") parsed.confidence = "Medium";
