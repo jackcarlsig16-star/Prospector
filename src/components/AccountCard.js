@@ -6,6 +6,7 @@ import AccountBadge from './accountCard/AccountBadge';
 import AccountCardShell from './accountCard/AccountCardShell';
 import AccountHeader from './accountCard/AccountHeader';
 import AccountStateBar from './accountCard/AccountStateBar';
+import CompanyMetrics from './accountCard/CompanyMetrics';
 import AccountIntelligence from './accountCard/AccountIntelligence';
 import AccountActivityPanel from './accountCard/AccountActivityPanel';
 import AddNoteBox from './accountCard/AddNoteBox';
@@ -223,6 +224,8 @@ export default function AccountCard({
                   unchanged (groupByTier still owns it) — only the layout is,
                   so UtilityRow keeps its quieter treatment and Pricing/ROI
                   still flow into it conditionally. */}
+              <CompanyMetrics acc={acc} />
+
               <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
                 <ActionGroup actions={tiers[2]} />
                 {tiers[3].length > 0 && <span style={{ width: 1, height: 16, background: CARD.borderStrong, margin: "0 3px" }} />}

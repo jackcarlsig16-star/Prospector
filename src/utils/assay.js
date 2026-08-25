@@ -256,6 +256,8 @@ ${GROUNDING_DISCIPLINE}
 USE CASES: return 1-4 short free-text tags describing how this account could fit this business, grounded in FIT SIGNALS above — not a fixed enum, whatever's actually relevant here.
 PRODUCTS: this business may not have a fixed product catalog — if FIT SIGNALS references specific offerings, use those exact names; otherwise return an empty array rather than inventing product names.
 
+COMPANY METRICS — employeeCount: the company's real total headcount as an integer, when the website content or a search result actually states one (e.g. "26,000 employees" -> 26000). Use the company-wide figure, not a single site or department, and strip commas/ranges to a single number (a range like "500-1,000" -> its midpoint, 750). This is an extraction field, not an estimate: if no source actually states a number, return null. Do NOT infer headcount from revenue, office count, funding stage, or company age, and do NOT guess a plausible figure - null is the correct answer whenever no real number was found, and it is never a reason to lower the score on its own.
+
 SIGNAL BREAKDOWN — fill signalBreakdown's arrays with short evidence strings pulled from the site content/search results above (not the FIT CRITERIA text itself, which is business-level context, not per-account evidence):
 scaleSignals: company size, customer base, or market reach evidence (e.g. "40+ named customers", "multi-state operations").
 fitSignals: technical, operational, or structural characteristics indicating whether this business's product would actually fit THIS prospect, grounded in the FIT CRITERIA above — generic to whatever this business sells, not payment/platform-specific.
@@ -264,7 +266,7 @@ slagSignals: signs the company is inactive, defunct, or a clear non-fit (parked 
 signalScore: 0-100 rough confidence-in-fit score derived from the above. topSignal: the single strongest piece of evidence found, or "" if none — state it as a real fact established about the company, never as a summary of what the company lacks.
 
 Return ONLY this JSON:
-{"score":1,"tier":"Gold","businessModel":"2 sentences","productFit":"2 sentences — fit rationale against this business's criteria","useCases":["tag1"],"products":[],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"ungroundedClaims":[],"signalBreakdown":{"fitSignals":[],"adoptionSignals":[],"scaleSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
+{"score":1,"tier":"Gold","businessModel":"2 sentences","productFit":"2 sentences — fit rationale against this business's criteria","useCases":["tag1"],"products":[],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"employeeCount":null,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"ungroundedClaims":[],"signalBreakdown":{"fitSignals":[],"adoptionSignals":[],"scaleSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
 }
 
 // businessId is optional (Claim Jumper's not-yet-assigned pool scoring has
@@ -391,6 +393,12 @@ export async function clientAssay({ name, web, vert, customIntel, exampleAccts, 
   if (!parsed.distributionMultiplier && ["platform","b2b2c","marketplace","embedded"].includes(parsed.businessModelPattern)) parsed.distributionMultiplier = true;
   if (parsed.distributionMultiplier && parsed.score > 1 && parsed.isActive !== false) { parsed.score = 1; parsed.tier = "Gold"; }
   if (parsed.disqualifier && /unreachable|site.*fail|cannot.*access|failed to load/i.test(parsed.disqualifier)) { parsed.disqualifier = null; parsed.confidence = "Low"; }
+  // Extraction field, not an assessment - anything the model returns that
+  // isn't a real positive number becomes null rather than a displayed guess
+  // ("unknown", "~5000", 0, NaN all collapse to null). Same evidence
+  // requirement as the disqualifier/confidence guards above.
+  const ec = typeof parsed.employeeCount === 'string' ? Number(parsed.employeeCount.replace(/[^0-9.]/g, '')) : parsed.employeeCount;
+  parsed.employeeCount = Number.isFinite(ec) && ec > 0 ? Math.round(ec) : null;
   if (!Array.isArray(parsed.tractionSignals)) parsed.tractionSignals = [];
   if (!Array.isArray(parsed.ungroundedClaims)) parsed.ungroundedClaims = [];
   // Hard override, not just prompt instruction - don't trust the model to
@@ -477,6 +485,7 @@ export function mapAssayResultToBusinessDetails(parsed) {
       estimated_downstream_users: parsed.estimatedDownstreamUsers || null,
       is_established: parsed.isEstablished,
       distribution_multiplier: parsed.distributionMultiplier,
+      employee_count: parsed.employeeCount ?? null,
       use_cases: parsed.useCases || [],
       products: parsed.products || [],
       fetch_method: parsed.fetchMethod || null,
