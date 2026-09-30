@@ -3,6 +3,8 @@ import { getMetric } from './metrics.registry';
 import { rowsFor, snapshotDelta, lastValue, formatValue, weeklySeries } from './computeMetric';
 import { laWeekStart } from './periods';
 import LineChart from './LineChart';
+import ExportButton from './ExportButton';
+import { exportWidgetCsv } from './exportCsv';
 
 const TILE_KEYS = [
   'companies_in_cadence', 'prospects_in_cadence', 'sequences_active',
@@ -15,7 +17,7 @@ function aggregateFor(metric, rows) {
 
 // Visual pattern mirrored from BusinessIntelKpiStrip.js (A4e) - card with
 // an accent top border, mono uppercase label, same padding/radius.
-export default function KpiTiles({ allRows, periodRows, prevPeriodRows, compareEnabled, accent = C.gold }) {
+export default function KpiTiles({ allRows, periodRows, prevPeriodRows, compareEnabled, accent = C.gold, widgetId = 'kpi_tiles' }) {
   const tiles = TILE_KEYS.map(key => {
     const metric = getMetric(key);
     if (!metric) return null;
@@ -44,8 +46,20 @@ export default function KpiTiles({ allRows, periodRows, prevPeriodRows, compareE
     );
   }
 
+  const handleExport = () => {
+    exportWidgetCsv(widgetId, tiles, [
+      { label: 'Metric', value: t => t.metric.label },
+      { label: 'Value', value: t => formatValue(t.value, t.metric.format) },
+      { label: 'Delta', value: t => (t.delta === null ? '' : formatValue(t.delta, t.metric.format)) },
+    ]);
+  };
+
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <ExportButton onClick={handleExport} />
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
       {tiles.map(({ metric, value, delta, sparkPoints }) => {
         const deltaGood = delta !== null && (metric.goodDirection === 'up' ? delta >= 0 : delta <= 0);
         return (
@@ -63,6 +77,7 @@ export default function KpiTiles({ allRows, periodRows, prevPeriodRows, compareE
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

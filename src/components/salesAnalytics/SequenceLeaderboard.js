@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { C, mono } from '../../constants/colors';
 import { rowsFor, lastValue, ratio, formatValue } from './computeMetric';
+import ExportButton from './ExportButton';
+import { exportWidgetCsv } from './exportCsv';
 
 const BOUNCE_FLAG_THRESHOLD = 0.03; // existing PROPOSED value (SPEC)
 const SORT_COLUMNS = [
@@ -22,7 +24,7 @@ const SORT_COLUMNS = [
 // id present in one but not the other (e.g. renamed/removed since the
 // latest raw snapshot) is never hidden - shown as "Unknown (<last 6
 // chars>)" per the FIX's explicit rule.
-export default function SequenceLeaderboard({ allRows, entities }) {
+export default function SequenceLeaderboard({ allRows, entities, widgetId = 'sequence_leaderboard' }) {
   const [showInactive, setShowInactive] = useState(false);
   const [sortKey, setSortKey] = useState('delivered');
   const [sortDesc, setSortDesc] = useState(true);
@@ -79,12 +81,30 @@ export default function SequenceLeaderboard({ allRows, entities }) {
     return <p style={{ ...mono, fontSize: 12, color: C.dim, padding: '12px 0' }}>No sequence data yet.</p>;
   }
 
+  // Exports exactly what's on screen - real names (never ids), current
+  // sort/cohort order, respecting the showInactive toggle's current state.
+  const handleExport = () => {
+    const exportRows = cohortOrder.flatMap(cohort => byCohort.get(cohort));
+    exportWidgetCsv(widgetId, exportRows, [
+      { label: 'Cohort', key: 'cohort' },
+      { label: 'Sequence', key: 'name' },
+      { label: 'Status', value: r => (r.active === false ? 'Inactive' : 'Active') },
+      { label: 'Delivered', value: r => formatValue(r.delivered, 'number') },
+      { label: 'Open %', value: r => formatValue(r.openRate, 'percent') },
+      { label: 'Reply %', value: r => formatValue(r.replyRate, 'percent') },
+      { label: 'Bounce %', value: r => formatValue(r.bounceRate, 'percent') },
+    ]);
+  };
+
   return (
     <div>
-      <label style={{ ...mono, fontSize: 11, color: C.mut, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', marginBottom: 10 }}>
-        <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
-        Show inactive sequences
-      </label>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <label style={{ ...mono, fontSize: 11, color: C.mut, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+          <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
+          Show inactive sequences
+        </label>
+        <ExportButton onClick={handleExport} />
+      </div>
 
       {cohortOrder.map(cohort => (
         <div key={cohort} style={{ marginBottom: 16 }}>

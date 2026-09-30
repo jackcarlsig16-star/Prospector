@@ -43,3 +43,24 @@ export function parseCsv(text) {
   });
   return { headers, rows };
 }
+
+// sales-analytics-core-v1 Stage 4 - export side, the counterpart to
+// parseCsv() above. columns: [{ key, label } | { value: row => cell, label }].
+// RFC 4180 quoting (quote on comma/quote/CR/LF, double internal quotes) plus
+// a defensive leading "'" on any cell starting with = + - @ (formula-
+// injection guard - a cell like "=SUM(...)" or "-2+3" would otherwise
+// execute as a formula when the file is opened in Excel/Sheets).
+function csvCell(value) {
+  let s = value === null || value === undefined ? '' : String(value);
+  if (/^[=+\-@]/.test(s)) s = "'" + s;
+  if (/[",\r\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+
+export function toCsv(rows, columns) {
+  const header = columns.map(c => csvCell(c.label)).join(',');
+  const lines = rows.map(row =>
+    columns.map(c => csvCell(typeof c.value === 'function' ? c.value(row) : row[c.key])).join(',')
+  );
+  return [header, ...lines].join('\r\n');
+}

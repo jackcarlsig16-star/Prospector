@@ -1,13 +1,15 @@
 import { C, mono } from '../../constants/colors';
 import { COHORTS } from './metrics.registry';
 import { rowsFor, lastValue, formatValue } from './computeMetric';
+import ExportButton from './ExportButton';
+import { exportWidgetCsv } from './exportCsv';
 
 // companies_in_cadence is a point-in-time gauge (aggregate: 'last'), not a
 // period total - a company is either in cadence right now or it isn't.
 // Hand-rolled CSS bars (A4b: no chart library) rather than inline SVG -
 // a plain width-percentage bar is just as "hand-rolled" as SVG for a
 // simple horizontal comparison and needs no extra rendering code.
-export default function CompaniesByCohort({ allRows, accent = C.gold }) {
+export default function CompaniesByCohort({ allRows, accent = C.gold, widgetId = 'companies_by_cohort' }) {
   const rows = COHORTS
     .map(cohort => ({ cohort, value: lastValue(rowsFor(allRows, 'companies_in_cadence', 'cohort', cohort)) }))
     .filter(r => r.value !== null && r.value > 0)
@@ -23,8 +25,19 @@ export default function CompaniesByCohort({ allRows, accent = C.gold }) {
 
   const max = Math.max(...rows.map(r => r.value));
 
+  const handleExport = () => {
+    exportWidgetCsv(widgetId, rows, [
+      { label: 'Cohort', key: 'cohort' },
+      { label: 'Companies in Cadence', value: r => formatValue(r.value, 'number') },
+    ]);
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <ExportButton onClick={handleExport} />
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {rows.map(r => (
         <div key={r.cohort} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ ...mono, fontSize: 11, color: C.mut, width: 90, flexShrink: 0 }}>{r.cohort}</span>
@@ -34,6 +47,7 @@ export default function CompaniesByCohort({ allRows, accent = C.gold }) {
           <span style={{ ...mono, fontSize: 12, color: C.txt, width: 36, textAlign: 'right', flexShrink: 0 }}>{formatValue(r.value, 'number')}</span>
         </div>
       ))}
+      </div>
     </div>
   );
 }

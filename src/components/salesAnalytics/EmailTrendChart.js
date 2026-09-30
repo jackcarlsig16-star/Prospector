@@ -2,6 +2,8 @@ import { C, mono } from '../../constants/colors';
 import { rowsFor, weeklySeries, formatValue } from './computeMetric';
 import { laWeekStart } from './periods';
 import LineChart from './LineChart';
+import ExportButton from './ExportButton';
+import { exportWidgetCsv } from './exportCsv';
 
 // Delivered (a count) and open/reply rate (percentages, 0-1) are different
 // scales - three separate small line charts rather than one dual-axis SVG,
@@ -29,7 +31,7 @@ function TrendRow({ label, points, color, format }) {
   );
 }
 
-export default function EmailTrendChart({ allRows, accent = C.gold }) {
+export default function EmailTrendChart({ allRows, accent = C.gold, widgetId = 'email_trend' }) {
   const delivered = weeklySeries(rowsFor(allRows, 'unique_delivered'), 'snapshot_delta', laWeekStart);
   const openRate = weeklyRate(allRows, 'unique_opened', 'unique_delivered');
   const replyRate = weeklyRate(allRows, 'unique_replied', 'unique_delivered');
@@ -42,8 +44,29 @@ export default function EmailTrendChart({ allRows, accent = C.gold }) {
     );
   }
 
+  const handleExport = () => {
+    const byWeek = new Map();
+    const set = (week, key, value) => {
+      if (!byWeek.has(week)) byWeek.set(week, { week });
+      byWeek.get(week)[key] = value;
+    };
+    delivered.forEach(p => set(p.x, 'delivered', p.y));
+    openRate.forEach(p => set(p.x, 'openRate', p.y));
+    replyRate.forEach(p => set(p.x, 'replyRate', p.y));
+    const weekRows = [...byWeek.values()].sort((a, b) => a.week.localeCompare(b.week));
+    exportWidgetCsv(widgetId, weekRows, [
+      { label: 'Week', key: 'week' },
+      { label: 'Delivered', value: r => (r.delivered === undefined ? '' : formatValue(r.delivered, 'number')) },
+      { label: 'Open Rate', value: r => (r.openRate === undefined ? '' : formatValue(r.openRate, 'percent')) },
+      { label: 'Reply Rate', value: r => (r.replyRate === undefined ? '' : formatValue(r.replyRate, 'percent')) },
+    ]);
+  };
+
   return (
     <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <ExportButton onClick={handleExport} />
+      </div>
       <TrendRow label="Delivered" points={delivered} color={accent} format="number" />
       <TrendRow label="Open Rate" points={openRate} color={C.blue} format="percent" />
       <TrendRow label="Reply Rate" points={replyRate} color={C.green} format="percent" />
