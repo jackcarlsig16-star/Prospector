@@ -333,15 +333,162 @@ file exceeds 3000 lines (warns at 1500) — a size gate, not a lint or type gate
 
 ## A6 — Apollo API
 
-**Skipped.** `APOLLO_API_KEY` is not set in this environment — confirmed by checking both the
-shell environment and the repo's `.env` file (which defines only `SUPABASE_URL`,
-`SUPABASE_SERVICE_KEY`, `REACT_APP_SUPABASE_URL`, `REACT_APP_SUPABASE_ANON_KEY`; no Apollo key
-present). Per the audit's own instruction, A6 is skipped rather than guessed at. Zero Apollo
-API calls were made this session — the 40-call cap was never approached.
+`APOLLO_API_KEY` was added to `.env` mid-audit (Jack's own terminal, never typed into this
+session). Ran live, read-only calls under the declared cap: **18 of 40 calls used**,
+`per_page` never exceeded 5, every endpoint confirmed against real Apollo docs
+(`docs.apollo.io/reference/*.md`) before being called, no 401/403 encountered at any point. No
+enrichment/people-match/prospecting/credit-consuming endpoint was ever called — Organization
+Search (the one confirmed-credit-consuming candidate, 1 credit/page) was identified via docs
+only and never invoked.
+
+**a. Auth.** `GET /users/api_profile` → `200`. Confirms the key resolves to Jack's own
+HomeLover workspace identity (name/email not reproduced here — redacted per this report's own
+rule, see below). **This is a real master key, confirmed directly**: Apollo's own docs name
+`GET /users/search` ("list users") as the one endpoint only a true master key can reach —
+called it, got `200`, `total_entries: 3`. No 401/403 was hit on any of the 18 calls, including
+two endpoints docs mark master-key-only (`email_accounts`, `emailer_campaigns/search`) — both
+succeeded.
+
+**b. Sequences.** Real endpoint: `POST /emailer_campaigns/search` (0 credits per docs).
+**21 total sequences, 9 active, 0 archived.** `active` (boolean) is the active/paused field.
+Per-sequence stats are real response fields, not derived: `unique_scheduled/delivered/opened
+/clicked/replied/bounced/hard_bounced/spam_blocked/unsubscribed` plus rate fields
+(`open_rate`/`click_rate`/`reply_rate`/`bounce_rate`). One real data-quality wrinkle: all 9
+active sequences show `loaded_stats: true`, but one of them returned the **literal string**
+`"loading"` for `unique_opened` instead of a number — flagged and excluded from sums below, not
+coerced. No active-*contact*-count field exists on the sequence object itself (no
+`contact_statuses` tally, despite docs suggesting one) — but a better source for that exists at
+the account level, see (f).
+
+**c. Sent emails.** No dedicated emailer-messages search/list endpoint could be located —
+tried plausible doc slugs (`search-for-emailer-messages`, `emailer-messages-search`,
+`list-emailer-messages`), all `404`. The real date-range-capable path is `POST
+/reports/sync_report` (0 credits per docs, supports `metrics`/`group_by`/`filters`/
+`date_ranges`) — confirmed to exist, but **its exact required request body could not be
+reverse-engineered**: two live attempts with reasonable payload guesses both returned `400`
+with an identical generic "X is required" error listing every field. Not pursued past 2
+attempts to avoid speculative-call sprawl. So: a date-range-filterable path is documented to
+exist, but wasn't gotten working live in this session — the only confirmed-working numeric
+source is the per-sequence **lifetime-cumulative** stats from (b), which have no date-range
+control at all.
+
+**d. Mailboxes.** Real endpoint: `GET /email_accounts` (0 credits per docs, master-key gated
+— worked). **Exactly 2 mailboxes connected, both on the `@homelover.ai` domain, both
+`active: true` and (unusually) both `default: true` simultaneously.** Checked both addresses
+programmatically against `partners@homelover.ai` and `benefits@homelover.ai` — **neither
+matches either one.** Those two specific addresses are not configured as connected Apollo
+sending mailboxes today (redacted; not reproduced here, per this report's own email-redaction
+rule — see A1b for the same treatment). Per-mailbox volume **is** attributable:
+`deliverability_score.{sum_sent_count,sum_delivered_count,sum_opened_count,sum_replied_count,
+avg_open_rate,avg_reply_rate}` is present per mailbox, confirmed with real numbers (both
+mailboxes: sent 237/247, delivered 227/243, opened 19/2, replied 0/0).
+
+**e. Contacts in sequences.** `contact_campaign_statuses[].status` (real values seen:
+`active`/`paused`/`finished`/`failed`) is the per-sequence-assignment status field — confirmed
+against a real live contact record. `contact_stage_id` is the contact's overall stage, returned
+as an opaque ID; no stage-name lookup endpoint was pursued within budget, so the real stage
+*names* list is not resolved here (flagged, not guessed). One real, useful finding not in any
+doc: `POST /contacts/search` honors an **undocumented-but-working** `emailer_campaign_ids`
+filter param — confirmed via the response's own `breadcrumbs` echoing the filter back
+correctly (tested on both one sequence and all 9 active sequences combined).
+
+**f. Accounts.** **No raw employee-count field exists anywhere in the 0-credit endpoint
+surface** — not on `accounts/search`, not on the `account`/`organization` objects embedded in
+`contacts/search`. The only headcount-shaped fields found are
+`organization_headcount_six_month_growth` / `twelve_month_growth` / `twenty_four_month_growth`
+— **percentage growth, not a raw count**. The only real employee-*count* field found anywhere
+is `organization_num_employees_ranges[]`, and it lives on Organization Search
+(`POST /mixed_companies/search`) — confirmed via docs to cost **1 credit per page**, so it was
+never called (forbidden by this audit's cap). Accounts genuinely **can** be joined to
+contacts active in a sequence, and better than the brief anticipated: every `accounts/search`
+record carries `num_contacts`, `contact_emailer_campaign_ids`, and
+**`contact_campaign_status_tally`** — a real per-account breakdown by status, e.g. one real
+account returned `{"paused":181,"not_sent":1}`. No separate join call is needed for this.
+
+**g. Opportunities/deals.** Real endpoint: `GET /opportunities/search` (0 credits). Live
+call: `total_entries: 0`. **HomeLover's Apollo workspace has zero deals.** Zero is the real
+answer, not an error. No stage names are observable (no records to read `stage_name` from);
+a separate stage-list lookup wasn't pursued to conserve budget given there's nothing to name
+yet.
+
+**h. Meetings.** Real endpoint: `POST /api/v1/tasks/search` (0 credits). Live call:
+`total_entries: 0` — zero tasks of any kind exist in this workspace. Independently, per docs,
+Apollo's task-type schema itself has no meeting-booked/meeting-held type at all (only
+`contact_call`, `outreach_manual_email`, `linkedin_step_connect`, and action-item types) —
+**"none found" is confirmed two ways: by data and by schema**, not just by absence of a
+documented field.
+
+**i. Rate limits.** Real response headers, captured from a live `accounts/search` call:
+```
+x-rate-limit-minute: 200     x-minute-usage: 1     x-minute-requests-left: 199
+x-rate-limit-hourly: 400     x-hourly-usage: 1      x-hourly-requests-left: 399
+x-rate-limit-24-hour: 2000   x-24-hour-usage: 1     x-24-hour-requests-left: 1999
+```
+
+**j. Cohorts.** Confirmed via real sequence names — cohorts are embedded as free-text
+substrings in sequence *names*, not a separate label, list, or account field. Real sequence
+names directly matching Jack's 6 named cohorts: `*RETAIL*` / `Retail (A/B) Test Executive` /
+`Retail (A)` (Retail), `3-Step Hospitality (Hotels/Motels)` (Hospitality), `4-Step - SaaS
+HCOL (A/B)` / `3-Step - SaaS` (SaaS), `5-Step Car Rental & Dealerships` (Car Rental), `5-Step -
+Fitness Employers / Gyms` (Fitness & Gyms), `5-Step Wireless / Cell Phone Companies` (Wireless
+& Cell Phones). Sequences also exist for concepts outside Jack's 6 named cohorts — `Tier 1
+Partners`, `Warm Referral Cadence`, `Rental Rewards`, `HR & Benefits Buyers Outreach`, and
+`Wealth Management / Financial Advisors` (this last one not among the 6). A separate
+`label_ids` array also exists per sequence (a secondary tagging mechanism) but wasn't decoded
+to real label names within this audit's budget.
 
 ## A7 — Baseline cross-check vs Jack's hand-reported numbers
 
-**Skipped** — entirely dependent on A6 data, which was not collected (see A6).
+Computed directly from the A6 data above — nothing here was tuned to land near Jack's numbers.
+
+**a. Active sequences: 9 real** (21 total, 0 archived) **vs Jack's reported 8.** Close but not
+exact. Possible explanations not resolved here: Jack may be counting by a different definition
+(e.g. excluding one of the 2 "(Cyrus)"-suffixed active sequences as a duplicate/test, or
+counting cohorts rather than raw sequence rows) — flagged, not guessed at.
+
+**b. Active prospects in sequences: 2,051 vs Jack's ~2,000.** Close match — computed via the
+real `emailer_campaign_ids` filter on `contacts/search`, combining all 9 active sequence IDs,
+reading `pagination.total_entries` directly (no need to page through all 2,051 records).
+**Caveat, stated plainly:** this is "contacts assigned to ≥1 active sequence," not strictly
+"contacts with `contact_campaign_statuses.status === 'active'`" — a contact could be assigned
+to an active sequence but individually paused/finished. Getting the exact status-filtered
+count would mean enumerating up to 2,051 records at `per_page ≤ 5` (≈411 calls) — over 10x the
+declared cap, so not attempted.
+
+**c. Distinct companies with ≥1 active contact vs 171: not computable within the cap.**
+Tried filtering `accounts/search` by `contact_emailer_campaign_ids` (the account-side mirror of
+the working contacts-side filter) — **confirmed silently ignored**: `total_entries` came back
+identical to the unfiltered total (314) and `breadcrumbs` was empty (vs. 9 real breadcrumb
+entries on the working contacts-side filter). Getting the real distinct-company count would
+require reading `contact_campaign_status_tally` off all 314 accounts at `per_page ≤ 5`
+(63 calls) or enumerating all 2,051 filtered contacts' `account_id`s (≈411 calls) — both over
+budget. Real total CRM accounts confirmed: **314**. Worth flagging separately: Jack's own
+figure was phrased "171/200" — a ratio against an apparent target/pool of 200, not against
+314 total accounts — so even a computed 314-based figure likely wouldn't be measuring the same
+thing he was.
+
+**d. Sum of employee counts vs 3.08M: not computable — the field itself is missing.** Per
+A6f, no raw employee-count field exists on any 0-credit endpoint; only percentage-growth
+fields do. This directly tests (and fails) the SPEC's proposed `audience_in_cadence`
+definition — not a "couldn't get to it," but "the input field the definition depends on isn't
+available without spending credits on Organization Search."
+
+**e. Delivered/opened/clicked for a date range.** The only confirmed-working numbers are the
+per-sequence **lifetime-cumulative** stats from A6b — `POST /emailer_campaigns/search` has no
+date-range parameter at all, so these are not scoped to any particular window:
+```
+9 active sequences:   delivered 853   opened 106*  clicked 29   replied 4   bounced 152
+all 21 sequences:     delivered 1010  opened 120*  clicked 40   replied 4   bounced 196
+  * one sequence returned the literal string "loading" for unique_opened in both sets —
+    excluded from the sum, not coerced to 0.
+Jack's reported:       delivered 1,309  opened 129 (9.8%)  clicked 39 (2.9%)
+```
+Every real number here is lower than Jack's — consistent with these being a narrower or
+differently-defined window than whatever produced his figures, not evidence his numbers are
+wrong. **Which date range he used remains a genuine open question** (see below) — not guessed
+at, per the audit's own instruction. The one endpoint that could answer this properly
+(`POST /reports/sync_report`, date-range-capable per docs) was attempted twice and returned
+`400` both times on the request shape — see A6c.
 
 ---
 
@@ -367,6 +514,21 @@ API calls were made this session — the 40-call cap was never approached.
   weighing against installing a real npm PDF/export library instead.
 - `src/utils/csv.js` has no export/stringify counterpart to its import parser — would need to
   be added if the SPEC wants CSV export, not assumed to already exist.
+- The SPEC's proposed `audience_in_cadence` = sum of employee counts cannot be built as
+  specified — the only employee-count field found anywhere requires paid Organization Search
+  calls (1 credit/page). Either redefine the metric off a field that's actually free (e.g.
+  `num_contacts` per account, which is real and already present on every `accounts/search`
+  row), or accept that this one metric needs a credit budget the rest of the sync doesn't.
+- `contact_campaign_status_tally` (real, already present on every `accounts/search` record) is
+  a better foundation for "companies in cadence"-style metrics than joining contacts and
+  accounts manually — it gives a per-account, per-status count directly, no extra calls.
+- The real, working `emailer_campaign_ids` filter on `contacts/search` (undocumented but
+  confirmed live) is the right mechanism for "prospects in cadence" sync logic — cheap
+  (`pagination.total_entries` alone answers it), doesn't require paging every contact.
+- Don't build sync logic around `POST /reports/sync_report` yet — it's the only endpoint that
+  offers real date-range-filtered delivered/opened/clicked, but its required request shape
+  wasn't successfully reverse-engineered this session (2 attempts, both `400`). Get a working
+  example from Apollo support or a fuller doc pass before depending on it.
 
 ## OPEN QUESTIONS
 
@@ -375,8 +537,17 @@ API calls were made this session — the 40-call cap was never approached.
    the answer, that person doesn't have access yet under either mechanism. This also decides
    whether v1 needs the member-invite flow exercised for HomeLover specifically (it hasn't been
    — the one real HomeLover member row is Cyrus Radjoo, not Seif).
-2. **(from the AUDIT brief)** For the 1,309 / 129 / 39 figures: which date range and which
-   sequences? Unanswerable from this session (A6/A7 skipped).
+2. **(from the AUDIT brief) For the 1,309 / 129 / 39 figures: which date range and which
+   sequences?** Still genuinely open — not guessed at. What's now confirmed: the real
+   lifetime-cumulative numbers (A7e) are all lower than Jack's figures, and the one endpoint
+   that could answer this with a real date range (`reports/sync_report`) didn't return a
+   working response this session. Whoever tries next should start from a *working* example
+   request for that endpoint (Apollo support, or their own Apollo UI's network tab) rather than
+   guessing the body shape again.
+2b. **What does Jack's "171/200 companies in cadence" and "8 total cadences" actually count
+   against?** Real data this session: 314 total CRM accounts (not 200), 9 active sequences (not
+   8, 21 total). Neither of Jack's two denominators matches anything directly observed —
+   worth asking what "200" and "8" refer to before designing the metric definitions around them.
 3. **pg_cron, pg_net, and Supabase Vault availability is unknown** — no raw SQL path exists in
    this session's tooling (no `psql`, no `pg` package, no `DATABASE_URL`, and the only two
    existing introspection RPCs don't cover extensions). Someone with Supabase Dashboard access
