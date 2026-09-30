@@ -457,6 +457,40 @@ app.post('/api/businesses/:id/call-log/:entryId/reassign', esHandler('./api/busi
 app.post('/api/zoom/webhook', esHandler('./api/zoom/webhook.js'));
 app.get('/api/zoom/events', esHandler('./api/zoom/events.js'));
 app.post('/api/zoom/events/:eventId/reassign', esHandler('./api/zoom/events-reassign.js'));
+
+// sales-analytics-core-v1 - not wired through esHandler since routes.js
+// exports three named functions, not one default (esHandler always calls
+// mod.default). Same dynamic-import-per-request pattern as esHandler
+// otherwise, mirroring how the SFDC cron job below already loads
+// sync-compliance.js's named export.
+app.post('/api/sales/:businessId/sync', async (req, res) => {
+  try {
+    const { syncRoute } = await import('./api/sales/routes.js');
+    return syncRoute(req, res);
+  } catch (err) {
+    console.error('[sales/sync] handler error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+app.get('/api/sales/:businessId/runs', async (req, res) => {
+  try {
+    const { runsRoute } = await import('./api/sales/routes.js');
+    return runsRoute(req, res);
+  } catch (err) {
+    console.error('[sales/runs] handler error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+app.get('/api/sales/:businessId/metrics', async (req, res) => {
+  try {
+    const { metricsRoute } = await import('./api/sales/routes.js');
+    return metricsRoute(req, res);
+  } catch (err) {
+    console.error('[sales/metrics] handler error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/notify-pending', async (req, res) => {
   const { name, email, role } = req.body || {};
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;
@@ -514,6 +548,39 @@ cron.schedule('0 */6 * * *', async () => {
   }
 });
 console.log('[CRON] SFDC compliance sync scheduled every 6 hours');
+
+// ── Sales Analytics Apollo sync — daily, 06:00 America/Los_Angeles ─────────
+// Guardrail 7: exactly one registration. The module-level flag is real
+// insurance against this block ever running twice in one process (e.g. a
+// future refactor that moves this into a function called more than once) -
+// cron.schedule itself doesn't dedupe by expression or name.
+let salesAnalyticsCronRegistered = false;
+if (!salesAnalyticsCronRegistered) {
+  salesAnalyticsCronRegistered = true;
+  cron.schedule(
+    '0 6 * * *',
+    async () => {
+      console.log('[CRON] Running Sales Analytics Apollo sync...');
+      try {
+        const { runSync, cleanupOldSnapshots } = await import('./api/sales/sync.js');
+        const { getAllowlistedBusinessIds } = await import('./api/sales/allowlist.js');
+        for (const businessId of getAllowlistedBusinessIds()) {
+          const result = await runSync({ businessId, trigger: 'cron' });
+          console.log(
+            '[CRON] sales sync', businessId,
+            result.refused ? `refused: ${result.reason}` : `status: ${result.run && result.run.status}`
+          );
+        }
+        const cleanup = await cleanupOldSnapshots();
+        console.log('[CRON] sales snapshot retention cleanup:', cleanup);
+      } catch (err) {
+        console.error('[CRON] Sales Analytics sync failed:', err.message);
+      }
+    },
+    { timezone: 'America/Los_Angeles', noOverlap: true }
+  );
+  console.log('[CRON] Sales Analytics Apollo sync scheduled daily at 06:00 America/Los_Angeles');
+}
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
