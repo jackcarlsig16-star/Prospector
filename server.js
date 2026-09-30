@@ -490,6 +490,15 @@ app.get('/api/sales/:businessId/metrics', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+app.get('/api/sales/:businessId/entities', async (req, res) => {
+  try {
+    const { entitiesRoute } = await import('./api/sales/routes.js');
+    return entitiesRoute(req, res);
+  } catch (err) {
+    console.error('[sales/entities] handler error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.post('/api/notify-pending', async (req, res) => {
   const { name, email, role } = req.body || {};

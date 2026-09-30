@@ -54,3 +54,27 @@ export async function metricsRoute(req, res) {
   if (error) return res.status(500).json({ error: error.message });
   res.status(200).json({ metrics: data });
 }
+
+// sales-analytics-core-names-fix-v1 Part B - names/cohort/address lookup
+// for the Sequence Leaderboard and Mailbox Health widgets, which only ever
+// see Apollo's opaque ids through sales_metrics_daily. Reads the single
+// latest raw snapshot per entity (order by captured_at desc, limit 1) -
+// 0 Apollo calls, no new table, no change to sync logic.
+export async function entitiesRoute(req, res) {
+  if (!checkAllowlist(req, res)) return;
+  const supabase = getSupabase();
+  const businessId = req.params.businessId;
+
+  const [seqSnap, mailSnap] = await Promise.all([
+    supabase.from('sales_raw_snapshots').select('payload,captured_at').eq('business_id', businessId).eq('entity', 'sequences').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('sales_raw_snapshots').select('payload,captured_at').eq('business_id', businessId).eq('entity', 'mailboxes').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  if (seqSnap.error) return res.status(500).json({ error: seqSnap.error.message });
+  if (mailSnap.error) return res.status(500).json({ error: mailSnap.error.message });
+
+  const sequences = (seqSnap.data?.payload || []).map(s => ({ id: s.id, name: s.name, active: !!s.active, cohort: s.cohort }));
+  const mailboxes = (mailSnap.data?.payload || []).map(m => ({ id: m.id, email: m.email, active: !!m.active }));
+  const capturedAt = [seqSnap.data?.captured_at, mailSnap.data?.captured_at].filter(Boolean).sort().slice(-1)[0] || null;
+
+  res.status(200).json({ sequences, mailboxes, captured_at: capturedAt });
+}

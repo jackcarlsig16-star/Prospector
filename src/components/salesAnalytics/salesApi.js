@@ -16,6 +16,15 @@ export async function fetchRuns(businessId, limit = 10) {
   return data.runs || [];
 }
 
+// sales-analytics-core-names-fix-v1 Part B - name/cohort/address lookup,
+// reads the latest raw snapshot server-side, 0 Apollo calls.
+export async function fetchEntities(businessId) {
+  const res = await fetch(`/api/sales/${businessId}/entities`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to load entities (${res.status})`);
+  return data;
+}
+
 export async function triggerSync(businessId) {
   const res = await fetch(`/api/sales/${businessId}/sync`, { method: 'POST' });
   const data = await res.json().catch(() => ({}));

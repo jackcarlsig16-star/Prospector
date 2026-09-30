@@ -1,38 +1,48 @@
 import { C, mono } from '../../constants/colors';
-import { rowsFor, snapshotDelta, ratio, formatValue } from './computeMetric';
+import { rowsFor, lastValue, ratio, formatValue } from './computeMetric';
 
-const METRIC_KEYS = { sent: 'mailbox_sent', delivered: 'mailbox_delivered', opened: 'mailbox_opened', replied: 'mailbox_replied' };
+// sales-analytics-core-names-fix-v1 Part B - real mailbox addresses (the
+// business's own sending mailboxes, not prospect data), from GET /entities.
+// Latest-snapshot values (lastValue), same reasoning as SequenceLeaderboard:
+// these are already lifetime totals, no "collecting history" gate needed.
+export default function MailboxHealth({ allRows, entities }) {
+  const entityById = new Map((entities?.mailboxes || []).map(m => [m.id, m]));
+  const idsFromMetrics = new Set(
+    allRows.filter(r => r.dim_type === 'mailbox' && r.metric_key.startsWith('mailbox_')).map(r => r.dim_value)
+  );
+  const allIds = new Set([...entityById.keys(), ...idsFromMetrics]);
 
-// Same real gap as SequenceLeaderboard.js: dim_value here is the mailbox's
-// opaque Apollo id, not its email address - the metrics API has no lookup
-// for the real address. Only 2 mailboxes exist today so this is less
-// disruptive than the 21-sequence case, but the same fix (a small new
-// route reading the latest raw snapshot) would apply to both.
-export default function MailboxHealth({ periodRows }) {
-  const ids = new Set(rowsFor(periodRows, METRIC_KEYS.sent, 'mailbox').map(r => r.dim_value));
+  const mailboxes = [...allIds].map(id => {
+    const entity = entityById.get(id);
+    const label = entity ? entity.email : `Unknown (${id.slice(-6)})`;
 
-  const mailboxes = [...ids].map(id => {
-    const sent = snapshotDelta(rowsFor(periodRows, METRIC_KEYS.sent, 'mailbox', id));
-    const delivered = snapshotDelta(rowsFor(periodRows, METRIC_KEYS.delivered, 'mailbox', id));
-    const opened = snapshotDelta(rowsFor(periodRows, METRIC_KEYS.opened, 'mailbox', id));
-    const replied = snapshotDelta(rowsFor(periodRows, METRIC_KEYS.replied, 'mailbox', id));
-    const openRate = ratio(rowsFor(periodRows, METRIC_KEYS.opened, 'mailbox', id), rowsFor(periodRows, METRIC_KEYS.delivered, 'mailbox', id));
-    return { id, sent, delivered, opened, replied, openRate };
-  }).filter(m => m.sent !== null);
+    const sentRows = rowsFor(allRows, 'mailbox_sent', 'mailbox', id);
+    const deliveredRows = rowsFor(allRows, 'mailbox_delivered', 'mailbox', id);
+    const openedRows = rowsFor(allRows, 'mailbox_opened', 'mailbox', id);
+    const repliedRows = rowsFor(allRows, 'mailbox_replied', 'mailbox', id);
+
+    return {
+      id, label,
+      active: entity ? entity.active : undefined,
+      sent: lastValue(sentRows),
+      delivered: lastValue(deliveredRows),
+      opened: lastValue(openedRows),
+      replied: lastValue(repliedRows),
+      openRate: ratio(openedRows, deliveredRows, lastValue),
+    };
+  }).filter(m => m.sent !== null || m.active !== undefined);
 
   if (!mailboxes.length) {
-    return (
-      <p style={{ ...mono, fontSize: 12, color: C.dim, padding: '12px 0' }}>
-        Collecting history — weekly changes appear after the first full week of daily syncs.
-      </p>
-    );
+    return <p style={{ ...mono, fontSize: 12, color: C.dim, padding: '12px 0' }}>No mailbox data yet.</p>;
   }
 
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
       {mailboxes.map(m => (
-        <div key={m.id} style={{ flex: '1 1 200px', minWidth: 180, padding: '12px 14px', background: C.card, border: `1px solid ${C.brd}`, borderRadius: 8 }}>
-          <p style={{ ...mono, fontSize: 9, color: C.dim, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 8px' }}>Mailbox {m.id.slice(0, 8)}</p>
+        <div key={m.id} style={{ flex: '1 1 220px', minWidth: 200, padding: '12px 14px', background: C.card, border: `1px solid ${C.brd}`, borderRadius: 8 }}>
+          <p style={{ ...mono, fontSize: 11, color: m.active === false ? C.dim : C.txt, margin: '0 0 8px', wordBreak: 'break-all' }}>
+            {m.label}{m.active === false && ' (inactive)'}
+          </p>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, ...mono, fontSize: 12 }}>
             <span style={{ color: C.dim }}>Sent</span><span style={{ color: C.txt, textAlign: 'right' }}>{formatValue(m.sent, 'number')}</span>
             <span style={{ color: C.dim }}>Delivered</span><span style={{ color: C.txt, textAlign: 'right' }}>{formatValue(m.delivered, 'number')}</span>

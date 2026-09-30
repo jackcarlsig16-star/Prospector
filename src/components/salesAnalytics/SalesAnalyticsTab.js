@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { C, mono } from '../../constants/colors';
 import { WIDGETS } from './widgets.registry';
-import { fetchMetrics, fetchRuns, triggerSync } from './salesApi';
+import { fetchMetrics, fetchRuns, fetchEntities, triggerSync } from './salesApi';
 import { PERIOD_PRESETS, periodRange, previousPeriodRange, laDateString } from './periods';
 
 const SPARKLINE_LOOKBACK_DAYS = 56; // ~8 weeks
@@ -30,6 +30,7 @@ export default function SalesAnalyticsTab({ businessId, accent = C.gold }) {
 
   const [allRows, setAllRows] = useState([]);
   const [runs, setRuns] = useState([]);
+  const [entities, setEntities] = useState({ sequences: [], mailboxes: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [syncing, setSyncing] = useState(false);
@@ -50,12 +51,14 @@ export default function SalesAnalyticsTab({ businessId, accent = C.gold }) {
       const from = [period.from, prevPeriod.from, sparklineFrom].sort()[0];
       const to = [period.to, laDateString()].sort().reverse()[0];
 
-      const [metrics, latestRuns] = await Promise.all([
+      const [metrics, latestRuns, latestEntities] = await Promise.all([
         fetchMetrics(businessId, from, to),
         fetchRuns(businessId, 5),
+        fetchEntities(businessId),
       ]);
       setAllRows(metrics);
       setRuns(latestRuns);
+      setEntities(latestEntities);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -150,7 +153,7 @@ export default function SalesAnalyticsTab({ businessId, accent = C.gold }) {
           return (
             <div key={w.id} style={{ marginBottom: 24, padding: '16px 18px', background: C.card, border: `1px solid ${C.brd}`, borderRadius: 8 }}>
               <p style={{ ...mono, fontSize: 10, color: C.dim, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>{w.title}</p>
-              <Widget allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} compareEnabled={compareEnabled} accent={accent} />
+              <Widget allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} compareEnabled={compareEnabled} entities={entities} accent={accent} />
             </div>
           );
         })
