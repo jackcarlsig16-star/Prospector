@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { laDateString } from './laDate.js';
 import { CallCapError } from './apolloClient.js';
+import { resolveSenders } from './senderLookup.js';
 import * as sequences from './adapters/sequences.js';
 import * as accounts from './adapters/accounts.js';
 import * as prospects from './adapters/prospects.js';
@@ -118,6 +119,7 @@ export async function runSync({ businessId, trigger, maxCalls }) {
   let stoppedForCap = false;
   let apolloMs = 0;
   let supabaseMs = 0;
+  let senderLookupCount = 0;
 
   for (const adapter of ADAPTERS) {
     try {
@@ -131,6 +133,18 @@ export async function runSync({ businessId, trigger, maxCalls }) {
         for (const r of records) {
           ctx.sequenceCohortById[r.id] = r.cohort;
           if (r.active) ctx.activeSequenceIds.push(r.id);
+        }
+
+        // dashboard-v2 - sender lookup runs right after sequences, inside
+        // the same try block, so a CallCapError from it is handled by the
+        // same catch below exactly like every other Apollo call in this
+        // loop (stops the whole run, not just this step).
+        const senderResult = await resolveSenders({
+          ctx, businessId, activeSequenceIds: ctx.activeSequenceIds, supabase,
+        });
+        senderLookupCount += senderResult.lookupCalls;
+        if (senderResult.unresolved.length) {
+          missingAll.push(...senderResult.unresolved.map(id => `sender lookup: ${id} unresolved`));
         }
       }
 
@@ -185,7 +199,7 @@ export async function runSync({ businessId, trigger, maxCalls }) {
 
   const counts = {
     apollo_calls: ctx.callCounter.count,
-    per_endpoint: ctx.endpointCounts,
+    per_endpoint: { ...ctx.endpointCounts, sender_lookup: senderLookupCount },
     missing: missingAll,
     adapter_errors: adapterErrors,
     timing_ms: { apollo: apolloMs, supabase: supabaseMs },

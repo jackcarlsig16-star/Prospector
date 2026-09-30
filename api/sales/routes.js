@@ -60,21 +60,151 @@ export async function metricsRoute(req, res) {
 // see Apollo's opaque ids through sales_metrics_daily. Reads the single
 // latest raw snapshot per entity (order by captured_at desc, limit 1) -
 // 0 Apollo calls, no new table, no change to sync logic.
+// dashboard-v2 Stage 2 - extended with the new sequence fields (num_steps,
+// is_performing_poorly, created_at, archived), the new mailbox fields
+// (deliverability_score subset, email_daily_threshold, the connection-
+// error fields), and each sequence's is_partner/sender_email joined in
+// from sales_sequence_tags. Still 0 Apollo calls - reads only the latest
+// raw snapshot per entity plus the tags table.
 export async function entitiesRoute(req, res) {
   if (!checkAllowlist(req, res)) return;
   const supabase = getSupabase();
   const businessId = req.params.businessId;
 
-  const [seqSnap, mailSnap] = await Promise.all([
+  const [seqSnap, mailSnap, tags] = await Promise.all([
     supabase.from('sales_raw_snapshots').select('payload,captured_at').eq('business_id', businessId).eq('entity', 'sequences').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('sales_raw_snapshots').select('payload,captured_at').eq('business_id', businessId).eq('entity', 'mailboxes').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('sales_sequence_tags').select('sequence_id,is_partner,sender_email').eq('business_id', businessId),
   ]);
   if (seqSnap.error) return res.status(500).json({ error: seqSnap.error.message });
   if (mailSnap.error) return res.status(500).json({ error: mailSnap.error.message });
+  if (tags.error) return res.status(500).json({ error: tags.error.message });
 
-  const sequences = (seqSnap.data?.payload || []).map(s => ({ id: s.id, name: s.name, active: !!s.active, cohort: s.cohort }));
-  const mailboxes = (mailSnap.data?.payload || []).map(m => ({ id: m.id, email: m.email, active: !!m.active }));
+  const tagById = new Map((tags.data || []).map(t => [t.sequence_id, t]));
+
+  const sequences = (seqSnap.data?.payload || []).map(s => {
+    const tag = tagById.get(s.id);
+    return {
+      id: s.id,
+      name: s.name,
+      active: !!s.active,
+      cohort: s.cohort,
+      archived: !!s.archived,
+      num_steps: s.num_steps ?? null,
+      is_performing_poorly: !!s.is_performing_poorly,
+      created_at: s.created_at || null,
+      is_partner: tag ? !!tag.is_partner : false,
+      sender_email: tag ? (tag.sender_email || null) : null,
+    };
+  });
+  const mailboxes = (mailSnap.data?.payload || []).map(m => ({
+    id: m.id,
+    email: m.email,
+    active: !!m.active,
+    deliverability_score: m.deliverability_score || null,
+    email_daily_threshold: m.email_daily_threshold ?? null,
+    unlink_error_code: m.unlink_error_code || null,
+    inactive_reason: m.inactive_reason || null,
+    unlink_error_message: m.unlink_error_message || null,
+    needs_reauth_at: m.needs_reauth_at || null,
+  }));
   const capturedAt = [seqSnap.data?.captured_at, mailSnap.data?.captured_at].filter(Boolean).sort().slice(-1)[0] || null;
 
   res.status(200).json({ sequences, mailboxes, captured_at: capturedAt });
+}
+
+export async function sequenceTagsRoute(req, res) {
+  if (!checkAllowlist(req, res)) return;
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from('sales_sequence_tags')
+    .select('sequence_id,is_partner,sender_email,sender_checked_at,updated_at')
+    .eq('business_id', req.params.businessId);
+  if (error) return res.status(500).json({ error: error.message });
+  res.status(200).json({ tags: data });
+}
+
+// PUT /sequence-tags/:sequenceId - body MUST be exactly { is_partner:
+// boolean }, nothing else (400 otherwise). sequenceId must exist in the
+// latest sequences snapshot (404 otherwise) - guards against tagging a
+// typo'd or stale id that no longer means anything. Never touches
+// sender_email/sender_checked_at - only sync.js's senderLookup writes
+// those.
+export async function putSequenceTagRoute(req, res) {
+  if (!checkAllowlist(req, res)) return;
+  const businessId = req.params.businessId;
+  const sequenceId = req.params.sequenceId;
+
+  const bodyKeys = Object.keys(req.body || {});
+  if (bodyKeys.length !== 1 || bodyKeys[0] !== 'is_partner' || typeof req.body.is_partner !== 'boolean') {
+    return res.status(400).json({ error: 'body must be exactly { is_partner: boolean }' });
+  }
+
+  const supabase = getSupabase();
+  const { data: snap, error: snapErr } = await supabase
+    .from('sales_raw_snapshots')
+    .select('payload')
+    .eq('business_id', businessId)
+    .eq('entity', 'sequences')
+    .order('captured_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (snapErr) return res.status(500).json({ error: snapErr.message });
+
+  const exists = Array.isArray(snap?.payload) && snap.payload.some(s => s.id === sequenceId);
+  if (!exists) return res.status(404).json({ error: 'sequence not found in the latest snapshot' });
+
+  const { data, error } = await supabase
+    .from('sales_sequence_tags')
+    .upsert(
+      { business_id: businessId, sequence_id: sequenceId, is_partner: req.body.is_partner },
+      { onConflict: 'business_id,sequence_id' }
+    )
+    .select()
+    .single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.status(200).json({ tag: data });
+}
+
+// GET /cohort-breakdown - cohort x {direct, partner} company counts,
+// computed at read time from the latest accounts snapshot (which carries
+// contact_emailer_campaign_ids + contact_campaign_status_tally per
+// account) plus the current tags. Same "in cadence" definition as the
+// accounts adapter (>=1 active contact, audit A6f) and the same
+// best-available-signal caveat: tally is a rollup across all of an
+// account's sequences, not broken out per sequence, so an account counts
+// toward every cohort/Partner status its assigned sequences touch.
+export async function cohortBreakdownRoute(req, res) {
+  if (!checkAllowlist(req, res)) return;
+  const businessId = req.params.businessId;
+  const supabase = getSupabase();
+
+  const [accSnap, seqSnap, tags] = await Promise.all([
+    supabase.from('sales_raw_snapshots').select('payload,captured_at').eq('business_id', businessId).eq('entity', 'accounts').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('sales_raw_snapshots').select('payload').eq('business_id', businessId).eq('entity', 'sequences').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
+    supabase.from('sales_sequence_tags').select('sequence_id,is_partner').eq('business_id', businessId),
+  ]);
+  if (accSnap.error) return res.status(500).json({ error: accSnap.error.message });
+  if (seqSnap.error) return res.status(500).json({ error: seqSnap.error.message });
+  if (tags.error) return res.status(500).json({ error: tags.error.message });
+
+  const cohortById = {};
+  (seqSnap.data?.payload || []).forEach(s => { cohortById[s.id] = s.cohort; });
+  const partnerIds = new Set((tags.data || []).filter(t => t.is_partner).map(t => t.sequence_id));
+
+  const breakdown = {};
+  (accSnap.data?.payload || []).forEach(a => {
+    const inCadence = (a.contact_campaign_status_tally?.active || 0) >= 1;
+    if (!inCadence) return;
+    const seqIds = a.contact_emailer_campaign_ids || [];
+    const cohorts = new Set(seqIds.map(id => cohortById[id]).filter(Boolean));
+    const isPartner = seqIds.some(id => partnerIds.has(id));
+    for (const cohort of cohorts) {
+      if (!breakdown[cohort]) breakdown[cohort] = { direct: 0, partner: 0 };
+      if (isPartner) breakdown[cohort].partner += 1;
+      else breakdown[cohort].direct += 1;
+    }
+  });
+
+  res.status(200).json({ breakdown, captured_at: accSnap.data?.captured_at || null });
 }

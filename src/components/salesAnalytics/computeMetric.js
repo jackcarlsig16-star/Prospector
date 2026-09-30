@@ -35,6 +35,24 @@ export function ratio(numeratorRows, denominatorRows, aggregateFn = snapshotDelt
   return num / den;
 }
 
+// dashboard-v2 - the one shared bounce-percent function (leaderboard,
+// donuts, summary strip, CSV, and PDF all use this, not their own inline
+// math). Apollo's own bounce_rate field = bounced / (delivered + bounced),
+// confirmed exact to 6 decimal places against 3 real sequences (audit F8) -
+// NOT bounced / delivered, which is what the dashboard used before this
+// SPEC and which inflates the percentage (unique_delivered already
+// excludes bounces, so dividing by it alone overstates the rate). Also
+// used for hard-bounce % and spam-block %, which share this same
+// denominator per the SPEC's design decision.
+export function bounceDenominatorRate(numeratorRows, deliveredRows, bouncedRows, aggregateFn = lastValue) {
+  const num = aggregateFn(numeratorRows);
+  const delivered = aggregateFn(deliveredRows);
+  const bounced = aggregateFn(bouncedRows);
+  if (num === null || delivered === null || bounced === null) return null;
+  const denom = delivered + bounced;
+  return denom === 0 ? null : num / denom;
+}
+
 export function hasEnoughHistory(rows, minDays = 2) {
   return new Set(rows.map(r => r.metric_date)).size >= minDays;
 }

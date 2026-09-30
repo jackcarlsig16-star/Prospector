@@ -35,7 +35,11 @@ export async function fetchRecords(ctx) {
       id: r.id,
       name: r.name,
       active: !!r.active,
+      archived: !!r.archived,
       cohort: cohortForSequenceName(r.name),
+      num_steps: typeof r.num_steps === 'number' ? r.num_steps : null,
+      is_performing_poorly: !!r.is_performing_poorly,
+      created_at: r.created_at || null,
       ...uniqueFields,
     };
   });

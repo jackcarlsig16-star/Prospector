@@ -499,6 +499,33 @@ app.get('/api/sales/:businessId/entities', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+app.get('/api/sales/:businessId/sequence-tags', async (req, res) => {
+  try {
+    const { sequenceTagsRoute } = await import('./api/sales/routes.js');
+    return sequenceTagsRoute(req, res);
+  } catch (err) {
+    console.error('[sales/sequence-tags] handler error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+app.put('/api/sales/:businessId/sequence-tags/:sequenceId', async (req, res) => {
+  try {
+    const { putSequenceTagRoute } = await import('./api/sales/routes.js');
+    return putSequenceTagRoute(req, res);
+  } catch (err) {
+    console.error('[sales/sequence-tags/:id] handler error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+app.get('/api/sales/:businessId/cohort-breakdown', async (req, res) => {
+  try {
+    const { cohortBreakdownRoute } = await import('./api/sales/routes.js');
+    return cohortBreakdownRoute(req, res);
+  } catch (err) {
+    console.error('[sales/cohort-breakdown] handler error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.post('/api/notify-pending', async (req, res) => {
   const { name, email, role } = req.body || {};
