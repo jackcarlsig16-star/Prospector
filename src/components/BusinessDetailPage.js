@@ -13,6 +13,7 @@ import ProfileFieldBlock from './ProfileFieldBlock';
 import BusinessIntelKpiStrip from './BusinessIntelKpiStrip';
 import BusinessSocialLinksPopover from './BusinessSocialLinksPopover';
 import BusinessWebsiteUrlPopover from './BusinessWebsiteUrlPopover';
+import SalesAnalyticsTab from './salesAnalytics/SalesAnalyticsTab';
 import { buildBusinessContextMarkdown } from '../utils/businessContextExport';
 
 // emoji-picker-react is ~75kB gzipped - lazy so it only loads when the
@@ -686,7 +687,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   // but now renders 13 profile fields plus Assay Criteria/Outreach
   // Rules/Add Intel/the Intel log. Same 1100 the other dense views here
   // already use, not a new value.
-  const wideView = view === 'accounts' || view === 'command-center' || view === 'members' || view === 'overview';
+  const wideView = view === 'accounts' || view === 'command-center' || view === 'members' || view === 'overview' || view === 'sales-analytics';
   // business-intel-strategy-visual-redesign-v1 — the same accent already
   // used for this business's gradient bar/avatar, reused for chip/panel
   // accents instead of a new color system.
@@ -786,6 +787,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
           <ProjectsSection business={business} userEmail={userEmail} activeUser={activeUser} projects={projects} campaigns={campaigns} outreachRules={profile?.outreach_rules} onProjectCreated={onProjectCreated} onProjectUpdated={onProjectUpdated} onCampaignCreated={onCampaignCreated} onCampaignUpdated={onCampaignUpdated} />
         )}
         {view === 'members' && <MembersPermissionsTab business={business} viewerEmail={userEmail} />}
+        {view === 'sales-analytics' && <SalesAnalyticsTab businessId={business.id} accent={accent} />}
 
         {view === 'overview' && (<>
         <div style={{ marginBottom:32 }}>

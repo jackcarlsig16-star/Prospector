@@ -41,7 +41,7 @@ function MemberSidebar({ identity, businesses, activeBusiness, onSelectBusiness,
         return (
         <div style={{ borderLeft:`3px solid ${accent}`, padding:"6px 0" }}>
           <p style={{ ...mono, margin:0, fontSize:9, color:accent, textTransform:"uppercase", letterSpacing:"0.1em", padding:"4px 14px 6px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontWeight:600 }}>{activeBusiness.name}</p>
-          {BUSINESS_NAV.filter(n=>!n.ownerOnly || isOwner).map(n => (
+          {BUSINESS_NAV.filter(n=>(!n.ownerOnly || isOwner) && (!n.businessIds || n.businessIds.includes(activeBusiness.id))).map(n => (
             <NavRow key={n.id} icon={n.ic} label={n.lb} active={businessPage===n.id} onClick={()=>setBusinessPage(n.id)} accent={accent} />
           ))}
           {otherBusinesses.length > 0 && (

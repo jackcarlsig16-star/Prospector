@@ -79,7 +79,7 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
           </button>
           <p style={{ ...mono, margin:0, fontSize:9, color:accent, textTransform:"uppercase", letterSpacing:"0.1em", padding:"10px 14px 2px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontWeight:600 }}>{activeBusiness.name}</p>
           <div style={{ padding:"6px 0" }}>
-            {BUSINESS_NAV.filter(n=>!n.ownerOnly || (activeBusiness.owner_email||"").toLowerCase()===(activeUser?.email||"").toLowerCase()).map(n=>(
+            {BUSINESS_NAV.filter(n=>(!n.ownerOnly || (activeBusiness.owner_email||"").toLowerCase()===(activeUser?.email||"").toLowerCase()) && (!n.businessIds || n.businessIds.includes(activeBusiness.id))).map(n=>(
               <NavRow key={n.id} icon={n.ic} label={n.lb} active={businessPage===n.id} onClick={()=>setBusinessPage?.(n.id)} accent={accent} />
             ))}
           </div>
