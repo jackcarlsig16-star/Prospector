@@ -74,3 +74,30 @@ export function openHealthColor(openPercent) {
   if (openPercent < HEALTH_THRESHOLDS.openAmber) return SEMANTIC.warning;
   return SEMANTIC.healthy;
 }
+
+// sales-email-trend-v1 REV2 - series colours for Email Performance Over
+// Time, from the dataviz reference palette and validated per panel with its
+// validator (2026-10-01): deliverability {hard bounce, spam block} and
+// engagement {open, reply, click} each pass all-pairs CVD + normal-vision
+// checks on the dark card surface (#12161B) and on white print; the two
+// mailbox colours pass as an adjacent stacked pair. Red is left out on
+// purpose - it already means "bad" on this page. Print light-mode values
+// for aqua/yellow/magenta sit under 3:1 on white, so every line carries a
+// direct label and the health table repeats the numbers.
+const TREND_VALUES = {
+  hardBounce: ['#d95926', '#eb6834'],
+  spamBlock: ['#9085e9', '#4a3aa7'],
+  open: ['#3987e5', '#2a78d6'],
+  reply: ['#199e70', '#1baf7a'],
+  click: ['#c98500', '#eda100'],
+  mailbox1: ['#008300', '#008300'],
+  mailbox2: ['#d55181', '#e87ba4'],
+};
+const trendVar = key => `--sa-trend-${key.replace(/[A-Z0-9]/g, c => `-${c.toLowerCase()}`)}`;
+export const TREND_COLORS = Object.fromEntries(Object.keys(TREND_VALUES).map(k => [k, `var(${trendVar(k)})`]));
+export const TREND_THEME_CSS = `
+  #sales-analytics-root { ${Object.entries(TREND_VALUES).map(([k, [dark]]) => `${trendVar(k)}: ${dark};`).join(' ')} }
+  @media print {
+    #sales-analytics-root { ${Object.entries(TREND_VALUES).map(([k, [, print]]) => `${trendVar(k)}: ${print};`).join(' ')} }
+  }
+`;

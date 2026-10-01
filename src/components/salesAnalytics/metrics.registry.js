@@ -54,3 +54,10 @@ export function cohortForSequenceName(name) {
   if (/wireless|cell phone/i.test(n)) return 'Wireless';
   return 'Other';
 }
+
+// sales-email-trend-v1 REV2 - Email Performance Over Time thresholds
+// (REVISABLE). Health colours apply to hard bounce, spam block and their
+// Apollo-style total only. Rates use SENT as the denominator, which is how
+// Apollo's own weekly numbers reconcile exactly (bounce/spam/reply).
+export const EMAIL_HEALTH_THRESHOLDS = { good: 0.02, concerning: 0.05 };
+export const EMAIL_LOW_VOLUME_SENT = 50;

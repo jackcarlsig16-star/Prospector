@@ -597,23 +597,27 @@ app.post('/api/sales/:businessId/opportunities/:id/archive', async (req, res) =>
   }
 });
 
-// sales-hot-prospects-v1 - same dynamic-import-per-request pattern.
-const huddleRoute = (name, label) => async (req, res) => {
+// sales-hot-prospects-v1 / sales-email-trend-v1 - same dynamic-import-per-
+// request pattern, for modules that export several named handlers.
+const salesModuleRoute = (file, name, label) => async (req, res) => {
   try {
-    const mod = await import('./api/sales/huddleRoutes.js');
+    const mod = await import(file);
     return mod[name](req, res);
   } catch (err) {
     console.error(`[sales/${label}] handler error:`, err);
     res.status(500).json({ error: err.message });
   }
 };
-app.get('/api/sales/:businessId/huddle', huddleRoute('huddleRoute', 'huddle'));
-app.post('/api/sales/:businessId/huddles', huddleRoute('startHuddleRoute', 'huddles'));
-app.patch('/api/sales/:businessId/prospects/:contactId', huddleRoute('updateProspectRoute', 'prospects/:contactId'));
-app.get('/api/sales/:businessId/collateral', huddleRoute('listCollateralRoute', 'collateral'));
-app.post('/api/sales/:businessId/collateral', huddleRoute('createCollateralRoute', 'collateral POST'));
-app.patch('/api/sales/:businessId/collateral/:id', huddleRoute('updateCollateralRoute', 'collateral/:id'));
-app.delete('/api/sales/:businessId/collateral/:id', huddleRoute('deleteCollateralRoute', 'collateral/:id DELETE'));
+app.get('/api/sales/:businessId/huddle', salesModuleRoute('./api/sales/huddleRoutes.js', 'huddleRoute', 'huddle'));
+app.post('/api/sales/:businessId/huddles', salesModuleRoute('./api/sales/huddleRoutes.js', 'startHuddleRoute', 'huddles'));
+app.patch('/api/sales/:businessId/prospects/:contactId', salesModuleRoute('./api/sales/huddleRoutes.js', 'updateProspectRoute', 'prospects/:contactId'));
+app.get('/api/sales/:businessId/collateral', salesModuleRoute('./api/sales/huddleRoutes.js', 'listCollateralRoute', 'collateral'));
+app.post('/api/sales/:businessId/collateral', salesModuleRoute('./api/sales/huddleRoutes.js', 'createCollateralRoute', 'collateral POST'));
+app.patch('/api/sales/:businessId/collateral/:id', salesModuleRoute('./api/sales/huddleRoutes.js', 'updateCollateralRoute', 'collateral/:id'));
+app.delete('/api/sales/:businessId/collateral/:id', salesModuleRoute('./api/sales/huddleRoutes.js', 'deleteCollateralRoute', 'collateral/:id DELETE'));
+app.get('/api/sales/:businessId/email-counts', salesModuleRoute('./api/sales/trendRoutes.js', 'emailCountsRoute', 'email-counts'));
+app.get('/api/sales/:businessId/events', salesModuleRoute('./api/sales/trendRoutes.js', 'listEventsRoute', 'events'));
+app.post('/api/sales/:businessId/events', salesModuleRoute('./api/sales/trendRoutes.js', 'createEventRoute', 'events POST'));
 
 app.post('/api/notify-pending', async (req, res) => {
   const { name, email, role } = req.body || {};

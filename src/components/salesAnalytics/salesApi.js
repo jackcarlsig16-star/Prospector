@@ -64,3 +64,28 @@ export async function triggerSync(businessId) {
   }
   return data.run;
 }
+
+// sales-email-trend-v1 REV2 - stored daily counts and chart events. Both
+// read the DB only; zero Apollo calls.
+export async function fetchEmailCounts(businessId) {
+  const res = await fetch(`/api/sales/${businessId}/email-counts`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to load email counts (${res.status})`);
+  return data;
+}
+
+export async function fetchSalesEvents(businessId) {
+  const res = await fetch(`/api/sales/${businessId}/events`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to load events (${res.status})`);
+  return data.events || [];
+}
+
+export async function createSalesEvent(businessId, payload) {
+  const res = await fetch(`/api/sales/${businessId}/events`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to add event (${res.status})`);
+  return data.event;
+}
