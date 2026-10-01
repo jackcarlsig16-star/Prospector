@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { C, mono } from '../../constants/colors';
 import { SA, SA_TYPE, SA_SHAPE } from './theme';
+import AlertsRow from './AlertsRow';
 import { WIDGETS } from './widgets.registry';
 import { fetchMetrics, fetchRuns, fetchEntities, fetchCohortBreakdown, triggerSync } from './salesApi';
 import { PERIOD_PRESETS, periodRange, previousPeriodRange, laDateString } from './periods';
@@ -256,6 +257,8 @@ export default function SalesAnalyticsTab({ businessId }) {
             </p>
           </div>
         </div>
+
+        {!loading && <AlertsRow allRows={allRows} entities={entities} lastRun={lastRun} />}
 
         {loading ? (
           <p style={{ ...SA_TYPE.body, fontSize: 13, color: SA.muted }}>Loading…</p>

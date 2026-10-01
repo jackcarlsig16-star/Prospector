@@ -1,5 +1,4 @@
-import { C, mono } from '../../constants/colors';
-import { SEMANTIC } from './palette';
+import { SA, SA_TYPE, SA_SHAPE } from './theme';
 import { rowsFor, lastValue, ratio, formatValue } from './computeMetric';
 import ExportButton from './ExportButton';
 import { exportWidgetCsv } from './exportCsv';
@@ -18,6 +17,15 @@ function truncate160(s) {
 // itself computes are a real rolling 7-day window, not lifetime, so the
 // header now says so explicitly rather than implying "all-time" by
 // omission.
+//
+// design-v1 Stage 2 - restyled to the mockup's compact-card look: address
+// + status pill, a 4-stat row (Sent/Delivered/Open rate/Replies - "Opened"
+// dropped from display since Open rate already carries that signal; the
+// raw count is still in the CSV export, just not shown as its own stat
+// here), "Status as of last sync" footer. The mockup's footer also names
+// partners@/benefits@ as "not yet sending" - not reproduced here since
+// that's a specific claim about mailboxes this component has no real data
+// confirming one way or the other; flagged rather than guessed.
 export default function MailboxHealth({ allRows, entities, widgetId = 'mailbox_health' }) {
   const entityById = new Map((entities?.mailboxes || []).map(m => [m.id, m]));
   const idsFromMetrics = new Set(
@@ -51,7 +59,7 @@ export default function MailboxHealth({ allRows, entities, widgetId = 'mailbox_h
   }).filter(m => m.sent !== null || m.active !== undefined);
 
   if (!mailboxes.length) {
-    return <p style={{ ...mono, fontSize: 12, color: C.dim, padding: '12px 0' }}>No mailbox data yet.</p>;
+    return <p style={{ ...SA_TYPE.body, fontSize: 12, color: SA.muted, padding: '12px 0' }}>No mailbox data yet.</p>;
   }
 
   const windowMailbox = mailboxes.find(m => m.dateFrom && m.dateTo);
@@ -78,38 +86,50 @@ export default function MailboxHealth({ allRows, entities, widgetId = 'mailbox_h
         ) : <span />}
         <ExportButton onClick={handleExport} />
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-      {mailboxes.map(m => {
-        const hasProblem = !!(m.unlinkErrorCode || m.inactiveReason);
-        return (
-          <div key={m.id} style={{ flex: '1 1 220px', minWidth: 200, padding: '12px 14px', background: C.card, border: `1px solid ${C.brd}`, borderRadius: 8 }}>
-            <p style={{ ...mono, fontSize: 11, color: m.active === false ? C.dim : C.txt, margin: '0 0 8px', wordBreak: 'break-all' }}>
-              {m.label}{m.active === false && ' (inactive)'}
-            </p>
-            {hasProblem && (
-              <div style={{ marginBottom: 10, padding: '8px 10px', background: `${SEMANTIC.problem}18`, border: `1px solid ${SEMANTIC.problem}66`, borderRadius: 6 }}>
-                <p style={{ ...mono, fontSize: 11, color: SEMANTIC.problem, fontWeight: 700, margin: '0 0 4px' }}>
-                  ⚠ Connection problem — reconnect this mailbox in Apollo
-                </p>
-                {m.unlinkErrorCode && (
-                  <p style={{ ...mono, fontSize: 10, color: C.mut, margin: '0 0 3px' }}>{m.unlinkErrorCode}</p>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {mailboxes.map(m => {
+          const hasProblem = !!(m.unlinkErrorCode || m.inactiveReason);
+          return (
+            <div key={m.id} style={{ padding: '14px 16px', background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <span style={{ ...SA_TYPE.body, fontSize: 14, fontWeight: 500, color: m.active === false ? SA.muted : SA.text, wordBreak: 'break-all' }}>
+                  {m.label}{m.active === false && ' (inactive)'}
+                </span>
+                {hasProblem && (
+                  <span style={{ fontSize: 11, fontWeight: 600, color: SA.bad, background: `${SA.bad}1A`, borderRadius: SA_SHAPE.radiusPill, padding: '4px 10px', flexShrink: 0 }}>
+                    Connection error
+                  </span>
                 )}
-                <p style={{ ...mono, fontSize: 10, color: C.mut, margin: 0, lineHeight: 1.4 }}>
-                  {truncate160(m.unlinkErrorMessage || m.inactiveReason)}
-                </p>
               </div>
-            )}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, ...mono, fontSize: 12 }}>
-              <span style={{ color: C.dim }}>Sent</span><span style={{ color: C.txt, textAlign: 'right' }}>{formatValue(m.sent, 'number')}</span>
-              <span style={{ color: C.dim }}>Delivered</span><span style={{ color: C.txt, textAlign: 'right' }}>{formatValue(m.delivered, 'number')}</span>
-              <span style={{ color: C.dim }}>Opened</span><span style={{ color: C.txt, textAlign: 'right' }}>{formatValue(m.opened, 'number')}</span>
-              <span style={{ color: C.dim }}>Replied</span><span style={{ color: C.txt, textAlign: 'right' }}>{formatValue(m.replied, 'number')}</span>
-              <span style={{ color: C.dim }}>Open Rate</span><span style={{ color: C.txt, textAlign: 'right' }}>{formatValue(m.openRate, 'percent')}</span>
+              {hasProblem && (
+                <div style={{ fontSize: 11, color: SA.faint, lineHeight: 1.4 }}>
+                  {m.unlinkErrorCode && <span style={{ fontWeight: 600, color: SA.muted }}>{m.unlinkErrorCode}: </span>}
+                  {truncate160(m.unlinkErrorMessage || m.inactiveReason)}
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ fontSize: 11, color: SA.muted }}>Sent</span>
+                  <span style={{ ...SA_TYPE.body, fontSize: 17, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: SA.text }}>{formatValue(m.sent, 'number')}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ fontSize: 11, color: SA.muted }}>Delivered</span>
+                  <span style={{ ...SA_TYPE.body, fontSize: 17, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: SA.text }}>{formatValue(m.delivered, 'number')}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ fontSize: 11, color: SA.muted }}>Open rate</span>
+                  <span style={{ ...SA_TYPE.body, fontSize: 17, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: SA.text }}>{formatValue(m.openRate, 'percent')}</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ fontSize: 11, color: SA.muted }}>Replies</span>
+                  <span style={{ ...SA_TYPE.body, fontSize: 17, fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: SA.text }}>{formatValue(m.replied, 'number')}</span>
+                </div>
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
       </div>
+      <div style={{ fontSize: 12, color: SA.faint, marginTop: 12 }}>Status as of last sync.</div>
     </div>
   );
 }
