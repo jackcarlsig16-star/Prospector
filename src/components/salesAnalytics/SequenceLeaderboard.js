@@ -1,5 +1,5 @@
 import { useState, useEffect, Fragment } from 'react';
-import { SA, SA_TYPE, SA_SHAPE } from './theme';
+import { SA, SA_TYPE, SA_SHAPE, SA_BAD_TINT, SA_BAD_BG } from './theme';
 import { formatValue } from './computeMetric';
 import { cohortColor, bounceHealthColor } from './palette';
 import { COHORTS } from './metrics.registry';
@@ -26,20 +26,28 @@ const GROUP_OPTIONS = [
 // cell; Delivered gets an inline bar; Partner stays, real functionality
 // the mockup's static image just didn't draw, same as the header's kept
 // Compare checkbox in Stage 1).
+// Widths trimmed in design-v1 Stage 4 (from 120/110/52/160/64/64/150 for
+// cohort/sender/steps/delivered/open/reply/health) after actually reading
+// the rendered PDF: the original widths put TABLE_MIN_WIDTH at ~1062px,
+// wider than landscape letter's printable area minus the widget card's
+// own padding (~935px), so Partner/Health were getting clipped off the
+// right edge with no way to scroll in a static PDF. These widths apply on
+// screen too (one shared definition, not a print-only override) - still
+// comfortable there, just slightly more compact.
 const LEADERBOARD_COLUMNS = [
   { id: 'expand', label: '', sortKey: null, width: 28, align: 'left' },
   { id: 'name', label: 'Sequence', sortKey: 'name', width: null, align: 'left' },
-  { id: 'cohort', label: 'Cohort', sortKey: null, width: 120, align: 'left' },
-  { id: 'sender', label: 'Sender', sortKey: 'senderEmail', width: 110, align: 'left' },
-  { id: 'steps', label: 'Steps', sortKey: 'numSteps', width: 52, align: 'right' },
-  { id: 'delivered', label: 'Delivered', sortKey: 'delivered', width: 160, align: 'right' },
-  { id: 'open', label: 'Open', sortKey: 'openRate', width: 64, align: 'right' },
-  { id: 'reply', label: 'Reply', sortKey: 'replyRate', width: 64, align: 'right' },
-  { id: 'bounce', label: 'Bounce', sortKey: 'bounceRate', width: 80, align: 'right' },
-  { id: 'partner', label: 'Partner', sortKey: null, width: 64, align: 'left' },
-  { id: 'health', label: 'Health', sortKey: null, width: 150, align: 'left' },
+  { id: 'cohort', label: 'Cohort', sortKey: null, width: 100, align: 'left' },
+  { id: 'sender', label: 'Sender', sortKey: 'senderEmail', width: 90, align: 'left' },
+  { id: 'steps', label: 'Steps', sortKey: 'numSteps', width: 46, align: 'right' },
+  { id: 'delivered', label: 'Delivered', sortKey: 'delivered', width: 130, align: 'right' },
+  { id: 'open', label: 'Open', sortKey: 'openRate', width: 58, align: 'right' },
+  { id: 'reply', label: 'Reply', sortKey: 'replyRate', width: 58, align: 'right' },
+  { id: 'bounce', label: 'Bounce', sortKey: 'bounceRate', width: 72, align: 'right' },
+  { id: 'partner', label: 'Partner', sortKey: null, width: 58, align: 'left' },
+  { id: 'health', label: 'Health', sortKey: null, width: 120, align: 'left' },
 ];
-const NAME_COL_MIN_WIDTH = 170; // REVISABLE starting value, per SPEC
+const NAME_COL_MIN_WIDTH = 150; // REVISABLE starting value, per SPEC
 const NAME_COL_LEFT = LEADERBOARD_COLUMNS[0].width; // sticky offset for the name column = the expand column's width
 const TABLE_MIN_WIDTH = LEADERBOARD_COLUMNS.reduce((sum, c) => sum + (c.width ?? NAME_COL_MIN_WIDTH), 0);
 
@@ -131,18 +139,26 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
   // Reports a human-readable summary up to the parent so the print-only
   // PDF header can state "filters applied" without lifting all of this
   // state itself (dashboard-v2 Stage 5 requirement).
+  // design-v1 Stage 4 (Jack's correction): a readable sentence, not a raw
+  // "key: value; key: value" dump - the PDF's print-only header renders
+  // this verbatim with no further transformation, so it has to already
+  // read as a sentence. Default filter state produces exactly the SPEC's
+  // own quoted example: "Showing all cohorts · active sequences ·
+  // grouped by cohort". Non-default filters are appended in the same
+  // prose style; defaults (Partner: all, Sender: all, Health: all) are
+  // omitted rather than stated, since "all" isn't information.
   useEffect(() => {
-    const cohortLabel = cohortFilter.size === COHORTS.length ? 'all cohorts' : `cohorts: ${[...cohortFilter].join(', ') || 'none'}`;
+    const cohortLabel = cohortFilter.size === COHORTS.length ? 'all cohorts' : (cohortFilter.size ? `${[...cohortFilter].join(', ')} cohorts` : 'no cohorts');
     const parts = [
       cohortLabel,
-      `Partner: ${partnerFilter === 'all' ? 'all' : partnerFilter}`,
-      `Sender: ${senderFilter === 'all' ? 'all' : senderFilter}`,
-      `Status: ${statusFilter}`,
-      `Health: ${healthFilter === 'all' ? 'all' : 'needs attention'}`,
-      search.trim() ? `Search: "${search.trim()}"` : null,
-      `Grouped by: ${groupBy}`,
+      partnerFilter !== 'all' ? (partnerFilter === 'direct' ? 'Direct only' : 'Partner only') : null,
+      senderFilter !== 'all' ? senderFilter : null,
+      statusFilter === 'all' ? 'all statuses' : `${statusFilter} sequences`,
+      healthFilter !== 'all' ? 'needs attention' : null,
+      search.trim() ? `matching "${search.trim()}"` : null,
+      `grouped by ${groupBy}`,
     ].filter(Boolean);
-    onFiltersChanged?.(`Sequences — ${parts.join('; ')} (showing ${filtered.length} of ${totalCount})`);
+    onFiltersChanged?.(`Showing ${parts.join(' · ')} (${filtered.length} of ${totalCount} sequences)`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cohortFilter, partnerFilter, senderFilter, statusFilter, healthFilter, search, groupBy, filtered.length, totalCount]);
 
@@ -288,20 +304,20 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
     const expanded = expandedIds.has(r.id);
     const saving = savingId === r.id;
     const rowError = errorById[r.id];
-    const rowBg = tinted ? `${SA.bad}0D` : undefined;
+    const rowBg = tinted ? SA_BAD_TINT : undefined;
     const cellStyle = { padding: '10px 10px', color: SA.text, borderBottom: `1px solid ${SA.border}`, background: rowBg };
     const numericCellStyle = { ...cellStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
     return (
       <Fragment key={r.id}>
         <tr>
           <td
-            style={{ ...cellStyle, padding: '10px 4px', cursor: 'pointer', color: SA.muted, textAlign: 'center', ...stickyCellStyle('expand', tinted ? `${SA.bad}0D` : SA.surface) }}
+            style={{ ...cellStyle, padding: '10px 4px', cursor: 'pointer', color: SA.muted, textAlign: 'center', ...stickyCellStyle('expand', tinted ? SA_BAD_TINT : SA.surface) }}
             onClick={() => toggleExpand(r.id)}
           >
             {expanded ? '▾' : '▸'}
           </td>
           <td
-            style={{ ...cellStyle, color: r.active === false ? SA.muted : SA.text, fontWeight: 500, cursor: 'pointer', maxWidth: 0, ...stickyCellStyle('name', tinted ? `${SA.bad}0D` : SA.surface) }}
+            style={{ ...cellStyle, color: r.active === false ? SA.muted : SA.text, fontWeight: 500, cursor: 'pointer', maxWidth: 0, ...stickyCellStyle('name', tinted ? SA_BAD_TINT : SA.surface) }}
             onClick={() => toggleExpand(r.id)}
             title={r.name}
           >
@@ -338,7 +354,7 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
           </td>
           <td style={cellStyle}>
             {r.isPerformingPoorly ? (
-              <span style={{ fontSize: 11, fontWeight: 600, color: SA.bad, background: `${SA.bad}1A`, borderRadius: SA_SHAPE.radiusPill, padding: '4px 10px', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: SA.bad, background: SA_BAD_BG, borderRadius: SA_SHAPE.radiusPill, padding: '4px 10px', whiteSpace: 'nowrap' }}>
                 Underperforming
               </span>
             ) : (

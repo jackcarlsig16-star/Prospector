@@ -1,4 +1,4 @@
-import { SA, SA_TYPE, SA_SHAPE } from './theme';
+import { SA, SA_TYPE, SA_SHAPE, SA_BAD_BG } from './theme';
 import { rowsFor, lastValue, ratio, formatValue } from './computeMetric';
 import ExportButton from './ExportButton';
 import { exportWidgetCsv } from './exportCsv';
@@ -96,7 +96,7 @@ export default function MailboxHealth({ allRows, entities, widgetId = 'mailbox_h
                   {m.label}{m.active === false && ' (inactive)'}
                 </span>
                 {hasProblem && (
-                  <span style={{ fontSize: 11, fontWeight: 600, color: SA.bad, background: `${SA.bad}1A`, borderRadius: SA_SHAPE.radiusPill, padding: '4px 10px', flexShrink: 0 }}>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: SA.bad, background: SA_BAD_BG, borderRadius: SA_SHAPE.radiusPill, padding: '4px 10px', flexShrink: 0 }}>
                     Connection error
                   </span>
                 )}

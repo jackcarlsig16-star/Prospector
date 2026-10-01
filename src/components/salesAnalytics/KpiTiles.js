@@ -127,7 +127,7 @@ export default function KpiTiles({ allRows, periodRows, prevPeriod, entities, co
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
         <ExportButton onClick={handleExport} />
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+      <div className="sa-kpi-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
         <Tile
           label="Companies in cadence" noValue={companies === null} compareEnabled={compareEnabled}
           value={formatValue(companies, 'number')} scope={`of ${COMPANIES_TARGET} target`}

@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { C, mono } from '../../constants/colors';
-import { SA, SA_TYPE, SA_SHAPE } from './theme';
+import { SA, SA_TYPE, SA_SHAPE, SA_THEME_CSS, SA_THEME_ROOT_ID, SA_BAD_BG, SA_BAD_BORDER, saSans } from './theme';
 import AlertsRow from './AlertsRow';
 import { WIDGETS } from './widgets.registry';
 import { fetchMetrics, fetchRuns, fetchEntities, fetchCohortBreakdown, triggerSync } from './salesApi';
@@ -22,6 +21,14 @@ const SPARKLINE_LOOKBACK_DAYS = 56; // ~8 weeks
 const PRINT_STYLES = `
   .print-only { display: none; }
   @media print {
+    /* The app's global body background is dark (constants/tokens.js HUD
+       theme) and "body * { visibility: hidden }" below only hides body's
+       DESCENDANTS, never body itself - found while actually reading the
+       rendered PDF: any page space the absolutely-positioned print area
+       doesn't cover showed that dark background through as a stark black
+       block, invisible as a bug on the old dark-on-dark PDF but glaring
+       now that the print theme is white. */
+    body { background: #FFFFFF; }
     body * { visibility: hidden; }
     #sales-analytics-print-area, #sales-analytics-print-area * { visibility: visible; }
     #sales-analytics-print-area { position: absolute; left: 0; top: 0; width: 100%; }
@@ -36,6 +43,14 @@ const PRINT_STYLES = `
   .sa-row-1fr1fr { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   @media (max-width: 1100px) {
     .sa-row-2fr1fr, .sa-row-1fr1fr { grid-template-columns: minmax(0, 1fr); }
+  }
+  /* Jack's Stage 4 correction: the KPI row's flex-wrap let Bounce Rate
+     wrap to its own line on the real printed page (page width minus the
+     widget card's own padding left less room than the flex-basis math
+     assumed). A fixed 5-column grid in print removes the ambiguity -
+     screen keeps the flexible flex-wrap layout unchanged. */
+  @media print {
+    .sa-kpi-row { display: grid !important; grid-template-columns: repeat(5, minmax(0, 1fr)) !important; gap: 10px !important; }
   }
 `;
 
@@ -190,7 +205,8 @@ export default function SalesAnalyticsTab({ businessId }) {
   };
 
   return (
-    <div style={{ background: SA.ground, minHeight: '100%', padding: '0 0 32px' }}>
+    <div id={SA_THEME_ROOT_ID} style={{ ...saSans, background: SA.ground, color: SA.text, minHeight: '100%', padding: '0 0 32px' }}>
+      <style>{SA_THEME_CSS}</style>
       <style>{PRINT_STYLES}</style>
       <div style={{ maxWidth: 1360, margin: '0 auto' }}>
 
@@ -266,31 +282,32 @@ export default function SalesAnalyticsTab({ businessId }) {
       </div>
 
       {error && (
-        <div className="no-print" style={{ fontSize: 13, color: SA.bad, padding: '10px 14px', background: `${SA.bad}18`, border: `1px solid ${SA.bad}44`, borderRadius: SA_SHAPE.radiusInner, marginBottom: 16 }}>
+        <div className="no-print" style={{ fontSize: 13, color: SA.bad, padding: '10px 14px', background: SA_BAD_BG, border: `1px solid ${SA_BAD_BORDER}`, borderRadius: SA_SHAPE.radiusInner, marginBottom: 16 }}>
           ⚠ {error}
         </div>
       )}
 
       <div id="sales-analytics-print-area">
-        {/* Print-only header - never shown on screen (dashboard-v2 Stage 5).
-            "Goals & Weekly Priorities" is a reserved, explicitly-empty slot -
-            sales-goals-v1 fills it; not built here. Section order below this
-            point is a flagged interim: no scorecard or Seif's 15-section
-            report exist in this codebase yet (both are separate, un-started
-            SPECs), so this prints the dashboard's own existing widget order,
-            not a scorecard-first order. */}
+        {/* Print-only header - never shown on screen (dashboard-v2 Stage 5,
+            restyled design-v1 Stage 4). No developer/placeholder text
+            (DECIDED "honesty and labels"): the Goals & Weekly Priorities
+            reserved-slot box is gone - sales-goals-v1 renders its real
+            block when it ships, same "render nothing until it's real"
+            rule the Weekly Scorecard slot already follows. The filters
+            line is SequenceLeaderboard's own readable sentence (built in
+            its onFiltersChanged, not a raw "key: value" dump) - no
+            separate "Filters applied:" label needed, the sentence already
+            reads as one. Section order is still a flagged interim: no
+            scorecard or Seif's 15-section report exist in this codebase
+            yet (separate, un-started SPECs), so this prints the
+            dashboard's own existing widget order. */}
         <div className="print-only" style={{ marginBottom: 16 }}>
-          <p style={{ ...mono, fontSize: 16, fontWeight: 700, color: '#000', margin: '0 0 4px' }}>
+          <p style={{ ...SA_TYPE.cardTitle, fontSize: 16, color: SA.text, margin: '0 0 4px' }}>
             HomeLover · Sales Analytics · {presetLabel} ({period.from} – {period.to}) · as of {lastSyncLabel}
           </p>
-          <p style={{ ...mono, fontSize: 10, color: '#444', margin: '0 0 10px' }}>
-            Filters applied: {filterSummary || 'default (Active sequences, all cohorts, all senders)'}
-          </p>
-          <div style={{ padding: '10px 12px', border: '1px dashed #999', borderRadius: 4, marginBottom: 4 }}>
-            <p style={{ ...mono, fontSize: 11, color: '#666', margin: 0 }}>
-              Goals &amp; Weekly Priorities — reserved slot, filled by sales-goals-v1 (not yet built)
-            </p>
-          </div>
+          {filterSummary && (
+            <p style={{ ...SA_TYPE.body, fontSize: 11, color: SA.muted, margin: 0 }}>{filterSummary}</p>
+          )}
         </div>
 
         {!loading && <AlertsRow allRows={allRows} entities={entities} runs={runs} />}
