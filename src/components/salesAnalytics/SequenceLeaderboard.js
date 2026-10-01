@@ -16,15 +16,36 @@ const GROUP_OPTIONS = [
   { id: 'partner', label: 'Partner' },
   { id: 'none', label: 'None' },
 ];
-const SORT_COLUMNS = [
-  { key: 'name', label: 'Sequence' },
-  { key: 'senderEmail', label: 'Sender' },
-  { key: 'numSteps', label: 'Steps' },
-  { key: 'delivered', label: 'Delivered' },
-  { key: 'openRate', label: 'Open %' },
-  { key: 'replyRate', label: 'Reply %' },
-  { key: 'bounceRate', label: 'Bounce %' },
+
+// sales-leaderboard-alignment-v1 - ONE column definition (id, label, sort
+// key, width, alignment), shared by the <colgroup> and every <th>/<td> in
+// every table on this widget (the header table-less layout, and one
+// <table> per group when grouped). Measured root cause (not the guessed
+// one): header/body cells inside a single <table> already matched to
+// 0.0px natively - browsers share column widths between thead/tbody. The
+// real drift (up to 90.9px at 1440px) was CROSS-table: grouped mode
+// renders one independent <table> per group, each auto-sizing its own
+// columns from only its own rows. table-layout:fixed + this shared
+// <colgroup> (same widths on every table) fixes that at the source.
+// `width: null` (name) is the one flexible column - with no <col> width
+// set, fixed-layout tables give it 100% of whatever space remains above
+// TABLE_MIN_WIDTH, which plays the role of minmax(220px, 1fr).
+const LEADERBOARD_COLUMNS = [
+  { id: 'expand', label: '', sortKey: null, width: 28, align: 'left' },
+  { id: 'name', label: 'Sequence', sortKey: 'name', width: null, align: 'left' },
+  { id: 'sender', label: 'Sender', sortKey: 'senderEmail', width: 150, align: 'left' },
+  { id: 'steps', label: 'Steps', sortKey: 'numSteps', width: 56, align: 'right' },
+  { id: 'delivered', label: 'Delivered', sortKey: 'delivered', width: 92, align: 'right' },
+  { id: 'open', label: 'Open %', sortKey: 'openRate', width: 70, align: 'right' },
+  { id: 'reply', label: 'Reply %', sortKey: 'replyRate', width: 70, align: 'right' },
+  { id: 'bounce', label: 'Bounce %', sortKey: 'bounceRate', width: 82, align: 'right' },
+  { id: 'partner', label: 'Partner', sortKey: null, width: 72, align: 'left' },
+  { id: 'health', label: 'Health', sortKey: null, width: 172, align: 'left' },
 ];
+const NAME_COL_MIN_WIDTH = 220; // REVISABLE starting value, per SPEC
+const NAME_COL_LEFT = LEADERBOARD_COLUMNS[0].width; // sticky offset for the name column = the expand column's width
+const TABLE_MIN_WIDTH = LEADERBOARD_COLUMNS.reduce((sum, c) => sum + (c.width ?? NAME_COL_MIN_WIDTH), 0);
+
 const EXPAND_COUNTER_ROWS = [
   ['unique_scheduled', 'Scheduled'], ['unique_delivered', 'Delivered'], ['unique_opened', 'Opened'],
   ['unique_clicked', 'Clicked'], ['unique_replied', 'Replied'], ['unique_bounced', 'Bounced'],
@@ -42,6 +63,25 @@ function fmtDate(iso) {
   if (!iso) return '—';
   try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
   catch { return '—'; }
+}
+
+// Fixed-width (never shrinks when empty) so an appearing/disappearing sort
+// arrow can't shift the header label itself - measured requirement from
+// sales-leaderboard-alignment-v1 ("sort arrows don't shift the label text").
+function SortIndicator({ active, desc }) {
+  return <span style={{ display: 'inline-block', width: 10, flexShrink: 0, textAlign: 'center' }}>{active ? (desc ? '▼' : '▲') : ''}</span>;
+}
+
+// Same column definition reused by every <table> on this widget (ungrouped,
+// and once per group) - this is the fix for the measured cross-table drift.
+function Colgroup() {
+  return (
+    <colgroup>
+      {LEADERBOARD_COLUMNS.map(col => (
+        <col key={col.id} style={col.width ? { width: col.width } : undefined} />
+      ))}
+    </colgroup>
+  );
 }
 
 // dashboard-v2 Stage 4 - the full sequence-area redesign: filter bar,
@@ -114,6 +154,7 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
   };
 
   const toggleSort = key => {
+    if (!key) return;
     if (sortKey === key) setSortDesc(d => !d);
     else { setSortKey(key); setSortDesc(true); }
   };
@@ -203,6 +244,121 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
   });
   const selectStyle = { ...mono, fontSize: 11, padding: '3px 7px', background: C.bg, border: `1px solid ${C.brd}`, borderRadius: 5, color: C.txt };
 
+  // Sticky cells (expand arrow + name) need their own opaque background -
+  // otherwise horizontally-scrolled-under content shows through while
+  // pinned (SPEC: "name column stays pinned on the left" at narrow widths).
+  // "Header is sticky inside the table's scroll area" is implemented as:
+  // the header's own arrow/name cells share these same sticky offsets, so
+  // they stay aligned with the pinned body column during horizontal
+  // scroll, instead of scrolling away from it (flagged back in the report
+  // as the practical reading - there's no bounded-height vertical scroll
+  // region here for a top:0 vertical sticky header to apply to).
+  const stickyCellStyle = (colId, bg) => {
+    if (colId !== 'expand' && colId !== 'name') return {};
+    return { position: 'sticky', left: colId === 'expand' ? 0 : NAME_COL_LEFT, zIndex: colId === 'expand' ? 3 : 2, background: bg };
+  };
+
+  const renderHeader = () => (
+    <thead>
+      <tr>
+        {LEADERBOARD_COLUMNS.map(col => (
+          <th
+            key={col.id}
+            onClick={() => toggleSort(col.sortKey)}
+            style={{
+              textAlign: col.align, padding: '6px 10px', color: col.sortKey && sortKey === col.sortKey ? C.txt : C.dim,
+              fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: `1px solid ${C.brd}`,
+              cursor: col.sortKey ? 'pointer' : 'default', userSelect: 'none', overflow: 'hidden',
+              ...stickyCellStyle(col.id, C.card),
+            }}
+          >
+            {col.label && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, justifyContent: col.align === 'right' ? 'flex-end' : 'flex-start', width: '100%' }}>
+                {col.align === 'right' && <SortIndicator active={sortKey === col.sortKey} desc={sortDesc} />}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{col.label}</span>
+                {col.align !== 'right' && col.sortKey && <SortIndicator active={sortKey === col.sortKey} desc={sortDesc} />}
+              </span>
+            )}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  );
+
+  const renderRows = rows => rows.map(r => {
+    const flagged = r.bounceRate !== null && r.bounceRate > BOUNCE_FLAG_THRESHOLD;
+    const expanded = expandedIds.has(r.id);
+    const saving = savingId === r.id;
+    const rowError = errorById[r.id];
+    const numericCellStyle = { padding: '7px 10px', color: C.txt, borderBottom: `1px solid ${C.brd}`, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
+    return (
+      <Fragment key={r.id}>
+        <tr>
+          <td
+            style={{ padding: '7px 4px', borderBottom: `1px solid ${C.brd}`, cursor: 'pointer', color: C.dim, textAlign: 'center', ...stickyCellStyle('expand', C.card) }}
+            onClick={() => toggleExpand(r.id)}
+          >
+            {expanded ? '▾' : '▸'}
+          </td>
+          <td
+            style={{ padding: '7px 10px', color: r.active === false ? C.dim : C.txt, borderBottom: `1px solid ${C.brd}`, borderRight: `1px solid ${C.brd}`, cursor: 'pointer', maxWidth: 0, ...stickyCellStyle('name', C.card) }}
+            onClick={() => toggleExpand(r.id)}
+            title={r.name}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', minWidth: 0 }}>
+              <span data-cohort-dot={r.cohort} style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: cohortColor(r.cohort), marginRight: 7, flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}{r.active === false && ' (inactive)'}</span>
+            </div>
+          </td>
+          <td style={{ padding: '7px 10px', color: C.mut, borderBottom: `1px solid ${C.brd}`, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.senderEmail || 'Unknown'}>
+            {r.senderEmail || 'Unknown'}
+          </td>
+          <td style={numericCellStyle}>{r.numSteps ?? '—'}</td>
+          <td style={numericCellStyle}>{formatValue(r.delivered, 'number')}</td>
+          <td style={numericCellStyle}>{formatValue(r.openRate, 'percent')}</td>
+          <td style={numericCellStyle}>{formatValue(r.replyRate, 'percent')}</td>
+          <td style={{ ...numericCellStyle, color: flagged ? SEMANTIC.problem : C.txt }}>
+            {formatValue(r.bounceRate, 'percent')} {flagged && '⚠'}
+          </td>
+          <td style={{ padding: '7px 10px', borderBottom: `1px solid ${C.brd}`, overflow: 'hidden' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.5 : 1 }}>
+              <input type="checkbox" checked={r.isPartner} disabled={saving} onChange={() => handleTogglePartner(r)} />
+            </label>
+            {rowError && <div style={{ color: SEMANTIC.problem, fontSize: 9, marginTop: 2 }}>⚠ {rowError}</div>}
+          </td>
+          <td style={{ padding: '7px 10px', borderBottom: `1px solid ${C.brd}`, overflow: 'hidden', whiteSpace: 'nowrap' }}>
+            {r.isPerformingPoorly && (
+              <span style={{ ...mono, fontSize: 9, color: SEMANTIC.problem, background: `${SEMANTIC.problem}18`, border: `1px solid ${SEMANTIC.problem}66`, borderRadius: 8, padding: '1px 6px' }}>
+                Apollo: performing poorly
+              </span>
+            )}
+          </td>
+        </tr>
+        {expanded && (
+          <tr>
+            <td style={{ borderBottom: `1px solid ${C.brd}`, background: C.bg, ...stickyCellStyle('expand', C.bg) }} />
+            <td colSpan={LEADERBOARD_COLUMNS.length - 1} style={{ padding: '10px 14px', borderBottom: `1px solid ${C.brd}`, background: C.bg }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, marginBottom: 8 }}>
+                {EXPAND_COUNTER_ROWS.map(([key, label]) => (
+                  <div key={key}>
+                    <span style={{ ...mono, fontSize: 9, color: C.dim, textTransform: 'uppercase' }}>{label}</span>
+                    <div style={{ ...mono, fontSize: 13, color: C.txt }}>{formatValue(r.counters[key], 'number')}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, ...mono, fontSize: 11, color: C.mut }}>
+                <span>Click % <strong style={{ color: C.txt }}>{formatValue(r.clickRate, 'percent')}</strong></span>
+                <span>Unsubscribe % <strong style={{ color: C.txt }}>{formatValue(r.unsubscribeRate, 'percent')}</strong></span>
+                <span>Created <strong style={{ color: C.txt }}>{fmtDate(r.createdAt)}</strong></span>
+                <span>Apollo performing poorly <strong style={{ color: r.isPerformingPoorly ? SEMANTIC.problem : C.txt }}>{r.isPerformingPoorly ? 'Yes' : 'No'}</strong></span>
+              </div>
+            </td>
+          </tr>
+        )}
+      </Fragment>
+    );
+  });
+
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
@@ -273,85 +429,11 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
             <p style={{ ...mono, fontSize: 9, color: C.dim, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 6px' }}>{groupKey}</p>
           )}
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', ...mono, fontSize: 12 }}>
-              <thead>
-                <tr>
-                  <th style={{ width: 18 }} />
-                  {SORT_COLUMNS.map(col => (
-                    <th
-                      key={col.key}
-                      onClick={() => toggleSort(col.key)}
-                      style={{ textAlign: 'left', padding: '6px 10px', color: sortKey === col.key ? C.txt : C.dim, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: `1px solid ${C.brd}`, cursor: 'pointer', userSelect: 'none' }}
-                    >
-                      {col.label}{sortKey === col.key ? (sortDesc ? ' ▼' : ' ▲') : ''}
-                    </th>
-                  ))}
-                  <th style={{ textAlign: 'left', padding: '6px 10px', color: C.dim, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: `1px solid ${C.brd}` }}>Partner</th>
-                  <th style={{ textAlign: 'left', padding: '6px 10px', color: C.dim, fontSize: 9, textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: `1px solid ${C.brd}` }}>Health</th>
-                </tr>
-              </thead>
+            <table style={{ width: '100%', minWidth: TABLE_MIN_WIDTH, tableLayout: 'fixed', borderCollapse: 'collapse', ...mono, fontSize: 12 }}>
+              <Colgroup />
+              {renderHeader()}
               <tbody>
-                {groups.get(groupKey).map(r => {
-                  const flagged = r.bounceRate !== null && r.bounceRate > BOUNCE_FLAG_THRESHOLD;
-                  const expanded = expandedIds.has(r.id);
-                  const saving = savingId === r.id;
-                  const rowError = errorById[r.id];
-                  return (
-                    <Fragment key={r.id}>
-                      <tr>
-                        <td style={{ padding: '7px 4px', borderBottom: `1px solid ${C.brd}`, cursor: 'pointer', color: C.dim }} onClick={() => toggleExpand(r.id)}>
-                          {expanded ? '▾' : '▸'}
-                        </td>
-                        <td style={{ padding: '7px 10px', color: r.active === false ? C.dim : C.txt, borderBottom: `1px solid ${C.brd}`, cursor: 'pointer' }} onClick={() => toggleExpand(r.id)}>
-                          <span data-cohort-dot={r.cohort} style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: cohortColor(r.cohort), marginRight: 7 }} />
-                          {r.name}{r.active === false && ' (inactive)'}
-                        </td>
-                        <td style={{ padding: '7px 10px', color: C.mut, borderBottom: `1px solid ${C.brd}` }}>{r.senderEmail || 'Unknown'}</td>
-                        <td style={{ padding: '7px 10px', color: C.txt, borderBottom: `1px solid ${C.brd}` }}>{r.numSteps ?? '—'}</td>
-                        <td style={{ padding: '7px 10px', color: C.txt, borderBottom: `1px solid ${C.brd}` }}>{formatValue(r.delivered, 'number')}</td>
-                        <td style={{ padding: '7px 10px', color: C.txt, borderBottom: `1px solid ${C.brd}` }}>{formatValue(r.openRate, 'percent')}</td>
-                        <td style={{ padding: '7px 10px', color: C.txt, borderBottom: `1px solid ${C.brd}` }}>{formatValue(r.replyRate, 'percent')}</td>
-                        <td style={{ padding: '7px 10px', color: flagged ? SEMANTIC.problem : C.txt, borderBottom: `1px solid ${C.brd}` }}>
-                          {formatValue(r.bounceRate, 'percent')} {flagged && '⚠'}
-                        </td>
-                        <td style={{ padding: '7px 10px', borderBottom: `1px solid ${C.brd}` }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.5 : 1 }}>
-                            <input type="checkbox" checked={r.isPartner} disabled={saving} onChange={() => handleTogglePartner(r)} />
-                          </label>
-                          {rowError && <div style={{ color: SEMANTIC.problem, fontSize: 9, marginTop: 2 }}>⚠ {rowError}</div>}
-                        </td>
-                        <td style={{ padding: '7px 10px', borderBottom: `1px solid ${C.brd}` }}>
-                          {r.isPerformingPoorly && (
-                            <span style={{ ...mono, fontSize: 9, color: SEMANTIC.problem, background: `${SEMANTIC.problem}18`, border: `1px solid ${SEMANTIC.problem}66`, borderRadius: 8, padding: '1px 6px' }}>
-                              Apollo: performing poorly
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                      {expanded && (
-                        <tr>
-                          <td />
-                          <td colSpan={8} style={{ padding: '10px 14px', borderBottom: `1px solid ${C.brd}`, background: C.bg }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, marginBottom: 8 }}>
-                              {EXPAND_COUNTER_ROWS.map(([key, label]) => (
-                                <div key={key}>
-                                  <span style={{ ...mono, fontSize: 9, color: C.dim, textTransform: 'uppercase' }}>{label}</span>
-                                  <div style={{ ...mono, fontSize: 13, color: C.txt }}>{formatValue(r.counters[key], 'number')}</div>
-                                </div>
-                              ))}
-                            </div>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, ...mono, fontSize: 11, color: C.mut }}>
-                              <span>Click % <strong style={{ color: C.txt }}>{formatValue(r.clickRate, 'percent')}</strong></span>
-                              <span>Unsubscribe % <strong style={{ color: C.txt }}>{formatValue(r.unsubscribeRate, 'percent')}</strong></span>
-                              <span>Created <strong style={{ color: C.txt }}>{fmtDate(r.createdAt)}</strong></span>
-                              <span>Apollo performing poorly <strong style={{ color: r.isPerformingPoorly ? SEMANTIC.problem : C.txt }}>{r.isPerformingPoorly ? 'Yes' : 'No'}</strong></span>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </Fragment>
-                  );
-                })}
+                {renderRows(groups.get(groupKey))}
               </tbody>
             </table>
           </div>
