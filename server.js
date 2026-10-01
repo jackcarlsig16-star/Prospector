@@ -18,6 +18,7 @@ const GOOGLE_SCOPES  = 'https://www.googleapis.com/auth/gmail.modify https://www
 
 const app = express();
 app.set('trust proxy', 1); // Render terminates TLS — trust X-Forwarded-Proto
+app.use(require('./api/basicAuth.js').basicAuth);
 // verify captures the raw request bytes as req.rawBody - needed for webhook
 // HMAC signature verification (api/lib/webhookHandler.js), since the
 // re-serialized parsed body isn't guaranteed to match what a provider signed.
