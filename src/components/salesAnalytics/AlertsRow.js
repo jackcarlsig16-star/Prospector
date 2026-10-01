@@ -7,8 +7,8 @@ const SEVERITY_COLOR = { bad: SA.bad, warn: SA.warn };
 // rendered outside the normal widget registry loop since it needs its own
 // multi-card grid with no title bar, and must disappear completely rather
 // than show an empty-card shell.
-export default function AlertsRow({ allRows, entities, lastRun }) {
-  const alerts = computeAlerts({ allRows, entities, lastRun });
+export default function AlertsRow({ allRows, entities, runs }) {
+  const alerts = computeAlerts({ allRows, entities, runs });
   if (!alerts.length) return null;
 
   return (

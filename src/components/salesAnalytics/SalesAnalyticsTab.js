@@ -258,7 +258,7 @@ export default function SalesAnalyticsTab({ businessId }) {
           </div>
         </div>
 
-        {!loading && <AlertsRow allRows={allRows} entities={entities} lastRun={lastRun} />}
+        {!loading && <AlertsRow allRows={allRows} entities={entities} runs={runs} />}
 
         {loading ? (
           <p style={{ ...SA_TYPE.body, fontSize: 13, color: SA.muted }}>Loading…</p>

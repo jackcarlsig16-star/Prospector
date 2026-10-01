@@ -8,16 +8,19 @@ const BOUNCE_ALERT_THRESHOLD = 0.05; // SPEC: "bounce > 5%"
 const BOUNCE_ALERT_MIN_DELIVERED = 20; // SPEC: "≥20 delivered"
 const STALE_SYNC_HOURS = 26; // SPEC starting value
 
-// design-v1 Stage 2 interpretation, flagged: "last scheduled cron sync"
-// is read the same way the header's own existing "Synced <time>" chip
-// already reads it - the latest non-test run of ANY trigger (cron or
-// manual), not a cron-only cutoff. A cron-only reading would make this
-// rule fire constantly in the real-today state (zero cron-triggered runs
-// have ever completed yet - confirmed in an earlier read-only check),
-// which would be noise rather than the real signal Seif needs ("am I
-// getting fresh data at all"). Flag back if a stricter cron-only check
-// was actually intended.
-export function computeAlerts({ allRows, entities, lastRun }) {
+// Jack's correction after Stage 2 review: this rule's job is specifically
+// to catch the 6am cron job not running, which a recent MANUAL sync would
+// otherwise mask. Cron-only, with a fixed floor so the rule can't fire
+// before the cron job has had its first real chance to run - the feature
+// shipped today (2026-09-30), so the floor is this evening's job,
+// 2026-09-30 06:00 America/Los_Angeles (PDT, UTC-7 in late September).
+// reference = max(last successful cron run, that floor); fires when
+// now - reference > 26h, so the earliest possible fire is the floor plus
+// 26h (~2026-10-01 08:00 PT), and after that it fires whenever the 6am
+// job actually misses a day.
+const CRON_FLOOR_ISO = '2026-09-30T06:00:00-07:00';
+
+export function computeAlerts({ allRows, entities, runs }) {
   const alerts = [];
 
   // Rule 1 - any active sequence with >=20 delivered and bounce > 5%,
@@ -69,15 +72,18 @@ export function computeAlerts({ allRows, entities, lastRun }) {
     });
   }
 
-  // Rule 3 - staleness.
-  const referenceTime = lastRun ? new Date(lastRun.finished_at || lastRun.started_at).getTime() : null;
-  const hoursSince = referenceTime ? (Date.now() - referenceTime) / 3600000 : Infinity;
+  // Rule 3 - staleness, cron-only (see CRON_FLOOR_ISO comment above).
+  const lastCronSuccess = (runs || []).find(r => r.trigger === 'cron' && r.status === 'success') || null;
+  const lastCronTime = lastCronSuccess ? new Date(lastCronSuccess.finished_at || lastCronSuccess.started_at).getTime() : -Infinity;
+  const floorTime = new Date(CRON_FLOOR_ISO).getTime();
+  const referenceTime = Math.max(lastCronTime, floorTime);
+  const hoursSince = (Date.now() - referenceTime) / 3600000;
   if (hoursSince > STALE_SYNC_HOURS) {
     alerts.push({
       key: 'stale-sync',
       severity: 'warn',
       title: 'Daily sync missed',
-      action: lastRun ? `Last synced ${Math.round(hoursSince)}h ago.` : 'No sync has run yet.',
+      action: lastCronSuccess ? `Last successful cron sync ${Math.round(hoursSince)}h ago.` : 'No cron sync has completed yet.',
     });
   }
 
