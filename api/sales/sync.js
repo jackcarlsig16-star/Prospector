@@ -7,6 +7,7 @@ import * as accounts from './adapters/accounts.js';
 import * as prospects from './adapters/prospects.js';
 import * as mailboxes from './adapters/mailboxes.js';
 import { syncActivity, ACTIVITY_MAX_CALLS } from './activitySync.js';
+import { refreshRecentWeeks, EMAIL_COUNTS_MAX_CALLS } from './emailCounts.js';
 
 // PROPOSED values (SPEC) - sized from real counts in the audit (21
 // sequences, 314 accounts, 9 active sequences, 2 mailboxes), confirmed at
@@ -219,16 +220,38 @@ export async function runSync({ businessId, trigger, maxCalls }) {
     adapterErrors.activity = err instanceof CallCapError ? 'call_cap' : err.message;
   }
 
+  // sales-email-trend-v1 REV2 - per-day email counts for the current and
+  // previous week, on their own call counter like the activity step.
+  const countsCtx = { callCounter: { count: 0, max: EMAIL_COUNTS_MAX_CALLS }, endpointCounts: {} };
+  let emailCountWeeks = null;
+  let emailCountsMs = 0;
+  try {
+    const countsStart = Date.now();
+    emailCountWeeks = await refreshRecentWeeks({ ctx: countsCtx, supabase, businessId });
+    emailCountsMs = Date.now() - countsStart;
+    for (const w of emailCountWeeks) {
+      if (w.complete === false) missingAll.push(`email counts: week ${w.weekStart} hit the page cap on ${w.truncated.join(', ')}`);
+    }
+  } catch (err) {
+    adapterErrors.email_counts = err instanceof CallCapError ? 'call_cap' : err.message;
+  }
+
   const hasErrors = Object.keys(adapterErrors).length > 0;
   const status = stoppedForCap || hasErrors ? 'partial' : 'success';
 
   const counts = {
-    apollo_calls: ctx.callCounter.count + activityCtx.callCounter.count,
-    per_endpoint: { ...ctx.endpointCounts, ...activityCtx.endpointCounts, sender_lookup: senderLookupCount },
+    apollo_calls: ctx.callCounter.count + activityCtx.callCounter.count + countsCtx.callCounter.count,
+    per_endpoint: {
+      ...ctx.endpointCounts,
+      ...activityCtx.endpointCounts,
+      '/emailer_messages/search': (activityCtx.endpointCounts['/emailer_messages/search'] || 0) + (countsCtx.endpointCounts['/emailer_messages/search'] || 0),
+      sender_lookup: senderLookupCount,
+    },
     activity: activityCounts,
+    email_counts: emailCountWeeks,
     missing: missingAll,
     adapter_errors: adapterErrors,
-    timing_ms: { apollo: apolloMs, supabase: supabaseMs, activity: activityMs },
+    timing_ms: { apollo: apolloMs, supabase: supabaseMs, activity: activityMs, email_counts: emailCountsMs },
   };
   if (stoppedForCap) counts.stopped_reason = 'call_cap';
 
