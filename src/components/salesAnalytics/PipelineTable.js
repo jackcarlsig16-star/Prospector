@@ -17,16 +17,23 @@ import { laDateString } from './periods';
 const COLUMNS = [
   { id: 'star', width: 32 },
   { id: 'organization', width: null },
-  { id: 'cohort', width: 90 },
-  { id: 'stage', width: 132 },
-  { id: 'next_action', width: 150 },
-  { id: 'next_action_date', width: 112 },
-  { id: 'expected_close', width: 112 },
-  { id: 'probability', width: 76 },
-  { id: 'covered_lives', width: 90 },
-  { id: 'owner', width: 90 },
+  { id: 'cohort', width: 80 },
+  { id: 'stage', width: 110 },
+  { id: 'next_action', width: 110 },
+  { id: 'next_action_date', width: 95 },
+  { id: 'expected_close', width: 95 },
+  { id: 'probability', width: 64 },
+  { id: 'covered_lives', width: 70 },
+  { id: 'owner', width: 70 },
 ];
-const NAME_COL_MIN_WIDTH = 180;
+// Widths trimmed from an earlier wider pass (1064px total) after actually
+// reading the rendered PDF: wider than the printable area minus the
+// widget card's own padding (~935px, the same budget design-v1 Stage 4
+// measured for the leaderboard), so Lives/Owner were clipped off the
+// right edge entirely with no way to scroll in a static PDF - this
+// table never got that same print-fit pass when it was first built in
+// Stage 3. New total ~876px.
+const NAME_COL_MIN_WIDTH = 150;
 const TABLE_MIN_WIDTH = COLUMNS.reduce((sum, c) => sum + (c.width ?? NAME_COL_MIN_WIDTH), 0);
 
 const fieldStyle = { ...SA_TYPE.body, fontSize: 12, width: '100%', padding: '4px 6px', background: 'transparent', border: `1px solid transparent`, borderRadius: 5, color: SA.text, boxSizing: 'border-box' };
@@ -199,6 +206,12 @@ export default function PipelineTable({ businessId, opportunities, onPipelineCha
                     >
                       {o.is_top ? '★' : '☆'}
                     </span>
+                    {/* Print never shows the interactive toggle (no
+                        interactive controls in print) - but the star
+                        STATE is real information, so a starred row still
+                        shows the symbol as plain text; an un-starred row
+                        shows nothing rather than a confusing empty box. */}
+                    {o.is_top && <span className="print-only" style={{ color: SA.warn, fontSize: 13 }}>★</span>}
                   </td>
                   <td style={{ ...cellStyle, cursor: 'pointer', fontWeight: 500 }} onClick={() => setPanelOpp(o)} title={o.organization}>
                     <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.organization}</span>
@@ -221,7 +234,7 @@ export default function PipelineTable({ businessId, opportunities, onPipelineCha
                       onBlur={e => { if (e.target.value !== (o.next_action || '')) fieldUpdate(o, { next_action: e.target.value || null }); }}
                       style={fieldStyle}
                     />
-                    <span className="print-only" style={{ fontSize: 12 }}>{o.next_action || '—'}</span>
+                    <span className="print-only" style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o.next_action || ''}>{o.next_action || '—'}</span>
                   </td>
                   <td style={{ ...cellStyle, color: overdue ? SA.bad : SA.text, fontWeight: overdue ? 600 : 400 }}>
                     <input

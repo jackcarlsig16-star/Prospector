@@ -52,6 +52,15 @@ const PRINT_STYLES = `
      screen keeps the flexible flex-wrap layout unchanged. */
   @media print {
     .sa-kpi-row { display: grid !important; grid-template-columns: repeat(5, minmax(0, 1fr)) !important; gap: 10px !important; }
+    /* sales-pipeline-v1 Stage 4 - Pipeline prints as its own page "after
+       the existing widgets" (SPEC's own words), a different position than
+       its screen placement right after the KPI tiles (Stage 3's own
+       requirement). Reordering the SAME dom nodes rather than rendering a
+       second tree: the widget-list becomes a flex column only under
+       print, so each row's CSS order (printOrder, from widgets.registry.js)
+       takes effect - on screen this container is plain block flow, where
+       order has no effect at all, so screen placement is untouched. */
+    .sa-widget-list { display: flex; flex-direction: column; }
   }
 `;
 
@@ -319,8 +328,9 @@ export default function SalesAnalyticsTab({ businessId }) {
         {loading ? (
           <p style={{ ...SA_TYPE.body, fontSize: 13, color: SA.muted }}>Loading…</p>
         ) : (
-          groupWidgetsIntoRows(WIDGETS.filter(w => w.enabled).sort((a, b) => a.defaultOrder - b.defaultOrder)).map(row => (
-            <div key={row.widgets.map(w => w.id).join('+')} className={row.className ? `${row.className} print-avoid-break` : undefined} style={{ marginBottom: 12, display: row.className ? 'grid' : undefined, gap: row.className ? 12 : undefined }}>
+          <div className="sa-widget-list">
+          {groupWidgetsIntoRows(WIDGETS.filter(w => w.enabled).sort((a, b) => a.defaultOrder - b.defaultOrder)).map(row => (
+            <div key={row.widgets.map(w => w.id).join('+')} className={row.className ? `${row.className} print-avoid-break` : undefined} style={{ marginBottom: 12, display: row.className ? 'grid' : undefined, gap: row.className ? 12 : undefined, order: Math.min(...row.widgets.map(w => w.printOrder)) }}>
               {row.widgets.map(w => (
                 <div key={w.id} className={row.className ? undefined : 'print-avoid-break'} style={{ padding: '22px 24px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusCard }}>
                   <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: '0 0 14px' }}>{w.title}</p>
@@ -328,7 +338,8 @@ export default function SalesAnalyticsTab({ businessId }) {
                 </div>
               ))}
             </div>
-          ))
+          ))}
+          </div>
         )}
       </div>
       </div>

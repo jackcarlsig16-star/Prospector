@@ -1,34 +1,49 @@
 import { SA, SA_TYPE, SA_SHAPE } from './theme';
 import { STAGE_LABELS } from './pipelineStages';
+import ExportButton from './ExportButton';
+import { exportWidgetCsv } from './exportCsv';
 
 const FIELDS = [
   ['decision_makers', 'Decision makers'], ['champion', 'Champion'], ['objections', 'Objections'],
   ['competitors', 'Competitors'], ['next_action', 'Next step'], ['needed_to_advance', 'Needed to advance'],
 ];
 
-export default function TopOpportunities({ opportunities }) {
+export default function TopOpportunities({ opportunities, widgetId = 'top_opportunities' }) {
   const rows = opportunities.filter(o => o.is_top);
+
+  const handleExport = () => {
+    exportWidgetCsv(widgetId, rows, [
+      { label: 'Organization', key: 'organization' },
+      { label: 'Stage', value: o => STAGE_LABELS[o.stage] || o.stage },
+      ...FIELDS.map(([key, label]) => ({ label, key })),
+    ]);
+  };
 
   if (!rows.length) {
     return <p style={{ fontSize: 12, color: SA.muted, padding: '12px 0' }}>No top opportunities starred yet.</p>;
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
-      {rows.map(o => (
-        <div key={o.id} style={{ padding: '14px 16px', background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-            <span style={{ ...SA_TYPE.body, fontSize: 14, fontWeight: 600, color: SA.text }}>{o.organization}</span>
-            <span style={{ fontSize: 11, color: SA.muted }}>{STAGE_LABELS[o.stage] || o.stage}</span>
-          </div>
-          {FIELDS.map(([key, label]) => o[key] ? (
-            <div key={key}>
-              <div style={{ ...SA_TYPE.label, fontSize: 9, color: SA.faint }}>{label}</div>
-              <div style={{ fontSize: 12, color: SA.muted, lineHeight: 1.4 }}>{o[key]}</div>
+    <div>
+      <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+        <ExportButton onClick={handleExport} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12 }}>
+        {rows.map(o => (
+          <div key={o.id} style={{ padding: '14px 16px', background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ ...SA_TYPE.body, fontSize: 14, fontWeight: 600, color: SA.text }}>{o.organization}</span>
+              <span style={{ fontSize: 11, color: SA.muted }}>{STAGE_LABELS[o.stage] || o.stage}</span>
             </div>
-          ) : null)}
-        </div>
-      ))}
+            {FIELDS.map(([key, label]) => o[key] ? (
+              <div key={key}>
+                <div style={{ ...SA_TYPE.label, fontSize: 9, color: SA.faint }}>{label}</div>
+                <div style={{ fontSize: 12, color: SA.muted, lineHeight: 1.4 }}>{o[key]}</div>
+              </div>
+            ) : null)}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

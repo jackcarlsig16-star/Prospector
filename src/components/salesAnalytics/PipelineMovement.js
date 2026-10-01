@@ -3,6 +3,8 @@ import { SA, SA_TYPE, SA_SHAPE } from './theme';
 import { fetchMovement } from './pipelineApi';
 import { STAGE_LABELS } from './pipelineStages';
 import { laWeekStart, laDateString } from './periods';
+import ExportButton from './ExportButton';
+import { exportWidgetCsv } from './exportCsv';
 
 const BUCKETS = [
   { key: 'moved_forward', label: 'Forward', color: SA.good },
@@ -46,6 +48,17 @@ export default function PipelineMovement({ businessId, widgetId = 'pipeline_move
     return () => { cancelled = true; };
   }, [businessId, weekStart]);
 
+  const handleExport = () => {
+    const flat = BUCKETS.flatMap(b => (movement?.[b.key] || []).map(r => ({ bucket: b.label, ...r })));
+    exportWidgetCsv(widgetId, flat, [
+      { label: 'Bucket', key: 'bucket' },
+      { label: 'Organization', key: 'organization' },
+      { label: 'Stage', value: r => STAGE_LABELS[r.stage] || r.stage },
+      { label: 'Next Action Date', key: 'next_action_date' },
+      { label: 'Owner', key: 'owner' },
+    ]);
+  };
+
   return (
     <div>
       <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
@@ -55,6 +68,8 @@ export default function PipelineMovement({ businessId, widgetId = 'pipeline_move
         {weekStart !== laWeekStart() && (
           <span onClick={() => setWeekStart(laWeekStart())} style={{ ...SA_TYPE.body, fontSize: 12, color: SA.accent, cursor: 'pointer' }}>This week</span>
         )}
+        <span style={{ marginLeft: 'auto' }} />
+        <ExportButton onClick={handleExport} />
       </div>
       <p className="print-only" style={{ fontSize: 12, color: SA.muted, margin: '0 0 10px' }}>Week of {weekStart} – {weekEnd(weekStart)}</p>
 

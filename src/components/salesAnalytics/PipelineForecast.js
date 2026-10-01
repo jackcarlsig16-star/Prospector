@@ -2,6 +2,8 @@ import { SA, SA_TYPE } from './theme';
 import { effectiveProbability } from './pipelineStages';
 import { formatValue } from './computeMetric';
 import { laDateString } from './periods';
+import ExportButton from './ExportButton';
+import { exportWidgetCsv } from './exportCsv';
 
 // sales-pipeline-v1 Stage 3 - computed entirely client-side from the
 // already-fetched opportunities list (zero Apollo calls, no new endpoint
@@ -21,7 +23,7 @@ function daysFromToday(dateStr, today) {
   return Math.round((b - a) / 86400000);
 }
 
-export default function PipelineForecast({ opportunities }) {
+export default function PipelineForecast({ opportunities, widgetId = 'pipeline_forecast' }) {
   const today = laDateString();
   const active = opportunities.filter(o => o.stage !== 'lost' && o.expected_close);
 
@@ -41,8 +43,25 @@ export default function PipelineForecast({ opportunities }) {
     return { ...def, rows, totals };
   });
 
+  const handleExport = () => {
+    const flat = buckets.flatMap(b => b.rows.map(o => ({ bucket: b.label, ...o, weightedLives: (o.covered_lives || 0) * effectiveProbability(o), weightedValue: (o.est_value || 0) * effectiveProbability(o) })));
+    exportWidgetCsv(widgetId, flat, [
+      { label: 'Bucket', key: 'bucket' },
+      { label: 'Organization', key: 'organization' },
+      { label: 'Expected Close', key: 'expected_close' },
+      { label: 'Covered Lives', value: r => formatValue(r.covered_lives, 'number') },
+      { label: 'Probability', value: r => formatValue(effectiveProbability(r), 'percent') },
+      { label: 'Weighted Lives', value: r => formatValue(Math.round(r.weightedLives), 'number') },
+      { label: 'Weighted Value', value: r => formatValue(Math.round(r.weightedValue), 'number') },
+    ]);
+  };
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
+    <div>
+      <div className="no-print" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
+        <ExportButton onClick={handleExport} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 14 }}>
       {buckets.map(b => (
         <div key={b.label} style={{ padding: '14px 16px', background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: 10 }}>
           <div style={{ ...SA_TYPE.label, fontSize: 10, color: SA.muted, marginBottom: 8 }}>{b.label}</div>
@@ -59,6 +78,7 @@ export default function PipelineForecast({ opportunities }) {
           )}
         </div>
       ))}
+      </div>
     </div>
   );
 }
