@@ -226,7 +226,9 @@ app.get('/api/gmail/callback', async (req, res) => {
       gmail_token_expiry:  String(Date.now() + (tokens.expires_in || 3600) * 1000),
       gmail_email:         profile.email || '',
     });
-    res.redirect(`/?${params}`);
+    // Fragment, not query: browsers never send it to the server, so tokens stay
+    // out of Render's request logs and Referer headers.
+    res.redirect(`/#${params}`);
   } catch (err) { res.redirect(`/?gmail_error=${encodeURIComponent(err.message)}`); }
 });
 
@@ -316,7 +318,9 @@ app.get('/api/sfdc/callback', async (req, res) => {
     if (email)       params.set('sfdc_email',   email);
     if (companyName) params.set('sfdc_company', companyName);
     if (safeState)   params.set('sfdc_state',   safeState);
-    res.redirect(`/?${params}`);
+    // Fragment, not query: browsers never send it to the server, so tokens stay
+    // out of Render's request logs and Referer headers.
+    res.redirect(`/#${params}`);
   } catch (err) { res.redirect(`/?sfdc_error=${encodeURIComponent(err.message)}`); }
 });
 

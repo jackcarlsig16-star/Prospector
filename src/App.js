@@ -66,7 +66,7 @@ const AdminPage             = React.lazy(() => import('./components/AdminPage'))
 const LedgerPage            = React.lazy(() => import('./components/LedgerPage'));
 
 // Sync Gmail OAuth tokens synchronously before useState initializers run
-try{const p=new URLSearchParams(window.location.search),gt=p.get("gmail_access_token");if(gt){localStorage.setItem("gmail_access_token",gt);const r=p.get("gmail_refresh_token");if(r)localStorage.setItem("gmail_refresh_token",r);const e=p.get("gmail_token_expiry");if(e)localStorage.setItem("gmail_token_expiry",e);const m=p.get("gmail_email");if(m)localStorage.setItem("gmail_email",m);window.history.replaceState({},"","/");}}catch{}
+try{const p=new URLSearchParams(window.location.hash.slice(1)||window.location.search),gt=p.get("gmail_access_token");if(gt){localStorage.setItem("gmail_access_token",gt);const r=p.get("gmail_refresh_token");if(r)localStorage.setItem("gmail_refresh_token",r);const e=p.get("gmail_token_expiry");if(e)localStorage.setItem("gmail_token_expiry",e);const m=p.get("gmail_email");if(m)localStorage.setItem("gmail_email",m);window.history.replaceState({},"","/");}}catch{}
 
 // Live BDR list — updated at runtime via teamUsers state, but AccountCard needs a static fallback
 let BDR_LIST = SEED_TEAM_USERS.filter(u=>u.role==="BDR");
@@ -232,7 +232,8 @@ export default function App() {
 
   // Salesforce OAuth callback — pick up token from URL after redirect
   useEffect(()=>{
-    const params=new URLSearchParams(window.location.search);
+    // OAuth success params arrive in the fragment (server.js callbacks); errors in the query.
+    const params=new URLSearchParams(window.location.hash.slice(1)||window.location.search);
     const token=params.get("sfdc_token");
     const instance=params.get("sfdc_instance");
     const uid=params.get("sfdc_uid");
@@ -273,7 +274,8 @@ export default function App() {
 
   // Gmail OAuth callback — pick up tokens from URL after redirect
   useEffect(()=>{
-    const params=new URLSearchParams(window.location.search);
+    // OAuth success params arrive in the fragment (server.js callbacks); errors in the query.
+    const params=new URLSearchParams(window.location.hash.slice(1)||window.location.search);
     const token=params.get("gmail_access_token");
     const refresh=params.get("gmail_refresh_token");
     const expiry=params.get("gmail_token_expiry");
