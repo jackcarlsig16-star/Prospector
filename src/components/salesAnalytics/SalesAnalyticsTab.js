@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { C, mono } from '../../constants/colors';
+import { SA, SA_TYPE, SA_SHAPE } from './theme';
 import { WIDGETS } from './widgets.registry';
 import { fetchMetrics, fetchRuns, fetchEntities, fetchCohortBreakdown, triggerSync } from './salesApi';
 import { PERIOD_PRESETS, periodRange, previousPeriodRange, laDateString } from './periods';
@@ -46,9 +47,15 @@ function relativeTime(iso) {
   return `${Math.round(diffHr / 24)}d ago`;
 }
 
-const STATUS_COLOR = { success: C.green, partial: C.orange, error: C.red, running: C.blue };
+const STATUS_COLOR = { success: SA.good, partial: SA.warn, error: SA.bad, running: SA.accent };
 
-export default function SalesAnalyticsTab({ businessId, accent = C.gold }) {
+// design-v1 - the SPEC's "ONE accent" rule means this page no longer
+// takes the caller's (BusinessDetailPage's) per-business accent color for
+// its own chrome or widgets - SA.accent (#8FA8FF) is used consistently
+// instead, independent of whatever accent the rest of the app assigned
+// this business. BusinessDetailPage still passes an accent prop; it's
+// simply not destructured here, so it's a no-op rather than used.
+export default function SalesAnalyticsTab({ businessId }) {
   const [preset, setPreset] = useState('this_week');
   const [customFrom, setCustomFrom] = useState(laDateString());
   const [customTo, setCustomTo] = useState(laDateString());
@@ -63,6 +70,15 @@ export default function SalesAnalyticsTab({ businessId, accent = C.gold }) {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
   const [filterSummary, setFilterSummary] = useState('');
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const exportMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!exportMenuOpen) return;
+    const onClick = e => { if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) setExportMenuOpen(false); };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [exportMenuOpen]);
 
   const period = periodRange(preset, customFrom, customTo);
   const prevPeriod = previousPeriodRange(period);
@@ -120,71 +136,101 @@ export default function SalesAnalyticsTab({ businessId, accent = C.gold }) {
   const presetLabel = PERIOD_PRESETS.find(p => p.id === preset)?.label || preset;
   const lastSyncLabel = lastRun?.finished_at ? new Date(lastRun.finished_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'never';
 
-  const handlePrint = () => window.print();
+  const handlePrint = () => { setExportMenuOpen(false); window.print(); };
+
+  // design-v1 - "Export report" consolidates the entry point per the
+  // mockup; PDF is wired to the existing print flow. There's no single
+  // combined "report CSV" anywhere in this feature's data model (every
+  // CSV export is per-widget, by design, including in the not-yet-built
+  // scorecard/pipeline SPECs) - "Download all CSVs" runs each currently-
+  // enabled widget's own existing export in sequence rather than
+  // inventing a new combined-file concept. Flagged back in the stage
+  // report; correct on a different reading if that's not what Jack meant.
+  const handleDownloadAllCsvs = () => {
+    setExportMenuOpen(false);
+    document.querySelectorAll('#sales-analytics-print-area button').forEach(btn => {
+      if (btn.textContent.trim() === 'Export CSV') btn.click();
+    });
+  };
 
   return (
-    <div>
+    <div style={{ background: SA.ground, minHeight: '100%', padding: '0 0 32px' }}>
       <style>{PRINT_STYLES}</style>
+      <div style={{ maxWidth: 1360, margin: '0 auto' }}>
 
       {/* Header - hidden in print; the print-only block below replaces it */}
-      <div className="no-print" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 16, marginBottom: 20, padding: '12px 14px', background: C.card, border: `1px solid ${C.brd}`, borderRadius: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', background: lastRun ? (STATUS_COLOR[lastRun.status] || C.dim) : C.dim, flexShrink: 0 }} />
-          <span style={{ ...mono, fontSize: 11, color: C.mut }}>
-            Last synced {relativeTime(lastRun?.finished_at || lastRun?.started_at)}
-            {lastRun?.counts?.apollo_calls != null && ` · ${lastRun.counts.apollo_calls} Apollo calls`}
-          </span>
-        </div>
-
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          style={{ ...mono, fontSize: 11, padding: '5px 12px', borderRadius: 5, background: accent, border: `1px solid ${accent}`, color: C.bg, fontWeight: 700, cursor: syncing ? 'default' : 'pointer', opacity: syncing ? 0.6 : 1 }}
-        >
-          {syncing ? 'Syncing…' : 'Sync now'}
-        </button>
-        {syncMessage && <span style={{ ...mono, fontSize: 11, color: C.orange }}>{syncMessage}</span>}
-
-        <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
-          {PERIOD_PRESETS.map(p => (
-            <button
-              key={p.id}
-              onClick={() => setPreset(p.id)}
-              style={{
-                ...mono, fontSize: 10, padding: '4px 9px', borderRadius: 5, cursor: 'pointer',
-                background: preset === p.id ? `${accent}22` : 'transparent',
-                border: `1px solid ${preset === p.id ? accent : C.brd}`,
-                color: preset === p.id ? accent : C.mut,
-              }}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-
-        {preset === 'custom' && (
-          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-            <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={{ ...mono, fontSize: 11, padding: '3px 6px', background: C.bg, border: `1px solid ${C.brd}`, borderRadius: 4, color: C.txt }} />
-            <span style={{ ...mono, fontSize: 10, color: C.dim }}>to</span>
-            <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} style={{ ...mono, fontSize: 11, padding: '3px 6px', background: C.bg, border: `1px solid ${C.brd}`, borderRadius: 4, color: C.txt }} />
+      <div className="no-print" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, marginBottom: 24 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ ...SA_TYPE.label, color: SA.muted }}>HomeLover · Command Center</div>
+          <h1 style={{ margin: 0, ...SA_TYPE.pageTitle, color: SA.text }}>Sales Analytics</h1>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', fontSize: 13, color: SA.muted }}>
+            <span>{presetLabel} ({period.from} – {period.to})</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: lastRun ? (STATUS_COLOR[lastRun.status] || SA.faint) : SA.faint, display: 'inline-block' }} />
+              Synced {relativeTime(lastRun?.finished_at || lastRun?.started_at)}
+              {lastRun?.counts?.apollo_calls != null && ` · ${lastRun.counts.apollo_calls} Apollo calls`}
+            </span>
           </div>
-        )}
+          {syncMessage && <span style={{ fontSize: 12, color: SA.warn }}>{syncMessage}</span>}
+        </div>
 
-        <label style={{ ...mono, fontSize: 11, color: C.mut, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
-          <input type="checkbox" checked={compareEnabled} onChange={e => setCompareEnabled(e.target.checked)} />
-          Compare to previous period
-        </label>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <label style={{ fontSize: 12, color: SA.muted, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', marginRight: 4 }}>
+            <input type="checkbox" checked={compareEnabled} onChange={e => setCompareEnabled(e.target.checked)} />
+            Compare to previous period
+          </label>
 
-        <button
-          onClick={handlePrint}
-          style={{ ...mono, fontSize: 11, padding: '5px 12px', borderRadius: 5, background: 'transparent', border: `1px solid ${C.brd}`, color: C.mut, cursor: 'pointer' }}
-        >
-          Export PDF
-        </button>
+          <div style={{ display: 'flex', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: 3 }}>
+            {PERIOD_PRESETS.map(p => (
+              <button
+                key={p.id}
+                onClick={() => setPreset(p.id)}
+                style={{
+                  ...SA_TYPE.body, fontSize: 13, border: 0, borderRadius: 7, padding: '9px 14px', minHeight: 36, cursor: 'pointer',
+                  background: preset === p.id ? SA.surface2 : 'transparent',
+                  color: preset === p.id ? SA.text : SA.muted,
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {preset === 'custom' && (
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={{ ...SA_TYPE.body, fontSize: 13, padding: '6px 8px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: 6, color: SA.text }} />
+              <span style={{ fontSize: 12, color: SA.faint }}>to</span>
+              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} style={{ ...SA_TYPE.body, fontSize: 13, padding: '6px 8px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: 6, color: SA.text }} />
+            </div>
+          )}
+
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            style={{ ...SA_TYPE.body, fontSize: 13, fontWeight: 500, background: 'transparent', color: SA.text, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: '0 16px', height: 44, cursor: syncing ? 'default' : 'pointer', opacity: syncing ? 0.6 : 1 }}
+          >
+            {syncing ? 'Syncing…' : 'Sync now'}
+          </button>
+
+          <div ref={exportMenuRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setExportMenuOpen(o => !o)}
+              style={{ ...SA_TYPE.body, fontSize: 13, fontWeight: 600, background: SA.accent, color: SA.ground, border: 0, borderRadius: SA_SHAPE.radiusInner, padding: '0 18px', height: 44, cursor: 'pointer' }}
+            >
+              Export report
+            </button>
+            {exportMenuOpen && (
+              <div style={{ position: 'absolute', right: 0, top: 48, zIndex: 10, background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: 4, minWidth: 180, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+                <button onClick={handlePrint} style={{ ...SA_TYPE.body, fontSize: 13, display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', background: 'transparent', border: 0, borderRadius: 7, color: SA.text, cursor: 'pointer' }}>PDF</button>
+                <button onClick={handleDownloadAllCsvs} style={{ ...SA_TYPE.body, fontSize: 13, display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', background: 'transparent', border: 0, borderRadius: 7, color: SA.text, cursor: 'pointer' }}>Download all CSVs</button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {error && (
-        <div className="no-print" style={{ ...mono, fontSize: 12, color: C.red, padding: '10px 14px', background: `${C.red}0F`, border: `1px solid ${C.red}44`, borderRadius: 8, marginBottom: 16 }}>
+        <div className="no-print" style={{ fontSize: 13, color: SA.bad, padding: '10px 14px', background: `${SA.bad}18`, border: `1px solid ${SA.bad}44`, borderRadius: SA_SHAPE.radiusInner, marginBottom: 16 }}>
           ⚠ {error}
         </div>
       )}
@@ -212,18 +258,16 @@ export default function SalesAnalyticsTab({ businessId, accent = C.gold }) {
         </div>
 
         {loading ? (
-          <p style={{ ...mono, fontSize: 13, color: C.dim }}>Loading…</p>
+          <p style={{ ...SA_TYPE.body, fontSize: 13, color: SA.muted }}>Loading…</p>
         ) : (
-          WIDGETS.filter(w => w.enabled).sort((a, b) => a.defaultOrder - b.defaultOrder).map(w => {
-            const Widget = w.component;
-            return (
-              <div key={w.id} className="print-avoid-break" style={{ marginBottom: 24, padding: '16px 18px', background: C.card, border: `1px solid ${C.brd}`, borderRadius: 8 }}>
-                <p style={{ ...mono, fontSize: 10, color: C.dim, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>{w.title}</p>
-                <Widget businessId={businessId} allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} accent={accent} widgetId={w.id} onDataChanged={load} onFiltersChanged={setFilterSummary} />
-              </div>
-            );
-          })
+          WIDGETS.filter(w => w.enabled).sort((a, b) => a.defaultOrder - b.defaultOrder).map(w => (
+            <div key={w.id} className="print-avoid-break" style={{ marginBottom: 12, padding: '22px 24px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusCard }}>
+              <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: '0 0 14px' }}>{w.title}</p>
+              <w.component businessId={businessId} allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} accent={SA.accent} widgetId={w.id} onDataChanged={load} onFiltersChanged={setFilterSummary} />
+            </div>
+          ))
         )}
+      </div>
       </div>
     </div>
   );

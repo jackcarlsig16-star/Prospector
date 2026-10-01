@@ -1,5 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Josefin+Slab:wght@400;600&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+/* sales-analytics-design-v1 - Geist (UI) + Geist Mono (small uppercase labels), Sales Analytics only */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap');
 
 :root {
   --c-bg: #0D0F12; --c-sur: #161A22; --c-card: #1E2330;

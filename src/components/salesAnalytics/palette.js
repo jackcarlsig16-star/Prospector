@@ -14,25 +14,36 @@
 // chosen fresh, cool-leaning (180-340 degrees of hue) plus one warm lime
 // for Partner that sits clear of amber (45deg) and green (150deg).
 
+// sales-analytics-design-v1 - replaced with the approved mockup's muted
+// palette (specs/design/sales-analytics-mockup.html). Hospitality has no
+// value in that mockup (HomeLover has zero Hospitality-cohort sequences
+// today, so it wasn't shown) - this is a GUESS in the same muted,
+// cool-leaning family as the rest, flagged for Jack to correct rather
+// than silently treated as final.
 export const COHORT_COLORS = {
-  SaaS: '#22D3D3',
-  Retail: '#4F96F0',
-  Hospitality: '#7B6FEE',
-  Wireless: '#A862E8',
-  'Car Rental': '#D158D8',
-  Fitness: '#F0569E',
-  Other: '#8C8C92',
+  Fitness: '#E07A5F',
+  Retail: '#6C9BD2',
+  'Car Rental': '#B39DDB',
+  SaaS: '#5FB3A8',
+  Wireless: '#D4B26A',
+  Other: '#7A8390',
+  Hospitality: '#8C8FD1', // GUESS - not in the mockup, flag back if wrong
 };
 
+// Base hex unchanged; the mockup applies this at 70% opacity wherever it
+// fills a shape (stacked-bar segments, chips) - that's a per-usage-site
+// concern, not a second constant here.
 export const PARTNER_COLOR = '#A8D04A';
 
-// Matches this app's existing C.green / T.amber / C.red tokens exactly -
-// reusing the established meaning of those colors rather than inventing a
-// fourth palette for "healthy/warning/problem".
+// sales-analytics-design-v1 - updated to the mockup's status hex values
+// (good/warn/bad in the mockup = healthy/warning/problem here; same
+// three-meaning model, new values). Single source every widget already
+// imports from, so this takes effect everywhere at once, independent of
+// each widget's own layout restyle stage.
 export const SEMANTIC = {
-  healthy: '#42E890',
-  warning: '#FFB800',
-  problem: '#F06060',
+  healthy: '#3DD68C',
+  warning: '#F2B544',
+  problem: '#FF6B6B',
 };
 
 export function cohortColor(cohort) {
