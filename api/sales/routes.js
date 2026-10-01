@@ -29,6 +29,10 @@ export async function syncRoute(req, res) {
   }
 }
 
+// trigger='test' rows are excluded here on purpose - this is the one route
+// the UI's "last synced" / "last scheduled sync" chip reads from
+// (SalesAnalyticsTab.js's fetchRuns(...)[0]), and a verification run must
+// never appear there as if it were a real sync.
 export async function runsRoute(req, res) {
   if (!checkAllowlist(req, res)) return;
   const limit = Math.min(Number(req.query.limit) || 10, 50);
@@ -37,6 +41,7 @@ export async function runsRoute(req, res) {
     .from('sales_sync_runs')
     .select('*')
     .eq('business_id', req.params.businessId)
+    .neq('trigger', 'test')
     .order('started_at', { ascending: false })
     .limit(limit);
   if (error) return res.status(500).json({ error: error.message });

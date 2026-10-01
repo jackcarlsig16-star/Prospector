@@ -89,6 +89,15 @@ async function checkManualLimits(supabase, businessId) {
   return { refused: false };
 }
 
+// trigger is 'cron' (the scheduled job), 'manual' (the Sync now button,
+// via routes.js - subject to the cooldown/daily cap below), or 'test' (a
+// real verification run, called directly the same way this function is
+// always called - never through the HTTP route). 'test' is intentionally
+// exempt from checkManualLimits() below since it isn't 'manual', and
+// routes.js's runsRoute excludes it from what the UI shows as "last
+// synced". A run's trigger is never rewritten after insert - if a run was
+// mislabeled, it's disclosed and left as-is, not silently corrected.
+//
 // maxCalls is test-only - every real caller (routes.js and the cron job)
 // omits it and gets the real MAX_APOLLO_CALLS_PER_RUN. Exists so the
 // call-cap guardrail can be exercised for real without touching the real
