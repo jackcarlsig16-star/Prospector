@@ -19,7 +19,7 @@ export default function HuddlePrintSheet({ dateLabel, prospects, ownerLabels, ne
             <h2 style={{ ...SA_TYPE.cardTitle, fontSize: 15, margin: '0 0 6px' }}>{ownerLabels[owner]} · {mine.length}</h2>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr>{['Name', 'Company', 'Status', 'Heat', 'Next action', 'Due', 'Notes'].map(h => <th key={h} style={{ ...cell, ...SA_TYPE.label, color: SA.muted }}>{h}</th>)}</tr>
+                <tr>{['Name', 'Company', 'Status', 'Heat', 'Next best', 'Next action', 'Due', 'Notes'].map(h => <th key={h} style={{ ...cell, ...SA_TYPE.label, color: SA.muted }}>{h}</th>)}</tr>
               </thead>
               <tbody>
                 {mine.map(p => (
@@ -28,6 +28,7 @@ export default function HuddlePrintSheet({ dateLabel, prospects, ownerLabels, ne
                     <td style={cell}>{p.company || '—'}{p.in_pipeline ? <div style={{ color: SA.good }}>In pipeline</div> : null}</td>
                     <td style={cell}>{p.status}</td>
                     <td style={{ ...cell, fontVariantNumeric: 'tabular-nums' }}>{p.score}</td>
+                    <td style={{ ...cell, color: p.next_action ? SA.muted : SA.text }}>{p.next_best_action.label}</td>
                     <td style={cell}>{nextActionLabels[p.next_action] || '—'}</td>
                     <td style={{ ...cell, color: p.next_action_due && p.next_action_due <= today ? SA.bad : SA.text }}>{p.next_action_due || '—'}</td>
                     <td style={{ ...cell, maxWidth: 260 }}>{p.notes || ''}</td>

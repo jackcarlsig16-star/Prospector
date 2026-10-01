@@ -25,6 +25,22 @@ function Badge({ children, color }) {
   );
 }
 
+// Suggestion only - it never writes. Greyed once someone has set a real
+// next action, since the human decision wins.
+function NextBestAction({ nba, overridden }) {
+  const color = nba.id === 'let_run' || overridden ? SA.faint : nba.id === 'close' ? SA.bad : SA.accent;
+  return (
+    <div title={`${nba.reason}${overridden ? '\nA next action is already set - that wins.' : ''}`}
+      style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: SA.muted, cursor: 'help' }}>
+      <span style={{ ...SA_TYPE.label, color: SA.faint }}>Next best</span>
+      <span style={{ fontWeight: 600, color, border: `1px solid color-mix(in srgb, ${color} 40%, transparent)`, borderRadius: SA_SHAPE.radiusPill, padding: '2px 10px', opacity: overridden ? 0.7 : 1 }}>
+        {nba.label}
+      </span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nba.reason}</span>
+    </div>
+  );
+}
+
 const controlStyle = { ...SA_TYPE.body, fontSize: 13, height: 34, padding: '0 8px', background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: 8, color: SA.text };
 const actionButton = { ...controlStyle, height: 30, fontSize: 12, cursor: 'pointer', background: 'transparent' };
 const linkStyle = { fontSize: 12, color: SA.accent, textDecoration: 'none' };
@@ -112,6 +128,8 @@ export default function HuddleCard({ businessId, prospect: p, collateral, today,
           {p.last_signal_at ? `Last open/click ${relativeTime(p.last_signal_at)}` : 'No open/click time from Apollo'}
         </span>
       </div>
+
+      <NextBestAction nba={p.next_best_action} overridden={!!p.next_action} />
 
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: 8, padding: 2 }}>

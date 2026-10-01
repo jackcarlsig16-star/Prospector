@@ -3,6 +3,7 @@ import { isAllowlistedBusiness } from './allowlist.js';
 import { stageIndex, ORG_TYPE_ENUM } from './pipelineStages.js';
 import { laDateString } from './laDate.js';
 import { scoreProspect } from './heatScore.js';
+import { nextBestAction } from './nextBestAction.js';
 
 // sales-hot-prospects-v1 - server-only access, same posture as every other
 // sales_* table (RLS enabled, zero policies).
@@ -99,6 +100,7 @@ export async function huddleRoute(req, res) {
       why: scored.why,
       badges: scored.badges,
       last_signal_at: scored.last_signal_at,
+      next_best_action: nextBestAction(msgs, scored),
     });
   }
   out.sort((a, b) => b.score - a.score);

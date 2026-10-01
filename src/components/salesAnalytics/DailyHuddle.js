@@ -17,6 +17,7 @@ const HUDDLE_SHEET_COLUMNS = [
   { label: 'Company', key: 'company' },
   { label: 'Status', key: 'status' },
   { label: 'Heat', key: 'score' },
+  { label: 'Next best action', value: p => p.next_best_action.label },
   { label: 'Next action', value: p => NEXT_ACTION_LABELS[p.next_action] || '' },
   { label: 'Due', key: 'next_action_due' },
   { label: 'In pipeline', value: p => (p.in_pipeline ? 'yes' : '') },
