@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { SA, SA_TYPE, SA_SHAPE, SA_BAD_BG } from './theme';
 import { cohortColor, AUDIENCE_LABELS, audienceColor } from './palette';
-import { updateProspect } from './huddleApi';
+import { updateProspect, addProspectToPipeline } from './huddleApi';
 
 const OWNERS = [['jack', 'Jack'], ['cyrus', 'Cyrus'], ['unassigned', '—']];
-// Not now / Dead get their own flows (snooze date, confirm) in Stage 4.
+// Not now / Dead are set by their own flows below (snooze date, confirm).
 const STATUSES = [['new', 'New'], ['claimed', 'Claimed'], ['contacted', 'Contacted'], ['booked', 'Booked']];
 const NEXT_ACTIONS = [['call', 'Call'], ['email', 'Email'], ['linkedin', 'LinkedIn'], ['send_collateral', 'Send collateral'], ['wait', 'Wait']];
 
@@ -26,30 +26,43 @@ function Badge({ children, color }) {
 }
 
 const controlStyle = { ...SA_TYPE.body, fontSize: 13, height: 34, padding: '0 8px', background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: 8, color: SA.text };
+const actionButton = { ...controlStyle, height: 30, fontSize: 12, cursor: 'pointer', background: 'transparent' };
 const linkStyle = { fontSize: 12, color: SA.accent, textDecoration: 'none' };
+
+function plusDays(isoDate, n) {
+  const d = new Date(`${isoDate}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
 
 async function copy(text) {
   try { await navigator.clipboard.writeText(text); } catch {}
 }
 
-export default function HuddleCard({ businessId, prospect: p, collateral, isNewSinceHuddle, onUpdated }) {
+export default function HuddleCard({ businessId, prospect: p, collateral, today, isNewSinceHuddle, onUpdated }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notes, setNotes] = useState(p.notes || '');
   const [collateralId, setCollateralId] = useState('');
+  const [flow, setFlow] = useState(null); // null | 'snooze' | 'dead'
+  const [snoozeUntil, setSnoozeUntil] = useState(() => plusDays(today, 7));
 
-  const save = async patch => {
+  const run = async request => {
     setSaving(true);
     setError('');
     try {
-      const row = await updateProspect(businessId, p.contact_id, patch);
-      onUpdated(row);
+      await request();
     } catch (e) {
       setError(e.message);
     } finally {
       setSaving(false);
     }
   };
+  const save = patch => run(async () => onUpdated(await updateProspect(businessId, p.contact_id, patch)));
+  const addToPipeline = () => run(async () => {
+    const { prospect } = await addProspectToPipeline(businessId, p.contact_id, { org_type: p.sequence?.audience || 'employer', cohort: p.sequence?.cohort || null });
+    onUpdated({ ...prospect, in_pipeline: true });
+  });
 
   const seq = p.sequence;
   const b = p.badges;
@@ -141,6 +154,34 @@ export default function HuddleCard({ businessId, prospect: p, collateral, isNewS
         onChange={e => setNotes(e.target.value)}
         onBlur={() => notes !== (p.notes || '') && save({ notes: notes || null })}
         style={{ ...SA_TYPE.body, fontSize: 13, padding: 8, background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: 8, color: SA.text, resize: 'vertical' }} />
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        {!p.in_pipeline && (
+          <button disabled={saving || !p.company} title={p.company ? `Creates a "${p.company}" opportunity at Responded` : 'No company from Apollo'}
+            onClick={addToPipeline} style={{ ...actionButton, color: SA.good }}>Add to pipeline</button>
+        )}
+        {flow === null && (
+          <>
+            <button disabled={saving} onClick={() => setFlow('snooze')} style={actionButton}>Not now…</button>
+            <button disabled={saving} onClick={() => setFlow('dead')} style={{ ...actionButton, color: SA.bad }}>Dead…</button>
+          </>
+        )}
+        {flow === 'snooze' && (
+          <>
+            <span style={{ fontSize: 12, color: SA.muted }}>Snooze until</span>
+            <input aria-label="Snooze until" type="date" min={plusDays(today, 1)} value={snoozeUntil} onChange={e => setSnoozeUntil(e.target.value)} style={controlStyle} />
+            <button disabled={saving || !snoozeUntil || snoozeUntil <= today} onClick={() => save({ status: 'not_now', snooze_until: snoozeUntil })} style={actionButton}>Snooze</button>
+            <button onClick={() => setFlow(null)} style={{ ...actionButton, color: SA.muted }}>Cancel</button>
+          </>
+        )}
+        {flow === 'dead' && (
+          <>
+            <span style={{ fontSize: 12, color: SA.bad }}>Mark dead? It leaves the huddle.</span>
+            <button disabled={saving} onClick={() => save({ status: 'dead' })} style={{ ...actionButton, color: SA.bad }}>Yes, dead</button>
+            <button onClick={() => setFlow(null)} style={{ ...actionButton, color: SA.muted }}>Cancel</button>
+          </>
+        )}
+      </div>
 
       <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
         <a href={p.apollo_url} target="_blank" rel="noopener noreferrer" style={linkStyle}>Open in Apollo ↗</a>

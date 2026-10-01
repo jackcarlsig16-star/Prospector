@@ -4,8 +4,26 @@ import { fetchRuns, triggerSync } from './salesApi';
 import { fetchHuddle, startHuddle, fetchCollateral } from './huddleApi';
 import HuddleCard from './HuddleCard';
 import CollateralLibrary from './CollateralLibrary';
+import HuddlePrintSheet from './HuddlePrintSheet';
+import { exportWidgetCsv } from './exportCsv';
 
 const OWNER_LABELS = { jack: 'Jack', cyrus: 'Cyrus', unassigned: 'Unassigned' };
+const NEXT_ACTION_LABELS = { call: 'Call', email: 'Email', linkedin: 'LinkedIn', send_collateral: 'Send collateral', wait: 'Wait' };
+
+const HUDDLE_SHEET_COLUMNS = [
+  { label: 'Owner', value: p => OWNER_LABELS[p.owner] || p.owner },
+  { label: 'Name', key: 'name' },
+  { label: 'Title', key: 'title' },
+  { label: 'Company', key: 'company' },
+  { label: 'Status', key: 'status' },
+  { label: 'Heat', key: 'score' },
+  { label: 'Next action', value: p => NEXT_ACTION_LABELS[p.next_action] || '' },
+  { label: 'Due', key: 'next_action_due' },
+  { label: 'In pipeline', value: p => (p.in_pipeline ? 'yes' : '') },
+  { label: 'Notes', key: 'notes' },
+  { label: 'Last open/click', key: 'last_signal_at' },
+  { label: 'Apollo', key: 'apollo_url' },
+];
 
 function fmtTime(iso) {
   return iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'never';
@@ -82,8 +100,10 @@ export default function DailyHuddle({ businessId }) {
 
   const today = data?.today;
   const lastHuddleAt = data?.last_huddle?.huddle_at;
-  const visible = (data?.prospects || []).filter(p =>
-    p.status !== 'dead' && !(p.status === 'not_now' && (!p.snooze_until || p.snooze_until > today)));
+  const isSnoozed = p => p.status === 'not_now' && (!p.snooze_until || p.snooze_until > today);
+  const visible = (data?.prospects || []).filter(p => p.status !== 'dead' && !isSnoozed(p));
+  const hiddenByHuddle = { snoozed: (data?.prospects || []).filter(isSnoozed).length, dead: (data?.prospects || []).filter(p => p.status === 'dead').length };
+  const hidden = { ...data?.excluded, ...hiddenByHuddle };
   const due = visible.filter(p => p.next_action_due && p.next_action_due <= today && p.status !== 'booked');
   const dueIds = new Set(due.map(p => p.contact_id));
   const fresh = visible.filter(p => p.status === 'new' && !dueIds.has(p.contact_id));
@@ -93,7 +113,7 @@ export default function DailyHuddle({ businessId }) {
   const done = data?.done_recent || [];
 
   const card = p => (
-    <HuddleCard key={`${p.contact_id}:${p.updated_at}`} businessId={businessId} prospect={p} collateral={collateral}
+    <HuddleCard key={`${p.contact_id}:${p.updated_at}`} businessId={businessId} prospect={p} collateral={collateral} today={today}
       isNewSinceHuddle={!!lastHuddleAt && p.created_at > lastHuddleAt} onUpdated={handleUpdated} />
   );
 
@@ -113,6 +133,9 @@ export default function DailyHuddle({ businessId }) {
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button onClick={() => setShowLibrary(s => !s)} style={headerButton}>{showLibrary ? 'Hide library' : 'Collateral library'}</button>
+          <button onClick={() => exportWidgetCsv('huddle_sheet', [...visible].sort((a, b) => a.owner.localeCompare(b.owner) || b.score - a.score), HUDDLE_SHEET_COLUMNS)}
+            disabled={!data} style={headerButton}>Huddle sheet CSV</button>
+          <button onClick={() => window.print()} disabled={!data} style={headerButton}>Print</button>
           <button onClick={handleSync} disabled={syncing} style={{ ...headerButton, opacity: syncing ? 0.6 : 1 }}>{syncing ? 'Syncing…' : 'Sync now'}</button>
           <button onClick={handleStart} style={{ ...headerButton, fontWeight: 600, background: SA.accent, color: SA.ground, border: 0 }}>Start huddle</button>
         </div>
@@ -170,11 +193,12 @@ export default function DailyHuddle({ businessId }) {
             )}
           </details>
 
-          {Object.values(data.excluded).some(Boolean) && (
+          {Object.values(hidden).some(Boolean) && (
             <p style={{ fontSize: 12, color: SA.faint }}>
-              Hidden: {Object.entries(data.excluded).filter(([, n]) => n).map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}`).join(' · ')}
+              Hidden: {Object.entries(hidden).filter(([, n]) => n).map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}`).join(' · ')}
             </p>
           )}
+          <HuddlePrintSheet dateLabel={dateLabel} prospects={visible} ownerLabels={OWNER_LABELS} nextActionLabels={NEXT_ACTION_LABELS} today={today} />
         </>
       )}
     </div>

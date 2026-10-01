@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { isAllowlistedBusiness } from './allowlist.js';
-import { stageIndex } from './pipelineStages.js';
+import { stageIndex, ORG_TYPE_ENUM } from './pipelineStages.js';
 import { laDateString } from './laDate.js';
 import { scoreProspect } from './heatScore.js';
 
@@ -153,6 +153,52 @@ export async function updateProspectRoute(req, res) {
   if (error) return res.status(500).json({ error: error.message });
   if (!data) return res.status(404).json({ error: 'prospect not found' });
   res.status(200).json({ prospect: data });
+}
+
+// POST /prospects/:contactId/pipeline - creates the opportunity AND links it
+// back via opportunity_id in one request, so the card can't end up with an
+// orphan opportunity it doesn't know about. The link write goes through the
+// same trigger as every other huddle change, so it's logged with who/when.
+const OWNER_NAMES = { jack: 'Jack', cyrus: 'Cyrus' };
+
+export async function addToPipelineRoute(req, res) {
+  if (!checkAllowlist(req, res)) return;
+  const { businessId, contactId } = req.params;
+  const { org_type: orgType, cohort = null, updated_by: updatedBy } = req.body || {};
+  if (cohort !== null && typeof cohort !== 'string') return res.status(400).json({ error: 'cohort must be a string or null' });
+  if (!ORG_TYPE_ENUM.includes(orgType)) return res.status(400).json({ error: `org_type must be one of ${ORG_TYPE_ENUM.join('|')}` });
+  if (typeof updatedBy !== 'string' || !updatedBy.trim()) return res.status(400).json({ error: 'updated_by must be a non-empty string' });
+  const supabase = getSupabase();
+
+  const { data: p, error: pErr } = await supabase.from('sales_prospect_state').select('*')
+    .eq('business_id', businessId).eq('contact_id', contactId).maybeSingle();
+  if (pErr) return res.status(500).json({ error: pErr.message });
+  if (!p) return res.status(404).json({ error: 'prospect not found' });
+  if (!p.company || !p.company.trim()) return res.status(400).json({ error: 'prospect has no company - add it in Apollo first' });
+
+  if (p.opportunity_id) {
+    const { data: existing, error: oErr } = await supabase.from('sales_opportunities').select('id,archived_at').eq('id', p.opportunity_id).maybeSingle();
+    if (oErr) return res.status(500).json({ error: oErr.message });
+    if (existing && !existing.archived_at) return res.status(409).json({ error: 'already in pipeline' });
+  }
+
+  const { data: opp, error: insErr } = await supabase.from('sales_opportunities').insert({
+    business_id: businessId,
+    source: 'manual',
+    organization: p.company.trim(),
+    stage: 'responded',
+    org_type: orgType,
+    cohort,
+    owner: OWNER_NAMES[p.owner] || null,
+    champion: [p.name, p.title].filter(Boolean).join(', ') || null,
+  }).select().single();
+  if (insErr) return res.status(500).json({ error: insErr.message });
+
+  const { data, error } = await supabase.from('sales_prospect_state')
+    .update({ opportunity_id: opp.id, updated_by: updatedBy, updated_at: new Date().toISOString() })
+    .eq('business_id', businessId).eq('contact_id', contactId).select().single();
+  if (error) return res.status(500).json({ error: `opportunity ${opp.id} created but not linked: ${error.message}` });
+  res.status(201).json({ prospect: data, opportunity: opp });
 }
 
 // POST /huddles - stamps huddle_at, which defines "since last huddle".

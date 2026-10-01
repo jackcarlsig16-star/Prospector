@@ -611,6 +611,7 @@ const salesModuleRoute = (file, name, label) => async (req, res) => {
 app.get('/api/sales/:businessId/huddle', salesModuleRoute('./api/sales/huddleRoutes.js', 'huddleRoute', 'huddle'));
 app.post('/api/sales/:businessId/huddles', salesModuleRoute('./api/sales/huddleRoutes.js', 'startHuddleRoute', 'huddles'));
 app.patch('/api/sales/:businessId/prospects/:contactId', salesModuleRoute('./api/sales/huddleRoutes.js', 'updateProspectRoute', 'prospects/:contactId'));
+app.post('/api/sales/:businessId/prospects/:contactId/pipeline', salesModuleRoute('./api/sales/huddleRoutes.js', 'addToPipelineRoute', 'prospects/:contactId/pipeline'));
 app.get('/api/sales/:businessId/collateral', salesModuleRoute('./api/sales/huddleRoutes.js', 'listCollateralRoute', 'collateral'));
 app.post('/api/sales/:businessId/collateral', salesModuleRoute('./api/sales/huddleRoutes.js', 'createCollateralRoute', 'collateral POST'));
 app.patch('/api/sales/:businessId/collateral/:id', salesModuleRoute('./api/sales/huddleRoutes.js', 'updateCollateralRoute', 'collateral/:id'));

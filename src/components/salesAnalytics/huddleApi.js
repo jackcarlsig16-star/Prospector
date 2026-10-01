@@ -55,3 +55,8 @@ export async function updateCollateral(businessId, id, payload) {
 export async function deleteCollateral(businessId, id) {
   return call(`/api/sales/${businessId}/collateral/${id}`, { method: 'DELETE' }, 'Failed to delete collateral');
 }
+
+export async function addProspectToPipeline(businessId, contactId, payload) {
+  return call(`/api/sales/${businessId}/prospects/${contactId}/pipeline`,
+    json('POST', { ...payload, updated_by: currentUserLabel() }), 'Failed to add to pipeline');
+}
