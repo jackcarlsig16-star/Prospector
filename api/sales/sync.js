@@ -6,6 +6,7 @@ import * as sequences from './adapters/sequences.js';
 import * as accounts from './adapters/accounts.js';
 import * as prospects from './adapters/prospects.js';
 import * as mailboxes from './adapters/mailboxes.js';
+import { syncActivity, ACTIVITY_MAX_CALLS } from './activitySync.js';
 
 // PROPOSED values (SPEC) - sized from real counts in the audit (21
 // sequences, 314 accounts, 9 active sequences, 2 mailboxes), confirmed at
@@ -203,15 +204,31 @@ export async function runSync({ businessId, trigger, maxCalls }) {
     }
   }
 
+  // sales-hot-prospects-v1 - its own call counter, so the per-message
+  // activities budget can't eat into the metrics adapters' cap or vice versa.
+  const activityCtx = { callCounter: { count: 0, max: ACTIVITY_MAX_CALLS }, endpointCounts: {} };
+  let activityCounts = null;
+  let activityMs = 0;
+  try {
+    const activityStart = Date.now();
+    const result = await syncActivity({ ctx: activityCtx, supabase, businessId });
+    activityMs = Date.now() - activityStart;
+    missingAll.push(...result.missing);
+    activityCounts = result.counts;
+  } catch (err) {
+    adapterErrors.activity = err instanceof CallCapError ? 'call_cap' : err.message;
+  }
+
   const hasErrors = Object.keys(adapterErrors).length > 0;
   const status = stoppedForCap || hasErrors ? 'partial' : 'success';
 
   const counts = {
-    apollo_calls: ctx.callCounter.count,
-    per_endpoint: { ...ctx.endpointCounts, sender_lookup: senderLookupCount },
+    apollo_calls: ctx.callCounter.count + activityCtx.callCounter.count,
+    per_endpoint: { ...ctx.endpointCounts, ...activityCtx.endpointCounts, sender_lookup: senderLookupCount },
+    activity: activityCounts,
     missing: missingAll,
     adapter_errors: adapterErrors,
-    timing_ms: { apollo: apolloMs, supabase: supabaseMs },
+    timing_ms: { apollo: apolloMs, supabase: supabaseMs, activity: activityMs },
   };
   if (stoppedForCap) counts.stopped_reason = 'call_cap';
 

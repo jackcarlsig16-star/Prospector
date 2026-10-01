@@ -17,10 +17,16 @@ const ALLOWED_CALLS = [
   { method: 'GET', path: '/email_accounts' },
   { method: 'POST', path: '/accounts/search' },
   { method: 'POST', path: '/contacts/search' },
+  // sales-hot-prospects-v1 - both 0 credits, confirmed live in Stage 1.
+  { method: 'GET', path: '/emailer_messages/search' },
+  { method: 'GET', path: '/emailer_messages/:id/activities', pattern: /^\/emailer_messages\/[0-9a-f]{24}\/activities$/ },
 ];
 
-function isAllowed(method, path) {
-  return ALLOWED_CALLS.some(a => a.method === method && a.path === path);
+// Returns the matched entry's canonical path, so per-message paths are
+// counted under one endpoint key instead of one key per message id.
+function allowedPath(method, path) {
+  const entry = ALLOWED_CALLS.find(a => a.method === method && (a.pattern ? a.pattern.test(path) : a.path === path));
+  return entry ? entry.path : null;
 }
 
 export class CallCapError extends Error {
@@ -41,8 +47,9 @@ function backoffMs(attempt) {
 // ctx.callCounter = { count, max } and ctx.endpointCounts = { path: n }.
 // sync.js creates ctx once per run and threads it through every adapter -
 // this is the single real enforcement point for guardrails 2-4.
-export async function apolloRequest({ method, path, body, ctx }) {
-  if (!isAllowed(method, path)) {
+export async function apolloRequest({ method, path, query, body, ctx }) {
+  const countKey = allowedPath(method, path);
+  if (!countKey) {
     throw new Error(`apolloClient: ${method} ${path} is not on the allowlist - refusing before any request`);
   }
 
@@ -56,14 +63,14 @@ export async function apolloRequest({ method, path, body, ctx }) {
     if (!key) throw new Error('apolloClient: APOLLO_API_KEY is not set');
 
     ctx.callCounter.count += 1;
-    ctx.endpointCounts[path] = (ctx.endpointCounts[path] || 0) + 1;
+    ctx.endpointCounts[countKey] = (ctx.endpointCounts[countKey] || 0) + 1;
 
     const controller = new AbortController();
     const timeoutHandle = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     let res;
     try {
-      res = await fetch(BASE_URL + path, {
+      res = await fetch(BASE_URL + path + (query ? `?${query}` : ''), {
         method,
         headers: { 'x-api-key': key, 'Content-Type': 'application/json' },
         body: body ? JSON.stringify(body) : undefined,
