@@ -162,7 +162,7 @@ export async function putSequenceTagRoute(req, res) {
   const { data, error } = await supabase
     .from('sales_sequence_tags')
     .upsert(
-      { business_id: businessId, sequence_id: sequenceId, is_partner: req.body.is_partner },
+      { business_id: businessId, sequence_id: sequenceId, is_partner: req.body.is_partner, updated_at: new Date().toISOString() },
       { onConflict: 'business_id,sequence_id' }
     )
     .select()

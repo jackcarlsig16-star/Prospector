@@ -156,7 +156,7 @@ export default function SalesAnalyticsTab({ businessId, accent = C.gold }) {
           return (
             <div key={w.id} style={{ marginBottom: 24, padding: '16px 18px', background: C.card, border: `1px solid ${C.brd}`, borderRadius: 8 }}>
               <p style={{ ...mono, fontSize: 10, color: C.dim, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>{w.title}</p>
-              <Widget allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} accent={accent} widgetId={w.id} />
+              <Widget businessId={businessId} allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} accent={accent} widgetId={w.id} onDataChanged={load} />
             </div>
           );
         })
