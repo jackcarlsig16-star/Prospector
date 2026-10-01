@@ -13,6 +13,10 @@ export const BOUNCE_ALERT_THRESHOLD = 0.05; // SPEC: "bounce > 5%"
 // this same floor.
 export const BOUNCE_ALERT_MIN_DELIVERED = 20; // SPEC: "≥20 delivered"
 const STALE_SYNC_HOURS = 26; // SPEC starting value
+// Off by Jack's choice (2026-10-01): the app stays on Render Free, which
+// sleeps, so the in-process 6am cron can't fire and syncs are manual.
+// Flip back to true if the instance ever becomes always-on.
+const STALE_SYNC_ALERT_ENABLED = false;
 
 // Jack's correction after Stage 2 review: this rule's job is specifically
 // to catch the 6am cron job not running, which a recent MANUAL sync would
@@ -84,7 +88,7 @@ export function computeAlerts({ allRows, entities, runs }) {
   const floorTime = new Date(CRON_FLOOR_ISO).getTime();
   const referenceTime = Math.max(lastCronTime, floorTime);
   const hoursSince = (Date.now() - referenceTime) / 3600000;
-  if (hoursSince > STALE_SYNC_HOURS) {
+  if (STALE_SYNC_ALERT_ENABLED && hoursSince > STALE_SYNC_HOURS) {
     alerts.push({
       key: 'stale-sync',
       severity: 'warn',
