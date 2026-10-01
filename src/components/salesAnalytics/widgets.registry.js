@@ -3,31 +3,40 @@ import EmailTrendChart from './EmailTrendChart';
 import SequenceLeaderboard from './SequenceLeaderboard';
 import MailboxHealth from './MailboxHealth';
 import CompaniesByCohort from './CompaniesByCohort';
-import DeliveredByCohortDonut from './charts/DeliveredByCohortDonut';
-import DeliveredBySenderDonut from './charts/DeliveredBySenderDonut';
-import DirectVsPartnerDonut from './charts/DirectVsPartnerDonut';
+import DeliveryMix from './DeliveryMix';
 
 // Entry fields: { id, title, component, metrics[], defaultOrder, enabled }.
 // Later SPECs add entries here instead of rewriting SalesAnalyticsTab.js.
+//
+// design-v1 Stage 3 - the three donut widgets (delivered_by_cohort_donut,
+// delivered_by_sender_donut, direct_vs_partner_donut) are removed, not
+// just disabled - DECIDED: "REMOVE the three donut charts", replaced by
+// delivery_mix. Their component files are deleted too (DonutChart.js
+// included - nothing else referenced it).
+//
+// PAIRED_ROWS in SalesAnalyticsTab.js renders [email_trend, mailbox_health]
+// and [companies_by_cohort, delivery_mix] as side-by-side 2-column rows
+// (DECIDED layout items 4 and 7) instead of each getting its own full-
+// width card - defaultOrder keeps them adjacent here for that reason.
 export const WIDGETS = [
   {
     id: 'kpi_tiles', title: 'Overview', component: KpiTiles,
-    metrics: ['companies_in_cadence', 'prospects_in_cadence', 'sequences_active', 'unique_delivered', 'unique_opened', 'unique_replied'],
+    metrics: ['companies_in_cadence', 'prospects_in_cadence', 'unique_delivered', 'unique_opened', 'unique_replied', 'unique_bounced'],
     defaultOrder: 1, enabled: true,
   },
   {
-    id: 'email_trend', title: 'Email Trend', component: EmailTrendChart,
+    id: 'email_trend', title: 'Email Performance Over Time', component: EmailTrendChart,
     metrics: ['unique_delivered', 'open_rate', 'reply_rate'],
     defaultOrder: 2, enabled: true,
   },
   {
-    id: 'sequence_leaderboard', title: 'Sequence Leaderboard', component: SequenceLeaderboard,
-    metrics: ['unique_delivered', 'unique_opened', 'unique_replied', 'unique_bounced'],
+    id: 'mailbox_health', title: 'Mailbox Health', component: MailboxHealth,
+    metrics: ['mailbox_sent', 'mailbox_delivered', 'mailbox_opened', 'mailbox_replied'],
     defaultOrder: 3, enabled: true,
   },
   {
-    id: 'mailbox_health', title: 'Mailbox Health', component: MailboxHealth,
-    metrics: ['mailbox_sent', 'mailbox_delivered', 'mailbox_opened', 'mailbox_replied'],
+    id: 'sequence_leaderboard', title: 'Sequence Leaderboard', component: SequenceLeaderboard,
+    metrics: ['unique_delivered', 'unique_opened', 'unique_replied', 'unique_bounced'],
     defaultOrder: 4, enabled: true,
   },
   {
@@ -36,19 +45,9 @@ export const WIDGETS = [
     defaultOrder: 5, enabled: true,
   },
   {
-    id: 'delivered_by_cohort_donut', title: 'Delivered by Cohort (All-Time)', component: DeliveredByCohortDonut,
+    id: 'delivery_mix', title: 'Delivery Mix', component: DeliveryMix,
     metrics: ['unique_delivered'],
     defaultOrder: 6, enabled: true,
-  },
-  {
-    id: 'delivered_by_sender_donut', title: 'Delivered by Sender', component: DeliveredBySenderDonut,
-    metrics: ['unique_delivered'],
-    defaultOrder: 7, enabled: true,
-  },
-  {
-    id: 'direct_vs_partner_donut', title: 'Direct vs Partner Share of Delivered', component: DirectVsPartnerDonut,
-    metrics: ['unique_delivered'],
-    defaultOrder: 8, enabled: true,
   },
 ];
 

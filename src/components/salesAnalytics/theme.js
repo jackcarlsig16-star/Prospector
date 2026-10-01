@@ -20,6 +20,7 @@ export const SA = {
   good: '#3DD68C',
   warn: '#F2B544',
   bad: '#FF6B6B',
+  barNeutral: '#4A5565', // stage 3 - the leaderboard's inline Delivered bar fill (mockup value, not cohort/status-colored on purpose)
 };
 
 // Print media never depends on Chrome's "Background graphics" checkbox

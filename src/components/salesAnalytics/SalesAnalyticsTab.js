@@ -32,7 +32,42 @@ const PRINT_STYLES = `
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     @page { size: landscape letter; margin: 0.4in; }
   }
+  .sa-row-2fr1fr { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+  .sa-row-1fr1fr { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  @media (max-width: 1100px) {
+    .sa-row-2fr1fr, .sa-row-1fr1fr { grid-template-columns: minmax(0, 1fr); }
+  }
 `;
+
+// design-v1 Stage 3 - DECIDED layout pairs two widgets per row (items 4
+// and 7: Email Trend | Mailbox Health, and Companies by Cohort | Delivery
+// Mix), stacking under 1100px (.sa-row-2fr1fr/.sa-row-1fr1fr above). Every
+// other widget keeps its own full-width card. This also closes a gap from
+// Stage 2 - the Email Trend/Mailbox Health pairing was never built then
+// (Stage 2's own text only said "the mailbox health restyle"), caught
+// while building the mechanism Stage 3 needs for its own pair.
+const PAIRED_ROWS = [
+  { ids: ['email_trend', 'mailbox_health'], className: 'sa-row-2fr1fr' },
+  { ids: ['companies_by_cohort', 'delivery_mix'], className: 'sa-row-1fr1fr' },
+];
+
+function groupWidgetsIntoRows(widgets) {
+  const byId = new Map(widgets.map(w => [w.id, w]));
+  const consumed = new Set();
+  const rows = [];
+  for (const w of widgets) {
+    if (consumed.has(w.id)) continue;
+    const pair = PAIRED_ROWS.find(p => p.ids[0] === w.id && byId.has(p.ids[1]) && !consumed.has(p.ids[1]));
+    if (pair) {
+      consumed.add(pair.ids[0]); consumed.add(pair.ids[1]);
+      rows.push({ widgets: pair.ids.map(id => byId.get(id)), className: pair.className });
+    } else {
+      consumed.add(w.id);
+      rows.push({ widgets: [w], className: null });
+    }
+  }
+  return rows;
+}
 
 function rowsInRange(allRows, from, to) {
   return allRows.filter(r => r.metric_date >= from && r.metric_date <= to);
@@ -263,10 +298,14 @@ export default function SalesAnalyticsTab({ businessId }) {
         {loading ? (
           <p style={{ ...SA_TYPE.body, fontSize: 13, color: SA.muted }}>Loading…</p>
         ) : (
-          WIDGETS.filter(w => w.enabled).sort((a, b) => a.defaultOrder - b.defaultOrder).map(w => (
-            <div key={w.id} className="print-avoid-break" style={{ marginBottom: 12, padding: '22px 24px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusCard }}>
-              <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: '0 0 14px' }}>{w.title}</p>
-              <w.component businessId={businessId} allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} prevPeriod={prevPeriod} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} accent={SA.accent} widgetId={w.id} onDataChanged={load} onFiltersChanged={setFilterSummary} />
+          groupWidgetsIntoRows(WIDGETS.filter(w => w.enabled).sort((a, b) => a.defaultOrder - b.defaultOrder)).map(row => (
+            <div key={row.widgets.map(w => w.id).join('+')} className={row.className ? `${row.className} print-avoid-break` : undefined} style={{ marginBottom: 12, display: row.className ? 'grid' : undefined, gap: row.className ? 12 : undefined }}>
+              {row.widgets.map(w => (
+                <div key={w.id} className={row.className ? undefined : 'print-avoid-break'} style={{ padding: '22px 24px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusCard }}>
+                  <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: '0 0 14px' }}>{w.title}</p>
+                  <w.component businessId={businessId} allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} prevPeriod={prevPeriod} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} accent={SA.accent} widgetId={w.id} onDataChanged={load} onFiltersChanged={setFilterSummary} />
+                </div>
+              ))}
             </div>
           ))
         )}

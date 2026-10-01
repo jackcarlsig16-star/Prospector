@@ -1,4 +1,4 @@
-import { C, mono } from '../../constants/colors';
+import { SA, SA_TYPE } from './theme';
 import { rowsFor, weeklySeries, formatValue } from './computeMetric';
 import { laWeekStart } from './periods';
 import LineChart from './LineChart';
@@ -21,24 +21,31 @@ function TrendRow({ label, points, color, format }) {
   if (points.length < 2) return null;
   const latest = points[points.length - 1].y;
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '8px 0', borderBottom: `1px solid ${C.brd}` }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '8px 0', borderBottom: `1px solid ${SA.border}` }}>
       <div style={{ width: 90, flexShrink: 0 }}>
-        <p style={{ ...mono, fontSize: 9, color: C.dim, textTransform: 'uppercase', letterSpacing: '0.06em', margin: '0 0 3px' }}>{label}</p>
-        <p style={{ ...mono, fontSize: 16, fontWeight: 700, color: C.txt, margin: 0 }}>{formatValue(latest, format)}</p>
+        <p style={{ ...SA_TYPE.label, fontSize: 9, color: SA.muted, margin: '0 0 3px' }}>{label}</p>
+        <p style={{ ...SA_TYPE.body, fontSize: 16, fontWeight: 700, color: SA.text, margin: 0 }}>{formatValue(latest, format)}</p>
       </div>
       <LineChart points={points} width={220} height={40} color={color} showDots />
     </div>
   );
 }
 
-export default function EmailTrendChart({ allRows, accent = C.gold, widgetId = 'email_trend' }) {
+// design-v1 Stage 3 - light token restyle only (card chrome already
+// picked up SA.surface/SA.border from Stage 1's generic widget wrapper;
+// this just stops the internal text/line colors being the odd one out
+// now that it's paired next to the restyled Mailbox Health). The full
+// rebuild (volume bars, bounce/spam-block overlays, benchmark lines,
+// event markers) is sales-email-trend-v1 - out of scope here, per
+// design-v1's own DECIDED text ("the existing trend widget, restyled").
+export default function EmailTrendChart({ allRows, accent = SA.accent, widgetId = 'email_trend' }) {
   const delivered = weeklySeries(rowsFor(allRows, 'unique_delivered'), 'snapshot_delta', laWeekStart);
   const openRate = weeklyRate(allRows, 'unique_opened', 'unique_delivered');
   const replyRate = weeklyRate(allRows, 'unique_replied', 'unique_delivered');
 
   if (delivered.length < 2 && openRate.length < 2 && replyRate.length < 2) {
     return (
-      <p style={{ ...mono, fontSize: 12, color: C.dim, padding: '12px 0' }}>
+      <p style={{ ...SA_TYPE.body, fontSize: 12, color: SA.muted, padding: '12px 0' }}>
         Collecting history — weekly changes appear after the first full week of daily syncs.
       </p>
     );
@@ -68,8 +75,8 @@ export default function EmailTrendChart({ allRows, accent = C.gold, widgetId = '
         <ExportButton onClick={handleExport} />
       </div>
       <TrendRow label="Delivered" points={delivered} color={accent} format="number" />
-      <TrendRow label="Open Rate" points={openRate} color={C.blue} format="percent" />
-      <TrendRow label="Reply Rate" points={replyRate} color={C.green} format="percent" />
+      <TrendRow label="Open Rate" points={openRate} color={SA.warn} format="percent" />
+      <TrendRow label="Reply Rate" points={replyRate} color={SA.good} format="percent" />
     </div>
   );
 }
