@@ -3,7 +3,7 @@ import { SA, SA_TYPE, SA_SHAPE, SA_THEME_CSS, SA_THEME_ROOT_ID, SA_BAD_BG, SA_BA
 import AlertsRow from './AlertsRow';
 import DailyHuddle from './DailyHuddle';
 import { WIDGETS } from './widgets.registry';
-import { fetchMetrics, fetchRuns, fetchEntities, fetchCohortBreakdown, triggerSync } from './salesApi';
+import { fetchMetrics, fetchRuns, fetchEntities, fetchCohortBreakdown, fetchInsights, triggerSync } from './salesApi';
 import { fetchOpportunities } from './pipelineApi';
 import { PERIOD_PRESETS, periodRange, previousPeriodRange, laDateString } from './periods';
 
@@ -129,6 +129,7 @@ export default function SalesAnalyticsTab({ businessId }) {
   const [entities, setEntities] = useState({ sequences: [], mailboxes: [] });
   const [cohortBreakdown, setCohortBreakdown] = useState({});
   const [opportunities, setOpportunities] = useState([]);
+  const [insights, setInsights] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [syncing, setSyncing] = useState(false);
@@ -159,13 +160,16 @@ export default function SalesAnalyticsTab({ businessId }) {
       const from = [period.from, prevPeriod.from, sparklineFrom].sort()[0];
       const to = [period.to, laDateString()].sort().reverse()[0];
 
-      const [metrics, latestRuns, latestEntities, latestCohortBreakdown, latestOpportunities] = await Promise.all([
+      const [metrics, latestRuns, latestEntities, latestCohortBreakdown, latestOpportunities, latestInsights] = await Promise.all([
         fetchMetrics(businessId, from, to),
         fetchRuns(businessId, 5),
         fetchEntities(businessId),
         fetchCohortBreakdown(businessId),
         fetchOpportunities(businessId),
+        // A failing insights request shouldn't take the whole page down.
+        fetchInsights(businessId).catch(e => ({ error: e.message, insights: [], not_enough_data: [], dismissed: [] })),
       ]);
+      setInsights(latestInsights);
       setAllRows(metrics);
       setRuns(latestRuns);
       setEntities(latestEntities);
@@ -180,6 +184,12 @@ export default function SalesAnalyticsTab({ businessId }) {
   }, [businessId, preset, customFrom, customTo]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Shared by the alerts row and the insights panel - refreshed on its own
+  // after a dismiss, without reloading every widget.
+  const reloadInsights = useCallback(async () => {
+    setInsights(await fetchInsights(businessId));
+  }, [businessId]);
 
   const handleSync = async () => {
     setSyncing(true);
@@ -335,7 +345,7 @@ export default function SalesAnalyticsTab({ businessId }) {
           )}
         </div>
 
-        {!loading && <AlertsRow allRows={allRows} entities={entities} runs={runs} />}
+        {!loading && <AlertsRow runs={runs} insights={insights} />}
 
         {loading ? (
           <p style={{ ...SA_TYPE.body, fontSize: 13, color: SA.muted }}>Loading…</p>
@@ -344,9 +354,9 @@ export default function SalesAnalyticsTab({ businessId }) {
           {groupWidgetsIntoRows(WIDGETS.filter(w => w.enabled).sort((a, b) => a.defaultOrder - b.defaultOrder)).map(row => (
             <div key={row.widgets.map(w => w.id).join('+')} className={row.className ? `${row.className} print-avoid-break` : undefined} style={{ marginBottom: 12, display: row.className ? 'grid' : undefined, gap: row.className ? 12 : undefined, order: Math.min(...row.widgets.map(w => w.printOrder)) }}>
               {row.widgets.map(w => (
-                <div key={w.id} className={row.className ? undefined : 'print-avoid-break'} style={{ padding: '22px 24px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusCard }}>
+                <div key={w.id} id={`sa-widget-${w.id}`} className={row.className ? undefined : 'print-avoid-break'} style={{ padding: '22px 24px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusCard }}>
                   <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: '0 0 14px' }}>{w.title}</p>
-                  <w.component businessId={businessId} allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} prevPeriod={prevPeriod} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} opportunities={opportunities} accent={SA.accent} widgetId={w.id} onDataChanged={load} onPipelineChanged={load} onFiltersChanged={setFilterSummary} />
+                  <w.component businessId={businessId} allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} prevPeriod={prevPeriod} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} opportunities={opportunities} accent={SA.accent} widgetId={w.id} onDataChanged={load} onPipelineChanged={load} onFiltersChanged={setFilterSummary} insights={insights} onInsightsChanged={reloadInsights} />
                 </div>
               ))}
             </div>

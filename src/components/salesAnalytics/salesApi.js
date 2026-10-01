@@ -89,3 +89,19 @@ export async function createSalesEvent(businessId, payload) {
   if (!res.ok) throw new Error(data.error || `Failed to add event (${res.status})`);
   return data.event;
 }
+
+export async function fetchInsights(businessId) {
+  const res = await fetch(`/api/sales/${businessId}/insights`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to load insights (${res.status})`);
+  return data;
+}
+
+export async function dismissInsight(businessId, payload) {
+  const res = await fetch(`/api/sales/${businessId}/insights/dismiss`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to dismiss (${res.status})`);
+  return data.dismissal;
+}

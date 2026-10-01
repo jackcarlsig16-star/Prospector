@@ -1,14 +1,14 @@
 import { SA, SA_TYPE } from './theme';
 import { computeAlerts } from './alertRules';
 
-const SEVERITY_COLOR = { bad: SA.bad, warn: SA.warn };
+const SEVERITY_COLOR = { bad: SA.bad, warn: SA.warn, info: SA.good };
 
 // design-v1 Stage 2 - hidden entirely when there are no alerts (DECIDED);
 // rendered outside the normal widget registry loop since it needs its own
 // multi-card grid with no title bar, and must disappear completely rather
 // than show an empty-card shell.
-export default function AlertsRow({ allRows, entities, runs }) {
-  const alerts = computeAlerts({ allRows, entities, runs });
+export default function AlertsRow({ runs, insights }) {
+  const alerts = computeAlerts({ runs, insights });
   if (!alerts.length) return null;
 
   return (

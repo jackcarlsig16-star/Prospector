@@ -26,7 +26,7 @@ export const HEAT = {
   botUserAgents: [/generic linux/i],
 };
 
-function isBotOpen(ev, deliveredAt) {
+export function isBotOpen(ev, deliveredAt) {
   if (ev.tracking_service) return true;
   if (ev.user_agent && HEAT.botUserAgents.some(re => re.test(ev.user_agent))) return true;
   if (!deliveredAt) return false;

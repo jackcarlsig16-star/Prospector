@@ -353,7 +353,7 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
     const numericCellStyle = { ...cellStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
     return (
       <Fragment key={r.id}>
-        <tr>
+        <tr id={`sa-seq-${r.id}`}>
           <td
             style={{ ...cellStyle, padding: '10px 4px', cursor: 'pointer', color: SA.muted, textAlign: 'center', ...stickyCellStyle('expand', tinted ? SA_BAD_TINT : SA.surface) }}
             onClick={() => toggleExpand(r.id)}

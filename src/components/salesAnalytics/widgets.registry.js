@@ -8,6 +8,7 @@ import SequenceLeaderboard from './SequenceLeaderboard';
 import MailboxHealth from './MailboxHealth';
 import CompaniesByCohort from './CompaniesByCohort';
 import DeliveryMix from './DeliveryMix';
+import InsightsPanel from './InsightsPanel';
 
 // Entry fields: { id, title, component, metrics[], defaultOrder, printOrder,
 // enabled }. Later SPECs add entries here instead of rewriting
@@ -43,19 +44,19 @@ export const WIDGETS = [
   },
   {
     id: 'pipeline_table', title: 'Pipeline', component: PipelineTable,
-    metrics: [], defaultOrder: 2, printOrder: 7, enabled: true,
+    metrics: [], defaultOrder: 2, printOrder: 8, enabled: true,
   },
   {
     id: 'pipeline_movement', title: 'Pipeline Movement', component: PipelineMovement,
-    metrics: [], defaultOrder: 3, printOrder: 8, enabled: true,
+    metrics: [], defaultOrder: 3, printOrder: 9, enabled: true,
   },
   {
     id: 'pipeline_forecast', title: 'Forecast', component: PipelineForecast,
-    metrics: [], defaultOrder: 4, printOrder: 9, enabled: true,
+    metrics: [], defaultOrder: 4, printOrder: 10, enabled: true,
   },
   {
     id: 'top_opportunities', title: 'Top Opportunities', component: TopOpportunities,
-    metrics: [], defaultOrder: 5, printOrder: 10, enabled: true,
+    metrics: [], defaultOrder: 5, printOrder: 11, enabled: true,
   },
   {
     id: 'email_trend', title: 'Email Performance Over Time', component: EmailTrendChart,
@@ -67,20 +68,26 @@ export const WIDGETS = [
     metrics: ['mailbox_sent', 'mailbox_delivered', 'mailbox_opened', 'mailbox_replied'],
     defaultOrder: 7, printOrder: 3, enabled: true,
   },
+  // sales-email-trend-v1 REV2 Stage 4 - full width, directly under the
+  // Email Trend | Mailbox Health row. Final PDF placement is Stage 5.
+  {
+    id: 'email_insights', title: 'Why performance looks like this', component: InsightsPanel,
+    metrics: [], defaultOrder: 8, printOrder: 4, enabled: true,
+  },
   {
     id: 'sequence_leaderboard', title: 'Sequence Leaderboard', component: SequenceLeaderboard,
     metrics: ['unique_delivered', 'unique_opened', 'unique_replied', 'unique_bounced'],
-    defaultOrder: 8, printOrder: 4, enabled: true,
+    defaultOrder: 9, printOrder: 5, enabled: true,
   },
   {
     id: 'companies_by_cohort', title: 'Companies in Cadence by Cohort', component: CompaniesByCohort,
     metrics: ['companies_in_cadence'],
-    defaultOrder: 9, printOrder: 5, enabled: true,
+    defaultOrder: 10, printOrder: 6, enabled: true,
   },
   {
     id: 'delivery_mix', title: 'Delivery Mix', component: DeliveryMix,
     metrics: ['unique_delivered'],
-    defaultOrder: 10, printOrder: 6, enabled: true,
+    defaultOrder: 11, printOrder: 7, enabled: true,
   },
 ];
 

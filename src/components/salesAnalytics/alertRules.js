@@ -2,8 +2,6 @@
 // one place, so thresholds can be tuned without touching render code
 // (DECIDED). Starting thresholds are REVISABLE starting values per the
 // SPEC, not tuned to match today's real data.
-import { buildSequenceRows } from './sequenceRows';
-import { mailboxConnectionProblem } from '../../utils/mailboxStatus';
 
 // Exported - the leaderboard's row-tint rule ("rows with bounce > 5% get
 // a faint red tint", design-v1 Stage 3) is the SAME 5% line, not a
@@ -31,58 +29,15 @@ const STALE_SYNC_ALERT_ENABLED = false;
 // job actually misses a day.
 const CRON_FLOOR_ISO = '2026-09-30T06:00:00-07:00';
 
-export function computeAlerts({ allRows, entities, runs }) {
+export function computeAlerts({ runs, insights }) {
   const alerts = [];
 
-  // Rule 1 - any active sequence with >=20 delivered and bounce > 5%,
-  // worst first. The worst gets its own card; the rest (if any) are
-  // grouped into a second card so the row stays within its 3-card budget
-  // no matter how many sequences qualify.
-  const bouncing = buildSequenceRows(allRows, entities)
-    .filter(r => r.active !== false && r.delivered !== null && r.delivered >= BOUNCE_ALERT_MIN_DELIVERED && r.bounceRate !== null && r.bounceRate > BOUNCE_ALERT_THRESHOLD)
-    .sort((a, b) => b.bounceRate - a.bounceRate);
-
-  if (bouncing.length) {
-    const worst = bouncing[0];
-    alerts.push({
-      key: 'bounce-worst',
-      severity: 'bad',
-      title: `${worst.cohort} sequence bouncing at ${(worst.bounceRate * 100).toFixed(1)}%`,
-      action: 'Pause it and run the list through verification before resuming.',
-    });
-  }
-
-  // Rule 2 - any mailbox with a real connection problem (see
-  // utils/mailboxStatus.js - Apollo's error fields alone are stale
-  // history). Grouped into one card when more than one mailbox has one,
-  // for the same reason rule 1 groups its overflow - the row has a hard
-  // 3-card cap.
-  const mailboxesWithErrors = (entities?.mailboxes || []).filter(m => mailboxConnectionProblem(m));
-  if (mailboxesWithErrors.length === 1) {
-    alerts.push({
-      key: 'mailbox-error',
-      severity: 'bad',
-      title: `${mailboxesWithErrors[0].email}: ${mailboxConnectionProblem(mailboxesWithErrors[0]).toLowerCase()}`,
-      action: 'As of last sync. Re-sync to confirm the reconnect took.',
-    });
-  } else if (mailboxesWithErrors.length > 1) {
-    alerts.push({
-      key: 'mailbox-error',
-      severity: 'bad',
-      title: `${mailboxesWithErrors.length} mailboxes reported connection errors`,
-      action: `${mailboxesWithErrors.map(m => m.email).join(', ')} — as of last sync. Re-sync to confirm.`,
-    });
-  }
-
-  // Rule 1 continued - the rest of the bouncing sequences.
-  if (bouncing.length > 1) {
-    const rest = bouncing.slice(1);
-    alerts.push({
-      key: 'bounce-rest',
-      severity: 'warn',
-      title: `${rest.map(r => `${r.cohort} ${(r.bounceRate * 100).toFixed(1)}%`).join(' · ')} bounce`,
-      action: `${rest.length > 1 ? 'All' : 'It’s'} above the 5% line. Check list sources.`,
-    });
+  // sales-email-trend-v1 REV2 Stage 4 - the bounce and mailbox cards now
+  // come from the insight rules (api/sales/insightRules.js: R1 hard bounce,
+  // R2 spam block, R5 mailbox/volume ...), so there's one rules system,
+  // not two. Top 3 by severity, same 3-card budget as before.
+  for (const i of (insights?.insights || []).slice(0, 3)) {
+    alerts.push({ key: `${i.id}:${i.scope_key}`, severity: i.severity, title: i.title, action: i.action });
   }
 
   // Rule 3 - staleness, cron-only (see CRON_FLOOR_ISO comment above).
@@ -100,10 +55,6 @@ export function computeAlerts({ allRows, entities, runs }) {
     });
   }
 
-  // Priority order when more than 3 qualify, matching the mockup's own
-  // displayed order (worst-bounce, mailbox-error, grouped-rest) with
-  // staleness appended last - both "bad" cards rank ahead of the "warn"
-  // ones. REVISABLE/flagged: not specified explicitly by the SPEC.
-  const order = ['bounce-worst', 'mailbox-error', 'bounce-rest', 'stale-sync'];
-  return alerts.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key)).slice(0, 3);
+  // Insights arrive already sorted bad -> warn -> info; staleness goes last.
+  return alerts.slice(0, 3);
 }

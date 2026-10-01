@@ -29,7 +29,7 @@ const RECENT_WEEKS = 2;
 // Backstop for this step's own counter in sync.js.
 export const EMAIL_COUNTS_MAX_CALLS = RECENT_WEEKS * STATS.length * MAX_PAGES_PER_STAT;
 
-function addDays(isoDate, n) {
+export function addDays(isoDate, n) {
   const d = new Date(`${isoDate}T12:00:00Z`);
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);

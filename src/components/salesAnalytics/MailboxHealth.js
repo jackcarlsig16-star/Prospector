@@ -93,7 +93,7 @@ export default function MailboxHealth({ allRows, entities, widgetId = 'mailbox_h
           const hasProblem = !!m.problem;
           const hasNote = !!(m.unlinkErrorCode || m.errorNote);
           return (
-            <div key={m.id} style={{ padding: '14px 16px', background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div key={m.id} id={`sa-mailbox-${m.label}`} style={{ padding: '14px 16px', background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                 <span style={{ ...SA_TYPE.body, fontSize: 14, fontWeight: 500, color: m.active === false ? SA.muted : SA.text, wordBreak: 'break-all' }}>
                   {m.label}{m.active === false && ' (inactive)'}

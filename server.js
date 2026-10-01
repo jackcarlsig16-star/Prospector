@@ -618,6 +618,8 @@ app.delete('/api/sales/:businessId/collateral/:id', salesModuleRoute('./api/sale
 app.get('/api/sales/:businessId/email-counts', salesModuleRoute('./api/sales/trendRoutes.js', 'emailCountsRoute', 'email-counts'));
 app.get('/api/sales/:businessId/events', salesModuleRoute('./api/sales/trendRoutes.js', 'listEventsRoute', 'events'));
 app.post('/api/sales/:businessId/events', salesModuleRoute('./api/sales/trendRoutes.js', 'createEventRoute', 'events POST'));
+app.get('/api/sales/:businessId/insights', salesModuleRoute('./api/sales/trendRoutes.js', 'insightsRoute', 'insights'));
+app.post('/api/sales/:businessId/insights/dismiss', salesModuleRoute('./api/sales/trendRoutes.js', 'dismissInsightRoute', 'insights/dismiss'));
 
 app.post('/api/notify-pending', async (req, res) => {
   const { name, email, role } = req.body || {};
