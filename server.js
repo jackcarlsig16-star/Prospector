@@ -527,6 +527,76 @@ app.get('/api/sales/:businessId/cohort-breakdown', async (req, res) => {
   }
 });
 
+// sales-pipeline-v1 - same dynamic-import-per-request pattern as the
+// sales analytics routes above. Order matters here: Express matches
+// '/opportunities/:id' before more specific literal paths registered
+// later, so the three literal sub-paths (template, import, movement) are
+// registered BEFORE '/opportunities/:id' to avoid 'template'/'import'/
+// 'movement' being parsed as an :id.
+app.get('/api/sales/:businessId/opportunities/template', async (req, res) => {
+  try {
+    const { opportunityTemplateRoute } = await import('./api/sales/pipelineRoutes.js');
+    return opportunityTemplateRoute(req, res);
+  } catch (err) {
+    console.error('[sales/opportunities/template] handler error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post('/api/sales/:businessId/opportunities/import', async (req, res) => {
+  try {
+    const { importOpportunitiesRoute } = await import('./api/sales/pipelineRoutes.js');
+    return importOpportunitiesRoute(req, res);
+  } catch (err) {
+    console.error('[sales/opportunities/import] handler error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+app.get('/api/sales/:businessId/opportunities/movement', async (req, res) => {
+  try {
+    const { movementRoute } = await import('./api/sales/pipelineRoutes.js');
+    return movementRoute(req, res);
+  } catch (err) {
+    console.error('[sales/opportunities/movement] handler error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+app.get('/api/sales/:businessId/opportunities', async (req, res) => {
+  try {
+    const { listOpportunitiesRoute } = await import('./api/sales/pipelineRoutes.js');
+    return listOpportunitiesRoute(req, res);
+  } catch (err) {
+    console.error('[sales/opportunities] handler error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post('/api/sales/:businessId/opportunities', async (req, res) => {
+  try {
+    const { createOpportunityRoute } = await import('./api/sales/pipelineRoutes.js');
+    return createOpportunityRoute(req, res);
+  } catch (err) {
+    console.error('[sales/opportunities POST] handler error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+app.patch('/api/sales/:businessId/opportunities/:id', async (req, res) => {
+  try {
+    const { updateOpportunityRoute } = await import('./api/sales/pipelineRoutes.js');
+    return updateOpportunityRoute(req, res);
+  } catch (err) {
+    console.error('[sales/opportunities/:id PATCH] handler error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post('/api/sales/:businessId/opportunities/:id/archive', async (req, res) => {
+  try {
+    const { archiveOpportunityRoute } = await import('./api/sales/pipelineRoutes.js');
+    return archiveOpportunityRoute(req, res);
+  } catch (err) {
+    console.error('[sales/opportunities/:id/archive] handler error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/notify-pending', async (req, res) => {
   const { name, email, role } = req.body || {};
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;
