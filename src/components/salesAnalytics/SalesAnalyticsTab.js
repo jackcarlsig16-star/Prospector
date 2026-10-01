@@ -263,7 +263,7 @@ export default function SalesAnalyticsTab({ businessId }) {
           WIDGETS.filter(w => w.enabled).sort((a, b) => a.defaultOrder - b.defaultOrder).map(w => (
             <div key={w.id} className="print-avoid-break" style={{ marginBottom: 12, padding: '22px 24px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusCard }}>
               <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: '0 0 14px' }}>{w.title}</p>
-              <w.component businessId={businessId} allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} accent={SA.accent} widgetId={w.id} onDataChanged={load} onFiltersChanged={setFilterSummary} />
+              <w.component businessId={businessId} allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} prevPeriod={prevPeriod} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} accent={SA.accent} widgetId={w.id} onDataChanged={load} onFiltersChanged={setFilterSummary} />
             </div>
           ))
         )}

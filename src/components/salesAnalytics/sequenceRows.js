@@ -63,6 +63,35 @@ export function buildSequenceRows(allRows, entities) {
   }).filter(r => r.delivered !== null || r.active !== undefined); // drop pure ghosts (no data, no entity)
 }
 
+// sales-analytics-design-v1 - the "active sequences, all-time" totals the
+// KPI tiles' Delivered/Reply/Bounce need (same scope the leaderboard's
+// default-filtered summary strip shows - audit-confirmed 871/13.0%/0.5%/
+// 14.9%). A fresh small helper rather than retrofitting the leaderboard's
+// own summary calc: that one is reactive to several independent user
+// filters (cohort/partner/sender/search/health), this one is a single
+// fixed query, so unifying them would mean threading unrelated filter
+// state through for no real reuse. `delivered: null` (vs 0) means no
+// active sequence has any delivered data at all for the rows given -
+// callers can tell "genuinely zero" apart from "nothing synced yet".
+export function activeSequenceTotals(allRows, entities) {
+  const rows = buildSequenceRows(allRows, entities).filter(r => r.active !== false);
+  const totals = rows.reduce((acc, r) => {
+    acc.count += 1;
+    if (r.delivered !== null) { acc.delivered += r.delivered; acc.hasDelivered = true; }
+    acc.opened += r.counters.unique_opened || 0;
+    acc.replied += r.counters.unique_replied || 0;
+    acc.bounced += r.counters.unique_bounced || 0;
+    return acc;
+  }, { count: 0, delivered: 0, opened: 0, replied: 0, bounced: 0, hasDelivered: false });
+  return {
+    count: totals.count,
+    delivered: totals.hasDelivered ? totals.delivered : null,
+    openRate: totals.hasDelivered && totals.delivered > 0 ? totals.opened / totals.delivered : null,
+    replyRate: totals.hasDelivered && totals.delivered > 0 ? totals.replied / totals.delivered : null,
+    bounceRate: totals.hasDelivered && (totals.delivered + totals.bounced) > 0 ? totals.bounced / (totals.delivered + totals.bounced) : null,
+  };
+}
+
 export function needsAttention(row) {
   if (row.isPerformingPoorly) return true;
   if (row.bounceRate !== null && row.bounceRate >= HEALTH_THRESHOLDS.bounceAmber) return true;
