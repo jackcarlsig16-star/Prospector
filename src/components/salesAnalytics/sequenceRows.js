@@ -11,7 +11,7 @@ export const UNIQUE_COUNTER_KEYS = [
 ];
 
 // One full row per sequence, joining entities (name/cohort/active/
-// Partner/sender/num_steps/is_performing_poorly/created_at/archived, all
+// audience/sender/num_steps/is_performing_poorly/created_at/archived, all
 // from GET /entities - Stage 2) with every kept unique_* counter + derived
 // rate from allRows (GET /metrics). An id present in one but not the
 // other still gets a row - "Unknown (<last 6 chars>)" per the names-fix-v1
@@ -48,7 +48,7 @@ export function buildSequenceRows(allRows, entities) {
       numSteps: entity ? entity.num_steps : null,
       isPerformingPoorly: entity ? !!entity.is_performing_poorly : false,
       createdAt: entity ? entity.created_at : null,
-      isPartner: entity ? !!entity.is_partner : false,
+      audience: entity ? (entity.audience || 'employer') : 'employer',
       senderEmail: entity ? entity.sender_email : null,
       counters,
       delivered: counters.unique_delivered,

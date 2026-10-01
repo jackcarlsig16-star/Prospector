@@ -27,7 +27,7 @@ export async function fetchEntities(businessId) {
 
 // dashboard-v2 Stage 2 - cohort x {direct, partner} company counts,
 // computed server-side at read time from the latest accounts snapshot +
-// current tags, so a Partner toggle is reflected the moment this is
+// current tags, so an audience change is reflected the moment this is
 // re-fetched (no sync required). 0 Apollo calls.
 export async function fetchCohortBreakdown(businessId) {
   const res = await fetch(`/api/sales/${businessId}/cohort-breakdown`);
@@ -36,18 +36,18 @@ export async function fetchCohortBreakdown(businessId) {
   return data;
 }
 
-// dashboard-v2 Stage 4 uses this for the Partner toggle; defined here now
-// (Stage 2 built the route) so Stage 3's verification can exercise the
-// real PUT without waiting for the leaderboard UI to exist.
-export async function setSequencePartner(businessId, sequenceId, isPartner) {
+// sales-sequence-motion-v1 - replaces setSequencePartner({is_partner}).
+// audience must be one of 'employer'|'membership'|'channel_partner'
+// (server validates too - this is just the real call shape).
+export async function setSequenceAudience(businessId, sequenceId, audience) {
   const res = await fetch(`/api/sales/${businessId}/sequence-tags/${sequenceId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ is_partner: isPartner }),
+    body: JSON.stringify({ audience }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const err = new Error(data.error || `Failed to set Partner tag (${res.status})`);
+    const err = new Error(data.error || `Failed to set audience (${res.status})`);
     err.status = res.status;
     throw err;
   }

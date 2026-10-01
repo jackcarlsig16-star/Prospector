@@ -1,19 +1,27 @@
 import { useState, useEffect, Fragment } from 'react';
 import { SA, SA_TYPE, SA_SHAPE, SA_BAD_TINT, SA_BAD_BG } from './theme';
 import { formatValue } from './computeMetric';
-import { cohortColor, bounceHealthColor } from './palette';
+import { cohortColor, bounceHealthColor, PARTNER_COLOR } from './palette';
 import { COHORTS } from './metrics.registry';
 import { buildSequenceRows, needsAttention } from './sequenceRows';
 import { BOUNCE_ALERT_THRESHOLD, BOUNCE_ALERT_MIN_DELIVERED } from './alertRules';
-import { setSequencePartner } from './salesApi';
+import { setSequenceAudience } from './salesApi';
 import ExportButton from './ExportButton';
 import { exportWidgetCsv } from './exportCsv';
 import TimeChip from './TimeChip';
 
+// sales-sequence-motion-v1 - replaces the is_partner boolean. Same
+// vocabulary as sales-pipeline-v1's org_type, on purpose (the SPEC this
+// FIX runs before, so sequences and pipeline opportunities share one
+// vocabulary from the start).
+const AUDIENCE_OPTIONS = ['employer', 'membership', 'channel_partner'];
+const AUDIENCE_LABELS = { employer: 'Employer', membership: 'Membership org', channel_partner: 'Channel partner' };
+function audienceColor(audience) { return audience === 'employer' ? SA.muted : PARTNER_COLOR; }
+
 const GROUP_OPTIONS = [
   { id: 'cohort', label: 'Cohort' },
   { id: 'sender', label: 'Sender' },
-  { id: 'partner', label: 'Partner' },
+  { id: 'audience', label: 'Audience' },
   { id: 'none', label: 'None' },
 ];
 
@@ -21,30 +29,24 @@ const GROUP_OPTIONS = [
 // by the <colgroup> and every <th>/<td> in every table on this widget (the
 // bug that fix solved: grouped mode renders one <table> per group, and
 // without a shared definition each auto-sizes its own columns). Kept
-// through this stage's restyle - only the column SET and cell rendering
-// changed (Cohort is now its own column instead of a dot inside the name
-// cell; Delivered gets an inline bar; Partner stays, real functionality
-// the mockup's static image just didn't draw, same as the header's kept
-// Compare checkbox in Stage 1).
-// Widths trimmed in design-v1 Stage 4 (from 120/110/52/160/64/64/150 for
-// cohort/sender/steps/delivered/open/reply/health) after actually reading
-// the rendered PDF: the original widths put TABLE_MIN_WIDTH at ~1062px,
-// wider than landscape letter's printable area minus the widget card's
-// own padding (~935px), so Partner/Health were getting clipped off the
-// right edge with no way to scroll in a static PDF. These widths apply on
-// screen too (one shared definition, not a print-only override) - still
-// comfortable there, just slightly more compact.
+// through every later restyle - only the column SET and cell rendering
+// have changed since.
+// Widths retuned in sales-sequence-motion-v1 (Audience needs more room
+// than the old Partner checkbox did - "Channel partner" is the longest
+// label) while keeping the table within the print-fit budget design-v1
+// Stage 4 measured (~935px after the widget card's own padding):
+// cohort/sender/steps trimmed a little further to make room.
 const LEADERBOARD_COLUMNS = [
   { id: 'expand', label: '', sortKey: null, width: 28, align: 'left' },
   { id: 'name', label: 'Sequence', sortKey: 'name', width: null, align: 'left' },
-  { id: 'cohort', label: 'Cohort', sortKey: null, width: 100, align: 'left' },
-  { id: 'sender', label: 'Sender', sortKey: 'senderEmail', width: 90, align: 'left' },
-  { id: 'steps', label: 'Steps', sortKey: 'numSteps', width: 46, align: 'right' },
+  { id: 'cohort', label: 'Cohort', sortKey: null, width: 90, align: 'left' },
+  { id: 'sender', label: 'Sender', sortKey: 'senderEmail', width: 80, align: 'left' },
+  { id: 'steps', label: 'Steps', sortKey: 'numSteps', width: 44, align: 'right' },
   { id: 'delivered', label: 'Delivered', sortKey: 'delivered', width: 130, align: 'right' },
   { id: 'open', label: 'Open', sortKey: 'openRate', width: 58, align: 'right' },
   { id: 'reply', label: 'Reply', sortKey: 'replyRate', width: 58, align: 'right' },
   { id: 'bounce', label: 'Bounce', sortKey: 'bounceRate', width: 72, align: 'right' },
-  { id: 'partner', label: 'Partner', sortKey: null, width: 58, align: 'left' },
+  { id: 'audience', label: 'Audience', sortKey: null, width: 100, align: 'left' },
   { id: 'health', label: 'Health', sortKey: null, width: 120, align: 'left' },
 ];
 const NAME_COL_MIN_WIDTH = 150; // REVISABLE starting value, per SPEC
@@ -60,7 +62,7 @@ const EXPAND_COUNTER_ROWS = [
 function groupKeyFor(row, groupBy) {
   if (groupBy === 'cohort') return row.cohort;
   if (groupBy === 'sender') return row.senderEmail || 'Unknown';
-  if (groupBy === 'partner') return row.isPartner ? 'Partner' : 'Direct';
+  if (groupBy === 'audience') return AUDIENCE_LABELS[row.audience] || row.audience;
   return 'All sequences';
 }
 
@@ -86,6 +88,40 @@ function Colgroup() {
   );
 }
 
+// sales-sequence-motion-v1 - the Audience pill. Click opens a 3-option
+// menu (Esc or an outside click closes it); print shows the pill as plain
+// text (the menu trigger area is marked no-print, nothing interactive in
+// print per the SPEC). data-audience-menu scopes the outside-click check
+// in the component below without needing a ref per row.
+function AudiencePill({ row, open, saving, error, onToggleOpen, onSelect }) {
+  return (
+    <div data-audience-menu style={{ position: 'relative' }}>
+      <span
+        className="no-print"
+        onClick={() => !saving && onToggleOpen()}
+        style={{ fontSize: 11, fontWeight: 600, color: audienceColor(row.audience), background: `color-mix(in srgb, ${audienceColor(row.audience)} 12%, transparent)`, borderRadius: SA_SHAPE.radiusPill, padding: '4px 10px', whiteSpace: 'nowrap', cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1, display: 'inline-block' }}
+      >
+        {AUDIENCE_LABELS[row.audience] || row.audience}
+      </span>
+      <span className="print-only" style={{ fontSize: 11, color: SA.text }}>{AUDIENCE_LABELS[row.audience] || row.audience}</span>
+      {open && (
+        <div className="no-print" style={{ position: 'absolute', left: 0, top: 26, zIndex: 10, background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: 4, minWidth: 140, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+          {AUDIENCE_OPTIONS.map(opt => (
+            <div
+              key={opt}
+              onClick={() => onSelect(opt)}
+              style={{ ...SA_TYPE.body, fontSize: 12, padding: '7px 10px', borderRadius: 7, color: opt === row.audience ? SA.text : SA.muted, background: opt === row.audience ? SA.surface : 'transparent', cursor: 'pointer' }}
+            >
+              {AUDIENCE_LABELS[opt]}
+            </div>
+          ))}
+        </div>
+      )}
+      {error && <div style={{ color: SA.bad, fontSize: 9, marginTop: 2 }}>⚠ {error}</div>}
+    </div>
+  );
+}
+
 // design-v1 Stage 3 - leaderboard restyle: Cohort as its own column (dot +
 // name, no longer inline in the Sequence cell), Delivered gets a thin
 // inline bar scaled to the max of the currently-filtered set, Bounce %
@@ -101,7 +137,7 @@ function Colgroup() {
 // rule can never drift apart.
 export default function SequenceLeaderboard({ businessId, allRows, entities, widgetId = 'sequence_leaderboard', onDataChanged, onFiltersChanged }) {
   const [cohortFilter, setCohortFilter] = useState(() => new Set(COHORTS));
-  const [partnerFilter, setPartnerFilter] = useState('all');
+  const [audienceFilter, setAudienceFilter] = useState('all');
   const [senderFilter, setSenderFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('active');
   const [healthFilter, setHealthFilter] = useState('all');
@@ -112,6 +148,16 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
   const [expandedIds, setExpandedIds] = useState(() => new Set());
   const [savingId, setSavingId] = useState(null);
   const [errorById, setErrorById] = useState({});
+  const [audienceMenuRowId, setAudienceMenuRowId] = useState(null);
+
+  useEffect(() => {
+    if (!audienceMenuRowId) return;
+    const onClick = e => { if (!e.target.closest('[data-audience-menu]')) setAudienceMenuRowId(null); };
+    const onKey = e => { if (e.key === 'Escape') setAudienceMenuRowId(null); };
+    document.addEventListener('mousedown', onClick);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onClick); document.removeEventListener('keydown', onKey); };
+  }, [audienceMenuRowId]);
 
   const allSequenceRows = buildSequenceRows(allRows, entities);
   const totalCount = allSequenceRows.length;
@@ -124,8 +170,7 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
 
   const filtered = allSequenceRows.filter(r => {
     if (!cohortFilter.has(r.cohort) && r.cohort !== 'Unknown') return false;
-    if (partnerFilter === 'direct' && r.isPartner) return false;
-    if (partnerFilter === 'partner' && !r.isPartner) return false;
+    if (audienceFilter !== 'all' && r.audience !== audienceFilter) return false;
     if (senderFilter !== 'all' && (r.senderEmail || 'Unknown') !== senderFilter) return false;
     if (statusFilter === 'active' && r.active === false) return false;
     if (statusFilter === 'inactive' && r.active !== false) return false;
@@ -145,13 +190,13 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
   // read as a sentence. Default filter state produces exactly the SPEC's
   // own quoted example: "Showing all cohorts · active sequences ·
   // grouped by cohort". Non-default filters are appended in the same
-  // prose style; defaults (Partner: all, Sender: all, Health: all) are
+  // prose style; defaults (Audience: all, Sender: all, Health: all) are
   // omitted rather than stated, since "all" isn't information.
   useEffect(() => {
     const cohortLabel = cohortFilter.size === COHORTS.length ? 'all cohorts' : (cohortFilter.size ? `${[...cohortFilter].join(', ')} cohorts` : 'no cohorts');
     const parts = [
       cohortLabel,
-      partnerFilter !== 'all' ? (partnerFilter === 'direct' ? 'Direct only' : 'Partner only') : null,
+      audienceFilter !== 'all' ? AUDIENCE_LABELS[audienceFilter] : null,
       senderFilter !== 'all' ? senderFilter : null,
       statusFilter === 'all' ? 'all statuses' : `${statusFilter} sequences`,
       healthFilter !== 'all' ? 'needs attention' : null,
@@ -160,7 +205,7 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
     ].filter(Boolean);
     onFiltersChanged?.(`Showing ${parts.join(' · ')} (${filtered.length} of ${totalCount} sequences)`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cohortFilter, partnerFilter, senderFilter, statusFilter, healthFilter, search, groupBy, filtered.length, totalCount]);
+  }, [cohortFilter, audienceFilter, senderFilter, statusFilter, healthFilter, search, groupBy, filtered.length, totalCount]);
 
   const toggleCohortFilter = cohort => {
     setCohortFilter(prev => {
@@ -222,11 +267,12 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
     });
   };
 
-  const handleTogglePartner = async row => {
+  const handleSetAudience = async (row, audience) => {
+    setAudienceMenuRowId(null);
     setSavingId(row.id);
     setErrorById(prev => { const next = { ...prev }; delete next[row.id]; return next; });
     try {
-      await setSequencePartner(businessId, row.id, !row.isPartner);
+      await setSequenceAudience(businessId, row.id, audience);
       onDataChanged?.();
     } catch (e) {
       setErrorById(prev => ({ ...prev, [row.id]: e.message }));
@@ -240,7 +286,7 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
       { label: 'Cohort', key: 'cohort' },
       { label: 'Sequence', key: 'name' },
       { label: 'Status', value: r => (r.active === false ? 'Inactive' : 'Active') },
-      { label: 'Partner', value: r => (r.isPartner ? 'Yes' : 'No') },
+      { label: 'Audience', value: r => AUDIENCE_LABELS[r.audience] || r.audience },
       { label: 'Sender', value: r => r.senderEmail || 'Unknown' },
       { label: 'Steps', value: r => (r.numSteps ?? '') },
       { label: 'Delivered', value: r => formatValue(r.delivered, 'number') },
@@ -347,10 +393,12 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
             {formatValue(r.bounceRate, 'percent')}
           </td>
           <td style={cellStyle}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.5 : 1 }}>
-              <input type="checkbox" checked={r.isPartner} disabled={saving} onChange={() => handleTogglePartner(r)} />
-            </label>
-            {rowError && <div style={{ color: SA.bad, fontSize: 9, marginTop: 2 }}>⚠ {rowError}</div>}
+            <AudiencePill
+              row={r} saving={saving} error={rowError}
+              open={audienceMenuRowId === r.id}
+              onToggleOpen={() => setAudienceMenuRowId(id => (id === r.id ? null : r.id))}
+              onSelect={audience => handleSetAudience(r, audience)}
+            />
           </td>
           <td style={cellStyle}>
             {r.isPerformingPoorly ? (
@@ -405,11 +453,12 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
             </span>
           ))}
         </div>
-        <select value={partnerFilter} onChange={e => setPartnerFilter(e.target.value)} style={selectStyle}>
-          <option value="all">All (Direct + Partner)</option>
-          <option value="direct">Direct only</option>
-          <option value="partner">Partner only</option>
-        </select>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          <span onClick={() => setAudienceFilter('all')} style={chipStyle(audienceFilter === 'all', SA.accent)}>All</span>
+          {AUDIENCE_OPTIONS.map(opt => (
+            <span key={opt} onClick={() => setAudienceFilter(opt)} style={chipStyle(audienceFilter === opt, audienceColor(opt))}>{AUDIENCE_LABELS[opt]}</span>
+          ))}
+        </div>
         <select value={senderFilter} onChange={e => setSenderFilter(e.target.value)} style={selectStyle}>
           <option value="all">All senders</option>
           {senderOptions.map(s => <option key={s} value={s}>{s}</option>)}

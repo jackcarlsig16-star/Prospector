@@ -68,9 +68,12 @@ export async function metricsRoute(req, res) {
 // dashboard-v2 Stage 2 - extended with the new sequence fields (num_steps,
 // is_performing_poorly, created_at, archived), the new mailbox fields
 // (deliverability_score subset, email_daily_threshold, the connection-
-// error fields), and each sequence's is_partner/sender_email joined in
+// error fields), and each sequence's audience/sender_email joined in
 // from sales_sequence_tags. Still 0 Apollo calls - reads only the latest
 // raw snapshot per entity plus the tags table.
+// sales-sequence-motion-v1 - is_partner replaced with audience
+// ('employer'|'membership'|'channel_partner'); is_partner stays in the
+// table for one release (read-only) but is no longer read here.
 export async function entitiesRoute(req, res) {
   if (!checkAllowlist(req, res)) return;
   const supabase = getSupabase();
@@ -79,7 +82,7 @@ export async function entitiesRoute(req, res) {
   const [seqSnap, mailSnap, tags] = await Promise.all([
     supabase.from('sales_raw_snapshots').select('payload,captured_at').eq('business_id', businessId).eq('entity', 'sequences').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('sales_raw_snapshots').select('payload,captured_at').eq('business_id', businessId).eq('entity', 'mailboxes').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
-    supabase.from('sales_sequence_tags').select('sequence_id,is_partner,sender_email').eq('business_id', businessId),
+    supabase.from('sales_sequence_tags').select('sequence_id,audience,sender_email').eq('business_id', businessId),
   ]);
   if (seqSnap.error) return res.status(500).json({ error: seqSnap.error.message });
   if (mailSnap.error) return res.status(500).json({ error: mailSnap.error.message });
@@ -98,7 +101,7 @@ export async function entitiesRoute(req, res) {
       num_steps: s.num_steps ?? null,
       is_performing_poorly: !!s.is_performing_poorly,
       created_at: s.created_at || null,
-      is_partner: tag ? !!tag.is_partner : false,
+      audience: tag ? (tag.audience || 'employer') : 'employer',
       sender_email: tag ? (tag.sender_email || null) : null,
     };
   });
@@ -123,26 +126,29 @@ export async function sequenceTagsRoute(req, res) {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('sales_sequence_tags')
-    .select('sequence_id,is_partner,sender_email,sender_checked_at,updated_at')
+    .select('sequence_id,audience,sender_email,sender_checked_at,updated_at')
     .eq('business_id', req.params.businessId);
   if (error) return res.status(500).json({ error: error.message });
   res.status(200).json({ tags: data });
 }
 
-// PUT /sequence-tags/:sequenceId - body MUST be exactly { is_partner:
-// boolean }, nothing else (400 otherwise). sequenceId must exist in the
-// latest sequences snapshot (404 otherwise) - guards against tagging a
-// typo'd or stale id that no longer means anything. Never touches
-// sender_email/sender_checked_at - only sync.js's senderLookup writes
-// those.
+const AUDIENCE_VALUES = ['employer', 'membership', 'channel_partner'];
+
+// PUT /sequence-tags/:sequenceId - body MUST be exactly { audience: one of
+// AUDIENCE_VALUES }, nothing else (400 otherwise). sales-sequence-motion-v1
+// replaces the old { is_partner: boolean } body - this route no longer
+// accepts is_partner at all. sequenceId must exist in the latest sequences
+// snapshot (404 otherwise) - guards against tagging a typo'd or stale id
+// that no longer means anything. Never touches sender_email/
+// sender_checked_at - only sync.js's senderLookup writes those.
 export async function putSequenceTagRoute(req, res) {
   if (!checkAllowlist(req, res)) return;
   const businessId = req.params.businessId;
   const sequenceId = req.params.sequenceId;
 
   const bodyKeys = Object.keys(req.body || {});
-  if (bodyKeys.length !== 1 || bodyKeys[0] !== 'is_partner' || typeof req.body.is_partner !== 'boolean') {
-    return res.status(400).json({ error: 'body must be exactly { is_partner: boolean }' });
+  if (bodyKeys.length !== 1 || bodyKeys[0] !== 'audience' || !AUDIENCE_VALUES.includes(req.body.audience)) {
+    return res.status(400).json({ error: `body must be exactly { audience: one of ${AUDIENCE_VALUES.join('|')} }` });
   }
 
   const supabase = getSupabase();
@@ -162,7 +168,7 @@ export async function putSequenceTagRoute(req, res) {
   const { data, error } = await supabase
     .from('sales_sequence_tags')
     .upsert(
-      { business_id: businessId, sequence_id: sequenceId, is_partner: req.body.is_partner, updated_at: new Date().toISOString() },
+      { business_id: businessId, sequence_id: sequenceId, audience: req.body.audience, updated_at: new Date().toISOString() },
       { onConflict: 'business_id,sequence_id' }
     )
     .select()
@@ -179,6 +185,12 @@ export async function putSequenceTagRoute(req, res) {
 // best-available-signal caveat: tally is a rollup across all of an
 // account's sequences, not broken out per sequence, so an account counts
 // toward every cohort/Partner status its assigned sequences touch.
+// sales-sequence-motion-v1 - "partner" here means audience IN
+// ('membership','channel_partner') - the response shape ({direct,
+// partner} per cohort) is unchanged, only what counts as "partner"
+// changed (used to be is_partner=true). The UI's own label moved to
+// "Partner audiences"; this field name stays "partner" to avoid touching
+// every consumer's response-shape assumption for a rename alone.
 export async function cohortBreakdownRoute(req, res) {
   if (!checkAllowlist(req, res)) return;
   const businessId = req.params.businessId;
@@ -187,7 +199,7 @@ export async function cohortBreakdownRoute(req, res) {
   const [accSnap, seqSnap, tags] = await Promise.all([
     supabase.from('sales_raw_snapshots').select('payload,captured_at').eq('business_id', businessId).eq('entity', 'accounts').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('sales_raw_snapshots').select('payload').eq('business_id', businessId).eq('entity', 'sequences').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
-    supabase.from('sales_sequence_tags').select('sequence_id,is_partner').eq('business_id', businessId),
+    supabase.from('sales_sequence_tags').select('sequence_id,audience').eq('business_id', businessId),
   ]);
   if (accSnap.error) return res.status(500).json({ error: accSnap.error.message });
   if (seqSnap.error) return res.status(500).json({ error: seqSnap.error.message });
@@ -195,7 +207,7 @@ export async function cohortBreakdownRoute(req, res) {
 
   const cohortById = {};
   (seqSnap.data?.payload || []).forEach(s => { cohortById[s.id] = s.cohort; });
-  const partnerIds = new Set((tags.data || []).filter(t => t.is_partner).map(t => t.sequence_id));
+  const partnerIds = new Set((tags.data || []).filter(t => t.audience === 'membership' || t.audience === 'channel_partner').map(t => t.sequence_id));
 
   const breakdown = {};
   (accSnap.data?.payload || []).forEach(a => {
@@ -203,10 +215,10 @@ export async function cohortBreakdownRoute(req, res) {
     if (!inCadence) return;
     const seqIds = a.contact_emailer_campaign_ids || [];
     const cohorts = new Set(seqIds.map(id => cohortById[id]).filter(Boolean));
-    const isPartner = seqIds.some(id => partnerIds.has(id));
+    const hasPartnerAudience = seqIds.some(id => partnerIds.has(id));
     for (const cohort of cohorts) {
       if (!breakdown[cohort]) breakdown[cohort] = { direct: 0, partner: 0 };
-      if (isPartner) breakdown[cohort].partner += 1;
+      if (hasPartnerAudience) breakdown[cohort].partner += 1;
       else breakdown[cohort].direct += 1;
     }
   });

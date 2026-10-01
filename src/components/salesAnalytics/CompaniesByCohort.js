@@ -45,7 +45,7 @@ export default function CompaniesByCohort({ cohortBreakdown, widgetId = 'compani
     exportWidgetCsv(widgetId, rows, [
       { label: 'Cohort', key: 'cohort' },
       { label: 'Direct', value: r => formatValue(r.direct, 'number') },
-      { label: 'Partner', value: r => formatValue(r.partner, 'number') },
+      { label: 'Partner Audiences', value: r => formatValue(r.partner, 'number') },
       { label: 'Total', value: r => formatValue(r.total, 'number') },
     ]);
   };
@@ -61,7 +61,7 @@ export default function CompaniesByCohort({ cohortBreakdown, widgetId = 'compani
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
               <span style={{ width: 9, height: 9, borderRadius: 2, background: PARTNER_COLOR, flexShrink: 0 }} />
-              <span style={{ fontSize: 11, color: SA.muted }}>Partner</span>
+              <span style={{ fontSize: 11, color: SA.muted }}>Partner audiences</span>
             </span>
           </div>
         ) : <span />}
@@ -78,7 +78,7 @@ export default function CompaniesByCohort({ cohortBreakdown, widgetId = 'compani
                 {hasAnyPartner ? (
                   <>
                     <span title={`Direct: ${r.direct}`} style={{ width: `${directPct}%`, height: '100%', background: cohortColor(r.cohort) }} />
-                    <span title={`Partner: ${r.partner}`} style={{ width: `${partnerPct}%`, height: '100%', background: PARTNER_COLOR }} />
+                    <span title={`Partner audiences: ${r.partner}`} style={{ width: `${partnerPct}%`, height: '100%', background: PARTNER_COLOR }} />
                   </>
                 ) : (
                   <span style={{ width: `${directPct}%`, height: '100%', background: cohortColor(r.cohort) }} />
