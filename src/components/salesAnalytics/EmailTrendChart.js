@@ -259,7 +259,8 @@ export default function EmailTrendChart({ businessId, widgetId = 'email_trend' }
       {error && data && <p style={{ fontSize: 12, color: SA.bad, margin: '0 0 8px' }}>⚠ {error}</p>}
 
       <div ref={wrapRef} style={{ position: 'relative' }} onMouseLeave={() => setHover(null)}>
-        <svg width={width} height={height} role="img" aria-label="Email performance over time: sent volume, deliverability rates and engagement rates" style={{ display: 'block', overflow: 'visible' }}>
+        {/* viewBox + width 100% so the chart scales into the narrower printed column */}
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Email performance over time: sent volume, deliverability rates and engagement rates" style={{ display: 'block', overflow: 'visible', width: '100%', height: 'auto' }}>
           {/* Panel titles */}
           <text x={M.left} y={y0.sent - 8} fontSize={11} fill={SA.muted}>
             Sent{mailboxes.length > 1 ? ' by mailbox' : ''}

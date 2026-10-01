@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { SA, SA_TYPE, SA_SHAPE } from './theme';
 import { dismissInsight } from './salesApi';
 import { currentUserLabel } from './huddleApi';
+import ExportButton from './ExportButton';
+import { exportWidgetCsv } from './exportCsv';
 
 // sales-email-trend-v1 REV2 Stage 4 - "Why performance looks like this".
 // Rules run server-side (api/sales/insightRules.js); this only renders
@@ -25,7 +27,7 @@ function jumpTo(item) {
   el.animate([{ outline: `2px solid ${getComputedStyle(el).getPropertyValue('--sa-accent') || '#8FA8FF'}` }, { outline: '2px solid transparent' }], { duration: 1600 });
 }
 
-export default function InsightsPanel({ businessId, insights, onInsightsChanged }) {
+export default function InsightsPanel({ businessId, insights, onInsightsChanged, widgetId = 'email_insights' }) {
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState('');
   // Hidden right away on dismiss - the refetch rebuilds every rule from
@@ -34,6 +36,24 @@ export default function InsightsPanel({ businessId, insights, onInsightsChanged 
 
   if (!insights) return <p style={{ fontSize: 12, color: SA.muted }}>Loading…</p>;
   const visible = insights.insights.filter(i => !hidden.has(`${i.id}:${i.scope_key}`));
+
+  // One table, three kinds of row, so the export says what was judged,
+  // what was hidden on purpose, and what couldn't be judged at all.
+  const handleExport = () => exportWidgetCsv(widgetId, [
+    ...visible.map(i => ({ ...i, status: 'fired' })),
+    ...insights.dismissed.map(d => ({ id: d.id, scope_key: d.scope_key, title: d.title, status: 'dismissed (7 days)' })),
+    ...insights.not_enough_data.map(text => ({ id: text.split(' ')[0], title: text, status: 'not enough data' })),
+  ], [
+    { label: 'Status', key: 'status' },
+    { label: 'Rule', key: 'id' },
+    { label: 'Severity', value: r => r.severity || '' },
+    { label: 'Title', key: 'title' },
+    { label: 'Evidence', value: r => r.evidence || '' },
+    { label: 'Likely cause', value: r => r.cause || '' },
+    { label: 'Suggested action', value: r => r.action || '' },
+    { label: 'Affected', value: r => (r.affected || []).map(a => a.label).join('; ') },
+    { label: 'Computed at', value: () => insights.computed_at || '' },
+  ]);
 
   const dismiss = async i => {
     setBusy(`${i.id}:${i.scope_key}`);
@@ -51,6 +71,9 @@ export default function InsightsPanel({ businessId, insights, onInsightsChanged 
 
   return (
     <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <ExportButton onClick={handleExport} />
+      </div>
       {(error || insights.error) && <p style={{ fontSize: 12, color: SA.bad, margin: '0 0 8px' }}>⚠ {error || insights.error}</p>}
       {visible.length === 0 ? (
         <p style={{ fontSize: 13, color: SA.muted, margin: 0 }}>Nothing stands out right now.</p>
@@ -99,6 +122,11 @@ export default function InsightsPanel({ businessId, insights, onInsightsChanged 
             {insights.dismissed.map(d => <li key={`${d.id}:${d.scope_key}`}>Dismissed: {d.title}</li>)}
           </ul>
         </details>
+      )}
+      {insights.not_enough_data.length > 0 && (
+        <p className="print-only" style={{ fontSize: 11, color: SA.muted, margin: '10px 0 0' }}>
+          Not enough data to judge: {insights.not_enough_data.length} check{insights.not_enough_data.length === 1 ? '' : 's'} (low-volume sequences/steps — listed in the app and the insights CSV).
+        </p>
       )}
       <p style={{ fontSize: 11, color: SA.faint, margin: '10px 0 0' }}>
         Rule-based checks on stored data, not AI. Each fires only above its minimum sample; causes are likely, not certain.
