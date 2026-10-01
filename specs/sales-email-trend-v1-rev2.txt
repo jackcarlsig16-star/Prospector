@@ -1,0 +1,155 @@
+SPEC — sales-email-trend-v1 — REVISION 2  (supersedes ITEM 6 in specs/sales-build-queue.txt)
+
+## What changed from REVISION 1 (for Jack)
+- ADDED: an "Insights" engine. Rule-based diagnosis of WHY performance is bad (malfunctions and
+  inefficiencies), each with evidence, a likely cause and a suggested action.
+- CHANGED: discovery now uses data that already exists (sales_email_activity from
+  hot-prospects stage 2, plus the daily snapshots), so fewer Apollo calls are needed.
+- CHANGED: priority. This is NEXT, ahead of hot-prospects stage 4. Jack's decision (2026-10-01):
+  finish and perfect the dashboard first, then auth (3a) and backend work.
+- Everything else from REVISION 1 is kept (the chart design, benchmarks, partial week,
+  low-volume honesty, event markers, the opens footnote).
+
+## QUEUE REORDER (do this first, before any code)
+Jack decided on 2026-10-01 in the planning chat. Update the ORDER block in
+specs/sales-build-queue.txt and todo/STATUS.txt to:
+  NEXT  6. sales-email-trend-v1 REVISION 2 (this file)
+        3b. sales-hot-prospects-v1 stage 4
+        4. sales-analytics-scorecard-v1
+        5. sales-weekly-report-v1 + print polish notes
+        7. sales-goals-v1 REVISION 2
+  THEN  3a. prospector-basic-auth-v1 (parked on branch prospector-basic-auth-v1; still blocks phones)
+        9. AUDIT prospector-supabase-anon-exposure-v1 (not yet written)
+        8. team_users 400s / August migrations (not yet specced)
+This reorder is Jack's decision and is NOT a conflict.
+
+## Status
+Source: Jack in chat. He wants to see email progress over time AND to "detect malfunctions and
+inefficiencies, i.e. give me insights why things might be performing bad."
+Known real context (2026-09/10):
+- Apollo's own weekly numbers (reference only, NEVER hardcode):
+    Week (Mon–Sun)   Sent  Bounce  SpamBlock  Open   Reply
+    Aug 31 – Sep 6    238   30.3%   26.9%     31.4%  0.4%
+    Sep 7 – Sep 13    422    7.3%    3.8%      9.0%  0.7%
+    Sep 14 – Sep 20   523   14.9%   13.6%      8.8%  0.0%
+    Sep 21 – Sep 27   484    2.9%    1.0%      4.9%  0.0%
+    Sep 28 – Sep 30   276    0.4%    0.0%      1.5%  0.0%  (partial)
+- Fitness sequence: bounce 30.1% lifetime. Mailboxes jack@ and cyrus@ reported connection
+  errors. No warmup. Apollo flagged both mailboxes at capacity.
+- Visual reference: specs/design/sales-analytics-mockup.html ("Email performance over time" card).
+
+## Part A — The chart (unchanged from REV 1, restated)
+- A widget "Email Performance Over Time", registered in the widget registry, sitting in the
+  design-v1 left slot next to Mailbox Health.
+- Two stacked panels on one time x-axis (never dual-axis). The top panel shows Sent bars
+  (stacked by mailbox if possible). The bottom panel shows toggleable rate lines: Bounce %,
+  Spam block %, Open %, Reply %, Click %. On by default: Bounce, Spam block, Open, Reply.
+- Dashed benchmark lines at 2% ("good < 2%") and 5% ("concerning > 5%"), plus a faint band
+  above 5%. These apply to Bounce and Spam block only.
+- Health table under the chart: green below 2%, amber 2–5%, red above 5%, for Bounce and Spam
+  block only. Thresholds live in the metrics registry (REVISABLE).
+- Granularity Week (default, Mon start, America/Los_Angeles) or Day. Range 30d (default), 90d
+  or All.
+- The partial current period is drawn dashed and labeled "partial".
+- Buckets with fewer than 50 sent show lighter, with the tooltip "low volume — rates unreliable".
+- Event markers from a sales_events table (date, label, category), with a "+ Add event"
+  control, e.g. "Warmup enabled", "jack@ reconnected".
+- Footnote: "Open rates are an imperfect signal — security scanners and privacy features can
+  inflate or suppress them. Reply rate is the more reliable engagement measure."
+- The tooltip shows raw counts, e.g. "Bounce 14.9% (78 / 523)". Rates are computed from summed
+  counts and never averaged.
+
+## Part B — Insights (NEW)
+A panel "Why performance looks like this", directly under the chart. The top 3 also feed the
+existing alerts row (extend design-v1's alertRules.js; do NOT build a second rules system).
+
+DECIDED
+- Deterministic rules only, in ONE file (e.g. api/sales/insightRules.js) with the thresholds as
+  named constants (REVISABLE). No AI-generated text in v1.
+- Each insight has: id, severity (bad/warn/info), title, evidence (the actual numbers and the
+  window they came from), likely cause (phrased as "likely" or "possible", never certain),
+  suggested action, and affected items (sequence, mailbox or week) as clickable filters.
+- An insight fires only if its minimum sample size is met; otherwise it is suppressed and listed
+  under "Not enough data to judge: …". Never conclude from tiny samples.
+- Each card has a "Dismiss for 7 days" option, stored in the DB with who and when.
+
+Starter rule set. Use only fields confirmed in Stage 1; any rule its data can't support is
+reported and skipped:
+  R1 List quality: a sequence or week with bounce > 5% (≥50 sent) → "Likely bad or outdated
+     contact data" → verify the list before resuming, and consider pausing the sequence.
+  R2 Sender reputation: spam-block > 2% (≥50 sent) → "Likely domain/mailbox reputation or no
+     warmup" → enable warmup, check SPF/DKIM/DMARC, lower daily volume.
+  R3 Hidden spam placement: bounce and spam-block falling while the open rate also drops ≥50%
+     vs the prior 2 full weeks (≥200 sent) → "Emails may be landing in spam even though
+     'delivered'" → seed or inbox-placement test, warmup, and content check.
+  R4 Engagement drought: 0 replies across ≥200 sent in the last 14 days → "Messaging or
+     targeting isn't landing" → review copy and personas (point to the best-performing sequence
+     as a contrast).
+  R5 Sending stopped or dropped: volume down ≥40% week over week (full weeks), OR a mailbox
+     with a connection error → "Sends may have stalled" → reconnect the mailbox, check sequence
+     status.
+  R6 Capacity: a mailbox averaging more than its daily cap (constant DAILY_CAP_PER_MAILBOX = 50,
+     REVISABLE) over 7 days → "Mailbox at capacity; deliverability risk" → add sending
+     mailboxes (ideally on a secondary domain).
+  R7 Step fatigue: within a sequence, the open rate of step N+1 < 50% of step N (≥30 delivered
+     per step) → "Drop-off after step N" → rework that step or shorten the cadence. Needs
+     per-step data; skip it if Stage 1 says that data isn't available.
+  R8 Outlier sequence: a sequence whose reply rate is ≤ ½ the blended average while having
+     ≥100 delivered → "Underperforming vs your other sequences" → compare its copy and persona
+     to the best one.
+  R9 Bot-inflated opens: in sales_email_activity, ≥40% of opens flagged as likely bot (fast
+     open, or a scanner user agent) → "Open rate is inflated; trust replies/clicks" → label the
+     open-rate KPI accordingly.
+  R10 Good news (info): a metric moved into the green vs the prior full week → say so plainly.
+
+## Out of scope
+- AI-written explanations (follow-on sales-insights-ai-explain-v1).
+- Automatic actions in Apollo, such as pausing sequences or changing warmup. Read-only.
+- Inbox placement or seed testing tools.
+
+## Implementation
+### Stage 1 — DISCOVERY (read-only; declare an Apollo call budget ≤5; report, then STOP)
+Report:
+  a. How many distinct LA-calendar days of sales_metrics_daily exist today, and whether the
+     6am cron has run on its own.
+  b. Can weekly Sent / Delivered / Bounced / Spam-blocked / Opened / Replied / Clicked be built
+     (i) from data already stored (sales_email_activity, snapshots), and/or (ii) by backfill
+     using emailer_messages search with its delivered-date filter? Give real field names and
+     the call cost for 90 days.
+  c. Is spam-blocked available per message, or only as per-sequence totals?
+  d. Is per-step (campaign_position) delivered/open data available for R7?
+  e. Per-mailbox daily send counts for R6?
+  f. For each rule R1–R10: SUPPORTED / PARTIAL / NOT SUPPORTED, with the reason.
+Recommend backfill vs snapshot-diff (NOT DECIDED). Jack picks.
+
+### Stage 2 — Data
+Store daily counts per (date, mailbox, sequence, step if available) in sales_metrics_daily or the
+structure already in use. Store counts only. Add the sales_events and sales_insight_dismissals
+tables (file → `cat <file> | pbcopy` → Supabase SQL editor; RLS on, zero policies, like the other
+sales_* tables). Backfill must be idempotent and resumable, with the call budget declared and
+reported.
+
+### Stage 3 — Chart (Part A)
+
+### Stage 4 — Insights (Part B), plus integration into the alerts row
+
+### Stage 5 — Export
+The CSV gets one row per bucket, plus an insights CSV. The PDF includes the chart and the
+insights panel right after the scorecard slot.
+
+## Verification
+- Stage 2: full weeks reconcile with the reference table within ±1 email and ±0.5pp, or the
+  difference is explained. Do NOT tune the numbers to match.
+- Stage 4: on real data, R1 must fire for Fitness and R5 must fire for the mailbox errors
+  (unless they were fixed; report actual state). Show the evidence numbers for every fired rule.
+  Mock a healthy dataset in-memory (no DB writes) and confirm the bad/warn rules go quiet and
+  R10 fires.
+- No rule fires below its sample minimum. Test this with a low-volume sequence.
+- HumanKind gets 403. Zero Apollo calls on page load. Zero new console errors (the 3 known
+  team_users errors are excluded).
+- Jack clicks through it on the live deploy (bar 5).
+
+## Commit instructions
+One commit per stage, referencing sales-email-trend-v1 REV2. Push after each stage passes. Stop
+and report after each stage. Update todo/STATUS.txt after each stage. Delete this inbox file only
+when all 5 stages are DONE.

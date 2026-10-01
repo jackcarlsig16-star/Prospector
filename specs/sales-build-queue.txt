@@ -1,0 +1,1032 @@
+SALES ANALYTICS — BUILD QUEUE (REVISION 2 — supersedes the previous version of this file)
+
+HOW TO USE THIS FILE (for Claude Code):
+- Execute the items IN ORDER, one at a time. Each is a full SPEC/FIX with its own stages.
+- Stop after every stage and report, per BUILD DISCIPLINE. Jack replies "go" to continue.
+- When an item is done, move to the next one in this file without waiting for a new paste.
+- Visual reference for every UI item: specs/design/sales-analytics-mockup.html
+- Where any later SPEC conflicts with sales-analytics-design-v1 on layout or styling, design-v1
+  wins. The Goals block (item 7) sits directly under the page header, above the alerts row.
+- Ignore any older sales-goals-v1 (pre-REVISION 2) or sales-analytics-v1 text.
+
+ORDER:
+  1. FIX  sales-leaderboard-alignment-v1   — DONE (8981261). Do not redo.
+  2. SPEC sales-analytics-design-v1        — DONE (c1001e8)
+  2b. FIX sales-sequence-motion-v1          — DONE (d297f30). Bulk 'Set audience for all' skipped as allowed.
+  3. SPEC sales-pipeline-v1               — DONE (c9bc53c)
+  3b. SPEC sales-hot-prospects-v1          — stages 1–3 DONE (0d77bed, 1853248); stage 4 after item 6
+
+  Reordered by Jack 2026-10-01: finish the dashboard first, then auth and backend work.
+  NEXT  6. SPEC sales-email-trend-v1 REVISION 2 (supersedes the ITEM 6 text below; full REV 2 text
+           arrives via inbox/, copied here as its own spec when done)
+        3b. sales-hot-prospects-v1 stage 4
+        4. SPEC sales-analytics-scorecard-v1
+        5. SPEC sales-weekly-report-v1  (+ PRINT POLISH NOTES at the end of this file — fold into its Stage 4)
+        7. SPEC sales-goals-v1 REVISION 2
+  THEN  3a. FIX  prospector-basic-auth-v1  (parked on local branch prospector-basic-auth-v1; still blocks phones)
+        9. AUDIT prospector-supabase-anon-exposure-v1 (not yet written)
+        8. (not yet specced) team_users onboarding 400 errors / unapplied August migrations — do NOT
+           touch until a FIX is written for it.
+
+
+
+==================== ITEM 2 ====================
+
+SPEC — sales-analytics-design-v1
+
+## Status
+Source: Jack in chat, 2026-09-30. He reviewed the current Sales Analytics PDF (4 pages, dark,
+all-monospace) and called it "mid". He then approved a redesign mockup built in chat with real
+HomeLover data.
+REFERENCE MOCKUP: specs/design/sales-analytics-mockup.html (saved in the repo next to this queue).
+It is a static design file in a canvas format. Treat it as the visual source of truth for layout,
+spacing, type and color. Do NOT copy its markup or <x-dc> tags into the app; rebuild the look in
+the app's own components.
+Placement: this runs BEFORE sales-pipeline-v1 so every new widget is built in the new style.
+
+## Problem (from the real PDF, 2026-09-30)
+1. No hierarchy. Everything is small gray monospace, and page 1 is three tiny numbers plus an
+   empty "Collecting history" box.
+2. The key problems (30.1% Fitness bounce, mailbox connection errors) are buried on pages 2–3.
+3. Developer text is visible to Seif ("reserved slot, filled by sales-goals-v1 (not yet built)",
+   the raw filters line), and interactive checkboxes print in the PDF.
+4. Saturated "rainbow" colors (hot pink, purple, cyan, neon yellow) compete with each other. The
+   cohort bars show a Direct/Partner legend that doesn't match the bar colors.
+5. Three donuts carry little information ("Direct 99.9%").
+6. The numbers conflict without explanation: 871 delivered (leaderboard) vs 1,028 (donuts).
+7. The PDF header is black text on a dark background, so it's unreadable.
+
+## Design decision
+
+DECIDED — design tokens (define ONCE in a shared tokens file, e.g. salesAnalytics/theme.js or
+CSS variables; no hex values scattered through components)
+  Screen (dark):
+    ground #0B0D10   surface #12161B   surface-2 #171C22   border #232A33
+    text #E9ECF0     muted #8B95A3     faint #5E6773
+    accent #8FA8FF (the ONE accent: primary button, selected states, Apollo badge)
+    status: good #3DD68C   warn #F2B544   bad #FF6B6B   (used ONLY for status meaning)
+  Cohort colors (muted, replacing the current palette):
+    Fitness #E07A5F  Retail #6C9BD2  Car Rental #B39DDB  SaaS #5FB3A8
+    Wireless #D4B26A Other #7A8390   Partner segment: #A8D04A at 70% opacity
+  Print (light, used by the PDF and print media):
+    ground #FFFFFF  surface #FFFFFF  border #E3E6EA  text #14171C  muted #5B6470
+    same accent, status and cohort hues. Never rely on Chrome's "Background graphics" setting.
+  Type: Geist (UI) + Geist Mono (small uppercase labels only), loaded from Google Fonts.
+    Page title 34/600, letter-spacing -0.025em. Card title 15/600. KPI value 38/600 with
+    tabular-nums. Body 14. Small labels 11 Geist Mono, uppercase, letter-spacing .08em, muted.
+    All numbers use font-variant-numeric: tabular-nums, right-aligned in tables.
+  Shape: cards have radius 14 and a 1px border; inner panels radius 10; pills radius 999.
+    Spacing scale 4/8/12/16/24. No shadows, no gradients.
+
+DECIDED — page layout (desktop ≥1100px, max-width 1360px, centered)
+  1. Header: "HomeLover · Command Center" small label; "Sales Analytics" title; week range;
+     green/amber/red dot plus "Synced <time>"; a period segmented control (This week | Last week
+     | Month); a "Sync now" secondary button; an "Export report" primary button whose menu holds
+     CSV and PDF. All buttons are at least 44px tall.
+  2. Alerts row: up to 3 cards in a grid. Each has a status square, a bold one-line title and a
+     one-line action. Hidden entirely when there are no alerts. Rules live in ONE alerts file
+     (REVISABLE starting values):
+       - any active sequence with ≥20 delivered and bounce > 5% → bad (one card, worst first;
+         group the rest as "X · Y% bounce" in a second card)
+       - any mailbox with a connection error → bad, text "as of last sync"
+       - last scheduled cron sync older than 26h → warn "Daily sync missed"
+  3. KPI row: 5 tiles: Companies in cadence (with "of 200 target" and a progress bar), Prospects
+     in cadence, Delivered, Reply rate, Bounce rate (value colored by status vs the 2% goal). Each
+     tile has a scope line ("active sequences · all-time") and "WoW —" until history exists, then
+     a real delta.
+  4. Two columns (2fr / 1fr): Email performance over time (the existing trend widget, restyled;
+     sales-email-trend-v1 upgrades it later) | Mailbox health (compact cards: address, status
+     pill, a 4-stat row of Sent/Delivered/Open rate/Replies, and "Status as of last sync").
+  5. Weekly scorecard: the slot for sales-analytics-scorecard-v1. Until that ships, render
+     NOTHING here. No placeholder text in the UI or the PDF.
+  6. Sequence leaderboard: ONE table (keep the alignment fix from 8981261). Columns: Sequence ·
+     Cohort (dot + name) · Sender · Steps · Delivered (number + thin inline bar scaled to the
+     max) · Open · Reply · Bounce (status-colored when delivered ≥ 20, otherwise faint) · Health
+     pill ("Underperforming" for Apollo's performing-poorly flag, "Low volume" under 20
+     delivered). Rows with bounce > 5% get a faint red tint. Cohort filter chips sit above the
+     table. Grouping and the Partner checkbox stay, but checkboxes are hidden in print.
+  7. Two columns: "Companies in cadence by cohort" (thin bars in cohort colors, no
+     Direct/Partner legend unless a partner exists) | "Delivery mix" (two thin 100% stacked bars,
+     By cohort and By sender, each with a legend showing count and %).
+     REMOVE the three donut charts.
+  Under 1100px the two-column rows stack. Under 700px the KPI tiles go 2-up and the leaderboard
+  scrolls inside its card (sticky name column kept).
+
+DECIDED — honesty and labels
+  - Every number's card states its scope (active vs all sequences, all-time vs 7-day vs week).
+    This resolves the 871 vs 1,028 confusion: "871 delivered · active sequences · all-time" and
+    "1,028 delivered · all sequences incl. inactive · all-time".
+  - No developer or placeholder text renders anywhere in the UI or the PDF (reserved slots,
+    SPEC names, the raw filters string). The applied-filters line in the PDF becomes a readable
+    sentence ("Showing all cohorts · active sequences · grouped by cohort").
+  - Empty states are short and human ("Trend appears after 7 daily syncs").
+
+## Out of scope
+- New metrics or new data. This is visual and layout work only. The alerts use data that
+  already exists.
+- Pipeline, scorecard, weekly report, goals and trend backfill (later items in the queue).
+
+## Implementation
+FIRST: open specs/design/sales-analytics-mockup.html and the current salesAnalytics components.
+Report in 5–10 lines how you'll map the mockup onto the existing components and the widget
+registry. Stop for "go" only if something conflicts; otherwise proceed.
+  Stage 1: tokens file plus fonts. Restyle the header, KPI tiles and cards. Remove developer text.
+  Stage 2: alerts row (rules file) and the mailbox health restyle.
+  Stage 3: leaderboard restyle (inline bars, health pills, tint, chips) and the cohort bars
+           restyle. Replace the donuts with the Delivery mix card.
+  Stage 4: print theme (light) and the PDF pass. Verify with page.pdf() both with and without
+           printBackground; both must be fully readable on white.
+
+## Verification
+- Screenshot each stage at 1440, 1024 and 390px into .screenshots/ and compare against the
+  mockup. Report any intentional deviations.
+- Computed-style checks (not eyeballing): body font is Geist; KPI values use tabular-nums; no
+  hex color in any component outside the tokens file (grep and report the count).
+- The alerts rules fire on real data: Fitness bounce → bad card; mailbox error → bad card. Then
+  temporarily mock "no alerts" and confirm the row disappears; restore it in the same run.
+- PDF: no developer text (search the extracted PDF text for "SPEC", "reserved", "sales-goals"
+  and expect 0 hits), no checkboxes, white background, page count reported.
+- Zero new console errors (the 3 known team_users 400s are excluded and listed separately).
+  Zero Apollo calls.
+- Jack checks it on the live deploy (bar 5).
+
+## Definition of done
+Bar 5: Jack confirms the live page matches the mockup's look, and the PDF is clean and white.
+
+## Commit instructions
+One commit per stage, referencing sales-analytics-design-v1. Push after each stage passes.
+Stop and report after each stage.
+
+
+==================== ITEM 2b ====================
+
+FIX — sales-sequence-motion-v1
+
+## Status
+Source: Jack in chat, 2026-09-30. "Tagging them and having it only be a weird little checkbox is
+kinda dumb." The Partner checkbox (is_partner) on the Sequence Leaderboard is unclear, easy to
+mis-click (two sequences are currently tagged, possibly as leftovers from testing), and it can't
+say what KIND of audience a sequence targets.
+Runs BEFORE sales-pipeline-v1, so sequences and pipeline opportunities share one vocabulary.
+
+## Problem
+1. A bare checkbox in a table column says nothing about what "Partner" means, and it prints as a
+   meaningless box.
+2. HomeLover has two revenue motions: direct sales to employers, and channel/audience partners
+   (membership organizations, distribution partners). The flag can't express the difference
+   between a membership org and a channel partner.
+3. sales-pipeline-v1 defines org_type = employer | membership | channel_partner. Sequences
+   should use the same terms.
+
+## Design decision
+DECIDED
+- Replace the Partner checkbox with an "Audience" field per sequence, with values:
+    Employer (default) · Membership org · Channel partner
+  This uses the same values and labels as sales-pipeline-v1's org_type.
+- UI: an "Audience" column showing a small pill (Employer = neutral, Membership org and Channel
+  partner = the existing partner green). Clicking the pill opens a 3-option menu, and Esc closes
+  it. No checkboxes anywhere.
+- Filter chips above the leaderboard gain an Audience group (All · Employer · Membership ·
+  Channel).
+- Companies-by-cohort bars and the Delivery Mix use Audience: the "Partner" segment becomes
+  "Membership + Channel" with the label "Partner audiences". Legend wording is updated to match.
+- Print: the Audience pill prints as text. No interactive controls in print.
+- Migration of existing data: is_partner=true → 'channel_partner', is_partner=false →
+  'employer'. Keep the is_partner column for one release (read-only, unused), and drop it in a
+  later FIX. List in the report which sequences were true at migration time, so Jack can confirm
+  or reset them.
+
+PROPOSED / REVISABLE
+- Bulk set: when the leaderboard is grouped by cohort, each group header shows "Set audience for
+  all ▾". Flag back if this adds too much complexity, and skip it if so.
+
+## Out of scope
+- Auto-detecting the audience from the sequence name or Apollo data.
+- Any pipeline work (sales-pipeline-v1).
+
+## Implementation
+FIRST: read the current is_partner usage everywhere (DB column, PUT route, leaderboard, cohort
+bars, delivery mix, CSV, PDF). Report the list with file:line, then build.
+1. Migration (file → `cat <file> | pbcopy` → Jack pastes it into the Supabase SQL editor): add
+   audience text check in ('employer','membership','channel_partner') default 'employer', and
+   backfill it from is_partner.
+2. Update the PUT route to accept { audience } using the same validation pattern (bad enum →
+   400). Stop accepting is_partner writes.
+3. UI per the design above. Charts and CSV use audience (the CSV column is "audience").
+
+## Verification
+- The backfill count matches the number of is_partner=true rows. Report the sequence names.
+- Set one sequence to Membership org and one to Channel partner. Bars and mix update after a
+  reload. Restore both in the same run and report "restored: yes".
+- HumanKind gets 403. Zero Apollo calls. Zero new console errors (the 3 known team_users errors
+  are excluded).
+- The PDF shows text, not boxes.
+- Jack clicks through it on the live deploy (bar 5).
+
+## Commit instructions
+Single commit referencing sales-sequence-motion-v1. Push after verification, then stop and report.
+
+
+==================== ITEM 3 ====================
+
+SPEC — sales-pipeline-v1
+
+## Status
+Source: Jack in chat, 2026-09-30. Seif's weekly sales report needs pipeline data (sections 6
+Pipeline, 7 Pipeline Movement, 8 Top Opportunities, 12 Forecast). Six of the eleven scorecard
+rows also depend on it. None of this exists in the repo. sales-analytics-dashboard-v2 (shipped,
+Stages 1–5, last commit 2762584) covers Apollo email and sequence data only.
+This SPEC is the foundation for sales-analytics-scorecard-v1 and sales-weekly-report-v1. Ship it
+first.
+Pipeline data is NOT in Apollo. Today it lives in a manual Google Sheet that Jack and Cyrus
+(freelance sales) maintain, so the source is manual entry plus CSV import.
+
+## Problem
+1. There is no place in Prospector to record an opportunity (organization, covered lives, stage,
+   next step, close date), so pipeline totals, movement and the forecast can't be computed.
+2. Funnel stages aren't standardized, so "what moved forward / back / stalled" can't be
+   determined.
+
+## Design decision
+
+DECIDED
+- Tenant-scoped (HomeLover), with RLS and tenant guards identical to the existing sales_* tables
+  and api/sales/routes.js. HumanKind must get 403 or 0 rows.
+- Canonical stage enum, used by every later SPEC:
+    target → contacted → responded → meeting → proposal_pilot → verbal → contract → launched,
+    plus terminal 'lost'.
+  Stage order is defined ONCE in a shared constant (alongside the existing salesAnalytics
+  helpers). "Forward" and "back" are computed from that order.
+- Every stage change is logged to an events table by a DB trigger, not by the app, so history
+  can't be skipped.
+- Zero Apollo calls.
+
+PROPOSED / REVISABLE (flag back)
+- Stalled = no stage change and next_action_date in the past, OR no stage change for 14+ days.
+  The 14 days is a starting value.
+- Forecast buckets use expected_close: 0–30, 31–60 and 61–90 days from today. "Weighted" =
+  covered_lives × probability and est_value × probability.
+- Default probability per stage, overridable per row (starting values): target 0.02,
+  contacted 0.05, responded 0.10, meeting 0.20, proposal_pilot 0.40, verbal 0.70,
+  contract 0.90, launched 1.0, lost 0.
+
+## Out of scope
+- Syncing Apollo deals. An earlier audit found HomeLover isn't using Apollo deals; follow-on
+  sales-apollo-deals-v1 if that changes.
+- Live import from the Google Sheet. Follow-on sales-analytics-sheets-import-v1, which needs the
+  sheet's real columns. v1 uses CSV upload.
+- Company intel and research (sales-goals-intel-v1).
+- The scorecard and narrative report (separate SPECs).
+
+## Implementation
+FIRST: read the existing salesAnalytics components, api/sales/routes.js, and the existing sales_*
+migrations. Report the real table naming, tenant column, and route and validation pattern in
+5–10 lines, then follow them. This SPEC describes behavior, not an exact diff.
+
+### Stage 1 — Migration (file → `cat <file> | pbcopy` → Jack pastes into the Supabase SQL editor)
+  sales_opportunities
+    id, tenant_id, organization text not null, cohort text, org_type text check in
+    ('employer','membership','channel_partner'), covered_lives int, stage (enum above) default
+    'target', probability numeric null (null = use the stage default), est_value numeric null,
+    owner text, next_action text, next_action_date date, expected_close date,
+    expected_launch date, decision_makers text, champion text, objections text,
+    competitors text, needed_to_advance text, notes text, is_top boolean default false,
+    lost_reason text, source text check in ('manual','csv') default 'manual',
+    archived_at, created_at, updated_at
+  sales_opportunity_events
+    id, tenant_id, opportunity_id, event_type ('created'|'stage_change'|'archived'),
+    from_stage, to_stage, changed_at default now()
+    An AFTER INSERT/UPDATE trigger on sales_opportunities writes these rows.
+
+### Stage 2 — API
+List (filters: stage, cohort, owner, is_top, include_archived), create, update, archive, and
+CSV import. Validation matches the existing PUT behavior (unknown field → 400, bad enum → 400,
+bogus id → 404).
+CSV import: header-mapped (case-insensitive) and validated row by row. Return
+{ inserted, updated, errors:[{row, reason}] }. Upsert by (tenant_id, lower(organization)).
+Provide a downloadable template CSV with all columns. Movement endpoint: for a [from, to] window,
+return moved_forward, moved_back, added, lost, stalled, each with the opportunity rows.
+
+### Stage 3 — UI (new widgets in the Sales Analytics widget registry, after the KPI tiles)
+  Pipeline table: sortable and filterable, with inline edit for stage, next_action,
+    next_action_date, expected_close and probability. Clicking a row opens a side panel with
+    every field. The star toggle sets is_top. Overdue next_action_date shows in red. Totals row:
+    count, covered lives, and weighted lives.
+  Pipeline Movement (selected week): five compact lists (Forward / Back / Added / Lost /
+    Stalled), each showing org, from→to, and date.
+  Forecast 30/60/90: three columns with count, covered lives, weighted lives and weighted value,
+    plus the org names in each bucket.
+  Top Opportunities: is_top rows as cards showing decision makers, champion, objections,
+    competitors, next step, and what's needed to advance.
+  Empty state: "No opportunities yet — add one or import a CSV" with a template link.
+  The existing Sequence Leaderboard must use the same table column-alignment approach (see
+  FIX sales-leaderboard-alignment-v1) if that has shipped. Otherwise use a single shared column
+  definition from the start.
+
+### Stage 4 — Export
+CSV per widget, and a "Pipeline" page in the PDF after the existing widgets. The final ordering
+is handled by sales-weekly-report-v1.
+
+## Verification
+- Stage 1: the trigger writes 'created' and 'stage_change' rows (proven with real inserts and
+  updates). RLS: a HumanKind session sees 0 rows.
+- Stage 2: test the validation cases. A CSV import with 1 good row, 1 bad-enum row and 1
+  duplicate org must give the right inserted/updated/errors counts. Every test that writes data
+  records the original values and restores them in the same run, reporting "restored: yes" per row.
+- Stage 3: Jack enters 3 real opportunities (or imports them), moves one forward and one back,
+  stars one, then checks Movement and Forecast on the live deploy (bar 5).
+- Zero Apollo calls on every route (fetch spy).
+
+## Definition of done
+Bar 5, with the trigger history and tenant isolation proven.
+
+## Commit instructions
+One commit per stage, referencing sales-pipeline-v1. Push after each stage passes. Stop and
+report after each stage.
+
+
+==================== ITEM 3a ====================
+
+FIX — prospector-basic-auth-v1
+
+## Status
+Source: a read-only access check run by Claude Code on 2026-10-01 before sales-hot-prospects-v1.
+Findings (live-verified): server.js has no auth middleware. All /api/* routes are open to anyone
+who has the Render URL. One unauthenticated GET /api/sales/<HomeLover id>/runs returned HTTP 200
+with real data. Write routes are also open: sync (spends Apollo calls), sequence tags, and
+pipeline create/update/archive/CSV import. Business IDs are publicly listable through the anon
+key. ProspectorGate is a localStorage flag the server never sees. The Anthropic proxy and the
+other /api/* routes are open the same way.
+Decision (Jack): Option A, Basic Auth on the WHOLE app. This blocks sales-hot-prospects-v1, which
+will store prospect names, titles and phones.
+
+## Problem
+Anyone with the URL can read and change HomeLover sales data, trigger Apollo syncs, and use the
+Anthropic proxy (running up the API bill).
+
+## Design decision
+DECIDED
+- One Express middleware near the top of server.js, before static files and all routes, that
+  requires `Authorization: Basic` matching the env vars BASIC_AUTH_USER and BASIC_AUTH_PASS.
+  Compare with crypto.timingSafeEqual on equal-length buffers (hash both sides first, so a
+  length mismatch can't leak timing). On failure, return 401 with
+  `WWW-Authenticate: Basic realm="Prospector"`.
+- FAIL CLOSED: if either env var is missing in production, every request gets 503 "Auth not
+  configured". It must never silently open up. Locally, NODE_ENV !== 'production' may skip auth
+  only if BASIC_AUTH_DISABLED_LOCAL=1 is set explicitly.
+- Exempt paths, exact matches only: /api/zoom/webhook. Report any other machine-to-machine
+  inbound route you find (webhooks or callbacks a third party calls server-to-server) and STOP
+  for Jack's OK before exempting it. Do not exempt anything on your own.
+- In-process cron is unaffected (it makes no HTTP request). Confirm this.
+- Never log the Authorization header or the credentials.
+
+PROPOSED / REVISABLE
+- Gmail and SFDC OAuth callbacks are browser redirects to the same origin and should carry the
+  stored credentials. Verify with a real click-through after deploy. If one breaks, report it;
+  do not exempt it without Jack's OK.
+
+## Out of scope (named follow-ons)
+- AUDIT prospector-supabase-anon-exposure-v1: 18 tables are readable directly from Supabase with
+  the public anon key (RLS USING true), including HomeLover accounts data. Basic Auth does NOT
+  fix this. It needs its own audit and then FIXes with real RLS policies.
+- Per-user logins and seats (Cyrus etc.).
+- Removing ProspectorGate. Leave it in place.
+
+## Implementation
+1. Add the middleware and the exemption list in one small module (e.g. api/basicAuth.js), and
+   mount it in server.js.
+2. Before deploying, tell Jack EXACTLY what to set in Render: Dashboard → the Prospector service
+   → Environment → add BASIC_AUTH_USER and BASIC_AUTH_PASS (he picks them; suggest 20+ random
+   characters for the password). Wait for Jack to confirm they're set BEFORE pushing, because
+   fail-closed would otherwise lock the site at deploy.
+3. Commit, push, and confirm the Render deploy.
+
+## Verification (against the live deploy)
+- No credentials → 401 on: / (app shell), GET /api/sales/<id>/runs, and one Anthropic proxy route.
+- Wrong password → 401. Right credentials → 200 on the same routes.
+- POST to /api/zoom/webhook with no credentials → NOT 401 (it reaches its own handler).
+- The next scheduled 6am cron sync still runs. Check sales_sync_runs for trigger='cron' the
+  following morning and report it.
+- Jack opens the site in a fresh browser window: the password prompt appears, he logs in, and
+  Sales Analytics works normally, including Sync now, the pipeline edit and the PDF export (bar 5).
+- Credentials never appear in logs (grep the Render logs after the tests).
+
+## Commit instructions
+Single commit referencing prospector-basic-auth-v1. Push ONLY after Jack confirms the Render env
+vars are set. Then stop and report.
+
+
+==================== ITEM 3b ====================
+
+SPEC — sales-hot-prospects-v1
+
+## Status
+Source: Jack in chat, 2026-09-30. Jack and Cyrus (freelance sales) want to meet DAILY to go over
+"hot prospects": who opened, clicked or replied. They decide who owns each person and what to
+do next ("here's what we can send them", "call them"). Jack: "my overlay is gonna be much cooler
+and more flexible than base Apollo."
+DEPENDS ON: sales-pipeline-v1 (the "Add to pipeline" action). Runs right after it.
+This is the daily-use screen. The scorecard and weekly report are the weekly-use screens.
+
+## Problem
+1. Apollo shows engagement per sequence. There's no single daily list of "who engaged since
+   yesterday, who owns them, and what we're doing about it."
+2. Decisions made in the Jack/Cyrus huddle (owner, next step, what to send) live nowhere, so
+   follow-ups slip.
+3. Open signals are noisy (security scanners auto-open emails), so the list must weight clicks
+   and replies above opens and be transparent about why someone is "hot".
+
+## Design decision
+
+DECIDED
+- New tab inside Sales Analytics: "Daily Huddle", in the design-v1 style (tokens and mockup look).
+- Signal sources: Apollo per-email activity (opens, clicks, replies) for the last 14 days,
+  pulled by the existing daily sync plus "Sync now". Only fields confirmed in Stage 1 are used.
+  Never estimate.
+- Heat score: transparent and shown on hover as "why hot". Starting weights, defined in ONE
+  config file (REVISABLE):
+    replied +100 · clicked +40 per distinct click day · opened +5 per distinct open day (max +15)
+    · decays 50% after 3 days without a new signal.
+  Exclusions: bounced, unsubscribed, and contacts already in pipeline at stage ≥ meeting (those
+  show in the pipeline instead).
+  "Possible bot open" badge: an open within 60s of delivery with no other signal (REVISABLE;
+  only if Stage 1 confirms timestamps exist).
+- Each hot-prospect card shows: name, title, company, cohort dot, Audience
+  (sales-sequence-motion-v1), sequence and step, signal badges (Replied / Clicked / Opened ×N),
+  the last signal as a relative time, heat score, owner, status, next action plus due date,
+  notes, and links to "Open in Apollo" and LinkedIn if Apollo has it. Phone appears only if
+  Apollo returns one; never invent contact data.
+- Owner: Jack | Cyrus | Unassigned. Default comes from the sender mailbox (jack@ → Jack,
+  cyrus@ → Cyrus), changeable in one click.
+- Status: New → Claimed → Contacted → Booked, or Not now (snooze until a date) or Dead.
+- Next action: Call · Email · LinkedIn · Send collateral · Wait, with a due date.
+- "Send collateral": picks from a small Collateral library (title, url, type, cohort tags) with
+  copy-link and copy-snippet buttons. Seed it EMPTY. Jack adds the real items (e.g. the
+  rent-vs-buy video and the blog post).
+- "Add to pipeline": creates a sales_opportunities row (organization = contact's company,
+  stage = 'responded', org_type from Audience, owner) and marks the card "In pipeline".
+- Huddle layout (top to bottom):
+    Header: "Daily Huddle · <date>" · last synced · Sync now
+    1. Due today / overdue (anything with a next-action date ≤ today)
+    2. New since last huddle (status New, sorted by heat)
+    3. In progress, grouped by owner (Jack | Cyrus columns)
+    4. Done since last huddle (Contacted/Booked yesterday or today, as a collapsed recap)
+  A "Start huddle" button stamps huddle_at, which defines "since last huddle".
+- Every change (owner, status, next action, notes) is logged with who and when.
+- Export: "Huddle sheet" CSV, and a print view (light theme) listing the day's assignments by
+  owner.
+
+PROPOSED / REVISABLE
+- Cyrus's access: v1 assumes the huddle runs on Jack's screen. If Cyrus needs his own login to
+  the HomeLover tenant only, flag back what the auth system supports today. Don't build seats
+  in this SPEC.
+
+## Out of scope (named follow-ons)
+- sales-hot-prospects-ai-draft-v1: AI-drafted follow-up email per prospect using its signals
+  and the collateral.
+- Writing anything back to Apollo (tasks, stages, sequence changes). Read-only stays.
+- Real-time alerts or webhooks (unless Stage 1 finds an official webhook; then report it only).
+- Cyrus user seat and permissions.
+
+## Implementation
+### Stage 1 — DISCOVERY (read-only; ≤5 Apollo calls; declare the budget and report it as used;
+then STOP)
+Using the outreach emails search and email stats endpoints, show the real field names (with
+values redacted) for one opened and one clicked email: contact id and name, title, company or
+account id, email step, sequence, sender mailbox, open/click/reply timestamps, and phone or
+LinkedIn fields if present. Report: can we filter by date range? What's the pagination size?
+What would a daily 14-day pull cost in calls? Is there an official webhook option?
+Recommend what the scoring can actually support. NOT DECIDED; Jack confirms.
+
+### Stage 2 — Data + sync
+Migration (file → `cat <file> | pbcopy` → Supabase SQL editor; RLS like the other sales_* tables):
+  sales_email_activity   tenant_id, apollo_message_id, contact_id, sequence_id, step,
+                         sender, event ('open'|'click'|'reply'|'bounce'|'unsub'),
+                         occurred_at, UNIQUE(tenant_id, apollo_message_id, event, occurred_at)
+  sales_prospect_state   tenant_id, contact_id (unique per tenant), contact snapshot (name,
+                         title, company, linkedin_url, phone nullable), owner, status,
+                         snooze_until, next_action, next_action_due, notes, opportunity_id
+                         nullable, updated_by, updated_at
+  sales_prospect_events  audit log of every state change
+  sales_collateral       id, tenant_id, title, url, type, cohort_tags text[], snippet text
+  sales_huddles          tenant_id, huddle_at, started_by
+A sync adapter for activity: incremental (since the last pulled timestamp), idempotent, inside
+the declared call budget, and on the same cron and Sync now path. Contact snapshots are stored
+only for contacts with signals, with no email bodies.
+
+### Stage 3 — Daily Huddle UI (the layout above), plus the collateral library manager (a simple
+add/edit list).
+
+### Stage 4 — Actions + export
+Add to pipeline, the snooze/dead flows, the huddle sheet CSV, and the print view.
+
+## Verification
+- Stage 1: real field evidence, plus the call budget as declared vs. used.
+- Stage 2: running the sync twice creates no duplicate activity rows. Hand-check 3 contacts'
+  signals against Apollo's UI.
+- Stage 3/4: assign one prospect to Cyrus, set the next action to Call due today, and confirm it
+  appears under "Due today". Add one to the pipeline and confirm the opportunity row exists and
+  the card shows "In pipeline". Every test that writes data restores its original values and
+  reports "restored: yes".
+- HumanKind gets 403 on all routes. Zero new console errors (the 3 known team_users errors are
+  excluded).
+- Jack and Cyrus run one real huddle with it on the live deploy (bar 5).
+
+## Definition of done
+Bar 5: one real Jack/Cyrus huddle run end to end in the tool.
+
+## Commit instructions
+One commit per stage, referencing sales-hot-prospects-v1. Push after each stage passes. Stop
+after each stage.
+
+
+==================== ITEM 4 ====================
+
+SPEC — sales-analytics-scorecard-v1
+
+## Status
+Source: Jack in chat, 2026-09-30. This builds the core of what Seif (HomeLover founder) asked
+for: the Weekly Scorecard table. sales-analytics-dashboard-v2 referred to this SPEC by name, but
+it was never actually written. This is it.
+DEPENDS ON: sales-pipeline-v1 (6 of the 11 rows come from it). Do not start until that has
+shipped.
+
+## Problem
+Seif reviews the following table every Monday. Today it's filled in by hand, and the
+"Last Week" and "Change" columns are retyped from the previous week's doc.
+
+  KPI | Last Week | This Week | Change | Target
+  1  Target Organizations
+  2  Decision-Makers Contacted        (HR/Benefits personas and C-suite)
+  3  Positive Responses
+  4  Meetings Held
+  5  New Meetings Booked
+  6  Qualified Opportunities
+  7  Total Covered Lives/Members in Pipeline
+  8  Proposals/Pilots Outstanding
+  9  Verbal Commitments
+  10 Contracts Signed
+  11 Expected 90-Day Launches
+
+## Design decision
+
+DECIDED
+- A new widget, "Weekly Scorecard", placed in the "Weekly scorecard" slot defined by
+  sales-analytics-design-v1 (below the trend + mailbox row), styled with its tokens.
+- The rows are exactly the 11 above, with the labels unchanged and in that order.
+- Each row has a source badge, Apollo, Pipeline or Manual, so Seif knows where every number comes
+  from.
+- Week = Monday–Sunday, America/Los_Angeles, using the same week helper the dashboard already
+  uses. "This Week" is the week selected in the page's week picker, and "Last Week" is the week
+  before it.
+- Change shows the absolute and the % change, colored using the metric registry's goodDirection.
+  If Last Week is 0 or empty, show "new" instead of a % change.
+- Targets: editable inline per row, saved per week, and carried forward until changed.
+- Manual rows (and any automated row that has no data) take a typed weekly value. Every manual
+  value shows who entered it and when.
+- Any automated value can be overridden by hand. The override is visibly marked ("edited") and
+  the original computed value appears in the tooltip, so nothing is silently replaced.
+- Zero Apollo calls on page load. The scorecard reads only data that's already synced.
+
+PROPOSED / REVISABLE source mapping. Stage 1 confirms which Apollo fields actually support each
+row. If a field isn't available, the row falls back to Manual. Never estimate or invent a value.
+  1  Target Organizations       Apollo: distinct companies in active sequences (the existing
+                                "companies in cadence" logic, if present). Target default: 200.
+  2  Decision-Makers Contacted  Apollo: distinct contacts who received ≥1 email in the week.
+                                Only if Apollo exposes per-contact send dates; otherwise Manual.
+  3  Positive Responses         Apollo: replies classified positive in the week. The earlier
+                                apollo-fields-audit flagged a reply_class field as a candidate.
+                                Confirm its real values and whether it can be filtered by date.
+  4  Meetings Held              Manual (unless Stage 1 finds a real source)
+  5  New Meetings Booked        Manual (unless Stage 1 finds a real source)
+  6  Qualified Opportunities    Pipeline: opportunities at stage ≥ meeting, not lost or archived,
+                                as of the end of the week
+  7  Covered Lives in Pipeline  Pipeline: sum of covered_lives, same filter as row 6
+  8  Proposals/Pilots           Pipeline: stage = proposal_pilot, as of the end of the week
+  9  Verbal Commitments         Pipeline: stage = verbal, as of the end of the week
+  10 Contracts Signed           Pipeline: count of events moving to 'contract' WITHIN the week
+                                (a flow), not the current stock
+  11 Expected 90-Day Launches   Pipeline: expected_launch within 90 days of the end of the week,
+                                not lost
+  "As of the end of the week" values for past weeks are rebuilt from sales_opportunity_events, so
+  editing a stage today doesn't rewrite last week's numbers.
+
+## Out of scope
+- Narrative sections and the PDF report structure (sales-weekly-report-v1).
+- Per-person (Jack vs. Cyrus) scorecards. Follow-on if wanted.
+- Monthly scorecard view. Follow-on; the data model must not prevent it.
+
+## Implementation
+FIRST: read the current metrics registry, week helpers, sync tables and sales-pipeline-v1 tables,
+and report what exists in 5–10 lines.
+
+### Stage 1 — Discovery (read-only, then STOP)
+For rows 1, 2 and 3, show whether the data already synced (or one declared, minimal set of
+Apollo calls) supports a weekly count, using real field names from ONE redacted record. Declare
+the call budget, then report it as declared vs. used. End with the final source mapping per row,
+marked NOT DECIDED, for Jack to confirm.
+
+### Stage 2 — Data
+  sales_scorecard_values
+    tenant_id, week_start date, metric_key, value numeric,
+    origin ('computed'|'manual'|'override'), computed_value numeric null,
+    entered_by, entered_at,
+    UNIQUE (tenant_id, week_start, metric_key)
+  sales_scorecard_targets
+    tenant_id, metric_key, effective_week_start date, target numeric,
+    UNIQUE (tenant_id, metric_key, effective_week_start)
+  Computed rows are calculated at read time, or cached on each sync. Choose whichever fits the
+  current sync design and explain why. Use the established migration workflow (file → pbcopy →
+  Supabase SQL editor) with RLS that matches the other sales_* tables.
+  Add the 11 metric keys to the metrics registry, with format, goodDirection, source and
+  scorecardRow:true.
+
+### Stage 3 — Widget
+A table with KPI | Last Week | This Week | Change | Target, plus the source badge beside the KPI
+label. Number columns are right-aligned with tabular-nums. Columns are defined once and shared by
+the header and every row (use the same approach as sales-leaderboard-alignment-v1). Click a
+Manual or overridable cell to edit it inline; Enter saves, Esc cancels. Tooltip per cell: the
+source, how it was computed, and the raw counts. Include a CSV export button.
+
+### Stage 4 — Export
+CSV: one row per KPI, with the columns above plus source and origin. PDF: the scorecard is the
+first content after the header. sales-weekly-report-v1 finalizes the full report order.
+
+## Verification
+- Stage 1: real field evidence, plus the call budget declared vs. used.
+- Stage 3: for the current week, hand-check 3 automated rows against their raw source (an Apollo
+  UI number or a pipeline query) and show the work. Edit a stage today and confirm last week's
+  row 6–9 values do NOT change. Enter a manual value, override a computed one, and confirm the
+  "edited" marker shows with the original value in the tooltip. Every test that writes data
+  restores its original values and reports "restored: yes".
+- HumanKind → 403 on every scorecard route. Zero Apollo calls on page load.
+- Jack checks it against his own numbers on the live deploy (bar 5).
+
+## Definition of done
+Bar 5, with Jack confirming that the rows, labels and order match Seif's table.
+
+## Commit instructions
+One commit per stage, referencing sales-analytics-scorecard-v1. Push after each stage passes.
+Stop and report after each stage.
+
+
+==================== ITEM 5 ====================
+
+SPEC — sales-weekly-report-v1
+
+## Status
+Source: Jack in chat, 2026-09-30. Seif's weekly meeting document has 15 sections, and most of
+them are narrative that can't come from Apollo. sales-analytics-dashboard-v2 referred to this
+SPEC by name, but it was never written. This is it.
+DEPENDS ON: sales-pipeline-v1 and sales-analytics-scorecard-v1, both shipped.
+This SPEC owns "Weekly Priorities / Commitments". sales-goals-v1 REVISION 2 no longer builds a
+priorities list, so there will be exactly one.
+
+Seif's sections (labels are his):
+  1 Executive Summary   2 Sales Infrastructure   3 Target Market & Account Lists
+  4 Outreach Activity   5 Meetings   6 Pipeline   7 Pipeline Movement   8 Top Opportunities
+  9 Funnel Metrics   10 Sales Collateral & Messaging   11 Lead Generation   12 Forecast
+  13 Problems & Blockers   14 CEO/Founder Help Needed   15 Commitments for This Week
+
+## Problem
+1. The narrative sections (1, 2, 10, 11, 13, 14, 15) have no home in Prospector, so the report
+   is still assembled by hand in a doc.
+2. Last week's commitments are supposed to be "the first thing reviewed at the following
+   meeting", and nothing tracks them.
+3. The current PDF prints the dashboard's widget order, not Seif's report order.
+
+## Design decision
+
+DECIDED
+- A weekly report record per (tenant, week_start), with status draft → final.
+- Narrative fields: exec_summary, biggest_win, biggest_issue, top_priorities_summary (part of
+  section 1); messaging_notes (10); lead_gen_notes (11); blockers (13); help_needed (14). Each is
+  plain text with simple bullets, no rich-text editor, and autosaves (debounced) as a draft.
+- Section 2 Sales Infrastructure: a structured list of items {component, status:
+  'completed'|'in_progress'|'blocked', note}, carried forward from last week so Jack only updates
+  statuses. Seed components: CRM, Lead-gen/data tools, Email/outreach systems, Mailboxes &
+  deliverability, LinkedIn prospecting, Reporting/dashboard, Sales collateral, Meeting scheduling.
+- Section 15 Commitments (shown as "Weekly Priorities / Commitments"): items {text,
+  measurable_target, owner, status: open|done|dropped, carried_from_id}. Show 5–10 per week as a
+  soft guide, not a hard limit.
+  At the TOP of the report: "Last week's commitments" with done/not-done, editable during the
+  meeting. Include a "Carry over unfinished" button; nothing carries over automatically.
+- Finalize week: freezes a JSON snapshot of the scorecard values, pipeline totals and key email
+  metrics for that week, so the finalized report never changes when live data changes later. A
+  finalized report can be reopened, which logs who reopened it and when.
+- Report view and PDF use Seif's order. Sections map to existing widgets:
+    1 narrative + Weekly Scorecard (from sales-analytics-scorecard-v1)
+    2 infrastructure list
+    3 Goals block (when sales-goals-v1 ships) + existing cohort/target widgets
+    4 KPI tiles + Sequence Leaderboard + Mailbox Health
+    5 meetings rows from the scorecard, plus an optional notes field
+    6 Pipeline table  7 Pipeline Movement  8 Top Opportunities (from sales-pipeline-v1)
+    9 Funnel (stage counts and conversion from the pipeline plus Apollo contacted and responded;
+      a simple horizontal bar, not a decorative funnel shape)
+    10, 11 narrative   12 Forecast 30/60/90   13, 14 narrative   15 Commitments
+  A section with no data prints "—, nothing reported", never a blank gap.
+- PDF uses a LIGHT print theme (white background, dark text, same accent palette), regardless
+  of the on-screen dark theme. It must not depend on Chrome's "Background graphics" checkbox.
+
+PROPOSED / REVISABLE
+- The report lives as a "Weekly Report" sub-view or toggle inside Sales Analytics (Dashboard |
+  Weekly Report), not as a separate Command Center tab. Flag back if the current tab structure
+  makes that awkward.
+
+## Out of scope
+- Emailing or Slacking the report to Seif (follow-on sales-analytics-digest-v1).
+- Drafting the narrative with AI. Possible follow-on; v1 is human-written.
+- Goals (sales-goals-v1) and the email trend chart (sales-email-trend-v1). Each slots into its
+  mapped section once it ships.
+
+## Implementation
+FIRST: read the current Sales Analytics tab, widget registry, PDF/print code (from Stage 5,
+commit 2762584) and the scorecard and pipeline tables. Report the structure in 5–10 lines.
+
+### Stage 1 — Migration (file → `cat <file> | pbcopy` → Supabase SQL editor; RLS like the other
+sales_* tables)
+  sales_weekly_reports      tenant_id, week_start, status, the narrative fields above,
+                            snapshot jsonb, finalized_at, finalized_by, reopened_at,
+                            reopened_by, updated_at.  UNIQUE (tenant_id, week_start)
+  sales_report_infra_items  id, tenant_id, week_start, component, status, note, sort_order
+  sales_commitments         id, tenant_id, week_start, text, measurable_target, owner,
+                            status, sort_order, carried_from_id, completed_at,
+                            created_at, updated_at
+
+### Stage 2 — API
+Get or create the report for a week. Patch narrative fields (whitelist; unknown field → 400).
+CRUD for infra items and commitments. Carry-over for infra and commitments (idempotent, so
+pressing twice creates no duplicates). Finalize (builds the snapshot), and reopen.
+
+### Stage 3 — Report view
+Week picker (shared helper). The "Last week's commitments" review block sits at the top. Sections
+1–15 run in order with numbered headings that match Seif's labels exactly. Narrative fields are
+editable inline with an autosave indicator ("Saved 2:14 PM"). When finalized, everything is
+read-only with a "Reopen" button. Widget sections reuse the existing components; do not duplicate
+them.
+
+### Stage 4 — PDF
+Replace the current print order with Seif's section order and the light print theme. Keep
+everything that already works: SVG charts, no splits across page breaks, the header on every
+page with the "as of <last sync>" text, and the filters line. A draft prints a DRAFT watermark.
+The Stage 5 Goals placeholder moves into section 3.
+
+## Verification
+- Stage 2: test the validation cases. Carry over twice and confirm no duplicates. Finalize, then
+  change a pipeline stage, and confirm the finalized snapshot does NOT change. Reopen and confirm
+  it's logged. Every test that writes data restores its values and reports "restored: yes".
+- Stage 4: generate the PDF with page.pdf() AND with printBackground:false, to simulate Chrome's
+  default dialog. Both must be fully readable on white. Report the page count, and confirm the
+  sections are in order 1–15 by extracting the PDF text.
+- HumanKind → 403 on all routes. Zero Apollo calls.
+- Jack drafts a real week, finalizes it, and prints it from Chrome himself (bar 5).
+
+## Definition of done
+Bar 5: a finalized, real week's report that Jack would hand to Seif as-is.
+
+## Commit instructions
+One commit per stage, referencing sales-weekly-report-v1. Push after each stage passes. Stop and
+report after each stage.
+
+
+==================== ITEM 6 ====================
+
+SPEC — sales-email-trend-v1
+
+## Status
+Source: Jack, in chat on 2026-09-30. Jack shared Apollo's own AI analysis ("Email Performance —
+Last 30 Days") and asked for a time-based chart with rate overlays in Sales Analytics.
+SEQUENCING: Start after Sales Analytics Stage 5 (PDF) and FIX sales-leaderboard-alignment-v1 are
+committed and reported. This is a separate SPEC from sales-goals-v1.
+
+Reference data from Apollo's AI, used for VERIFICATION ONLY. Never hardcode it.
+  Week (Mon–Sun)    Sent  Bounce  SpamBlock  Open   Reply
+  Aug 31 – Sep 6     238   30.3%   26.9%     31.4%  0.4%
+  Sep 7 – Sep 13     422    7.3%    3.8%      9.0%  0.7%
+  Sep 14 – Sep 20    523   14.9%   13.6%      8.8%  0.0%
+  Sep 21 – Sep 27    484    2.9%    1.0%      4.9%  0.0%
+  Sep 28 – Sep 30    276    0.4%    0.0%      1.5%  0.0%   (partial week)
+Apollo's AI used these benchmarks: bounce under 2% = good, over 5% = concerning; spam block
+should be under 2%.
+
+## Problem
+1. The current email performance view (Stage 3/4) shows lifetime totals and a single 7-day
+   window. It can't show the story Seif needs to see: bounces and spam blocks fell sharply while
+   opens and replies collapsed. That pattern points to messages landing in spam even though they
+   count as "delivered".
+2. There are no benchmark lines and no health coloring on rates over time.
+3. Nothing marks when deliverability changes were made (warmup enabled, mailboxes reconnected,
+   mailboxes added), so cause and effect can't be read from the chart.
+
+## Design decision
+
+DECIDED
+- New widget: "Email Performance Over Time", registered in the widget registry, placed directly
+  under the KPI tiles.
+- Layout: two vertically stacked panels that share one time x-axis. Do NOT use a single dual-axis
+  chart, because volume and rates would distort each other.
+    Top panel (short): Sent volume as bars per bucket. If sender data allows, stack the bars by
+      mailbox; otherwise use a single color.
+    Bottom panel (tall): rate lines, each a toggleable overlay:
+      Bounce %, Spam Block %, Open %, Reply %, Click %
+      Default on: Bounce, Spam Block, Open, Reply.
+- Benchmark overlays on the bottom panel: dashed reference lines at 2% and 5%, labeled
+  "good < 2%" and "concerning > 5%", plus a faint shaded band above 5%. The lines apply to Bounce
+  and Spam Block, so label them that way.
+- Health coloring in the tooltip and in a compact table under the chart (same rows as the
+  reference table): green under 2%, yellow 2–5%, red over 5%, applied to Bounce and Spam Block
+  only. Open and Reply get no colors, because no reliable benchmark has been agreed.
+  Define the thresholds in the metrics registry so they can be changed in one place
+  (REVISABLE starting values).
+- Granularity toggle: Week (default; Monday-start, America/Los_Angeles) | Day.
+  Range: Last 30d (default) | 90d | All.
+- The partial current period is drawn with a dashed line segment and a hollow bar, labeled
+  "partial (Sep 28–30)" or similar. Never compare it to full weeks without that label.
+- Low-volume honesty: if a bucket has fewer than 50 sent (REVISABLE), show its rates with a
+  lighter line and a tooltip note "low volume — rates unreliable".
+- Event markers: vertical lines with a small label on the time axis, read from a new
+  sales_events table (date, label, category: 'deliverability'|'mailbox'|'campaign'|'other').
+  Jack adds events by hand through a small "+ Add event" control. Example events: "Warmup
+  enabled", "jack@ reconnected", "partners@ added". No automatic event detection in v1.
+- Footnote under the chart (always shown): "Open rates are an imperfect signal — security
+  scanners and privacy features can inflate or suppress them. Reply rate is the more reliable
+  engagement measure."
+- Tenant-scoped end to end. HumanKind sees nothing.
+
+## Out of scope
+- Automatic event detection (for example, detecting warmup being switched on through the API).
+  Follow-on if wanted.
+- Inbox placement or seed testing, and changes to Apollo warmup settings. Access stays read-only.
+- Per-sequence trend charts. Follow-on: sales-email-trend-by-sequence-v1.
+- Changes to other widgets, except adding this one to the PDF export.
+
+## Implementation
+
+### Stage 1 — DISCOVERY (read-only, report, then STOP)
+The current sync stores lifetime totals and a 7-day window. Weekly history needs dated data.
+Find out how to get it without guessing, and report:
+  a. Does an Apollo endpoint already confirmed in the earlier audit (e.g. emailer_messages
+     search) return per-email records with sent dates and status (bounced, spam blocked,
+     opened, replied, clicked), filterable by date range? Show the real field names from ONE
+     redacted record. Declare the call scope before making calls.
+  b. If yes: how many calls would a 90-day backfill take, given page size and rate limits?
+     Quote the real headers.
+  c. Are spam-block counts available per message or only as per-sequence totals?
+  d. Fallback: we already store daily snapshots, so we could subtract consecutive daily lifetime
+     totals to get daily counts. History would then start from the first snapshot date, with no
+     backfill. How many days of snapshots exist now?
+  Recommend one path (backfill, snapshot-diff, or both), marked NOT DECIDED. Jack picks.
+
+### Stage 2 — Data (after Jack picks)
+- Store daily counts per (date, mailbox, sequence) in the existing long/narrow metrics table, or
+  whatever structure the earlier stages actually built. Keep counts only; compute rates at read
+  time as summed numerators divided by summed denominators, never as an average of daily rates.
+- Backfill path: the job is idempotent and resumable, and the declared call budget is reported
+  as declared vs. used.
+- Migration for sales_events, using the established file → pbcopy → Supabase SQL editor workflow
+  with RLS matching the other sales_* tables.
+
+### Stage 3 — Widget
+Build the design above using the charting library already in the repo. Render as SVG so the PDF
+stays sharp. Use colors from the Stage 3 palette, giving each rate line its own color, and make
+sure the benchmark lines are a neutral gray that can't be mistaken for a data series.
+The tooltip shows the bucket's date range, Sent, and each enabled rate with its raw counts,
+e.g. "Bounce 14.9% (78 / 523)".
+
+### Stage 4 — Export
+- CSV: one row per bucket with sent, delivered, bounced, spam_blocked, opened, replied, clicked,
+  and each rate, plus a partial flag and a low_volume flag.
+- PDF: include this widget right after the scorecard, with the health table beneath it.
+
+## Verification
+- Stage 1: real call results, with the call budget declared vs. used.
+- Stage 2: for full weeks, the computed weekly Sent and rates must match the reference table
+  within ±1 email and ±0.5pp, or the difference must be explained (for example, a different
+  week boundary or how bounces are counted). Report it in a table. Do NOT tune the numbers to
+  match.
+- Stage 3: toggle each overlay on and off, switch Week/Day, switch range, add an event, and
+  confirm the marker renders on the right date. Zero console errors. Zero Apollo calls on page
+  load.
+- Stage 4: open the CSV and the PDF. The numbers must match the screen.
+- Jack checks it on the live deploy (bar 5).
+
+## Definition of done
+Bar 5. The weekly numbers reconcile with Apollo's reference table, or the differences are
+explained. Tenant isolation is proven.
+
+## Commit instructions
+One commit per stage, referencing sales-email-trend-v1. Push to origin/main after each stage
+passes. Stop and report after each stage.
+
+
+==================== ITEM 7 ====================
+
+SPEC — sales-goals-v1 — REVISION 2
+
+## What changed from the first version (for Jack)
+- REMOVED: Weekly Priorities. That list now lives in sales-weekly-report-v1 as "Weekly
+  Priorities / Commitments", so there is exactly one list instead of two.
+- CHANGED: sequencing. This now ships after sales-weekly-report-v1, and Goals fill the reserved
+  placeholder slot inside report section 3 (Target Market & Account Lists).
+- Everything else (the two goal lists, fields, statuses, intel hooks) is unchanged.
+
+## Status
+Source: Jack in chat, 2026-09-30. He wants a Goals section: "Companies to Land" and
+"Partnerships to Land". Later he wants per-goal company intel and research dropdowns. Simple v1.
+DEPENDS ON: sales-weekly-report-v1 shipped. The PDF from commit 2762584 already has a dashed
+placeholder slot reading "Goals & Weekly Priorities — reserved slot, filled by sales-goals-v1".
+Replace it with the Goals block, and rename the slot label to "Goals".
+
+## Problem
+1. Seif's meeting has no standing view of which companies and partnerships HomeLover is trying
+   to land.
+2. The Stage 5 PDF has a placeholder slot waiting for this content.
+
+## Design decision
+
+DECIDED
+- A Goals block at the top of the Sales Analytics dashboard, above the Weekly Scorecard, and also
+  rendered in Weekly Report section 3 and the PDF.
+- Two columns: "Companies to Land" (employers / direct SaaS) and "Partnerships to Land"
+  (channel / audience / distribution partners).
+- Tenant-scoped end to end. Zero Apollo calls. Manual data only. No drag-and-drop and no AI in v1.
+
+PROPOSED / REVISABLE
+- Status values: not_started → in_progress → landed, plus paused and lost.
+
+## Out of scope (named follow-ons)
+- sales-goals-intel-v1: per-goal intel and research dropdown (dated research updates, key
+  contacts, news, possibly Apollo account data). v1 only adds hooks (company_domain, notes).
+- sales-goals-pipeline-link-v1: link a goal to a sales_opportunities row. v1 adds the column only,
+  with no UI.
+- Weekly Priorities. These are owned by sales-weekly-report-v1 and must NOT be rebuilt here.
+
+## Implementation
+FIRST: read the current Sales Analytics files, the widget registry, the weekly report view and
+the PDF slot. Report the structure in 5–10 lines and follow the existing patterns.
+
+### Stage 1 — Migration (file → `cat <file> | pbcopy` → Supabase SQL editor; RLS like the other
+sales_* tables)
+  sales_goals
+    id, tenant_id, goal_type check in ('company','partnership'), name not null,
+    status check in ('not_started','in_progress','landed','paused','lost') default
+    'not_started', owner text, target_date date, priority int default 0 (lower = higher),
+    est_covered_lives int, company_domain text, notes text,
+    linked_opportunity_id uuid null (FK to sales_opportunities, ON DELETE SET NULL),
+    landed_at timestamptz (set when status becomes landed; cleared if it changes back),
+    archived_at, created_at, updated_at
+
+### Stage 2 — API
+List (filter by type, include_archived), create, update, archive. Validation matches the
+existing routes (unknown field → 400, bad enum → 400, bogus id → 404). HumanKind → 403.
+
+### Stage 3 — UI
+- The two columns stack on mobile. Each column header shows "N landed of M", a slim progress
+  bar, and total est. lives if any are set.
+- Each row shows name, status pill (Stage 3 palette), owner, and target date (red if past and
+  not landed), with up/down buttons to change priority.
+- Click a row to open an inline edit panel with all fields. Include "Add company" and "Add
+  partnership" buttons.
+- Landed rows show a checkmark and sort to the bottom. Archived rows are hidden behind a
+  "Show archived" toggle.
+- Register the block in the widget registry so it can be toggled off.
+- Empty state: "No goals yet — add the companies and partnerships you're going after."
+
+### Stage 4 — Report + export
+- Render the Goals block in Weekly Report section 3, replacing the PDF placeholder with the same
+  light print theme and no splits across page breaks.
+- CSV export of goals (all fields).
+
+## Verification
+- RLS: HumanKind sees 0 rows. Run the validation cases. Fetch spy confirms 0 Apollo calls.
+- Every test that writes data restores its original values and reports "restored: yes".
+- Jack adds 2 companies and 2 partnerships, marks one landed, reorders, archives one, and exports
+  the PDF. The placeholder is gone and Goals show in section 3. Jack checks this on the live
+  deploy (bar 5).
+
+## Definition of done
+Bar 5, with the placeholder replaced in both the report view and the PDF.
+
+## Commit instructions
+One commit per stage, referencing sales-goals-v1 (REVISION 2). Push after each stage passes.
+Stop and report after each stage.
+
+
+==================== PRINT POLISH NOTES (fold into ITEM 5, Stage 4) ====================
+
+Source: Jack's PDF export after design-v1 shipped (c1001e8), 2026-09-30 10:22 PM. Small
+print-only issues. Do NOT fix them separately; fix them in sales-weekly-report-v1 Stage 4,
+since that stage rebuilds the PDF anyway.
+1. Leaderboard columns are truncated in print: names show "HomeLover — 5-Step C…", the headers
+   show "S…", "OP…", "RE…", "BOUN…", "PART…", and sender emails are cut off. In print: drop the
+   Partner checkbox and expand-arrow columns, strip the common "HomeLover — N-Step" prefix from
+   names (keep it on screen), show the sender as the local part only ("jack@"), and use short
+   headers that fit (Steps, Open, Reply, Bounce).
+2. A cohort group label ("WIRELESS") is clipped at a page break. Keep each group label with
+   its first row.
+3. A floating app widget (the yellow logo button at the top right) prints over the third
+   alert card. Hide all floating or fixed UI in print.
+4. Empty "Email Performance Over Time" card ("Collecting history…") prints as a near-empty box.
+   Hide empty-state cards in print.
+5. Header reads "as of Sep 30, 2:27 PM", but later syncs exist (a 5:18 PM test run). Confirm
+   which run "as of" reflects. It should be the latest successful run of any trigger, and say so.
