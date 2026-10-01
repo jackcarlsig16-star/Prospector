@@ -1,4 +1,8 @@
 import KpiTiles from './KpiTiles';
+import PipelineTable from './PipelineTable';
+import PipelineMovement from './PipelineMovement';
+import PipelineForecast from './PipelineForecast';
+import TopOpportunities from './TopOpportunities';
 import EmailTrendChart from './EmailTrendChart';
 import SequenceLeaderboard from './SequenceLeaderboard';
 import MailboxHealth from './MailboxHealth';
@@ -18,6 +22,10 @@ import DeliveryMix from './DeliveryMix';
 // and [companies_by_cohort, delivery_mix] as side-by-side 2-column rows
 // (DECIDED layout items 4 and 7) instead of each getting its own full-
 // width card - defaultOrder keeps them adjacent here for that reason.
+//
+// sales-pipeline-v1 Stage 3 - the 4 pipeline widgets go "after the KPI
+// tiles" (SPEC's own placement instruction), ahead of every Apollo-data
+// widget.
 export const WIDGETS = [
   {
     id: 'kpi_tiles', title: 'Overview', component: KpiTiles,
@@ -25,29 +33,45 @@ export const WIDGETS = [
     defaultOrder: 1, enabled: true,
   },
   {
+    id: 'pipeline_table', title: 'Pipeline', component: PipelineTable,
+    metrics: [], defaultOrder: 2, enabled: true,
+  },
+  {
+    id: 'pipeline_movement', title: 'Pipeline Movement', component: PipelineMovement,
+    metrics: [], defaultOrder: 3, enabled: true,
+  },
+  {
+    id: 'pipeline_forecast', title: 'Forecast', component: PipelineForecast,
+    metrics: [], defaultOrder: 4, enabled: true,
+  },
+  {
+    id: 'top_opportunities', title: 'Top Opportunities', component: TopOpportunities,
+    metrics: [], defaultOrder: 5, enabled: true,
+  },
+  {
     id: 'email_trend', title: 'Email Performance Over Time', component: EmailTrendChart,
     metrics: ['unique_delivered', 'open_rate', 'reply_rate'],
-    defaultOrder: 2, enabled: true,
+    defaultOrder: 6, enabled: true,
   },
   {
     id: 'mailbox_health', title: 'Mailbox Health', component: MailboxHealth,
     metrics: ['mailbox_sent', 'mailbox_delivered', 'mailbox_opened', 'mailbox_replied'],
-    defaultOrder: 3, enabled: true,
+    defaultOrder: 7, enabled: true,
   },
   {
     id: 'sequence_leaderboard', title: 'Sequence Leaderboard', component: SequenceLeaderboard,
     metrics: ['unique_delivered', 'unique_opened', 'unique_replied', 'unique_bounced'],
-    defaultOrder: 4, enabled: true,
+    defaultOrder: 8, enabled: true,
   },
   {
     id: 'companies_by_cohort', title: 'Companies in Cadence by Cohort', component: CompaniesByCohort,
     metrics: ['companies_in_cadence'],
-    defaultOrder: 5, enabled: true,
+    defaultOrder: 9, enabled: true,
   },
   {
     id: 'delivery_mix', title: 'Delivery Mix', component: DeliveryMix,
     metrics: ['unique_delivered'],
-    defaultOrder: 6, enabled: true,
+    defaultOrder: 10, enabled: true,
   },
 ];
 

@@ -3,6 +3,7 @@ import { SA, SA_TYPE, SA_SHAPE, SA_THEME_CSS, SA_THEME_ROOT_ID, SA_BAD_BG, SA_BA
 import AlertsRow from './AlertsRow';
 import { WIDGETS } from './widgets.registry';
 import { fetchMetrics, fetchRuns, fetchEntities, fetchCohortBreakdown, triggerSync } from './salesApi';
+import { fetchOpportunities } from './pipelineApi';
 import { PERIOD_PRESETS, periodRange, previousPeriodRange, laDateString } from './periods';
 
 const SPARKLINE_LOOKBACK_DAYS = 56; // ~8 weeks
@@ -116,6 +117,7 @@ export default function SalesAnalyticsTab({ businessId }) {
   const [runs, setRuns] = useState([]);
   const [entities, setEntities] = useState({ sequences: [], mailboxes: [] });
   const [cohortBreakdown, setCohortBreakdown] = useState({});
+  const [opportunities, setOpportunities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [syncing, setSyncing] = useState(false);
@@ -146,16 +148,18 @@ export default function SalesAnalyticsTab({ businessId }) {
       const from = [period.from, prevPeriod.from, sparklineFrom].sort()[0];
       const to = [period.to, laDateString()].sort().reverse()[0];
 
-      const [metrics, latestRuns, latestEntities, latestCohortBreakdown] = await Promise.all([
+      const [metrics, latestRuns, latestEntities, latestCohortBreakdown, latestOpportunities] = await Promise.all([
         fetchMetrics(businessId, from, to),
         fetchRuns(businessId, 5),
         fetchEntities(businessId),
         fetchCohortBreakdown(businessId),
+        fetchOpportunities(businessId),
       ]);
       setAllRows(metrics);
       setRuns(latestRuns);
       setEntities(latestEntities);
       setCohortBreakdown(latestCohortBreakdown.breakdown || {});
+      setOpportunities(latestOpportunities);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -320,7 +324,7 @@ export default function SalesAnalyticsTab({ businessId }) {
               {row.widgets.map(w => (
                 <div key={w.id} className={row.className ? undefined : 'print-avoid-break'} style={{ padding: '22px 24px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusCard }}>
                   <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: '0 0 14px' }}>{w.title}</p>
-                  <w.component businessId={businessId} allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} prevPeriod={prevPeriod} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} accent={SA.accent} widgetId={w.id} onDataChanged={load} onFiltersChanged={setFilterSummary} />
+                  <w.component businessId={businessId} allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} prevPeriod={prevPeriod} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} opportunities={opportunities} accent={SA.accent} widgetId={w.id} onDataChanged={load} onPipelineChanged={load} onFiltersChanged={setFilterSummary} />
                 </div>
               ))}
             </div>
