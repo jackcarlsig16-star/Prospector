@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { C, mono } from '../../constants/colors';
 import { WIDGETS } from './widgets.registry';
-import { fetchMetrics, fetchRuns, fetchEntities, triggerSync } from './salesApi';
+import { fetchMetrics, fetchRuns, fetchEntities, fetchCohortBreakdown, triggerSync } from './salesApi';
 import { PERIOD_PRESETS, periodRange, previousPeriodRange, laDateString } from './periods';
 
 const SPARKLINE_LOOKBACK_DAYS = 56; // ~8 weeks
@@ -31,6 +31,7 @@ export default function SalesAnalyticsTab({ businessId, accent = C.gold }) {
   const [allRows, setAllRows] = useState([]);
   const [runs, setRuns] = useState([]);
   const [entities, setEntities] = useState({ sequences: [], mailboxes: [] });
+  const [cohortBreakdown, setCohortBreakdown] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [syncing, setSyncing] = useState(false);
@@ -51,14 +52,16 @@ export default function SalesAnalyticsTab({ businessId, accent = C.gold }) {
       const from = [period.from, prevPeriod.from, sparklineFrom].sort()[0];
       const to = [period.to, laDateString()].sort().reverse()[0];
 
-      const [metrics, latestRuns, latestEntities] = await Promise.all([
+      const [metrics, latestRuns, latestEntities, latestCohortBreakdown] = await Promise.all([
         fetchMetrics(businessId, from, to),
         fetchRuns(businessId, 5),
         fetchEntities(businessId),
+        fetchCohortBreakdown(businessId),
       ]);
       setAllRows(metrics);
       setRuns(latestRuns);
       setEntities(latestEntities);
+      setCohortBreakdown(latestCohortBreakdown.breakdown || {});
     } catch (e) {
       setError(e.message);
     } finally {
@@ -153,7 +156,7 @@ export default function SalesAnalyticsTab({ businessId, accent = C.gold }) {
           return (
             <div key={w.id} style={{ marginBottom: 24, padding: '16px 18px', background: C.card, border: `1px solid ${C.brd}`, borderRadius: 8 }}>
               <p style={{ ...mono, fontSize: 10, color: C.dim, textTransform: 'uppercase', letterSpacing: '0.08em', margin: '0 0 12px' }}>{w.title}</p>
-              <Widget allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} compareEnabled={compareEnabled} entities={entities} accent={accent} widgetId={w.id} />
+              <Widget allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} accent={accent} widgetId={w.id} />
             </div>
           );
         })

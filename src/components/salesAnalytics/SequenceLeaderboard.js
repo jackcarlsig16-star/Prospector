@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { C, mono } from '../../constants/colors';
-import { rowsFor, lastValue, ratio, formatValue } from './computeMetric';
+import { rowsFor, lastValue, ratio, bounceDenominatorRate, formatValue } from './computeMetric';
+import { cohortColor } from './palette';
 import ExportButton from './ExportButton';
 import { exportWidgetCsv } from './exportCsv';
+import TimeChip from './TimeChip';
 
 const BOUNCE_FLAG_THRESHOLD = 0.03; // existing PROPOSED value (SPEC)
 const SORT_COLUMNS = [
@@ -49,7 +51,11 @@ export default function SequenceLeaderboard({ allRows, entities, widgetId = 'seq
     const delivered = lastValue(deliveredRows);
     const openRate = ratio(openedRows, deliveredRows, lastValue);
     const replyRate = ratio(repliedRows, deliveredRows, lastValue);
-    const bounceRate = ratio(bouncedRows, deliveredRows, lastValue);
+    // dashboard-v2 - bounced / (delivered + bounced), matching Apollo's own
+    // bounce_rate exactly (audit F8) - was bounced / delivered, which
+    // inflated the percentage since unique_delivered already excludes
+    // bounces.
+    const bounceRate = bounceDenominatorRate(bouncedRows, deliveredRows, bouncedRows, lastValue);
 
     return { id, name, cohort, active, delivered, openRate, replyRate, bounceRate };
   }).filter(r => r.delivered !== null || r.active !== undefined); // drop pure ghosts (no data, no entity)
@@ -98,11 +104,14 @@ export default function SequenceLeaderboard({ allRows, entities, widgetId = 'seq
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <label style={{ ...mono, fontSize: 11, color: C.mut, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
-          <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
-          Show inactive sequences
-        </label>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <TimeChip>All-time (Apollo lifetime totals)</TimeChip>
+          <label style={{ ...mono, fontSize: 11, color: C.mut, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+            <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />
+            Show inactive sequences
+          </label>
+        </div>
         <ExportButton onClick={handleExport} />
       </div>
 
@@ -130,6 +139,10 @@ export default function SequenceLeaderboard({ allRows, entities, widgetId = 'seq
                   return (
                     <tr key={r.id}>
                       <td style={{ padding: '7px 10px', color: r.active === false ? C.dim : C.txt, borderBottom: `1px solid ${C.brd}` }}>
+                        <span
+                          data-cohort-dot={r.cohort}
+                          style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: cohortColor(r.cohort), marginRight: 7 }}
+                        />
                         {r.name}{r.active === false && ' (inactive)'}
                       </td>
                       <td style={{ padding: '7px 10px', color: C.txt, borderBottom: `1px solid ${C.brd}` }}>{formatValue(r.delivered, 'number')}</td>

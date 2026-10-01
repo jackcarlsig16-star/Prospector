@@ -31,3 +31,7 @@ yarn-error.log*
 .backup-legacy-fintech-*.json
 .backup-legacy-signalbreakdown-*.json
 .backup-doctrine-*.json
+
+# Scratch Playwright screenshots (in-repo so reading them needs no
+# outside-working-directory permission) — never committed.
+.screenshots/

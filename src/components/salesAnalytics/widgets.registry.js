@@ -3,6 +3,9 @@ import EmailTrendChart from './EmailTrendChart';
 import SequenceLeaderboard from './SequenceLeaderboard';
 import MailboxHealth from './MailboxHealth';
 import CompaniesByCohort from './CompaniesByCohort';
+import DeliveredByCohortDonut from './charts/DeliveredByCohortDonut';
+import DeliveredBySenderDonut from './charts/DeliveredBySenderDonut';
+import DirectVsPartnerDonut from './charts/DirectVsPartnerDonut';
 
 // Entry fields: { id, title, component, metrics[], defaultOrder, enabled }.
 // Later SPECs add entries here instead of rewriting SalesAnalyticsTab.js.
@@ -31,6 +34,21 @@ export const WIDGETS = [
     id: 'companies_by_cohort', title: 'Companies in Cadence by Cohort', component: CompaniesByCohort,
     metrics: ['companies_in_cadence'],
     defaultOrder: 5, enabled: true,
+  },
+  {
+    id: 'delivered_by_cohort_donut', title: 'Delivered by Cohort (All-Time)', component: DeliveredByCohortDonut,
+    metrics: ['unique_delivered'],
+    defaultOrder: 6, enabled: true,
+  },
+  {
+    id: 'delivered_by_sender_donut', title: 'Delivered by Sender', component: DeliveredBySenderDonut,
+    metrics: ['unique_delivered'],
+    defaultOrder: 7, enabled: true,
+  },
+  {
+    id: 'direct_vs_partner_donut', title: 'Direct vs Partner Share of Delivered', component: DirectVsPartnerDonut,
+    metrics: ['unique_delivered'],
+    defaultOrder: 8, enabled: true,
   },
 ];
 
