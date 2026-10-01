@@ -1,7 +1,7 @@
 import { useState, useEffect, Fragment } from 'react';
 import { SA, SA_TYPE, SA_SHAPE, SA_BAD_TINT, SA_BAD_BG } from './theme';
 import { formatValue } from './computeMetric';
-import { cohortColor, bounceHealthColor, PARTNER_COLOR } from './palette';
+import { cohortColor, bounceHealthColor, AUDIENCE_LABELS, audienceColor } from './palette';
 import { COHORTS } from './metrics.registry';
 import { buildSequenceRows, needsAttention } from './sequenceRows';
 import { BOUNCE_ALERT_THRESHOLD, BOUNCE_ALERT_MIN_DELIVERED } from './alertRules';
@@ -15,8 +15,6 @@ import TimeChip from './TimeChip';
 // FIX runs before, so sequences and pipeline opportunities share one
 // vocabulary from the start).
 const AUDIENCE_OPTIONS = ['employer', 'membership', 'channel_partner'];
-const AUDIENCE_LABELS = { employer: 'Employer', membership: 'Membership org', channel_partner: 'Channel partner' };
-function audienceColor(audience) { return audience === 'employer' ? SA.muted : PARTNER_COLOR; }
 
 const GROUP_OPTIONS = [
   { id: 'cohort', label: 'Cohort' },

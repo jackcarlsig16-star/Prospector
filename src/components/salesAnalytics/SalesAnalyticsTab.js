@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SA, SA_TYPE, SA_SHAPE, SA_THEME_CSS, SA_THEME_ROOT_ID, SA_BAD_BG, SA_BAD_BORDER, saSans } from './theme';
 import AlertsRow from './AlertsRow';
+import DailyHuddle from './DailyHuddle';
 import { WIDGETS } from './widgets.registry';
 import { fetchMetrics, fetchRuns, fetchEntities, fetchCohortBreakdown, triggerSync } from './salesApi';
 import { fetchOpportunities } from './pipelineApi';
@@ -117,6 +118,7 @@ const STATUS_COLOR = { success: SA.good, partial: SA.warn, error: SA.bad, runnin
 // this business. BusinessDetailPage still passes an accent prop; it's
 // simply not destructured here, so it's a no-op rather than used.
 export default function SalesAnalyticsTab({ businessId }) {
+  const [view, setView] = useState('overview');
   const [preset, setPreset] = useState('this_week');
   const [customFrom, setCustomFrom] = useState(laDateString());
   const [customTo, setCustomTo] = useState(laDateString());
@@ -223,6 +225,16 @@ export default function SalesAnalyticsTab({ businessId }) {
       <style>{PRINT_STYLES}</style>
       <div style={{ maxWidth: 1360, margin: '0 auto' }}>
 
+      <div className="no-print" style={{ display: 'inline-flex', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: 3, marginBottom: 20 }}>
+        {[['overview', 'Overview'], ['huddle', 'Daily Huddle']].map(([id, label]) => (
+          <button key={id} onClick={() => setView(id)}
+            style={{ ...SA_TYPE.body, fontSize: 13, border: 0, borderRadius: 7, padding: '0 16px', height: 38, cursor: 'pointer', background: view === id ? SA.surface2 : 'transparent', color: view === id ? SA.text : SA.muted }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'huddle' ? <DailyHuddle businessId={businessId} /> : <>
       {/* Header - hidden in print; the print-only block below replaces it */}
       <div className="no-print" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, marginBottom: 24 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -342,6 +354,7 @@ export default function SalesAnalyticsTab({ businessId }) {
           </div>
         )}
       </div>
+      </>}
       </div>
     </div>
   );

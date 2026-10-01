@@ -597,6 +597,24 @@ app.post('/api/sales/:businessId/opportunities/:id/archive', async (req, res) =>
   }
 });
 
+// sales-hot-prospects-v1 - same dynamic-import-per-request pattern.
+const huddleRoute = (name, label) => async (req, res) => {
+  try {
+    const mod = await import('./api/sales/huddleRoutes.js');
+    return mod[name](req, res);
+  } catch (err) {
+    console.error(`[sales/${label}] handler error:`, err);
+    res.status(500).json({ error: err.message });
+  }
+};
+app.get('/api/sales/:businessId/huddle', huddleRoute('huddleRoute', 'huddle'));
+app.post('/api/sales/:businessId/huddles', huddleRoute('startHuddleRoute', 'huddles'));
+app.patch('/api/sales/:businessId/prospects/:contactId', huddleRoute('updateProspectRoute', 'prospects/:contactId'));
+app.get('/api/sales/:businessId/collateral', huddleRoute('listCollateralRoute', 'collateral'));
+app.post('/api/sales/:businessId/collateral', huddleRoute('createCollateralRoute', 'collateral POST'));
+app.patch('/api/sales/:businessId/collateral/:id', huddleRoute('updateCollateralRoute', 'collateral/:id'));
+app.delete('/api/sales/:businessId/collateral/:id', huddleRoute('deleteCollateralRoute', 'collateral/:id DELETE'));
+
 app.post('/api/notify-pending', async (req, res) => {
   const { name, email, role } = req.body || {};
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;

@@ -1,3 +1,4 @@
+import { SA } from './theme';
 // dashboard-v2 Stage 3 - single source of truth for every color this
 // feature uses. The same cohort is the same color in every widget, chart,
 // legend, and the PDF - nothing else computes its own color. Color is
@@ -34,6 +35,9 @@ export const COHORT_COLORS = {
 // fills a shape (stacked-bar segments, chips) - that's a per-usage-site
 // concern, not a second constant here.
 export const PARTNER_COLOR = '#A8D04A';
+
+export const AUDIENCE_LABELS = { employer: 'Employer', membership: 'Membership org', channel_partner: 'Channel partner' };
+export function audienceColor(audience) { return audience === 'employer' ? SA.muted : PARTNER_COLOR; }
 
 // sales-analytics-design-v1 - updated to the mockup's status hex values
 // (good/warn/bad in the mockup = healthy/warning/problem here; same
