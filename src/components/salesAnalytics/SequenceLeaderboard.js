@@ -1,4 +1,4 @@
-import { useState, Fragment } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import { C, mono } from '../../constants/colors';
 import { formatValue } from './computeMetric';
 import { cohortColor, SEMANTIC } from './palette';
@@ -52,7 +52,7 @@ function fmtDate(iso) {
 // Partner/sender/steps/etc, Stage 2) with GET /metrics (the unique_*
 // counters) - this file is purely filtering/grouping/sorting/rendering on
 // top of that one real data join.
-export default function SequenceLeaderboard({ businessId, allRows, entities, widgetId = 'sequence_leaderboard', onDataChanged }) {
+export default function SequenceLeaderboard({ businessId, allRows, entities, widgetId = 'sequence_leaderboard', onDataChanged, onFiltersChanged }) {
   const [cohortFilter, setCohortFilter] = useState(() => new Set(COHORTS));
   const [partnerFilter, setPartnerFilter] = useState('all');
   const [senderFilter, setSenderFilter] = useState('all');
@@ -86,6 +86,24 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
     if (search.trim() && !r.name.toLowerCase().includes(search.trim().toLowerCase())) return false;
     return true;
   });
+
+  // Reports a human-readable summary up to the parent so the print-only
+  // PDF header can state "filters applied" without lifting all of this
+  // state itself (dashboard-v2 Stage 5 requirement).
+  useEffect(() => {
+    const cohortLabel = cohortFilter.size === COHORTS.length ? 'all cohorts' : `cohorts: ${[...cohortFilter].join(', ') || 'none'}`;
+    const parts = [
+      cohortLabel,
+      `Partner: ${partnerFilter === 'all' ? 'all' : partnerFilter}`,
+      `Sender: ${senderFilter === 'all' ? 'all' : senderFilter}`,
+      `Status: ${statusFilter}`,
+      `Health: ${healthFilter === 'all' ? 'all' : 'needs attention'}`,
+      search.trim() ? `Search: "${search.trim()}"` : null,
+      `Grouped by: ${groupBy}`,
+    ].filter(Boolean);
+    onFiltersChanged?.(`Sequences — ${parts.join('; ')} (showing ${filtered.length} of ${totalCount})`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cohortFilter, partnerFilter, senderFilter, statusFilter, healthFilter, search, groupBy, filtered.length, totalCount]);
 
   const toggleCohortFilter = cohort => {
     setCohortFilter(prev => {
@@ -192,8 +210,9 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
         <ExportButton onClick={handleExport} />
       </div>
 
-      {/* Filter bar */}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', padding: '10px 12px', background: C.bg, border: `1px solid ${C.brd}`, borderRadius: 6, marginBottom: 10 }}>
+      {/* Filter bar - hidden in print; the print-only header states the
+          same filters as static text (see onFiltersChanged above). */}
+      <div className="no-print" style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', padding: '10px 12px', background: C.bg, border: `1px solid ${C.brd}`, borderRadius: 6, marginBottom: 10 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {COHORTS.map(cohort => (
             <span key={cohort} onClick={() => toggleCohortFilter(cohort)} style={chipStyle(cohortFilter.has(cohort), cohortColor(cohort))}>
@@ -227,7 +246,7 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
         <p style={{ ...mono, fontSize: 11, color: C.mut, margin: 0 }}>Showing {filtered.length} of {totalCount} sequences</p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ ...mono, fontSize: 10, color: C.dim }}>Group by</span>
           {GROUP_OPTIONS.map(g => (
             <span key={g.id} onClick={() => setGroupBy(g.id)} style={chipStyle(groupBy === g.id, C.gold)}>{g.label}</span>
