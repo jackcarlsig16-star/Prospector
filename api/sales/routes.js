@@ -115,6 +115,10 @@ export async function entitiesRoute(req, res) {
     inactive_reason: m.inactive_reason || null,
     unlink_error_message: m.unlink_error_message || null,
     needs_reauth_at: m.needs_reauth_at || null,
+    last_synced_at: m.last_synced_at || null,
+    revoked_at: m.revoked_at || null,
+    created_at: m.created_at || null,
+    snapshot_at: mailSnap.data?.captured_at || null,
   }));
   const capturedAt = [seqSnap.data?.captured_at, mailSnap.data?.captured_at].filter(Boolean).sort().slice(-1)[0] || null;
 

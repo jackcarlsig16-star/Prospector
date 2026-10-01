@@ -3,6 +3,7 @@ import { rowsFor, lastValue, ratio, formatValue } from './computeMetric';
 import ExportButton from './ExportButton';
 import { exportWidgetCsv } from './exportCsv';
 import TimeChip from './TimeChip';
+import { mailboxConnectionProblem, mailboxErrorNote } from '../../utils/mailboxStatus';
 
 function truncate160(s) {
   if (!s) return '';
@@ -51,8 +52,8 @@ export default function MailboxHealth({ allRows, entities, widgetId = 'mailbox_h
       replied: lastValue(repliedRows),
       openRate: ratio(openedRows, deliveredRows, lastValue),
       unlinkErrorCode: entity?.unlink_error_code || null,
-      inactiveReason: entity?.inactive_reason || null,
-      unlinkErrorMessage: entity?.unlink_error_message || null,
+      problem: entity ? mailboxConnectionProblem(entity) : null,
+      errorNote: entity ? mailboxErrorNote(entity) : null,
       dateFrom: entity?.deliverability_score?.date_from || null,
       dateTo: entity?.deliverability_score?.date_to || null,
     };
@@ -74,7 +75,8 @@ export default function MailboxHealth({ allRows, entities, widgetId = 'mailbox_h
       { label: 'Opened', value: m => formatValue(m.opened, 'number') },
       { label: 'Replied', value: m => formatValue(m.replied, 'number') },
       { label: 'Open Rate', value: m => formatValue(m.openRate, 'percent') },
-      { label: 'Connection Problem', value: m => (m.unlinkErrorCode || m.inactiveReason || '') },
+      { label: 'Connection Problem', value: m => m.problem || '' },
+      { label: 'Apollo Error Note (may be stale)', value: m => [m.unlinkErrorCode, m.errorNote].filter(Boolean).join(': ') },
     ]);
   };
 
@@ -88,7 +90,8 @@ export default function MailboxHealth({ allRows, entities, widgetId = 'mailbox_h
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {mailboxes.map(m => {
-          const hasProblem = !!(m.unlinkErrorCode || m.inactiveReason);
+          const hasProblem = !!m.problem;
+          const hasNote = !!(m.unlinkErrorCode || m.errorNote);
           return (
             <div key={m.id} style={{ padding: '14px 16px', background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
@@ -97,14 +100,16 @@ export default function MailboxHealth({ allRows, entities, widgetId = 'mailbox_h
                 </span>
                 {hasProblem && (
                   <span style={{ fontSize: 11, fontWeight: 600, color: SA.bad, background: SA_BAD_BG, borderRadius: SA_SHAPE.radiusPill, padding: '4px 10px', flexShrink: 0 }}>
-                    Connection error
+                    {m.problem}
                   </span>
                 )}
               </div>
-              {hasProblem && (
-                <div style={{ fontSize: 11, color: SA.faint, lineHeight: 1.4 }}>
-                  {m.unlinkErrorCode && <span style={{ fontWeight: 600, color: SA.muted }}>{m.unlinkErrorCode}: </span>}
-                  {truncate160(m.unlinkErrorMessage || m.inactiveReason)}
+              {hasNote && (
+                <div title={hasProblem ? undefined : 'Apollo keeps this text after a reconnect; the mailbox is currently connected.'}
+                  style={{ fontSize: 11, color: SA.faint, lineHeight: 1.4, opacity: hasProblem ? 1 : 0.55 }}>
+                  {!hasProblem && <span>Old Apollo note · </span>}
+                  {m.unlinkErrorCode && <span style={{ fontWeight: 600, color: hasProblem ? SA.muted : SA.faint }}>{m.unlinkErrorCode}: </span>}
+                  {truncate160(m.errorNote)}
                 </div>
               )}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>

@@ -3,6 +3,7 @@
 // (DECIDED). Starting thresholds are REVISABLE starting values per the
 // SPEC, not tuned to match today's real data.
 import { buildSequenceRows } from './sequenceRows';
+import { mailboxConnectionProblem } from '../../utils/mailboxStatus';
 
 // Exported - the leaderboard's row-tint rule ("rows with bounce > 5% get
 // a faint red tint", design-v1 Stage 3) is the SAME 5% line, not a
@@ -51,15 +52,17 @@ export function computeAlerts({ allRows, entities, runs }) {
     });
   }
 
-  // Rule 2 - any mailbox with a connection error. Grouped into one card
-  // when more than one mailbox has an error, for the same reason rule 1
-  // groups its overflow - the row has a hard 3-card cap.
-  const mailboxesWithErrors = (entities?.mailboxes || []).filter(m => m.unlink_error_code || m.inactive_reason);
+  // Rule 2 - any mailbox with a real connection problem (see
+  // utils/mailboxStatus.js - Apollo's error fields alone are stale
+  // history). Grouped into one card when more than one mailbox has one,
+  // for the same reason rule 1 groups its overflow - the row has a hard
+  // 3-card cap.
+  const mailboxesWithErrors = (entities?.mailboxes || []).filter(m => mailboxConnectionProblem(m));
   if (mailboxesWithErrors.length === 1) {
     alerts.push({
       key: 'mailbox-error',
       severity: 'bad',
-      title: `${mailboxesWithErrors[0].email} reported a connection error`,
+      title: `${mailboxesWithErrors[0].email}: ${mailboxConnectionProblem(mailboxesWithErrors[0]).toLowerCase()}`,
       action: 'As of last sync. Re-sync to confirm the reconnect took.',
     });
   } else if (mailboxesWithErrors.length > 1) {

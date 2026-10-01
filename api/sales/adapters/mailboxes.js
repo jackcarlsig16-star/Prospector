@@ -53,6 +53,11 @@ export async function fetchRecords(ctx) {
       inactive_reason: trim300(m.inactive_reason),
       unlink_error_message: trim300(m.unlink_error_message),
       needs_reauth_at: m.needs_reauth_at || null,
+      // sales-mailbox-stale-error-v1 - the real connection-state signals;
+      // the error fields above stay set after a reconnect.
+      last_synced_at: m.last_synced_at || null,
+      revoked_at: m.revoked_at || null,
+      created_at: m.created_at || null,
     };
   });
 }
