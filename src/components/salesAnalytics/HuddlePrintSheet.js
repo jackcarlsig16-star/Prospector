@@ -6,12 +6,26 @@ import { SA, SA_TYPE } from './theme';
 // stays unique. SA tokens flip to the light palette under @media print.
 const cell = { padding: '6px 8px', borderBottom: `1px solid ${SA.border}`, textAlign: 'left', verticalAlign: 'top', fontSize: 11 };
 
-export default function HuddlePrintSheet({ dateLabel, prospects, ownerLabels, nextActionLabels, today }) {
+export default function HuddlePrintSheet({ dateLabel, prospects, needsAction, needsActionTotal, issues, ownerLabels, nextActionLabels, today }) {
   const owners = ['jack', 'cyrus', 'unassigned'].filter(o => prospects.some(p => p.owner === o));
   return (
     <div id="sales-analytics-print-area" className="print-only" style={{ color: SA.text }}>
       <h1 style={{ ...SA_TYPE.pageTitle, fontSize: 22, margin: '0 0 4px' }}>Daily Huddle · {dateLabel}</h1>
       <p style={{ fontSize: 12, color: SA.muted, margin: '0 0 16px' }}>{prospects.length} prospects · assignments by owner, hottest first</p>
+      <section className="print-avoid-break" style={{ display: 'flex', gap: 32, marginBottom: 18, fontSize: 11 }}>
+        <div style={{ flex: 1 }}>
+          <h2 style={{ ...SA_TYPE.cardTitle, fontSize: 15, margin: '0 0 6px' }}>{needsActionTotal} need action today{needsActionTotal > needsAction.length ? ` (top ${needsAction.length})` : ''}</h2>
+          {needsAction.map(({ prospect: p, action }) => (
+            <div key={p.contact_id}>{p.name || 'Unknown contact'}{p.company ? ` · ${p.company}` : ''} — <strong>{action}</strong> · {ownerLabels[p.owner] || p.owner}</div>
+          ))}
+        </div>
+        {issues.length > 0 && (
+          <div style={{ flex: 1 }}>
+            <h2 style={{ ...SA_TYPE.cardTitle, fontSize: 15, margin: '0 0 6px' }}>Top sequence issues</h2>
+            {issues.map(i => <div key={`${i.id}:${i.scope_key}`} style={{ marginBottom: 4 }}><strong>{i.title}</strong> — {i.action}</div>)}
+          </div>
+        )}
+      </section>
       {owners.map(owner => {
         const mine = prospects.filter(p => p.owner === owner).sort((a, b) => b.score - a.score);
         return (

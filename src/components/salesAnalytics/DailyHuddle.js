@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { SA, SA_TYPE, SA_SHAPE, SA_BAD_BG, SA_BAD_BORDER } from './theme';
-import { fetchRuns, triggerSync } from './salesApi';
+import { fetchRuns, triggerSync, fetchInsights } from './salesApi';
 import { fetchHuddle, startHuddle, fetchCollateral } from './huddleApi';
 import HuddleCard from './HuddleCard';
 import CollateralLibrary from './CollateralLibrary';
 import HuddlePrintSheet from './HuddlePrintSheet';
+import BriefingStrip from './BriefingStrip';
 import { exportWidgetCsv } from './exportCsv';
 
 const OWNER_LABELS = { jack: 'Jack', cyrus: 'Cyrus', unassigned: 'Unassigned' };
@@ -25,6 +26,25 @@ const HUDDLE_SHEET_COLUMNS = [
   { label: 'Last open/click', key: 'last_signal_at' },
   { label: 'Apollo', key: 'apollo_url' },
 ];
+
+const BRIEFING_MAX = 8;
+
+// "Needs action today": a human-set next action that's due/overdue, or no
+// next action set and Next Best Action says something other than "let it
+// run". Booked/snoozed/dead have no card, so they're never listed.
+function needsActionToday(prospects, today) {
+  const out = [];
+  for (const p of prospects) {
+    if (!['new', 'claimed', 'contacted'].includes(p.status)) continue;
+    if (p.next_action_due && p.next_action_due <= today) {
+      const overdue = p.next_action_due < today;
+      out.push({ prospect: p, overdue, action: `${NEXT_ACTION_LABELS[p.next_action] || 'Follow up'} · ${overdue ? 'overdue' : 'due today'}` });
+    } else if (!p.next_action && p.next_best_action.id !== 'let_run') {
+      out.push({ prospect: p, overdue: false, action: p.next_best_action.label });
+    }
+  }
+  return out.sort((a, b) => b.prospect.score - a.prospect.score);
+}
 
 function fmtTime(iso) {
   return iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'never';
@@ -53,6 +73,8 @@ export default function DailyHuddle({ businessId }) {
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState('');
   const [showLibrary, setShowLibrary] = useState(false);
+  const [issues, setIssues] = useState(null);
+  const [issuesError, setIssuesError] = useState('');
 
   const load = useCallback(async () => {
     setError('');
@@ -67,6 +89,14 @@ export default function DailyHuddle({ businessId }) {
   }, [businessId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Separate from load(): insights take ~1-3s and shouldn't hold up the cards.
+  // info-level (R10 "back in the green") isn't an issue.
+  useEffect(() => {
+    fetchInsights(businessId)
+      .then(d => setIssues((d.insights || []).filter(i => i.severity !== 'info').slice(0, 2)))
+      .catch(e => setIssuesError(e.message));
+  }, [businessId]);
 
   const reloadCollateral = async () => setCollateral(await fetchCollateral(businessId));
 
@@ -114,9 +144,12 @@ export default function DailyHuddle({ businessId }) {
   const done = data?.done_recent || [];
 
   const card = p => (
-    <HuddleCard key={`${p.contact_id}:${p.updated_at}`} businessId={businessId} prospect={p} collateral={collateral} today={today}
-      isNewSinceHuddle={!!lastHuddleAt && p.created_at > lastHuddleAt} onUpdated={handleUpdated} />
+    <div key={`${p.contact_id}:${p.updated_at}`} id={`huddle-card-${p.contact_id}`} style={{ borderRadius: SA_SHAPE.radiusInner }}>
+      <HuddleCard businessId={businessId} prospect={p} collateral={collateral} today={today}
+        isNewSinceHuddle={!!lastHuddleAt && p.created_at > lastHuddleAt} onUpdated={handleUpdated} />
+    </div>
   );
+  const needsAction = data ? needsActionToday(visible, today) : [];
 
   const dateLabel = today ? new Date(`${today}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
 
@@ -155,6 +188,8 @@ export default function DailyHuddle({ businessId }) {
         !error && <p style={{ ...SA_TYPE.body, fontSize: 13, color: SA.muted }}>Loading…</p>
       ) : (
         <>
+          <BriefingStrip people={needsAction.slice(0, BRIEFING_MAX)} total={needsAction.length} issues={issues} issuesError={issuesError} ownerLabels={OWNER_LABELS} />
+
           <Section title="Due today / overdue" count={due.length} empty="Nothing due.">
             <div style={cardList}>{due.map(card)}</div>
           </Section>
@@ -199,7 +234,7 @@ export default function DailyHuddle({ businessId }) {
               Hidden: {Object.entries(hidden).filter(([, n]) => n).map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}`).join(' · ')}
             </p>
           )}
-          <HuddlePrintSheet dateLabel={dateLabel} prospects={visible} ownerLabels={OWNER_LABELS} nextActionLabels={NEXT_ACTION_LABELS} today={today} />
+          <HuddlePrintSheet dateLabel={dateLabel} prospects={visible} needsAction={needsAction.slice(0, BRIEFING_MAX)} needsActionTotal={needsAction.length} issues={issues || []} ownerLabels={OWNER_LABELS} nextActionLabels={NEXT_ACTION_LABELS} today={today} />
         </>
       )}
     </div>
