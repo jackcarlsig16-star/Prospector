@@ -391,6 +391,9 @@ const esHandler = (rel) => async (req, res) => {
 
 app.get('/api/access-log',     esHandler('./api/access-log.js'));
 app.post('/api/access-log',    esHandler('./api/access-log.js'));
+app.get('/api/me',                       esHandler('./api/me.js'));
+app.get('/api/invites/:token',           esHandler('./api/invites.js'));
+app.post('/api/invites/:token/accept',   esHandler('./api/invites.js'));
 app.post('/api/personas',      esHandler('./api/personas.js'));
 app.post('/api/stealth',       esHandler('./api/stealth.js'));
 app.post('/api/lookalike',     esHandler('./api/lookalike.js'));

@@ -4,6 +4,7 @@ import { NAV, NAV_ROLES, initials, isAdmin } from '../constants/appConfig';
 import { BUSINESS_NAV } from '../constants/businessNav';
 import NavRow from './NavRow';
 import { upsertBdrAssignment, removeBdrAssignment } from '../utils/db';
+import { signOut } from '../utils/authSession';
 
 function readSidebarPrefs() {
   try { return JSON.parse(localStorage.getItem("prospector_prefs")||"{}"); } catch { return {}; }
@@ -291,11 +292,7 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
         {!viewAs && (
           <div style={{ marginTop:6, textAlign:"center" }}>
             <button
-              onClick={() => {
-                ["prospector_user","prospector_gate_unlocked","prospector_pending_role","prospector_gate_attempts"]
-                  .forEach(k => { try { localStorage.removeItem(k); } catch {} });
-                window.location.reload();
-              }}
+              onClick={signOut}
               style={{ ...mono, fontSize:10, color:C.dim, background:"transparent", border:"none", cursor:"pointer", padding:"2px 6px", borderRadius:3 }}
               onMouseEnter={e => e.currentTarget.style.color = C.red}
               onMouseLeave={e => e.currentTarget.style.color = C.dim}

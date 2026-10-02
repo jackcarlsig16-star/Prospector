@@ -37,6 +37,7 @@ import { getTeamUsers, saveTeamUsers, getFrontier, saveFrontier, getAccounts, sa
 import BusinessesHomePage from './components/BusinessesHomePage';
 import BusinessDetailPage from './components/BusinessDetailPage';
 import { isSupabaseEnabled } from './utils/supabase';
+import { signOut } from './utils/authSession';
 
 // Stage-change debug logger — remove once root cause is confirmed
 const logStageChange = (trigger, name, oldStage, newStage) => {
@@ -1044,6 +1045,13 @@ export default function App() {
       if (cancelled) return;
       setMyBusinesses(businesses);
       setBusinessesLoading(false);
+      // An accepted invite lands here as /?business=<id> (auth/InvitePage.js).
+      const landId = new URLSearchParams(window.location.search).get('business');
+      if (landId) {
+        const landing = businesses.find(b => b.id === landId);
+        if (landing) { setActiveBusiness(landing); setBusinessPage('command-center'); setPage('business-detail'); }
+        window.history.replaceState({}, '', '/');
+      }
     });
     return () => { cancelled = true; };
   }, [user?.email]);
@@ -1303,8 +1311,7 @@ export default function App() {
   }}/>;
   if(memberSession) return <MemberShell identity={memberSession} initialBusiness={joinedBusiness} onExit={()=>{
     try{localStorage.removeItem("prospector_member");}catch{}
-    setMemberSession(null);
-    setJoinedBusiness(null);
+    signOut();
   }}/>;
 
   // Initial load only: show PendingScreen full-block while we resolve status from Supabase.

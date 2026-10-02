@@ -3,14 +3,17 @@ import ReactDOM from 'react-dom/client';
 import './index.css';
 import App from './App';
 import ProspectorGate from './components/ProspectorGate';
+import AuthGate from './components/auth/AuthGate';
 import reportWebVitals from './reportWebVitals';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
   <React.StrictMode>
-    <ProspectorGate>
-      <App />
-    </ProspectorGate>
+    <AuthGate>
+      <ProspectorGate>
+        <App />
+      </ProspectorGate>
+    </AuthGate>
   </React.StrictMode>
 );
 
