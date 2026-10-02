@@ -3,7 +3,6 @@ import { SA, SA_TYPE, SA_SHAPE, SA_BAD_TINT } from './theme';
 import { TREND_COLORS, TREND_THEME_CSS } from './palette';
 import { EMAIL_HEALTH_THRESHOLDS } from './metrics.registry';
 import { fetchEmailCounts, fetchSalesEvents, createSalesEvent } from './salesApi';
-import { currentUserLabel } from './huddleApi';
 import { laDateString } from './periods';
 import { RANGES, buildBuckets, bucketStart, pct, shortDate } from './emailTrendData';
 import EmailHealthTable from './EmailHealthTable';
@@ -95,7 +94,7 @@ export default function EmailTrendChart({ businessId, widgetId = 'email_trend' }
     e.preventDefault();
     setSaving(true);
     try {
-      const ev = await createSalesEvent(businessId, { ...draft, created_by: currentUserLabel() });
+      const ev = await createSalesEvent(businessId, draft);
       setEvents(list => [...list, ev].sort((a, b) => a.event_date.localeCompare(b.event_date)));
       setAdding(false);
       setDraft(d => ({ ...d, label: '' }));

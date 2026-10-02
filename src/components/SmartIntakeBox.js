@@ -205,7 +205,7 @@ export default function SmartIntakeBox({ business, projects, userEmail, onProfil
     try {
       const res = await fetch(`/api/businesses/${business.id}/intake`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: text.trim(), created_by: userEmail }),
+        body: JSON.stringify({ text: text.trim() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to process intake');
@@ -263,7 +263,7 @@ export default function SmartIntakeBox({ business, projects, userEmail, onProfil
     try {
       const res = await fetch(`/api/businesses/${business.id}/intake/confirm`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, text: confirmState.text, created_by: userEmail }),
+        body: JSON.stringify({ action, text: confirmState.text }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to file');

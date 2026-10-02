@@ -664,7 +664,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
       const res = await fetch(`/api/businesses/${business.id}/intel`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: newEntry.trim(), created_by: userEmail }),
+        body: JSON.stringify({ content: newEntry.trim() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to add intel');
@@ -1018,7 +1018,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
           )}
         </div>
 
-        <CallLogSection business={business} userEmail={userEmail} intelEntries={intelEntries} projects={projects} onReload={load} />
+        <CallLogSection business={business} intelEntries={intelEntries} projects={projects} onReload={load} />
         </>)}
       </div>
     </div>

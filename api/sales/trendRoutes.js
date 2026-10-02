@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import { isAllowlistedBusiness } from './allowlist.js';
 import { computeInsights, loadInsightInput } from './insightRules.js';
 
 // sales-email-trend-v1 REV2 - server-only access, same posture as every
@@ -9,13 +8,6 @@ function getSupabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 }
 
-function checkAllowlist(req, res) {
-  if (!isAllowlistedBusiness(req.params.businessId)) {
-    res.status(403).json({ error: 'business is not allowlisted for sales analytics' });
-    return false;
-  }
-  return true;
-}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const EVENT_CATEGORIES = ['deliverability', 'mailbox', 'sequence', 'list', 'other'];
@@ -25,7 +17,6 @@ const PAGE = 1000; // PostgREST's default max-rows
 // GET /email-counts?from=YYYY-MM-DD - daily counts summed to day x mailbox
 // (the chart doesn't split by sequence/step), plus how fresh the backfill is.
 export async function emailCountsRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const { from } = req.query;
   if (from && !DATE_RE.test(from)) return res.status(400).json({ error: 'from must be YYYY-MM-DD' });
   const supabase = getSupabase();
@@ -64,7 +55,6 @@ export async function emailCountsRoute(req, res) {
 }
 
 export async function listEventsRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const { data, error } = await getSupabase().from('sales_events')
     .select('id,event_date,label,category,created_by,created_at').eq('business_id', req.params.businessId).order('event_date');
   if (error) return res.status(500).json({ error: error.message });
@@ -72,15 +62,13 @@ export async function listEventsRoute(req, res) {
 }
 
 export async function createEventRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
-  const { event_date, label, category = 'other', created_by = null, ...rest } = req.body || {};
+  const { event_date, label, category = 'other', ...rest } = req.body || {};
   if (Object.keys(rest).length) return res.status(400).json({ error: `unknown field: ${Object.keys(rest)[0]}` });
   if (typeof event_date !== 'string' || !DATE_RE.test(event_date)) return res.status(400).json({ error: 'event_date must be YYYY-MM-DD' });
   if (typeof label !== 'string' || !label.trim() || label.length > 120) return res.status(400).json({ error: 'label must be 1-120 characters' });
   if (!EVENT_CATEGORIES.includes(category)) return res.status(400).json({ error: `category must be one of ${EVENT_CATEGORIES.join('|')}` });
-  if (created_by !== null && typeof created_by !== 'string') return res.status(400).json({ error: 'created_by must be a string' });
   const { data, error } = await getSupabase().from('sales_events')
-    .insert({ business_id: req.params.businessId, event_date, label: label.trim(), category, created_by })
+    .insert({ business_id: req.params.businessId, event_date, label: label.trim(), category, created_by: req.auth.user.email })
     .select('id,event_date,label,category,created_by,created_at').single();
   if (error) return res.status(500).json({ error: error.message });
   res.status(201).json({ event: data });
@@ -91,7 +79,6 @@ const DISMISS_DAYS = 7;
 // GET /insights - rules run fresh on every request from stored data only.
 // Active dismissals (insight id + scope) are filtered out and counted.
 export async function insightsRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const supabase = getSupabase();
   const businessId = req.params.businessId;
   try {
@@ -112,17 +99,15 @@ export async function insightsRoute(req, res) {
   }
 }
 
-// POST /insights/dismiss { insight_id, scope_key, dismissed_by }
+// POST /insights/dismiss { insight_id, scope_key } - who = the signed-in user
 export async function dismissInsightRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
-  const { insight_id, scope_key = '', dismissed_by = null, ...rest } = req.body || {};
+  const { insight_id, scope_key = '', ...rest } = req.body || {};
   if (Object.keys(rest).length) return res.status(400).json({ error: `unknown field: ${Object.keys(rest)[0]}` });
   if (typeof insight_id !== 'string' || !/^R\d{1,2}$/.test(insight_id)) return res.status(400).json({ error: 'insight_id must look like R1..R10' });
   if (typeof scope_key !== 'string' || scope_key.length > 200) return res.status(400).json({ error: 'scope_key must be a string' });
-  if (dismissed_by !== null && typeof dismissed_by !== 'string') return res.status(400).json({ error: 'dismissed_by must be a string' });
   const dismissedUntil = new Date(Date.now() + DISMISS_DAYS * 864e5).toISOString();
   const { data, error } = await getSupabase().from('sales_insight_dismissals')
-    .insert({ business_id: req.params.businessId, insight_id, scope_key, dismissed_until: dismissedUntil, dismissed_by })
+    .insert({ business_id: req.params.businessId, insight_id, scope_key, dismissed_until: dismissedUntil, dismissed_by: req.auth.user.email })
     .select('insight_id,scope_key,dismissed_until,dismissed_by').single();
   if (error) return res.status(500).json({ error: error.message });
   res.status(201).json({ dismissal: data });

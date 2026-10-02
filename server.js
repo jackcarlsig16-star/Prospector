@@ -25,10 +25,21 @@ app.use(require('./api/basicAuth.js').basicAuth);
 // Harmless for every other route - nothing else reads req.rawBody.
 app.use(express.json({ limit: '20mb', verify: (req, res, buf) => { req.rawBody = buf.toString('utf8'); } }));
 
+// prospector-auth-v1 Stage 3 - every /api and /proxy request needs a signed-in
+// user (api/lib/requireAuth.js has the exempt list); workspace routes add a
+// role check. Mounted before any route so nothing slips past.
+const authMw = (name, ...args) => (req, res, next) =>
+  import('./api/lib/requireAuth.js').then(m => (args.length ? m[name](...args) : m[name])(req, res, next)).catch(next);
+app.use(['/api', '/proxy'], authMw('sessionAuth'));
+app.use('/api/businesses/:id', authMw('businessGate'));
+app.use('/api/sales/:businessId', authMw('salesGate'));
+app.use('/api/projects/:id', authMw('parentGate', 'projects'));
+app.use('/api/campaigns/:id', authMw('parentGate', 'campaigns'));
+
 import('./api/lib/checkCredentials.js').then(({ checkCredentials }) => checkCredentials());
 
 // ── Anthropic proxy ───────────────────────────────────────────────────────────
-app.post('/proxy/anthropic/messages', async (req, res) => {
+app.post('/proxy/anthropic/messages', authMw('anthropicRateLimit'), async (req, res) => {
   const model  = req.body?.model || '?';
   const stream = !!req.body?.stream;
   try {
@@ -392,7 +403,7 @@ const esHandler = (rel) => async (req, res) => {
   }
 };
 
-app.get('/api/access-log',     esHandler('./api/access-log.js'));
+app.get('/api/access-log',     authMw('platformOwnerOnly'), esHandler('./api/access-log.js'));
 app.post('/api/access-log',    esHandler('./api/access-log.js'));
 app.get('/api/me',                       esHandler('./api/me.js'));
 app.get('/api/invites/:token',           esHandler('./api/invites.js'));
@@ -430,7 +441,7 @@ app.post('/api/databricks/gong-calls',    esHandler('./api/databricks/gong-calls
 app.post('/api/databricks/gong-enrich',  esHandler('./api/databricks/gong-enrich.js'));
 app.post('/api/databricks/gong-trends',  esHandler('./api/databricks/gong-trends.js'));
 app.post('/api/notify-approved',          esHandler('./api/notify-approved.js'));
-app.post('/api/businesses',                    esHandler('./api/businesses/create.js'));
+app.post('/api/businesses',                    authMw('platformOwnerOnly'), esHandler('./api/businesses/create.js'));
 app.get('/api/businesses/:id',                 esHandler('./api/businesses/detail.js'));
 app.get('/api/businesses/:id/status',          esHandler('./api/businesses/status.js'));
 app.post('/api/businesses/:id/intel',          esHandler('./api/businesses/intel.js'));
@@ -466,8 +477,8 @@ app.post('/api/campaigns/:id/extract-fields', esHandler('./api/campaigns/extract
 app.post('/api/businesses/:id/call-log', esHandler('./api/businesses/call-log.js'));
 app.post('/api/businesses/:id/call-log/:entryId/reassign', esHandler('./api/businesses/call-log-reassign.js'));
 app.post('/api/zoom/webhook', esHandler('./api/zoom/webhook.js'));
-app.get('/api/zoom/events', esHandler('./api/zoom/events.js'));
-app.post('/api/zoom/events/:eventId/reassign', esHandler('./api/zoom/events-reassign.js'));
+app.get('/api/zoom/events', authMw('platformOwnerOnly'), esHandler('./api/zoom/events.js'));
+app.post('/api/zoom/events/:eventId/reassign', authMw('platformOwnerOnly'), esHandler('./api/zoom/events-reassign.js'));
 
 // sales-analytics-core-v1 - not wired through esHandler since routes.js
 // exports three named functions, not one default (esHandler always calls

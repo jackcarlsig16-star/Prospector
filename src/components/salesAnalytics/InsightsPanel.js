@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { SA, SA_TYPE, SA_SHAPE } from './theme';
 import { dismissInsight } from './salesApi';
-import { currentUserLabel } from './huddleApi';
 import ExportButton from './ExportButton';
 import { exportWidgetCsv } from './exportCsv';
 
@@ -59,7 +58,7 @@ export default function InsightsPanel({ businessId, insights, onInsightsChanged,
     setBusy(`${i.id}:${i.scope_key}`);
     setError('');
     try {
-      await dismissInsight(businessId, { insight_id: i.id, scope_key: i.scope_key, dismissed_by: currentUserLabel() });
+      await dismissInsight(businessId, { insight_id: i.id, scope_key: i.scope_key });
       setHidden(h => new Set(h).add(`${i.id}:${i.scope_key}`));
       await onInsightsChanged();
     } catch (e) {

@@ -134,7 +134,8 @@ export async function fileCallLog(supabase, businessId, { transcript, call_platf
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const { id: businessId } = req.params;
-  const { transcript, call_platform, call_date, call_duration_seconds, call_participants, created_by } = req.body || {};
+  const { transcript, call_platform, call_date, call_duration_seconds, call_participants } = req.body || {};
+  const created_by = req.auth.user.email;
 
   if (!transcript?.trim()) return res.status(400).json({ error: 'transcript is required' });
   if (call_participants !== undefined && call_participants !== null && !Array.isArray(call_participants)) {

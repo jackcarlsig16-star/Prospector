@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import { isAllowlistedBusiness } from './allowlist.js';
 import { STAGE_ENUM, ORG_TYPE_ENUM, compareStages } from './pipelineStages.js';
 import { parseCsv, toCsv } from '../../src/utils/csv.js';
 
@@ -9,13 +8,6 @@ function getSupabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 }
 
-function checkAllowlist(req, res) {
-  if (!isAllowlistedBusiness(req.params.businessId)) {
-    res.status(403).json({ error: 'business is not allowlisted for sales analytics' });
-    return false;
-  }
-  return true;
-}
 
 // Every column a caller may write via create/update. organization/
 // business_id/source/id/created_at/updated_at/archived_at are either
@@ -53,7 +45,6 @@ function validateFields(body) {
 
 // GET /opportunities?stage=&cohort=&owner=&is_top=&include_archived=
 export async function listOpportunitiesRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const supabase = getSupabase();
   const { stage, cohort, owner, is_top, include_archived } = req.query;
   let query = supabase.from('sales_opportunities').select('*').eq('business_id', req.params.businessId);
@@ -68,7 +59,6 @@ export async function listOpportunitiesRoute(req, res) {
 }
 
 export async function createOpportunityRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const { payload, error } = validateFields(req.body);
   if (error) return res.status(400).json({ error });
   if (!payload.organization || !payload.organization.trim()) {
@@ -85,7 +75,6 @@ export async function createOpportunityRoute(req, res) {
 }
 
 export async function updateOpportunityRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const businessId = req.params.businessId;
   const id = req.params.id;
   const { payload, error } = validateFields(req.body);
@@ -108,7 +97,6 @@ export async function updateOpportunityRoute(req, res) {
 }
 
 export async function archiveOpportunityRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const businessId = req.params.businessId;
   const id = req.params.id;
   const supabase = getSupabase();
@@ -129,7 +117,6 @@ export async function archiveOpportunityRoute(req, res) {
 }
 
 export async function opportunityTemplateRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const columns = [...WRITABLE_FIELDS, 'lost_reason'].filter((v, i, a) => a.indexOf(v) === i);
   const csv = toCsv([], columns.map(c => ({ label: c, key: c })));
   res.setHeader('Content-Type', 'text/csv');
@@ -176,7 +163,6 @@ function normalizeHeader(h) {
 // row is applied, so two rows in the same CSV with the same org name
 // correctly route the second one to UPDATE instead of a duplicate INSERT.
 export async function importOpportunitiesRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const businessId = req.params.businessId;
   const csvText = req.body?.csv;
   if (typeof csvText !== 'string' || !csvText.trim()) {
@@ -266,7 +252,6 @@ export async function importOpportunitiesRoute(req, res) {
 // movement) > stalled (no net movement, but genuinely neglected) > none
 // (no net movement, not neglected - excluded from every bucket).
 export async function movementRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const businessId = req.params.businessId;
   const { from, to } = req.query;
   if (!from || !to || !DATE_RE.test(from) || !DATE_RE.test(to)) {

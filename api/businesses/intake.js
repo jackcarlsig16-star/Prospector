@@ -14,7 +14,8 @@ import { getSupabase, classifyIntake, fileCompanyIntel, fileProjectIntel, record
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const { id } = req.params;
-  const { text, created_by } = req.body || {};
+  const { text } = req.body || {};
+  const created_by = req.auth.user.email;
   if (!text?.trim()) return res.status(400).json({ error: 'text is required' });
 
   const supabase = getSupabase();

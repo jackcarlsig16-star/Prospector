@@ -1,12 +1,11 @@
 import crypto from 'crypto';
-import { getServiceSupabase, getSessionUser } from './lib/authUser.js';
+import { getServiceSupabase } from './lib/authUser.js';
+import { ROLE_LABELS } from '../src/constants/roles.js';
 
 // prospector-auth-v1 Stage 2 - invite lookup + acceptance. Invites are
 // created in Stage 4 (Members & Access); only the token's sha256 is stored.
 //   GET  /api/invites/:token         - what this link is for (no session needed)
 //   POST /api/invites/:token/accept  - signed-in, email-matched acceptance
-
-const ROLE_LABELS = { owner: 'Owner', admin: 'Admin', member: 'Member', viewer: 'Viewer' };
 
 export function hashInviteToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
@@ -48,16 +47,12 @@ export default async function handler(req, res) {
   }
 
   if (status !== 'valid') return res.status(410).json({ error: `This invite is ${status}.`, status });
-  const user = await getSessionUser(req, supabase);
-  if (!user) return res.status(401).json({ error: 'Sign in to accept this invite.' });
-  if (!user.email_confirmed_at) return res.status(403).json({ error: 'Confirm your email address first, then open the link again.' });
-  if ((user.email || '').toLowerCase() !== invite.email) {
+  // sessionAuth already required a signed-in user with a profile, which only
+  // exists once their email is confirmed.
+  const user = req.auth.user;
+  if (user.email !== invite.email) {
     return res.status(403).json({ error: `This invite is for ${invite.email}. You're signed in as ${user.email}.` });
   }
-
-  const { data: profile, error: pErr } = await supabase.from('profiles').select('id,display_name').eq('id', user.id).maybeSingle();
-  if (pErr) return res.status(500).json({ error: pErr.message });
-  if (!profile) return res.status(409).json({ error: 'Your profile is still being set up. Reload the page and try again.' });
 
   // Claim first, conditionally, so two tabs can't both accept the same link.
   const now = new Date().toISOString();
@@ -71,7 +66,7 @@ export default async function handler(req, res) {
   const { error: mErr } = await supabase.from('business_members').upsert({
     business_id: invite.business_id,
     email: invite.email,
-    name: profile.display_name,
+    name: user.name,
     user_id: user.id,
     role: invite.role,
     invited_by: invite.invited_by,

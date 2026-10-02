@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js';
-import { isAllowlistedBusiness } from './allowlist.js';
 import { stageIndex, ORG_TYPE_ENUM } from './pipelineStages.js';
 import { laDateString } from './laDate.js';
 import { scoreProspect } from './heatScore.js';
@@ -11,13 +10,6 @@ function getSupabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 }
 
-function checkAllowlist(req, res) {
-  if (!isAllowlistedBusiness(req.params.businessId)) {
-    res.status(403).json({ error: 'business is not allowlisted for sales analytics' });
-    return false;
-  }
-  return true;
-}
 
 const OWNERS = ['jack', 'cyrus', 'unassigned'];
 const STATUSES = ['new', 'claimed', 'contacted', 'booked', 'not_now', 'dead'];
@@ -39,7 +31,6 @@ function groupBy(rows, key) {
 // unsubscribed, a negative reply class, or already in pipeline at meeting+)
 // are counted by reason rather than silently dropped.
 export async function huddleRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const supabase = getSupabase();
   const businessId = req.params.businessId;
 
@@ -124,7 +115,6 @@ export async function huddleRoute(req, res) {
 // trigger logs each changed field to sales_prospect_events with
 // updated_by as "who".
 export async function updateProspectRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const payload = {};
   for (const [key, value] of Object.entries(req.body || {})) {
     if (key === 'owner') {
@@ -137,18 +127,16 @@ export async function updateProspectRoute(req, res) {
       if (value !== null && (typeof value !== 'string' || !DATE_RE.test(value))) return res.status(400).json({ error: `${key} must be YYYY-MM-DD or null` });
     } else if (key === 'notes') {
       if (value !== null && typeof value !== 'string') return res.status(400).json({ error: 'notes must be a string or null' });
-    } else if (key === 'updated_by') {
-      if (typeof value !== 'string' || !value.trim()) return res.status(400).json({ error: 'updated_by must be a non-empty string' });
     } else {
       return res.status(400).json({ error: `unknown field: ${key}` });
     }
     payload[key] = value;
   }
-  if (!Object.keys(payload).some(k => k !== 'updated_by')) return res.status(400).json({ error: 'nothing to update' });
+  if (!Object.keys(payload).length) return res.status(400).json({ error: 'nothing to update' });
 
   const { data, error } = await getSupabase()
     .from('sales_prospect_state')
-    .update({ ...payload, updated_at: new Date().toISOString() })
+    .update({ ...payload, updated_by: req.auth.user.email, updated_at: new Date().toISOString() })
     .eq('business_id', req.params.businessId)
     .eq('contact_id', req.params.contactId)
     .select()
@@ -165,12 +153,10 @@ export async function updateProspectRoute(req, res) {
 const OWNER_NAMES = { jack: 'Jack', cyrus: 'Cyrus' };
 
 export async function addToPipelineRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const { businessId, contactId } = req.params;
-  const { org_type: orgType, cohort = null, updated_by: updatedBy } = req.body || {};
+  const { org_type: orgType, cohort = null } = req.body || {};
   if (cohort !== null && typeof cohort !== 'string') return res.status(400).json({ error: 'cohort must be a string or null' });
   if (!ORG_TYPE_ENUM.includes(orgType)) return res.status(400).json({ error: `org_type must be one of ${ORG_TYPE_ENUM.join('|')}` });
-  if (typeof updatedBy !== 'string' || !updatedBy.trim()) return res.status(400).json({ error: 'updated_by must be a non-empty string' });
   const supabase = getSupabase();
 
   const { data: p, error: pErr } = await supabase.from('sales_prospect_state').select('*')
@@ -198,7 +184,7 @@ export async function addToPipelineRoute(req, res) {
   if (insErr) return res.status(500).json({ error: insErr.message });
 
   const { data, error } = await supabase.from('sales_prospect_state')
-    .update({ opportunity_id: opp.id, updated_by: updatedBy, updated_at: new Date().toISOString() })
+    .update({ opportunity_id: opp.id, updated_by: req.auth.user.email, updated_at: new Date().toISOString() })
     .eq('business_id', businessId).eq('contact_id', contactId).select().single();
   if (error) return res.status(500).json({ error: `opportunity ${opp.id} created but not linked: ${error.message}` });
   res.status(201).json({ prospect: data, opportunity: opp });
@@ -206,11 +192,9 @@ export async function addToPipelineRoute(req, res) {
 
 // POST /huddles - stamps huddle_at, which defines "since last huddle".
 export async function startHuddleRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
-  const startedBy = req.body && typeof req.body.started_by === 'string' ? req.body.started_by : null;
   const { data, error } = await getSupabase()
     .from('sales_huddles')
-    .insert({ business_id: req.params.businessId, started_by: startedBy })
+    .insert({ business_id: req.params.businessId, started_by: req.auth.user.email })
     .select('huddle_at,started_by')
     .single();
   if (error) return res.status(500).json({ error: error.message });
@@ -238,7 +222,6 @@ function validateCollateral(body, { partial }) {
 }
 
 export async function listCollateralRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const { data, error } = await getSupabase()
     .from('sales_collateral').select('*').eq('business_id', req.params.businessId).order('title');
   if (error) return res.status(500).json({ error: error.message });
@@ -246,7 +229,6 @@ export async function listCollateralRoute(req, res) {
 }
 
 export async function createCollateralRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const { payload, error: vErr } = validateCollateral(req.body, { partial: false });
   if (vErr) return res.status(400).json({ error: vErr });
   const { data, error } = await getSupabase()
@@ -256,7 +238,6 @@ export async function createCollateralRoute(req, res) {
 }
 
 export async function updateCollateralRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const { payload, error: vErr } = validateCollateral(req.body, { partial: true });
   if (vErr) return res.status(400).json({ error: vErr });
   const { data, error } = await getSupabase()
@@ -268,7 +249,6 @@ export async function updateCollateralRoute(req, res) {
 }
 
 export async function deleteCollateralRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const { data, error } = await getSupabase()
     .from('sales_collateral').delete().eq('business_id', req.params.businessId).eq('id', req.params.id).select('id');
   if (error) return res.status(500).json({ error: error.message });

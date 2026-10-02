@@ -4,7 +4,8 @@ import { getSupabase, fileCompanyIntel } from './shared.js';
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const { id } = req.params;
-  const { content, created_by } = req.body || {};
+  const { content } = req.body || {};
+  const created_by = req.auth.user.email;
   if (!content) return res.status(400).json({ error: 'content is required' });
 
   const supabase = getSupabase();

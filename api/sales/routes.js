@@ -1,23 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import { runSync } from './sync.js';
-import { isAllowlistedBusiness } from './allowlist.js';
 
 function getSupabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 }
 
-// Every route checks this first and 403s - the real access gate for this
-// feature (no real auth exists - A1b).
-function checkAllowlist(req, res) {
-  if (!isAllowlistedBusiness(req.params.businessId)) {
-    res.status(403).json({ error: 'business is not allowlisted for sales analytics' });
-    return false;
-  }
-  return true;
-}
-
 export async function syncRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   try {
     const result = await runSync({ businessId: req.params.businessId, trigger: 'manual' });
     if (result.refused) return res.status(429).json({ error: result.reason });
@@ -34,7 +22,6 @@ export async function syncRoute(req, res) {
 // (SalesAnalyticsTab.js's fetchRuns(...)[0]), and a verification run must
 // never appear there as if it were a real sync.
 export async function runsRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const limit = Math.min(Number(req.query.limit) || 10, 50);
   const supabase = getSupabase();
   const { data, error } = await supabase
@@ -49,7 +36,6 @@ export async function runsRoute(req, res) {
 }
 
 export async function metricsRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const { from, to } = req.query;
   const supabase = getSupabase();
   let query = supabase.from('sales_metrics_daily').select('*').eq('business_id', req.params.businessId);
@@ -75,7 +61,6 @@ export async function metricsRoute(req, res) {
 // ('employer'|'membership'|'channel_partner'); is_partner stays in the
 // table for one release (read-only) but is no longer read here.
 export async function entitiesRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const supabase = getSupabase();
   const businessId = req.params.businessId;
 
@@ -126,7 +111,6 @@ export async function entitiesRoute(req, res) {
 }
 
 export async function sequenceTagsRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from('sales_sequence_tags')
@@ -146,7 +130,6 @@ const AUDIENCE_VALUES = ['employer', 'membership', 'channel_partner'];
 // that no longer means anything. Never touches sender_email/
 // sender_checked_at - only sync.js's senderLookup writes those.
 export async function putSequenceTagRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const businessId = req.params.businessId;
   const sequenceId = req.params.sequenceId;
 
@@ -196,7 +179,6 @@ export async function putSequenceTagRoute(req, res) {
 // "Partner audiences"; this field name stays "partner" to avoid touching
 // every consumer's response-shape assumption for a rename alone.
 export async function cohortBreakdownRoute(req, res) {
-  if (!checkAllowlist(req, res)) return;
   const businessId = req.params.businessId;
   const supabase = getSupabase();
 

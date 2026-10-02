@@ -18,12 +18,3 @@ export function getAccessToken(req) {
   }
   return null;
 }
-
-// Verifies the token with Supabase Auth itself (signature, expiry, revoked
-// sessions) rather than decoding it locally. Returns the auth user or null.
-export async function getSessionUser(req, supabase = getServiceSupabase()) {
-  const token = getAccessToken(req);
-  if (!token) return null;
-  const { data, error } = await supabase.auth.getUser(token);
-  return error ? null : data.user;
-}

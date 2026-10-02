@@ -51,7 +51,7 @@ function ParticipantEditor({ participants, setParticipants }) {
   );
 }
 
-function CallLogForm({ business, userEmail, onFiled }) {
+function CallLogForm({ business, onFiled }) {
   const [transcript, setTranscript] = useState('');
   const [platform, setPlatform] = useState('manual');
   const [callDate, setCallDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -97,7 +97,6 @@ function CallLogForm({ business, userEmail, onFiled }) {
           call_date: callDate ? new Date(`${callDate}T12:00:00`).toISOString() : undefined,
           call_duration_seconds: durationMinutes ? Math.round(Number(durationMinutes) * 60) : undefined,
           call_participants: participants.filter(p => p.email.trim()),
-          created_by: userEmail,
         }),
       });
       const data = await res.json();
@@ -146,7 +145,7 @@ function CallLogForm({ business, userEmail, onFiled }) {
   );
 }
 
-function ReassignRow({ entry, accounts, projects, businessId, userEmail, onReassigned }) {
+function ReassignRow({ entry, accounts, projects, businessId, onReassigned }) {
   const [saving, setSaving] = useState(false);
 
   const handleChange = async (field, value) => {
@@ -158,7 +157,6 @@ function ReassignRow({ entry, accounts, projects, businessId, userEmail, onReass
         body: JSON.stringify({
           account_id: field === 'account_id' ? (value || null) : (entry.account_id || null),
           project_id: field === 'project_id' ? (value || null) : (entry.project_id || null),
-          created_by: userEmail,
         }),
       });
       const data = await res.json();
@@ -182,7 +180,7 @@ function ReassignRow({ entry, accounts, projects, businessId, userEmail, onReass
   );
 }
 
-function CallLogList({ entries, business, projects, userEmail, onReassigned }) {
+function CallLogList({ entries, business, projects, onReassigned }) {
   const [accounts, setAccounts] = useState([]);
   const [expandedId, setExpandedId] = useState(null);
 
@@ -233,7 +231,7 @@ function CallLogList({ entries, business, projects, userEmail, onReassigned }) {
               {expanded ? entry.content : summary}
               {!expanded && entry.content.length > 160 && <span style={{ color:C.dim }}> (click to expand)</span>}
             </p>
-            <ReassignRow entry={entry} accounts={accounts} projects={projects} businessId={business.id} userEmail={userEmail}
+            <ReassignRow entry={entry} accounts={accounts} projects={projects} businessId={business.id}
               onReassigned={updated => onReassigned(entry.id, updated)} />
           </div>
         );
@@ -242,7 +240,7 @@ function CallLogList({ entries, business, projects, userEmail, onReassigned }) {
   );
 }
 
-export default function CallLogSection({ business, userEmail, intelEntries, projects=[], onReload }) {
+export default function CallLogSection({ business, intelEntries, projects=[], onReload }) {
   const [open, setOpen] = useState(false);
   const [localEntries, setLocalEntries] = useState(null);
 
@@ -261,8 +259,8 @@ export default function CallLogSection({ business, userEmail, intelEntries, proj
       </button>
       {open && (
         <div>
-          <CallLogForm business={business} userEmail={userEmail} onFiled={()=>{ setLocalEntries(null); onReload(); }} />
-          <CallLogList entries={callEntries} business={business} projects={projects} userEmail={userEmail} onReassigned={handleReassigned} />
+          <CallLogForm business={business} onFiled={()=>{ setLocalEntries(null); onReload(); }} />
+          <CallLogList entries={callEntries} business={business} projects={projects} onReassigned={handleReassigned} />
         </div>
       )}
     </div>

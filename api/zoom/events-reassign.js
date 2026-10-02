@@ -13,7 +13,8 @@ import { fileCallLog } from '../businesses/call-log.js';
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const { eventId } = req.params;
-  const { business_id, account_id, created_by } = req.body || {};
+  const { business_id, account_id } = req.body || {};
+  const created_by = req.auth.user.email;
   if (!business_id) return res.status(400).json({ error: 'business_id is required' });
 
   const supabase = getSupabase();

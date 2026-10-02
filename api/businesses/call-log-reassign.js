@@ -8,7 +8,8 @@ import { getSupabase, recordAccountActivity } from './shared.js';
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
   const { id: businessId, entryId } = req.params;
-  const { account_id, project_id, created_by } = req.body || {};
+  const { account_id, project_id } = req.body || {};
+  const created_by = req.auth.user.email;
 
   const supabase = getSupabase();
   if (!supabase) return res.status(500).json({ error: 'Supabase is not configured' });
