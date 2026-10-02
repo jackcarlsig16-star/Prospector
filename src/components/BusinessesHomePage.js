@@ -8,7 +8,7 @@ const STATUS_PILL = {
   error: { label: 'Error', color: C.red },
 };
 
-function CreateBusinessModal({ userEmail, onClose, onCreated }) {
+export function CreateBusinessModal({ onClose, onCreated }) {
   const [name, setName] = useState('');
   const [websiteUrl, setWebsiteUrl] = useState('');
   const [tagline, setTagline] = useState('');
@@ -31,7 +31,6 @@ function CreateBusinessModal({ userEmail, onClose, onCreated }) {
           website_url: websiteUrl.trim(),
           tagline: tagline.trim(),
           color,
-          owner_email: userEmail,
         }),
       });
       const data = await res.json();
@@ -119,7 +118,7 @@ function StatTile({ label, value, color }) {
   );
 }
 
-export default function BusinessesHomePage({ businesses, loading, projects=[], userEmail, onSelect, onCreated }) {
+export default function BusinessesHomePage({ businesses, loading, projects=[], onSelect, onCreated }) {
   const [modalOpen, setModalOpen] = useState(false);
   const unassignedProjects = projects.filter(p => !p.business_id);
   const [rollup, setRollup] = useState(null);
@@ -229,7 +228,6 @@ export default function BusinessesHomePage({ businesses, loading, projects=[], u
 
       {modalOpen && (
         <CreateBusinessModal
-          userEmail={userEmail}
           onClose={()=>setModalOpen(false)}
           onCreated={business => { setModalOpen(false); onCreated(business); }}
         />

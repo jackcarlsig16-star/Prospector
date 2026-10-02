@@ -26,6 +26,7 @@ export default function InvitePage({ token, session }) {
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `Couldn't load this invite (${res.status})`);
         setInvite(data);
+        if (data.name) setName(data.name);
       })
       .catch(e => setLoadError(e.message));
   }, [token]);

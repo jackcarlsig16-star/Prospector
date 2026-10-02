@@ -63,12 +63,17 @@ function deny(res, minRole) {
 
 // Workspace identity/settings edits. Everything else that writes is member-level.
 const ADMIN_BUSINESS_PATHS = /^\/(emoji|website-url|social-links)\/?$/;
+// Members & Access - admin for every method, reads included (emails, roles).
+const ACCESS_PATHS = /^\/(members|invites)(\/|$)/;
 
 // Mounted at /api/businesses/:id (server.js). GET = viewer, write = member,
-// settings = admin. 'join' is the legacy join-code route (retired in Stage 5).
+// settings and member management = admin. 'join' is the legacy join-code
+// route (retired in Stage 5).
 export function businessGate(req, res, next) {
   if (req.params.id === 'join') return next();
-  const minRole = req.method === 'GET' ? 'viewer' : ADMIN_BUSINESS_PATHS.test(req.path) ? 'admin' : 'member';
+  const minRole = ACCESS_PATHS.test(req.path) ? 'admin'
+    : req.method === 'GET' ? 'viewer'
+    : ADMIN_BUSINESS_PATHS.test(req.path) ? 'admin' : 'member';
   if (!hasRole(req, req.params.id, minRole)) return deny(res, minRole);
   next();
 }

@@ -383,6 +383,12 @@ app.post('/api/databricks/gong-trends',  esHandler('./api/databricks/gong-trends
 app.post('/api/notify-approved',          esHandler('./api/notify-approved.js'));
 app.post('/api/businesses',                    authMw('platformOwnerOnly'), esHandler('./api/businesses/create.js'));
 app.get('/api/businesses/:id',                 esHandler('./api/businesses/detail.js'));
+app.get('/api/businesses/:id/members',                    esHandler('./api/businesses/members.js'));
+app.patch('/api/businesses/:id/members/:memberId',        esHandler('./api/businesses/members.js'));
+app.delete('/api/businesses/:id/members/:memberId',       esHandler('./api/businesses/members.js'));
+app.post('/api/businesses/:id/invites',                   esHandler('./api/businesses/member-invites.js'));
+app.post('/api/businesses/:id/invites/:inviteId/:action', esHandler('./api/businesses/member-invites.js'));
+app.get('/api/workspaces/members', authMw('platformOwnerOnly'), esHandler('./api/businesses/members-overview.js'));
 app.get('/api/businesses/:id/status',          esHandler('./api/businesses/status.js'));
 app.post('/api/businesses/:id/intel',          esHandler('./api/businesses/intel.js'));
 app.post('/api/businesses/:id/retry-research', esHandler('./api/businesses/retry.js'));

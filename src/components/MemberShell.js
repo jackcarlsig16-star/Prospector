@@ -140,7 +140,6 @@ export default function MemberShell({ identity, initialBusiness=null, onExit }) 
           <BusinessesHomePage
             businesses={businesses}
             loading={loading}
-            userEmail={identity.email}
             onSelect={selectBusiness}
             onCreated={b=>{ setBusinesses(prev=>[b, ...prev]); selectBusiness(b); }}
           />

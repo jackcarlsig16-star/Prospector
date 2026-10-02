@@ -20,7 +20,7 @@ function inviteStatus(invite) {
 
 async function loadInvite(supabase, token) {
   const { data, error } = await supabase.from('workspace_invites')
-    .select('id,business_id,email,role,expires_at,accepted_at,revoked_at,invited_by,businesses(name,color),inviter:profiles!workspace_invites_invited_by_fkey(display_name)')
+    .select('id,business_id,email,name,role,expires_at,accepted_at,revoked_at,invited_by,businesses(name,color),inviter:profiles!workspace_invites_invited_by_fkey(display_name)')
     .eq('token_hash', hashInviteToken(token)).maybeSingle();
   if (error) throw new Error(error.message);
   return data;
@@ -38,6 +38,7 @@ export default async function handler(req, res) {
     return res.status(200).json({
       status,
       email: invite.email,
+      name: invite.name,
       role: invite.role,
       role_label: ROLE_LABELS[invite.role],
       business: { id: invite.business_id, name: invite.businesses?.name || 'a workspace', color: invite.businesses?.color || null },
@@ -66,7 +67,7 @@ export default async function handler(req, res) {
   const { error: mErr } = await supabase.from('business_members').upsert({
     business_id: invite.business_id,
     email: invite.email,
-    name: user.name,
+    name: invite.name || user.name,
     user_id: user.id,
     role: invite.role,
     invited_by: invite.invited_by,

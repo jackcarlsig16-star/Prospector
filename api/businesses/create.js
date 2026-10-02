@@ -10,10 +10,11 @@ function generateAccessCode() {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
-  const { name, website_url, tagline, color, owner_email } = req.body || {};
-  if (!name || !website_url || !owner_email) {
-    return res.status(400).json({ error: 'name, website_url, and owner_email are required' });
+  const { name, website_url, tagline, color } = req.body || {};
+  if (!name || !website_url) {
+    return res.status(400).json({ error: 'name and website_url are required' });
   }
+  const creator = req.auth.user;
 
   const supabase = getSupabase();
   if (!supabase) return res.status(500).json({ error: 'Supabase is not configured' });
@@ -25,13 +26,18 @@ export default async function handler(req, res) {
       website_url,
       tagline: tagline || null,
       color,
-      owner_email: owner_email.toLowerCase(),
+      owner_email: creator.email,
       access_code: generateAccessCode(),
       research_status: 'pending',
     })
     .select()
     .single();
   if (error) return res.status(500).json({ error: error.message });
+
+  const { error: mErr } = await supabase.from('business_members').insert({
+    business_id: business.id, email: creator.email, name: creator.name, user_id: creator.id, role: 'owner',
+  });
+  if (mErr) return res.status(500).json({ error: `Workspace created, but making you its Owner failed: ${mErr.message}` });
 
   res.status(200).json({ business });
 

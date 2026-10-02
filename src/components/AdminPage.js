@@ -5,17 +5,17 @@ import AdminOrgChart from './admin/AdminOrgChart';
 import { PRODUCTS_OVERRIDE_KEY, loadProductOverrides } from './PricingPage';
 import { PRICING_PRODUCTS_DEFAULT } from '../constants/products';
 import {
-  getInvites, createInvite, buildInviteEmail,
+  getInvites,
   getMasterCodeHash, generateMasterCode, setMasterCode,
   generateCode,
 } from '../utils/invites';
-import { saveTeamUsers, saveFrontier, approveUser, patchUser, getAccountsForBusiness, getOutreachDoctrine, createOutreachDoctrineRule, updateOutreachDoctrineRule } from '../utils/db';
+import { saveTeamUsers, saveFrontier, patchUser, getAccountsForBusiness, getOutreachDoctrine, createOutreachDoctrineRule, updateOutreachDoctrineRule } from '../utils/db';
 import { isSupabaseEnabled } from '../utils/supabase';
 import { mapSfdcStage } from '../utils/stageMap';
 import GoogleConnections from './GoogleConnections';
+import MembersAccess from './admin/MembersAccess';
 
 // Small pure helpers duplicated from App.js (defined there at module scope)
-const initials = n => (n||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
 
 // Duplicated from App.js — also used in AdminPanel there; kept in sync
 const INTEGRATION_DEFS = [
@@ -558,9 +558,6 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
   const [tab, setTab] = useState("users");
   const [users, setUsers] = useState(teamUsers);
   useEffect(() => { setUsers(teamUsers); }, [teamUsers]);
-  const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({ name:"", email:"", role:"BDR", company:"Prospector", assignedAEs:[] });
-  const upd = p => setForm(f=>({...f,...p}));
 
   // live perms state (editable copy)
   const [permsEdit, setPermsEdit] = useState(rolePerms);
@@ -672,7 +669,6 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
 
   // Invite tab state
   const [invites,         setInvites]         = useState(getInvites);
-  const [newUserCode,     setNewUserCode]     = useState(null); // { name, code, role } shown after Add user
   const [inviteModal,     setInviteModal]     = useState(false);
   const [inviteForm,      setInviteForm]      = useState({ name:"", email:"", role:"bdr" });
   const [inviteConfirm,   setInviteConfirm]   = useState(null); // { code, email }
@@ -684,38 +680,8 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
   const [supabaseSyncing, setSupabaseSyncing] = useState(false);
   const [supabaseSeeded,  setSupabaseSeeded]  = useState(()=>localStorage.getItem('prospector_supabase_seeded')==='true');
 
-  const openNew = () => { setForm({ name:"", email:"", role:"BDR", company:"Prospector", assignedAEs: currentUser?.id ? [currentUser.id] : [] }); setModal({}); };
-  const openEdit = u => { setForm({ name:u.name, email:u.email, role:u.role, company:u.company||"Prospector", assignedAEs:u.assignedAEs||[] }); setModal(u); };
 
-  const saveUser = () => {
-    if(!form.name.trim()) return;
-    const isNew = !modal.id;
-    // Email is source of truth: find existing entry by id OR email
-    const emailLower = form.email.trim().toLowerCase();
-    const existingById = modal.id ? users.find(u=>u.id===modal.id) : null;
-    const existingByEmail = !modal.id && emailLower ? users.find(u=>u.email?.toLowerCase()===emailLower) : null;
-    const existing = existingById || existingByEmail;
-    const id = existing?.id || `u_${Date.now()}`;
-    const entry = { ...(existing||{}), id, name:form.name.trim(), email:form.email.trim(), role:form.role, company:form.company.trim()||"Prospector", status: existing?.status || "pending",
-      ...(form.role === "BDR" ? { assignedAEs: form.assignedAEs||[] } : {}) };
-    const next = existing
-      ? users.map(u=>u.id===existing.id?entry:u)
-      : [...users, entry];
-    setUsers(next); onSaveUsers(next); setModal(null);
-    // For new users, auto-generate an invite code and show it
-    if (isNew) {
-      const roleForInvite = form.role.toLowerCase();
-      const invite = createInvite({ name:form.name.trim(), email:form.email.trim(), role:roleForInvite, createdBy:currentUser?.name||"" });
-      setInvites(getInvites());
-      setNewUserCode({ name:form.name.trim(), code:invite.code, role:form.role, email:form.email.trim() });
-    }
-  };
 
-  const activateUser = id => {
-    const next = users.map(u => u.id===id ? { ...u, status:"active" } : u);
-    setUsers(next); onSaveUsers(next);
-    approveUser(id);
-  };
 
   const importSeedTeam = () => {
     let tombstoned = new Set();
@@ -729,18 +695,6 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
     setUsers(next); onSaveUsers(next);
   };
 
-  const removeUser = id => {
-    try {
-      const removed = JSON.parse(localStorage.getItem('prospector_removed_user_ids') || '[]');
-      if (!removed.includes(id)) {
-        removed.push(id);
-        localStorage.setItem('prospector_removed_user_ids', JSON.stringify(removed));
-      }
-    } catch {}
-    const next = users.filter(u=>u.id!==id)
-      .map(u => u.assignedAEs?.includes(id) ? { ...u, assignedAEs: u.assignedAEs.filter(x=>x!==id) } : u);
-    setUsers(next); onSaveUsers(next);
-  };
 
   const togglePerm = (role, key) => {
     setPermsEdit(p=>({ ...p, [role]:{ ...p[role], [key]:!p[role][key] } }));
@@ -769,7 +723,7 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
         const pendingApprovalsCount = users.filter(u => u.status === 'pending').length;
         const TAB_GROUPS = [
           { label:"TEAM", tabs:[
-            ["users",       "👥 Users"],
+            ["users",       "👥 Members & Access"],
             ["orgchart",    "🌳 Org Chart"],
             ["permissions", "🔐 Permissions"],
             ["territories", "🗺 Territories"],
@@ -817,75 +771,8 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
         );
       })()}
 
-      {/* ── USERS TAB ── */}
-      {tab==="users"&&(<>
-        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:14, flexWrap:"wrap" }}>
-          <p style={{ ...mono, margin:0, fontSize:11, color:C.dim, flex:1 }}>Manage who can access Prospector and what role they have</p>
-          {seedTeam.length>0&&(()=>{
-            let tombstoned = new Set();
-            try { tombstoned = new Set(JSON.parse(localStorage.getItem('prospector_removed_user_ids') || '[]')); } catch {}
-            const existingEmails = new Set(users.map(u=>u.email?.toLowerCase()));
-            const newCount = seedTeam.filter(u =>
-              !existingEmails.has(u.email?.toLowerCase()) && !tombstoned.has(u.id)
-            ).length;
-            if(!newCount) return null;
-            return <button onClick={importSeedTeam} style={{ ...mono, fontSize:12, padding:"6px 14px", background:`${C.blue}14`, border:`1px solid ${C.blue}44`, color:C.blue, borderRadius:6, cursor:"pointer" }}>↓ Import team ({newCount})</button>;
-          })()}
-          <button onClick={openNew} style={{ ...mono, fontSize:12, padding:"6px 14px", background:`${C.gold}18`, border:`1px solid ${C.gold}55`, color:C.gold, borderRadius:6, cursor:"pointer", fontWeight:600 }}>+ Add user</button>
-        </div>
-
-        {/* You */}
-        <p style={{ ...mono, fontSize:10, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", margin:"0 0 6px" }}>You</p>
-        <div style={{ display:"flex", alignItems:"center", gap:12, padding:"10px 14px", background:C.card, border:`1px solid ${C.goldBdr}`, borderRadius:8, marginBottom:16 }}>
-          <div style={{ width:32, height:32, borderRadius:"50%", background:C.goldBg, border:`1px solid ${C.goldBdr}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, color:C.gold, fontWeight:700, ...mono, flexShrink:0 }}>{initials(currentUser?.name)}</div>
-          <div style={{ flex:1 }}>
-            <p style={{ margin:"0 0 2px", fontSize:14, color:C.txt, fontWeight:500 }}>{currentUser?.name}</p>
-            <p style={{ ...mono, margin:0, fontSize:11, color:C.mut }}>{currentUser?.email||"—"}</p>
-          </div>
-          <span style={{ ...mono, fontSize:11, padding:"3px 10px", background:`${C.gold}18`, border:`1px solid ${C.gold}44`, color:C.gold, borderRadius:4 }}>{currentUser?.role||"AE"}</span>
-          <span style={{ ...mono, fontSize:10, color:C.dim }}>owner</span>
-        </div>
-
-        {/* Team */}
-        <p style={{ ...mono, fontSize:10, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", margin:"0 0 6px" }}>Team ({users.length})</p>
-        {users.length===0&&<p style={{ ...mono, fontSize:13, color:C.dim, marginBottom:0 }}>No team members yet.</p>}
-        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-          {users.map(u=>{
-            const rc=ROLE_COLORS[u.role]||C.purple;
-            const isPending = u.status==="pending" || !u.status;
-            // Only treat as "truly pending" if they don't have active status
-            const isActive = u.status==="active";
-            return(
-              <div key={u.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"10px 14px", background:isPending?`${C.sur}88`:C.card, border:`1px solid ${isPending?C.brd+"88":C.brd}`, borderRadius:8, opacity:isPending?0.85:1 }}>
-                <div style={{ position:"relative", flexShrink:0 }}>
-                  <div style={{ width:32, height:32, borderRadius:"50%", background:`${rc}18`, border:`1px solid ${rc}55`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:13, color:rc, fontWeight:700, ...mono }}>{initials(u.name)}</div>
-                  {isPending&&<div style={{ position:"absolute", bottom:-2, right:-2, width:10, height:10, borderRadius:"50%", background:C.orange, border:`2px solid ${C.bg}` }} title="Pending"/>}
-                  {isActive&&<div style={{ position:"absolute", bottom:-2, right:-2, width:10, height:10, borderRadius:"50%", background:C.green, border:`2px solid ${C.bg}` }} title="Active"/>}
-                </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-                    <p style={{ margin:0, fontSize:14, color:isPending?C.mut:C.txt, fontWeight:500, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{u.name}{u.onLeave&&<span style={{ ...mono, fontSize:9, color:C.dim, marginLeft:6 }}>on leave</span>}</p>
-                    {isPending&&<span style={{ ...mono, fontSize:9, padding:"1px 5px", background:`${C.orange}18`, border:`1px solid ${C.orange}44`, color:C.orange, borderRadius:3, flexShrink:0 }}>pending</span>}
-                  </div>
-                  <p style={{ ...mono, margin:0, fontSize:11, color:C.dim }}>{u.email||"—"}{u.location&&<span style={{ marginLeft:8, opacity:0.6 }}>{u.location}</span>}</p>
-                </div>
-                <span style={{ ...mono, fontSize:11, padding:"3px 10px", background:`${rc}18`, border:`1px solid ${rc}44`, color:rc, borderRadius:4, flexShrink:0 }}>{u.role}</span>
-                {isPending&&(
-                  <button onClick={()=>activateUser(u.id)} style={{ ...mono, fontSize:11, padding:"3px 9px", background:`${C.green}14`, border:`1px solid ${C.green}44`, color:C.green, borderRadius:4, cursor:"pointer", flexShrink:0 }}>✓ Activate</button>
-                )}
-                <button
-                  onClick={()=>{ const next=users.map(x=>x.id===u.id?{...x,role:x.role==="Admin"?(x._prevRole||"BDR"):x.role,_prevRole:x.role==="Admin"?undefined:x.role,_wasAdmin:x.role==="Admin"?undefined:true}:x); const toggled=next.map(x=>x.id===u.id?{...x,role:u.role==="Admin"?(u._prevRole||"BDR"):"Admin"}:x); setUsers(toggled); onSaveUsers(toggled); }}
-                  title={u.role==="Admin"?"Remove admin":"Make admin"}
-                  style={{ background:u.role==="Admin"?`${C.red}18`:"transparent", border:`1px solid ${u.role==="Admin"?C.red:C.brd}`, color:u.role==="Admin"?C.red:C.dim, fontSize:11, borderRadius:4, padding:"3px 9px", cursor:"pointer", ...mono, flexShrink:0 }}>
-                  {u.role==="Admin"?"⚙ Admin":"⚙"}
-                </button>
-                <button onClick={()=>openEdit(u)} style={{ background:"transparent", border:`1px solid ${C.brd}`, color:C.mut, fontSize:11, borderRadius:4, padding:"3px 9px", cursor:"pointer", ...mono, flexShrink:0 }}>Edit</button>
-                <button onClick={()=>removeUser(u.id)} style={{ background:"transparent", border:`1px solid ${C.brd}`, color:C.dim, fontSize:11, borderRadius:4, padding:"3px 9px", cursor:"pointer", ...mono, flexShrink:0 }}>Remove</button>
-              </div>
-            );
-          })}
-        </div>
-      </>)}
+      {/* ── MEMBERS & ACCESS TAB ── */}
+      {tab==="users"&&<MembersAccess/>}
 
       {/* ── ORG CHART TAB ── */}
       {tab==="orgchart" && (
@@ -1367,107 +1254,7 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
         </div>
       )}
 
-      {/* New user invite code banner */}
-      {newUserCode && (
-        <div onClick={e=>e.target===e.currentTarget&&setNewUserCode(null)} style={{ position:"fixed", inset:0, zIndex:1001, background:"#00000099", display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ background:C.card, border:`1px solid ${C.goldBdr}`, borderRadius:12, padding:"26px 30px", width:380, boxShadow:"0 20px 60px #000c" }}>
-            <div style={{ display:"flex", alignItems:"center", marginBottom:16 }}>
-              <span style={{ ...mono, fontSize:14, color:C.gold, fontWeight:700 }}>✓ {newUserCode.name} added</span>
-              <button onClick={()=>setNewUserCode(null)} style={{ marginLeft:"auto", background:"transparent", border:"none", color:C.mut, fontSize:18, cursor:"pointer" }}>✕</button>
-            </div>
-            <p style={{ ...mono, fontSize:11, color:C.dim, margin:"0 0 14px" }}>
-              They're pending until they sign in. Share this invite code so they can access Prospector:
-            </p>
-            <div style={{ background:C.bg, border:`1px solid ${C.goldBdr}`, borderRadius:8, padding:"14px 18px", display:"flex", alignItems:"center", gap:12, marginBottom:16 }}>
-              <span style={{ ...mono, fontSize:20, color:C.gold, fontWeight:700, letterSpacing:"0.12em", flex:1 }}>{newUserCode.code}</span>
-              <button
-                onClick={()=>{ navigator.clipboard.writeText(newUserCode.code); }}
-                style={{ ...mono, fontSize:11, padding:"5px 12px", background:`${C.gold}18`, border:`1px solid ${C.goldBdr}`, color:C.gold, borderRadius:5, cursor:"pointer" }}>
-                Copy
-              </button>
-            </div>
-            <div style={{ display:"flex", gap:8 }}>
-              <button
-                onClick={()=>{
-                  const appUrl = window.location.origin;
-                  const body = buildInviteEmail({ name:newUserCode.name, code:newUserCode.code, role:newUserCode.role.toLowerCase(), appUrl });
-                  window.open(`mailto:${newUserCode.email}?subject=${encodeURIComponent("You're invited to Prospector")}&body=${encodeURIComponent(body)}`);
-                }}
-                style={{ ...mono, flex:1, fontSize:12, padding:"8px", background:`${C.gold}18`, border:`1px solid ${C.goldBdr}`, color:C.gold, borderRadius:6, cursor:"pointer" }}>
-                ✉ Send invite email
-              </button>
-              <button onClick={()=>setNewUserCode(null)} style={{ ...mono, fontSize:12, padding:"8px 16px", background:"transparent", border:`1px solid ${C.brd}`, color:C.mut, borderRadius:6, cursor:"pointer" }}>
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
-      {/* User modal */}
-      {modal!==null&&(
-        <div onClick={e=>{if(e.target===e.currentTarget)setModal(null);}} style={{ position:"fixed", inset:0, zIndex:1000, background:"#00000099", display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ background:C.card, border:`1px solid ${C.brd}`, borderRadius:12, padding:"22px 26px", width:400, boxShadow:"0 20px 60px #000c" }}>
-            <div style={{ display:"flex", alignItems:"center", marginBottom:18 }}>
-              <span style={{ ...mono, fontSize:14, color:C.txt, fontWeight:700 }}>{modal.id?"Edit user":"Add user"}</span>
-              <button onClick={()=>setModal(null)} style={{ marginLeft:"auto", background:"transparent", border:"none", color:C.mut, fontSize:18, cursor:"pointer" }}>✕</button>
-            </div>
-            {[["Name","name","text","Full name…"],["Email","email","email","name@example.com"],["Company","company","text","Prospector"]].map(([lb,k,type,ph])=>(
-              <div key={k} style={{ marginBottom:12 }}>
-                <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>{lb}</div>
-                <input type={type} value={form[k]} onChange={e=>upd({[k]:e.target.value})} placeholder={ph}
-                  style={{ ...mono, width:"100%", boxSizing:"border-box", fontSize:13, padding:"8px 11px", background:C.bg, border:`1.5px solid ${C.brdM}`, borderRadius:6, color:C.txt, outline:"none" }}/>
-              </div>
-            ))}
-            <div style={{ marginBottom:18 }}>
-              <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6 }}>Role</div>
-              <div style={{ display:"flex", gap:6 }}>
-                {ROLES_LIST.map(r=>{
-                  const rc=ROLE_COLORS[r]||C.gold;
-                  return(
-                  <button key={r} onClick={()=>upd({role:r})}
-                    style={{ ...mono, flex:1, fontSize:11, padding:"6px 4px", borderRadius:5, border:`1px solid ${form.role===r?rc:C.brd}`, background:form.role===r?`${rc}18`:"transparent", color:form.role===r?rc:C.dim, cursor:"pointer" }}>
-                    {r}
-                  </button>
-                )})}
-              </div>
-            </div>
-            {form.role === "BDR" && (()=>{
-              const aeList = [
-                ...(currentUser && (currentUser.role==="AE"||currentUser.role==="Admin"||currentUser.role==="Owner") && !users.find(u=>u.id===currentUser.id) ? [currentUser] : []),
-                ...users.filter(u => u.role==="AE"),
-              ];
-              if (!aeList.length) return null;
-              return (
-                <div style={{ marginBottom:16 }}>
-                  <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:7 }}>Assigned AEs</div>
-                  <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-                    {aeList.map(ae=>{
-                      const checked = (form.assignedAEs||[]).includes(ae.id);
-                      return (
-                        <label key={ae.id} onClick={()=>upd({ assignedAEs: checked ? (form.assignedAEs||[]).filter(x=>x!==ae.id) : [...(form.assignedAEs||[]), ae.id] })}
-                          style={{ display:"flex", alignItems:"center", gap:8, cursor:"pointer" }}>
-                          <div style={{ width:16, height:16, borderRadius:3, border:`1.5px solid ${checked?C.gold:C.brd}`, background:checked?C.goldBg:"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                            {checked && <span style={{ fontSize:10, color:C.gold }}>✓</span>}
-                          </div>
-                          <span style={{ fontSize:13, color:checked?C.txt:C.mut }}>{ae.name}</span>
-                          <span style={{ ...mono, fontSize:11, color:C.dim }}>({ae.role})</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })()}
-            <div style={{ display:"flex", gap:8, justifyContent:"flex-end" }}>
-              <button onClick={()=>setModal(null)} style={{ ...mono, fontSize:12, padding:"7px 16px", background:"transparent", border:`1px solid ${C.brd}`, borderRadius:6, color:C.mut, cursor:"pointer" }}>Cancel</button>
-              <button onClick={saveUser} disabled={!form.name.trim()} style={{ ...mono, fontSize:12, padding:"7px 18px", background:form.name.trim()?C.gold:"transparent", border:`1px solid ${form.name.trim()?C.gold:C.brd}`, borderRadius:6, color:form.name.trim()?C.bg:C.dim, cursor:form.name.trim()?"pointer":"default", fontWeight:700 }}>
-                {modal.id?"Save changes":"Add user"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
