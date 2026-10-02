@@ -1,5 +1,5 @@
 import { MODELS } from '../config/models';
-import { getValidGmailToken } from './getValidGmailToken';
+import { hasGoogle } from './google';
 import { buildAccountEmailQuery } from './accountEmailQuery';
 import { COMPANY_EMAIL_DOMAIN } from '../constants/appConfig';
 
@@ -80,10 +80,10 @@ function isExternalAttendee(a) {
   return !email.endsWith('@' + COMPANY_EMAIL_DOMAIN);
 }
 
-async function fetchCalendarEvents(token) {
+async function fetchCalendarEvents() {
   const { monday, friday } = getWeekRange();
   const url = `/proxy/gcal/events?timeMin=${encodeURIComponent(monday.toISOString())}&timeMax=${encodeURIComponent(friday.toISOString())}`;
-  const res = await fetch(url, { headers: { 'X-Google-Token': token } });
+  const res = await fetch(url);
   if (!res.ok) return [];
   const data = await res.json();
   if (!Array.isArray(data.items)) return [];
@@ -102,7 +102,7 @@ function extractDomains(events) {
   return Array.from(set);
 }
 
-async function fetchSentThreadsForDomain(domain, token) {
+async function fetchSentThreadsForDomain(domain) {
   let threadCache = {};
   try { threadCache = JSON.parse(localStorage.getItem(THREAD_CACHE_KEY) || '{}'); } catch {}
   const cached = threadCache[domain];
@@ -116,16 +116,14 @@ async function fetchSentThreadsForDomain(domain, token) {
   // we skip that domain entirely instead of flooding the AE's sent folder.
   const { q: rawQ } = buildAccountEmailQuery({ web: domain }, { dateClause: ' newer_than:14d', sentOnly: true });
   if (!rawQ) return [];
-  const listRes = await fetch(`/proxy/gmail/messages?q=${encodeURIComponent(rawQ)}&maxResults=3`, {
-    headers: { 'X-Google-Token': token },
-  });
+  const listRes = await fetch(`/proxy/gmail/messages?q=${encodeURIComponent(rawQ)}&maxResults=3`);
   if (!listRes.ok) return [];
   const listData = await listRes.json();
   const ids = (listData.messages || []).map(m => m.id);
   if (!ids.length) return [];
   const bodies = await Promise.all(ids.map(async id => {
     try {
-      const r = await fetch(`/proxy/gmail/message/${id}/body`, { headers: { 'X-Google-Token': token } });
+      const r = await fetch(`/proxy/gmail/message/${id}/body`);
       if (!r.ok) return null;
       const data = await r.json();
       return data.text ? { subject: data.subject || '', text: String(data.text).slice(0, MAX_BODY_CHARS) } : null;
@@ -161,15 +159,14 @@ function fmtThreadsForPrompt(threadsByDomain) {
 }
 
 export async function buildWeekAhead() {
-  const token = await getValidGmailToken();
-  if (!token) throw new Error('Gmail not connected');
+  if (!(await hasGoogle('calendar')) || !(await hasGoogle('gmail'))) throw new Error('Connect Google Calendar and Gmail to build Week Ahead');
 
-  const events = await fetchCalendarEvents(token);
+  const events = await fetchCalendarEvents();
   const domains = extractDomains(events).slice(0, MAX_DOMAINS);
 
   const threadsByDomain = {};
   for (const domain of domains) {
-    threadsByDomain[domain] = await fetchSentThreadsForDomain(domain, token);
+    threadsByDomain[domain] = await fetchSentThreadsForDomain(domain);
   }
 
   const { monday, friday } = getWeekRange();

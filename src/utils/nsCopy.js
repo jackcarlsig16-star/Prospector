@@ -1,22 +1,17 @@
 // Shared helpers for the "Copy SFDC Update / NS" prompt
-import { getValidGmailToken } from './getValidGmailToken';
+import { hasGoogle } from './google';
 
 export async function fetchSentEmailsForAccount(accName) {
-  const token = await getValidGmailToken();
-  if (!token || !accName) return [];
+  if (!accName || !(await hasGoogle('gmail'))) return [];
   try {
     const q = encodeURIComponent(`in:sent "${accName}" newer_than:30d`);
-    const listRes = await fetch(`/proxy/gmail/messages?q=${q}&maxResults=5`, {
-      headers: { 'X-Google-Token': token },
-    });
+    const listRes = await fetch(`/proxy/gmail/messages?q=${q}&maxResults=5`);
     if (!listRes.ok) return [];
     const listData = await listRes.json();
     if (!listData.messages?.length) return [];
     const msgs = await Promise.all(
       listData.messages.slice(0, 3).map(async ({ id }) => {
-        const r = await fetch(`/proxy/gmail/message/${id}`, {
-          headers: { 'X-Google-Token': token },
-        });
+        const r = await fetch(`/proxy/gmail/message/${id}`);
         return r.json();
       })
     );

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { mono } from '../../constants/colors';
+import { connectGoogle, useGoogleStatus } from '../../utils/google';
 
 const HISTORY_KEY = 'prospector_intent_history';
 const MAX_DAYS    = 30;
@@ -119,6 +120,7 @@ function aggregateByDomain(history) {
 
 export default function IntentFeed({ accounts = [], activeUser, user, teamUsers = [] }) {
   const [history,     setHistory]     = useState(loadHistory);
+  const google = useGoogleStatus();
   const [loading,     setLoading]     = useState(false);
   const [fetchError,  setFetchError]  = useState(null);
   const [lastFetch,   setLastFetch]   = useState(null);
@@ -163,14 +165,11 @@ export default function IntentFeed({ accounts = [], activeUser, user, teamUsers 
   const domainMap   = accountDomains(accounts);
 
   const fetchIntent = useCallback(async () => {
-    const token = localStorage.getItem('gmail_access_token');
-    if (!token) return;
     setLoading(true);
     setFetchError(null);
     try {
-      const res  = await fetch('/api/gmail-intent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accessToken: token }) });
+      const res  = await fetch('/api/gmail-intent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       const data = await res.json();
-      if (res.status === 401) { setFetchError('Gmail token expired — reconnect Gmail.'); return; }
       if (!res.ok || data.error) { setFetchError(data.error || 'Failed to fetch 6sense data'); return; }
       setEmailFound(data.emailFound ?? data.found ?? false);
       setParsedCount(data.parsed ?? null);
@@ -185,7 +184,8 @@ export default function IntentFeed({ accounts = [], activeUser, user, teamUsers 
     }
   }, []);
 
-  useEffect(() => { fetchIntent(); }, [fetchIntent]);
+  const hasGmailToken = !!google?.features.includes('gmail');
+  useEffect(() => { if (hasGmailToken) fetchIntent(); }, [fetchIntent, hasGmailToken]);
 
   const aggregated = aggregateByDomain(history);
 
@@ -198,7 +198,6 @@ export default function IntentFeed({ accounts = [], activeUser, user, teamUsers 
 
   const displayed  = filtered.slice(0, 20);
   const maxScore   = Math.max(...displayed.map(d => d.total), 1);
-  const hasGmailToken   = !!localStorage.getItem('gmail_access_token');
   const noEmailFound    = !loading && !fetchError && hasGmailToken && history.length === 0;
   const noneInTerritory = !loading && displayed.length > 0 && displayed.every(d => !domainMap[d.domain]);
   const hasUrgent       = aggregated.some(d => domainMap[d.domain] && ['Purchase', 'Decision'].includes(d.buyingStage));
@@ -277,11 +276,11 @@ export default function IntentFeed({ accounts = [], activeUser, user, teamUsers 
         )}
 
         {/* Empty: no Gmail token */}
-        {!hasGmailToken && !loading && (
+        {google && !hasGmailToken && !loading && (
           <div style={{ padding: '40px 20px', textAlign: 'center', border: '1px dashed #1a3a1a', borderRadius: 8 }}>
             <p style={{ ...mono, fontSize: 13, color: '#39FF14', margin: '0 0 6px' }}>Gmail not connected</p>
             <p style={{ ...mono, fontSize: 11, color: '#4a5a4a', margin: '0 0 14px' }}>Connect Gmail to pull 6sense alert emails automatically.</p>
-            <button onClick={() => window.location.href = '/api/gmail/auth'}
+            <button onClick={() => connectGoogle('gmail')}
               style={{ ...mono, fontSize: 11, padding: '5px 14px', background: '#0a2010', border: '1px solid #39FF1444', borderRadius: 5, color: '#39FF14', cursor: 'pointer' }}>
               Connect Gmail →
             </button>

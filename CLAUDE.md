@@ -73,7 +73,7 @@ Always set `max_tokens` explicitly on every AI call. Never omit it.
 | Pricing files | `prospector_pricing_files` (localStorage) |
 | Gate unlock | `prospector_gate_unlocked` (localStorage) |
 | Approval cache | `prospector_approved` (localStorage, `'1'` = approved) |
-| Gmail tokens | `gmail_access_token`, `gmail_refresh_token`, `gmail_token_expiry`, `gmail_email` |
+| Google grants (Gmail/Calendar/Slides) | `google_grants` (Supabase, server-only; refresh token AES-256-GCM with `GOOGLE_TOKEN_KEY`) — browser holds no Google tokens, see `src/utils/google.js` |
 | SFDC tokens | `sfdc_access_token`, `sfdc_instance_url`, `sfdc_user_id`, `sfdc_user_name`, `sfdc_synced_at` |
 
 ---

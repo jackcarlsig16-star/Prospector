@@ -12,6 +12,7 @@ import {
 import { saveTeamUsers, saveFrontier, approveUser, patchUser, getAccountsForBusiness, getOutreachDoctrine, createOutreachDoctrineRule, updateOutreachDoctrineRule } from '../utils/db';
 import { isSupabaseEnabled } from '../utils/supabase';
 import { mapSfdcStage } from '../utils/stageMap';
+import GoogleConnections from './GoogleConnections';
 
 // Small pure helpers duplicated from App.js (defined there at module scope)
 const initials = n => (n||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
@@ -965,32 +966,7 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
           <p style={{ ...mono, margin:"0 0 14px", fontSize:12, color:C.mut }}>Stored locally in your browser only — never sent to any server other than the named service.</p>
           <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
 
-            {/* ── Google ── */}
-            <div style={{ background:C.card, border:`1px solid ${localStorage.getItem("gmail_access_token")?"#4ade8044":C.brd}`, borderRadius:8, padding:"14px 16px" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
-                <p style={{ margin:0, fontSize:15, fontWeight:500, color:localStorage.getItem("gmail_access_token")?"#4ade80":C.txt }}>Google</p>
-                <span style={{ ...mono, fontSize:11, color:localStorage.getItem("gmail_access_token")?C.green:C.dim, marginLeft:"auto" }}>{localStorage.getItem("gmail_access_token")?"● Connected":"○ Disconnected"}</span>
-              </div>
-              <div style={{ ...mono, fontSize:10, color:"#555", marginBottom:8 }}>GMAIL + GOOGLE CALENDAR + GOOGLE SLIDES</div>
-              {localStorage.getItem("gmail_access_token") ? (
-                <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-                  <span style={{ ...mono, fontSize:12, color:C.green }}>✓ Connected</span>
-                  <button onClick={()=>{ window.location.href="/api/gmail/auth"; }}
-                    style={{ ...mono, fontSize:12, padding:"5px 14px", background:`${C.gold}14`, border:`1px solid ${C.gold}44`, color:C.gold, borderRadius:5, cursor:"pointer" }}>
-                    ↻ Reconnect Google →
-                  </button>
-                  <span style={{ ...mono, fontSize:10, color:"#555" }}>Authorizes Gmail, Google Calendar, and Google Slides</span>
-                </div>
-              ) : (
-                <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
-                  <button onClick={()=>{ window.location.href="/api/gmail/auth"; }}
-                    style={{ ...mono, fontSize:13, padding:"7px 18px", background:`${C.gold}14`, border:`1px solid ${C.gold}44`, color:C.gold, borderRadius:5, cursor:"pointer", fontWeight:600 }}>
-                    Connect Google →
-                  </button>
-                  <span style={{ ...mono, fontSize:10, color:"#555" }}>Authorizes Gmail, Google Calendar, and Google Slides</span>
-                </div>
-              )}
-            </div>
+            <GoogleConnections />
 
             {INTEGRATION_DEFS.map(def=>{
               const connected=isConnected(def);

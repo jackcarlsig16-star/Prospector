@@ -13,11 +13,14 @@ function decodeBody(payload) {
   return '';
 }
 
+import { googleTokenFor } from './lib/googleGrants.js';
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { accessToken, existingDates } = req.body || {};
-  if (!accessToken) return res.status(400).json({ error: 'Missing accessToken' });
+  const { existingDates } = req.body || {};
+  const accessToken = await googleTokenFor(req, res, 'gmail');
+  if (!accessToken) return;
   const skipDates = new Set(Array.isArray(existingDates) ? existingDates : []);
 
   const headers = { Authorization: `Bearer ${accessToken}` };
@@ -36,11 +39,11 @@ export default async function handler(req, res) {
   let listData;
   try {
     listData = await gmailSearch('from:abm-alerts@6sense.com subject:"Daily Top Accounts" newer_than:7d');
-    if (listData.expired) return res.status(401).json({ error: 'token_expired' });
+    if (listData.expired) return res.status(409).json({ error: 'Google access was revoked - connect Gmail again', needs_google: 'gmail' });
     if (listData.error)   return res.status(500).json({ error: listData.error });
     if (!listData.messages?.length) {
       listData = await gmailSearch('from:abm-alerts@6sense.com newer_than:7d');
-      if (listData.expired) return res.status(401).json({ error: 'token_expired' });
+      if (listData.expired) return res.status(409).json({ error: 'Google access was revoked - connect Gmail again', needs_google: 'gmail' });
       if (listData.error)   return res.status(500).json({ error: listData.error });
     }
   } catch (err) {

@@ -81,7 +81,7 @@ export default function BusinessCommandCenterTab({ business, sharedAccounts=[], 
               accounts={sharedAccounts}
               onNav={onNav}
               tasks={sharedTasks}
-              authError={localStorage.getItem('prospector_gmail_auth_error') || null}
+              authError={localStorage.getItem('prospector_google_auth_error') || null}
               onEventsLoaded={()=>{}}
               onCreateTask={t => setSharedTasks && setSharedTasks(prev => [{ ...t, source: t.source || 'calendar' }, ...prev])}
               onUpdateAccount={onUpdateAccount}

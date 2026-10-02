@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { C, mono } from '../constants/colors';
 import BriefItems from './BriefItems';
 import { fetchRecentThreads, generateBrief } from './DailyDigest';
-import { getValidGmailToken } from '../utils/getValidGmailToken';
+import { hasGoogle, connectGoogle, useGoogleStatus } from '../utils/google';
 import { COMPANY_EMAIL_DOMAIN } from '../constants/appConfig';
 import {
   loadCachedWeekAhead, buildWeekAhead, clearCachedWeekAhead,
@@ -178,6 +178,7 @@ export default function BriefPanel({
   accounts = [], tasks = [], activeUser, onNav, onCreateTask, onUpdateTask,
 }) {
   const [tab, setTab] = useState('morning');
+  const google = useGoogleStatus();
   const [brief, setBrief] = useState(loadBrief);
   const [briefLoading, setBriefLoading] = useState(false);
   const [briefError, setBriefError] = useState(null);
@@ -212,14 +213,11 @@ export default function BriefPanel({
     if (weekEvents !== null) return;
     let cancelled = false;
     (async () => {
-      const token = await getValidGmailToken();
-      if (!token || cancelled) return;
+      if (!(await hasGoogle('calendar')) || cancelled) return;
       setWeekEventsLoading(true);
       const { monday, friday } = getWeekRange();
       try {
-        const res = await fetch(`/proxy/gcal/events?timeMin=${encodeURIComponent(monday.toISOString())}&timeMax=${encodeURIComponent(friday.toISOString())}`, {
-          headers: { 'X-Google-Token': token },
-        });
+        const res = await fetch(`/proxy/gcal/events?timeMin=${encodeURIComponent(monday.toISOString())}&timeMax=${encodeURIComponent(friday.toISOString())}`);
         const data = await res.json();
         if (cancelled) return;
         const items = Array.isArray(data.items) ? data.items.filter(ev => ev.start?.dateTime) : [];
@@ -231,12 +229,11 @@ export default function BriefPanel({
   }, [tab, weekEvents]);
 
   const handleGetBrief = useCallback(async () => {
-    const token = await getValidGmailToken();
-    if (!token) { setBriefError('Connect Google in Settings to enable'); return; }
+    if (!(await hasGoogle('gmail'))) { setBriefError('Connect Gmail to enable the Brief'); return; }
     setBriefLoading(true); setBriefError(null);
     try {
-      const msgs = await fetchRecentThreads(token);
-      if (msgs === null) { setBriefError('Gmail session expired — reconnect in Settings'); return; }
+      const msgs = await fetchRecentThreads();
+      if (msgs === null) { setBriefError("Couldn't read Gmail — try again, or reconnect Gmail"); return; }
       if (!msgs.length)  { setBriefError('No recent inbox messages found'); return; }
       const result = { ...(await generateBrief(msgs, accounts, tasks)), generatedAt: Date.now() };
       setBrief(result);
@@ -358,7 +355,9 @@ export default function BriefPanel({
           {briefError && <div style={{ ...mono, fontSize: 10, color: C.red, marginBottom: 8 }}>{briefError}</div>}
           {!brief && !briefLoading && !briefError && (
             <div style={{ ...mono, fontSize: 11, color: '#6b7280', fontStyle: 'italic' }}>
-              {localStorage.getItem('gmail_access_token') ? "Brief generates automatically on app open. Click Get Brief to refresh manually." : 'Connect Google in Settings to enable'}
+              {google?.features.includes('gmail')
+                ? "Brief generates automatically on app open. Click Get Brief to refresh manually."
+                : <button onClick={() => connectGoogle('gmail')} style={{ ...mono, fontSize: 11, color: C.blue, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline' }}>Connect Gmail →</button>}
             </div>
           )}
           <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
@@ -380,8 +379,8 @@ export default function BriefPanel({
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
           {/* ① Call Prep */}
           <WeeklySection title="Call Prep" subtitle={weekEventsLoading ? 'Loading…' : `${callPrepRows.length} meeting${callPrepRows.length !== 1 ? 's' : ''} this week`}>
-            {!weekEvents && !weekEventsLoading && (
-              <EmptyHint text="Connect Google to load this week's meetings." />
+            {!weekEvents && !weekEventsLoading && google && !google.features.includes('calendar') && (
+              <button onClick={() => connectGoogle('calendar')} style={{ ...mono, fontSize: 11, color: C.blue, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textDecoration: 'underline' }}>Connect Google Calendar →</button>
             )}
             {weekEvents && callPrepRows.length === 0 && (
               <EmptyHint text="No meetings scheduled this week." />

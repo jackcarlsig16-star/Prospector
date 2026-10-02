@@ -22,7 +22,7 @@ import { inferRisks, parseBullets } from '../utils/prepIntel';
 import { COMPANY_EMAIL_DOMAIN } from '../constants/appConfig';
 import { inferCloseProbability } from '../utils/scoringEngine';
 import { getStagedAccount, setStagedAccount } from '../utils/storage';
-import { getValidGmailToken } from '../utils/getValidGmailToken';
+import { hasGoogle } from '../utils/google';
 import { buildAccountEmailQuery } from '../utils/accountEmailQuery';
 
 // ─── Deterministic helpers (numbers from JS, never AI) ─────────────────────
@@ -209,17 +209,15 @@ export default function CallPrepModal({ acc, ev, tasks = [], onUpdate, onClose }
     const { q } = buildAccountEmailQuery(acc);
     if (!q) return '';
     try {
-      const token = await getValidGmailToken();
-      if (!token) return '';
+      if (!(await hasGoogle('gmail'))) return '';
       const msgsRes = await fetch(
-        `/proxy/gmail/messages?q=${encodeURIComponent(q)}&maxResults=5`,
-        { headers: { 'X-Google-Token': token } }
+        `/proxy/gmail/messages?q=${encodeURIComponent(q)}&maxResults=5`
       );
       const msgsData = await msgsRes.json();
       if (!msgsData.messages?.length) return '';
       const details = await Promise.all(
         msgsData.messages.slice(0, 5).map(m =>
-          fetch(`/proxy/gmail/message/${m.id}`, { headers: { 'X-Google-Token': token } }).then(r => r.json())
+          fetch(`/proxy/gmail/message/${m.id}`).then(r => r.json())
         )
       );
       return details.map(d => {

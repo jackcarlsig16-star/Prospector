@@ -8,6 +8,7 @@ import { getStagedAccounts, setStagedAccount } from '../utils/storage';
 import PreCallResearchPanel from './calendar/PreCallResearchPanel';
 import { getHandoffIntels, saveHandoffIntel } from '../utils/db';
 import { trackDailyStat } from '../utils/stats';
+import { hasGoogle, connectGoogle } from '../utils/google';
 
 // ─── Sales Calendar Widget ───────────────────────────────────────────────────
 const MEETING_LABELS = [
@@ -109,12 +110,10 @@ function SalesCalendarWidget({ accounts=[], onNav, authError=null, tasks=[], onC
   }, []);
 
   const fetchEvents = async (tMin, tMax) => {
-    const token = localStorage.getItem("gmail_access_token");
-    if (!token) return "notoken";
+    if (!(await hasGoogle("calendar"))) return "notoken";
     try {
-      const res = await fetch(`/proxy/gcal/events?timeMin=${encodeURIComponent(tMin)}&timeMax=${encodeURIComponent(tMax)}`, {
-        headers: { 'X-Google-Token': token }
-      });
+      const res = await fetch(`/proxy/gcal/events?timeMin=${encodeURIComponent(tMin)}&timeMax=${encodeURIComponent(tMax)}`);
+      if (res.status === 409) return "notoken";
       const data = await res.json();
       if (data.error) {
         const msg = data.error?.message || JSON.stringify(data.error);
@@ -132,8 +131,6 @@ function SalesCalendarWidget({ accounts=[], onNav, authError=null, tasks=[], onC
     setEvents(null);
     setCalError(null);
     setExpandedEvId(null);
-    const token = localStorage.getItem("gmail_access_token");
-    if (!token) { setEvents("noauth"); return; }
     const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
     const dayEnd   = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59).toISOString();
     const result = await fetchEvents(dayStart, dayEnd);
@@ -150,8 +147,6 @@ function SalesCalendarWidget({ accounts=[], onNav, authError=null, tasks=[], onC
 
   const loadWeek = async () => {
     setWeekDays([]);
-    const token = localStorage.getItem("gmail_access_token");
-    if (!token) return;
     const today = new Date(); today.setHours(0,0,0,0);
     const dow = today.getDay(); // 0=Sun, 6=Sat
     const monday = new Date(today);
@@ -420,7 +415,7 @@ function SalesCalendarWidget({ accounts=[], onNav, authError=null, tasks=[], onC
           <p style={{ ...mono, margin:0, fontSize:11, color:C.dim+"88" }}>Check connection and try again.</p>
         </> : <>
           <p style={{ ...mono, margin:0, fontSize:13, color:C.dim }}>Connect Google Calendar</p>
-          <p style={{ ...mono, margin:0, fontSize:11, color:C.dim+"88" }}>Grants read-only access to Gmail + Calendar</p>
+          <p style={{ ...mono, margin:0, fontSize:11, color:C.dim+"88" }}>Grants read-only access to your calendar</p>
         </>}
         {(calError || authError) && (
           <p style={{ ...mono, margin:0, fontSize:10, color:C.red+"99", fontStyle:"italic", maxWidth:260, wordBreak:"break-word" }}>
@@ -429,9 +424,9 @@ function SalesCalendarWidget({ accounts=[], onNav, authError=null, tasks=[], onC
         )}
         <div style={{ display:"flex", gap:8, flexWrap:"wrap", justifyContent:"center" }}>
           {events !== "noauth" && <button onClick={()=>loadDay(viewDate)} style={{ ...mono, fontSize:12, padding:"6px 14px", background:C.brd, border:`1px solid ${C.brd}`, color:C.dim, borderRadius:5, cursor:"pointer" }}>Retry</button>}
-          <a href="/api/gmail/auth" onClick={()=>localStorage.removeItem("prospector_gmail_auth_error")} style={{ ...mono, fontSize:12, padding:"6px 16px", background:`${C.blue}18`, border:`1px solid ${C.blue}55`, color:C.blue, borderRadius:5, textDecoration:"none" }}>
-            {events === "noauth" ? "Connect Calendar →" : "Re-authorize →"}
-          </a>
+          <button onClick={()=>connectGoogle("calendar")} style={{ ...mono, fontSize:12, padding:"6px 16px", background:`${C.blue}18`, border:`1px solid ${C.blue}55`, color:C.blue, borderRadius:5, cursor:"pointer" }}>
+            {events === "noauth" ? "Connect Google Calendar →" : "Re-authorize →"}
+          </button>
         </div>
       </div>
     </div>

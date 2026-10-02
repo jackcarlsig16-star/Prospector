@@ -537,7 +537,6 @@ export default function EmailModal({ account, persona, onClose, onSaveEmail, acc
                       setTeaching(true);
                       try{
                         const r=await fetch("/api/learn-voice",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-                          accessToken:localStorage.getItem("gmail_access_token")||"",
                           mode:"teach", original:originalEmail, edited:email,
                           existingProfile:getVoiceProfile(voiceUserName),
                         })});

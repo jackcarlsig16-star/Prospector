@@ -6,6 +6,7 @@ import { SEED_INTEL_DOCS, UCS_DATA, PRODUCTS_DATA } from '../constants/products'
 import { PRODUCT_IMPORT_SOURCES } from './AccountCard';
 import { MODELS } from '../config/models';
 import { saveVoiceProfile } from '../utils/db';
+import { connectGoogle, useGoogleStatus } from '../utils/google';
 
 
 function IntelligencePage({ user, activeUser }) {
@@ -15,7 +16,7 @@ function IntelligencePage({ user, activeUser }) {
   const [voiceProfile,setVoiceProfileState]=useState(()=>getVoiceProfile(voiceUserName));
   const [vpLoading,setVpLoading]=useState(false);
   const [vpError,setVpError]=useState(null);
-  const [gmailConnected]=useState(()=>!!localStorage.getItem("gmail_access_token"));
+  const gmailConnected=!!useGoogleStatus()?.features.includes("gmail");
   const [ucExp,setUcExp]=useState("onboarding");
   const [prodExp,setProdExp]=useState(null);
 
@@ -130,18 +131,14 @@ function IntelligencePage({ user, activeUser }) {
   const [pasteText,setPasteText]=useState("");
 
   const learnVoice=async()=>{
-    const token=localStorage.getItem("gmail_access_token");
-    const refresh=localStorage.getItem("gmail_refresh_token");
-    if(!token){window.location.href="/api/gmail/auth";return;}
     setVpLoading(true);setVpError(null);
     try{
-      const r=await fetch("/api/learn-voice",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({accessToken:token,refreshToken:refresh,mode:"learn"})});
+      const r=await fetch("/api/learn-voice",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"learn"})});
       const d=await r.json();
       if(d.error){setVpError(d.error);}
       else if(d.profile){
         localStorage.setItem(voiceProfileKey(voiceUserName),JSON.stringify(d.profile));
         saveVoiceProfile(voiceUserEmail,d.profile);
-        if(d.newAccessToken)localStorage.setItem("gmail_access_token",d.newAccessToken);
         setVoiceProfileState(d.profile);
       }else{setVpError(d.message||"No profile returned");}
     }catch(e){setVpError(e.message);}
@@ -599,7 +596,7 @@ Return ONLY a valid JSON object — no explanation, no markdown, just the JSON:
             </div>
             <div style={{ display:"flex", gap:6, flexShrink:0, flexWrap:"wrap", justifyContent:"flex-end" }}>
               {!gmailConnected&&(
-                <button onClick={()=>window.location.href="/api/gmail/auth"} style={{ fontSize:13, padding:"7px 14px", background:`${C.blue}18`, border:`1px solid ${C.blue}44`, color:C.blue, borderRadius:6, cursor:"pointer", fontWeight:500 }}>
+                <button onClick={()=>connectGoogle("gmail")} style={{ fontSize:13, padding:"7px 14px", background:`${C.blue}18`, border:`1px solid ${C.blue}44`, color:C.blue, borderRadius:6, cursor:"pointer", fontWeight:500 }}>
                   Connect Gmail →
                 </button>
               )}
@@ -727,7 +724,7 @@ Return ONLY a valid JSON object — no explanation, no markdown, just the JSON:
             <div style={{ padding:"40px", textAlign:"center", color:C.dim, border:`1px dashed ${C.brd}`, borderRadius:8 }}>
               <p style={{ margin:"0 0 6px", fontSize:14, color:C.txt }}>{gmailConnected?"No voice profile yet":"Gmail not connected"}</p>
               <p style={{ margin:"0 0 14px", fontSize:13 }}>{gmailConnected?"Click \"Learn from Gmail\" to analyze your sent emails":"Connect Gmail to learn from your actual sent emails"}</p>
-              {!gmailConnected&&<button onClick={()=>window.location.href="/api/gmail/auth"} style={{ fontSize:13, padding:"8px 18px", background:`${C.blue}18`, border:`1px solid ${C.blue}44`, color:C.blue, borderRadius:6, cursor:"pointer", fontWeight:500 }}>Connect Gmail →</button>}
+              {!gmailConnected&&<button onClick={()=>connectGoogle("gmail")} style={{ fontSize:13, padding:"8px 18px", background:`${C.blue}18`, border:`1px solid ${C.blue}44`, color:C.blue, borderRadius:6, cursor:"pointer", fontWeight:500 }}>Connect Gmail →</button>}
             </div>
           )}
         </div>

@@ -4,7 +4,7 @@ import { staleDays } from '../utils/staleness';
 import BriefItems from './BriefItems';
 import { MODELS } from '../config/models';
 import { COMPANY_EMAIL_DOMAIN } from '../constants/appConfig';
-import { getValidGmailToken } from '../utils/getValidGmailToken';
+import { hasGoogle, connectGoogle, useGoogleStatus } from '../utils/google';
 import WeekAheadPanel from './WeekAheadPanel';
 import { loadCachedWeekAhead, buildWeekAhead, clearCachedWeekAhead } from '../utils/weekAhead';
 
@@ -79,17 +79,16 @@ function SectionToggle({ open, onToggle, label, badges=[] }) {
 
 // ── Gmail Brief helpers ─────────────────────────────────────────────────────
 
-export async function fetchRecentThreads(token) {
+export async function fetchRecentThreads() {
   const listRes = await fetch(
-    `/proxy/gmail/messages?q=${encodeURIComponent("newer_than:2d in:inbox")}&maxResults=25`,
-    { headers: { 'X-Google-Token': token } }
+    `/proxy/gmail/messages?q=${encodeURIComponent("newer_than:2d in:inbox")}&maxResults=25`
   );
-  if (listRes.status === 401) { localStorage.removeItem("gmail_access_token"); return null; }
+  if (!listRes.ok) return null;
   const listData = await listRes.json();
   if (!listData.messages?.length) return [];
   const msgs = await Promise.all(
     listData.messages.slice(0, 20).map(async ({ id }) => {
-      const r = await fetch(`/proxy/gmail/message/${id}`, { headers: { 'X-Google-Token': token } });
+      const r = await fetch(`/proxy/gmail/message/${id}`);
       return r.json();
     })
   );
@@ -183,6 +182,7 @@ export async function generateBrief(msgs, accounts, tasks=[]) {
 
 export default function DailyDigest({ accounts=[], tasks=[], firstName="AE", onNav, onUpdateTask, onCreateTask }) {
   const [open, setOpen]           = useState(false);
+  const google = useGoogleStatus();
   const [loading, setLoading]     = useState(false);
   const [loadMsg, setLoadMsg]     = useState(LOADING_MSGS[0]);
   const [meetings, setMeetings]   = useState(null); // null=not fetched yet
@@ -262,8 +262,7 @@ export default function DailyDigest({ accounts=[], tasks=[], firstName="AE", onN
       } catch {}
     }
 
-    const token = await getValidGmailToken();
-    if (!token) { setMeetings([]); return; }
+    if (!(await hasGoogle('calendar'))) { setMeetings([]); return; }
 
     setLoading(true);
     let msgIdx = 0;
@@ -278,15 +277,9 @@ export default function DailyDigest({ accounts=[], tasks=[], firstName="AE", onN
       const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString();
       const dayEnd   = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59).toISOString();
       const res = await fetch(
-        `/proxy/gcal/events?timeMin=${encodeURIComponent(dayStart)}&timeMax=${encodeURIComponent(dayEnd)}`,
-        { headers: { 'X-Google-Token': token } }
+        `/proxy/gcal/events?timeMin=${encodeURIComponent(dayStart)}&timeMax=${encodeURIComponent(dayEnd)}`
       );
       const data = await res.json();
-      if (res.status === 401 || data.error?.status === 401 || data.error?.code === 401) {
-        localStorage.removeItem("gmail_access_token");
-        setMeetings([]);
-        return;
-      }
       if (data.error || !Array.isArray(data.items)) { console.error("[DailyDigest] gcal error:", data.error || "items not array"); setMeetings([]); return; }
 
       // All timed events (skip all-day blocks)
@@ -344,13 +337,12 @@ export default function DailyDigest({ accounts=[], tasks=[], firstName="AE", onN
   };
 
   const handleGetBrief = async () => {
-    const token = await getValidGmailToken();
-    if (!token) { setBriefError("Connect Google in Settings to enable Gmail Brief"); return; }
+    if (!(await hasGoogle('gmail'))) { setBriefError("Connect Gmail to enable the Gmail Brief"); return; }
     setBriefLoading(true);
     setBriefError(null);
     try {
-      const msgs = await fetchRecentThreads(token);
-      if (msgs === null) { setBriefError("Gmail session expired — reconnect in Settings"); return; }
+      const msgs = await fetchRecentThreads();
+      if (msgs === null) { setBriefError("Couldn't read Gmail — try again, or reconnect Gmail"); return; }
       if (!msgs.length)  { setBriefError("No recent inbox messages found"); return; }
       const result = { ...(await generateBrief(msgs, accounts, tasks)), generatedAt: Date.now() };
       setBrief(result);
@@ -464,9 +456,9 @@ export default function DailyDigest({ accounts=[], tasks=[], firstName="AE", onN
               )}
               {!brief && !briefLoading && !briefError && (
                 <div style={{ ...mono, fontSize: 10, color: C.dim, fontStyle: "italic" }}>
-                  {localStorage.getItem("gmail_access_token")
+                  {google?.features.includes("gmail")
                     ? "Click Get Brief to summarize your morning emails"
-                    : "Connect Google in Settings to enable"}
+                    : <button onClick={() => connectGoogle("gmail")} style={{ ...mono, fontSize: 10, color: C.blue, background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline" }}>Connect Gmail →</button>}
                 </div>
               )}
               <BriefItems
@@ -507,8 +499,8 @@ export default function DailyDigest({ accounts=[], tasks=[], firstName="AE", onN
                 if (customerMeetings.length === 0) {
                   return (
                     <div style={{ ...mono, fontSize: 11, color: C.dim }}>
-                      {!localStorage.getItem("gmail_access_token")
-                        ? "Calendar session expired — reconnect Google in Settings"
+                      {google && !google.features.includes("calendar")
+                        ? <button onClick={() => connectGoogle("calendar")} style={{ ...mono, fontSize: 11, color: C.blue, background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline" }}>Connect Google Calendar →</button>
                         : "No customer meetings today"}
                     </div>
                   );

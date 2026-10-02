@@ -396,7 +396,7 @@ function HomePage({ accounts, onNav, activeBatch, firstName="there", snapshots=[
           {/* Row 1 — Calendar (50%) + Brief (50%) */}
           <div style={{ display:"flex", gap:16, alignItems:"stretch" }}>
             <div style={{ flex:"1 1 50%", minWidth:0, display:"flex" }}>
-              <SalesCalendarWidget accounts={accounts} onNav={onNav} tasks={tasks} authError={localStorage.getItem("prospector_gmail_auth_error")||null} onEventsLoaded={setCalEvents} onCreateTask={t=>setTasks&&setTasks(prev=>[{...t,source:t.source||"calendar"},...prev])} onUpdateAccount={onUpdateAccount}/>
+              <SalesCalendarWidget accounts={accounts} onNav={onNav} tasks={tasks} authError={localStorage.getItem("prospector_google_auth_error")||null} onEventsLoaded={setCalEvents} onCreateTask={t=>setTasks&&setTasks(prev=>[{...t,source:t.source||"calendar"},...prev])} onUpdateAccount={onUpdateAccount}/>
             </div>
             <div style={{ flex:"1 1 50%", minWidth:0, display:"flex" }}>
               <BriefPanel

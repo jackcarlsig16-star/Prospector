@@ -11,10 +11,6 @@ if (!process.env.ANTHROPIC_API_KEY) {
 }
 
 const ANTHROPIC_KEY  = process.env.ANTHROPIC_API_KEY    || '';
-const GMAIL_ID       = process.env.GMAIL_CLIENT_ID       || '';
-const GMAIL_SECRET   = process.env.GMAIL_CLIENT_SECRET   || '';
-const GMAIL_REDIRECT = process.env.GMAIL_REDIRECT_URI    || '';
-const GOOGLE_SCOPES  = 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/presentations';
 
 const app = express();
 app.set('trust proxy', 1); // Render terminates TLS — trust X-Forwarded-Proto
@@ -37,6 +33,19 @@ app.use('/api/projects/:id', authMw('parentGate', 'projects'));
 app.use('/api/campaigns/:id', authMw('parentGate', 'campaigns'));
 
 import('./api/lib/checkCredentials.js').then(({ checkCredentials }) => checkCredentials());
+
+// ── API routes — delegate to ES module handlers via dynamic import ─────────────
+// Dynamic import lets CommonJS load the ESM api/ handlers without conversion.
+// Modules are cached after first load so there's no repeated overhead.
+const esHandler = (rel) => async (req, res) => {
+  try {
+    const mod = await import(rel);
+    return mod.default(req, res);
+  } catch (err) {
+    console.error(`Handler error [${rel}]:`, err);
+    res.status(500).json({ error: err.message });
+  }
+};
 
 // ── Anthropic proxy ───────────────────────────────────────────────────────────
 app.post('/proxy/anthropic/messages', authMw('anthropicRateLimit'), async (req, res) => {
@@ -114,13 +123,15 @@ app.get('/proxy/jina', async (req, res) => {
   }
 });
 
-// The browser sends the user's Google token as X-Google-Token, never as
-// Authorization: that header carries the Basic Auth credentials, and replacing
-// it re-triggers the browser's sign-in prompt on every call.
+// The signed-in user's Google access token, minted server-side from their
+// stored grant (api/lib/googleGrants.js); null after a 409/500 was sent.
+const googleToken = (req, res, feature) =>
+  import('./api/lib/googleGrants.js').then(m => m.googleTokenFor(req, res, feature));
+
 // ── Gmail search proxies ──────────────────────────────────────────────────────
 app.get('/proxy/gmail/messages', async (req, res) => {
-  const token = req.headers['x-google-token'] || '';
-  if (!token) return res.status(401).json({ error: 'No token' });
+  const token = await googleToken(req, res, 'gmail');
+  if (!token) return;
   const { q, maxResults } = req.query;
   try {
     const r = await fetch(
@@ -132,8 +143,8 @@ app.get('/proxy/gmail/messages', async (req, res) => {
 });
 
 app.get('/proxy/gmail/message/:id', async (req, res) => {
-  const token = req.headers['x-google-token'] || '';
-  if (!token) return res.status(401).json({ error: 'No token' });
+  const token = await googleToken(req, res, 'gmail');
+  if (!token) return;
   try {
     const r = await fetch(
       `https://www.googleapis.com/gmail/v1/users/me/messages/${req.params.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date`,
@@ -144,8 +155,8 @@ app.get('/proxy/gmail/message/:id', async (req, res) => {
 });
 
 app.get('/proxy/gmail/message/:id/body', async (req, res) => {
-  const token = req.headers['x-google-token'] || '';
-  if (!token) return res.status(401).json({ error: 'No token' });
+  const token = await googleToken(req, res, 'gmail');
+  if (!token) return;
   try {
     const r = await fetch(
       `https://www.googleapis.com/gmail/v1/users/me/messages/${req.params.id}?format=full`,
@@ -169,8 +180,8 @@ app.get('/proxy/gmail/message/:id/body', async (req, res) => {
 
 // ── Google Calendar proxy ─────────────────────────────────────────────────────
 app.get('/proxy/gcal/events', async (req, res) => {
-  const token = req.headers['x-google-token'] || '';
-  if (!token) return res.status(401).json({ error: 'No token' });
+  const token = await googleToken(req, res, 'calendar');
+  if (!token) return;
   const { timeMin, timeMax } = req.query;
   try {
     const r = await fetch(
@@ -181,70 +192,11 @@ app.get('/proxy/gcal/events', async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── Gmail OAuth ───────────────────────────────────────────────────────────────
-app.get('/api/gmail/auth', (req, res) => {
-  if (!GMAIL_ID) return res.redirect('/?gmail_error=GMAIL_CLIENT_ID+not+configured');
-  const redirect = GMAIL_REDIRECT || `${req.protocol}://${req.get('host')}/api/gmail/callback`;
-  const params = new URLSearchParams({
-    client_id: GMAIL_ID,
-    redirect_uri: redirect,
-    response_type: 'code',
-    scope: GOOGLE_SCOPES,
-    access_type: 'offline',
-    prompt: 'consent',
-  });
-  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
-});
-
-app.post('/api/gmail/refresh', async (req, res) => {
-  const { refreshToken } = req.body || {};
-  if (!refreshToken) return res.status(400).json({ error: 'Missing refreshToken' });
-  if (!GMAIL_ID || !GMAIL_SECRET) return res.status(500).json({ error: 'Gmail credentials not configured' });
-  try {
-    const r = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: GMAIL_ID,
-        client_secret: GMAIL_SECRET,
-        refresh_token: refreshToken,
-        grant_type: 'refresh_token',
-      }),
-    });
-    const data = await r.json();
-    if (data.error) return res.status(401).json({ error: data.error_description || data.error });
-    res.json({ accessToken: data.access_token, expiry: Date.now() + (data.expires_in || 3600) * 1000 });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/gmail/callback', async (req, res) => {
-  const { code, error } = req.query;
-  if (error) return res.redirect(`/?gmail_error=${encodeURIComponent(error)}`);
-  if (!code) return res.redirect('/?gmail_error=Missing+code');
-  const redirect = GMAIL_REDIRECT || `${req.protocol}://${req.get('host')}/api/gmail/callback`;
-  try {
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ code, client_id: GMAIL_ID, client_secret: GMAIL_SECRET, redirect_uri: redirect, grant_type: 'authorization_code' }),
-    });
-    const tokens = await tokenRes.json();
-    if (tokens.error) return res.redirect(`/?gmail_error=${encodeURIComponent(tokens.error_description || tokens.error)}`);
-    const profileRes = await fetch('https://www.googleapis.com/oauth2/v1/userinfo', {
-      headers: { Authorization: `Bearer ${tokens.access_token}` },
-    });
-    const profile = await profileRes.json();
-    const params = new URLSearchParams({
-      gmail_access_token:  tokens.access_token,
-      gmail_refresh_token: tokens.refresh_token || '',
-      gmail_token_expiry:  String(Date.now() + (tokens.expires_in || 3600) * 1000),
-      gmail_email:         profile.email || '',
-    });
-    // Fragment, not query: browsers never send it to the server, so tokens stay
-    // out of Render's request logs and Referer headers.
-    res.redirect(`/#${params}`);
-  } catch (err) { res.redirect(`/?gmail_error=${encodeURIComponent(err.message)}`); }
-});
+// ── Google OAuth (per feature, stored server-side) ────────────────────────────
+app.get('/api/google/connect',    esHandler('./api/google/connect.js'));
+app.get('/api/gmail/callback',    esHandler('./api/google/callback.js'));
+app.get('/api/google/status',     esHandler('./api/google/status.js'));
+app.post('/api/google/disconnect', esHandler('./api/google/disconnect.js'));
 
 // ── Salesforce OAuth ──────────────────────────────────────────────────────────
 app.get('/api/sfdc/auth', (req, res) => {
@@ -340,9 +292,10 @@ app.get('/api/sfdc/callback', async (req, res) => {
 
 // ── Google Slides export ──────────────────────────────────────────────────────
 app.post('/api/slides/create', async (req, res) => {
-  const { components, accountName, accessToken } = req.body;
-  if (!accessToken) return res.status(401).json({ error: 'No access token' });
+  const { components, accountName } = req.body;
   if (!components?.length) return res.status(400).json({ error: 'No components provided' });
+  const accessToken = await googleToken(req, res, 'slides');
+  if (!accessToken) return;
   try {
     // 1. Create presentation
     const createRes = await fetch('https://slides.googleapis.com/v1/presentations', {
@@ -389,19 +342,6 @@ app.post('/api/slides/create', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-// ── API routes — delegate to ES module handlers via dynamic import ─────────────
-// Dynamic import lets CommonJS load the ESM api/ handlers without conversion.
-// Modules are cached after first load so there's no repeated overhead.
-const esHandler = (rel) => async (req, res) => {
-  try {
-    const mod = await import(rel);
-    return mod.default(req, res);
-  } catch (err) {
-    console.error(`Handler error [${rel}]:`, err);
-    res.status(500).json({ error: err.message });
-  }
-};
 
 app.get('/api/access-log',     authMw('platformOwnerOnly'), esHandler('./api/access-log.js'));
 app.post('/api/access-log',    esHandler('./api/access-log.js'));

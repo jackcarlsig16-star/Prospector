@@ -2,6 +2,7 @@ import React from 'react';
 import { C, mono } from '../../constants/colors';
 import { T } from '../../constants/tokens';
 import QuickUpdateDiff from '../QuickUpdateDiff';
+import { useGoogleStatus } from '../../utils/google';
 
 export default function DebriefPanel({
   acc,
@@ -13,6 +14,7 @@ export default function DebriefPanel({
   runQuickUpdate, applyQuickUpdate,
   closeDebrief,
 }) {
+  const gmailConnected = !!useGoogleStatus()?.features.includes('gmail');
   const accent = debriefMode === 'quick' ? T.cyan : debriefMode === 'call' ? T.amber : C.blue;
   const headerLabel = debriefMode === 'call' ? '📞 Call Debrief' : debriefMode === 'quick' ? '⚡ Quick Update' : '📋 Log Update';
   return (
@@ -44,7 +46,7 @@ export default function DebriefPanel({
       {debriefMode==='call'&&(
         <>
           <p style={{ ...mono, margin:"0 0 8px", fontSize:11, color:C.dim }}>Paste a Gong transcript, call summary, or Gong score. Claude extracts pain points, next steps, MEDPICC updates, and Gong scores automatically.</p>
-          {localStorage.getItem('gmail_access_token')&&(
+          {gmailConnected&&(
             <div style={{ marginBottom:8, position:'relative' }}>
               <button onClick={searchGongEmails} style={{ ...mono, fontSize:11, padding:'3px 10px', background:'transparent', border:`1px solid ${C.brd}`, color:C.mut, borderRadius:4, cursor:'pointer' }}>{gongSearch==='loading'?'⟳ Searching…':'🔍 Find Gong email →'}</button>
               {gongDropOpen&&gongSearch!=='loading'&&(

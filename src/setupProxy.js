@@ -3,17 +3,9 @@ const crypto  = require("crypto");
 require("dotenv").config({ path: require("path").resolve(__dirname, "../.env") });
 
 const ANTHROPIC_KEY    = process.env.ANTHROPIC_API_KEY    || "";
-const GMAIL_CLIENT_ID  = process.env.GMAIL_CLIENT_ID      || "";
-const GMAIL_SECRET     = process.env.GMAIL_CLIENT_SECRET  || "";
-const GMAIL_REDIRECT   = "http://localhost:3000/api/gmail/callback";
 const SFDC_CLIENT_ID   = process.env.SFDC_CLIENT_ID       || "";
 const SFDC_SECRET      = process.env.SFDC_CLIENT_SECRET   || "";
 const SFDC_REDIRECT    = process.env.SFDC_REDIRECT_URI    || "http://localhost:3000/api/sfdc/callback";
-
-const GOOGLE_SCOPES = [
-  "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/calendar.readonly",
-].join(" ");
 
 module.exports = function (app) {
 
@@ -33,156 +25,6 @@ module.exports = function (app) {
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
-  });
-
-  // ── Gmail + Calendar OAuth — works locally ───────────────────────────────
-  app.get("/api/gmail/auth", (req, res) => {
-    if (!GMAIL_CLIENT_ID) return res.redirect("/?gmail_error=GMAIL_CLIENT_ID+not+set");
-    const params = new URLSearchParams({
-      client_id:     GMAIL_CLIENT_ID,
-      redirect_uri:  GMAIL_REDIRECT,
-      response_type: "code",
-      scope:         GOOGLE_SCOPES,
-      access_type:   "offline",
-      prompt:        "consent",
-    });
-    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params}`);
-  });
-
-  app.get("/api/gmail/callback", async (req, res) => {
-    const { code, error } = req.query;
-    if (error) return res.redirect(`/?gmail_error=${encodeURIComponent(error)}`);
-    if (!code)  return res.redirect("/?gmail_error=Missing+code");
-    try {
-      const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          code,
-          client_id:     GMAIL_CLIENT_ID,
-          client_secret: GMAIL_SECRET,
-          redirect_uri:  GMAIL_REDIRECT,
-          grant_type:    "authorization_code",
-        }),
-      });
-      const tokens = await tokenRes.json();
-      if (tokens.error) {
-        return res.redirect(`/?gmail_error=${encodeURIComponent(tokens.error_description || tokens.error)}`);
-      }
-      const profileRes = await fetch("https://www.googleapis.com/oauth2/v1/userinfo", {
-        headers: { Authorization: `Bearer ${tokens.access_token}` },
-      });
-      const profile = await profileRes.json();
-      const params = new URLSearchParams({
-        gmail_access_token:  tokens.access_token,
-        gmail_refresh_token: tokens.refresh_token || "",
-        gmail_token_expiry:  String(Date.now() + (tokens.expires_in || 3600) * 1000),
-        gmail_email:         profile.email || "",
-      });
-      res.redirect(`/?${params}`);
-    } catch (err) {
-      res.redirect(`/?gmail_error=${encodeURIComponent(err.message)}`);
-    }
-  });
-
-  // ── Gmail token refresh ──────────────────────────────────────────────────
-  app.post("/api/gmail/refresh", express.json(), async (req, res) => {
-    const { refreshToken } = req.body || {};
-    if (!refreshToken) return res.status(400).json({ error: "Missing refreshToken" });
-    if (!GMAIL_CLIENT_ID || !GMAIL_SECRET) return res.status(500).json({ error: "Gmail credentials not configured" });
-    try {
-      const r = await fetch("https://oauth2.googleapis.com/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          client_id:     GMAIL_CLIENT_ID,
-          client_secret: GMAIL_SECRET,
-          refresh_token: refreshToken,
-          grant_type:    "refresh_token",
-        }),
-      });
-      const data = await r.json();
-      if (data.error) return res.status(401).json({ error: data.error_description || data.error });
-      res.json({ accessToken: data.access_token, expiry: Date.now() + (data.expires_in || 3600) * 1000 });
-    } catch (err) { res.status(500).json({ error: err.message }); }
-  });
-
-  // ── Gmail draft creation ─────────────────────────────────────────────────
-  app.post("/api/gmail/draft", express.json({ limit: "1mb" }), async (req, res) => {
-    const { to, subject, body, accessToken } = req.body || {};
-    if (!accessToken) return res.status(400).json({ error: "Missing accessToken" });
-    if (!subject && !body) return res.status(400).json({ error: "Need at least subject or body" });
-    try {
-      const headers = [];
-      if (to)      headers.push(`To: ${to}`);
-      if (subject) headers.push(`Subject: ${subject}`);
-      headers.push("Content-Type: text/plain; charset=utf-8");
-      const mime = `${headers.join("\r\n")}\r\n\r\n${body || ""}`;
-      const raw = Buffer.from(mime, "utf-8").toString("base64")
-        .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-      const r = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/drafts", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ message: { raw } }),
-      });
-      if (!r.ok) {
-        const errText = await r.text();
-        return res.status(r.status).json({ error: errText.slice(0, 400) });
-      }
-      const data = await r.json();
-      const messageId = data.message?.id;
-      const draftUrl = messageId
-        ? `https://mail.google.com/mail/u/0/#drafts/${messageId}`
-        : `https://mail.google.com/mail/u/0/#drafts`;
-      res.json({ draftId: data.id, messageId, draftUrl });
-    } catch (err) { res.status(500).json({ error: err.message }); }
-  });
-
-  // ── Gmail search proxy ───────────────────────────────────────────────────
-  app.get("/proxy/gmail/messages", async (req, res) => {
-    const token = req.headers["x-google-token"] || "";
-    if (!token) return res.status(401).json({ error: "No token" });
-    const { q, maxResults } = req.query;
-    const url = `https://www.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q||"")}&maxResults=${maxResults||8}`;
-    try {
-      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      res.json(await r.json());
-    } catch (err) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.get("/proxy/gmail/message/:id", async (req, res) => {
-    const token = req.headers["x-google-token"] || "";
-    if (!token) return res.status(401).json({ error: "No token" });
-    const url = `https://www.googleapis.com/gmail/v1/users/me/messages/${req.params.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date`;
-    try {
-      const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-      res.json(await r.json());
-    } catch (err) { res.status(500).json({ error: err.message }); }
-  });
-
-  app.get("/proxy/gmail/message/:id/body", async (req, res) => {
-    const token = req.headers["x-google-token"] || "";
-    if (!token) return res.status(401).json({ error: "No token" });
-    try {
-      const r = await fetch(
-        `https://www.googleapis.com/gmail/v1/users/me/messages/${req.params.id}?format=full`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      const msg = await r.json();
-      const decode = data => Buffer.from(data.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf-8");
-      const extractText = payload => {
-        if (!payload) return "";
-        if (payload.mimeType === "text/plain" && payload.body?.data) return decode(payload.body.data);
-        if (payload.parts) {
-          for (const p of payload.parts) { const t = extractText(p); if (t) return t; }
-        }
-        return "";
-      };
-      const text = extractText(msg.payload);
-      const headers = msg.payload?.headers || [];
-      const getH = n => headers.find(h => h.name === n)?.value || "";
-      res.json({ text, subject: getH("Subject"), from: getH("From") });
-    } catch (err) { res.status(500).json({ error: err.message }); }
   });
 
   // ── Salesforce OAuth — local dev (mirrors server.js) ─────────────────────
@@ -319,19 +161,5 @@ module.exports = function (app) {
         reset_date: d.reset_date || null,
       });
     } catch (err) { res.status(500).json({ error: err.message }); }
-  });
-
-  // ── Google Calendar proxy ─────────────────────────────────────────────────
-  app.get("/proxy/gcal/events", async (req, res) => {
-    const token = req.headers["x-google-token"] || "";
-    if (!token) return res.status(401).json({ error: "No token" });
-    const { timeMin, timeMax } = req.query;
-    const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=50`;
-    try {
-      const response = await fetch(url, { headers: { "Authorization": `Bearer ${token}` } });
-      res.json(await response.json());
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
   });
 };

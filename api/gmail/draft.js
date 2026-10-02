@@ -1,10 +1,13 @@
+import { googleTokenFor } from '../lib/googleGrants.js';
+
 export const config = { maxDuration: 10 };
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
-  const { to, subject, body, accessToken } = req.body || {};
-  if (!accessToken) return res.status(400).json({ error: 'Missing accessToken' });
+  const { to, subject, body } = req.body || {};
   if (!subject && !body) return res.status(400).json({ error: 'Need at least subject or body' });
+  const accessToken = await googleTokenFor(req, res, 'gmail');
+  if (!accessToken) return;
   try {
     const headers = [];
     if (to)      headers.push(`To: ${to}`);

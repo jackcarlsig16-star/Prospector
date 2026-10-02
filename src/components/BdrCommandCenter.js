@@ -169,7 +169,7 @@ export default function BdrCommandCenter({
         accounts={accounts}
         onNav={onNav}
         tasks={tasks}
-        authError={localStorage.getItem('prospector_gmail_auth_error') || null}
+        authError={localStorage.getItem('prospector_google_auth_error') || null}
         onCreateTask={t => setTasks && setTasks(prev => [{ ...t, source: t.source || 'calendar' }, ...prev])}
         onUpdateAccount={onUpdateAccount}
       />

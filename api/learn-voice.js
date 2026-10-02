@@ -1,18 +1,6 @@
-export const config = { maxDuration: 60 };
+import { googleTokenFor } from "./lib/googleGrants.js";
 
-async function refreshGmailToken(refreshToken) {
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      grant_type: "refresh_token",
-      refresh_token: refreshToken,
-      client_id: process.env.GMAIL_CLIENT_ID,
-      client_secret: process.env.GMAIL_CLIENT_SECRET,
-    }),
-  });
-  return res.json();
-}
+export const config = { maxDuration: 60 };
 
 async function fetchSentEmails(accessToken) {
   const listRes = await fetch(
@@ -70,8 +58,6 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const {
-    accessToken,
-    refreshToken,
     mode,          // "learn" (default) | "teach"
     original,      // teach mode: original AI-generated email
     edited,        // teach mode: user's edited version
@@ -122,30 +108,14 @@ Return ONLY a valid JSON object with the same structure as the existing profile,
   }
 
   // ── LEARN MODE: fetch Gmail + analyze ───────────────────────────────────
-  if (!accessToken) return res.status(400).json({ error: "accessToken required" });
+  const token = await googleTokenFor(req, res, "gmail");
+  if (!token) return;
 
-  let token = accessToken;
-  let messages = [];
-
+  let messages;
   try {
     messages = await fetchSentEmails(token);
   } catch (e) {
-    // Try refreshing
-    if (refreshToken) {
-      try {
-        const refreshed = await refreshGmailToken(refreshToken);
-        if (refreshed.access_token) {
-          token = refreshed.access_token;
-          messages = await fetchSentEmails(token);
-        } else {
-          return res.status(401).json({ error: "Token expired and refresh failed — reconnect Gmail" });
-        }
-      } catch (e2) {
-        return res.status(401).json({ error: "Gmail authentication failed: " + e2.message });
-      }
-    } else {
-      return res.status(401).json({ error: "Gmail token invalid — reconnect Gmail" });
-    }
+    return res.status(502).json({ error: "Couldn't read your sent mail: " + e.message });
   }
 
   // Extract and filter to external emails only
@@ -214,10 +184,7 @@ Return ONLY a valid JSON object — no explanation, no markdown, just the JSON:
     profile.emailCount = emails.length;
     profile.teachCount = 0;
 
-    return res.status(200).json({
-      profile,
-      newAccessToken: token !== accessToken ? token : undefined,
-    });
+    return res.status(200).json({ profile });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }

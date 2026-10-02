@@ -2,7 +2,7 @@ import { useState, forwardRef, useImperativeHandle } from 'react';
 import { GONG_RUBRIC, BEHAVIOR_RUBRIC, clientDebrief, quickUpdateExtract } from '../../../utils/dealIntel';
 import { extractIntelligenceFromCall } from '../../../utils/intelligenceEngine';
 import { runPathToCloseUpdate } from '../../../utils/pathToClose';
-import { getValidGmailToken } from '../../../utils/getValidGmailToken';
+import { hasGoogle } from '../../../utils/google';
 import { getVoiceProfile, getActiveVoice } from '../../../constants/voice';
 import { getActiveIntel } from '../../../utils/assay';
 import { buildAccountIntel } from '../../../utils/accountIntel';
@@ -46,23 +46,23 @@ const DebriefWorkspace = forwardRef(function DebriefWorkspace({ acc, business, o
   const topPersona = (acc.personas || [])[0] || null;
 
   const searchGongEmails = async () => {
-    const token = await getValidGmailToken(); if (!token) return;
+    if (!(await hasGoogle('gmail'))) return;
     setGongSearch('loading'); setGongDropOpen(true);
     try {
       const q = `from:gong.io ${acc.name}`;
-      const r = await fetch(`/proxy/gmail/messages?q=${encodeURIComponent(q)}&maxResults=8`, { headers: { 'X-Google-Token': token } });
+      const r = await fetch(`/proxy/gmail/messages?q=${encodeURIComponent(q)}&maxResults=8`);
       const data = await r.json();
       if (!data.messages?.length) { setGongSearch([]); return; }
-      const details = await Promise.all(data.messages.map(m => fetch(`/proxy/gmail/message/${m.id}`, { headers: { 'X-Google-Token': token } }).then(r => r.json())));
+      const details = await Promise.all(data.messages.map(m => fetch(`/proxy/gmail/message/${m.id}`).then(r => r.json())));
       setGongSearch(details.map(msg => ({ id: msg.id, subject: (msg.payload?.headers || []).find(h => h.name === 'Subject')?.value || '(no subject)', date: (msg.payload?.headers || []).find(h => h.name === 'Date')?.value || '' })));
     } catch { setGongSearch([]); }
   };
 
   const importGongEmail = async (msgId) => {
-    const token = await getValidGmailToken(); if (!token) return;
+    if (!(await hasGoogle('gmail'))) return;
     setGongDropOpen(false);
     try {
-      const r = await fetch(`/proxy/gmail/message/${msgId}/body`, { headers: { 'X-Google-Token': token } });
+      const r = await fetch(`/proxy/gmail/message/${msgId}/body`);
       const data = await r.json();
       if (data.text) setDebriefText(data.text);
     } catch {}
@@ -100,11 +100,10 @@ const DebriefWorkspace = forwardRef(function DebriefWorkspace({ acc, business, o
       const parsed = match ? { subject: match[1].trim(), body: match[2].trim() } : { subject: `Following up, ${acc.name}`, body: raw };
       if (parsed.body) {
         setFollowUpEmail(parsed); setFollowUpCopied(false); setFollowUpSkipped(false); setFollowUpDraftUrl(null);
-        const gtoken = await getValidGmailToken();
-        if (gtoken) {
+        if (await hasGoogle('gmail')) {
           try {
             const to = (acc?.personas || [])[0]?.email || '';
-            const r = await fetch('/api/gmail/draft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accessToken: gtoken, to, subject: parsed.subject || '', body: parsed.body || '' }) });
+            const r = await fetch('/api/gmail/draft', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to, subject: parsed.subject || '', body: parsed.body || '' }) });
             if (r.ok) { const j = await r.json(); if (j.draftUrl) setFollowUpDraftUrl(j.draftUrl); }
           } catch {}
         }

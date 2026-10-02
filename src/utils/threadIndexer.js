@@ -1,5 +1,5 @@
 import { MODELS } from '../config/models';
-import { getValidGmailToken } from './getValidGmailToken';
+import { hasGoogle } from './google';
 import { buildAccountEmailQuery, extractDomain as extractAccDomain } from './accountEmailQuery';
 
 const CACHE_KEY = 'prospector_threads_cache';
@@ -32,19 +32,17 @@ function writeCache(cache) {
   try { localStorage.setItem(CACHE_KEY, JSON.stringify(cache)); } catch {}
 }
 
-async function fetchThreadsForAccount(acc, token) {
+async function fetchThreadsForAccount(acc) {
   const { q } = buildAccountEmailQuery(acc, { dateClause: ' newer_than:14d' });
   if (!q) return [];
-  const listRes = await fetch(`/proxy/gmail/messages?q=${encodeURIComponent(q)}&maxResults=5`, {
-    headers: { 'X-Google-Token': token },
-  });
+  const listRes = await fetch(`/proxy/gmail/messages?q=${encodeURIComponent(q)}&maxResults=5`);
   if (!listRes.ok) return [];
   const listData = await listRes.json();
   const ids = (listData.messages || []).map(m => m.id);
   if (!ids.length) return [];
   const bodies = await Promise.all(ids.map(async id => {
     try {
-      const r = await fetch(`/proxy/gmail/message/${id}/body`, { headers: { 'X-Google-Token': token } });
+      const r = await fetch(`/proxy/gmail/message/${id}/body`);
       if (!r.ok) return null;
       const data = await r.json();
       return data.text ? { subject: data.subject || '', from: data.from || '', text: String(data.text).slice(0, 2000) } : null;
@@ -87,7 +85,7 @@ Return JSON only. No preamble.`,
   try { return JSON.parse(match[0]); } catch { return null; }
 }
 
-async function indexOne(acc, token) {
+async function indexOne(acc) {
   // Cache key remains the extracted domain — see Option A note in
   // buildAccountEmailQuery: query scope is now persona-first, but storage
   // stays domain-keyed for compatibility with the 9 downstream readers
@@ -100,7 +98,7 @@ async function indexOne(acc, token) {
   const entry = cache[domain];
   if (entry && Date.now() - (entry.cachedAt || 0) < TTL_MS) return;
 
-  const threads = await fetchThreadsForAccount(acc, token);
+  const threads = await fetchThreadsForAccount(acc);
   if (!threads.length) {
     cache[domain] = { sentiment: 'neutral', signals: [], last_contact_direction: 'none', cachedAt: Date.now() };
     writeCache(cache);
@@ -119,8 +117,7 @@ async function indexOne(acc, token) {
 
 export async function indexAccountThreads(accounts) {
   if (!accounts?.length) return;
-  const token = await getValidGmailToken();
-  if (!token) return;
+  if (!(await hasGoogle('gmail'))) return;
 
   const cache = readCache();
   const candidates = accounts.filter(a => {
@@ -135,7 +132,7 @@ export async function indexAccountThreads(accounts) {
   try {
     for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
       const batch = candidates.slice(i, i + BATCH_SIZE);
-      await Promise.all(batch.map(acc => indexOne(acc, token).catch(() => {})));
+      await Promise.all(batch.map(acc => indexOne(acc).catch(() => {})));
       setStatus({ processed: Math.min(i + batch.length, candidates.length) });
       if (i + BATCH_SIZE < candidates.length) {
         await new Promise(r => setTimeout(r, BATCH_DELAY_MS));

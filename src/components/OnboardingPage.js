@@ -95,9 +95,9 @@ export default function OnboardingPage({ onComplete }) {
     if (persisted.step === 'post_sfdc') {
       const showConfirm = valuesDiffer(sfdcName, persisted.typedName)
                        || valuesDiffer(sfdcEmail, persisted.typedEmail);
-      return showConfirm ? 'sfdc_confirm' : 'gmail';
+      return showConfirm ? 'sfdc_confirm' : 'ready';
     }
-    if (persisted.step === 'gmail') return 'gmail';
+    if (persisted.step === 'ready') return 'ready';
     if (persisted.step === 'sfdc_connect') return 'sfdc_connect';
     return 'identity_form';
   })();
@@ -116,12 +116,8 @@ export default function OnboardingPage({ onComplete }) {
   // Live-poll connection status so the chip strip + success banners stay accurate
   // without depending on which step we're on or when re-renders happen.
   const [sfdcConn, setSfdcConn] = useState(() => !!localStorage.getItem('sfdc_access_token'));
-  const [gmailConn, setGmailConn] = useState(() => !!localStorage.getItem('gmail_access_token'));
   useEffect(() => {
-    const check = () => {
-      setSfdcConn(!!localStorage.getItem('sfdc_access_token'));
-      setGmailConn(!!localStorage.getItem('gmail_access_token'));
-    };
+    const check = () => setSfdcConn(!!localStorage.getItem('sfdc_access_token'));
     const t = setInterval(check, 500);
     return () => clearInterval(t);
   }, []);
@@ -136,8 +132,8 @@ export default function OnboardingPage({ onComplete }) {
         email:   sfdcEmail   || f.email,
         company: sfdcCompany || f.company,
       }));
-      saveState({ step: 'gmail' });
-      setStep('gmail');
+      saveState({ step: 'ready' });
+      setStep('ready');
     }, 2000);
     return () => clearTimeout(t);
   }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -161,14 +157,9 @@ export default function OnboardingPage({ onComplete }) {
     window.location.href = `/api/sfdc/auth?state=${encodeURIComponent(state)}`;
   };
 
-  const goConnectGmail = () => {
-    saveState({ step: 'gmail' });
-    window.location.href = '/api/gmail/auth';
-  };
-
   const skipSfdc = () => {
-    saveState({ step: 'gmail', role: form.role });
-    setStep('gmail');
+    saveState({ step: 'ready', role: form.role });
+    setStep('ready');
   };
 
   const acceptSfdcConfirm = () => {
@@ -178,8 +169,8 @@ export default function OnboardingPage({ onComplete }) {
       email:   sfdcEmail   || f.email,
       company: sfdcCompany || f.company,
     }));
-    saveState({ step: 'gmail' });
-    setStep('gmail');
+    saveState({ step: 'ready' });
+    setStep('ready');
   };
 
   const submitIdentityForm = () => {
@@ -193,8 +184,7 @@ export default function OnboardingPage({ onComplete }) {
     setStep('sfdc_connect');
   };
 
-  const skipGmail = () => advanceFromGmail();
-  const advanceFromGmail = () => {
+  const advanceFromReady = () => {
     if (form.role === 'Manager') {
       saveState({ step: 'manager_team' });
       setStep('manager_team');
@@ -264,7 +254,6 @@ export default function OnboardingPage({ onComplete }) {
             about which OAuths have completed regardless of which step is showing. */}
         <div style={{ display: 'flex', gap: 8 }}>
           <ConnectionChip label="Salesforce" connected={sfdcConn}/>
-          <ConnectionChip label="Gmail"      connected={gmailConn}/>
         </div>
 
         {/* ── Step 1: identity_form — required name + email + role before SFDC ── */}
@@ -341,18 +330,18 @@ export default function OnboardingPage({ onComplete }) {
               Auto-continuing in 2s…
             </p>
             <div style={{ display: 'flex', gap: 10 }}>
-              <GhostLink onClick={() => { saveState({ step: 'gmail' }); setStep('gmail'); }}>Keep what I typed</GhostLink>
+              <GhostLink onClick={() => { saveState({ step: 'ready' }); setStep('ready'); }}>Keep what I typed</GhostLink>
               <div style={{ flex: 1 }}/>
               <NeonBtn onClick={acceptSfdcConfirm} color={NEON} full={false}>USE SALESFORCE →</NeonBtn>
             </div>
           </Card>
         )}
 
-        {/* ── Step 3: gmail ── */}
-        {step === 'gmail' && (
+        {/* ── Step 3: ready ── */}
+        {step === 'ready' && (
           <Card accent={CYN}>
             <p style={{ ...mono, margin: '0 0 6px', fontSize: 10, color: CYN, letterSpacing: '0.12em', textTransform: 'uppercase' }}>Step 3 of {form.role === 'Manager' ? 4 : 3}</p>
-            <h2 style={{ ...mono, margin: '0 0 10px', fontSize: 18, fontWeight: 700, color: '#cfe8d4' }}>ONE MORE CONNECTION</h2>
+            <h2 style={{ ...mono, margin: '0 0 10px', fontSize: 18, fontWeight: 700, color: '#cfe8d4' }}>YOU'RE SET</h2>
 
             {/* SFDC success acknowledgment — only when arriving here after a fresh SFDC connect */}
             {sfdcConn && persisted.step === 'post_sfdc' && (
@@ -364,31 +353,9 @@ export default function OnboardingPage({ onComplete }) {
             )}
 
             <p style={{ ...mono, margin: '0 0 20px', fontSize: 12, color: '#8a9a8a', lineHeight: 1.7 }}>
-              Link your Google account to enable:
+              Gmail, Google Calendar and Google Slides each ask for access the first time you use them.
             </p>
-            <ul style={{ ...mono, listStyle: 'none', padding: 0, margin: '0 0 24px', fontSize: 12, color: '#8a9a8a', lineHeight: 2 }}>
-              <li>· Morning Brief</li>
-              <li>· Calendar Intelligence</li>
-              <li>· Email context for Scout</li>
-            </ul>
-
-            {gmailConn ? (
-              <>
-                <div style={{ padding: '10px 14px', background: `${NEON}10`, border: `1px solid ${NEON}55`, borderRadius: 6, textAlign: 'center', marginBottom: 14 }}>
-                  <p style={{ ...mono, margin: 0, fontSize: 12, color: NEON, letterSpacing: '0.06em', fontWeight: 600, textShadow: `0 0 6px ${NEON}66` }}>
-                    ✓ GOOGLE CONNECTED
-                  </p>
-                </div>
-                <NeonBtn onClick={advanceFromGmail} color={NEON}>CONTINUE →</NeonBtn>
-              </>
-            ) : (
-              <>
-                <NeonBtn onClick={goConnectGmail} color={CYN}>📧 CONNECT GOOGLE →</NeonBtn>
-                <div style={{ textAlign: 'center', marginTop: 14 }}>
-                  <GhostLink onClick={skipGmail}>Skip for later</GhostLink>
-                </div>
-              </>
-            )}
+            <NeonBtn onClick={advanceFromReady} color={NEON}>CONTINUE →</NeonBtn>
           </Card>
         )}
 
@@ -400,7 +367,7 @@ export default function OnboardingPage({ onComplete }) {
             <p style={{ ...mono, margin: '0 0 16px', fontSize: 12, color: '#8a9a8a', lineHeight: 1.6 }}>Add each AE on your team. You can always edit this later.</p>
             <AESetupPanel managerConfig={managerCfg} onSave={setManagerCfg} compact/>
             <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
-              <GhostLink onClick={() => setStep('gmail')}>← Back</GhostLink>
+              <GhostLink onClick={() => setStep('ready')}>← Back</GhostLink>
               <div style={{ flex: 1 }}/>
               <NeonBtn onClick={finish} color={NEON} full={false}>ENTER PROSPECTOR →</NeonBtn>
             </div>

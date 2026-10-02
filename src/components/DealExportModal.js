@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { C, mono } from '../constants/colors';
 import { MEDPICC_FIELDS } from '../utils/dealIntel';
 import { computePricing, getPfDiscounted, getEffectiveRate } from '../utils/pricing';
 import { ROI_KEY } from '../utils/storageKeys';
 import { productMonthlyCost, monthUsersAt } from '../utils/pricingMath';
+import { connectGoogle, useGoogleStatus } from '../utils/google';
 
 // ── Formatting helpers ────────────────────────────────────────────────────────
 const fmt    = n => n == null ? "—" : "$" + Math.round(n).toLocaleString();
@@ -604,21 +605,13 @@ export default function DealExportModal({ accId, acc, onClose }) {
   const [copied, setCopied] = useState(false);
   const [slidesLoading, setSlidesLoading] = useState(false);
   const [slidesError, setSlidesError] = useState(null);
-  const [slidesNeedsReauth, setSlidesNeedsReauth] = useState(false);
+  const google = useGoogleStatus();
+  const slidesNeedsGrant = !!google && !google.features.includes("slides");
   const [selectedFmtId, setSelectedFmtId] = useState(null);
 
   const pFile = (() => { try { return JSON.parse(localStorage.getItem("prospector_pricing_files") || "{}")[accId] || null; } catch { return null; } })();
   const rFile = (() => { try { return JSON.parse(localStorage.getItem(ROI_KEY) || "{}")[accId] || null; } catch { return null; } })();
   const savedFormats = (() => { try { return JSON.parse(localStorage.getItem("prospector_export_format") || "{}").savedFormats || []; } catch { return []; } })();
-
-  useEffect(() => {
-    if (tab !== "slides") return;
-    const token = localStorage.getItem("gmail_access_token");
-    if (!token) return;
-    fetch("https://slides.googleapis.com/v1/presentations/scope_check_placeholder", {
-      headers: { Authorization: `Bearer ${token}` }
-    }).then(r => { if (r.status === 403) setSlidesNeedsReauth(true); }).catch(() => {});
-  }, [tab]);
 
   const activeUser = (() => { try { return JSON.parse(localStorage.getItem("prospector_user") || "null"); } catch { return null; } })();
   const opts = { format: pricingFormat, acc, rFile, activeUser };
@@ -667,15 +660,13 @@ export default function DealExportModal({ accId, acc, onClose }) {
   };
 
   const handleSlides = async () => {
-    const token = localStorage.getItem("gmail_access_token");
-    if (!token) { setSlidesError("No Google access token — connect Google first."); return; }
     setSlidesLoading(true);
     setSlidesError(null);
     try {
       const res = await fetch("/api/slides/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ components: assembleSlideData(), accountName: acc.name, accessToken: token }),
+        body: JSON.stringify({ components: assembleSlideData(), accountName: acc.name }),
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "Slides creation failed");
@@ -736,10 +727,10 @@ export default function DealExportModal({ accId, acc, onClose }) {
           </div>
 
           {/* Slides reauth notice */}
-          {tab === "slides" && slidesNeedsReauth && (
+          {tab === "slides" && slidesNeedsGrant && (
             <div style={{ ...mono, fontSize: 11, color: C.orange, background: `${C.orange}12`, border: `1px solid ${C.orange}33`, borderRadius: 5, padding: "8px 12px", marginBottom: 12 }}>
-              Reconnect Google to enable Slides export —{" "}
-              <a href="/api/gmail/auth" style={{ color: C.orange, textDecoration: "underline" }}>Reconnect →</a>
+              Slides export needs access to Google Slides —{" "}
+              <button onClick={() => connectGoogle("slides")} style={{ ...mono, fontSize: 11, color: C.orange, background: "none", border: "none", padding: 0, cursor: "pointer", textDecoration: "underline" }}>Connect Google Slides →</button>
             </div>
           )}
 

@@ -26,7 +26,7 @@ import { trackStat, trackDailyStat } from './utils/stats';
 import { indexAccountThreads } from './utils/threadIndexer';
 import { fetchRecentThreads, generateBrief } from './components/DailyDigest';
 import { loadCachedWeekAhead, buildWeekAhead } from './utils/weekAhead';
-import { getValidGmailToken } from './utils/getValidGmailToken';
+import { hasGoogle } from './utils/google';
 import { saveToIdb, restoreFromIdb } from './utils/idb';
 import { dedupeAccounts } from './utils/normAccount';
 import { resolveUserId } from './utils/userIdentity';
@@ -66,8 +66,9 @@ const IdeasPage             = React.lazy(() => import('./components/IdeasPage'))
 const AdminPage             = React.lazy(() => import('./components/AdminPage'));
 const LedgerPage            = React.lazy(() => import('./components/LedgerPage'));
 
-// Sync Gmail OAuth tokens synchronously before useState initializers run
-try{const p=new URLSearchParams(window.location.hash.slice(1)||window.location.search),gt=p.get("gmail_access_token");if(gt){localStorage.setItem("gmail_access_token",gt);const r=p.get("gmail_refresh_token");if(r)localStorage.setItem("gmail_refresh_token",r);const e=p.get("gmail_token_expiry");if(e)localStorage.setItem("gmail_token_expiry",e);const m=p.get("gmail_email");if(m)localStorage.setItem("gmail_email",m);window.history.replaceState({},"","/");}}catch{}
+// Google tokens now live server-side (src/utils/google.js). Older builds kept
+// a refresh token here in the browser - don't leave it lying around.
+try{["gmail_access_token","gmail_refresh_token","gmail_token_expiry","gmail_email","prospector_gmail_auth_error"].forEach(k=>localStorage.removeItem(k));}catch{}
 
 // Live BDR list — updated at runtime via teamUsers state, but AccountCard needs a static fallback
 let BDR_LIST = SEED_TEAM_USERS.filter(u=>u.role==="BDR");
@@ -273,25 +274,16 @@ export default function App() {
     }
   },[]);
 
-  // Gmail OAuth callback — pick up tokens from URL after redirect
+  // Google connect result (api/google/callback.js) arrives as a query param.
   useEffect(()=>{
-    // OAuth success params arrive in the fragment (server.js callbacks); errors in the query.
-    const params=new URLSearchParams(window.location.hash.slice(1)||window.location.search);
-    const token=params.get("gmail_access_token");
-    const refresh=params.get("gmail_refresh_token");
-    const expiry=params.get("gmail_token_expiry");
-    const email=params.get("gmail_email");
-    const gmailError=params.get("gmail_error");
-    if(token){
-      localStorage.setItem("gmail_access_token",token);
-      if(refresh)localStorage.setItem("gmail_refresh_token",refresh);
-      if(expiry)localStorage.setItem("gmail_token_expiry",expiry);
-      if(email)localStorage.setItem("gmail_email",email);
-      window.history.replaceState({},"","/");
-    }else if(gmailError){
-      localStorage.setItem("prospector_gmail_auth_error", decodeURIComponent(gmailError));
-      window.history.replaceState({},"","/");
-    }
+    const url=new URL(window.location.href);
+    const err=url.searchParams.get("google_error");
+    if(!err&&!url.searchParams.has("google_connected"))return;
+    // prospector_google_auth_error: last failed Google connect, shown by the calendar widget until the next success.
+    if(err)localStorage.setItem("prospector_google_auth_error",err);
+    else localStorage.removeItem("prospector_google_auth_error");
+    url.searchParams.delete("google_error");url.searchParams.delete("google_connected");
+    window.history.replaceState({},"",url.pathname+url.search+url.hash);
   },[]);
 
   const [claimJumper,setClaimJumper]=useState(()=>{try{const s=localStorage.getItem("prospector_claimjumper");if(!s)return [];const parsed=JSON.parse(s);const clean=parsed.filter(a=>!a.id?.toString().startsWith("cj"));if(clean.length!==parsed.length)localStorage.setItem("prospector_claimjumper",JSON.stringify(clean));return clean;}catch{return [];}});
@@ -1090,15 +1082,14 @@ export default function App() {
     if (approvalStatus !== 'approved' || !accsLoaded) return;
     briefEagerRan.current = true;
     (async () => {
-      const token = await getValidGmailToken();
-      if (!token) return;
+      if (!(await hasGoogle('gmail'))) return;
       const d = new Date();
       const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       // Brief — only if no valid today cache
       let cachedBrief = null;
       try { cachedBrief = JSON.parse(localStorage.getItem(`prospector_morning_brief_${ds}`) || 'null'); } catch {}
       if (!cachedBrief) {
-        fetchRecentThreads(token)
+        fetchRecentThreads()
           .then(msgs => (msgs && msgs.length) ? generateBrief(msgs, accounts, tasks) : null)
           .then(result => {
             if (!result) return;

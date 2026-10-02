@@ -3,6 +3,7 @@ import { mono } from '../constants/colors';
 import { T } from '../constants/tokens';
 import { syncComplianceFromSFDC } from '../utils/sfdcSync';
 import { STANDARD_STEPS, PARTNER_STEPS, STEP_STATUSES, getCompliance, saveCompliance } from '../utils/storage';
+import { hasGoogle } from '../utils/google';
 
 // HUD alias — tokens with this file's local labels
 const HUD = {
@@ -144,17 +145,13 @@ export function DealComplianceTracker({ accId, accName, acc, tasks=[], onUpdateT
     const contactFirst = (acc?.personas || [])[0]?.name?.split(' ')[0] || '';
     const subject = `Re: ${accName} — ${step.label} Update`;
     const body = `Hi${contactFirst ? ` ${contactFirst}` : ''},\n\nJust checking in on the status of your ${step.label} — happy to help if there are any blockers on your end. Let me know!\n\nBest,\nJack`;
-    const token = localStorage.getItem('gmail_access_token');
     let drafted = false;
-    if (token) {
+    if (await hasGoogle('gmail')) {
       try {
-        const raw = btoa(unescape(encodeURIComponent(
-          `Subject: ${subject}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${body}`
-        ))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-        const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/drafts', {
+        const r = await fetch('/api/gmail/draft', {
           method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ message: { raw } }),
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subject, body }),
         });
         if (r.ok) drafted = true;
       } catch {}

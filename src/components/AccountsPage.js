@@ -13,7 +13,7 @@ import { loadManagerConfig } from './ManagerCommandCenter';
 import { SignalLegendButton } from './SignalLegend';
 import ActionItemsTab from './ActionItemsTab';
 import ConnectionDot from './ConnectionDot';
-import { getValidGmailToken } from '../utils/getValidGmailToken';
+import { googleStatus, connectGoogle, disconnectGoogle } from '../utils/google';
 import { T } from '../constants/tokens';
 
 // HUD aliases — backed by tokens
@@ -95,25 +95,13 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
   const [sfdcBannerDismissed, setSfdcBannerDismissed] = useState(false);
   const [showSfdcModal, setShowSfdcModal] = useState(false);
   const [sfdcConnected, setSfdcConnected] = useState(() => !!localStorage.getItem('sfdc_access_token'));
-  const [gmailStatus, setGmailStatus] = useState(() => {
-    const tok = localStorage.getItem('gmail_access_token');
-    if (!tok) return 'disconnected';
-    const exp = Number(localStorage.getItem('gmail_token_expiry') || 0);
-    if (exp && exp - Date.now() < 30 * 60 * 1000) return 'expiring';
-    return 'connected';
-  });
-  // Silent boot check — if token gone or refresh fails, flip to red
+  const [google, setGoogle] = useState(null);
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const tok = await getValidGmailToken();
-      if (cancelled) return;
-      if (!tok) { setGmailStatus(localStorage.getItem('gmail_refresh_token') ? 'expiring' : 'disconnected'); return; }
-      const exp = Number(localStorage.getItem('gmail_token_expiry') || 0);
-      setGmailStatus(exp && exp - Date.now() < 30 * 60 * 1000 ? 'expiring' : 'connected');
-    })();
+    googleStatus().then(s => { if (!cancelled) setGoogle(s); });
     return () => { cancelled = true; };
   }, []);
+  const gmailStatus = google?.features.includes('gmail') ? 'connected' : 'disconnected';
   // Flush prospector_sfdc_queue: drain unsynced entries through /api/sfdc/update-opp
   useEffect(() => {
     if (!sfdcConnected) return;
@@ -606,16 +594,14 @@ function AccountsPage({ accounts, onSave, onAddAccount, onRemoveAccount, perms={
                 status={gmailStatus}
                 tooltip={
                   gmailStatus === 'connected'
-                    ? `Gmail connected · ${localStorage.getItem('gmail_email') || ''}`
-                    : gmailStatus === 'expiring'
-                    ? 'Gmail token expiring · Click to reconnect'
+                    ? `Gmail connected · ${google.email || ''}`
                     : 'Gmail disconnected · Click to connect'
                 }
-                detail={localStorage.getItem('gmail_email') || ''}
-                onClick={() => { window.location.href = '/api/gmail/auth'; }}
-                onDisconnect={() => {
-                  ['gmail_access_token','gmail_refresh_token','gmail_token_expiry','gmail_email'].forEach(k => localStorage.removeItem(k));
-                  setGmailStatus('disconnected');
+                detail={google?.email || ''}
+                onClick={() => connectGoogle('gmail')}
+                onDisconnect={async () => {
+                  await disconnectGoogle();
+                  setGoogle({ email: null, features: [] });
                 }}
               />
               {sfdcConnected && onSyncSfdc && (
