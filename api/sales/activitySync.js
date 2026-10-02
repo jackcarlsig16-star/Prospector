@@ -178,9 +178,8 @@ export async function syncActivity({ ctx, supabase, businessId }) {
           title: c.title || null,
           company: c.organization_name || null,
           linkedin_url: c.linkedin_url || null,
-          // TODO(prospector-basic-auth-v1): store the phone (c.sanitized_phone,
-          // else c.phone_numbers[0]) once 3a is live - Jack, 2026-10-01: no
-          // phone numbers while the API is unauthenticated.
+          // No phone, permanently (Jack, 2026-10-01): Apollo phone reveals cost
+          // credits. Don't store it and don't add a reveal/enrich endpoint.
           email_unsubscribed: !!c.email_unsubscribed || m.reply_class === 'unsubscribe' || !!(prev && prev.snapshot.email_unsubscribed),
           updated_at: new Date().toISOString(),
         },

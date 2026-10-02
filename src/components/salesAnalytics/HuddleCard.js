@@ -204,7 +204,6 @@ export default function HuddleCard({ businessId, prospect: p, collateral, today,
       <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
         <a href={p.apollo_url} target="_blank" rel="noopener noreferrer" style={linkStyle}>Open in Apollo ↗</a>
         {p.linkedin_url && <a href={p.linkedin_url} target="_blank" rel="noopener noreferrer" style={linkStyle}>LinkedIn ↗</a>}
-        {p.phone && <span style={{ fontSize: 12, color: SA.muted }}>{p.phone}</span>}
         {error && <span style={{ fontSize: 12, color: SA.bad, background: SA_BAD_BG, borderRadius: 6, padding: '2px 8px' }}>{error}</span>}
       </div>
     </div>
