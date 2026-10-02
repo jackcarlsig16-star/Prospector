@@ -140,7 +140,7 @@ module.exports = function (app) {
 
   // ── Gmail search proxy ───────────────────────────────────────────────────
   app.get("/proxy/gmail/messages", async (req, res) => {
-    const token = (req.headers.authorization || "").replace("Bearer ", "");
+    const token = req.headers["x-google-token"] || "";
     if (!token) return res.status(401).json({ error: "No token" });
     const { q, maxResults } = req.query;
     const url = `https://www.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(q||"")}&maxResults=${maxResults||8}`;
@@ -151,7 +151,7 @@ module.exports = function (app) {
   });
 
   app.get("/proxy/gmail/message/:id", async (req, res) => {
-    const token = (req.headers.authorization || "").replace("Bearer ", "");
+    const token = req.headers["x-google-token"] || "";
     if (!token) return res.status(401).json({ error: "No token" });
     const url = `https://www.googleapis.com/gmail/v1/users/me/messages/${req.params.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date`;
     try {
@@ -161,7 +161,7 @@ module.exports = function (app) {
   });
 
   app.get("/proxy/gmail/message/:id/body", async (req, res) => {
-    const token = (req.headers.authorization || "").replace("Bearer ", "");
+    const token = req.headers["x-google-token"] || "";
     if (!token) return res.status(401).json({ error: "No token" });
     try {
       const r = await fetch(
@@ -323,7 +323,7 @@ module.exports = function (app) {
 
   // ── Google Calendar proxy ─────────────────────────────────────────────────
   app.get("/proxy/gcal/events", async (req, res) => {
-    const token = (req.headers.authorization || "").replace("Bearer ", "");
+    const token = req.headers["x-google-token"] || "";
     if (!token) return res.status(401).json({ error: "No token" });
     const { timeMin, timeMax } = req.query;
     const url = `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${encodeURIComponent(timeMin)}&timeMax=${encodeURIComponent(timeMax)}&singleEvents=true&orderBy=startTime&maxResults=50`;

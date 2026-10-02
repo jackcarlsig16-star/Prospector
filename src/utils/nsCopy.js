@@ -7,7 +7,7 @@ export async function fetchSentEmailsForAccount(accName) {
   try {
     const q = encodeURIComponent(`in:sent "${accName}" newer_than:30d`);
     const listRes = await fetch(`/proxy/gmail/messages?q=${q}&maxResults=5`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { 'X-Google-Token': token },
     });
     if (!listRes.ok) return [];
     const listData = await listRes.json();
@@ -15,7 +15,7 @@ export async function fetchSentEmailsForAccount(accName) {
     const msgs = await Promise.all(
       listData.messages.slice(0, 3).map(async ({ id }) => {
         const r = await fetch(`/proxy/gmail/message/${id}`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { 'X-Google-Token': token },
         });
         return r.json();
       })

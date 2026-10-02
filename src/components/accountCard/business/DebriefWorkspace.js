@@ -50,10 +50,10 @@ const DebriefWorkspace = forwardRef(function DebriefWorkspace({ acc, business, o
     setGongSearch('loading'); setGongDropOpen(true);
     try {
       const q = `from:gong.io ${acc.name}`;
-      const r = await fetch(`/proxy/gmail/messages?q=${encodeURIComponent(q)}&maxResults=8`, { headers: { Authorization: `Bearer ${token}` } });
+      const r = await fetch(`/proxy/gmail/messages?q=${encodeURIComponent(q)}&maxResults=8`, { headers: { 'X-Google-Token': token } });
       const data = await r.json();
       if (!data.messages?.length) { setGongSearch([]); return; }
-      const details = await Promise.all(data.messages.map(m => fetch(`/proxy/gmail/message/${m.id}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json())));
+      const details = await Promise.all(data.messages.map(m => fetch(`/proxy/gmail/message/${m.id}`, { headers: { 'X-Google-Token': token } }).then(r => r.json())));
       setGongSearch(details.map(msg => ({ id: msg.id, subject: (msg.payload?.headers || []).find(h => h.name === 'Subject')?.value || '(no subject)', date: (msg.payload?.headers || []).find(h => h.name === 'Date')?.value || '' })));
     } catch { setGongSearch([]); }
   };
@@ -62,7 +62,7 @@ const DebriefWorkspace = forwardRef(function DebriefWorkspace({ acc, business, o
     const token = await getValidGmailToken(); if (!token) return;
     setGongDropOpen(false);
     try {
-      const r = await fetch(`/proxy/gmail/message/${msgId}/body`, { headers: { Authorization: `Bearer ${token}` } });
+      const r = await fetch(`/proxy/gmail/message/${msgId}/body`, { headers: { 'X-Google-Token': token } });
       const data = await r.json();
       if (data.text) setDebriefText(data.text);
     } catch {}

@@ -36,7 +36,7 @@ async function fetchThreadsForAccount(acc, token) {
   const { q } = buildAccountEmailQuery(acc, { dateClause: ' newer_than:14d' });
   if (!q) return [];
   const listRes = await fetch(`/proxy/gmail/messages?q=${encodeURIComponent(q)}&maxResults=5`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { 'X-Google-Token': token },
   });
   if (!listRes.ok) return [];
   const listData = await listRes.json();
@@ -44,7 +44,7 @@ async function fetchThreadsForAccount(acc, token) {
   if (!ids.length) return [];
   const bodies = await Promise.all(ids.map(async id => {
     try {
-      const r = await fetch(`/proxy/gmail/message/${id}/body`, { headers: { Authorization: `Bearer ${token}` } });
+      const r = await fetch(`/proxy/gmail/message/${id}/body`, { headers: { 'X-Google-Token': token } });
       if (!r.ok) return null;
       const data = await r.json();
       return data.text ? { subject: data.subject || '', from: data.from || '', text: String(data.text).slice(0, 2000) } : null;

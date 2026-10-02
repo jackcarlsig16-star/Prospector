@@ -113,7 +113,7 @@ function SalesCalendarWidget({ accounts=[], onNav, authError=null, tasks=[], onC
     if (!token) return "notoken";
     try {
       const res = await fetch(`/proxy/gcal/events?timeMin=${encodeURIComponent(tMin)}&timeMax=${encodeURIComponent(tMax)}`, {
-        headers: { "Authorization": `Bearer ${token}` }
+        headers: { 'X-Google-Token': token }
       });
       const data = await res.json();
       if (data.error) {

@@ -82,14 +82,14 @@ function SectionToggle({ open, onToggle, label, badges=[] }) {
 export async function fetchRecentThreads(token) {
   const listRes = await fetch(
     `/proxy/gmail/messages?q=${encodeURIComponent("newer_than:2d in:inbox")}&maxResults=25`,
-    { headers: { Authorization: `Bearer ${token}` } }
+    { headers: { 'X-Google-Token': token } }
   );
   if (listRes.status === 401) { localStorage.removeItem("gmail_access_token"); return null; }
   const listData = await listRes.json();
   if (!listData.messages?.length) return [];
   const msgs = await Promise.all(
     listData.messages.slice(0, 20).map(async ({ id }) => {
-      const r = await fetch(`/proxy/gmail/message/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+      const r = await fetch(`/proxy/gmail/message/${id}`, { headers: { 'X-Google-Token': token } });
       return r.json();
     })
   );
@@ -279,7 +279,7 @@ export default function DailyDigest({ accounts=[], tasks=[], firstName="AE", onN
       const dayEnd   = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59).toISOString();
       const res = await fetch(
         `/proxy/gcal/events?timeMin=${encodeURIComponent(dayStart)}&timeMax=${encodeURIComponent(dayEnd)}`,
-        { headers: { "Authorization": `Bearer ${token}` } }
+        { headers: { 'X-Google-Token': token } }
       );
       const data = await res.json();
       if (res.status === 401 || data.error?.status === 401 || data.error?.code === 401) {

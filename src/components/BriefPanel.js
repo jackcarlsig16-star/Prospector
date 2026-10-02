@@ -218,7 +218,7 @@ export default function BriefPanel({
       const { monday, friday } = getWeekRange();
       try {
         const res = await fetch(`/proxy/gcal/events?timeMin=${encodeURIComponent(monday.toISOString())}&timeMax=${encodeURIComponent(friday.toISOString())}`, {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { 'X-Google-Token': token },
         });
         const data = await res.json();
         if (cancelled) return;

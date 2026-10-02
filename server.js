@@ -103,9 +103,12 @@ app.get('/proxy/jina', async (req, res) => {
   }
 });
 
+// The browser sends the user's Google token as X-Google-Token, never as
+// Authorization: that header carries the Basic Auth credentials, and replacing
+// it re-triggers the browser's sign-in prompt on every call.
 // ── Gmail search proxies ──────────────────────────────────────────────────────
 app.get('/proxy/gmail/messages', async (req, res) => {
-  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  const token = req.headers['x-google-token'] || '';
   if (!token) return res.status(401).json({ error: 'No token' });
   const { q, maxResults } = req.query;
   try {
@@ -118,7 +121,7 @@ app.get('/proxy/gmail/messages', async (req, res) => {
 });
 
 app.get('/proxy/gmail/message/:id', async (req, res) => {
-  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  const token = req.headers['x-google-token'] || '';
   if (!token) return res.status(401).json({ error: 'No token' });
   try {
     const r = await fetch(
@@ -130,7 +133,7 @@ app.get('/proxy/gmail/message/:id', async (req, res) => {
 });
 
 app.get('/proxy/gmail/message/:id/body', async (req, res) => {
-  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  const token = req.headers['x-google-token'] || '';
   if (!token) return res.status(401).json({ error: 'No token' });
   try {
     const r = await fetch(
@@ -155,7 +158,7 @@ app.get('/proxy/gmail/message/:id/body', async (req, res) => {
 
 // ── Google Calendar proxy ─────────────────────────────────────────────────────
 app.get('/proxy/gcal/events', async (req, res) => {
-  const token = (req.headers.authorization || '').replace('Bearer ', '');
+  const token = req.headers['x-google-token'] || '';
   if (!token) return res.status(401).json({ error: 'No token' });
   const { timeMin, timeMax } = req.query;
   try {

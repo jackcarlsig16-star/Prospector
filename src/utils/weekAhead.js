@@ -83,7 +83,7 @@ function isExternalAttendee(a) {
 async function fetchCalendarEvents(token) {
   const { monday, friday } = getWeekRange();
   const url = `/proxy/gcal/events?timeMin=${encodeURIComponent(monday.toISOString())}&timeMax=${encodeURIComponent(friday.toISOString())}`;
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  const res = await fetch(url, { headers: { 'X-Google-Token': token } });
   if (!res.ok) return [];
   const data = await res.json();
   if (!Array.isArray(data.items)) return [];
@@ -117,7 +117,7 @@ async function fetchSentThreadsForDomain(domain, token) {
   const { q: rawQ } = buildAccountEmailQuery({ web: domain }, { dateClause: ' newer_than:14d', sentOnly: true });
   if (!rawQ) return [];
   const listRes = await fetch(`/proxy/gmail/messages?q=${encodeURIComponent(rawQ)}&maxResults=3`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { 'X-Google-Token': token },
   });
   if (!listRes.ok) return [];
   const listData = await listRes.json();
@@ -125,7 +125,7 @@ async function fetchSentThreadsForDomain(domain, token) {
   if (!ids.length) return [];
   const bodies = await Promise.all(ids.map(async id => {
     try {
-      const r = await fetch(`/proxy/gmail/message/${id}/body`, { headers: { Authorization: `Bearer ${token}` } });
+      const r = await fetch(`/proxy/gmail/message/${id}/body`, { headers: { 'X-Google-Token': token } });
       if (!r.ok) return null;
       const data = await r.json();
       return data.text ? { subject: data.subject || '', text: String(data.text).slice(0, MAX_BODY_CHARS) } : null;

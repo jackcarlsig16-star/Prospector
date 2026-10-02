@@ -213,13 +213,13 @@ export default function CallPrepModal({ acc, ev, tasks = [], onUpdate, onClose }
       if (!token) return '';
       const msgsRes = await fetch(
         `/proxy/gmail/messages?q=${encodeURIComponent(q)}&maxResults=5`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { 'X-Google-Token': token } }
       );
       const msgsData = await msgsRes.json();
       if (!msgsData.messages?.length) return '';
       const details = await Promise.all(
         msgsData.messages.slice(0, 5).map(m =>
-          fetch(`/proxy/gmail/message/${m.id}`, { headers: { Authorization: `Bearer ${token}` } }).then(r => r.json())
+          fetch(`/proxy/gmail/message/${m.id}`, { headers: { 'X-Google-Token': token } }).then(r => r.json())
         )
       );
       return details.map(d => {
