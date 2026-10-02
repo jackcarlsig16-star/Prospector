@@ -74,7 +74,8 @@ export async function huddleRoute(req, res) {
   const out = [];
   for (const p of prospects.data || []) {
     const msgs = messagesByContact.get(p.contact_id) || [];
-    const scored = scoreProspect(msgs, eventsByContact.get(p.contact_id) || []);
+    const contactEvents = eventsByContact.get(p.contact_id) || [];
+    const scored = scoreProspect(msgs, contactEvents);
     const opp = p.opportunity_id ? oppById.get(p.opportunity_id) : null;
 
     if (msgs.some(m => m.bounced)) { excluded.bounced++; continue; }
@@ -100,7 +101,7 @@ export async function huddleRoute(req, res) {
       why: scored.why,
       badges: scored.badges,
       last_signal_at: scored.last_signal_at,
-      next_best_action: nextBestAction(msgs, scored),
+      next_best_action: nextBestAction(msgs, contactEvents, scored),
     });
   }
   out.sort((a, b) => b.score - a.score);
