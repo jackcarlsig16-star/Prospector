@@ -132,10 +132,13 @@ Return exactly this shape:
   "audience_read": "1-2 sentences on who their audience likely is, based on the bio",
   "fit_score": "integer 0-100 - how strong a fit this influencer is for THIS business specifically, given its profile below. 0 = no discernible fit, 100 = ideal fit. Be honest and differentiated - most real accounts should land well short of either extreme",
   "fit_signals": "array of 2-4 objects, each { \\"axis\\": short label, \\"note\\": one grounded sentence }. Choose whichever axes actually matter for THIS business and THIS influencer - e.g. audience overlap, geography, brand tone, category adjacency, price point - do not use a fixed template of axes across every assessment. Ground every note in specifics from the bio and business profile, not generic reasoning",
-  "fit_rationale": "one sentence, evidence-based, stating the single biggest reason for the fit_score - reference something concrete from the bio and/or the business profile, not a generic statement"
+  "fit_rationale": "one sentence, evidence-based, stating the single biggest reason for the fit_score - reference something concrete from the bio and/or the business profile, not a generic statement",
+  "detected_company": "the company or brand this creator is affiliated with, ONLY if it is genuinely named in the SCRAPED PAGE CONTENT section of the input. Null whenever there is no scraped content, or the content does not plainly name a company/brand. Never infer this from the bio, the niche, or your own knowledge of the person - if the scraped page doesn't state it, return null"
 }
 
-Base every field on the bio text and business profile provided - do not invent facts either doesn't support. If the bio is too thin to say something meaningful, say so plainly in that field rather than padding. If the business profile below is thin or empty, say so in fit_rationale rather than guessing - a low-information fit_score should read as uncertain, not confidently wrong.`;
+Base every field on the bio text and business profile provided - do not invent facts either doesn't support. If the bio is too thin to say something meaningful, say so plainly in that field rather than padding. If the business profile below is thin or empty, say so in fit_rationale rather than guessing - a low-information fit_score should read as uncertain, not confidently wrong.
+
+detected_company is a pure extraction field, not an assessment - it must never influence fit_score or any other field, and null is the correct answer whenever the scraped page doesn't plainly name a company.`;
 
 // assay-engine-generalization-v1 — distills a business profile into the
 // compact scoring criteria clientAssay() reads on every call. Generated
@@ -338,6 +341,37 @@ export function buildBusinessFitContext(profile) {
   return parts.length ? parts.join('\n') : '(no business profile available yet)';
 }
 
+// influencer-scrape-flag-v1 - social hosts repeat instagram_url's failure mode
+// (login-walled, confirmed unfetchable against 3 real handles). Doc hosts are
+// excluded for a different reason: a shared doc names no affiliation, so
+// scraping one to infer a company yields noise. What's worth fetching in a
+// creator bio is the linktree/personal site.
+const SCRAPE_EXCLUDED_HOSTS = [
+  'instagram.com', 'facebook.com', 'tiktok.com', 'twitter.com', 'x.com',
+  'docs.google.com', 'drive.google.com', 'notion.so', 'dropbox.com',
+];
+const SCRAPED_EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
+
+// The scheme is optional because Instagram bios essentially never render one -
+// measured against every non-empty bio_snapshot in the table, requiring
+// http(s):// matched 0 of them while this matches all of them. The lookbehind
+// keeps the domain half of an email address (ward43.org in
+// yourvoice@ward43.org) from being mistaken for a link, and the letters-only
+// TLD keeps version numbers and sentence punctuation out.
+const BIO_URL_PATTERN = /(?<![@\w.])(?:https?:\/\/)?(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?:\/[^\s<>"')\]]*)?/gi;
+
+function firstScrapableUrl(text) {
+  for (const raw of (text || '').match(BIO_URL_PATTERN) || []) {
+    const trimmed = raw.replace(/[.,;:!?)\]]+$/, '');
+    const normalized = trimmed.startsWith('http') ? trimmed : `https://${trimmed}`;
+    let host;
+    try { host = new URL(normalized).hostname.toLowerCase().replace(/^www\./, ''); } catch { continue; }
+    if (SCRAPE_EXCLUDED_HOSTS.some(d => host === d || host.endsWith(`.${d}`))) continue;
+    return normalized;
+  }
+  return null;
+}
+
 // Synthesizes from a human-pasted bio, not a fetched one - Instagram profile
 // fetching (even via Jina Reader with a real API key) is confirmed blocked
 // by Instagram's own login wall, tested live with three real handles
@@ -357,6 +391,24 @@ export async function assessInfluencerAccount(supabase, accountId, bioText, foll
       businessContext = buildBusinessFitContext(profile);
     }
 
+    // Most bios have no usable link and plenty of linked pages are dead, so a
+    // miss here is the normal case, not an exception - isolated from the outer
+    // catch so it can never flip a good assessment to assessment_status 'error'.
+    const scrapedUrl = firstScrapableUrl(bioText);
+    let scrapedContent = null;
+    // A creator who publishes an email in their own bio is inviting contact, so
+    // it outranks one dug out of a linked page - and it costs no fetch at all.
+    let scrapedEmail = bioText.match(SCRAPED_EMAIL_PATTERN)?.[0] || null;
+    if (scrapedUrl) {
+      try {
+        const { content } = await fetchSiteContent(scrapedUrl);
+        if (content) {
+          scrapedContent = content;
+          scrapedEmail = scrapedEmail || content.match(SCRAPED_EMAIL_PATTERN)?.[0] || null;
+        }
+      } catch { /* nothing found */ }
+    }
+
     const data = await callAnthropic({
       // 800 wasn't enough once fit_score/fit_signals/fit_rationale were added
       // on top of the original 4 fields - confirmed live, this model runs
@@ -365,7 +417,7 @@ export async function assessInfluencerAccount(supabase, accountId, bioText, foll
       // finding: "No text in influencer assessment response" in production).
       max_tokens: 2048,
       system: INFLUENCER_SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: `BUSINESS PROFILE (the business considering this influencer):\n${businessContext}\n\nINFLUENCER BIO:\n${bioText}` }],
+      messages: [{ role: 'user', content: `BUSINESS PROFILE (the business considering this influencer):\n${businessContext}\n\nINFLUENCER BIO:\n${bioText}${scrapedContent ? `\n\nSCRAPED PAGE CONTENT (from ${scrapedUrl}, a link found in their bio):\n${scrapedContent}` : ''}` }],
       supabase,
       businessId,
       callType: 'influencer_assess',
@@ -375,7 +427,7 @@ export async function assessInfluencerAccount(supabase, accountId, bioText, foll
     const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
     if (!jsonMatch) throw new Error('No JSON in influencer assessment response');
     const parsed = JSON.parse(jsonMatch[0]);
-    const { fit_score, fit_signals, fit_rationale, ...niche_assessment } = parsed;
+    const { fit_score, fit_signals, fit_rationale, detected_company, ...niche_assessment } = parsed;
 
     const { data: updated, error } = await supabase.from('account_influencer_details').update({
       bio_snapshot: bioText,
@@ -386,6 +438,12 @@ export async function assessInfluencerAccount(supabase, accountId, bioText, foll
       follower_count: Number.isFinite(followerCount) ? followerCount : null,
       assessment_status: 'ready',
       assessed_at: new Date().toISOString(),
+      scraped_email: scrapedEmail,
+      // Gated on real scraped content, not just the model's word - the prompt
+      // forbids inferring a company from the bio, this makes it impossible.
+      scraped_company: scrapedContent && typeof detected_company === 'string' && detected_company.trim() ? detected_company.trim() : null,
+      scraped_url: scrapedUrl,
+      scraped_at: scrapedUrl || scrapedEmail ? new Date().toISOString() : null,
     }).eq('account_id', accountId).select().single();
     if (error) throw error;
     return updated;

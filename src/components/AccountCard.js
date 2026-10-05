@@ -77,7 +77,11 @@ export default function AccountCard({
   const primaryAction = hasAnalysis
     ? { label: "Generate Outreach", icon: "✦", variant: 'generate', onClick: () => setOutreachOpen(true) }
     : isInfluencer
-      ? { label: "Assess this creator first", icon: "◆", disabled: true }
+      ? { label: "Assess this creator first", icon: "◆", muted: true, onClick: () => {
+          const el = document.getElementById(`assess-bio-${acc.id}`);
+          el?.scrollIntoView({ behavior: "smooth", block: "center" });
+          el?.focus({ preventScroll: true });
+        } }
       : onReassay
         ? { label: reassaying ? "Analyzing…" : "Run Assay first", icon: "◆", onClick: () => onReassay(acc), loading: reassaying, disabled: reassaying }
         : { label: "Run Assay first", icon: "◆", disabled: true };

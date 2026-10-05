@@ -12,6 +12,10 @@ export default function PrimaryAction({ accountKind, action }) {
   if (!action) return null;
   const kind = kindTokens(accountKind);
   const accent = action.variant === 'generate' ? ROLE.generateAccent : kind.accent;
+  // influencer-assess-cta-dead-end-fix-v1 — muted keeps the dimmed, glow-less
+  // treatment of a disabled action while staying clickable, for a CTA that
+  // navigates to where the work happens rather than doing the work itself.
+  const dim = action.muted || action.disabled;
   return (
     <button
       onClick={e => { e.stopPropagation(); action.onClick(); }}
@@ -40,10 +44,10 @@ export default function PrimaryAction({ accountKind, action }) {
         borderRadius: RADIUS.md,
         cursor: action.disabled || action.loading ? "default" : "pointer",
         letterSpacing: "0.02em",
-        opacity: action.disabled ? 0.5 : 1,
+        opacity: dim ? 0.5 : 1,
         // A1b — subtle neon glow so the primary action reads as "alive", not flat
-        boxShadow: action.disabled ? "none" : `0 0 8px ${accent}55`,
-        textShadow: action.disabled ? "none" : `0 0 6px ${accent}66`,
+        boxShadow: dim ? "none" : `0 0 8px ${accent}55`,
+        textShadow: dim ? "none" : `0 0 6px ${accent}66`,
         transition: "box-shadow 0.15s, text-shadow 0.15s",
       }}
     >

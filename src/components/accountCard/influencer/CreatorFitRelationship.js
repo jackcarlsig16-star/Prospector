@@ -48,7 +48,7 @@ function AssessBioForm({ business, acc, detail, onAssessed }) {
   };
   return (
     <div style={{ marginTop: 10 }}>
-      <textarea value={bio} onChange={e => setBio(e.target.value)} rows={3} placeholder="Paste their bio to assess (or re-assess with an updated bio)" style={{ ...input, resize: "vertical", marginBottom: 8 }} disabled={busy} />
+      <textarea id={`assess-bio-${acc.id}`} value={bio} onChange={e => setBio(e.target.value)} rows={3} placeholder="Paste their bio to assess (or re-assess with an updated bio)" style={{ ...input, resize: "vertical", marginBottom: 8 }} disabled={busy} />
       <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
         <input type="number" value={followerCount} onChange={e => setFollowerCount(e.target.value)} placeholder="followers (optional)" style={{ ...input, width: 160 }} disabled={busy} />
         <button onClick={run} disabled={!bio.trim() || busy} style={{ ...mono, fontSize: 11, padding: "7px 14px", background: KIND.influencer.accent, border: `1px solid ${KIND.influencer.accent}`, borderRadius: RADIUS.md, color: CARD.bg, cursor: "pointer", fontWeight: 700, opacity: bio.trim() ? 1 : 0.5 }}>
@@ -133,6 +133,12 @@ export default function CreatorFitRelationship({ acc, business, detail, userEmai
           <span style={{ ...mono, fontSize: 11, color: CARD.textMuted }}><b style={{ color: CARD.textSubtle }}>Category:</b> {detail?.niche_assessment?.category || '—'}</span>
           <span style={{ ...mono, fontSize: 11, color: CARD.textMuted }}><b style={{ color: CARD.textSubtle }}>Content:</b> {detail?.niche_assessment?.content_type || '—'}</span>
         </div>
+        {(detail?.scraped_email || detail?.scraped_company) && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }} title={detail?.scraped_url ? `Found on ${detail.scraped_url}` : undefined}>
+            {detail?.scraped_email && <span style={pill(KIND.influencer.accent)}>✉ {detail.scraped_email}</span>}
+            {detail?.scraped_company && <span style={pill(KIND.influencer.accent)}>🏢 {detail.scraped_company}</span>}
+          </div>
+        )}
         <AssessBioForm business={business} acc={acc} detail={detail} onAssessed={onAssessed} />
       </div>
       <div style={{ marginTop: 16 }}>
