@@ -362,16 +362,6 @@ app.post('/api/meetingprep',   esHandler('./api/meetingprep.js'));
 app.post('/api/glean',         esHandler('./api/glean.js'));
 app.post('/api/glean/people',  esHandler('./api/glean-people.js'));
 app.post('/api/gmail-intent',  esHandler('./api/gmail-intent.js'));
-// Allow cross-origin requests from Disco Coach (standalone app on any origin)
-const handoffCors = (req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin',  '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.sendStatus(204);
-  next();
-};
-app.options('/api/handoff', handoffCors);
-app.post('/api/handoff', handoffCors, esHandler('./api/handoff.js'));
 app.post('/api/sfdc/accounts',             esHandler('./api/sfdc/accounts.js'));
 app.post('/api/sfdc/my-accounts',         esHandler('./api/sfdc/my-accounts.js'));
 app.post('/api/sfdc/production-request',  esHandler('./api/sfdc/production-request.js'));
