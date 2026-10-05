@@ -1,3 +1,12 @@
+==========================================================================================
+OVERRIDE 2026-10-05 (Jack, planning chat): sales-goals-v1 REVISION 3 ("Goals & Weekly Plan")
+ships NEXT, ahead of every remaining item below. It also OWNS "Weekly Priorities /
+Commitments" (sales_week_goals). sales-weekly-report-v1 must READ that table for section 15
+and must not build its own list. Where this queue says otherwise, REVISION 3 wins.
+Remaining order after Goals: sales-huddle-filters-v1 (to be revised as REV2), overview fixes,
+nav-admin-cleanup, weekly report, scorecard.
+==========================================================================================
+
 SALES ANALYTICS — BUILD QUEUE (REVISION 2 — supersedes the previous version of this file)
 
 HOW TO USE THIS FILE (for Claude Code):
