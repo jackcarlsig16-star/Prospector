@@ -3,6 +3,8 @@
 // scoring; it's a generic site-content fetcher (Jina first, direct-fetch
 // fallback) that api/businesses/shared.js's company-research pipeline
 // depends on independently of Assay.
+import { safeFetchText } from './safeFetch.js';
+
 export async function fetchSiteContent(web) {
   const url = web.startsWith("http") ? web : `https://${web}`;
 
@@ -24,19 +26,20 @@ export async function fetchSiteContent(web) {
     }
   } catch (_) { /* fall through */ }
 
-  // 2. Fall back to direct fetch with realistic browser headers
+  // 2. Fall back to direct fetch with realistic browser headers. The URL is
+  // user/third-party supplied, so it goes through safeFetchText (no private
+  // addresses, redirects re-checked, body capped).
   try {
-    const directRes = await fetch(url, {
+    const directRes = await safeFetchText(url, {
       headers: {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
       },
-      signal: AbortSignal.timeout(10000),
+      timeoutMs: 10000,
     });
     if (directRes.ok) {
-      const html = await directRes.text();
-      const text = html
+      const text = directRes.text
         .replace(/<script[\s\S]*?<\/script>/gi, " ")
         .replace(/<style[\s\S]*?<\/style>/gi, " ")
         .replace(/<[^>]+>/g, " ")
