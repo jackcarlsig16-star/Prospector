@@ -3,16 +3,13 @@ import { C, mono } from './constants/colors';
 import { staleDays } from './utils/staleness';
 import { URGENCY_OPTIONS, setBdrList } from './components/AccountCard';
 import ToolsPage from './components/ToolsPage';
-import OnboardingPage from './components/OnboardingPage';
 import JoinBusinessPage from './components/JoinBusinessPage';
 import MemberShell from './components/MemberShell';
-import PendingScreen from './components/PendingScreen';
-import PendingApprovalBanner from './components/PendingApprovalBanner';
 import PersistentScout from './components/PersistentScout';
 import { getManagerScopedAccounts, getAeMap } from './utils/managerScope';
 import AssayBanner from './components/AssayBanner';
 import { startBulkAssay, isBulkAssayRunning } from './utils/bulkAssay';
-import SetupWizard, { SetupBanner, StaleSfdcBanner } from './components/SetupWizard';
+import StaleSfdcBanner from './components/StaleSfdcBanner';
 import ProfilePanel, { BadgeToast, BADGES, getQuarterKey, calcTerritoryBreakdown, calcTerritoryScore } from './components/BadgesProfile';
 import { TaskModal } from './components/TaskPanel';
 import HomePage from './components/HomePage';
@@ -33,7 +30,7 @@ import { resolveUserId } from './utils/userIdentity';
 import { getDefaultOutbound } from './utils/outbound';
 import { getAllCompliance } from './utils/storage';
 import { getACV } from './utils/ledgerEngine';
-import { getTeamUsers, saveTeamUsers, getFrontier, saveFrontier, getAccounts, saveAccountsToDb, saveComplianceToDb, getUserApprovalStatus, getPendingUsers, getBdrAssignments, getProjectsForUser, getBusinessesForUser, getCampaignsForProjects } from './utils/db';
+import { getTeamUsers, saveTeamUsers, getFrontier, saveFrontier, getAccounts, saveAccountsToDb, saveComplianceToDb, getPendingUsers, getBdrAssignments, getProjectsForUser, getBusinessesForUser, getCampaignsForProjects } from './utils/db';
 import BusinessesHomePage from './components/BusinessesHomePage';
 import BusinessDetailPage from './components/BusinessDetailPage';
 import { isSupabaseEnabled } from './utils/supabase';
@@ -73,7 +70,22 @@ try{["gmail_access_token","gmail_refresh_token","gmail_token_expiry","gmail_emai
 // Live BDR list — updated at runtime via teamUsers state, but AccountCard needs a static fallback
 let BDR_LIST = SEED_TEAM_USERS.filter(u=>u.role==="BDR");
 
-export default function App() {
+// AuthGate's signed-in person is who you are. The old app role (AE/Admin/
+// Owner) still drives menus and the territory views: someone who already had
+// one in this browser keeps it, anyone new gets it from their workspace role.
+// Nobody picks it.
+function userFromSession(me) {
+  let stored = null;
+  try { stored = JSON.parse(localStorage.getItem("prospector_user") || "null"); } catch {}
+  if (stored?.email?.toLowerCase() !== me.email) stored = null;
+  const workspaceAdmin = me.memberships.some(m => m.role === "owner" || m.role === "admin");
+  const role = stored?.role || (me.profile.is_platform_owner ? "Owner" : workspaceAdmin ? "Admin" : "AE");
+  const user = { ...stored, id: stored?.id || me.profile.id, name: me.profile.display_name, email: me.email, role };
+  try { localStorage.setItem("prospector_user", JSON.stringify(user)); } catch {}
+  return user;
+}
+
+export default function App({ me }) {
   // Guard: skip Supabase sync effects until initial async load completes
   const supabaseReady = useRef(false);
   const supabaseAccountsReady = useRef(false);
@@ -101,8 +113,7 @@ export default function App() {
     }catch{}
   },[]);
 
-  const forceOnboarding=new URLSearchParams(window.location.search).has("onboarding");
-  const [user,setUser]=useState(()=>{if(forceOnboarding)return null;try{const s=localStorage.getItem("prospector_user");return s?applyOwnerRole(JSON.parse(s)):null;}catch{return null;}});
+  const [user,setUser]=useState(()=>userFromSession(me));
   // Members joining via /join/:code get their own email-keyed identity here,
   // fully separate from prospector_user (business-lists-and-permissions-v1).
   const joinCode=(()=>{try{const m=window.location.pathname.match(/^\/join\/([^/]+)/);return m?decodeURIComponent(m[1]):null;}catch{return null;}})();
@@ -253,22 +264,8 @@ export default function App() {
       if(name)localStorage.setItem("sfdc_user_name",name);
       if(email)localStorage.setItem("sfdc_user_email",email);
       if(company)localStorage.setItem("sfdc_company",company);
-      // If we came from onboarding, mark the return and stay on / instead of
-      // navigating to /admin. OnboardingPage reads this on mount and decides
-      // whether to show the confirm step or skip straight to gmail.
-      let isOnboardingReturn = false;
-      if (sfdcState) {
-        try {
-          const decoded = JSON.parse(atob(sfdcState));
-          if (decoded && decoded.flow === 'onboarding') {
-            isOnboardingReturn = true;
-            const prev = JSON.parse(localStorage.getItem('prospector_onboarding_state') || '{}');
-            localStorage.setItem('prospector_onboarding_state', JSON.stringify({ ...prev, ...decoded, step: 'post_sfdc' }));
-          }
-        } catch {}
-      }
       window.history.replaceState({},"","/");
-      if (!isOnboardingReturn) navTo("admin");
+      navTo("admin");
     }else if(sfdcError){
       window.history.replaceState({},"","/");
     }
@@ -941,36 +938,6 @@ export default function App() {
     });
   },[user?.id]);
 
-  // ── Approval status check ─────────────────────────────────────────────────
-  // If previously approved (cached), start as approved so the app loads instantly
-  const [approvalStatus, setApprovalStatus] = useState(() =>
-    localStorage.getItem('prospector_approved') === '1' ? 'approved' : 'loading'
-  );
-  useEffect(() => {
-    if (!user) { setApprovalStatus('approved'); return; }
-    if (!isSupabaseEnabled()) { setApprovalStatus('approved'); return; }
-    const userId = localStorage.getItem('prospector_user_id');
-    if (!userId) { setApprovalStatus('approved'); return; }
-    getUserApprovalStatus(userId).then(s => {
-      const status = s === 'pending' ? 'pending' : 'approved';
-      setApprovalStatus(status);
-      if (status === 'approved') {
-        try { localStorage.setItem('prospector_approved', '1'); } catch {}
-      } else {
-        try { localStorage.removeItem('prospector_approved'); } catch {}
-      }
-    });
-  }, [user?.email]);
-
-  useEffect(() => {
-    if (approvalStatus !== 'pending') return;
-    const userId = localStorage.getItem('prospector_user_id');
-    const iv = setInterval(() => {
-      getUserApprovalStatus(userId).then(s => { if (s === 'approved') setApprovalStatus('approved'); });
-    }, 30000);
-    return () => clearInterval(iv);
-  }, [approvalStatus]);
-
   // ── Projects (real-supabase-auth-v1 not finished yet - "current user" is
   // still user.email off the localStorage-backed prospector_user blob, not a
   // real auth session. Swap this for the real session's email once that lands.) ──
@@ -1052,18 +1019,18 @@ export default function App() {
   const threadIndexerRan = useRef(false);
   useEffect(() => {
     if (threadIndexerRan.current) return;
-    if (approvalStatus !== 'approved' || !accsLoaded) return;
+    if (!accsLoaded) return;
     threadIndexerRan.current = true;
     const activeAccounts = accounts.filter(a => a.stage === 'Active Deal');
     indexAccountThreads(activeAccounts);
-  }, [approvalStatus, accsLoaded, accounts]);
+  }, [accsLoaded, accounts]);
 
   // ── Auto bulk assay — fires when >10 unscored accounts load, gated by a
   // 24h localStorage cooldown so it can't refire on every page refresh.
   const autoAssayRan = useRef(false);
   useEffect(() => {
     if (autoAssayRan.current) return;
-    if (approvalStatus !== 'approved' || !accsLoaded) return;
+    if (!accsLoaded) return;
     if (localStorage.getItem('prospector_auto_assay_disabled') === '1') return;
     const lastRun = parseInt(localStorage.getItem('prospector_auto_assay_last') || '0', 10);
     if (Date.now() - lastRun < 24 * 60 * 60 * 1000) return;
@@ -1073,13 +1040,13 @@ export default function App() {
     autoAssayRan.current = true;
     try { localStorage.setItem('prospector_auto_assay_last', String(Date.now())); } catch {}
     startBulkAssay({ accounts, onSaveAccounts: setAccounts });
-  }, [approvalStatus, accsLoaded, accounts]);
+  }, [accsLoaded, accounts]);
 
   // ── Eager Brief + WeekAhead — once per session after auth + accounts load ──
   const briefEagerRan = useRef(false);
   useEffect(() => {
     if (briefEagerRan.current) return;
-    if (approvalStatus !== 'approved' || !accsLoaded) return;
+    if (!accsLoaded) return;
     briefEagerRan.current = true;
     (async () => {
       if (!(await hasGoogle('gmail'))) return;
@@ -1104,7 +1071,7 @@ export default function App() {
         buildWeekAhead().catch(e => console.warn('[weekAhead eager] failed', e));
       }
     })();
-  }, [approvalStatus, accsLoaded, accounts, tasks]);
+  }, [accsLoaded, accounts, tasks]);
 
   // ── Ideas (Golden Nuggets) unread badge ───────────────────────────────────
   const [ideasLastViewed, setIdeasLastViewed] = useState(() => parseInt(localStorage.getItem('prospector_ideas_last_viewed') || '0', 10));
@@ -1260,7 +1227,6 @@ export default function App() {
     }).catch(e=>console.warn("[prSummary] import failed",e));
   },[accounts]);
 
-  const [bannerDismissed, setBannerDismissed] = useState(false);
   const [staleDismissed,  setStaleDismissed]  = useState(false);
 
   // Must be above all early returns — hooks can't be conditional, navTo used in OAuth callbacks
@@ -1292,7 +1258,7 @@ export default function App() {
   };
 
   // Member sessions (business-lists-and-permissions-v1) pre-empt Jack's own
-  // user/onboarding/approval flow entirely - a joining member never becomes
+  // signed-in app flow entirely - a joining member never becomes
   // a `user`, so this must run before any of those checks below.
   if(joinCode && !memberSession) return <JoinBusinessPage code={joinCode} onJoined={(member,business)=>{
     try{localStorage.setItem("prospector_member",JSON.stringify({email:member.email,name:member.name}));}catch{}
@@ -1305,55 +1271,12 @@ export default function App() {
     signOut();
   }}/>;
 
-  // Initial load only: show PendingScreen full-block while we resolve status from Supabase.
-  // Once we know status is 'pending', render the app + slim banner instead — empty-state UX.
-  if(user && approvalStatus === 'loading') return (
-    <PendingScreen user={user} isLoading={true} />
-  );
-
-  if(!user)return <OnboardingPage onComplete={newUser=>{
-    // Register or activate user in team roster
-    setTeamUsers(prev=>{
-      const email=newUser.email?.toLowerCase();
-      const existingIdx=prev.findIndex(u=>u.email?.toLowerCase()===email);
-      if(existingIdx>=0){
-        const next=prev.map(u=>u.email?.toLowerCase()===email?{...u,...newUser,status:"active"}:u);
-        try{localStorage.setItem("prospector_team_users",JSON.stringify(next));}catch{}
-        return next;
-      } else {
-        const entry={...newUser,id:newUser.id||`u_${Date.now()}`,status:"active"};
-        const next=[...prev,entry];
-        try{localStorage.setItem("prospector_team_users",JSON.stringify(next));}catch{}
-        return next;
-      }
-    });
-    setUser(applyOwnerRole(newUser));
-    // Post-onboarding nav: BDRs go to Outbound, Managers to Admin, others stay home
-    setTimeout(() => {
-      if (newUser.role === 'BDR') navTo('outbound');
-      else if (newUser.role === 'Manager') navTo('home');
-    }, 200);
-  }}/>;
-
-  // Wizard / banner visibility
   const isAE = (user?.role||"AE") === "AE";
   const sfdcConnected   = !!localStorage.getItem("sfdc_access_token");
   const sfdcSyncedAt    = localStorage.getItem("sfdc_synced_at");
-  const isOnboarded     = user?.onboarded || user?.wizardSkipped;
-  // Suppress wizard + setup banner once SFDC is connected
-  const showWizard      = isAE && !isOnboarded && accsLoaded && accounts.length === 0 && !sfdcConnected;
-  const showBanner      = isAE && !isOnboarded && accsLoaded && accounts.length > 0 && !user?.wizardSkipped && !sfdcConnected;
   // Stale: token >7 days old OR server-side Supabase token is confirmed missing
   const sfdcNeedsReconnect = !!localStorage.getItem('sfdc_needs_reconnect');
   const showStaleBanner = isAE && sfdcConnected && (sfdcNeedsReconnect || (!!sfdcSyncedAt && staleDays(sfdcSyncedAt) >= 7));
-
-  const completeWizard = () => {
-    setUser(u => {
-      const next = { ...u, onboarded: true };
-      try { localStorage.setItem('prospector_user', JSON.stringify(next)); } catch {}
-      return next;
-    });
-  };
 
   const activeInitials=activeUser.initials||(activeUser.name||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
   const firstName=activeUser.name.split(" ")[0];
@@ -1362,7 +1285,6 @@ export default function App() {
     <div style={{ display:"flex", background:C.bg, minHeight:"100vh", width:"100%" }}>
       <Sidebar page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();dismissPendingApprovals();}if(p!=="accounts")setAccountsSubPage("territory");}} activeRole={activeRole} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} accountsSubPage={accountsSubPage} setAccountsSubPage={setAccountsSubPage} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} pendingApprovalCount={pendingApprovalCount} newNuggetCount={newNuggetCount} onUpdateTeamUser={updateTeamUser} businesses={myBusinesses} onSelectBusiness={selectBusiness} onGoToBusinesses={()=>navTo('businesses-home')} activeBusiness={activeBusiness} businessPage={businessPage} setBusinessPage={setBusinessPage} />
       <div style={{ flex:1, padding:"18px 20px", overflowY:"auto", minWidth:0 }}>
-        {approvalStatus === 'pending' && <PendingApprovalBanner user={user} pinged={!!localStorage.getItem('prospector_admin_pinged')} pinging={false} onPing={()=>{ fetch('/api/notify-pending',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:user?.name||'',email:user?.email||'',role:user?.role||'AE'})}).catch(()=>{}); try{localStorage.setItem('prospector_admin_pinged','1');}catch{} }}/>}
         <PersistentScout
           isBusinessContext={page==="business-detail"&&!!activeBusiness}
           activeBusiness={activeBusiness}
@@ -1377,7 +1299,6 @@ export default function App() {
         />
         <AssayBanner/>
         {showStaleBanner && !staleDismissed && <StaleSfdcBanner onDismiss={()=>setStaleDismissed(true)} />}
-        {showBanner && !bannerDismissed && <SetupBanner onDismiss={()=>setBannerDismissed(true)} />}
         {viewAs&&(
           <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:activeRole==='Manager'&&managerTeamAEs.length>0?8:14, padding:"8px 14px", background:`${C.purple}14`, border:`1px solid ${C.purple}44`, borderRadius:7 }}>
             <span style={{ ...mono, fontSize:12, color:C.purple }}>◎ Viewing as {viewAs.name} · {viewAs.role}</span>
@@ -1420,7 +1341,6 @@ export default function App() {
         {page==="handoffs"&&<HandoffsPage accounts={accounts} onAddAccount={acc=>{setAccounts(a=>[acc,...a]);trackStat("accounts_added");trackDailyStat("accounts_added");}} activeUser={activeUser} activeRole={activeRole} teamUsers={teamUsers}/>}
         </Suspense>
       </div>
-      {showWizard && <SetupWizard user={user} accounts={accounts} onNav={navTo} onComplete={completeWizard} onSaveAccounts={setAccounts} />}
       {taskModal!==null&&<TaskModal task={taskModal} accounts={accounts} onSave={handleSaveTask} onClose={()=>setTaskModal(null)}/>}
       {profileOpen&&<ProfilePanel user={user} accounts={accounts} tasks={tasks} snapshots={snapshots} stats={stats} earnedBadges={earnedBadges} score={appBreakdown?.score||0} grade={appBreakdown?.grade||"—"} gradeColor={appBreakdown?.c||C.dim} diamonds={diamonds} winsLog={winsLog} onClose={()=>setProfileOpen(false)}/>}
       <BadgeToast badge={badgeToast} onDismiss={()=>setBadgeToast(null)}/>

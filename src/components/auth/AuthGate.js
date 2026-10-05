@@ -5,11 +5,13 @@ import AuthLayout, { primaryButton, ErrorBanner } from './AuthLayout';
 import LoginPage, { safeNextPath } from './LoginPage';
 import InvitePage from './InvitePage';
 import ResetPasswordPage from './ResetPasswordPage';
+import WelcomePage from './WelcomePage';
 
 // prospector-auth-v1 Stage 2 - sits in front of the whole app (index.js).
 // Owns the Supabase session and the three public auth routes; everything
 // else needs a session plus at least one workspace (or platform owner).
-// The legacy ProspectorGate still renders inside this until Stage 5.
+// First time in: the Welcome screen. Then children(me) - the app gets the
+// signed-in person from here, not from localStorage.
 export default function AuthGate({ children }) {
   const [session, setSession] = useState(undefined); // undefined = still loading
   const [me, setMe] = useState(undefined);
@@ -67,5 +69,8 @@ export default function AuthGate({ children }) {
       </AuthLayout>
     );
   }
-  return children;
+  if (!me.profile.welcomed_at) {
+    return <WelcomePage me={me} onDone={name => setMe({ ...me, profile: { ...me.profile, display_name: name || me.profile.display_name, welcomed_at: new Date().toISOString() } })} />;
+  }
+  return children(me);
 }

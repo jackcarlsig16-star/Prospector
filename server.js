@@ -346,6 +346,7 @@ app.post('/api/slides/create', async (req, res) => {
 app.get('/api/access-log',     authMw('platformOwnerOnly'), esHandler('./api/access-log.js'));
 app.post('/api/access-log',    esHandler('./api/access-log.js'));
 app.get('/api/me',                       esHandler('./api/me.js'));
+app.post('/api/me/welcome',              esHandler('./api/me.js'));
 app.get('/api/invites/:token',           esHandler('./api/invites.js'));
 app.post('/api/invites/:token/accept',   esHandler('./api/invites.js'));
 app.post('/api/personas',      esHandler('./api/personas.js'));
@@ -380,7 +381,6 @@ app.get('/api/hunter/account',            esHandler('./api/hunter/account.js'));
 app.post('/api/databricks/gong-calls',    esHandler('./api/databricks/gong-calls.js'));
 app.post('/api/databricks/gong-enrich',  esHandler('./api/databricks/gong-enrich.js'));
 app.post('/api/databricks/gong-trends',  esHandler('./api/databricks/gong-trends.js'));
-app.post('/api/notify-approved',          esHandler('./api/notify-approved.js'));
 app.post('/api/businesses',                    authMw('platformOwnerOnly'), esHandler('./api/businesses/create.js'));
 app.get('/api/businesses/:id',                 esHandler('./api/businesses/detail.js'));
 app.get('/api/businesses/:id/members',                    esHandler('./api/businesses/members.js'));
@@ -589,26 +589,6 @@ app.get('/api/sales/:businessId/events', salesModuleRoute('./api/sales/trendRout
 app.post('/api/sales/:businessId/events', salesModuleRoute('./api/sales/trendRoutes.js', 'createEventRoute', 'events POST'));
 app.get('/api/sales/:businessId/insights', salesModuleRoute('./api/sales/trendRoutes.js', 'insightsRoute', 'insights'));
 app.post('/api/sales/:businessId/insights/dismiss', salesModuleRoute('./api/sales/trendRoutes.js', 'dismissInsightRoute', 'insights/dismiss'));
-
-app.post('/api/notify-pending', async (req, res) => {
-  const { name, email, role } = req.body || {};
-  const webhookUrl = process.env.SLACK_WEBHOOK_URL;
-  console.log(`[PENDING] Access request: ${name} (${email}, ${role})`);
-  if (webhookUrl) {
-    try {
-      await fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: `🪙 *New Prospector access request*\n*Name:* ${name}\n*Email:* ${email}\n*Role:* ${role}\nApprove at: https://prospector-chtj.onrender.com → Admin tab`,
-        }),
-      });
-    } catch (e) {
-      console.warn('[PENDING] Slack notify failed:', e.message);
-    }
-  }
-  res.json({ ok: true });
-});
 
 app.post('/api/sfdc/sync-now', async (req, res) => {
   try {

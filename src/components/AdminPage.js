@@ -1,14 +1,8 @@
 import { useState, useEffect } from "react";
 import { C, mono } from '../constants/colors';
-import AdminInvites from './admin/AdminInvites';
 import AdminOrgChart from './admin/AdminOrgChart';
 import { PRODUCTS_OVERRIDE_KEY, loadProductOverrides } from './PricingPage';
 import { PRICING_PRODUCTS_DEFAULT } from '../constants/products';
-import {
-  getInvites,
-  getMasterCodeHash, generateMasterCode, setMasterCode,
-  generateCode,
-} from '../utils/invites';
 import { saveTeamUsers, saveFrontier, patchUser, getAccountsForBusiness, getOutreachDoctrine, createOutreachDoctrineRule, updateOutreachDoctrineRule } from '../utils/db';
 import { isSupabaseEnabled } from '../utils/supabase';
 import { mapSfdcStage } from '../utils/stageMap';
@@ -413,146 +407,6 @@ function OutreachIntelligenceTab({ currentUser }) {
   );
 }
 
-// ── Onboarding Tab ───────────────────────────────────────────────────────────
-function OnboardingTab({ users = [], setUsers, onSaveUsers, invites = [], setInvites }) {
-  const NEON = '#39FF14';
-  const AMB  = '#FFB800';
-  const CYN  = '#00F5FF';
-  const RED  = '#FF4444';
-  const [copied, setCopied] = useState(null);
-  const [reset, setReset] = useState(false);
-
-  const pending = users.filter(u => (u.status || '').toLowerCase() === 'pending');
-
-  const setStatus = async (id, status) => {
-    const next = users.map(u => u.id === id ? { ...u, status } : u);
-    setUsers(next);
-    onSaveUsers && onSaveUsers(next);
-    try { await patchUser(id, { status }); } catch {}
-    if (status === 'approved') {
-      const u = next.find(x => x.id === id);
-      if (u) {
-        try {
-          await fetch('/api/notify-approved', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: u.name, email: u.email, role: u.role }),
-          });
-        } catch {}
-      }
-    }
-  };
-
-  const copyCode = (code) => {
-    navigator.clipboard.writeText(code).catch(()=>{});
-    setCopied(code);
-    setTimeout(()=>setCopied(null), 1800);
-  };
-
-  const genCode = (prefix) => {
-    const existing = (invites || []).map(i => i.code);
-    const code = generateCode(existing, { prefix, suffixLen: 4 });
-    const next = [...(invites || []), {
-      id: `inv_${Date.now()}_${Math.random().toString(36).slice(2,6)}`,
-      code, name: '', email: '', role: prefix === 'ADMIN' ? 'admin' : 'ae',
-      createdAt: new Date().toISOString(), createdBy: 'admin-onboarding-panel',
-      usedAt: null, usedBy: null, status: 'pending',
-    }];
-    try { localStorage.setItem('prospector_invites', JSON.stringify(next)); } catch {}
-    setInvites && setInvites(next);
-    copyCode(code);
-    return code;
-  };
-
-  const resetMyOnboarding = () => {
-    [
-      'prospector_onboarding_state',
-      'prospector_wizard_step',
-      'prospector_admin_pinged',
-      'prospector_pending_role',
-      'prospector_gate_unlocked',
-      'sfdc_company',
-      'sfdc_user_email',
-      'prospector_user',
-    ].forEach(k => { try { localStorage.removeItem(k); } catch {} });
-    setReset(true);
-    setTimeout(() => { window.location.reload(); }, 800);
-  };
-
-  const SH = { ...mono, fontSize:10, color:CYN, textTransform:'uppercase', letterSpacing:'0.14em', fontWeight:600, textShadow:`0 0 6px ${CYN}55`, margin:'0 0 12px' };
-  const card = { background:'#050f05', border:`1px solid ${CYN}22`, borderRadius:8, padding:'16px 18px', marginBottom:16 };
-
-  return (
-    <div>
-      <p style={{ ...mono, margin:'0 0 16px', fontSize:11, color:'#5a6a5a', letterSpacing:'0.06em' }}>
-        ⛏ ONBOARDING TESTER — generate invites, approve users, reset your onboarding to re-run the flow.
-      </p>
-
-      {/* Pending Users */}
-      <div style={card}>
-        <p style={SH}>Pending Users ({pending.length})</p>
-        {pending.length === 0 ? (
-          <p style={{ ...mono, fontSize:12, color:'#5a6a5a', fontStyle:'italic' }}>No pending approvals.</p>
-        ) : (
-          <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-            {pending.map(u => (
-              <div key={u.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', background:'#0a1a0a', border:`1px solid ${AMB}33`, borderRadius:5 }}>
-                <span style={{ ...mono, fontSize:9, color:AMB, padding:'1px 6px', border:`1px solid ${AMB}55`, borderRadius:3 }}>PENDING</span>
-                <span style={{ ...mono, fontSize:13, color:'#cfe8d4', fontWeight:500 }}>{u.name || '—'}</span>
-                <span style={{ ...mono, fontSize:11, color:'#8a9a8a', flex:1 }}>{u.email || '—'} · {u.role || 'AE'}</span>
-                <button onClick={()=>setStatus(u.id, 'approved')}
-                  style={{ ...mono, fontSize:10, padding:'3px 10px', background:`${NEON}14`, border:`1px solid ${NEON}66`, color:NEON, borderRadius:4, cursor:'pointer', textShadow:`0 0 6px ${NEON}66` }}>
-                  ✓ Approve
-                </button>
-                <button onClick={()=>setStatus(u.id, 'rejected')}
-                  style={{ ...mono, fontSize:10, padding:'3px 10px', background:`${RED}14`, border:`1px solid ${RED}55`, color:RED, borderRadius:4, cursor:'pointer' }}>
-                  ✕ Reject
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Code generators */}
-      <div style={card}>
-        <p style={SH}>Generate Codes</p>
-        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
-          <button onClick={()=>genCode('GOLD')}
-            style={{ ...mono, fontSize:11, padding:'6px 14px', background:`${NEON}14`, border:`1px solid ${NEON}55`, color:NEON, borderRadius:5, cursor:'pointer', letterSpacing:'0.06em' }}>
-            ⛏ GENERATE INVITE CODE (GOLD-XXXX)
-          </button>
-          <button onClick={()=>genCode('ADMIN')}
-            style={{ ...mono, fontSize:11, padding:'6px 14px', background:`${AMB}14`, border:`1px solid ${AMB}55`, color:AMB, borderRadius:5, cursor:'pointer', letterSpacing:'0.06em' }}>
-            ⚠ GENERATE ADMIN CODE (ADMIN-XXXX)
-          </button>
-        </div>
-        {copied && (
-          <p style={{ ...mono, margin:'10px 0 0', fontSize:11, color:NEON }}>✓ Copied: {copied}</p>
-        )}
-        <p style={{ ...mono, margin:'10px 0 0', fontSize:10, color:'#5a6a5a' }}>
-          Generated codes are saved to prospector_invites and immediately redeemable from the welcome gate.
-        </p>
-      </div>
-
-      {/* Reset onboarding */}
-      <div style={card}>
-        <p style={SH}>Reset My Onboarding</p>
-        <p style={{ ...mono, margin:'0 0 12px', fontSize:11, color:'#8a9a8a', lineHeight:1.6 }}>
-          Clears your local user record, gate state, onboarding markers, and SFDC pre-fill so you can run the full welcome flow again. Reloads the page after a brief beat.
-        </p>
-        {!reset ? (
-          <button onClick={resetMyOnboarding}
-            style={{ ...mono, fontSize:11, padding:'6px 14px', background:`${RED}14`, border:`1px solid ${RED}55`, color:RED, borderRadius:5, cursor:'pointer', letterSpacing:'0.06em' }}>
-            ⚠ RESET MY ONBOARDING
-          </button>
-        ) : (
-          <p style={{ ...mono, fontSize:11, color:NEON }}>✓ Reset — reloading…</p>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser, rolePerms={}, onSaveRolePerms, onSave, onSaveToPool, onSaveBatch, accounts=[], removedBlocklist=[], onRestoreAccount, nuggets=[], onSaveNuggets, seedTeam=[] }) {
   const [tab, setTab] = useState("users");
@@ -667,16 +521,6 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
   const [dragOver,setDragOver]= useState(null);
   const [invitedIds, setInvitedIds] = useState(new Set());
 
-  // Invite tab state
-  const [invites,         setInvites]         = useState(getInvites);
-  const [inviteModal,     setInviteModal]     = useState(false);
-  const [inviteForm,      setInviteForm]      = useState({ name:"", email:"", role:"bdr" });
-  const [inviteConfirm,   setInviteConfirm]   = useState(null); // { code, email }
-  const [copiedInvCode,   setCopiedInvCode]   = useState(null);
-  const [invitePage,      setInvitePage]      = useState(0);
-  // Master code modal state (lives here so it persists across tab switches)
-  const [masterCodeModal, setMasterCodeModal] = useState(null); // null | { code }
-  const [masterCopied,    setMasterCopied]    = useState(false);
   const [supabaseSyncing, setSupabaseSyncing] = useState(false);
   const [supabaseSeeded,  setSupabaseSeeded]  = useState(()=>localStorage.getItem('prospector_supabase_seeded')==='true');
 
@@ -720,7 +564,6 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
       {/* Tab bar — grouped */}
       {(()=>{
         const pendingNuggets = nuggets.filter(n=>n.status==="pending").length;
-        const pendingApprovalsCount = users.filter(u => u.status === 'pending').length;
         const TAB_GROUPS = [
           { label:"TEAM", tabs:[
             ["users",       "👥 Members & Access"],
@@ -729,13 +572,11 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
             ["territories", "🗺 Territories"],
           ]},
           { label:"PLATFORM", tabs:[
-            ["apikeys",    "🔑 API Keys"],
+            ["apikeys",    "🔌 Integrations"],
             ["pricing",    "💰 Pricing"],
-            ["access",     "⛏ Invites"],
             ["accesslog",  "📋 Access Log"],
             ["zoomevents", "☎ Zoom Events"],
             ["doctrine",   "✉ Outreach Intelligence"],
-            ["onboarding", `⛏ Onboarding${pendingApprovalsCount>0?` (${pendingApprovalsCount})`:""}`],
           ]},
           { label:"DATA", tabs:[
             ["nuggets",  `🪙 Nuggets${pendingNuggets>0?` (${pendingNuggets})`:""}`],
@@ -846,14 +687,80 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
         </div>
       </>)}
 
-      {/* ── API KEYS TAB ── */}
+      {/* ── INTEGRATIONS TAB ── */}
       {tab==="apikeys"&&(
         <div>
-          <p style={{ margin:"0 0 4px", fontSize:15, fontWeight:500, color:C.txt }}>API Keys</p>
+          <p style={{ margin:"0 0 4px", fontSize:15, fontWeight:500, color:C.txt }}>Integrations</p>
           <p style={{ ...mono, margin:"0 0 14px", fontSize:12, color:C.mut }}>Stored locally in your browser only — never sent to any server other than the named service.</p>
           <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
 
             <GoogleConnections />
+
+            {/* ── Salesforce ── */}
+            <div style={{ background:C.card, border:`1px solid ${sfdcConnected?"#00A1E044":C.brd}`, borderRadius:8, padding:"14px 16px" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
+                <p style={{ margin:0, fontSize:15, fontWeight:500, color:sfdcConnected?"#00A1E0":C.txt }}>Salesforce</p>
+                <span style={{ ...mono, fontSize:10, color:C.dim, border:`1px solid ${C.brd}`, borderRadius:3, padding:"0 5px" }}>optional</span>
+                <span style={{ ...mono, fontSize:11, color:sfdcConnected?C.green:C.dim, marginLeft:"auto" }}>{sfdcConnected?"● Connected":"○ Disconnected"}</span>
+              </div>
+              <p style={{ margin:"0 0 10px", fontSize:13, color:C.mut, lineHeight:1.5 }}>
+                Connect via OAuth to pull My Accounts and Dormant accounts directly from SFDC — no CSV needed.{sfdcConnected&&sfdcUserName&&<span style={{ color:C.dim }}> Signed in as <span style={{ color:C.txt }}>{sfdcUserName}</span>.</span>}
+              </p>
+              {sfdcConnected ? (
+                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+                    <button onClick={()=>syncFromSfdc("my_accounts")} disabled={!!sfdcSyncing}
+                      style={{ fontSize:13, padding:"7px 16px", background:sfdcSyncing==="my_accounts"?"#001408":"#041408", border:`1px solid ${C.green}55`, color:C.green, borderRadius:5, cursor:sfdcSyncing?"default":"pointer", fontWeight:500, opacity:sfdcSyncing&&sfdcSyncing!=="my_accounts"?0.5:1 }}>
+                      {sfdcSyncing==="my_accounts"?"Pulling…":"⊕ My Accounts"}
+                    </button>
+                    <button onClick={()=>syncFromSfdc("dormant")} disabled={!!sfdcSyncing}
+                      style={{ fontSize:13, padding:"7px 16px", background:sfdcSyncing==="dormant"?"#0C0C00":"#1A1A00", border:`1px solid ${C.tin}55`, color:C.tin, borderRadius:5, cursor:sfdcSyncing?"default":"pointer", fontWeight:500, opacity:sfdcSyncing&&sfdcSyncing!=="dormant"?0.5:1 }}>
+                      {sfdcSyncing==="dormant"?"Pulling…":"◎ Dormant → Pool"}
+                    </button>
+                    <button onClick={disconnectSfdc}
+                      style={{ fontSize:12, padding:"7px 14px", background:"transparent", border:`1px solid ${C.red}44`, color:C.red, borderRadius:5, cursor:"pointer", marginLeft:"auto" }}>
+                      Disconnect
+                    </button>
+                  </div>
+                  {sfdcResult&&(
+                    <div style={{ ...mono, fontSize:12, padding:"7px 12px", borderRadius:5, background:sfdcResult.error?"#1A0000":"#001408", border:`1px solid ${sfdcResult.error?C.red:C.green}44`, color:sfdcResult.error?C.red:C.green }}>
+                      {sfdcResult.error ? `✕ ${sfdcResult.error}` : `✓ ${sfdcResult.count} account${sfdcResult.count!==1?"s":""} pulled from ${sfdcResult.mode==="dormant"?"Dormant → Claim Jumper pool":"My Accounts → territory"}. Run assay to score.`}
+                    </div>
+                  )}
+                  <p style={{ ...mono, margin:0, fontSize:11, color:C.dim, lineHeight:1.5 }}>Pulls: Account Name, Website, Owner, Billing State, Vertical, Subvertical, Last Activity Date, Account ID. Accounts are added without scores — run a batch assay from Uploads to analyze them.</p>
+                </div>
+              ) : (
+                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                    <button onClick={()=>{ window.location.href="/api/sfdc/auth"; }}
+                      style={{ fontSize:13, padding:"7px 18px", background:"#001828", border:"1px solid #00A1E066", color:"#00A1E0", borderRadius:5, cursor:"pointer", fontWeight:600 }}>
+                      Connect via OAuth →
+                    </button>
+                    <button onClick={()=>setSfdcManual(m=>!m)}
+                      style={{ fontSize:12, padding:"7px 14px", background:"transparent", border:`1px solid ${C.brd}`, color:C.mut, borderRadius:5, cursor:"pointer" }}>
+                      {sfdcManual?"Cancel":"Paste token manually"}
+                    </button>
+                  </div>
+                  {sfdcManual&&(
+                    <div style={{ display:"flex", flexDirection:"column", gap:7, padding:"12px 14px", background:C.sur, border:`1px solid ${C.brd}`, borderRadius:7 }}>
+                      <p style={{ ...mono, margin:"0 0 4px", fontSize:10, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em" }}>From: <code style={{ color:C.txt }}>sf org display --verbose</code></p>
+                      {[["Access Token","token","eyJ0eXAiOiJKV1QiLCJh…"],["Instance URL","instance","https://your-org.my.salesforce.com"],["User ID (optional)","userId","0055g000000xxxABC"]].map(([label,key,ph])=>(
+                        <div key={key}>
+                          <div style={{ ...mono, fontSize:10, color:C.dim, marginBottom:3 }}>{label}</div>
+                          <input type={key==="token"?"password":"text"} value={sfdcManualInputs[key]} onChange={e=>setSfdcManualInputs(p=>({...p,[key]:e.target.value}))} placeholder={ph}
+                            style={{ ...mono, width:"100%", boxSizing:"border-box", fontSize:12, padding:"6px 10px", background:C.bg, border:`1px solid ${C.brd}`, borderRadius:5, color:C.txt, outline:"none" }}/>
+                        </div>
+                      ))}
+                      <button onClick={connectSfdcManual} disabled={!sfdcManualInputs.token.trim()||!sfdcManualInputs.instance.trim()}
+                        style={{ fontSize:13, padding:"7px 14px", background:sfdcManualInputs.token&&sfdcManualInputs.instance?"#001828":"transparent", border:`1px solid ${sfdcManualInputs.token&&sfdcManualInputs.instance?"#00A1E066":C.brd}`, color:sfdcManualInputs.token&&sfdcManualInputs.instance?"#00A1E0":C.dim, borderRadius:5, cursor:sfdcManualInputs.token&&sfdcManualInputs.instance?"pointer":"default", fontWeight:600, alignSelf:"flex-start" }}>
+                        Connect →
+                      </button>
+                    </div>
+                  )}
+                  <p style={{ ...mono, margin:0, fontSize:11, color:C.dim }}>OAuth requires a Connected App. Manual token works with the Salesforce CLI.</p>
+                </div>
+              )}
+            </div>
 
             {INTEGRATION_DEFS.map(def=>{
               const connected=isConnected(def);
@@ -918,70 +825,6 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
               <button style={{ fontSize:13, padding:"6px 14px", background:"#001828", border:"1px solid #0088CC44", color:"#0099DD", borderRadius:5, cursor:"pointer", fontWeight:500 }}>Go to Uploads →</button>
             </div>
 
-            {/* ── Salesforce ── */}
-            <div style={{ background:C.card, border:`1px solid ${sfdcConnected?"#00A1E044":C.brd}`, borderRadius:8, padding:"14px 16px" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
-                <p style={{ margin:0, fontSize:15, fontWeight:500, color:sfdcConnected?"#00A1E0":C.txt }}>Salesforce</p>
-                <span style={{ ...mono, fontSize:11, color:sfdcConnected?C.green:C.dim, marginLeft:"auto" }}>{sfdcConnected?"● Connected":"○ Disconnected"}</span>
-              </div>
-              <p style={{ margin:"0 0 10px", fontSize:13, color:C.mut, lineHeight:1.5 }}>
-                Connect via OAuth to pull My Accounts and Dormant accounts directly from SFDC — no CSV needed.{sfdcConnected&&sfdcUserName&&<span style={{ color:C.dim }}> Signed in as <span style={{ color:C.txt }}>{sfdcUserName}</span>.</span>}
-              </p>
-              {sfdcConnected ? (
-                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                    <button onClick={()=>syncFromSfdc("my_accounts")} disabled={!!sfdcSyncing}
-                      style={{ fontSize:13, padding:"7px 16px", background:sfdcSyncing==="my_accounts"?"#001408":"#041408", border:`1px solid ${C.green}55`, color:C.green, borderRadius:5, cursor:sfdcSyncing?"default":"pointer", fontWeight:500, opacity:sfdcSyncing&&sfdcSyncing!=="my_accounts"?0.5:1 }}>
-                      {sfdcSyncing==="my_accounts"?"Pulling…":"⊕ My Accounts"}
-                    </button>
-                    <button onClick={()=>syncFromSfdc("dormant")} disabled={!!sfdcSyncing}
-                      style={{ fontSize:13, padding:"7px 16px", background:sfdcSyncing==="dormant"?"#0C0C00":"#1A1A00", border:`1px solid ${C.tin}55`, color:C.tin, borderRadius:5, cursor:sfdcSyncing?"default":"pointer", fontWeight:500, opacity:sfdcSyncing&&sfdcSyncing!=="dormant"?0.5:1 }}>
-                      {sfdcSyncing==="dormant"?"Pulling…":"◎ Dormant → Pool"}
-                    </button>
-                    <button onClick={disconnectSfdc}
-                      style={{ fontSize:12, padding:"7px 14px", background:"transparent", border:`1px solid ${C.red}44`, color:C.red, borderRadius:5, cursor:"pointer", marginLeft:"auto" }}>
-                      Disconnect
-                    </button>
-                  </div>
-                  {sfdcResult&&(
-                    <div style={{ ...mono, fontSize:12, padding:"7px 12px", borderRadius:5, background:sfdcResult.error?"#1A0000":"#001408", border:`1px solid ${sfdcResult.error?C.red:C.green}44`, color:sfdcResult.error?C.red:C.green }}>
-                      {sfdcResult.error ? `✕ ${sfdcResult.error}` : `✓ ${sfdcResult.count} account${sfdcResult.count!==1?"s":""} pulled from ${sfdcResult.mode==="dormant"?"Dormant → Claim Jumper pool":"My Accounts → territory"}. Run assay to score.`}
-                    </div>
-                  )}
-                  <p style={{ ...mono, margin:0, fontSize:11, color:C.dim, lineHeight:1.5 }}>Pulls: Account Name, Website, Owner, Billing State, Vertical, Subvertical, Last Activity Date, Account ID. Accounts are added without scores — run a batch assay from Uploads to analyze them.</p>
-                </div>
-              ) : (
-                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                    <button onClick={()=>{ window.location.href="/api/sfdc/auth"; }}
-                      style={{ fontSize:13, padding:"7px 18px", background:"#001828", border:"1px solid #00A1E066", color:"#00A1E0", borderRadius:5, cursor:"pointer", fontWeight:600 }}>
-                      Connect via OAuth →
-                    </button>
-                    <button onClick={()=>setSfdcManual(m=>!m)}
-                      style={{ fontSize:12, padding:"7px 14px", background:"transparent", border:`1px solid ${C.brd}`, color:C.mut, borderRadius:5, cursor:"pointer" }}>
-                      {sfdcManual?"Cancel":"Paste token manually"}
-                    </button>
-                  </div>
-                  {sfdcManual&&(
-                    <div style={{ display:"flex", flexDirection:"column", gap:7, padding:"12px 14px", background:C.sur, border:`1px solid ${C.brd}`, borderRadius:7 }}>
-                      <p style={{ ...mono, margin:"0 0 4px", fontSize:10, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em" }}>From: <code style={{ color:C.txt }}>sf org display --verbose</code></p>
-                      {[["Access Token","token","eyJ0eXAiOiJKV1QiLCJh…"],["Instance URL","instance","https://your-org.my.salesforce.com"],["User ID (optional)","userId","0055g000000xxxABC"]].map(([label,key,ph])=>(
-                        <div key={key}>
-                          <div style={{ ...mono, fontSize:10, color:C.dim, marginBottom:3 }}>{label}</div>
-                          <input type={key==="token"?"password":"text"} value={sfdcManualInputs[key]} onChange={e=>setSfdcManualInputs(p=>({...p,[key]:e.target.value}))} placeholder={ph}
-                            style={{ ...mono, width:"100%", boxSizing:"border-box", fontSize:12, padding:"6px 10px", background:C.bg, border:`1px solid ${C.brd}`, borderRadius:5, color:C.txt, outline:"none" }}/>
-                        </div>
-                      ))}
-                      <button onClick={connectSfdcManual} disabled={!sfdcManualInputs.token.trim()||!sfdcManualInputs.instance.trim()}
-                        style={{ fontSize:13, padding:"7px 14px", background:sfdcManualInputs.token&&sfdcManualInputs.instance?"#001828":"transparent", border:`1px solid ${sfdcManualInputs.token&&sfdcManualInputs.instance?"#00A1E066":C.brd}`, color:sfdcManualInputs.token&&sfdcManualInputs.instance?"#00A1E0":C.dim, borderRadius:5, cursor:sfdcManualInputs.token&&sfdcManualInputs.instance?"pointer":"default", fontWeight:600, alignSelf:"flex-start" }}>
-                        Connect →
-                      </button>
-                    </div>
-                  )}
-                  <p style={{ ...mono, margin:0, fontSize:11, color:C.dim }}>OAuth requires a Connected App. Manual token works with the Salesforce CLI.</p>
-                </div>
-              )}
-            </div>
 
           </div>
         </div>
@@ -1062,25 +905,6 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
         );
       })()}
 
-      {/* ── INVITES TAB ── */}
-      {tab==="access" && (
-        <AdminInvites
-          invites={invites}
-          setInvites={setInvites}
-          inviteModal={inviteModal}
-          setInviteModal={setInviteModal}
-          inviteForm={inviteForm}
-          setInviteForm={setInviteForm}
-          inviteConfirm={inviteConfirm}
-          setInviteConfirm={setInviteConfirm}
-          copiedInvCode={copiedInvCode}
-          setCopiedInvCode={setCopiedInvCode}
-          invitePage={invitePage}
-          setInvitePage={setInvitePage}
-          onSaveUsers={onSaveUsers}
-          currentUser={currentUser}
-        />
-      )}
 
       {/* ── ACCESS LOG TAB ── */}
       {tab==="accesslog"&&<AccessLogTab/>}
@@ -1089,8 +913,6 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
       {/* ── OUTREACH INTELLIGENCE TAB ── */}
       {tab==="doctrine"&&<OutreachIntelligenceTab currentUser={currentUser}/>}
 
-      {/* ── ONBOARDING TAB ── */}
-      {tab==="onboarding"&&<OnboardingTab users={users} setUsers={setUsers} onSaveUsers={onSaveUsers} invites={invites} setInvites={setInvites}/>}
 
       {/* ── SETTINGS TAB ── */}
       {tab==="settings"&&(()=>{
@@ -1150,23 +972,6 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
               </div>
             </div>
 
-            {/* Master Code */}
-            <div style={{ background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, padding:"16px 18px", marginBottom:16 }}>
-              <div style={{ display:"flex", alignItems:"flex-start", justifyContent:"space-between", gap:16, flexWrap:"wrap" }}>
-                <div style={{ flex:1, minWidth:200 }}>
-                  <p style={{ margin:"0 0 3px", fontSize:14, color:C.txt, fontWeight:500 }}>⛏ Master Code</p>
-                  <p style={{ ...mono, margin:"0 0 8px", fontSize:11, color:C.dim }}>Permanent admin access code. Bypasses invite codes — keep it private. Never expires.</p>
-                  <p style={{ ...mono, margin:0, fontSize:12, color:getMasterCodeHash()?C.green:C.orange }}>
-                    {getMasterCodeHash() ? "● Set and active" : "○ Not set — generate one now"}
-                  </p>
-                </div>
-                <button
-                  onClick={()=>{ const c=generateMasterCode(); setMasterCodeModal({code:c}); }}
-                  style={{ ...mono, fontSize:12, padding:"7px 18px", background:`${C.gold}14`, border:`1px solid ${C.gold}44`, color:C.gold, borderRadius:6, cursor:"pointer", flexShrink:0 }}>
-                  {getMasterCodeHash() ? "Regenerate" : "Generate"}
-                </button>
-              </div>
-            </div>
 
             {/* Supabase sync */}
             {isSupabaseEnabled() && !supabaseSeeded && (
@@ -1221,38 +1026,6 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
         );
       })()}
 
-      {/* Master code modal */}
-      {masterCodeModal && (
-        <div onClick={e=>{if(e.target===e.currentTarget){setMasterCodeModal(null);setMasterCopied(false);}}} style={{ position:"fixed", inset:0, zIndex:1001, background:"#00000099", display:"flex", alignItems:"center", justifyContent:"center" }}>
-          <div style={{ background:C.card, border:`1px solid ${C.goldBdr}`, borderRadius:12, padding:"28px 32px", width:360, boxShadow:"0 20px 60px #000c", textAlign:"center" }}>
-            <div style={{ fontSize:28, marginBottom:12 }}>⛏</div>
-            <p style={{ ...mono, margin:"0 0 6px", fontSize:11, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em" }}>Your New Master Code</p>
-            <div style={{ background:"#050505", border:`1px solid ${C.goldBdr}55`, borderRadius:8, padding:"14px 20px", margin:"12px 0 8px" }}>
-              <span style={{ ...mono, fontSize:22, fontWeight:700, color:C.gold, letterSpacing:"0.22em" }}>{masterCodeModal.code}</span>
-            </div>
-            <p style={{ ...mono, margin:"0 0 20px", fontSize:11, color:C.orange }}>
-              ⚠ Save this somewhere safe — it won't be shown again.
-            </p>
-            {getMasterCodeHash() && (
-              <p style={{ ...mono, margin:"0 0 16px", fontSize:11, color:`${C.red}aa` }}>
-                This will replace your existing master code immediately.
-              </p>
-            )}
-            <div style={{ display:"flex", gap:8, justifyContent:"center" }}>
-              <button
-                onClick={()=>{ navigator.clipboard.writeText(masterCodeModal.code).catch(()=>{}); setMasterCopied(true); }}
-                style={{ ...mono, fontSize:12, padding:"8px 20px", background:`${C.gold}14`, border:`1px solid ${C.gold}44`, color:masterCopied?C.green:C.gold, borderRadius:6, cursor:"pointer" }}>
-                {masterCopied ? "Copied ✓" : "Copy code"}
-              </button>
-              <button
-                onClick={()=>{ setMasterCode(masterCodeModal.code); setMasterCodeModal(null); setMasterCopied(false); setTab("settings"); /* force re-render to show Set status */ setTimeout(()=>{}, 0); }}
-                style={{ ...mono, fontSize:12, padding:"8px 20px", background:C.gold, border:`1px solid ${C.gold}`, color:C.bg, borderRadius:6, cursor:"pointer", fontWeight:700 }}>
-                I've saved it →
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
 
     </div>

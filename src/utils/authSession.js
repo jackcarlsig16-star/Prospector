@@ -23,8 +23,6 @@ export async function fetchMe() {
   return data;
 }
 
-// Leaves the legacy ProspectorGate keys alone: clearing them would put the
-// old code gate behind the new login until Stage 5 removes it.
 export async function signOut() {
   try { await authClient.auth.signOut(); } catch {}
   syncSessionCookie(null);

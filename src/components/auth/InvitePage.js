@@ -31,6 +31,23 @@ export default function InvitePage({ token, session }) {
       .catch(e => setLoadError(e.message));
   }, [token]);
 
+  const signedInEmail = (session?.user?.email || '').toLowerCase();
+  const accept = async () => {
+    setBusy(true);
+    setError('');
+    const res = await fetch(`/api/invites/${encodeURIComponent(token)}/accept`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { setError(data.error || `Couldn't accept (${res.status})`); setBusy(false); return; }
+    window.location.assign(`/?business=${data.business_id}`);
+  };
+
+  // Signed in as the invited email (just now, or via Google/confirmation
+  // returning here) - join straight away, no extra click.
+  const canAutoAccept = invite?.status === 'valid' && !!session && signedInEmail === invite.email;
+  useEffect(() => {
+    if (canAutoAccept) accept();
+  }, [canAutoAccept]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (loadError) {
     return (
       <AuthLayout title="Invite not found" subtitle={loadError}>
@@ -51,16 +68,6 @@ export default function InvitePage({ token, session }) {
 
   const returnHere = `${window.location.origin}/invite/${token}`;
   const headline = `You've been invited to ${invite.business.name} as ${invite.role_label}${invite.invited_by ? ` by ${invite.invited_by}` : ''}.`;
-  const signedInEmail = (session?.user?.email || '').toLowerCase();
-
-  const accept = async () => {
-    setBusy(true);
-    setError('');
-    const res = await fetch(`/api/invites/${encodeURIComponent(token)}/accept`, { method: 'POST' });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) { setError(data.error || `Couldn't accept (${res.status})`); setBusy(false); return; }
-    window.location.assign(`/?business=${data.business_id}`);
-  };
 
   const google = async () => {
     setBusy(true);
@@ -99,9 +106,9 @@ export default function InvitePage({ token, session }) {
 
   if (session) {
     return (
-      <AuthLayout title={`Join ${invite.business.name}`} subtitle={headline}>
+      <AuthLayout title={error ? `Join ${invite.business.name}` : `Joining ${invite.business.name}…`} subtitle={headline}>
         <ErrorBanner>{error}</ErrorBanner>
-        <button type="button" onClick={accept} disabled={busy} style={{ ...primaryButton, opacity: busy ? 0.6 : 1 }}>{busy ? 'Joining…' : 'Accept invite'}</button>
+        {error && <button type="button" onClick={accept} disabled={busy} style={{ ...primaryButton, opacity: busy ? 0.6 : 1 }}>{busy ? 'Joining…' : 'Try again'}</button>}
       </AuthLayout>
     );
   }

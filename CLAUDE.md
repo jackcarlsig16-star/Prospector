@@ -71,8 +71,6 @@ Always set `max_tokens` explicitly on every AI call. Never omit it.
 | Accounts + calls | `prospector_accounts` (localStorage) + `accounts` (Supabase) |
 | Compliance steps | `prospector_compliance` (localStorage) + `plospect_compliance` (Supabase — table not yet renamed, needs a migration) |
 | Pricing files | `prospector_pricing_files` (localStorage) |
-| Gate unlock | `prospector_gate_unlocked` (localStorage) |
-| Approval cache | `prospector_approved` (localStorage, `'1'` = approved) |
 | Google grants (Gmail/Calendar/Slides) | `google_grants` (Supabase, server-only; refresh token AES-256-GCM with `GOOGLE_TOKEN_KEY`) — browser holds no Google tokens, see `src/utils/google.js` |
 | SFDC tokens | `sfdc_access_token`, `sfdc_instance_url`, `sfdc_user_id`, `sfdc_user_name`, `sfdc_synced_at` |
 
@@ -102,7 +100,7 @@ Always set `max_tokens` explicitly on every AI call. Never omit it.
 | `api/sfdc/production-request.js` | SFDC compliance stage → canonical status mapping |
 | `api/gmail/callback.js` | OAuth callback — stores access + refresh token |
 | `src/components/AccountCardComms.js` | Email generator (post-call / reply / outreach) |
-| `src/components/ProspectorGate.js` | Access gate + code verification |
+| `src/components/auth/AuthGate.js` | Sign-in, workspace check, first-run Welcome screen; hands `me` to App |
 | `src/components/AdminPage.js` | Admin: access log, SFDC tools, user management |
 
 ---

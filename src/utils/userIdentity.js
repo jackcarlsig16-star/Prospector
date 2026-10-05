@@ -2,15 +2,14 @@
 //
 // Priority cascade:
 //   1. user.id if it's already set — keep it, never overwrite a known id.
-//   2. prospector_user_id (gate-generated UUID) — written when the user first
-//      passes through ProspectorGate. Stable across sessions, lost on cache wipe.
+//   2. prospector_user_id — a UUID older builds wrote in this browser.
+//      Stable across sessions, lost on cache wipe.
 //   3. Owner deterministic slug — for OWNER_EMAILS, derive `owner_{local}` from
 //      the email so seed data and migrations can target Owners by a stable key.
 //   4. Fresh crypto.randomUUID() — last resort. Persisted to prospector_user_id
 //      so subsequent calls return the same value within the same browser.
 //
 // Used by:
-//   - OnboardingPage.finish() to stamp user.id at creation
 //   - App.js one-time migration to repair existing prospector_user objects that
 //     were written before the onboarding fix shipped (every existing user).
 
