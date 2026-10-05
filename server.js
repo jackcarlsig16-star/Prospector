@@ -27,6 +27,9 @@ app.use(express.json({ limit: '20mb', verify: (req, res, buf) => { req.rawBody =
 const authMw = (name, ...args) => (req, res, next) =>
   import('./api/lib/requireAuth.js').then(m => (args.length ? m[name](...args) : m[name])(req, res, next)).catch(next);
 app.use(['/api', '/proxy'], authMw('sessionAuth'));
+// Single-tenant integrations on shared credentials (one SFDC org token, one
+// Hunter key, one Databricks warehouse) - platform owner until opened up.
+app.use(['/api/sfdc', '/api/hunter', '/api/databricks'], authMw('platformOwnerOnly'));
 app.use('/api/businesses/:id', authMw('businessGate'));
 app.use('/api/sales/:businessId', authMw('salesGate'));
 app.use('/api/projects/:id', authMw('parentGate', 'projects'));

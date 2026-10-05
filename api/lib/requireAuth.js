@@ -13,6 +13,15 @@ const EXEMPT = [
   { method: 'GET', path: /^\/api\/invites\/[^/]+$/ },  // invite page shows the invite before sign-in
 ];
 
+// Sign-up is open (any Google account gets a profile), so being signed in
+// isn't enough: everything else needs a workspace. These are the routes the
+// first-run and invite flows hit before a membership exists.
+const NO_WORKSPACE_OK = [
+  { method: 'GET', path: /^\/api\/me$/ },
+  { method: 'POST', path: /^\/api\/me\/welcome$/ },
+  { method: 'POST', path: /^\/api\/invites\/[^/]+\/accept$/ },
+];
+
 // Verifying with Supabase costs a network round trip, so a verified token is
 // trusted for this long. Sign-out/revocation therefore lags by up to a minute.
 const TOKEN_TRUST_MS = 60_000;
@@ -50,6 +59,9 @@ export async function sessionAuth(req, res, next) {
     isPlatformOwner: profile.is_platform_owner,
     roles: new Map(memberships.map(m => [m.business_id, m.role])),
   };
+  if (!profile.is_platform_owner && !memberships.length && !NO_WORKSPACE_OK.some(e => e.method === req.method && e.path.test(path))) {
+    return res.status(403).json({ error: "You're not in a workspace yet - ask a workspace admin for an invite" });
+  }
   next();
 }
 
