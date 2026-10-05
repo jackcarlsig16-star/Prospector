@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import DOMPurify from 'dompurify';
+import { escapeHtml } from '../utils/textSanitize';
 import { C, mono } from '../constants/colors';
 import { MEDPICC_FIELDS } from '../utils/dealIntel';
 import { computePricing, getPfDiscounted, getEffectiveRate } from '../utils/pricing';
@@ -642,14 +644,14 @@ export default function DealExportModal({ accId, acc, onClose }) {
       const text = c.renderText(data, opts);
       return `<div style="margin-bottom:28px">
         <h2 style="font-size:13px;font-weight:700;color:#333;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #e5e7eb;padding-bottom:6px;margin:0 0 10px">${c.label}</h2>
-        <pre style="font-size:12px;color:#444;white-space:pre-wrap;font-family:Arial,sans-serif;line-height:1.7;margin:0">${text.replace(/^[A-Z \/\-—]+\n/, "")}</pre>
+        <pre style="font-size:12px;color:#444;white-space:pre-wrap;font-family:Arial,sans-serif;line-height:1.7;margin:0">${escapeHtml(text.replace(/^[A-Z \/\-—]+\n/, ""))}</pre>
       </div>`;
     }).join("");
     const dateStr = new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
-    const html = `<!DOCTYPE html><html><head><title>${acc.name} — Deal Summary</title>
+    const html = `<!DOCTYPE html><html><head><title>${escapeHtml(acc.name)} — Deal Summary</title>
       <style>body{font-family:Arial,sans-serif;max-width:680px;margin:40px auto;color:#222;} @media print{body{margin:0;max-width:100%;}}</style>
     </head><body>
-      <h1 style="font-size:22px;margin:0 0 4px;font-weight:700">${acc.name}</h1>
+      <h1 style="font-size:22px;margin:0 0 4px;font-weight:700">${escapeHtml(acc.name)}</h1>
       <p style="font-size:12px;color:#888;margin:0 0 32px">Deal Summary — ${dateStr}</p>
       ${htmlSections}
     </body></html>`;
@@ -812,7 +814,7 @@ export default function DealExportModal({ accId, acc, onClose }) {
                     <div key={c.id}>
                       {i > 0 && <div style={{ borderTop: `1px solid #1a1a1a`, margin: "8px 0" }} />}
                       <p style={{ ...mono, fontSize: 9, color: C.gold, textTransform: "uppercase", letterSpacing: "0.1em", margin: "0 0 5px" }}>{c.label}</p>
-                      <div dangerouslySetInnerHTML={{ __html: c.renderPreviewHtml(data, opts) }} />
+                      <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(c.renderPreviewHtml(data, opts)) }} />
                     </div>
                   );
                 }

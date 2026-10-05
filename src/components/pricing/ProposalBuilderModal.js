@@ -3,6 +3,8 @@ import { C, mono } from '../../constants/colors';
 import { MODELS } from '../../config/models';
 import { computePricing } from '../../utils/pricing';
 import { FILES_KEY } from '../../utils/storageKeys';
+import DOMPurify from 'dompurify';
+import { escapeHtml } from '../../utils/textSanitize';
 
 function buildProposalContext(linkedAcc, customContext, pricingState) {
   const activeUser = (() => { try { return JSON.parse(localStorage.getItem("prospector_user") || "{}"); } catch { return {}; } })();
@@ -781,7 +783,7 @@ ${contextBlock}`;
   const handlePrint = () => {
     if (!outputRef.current) return;
     const printWin = window.open('', '_blank');
-    printWin.document.write(`<html><head><title>${linkedAcc?.name || 'Proposal'} — Proposal (DRAFT)</title>
+    printWin.document.write(`<html><head><title>${escapeHtml(linkedAcc?.name || 'Proposal')} — Proposal (DRAFT)</title>
       <style>
         body{font-family:sans-serif;padding:32px;max-width:860px;margin:0 auto;position:relative;}
         .draft-ribbon{position:fixed;top:18px;right:18px;background:#b59a3f;color:#fff;
@@ -861,7 +863,7 @@ ${contextBlock}`;
                 style={{ background:"#fff", color:"#111", borderRadius:6,
                   border:`1px solid ${C.brd}`, padding:"32px 36px",
                   fontSize:14, lineHeight:"1.7", overflowX:"auto" }}
-                dangerouslySetInnerHTML={{ __html: output }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(output) }}
               />
             </>
           ) : (

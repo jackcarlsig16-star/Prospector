@@ -15,3 +15,10 @@ export function stripCitationMarkup(text) {
   if (!text || typeof text !== 'string') return text;
   return text.replace(/<\/?cite[^>]*>/gi, '').replace(/ {2,}/g, ' ').trim();
 }
+
+// For values interpolated into HTML strings (print windows, preview markup).
+// Account names, product names and intel text come from imports, CRMs and
+// model output, so they're untrusted in a same-origin document.
+export function escapeHtml(value) {
+  return String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}

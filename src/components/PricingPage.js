@@ -12,6 +12,7 @@ import PricingIntelGrid from './pricing/PricingIntelGrid';
 import PricingChatPanel from './pricing/PricingChatPanel';
 import { FILES_KEY } from '../utils/storageKeys';
 import { productMonthlyCost, productMonthlyRack } from '../utils/pricingMath';
+import { escapeHtml } from '../utils/textSanitize';
 
 // ── Pricing intel helpers ──
 const hasPricingFor = id => { try { return !!JSON.parse(localStorage.getItem("prospector_pricing_files")||"{}")[id]; } catch { return false; } };
@@ -714,7 +715,7 @@ ${(linkedAcc?.calls || []).length === 0 ? "No calls logged." : (linkedAcc.calls.
     const html = isDefault ? summaryRef.current.innerHTML : `<pre style="font-family:ui-monospace,monospace;font-size:13px;line-height:1.7;white-space:pre-wrap;word-break:break-word;">${getFormattedText().replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}</pre>`;
     const win = window.open("", "_blank");
     if (!win) return;
-    const title = linkedAcc ? `${linkedAcc.name} — Pricing Summary` : "Pricing Summary";
+    const title = escapeHtml(linkedAcc ? `${linkedAcc.name} — Pricing Summary` : "Pricing Summary");
     win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${title}</title><style>
       *{box-sizing:border-box;margin:0;padding:0;}
       body{background:#fff;color:#111;font-family:ui-monospace,"Courier New",monospace;padding:32px;max-width:980px;margin:0 auto;}
