@@ -14,6 +14,9 @@ export default async function handler(req, res) {
   if (!supabase) return res.status(500).json({ error: 'Supabase is not configured' });
 
   try {
+    const { data: account, error: accErr } = await supabase.from('accounts').select('id').eq('id', accountId).eq('business_id', businessId).maybeSingle();
+    if (accErr) throw accErr;
+    if (!account) return res.status(404).json({ error: 'Account not found in this workspace' });
     const detail = await assessInfluencerAccount(supabase, accountId, bioText.trim(), Number(followerCount) || null, businessId);
     res.status(200).json({ detail });
   } catch (e) {

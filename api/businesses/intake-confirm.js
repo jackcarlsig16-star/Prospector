@@ -17,6 +17,14 @@ export default async function handler(req, res) {
   if (!supabase) return res.status(500).json({ error: 'Supabase is not configured' });
 
   try {
+    // businessGate checked the workspace in the URL; ids in the body must be in it too.
+    for (const [table, rowId] of [['projects', action.projectId], ['lists', action.listId]]) {
+      if (!rowId) continue;
+      const { data: row, error: rowErr } = await supabase.from(table).select('id').eq('id', rowId).eq('business_id', id).maybeSingle();
+      if (rowErr) throw rowErr;
+      if (!row) return res.status(404).json({ error: `${table.slice(0, -1)} not found in this workspace` });
+    }
+
     if (action.type === 'new_project') {
       if (!action.name?.trim()) return res.status(400).json({ error: 'action.name is required' });
       const { data: business, error: bizErr } = await supabase.from('businesses').select('owner_email').eq('id', id).single();
@@ -103,16 +111,12 @@ export default async function handler(req, res) {
     // alone.
     if (action.type === 'internal_meeting') {
       if (!action.confirmCompanyIntel && !action.projectId) return res.status(400).json({ error: 'At least one destination must be selected' });
-      let projectBusinessId = null;
       if (action.confirmCompanyIntel) {
         await insertCompanyIntelEntry(supabase, id, (text || '').trim(), created_by, 'internal_meeting');
         await beginProfileSync(supabase, id);
       }
       if (action.projectId) {
-        const { data: project, error: projErr } = await supabase.from('projects').select('business_id').eq('id', action.projectId).single();
-        if (projErr) throw projErr;
-        projectBusinessId = project.business_id;
-        await insertProjectIntelEntry(supabase, action.projectId, projectBusinessId, (text || '').trim(), created_by);
+        await insertProjectIntelEntry(supabase, action.projectId, id, (text || '').trim(), created_by);
         await beginStrategySync(supabase, action.projectId);
       }
       res.status(200).json({ status: 'syncing', businessId: action.confirmCompanyIntel ? id : null, projectId: action.projectId || null });

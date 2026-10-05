@@ -55,7 +55,7 @@ export default function BulkOutreachModal({ business, project, userEmail, active
         name: acc.name, businessModel: acc.bm || "", productFit: acc.pf || "",
         useCase: acc.useCase || "", products: acc.prods || [], signals: acc.sigs || [],
         customIntel, accountIntel: buildAccountIntel(acc), web: acc.web,
-        businessId: business.id, projectId: project.id, runningUserEmail: userEmail,
+        businessId: business.id, projectId: project.id, useOwnVoice: true,
         senderName: activeUser?.name || userEmail, messageType: 'cold_outreach', accountKind: acc.accountKind,
       }),
     }).then(async r => {

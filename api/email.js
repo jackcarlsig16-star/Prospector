@@ -1,5 +1,6 @@
 import { MODELS } from '../src/config/models.js';
 import { getSupabase, getVoiceProfileForUser } from './businesses/shared.js';
+import { hasRole } from './lib/requireAuth.js';
 import { stripCitationMarkup } from '../src/utils/textSanitize.js';
 
 export const config = { maxDuration: 30 };
@@ -89,7 +90,7 @@ export default async function handler(req, res) {
     personaName, personaTitle,
     customIntel, senderName, voiceExamples,
     signals, web, website,
-    format, accountKind, messageType, businessId, projectId, campaignId, runningUserEmail,
+    format, accountKind, messageType, businessId, projectId, campaignId, useOwnVoice,
     fitRationale, fitSignals, nicheAssessment, bioSnapshot,
     // generation-engine-consolidation-v1 - directive replaces the old `note`
     // field name (same free-text per-generation steering input, formalized
@@ -128,12 +129,27 @@ export default async function handler(req, res) {
   const websiteUrl = web || website || null;
   const supabase = getSupabase();
 
+  // Every read below uses the service key, so the ids in the body must
+  // belong to a workspace this user can see. A project or campaign with no
+  // workspace is platform-owner only, same as parentGate.
+  if (businessId && !hasRole(req, businessId, 'viewer')) return res.status(403).json({ error: 'You need viewer access to this workspace' });
+  for (const [table, id] of [['projects', projectId], ['campaigns', campaignId]]) {
+    if (!id) continue;
+    const { data: parent, error: parentError } = await supabase.from(table).select('business_id').eq('id', id).maybeSingle();
+    if (parentError) return res.status(500).json({ error: parentError.message });
+    if (!parent) return res.status(404).json({ error: `${table.slice(0, -1)} not found` });
+    const allowed = parent.business_id
+      ? hasRole(req, parent.business_id, 'viewer') && (!businessId || parent.business_id === businessId)
+      : req.auth.isPlatformOwner;
+    if (!allowed) return res.status(403).json({ error: `That ${table.slice(0, -1)} isn't in this workspace` });
+  }
+
   // generation-provider-fetch-parallelization-v1 — these six reads used to run
   // as six sequential awaits. Measured serial on the deepest chain (project +
   // campaign): 2802ms across 6 calls, wall span 2829ms - i.e. almost exactly
   // the sum, no overlap at all. They are mutually independent: every one is
   // keyed only on values already present in req.body before the chain starts
-  // (runningUserEmail, businessId, projectId, campaignId, websiteUrl), and
+  // (useOwnVoice, businessId, projectId, campaignId, websiteUrl), and
   // none reads another's result. Each keeps its own guard and its own
   // try/catch below, so a single provider failing degrades exactly as it did
   // before - that layer is omitted, the others are unaffected - and
@@ -155,14 +171,14 @@ export default async function handler(req, res) {
     (async () => { websiteContent = await scrapeWebsite(websiteUrl); })(),
 
     // outreach-intelligence-v1 Section 0a — bulk/background generation passes
-    // runningUserEmail instead of a client-supplied voiceProfile object, so
-    // the server pulls the running user's own voice fresh from voice_profiles
-    // rather than trusting whatever the client happened to send. Interactive
+    // useOwnVoice instead of a client-supplied voiceProfile object, so the
+    // server pulls the signed-in user's own voice fresh from voice_profiles
+    // (never someone else's - the email comes from the session). Interactive
     // single-account callers (EmailModal.js) keep passing voiceProfile
     // directly, unchanged - only used when voiceProfile itself is absent.
     (async () => {
-      if (!voiceProfile && runningUserEmail && supabase) {
-        try { voiceProfile = await getVoiceProfileForUser(supabase, runningUserEmail); } catch { /* proceed voiceless */ }
+      if (!voiceProfile && useOwnVoice && supabase) {
+        try { voiceProfile = await getVoiceProfileForUser(supabase, req.auth.user.email); } catch { /* proceed voiceless */ }
       }
     })(),
 
