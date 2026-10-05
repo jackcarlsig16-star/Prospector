@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { runSync } from './sync.js';
+import { selectAllPages } from '../lib/selectAllPages.js';
 
 function getSupabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -35,15 +36,21 @@ export async function runsRoute(req, res) {
   res.status(200).json({ runs: data });
 }
 
+// ~425 rows per sync day, so this passed the 1,000-row cap within 3 days.
 export async function metricsRoute(req, res) {
   const { from, to } = req.query;
   const supabase = getSupabase();
-  let query = supabase.from('sales_metrics_daily').select('*').eq('business_id', req.params.businessId);
-  if (from) query = query.gte('metric_date', from);
-  if (to) query = query.lte('metric_date', to);
-  const { data, error } = await query.order('metric_date', { ascending: true });
-  if (error) return res.status(500).json({ error: error.message });
-  res.status(200).json({ metrics: data });
+  try {
+    const metrics = await selectAllPages(() => {
+      let query = supabase.from('sales_metrics_daily').select('*').eq('business_id', req.params.businessId);
+      if (from) query = query.gte('metric_date', from);
+      if (to) query = query.lte('metric_date', to);
+      return query.order('metric_date', { ascending: true }).order('id');
+    });
+    res.status(200).json({ metrics });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 }
 
 // sales-analytics-core-names-fix-v1 Part B - names/cohort/address lookup
