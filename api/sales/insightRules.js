@@ -2,6 +2,7 @@ import { laDateString } from './laDate.js';
 import { weekStartOf, addDays } from './emailCounts.js';
 import { isBotOpen } from './heatScore.js';
 import { mailboxConnectionProblem } from '../../src/utils/mailboxStatus.js';
+import { selectAllPages } from '../lib/selectAllPages.js';
 
 // sales-email-trend-v1 REV2 Stage 4 - the ONE insight rules file.
 // Deterministic only, no AI text. Every rule states its evidence (numbers +
@@ -308,33 +309,27 @@ export function computeInsights({ today, counts, sequences, mailboxes, openEvent
   return { fired, suppressed };
 }
 
-const PAGE = 1000;
-
 // Everything computeInsights needs, from the DB only (zero Apollo calls).
 export async function loadInsightInput(supabase, businessId) {
-  const counts = [];
-  for (let offset = 0; ; offset += PAGE) {
-    const { data, error } = await supabase.from('sales_email_daily_counts')
+  const [counts, events, messages, seqSnap, mailSnap] = await Promise.all([
+    selectAllPages(() => supabase.from('sales_email_daily_counts')
       .select('day,mailbox,sequence_id,step,delivered,hard_bounced,spam_blocked,opened,clicked,replied')
-      .eq('business_id', businessId).order('day').order('mailbox').order('sequence_id').order('step')
-      .range(offset, offset + PAGE - 1);
-    if (error) throw new Error(error.message);
-    counts.push(...data);
-    if (data.length < PAGE) break;
-  }
-  const [seqSnap, mailSnap, events, messages] = await Promise.all([
+      .eq('business_id', businessId).order('day').order('mailbox').order('sequence_id').order('step')),
+    selectAllPages(() => supabase.from('sales_email_activity')
+      .select('apollo_message_id,occurred_at,user_agent,tracking_service')
+      .eq('business_id', businessId).eq('event', 'open').order('id')),
+    selectAllPages(() => supabase.from('sales_email_messages')
+      .select('apollo_message_id,delivered_at').eq('business_id', businessId).order('apollo_message_id')),
     supabase.from('sales_raw_snapshots').select('payload').eq('business_id', businessId).eq('entity', 'sequences').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('sales_raw_snapshots').select('payload,captured_at').eq('business_id', businessId).eq('entity', 'mailboxes').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
-    supabase.from('sales_email_activity').select('apollo_message_id,occurred_at,user_agent,tracking_service').eq('business_id', businessId).eq('event', 'open').range(0, 9999),
-    supabase.from('sales_email_messages').select('apollo_message_id,delivered_at').eq('business_id', businessId).range(0, 9999),
   ]);
-  for (const r of [seqSnap, mailSnap, events, messages]) if (r.error) throw new Error(r.error.message);
-  const deliveredAt = new Map((messages.data || []).map(m => [m.apollo_message_id, m.delivered_at]));
+  for (const r of [seqSnap, mailSnap]) if (r.error) throw new Error(r.error.message);
+  const deliveredAt = new Map(messages.map(m => [m.apollo_message_id, m.delivered_at]));
   return {
     today: laDateString(),
     counts,
     sequences: seqSnap.data?.payload || [],
     mailboxes: (mailSnap.data?.payload || []).map(m => ({ ...m, snapshot_at: mailSnap.data.captured_at })),
-    openEvents: (events.data || []).map(e => ({ ...e, delivered_at: deliveredAt.get(e.apollo_message_id) || null })),
+    openEvents: events.map(e => ({ ...e, delivered_at: deliveredAt.get(e.apollo_message_id) || null })),
   };
 }
