@@ -1,7 +1,5 @@
 // global-workspace-navigation-v1 — single source of truth for the per-business
-// workspace nav. Previously duplicated verbatim between Sidebar.js (owner
-// session) and MemberShell.js (joined-member session, which can't render
-// Sidebar itself since that assumes a full teamUsers/role/admin-badge user).
+// workspace nav (Sidebar.js).
 // generation-engine-consolidation-v1 Stage 2 — "Generation" nav entry
 // removed (BusinessGenerationTab.js/EmailGenerator.js retired - static
 // fintech-hardcoded templates, not AI, confirmed barely used). Real
@@ -9,7 +7,7 @@
 // generation, not a separate tab.
 // sales-analytics-core-v1 — businessIds is a new optional filter field:
 // when present, the tab only shows for businesses whose id is in the list
-// (checked in Sidebar.js/MemberShell.js alongside the existing ownerOnly
+// (checked in Sidebar.js alongside the existing ownerOnly
 // check). Every other entry has no businessIds and is unaffected.
 export const BUSINESS_NAV = [
   { id: "command-center", ic: "⌂", lb: "Command Center" },

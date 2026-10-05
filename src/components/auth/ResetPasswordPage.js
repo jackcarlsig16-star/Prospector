@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { authClient } from '../../utils/supabase';
+import { supabase } from '../../utils/supabase';
 import AuthLayout, { inputStyle, primaryButton, ErrorBanner } from './AuthLayout';
 
 // Landing page for the "forgot password" email. The link signs the person in
@@ -17,7 +17,7 @@ export default function ResetPasswordPage({ session }) {
     if (password !== confirm) return setError("Those passwords don't match.");
     setBusy(true);
     setError('');
-    const { error: err } = await authClient.auth.updateUser({ password });
+    const { error: err } = await supabase.auth.updateUser({ password });
     if (err) { setError(err.message); setBusy(false); return; }
     window.location.assign('/');
   };

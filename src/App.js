@@ -3,8 +3,6 @@ import { C, mono } from './constants/colors';
 import { staleDays } from './utils/staleness';
 import { URGENCY_OPTIONS, setBdrList } from './components/AccountCard';
 import ToolsPage from './components/ToolsPage';
-import JoinBusinessPage from './components/JoinBusinessPage';
-import MemberShell from './components/MemberShell';
 import PersistentScout from './components/PersistentScout';
 import { getManagerScopedAccounts, getAeMap } from './utils/managerScope';
 import AssayBanner from './components/AssayBanner';
@@ -18,7 +16,7 @@ import BugReporter from './components/BugReporter';
 import DailyDigest from './components/DailyDigest';
 import ManagerCommandCenter from './components/ManagerCommandCenter';
 import HandoffsPage from './components/HandoffsPage';
-import { NAV, ROLE_PERMS, NAV_ROLES, SEED_TEAM_USERS, SMB_TEAM, applyOwnerRole, isAdmin, OWNER_EMAILS } from './constants/appConfig';
+import { NAV, ROLE_PERMS, NAV_ROLES, SEED_TEAM_USERS, SMB_TEAM, isAdmin } from './constants/appConfig';
 import { trackStat, trackDailyStat } from './utils/stats';
 import { indexAccountThreads } from './utils/threadIndexer';
 import { fetchRecentThreads, generateBrief } from './components/DailyDigest';
@@ -30,11 +28,10 @@ import { resolveUserId } from './utils/userIdentity';
 import { getDefaultOutbound } from './utils/outbound';
 import { getAllCompliance } from './utils/storage';
 import { getACV } from './utils/ledgerEngine';
-import { getTeamUsers, saveTeamUsers, getFrontier, saveFrontier, getAccounts, saveAccountsToDb, saveComplianceToDb, getPendingUsers, getBdrAssignments, getProjectsForUser, getBusinessesForUser, getCampaignsForProjects } from './utils/db';
+import { getTeamUsers, saveTeamUsers, getFrontier, saveFrontier, getAccounts, saveAccountsToDb, saveComplianceToDb, getPendingUsers, getBdrAssignments, getProjects, getBusinesses, getCampaignsForProjects } from './utils/db';
 import BusinessesHomePage from './components/BusinessesHomePage';
 import BusinessDetailPage from './components/BusinessDetailPage';
 import { isSupabaseEnabled } from './utils/supabase';
-import { signOut } from './utils/authSession';
 
 // Stage-change debug logger — remove once root cause is confirmed
 const logStageChange = (trigger, name, oldStage, newStage) => {
@@ -114,11 +111,6 @@ export default function App({ me }) {
   },[]);
 
   const [user,setUser]=useState(()=>userFromSession(me));
-  // Members joining via /join/:code get their own email-keyed identity here,
-  // fully separate from prospector_user (business-lists-and-permissions-v1).
-  const joinCode=(()=>{try{const m=window.location.pathname.match(/^\/join\/([^/]+)/);return m?decodeURIComponent(m[1]):null;}catch{return null;}})();
-  const [memberSession,setMemberSession]=useState(()=>{try{const s=localStorage.getItem("prospector_member");return s?JSON.parse(s):null;}catch{return null;}});
-  const [joinedBusiness,setJoinedBusiness]=useState(null);
   const [page,setPage]=useState("home");
   const [accounts,setAccounts]=useState(()=>{
     try{
@@ -862,8 +854,6 @@ export default function App({ me }) {
     if (localStorage.getItem("prospector_migrated_account_attribution") === "v4") return;
     const targetId = resolveUserId(user);
     if (!targetId) return;
-    const isOwner = user?.email && OWNER_EMAILS.includes(String(user.email).toLowerCase());
-    const looksLikeUuid = (s) => typeof s === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(s);
 
     let current;
     try { current = JSON.parse(localStorage.getItem("prospector_accounts") || "[]"); } catch { return; }
@@ -873,10 +863,8 @@ export default function App({ me }) {
     const next = current.map(a => {
       const patch = {};
       if (!a.byId) { patch.byId = targetId; changed = true; }
-      else if (isOwner && a.byId !== targetId && looksLikeUuid(a.byId)) { patch.byId = targetId; changed = true; }
       const effectiveById = patch.byId || a.byId;
       if (!a.aeId) { patch.aeId = effectiveById || targetId; changed = true; }
-      else if (isOwner && a.aeId !== targetId && looksLikeUuid(a.aeId)) { patch.aeId = targetId; changed = true; }
       return Object.keys(patch).length ? { ...a, ...patch } : a;
     });
 
@@ -938,9 +926,7 @@ export default function App({ me }) {
     });
   },[user?.id]);
 
-  // ── Projects (real-supabase-auth-v1 not finished yet - "current user" is
-  // still user.email off the localStorage-backed prospector_user blob, not a
-  // real auth session. Swap this for the real session's email once that lands.) ──
+  // ── Projects ──
   // Projects now nest under a business (business_id) rather than gating the
   // whole app - see navigation-restructure-v1. myProjects stays loaded here
   // (same prop-drilled-from-App.js pattern as myBusinesses) so BusinessDetailPage
@@ -950,7 +936,7 @@ export default function App({ me }) {
   useEffect(() => {
     if (!user?.email) { return; }
     let cancelled = false;
-    getProjectsForUser(user.email).then(projects => {
+    getProjects().then(projects => {
       if (cancelled) return;
       setMyProjects(projects);
     });
@@ -1000,7 +986,7 @@ export default function App({ me }) {
     if (!user?.email) { setBusinessesLoading(false); return; }
     let cancelled = false;
     setBusinessesLoading(true);
-    getBusinessesForUser(user.email).then(businesses => {
+    getBusinesses().then(businesses => {
       if (cancelled) return;
       setMyBusinesses(businesses);
       setBusinessesLoading(false);
@@ -1257,20 +1243,6 @@ export default function App({ me }) {
     navTo('business-detail');
   };
 
-  // Member sessions (business-lists-and-permissions-v1) pre-empt Jack's own
-  // signed-in app flow entirely - a joining member never becomes
-  // a `user`, so this must run before any of those checks below.
-  if(joinCode && !memberSession) return <JoinBusinessPage code={joinCode} onJoined={(member,business)=>{
-    try{localStorage.setItem("prospector_member",JSON.stringify({email:member.email,name:member.name}));}catch{}
-    setMemberSession({email:member.email,name:member.name});
-    setJoinedBusiness(business);
-    try{window.history.replaceState({},"","/");}catch{}
-  }}/>;
-  if(memberSession) return <MemberShell identity={memberSession} initialBusiness={joinedBusiness} onExit={()=>{
-    try{localStorage.removeItem("prospector_member");}catch{}
-    signOut();
-  }}/>;
-
   const isAE = (user?.role||"AE") === "AE";
   const sfdcConnected   = !!localStorage.getItem("sfdc_access_token");
   const sfdcSyncedAt    = localStorage.getItem("sfdc_synced_at");
@@ -1335,7 +1307,7 @@ export default function App({ me }) {
         {page==="ideas"&&<IdeasPage nuggets={nuggets} onSaveNuggets={setNuggets} activeUser={activeUser} onViewIdeas={onViewIdeas}/>}
         {page==="ledger"&&<LedgerPage accounts={accounts} setAccounts={setAccounts} teamUsers={teamUsers} activeUser={activeUser} tasks={tasks} winsLog={winsLog} setWinsLog={setWinsLog} managerSelectedAeId={managerScopedAeId}/>}
         {page==="tools"&&<ToolsPage accounts={accounts} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} launchAccountId={toolsLaunchId} onLaunched={()=>setToolsLaunchId(null)} activeTool={toolsActiveTool} onToolSelect={setToolsActiveTool} onCreateTask={(prefill)=>setTaskModal(prefill||{})}/>}
-        {page==="admin"&&isAdmin(user)&&<AdminPage teamUsers={teamUsers} onSaveUsers={setTeamUsers} currentUser={user} onUpdateCurrentUser={patch=>{setUser(u=>{const next=applyOwnerRole({...u,...patch});localStorage.setItem("prospector_user",JSON.stringify(next));return next;});}} rolePerms={rolePerms} onSaveRolePerms={setRolePerms} onSave={saveAccounts} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} onSaveBatch={saveBatch} accounts={accounts} removedBlocklist={removedBlocklist} onRestoreAccount={entry=>setRemovedBlocklist(bl=>bl.filter(x=>x.id!==entry.id))} nuggets={nuggets} onSaveNuggets={setNuggets} seedTeam={SMB_TEAM}/>}
+        {page==="admin"&&isAdmin(user)&&<AdminPage teamUsers={teamUsers} onSaveUsers={setTeamUsers} currentUser={user} onUpdateCurrentUser={patch=>{setUser(u=>{const next={...u,...patch};localStorage.setItem("prospector_user",JSON.stringify(next));return next;});}} rolePerms={rolePerms} onSaveRolePerms={setRolePerms} onSave={saveAccounts} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} onSaveBatch={saveBatch} accounts={accounts} removedBlocklist={removedBlocklist} onRestoreAccount={entry=>setRemovedBlocklist(bl=>bl.filter(x=>x.id!==entry.id))} nuggets={nuggets} onSaveNuggets={setNuggets} seedTeam={SMB_TEAM}/>}
         {page==="businesses-home"&&<BusinessesHomePage businesses={myBusinesses} loading={businessesLoading} projects={myProjects} onSelect={selectBusiness} onCreated={b=>{setMyBusinesses(prev=>[b,...prev]);selectBusiness(b);}}/>}
         {page==="business-detail"&&activeBusiness&&<BusinessDetailPage key={activeBusiness.id} business={activeBusiness} userEmail={user.email} projects={myProjects.filter(p=>p.business_id===activeBusiness.id)} campaigns={myCampaigns.filter(c=>c.business_id===activeBusiness.id)} view={businessPage} onUpdated={onBusinessUpdated} onProjectCreated={p=>setMyProjects(prev=>[p,...prev])} onProjectUpdated={p=>setMyProjects(prev=>prev.map(x=>x.id===p.id?p:x))} onCampaignCreated={c=>setMyCampaigns(prev=>[c,...prev])} onCampaignUpdated={c=>setMyCampaigns(prev=>prev.map(x=>x.id===c.id?c:x))} sharedAccounts={accounts} sharedTasks={tasks} setSharedTasks={setTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={navTo} onUpdateAccount={perms.canEditStage?(id,patch)=>setAccounts(as=>as.map(a=>a.id===id?{...a,...patch}:a)):undefined}/>}
         {page==="handoffs"&&<HandoffsPage accounts={accounts} onAddAccount={acc=>{setAccounts(a=>[acc,...a]);trackStat("accounts_added");trackDailyStat("accounts_added");}} activeUser={activeUser} activeRole={activeRole} teamUsers={teamUsers}/>}

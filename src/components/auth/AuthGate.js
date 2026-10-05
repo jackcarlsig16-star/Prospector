@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { authClient } from '../../utils/supabase';
+import { supabase } from '../../utils/supabase';
 import { syncSessionCookie, fetchMe, signOut } from '../../utils/authSession';
 import AuthLayout, { primaryButton, ErrorBanner } from './AuthLayout';
 import LoginPage, { safeNextPath } from './LoginPage';
@@ -19,11 +19,11 @@ export default function AuthGate({ children }) {
   const path = window.location.pathname;
 
   useEffect(() => {
-    authClient.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(({ data }) => {
       syncSessionCookie(data.session);
       setSession(data.session);
     });
-    const { data: sub } = authClient.auth.onAuthStateChange((_event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
       syncSessionCookie(s);
       setSession(s);
     });

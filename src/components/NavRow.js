@@ -1,9 +1,8 @@
 import { useState } from 'react';
 import { C, mono } from '../constants/colors';
 
-// global-workspace-navigation-v1 — shared row renderer for Sidebar.js and
-// MemberShell.js's business-workspace nav, extracted alongside BUSINESS_NAV
-// so the two sessions can't visually diverge from each other again. `accent`
+// global-workspace-navigation-v1 — row renderer for Sidebar.js's
+// business-workspace nav, extracted alongside BUSINESS_NAV. `accent`
 // defaults to the app gold (today's exact look); workspace color propagation
 // passes activeBusiness.color instead.
 //

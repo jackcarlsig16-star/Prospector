@@ -11,7 +11,7 @@ const SPARKLINE_LOOKBACK_DAYS = 56; // ~8 weeks
 
 // dashboard-v2 Stage 5 - the "print only this area" trick: hide
 // everything on the page, then re-show only #sales-analytics-print-area
-// and its descendants. Zero changes needed to Sidebar.js/MemberShell.js/
+// and its descendants. Zero changes needed to Sidebar.js/
 // the Scout bar - this app has no CSS classes anywhere (every component
 // uses inline styles), so an opt-out approach (hide the sidebar
 // specifically) would mean touching several unrelated files; this

@@ -67,23 +67,14 @@ function AccessLogTab() {
     return d.toLocaleDateString('en-US', { month:'short', day:'numeric' }) + ' ' +
            d.toLocaleTimeString('en-US', { hour:'2-digit', minute:'2-digit', hour12:true });
   };
-  const fmtUA = ua => {
-    if (!ua) return '-';
-    if (/iPhone|iPad/.test(ua))                          return 'iOS';
-    if (/Android/.test(ua))                              return 'Android';
-    if (/Mac/.test(ua) && /Chrome/.test(ua))             return 'Chrome / Mac';
-    if (/Mac/.test(ua) && /Safari/.test(ua))             return 'Safari / Mac';
-    if (/Windows/.test(ua) && /Chrome/.test(ua))         return 'Chrome / Win';
-    if (/Firefox/.test(ua))                              return 'Firefox';
-    return ua.slice(0, 40);
-  };
+
 
   return (
     <div>
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
         <div>
           <p style={{ ...mono, margin:'0 0 2px', fontSize:13, fontWeight:600, color:C.txt }}>Access Log</p>
-          <p style={{ ...mono, margin:0, fontSize:11, color:C.dim }}>Last 50 gate events - successful logins and unauthenticated hits</p>
+          <p style={{ ...mono, margin:0, fontSize:11, color:C.dim }}>Last 50 sign-ins, invites and role changes</p>
         </div>
         <button onClick={load} style={{ ...mono, fontSize:11, padding:'5px 12px', background:'transparent', border:`1px solid ${C.brd}`, borderRadius:5, color:C.mut, cursor:'pointer' }}>Refresh</button>
       </div>
@@ -91,18 +82,18 @@ function AccessLogTab() {
       {error   && <p style={{ ...mono, fontSize:12, color:C.red }}>{error}</p>}
       {!loading && !error && entries && (
         <div style={{ border:`1px solid ${C.brd}`, borderRadius:8, overflow:'hidden' }}>
-          <div style={{ display:'grid', gridTemplateColumns:'110px 70px 110px 1fr', padding:'6px 12px', background:C.card, borderBottom:`1px solid ${C.brd}` }}>
-            {['Time','Event','Code','User Agent'].map((h,i) => (
+          <div style={{ display:'grid', gridTemplateColumns:'110px 130px 1fr 1fr', padding:'6px 12px', background:C.card, borderBottom:`1px solid ${C.brd}` }}>
+            {['Time','Event','Who','Workspace'].map((h,i) => (
               <span key={i} style={{ ...mono, fontSize:9, color:C.dim, textTransform:'uppercase', letterSpacing:'0.08em' }}>{h}</span>
             ))}
           </div>
           {entries.length === 0 && <p style={{ ...mono, fontSize:12, color:C.dim, padding:'16px 12px', margin:0 }}>No entries yet.</p>}
           {entries.map((e, i) => (
-            <div key={e.id} style={{ display:'grid', gridTemplateColumns:'110px 70px 110px 1fr', padding:'6px 12px', borderBottom:i<entries.length-1?`1px solid ${C.brd}22`:'none', background:i%2===0?'transparent':`${C.brd}0A`, alignItems:'center' }}>
-              <span style={{ ...mono, fontSize:10, color:C.mut }}>{fmtTime(e.created_at)}</span>
-              <span style={{ ...mono, fontSize:10, fontWeight:600, color:e.event==='success'?C.green:e.event==='session'?'#2dd4bf':C.orange }}>{e.event==='success'?'✓ LOGIN':e.event==='session'?'↩ SESSION':'? HIT'}</span>
-              <span style={{ ...mono, fontSize:10, color:e.code_partial?C.gold:C.dim }}>{e.code_partial||'-'}</span>
-              <span style={{ ...mono, fontSize:10, color:C.mut }}>{fmtUA(e.user_agent)}</span>
+            <div key={e.id} style={{ display:'grid', gridTemplateColumns:'110px 130px 1fr 1fr', padding:'6px 12px', borderBottom:i<entries.length-1?`1px solid ${C.brd}22`:'none', background:i%2===0?'transparent':`${C.brd}0A`, alignItems:'center' }}>
+              <span style={{ ...mono, fontSize:10, color:C.mut }}>{fmtTime(e.at)}</span>
+              <span style={{ ...mono, fontSize:10, fontWeight:600, color:e.event==='sign_in'?C.green:C.gold }}>{e.event.replace('_',' ')}</span>
+              <span style={{ ...mono, fontSize:10, color:C.txt }}>{e.who||'-'}{e.actor&&e.actor!==e.who?<span style={{ color:C.dim }}> · by {e.actor}</span>:null}</span>
+              <span style={{ ...mono, fontSize:10, color:C.mut }}>{e.workspace||'-'}</span>
             </div>
           ))}
         </div>

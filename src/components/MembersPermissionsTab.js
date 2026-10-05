@@ -239,11 +239,6 @@ export default function MembersPermissionsTab({ business, viewerEmail }) {
           </div>
         )}
       </div>
-
-      <div style={{ marginTop:32, padding:"14px 16px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8 }}>
-        <div style={{ ...mono, fontSize:10, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:6 }}>Invite link</div>
-        <p style={{ ...mono, fontSize:12, color:C.txt, margin:0, wordBreak:"break-all" }}>{window.location.origin}/join/{business.access_code}</p>
-      </div>
     </div>
   );
 }

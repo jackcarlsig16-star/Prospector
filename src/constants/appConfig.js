@@ -66,11 +66,3 @@ export const SEED_TEAM_USERS = [
 
 export const initials = n => (n||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
 
-// Permanent owner accounts — role is forced to Owner regardless of stored value
-export const OWNER_EMAILS = ["aowner@example.com"];
-
-export const applyOwnerRole = (user) => {
-  if (!user?.email) return user;
-  if (OWNER_EMAILS.includes(user.email.toLowerCase())) return { ...user, role: "Owner" };
-  return user;
-};

@@ -1,4 +1,9 @@
+import crypto from 'crypto';
 import { getServiceSupabase } from './lib/authUser.js';
+
+// A gap this long since the last request counts as a new visit (one
+// sign_in event in the access log), not every page load.
+const VISIT_GAP_MS = 30 * 60e3;
 
 // prospector-auth-v1 - the signed-in person and their workspaces. sessionAuth
 // (api/lib/requireAuth.js) has already verified the session and loaded
@@ -20,12 +25,17 @@ export default async function handler(req, res) {
 
   const [{ data: memberships, error }, { data: profile, error: pErr }] = await Promise.all([
     supabase.from('business_members').select('business_id,role,created_at,businesses(name,color)').eq('user_id', userId),
-    supabase.from('profiles').select('welcomed_at').eq('id', userId).single(),
+    supabase.from('profiles').select('welcomed_at,last_seen_at').eq('id', userId).single(),
   ]);
   if (error || pErr) return res.status(500).json({ error: (error || pErr).message });
 
-  // Fire-and-forget: last_seen_at feeds Members & Access (Stage 4).
+  // Fire-and-forget: last_seen_at feeds Members & Access, sign_in the access log.
   supabase.from('profiles').update({ last_seen_at: new Date().toISOString() }).eq('id', userId).then(() => {});
+  if (!profile.last_seen_at || Date.now() - new Date(profile.last_seen_at) > VISIT_GAP_MS) {
+    const ip = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '').split(',')[0].trim();
+    const ip_hash = ip ? crypto.createHash('sha256').update(ip).digest('hex').slice(0, 16) : null;
+    supabase.from('auth_events').insert({ user_id: userId, actor_id: userId, event: 'sign_in', ip_hash }).then(() => {});
+  }
 
   res.status(200).json({
     email: req.auth.user.email,

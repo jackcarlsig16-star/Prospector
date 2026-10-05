@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { SA } from '../salesAnalytics/theme';
-import { authClient } from '../../utils/supabase';
+import { supabase } from '../../utils/supabase';
 import { signOut } from '../../utils/authSession';
 import AuthLayout, { inputStyle, primaryButton, secondaryButton, linkButton, ErrorBanner, Notice, Divider, GoogleButton } from './AuthLayout';
 
@@ -71,7 +71,7 @@ export default function InvitePage({ token, session }) {
 
   const google = async () => {
     setBusy(true);
-    const { error: err } = await authClient.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: returnHere, queryParams: { login_hint: invite.email } } });
+    const { error: err } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: returnHere, queryParams: { login_hint: invite.email } } });
     if (err) { setError(err.message); setBusy(false); }
   };
 
@@ -82,7 +82,7 @@ export default function InvitePage({ token, session }) {
     setNotice('');
     if (mode === 'signup') {
       if (password.length < 8) { setError('Use at least 8 characters.'); setBusy(false); return; }
-      const { data, error: err } = await authClient.auth.signUp({
+      const { data, error: err } = await supabase.auth.signUp({
         email: invite.email, password,
         options: { emailRedirectTo: returnHere, data: { full_name: name.trim() } },
       });
@@ -91,7 +91,7 @@ export default function InvitePage({ token, session }) {
       if (!data.session) setNotice(`Check ${invite.email} for a confirmation link — it brings you back here to accept. It can take a few minutes.`);
       return;
     }
-    const { error: err } = await authClient.auth.signInWithPassword({ email: invite.email, password });
+    const { error: err } = await supabase.auth.signInWithPassword({ email: invite.email, password });
     setBusy(false);
     if (err) setError(err.message === 'Invalid login credentials' ? 'Wrong password for this email.' : err.message);
   };

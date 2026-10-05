@@ -67,10 +67,8 @@ const ADMIN_BUSINESS_PATHS = /^\/(emoji|website-url|social-links)\/?$/;
 const ACCESS_PATHS = /^\/(members|invites)(\/|$)/;
 
 // Mounted at /api/businesses/:id (server.js). GET = viewer, write = member,
-// settings and member management = admin. 'join' is the legacy join-code
-// route (retired in Stage 5).
+// settings and member management = admin.
 export function businessGate(req, res, next) {
-  if (req.params.id === 'join') return next();
   const minRole = ACCESS_PATHS.test(req.path) ? 'admin'
     : req.method === 'GET' ? 'viewer'
     : ADMIN_BUSINESS_PATHS.test(req.path) ? 'admin' : 'member';

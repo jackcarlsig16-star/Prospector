@@ -765,24 +765,16 @@ export async function saveComplianceToDb(accId, data, accName) {
 
 // ── Projects ──────────────────────────────────────────────────────────────────
 
-// Routes through projects.owner_email directly, same pattern as
-// getBusinessesForUser - project_members (the old multi-user membership
-// table) has been broken (PGRST205, not in schema cache) since early
-// August and is abandoned, not fixed. A real project-membership feature
-// is a planned follow-up using the business_members/permissions pattern
-// instead (smart-intake-and-intelligence-v1).
-export async function getProjectsForUser(email) {
-  if (!isSupabaseEnabled() || !email) return [];
+// Every project the signed-in user can read - RLS (prospector-auth-v1
+// Stage 5) scopes it to their workspaces; the platform owner sees all.
+export async function getProjects() {
+  if (!isSupabaseEnabled()) return [];
   try {
-    const { data, error } = await supabase
-      .from('projects')
-      .select('*')
-      .eq('owner_email', email.toLowerCase())
-      .order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
     if (error) throw error;
     return data || [];
   } catch (e) {
-    console.warn('[db] getProjectsForUser failed:', e.message);
+    console.warn('[db] getProjects failed:', e.message);
     return [];
   }
 }
@@ -895,61 +887,24 @@ export async function getCampaign(campaignId) {
 // generation go through /api/businesses/* server routes (they call the
 // Anthropic API), not direct Supabase writes here - see api/businesses/.
 
-export async function getBusinessesForUser(email) {
-  if (!isSupabaseEnabled() || !email) return [];
+// Every workspace the signed-in user belongs to - RLS (prospector-auth-v1
+// Stage 5) does the scoping; the platform owner sees all.
+export async function getBusinesses() {
+  if (!isSupabaseEnabled()) return [];
   try {
-    const { data, error } = await supabase
-      .from('businesses')
-      .select('*')
-      .eq('owner_email', email.toLowerCase())
-      .order('created_at', { ascending: false });
+    const { data, error } = await supabase.from('businesses').select('*').order('created_at', { ascending: false });
     if (error) throw error;
     return data || [];
   } catch (e) {
-    console.warn('[db] getBusinessesForUser failed:', e.message);
-    return [];
-  }
-}
-
-// ── Member sessions (business-lists-and-permissions-v1) ────────────────────────
-// Joining members (via /join/:code) aren't Jack - they get their own email-keyed
-// identity, separate from the legacy owner_email/user model above. A member's
-// businesses are the union of what they own outright (same owner_email path as
-// Jack) and what they've joined as a permissioned member.
-
-export async function getBusinessesForMember(email) {
-  if (!isSupabaseEnabled() || !email) return [];
-  const lower = email.toLowerCase();
-  try {
-    const [ownedRes, memberRowsRes] = await Promise.all([
-      supabase.from('businesses').select('*').eq('owner_email', lower),
-      supabase.from('business_members').select('business_id').eq('email', lower),
-    ]);
-    if (ownedRes.error) throw ownedRes.error;
-    if (memberRowsRes.error) throw memberRowsRes.error;
-
-    const memberBusinessIds = (memberRowsRes.data || []).map(r => r.business_id);
-    let joined = [];
-    if (memberBusinessIds.length) {
-      const { data, error } = await supabase.from('businesses').select('*').in('id', memberBusinessIds);
-      if (error) throw error;
-      joined = data || [];
-    }
-
-    const byId = new Map();
-    [...(ownedRes.data || []), ...joined].forEach(b => byId.set(b.id, b));
-    return [...byId.values()].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  } catch (e) {
-    console.warn('[db] getBusinessesForMember failed:', e.message);
+    console.warn('[db] getBusinesses failed:', e.message);
     return [];
   }
 }
 
 // ── Lists + member permissions (business-lists-and-permissions-v1) ─────────────
 // Owner-only settings screen: create/rename/delete lists, grant/revoke
-// per-member-per-list view/edit. Direct Supabase writes from the browser -
-// same permissive-RLS posture as every other CRUD path in this app
-// (ProjectsSection/createProject etc.), no server route needed.
+// per-member-per-list view/edit. Direct Supabase writes from the browser,
+// allowed by the Stage 5 RLS policies (lists: member, permissions: admin).
 
 export async function getListsForBusiness(businessId) {
   if (!isSupabaseEnabled() || !businessId) return [];

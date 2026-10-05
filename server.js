@@ -344,7 +344,6 @@ app.post('/api/slides/create', async (req, res) => {
 });
 
 app.get('/api/access-log',     authMw('platformOwnerOnly'), esHandler('./api/access-log.js'));
-app.post('/api/access-log',    esHandler('./api/access-log.js'));
 app.get('/api/me',                       esHandler('./api/me.js'));
 app.post('/api/me/welcome',              esHandler('./api/me.js'));
 app.get('/api/invites/:token',           esHandler('./api/invites.js'));
@@ -392,8 +391,6 @@ app.get('/api/workspaces/members', authMw('platformOwnerOnly'), esHandler('./api
 app.get('/api/businesses/:id/status',          esHandler('./api/businesses/status.js'));
 app.post('/api/businesses/:id/intel',          esHandler('./api/businesses/intel.js'));
 app.post('/api/businesses/:id/retry-research', esHandler('./api/businesses/retry.js'));
-app.get('/api/businesses/join/:code',          esHandler('./api/businesses/join.js'));
-app.post('/api/businesses/join',                esHandler('./api/businesses/join.js'));
 app.post('/api/businesses/:id/intake',          esHandler('./api/businesses/intake.js'));
 app.post('/api/businesses/:id/intake/confirm',  esHandler('./api/businesses/intake-confirm.js'));
 app.post('/api/businesses/:id/import/classify', esHandler('./api/businesses/import-classify.js'));

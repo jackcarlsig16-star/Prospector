@@ -4,7 +4,7 @@ import { getAccountsForBusiness } from '../utils/db';
 import ScoutCommandBar from './ScoutCommandBar';
 
 // scout-global-persistent-v1 — Scout mounted once, persistently, above every
-// page's content (App.js) and every business-detail view (MemberShell.js),
+// page's content (App.js),
 // instead of five separate embedded copies (former sites: HomePage,
 // BdrCommandCenter, ManagerCommandCenter, BusinessCommandCenterTab,
 // BusinessSearchTab). Two distinct scopes:

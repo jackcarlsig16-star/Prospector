@@ -13,15 +13,16 @@ function safeEqual(a, b) {
   return crypto.timingSafeEqual(ha, hb);
 }
 
+// Real sign-in (prospector-auth-v1) replaced this gate; it stays as an
+// emergency switch. Only BASIC_AUTH_ENABLED=false turns it off - unset keeps
+// it on, and missing credentials still fail closed.
 function basicAuth(req, res, next) {
+  if (process.env.BASIC_AUTH_ENABLED === 'false') return next();
   if (EXEMPT_PATHS.has(req.path)) return next();
 
   const user = process.env.BASIC_AUTH_USER;
   const pass = process.env.BASIC_AUTH_PASS;
-  if (!user || !pass) {
-    if (process.env.NODE_ENV !== 'production' && process.env.BASIC_AUTH_DISABLED_LOCAL === '1') return next();
-    return res.status(503).send('Auth not configured');
-  }
+  if (!user || !pass) return res.status(503).send('Auth not configured');
 
   const [scheme, encoded] = (req.headers.authorization || '').split(' ');
   let given = '';

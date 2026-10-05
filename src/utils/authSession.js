@@ -1,4 +1,4 @@
-import { authClient } from './supabase';
+import { supabase } from './supabase';
 
 // Mirrors the Supabase access token into a same-origin cookie so every
 // /api and /proxy request carries it without changing any call site
@@ -24,7 +24,7 @@ export async function fetchMe() {
 }
 
 export async function signOut() {
-  try { await authClient.auth.signOut(); } catch {}
+  try { await supabase.auth.signOut(); } catch {}
   syncSessionCookie(null);
   window.location.assign('/login');
 }

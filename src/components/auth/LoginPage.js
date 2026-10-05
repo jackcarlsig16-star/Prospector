@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { SA } from '../salesAnalytics/theme';
-import { authClient } from '../../utils/supabase';
+import { supabase } from '../../utils/supabase';
 import AuthLayout, { inputStyle, primaryButton, linkButton, ErrorBanner, Notice, Divider, GoogleButton } from './AuthLayout';
 
 // Only same-origin paths survive as a post-login destination.
@@ -24,7 +24,7 @@ export default function LoginPage({ next = '/', initialError = '' }) {
   const google = async () => {
     setError('');
     setBusy(true);
-    const { error: err } = await authClient.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${window.location.origin}${next}` } });
+    const { error: err } = await supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: `${window.location.origin}${next}` } });
     if (err) { setError(err.message); setBusy(false); }
   };
 
@@ -34,13 +34,13 @@ export default function LoginPage({ next = '/', initialError = '' }) {
     setNotice('');
     setBusy(true);
     if (mode === 'forgot') {
-      const { error: err } = await authClient.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/reset-password` });
+      const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/reset-password` });
       setBusy(false);
       if (err) setError(err.message);
       else setNotice('If that email has an account, a reset link is on its way. It can take a few minutes.');
       return;
     }
-    const { error: err } = await authClient.auth.signInWithPassword({ email: email.trim(), password });
+    const { error: err } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     if (err) { setError(FRIENDLY[err.message] || err.message); setBusy(false); return; }
     window.location.assign(next);
   };
