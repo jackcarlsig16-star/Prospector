@@ -53,16 +53,5 @@ export const NAV_ROLES = {
 // Returns true for any role with admin-level access or above
 export const isAdmin = (user) => user?.role === 'Admin' || user?.role === 'Owner';
 
-export const SMB_TEAM = [
-  { id:"sample_manager", name:"Sam Rivera",   email:"srivera@example.com",  role:"Manager", company:"Prospector", status:"active",   reportsTo:null,           location:"USA", workerId:""       },
-  { id:"owner_sample",   name:"Alex Owner",   email:"aowner@example.com",   role:"AE",      company:"Prospector", status:"approved", reportsTo:"sample_manager", location:"USA", workerId:""       },
-  { id:"u_jordan",       name:"Jordan Lee",   email:"jlee@example.com",     role:"AE",      company:"Prospector", status:"pending",  reportsTo:"sample_manager", location:"USA", workerId:"100001" },
-  { id:"u_taylor",       name:"Taylor Kim",   email:"tkim@example.com",     role:"AE",      company:"Prospector", status:"pending",  reportsTo:"sample_manager", location:"USA", workerId:"100002" },
-];
-
-export const SEED_TEAM_USERS = [
-  { id:"casey", name:"Casey", email:"casey@example.com", role:"BDR", company:"Prospector", status:"active" },
-];
-
 export const initials = n => (n||"?").split(" ").map(w=>w[0]).join("").toUpperCase().slice(0,2);
 

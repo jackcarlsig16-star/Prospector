@@ -9,64 +9,24 @@ const TEAM_KEY     = 'prospector_team_users';
 const FRONTIER_KEY = 'prospector_frontier';
 
 // ── Team Users ────────────────────────────────────────────────────────────────
+// The legacy AE/BDR/Manager roster lives in this browser only; workspace
+// members and roles are business_members.
 
-// Filter out users that have been locally tombstoned. Survives the
-// race where the Supabase delete hasn't replicated yet — removals
-// stay removed across refreshes regardless of network timing.
-const filterTombstoned = (users) => {
-  try {
-    const removed = JSON.parse(localStorage.getItem('prospector_removed_user_ids') || '[]');
-    if (!Array.isArray(removed) || !removed.length) return users;
-    const set = new Set(removed);
-    return users.filter(u => !set.has(u.id));
-  } catch { return users; }
+// Locally removed users stay removed, and the example.com sample roster that
+// older builds seeded into this list is dropped.
+const cleanRoster = (users) => {
+  let removed = [];
+  try { removed = JSON.parse(localStorage.getItem('prospector_removed_user_ids') || '[]'); } catch {}
+  const set = new Set(Array.isArray(removed) ? removed : []);
+  return users.filter(u => !set.has(u.id) && !/@example\.com$/i.test(u.email || ''));
 };
 
-export async function getTeamUsers() {
-  if (!isSupabaseEnabled()) {
-    try { return filterTombstoned(JSON.parse(localStorage.getItem(TEAM_KEY) || '[]')); } catch { return []; }
-  }
-  try {
-    const { data, error } = await supabase
-      .from('team_users')
-      .select('data')
-      .order('created_at', { ascending: true });
-    if (error) throw error;
-    return filterTombstoned((data || []).map(r => r.data).filter(Boolean));
-  } catch(e) {
-    console.warn('[db] getTeamUsers Supabase failed, using localStorage:', e.message);
-    try { return filterTombstoned(JSON.parse(localStorage.getItem(TEAM_KEY) || '[]')); } catch { return []; }
-  }
+export function getTeamUsers() {
+  try { return cleanRoster(JSON.parse(localStorage.getItem(TEAM_KEY) || '[]')); } catch { return []; }
 }
 
-export async function saveTeamUsers(users) {
-  // Always write localStorage as backup
+export function saveTeamUsers(users) {
   try { localStorage.setItem(TEAM_KEY, JSON.stringify(users)); } catch {}
-  if (!isSupabaseEnabled()) return;
-  try {
-    if (users.length === 0) {
-      await supabase.from('team_users').delete().neq('id', '___none___');
-      return;
-    }
-    const rows = users.map(u => ({
-      id:         u.id,
-      email:      u.email || '',
-      name:       u.name  || '',
-      role:       u.role  || 'AE',
-      status:     u.status || 'pending',
-      data:       u,
-      updated_at: new Date().toISOString(),
-    }));
-    const { error: upsertErr } = await supabase
-      .from('team_users')
-      .upsert(rows, { onConflict: 'id' });
-    if (upsertErr) throw upsertErr;
-    // Delete rows no longer in the list
-    const ids = users.map(u => u.id).join(',');
-    await supabase.from('team_users').delete().not('id', 'in', `(${ids})`);
-  } catch(e) {
-    console.warn('[db] saveTeamUsers Supabase failed:', e.message);
-  }
 }
 
 // ── Frontier ──────────────────────────────────────────────────────────────────
@@ -581,7 +541,7 @@ export async function recordAccountActivity(accountId, memberEmail, type, note) 
 }
 
 // ── Real-time subscriptions ───────────────────────────────────────────────────
-// The three subscribeTo* functions below are deliberately unwired groundwork for
+// The two subscribeTo* functions below are deliberately unwired groundwork for
 // future multi-user support — inert by design, NOT dead code. They have zero
 // callers today and that is expected; do not remove them on zero-caller grep
 // evidence alone. A dead-code scan has already flagged them once.
@@ -591,15 +551,6 @@ export function subscribeToAccounts(ownerEmail, onChange) {
   const channel = supabase
     .channel(`accounts_rt_${ownerEmail}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'accounts', filter: `owner_email=eq.${ownerEmail}` }, onChange)
-    .subscribe();
-  return () => supabase.removeChannel(channel);
-}
-
-export function subscribeToTeamUsers(onChange) {
-  if (!isSupabaseEnabled()) return () => {};
-  const channel = supabase
-    .channel('team_users_rt')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'team_users' }, onChange)
     .subscribe();
   return () => supabase.removeChannel(channel);
 }
@@ -632,41 +583,6 @@ export async function getAllComplianceFromDb() {
     console.warn('[db] getAllComplianceFromDb failed:', e.message);
     return null;
   }
-}
-
-// ── User Approval ─────────────────────────────────────────────────────────────
-
-export async function patchUser(userId, patch) {
-  if (!isSupabaseEnabled() || !userId) return;
-  try {
-    await supabase.from('team_users')
-      .update({ ...patch, updated_at: new Date().toISOString() })
-      .eq('id', userId);
-  } catch (e) {
-    console.warn('[db] patchUser failed:', e.message);
-  }
-}
-
-export async function approveUser(userId) {
-  if (!isSupabaseEnabled() || !userId) return;
-  try {
-    await supabase.from('team_users')
-      .update({ status: 'approved', updated_at: new Date().toISOString() })
-      .eq('id', userId);
-  } catch (e) {
-    console.warn('[db] approveUser failed:', e.message);
-  }
-}
-
-export async function getPendingUsers() {
-  if (!isSupabaseEnabled()) return [];
-  try {
-    const { data } = await supabase
-      .from('team_users')
-      .select('id, name, email, role, status, updated_at')
-      .eq('status', 'pending');
-    return data || [];
-  } catch { return []; }
 }
 
 // ── BDR Assignments ───────────────────────────────────────────────────────────

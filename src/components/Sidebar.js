@@ -20,7 +20,7 @@ const ROLE_LEVEL = { Owner:5, Admin:4, Manager:3, AE:2, BDR:1 };
 // from the global NAV so it can't drift out of sync with it.
 const DISABLED_BUSINESS_NAV = NAV.filter(n => !["home","accounts","admin"].includes(n.id));
 
-export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, setToolsActiveTool, accountsSubPage, setAccountsSubPage, viewAs, setViewAs, activeInitials, hasUnviewedBadges, onOpenProfile, diamonds, activeUser, teamUsers, newJoinCount=0, onUpdateTeamUser, pendingApprovalCount=0, newNuggetCount=0, businesses=[], onSelectBusiness, onGoToBusinesses, activeBusiness=null, businessPage, setBusinessPage }) {
+export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, setToolsActiveTool, accountsSubPage, setAccountsSubPage, viewAs, setViewAs, activeInitials, hasUnviewedBadges, onOpenProfile, diamonds, activeUser, teamUsers, newJoinCount=0, onUpdateTeamUser, newNuggetCount=0, businesses=[], onSelectBusiness, onGoToBusinesses, activeBusiness=null, businessPage, setBusinessPage }) {
   const [sidebarPrefs, setSidebarPrefs] = useState(readSidebarPrefs);
   const [avatarImage, setAvatarImage] = useState(()=>readImgPref("avatarImage"));
   const [companyLogo, setCompanyLogo] = useState(()=>readImgPref("companyLogo"));
@@ -127,11 +127,6 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
             <div onClick={()=>setPage(n.id)} style={{ padding:"7px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:8, background:parentActive?C.card:"transparent", borderLeft:`3px solid ${parentActive?C.gold:"transparent"}` }}>
               <span style={{ ...mono, fontSize:14, color:parentActive?C.gold:C.mut }}>{n.ic}</span>
               <span style={{ fontSize:13, color:parentActive?C.txt:C.mut, whiteSpace:"nowrap", flex:1 }}>{n.lb}</span>
-              {n.id==="admin" && pendingApprovalCount > 0 && (
-                <div style={{ minWidth:16, height:16, borderRadius:8, background:"#EF4444", display:"flex", alignItems:"center", justifyContent:"center", padding:"0 4px", boxSizing:"border-box" }}>
-                  <span style={{ ...mono, fontSize:9, color:"#fff", fontWeight:700, lineHeight:1 }}>{pendingApprovalCount}</span>
-                </div>
-              )}
               {n.id==="ideas" && newNuggetCount > 0 && (
                 <div style={{ minWidth:16, height:16, borderRadius:8, background:"#EF4444", display:"flex", alignItems:"center", justifyContent:"center", padding:"0 4px", boxSizing:"border-box" }}>
                   <span style={{ ...mono, fontSize:9, color:"#fff", fontWeight:700, lineHeight:1 }}>{newNuggetCount}</span>

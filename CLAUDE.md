@@ -118,7 +118,7 @@ Always set `max_tokens` explicitly on every AI call. Never omit it.
 Zero callers is **not** sufficient evidence of dead code. Check this list before
 marking anything safe-to-remove in a `/cleanup`, `/deadcode`, or audit pass.
 
-- **`src/utils/db.js:583-603`** — `subscribeToAccounts`, `subscribeToTeamUsers`, `subscribeToFrontier` are deliberately unwired groundwork for future multi-user support. Inert by design, not dead code. Already flagged once by a dead-code scan; do not remove on zero-caller evidence alone.
+- **`src/utils/db.js:550-566`** — `subscribeToAccounts`, `subscribeToFrontier` are deliberately unwired groundwork for future multi-user support. Inert by design, not dead code. Already flagged once by a dead-code scan; do not remove on zero-caller evidence alone. (`subscribeToTeamUsers` was removed with the `team_users` table in prospector-auth-v1 Stage 6, by Jack's decision.)
 - **`api/zoom/client.js:6`** — `getZoomAccountUser` is a deliberate reference implementation proving the `oauth2_server_to_server` authType works against a real Zoom endpoint (`external-api-foundation-v1`). Unused by design; keep.
 - **`server.js:377` — `esHandler(rel)` breaks import-shaped reachability greps.** Routes under `api/` are wired by a **bare string path literal** passed to `esHandler()` (e.g. `esHandler('./api/access-log.js')`), not by an `import(...)` literal. Any dead-file or reachability scan MUST check for the file's path as a string literal in `server.js` before flagging an `api/` file as unreferenced. This has already produced two false-positive incidents: `parse6senseEmail`, and a 60-file batch across all of `api/`.
 

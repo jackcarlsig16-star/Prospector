@@ -16,7 +16,7 @@ import BugReporter from './components/BugReporter';
 import DailyDigest from './components/DailyDigest';
 import ManagerCommandCenter from './components/ManagerCommandCenter';
 import HandoffsPage from './components/HandoffsPage';
-import { NAV, ROLE_PERMS, NAV_ROLES, SEED_TEAM_USERS, SMB_TEAM, isAdmin } from './constants/appConfig';
+import { NAV, ROLE_PERMS, NAV_ROLES, isAdmin } from './constants/appConfig';
 import { trackStat, trackDailyStat } from './utils/stats';
 import { indexAccountThreads } from './utils/threadIndexer';
 import { fetchRecentThreads, generateBrief } from './components/DailyDigest';
@@ -28,7 +28,7 @@ import { resolveUserId } from './utils/userIdentity';
 import { getDefaultOutbound } from './utils/outbound';
 import { getAllCompliance } from './utils/storage';
 import { getACV } from './utils/ledgerEngine';
-import { getTeamUsers, saveTeamUsers, getFrontier, saveFrontier, getAccounts, saveAccountsToDb, saveComplianceToDb, getPendingUsers, getBdrAssignments, getProjects, getBusinesses, getCampaignsForProjects } from './utils/db';
+import { getTeamUsers, saveTeamUsers, getFrontier, saveFrontier, getAccounts, saveAccountsToDb, saveComplianceToDb, getBdrAssignments, getProjects, getBusinesses, getCampaignsForProjects } from './utils/db';
 import BusinessesHomePage from './components/BusinessesHomePage';
 import BusinessDetailPage from './components/BusinessDetailPage';
 import { isSupabaseEnabled } from './utils/supabase';
@@ -65,7 +65,7 @@ const LedgerPage            = React.lazy(() => import('./components/LedgerPage')
 try{["gmail_access_token","gmail_refresh_token","gmail_token_expiry","gmail_email","prospector_gmail_auth_error"].forEach(k=>localStorage.removeItem(k));}catch{}
 
 // Live BDR list — updated at runtime via teamUsers state, but AccountCard needs a static fallback
-let BDR_LIST = SEED_TEAM_USERS.filter(u=>u.role==="BDR");
+let BDR_LIST = [];
 
 // AuthGate's signed-in person is who you are. The old app role (AE/Admin/
 // Owner) still drives menus and the territory views: someone who already had
@@ -643,7 +643,7 @@ export default function App({ me }) {
     setRemovalQueue(q=>q.filter(x=>x.id!==item.id));
   };
 
-  const [teamUsers,setTeamUsers]=useState(()=>{try{const s=localStorage.getItem("prospector_team_users");return s?JSON.parse(s):SEED_TEAM_USERS;}catch{return SEED_TEAM_USERS;}});
+  const [teamUsers,setTeamUsers]=useState(getTeamUsers);
   useEffect(()=>{ if(!supabaseReady.current)return; saveTeamUsers(teamUsers); saveToIdb(); },[teamUsers]);
   useEffect(()=>{ BDR_LIST=teamUsers.filter(u=>u.role==="BDR"); setBdrList(BDR_LIST); },[teamUsers]);
 
@@ -653,9 +653,9 @@ export default function App({ me }) {
       if(isSupabaseEnabled()){
         const [users,items]=await Promise.all([getTeamUsers(),getFrontier()]);
         if(users.length>0){
-          // AE/Admin: auto-assign BDRs that have no assignedAEs, then persist to Supabase.
+          // AE/Admin: auto-assign BDRs that have no assignedAEs, then persist the roster.
           // The standalone auto-assign effect runs before supabaseReady, so it never
-          // reaches Supabase. Doing it here ensures the assignment is durable.
+          // saves. Doing it here ensures the assignment is durable.
           let resolved=users;
           if(user?.id&&(user.role==="AE"||isAdmin(user))){
             const needsAssign=resolved.some(u=>u.role==="BDR"&&(!u.assignedAEs||u.assignedAEs.length===0));
@@ -665,7 +665,7 @@ export default function App({ me }) {
             }
           }
           setTeamUsers(resolved);
-          // BDR: sync assignedAEs from Supabase team entry back to local user object.
+          // BDR: sync assignedAEs from the roster entry back to local user object.
           if(user?.role==="BDR"){
             const myEntry=resolved.find(u=>u.id===user.id||(u.email&&u.email.toLowerCase()===user.email?.toLowerCase()));
             if(myEntry?.assignedAEs?.length&&!(user.assignedAEs?.length)){
@@ -673,7 +673,7 @@ export default function App({ me }) {
               setUser(patched);
               try{localStorage.setItem("prospector_user",JSON.stringify(patched));}catch{}
             } else if(!myEntry?.assignedAEs?.length && user.email) {
-              // Fallback: team_users entry has no assignedAEs — check bdr_assignments table by email
+              // Fallback: roster entry has no assignedAEs — check bdr_assignments table by email
               const aeEmails = await getBdrAssignments(user.email);
               if(aeEmails.length){
                 const aeUsers = resolved.filter(u => aeEmails.map(e=>e.toLowerCase()).includes(u.email?.toLowerCase()));
@@ -683,7 +683,7 @@ export default function App({ me }) {
                   const patched = {...user, assignedAEs: aeIds};
                   setUser(patched);
                   try{localStorage.setItem("prospector_user",JSON.stringify(patched));}catch{}
-                  // Write back into team_users so future syncs find it
+                  // Write back into the roster so future loads find it
                   const nextTeam = resolved.map(u=>
                     (u.id===user.id||(u.email&&u.email.toLowerCase()===user.email?.toLowerCase()))
                       ? {...u, assignedAEs: aeIds}
@@ -1068,25 +1068,6 @@ export default function App({ me }) {
     setIdeasLastViewed(now);
   };
 
-  // ── Pending approval count for admin badge ────────────────────────────────
-  const [pendingUsers, setPendingUsers] = useState([]);
-  const [seenPendingIds, setSeenPendingIds] = useState(() => {
-    try { return new Set(JSON.parse(localStorage.getItem("prospector_seen_pending_users") || "[]")); } catch { return new Set(); }
-  });
-  useEffect(() => {
-    if (!isAdmin(user)) return;
-    const fetch = () => getPendingUsers().then(rows => setPendingUsers(rows || []));
-    fetch();
-    const iv = setInterval(fetch, 60000);
-    return () => clearInterval(iv);
-  }, [user?.role]);
-  const pendingApprovalCount = pendingUsers.filter(u => !seenPendingIds.has(u.id)).length;
-  const dismissPendingApprovals = () => {
-    const next = new Set([...seenPendingIds, ...pendingUsers.map(u => u.id)]);
-    setSeenPendingIds(next);
-    try { localStorage.setItem("prospector_seen_pending_users", JSON.stringify([...next])); } catch {}
-  };
-
   // Admin join notifications — track which active team members the admin has already seen
   const SEEN_JOINERS_KEY = "prospector_seen_joiners";
   const [seenJoiners,setSeenJoiners]=useState(()=>{try{return new Set(JSON.parse(localStorage.getItem(SEEN_JOINERS_KEY)||"[]"));}catch{return new Set();}});
@@ -1255,7 +1236,7 @@ export default function App({ me }) {
 
   return(
     <div style={{ display:"flex", background:C.bg, minHeight:"100vh", width:"100%" }}>
-      <Sidebar page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();dismissPendingApprovals();}if(p!=="accounts")setAccountsSubPage("territory");}} activeRole={activeRole} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} accountsSubPage={accountsSubPage} setAccountsSubPage={setAccountsSubPage} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} pendingApprovalCount={pendingApprovalCount} newNuggetCount={newNuggetCount} onUpdateTeamUser={updateTeamUser} businesses={myBusinesses} onSelectBusiness={selectBusiness} onGoToBusinesses={()=>navTo('businesses-home')} activeBusiness={activeBusiness} businessPage={businessPage} setBusinessPage={setBusinessPage} />
+      <Sidebar page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();}if(p!=="accounts")setAccountsSubPage("territory");}} activeRole={activeRole} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} accountsSubPage={accountsSubPage} setAccountsSubPage={setAccountsSubPage} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} newNuggetCount={newNuggetCount} onUpdateTeamUser={updateTeamUser} businesses={myBusinesses} onSelectBusiness={selectBusiness} onGoToBusinesses={()=>navTo('businesses-home')} activeBusiness={activeBusiness} businessPage={businessPage} setBusinessPage={setBusinessPage} />
       <div style={{ flex:1, padding:"18px 20px", overflowY:"auto", minWidth:0 }}>
         <PersistentScout
           isBusinessContext={page==="business-detail"&&!!activeBusiness}
@@ -1307,7 +1288,7 @@ export default function App({ me }) {
         {page==="ideas"&&<IdeasPage nuggets={nuggets} onSaveNuggets={setNuggets} activeUser={activeUser} onViewIdeas={onViewIdeas}/>}
         {page==="ledger"&&<LedgerPage accounts={accounts} setAccounts={setAccounts} teamUsers={teamUsers} activeUser={activeUser} tasks={tasks} winsLog={winsLog} setWinsLog={setWinsLog} managerSelectedAeId={managerScopedAeId}/>}
         {page==="tools"&&<ToolsPage accounts={accounts} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} launchAccountId={toolsLaunchId} onLaunched={()=>setToolsLaunchId(null)} activeTool={toolsActiveTool} onToolSelect={setToolsActiveTool} onCreateTask={(prefill)=>setTaskModal(prefill||{})}/>}
-        {page==="admin"&&isAdmin(user)&&<AdminPage teamUsers={teamUsers} onSaveUsers={setTeamUsers} currentUser={user} onUpdateCurrentUser={patch=>{setUser(u=>{const next={...u,...patch};localStorage.setItem("prospector_user",JSON.stringify(next));return next;});}} rolePerms={rolePerms} onSaveRolePerms={setRolePerms} onSave={saveAccounts} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} onSaveBatch={saveBatch} accounts={accounts} removedBlocklist={removedBlocklist} onRestoreAccount={entry=>setRemovedBlocklist(bl=>bl.filter(x=>x.id!==entry.id))} nuggets={nuggets} onSaveNuggets={setNuggets} seedTeam={SMB_TEAM}/>}
+        {page==="admin"&&isAdmin(user)&&<AdminPage teamUsers={teamUsers} onSaveUsers={setTeamUsers} currentUser={user} onUpdateCurrentUser={patch=>{setUser(u=>{const next={...u,...patch};localStorage.setItem("prospector_user",JSON.stringify(next));return next;});}} rolePerms={rolePerms} onSaveRolePerms={setRolePerms} onSave={saveAccounts} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} onSaveBatch={saveBatch} accounts={accounts} removedBlocklist={removedBlocklist} onRestoreAccount={entry=>setRemovedBlocklist(bl=>bl.filter(x=>x.id!==entry.id))} nuggets={nuggets} onSaveNuggets={setNuggets}/>}
         {page==="businesses-home"&&<BusinessesHomePage businesses={myBusinesses} loading={businessesLoading} projects={myProjects} onSelect={selectBusiness} onCreated={b=>{setMyBusinesses(prev=>[b,...prev]);selectBusiness(b);}}/>}
         {page==="business-detail"&&activeBusiness&&<BusinessDetailPage key={activeBusiness.id} business={activeBusiness} userEmail={user.email} projects={myProjects.filter(p=>p.business_id===activeBusiness.id)} campaigns={myCampaigns.filter(c=>c.business_id===activeBusiness.id)} view={businessPage} onUpdated={onBusinessUpdated} onProjectCreated={p=>setMyProjects(prev=>[p,...prev])} onProjectUpdated={p=>setMyProjects(prev=>prev.map(x=>x.id===p.id?p:x))} onCampaignCreated={c=>setMyCampaigns(prev=>[c,...prev])} onCampaignUpdated={c=>setMyCampaigns(prev=>prev.map(x=>x.id===c.id?c:x))} sharedAccounts={accounts} sharedTasks={tasks} setSharedTasks={setTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={navTo} onUpdateAccount={perms.canEditStage?(id,patch)=>setAccounts(as=>as.map(a=>a.id===id?{...a,...patch}:a)):undefined}/>}
         {page==="handoffs"&&<HandoffsPage accounts={accounts} onAddAccount={acc=>{setAccounts(a=>[acc,...a]);trackStat("accounts_added");trackDailyStat("accounts_added");}} activeUser={activeUser} activeRole={activeRole} teamUsers={teamUsers}/>}

@@ -1,8 +1,7 @@
 import { getServiceSupabase } from './lib/authUser.js';
 
 // prospector-auth-v1 Stage 5 - GET /api/access-log: the last 50 auth_events
-// (sign-ins, invites, role changes), platform owner only (server.js). The
-// pre-auth access_log table is kept as history but no longer written.
+// (sign-ins, invites, role changes), platform owner only (server.js).
 export default async function handler(req, res) {
   const supabase = getServiceSupabase();
   const { data, error } = await supabase.from('auth_events')

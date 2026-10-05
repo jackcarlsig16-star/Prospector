@@ -67,7 +67,7 @@ export default function MembersAccess() {
     const m = await fetchMe();
     setMe(m);
     const manageable = m.memberships.filter(x => m.profile.is_platform_owner || roleAtLeast(x.role, 'admin'));
-    setWsId(prev => selectId || prev || manageable[0]?.business_id || null);
+    setWsId(prev => selectId || prev || manageable[0]?.business_id || (m.profile.is_platform_owner ? ALL : null));
   }, []);
   useEffect(() => { loadMe().catch(e => setError(e.message)); }, [loadMe]);
 
@@ -118,7 +118,7 @@ export default function MembersAccess() {
   };
 
   if (!me) return <p style={{ ...mono, fontSize: 12, color: error ? C.red : C.dim }}>{error || 'Loading…'}</p>;
-  if (!manageable.length) return <p style={{ ...mono, fontSize: 12, color: C.dim }}>You aren't an Admin or Owner of any workspace.</p>;
+  if (!manageable.length && !isPlatformOwner) return <p style={{ ...mono, fontSize: 12, color: C.dim }}>You aren't an Admin or Owner of any workspace.</p>;
 
   return (
     <div>

@@ -3,8 +3,7 @@ import { C, mono } from '../constants/colors';
 import AdminOrgChart from './admin/AdminOrgChart';
 import { PRODUCTS_OVERRIDE_KEY, loadProductOverrides } from './PricingPage';
 import { PRICING_PRODUCTS_DEFAULT } from '../constants/products';
-import { saveTeamUsers, saveFrontier, patchUser, getAccountsForBusiness, getOutreachDoctrine, createOutreachDoctrineRule, updateOutreachDoctrineRule } from '../utils/db';
-import { isSupabaseEnabled } from '../utils/supabase';
+import { getAccountsForBusiness, getOutreachDoctrine, createOutreachDoctrineRule, updateOutreachDoctrineRule } from '../utils/db';
 import { mapSfdcStage } from '../utils/stageMap';
 import GoogleConnections from './GoogleConnections';
 import MembersAccess from './admin/MembersAccess';
@@ -399,7 +398,7 @@ function OutreachIntelligenceTab({ currentUser }) {
 }
 
 
-function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser, rolePerms={}, onSaveRolePerms, onSave, onSaveToPool, onSaveBatch, accounts=[], removedBlocklist=[], onRestoreAccount, nuggets=[], onSaveNuggets, seedTeam=[] }) {
+function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser, rolePerms={}, onSaveRolePerms, onSave, onSaveToPool, onSaveBatch, accounts=[], removedBlocklist=[], onRestoreAccount, nuggets=[], onSaveNuggets }) {
   const [tab, setTab] = useState("users");
   const [users, setUsers] = useState(teamUsers);
   useEffect(() => { setUsers(teamUsers); }, [teamUsers]);
@@ -512,23 +511,6 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
   const [dragOver,setDragOver]= useState(null);
   const [invitedIds, setInvitedIds] = useState(new Set());
 
-  const [supabaseSyncing, setSupabaseSyncing] = useState(false);
-  const [supabaseSeeded,  setSupabaseSeeded]  = useState(()=>localStorage.getItem('prospector_supabase_seeded')==='true');
-
-
-
-
-  const importSeedTeam = () => {
-    let tombstoned = new Set();
-    try { tombstoned = new Set(JSON.parse(localStorage.getItem('prospector_removed_user_ids') || '[]')); } catch {}
-    const existingEmails = new Set(users.map(u=>u.email?.toLowerCase()));
-    const toAdd = seedTeam.filter(u =>
-      !existingEmails.has(u.email?.toLowerCase()) && !tombstoned.has(u.id)
-    );
-    if(!toAdd.length) return;
-    const next = [...users, ...toAdd];
-    setUsers(next); onSaveUsers(next);
-  };
 
 
   const togglePerm = (role, key) => {
@@ -616,8 +598,6 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
           currentUser={currentUser}
           onSaveUsers={onSaveUsers}
           onUpdateCurrentUser={onUpdateCurrentUser}
-          seedTeam={seedTeam}
-          importSeedTeam={importSeedTeam}
         />
       )}
       {/* ── PERMISSIONS TAB ── */}
@@ -964,40 +944,6 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
             </div>
 
 
-            {/* Supabase sync */}
-            {isSupabaseEnabled() && !supabaseSeeded && (
-              <div style={{ background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, padding:"16px 18px", marginBottom:16 }}>
-                <p style={{ margin:"0 0 3px", fontSize:14, color:C.txt, fontWeight:500 }}>☁ Sync to Supabase</p>
-                <p style={{ ...mono, margin:"0 0 14px", fontSize:11, color:C.dim }}>One-time seed — pushes current team roster and frontier to Supabase so all users share live data. Only needs to run once.</p>
-                <button
-                  onClick={async()=>{
-                    setSupabaseSyncing(true);
-                    try{
-                      const tu=JSON.parse(localStorage.getItem('prospector_team_users')||'[]');
-                      const fr=JSON.parse(localStorage.getItem('prospector_frontier')||'[]');
-                      await saveTeamUsers(tu);
-                      await saveFrontier(fr.filter(f=>!f.isDemo));
-                      localStorage.setItem('prospector_supabase_seeded','true');
-                      setSupabaseSeeded(true);
-                    }catch(e){ alert('Sync failed: '+e.message); }
-                    setSupabaseSyncing(false);
-                  }}
-                  disabled={supabaseSyncing}
-                  style={{ ...mono, fontSize:12, padding:"8px 20px", background:`${C.blue}14`, border:`1px solid ${C.blue}44`, color:C.blue, borderRadius:6, cursor:supabaseSyncing?'default':'pointer', fontWeight:600, opacity:supabaseSyncing?0.6:1 }}>
-                  {supabaseSyncing ? 'Syncing…' : '↑ Sync to Supabase'}
-                </button>
-              </div>
-            )}
-            {isSupabaseEnabled() && supabaseSeeded && (
-              <div style={{ background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, padding:"16px 18px", marginBottom:16, display:"flex", alignItems:"center", gap:12 }}>
-                <span style={{ ...mono, fontSize:13, color:C.green }}>● Supabase live</span>
-                <span style={{ ...mono, fontSize:11, color:C.dim, flex:1 }}>Team and frontier syncing in real-time across all sessions.</span>
-                <button onClick={()=>{ localStorage.removeItem('prospector_supabase_seeded'); setSupabaseSeeded(false); }}
-                  style={{ ...mono, fontSize:10, padding:"3px 8px", background:"transparent", border:`1px solid ${C.brd}`, color:C.dim, borderRadius:4, cursor:"pointer" }}>
-                  Re-sync
-                </button>
-              </div>
-            )}
 
             {/* Diamonds toggle */}
             <div style={{ background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, padding:"16px 18px", display:"flex", alignItems:"center", gap:16 }}>

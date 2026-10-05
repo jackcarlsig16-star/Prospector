@@ -1,11 +1,7 @@
 import { C, mono } from '../../constants/colors';
 import OrgChart from '../OrgChart';
 
-export default function AdminOrgChart({ users, setUsers, invitedIds, setInvitedIds, currentUser, onSaveUsers, onUpdateCurrentUser, seedTeam, importSeedTeam }) {
-  const existingIds  = new Set(users.map(u=>u.id));
-  let tombstoned = new Set();
-  try { tombstoned = new Set(JSON.parse(localStorage.getItem('prospector_removed_user_ids') || '[]')); } catch {}
-  const missingCount = seedTeam.filter(u => !existingIds.has(u.id) && !tombstoned.has(u.id)).length;
+export default function AdminOrgChart({ users, setUsers, invitedIds, setInvitedIds, currentUser, onSaveUsers, onUpdateCurrentUser }) {
   const pendingCount = users.filter(n => n.status==="pending"||!n.status).length;
 
   const sendAllInvites = () => {
@@ -33,12 +29,6 @@ export default function AdminOrgChart({ users, setUsers, invitedIds, setInvitedI
           Drag AE chips onto manager boxes to reassign · drag BDR chips onto AE chips to assign
           {pendingCount>0 && <span style={{ color:C.orange, marginLeft:8 }}>· {pendingCount} pending</span>}
         </p>
-        {missingCount>0 && (
-          <button onClick={importSeedTeam}
-            style={{ ...mono, fontSize:11, padding:"4px 12px", background:`${C.blue}14`, border:`1px solid ${C.blue}44`, color:C.blue, borderRadius:6, cursor:"pointer" }}>
-            ↓ Load SMB team ({missingCount})
-          </button>
-        )}
         {pendingCount>0 && (
           <button onClick={sendAllInvites}
             style={{ ...mono, fontSize:11, padding:"4px 12px", background:`${C.purple}14`, border:`1px solid ${C.purple}44`, color:C.purple, borderRadius:6, cursor:"pointer" }}>
