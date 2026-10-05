@@ -1,4 +1,5 @@
 export const config = { maxDuration: 20 };
+import { isSalesforceInstance } from "../lib/sfdcInstance.js";
 
 function mapSfdcStage(sfdcStage) {
   const map = {
@@ -49,6 +50,7 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const { sfdcToken, sfdcInstance, sfdcUserId, ownerName } = req.body;
+  if (!isSalesforceInstance(sfdcInstance)) return res.status(400).json({ error: "sfdcInstance is not a Salesforce instance" });
 
   // Prefer ID-based scoping; fall back to escaped name match for legacy callers / CLI mode
   const useIdScope = sfdcUserId && SFDC_ID_RE.test(sfdcUserId);

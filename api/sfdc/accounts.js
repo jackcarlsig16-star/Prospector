@@ -1,4 +1,5 @@
 export const config = { maxDuration: 20 };
+import { isSalesforceInstance } from "../lib/sfdcInstance.js";
 
 // Allowed modes to prevent SOQL injection via the mode param
 const ALLOWED_MODES = new Set(["my_accounts", "dormant"]);
@@ -10,6 +11,9 @@ export default async function handler(req, res) {
 
   if (!access_token || !instance_url) {
     return res.status(400).json({ error: "Missing access_token or instance_url" });
+  }
+  if (!isSalesforceInstance(instance_url)) {
+    return res.status(400).json({ error: "instance_url is not a Salesforce instance" });
   }
 
   if (!ALLOWED_MODES.has(mode)) {

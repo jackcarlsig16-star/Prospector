@@ -343,13 +343,7 @@ export default function ProductionRequestsPage({ accounts=[], setAccounts, onNav
     setSyncing(true);
     setSyncToast(null);
     try {
-      const clientToken    = localStorage.getItem('sfdc_access_token') || '';
-      const clientInstance = localStorage.getItem('sfdc_instance_url') || '';
-      const res = await fetch('/api/sfdc/sync-now', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientToken, clientInstance }),
-      });
+      const res = await fetch('/api/sfdc/sync-now', { method: 'POST' });
       const data = await res.json();
       setLastSync(new Date());
       await loadCompliance();

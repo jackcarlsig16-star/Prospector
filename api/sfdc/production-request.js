@@ -1,4 +1,5 @@
 export const config = { maxDuration: 15 };
+import { isSalesforceInstance } from "../lib/sfdcInstance.js";
 
 // Validate Client IDs look like MongoDB ObjectIDs (24 hex chars) before interpolating.
 const VALID_CLIENT_ID = /^[a-f0-9]{24}$/i;
@@ -86,6 +87,7 @@ export default async function handler(req, res) {
   if (!sfdcToken || !sfdcInstance) {
     return res.status(400).json({ error: "Missing sfdcToken or sfdcInstance" });
   }
+  if (!isSalesforceInstance(sfdcInstance)) return res.status(400).json({ error: "sfdcInstance is not a Salesforce instance" });
 
   // ── REST API (production) ─────────────────────────────────────────────────────
   const query = `SELECT ${FIELDS} FROM ProductionRequest__c WHERE Client_ID__r.Name = '${clientId}' ORDER BY CreatedDate DESC LIMIT 1`;

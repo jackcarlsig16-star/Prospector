@@ -1,4 +1,5 @@
 export const config = { maxDuration: 10 };
+import { isSalesforceInstance } from '../lib/sfdcInstance.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
@@ -6,6 +7,8 @@ export default async function handler(req, res) {
   if (!accessToken || !instanceUrl || !oppId || !fields) {
     return res.status(400).json({ error: 'Missing accessToken, instanceUrl, oppId, or fields' });
   }
+  if (!isSalesforceInstance(instanceUrl)) return res.status(400).json({ error: 'instanceUrl is not a Salesforce instance' });
+  if (!/^[a-zA-Z0-9]{15,18}$/.test(oppId)) return res.status(400).json({ error: 'Invalid oppId' });
   try {
     const r = await fetch(`${instanceUrl}/services/data/v59.0/sobjects/Opportunity/${oppId}`, {
       method: 'PATCH',

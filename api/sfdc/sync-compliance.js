@@ -17,7 +17,7 @@ function getSupabase() {
   return createClient(url, key);
 }
 
-export async function syncAllCompliance({ clientToken, clientInstance } = {}) {
+export async function syncAllCompliance() {
   console.log('[SFDC SYNC] Starting compliance sync at', new Date().toISOString());
 
   const supabase = getSupabase();
@@ -36,22 +36,11 @@ export async function syncAllCompliance({ clientToken, clientInstance } = {}) {
       .eq('id', 'primary')
       .single();
 
-    if (data) {
-      tokenRow = data;
-    } else if (clientToken && clientInstance) {
-      // Client passed its localStorage token — use it and re-store in Supabase for future cron runs
-      console.log('[SFDC SYNC] No Supabase token; using client-provided token and re-storing');
-      tokenRow = { access_token: clientToken, instance_url: clientInstance };
-      supabase.from('sfdc_tokens').upsert({
-        id: 'primary',
-        access_token: clientToken,
-        instance_url: clientInstance,
-        issued_at: new Date().toISOString(),
-      }, { onConflict: 'id' }).then(() => {}).catch(e => console.warn('[SFDC SYNC] Token re-store failed:', e.message));
-    } else {
+    if (!data) {
       console.log('[SFDC SYNC] No SFDC token found — skipping');
       return { synced: 0, error: 'No SFDC token' };
     }
+    tokenRow = data;
   }
 
   const { data: accountRows, error: accErr } = await supabase

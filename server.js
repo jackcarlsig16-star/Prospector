@@ -593,8 +593,7 @@ app.post('/api/sales/:businessId/insights/dismiss', salesModuleRoute('./api/sale
 app.post('/api/sfdc/sync-now', async (req, res) => {
   try {
     const { syncAllCompliance } = await import('./api/sfdc/sync-compliance.js');
-    const { clientToken, clientInstance } = req.body || {};
-    const result = await syncAllCompliance({ clientToken, clientInstance });
+    const result = await syncAllCompliance();
     res.json({ success: true, ...result });
   } catch (err) {
     console.error('[sync-now] failed:', err);
