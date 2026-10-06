@@ -75,13 +75,22 @@ async function partnerOrThrow(supabase, businessId, goalId) {
   return data;
 }
 
+// Only applies when every field it changes still holds the value this
+// request read - a teammate's click in between makes it a 409, not a silently
+// lost update (and keeps meta.prev true, so undo restores the right value).
+function unchanged(query, goal, fields) {
+  for (const k of fields) query = goal[k] === null || goal[k] === undefined ? query.is(k, null) : query.eq(k, goal[k]);
+  return query;
+}
+
 async function write(supabase, goal, patch, event) {
   let updated = goal;
   if (Object.keys(patch).length) {
-    const { data, error } = await supabase.from('sales_goals')
-      .update({ ...patch, updated_at: new Date().toISOString() }).eq('id', goal.id).select().single();
+    const { data, error } = await unchanged(supabase.from('sales_goals')
+      .update({ ...patch, updated_at: new Date().toISOString() }).eq('id', goal.id), goal, Object.keys(patch)).select();
     if (error) throw new SignalError(error.message, 500);
-    updated = data;
+    if (!data.length) throw new SignalError('This partner was just changed by someone else - refresh and try again', 409);
+    updated = data[0];
   }
   const { data: row, error } = await supabase.from('sales_partner_events')
     .insert({ business_id: goal.business_id, goal_id: goal.id, ...event }).select().single();
