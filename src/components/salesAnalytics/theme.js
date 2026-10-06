@@ -18,6 +18,8 @@ const TOKEN_CSS_VARS = {
   ground: '--sa-ground', surface: '--sa-surface', surface2: '--sa-surface-2', border: '--sa-border',
   text: '--sa-text', muted: '--sa-muted', faint: '--sa-faint', accent: '--sa-accent',
   good: '--sa-good', warn: '--sa-warn', bad: '--sa-bad', barNeutral: '--sa-bar-neutral',
+  track: '--sa-track', inset: '--sa-inset', borderStrong: '--sa-border-strong', link: '--sa-link',
+  soft: '--sa-soft', neutral: '--sa-neutral',
 };
 
 const DARK_VALUES = {
@@ -26,6 +28,13 @@ const DARK_VALUES = {
   accent: '#8FA8FF', // the ONE accent - primary button, selected states, Apollo source badge
   good: '#3DD68C', warn: '#F2B544', bad: '#FF6B6B',
   barNeutral: '#4A5565', // the leaderboard's inline Delivered bar fill (mockup value, not cohort/status-colored on purpose)
+  // sales-goals-v1 REV4 (specs/design/goals-mockup.dc.html)
+  track: '#1C222A', // row dividers, empty bar/ring track
+  inset: '#0F1317', // cards inside cards, text areas
+  borderStrong: '#46505E', // checkbox outlines, an expanded card's border
+  link: '#AFC0FF',
+  soft: '#C9D0D9', // secondary text a step brighter than muted
+  neutral: '#4A5462', // "not started" status
 };
 
 // Print media (DECIDED): white ground/surface, dark text, same accent/
@@ -35,6 +44,7 @@ const PRINT_VALUES = {
   ...DARK_VALUES,
   ground: '#FFFFFF', surface: '#FFFFFF', surface2: '#F7F8FA', border: '#E3E6EA',
   text: '#14171C', muted: '#5B6470', faint: '#8A93A0',
+  track: '#E3E6EA', inset: '#F7F8FA', borderStrong: '#B8BEC7', link: '#3A55C8', soft: '#3B4350', neutral: '#B8BEC7',
 };
 
 export const SA = Object.fromEntries(Object.entries(TOKEN_CSS_VARS).map(([key, cssVar]) => [key, `var(${cssVar})`]));

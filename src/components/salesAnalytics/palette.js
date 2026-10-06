@@ -101,3 +101,16 @@ export const TREND_THEME_CSS = `
     #sales-analytics-root { ${Object.entries(TREND_VALUES).map(([k, [, print]]) => `${trendVar(k)}: ${print};`).join(' ')} }
   }
 `;
+
+// sales-goals-v1 REV4 - member colors, assigned in workspace join order so
+// a person keeps theirs and no two members share one. The first two are the
+// mockup's (validated CVD-safe on the dark ground); the rest keep the same
+// lightness and stay clear of the status and cohort hues.
+export const MEMBER_COLORS = ['#6F8CF0', '#C97626', '#4FB0C6', '#B07CC6', '#8FB35A', '#D6788F'];
+export const UNASSIGNED_COLOR = '#4A5462';
+export function memberColor(index) {
+  return index >= 0 ? MEMBER_COLORS[index % MEMBER_COLORS.length] : UNASSIGNED_COLOR;
+}
+
+// Partner priority: P1 this week, P2 next 30 days, P3 60-90 days.
+export const PRIORITY_COLORS = { 1: '#8FA8FF', 2: '#5F72B8', 3: '#3A4672', none: '#4A5462' };
