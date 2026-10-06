@@ -398,7 +398,7 @@ function OutreachIntelligenceTab({ currentUser }) {
 }
 
 
-function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser, rolePerms={}, onSaveRolePerms, onSave, onSaveToPool, onSaveBatch, accounts=[], removedBlocklist=[], onRestoreAccount, nuggets=[], onSaveNuggets }) {
+function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser, rolePerms={}, onSaveRolePerms, onSave, onSaveToPool, onSaveBatch, accounts=[] }) {
   const [tab, setTab] = useState("users");
   const [users, setUsers] = useState(teamUsers);
   useEffect(() => { setUsers(teamUsers); }, [teamUsers]);
@@ -406,12 +406,6 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
   // live perms state (editable copy)
   const [permsEdit, setPermsEdit] = useState(rolePerms);
   const [permsSaved, setPermsSaved] = useState(false);
-
-  // Territories
-  const [territories, setTerritories] = useState(()=>{try{return JSON.parse(localStorage.getItem("prospector_territories")||"[]");}catch{return [];}});
-  const [terrForm, setTerrForm] = useState({name:"",region:""});
-  useEffect(()=>{try{localStorage.setItem("prospector_territories",JSON.stringify(territories));}catch{}},[territories]);
-  const addTerritory = () => { if(!terrForm.name.trim())return; setTerritories(prev=>[...prev,{id:`t${Date.now()}`,name:terrForm.name.trim(),region:terrForm.region.trim()}]); setTerrForm({name:"",region:""}); };
 
   // API key integrations
   const [integrations, setIntegrations] = useState(()=>{try{return JSON.parse(localStorage.getItem("prospector_integrations")||"{}");}catch{return {};}});
@@ -531,18 +525,16 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
       {/* Header */}
       <div style={{ marginBottom:18 }}>
         <h2 style={{ margin:"0 0 3px", fontSize:20, fontWeight:600, color:C.txt }}>Admin</h2>
-        <p style={{ ...mono, margin:0, fontSize:12, color:C.dim }}>Users, roles, territories, and API keys</p>
+        <p style={{ ...mono, margin:0, fontSize:12, color:C.dim }}>Members, roles, integrations and platform settings</p>
       </div>
 
       {/* Tab bar — grouped */}
       {(()=>{
-        const pendingNuggets = nuggets.filter(n=>n.status==="pending").length;
         const TAB_GROUPS = [
           { label:"TEAM", tabs:[
             ["users",       "👥 Members & Access"],
             ["orgchart",    "🌳 Org Chart"],
             ["permissions", "🔐 Permissions"],
-            ["territories", "🗺 Territories"],
           ]},
           { label:"PLATFORM", tabs:[
             ["apikeys",    "🔌 Integrations"],
@@ -552,15 +544,11 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
             ["doctrine",   "✉ Outreach Intelligence"],
           ]},
           { label:"DATA", tabs:[
-            ["nuggets",  `🪙 Nuggets${pendingNuggets>0?` (${pendingNuggets})`:""}`],
-            ["removed",  `🗑 Removed${removedBlocklist.length>0?` (${removedBlocklist.length})`:""}`],
             ["settings", "⚙️ Settings"],
           ]},
         ];
         const tabColor = (id) => {
           if (tab===id) return C.gold;
-          if (id==="nuggets" && pendingNuggets>0) return C.gold;
-          if (id==="removed" && removedBlocklist.length>0) return C.orange;
           return C.mut;
         };
         return (

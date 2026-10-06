@@ -149,7 +149,7 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
             )}
             {n.id==="tools" && page==="tools" && (
               <div style={{ paddingLeft:20, borderLeft:`3px solid ${C.gold}33` }}>
-                {[{id:"deal",ic:"$",lb:"Deal Workspace"},{id:"lookalike",ic:"◈",lb:"Account Lookalike"},{id:"email",ic:"✉",lb:"Email Generator"}].map(t=>(
+                {[{id:"deal",ic:"$",lb:"Deal Workspace"},{id:"lookalike",ic:"◈",lb:"Account Lookalike"}].map(t=>(
                   <div key={t.id} onClick={()=>{setPage("tools");setToolsActiveTool(t.id);}}
                     style={{ padding:"5px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:6,
                       background:toolsActiveTool===t.id?`${C.gold}14`:"transparent",
