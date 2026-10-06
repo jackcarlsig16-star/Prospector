@@ -600,6 +600,27 @@ app.patch('/api/sales/:businessId/goals/week/:id', salesModuleRoute('./api/sales
 app.delete('/api/sales/:businessId/goals/week/:id', salesModuleRoute('./api/sales/goalsRoutes.js', 'deleteWeekGoalRoute', 'goals/week/:id DELETE'));
 app.get('/api/sales/:businessId/goals/notes', salesModuleRoute('./api/sales/goalsRoutes.js', 'listWeekNotesRoute', 'goals/notes'));
 app.put('/api/sales/:businessId/goals/notes/:weekStart', salesModuleRoute('./api/sales/goalsRoutes.js', 'saveWeekNoteRoute', 'goals/notes/:weekStart PUT'));
+app.post('/api/sales/:businessId/goals/week/:id/steps', salesModuleRoute('./api/sales/goalsRoutes.js', 'createStepRoute', 'goals/week/:id/steps POST'));
+app.patch('/api/sales/:businessId/goals/steps/:id', salesModuleRoute('./api/sales/goalsRoutes.js', 'updateStepRoute', 'goals/steps/:id PATCH'));
+app.delete('/api/sales/:businessId/goals/steps/:id', salesModuleRoute('./api/sales/goalsRoutes.js', 'deleteStepRoute', 'goals/steps/:id DELETE'));
+app.get('/api/sales/:businessId/goals/cadences', salesModuleRoute('./api/sales/goalsRoutes.js', 'listCadencesRoute', 'goals/cadences'));
+app.post('/api/sales/:businessId/goals/cadences', salesModuleRoute('./api/sales/goalsRoutes.js', 'createCadenceRoute', 'goals/cadences POST'));
+app.patch('/api/sales/:businessId/goals/cadences/:id', salesModuleRoute('./api/sales/goalsRoutes.js', 'updateCadenceRoute', 'goals/cadences/:id PATCH'));
+app.delete('/api/sales/:businessId/goals/cadences/:id', salesModuleRoute('./api/sales/goalsRoutes.js', 'deleteCadenceRoute', 'goals/cadences/:id DELETE'));
+app.get('/api/sales/:businessId/goals/scorecard', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'scorecardRoute', 'goals/scorecard'));
+app.get('/api/sales/:businessId/goals/kpi', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'kpiRoute', 'goals/kpi'));
+app.get('/api/sales/:businessId/goals/companies', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'listCompaniesRoute', 'goals/companies'));
+app.patch('/api/sales/:businessId/goals/companies/:accountId', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'updateCompanyRoute', 'goals/companies/:accountId PATCH'));
+app.get('/api/sales/:businessId/goals/targets', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'listTargetsRoute', 'goals/targets'));
+app.put('/api/sales/:businessId/goals/targets', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'saveTargetRoute', 'goals/targets PUT'));
+app.get('/api/sales/:businessId/goals/report', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'getReportRoute', 'goals/report'));
+app.put('/api/sales/:businessId/goals/report/:weekStart/sections/:key', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'saveSectionRoute', 'goals/report/:weekStart/sections/:key PUT'));
+app.post('/api/sales/:businessId/goals/report/:weekStart/finalize', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'finalizeReportRoute', 'goals/report/:weekStart/finalize POST'));
+app.post('/api/sales/:businessId/goals/report/:weekStart/reopen', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'reopenReportRoute', 'goals/report/:weekStart/reopen POST'));
+app.post('/api/sales/:businessId/goals/infra', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'createInfraRoute', 'goals/infra POST'));
+app.post('/api/sales/:businessId/goals/infra/carry-forward', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'carryForwardInfraRoute', 'goals/infra/carry-forward POST'));
+app.patch('/api/sales/:businessId/goals/infra/:id', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'updateInfraRoute', 'goals/infra/:id PATCH'));
+app.delete('/api/sales/:businessId/goals/infra/:id', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'deleteInfraRoute', 'goals/infra/:id DELETE'));
 
 app.post('/api/sfdc/sync-now', async (req, res) => {
   try {

@@ -1,35 +1,27 @@
-import { createClient } from '@supabase/supabase-js';
 import { selectAllPages } from '../lib/selectAllPages.js';
+import {
+  getSupabase, validate, fail, findRow, weekIsFinal, FINAL_ERROR,
+  isMonday, isFirstOfMonth, addDays, SCORECARD_METRICS, LINK_TARGETS,
+} from './goalsShared.js';
 
-// sales-goals-v1 REVISION 3 Stage 2 - Goals & Weekly Plan API. Mounted under
-// /api/sales/:businessId, so salesGate has already enforced the workspace
-// (viewer reads, member writes). The tables carry member-scoped RLS too; this
-// server path uses the service key and re-checks every id it's handed
-// against the workspace.
-function getSupabase() {
-  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-}
+// sales-goals-v1 - Goals & Weekly Plan API (REV3 Stage 2, extended in REV4
+// Stage 4). Weekly report, scorecard, KPI and companies live in
+// goalsReportRoutes.js.
 
 const GOAL_TYPES = ['company', 'partnership'];
 const LAND_STATUSES = ['not_started', 'in_progress', 'landed', 'paused', 'lost'];
 const MONTH_STATUSES = ['not_started', 'in_progress', 'done', 'dropped'];
 const WEEK_STATUSES = ['open', 'done', 'dropped'];
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const WEEK_KINDS = ['commitment', 'todo'];
 
-const isDate = v => typeof v === 'string' && DATE_RE.test(v) && !Number.isNaN(Date.parse(`${v}T00:00:00Z`));
-const isMonday = v => isDate(v) && new Date(`${v}T00:00:00Z`).getUTCDay() === 1;
-const isFirstOfMonth = v => isDate(v) && v.endsWith('-01');
-const addDays = (v, n) => new Date(Date.parse(`${v}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
-
-// Field kinds: text, required (non-empty text), int (>= 0), date, monday,
-// month, enum, member (workspace member's user id), ref (row of `table` in
-// this workspace). Every field is nullable except required/enum/monday/month.
 const LAND_FIELDS = {
   goal_type: { kind: 'enum', values: GOAL_TYPES }, name: { kind: 'required' },
   status: { kind: 'enum', values: LAND_STATUSES }, owner_user_id: { kind: 'member' },
-  target_date: { kind: 'date' }, priority: { kind: 'int' }, est_covered_lives: { kind: 'int' },
+  target_date: { kind: 'date' }, priority: { kind: 'priority' }, est_covered_lives: { kind: 'int' },
   company_domain: { kind: 'text' }, notes: { kind: 'text' },
   linked_opportunity_id: { kind: 'ref', table: 'sales_opportunities' },
+  meeting_status: { kind: 'text' }, champion: { kind: 'text' }, angle: { kind: 'text' }, motto: { kind: 'text' },
+  watch_outs: { kind: 'text' }, first_email: { kind: 'text' }, first_email_note: { kind: 'text' }, sources: { kind: 'text' },
 };
 const MONTH_FIELDS = {
   month: { kind: 'month' }, text: { kind: 'required' }, owner_user_id: { kind: 'member' },
@@ -42,45 +34,14 @@ const WEEK_FIELDS = {
   why_not_done: { kind: 'text' }, sort_order: { kind: 'int' },
   month_goal_id: { kind: 'ref', table: 'sales_month_goals' },
   land_goal_id: { kind: 'ref', table: 'sales_goals' },
+  kind: { kind: 'enum', values: WEEK_KINDS }, category: { kind: 'text' }, contacts: { kind: 'textArray' },
+  link_target: { kind: 'nullableEnum', values: LINK_TARGETS },
+  metric_key: { kind: 'nullableEnum', values: SCORECARD_METRICS }, target_value: { kind: 'number' },
 };
-
-async function validate(supabase, businessId, fields, body) {
-  const payload = {};
-  for (const [key, value] of Object.entries(body || {})) {
-    const f = fields[key];
-    if (!f) return { error: `unknown field: ${key}` };
-    if (value === null) {
-      if (['required', 'enum', 'monday', 'month'].includes(f.kind)) return { error: `${key} can't be null` };
-      payload[key] = null;
-      continue;
-    }
-    if (f.kind === 'enum' && !f.values.includes(value)) return { error: `bad enum: ${key} must be one of ${f.values.join('|')}` };
-    if (f.kind === 'text' && typeof value !== 'string') return { error: `${key} must be a string or null` };
-    if (f.kind === 'required' && (typeof value !== 'string' || !value.trim())) return { error: `${key} must be non-empty text` };
-    if (f.kind === 'int' && !(Number.isInteger(value) && value >= 0)) return { error: `${key} must be a whole number >= 0 or null` };
-    if (f.kind === 'date' && !isDate(value)) return { error: `${key} must be a YYYY-MM-DD date or null` };
-    if (f.kind === 'monday' && !isMonday(value)) return { error: `${key} must be a Monday (YYYY-MM-DD)` };
-    if (f.kind === 'month' && !isFirstOfMonth(value)) return { error: `${key} must be the 1st of a month (YYYY-MM-01)` };
-    if (f.kind === 'member') {
-      const { data, error } = await supabase.from('business_members').select('id').eq('business_id', businessId).eq('user_id', value).maybeSingle();
-      if (error) return { status: 500, error: error.message };
-      if (!data) return { error: `${key} is not a member of this workspace` };
-    }
-    if (f.kind === 'ref') {
-      const { data, error } = await supabase.from(f.table).select('id').eq('business_id', businessId).eq('id', value).maybeSingle();
-      if (error) return { status: 500, error: error.message };
-      if (!data) return { error: `${key} not found in this workspace` };
-    }
-    payload[key] = f.kind === 'required' ? value.trim() : value;
-  }
-  return { payload };
-}
-
-const fail = (res, v) => res.status(v.status || 400).json({ error: v.error });
-
-async function findRow(supabase, table, businessId, id) {
-  return supabase.from(table).select('*').eq('business_id', businessId).eq('id', id).maybeSingle();
-}
+const STEP_FIELDS = { text: { kind: 'required' }, done: { kind: 'bool' }, sort_order: { kind: 'int' } };
+const CADENCE_FIELDS = {
+  week_start: { kind: 'monday' }, name: { kind: 'required' }, owner_user_id: { kind: 'member' }, sort_order: { kind: 'int' },
+};
 
 // Status-driven timestamps, so the client never sets them.
 function landTimestamps(payload, existing) {
@@ -162,7 +123,7 @@ export async function archiveLandGoalRoute(req, res) {
   res.json({ goal: data });
 }
 
-// ── Monthly goals ───────────────────────────────────────────────────────────
+// ── Monthly goals (REV3; kept, unused by the REV4 UI) ───────────────────────
 // GET /goals/month?from=YYYY-MM-01&to=YYYY-MM-01 (inclusive)
 export async function listMonthGoalsRoute(req, res) {
   const { from, to } = req.query;
@@ -212,16 +173,22 @@ export async function deleteMonthGoalRoute(req, res) {
   res.json({ deleted: data[0].id });
 }
 
-// ── Weekly goals ────────────────────────────────────────────────────────────
-// GET /goals/week?from=<Monday>&to=<Monday> (inclusive) - e.g. last + this week.
+// ── Weekly goals: commitments and to-dos ────────────────────────────────────
+// GET /goals/week?from=<Monday>&to=<Monday>&kind=commitment|todo
+// Each goal comes with its steps (to-dos use them; commitments have none).
 export async function listWeekGoalsRoute(req, res) {
-  const { from, to } = req.query;
+  const { from, to, kind } = req.query;
   if (!isMonday(from) || !isMonday(to) || from > to) return res.status(400).json({ error: 'from and to must be Mondays (YYYY-MM-DD) with from <= to' });
+  if (kind && !WEEK_KINDS.includes(kind)) return res.status(400).json({ error: `bad enum: kind must be one of ${WEEK_KINDS.join('|')}` });
   const supabase = getSupabase();
   try {
-    const goals = await selectAllPages(() => supabase.from('sales_week_goals').select('*')
-      .eq('business_id', req.params.businessId).gte('week_start', from).lte('week_start', to)
-      .order('week_start').order('sort_order').order('created_at').order('id'));
+    const goals = await selectAllPages(() => {
+      let q = supabase.from('sales_week_goals').select('*, steps:sales_week_goal_steps(*)')
+        .eq('business_id', req.params.businessId).gte('week_start', from).lte('week_start', to);
+      if (kind) q = q.eq('kind', kind);
+      return q.order('week_start').order('sort_order').order('created_at').order('id');
+    });
+    for (const g of goals) g.steps.sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
     res.json({ goals });
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
@@ -232,6 +199,9 @@ export async function createWeekGoalRoute(req, res) {
   if (v.error) return fail(res, v);
   if (!v.payload.week_start) return res.status(400).json({ error: 'week_start is required' });
   if (!v.payload.text) return res.status(400).json({ error: 'text is required' });
+  try {
+    if (await weekIsFinal(supabase, req.params.businessId, v.payload.week_start)) return res.status(409).json({ error: FINAL_ERROR });
+  } catch (e) { return res.status(500).json({ error: e.message }); }
   const { data, error } = await supabase.from('sales_week_goals')
     .insert({ business_id: req.params.businessId, ...v.payload, ...weekTimestamps(v.payload) }).select().single();
   if (error) return res.status(500).json({ error: error.message });
@@ -245,6 +215,11 @@ export async function updateWeekGoalRoute(req, res) {
   if (!existing) return res.status(404).json({ error: 'goal not found' });
   const v = await validate(supabase, req.params.businessId, WEEK_FIELDS, req.body);
   if (v.error) return fail(res, v);
+  try {
+    for (const week of new Set([existing.week_start, v.payload.week_start].filter(Boolean))) {
+      if (await weekIsFinal(supabase, req.params.businessId, week)) return res.status(409).json({ error: FINAL_ERROR });
+    }
+  } catch (e) { return res.status(500).json({ error: e.message }); }
   const { data, error } = await supabase.from('sales_week_goals')
     .update({ ...v.payload, ...weekTimestamps(v.payload, existing), updated_at: new Date().toISOString() })
     .eq('id', existing.id).select().single();
@@ -254,46 +229,193 @@ export async function updateWeekGoalRoute(req, res) {
 
 export async function deleteWeekGoalRoute(req, res) {
   const supabase = getSupabase();
-  const { data, error } = await supabase.from('sales_week_goals').delete()
-    .eq('business_id', req.params.businessId).eq('id', req.params.id).select('id');
+  const { data: existing, error: findErr } = await findRow(supabase, 'sales_week_goals', req.params.businessId, req.params.id);
+  if (findErr) return res.status(500).json({ error: findErr.message });
+  if (!existing) return res.status(404).json({ error: 'goal not found' });
+  try {
+    if (await weekIsFinal(supabase, req.params.businessId, existing.week_start)) return res.status(409).json({ error: FINAL_ERROR });
+  } catch (e) { return res.status(500).json({ error: e.message }); }
+  const { error } = await supabase.from('sales_week_goals').delete().eq('id', existing.id);
   if (error) return res.status(500).json({ error: error.message });
-  if (!data.length) return res.status(404).json({ error: 'goal not found' });
-  res.json({ deleted: data[0].id });
+  res.json({ deleted: existing.id });
 }
 
-// POST /goals/week/carry-over { week_start } - copies the previous week's
-// still-open goals into week_start. Idempotent: a goal already carried into
+// Unfinished = a commitment still open, or a to-do not done/dropped whose
+// steps aren't all ticked.
+function isUnfinished(g) {
+  if (g.status !== 'open') return false;
+  if (g.kind !== 'todo') return true;
+  return !(g.steps.length && g.steps.every(s => s.done));
+}
+
+// POST /goals/week/carry-over { week_start, kind? } - copies the previous
+// week's unfinished commitments and/or to-dos into week_start, to-dos with
+// their steps (ticked state kept). Idempotent: a goal already carried into
 // that week is skipped, and the sales_week_goals_carry_once unique index
 // turns a concurrent double-press into a no-op instead of a duplicate.
 export async function carryOverWeekGoalsRoute(req, res) {
   const weekStart = req.body?.week_start;
+  const kind = req.body?.kind;
   if (!isMonday(weekStart)) return res.status(400).json({ error: 'week_start must be a Monday (YYYY-MM-DD)' });
+  if (kind !== undefined && !WEEK_KINDS.includes(kind)) return res.status(400).json({ error: `bad enum: kind must be one of ${WEEK_KINDS.join('|')}` });
   const businessId = req.params.businessId;
   const supabase = getSupabase();
   try {
-    const [open, already] = await Promise.all([
-      selectAllPages(() => supabase.from('sales_week_goals').select('*').eq('business_id', businessId)
-        .eq('week_start', addDays(weekStart, -7)).eq('status', 'open').order('sort_order').order('id')),
+    if (await weekIsFinal(supabase, businessId, weekStart)) return res.status(409).json({ error: FINAL_ERROR });
+    const [previous, already] = await Promise.all([
+      selectAllPages(() => {
+        let q = supabase.from('sales_week_goals').select('*, steps:sales_week_goal_steps(*)').eq('business_id', businessId)
+          .eq('week_start', addDays(weekStart, -7));
+        if (kind) q = q.eq('kind', kind);
+        return q.order('sort_order').order('id');
+      }),
       selectAllPages(() => supabase.from('sales_week_goals').select('carried_from_id').eq('business_id', businessId)
         .eq('week_start', weekStart).not('carried_from_id', 'is', null).order('id')),
     ]);
     const done = new Set(already.map(r => r.carried_from_id));
+    const unfinished = previous.filter(isUnfinished);
     const carried = [];
-    for (const g of open.filter(g => !done.has(g.id))) {
+    for (const g of unfinished.filter(g => !done.has(g.id))) {
       const { data, error } = await supabase.from('sales_week_goals').insert({
         business_id: businessId, week_start: weekStart, text: g.text, owner_user_id: g.owner_user_id,
         measurable_target: g.measurable_target, month_goal_id: g.month_goal_id, land_goal_id: g.land_goal_id,
-        carried_from_id: g.id, sort_order: g.sort_order,
+        kind: g.kind, category: g.category, contacts: g.contacts, link_target: g.link_target,
+        metric_key: g.metric_key, target_value: g.target_value, carried_from_id: g.id, sort_order: g.sort_order,
       }).select().single();
       if (error?.code === '23505') continue;
       if (error) throw new Error(error.message);
+      if (g.steps.length) {
+        const { error: stepErr } = await supabase.from('sales_week_goal_steps').insert(g.steps.map(s => ({
+          business_id: businessId, goal_id: data.id, text: s.text, done: s.done, done_at: s.done_at, sort_order: s.sort_order,
+        })));
+        if (stepErr) throw new Error(stepErr.message);
+      }
       carried.push(data);
     }
-    res.json({ carried, skipped: open.length - carried.length });
+    res.json({ carried, skipped: unfinished.length - carried.length });
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
 
-// ── "How the week went" notes ───────────────────────────────────────────────
+// ── To-do steps ─────────────────────────────────────────────────────────────
+async function stepGoalOr404(supabase, res, businessId, goalId) {
+  const { data: goal, error } = await findRow(supabase, 'sales_week_goals', businessId, goalId);
+  if (error) { res.status(500).json({ error: error.message }); return null; }
+  if (!goal) { res.status(404).json({ error: 'goal not found' }); return null; }
+  if (await weekIsFinal(supabase, businessId, goal.week_start)) { res.status(409).json({ error: FINAL_ERROR }); return null; }
+  return goal;
+}
+
+function validateStep(body) {
+  const payload = {};
+  for (const [key, value] of Object.entries(body || {})) {
+    if (!STEP_FIELDS[key]) return { error: `unknown field: ${key}` };
+    if (key === 'text' && (typeof value !== 'string' || !value.trim())) return { error: 'text must be non-empty text' };
+    if (key === 'done' && typeof value !== 'boolean') return { error: 'done must be true or false' };
+    if (key === 'sort_order' && !(Number.isInteger(value) && value >= 0)) return { error: 'sort_order must be a whole number >= 0' };
+    payload[key] = key === 'text' ? value.trim() : value;
+  }
+  if ('done' in payload) payload.done_at = payload.done ? new Date().toISOString() : null;
+  return { payload };
+}
+
+// POST /goals/week/:id/steps { text, sort_order? }
+export async function createStepRoute(req, res) {
+  const supabase = getSupabase();
+  try {
+    const goal = await stepGoalOr404(supabase, res, req.params.businessId, req.params.id);
+    if (!goal) return;
+    const v = validateStep(req.body);
+    if (v.error) return fail(res, v);
+    if (!v.payload.text) return res.status(400).json({ error: 'text is required' });
+    const { data, error } = await supabase.from('sales_week_goal_steps')
+      .insert({ business_id: req.params.businessId, goal_id: goal.id, ...v.payload }).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.status(201).json({ step: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+}
+
+async function stepOr404(supabase, res, businessId, stepId) {
+  const { data: step, error } = await findRow(supabase, 'sales_week_goal_steps', businessId, stepId);
+  if (error) { res.status(500).json({ error: error.message }); return null; }
+  if (!step) { res.status(404).json({ error: 'step not found' }); return null; }
+  return (await stepGoalOr404(supabase, res, businessId, step.goal_id)) ? step : null;
+}
+
+// PATCH /goals/steps/:id { text?, done?, sort_order? }
+export async function updateStepRoute(req, res) {
+  const supabase = getSupabase();
+  try {
+    const step = await stepOr404(supabase, res, req.params.businessId, req.params.id);
+    if (!step) return;
+    const v = validateStep(req.body);
+    if (v.error) return fail(res, v);
+    const { data, error } = await supabase.from('sales_week_goal_steps')
+      .update({ ...v.payload, updated_at: new Date().toISOString() }).eq('id', step.id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ step: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+}
+
+export async function deleteStepRoute(req, res) {
+  const supabase = getSupabase();
+  try {
+    const step = await stepOr404(supabase, res, req.params.businessId, req.params.id);
+    if (!step) return;
+    const { error } = await supabase.from('sales_week_goal_steps').delete().eq('id', step.id);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ deleted: step.id });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+}
+
+// ── Planned cadences ────────────────────────────────────────────────────────
+// GET /goals/cadences?from=<Monday>&to=<Monday>
+export async function listCadencesRoute(req, res) {
+  const { from, to } = req.query;
+  if (!isMonday(from) || !isMonday(to) || from > to) return res.status(400).json({ error: 'from and to must be Mondays (YYYY-MM-DD) with from <= to' });
+  const supabase = getSupabase();
+  try {
+    const cadences = await selectAllPages(() => supabase.from('sales_cadence_plan').select('*')
+      .eq('business_id', req.params.businessId).gte('week_start', from).lte('week_start', to)
+      .order('week_start').order('sort_order').order('created_at').order('id'));
+    res.json({ cadences });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+}
+
+export async function createCadenceRoute(req, res) {
+  const supabase = getSupabase();
+  const v = await validate(supabase, req.params.businessId, CADENCE_FIELDS, req.body);
+  if (v.error) return fail(res, v);
+  if (!v.payload.week_start) return res.status(400).json({ error: 'week_start is required' });
+  if (!v.payload.name) return res.status(400).json({ error: 'name is required' });
+  const { data, error } = await supabase.from('sales_cadence_plan')
+    .insert({ business_id: req.params.businessId, ...v.payload }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.status(201).json({ cadence: data });
+}
+
+export async function updateCadenceRoute(req, res) {
+  const supabase = getSupabase();
+  const { data: existing, error: findErr } = await findRow(supabase, 'sales_cadence_plan', req.params.businessId, req.params.id);
+  if (findErr) return res.status(500).json({ error: findErr.message });
+  if (!existing) return res.status(404).json({ error: 'cadence not found' });
+  const v = await validate(supabase, req.params.businessId, CADENCE_FIELDS, req.body);
+  if (v.error) return fail(res, v);
+  const { data, error } = await supabase.from('sales_cadence_plan')
+    .update({ ...v.payload, updated_at: new Date().toISOString() }).eq('id', existing.id).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ cadence: data });
+}
+
+export async function deleteCadenceRoute(req, res) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('sales_cadence_plan').delete()
+    .eq('business_id', req.params.businessId).eq('id', req.params.id).select('id');
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data.length) return res.status(404).json({ error: 'cadence not found' });
+  res.json({ deleted: data[0].id });
+}
+
+// ── "How the week went" notes (REV3; kept, unused by the REV4 UI) ───────────
 // GET /goals/notes?from=<Monday>&to=<Monday>
 export async function listWeekNotesRoute(req, res) {
   const { from, to } = req.query;
