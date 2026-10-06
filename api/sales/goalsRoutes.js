@@ -3,6 +3,8 @@ import {
   getSupabase, validate, fail, findRow, weekIsFinal, FINAL_ERROR,
   isMonday, isFirstOfMonth, addDays, SCORECARD_METRICS, LINK_TARGETS,
 } from './goalsShared.js';
+import { PIPELINE_STATUS_IDS, TIERS, isStalePartner } from '../../src/constants/partnerPipeline.js';
+import { laDateString } from './laDate.js';
 
 // sales-goals-v1 - Goals & Weekly Plan API (REV3 Stage 2, extended in REV4
 // Stage 4). Weekly report, scorecard, KPI and companies live in
@@ -22,6 +24,12 @@ const LAND_FIELDS = {
   linked_opportunity_id: { kind: 'ref', table: 'sales_opportunities' },
   meeting_status: { kind: 'text' }, champion: { kind: 'text' }, angle: { kind: 'text' }, motto: { kind: 'text' },
   watch_outs: { kind: 'text' }, first_email: { kind: 'text' }, first_email_note: { kind: 'text' }, sources: { kind: 'text' },
+  // sales-partners-pipeline-v1. pipeline_status, hot, snoozed_until and the
+  // touch stamps change only through partner signals (partnerSignals.js), so
+  // every change has a history row.
+  category: { kind: 'text' }, tier: { kind: 'nullableEnum', values: TIERS }, partner_role: { kind: 'text' },
+  known_contacts: { kind: 'text' }, target_titles: { kind: 'text' }, sequence_to_use: { kind: 'text' },
+  next_step: { kind: 'text' }, do_not_say: { kind: 'text' },
 };
 const MONTH_FIELDS = {
   month: { kind: 'month' }, text: { kind: 'required' }, owner_user_id: { kind: 'member' },
@@ -68,17 +76,26 @@ export async function listGoalMembersRoute(req, res) {
 
 // ── Companies / Partnerships to Land (sales_goals) ──────────────────────────
 // GET /goals/land?goal_type=&include_archived=true
+//   partner filters: category=&tier=&owner_user_id=&pipeline_status=&hot=true&stale=true
 export async function listLandGoalsRoute(req, res) {
-  const { goal_type, include_archived } = req.query;
+  const { goal_type, include_archived, category, tier, owner_user_id, pipeline_status, hot, stale } = req.query;
   if (goal_type && !GOAL_TYPES.includes(goal_type)) return res.status(400).json({ error: `bad enum: goal_type must be one of ${GOAL_TYPES.join('|')}` });
+  if (tier && !TIERS.includes(tier)) return res.status(400).json({ error: `bad enum: tier must be one of ${TIERS.join('|')}` });
+  if (pipeline_status && !PIPELINE_STATUS_IDS.includes(pipeline_status)) return res.status(400).json({ error: `bad enum: pipeline_status must be one of ${PIPELINE_STATUS_IDS.join('|')}` });
   const supabase = getSupabase();
   try {
-    const goals = await selectAllPages(() => {
+    let goals = await selectAllPages(() => {
       let q = supabase.from('sales_goals').select('*').eq('business_id', req.params.businessId);
       if (goal_type) q = q.eq('goal_type', goal_type);
       if (include_archived !== 'true') q = q.is('archived_at', null);
+      if (category) q = q.eq('category', category);
+      if (tier) q = q.eq('tier', tier);
+      if (owner_user_id) q = q.eq('owner_user_id', owner_user_id);
+      if (pipeline_status) q = q.eq('pipeline_status', pipeline_status);
+      if (hot === 'true') q = q.eq('hot', true);
       return q.order('created_at').order('id');
     });
+    if (stale === 'true') { const now = Date.now(), today = laDateString(); goals = goals.filter(g => isStalePartner(g, now, today)); }
     res.json({ goals });
   } catch (e) { res.status(500).json({ error: e.message }); }
 }

@@ -608,6 +608,9 @@ app.get('/api/sales/:businessId/goals/cadences', salesModuleRoute('./api/sales/g
 app.post('/api/sales/:businessId/goals/cadences', salesModuleRoute('./api/sales/goalsRoutes.js', 'createCadenceRoute', 'goals/cadences POST'));
 app.patch('/api/sales/:businessId/goals/cadences/:id', salesModuleRoute('./api/sales/goalsRoutes.js', 'updateCadenceRoute', 'goals/cadences/:id PATCH'));
 app.delete('/api/sales/:businessId/goals/cadences/:id', salesModuleRoute('./api/sales/goalsRoutes.js', 'deleteCadenceRoute', 'goals/cadences/:id DELETE'));
+app.post('/api/sales/:businessId/goals/partners/:id/signal', salesModuleRoute('./api/sales/partnersRoutes.js', 'partnerSignalRoute', 'goals/partners/:id/signal POST'));
+app.post('/api/sales/:businessId/goals/partners/:id/undo', salesModuleRoute('./api/sales/partnersRoutes.js', 'partnerUndoRoute', 'goals/partners/:id/undo POST'));
+app.get('/api/sales/:businessId/goals/partners/events', salesModuleRoute('./api/sales/partnersRoutes.js', 'listPartnerEventsRoute', 'goals/partners/events'));
 app.get('/api/sales/:businessId/goals/scorecard', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'scorecardRoute', 'goals/scorecard'));
 app.get('/api/sales/:businessId/goals/kpi', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'kpiRoute', 'goals/kpi'));
 app.get('/api/sales/:businessId/goals/companies', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'listCompaniesRoute', 'goals/companies'));
