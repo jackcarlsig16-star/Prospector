@@ -3,6 +3,7 @@ import { stageIndex, ORG_TYPE_ENUM } from './pipelineStages.js';
 import { laDateString } from './laDate.js';
 import { scoreProspect } from './heatScore.js';
 import { nextBestAction } from './nextBestAction.js';
+import { selectAllPages } from '../lib/selectAllPages.js';
 
 // sales-hot-prospects-v1 - server-only access, same posture as every other
 // sales_* table (RLS enabled, zero policies).
@@ -34,10 +35,18 @@ export async function huddleRoute(req, res) {
   const supabase = getSupabase();
   const businessId = req.params.businessId;
 
-  const [prospects, messages, events, opps, seqSnap, tags, huddles, statusEvents] = await Promise.all([
-    supabase.from('sales_prospect_state').select('*').eq('business_id', businessId),
-    supabase.from('sales_email_messages').select('*').eq('business_id', businessId),
-    supabase.from('sales_email_activity').select('apollo_message_id,contact_id,event,occurred_at,user_agent,tracking_service').eq('business_id', businessId),
+  // The three big reads are paged: PostgREST caps a plain select at 1,000
+  // rows, which used to drop signals silently past that size.
+  let paged;
+  try {
+    paged = await Promise.all([
+      selectAllPages(() => supabase.from('sales_prospect_state').select('*').eq('business_id', businessId).order('contact_id')),
+      selectAllPages(() => supabase.from('sales_email_messages').select('*').eq('business_id', businessId).order('apollo_message_id')),
+      selectAllPages(() => supabase.from('sales_email_activity').select('apollo_message_id,contact_id,event,occurred_at,user_agent,tracking_service').eq('business_id', businessId).order('id')),
+    ]);
+  } catch (e) { return res.status(500).json({ error: e.message }); }
+  const [prospects, messages, events] = paged.map(data => ({ data }));
+  const [opps, seqSnap, tags, huddles, statusEvents] = await Promise.all([
     supabase.from('sales_opportunities').select('id,stage,archived_at').eq('business_id', businessId),
     supabase.from('sales_raw_snapshots').select('payload').eq('business_id', businessId).eq('entity', 'sequences').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('sales_sequence_tags').select('sequence_id,audience').eq('business_id', businessId),
@@ -45,15 +54,9 @@ export async function huddleRoute(req, res) {
     supabase.from('sales_prospect_events').select('contact_id,to_value,changed_at,changed_by').eq('business_id', businessId).eq('field', 'status')
       .in('to_value', ['contacted', 'booked']).gte('changed_at', new Date(Date.now() - 3 * 864e5).toISOString()),
   ]);
-  for (const r of [prospects, messages, events, opps, seqSnap, tags, huddles, statusEvents]) {
+  for (const r of [opps, seqSnap, tags, huddles, statusEvents]) {
     if (r.error) return res.status(500).json({ error: r.error.message });
   }
-
-  // PostgREST's default max-rows is 1000 - a full page means the list may be
-  // cut off, which would silently drop signals. Surfaced, not hidden.
-  const warnings = Object.entries({ prospects, messages, events })
-    .filter(([, r]) => (r.data || []).length >= 1000)
-    .map(([name]) => `${name} hit the 1000-row read limit - some data may be missing`);
 
   const seqById = new Map((seqSnap.data?.payload || []).map(s => [s.id, s]));
   const audienceById = new Map((tags.data || []).map(t => [t.sequence_id, t.audience || 'employer']));
@@ -107,7 +110,6 @@ export async function huddleRoute(req, res) {
     last_huddle: (huddles.data || [])[0] || null,
     done_recent: done,
     today,
-    warnings,
   });
 }
 

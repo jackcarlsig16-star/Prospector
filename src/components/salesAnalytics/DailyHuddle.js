@@ -7,10 +7,15 @@ import CollateralLibrary from './CollateralLibrary';
 import HuddlePrintSheet from './HuddlePrintSheet';
 import BriefingStrip from './BriefingStrip';
 import HuddlePartners from './HuddlePartners';
+import { goalsApi } from './goals/goalsApi';
+import { memberLookup } from './goals/goalsUi';
 import { exportWidgetCsv } from './exportCsv';
 
 const OWNER_LABELS = { jack: 'Jack', cyrus: 'Cyrus', unassigned: 'Unassigned' };
 const NEXT_ACTION_LABELS = { call: 'Call', email: 'Email', linkedin: 'LinkedIn', send_collateral: 'Send collateral', wait: 'Wait' };
+
+// The printed sheet keeps a short list; the screen shows everyone (scrolls).
+const PRINT_TOP = 8;
 
 const HUDDLE_SHEET_COLUMNS = [
   { label: 'Owner', value: p => OWNER_LABELS[p.owner] || p.owner },
@@ -28,11 +33,19 @@ const HUDDLE_SHEET_COLUMNS = [
   { label: 'Apollo', key: 'apollo_url' },
 ];
 
-const BRIEFING_MAX = 8;
-
 // "Needs action today": a human-set next action that's due/overdue, or no
 // next action set and Next Best Action says something other than "let it
 // run". Booked/snoozed/dead have no card, so they're never listed.
+// Order (sales-huddle-v2 REV1): replies and real clicks first, in NBA_RULES
+// order (next_best_action.rank, so the rules file stays the single source),
+// then overdue human actions, due today, LinkedIn touch, the rest; ties by heat.
+function signalTier(p, today) {
+  const nba = p.next_best_action;
+  if (!['linkedin_touch', 'let_run'].includes(nba.id)) return [0, nba.rank];
+  if (p.next_action_due && p.next_action_due < today) return [1, 0];
+  if (p.next_action_due === today) return [2, 0];
+  return [nba.id === 'linkedin_touch' ? 3 : 4, 0];
+}
 function needsActionToday(prospects, today) {
   const out = [];
   for (const p of prospects) {
@@ -44,7 +57,11 @@ function needsActionToday(prospects, today) {
       out.push({ prospect: p, overdue: false, action: p.next_best_action.label });
     }
   }
-  return out.sort((a, b) => b.prospect.score - a.prospect.score);
+  const key = new Map(out.map(o => [o.prospect.contact_id, signalTier(o.prospect, today)]));
+  return out.sort((a, b) => {
+    const [ta, ra] = key.get(a.prospect.contact_id), [tb, rb] = key.get(b.prospect.contact_id);
+    return ta - tb || ra - rb || b.prospect.score - a.prospect.score;
+  });
 }
 
 function fmtTime(iso) {
@@ -76,6 +93,7 @@ export default function DailyHuddle({ businessId }) {
   const [showLibrary, setShowLibrary] = useState(false);
   const [issues, setIssues] = useState(null);
   const [issuesError, setIssuesError] = useState('');
+  const [members, setMembers] = useState([]);
 
   const load = useCallback(async () => {
     setError('');
@@ -98,6 +116,10 @@ export default function DailyHuddle({ businessId }) {
       .then(d => setIssues((d.insights || []).filter(i => i.severity !== 'info').slice(0, 2)))
       .catch(e => setIssuesError(e.message));
   }, [businessId]);
+
+  // Owner chips use the Goals member colors. Huddle owners are still the
+  // jack/cyrus/unassigned slugs, matched to members by first name.
+  useEffect(() => { goalsApi.members(businessId).then(setMembers).catch(() => setMembers([])); }, [businessId]);
 
   const reloadCollateral = async () => setCollateral(await fetchCollateral(businessId));
 
@@ -151,6 +173,8 @@ export default function DailyHuddle({ businessId }) {
     </div>
   );
   const needsAction = data ? needsActionToday(visible, today) : [];
+  const lookup = memberLookup(members);
+  const ownerColor = slug => lookup(members.find(m => m.name.split(' ')[0].toLowerCase() === slug)?.user_id).color;
 
   const dateLabel = today ? new Date(`${today}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
 
@@ -179,9 +203,6 @@ export default function DailyHuddle({ businessId }) {
       {error && (
         <div style={{ fontSize: 13, color: SA.bad, padding: '10px 14px', background: SA_BAD_BG, border: `1px solid ${SA_BAD_BORDER}`, borderRadius: SA_SHAPE.radiusInner, marginBottom: 16 }}>⚠ {error}</div>
       )}
-      {(data?.warnings || []).map(w => (
-        <div key={w} style={{ fontSize: 13, color: SA.warn, marginBottom: 8 }}>⚠ {w}</div>
-      ))}
 
       {showLibrary && <CollateralLibrary businessId={businessId} items={collateral} onChanged={reloadCollateral} />}
 
@@ -191,14 +212,14 @@ export default function DailyHuddle({ businessId }) {
         <>
           <HuddlePartners businessId={businessId} />
 
-          <BriefingStrip people={needsAction.slice(0, BRIEFING_MAX)} total={needsAction.length} issues={issues} issuesError={issuesError} ownerLabels={OWNER_LABELS} />
+          <BriefingStrip people={needsAction} issues={issues} issuesError={issuesError} ownerLabels={OWNER_LABELS} ownerColor={ownerColor} />
 
           <Section title="Due today / overdue" count={due.length} empty="Nothing due.">
-            <div style={cardList}>{due.map(card)}</div>
+            <div className="sa-scroll" style={{ ...cardList, maxHeight: 760, overflowY: 'auto', paddingRight: 4 }}>{due.map(card)}</div>
           </Section>
 
           <Section title="New" count={fresh.length} empty="No new prospects.">
-            <div style={cardList}>{fresh.map(card)}</div>
+            <div className="sa-scroll" style={{ ...cardList, maxHeight: 760, overflowY: 'auto', paddingRight: 4 }}>{fresh.map(card)}</div>
           </Section>
 
           <Section title="In progress" count={inProgress.length} empty="Nobody claimed or contacted yet.">
@@ -207,8 +228,8 @@ export default function DailyHuddle({ businessId }) {
                 const mine = inProgress.filter(p => p.owner === owner);
                 return (
                   <div key={owner}>
-                    <div style={{ ...SA_TYPE.label, color: SA.muted, marginBottom: 8 }}>{OWNER_LABELS[owner]} · {mine.length}</div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>{mine.map(card)}</div>
+                    <div style={{ ...SA_TYPE.label, color: SA.muted, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 8, height: 8, borderRadius: 999, background: ownerColor(owner) }} />{OWNER_LABELS[owner]} · {mine.length}</div>
+                    <div className="sa-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 760, overflowY: 'auto', paddingRight: 4 }}>{mine.map(card)}</div>
                   </div>
                 );
               })}
@@ -237,7 +258,7 @@ export default function DailyHuddle({ businessId }) {
               Hidden: {Object.entries(hidden).filter(([, n]) => n).map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}`).join(' · ')}
             </p>
           )}
-          <HuddlePrintSheet dateLabel={dateLabel} prospects={visible} needsAction={needsAction.slice(0, BRIEFING_MAX)} needsActionTotal={needsAction.length} issues={issues || []} ownerLabels={OWNER_LABELS} nextActionLabels={NEXT_ACTION_LABELS} today={today} />
+          <HuddlePrintSheet dateLabel={dateLabel} prospects={visible} needsAction={needsAction.slice(0, PRINT_TOP)} needsActionTotal={needsAction.length} issues={issues || []} ownerLabels={OWNER_LABELS} nextActionLabels={NEXT_ACTION_LABELS} today={today} />
         </>
       )}
     </div>

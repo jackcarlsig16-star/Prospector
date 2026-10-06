@@ -10,21 +10,22 @@ function jumpTo(contactId) {
 }
 
 // sales-hot-prospects-v1 Stage 4c - morning briefing. `people` arrives
-// already filtered/sorted/capped by DailyHuddle (needsActionToday); issues is
-// null while the insights request is still in flight.
-export default function BriefingStrip({ people, total, issues, issuesError, ownerLabels }) {
+// already filtered and ranked by DailyHuddle (needsActionToday) - all of
+// them, the list scrolls; issues is null while insights are still loading.
+export default function BriefingStrip({ people, issues, issuesError, ownerLabels, ownerColor }) {
+  const total = people.length;
   return (
     <div className="no-print" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))', gap: 12, marginBottom: 24 }}>
       <div style={{ padding: '14px 16px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 10 }}>
           <span style={{ fontSize: 24, fontWeight: 600, color: total ? SA.accent : SA.muted, fontVariantNumeric: 'tabular-nums' }}>{total}</span>
           <span style={{ ...SA_TYPE.cardTitle, color: SA.text }}>{total === 1 ? 'person needs' : 'people need'} action today</span>
-          {total > people.length && <span style={{ ...SA_TYPE.label, color: SA.faint }}>top {people.length} by heat</span>}
+          {total > 0 && <span style={{ ...SA_TYPE.label, color: SA.faint }}>replies first</span>}
         </div>
         {people.length === 0 ? (
           <p style={{ fontSize: 13, color: SA.faint, margin: 0 }}>Nothing urgent — sequences are running.</p>
         ) : (
-          <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <ol className="sa-scroll" aria-label="People who need action today" tabIndex={0} style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 360, overflowY: 'auto' }}>
             {people.map(({ prospect: p, action, overdue }) => (
               <li key={p.contact_id}>
                 <button onClick={() => jumpTo(p.contact_id)}
@@ -33,7 +34,9 @@ export default function BriefingStrip({ people, total, issues, issuesError, owne
                     {p.name || 'Unknown contact'}{p.company && <span style={{ color: SA.muted }}> · {p.company}</span>}
                   </span>
                   <span style={{ fontWeight: 600, color: overdue ? SA.bad : SA.accent, whiteSpace: 'nowrap' }}>{action}</span>
-                  <span style={{ fontSize: 12, color: SA.muted, whiteSpace: 'nowrap' }}>{ownerLabels[p.owner] || p.owner}</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: SA.soft, whiteSpace: 'nowrap', padding: '1px 8px', borderRadius: 999, border: `1px solid ${SA.border}` }}>
+                    <span style={{ width: 7, height: 7, borderRadius: 999, background: ownerColor(p.owner) }} />{ownerLabels[p.owner] || p.owner}
+                  </span>
                   <span style={{ fontSize: 12, color: SA.faint, fontVariantNumeric: 'tabular-nums', minWidth: 28, textAlign: 'right' }}>{p.score}</span>
                 </button>
               </li>

@@ -39,6 +39,8 @@ export function nextBestAction(messages, events, scored) {
     possibleBotOpen: scored.badges.possible_bot_open,
     humanClicks,
   };
-  const rule = NBA_RULES.find(r => r.when(signals));
-  return { id: rule.id, label: rule.label, reason: rule.reason(signals) };
+  const rank = NBA_RULES.findIndex(r => r.when(signals));
+  const rule = NBA_RULES[rank];
+  // rank = position in NBA_RULES: the Huddle orders "Needs action today" by it.
+  return { id: rule.id, label: rule.label, reason: rule.reason(signals), rank };
 }

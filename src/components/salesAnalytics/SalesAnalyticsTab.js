@@ -38,6 +38,7 @@ const PRINT_STYLES = `
     .no-print { display: none !important; }
     .print-only { display: block !important; }
     .print-avoid-break { break-inside: avoid; page-break-inside: avoid; }
+    .sa-scroll { max-height: none !important; overflow: visible !important; }
     tr { break-inside: avoid; page-break-inside: avoid; }
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     @page { size: landscape letter; margin: 0.4in; }
