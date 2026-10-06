@@ -84,3 +84,40 @@ export function scoreProspect(messages, events) {
     excluded_reply_class: excludedReplyClass,
   };
 }
+
+// sales-huddle-v2 REV1 - Hot / Warm / Cold bands and the row's one-line
+// "last signal" context. PROPOSED / REVISABLE (spec): Hot = score >= 40 or a
+// reply or a human click in 7 days; Warm = score >= 10 or a real open in 7
+// days; else Cold. Replies have no timestamp (Apollo), so any reply counts.
+// A click is human when it lands more than scannerSeconds after delivery
+// (same rule as nextBestAction.js).
+export const HEAT_BANDS = { hotScore: 40, warmScore: 10, recentDays: 7 };
+
+export function huddleSignals(messages, events, scored, now = Date.now(), scannerSeconds = 120) {
+  const deliveredById = new Map(messages.map(m => [m.apollo_message_id, m.delivered_at]));
+  const stepById = new Map(messages.map(m => [m.apollo_message_id, m.step]));
+  const recent = e => now - Date.parse(e.occurred_at) <= HEAT_BANDS.recentDays * 864e5;
+  const humanClicks = events.filter(e => {
+    const d = e.event === 'click' && deliveredById.get(e.apollo_message_id);
+    return d && (Date.parse(e.occurred_at) - Date.parse(d)) / 1000 > scannerSeconds;
+  });
+  const realOpens = events.filter(e => e.event === 'open' && !isBotOpen(e, deliveredById.get(e.apollo_message_id)));
+  const replied = messages.filter(m => m.replied);
+
+  const band = scored.score >= HEAT_BANDS.hotScore || replied.length || humanClicks.some(recent) ? 'hot'
+    : scored.score >= HEAT_BANDS.warmScore || realOpens.some(recent) ? 'warm' : 'cold';
+
+  let last = null;
+  if (replied.length) {
+    const m = [...replied].sort((a, b) => (b.step || 0) - (a.step || 0))[0];
+    last = { kind: 'reply', step: m.step ?? null, reply_class: m.reply_class || null, at: null };
+  } else {
+    const latest = [...humanClicks, ...realOpens].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))[0];
+    if (latest) {
+      const step = stepById.get(latest.apollo_message_id) ?? null;
+      const count = latest.event === 'open' ? realOpens.filter(e => e.apollo_message_id === latest.apollo_message_id).length : null;
+      last = { kind: latest.event, step, at: latest.occurred_at, count };
+    }
+  }
+  return { heat_band: band, last_human_signal: last, bot_opens: events.filter(e => e.event === 'open').length - realOpens.length };
+}

@@ -1,21 +1,27 @@
-import { useState, useEffect, useCallback } from 'react';
-import { SA, SA_TYPE, SA_SHAPE, SA_BAD_BG, SA_BAD_BORDER } from './theme';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { SA, SA_TYPE, SA_SHAPE, SA_BAD_BG, SA_BAD_BORDER, saSans } from './theme';
 import { fetchRuns, triggerSync, fetchInsights } from './salesApi';
-import { fetchHuddle, startHuddle, fetchCollateral } from './huddleApi';
-import HuddleCard from './HuddleCard';
+import { fetchHuddle, startHuddle, fetchCollateral, updateProspect } from './huddleApi';
+import HuddleRow from './HuddleRow';
 import CollateralLibrary from './CollateralLibrary';
 import HuddlePrintSheet from './HuddlePrintSheet';
-import BriefingStrip from './BriefingStrip';
 import HuddlePartners from './HuddlePartners';
+import RightRail from './RightRail';
+import Ring, { RingLegend } from './charts/Ring';
 import { goalsApi } from './goals/goalsApi';
 import { memberLookup } from './goals/goalsUi';
 import { exportWidgetCsv } from './exportCsv';
-
-const OWNER_LABELS = { jack: 'Jack', cyrus: 'Cyrus', unassigned: 'Unassigned' };
-const NEXT_ACTION_LABELS = { call: 'Call', email: 'Email', linkedin: 'LinkedIn', send_collateral: 'Send collateral', wait: 'Wait' };
+import { fetchMe } from '../../utils/authSession';
+import { roleAtLeast } from '../../constants/roles';
+import useMediaQuery from '../../utils/useMediaQuery';
+import {
+  OWNER_LABELS, NEXT_ACTION_LABELS, HEAT_LABELS, SORTS, applyFilters, sortProspects, needsAction, onAutopilot,
+  byCompany, actionText, dueBucket,
+} from './huddleView';
 
 // The printed sheet keeps a short list; the screen shows everyone (scrolls).
 const PRINT_TOP = 8;
+const UNDO_MS = 5000; // REVISABLE (spec)
 
 const HUDDLE_SHEET_COLUMNS = [
   { label: 'Owner', value: p => OWNER_LABELS[p.owner] || p.owner },
@@ -30,58 +36,50 @@ const HUDDLE_SHEET_COLUMNS = [
   { label: 'In pipeline', value: p => (p.in_pipeline ? 'yes' : '') },
   { label: 'Notes', key: 'notes' },
   { label: 'Last open/click', key: 'last_signal_at' },
+  { label: 'LinkedIn', key: 'linkedin_url' },
   { label: 'Apollo', key: 'apollo_url' },
 ];
 
-// "Needs action today": a human-set next action that's due/overdue, or no
-// next action set and Next Best Action says something other than "let it
-// run". Booked/snoozed/dead have no card, so they're never listed.
-// Order (sales-huddle-v2 REV1): replies and real clicks first, in NBA_RULES
-// order (next_best_action.rank, so the rules file stays the single source),
-// then overdue human actions, due today, LinkedIn touch, the rest; ties by heat.
-function signalTier(p, today) {
-  const nba = p.next_best_action;
-  if (!['linkedin_touch', 'let_run'].includes(nba.id)) return [0, nba.rank];
-  if (p.next_action_due && p.next_action_due < today) return [1, 0];
-  if (p.next_action_due === today) return [2, 0];
-  return [nba.id === 'linkedin_touch' ? 3 : 4, 0];
-}
-function needsActionToday(prospects, today) {
-  const out = [];
-  for (const p of prospects) {
-    if (!['new', 'claimed', 'contacted'].includes(p.status)) continue;
-    if (p.next_action_due && p.next_action_due <= today) {
-      const overdue = p.next_action_due < today;
-      out.push({ prospect: p, overdue, action: `${NEXT_ACTION_LABELS[p.next_action] || 'Follow up'} · ${overdue ? 'overdue' : 'due today'}` });
-    } else if (!p.next_action && p.next_best_action.id !== 'let_run') {
-      out.push({ prospect: p, overdue: false, action: p.next_best_action.label });
-    }
-  }
-  const key = new Map(out.map(o => [o.prospect.contact_id, signalTier(o.prospect, today)]));
-  return out.sort((a, b) => {
-    const [ta, ra] = key.get(a.prospect.contact_id), [tb, rb] = key.get(b.prospect.contact_id);
-    return ta - tb || ra - rb || b.prospect.score - a.prospect.score;
-  });
-}
+const DUE_OPTIONS = [['all', 'All'], ['overdue', 'Overdue'], ['today', 'Today'], ['week', 'This week'], ['none', 'No date']];
+const HEAT_OPTIONS = [['all', 'All'], ['hot', 'Hot'], ['warm', 'Warm'], ['cold', 'Cold']];
+const readOwner = () => { const o = new URLSearchParams(window.location.search).get('owner'); return ['jack', 'cyrus'].includes(o) ? o : 'team'; };
 
 function fmtTime(iso) {
   return iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'never';
 }
 
-function Section({ title, count, children, empty }) {
+function Section({ title, count, sub, children, empty }) {
   return (
     <section style={{ marginBottom: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
         <h2 style={{ ...SA_TYPE.cardTitle, fontSize: 17, color: SA.text, margin: 0 }}>{title}</h2>
-        <span style={{ ...SA_TYPE.label, color: SA.faint }}>{count}</span>
+        <span style={{ ...SA_TYPE.label, color: SA.faint }}>{count}{sub ? ` · ${sub}` : ''}</span>
       </div>
       {count === 0 ? <p style={{ fontSize: 13, color: SA.faint, margin: 0 }}>{empty}</p> : children}
     </section>
   );
 }
 
-const cardList = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 420px), 1fr))', gap: 10 };
 const headerButton = { ...SA_TYPE.body, fontSize: 13, fontWeight: 500, background: 'transparent', color: SA.text, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: '0 16px', height: 44, cursor: 'pointer' };
+const railCard = { background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusCard, padding: 18, display: 'flex', flexDirection: 'column', gap: 10 };
+const railLabel = { ...SA_TYPE.label, color: SA.muted, fontWeight: 500 };
+const scrollList = { display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 640, overflowY: 'auto', paddingRight: 4 };
+
+function Segmented({ label, options, value, onChange, counts }) {
+  return (
+    <div role="group" aria-label={label} style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      {options.map(([id, lb]) => {
+        const on = value === id;
+        return (
+          <button key={id} type="button" aria-pressed={on} onClick={() => onChange(id)}
+            style={{ ...saSans, height: 32, padding: '0 10px', borderRadius: 999, fontSize: 13, cursor: 'pointer', border: `1px solid ${on ? SA.accent : SA.border}`, background: on ? 'color-mix(in srgb, var(--sa-accent) 18%, transparent)' : SA.surface2, color: on ? SA.text : SA.soft }}>
+            {lb}{counts && counts[id] != null ? <span style={{ color: SA.muted, marginLeft: 5 }}>{counts[id]}</span> : null}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function DailyHuddle({ businessId }) {
   const [data, setData] = useState(null);
@@ -94,6 +92,14 @@ export default function DailyHuddle({ businessId }) {
   const [issues, setIssues] = useState(null);
   const [issuesError, setIssuesError] = useState('');
   const [members, setMembers] = useState([]);
+  const [me, setMe] = useState(null);
+  const [owner, setOwner] = useState(readOwner);
+  const [filters, setFilters] = useState({ heat: 'all', due: 'all', stale: false, sort: 'signal' });
+  const [openCompanies, setOpenCompanies] = useState(() => new Set());
+  const [showAutopilot, setShowAutopilot] = useState(false);
+  const [toast, setToast] = useState(null);
+  const toastTimer = useRef(null);
+  const compact = useMediaQuery('(max-width: 1099px)');
 
   const load = useCallback(async () => {
     setError('');
@@ -109,7 +115,7 @@ export default function DailyHuddle({ businessId }) {
 
   useEffect(() => { load(); }, [load]);
 
-  // Separate from load(): insights take ~1-3s and shouldn't hold up the cards.
+  // Separate from load(): insights take ~1-3s and shouldn't hold up the rows.
   // info-level (R10 "back in the green") isn't an issue.
   useEffect(() => {
     fetchInsights(businessId)
@@ -120,6 +126,15 @@ export default function DailyHuddle({ businessId }) {
   // Owner chips use the Goals member colors. Huddle owners are still the
   // jack/cyrus/unassigned slugs, matched to members by first name.
   useEffect(() => { goalsApi.members(businessId).then(setMembers).catch(() => setMembers([])); }, [businessId]);
+  useEffect(() => { fetchMe().then(setMe).catch(() => setMe(null)); }, []);
+  useEffect(() => () => clearTimeout(toastTimer.current), []);
+
+  // ?owner= is shared with the Goals tab, so a link opens the same person.
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (owner === 'team') url.searchParams.delete('owner'); else url.searchParams.set('owner', owner);
+    window.history.replaceState({}, '', url);
+  }, [owner]);
 
   const reloadCollateral = async () => setCollateral(await fetchCollateral(businessId));
 
@@ -146,11 +161,35 @@ export default function DailyHuddle({ businessId }) {
     }
   };
 
-  // The card gets the raw sales_prospect_state row back; computed fields
-  // (score, badges, sequence) stay as they were until the next load.
+  // The server sends the raw sales_prospect_state row back; computed fields
+  // (score, badges, heat band) stay as they were until the next load.
   const handleUpdated = row => {
     setData(d => ({ ...d, prospects: d.prospects.map(p => (p.contact_id === row.contact_id ? { ...p, ...row } : p)) }));
   };
+
+  // One-click row actions: optimistic, then the PATCH (its trigger logs
+  // who/when), then a 5-second undo that PATCHes the previous values back.
+  const act = async (p, patch, label) => {
+    const prev = Object.fromEntries(Object.keys(patch).map(k => [k, p[k] ?? null]));
+    handleUpdated({ contact_id: p.contact_id, ...patch });
+    try {
+      handleUpdated(await updateProspect(businessId, p.contact_id, patch));
+    } catch (e) { handleUpdated({ contact_id: p.contact_id, ...prev }); throw e; }
+    clearTimeout(toastTimer.current);
+    setToast({ text: `${p.name || 'Prospect'} ${label}`, contactId: p.contact_id, prev });
+    toastTimer.current = setTimeout(() => setToast(null), UNDO_MS);
+  };
+  const undo = async () => {
+    if (!toast) return;
+    clearTimeout(toastTimer.current);
+    const t = toast;
+    setToast({ ...t, busy: true });
+    try { handleUpdated(await updateProspect(businessId, t.contactId, t.prev)); setToast(null); }
+    catch (e) { setToast({ ...t, error: e.message }); toastTimer.current = setTimeout(() => setToast(null), UNDO_MS); }
+  };
+
+  const myRole = me?.memberships?.find(m => m.business_id === businessId)?.role;
+  const canEdit = !!me && (me.profile?.is_platform_owner || roleAtLeast(myRole, 'member'));
 
   const today = data?.today;
   const lastHuddleAt = data?.last_huddle?.huddle_at;
@@ -158,25 +197,70 @@ export default function DailyHuddle({ businessId }) {
   const visible = (data?.prospects || []).filter(p => p.status !== 'dead' && !isSnoozed(p));
   const hiddenByHuddle = { snoozed: (data?.prospects || []).filter(isSnoozed).length, dead: (data?.prospects || []).filter(p => p.status === 'dead').length };
   const hidden = { ...data?.excluded, ...hiddenByHuddle };
-  const due = visible.filter(p => p.next_action_due && p.next_action_due <= today && p.status !== 'booked');
-  const dueIds = new Set(due.map(p => p.contact_id));
-  const fresh = visible.filter(p => p.status === 'new' && !dueIds.has(p.contact_id));
-  const inProgress = visible.filter(p => ['claimed', 'contacted'].includes(p.status) && !dueIds.has(p.contact_id));
-  const owners = ['jack', 'cyrus', ...(inProgress.some(p => p.owner === 'unassigned') ? ['unassigned'] : [])];
   const nameById = new Map((data?.prospects || []).map(p => [p.contact_id, p.name]));
   const done = data?.done_recent || [];
 
-  const card = p => (
-    <div key={`${p.contact_id}:${p.updated_at}`} id={`huddle-card-${p.contact_id}`} style={{ borderRadius: SA_SHAPE.radiusInner }}>
-      <HuddleCard businessId={businessId} prospect={p} collateral={collateral} today={today}
-        isNewSinceHuddle={!!lastHuddleAt && p.created_at > lastHuddleAt} onUpdated={handleUpdated} />
-    </div>
-  );
-  const needsAction = data ? needsActionToday(visible, today) : [];
+  const f = { ...filters, owner };
+  const shown = data ? applyFilters(visible, f, today) : [];
+  const needs = sortProspects(shown.filter(p => needsAction(p, today)), filters.sort, today);
+  const autopilot = sortProspects(shown.filter(p => onAutopilot(p, today)), filters.sort, today);
+  const companies = byCompany(shown, filters.sort, today);
+  // Rail counts ignore their own filter, so each option shows what it would give.
+  const heatCounts = data ? Object.fromEntries(HEAT_OPTIONS.map(([id]) => [id, applyFilters(visible, { ...f, heat: id }, today).length])) : {};
+  const dueCounts = data ? Object.fromEntries(DUE_OPTIONS.map(([id]) => [id, applyFilters(visible, { ...f, due: id }, today).length])) : {};
+  const teamNeeds = data ? applyFilters(visible, { ...f, owner: 'team' }, today).filter(p => needsAction(p, today)) : [];
+  const doneToday = done.filter(e => new Date(e.changed_at).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }) === today).length;
+
   const lookup = memberLookup(members);
   const ownerColor = slug => lookup(members.find(m => m.name.split(' ')[0].toLowerCase() === slug)?.user_id).color;
+  const people = [{ id: 'team', name: 'Team', color: SA.accent }, { id: 'jack', name: 'Jack', color: ownerColor('jack') }, { id: 'cyrus', name: 'Cyrus', color: ownerColor('cyrus') }];
+  const ownerParts = ['jack', 'cyrus', 'unassigned'].map(o => ({ label: OWNER_LABELS[o], count: teamNeeds.filter(p => p.owner === o).length, color: ownerColor(o) })).filter(x => x.count);
 
+  const row = p => (
+    <HuddleRow key={p.contact_id} businessId={businessId} p={p} today={today} canEdit={canEdit} ownerColor={ownerColor} onAct={act}
+      collateral={collateral} isNewSinceHuddle={!!lastHuddleAt && p.created_at > lastHuddleAt} onUpdated={handleUpdated} />
+  );
+  const printNeeds = needs.map(p => ({ prospect: p, overdue: dueBucket(p, today) === 'overdue', action: actionText(p, today) }));
   const dateLabel = today ? new Date(`${today}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+
+  const rail = (
+    <RightRail label="Huddle filters" moreLabel="filters & summary" people={people} owner={owner} onOwner={setOwner} compact={compact}>
+      <div style={railCard}>
+        <span style={railLabel}>Heat</span>
+        <Segmented label="Heat" options={HEAT_OPTIONS} value={filters.heat} counts={heatCounts} onChange={v => setFilters(x => ({ ...x, heat: v }))} />
+        <span style={railLabel}>Due</span>
+        <Segmented label="Due" options={DUE_OPTIONS} value={filters.due} counts={dueCounts} onChange={v => setFilters(x => ({ ...x, due: v }))} />
+        <label style={railLabel} htmlFor="huddle-sort">Sort</label>
+        <select id="huddle-sort" value={filters.sort} onChange={e => setFilters(x => ({ ...x, sort: e.target.value }))}
+          style={{ ...saSans, height: 36, borderRadius: 10, background: SA.inset, border: `1px solid ${SA.border}`, color: SA.text, padding: '0 10px', fontSize: 14 }}>
+          {Object.entries(SORTS).map(([id, s]) => <option key={id} value={id}>{s.label}</option>)}
+        </select>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: SA.soft, cursor: 'pointer', minHeight: 32 }}>
+          <input type="checkbox" checked={filters.stale} onChange={e => setFilters(x => ({ ...x, stale: e.target.checked }))} /> Stale only (7+ days)
+        </label>
+      </div>
+      <div style={railCard}>
+        <span style={railLabel}>Today's actions</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <Ring parts={ownerParts} center={String(teamNeeds.length)} size={80} stroke={12} track={!teamNeeds.length} label="Today's actions by owner" />
+          <RingLegend parts={ownerParts} />
+        </div>
+        <span style={{ fontSize: 13, color: SA.muted }}>{doneToday} done today</span>
+      </div>
+      <div style={railCard}>
+        <span style={railLabel}>Top sequence issues</span>
+        {issuesError ? <p style={{ fontSize: 13, color: SA.warn, margin: 0 }}>⚠ {issuesError}</p>
+          : issues === null ? <p style={{ fontSize: 13, color: SA.faint, margin: 0 }}>Checking sequences…</p>
+          : !issues.length ? <p style={{ fontSize: 13, color: SA.faint, margin: 0 }}>No sequence issues flagged.</p>
+          : issues.map(i => (
+            <div key={`${i.id}:${i.scope_key}`} title={i.evidence} style={{ borderLeft: `3px solid ${i.severity === 'bad' ? SA.bad : SA.warn}`, paddingLeft: 10 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: SA.text }}>{i.title}</div>
+              <div style={{ fontSize: 12, color: SA.muted, marginTop: 2 }}>{i.action}</div>
+            </div>
+          ))}
+      </div>
+    </RightRail>
+  );
 
   return (
     <div>
@@ -185,7 +269,7 @@ export default function DailyHuddle({ businessId }) {
           <div style={{ ...SA_TYPE.label, color: SA.muted }}>HomeLover · Command Center</div>
           <h1 style={{ margin: 0, ...SA_TYPE.pageTitle, color: SA.text }}>Daily Huddle{dateLabel && ` · ${dateLabel}`}</h1>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, color: SA.muted }}>
-            <span>Synced {fmtTime(lastRun?.finished_at)}</span>
+            <span>As of last sync {fmtTime(lastRun?.finished_at)}</span>
             <span>Last huddle {fmtTime(lastHuddleAt)}</span>
           </div>
           {message && <span style={{ fontSize: 12, color: SA.warn }}>{message}</span>}
@@ -209,58 +293,82 @@ export default function DailyHuddle({ businessId }) {
       {!data ? (
         !error && <p style={{ ...SA_TYPE.body, fontSize: 13, color: SA.muted }}>Loading…</p>
       ) : (
-        <>
-          <HuddlePartners businessId={businessId} />
+        <div style={{ display: 'flex', flexDirection: compact ? 'column' : 'row', gap: 24, alignItems: 'flex-start' }}>
+          {compact && <div style={{ width: '100%' }}>{rail}</div>}
+          <main style={{ flex: '1 1 0', minWidth: 0, width: '100%' }}>
+            <HuddlePartners businessId={businessId} />
 
-          <BriefingStrip people={needsAction} issues={issues} issuesError={issuesError} ownerLabels={OWNER_LABELS} ownerColor={ownerColor} />
+            <Section title="Needs action today" count={needs.length} sub="sorted by signal" empty="Nothing urgent for these filters — sequences are running.">
+              <div className="sa-scroll" style={scrollList}>{needs.map(row)}</div>
+            </Section>
 
-          <Section title="Due today / overdue" count={due.length} empty="Nothing due.">
-            <div className="sa-scroll" style={{ ...cardList, maxHeight: 760, overflowY: 'auto', paddingRight: 4 }}>{due.map(card)}</div>
-          </Section>
+            <Section title="By company" count={companies.length} empty="No companies for these filters.">
+              <div className="sa-scroll" style={{ ...scrollList, gap: 6 }}>
+                {companies.map(c => {
+                  const open = openCompanies.has(c.company);
+                  return (
+                    <div key={c.company}>
+                      <button type="button" aria-expanded={open} onClick={() => setOpenCompanies(s => { const n = new Set(s); if (n.has(c.company)) n.delete(c.company); else n.add(c.company); return n; })}
+                        style={{ ...saSans, width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: SA_SHAPE.radiusInner, background: SA.surface, border: `1px solid ${SA.border}`, color: SA.text, cursor: 'pointer', textAlign: 'left', fontSize: 14 }}>
+                        <span style={{ color: SA.muted }}>{open ? '▾' : '▸'}</span>
+                        <span style={{ fontWeight: 600, flex: '1 1 auto', minWidth: 0 }}>{c.company}</span>
+                        <span style={{ fontSize: 12, color: SA.muted }}>{c.people.length} {c.people.length === 1 ? 'person' : 'people'}</span>
+                        <span style={{ fontSize: 12, color: SA.soft }}>{HEAT_LABELS[c.band]}</span>
+                        {c.owners.map(o => <span key={o} title={OWNER_LABELS[o]} style={{ width: 8, height: 8, borderRadius: 999, background: ownerColor(o) }} />)}
+                      </button>
+                      {open && <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 0 4px 16px' }}>{c.people.map(row)}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </Section>
 
-          <Section title="New" count={fresh.length} empty="No new prospects.">
-            <div className="sa-scroll" style={{ ...cardList, maxHeight: 760, overflowY: 'auto', paddingRight: 4 }}>{fresh.map(card)}</div>
-          </Section>
+            <section style={{ marginBottom: 24 }}>
+              <button type="button" aria-expanded={showAutopilot} onClick={() => setShowAutopilot(s => !s)}
+                style={{ ...saSans, width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: SA_SHAPE.radiusInner, background: SA.inset, border: `1px dashed ${SA.borderStrong}`, color: SA.soft, cursor: 'pointer', textAlign: 'left', fontSize: 14 }}>
+                <span style={{ color: SA.muted }}>{showAutopilot ? '▾' : '▸'}</span>
+                <span style={{ flex: 1 }}>On autopilot — letting the sequence run</span>
+                <span style={{ ...SA_TYPE.label, color: SA.faint }}>{autopilot.length}</span>
+              </button>
+              {showAutopilot && <div className="sa-scroll" style={{ ...scrollList, marginTop: 8 }}>{autopilot.map(row)}</div>}
+            </section>
 
-          <Section title="In progress" count={inProgress.length} empty="Nobody claimed or contacted yet.">
-            <div style={{ display: 'grid', gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, 380px), 1fr))`, gap: 16 }}>
-              {owners.map(owner => {
-                const mine = inProgress.filter(p => p.owner === owner);
-                return (
-                  <div key={owner}>
-                    <div style={{ ...SA_TYPE.label, color: SA.muted, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}><span style={{ width: 8, height: 8, borderRadius: 999, background: ownerColor(owner) }} />{OWNER_LABELS[owner]} · {mine.length}</div>
-                    <div className="sa-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 760, overflowY: 'auto', paddingRight: 4 }}>{mine.map(card)}</div>
-                  </div>
-                );
-              })}
-            </div>
-          </Section>
+            <details style={{ marginBottom: 16 }}>
+              <summary style={{ ...SA_TYPE.cardTitle, color: SA.text, cursor: 'pointer' }}>
+                Done since yesterday <span style={{ ...SA_TYPE.label, color: SA.faint }}>{done.length}</span>
+              </summary>
+              {done.length === 0 ? (
+                <p style={{ fontSize: 13, color: SA.faint }}>Nothing marked Contacted or Booked yesterday or today.</p>
+              ) : (
+                <ul style={{ fontSize: 13, color: SA.muted, paddingLeft: 18 }}>
+                  {done.map(e => (
+                    <li key={`${e.contact_id}:${e.changed_at}`}>
+                      {nameById.get(e.contact_id) || e.contact_id} → {e.to_value} · {fmtTime(e.changed_at)}{e.changed_by ? ` · ${e.changed_by}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </details>
 
-          <details style={{ marginBottom: 16 }}>
-            <summary style={{ ...SA_TYPE.cardTitle, color: SA.text, cursor: 'pointer' }}>
-              Done since yesterday <span style={{ ...SA_TYPE.label, color: SA.faint }}>{done.length}</span>
-            </summary>
-            {done.length === 0 ? (
-              <p style={{ fontSize: 13, color: SA.faint }}>Nothing marked Contacted or Booked yesterday or today.</p>
-            ) : (
-              <ul style={{ fontSize: 13, color: SA.muted, paddingLeft: 18 }}>
-                {done.map(e => (
-                  <li key={`${e.contact_id}:${e.changed_at}`}>
-                    {nameById.get(e.contact_id) || e.contact_id} → {e.to_value} · {fmtTime(e.changed_at)}{e.changed_by ? ` · ${e.changed_by}` : ''}
-                  </li>
-                ))}
-              </ul>
+            {Object.values(hidden).some(Boolean) && (
+              <p style={{ fontSize: 12, color: SA.faint }}>
+                Hidden: {Object.entries(hidden).filter(([, n]) => n).map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}`).join(' · ')}
+              </p>
             )}
-          </details>
-
-          {Object.values(hidden).some(Boolean) && (
-            <p style={{ fontSize: 12, color: SA.faint }}>
-              Hidden: {Object.entries(hidden).filter(([, n]) => n).map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}`).join(' · ')}
-            </p>
-          )}
-          <HuddlePrintSheet dateLabel={dateLabel} prospects={visible} needsAction={needsAction.slice(0, PRINT_TOP)} needsActionTotal={needsAction.length} issues={issues || []} ownerLabels={OWNER_LABELS} nextActionLabels={NEXT_ACTION_LABELS} today={today} />
-        </>
+          </main>
+          {!compact && <div style={{ flex: '0 0 300px', minWidth: 0 }}>{rail}</div>}
+          <HuddlePrintSheet dateLabel={dateLabel} prospects={visible} needsAction={printNeeds.slice(0, PRINT_TOP)} needsActionTotal={printNeeds.length} issues={issues || []} ownerLabels={OWNER_LABELS} nextActionLabels={NEXT_ACTION_LABELS} today={today} />
+        </div>
       )}
+
+      <div aria-live="polite" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 3500, maxWidth: 'calc(100vw - 32px)' }}>
+        {toast && (
+          <div style={{ ...saSans, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 12, background: SA.surface2, border: `1px solid ${SA.borderStrong}`, boxShadow: '0 10px 30px #0008', fontSize: 14, color: SA.text }}>
+            <span>{toast.error || toast.text}</span>
+            {!toast.error && <button type="button" onClick={undo} disabled={toast.busy} style={{ ...headerButton, height: 36 }}>{toast.busy ? 'Undoing…' : 'Undo'}</button>}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

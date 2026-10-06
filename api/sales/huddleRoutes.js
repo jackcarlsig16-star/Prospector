@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { stageIndex, ORG_TYPE_ENUM } from './pipelineStages.js';
 import { laDateString } from './laDate.js';
-import { scoreProspect } from './heatScore.js';
-import { nextBestAction } from './nextBestAction.js';
+import { scoreProspect, huddleSignals, HEAT_BANDS } from './heatScore.js';
+import { nextBestAction, SCANNER_CLICK_WITHIN_SECONDS } from './nextBestAction.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 
 // sales-hot-prospects-v1 - server-only access, same posture as every other
@@ -66,6 +66,7 @@ export async function huddleRoute(req, res) {
   const excluded = { bounced: 0, unsubscribed: 0, negative_reply: 0, in_pipeline_meeting_plus: 0 };
 
   const out = [];
+  const now = Date.now(), staleMs = HEAT_BANDS.recentDays * 864e5;
   for (const p of prospects.data || []) {
     const msgs = messagesByContact.get(p.contact_id) || [];
     const contactEvents = eventsByContact.get(p.contact_id) || [];
@@ -96,6 +97,9 @@ export async function huddleRoute(req, res) {
       badges: scored.badges,
       last_signal_at: scored.last_signal_at,
       next_best_action: nextBestAction(msgs, contactEvents, scored),
+      ...huddleSignals(msgs, contactEvents, scored, now, SCANNER_CLICK_WITHIN_SECONDS),
+      // Stale: no signal and nobody touched the row in 7+ days.
+      stale: (!scored.last_signal_at || now - Date.parse(scored.last_signal_at) > staleMs) && now - Date.parse(p.updated_at) > staleMs,
     });
   }
   out.sort((a, b) => b.score - a.score);
