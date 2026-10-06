@@ -156,3 +156,26 @@ export function filterFeed(items, { owner, heat, stale, hideBots }, bandById, st
     && (heat === 'all' || bandById.get(i.contact_id) === heat)
     && (!stale || staleById.get(i.contact_id)));
 }
+
+// ── Flag for ... (Stage 3) ──────────────────────────────────────────────────
+export const FLAG_STEPS = { email: 'Send a follow-up email', linkedin: 'Send a LinkedIn message' };
+const EMAIL_ACTIONS = ['reply_today', 'book_meeting', 'contact_referral', 'find_contact', 'snooze', 'close'];
+// Checklist from Next Best Action: replies -> email; opens / LinkedIn touch ->
+// LinkedIn; a click (or anything else) -> both.
+export function flagDefaults(p) {
+  const id = p.next_best_action?.id;
+  if (EMAIL_ACTIONS.includes(id)) return [FLAG_STEPS.email];
+  if (id === 'linkedin_touch' || p.last_human_signal?.kind === 'open') return [FLAG_STEPS.linkedin];
+  return [FLAG_STEPS.email, FLAG_STEPS.linkedin];
+}
+
+// Default assignee: the other of Jack / Cyrus from the prospect's owner; for
+// unassigned prospects, the first member who isn't the person flagging.
+export function defaultAssignee(p, members, myUserId) {
+  const firstOf = m => m.name.split(' ')[0].toLowerCase();
+  const other = { jack: 'cyrus', cyrus: 'jack' }[p.owner];
+  return (other && members.find(m => firstOf(m) === other)) || members.find(m => m.user_id !== myUserId) || members[0] || null;
+}
+
+export const flagsFor = (flags, userId) => flags.filter(f => f.owner_user_id === userId);
+export const allStepsDone = f => f.steps.length > 0 && f.steps.every(s => s.done);

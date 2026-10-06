@@ -298,6 +298,7 @@ export async function carryOverWeekGoalsRoute(req, res) {
         measurable_target: g.measurable_target, month_goal_id: g.month_goal_id, land_goal_id: g.land_goal_id,
         kind: g.kind, category: g.category, contacts: g.contacts, link_target: g.link_target,
         metric_key: g.metric_key, target_value: g.target_value, carried_from_id: g.id, sort_order: g.sort_order,
+        prospect_contact_id: g.prospect_contact_id, flag_note: g.flag_note, flagged_by: g.flagged_by,
       }).select().single();
       if (error?.code === '23505') continue;
       if (error) throw new Error(error.message);

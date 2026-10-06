@@ -70,7 +70,7 @@ function AddTodoForm({ members, categories, defaultOwner, onSubmit, onCancel }) 
   );
 }
 
-export default function TodoList({ todos, lookup, members, whoLabel, defaultOwner, canEdit, error, onToggleStep, onAddTodo, onAddStep, onCarry }) {
+export default function TodoList({ todos, lookup, members, whoLabel, defaultOwner, canEdit, error, onToggleStep, onAddTodo, onAddStep, onCarry, onOpenHuddle }) {
   const [adding, setAdding] = useState(false);
   const [addingStepFor, setAddingStepFor] = useState(null);
   const [carryState, setCarryState] = useState(null);
@@ -134,6 +134,12 @@ export default function TodoList({ todos, lookup, members, whoLabel, defaultOwne
                     {t.carried_from_id && <Chip color={SA.warn} style={{ height: 20 }}>Carried from last week</Chip>}
                     {t.st === 'dropped' && <Chip style={{ height: 20 }}>Dropped</Chip>}
                   </div>
+                  {t.prospect_contact_id && (
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', fontSize: 12, color: SA.muted }}>
+                      <span>🚩 From {lookup(t.flagged_by).first}{t.flag_note ? ` · “${t.flag_note}”` : ''}</span>
+                      {onOpenHuddle && <button type="button" onClick={() => onOpenHuddle(t.prospect_contact_id)} style={{ all: 'unset', cursor: 'pointer', color: SA.link }}>Open in Huddle →</button>}
+                    </div>
+                  )}
                   <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {t.steps.map(s => (
                       <li key={s.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>

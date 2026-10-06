@@ -5,6 +5,8 @@ import DailyHuddle from './DailyHuddle';
 import GoalsTab from './goals/GoalsTab';
 import { WIDGETS } from './widgets.registry';
 import { fetchMetrics, fetchRuns, fetchEntities, fetchCohortBreakdown, fetchInsights, triggerSync } from './salesApi';
+import { fetchFlags, FLAGS_CHANGED } from './huddleApi';
+import { fetchMe } from '../../utils/authSession';
 import { fetchOpportunities } from './pipelineApi';
 import { PERIOD_PRESETS, periodRange, previousPeriodRange, laDateString } from './periods';
 
@@ -121,6 +123,8 @@ const STATUS_COLOR = { success: SA.good, partial: SA.warn, error: SA.bad, runnin
 // simply not destructured here, so it's a no-op rather than used.
 export default function SalesAnalyticsTab({ businessId }) {
   const [view, setView] = useState('goals');
+  const [huddleFocus, setHuddleFocus] = useState(null);
+  const [myFlagCount, setMyFlagCount] = useState(0);
   const [preset, setPreset] = useState('this_week');
   const [customFrom, setCustomFrom] = useState(laDateString());
   const [customTo, setCustomTo] = useState(laDateString());
@@ -139,6 +143,17 @@ export default function SalesAnalyticsTab({ businessId }) {
   const [filterSummary, setFilterSummary] = useState('');
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportMenuRef = useRef(null);
+
+  // Badge on the Daily Huddle tab: open flags handed to the viewer.
+  useEffect(() => {
+    let live = true;
+    const count = () => Promise.all([fetchMe(), fetchFlags(businessId)])
+      .then(([me, flags]) => { if (live) setMyFlagCount(flags.filter(f => f.owner_user_id === me?.profile?.id).length); })
+      .catch(() => {});
+    count();
+    window.addEventListener(FLAGS_CHANGED, count);
+    return () => { live = false; window.removeEventListener(FLAGS_CHANGED, count); };
+  }, [businessId]);
 
   useEffect(() => {
     if (!exportMenuOpen) return;
@@ -242,11 +257,15 @@ export default function SalesAnalyticsTab({ businessId }) {
           <button key={id} onClick={() => setView(id)}
             style={{ ...SA_TYPE.body, fontSize: 13, border: 0, borderRadius: 7, padding: '0 16px', height: 38, cursor: 'pointer', background: view === id ? SA.surface2 : 'transparent', color: view === id ? SA.text : SA.muted }}>
             {label}
+            {id === 'huddle' && myFlagCount > 0 && (
+              <span aria-label={`${myFlagCount} flagged for you`} style={{ marginLeft: 8, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: SA.warn, color: SA.ground, fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{myFlagCount}</span>
+            )}
           </button>
         ))}
       </div>
 
-      {view === 'goals' ? <GoalsTab businessId={businessId} onOpenOverview={() => setView('overview')} /> : view === 'huddle' ? <DailyHuddle businessId={businessId} /> : <>
+      {view === 'goals' ? <GoalsTab businessId={businessId} onOpenOverview={() => setView('overview')} onOpenHuddle={contactId => { setHuddleFocus(contactId); setView('huddle'); }} />
+        : view === 'huddle' ? <DailyHuddle businessId={businessId} focusContactId={huddleFocus} onFocused={() => setHuddleFocus(null)} /> : <>
       {/* Header - hidden in print; the print-only block below replaces it */}
       <div className="no-print" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, marginBottom: 24 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

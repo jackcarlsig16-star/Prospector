@@ -79,3 +79,18 @@ test('reply context shows when the sync first saw it', () => {
   const seen = { ...reply, last_human_signal: { ...reply.last_human_signal, at: '2026-10-05T21:10:00Z' } };
   expect(signalOf(seen, T).context).toBe('Replied to step 2 · follow up question · seen Oct 5');
 });
+
+test('flag checklist defaults from Next Best Action', () => {
+  const { flagDefaults } = require('./huddleView');
+  expect(flagDefaults(reply)).toEqual(['Send a follow-up email']);
+  expect(flagDefaults(opener)).toEqual(['Send a LinkedIn message']);
+  expect(flagDefaults(clicker)).toEqual(['Send a follow-up email', 'Send a LinkedIn message']);
+});
+
+test('flag default assignee is the other person', () => {
+  const { defaultAssignee } = require('./huddleView');
+  const members = [{ user_id: 'J', name: 'Jack Carlson' }, { user_id: 'C', name: 'Cyrus Radjoo' }, { user_id: 'S', name: 'Seif X' }];
+  expect(defaultAssignee({ owner: 'jack' }, members, 'J').user_id).toBe('C');
+  expect(defaultAssignee({ owner: 'cyrus' }, members, 'J').user_id).toBe('J');
+  expect(defaultAssignee({ owner: 'unassigned' }, members, 'J').user_id).toBe('C');
+});

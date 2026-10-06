@@ -573,6 +573,9 @@ const salesModuleRoute = (file, name, label) => async (req, res) => {
 };
 app.get('/api/sales/:businessId/huddle', salesModuleRoute('./api/sales/huddleRoutes.js', 'huddleRoute', 'huddle'));
 app.get('/api/sales/:businessId/huddle/feed', salesModuleRoute('./api/sales/huddleRoutes.js', 'huddleFeedRoute', 'huddle/feed'));
+app.get('/api/sales/:businessId/huddle/flags', salesModuleRoute('./api/sales/huddleFlags.js', 'listFlagsRoute', 'huddle/flags'));
+app.post('/api/sales/:businessId/prospects/:contactId/flag', salesModuleRoute('./api/sales/huddleFlags.js', 'flagProspectRoute', 'prospects/:contactId/flag POST'));
+app.delete('/api/sales/:businessId/flags/:goalId', salesModuleRoute('./api/sales/huddleFlags.js', 'unflagRoute', 'flags/:goalId DELETE'));
 app.post('/api/sales/:businessId/huddles', salesModuleRoute('./api/sales/huddleRoutes.js', 'startHuddleRoute', 'huddles'));
 app.patch('/api/sales/:businessId/prospects/:contactId', salesModuleRoute('./api/sales/huddleRoutes.js', 'updateProspectRoute', 'prospects/:contactId'));
 app.post('/api/sales/:businessId/prospects/:contactId/pipeline', salesModuleRoute('./api/sales/huddleRoutes.js', 'addToPipelineRoute', 'prospects/:contactId/pipeline'));

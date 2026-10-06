@@ -18,7 +18,7 @@ const link = { fontSize: 12, color: SA.link, textDecoration: 'none' };
 
 // stacked (phones): the action buttons get their own line; otherwise they sit
 // at the end of the first line, as in the mockup.
-export default function HuddleRow({ businessId, p, today, canEdit, ownerColor, onAct, collateral, isNewSinceHuddle, onUpdated, stacked }) {
+export default function HuddleRow({ businessId, p, today, canEdit, ownerColor, onAct, onFlag, collateral, isNewSinceHuddle, onUpdated, stacked }) {
   const [panel, setPanel] = useState(null); // snooze | due | owner | note | card
   const [note, setNote] = useState('');
   const [due, setDue] = useState(p.next_action_due || plusDays(today, 1));
@@ -34,6 +34,7 @@ export default function HuddleRow({ businessId, p, today, canEdit, ownerColor, o
       <button type="button" title="Set due date" aria-label="Set due date" aria-expanded={panel === 'due'} onClick={() => toggle('due')} style={iconBtn(panel === 'due')}>📅</button>
       <button type="button" title="Owner" aria-label="Change owner" aria-expanded={panel === 'owner'} onClick={() => toggle('owner')} style={iconBtn(panel === 'owner')}>👤</button>
       <button type="button" title="Note" aria-label="Add note" aria-expanded={panel === 'note'} onClick={() => toggle('note')} style={iconBtn(panel === 'note')}>📝</button>
+      {onFlag && <button type="button" title="Flag for a teammate" aria-label="Flag" onClick={() => onFlag(p)} style={iconBtn(false)}>🚩</button>}
       <button type="button" title="More: status, next action, collateral, pipeline" aria-label="More" aria-expanded={panel === 'card'} onClick={() => toggle('card')} style={iconBtn(panel === 'card')}>⋯</button>
     </div>
   );

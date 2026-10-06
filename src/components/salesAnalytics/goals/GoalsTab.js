@@ -32,7 +32,7 @@ const readStored = key => { try { return localStorage.getItem(key); } catch { re
 const writeStored = (key, value) => { try { localStorage.setItem(key, value); } catch { /* private mode */ } };
 const slugOf = name => name.split(' ')[0].toLowerCase();
 
-export default function GoalsTab({ businessId, onOpenOverview }) {
+export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
   const compact = useMediaQuery('(max-width: 1099px)');
   const [weekStart, setWeekStart] = useState(() => laWeekStart());
   const [view, setView] = useState(() => {
@@ -294,7 +294,7 @@ export default function GoalsTab({ businessId, onOpenOverview }) {
           {view === 'week' && <>
             <ScorecardTable data={scorecard} error={errors.scorecard} weekStart={weekStart} ownerName={owner === 'team' ? null : whoLabel} canEdit={canEdit}
               onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await loadScorecard(); }} />
-            <TodoList todos={myTodos} lookup={lookup} members={members} whoLabel={whoLabel} defaultOwner={owner === 'team' ? me?.profile?.id : owner}
+            <TodoList todos={myTodos} lookup={lookup} members={members} onOpenHuddle={onOpenHuddle} whoLabel={whoLabel} defaultOwner={owner === 'team' ? me?.profile?.id : owner}
               canEdit={canEdit} error={errors.todos}
               onToggleStep={async s => {
                 const step = await goalsApi.updateStep(businessId, s.id, { done: !s.done });

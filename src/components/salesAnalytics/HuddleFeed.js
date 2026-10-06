@@ -9,7 +9,7 @@ import { OWNER_LABELS, feedText, groupFeed, filterFeed, timeAgo } from './huddle
 const ICON = { open: '👁', click: '🔗', reply: '↩' };
 const FEED_DAYS = 7; // REVISABLE (spec)
 
-export default function HuddleFeed({ businessId, reloadKey, today, lastHuddleAt, filters, bandById, staleById, ownerColor, onOpen }) {
+export default function HuddleFeed({ businessId, reloadKey, today, lastHuddleAt, filters, bandById, staleById, ownerColor, onOpen, onFlag }) {
   const [items, setItems] = useState(null);
   const [nextBefore, setNextBefore] = useState(null);
   const [error, setError] = useState('');
@@ -64,6 +64,10 @@ export default function HuddleFeed({ businessId, reloadKey, today, lastHuddleAt,
                         <span style={{ color: SA.faint }}> · {timeAgo(i.at)}</span>
                       </span>
                       <span title={OWNER_LABELS[i.owner]} style={{ width: 8, height: 8, borderRadius: 999, background: ownerColor(i.owner), flex: 'none' }} />
+                      {onFlag && !i.automated && (
+                        <button type="button" onClick={() => onFlag(i.contact_id)} aria-label={`Flag ${i.name || 'prospect'}`} title="Flag for a teammate"
+                          style={{ ...saSans, height: 28, padding: '0 8px', borderRadius: 8, fontSize: 13, cursor: 'pointer', border: `1px solid ${SA.border}`, background: 'transparent', flex: 'none' }}>🚩</button>
+                      )}
                       <button type="button" onClick={() => onOpen(i.contact_id)} aria-label={`Open ${i.name || 'prospect'}`}
                         style={{ ...saSans, height: 28, padding: '0 10px', borderRadius: 8, fontSize: 12, cursor: 'pointer', color: SA.link, border: `1px solid ${SA.border}`, background: 'transparent', flex: 'none' }}>Open</button>
                     </div>

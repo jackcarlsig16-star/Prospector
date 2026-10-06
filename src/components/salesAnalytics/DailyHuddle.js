@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SA, SA_TYPE, SA_SHAPE, SA_BAD_BG, SA_BAD_BORDER, saSans } from './theme';
 import { fetchRuns, triggerSync, fetchInsights } from './salesApi';
-import { fetchHuddle, startHuddle, fetchCollateral, updateProspect } from './huddleApi';
+import { fetchHuddle, startHuddle, fetchCollateral, updateProspect, fetchFlags, flagProspect, unflag, announceFlagsChanged, FLAGS_CHANGED } from './huddleApi';
 import HuddleRow from './HuddleRow';
 import HuddleFeed from './HuddleFeed';
+import FlagDialog from './FlagDialog';
+import FlaggedLane from './FlaggedLane';
 import CollateralLibrary from './CollateralLibrary';
 import HuddlePrintSheet from './HuddlePrintSheet';
 import HuddlePartners from './HuddlePartners';
@@ -17,7 +19,7 @@ import { roleAtLeast } from '../../constants/roles';
 import useMediaQuery from '../../utils/useMediaQuery';
 import {
   OWNER_LABELS, NEXT_ACTION_LABELS, HEAT_LABELS, SORTS, applyFilters, sortProspects, needsAction, onAutopilot,
-  byCompany, actionText, dueBucket,
+  byCompany, actionText, dueBucket, flagsFor,
 } from './huddleView';
 
 // The printed sheet keeps a short list; the screen shows everyone (scrolls).
@@ -82,7 +84,7 @@ function Segmented({ label, options, value, onChange, counts }) {
   );
 }
 
-export default function DailyHuddle({ businessId }) {
+export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
   const [data, setData] = useState(null);
   const [collateral, setCollateral] = useState([]);
   const [lastRun, setLastRun] = useState(null);
@@ -97,6 +99,8 @@ export default function DailyHuddle({ businessId }) {
   const [owner, setOwner] = useState(readOwner);
   const [filters, setFilters] = useState({ heat: 'all', due: 'all', stale: false, sort: 'signal', hideBots: true });
   const [feedKey, setFeedKey] = useState(0);
+  const [flags, setFlags] = useState([]);
+  const [flagging, setFlagging] = useState(null);
   const [openCompanies, setOpenCompanies] = useState(() => new Set());
   const [showAutopilot, setShowAutopilot] = useState(false);
   const [toast, setToast] = useState(null);
@@ -131,6 +135,13 @@ export default function DailyHuddle({ businessId }) {
   useEffect(() => { goalsApi.members(businessId).then(setMembers).catch(() => setMembers([])); }, [businessId]);
   useEffect(() => { fetchMe().then(setMe).catch(() => setMe(null)); }, []);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
+
+  const loadFlags = useCallback(() => fetchFlags(businessId).then(setFlags).catch(e => setMessage(e.message)), [businessId]);
+  useEffect(() => {
+    loadFlags();
+    window.addEventListener(FLAGS_CHANGED, loadFlags);
+    return () => window.removeEventListener(FLAGS_CHANGED, loadFlags);
+  }, [loadFlags]);
 
   // ?owner= is shared with the Goals tab, so a link opens the same person.
   useEffect(() => {
@@ -171,6 +182,11 @@ export default function DailyHuddle({ businessId }) {
     setData(d => ({ ...d, prospects: d.prospects.map(p => (p.contact_id === row.contact_id ? { ...p, ...row } : p)) }));
   };
 
+  const showToast = (text, undoFn) => {
+    clearTimeout(toastTimer.current);
+    setToast({ text, undo: undoFn });
+    toastTimer.current = setTimeout(() => setToast(null), UNDO_MS);
+  };
   // One-click row actions: optimistic, then the PATCH (its trigger logs
   // who/when), then a 5-second undo that PATCHes the previous values back.
   const act = async (p, patch, label) => {
@@ -179,17 +195,42 @@ export default function DailyHuddle({ businessId }) {
     try {
       handleUpdated(await updateProspect(businessId, p.contact_id, patch));
     } catch (e) { handleUpdated({ contact_id: p.contact_id, ...prev }); throw e; }
-    clearTimeout(toastTimer.current);
-    setToast({ text: `${p.name || 'Prospect'} ${label}`, contactId: p.contact_id, prev });
-    toastTimer.current = setTimeout(() => setToast(null), UNDO_MS);
+    showToast(`${p.name || 'Prospect'} ${label}`, async () => handleUpdated(await updateProspect(businessId, p.contact_id, prev)));
   };
   const undo = async () => {
     if (!toast) return;
     clearTimeout(toastTimer.current);
     const t = toast;
     setToast({ ...t, busy: true });
-    try { handleUpdated(await updateProspect(businessId, t.contactId, t.prev)); setToast(null); }
+    try { await t.undo(); setToast(null); }
     catch (e) { setToast({ ...t, error: e.message }); toastTimer.current = setTimeout(() => setToast(null), UNDO_MS); }
+  };
+  // 🚩 Flag for ...: one Goals to-do + steps; undo deletes it and puts the
+  // owner back if the flag had claimed an unassigned prospect.
+  const submitFlag = async (p, body) => {
+    const r = await flagProspect(businessId, p.contact_id, body);
+    handleUpdated(r.prospect);
+    setFlagging(null);
+    await loadFlags(); announceFlagsChanged();
+    const who = members.find(m => m.user_id === body.assignee_user_id)?.name.split(' ')[0] || 'teammate';
+    showToast(`${p.name || 'Prospect'} flagged for ${who}`, async () => {
+      const u = await unflag(businessId, r.todo.id, r.prospect.owner !== r.prev_owner ? r.prev_owner : null);
+      if (u.prospect) handleUpdated(u.prospect);
+      await loadFlags(); announceFlagsChanged();
+    });
+  };
+  // Optimistic tick, so the box responds at once; reverts if the save fails.
+  const toggleFlagStep = async (f, step) => {
+    const setStep = val => setFlags(fs => fs.map(x => (x.id === f.id ? { ...x, steps: x.steps.map(st => (st.id === step.id ? val : st)) } : x)));
+    setStep({ ...step, done: !step.done });
+    try { setStep(await goalsApi.updateStep(businessId, step.id, { done: !step.done })); }
+    catch (e) { setStep(step); throw e; }
+    announceFlagsChanged();
+  };
+  const completeFlag = async f => {
+    await goalsApi.updateWeekGoal(businessId, f.id, { status: 'done' });
+    handleUpdated(await updateProspect(businessId, f.prospect_contact_id, { status: 'contacted' }));
+    await loadFlags(); announceFlagsChanged();
   };
 
   const myRole = me?.memberships?.find(m => m.business_id === businessId)?.role;
@@ -239,9 +280,19 @@ export default function DailyHuddle({ businessId }) {
     setTimeout(jump, 60);
   };
   const since = data?.since_last_huddle;
+  const prospectsById = new Map((data?.prospects || []).map(p => [p.contact_id, p]));
+  const myFlags = me ? flagsFor(flags, me.profile.id) : [];
+  const onFlag = canEdit ? p => setFlagging(p) : null;
+  // Arriving from a Goals to-do ("Open in Huddle"): jump once the rows exist.
+  useEffect(() => {
+    if (!focusContactId || !data) return;
+    const t = setTimeout(() => { openProspect(focusContactId); onFocused?.(); }, 200);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusContactId, !!data]);
 
   const row = p => (
-    <HuddleRow key={p.contact_id} businessId={businessId} p={p} today={today} canEdit={canEdit} ownerColor={ownerColor} onAct={act} stacked={phone}
+    <HuddleRow key={p.contact_id} businessId={businessId} p={p} today={today} canEdit={canEdit} ownerColor={ownerColor} onAct={act} onFlag={onFlag} stacked={phone}
       collateral={collateral} isNewSinceHuddle={!!lastHuddleAt && p.created_at > lastHuddleAt} onUpdated={handleUpdated} />
   );
   const printNeeds = needs.map(p => ({ prospect: p, overdue: dueBucket(p, today) === 'overdue', action: actionText(p, today) }));
@@ -331,6 +382,8 @@ export default function DailyHuddle({ businessId }) {
                 ))}
               </div>
             )}
+            <FlaggedLane flags={myFlags} prospectsById={prospectsById} lookup={lookup} canEdit={canEdit}
+              onToggleStep={toggleFlagStep} onComplete={completeFlag} onOpen={openProspect} />
             <HuddlePartners businessId={businessId} />
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 460px), 1fr))', gap: '0 24px', alignItems: 'start' }}>
@@ -338,7 +391,8 @@ export default function DailyHuddle({ businessId }) {
                 <div className="sa-scroll" style={scrollList}>{needs.map(row)}</div>
               </Section>
               <HuddleFeed businessId={businessId} reloadKey={feedKey} today={today} lastHuddleAt={lastHuddleAt} filters={{ owner, heat: filters.heat, stale: filters.stale, hideBots: filters.hideBots }}
-                bandById={bandById} staleById={staleById} ownerColor={ownerColor} onOpen={openProspect} />
+                bandById={bandById} staleById={staleById} ownerColor={ownerColor} onOpen={openProspect}
+                onFlag={onFlag && (id => { const p = prospectsById.get(id); if (p) onFlag(p); else setMessage('That prospect isn\'t in the Huddle list, so it can\'t be flagged from here.'); })} />
             </div>
 
             <Section title="By company" count={companies.length} empty="No companies for these filters.">
@@ -398,6 +452,11 @@ export default function DailyHuddle({ businessId }) {
           {!compact && <div style={{ flex: '0 0 300px', minWidth: 0 }}>{rail}</div>}
           <HuddlePrintSheet dateLabel={dateLabel} prospects={visible} needsAction={printNeeds.slice(0, PRINT_TOP)} needsActionTotal={printNeeds.length} issues={issues || []} ownerLabels={OWNER_LABELS} nextActionLabels={NEXT_ACTION_LABELS} today={today} />
         </div>
+      )}
+
+      {flagging && (
+        <FlagDialog p={flagging} members={members} myUserId={me?.profile?.id} today={today}
+          onSubmit={body => submitFlag(flagging, body)} onClose={() => setFlagging(null)} />
       )}
 
       <div aria-live="polite" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 3500, maxWidth: 'calc(100vw - 32px)' }}>

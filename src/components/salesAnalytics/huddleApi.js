@@ -54,3 +54,18 @@ export async function fetchHuddleFeed(businessId, { days = 7, before } = {}) {
   const q = new URLSearchParams({ days: String(days), ...(before ? { before } : {}) });
   return call(`/api/sales/${businessId}/huddle/feed?${q}`, undefined, 'Failed to load activity');
 }
+
+// sales-huddle-v2 Stage 3 - "Flag for ...": a Goals to-do with a checklist.
+export async function fetchFlags(businessId) {
+  return (await call(`/api/sales/${businessId}/huddle/flags`, undefined, 'Failed to load flags')).flags;
+}
+export async function flagProspect(businessId, contactId, body) {
+  return call(`/api/sales/${businessId}/prospects/${contactId}/flag`, json('POST', body), 'Failed to flag');
+}
+export async function unflag(businessId, goalId, restoreOwner) {
+  const q = restoreOwner ? `?restore_owner=${restoreOwner}` : '';
+  return call(`/api/sales/${businessId}/flags/${goalId}${q}`, { method: 'DELETE' }, 'Failed to undo the flag');
+}
+// Lets the tab badge and the Huddle lane refresh after any flag change.
+export const FLAGS_CHANGED = 'prospector:flags-changed';
+export const announceFlagsChanged = () => window.dispatchEvent(new Event(FLAGS_CHANGED));
