@@ -1,5 +1,6 @@
 import { apolloRequest } from './apolloClient.js';
 import { laDateString } from './laDate.js';
+import { firstTouches, recordSequencedAccounts } from './sequencedAccounts.js';
 
 // sales-email-trend-v1 REV2 Stage 2 - per-day email counts rebuilt from
 // Apollo's message search, one Mon-Sun week per fetch. Method reconciled
@@ -46,7 +47,7 @@ export function weekStartsBetween(fromIso, toIso) {
   return out;
 }
 
-async function fetchStat(ctx, stat, weekStart) {
+export async function fetchStat(ctx, stat, weekStart) {
   const messages = [];
   for (let page = 1; page <= MAX_PAGES_PER_STAT; page++) {
     const query = new URLSearchParams({
@@ -65,14 +66,19 @@ async function fetchStat(ctx, stat, weekStart) {
   return { messages, complete: false };
 }
 
+const SENT_STATS = ['delivered', 'bounced', 'spam_blocked'];
+
 // Returns the week's rows (one per day x mailbox x sequence x step with any
-// activity) plus whether every stat was fully paged.
+// activity), whether every stat was fully paged, and the sent messages'
+// first step-1 touch per company (sales-goals-v1 REV4, no extra calls).
 export async function fetchWeek(ctx, weekStart) {
   const byKey = new Map();
   const truncated = [];
+  const sent = [];
   for (const [stat, column] of STATS) {
     const { messages, complete } = await fetchStat(ctx, stat, weekStart);
     if (!complete) truncated.push(stat);
+    if (SENT_STATS.includes(stat)) sent.push(...messages);
     const seen = new Set();
     for (const m of messages) {
       if (!m.id || seen.has(m.id) || !m.completed_at) continue;
@@ -85,7 +91,7 @@ export async function fetchWeek(ctx, weekStart) {
       byKey.get(key)[column] += 1;
     }
   }
-  return { rows: [...byKey.values()], complete: truncated.length === 0, truncated };
+  return { rows: [...byKey.values()], complete: truncated.length === 0, truncated, touches: firstTouches(sent) };
 }
 
 // Replaces the week wholesale, so a re-fetch never double counts and a
@@ -113,17 +119,18 @@ export async function writeWeek({ supabase, businessId, weekStart, rows, complet
   return { rows: inWeek.length, dropped: rows.length - inWeek.length };
 }
 
-export async function syncWeek({ ctx, supabase, businessId, weekStart }) {
+export async function syncWeek({ ctx, supabase, businessId, weekStart, accountNames }) {
   const before = ctx.callCounter.count;
-  const { rows, complete, truncated } = await fetchWeek(ctx, weekStart);
+  const { rows, complete, truncated, touches } = await fetchWeek(ctx, weekStart);
   const calls = ctx.callCounter.count - before;
   const written = await writeWeek({ supabase, businessId, weekStart, rows, complete, truncated, calls });
-  return { weekStart, calls, complete, truncated, ...written };
+  const sequenced = await recordSequencedAccounts({ supabase, businessId, touches, accountNames });
+  return { weekStart, calls, complete, truncated, ...written, sequenced };
 }
 
 // The Sync now / cron step: the current and previous week, each at most
 // once per REFRESH_AFTER_HOURS. A CallCapError propagates to sync.js.
-export async function refreshRecentWeeks({ ctx, supabase, businessId }) {
+export async function refreshRecentWeeks({ ctx, supabase, businessId, accountNames }) {
   const thisWeek = weekStartOf(laDateString());
   const weeks = [addDays(thisWeek, -7), thisWeek];
   const { data, error } = await supabase.from('sales_email_backfill_weeks').select('week_start, fetched_at')
@@ -137,7 +144,7 @@ export async function refreshRecentWeeks({ ctx, supabase, businessId }) {
       results.push({ weekStart, skipped: 'fetched recently' });
       continue;
     }
-    results.push(await syncWeek({ ctx, supabase, businessId, weekStart }));
+    results.push(await syncWeek({ ctx, supabase, businessId, weekStart, accountNames }));
   }
   return results;
 }

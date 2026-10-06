@@ -131,6 +131,7 @@ export async function runSync({ businessId, trigger, maxCalls }) {
   let apolloMs = 0;
   let supabaseMs = 0;
   let senderLookupCount = 0;
+  let accountNames = null;
 
   for (const adapter of ADAPTERS) {
     try {
@@ -158,6 +159,8 @@ export async function runSync({ businessId, trigger, maxCalls }) {
           missingAll.push(...senderResult.unresolved.map(id => `sender lookup: ${id} unresolved`));
         }
       }
+
+      if (adapter.name === 'accounts') accountNames = new Map(records.map(r => [r.id, r.name]));
 
       const { rows, missing } = adapter.toMetrics(records, metricDate, ctx);
       missingAll.push(...(missing || []));
@@ -227,7 +230,7 @@ export async function runSync({ businessId, trigger, maxCalls }) {
   let emailCountsMs = 0;
   try {
     const countsStart = Date.now();
-    emailCountWeeks = await refreshRecentWeeks({ ctx: countsCtx, supabase, businessId });
+    emailCountWeeks = await refreshRecentWeeks({ ctx: countsCtx, supabase, businessId, accountNames });
     emailCountsMs = Date.now() - countsStart;
     for (const w of emailCountWeeks) {
       if (w.complete === false) missingAll.push(`email counts: week ${w.weekStart} hit the page cap on ${w.truncated.join(', ')}`);

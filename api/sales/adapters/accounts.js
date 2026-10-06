@@ -14,6 +14,7 @@ export async function fetchRecords(ctx) {
 
   return records.map(r => ({
     id: r.id,
+    name: r.name || null,
     domain: r.domain || null,
     num_contacts: typeof r.num_contacts === 'number' ? r.num_contacts : null,
     contact_emailer_campaign_ids: r.contact_emailer_campaign_ids || [],
