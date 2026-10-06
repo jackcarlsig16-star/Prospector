@@ -5,7 +5,7 @@ import { PRODUCTS_OVERRIDE_KEY, loadProductOverrides } from './PricingPage';
 import { PRICING_PRODUCTS_DEFAULT } from '../constants/products';
 import { getAccountsForBusiness, getOutreachDoctrine, createOutreachDoctrineRule, updateOutreachDoctrineRule } from '../utils/db';
 import { mapSfdcStage } from '../utils/stageMap';
-import GoogleConnections from './GoogleConnections';
+import SalesforceTools from './admin/SalesforceTools';
 import MembersAccess from './admin/MembersAccess';
 
 // Small pure helpers duplicated from App.js (defined there at module scope)
@@ -398,7 +398,7 @@ function OutreachIntelligenceTab({ currentUser }) {
 }
 
 
-function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser, rolePerms={}, onSaveRolePerms, onSave, onSaveToPool, onSaveBatch, accounts=[] }) {
+function AdminPage({ isPlatformOwner=false, teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser, rolePerms={}, onSaveRolePerms, onSave, onSaveToPool, onSaveBatch, accounts=[] }) {
   const [tab, setTab] = useState("users");
   const [users, setUsers] = useState(teamUsers);
   useEffect(() => { setUsers(teamUsers); }, [teamUsers]);
@@ -530,18 +530,21 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
 
       {/* Tab bar — grouped */}
       {(()=>{
+        // Org Chart / Permissions tabs are hidden (old AE/BDR/Manager model,
+        // nav-admin-cleanup-v1); their render blocks below are kept.
         const TAB_GROUPS = [
           { label:"TEAM", tabs:[
             ["users",       "👥 Members & Access"],
-            ["orgchart",    "🌳 Org Chart"],
-            ["permissions", "🔐 Permissions"],
           ]},
           { label:"PLATFORM", tabs:[
             ["apikeys",    "🔌 Integrations"],
             ["pricing",    "💰 Pricing"],
-            ["accesslog",  "📋 Access Log"],
-            ["zoomevents", "☎ Zoom Events"],
-            ["doctrine",   "✉ Outreach Intelligence"],
+            ...(isPlatformOwner ? [
+              ["doctrine",   "✉ Outreach Intelligence"],
+              ["accesslog",  "📋 Access Log"],
+              ["zoomevents", "☎ Zoom Events"],
+              ["sfdc",       "☁ Salesforce Tools"],
+            ] : []),
           ]},
           { label:"DATA", tabs:[
             ["settings", "⚙️ Settings"],
@@ -552,16 +555,16 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
           return C.mut;
         };
         return (
-          <div style={{ display:"flex", alignItems:"flex-end", gap:0, marginBottom:22, borderBottom:`1px solid ${C.brd}`, paddingBottom:0, flexWrap:"wrap" }}>
+          <div style={{ display:"flex", alignItems:"flex-end", gap:0, rowGap:10, marginBottom:22, borderBottom:`1px solid ${C.brd}`, paddingBottom:0, flexWrap:"wrap" }}>
             {TAB_GROUPS.map((grp, gi) => (
-              <div key={grp.label} style={{ display:"flex", alignItems:"flex-end", gap:0 }}>
+              <div key={grp.label} style={{ display:"flex", alignItems:"flex-end", gap:0, minWidth:0, maxWidth:"100%" }}>
                 {/* Vertical divider between groups */}
                 {gi>0 && <div style={{ width:1, height:28, background:C.brd, margin:"0 8px 1px", flexShrink:0 }}/>}
-                <div style={{ display:"flex", flexDirection:"column", gap:0 }}>
+                <div style={{ display:"flex", flexDirection:"column", gap:0, minWidth:0 }}>
                   {/* Group label */}
                   <span style={{ ...mono, fontSize:9, color:`${C.gold}66`, letterSpacing:"0.12em", textTransform:"uppercase", paddingLeft:12, marginBottom:4 }}>{grp.label}</span>
                   {/* Tabs in group */}
-                  <div style={{ display:"flex", gap:0 }}>
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:0 }}>
                     {grp.tabs.map(([id,lb])=>(
                       <button key={id} onClick={()=>setTab(id)} style={{ ...mono, fontSize:12, padding:"6px 14px", background:"transparent", border:"none", borderBottom:`2px solid ${tab===id?C.gold:"transparent"}`, color:tabColor(id), cursor:"pointer", marginBottom:-1, whiteSpace:"nowrap" }}>{lb}</button>
                     ))}
@@ -652,8 +655,6 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
           <p style={{ margin:"0 0 4px", fontSize:15, fontWeight:500, color:C.txt }}>Integrations</p>
           <p style={{ ...mono, margin:"0 0 14px", fontSize:12, color:C.mut }}>Stored locally in your browser only — never sent to any server other than the named service.</p>
           <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
-
-            <GoogleConnections />
 
             {/* ── Salesforce ── */}
             <div style={{ background:C.card, border:`1px solid ${sfdcConnected?"#00A1E044":C.brd}`, borderRadius:8, padding:"14px 16px" }}>
@@ -866,11 +867,12 @@ function AdminPage({ teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser
 
 
       {/* ── ACCESS LOG TAB ── */}
-      {tab==="accesslog"&&<AccessLogTab/>}
-      {tab==="zoomevents"&&<ZoomEventsTab/>}
+      {tab==="accesslog"&&isPlatformOwner&&<AccessLogTab/>}
+      {tab==="zoomevents"&&isPlatformOwner&&<ZoomEventsTab/>}
+      {tab==="sfdc"&&isPlatformOwner&&<SalesforceTools/>}
 
       {/* ── OUTREACH INTELLIGENCE TAB ── */}
-      {tab==="doctrine"&&<OutreachIntelligenceTab currentUser={currentUser}/>}
+      {tab==="doctrine"&&isPlatformOwner&&<OutreachIntelligenceTab currentUser={currentUser}/>}
 
 
       {/* ── SETTINGS TAB ── */}

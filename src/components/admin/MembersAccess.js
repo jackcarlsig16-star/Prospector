@@ -3,6 +3,7 @@ import { C, mono } from '../../constants/colors';
 import { ROLES, ROLE_LABELS, roleAtLeast } from '../../constants/roles';
 import { fetchMe } from '../../utils/authSession';
 import { CreateBusinessModal } from '../BusinessesHomePage';
+import MembersPermissionsTab from '../MembersPermissionsTab';
 
 // prospector-auth-v1 Stage 4 - per-workspace members, roles and invite links.
 // Everything is enforced server-side (api/businesses/members.js,
@@ -216,6 +217,9 @@ export default function MembersAccess() {
             </div>
           ))}
         </div>
+
+        <p style={sectionLabel}>List access</p>
+        <MembersPermissionsTab key={wsId} businessId={wsId} />
       </>)}
 
       {wsId && !data && !overview && !error && <p style={{ ...mono, fontSize: 12, color: C.dim }}>Loading…</p>}

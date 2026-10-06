@@ -4,7 +4,6 @@ import { C, mono, PRESET_SWATCH_COLORS } from '../constants/colors';
 import { createProject, createList, setProjectListId, getAccountsForBusiness, linkAccountToLists, createCampaign, setCampaignListId } from '../utils/db';
 import BusinessAccountsTab from './BusinessAccountsTab';
 import BusinessCommandCenterTab from './BusinessCommandCenterTab';
-import MembersPermissionsTab from './MembersPermissionsTab';
 import SmartIntakeBox from './SmartIntakeBox';
 import CallLogSection from './CallLogSection';
 import AssayCriteriaCard from './AssayCriteriaCard';
@@ -689,7 +688,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   // but now renders 13 profile fields plus Assay Criteria/Outreach
   // Rules/Add Intel/the Intel log. Same 1100 the other dense views here
   // already use, not a new value.
-  const wideView = view === 'accounts' || view === 'command-center' || view === 'members' || view === 'overview' || view === 'sales-analytics';
+  const wideView = view === 'accounts' || view === 'command-center' || view === 'overview' || view === 'sales-analytics';
   // business-intel-strategy-visual-redesign-v1 — the same accent already
   // used for this business's gradient bar/avatar, reused for chip/panel
   // accents instead of a new color system.
@@ -788,7 +787,6 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
         {view === 'projects' && (
           <ProjectsSection business={business} userEmail={userEmail} activeUser={activeUser} projects={projects} campaigns={campaigns} outreachRules={profile?.outreach_rules} onProjectCreated={onProjectCreated} onProjectUpdated={onProjectUpdated} onCampaignCreated={onCampaignCreated} onCampaignUpdated={onCampaignUpdated} />
         )}
-        {view === 'members' && <MembersPermissionsTab business={business} viewerEmail={userEmail} />}
         {view === 'sales-analytics' && <SalesAnalyticsTab businessId={business.id} accent={accent} />}
 
         {view === 'overview' && (<>

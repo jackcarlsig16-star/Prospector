@@ -19,6 +19,7 @@ export default function Sidebar({ compact, page, setPage, toolsActiveTool, setTo
   const [avatarImage, setAvatarImage] = useState(()=>readImgPref("avatarImage"));
   const [companyLogo, setCompanyLogo] = useState(()=>readImgPref("companyLogo"));
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const menuBtnRef = useRef(null);
   const panelRef = useRef(null);
 
@@ -50,11 +51,10 @@ export default function Sidebar({ compact, page, setPage, toolsActiveTool, setTo
     return () => { document.removeEventListener("keydown", onKey); menuBtn?.focus(); };
   }, [drawerOpen]);
 
-  const go = fn => (...args) => { fn?.(...args); setDrawerOpen(false); };
+  const go = fn => (...args) => { fn?.(...args); setDrawerOpen(false); setUserMenuOpen(false); };
   const inWorkspace = !!activeBusiness && page === "business-detail";
   const accent = activeBusiness?.color || C.gold;
-  const isWorkspaceOwner = (activeBusiness?.owner_email||"").toLowerCase() === (activeUser?.email||"").toLowerCase();
-  const workspaceNav = activeBusiness ? BUSINESS_NAV.filter(n => (!n.ownerOnly || isWorkspaceOwner) && (!n.businessIds || n.businessIds.includes(activeBusiness.id))) : [];
+  const workspaceNav = activeBusiness ? BUSINESS_NAV.filter(n => !n.businessIds || n.businessIds.includes(activeBusiness.id)) : [];
   const totalDiamonds = (diamonds?.log||[]).reduce((s,e)=>s+e.amount,0);
 
   const panel = (
@@ -127,8 +127,16 @@ export default function Sidebar({ compact, page, setPage, toolsActiveTool, setTo
             <button onClick={()=>setViewAs(null)} style={{ ...mono, fontSize:10, background:"transparent", border:"none", color:C.purple, cursor:"pointer", padding:0 }}>✕ Exit</button>
           </div>
         )}
+        {userMenuOpen && !viewAs && (
+          <div id="user-menu" style={{ margin:"0 -12px 8px", paddingBottom:6, borderBottom:`1px solid ${C.brd}` }}>
+            <NavRow icon="☆" label="Profile & badges" tall={compact} onClick={go(onOpenProfile)} />
+            <NavRow icon="🎙" label="Voice Profile" tall={compact} active={page==="voice-profile"} onClick={go(()=>setPage("voice-profile"))} />
+            <NavRow icon="G" label="Google connections" tall={compact} active={page==="google-connections"} onClick={go(()=>setPage("google-connections"))} />
+            <NavRow icon="⏻" label="Sign out" tall={compact} accent={C.red} onClick={signOut} />
+          </div>
+        )}
         <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-          <button type="button" onClick={!viewAs?go(onOpenProfile):undefined} disabled={!!viewAs}
+          <button type="button" onClick={!viewAs?()=>setUserMenuOpen(o=>!o):undefined} disabled={!!viewAs} aria-expanded={userMenuOpen} aria-controls="user-menu" aria-label={`My profile, ${activeUser.name}`}
             style={{ display:"flex", alignItems:"center", gap:8, flex:1, minWidth:0, minHeight: compact ? 44 : undefined, font:"inherit", textAlign:"left", background:"transparent", border:"none", cursor:viewAs?"default":"pointer", borderRadius:6, padding:"2px 4px", margin:"-2px -4px" }}
             onMouseEnter={e=>{ if(!viewAs) e.currentTarget.style.background=`${C.gold}0a`; }}
             onMouseLeave={e=>{ e.currentTarget.style.background="transparent"; }}>
@@ -167,25 +175,13 @@ export default function Sidebar({ compact, page, setPage, toolsActiveTool, setTo
             }
           </div>
         </div>
-        {!viewAs && (
-          <div style={{ marginTop:6, textAlign:"center" }}>
-            <button
-              onClick={signOut}
-              style={{ ...mono, fontSize:10, color:C.dim, background:"transparent", border:"none", cursor:"pointer", padding: compact ? "0 16px" : "2px 6px", minHeight: compact ? 44 : undefined, borderRadius:3 }}
-              onMouseEnter={e => e.currentTarget.style.color = C.red}
-              onMouseLeave={e => e.currentTarget.style.color = C.dim}
-            >
-              Sign out
-            </button>
-          </div>
-        )}
       </div>
     </div>
   );
 
   if (!compact) return panel;
 
-  const title = inWorkspace ? activeBusiness.name : page === "admin" ? "Admin" : "Workspaces";
+  const title = inWorkspace ? activeBusiness.name : { admin:"Admin", "voice-profile":"Voice Profile", "google-connections":"Google connections" }[page] || "Workspaces";
   return (
     <>
       <div style={{ position:"sticky", top:0, zIndex:4000, display:"flex", alignItems:"center", gap:8, height:52, padding:"0 8px", background:C.sur, borderBottom:`1px solid ${C.brd}` }}>

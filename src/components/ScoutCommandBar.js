@@ -22,10 +22,7 @@ const SUGGESTED = [
 
 const PAGES = [
   { lb: 'Accounts',  pg: 'accounts',  ic: '◈', c: '#60A8F0' },
-  { lb: 'Ledger',    pg: 'ledger',    ic: '⌬', c: T.cyan },
-  { lb: 'Outbound',  pg: 'outbound',  ic: '🌵', c: '#A878F0' },
   { lb: 'Ideas',     pg: 'ideas',     ic: '◉', c: T.amber },
-  { lb: 'Frontier',  pg: 'outbound',  tab: 'The Frontier', ic: '🌵', c: '#A878F0' },
   { lb: 'Pricing',   pg: 'tools',     ic: '$', c: '#FFD700' },
   { lb: 'ROI',       pg: 'tools',     tab: 'roi', ic: '↗', c: '#42E890' },
 ];

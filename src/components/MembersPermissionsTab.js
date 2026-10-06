@@ -95,7 +95,10 @@ function ListRow({ list, onRenamed, onDeleted }) {
   );
 }
 
-export default function MembersPermissionsTab({ business, viewerEmail }) {
+// Per-list access for one workspace, shown under Admin → Members & Access
+// (MembersAccess.js only renders it for platform owner / workspace Owner or
+// Admin, matching member_list_permissions' s5_write RLS).
+export default function MembersPermissionsTab({ businessId }) {
   const [lists, setLists] = useState([]);
   const [members, setMembers] = useState([]);
   const [permissions, setPermissions] = useState([]);
@@ -104,25 +107,19 @@ export default function MembersPermissionsTab({ business, viewerEmail }) {
   const [newListPreset, setNewListPreset] = useState('solo');
   const [creating, setCreating] = useState(false);
 
-  const isOwner = (business.owner_email || '').toLowerCase() === (viewerEmail || '').toLowerCase();
-
   const load = useCallback(async () => {
     const [listRows, memberRows] = await Promise.all([
-      getListsForBusiness(business.id),
-      getMembersForBusiness(business.id),
+      getListsForBusiness(businessId),
+      getMembersForBusiness(businessId),
     ]);
     setLists(listRows);
     setMembers(memberRows);
     const permRows = await getPermissionsForMembers(memberRows.map(m => m.id));
     setPermissions(permRows);
     setLoading(false);
-  }, [business.id]);
+  }, [businessId]);
 
   useEffect(() => { load(); }, [load]);
-
-  if (!isOwner) {
-    return <p style={{ ...mono, fontSize:13, color:C.dim }}>Only {business.name}'s owner can manage members and lists.</p>;
-  }
 
   // Solo = just the creator (the owner, who always has implicit full access
   // regardless of any permission row - so this is really "grant no one else
@@ -132,7 +129,7 @@ export default function MembersPermissionsTab({ business, viewerEmail }) {
   const handleCreateList = async () => {
     if (!newListName.trim() || creating) return;
     setCreating(true);
-    const { list, error } = await createList(business.id, newListName.trim());
+    const { list, error } = await createList(businessId, newListName.trim());
     if (!error) {
       setLists(prev => [...prev, list]);
       setNewListName('');
@@ -202,7 +199,7 @@ export default function MembersPermissionsTab({ business, viewerEmail }) {
         <div style={sectionLabel}>Permissions</div>
         {members.length === 0 ? (
           <p style={{ ...mono, fontSize:12, color:C.dim, margin:0 }}>
-            No members yet. Share the invite link below to add collaborators — new members default to view+edit on every current list.
+            No members yet. Invite people above — new members default to view+edit on every current list.
           </p>
         ) : lists.length === 0 ? (
           <p style={{ ...mono, fontSize:12, color:C.dim, margin:0 }}>Create a list above before setting permissions.</p>

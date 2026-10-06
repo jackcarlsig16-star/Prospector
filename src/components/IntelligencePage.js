@@ -9,10 +9,10 @@ import { saveVoiceProfile } from '../utils/db';
 import { connectGoogle, useGoogleStatus } from '../utils/google';
 
 
-function IntelligencePage({ user, activeUser }) {
+function IntelligencePage({ user, activeUser, only }) {
   const voiceUserName = activeUser?.name || user?.name || "";
   const voiceUserEmail = activeUser?.email || user?.email || "";
-  const [tab,setTab]=useState("Use Cases");
+  const [tab,setTab]=useState(only||"Use Cases");
   const [voiceProfile,setVoiceProfileState]=useState(()=>getVoiceProfile(voiceUserName));
   const [vpLoading,setVpLoading]=useState(false);
   const [vpError,setVpError]=useState(null);
@@ -229,9 +229,9 @@ Return ONLY a valid JSON object — no explanation, no markdown, just the JSON:
   const TABS=["Use Cases","Products","Intel Library","Example Accounts","Voice Profile","Voice Library","Integrations","Territory Trends"];
   return(
     <div>
-      <div style={{ display:"flex", gap:4, marginBottom:16, borderBottom:`1px solid ${C.brd}`, paddingBottom:10, flexWrap:"wrap" }}>
+      {!only&&<div style={{ display:"flex", gap:4, marginBottom:16, borderBottom:`1px solid ${C.brd}`, paddingBottom:10, flexWrap:"wrap" }}>
         {TABS.map(t=><button key={t} onClick={()=>setTab(t)} style={{ fontSize:13, padding:"5px 12px", borderRadius:5, border:`1px solid ${tab===t?C.goldBdr:C.brd}`, background:tab===t?C.goldBg:"transparent", color:tab===t?C.gold:C.mut, cursor:"pointer" }}>{t}</button>)}
-      </div>
+      </div>}
 
       {tab==="Use Cases"&&(
         <div style={{ display:"flex", flexDirection:"column", gap:6 }}>

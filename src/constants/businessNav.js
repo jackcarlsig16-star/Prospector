@@ -1,7 +1,7 @@
 // global-workspace-navigation-v1 — single source of truth for the per-business
 // workspace nav (Sidebar.js), in nav-admin-cleanup-v1's menu order.
 // businessIds: when present, the tab only shows for businesses whose id is in
-// the list (checked in Sidebar.js alongside ownerOnly).
+// the list (checked in Sidebar.js).
 // ideas/tools are app-level pages shown inside the workspace: App.js renders
 // them for these views instead of BusinessDetailPage (APP_LEVEL_VIEWS).
 export const BUSINESS_NAV = [
@@ -10,7 +10,6 @@ export const BUSINESS_NAV = [
   { id: "accounts",        ic: "◈", lb: "Accounts" },
   { id: "projects",        ic: "▣", lb: "Projects" },
   { id: "overview",        ic: "◉", lb: "Business Intel & Strategy" },
-  { id: "members",         ic: "👥", lb: "Members", ownerOnly: true },
   { id: "ideas",           ic: "◆", lb: "Ideas" },
   { id: "tools",           ic: "⚒", lb: "Tools" },
 ];

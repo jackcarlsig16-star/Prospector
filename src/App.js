@@ -12,11 +12,12 @@ import ProfilePanel, { BadgeToast, BADGES, getQuarterKey, calcTerritoryBreakdown
 import { TaskModal } from './components/TaskPanel';
 import HomePage from './components/HomePage';
 import Sidebar from './components/Sidebar';
+import GoogleConnections from './components/GoogleConnections';
 import BugReporter from './components/BugReporter';
 import DailyDigest from './components/DailyDigest';
 import ManagerCommandCenter from './components/ManagerCommandCenter';
 import HandoffsPage from './components/HandoffsPage';
-import { NAV, ROLE_PERMS, NAV_ROLES, isAdmin } from './constants/appConfig';
+import { ROLE_PERMS, isAdmin } from './constants/appConfig';
 import { APP_LEVEL_VIEWS } from './constants/businessNav';
 import useMediaQuery from './utils/useMediaQuery';
 import { trackStat, trackDailyStat } from './utils/stats';
@@ -30,7 +31,7 @@ import { resolveUserId } from './utils/userIdentity';
 import { getDefaultOutbound } from './utils/outbound';
 import { getAllCompliance } from './utils/storage';
 import { getACV } from './utils/ledgerEngine';
-import { getTeamUsers, saveTeamUsers, getFrontier, saveFrontier, getAccounts, saveAccountsToDb, saveComplianceToDb, getBdrAssignments, getProjects, getBusinesses, getCampaignsForProjects } from './utils/db';
+import { getTeamUsers, saveTeamUsers, getFrontier, saveFrontier, getAccounts, saveComplianceToDb, getBdrAssignments, getProjects, getBusinesses, getCampaignsForProjects } from './utils/db';
 import BusinessesHomePage from './components/BusinessesHomePage';
 import BusinessDetailPage from './components/BusinessDetailPage';
 import { isSupabaseEnabled } from './utils/supabase';
@@ -66,6 +67,12 @@ const LedgerPage            = React.lazy(() => import('./components/LedgerPage')
 // a refresh token here in the browser - don't leave it lying around.
 try{["gmail_access_token","gmail_refresh_token","gmail_token_expiry","gmail_email","prospector_gmail_auth_error"].forEach(k=>localStorage.removeItem(k));}catch{}
 
+// nav-admin-cleanup-v1 - the only top-level pages reachable. Everything else
+// (Portfolio, Territory/Prod Requests, Ledger, Outbound, Ideas-global,
+// Handoffs, Analytics, Intelligence, Uploads, Claim Jumper) is hidden: its
+// code stays, but any navigation to it lands on the workspace list.
+const VISIBLE_PAGES = ["businesses-home","business-detail","admin","voice-profile","google-connections"];
+
 // Live BDR list — updated at runtime via teamUsers state, but AccountCard needs a static fallback
 let BDR_LIST = [];
 
@@ -87,7 +94,6 @@ function userFromSession(me) {
 export default function App({ me }) {
   // Guard: skip Supabase sync effects until initial async load completes
   const supabaseReady = useRef(false);
-  const supabaseAccountsReady = useRef(false);
   // True when the most recent account load fetched multiple owner_emails
   // (Manager/Admin/Owner team views) OR when impersonating any user. Drives
   // the read-only save guard: such loads must never autosave back, or the
@@ -155,21 +161,9 @@ export default function App({ me }) {
       }
       localStorage.setItem("prospector_accounts", JSON.stringify(accounts));
     } catch {}
-
-    if(supabaseAccountsReady.current && user?.email){
-      if(user.role === "BDR"){
-        // Save back to the AE's email so changes are visible to the AE
-        const aids = user.assignedAEs || [];
-        if(aids.length){
-          const team = teamUsers.length ? teamUsers : [];
-          const ae = team.find(u => u.id === aids[0] || u.email?.toLowerCase() === aids[0]?.toLowerCase());
-          const aeEmail = ae?.email || (aids[0]?.includes('@') ? aids[0] : null);
-          if(aeEmail) saveAccountsToDb(aeEmail, accounts);
-        }
-      } else {
-        saveAccountsToDb(user.email, accounts);
-      }
-    }
+    // Personal territory is retired (nav-admin-cleanup-v1): it stays in this
+    // browser only. It used to mirror to Supabase with delete-not-in-set,
+    // which sent a DELETE on every load for anyone with no personal accounts.
   },[accounts]);
 
   const [snapshots,setSnapshots]=useState(()=>{try{return JSON.parse(localStorage.getItem("prospector_snapshots")||"[]");}catch{return [];}});
@@ -815,7 +809,6 @@ export default function App({ me }) {
         logStageBatch('Supabase load', prev, deduped);
         return deduped;
       });
-      supabaseAccountsReady.current=true;
       setAccsLoaded(true);
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1202,27 +1195,20 @@ export default function App({ me }) {
   const [staleDismissed,  setStaleDismissed]  = useState(false);
 
   // Must be above all early returns — hooks can't be conditional, navTo used in OAuth callbacks
-  const visibleNav=NAV.filter(n=>(NAV_ROLES[n.id]||[]).includes(activeRole));
-  // businesses-home/business-detail are reached via their own Sidebar button, not
-  // the role-filtered NAV list — exempt them or this redirect bounces page back
-  // to visibleNav[0] the instant navTo('businesses-home') runs.
-  const NON_NAV_PAGES=['businesses-home','business-detail'];
+  const showAdmin=isAdmin(user);
   useEffect(()=>{
-    if(!visibleNav.find(n=>n.id===page)&&!NON_NAV_PAGES.includes(page)&&visibleNav.length) setPage(visibleNav[0].id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[page,activeRole]);
+    if(!VISIBLE_PAGES.includes(page)||(page==="admin"&&!showAdmin)||(page==="business-detail"&&!activeBusiness)) setPage("businesses-home");
+  },[page,showAdmin,activeBusiness]);
   const navTo=(pg,tab)=>{
-    const dest = pg === "team" ? "outbound" : pg;
-    if(APP_LEVEL_VIEWS.includes(dest)){
-      if(activeBusiness){ setBusinessPage(dest); setPage("business-detail"); }
+    if(pg==="accounts"||APP_LEVEL_VIEWS.includes(pg)){
+      if(activeBusiness){ setBusinessPage(pg); setPage("business-detail"); }
       else setPage("businesses-home");
-    } else setPage(dest);
+    } else setPage(VISIBLE_PAGES.includes(pg)?pg:"businesses-home");
     const tabStr=tab!=null?String(tab):null;
-    if(dest==="accounts"&&tabStr)setAccountsJumpId(tabStr);
-    else if(dest==="tools"&&tabStr&&tabStr.startsWith("roi:")){setToolsLaunchId(tab.slice(4));setToolsActiveTool("deal");}
-    else if(dest==="tools"&&tabStr==="roi"){setToolsActiveTool("deal");}
-    else if(dest==="tools"&&tabStr==="pricing"){setToolsActiveTool("deal");}
-    else if(dest==="tools"&&tabStr){setToolsLaunchId(tabStr);setToolsActiveTool("deal");}
+    if(pg==="tools"&&tabStr&&tabStr.startsWith("roi:")){setToolsLaunchId(tab.slice(4));setToolsActiveTool("deal");}
+    else if(pg==="tools"&&tabStr==="roi"){setToolsActiveTool("deal");}
+    else if(pg==="tools"&&tabStr==="pricing"){setToolsActiveTool("deal");}
+    else if(pg==="tools"&&tabStr){setToolsLaunchId(tabStr);setToolsActiveTool("deal");}
   };
   // Selecting a business always lands on its Command Center, whether coming
   // from the sidebar list, the businesses gallery, or creating a new one.
@@ -1244,7 +1230,7 @@ export default function App({ me }) {
 
   return(
     <div style={{ display:"flex", flexDirection:compact?"column":"row", background:C.bg, minHeight:"100vh", width:"100%" }}>
-      <Sidebar compact={compact} page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();}}} showAdmin={isAdmin(user)} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} newNuggetCount={newNuggetCount} businesses={myBusinesses} onSelectBusiness={selectBusiness} onGoToBusinesses={()=>navTo('businesses-home')} activeBusiness={activeBusiness} businessPage={businessPage} setBusinessPage={setBusinessPage} onOpenDigest={()=>setDigestOpen(true)} onOpenBugReport={()=>setBugOpen(true)} />
+      <Sidebar compact={compact} page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();}}} showAdmin={showAdmin} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} newNuggetCount={newNuggetCount} businesses={myBusinesses} onSelectBusiness={selectBusiness} onGoToBusinesses={()=>navTo('businesses-home')} activeBusiness={activeBusiness} businessPage={businessPage} setBusinessPage={setBusinessPage} onOpenDigest={()=>setDigestOpen(true)} onOpenBugReport={()=>setBugOpen(true)} />
       <div id="main-content" style={{ flex:1, padding:compact?"12px 12px":"18px 20px", overflowY:"auto", minWidth:0 }}>
         <PersistentScout
           isBusinessContext={page==="business-detail"&&!!activeBusiness}
@@ -1292,11 +1278,13 @@ export default function App({ me }) {
         {page==="uploads"&&<UploadsPage accounts={accounts} onSave={saveAccounts} onSaveBatch={saveBatch} onBatchUpdate={setActiveBatch} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} activeUser={activeUser} onEnrichLog={logTerritoryEvent}/>}
         {page==="analytics"&&<AnalyticsPage accounts={accounts} tasks={tasks} stealthList={stealthList} frontier={frontier} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} teamUsers={teamUsers} currentUser={user} activeRole={activeRole}/>}
         {page==="intelligence"&&<IntelligencePage user={user} activeUser={activeUser}/>}
+        {page==="voice-profile"&&<IntelligencePage only="Voice Profile" user={user} activeUser={activeUser}/>}
+        {page==="google-connections"&&<div style={{ maxWidth:700 }}><h2 style={{ margin:"0 0 14px", fontSize:20, fontWeight:600, color:C.txt }}>Google connections</h2><GoogleConnections/></div>}
         {(page==="outbound"||page==="team")&&<OutboundPage accounts={accounts} onNav={navTo} user={user} activeUser={activeUser} perms={perms} stealthList={stealthList} onSaveStealthList={setStealthList} onPromoteToAccount={promoteToAccount} onSfStatus={setSfStatus} frontier={frontier} onSaveFrontier={setFrontier} onAssignToBDR={assignToBDR} onUnassignFromFrontier={unassignFromFrontier} onSetFrontierStatus={setFrontierStatus} onRemoveDemoAccount={()=>setFrontier(fl=>fl.filter(f=>!f.isDemo))} onHandoff={f=>{setAccounts(as=>as.map(a=>{if(a.name.toLowerCase()!==f.name.toLowerCase())return a;logStageChange('onHandoff (OutboundPage)',a.name,a.stage,'Engaged');return {...a,stage:"Engaged",last:new Date().toISOString().slice(0,10)};}));setFrontier(fl=>fl.filter(x=>x.id!==f.id));trackStat("tasks_assigned_to_bdr");}} teamUsers={teamUsers} setAccounts={setAccounts} onCreateTask={task=>setTasks(ts=>[...ts,task])}/>}
         {page==="business-detail"&&businessPage==="ideas"&&<IdeasPage nuggets={nuggets} onSaveNuggets={setNuggets} activeUser={activeUser} onViewIdeas={onViewIdeas}/>}
         {page==="ledger"&&<LedgerPage accounts={accounts} setAccounts={setAccounts} teamUsers={teamUsers} activeUser={activeUser} tasks={tasks} winsLog={winsLog} setWinsLog={setWinsLog} managerSelectedAeId={managerScopedAeId}/>}
         {page==="business-detail"&&businessPage==="tools"&&<ToolsPage accounts={accounts} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} launchAccountId={toolsLaunchId} onLaunched={()=>setToolsLaunchId(null)} activeTool={toolsActiveTool} onToolSelect={setToolsActiveTool} onCreateTask={(prefill)=>setTaskModal(prefill||{})}/>}
-        {page==="admin"&&isAdmin(user)&&<AdminPage teamUsers={teamUsers} onSaveUsers={setTeamUsers} currentUser={user} onUpdateCurrentUser={patch=>{setUser(u=>{const next={...u,...patch};localStorage.setItem("prospector_user",JSON.stringify(next));return next;});}} rolePerms={rolePerms} onSaveRolePerms={setRolePerms} onSave={saveAccounts} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} onSaveBatch={saveBatch} accounts={accounts}/>}
+        {page==="admin"&&showAdmin&&<AdminPage isPlatformOwner={!!me.profile.is_platform_owner} teamUsers={teamUsers} onSaveUsers={setTeamUsers} currentUser={user} onUpdateCurrentUser={patch=>{setUser(u=>{const next={...u,...patch};localStorage.setItem("prospector_user",JSON.stringify(next));return next;});}} rolePerms={rolePerms} onSaveRolePerms={setRolePerms} onSave={saveAccounts} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} onSaveBatch={saveBatch} accounts={accounts}/>}
         {page==="businesses-home"&&<BusinessesHomePage businesses={myBusinesses} loading={businessesLoading} projects={myProjects} onSelect={selectBusiness} onCreated={b=>{setMyBusinesses(prev=>[b,...prev]);selectBusiness(b);}}/>}
         {page==="business-detail"&&activeBusiness&&!APP_LEVEL_VIEWS.includes(businessPage)&&<BusinessDetailPage key={activeBusiness.id} business={activeBusiness} userEmail={user.email} projects={myProjects.filter(p=>p.business_id===activeBusiness.id)} campaigns={myCampaigns.filter(c=>c.business_id===activeBusiness.id)} view={businessPage} onUpdated={onBusinessUpdated} onProjectCreated={p=>setMyProjects(prev=>[p,...prev])} onProjectUpdated={p=>setMyProjects(prev=>prev.map(x=>x.id===p.id?p:x))} onCampaignCreated={c=>setMyCampaigns(prev=>[c,...prev])} onCampaignUpdated={c=>setMyCampaigns(prev=>prev.map(x=>x.id===c.id?c:x))} sharedAccounts={accounts} sharedTasks={tasks} setSharedTasks={setTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={navTo} onUpdateAccount={perms.canEditStage?(id,patch)=>setAccounts(as=>as.map(a=>a.id===id?{...a,...patch}:a)):undefined}/>}
         {page==="handoffs"&&<HandoffsPage accounts={accounts} onAddAccount={acc=>{setAccounts(a=>[acc,...a]);trackStat("accounts_added");trackDailyStat("accounts_added");}} activeUser={activeUser} activeRole={activeRole} teamUsers={teamUsers}/>}

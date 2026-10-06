@@ -109,54 +109,8 @@ export async function getAccounts(ownerEmails) {
   }
 }
 
-export async function saveAccountsToDb(ownerEmail, accounts) {
-  invalidateAccountsCache();
-  try { localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts)); } catch {}
-  if (!isSupabaseEnabled() || !ownerEmail) return;
-  try {
-    // business_id IS NULL on every delete below - this is the write-side
-    // half of the same fix as getAccounts() above. Without it, this
-    // function's delete-not-in-set (and the empty-array full-delete) would
-    // treat any business-scoped account sharing this owner_email as "not in
-    // the current legacy set" and silently wipe it from Supabase on a
-    // routine Territory autosave (territory-business-scope-fix-v1) - a real
-    // risk, not hypothetical: this was the actual mechanism that could have
-    // deleted The Coconut Cult / @aldknudsen43 the next time Territory's
-    // in-memory list dropped them for any reason.
-    if (accounts.length === 0) {
-      await supabase.from('accounts').delete().eq('owner_email', ownerEmail).is('business_id', null);
-      return;
-    }
-    const rows = accounts.map(a => ({
-      id: String(a.id),
-      owner_email: ownerEmail,
-      data: a,
-      updated_at: new Date().toISOString(),
-    }));
-    const { error: upsertErr } = await supabase
-      .from('accounts')
-      .upsert(rows, { onConflict: 'id' });
-    if (upsertErr) throw upsertErr;
-    // Delete rows for this owner no longer in the list
-    const ids = accounts.map(a => String(a.id)).join(',');
-    await supabase.from('accounts').delete()
-      .eq('owner_email', ownerEmail)
-      .is('business_id', null)
-      .not('id', 'in', `(${ids})`);
-  } catch(e) {
-    console.warn('[db] saveAccounts Supabase failed:', e.message);
-  }
-}
-
 // assay-safety-and-intel-visibility-v1 — targeted single-row write for
-// re-assay, which used to rely entirely on the generic saveAccountsToDb
-// effect (full-array upsert) as its only path to Supabase. That effect is
-// fire-and-forget and untracked from the caller's side, so a re-assay result
-// could silently fail to persist with no signal to the user. This gives
-// re-assay a real, awaitable write it can confirm and surface errors from.
-// Does not replace the generic autosave (still fires via setAccounts as
-// before, for every other flow that depends on it) - additive, not a
-// narrowing of saveAccountsToDb's own behavior.
+// re-assay: a real, awaitable write it can confirm and surface errors from.
 export async function updateAccountRow(accountId, data) {
   invalidateAccountsCache();
   if (!isSupabaseEnabled()) return { error: null };
