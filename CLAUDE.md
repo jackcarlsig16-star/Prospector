@@ -81,7 +81,7 @@ Always set `max_tokens` explicitly on every AI call. Never omit it.
 - **Prod URL:** https://prospector-chtj.onrender.com
 - **Repo:** github.com/jackcarlsig16-star/prospector (main branch auto-deploys on Render)
 - Build command: `npm run build`
-- Pre-commit hook runs `scripts/check-size.js` — fails if any source file is over the size limit
+- Pre-commit hook runs `scripts/check-size.js` — fails if any source file is over the size limit — and `scripts/check-undef.js` — fails on undefined names in staged `.js` files (the build runs with ESLint off, so these otherwise only crash at runtime). Repo-wide: `npm run lint:undef`.
 - API routes live in `/api/` — Render treats them as serverless functions
 
 ---

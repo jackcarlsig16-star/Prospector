@@ -31,7 +31,8 @@
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "prepare": "is-ci || husky",
-    "precommit": "node scripts/check-size.js",
+    "precommit": "node scripts/check-size.js && node scripts/check-undef.js",
+    "lint:undef": "node scripts/check-undef.js --all",
     "size-report": "node scripts/check-size.js --report",
     "split-check": "node scripts/split-check.js"
   },
