@@ -62,10 +62,19 @@ function SectionNotes({ section, notes, editable, onSave, onSaved }) {
   );
 }
 
-function InfraList({ items, editable, onAdd, onUpdate, onDelete, onCarry }) {
+export function InfraList({ items, editable, onAdd, onUpdate, onDelete, onCarry }) {
   const [draft, setDraft] = useState(null);
   const [msg, setMsg] = useState('');
+  const [saving, setSaving] = useState(false);
   const run = async fn => { setMsg(''); try { return await fn(); } catch (e) { setMsg(e.message); return null; } };
+  const submit = async e => {
+    e.preventDefault();
+    if (!draft.component.trim() || saving) return;
+    setSaving(true);
+    const saved = await run(() => onAdd({ component: draft.component.trim(), status: draft.status, note: draft.note.trim() || null }));
+    setSaving(false);
+    if (saved) setDraft(null);
+  };
   return (
     <div style={{ marginTop: 14 }}>
       {!items.length && <span style={{ ...subStyle, fontSize: 13 }}>No items yet{editable ? ' — add one, or carry last week’s forward' : ''}.</span>}
@@ -84,15 +93,18 @@ function InfraList({ items, editable, onAdd, onUpdate, onDelete, onCarry }) {
         ))}
       </ul>
       {editable && (draft
-        ? <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+        // A form, so Enter in any of the three fields submits (it used to be
+        // wired to Component only, and there was no Add button).
+        ? <form className="no-print" onSubmit={submit} onKeyDown={e => { if (e.key === 'Escape') setDraft(null); }} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
             <input autoFocus placeholder="Component (Enter to save)" aria-label="Component" value={draft.component} onChange={e => setDraft(d => ({ ...d, component: e.target.value }))}
-              onKeyDown={async e => { if (e.key === 'Escape') setDraft(null); if (e.key === 'Enter' && draft.component.trim() && await run(() => onAdd({ component: draft.component.trim(), status: draft.status, note: draft.note.trim() || null }))) setDraft(null); }}
               style={{ ...inputStyle, flex: '1 1 200px' }} />
             <select aria-label="Status" value={draft.status} onChange={e => setDraft(d => ({ ...d, status: e.target.value }))} style={{ ...inputStyle, width: 140 }}>
               {Object.entries(INFRA_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
             <input placeholder="Note" aria-label="Note" value={draft.note} onChange={e => setDraft(d => ({ ...d, note: e.target.value }))} style={{ ...inputStyle, flex: '1 1 160px' }} />
-          </div>
+            <Btn primary type="submit" style={{ height: 40 }} disabled={!draft.component.trim() || saving}>{saving ? 'Adding…' : 'Add'}</Btn>
+            <Btn style={{ height: 40 }} onClick={() => setDraft(null)}>Cancel</Btn>
+          </form>
         : <div className="no-print" style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
             <Btn style={{ height: 36 }} onClick={() => setDraft({ component: '', status: 'in_progress', note: '' })}>+ Add item</Btn>
             <Btn style={{ height: 36 }} onClick={async () => { const r = await run(onCarry); if (r) setMsg(r.carried.length ? `Carried ${r.carried.length} forward` : 'Nothing to carry forward'); }}>Carry forward from last week</Btn>
