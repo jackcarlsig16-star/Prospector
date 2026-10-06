@@ -469,7 +469,7 @@ function ProjectsSection({ business, userEmail, activeUser, projects, campaigns=
   );
 }
 
-export default function BusinessDetailPage({ business: businessProp, userEmail, projects=[], campaigns=[], view='command-center', onUpdated, onProjectCreated, onProjectUpdated, onCampaignCreated, onCampaignUpdated, sharedAccounts, sharedTasks, setSharedTasks, dailyStats, activeUser, onNav, onUpdateAccount }) {
+export default function BusinessDetailPage({ business: businessProp, userEmail, fullListAccess, projects=[], campaigns=[], view='command-center', onUpdated, onProjectCreated, onProjectUpdated, onCampaignCreated, onCampaignUpdated, sharedAccounts, sharedTasks, setSharedTasks, dailyStats, activeUser, onNav, onUpdateAccount }) {
   const [business, setBusiness] = useState(businessProp);
   const compact = useMediaQuery('(max-width: 899px)');
   const [profile, setProfile] = useState(null);
@@ -783,7 +783,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
             onProfileUpdated={setProfile} onProjectUpdated={onProjectUpdated} />
           <BusinessCommandCenterTab business={business} sharedAccounts={sharedAccounts} sharedTasks={sharedTasks} setSharedTasks={setSharedTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={onNav} onUpdateAccount={onUpdateAccount} />
         </>)}
-        {view === 'accounts' && <BusinessAccountsTab business={business} userEmail={userEmail} projects={projects} campaigns={campaigns} />}
+        {view === 'accounts' && <BusinessAccountsTab business={business} userEmail={userEmail} fullListAccess={fullListAccess} projects={projects} campaigns={campaigns} />}
         {view === 'projects' && (
           <ProjectsSection business={business} userEmail={userEmail} activeUser={activeUser} projects={projects} campaigns={campaigns} outreachRules={profile?.outreach_rules} onProjectCreated={onProjectCreated} onProjectUpdated={onProjectUpdated} onCampaignCreated={onCampaignCreated} onCampaignUpdated={onCampaignUpdated} />
         )}

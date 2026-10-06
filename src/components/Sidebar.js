@@ -54,7 +54,7 @@ export default function Sidebar({ compact, page, setPage, toolsActiveTool, setTo
   const go = fn => (...args) => { fn?.(...args); setDrawerOpen(false); setUserMenuOpen(false); };
   const inWorkspace = !!activeBusiness && page === "business-detail";
   const accent = activeBusiness?.color || C.gold;
-  const workspaceNav = activeBusiness ? BUSINESS_NAV.filter(n => !n.businessIds || n.businessIds.includes(activeBusiness.id)) : [];
+  const workspaceNav = activeBusiness ? BUSINESS_NAV.filter(n => !n.feature || activeBusiness.features?.[n.feature]) : [];
   const totalDiamonds = (diamonds?.log||[]).reduce((s,e)=>s+e.amount,0);
 
   const panel = (

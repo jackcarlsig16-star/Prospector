@@ -398,6 +398,7 @@ app.put('/api/businesses/:id/assay-criteria',   esHandler('./api/businesses/assa
 app.get('/api/businesses/:id/assay-criteria',   esHandler('./api/businesses/assay-criteria-get.js'));
 app.put('/api/businesses/:id/profile-field',    esHandler('./api/businesses/profile-field-save.js'));
 app.put('/api/businesses/:id/emoji',            esHandler('./api/businesses/emoji-save.js'));
+app.put('/api/businesses/:id/features', authMw('platformOwnerOnly'), esHandler('./api/businesses/features-save.js'));
 app.post('/api/businesses/:id/profile-field/resolve-conflict', esHandler('./api/businesses/profile-field-resolve-conflict.js'));
 app.put('/api/businesses/:id/social-links',     aiLimit, esHandler('./api/businesses/social-links-save.js'));
 app.put('/api/businesses/:id/website-url',      esHandler('./api/businesses/website-url-save.js'));

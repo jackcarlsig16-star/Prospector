@@ -6,6 +6,7 @@ import { PRICING_PRODUCTS_DEFAULT } from '../constants/products';
 import { getAccountsForBusiness, getOutreachDoctrine, createOutreachDoctrineRule, updateOutreachDoctrineRule } from '../utils/db';
 import { mapSfdcStage } from '../utils/stageMap';
 import SalesforceTools from './admin/SalesforceTools';
+import WorkspaceFeatures from './admin/WorkspaceFeatures';
 import MembersAccess from './admin/MembersAccess';
 
 // Small pure helpers duplicated from App.js (defined there at module scope)
@@ -398,7 +399,7 @@ function OutreachIntelligenceTab({ currentUser }) {
 }
 
 
-function AdminPage({ isPlatformOwner=false, teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser, rolePerms={}, onSaveRolePerms, onSave, onSaveToPool, onSaveBatch, accounts=[] }) {
+function AdminPage({ isPlatformOwner=false, businesses=[], onBusinessFeaturesChanged, teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser, rolePerms={}, onSaveRolePerms, onSave, onSaveToPool, onSaveBatch, accounts=[] }) {
   const [tab, setTab] = useState("users");
   const [users, setUsers] = useState(teamUsers);
   useEffect(() => { setUsers(teamUsers); }, [teamUsers]);
@@ -917,6 +918,8 @@ function AdminPage({ isPlatformOwner=false, teamUsers=[], onSaveUsers, currentUs
         return (
           <div>
             <p style={{ ...mono, margin:"0 0 18px", fontSize:11, color:C.dim }}>Feature flags and system toggles</p>
+
+            {isPlatformOwner && <WorkspaceFeatures businesses={businesses} onFeaturesChanged={onBusinessFeaturesChanged} />}
 
             {/* Export / Import */}
             <div style={{ background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, padding:"16px 18px", marginBottom:16 }}>

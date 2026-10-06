@@ -26,7 +26,7 @@ const OUTREACH_MATRIX_ENABLED = true;
 // compliance workflow (those are Plaid-specific, out of scope until
 // generalize-legacy-functions-v1). A brand-new business starts with zero
 // accounts; nothing seeds or copies data across businesses.
-export default function BusinessAccountsTab({ business, userEmail, projects=[], campaigns=[] }) {
+export default function BusinessAccountsTab({ business, userEmail, fullListAccess, projects=[], campaigns=[] }) {
   const [accounts, setAccounts] = useState([]);
   const [lists, setLists] = useState([]);
   const [accountListMap, setAccountListMap] = useState({}); // accountId -> [listId, ...]
@@ -44,7 +44,9 @@ export default function BusinessAccountsTab({ business, userEmail, projects=[], 
   const [accessibleListIds, setAccessibleListIds] = useState(null); // null = owner, no restriction
   const [editableListIds, setEditableListIds] = useState(null);
 
-  const isOwner = (business.owner_email || '').toLowerCase() === (userEmail || '').toLowerCase();
+  // Platform owner and workspace Owner/Admin see every list; everyone else gets
+  // the lists their member_list_permissions rows grant.
+  const isOwner = !!fullListAccess;
 
   // silent=true skips the loading flag - used when refreshing in the
   // background (e.g. after CSV import or influencer add) while a success
