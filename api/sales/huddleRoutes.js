@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { stageIndex, ORG_TYPE_ENUM } from './pipelineStages.js';
 import { laDateString } from './laDate.js';
-import { scoreProspect, huddleSignals, HEAT_BANDS } from './heatScore.js';
+import { scoreProspect, huddleSignals, isAutomated, HEAT_BANDS } from './heatScore.js';
 import { nextBestAction, SCANNER_CLICK_WITHIN_SECONDS } from './nextBestAction.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 
@@ -108,10 +108,28 @@ export async function huddleRoute(req, res) {
   const yesterday = laDateString(new Date(Date.now() - 864e5));
   const done = (statusEvents.data || []).filter(e => [today, yesterday].includes(laDateString(new Date(e.changed_at))));
 
+  // "Since last huddle" strip (sales-huddle-v2). Without a huddle yet: last 24h.
+  const lastHuddle = (huddles.data || [])[0] || null;
+  const sinceIso = lastHuddle?.huddle_at || new Date(now - 864e5).toISOString();
+  const deliveredById = new Map((messages.data || []).map(m => [m.apollo_message_id, m.delivered_at]));
+  const recentEvents = (events.data || []).filter(e => e.occurred_at > sinceIso);
+  const since = { since: sinceIso, replies: 0, real_clicks: 0, real_opens: 0, bot_hidden: 0, done: 0 };
+  for (const e of recentEvents) {
+    if (isAutomated(e, deliveredById.get(e.apollo_message_id), SCANNER_CLICK_WITHIN_SECONDS)) since.bot_hidden++;
+    else if (e.event === 'click') since.real_clicks++;
+    else if (e.event === 'open') since.real_opens++;
+  }
+  since.replies = (messages.data || []).filter(m => m.replied && m.replied_seen_at && m.replied_seen_at > sinceIso).length;
+  const { count: doneSince, error: doneErr } = await supabase.from('sales_prospect_events').select('id', { count: 'exact', head: true })
+    .eq('business_id', businessId).eq('field', 'status').in('to_value', ['contacted', 'booked']).gt('changed_at', sinceIso);
+  if (doneErr) return res.status(500).json({ error: doneErr.message });
+  since.done = doneSince;
+
   res.status(200).json({
     prospects: out,
     excluded,
-    last_huddle: (huddles.data || [])[0] || null,
+    last_huddle: lastHuddle,
+    since_last_huddle: since,
     done_recent: done,
     today,
   });
@@ -260,4 +278,52 @@ export async function deleteCollateralRoute(req, res) {
   if (error) return res.status(500).json({ error: error.message });
   if (!data.length) return res.status(404).json({ error: 'collateral not found' });
   res.status(200).json({ deleted: data[0].id });
+}
+
+// GET /huddle/feed?days=7&before=<iso>&limit=100 - newest-first opens,
+// clicks and replies (sales-huddle-v2 Stage 2). Replies carry the time the
+// sync first saw them (replied_seen_at), labelled as such - Apollo has no
+// reply time. automated = likely bot open / link scanner (hidden by default
+// in the UI). Opens carry nth: which open of that email this was.
+export async function huddleFeedRoute(req, res) {
+  const businessId = req.params.businessId;
+  const days = Math.min(Math.max(Number(req.query.days) || 7, 1), 31);
+  const limit = Math.min(Math.max(Number(req.query.limit) || 100, 1), 500);
+  const before = req.query.before;
+  if (before && Number.isNaN(Date.parse(before))) return res.status(400).json({ error: 'before must be an ISO timestamp' });
+  const fromIso = new Date(Date.now() - days * 864e5).toISOString();
+  const supabase = getSupabase();
+  try {
+    const [events, replies] = await Promise.all([
+      selectAllPages(() => supabase.from('sales_email_activity').select('id,apollo_message_id,contact_id,event,step,occurred_at,user_agent,tracking_service')
+        .eq('business_id', businessId).gte('occurred_at', fromIso).order('occurred_at', { ascending: false }).order('id')),
+      selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,contact_id,step,reply_class,replied_seen_at')
+        .eq('business_id', businessId).eq('replied', true).gte('replied_seen_at', fromIso).order('replied_seen_at', { ascending: false }).order('apollo_message_id')),
+    ]);
+    const msgIds = [...new Set(events.map(e => e.apollo_message_id))];
+    const contactIds = [...new Set([...events, ...replies].map(x => x.contact_id))];
+    const [msgs, priorOpens, people] = await Promise.all([
+      msgIds.length ? selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,delivered_at').eq('business_id', businessId).in('apollo_message_id', msgIds).order('apollo_message_id')) : [],
+      msgIds.length ? selectAllPages(() => supabase.from('sales_email_activity').select('id,apollo_message_id,occurred_at').eq('business_id', businessId).eq('event', 'open').in('apollo_message_id', msgIds).order('id')) : [],
+      contactIds.length ? selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id,name,company,owner').eq('business_id', businessId).in('contact_id', contactIds).order('contact_id')) : [],
+    ]);
+    const deliveredById = new Map(msgs.map(m => [m.apollo_message_id, m.delivered_at]));
+    const opensByMsg = groupBy(priorOpens, 'apollo_message_id');
+    const personById = new Map(people.map(p => [p.contact_id, p]));
+    const item = (x, extra) => {
+      const p = personById.get(x.contact_id) || {};
+      return { contact_id: x.contact_id, name: p.name || null, company: p.company || null, owner: p.owner || 'unassigned', step: x.step ?? null, ...extra };
+    };
+    let items = [
+      ...events.map(e => item(e, {
+        key: `a:${e.id}`, kind: e.event, at: e.occurred_at,
+        automated: isAutomated(e, deliveredById.get(e.apollo_message_id), SCANNER_CLICK_WITHIN_SECONDS),
+        nth: e.event === 'open' ? (opensByMsg.get(e.apollo_message_id) || []).filter(o => o.occurred_at <= e.occurred_at).length : null,
+      })),
+      ...replies.map(m => item(m, { key: `r:${m.apollo_message_id}`, kind: 'reply', at: m.replied_seen_at, seen_at_sync: true, reply_class: m.reply_class || null, automated: false })),
+    ].sort((a, b) => b.at.localeCompare(a.at) || a.key.localeCompare(b.key));
+    if (before) items = items.filter(i => i.at < before);
+    const page = items.slice(0, limit);
+    res.status(200).json({ items: page, next_before: items.length > limit ? page[page.length - 1].at : null, days });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 }

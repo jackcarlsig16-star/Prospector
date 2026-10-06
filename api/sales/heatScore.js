@@ -87,8 +87,11 @@ export function scoreProspect(messages, events) {
 
 // sales-huddle-v2 REV1 - Hot / Warm / Cold bands and the row's one-line
 // "last signal" context. PROPOSED / REVISABLE (spec): Hot = score >= 40 or a
-// reply or a human click in 7 days; Warm = score >= 10 or a real open in 7
-// days; else Cold. Replies have no timestamp (Apollo), so any reply counts.
+// human click in 7 days; Warm = score >= 10 or a real open in 7 days; else
+// Cold. Replies (Jack, Stage 2): Hot for 7 days from replied_seen_at (when
+// the sync first saw the reply - Apollo gives no reply time), then Warm
+// unless a recent human click keeps them Hot. A reply with no seen time
+// (rows from before that column existed) stays Hot.
 // A click is human when it lands more than scannerSeconds after delivery
 // (same rule as nextBestAction.js).
 export const HEAT_BANDS = { hotScore: 40, warmScore: 10, recentDays: 7 };
@@ -104,13 +107,18 @@ export function huddleSignals(messages, events, scored, now = Date.now(), scanne
   const realOpens = events.filter(e => e.event === 'open' && !isBotOpen(e, deliveredById.get(e.apollo_message_id)));
   const replied = messages.filter(m => m.replied);
 
-  const band = scored.score >= HEAT_BANDS.hotScore || replied.length || humanClicks.some(recent) ? 'hot'
+  const seenTimes = replied.map(m => m.replied_seen_at).filter(Boolean);
+  const replySeenAt = seenTimes.length ? seenTimes.sort().pop() : null;
+  const replyHot = replied.length > 0 && (!replySeenAt || now - Date.parse(replySeenAt) <= HEAT_BANDS.recentDays * 864e5);
+  const band = replied.length
+    ? (replyHot || humanClicks.some(recent) ? 'hot' : 'warm')
+    : scored.score >= HEAT_BANDS.hotScore || humanClicks.some(recent) ? 'hot'
     : scored.score >= HEAT_BANDS.warmScore || realOpens.some(recent) ? 'warm' : 'cold';
 
   let last = null;
   if (replied.length) {
     const m = [...replied].sort((a, b) => (b.step || 0) - (a.step || 0))[0];
-    last = { kind: 'reply', step: m.step ?? null, reply_class: m.reply_class || null, at: null };
+    last = { kind: 'reply', step: m.step ?? null, reply_class: m.reply_class || null, at: replySeenAt };
   } else {
     const latest = [...humanClicks, ...realOpens].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))[0];
     if (latest) {
@@ -120,4 +128,13 @@ export function huddleSignals(messages, events, scored, now = Date.now(), scanne
     }
   }
   return { heat_band: band, last_human_signal: last, bot_opens: events.filter(e => e.event === 'open').length - realOpens.length };
+}
+
+// One open/click: did a person do it? Opens use isBotOpen; a click is a
+// link scanner when it lands within scannerSeconds of delivery, or when the
+// delivery time is unknown (it can't be cleared - same as nextBestAction.js).
+export function isAutomated(ev, deliveredAt, scannerSeconds = 120) {
+  if (ev.event === 'open') return isBotOpen(ev, deliveredAt);
+  if (ev.event === 'click') return !deliveredAt || (Date.parse(ev.occurred_at) - Date.parse(deliveredAt)) / 1000 <= scannerSeconds;
+  return false;
 }

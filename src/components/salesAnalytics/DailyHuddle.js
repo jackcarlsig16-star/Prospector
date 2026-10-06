@@ -3,6 +3,7 @@ import { SA, SA_TYPE, SA_SHAPE, SA_BAD_BG, SA_BAD_BORDER, saSans } from './theme
 import { fetchRuns, triggerSync, fetchInsights } from './salesApi';
 import { fetchHuddle, startHuddle, fetchCollateral, updateProspect } from './huddleApi';
 import HuddleRow from './HuddleRow';
+import HuddleFeed from './HuddleFeed';
 import CollateralLibrary from './CollateralLibrary';
 import HuddlePrintSheet from './HuddlePrintSheet';
 import HuddlePartners from './HuddlePartners';
@@ -94,12 +95,14 @@ export default function DailyHuddle({ businessId }) {
   const [members, setMembers] = useState([]);
   const [me, setMe] = useState(null);
   const [owner, setOwner] = useState(readOwner);
-  const [filters, setFilters] = useState({ heat: 'all', due: 'all', stale: false, sort: 'signal' });
+  const [filters, setFilters] = useState({ heat: 'all', due: 'all', stale: false, sort: 'signal', hideBots: true });
+  const [feedKey, setFeedKey] = useState(0);
   const [openCompanies, setOpenCompanies] = useState(() => new Set());
   const [showAutopilot, setShowAutopilot] = useState(false);
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
   const compact = useMediaQuery('(max-width: 1099px)');
+  const phone = useMediaQuery('(max-width: 899px)');
 
   const load = useCallback(async () => {
     setError('');
@@ -145,6 +148,7 @@ export default function DailyHuddle({ businessId }) {
       const run = await triggerSync(businessId);
       setMessage(run.status === 'success' ? 'Sync complete.' : `Sync finished: ${run.status}`);
       await load();
+      setFeedKey(k => k + 1);
     } catch (e) {
       setMessage(e.message);
     } finally {
@@ -216,8 +220,28 @@ export default function DailyHuddle({ businessId }) {
   const people = [{ id: 'team', name: 'Team', color: SA.accent }, { id: 'jack', name: 'Jack', color: ownerColor('jack') }, { id: 'cyrus', name: 'Cyrus', color: ownerColor('cyrus') }];
   const ownerParts = ['jack', 'cyrus', 'unassigned'].map(o => ({ label: OWNER_LABELS[o], count: teamNeeds.filter(p => p.owner === o).length, color: ownerColor(o) })).filter(x => x.count);
 
+  const bandById = new Map((data?.prospects || []).map(p => [p.contact_id, p.heat_band]));
+  const staleById = new Map((data?.prospects || []).map(p => [p.contact_id, p.stale]));
+  // Feed "Open": jump to the prospect's row, opening its company group if
+  // that's the only place it's listed.
+  const openProspect = contactId => {
+    const jump = () => {
+      const el = document.getElementById(`huddle-card-${contactId}`);
+      if (!el) return false;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.animate([{ boxShadow: `0 0 0 2px ${SA.accent}` }, { boxShadow: '0 0 0 0 transparent' }], { duration: 1600 });
+      return true;
+    };
+    if (jump()) return;
+    const p = shown.find(x => x.contact_id === contactId);
+    if (!p) { setMessage('That prospect isn\'t in the list right now (snoozed, excluded, or filtered out).'); return; }
+    setOpenCompanies(set => new Set(set).add((p.company || 'No company').trim()));
+    setTimeout(jump, 60);
+  };
+  const since = data?.since_last_huddle;
+
   const row = p => (
-    <HuddleRow key={p.contact_id} businessId={businessId} p={p} today={today} canEdit={canEdit} ownerColor={ownerColor} onAct={act}
+    <HuddleRow key={p.contact_id} businessId={businessId} p={p} today={today} canEdit={canEdit} ownerColor={ownerColor} onAct={act} stacked={phone}
       collateral={collateral} isNewSinceHuddle={!!lastHuddleAt && p.created_at > lastHuddleAt} onUpdated={handleUpdated} />
   );
   const printNeeds = needs.map(p => ({ prospect: p, overdue: dueBucket(p, today) === 'overdue', action: actionText(p, today) }));
@@ -235,6 +259,9 @@ export default function DailyHuddle({ businessId }) {
           style={{ ...saSans, height: 36, borderRadius: 10, background: SA.inset, border: `1px solid ${SA.border}`, color: SA.text, padding: '0 10px', fontSize: 14 }}>
           {Object.entries(SORTS).map(([id, s]) => <option key={id} value={id}>{s.label}</option>)}
         </select>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: SA.soft, cursor: 'pointer', minHeight: 32 }}>
+          <input type="checkbox" checked={filters.hideBots} onChange={e => setFilters(x => ({ ...x, hideBots: e.target.checked }))} /> Hide bot opens
+        </label>
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: SA.soft, cursor: 'pointer', minHeight: 32 }}>
           <input type="checkbox" checked={filters.stale} onChange={e => setFilters(x => ({ ...x, stale: e.target.checked }))} /> Stale only (7+ days)
         </label>
@@ -296,11 +323,23 @@ export default function DailyHuddle({ businessId }) {
         <div style={{ display: 'flex', flexDirection: compact ? 'column' : 'row', gap: 24, alignItems: 'flex-start' }}>
           {compact && <div style={{ width: '100%' }}>{rail}</div>}
           <main style={{ flex: '1 1 0', minWidth: 0, width: '100%' }}>
+            {since && (
+              <div aria-label="Since last huddle" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '6px 16px', padding: '10px 14px', marginBottom: 20, borderRadius: SA_SHAPE.radiusInner, background: SA.inset, border: `1px solid ${SA.border}`, fontSize: 13, color: SA.soft }}>
+                <span style={{ ...SA_TYPE.label, color: SA.muted }}>{lastHuddleAt ? `Since last huddle · ${fmtTime(lastHuddleAt)}` : 'Last 24 hours'}</span>
+                {[[since.replies, 'replies'], [since.real_clicks, 'real clicks'], [since.real_opens, 'real opens'], [since.bot_hidden, 'bot opens hidden'], [since.done, 'done']].map(([n, lb]) => (
+                  <span key={lb}><b style={{ color: SA.text, fontVariantNumeric: 'tabular-nums' }}>{n}</b> {lb}</span>
+                ))}
+              </div>
+            )}
             <HuddlePartners businessId={businessId} />
 
-            <Section title="Needs action today" count={needs.length} sub="sorted by signal" empty="Nothing urgent for these filters — sequences are running.">
-              <div className="sa-scroll" style={scrollList}>{needs.map(row)}</div>
-            </Section>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 460px), 1fr))', gap: '0 24px', alignItems: 'start' }}>
+              <Section title="Needs action today" count={needs.length} sub="sorted by signal" empty="Nothing urgent for these filters — sequences are running.">
+                <div className="sa-scroll" style={scrollList}>{needs.map(row)}</div>
+              </Section>
+              <HuddleFeed businessId={businessId} reloadKey={feedKey} today={today} lastHuddleAt={lastHuddleAt} filters={{ owner, heat: filters.heat, stale: filters.stale, hideBots: filters.hideBots }}
+                bandById={bandById} staleById={staleById} ownerColor={ownerColor} onOpen={openProspect} />
+            </div>
 
             <Section title="By company" count={companies.length} empty="No companies for these filters.">
               <div className="sa-scroll" style={{ ...scrollList, gap: 6 }}>

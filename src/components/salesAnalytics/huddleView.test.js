@@ -67,3 +67,15 @@ test('row chip, context and action text', () => {
   expect(actionText(overdue, T)).toBe('Email · overdue');
   expect(actionText(clicker, T)).toBe('follow_up_clicked');
 });
+
+test('Done (contacted) leaves Needs action unless a due date someone set is due', () => {
+  const doneReply = { ...reply, status: 'contacted' };
+  expect(needsAction(doneReply, T)).toBe(false);
+  expect(needsAction({ ...doneReply, next_action: 'email', next_action_due: T }, T)).toBe(true);
+  expect(needsAction({ ...doneReply, next_action: 'email', next_action_due: '2026-10-01' }, T)).toBe(true);
+});
+
+test('reply context shows when the sync first saw it', () => {
+  const seen = { ...reply, last_human_signal: { ...reply.last_human_signal, at: '2026-10-05T21:10:00Z' } };
+  expect(signalOf(seen, T).context).toBe('Replied to step 2 · follow up question · seen Oct 5');
+});

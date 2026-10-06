@@ -16,7 +16,9 @@ const iconBtn = on => ({ ...saSans, minWidth: 34, height: 32, padding: '0 8px', 
 const smallBtn = { ...saSans, height: 32, padding: '0 10px', borderRadius: 8, fontSize: 13, cursor: 'pointer', color: SA.text, border: `1px solid ${SA.border}`, background: SA.surface2 };
 const link = { fontSize: 12, color: SA.link, textDecoration: 'none' };
 
-export default function HuddleRow({ businessId, p, today, canEdit, ownerColor, onAct, collateral, isNewSinceHuddle, onUpdated }) {
+// stacked (phones): the action buttons get their own line; otherwise they sit
+// at the end of the first line, as in the mockup.
+export default function HuddleRow({ businessId, p, today, canEdit, ownerColor, onAct, collateral, isNewSinceHuddle, onUpdated, stacked }) {
   const [panel, setPanel] = useState(null); // snooze | due | owner | note | card
   const [note, setNote] = useState('');
   const [due, setDue] = useState(p.next_action_due || plusDays(today, 1));
@@ -25,6 +27,16 @@ export default function HuddleRow({ businessId, p, today, canEdit, ownerColor, o
   const overdue = dueBucket(p, today) === 'overdue';
   const act = async (patch, label) => { setError(''); try { await onAct(p, patch, label); setPanel(null); return true; } catch (e) { setError(e.message); return false; } };
   const toggle = id => setPanel(panel === id ? null : id);
+  const actions = canEdit && (
+    <div role="group" aria-label={`Actions for ${p.name}`} style={{ display: 'flex', flexWrap: stacked ? 'wrap' : 'nowrap', gap: 6 }}>
+      <button type="button" title="Done (contacted)" aria-label="Done" disabled={p.status === 'contacted'} onClick={() => act({ status: 'contacted' }, 'marked contacted')} style={iconBtn(p.status === 'contacted')}>✓</button>
+      <button type="button" title="Snooze" aria-label="Snooze" aria-expanded={panel === 'snooze'} onClick={() => toggle('snooze')} style={iconBtn(panel === 'snooze')}>⏰</button>
+      <button type="button" title="Set due date" aria-label="Set due date" aria-expanded={panel === 'due'} onClick={() => toggle('due')} style={iconBtn(panel === 'due')}>📅</button>
+      <button type="button" title="Owner" aria-label="Change owner" aria-expanded={panel === 'owner'} onClick={() => toggle('owner')} style={iconBtn(panel === 'owner')}>👤</button>
+      <button type="button" title="Note" aria-label="Add note" aria-expanded={panel === 'note'} onClick={() => toggle('note')} style={iconBtn(panel === 'note')}>📝</button>
+      <button type="button" title="More: status, next action, collateral, pipeline" aria-label="More" aria-expanded={panel === 'card'} onClick={() => toggle('card')} style={iconBtn(panel === 'card')}>⋯</button>
+    </div>
+  );
   const appendNote = text => {
     const stamp = new Date(`${today}T12:00:00Z`).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', timeZone: 'UTC' });
     return [p.notes, `${stamp}: ${text.trim()}`].filter(Boolean).join('\n');
@@ -32,13 +44,19 @@ export default function HuddleRow({ businessId, p, today, canEdit, ownerColor, o
 
   return (
     <div id={`huddle-card-${p.contact_id}`} style={{ padding: '10px 12px', borderRadius: SA_SHAPE.radiusInner, background: SA.surface, border: `1px solid ${panel === 'card' ? SA.borderStrong : SA.border}`, display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, minWidth: 0 }}>
-        {sig && <span style={chip(TONE[sig.tone])}>{sig.label}</span>}
-        <span style={chip(HEAT_COLOR[p.heat_band])} title={`Heat ${p.score}\n${(p.why || []).join('\n')}`}>{HEAT_LABELS[p.heat_band]}</span>
-        <span style={{ fontSize: 14, fontWeight: 600, color: SA.text, minWidth: 0 }}>{p.name || 'Unknown contact'}</span>
-        <span style={{ fontSize: 13, color: SA.muted, minWidth: 0, flex: '1 1 180px' }}>{[p.title, p.company].filter(Boolean).join(' · ')}</span>
-        {isNewSinceHuddle && <span style={chip(SA.accent)}>new</span>}
-        <span style={{ ...chip(SA.soft), borderColor: SA.border, background: 'transparent' }}><span style={{ width: 7, height: 7, borderRadius: 999, background: ownerColor(p.owner) }} />{OWNER_LABELS[p.owner]}</span>
+      <div style={{ display: 'flex', flexWrap: stacked ? 'wrap' : 'nowrap', alignItems: 'center', gap: 8, minWidth: 0 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, flex: '1 1 auto', minWidth: 0 }}>
+          {sig && <span style={chip(TONE[sig.tone])}>{sig.label}</span>}
+          <span style={chip(HEAT_COLOR[p.heat_band])} title={`Heat ${p.score}\n${(p.why || []).join('\n')}`}>{HEAT_LABELS[p.heat_band]}</span>
+          <span style={{ fontSize: 14, fontWeight: 600, color: SA.text, minWidth: 0 }}>{p.name || 'Unknown contact'}</span>
+          <span style={{ fontSize: 13, color: SA.muted, minWidth: 0, flex: '1 1 160px' }}>{[p.title, p.company].filter(Boolean).join(' · ')}</span>
+          {isNewSinceHuddle && <span style={chip(SA.accent)}>new</span>}
+        </div>
+        {/* Owner + actions never wrap away from the name on desktop. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 'none' }}>
+          <span style={{ ...chip(SA.soft), borderColor: SA.border, background: 'transparent' }}><span style={{ width: 7, height: 7, borderRadius: 999, background: ownerColor(p.owner) }} />{OWNER_LABELS[p.owner]}</span>
+          {!stacked && actions}
+        </div>
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, fontSize: 12 }}>
         <span style={{ fontWeight: 600, color: overdue ? SA.bad : SA.accent }}>→ {actionText(p, today)}</span>
@@ -47,16 +65,7 @@ export default function HuddleRow({ businessId, p, today, canEdit, ownerColor, o
         {p.linkedin_url && <a href={p.linkedin_url} target="_blank" rel="noreferrer" style={link}>LinkedIn ↗</a>}
         <a href={p.apollo_url} target="_blank" rel="noreferrer" style={link}>Apollo ↗</a>
       </div>
-      {canEdit && (
-        <div role="group" aria-label={`Actions for ${p.name}`} style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          <button type="button" title="Done (contacted)" aria-label="Done" disabled={p.status === 'contacted'} onClick={() => act({ status: 'contacted' }, 'marked contacted')} style={iconBtn(p.status === 'contacted')}>✓</button>
-          <button type="button" title="Snooze" aria-label="Snooze" aria-expanded={panel === 'snooze'} onClick={() => toggle('snooze')} style={iconBtn(panel === 'snooze')}>⏰</button>
-          <button type="button" title="Set due date" aria-label="Set due date" aria-expanded={panel === 'due'} onClick={() => toggle('due')} style={iconBtn(panel === 'due')}>📅</button>
-          <button type="button" title="Owner" aria-label="Change owner" aria-expanded={panel === 'owner'} onClick={() => toggle('owner')} style={iconBtn(panel === 'owner')}>👤</button>
-          <button type="button" title="Note" aria-label="Add note" aria-expanded={panel === 'note'} onClick={() => toggle('note')} style={iconBtn(panel === 'note')}>📝</button>
-          <button type="button" title="More: status, next action, collateral, pipeline" aria-label="More" aria-expanded={panel === 'card'} onClick={() => toggle('card')} style={iconBtn(panel === 'card')}>⋯</button>
-        </div>
-      )}
+      {stacked && actions}
       {panel === 'snooze' && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {[[1, '1 day'], [3, '3 days'], [7, '1 week']].map(([n, lb]) => (

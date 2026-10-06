@@ -48,3 +48,9 @@ export async function addProspectToPipeline(businessId, contactId, payload) {
   return call(`/api/sales/${businessId}/prospects/${contactId}/pipeline`,
     json('POST', payload), 'Failed to add to pipeline');
 }
+
+// sales-huddle-v2 Stage 2 - newest-first opens / clicks / replies.
+export async function fetchHuddleFeed(businessId, { days = 7, before } = {}) {
+  const q = new URLSearchParams({ days: String(days), ...(before ? { before } : {}) });
+  return call(`/api/sales/${businessId}/huddle/feed?${q}`, undefined, 'Failed to load activity');
+}

@@ -50,10 +50,13 @@ export const SORTS = {
 
 // "Needs action today": a human-set next action that's due/overdue, or no
 // next action set and Next Best Action says something other than "let it run".
+// Once Done (contacted) - or booked - the suggestion is handled and the row
+// leaves (Jack, Stage 2); a due date someone set explicitly still brings it back.
 export function needsAction(p, today) {
   if (!ACTIVE_STATUSES.includes(p.status)) return false;
   const due = dueBucket(p, today);
   if (due === 'overdue' || due === 'today') return true;
+  if (p.status === 'contacted') return false;
   return !p.next_action && p.next_best_action.id !== 'let_run';
 }
 // Autopilot = nothing to do: the sequence runs and nobody has set a next action.
@@ -104,8 +107,52 @@ export function signalOf(p, today) {
     : due === 'today' ? { label: 'Due', tone: 'due' } : null;
   const step = s?.step ? ` step ${s.step}` : '';
   const context = !s ? null
-    : s.kind === 'reply' ? `Replied to${step || ' an email'}${s.reply_class && s.reply_class !== 'none_of_the_above' ? ` · ${s.reply_class.replace(/_/g, ' ')}` : ''}`
+    : s.kind === 'reply' ? `Replied to${step || ' an email'}${s.reply_class && s.reply_class !== 'none_of_the_above' ? ` · ${s.reply_class.replace(/_/g, ' ')}` : ''}${s.at ? ` · seen ${md(s.at)}` : ''}`
     : s.kind === 'click' ? `Clicked${step} · ${md(s.at)}`
     : `Opened${step}${s.count > 1 ? ` ×${s.count}` : ''} · ${md(s.at)}`;
   return { chip, context };
+}
+
+// ── Recent activity feed (Stage 2) ──────────────────────────────────────────
+const ORD = n => `${n}${['th', 'st', 'nd', 'rd'][(n % 100 > 10 && n % 100 < 14) || n % 10 > 3 ? 0 : n % 10]}`;
+const TIME = iso => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' });
+export const laDay = iso => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+
+export function feedText(i) {
+  const step = i.step ? ` step ${i.step}` : '';
+  if (i.kind === 'reply') return `replied${step ? ` to${step}` : ''}${i.reply_class && i.reply_class !== 'none_of_the_above' ? `: ${i.reply_class.replace(/_/g, ' ')}` : ''} · seen at ${TIME(i.at)}`;
+  if (i.kind === 'click') return `clicked${step}`;
+  return `opened${step}${i.nth > 1 ? ` (${ORD(i.nth)} time)` : ''}`;
+}
+
+export function timeAgo(iso, now = Date.now()) {
+  const min = Math.round((now - Date.parse(iso)) / 60000);
+  if (min < 60) return `${Math.max(min, 1)}m ago`;
+  if (min < 24 * 60) return `${Math.round(min / 60)}h ago`;
+  return new Date(iso).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' });
+}
+
+// Today / Yesterday / Earlier, newest first, with the "new since last huddle"
+// divider placed before the first item at or before the huddle.
+export function groupFeed(items, today, lastHuddleAt) {
+  const yesterday = plusDays(today, -1);
+  const order = ['Today', 'Yesterday', 'Earlier'];
+  const groups = new Map(order.map(d => [d, []]));
+  let dividerAt = null;
+  for (const i of items) {
+    if (lastHuddleAt && !dividerAt && i.at <= lastHuddleAt && items[0].at > lastHuddleAt) dividerAt = i.key;
+    const d = laDay(i.at);
+    groups.get(d === today ? 'Today' : d === yesterday ? 'Yesterday' : 'Earlier').push(i);
+  }
+  return { days: order.map(day => ({ day, items: groups.get(day) })).filter(g => g.items.length), dividerAt };
+}
+
+// Feed rows follow the rail: person, heat (via the prospect's band), stale, and
+// the bot toggle. Prospects the Huddle doesn't list (bounced, unsubscribed...)
+// only show for "All" heat.
+export function filterFeed(items, { owner, heat, stale, hideBots }, bandById, staleById) {
+  return items.filter(i => (!hideBots || !i.automated)
+    && (owner === 'team' || i.owner === owner)
+    && (heat === 'all' || bandById.get(i.contact_id) === heat)
+    && (!stale || staleById.get(i.contact_id)));
 }
