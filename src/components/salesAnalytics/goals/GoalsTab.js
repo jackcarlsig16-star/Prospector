@@ -10,14 +10,16 @@ import ScorecardTable from './ScorecardTable';
 import TodoList, { todoStatus } from './TodoList';
 import PartnersView from './PartnersView';
 import CompaniesView from './CompaniesView';
+import ReportView from './ReportView';
+import { exportWidgetCsv } from '../exportCsv';
 import {
   cardStyle, labelStyle, h2Style, subStyle, numStyle, Chip, Btn, NeedsMigration, ErrorNote,
   addDays, monthOf, monthName, weekLabel, memberLookup, ownedBy, progressColor, pct, short,
 } from './goalsUi';
 
-// sales-goals-v1 REVISION 4 Stage 5 - Goals & Weekly Plan shell: week
-// picker, right rail (views + person filter + summaries), This week,
-// Partners, Companies. The Weekly report view is Stage 6.
+// sales-goals-v1 REVISION 4 - Goals & Weekly Plan: week picker, right rail
+// (views + person filter + summaries), Weekly report (Stage 6, default),
+// This week, Partners, Companies; Export = report PDF + 4 CSVs.
 // localStorage keys (per viewer conveniences, never shared state):
 //   prospector_goals_view  - last view
 //   prospector_goals_owner - last person filter, as a first-name slug
@@ -41,12 +43,12 @@ function useCompact() {
   return compact;
 }
 
-export default function GoalsTab({ businessId }) {
+export default function GoalsTab({ businessId, onOpenOverview }) {
   const compact = useCompact();
   const [weekStart, setWeekStart] = useState(() => laWeekStart());
   const [view, setView] = useState(() => {
     const v = new URLSearchParams(window.location.search).get('gview') || readStored(VIEW_KEY);
-    return VIEWS.includes(v) ? v : 'week';
+    return VIEWS.includes(v) ? v : 'report';
   });
   const [ownerSlug, setOwnerSlug] = useState(() => new URLSearchParams(window.location.search).get('owner') || readStored(OWNER_KEY) || 'team');
   const [members, setMembers] = useState([]);
@@ -56,6 +58,11 @@ export default function GoalsTab({ businessId }) {
   const [companies, setCompanies] = useState([]);
   const [cadences, setCadences] = useState([]);
   const [scorecard, setScorecard] = useState(null);
+  const [commitments, setCommitments] = useState([]);
+  const [lastWeekTodos, setLastWeekTodos] = useState([]);
+  const [reportData, setReportData] = useState(null);
+  const [kpiRows, setKpiRows] = useState(null);
+  const [exportOpen, setExportOpen] = useState(false);
   const [errors, setErrors] = useState({});
   const setError = useCallback((key, e) => setErrors(prev => ({ ...prev, [key]: e })), []);
 
@@ -80,7 +87,20 @@ export default function GoalsTab({ businessId }) {
   const loadCompanies = useCallback(() => goalsApi.companies(businessId, weekStart, weekStart)
     .then(d => { setCompanies(d.companies); setError('companies', null); }).catch(e => setError('companies', e)), [businessId, weekStart, setError]);
 
+  const loadCommitments = useCallback(() => goalsApi.weekGoals(businessId, weekStart, weekStart, 'commitment')
+    .then(g => { setCommitments(g); setError('commitments', null); }).catch(e => setError('commitments', e)), [businessId, weekStart, setError]);
+  const loadReport = useCallback(() => goalsApi.report(businessId, weekStart)
+    .then(d => { setReportData(d); setError('report', null); }).catch(e => { setReportData(null); setError('report', e); }), [businessId, weekStart, setError]);
+  const loadKpi = useCallback(() => goalsApi.kpi(businessId, weekStart)
+    .then(r => { setKpiRows(r); setError('kpi', null); }).catch(e => { setKpiRows(null); setError('kpi', e); }), [businessId, weekStart, setError]);
+
   useEffect(() => { loadTodos(); }, [loadTodos]);
+  useEffect(() => { loadCommitments(); }, [loadCommitments]);
+  useEffect(() => { loadReport(); }, [loadReport]);
+  useEffect(() => { loadKpi(); }, [loadKpi]);
+  useEffect(() => {
+    goalsApi.weekGoals(businessId, addDays(weekStart, -7), addDays(weekStart, -7), 'todo').then(setLastWeekTodos).catch(() => setLastWeekTodos([]));
+  }, [businessId, weekStart]);
   useEffect(() => { loadScorecard(); }, [loadScorecard]);
   useEffect(() => { loadCompanies(); }, [loadCompanies]);
   useEffect(() => {
@@ -107,11 +127,12 @@ export default function GoalsTab({ businessId }) {
   const myPartners = partners.filter(p => ownedBy(owner, p.owner_user_id));
   const myCompanies = companies.filter(c => ownedBy(owner, c.sequenced_by));
   const myCadences = cadences.filter(c => ownedBy(owner, c.owner_user_id));
+  const myCommitments = commitments.filter(c => ownedBy(owner, c.owner_user_id));
   const todoDone = myTodos.filter(t => todoStatus(t) === 'done').length;
   const todoLive = myTodos.filter(t => todoStatus(t) !== 'dropped').length;
 
   const views = [
-    { id: 'report', name: 'Weekly report', meta: 'Stage 6' },
+    { id: 'report', name: 'Weekly report', meta: reportData?.report?.status === 'final' ? 'final' : `${myCommitments.length} commitments` },
     { id: 'week', name: 'This week', meta: `${todoDone}/${todoLive} to-dos` },
     { id: 'partners', name: 'Partners', meta: `${myPartners.filter(p => p.priority === 1).length} P1` },
     { id: 'companies', name: 'Companies', meta: `${myCompanies.length} sequenced` },
@@ -161,6 +182,53 @@ export default function GoalsTab({ businessId }) {
     </div>
   );
 
+  // Weekly report: live progress comes from the report endpoint (or the
+  // frozen snapshot once final), merged onto the commitment rows.
+  const final = reportData?.report?.status === 'final';
+  const progressById = new Map(((final ? reportData.report.snapshot?.commitments : reportData?.commitments) || []).map(c => [c.id, c.progress]));
+  const reportCommitments = myCommitments.map(c => ({ ...c, target_value: c.target_value == null ? null : Number(c.target_value), progress: progressById.get(c.id) ?? null }));
+  const kpi = Object.fromEntries((kpiRows || []).map(r => [r.key, r]));
+  const lastDone = lastWeekTodos.filter(t => todoStatus(t) === 'done').length;
+  const chip = (k, v, src) => (v == null ? null : { k, v: typeof v === 'number' ? v.toLocaleString('en-US') : v, src });
+  const autoChips = {
+    s1: [chip('to-dos done last week', `${lastDone} of ${lastWeekTodos.filter(t => todoStatus(t) !== 'dropped').length}`, 'App'), chip('companies sequenced', companies.length, 'Apollo'), chip('positive replies', kpi.positive_responses?.this_week, 'Apollo')],
+    s3: [chip('companies in cadence', kpi.target_orgs?.this_week, 'Apollo'), chip('new companies sequenced', companies.length, 'Apollo'), chip('partners tracked', `${partners.length} · ${partners.filter(x => x.priority === 1).length} P1`, 'App')],
+    s4: [chip('people in sequence', kpi.dm_contacted?.this_week, 'Apollo'), chip('new companies sequenced', companies.length, 'Apollo')],
+    s5: [chip('meetings set this week', kpi.meetings_set?.this_week, 'Manual'), chip('meetings held', kpi.meetings_held?.this_week, 'Manual')],
+    s6: [chip('qualified opportunities', kpi.qualified_opps?.this_week, 'Pipeline'), chip('covered lives in pipeline', kpi.covered_lives_pipeline?.this_week, 'Pipeline')],
+    s12: [chip('expected launches, 90 days', kpi.launches_90d?.this_week, 'Pipeline')],
+    s13: [chip('positive replies this week', kpi.positive_responses?.this_week, 'Apollo')],
+  };
+  for (const k of Object.keys(autoChips)) autoChips[k] = autoChips[k].filter(Boolean);
+
+  const openTarget = target => {
+    if (target === 'overview') return onOpenOverview && onOpenOverview();
+    if (target.startsWith('view:')) return setView({ this_week: 'week' }[target.slice(5)] || target.slice(5));
+    if (target.startsWith('section:')) {
+      setView('report');
+      setTimeout(() => document.getElementById(`goals-sec-${target.slice(8)}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+    }
+  };
+
+  // CSV exports (REV4 Stage 6) - what's on screen for the selected week and
+  // person filter.
+  const exports = [
+    { id: 'scorecard', label: 'Scorecard CSV', disabled: !scorecard, run: () => exportWidgetCsv('goals_scorecard', scorecard.weeks.flatMap(w => Object.entries(w.metrics).map(([k, m]) => ({ week_start: w.week_start, metric: k, actual: m.value, goal: m.goal, source: scorecard.sources[k] })))
+      .concat(Object.entries(scorecard.month_total).map(([k, m]) => ({ week_start: `month ${scorecard.month}`, metric: k, actual: m.value, goal: m.goal, source: m.source }))),
+      [{ key: 'week_start', label: 'Week' }, { key: 'metric', label: 'Metric' }, { key: 'actual', label: 'Actual' }, { key: 'goal', label: 'Goal' }, { key: 'source', label: 'Source' }]) },
+    { id: 'todos', label: 'To-dos CSV', run: () => exportWidgetCsv('goals_todos', myTodos, [
+      { key: 'category', label: 'Category' }, { key: 'text', label: 'To-do' }, { label: 'Owner', value: t => lookup(t.owner_user_id).name },
+      { label: 'With', value: t => t.contacts.join('; ') }, { label: 'Status', value: t => ({ done: 'done', prog: 'in progress', not: 'not started', dropped: 'dropped' })[todoStatus(t)] },
+      { label: 'Steps done', value: t => t.steps.filter(s => s.done).length }, { label: 'Steps', value: t => t.steps.map(s => `${s.done ? '[x]' : '[ ]'} ${s.text}`).join(' | ') }]) },
+    { id: 'partners', label: 'Partners CSV', run: () => exportWidgetCsv('goals_partners', myPartners, [
+      { key: 'name', label: 'Partner' }, { label: 'Priority', value: p => (p.priority ? `P${p.priority}` : '') }, { key: 'meeting_status', label: 'Meeting' },
+      { key: 'champion', label: 'Champion' }, { label: 'Owner', value: p => (p.owner_user_id ? lookup(p.owner_user_id).name : '') }, { key: 'angle', label: 'Angle' },
+      { key: 'motto', label: 'Their words' }, { key: 'watch_outs', label: 'Watch out' }, { key: 'sources', label: 'Sources' }, { key: 'first_email_note', label: 'First email note' }]) },
+    { id: 'companies', label: 'Companies CSV', run: () => exportWidgetCsv('goals_companies', myCompanies, [
+      { key: 'name', label: 'Company' }, { key: 'employees', label: 'Employees' }, { key: 'cohort', label: 'Cohort' },
+      { label: 'Sequenced by', value: c => lookup(c.sequenced_by).name }, { key: 'mailbox_email', label: 'Mailbox' }, { key: 'first_sequenced_at', label: 'First email' }]) },
+  ];
+
   const rail = (
     <RightRail views={views} view={view} onView={setView} people={people} owner={ownerSlug} onOwner={setOwnerSlug}
       peopleSummary={peopleSummary} compact={compact}>
@@ -187,6 +255,20 @@ export default function GoalsTab({ businessId }) {
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
           </Btn>
           {weekStart !== thisWeek && <Btn onClick={() => setWeekStart(thisWeek)}>This week</Btn>}
+          <div style={{ position: 'relative' }} className="no-print">
+            <Btn primary aria-haspopup="menu" aria-expanded={exportOpen} onClick={() => setExportOpen(o => !o)}>Export</Btn>
+            {exportOpen && (
+              <div role="menu" style={{ position: 'absolute', right: 0, top: 48, zIndex: 20, minWidth: 220, background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: 10, padding: 6, display: 'flex', flexDirection: 'column' }}>
+                <button role="menuitem" type="button" style={{ all: 'unset', cursor: 'pointer', padding: '10px 12px', borderRadius: 8, color: SA.text }}
+                  onClick={() => { setExportOpen(false); setView('report'); setTimeout(() => window.print(), 400); }}>Weekly report PDF</button>
+                {exports.map(x => (
+                  <button key={x.id} role="menuitem" type="button" disabled={x.disabled} title={x.disabled ? 'Needs the Stage 4 database update' : undefined}
+                    style={{ all: 'unset', cursor: x.disabled ? 'default' : 'pointer', padding: '10px 12px', borderRadius: 8, color: x.disabled ? SA.faint : SA.text }}
+                    onClick={() => { if (x.disabled) return; setExportOpen(false); x.run(); }}>{x.label}</button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
@@ -197,11 +279,23 @@ export default function GoalsTab({ businessId }) {
           {me && !canEdit && <div style={{ ...subStyle, fontSize: 13 }}>You have view access to this workspace, so Goals is read-only for you.</div>}
 
           {view === 'report' && (
-            <section style={cardStyle}>
-              <span style={labelStyle}>Seif &amp; Jack weekly meeting · {weekLabel(weekStart)}</span>
-              <h2 style={{ ...h2Style, marginTop: 4 }}>Weekly report</h2>
-              <p style={{ ...subStyle, margin: '8px 0 0' }}>The fillable report, KPI table, finalize and PDF arrive in the next build stage (Stage 6). Commitments, to-dos, partners and companies are live in the other views.</p>
-            </section>
+            <ReportView weekStart={weekStart} report={reportData?.report} reportError={errors.report} sections={reportData?.sections} infra={reportData?.infra}
+              commitments={reportCommitments} commitmentsError={errors.commitments} kpiRows={kpiRows} kpiError={errors.kpi} autoChips={autoChips}
+              canEdit={canEdit} lookup={lookup} members={members} defaultOwner={owner === 'team' ? me?.profile?.id : owner} onOpen={openTarget}
+              onSaveSection={(key, notes) => goalsApi.saveSection(businessId, weekStart, key, notes)}
+              onSectionSaved={s => setReportData(d => (d ? { ...d, sections: [...d.sections.filter(x => x.section_key !== s.section_key), s] } : d))}
+              onFinalize={async () => { await goalsApi.finalize(businessId, weekStart); await loadReport(); return true; }}
+              onReopen={async () => { await goalsApi.reopen(businessId, weekStart); await loadReport(); }}
+              onAddCommitment={async body => { await goalsApi.createWeekGoal(businessId, { ...body, kind: 'commitment', week_start: weekStart }); await Promise.all([loadCommitments(), loadReport()]); return true; }}
+              onUpdateCommitment={async (goalId, body) => { await goalsApi.updateWeekGoal(businessId, goalId, body); await loadCommitments(); }}
+              onCarryCommitments={async () => { const r = await goalsApi.carryOver(businessId, weekStart, 'commitment'); await Promise.all([loadCommitments(), loadReport()]); return r; }}
+              onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await Promise.all([loadKpi(), loadScorecard()]); }}
+              infraHandlers={{
+                onAdd: async body => { await goalsApi.createInfra(businessId, { ...body, week_start: weekStart }); await loadReport(); return true; },
+                onUpdate: async (itemId, body) => { await goalsApi.updateInfra(businessId, itemId, body); await loadReport(); },
+                onDelete: async itemId => { await goalsApi.deleteInfra(businessId, itemId); await loadReport(); },
+                onCarry: async () => { const r = await goalsApi.carryInfra(businessId, weekStart); await loadReport(); return r; },
+              }} />
           )}
 
           {view === 'week' && <>

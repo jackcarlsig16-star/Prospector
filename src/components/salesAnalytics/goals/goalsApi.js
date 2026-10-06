@@ -54,4 +54,15 @@ export const goalsApi = {
 
   scorecard: (id, month, owner) => call(id, `/scorecard?${q({ month, owner })}`),
   saveTarget: (id, body) => call(id, '/targets', { method: 'PUT', body }).then(d => d.target),
+
+  report: (id, weekStart) => call(id, `/report?${q({ week_start: weekStart })}`),
+  kpi: (id, weekStart) => call(id, `/kpi?${q({ week_start: weekStart })}`).then(d => d.rows),
+  saveSection: (id, weekStart, key, notes) => call(id, `/report/${weekStart}/sections/${key}`, { method: 'PUT', body: { notes } }).then(d => d.section),
+  finalize: (id, weekStart) => call(id, `/report/${weekStart}/finalize`, { method: 'POST', body: {} }).then(d => d.report),
+  reopen: (id, weekStart) => call(id, `/report/${weekStart}/reopen`, { method: 'POST', body: {} }).then(d => d.report),
+
+  createInfra: (id, body) => call(id, '/infra', { method: 'POST', body }).then(d => d.item),
+  updateInfra: (id, itemId, body) => call(id, `/infra/${itemId}`, { method: 'PATCH', body }).then(d => d.item),
+  deleteInfra: (id, itemId) => call(id, `/infra/${itemId}`, { method: 'DELETE' }),
+  carryInfra: (id, weekStart) => call(id, '/infra/carry-forward', { method: 'POST', body: { week_start: weekStart } }),
 };

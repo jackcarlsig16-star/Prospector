@@ -245,7 +245,7 @@ export default function SalesAnalyticsTab({ businessId }) {
         ))}
       </div>
 
-      {view === 'goals' ? <GoalsTab businessId={businessId} /> : view === 'huddle' ? <DailyHuddle businessId={businessId} /> : <>
+      {view === 'goals' ? <GoalsTab businessId={businessId} onOpenOverview={() => setView('overview')} /> : view === 'huddle' ? <DailyHuddle businessId={businessId} /> : <>
       {/* Header - hidden in print; the print-only block below replaces it */}
       <div className="no-print" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, marginBottom: 24 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

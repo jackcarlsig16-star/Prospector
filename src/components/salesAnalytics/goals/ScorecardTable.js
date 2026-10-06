@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { SA } from '../theme';
 import Ring from '../charts/Ring';
 import {
-  cardStyle, labelStyle, h2Style, subStyle, numStyle, inputStyle, SourceBadge, NeedsMigration, ErrorNote,
+  cardStyle, labelStyle, h2Style, subStyle, numStyle, SourceBadge, NeedsMigration, ErrorNote, EditableNumber,
   fmt, short, pct, progressColor, shortWeek, monthName,
 } from './goalsUi';
 
@@ -15,33 +15,6 @@ const ROWS = [
 ];
 // Only these two narrow to one person; the rest are team-wide numbers.
 const PER_PERSON = ['outbound_audience', 'open_rate'];
-
-// Inline number editor: click to edit, Enter saves, Esc cancels. Rates are
-// typed as percentages (17 = 17%).
-function EditableNumber({ value, rate, placeholder, onSave, ariaLabel, display }) {
-  const [draft, setDraft] = useState(null);
-  const [busy, setBusy] = useState(false);
-  if (draft === null) {
-    return (
-      <button type="button" onClick={() => setDraft(value == null ? '' : String(rate ? +(value * 100).toFixed(2) : value))} aria-label={ariaLabel}
-        style={{ all: 'unset', cursor: 'pointer', color: value == null ? SA.link : 'inherit', ...numStyle }}>
-        {value == null ? placeholder : display}
-      </button>
-    );
-  }
-  const save = async () => {
-    const n = draft.trim() === '' ? null : Number(draft);
-    if (n !== null && !(Number.isFinite(n) && n >= 0)) return;
-    setBusy(true);
-    try { await onSave(n == null ? null : rate ? n / 100 : n); setDraft(null); } catch { /* the table shows the error */ } finally { setBusy(false); }
-  };
-  return (
-    <input autoFocus value={draft} disabled={busy} inputMode="decimal" aria-label={ariaLabel}
-      onChange={e => setDraft(e.target.value)} onBlur={() => setDraft(null)}
-      onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setDraft(null); }}
-      style={{ ...inputStyle, height: 30, width: 96, textAlign: 'right', fontSize: 13 }} />
-  );
-}
 
 function Bar({ p }) {
   return (

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { SA, SA_TYPE, SA_SHAPE, saSans, saMono } from '../theme';
 import { SEMANTIC, memberColor, UNASSIGNED_COLOR } from '../palette';
 
@@ -92,4 +93,31 @@ export function NeedsMigration({ what }) {
 
 export function ErrorNote({ message }) {
   return <div role="alert" style={{ fontSize: 13, color: SEMANTIC.problem }}>{message}</div>;
+}
+
+// Inline number editor: click to edit, Enter saves, Esc cancels. Rates are
+// typed as percentages (17 = 17%).
+export function EditableNumber({ value, rate, placeholder, onSave, ariaLabel, display }) {
+  const [draft, setDraft] = useState(null);
+  const [busy, setBusy] = useState(false);
+  if (draft === null) {
+    return (
+      <button type="button" onClick={() => setDraft(value == null ? '' : String(rate ? +(value * 100).toFixed(2) : value))} aria-label={ariaLabel}
+        style={{ all: 'unset', cursor: 'pointer', color: value == null ? SA.link : 'inherit', ...numStyle }}>
+        {value == null ? placeholder : display}
+      </button>
+    );
+  }
+  const save = async () => {
+    const n = draft.trim() === '' ? null : Number(draft);
+    if (n !== null && !(Number.isFinite(n) && n >= 0)) return;
+    setBusy(true);
+    try { await onSave(n == null ? null : rate ? n / 100 : n); setDraft(null); } catch { /* the table shows the error */ } finally { setBusy(false); }
+  };
+  return (
+    <input autoFocus value={draft} disabled={busy} inputMode="decimal" aria-label={ariaLabel}
+      onChange={e => setDraft(e.target.value)} onBlur={() => setDraft(null)}
+      onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setDraft(null); }}
+      style={{ ...inputStyle, height: 30, width: 96, textAlign: 'right', fontSize: 13 }} />
+  );
 }
