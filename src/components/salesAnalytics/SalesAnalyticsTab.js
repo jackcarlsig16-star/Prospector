@@ -34,6 +34,10 @@ const PRINT_STYLES = `
        block, invisible as a bug on the old dark-on-dark PDF but glaring
        now that the print theme is white. */
     body { background: #FFFFFF; }
+    /* Hidden (visibility) chrome still takes up height and printed trailing
+       blank pages; collapse it. The print area is absolutely positioned
+       against the page, so it isn't clipped. */
+    #root { height: 0 !important; overflow: hidden !important; }
     body * { visibility: hidden; }
     #sales-analytics-print-area, #sales-analytics-print-area * { visibility: visible; }
     #sales-analytics-print-area { position: absolute; left: 0; top: 0; width: 100%; }

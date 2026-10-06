@@ -180,11 +180,14 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
   const lastDone = lastWeekTodos.filter(t => todoStatus(t) === 'done').length;
   const partnerBlock = final ? reportData.report.snapshot?.partners : reportData?.partners;
   const pm = partnerBlock?.metrics || {};
+  const hw = (final ? reportData.report.snapshot?.huddle : reportData?.huddle) || {};
   const chip = (k, v, src) => (v == null ? null : { k, v: typeof v === 'number' ? v.toLocaleString('en-US') : v, src });
   const autoChips = {
     s1: [chip('to-dos done last week', `${lastDone} of ${lastWeekTodos.filter(t => todoStatus(t) !== 'dropped').length}`, 'App'), chip('companies sequenced', companies.length, 'Apollo'), chip('positive replies', kpi.positive_responses?.this_week, 'Apollo')],
     s3: [chip('companies in cadence', kpi.target_orgs?.this_week, 'Apollo'), chip('new companies sequenced', companies.length, 'Apollo'), chip('partners tracked', `${partners.length} · ${partners.filter(x => x.priority === 1).length} P1`, 'App')],
-    s4: [chip('people in sequence', kpi.dm_contacted?.this_week, 'Apollo'), chip('new companies sequenced', companies.length, 'Apollo'), chip('partners first-touched', pm.partners_first_touched?.value, 'App'), chip('partner meetings', pm.partner_meetings?.value, 'App')],
+    s4: [chip('people in sequence', kpi.dm_contacted?.this_week, 'Apollo'), chip('new companies sequenced', companies.length, 'Apollo'), chip('partners first-touched', pm.partners_first_touched?.value, 'App'), chip('partner meetings', pm.partner_meetings?.value, 'App'),
+      chip('real opens', hw.real_opens, 'Apollo'), chip('real clicks', hw.real_clicks, 'Apollo'), chip('replies', hw.replies, 'Apollo'),
+      chip('flags handed off', hw.flags_handed_off, 'App'), chip('flags completed', hw.flags_completed, 'App')],
     s5: [chip('meetings set this week', kpi.meetings_set?.this_week, 'Manual'), chip('meetings held', kpi.meetings_held?.this_week, 'Manual')],
     s6: [chip('qualified opportunities', kpi.qualified_opps?.this_week, 'Pipeline'), chip('covered lives in pipeline', kpi.covered_lives_pipeline?.this_week, 'Pipeline')],
     s12: [chip('expected launches, 90 days', kpi.launches_90d?.this_week, 'Pipeline')],

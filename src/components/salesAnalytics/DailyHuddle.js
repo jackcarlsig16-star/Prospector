@@ -19,11 +19,9 @@ import { roleAtLeast } from '../../constants/roles';
 import useMediaQuery from '../../utils/useMediaQuery';
 import {
   OWNER_LABELS, NEXT_ACTION_LABELS, HEAT_LABELS, SORTS, applyFilters, sortProspects, needsAction, onAutopilot,
-  byCompany, actionText, dueBucket, flagsFor,
+  byCompany, flagsFor,
 } from './huddleView';
 
-// The printed sheet keeps a short list; the screen shows everyone (scrolls).
-const PRINT_TOP = 8;
 const UNDO_MS = 5000; // REVISABLE (spec)
 
 const HUDDLE_SHEET_COLUMNS = [
@@ -295,7 +293,6 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
     <HuddleRow key={p.contact_id} businessId={businessId} p={p} today={today} canEdit={canEdit} ownerColor={ownerColor} onAct={act} onFlag={onFlag} stacked={phone}
       collateral={collateral} isNewSinceHuddle={!!lastHuddleAt && p.created_at > lastHuddleAt} onUpdated={handleUpdated} />
   );
-  const printNeeds = needs.map(p => ({ prospect: p, overdue: dueBucket(p, today) === 'overdue', action: actionText(p, today) }));
   const dateLabel = today ? new Date(`${today}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
 
   const rail = (
@@ -340,8 +337,11 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
     </RightRail>
   );
 
+  // The screen is display:none in print (no-print) - visibility:hidden alone
+  // keeps its height and printed a page per screenful. Only the agenda prints.
   return (
-    <div>
+    <>
+    <div className="no-print">
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, marginBottom: 24 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ ...SA_TYPE.label, color: SA.muted }}>HomeLover · Command Center</div>
@@ -356,7 +356,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
           <button onClick={() => setShowLibrary(s => !s)} style={headerButton}>{showLibrary ? 'Hide library' : 'Collateral library'}</button>
           <button onClick={() => exportWidgetCsv('huddle_sheet', [...visible].sort((a, b) => a.owner.localeCompare(b.owner) || b.score - a.score), HUDDLE_SHEET_COLUMNS)}
             disabled={!data} style={headerButton}>Huddle sheet CSV</button>
-          <button onClick={() => window.print()} disabled={!data} style={headerButton}>Print</button>
+          <button onClick={() => window.print()} disabled={!data} style={headerButton}>Print agenda</button>
           <button onClick={handleSync} disabled={syncing} style={{ ...headerButton, opacity: syncing ? 0.6 : 1 }}>{syncing ? 'Syncing…' : 'Sync now'}</button>
           <button onClick={handleStart} style={{ ...headerButton, fontWeight: 600, background: SA.accent, color: SA.ground, border: 0 }}>Start huddle</button>
         </div>
@@ -450,7 +450,6 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
             )}
           </main>
           {!compact && <div style={{ flex: '0 0 300px', minWidth: 0 }}>{rail}</div>}
-          <HuddlePrintSheet dateLabel={dateLabel} prospects={visible} needsAction={printNeeds.slice(0, PRINT_TOP)} needsActionTotal={printNeeds.length} issues={issues || []} ownerLabels={OWNER_LABELS} nextActionLabels={NEXT_ACTION_LABELS} today={today} />
         </div>
       )}
 
@@ -468,5 +467,9 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
         )}
       </div>
     </div>
+    {data && <HuddlePrintSheet dateLabel={dateLabel} since={since} needs={sortProspects(visible.filter(p => needsAction(p, today)), 'signal', today)} prospects={visible}
+      flags={flags} memberSlug={id => { const m = members.find(x => x.user_id === id); const f = m && m.name.split(' ')[0].toLowerCase(); return ['jack', 'cyrus'].includes(f) ? f : 'unassigned'; }}
+      issues={issues || []} today={today} />}
+    </>
   );
 }

@@ -1,6 +1,7 @@
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { STAGE_ORDER } from './pipelineStages.js';
 import { PARTNER_METRICS, PARTNER_FLOWS, loadPartnerData, partnerWeekMetrics, partnerReportBlock } from './partnerMetrics.js';
+import { huddleWeekCounts } from './huddleWeek.js';
 import {
   getSupabase, validate, fail, findRow, weekIsFinal, FINAL_ERROR,
   isMonday, isFirstOfMonth, addDays, laStartOfDayMs,
@@ -372,12 +373,13 @@ export async function getReportRoute(req, res) {
   const businessId = req.params.businessId;
   const supabase = getSupabase();
   try {
-    const [{ data: report, error: rErr }, sections, infra, commitments, partnerData] = await Promise.all([
+    const [{ data: report, error: rErr }, sections, infra, commitments, partnerData, huddle] = await Promise.all([
       supabase.from('sales_week_report').select('*').eq('business_id', businessId).eq('week_start', week_start).maybeSingle(),
       selectAllPages(() => supabase.from('sales_week_report_sections').select('*').eq('business_id', businessId).eq('week_start', week_start).order('section_key')),
       selectAllPages(() => supabase.from('sales_infra_items').select('*').eq('business_id', businessId).eq('week_start', week_start).order('sort_order').order('created_at').order('id')),
       commitmentProgress(supabase, businessId, week_start),
       loadPartnerData(supabase, businessId),
+      huddleWeekCounts(supabase, businessId, week_start),
     ]);
     if (rErr) throw new Error(rErr.message);
     res.json({
@@ -385,6 +387,7 @@ export async function getReportRoute(req, res) {
       report: report || { status: 'draft', snapshot: null, finalized_at: null, finalized_by: null, reopened_at: null, reopened_by: null },
       sections, infra, commitments,
       partners: partnerReportBlock(partnerData, week_start),
+      huddle,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
@@ -419,18 +422,19 @@ export async function finalizeReportRoute(req, res) {
   const supabase = getSupabase();
   try {
     if (await weekIsFinal(supabase, businessId, weekStart)) return res.status(409).json({ error: 'This week is already finalized' });
-    const [scorecard, kpi, commitments, sections, infra, partnerData] = await Promise.all([
+    const [scorecard, kpi, commitments, sections, infra, partnerData, huddle] = await Promise.all([
       buildScorecard(supabase, businessId, `${weekStart.slice(0, 7)}-01`, null),
       buildKpi(supabase, businessId, weekStart),
       commitmentProgress(supabase, businessId, weekStart),
       selectAllPages(() => supabase.from('sales_week_report_sections').select('section_key, notes').eq('business_id', businessId).eq('week_start', weekStart).order('section_key')),
       selectAllPages(() => supabase.from('sales_infra_items').select('component, status, note').eq('business_id', businessId).eq('week_start', weekStart).order('sort_order').order('id')),
       loadPartnerData(supabase, businessId),
+      huddleWeekCounts(supabase, businessId, weekStart),
     ]);
     const now = new Date().toISOString();
     const { data, error } = await supabase.from('sales_week_report').upsert({
       business_id: businessId, week_start: weekStart, status: 'final',
-      snapshot: { taken_at: now, scorecard, kpi, commitments, sections, infra, partners: partnerReportBlock(partnerData, weekStart) },
+      snapshot: { taken_at: now, scorecard, kpi, commitments, sections, infra, partners: partnerReportBlock(partnerData, weekStart), huddle },
       finalized_at: now, finalized_by: req.auth.user.id, updated_at: now,
     }, { onConflict: 'business_id,week_start' }).select().single();
     if (error) throw new Error(error.message);

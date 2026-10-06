@@ -1,58 +1,57 @@
 import { SA, SA_TYPE } from './theme';
+import { OWNER_LABELS, actionText, signalOf } from './huddleView';
 
-// Print-only. Reuses SalesAnalyticsTab's PRINT_STYLES: only
-// #sales-analytics-print-area is visible in print, and the Overview (which
-// owns that id on its view) isn't mounted while the huddle is, so the id
-// stays unique. SA tokens flip to the light palette under @media print.
-const cell = { padding: '6px 8px', borderBottom: `1px solid ${SA.border}`, textAlign: 'left', verticalAlign: 'top', fontSize: 11 };
+// Print-only agenda (sales-huddle-v2 Stage 4): one column per owner with what
+// to talk about - their flags, top Needs action, replies - so it fits on 1-2
+// landscape pages. The full list stays in the Huddle sheet CSV.
+// Reuses SalesAnalyticsTab's PRINT_STYLES: only #sales-analytics-print-area
+// prints, and SA tokens flip to the light palette under @media print.
+const NEEDS_TOP = 10;
+const h2 = { ...SA_TYPE.cardTitle, fontSize: 13, margin: '10px 0 4px' };
+const line = { fontSize: 10.5, lineHeight: 1.35, margin: '0 0 3px' };
 
-export default function HuddlePrintSheet({ dateLabel, prospects, needsAction, needsActionTotal, issues, ownerLabels, nextActionLabels, today }) {
-  const owners = ['jack', 'cyrus', 'unassigned'].filter(o => prospects.some(p => p.owner === o));
+export default function HuddlePrintSheet({ dateLabel, since, needs, prospects, flags, memberSlug, issues, today }) {
+  const owners = ['jack', 'cyrus', 'unassigned'].filter(o => needs.some(p => p.owner === o) || flags.some(f => memberSlug(f.owner_user_id) === o));
+  const byId = new Map(prospects.map(p => [p.contact_id, p]));
   return (
     <div id="sales-analytics-print-area" className="print-only" style={{ color: SA.text }}>
-      <h1 style={{ ...SA_TYPE.pageTitle, fontSize: 22, margin: '0 0 4px' }}>Daily Huddle · {dateLabel}</h1>
-      <p style={{ fontSize: 12, color: SA.muted, margin: '0 0 16px' }}>{prospects.length} prospects · assignments by owner, hottest first</p>
-      <section className="print-avoid-break" style={{ display: 'flex', gap: 32, marginBottom: 18, fontSize: 11 }}>
-        <div style={{ flex: 1 }}>
-          <h2 style={{ ...SA_TYPE.cardTitle, fontSize: 15, margin: '0 0 6px' }}>{needsActionTotal} need action today{needsActionTotal > needsAction.length ? ` (top ${needsAction.length})` : ''}</h2>
-          {needsAction.map(({ prospect: p, action }) => (
-            <div key={p.contact_id}>{p.name || 'Unknown contact'}{p.company ? ` · ${p.company}` : ''} — <strong>{action}</strong> · {ownerLabels[p.owner] || p.owner}</div>
-          ))}
-        </div>
-        {issues.length > 0 && (
-          <div style={{ flex: 1 }}>
-            <h2 style={{ ...SA_TYPE.cardTitle, fontSize: 15, margin: '0 0 6px' }}>Top sequence issues</h2>
-            {issues.map(i => <div key={`${i.id}:${i.scope_key}`} style={{ marginBottom: 4 }}><strong>{i.title}</strong> — {i.action}</div>)}
-          </div>
-        )}
-      </section>
-      {owners.map(owner => {
-        const mine = prospects.filter(p => p.owner === owner).sort((a, b) => b.score - a.score);
-        return (
-          <section key={owner} style={{ marginBottom: 18 }}>
-            <h2 style={{ ...SA_TYPE.cardTitle, fontSize: 15, margin: '0 0 6px' }}>{ownerLabels[owner]} · {mine.length}</h2>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr>{['Name', 'Company', 'Status', 'Heat', 'Next best', 'Next action', 'Due', 'Notes'].map(h => <th key={h} style={{ ...cell, ...SA_TYPE.label, color: SA.muted }}>{h}</th>)}</tr>
-              </thead>
-              <tbody>
-                {mine.map(p => (
-                  <tr key={p.contact_id}>
-                    <td style={cell}>{p.name || 'Unknown contact'}{p.title ? <div style={{ color: SA.muted }}>{p.title}</div> : null}</td>
-                    <td style={cell}>{p.company || '—'}{p.in_pipeline ? <div style={{ color: SA.good }}>In pipeline</div> : null}</td>
-                    <td style={cell}>{p.status}</td>
-                    <td style={{ ...cell, fontVariantNumeric: 'tabular-nums' }}>{p.score}</td>
-                    <td style={{ ...cell, color: p.next_action ? SA.muted : SA.text }}>{p.next_best_action.label}</td>
-                    <td style={cell}>{nextActionLabels[p.next_action] || '—'}</td>
-                    <td style={{ ...cell, color: p.next_action_due && p.next_action_due <= today ? SA.bad : SA.text }}>{p.next_action_due || '—'}</td>
-                    <td style={{ ...cell, maxWidth: 260 }}>{p.notes || ''}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
-        );
-      })}
+      <h1 style={{ ...SA_TYPE.pageTitle, fontSize: 20, margin: '0 0 2px' }}>Daily Huddle agenda · {dateLabel}</h1>
+      {since && (
+        <p style={{ fontSize: 11, color: SA.muted, margin: '0 0 8px' }}>
+          Since last huddle: {since.replies} replies · {since.real_clicks} real clicks · {since.real_opens} real opens · {since.done} done
+        </p>
+      )}
+      {issues.length > 0 && (
+        <p style={{ fontSize: 11, margin: '0 0 8px' }}><strong>Sequence issues:</strong> {issues.map(i => `${i.title} (${i.action})`).join(' · ')}</p>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(owners.length, 1)}, minmax(0, 1fr))`, gap: 20 }}>
+        {owners.map(o => {
+          const mineFlags = flags.filter(f => memberSlug(f.owner_user_id) === o);
+          const mineNeeds = needs.filter(p => p.owner === o);
+          const replies = prospects.filter(p => p.owner === o && p.last_human_signal?.kind === 'reply' && ['new', 'claimed', 'contacted'].includes(p.status));
+          return (
+            <section key={o} className="print-avoid-break">
+              <h2 style={{ ...SA_TYPE.cardTitle, fontSize: 15, margin: '0 0 2px', borderBottom: `1px solid ${SA.border}`, paddingBottom: 4 }}>{OWNER_LABELS[o]}</h2>
+              {mineFlags.length > 0 && <>
+                <h3 style={h2}>🚩 Flagged ({mineFlags.length})</h3>
+                {mineFlags.map(f => {
+                  const p = byId.get(f.prospect_contact_id);
+                  return <p key={f.id} style={line}><strong>{p?.name || f.contacts[0]}</strong>{p?.company ? ` · ${p.company}` : ''} — {f.steps.map(s => `${s.done ? '☑' : '☐'} ${s.text}`).join('  ')}{f.flag_note ? ` · “${f.flag_note}”` : ''}</p>;
+                })}
+              </>}
+              <h3 style={h2}>Needs action today ({mineNeeds.length}{mineNeeds.length > NEEDS_TOP ? `, top ${NEEDS_TOP}` : ''})</h3>
+              {mineNeeds.length === 0 && <p style={{ ...line, color: SA.muted }}>Nothing urgent.</p>}
+              {mineNeeds.slice(0, NEEDS_TOP).map(p => (
+                <p key={p.contact_id} style={line}><strong>{p.name || 'Unknown contact'}</strong>{p.company ? ` · ${p.company}` : ''} — {actionText(p, today)}{signalOf(p, today).context ? ` · ${signalOf(p, today).context}` : ''}</p>
+              ))}
+              {replies.length > 0 && <>
+                <h3 style={h2}>Replies ({replies.length})</h3>
+                {replies.map(p => <p key={p.contact_id} style={line}>{p.name || 'Unknown contact'}{p.company ? ` · ${p.company}` : ''} — {signalOf(p, today).context}</p>)}
+              </>}
+            </section>
+          );
+        })}
+      </div>
     </div>
   );
 }
