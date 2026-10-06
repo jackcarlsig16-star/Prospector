@@ -3,6 +3,7 @@ import { SA, SA_TYPE } from '../theme';
 import { laWeekStart } from '../periods';
 import { roleAtLeast } from '../../../constants/roles';
 import { fetchMe } from '../../../utils/authSession';
+import useMediaQuery from '../../../utils/useMediaQuery';
 import RightRail from '../RightRail';
 import Ring, { RingLegend } from '../charts/Ring';
 import { goalsApi } from './goalsApi';
@@ -31,20 +32,8 @@ const readStored = key => { try { return localStorage.getItem(key); } catch { re
 const writeStored = (key, value) => { try { localStorage.setItem(key, value); } catch { /* private mode */ } };
 const slugOf = name => name.split(' ')[0].toLowerCase();
 
-function useCompact() {
-  const query = '(max-width: 1099px)';
-  const [compact, setCompact] = useState(() => window.matchMedia(query).matches);
-  useEffect(() => {
-    const mq = window.matchMedia(query);
-    const onChange = e => setCompact(e.matches);
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, []);
-  return compact;
-}
-
 export default function GoalsTab({ businessId, onOpenOverview }) {
-  const compact = useCompact();
+  const compact = useMediaQuery('(max-width: 1099px)');
   const [weekStart, setWeekStart] = useState(() => laWeekStart());
   const [view, setView] = useState(() => {
     const v = new URLSearchParams(window.location.search).get('gview') || readStored(VIEW_KEY);

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import useMediaQuery from '../utils/useMediaQuery';
 import { C, mono, PRESET_SWATCH_COLORS } from '../constants/colors';
 import { getAccountsForBusiness } from '../utils/db';
 import { isStale } from '../utils/staleness';
@@ -120,6 +121,7 @@ function StatTile({ label, value, color }) {
 
 export default function BusinessesHomePage({ businesses, loading, projects=[], onSelect, onCreated }) {
   const [modalOpen, setModalOpen] = useState(false);
+  const compact = useMediaQuery('(max-width: 899px)');
   const unassignedProjects = projects.filter(p => !p.business_id);
   const [rollup, setRollup] = useState(null);
   const businessIdsKey = businesses.map(b=>b.id).join(',');
@@ -147,7 +149,7 @@ export default function BusinessesHomePage({ businesses, loading, projects=[], o
   const researchingCount = businesses.filter(b=>b.research_status==='researching').length;
 
   return (
-    <div style={{ minHeight:"100vh", background:C.bg, padding:"48px 40px" }}>
+    <div style={{ minHeight:"100vh", background:C.bg, padding:compact?"8px 0":"48px 40px" }}>
       <div style={{ maxWidth:900, margin:"0 auto" }}>
         <h1 style={{ ...mono, fontSize:20, color:C.txt, fontWeight:700, margin:"0 0 24px" }}>Businesses</h1>
 

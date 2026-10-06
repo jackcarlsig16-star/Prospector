@@ -180,8 +180,7 @@ export async function generateBrief(msgs, accounts, tasks=[]) {
 // ───────────────────────────────────────────────────────────────────────────
 
 
-export default function DailyDigest({ accounts=[], tasks=[], firstName="AE", onNav, onUpdateTask, onCreateTask }) {
-  const [open, setOpen]           = useState(false);
+export default function DailyDigest({ open, setOpen, hideTrigger, accounts=[], tasks=[], firstName="AE", onNav, onUpdateTask, onCreateTask }) {
   const google = useGoogleStatus();
   const [loading, setLoading]     = useState(false);
   const [loadMsg, setLoadMsg]     = useState(LOADING_MSGS[0]);
@@ -358,8 +357,7 @@ export default function DailyDigest({ accounts=[], tasks=[], firstName="AE", onN
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* ☕ trigger button */}
-      <button
+      {!hideTrigger && <button
         onClick={() => setOpen(o => !o)}
         title="Daily digest"
         style={{
@@ -370,13 +368,13 @@ export default function DailyDigest({ accounts=[], tasks=[], firstName="AE", onN
         }}
         onMouseEnter={e => e.currentTarget.style.opacity = "1"}
         onMouseLeave={e => e.currentTarget.style.opacity = open ? "1" : "0.75"}
-      >☕</button>
+      >☕</button>}
 
       {/* Slide-up panel */}
       {open && (
         <div style={{
-          position: "fixed", bottom: 100, right: 18, zIndex: 2999,
-          width: 360, maxHeight: "72vh",
+          position: "fixed", bottom: hideTrigger ? 18 : 100, right: 18, zIndex: 2999,
+          width: 360, maxWidth: "calc(100vw - 36px)", maxHeight: "72vh",
           background: C.card, border: `1px solid ${C.brd}`, borderRadius: 12,
           boxShadow: "0 16px 48px #000d",
           display: "flex", flexDirection: "column",

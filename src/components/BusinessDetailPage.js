@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
+import useMediaQuery from '../utils/useMediaQuery';
 import { C, mono, PRESET_SWATCH_COLORS } from '../constants/colors';
 import { createProject, createList, setProjectListId, getAccountsForBusiness, linkAccountToLists, createCampaign, setCampaignListId } from '../utils/db';
 import BusinessAccountsTab from './BusinessAccountsTab';
@@ -471,6 +472,7 @@ function ProjectsSection({ business, userEmail, activeUser, projects, campaigns=
 
 export default function BusinessDetailPage({ business: businessProp, userEmail, projects=[], campaigns=[], view='command-center', onUpdated, onProjectCreated, onProjectUpdated, onCampaignCreated, onCampaignUpdated, sharedAccounts, sharedTasks, setSharedTasks, dailyStats, activeUser, onNav, onUpdateAccount }) {
   const [business, setBusiness] = useState(businessProp);
+  const compact = useMediaQuery('(max-width: 899px)');
   const [profile, setProfile] = useState(null);
   const [intelEntries, setIntelEntries] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -694,7 +696,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   const accent = business.color || C.gold;
 
   return (
-    <div style={{ minHeight:"100vh", background:C.bg, padding:"48px 40px" }}>
+    <div style={{ minHeight:"100vh", background:C.bg, padding:compact?"8px 0":"48px 40px" }}>
       <div style={{ maxWidth: wideView ? 1100 : 700, margin:"0 auto" }}>
         {/* nav-active-state-v1 - the more prominent "which business am I in"
             signal for when you're looking at content, not the sidebar.

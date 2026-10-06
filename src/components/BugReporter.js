@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { C, mono } from '../constants/colors';
 
-export default function BugReporter({ page, reporterName }) {
-  const [open, setOpen] = useState(false);
+export default function BugReporter({ open, setOpen, hideTrigger, page, reporterName }) {
   const [text, setText] = useState("");
   const [sent, setSent] = useState(false);
 
@@ -18,13 +17,13 @@ export default function BugReporter({ page, reporterName }) {
 
   return (
     <>
-      <button onClick={() => setOpen(o => !o)} title="Report a bug"
+      {!hideTrigger && <button onClick={() => setOpen(o => !o)} title="Report a bug"
         style={{ position:"fixed", bottom:18, right:18, zIndex:3000, background:"transparent", border:"none", fontSize:22, cursor:"pointer", opacity:0.5, lineHeight:1, padding:0, transition:"opacity 0.15s" }}
         onMouseEnter={e => e.currentTarget.style.opacity = "1"} onMouseLeave={e => e.currentTarget.style.opacity = "0.5"}>
         🐞
-      </button>
+      </button>}
       {open && (
-        <div style={{ position:"fixed", bottom:52, right:18, zIndex:3000, background:C.card, border:`1px solid ${C.brd}`, borderRadius:10, padding:"14px 16px", width:284, boxShadow:"0 6px 24px #0009" }}>
+        <div style={{ position:"fixed", bottom:hideTrigger?18:52, right:18, zIndex:3000, background:C.card, border:`1px solid ${C.brd}`, borderRadius:10, padding:"14px 16px", width:284, maxWidth:"calc(100vw - 36px)", boxShadow:"0 6px 24px #0009" }}>
           <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
             <span style={{ fontSize:15 }}>🐞</span>
             <span style={{ ...mono, fontSize:12, fontWeight:700, color:C.txt }}>Report a bug</span>

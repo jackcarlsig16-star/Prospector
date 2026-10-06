@@ -1,32 +1,29 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { C, mono } from '../constants/colors';
-import { NAV, NAV_ROLES, initials, isAdmin } from '../constants/appConfig';
-import { BUSINESS_NAV } from '../constants/businessNav';
+import { initials, isAdmin } from '../constants/appConfig';
+import { BUSINESS_NAV, TOOLS_NAV } from '../constants/businessNav';
 import NavRow from './NavRow';
-import { upsertBdrAssignment, removeBdrAssignment } from '../utils/db';
 import { signOut } from '../utils/authSession';
 
-function readSidebarPrefs() {
-  try { return JSON.parse(localStorage.getItem("prospector_prefs")||"{}"); } catch { return {}; }
-}
 function readImgPref(key) {
   try { return localStorage.getItem(`prospector_img_${key}`) || JSON.parse(localStorage.getItem("prospector_prefs")||"{}")[key] || null; } catch { return null; }
 }
 
-const ROLE_LEVEL = { Owner:5, Admin:4, Manager:3, AE:2, BDR:1 };
+const FOCUSABLE = 'button:not([disabled]), select:not([disabled]), a[href], input, [tabindex]:not([tabindex="-1"])';
+const sectionLabel = { ...mono, margin:0, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.1em", padding:"10px 14px 4px" };
 
-// Legacy tools not yet business-scoped (per the reusability audit, several
-// are Plaid-specific) - shown disabled rather than faked or hidden. Derived
-// from the global NAV so it can't drift out of sync with it.
-const DISABLED_BUSINESS_NAV = NAV.filter(n => !["home","accounts","admin"].includes(n.id));
-
-export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, setToolsActiveTool, accountsSubPage, setAccountsSubPage, viewAs, setViewAs, activeInitials, hasUnviewedBadges, onOpenProfile, diamonds, activeUser, teamUsers, newJoinCount=0, onUpdateTeamUser, newNuggetCount=0, businesses=[], onSelectBusiness, onGoToBusinesses, activeBusiness=null, businessPage, setBusinessPage }) {
-  const [sidebarPrefs, setSidebarPrefs] = useState(readSidebarPrefs);
+// nav-admin-cleanup-v1 - one sidebar for desktop and phone. Under 900px
+// (`compact`) it becomes a drawer behind a top-bar menu button: closes on
+// navigate, backdrop tap and Esc, and keeps keyboard focus inside while open.
+export default function Sidebar({ compact, page, setPage, toolsActiveTool, setToolsActiveTool, viewAs, setViewAs, activeInitials, hasUnviewedBadges, onOpenProfile, diamonds, activeUser, teamUsers, newJoinCount=0, newNuggetCount=0, showAdmin, businesses=[], onSelectBusiness, onGoToBusinesses, activeBusiness=null, businessPage, setBusinessPage, onOpenDigest, onOpenBugReport }) {
   const [avatarImage, setAvatarImage] = useState(()=>readImgPref("avatarImage"));
   const [companyLogo, setCompanyLogo] = useState(()=>readImgPref("companyLogo"));
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const menuBtnRef = useRef(null);
+  const panelRef = useRef(null);
+
   useEffect(() => {
     const handler = () => {
-      setSidebarPrefs(readSidebarPrefs());
       setAvatarImage(readImgPref("avatarImage"));
       setCompanyLogo(readImgPref("companyLogo"));
     };
@@ -34,159 +31,90 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
     return () => window.removeEventListener('prospector_prefs_change', handler);
   }, []);
 
-  return (
-    <div style={{ width:178, background:C.sur, borderRight:`1px solid ${C.brd}`, display:"flex", flexDirection:"column", height:"100vh", position:"sticky", top:0, flexShrink:0 }}>
-      <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.brd}`, minHeight:50, display:"flex", alignItems:"center" }}>
-        <div>
+  useEffect(() => { if (!compact) setDrawerOpen(false); }, [compact]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const menuBtn = menuBtnRef.current;
+    panelRef.current?.querySelector(FOCUSABLE)?.focus();
+    const onKey = e => {
+      if (e.key === "Escape") { setDrawerOpen(false); return; }
+      if (e.key !== "Tab") return;
+      const items = [...(panelRef.current?.querySelectorAll(FOCUSABLE) || [])];
+      if (!items.length) return;
+      const first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("keydown", onKey); menuBtn?.focus(); };
+  }, [drawerOpen]);
+
+  const go = fn => (...args) => { fn?.(...args); setDrawerOpen(false); };
+  const inWorkspace = !!activeBusiness && page === "business-detail";
+  const accent = activeBusiness?.color || C.gold;
+  const isWorkspaceOwner = (activeBusiness?.owner_email||"").toLowerCase() === (activeUser?.email||"").toLowerCase();
+  const workspaceNav = activeBusiness ? BUSINESS_NAV.filter(n => (!n.ownerOnly || isWorkspaceOwner) && (!n.businessIds || n.businessIds.includes(activeBusiness.id))) : [];
+  const totalDiamonds = (diamonds?.log||[]).reduce((s,e)=>s+e.amount,0);
+
+  const panel = (
+    <div ref={panelRef} role={compact ? "dialog" : undefined} aria-modal={compact ? true : undefined} aria-label={compact ? "Menu" : undefined}
+      style={{ width: compact ? 280 : 178, maxWidth: "85vw", background:C.sur, borderRight:`1px solid ${C.brd}`, display:"flex", flexDirection:"column", height:"100vh", position: compact ? "fixed" : "sticky", top:0, left:0, flexShrink:0, zIndex: compact ? 4001 : undefined, overflowY:"auto" }}>
+      <div style={{ padding:"12px 14px", borderBottom:`1px solid ${C.brd}`, minHeight:50, display:"flex", alignItems:"center", gap:8 }}>
+        <div style={{ flex:1 }}>
           <p style={{ ...mono, margin:0, fontWeight:600, fontSize:15, color:C.gold, letterSpacing:"0.1em" }}>PROSPECTOR</p>
           <p style={{ ...mono, margin:0, fontSize:11, color:C.mut, letterSpacing:"0.05em" }}>PROSPECT INTELLIGENCE</p>
         </div>
-      </div>
-      <div style={{ borderBottom:`1px solid ${C.brd}`, padding:"8px 0" }}>
-        <button onClick={onGoToBusinesses} title="Businesses" style={{
-          display:"flex", alignItems:"center", gap:8, width:"100%", padding:"6px 14px",
-          background: page==="businesses-home"||page==="business-detail" ? C.card : "transparent",
-          border:"none",
-          borderLeft: page==="businesses-home"||page==="business-detail" ? `3px solid ${C.gold}` : "3px solid transparent",
-          cursor:"pointer", textAlign:"left",
-        }}>
-          <span style={{ ...mono, fontSize:12, color:C.txt, fontWeight:600 }}>🏢 Businesses</span>
-        </button>
-        {businesses.length > 0 ? (
-          <div style={{ paddingLeft:20, borderLeft:`3px solid ${C.gold}33`, marginLeft:14, maxHeight:180, overflowY:"auto" }}>
-            {businesses.map(b => {
-              const isActive = page==="business-detail" && activeBusiness?.id===b.id;
-              const accent = b.color || C.gold;
-              return (
-                <div key={b.id} onClick={()=>onSelectBusiness?.(b)}
-                  style={{ padding:"5px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:8, background:isActive?`${accent}33`:"transparent", borderLeft:`5px solid ${isActive?accent:"transparent"}`, boxShadow:isActive?`inset 10px 0 16px -12px ${accent}`:"none", transition:"background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease" }}>
-                  <span style={{ width:8, height:8, borderRadius:"50%", background:accent, flexShrink:0 }} />
-                  <span style={{ ...mono, fontSize:12, color:isActive?C.txt:C.mut, fontWeight:isActive?600:400, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", transition:"color 0.18s ease" }}>{b.name}</span>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <p style={{ ...mono, fontSize:11, color:C.dim, margin:"4px 14px 0" }}>No businesses yet</p>
+        {compact && (
+          <button type="button" onClick={()=>setDrawerOpen(false)} aria-label="Close menu" style={{ ...mono, width:44, height:44, background:"transparent", border:"none", color:C.mut, fontSize:18, cursor:"pointer" }}>✕</button>
         )}
       </div>
-      {page==="business-detail"&&activeBusiness ? (()=>{
-        const accent = activeBusiness.color || C.gold;
-        const otherBusinesses = businesses.filter(b=>b.id!==activeBusiness.id);
-        return (
-        <div style={{ borderLeft:`5px solid ${accent}`, boxShadow:`inset 10px 0 20px -14px ${accent}`, display:"flex", flexDirection:"column", flex:1, minHeight:0 }}>
-          <button onClick={onGoToBusinesses} style={{ ...mono, display:"flex", alignItems:"center", gap:6, width:"100%", padding:"9px 14px", fontSize:11, color:C.dim, background:"transparent", border:"none", borderBottom:`1px solid ${C.brd}`, cursor:"pointer", textAlign:"left" }}>
-            ← All Businesses
-          </button>
-          <p style={{ ...mono, margin:0, fontSize:9, color:accent, textTransform:"uppercase", letterSpacing:"0.1em", padding:"10px 14px 2px", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", fontWeight:600 }}>{activeBusiness.name}</p>
-          <div style={{ padding:"6px 0" }}>
-            {BUSINESS_NAV.filter(n=>(!n.ownerOnly || (activeBusiness.owner_email||"").toLowerCase()===(activeUser?.email||"").toLowerCase()) && (!n.businessIds || n.businessIds.includes(activeBusiness.id))).map(n=>(
-              <NavRow key={n.id} icon={n.ic} label={n.lb} active={businessPage===n.id} onClick={()=>setBusinessPage?.(n.id)} accent={accent} />
-            ))}
-          </div>
-          {otherBusinesses.length > 0 && (
-            <>
-              <p style={{ ...mono, margin:0, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.1em", padding:"10px 14px 2px" }}>Other Workspaces</p>
-              <div style={{ padding:"4px 0" }}>
-                {otherBusinesses.map(b=>(
-                  <div key={b.id} onClick={()=>onSelectBusiness?.(b)} style={{ padding:"5px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:8 }}>
-                    <span style={{ width:8, height:8, borderRadius:"50%", background:b.color||C.gold, flexShrink:0 }} />
-                    <span style={{ ...mono, fontSize:12, color:C.mut, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{b.name}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-          <p style={{ ...mono, margin:0, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.1em", padding:"10px 14px 2px" }}>Not Yet Available</p>
-          <div style={{ flex:1, padding:"6px 0", overflowY:"auto" }}>
-            {DISABLED_BUSINESS_NAV.map(n=>(
-              <div key={n.id} title={`${n.lb} isn't scoped per-business yet — coming in a future update.`} style={{ padding:"7px 12px", display:"flex", alignItems:"center", gap:8, cursor:"default", opacity:0.4 }}>
-                <span style={{ ...mono, fontSize:14, color:C.dim }}>{n.ic}</span>
-                <span style={{ fontSize:13, color:C.dim, whiteSpace:"nowrap", flex:1 }}>{n.lb}</span>
-              </div>
-            ))}
-          </div>
+
+      <div style={{ borderBottom:`1px solid ${C.brd}`, padding:"4px 0 10px" }}>
+        <p style={sectionLabel}>Workspace</p>
+        <div style={{ padding:"0 12px" }}>
+          <select aria-label="Workspace"
+            value={inWorkspace ? activeBusiness.id : ""}
+            onChange={e => {
+              const b = businesses.find(x => x.id === e.target.value);
+              if (b) go(onSelectBusiness)(b); else go(onGoToBusinesses)();
+            }}
+            style={{ ...mono, width:"100%", minHeight: compact ? 44 : 30, fontSize:12, padding:"4px 6px", background:C.bg, border:`1px solid ${inWorkspace ? accent : C.brd}`, borderRadius:5, color:C.txt, cursor:"pointer", outline:"none" }}>
+            <option value="">🏢 All workspaces</option>
+            {businesses.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </select>
         </div>
-        );
-      })() : (
-      <>
-      <p style={{ ...mono, margin:0, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.1em", padding:"10px 14px 2px" }}>Prospector Tools</p>
-      <div style={{ flex:1, padding:"6px 0", overflowY:"auto" }}>
-        {NAV.filter(n=>(NAV_ROLES[n.id]||[]).includes(activeRole)).map(n=>{
-        if (n.disabled) {
-          return (
-            <div key={n.id} title={`${n.lb} isn't built yet — coming in a future update.`} style={{ padding:"7px 12px", display:"flex", alignItems:"center", gap:8, cursor:"default", opacity:0.4 }}>
-              <span style={{ ...mono, fontSize:14, color:C.dim }}>{n.ic}</span>
-              <span style={{ fontSize:13, color:C.dim, whiteSpace:"nowrap", flex:1 }}>{n.lb}</span>
-            </div>
-          );
-        }
-        const parentActive = page===n.id || (n.id==="intelligence" && page==="analytics");
-        return (
-          <div key={n.id}>
-            <div onClick={()=>setPage(n.id)} style={{ padding:"7px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:8, background:parentActive?C.card:"transparent", borderLeft:`3px solid ${parentActive?C.gold:"transparent"}` }}>
-              <span style={{ ...mono, fontSize:14, color:parentActive?C.gold:C.mut }}>{n.ic}</span>
-              <span style={{ fontSize:13, color:parentActive?C.txt:C.mut, whiteSpace:"nowrap", flex:1 }}>{n.lb}</span>
-              {n.id==="ideas" && newNuggetCount > 0 && (
-                <div style={{ minWidth:16, height:16, borderRadius:8, background:"#EF4444", display:"flex", alignItems:"center", justifyContent:"center", padding:"0 4px", boxSizing:"border-box" }}>
-                  <span style={{ ...mono, fontSize:9, color:"#fff", fontWeight:700, lineHeight:1 }}>{newNuggetCount}</span>
-                </div>
-              )}
-              {(n.id==="tools"||n.id==="accounts"||n.id==="intelligence") && <span style={{ fontSize:10, color:C.dim }}>{parentActive?"▾":"▸"}</span>}
-            </div>
-            {n.id==="accounts" && page==="accounts" && (
-              <div style={{ paddingLeft:20, borderLeft:`3px solid ${C.gold}33` }}>
-                {[{id:"territory",ic:"◈",lb:"Territory"},{id:"prod_requests",ic:"📋",lb:"Prod. Requests"}].map(t=>(
-                  <div key={t.id} onClick={()=>setAccountsSubPage(t.id)}
-                    style={{ padding:"5px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:6,
-                      background:accountsSubPage===t.id?`${C.gold}14`:"transparent",
-                      borderLeft:`2px solid ${accountsSubPage===t.id?C.gold:"transparent"}` }}>
-                    <span style={{ ...mono, fontSize:12, color:accountsSubPage===t.id?C.gold:C.dim }}>{t.ic}</span>
-                    <span style={{ fontSize:12, color:accountsSubPage===t.id?C.txt:C.mut }}>{t.lb}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {n.id==="tools" && page==="tools" && (
-              <div style={{ paddingLeft:20, borderLeft:`3px solid ${C.gold}33` }}>
-                {[{id:"deal",ic:"$",lb:"Deal Workspace"},{id:"lookalike",ic:"◈",lb:"Account Lookalike"}].map(t=>(
-                  <div key={t.id} onClick={()=>{setPage("tools");setToolsActiveTool(t.id);}}
-                    style={{ padding:"5px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:6,
-                      background:toolsActiveTool===t.id?`${C.gold}14`:"transparent",
-                      borderLeft:`2px solid ${toolsActiveTool===t.id?C.gold:"transparent"}` }}>
-                    <span style={{ ...mono, fontSize:12, color:toolsActiveTool===t.id?C.gold:C.dim }}>{t.ic}</span>
-                    <span style={{ fontSize:12, color:toolsActiveTool===t.id?C.txt:C.mut }}>{t.lb}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {n.id==="intelligence" && parentActive && (
-              <div style={{ paddingLeft:20, borderLeft:`3px solid ${C.gold}33` }}>
-                {[
-                  { id:"analytics",    ic:"▲", lb:"Analytics",                                        action:()=>setPage("analytics") },
-                  { id:"profile",      ic:"☆", lb:"Profile",                                          action:()=>onOpenProfile?.() },
-                  { id:"intelligence", ic:"⬟", lb:`${activeUser?.company || "Prospector"} Knowledge`,      action:()=>setPage("intelligence") },
-                ].map(t=>{
-                  const active = page===t.id;
-                  return (
-                    <div key={t.id} onClick={t.action}
-                      style={{ padding:"5px 12px", cursor:"pointer", display:"flex", alignItems:"center", gap:6,
-                        background:active?`${C.gold}14`:"transparent",
-                        borderLeft:`2px solid ${active?C.gold:"transparent"}` }}>
-                      <span style={{ ...mono, fontSize:12, color:active?C.gold:C.dim }}>{t.ic}</span>
-                      <span style={{ fontSize:12, color:active?C.txt:C.mut }}>{t.lb}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        );
-        })}
       </div>
-      </>
-      )}
-      {/* Profile switcher */}
+
+      <div style={{ flex:1, padding:"6px 0", borderLeft: inWorkspace ? `5px solid ${accent}` : "none" }}>
+        {inWorkspace ? workspaceNav.map(n => (
+          <div key={n.id}>
+            <NavRow icon={n.ic} label={n.lb} accent={accent} tall={compact}
+              active={businessPage===n.id}
+              badge={n.id==="ideas" ? newNuggetCount : 0}
+              onClick={go(()=>setBusinessPage(n.id))} />
+            {n.id==="tools" && businessPage==="tools" && TOOLS_NAV.map(t => (
+              <NavRow key={t.id} sub icon={t.ic} label={t.lb} accent={accent} tall={compact}
+                active={toolsActiveTool===t.id}
+                onClick={go(()=>setToolsActiveTool(t.id))} />
+            ))}
+          </div>
+        )) : (
+          <NavRow icon="🏢" label="Workspaces" tall={compact} active={page==="businesses-home"} onClick={go(onGoToBusinesses)} />
+        )}
+        {showAdmin && (
+          <div style={{ borderTop:`1px solid ${C.brd}`, marginTop:6, paddingTop:6 }}>
+            <NavRow icon="⚙" label="Admin" tall={compact} active={page==="admin"} onClick={go(()=>setPage("admin"))} />
+          </div>
+        )}
+        {compact && (
+          <div style={{ borderTop:`1px solid ${C.brd}`, marginTop:6, paddingTop:6 }}>
+            <NavRow icon="☕" label="Daily digest" tall onClick={go(onOpenDigest)} />
+            <NavRow icon="🐞" label="Report a bug" tall onClick={go(onOpenBugReport)} />
+          </div>
+        )}
+      </div>
+
       <div style={{ padding:"10px 12px", borderTop:`1px solid ${C.brd}` }}>
         {companyLogo && (
           <div style={{ marginBottom:8, display:"flex", justifyContent:"center" }}>
@@ -199,82 +127,38 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
             <button onClick={()=>setViewAs(null)} style={{ ...mono, fontSize:10, background:"transparent", border:"none", color:C.purple, cursor:"pointer", padding:0 }}>✕ Exit</button>
           </div>
         )}
-        {/* BDR: Assigned AE self-assignment */}
-        {!viewAs && activeUser?.role === "BDR" && activeUser?.id && onUpdateTeamUser && (()=>{
-          const aes = (teamUsers||[]).filter(u => u.role === "AE" || isAdmin(u));
-          if (!aes.length) return null;
-          const currentAEId = (activeUser.assignedAEs || [])[0] || "";
-          return (
-            <div style={{ marginBottom:8 }}>
-              <p style={{ ...mono, margin:"0 0 3px", fontSize:9, color:`${C.gold}66`, textTransform:"uppercase", letterSpacing:"0.1em" }}>Assigned AE</p>
-              <select
-                value={currentAEId}
-                onChange={e => {
-                  const newAE = aes.find(u => u.id === e.target.value);
-                  const oldAE = aes.find(u => u.id === currentAEId);
-                  if (oldAE?.email && activeUser.email) removeBdrAssignment(activeUser.email, oldAE.email);
-                  if (newAE?.email && activeUser.email) upsertBdrAssignment(activeUser.email, newAE.email);
-                  onUpdateTeamUser(activeUser.id, { assignedAEs: e.target.value ? [e.target.value] : [] });
-                }}
-                style={{ ...mono, width:"100%", fontSize:10, padding:"3px 6px", background:C.bg, border:`1px solid ${C.brd}`, borderRadius:4, color:C.mut, cursor:"pointer", outline:"none" }}
-              >
-                <option value="">— not assigned —</option>
-                {aes.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select>
+        <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+          <button type="button" onClick={!viewAs?go(onOpenProfile):undefined} disabled={!!viewAs}
+            style={{ display:"flex", alignItems:"center", gap:8, flex:1, minWidth:0, minHeight: compact ? 44 : undefined, font:"inherit", textAlign:"left", background:"transparent", border:"none", cursor:viewAs?"default":"pointer", borderRadius:6, padding:"2px 4px", margin:"-2px -4px" }}
+            onMouseEnter={e=>{ if(!viewAs) e.currentTarget.style.background=`${C.gold}0a`; }}
+            onMouseLeave={e=>{ e.currentTarget.style.background="transparent"; }}>
+            <div style={{ position:"relative", flexShrink:0 }}>
+              {avatarImage && !viewAs
+                ? <img src={avatarImage} alt="" style={{ width:24, height:24, borderRadius:"50%", objectFit:"contain", border:`1px solid ${C.goldBdr}` }}/>
+                : <div style={{ width:24, height:24, borderRadius:"50%", background:viewAs?`${C.purple}28`:C.goldBg, border:`1px solid ${viewAs?C.purple:C.goldBdr}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, color:viewAs?C.purple:C.gold, fontWeight:600, ...mono }}>{activeInitials}</div>
+              }
+              {!viewAs && newJoinCount > 0 && (
+                <div style={{ position:"absolute", top:-4, right:-4, minWidth:14, height:14, borderRadius:7, background:"#EF4444", border:`1.5px solid ${C.bg}`, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px", boxSizing:"border-box" }}>
+                  <span style={{ ...mono, fontSize:8, color:"#fff", fontWeight:700, lineHeight:1 }}>{newJoinCount}</span>
+                </div>
+              )}
+              {!viewAs && newJoinCount === 0 && hasUnviewedBadges && (
+                <div style={{ position:"absolute", top:-2, right:-2, width:7, height:7, borderRadius:"50%", background:C.gold, border:`1.5px solid ${C.bg}` }}/>
+              )}
             </div>
-          );
-        })()}
-        {/* Reports-to self-assign (non-admin, non-viewAs) */}
-        {!viewAs && !isAdmin(activeUser) && activeUser?.role !== "BDR" && activeUser?.id && onUpdateTeamUser && (()=>{
-          const myLevel = ROLE_LEVEL[activeUser.role]||1;
-          const eligible = (teamUsers||[]).filter(u => u.id !== activeUser.id && (ROLE_LEVEL[u.role]||1) > myLevel);
-          if(!eligible.length) return null;
-          return (
-            <div style={{ marginBottom:8 }}>
-              <p style={{ ...mono, margin:"0 0 3px", fontSize:9, color:`${C.gold}66`, textTransform:"uppercase", letterSpacing:"0.1em" }}>Reports to</p>
-              <select
-                value={activeUser.reportsTo||""}
-                onChange={e => onUpdateTeamUser(activeUser.id, { reportsTo: e.target.value||null })}
-                style={{ ...mono, width:"100%", fontSize:10, padding:"3px 6px", background:C.bg, border:`1px solid ${C.brd}`, borderRadius:4, color:C.mut, cursor:"pointer", outline:"none" }}
-              >
-                <option value="">— no manager —</option>
-                {eligible.map(u => <option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
-              </select>
+            <div style={{ flex:1, minWidth:0 }}>
+              <p style={{ margin:0, fontSize:13, color:C.txt, lineHeight:1.3, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{activeUser.name}</p>
+              <p style={{ ...mono, margin:0, fontSize:11, color:C.mut }}>{(activeUser.role||"AE")} · {(activeUser.company||"Prospector").toUpperCase()}</p>
             </div>
-          );
-        })()}
-        <div onClick={!viewAs?onOpenProfile:undefined} style={{ display:"flex", alignItems:"center", gap:8, cursor:viewAs?"default":"pointer", borderRadius:6, padding:"2px 4px", margin:"-2px -4px" }}
-          onMouseEnter={e=>{ if(!viewAs) e.currentTarget.style.background=`${C.gold}0a`; }}
-          onMouseLeave={e=>{ e.currentTarget.style.background="transparent"; }}>
-          <div style={{ position:"relative", flexShrink:0 }}>
-            {avatarImage && !viewAs
-              ? <img src={avatarImage} alt="" style={{ width:24, height:24, borderRadius:"50%", objectFit:"contain", border:`1px solid ${C.goldBdr}` }}/>
-              : <div style={{ width:24, height:24, borderRadius:"50%", background:viewAs?`${C.purple}28`:C.goldBg, border:`1px solid ${viewAs?C.purple:C.goldBdr}`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:11, color:viewAs?C.purple:C.gold, fontWeight:600, ...mono }}>{activeInitials}</div>
-            }
-            {!viewAs && newJoinCount > 0 && (
-              <div style={{ position:"absolute", top:-4, right:-4, minWidth:14, height:14, borderRadius:7, background:"#EF4444", border:`1.5px solid ${C.bg}`, display:"flex", alignItems:"center", justifyContent:"center", padding:"0 3px", boxSizing:"border-box" }}>
-                <span style={{ ...mono, fontSize:8, color:"#fff", fontWeight:700, lineHeight:1 }}>{newJoinCount}</span>
-              </div>
-            )}
-            {!viewAs && newJoinCount === 0 && hasUnviewedBadges && (
-              <div style={{ position:"absolute", top:-2, right:-2, width:7, height:7, borderRadius:"50%", background:C.gold, border:`1.5px solid ${C.bg}` }}/>
-            )}
-          </div>
-          <div style={{ flex:1, minWidth:0 }}>
-            <p style={{ margin:0, fontSize:13, color:C.txt, lineHeight:1.3 }}>{activeUser.name}</p>
-            <p style={{ ...mono, margin:0, fontSize:11, color:C.mut }}>{(activeUser.role||"AE")} · {(activeUser.company||"Prospector").toUpperCase()}</p>
-          </div>
-
+          </button>
           <div style={{ display:"flex", alignItems:"center", gap:4, flexShrink:0 }}>
-            {!viewAs && (diamonds.log||[]).reduce((s,e)=>s+e.amount,0) > 0 && (
-              <span style={{ ...mono, fontSize:10, color:"#5bc8f5", display:"flex", alignItems:"center", gap:1 }}>
-                💎{(diamonds.log||[]).reduce((s,e)=>s+e.amount,0)}
-              </span>
+            {!viewAs && totalDiamonds > 0 && (
+              <span style={{ ...mono, fontSize:10, color:"#5bc8f5", display:"flex", alignItems:"center", gap:1 }}>💎{totalDiamonds}</span>
             )}
             {viewAs
-              ? <button onClick={e=>{e.stopPropagation();setViewAs(null);}} style={{ ...mono, fontSize:10, padding:"2px 6px", background:"transparent", border:`1px solid ${C.brd}`, color:C.dim, borderRadius:4, cursor:"pointer", whiteSpace:"nowrap" }}>← You</button>
+              ? <button onClick={()=>setViewAs(null)} style={{ ...mono, fontSize:10, padding:"2px 6px", background:"transparent", border:`1px solid ${C.brd}`, color:C.dim, borderRadius:4, cursor:"pointer", whiteSpace:"nowrap" }}>← You</button>
               : isAdmin(activeUser) && teamUsers.length>0 && (
-                  <select onClick={e=>e.stopPropagation()} onChange={e=>{ const u=teamUsers.find(x=>x.id===e.target.value); if(u && isAdmin(activeUser)) setViewAs({...u,initials:initials(u.name)}); e.target.value=""; }}
+                  <select aria-label="View as" onChange={e=>{ const u=teamUsers.find(x=>x.id===e.target.value); if(u && isAdmin(activeUser)) setViewAs({...u,initials:initials(u.name)}); e.target.value=""; }}
                     defaultValue="" style={{ ...mono, fontSize:10, padding:"2px 2px", background:C.sur, border:`1px solid ${C.brd}`, color:C.dim, borderRadius:4, cursor:"pointer", width:28 }}>
                     <option value="" disabled>⇄</option>
                     {teamUsers.map(u=><option key={u.id} value={u.id}>{u.name} ({u.role})</option>)}
@@ -283,12 +167,11 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
             }
           </div>
         </div>
-        {/* Sign out */}
         {!viewAs && (
           <div style={{ marginTop:6, textAlign:"center" }}>
             <button
               onClick={signOut}
-              style={{ ...mono, fontSize:10, color:C.dim, background:"transparent", border:"none", cursor:"pointer", padding:"2px 6px", borderRadius:3 }}
+              style={{ ...mono, fontSize:10, color:C.dim, background:"transparent", border:"none", cursor:"pointer", padding: compact ? "0 16px" : "2px 6px", minHeight: compact ? 44 : undefined, borderRadius:3 }}
               onMouseEnter={e => e.currentTarget.style.color = C.red}
               onMouseLeave={e => e.currentTarget.style.color = C.dim}
             >
@@ -298,5 +181,25 @@ export default function Sidebar({ page, setPage, activeRole, toolsActiveTool, se
         )}
       </div>
     </div>
+  );
+
+  if (!compact) return panel;
+
+  const title = inWorkspace ? activeBusiness.name : page === "admin" ? "Admin" : "Workspaces";
+  return (
+    <>
+      <div style={{ position:"sticky", top:0, zIndex:4000, display:"flex", alignItems:"center", gap:8, height:52, padding:"0 8px", background:C.sur, borderBottom:`1px solid ${C.brd}` }}>
+        <button ref={menuBtnRef} type="button" onClick={()=>setDrawerOpen(true)} aria-label="Open menu" aria-expanded={drawerOpen}
+          style={{ ...mono, width:44, height:44, background:"transparent", border:"none", color:C.txt, fontSize:20, cursor:"pointer" }}>☰</button>
+        {inWorkspace && <span style={{ width:8, height:8, borderRadius:"50%", background:accent, flexShrink:0 }} />}
+        <span style={{ ...mono, fontSize:13, color:C.txt, fontWeight:600, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{title}</span>
+      </div>
+      {drawerOpen && (
+        <>
+          <div onClick={()=>setDrawerOpen(false)} style={{ position:"fixed", inset:0, background:"#000a", zIndex:4000 }} />
+          {panel}
+        </>
+      )}
+    </>
   );
 }

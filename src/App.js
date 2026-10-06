@@ -17,6 +17,8 @@ import DailyDigest from './components/DailyDigest';
 import ManagerCommandCenter from './components/ManagerCommandCenter';
 import HandoffsPage from './components/HandoffsPage';
 import { NAV, ROLE_PERMS, NAV_ROLES, isAdmin } from './constants/appConfig';
+import { APP_LEVEL_VIEWS } from './constants/businessNav';
+import useMediaQuery from './utils/useMediaQuery';
 import { trackStat, trackDailyStat } from './utils/stats';
 import { indexAccountThreads } from './utils/threadIndexer';
 import { fetchRecentThreads, generateBrief } from './components/DailyDigest';
@@ -111,7 +113,7 @@ export default function App({ me }) {
   },[]);
 
   const [user,setUser]=useState(()=>userFromSession(me));
-  const [page,setPage]=useState("home");
+  const [page,setPage]=useState("businesses-home");
   const [accounts,setAccounts]=useState(()=>{
     try{
       const bl=JSON.parse(localStorage.getItem("prospector_removed_accounts")||"[]");
@@ -981,6 +983,9 @@ export default function App({ me }) {
   // same pattern as accountsSubPage/toolsActiveTool - lifted here so both Sidebar
   // (renders the nav) and BusinessDetailPage (renders the matching view) read it.
   const [businessPage, setBusinessPage] = useState('command-center');
+  const compact = useMediaQuery('(max-width: 899px)');
+  const [digestOpen, setDigestOpen] = useState(false);
+  const [bugOpen, setBugOpen] = useState(false);
   const [businessesLoading, setBusinessesLoading] = useState(true);
   useEffect(() => {
     if (!user?.email) { setBusinessesLoading(false); return; }
@@ -1208,7 +1213,10 @@ export default function App({ me }) {
   },[page,activeRole]);
   const navTo=(pg,tab)=>{
     const dest = pg === "team" ? "outbound" : pg;
-    setPage(dest);
+    if(APP_LEVEL_VIEWS.includes(dest)){
+      if(activeBusiness){ setBusinessPage(dest); setPage("business-detail"); }
+      else setPage("businesses-home");
+    } else setPage(dest);
     const tabStr=tab!=null?String(tab):null;
     if(dest==="accounts"&&tabStr)setAccountsJumpId(tabStr);
     else if(dest==="tools"&&tabStr&&tabStr.startsWith("roi:")){setToolsLaunchId(tab.slice(4));setToolsActiveTool("deal");}
@@ -1235,9 +1243,9 @@ export default function App({ me }) {
   const firstName=activeUser.name.split(" ")[0];
 
   return(
-    <div style={{ display:"flex", background:C.bg, minHeight:"100vh", width:"100%" }}>
-      <Sidebar page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();}if(p!=="accounts")setAccountsSubPage("territory");}} activeRole={activeRole} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} accountsSubPage={accountsSubPage} setAccountsSubPage={setAccountsSubPage} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} newNuggetCount={newNuggetCount} onUpdateTeamUser={updateTeamUser} businesses={myBusinesses} onSelectBusiness={selectBusiness} onGoToBusinesses={()=>navTo('businesses-home')} activeBusiness={activeBusiness} businessPage={businessPage} setBusinessPage={setBusinessPage} />
-      <div style={{ flex:1, padding:"18px 20px", overflowY:"auto", minWidth:0 }}>
+    <div style={{ display:"flex", flexDirection:compact?"column":"row", background:C.bg, minHeight:"100vh", width:"100%" }}>
+      <Sidebar compact={compact} page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();}}} showAdmin={isAdmin(user)} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} newNuggetCount={newNuggetCount} businesses={myBusinesses} onSelectBusiness={selectBusiness} onGoToBusinesses={()=>navTo('businesses-home')} activeBusiness={activeBusiness} businessPage={businessPage} setBusinessPage={setBusinessPage} onOpenDigest={()=>setDigestOpen(true)} onOpenBugReport={()=>setBugOpen(true)} />
+      <div id="main-content" style={{ flex:1, padding:compact?"12px 12px":"18px 20px", overflowY:"auto", minWidth:0 }}>
         <PersistentScout
           isBusinessContext={page==="business-detail"&&!!activeBusiness}
           activeBusiness={activeBusiness}
@@ -1285,12 +1293,12 @@ export default function App({ me }) {
         {page==="analytics"&&<AnalyticsPage accounts={accounts} tasks={tasks} stealthList={stealthList} frontier={frontier} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} teamUsers={teamUsers} currentUser={user} activeRole={activeRole}/>}
         {page==="intelligence"&&<IntelligencePage user={user} activeUser={activeUser}/>}
         {(page==="outbound"||page==="team")&&<OutboundPage accounts={accounts} onNav={navTo} user={user} activeUser={activeUser} perms={perms} stealthList={stealthList} onSaveStealthList={setStealthList} onPromoteToAccount={promoteToAccount} onSfStatus={setSfStatus} frontier={frontier} onSaveFrontier={setFrontier} onAssignToBDR={assignToBDR} onUnassignFromFrontier={unassignFromFrontier} onSetFrontierStatus={setFrontierStatus} onRemoveDemoAccount={()=>setFrontier(fl=>fl.filter(f=>!f.isDemo))} onHandoff={f=>{setAccounts(as=>as.map(a=>{if(a.name.toLowerCase()!==f.name.toLowerCase())return a;logStageChange('onHandoff (OutboundPage)',a.name,a.stage,'Engaged');return {...a,stage:"Engaged",last:new Date().toISOString().slice(0,10)};}));setFrontier(fl=>fl.filter(x=>x.id!==f.id));trackStat("tasks_assigned_to_bdr");}} teamUsers={teamUsers} setAccounts={setAccounts} onCreateTask={task=>setTasks(ts=>[...ts,task])}/>}
-        {page==="ideas"&&<IdeasPage nuggets={nuggets} onSaveNuggets={setNuggets} activeUser={activeUser} onViewIdeas={onViewIdeas}/>}
+        {page==="business-detail"&&businessPage==="ideas"&&<IdeasPage nuggets={nuggets} onSaveNuggets={setNuggets} activeUser={activeUser} onViewIdeas={onViewIdeas}/>}
         {page==="ledger"&&<LedgerPage accounts={accounts} setAccounts={setAccounts} teamUsers={teamUsers} activeUser={activeUser} tasks={tasks} winsLog={winsLog} setWinsLog={setWinsLog} managerSelectedAeId={managerScopedAeId}/>}
-        {page==="tools"&&<ToolsPage accounts={accounts} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} launchAccountId={toolsLaunchId} onLaunched={()=>setToolsLaunchId(null)} activeTool={toolsActiveTool} onToolSelect={setToolsActiveTool} onCreateTask={(prefill)=>setTaskModal(prefill||{})}/>}
+        {page==="business-detail"&&businessPage==="tools"&&<ToolsPage accounts={accounts} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} launchAccountId={toolsLaunchId} onLaunched={()=>setToolsLaunchId(null)} activeTool={toolsActiveTool} onToolSelect={setToolsActiveTool} onCreateTask={(prefill)=>setTaskModal(prefill||{})}/>}
         {page==="admin"&&isAdmin(user)&&<AdminPage teamUsers={teamUsers} onSaveUsers={setTeamUsers} currentUser={user} onUpdateCurrentUser={patch=>{setUser(u=>{const next={...u,...patch};localStorage.setItem("prospector_user",JSON.stringify(next));return next;});}} rolePerms={rolePerms} onSaveRolePerms={setRolePerms} onSave={saveAccounts} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} onSaveBatch={saveBatch} accounts={accounts}/>}
         {page==="businesses-home"&&<BusinessesHomePage businesses={myBusinesses} loading={businessesLoading} projects={myProjects} onSelect={selectBusiness} onCreated={b=>{setMyBusinesses(prev=>[b,...prev]);selectBusiness(b);}}/>}
-        {page==="business-detail"&&activeBusiness&&<BusinessDetailPage key={activeBusiness.id} business={activeBusiness} userEmail={user.email} projects={myProjects.filter(p=>p.business_id===activeBusiness.id)} campaigns={myCampaigns.filter(c=>c.business_id===activeBusiness.id)} view={businessPage} onUpdated={onBusinessUpdated} onProjectCreated={p=>setMyProjects(prev=>[p,...prev])} onProjectUpdated={p=>setMyProjects(prev=>prev.map(x=>x.id===p.id?p:x))} onCampaignCreated={c=>setMyCampaigns(prev=>[c,...prev])} onCampaignUpdated={c=>setMyCampaigns(prev=>prev.map(x=>x.id===c.id?c:x))} sharedAccounts={accounts} sharedTasks={tasks} setSharedTasks={setTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={navTo} onUpdateAccount={perms.canEditStage?(id,patch)=>setAccounts(as=>as.map(a=>a.id===id?{...a,...patch}:a)):undefined}/>}
+        {page==="business-detail"&&activeBusiness&&!APP_LEVEL_VIEWS.includes(businessPage)&&<BusinessDetailPage key={activeBusiness.id} business={activeBusiness} userEmail={user.email} projects={myProjects.filter(p=>p.business_id===activeBusiness.id)} campaigns={myCampaigns.filter(c=>c.business_id===activeBusiness.id)} view={businessPage} onUpdated={onBusinessUpdated} onProjectCreated={p=>setMyProjects(prev=>[p,...prev])} onProjectUpdated={p=>setMyProjects(prev=>prev.map(x=>x.id===p.id?p:x))} onCampaignCreated={c=>setMyCampaigns(prev=>[c,...prev])} onCampaignUpdated={c=>setMyCampaigns(prev=>prev.map(x=>x.id===c.id?c:x))} sharedAccounts={accounts} sharedTasks={tasks} setSharedTasks={setTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={navTo} onUpdateAccount={perms.canEditStage?(id,patch)=>setAccounts(as=>as.map(a=>a.id===id?{...a,...patch}:a)):undefined}/>}
         {page==="handoffs"&&<HandoffsPage accounts={accounts} onAddAccount={acc=>{setAccounts(a=>[acc,...a]);trackStat("accounts_added");trackDailyStat("accounts_added");}} activeUser={activeUser} activeRole={activeRole} teamUsers={teamUsers}/>}
         </Suspense>
       </div>
@@ -1298,8 +1306,8 @@ export default function App({ me }) {
       {profileOpen&&<ProfilePanel user={user} accounts={accounts} tasks={tasks} snapshots={snapshots} stats={stats} earnedBadges={earnedBadges} score={appBreakdown?.score||0} grade={appBreakdown?.grade||"—"} gradeColor={appBreakdown?.c||C.dim} diamonds={diamonds} winsLog={winsLog} onClose={()=>setProfileOpen(false)}/>}
       <BadgeToast badge={badgeToast} onDismiss={()=>setBadgeToast(null)}/>
 
-      <DailyDigest accounts={accounts} tasks={tasks} firstName={firstName} onNav={navTo} onUpdateTask={handleUpdateTask} onCreateTask={task=>setTasks(ts=>[task,...ts])}/>
-      <BugReporter page={page} reporterName={user?.name||"AE"}/>
+      <DailyDigest open={digestOpen} setOpen={setDigestOpen} hideTrigger={compact} accounts={accounts} tasks={tasks} firstName={firstName} onNav={navTo} onUpdateTask={handleUpdateTask} onCreateTask={task=>setTasks(ts=>[task,...ts])}/>
+      <BugReporter open={bugOpen} setOpen={setBugOpen} hideTrigger={compact} page={page} reporterName={user?.name||"AE"}/>
     </div>
   );
 }
