@@ -12,9 +12,14 @@ const ROWS = [
   { key: 'sequences_running', name: 'Sequences running', hint: 'active sequences', format: fmt },
   { key: 'meetings_set', name: 'Meetings set', hint: 'typed in until calendar sync', format: fmt, manual: true },
   { key: 'open_rate', name: 'Open rate', hint: 'opens ÷ delivered', format: pct, rate: true },
+  // sales-partners-pipeline-v1 - counted from the partner buttons' history.
+  { key: 'partners_first_touched', name: 'Partners first-touched', hint: '"1st email sent" clicks', format: fmt, source: 'App', group: 'Partners' },
+  { key: 'tier1_touched_pct', name: 'Tier 1 touched', hint: 'Tier 1 partners with any touch', format: pct, rate: true, source: 'App' },
+  { key: 'partner_meetings', name: 'Partner meetings', hint: '"Meeting booked" clicks', format: fmt, source: 'App' },
+  { key: 'partners_pilot_live', name: 'Partners in pilot / live', hint: 'at week end', format: fmt, source: 'App' },
 ];
-// Only these two narrow to one person; the rest are team-wide numbers.
-const PER_PERSON = ['outbound_audience', 'open_rate'];
+// These narrow to one person (partners by owner); the rest are team-wide numbers.
+const PER_PERSON = ['outbound_audience', 'open_rate', 'partners_first_touched', 'tier1_touched_pct', 'partner_meetings', 'partners_pilot_live'];
 
 function Bar({ p }) {
   return (
@@ -38,13 +43,14 @@ export default function ScorecardTable({ data, error, weekStart, ownerName, canE
     <section style={cardStyle} aria-labelledby="h-score">
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span style={labelStyle}>{ownerName ? `Scorecard · ${ownerName} (audience & open rate) · rest team-wide` : 'Scorecard · team totals'}</span>
+          <span style={labelStyle}>{ownerName ? `Scorecard · ${ownerName} (audience, open rate, partners) · rest team-wide` : 'Scorecard · team totals'}</span>
           <h2 style={h2Style} id="h-score">{month ? `${monthName(month)} targets, week by week` : 'Targets, week by week'}</h2>
-          <span style={subStyle}>Actuals fill in from Apollo on every sync. You only type the goals.</span>
+          <span style={subStyle}>Actuals fill in from Apollo on every sync and from the partner buttons. You only type the goals.</span>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <SourceBadge source="Apollo" /><span style={{ ...subStyle, fontSize: 12 }}>auto</span>
           <SourceBadge source="Manual" /><span style={{ ...subStyle, fontSize: 12 }}>typed</span>
+          <SourceBadge source="App" /><span style={{ ...subStyle, fontSize: 12 }}>buttons</span>
         </div>
       </div>
       {error?.needsMigration ? <div style={{ marginTop: 16 }}><NeedsMigration what="The scorecard" /></div>
@@ -63,13 +69,16 @@ export default function ScorecardTable({ data, error, weekStart, ownerName, canE
                 const m = data.month_total[r.key];
                 const mp = m.value != null && m.goal ? m.value / m.goal : null;
                 const dimmed = ownerName && !PER_PERSON.includes(r.key);
-                return (
+                return [
+                  r.group && (
+                    <tr key={`${r.key}-group`}><th scope="rowgroup" colSpan={data.weeks.length + 2} style={{ ...labelStyle, textAlign: 'left', padding: '20px 0 6px', borderTop: `1px solid ${SA.track}` }}>{r.group}</th></tr>
+                  ),
                   <tr key={r.key} style={{ opacity: dimmed ? 0.75 : 1 }}>
                     <td style={{ ...td, textAlign: 'left', paddingLeft: 0, minWidth: 190 }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <span style={{ fontWeight: 500 }}>{r.name}</span>
                         <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                          <SourceBadge source={r.manual ? 'Manual' : 'Apollo'} />
+                          <SourceBadge source={r.source || (r.manual ? 'Manual' : 'Apollo')} />
                           <span style={{ ...subStyle, fontSize: 12 }}>{dimmed ? 'team-wide' : r.hint}</span>
                         </span>
                       </div>
@@ -117,8 +126,8 @@ export default function ScorecardTable({ data, error, weekStart, ownerName, canE
                           parts={[{ label: 'Reached', count: Math.round(Math.min(mp || 0, 1) * 1000), color: progressColor(mp) }, { label: 'Left', count: Math.round((1 - Math.min(mp || 0, 1)) * 1000), color: SA.track }]} />
                       </div>
                     </td>
-                  </tr>
-                );
+                  </tr>,
+                ];
               })}
             </tbody>
           </table>

@@ -6,6 +6,7 @@ import HuddleCard from './HuddleCard';
 import CollateralLibrary from './CollateralLibrary';
 import HuddlePrintSheet from './HuddlePrintSheet';
 import BriefingStrip from './BriefingStrip';
+import HuddlePartners from './HuddlePartners';
 import { exportWidgetCsv } from './exportCsv';
 
 const OWNER_LABELS = { jack: 'Jack', cyrus: 'Cyrus', unassigned: 'Unassigned' };
@@ -188,6 +189,8 @@ export default function DailyHuddle({ businessId }) {
         !error && <p style={{ ...SA_TYPE.body, fontSize: 13, color: SA.muted }}>Loading…</p>
       ) : (
         <>
+          <HuddlePartners businessId={businessId} />
+
           <BriefingStrip people={needsAction.slice(0, BRIEFING_MAX)} total={needsAction.length} issues={issues} issuesError={issuesError} ownerLabels={OWNER_LABELS} />
 
           <Section title="Due today / overdue" count={due.length} empty="Nothing due.">

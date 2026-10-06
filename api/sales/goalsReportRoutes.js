@@ -1,5 +1,6 @@
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { STAGE_ORDER } from './pipelineStages.js';
+import { PARTNER_METRICS, PARTNER_FLOWS, loadPartnerData, partnerWeekMetrics, partnerReportBlock } from './partnerMetrics.js';
 import {
   getSupabase, validate, fail, findRow, weekIsFinal, FINAL_ERROR,
   isMonday, isFirstOfMonth, addDays, laStartOfDayMs,
@@ -32,6 +33,7 @@ const KPI_ROWS = [
 ];
 const SCORECARD_SOURCES = {
   outbound_audience: 'Apollo', total_in_sequence: 'Apollo', sequences_running: 'Apollo', meetings_set: 'Manual', open_rate: 'Apollo',
+  ...Object.fromEntries(PARTNER_METRICS.map(k => [k, 'App'])),
 };
 
 // Mondays whose week starts inside the month (the September sheet's
@@ -124,10 +126,12 @@ export async function buildScorecard(supabase, businessId, month, ownerUserId) {
   const manual = await manualActuals(supabase, businessId, weeks);
   const weekGoals = await targetsFor(supabase, businessId, 'week', weeks);
   const monthGoals = await targetsFor(supabase, businessId, 'month', [month]);
+  const partnerData = await loadPartnerData(supabase, businessId);
+  const keys = [...SCORECARD_METRICS, ...PARTNER_METRICS];
   const perWeek = [];
   for (const w of weeks) {
-    const actual = await weekScorecard(supabase, businessId, w, ownerUserId, manual);
-    perWeek.push({ week_start: w, metrics: Object.fromEntries(SCORECARD_METRICS.map(k => [k, { ...actual[k], goal: weekGoals.get(`${w}|${k}`) ?? null }])) });
+    const actual = { ...await weekScorecard(supabase, businessId, w, ownerUserId, manual), ...partnerWeekMetrics(partnerData, w, ownerUserId) };
+    perWeek.push({ week_start: w, metrics: Object.fromEntries(keys.map(k => [k, { ...actual[k], goal: weekGoals.get(`${w}|${k}`) ?? null }])) });
   }
   // Month column: sums for flows, the latest week's value for stock numbers.
   const vals = k => perWeek.map(w => w.metrics[k].value).filter(v => v != null);
@@ -141,10 +145,11 @@ export async function buildScorecard(supabase, businessId, month, ownerUserId) {
     sequences_running: last('sequences_running'),
     meetings_set: sum('meetings_set'),
     open_rate: weeks.length ? await openRate(supabase, businessId, weeks[0], monthEnd, forOwner) : null,
+    ...Object.fromEntries(PARTNER_METRICS.map(k => [k, PARTNER_FLOWS.includes(k) ? sum(k) : last(k)])),
   };
   return {
     month, owner_user_id: ownerUserId || null, weeks: perWeek,
-    month_total: Object.fromEntries(SCORECARD_METRICS.map(k => [k, { value: monthActual[k], goal: monthGoals.get(`${month}|${k}`) ?? null, source: SCORECARD_SOURCES[k] }])),
+    month_total: Object.fromEntries(keys.map(k => [k, { value: monthActual[k], goal: monthGoals.get(`${month}|${k}`) ?? null, source: SCORECARD_SOURCES[k] }])),
     sources: SCORECARD_SOURCES,
   };
 }
@@ -334,7 +339,7 @@ export async function saveTargetRoute(req, res) {
   const { period, period_start, metric_key } = req.body || {};
   if (!['week', 'month'].includes(period)) return res.status(400).json({ error: 'bad enum: period must be week|month' });
   if (period === 'week' ? !isMonday(period_start) : !isFirstOfMonth(period_start)) return res.status(400).json({ error: `period_start must be a ${period === 'week' ? 'Monday' : '1st of a month'} (YYYY-MM-DD)` });
-  const metrics = [...SCORECARD_METRICS, ...KPI_METRICS];
+  const metrics = [...SCORECARD_METRICS, ...KPI_METRICS, ...PARTNER_METRICS];
   if (!metrics.includes(metric_key)) return res.status(400).json({ error: `bad enum: metric_key must be one of ${metrics.join('|')}` });
   const num = v => v === null || (typeof v === 'number' && Number.isFinite(v) && v >= 0);
   if ('goal' in req.body && !num(req.body.goal)) return res.status(400).json({ error: 'goal must be a number >= 0 or null' });
@@ -367,17 +372,19 @@ export async function getReportRoute(req, res) {
   const businessId = req.params.businessId;
   const supabase = getSupabase();
   try {
-    const [{ data: report, error: rErr }, sections, infra, commitments] = await Promise.all([
+    const [{ data: report, error: rErr }, sections, infra, commitments, partnerData] = await Promise.all([
       supabase.from('sales_week_report').select('*').eq('business_id', businessId).eq('week_start', week_start).maybeSingle(),
       selectAllPages(() => supabase.from('sales_week_report_sections').select('*').eq('business_id', businessId).eq('week_start', week_start).order('section_key')),
       selectAllPages(() => supabase.from('sales_infra_items').select('*').eq('business_id', businessId).eq('week_start', week_start).order('sort_order').order('created_at').order('id')),
       commitmentProgress(supabase, businessId, week_start),
+      loadPartnerData(supabase, businessId),
     ]);
     if (rErr) throw new Error(rErr.message);
     res.json({
       week_start,
       report: report || { status: 'draft', snapshot: null, finalized_at: null, finalized_by: null, reopened_at: null, reopened_by: null },
       sections, infra, commitments,
+      partners: partnerReportBlock(partnerData, week_start),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
@@ -403,8 +410,8 @@ export async function saveSectionRoute(req, res) {
 }
 
 // POST /goals/report/:weekStart/finalize - freezes scorecard (the week's
-// month), KPI table, commitments with progress, section notes and infra
-// list. Later edits to live data never change the snapshot.
+// month), KPI table, commitments with progress, section notes, infra list
+// and partner numbers. Later edits to live data never change the snapshot.
 export async function finalizeReportRoute(req, res) {
   const { weekStart } = req.params;
   if (!isMonday(weekStart)) return res.status(400).json({ error: 'week must be a Monday (YYYY-MM-DD)' });
@@ -412,17 +419,18 @@ export async function finalizeReportRoute(req, res) {
   const supabase = getSupabase();
   try {
     if (await weekIsFinal(supabase, businessId, weekStart)) return res.status(409).json({ error: 'This week is already finalized' });
-    const [scorecard, kpi, commitments, sections, infra] = await Promise.all([
+    const [scorecard, kpi, commitments, sections, infra, partnerData] = await Promise.all([
       buildScorecard(supabase, businessId, `${weekStart.slice(0, 7)}-01`, null),
       buildKpi(supabase, businessId, weekStart),
       commitmentProgress(supabase, businessId, weekStart),
       selectAllPages(() => supabase.from('sales_week_report_sections').select('section_key, notes').eq('business_id', businessId).eq('week_start', weekStart).order('section_key')),
       selectAllPages(() => supabase.from('sales_infra_items').select('component, status, note').eq('business_id', businessId).eq('week_start', weekStart).order('sort_order').order('id')),
+      loadPartnerData(supabase, businessId),
     ]);
     const now = new Date().toISOString();
     const { data, error } = await supabase.from('sales_week_report').upsert({
       business_id: businessId, week_start: weekStart, status: 'final',
-      snapshot: { taken_at: now, scorecard, kpi, commitments, sections, infra },
+      snapshot: { taken_at: now, scorecard, kpi, commitments, sections, infra, partners: partnerReportBlock(partnerData, weekStart) },
       finalized_at: now, finalized_by: req.auth.user.id, updated_at: now,
     }, { onConflict: 'business_id,week_start' }).select().single();
     if (error) throw new Error(error.message);

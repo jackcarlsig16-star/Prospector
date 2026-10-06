@@ -3,6 +3,7 @@ import { SA, saSans } from '../theme';
 import { SEMANTIC } from '../palette';
 import Ring from '../charts/Ring';
 import KpiTable from './KpiTable';
+import { PIPELINE_STATUSES } from '../../../constants/partnerPipeline';
 import {
   cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, rowStyle, inputStyle,
   Chip, Dot, Btn, AddButton, SourceBadge, NeedsMigration, ErrorNote, fmt, short, pct, progressColor, weekOf,
@@ -59,6 +60,41 @@ function SectionNotes({ section, notes, editable, onSave, onSaved }) {
       {/* A textarea prints only its visible rows, so the PDF gets the full text instead. */}
       <div className="print-only" style={{ marginTop: 6, whiteSpace: 'pre-wrap', fontSize: 13, lineHeight: 1.5 }}>{value || '—'}</div>
     </>
+  );
+}
+
+// sales-partners-pipeline-v1 - partner pipeline status by owner, for Seif's
+// PDF. Only statuses someone has a partner in get a column.
+function PartnerStatusTable({ byOwner, lookup, members }) {
+  const owners = [...members.map(m => m.user_id).filter(id => byOwner[id]), ...(byOwner.unassigned ? ['unassigned'] : [])];
+  const cols = PIPELINE_STATUSES.filter(st => owners.some(o => byOwner[o][st.id]));
+  const total = o => Object.values(byOwner[o]).reduce((a, b) => a + b, 0);
+  // Headers wrap so every status column fits the card (and the printed page).
+  const th = { ...labelStyle, textAlign: 'right', padding: '0 8px 8px', verticalAlign: 'bottom', lineHeight: 1.3 };
+  const td = { ...numStyle, textAlign: 'right', padding: '10px 8px', borderTop: `1px solid ${SA.track}` };
+  return (
+    <section style={cardStyle} className="print-avoid-break" aria-labelledby="h-pstat">
+      <span style={labelStyle}>Partners · current pipeline</span>
+      <h2 style={{ ...h2Style, marginTop: 4 }} id="h-pstat">Partner status by owner</h2>
+      <div style={{ overflowX: 'auto', marginTop: 14 }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 340 }}>
+          <thead><tr>
+            <th scope="col" style={{ ...th, textAlign: 'left', paddingLeft: 0 }}>Owner</th>
+            {cols.map(c => <th key={c.id} scope="col" style={th}>{c.label}</th>)}
+            <th scope="col" style={th}>Total</th>
+          </tr></thead>
+          <tbody>
+            {owners.map(o => (
+              <tr key={o}>
+                <th scope="row" style={{ ...td, textAlign: 'left', paddingLeft: 0, fontWeight: 500 }}>{o === 'unassigned' ? 'Unassigned' : lookup(o).first}</th>
+                {cols.map(c => <td key={c.id} style={{ ...td, color: byOwner[o][c.id] ? SA.text : SA.faint }}>{byOwner[o][c.id] || '–'}</td>)}
+                <td style={{ ...td, fontWeight: 600 }}>{total(o)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -192,7 +228,7 @@ function AddCommitment({ members, defaultOwner, onSubmit, onCancel }) {
 
 export default function ReportView(props) {
   const {
-    weekStart, report, reportError, sections, infra, commitments, commitmentsError, kpiRows, kpiError, autoChips,
+    weekStart, report, reportError, sections, infra, commitments, commitmentsError, kpiRows, kpiError, autoChips, partnerBlock,
     canEdit, lookup, members, defaultOwner, onOpen, onSaveSection, onSectionSaved, onFinalize, onReopen,
     onAddCommitment, onUpdateCommitment, onCarryCommitments, onSaveTarget, infraHandlers,
   } = props;
@@ -293,6 +329,8 @@ export default function ReportView(props) {
           </section>
         );
       })}
+
+      {partnerBlock && <PartnerStatusTable byOwner={partnerBlock.by_owner} lookup={lookup} members={members} />}
 
       <KpiTable rows={frozenKpi || kpiRows} error={frozenKpi ? null : kpiError} weekStart={weekStart} editable={editable} frozen={!!frozenKpi} onSaveTarget={onSaveTarget} />
     </div>
