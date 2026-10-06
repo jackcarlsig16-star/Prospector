@@ -123,7 +123,7 @@ export default function GoalsTab({ businessId, onOpenOverview }) {
   const views = [
     { id: 'report', name: 'Weekly report', meta: reportData?.report?.status === 'final' ? 'final' : `${myCommitments.length} commitments` },
     { id: 'week', name: 'This week', meta: `${todoDone}/${todoLive} to-dos` },
-    { id: 'partners', name: 'Partners', meta: `${myPartners.filter(p => p.priority === 1).length} P1` },
+    { id: 'partners', name: 'Partners', meta: `${myPartners.length} · ${myPartners.filter(p => p.hot).length} hot` },
     { id: 'companies', name: 'Companies', meta: `${myCompanies.length} sequenced` },
   ];
 
@@ -210,9 +210,11 @@ export default function GoalsTab({ businessId, onOpenOverview }) {
       { label: 'With', value: t => t.contacts.join('; ') }, { label: 'Status', value: t => ({ done: 'done', prog: 'in progress', not: 'not started', dropped: 'dropped' })[todoStatus(t)] },
       { label: 'Steps done', value: t => t.steps.filter(s => s.done).length }, { label: 'Steps', value: t => t.steps.map(s => `${s.done ? '[x]' : '[ ]'} ${s.text}`).join(' | ') }]) },
     { id: 'partners', label: 'Partners CSV', run: () => exportWidgetCsv('goals_partners', myPartners, [
-      { key: 'name', label: 'Partner' }, { label: 'Priority', value: p => (p.priority ? `P${p.priority}` : '') }, { key: 'meeting_status', label: 'Meeting' },
+      { key: 'name', label: 'Partner' }, { key: 'category', label: 'Category' }, { key: 'tier', label: 'Tier' }, { key: 'pipeline_status', label: 'Pipeline status' },
+      { label: 'Priority', value: p => (p.priority ? `P${p.priority}` : '') }, { key: 'meeting_status', label: 'Meeting' },
+      { key: 'next_step', label: 'Next step' }, { key: 'first_email_at', label: '1st email' }, { key: 'last_touch_at', label: 'Last touch' }, { label: 'Hot', value: p => (p.hot ? 'yes' : '') },
       { key: 'champion', label: 'Champion' }, { label: 'Owner', value: p => (p.owner_user_id ? lookup(p.owner_user_id).name : '') }, { key: 'angle', label: 'Angle' },
-      { key: 'motto', label: 'Their words' }, { key: 'watch_outs', label: 'Watch out' }, { key: 'sources', label: 'Sources' }, { key: 'first_email_note', label: 'First email note' }]) },
+      { key: 'motto', label: 'Their words' }, { key: 'watch_outs', label: 'Watch out' }, { key: 'do_not_say', label: 'Do not say' }, { key: 'sources', label: 'Sources' }, { key: 'first_email_note', label: 'First email note' }]) },
     { id: 'companies', label: 'Companies CSV', run: () => exportWidgetCsv('goals_companies', myCompanies, [
       { key: 'name', label: 'Company' }, { key: 'employees', label: 'Employees' }, { key: 'cohort', label: 'Cohort' },
       { label: 'Sequenced by', value: c => lookup(c.sequenced_by).name }, { key: 'mailbox_email', label: 'Mailbox' }, { key: 'first_sequenced_at', label: 'First email' }]) },
@@ -311,6 +313,9 @@ export default function GoalsTab({ businessId, onOpenOverview }) {
           {view === 'partners' && (
             <PartnersView partners={myPartners} lookup={lookup} members={members} canEdit={canEdit} error={errors.partners}
               onUpdate={async (goalId, body) => { const g = await goalsApi.updatePartner(businessId, goalId, body); setPartners(ps => ps.map(p => (p.id === g.id ? g : p))); }}
+              onSignal={(goalId, signal) => goalsApi.partnerSignal(businessId, goalId, signal)}
+              onUndo={(goalId, eventId) => goalsApi.partnerUndo(businessId, goalId, eventId)}
+              onReplace={g => setPartners(ps => ps.map(p => (p.id === g.id ? g : p)))}
               onCreate={async body => { const g = await goalsApi.createPartner(businessId, { ...body, owner_user_id: owner === 'team' ? null : owner }); setPartners(ps => [...ps, g]); }} />
           )}
 

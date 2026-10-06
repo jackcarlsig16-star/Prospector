@@ -107,7 +107,7 @@ export async function createLandGoalRoute(req, res) {
   if (!v.payload.goal_type) return res.status(400).json({ error: 'goal_type is required' });
   if (!v.payload.name) return res.status(400).json({ error: 'name is required' });
   const { data, error } = await supabase.from('sales_goals')
-    .insert({ business_id: req.params.businessId, ...v.payload, ...landTimestamps(v.payload) }).select().single();
+    .insert({ business_id: req.params.businessId, ...v.payload, ...landTimestamps(v.payload), ...(v.payload.goal_type === 'partnership' ? { pipeline_status: 'not_started' } : {}) }).select().single();
   if (error) return res.status(500).json({ error: error.message });
   res.status(201).json({ goal: data });
 }

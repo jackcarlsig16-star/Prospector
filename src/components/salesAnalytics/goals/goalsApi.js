@@ -44,6 +44,10 @@ export const goalsApi = {
   partners: id => call(id, '/land?goal_type=partnership').then(d => d.goals),
   createPartner: (id, body) => call(id, '/land', { method: 'POST', body: { goal_type: 'partnership', ...body } }).then(d => d.goal),
   updatePartner: (id, goalId, body) => call(id, `/land/${goalId}`, { method: 'PATCH', body }).then(d => d.goal),
+  // sales-partners-pipeline-v1 - buttons go through signals so each click has a history row.
+  partnerSignal: (id, goalId, signal) => call(id, `/partners/${goalId}/signal`, { method: 'POST', body: signal }),
+  partnerUndo: (id, goalId, eventId) => call(id, `/partners/${goalId}/undo`, { method: 'POST', body: { event_id: eventId } }),
+  partnerEvents: (id, params) => call(id, `/partners/events?${q(params)}`).then(d => d.events),
 
   companies: (id, from, to) => call(id, `/companies?${q({ from, to })}`),
   updateCompany: (id, accountId, body) => call(id, `/companies/${encodeURIComponent(accountId)}`, { method: 'PATCH', body }).then(d => d.company),
