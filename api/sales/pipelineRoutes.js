@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { STAGE_ENUM, ORG_TYPE_ENUM, compareStages } from './pipelineStages.js';
 import { parseCsv, toCsv } from '../../src/utils/csv.js';
+import { selectAllPages } from '../lib/selectAllPages.js';
 
 // sales-pipeline-v1 - server-only access, same posture as every other
 // sales_* table (RLS enabled, zero policies).
@@ -47,15 +48,18 @@ function validateFields(body) {
 export async function listOpportunitiesRoute(req, res) {
   const supabase = getSupabase();
   const { stage, cohort, owner, is_top, include_archived } = req.query;
-  let query = supabase.from('sales_opportunities').select('*').eq('business_id', req.params.businessId);
-  if (!include_archived || include_archived === 'false') query = query.is('archived_at', null);
-  if (stage) query = query.eq('stage', stage);
-  if (cohort) query = query.eq('cohort', cohort);
-  if (owner) query = query.eq('owner', owner);
-  if (is_top === 'true') query = query.eq('is_top', true);
-  const { data, error } = await query.order('created_at', { ascending: false });
-  if (error) return res.status(500).json({ error: error.message });
-  res.status(200).json({ opportunities: data });
+  try {
+    const data = await selectAllPages(() => {
+      let query = supabase.from('sales_opportunities').select('*').eq('business_id', req.params.businessId);
+      if (!include_archived || include_archived === 'false') query = query.is('archived_at', null);
+      if (stage) query = query.eq('stage', stage);
+      if (cohort) query = query.eq('cohort', cohort);
+      if (owner) query = query.eq('owner', owner);
+      if (is_top === 'true') query = query.eq('is_top', true);
+      return query.order('created_at', { ascending: false }).order('id');
+    });
+    res.status(200).json({ opportunities: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 }
 
 export async function createOpportunityRoute(req, res) {
@@ -259,19 +263,18 @@ export async function movementRoute(req, res) {
   }
 
   const supabase = getSupabase();
-  const { data: opps, error: oppErr } = await supabase
-    .from('sales_opportunities').select('*').eq('business_id', businessId).is('archived_at', null);
-  if (oppErr) return res.status(500).json({ error: oppErr.message });
-
-  const oppIds = opps.map(o => o.id);
-  const { data: events, error: evErr } = await supabase
-    .from('sales_opportunity_events')
-    .select('opportunity_id,event_type,from_stage,to_stage,changed_at')
-    .eq('business_id', businessId)
-    .in('opportunity_id', oppIds.length ? oppIds : ['00000000-0000-0000-0000-000000000000'])
-    .lte('changed_at', `${to}T23:59:59.999Z`)
-    .order('changed_at', { ascending: true });
-  if (evErr) return res.status(500).json({ error: evErr.message });
+  let opps, events;
+  try {
+    opps = await selectAllPages(() => supabase.from('sales_opportunities').select('*').eq('business_id', businessId).is('archived_at', null).order('id'));
+    const open = new Set(opps.map(o => o.id));
+    // Filtered to open opportunities here rather than with .in(ids), which
+    // grows the URL with every opportunity.
+    events = (await selectAllPages(() => supabase.from('sales_opportunity_events')
+      .select('opportunity_id,event_type,from_stage,to_stage,changed_at')
+      .eq('business_id', businessId)
+      .lte('changed_at', `${to}T23:59:59.999Z`)
+      .order('changed_at', { ascending: true }).order('id'))).filter(e => open.has(e.opportunity_id));
+  } catch (e) { return res.status(500).json({ error: e.message }); }
 
   const eventsByOpp = new Map();
   for (const ev of events) {

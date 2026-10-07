@@ -578,6 +578,7 @@ app.post('/api/sales/:businessId/prospects/:contactId/flag', salesModuleRoute('.
 app.delete('/api/sales/:businessId/flags/:goalId', salesModuleRoute('./api/sales/huddleFlags.js', 'unflagRoute', 'flags/:goalId DELETE'));
 app.post('/api/sales/:businessId/flags/:goalId/reassign', salesModuleRoute('./api/sales/huddleFlags.js', 'reassignFlagRoute', 'flags/:goalId/reassign POST'));
 app.post('/api/sales/:businessId/flags/:goalId/drop', salesModuleRoute('./api/sales/huddleFlags.js', 'dropFlagRoute', 'flags/:goalId/drop POST'));
+app.post('/api/sales/:businessId/flags/:goalId/complete', salesModuleRoute('./api/sales/huddleFlags.js', 'completeFlagRoute', 'flags/:goalId/complete POST'));
 app.post('/api/sales/:businessId/huddles', salesModuleRoute('./api/sales/huddleRoutes.js', 'startHuddleRoute', 'huddles'));
 app.patch('/api/sales/:businessId/prospects/:contactId', salesModuleRoute('./api/sales/huddleRoutes.js', 'updateProspectRoute', 'prospects/:contactId'));
 app.post('/api/sales/:businessId/prospects/:contactId/pipeline', salesModuleRoute('./api/sales/huddleRoutes.js', 'addToPipelineRoute', 'prospects/:contactId/pipeline'));

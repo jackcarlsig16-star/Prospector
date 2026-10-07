@@ -119,6 +119,10 @@ export async function updateLandGoalRoute(req, res) {
   if (!existing) return res.status(404).json({ error: 'goal not found' });
   const v = await validate(supabase, req.params.businessId, LAND_FIELDS, req.body);
   if (v.error) return fail(res, v);
+  // A partner's owner changes only through the 👤 Assign signal, so it's logged.
+  if (existing.goal_type === 'partnership' && 'owner_user_id' in v.payload) {
+    return res.status(400).json({ error: 'owner_user_id: use the partner Assign action (POST /goals/partners/:id/signal)' });
+  }
   const { data, error } = await supabase.from('sales_goals')
     .update({ ...v.payload, ...landTimestamps(v.payload, existing), updated_at: new Date().toISOString() })
     .eq('id', existing.id).select().single();

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SA, SA_TYPE, SA_SHAPE, SA_BAD_BG, SA_BAD_BORDER, saSans } from './theme';
 import { fetchRuns, triggerSync, fetchInsights } from './salesApi';
-import { fetchHuddle, startHuddle, fetchCollateral, updateProspect, fetchFlags, flagProspect, unflag, reassignFlag, dropFlag, announceFlagsChanged, FLAGS_CHANGED } from './huddleApi';
+import { fetchHuddle, startHuddle, fetchCollateral, updateProspect, fetchFlags, flagProspect, unflag, reassignFlag, dropFlag, completeFlag as completeFlagApi, announceFlagsChanged, FLAGS_CHANGED } from './huddleApi';
 import HuddleRow from './HuddleRow';
 import HuddleFeed from './HuddleFeed';
 import FlagDialog from './FlagDialog';
@@ -239,8 +239,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
   };
   const dropOneFlag = async f => { await dropFlag(businessId, f.id); await loadFlags(); announceFlagsChanged(); };
   const completeFlag = async f => {
-    await goalsApi.updateWeekGoal(businessId, f.id, { status: 'done' });
-    handleUpdated(await updateProspect(businessId, f.prospect_contact_id, { status: 'contacted' }));
+    handleUpdated((await completeFlagApi(businessId, f.id)).prospect);
     await loadFlags(); announceFlagsChanged();
   };
 

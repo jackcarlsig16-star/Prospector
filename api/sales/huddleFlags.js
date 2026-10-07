@@ -175,6 +175,33 @@ export async function dropFlagRoute(req, res) {
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
 
+// POST /flags/:goalId/complete - all steps done: closes the to-do AND marks
+// the prospect contacted together; if the second write fails the first is put
+// back, so the flag never leaves the lane with the prospect unmarked.
+export async function completeFlagRoute(req, res) {
+  const { businessId, goalId } = req.params;
+  const supabase = getSupabase();
+  try {
+    const { data: todo, error } = await supabase.from('sales_week_goals').select('*').eq('business_id', businessId).eq('id', goalId).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!todo || !todo.prospect_contact_id || ['done', 'dropped'].includes(todo.status)) return res.status(404).json({ error: 'open flag not found' });
+    if (await weekIsFinal(supabase, businessId, todo.week_start)) return res.status(409).json({ error: FINAL_ERROR });
+    const now = new Date().toISOString();
+    const { data: closed, error: cErr } = await supabase.from('sales_week_goals').update({ status: 'done', completed_at: now, updated_at: now })
+      .eq('id', todo.id).eq('status', todo.status).select().maybeSingle();
+    if (cErr) throw new Error(cErr.message);
+    if (!closed) return res.status(409).json({ error: 'This flag was just changed by someone else - refresh and try again' });
+    const { data: prospect, error: pErr } = await supabase.from('sales_prospect_state')
+      .update({ status: 'contacted', updated_by: req.auth.user.email, updated_at: now })
+      .eq('business_id', businessId).eq('contact_id', todo.prospect_contact_id).select().maybeSingle();
+    if (pErr || !prospect) {
+      await supabase.from('sales_week_goals').update({ status: todo.status, completed_at: todo.completed_at, updated_at: new Date().toISOString() }).eq('id', todo.id);
+      return res.status(pErr ? 500 : 404).json({ error: pErr ? pErr.message : 'prospect not found - the flag was left open' });
+    }
+    res.json({ todo: closed, prospect });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+}
+
 // GET /huddle/flags - open flags (to-dos linked to a prospect, not done or
 // dropped), newest copy only when a flag was carried to a later week.
 export async function listFlagsRoute(req, res) {

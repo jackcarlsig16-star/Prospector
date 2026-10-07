@@ -66,6 +66,9 @@ export async function unflag(businessId, goalId, restoreOwner, expectOwner) {
   const q = restoreOwner ? `?restore_owner=${restoreOwner}&expect_owner=${expectOwner}` : '';
   return call(`/api/sales/${businessId}/flags/${goalId}${q}`, { method: 'DELETE' }, 'Failed to undo the flag');
 }
+export async function completeFlag(businessId, goalId) {
+  return call(`/api/sales/${businessId}/flags/${goalId}/complete`, json('POST', {}), 'Failed to mark contacted');
+}
 export async function dropFlag(businessId, goalId) {
   return call(`/api/sales/${businessId}/flags/${goalId}/drop`, json('POST', {}), 'Failed to drop the flag');
 }
