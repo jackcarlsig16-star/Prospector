@@ -90,3 +90,8 @@ export async function weekIsFinal(supabase, businessId, weekStart) {
 }
 
 export const FINAL_ERROR = 'This week is finalized - reopen it to edit';
+
+// Deleting a to-do (a flag's delete is its undo): whoever added it, within
+// this window, or an Owner/Admin. Everyone else drops it, which keeps the
+// to-do and its history (builds-audit FIX-5; task-drawer-v1 for plain to-dos).
+export const OWN_DELETE_WINDOW_MS = 2 * 60e3;

@@ -602,6 +602,7 @@ app.post('/api/sales/:businessId/goals/month', salesModuleRoute('./api/sales/goa
 app.patch('/api/sales/:businessId/goals/month/:id', salesModuleRoute('./api/sales/goalsRoutes.js', 'updateMonthGoalRoute', 'goals/month/:id PATCH'));
 app.delete('/api/sales/:businessId/goals/month/:id', salesModuleRoute('./api/sales/goalsRoutes.js', 'deleteMonthGoalRoute', 'goals/month/:id DELETE'));
 app.get('/api/sales/:businessId/goals/week', salesModuleRoute('./api/sales/goalsRoutes.js', 'listWeekGoalsRoute', 'goals/week'));
+app.get('/api/sales/:businessId/goals/tasks', salesModuleRoute('./api/sales/goalsRoutes.js', 'listLinkedTasksRoute', 'goals/tasks'));
 app.post('/api/sales/:businessId/goals/week', salesModuleRoute('./api/sales/goalsRoutes.js', 'createWeekGoalRoute', 'goals/week POST'));
 app.post('/api/sales/:businessId/goals/week/carry-over', salesModuleRoute('./api/sales/goalsRoutes.js', 'carryOverWeekGoalsRoute', 'goals/week/carry-over POST'));
 app.patch('/api/sales/:businessId/goals/week/:id', salesModuleRoute('./api/sales/goalsRoutes.js', 'updateWeekGoalRoute', 'goals/week/:id PATCH'));

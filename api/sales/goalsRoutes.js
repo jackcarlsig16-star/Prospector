@@ -1,8 +1,10 @@
 import { selectAllPages } from '../lib/selectAllPages.js';
 import {
-  getSupabase, validate, fail, findRow, weekIsFinal, FINAL_ERROR,
-  isMonday, isFirstOfMonth, addDays, SCORECARD_METRICS, LINK_TARGETS,
+  getSupabase, validate, fail, findRow, weekIsFinal, FINAL_ERROR, OWN_DELETE_WINDOW_MS,
+  isMonday, isFirstOfMonth, addDays, SCORECARD_METRICS, KPI_METRICS, HERO_METRICS, LINK_TARGETS,
 } from './goalsShared.js';
+import { PARTNER_METRICS } from './partnerMetrics.js';
+import { hasRole } from '../lib/requireAuth.js';
 import { PIPELINE_STATUS_IDS, TIERS, isStalePartner } from '../../src/constants/partnerPipeline.js';
 import { laDateString } from './laDate.js';
 
@@ -15,6 +17,11 @@ const LAND_STATUSES = ['not_started', 'in_progress', 'landed', 'paused', 'lost']
 const MONTH_STATUSES = ['not_started', 'in_progress', 'done', 'dropped'];
 const WEEK_STATUSES = ['open', 'done', 'dropped'];
 const WEEK_KINDS = ['commitment', 'todo'];
+// task-drawer-v1 - what a to-do serves. link_id: a commitment's or partner's
+// id, a metric key, or a company's Apollo account_id (Goals > Companies).
+const LINK_TYPES = ['commitment', 'metric', 'partner', 'company'];
+const LINKABLE_METRICS = [...SCORECARD_METRICS, ...KPI_METRICS, ...PARTNER_METRICS, ...HERO_METRICS];
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const LAND_FIELDS = {
   goal_type: { kind: 'enum', values: GOAL_TYPES }, name: { kind: 'required' },
@@ -45,6 +52,8 @@ const WEEK_FIELDS = {
   kind: { kind: 'enum', values: WEEK_KINDS }, category: { kind: 'text' }, contacts: { kind: 'textArray' },
   link_target: { kind: 'nullableEnum', values: LINK_TARGETS },
   metric_key: { kind: 'nullableEnum', values: SCORECARD_METRICS }, target_value: { kind: 'number' },
+  due_date: { kind: 'date' },
+  link_type: { kind: 'nullableEnum', values: LINK_TYPES }, link_id: { kind: 'text' },
 };
 const STEP_FIELDS = { text: { kind: 'required' }, done: { kind: 'bool' }, sort_order: { kind: 'int' } };
 const CADENCE_FIELDS = {
@@ -61,6 +70,31 @@ function weekTimestamps(payload, existing) {
   if (!('status' in payload)) return {};
   if (payload.status === 'done') return { completed_at: existing?.completed_at || new Date().toISOString() };
   return { completed_at: null };
+}
+
+// link_type and link_id are set together (both null clears). Only a to-do
+// links, to one thing in this workspace. Returns a validate()-style error.
+async function checkLink(supabase, businessId, payload, existing) {
+  const touched = 'link_type' in payload || 'link_id' in payload;
+  const type = 'link_type' in payload ? payload.link_type : existing?.link_type ?? null;
+  const id = 'link_id' in payload ? payload.link_id : existing?.link_id ?? null;
+  if (touched && (type === null) !== (id === null)) return { error: 'link_type and link_id go together - set both, or both null to clear' };
+  if (type === null) return null;
+  if ((payload.kind ?? existing?.kind ?? 'todo') !== 'todo') return { error: 'only a to-do can be linked' };
+  if (!touched) return null;
+  const notFound = { error: `link: ${type} not found in this workspace` };
+  if (type === 'metric') return LINKABLE_METRICS.includes(id) ? null : { error: `link: metric must be one of ${LINKABLE_METRICS.join('|')}` };
+  if (type === 'company') {
+    const { data, error } = await supabase.from('sales_sequenced_accounts').select('account_id').eq('business_id', businessId).eq('account_id', id).limit(1);
+    if (error) return { status: 500, error: error.message };
+    return data.length ? null : notFound;
+  }
+  if (!UUID.test(id) || id === existing?.id) return notFound;
+  const { data, error } = type === 'commitment'
+    ? await supabase.from('sales_week_goals').select('id').eq('business_id', businessId).eq('id', id).eq('kind', 'commitment').maybeSingle()
+    : await supabase.from('sales_goals').select('id').eq('business_id', businessId).eq('id', id).eq('goal_type', 'partnership').maybeSingle();
+  if (error) return { status: 500, error: error.message };
+  return data ? null : notFound;
 }
 
 // ── Members (owner pickers, person filter) ──────────────────────────────────
@@ -214,17 +248,36 @@ export async function listWeekGoalsRoute(req, res) {
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
 
+// GET /goals/tasks?link_type=&link_id= - to-dos linked to one thing (or,
+// without link_id, to anything of that type), with steps, newest week first.
+export async function listLinkedTasksRoute(req, res) {
+  const { link_type, link_id } = req.query;
+  if (!LINK_TYPES.includes(link_type)) return res.status(400).json({ error: `bad enum: link_type must be one of ${LINK_TYPES.join('|')}` });
+  try {
+    const tasks = await selectAllPages(() => {
+      let q = getSupabase().from('sales_week_goals').select('*, steps:sales_week_goal_steps(*)')
+        .eq('business_id', req.params.businessId).eq('kind', 'todo').eq('link_type', link_type);
+      if (link_id) q = q.eq('link_id', link_id);
+      return q.order('week_start', { ascending: false }).order('sort_order').order('id');
+    });
+    for (const t of tasks) t.steps.sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
+    res.json({ tasks });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+}
+
 export async function createWeekGoalRoute(req, res) {
   const supabase = getSupabase();
   const v = await validate(supabase, req.params.businessId, WEEK_FIELDS, req.body);
   if (v.error) return fail(res, v);
   if (!v.payload.week_start) return res.status(400).json({ error: 'week_start is required' });
   if (!v.payload.text) return res.status(400).json({ error: 'text is required' });
+  const linkErr = await checkLink(supabase, req.params.businessId, v.payload, null);
+  if (linkErr) return fail(res, linkErr);
   try {
     if (await weekIsFinal(supabase, req.params.businessId, v.payload.week_start)) return res.status(409).json({ error: FINAL_ERROR });
   } catch (e) { return res.status(500).json({ error: e.message }); }
   const { data, error } = await supabase.from('sales_week_goals')
-    .insert({ business_id: req.params.businessId, ...v.payload, ...weekTimestamps(v.payload) }).select().single();
+    .insert({ business_id: req.params.businessId, ...v.payload, ...weekTimestamps(v.payload), created_by: req.auth.user.id }).select().single();
   if (error) return res.status(500).json({ error: error.message });
   res.status(201).json({ goal: data });
 }
@@ -236,6 +289,8 @@ export async function updateWeekGoalRoute(req, res) {
   if (!existing) return res.status(404).json({ error: 'goal not found' });
   const v = await validate(supabase, req.params.businessId, WEEK_FIELDS, req.body);
   if (v.error) return fail(res, v);
+  const linkErr = await checkLink(supabase, req.params.businessId, v.payload, existing);
+  if (linkErr) return fail(res, linkErr);
   try {
     for (const week of new Set([existing.week_start, v.payload.week_start].filter(Boolean))) {
       if (await weekIsFinal(supabase, req.params.businessId, week)) return res.status(409).json({ error: FINAL_ERROR });
@@ -253,9 +308,18 @@ export async function deleteWeekGoalRoute(req, res) {
   const { data: existing, error: findErr } = await findRow(supabase, 'sales_week_goals', req.params.businessId, req.params.id);
   if (findErr) return res.status(500).json({ error: findErr.message });
   if (!existing) return res.status(404).json({ error: 'goal not found' });
+  const ownDelete = (existing.created_by || existing.flagged_by) === req.auth.user.id && Date.now() - Date.parse(existing.created_at) <= OWN_DELETE_WINDOW_MS;
+  if (!ownDelete && !hasRole(req, req.params.businessId, 'admin')) {
+    return res.status(403).json({ error: 'Only whoever added it can delete it, within 2 minutes - drop it instead' });
+  }
   try {
     if (await weekIsFinal(supabase, req.params.businessId, existing.week_start)) return res.status(409).json({ error: FINAL_ERROR });
   } catch (e) { return res.status(500).json({ error: e.message }); }
+  if (existing.kind === 'commitment') {
+    const { error: unlinkErr } = await supabase.from('sales_week_goals').update({ link_type: null, link_id: null, updated_at: new Date().toISOString() })
+      .eq('business_id', req.params.businessId).eq('link_type', 'commitment').eq('link_id', existing.id);
+    if (unlinkErr) return res.status(500).json({ error: unlinkErr.message });
+  }
   const { error } = await supabase.from('sales_week_goals').delete().eq('id', existing.id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ deleted: existing.id });
@@ -290,10 +354,12 @@ export async function carryOverWeekGoalsRoute(req, res) {
         if (kind) q = q.eq('kind', kind);
         return q.order('sort_order').order('id');
       }),
-      selectAllPages(() => supabase.from('sales_week_goals').select('carried_from_id').eq('business_id', businessId)
+      selectAllPages(() => supabase.from('sales_week_goals').select('id, carried_from_id').eq('business_id', businessId)
         .eq('week_start', weekStart).not('carried_from_id', 'is', null).order('id')),
     ]);
     const done = new Set(already.map(r => r.carried_from_id));
+    // A carried to-do linked to last week's commitment follows that commitment's copy.
+    const copyOf = new Map(already.map(r => [r.carried_from_id, r.id]));
     const unfinished = previous.filter(isUnfinished);
     const carried = [];
     for (const g of unfinished.filter(g => !done.has(g.id))) {
@@ -303,6 +369,7 @@ export async function carryOverWeekGoalsRoute(req, res) {
         kind: g.kind, category: g.category, contacts: g.contacts, link_target: g.link_target,
         metric_key: g.metric_key, target_value: g.target_value, carried_from_id: g.id, sort_order: g.sort_order,
         prospect_contact_id: g.prospect_contact_id, flag_note: g.flag_note, flagged_by: g.flagged_by,
+        due_date: g.due_date, link_type: g.link_type, link_id: g.link_id, created_by: g.created_by,
       }).select().single();
       if (error?.code === '23505') continue;
       if (error) throw new Error(error.message);
@@ -313,6 +380,12 @@ export async function carryOverWeekGoalsRoute(req, res) {
         if (stepErr) throw new Error(stepErr.message);
       }
       carried.push(data);
+      copyOf.set(g.id, data.id);
+    }
+    for (const t of carried.filter(c => c.link_type === 'commitment' && copyOf.has(c.link_id))) {
+      const { error } = await supabase.from('sales_week_goals').update({ link_id: copyOf.get(t.link_id) }).eq('id', t.id);
+      if (error) throw new Error(error.message);
+      t.link_id = copyOf.get(t.link_id);
     }
     res.json({ carried, skipped: unfinished.length - carried.length });
   } catch (e) { res.status(500).json({ error: e.message }); }

@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
-import { addDays, weekIsFinal, FINAL_ERROR } from './goalsShared.js';
+import { addDays, weekIsFinal, FINAL_ERROR, OWN_DELETE_WINDOW_MS } from './goalsShared.js';
 import { hasRole } from '../lib/requireAuth.js';
 
 // sales-huddle-v2 REV1 Stage 3 - "Flag for ...": hand a prospect to a
@@ -11,9 +11,6 @@ import { hasRole } from '../lib/requireAuth.js';
 // the 'flagged' / 'unflagged' entries here (flags aren't a prospect field).
 export const FLAG_CATEGORY = 'Huddle follow-ups';
 const MAX_STEPS = 6;
-// Deleting a flag is its undo: the flagger within this window, or an Owner/
-// Admin. Everyone else drops it, which keeps the to-do and its history.
-const UNDO_WINDOW_MS = 2 * 60e3;
 
 function getSupabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -61,7 +58,7 @@ export async function flagProspectRoute(req, res) {
       business_id: businessId, week_start: week, kind: 'todo', category: FLAG_CATEGORY,
       text: `Follow up: ${p.name || 'prospect'}${p.company ? ` · ${p.company}` : ''}`,
       owner_user_id: assignee, contacts: [p.name, p.company].filter(Boolean),
-      prospect_contact_id: contactId, flag_note: note && note.trim() ? note.trim() : null, flagged_by: req.auth.user.id,
+      prospect_contact_id: contactId, flag_note: note && note.trim() ? note.trim() : null, flagged_by: req.auth.user.id, created_by: req.auth.user.id,
     }).select().single();
     if (tErr) throw new Error(tErr.message);
     const { data: stepRows, error: sErr } = await supabase.from('sales_week_goal_steps')
@@ -136,7 +133,7 @@ export async function unflagRoute(req, res) {
     const { data: todo, error } = await supabase.from('sales_week_goals').select('*').eq('business_id', businessId).eq('id', goalId).maybeSingle();
     if (error) throw new Error(error.message);
     if (!todo || !todo.prospect_contact_id) return res.status(404).json({ error: 'flag not found' });
-    const ownUndo = todo.flagged_by === req.auth.user.id && Date.now() - Date.parse(todo.created_at) <= UNDO_WINDOW_MS;
+    const ownUndo = todo.flagged_by === req.auth.user.id && Date.now() - Date.parse(todo.created_at) <= OWN_DELETE_WINDOW_MS;
     if (!ownUndo && !hasRole(req, businessId, 'admin')) {
       return res.status(403).json({ error: 'Only whoever flagged it can undo, within 2 minutes - drop the flag instead' });
     }
