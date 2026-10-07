@@ -6,7 +6,8 @@ import { fetchMe } from '../../../utils/authSession';
 import useMediaQuery from '../../../utils/useMediaQuery';
 import RightRail from '../RightRail';
 import Ring, { RingLegend } from '../charts/Ring';
-import { goalsApi } from './goalsApi';
+import { goalsApi, TODOS_CHANGED } from './goalsApi';
+import { FLAGS_CHANGED } from '../huddleApi';
 import ScorecardTable from './ScorecardTable';
 import TodoList, { todoStatus } from './TodoList';
 import PartnersView from './PartnersView';
@@ -95,6 +96,12 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
     .then(r => { setKpiRows(r); setError('kpi', null); }).catch(e => { setKpiRows(null); setError('kpi', e); }), [businessId, weekStart, setError]);
 
   useEffect(() => { loadTodos(); }, [loadTodos]);
+  useEffect(() => {
+    const reload = () => loadTodos();
+    window.addEventListener(TODOS_CHANGED, reload);
+    window.addEventListener(FLAGS_CHANGED, reload);
+    return () => { window.removeEventListener(TODOS_CHANGED, reload); window.removeEventListener(FLAGS_CHANGED, reload); };
+  }, [loadTodos]);
   useEffect(() => { loadCommitments(); }, [loadCommitments]);
   useEffect(() => { loadReport(); }, [loadReport]);
   useEffect(() => { loadKpi(); }, [loadKpi]);

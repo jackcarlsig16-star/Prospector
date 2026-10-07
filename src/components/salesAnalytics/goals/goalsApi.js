@@ -13,6 +13,12 @@ export class NeedsMigrationError extends Error {
 }
 const MIGRATION_PATTERN = /does not exist|schema cache|violates check constraint "sales_metric_targets_metric_key_check"/;
 
+// task-drawer-v1 - the Tasks drawer and Goals -> This week show the same
+// to-dos at once; any to-do/step write tells the other to reload.
+export const TODOS_CHANGED = 'prospector:todos-changed';
+// "Open in Goals" from the drawer when Goals & Sales is already on screen.
+export const OPEN_GOALS_WEEK = 'prospector:open-goals-week';
+
 async function call(businessId, path, { method = 'GET', body } = {}) {
   const res = await fetch(`/api/sales/${businessId}/goals${path}`, {
     method,
@@ -24,6 +30,7 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
     if (res.status === 500 && MIGRATION_PATTERN.test(data.error || '')) throw new NeedsMigrationError();
     throw new Error(data.error || `Request failed (${res.status})`);
   }
+  if (method !== 'GET' && /^\/(week|steps)\b/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
 }
 

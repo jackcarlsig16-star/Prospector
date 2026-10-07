@@ -65,8 +65,11 @@ function cssVarBlock(values) {
 }
 
 export const SA_THEME_ROOT_ID = 'sales-analytics-root';
+// SA_THEME_CLASS: for SA-styled UI mounted outside the page root (the Tasks
+// drawer lives at the app shell, on every workspace page).
+export const SA_THEME_CLASS = 'sa-theme';
 export const SA_THEME_CSS = `
-  #${SA_THEME_ROOT_ID} { ${cssVarBlock(DARK_VALUES)} }
+  #${SA_THEME_ROOT_ID}, .${SA_THEME_CLASS} { ${cssVarBlock(DARK_VALUES)} }
   @media print {
     #${SA_THEME_ROOT_ID} { ${cssVarBlock(PRINT_VALUES)} }
   }

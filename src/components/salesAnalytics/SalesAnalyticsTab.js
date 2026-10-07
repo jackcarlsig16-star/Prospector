@@ -5,6 +5,7 @@ import DailyHuddle from './DailyHuddle';
 import GoalsTab from './goals/GoalsTab';
 import { flashTo } from './goals/goalsUi';
 import OverviewGoals from './goals/OverviewGoals';
+import { OPEN_GOALS_WEEK } from './goals/goalsApi';
 import { roleAtLeast } from '../../constants/roles';
 import { WIDGETS } from './widgets.registry';
 import { fetchMetrics, fetchRuns, fetchEntities, fetchCohortBreakdown, fetchInsights, triggerSync } from './salesApi';
@@ -168,6 +169,11 @@ export default function SalesAnalyticsTab({ businessId }) {
     return () => { live = false; window.removeEventListener(FLAGS_CHANGED, count); };
   }, [businessId]);
 
+  useEffect(() => {
+    const open = () => { setView('goals'); setGoalsTarget({ target: 'view:week' }); };
+    window.addEventListener(OPEN_GOALS_WEEK, open);
+    return () => window.removeEventListener(OPEN_GOALS_WEEK, open);
+  }, []);
   useEffect(() => {
     if (!exportMenuOpen) return;
     const onClick = e => { if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) setExportMenuOpen(false); };
