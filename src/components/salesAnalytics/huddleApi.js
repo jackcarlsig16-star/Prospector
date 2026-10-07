@@ -4,7 +4,7 @@
 async function call(url, options, fallback) {
   const res = await fetch(url, options);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `${fallback} (${res.status})`);
+  if (!res.ok) throw Object.assign(new Error(data.error || `${fallback} (${res.status})`), { status: res.status, data });
   return data;
 }
 
@@ -65,6 +65,9 @@ export async function flagProspect(businessId, contactId, body) {
 export async function unflag(businessId, goalId, restoreOwner, expectOwner) {
   const q = restoreOwner ? `?restore_owner=${restoreOwner}&expect_owner=${expectOwner}` : '';
   return call(`/api/sales/${businessId}/flags/${goalId}${q}`, { method: 'DELETE' }, 'Failed to undo the flag');
+}
+export async function reassignFlag(businessId, goalId, assigneeUserId) {
+  return call(`/api/sales/${businessId}/flags/${goalId}/reassign`, json('POST', { assignee_user_id: assigneeUserId }), 'Failed to reassign');
 }
 // Lets the tab badge and the Huddle lane refresh after any flag change.
 export const FLAGS_CHANGED = 'prospector:flags-changed';

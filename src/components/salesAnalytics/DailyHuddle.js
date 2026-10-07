@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SA, SA_TYPE, SA_SHAPE, SA_BAD_BG, SA_BAD_BORDER, saSans } from './theme';
 import { fetchRuns, triggerSync, fetchInsights } from './salesApi';
-import { fetchHuddle, startHuddle, fetchCollateral, updateProspect, fetchFlags, flagProspect, unflag, announceFlagsChanged, FLAGS_CHANGED } from './huddleApi';
+import { fetchHuddle, startHuddle, fetchCollateral, updateProspect, fetchFlags, flagProspect, unflag, reassignFlag, announceFlagsChanged, FLAGS_CHANGED } from './huddleApi';
 import HuddleRow from './HuddleRow';
 import HuddleFeed from './HuddleFeed';
 import FlagDialog from './FlagDialog';
@@ -219,6 +219,17 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
     });
   };
   // Optimistic tick, so the box responds at once; reverts if the save fails.
+  // "Reassign instead" (one open flag per prospect): moves the flag's to-do.
+  const submitReassign = async (p, goalId, assignee) => {
+    const r = await reassignFlag(businessId, goalId, assignee);
+    setFlagging(null);
+    await loadFlags(); announceFlagsChanged();
+    const who = members.find(m => m.user_id === assignee)?.name.split(' ')[0] || 'teammate';
+    showToast(`${p.name || 'Prospect'}'s flag moved to ${who}`, async () => {
+      await reassignFlag(businessId, goalId, r.from_user_id);
+      await loadFlags(); announceFlagsChanged();
+    });
+  };
   const toggleFlagStep = async (f, step) => {
     const setStep = val => setFlags(fs => fs.map(x => (x.id === f.id ? { ...x, steps: x.steps.map(st => (st.id === step.id ? val : st)) } : x)));
     setStep({ ...step, done: !step.done });
@@ -456,7 +467,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
 
       {flagging && (
         <FlagDialog p={flagging} members={members} myUserId={me?.profile?.id} today={today}
-          onSubmit={body => submitFlag(flagging, body)} onClose={() => setFlagging(null)} />
+          onSubmit={body => submitFlag(flagging, body)} onReassign={(goalId, assignee) => submitReassign(flagging, goalId, assignee)} onClose={() => setFlagging(null)} />
       )}
 
       <div aria-live="polite" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 3500, maxWidth: 'calc(100vw - 32px)' }}>

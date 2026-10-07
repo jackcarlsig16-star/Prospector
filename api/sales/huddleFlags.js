@@ -43,6 +43,13 @@ export async function flagProspectRoute(req, res) {
     if (pErr || mErr) throw new Error((pErr || mErr).message);
     if (!p) return res.status(404).json({ error: 'prospect not found' });
     if (!member) return res.status(400).json({ error: 'assignee is not a member of this workspace' });
+    // One open flag per prospect (Jack, builds-audit FIX-4): a second one is
+    // refused and the UI offers to reassign the existing flag instead.
+    const existing = await openFlagFor(supabase, businessId, contactId);
+    if (existing) {
+      const { data: holder } = await supabase.from('business_members').select('name').eq('business_id', businessId).eq('user_id', existing.owner_user_id).maybeSingle();
+      return res.status(409).json({ error: `Already flagged to ${holder?.name || 'a teammate'}`, existing: { id: existing.id, owner_user_id: existing.owner_user_id, owner_name: holder?.name || null } });
+    }
     const week = laMonday();
     if (await weekIsFinal(supabase, businessId, week)) return res.status(409).json({ error: FINAL_ERROR });
 
@@ -68,6 +75,45 @@ export async function flagProspectRoute(req, res) {
     }
     await supabase.from('sales_prospect_events').insert({ business_id: businessId, contact_id: contactId, field: 'flagged', to_value: member.name, changed_by: req.auth.user.email });
     res.status(201).json({ todo: { ...todo, steps: stepRows.sort((a, b) => a.sort_order - b.sort_order) }, prospect, prev_owner: p.owner });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+}
+
+// The open flag for a prospect: newest copy (carry-over keeps the original
+// row in its old week), not done or dropped.
+async function openFlagFor(supabase, businessId, contactId) {
+  const { data, error } = await supabase.from('sales_week_goals').select('id, owner_user_id, status, week_start, carried_from_id')
+    .eq('business_id', businessId).eq('prospect_contact_id', contactId).order('week_start', { ascending: false }).order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  const carried = new Set(data.map(r => r.carried_from_id).filter(Boolean));
+  return data.find(r => !carried.has(r.id) && !['done', 'dropped'].includes(r.status)) || null;
+}
+
+// POST /flags/:goalId/reassign { assignee_user_id } - hand an open flag (its
+// to-do and steps) to someone else; logged as 'flag_reassigned' on the prospect.
+export async function reassignFlagRoute(req, res) {
+  const { businessId, goalId } = req.params;
+  const assignee = req.body?.assignee_user_id;
+  if (typeof assignee !== 'string') return res.status(400).json({ error: 'assignee_user_id is required' });
+  const supabase = getSupabase();
+  try {
+    const [{ data: todo, error: tErr }, { data: members, error: mErr }] = await Promise.all([
+      supabase.from('sales_week_goals').select('*').eq('business_id', businessId).eq('id', goalId).maybeSingle(),
+      supabase.from('business_members').select('user_id, name').eq('business_id', businessId),
+    ]);
+    if (tErr || mErr) throw new Error((tErr || mErr).message);
+    if (!todo || !todo.prospect_contact_id || ['done', 'dropped'].includes(todo.status)) return res.status(404).json({ error: 'open flag not found' });
+    const to = members.find(m => m.user_id === assignee);
+    if (!to) return res.status(400).json({ error: 'assignee is not a member of this workspace' });
+    if (todo.owner_user_id === assignee) return res.status(409).json({ error: `Already flagged to ${to.name}` });
+    if (await weekIsFinal(supabase, businessId, todo.week_start)) return res.status(409).json({ error: FINAL_ERROR });
+    const { data, error } = await supabase.from('sales_week_goals').update({ owner_user_id: assignee, updated_at: new Date().toISOString() })
+      .eq('id', todo.id).eq('owner_user_id', todo.owner_user_id).select('*, steps:sales_week_goal_steps(*)').maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return res.status(409).json({ error: 'This flag was just changed by someone else - refresh and try again' });
+    const from = members.find(m => m.user_id === todo.owner_user_id);
+    await supabase.from('sales_prospect_events').insert({ business_id: businessId, contact_id: todo.prospect_contact_id, field: 'flag_reassigned', from_value: from?.name || null, to_value: to.name, changed_by: req.auth.user.email });
+    data.steps.sort((a, b) => a.sort_order - b.sort_order);
+    res.json({ todo: data, from_user_id: todo.owner_user_id });
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
 

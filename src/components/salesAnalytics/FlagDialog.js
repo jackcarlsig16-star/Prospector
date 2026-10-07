@@ -6,7 +6,7 @@ import { FLAG_STEPS, flagDefaults, defaultAssignee, signalOf } from './huddleVie
 // to-do (Huddle follow-ups) with this checklist; nothing is sent.
 const field = { ...saSans, height: 40, borderRadius: 10, background: SA.inset, border: `1px solid ${SA.border}`, color: SA.text, padding: '0 10px', fontSize: 14, width: '100%', boxSizing: 'border-box' };
 
-export default function FlagDialog({ p, members, myUserId, today, onSubmit, onClose }) {
+export default function FlagDialog({ p, members, myUserId, today, onSubmit, onReassign, onClose }) {
   const [assignee, setAssignee] = useState(() => defaultAssignee(p, members, myUserId)?.user_id || '');
   const defaults = flagDefaults(p);
   const [checked, setChecked] = useState(() => ({ [FLAG_STEPS.email]: defaults.includes(FLAG_STEPS.email), [FLAG_STEPS.linkedin]: defaults.includes(FLAG_STEPS.linkedin) }));
@@ -14,6 +14,7 @@ export default function FlagDialog({ p, members, myUserId, today, onSubmit, onCl
   const [note, setNote] = useState(() => signalOf(p, today).context || '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [conflict, setConflict] = useState(null); // the open flag that blocks a second one
   const dialogRef = useRef(null);
   const who = members.find(m => m.user_id === assignee);
   const first = who ? who.name.split(' ')[0] : 'teammate';
@@ -31,7 +32,11 @@ export default function FlagDialog({ p, members, myUserId, today, onSubmit, onCl
     if (!assignee || !steps.length || busy) return;
     setBusy(true); setError('');
     try { await onSubmit({ assignee_user_id: assignee, steps, note: note.trim() || null }); }
-    catch (err) { setError(err.message); setBusy(false); }
+    catch (err) {
+      if (err.status === 409 && err.data?.existing) setConflict(err.data.existing);
+      else setError(err.message);
+      setBusy(false);
+    }
   };
 
   return (
@@ -58,6 +63,15 @@ export default function FlagDialog({ p, members, myUserId, today, onSubmit, onCl
         <label style={{ ...SA_TYPE.label, color: SA.muted }} htmlFor="flag-note">Note</label>
         <input id="flag-note" value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Opened step 2 three times - strike while warm" style={field} />
         <p style={{ fontSize: 12, color: SA.muted, margin: 0 }}>Creates a to-do for {first} in Goals → This week. Nothing is sent automatically.</p>
+        {conflict && (
+          <div role="alert" style={{ fontSize: 13, color: SA.text, padding: '10px 12px', borderRadius: 10, background: SA.inset, border: `1px solid ${SA.warn}`, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <span>{p.name || 'This prospect'} is already flagged to {conflict.owner_name || 'a teammate'}. One open flag per prospect.</span>
+            {conflict.owner_user_id === assignee
+              ? <span style={{ color: SA.muted }}>That's who you picked - nothing to change.</span>
+              : <button type="button" disabled={busy} onClick={async () => { setBusy(true); setError(''); try { await onReassign(conflict.id, assignee); } catch (e2) { setError(e2.message); setBusy(false); } }}
+                  style={{ ...field, width: 'auto', alignSelf: 'flex-start', padding: '0 14px', cursor: 'pointer', borderColor: SA.warn }}>Reassign to {first} instead</button>}
+          </div>
+        )}
         {error && <p role="alert" style={{ fontSize: 13, color: SA.bad, margin: 0 }}>⚠ {error}</p>}
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
           <button type="button" onClick={onClose} style={{ ...field, width: 'auto', padding: '0 16px', cursor: 'pointer' }}>Cancel</button>
