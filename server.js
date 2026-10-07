@@ -204,6 +204,11 @@ app.get('/api/google/connect',    esHandler('./api/google/connect.js'));
 app.get('/api/gmail/callback',    esHandler('./api/google/callback.js'));
 app.get('/api/google/status',     esHandler('./api/google/status.js'));
 app.post('/api/google/disconnect', esHandler('./api/google/disconnect.js'));
+app.get('/api/microsoft/connect',     esHandler('./api/microsoft/connect.js'));
+app.get('/api/microsoft/callback',    esHandler('./api/microsoft/callback.js'));
+app.get('/api/microsoft/status',      esHandler('./api/microsoft/status.js'));
+app.post('/api/microsoft/check',      esHandler('./api/microsoft/check.js'));
+app.post('/api/microsoft/disconnect', esHandler('./api/microsoft/disconnect.js'));
 
 // ── Salesforce OAuth ──────────────────────────────────────────────────────────
 app.get('/api/sfdc/auth', (req, res) => {

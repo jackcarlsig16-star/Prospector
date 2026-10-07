@@ -13,6 +13,7 @@ import { TaskModal } from './components/TaskPanel';
 import HomePage from './components/HomePage';
 import Sidebar from './components/Sidebar';
 import GoogleConnections from './components/GoogleConnections';
+import MicrosoftConnection from './components/MicrosoftConnection';
 import BugReporter from './components/BugReporter';
 import DailyDigest from './components/DailyDigest';
 import ManagerCommandCenter from './components/ManagerCommandCenter';
@@ -72,7 +73,7 @@ try{["gmail_access_token","gmail_refresh_token","gmail_token_expiry","gmail_emai
 // (Portfolio, Territory/Prod Requests, Ledger, Outbound, Ideas-global,
 // Handoffs, Analytics, Intelligence, Uploads, Claim Jumper) is hidden: its
 // code stays, but any navigation to it lands on the workspace list.
-const VISIBLE_PAGES = ["businesses-home","business-detail","admin","voice-profile","google-connections"];
+const VISIBLE_PAGES = ["businesses-home","business-detail","admin","voice-profile","google-connections","microsoft-connection"];
 
 // Live BDR list — updated at runtime via teamUsers state, but AccountCard needs a static fallback
 let BDR_LIST = [];
@@ -269,6 +270,18 @@ export default function App({ me }) {
     if(err)localStorage.setItem("prospector_google_auth_error",err);
     else localStorage.removeItem("prospector_google_auth_error");
     url.searchParams.delete("google_error");url.searchParams.delete("google_connected");
+    window.history.replaceState({},"",url.pathname+url.search+url.hash);
+  },[]);
+
+  // Microsoft connect result (api/microsoft/callback.js) arrives as a query param; the callback returns to the page that started it.
+  const [microsoftResult,setMicrosoftResult]=useState(null);
+  useEffect(()=>{
+    const url=new URL(window.location.href);
+    const err=url.searchParams.get("microsoft_error");
+    if(!err&&!url.searchParams.has("microsoft_connected"))return;
+    setMicrosoftResult(err?{ok:false,text:err}:{ok:true,text:"Microsoft connected"});
+    setPage("microsoft-connection");
+    url.searchParams.delete("microsoft_error");url.searchParams.delete("microsoft_connected");
     window.history.replaceState({},"",url.pathname+url.search+url.hash);
   },[]);
 
@@ -1287,6 +1300,7 @@ export default function App({ me }) {
         {page==="intelligence"&&<IntelligencePage user={user} activeUser={activeUser}/>}
         {page==="voice-profile"&&<IntelligencePage only="Voice Profile" user={user} activeUser={activeUser}/>}
         {page==="google-connections"&&<div style={{ maxWidth:700 }}><h2 style={{ margin:"0 0 14px", fontSize:20, fontWeight:600, color:C.txt }}>Google connections</h2><GoogleConnections/></div>}
+        {page==="microsoft-connection"&&<div style={{ maxWidth:700 }}><h2 style={{ margin:"0 0 14px", fontSize:20, fontWeight:600, color:C.txt }}>Microsoft connection</h2>{microsoftResult&&<p role="status" style={{ fontSize:13, color:microsoftResult.ok?C.green:C.red, margin:"0 0 12px" }}>{microsoftResult.text}</p>}<MicrosoftConnection/></div>}
         {(page==="outbound"||page==="team")&&<OutboundPage accounts={accounts} onNav={navTo} user={user} activeUser={activeUser} perms={perms} stealthList={stealthList} onSaveStealthList={setStealthList} onPromoteToAccount={promoteToAccount} onSfStatus={setSfStatus} frontier={frontier} onSaveFrontier={setFrontier} onAssignToBDR={assignToBDR} onUnassignFromFrontier={unassignFromFrontier} onSetFrontierStatus={setFrontierStatus} onRemoveDemoAccount={()=>setFrontier(fl=>fl.filter(f=>!f.isDemo))} onHandoff={f=>{setAccounts(as=>as.map(a=>{if(a.name.toLowerCase()!==f.name.toLowerCase())return a;logStageChange('onHandoff (OutboundPage)',a.name,a.stage,'Engaged');return {...a,stage:"Engaged",last:new Date().toISOString().slice(0,10)};}));setFrontier(fl=>fl.filter(x=>x.id!==f.id));trackStat("tasks_assigned_to_bdr");}} teamUsers={teamUsers} setAccounts={setAccounts} onCreateTask={task=>setTasks(ts=>[...ts,task])}/>}
         {page==="business-detail"&&businessPage==="ideas"&&<IdeasPage nuggets={nuggets} onSaveNuggets={setNuggets} activeUser={activeUser} onViewIdeas={onViewIdeas}/>}
         {page==="ledger"&&<LedgerPage accounts={accounts} setAccounts={setAccounts} teamUsers={teamUsers} activeUser={activeUser} tasks={tasks} winsLog={winsLog} setWinsLog={setWinsLog} managerSelectedAeId={managerScopedAeId}/>}

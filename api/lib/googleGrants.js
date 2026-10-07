@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import { tokenSealer } from './tokenCrypto.js';
 import { getServiceSupabase } from './authUser.js';
 
 // Each Prospector feature asks Google only for what it needs, the first time
@@ -17,25 +17,9 @@ export function featuresFromScope(scope) {
   return Object.keys(GOOGLE_FEATURES).filter(f => GOOGLE_FEATURES[f].scopes.every(s => granted.has(s)));
 }
 
-function tokenKey() {
-  const key = Buffer.from(process.env.GOOGLE_TOKEN_KEY || '', 'base64');
-  if (key.length !== 32) throw new Error('GOOGLE_TOKEN_KEY is not configured (needs 32 random bytes, base64)');
-  return key;
-}
-
-export function encryptToken(plain) {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', tokenKey(), iv);
-  const ct = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
-  return ['v1', iv.toString('base64'), cipher.getAuthTag().toString('base64'), ct.toString('base64')].join(':');
-}
-
-export function decryptToken(enc) {
-  const [, iv, tag, ct] = enc.split(':');
-  const decipher = crypto.createDecipheriv('aes-256-gcm', tokenKey(), Buffer.from(iv, 'base64'));
-  decipher.setAuthTag(Buffer.from(tag, 'base64'));
-  return Buffer.concat([decipher.update(Buffer.from(ct, 'base64')), decipher.final()]).toString('utf8');
-}
+const sealer = tokenSealer('GOOGLE_TOKEN_KEY');
+export const encryptToken = sealer.encrypt;
+export const decryptToken = sealer.decrypt;
 
 export async function getGrant(userId) {
   const { data, error } = await getServiceSupabase().from('google_grants')
