@@ -6,7 +6,7 @@ import KpiTable from './KpiTable';
 import { PIPELINE_STATUSES } from '../../../constants/partnerPipeline';
 import {
   cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, rowStyle, inputStyle,
-  Chip, Dot, Btn, AddButton, SourceBadge, NeedsMigration, ErrorNote, fmt, short, pct, progressColor, weekOf,
+  Chip, Dot, Btn, AddButton, SourceBadge, NeedsMigration, ErrorNote, fmt, short, pct, progressColor, weekOf, flashTo,
 } from './goalsUi';
 
 // Seif's weekly report, his section order and labels (specs/design/
@@ -150,6 +150,50 @@ export function InfraList({ items, editable, onAdd, onUpdate, onDelete, onCarry 
   );
 }
 
+// goals-surface-v1 - the "sections written" ring opens a list of which
+// sections are written and which aren't; each is a jump link.
+function SectionsRing({ written, toWrite }) {
+  const [open, setOpen] = useState(false);
+  const [alignLeft, setAlignLeft] = useState(false);
+  const box = useRef(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = e => { if (box.current && !box.current.contains(e.target)) setOpen(false); };
+    const esc = e => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  const jump = key => { setOpen(false); flashTo(`goals-sec-${key}`); };
+  const group = (title, color, items) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <span style={{ ...labelStyle, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}><Dot color={color} />{title} ({items.length})</span>
+      {!items.length && <span style={{ ...subStyle, fontSize: 13 }}>None</span>}
+      {items.map(s => (
+        <button key={s.key} type="button" onClick={() => jump(s.key)}
+          style={{ all: 'unset', ...saSans, cursor: 'pointer', display: 'flex', gap: 8, padding: '6px 8px', margin: '0 -8px', borderRadius: 8, fontSize: 13, color: SA.link }}>
+          <span style={{ ...numStyle, color: SA.muted, minWidth: 30 }}>§{s.n}</span>{s.title}
+        </button>
+      ))}
+    </div>
+  );
+  return (
+    <div ref={box} style={{ position: 'relative' }}>
+      <button type="button" aria-haspopup="dialog" aria-expanded={open} onClick={() => { setAlignLeft(box.current.getBoundingClientRect().left + 316 <= window.innerWidth); setOpen(o => !o); }} title="Which sections are written?"
+        style={{ all: 'unset', cursor: 'pointer', borderRadius: 999, display: 'flex' }}>
+        <Ring parts={[{ label: 'Written', count: written.length, color: SEMANTIC.healthy }, { label: 'To write', count: toWrite.length, color: SA.neutral }]} center={`${written.length}/12`} caption="sections" label="Report sections written" />
+      </button>
+      {open && (
+        <div role="dialog" aria-label="Report sections" className="no-print"
+          style={{ position: 'absolute', top: 'calc(100% + 8px)', ...(alignLeft ? { left: 0 } : { right: 0 }), zIndex: 30, width: 300, maxWidth: 'calc(100vw - 32px)', maxHeight: 420, overflowY: 'auto', background: SA.surface2, border: `1px solid ${SA.borderStrong}`, borderRadius: 12, padding: 14, boxShadow: '0 10px 30px #0008', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {group('Written', SEMANTIC.healthy, written)}
+          {group('To write', SA.neutral, toWrite)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CommitmentRow({ c, lookup, editable, onOpen, onUpdate }) {
   const owner = lookup(c.owner_user_id);
   const measured = c.metric_key && c.target_value != null;
@@ -240,7 +284,9 @@ export default function ReportView(props) {
   const editable = canEdit && loaded && !final;
   const commitEditable = canEdit && !final;
   const notesByKey = Object.fromEntries((sections || []).map(s => [s.key ?? s.section_key, s.notes]));
-  const written = SECTIONS.filter(s => (notesByKey[s.key] || '').trim()).length + (commitments.length ? 1 : 0);
+  const commitmentsEntry = { n: 15, key: 's15', title: 'Commitments' };
+  const isWritten = s => (s.key === 's15' ? commitments.length > 0 : !!(notesByKey[s.key] || '').trim());
+  const allSections = [commitmentsEntry, ...SECTIONS];
   const lastSaved = (sections || []).map(s => s.updated_at).filter(Boolean).sort().pop();
   const frozenKpi = final ? report.snapshot?.kpi : null;
   const run = async fn => { setMsg(''); setBusy(true); try { return await fn(); } catch (e) { setMsg(e.message); return null; } finally { setBusy(false); } };
@@ -255,7 +301,7 @@ export default function ReportView(props) {
             <span style={subStyle}>Live numbers fill in on their own. You write the story and the commitments. Each commitment links to the section it moves.</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-            <Ring parts={[{ label: 'Written', count: written, color: SEMANTIC.healthy }, { label: 'To write', count: 12 - written, color: SA.neutral }]} center={`${written}/12`} caption="sections" label="Report sections written" />
+            <SectionsRing written={allSections.filter(isWritten)} toWrite={allSections.filter(s => !isWritten(s))} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {loaded && (final
                 ? <Chip color={SEMANTIC.healthy}><Dot color={SEMANTIC.healthy} />Final · {new Date(report.finalized_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} {timeOf(report.finalized_at)} · {lookup(report.finalized_by).first}</Chip>
@@ -276,7 +322,7 @@ export default function ReportView(props) {
         {msg && <div style={{ marginTop: 12 }}><ErrorNote message={msg} /></div>}
       </section>
 
-      <section style={{ ...cardStyle, borderColor: 'color-mix(in srgb, var(--sa-accent) 22%, var(--sa-border))' }} aria-labelledby="h-commit">
+      <section id="goals-sec-s15" style={{ ...cardStyle, borderColor: 'color-mix(in srgb, var(--sa-accent) 22%, var(--sa-border))' }} aria-labelledby="h-commit">
         <span style={labelStyle}>15 · Commitments for this week</span>
         <h2 style={{ ...h2Style, marginTop: 4 }} id="h-commit">What we committed to Seif</h2>
         <span style={subStyle}>First thing reviewed next Monday. Progress updates live wherever the app can measure it.</span>

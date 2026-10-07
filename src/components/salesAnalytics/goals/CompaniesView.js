@@ -3,7 +3,7 @@ import { SA } from '../theme';
 import { cohortColor } from '../palette';
 import Ring, { RingLegend } from '../charts/Ring';
 import {
-  cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle, Chip, Dot, Btn, AddButton, ErrorNote,
+  cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle, Chip, Dot, Btn, AddButton, ErrorNote, ShowingChip,
   fmt, short, addDays, weekOf, shortWeek,
 } from './goalsUi';
 
@@ -93,15 +93,23 @@ function PlannedCadences({ weekStart, cadences, lookup, members, owner, canEdit,
   );
 }
 
-export default function CompaniesView({ weekStart, companies, cadences, lookup, members, owner, whoLabel, canEdit, error, onSaveEmployees, onCreateCadence, onDeleteCadence }) {
+const cohortOf = c => c.cohort || 'Other';
+
+// ownerFocus: set by the rail's "companies sequenced by owner" ring - a user
+// id, 'unassigned', or null.
+export default function CompaniesView({ weekStart, companies, cadences, lookup, members, owner, whoLabel, canEdit, error, onSaveEmployees, onCreateCadence, onDeleteCadence, ownerFocus, onOwnerFocus }) {
   const [showAll, setShowAll] = useState(false);
+  const [cohort, setCohort] = useState(null);
   const rows = [...companies].sort((a, b) => (b.employees ?? -1) - (a.employees ?? -1) || (a.name || '').localeCompare(b.name || ''));
-  const shown = showAll ? rows : rows.slice(0, TOP);
+  const isMemberId = id => members.some(m => m.user_id === id);
+  const byOwner = c => !ownerFocus || (ownerFocus === 'unassigned' ? !isMemberId(c.sequenced_by) : c.sequenced_by === ownerFocus);
+  const filtered = rows.filter(c => byOwner(c) && (!cohort || cohortOf(c) === cohort));
+  const shown = showAll ? filtered : filtered.slice(0, TOP);
   const employees = rows.reduce((n, c) => n + (c.employees || 0), 0);
   const missing = rows.filter(c => c.employees == null).length;
   const byCohort = new Map();
-  for (const c of rows) if (c.employees) byCohort.set(c.cohort || 'Other', (byCohort.get(c.cohort || 'Other') || 0) + c.employees);
-  const parts = [...byCohort.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, count]) => ({ label, count, color: cohortColor(label) }));
+  for (const c of rows) if (c.employees) byCohort.set(cohortOf(c), (byCohort.get(cohortOf(c)) || 0) + c.employees);
+  const parts = [...byCohort.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([label, count]) => ({ id: label, label, count, color: cohortColor(label) }));
   const th = { ...labelStyle, textAlign: 'right', padding: '0 12px 10px', whiteSpace: 'nowrap' };
   const td = { padding: '12px', borderTop: `1px solid ${SA.track}`, textAlign: 'right' };
 
@@ -116,14 +124,20 @@ export default function CompaniesView({ weekStart, companies, cadences, lookup, 
           </div>
           {parts.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <Ring parts={parts} center={short(employees)} caption="employees" size={104} stroke={16} track={false} label="Employees reached by cohort" />
-              <RingLegend parts={parts} showPct />
+              <Ring parts={parts} center={short(employees)} caption="employees" size={104} stroke={16} track={false} label="Employees reached by cohort" onSelect={setCohort} selected={cohort} />
+              <RingLegend parts={parts} showPct onSelect={setCohort} selected={cohort} />
             </div>
           )}
         </div>
+        {(ownerFocus || cohort) && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 16 }}>
+            {ownerFocus && <ShowingChip label={`Sequenced by ${ownerFocus === 'unassigned' ? 'Unassigned' : lookup(ownerFocus).first}`} count={rows.filter(byOwner).length} onClear={() => onOwnerFocus(null)} />}
+            {cohort && <ShowingChip label={cohort} count={rows.filter(c => cohortOf(c) === cohort).length} onClear={() => setCohort(null)} />}
+          </div>
+        )}
         {error && <div style={{ marginTop: 12 }}><ErrorNote message={error.message} /></div>}
         {!error && !rows.length && <p style={{ ...subStyle, margin: '20px 0 0' }}>No companies entered a sequence this week{owner === 'team' ? '' : ` from ${whoLabel}’s mailbox`}. Weeks fill in on each sync.</p>}
-        {rows.length > 0 && (
+        {filtered.length > 0 && (
           <div style={{ overflowX: 'auto', marginTop: 16 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
               <thead><tr>
@@ -148,9 +162,10 @@ export default function CompaniesView({ weekStart, companies, cadences, lookup, 
             </table>
           </div>
         )}
-        {rows.length > TOP && (
+        {rows.length > 0 && !filtered.length && <p style={{ ...subStyle, margin: '16px 0 0' }}>No companies match this filter.</p>}
+        {filtered.length > TOP && (
           <p style={{ ...subStyle, margin: '12px 0 0', fontSize: 12, display: 'flex', gap: 8, alignItems: 'center' }}>
-            {showAll ? `Showing all ${rows.length}.` : `Showing the ${TOP} largest. ${rows.length - TOP} more in the full list.`}
+            {showAll ? `Showing all ${filtered.length}.` : `Showing the ${TOP} largest. ${filtered.length - TOP} more in the full list.`}
             <button type="button" onClick={() => setShowAll(s => !s)} style={{ all: 'unset', cursor: 'pointer', color: SA.link, minHeight: 24 }}>{showAll ? 'Show fewer' : 'Show all'}</button>
           </p>
         )}

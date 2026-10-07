@@ -15,7 +15,7 @@ import ReportView from './ReportView';
 import { exportWidgetCsv } from '../exportCsv';
 import {
   cardStyle, labelStyle, h2Style, subStyle, numStyle, Chip, Btn, NeedsMigration, ErrorNote,
-  addDays, monthOf, monthName, weekLabel, memberLookup, ownedBy, progressColor, pct, short,
+  addDays, monthOf, monthName, weekLabel, memberLookup, ownedBy, progressColor, pct, short, flashTo,
 } from './goalsUi';
 
 // sales-goals-v1 REVISION 4 - Goals & Weekly Plan: week picker, right rail
@@ -52,6 +52,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
   const [reportData, setReportData] = useState(null);
   const [kpiRows, setKpiRows] = useState(null);
   const [exportOpen, setExportOpen] = useState(false);
+  const [companyOwnerFocus, setCompanyOwnerFocus] = useState(null);
   const [errors, setErrors] = useState({});
   const setError = useCallback((key, e) => setErrors(prev => ({ ...prev, [key]: e })), []);
 
@@ -128,15 +129,19 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
   ];
 
   // Rail summaries
-  const ownerParts = [...members.map(m => ({ label: lookup(m.user_id).first, count: companies.filter(c => c.sequenced_by === m.user_id).length, color: lookup(m.user_id).color }))];
+  const ownerParts = [...members.map(m => ({ id: m.user_id, label: lookup(m.user_id).first, count: companies.filter(c => c.sequenced_by === m.user_id).length, color: lookup(m.user_id).color }))];
   const unowned = companies.filter(c => !members.some(m => m.user_id === c.sequenced_by)).length;
-  if (unowned) ownerParts.push({ label: 'Unassigned', count: unowned, color: lookup(null).color });
+  if (unowned) ownerParts.push({ id: 'unassigned', label: 'Unassigned', count: unowned, color: lookup(null).color });
+  // The ring counts the whole team, so a slice opens Companies on Team with
+  // that owner picked out (a person filter would hide the other slices).
+  const focusCompanies = id => { setCompanyOwnerFocus(id); if (id) { setOwnerSlug('team'); setView('companies'); } };
+  const ringFocus = view === 'companies' ? companyOwnerFocus : null;
   const peopleSummary = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-      <Ring parts={ownerParts} center={String(companies.length)} size={96} stroke={16} track={!companies.length} label="Companies sequenced by owner" />
+      <Ring parts={ownerParts} center={String(companies.length)} size={96} stroke={16} track={!companies.length} label="Companies sequenced by owner" onSelect={focusCompanies} selected={ringFocus} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <span style={{ ...subStyle, fontSize: 12 }}>Companies sequenced, {weekLabel(weekStart).split(' · ')[0].toLowerCase()}</span>
-        <RingLegend parts={ownerParts} />
+        <RingLegend parts={ownerParts} onSelect={focusCompanies} selected={ringFocus} />
       </div>
     </div>
   );
@@ -200,7 +205,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
     if (target.startsWith('view:')) return setView({ this_week: 'week' }[target.slice(5)] || target.slice(5));
     if (target.startsWith('section:')) {
       setView('report');
-      setTimeout(() => document.getElementById(`goals-sec-${target.slice(8)}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+      setTimeout(() => flashTo(`goals-sec-${target.slice(8)}`), 50);
     }
   };
 
@@ -226,7 +231,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
   ];
 
   const rail = (
-    <RightRail views={views} view={view} onView={setView} people={people} owner={ownerSlug} onOwner={setOwnerSlug}
+    <RightRail views={views} view={view} onView={setView} people={people} owner={ownerSlug} onOwner={slug => { setOwnerSlug(slug); setCompanyOwnerFocus(null); }}
       peopleSummary={peopleSummary} compact={compact}>
       {glance}
     </RightRail>
@@ -332,6 +337,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
                 setCompanies(cs => cs.map(x => (x.account_id === c.account_id ? { ...x, employees: c.employees } : x)));
                 loadScorecard();
               }}
+              ownerFocus={companyOwnerFocus} onOwnerFocus={setCompanyOwnerFocus}
               onCreateCadence={async body => { const c = await goalsApi.createCadence(businessId, body); setCadences(cs => [...cs, c]); }}
               onDeleteCadence={async cadenceId => { await goalsApi.deleteCadence(businessId, cadenceId); setCadences(cs => cs.filter(c => c.id !== cadenceId)); }} />
           )}

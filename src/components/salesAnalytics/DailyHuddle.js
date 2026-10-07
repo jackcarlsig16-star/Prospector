@@ -12,7 +12,7 @@ import HuddlePartners from './HuddlePartners';
 import RightRail from './RightRail';
 import Ring, { RingLegend } from './charts/Ring';
 import { goalsApi } from './goals/goalsApi';
-import { memberLookup } from './goals/goalsUi';
+import { memberLookup, ShowingChip } from './goals/goalsUi';
 import { exportWidgetCsv } from './exportCsv';
 import { fetchMe } from '../../utils/authSession';
 import { roleAtLeast } from '../../constants/roles';
@@ -95,6 +95,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
   const [members, setMembers] = useState([]);
   const [me, setMe] = useState(null);
   const [owner, setOwner] = useState(readOwner);
+  const [needsOwner, setNeedsOwner] = useState(null); // set by the "today's actions by owner" ring
   const [filters, setFilters] = useState({ heat: 'all', due: 'all', stale: false, sort: 'signal', hideBots: true });
   const [feedKey, setFeedKey] = useState(0);
   const [flags, setFlags] = useState([]);
@@ -257,7 +258,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
 
   const f = { ...filters, owner };
   const shown = data ? applyFilters(visible, f, today) : [];
-  const needs = sortProspects(shown.filter(p => needsAction(p, today)), filters.sort, today);
+  const needs = sortProspects(shown.filter(p => needsAction(p, today) && (!needsOwner || p.owner === needsOwner)), filters.sort, today);
   const autopilot = sortProspects(shown.filter(p => onAutopilot(p, today)), filters.sort, today);
   const companies = byCompany(shown, filters.sort, today);
   // Rail counts ignore their own filter, so each option shows what it would give.
@@ -269,7 +270,10 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
   const lookup = memberLookup(members);
   const ownerColor = slug => lookup(members.find(m => m.name.split(' ')[0].toLowerCase() === slug)?.user_id).color;
   const people = [{ id: 'team', name: 'Team', color: SA.accent }, { id: 'jack', name: 'Jack', color: ownerColor('jack') }, { id: 'cyrus', name: 'Cyrus', color: ownerColor('cyrus') }];
-  const ownerParts = ['jack', 'cyrus', 'unassigned'].map(o => ({ label: OWNER_LABELS[o], count: teamNeeds.filter(p => p.owner === o).length, color: ownerColor(o) })).filter(x => x.count);
+  const ownerParts = ['jack', 'cyrus', 'unassigned'].map(o => ({ id: o, label: OWNER_LABELS[o], count: teamNeeds.filter(p => p.owner === o).length, color: ownerColor(o) })).filter(x => x.count);
+  // The ring counts the whole team, so picking a slice moves the person
+  // filter back to Team and narrows Needs action to that owner.
+  const focusNeeds = o => { setNeedsOwner(o); if (o) setOwner('team'); };
 
   const bandById = new Map((data?.prospects || []).map(p => [p.contact_id, p.heat_band]));
   const staleById = new Map((data?.prospects || []).map(p => [p.contact_id, p.stale]));
@@ -308,7 +312,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
   const dateLabel = today ? new Date(`${today}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
 
   const rail = (
-    <RightRail label="Huddle filters" moreLabel="filters & summary" people={people} owner={owner} onOwner={setOwner} compact={compact}>
+    <RightRail label="Huddle filters" moreLabel="filters & summary" people={people} owner={owner} onOwner={o => { setOwner(o); setNeedsOwner(null); }} compact={compact}>
       <div style={railCard}>
         <span style={railLabel}>Heat</span>
         <Segmented label="Heat" options={HEAT_OPTIONS} value={filters.heat} counts={heatCounts} onChange={v => setFilters(x => ({ ...x, heat: v }))} />
@@ -329,8 +333,8 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
       <div style={railCard}>
         <span style={railLabel}>Today's actions</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <Ring parts={ownerParts} center={String(teamNeeds.length)} size={80} stroke={12} track={!teamNeeds.length} label="Today's actions by owner" />
-          <RingLegend parts={ownerParts} />
+          <Ring parts={ownerParts} center={String(teamNeeds.length)} size={80} stroke={12} track={!teamNeeds.length} label="Today's actions by owner" onSelect={focusNeeds} selected={needsOwner} />
+          <RingLegend parts={ownerParts} onSelect={focusNeeds} selected={needsOwner} />
         </div>
         <span style={{ fontSize: 13, color: SA.muted }}>{doneToday} done today</span>
       </div>
@@ -399,7 +403,9 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
             <HuddlePartners businessId={businessId} />
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 460px), 1fr))', gap: '0 24px', alignItems: 'start' }}>
-              <Section title="Needs action today" count={needs.length} sub="sorted by signal" empty="Nothing urgent for these filters — sequences are running.">
+              <Section title="Needs action today" count={needs.length} sub="sorted by signal"
+                empty={needsOwner ? <span style={{ display: 'inline-flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>Nothing left for this owner. <ShowingChip label={OWNER_LABELS[needsOwner]} count={0} onClear={() => setNeedsOwner(null)} /></span> : 'Nothing urgent for these filters — sequences are running.'}>
+                {needsOwner && <div style={{ marginBottom: 10 }}><ShowingChip label={OWNER_LABELS[needsOwner]} count={needs.length} onClear={() => setNeedsOwner(null)} /></div>}
                 <div className="sa-scroll" style={scrollList}>{needs.map(row)}</div>
               </Section>
               <HuddleFeed businessId={businessId} reloadKey={feedKey} today={today} lastHuddleAt={lastHuddleAt} filters={{ owner, heat: filters.heat, stale: filters.stale, hideBots: filters.hideBots }}

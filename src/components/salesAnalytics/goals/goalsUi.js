@@ -82,6 +82,27 @@ export function SourceBadge({ source }) {
   );
 }
 
+// goals-surface-v1 - the one "a ring is filtering this list" marker.
+export function ShowingChip({ label, count, onClear }) {
+  return (
+    <button type="button" onClick={onClear} aria-label={`Showing ${label} (${count}). Clear filter`}
+      style={{ ...saSans, display: 'inline-flex', alignItems: 'center', gap: 8, height: 30, padding: '0 6px 0 12px', borderRadius: 999, cursor: 'pointer', fontSize: 13,
+        border: `1px solid ${SA.accent}`, background: 'color-mix(in srgb, var(--sa-accent) 14%, transparent)', color: SA.text }}>
+      <span><span style={{ color: SA.muted }}>Showing:</span> {label} <span style={numStyle}>({count})</span></span>
+      <span aria-hidden="true" style={{ width: 20, height: 20, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: SA.muted }}>×</span>
+    </button>
+  );
+}
+
+// Scroll an element into view and flash it, so a jump link shows where it landed.
+export function flashTo(elementId) {
+  const el = document.getElementById(elementId);
+  if (!el) return false;
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  el.animate?.([{ boxShadow: `0 0 0 3px ${SA.accent}` }, { boxShadow: '0 0 0 0 transparent' }], { duration: 1600, delay: 250 });
+  return true;
+}
+
 export function NeedsMigration({ what }) {
   return (
     <div role="status" style={{ background: SA.inset, border: `1px dashed ${SA.borderStrong}`, borderRadius: SA_SHAPE.radiusInner, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 4 }}>

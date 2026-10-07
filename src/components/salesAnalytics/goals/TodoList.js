@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { SA } from '../theme';
 import { SEMANTIC } from '../palette';
 import Ring, { RingLegend } from '../charts/Ring';
-import { cardStyle, labelStyle, h2Style, subStyle, numStyle, rowStyle, inputStyle, Chip, Dot, Btn, AddButton, ErrorNote } from './goalsUi';
+import { cardStyle, labelStyle, h2Style, subStyle, numStyle, rowStyle, inputStyle, Chip, Dot, Btn, AddButton, ErrorNote, ShowingChip } from './goalsUi';
 
 // Status computes itself from the steps (REV4): all ticked = done, some =
 // in progress, none = not started. A to-do marked done/dropped by hand
@@ -75,18 +75,20 @@ export default function TodoList({ todos, lookup, members, whoLabel, defaultOwne
   const [addingStepFor, setAddingStepFor] = useState(null);
   const [carryState, setCarryState] = useState(null);
   const [actionError, setActionError] = useState('');
+  const [statusFilter, setStatusFilter] = useState(null);
   const run = async fn => { setActionError(''); try { return await fn(); } catch (e) { setActionError(e.message); return null; } };
 
   const built = todos.map(t => ({ ...t, st: todoStatus(t) }));
   const live = built.filter(t => t.st !== 'dropped');
   const count = k => live.filter(t => t.st === k).length;
   const parts = [
-    { label: 'Done', count: count('done'), color: STATUS_COLOR.done },
-    { label: 'In progress', count: count('prog'), color: STATUS_COLOR.prog },
-    { label: 'Not started', count: count('not'), color: STATUS_COLOR.not },
+    { id: 'done', label: 'Done', count: count('done'), color: STATUS_COLOR.done },
+    { id: 'prog', label: 'In progress', count: count('prog'), color: STATUS_COLOR.prog },
+    { id: 'not', label: 'Not started', count: count('not'), color: STATUS_COLOR.not },
   ];
+  const selectedPart = parts.find(p => p.id === statusFilter);
   const groups = [];
-  for (const t of built) {
+  for (const t of selectedPart ? built.filter(x => x.st === statusFilter) : built) {
     const name = t.category || 'Uncategorized';
     let g = groups.find(x => x.name === name);
     if (!g) { g = { name, items: [] }; groups.push(g); }
@@ -103,8 +105,8 @@ export default function TodoList({ todos, lookup, members, whoLabel, defaultOwne
           <span style={subStyle}>{live.length} to-do{live.length === 1 ? '' : 's'} · tick the steps as you go; status updates itself</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-          <Ring parts={parts} center={`${count('done')}/${live.length}`} label="To-dos" />
-          <RingLegend parts={parts} />
+          <Ring parts={parts} center={`${count('done')}/${live.length}`} label="To-dos" onSelect={setStatusFilter} selected={selectedPart ? statusFilter : null} />
+          <RingLegend parts={parts} onSelect={setStatusFilter} selected={selectedPart ? statusFilter : null} />
           {canEdit && (
             <Btn disabled={carryState === 'busy'} onClick={async () => {
               setCarryState('busy');
@@ -116,6 +118,7 @@ export default function TodoList({ todos, lookup, members, whoLabel, defaultOwne
           )}
         </div>
       </div>
+      {selectedPart && <div style={{ marginTop: 16 }}><ShowingChip label={selectedPart.label} count={selectedPart.count} onClear={() => setStatusFilter(null)} /></div>}
       {error && <div style={{ marginTop: 12 }}><ErrorNote message={error.message} /></div>}
       {!error && !built.length && <p style={{ ...subStyle, margin: '20px 0 0' }}>No to-dos for this week yet — add your first{canEdit ? ', or carry over last week’s unfinished ones' : ''}.</p>}
       {groups.map(g => (

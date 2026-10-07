@@ -3,7 +3,7 @@ import { SA, saSans } from '../theme';
 import { PRIORITY_COLORS } from '../palette';
 import Ring, { RingLegend } from '../charts/Ring';
 import { PIPELINE_STATUSES, TIERS, TOUCH_STATUSES, isStalePartner, daysSinceTouch } from '../../../constants/partnerPipeline';
-import { cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle, Chip, Btn, AddButton, ErrorNote } from './goalsUi';
+import { cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle, Chip, Btn, AddButton, ErrorNote, ShowingChip } from './goalsUi';
 import PartnerCard, { statusOf, statusLabel, statusColor, tierLabel } from './partners/PartnerCard';
 
 const COLUMNS = [
@@ -48,10 +48,13 @@ function Column({ title, sub, color, items, collapsed, onCollapse, render }) {
   );
 }
 
+// owner/status are set by clicking the donuts (goals-surface-v1).
+const NO_FILTERS = { category: '', tiers: [], stale: false, hot: false, owner: null, status: null };
+
 export default function PartnersView({ partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace }) {
   const [mode, setMode] = useState(readMode);
   const [openId, setOpenId] = useState(null);
-  const [filters, setFilters] = useState({ category: '', tiers: [], stale: false, hot: false });
+  const [filters, setFilters] = useState(NO_FILTERS);
   const [showPaused, setShowPaused] = useState(false);
   const [toast, setToast] = useState(null); // { text, goalId, eventId, busy, error }
   const toastTimer = useRef(null);
@@ -66,9 +69,11 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
     (!filters.category || p.category === filters.category)
     && (!filters.tiers.length || filters.tiers.includes(p.tier))
     && (!filters.stale || isStalePartner(p, Date.now(), today))
-    && (!filters.hot || p.hot));
+    && (!filters.hot || p.hot)
+    && (!filters.owner || (p.owner_user_id || 'unassigned') === filters.owner)
+    && (!filters.status || statusOf(p) === filters.status));
   const stale = partners.filter(p => isStalePartner(p, Date.now(), today)).sort((a, b) => daysSinceTouch(b) - daysSinceTouch(a));
-  const filtering = filters.category || filters.tiers.length || filters.stale || filters.hot;
+  const filtering = filters.category || filters.tiers.length || filters.stale || filters.hot || filters.owner || filters.status;
 
   const showToast = t => {
     clearTimeout(toastTimer.current);
@@ -98,10 +103,14 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
       canEdit={canEdit} members={members} lookup={lookup} onUpdate={onUpdate} onSignal={signal} />
   );
 
-  const ownerParts = [...members.map(m => ({ label: lookup(m.user_id).first, count: partners.filter(p => p.owner_user_id === m.user_id).length, color: lookup(m.user_id).color }))].filter(x => x.count);
+  const ownerParts = [...members.map(m => ({ id: m.user_id, label: lookup(m.user_id).first, count: partners.filter(p => p.owner_user_id === m.user_id).length, color: lookup(m.user_id).color }))].filter(x => x.count);
   const unowned = partners.filter(p => !p.owner_user_id).length;
-  if (unowned) ownerParts.push({ label: 'Unassigned', count: unowned, color: lookup(null).color });
-  const statusParts = PIPELINE_STATUSES.map(s => ({ label: s.label, count: partners.filter(p => statusOf(p) === s.id).length, color: statusColor(s.id) })).filter(x => x.count);
+  if (unowned) ownerParts.push({ id: 'unassigned', label: 'Unassigned', count: unowned, color: lookup(null).color });
+  const statusParts = PIPELINE_STATUSES.map(s => ({ id: s.id, label: s.label, count: partners.filter(p => statusOf(p) === s.id).length, color: statusColor(s.id) })).filter(x => x.count);
+  const ownerPart = ownerParts.find(x => x.id === filters.owner);
+  const statusPart = statusParts.find(x => x.id === filters.status);
+  const setOwner = id => setFilters(f => ({ ...f, owner: id }));
+  const setStatus = id => setFilters(f => ({ ...f, status: id }));
 
   const unprioritized = shown.filter(p => p.priority == null);
   const priorityColumns = [...COLUMNS, ...(unprioritized.length ? [{ p: null, title: 'Unprioritized', when: 'Not placed yet' }] : [])];
@@ -123,12 +132,12 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Ring parts={ownerParts} center={String(partners.length)} size={80} stroke={12} track={!partners.length} label="Partners by owner" />
-            <RingLegend parts={ownerParts} />
+            <Ring parts={ownerParts} center={String(partners.length)} size={80} stroke={12} track={!partners.length} label="Partners by owner" onSelect={setOwner} selected={filters.owner} />
+            <RingLegend parts={ownerParts} onSelect={setOwner} selected={filters.owner} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Ring parts={statusParts} center={String(partners.length)} size={80} stroke={12} track={!partners.length} label="Partners by pipeline status" />
-            <RingLegend parts={statusParts} />
+            <Ring parts={statusParts} center={String(partners.length)} size={80} stroke={12} track={!partners.length} label="Partners by pipeline status" onSelect={setStatus} selected={filters.status} />
+            <RingLegend parts={statusParts} onSelect={setStatus} selected={filters.status} />
           </div>
         </div>
       </div>
@@ -145,9 +154,15 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
         {TIERS.map(t => <button key={t} type="button" aria-pressed={filters.tiers.includes(t)} onClick={() => toggleTier(t)} style={pill(filters.tiers.includes(t))}>{tierLabel(t)}</button>)}
         <button type="button" aria-pressed={filters.stale} onClick={() => setFilters(f => ({ ...f, stale: !f.stale }))} style={pill(filters.stale)}>Stale only</button>
         <button type="button" aria-pressed={filters.hot} onClick={() => setFilters(f => ({ ...f, hot: !f.hot }))} style={pill(filters.hot)}>🔥 Hot only</button>
-        {filtering && <button type="button" onClick={() => setFilters({ category: '', tiers: [], stale: false, hot: false })} style={{ ...pill(false), border: 'none', background: 'transparent', color: SA.link }}>Clear</button>}
+        {filtering && <button type="button" onClick={() => setFilters(NO_FILTERS)} style={{ ...pill(false), border: 'none', background: 'transparent', color: SA.link }}>Clear</button>}
         <span style={{ ...subStyle, ...numStyle, fontSize: 13 }}>{shown.length} of {partners.length}</span>
       </div>
+      {(filters.owner || filters.status) && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+          {filters.owner && <ShowingChip label={`Owner ${filters.owner === 'unassigned' ? 'Unassigned' : lookup(filters.owner).first}`} count={ownerPart?.count ?? 0} onClear={() => setOwner(null)} />}
+          {filters.status && <ShowingChip label={statusLabel(filters.status)} count={statusPart?.count ?? 0} onClear={() => setStatus(null)} />}
+        </div>
+      )}
 
       <div style={{ marginTop: 16, padding: '12px 14px', borderRadius: 10, background: SA.inset, border: `1px solid ${stale.length ? SA.bad : SA.border}` }} aria-label="Stale partners">
         <span style={labelStyle}>Stale · 7+ days without a touch</span>
