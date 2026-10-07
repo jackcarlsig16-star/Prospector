@@ -36,7 +36,9 @@ const readStored = key => { try { return localStorage.getItem(key); } catch { re
 const writeStored = (key, value) => { try { localStorage.setItem(key, value); } catch { /* private mode */ } };
 const slugOf = name => name.split(' ')[0].toLowerCase();
 
-export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
+// initialTarget: a link from Overview ({ target }, new object per click) -
+// same targets as go() below.
+export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, initialTarget }) {
   const compact = useMediaQuery('(max-width: 1099px)');
   const [weekStart, setWeekStart] = useState(() => laWeekStart());
   const [view, setView] = useState(() => {
@@ -212,6 +214,10 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
     if (kind === 'huddle') return onOpenHuddle && onOpenHuddle(null, !arg ? null : arg === 'flags' ? { flags: true } : { feed: arg === 'feed' ? null : arg });
   };
   const openTarget = go;
+  useEffect(() => {
+    if (initialTarget) go(initialTarget.target);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTarget]);
   // Goal hero cards.
   const drill = id => go({ audience: 'view:companies', missing: 'missing', in_sequence: 'overview:kpi_tiles', partners: { partners: { stage: 'first_email_sent' } },
     meetings: 'score:meetings_set', engagement: 'huddle:feed' }[id]);

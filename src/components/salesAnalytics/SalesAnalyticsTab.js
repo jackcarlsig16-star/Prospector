@@ -4,6 +4,8 @@ import AlertsRow from './AlertsRow';
 import DailyHuddle from './DailyHuddle';
 import GoalsTab from './goals/GoalsTab';
 import { flashTo } from './goals/goalsUi';
+import OverviewGoals from './goals/OverviewGoals';
+import { roleAtLeast } from '../../constants/roles';
 import { WIDGETS } from './widgets.registry';
 import { fetchMetrics, fetchRuns, fetchEntities, fetchCohortBreakdown, fetchInsights, triggerSync } from './salesApi';
 import { fetchFlags, FLAGS_CHANGED } from './huddleApi';
@@ -133,6 +135,8 @@ export default function SalesAnalyticsTab({ businessId }) {
   const [huddleFocus, setHuddleFocus] = useState(null);
   const [huddleTarget, setHuddleTarget] = useState(null); // { feed } | { flags } from a Goals number
   const [overviewFocus, setOverviewFocus] = useState(null); // widget id a Goals number opens
+  const [goalsTarget, setGoalsTarget] = useState(null); // { target } an Overview number opens in Goals
+  const [me, setMe] = useState(null);
   const [myFlagCount, setMyFlagCount] = useState(0);
   const [preset, setPreset] = useState('this_week');
   const [customFrom, setCustomFrom] = useState(laDateString());
@@ -157,7 +161,7 @@ export default function SalesAnalyticsTab({ businessId }) {
   useEffect(() => {
     let live = true;
     const count = () => Promise.all([fetchMe(), fetchFlags(businessId)])
-      .then(([me, flags]) => { if (live) setMyFlagCount(flags.filter(f => f.owner_user_id === me?.profile?.id).length); })
+      .then(([who, flags]) => { if (live) { setMe(who); setMyFlagCount(flags.filter(f => f.owner_user_id === who?.profile?.id).length); } })
       .catch(() => {});
     count();
     window.addEventListener(FLAGS_CHANGED, count);
@@ -269,7 +273,7 @@ export default function SalesAnalyticsTab({ businessId }) {
 
       <div className="no-print" style={{ display: 'inline-flex', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: 3, marginBottom: 20 }}>
         {[['goals', 'Goals'], ['overview', 'Overview'], ['huddle', 'Daily Huddle']].map(([id, label]) => (
-          <button key={id} onClick={() => setView(id)}
+          <button key={id} onClick={() => { setView(id); setGoalsTarget(null); setHuddleTarget(null); }}
             style={{ ...SA_TYPE.body, fontSize: 13, border: 0, borderRadius: 7, padding: '0 16px', height: 38, cursor: 'pointer', background: view === id ? SA.surface2 : 'transparent', color: view === id ? SA.text : SA.muted }}>
             {label}
             {id === 'huddle' && myFlagCount > 0 && (
@@ -279,7 +283,7 @@ export default function SalesAnalyticsTab({ businessId }) {
         ))}
       </div>
 
-      {view === 'goals' ? <GoalsTab businessId={businessId} onOpenOverview={widget => { setOverviewFocus(widget || null); setView('overview'); }}
+      {view === 'goals' ? <GoalsTab businessId={businessId} initialTarget={goalsTarget} onOpenOverview={widget => { setOverviewFocus(widget || null); setView('overview'); }}
           onOpenHuddle={(contactId, target) => { setHuddleFocus(contactId); setHuddleTarget(target ? { ...target } : null); setView('huddle'); }} />
         : view === 'huddle' ? <DailyHuddle businessId={businessId} focusContactId={huddleFocus} onFocused={() => setHuddleFocus(null)} focusTarget={huddleTarget} /> : <>
       {/* Header - hidden in print; the print-only block below replaces it */}
@@ -382,6 +386,9 @@ export default function SalesAnalyticsTab({ businessId }) {
           )}
         </div>
 
+        <OverviewGoals businessId={businessId} canEdit={!!me && (me.profile?.is_platform_owner || roleAtLeast(me.memberships?.find(m => m.business_id === businessId)?.role, 'member'))}
+          onOpenGoals={target => { setGoalsTarget({ target }); setView('goals'); }} onFocusWidget={id => flashTo(`sa-widget-${id}`)}
+          onOpenHuddle={target => { setHuddleFocus(null); setHuddleTarget({ ...target }); setView('huddle'); }} />
         {!loading && <AlertsRow runs={runs} insights={insights} />}
 
         {loading ? (

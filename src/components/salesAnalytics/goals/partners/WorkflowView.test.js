@@ -154,3 +154,10 @@ test('reorder hint shows for members when up/down are hidden, never for viewers'
   rerender(<WorkflowView partners={rows} shown={rows} lookup={lookup} compact={false} stage={null} onStage={jest.fn()} canEdit={false} onRank={null} />);
   expect(screen.queryByText(/to reorder/)).toBeNull();
 });
+
+test('a two-stage filter (Pilot + Live) shows both, with one chip', () => {
+  const all = [p('A', { pipeline_status: 'proposal_pilot' }), p('B', { pipeline_status: 'live' }), p('C', { pipeline_status: 'replied' })];
+  render(<WorkflowView partners={all} shown={all} lookup={lookup} compact={false} stage={['proposal_pilot', 'live']} onStage={jest.fn()} />);
+  expect([...document.querySelectorAll('section[aria-label="Rental Rewards & Renter Platforms"] [data-partner-id]')].map(e => e.getAttribute('data-partner-id')).sort()).toEqual(['A', 'B']);
+  expect(screen.getByRole('button', { name: 'Showing Pilot + Live (2). Clear filter' })).toBeTruthy();
+});

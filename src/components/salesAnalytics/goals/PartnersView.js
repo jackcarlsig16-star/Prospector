@@ -55,8 +55,9 @@ function Column({ title, sub, color, items, collapsed, onCollapse, render }) {
   );
 }
 
-// owner/status are set by clicking the donuts (goals-surface-v1).
-const NO_FILTERS = { category: '', tiers: [], stale: false, hot: false, owner: null, status: null };
+// owner/status are set by clicking the donuts (goals-surface-v1); ids +
+// idsLabel by an Overview number that names a set ("P1 untouched").
+const NO_FILTERS = { category: '', tiers: [], stale: false, hot: false, owner: null, status: null, ids: null, idsLabel: '' };
 
 // teamView: the person filter is on Team. Reorder needs the whole group in
 // view (see WorkflowView), so it's only offered then.
@@ -74,12 +75,12 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
   const [addError, setAddError] = useState('');
   const [moved, setMoved] = useState(readMoved);
   const [focus, setFocus] = useState(null);
-  // A Goals number opening Partners filtered ({ stage?, tiers?, owner? }, a
-  // new object each time). An empty object clears the filters.
+  // A Goals / Overview number opening Partners filtered ({ stage?, tiers?,
+  // owner?, ids?, label? }, a new object each time). {} clears the filters.
   useEffect(() => {
     if (!focusFilter) return;
     setStage(focusFilter.stage || null);
-    setFilters({ ...NO_FILTERS, tiers: focusFilter.tiers || [], owner: focusFilter.owner || null });
+    setFilters({ ...NO_FILTERS, tiers: focusFilter.tiers || [], owner: focusFilter.owner || null, ids: focusFilter.ids || null, idsLabel: focusFilter.label || '' });
     setMode('workflow'); writeMode('workflow');
   }, [focusFilter]);
   const [historyBump, setHistoryBump] = useState(0);
@@ -98,9 +99,10 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
     && (!filters.stale || isStalePartner(p, Date.now(), today))
     && (!filters.hot || p.hot)
     && (!filters.owner || (p.owner_user_id || 'unassigned') === filters.owner)
-    && (!filters.status || statusOf(p) === filters.status));
+    && (!filters.status || statusOf(p) === filters.status)
+    && (!filters.ids || filters.ids.includes(p.id)));
   const stale = partners.filter(p => isStalePartner(p, Date.now(), today)).sort((a, b) => daysSinceTouch(b) - daysSinceTouch(a));
-  const filtering = filters.category || filters.tiers.length || filters.stale || filters.hot || filters.owner || filters.status;
+  const filtering = filters.category || filters.tiers.length || filters.stale || filters.hot || filters.owner || filters.status || filters.ids;
 
   const showToast = t => {
     clearTimeout(toastTimer.current);
@@ -222,8 +224,9 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
         {(filtering || stage) && <button type="button" onClick={() => { setFilters(NO_FILTERS); setStage(null); }} style={{ ...pill(false), border: 'none', background: 'transparent', color: SA.link }}>Clear</button>}
         <span style={{ ...subStyle, ...numStyle, fontSize: 13 }}>{shown.length} of {partners.length}</span>
       </div>
-      {(filters.owner || filters.status) && (
+      {(filters.owner || filters.status || filters.ids) && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+          {filters.ids && <ShowingChip label={filters.idsLabel || 'Selected partners'} count={partners.filter(p => filters.ids.includes(p.id)).length} onClear={() => setFilters(f => ({ ...f, ids: null, idsLabel: '' }))} />}
           {filters.owner && <ShowingChip label={`Owner ${filters.owner === 'unassigned' ? 'Unassigned' : lookup(filters.owner).first}`} count={ownerPart?.count ?? 0} onClear={() => setOwner(null)} />}
           {filters.status && <ShowingChip label={statusLabel(filters.status)} count={statusPart?.count ?? 0} onClear={() => setStatus(null)} />}
         </div>

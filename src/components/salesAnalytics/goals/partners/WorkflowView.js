@@ -18,6 +18,9 @@ const PAUSED = { id: 'paused', label: 'Paused' };
 // Stage colors for the overall bar: one sequential ramp, light -> accent.
 const stageColor = i => `color-mix(in srgb, var(--sa-accent) ${20 + i * 11}%, var(--sa-track))`;
 const stageKey = p => (stepOf(p.pipeline_status) === null ? 'paused' : WORKFLOW_STEPS[stepOf(p.pipeline_status)].id);
+// stage filter: one stage id, or several (e.g. Pilot + Live from "Partners in pilot / live").
+const stagesOf = stage => (stage ? [].concat(stage) : []);
+const stageName = id => (id === 'paused' ? 'Paused' : WORKFLOW_STEPS.find(s => s.id === id)?.label);
 
 function OverallBar({ partners, stage, onStage }) {
   const total = partners.length || 1;
@@ -27,7 +30,7 @@ function OverallBar({ partners, stage, onStage }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div role="group" aria-label="Partners by stage" style={{ display: 'flex', gap: 2, height: 28, borderRadius: 8, overflow: 'hidden' }}>
         {segs.map(s => {
-          const on = stage === s.id;
+          const on = stagesOf(stage).includes(s.id);
           return (
             <button key={s.id} type="button" aria-pressed={on} onClick={() => onStage(on ? null : s.id)} title={`${s.label}: ${s.count}`}
               aria-label={`${s.label} ${s.count}`}
@@ -41,7 +44,7 @@ function OverallBar({ partners, stage, onStage }) {
       </div>
       <div aria-hidden="true" style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', fontSize: 12, color: SA.muted }}>
         {segs.map(s => (
-          <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: stage === s.id ? SA.text : SA.muted }}>
+          <span key={s.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: stagesOf(stage).includes(s.id) ? SA.text : SA.muted }}>
             <span style={{ width: 8, height: 8, borderRadius: 2, background: s.color }} />{s.label} <span style={numStyle}>{s.count}</span>
           </span>
         ))}
@@ -171,10 +174,10 @@ export default function WorkflowView({ partners, shown, lookup, compact, stage, 
   const [keyOpen, setKeyOpen] = useState(readKeyOpen);
   const [topOpen, setTopOpen] = useState(null);
   const reorderOff = canEdit && (!onRank || stage);
-  const visible = stage ? shown.filter(p => stageKey(p) === stage) : shown;
+  const visible = stage ? shown.filter(p => stagesOf(stage).includes(stageKey(p))) : shown;
   const top = visible.filter(p => p.priority === 1 || p.hot).sort(comparePartners).slice(0, TOP);
   const cats = [...new Set(visible.map(p => p.category || null))].sort((a, b) => (categoryNumber(a) ?? 99) - (categoryNumber(b) ?? 99) || String(a).localeCompare(String(b)));
-  const stageLabel = stage === 'paused' ? 'Paused' : WORKFLOW_STEPS.find(s => s.id === stage)?.label;
+  const stageLabel = stagesOf(stage).map(stageName).join(' + ');
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, marginTop: 20 }}>
       <OverallBar partners={partners} stage={stage} onStage={onStage} />

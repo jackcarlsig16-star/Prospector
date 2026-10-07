@@ -51,6 +51,8 @@ test('scorecard: row names link; a week\'s audience opens that week\'s companies
   render(<ScorecardTable data={data} weekStart="2026-09-28" canEdit={false} onOpen={onOpen} />);
   fireEvent.click(screen.getByTitle('Open the list behind Partners first-touched'));
   expect(onOpen).toHaveBeenLastCalledWith({ partners: { stage: 'first_email_sent' } });
+  fireEvent.click(screen.getByTitle('Open the list behind Partners in pilot / live'));
+  expect(onOpen).toHaveBeenLastCalledWith({ partners: { stage: ['proposal_pilot', 'live'] } });
   fireEvent.click(screen.getByTitle(/^Open companies sequenced/));
   expect(onOpen).toHaveBeenLastCalledWith({ companies: '2026-09-28' });
   expect(screen.queryByTitle('Open the list behind Meetings set')).toBeNull();
