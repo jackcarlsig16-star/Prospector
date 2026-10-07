@@ -21,7 +21,7 @@ function laMonday() {
   return addDays(today, -((dow + 6) % 7));
 }
 // Huddle owners are still the jack / cyrus / unassigned slugs.
-const ownerSlug = name => {
+export const ownerSlug = name => {
   const first = (name || '').split(' ')[0].toLowerCase();
   return ['jack', 'cyrus'].includes(first) ? first : null;
 };
@@ -85,8 +85,7 @@ async function openFlagFor(supabase, businessId, contactId) {
   const { data, error } = await supabase.from('sales_week_goals').select('id, owner_user_id, status, week_start, carried_from_id')
     .eq('business_id', businessId).eq('prospect_contact_id', contactId).order('week_start', { ascending: false }).order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
-  const carried = new Set(data.map(r => r.carried_from_id).filter(Boolean));
-  return data.find(r => !carried.has(r.id) && !['done', 'dropped'].includes(r.status)) || null;
+  return openFlagRows(data)[0] || null;
 }
 
 // POST /flags/:goalId/reassign { assignee_user_id } - hand an open flag (its
@@ -199,6 +198,12 @@ export async function completeFlagRoute(req, res) {
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
 
+// Newest copy of each flag (carry-over keeps the original in its old week), not done or dropped.
+export function openFlagRows(rows) {
+  const carried = new Set(rows.map(r => r.carried_from_id).filter(Boolean));
+  return rows.filter(r => !carried.has(r.id) && !['done', 'dropped'].includes(r.status));
+}
+
 // GET /huddle/flags - open flags (to-dos linked to a prospect, not done or
 // dropped), newest copy only when a flag was carried to a later week.
 export async function listFlagsRoute(req, res) {
@@ -206,8 +211,7 @@ export async function listFlagsRoute(req, res) {
   try {
     const rows = await selectAllPages(() => supabase.from('sales_week_goals').select('*, steps:sales_week_goal_steps(*)')
       .eq('business_id', req.params.businessId).not('prospect_contact_id', 'is', null).order('week_start', { ascending: false }).order('id'));
-    const carried = new Set(rows.map(r => r.carried_from_id).filter(Boolean));
-    const flags = rows.filter(r => !carried.has(r.id) && !['done', 'dropped'].includes(r.status));
+    const flags = openFlagRows(rows);
     for (const f of flags) f.steps.sort((a, b) => a.sort_order - b.sort_order);
     res.json({ flags });
   } catch (e) { res.status(500).json({ error: e.message }); }

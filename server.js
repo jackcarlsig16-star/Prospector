@@ -578,6 +578,7 @@ const salesModuleRoute = (file, name, label) => async (req, res) => {
 };
 app.get('/api/sales/:businessId/huddle', salesModuleRoute('./api/sales/huddleRoutes.js', 'huddleRoute', 'huddle'));
 app.get('/api/sales/:businessId/huddle/feed', salesModuleRoute('./api/sales/huddleRoutes.js', 'huddleFeedRoute', 'huddle/feed'));
+app.get('/api/sales/:businessId/huddle/live', salesModuleRoute('./api/sales/huddleLive.js', 'liveRoute', 'huddle/live'));
 app.get('/api/sales/:businessId/huddle/flags', salesModuleRoute('./api/sales/huddleFlags.js', 'listFlagsRoute', 'huddle/flags'));
 app.post('/api/sales/:businessId/prospects/:contactId/flag', salesModuleRoute('./api/sales/huddleFlags.js', 'flagProspectRoute', 'prospects/:contactId/flag POST'));
 app.delete('/api/sales/:businessId/flags/:goalId', salesModuleRoute('./api/sales/huddleFlags.js', 'unflagRoute', 'flags/:goalId DELETE'));
