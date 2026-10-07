@@ -62,8 +62,8 @@ export async function fetchFlags(businessId) {
 export async function flagProspect(businessId, contactId, body) {
   return call(`/api/sales/${businessId}/prospects/${contactId}/flag`, json('POST', body), 'Failed to flag');
 }
-export async function unflag(businessId, goalId, restoreOwner) {
-  const q = restoreOwner ? `?restore_owner=${restoreOwner}` : '';
+export async function unflag(businessId, goalId, restoreOwner, expectOwner) {
+  const q = restoreOwner ? `?restore_owner=${restoreOwner}&expect_owner=${expectOwner}` : '';
   return call(`/api/sales/${businessId}/flags/${goalId}${q}`, { method: 'DELETE' }, 'Failed to undo the flag');
 }
 // Lets the tab badge and the Huddle lane refresh after any flag change.

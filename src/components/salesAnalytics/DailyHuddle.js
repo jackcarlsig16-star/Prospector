@@ -193,7 +193,8 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
     try {
       handleUpdated(await updateProspect(businessId, p.contact_id, patch));
     } catch (e) { handleUpdated({ contact_id: p.contact_id, ...prev }); throw e; }
-    showToast(`${p.name || 'Prospect'} ${label}`, async () => handleUpdated(await updateProspect(businessId, p.contact_id, prev)));
+    // Undo only if the fields still hold what this click set (409 otherwise).
+    showToast(`${p.name || 'Prospect'} ${label}`, async () => handleUpdated(await updateProspect(businessId, p.contact_id, { ...prev, expect: patch })));
   };
   const undo = async () => {
     if (!toast) return;
@@ -212,7 +213,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
     await loadFlags(); announceFlagsChanged();
     const who = members.find(m => m.user_id === body.assignee_user_id)?.name.split(' ')[0] || 'teammate';
     showToast(`${p.name || 'Prospect'} flagged for ${who}`, async () => {
-      const u = await unflag(businessId, r.todo.id, r.prospect.owner !== r.prev_owner ? r.prev_owner : null);
+      const u = await unflag(businessId, r.todo.id, r.prospect.owner !== r.prev_owner ? r.prev_owner : null, r.prospect.owner);
       if (u.prospect) handleUpdated(u.prospect);
       await loadFlags(); announceFlagsChanged();
     });

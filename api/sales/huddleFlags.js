@@ -71,13 +71,16 @@ export async function flagProspectRoute(req, res) {
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
 
-// DELETE /flags/:goalId?restore_owner=<jack|cyrus|unassigned> - undo a flag:
-// removes the to-do (steps cascade) and, when given, puts the prospect's
-// owner back if the flag had set it.
+// DELETE /flags/:goalId?restore_owner=<jack|cyrus|unassigned>&expect_owner=<slug>
+// - undo a flag: removes the to-do (steps cascade) and, when given, puts the
+// prospect's owner back - only if it still is expect_owner (what the flag set),
+// so a teammate's later reassignment isn't overwritten.
 export async function unflagRoute(req, res) {
   const { businessId, goalId } = req.params;
-  const restore = req.query.restore_owner;
-  if (restore && !['jack', 'cyrus', 'unassigned'].includes(restore)) return res.status(400).json({ error: 'restore_owner must be jack|cyrus|unassigned' });
+  const { restore_owner: restore, expect_owner: expectOwner } = req.query;
+  const SLUGS = ['jack', 'cyrus', 'unassigned'];
+  if (restore && !SLUGS.includes(restore)) return res.status(400).json({ error: 'restore_owner must be jack|cyrus|unassigned' });
+  if (restore && !SLUGS.includes(expectOwner)) return res.status(400).json({ error: 'expect_owner (jack|cyrus|unassigned) is required with restore_owner' });
   const supabase = getSupabase();
   try {
     const { data: todo, error } = await supabase.from('sales_week_goals').select('*').eq('business_id', businessId).eq('id', goalId).maybeSingle();
@@ -90,7 +93,7 @@ export async function unflagRoute(req, res) {
     if (restore) {
       const { data, error: uErr } = await supabase.from('sales_prospect_state')
         .update({ owner: restore, updated_by: req.auth.user.email, updated_at: new Date().toISOString() })
-        .eq('business_id', businessId).eq('contact_id', todo.prospect_contact_id).select().maybeSingle();
+        .eq('business_id', businessId).eq('contact_id', todo.prospect_contact_id).eq('owner', expectOwner).select().maybeSingle();
       if (uErr) throw new Error(uErr.message);
       prospect = data;
     }

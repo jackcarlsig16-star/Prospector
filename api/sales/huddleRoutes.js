@@ -137,10 +137,17 @@ export async function huddleRoute(req, res) {
 
 // PATCH /prospects/:contactId - only the huddle-owned fields. The DB
 // trigger logs each changed field to sales_prospect_events with
-// updated_by as "who".
+// updated_by as "who". Optional `expect: { field: value }` makes it
+// conditional (the Huddle's undo uses it): if a field no longer holds the
+// expected value - someone changed it since - nothing is written and it's 409.
+const PROSPECT_FIELDS = ['owner', 'status', 'next_action', 'next_action_due', 'snooze_until', 'notes'];
 export async function updateProspectRoute(req, res) {
+  const { expect, ...body } = req.body || {};
+  if (expect !== undefined && (typeof expect !== 'object' || expect === null || Object.keys(expect).some(k => !PROSPECT_FIELDS.includes(k)))) {
+    return res.status(400).json({ error: `expect must be an object of ${PROSPECT_FIELDS.join('|')}` });
+  }
   const payload = {};
-  for (const [key, value] of Object.entries(req.body || {})) {
+  for (const [key, value] of Object.entries(body)) {
     if (key === 'owner') {
       if (!OWNERS.includes(value)) return res.status(400).json({ error: `owner must be one of ${OWNERS.join('|')}` });
     } else if (key === 'status') {
@@ -158,15 +165,19 @@ export async function updateProspectRoute(req, res) {
   }
   if (!Object.keys(payload).length) return res.status(400).json({ error: 'nothing to update' });
 
-  const { data, error } = await getSupabase()
-    .from('sales_prospect_state')
+  const supabase = getSupabase();
+  let q = supabase.from('sales_prospect_state')
     .update({ ...payload, updated_by: req.auth.user.email, updated_at: new Date().toISOString() })
     .eq('business_id', req.params.businessId)
-    .eq('contact_id', req.params.contactId)
-    .select()
-    .maybeSingle();
+    .eq('contact_id', req.params.contactId);
+  for (const [k, v] of Object.entries(expect || {})) q = v === null ? q.is(k, null) : q.eq(k, v);
+  const { data, error } = await q.select().maybeSingle();
   if (error) return res.status(500).json({ error: error.message });
-  if (!data) return res.status(404).json({ error: 'prospect not found' });
+  if (!data) {
+    if (!expect) return res.status(404).json({ error: 'prospect not found' });
+    const { data: exists } = await supabase.from('sales_prospect_state').select('contact_id').eq('business_id', req.params.businessId).eq('contact_id', req.params.contactId).maybeSingle();
+    return exists ? res.status(409).json({ error: 'Someone changed this since - undo skipped, refresh to see it' }) : res.status(404).json({ error: 'prospect not found' });
+  }
   res.status(200).json({ prospect: data });
 }
 
