@@ -627,6 +627,7 @@ app.get('/api/sales/:businessId/goals/call-notes/:id', salesModuleRoute('./api/s
 app.post('/api/sales/:businessId/goals/partners/:id/signal', salesModuleRoute('./api/sales/partnersRoutes.js', 'partnerSignalRoute', 'goals/partners/:id/signal POST'));
 app.post('/api/sales/:businessId/goals/partners/:id/undo', salesModuleRoute('./api/sales/partnersRoutes.js', 'partnerUndoRoute', 'goals/partners/:id/undo POST'));
 app.post('/api/sales/:businessId/goals/partners/:id/rank', salesModuleRoute('./api/sales/partnersRoutes.js', 'partnerRankRoute', 'goals/partners/:id/rank POST'));
+app.post('/api/sales/:businessId/goals/partners/touches', salesModuleRoute('./api/sales/partnersRoutes.js', 'logTouchesRoute', 'goals/partners/touches POST'));
 app.get('/api/sales/:businessId/goals/partners/events', salesModuleRoute('./api/sales/partnersRoutes.js', 'listPartnerEventsRoute', 'goals/partners/events'));
 app.get('/api/sales/:businessId/goals/scorecard', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'scorecardRoute', 'goals/scorecard'));
 app.get('/api/sales/:businessId/goals/kpi', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'kpiRoute', 'goals/kpi'));

@@ -1,6 +1,6 @@
 import { laDateString } from './laDate.js';
-import { addDays } from './goalsShared.js';
-import { PIPELINE_STATUS_IDS, TOUCH_STATUSES } from '../../src/constants/partnerPipeline.js';
+import { addDays, isDate, laStartOfDayMs } from './goalsShared.js';
+import { PIPELINE_STATUS_IDS, TOUCH_STATUSES, TOUCH_TYPE_IDS, touchStageMove } from '../../src/constants/partnerPipeline.js';
 
 // sales-partners-pipeline-v1 Stage 2 - the one way a partner's pipeline state
 // changes. The Partners buttons call it through partnersRoutes.js; Outlook
@@ -19,16 +19,23 @@ import { PIPELINE_STATUS_IDS, TOUCH_STATUSES } from '../../src/constants/partner
 //   { type: 'snooze', days?: 1-90 (default 7) }
 //   { type: 'deprioritize' }                     -> pipeline_status 'paused'
 //   { type: 'note', note }                       history only, not a touch
+//   { type: 'touch', touch_type, date, contacts?, note?, move_to? }
+//                                                partner-touch-log-v1: an email/
+//                                                call/... that happened on date
+//                                                (LA day, today or earlier). The
+//                                                event is dated then; stage per
+//                                                touchStageMove, never backwards.
 //
-// status and deprioritize take an optional expect: the pipeline_status the
+// status, deprioritize and touch take an optional expect: the pipeline_status the
 // caller's screen showed. If the partner has moved since (a teammate's
 // click), the signal is refused with 409 instead of moving it from a stage
 // the caller never saw - e.g. "Next: Mark sent" can't drag a Replied
 // partner back to Sent (sales-partners-workflow-v1).
 
-export const SIGNAL_TYPES = ['status', 'assign', 'hot', 'snooze', 'deprioritize', 'note'];
+export const SIGNAL_TYPES = ['status', 'assign', 'hot', 'snooze', 'deprioritize', 'note', 'touch'];
 export const UNDO_WINDOW_MS = 2 * 60e3; // client shows 5s; the slack covers slow networks
 const NOTE_MAX = 2000;
+const CONTACTS_MAX = 10, CONTACT_NAME_MAX = 80;
 
 export class SignalError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
@@ -36,9 +43,49 @@ export class SignalError extends Error {
 
 const CHANGED = 'This partner was just changed by someone else - refresh and try again';
 
-function plan(goal, signal, now) {
+// When a touch on that LA day happened: now if it's today, else midday -
+// clear of either edge of the day, so it lands in the right week.
+export function touchTime(date, now) {
+  return date === laDateString(now) ? now : new Date(laStartOfDayMs(date) + 12 * 3600e3);
+}
+
+const later = (a, b) => (!a || Date.parse(b) > Date.parse(a) ? b : a);
+
+function planTouch(goal, signal, now) {
+  if (!TOUCH_TYPE_IDS.includes(signal.touch_type)) throw new SignalError(`touch_type must be one of ${TOUCH_TYPE_IDS.join('|')}`);
+  if (!isDate(signal.date)) throw new SignalError('date must be YYYY-MM-DD');
+  if (signal.date > laDateString(now)) throw new SignalError("date can't be in the future");
+  const contacts = signal.contacts ?? [];
+  if (!Array.isArray(contacts) || contacts.length > CONTACTS_MAX || !contacts.every(c => typeof c === 'string')) {
+    throw new SignalError(`contacts must be a list of up to ${CONTACTS_MAX} names`);
+  }
+  const seen = new Set();
+  const names = contacts.map(c => c.trim().replace(/\s+/g, ' ')).filter(c => c && !seen.has(c.toLowerCase()) && seen.add(c.toLowerCase()));
+  if (names.some(c => c.length > CONTACT_NAME_MAX)) throw new SignalError(`a contact name must be at most ${CONTACT_NAME_MAX} characters`);
+  const note = typeof signal.note === 'string' ? signal.note.trim() : '';
+  if (signal.note != null && typeof signal.note !== 'string') throw new SignalError('note must be text');
+  if (note.length > NOTE_MAX) throw new SignalError(`note must be at most ${NOTE_MAX} characters`);
+  const moveTo = signal.move_to ?? 'auto';
+  if (moveTo !== 'auto' && moveTo !== 'none' && !PIPELINE_STATUS_IDS.includes(moveTo)) throw new SignalError(`move_to must be auto, none or one of ${PIPELINE_STATUS_IDS.join('|')}`);
+  const to = touchStageMove(goal.pipeline_status, signal.touch_type, moveTo);
+  if (to?.error) throw new SignalError(to.error, 409);
+
+  const at = touchTime(signal.date, now).toISOString();
+  const patch = {};
+  if (to) patch.pipeline_status = to;
+  // A backdated touch never pulls the last-touch stamp back in time.
+  const touchAt = later(goal.last_touch_at, at);
+  if (touchAt !== goal.last_touch_at) patch.last_touch_at = touchAt;
+  if ((signal.touch_type === 'email' || to === 'first_email_sent') && (!goal.first_email_at || signal.date < goal.first_email_at)) patch.first_email_at = signal.date;
+  return {
+    patch,
+    event: { event: 'touch', from_status: to ? goal.pipeline_status : null, to_status: to, note: note || null, touch_type: signal.touch_type, contact_names: names, at },
+  };
+}
+
+export function plan(goal, signal, now) {
   const today = laDateString(now);
-  if (['status', 'deprioritize'].includes(signal?.type) && signal.expect !== undefined && (goal.pipeline_status || 'not_started') !== signal.expect) {
+  if (['status', 'deprioritize', 'touch'].includes(signal?.type) && signal.expect !== undefined && (goal.pipeline_status || 'not_started') !== signal.expect) {
     throw new SignalError(CHANGED, 409);
   }
   switch (signal?.type) {
@@ -73,6 +120,8 @@ function plan(goal, signal, now) {
       if (note.length > NOTE_MAX) throw new SignalError(`note must be at most ${NOTE_MAX} characters`);
       return { patch: {}, event: { event: 'note', note } };
     }
+    case 'touch':
+      return planTouch(goal, signal, now);
     default:
       throw new SignalError(`type must be one of ${SIGNAL_TYPES.join('|')}`);
   }
@@ -123,16 +172,18 @@ export async function applyPartnerSignal(supabase, { businessId, goalId, signal,
   return write(supabase, goal, patch, { ...event, meta: { ...(event.meta || {}), prev }, by_user: byUser });
 }
 
-// Undo = the goal's latest event, not itself an undo, within the window.
+// Undo = the goal's latest-recorded event, not itself an undo, within the
+// window. Recorded, not dated: a touch logged for last week is still the
+// last thing done.
 // Restores meta.prev and records an 'undo' event pointing at it.
 export async function undoPartnerSignal(supabase, { businessId, goalId, eventId, byUser = null, now = new Date() }) {
   const goal = await partnerOrThrow(supabase, businessId, goalId);
   const { data: latest, error } = await supabase.from('sales_partner_events').select('*')
-    .eq('goal_id', goal.id).order('at', { ascending: false }).order('id', { ascending: false }).limit(1).maybeSingle();
+    .eq('goal_id', goal.id).order('recorded_at', { ascending: false }).order('id', { ascending: false }).limit(1).maybeSingle();
   if (error) throw new SignalError(error.message, 500);
   if (!latest || latest.id !== eventId) throw new SignalError('only the latest change on this partner can be undone', 409);
   if (latest.event === 'undo') throw new SignalError('that change was already undone', 409);
-  if (now - Date.parse(latest.at) > UNDO_WINDOW_MS) throw new SignalError('too late to undo', 409);
+  if (now - Date.parse(latest.recorded_at) > UNDO_WINDOW_MS) throw new SignalError('too late to undo', 409);
   const restore = latest.meta?.prev || {};
   const drift = Object.keys(restore).find(k => k !== 'last_touch_at' && k !== 'first_email_at' && String(goal[k] ?? '') !== String(eventResult(latest, k) ?? ''));
   if (drift) throw new SignalError(`${drift} changed since - undo skipped`, 409);

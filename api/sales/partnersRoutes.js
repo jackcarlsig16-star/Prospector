@@ -1,6 +1,7 @@
 import { selectAllPages } from '../lib/selectAllPages.js';
-import { getSupabase, isDate, laStartOfDayMs } from './goalsShared.js';
-import { applyPartnerSignal, undoPartnerSignal, SignalError } from './partnerSignals.js';
+import { getSupabase, isDate, laStartOfDayMs, addDays } from './goalsShared.js';
+import { applyPartnerSignal, undoPartnerSignal, plan, SignalError } from './partnerSignals.js';
+import { loadPartnerData, firstContactEvent, isContact } from './partnerMetrics.js';
 import { planRanks } from './partnerRank.js';
 
 // sales-partners-pipeline-v1 Stage 2 - partner buttons and history. Mounted
@@ -70,4 +71,63 @@ export async function partnerRankRoute(req, res) {
     if (upErr) return res.status(500).json({ error: upErr.message });
   }
   res.json({ ranks: Object.fromEntries(updates.map(u => [u.id, u.sort_rank])) });
+}
+
+// POST /goals/partners/touches  body { dry_run, touches: [{ goal_id, touch_type,
+// date, contacts?, note?, move_to?, expect? }] } - partner-touch-log-v1 bulk
+// catch-up. dry_run returns the per-partner preview and writes nothing; the
+// real run refuses the whole batch if any row would fail, then logs each
+// touch through applyPartnerSignal (one event per row). A single touch is
+// POST /partners/:id/signal with type 'touch'.
+const BULK_MAX = 100;
+const laDateOf = iso => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+const mondayOf = d => addDays(d, -((new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7));
+
+export function previewTouch(goal, touch, data, now) {
+  const base = { goal_id: goal.id, name: goal.name, from_status: goal.pipeline_status || 'not_started' };
+  try {
+    const { event } = plan(goal, { ...touch, type: 'touch' }, now);
+    const first = firstContactEvent(data, goal.id);
+    const counts = isContact(event) && (!first || Date.parse(event.at) < Date.parse(first.at));
+    return { ...base, to_status: event.to_status, at: event.at, week_start: mondayOf(touch.date), first_touch: counts, ...(counts && first ? { replaces_first_touch_week: mondayOf(laDateOf(first.at)) } : {}) };
+  } catch (e) {
+    if (!(e instanceof SignalError)) throw e;
+    return { ...base, error: e.message, status: e.status };
+  }
+}
+
+export async function logTouchesRoute(req, res) {
+  const { dry_run, touches } = req.body || {};
+  if (!Array.isArray(touches) || !touches.length || touches.length > BULK_MAX) return res.status(400).json({ error: `touches must be a list of 1-${BULK_MAX}` });
+  if (!touches.every(t => t && typeof t === 'object' && typeof t.goal_id === 'string')) return res.status(400).json({ error: 'every touch needs a goal_id' });
+  const ids = touches.map(t => t.goal_id);
+  if (new Set(ids).size !== ids.length) return res.status(400).json({ error: 'the same partner is in the list twice - one touch per partner per batch' });
+  const businessId = req.params.businessId;
+  const supabase = getSupabase();
+  const now = new Date();
+  try {
+    const [{ data: goals, error }, data] = await Promise.all([
+      supabase.from('sales_goals').select('*').eq('business_id', businessId).eq('goal_type', 'partnership').is('archived_at', null).in('id', ids),
+      loadPartnerData(supabase, businessId),
+    ]);
+    if (error) throw new Error(error.message);
+    const byId = new Map(goals.map(g => [g.id, g]));
+    const preview = touches.map(t => (byId.has(t.goal_id)
+      ? previewTouch(byId.get(t.goal_id), t, data, now)
+      : { goal_id: t.goal_id, error: 'partner not found', status: 404 }));
+    if (dry_run) return res.json({ preview });
+    if (preview.some(p => p.error)) return res.status(400).json({ error: 'some touches can\'t be logged - fix them and try again', preview });
+    const results = [];
+    for (const t of touches) {
+      const { goal_id, ...signal } = t;
+      try {
+        const r = await applyPartnerSignal(supabase, { businessId, goalId: goal_id, signal: { ...signal, type: 'touch' }, byUser: req.auth.user.id, now });
+        results.push({ goal_id, event_id: r.event.id, to_status: r.event.to_status });
+      } catch (e) {
+        if (!(e instanceof SignalError)) throw e;
+        results.push({ goal_id, error: e.message, status: e.status });
+      }
+    }
+    res.json({ preview, results, logged: results.filter(r => !r.error).length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 }

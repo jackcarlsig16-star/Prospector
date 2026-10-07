@@ -91,3 +91,38 @@ export const NEXT_STEP = {
   proposal_pilot: { to: 'live', label: 'Mark live' },
 };
 export const nextStepFor = status => NEXT_STEP[status || 'not_started'] || null;
+
+// partner-touch-log-v1 - a logged touch (email, call, ...) on a past or
+// today's date. Outbound touches on a partner not yet contacted move it to
+// Sent; a meeting moves it to Meeting if it's behind. Never backwards, and
+// paused partners only move when the stage is picked by hand.
+export const TOUCH_TYPES = [
+  { id: 'email', label: 'Email' },
+  { id: 'call', label: 'Call' },
+  { id: 'linkedin', label: 'LinkedIn' },
+  { id: 'meeting', label: 'Meeting' },
+  { id: 'event', label: 'Event' },
+  { id: 'other', label: 'Other' },
+];
+export const TOUCH_TYPE_IDS = TOUCH_TYPES.map(t => t.id);
+// REVISABLE (spec): the touch types that count as a partner's first touch.
+export const FIRST_TOUCH_TYPES = ['email', 'call', 'linkedin', 'meeting'];
+const OUTBOUND = ['email', 'call', 'linkedin'];
+const NOT_CONTACTED = ['not_started', 'researching', 'first_email_drafted'];
+
+// moveTo: 'auto' (default), 'none', or a pipeline status. Returns the status
+// to move to, null for no move, or { error } for a backwards pick.
+export function touchStageMove(current, touchType, moveTo = 'auto') {
+  const from = current || 'not_started';
+  if (moveTo === 'none') return null;
+  if (moveTo !== 'auto') {
+    if (moveTo === from) return null;
+    const a = stepOf(from), b = stepOf(moveTo);
+    if (b === null) return { error: 'pausing goes through Deprioritize, not a touch' };
+    if (a !== null && b <= a) return { error: `can't move back from ${from} to ${moveTo}` };
+    return moveTo;
+  }
+  if (OUTBOUND.includes(touchType) && NOT_CONTACTED.includes(from)) return 'first_email_sent';
+  if (touchType === 'meeting' && from !== 'paused' && stepOf(from) < stepOf('meeting_set')) return 'meeting_set';
+  return null;
+}
