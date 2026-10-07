@@ -77,7 +77,7 @@ export default function ScorecardTable({ data, error, weekStart, ownerName, canE
                   r.group && (
                     <tr key={`${r.key}-group`}><th scope="rowgroup" colSpan={data.weeks.length + 2} style={{ ...labelStyle, textAlign: 'left', padding: '20px 0 6px', borderTop: `1px solid ${SA.track}` }}>{r.group}</th></tr>
                   ),
-                  <tr key={r.key} style={{ opacity: dimmed ? 0.75 : 1 }}>
+                  <tr key={r.key} id={`score-row-${r.key}`} style={{ opacity: dimmed ? 0.75 : 1 }}>
                     <td style={{ ...td, textAlign: 'left', paddingLeft: 0, minWidth: 190 }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         <span style={{ fontWeight: 500 }}>{r.name}</span>

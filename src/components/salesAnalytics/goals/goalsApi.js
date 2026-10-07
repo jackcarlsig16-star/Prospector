@@ -61,6 +61,8 @@ export const goalsApi = {
 
   scorecard: (id, month, owner) => call(id, `/scorecard?${q({ month, owner })}`),
   saveTarget: (id, body) => call(id, '/targets', { method: 'PUT', body }).then(d => d.target),
+  targets: (id, period, from, to) => call(id, `/targets?${q({ period, from, to })}`).then(d => d.targets),
+  engagement: (id, from, to) => call(id, `/engagement?${q({ from, to })}`).then(d => d.weeks),
 
   report: (id, weekStart) => call(id, `/report?${q({ week_start: weekStart })}`),
   kpi: (id, weekStart) => call(id, `/kpi?${q({ week_start: weekStart })}`).then(d => d.rows),

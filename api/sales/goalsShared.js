@@ -12,6 +12,9 @@ export function getSupabase() {
 export const SCORECARD_METRICS = ['outbound_audience', 'total_in_sequence', 'sequences_running', 'meetings_set', 'open_rate'];
 export const KPI_METRICS = ['target_orgs', 'dm_contacted', 'positive_responses', 'meetings_held', 'qualified_opps',
   'covered_lives_pipeline', 'proposals_outstanding', 'verbal_commitments', 'contracts_signed', 'launches_90d'];
+// goals-surface-v1 - goals the hero card sets that aren't scorecard rows:
+// real_replies_clicks = real clicks + replies (huddleWeekCounts), team-wide.
+export const HERO_METRICS = ['real_replies_clicks'];
 // Typed in by a member; everything else is computed from synced data.
 export const MANUAL_METRICS = ['meetings_set', 'meetings_held'];
 export const LINK_TARGETS = ['view:report', 'view:this_week', 'view:partners', 'view:companies',

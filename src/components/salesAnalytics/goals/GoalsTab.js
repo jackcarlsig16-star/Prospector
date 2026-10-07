@@ -12,10 +12,11 @@ import TodoList, { todoStatus } from './TodoList';
 import PartnersView from './PartnersView';
 import CompaniesView from './CompaniesView';
 import ReportView from './ReportView';
+import GoalHero from './GoalHero';
 import { exportWidgetCsv } from '../exportCsv';
 import {
-  cardStyle, labelStyle, h2Style, subStyle, numStyle, Chip, Btn, NeedsMigration, ErrorNote,
-  addDays, monthOf, monthName, weekLabel, memberLookup, ownedBy, progressColor, pct, short, flashTo,
+  labelStyle, subStyle, numStyle, Chip, Btn, ErrorNote,
+  addDays, monthOf, monthName, weekLabel, memberLookup, ownedBy, flashTo,
 } from './goalsUi';
 
 // sales-goals-v1 REVISION 4 - Goals & Weekly Plan: week picker, right rail
@@ -58,6 +59,8 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
   const [companyOwnerFocus, setCompanyOwnerFocus] = useState(null);
   const [allCompanies, setAllCompanies] = useState(null);
   const [missingOpen, setMissingOpen] = useState(false);
+  const [heroKey, setHeroKey] = useState(0);
+  const [partnerStage, setPartnerStage] = useState(null); // { stage } - a hero card opening Partners filtered
   const [errors, setErrors] = useState({});
   const setError = useCallback((key, e) => setErrors(prev => ({ ...prev, [key]: e })), []);
 
@@ -164,37 +167,6 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
       </div>
     </div>
   );
-  const glanceRows = scorecard ? [
-    ['Total audience', 'outbound_audience', short],
-    ['Total in sequence', 'total_in_sequence', v => v?.toLocaleString('en-US') ?? '—'],
-    ['Sequences running', 'sequences_running', v => v ?? '—'],
-    ['Open rate', 'open_rate', pct],
-  ].map(([name, key, f]) => {
-    const m = scorecard.month_total[key];
-    const p = m.value != null && m.goal ? m.value / m.goal : null;
-    return { name, value: f(m.value), p };
-  }) : [];
-  const glance = (
-    <div style={{ ...cardStyle, padding: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <span style={labelStyle}>{monthName(monthOf(weekStart))} at a glance{owner !== 'team' ? ' · team' : ''}</span>
-      {errors.scorecard?.needsMigration ? <NeedsMigration what="Month at a glance" />
-        : errors.scorecard ? <ErrorNote message={errors.scorecard.message} />
-        : !scorecard ? <span style={subStyle}>Loading…</span>
-        : glanceRows.map(g => (
-          <div key={g.name} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-              <span style={subStyle}>{g.name}</span>
-              <span style={{ ...numStyle, fontWeight: 600 }}>{g.p == null ? g.value : `${Math.round(g.p * 100)}%`}</span>
-            </div>
-            <div style={{ height: 6, borderRadius: 999, background: SA.track }}>
-              <div style={{ height: 6, borderRadius: 999, width: `${g.p == null ? 0 : Math.min(100, Math.round(g.p * 100))}%`, background: progressColor(g.p) }} />
-            </div>
-            {g.p == null && <span style={{ ...subStyle, fontSize: 11 }}>no month goal set</span>}
-          </div>
-        ))}
-    </div>
-  );
-
   // Weekly report: live progress comes from the report endpoint (or the
   // frozen snapshot once final), merged onto the commitment rows.
   const final = reportData?.report?.status === 'final';
@@ -219,6 +191,16 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
     s13: [chip('positive replies this week', kpi.positive_responses?.this_week, 'Apollo')],
   };
   for (const k of Object.keys(autoChips)) autoChips[k] = autoChips[k].filter(Boolean);
+
+  // Goal hero: each card opens where its number comes from.
+  const drill = id => {
+    if (id === 'audience') return setView('companies');
+    if (id === 'missing') return openMissing();
+    if (id === 'in_sequence') return onOpenOverview && onOpenOverview();
+    if (id === 'partners') { setPartnerStage({ stage: 'first_email_sent' }); return setView('partners'); }
+    if (id === 'meetings') { setView('week'); return setTimeout(() => flashTo('score-row-meetings_set'), 120); }
+    if (id === 'engagement') return onOpenHuddle && onOpenHuddle(null);
+  };
 
   const openTarget = target => {
     if (target === 'overview') return onOpenOverview && onOpenOverview();
@@ -252,9 +234,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
 
   const rail = (
     <RightRail views={views} view={view} onView={setView} people={people} owner={ownerSlug} onOwner={slug => { setOwnerSlug(slug); setCompanyOwnerFocus(null); }}
-      peopleSummary={peopleSummary} compact={compact}>
-      {glance}
-    </RightRail>
+      peopleSummary={peopleSummary} compact={compact} />
   );
 
   return (
@@ -298,6 +278,8 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
         <main style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
           {errors.members && <ErrorNote message={errors.members.message} />}
           {me && !canEdit && <div style={{ ...subStyle, fontSize: 13 }}>You have view access to this workspace, so Goals is read-only for you.</div>}
+          <GoalHero businessId={businessId} weekStart={weekStart} owner={owner} commitments={myCommitments} missingHeadcount={missingHeadcount} canEdit={canEdit}
+            reloadKey={heroKey} onGoalSaved={() => { loadScorecard(); loadKpi(); }} onDrill={drill} />
 
           {view === 'report' && (
             <ReportView weekStart={weekStart} report={reportData?.report} reportError={errors.report} sections={reportData?.sections} infra={reportData?.infra}
@@ -310,7 +292,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
               onAddCommitment={async body => { await goalsApi.createWeekGoal(businessId, { ...body, kind: 'commitment', week_start: weekStart }); await Promise.all([loadCommitments(), loadReport()]); return true; }}
               onUpdateCommitment={async (goalId, body) => { await goalsApi.updateWeekGoal(businessId, goalId, body); await loadCommitments(); }}
               onCarryCommitments={async () => { const r = await goalsApi.carryOver(businessId, weekStart, 'commitment'); await Promise.all([loadCommitments(), loadReport()]); return r; }}
-              onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await Promise.all([loadKpi(), loadScorecard()]); }}
+              onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await Promise.all([loadKpi(), loadScorecard()]); setHeroKey(k => k + 1); }}
               infraHandlers={{
                 onAdd: async body => { await goalsApi.createInfra(businessId, { ...body, week_start: weekStart }); await loadReport(); return true; },
                 onUpdate: async (itemId, body) => { await goalsApi.updateInfra(businessId, itemId, body); await loadReport(); },
@@ -322,7 +304,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
           {view === 'week' && <>
             <ScorecardTable data={scorecard} error={errors.scorecard} weekStart={weekStart} ownerName={owner === 'team' ? null : whoLabel} canEdit={canEdit}
               missingHeadcount={missingHeadcount} onFillHeadcount={openMissing}
-              onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await loadScorecard(); }} />
+              onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await loadScorecard(); setHeroKey(k => k + 1); }} />
             <TodoList todos={myTodos} lookup={lookup} members={members} onOpenHuddle={onOpenHuddle} whoLabel={whoLabel} defaultOwner={owner === 'team' ? me?.profile?.id : owner}
               canEdit={canEdit} error={errors.todos}
               onToggleStep={async s => {
@@ -353,7 +335,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
                 const ranks = await goalsApi.partnerRank(businessId, goalId, order);
                 setPartners(ps => ps.map(p => (p.id in ranks ? { ...p, sort_rank: ranks[p.id] } : p)));
               }}
-              teamView={owner === 'team'}
+              teamView={owner === 'team'} focusStage={partnerStage}
               onCreate={async body => { const g = await goalsApi.createPartner(businessId, { ...body, owner_user_id: owner === 'team' ? null : owner }); setPartners(ps => [...ps, g]); }} />
           )}
 

@@ -5,7 +5,7 @@ import { huddleWeekCounts } from './huddleWeek.js';
 import {
   getSupabase, validate, fail, findRow, weekIsFinal, FINAL_ERROR,
   isMonday, isFirstOfMonth, addDays, laStartOfDayMs,
-  SCORECARD_METRICS, KPI_METRICS, MANUAL_METRICS,
+  SCORECARD_METRICS, KPI_METRICS, MANUAL_METRICS, HERO_METRICS,
 } from './goalsShared.js';
 
 // sales-goals-v1 REV4 Stage 4 - weekly report, scorecard, KPI table,
@@ -346,7 +346,7 @@ export async function saveTargetRoute(req, res) {
   const { period, period_start, metric_key } = req.body || {};
   if (!['week', 'month'].includes(period)) return res.status(400).json({ error: 'bad enum: period must be week|month' });
   if (period === 'week' ? !isMonday(period_start) : !isFirstOfMonth(period_start)) return res.status(400).json({ error: `period_start must be a ${period === 'week' ? 'Monday' : '1st of a month'} (YYYY-MM-DD)` });
-  const metrics = [...SCORECARD_METRICS, ...KPI_METRICS, ...PARTNER_METRICS];
+  const metrics = [...SCORECARD_METRICS, ...KPI_METRICS, ...PARTNER_METRICS, ...HERO_METRICS];
   if (!metrics.includes(metric_key)) return res.status(400).json({ error: `bad enum: metric_key must be one of ${metrics.join('|')}` });
   const num = v => v === null || (typeof v === 'number' && Number.isFinite(v) && v >= 0);
   if ('goal' in req.body && !num(req.body.goal)) return res.status(400).json({ error: 'goal must be a number >= 0 or null' });
@@ -544,5 +544,21 @@ export async function carryForwardInfraRoute(req, res) {
       carried.push(data);
     }
     res.json({ carried, skipped: previous.length - carried.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+}
+
+// GET /goals/engagement?from=<Monday>&to=<Monday> - real opens, real clicks
+// and replies per week (the report's §4 numbers, huddleWeekCounts), for the
+// goal hero's 6-week trend (goals-surface-v1). Team-wide. Max 12 weeks.
+export async function engagementRoute(req, res) {
+  const { from, to } = req.query;
+  if (!isMonday(from) || !isMonday(to) || from > to) return res.status(400).json({ error: 'from and to must be Mondays (YYYY-MM-DD) with from <= to' });
+  const weeks = [];
+  for (let w = from; w <= to; w = addDays(w, 7)) weeks.push(w);
+  if (weeks.length > 12) return res.status(400).json({ error: 'at most 12 weeks' });
+  try {
+    const supabase = getSupabase();
+    const counts = await Promise.all(weeks.map(w => huddleWeekCounts(supabase, req.params.businessId, w)));
+    res.json({ weeks: weeks.map((w, i) => ({ week_start: w, real_opens: counts[i].real_opens, real_clicks: counts[i].real_clicks, replies: counts[i].replies })) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
