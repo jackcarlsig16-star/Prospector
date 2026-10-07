@@ -29,7 +29,11 @@ function Bar({ p }) {
   );
 }
 
-export default function ScorecardTable({ data, error, weekStart, ownerName, canEdit, onSaveTarget }) {
+const linkBtn = { all: 'unset', cursor: 'pointer', fontSize: 11, color: SA.warn, textDecoration: 'underline', textUnderlineOffset: 2 };
+
+// missingHeadcount: companies (all weeks) with no employee count - the reason
+// outbound audience reads low; onFillHeadcount opens that list.
+export default function ScorecardTable({ data, error, weekStart, ownerName, canEdit, onSaveTarget, missingHeadcount, onFillHeadcount }) {
   const [saveError, setSaveError] = useState('');
   const month = data?.month;
   const save = async body => {
@@ -81,6 +85,11 @@ export default function ScorecardTable({ data, error, weekStart, ownerName, canE
                           <SourceBadge source={r.source || (r.manual ? 'Manual' : 'Apollo')} />
                           <span style={{ ...subStyle, fontSize: 12 }}>{dimmed ? 'team-wide' : r.hint}</span>
                         </span>
+                        {r.key === 'outbound_audience' && missingHeadcount > 0 && (
+                          <button type="button" onClick={onFillHeadcount} style={{ ...linkBtn, fontSize: 12 }}>
+                            {missingHeadcount} compan{missingHeadcount === 1 ? 'y' : 'ies'} missing headcount → fill
+                          </button>
+                        )}
                       </div>
                     </td>
                     {data.weeks.map(w => {
@@ -103,7 +112,7 @@ export default function ScorecardTable({ data, error, weekStart, ownerName, canE
                                 : c.goal != null ? `of ${r.format(c.goal)}` : ''}
                             </span>
                             {r.key === 'outbound_audience' && c.companies > c.companies_with_employees && (
-                              <span style={{ fontSize: 11, color: SA.warn }}>{c.companies - c.companies_with_employees} of {c.companies} need headcount</span>
+                              <button type="button" onClick={onFillHeadcount} style={linkBtn}>{c.companies - c.companies_with_employees} of {c.companies} need headcount</button>
                             )}
                             <Bar p={p} />
                             <span style={{ ...numStyle, fontSize: 12, color: progressColor(p) }}>{p == null ? '' : `${Math.round(p * 100)}%`}</span>

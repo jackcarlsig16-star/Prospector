@@ -27,6 +27,9 @@ import {
 const VIEW_KEY = 'prospector_goals_view';
 const OWNER_KEY = 'prospector_goals_owner';
 const VIEWS = ['report', 'week', 'partners', 'companies'];
+// Earliest week the missing-headcount list reads from (a Monday, before any
+// synced data) - the list covers every week.
+const ALL_WEEKS_FROM = '2020-01-06';
 
 const readStored = key => { try { return localStorage.getItem(key); } catch { return null; } };
 const writeStored = (key, value) => { try { localStorage.setItem(key, value); } catch { /* private mode */ } };
@@ -53,6 +56,8 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
   const [kpiRows, setKpiRows] = useState(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [companyOwnerFocus, setCompanyOwnerFocus] = useState(null);
+  const [allCompanies, setAllCompanies] = useState(null);
+  const [missingOpen, setMissingOpen] = useState(false);
   const [errors, setErrors] = useState({});
   const setError = useCallback((key, e) => setErrors(prev => ({ ...prev, [key]: e })), []);
 
@@ -94,6 +99,10 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
   useEffect(() => { loadScorecard(); }, [loadScorecard]);
   useEffect(() => { loadCompanies(); }, [loadCompanies]);
   useEffect(() => {
+    goalsApi.companies(businessId, ALL_WEEKS_FROM, laWeekStart())
+      .then(d => { setAllCompanies(d.companies); setError('allCompanies', null); }).catch(e => setError('allCompanies', e));
+  }, [businessId, setError]);
+  useEffect(() => {
     goalsApi.cadences(businessId, weekStart, addDays(weekStart, 14)).then(setCadences).catch(e => setError('cadences', e));
   }, [businessId, weekStart, setError]);
 
@@ -116,6 +125,16 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
   const myTodos = todos.filter(t => ownedBy(owner, t.owner_user_id));
   const myPartners = partners.filter(p => ownedBy(owner, p.owner_user_id));
   const myCompanies = companies.filter(c => ownedBy(owner, c.sequenced_by));
+  const myAllCompanies = allCompanies && allCompanies.filter(c => ownedBy(owner, c.sequenced_by));
+  const missingHeadcount = myAllCompanies ? myAllCompanies.filter(c => c.employees == null).length : null;
+  const openMissing = () => { setView('companies'); setMissingOpen(true); setTimeout(() => flashTo('goals-missing'), 80); };
+  const saveEmployees = async (accountId, employees) => {
+    const c = await goalsApi.updateCompany(businessId, accountId, { employees });
+    const patch = list => list && list.map(x => (x.account_id === c.account_id ? { ...x, employees: c.employees } : x));
+    setCompanies(patch);
+    setAllCompanies(patch);
+    loadScorecard();
+  };
   const myCadences = cadences.filter(c => ownedBy(owner, c.owner_user_id));
   const myCommitments = commitments.filter(c => ownedBy(owner, c.owner_user_id));
   const todoDone = myTodos.filter(t => todoStatus(t) === 'done').length;
@@ -189,7 +208,8 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
   const chip = (k, v, src) => (v == null ? null : { k, v: typeof v === 'number' ? v.toLocaleString('en-US') : v, src });
   const autoChips = {
     s1: [chip('to-dos done last week', `${lastDone} of ${lastWeekTodos.filter(t => todoStatus(t) !== 'dropped').length}`, 'App'), chip('companies sequenced', companies.length, 'Apollo'), chip('positive replies', kpi.positive_responses?.this_week, 'Apollo')],
-    s3: [chip('companies in cadence', kpi.target_orgs?.this_week, 'Apollo'), chip('new companies sequenced', companies.length, 'Apollo'), chip('partners tracked', `${partners.length} · ${partners.filter(x => x.priority === 1).length} P1`, 'App')],
+    s3: [chip('companies in cadence', kpi.target_orgs?.this_week, 'Apollo'), chip('new companies sequenced', companies.length, 'Apollo'),
+      chip('headcount known', `${companies.filter(c => c.employees != null).length} of ${companies.length} companies`, 'App'), chip('partners tracked', `${partners.length} · ${partners.filter(x => x.priority === 1).length} P1`, 'App')],
     s4: [chip('people in sequence', kpi.dm_contacted?.this_week, 'Apollo'), chip('new companies sequenced', companies.length, 'Apollo'), chip('partners first-touched', pm.partners_first_touched?.value, 'App'), chip('partner meetings', pm.partner_meetings?.value, 'App'),
       chip('real opens', hw.real_opens, 'Apollo'), chip('real clicks', hw.real_clicks, 'Apollo'), chip('replies', hw.replies, 'Apollo'),
       chip('flags handed off', hw.flags_handed_off, 'App'), chip('flags completed', hw.flags_completed, 'App')],
@@ -301,6 +321,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
 
           {view === 'week' && <>
             <ScorecardTable data={scorecard} error={errors.scorecard} weekStart={weekStart} ownerName={owner === 'team' ? null : whoLabel} canEdit={canEdit}
+              missingHeadcount={missingHeadcount} onFillHeadcount={openMissing}
               onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await loadScorecard(); }} />
             <TodoList todos={myTodos} lookup={lookup} members={members} onOpenHuddle={onOpenHuddle} whoLabel={whoLabel} defaultOwner={owner === 'team' ? me?.profile?.id : owner}
               canEdit={canEdit} error={errors.todos}
@@ -332,11 +353,8 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
           {view === 'companies' && (
             <CompaniesView weekStart={weekStart} companies={myCompanies} cadences={myCadences} lookup={lookup} members={members} owner={owner} whoLabel={whoLabel}
               canEdit={canEdit} error={errors.companies || errors.cadences}
-              onSaveEmployees={async (accountId, employees) => {
-                const c = await goalsApi.updateCompany(businessId, accountId, { employees });
-                setCompanies(cs => cs.map(x => (x.account_id === c.account_id ? { ...x, employees: c.employees } : x)));
-                loadScorecard();
-              }}
+              allCompanies={myAllCompanies} allError={errors.allCompanies} missingOpen={missingOpen} onMissingOpen={setMissingOpen}
+              onSaveEmployees={saveEmployees}
               ownerFocus={companyOwnerFocus} onOwnerFocus={setCompanyOwnerFocus}
               onCreateCadence={async body => { const c = await goalsApi.createCadence(businessId, body); setCadences(cs => [...cs, c]); }}
               onDeleteCadence={async cadenceId => { await goalsApi.deleteCadence(businessId, cadenceId); setCadences(cs => cs.filter(c => c.id !== cadenceId)); }} />

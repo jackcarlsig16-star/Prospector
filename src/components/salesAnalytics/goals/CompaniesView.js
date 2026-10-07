@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { SA } from '../theme';
 import { cohortColor } from '../palette';
 import Ring, { RingLegend } from '../charts/Ring';
@@ -34,6 +34,69 @@ function EmployeesCell({ company, canEdit, onSave }) {
         style={{ ...inputStyle, height: 30, width: 110, textAlign: 'right', fontSize: 13 }} />
       {error && <span style={{ fontSize: 11, color: SA.bad }}>{error}</span>}
     </span>
+  );
+}
+
+// goals-surface-v1 Stage 2 - companies with no headcount, every week, each
+// with a field you can type straight into (Enter or leaving the field saves,
+// Tab moves to the next). Filled rows stay listed with a tick until the list
+// is closed, so you can see what you just did.
+function HeadcountInput({ company, onSave }) {
+  const [value, setValue] = useState('');
+  const [state, setState] = useState('');
+  const saving = useRef(false);
+  const save = async () => {
+    const v = value.trim().replace(/,/g, '');
+    if (!v || saving.current) return;
+    const n = Number(v);
+    if (!(Number.isInteger(n) && n >= 0)) { setState('Whole number'); return; }
+    saving.current = true; setState('Saving…');
+    try { await onSave(company.account_id, n); setState(''); } catch (e) { setState(e.message); } finally { saving.current = false; }
+  };
+  return (
+    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+      <input value={value} inputMode="numeric" placeholder="employees" aria-label={`Employees at ${company.name || company.account_id}`}
+        onChange={e => { setValue(e.target.value); setState(''); }} onBlur={save} onKeyDown={e => { if (e.key === 'Enter') save(); }}
+        style={{ ...inputStyle, height: 32, width: 120, textAlign: 'right', fontSize: 13 }} />
+      {state && <span role={state === 'Saving…' ? undefined : 'alert'} style={{ fontSize: 11, color: state === 'Saving…' ? SA.muted : SA.bad }}>{state}</span>}
+    </span>
+  );
+}
+
+function MissingHeadcount({ companies, filledIds, lookup, canEdit, onSave }) {
+  const rows = companies.filter(c => c.employees == null || filledIds.has(c.account_id))
+    .sort((a, b) => b.week_start.localeCompare(a.week_start) || (a.name || '').localeCompare(b.name || ''));
+  const th = { ...labelStyle, textAlign: 'left', padding: '0 12px 10px', whiteSpace: 'nowrap', position: 'sticky', top: 0, background: SA.surface };
+  const td = { padding: '10px 12px', borderTop: `1px solid ${SA.track}` };
+  if (!rows.length) return <p style={{ ...subStyle, margin: '16px 0 0' }}>Every sequenced company has a headcount.</p>;
+  return (
+    <div style={{ overflow: 'auto', maxHeight: 520, marginTop: 16 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+        <thead><tr>
+          <th scope="col" style={{ ...th, paddingLeft: 0 }}>Week</th>
+          <th scope="col" style={th}>Company</th>
+          <th scope="col" style={{ ...th, textAlign: 'right' }}>Employees</th>
+          <th scope="col" style={th}>Sequenced by</th>
+        </tr></thead>
+        <tbody>
+          {rows.map(c => {
+            const o = lookup(c.sequenced_by);
+            const filled = c.employees != null;
+            return (
+              <tr key={c.account_id}>
+                <td style={{ ...td, paddingLeft: 0, ...numStyle, color: SA.muted, whiteSpace: 'nowrap' }}>{shortWeek(c.week_start)}</td>
+                <td style={{ ...td, fontWeight: 500 }}>{c.name || <span style={subStyle}>Unnamed account</span>}</td>
+                <td style={{ ...td, textAlign: 'right' }}>
+                  {filled ? <span style={{ ...numStyle, color: SA.good }}>✓ {fmt(c.employees)}</span>
+                    : canEdit ? <HeadcountInput company={c} onSave={onSave} /> : <span style={subStyle}>—</span>}
+                </td>
+                <td style={td}><Chip><Dot color={o.color} />{o.first}</Chip></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -97,8 +160,14 @@ const cohortOf = c => c.cohort || 'Other';
 
 // ownerFocus: set by the rail's "companies sequenced by owner" ring - a user
 // id, 'unassigned', or null.
-export default function CompaniesView({ weekStart, companies, cadences, lookup, members, owner, whoLabel, canEdit, error, onSaveEmployees, onCreateCadence, onDeleteCadence, ownerFocus, onOwnerFocus }) {
+// allCompanies: every week (for the missing-headcount list); missingOpen is
+// owned by GoalsTab so the scorecard can open the list from another view.
+export default function CompaniesView({ weekStart, companies, allCompanies, allError, missingOpen, onMissingOpen, cadences, lookup, members, owner, whoLabel, canEdit, error, onSaveEmployees, onCreateCadence, onDeleteCadence, ownerFocus, onOwnerFocus }) {
   const [showAll, setShowAll] = useState(false);
+  const [filledIds, setFilledIds] = useState(() => new Set());
+  const missingCount = (allCompanies || []).filter(c => c.employees == null).length;
+  const toggleMissing = () => { onMissingOpen(!missingOpen); setFilledIds(new Set()); };
+  const saveMissing = async (accountId, employees) => { await onSaveEmployees(accountId, employees); setFilledIds(ids => new Set(ids).add(accountId)); };
   const [cohort, setCohort] = useState(null);
   const rows = [...companies].sort((a, b) => (b.employees ?? -1) - (a.employees ?? -1) || (a.name || '').localeCompare(b.name || ''));
   const isMemberId = id => members.some(m => m.user_id === id);
@@ -115,6 +184,20 @@ export default function CompaniesView({ weekStart, companies, cadences, lookup, 
 
   return (
     <>
+      {allCompanies && (missingCount > 0 || missingOpen) && (
+        <section id="goals-missing" style={{ ...cardStyle, padding: missingOpen ? 24 : '14px 20px' }} aria-label="Missing headcount">
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button type="button" aria-expanded={missingOpen} onClick={toggleMissing}
+              style={{ all: 'unset', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, height: 32, padding: '0 14px', borderRadius: 999, fontSize: 13, fontWeight: 500,
+                border: `1px solid ${missingOpen ? SA.accent : SA.warn}`, color: SA.text, background: missingOpen ? 'color-mix(in srgb, var(--sa-accent) 14%, transparent)' : 'transparent' }}>
+              <Dot color={SA.warn} />Missing headcount <span style={numStyle}>({missingCount})</span><span aria-hidden="true" style={{ color: SA.muted }}>{missingOpen ? '▾' : '▸'}</span>
+            </button>
+            <span style={{ ...subStyle, fontSize: 13 }}>{missingOpen ? 'All weeks, newest first. Type a number and press Enter; audience totals update as you go.' : `Companies sequenced in any week with no employee count${whoLabel !== 'Team' ? ` · ${whoLabel}` : ''}. They add nothing to outbound audience until filled.`}</span>
+          </div>
+          {missingOpen && (allError ? <div style={{ marginTop: 12 }}><ErrorNote message={allError.message} /></div>
+            : <MissingHeadcount companies={allCompanies} filledIds={filledIds} lookup={lookup} canEdit={canEdit} onSave={saveMissing} />)}
+        </section>
+      )}
       <section style={cardStyle} aria-labelledby="h-seq">
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
