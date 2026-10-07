@@ -1,7 +1,7 @@
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { STAGE_ORDER } from './pipelineStages.js';
 import { PARTNER_METRICS, PARTNER_FLOWS, loadPartnerData, partnerWeekMetrics, partnerReportBlock } from './partnerMetrics.js';
-import { huddleWeekCounts } from './huddleWeek.js';
+import { huddleWeekCounts, weekEngagement } from './huddleWeek.js';
 import {
   getSupabase, validate, fail, findRow, weekIsFinal, FINAL_ERROR,
   isMonday, isFirstOfMonth, addDays, laStartOfDayMs,
@@ -15,6 +15,7 @@ import {
 
 const SECTION_KEYS = Array.from({ length: 14 }, (_, i) => `s${i + 1}`);
 const INFRA_STATUSES = ['completed', 'in_progress', 'blocked'];
+const HERO_WEEKS = 6;
 // Seif's "positive responses": replies that move toward a meeting
 // (Jack 2026-10-02, sales-analytics-scorecard-v1 Stage 1).
 const POSITIVE_REPLY_CLASSES = ['willing_to_meet', 'follow_up_question', 'person_referral'];
@@ -97,19 +98,23 @@ async function manualActuals(supabase, businessId, weeks) {
 
 // Scorecard actuals for one week. ownerUserId narrows outbound_audience
 // (companies by mailbox owner) and open_rate (that owner's mailboxes); the
-// other metrics are team-wide only.
-async function weekScorecard(supabase, businessId, weekStart, ownerUserId, manual) {
+// other metrics are team-wide only. boxes = mailboxesFor(ownerUserId).
+async function weekScorecard(supabase, businessId, weekStart, { all, forOwner }, manual) {
   const weekEnd = addDays(weekStart, 6);
-  const { all, forOwner } = await mailboxesFor(supabase, businessId, ownerUserId);
-  let rows = await sequencedRows(supabase, businessId, weekStart, weekStart);
-  if (forOwner) rows = rows.filter(r => forOwner.includes(r.mailbox_email));
+  const [allRows, inSequence, running, rate] = await Promise.all([
+    sequencedRows(supabase, businessId, weekStart, weekStart),
+    lastSyncedValue(supabase, businessId, 'prospects_in_cadence', weekStart, weekEnd),
+    lastSyncedValue(supabase, businessId, 'sequences_active', weekStart, weekEnd),
+    openRate(supabase, businessId, weekStart, weekEnd, forOwner),
+  ]);
+  const rows = forOwner ? allRows.filter(r => forOwner.includes(r.mailbox_email)) : allRows;
   const meetings = manual.get(`${weekStart}|meetings_set`);
   return {
     outbound_audience: audience(rows),
-    total_in_sequence: { value: await lastSyncedValue(supabase, businessId, 'prospects_in_cadence', weekStart, weekEnd) },
-    sequences_running: { value: await lastSyncedValue(supabase, businessId, 'sequences_active', weekStart, weekEnd) },
+    total_in_sequence: { value: inSequence },
+    sequences_running: { value: running },
     meetings_set: { value: meetings?.actual ?? null, entered_by: meetings?.actual_by || null, entered_at: meetings?.actual_at || null },
-    open_rate: { value: await openRate(supabase, businessId, weekStart, weekEnd, forOwner) },
+    open_rate: { value: rate },
     mailboxes: all.length,
   };
 }
@@ -122,26 +127,32 @@ async function targetsFor(supabase, businessId, period, starts) {
   return new Map(data.map(r => [`${r.period_start}|${r.metric_key}`, r.goal == null ? null : Number(r.goal)]));
 }
 
-export async function buildScorecard(supabase, businessId, month, ownerUserId) {
-  const weeks = weeksOfMonth(month);
-  const monthEnd = weeks.length ? addDays(weeks[weeks.length - 1], 6) : month;
+// Scorecard rows (actual + week goal per metric) for any list of Mondays.
+async function scorecardWeeks(supabase, businessId, weeks, ownerUserId) {
   // Independent reads, so they run together (was ~2.5 s one after another).
-  const [manual, weekGoals, monthGoals, partnerData, { forOwner }] = await Promise.all([
+  const [manual, weekGoals, partnerData, boxes] = await Promise.all([
     manualActuals(supabase, businessId, weeks),
     targetsFor(supabase, businessId, 'week', weeks),
-    targetsFor(supabase, businessId, 'month', [month]),
     loadPartnerData(supabase, businessId),
     mailboxesFor(supabase, businessId, ownerUserId),
   ]);
   const keys = [...SCORECARD_METRICS, ...PARTNER_METRICS];
-  const [weekActuals, monthOpenRate] = await Promise.all([
-    Promise.all(weeks.map(w => weekScorecard(supabase, businessId, w, ownerUserId, manual))),
-    weeks.length ? openRate(supabase, businessId, weeks[0], monthEnd, forOwner) : null,
-  ]);
-  const perWeek = weeks.map((w, i) => {
+  const weekActuals = await Promise.all(weeks.map(w => weekScorecard(supabase, businessId, w, boxes, manual)));
+  return weeks.map((w, i) => {
     const actual = { ...weekActuals[i], ...partnerWeekMetrics(partnerData, w, ownerUserId) };
     return { week_start: w, metrics: Object.fromEntries(keys.map(k => [k, { ...actual[k], goal: weekGoals.get(`${w}|${k}`) ?? null }])) };
   });
+}
+
+export async function buildScorecard(supabase, businessId, month, ownerUserId) {
+  const weeks = weeksOfMonth(month);
+  const monthEnd = weeks.length ? addDays(weeks[weeks.length - 1], 6) : month;
+  const keys = [...SCORECARD_METRICS, ...PARTNER_METRICS];
+  const [perWeek, monthGoals, monthOpenRate] = await Promise.all([
+    scorecardWeeks(supabase, businessId, weeks, ownerUserId),
+    targetsFor(supabase, businessId, 'month', [month]),
+    weeks.length ? mailboxesFor(supabase, businessId, ownerUserId).then(b => openRate(supabase, businessId, weeks[0], monthEnd, b.forOwner)) : null,
+  ]);
   // Month column: sums for flows, the latest week's value for stock numbers.
   const vals = k => perWeek.map(w => w.metrics[k].value).filter(v => v != null);
   const last = k => { const v = vals(k); return v.length ? v[v.length - 1] : null; };
@@ -246,7 +257,9 @@ async function commitmentProgress(supabase, businessId, weekStart) {
   const goals = await selectAllPages(() => supabase.from('sales_week_goals').select('*')
     .eq('business_id', businessId).eq('week_start', weekStart).eq('kind', 'commitment').order('sort_order').order('id'));
   const needsScorecard = goals.some(g => g.metric_key);
-  const actual = needsScorecard ? await weekScorecard(supabase, businessId, weekStart, null, await manualActuals(supabase, businessId, [weekStart])) : null;
+  const actual = needsScorecard ? await weekScorecard(supabase, businessId, weekStart, ...await Promise.all([
+    mailboxesFor(supabase, businessId, null), manualActuals(supabase, businessId, [weekStart]),
+  ])) : null;
   return goals.map(g => ({
     id: g.id, text: g.text, owner_user_id: g.owner_user_id, status: g.status, link_target: g.link_target,
     metric_key: g.metric_key, target_value: g.target_value == null ? null : Number(g.target_value),
@@ -547,18 +560,32 @@ export async function carryForwardInfraRoute(req, res) {
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
 
-// GET /goals/engagement?from=<Monday>&to=<Monday> - real opens, real clicks
-// and replies per week (the report's §4 numbers, huddleWeekCounts), for the
-// goal hero's 6-week trend (goals-surface-v1). Team-wide. Max 12 weeks.
-export async function engagementRoute(req, res) {
-  const { from, to } = req.query;
-  if (!isMonday(from) || !isMonday(to) || from > to) return res.status(400).json({ error: 'from and to must be Mondays (YYYY-MM-DD) with from <= to' });
-  const weeks = [];
-  for (let w = from; w <= to; w = addDays(w, 7)) weeks.push(w);
-  if (weeks.length > 12) return res.status(400).json({ error: 'at most 12 weeks' });
+// GET /goals/hero?week_start=<Monday>&owner=<user id>&skip_month=1 -
+// everything the goal hero needs for its 6 weeks in one call
+// (goals-surface-v1, FIX-A): this month's scorecard, scorecard rows for the
+// earlier weeks only (not their whole months), real clicks + replies per week
+// (team-wide) and the week targets. Goals passes skip_month=1 because it has
+// already loaded this month's scorecard.
+export async function heroRoute(req, res) {
+  const { week_start, owner, skip_month } = req.query;
+  if (!isMonday(week_start)) return res.status(400).json({ error: 'week_start must be a Monday (YYYY-MM-DD)' });
+  const businessId = req.params.businessId;
+  const month = `${week_start.slice(0, 7)}-01`;
+  const weeks = Array.from({ length: HERO_WEEKS }, (_, i) => addDays(week_start, (i - HERO_WEEKS + 1) * 7));
+  const supabase = getSupabase();
   try {
-    const supabase = getSupabase();
-    const counts = await Promise.all(weeks.map(w => huddleWeekCounts(supabase, req.params.businessId, w)));
-    res.json({ weeks: weeks.map((w, i) => ({ week_start: w, real_opens: counts[i].real_opens, real_clicks: counts[i].real_clicks, replies: counts[i].replies })) });
+    if (owner) {
+      const v = await validate(supabase, businessId, { owner: { kind: 'member' } }, { owner });
+      if (v.error) return fail(res, v);
+    }
+    const [scorecard, earlier, engagement, targets] = await Promise.all([
+      skip_month === '1' ? null : buildScorecard(supabase, businessId, month, owner || null),
+      scorecardWeeks(supabase, businessId, weeks.filter(w => w < month), owner || null),
+      Promise.all(weeks.map(w => weekEngagement(supabase, businessId, w))),
+      selectAllPages(() => supabase.from('sales_metric_targets').select('period_start, metric_key, goal')
+        .eq('business_id', businessId).eq('period', 'week').in('metric_key', HERO_METRICS)
+        .gte('period_start', weeks[0]).lte('period_start', week_start).order('period_start').order('metric_key')),
+    ]);
+    res.json({ scorecard, earlier, engagement: weeks.map((w, i) => ({ week_start: w, ...engagement[i] })), targets });
   } catch (e) { res.status(500).json({ error: e.message }); }
 }

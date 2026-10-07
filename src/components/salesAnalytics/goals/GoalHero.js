@@ -98,27 +98,26 @@ function Card({ card, canEdit, onDrill }) {
 
 // owner: 'team' or a member's user id. commitments: this week's, already
 // person-filtered. reloadKey changes when a goal was saved elsewhere.
-export default function GoalHero({ businessId, weekStart, owner, commitments, missingHeadcount, canEdit, reloadKey, onDrill, onGoalSaved }) {
+// scorecard / scorecardError: Goals' own current-month scorecard, so the hero
+// doesn't load that month twice; left undefined (Overview), the hero loads it.
+export default function GoalHero({ businessId, weekStart, owner, commitments, missingHeadcount, canEdit, reloadKey, onDrill, onGoalSaved, scorecard, scorecardError }) {
   const [open, setOpen] = useState(readOpen);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const weeks = Array.from({ length: WEEKS }, (_, i) => addDays(weekStart, (i - WEEKS + 1) * 7));
-  const from = weeks[0];
+  const month = monthOf(weekStart);
+  const shared = scorecard !== undefined;
 
   const load = useCallback(async () => {
-    const months = [...new Set(weeks.map(monthOf))];
     try {
-      const [cards, engagement, targets] = await Promise.all([
-        Promise.all(months.map(m => goalsApi.scorecard(businessId, m, owner === 'team' ? null : owner))),
-        goalsApi.engagement(businessId, from, weekStart),
-        goalsApi.targets(businessId, 'week', from, weekStart),
-      ]);
-      setData({ cards, engagement, targets }); setError(null);
+      setData(await goalsApi.hero(businessId, weekStart, owner === 'team' ? null : owner, shared)); setError(null);
     } catch (e) { setError(e); }
-  // weeks is derived from weekStart
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [businessId, weekStart, owner, from]);
+  }, [businessId, weekStart, owner, shared]);
   useEffect(() => { load(); }, [load, reloadKey]);
+  // Goals' scorecard can still be the previous week's or person's for a moment.
+  const sharedReady = scorecard && scorecard.month === month && (scorecard.owner_user_id ?? 'team') === owner;
+  const sc = !data ? null : !shared ? data.scorecard : sharedReady ? scorecard : null;
+  const failure = error || (shared ? scorecardError : null);
 
   const toggle = () => { setOpen(o => !o); writeOpen(!open); };
   const saveGoal = (period, periodStart, key) => async goal => {
@@ -128,10 +127,8 @@ export default function GoalHero({ businessId, weekStart, owner, commitments, mi
   };
 
   let cards = [];
-  if (data) {
-    const month = monthOf(weekStart);
-    const sc = data.cards.find(c => c.month === month);
-    const weekRow = w => data.cards.flatMap(c => c.weeks).find(x => x.week_start === w);
+  if (sc) {
+    const weekRow = w => [...data.earlier, ...sc.weeks].find(x => x.week_start === w);
     const series = key => weeks.map(w => ({ week: w, value: weekRow(w)?.metrics[key]?.value ?? null, goal: weekRow(w)?.metrics[key]?.goal ?? null }));
     const wow = pts => (pts[WEEKS - 1].value != null && pts[WEEKS - 2].value != null ? pts[WEEKS - 1].value - pts[WEEKS - 2].value : null);
     const rrGoal = new Map(data.targets.filter(t => t.metric_key === 'real_replies_clicks').map(t => [t.period_start, t.goal == null ? null : Number(t.goal)]));
@@ -143,7 +140,7 @@ export default function GoalHero({ businessId, weekStart, owner, commitments, mi
     };
     const aud = series('outbound_audience');
     cards = [
-      { id: 'audience', name: 'Audience reached', value: sc?.month_total.outbound_audience.value ?? null, goal: sc?.month_total.outbound_audience.goal ?? null,
+      { id: 'audience', name: 'Audience reached', value: sc.month_total.outbound_audience.value, goal: sc.month_total.outbound_audience.goal,
         // Big number = the month; the trend and change are weekly, so they say so.
         weeks: aud, wow: wow(aud), wowLabel: 'weekly vs last week', thisWeek: aud[WEEKS - 1].value, format: short, period: monthName(month), drillLabel: 'Companies', saveGoal: saveGoal('month', month, 'outbound_audience'),
         note: (commitment || missingHeadcount > 0) && (
@@ -164,7 +161,7 @@ export default function GoalHero({ businessId, weekStart, owner, commitments, mi
     <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={labelStyle}>Goals</span>
-        {!open && data && (
+        {!open && sc && (
           <span style={{ ...numStyle, fontSize: 13, color: SA.soft, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
             {cards.map(c => <span key={c.id}>{c.name.split(' ')[0]} <b style={{ color: SA.text }}>{c.format(c.value)}</b>{c.goal != null ? ` / ${c.format(c.goal)}` : ''}</span>)}
           </span>
@@ -173,8 +170,8 @@ export default function GoalHero({ businessId, weekStart, owner, commitments, mi
           {open ? 'Collapse ▴' : 'Expand ▾'}
         </button>
       </div>
-      {open && (error ? (error.needsMigration ? <NeedsMigration what="The goal cards" /> : <ErrorNote message={error.message} />)
-        : !data ? <span style={{ ...subStyle, fontSize: 13 }}>Loading goals…</span>
+      {open && (failure ? (failure.needsMigration ? <NeedsMigration what="The goal cards" /> : <ErrorNote message={failure.message} />)
+        : !sc ? <span style={{ ...subStyle, fontSize: 13 }}>Loading goals…</span>
         : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 136px), 1fr))', gap: 12 }}>
             {cards.map(c => <Card key={c.id} card={c} canEdit={canEdit} onDrill={() => onDrill(c.id)} />)}

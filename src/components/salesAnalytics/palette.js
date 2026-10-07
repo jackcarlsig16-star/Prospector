@@ -69,12 +69,6 @@ export function bounceHealthColor(bouncePercent) {
   return SEMANTIC.healthy;
 }
 
-export function openHealthColor(openPercent) {
-  if (openPercent === null || openPercent === undefined) return null;
-  if (openPercent < HEALTH_THRESHOLDS.openAmber) return SEMANTIC.warning;
-  return SEMANTIC.healthy;
-}
-
 // sales-email-trend-v1 REV2 - series colours for Email Performance Over
 // Time, from the dataviz reference palette and validated per panel with its
 // validator (2026-10-01): deliverability {hard bounce, spam block} and
@@ -129,6 +123,3 @@ export const PARTNER_TYPE_COLORS = {
   current: 'var(--sa-soft)', platforms: '#C33D59', brokers: '#00A19D',
   renters: '#9550BB', influence: '#3E8651', professional: '#C068AC',
 };
-
-// Partner priority: P1 this week, P2 next 30 days, P3 60-90 days.
-export const PRIORITY_COLORS = { 1: '#8FA8FF', 2: '#5F72B8', 3: '#3A4672', none: '#4A5462' };

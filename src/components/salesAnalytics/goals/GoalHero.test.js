@@ -3,18 +3,18 @@ import GoalHero from './GoalHero';
 import { goalsApi } from './goalsApi';
 
 // goals-surface-v1 Stage 3: the five goal cards.
-jest.mock('./goalsApi', () => ({ goalsApi: { scorecard: jest.fn(), engagement: jest.fn(), targets: jest.fn(), saveTarget: jest.fn() } }));
+jest.mock('./goalsApi', () => ({ goalsApi: { hero: jest.fn(), saveTarget: jest.fn() } }));
 
 const m = (value, goal = null) => ({ value, goal });
 const week = (w, aud, seq, part, meet) => ({ week_start: w, metrics: { outbound_audience: m(aud, 1000), total_in_sequence: m(seq), partners_first_touched: m(part, 5), meetings_set: m(meet) } });
-const SEP = { month: '2026-09-01', weeks: [week('2026-09-07', 100, 3000, 1, 1), week('2026-09-14', 200, 3010, 2, 3), week('2026-09-21', 300, 3020, 0, 4), week('2026-09-28', 400, 3050, 3, 2)], month_total: {} };
+const SEP = { weeks: [week('2026-09-07', 100, 3000, 1, 1), week('2026-09-14', 200, 3010, 2, 3), week('2026-09-21', 300, 3020, 0, 4), week('2026-09-28', 400, 3050, 3, 2)] };
 const OCT = { month: '2026-10-01', weeks: [week('2026-10-05', 500, 3093, 4, null)], month_total: { outbound_audience: { value: 500, goal: null } } };
 
 beforeEach(() => {
   localStorage.clear();
-  goalsApi.scorecard.mockImplementation((id, month) => Promise.resolve(month === '2026-10-01' ? OCT : SEP));
-  goalsApi.engagement.mockResolvedValue(['2026-08-31', '2026-09-07', '2026-09-14', '2026-09-21', '2026-09-28', '2026-10-05'].map((w, i) => ({ week_start: w, real_clicks: i, replies: 1 })));
-  goalsApi.targets.mockResolvedValue([{ metric_key: 'real_replies_clicks', period_start: '2026-10-05', goal: '10' }]);
+  const engagement = ['2026-08-31', '2026-09-07', '2026-09-14', '2026-09-21', '2026-09-28', '2026-10-05'].map((w, i) => ({ week_start: w, real_clicks: i, replies: 1 }));
+  const targets = [{ metric_key: 'real_replies_clicks', period_start: '2026-10-05', goal: '10' }];
+  goalsApi.hero.mockImplementation((id, week, owner, skipMonth) => Promise.resolve({ scorecard: skipMonth ? null : OCT, earlier: SEP.weeks, engagement, targets }));
   goalsApi.saveTarget.mockResolvedValue({});
 });
 
@@ -35,8 +35,8 @@ test('five cards with actual, goal, %, week-on-week; numbers come from the score
   expect(card('Partners first-touched').getByRole('img', { name: 'Partners first-touched to goal: Reached 800, Left 200' })).toBeTruthy();
   expect(card('Real replies + clicks').getByText('6')).toBeTruthy();
   expect(card('Real replies + clicks').getByText(/^of 10 ·/)).toBeTruthy();
-  expect(goalsApi.scorecard).toHaveBeenCalledWith('b1', '2026-09-01', null);
-  expect(goalsApi.engagement).toHaveBeenCalledWith('b1', '2026-08-31', '2026-10-05');
+  expect(goalsApi.hero).toHaveBeenCalledTimes(1);
+  expect(goalsApi.hero).toHaveBeenCalledWith('b1', '2026-10-05', null, false);
 });
 
 test('a card with no goal offers Set goal; saving writes the target and reloads', async () => {
@@ -62,7 +62,7 @@ test('viewers see "No goal set", never the button; person filter marks team-only
   expect(screen.getAllByText('No goal set').length).toBeGreaterThan(0);
   expect(within(screen.getByRole('region', { name: 'People in sequence' })).getByText('team')).toBeTruthy();
   expect(within(screen.getByRole('region', { name: 'Partners first-touched' })).queryByText('team')).toBeNull();
-  expect(goalsApi.scorecard).toHaveBeenCalledWith('b1', '2026-10-01', 'u-cy');
+  expect(goalsApi.hero).toHaveBeenCalledWith('b1', '2026-10-05', 'u-cy', false);
 });
 
 test('clicking a card drills; the hero collapses to one line and remembers it', async () => {
@@ -74,4 +74,16 @@ test('clicking a card drills; the hero collapses to one line and remembers it', 
   expect(screen.queryByRole('region', { name: 'Audience reached' })).toBeNull();
   expect(screen.getByText(/Audience/).textContent).toMatch(/Audience 500/);
   expect(localStorage.getItem('prospector_goals_hero')).toBe('collapsed');
+});
+
+test("on Goals the hero reuses the tab's scorecard: skips that month and waits for the matching one", async () => {
+  const { rerender } = render(<GoalHero {...props({ scorecard: null })} />);
+  await waitFor(() => expect(goalsApi.hero).toHaveBeenCalledWith('b1', '2026-10-05', null, true));
+  expect(screen.getByText('Loading goals…')).toBeTruthy();
+  rerender(<GoalHero {...props({ scorecard: { ...OCT, owner_user_id: 'u-cy' } })} />);
+  expect(screen.getByText('Loading goals…')).toBeTruthy();
+  rerender(<GoalHero {...props({ scorecard: { ...OCT, owner_user_id: null } })} />);
+  expect(within(await screen.findByRole('region', { name: 'Audience reached' })).getByText('This week: 500')).toBeTruthy();
+  rerender(<GoalHero {...props({ scorecard: null, scorecardError: new Error('scorecard down') })} />);
+  expect(screen.getByText('scorecard down')).toBeTruthy();
 });

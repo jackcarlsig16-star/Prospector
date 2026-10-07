@@ -290,7 +290,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
           {errors.members && <ErrorNote message={errors.members.message} />}
           {me && !canEdit && <div style={{ ...subStyle, fontSize: 13 }}>You have view access to this workspace, so Goals is read-only for you.</div>}
           <GoalHero businessId={businessId} weekStart={weekStart} owner={owner} commitments={myCommitments} missingHeadcount={missingHeadcount} canEdit={canEdit}
-            reloadKey={heroKey} onGoalSaved={() => { loadScorecard(); loadKpi(); }} onDrill={drill} />
+            scorecard={scorecard} scorecardError={errors.scorecard} reloadKey={heroKey} onGoalSaved={() => { loadScorecard(); loadKpi(); }} onDrill={drill} />
 
           {view === 'report' && (
             <ReportView weekStart={weekStart} report={reportData?.report} reportError={errors.report} sections={reportData?.sections} infra={reportData?.infra}

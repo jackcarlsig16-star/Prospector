@@ -624,7 +624,7 @@ app.get('/api/sales/:businessId/goals/kpi', salesModuleRoute('./api/sales/goalsR
 app.get('/api/sales/:businessId/goals/companies', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'listCompaniesRoute', 'goals/companies'));
 app.patch('/api/sales/:businessId/goals/companies/:accountId', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'updateCompanyRoute', 'goals/companies/:accountId PATCH'));
 app.get('/api/sales/:businessId/goals/targets', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'listTargetsRoute', 'goals/targets'));
-app.get('/api/sales/:businessId/goals/engagement', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'engagementRoute', 'goals/engagement'));
+app.get('/api/sales/:businessId/goals/hero', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'heroRoute', 'goals/hero'));
 app.put('/api/sales/:businessId/goals/targets', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'saveTargetRoute', 'goals/targets PUT'));
 app.get('/api/sales/:businessId/goals/report', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'getReportRoute', 'goals/report'));
 app.put('/api/sales/:businessId/goals/report/:weekStart/sections/:key', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'saveSectionRoute', 'goals/report/:weekStart/sections/:key PUT'));
