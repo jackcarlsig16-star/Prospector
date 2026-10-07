@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { SA, SA_TYPE, SA_SHAPE, SA_THEME_CSS, SA_THEME_CLASS, saSans } from '../theme';
-import { SEMANTIC } from '../palette';
 import { laWeekStart, laDateString } from '../periods';
 import { roleAtLeast } from '../../../constants/roles';
 import { fetchMe } from '../../../utils/authSession';
 import { goalsApi, TODOS_CHANGED, OPEN_GOALS_WEEK } from '../goals/goalsApi';
-import { fetchFlags, completeFlag, reassignFlag, announceFlagsChanged, FLAGS_CHANGED } from '../huddleApi';
+import { fetchFlags, completeFlag, dropFlag, reassignFlag, announceFlagsChanged, FLAGS_CHANGED } from '../huddleApi';
 import { memberLookup, labelStyle, ErrorNote } from '../goals/goalsUi';
 import { buildTaskGroups, badgeCount } from './taskGroups';
+import { useLinkOptions } from './linkTargets';
+import QuickAdd from './QuickAdd';
+import TaskRow, { linkBtn } from './TaskRow';
 
 // task-drawer-v1 - a second view of the Goals to-dos, on every page of a
 // workspace with Goals & Sales on. Writes reuse the Goals/flag routes.
@@ -15,27 +17,16 @@ import { buildTaskGroups, badgeCount } from './taskGroups';
 const OPEN_KEY = 'prospector_task_drawer_open';
 const UNDO_MS = 5000;
 const WIDTH = 380;
+const OWN_DELETE_MS = 2 * 60e3; // FIX-5, same window as the server's OWN_DELETE_WINDOW_MS
 
 const readOpen = () => { try { return localStorage.getItem(OPEN_KEY) === '1'; } catch { return false; } };
 const writeOpen = v => { try { localStorage.setItem(OPEN_KEY, v ? '1' : '0'); } catch { /* private mode */ } };
-const md = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-const prettyKey = k => k.replace(/_/g, ' ');
 
 const pill = on => ({ ...saSans, height: 32, padding: '0 12px', borderRadius: 999, fontSize: 13, cursor: 'pointer', border: `1px solid ${on ? SA.accent : SA.border}`, background: on ? SA.surface2 : 'transparent', color: on ? SA.text : SA.muted, display: 'inline-flex', alignItems: 'center', gap: 6 });
-const linkBtn = { all: 'unset', cursor: 'pointer', color: SA.link, fontSize: 13, minHeight: 28, display: 'inline-flex', alignItems: 'center' };
 
 function Badge({ n }) {
   if (!n) return null;
   return <span aria-label={`${n} open`} style={{ minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: SA.warn, color: SA.ground, fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{n}</span>;
-}
-
-function Box({ checked, disabled, title, onClick, label }) {
-  return (
-    <button type="button" onClick={onClick} disabled={disabled} aria-pressed={checked} aria-label={label} title={title}
-      style={{ width: 22, height: 22, flex: 'none', borderRadius: 6, border: `1.5px solid ${checked ? SEMANTIC.healthy : SA.borderStrong}`, background: checked ? SEMANTIC.healthy : 'transparent', cursor: disabled ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
-      {checked && <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke={SA.ground} strokeWidth="2.4" aria-hidden="true"><path d="m3 8.5 3.2 3L13 4.5" /></svg>}
-    </button>
-  );
 }
 
 export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
@@ -48,7 +39,6 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
   const [filter, setFilter] = useState('me');
   const [expanded, setExpanded] = useState(() => new Set());
   const [showDone, setShowDone] = useState(false);
-  const [linkNames, setLinkNames] = useState({});
   const [toast, setToast] = useState(null); // { text, undo? }
   const [error, setError] = useState('');
 
@@ -78,26 +68,28 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
     const t = setTimeout(() => setToast(null), UNDO_MS);
     return () => clearTimeout(t);
   }, [toast]);
-  // Names for link chips, fetched only when something is linked.
-  const linkTypes = [...new Set([...todos, ...flags].map(t => t.link_type).filter(Boolean))].sort().join(',');
-  useEffect(() => {
-    if (!open || !linkTypes) return;
-    Promise.all([
-      linkTypes.includes('commitment') ? goalsApi.weekGoals(businessId, week, week, 'commitment') : [],
-      linkTypes.includes('partner') ? goalsApi.partners(businessId) : [],
-    ]).then(([cs, ps]) => setLinkNames(Object.fromEntries([...cs.map(c => [c.id, c.text]), ...ps.map(p => [p.id, p.name])]))).catch(() => {});
-  }, [open, linkTypes, businessId, week]);
+  const links = useLinkOptions(businessId, week);
+  // Link chip names: fetched only once something is linked (metric names are built in).
+  const needsNames = [...todos, ...flags].some(t => t.link_type && t.link_type !== 'metric');
+  const loadLinks = links.load;
+  useEffect(() => { if (open && needsNames) loadLinks(); }, [open, needsNames, loadLinks]);
 
   const lookup = useMemo(() => memberLookup(members), [members]);
   const meId = me?.profile?.id;
   const myRole = me?.memberships?.find(m => m.business_id === businessId)?.role;
   const canEdit = !!me && (me.profile?.is_platform_owner || roleAtLeast(myRole, 'member'));
+  const canAdmin = !!me && (me.profile?.is_platform_owner || roleAtLeast(myRole, 'admin'));
   const today = laDateString();
   const groups = meId ? buildTaskGroups({ todos, flags, filter, meId, today }) : [];
   const badge = meId ? badgeCount({ todos, flags, meId }) : 0;
   const flagIds = new Set(flags.map(f => f.id));
 
-  const run = async fn => { setError(''); try { await fn(); } catch (e) { setError(e.message); } };
+  const run = async fn => { setError(''); try { await fn(); return true; } catch (e) { setError(e.message); return false; } };
+  const removeMode = t => (!flagIds.has(t.id) && (canAdmin || (t.created_by === meId && Date.now() - Date.parse(t.created_at) <= OWN_DELETE_MS)) ? 'delete' : 'drop');
+  const add = body => run(async () => {
+    await goalsApi.createWeekGoal(businessId, { ...body, kind: 'todo', week_start: week });
+    setToast({ text: body.owner_user_id === meId ? `Added: ${body.text}` : `Added for ${lookup(body.owner_user_id).first}: ${body.text}` });
+  });
   const setDone = (t, done) => run(async () => {
     if (flagIds.has(t.id)) {
       const who = t.contacts[0] || 'this prospect';
@@ -118,6 +110,26 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
     else await goalsApi.updateWeekGoal(businessId, t.id, { owner_user_id: userId || null });
     setToast({ text: `${t.text} → ${lookup(userId || null).first}` });
   });
+  const update = (t, patch) => run(() => goalsApi.updateWeekGoal(businessId, t.id, patch));
+  const addStep = (t, text) => run(async () => {
+    await goalsApi.createStep(businessId, t.id, { text, sort_order: t.steps.length });
+    if (flagIds.has(t.id)) announceFlagsChanged();
+  });
+  const remove = t => run(async () => {
+    if (!window.confirm(`Delete "${t.text}"? This can't be undone.`)) return;
+    await goalsApi.deleteWeekGoal(businessId, t.id);
+    setToast({ text: `Deleted: ${t.text}` });
+  });
+  const drop = t => run(async () => {
+    if (flagIds.has(t.id)) {
+      if (!window.confirm(`Drop the flag "${t.text}"? It closes without marking anyone contacted.`)) return;
+      await dropFlag(businessId, t.id);
+      announceFlagsChanged();
+      return setToast({ text: `Flag dropped: ${t.text}` });
+    }
+    await goalsApi.updateWeekGoal(businessId, t.id, { status: 'dropped' });
+    setToast({ text: `Dropped: ${t.text}`, undo: () => goalsApi.updateWeekGoal(businessId, t.id, { status: t.status }) });
+  });
   const openInGoals = () => {
     const url = new URL(window.location.href);
     url.searchParams.set('gview', 'week');
@@ -135,75 +147,12 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
     { id: 'unassigned', label: 'Unassigned', color: lookup(null).color },
   ];
 
-  const linkLabel = t => {
-    if (!t.link_type) return null;
-    if (t.link_type === 'metric') return `Goal: ${prettyKey(t.link_id)}`;
-    if (t.link_type === 'company') return `Company: ${t.link_id}`;
-    return `${t.link_type === 'partner' ? 'Partner' : 'Commitment'}: ${linkNames[t.link_id] || '…'}`;
-  };
-
-  const row = t => {
-    const owner = lookup(t.owner_user_id);
-    const nDone = t.steps.filter(s => s.done).length;
-    const isFlag = flagIds.has(t.id);
-    const done = t.st === 'done';
-    // All steps ticked makes a to-do done by itself; only a step reopens it.
-    const doneBySteps = done && t.status !== 'done';
-    const isOpen = expanded.has(t.id);
-    const overdue = !done && t.due_date && t.due_date < today;
-    return (
-      <li key={t.id} data-task-id={t.id} style={{ borderTop: `1px solid ${SA.track}`, padding: '10px 0' }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-          <div style={{ paddingTop: 2 }}>
-            <Box checked={done} disabled={!canEdit || doneBySteps || (isFlag && done)} label={`Done: ${t.text}`}
-              title={doneBySteps ? 'Every step is ticked - untick a step to reopen' : isFlag ? 'Mark contacted and close the flag' : undefined}
-              onClick={() => setDone(t, !done)} />
-          </div>
-          <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <button type="button" onClick={() => toggleExpanded(t.id)} aria-expanded={isOpen}
-              style={{ all: 'unset', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: done ? SA.muted : SA.text, textDecoration: done ? 'line-through' : 'none', overflowWrap: 'anywhere' }}>
-              {isFlag && '🚩 '}{t.text}
-            </button>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: SA.muted }}>
-              {canEdit ? (
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 8px', borderRadius: 999, border: `1px solid ${SA.border}`, background: SA.surface2 }}>
-                  <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: owner.color }} />
-                  <select aria-label={`Owner of ${t.text}`} value={t.owner_user_id || ''} onChange={e => reassign(t, e.target.value)}
-                    style={{ all: 'unset', ...saSans, fontSize: 12, color: SA.soft, cursor: 'pointer' }}>
-                    {!isFlag && <option value="">Unassigned</option>}
-                    {members.map(m => <option key={m.user_id} value={m.user_id}>{lookup(m.user_id).first}</option>)}
-                  </select>
-                </label>
-              ) : (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: owner.color }} />{owner.first}</span>
-              )}
-              {t.due_date && <span style={{ color: overdue ? SA.bad : SA.muted }}>due {md(t.due_date)}</span>}
-              {t.steps.length > 0 && <span style={{ fontVariantNumeric: 'tabular-nums' }}>{nDone}/{t.steps.length}</span>}
-              {linkLabel(t) && <span style={{ padding: '2px 8px', borderRadius: 999, border: `1px solid ${SA.border}`, color: SA.soft, overflowWrap: 'anywhere' }}>{linkLabel(t)}</span>}
-            </div>
-            {isOpen && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
-                {t.steps.length > 0 && (
-                  <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {t.steps.map(s => (
-                      <li key={s.id} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 13 }}>
-                        <Box checked={s.done} disabled={!canEdit} label={`Step done: ${s.text}`} onClick={() => toggleStep(t, s)} />
-                        <span style={{ color: s.done ? SA.muted : SA.text, textDecoration: s.done ? 'line-through' : 'none', paddingTop: 2 }}>{s.text}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {t.flag_note && <span style={{ fontSize: 13, color: SA.soft }}>From {lookup(t.flagged_by).first}: “{t.flag_note}”</span>}
-                {t.contacts.length > 0 && <span style={{ fontSize: 13, color: SA.muted }}>With {t.contacts.join(', ')}</span>}
-                {t.week_start !== week && <span style={{ fontSize: 12, color: SA.warn }}>From the week of {md(t.week_start)}</span>}
-                <button type="button" style={linkBtn} onClick={openInGoals}>Open in Goals →</button>
-              </div>
-            )}
-          </div>
-        </div>
-      </li>
-    );
-  };
+  const act = { setDone, reassign, update, toggleStep, addStep, remove, drop, openInGoals };
+  const row = t => (
+    <TaskRow key={t.id} t={t} isFlag={flagIds.has(t.id)} isOpen={expanded.has(t.id)} onToggle={() => toggleExpanded(t.id)}
+      members={members} lookup={lookup} links={links} today={today} week={week}
+      can={{ edit: canEdit, remove: removeMode(t) }} act={act} />
+  );
 
   const toggleButton = compact ? (
     <button type="button" onClick={() => setOpen(true)} aria-label={`Tasks${badge ? `, ${badge} open` : ''}`} className="no-print"
@@ -234,6 +183,7 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
             <button type="button" onClick={() => setOpen(false)} aria-label="Close tasks"
               style={{ all: 'unset', cursor: 'pointer', width: 44, height: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: SA.muted }}>×</button>
           </header>
+          {canEdit && <QuickAdd meId={meId} members={members} lookup={lookup} links={links} onAdd={add} />}
           <div role="group" aria-label="Whose tasks" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '12px 16px' }}>
             {filters.map(f => (
               <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)} style={pill(filter === f.id)}>
