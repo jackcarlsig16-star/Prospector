@@ -80,6 +80,7 @@ export const goalsApi = {
   report: (id, weekStart) => call(id, `/report?${q({ week_start: weekStart })}`),
   kpi: (id, weekStart) => call(id, `/kpi?${q({ week_start: weekStart })}`).then(d => d.rows),
   saveSection: (id, weekStart, key, notes) => call(id, `/report/${weekStart}/sections/${key}`, { method: 'PUT', body: { notes } }).then(d => d.section),
+  appendToSection: (id, weekStart, key, line) => call(id, `/report/${weekStart}/sections/${key}/append`, { method: 'POST', body: { line } }),
   finalize: (id, weekStart) => call(id, `/report/${weekStart}/finalize`, { method: 'POST', body: {} }).then(d => d.report),
   reopen: (id, weekStart) => call(id, `/report/${weekStart}/reopen`, { method: 'POST', body: {} }).then(d => d.report),
 

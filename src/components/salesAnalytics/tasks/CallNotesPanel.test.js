@@ -1,8 +1,9 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import CallNotesPanel from './CallNotesPanel';
 import { goalsApi } from '../goals/goalsApi';
+import { laWeekStart } from '../periods';
 
-jest.mock('../goals/goalsApi', () => ({ goalsApi: { extractCallNotes: jest.fn(), createFromCallNotes: jest.fn() } }));
+jest.mock('../goals/goalsApi', () => ({ goalsApi: { extractCallNotes: jest.fn(), createFromCallNotes: jest.fn(), appendToSection: jest.fn() } }));
 
 const JACK = 'u-jack', CY = 'u-cy';
 const members = [{ user_id: JACK }, { user_id: CY }];
@@ -78,4 +79,32 @@ test('a server error shows and keeps the review', async () => {
   fireEvent.click(await screen.findByRole('button', { name: 'Create 1 task' }));
   expect(await screen.findByText('This week is finalized - reopen it to edit')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Create 1 task' })).toBeEnabled();
+});
+
+test('summary reaches report §1 only on click, as one draft line for this week', async () => {
+  goalsApi.extractCallNotes.mockResolvedValue({ call_date: '2026-10-06', summary: ['Decided A.', 'Decided B.', 'Decided C.'], tasks: [proposal('Call Brad')] });
+  goalsApi.appendToSection.mockResolvedValue({ section: {} });
+  setup();
+  fireEvent.change(screen.getByLabelText('Call title'), { target: { value: 'Weekly sync' } });
+  paste('notes');
+  fireEvent.click(screen.getByRole('button', { name: 'Find tasks' }));
+  await screen.findByText('Decided A.');
+  expect(goalsApi.appendToSection).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Add to report §1' }));
+  expect(await screen.findByText('Added to this week’s report §1 as a draft line')).toBeInTheDocument();
+  expect(goalsApi.appendToSection).toHaveBeenCalledTimes(1);
+  expect(goalsApi.appendToSection).toHaveBeenCalledWith('b1', laWeekStart(), 's1', 'From call · Oct 6 · Weekly sync: Decided A. Decided B. Decided C.');
+  expect(screen.queryByRole('button', { name: 'Add to report §1' })).not.toBeInTheDocument();
+  expect(goalsApi.createFromCallNotes).not.toHaveBeenCalled();
+});
+
+test('a finalized week says so and the button stays', async () => {
+  goalsApi.extractCallNotes.mockResolvedValue({ call_date: '2026-10-07', summary: ['Decided A.'], tasks: [] });
+  goalsApi.appendToSection.mockRejectedValue(new Error('This week is finalized - reopen it to edit'));
+  setup();
+  paste('notes');
+  fireEvent.click(screen.getByRole('button', { name: 'Find tasks' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Add to report §1' }));
+  expect(await screen.findByText('This week is finalized - reopen it to edit')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Add to report §1' })).toBeEnabled();
 });

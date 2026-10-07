@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { SA, SA_SHAPE, saSans } from '../theme';
-import { laDateString } from '../periods';
+import { laDateString, laWeekStart } from '../periods';
 import { goalsApi } from '../goals/goalsApi';
 import { labelStyle, inputStyle, Btn, ErrorNote } from '../goals/goalsUi';
 import { docxText } from '../../../utils/docxText';
@@ -74,6 +74,7 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
   const [result, setResult] = useState(null); // { summary, tasks, call_date } | { duplicate }
   const [picks, setPicks] = useState([]);
   const [busy, setBusy] = useState('');
+  const [reportState, setReportState] = useState(''); // '' | 'busy' | 'added'
   const [error, setError] = useState('');
   const fileRef = useRef(null);
   const chosen = picks.filter(p => p.on && p.text.trim());
@@ -95,6 +96,7 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
     try {
       const r = await goalsApi.extractCallNotes(businessId, { text, call_date: callDate, title: title.trim() || null });
       setResult(r);
+      setReportState('');
       setPicks((r.tasks || []).map(toPick));
       if (r.tasks?.some(t => t.link_type && t.link_type !== 'metric')) links.load();
     } catch (err) { setError(err.message); }
@@ -109,6 +111,15 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
       });
       onCreated(goals.length, note);
     } catch (err) { setError(err.message); setBusy(''); }
+  };
+  // Never automatic - the summary only reaches the report when a member clicks.
+  const addToReport = async () => {
+    setReportState('busy'); setError('');
+    const line = `From call · ${md(result.call_date)}${title.trim() ? ` · ${title.trim()}` : ''}: ${result.summary.join(' ')}`;
+    try {
+      await goalsApi.appendToSection(businessId, laWeekStart(), 's1', line);
+      setReportState('added');
+    } catch (err) { setError(err.message); setReportState(''); }
   };
   const setPick = i => patch => setPicks(prev => prev.map((p, k) => (k === i ? { ...p, ...patch } : p)));
 
@@ -150,7 +161,14 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
           <>
             {result.summary.length > 0 && (
               <div style={{ padding: '10px 12px', borderRadius: SA_SHAPE.radiusInner, background: SA.surface, border: `1px solid ${SA.border}` }}>
-                <div style={{ ...labelStyle, fontSize: 11, marginBottom: 4 }}>Call summary{title.trim() ? ` · ${title.trim()}` : ''} · {md(result.call_date)}</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 4 }}>
+                  <span style={{ ...labelStyle, fontSize: 11, flex: 1 }}>Call summary{title.trim() ? ` · ${title.trim()}` : ''} · {md(result.call_date)}</span>
+                  {reportState === 'added'
+                    ? <span role="status" style={{ fontSize: 12, color: SA.good }}>Added to this week’s report §1 as a draft line</span>
+                    : <button type="button" style={{ ...linkBtn, fontSize: 12 }} disabled={reportState === 'busy' || !!busy} onClick={addToReport}>
+                        {reportState === 'busy' ? 'Adding…' : 'Add to report §1'}
+                      </button>}
+                </div>
                 <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: SA.soft, display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {result.summary.map((s, i) => <li key={i}>{s}</li>)}
                 </ul>

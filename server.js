@@ -632,6 +632,7 @@ app.get('/api/sales/:businessId/goals/hero', salesModuleRoute('./api/sales/goals
 app.put('/api/sales/:businessId/goals/targets', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'saveTargetRoute', 'goals/targets PUT'));
 app.get('/api/sales/:businessId/goals/report', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'getReportRoute', 'goals/report'));
 app.put('/api/sales/:businessId/goals/report/:weekStart/sections/:key', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'saveSectionRoute', 'goals/report/:weekStart/sections/:key PUT'));
+app.post('/api/sales/:businessId/goals/report/:weekStart/sections/:key/append', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'appendSectionRoute', 'goals/report/:weekStart/sections/:key/append POST'));
 app.post('/api/sales/:businessId/goals/report/:weekStart/finalize', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'finalizeReportRoute', 'goals/report/:weekStart/finalize POST'));
 app.post('/api/sales/:businessId/goals/report/:weekStart/reopen', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'reopenReportRoute', 'goals/report/:weekStart/reopen POST'));
 app.post('/api/sales/:businessId/goals/infra', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'createInfraRoute', 'goals/infra POST'));

@@ -431,6 +431,36 @@ export async function saveSectionRoute(req, res) {
   res.json({ section: data });
 }
 
+// POST /goals/report/:weekStart/sections/:key/append { line } - adds a line
+// under the section's existing notes (call-notes-to-tasks-v1: the call
+// summary as a §1 draft line). Done server-side so the read and the write
+// are milliseconds apart rather than a whole screen's lifetime.
+export async function appendSectionRoute(req, res) {
+  const { weekStart, key } = req.params;
+  if (!isMonday(weekStart)) return res.status(400).json({ error: 'week must be a Monday (YYYY-MM-DD)' });
+  if (!SECTION_KEYS.includes(key)) return res.status(400).json({ error: `section must be one of ${SECTION_KEYS.join('|')}` });
+  const unknown = Object.keys(req.body || {}).find(k => k !== 'line');
+  if (unknown) return res.status(400).json({ error: `unknown field: ${unknown}` });
+  const line = typeof req.body?.line === 'string' ? req.body.line.trim() : '';
+  if (!line || line.length > 2000) return res.status(400).json({ error: 'line must be 1-2000 characters' });
+  const businessId = req.params.businessId;
+  const supabase = getSupabase();
+  try {
+    if (await weekIsFinal(supabase, businessId, weekStart)) return res.status(409).json({ error: FINAL_ERROR });
+    const { data: current, error: rErr } = await supabase.from('sales_week_report_sections').select('notes')
+      .eq('business_id', businessId).eq('week_start', weekStart).eq('section_key', key).maybeSingle();
+    if (rErr) throw new Error(rErr.message);
+    const before = (current?.notes || '').replace(/\s+$/, '');
+    if (before.split('\n').some(l => l.trim() === line)) return res.json({ section: current, already: true });
+    const { data, error } = await supabase.from('sales_week_report_sections').upsert({
+      business_id: businessId, week_start: weekStart, section_key: key, notes: before ? `${before}\n${line}` : line,
+      updated_by: req.auth.user.id, updated_at: new Date().toISOString(),
+    }, { onConflict: 'business_id,week_start,section_key' }).select().single();
+    if (error) throw new Error(error.message);
+    res.json({ section: data });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+}
+
 // POST /goals/report/:weekStart/finalize - freezes scorecard (the week's
 // month), KPI table, commitments with progress, section notes, infra list
 // and partner numbers. Later edits to live data never change the snapshot.
