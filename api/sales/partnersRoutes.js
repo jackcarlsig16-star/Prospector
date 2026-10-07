@@ -1,6 +1,7 @@
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { getSupabase, isDate, laStartOfDayMs } from './goalsShared.js';
 import { applyPartnerSignal, undoPartnerSignal, SignalError } from './partnerSignals.js';
+import { planRanks } from './partnerRank.js';
 
 // sales-partners-pipeline-v1 Stage 2 - partner buttons and history. Mounted
 // under /api/sales/:businessId, so salesGate has already applied viewer-reads
@@ -43,4 +44,30 @@ export async function listPartnerEventsRoute(req, res) {
     });
     res.json({ events });
   } catch (e) { res.status(500).json({ error: e.message }); }
+}
+
+// POST /goals/partners/:id/rank  body { order: [ids top to bottom] } - the
+// group's order after :id was moved (sales-partners-workflow-v1). Every id
+// must be a live partner in this workspace. Reorders are last-write-wins and
+// write no event (they're not partner activity).
+const ORDER_MAX = 200;
+export async function partnerRankRoute(req, res) {
+  const order = req.body?.order;
+  if (!Array.isArray(order) || !order.length || order.length > ORDER_MAX || !order.every(id => typeof id === 'string')) {
+    return res.status(400).json({ error: `order must be a list of 1-${ORDER_MAX} partner ids` });
+  }
+  if (new Set(order).size !== order.length) return res.status(400).json({ error: 'order has the same partner twice' });
+  if (!order.includes(req.params.id)) return res.status(400).json({ error: 'order must include the partner being moved' });
+  const supabase = getSupabase();
+  const { data: rows, error } = await supabase.from('sales_goals').select('id, sort_rank')
+    .eq('business_id', req.params.businessId).eq('goal_type', 'partnership').is('archived_at', null).in('id', order);
+  if (error) return res.status(500).json({ error: error.message });
+  if (rows.length !== order.length) return res.status(404).json({ error: 'partner not found' });
+  const updates = planRanks(order, new Map(rows.map(r => [r.id, r.sort_rank == null ? null : Number(r.sort_rank)])), req.params.id);
+  for (const u of updates) {
+    const { error: upErr } = await supabase.from('sales_goals').update({ sort_rank: u.sort_rank })
+      .eq('business_id', req.params.businessId).eq('id', u.id);
+    if (upErr) return res.status(500).json({ error: upErr.message });
+  }
+  res.json({ ranks: Object.fromEntries(updates.map(u => [u.id, u.sort_rank])) });
 }
