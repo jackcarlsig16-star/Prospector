@@ -1,10 +1,17 @@
 import { SA } from '../theme';
 import { SEMANTIC } from '../palette';
-import { cardStyle, labelStyle, h2Style, numStyle, SourceBadge, NeedsMigration, ErrorNote, EditableNumber, fmt } from './goalsUi';
+import { cardStyle, labelStyle, h2Style, numStyle, SourceBadge, NeedsMigration, ErrorNote, EditableNumber, DrillNumber, fmt } from './goalsUi';
 
 // Seif's 11-row table (api/sales/goalsReportRoutes.js buildKpi). Targets
 // carry forward until changed; Manual rows take a typed weekly value.
 const MANUAL = ['meetings_held', 'meetings_set'];
+// Where each row's list lives (goals-surface-v1 Stage 4). Manual rows have
+// none - they're typed in.
+const DRILL = {
+  target_orgs: 'overview:companies_by_cohort', dm_contacted: 'overview:kpi_tiles', positive_responses: 'huddle:reply',
+  qualified_opps: 'overview:pipeline_table', covered_lives_pipeline: 'overview:pipeline_table', proposals_outstanding: 'overview:pipeline_table',
+  verbal_commitments: 'overview:pipeline_table', contracts_signed: 'overview:pipeline_table', launches_90d: 'overview:pipeline_forecast',
+};
 
 function change(last, now) {
   if (last == null || now == null) return { text: '—', color: SA.muted };
@@ -13,7 +20,7 @@ function change(last, now) {
   return { text: `${d > 0 ? '+' : ''}${fmt(d)}${rel}`, color: d > 0 ? SEMANTIC.healthy : SA.muted };
 }
 
-export default function KpiTable({ rows, error, weekStart, editable, onSaveTarget, frozen }) {
+export default function KpiTable({ rows, error, weekStart, editable, onSaveTarget, frozen, onOpen }) {
   const th = { ...labelStyle, textAlign: 'right', padding: '0 12px 10px', whiteSpace: 'nowrap' };
   const td = { padding: '14px 12px', borderTop: `1px solid ${SA.track}`, textAlign: 'right', verticalAlign: 'top' };
   return (
@@ -41,7 +48,9 @@ export default function KpiTable({ rows, error, weekStart, editable, onSaveTarge
                     </td>
                     <td style={{ ...td, ...numStyle }}>{fmt(r.last_week)}</td>
                     <td style={{ ...td, ...numStyle, fontWeight: 600 }}>
-                      {editable && MANUAL.includes(r.key)
+                      {DRILL[r.key] && onOpen && r.this_week != null
+                        ? <DrillNumber onClick={() => onOpen(DRILL[r.key])} title={`Open the list behind ${r.label}`}>{fmt(r.this_week)}</DrillNumber>
+                        : editable && MANUAL.includes(r.key)
                         ? <EditableNumber value={r.this_week} placeholder="enter" display={fmt(r.this_week)} ariaLabel={`${r.label} this week`}
                             onSave={v => onSaveTarget({ period: 'week', period_start: weekStart, metric_key: r.key, actual: v })} />
                         : fmt(r.this_week)}

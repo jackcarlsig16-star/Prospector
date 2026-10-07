@@ -26,6 +26,8 @@ test('five cards with actual, goal, %, week-on-week; numbers come from the score
   await screen.findByRole('region', { name: 'Audience reached' });
   expect(card('Audience reached').getByText('500')).toBeTruthy();
   expect(card('Audience reached').getByText('of 5.50M commitment')).toBeTruthy();
+  expect(card('Audience reached').getByText('This week: 500')).toBeTruthy();
+  expect(card('Audience reached').getByTitle('Change vs last week').textContent).toBe('▲ 100 weekly vs last week');
   expect(card('Audience reached').getByRole('button', { name: '82 missing headcount → fill' })).toBeTruthy();
   expect(card('People in sequence').getByText('3,093')).toBeTruthy();
   expect(card('People in sequence').getByTitle('Change vs last week').textContent).toBe('▲ 43 vs last week');

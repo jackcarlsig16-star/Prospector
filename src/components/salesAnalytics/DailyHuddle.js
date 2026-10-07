@@ -12,7 +12,7 @@ import HuddlePartners from './HuddlePartners';
 import RightRail from './RightRail';
 import Ring, { RingLegend } from './charts/Ring';
 import { goalsApi } from './goals/goalsApi';
-import { memberLookup, ShowingChip } from './goals/goalsUi';
+import { memberLookup, ShowingChip, DrillNumber, flashTo } from './goals/goalsUi';
 import { exportWidgetCsv } from './exportCsv';
 import { fetchMe } from '../../utils/authSession';
 import { roleAtLeast } from '../../constants/roles';
@@ -82,7 +82,9 @@ function Segmented({ label, options, value, onChange, counts }) {
   );
 }
 
-export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
+// focusTarget (from Goals): { feed: 'open'|'click'|'reply'|null } opens the
+// activity feed (on that kind); { flags: true } jumps to Flagged for you.
+export default function DailyHuddle({ businessId, focusContactId, onFocused, focusTarget }) {
   const [data, setData] = useState(null);
   const [collateral, setCollateral] = useState([]);
   const [lastRun, setLastRun] = useState(null);
@@ -96,6 +98,8 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
   const [me, setMe] = useState(null);
   const [owner, setOwner] = useState(readOwner);
   const [needsOwner, setNeedsOwner] = useState(null); // set by the "today's actions by owner" ring
+  const [feedKind, setFeedKind] = useState(null); // 'open' | 'click' | 'reply' - a strip number picked it
+  const doneRef = useRef(null);
   const [filters, setFilters] = useState({ heat: 'all', due: 'all', stale: false, sort: 'signal', hideBots: true });
   const [feedKey, setFeedKey] = useState(0);
   const [flags, setFlags] = useState([]);
@@ -305,6 +309,17 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusContactId, !!data]);
 
+  const showFeed = kind => { setFeedKind(kind); setTimeout(() => flashTo('huddle-feed-section'), 60); };
+  useEffect(() => {
+    if (!focusTarget || !data) return;
+    const t = setTimeout(() => {
+      if ('feed' in focusTarget) showFeed(focusTarget.feed);
+      if (focusTarget.flags) flashTo(document.getElementById('huddle-flagged') ? 'huddle-flagged' : 'huddle-feed-section');
+    }, 200);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusTarget, !!data]);
+
   const row = p => (
     <HuddleRow key={p.contact_id} businessId={businessId} p={p} today={today} canEdit={canEdit} ownerColor={ownerColor} onAct={act} onFlag={onFlag} stacked={phone}
       collateral={collateral} isNewSinceHuddle={!!lastHuddleAt && p.created_at > lastHuddleAt} onUpdated={handleUpdated} />
@@ -393,8 +408,10 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
             {since && (
               <div aria-label="Since last huddle" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '6px 16px', padding: '10px 14px', marginBottom: 20, borderRadius: SA_SHAPE.radiusInner, background: SA.inset, border: `1px solid ${SA.border}`, fontSize: 13, color: SA.soft }}>
                 <span style={{ ...SA_TYPE.label, color: SA.muted }}>{lastHuddleAt ? `Since last huddle · ${fmtTime(lastHuddleAt)}` : 'Last 24 hours'}</span>
-                {[[since.replies, 'replies'], [since.real_clicks, 'real clicks'], [since.real_opens, 'real opens'], [since.bot_hidden, 'bot opens hidden'], [since.done, 'done']].map(([n, lb]) => (
-                  <span key={lb}><b style={{ color: SA.text, fontVariantNumeric: 'tabular-nums' }}>{n}</b> {lb}</span>
+                {[[since.replies, 'replies', () => showFeed('reply')], [since.real_clicks, 'real clicks', () => showFeed('click')], [since.real_opens, 'real opens', () => showFeed('open')],
+                  [since.bot_hidden, 'bot opens hidden', () => { setFilters(x => ({ ...x, hideBots: false })); setFeedKind('open'); setTimeout(() => flashTo('huddle-feed-section'), 60); }],
+                  [since.done, 'done', () => { if (doneRef.current) doneRef.current.open = true; setTimeout(() => flashTo('huddle-done'), 60); }]].map(([n, lb, go]) => (
+                  <span key={lb}><DrillNumber onClick={go} title={`Show the ${lb}`} style={{ fontWeight: 700, color: SA.text, fontVariantNumeric: 'tabular-nums' }}>{n}</DrillNumber> {lb}</span>
                 ))}
               </div>
             )}
@@ -408,7 +425,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
                 {needsOwner && <div style={{ marginBottom: 10 }}><ShowingChip label={OWNER_LABELS[needsOwner]} count={needs.length} onClear={() => setNeedsOwner(null)} /></div>}
                 <div className="sa-scroll" style={scrollList}>{needs.map(row)}</div>
               </Section>
-              <HuddleFeed businessId={businessId} reloadKey={feedKey} today={today} lastHuddleAt={lastHuddleAt} filters={{ owner, heat: filters.heat, stale: filters.stale, hideBots: filters.hideBots }}
+              <HuddleFeed businessId={businessId} reloadKey={feedKey} today={today} lastHuddleAt={lastHuddleAt} filters={{ owner, heat: filters.heat, stale: filters.stale, hideBots: filters.hideBots, kind: feedKind }} onClearKind={() => setFeedKind(null)}
                 bandById={bandById} staleById={staleById} ownerColor={ownerColor} onOpen={openProspect}
                 onFlag={onFlag && (id => { const p = prospectsById.get(id); if (p) onFlag(p); else setMessage('That prospect isn\'t in the Huddle list, so it can\'t be flagged from here.'); })} />
             </div>
@@ -444,7 +461,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused }) {
               {showAutopilot && <div className="sa-scroll" style={{ ...scrollList, marginTop: 8 }}>{autopilot.map(row)}</div>}
             </section>
 
-            <details style={{ marginBottom: 16 }}>
+            <details id="huddle-done" ref={doneRef} style={{ marginBottom: 16 }}>
               <summary style={{ ...SA_TYPE.cardTitle, color: SA.text, cursor: 'pointer' }}>
                 Done since yesterday <span style={{ ...SA_TYPE.label, color: SA.faint }}>{done.length}</span>
               </summary>

@@ -80,6 +80,7 @@ function Card({ card, canEdit, onDrill }) {
           <span style={{ ...labelStyle, display: 'flex', gap: 6, alignItems: 'center' }}>{card.name}{card.teamOnly && <Chip style={{ height: 18, fontSize: 10, padding: '0 6px' }}>team</Chip>}</span>
           <span style={{ ...numStyle, fontSize: 24, fontWeight: 600, lineHeight: 1.1, color: SA.text }}>{card.format(card.value)}</span>
           <span style={{ ...subStyle, fontSize: 12 }}>{card.goal != null ? `of ${card.format(card.goal)} · ${card.period}` : card.period}</span>
+          {card.thisWeek !== undefined && <span style={{ ...numStyle, fontSize: 12, color: SA.soft }}>This week: {card.format(card.thisWeek)}</span>}
         </button>
         {card.goal != null && (
           <Ring size={46} stroke={12} label={`${card.name} to goal`} center={pctLabel}
@@ -88,7 +89,7 @@ function Card({ card, canEdit, onDrill }) {
       </div>
       <Sparkline points={card.weeks} format={card.format} />
       <span style={{ ...numStyle, fontSize: 11, color: card.wow == null ? SA.faint : card.wow >= 0 ? SA.good : SA.bad }}
-        title="Change vs last week">{card.wow == null ? 'vs last week —' : `${card.wow >= 0 ? '▲' : '▼'} ${card.format(Math.abs(card.wow))} vs last week`}</span>
+        title="Change vs last week">{card.wow == null ? `${card.wowLabel || 'vs last week'} —` : `${card.wow >= 0 ? '▲' : '▼'} ${card.format(Math.abs(card.wow))} ${card.wowLabel || 'vs last week'}`}</span>
       {card.goal == null && (canEdit ? <SetGoal label={card.name} onSave={card.saveGoal} /> : <span style={{ ...subStyle, fontSize: 12 }}>No goal set</span>)}
       {card.note}
     </section>
@@ -143,7 +144,8 @@ export default function GoalHero({ businessId, weekStart, owner, commitments, mi
     const aud = series('outbound_audience');
     cards = [
       { id: 'audience', name: 'Audience reached', value: sc?.month_total.outbound_audience.value ?? null, goal: sc?.month_total.outbound_audience.goal ?? null,
-        weeks: aud, wow: wow(aud), format: short, period: monthName(month), drillLabel: 'Companies', saveGoal: saveGoal('month', month, 'outbound_audience'),
+        // Big number = the month; the trend and change are weekly, so they say so.
+        weeks: aud, wow: wow(aud), wowLabel: 'weekly vs last week', thisWeek: aud[WEEKS - 1].value, format: short, period: monthName(month), drillLabel: 'Companies', saveGoal: saveGoal('month', month, 'outbound_audience'),
         note: (commitment || missingHeadcount > 0) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
             {commitment && <span style={subStyle}>of {short(Number(commitment.target_value))} commitment</span>}

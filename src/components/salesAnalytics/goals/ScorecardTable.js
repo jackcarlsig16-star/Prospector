@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { SA } from '../theme';
 import Ring from '../charts/Ring';
 import {
-  cardStyle, labelStyle, h2Style, subStyle, numStyle, SourceBadge, NeedsMigration, ErrorNote, EditableNumber,
+  cardStyle, labelStyle, h2Style, subStyle, numStyle, SourceBadge, NeedsMigration, ErrorNote, EditableNumber, DrillNumber,
   fmt, short, pct, progressColor, shortWeek, monthName,
 } from './goalsUi';
 
@@ -18,6 +18,13 @@ const ROWS = [
   { key: 'partner_meetings', name: 'Partner meetings', hint: '"Meeting booked" clicks', format: fmt, source: 'App' },
   { key: 'partners_pilot_live', name: 'Partners in pilot / live', hint: 'at week end', format: fmt, source: 'App' },
 ];
+// Where each row's list lives (goals-surface-v1 Stage 4); meetings are typed
+// in, so no link. Pilot / live opens the Pilot step (Live is the next one).
+const DRILL = {
+  outbound_audience: 'view:companies', total_in_sequence: 'overview:kpi_tiles', sequences_running: 'overview:sequence_leaderboard', open_rate: 'overview:email_trend',
+  partners_first_touched: { partners: { stage: 'first_email_sent' } }, tier1_touched_pct: { partners: { tiers: ['1'] } },
+  partner_meetings: { partners: { stage: 'meeting_set' } }, partners_pilot_live: { partners: { stage: 'proposal_pilot' } },
+};
 // These narrow to one person (partners by owner); the rest are team-wide numbers.
 const PER_PERSON = ['outbound_audience', 'open_rate', 'partners_first_touched', 'tier1_touched_pct', 'partner_meetings', 'partners_pilot_live'];
 
@@ -33,7 +40,7 @@ const linkBtn = { all: 'unset', cursor: 'pointer', fontSize: 11, color: SA.warn,
 
 // missingHeadcount: companies (all weeks) with no employee count - the reason
 // outbound audience reads low; onFillHeadcount opens that list.
-export default function ScorecardTable({ data, error, weekStart, ownerName, canEdit, onSaveTarget, missingHeadcount, onFillHeadcount }) {
+export default function ScorecardTable({ data, error, weekStart, ownerName, canEdit, onSaveTarget, missingHeadcount, onFillHeadcount, onOpen }) {
   const [saveError, setSaveError] = useState('');
   const month = data?.month;
   const save = async body => {
@@ -80,7 +87,9 @@ export default function ScorecardTable({ data, error, weekStart, ownerName, canE
                   <tr key={r.key} id={`score-row-${r.key}`} style={{ opacity: dimmed ? 0.75 : 1 }}>
                     <td style={{ ...td, textAlign: 'left', paddingLeft: 0, minWidth: 190 }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <span style={{ fontWeight: 500 }}>{r.name}</span>
+                        {DRILL[r.key] && onOpen
+                          ? <DrillNumber onClick={() => onOpen(DRILL[r.key])} title={`Open the list behind ${r.name}`} style={{ fontWeight: 500, alignSelf: 'flex-start' }}>{r.name}</DrillNumber>
+                          : <span style={{ fontWeight: 500 }}>{r.name}</span>}
                         <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                           <SourceBadge source={r.source || (r.manual ? 'Manual' : 'Apollo')} />
                           <span style={{ ...subStyle, fontSize: 12 }}>{dimmed ? 'team-wide' : r.hint}</span>
@@ -103,6 +112,8 @@ export default function ScorecardTable({ data, error, weekStart, ownerName, canE
                               {r.manual && canEdit
                                 ? <EditableNumber value={c.value} placeholder="enter" display={r.format(c.value)} ariaLabel={`${r.name} actual, ${shortWeek(w.week_start)}`}
                                     onSave={v => save({ period: 'week', period_start: w.week_start, metric_key: r.key, actual: v })} />
+                                : r.key === 'outbound_audience' && onOpen && c.value != null
+                                ? <DrillNumber onClick={() => onOpen({ companies: w.week_start })} title={`Open companies sequenced ${shortWeek(w.week_start)}`}>{r.format(c.value)}</DrillNumber>
                                 : r.format(c.value)}
                             </span>
                             <span style={{ ...numStyle, ...subStyle, fontSize: 12 }}>

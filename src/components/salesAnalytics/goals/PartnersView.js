@@ -60,7 +60,7 @@ const NO_FILTERS = { category: '', tiers: [], stale: false, hot: false, owner: n
 
 // teamView: the person filter is on Team. Reorder needs the whole group in
 // view (see WorkflowView), so it's only offered then.
-export default function PartnersView({ partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusStage }) {
+export default function PartnersView({ partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusFilter }) {
   const [mode, setMode] = useState(readMode);
   const [stage, setStage] = useState(null);
   const compact = useMediaQuery('(max-width: 760px)');
@@ -74,12 +74,14 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
   const [addError, setAddError] = useState('');
   const [moved, setMoved] = useState(readMoved);
   const [focus, setFocus] = useState(null);
-  // A goal card opening Partners on one stage ({ stage }, a new object each time).
+  // A Goals number opening Partners filtered ({ stage?, tiers?, owner? }, a
+  // new object each time). An empty object clears the filters.
   useEffect(() => {
-    if (!focusStage) return;
-    setStage(focusStage.stage);
+    if (!focusFilter) return;
+    setStage(focusFilter.stage || null);
+    setFilters({ ...NO_FILTERS, tiers: focusFilter.tiers || [], owner: focusFilter.owner || null });
     setMode('workflow'); writeMode('workflow');
-  }, [focusStage]);
+  }, [focusFilter]);
   const [historyBump, setHistoryBump] = useState(0);
   // GoalsTab passes a fresh function each render; the drop-down's history
   // effect needs a stable one.

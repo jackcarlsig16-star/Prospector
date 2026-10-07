@@ -2,14 +2,16 @@ import { useState, useEffect, useCallback } from 'react';
 import { SA, SA_TYPE, SA_SHAPE, saSans } from './theme';
 import { fetchHuddleFeed } from './huddleApi';
 import { OWNER_LABELS, feedText, groupFeed, filterFeed, timeAgo } from './huddleView';
+import { ShowingChip } from './goals/goalsUi';
 
 // sales-huddle-v2 Stage 2 - Recent activity: opens, clicks and replies from
 // the last 7 days, as fresh as the last sync. Bot opens / link scanners are
 // hidden unless the rail's toggle shows them (greyed, "likely automated").
 const ICON = { open: '👁', click: '🔗', reply: '↩' };
 const FEED_DAYS = 7; // REVISABLE (spec)
+const KIND_LABEL = { open: 'Real opens', click: 'Real clicks', reply: 'Replies' };
 
-export default function HuddleFeed({ businessId, reloadKey, today, lastHuddleAt, filters, bandById, staleById, ownerColor, onOpen, onFlag }) {
+export default function HuddleFeed({ businessId, reloadKey, today, lastHuddleAt, filters, bandById, staleById, ownerColor, onOpen, onFlag, onClearKind }) {
   const [items, setItems] = useState(null);
   const [nextBefore, setNextBefore] = useState(null);
   const [error, setError] = useState('');
@@ -35,11 +37,12 @@ export default function HuddleFeed({ businessId, reloadKey, today, lastHuddleAt,
   const { days, dividerAt } = groupFeed(shown, today, lastHuddleAt);
 
   return (
-    <section aria-labelledby="huddle-feed" style={{ marginBottom: 24 }}>
+    <section id="huddle-feed-section" aria-labelledby="huddle-feed" style={{ marginBottom: 24 }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
         <h2 id="huddle-feed" style={{ ...SA_TYPE.cardTitle, fontSize: 17, color: SA.text, margin: 0 }}>Recent activity</h2>
         <span style={{ ...SA_TYPE.label, color: SA.faint }}>{filters.hideBots ? 'people only' : 'incl. likely automated'} · last {FEED_DAYS} days</span>
       </div>
+      {filters.kind && items && <div style={{ marginBottom: 10 }}><ShowingChip label={KIND_LABEL[filters.kind]} count={shown.length} onClear={onClearKind} /></div>}
       {error ? <p style={{ fontSize: 13, color: SA.warn, margin: 0 }}>⚠ {error}</p>
         : items === null ? <p style={{ fontSize: 13, color: SA.faint, margin: 0 }}>Loading activity…</p>
         : !shown.length ? <p style={{ fontSize: 13, color: SA.faint, margin: 0 }}>No activity for these filters in the last {FEED_DAYS} days.</p>

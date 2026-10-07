@@ -3,6 +3,7 @@ import { SA, SA_TYPE, SA_SHAPE, SA_THEME_CSS, SA_THEME_ROOT_ID, SA_BAD_BG, SA_BA
 import AlertsRow from './AlertsRow';
 import DailyHuddle from './DailyHuddle';
 import GoalsTab from './goals/GoalsTab';
+import { flashTo } from './goals/goalsUi';
 import { WIDGETS } from './widgets.registry';
 import { fetchMetrics, fetchRuns, fetchEntities, fetchCohortBreakdown, fetchInsights, triggerSync } from './salesApi';
 import { fetchFlags, FLAGS_CHANGED } from './huddleApi';
@@ -26,6 +27,8 @@ const SPARKLINE_LOOKBACK_DAYS = 56; // ~8 weeks
 const PRINT_STYLES = `
   .print-only { display: none; }
   @media print {
+    /* Links on numbers (goals-surface-v1) print as plain numbers. */
+    .sa-drill { text-decoration: none !important; }
     /* The app's global body background is dark (constants/tokens.js HUD
        theme) and "body * { visibility: hidden }" below only hides body's
        DESCENDANTS, never body itself - found while actually reading the
@@ -128,6 +131,8 @@ const STATUS_COLOR = { success: SA.good, partial: SA.warn, error: SA.bad, runnin
 export default function SalesAnalyticsTab({ businessId }) {
   const [view, setView] = useState('goals');
   const [huddleFocus, setHuddleFocus] = useState(null);
+  const [huddleTarget, setHuddleTarget] = useState(null); // { feed } | { flags } from a Goals number
+  const [overviewFocus, setOverviewFocus] = useState(null); // widget id a Goals number opens
   const [myFlagCount, setMyFlagCount] = useState(0);
   const [preset, setPreset] = useState('this_week');
   const [customFrom, setCustomFrom] = useState(laDateString());
@@ -205,6 +210,12 @@ export default function SalesAnalyticsTab({ businessId }) {
   }, [businessId, preset, customFrom, customTo]);
 
   useEffect(() => { load(); }, [load]);
+  // A Goals number opened Overview on one widget: flash it once the widgets exist.
+  useEffect(() => {
+    if (view !== 'overview' || loading || !overviewFocus) return;
+    const t = setTimeout(() => { flashTo(`sa-widget-${overviewFocus}`); setOverviewFocus(null); }, 150);
+    return () => clearTimeout(t);
+  }, [view, loading, overviewFocus]);
 
   // Shared by the alerts row and the insights panel - refreshed on its own
   // after a dismiss, without reloading every widget.
@@ -268,8 +279,9 @@ export default function SalesAnalyticsTab({ businessId }) {
         ))}
       </div>
 
-      {view === 'goals' ? <GoalsTab businessId={businessId} onOpenOverview={() => setView('overview')} onOpenHuddle={contactId => { setHuddleFocus(contactId); setView('huddle'); }} />
-        : view === 'huddle' ? <DailyHuddle businessId={businessId} focusContactId={huddleFocus} onFocused={() => setHuddleFocus(null)} /> : <>
+      {view === 'goals' ? <GoalsTab businessId={businessId} onOpenOverview={widget => { setOverviewFocus(widget || null); setView('overview'); }}
+          onOpenHuddle={(contactId, target) => { setHuddleFocus(contactId); setHuddleTarget(target ? { ...target } : null); setView('huddle'); }} />
+        : view === 'huddle' ? <DailyHuddle businessId={businessId} focusContactId={huddleFocus} onFocused={() => setHuddleFocus(null)} focusTarget={huddleTarget} /> : <>
       {/* Header - hidden in print; the print-only block below replaces it */}
       <div className="no-print" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, marginBottom: 24 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

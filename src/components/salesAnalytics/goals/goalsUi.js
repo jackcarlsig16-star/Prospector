@@ -94,6 +94,17 @@ export function ShowingChip({ label, count, onClear }) {
   );
 }
 
+// goals-surface-v1 Stage 4 - a number that opens the list it counts. Looks
+// like the number (dotted underline), works as a button.
+export function DrillNumber({ onClick, title, children, style }) {
+  return (
+    <button type="button" className="sa-drill" onClick={onClick} title={title}
+      style={{ all: 'unset', cursor: 'pointer', borderRadius: 4, textDecoration: 'underline dotted', textDecorationColor: 'var(--sa-muted)', textUnderlineOffset: 4, ...style }}>
+      {children}
+    </button>
+  );
+}
+
 // Scroll an element into view and flash it, so a jump link shows where it landed.
 export function flashTo(elementId) {
   const el = document.getElementById(elementId);

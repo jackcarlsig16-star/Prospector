@@ -150,8 +150,11 @@ export function groupFeed(items, today, lastHuddleAt) {
 // Feed rows follow the rail: person, heat (via the prospect's band), stale, and
 // the bot toggle. Prospects the Huddle doesn't list (bounced, unsubscribed...)
 // only show for "All" heat.
-export function filterFeed(items, { owner, heat, stale, hideBots }, bandById, staleById) {
+// kind (optional): 'open' | 'click' | 'reply' - a Huddle strip number or a
+// Goals number opening the feed on one kind of event.
+export function filterFeed(items, { owner, heat, stale, hideBots, kind }, bandById, staleById) {
   return items.filter(i => (!hideBots || !i.automated)
+    && (!kind || i.kind === kind)
     && (owner === 'team' || i.owner === owner)
     && (heat === 'all' || bandById.get(i.contact_id) === heat)
     && (!stale || staleById.get(i.contact_id)));

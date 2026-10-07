@@ -60,7 +60,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
   const [allCompanies, setAllCompanies] = useState(null);
   const [missingOpen, setMissingOpen] = useState(false);
   const [heroKey, setHeroKey] = useState(0);
-  const [partnerStage, setPartnerStage] = useState(null); // { stage } - a hero card opening Partners filtered
+  const [partnerFocus, setPartnerFocus] = useState(null); // { stage?, tiers?, owner? } - a link opening Partners filtered
   const [errors, setErrors] = useState({});
   const setError = useCallback((key, e) => setErrors(prev => ({ ...prev, [key]: e })), []);
 
@@ -177,39 +177,44 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
   const partnerBlock = final ? reportData.report.snapshot?.partners : reportData?.partners;
   const pm = partnerBlock?.metrics || {};
   const hw = (final ? reportData.report.snapshot?.huddle : reportData?.huddle) || {};
-  const chip = (k, v, src) => (v == null ? null : { k, v: typeof v === 'number' ? v.toLocaleString('en-US') : v, src });
+  const chip = (k, v, src, to) => (v == null ? null : { k, v: typeof v === 'number' ? v.toLocaleString('en-US') : v, src, to });
   const autoChips = {
-    s1: [chip('to-dos done last week', `${lastDone} of ${lastWeekTodos.filter(t => todoStatus(t) !== 'dropped').length}`, 'App'), chip('companies sequenced', companies.length, 'Apollo'), chip('positive replies', kpi.positive_responses?.this_week, 'Apollo')],
-    s3: [chip('companies in cadence', kpi.target_orgs?.this_week, 'Apollo'), chip('new companies sequenced', companies.length, 'Apollo'),
-      chip('headcount known', `${companies.filter(c => c.employees != null).length} of ${companies.length} companies`, 'App'), chip('partners tracked', `${partners.length} · ${partners.filter(x => x.priority === 1).length} P1`, 'App')],
-    s4: [chip('people in sequence', kpi.dm_contacted?.this_week, 'Apollo'), chip('new companies sequenced', companies.length, 'Apollo'), chip('partners first-touched', pm.partners_first_touched?.value, 'App'), chip('partner meetings', pm.partner_meetings?.value, 'App'),
-      chip('real opens', hw.real_opens, 'Apollo'), chip('real clicks', hw.real_clicks, 'Apollo'), chip('replies', hw.replies, 'Apollo'),
-      chip('flags handed off', hw.flags_handed_off, 'App'), chip('flags completed', hw.flags_completed, 'App')],
+    s1: [chip('to-dos done last week', `${lastDone} of ${lastWeekTodos.filter(t => todoStatus(t) !== 'dropped').length}`, 'App', 'week:prev'), chip('companies sequenced', companies.length, 'Apollo', 'view:companies'), chip('positive replies', kpi.positive_responses?.this_week, 'Apollo', 'huddle:reply')],
+    s3: [chip('companies in cadence', kpi.target_orgs?.this_week, 'Apollo', 'overview:companies_by_cohort'), chip('new companies sequenced', companies.length, 'Apollo', 'view:companies'),
+      chip('headcount known', `${companies.filter(c => c.employees != null).length} of ${companies.length} companies`, 'App', 'missing'), chip('partners tracked', `${partners.length} · ${partners.filter(x => x.priority === 1).length} P1`, 'App', 'view:partners')],
+    s4: [chip('people in sequence', kpi.dm_contacted?.this_week, 'Apollo', 'overview:kpi_tiles'), chip('new companies sequenced', companies.length, 'Apollo', 'view:companies'),
+      chip('partners first-touched', pm.partners_first_touched?.value, 'App', { partners: { stage: 'first_email_sent' } }), chip('partner meetings', pm.partner_meetings?.value, 'App', { partners: { stage: 'meeting_set' } }),
+      chip('real opens', hw.real_opens, 'Apollo', 'huddle:open'), chip('real clicks', hw.real_clicks, 'Apollo', 'huddle:click'), chip('replies', hw.replies, 'Apollo', 'huddle:reply'),
+      chip('flags handed off', hw.flags_handed_off, 'App', 'huddle:flags'), chip('flags completed', hw.flags_completed, 'App', 'huddle:flags')],
+    // Meetings are typed in - there's no list behind them, so no link.
     s5: [chip('meetings set this week', kpi.meetings_set?.this_week, 'Manual'), chip('meetings held', kpi.meetings_held?.this_week, 'Manual')],
-    s6: [chip('qualified opportunities', kpi.qualified_opps?.this_week, 'Pipeline'), chip('covered lives in pipeline', kpi.covered_lives_pipeline?.this_week, 'Pipeline')],
-    s12: [chip('expected launches, 90 days', kpi.launches_90d?.this_week, 'Pipeline')],
-    s13: [chip('positive replies this week', kpi.positive_responses?.this_week, 'Apollo')],
+    s6: [chip('qualified opportunities', kpi.qualified_opps?.this_week, 'Pipeline', 'overview:pipeline_table'), chip('covered lives in pipeline', kpi.covered_lives_pipeline?.this_week, 'Pipeline', 'overview:pipeline_table')],
+    s12: [chip('expected launches, 90 days', kpi.launches_90d?.this_week, 'Pipeline', 'overview:pipeline_forecast')],
+    s13: [chip('positive replies this week', kpi.positive_responses?.this_week, 'Apollo', 'huddle:reply')],
   };
   for (const k of Object.keys(autoChips)) autoChips[k] = autoChips[k].filter(Boolean);
 
   // Goal hero: each card opens where its number comes from.
-  const drill = id => {
-    if (id === 'audience') return setView('companies');
-    if (id === 'missing') return openMissing();
-    if (id === 'in_sequence') return onOpenOverview && onOpenOverview();
-    if (id === 'partners') { setPartnerStage({ stage: 'first_email_sent' }); return setView('partners'); }
-    if (id === 'meetings') { setView('week'); return setTimeout(() => flashTo('score-row-meetings_set'), 120); }
-    if (id === 'engagement') return onOpenHuddle && onOpenHuddle(null);
+  // Every Goals link goes through here (goals-surface-v1 Stage 4). Targets:
+  // 'overview[:<widget>]', 'view:<view>', 'section:<key>', 'missing',
+  // 'week:prev', 'score:<metric>', 'huddle[:feed|open|click|reply|flags]',
+  // { partners: { stage?, tiers?, owner? } }, { companies: <Monday> }.
+  const go = target => {
+    if (target.partners) { setPartnerFocus({ ...target.partners }); return setView('partners'); }
+    if (target.companies) { setWeekStart(target.companies); return setView('companies'); }
+    const [kind, arg] = target.split(/:(.*)/);
+    if (kind === 'overview') return onOpenOverview && onOpenOverview(arg);
+    if (kind === 'view') { if (arg === 'partners') setPartnerFocus({}); return setView({ this_week: 'week' }[arg] || arg); }
+    if (kind === 'section') { setView('report'); return setTimeout(() => flashTo(`goals-sec-${arg}`), 50); }
+    if (kind === 'missing') return openMissing();
+    if (kind === 'week' && arg === 'prev') { setWeekStart(w => addDays(w, -7)); return setView('week'); }
+    if (kind === 'score') { setView('week'); return setTimeout(() => flashTo(`score-row-${arg}`), 120); }
+    if (kind === 'huddle') return onOpenHuddle && onOpenHuddle(null, !arg ? null : arg === 'flags' ? { flags: true } : { feed: arg === 'feed' ? null : arg });
   };
-
-  const openTarget = target => {
-    if (target === 'overview') return onOpenOverview && onOpenOverview();
-    if (target.startsWith('view:')) return setView({ this_week: 'week' }[target.slice(5)] || target.slice(5));
-    if (target.startsWith('section:')) {
-      setView('report');
-      setTimeout(() => flashTo(`goals-sec-${target.slice(8)}`), 50);
-    }
-  };
+  const openTarget = go;
+  // Goal hero cards.
+  const drill = id => go({ audience: 'view:companies', missing: 'missing', in_sequence: 'overview:kpi_tiles', partners: { partners: { stage: 'first_email_sent' } },
+    meetings: 'score:meetings_set', engagement: 'huddle:feed' }[id]);
 
   // CSV exports (REV4 Stage 6) - what's on screen for the selected week and
   // person filter.
@@ -302,7 +307,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
           )}
 
           {view === 'week' && <>
-            <ScorecardTable data={scorecard} error={errors.scorecard} weekStart={weekStart} ownerName={owner === 'team' ? null : whoLabel} canEdit={canEdit}
+            <ScorecardTable data={scorecard} error={errors.scorecard} weekStart={weekStart} ownerName={owner === 'team' ? null : whoLabel} canEdit={canEdit} onOpen={go}
               missingHeadcount={missingHeadcount} onFillHeadcount={openMissing}
               onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await loadScorecard(); setHeroKey(k => k + 1); }} />
             <TodoList todos={myTodos} lookup={lookup} members={members} onOpenHuddle={onOpenHuddle} whoLabel={whoLabel} defaultOwner={owner === 'team' ? me?.profile?.id : owner}
@@ -335,7 +340,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
                 const ranks = await goalsApi.partnerRank(businessId, goalId, order);
                 setPartners(ps => ps.map(p => (p.id in ranks ? { ...p, sort_rank: ranks[p.id] } : p)));
               }}
-              teamView={owner === 'team'} focusStage={partnerStage}
+              teamView={owner === 'team'} focusFilter={partnerFocus}
               onCreate={async body => { const g = await goalsApi.createPartner(businessId, { ...body, owner_user_id: owner === 'team' ? null : owner }); setPartners(ps => [...ps, g]); }} />
           )}
 

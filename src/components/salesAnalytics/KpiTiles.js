@@ -7,6 +7,7 @@ import { laWeekStart } from './periods';
 import LineChart from './LineChart';
 import ExportButton from './ExportButton';
 import { exportWidgetCsv } from './exportCsv';
+import { flashTo } from './goals/goalsUi';
 
 // SPEC default (also the Target Organizations default in the not-yet-built
 // sales-analytics-scorecard-v1) - REVISABLE until that SPEC's targets
@@ -30,7 +31,8 @@ function ProgressBar({ pct }) {
 // history exists yet - only the WoW delta is allowed to say "collecting".
 // `noValue` is reserved for the real "nothing from any source" case (per
 // Jack's "if a tile truly has no value from any source, say so").
-function Tile({ label, value, scope, delta, deltaGood, color, sparkPoints, accent, noValue, progressPct, compareEnabled }) {
+// goals-surface-v1 Stage 4: `to` = the widget below that lists what the tile counts.
+function Tile({ label, value, scope, delta, deltaGood, color, sparkPoints, accent, noValue, progressPct, compareEnabled, to, toLabel }) {
   return (
     <div style={{ flex: '1 1 200px', minWidth: 180, padding: '20px 20px 18px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: 14, display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ ...SA_TYPE.label, color: SA.muted }}>{label}</div>
@@ -41,7 +43,10 @@ function Tile({ label, value, scope, delta, deltaGood, color, sparkPoints, accen
         </>
       ) : (
         <>
-          <div style={{ ...SA_TYPE.kpiValue, color: color || SA.text, lineHeight: 1 }}>{value}</div>
+          {to
+            ? <button type="button" onClick={() => flashTo(`sa-widget-${to}`)} title={`Open ${toLabel}`}
+                style={{ all: 'unset', cursor: 'pointer', ...SA_TYPE.kpiValue, color: color || SA.text, lineHeight: 1, textDecoration: 'underline dotted', textDecorationColor: 'var(--sa-muted)', textUnderlineOffset: 6 }}>{value}</button>
+            : <div style={{ ...SA_TYPE.kpiValue, color: color || SA.text, lineHeight: 1 }}>{value}</div>}
           {progressPct !== undefined && <ProgressBar pct={progressPct} />}
           {sparkPoints && sparkPoints.length >= 2 && <LineChart points={sparkPoints} width={140} height={24} color={accent} strokeWidth={1.25} />}
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: SA.muted }}>
@@ -129,31 +134,31 @@ export default function KpiTiles({ allRows, periodRows, prevPeriod, entities, co
       </div>
       <div className="sa-kpi-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
         <Tile
-          label="Companies in cadence" noValue={companies === null} compareEnabled={compareEnabled}
+          label="Companies in cadence" noValue={companies === null} compareEnabled={compareEnabled} to="companies_by_cohort" toLabel="Companies in Cadence by Cohort"
           value={formatValue(companies, 'number')} scope={`of ${COMPANIES_TARGET} target`}
           progressPct={companies === null ? undefined : (companies / COMPANIES_TARGET) * 100}
           delta={companiesDelta} deltaGood={companiesDelta !== null && companiesDelta >= 0}
         />
         <Tile
-          label="Prospects in cadence" noValue={prospects === null} compareEnabled={compareEnabled}
+          label="Prospects in cadence" noValue={prospects === null} compareEnabled={compareEnabled} to="sequence_leaderboard" toLabel="the Sequence Leaderboard"
           value={formatValue(prospects, 'number')}
           scope={activeSequences !== null ? `across ${formatValue(activeSequences, 'number')} active sequences` : 'active sequences'}
           delta={prospectsDelta} deltaGood={prospectsDelta !== null && prospectsDelta >= 0}
           sparkPoints={sparkFor('prospects_in_cadence')} accent={accent}
         />
         <Tile
-          label="Delivered" noValue={current.delivered === null} compareEnabled={compareEnabled}
+          label="Delivered" noValue={current.delivered === null} compareEnabled={compareEnabled} to="sequence_leaderboard" toLabel="the Sequence Leaderboard"
           value={formatValue(current.delivered, 'number')} scope="active sequences · all-time"
           delta={deliveredDelta} deltaGood={deliveredDelta !== null && deliveredDelta >= 0}
           sparkPoints={sparkFor('unique_delivered')} accent={accent}
         />
         <Tile
-          label="Reply rate" noValue={current.replyRate === null} compareEnabled={compareEnabled}
+          label="Reply rate" noValue={current.replyRate === null} compareEnabled={compareEnabled} to="sequence_leaderboard" toLabel="the Sequence Leaderboard"
           value={formatValue(current.replyRate, 'percent')} scope="active sequences · all-time"
           delta={replyRateDelta} deltaGood={replyRateDelta !== null && replyRateDelta >= 0}
         />
         <Tile
-          label="Bounce rate" noValue={current.bounceRate === null} compareEnabled={compareEnabled}
+          label="Bounce rate" noValue={current.bounceRate === null} compareEnabled={compareEnabled} to="mailbox_health" toLabel="Mailbox Health"
           value={formatValue(current.bounceRate, 'percent')} scope="goal under 2%"
           color={current.bounceRate === null ? undefined : bounceHealthColor(current.bounceRate)}
           delta={bounceRateDelta} deltaGood={bounceRateDelta !== null && bounceRateDelta <= 0}

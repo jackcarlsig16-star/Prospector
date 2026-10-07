@@ -3,10 +3,10 @@ import { SA, saSans } from '../theme';
 import { SEMANTIC } from '../palette';
 import Ring from '../charts/Ring';
 import KpiTable from './KpiTable';
-import { PIPELINE_STATUSES } from '../../../constants/partnerPipeline';
+import { PIPELINE_STATUSES, WORKFLOW_STEPS, stepOf } from '../../../constants/partnerPipeline';
 import {
   cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, rowStyle, inputStyle,
-  Chip, Dot, Btn, AddButton, SourceBadge, NeedsMigration, ErrorNote, fmt, short, pct, progressColor, weekOf, flashTo,
+  Chip, Dot, Btn, AddButton, SourceBadge, NeedsMigration, ErrorNote, DrillNumber, fmt, short, pct, progressColor, weekOf, flashTo,
 } from './goalsUi';
 
 // Seif's weekly report, his section order and labels (specs/design/
@@ -65,7 +65,11 @@ function SectionNotes({ section, notes, editable, onSave, onSaved }) {
 
 // sales-partners-pipeline-v1 - partner pipeline status by owner, for Seif's
 // PDF. Only statuses someone has a partner in get a column.
-function PartnerStatusTable({ byOwner, lookup, members }) {
+// A status column opens Partners (Workflow) on that owner and stage. In
+// sequence and 1st email sent share the Workflow's "Sent" step.
+const workflowStage = status => (stepOf(status) === null ? 'paused' : WORKFLOW_STEPS[stepOf(status)].id);
+
+function PartnerStatusTable({ byOwner, lookup, members, onOpen }) {
   const owners = [...members.map(m => m.user_id).filter(id => byOwner[id]), ...(byOwner.unassigned ? ['unassigned'] : [])];
   const cols = PIPELINE_STATUSES.filter(st => owners.some(o => byOwner[o][st.id]));
   const total = o => Object.values(byOwner[o]).reduce((a, b) => a + b, 0);
@@ -87,8 +91,14 @@ function PartnerStatusTable({ byOwner, lookup, members }) {
             {owners.map(o => (
               <tr key={o}>
                 <th scope="row" style={{ ...td, textAlign: 'left', paddingLeft: 0, fontWeight: 500 }}>{o === 'unassigned' ? 'Unassigned' : lookup(o).first}</th>
-                {cols.map(c => <td key={c.id} style={{ ...td, color: byOwner[o][c.id] ? SA.text : SA.faint }}>{byOwner[o][c.id] || '–'}</td>)}
-                <td style={{ ...td, fontWeight: 600 }}>{total(o)}</td>
+                {cols.map(c => (
+                  <td key={c.id} style={{ ...td, color: byOwner[o][c.id] ? SA.text : SA.faint }}>
+                    {byOwner[o][c.id]
+                      ? <DrillNumber onClick={() => onOpen({ partners: { owner: o, stage: workflowStage(c.id) } })} title={`Open ${o === 'unassigned' ? 'unassigned' : lookup(o).first}'s partners at ${c.label}`}>{byOwner[o][c.id]}</DrillNumber>
+                      : '–'}
+                  </td>
+                ))}
+                <td style={{ ...td, fontWeight: 600 }}><DrillNumber onClick={() => onOpen({ partners: { owner: o } })} title={`Open ${o === 'unassigned' ? 'unassigned' : lookup(o).first}'s partners`}>{total(o)}</DrillNumber></td>
               </tr>
             ))}
           </tbody>
@@ -361,7 +371,9 @@ export default function ReportView(props) {
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
                 {chips.map(a => (
                   <div key={a.k} style={{ background: SA.inset, border: `1px solid ${SA.border}`, borderRadius: 10, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120 }}>
-                    <span style={{ ...numStyle, fontSize: 18, fontWeight: 600 }}>{a.v}</span>
+                    {a.to
+                      ? <DrillNumber onClick={() => onOpen(a.to)} title={`Open the ${a.k}`} style={{ ...numStyle, fontSize: 18, fontWeight: 600, alignSelf: 'flex-start' }}>{a.v}</DrillNumber>
+                      : <span style={{ ...numStyle, fontSize: 18, fontWeight: 600 }}>{a.v}</span>}
                     <span style={{ fontSize: 12, color: SA.muted }}>{a.k}</span>
                     <span style={{ alignSelf: 'flex-start', marginTop: 4 }}><SourceBadge source={a.src} /></span>
                   </div>
@@ -376,9 +388,9 @@ export default function ReportView(props) {
         );
       })}
 
-      {partnerBlock && <PartnerStatusTable byOwner={partnerBlock.by_owner} lookup={lookup} members={members} />}
+      {partnerBlock && <PartnerStatusTable byOwner={partnerBlock.by_owner} lookup={lookup} members={members} onOpen={onOpen} />}
 
-      <KpiTable rows={frozenKpi || kpiRows} error={frozenKpi ? null : kpiError} weekStart={weekStart} editable={editable} frozen={!!frozenKpi} onSaveTarget={onSaveTarget} />
+      <KpiTable rows={frozenKpi || kpiRows} error={frozenKpi ? null : kpiError} weekStart={weekStart} editable={editable} frozen={!!frozenKpi} onSaveTarget={onSaveTarget} onOpen={onOpen} />
     </div>
   );
 }
