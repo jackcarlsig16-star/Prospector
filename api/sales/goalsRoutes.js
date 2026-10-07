@@ -20,7 +20,7 @@ const WEEK_KINDS = ['commitment', 'todo'];
 // task-drawer-v1 - what a to-do serves. link_id: a commitment's or partner's
 // id, a metric key, or a company's Apollo account_id (Goals > Companies).
 const LINK_TYPES = ['commitment', 'metric', 'partner', 'company'];
-const LINKABLE_METRICS = [...SCORECARD_METRICS, ...KPI_METRICS, ...PARTNER_METRICS, ...HERO_METRICS];
+export const LINKABLE_METRICS = [...SCORECARD_METRICS, ...KPI_METRICS, ...PARTNER_METRICS, ...HERO_METRICS];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const LAND_FIELDS = {

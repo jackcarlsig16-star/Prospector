@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { fetchSiteContent } from '../lib/fetchSiteContent.js';
-import { MODELS } from '../../src/config/models.js';
+import { MODELS, estimateCostUsd } from '../../src/config/models.js';
 
 // Same pattern as api/sfdc/sync-compliance.js
 export function getSupabase() {
@@ -19,7 +19,7 @@ export function getSupabase() {
 // that, it's allowed more headroom than Assay's quicker per-account check.
 const SITE_TEXT_TRUNCATE_CHARS = 12000;
 
-async function callAnthropic({ system, messages, tools, max_tokens, supabase, businessId, callType, model = MODELS.STANDARD, timeoutMs = 90000, thinking = true }) {
+export async function callAnthropic({ system, messages, tools, max_tokens, supabase, businessId, userId, callType, model = MODELS.STANDARD, timeoutMs = 90000, thinking = true }) {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error('ANTHROPIC_API_KEY not configured');
 
@@ -59,6 +59,8 @@ async function callAnthropic({ system, messages, tools, max_tokens, supabase, bu
       input_tokens: data.usage.input_tokens ?? null,
       output_tokens: data.usage.output_tokens ?? null,
       model,
+      user_id: userId || null,
+      cost_usd: estimateCostUsd(model, data.usage),
     });
     if (usageError) console.warn('[businesses] usage log failed:', usageError.message);
   }
