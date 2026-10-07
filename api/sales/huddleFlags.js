@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
 import { addDays, weekIsFinal, FINAL_ERROR } from './goalsShared.js';
+import { hasRole } from '../lib/requireAuth.js';
 
 // sales-huddle-v2 REV1 Stage 3 - "Flag for ...": hand a prospect to a
 // teammate as a Goals to-do (Huddle follow-ups) with a checklist. Flagging
@@ -10,6 +11,9 @@ import { addDays, weekIsFinal, FINAL_ERROR } from './goalsShared.js';
 // the 'flagged' / 'unflagged' entries here (flags aren't a prospect field).
 export const FLAG_CATEGORY = 'Huddle follow-ups';
 const MAX_STEPS = 6;
+// Deleting a flag is its undo: the flagger within this window, or an Owner/
+// Admin. Everyone else drops it, which keeps the to-do and its history.
+const UNDO_WINDOW_MS = 2 * 60e3;
 
 function getSupabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -132,6 +136,10 @@ export async function unflagRoute(req, res) {
     const { data: todo, error } = await supabase.from('sales_week_goals').select('*').eq('business_id', businessId).eq('id', goalId).maybeSingle();
     if (error) throw new Error(error.message);
     if (!todo || !todo.prospect_contact_id) return res.status(404).json({ error: 'flag not found' });
+    const ownUndo = todo.flagged_by === req.auth.user.id && Date.now() - Date.parse(todo.created_at) <= UNDO_WINDOW_MS;
+    if (!ownUndo && !hasRole(req, businessId, 'admin')) {
+      return res.status(403).json({ error: 'Only whoever flagged it can undo, within 2 minutes - drop the flag instead' });
+    }
     if (await weekIsFinal(supabase, businessId, todo.week_start)) return res.status(409).json({ error: FINAL_ERROR });
     const { error: dErr } = await supabase.from('sales_week_goals').delete().eq('id', todo.id);
     if (dErr) throw new Error(dErr.message);
@@ -145,6 +153,25 @@ export async function unflagRoute(req, res) {
     }
     await supabase.from('sales_prospect_events').insert({ business_id: businessId, contact_id: todo.prospect_contact_id, field: 'unflagged', from_value: todo.id, changed_by: req.auth.user.email });
     res.json({ deleted: todo.id, prospect });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+}
+
+// POST /flags/:goalId/drop - close a flag without deleting it: the to-do
+// stays (status dropped) for Goals and the weekly report; logged.
+export async function dropFlagRoute(req, res) {
+  const { businessId, goalId } = req.params;
+  const supabase = getSupabase();
+  try {
+    const { data: todo, error } = await supabase.from('sales_week_goals').select('*').eq('business_id', businessId).eq('id', goalId).maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!todo || !todo.prospect_contact_id || ['done', 'dropped'].includes(todo.status)) return res.status(404).json({ error: 'open flag not found' });
+    if (await weekIsFinal(supabase, businessId, todo.week_start)) return res.status(409).json({ error: FINAL_ERROR });
+    const { data, error: uErr } = await supabase.from('sales_week_goals').update({ status: 'dropped', updated_at: new Date().toISOString() })
+      .eq('id', todo.id).eq('status', todo.status).select().maybeSingle();
+    if (uErr) throw new Error(uErr.message);
+    if (!data) return res.status(409).json({ error: 'This flag was just changed by someone else - refresh and try again' });
+    await supabase.from('sales_prospect_events').insert({ business_id: businessId, contact_id: todo.prospect_contact_id, field: 'flag_dropped', from_value: todo.status, to_value: 'dropped', changed_by: req.auth.user.email });
+    res.json({ todo: data });
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
 

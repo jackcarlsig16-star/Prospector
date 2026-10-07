@@ -9,7 +9,7 @@ import { allStepsDone, timeAgo } from './huddleView';
 // prospect contacted and close the to-do.
 const btn = { ...saSans, height: 32, padding: '0 12px', borderRadius: 8, fontSize: 13, cursor: 'pointer', color: SA.text, border: `1px solid ${SA.border}`, background: SA.surface2 };
 
-export default function FlaggedLane({ flags, prospectsById, lookup, canEdit, onToggleStep, onComplete, onOpen }) {
+export default function FlaggedLane({ flags, prospectsById, lookup, canEdit, onToggleStep, onComplete, onDrop, onOpen }) {
   const [error, setError] = useState('');
   const run = async fn => { setError(''); try { await fn(); } catch (e) { setError(e.message); } };
   if (!flags.length) return null;
@@ -31,6 +31,7 @@ export default function FlaggedLane({ flags, prospectsById, lookup, canEdit, onT
                 <span style={{ fontWeight: 600, color: SA.text }}>{p?.name || f.contacts[0] || 'Prospect'}</span>
                 <span style={{ fontSize: 13, color: SA.muted }}>{p?.company || f.contacts[1] || ''}</span>
                 <span style={{ flex: 1 }} />
+                {canEdit && <button type="button" title="Close this flag without doing it (kept in Goals as dropped)" onClick={() => { if (window.confirm('Drop this flag? It stays in Goals as dropped.')) run(() => onDrop(f)); }} style={{ ...btn, height: 28, color: SA.muted, background: 'transparent' }}>Drop</button>}
                 <button type="button" onClick={() => onOpen(f.prospect_contact_id)} style={{ ...btn, height: 28, color: SA.link, background: 'transparent' }}>Open</button>
               </div>
               <div style={{ fontSize: 12, color: SA.muted }}>
