@@ -124,28 +124,34 @@ async function targetsFor(supabase, businessId, period, starts) {
 
 export async function buildScorecard(supabase, businessId, month, ownerUserId) {
   const weeks = weeksOfMonth(month);
-  const manual = await manualActuals(supabase, businessId, weeks);
-  const weekGoals = await targetsFor(supabase, businessId, 'week', weeks);
-  const monthGoals = await targetsFor(supabase, businessId, 'month', [month]);
-  const partnerData = await loadPartnerData(supabase, businessId);
+  const monthEnd = weeks.length ? addDays(weeks[weeks.length - 1], 6) : month;
+  // Independent reads, so they run together (was ~2.5 s one after another).
+  const [manual, weekGoals, monthGoals, partnerData, { forOwner }] = await Promise.all([
+    manualActuals(supabase, businessId, weeks),
+    targetsFor(supabase, businessId, 'week', weeks),
+    targetsFor(supabase, businessId, 'month', [month]),
+    loadPartnerData(supabase, businessId),
+    mailboxesFor(supabase, businessId, ownerUserId),
+  ]);
   const keys = [...SCORECARD_METRICS, ...PARTNER_METRICS];
-  const perWeek = [];
-  for (const w of weeks) {
-    const actual = { ...await weekScorecard(supabase, businessId, w, ownerUserId, manual), ...partnerWeekMetrics(partnerData, w, ownerUserId) };
-    perWeek.push({ week_start: w, metrics: Object.fromEntries(keys.map(k => [k, { ...actual[k], goal: weekGoals.get(`${w}|${k}`) ?? null }])) });
-  }
+  const [weekActuals, monthOpenRate] = await Promise.all([
+    Promise.all(weeks.map(w => weekScorecard(supabase, businessId, w, ownerUserId, manual))),
+    weeks.length ? openRate(supabase, businessId, weeks[0], monthEnd, forOwner) : null,
+  ]);
+  const perWeek = weeks.map((w, i) => {
+    const actual = { ...weekActuals[i], ...partnerWeekMetrics(partnerData, w, ownerUserId) };
+    return { week_start: w, metrics: Object.fromEntries(keys.map(k => [k, { ...actual[k], goal: weekGoals.get(`${w}|${k}`) ?? null }])) };
+  });
   // Month column: sums for flows, the latest week's value for stock numbers.
   const vals = k => perWeek.map(w => w.metrics[k].value).filter(v => v != null);
   const last = k => { const v = vals(k); return v.length ? v[v.length - 1] : null; };
   const sum = k => { const v = vals(k); return v.length ? v.reduce((a, b) => a + b, 0) : null; };
-  const { forOwner } = await mailboxesFor(supabase, businessId, ownerUserId);
-  const monthEnd = weeks.length ? addDays(weeks[weeks.length - 1], 6) : month;
   const monthActual = {
     outbound_audience: sum('outbound_audience'),
     total_in_sequence: last('total_in_sequence'),
     sequences_running: last('sequences_running'),
     meetings_set: sum('meetings_set'),
-    open_rate: weeks.length ? await openRate(supabase, businessId, weeks[0], monthEnd, forOwner) : null,
+    open_rate: monthOpenRate,
     ...Object.fromEntries(PARTNER_METRICS.map(k => [k, PARTNER_FLOWS.includes(k) ? sum(k) : last(k)])),
   };
   return {
