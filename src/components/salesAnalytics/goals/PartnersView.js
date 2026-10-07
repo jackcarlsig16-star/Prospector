@@ -1,6 +1,5 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { SA, saSans } from '../theme';
-import { PRIORITY_COLORS } from '../palette';
 import Ring, { RingLegend } from '../charts/Ring';
 import { PIPELINE_STATUSES, WORKFLOW_STEPS, TIERS, TOUCH_STATUSES, isStalePartner, daysSinceTouch, stepOf, nextStepFor } from '../../../constants/partnerPipeline';
 import { cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle, Chip, Btn, AddButton, ErrorNote, ShowingChip } from './goalsUi';
@@ -8,18 +7,11 @@ import PartnerCard, { statusOf, statusLabel, statusColor, tierLabel } from './pa
 import WorkflowView from './partners/WorkflowView';
 import useMediaQuery from '../../../utils/useMediaQuery';
 
-const COLUMNS = [
-  { p: 1, title: 'P1', when: 'This week' },
-  { p: 2, title: 'P2', when: 'Next 30 days' },
-  { p: 3, title: 'P3', when: '60–90 days' },
-];
 // prospector_partners_mode - per-viewer convenience: last Partners layout
-// ('workflow' | 'board' | 'columns'). Values from before
-// sales-partners-workflow-v1 ('priority', 'pipeline') fall back to Workflow,
-// the new default. 'columns' (the old P1/P2/P3 cards with their buttons)
-// stays reachable until the Workflow rows get their actions (Stage 3-4).
+// ('workflow' | 'board'). Anything else (the retired 'priority' / 'columns'
+// layouts) opens on Workflow, the default.
 const MODE_KEY = 'prospector_partners_mode';
-const MODES = [['workflow', 'Workflow'], ['board', 'Board'], ['columns', 'Cards (old)']];
+const MODES = [['workflow', 'Workflow'], ['board', 'Board']];
 const UNDO_MS = 5000; // REVISABLE (spec)
 const readMode = () => { try { const m = localStorage.getItem(MODE_KEY); return MODES.some(([id]) => id === m) ? m : 'workflow'; } catch { return 'workflow'; } };
 const writeMode = m => { try { localStorage.setItem(MODE_KEY, m); } catch { /* private mode */ } };
@@ -81,6 +73,13 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
   const [draft, setDraft] = useState({ name: '', priority: '1' });
   const [addError, setAddError] = useState('');
   const [moved, setMoved] = useState(readMoved);
+  const [focus, setFocus] = useState(null);
+  const [historyBump, setHistoryBump] = useState(0);
+  // GoalsTab passes a fresh function each render; the drop-down's history
+  // effect needs a stable one.
+  const eventsRef = useRef(onEvents);
+  eventsRef.current = onEvents;
+  const fetchEvents = useCallback(goalId => eventsRef.current(goalId), []);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
 
   const today = localToday();
@@ -112,7 +111,7 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
     if (!toast) return;
     clearTimeout(toastTimer.current);
     setToast(t => ({ ...t, busy: true }));
-    try { const { goal } = await onUndo(toast.goalId, toast.eventId); onReplace(goal); setToast(null); }
+    try { const { goal } = await onUndo(toast.goalId, toast.eventId); onReplace(goal); setToast(null); setHistoryBump(n => n + 1); }
     catch (e) { setToast(t => ({ ...t, busy: false, error: e.message })); toastTimer.current = setTimeout(() => setToast(null), UNDO_MS); }
   };
   // Workflow rows: the toast says what happened and what's next; a teammate's
@@ -130,6 +129,7 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
         setMoved(m); writeMoved(m);
       }
       showToast({ text, goalId: p.id, eventId: event.id });
+      setHistoryBump(n => n + 1);
     } catch (e) {
       onReplace(p);
       if (/changed by someone else|already /i.test(e.message)) { await onRefresh(); showToast({ error: CHANGED_TEXT }); }
@@ -152,6 +152,9 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
     try { await onRank(goalId, order); } catch (e) { showToast({ error: e.message }); }
   };
 
+  const openPartner = id => { setOpenId(id); setFocus({ id }); };
+  const details = { canEdit, onUpdate, onEvents: fetchEvents, bump: historyBump };
+
   const setModeSaved = m => { setMode(m); writeMode(m); };
   const toggleTier = t => setFilters(f => ({ ...f, tiers: f.tiers.includes(t) ? f.tiers.filter(x => x !== t) : [...f.tiers, t] }));
 
@@ -169,8 +172,6 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
   const setOwner = id => setFilters(f => ({ ...f, owner: id }));
   const setStatus = id => setFilters(f => ({ ...f, status: id }));
 
-  const unprioritized = shown.filter(p => p.priority == null);
-  const priorityColumns = [...COLUMNS, ...(unprioritized.length ? [{ p: null, title: 'Unprioritized', when: 'Not placed yet' }] : [])];
 
   const add = async () => {
     if (!draft.name.trim()) return;
@@ -226,7 +227,7 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
           ? <div style={{ ...subStyle, fontSize: 13, marginTop: 4 }}>Nothing stale. Partners you haven't contacted yet don't count.</div>
           : <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
               {stale.map(p => (
-                <Chip key={p.id} role="button" tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => setOpenId(p.id)} onKeyDown={e => { if (e.key === 'Enter') setOpenId(p.id); }}>
+                <Chip key={p.id} role="button" tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => openPartner(p.id)} onKeyDown={e => { if (e.key === 'Enter') openPartner(p.id); }}>
                   <span style={{ color: SA.bad, ...numStyle }}>{daysSinceTouch(p)}d</span>{p.name} · {lookup(p.owner_user_id).first}
                 </Chip>
               ))}
@@ -238,20 +239,16 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
       {!error && partners.length > 0 && !shown.length && <p style={{ ...subStyle, margin: '20px 0 0' }}>No partners match these filters.</p>}
 
       {shown.length > 0 && mode === 'workflow' && <WorkflowView partners={partners} shown={shown} lookup={lookup} compact={compact} stage={stage} onStage={setStage}
-        rowActions={rowActions} onRank={canEdit && teamView && !filtering ? rank : null} movedNotes={moved} />}
+        rowActions={rowActions} onRank={canEdit && teamView && !filtering ? rank : null} movedNotes={moved} canEdit={canEdit} details={details} focus={focus} />}
       {shown.length > 0 && mode !== 'workflow' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginTop: 20 }}>
-          {mode === 'columns'
-            ? priorityColumns.map(c => (
-                <Column key={c.title} title={c.title} sub={c.when} color={PRIORITY_COLORS[c.p ?? 'none']} items={shown.filter(x => (x.priority ?? null) === c.p)} render={render} />
-              ))
-            : PIPELINE_STATUSES.map(s => {
-                const items = shown.filter(p => statusOf(p) === s.id);
-                if (!items.length) return null;
-                const paused = s.id === 'paused';
-                return <Column key={s.id} title={s.label} color={statusColor(s.id)} items={items} render={render}
-                  collapsed={paused && !showPaused} onCollapse={paused ? () => setShowPaused(v => !v) : null} />;
-              })}
+          {PIPELINE_STATUSES.map(s => {
+            const items = shown.filter(p => statusOf(p) === s.id);
+            if (!items.length) return null;
+            const paused = s.id === 'paused';
+            return <Column key={s.id} title={s.label} color={statusColor(s.id)} items={items} render={render}
+              collapsed={paused && !showPaused} onCollapse={paused ? () => setShowPaused(v => !v) : null} />;
+          })}
         </div>
       )}
 

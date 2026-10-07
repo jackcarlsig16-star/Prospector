@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SA, saSans } from '../../theme';
 import { WORKFLOW_STEPS, stepOf, isTouched, comparePartners } from '../../../../constants/partnerPipeline';
 import { labelStyle, h3Style, subStyle, numStyle, ShowingChip } from '../goalsUi';
 import { FAMILIES, familyOf, categoryNumber, categoryName } from './partnerTypes';
 import PartnerRow from './PartnerRow';
+import PartnerDetails from './PartnerDetails';
 
 // sales-partners-workflow-v1 - Partners as a workflow: one bar of every
 // partner by stage (click a segment to filter), the key, Top priorities,
@@ -88,8 +89,11 @@ function Key({ open, onToggle }) {
 // order) saves a move; reorder is off while a filter hides part of the
 // group, because the order is the team's and a partial list can't place a
 // row among rows you can't see.
-function Group({ cat, items, lookup, compact, rowActions, onRank, movedNotes }) {
+// details: { canEdit, onUpdate, onEvents } for the drop-downs. focus: { id }
+// from outside (the Stale list) - opens that row and scrolls to it.
+function Group({ cat, items, lookup, compact, rowActions, onRank, movedNotes, details, focus }) {
   const [showAll, setShowAll] = useState(false);
+  const [expandedId, setExpandedId] = useState(null); // one open drop-down per group
   const [dragId, setDragId] = useState(null);
   const [overId, setOverId] = useState(null);
   const fam = familyOf(cat);
@@ -101,6 +105,13 @@ function Group({ cat, items, lookup, compact, rowActions, onRank, movedNotes }) 
   for (const p of items) { const k = p.owner_user_id || 'none'; owners.set(k, (owners.get(k) || 0) + 1); }
   const n = categoryNumber(cat);
   const ids = sorted.map(p => p.id);
+  useEffect(() => {
+    if (!focus || !ids.includes(focus.id)) return;
+    if (ids.indexOf(focus.id) >= TOP) setShowAll(true);
+    setExpandedId(focus.id);
+    setTimeout(() => document.querySelector(`section[aria-label="${CSS.escape(categoryName(cat))}"] [data-partner-id="${focus.id}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focus]);
   const moveTo = (id, to) => {
     const from = ids.indexOf(id);
     if (from === to || to < 0 || to >= ids.length) return;
@@ -141,7 +152,9 @@ function Group({ cat, items, lookup, compact, rowActions, onRank, movedNotes }) 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         {shown.map((p, i) => {
           const actions = rowActions(p);
-          return <PartnerRow key={p.id} partner={p} lookup={lookup} compact={compact} movedNote={movedNotes[p.id]} actions={actions && { ...actions, rank: rankFor(p, i) }} />;
+          return <PartnerRow key={p.id} partner={p} lookup={lookup} compact={compact} movedNote={movedNotes[p.id]} actions={actions && { ...actions, rank: rankFor(p, i) }}
+            expanded={expandedId === p.id} onToggle={() => setExpandedId(expandedId === p.id ? null : p.id)}
+            details={<PartnerDetails partner={p} lookup={lookup} {...details} />} />;
         })}
       </div>
       {sorted.length > TOP && (
@@ -154,8 +167,10 @@ function Group({ cat, items, lookup, compact, rowActions, onRank, movedNotes }) 
   );
 }
 
-export default function WorkflowView({ partners, shown, lookup, compact, stage, onStage, rowActions = () => null, onRank = null, movedNotes = {} }) {
+export default function WorkflowView({ partners, shown, lookup, compact, stage, onStage, rowActions = () => null, onRank = null, movedNotes = {}, canEdit = false, details = {}, focus = null }) {
   const [keyOpen, setKeyOpen] = useState(readKeyOpen);
+  const [topOpen, setTopOpen] = useState(null);
+  const reorderOff = canEdit && (!onRank || stage);
   const visible = stage ? shown.filter(p => stageKey(p) === stage) : shown;
   const top = visible.filter(p => p.priority === 1 || p.hot).sort(comparePartners).slice(0, TOP);
   const cats = [...new Set(visible.map(p => p.category || null))].sort((a, b) => (categoryNumber(a) ?? 99) - (categoryNumber(b) ?? 99) || String(a).localeCompare(String(b)));
@@ -165,17 +180,19 @@ export default function WorkflowView({ partners, shown, lookup, compact, stage, 
       <OverallBar partners={partners} stage={stage} onStage={onStage} />
       <Key open={keyOpen} onToggle={() => { setKeyOpen(o => !o); writeKeyOpen(!keyOpen); }} />
       {stage && <div><ShowingChip label={stageLabel} count={visible.length} onClear={() => onStage(null)} /></div>}
+      {reorderOff && <span role="note" style={{ ...subStyle, fontSize: 12 }}>↕ Switch to Team, no filters, to reorder</span>}
       {top.length > 0 && (
         <section aria-label="Top priorities" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: 14, borderRadius: 12, border: `1px solid color-mix(in srgb, var(--sa-accent) 30%, var(--sa-border))`, background: 'color-mix(in srgb, var(--sa-accent) 5%, transparent)' }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
             <h3 style={h3Style}>Top priorities</h3>
             <span style={{ ...subStyle, fontSize: 12 }}>P1 and 🔥 hot partners across every category, highest first</span>
           </div>
-          {top.map(p => <PartnerRow key={p.id} partner={p} lookup={lookup} compact={compact} showCategory movedNote={movedNotes[p.id]} actions={rowActions(p)} />)}
+          {top.map(p => <PartnerRow key={p.id} partner={p} lookup={lookup} compact={compact} showCategory movedNote={movedNotes[p.id]} actions={rowActions(p)}
+            expanded={topOpen === p.id} onToggle={() => setTopOpen(topOpen === p.id ? null : p.id)} details={<PartnerDetails partner={p} lookup={lookup} {...details} />} />)}
         </section>
       )}
       {cats.map(c => <Group key={c || 'none'} cat={c} items={visible.filter(p => (p.category || null) === c)} lookup={lookup} compact={compact}
-        rowActions={rowActions} onRank={stage ? null : onRank} movedNotes={movedNotes} />)}
+        rowActions={rowActions} onRank={stage ? null : onRank} movedNotes={movedNotes} details={details} focus={focus} />)}
     </div>
   );
 }

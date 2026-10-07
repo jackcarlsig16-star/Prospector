@@ -56,16 +56,16 @@ function MoreMenu({ partner, members, onSignal }) {
   useEffect(() => {
     if (!open) return;
     const close = e => { if (box.current && !box.current.contains(e.target)) setOpen(false); };
-    const esc = e => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', esc);
-    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
+    return () => document.removeEventListener('mousedown', close);
   }, [open]);
+  // Escape closes the menu only - not the row's drop-down around it.
+  const onKeyDown = e => { if (e.key === 'Escape' && open) { e.stopPropagation(); setOpen(false); } };
   const go = signal => { setOpen(false); onSignal(signal); };
   const status = partner.pipeline_status || 'not_started';
   const current = stepOf(status);
   return (
-    <div ref={box} style={{ position: 'relative' }}>
+    <div ref={box} onKeyDown={onKeyDown} style={{ position: 'relative' }}>
       <Btn style={{ height: 36, padding: '0 10px', whiteSpace: 'nowrap' }} aria-haspopup="menu" aria-expanded={open} aria-label={`More actions for ${partner.name}`}
         onClick={() => { setOpen(o => !o); setPanel('root'); }}>⋯ More</Btn>
       {open && (
@@ -115,7 +115,8 @@ function MoreMenu({ partner, members, onSignal }) {
 }
 
 // actions (Member+ only): { onNext, onSignal, members, rank: { onUp, onDown, canUp, canDown, drag } }
-export default function PartnerRow({ partner, lookup, compact, showCategory, movedNote, actions }) {
+// expanded/onToggle/details: the drop-down (research, intel, history).
+export default function PartnerRow({ partner, lookup, compact, showCategory, movedNote, actions, expanded, onToggle, details }) {
   const fam = familyOf(partner.category);
   const owner = partner.owner_user_id ? lookup(partner.owner_user_id) : null;
   const days = daysSinceTouch(partner);
@@ -129,7 +130,8 @@ export default function PartnerRow({ partner, lookup, compact, showCategory, mov
   const drag = rank?.drag;
   const onNext = async () => { setBusy(true); try { await actions.onNext(partner); } finally { setBusy(false); } };
   return (
-    <div data-partner-id={partner.id} draggable={!!drag} onDragStart={drag?.onStart} onDragOver={drag?.onOver} onDrop={drag?.onDrop} onDragEnd={drag?.onEnd}
+    <div data-partner-id={partner.id} draggable={!!drag && !expanded} onDragStart={drag?.onStart} onDragOver={drag?.onOver} onDrop={drag?.onDrop} onDragEnd={drag?.onEnd}
+      onKeyDown={e => { if (e.key === 'Escape' && expanded) onToggle(); }}
       style={{ display: 'flex', alignItems: 'stretch', background: SA.inset, border: `1px solid ${drag?.target ? SA.accent : SA.border}`, borderRadius: 10, opacity: drag?.dragging ? 0.5 : 1 }}>
       <span aria-hidden="true" title={fam.label} style={{ width: 4, flex: 'none', background: fam.color, borderRadius: '10px 0 0 10px' }} />
       {rank && (
@@ -139,14 +141,17 @@ export default function PartnerRow({ partner, lookup, compact, showCategory, mov
           <button type="button" style={{ ...smallBtn, opacity: rank.canDown ? 1 : 0.3 }} disabled={!rank.canDown} aria-label={`Move ${partner.name} down`} onClick={rank.onDown}>▼</button>
         </div>
       )}
-      <div style={{ flex: 1, minWidth: 0, display: 'grid', gridTemplateColumns: compact ? '1fr' : `minmax(150px, 1fr) minmax(170px, 1.3fr) ${actions ? 'auto' : '56px'}`, gap: compact ? 8 : 16, alignItems: 'center', padding: rank ? '10px 12px 10px 4px' : '10px 12px' }}>
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : `minmax(150px, 1fr) minmax(170px, 1.3fr) ${actions ? 'auto' : '56px'}`, gap: compact ? 8 : 16, alignItems: 'center', padding: rank ? '10px 12px 10px 4px' : '10px 12px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <button type="button" aria-expanded={!!expanded} onClick={onToggle} title={expanded ? 'Hide details' : 'Show research, intel and history'}
+            style={{ all: 'unset', ...saSans, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, borderRadius: 6 }}>
+            <span aria-hidden="true" style={{ color: SA.muted, fontSize: 11, width: 10 }}>{expanded ? '▾' : '▸'}</span>
             {fam.mark && <span aria-label={fam.label} title={fam.label} style={{ color: fam.color }}>{fam.mark}</span>}
             {owner && <span title={owner.first} aria-label={`Owner ${owner.first}`} style={{ width: 8, height: 8, borderRadius: 999, background: owner.color, flex: 'none' }} />}
             <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{partner.name}</span>
             {partner.hot && <span aria-label="Hot" title="Hot">🔥</span>}
-          </div>
+          </button>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             {partner.priority && <Chip style={{ height: 20, color: partner.priority === 1 ? SA.text : SA.soft, borderColor: partner.priority === 1 ? SA.accent : SA.border }}>P{partner.priority}</Chip>}
             {partner.tier && <Chip style={{ height: 20 }}>{tierLabel(partner.tier)}</Chip>}
@@ -167,6 +172,8 @@ export default function PartnerRow({ partner, lookup, compact, showCategory, mov
             <MoreMenu partner={partner} members={actions.members} onSignal={actions.onSignal} />
           </div>
         )}
+      </div>
+      {expanded && details}
       </div>
     </div>
   );
