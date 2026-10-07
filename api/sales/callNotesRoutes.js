@@ -1,17 +1,23 @@
 import { createHash } from 'crypto';
-import { getSupabase, isDate, addDays } from './goalsShared.js';
-import { LINKABLE_METRICS } from './goalsRoutes.js';
+import { getSupabase, isDate, addDays, validate, fail, weekIsFinal, FINAL_ERROR } from './goalsShared.js';
+import { LINKABLE_METRICS, WEEK_FIELDS, checkLink } from './goalsRoutes.js';
+import { hasRole } from '../lib/requireAuth.js';
 import { laDateString } from './laDate.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { callAnthropic } from '../businesses/shared.js';
 import { MODELS, estimateCostUsd } from '../../src/config/models.js';
 
 // call-notes-to-tasks-v1 - pasted internal call notes -> proposed Goals
-// to-dos. Extract writes nothing but the AI usage row; the notes text is
-// never logged.
+// to-dos -> the ones the person kept, created this week with a back-link to
+// the stored note. Extract writes nothing but the AI usage row; the notes
+// text is never logged.
 
 const MAX_CHARS = 120000;
 const MAX_TASKS = 30;
+const MAX_STEPS = 10;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TASK_FIELDS = Object.fromEntries(['text', 'owner_user_id', 'due_date', 'link_type', 'link_id'].map(k => [k, WEEK_FIELDS[k]]));
+const SIMILAR_WEEKS = 4;
 const PHONE = /(?:\+?\d[\d\s().-]{7,}\d)/g;
 
 const clean = (v, max) => (typeof v === 'string' ? v.replace(PHONE, '[number removed]').replace(/\s+/g, ' ').trim().slice(0, max) : '');
@@ -32,20 +38,25 @@ Rules:
 Reply with JSON only, no prose:
 {"summary":["","",""],"tasks":[{"text":"","owner":null,"due_date":null,"link":null,"company_name":null,"steps":[],"evidence":""}]}`;
 
+const weekOf = day => addDays(day, -((new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7));
+const md = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+export const callCategory = (callDate, title) => ['From calls', md(callDate), title].filter(Boolean).join(' · ');
+
 async function context(supabase, businessId, today) {
-  const dow = new Date(`${today}T12:00:00Z`).getUTCDay();
-  const week = addDays(today, -((dow + 6) % 7));
-  const [members, partners, commitments, companies] = await Promise.all([
+  const week = weekOf(today);
+  const [members, partners, commitments, recent, companies] = await Promise.all([
     supabase.from('business_members').select('user_id, name, profile:profiles!business_members_user_id_fkey(display_name)')
       .eq('business_id', businessId).not('user_id', 'is', null),
     supabase.from('sales_goals').select('id, name').eq('business_id', businessId).eq('goal_type', 'partnership').is('archived_at', null),
     supabase.from('sales_week_goals').select('id, text').eq('business_id', businessId).eq('kind', 'commitment').eq('week_start', week).neq('status', 'dropped'),
+    supabase.from('sales_week_goals').select('id, text').eq('business_id', businessId).eq('kind', 'todo').not('source_note_id', 'is', null)
+      .gte('week_start', addDays(week, -7 * SIMILAR_WEEKS)).neq('status', 'dropped').limit(500),
     selectAllPages(() => supabase.from('sales_sequenced_accounts').select('account_id, name').eq('business_id', businessId).order('account_id')),
   ]);
-  for (const r of [members, partners, commitments]) if (r.error) throw new Error(r.error.message);
+  for (const r of [members, partners, commitments, recent]) if (r.error) throw new Error(r.error.message);
   return {
     members: members.data.map(m => ({ id: m.user_id, name: m.profile?.display_name || m.name })),
-    partners: partners.data, commitments: commitments.data, companies: companies.filter(c => c.name),
+    partners: partners.data, commitments: commitments.data, companies: companies.filter(c => c.name), recent: recent.data,
   };
 }
 
@@ -57,6 +68,21 @@ function matchCompany(name, companies) {
   if (exact.length === 1) return exact[0];
   const partial = companies.filter(c => { const cn = norm(c.name); return cn.length >= 3 && (cn.includes(n) || n.includes(cn)); });
   return partial.length === 1 ? partial[0] : null;
+}
+
+// Same action from an earlier call: most words in common, counted against
+// the longer of the two so a short task can't match a long one by subset.
+const STOP = new Set(['a', 'an', 'and', 'to', 'of', 'for', 'with', 'on', 'in', 'at', 'by', 'about', 'from', 'up']);
+const taskWords = s => new Set(norm(s).split(' ').filter(w => w.length > 1 && !STOP.has(w)));
+export function similarTask(text, existing) {
+  const a = taskWords(text);
+  let best = null, score = 0;
+  for (const t of existing) {
+    const b = taskWords(t.text);
+    const s = [...a].filter(w => b.has(w)).length / Math.max(a.size, b.size, 1);
+    if (s > score) { best = t; score = s; }
+  }
+  return score >= 0.6 ? { id: best.id, text: best.text } : null;
 }
 
 // The model names the owner; the server picks the member. Every word of the
@@ -87,8 +113,9 @@ export function toProposals(raw, ctx) {
       due_date: isDate(t.due_date) ? t.due_date : null,
       link_type: link?.type || null, link_id: link?.id || null,
       company_name: link ? null : clean(t.company_name, 120) || null,
-      steps: (Array.isArray(t.steps) ? t.steps : []).map(s => clean(s, 200)).filter(Boolean).slice(0, 10),
+      steps: (Array.isArray(t.steps) ? t.steps : []).map(s => clean(s, 200)).filter(Boolean).slice(0, MAX_STEPS),
       evidence: clean(t.evidence, 200),
+      similar_to: similarTask(text, ctx.recent || []),
     };
   }).filter(Boolean);
   const summary = (Array.isArray(raw?.summary) ? raw.summary : []).map(s => clean(s, 240)).filter(Boolean).slice(0, 3);
@@ -105,6 +132,9 @@ export async function extractCallNotesRoute(req, res) {
   const callDate = call_date || laDateString();
   const supabase = getSupabase();
   try {
+    const hash = noteHash(text);
+    const earlier = await findNote(supabase, businessId, hash);
+    if (earlier) return res.json({ duplicate: earlier });
     const ctx = await context(supabase, businessId, laDateString());
     const lists = [
       `CALL DATE: ${callDate}`, title ? `CALL TITLE: ${clean(title, 200)}` : '',
@@ -125,11 +155,99 @@ export async function extractCallNotesRoute(req, res) {
     let raw;
     try { raw = JSON.parse(json); } catch { return res.status(502).json({ error: 'Could not read the AI reply - try again' }); }
     res.json({
-      call_date: callDate, hash: noteHash(text), ...toProposals(raw, ctx),
+      call_date: callDate, hash, ...toProposals(raw, ctx),
       usage: { model, input_tokens: data.usage?.input_tokens ?? null, output_tokens: data.usage?.output_tokens ?? null, cost_usd: estimateCostUsd(model, data.usage) },
     });
   } catch (e) {
     console.error('[call-notes/extract]', e.message);
     res.status(500).json({ error: e.message });
   }
+}
+
+// The same notes pasted again (by hash) -> the earlier note and how many
+// to-dos came from it, instead of a second AI call or a second set of tasks.
+async function findNote(supabase, businessId, hash) {
+  const { data, error } = await supabase.from('sales_call_notes').select('id, title, call_date, created_at')
+    .eq('business_id', businessId).eq('hash', hash).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  const { count, error: countErr } = await supabase.from('sales_week_goals').select('id', { count: 'exact', head: true })
+    .eq('business_id', businessId).eq('source_note_id', data.id);
+  if (countErr) throw new Error(countErr.message);
+  return { ...data, task_count: count };
+}
+
+// POST /goals/call-notes { text, title?, call_date, tasks: [{ text, owner_user_id,
+// due_date, link_type, link_id, steps: [text] }] } - stores the note and creates
+// the reviewed to-dos in this week, category "From calls · <date> · <title>".
+export async function createFromCallNotesRoute(req, res) {
+  const { text, title, call_date, tasks } = req.body || {};
+  if (typeof text !== 'string' || !text.trim()) return res.status(400).json({ error: 'text is required' });
+  if (text.length > MAX_CHARS) return res.status(413).json({ error: `notes are too long (${text.length} characters, max ${MAX_CHARS})` });
+  if (!isDate(call_date)) return res.status(400).json({ error: 'call_date must be YYYY-MM-DD' });
+  if (title != null && typeof title !== 'string') return res.status(400).json({ error: 'title must be text' });
+  if (!Array.isArray(tasks) || !tasks.length || tasks.length > MAX_TASKS) return res.status(400).json({ error: `tasks must be a list of 1-${MAX_TASKS}` });
+  const businessId = req.params.businessId;
+  const userId = req.auth.user.id;
+  const supabase = getSupabase();
+  try {
+    const rows = [];
+    for (const [i, t] of tasks.entries()) {
+      const { steps = [], ...fields } = t || {};
+      if (!Array.isArray(steps) || steps.length > MAX_STEPS || !steps.every(s => typeof s === 'string' && s.trim())) {
+        return res.status(400).json({ error: `task ${i + 1}: steps must be up to ${MAX_STEPS} non-empty lines` });
+      }
+      const v = await validate(supabase, businessId, TASK_FIELDS, fields);
+      if (v.error) return fail(res, { ...v, error: `task ${i + 1}: ${v.error}` });
+      if (!v.payload.text) return res.status(400).json({ error: `task ${i + 1}: text is required` });
+      const linkErr = await checkLink(supabase, businessId, { kind: 'todo', ...v.payload }, null);
+      if (linkErr) return fail(res, { ...linkErr, error: `task ${i + 1}: ${linkErr.error}` });
+      rows.push({ payload: v.payload, steps: steps.map(s => s.trim()) });
+    }
+    const week = weekOf(laDateString());
+    if (await weekIsFinal(supabase, businessId, week)) return res.status(409).json({ error: FINAL_ERROR });
+
+    const hash = noteHash(text);
+    const { data: note, error: noteErr } = await supabase.from('sales_call_notes')
+      .insert({ business_id: businessId, title: title?.trim() || null, call_date, text, hash, created_by: userId })
+      .select('id, title, call_date, created_at').single();
+    if (noteErr?.code === '23505') return res.status(409).json({ error: 'These notes were already turned into tasks', duplicate: await findNote(supabase, businessId, hash) });
+    if (noteErr) throw new Error(noteErr.message);
+
+    // No transaction across the three inserts, so a failure removes what this
+    // call already wrote - re-pasting the notes must then work.
+    const undo = async goalIds => {
+      if (goalIds?.length) await supabase.from('sales_week_goals').delete().in('id', goalIds);
+      await supabase.from('sales_call_notes').delete().eq('id', note.id);
+    };
+    const category = callCategory(call_date, note.title);
+    const { data: goals, error: goalErr } = await supabase.from('sales_week_goals').insert(rows.map((r, i) => ({
+      business_id: businessId, week_start: week, kind: 'todo', status: 'open', ...r.payload,
+      category, source_note_id: note.id, sort_order: i, created_by: userId,
+    }))).select();
+    if (goalErr) { await undo(); throw new Error(goalErr.message); }
+    goals.sort((a, b) => a.sort_order - b.sort_order);
+    const steps = rows.flatMap((r, i) => r.steps.map((s, n) => ({ business_id: businessId, goal_id: goals[i].id, text: s, sort_order: n })));
+    if (steps.length) {
+      const { error: stepErr } = await supabase.from('sales_week_goal_steps').insert(steps);
+      if (stepErr) { await undo(goals.map(g => g.id)); throw new Error(stepErr.message); }
+    }
+    res.status(201).json({ note, goals });
+  } catch (e) {
+    console.error('[call-notes/create]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+}
+
+// GET /goals/call-notes/:id - the source note behind a to-do. Members only:
+// a Viewer sees the to-do but not the call text.
+export async function getCallNoteRoute(req, res) {
+  const businessId = req.params.businessId;
+  if (!hasRole(req, businessId, 'member')) return res.status(403).json({ error: 'Call notes are visible to members only' });
+  if (!UUID.test(req.params.id)) return res.status(404).json({ error: 'note not found' });
+  const { data, error } = await getSupabase().from('sales_call_notes').select('id, title, call_date, text, created_by, created_at')
+    .eq('business_id', businessId).eq('id', req.params.id).maybeSingle();
+  if (error) return res.status(500).json({ error: error.message });
+  if (!data) return res.status(404).json({ error: 'note not found' });
+  res.json({ note: data });
 }

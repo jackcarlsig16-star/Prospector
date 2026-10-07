@@ -43,7 +43,7 @@ const MONTH_FIELDS = {
   measurable_target: { kind: 'text' }, status: { kind: 'enum', values: MONTH_STATUSES },
   progress_note: { kind: 'text' }, sort_order: { kind: 'int' },
 };
-const WEEK_FIELDS = {
+export const WEEK_FIELDS = {
   week_start: { kind: 'monday' }, text: { kind: 'required' }, owner_user_id: { kind: 'member' },
   measurable_target: { kind: 'text' }, status: { kind: 'enum', values: WEEK_STATUSES },
   why_not_done: { kind: 'text' }, sort_order: { kind: 'int' },
@@ -74,7 +74,7 @@ function weekTimestamps(payload, existing) {
 
 // link_type and link_id are set together (both null clears). Only a to-do
 // links, to one thing in this workspace. Returns a validate()-style error.
-async function checkLink(supabase, businessId, payload, existing) {
+export async function checkLink(supabase, businessId, payload, existing) {
   const touched = 'link_type' in payload || 'link_id' in payload;
   const type = 'link_type' in payload ? payload.link_type : existing?.link_type ?? null;
   const id = 'link_id' in payload ? payload.link_id : existing?.link_id ?? null;
@@ -369,7 +369,7 @@ export async function carryOverWeekGoalsRoute(req, res) {
         kind: g.kind, category: g.category, contacts: g.contacts, link_target: g.link_target,
         metric_key: g.metric_key, target_value: g.target_value, carried_from_id: g.id, sort_order: g.sort_order,
         prospect_contact_id: g.prospect_contact_id, flag_note: g.flag_note, flagged_by: g.flagged_by,
-        due_date: g.due_date, link_type: g.link_type, link_id: g.link_id, created_by: g.created_by,
+        due_date: g.due_date, link_type: g.link_type, link_id: g.link_id, source_note_id: g.source_note_id, created_by: g.created_by,
       }).select().single();
       if (error?.code === '23505') continue;
       if (error) throw new Error(error.message);

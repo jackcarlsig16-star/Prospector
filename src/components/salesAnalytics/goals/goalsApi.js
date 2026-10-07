@@ -32,7 +32,7 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
     if (res.status === 500 && MIGRATION_PATTERN.test(data.error || '')) throw new NeedsMigrationError();
     throw new Error(data.error || `Request failed (${res.status})`);
   }
-  if (method !== 'GET' && /^\/(week|steps)\b/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
+  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
 }
 
@@ -46,6 +46,11 @@ export const goalsApi = {
   updateWeekGoal: (id, goalId, body) => call(id, `/week/${goalId}`, { method: 'PATCH', body }).then(d => d.goal),
   deleteWeekGoal: (id, goalId) => call(id, `/week/${goalId}`, { method: 'DELETE' }),
   carryOver: (id, weekStart, kind) => call(id, '/week/carry-over', { method: 'POST', body: { week_start: weekStart, kind } }),
+
+  // call-notes-to-tasks-v1 - extract writes nothing; create stores the note + the kept to-dos.
+  extractCallNotes: (id, body) => call(id, '/call-notes/extract', { method: 'POST', body }),
+  createFromCallNotes: (id, body) => call(id, '/call-notes', { method: 'POST', body }),
+  callNote: (id, noteId) => call(id, `/call-notes/${noteId}`).then(d => d.note),
 
   createStep: (id, goalId, body) => call(id, `/week/${goalId}/steps`, { method: 'POST', body }).then(d => d.step),
   updateStep: (id, stepId, body) => call(id, `/steps/${stepId}`, { method: 'PATCH', body }).then(d => d.step),

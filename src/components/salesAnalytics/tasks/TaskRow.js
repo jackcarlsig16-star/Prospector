@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { SA, saSans } from '../theme';
 import { SEMANTIC } from '../palette';
 import LinkPicker, { chipStyle } from './LinkPicker';
+import SourceNote from './SourceNote';
 
 export const md = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 export const linkBtn = { all: 'unset', cursor: 'pointer', color: SA.link, fontSize: 13, minHeight: 28, display: 'inline-flex', alignItems: 'center' };
 const fieldStyle = { all: 'unset', ...saSans, fontSize: 12, color: SA.soft, cursor: 'pointer' };
 
-function Box({ checked, disabled, title, onClick, label }) {
+export function Box({ checked, disabled, title, onClick, label }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled} aria-pressed={checked} aria-label={label} title={title}
       style={{ width: 22, height: 22, flex: 'none', borderRadius: 6, border: `1.5px solid ${checked ? SEMANTIC.healthy : SA.borderStrong}`, background: checked ? SEMANTIC.healthy : 'transparent', cursor: disabled ? 'default' : 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: 0 }}>
@@ -101,6 +102,7 @@ export default function TaskRow({ t, isFlag, isOpen, onToggle, members, lookup, 
               {can.edit && <AddStep taskText={t.text} onAdd={text => act.addStep(t, text)} />}
               {t.flag_note && <span style={{ fontSize: 13, color: SA.soft }}>From {lookup(t.flagged_by).first}: “{t.flag_note}”</span>}
               {t.contacts.length > 0 && <span style={{ fontSize: 13, color: SA.muted }}>With {t.contacts.join(', ')}</span>}
+              {t.source_note_id && <SourceNote noteId={t.source_note_id} category={t.category} canRead={can.edit} load={act.loadNote} />}
               {t.week_start !== week && <span style={{ fontSize: 12, color: SA.warn }}>From the week of {md(t.week_start)}</span>}
               <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
                 <button type="button" style={linkBtn} onClick={act.openInGoals}>Open in Goals →</button>

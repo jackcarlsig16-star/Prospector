@@ -9,6 +9,7 @@ import { memberLookup, labelStyle, ErrorNote, ShowingChip } from '../goals/goals
 import { buildTaskGroups, badgeCount } from './taskGroups';
 import { useLinkOptions } from './linkTargets';
 import QuickAdd from './QuickAdd';
+import CallNotesPanel from './CallNotesPanel';
 import TaskRow, { linkBtn } from './TaskRow';
 
 // task-drawer-v1 - a second view of the Goals to-dos, on every page of a
@@ -42,6 +43,7 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
   const [showDone, setShowDone] = useState(false);
   const [toast, setToast] = useState(null); // { text, undo? }
   const [error, setError] = useState('');
+  const [pasting, setPasting] = useState(false);
 
   const load = useCallback(() => Promise.all([goalsApi.weekGoals(businessId, week, week, 'todo'), fetchFlags(businessId)])
     .then(([t, f]) => { setTodos(t); setFlags(f); setError(''); })
@@ -63,13 +65,14 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
     return () => window.removeEventListener(OPEN_TASKS, onOpenTasks);
   }, []);
   // A Goals link's filter lasts until the drawer closes; the next open is the plain list.
-  useEffect(() => { writeOpen(open); if (!open) setLinkFilter(null); }, [open]);
+  useEffect(() => { writeOpen(open); if (!open) { setLinkFilter(null); setPasting(false); } }, [open]);
   useEffect(() => {
     if (!open) return;
-    const onKey = e => { if (e.key === 'Escape') setOpen(false); };
+    // While pasting notes, Escape would throw the pasted text away - Cancel does that.
+    const onKey = e => { if (e.key === 'Escape' && !pasting) setOpen(false); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open]);
+  }, [open, pasting]);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), UNDO_MS);
@@ -155,7 +158,13 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
     { id: 'unassigned', label: 'Unassigned', color: lookup(null).color },
   ];
 
-  const act = { setDone, reassign, update, toggleStep, addStep, remove, drop, openInGoals };
+  const loadNote = noteId => goalsApi.callNote(businessId, noteId);
+  const showCalls = () => { setPasting(false); setLinkFilter(null); setFilter('team'); };
+  const created = (n, note) => {
+    showCalls();
+    setToast({ text: `Created ${n} task${n === 1 ? '' : 's'} from ${note.title ? `“${note.title}”` : 'the call notes'}` });
+  };
+  const act = { setDone, reassign, update, toggleStep, addStep, remove, drop, openInGoals, loadNote };
   const row = t => (
     <TaskRow key={t.id} t={t} isFlag={flagIds.has(t.id)} isOpen={expanded.has(t.id)} onToggle={() => toggleExpanded(t.id)}
       members={members} lookup={lookup} links={links} today={today} week={week}
@@ -186,38 +195,44 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
           <header style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 12px 12px 16px', borderBottom: `1px solid ${SA.border}` }}>
             <h2 id="task-drawer-title" style={{ ...SA_TYPE.cardTitle, fontSize: 17, margin: 0, color: SA.text }}>Tasks</h2>
             <Badge n={badge} />
-            {/* Header slot: "Paste call notes" (call-notes-to-tasks-v1) and "Log outreach" (sales-quick-add-research-v1). */}
             <div style={{ flex: 1 }} />
+            {/* Header slot: "Log outreach" (sales-quick-add-research-v1) goes next to this. */}
+            {canEdit && !pasting && <button type="button" onClick={() => setPasting(true)} style={pill(false)}>📝 Paste call notes</button>}
             <button type="button" onClick={() => setOpen(false)} aria-label="Close tasks"
               style={{ all: 'unset', cursor: 'pointer', width: 44, height: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: SA.muted }}>×</button>
           </header>
-          {canEdit && <QuickAdd meId={meId} members={members} lookup={lookup} links={links} onAdd={add} />}
-          <div role="group" aria-label="Whose tasks" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '12px 16px' }}>
-            {filters.map(f => (
-              <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)} style={pill(filter === f.id)}>
-                {f.color && <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: f.color }} />}{f.label}
-              </button>
-            ))}
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px' }}>
-            {linkFilter && <div style={{ marginBottom: 4 }}><ShowingChip label={links.labelFor(linkFilter.type, linkFilter.id)} count={groups.reduce((n, g) => n + g.items.length, 0)} onClear={() => setLinkFilter(null)} /></div>}
-            {me && !canEdit && <p style={{ fontSize: 13, color: SA.muted, margin: '0 0 8px' }}>You have view access, so tasks are read-only.</p>}
-            {error && <div style={{ marginBottom: 8 }}><ErrorNote message={error} /></div>}
-            {groups.filter(g => g.items.length).map(g => (
-              <section key={g.id} aria-label={g.label} style={{ marginTop: 12 }}>
-                {g.id === 'done' ? (
-                  <button type="button" onClick={() => setShowDone(v => !v)} aria-expanded={showDone} style={{ ...linkBtn, ...labelStyle, color: SA.soft }}>
-                    {showDone ? '▾' : '▸'} {g.label} · {g.items.length}
+          {pasting && canEdit && <CallNotesPanel businessId={businessId} members={members} lookup={lookup} links={links} onClose={() => setPasting(false)} onCreated={created} onShowCalls={showCalls} />}
+          {!pasting && canEdit && <QuickAdd meId={meId} members={members} lookup={lookup} links={links} onAdd={add} />}
+          {!pasting && (
+            <>
+              <div role="group" aria-label="Whose tasks" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '12px 16px' }}>
+                {filters.map(f => (
+                  <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)} style={pill(filter === f.id)}>
+                    {f.color && <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: f.color }} />}{f.label}
                   </button>
-                ) : (
-                  <span style={{ ...labelStyle, color: g.id === 'overdue' ? SA.bad : g.id === 'flagged' ? SA.warn : SA.soft }}>{g.label} · {g.items.length}</span>
-                )}
-                {(g.id !== 'done' || showDone) && <ul style={{ listStyle: 'none', margin: '6px 0 0', padding: 0 }}>{g.items.map(row)}</ul>}
-              </section>
-            ))}
-            {meId && !groups.some(g => g.items.length) && !error && <p style={{ fontSize: 14, color: SA.muted, marginTop: 16 }}>Nothing here for this week.</p>}
-            <button type="button" style={{ ...linkBtn, marginTop: 16 }} onClick={openInGoals}>Open Goals → This week</button>
-          </div>
+                ))}
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px' }}>
+                {linkFilter && <div style={{ marginBottom: 4 }}><ShowingChip label={links.labelFor(linkFilter.type, linkFilter.id)} count={groups.reduce((n, g) => n + g.items.length, 0)} onClear={() => setLinkFilter(null)} /></div>}
+                {me && !canEdit && <p style={{ fontSize: 13, color: SA.muted, margin: '0 0 8px' }}>You have view access, so tasks are read-only.</p>}
+                {error && <div style={{ marginBottom: 8 }}><ErrorNote message={error} /></div>}
+                {groups.filter(g => g.items.length).map(g => (
+                  <section key={g.id} aria-label={g.label} style={{ marginTop: 12 }}>
+                    {g.id === 'done' ? (
+                      <button type="button" onClick={() => setShowDone(v => !v)} aria-expanded={showDone} style={{ ...linkBtn, ...labelStyle, color: SA.soft }}>
+                        {showDone ? '▾' : '▸'} {g.label} · {g.items.length}
+                      </button>
+                    ) : (
+                      <span style={{ ...labelStyle, color: g.id === 'overdue' ? SA.bad : g.id === 'flagged' ? SA.warn : SA.soft }}>{g.label} · {g.items.length}</span>
+                    )}
+                    {(g.id !== 'done' || showDone) && <ul style={{ listStyle: 'none', margin: '6px 0 0', padding: 0 }}>{g.items.map(row)}</ul>}
+                  </section>
+                ))}
+                {meId && !groups.some(g => g.items.length) && !error && <p style={{ fontSize: 14, color: SA.muted, marginTop: 16 }}>Nothing here for this week.</p>}
+                <button type="button" style={{ ...linkBtn, marginTop: 16 }} onClick={openInGoals}>Open Goals → This week</button>
+              </div>
+            </>
+          )}
           {toast && (
             <div role="status" style={{ margin: 12, padding: '10px 12px', borderRadius: SA_SHAPE.radiusInner, background: SA.surface2, border: `1px solid ${SA.border}`, display: 'flex', alignItems: 'center', gap: 12, fontSize: 13 }}>
               <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{toast.text}</span>

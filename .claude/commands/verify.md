@@ -8,8 +8,11 @@ allowed-tools: [Bash, Read]
 Argument: the stage, e.g. `goals-surface-v1 stage 5`. Follow CLAUDE.md "Testing rules" exactly.
 
 1. Unit suites, ONE AT A TIME, each capped at 4 minutes, in this order. For each, print `<file>: <Tests line>`:
-   `ls src/components/salesAnalytics/*.test.js src/components/salesAnalytics/goals/*.test.js src/components/salesAnalytics/goals/partners/*.test.js`, then for each file:
+   `ls src/components/salesAnalytics/*.test.js src/components/salesAnalytics/goals/*.test.js src/components/salesAnalytics/goals/partners/*.test.js src/components/salesAnalytics/tasks/*.test.js`, then for each file:
    `CI=true perl -e 'alarm 240; exec @ARGV' npx react-scripts test --watchAll=false <file> 2>&1 | grep -E "Tests:|✕"`
+   Then the server-side suites (react-scripts' Jest only collects `src/`), also one at a time:
+   `ls api/sales/*.test.mjs`, then for each file:
+   `perl -e 'alarm 240; exec @ARGV' node --test <file> 2>&1 | grep -E "^ℹ (tests|pass|fail)|✖"`
    Stop and report on the first failure; don't keep going.
 2. Real-data check: look for `scripts/verify/<stage-slug>.*` (e.g. `scripts/verify/goals-surface-v1-stage5.cjs`).
    - If it exists: read it first, state its declared scope (users/rows it touches, runtime, cap), then run it with `perl -e 'alarm 250; exec @ARGV' node <file> <scratchpad dir>`.

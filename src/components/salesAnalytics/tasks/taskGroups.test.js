@@ -33,6 +33,17 @@ test('groups: overdue by due date, done by status or all steps, dropped hidden',
   expect(g.calls.items).toEqual([]);
 });
 
+test('open to-dos from call notes go in From calls; overdue and done ones stay in those groups', () => {
+  const n = { source_note_id: 'n1' };
+  const todos = [todo('a'), todo('k', n), todo('l', { ...n, due_date: '2026-10-05' }), todo('m', { ...n, status: 'done' }), todo('o', { ...n, owner_user_id: CY })];
+  const g = byId(buildTaskGroups({ todos, flags: [], filter: 'me', meId: ME, today: '2026-10-07' }));
+  expect(ids(g.week)).toEqual(['a']);
+  expect(ids(g.calls)).toEqual(['k']);
+  expect(ids(g.overdue)).toEqual(['l']);
+  expect(ids(g.done)).toEqual(['m']);
+  expect(ids(byId(buildTaskGroups({ todos, flags: [], filter: 'team', meId: ME, today: '2026-10-07' })).calls)).toEqual(['k', 'o']);
+});
+
 test('a flag shows once, in Flagged, even when it is also a this-week to-do', () => {
   const flag = todo('f1', { prospect_contact_id: 'p1' });
   const old = todo('f2', { prospect_contact_id: 'p2', week_start: '2026-09-28' });

@@ -19,9 +19,9 @@ export function buildTaskGroups({ todos, flags, filter, meId, today }) {
   return [
     { id: 'flagged', label: filter === 'me' ? 'Flagged for me' : 'Flagged', items: flags.filter(mine).map(f => ({ ...f, st: todoStatus(f) })) },
     { id: 'overdue', label: 'Overdue', items: overdue },
-    { id: 'week', label: 'This week', items: open.filter(t => !overdue.includes(t)) },
-    // Filled by call-notes-to-tasks-v1; to-dos carry no call source yet.
-    { id: 'calls', label: 'From calls', items: [] },
+    { id: 'week', label: 'This week', items: open.filter(t => !overdue.includes(t) && !t.source_note_id) },
+    // call-notes-to-tasks-v1 - open to-dos made from pasted call notes.
+    { id: 'calls', label: 'From calls', items: open.filter(t => !overdue.includes(t) && t.source_note_id) },
     { id: 'done', label: 'Done this week', items: rows.filter(t => t.st === 'done') },
   ];
 }
