@@ -5,16 +5,23 @@ import Ring, { RingLegend } from '../charts/Ring';
 import { PIPELINE_STATUSES, TIERS, TOUCH_STATUSES, isStalePartner, daysSinceTouch } from '../../../constants/partnerPipeline';
 import { cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle, Chip, Btn, AddButton, ErrorNote, ShowingChip } from './goalsUi';
 import PartnerCard, { statusOf, statusLabel, statusColor, tierLabel } from './partners/PartnerCard';
+import WorkflowView from './partners/WorkflowView';
+import useMediaQuery from '../../../utils/useMediaQuery';
 
 const COLUMNS = [
   { p: 1, title: 'P1', when: 'This week' },
   { p: 2, title: 'P2', when: 'Next 30 days' },
   { p: 3, title: 'P3', when: '60–90 days' },
 ];
-// prospector_partners_mode - per-viewer convenience: last Partners layout.
+// prospector_partners_mode - per-viewer convenience: last Partners layout
+// ('workflow' | 'board' | 'columns'). Values from before
+// sales-partners-workflow-v1 ('priority', 'pipeline') fall back to Workflow,
+// the new default. 'columns' (the old P1/P2/P3 cards with their buttons)
+// stays reachable until the Workflow rows get their actions (Stage 3-4).
 const MODE_KEY = 'prospector_partners_mode';
+const MODES = [['workflow', 'Workflow'], ['board', 'Board'], ['columns', 'Cards (old)']];
 const UNDO_MS = 5000; // REVISABLE (spec)
-const readMode = () => { try { return localStorage.getItem(MODE_KEY) === 'pipeline' ? 'pipeline' : 'priority'; } catch { return 'priority'; } };
+const readMode = () => { try { const m = localStorage.getItem(MODE_KEY); return MODES.some(([id]) => id === m) ? m : 'workflow'; } catch { return 'workflow'; } };
 const writeMode = m => { try { localStorage.setItem(MODE_KEY, m); } catch { /* private mode */ } };
 const localToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 
@@ -53,6 +60,8 @@ const NO_FILTERS = { category: '', tiers: [], stale: false, hot: false, owner: n
 
 export default function PartnersView({ partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace }) {
   const [mode, setMode] = useState(readMode);
+  const [stage, setStage] = useState(null);
+  const compact = useMediaQuery('(max-width: 760px)');
   const [openId, setOpenId] = useState(null);
   const [filters, setFilters] = useState(NO_FILTERS);
   const [showPaused, setShowPaused] = useState(false);
@@ -144,8 +153,7 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 20 }}>
         <div role="group" aria-label="Layout" style={{ display: 'inline-flex', gap: 4, padding: 3, borderRadius: 999, background: SA.inset, border: `1px solid ${SA.border}` }}>
-          <button type="button" aria-pressed={mode === 'priority'} onClick={() => setModeSaved('priority')} style={{ ...pill(mode === 'priority'), border: 'none' }}>Priority columns</button>
-          <button type="button" aria-pressed={mode === 'pipeline'} onClick={() => setModeSaved('pipeline')} style={{ ...pill(mode === 'pipeline'), border: 'none' }}>Pipeline</button>
+          {MODES.map(([id, label]) => <button key={id} type="button" aria-pressed={mode === id} onClick={() => setModeSaved(id)} style={{ ...pill(mode === id), border: 'none' }}>{label}</button>)}
         </div>
         <select aria-label="Category" value={filters.category} onChange={e => setFilters(f => ({ ...f, category: e.target.value }))} style={{ ...inputStyle, height: 32, width: 'auto', maxWidth: '100%', borderRadius: 999, fontSize: 13 }}>
           <option value="">All categories</option>
@@ -154,7 +162,7 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
         {TIERS.map(t => <button key={t} type="button" aria-pressed={filters.tiers.includes(t)} onClick={() => toggleTier(t)} style={pill(filters.tiers.includes(t))}>{tierLabel(t)}</button>)}
         <button type="button" aria-pressed={filters.stale} onClick={() => setFilters(f => ({ ...f, stale: !f.stale }))} style={pill(filters.stale)}>Stale only</button>
         <button type="button" aria-pressed={filters.hot} onClick={() => setFilters(f => ({ ...f, hot: !f.hot }))} style={pill(filters.hot)}>🔥 Hot only</button>
-        {filtering && <button type="button" onClick={() => setFilters(NO_FILTERS)} style={{ ...pill(false), border: 'none', background: 'transparent', color: SA.link }}>Clear</button>}
+        {(filtering || stage) && <button type="button" onClick={() => { setFilters(NO_FILTERS); setStage(null); }} style={{ ...pill(false), border: 'none', background: 'transparent', color: SA.link }}>Clear</button>}
         <span style={{ ...subStyle, ...numStyle, fontSize: 13 }}>{shown.length} of {partners.length}</span>
       </div>
       {(filters.owner || filters.status) && (
@@ -181,9 +189,10 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
       {!error && !partners.length && <p style={{ ...subStyle, margin: '20px 0 0' }}>No partners yet{canEdit ? ' — add your first' : ''}.</p>}
       {!error && partners.length > 0 && !shown.length && <p style={{ ...subStyle, margin: '20px 0 0' }}>No partners match these filters.</p>}
 
-      {shown.length > 0 && (
+      {shown.length > 0 && mode === 'workflow' && <WorkflowView partners={partners} shown={shown} lookup={lookup} compact={compact} stage={stage} onStage={setStage} />}
+      {shown.length > 0 && mode !== 'workflow' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginTop: 20 }}>
-          {mode === 'priority'
+          {mode === 'columns'
             ? priorityColumns.map(c => (
                 <Column key={c.title} title={c.title} sub={c.when} color={PRIORITY_COLORS[c.p ?? 'none']} items={shown.filter(x => (x.priority ?? null) === c.p)} render={render} />
               ))

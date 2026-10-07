@@ -112,5 +112,19 @@ export function memberColor(index) {
   return index >= 0 ? MEMBER_COLORS[index % MEMBER_COLORS.length] : UNASSIGNED_COLOR;
 }
 
+// sales-partners-workflow-v1 - partner TYPE markers (6 families of the 14
+// categories, partners/partnerTypes.js). Validated with the dataviz
+// validator 2026-10-06 on the dark surface and the white print surface:
+// lightness band, chroma, contrast >= 3:1, and every pair of families that
+// sit next to each other in category order 1-14 at CVD dE >= 9.9 /
+// normal dE >= 17. Each is >= 15 dE from the member blue/orange, the
+// accent and the status colors. Two non-neighbour families are closer
+// (Current green vs Influence green) - the group name always sits beside
+// the marker, so color is never the only signal.
+export const PARTNER_TYPE_COLORS = {
+  current: '#63A017', platforms: '#C33D59', brokers: '#00A19D',
+  renters: '#9550BB', influence: '#3E8651', professional: '#C068AC',
+};
+
 // Partner priority: P1 this week, P2 next 30 days, P3 60-90 days.
 export const PRIORITY_COLORS = { 1: '#8FA8FF', 2: '#5F72B8', 3: '#3A4672', none: '#4A5462' };

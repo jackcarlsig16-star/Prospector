@@ -38,3 +38,42 @@ export function isStalePartner(partner, now = Date.now(), today = new Date(now).
   if (['paused', 'live'].includes(partner.pipeline_status)) return false;
   return !(partner.snoozed_until && partner.snoozed_until > today);
 }
+
+// sales-partners-workflow-v1 - the 8 workflow steps the Partners view shows.
+// in_sequence is still "Sent"; paused sits outside the steps (stepOf = null).
+export const WORKFLOW_STEPS = [
+  { id: 'not_started', label: 'Not started' },
+  { id: 'researching', label: 'Researching' },
+  { id: 'first_email_drafted', label: 'Drafted' },
+  { id: 'first_email_sent', label: 'Sent' },
+  { id: 'replied', label: 'Replied' },
+  { id: 'meeting_set', label: 'Meeting' },
+  { id: 'proposal_pilot', label: 'Pilot' },
+  { id: 'live', label: 'Live' },
+];
+export function stepOf(status) {
+  if (status === 'paused') return null;
+  if (status === 'in_sequence') return 3;
+  const i = WORKFLOW_STEPS.findIndex(s => s.id === (status || 'not_started'));
+  return i < 0 ? 0 : i;
+}
+
+// Contact has been made: in a contact stage now, or touched before (same
+// rule as the scorecard's Tier 1 touched).
+export const isTouched = p => TOUCH_STATUSES.includes(p.pipeline_status) || !!p.last_touch_at;
+
+// Order inside a group: placed by hand (sort_rank) first, then P1 > P2 > P3
+// > none, hot, tier (active, 1 > 2 > 3 > 4, none), name.
+const TIER_ORDER = { active: 0, 1: 1, 2: 2, 3: 3, 4: 4 };
+export function comparePartners(a, b) {
+  const ra = a.sort_rank == null ? null : Number(a.sort_rank), rb = b.sort_rank == null ? null : Number(b.sort_rank);
+  if (ra !== null || rb !== null) {
+    if (ra === null) return 1;
+    if (rb === null) return -1;
+    if (ra !== rb) return ra - rb;
+  }
+  return (a.priority ?? 9) - (b.priority ?? 9)
+    || (b.hot ? 1 : 0) - (a.hot ? 1 : 0)
+    || (TIER_ORDER[a.tier] ?? 9) - (TIER_ORDER[b.tier] ?? 9)
+    || (a.name || '').localeCompare(b.name || '');
+}
