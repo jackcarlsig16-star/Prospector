@@ -1,0 +1,75 @@
+SPEC — call-notes-to-tasks-v1 — REVISION 1
+
+## Status
+Source: Jack in chat, 2026-10-06: "upload our Zoom internal call notes and that would automatically
+decipher and build tasks for me and Cyrus, so there's a running list visible to both that we knock out
+over time — our internal calls directly translate to the dashboard." Follow-up: "Get Zoom AI summary, but
+basically any sort of notes would do." Asked again 2026-10-06 ("did we ever add that task add function
+where I can just paste the call notes") — NOT built yet.
+REVISION 1 changes from the draft:
+  - Entry point moves into the task drawer (task-drawer-v1): a "Paste call notes" button in the drawer
+    header (plus "From calls" group already in the drawer). The Goals right-rail "Tools" card and the
+    Huddle rail button are dropped.
+  - Open questions answered: source = any pasted text (Zoom AI Companion summary, transcript or typed
+    notes); unknown owners stay Unassigned; manual paste first, Zoom webhook auto-ingest later.
+  - Extracted tasks can carry a Link (commitment / metric goal / partner / company) using task-drawer's
+    Link, matched by name.
+Related: specs/smart-intake-internal-meeting-v1.md (Smart Intake "internal_meeting" classifier). Reuse
+its company/project matching if it exists; don't build the intake half here.
+QUEUED: right after task-drawer-v1 (depends on its drawer + Link). Uses the AI wrapper/logging from
+prospector-ai-data-efficiency-v1 if it exists by then; otherwise log the call itself (feature
+'call_tasks', model, tokens, cost, business, user).
+
+## Problem
+Internal call action items live in Zoom summaries / notes and never reach the shared Goals to-do list,
+so Jack and Cyrus re-type them or lose them.
+
+## Design decision (DECIDED unless marked)
+- Where: task drawer header → "Paste call notes". Opens a panel: paste text, or upload .txt / .docx / .vtt
+  / .md. Optional fields: call date (default today), call title.
+- AI extraction (one call): action items with suggested owner (workspace members by name and "I'll…"
+  statements; otherwise Unassigned), due date only if stated, suggested Link by name match against the
+  workspace's partners, companies, commitments and metric goals, and a 3-line call summary. Never
+  invents owners or dates — unknown stays blank.
+- Review before anything is created: a checklist of proposed tasks; edit text, owner, due, link;
+  untick to drop. Nothing is written until "Create N tasks".
+- Creates normal Goals to-dos (sales_week_goals kind 'todo', category "From calls · <date> · <title>",
+  this week) through the existing to-do API — they appear in the drawer's "From calls" group, in Goals →
+  This week for both people, in the to-do donut and the weekly report. Long items become steps under one
+  to-do per topic.
+- Each to-do links back to the stored source note (per workspace, members-only, readable from the to-do's
+  expanded row). Re-pasting the same notes creates 0 duplicates (hash + similarity check against that
+  workspace's existing "From calls" to-dos).
+- PROPOSED: the 3-line summary is offered as a draft line for Weekly report §1 notes — Jack keeps or deletes.
+
+## Out of scope
+Zoom webhook auto-ingest (follow-on: call-notes-zoom-ingest-v1); Smart Intake's intel filing; any email
+or calendar reading (microsoft-connect-v1).
+
+## Standing rules that apply (inlined)
+- All writes through the API (FIX-1). Notes text is stored server-side, members-only; never logged in
+  full to server logs.
+- No phone numbers extracted or stored. Anthropic key server-side only, never printed.
+- Respect the existing AI rate limit. Tests that write data restore and report "restored: yes".
+  Run test suites one at a time.
+
+## Implementation
+FIRST: read task-drawer-v1 as built (drawer header slot, Link API), the to-do create route, and the
+Anthropic wrapper. Report in 5 lines; flag back if a migration is needed for the source-note table
+(likely: sales_call_notes id, business_id, title, call_date, text, hash, created_by, created_at — give
+Jack the SQL and wait for "done").
+  Stage 1: migration + extract API (returns proposals, writes nothing) + AI call log. Test on one real
+           pasted note and report real tokens/cost.
+  Stage 2: drawer panel: paste/upload, review checklist, Create N tasks, back-link, duplicate check.
+
+## Verification
+- Stage 1: a real internal call note → proposals whose owners match who said "I'll…"; unknown owners
+  Unassigned; 0 rows written; AI call logged with cost.
+- Stage 2: create 3 of 5 proposals → exactly 3 to-dos for the right owners, visible to both in Goals and
+  the drawer; re-paste → 0 new; source note opens from a to-do; Viewer can't open the panel;
+  0 console errors at 1440/390; restored: yes.
+- Bar 5: Jack pastes a real Zoom summary and has reviewed tasks created for himself and Cyrus in under
+  one minute.
+
+## Commit instructions
+One commit per stage referencing call-notes-to-tasks-v1. Push after each passes. Stop and report after each.
