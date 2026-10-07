@@ -347,6 +347,13 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle }) {
               onSignal={(goalId, signal) => goalsApi.partnerSignal(businessId, goalId, signal)}
               onUndo={(goalId, eventId) => goalsApi.partnerUndo(businessId, goalId, eventId)}
               onReplace={g => setPartners(ps => ps.map(p => (p.id === g.id ? g : p)))}
+              onRefresh={() => goalsApi.partners(businessId).then(setPartners).catch(e => setError('partners', e))}
+              onEvents={goalId => goalsApi.partnerEvents(businessId, { goal_id: goalId })}
+              onRank={async (goalId, order) => {
+                const ranks = await goalsApi.partnerRank(businessId, goalId, order);
+                setPartners(ps => ps.map(p => (p.id in ranks ? { ...p, sort_rank: ranks[p.id] } : p)));
+              }}
+              teamView={owner === 'team'}
               onCreate={async body => { const g = await goalsApi.createPartner(businessId, { ...body, owner_user_id: owner === 'team' ? null : owner }); setPartners(ps => [...ps, g]); }} />
           )}
 

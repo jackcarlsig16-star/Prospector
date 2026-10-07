@@ -19,6 +19,12 @@ import { PIPELINE_STATUS_IDS, TOUCH_STATUSES } from '../../src/constants/partner
 //   { type: 'snooze', days?: 1-90 (default 7) }
 //   { type: 'deprioritize' }                     -> pipeline_status 'paused'
 //   { type: 'note', note }                       history only, not a touch
+//
+// status and deprioritize take an optional expect: the pipeline_status the
+// caller's screen showed. If the partner has moved since (a teammate's
+// click), the signal is refused with 409 instead of moving it from a stage
+// the caller never saw - e.g. "Next: Mark sent" can't drag a Replied
+// partner back to Sent (sales-partners-workflow-v1).
 
 export const SIGNAL_TYPES = ['status', 'assign', 'hot', 'snooze', 'deprioritize', 'note'];
 export const UNDO_WINDOW_MS = 2 * 60e3; // client shows 5s; the slack covers slow networks
@@ -28,8 +34,13 @@ export class SignalError extends Error {
   constructor(message, status = 400) { super(message); this.status = status; }
 }
 
+const CHANGED = 'This partner was just changed by someone else - refresh and try again';
+
 function plan(goal, signal, now) {
   const today = laDateString(now);
+  if (['status', 'deprioritize'].includes(signal?.type) && signal.expect !== undefined && (goal.pipeline_status || 'not_started') !== signal.expect) {
+    throw new SignalError(CHANGED, 409);
+  }
   switch (signal?.type) {
     case 'status': {
       if (!PIPELINE_STATUS_IDS.includes(signal.to)) throw new SignalError(`to must be one of ${PIPELINE_STATUS_IDS.join('|')}`);
@@ -89,7 +100,7 @@ async function write(supabase, goal, patch, event) {
     const { data, error } = await unchanged(supabase.from('sales_goals')
       .update({ ...patch, updated_at: new Date().toISOString() }).eq('id', goal.id), goal, Object.keys(patch)).select();
     if (error) throw new SignalError(error.message, 500);
-    if (!data.length) throw new SignalError('This partner was just changed by someone else - refresh and try again', 409);
+    if (!data.length) throw new SignalError(CHANGED, 409);
     updated = data[0];
   }
   const { data: row, error } = await supabase.from('sales_partner_events')

@@ -71,7 +71,7 @@ function Key({ open, onToggle }) {
           <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexWrap: 'wrap', gap: '6px 16px', fontSize: 13 }}>
             {FAMILIES.map(f => (
               <li key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 4, height: 16, borderRadius: 2, background: f.color }} />{f.label}
+                <span style={{ width: 4, height: 16, borderRadius: 2, background: f.color }} />{f.mark && <span style={{ color: f.color }}>{f.mark}</span>}{f.label}
               </li>
             ))}
           </ul>
@@ -84,8 +84,14 @@ function Key({ open, onToggle }) {
   );
 }
 
-function Group({ cat, items, lookup, compact }) {
+// rowActions(partner) -> the row's actions (null for viewers). onRank(id,
+// order) saves a move; reorder is off while a filter hides part of the
+// group, because the order is the team's and a partial list can't place a
+// row among rows you can't see.
+function Group({ cat, items, lookup, compact, rowActions, onRank, movedNotes }) {
   const [showAll, setShowAll] = useState(false);
+  const [dragId, setDragId] = useState(null);
+  const [overId, setOverId] = useState(null);
   const fam = familyOf(cat);
   const sorted = [...items].sort(comparePartners);
   const shown = showAll ? sorted : sorted.slice(0, TOP);
@@ -94,12 +100,31 @@ function Group({ cat, items, lookup, compact }) {
   const owners = new Map();
   for (const p of items) { const k = p.owner_user_id || 'none'; owners.set(k, (owners.get(k) || 0) + 1); }
   const n = categoryNumber(cat);
+  const ids = sorted.map(p => p.id);
+  const moveTo = (id, to) => {
+    const from = ids.indexOf(id);
+    if (from === to || to < 0 || to >= ids.length) return;
+    const order = ids.filter(x => x !== id);
+    order.splice(to, 0, id);
+    onRank(id, order);
+  };
+  const rankFor = (p, i) => onRank && {
+    canUp: i > 0, canDown: i < ids.length - 1,
+    onUp: () => moveTo(p.id, i - 1), onDown: () => moveTo(p.id, i + 1),
+    drag: compact ? null : {
+      dragging: dragId === p.id, target: overId === p.id && dragId !== p.id,
+      onStart: e => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', p.id); setDragId(p.id); },
+      onOver: e => { if (dragId && ids.includes(dragId)) { e.preventDefault(); setOverId(p.id); } },
+      onDrop: e => { e.preventDefault(); if (dragId && dragId !== p.id) moveTo(dragId, i); setDragId(null); setOverId(null); },
+      onEnd: () => { setDragId(null); setOverId(null); },
+    },
+  };
   return (
     <section aria-label={categoryName(cat)} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span aria-hidden="true" style={{ width: 4, height: 22, borderRadius: 2, background: fam.color }} />
         <h3 style={{ ...h3Style, display: 'flex', gap: 6, alignItems: 'baseline' }}>
-          {n && <span style={{ ...numStyle, color: SA.muted, fontWeight: 500 }}>{n}.</span>}{categoryName(cat)}
+          {n && <span style={{ ...numStyle, color: SA.muted, fontWeight: 500 }}>{n}.</span>}{fam.mark && <span style={{ color: fam.color }}>{fam.mark}</span>}{categoryName(cat)}
         </h3>
         <span style={{ ...subStyle, ...numStyle, fontSize: 13 }}>{touched} of {items.length} touched</span>
         <span role="img" aria-label={`${progressed} of ${items.length} past research`} title={`${progressed} of ${items.length} past research (drafted or further)`}
@@ -114,7 +139,10 @@ function Group({ cat, items, lookup, compact }) {
         </span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {shown.map(p => <PartnerRow key={p.id} partner={p} lookup={lookup} compact={compact} />)}
+        {shown.map((p, i) => {
+          const actions = rowActions(p);
+          return <PartnerRow key={p.id} partner={p} lookup={lookup} compact={compact} movedNote={movedNotes[p.id]} actions={actions && { ...actions, rank: rankFor(p, i) }} />;
+        })}
       </div>
       {sorted.length > TOP && (
         <button type="button" aria-expanded={showAll} onClick={() => setShowAll(s => !s)}
@@ -126,7 +154,7 @@ function Group({ cat, items, lookup, compact }) {
   );
 }
 
-export default function WorkflowView({ partners, shown, lookup, compact, stage, onStage }) {
+export default function WorkflowView({ partners, shown, lookup, compact, stage, onStage, rowActions = () => null, onRank = null, movedNotes = {} }) {
   const [keyOpen, setKeyOpen] = useState(readKeyOpen);
   const visible = stage ? shown.filter(p => stageKey(p) === stage) : shown;
   const top = visible.filter(p => p.priority === 1 || p.hot).sort(comparePartners).slice(0, TOP);
@@ -143,10 +171,11 @@ export default function WorkflowView({ partners, shown, lookup, compact, stage, 
             <h3 style={h3Style}>Top priorities</h3>
             <span style={{ ...subStyle, fontSize: 12 }}>P1 and 🔥 hot partners across every category, highest first</span>
           </div>
-          {top.map(p => <PartnerRow key={p.id} partner={p} lookup={lookup} compact={compact} showCategory />)}
+          {top.map(p => <PartnerRow key={p.id} partner={p} lookup={lookup} compact={compact} showCategory movedNote={movedNotes[p.id]} actions={rowActions(p)} />)}
         </section>
       )}
-      {cats.map(c => <Group key={c || 'none'} cat={c} items={visible.filter(p => (p.category || null) === c)} lookup={lookup} compact={compact} />)}
+      {cats.map(c => <Group key={c || 'none'} cat={c} items={visible.filter(p => (p.category || null) === c)} lookup={lookup} compact={compact}
+        rowActions={rowActions} onRank={stage ? null : onRank} movedNotes={movedNotes} />)}
     </div>
   );
 }

@@ -118,11 +118,15 @@ export function memberColor(index) {
 // lightness band, chroma, contrast >= 3:1, and every pair of families that
 // sit next to each other in category order 1-14 at CVD dE >= 9.9 /
 // normal dE >= 17. Each is >= 15 dE from the member blue/orange, the
-// accent and the status colors. Two non-neighbour families are closer
-// (Current green vs Influence green) - the group name always sits beside
-// the marker, so color is never the only signal.
+// accent and the status colors. Pairs that never sit side by side are not
+// all separable: Influence green vs Platforms crimson is dE 1.2 for
+// red-green colorblind readers, Professional vs Renters dE 10.8 for
+// everyone. The category name always sits beside the marker (and Current
+// has a star), so color is never the only signal.
 export const PARTNER_TYPE_COLORS = {
-  current: '#63A017', platforms: '#C33D59', brokers: '#00A19D',
+  // Current partners: silver (the soft text token, so it stays visible on
+  // the white print surface too) plus a ★ on the row - Jack 2026-10-06.
+  current: 'var(--sa-soft)', platforms: '#C33D59', brokers: '#00A19D',
   renters: '#9550BB', influence: '#3E8651', professional: '#C068AC',
 };
 

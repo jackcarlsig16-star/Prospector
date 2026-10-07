@@ -77,3 +77,17 @@ export function comparePartners(a, b) {
     || (TIER_ORDER[a.tier] ?? 9) - (TIER_ORDER[b.tier] ?? 9)
     || (a.name || '').localeCompare(b.name || '');
 }
+
+// The one-step move the Next button makes from each status (live has none;
+// paused resumes to the stage it was paused from - the caller looks that up).
+export const NEXT_STEP = {
+  not_started: { to: 'researching', label: 'Start research' },
+  researching: { to: 'first_email_drafted', label: 'Mark drafted' },
+  first_email_drafted: { to: 'first_email_sent', label: 'Mark sent' },
+  first_email_sent: { to: 'replied', label: 'Got a reply' },
+  in_sequence: { to: 'replied', label: 'Got a reply' },
+  replied: { to: 'meeting_set', label: 'Meeting booked' },
+  meeting_set: { to: 'proposal_pilot', label: 'Pilot / proposal' },
+  proposal_pilot: { to: 'live', label: 'Mark live' },
+};
+export const nextStepFor = status => NEXT_STEP[status || 'not_started'] || null;

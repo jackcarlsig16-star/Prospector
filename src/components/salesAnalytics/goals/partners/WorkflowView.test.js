@@ -49,3 +49,53 @@ test('stage bar segments are buttons that filter', () => {
   expect([...document.querySelectorAll('section[aria-label="Rental Rewards & Renter Platforms"] [data-partner-id]')].map(e => e.getAttribute('data-partner-id')).sort()).toEqual(['C', 'D']);
   expect(screen.getByRole('button', { name: 'Showing Sent (2). Clear filter' })).toBeTruthy();
 });
+
+// Stage 3: row actions.
+const members = [{ user_id: 'u-jack', name: 'Jack Carlson' }, { user_id: 'u-cy', name: 'Cyrus Lee' }];
+const actions = extra => ({ members, onNext: jest.fn().mockResolvedValue(), onSignal: jest.fn(), ...extra });
+
+test('Next names the one-step move; Live has none; Paused says Resume', () => {
+  const rows = [p('A'), p('B', { pipeline_status: 'first_email_drafted' }), p('C', { pipeline_status: 'in_sequence' }), p('D', { pipeline_status: 'live' }), p('E', { pipeline_status: 'paused' })];
+  render(<WorkflowView partners={rows} shown={rows} lookup={lookup} compact={false} stage={null} onStage={jest.fn()} rowActions={() => actions()} onRank={null} movedNotes={{}} />);
+  const grp = document.querySelector('section[aria-label="Rental Rewards & Renter Platforms"]');
+  const btn = id => grp.querySelector(`[data-partner-id="${id}"]`);
+  expect(within(btn('A')).getByRole('button', { name: 'Next: Start research' })).toBeTruthy();
+  expect(within(btn('B')).getByRole('button', { name: 'Next: Mark sent' })).toBeTruthy();
+  expect(within(btn('C')).getByRole('button', { name: 'Next: Got a reply' })).toBeTruthy();
+  expect(within(btn('D')).queryByRole('button', { name: /^Next/ })).toBeNull();
+  expect(within(btn('D')).getByText('✓ Live')).toBeTruthy();
+  expect(within(btn('E')).getByRole('button', { name: 'Resume' })).toBeTruthy();
+});
+
+test('More menu: every action in words; jump-to-stage sends the stage the screen showed', () => {
+  const a = actions();
+  const rows = [p('A', { pipeline_status: 'replied' })];
+  render(<WorkflowView partners={rows} shown={rows} lookup={lookup} compact={false} stage={null} onStage={jest.fn()} rowActions={() => a} onRank={null} movedNotes={{}} />);
+  const row = document.querySelector('section[aria-label="Rental Rewards & Renter Platforms"] [data-partner-id="A"]');
+  fireEvent.click(within(row).getByRole('button', { name: 'More actions for A' }));
+  const menu = screen.getByRole('menu');
+  expect(within(menu).getAllByRole('menuitem').map(b => b.textContent)).toEqual(['Jump to stage… ›', 'Assign… ›', '🔥 Hot on', 'Snooze 7 days', 'Deprioritize (pause)', 'Add note… ›']);
+  fireEvent.click(within(menu).getByText('Jump to stage… ›'));
+  fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitemradio', { name: /Sent/ }));
+  expect(a.onSignal).toHaveBeenCalledWith({ type: 'status', to: 'first_email_sent', expect: 'replied' });
+});
+
+test('viewers get no Next, More or up/down', () => {
+  const rows = [p('A'), p('B')];
+  render(<WorkflowView partners={rows} shown={rows} lookup={lookup} compact={false} stage={null} onStage={jest.fn()} rowActions={() => null} onRank={null} movedNotes={{}} />);
+  expect(screen.queryByRole('button', { name: /^Next|More actions|Move .* (up|down)/ })).toBeNull();
+});
+
+test('▲▼ send the group order with the row moved one place; ends are disabled', () => {
+  const onRank = jest.fn();
+  const rows = [p('A', { priority: 1 }), p('B', { priority: 2 }), p('C', { priority: 3 })];
+  render(<WorkflowView partners={rows} shown={rows} lookup={lookup} compact={false} stage={null} onStage={jest.fn()} rowActions={() => actions()} onRank={onRank} movedNotes={{ B: 'Moved to Sent · today' }} />);
+  const grp = document.querySelector('section[aria-label="Rental Rewards & Renter Platforms"]');
+  expect(within(grp).getByRole('button', { name: 'Move A up' }).disabled).toBe(true);
+  expect(within(grp).getByRole('button', { name: 'Move C down' }).disabled).toBe(true);
+  fireEvent.click(within(grp).getByRole('button', { name: 'Move C up' }));
+  expect(onRank).toHaveBeenCalledWith('C', ['A', 'C', 'B']);
+  fireEvent.click(within(grp).getByRole('button', { name: 'Move A down' }));
+  expect(onRank).toHaveBeenLastCalledWith('A', ['B', 'A', 'C']);
+  expect(within(grp).getByText('Moved to Sent · today')).toBeTruthy();
+});

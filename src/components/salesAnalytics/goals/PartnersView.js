@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { SA, saSans } from '../theme';
 import { PRIORITY_COLORS } from '../palette';
 import Ring, { RingLegend } from '../charts/Ring';
-import { PIPELINE_STATUSES, TIERS, TOUCH_STATUSES, isStalePartner, daysSinceTouch } from '../../../constants/partnerPipeline';
+import { PIPELINE_STATUSES, WORKFLOW_STEPS, TIERS, TOUCH_STATUSES, isStalePartner, daysSinceTouch, stepOf, nextStepFor } from '../../../constants/partnerPipeline';
 import { cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle, Chip, Btn, AddButton, ErrorNote, ShowingChip } from './goalsUi';
 import PartnerCard, { statusOf, statusLabel, statusColor, tierLabel } from './partners/PartnerCard';
 import WorkflowView from './partners/WorkflowView';
@@ -36,6 +36,14 @@ function predict(p, s) {
   if (s.type === 'snooze') return { ...p, snoozed_until: new Date(Date.now() + (s.days || 7) * 864e5).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }) };
   return p;
 }
+// prospector_partners_moved - sessionStorage, per viewer: "Moved to X ·
+// today" notes, kept for the browser session so a row shows what changed.
+const MOVED_KEY = 'prospector_partners_moved';
+const readMoved = () => { try { return JSON.parse(sessionStorage.getItem(MOVED_KEY) || '{}') || {}; } catch { return {}; } };
+const writeMoved = m => { try { sessionStorage.setItem(MOVED_KEY, JSON.stringify(m)); } catch { /* private mode */ } };
+const stageName = status => (status === 'paused' ? 'Paused' : WORKFLOW_STEPS[stepOf(status)].label);
+const CHANGED_TEXT = 'Changed by someone else — refreshed';
+
 const SIGNAL_TEXT = { status: s => `→ ${statusLabel(s.to)}`, deprioritize: () => '→ Paused', assign: () => 'reassigned', hot: s => (s.hot ? 'marked hot' : 'no longer hot'), snooze: () => 'snoozed 7 days', note: () => 'note saved' };
 
 const pill = on => ({ ...saSans, height: 32, padding: '0 12px', borderRadius: 999, fontSize: 13, cursor: 'pointer', border: `1px solid ${on ? SA.accent : SA.border}`, background: on ? 'color-mix(in srgb, var(--sa-accent) 18%, transparent)' : SA.surface2, color: on ? SA.text : SA.soft });
@@ -58,7 +66,9 @@ function Column({ title, sub, color, items, collapsed, onCollapse, render }) {
 // owner/status are set by clicking the donuts (goals-surface-v1).
 const NO_FILTERS = { category: '', tiers: [], stale: false, hot: false, owner: null, status: null };
 
-export default function PartnersView({ partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace }) {
+// teamView: the person filter is on Team. Reorder needs the whole group in
+// view (see WorkflowView), so it's only offered then.
+export default function PartnersView({ partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView }) {
   const [mode, setMode] = useState(readMode);
   const [stage, setStage] = useState(null);
   const compact = useMediaQuery('(max-width: 760px)');
@@ -70,6 +80,7 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ name: '', priority: '1' });
   const [addError, setAddError] = useState('');
+  const [moved, setMoved] = useState(readMoved);
   useEffect(() => () => clearTimeout(toastTimer.current), []);
 
   const today = localToday();
@@ -104,6 +115,43 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
     try { const { goal } = await onUndo(toast.goalId, toast.eventId); onReplace(goal); setToast(null); }
     catch (e) { setToast(t => ({ ...t, busy: false, error: e.message })); toastTimer.current = setTimeout(() => setToast(null), UNDO_MS); }
   };
+  // Workflow rows: the toast says what happened and what's next; a teammate's
+  // change in between (409) reloads the list instead of failing quietly.
+  const workflowSignal = async (p, sig, what) => {
+    onReplace(predict(p, sig));
+    try {
+      const { goal, event } = await onSignal(p.id, sig);
+      onReplace(goal);
+      let text = `${p.name} ${what || SIGNAL_TEXT[sig.type](sig)}`;
+      if (goal.pipeline_status !== p.pipeline_status) {
+        const nx = nextStepFor(goal.pipeline_status);
+        text = `${p.name} → ${what || stageName(goal.pipeline_status)}${goal.pipeline_status === 'live' ? ' · live' : nx ? ` · Next: ${nx.label.toLowerCase()}` : ''}`;
+        const m = { ...moved, [p.id]: `Moved to ${stageName(goal.pipeline_status)} · today` };
+        setMoved(m); writeMoved(m);
+      }
+      showToast({ text, goalId: p.id, eventId: event.id });
+    } catch (e) {
+      onReplace(p);
+      if (/changed by someone else|already /i.test(e.message)) { await onRefresh(); showToast({ error: CHANGED_TEXT }); }
+      else showToast({ error: e.message });
+    }
+  };
+  // Paused resumes to the stage it was paused from (latest move into paused).
+  const nextFor = async p => {
+    if (p.pipeline_status === 'paused') {
+      const events = await onEvents(p.id).catch(() => []);
+      const pause = events.find(e => e.to_status === 'paused' && e.event !== 'undo');
+      const to = pause?.from_status && pause.from_status !== 'paused' ? pause.from_status : 'not_started';
+      return workflowSignal(p, { type: 'status', to, expect: 'paused' }, `resumed at ${stageName(to)}`);
+    }
+    const nx = nextStepFor(p.pipeline_status);
+    return nx && workflowSignal(p, { type: 'status', to: nx.to, expect: p.pipeline_status || 'not_started' }, nx.label);
+  };
+  const rowActions = p => (canEdit ? { members, onNext: nextFor, onSignal: sig => workflowSignal(p, sig) } : null);
+  const rank = async (goalId, order) => {
+    try { await onRank(goalId, order); } catch (e) { showToast({ error: e.message }); }
+  };
+
   const setModeSaved = m => { setMode(m); writeMode(m); };
   const toggleTier = t => setFilters(f => ({ ...f, tiers: f.tiers.includes(t) ? f.tiers.filter(x => x !== t) : [...f.tiers, t] }));
 
@@ -189,7 +237,8 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
       {!error && !partners.length && <p style={{ ...subStyle, margin: '20px 0 0' }}>No partners yet{canEdit ? ' — add your first' : ''}.</p>}
       {!error && partners.length > 0 && !shown.length && <p style={{ ...subStyle, margin: '20px 0 0' }}>No partners match these filters.</p>}
 
-      {shown.length > 0 && mode === 'workflow' && <WorkflowView partners={partners} shown={shown} lookup={lookup} compact={compact} stage={stage} onStage={setStage} />}
+      {shown.length > 0 && mode === 'workflow' && <WorkflowView partners={partners} shown={shown} lookup={lookup} compact={compact} stage={stage} onStage={setStage}
+        rowActions={rowActions} onRank={canEdit && teamView && !filtering ? rank : null} movedNotes={moved} />}
       {shown.length > 0 && mode !== 'workflow' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16, marginTop: 20 }}>
           {mode === 'columns'

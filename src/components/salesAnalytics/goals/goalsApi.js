@@ -49,6 +49,8 @@ export const goalsApi = {
   partnerSignal: (id, goalId, signal) => call(id, `/partners/${goalId}/signal`, { method: 'POST', body: signal }),
   partnerUndo: (id, goalId, eventId) => call(id, `/partners/${goalId}/undo`, { method: 'POST', body: { event_id: eventId } }),
   partnerEvents: (id, params) => call(id, `/partners/events?${q(params)}`).then(d => d.events),
+  // sales-partners-workflow-v1 - order = the group's ids top to bottom after the move.
+  partnerRank: (id, goalId, order) => call(id, `/partners/${goalId}/rank`, { method: 'POST', body: { order } }).then(d => d.ranks),
 
   companies: (id, from, to) => call(id, `/companies?${q({ from, to })}`),
   updateCompany: (id, accountId, body) => call(id, `/companies/${encodeURIComponent(accountId)}`, { method: 'PATCH', body }).then(d => d.company),
