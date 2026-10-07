@@ -18,6 +18,8 @@ const MIGRATION_PATTERN = /does not exist|schema cache|violates check constraint
 export const TODOS_CHANGED = 'prospector:todos-changed';
 // "Open in Goals" from the drawer when Goals & Sales is already on screen.
 export const OPEN_GOALS_WEEK = 'prospector:open-goals-week';
+// Opens the drawer filtered to one link; detail = { link: { type, id }, filter }.
+export const OPEN_TASKS = 'prospector:open-tasks';
 
 async function call(businessId, path, { method = 'GET', body } = {}) {
   const res = await fetch(`/api/sales/${businessId}/goals${path}`, {

@@ -3,9 +3,9 @@ import { SA, SA_TYPE, SA_SHAPE, SA_THEME_CSS, SA_THEME_CLASS, saSans } from '../
 import { laWeekStart, laDateString } from '../periods';
 import { roleAtLeast } from '../../../constants/roles';
 import { fetchMe } from '../../../utils/authSession';
-import { goalsApi, TODOS_CHANGED, OPEN_GOALS_WEEK } from '../goals/goalsApi';
+import { goalsApi, TODOS_CHANGED, OPEN_GOALS_WEEK, OPEN_TASKS } from '../goals/goalsApi';
 import { fetchFlags, completeFlag, dropFlag, reassignFlag, announceFlagsChanged, FLAGS_CHANGED } from '../huddleApi';
-import { memberLookup, labelStyle, ErrorNote } from '../goals/goalsUi';
+import { memberLookup, labelStyle, ErrorNote, ShowingChip } from '../goals/goalsUi';
 import { buildTaskGroups, badgeCount } from './taskGroups';
 import { useLinkOptions } from './linkTargets';
 import QuickAdd from './QuickAdd';
@@ -37,6 +37,7 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
   const [todos, setTodos] = useState([]);
   const [flags, setFlags] = useState([]);
   const [filter, setFilter] = useState('me');
+  const [linkFilter, setLinkFilter] = useState(null); // { type, id } from a Goals "open tasks" link
   const [expanded, setExpanded] = useState(() => new Set());
   const [showDone, setShowDone] = useState(false);
   const [toast, setToast] = useState(null); // { text, undo? }
@@ -56,7 +57,13 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
     window.addEventListener(FLAGS_CHANGED, load);
     return () => { window.removeEventListener(TODOS_CHANGED, load); window.removeEventListener(FLAGS_CHANGED, load); };
   }, [load]);
-  useEffect(() => { writeOpen(open); }, [open]);
+  useEffect(() => {
+    const onOpenTasks = e => { setLinkFilter(e.detail.link); setFilter(e.detail.filter || 'team'); setOpen(true); };
+    window.addEventListener(OPEN_TASKS, onOpenTasks);
+    return () => window.removeEventListener(OPEN_TASKS, onOpenTasks);
+  }, []);
+  // A Goals link's filter lasts until the drawer closes; the next open is the plain list.
+  useEffect(() => { writeOpen(open); if (!open) setLinkFilter(null); }, [open]);
   useEffect(() => {
     if (!open) return;
     const onKey = e => { if (e.key === 'Escape') setOpen(false); };
@@ -70,7 +77,7 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
   }, [toast]);
   const links = useLinkOptions(businessId, week);
   // Link chip names: fetched only once something is linked (metric names are built in).
-  const needsNames = [...todos, ...flags].some(t => t.link_type && t.link_type !== 'metric');
+  const needsNames = [...todos, ...flags].some(t => t.link_type && t.link_type !== 'metric') || (linkFilter && linkFilter.type !== 'metric');
   const loadLinks = links.load;
   useEffect(() => { if (open && needsNames) loadLinks(); }, [open, needsNames, loadLinks]);
 
@@ -80,7 +87,8 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
   const canEdit = !!me && (me.profile?.is_platform_owner || roleAtLeast(myRole, 'member'));
   const canAdmin = !!me && (me.profile?.is_platform_owner || roleAtLeast(myRole, 'admin'));
   const today = laDateString();
-  const groups = meId ? buildTaskGroups({ todos, flags, filter, meId, today }) : [];
+  const inLink = t => !linkFilter || (t.link_type === linkFilter.type && t.link_id === linkFilter.id);
+  const groups = meId ? buildTaskGroups({ todos: todos.filter(inLink), flags: flags.filter(inLink), filter, meId, today }) : [];
   const badge = meId ? badgeCount({ todos, flags, meId }) : 0;
   const flagIds = new Set(flags.map(f => f.id));
 
@@ -192,6 +200,7 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
             ))}
           </div>
           <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px' }}>
+            {linkFilter && <div style={{ marginBottom: 4 }}><ShowingChip label={links.labelFor(linkFilter.type, linkFilter.id)} count={groups.reduce((n, g) => n + g.items.length, 0)} onClear={() => setLinkFilter(null)} /></div>}
             {me && !canEdit && <p style={{ fontSize: 13, color: SA.muted, margin: '0 0 8px' }}>You have view access, so tasks are read-only.</p>}
             {error && <div style={{ marginBottom: 8 }}><ErrorNote message={error} /></div>}
             {groups.filter(g => g.items.length).map(g => (

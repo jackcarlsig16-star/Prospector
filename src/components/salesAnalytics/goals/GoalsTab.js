@@ -14,6 +14,7 @@ import PartnersView from './PartnersView';
 import CompaniesView from './CompaniesView';
 import ReportView from './ReportView';
 import GoalHero from './GoalHero';
+import { linkedTo, isOpenTask, openTasks } from '../tasks/LinkedTasks';
 import { exportWidgetCsv } from '../exportCsv';
 import {
   labelStyle, subStyle, numStyle, Chip, Btn, ErrorNote,
@@ -135,6 +136,14 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
   ];
 
   const myTodos = todos.filter(t => ownedBy(owner, t.owner_user_id));
+  // task-drawer-v1 Stage 4 - to-dos linked to a commitment, goal, partner or
+  // company, from the week on screen. The drawer only holds the current week,
+  // so links into it (and partner/company/goal counts) show for that week only.
+  const liveWeek = weekStart === thisWeek;
+  const tasksFor = (type, id) => linkedTo(todos, type, id);
+  const heroTasks = liveWeek ? Object.fromEntries(['outbound_audience', 'total_in_sequence', 'partners_first_touched', 'meetings_set', 'real_replies_clicks']
+    .map(k => [k, linkedTo(myTodos, 'metric', k).filter(isOpenTask).length])) : null;
+  const drawerFilter = owner === 'team' ? 'team' : owner === me?.profile?.id ? 'me' : owner;
   const myPartners = partners.filter(p => ownedBy(owner, p.owner_user_id));
   const myCompanies = companies.filter(c => ownedBy(owner, c.sequenced_by));
   const myAllCompanies = allCompanies && allCompanies.filter(c => ownedBy(owner, c.sequenced_by));
@@ -297,12 +306,13 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
           {errors.members && <ErrorNote message={errors.members.message} />}
           {me && !canEdit && <div style={{ ...subStyle, fontSize: 13 }}>You have view access to this workspace, so Goals is read-only for you.</div>}
           <GoalHero businessId={businessId} weekStart={weekStart} owner={owner} commitments={myCommitments} missingHeadcount={missingHeadcount} canEdit={canEdit}
-            scorecard={scorecard} scorecardError={errors.scorecard} reloadKey={heroKey} onGoalSaved={() => { loadScorecard(); loadKpi(); }} onDrill={drill} />
+            scorecard={scorecard} scorecardError={errors.scorecard} reloadKey={heroKey} onGoalSaved={() => { loadScorecard(); loadKpi(); }} onDrill={drill}
+            openTasks={heroTasks} onOpenTasks={key => openTasks({ link: { type: 'metric', id: key }, filter: drawerFilter })} />
 
           {view === 'report' && (
             <ReportView weekStart={weekStart} report={reportData?.report} reportError={errors.report} sections={reportData?.sections} infra={reportData?.infra}
               commitments={reportCommitments} commitmentsError={errors.commitments} kpiRows={kpiRows} kpiError={errors.kpi} autoChips={autoChips} partnerBlock={partnerBlock}
-              canEdit={canEdit} lookup={lookup} members={members} defaultOwner={owner === 'team' ? me?.profile?.id : owner} onOpen={openTarget}
+              canEdit={canEdit} lookup={lookup} members={members} defaultOwner={owner === 'team' ? me?.profile?.id : owner} onOpen={openTarget} tasksFor={tasksFor} liveWeek={liveWeek}
               onSaveSection={(key, notes) => goalsApi.saveSection(businessId, weekStart, key, notes)}
               onSectionSaved={s => setReportData(d => (d ? { ...d, sections: [...d.sections.filter(x => x.section_key !== s.section_key), s] } : d))}
               onFinalize={async () => { await goalsApi.finalize(businessId, weekStart); await loadReport(); return true; }}
@@ -353,7 +363,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
                 const ranks = await goalsApi.partnerRank(businessId, goalId, order);
                 setPartners(ps => ps.map(p => (p.id in ranks ? { ...p, sort_rank: ranks[p.id] } : p)));
               }}
-              teamView={owner === 'team'} focusFilter={partnerFocus}
+              teamView={owner === 'team'} focusFilter={partnerFocus} tasksFor={liveWeek ? tasksFor : null}
               onCreate={async body => { const g = await goalsApi.createPartner(businessId, { ...body, owner_user_id: owner === 'team' ? null : owner }); setPartners(ps => [...ps, g]); }} />
           )}
 
@@ -362,7 +372,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
               canEdit={canEdit} error={errors.companies || errors.cadences}
               allCompanies={myAllCompanies} allError={errors.allCompanies} missingOpen={missingOpen} onMissingOpen={setMissingOpen}
               onSaveEmployees={saveEmployees}
-              ownerFocus={companyOwnerFocus} onOwnerFocus={setCompanyOwnerFocus}
+              ownerFocus={companyOwnerFocus} onOwnerFocus={setCompanyOwnerFocus} tasksFor={liveWeek ? tasksFor : null}
               onCreateCadence={async body => { const c = await goalsApi.createCadence(businessId, body); setCadences(cs => [...cs, c]); }}
               onDeleteCadence={async cadenceId => { await goalsApi.deleteCadence(businessId, cadenceId); setCadences(cs => cs.filter(c => c.id !== cadenceId)); }} />
           )}

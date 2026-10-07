@@ -6,6 +6,7 @@ import {
   cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle, Chip, Dot, Btn, AddButton, ErrorNote, ShowingChip,
   fmt, short, addDays, weekOf, shortWeek,
 } from './goalsUi';
+import { TasksChip } from '../tasks/LinkedTasks';
 
 const TOP = 12;
 
@@ -162,7 +163,7 @@ const cohortOf = c => c.cohort || 'Other';
 // id, 'unassigned', or null.
 // allCompanies: every week (for the missing-headcount list); missingOpen is
 // owned by GoalsTab so the scorecard can open the list from another view.
-export default function CompaniesView({ weekStart, companies, allCompanies, allError, missingOpen, onMissingOpen, cadences, lookup, members, owner, whoLabel, canEdit, error, onSaveEmployees, onCreateCadence, onDeleteCadence, ownerFocus, onOwnerFocus }) {
+export default function CompaniesView({ weekStart, companies, allCompanies, allError, missingOpen, onMissingOpen, cadences, lookup, members, owner, whoLabel, canEdit, error, onSaveEmployees, onCreateCadence, onDeleteCadence, ownerFocus, onOwnerFocus, tasksFor }) {
   const [showAll, setShowAll] = useState(false);
   const [filledIds, setFilledIds] = useState(() => new Set());
   const missingCount = (allCompanies || []).filter(c => c.employees == null).length;
@@ -234,7 +235,12 @@ export default function CompaniesView({ weekStart, companies, allCompanies, allE
                   const o = lookup(c.sequenced_by);
                   return (
                     <tr key={c.account_id}>
-                      <td style={{ ...td, textAlign: 'left', paddingLeft: 0, fontWeight: 500 }}>{c.name || <span style={subStyle}>Unnamed account</span>}</td>
+                      <td style={{ ...td, textAlign: 'left', paddingLeft: 0, fontWeight: 500 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                          {c.name || <span style={subStyle}>Unnamed account</span>}
+                          {tasksFor && <TasksChip tasks={tasksFor('company', c.account_id)} link={{ type: 'company', id: c.account_id }} label={c.name || 'this company'} />}
+                        </div>
+                      </td>
                       <td style={td}><EmployeesCell company={c} canEdit={canEdit} onSave={onSaveEmployees} /></td>
                       <td style={{ ...td, textAlign: 'left' }}>{c.cohort ? <Chip><Dot square color={cohortColor(c.cohort)} />{c.cohort}</Chip> : <span style={subStyle}>—</span>}</td>
                       <td style={{ ...td, textAlign: 'left' }}><Chip><Dot color={o.color} />{o.first}</Chip></td>

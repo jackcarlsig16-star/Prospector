@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { SA, saSans } from '../../theme';
 import { WORKFLOW_STEPS, stepOf } from '../../../../constants/partnerPipeline';
 import { labelStyle, subStyle, inputStyle, Btn, ErrorNote } from '../goalsUi';
+import LinkedTasks from '../../tasks/LinkedTasks';
 
 // sales-partners-workflow-v1 Stage 4 - a row's drop-down: the research and
 // intel from the sheet (read-only here), priority and the stored first
@@ -60,8 +61,9 @@ function History({ goalId, version, lookup, onEvents }) {
 }
 
 // bump: the parent's change counter - a note changes no partner field, so
-// updated_at alone wouldn't refresh the history.
-export default function PartnerDetails({ partner, lookup, canEdit, onUpdate, onEvents, bump }) {
+// updated_at alone wouldn't refresh the history. tasksFor: this week's
+// linked to-dos, or null when Goals shows another week.
+export default function PartnerDetails({ partner, lookup, canEdit, onUpdate, onEvents, bump, tasksFor }) {
   const [showEmail, setShowEmail] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState('');
@@ -107,6 +109,7 @@ export default function PartnerDetails({ partner, lookup, canEdit, onUpdate, onE
         </div>
       )}
       {error && <ErrorNote message={error} />}
+      {tasksFor && <LinkedTasks tasks={tasksFor('partner', partner.id)} lookup={lookup} label={partner.name} link={{ type: 'partner', id: partner.id }} />}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <span style={labelStyle}>History · newest first</span>
         <History goalId={partner.id} version={`${partner.updated_at}|${bump}`} lookup={lookup} onEvents={onEvents} />

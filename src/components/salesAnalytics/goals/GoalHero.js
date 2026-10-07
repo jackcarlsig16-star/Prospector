@@ -69,7 +69,7 @@ function SetGoal({ label, onSave }) {
   );
 }
 
-function Card({ card, canEdit, onDrill }) {
+function Card({ card, canEdit, onDrill, openTasks, onOpenTasks }) {
   const p = card.value != null && card.goal ? card.value / card.goal : null;
   const pctLabel = p == null ? '—' : `${Math.round(p * 100)}%`;
   return (
@@ -90,6 +90,10 @@ function Card({ card, canEdit, onDrill }) {
       <Sparkline points={card.weeks} format={card.format} />
       <span style={{ ...numStyle, fontSize: 11, color: card.wow == null ? SA.faint : card.wow >= 0 ? SA.good : SA.bad }}
         title="Change vs last week">{card.wow == null ? `${card.wowLabel || 'vs last week'} —` : `${card.wow >= 0 ? '▲' : '▼'} ${card.format(Math.abs(card.wow))} ${card.wowLabel || 'vs last week'}`}</span>
+      {openTasks > 0 && (
+        <button type="button" onClick={onOpenTasks} aria-label={`${openTasks} open task${openTasks === 1 ? '' : 's'} for ${card.name} - open in Tasks`}
+          style={{ all: 'unset', ...saSans, cursor: 'pointer', fontSize: 12, color: SA.link, minHeight: 24 }}>✓ {openTasks} open task{openTasks === 1 ? '' : 's'} →</button>
+      )}
       {card.goal == null && (canEdit ? <SetGoal label={card.name} onSave={card.saveGoal} /> : <span style={{ ...subStyle, fontSize: 12 }}>No goal set</span>)}
       {card.note}
     </section>
@@ -100,7 +104,8 @@ function Card({ card, canEdit, onDrill }) {
 // person-filtered. reloadKey changes when a goal was saved elsewhere.
 // scorecard / scorecardError: Goals' own current-month scorecard, so the hero
 // doesn't load that month twice; left undefined (Overview), the hero loads it.
-export default function GoalHero({ businessId, weekStart, owner, commitments, missingHeadcount, canEdit, reloadKey, onDrill, onGoalSaved, scorecard, scorecardError }) {
+// openTasks: { metric key: open linked to-dos } (Goals, current week only).
+export default function GoalHero({ businessId, weekStart, owner, commitments, missingHeadcount, canEdit, reloadKey, onDrill, onGoalSaved, scorecard, scorecardError, openTasks, onOpenTasks }) {
   const [open, setOpen] = useState(readOpen);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -136,11 +141,11 @@ export default function GoalHero({ businessId, weekStart, owner, commitments, mi
     const commitment = commitments.find(c => c.metric_key === 'outbound_audience' && c.target_value != null);
     const weekCard = (id, name, key, extra) => {
       const pts = series(key);
-      return { id, name, value: pts[WEEKS - 1].value, goal: pts[WEEKS - 1].goal, weeks: pts, wow: wow(pts), format: fmt, period: shortWeek(weekStart).replace('Wk', 'week'), saveGoal: saveGoal('week', weekStart, key), ...extra };
+      return { id, metric: key, name, value: pts[WEEKS - 1].value, goal: pts[WEEKS - 1].goal, weeks: pts, wow: wow(pts), format: fmt, period: shortWeek(weekStart).replace('Wk', 'week'), saveGoal: saveGoal('week', weekStart, key), ...extra };
     };
     const aud = series('outbound_audience');
     cards = [
-      { id: 'audience', name: 'Audience reached', value: sc.month_total.outbound_audience.value, goal: sc.month_total.outbound_audience.goal,
+      { id: 'audience', metric: 'outbound_audience', name: 'Audience reached', value: sc.month_total.outbound_audience.value, goal: sc.month_total.outbound_audience.goal,
         // Big number = the month; the trend and change are weekly, so they say so.
         weeks: aud, wow: wow(aud), wowLabel: 'weekly vs last week', thisWeek: aud[WEEKS - 1].value, format: short, period: monthName(month), drillLabel: 'Companies', saveGoal: saveGoal('month', month, 'outbound_audience'),
         note: (commitment || missingHeadcount > 0) && (
@@ -152,7 +157,7 @@ export default function GoalHero({ businessId, weekStart, owner, commitments, mi
       weekCard('in_sequence', 'People in sequence', 'total_in_sequence', { teamOnly: owner !== 'team', drillLabel: 'Overview' }),
       weekCard('partners', 'Partners first-touched', 'partners_first_touched', { drillLabel: 'Partners (Sent)' }),
       weekCard('meetings', 'Meetings set', 'meetings_set', { teamOnly: owner !== 'team', drillLabel: 'the scorecard row' }),
-      { id: 'engagement', name: 'Real replies + clicks', value: engagement[WEEKS - 1].value, goal: engagement[WEEKS - 1].goal, weeks: engagement, wow: wow(engagement),
+      { id: 'engagement', metric: 'real_replies_clicks', name: 'Real replies + clicks', value: engagement[WEEKS - 1].value, goal: engagement[WEEKS - 1].goal, weeks: engagement, wow: wow(engagement),
         format: fmt, period: shortWeek(weekStart).replace('Wk', 'week'), teamOnly: owner !== 'team', drillLabel: 'the Daily Huddle', saveGoal: saveGoal('week', weekStart, 'real_replies_clicks') },
     ];
   }
@@ -174,7 +179,7 @@ export default function GoalHero({ businessId, weekStart, owner, commitments, mi
         : !sc ? <span style={{ ...subStyle, fontSize: 13 }}>Loading goals…</span>
         : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 136px), 1fr))', gap: 12 }}>
-            {cards.map(c => <Card key={c.id} card={c} canEdit={canEdit} onDrill={() => onDrill(c.id)} />)}
+            {cards.map(c => <Card key={c.id} card={c} canEdit={canEdit} onDrill={() => onDrill(c.id)} openTasks={openTasks?.[c.metric]} onOpenTasks={() => onOpenTasks(c.metric)} />)}
           </div>
         ))}
     </div>

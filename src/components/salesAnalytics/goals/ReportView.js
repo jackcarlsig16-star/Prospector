@@ -3,6 +3,7 @@ import { SA, saSans } from '../theme';
 import { SEMANTIC } from '../palette';
 import Ring from '../charts/Ring';
 import KpiTable from './KpiTable';
+import LinkedTasks from '../tasks/LinkedTasks';
 import { PIPELINE_STATUSES, WORKFLOW_STEPS, stepOf } from '../../../constants/partnerPipeline';
 import {
   cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, rowStyle, inputStyle,
@@ -204,7 +205,7 @@ function SectionsRing({ written, toWrite }) {
   );
 }
 
-function CommitmentRow({ c, lookup, editable, onOpen, onUpdate }) {
+function CommitmentRow({ c, lookup, editable, onOpen, onUpdate, tasks, liveWeek }) {
   const owner = lookup(c.owner_user_id);
   const measured = c.metric_key && c.target_value != null;
   const p = measured && c.progress != null ? c.progress / c.target_value : null;
@@ -234,6 +235,7 @@ function CommitmentRow({ c, lookup, editable, onOpen, onUpdate }) {
         ) : <Chip><Dot color={done ? SEMANTIC.healthy : SA.neutral} />{done ? 'Done' : c.status === 'dropped' ? 'Dropped' : 'Open'}</Chip>}
         <Chip><Dot color={owner.color} />{owner.first}</Chip>
       </div>
+      <LinkedTasks tasks={tasks} lookup={lookup} label={c.text} link={liveWeek ? { type: 'commitment', id: c.id } : null} />
     </div>
   );
 }
@@ -283,7 +285,7 @@ function AddCommitment({ members, defaultOwner, onSubmit, onCancel }) {
 export default function ReportView(props) {
   const {
     weekStart, report, reportError, sections, infra, commitments, commitmentsError, kpiRows, kpiError, autoChips, partnerBlock,
-    canEdit, lookup, members, defaultOwner, onOpen, onSaveSection, onSectionSaved, onFinalize, onReopen,
+    canEdit, lookup, members, defaultOwner, onOpen, tasksFor, liveWeek, onSaveSection, onSectionSaved, onFinalize, onReopen,
     onAddCommitment, onUpdateCommitment, onCarryCommitments, onSaveTarget, infraHandlers,
   } = props;
   const [adding, setAdding] = useState(false);
@@ -339,7 +341,7 @@ export default function ReportView(props) {
         <div style={{ marginTop: 8 }}>
           {commitmentsError && <ErrorNote message={commitmentsError.message} />}
           {!commitmentsError && !commitments.length && <p style={{ ...subStyle, margin: '12px 0 0' }}>No commitments for this week yet{commitEditable ? ' — add your first, or carry over last week’s unfinished ones' : ''}.</p>}
-          {commitments.map(c => <CommitmentRow key={c.id} c={c} lookup={lookup} editable={commitEditable} onOpen={onOpen} onUpdate={(id, body) => run(() => onUpdateCommitment(id, body))} />)}
+          {commitments.map(c => <CommitmentRow key={c.id} c={c} lookup={lookup} editable={commitEditable} onOpen={onOpen} tasks={tasksFor('commitment', c.id)} liveWeek={liveWeek} onUpdate={(id, body) => run(() => onUpdateCommitment(id, body))} />)}
           {commitEditable && (adding
             ? <AddCommitment members={members} defaultOwner={defaultOwner} onCancel={() => setAdding(false)} onSubmit={async body => { if (await run(() => onAddCommitment(body))) setAdding(false); }} />
             : <div className="no-print" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
