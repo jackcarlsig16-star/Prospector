@@ -1,0 +1,94 @@
+SPEC — task-drawer-v1
+
+## Status
+Source: Jack in chat, 2026-10-06: "there could be a sidebar — an easy pull-out menu for Cyrus and I, so
+we can navigate to any page and then add something to a task or cross off a task or even assign to goals."
+Builds on what exists: Goals to-dos (sales_week_goals kind 'todo' with steps, owner, contacts, carry-over,
+flags from the Huddle). This is a second, always-available VIEW of those same to-dos — NOT a new task
+system. It is also the home for two follow-ons: "Paste call notes" (call-notes-to-tasks-v1 REVISION 1)
+and "Log outreach" (sales-quick-add-research-v1).
+QUEUED: after goals-surface-v1 Stage 5, BEFORE sales-quick-add-research-v1 (so Log outreach can land in
+the drawer). call-notes-to-tasks REVISION 1 builds right after this.
+
+## Problem (real, grounded)
+1. Adding, completing or reassigning a to-do requires going to Goals → This week; from Huddle, Overview,
+   Companies or any other page there's no way to capture a task without leaving the page.
+2. Flags created in the Huddle land as Goals to-dos and a "Flagged for you" lane/badge in the Huddle
+   only — not visible from other pages.
+3. A to-do can't be tied to the goal it serves (a weekly commitment or a metric goal), so the goal
+   doesn't show the work behind it.
+
+## Design decision
+
+DECIDED — the drawer
+- A "Tasks" button in the top bar on every workspace page where Goals & Sales is enabled (businesses.features
+  goals_sales), with a badge = my open tasks due this week + flagged-for-me. Also a slim handle on the right
+  edge (desktop). Opens a right-side drawer (~380px) over the page without navigating away; Escape or ×
+  closes; open/closed remembered per viewer (try/catch localStorage). Phone: full-height sheet from the ☰
+  header.
+- Top: quick-add line — type and press Enter. Defaults: owner = me, week = this week. Inline chips after
+  typing: Owner (any workspace member or Unassigned) · Due date · Link (see below). Steps can be added after.
+- Filter pills: Me · Cyrus · Team · Unassigned (member list from the workspace, not hard-coded names;
+  member colors as on Goals).
+- List groups, in order: Flagged for me · Overdue · This week · From calls · Done this week (collapsed).
+  Each row: checkbox (complete), title, owner dot, due, link chip, step count "2/4". Click a row to expand:
+  steps (check off individually), note, contacts, "Open in Goals" link.
+- Check off = the same complete action Goals uses (flag completion, carry-over and report counts behave
+  exactly as today). Toast with Undo 5s.
+- Reassign from the row's owner chip. Delete limited as FIX-5 (creator within 2 min, or Owner/Admin);
+  others get Drop.
+- Viewer sees the drawer read-only (no add, check, assign).
+
+DECIDED — "assign to goals" (Link)
+- A to-do can link to ONE of: a weekly commitment (sales_week_goals kind 'commitment'), a metric goal
+  (sales_metric_targets key, e.g. partners_first_touched), a partner, or a company. Typeahead over all
+  four, grouped.
+- In Goals, a linked commitment shows "3 tasks · 1 done" under it, expandable; a metric goal card (hero,
+  goals-surface Stage 3) shows "2 open tasks" linking to the drawer filtered to it. Partner/company links
+  show on the partner row drop-down / company row.
+- A linked to-do does NOT change metric math — goals still count real events.
+
+PROPOSED / REVISABLE
+- Drawer width 380px; badge counts due-this-week + flagged only (not all open).
+- No keyboard shortcut in v1 (avoid clashing with browser/OS shortcuts); add later if wanted.
+
+## Out of scope
+- Paste call notes → tasks: call-notes-to-tasks-v1 REVISION 1 (adds a "Paste call notes" button in the
+  drawer header). Reserve the header slot.
+- Log outreach: sales-quick-add-research-v1 — when it builds, its button ALSO appears in the drawer header.
+- Notifications/email reminders, recurring tasks, tasks for non-sales workspaces.
+- Owner identity unification (Huddle jack/cyrus enum vs member ids, audit M5) — separate spec; the
+  drawer uses member ids like Goals.
+
+## Standing rules that apply (inlined)
+- All writes through the API (FIX-1); reuse the existing Goals to-do routes — add routes only for Link.
+- Flag rules from FIX-3/4/5 (undo safety, one open flag per prospect, restricted delete) unchanged.
+- Workspace-bound ids on every route; Viewer refused on writes.
+- Tests that write data restore and report "restored: yes". Run test suites one at a time.
+
+## Implementation
+FIRST: read the Goals to-do API/routes, the This week view, FlaggedLane/flag completion, the app shell
+top bar and phone ☰ drawer. Report in 5–10 lines: which routes the drawer reuses, and whether Link needs a
+migration (likely: link_type + link_id on sales_week_goals). If so, give Jack the SQL and wait for "done".
+  Stage 1: Link migration + API (set/clear link, list tasks by link) + tests.
+  Stage 2: drawer shell on every page + list/groups/filters + check off/undo + reassign (no quick-add yet).
+           Screenshot 1440/390 on Goals, Huddle and Overview; stop.
+  Stage 3: quick-add line + chips + steps + Link typeahead.
+  Stage 4: Goals shows linked tasks under commitments and on hero cards; partner/company link chips.
+
+## Verification
+- Stage 1: link a test to-do to a commitment, a metric, a partner, a company; list-by-link returns it;
+  other workspace refused; Viewer refused; restored: yes.
+- Stage 2: drawer opens on Goals, Huddle, Overview, Companies without losing page state (scroll, filters);
+  counts match Goals → This week for Me/Cyrus/Team; completing in the drawer updates Goals immediately and
+  vice versa; 0 console errors at 1440/390.
+- Stage 3: add with Enter in under 5 seconds; owner/due/link chips save; restored: yes.
+- Stage 4: linked counts under a commitment match DB; hero card "N open tasks" opens the drawer filtered.
+- Bar 5: from the Huddle page, Jack adds a task for Cyrus linked to a partner, checks off one of his own,
+  and sees both reflected in Goals → This week without reloading.
+
+## Definition of done
+Bar 5 above.
+
+## Commit instructions
+One commit per stage referencing task-drawer-v1. Push after each passes. Stop and report after each stage.
