@@ -34,7 +34,8 @@ export default function MicrosoftConnection() {
     setBusy('check'); setNote('');
     const r = await fetch('/api/microsoft/check', { method: 'POST' });
     const d = await r.json().catch(() => ({}));
-    setNote(r.ok ? `Checked just now - reading ${d.email}` : d.error || `Check failed (${r.status})`);
+    const folderLine = f => `${FOLDER_LABEL[f.folder]} ${f.total ?? f.total_error ?? '?'} total · ${f.window ?? f.window_error ?? '?'} in the 90-day window`;
+    setNote(r.ok ? `Checked just now - reading ${d.email}${d.folders ? ' · ' + d.folders.map(folderLine).join(' · ') : ''}` : d.error || `Check failed (${r.status})`);
     setBusy(''); load();
   };
   const disconnect = async () => {
