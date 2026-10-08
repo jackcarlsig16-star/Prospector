@@ -10,7 +10,7 @@ const RECONNECT = 'Microsoft access expired or was revoked - reconnect';
 export const microsoftConfigured = () =>
   !!(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET && process.env.MICROSOFT_TENANT_ID && process.env.MICROSOFT_TOKEN_KEY);
 
-export const authority = () => `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID}/oauth2/v2.0`;
+export const authority = () => process.env.MICROSOFT_AUTHORITY || `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID}/oauth2/v2.0`;
 
 // Graph returns its scopes without the resource prefix; anything we didn't
 // ask for (profile, email) isn't worth keeping.

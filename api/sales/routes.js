@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { runSync } from './sync.js';
 import { asReported } from './syncRunStatus.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
+import { runOutlookSync } from '../microsoft/graphSync.js';
 
 function getSupabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -13,6 +14,11 @@ export async function syncRoute(req, res) {
     if (result.refused) return res.status(429).json({ error: result.reason });
     if (result.error) return res.status(500).json({ error: result.error });
     res.status(200).json({ run: result.run });
+    // microsoft-connect-v1: the caller's Outlook rides along, at most hourly,
+    // after the response so Sync now never waits on Graph. Refusals (no grant,
+    // unmapped mailbox, too soon) are silent by design.
+    runOutlookSync({ userId: req.auth.user.id, businessId: req.params.businessId, trigger: 'piggyback' })
+      .catch(err => console.error('[microsoft/sync] piggyback', err.message));
   } catch (err) {
     console.error('[sales/sync]', err.message);
     res.status(500).json({ error: err.message });

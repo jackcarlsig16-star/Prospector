@@ -209,6 +209,8 @@ app.get('/api/microsoft/callback',    esHandler('./api/microsoft/callback.js'));
 app.get('/api/microsoft/status',      esHandler('./api/microsoft/status.js'));
 app.post('/api/microsoft/check',      esHandler('./api/microsoft/check.js'));
 app.post('/api/microsoft/disconnect', esHandler('./api/microsoft/disconnect.js'));
+app.post('/api/microsoft/sync',         esHandler('./api/microsoft/sync.js'));
+app.get('/api/microsoft/sync-summary',  esHandler('./api/microsoft/sync-summary.js'));
 
 // ── Salesforce OAuth ──────────────────────────────────────────────────────────
 app.get('/api/sfdc/auth', (req, res) => {
