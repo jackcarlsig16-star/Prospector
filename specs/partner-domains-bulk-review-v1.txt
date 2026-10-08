@@ -1,0 +1,49 @@
+FIX — partner-domains-bulk-review-v1
+
+## Status
+Follows partner-360-v1 Stage 2 (cf67367). Jack, 2026-10-07: "so I'm supposed to manually do all of these?" —
+19 HomeLover partners have pending domain suggestions and confirming each means opening its drop-down.
+The audit's "human confirms the domain" rule stands; the cost of confirming must not.
+Runs BEFORE partner-360-v1 Stage 3 (Stage 3 only syncs partners with a confirmed domain).
+
+## Problem
+1. Confirming a suggestion is only possible from the Domains row inside PartnerIntel (Stage 2), one partner at a
+   time. 19 drop-down opens today; more every time sources fill in or the Apollo snapshot grows.
+2. A suggestion backed by BOTH the sheet's sources domain and an Apollo name-matched account with the same host
+   is two independent signals agreeing. A click adds nothing there.
+
+## Design decision
+DECIDED
+- Partners header gets "Review domains (n)" next to "Export to Apollo (CSV)". n = partners with >= 1 pending
+  suggestion. Hidden when n = 0. Viewer: no button.
+- Panel: one row per pending suggestion — partner name · domain · source badge Sheet / Apollo / Both ·
+  ✓ confirm · ✕ dismiss. Top: "Confirm all (n)" and "Confirm all 'Both' (m)". Confirming uses the existing
+  Stage 2 confirm route per row (no new write path); progress + final count shown; rows disappear as they land.
+- Export to Apollo panel count refreshes after confirms.
+PROPOSED / REVISABLE (Jack decides, flag back)
+- Auto-confirm "Both" rows silently on panel open (no click). Default OFF — ship the button; turn on if Jack wants.
+
+## Out of scope
+- Stage 3 sync. The matching rule (exact host) — unchanged. sales_goals.company_domain — still untouched.
+
+## Standing rules
+CLAUDE.md Sales module + Testing rules. API-only writes, Member for writes, Viewer read-only, workspace-bound,
+restored: yes, suites one at a time, no contact emails anywhere (this feature touches none).
+
+## Implementation (one stage)
+1. Route GET /goals/partners/domain-suggestions — workspace-wide pending suggestions; reuse the Stage 2 live
+   suggestion logic (if the workspace-wide GET /goals/partners/domains already returns this, reuse it, no new route).
+2. Panel component under goals/partners; wire the header button; Confirm all runs the confirms sequentially
+   and reports "k of n confirmed".
+3. Jest: suggestion grouping + Both detection. Live script in a TEMP workspace. Screenshot 1440/390. STOP.
+
+## Verification
+- TEMP workspace: 3 partners, 4 suggestions (1 Both). Panel shows 4 with correct badges; Confirm all → 4 confirmed
+  rows in partner_domains, header n → 0, button hidden, Export count updated; dismiss one before confirming →
+  3 confirmed + 1 dismissed; Viewer sees no button and GET works; 0 console errors; restored: yes.
+- HomeLover read-only: n = 19 (or today's number — report it).
+- Bar 5: Jack opens Review domains on prod, glances, clicks Confirm all once. Done in under a minute.
+
+## Commit
+One commit referencing partner-domains-bulk-review-v1. Push after verification. Then: copy to specs/, delete
+this inbox file, STATUS line, and proceed to partner-360-v1 Stage 3 plan.
