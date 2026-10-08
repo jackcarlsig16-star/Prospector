@@ -1,6 +1,6 @@
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { STAGE_ORDER } from './pipelineStages.js';
-import { PARTNER_METRICS, PARTNER_FLOWS, loadPartnerData, partnerWeekMetrics, partnerReportBlock } from './partnerMetrics.js';
+import { PARTNER_METRICS, PARTNER_FLOWS, PEOPLE_METRIC, loadPartnerData, partnerWeekMetrics, partnerReportBlock, peopleFirstTouchedInWeek } from './partnerMetrics.js';
 import { huddleWeekCounts, weekEngagement } from './huddleWeek.js';
 import {
   getSupabase, validate, fail, findRow, weekIsFinal, FINAL_ERROR,
@@ -16,6 +16,10 @@ import {
 const SECTION_KEYS = Array.from({ length: 14 }, (_, i) => `s${i + 1}`);
 const INFRA_STATUSES = ['completed', 'in_progress', 'blocked'];
 const HERO_WEEKS = 6;
+// first-touch-people-v1 - the first-touched goal row carries a unit; a week
+// with no row shows the latest earlier goal as "carried" (display only).
+const FIRST_TOUCHED = 'partners_first_touched';
+const UNITS = ['people', 'partners'];
 // Seif's "positive responses": replies that move toward a meeting
 // (Jack 2026-10-02, sales-analytics-scorecard-v1 Stage 1).
 const POSITIVE_REPLY_CLASSES = ['willing_to_meet', 'follow_up_question', 'person_referral'];
@@ -36,6 +40,7 @@ const KPI_ROWS = [
 const SCORECARD_SOURCES = {
   outbound_audience: 'Apollo', total_in_sequence: 'Apollo', sequences_running: 'Apollo', meetings_set: 'Manual', open_rate: 'Apollo',
   ...Object.fromEntries(PARTNER_METRICS.map(k => [k, 'App'])),
+  [PEOPLE_METRIC]: 'App',
 };
 
 // Mondays whose week starts inside the month (the September sheet's
@@ -136,7 +141,7 @@ async function scorecardWeeks(supabase, businessId, weeks, ownerUserId) {
     loadPartnerData(supabase, businessId),
     mailboxesFor(supabase, businessId, ownerUserId),
   ]);
-  const keys = [...SCORECARD_METRICS, ...PARTNER_METRICS];
+  const keys = [...SCORECARD_METRICS, ...PARTNER_METRICS, PEOPLE_METRIC];
   const weekActuals = await Promise.all(weeks.map(w => weekScorecard(supabase, businessId, w, boxes, manual)));
   return weeks.map((w, i) => {
     const actual = { ...weekActuals[i], ...partnerWeekMetrics(partnerData, w, ownerUserId) };
@@ -147,7 +152,7 @@ async function scorecardWeeks(supabase, businessId, weeks, ownerUserId) {
 export async function buildScorecard(supabase, businessId, month, ownerUserId) {
   const weeks = weeksOfMonth(month);
   const monthEnd = weeks.length ? addDays(weeks[weeks.length - 1], 6) : month;
-  const keys = [...SCORECARD_METRICS, ...PARTNER_METRICS];
+  const keys = [...SCORECARD_METRICS, ...PARTNER_METRICS, PEOPLE_METRIC];
   const [perWeek, monthGoals, monthOpenRate] = await Promise.all([
     scorecardWeeks(supabase, businessId, weeks, ownerUserId),
     targetsFor(supabase, businessId, 'month', [month]),
@@ -164,6 +169,7 @@ export async function buildScorecard(supabase, businessId, month, ownerUserId) {
     meetings_set: sum('meetings_set'),
     open_rate: monthOpenRate,
     ...Object.fromEntries(PARTNER_METRICS.map(k => [k, PARTNER_FLOWS.includes(k) ? sum(k) : last(k)])),
+    [PEOPLE_METRIC]: sum(PEOPLE_METRIC),
   };
   return {
     month, owner_user_id: ownerUserId || null, weeks: perWeek,
@@ -353,7 +359,7 @@ export async function listTargetsRoute(req, res) {
 // PUT /goals/targets { period, period_start, metric_key, goal?, actual? }
 // actual is only accepted for manual metrics (meetings).
 export async function saveTargetRoute(req, res) {
-  const allowed = ['period', 'period_start', 'metric_key', 'goal', 'actual'];
+  const allowed = ['period', 'period_start', 'metric_key', 'goal', 'actual', 'unit'];
   const unknown = Object.keys(req.body || {}).find(k => !allowed.includes(k));
   if (unknown) return res.status(400).json({ error: `unknown field: ${unknown}` });
   const { period, period_start, metric_key } = req.body || {};
@@ -368,6 +374,9 @@ export async function saveTargetRoute(req, res) {
     if (!num(req.body.actual)) return res.status(400).json({ error: 'actual must be a number >= 0 or null' });
   }
   if (!('goal' in req.body) && !('actual' in req.body)) return res.status(400).json({ error: 'send goal and/or actual' });
+  if ('unit' in req.body && (metric_key !== FIRST_TOUCHED || period !== 'week' || !UNITS.includes(req.body.unit))) {
+    return res.status(400).json({ error: `unit (${UNITS.join('|')}) only applies to the weekly ${FIRST_TOUCHED} goal` });
+  }
   const supabase = getSupabase();
   try {
     if (period === 'week' && await weekIsFinal(supabase, req.params.businessId, period_start)) return res.status(409).json({ error: FINAL_ERROR });
@@ -375,6 +384,7 @@ export async function saveTargetRoute(req, res) {
   const now = new Date().toISOString();
   const row = { business_id: req.params.businessId, period, period_start, metric_key, updated_by: req.auth.user.id, updated_at: now };
   if ('goal' in req.body) row.goal = req.body.goal;
+  if ('unit' in req.body) row.unit = req.body.unit;
   if ('actual' in req.body) Object.assign(row, { actual: req.body.actual, actual_by: req.auth.user.id, actual_at: now });
   const { data, error } = await supabase.from('sales_metric_targets')
     .upsert(row, { onConflict: 'business_id,period,period_start,metric_key' }).select().single();
@@ -608,14 +618,22 @@ export async function heroRoute(req, res) {
       const v = await validate(supabase, businessId, { owner: { kind: 'member' } }, { owner });
       if (v.error) return fail(res, v);
     }
-    const [scorecard, earlier, engagement, targets] = await Promise.all([
+    const [scorecard, earlier, engagement, targets, ftRow, partnerData] = await Promise.all([
       skip_month === '1' ? null : buildScorecard(supabase, businessId, month, owner || null),
       scorecardWeeks(supabase, businessId, weeks.filter(w => w < month), owner || null),
       Promise.all(weeks.map(w => weekEngagement(supabase, businessId, w))),
       selectAllPages(() => supabase.from('sales_metric_targets').select('period_start, metric_key, goal')
         .eq('business_id', businessId).eq('period', 'week').in('metric_key', HERO_METRICS)
         .gte('period_start', weeks[0]).lte('period_start', week_start).order('period_start').order('metric_key')),
+      supabase.from('sales_metric_targets').select('period_start, goal, unit')
+        .eq('business_id', businessId).eq('period', 'week').eq('metric_key', FIRST_TOUCHED).lte('period_start', week_start).not('goal', 'is', null)
+        .order('period_start', { ascending: false }).limit(1).maybeSingle().then(r => { if (r.error) throw new Error(r.error.message); return r.data; }),
+      loadPartnerData(supabase, businessId),
     ]);
-    res.json({ scorecard, earlier, engagement: weeks.map((w, i) => ({ week_start: w, ...engagement[i] })), targets });
+    const first_touched = {
+      unit: ftRow?.unit || 'people', goal: ftRow ? Number(ftRow.goal) : null, carried: !!ftRow && ftRow.period_start !== week_start,
+      people: peopleFirstTouchedInWeek(partnerData, week_start, owner || null),
+    };
+    res.json({ scorecard, earlier, engagement: weeks.map((w, i) => ({ week_start: w, ...engagement[i] })), targets, first_touched });
   } catch (e) { res.status(500).json({ error: e.message }); }
 }

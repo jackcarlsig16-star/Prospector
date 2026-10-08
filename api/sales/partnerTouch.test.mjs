@@ -14,7 +14,7 @@ const data = (partners, events) => {
   const undone = new Set(events.filter(e => e.event === 'undo').map(e => e.meta?.undid));
   const byGoal = new Map();
   for (const e of [...events].sort((a, b) => Date.parse(a.at) - Date.parse(b.at))) { if (!byGoal.has(e.goal_id)) byGoal.set(e.goal_id, []); byGoal.get(e.goal_id).push(e); }
-  return { partners, events, undone, byGoal };
+  return { partners, events, undone, byGoal, contactsByGoal: new Map() };
 };
 
 test('auto stage: outbound -> Sent only before contact; meeting -> Meeting if behind; event/other never', () => {

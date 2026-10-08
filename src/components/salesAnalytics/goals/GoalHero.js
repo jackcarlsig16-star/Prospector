@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { SA, saSans } from '../theme';
 import Ring from '../charts/Ring';
 import { goalsApi } from './goalsApi';
+import FirstTouchPeople from './FirstTouchPeople';
 import { labelStyle, subStyle, numStyle, inputStyle, Btn, Chip, ErrorNote, NeedsMigration, addDays, monthOf, monthName, shortWeek, fmt, short, progressColor } from './goalsUi';
 
 // goals-surface-v1 Stage 3 - the five goals at the top of Goals, on every
@@ -9,6 +10,9 @@ import { labelStyle, subStyle, numStyle, inputStyle, Btn, Chip, ErrorNote, Needs
 // change. A card with no goal offers "Set goal" (same targets route as the
 // scorecard). Clicking a card's number opens where it comes from.
 // Replaces the right rail's "<Month> at a glance".
+// first-touch-people-v1: the first-touched card counts people or partners
+// (the goal row's unit, people when unset); the other unit sits on its
+// sub-line; a week with no goal row shows the latest earlier goal, "carried".
 // prospector_goals_hero - per-viewer convenience: 'collapsed' or not.
 const HERO_KEY = 'prospector_goals_hero';
 const readOpen = () => { try { return localStorage.getItem(HERO_KEY) !== 'collapsed'; } catch { return true; } };
@@ -47,9 +51,22 @@ function Sparkline({ points, format, width = 104, height = 32 }) {
   );
 }
 
-function SetGoal({ label, onSave }) {
+const UNITS = [['people', 'People'], ['partners', 'Partners']];
+function UnitToggle({ unit, onChange, label }) {
+  return (
+    <div role="group" aria-label={`Count for ${label}`} style={{ display: 'inline-flex', border: `1px solid ${SA.border}`, borderRadius: 8, overflow: 'hidden' }}>
+      {UNITS.map(([id, name]) => (
+        <button key={id} type="button" aria-pressed={unit === id} onClick={() => unit !== id && onChange(id)}
+          style={{ all: 'unset', ...saSans, cursor: unit === id ? 'default' : 'pointer', fontSize: 11, padding: '0 8px', height: 24, color: unit === id ? SA.text : SA.muted, background: unit === id ? SA.inset : 'transparent', fontWeight: unit === id ? 600 : 400 }}>{name}</button>
+      ))}
+    </div>
+  );
+}
+
+function SetGoal({ label, onSave, unit: initialUnit }) {
   const [draft, setDraft] = useState(null);
   const [state, setState] = useState('');
+  const [unit, setUnit] = useState(initialUnit);
   if (draft === null) {
     return <Btn style={{ height: 32, fontSize: 13, borderColor: SA.accent, color: SA.text }} onClick={() => { setDraft(''); setState(''); }}>Set goal</Btn>;
   }
@@ -58,7 +75,7 @@ function SetGoal({ label, onSave }) {
     const n = Number(draft.replace(/,/g, ''));
     if (!draft.trim() || !(Number.isFinite(n) && n >= 0)) { setState('A number, 0 or more'); return; }
     setState('Saving…');
-    try { await onSave(n); setDraft(null); } catch (err) { setState(err.needsMigration ? 'Needs the database update (see report)' : err.message); }
+    try { await onSave(n, unit ? { unit } : undefined); setDraft(null); } catch (err) { setState(err.needsMigration ? 'Needs the database update (see report)' : err.message); }
   };
   return (
     <form onSubmit={save} onKeyDown={e => { if (e.key === 'Escape') setDraft(null); }} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -67,6 +84,7 @@ function SetGoal({ label, onSave }) {
           onChange={e => setDraft(e.target.value)} style={{ ...inputStyle, height: 32, width: 96, fontSize: 13 }} />
         <Btn primary type="submit" style={{ height: 32, fontSize: 13, padding: '0 10px' }}>Save</Btn>
       </div>
+      {unit && <UnitToggle unit={unit} onChange={setUnit} label={label} />}
       {state && <span role={state === 'Saving…' ? undefined : 'alert'} style={{ fontSize: 11, color: state === 'Saving…' ? SA.muted : SA.bad }}>{state}</span>}
     </form>
   );
@@ -95,7 +113,7 @@ function Card({ card, canEdit, onDrill, openTasks, onOpenTasks }) {
         )}
       </div>
       <div data-part="goal" style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
-        <span style={subStyle}>{card.goal != null ? `of ${card.format(card.goal)} · ${card.period}` : card.period}</span>
+        <span style={subStyle}>{card.goalLine || (card.goal != null ? `of ${card.format(card.goal)} · ${card.period}` : card.period)}</span>
         {card.thisWeek !== undefined && <span style={{ ...numStyle, color: SA.soft }}>This week: {card.format(card.thisWeek)}</span>}
       </div>
       <div data-part="spark" style={{ height: 32, display: 'flex', alignItems: 'center' }}><Sparkline points={card.weeks} format={card.format} /></div>
@@ -106,7 +124,8 @@ function Card({ card, canEdit, onDrill, openTasks, onOpenTasks }) {
           <button type="button" onClick={onOpenTasks} aria-label={`${openTasks} open task${openTasks === 1 ? '' : 's'} for ${card.name} - open in Tasks`}
             style={{ all: 'unset', ...saSans, cursor: 'pointer', fontSize: 12, color: SA.link, minHeight: 24 }}>✓ {openTasks} open task{openTasks === 1 ? '' : 's'} →</button>
         )}
-        {card.goal == null && (canEdit ? <SetGoal label={card.name} onSave={card.saveGoal} /> : <span style={{ ...subStyle, fontSize: 12 }}>No goal set</span>)}
+        {card.goal == null && (canEdit ? <SetGoal label={card.name} onSave={card.saveGoal} unit={card.unit} /> : <span style={{ ...subStyle, fontSize: 12 }}>No goal set</span>)}
+        {card.goal != null && card.unit && canEdit && <UnitToggle unit={card.unit} onChange={unit => card.saveGoal(card.goal, { unit })} label={card.name} />}
         {card.note}
       </div>
     </section>
@@ -122,6 +141,7 @@ export default function GoalHero({ businessId, weekStart, owner, commitments, mi
   const [open, setOpen] = useState(readOpen);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [peopleOpen, setPeopleOpen] = useState(false);
   const weeks = Array.from({ length: WEEKS }, (_, i) => addDays(weekStart, (i - WEEKS + 1) * 7));
   const month = monthOf(weekStart);
   const shared = scorecard !== undefined;
@@ -138,8 +158,8 @@ export default function GoalHero({ businessId, weekStart, owner, commitments, mi
   const failure = error || (shared ? scorecardError : null);
 
   const toggle = () => { setOpen(o => !o); writeOpen(!open); };
-  const saveGoal = (period, periodStart, key) => async goal => {
-    await goalsApi.saveTarget(businessId, { period, period_start: periodStart, metric_key: key, goal });
+  const saveGoal = (period, periodStart, key) => async (goal, extra) => {
+    await goalsApi.saveTarget(businessId, { period, period_start: periodStart, metric_key: key, goal, ...extra });
     await load();
     onGoalSaved();
   };
@@ -156,6 +176,21 @@ export default function GoalHero({ businessId, weekStart, owner, commitments, mi
       const pts = series(key);
       return { id, metric: key, name, value: pts[WEEKS - 1].value, goal: pts[WEEKS - 1].goal, weeks: pts, wow: wow(pts), format: fmt, period: shortWeek(weekStart).replace('Wk', 'week'), saveGoal: saveGoal('week', weekStart, key), ...extra };
     };
+    const firstTouchedCard = () => {
+      const ft = data.first_touched, people = ft.unit === 'people';
+      const partnersPts = series('partners_first_touched'), peoplePts = series('people_first_touched');
+      // Goals live on the partners_first_touched row whatever the unit; this week's is the (maybe carried) one.
+      const pts = (people ? peoplePts : partnersPts).map((p, i) => ({ ...p, goal: i === WEEKS - 1 ? ft.goal : partnersPts[i].goal }));
+      const n = (people ? partnersPts : peoplePts)[WEEKS - 1].value;
+      const other = `${fmt(n)} ${people ? (n === 1 ? 'partner' : 'partners') : (n === 1 ? 'person' : 'people')}`;
+      const period = shortWeek(weekStart).replace('Wk', 'week');
+      return {
+        id: 'partners', metric: 'partners_first_touched', name: people ? 'People first-touched' : 'Partners first-touched', unit: ft.unit, value: pts[WEEKS - 1].value, goal: ft.goal,
+        weeks: pts, wow: wow(pts), format: fmt, period, saveGoal: saveGoal('week', weekStart, 'partners_first_touched'),
+        goalLine: ft.goal != null ? `of ${fmt(ft.goal)} ${ft.unit} · ${other} · ${period}${ft.carried ? ' · carried' : ''}` : `${other} · ${period}`,
+        drillLabel: people ? 'the people first-touched this week' : 'Partners (Sent)', drill: people ? () => setPeopleOpen(true) : () => onDrill('partners'),
+      };
+    };
     const aud = series('outbound_audience');
     cards = [
       { id: 'audience', metric: 'outbound_audience', name: 'Audience reached', value: sc.month_total.outbound_audience.value, goal: sc.month_total.outbound_audience.goal,
@@ -168,7 +203,7 @@ export default function GoalHero({ businessId, weekStart, owner, commitments, mi
           </div>
         ) },
       weekCard('in_sequence', 'People in sequence', 'total_in_sequence', { teamOnly: owner !== 'team', drillLabel: 'Overview' }),
-      weekCard('partners', 'Partners first-touched', 'partners_first_touched', { drillLabel: 'Partners (Sent)' }),
+      firstTouchedCard(),
       weekCard('meetings', 'Meetings set', 'meetings_set', { teamOnly: owner !== 'team', drillLabel: 'the scorecard row' }),
       { id: 'engagement', metric: 'real_replies_clicks', name: 'Real replies + clicks', value: engagement[WEEKS - 1].value, goal: engagement[WEEKS - 1].goal, weeks: engagement, wow: wow(engagement),
         format: fmt, period: shortWeek(weekStart).replace('Wk', 'week'), teamOnly: owner !== 'team', drillLabel: 'the Daily Huddle', saveGoal: saveGoal('week', weekStart, 'real_replies_clicks') },
@@ -192,9 +227,10 @@ export default function GoalHero({ businessId, weekStart, owner, commitments, mi
         : !sc ? <span style={{ ...subStyle, fontSize: 13 }}>Loading goals…</span>
         : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', columnGap: 12 }}>
-            {cards.map(c => <Card key={c.id} card={c} canEdit={canEdit} onDrill={() => onDrill(c.id)} openTasks={openTasks?.[c.metric]} onOpenTasks={() => onOpenTasks(c.metric)} />)}
+            {cards.map(c => <Card key={c.id} card={c} canEdit={canEdit} onDrill={c.drill || (() => onDrill(c.id))} openTasks={openTasks?.[c.metric]} onOpenTasks={() => onOpenTasks(c.metric)} />)}
           </div>
         ))}
+      {peopleOpen && data && <FirstTouchPeople weekStart={weekStart} people={data.first_touched.people} onClose={() => setPeopleOpen(false)} />}
     </div>
   );
 }
