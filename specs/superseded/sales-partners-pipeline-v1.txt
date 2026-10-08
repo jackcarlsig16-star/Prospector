@@ -1,0 +1,91 @@
+SPEC — sales-partners-pipeline-v1
+
+## Status
+Source: Jack in chat, 2026-10-06. He built HomeLover_Partner_Owners.xlsx (75 partners, 14 categories,
+36 Jack / 39 Cyrus) as a MOCKUP of how partner work should run, and asked to build it "in the context,
+style and nature of what we have." So: EXTEND the existing Goals → Partners view (sales_goals,
+goal_type='partnership', REV4 fields) — do NOT create a second partner system or new screen.
+File: inbox/HomeLover_Partner_Owners.xlsx (inbox is gitignored — never copy it elsewhere in the repo).
+Design language: the Goals tab as built (tokens, cards, chips, member colors, donuts, RightRail).
+
+## Design decision
+
+DECIDED — data
+- Import the sheet's 75 rows into HomeLover partners (sales_goals, goal_type='partnership').
+  Match existing 16 partners by normalized name (e.g. "EBG (Entertainment Benefits Group)" = "EBG");
+  for matches, FILL EMPTY fields only, never overwrite what's in the app; report every match/new/skip.
+- New columns on sales_goals: category text, tier text ('1'|'2'|'3'|'4'|'active'), partner_role text,
+  pipeline_status text (enum below), known_contacts text, target_titles text, sequence_to_use text,
+  next_step text, do_not_say text, first_email_at date, last_touch_at timestamptz, hot boolean
+  default false, snoozed_until date. Keep existing priority P1–P3 (urgency) separate from tier (value).
+  Sheet column map: Category→category, Tier→tier, Owner→owner_user_id (Jack/Cyrus by member name),
+  Partner Role→partner_role, Status→pipeline_status, Known Contacts→known_contacts, Target Titles→
+  target_titles, Sequence to Use→sequence_to_use, Angle→angle, Next Step→next_step,
+  Flags/Do-not-say→do_not_say, 1st Email Date→first_email_at, Last Touch→last_touch_at, Notes→notes.
+- pipeline_status enum (the sheet's Lists tab, in order): not_started, researching, first_email_drafted,
+  first_email_sent, in_sequence, replied, meeting_set, proposal_pilot, live, paused.
+- Status events table sales_partner_events (id, business_id, goal_id, event, from_status, to_status,
+  note, by_user, at) — every button click and note writes one row; this is the history and powers
+  "first-touched this week" and days-since-touch.
+- The 5 "1st Email Drafted" partners (PerkSpot, BenefitHub, EBG, Access Development, Corestream) import
+  AS drafted. Jack confirms sent ones with the ✉ button. Never infer "sent".
+
+DECIDED — Partners view (extends what's there)
+- Keep P1/P2/P3 columns. Add a toggle: [Priority columns | Pipeline] — Pipeline groups cards by
+  pipeline_status (Not started → … → Live; Paused collapsed). Filter chips: category, tier, owner
+  (RightRail person filter already applies), stale only, hot only.
+- Card adds: status pill, tier chip, category, days-since-touch (red ≥7, from last_touch_at),
+  do-not-say shown in amber in the expanded panel, known contacts, target titles, sequence to use,
+  next step.
+- One-click buttons on each card (Member+; Viewer sees none): ✉ 1st email sent (stamps first_email_at
+  + last_touch_at + status) · ↩ Replied · 📅 Meeting booked · 🧪 Pilot · ✅ Live · 👤 Assign (Jack /
+  Cyrus / any workspace member; Seif allowed as owner label but as Viewer he can't click) ·
+  🔥 Hot toggle · ⏸ Snooze 7 days · Deprioritize · 📝 Quick note (timestamped event).
+  Every click: optimistic update, one event row, undo toast for 5 seconds.
+- "Open in Apollo" link per card for sequence_to_use (opens Apollo in a new tab). NO Apollo writes —
+  Prospector stays read-only on Apollo (standing rule). Adding to a sequence happens in Apollo.
+- Donuts (existing style): partners by owner, partners by pipeline status. Stale list (≥7 days, not
+  paused/live) as a compact section.
+
+DECIDED — goals + Huddle
+- Scorecard (This week view) gains partner rows, per owner via the person filter:
+  partners_first_touched (events first_email_sent in week; goal 5/owner/week), tier1_touched_pct
+  (Tier 1 with any touch / Tier 1 total; target 100% by 2026-10-31), partner_meetings (meeting_set
+  events; goal 2/week combined), partners_pilot_live (status proposal_pilot or live; target 2 by
+  end of Q4). Goals editable inline like the other rows. All computed from events — nothing typed.
+- 🔥 Hot partners appear in the existing Daily Huddle (a "Partners" group at the top), not a new screen.
+  Auto-hot from Apollo engagement is OUT of scope here (partners aren't matched to Apollo contacts yet).
+- Weekly report: section 3/4 auto chips gain "partners first-touched", "partner meetings"; the Monday
+  PDF includes a partner status breakdown by owner.
+
+PROPOSED / REVISABLE
+- Stale threshold 7 days. Undo window 5 seconds.
+
+## Out of scope (named follow-ons)
+- Outlook/Microsoft 365 auto-detection (emailed a partner's domain → 1st Email Sent; invite → Meeting
+  Set). Needs microsoft-connect-v1 (pending Jack's .io switch timing). Leave a clean hook: a single
+  server function applyPartnerSignal(goalId, signal) that the buttons use and Outlook will call later.
+- Apollo writes (add to sequence). Headcount from Apollo (not available free).
+- Matching partners to Apollo accounts/contacts for auto-hot.
+
+## Implementation
+FIRST: read the Partners view, goals API, sales_goals columns, Daily Huddle grouping and scorecard
+code. Report the plan in 5–10 lines.
+  Stage 1: migration (Jack runs) + import script (dry run first, report matches; idempotent).
+  Stage 2: API — status transitions/buttons, events, assign, hot, snooze, notes, filters.
+  Stage 3: UI — Partners view additions + buttons + Pipeline toggle + stale list + donuts.
+  Stage 4: scorecard partner rows, Huddle "Partners" group, weekly report chips + PDF breakdown.
+
+## Verification
+- Import: 75 rows accounted for (new / matched-filled / skipped with reason); re-run inserts 0;
+  existing 16 partners' existing values unchanged (diff before/after).
+- RLS + roles as Goals: Viewer reads, can't click; other workspace 0 rows; public key nothing.
+- Each button: one event row, correct status/date stamps, undo reverts; restored: yes.
+- Scorecard partner rows hand-checked against event rows for one week and the Cyrus filter.
+- Screenshots 1440 / 390 vs the current Goals style. 0 console errors, 0 Apollo calls.
+- Bar 5: Jack marks 2 partners "1st email sent", books one meeting, assigns one to Cyrus, flags one
+  hot and sees it in the Huddle, and checks the scorecard counts moved.
+
+## Commit instructions
+One commit per stage, referencing sales-partners-pipeline-v1. Push after each passes. Stop and
+report after each stage.

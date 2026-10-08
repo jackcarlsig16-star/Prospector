@@ -1,0 +1,154 @@
+SPEC — sales-goals-v1 — REVISION 4 ("Goals & Weekly Plan", built from the real sheet + Seif report)
+Supersedes REVISION 3 for everything not yet built. Stages 1 (ac298fe) and 2 (abc322e) are DONE
+and stay; this revision ADDS to them. Also absorbs sales-weekly-report-v1 (the narrative report
+now lives here) — that spec is superseded; do not build it separately.
+
+## What changed from REVISION 3 (for Jack)
+- Built from what you and Cyrus actually use: the "September Sales Metrics" sheet (scorecard,
+  weekly company log, Partner Goals, to-dos) and the Seif weekly report doc.
+- FOUR VIEWS switched from the right rail: Weekly report · This week · Partners · Companies.
+  Person filter (Team / Jack / Cyrus) applies to every view.
+- Weekly report = Seif's 15 sections, fillable, with live numbers auto-filled; commitments at the
+  top link to the section/view they move and show live progress where measurable.
+- Scorecard = your sheet's weekly metrics; actuals come from Apollo, you only type goals.
+- To-dos have tickable steps, a category, and contacts (Seif, Bob, …); status computes itself.
+- Partners get Priority P1/P2/P3, meeting status, champion, angle, motto, watch-outs, first email.
+- Companies = the weekly "sequenced" log, filled from Apollo (headcount included), + planned cadences.
+- Monthly goals from REV3 are replaced by the scorecard's Month column (month targets).
+- Your September sheet is imported once (seed file) so nothing is retyped.
+
+## Status
+Source: Jack in chat 2026-10-05/06; files reviewed in the planning chat.
+DESIGN SOURCE OF TRUTH: specs/design/goals-mockup.dc.html (canvas format; rebuild in the app's
+components, never copy its markup or x-dc tags). Its numbers are real September values; owners on
+to-dos and the 2026-10-05 progress figures are illustrative.
+SEED: specs/seed/goals-seed-2026-09.json (partners 16, to-dos 12, September weekly + month
+targets, this week's commitments). Imported in Stage 7.
+
+## Design decision
+
+DECIDED — placement and shell
+- Goals tab = first/default tab next to Overview | Daily Huddle (as decided for REV3).
+- Right rail (shared RightRail component): View nav (4 views, each with a small count), Person
+  filter, owner donut ("companies sequenced this week" by person), "Month at a glance" bars.
+  Week picker in the header drives every view (Mon–Sun, America/Los_Angeles helper).
+- Member colors: Jack #6F8CF0, Cyrus #C97626 (validated CVD-safe on dark); assigned per member
+  from tokens, stable, never two the same. Status colors from tokens only.
+- Donut/pie only for share-of-whole with ≤5 slices, center number + legend (counts, %). Rings for
+  "% to goal". No dual axes.
+
+DECIDED — view 1: Weekly report (default view)
+- Header: "Seif & Jack weekly meeting · Week of <date>", Draft/Final pill with autosave time,
+  donut "sections written n/12", button "Finalize & send to Seif" (finalize = freeze snapshot;
+  sending by email is OUT of scope — button finalizes and opens the PDF).
+- Commitments (Seif section 15) FIRST: each = text, measurable target, owner, link_target
+  (a view or section), optional metric_key for live progress (e.g. outbound_audience →
+  "4.52M of 5.5M"). Live progress where a metric exists; otherwise manual done/open.
+  "Carry over unfinished" from last week (idempotent).
+- Sections 1–14 as cards: number, Seif's label (exact), his "what I expect" line (muted), auto
+  chips (value + source badge Apollo | App | Pipeline | Manual), optional status list, and a
+  notes box (autosave). Section 2 is a status list (Completed / In progress / Blocked) carried
+  forward weekly. Sections 6–9 and 12 show a link card to Pipeline (no duplicate tables).
+  State pill per section: Written / Auto only / Empty.
+- Seif's 11-row KPI table at the bottom: Last week | This week | Change | Target, source badge
+  per row. Apollo rows computed from synced data; Pipeline rows from sales_opportunities
+  (stage counts / sums as defined in sales-analytics-scorecard-v1); Meetings rows manual.
+  Rows with no source show "—" (never invented).
+- Finalize freezes a JSON snapshot (scorecard actuals, KPI table, commitments progress); a
+  finalized week is read-only with "Reopen" (logged who/when).
+
+DECIDED — view 2: This week
+- Scorecard table: rows = outbound_audience (employees at companies sequenced that week),
+  total_in_sequence, sequences_running, meetings_set (manual until calendar sync), open_rate.
+  Columns = weeks of the selected month (selected week highlighted) + Month (actual vs target
+  with a % ring). Each cell: actual, "of goal", thin bar, % colored good/warn/bad (≥90 / ≥60 /
+  <60). Goals editable inline per week and per month; actuals read-only with source badge.
+- To-dos grouped by category: title, steps (tick boxes), owner chip, contact chips ("w/ Seif"),
+  progress "n of m", status computed (done / in progress / not started), status donut,
+  "Carry over unfinished". Add to-do / add step inline.
+
+DECIDED — view 3: Partners
+- Three columns P1 (this week) / P2 (next 30 days) / P3 (60–90 days) + "Unprioritized" if any.
+  Card: name, meeting status chip, champion. Click → expands: angle, their words (motto),
+  watch-outs, sources, "Open first email" (shows stored draft; copy button), "Log meeting".
+  Donut: partners by priority. Owner optional (null allowed; filter shows "Unassigned").
+
+DECIDED — view 4: Companies
+- "Sequenced in week N": companies that entered any sequence that week, with employees
+  (headcount), cohort, sequenced-by (mailbox owner → member). Donut: employees reached by cohort.
+  Show top 12 + "n more" expand. CSV export.
+- Planned cadences: a simple list per future week (name, owner); add inline.
+
+PROPOSED / REVISABLE
+- Status thresholds 90% / 60%. Commitments allowed per week: soft guide 5–10.
+
+## Data (Stage 3 migration — file → `cat <file> | pbcopy` → Supabase SQL editor)
+Same RLS as Stage 1 (read is_member, write has_role member; no anon). Paged reads everywhere.
+  ALTER sales_week_goals ADD: kind text check in ('commitment','todo') default 'todo',
+      category text, contacts text[] default '{}', link_target text, metric_key text,
+      target_value numeric.
+  sales_week_goal_steps  id, business_id, goal_id FK (on delete cascade), text, done bool,
+                         sort_order, done_at, created_at, updated_at
+  ALTER sales_goals ADD: meeting_status text, champion text, angle text, motto text,
+      watch_outs text, first_email text, sources text  (priority int already exists: 1–3,
+      null = unprioritized; add CHECK priority between 1 and 3)
+  sales_metric_targets   business_id, period ('week'|'month'), period_start date, metric_key,
+                         goal numeric, updated_by, updated_at; PK (business_id, period,
+                         period_start, metric_key); CHECK week starts Monday / month on the 1st
+  sales_cadence_plan     id, business_id, week_start (Monday), name, owner_user_id, sort_order
+  sales_week_report      business_id, week_start, status ('draft'|'final'), snapshot jsonb,
+                         finalized_at/by, reopened_at/by, updated_at; PK (business_id, week_start)
+  sales_week_report_sections  business_id, week_start, section_key ('s1'..'s14'), notes text,
+                         updated_by, updated_at; PK (business_id, week_start, section_key)
+  sales_infra_items      id, business_id, week_start, component, status ('completed'|
+                         'in_progress'|'blocked'), note, sort_order (carried forward weekly)
+  REV3's sales_month_goals and sales_week_notes stay (unused by the UI for now; do not drop).
+
+## Stage 3 — Discovery + migration (discovery read-only, then Jack runs SQL)
+FIRST (≤0 Apollo credits, declare call budget): confirm from synced data or ONE record each:
+  (a) where company headcount comes from (Apollo account estimated_num_employees or equivalent)
+      and whether it's already synced; (b) how to know the week a company entered a sequence;
+  (c) which mailbox/sender maps to which member. Report in 5–10 lines. If (a) or (b) isn't
+  available without credits, say so and STOP — Companies view then uses manual entry for those
+  fields; never estimate. Then write the migration.
+
+## Stage 4 — API
+Extend /api/sales/:businessId/goals/…: steps CRUD; targets get/put (week + month); cadence plan
+CRUD; partners fields; report get/patch sections; infra items CRUD + carry-forward; commitments =
+week goals with kind='commitment'; carry-over for both kinds (idempotent); finalize/reopen;
+computed endpoints: scorecard actuals by week (from synced Apollo tables), companies sequenced by
+week (with headcount/cohort/owner), KPI table. Validation as Stage 2; Viewer read-only; other
+workspace 403/404. Zero Apollo calls on page load (read synced data only).
+
+## Stage 5 — UI: shell, rail, This week, Partners, Companies (match the mockup)
+## Stage 6 — UI: Weekly report view + KPI table + finalize/reopen + PDF (light print theme,
+   Seif's section order, commitments first) + CSV exports (scorecard, to-dos, partners, companies)
+## Stage 7 — Seed import
+Script imports specs/seed/goals-seed-2026-09.json into HomeLover: partners (all fields, priority
+as given), to-dos for week of 2026-09-28 (owner = Jack unless Jack says otherwise; Cyrus for
+"GivingGo Collateral"), September weekly + month goals into sales_metric_targets, and the week of
+2026-10-05 commitments (owner Jack; "Cyrus renewed effort…" → Cyrus). Idempotent (re-run = no
+duplicates). Report rows inserted per table.
+
+## Out of scope
+- Emailing the report to Seif (button finalizes + opens PDF only). Calendar-synced meetings.
+- Per-person scorecard numbers beyond the owner split (follow-on).
+- Huddle REV2 (reuses RightRail + member colors later).
+
+## Verification
+- Stage 3: discovery evidence (real field names, one redacted record), call budget declared vs
+  used. RLS checks like Stage 1 for all new tables (Viewer read-only, other workspace 0 rows,
+  public key nothing, bad week/month starts rejected).
+- Stage 4: validation + carry-over twice + finalize then change data → snapshot unchanged +
+  reopen logged + a 1,005-row paging test on the companies-sequenced endpoint. restored: yes.
+- Stage 5–6: screenshots 1440 / 1024 / 390 vs mockup (report deviations); person filter = Cyrus
+  shows only Cyrus's items in every view; scorecard week-4 actuals hand-checked against Apollo;
+  PDF text extract shows sections in order with commitments first; 0 console errors; 0 Apollo
+  calls on load.
+- Stage 7: counts match the seed (16 partners, 12 to-dos, 4 weeks of targets).
+- Bar 5: Jack fills in this week's report with Seif (commitments + a few sections), ticks
+  to-dos, moves a partner P2→P1, flips the rail to Cyrus, finalizes, and prints the PDF.
+
+## Commit instructions
+One commit per stage, referencing sales-goals-v1 REVISION 4. Push after each passes. Stop and
+report after each stage.

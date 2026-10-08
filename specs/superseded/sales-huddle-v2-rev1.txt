@@ -1,0 +1,115 @@
+SPEC — sales-huddle-v2 — REVISION 1
+Supersedes the first sales-huddle-v2 draft and specs/sales-huddle-filters-v1.txt. Build from this only.
+
+## What changed from the first draft (for Jack)
+- Rebuilt on what already exists instead of replacing it. The Huddle already has: heat scoring with
+  "why" (heatScore.js), Next Best Action rules (nextBestAction.js), bot-open/scanner-click detection,
+  prospect state (owner, status, next action, due, snooze, notes) with an automatic change log
+  (sales_prospect_events trigger), "since last huddle" (sales_huddles), add-to-pipeline, collateral,
+  and a Done recap. v2 keeps all of that and fixes how it's shown and used.
+- Resequenced into small shippable stages; the first one is a quick win (hours, not days).
+- Found a latent bug: the /huddle route reads messages and activity unpaged (1,000-row cap) — fixed
+  in Stage 0 before anything else is built on it.
+- Feed hides likely bot opens by default (the scoring already detects them) — so "opened" means a person.
+- DESIGN SOURCE OF TRUTH: specs/design/huddle-mockup.dc.html (canvas format; rebuild in the app's
+  components, never copy its markup). Names in it are real Huddle prospects; times and flags are sample.
+
+## Status
+Source: Jack in chat 2026-10-05/06. PRIORITY: next after sales-partners-pipeline-v1 Stages 3–4.
+
+## Design decision
+
+DECIDED — ranking ("Needs action today")
+- Order by Next Best Action priority, not raw score: Reply today / Book meeting / Contact referral
+  (any reply) → Follow up — clicked → overdue human next action → due today → LinkedIn touch (3+ real
+  opens) → everything else; ties broken by heat score. Use NBA_RULES order as the single source.
+- Show ALL items (remove BRIEFING_MAX=8 cap); the section scrolls inside its card; count in header.
+- Owner is a chip with the member color (Jack #6F8CF0, Cyrus #C97626, same tokens as Goals), not a
+  grouping that pushes Cyrus's reply below Jack's rows.
+
+DECIDED — layout (Daily Huddle tab)
+- Header: "Daily Huddle · <date>", "as of last sync <time>" + Sync now, Start huddle, Print agenda.
+- "Since last huddle" strip: replies · real clicks · real opens · bot opens hidden · done since.
+- Two columns ≥1100px (stack below): left = Flagged for you + Needs action today; right = Recent
+  activity feed. Below: By company (collapsed groups), On autopilot (N) collapsed line, Done recap.
+- RightRail (shared component): Person (Team/Jack/Cyrus), Heat (Hot/Warm/Cold), Due (Overdue/Today/
+  This week/No date), Sort (Signal · Heat · Due · Last activity), toggles "Hide bot opens" (default on)
+  and "Stale only"; mini donut "today's actions by owner"; Done today count.
+- Rows (compact, one line + context line): signal chip (Replied / Clicked / Opened ×N), heat chip
+  (Hot/Warm/Cold, score + "why" in tooltip — the existing why[] strings), name · title · company,
+  owner chip, next action + due (red when overdue), context "Clicked step 2 · Oct 3", links: LinkedIn
+  (if URL known) and Open in Apollo. NO phone numbers (standing rule). Drop the Status column; status
+  is a menu inside the row actions.
+- Row actions (Member+; Viewer none): ✓ Done (status contacted) · ⏰ Snooze 1d/3d/1w · 📅 Due ·
+  👤 Owner · 📝 Note · 🚩 Flag · ⋯ (status menu, Add to pipeline, Send collateral — existing flows).
+  Optimistic + 5-second undo. Use the existing PATCH /prospects route (its trigger already logs who/when).
+
+DECIDED — Recent activity feed (new)
+- From sales_email_activity (occurred_at, event) joined to prospect state; newest first; grouped
+  Today / Yesterday / Earlier; last 7 days; scrolls; respects rail filters.
+- Bot opens (isBotOpen) and scanner clicks (≤120s after delivery) hidden by default, counted in the
+  strip; toggle shows them greyed with "likely automated".
+- "New since last huddle" divider using sales_huddles.huddle_at.
+- Each item: "<Name> · <Company> opened step 2" + time ago + owner chip + [🚩 Flag] [Open].
+
+DECIDED — 🚩 Flag for … (hand-off, connected to Goals)
+- Dialog: assignee (members; default = the other person from the prospect's owner), checklist
+  pre-filled from NBA: email-type actions → "Send a follow-up email"; opens/LinkedIn → "Send a
+  LinkedIn message"; both by default for clicks; editable; optional note.
+- Creates a Goals to-do: sales_week_goals (kind 'todo', category 'Huddle follow-ups', owner =
+  assignee, contacts = [name, company], new nullable column prospect_contact_id) + its steps.
+  Also sets the prospect's owner to the assignee if unassigned, and logs a "flagged" event.
+- "Flagged for you" lane at the top of the assignee's Huddle (badge count on the Daily Huddle tab);
+  ticking steps there or in Goals → This week updates the same rows. All steps done → to-do done →
+  prospect status 'contacted' (one prompt, not silent).
+- Flagging never sends email or LinkedIn messages.
+
+DECIDED — print + report
+- Print agenda ≤2 pages: per owner — Flagged, Needs action (top 10), replies. Light print theme.
+- Weekly report §4 auto chips: real opens / clicks / replies this week, flags handed off / completed.
+
+PROPOSED / REVISABLE
+- Heat bands: Hot ≥40 or any reply/human click in 7 days; Warm 10–39 or a real open in 7 days; Cold
+  <10. Stale = no signal and no action in 7+ days. Feed window 7 days.
+
+## Sequencing (each stage ships on its own)
+  Stage 0 — quick win (no migration): page the /huddle reads with selectAllPages (remove the 1,000-row
+    warning path); NBA-priority ranking; remove the top-8 cap; scrolling sections; owner color chips.
+  Stage 1 — RightRail filters + heat bands + autopilot collapse + company grouping + compact rows +
+    one-click actions with undo.
+  Stage 2 — Recent activity feed + since-last-huddle strip + bot-open toggle.
+  Stage 3 — Flag for … (migration: prospect_contact_id on sales_week_goals; Jack runs it) + Flagged
+    lane + badge + Goals sync + completion prompt.
+  Stage 4 — Print agenda + weekly report chips + Partners slot (filled by partners Stage 4).
+
+## Next natural upgrades (NOT in this spec — roadmap, in this order)
+  1. Fresher data: a scheduled sync that works on Render Free (external cron pinging a protected sync
+     endpoint, or a Supabase scheduled function) so the feed isn't stale between manual syncs.
+  2. Draft-for-me on a flag: one click drafts the follow-up email + LinkedIn note in Jack's Voice
+     Profile (after prospector-ai-data-efficiency-v1 adds AI logging/caching).
+  3. Auto-suggest flags: rule "3+ real opens or a human click in 24h and no action" → suggested flag
+     for the owner (one click to accept).
+  4. Huddle session mode: Start huddle walks items one by one, records outcome per item, ends with a
+     summary that drops into the weekly report.
+  5. Owners as workspace members (replace the jack/cyrus/unassigned enum) so other workspaces can use it.
+  6. Daily digest to Cyrus (email/Slack) of his flagged items.
+
+## Out of scope
+Sending email/LinkedIn from the app · Apollo writes · phone numbers · real-time push.
+
+## Implementation
+FIRST: confirm the exact fields above exist (sales_email_activity, prospect state, LinkedIn URL field?)
+and report in 5–10 lines; if LinkedIn URL isn't synced, show only Apollo link and say so.
+
+## Verification
+- Stage 0: /huddle returns all rows past 1,000 (1,005-row test); a reply ranks above higher-score
+  non-replies; Samuel Courtnell–type case (Cyrus reply) appears in the top 3.
+- Filters match DB counts; Viewer sees no actions; undo restores; restored: yes.
+- Feed hand-check: 5 items vs sales_email_activity; bot opens hidden and counted.
+- Flag: one to-do + steps for the assignee; visible in Flagged lane and Goals; ticking syncs both.
+- Print ≤2 pages. Screenshots 1440 / 390 vs the mockup. 0 console errors, 0 Apollo calls on load.
+- Bar 5: Jack flags a real opener to Cyrus; Cyrus ticks "email sent" in his Huddle.
+
+## Commit instructions
+One commit per stage, referencing sales-huddle-v2 REVISION 1. Push after each passes. Stop and report
+after each stage.

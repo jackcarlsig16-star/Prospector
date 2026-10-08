@@ -1,0 +1,144 @@
+SPEC — sales-partners-workflow-v1
+
+## Status
+Source: Jack in chat, 2026-10-06, after using Goals → Partners:
+  "the problem with the buttons is theres no key — if i click something it just stays like that. it
+   should feel more like a workflow. put the priority ones at the top and be able to move them up and
+   down and also have a color marker for partner type. i want it to feel like a progress bar, like top 5
+   in each category. of course we can have them drop down to pull the research and intel and notes but
+   the columns are a bit confusing."
+Follows sales-partners-pipeline-v1 (all 4 stages live: 75 partners, events, applyPartnerSignal, buttons,
+Priority/Pipeline toggle, scorecard rows, Huddle Partners group). This REDESIGNS the Partners view's
+layout and interaction only. Data, events, scorecard math and the Huddle group stay as they are.
+SEQUENCING: run after goals-surface-v1 Stage 2 is done; goals-surface Stages 3–5 come after this, and
+Stage 5's Overview partner summary must link into the new Workflow view (not the old columns).
+
+## Problem (real, grounded)
+1. Buttons have no key. partners/PartnerCard.js:23-27 renders the stage buttons icon-only (✉ ↩ 📅 🧪 ✅);
+   the label exists only as a hover title (line 80). On a phone there is no hover, so nothing explains them.
+2. Clicking "just stays like that". PartnerCard.js:80 sets disabled={status === b.to}: the clicked button
+   greys out and nothing says what changed, what stage the partner is now in, or what comes next.
+3. The columns confuse. PartnersView.js:186-188 lays partners out as P1 / P2 / P3 / Unprioritized columns
+   (or 10 pipeline-status columns). Category, the main way Jack thinks about partners (14 categories in
+   HomeLover_Partner_Owners.xlsx), is only a filter chip, and stage progress isn't visible at a glance.
+4. No manual order. Within a column, order is fixed; Jack can't move a partner up or down.
+5. No visual partner type. All cards look the same regardless of category.
+
+## Design decision
+
+DECIDED — new default view: "Workflow" (replaces Priority columns)
+- Toggle becomes [Workflow | Board]. Workflow is the default. Board = the existing pipeline-status
+  columns, unchanged. The P1/P2/P3 column layout is removed (priority lives on as a chip + sort key).
+  Remembered per viewer in localStorage as today (try/catch).
+- Top of view: one overall progress bar — a horizontal stacked bar of all partners by stage
+  (Not started → Live), each segment clickable to filter (goals-surface Stage 1 ring rule: "Showing: X ×"
+  chip clears). Under it, the KEY (see below).
+- Below: one group per category, in category-number order (1. Current Partners … 14. Co-opetition).
+  Group header: type color marker · category name · "3 of 7 touched" · a thin group progress bar
+  (share of partners past Not started/Researching) · owner split dots.
+- Each group shows its TOP 5 rows, then "Show 4 more ▾". Top = manual rank first, then priority
+  (P1 > P2 > P3 > none), then hot, then tier (1 > 2 > 3 > 4), then name. Hot and P1 partners therefore
+  sit at the top unless Jack has dragged something above them.
+- A "Top priorities" strip above the groups: the 5 highest-ranked P1/hot partners across all
+  categories, same row design, so the most important work is the first thing on screen.
+
+DECIDED — partner row (the workflow)
+- Left edge: 4px color marker for partner TYPE (see families below) + rank controls (drag handle on
+  desktop; ▲ ▼ buttons always, so it works on phone and keyboard).
+- Name · owner color dot (Jack #6F8CF0, Cyrus #C97626) · P chip · Tier chip · 🔥 if hot.
+- STAGE PROGRESS BAR: 8 labeled steps — Not started · Researching · Drafted · Sent · Replied · Meeting ·
+  Pilot · Live (in_sequence counts as Sent; Paused shows the bar greyed with a "Paused" pill). Filled
+  steps in the type color; current step labeled; on phone only the current step's label shows.
+- ONE primary text button: "Next: <next step>" (e.g. "Next: Mark sent", "Next: Meeting booked").
+  Clicking it advances one stage through applyPartnerSignal (same signals, same events, same FIX-2
+  version check). Nothing is icon-only anymore.
+- "⋯ More" menu with text labels: Jump to stage… (any stage, incl. back a step) · Assign · Hot on/off ·
+  Snooze 7 days · Deprioritize · Add note.
+- AFTER ANY CLICK (fixes problem 2): the bar animates to the new step; the row shows "Moved to
+  Meeting · today" for the rest of the session; a toast says "Upside → Meeting booked · Next: send pilot
+  proposal · Undo" (5s, as today). If the server refuses (FIX-2 race), the toast says
+  "Changed by someone else — refreshed" and the row reloads.
+- Days since touch stays on the row (red ≥7, as today).
+
+DECIDED — drop-down for research, intel and notes
+- Click the row (or ▾) to expand inline: Angle · Next step · Partner role · Known contacts ·
+  Target titles · Sequence to use + "Open in Apollo" · Flags/Do-not-say (amber) · Notes ·
+  History (event timeline, newest first, with who and when; "from Outlook" labels later).
+- One expanded row at a time per group; Escape closes.
+
+DECIDED — the KEY (fixes problem 1)
+- A compact, always-visible legend under the overall bar: the 8 stages with their order, the type
+  colors with family names, and "Next = moves one step · ⋯ = everything else". Collapsible to one line;
+  collapsed state remembered per viewer.
+
+PROPOSED / REVISABLE — type color families (14 categories → 6 colors; 14 colors is unreadable)
+  Current partners ............ cat 1
+  Platforms & marketplaces .... cats 2, 7, 8
+  Brokers, consultants & PEOs . cats 3, 4, 6
+  Renters & financial wellness  cats 5, 9
+  Influence & public sector ... cats 10, 12, 13
+  Professional & co-opetition . cats 11, 14
+  Map lives in one constant in code, derived from the category number prefix. Pick 6 accessible colors
+  from the Goals tokens; do NOT reuse the member blue/orange. Flag back if a mapping looks wrong.
+PROPOSED / REVISABLE — top 5 per group; group order fixed by category number (no group reordering).
+
+DECIDED — data
+- One new column: sales_goals.sort_rank numeric (null = unranked, sorts after ranked). Moving a row
+  writes a new rank between its neighbours (fractional ranking, so one row update per move). Rank is
+  per workspace, shared by Jack and Cyrus (it's the team's order).
+- Rank changes go through a new API route (Member+; Viewer refused; partner must belong to the
+  caller's workspace). No event row for reorders (they're not partner activity).
+
+## Out of scope (and why)
+- Scorecard math, partner events, Huddle Partners group, weekly report chips — unchanged; they read
+  the same data.
+- Account cards (standing rule: don't touch).
+- Group (category) reordering and per-person private order — wait until Jack has used shared order.
+- Outlook auto-signals — microsoft-connect-v1.
+- Editing research/intel fields inline in the drop-down — read-only display in this spec; editing stays
+  where it is today. Follow-on if Jack wants it: sales-partners-inline-edit-v1.
+
+## Standing rules that apply here (inlined)
+- All writes go through the API. Since FIX-1 the browser cannot write sales_goals; do not add any
+  direct Supabase write from the client.
+- Partner stage changes ONLY through applyPartnerSignal (the Outlook hook depends on it). Owner
+  changes ONLY through Assign (FIX-7).
+- Keep the FIX-2 concurrency check on every signal; reorders may be last-write-wins.
+- Viewer (Seif) sees everything, clicks nothing: no Next button, no ⋯, no drag/▲▼.
+- 0 Apollo writes (read-only rule). inbox/*.xlsx is never committed.
+- Tests that write data restore and report "restored: yes". Run test suites one at a time.
+
+## Implementation
+FIRST: read PartnersView.js, partners/PartnerCard.js, the partner API routes and applyPartnerSignal.
+Report the plan in 5–10 lines, including how next-stage is computed from pipeline_status, and flag back
+if anything conflicts with this design. This describes behaviour, not an exact diff.
+  Stage 1: migration for sort_rank (give Jack the SQL; wait for "done") + reorder API route + tests.
+  Stage 2: Workflow view — overall bar, key, Top priorities strip, category groups with top 5 / show
+           more, type color markers. Rows read-only in this stage (no buttons yet). Screenshot 1440/390
+           and STOP so Jack can react to the look before wiring.
+  Stage 3: row actions — Next button, ⋯ menu, after-click feedback, toast/undo, race message,
+           ▲▼ + drag reorder.
+  Stage 4: drop-down research/intel/notes + history; Board toggle kept; old Priority columns removed;
+           goals-surface Stage 1 ring filters still work on the new view.
+
+## Verification
+- Stage 1: rank moves persist across reload for Jack and Cyrus; Viewer refused; other workspace refused;
+  restored: yes.
+- Stage 2: on real HomeLover data, every group's "N of M touched" matches the DB; top 5 order follows the
+  rule above (hand-check 2 groups); every one of the 75 partners appears exactly once across groups +
+  "show more"; key and colors legible in light and dark; 0 console errors at 1440 and 390.
+- Stage 3: Next on a test partner advances exactly one stage, writes one event, scorecard row moves;
+  undo restores; a simulated concurrent click shows the refresh message; ▲▼ works by keyboard only;
+  restored: yes.
+- Stage 4: expanded row shows the sheet's fields for 3 partners (match DB); history matches event rows;
+  Viewer sees the drop-down but no actions.
+- Bar 5 (required — it's a UI change): Jack, on his own account, moves one P1 partner to the top of its
+  group, clicks Next on one partner and sees it move with a clear message, opens a drop-down to read the
+  intel, and can explain every color and button from the key without asking.
+
+## Definition of done
+Bar 5 above. Stage 2 screenshots approved by Jack before Stage 3 starts.
+
+## Commit instructions
+One commit per stage referencing sales-partners-workflow-v1. Push after each passes. Stop and report
+after each stage (Stage 2 must stop for Jack's look approval).

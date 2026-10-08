@@ -1,0 +1,43 @@
+AUDIT — partner-apollo-link-audit (read-only, report only)
+
+## Status
+Source: Jack in chat, 2026-10-07, with a screenshot of the Justworks partner drop-down (PEOs, Tier 1, P2,
+stage "5 · Replied"): static intel fields (angle, role, target titles, sequence, do-not-say, their words,
+champion "name TBD", sources) + a History that is only test-like clicks (Marked hot / No longer hot ×2,
+Snoozed → undone, Not started → Replied, all Oct 6 9:37 PM). Jack: "there's nothing to do with any of the
+contacts which we do have from Apollo because we are syncing all that stuff… we want it automated and
+connected… if I'm demonstrating this, I need to show how things are logged, what to log, and how this is
+useful."
+Known gap: sales-partners-pipeline-v1 explicitly left "matching partners to Apollo accounts/contacts" OUT
+OF SCOPE, so partners and Apollo people/companies have never been linked.
+Purpose: get the ground truth needed to spec "partner 360" (people + activity + next step in one flow).
+Read-only: 0 writes, 0 Apollo API calls (use only data already synced in Supabase), 0 AI calls. 30 min cap.
+Runs alongside partner-touch-log-v1 Stage 1 (API) — do NOT start touch-log Stage 2 (UI) until Jack has
+read this report, so the drop-down is redesigned once.
+
+## Questions to answer (with numbers, file:line, and table/column names)
+1. Partner identity: what fields on sales_goals (partnership) could link to Apollo — website/domain,
+   company name, known_contacts emails? How many of the 75 partners have a usable domain today?
+2. Match rate: for HomeLover, how many of the 75 partners match an Apollo-synced company/account and how
+   many match Apollo contacts (people), by (a) exact domain, (b) normalized name? List per category:
+   matched / ambiguous (>1 match) / unmatched. Show 10 example matches incl. Justworks.
+3. What Apollo data exists per matched contact already in our DB: name, title, email domain, sequence +
+   step, sent/open (real vs bot)/click/reply timestamps, owner mailbox. Which of these are reliable
+   (reply timestamps are "seen at sync" only — confirm).
+4. Activity sources that could feed a partner timeline today: Apollo email events, partner events
+   (sales_partner_events), manual notes, linked tasks (task-drawer link_type='partner'), call-notes tasks,
+   flags. For each: table, how it would join to a partner, volume for HomeLover.
+5. History noise: how many partner events are toggles/undone (hot/unhot, snooze/undo) vs meaningful
+   (stage moves, notes, touches). Which events came from tests vs real users if distinguishable.
+6. Stage reconciliation: for matched partners, compare pipeline_status with what Apollo says (e.g.
+   partner at Not started but a contact there was emailed / replied). Count mismatches by type.
+7. Conflicts with queued specs: partner-touch-log-v1 (touch rows + contact names), microsoft-connect-v1
+   Stage 3 (Outlook auto-signals), huddle-live-feed-v1 (one row per person). Note anything that should be
+   shared (e.g. one "touch" model for manual, Apollo and Outlook).
+
+## Output
+audits/partner-apollo-link-audit-report.md: findings with numbers + citations, the per-category match
+table, the mismatch table, and a PLAINLY MARKED recommendation (not a decision) for: link key (domain vs
+name), whether a partner_domains / partner_contacts link table is needed, and how auto-touches from Apollo
+should flow (same applyPartnerSignal path, labeled "from Apollo"). End with open questions for Jack.
+Stop and report — no fixes, no migrations.
