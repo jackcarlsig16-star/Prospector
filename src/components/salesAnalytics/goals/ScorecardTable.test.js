@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, cleanup as cleanupRender } from '@testing-library/react';
 import ScorecardTable from './ScorecardTable';
 
 // first-touch-people-v1 Stage 2 - the first-touched row follows the selected week's unit.
@@ -28,6 +28,26 @@ test('unit people: row reads "People first-touched" with people counts, the goal
   fireEvent.change(row.getByLabelText('People first-touched goal, Wk 1 · Oct 5'), { target: { value: '120' } });
   fireEvent.keyDown(row.getByLabelText('People first-touched goal, Wk 1 · Oct 5'), { key: 'Enter' });
   await waitFor(() => expect(onSaveTarget).toHaveBeenCalledWith({ period: 'week', period_start: '2026-10-05', metric_key: 'partners_first_touched', goal: 120, unit: 'people' }));
+});
+
+test('a first-touched week with no goal row shows the carried goal greyed, drives the %, and saving replaces it', async () => {
+  const onSaveTarget = jest.fn().mockResolvedValue({});
+  const d = data('people', 'people');
+  d.weeks[1].metrics.partners_first_touched = { value: 2, goal: null, unit: 'people', carried_goal: 100 };
+  render(<ScorecardTable data={d} weekStart="2026-10-05" canEdit onSaveTarget={onSaveTarget} />);
+  const row = within(document.getElementById('score-row-partners_first_touched'));
+  const cell = row.getAllByRole('cell')[2];
+  expect(cell.textContent).toMatch(/^3of 100 · carried/);
+  expect(cell.textContent).toMatch(/3%$/);
+  const btn = row.getByLabelText('People first-touched goal, Wk 2 · Oct 12');
+  expect(btn.textContent).toBe('of 100 · carried');
+  fireEvent.click(btn);
+  fireEvent.change(row.getByLabelText('People first-touched goal, Wk 2 · Oct 12'), { target: { value: '50' } });
+  fireEvent.keyDown(row.getByLabelText('People first-touched goal, Wk 2 · Oct 12'), { key: 'Enter' });
+  await waitFor(() => expect(onSaveTarget).toHaveBeenCalledWith({ period: 'week', period_start: '2026-10-12', metric_key: 'partners_first_touched', goal: 50, unit: 'people' }));
+  cleanupRender();
+  render(<ScorecardTable data={d} weekStart="2026-10-05" canEdit={false} onSaveTarget={jest.fn()} />);
+  expect(within(document.getElementById('score-row-partners_first_touched')).getAllByRole('cell')[2].textContent).toMatch(/^3of 100 · carried/);
 });
 
 test('unit partners on the selected week: the row stays "Partners first-touched" with partner counts', () => {

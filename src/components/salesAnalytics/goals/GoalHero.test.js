@@ -59,9 +59,10 @@ test('a card with no goal offers Set goal; saving writes the target and reloads'
   await waitFor(() => expect(goalsApi.saveTarget).toHaveBeenLastCalledWith('b1', { period: 'week', period_start: '2026-10-05', metric_key: 'meetings_set', goal: 3 }));
 });
 
-test('viewers see "No goal set", never the button; person filter marks team-only cards', async () => {
-  render(<GoalHero {...props({ canEdit: false, owner: 'u-cy' })} />);
+test('viewers see "No goal set", never the button; person filter marks team-only cards and names the person in the header', async () => {
+  render(<GoalHero {...props({ canEdit: false, owner: 'u-cy', ownerName: 'Cyrus' })} />);
   await screen.findByRole('region', { name: 'Audience reached' });
+  expect(screen.getByText('Goals · Cyrus')).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Set goal' })).toBeNull();
   expect(screen.getAllByText('No goal set').length).toBeGreaterThan(0);
   expect(within(screen.getByRole('region', { name: 'People in sequence' })).getByText('team')).toBeTruthy();

@@ -309,7 +309,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
         <main style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
           {errors.members && <ErrorNote message={errors.members.message} />}
           {me && !canEdit && <div style={{ ...subStyle, fontSize: 13 }}>You have view access to this workspace, so Goals is read-only for you.</div>}
-          <GoalHero businessId={businessId} weekStart={weekStart} owner={owner} commitments={myCommitments} missingHeadcount={missingHeadcount} canEdit={canEdit}
+          <GoalHero businessId={businessId} weekStart={weekStart} owner={owner} ownerName={owner === 'team' ? null : whoLabel} commitments={myCommitments} missingHeadcount={missingHeadcount} canEdit={canEdit}
             scorecard={scorecard} scorecardError={errors.scorecard} reloadKey={heroKey} onGoalSaved={() => { loadScorecard(); loadKpi(); }} onDrill={drill}
             openTasks={heroTasks} onOpenTasks={key => openTasks({ link: { type: 'metric', id: key }, filter: drawerFilter })} />
 

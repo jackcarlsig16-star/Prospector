@@ -21,15 +21,20 @@ const HERO_WEEKS = 6;
 const FIRST_TOUCHED = 'partners_first_touched';
 const UNITS = ['people', 'partners'];
 
-// The first-touched unit per week: the week's own goal row, else the latest
-// earlier one (carried), else people. One small read for any list of weeks.
-async function firstTouchedUnits(supabase, businessId, weeks) {
+// The first-touched goal per week - the ONE place the card, the scorecard
+// and the report resolve it: the week's own goal row, else the latest
+// earlier one (carried), else no goal; unit defaults to people. One small
+// read for any list of weeks -> Map week -> { unit, goal, carried }.
+async function firstTouchedGoals(supabase, businessId, weeks) {
   if (!weeks.length) return new Map();
   const last = weeks.reduce((a, b) => (a > b ? a : b));
-  const { data, error } = await supabase.from('sales_metric_targets').select('period_start, unit')
+  const { data, error } = await supabase.from('sales_metric_targets').select('period_start, goal, unit')
     .eq('business_id', businessId).eq('period', 'week').eq('metric_key', FIRST_TOUCHED).lte('period_start', last).not('goal', 'is', null).order('period_start');
   if (error) throw new Error(error.message);
-  return new Map(weeks.map(w => { const row = data.filter(r => r.period_start <= w).pop(); return [w, row?.unit || 'people']; }));
+  return new Map(weeks.map(w => {
+    const row = data.filter(r => r.period_start <= w).pop();
+    return [w, { unit: row?.unit || 'people', goal: row ? Number(row.goal) : null, carried: !!row && row.period_start !== w }];
+  }));
 }
 // Seif's "positive responses": replies that move toward a meeting
 // (Jack 2026-10-02, sales-analytics-scorecard-v1 Stage 1).
@@ -151,14 +156,16 @@ async function scorecardWeeks(supabase, businessId, weeks, ownerUserId) {
     targetsFor(supabase, businessId, 'week', weeks),
     loadPartnerData(supabase, businessId),
     mailboxesFor(supabase, businessId, ownerUserId),
-    firstTouchedUnits(supabase, businessId, weeks),
+    firstTouchedGoals(supabase, businessId, weeks),
   ]);
   const keys = [...SCORECARD_METRICS, ...PARTNER_METRICS, PEOPLE_METRIC];
   const weekActuals = await Promise.all(weeks.map(w => weekScorecard(supabase, businessId, w, boxes, manual)));
   return weeks.map((w, i) => {
     const actual = { ...weekActuals[i], ...partnerWeekMetrics(partnerData, w, ownerUserId) };
     const metrics = Object.fromEntries(keys.map(k => [k, { ...actual[k], goal: weekGoals.get(`${w}|${k}`) ?? null }]));
-    metrics[FIRST_TOUCHED].unit = units.get(w);
+    const ft = units.get(w);
+    metrics[FIRST_TOUCHED].unit = ft.unit;
+    if (ft.carried) metrics[FIRST_TOUCHED].carried_goal = ft.goal;
     return { week_start: w, metrics };
   });
 }
@@ -423,10 +430,10 @@ export async function getReportRoute(req, res) {
       commitmentProgress(supabase, businessId, week_start),
       loadPartnerData(supabase, businessId),
       huddleWeekCounts(supabase, businessId, week_start),
-      firstTouchedUnits(supabase, businessId, [week_start]),
+      firstTouchedGoals(supabase, businessId, [week_start]),
     ]);
     if (rErr) throw new Error(rErr.message);
-    const partners = partnerReportBlock(partnerData, week_start, units.get(week_start));
+    const partners = partnerReportBlock(partnerData, week_start, units.get(week_start).unit);
     // A week frozen before first-touch-people-v1 has no people count in its
     // block: it is computed live and says so. Partners stay as frozen.
     const frozen = report?.status === 'final' && report.snapshot?.partners;
@@ -510,12 +517,12 @@ export async function finalizeReportRoute(req, res) {
       selectAllPages(() => supabase.from('sales_infra_items').select('component, status, note').eq('business_id', businessId).eq('week_start', weekStart).order('sort_order').order('id')),
       loadPartnerData(supabase, businessId),
       huddleWeekCounts(supabase, businessId, weekStart),
-      firstTouchedUnits(supabase, businessId, [weekStart]),
+      firstTouchedGoals(supabase, businessId, [weekStart]),
     ]);
     const now = new Date().toISOString();
     const { data, error } = await supabase.from('sales_week_report').upsert({
       business_id: businessId, week_start: weekStart, status: 'final',
-      snapshot: { taken_at: now, scorecard, kpi, commitments, sections, infra, partners: partnerReportBlock(partnerData, weekStart, units.get(weekStart)), huddle },
+      snapshot: { taken_at: now, scorecard, kpi, commitments, sections, infra, partners: partnerReportBlock(partnerData, weekStart, units.get(weekStart).unit), huddle },
       finalized_at: now, finalized_by: req.auth.user.id, updated_at: now,
     }, { onConflict: 'business_id,week_start' }).select().single();
     if (error) throw new Error(error.message);
@@ -647,15 +654,10 @@ export async function heroRoute(req, res) {
       selectAllPages(() => supabase.from('sales_metric_targets').select('period_start, metric_key, goal')
         .eq('business_id', businessId).eq('period', 'week').in('metric_key', HERO_METRICS)
         .gte('period_start', weeks[0]).lte('period_start', week_start).order('period_start').order('metric_key')),
-      supabase.from('sales_metric_targets').select('period_start, goal, unit')
-        .eq('business_id', businessId).eq('period', 'week').eq('metric_key', FIRST_TOUCHED).lte('period_start', week_start).not('goal', 'is', null)
-        .order('period_start', { ascending: false }).limit(1).maybeSingle().then(r => { if (r.error) throw new Error(r.error.message); return r.data; }),
+      firstTouchedGoals(supabase, businessId, [week_start]),
       loadPartnerData(supabase, businessId),
     ]);
-    const first_touched = {
-      unit: ftRow?.unit || 'people', goal: ftRow ? Number(ftRow.goal) : null, carried: !!ftRow && ftRow.period_start !== week_start,
-      people: peopleFirstTouchedInWeek(partnerData, week_start, owner || null),
-    };
+    const first_touched = { ...ftRow.get(week_start), people: peopleFirstTouchedInWeek(partnerData, week_start, owner || null) };
     res.json({ scorecard, earlier, engagement: weeks.map((w, i) => ({ week_start: w, ...engagement[i] })), targets, first_touched });
   } catch (e) { res.status(500).json({ error: e.message }); }
 }

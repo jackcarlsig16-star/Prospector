@@ -129,13 +129,13 @@ export function ErrorNote({ message }) {
 
 // Inline number editor: click to edit, Enter saves, Esc cancels. Rates are
 // typed as percentages (17 = 17%).
-export function EditableNumber({ value, rate, placeholder, onSave, ariaLabel, display }) {
+export function EditableNumber({ value, rate, placeholder, onSave, ariaLabel, display, muted }) {
   const [draft, setDraft] = useState(null);
   const [busy, setBusy] = useState(false);
   if (draft === null) {
     return (
       <button type="button" onClick={() => setDraft(value == null ? '' : String(rate ? +(value * 100).toFixed(2) : value))} aria-label={ariaLabel}
-        style={{ all: 'unset', cursor: 'pointer', color: value == null ? SA.link : 'inherit', ...numStyle }}>
+        style={{ all: 'unset', cursor: 'pointer', color: value == null ? (muted ? SA.muted : SA.link) : 'inherit', ...numStyle }}>
         {value == null ? placeholder : display}
       </button>
     );

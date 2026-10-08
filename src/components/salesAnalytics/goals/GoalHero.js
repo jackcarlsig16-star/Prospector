@@ -132,12 +132,13 @@ function Card({ card, canEdit, onDrill, openTasks, onOpenTasks }) {
   );
 }
 
-// owner: 'team' or a member's user id. commitments: this week's, already
+// owner: 'team' or a member's user id; ownerName: that member's first name
+// (the header says whose numbers these are). commitments: this week's, already
 // person-filtered. reloadKey changes when a goal was saved elsewhere.
 // scorecard / scorecardError: Goals' own current-month scorecard, so the hero
 // doesn't load that month twice; left undefined (Overview), the hero loads it.
 // openTasks: { metric key: open linked to-dos } (Goals, current week only).
-export default function GoalHero({ businessId, weekStart, owner, commitments, missingHeadcount, canEdit, reloadKey, onDrill, onGoalSaved, scorecard, scorecardError, openTasks, onOpenTasks }) {
+export default function GoalHero({ businessId, weekStart, owner, ownerName, commitments, missingHeadcount, canEdit, reloadKey, onDrill, onGoalSaved, scorecard, scorecardError, openTasks, onOpenTasks }) {
   const [open, setOpen] = useState(readOpen);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -213,7 +214,7 @@ export default function GoalHero({ businessId, weekStart, owner, commitments, mi
   return (
     <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-        <span style={labelStyle}>Goals</span>
+        <span style={labelStyle} title={ownerName ? `Audience, open rate and partner numbers are ${ownerName}'s; cards marked team are team-wide` : undefined}>Goals{ownerName ? ` · ${ownerName}` : ''}</span>
         {!open && sc && (
           <span style={{ ...numStyle, fontSize: 13, color: SA.soft, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
             {cards.map(c => <span key={c.id}>{c.name.split(' ')[0]} <b style={{ color: SA.text }}>{c.format(c.value)}</b>{c.goal != null ? ` / ${c.format(c.goal)}` : ''}</span>)}

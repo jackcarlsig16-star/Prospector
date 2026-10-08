@@ -109,7 +109,10 @@ export default function ScorecardTable({ data, error, weekStart, ownerName, canE
                     </td>
                     {data.weeks.map(w => {
                       const c = r.valueKey ? { ...w.metrics[r.key], value: w.metrics[r.valueKey].value } : w.metrics[r.key];
-                      const p = c.value != null && c.goal ? c.value / c.goal : null;
+                      // A first-touched week with no goal row shows the latest earlier goal, greyed, "carried".
+                      const carried = c.goal == null && c.carried_goal != null;
+                      const goalShown = carried ? c.carried_goal : c.goal;
+                      const p = c.value != null && goalShown ? c.value / goalShown : null;
                       const sel = w.week_start === weekStart;
                       return (
                         <td key={w.week_start} style={{ ...td, background: sel ? 'color-mix(in srgb, var(--sa-accent) 6%, transparent)' : undefined }}>
@@ -124,9 +127,9 @@ export default function ScorecardTable({ data, error, weekStart, ownerName, canE
                             </span>
                             <span style={{ ...numStyle, ...subStyle, fontSize: 12 }}>
                               {canEdit
-                                ? <EditableNumber value={c.goal} rate={r.rate} placeholder="set goal" display={`of ${r.format(c.goal)}`} ariaLabel={`${r.name} goal, ${shortWeek(w.week_start)}`}
+                                ? <EditableNumber value={c.goal} rate={r.rate} muted={carried} placeholder={carried ? `of ${r.format(c.carried_goal)} · carried` : 'set goal'} display={`of ${r.format(c.goal)}`} ariaLabel={`${r.name} goal, ${shortWeek(w.week_start)}`}
                                     onSave={v => save({ period: 'week', period_start: w.week_start, metric_key: r.key, goal: v, ...(r.key === FIRST ? { unit: c.unit || 'people' } : {}) })} />
-                                : c.goal != null ? `of ${r.format(c.goal)}` : ''}
+                                : carried ? <span style={{ color: SA.muted }}>of {r.format(c.carried_goal)} · carried</span> : c.goal != null ? `of ${r.format(c.goal)}` : ''}
                             </span>
                             {r.key === 'outbound_audience' && c.companies > c.companies_with_employees && (
                               <button type="button" onClick={onFillHeadcount} style={linkBtn}>{c.companies - c.companies_with_employees} of {c.companies} need headcount</button>
