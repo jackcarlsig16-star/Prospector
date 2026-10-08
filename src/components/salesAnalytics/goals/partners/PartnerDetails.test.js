@@ -91,3 +91,12 @@ test('viewer: everything shown, no buttons', async () => {
   expect(screen.queryByLabelText(/New task for/)).toBeNull();
   expect(screen.getByRole('list', { name: 'Activity timeline' })).toBeTruthy();
 });
+
+test('an Apollo person in a sequence shows "In sequence · active since Aug 27"', async () => {
+  setup({ people: { load: jest.fn(() => Promise.resolve([{ id: 'c9', name: 'Sam Ortiz', title: 'Director', email: 'sam@example.com', source: 'apollo', apollo_contact_id: 'ap1', sequence_status: 'active', sequence_added_at: '2026-08-28T00:28:26Z', sequence_finished_at: null }])), add: jest.fn(), remove: jest.fn() } });
+  const list = await screen.findByRole('list', { name: 'People at this partner' });
+  const sam = within(list).getAllByRole('listitem').find(li => /Sam Ortiz/.test(li.textContent));
+  expect(sam.textContent).toMatch(/Apollo/);
+  expect(sam.textContent).toMatch(/In sequence · active since Aug 2[78]/);
+  expect(within(sam).queryByRole('button', { name: /Remove/ })).toBeNull();
+});

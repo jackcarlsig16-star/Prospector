@@ -1,4 +1,4 @@
-// partner-360-v1 Stage 3 check. SCOPE: 6 real Apollo calls (contacts/search by account id: 3 partners x 2 runs), all into a TEMP workspace - HomeLover gets 0 writes. Part A = HomeLover read-only (2 queries): which partners the sync would cover today. Part B = TEMP workspace (2 temp users member + viewer, 4 temp partners, 1 temp accounts snapshot built from 3 REAL Apollo account ids so contacts/search returns the real people into temp rows): syncPartnerContacts run twice (insert then update), ranToday gate, viewer POST refresh-people 403, GET people. The member refresh route is NOT exercised live (it runs a full Sync now = ~70 more calls). Part C = browser 1440/390: People shows Apollo badges, header button for members only, 0 console errors. Contact emails land only in temp partner_contacts rows (deleted at the end) and are never printed. ~2 min, cap 4 min. Serves build/ via server.js - run npm run build first.
+// partner-360-v1 Stage 3 (+3b sequence status) check. SCOPE: 6 real Apollo calls (contacts/search by account id: 3 partners x 2 runs), all into a TEMP workspace - HomeLover gets 0 writes. Part A = HomeLover read-only (2 queries): which partners the sync would cover today. Part B = TEMP workspace (2 temp users member + viewer, 4 temp partners, 1 temp accounts snapshot built from 3 REAL Apollo account ids so contacts/search returns the real people into temp rows): syncPartnerContacts run twice (insert then update), ranToday gate, viewer POST refresh-people 403, GET people. The member refresh route is NOT exercised live (it runs a full Sync now = ~70 more calls). Part C = browser 1440/390: People shows Apollo badges, header button for members only, 0 console errors. Contact emails land only in temp partner_contacts rows (deleted at the end) and are never printed. ~2 min, cap 4 min. Serves build/ via server.js - run npm run build first.
 const ROOT = require('path').resolve(__dirname, '../..');
 require(ROOT + '/node_modules/dotenv').config({ path: ROOT + '/.env' });
 const { spawn } = require('child_process');
@@ -80,7 +80,8 @@ const openRow = async (page, id) => { await row(page, id).locator('button[aria-e
     console.log(`A  HomeLover: ${hlGoals.length} partners, ${hlDom.length} confirmed domain rows, snapshot ${hlSnapRow.captured_at} (${accs.length} accounts)`);
     console.log(`   would sync ${targets.length} partners (${targets.length} calls, cap ${S.PARTNER_CONTACTS_MAX_CALLS}), ${expectedContacts} contacts by snapshot: ${targets.map(t => `${t.goal.name}=${t.account.num_contacts}`).join(', ')}`);
     ok('A1 every HomeLover target is under the cap in one run', targets.length <= S.PARTNER_CONTACTS_MAX_CALLS, `${targets.length} <= ${S.PARTNER_CONTACTS_MAX_CALLS}`);
-    ok('A2 HomeLover has 0 partner_contacts rows from Apollo yet (nothing written by this check)', (await svc.from('partner_contacts').select('*', { count: 'exact', head: true }).eq('business_id', HL).eq('source', 'apollo')).count === 0);
+    const hlApollo = (await svc.from('partner_contacts').select('sequence_status').eq('business_id', HL).eq('source', 'apollo')).data;
+    console.log(`   HomeLover partner_contacts from Apollo today: ${hlApollo.length} (${hlApollo.filter(r => r.sequence_status).length} with a sequence status) - written by Jack's prod syncs, never by this check (hlSnap guards it)`);
     const real = name => accs.find(a => a.name === name);
     const JWa = real('Justworks'), DOa = real('Domuso'), PSa = real('PerkSpot');
     ok('A3 real Apollo accounts for Justworks / Domuso / PerkSpot found in the snapshot with domains', !!(JWa?.domain && DOa?.domain && PSa?.domain), [JWa?.domain, DOa?.domain, PSa?.domain].join(','));
@@ -120,6 +121,8 @@ const openRow = async (page, id) => { await row(page, id).locator('button[aria-e
     ok('B5 every Apollo row: source apollo, apollo_contact_id, name; emails lowercased when present; no column holds a phone', apolloRows.every(r => r.apollo_contact_id && r.name && (!r.email || (r.email === r.email.toLowerCase() && r.email.includes('@')))) && !Object.keys(rows[0]).some(k => /phone/i.test(k)), `${apolloRows.filter(r => r.email).length} of ${apolloRows.length} have an email (not printed)`);
     ok('B6 the manual row is still manual and still there', rows.some(r => r.source === 'manual' && r.name === 'Manual Person'));
     ok('B7 last activity only from stored messages (temp workspace has none -> all null)', apolloRows.every(r => r.last_activity_at === null && r.last_activity_type === null));
+    const seqRows = (await svc.from('partner_contacts').select('goal_id, sequence_status, sequence_added_at, sequence_finished_at').eq('business_id', B).not('sequence_status', 'is', null)).data;
+    ok(`B7b Stage 3b: Domuso's active contact carries sequence_status 'active' + added_at (snapshot tally active=${DOa.contact_campaign_status_tally?.active ?? 0}); rows without a sequence have nulls`, seqRows.some(r => r.goal_id === DO.id && r.sequence_status === 'active' && r.sequence_added_at) && seqRows.every(r => r.sequence_status && r.sequence_added_at), JSON.stringify(seqRows.map(r => [r.sequence_status, r.sequence_added_at?.slice(0, 10), r.sequence_finished_at?.slice(0, 10) || null])));
     // run 2 = idempotent (3 more real calls)
     const ctx2 = { callCounter: { count: 0, max: S.PARTNER_CONTACTS_MAX_CALLS }, endpointCounts: {} };
     const r2 = await S.syncPartnerContacts({ ctx: ctx2, supabase: svc, businessId: B, accounts: null });
@@ -169,6 +172,8 @@ const openRow = async (page, id) => { await row(page, id).locator('button[aria-e
     const vp = row(V.page, DO.id).getByRole('region', { name: 'People' });
     const vItems = vp.getByRole('list', { name: 'People at this partner' }).getByRole('listitem');
     ok(`C5 viewer sees Domuso's ${DOa.num_contacts} Apollo people, no Add person / Remove buttons`, (await vItems.count()) === DOa.num_contacts && (await vp.getByRole('button').count()) === 0, String(await vItems.count()));
+    ok('C5b viewer: Domuso People shows "In sequence · active since <date>"', /In sequence · active since [A-Z][a-z]{2} \d{1,2}/.test(await vp.innerText()), (await vp.innerText()).replace(/\n/g, ' | ').slice(0, 200));
+    await vp.scrollIntoViewIfNeeded(); await V.page.screenshot({ path: `${OUT}/p360c-1440-sequence.png` });
     ok('C6 viewer: 0 console errors', V.errs.length === 0, V.errs.join(' | '));
 
     const M = await newPage(jack, 390, 844);

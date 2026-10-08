@@ -1,7 +1,7 @@
 // node --test api/sales/partnerContactsSync.test.mjs  (partner-360-v1 Stage 3)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { contactRow, lastActivity, partnersToSync, PARTNER_CONTACTS_MAX_CALLS } from './partnerContactsSync.js';
+import { contactRow, lastActivity, partnersToSync, sequenceFields, PARTNER_CONTACTS_MAX_CALLS } from './partnerContactsSync.js';
 
 test('cap is 20 on its own counter', () => {
   assert.equal(PARTNER_CONTACTS_MAX_CALLS, 20);
@@ -12,7 +12,7 @@ test('contactRow keeps named columns only: lowercased email, linkedin.com links,
     id: 'c1', first_name: ' Dana ', last_name: 'Kim', title: ' VP Partnerships ', email: 'Dana.Kim@Example.com',
     linkedin_url: 'https://www.linkedin.com/in/danakim', sanitized_phone: '+15555550100', phone_numbers: [{ raw_number: '555' }], account_id: 'a1',
   });
-  assert.deepEqual(Object.keys(row).sort(), ['apollo_contact_id', 'business_id', 'email', 'goal_id', 'linkedin_url', 'name', 'source', 'title', 'updated_at']);
+  assert.deepEqual(Object.keys(row).sort(), ['apollo_contact_id', 'business_id', 'email', 'goal_id', 'linkedin_url', 'name', 'sequence_added_at', 'sequence_finished_at', 'sequence_status', 'source', 'title', 'updated_at']);
   assert.equal(row.name, 'Dana Kim');
   assert.equal(row.email, 'dana.kim@example.com');
   assert.equal(row.title, 'VP Partnerships');
@@ -46,4 +46,17 @@ test('partnersToSync: confirmed domain that is an Apollo account; name-only and 
   const rows = { g1: [{ domain: 'justworks.com', confirmed: true }], g2: [{ domain: 'perkspot.com', confirmed: true }], g3: [{ domain: 'stake.rent', confirmed: false }] };
   assert.deepEqual(partnersToSync(goals, rows, accounts).map(t => [t.goal.id, t.account.id]), [['g1', 'a-jw'], ['g2', 'a-ps']]);
   assert.deepEqual(partnersToSync(goals, {}, accounts), []);
+});
+
+test('sequenceFields: latest added sequence wins, finished_at kept, nothing -> nulls, written onto the row', () => {
+  const c = { id: 'c1', name: 'Dana Kim', contact_campaign_statuses: [
+    { status: 'finished', added_at: '2026-07-01T00:00:00Z', finished_at: '2026-07-20T00:00:00Z', current_step_id: 's1' },
+    { status: 'active', added_at: '2026-08-28T00:28:26Z', finished_at: null, current_step_id: 's2' },
+  ] };
+  assert.deepEqual(sequenceFields(c), { sequence_status: 'active', sequence_added_at: '2026-08-28T00:28:26Z', sequence_finished_at: null });
+  assert.deepEqual(sequenceFields({ contact_campaign_statuses: [c.contact_campaign_statuses[0]] }), { sequence_status: 'finished', sequence_added_at: '2026-07-01T00:00:00Z', sequence_finished_at: '2026-07-20T00:00:00Z' });
+  assert.deepEqual(sequenceFields({}), { sequence_status: null, sequence_added_at: null, sequence_finished_at: null });
+  const row = contactRow('b1', 'g1', c);
+  assert.equal(row.sequence_status, 'active');
+  assert.equal(contactRow('b1', 'g1', { id: 'c2', name: 'Pat Lee' }).sequence_status, null);
 });

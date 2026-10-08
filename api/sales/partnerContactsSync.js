@@ -15,6 +15,18 @@ export const PARTNER_CONTACTS_MAX_CALLS = 20;
 const PER_PAGE = 100;
 const MAX_PAGES_PER_PARTNER = 2;
 
+// Stage 3b - the contact's sequence membership. Apollo gives status /
+// added_at / finished_at / current_step_id only (no step number, no
+// step-completed date), and a contact in several sequences has several;
+// the latest added wins. Stage 4 may use sequence_added_at only as a
+// PROPOSED Sent move in its dry run, never automatically (Jack, 2026-10-07).
+export function sequenceFields(c) {
+  const statuses = (c.contact_campaign_statuses || []).filter(s => s && typeof s.status === 'string' && s.added_at);
+  if (!statuses.length) return { sequence_status: null, sequence_added_at: null, sequence_finished_at: null };
+  const latest = statuses.sort((a, b) => Date.parse(b.added_at) - Date.parse(a.added_at))[0];
+  return { sequence_status: latest.status.slice(0, 40), sequence_added_at: latest.added_at, sequence_finished_at: latest.finished_at || null };
+}
+
 // Named columns only - the raw contact also carries phone fields, which are
 // never read (Apollo phone reveals cost credits; Jack, 2026-10-01).
 export function contactRow(businessId, goalId, c) {
@@ -25,7 +37,7 @@ export function contactRow(businessId, goalId, c) {
   return {
     business_id: businessId, goal_id: goalId, apollo_contact_id: c.id, name,
     title: typeof c.title === 'string' && c.title.trim() ? c.title.trim().slice(0, 160) : null,
-    email, linkedin_url: linkedin, source: 'apollo', updated_at: new Date().toISOString(),
+    email, linkedin_url: linkedin, source: 'apollo', ...sequenceFields(c), updated_at: new Date().toISOString(),
   };
 }
 

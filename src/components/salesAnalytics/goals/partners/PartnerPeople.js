@@ -53,6 +53,7 @@ export default function PartnerPeople({ people, canEdit, onAdd, onDelete }) {
               {(p.title || p.note) && <span style={{ color: SA.muted, overflowWrap: 'anywhere' }}>{p.title || p.note}</span>}
               <Badge source={p.source} />
               {p.last_activity_at && <span style={{ color: SA.soft, fontSize: 12 }}>{ACTIVITY_PAST[p.last_activity_type] || 'Touched'} {md(p.last_activity_at)}</span>}
+              {p.sequence_status && <span style={{ color: SA.soft, fontSize: 12 }} title="Apollo sequence membership - not a sent email">In sequence · {p.sequence_status.replace(/_/g, ' ')}{p.sequence_added_at ? ` since ${md(p.sequence_added_at)}` : ''}{p.sequence_finished_at ? ` · finished ${md(p.sequence_finished_at)}` : ''}</span>}
               <span style={{ display: 'inline-flex', gap: 6, marginLeft: 'auto' }}>
                 {p.email && <a href={`mailto:${p.email}`} title={`Email ${p.name}`} aria-label={`Email ${p.name}`} style={iconBtn}>✉</a>}
                 {p.linkedin_url && <a href={p.linkedin_url} target="_blank" rel="noreferrer" title="LinkedIn" aria-label={`${p.name} on LinkedIn`} style={iconBtn}>in</a>}

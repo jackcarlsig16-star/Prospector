@@ -36,6 +36,7 @@ export function mergePeople({ contacts = [], events = [], knownContacts = '' }) 
     add(nameKey(c.name), {
       id: c.id, name: c.name, title: c.title || null, note: null, email: c.email || null, linkedin_url: c.linkedin_url || null,
       source: c.source, last_activity_at: c.last_activity_at || null, last_activity_type: c.last_activity_type || null,
+      sequence_status: c.sequence_status || null, sequence_added_at: c.sequence_added_at || null, sequence_finished_at: c.sequence_finished_at || null,
       deletable: c.source === 'manual',
     });
   }
@@ -44,14 +45,14 @@ export function mergePeople({ contacts = [], events = [], knownContacts = '' }) 
     for (const name of t.contact_names || []) {
       const key = nameKey(name);
       if (!key) continue;
-      const p = add(key, { id: `logged:${key}`, name, title: null, note: null, email: null, linkedin_url: null, source: 'logged', last_activity_at: null, last_activity_type: null, deletable: false });
+      const p = add(key, { id: `logged:${key}`, name, title: null, note: null, email: null, linkedin_url: null, source: 'logged', last_activity_at: null, last_activity_type: null, sequence_status: null, sequence_added_at: null, sequence_finished_at: null, deletable: false });
       if (later(p.last_activity_at, t.at) === t.at) { p.last_activity_at = t.at; p.last_activity_type = t.touch_type; }
     }
   }
   for (const k of parseKnownContacts(knownContacts)) {
     const key = nameKey(k.name);
     if (!key) continue;
-    const p = add(key, { id: `sheet:${key}`, name: k.name, title: null, note: k.note, email: null, linkedin_url: null, source: 'sheet', last_activity_at: null, last_activity_type: null, deletable: false });
+    const p = add(key, { id: `sheet:${key}`, name: k.name, title: null, note: k.note, email: null, linkedin_url: null, source: 'sheet', last_activity_at: null, last_activity_type: null, sequence_status: null, sequence_added_at: null, sequence_finished_at: null, deletable: false });
     // The sheet's spelling beats a name typed on a touch ("pat lee").
     if (p.source === 'logged') p.name = k.name;
     if (!p.note && !p.title && k.note) p.note = k.note;
