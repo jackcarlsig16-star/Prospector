@@ -165,11 +165,13 @@ async function write(supabase, goal, patch, event) {
   return { goal: updated, event: row };
 }
 
-export async function applyPartnerSignal(supabase, { businessId, goalId, signal, byUser = null, now = new Date() }) {
+// source / meta are server-side only: the signal route never reads them
+// from the body, so a browser can't label its own click "from Apollo".
+export async function applyPartnerSignal(supabase, { businessId, goalId, signal, byUser = null, now = new Date(), source = 'manual', meta = {} }) {
   const goal = await partnerOrThrow(supabase, businessId, goalId);
   const { patch, event } = plan(goal, signal, now);
   const prev = Object.fromEntries(Object.keys(patch).map(k => [k, goal[k] ?? null]));
-  return write(supabase, goal, patch, { ...event, meta: { ...(event.meta || {}), prev }, by_user: byUser });
+  return write(supabase, goal, patch, { ...event, source, meta: { ...meta, ...(event.meta || {}), prev }, by_user: byUser });
 }
 
 // Undo = the goal's latest-recorded event, not itself an undo, within the

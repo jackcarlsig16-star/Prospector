@@ -635,6 +635,7 @@ app.post('/api/sales/:businessId/goals/partners/:id/people', salesModuleRoute('.
 app.delete('/api/sales/:businessId/goals/partners/:id/people/:personId', salesModuleRoute('./api/sales/partnerPeople.js', 'deletePersonRoute', 'goals/partners/:id/people/:personId DELETE'));
 app.post('/api/sales/:businessId/goals/partners/refresh-people', salesModuleRoute('./api/sales/partnerPeople.js', 'refreshPeopleRoute', 'goals/partners/refresh-people POST'));
 app.get('/api/sales/:businessId/goals/partners/apollo-touches', salesModuleRoute('./api/sales/partnerApolloTouches.js', 'apolloTouchesDryRunRoute', 'goals/partners/apollo-touches'));
+app.post('/api/sales/:businessId/goals/partners/apollo-touches/apply', salesModuleRoute('./api/sales/partnerApolloTouches.js', 'apolloTouchesApplyRoute', 'goals/partners/apollo-touches/apply POST'));
 app.get('/api/sales/:businessId/goals/partners/domains', salesModuleRoute('./api/sales/partnerDomains.js', 'listAllDomainsRoute', 'goals/partners/domains'));
 app.get('/api/sales/:businessId/goals/partners/export-apollo.csv', salesModuleRoute('./api/sales/partnerDomains.js', 'exportApolloCsvRoute', 'goals/partners/export-apollo.csv'));
 app.get('/api/sales/:businessId/goals/partners/:id/domains', salesModuleRoute('./api/sales/partnerDomains.js', 'listDomainsRoute', 'goals/partners/:id/domains'));
