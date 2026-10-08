@@ -4,8 +4,13 @@ import { C, mono } from '../../constants/colors';
 // nav-admin-cleanup-v1 Stage 3 - platform owner switches per workspace.
 // Goals & Sales here only controls the menu; its data routes are still gated
 // by SALES_ANALYTICS_BUSINESS_IDS on Render (one shared Apollo key).
+// The three Outlook keys (microsoft-connect-v1 Stage 4) each gate one
+// read-only use of a member's connected mailbox; off by default.
 const FEATURES = [
   { key: 'goals_sales', label: 'Goals & Sales', note: 'Menu only. Data also needs the workspace id in SALES_ANALYTICS_BUSINESS_IDS on Render.' },
+  { key: 'outlook_voice', label: 'Outlook voice', note: 'Voice Profile can learn from a member\'s own Outlook Sent Items (click only, bodies never stored).' },
+  { key: 'outlook_meetings', label: 'Outlook meetings', note: 'Meetings held / booked counted from synced calendar events beside the typed number.' },
+  { key: 'outlook_reply_times', label: 'Outlook reply times', note: 'Exact reply times from synced Outlook mail on the feed and heat.' },
 ];
 
 export default function WorkspaceFeatures({ businesses = [], onFeaturesChanged }) {

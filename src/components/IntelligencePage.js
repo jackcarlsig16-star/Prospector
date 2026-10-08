@@ -9,7 +9,7 @@ import { saveVoiceProfile } from '../utils/db';
 import { connectGoogle, useGoogleStatus } from '../utils/google';
 
 
-function IntelligencePage({ user, activeUser, only }) {
+function IntelligencePage({ user, activeUser, only, outlookVoice=false }) {
   const voiceUserName = activeUser?.name || user?.name || "";
   const voiceUserEmail = activeUser?.email || user?.email || "";
   const [tab,setTab]=useState(only||"Use Cases");
@@ -17,6 +17,13 @@ function IntelligencePage({ user, activeUser, only }) {
   const [vpLoading,setVpLoading]=useState(false);
   const [vpError,setVpError]=useState(null);
   const gmailConnected=!!useGoogleStatus()?.features.includes("gmail");
+  // microsoft-connect-v1 Stage 4c: Learn from Outlook is a click, never automatic.
+  const [microsoftEmail,setMicrosoftEmail]=useState(null);
+  useEffect(()=>{
+    if(!outlookVoice)return;
+    fetch("/api/microsoft/status").then(r=>r.json()).then(d=>setMicrosoftEmail(d.email||null)).catch(()=>setMicrosoftEmail(null));
+  },[outlookVoice]);
+  const outlookConnected=outlookVoice&&!!microsoftEmail;
   const [ucExp,setUcExp]=useState("onboarding");
   const [prodExp,setProdExp]=useState(null);
 
@@ -130,10 +137,10 @@ function IntelligencePage({ user, activeUser, only }) {
   const [pasteOpen,setPasteOpen]=useState(false);
   const [pasteText,setPasteText]=useState("");
 
-  const learnVoice=async()=>{
+  const learnVoice=async(source="gmail")=>{
     setVpLoading(true);setVpError(null);
     try{
-      const r=await fetch("/api/learn-voice",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"learn"})});
+      const r=await fetch("/api/learn-voice",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"learn",source})});
       const d=await r.json();
       if(d.error){setVpError(d.error);}
       else if(d.profile){
@@ -589,8 +596,8 @@ Return ONLY a valid JSON object — no explanation, no markdown, just the JSON:
               <p style={{ margin:"0 0 3px", fontSize:15, fontWeight:500, color:C.txt }}>{(voiceUserName.split(' ')[0]||'Your')}'s Voice Profile</p>
               <p style={{ ...mono, margin:0, fontSize:12, color:C.dim }}>
                 {vpLoading?"Analyzing your sent emails…"
-                  :voiceProfile?`Learned from ${voiceProfile.emailCount||"?"} sent emails · Last updated ${new Date(voiceProfile.learnedAt).toLocaleDateString()}${voiceProfile.teachCount?" · Refined "+voiceProfile.teachCount+"×":""}`
-                  :gmailConnected?"No profile yet — click Learn to analyze your sent emails"
+                  :voiceProfile?`Learned from ${voiceProfile.emailCount||"?"} ${voiceProfile.source==="outlook"?"Outlook ":voiceProfile.source==="paste"?"pasted ":""}sent emails · Last updated ${new Date(voiceProfile.learnedAt).toLocaleDateString()}${voiceProfile.teachCount?" · Refined "+voiceProfile.teachCount+"×":""}`
+                  :gmailConnected||outlookConnected?"No profile yet — click Learn to analyze your sent emails"
                   :"Connect Gmail to learn your voice from sent emails"}
               </p>
             </div>
@@ -601,8 +608,13 @@ Return ONLY a valid JSON object — no explanation, no markdown, just the JSON:
                 </button>
               )}
               {gmailConnected&&(
-                <button onClick={learnVoice} disabled={vpLoading} style={{ fontSize:13, padding:"7px 14px", background:vpLoading?"transparent":C.goldBg, border:`1px solid ${vpLoading?C.brd:C.goldBdr}`, color:vpLoading?C.dim:C.gold, borderRadius:6, cursor:vpLoading?"not-allowed":"pointer", fontWeight:500 }}>
-                  {vpLoading?"Analyzing…":voiceProfile?"↺ Re-learn":"⟳ Learn from Gmail"}
+                <button onClick={()=>learnVoice("gmail")} disabled={vpLoading} style={{ fontSize:13, padding:"7px 14px", background:vpLoading?"transparent":C.goldBg, border:`1px solid ${vpLoading?C.brd:C.goldBdr}`, color:vpLoading?C.dim:C.gold, borderRadius:6, cursor:vpLoading?"not-allowed":"pointer", fontWeight:500 }}>
+                  {vpLoading?"Analyzing…":voiceProfile?"↺ Re-learn from Gmail":"⟳ Learn from Gmail"}
+                </button>
+              )}
+              {outlookConnected&&(
+                <button onClick={()=>learnVoice("outlook")} disabled={vpLoading} title={`Reads your own Sent Items in ${microsoftEmail} for this one analysis - nothing is stored but the profile`} style={{ fontSize:13, padding:"7px 14px", background:vpLoading?"transparent":`${C.blue}18`, border:`1px solid ${vpLoading?C.brd:C.blue+"44"}`, color:vpLoading?C.dim:C.blue, borderRadius:6, cursor:vpLoading?"not-allowed":"pointer", fontWeight:500 }}>
+                  {vpLoading?"Analyzing…":voiceProfile?"↺ Re-learn from Outlook":"⟳ Learn from Outlook"}
                 </button>
               )}
               {!vpLoading&&(

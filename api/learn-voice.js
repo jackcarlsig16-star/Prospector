@@ -1,4 +1,9 @@
 import { googleTokenFor } from "./lib/googleGrants.js";
+import { getGrant, microsoftTokenFor } from "./lib/microsoftGrants.js";
+import { getServiceSupabase } from "./lib/authUser.js";
+import { workspacesWithFeature } from "./lib/outlookFeatures.js";
+import { ownership } from "./microsoft/graphSync.js";
+import { fetchOutlookSentMessages, externalSamples, MIN_SAMPLES } from "./microsoft/voiceSamples.js";
 
 export const config = { maxDuration: 60 };
 
@@ -54,11 +59,67 @@ function extractEmailText(msg) {
   return { to, subject, date, body };
 }
 
+// Either source returns the filtered samples, or null after sending the response.
+async function gmailEmails(req, res) {
+  const token = await googleTokenFor(req, res, "gmail");
+  if (!token) return null;
+
+  let messages;
+  try {
+    messages = await fetchSentEmails(token);
+  } catch (e) {
+    res.status(502).json({ error: "Couldn't read your sent mail: " + e.message });
+    return null;
+  }
+
+  // Extract and filter to external emails only
+  return messages
+    .map(extractEmailText)
+    .filter(e =>
+      e.body.trim().length > 40 &&
+      e.to &&
+      !e.to.toLowerCase().includes("@" + (process.env.COMPANY_DOMAIN || "example.com")) &&
+      !e.to.toLowerCase().includes("noreply") &&
+      !e.to.toLowerCase().includes("no-reply")
+    )
+    .slice(0, 25);
+}
+
+// microsoft-connect-v1 Stage 4c (Jack, 2026-10-08): the caller's own Outlook
+// Sent Items, only in a sales workspace with outlook_voice switched on, on a
+// click. Own = every mailbox owner address in those workspaces plus the
+// connected account, so the .ai -> .io move changes nothing here.
+async function outlookEmails(req, res) {
+  const workspaces = await workspacesWithFeature(req, "outlook_voice");
+  if (!workspaces.length) {
+    res.status(403).json({ error: "Learn from Outlook isn't switched on for your workspace" });
+    return null;
+  }
+  const token = await microsoftTokenFor(req, res);
+  if (!token) return null;
+  const [grant, { data: owners, error }] = await Promise.all([
+    getGrant(req.auth.user.id),
+    getServiceSupabase().from("sales_mailbox_owners").select("mailbox_email").in("business_id", workspaces),
+  ]);
+  if (error) throw new Error(error.message);
+  const own = ownership([grant.account_email, ...owners.map(o => o.mailbox_email)]);
+
+  let messages;
+  try {
+    messages = await fetchOutlookSentMessages(token);
+  } catch (e) {
+    res.status(502).json({ error: "Couldn't read your Outlook sent mail: " + e.message });
+    return null;
+  }
+  return externalSamples(messages, own.isOwn).map(e => ({ ...e, to: e.to.join(", ") }));
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
 
   const {
     mode,          // "learn" (default) | "teach"
+    source,        // learn mode: "gmail" (default) | "outlook"
     original,      // teach mode: original AI-generated email
     edited,        // teach mode: user's edited version
     existingProfile,
@@ -107,33 +168,14 @@ Return ONLY a valid JSON object with the same structure as the existing profile,
     }
   }
 
-  // ── LEARN MODE: fetch Gmail + analyze ───────────────────────────────────
-  const token = await googleTokenFor(req, res, "gmail");
-  if (!token) return;
+  // ── LEARN MODE: fetch sent mail + analyze ────────────────────────────────
+  const emails = source === "outlook" ? await outlookEmails(req, res) : await gmailEmails(req, res);
+  if (!emails) return;
 
-  let messages;
-  try {
-    messages = await fetchSentEmails(token);
-  } catch (e) {
-    return res.status(502).json({ error: "Couldn't read your sent mail: " + e.message });
-  }
-
-  // Extract and filter to external emails only
-  const emails = messages
-    .map(extractEmailText)
-    .filter(e =>
-      e.body.trim().length > 40 &&
-      e.to &&
-      !e.to.toLowerCase().includes("@" + (process.env.COMPANY_DOMAIN || "example.com")) &&
-      !e.to.toLowerCase().includes("noreply") &&
-      !e.to.toLowerCase().includes("no-reply")
-    )
-    .slice(0, 25);
-
-  if (emails.length < 3) {
+  if (emails.length < MIN_SAMPLES) {
     return res.status(200).json({
       profile: null,
-      message: `Only ${emails.length} external sent emails found — need at least 3 to build a voice profile`,
+      message: `Only ${emails.length} external sent emails found — need at least ${MIN_SAMPLES} to build a voice profile`,
     });
   }
 
@@ -183,6 +225,7 @@ Return ONLY a valid JSON object — no explanation, no markdown, just the JSON:
     profile.learnedAt = new Date().toISOString();
     profile.emailCount = emails.length;
     profile.teachCount = 0;
+    profile.source = source === "outlook" ? "outlook" : "gmail";
 
     return res.status(200).json({ profile });
   } catch (err) {

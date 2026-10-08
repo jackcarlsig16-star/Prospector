@@ -4,7 +4,9 @@ import { getSupabase } from './shared.js';
 // nav-admin-cleanup-v1 Stage 3 - per-workspace feature switches (platform
 // owner only, enforced in server.js). Merges one key at a time so a stale
 // browser can't wipe switches it didn't know about.
-const FEATURES = ['goals_sales'];
+// microsoft-connect-v1 Stage 4 (Jack, 2026-10-08): one key per Outlook use,
+// all off until switched on here.
+const FEATURES = ['goals_sales', 'outlook_voice', 'outlook_meetings', 'outlook_reply_times'];
 
 export default async function handler(req, res) {
   if (req.method !== 'PUT') return res.status(405).json({ error: 'Method not allowed' });
