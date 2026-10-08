@@ -1,6 +1,7 @@
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { getSupabase } from './goalsShared.js';
 import { mergePeople } from '../../src/constants/partnerPeople.js';
+import { runSync } from './sync.js';
 
 // partner-360-v1 Stage 1 - people at a partner. Mounted under
 // /api/sales/:businessId (salesGate: GET = Viewer, writes = Member). The
@@ -85,4 +86,18 @@ export async function peopleCounts(supabase, businessId, goals) {
   const group = rows => { const m = new Map(); for (const r of rows) { if (!m.has(r.goal_id)) m.set(r.goal_id, []); m.get(r.goal_id).push(r); } return m; };
   const cByGoal = group(contacts), eByGoal = group(events);
   return Object.fromEntries(goals.map(g => [g.id, mergePeople({ contacts: cByGoal.get(g.id) || [], events: eByGoal.get(g.id) || [], knownContacts: g.known_contacts }).length]));
+}
+
+// POST /goals/partners/refresh-people - a Sync now with the partner-people
+// step forced on (it otherwise runs once per LA day). Same cooldown and
+// daily max as Sync now, and every Apollo call lands on the run row.
+export async function refreshPeopleRoute(req, res) {
+  try {
+    const result = await runSync({ businessId: req.params.businessId, trigger: 'manual', partnerPeople: 'force' });
+    if (result.refused) return res.status(429).json({ error: result.reason });
+    if (result.error) return res.status(500).json({ error: result.error });
+    res.json({ run: result.run, partner_contacts: result.run?.counts?.partner_contacts || null });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 }

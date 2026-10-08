@@ -64,7 +64,7 @@ const NO_FILTERS = { category: '', tiers: [], stale: false, hot: false, owner: n
 
 // teamView: the person filter is on Team. Reorder needs the whole group in
 // view (see WorkflowView), so it's only offered then.
-export default function PartnersView({ partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusFilter, tasksFor, onPeople, onAddPerson, onDeletePerson, onCreateTask, onTouches, onDomains, onAddDomain, onUpdateDomain, onDeleteDomain, onAllDomains, csvUrl }) {
+export default function PartnersView({ partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusFilter, tasksFor, onPeople, onAddPerson, onDeletePerson, onRefreshPeople, onCreateTask, onTouches, onDomains, onAddDomain, onUpdateDomain, onDeleteDomain, onAllDomains, csvUrl }) {
   const [mode, setMode] = useState(readMode);
   const [stage, setStage] = useState(null);
   const compact = useMediaQuery('(max-width: 760px)');
@@ -81,6 +81,7 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
   const [bulkOpen, setBulkOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [peopleBusy, setPeopleBusy] = useState(false);
   // partner-domains-bulk-review-v1 - the workspace's pending domain
   // suggestions drive "Review domains (n)"; bumped after every domain write.
   const [domainBump, setDomainBump] = useState(0);
@@ -199,6 +200,18 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
   const onCount = useCallback((id, n) => onReplace({ id, people_count: n }), [onReplace]);
   const details = { canEdit, onUpdate, onEvents: fetchEvents, bump: historyBump, tasksFor, people, domains, onCreateTask, onCount };
 
+  // partner-360-v1 Stage 3 - one Sync now with the partner-people step forced;
+  // the toast reports what Apollo gave and what it cost.
+  const refreshPeople = async () => {
+    setPeopleBusy(true);
+    try {
+      const r = await onRefreshPeople();
+      const c = r.partner_contacts;
+      showToast({ noUndo: true, text: c ? `People refreshed · ${c.contacts_seen} from Apollo at ${c.partners_synced} of ${c.partners_matched} matched partners · ${c.calls} Apollo call${c.calls === 1 ? '' : 's'}` : 'Sync ran, but the partner-people step reported nothing - check the sync status' });
+      onRefresh(); setHistoryBump(k => k + 1);
+    } catch (e) { showToast({ error: e.message }); }
+    finally { setPeopleBusy(false); }
+  };
   const setModeSaved = m => { setMode(m); writeMode(m); };
   const toggleTier = t => setFilters(f => ({ ...f, tiers: f.tiers.includes(t) ? f.tiers.filter(x => x !== t) : [...f.tiers, t] }));
 
@@ -260,6 +273,7 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
         {canEdit && pendingCount > 0 && <button type="button" aria-expanded={reviewOpen} onClick={() => { setReviewOpen(o => !o); setExportOpen(false); setBulkOpen(false); }} style={{ ...pill(reviewOpen), marginLeft: 'auto' }}>Review domains ({pendingCount})</button>}
         {canEdit && <button type="button" aria-expanded={exportOpen} onClick={() => { setExportOpen(o => !o); setReviewOpen(false); setBulkOpen(false); }} style={{ ...pill(exportOpen), marginLeft: pendingCount > 0 ? 0 : 'auto' }}>Export to Apollo (CSV)</button>}
         {canEdit && <button type="button" aria-expanded={bulkOpen} onClick={() => { setBulkOpen(o => !o); setExportOpen(false); setReviewOpen(false); }} style={pill(bulkOpen)}>＋ Log touches</button>}
+        {canEdit && <button type="button" onClick={refreshPeople} disabled={peopleBusy} title="Pull the people Apollo knows at partners with a confirmed domain (runs a Sync now)" style={{ ...pill(false), opacity: peopleBusy ? 0.6 : 1 }}>{peopleBusy ? 'Refreshing people…' : '↻ Refresh partner people'}</button>}
       </div>
       {reviewOpen && canEdit && domainSummary && <DomainReview suggestions={domainSummary.suggestions || []} onAdd={domains.add} onChanged={bumpDomains} onClose={() => setReviewOpen(false)} />}
       {exportOpen && canEdit && <ApolloExport load={loadAllDomains} csvUrl={csvUrl} onClose={() => setExportOpen(false)} />}

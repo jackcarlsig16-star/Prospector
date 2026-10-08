@@ -9,6 +9,7 @@ import * as mailboxes from './adapters/mailboxes.js';
 import { syncActivity, ACTIVITY_MAX_CALLS } from './activitySync.js';
 import { refreshRecentWeeks, EMAIL_COUNTS_MAX_CALLS } from './emailCounts.js';
 import { isDeadRun } from './syncRunStatus.js';
+import { syncPartnerContacts, ranToday, PARTNER_CONTACTS_MAX_CALLS } from './partnerContactsSync.js';
 
 // PROPOSED values (SPEC) - sized from real counts in the audit (21
 // sequences, 314 accounts, 9 active sequences, 2 mailboxes), confirmed at
@@ -106,7 +107,9 @@ async function checkManualLimits(supabase, businessId) {
 // call-cap guardrail can be exercised for real without touching the real
 // default (Stage 2 verification: "MAX set to 2 stops the run at exactly 2
 // calls").
-export async function runSync({ businessId, trigger, maxCalls }) {
+// partnerPeople: 'force' runs the partner-people step even if it already ran
+// today (the "Refresh partner people" button); omitted = once per LA day.
+export async function runSync({ businessId, trigger, maxCalls, partnerPeople }) {
   const supabase = getSupabase();
 
   const lock = await checkConcurrencyLock(supabase, businessId);
@@ -133,6 +136,7 @@ export async function runSync({ businessId, trigger, maxCalls }) {
   let supabaseMs = 0;
   let senderLookupCount = 0;
   let accountNames = null;
+  let accountRecords = null;
 
   for (const adapter of ADAPTERS) {
     try {
@@ -161,7 +165,7 @@ export async function runSync({ businessId, trigger, maxCalls }) {
         }
       }
 
-      if (adapter.name === 'accounts') accountNames = new Map(records.map(r => [r.id, r.name]));
+      if (adapter.name === 'accounts') { accountNames = new Map(records.map(r => [r.id, r.name])); accountRecords = records; }
 
       const { rows, missing } = adapter.toMetrics(records, metricDate, ctx);
       missingAll.push(...(missing || []));
@@ -240,22 +244,42 @@ export async function runSync({ businessId, trigger, maxCalls }) {
     adapterErrors.email_counts = err instanceof CallCapError ? 'call_cap' : err.message;
   }
 
+  // partner-360-v1 Stage 3 - the people Apollo knows at confirmed-domain
+  // partners, on its own counter, once per LA day unless forced.
+  const peopleCtx = { callCounter: { count: 0, max: PARTNER_CONTACTS_MAX_CALLS }, endpointCounts: {} };
+  let partnerContacts = null;
+  let partnerContactsMs = 0;
+  try {
+    if (partnerPeople === 'force' || !(await ranToday(supabase, businessId))) {
+      const peopleStart = Date.now();
+      const result = await syncPartnerContacts({ ctx: peopleCtx, supabase, businessId, accounts: accountRecords });
+      partnerContactsMs = Date.now() - peopleStart;
+      missingAll.push(...result.missing);
+      partnerContacts = result.counts;
+    }
+  } catch (err) {
+    adapterErrors.partner_contacts = err instanceof CallCapError ? 'call_cap' : err.message;
+  }
+
   const hasErrors = Object.keys(adapterErrors).length > 0;
   const status = stoppedForCap || hasErrors ? 'partial' : 'success';
 
   const counts = {
-    apollo_calls: ctx.callCounter.count + activityCtx.callCounter.count + countsCtx.callCounter.count,
+    apollo_calls: ctx.callCounter.count + activityCtx.callCounter.count + countsCtx.callCounter.count + peopleCtx.callCounter.count,
     per_endpoint: {
       ...ctx.endpointCounts,
       ...activityCtx.endpointCounts,
+      '/contacts/search': (ctx.endpointCounts['/contacts/search'] || 0) + peopleCtx.callCounter.count,
       '/emailer_messages/search': (activityCtx.endpointCounts['/emailer_messages/search'] || 0) + (countsCtx.endpointCounts['/emailer_messages/search'] || 0),
       sender_lookup: senderLookupCount,
+      partner_people: peopleCtx.callCounter.count,
     },
     activity: activityCounts,
     email_counts: emailCountWeeks,
+    partner_contacts: partnerContacts,
     missing: missingAll,
     adapter_errors: adapterErrors,
-    timing_ms: { apollo: apolloMs, supabase: supabaseMs, activity: activityMs, email_counts: emailCountsMs },
+    timing_ms: { apollo: apolloMs, supabase: supabaseMs, activity: activityMs, email_counts: emailCountsMs, partner_contacts: partnerContactsMs },
   };
   if (stoppedForCap) counts.stopped_reason = 'call_cap';
 

@@ -361,6 +361,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
               onPeople={goalId => goalsApi.partnerPeople(businessId, goalId)}
               onAddPerson={(goalId, body) => goalsApi.addPartnerPerson(businessId, goalId, body)}
               onDeletePerson={(goalId, personId) => goalsApi.deletePartnerPerson(businessId, goalId, personId)}
+              onRefreshPeople={() => goalsApi.refreshPartnerPeople(businessId)}
               onCreateTask={body => goalsApi.createWeekGoal(businessId, { week_start: thisWeek, kind: 'todo', owner_user_id: (owner === 'team' ? me?.profile?.id : owner) || null, ...body })}
               onTouches={body => goalsApi.partnerTouches(businessId, body)}
               onDomains={goalId => goalsApi.partnerDomains(businessId, goalId)}

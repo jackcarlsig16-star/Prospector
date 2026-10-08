@@ -69,6 +69,8 @@ export const goalsApi = {
   partnerPeople: (id, goalId) => call(id, `/partners/${goalId}/people`).then(d => d.people),
   addPartnerPerson: (id, goalId, body) => call(id, `/partners/${goalId}/people`, { method: 'POST', body }).then(d => d.person),
   deletePartnerPerson: (id, goalId, personId) => call(id, `/partners/${goalId}/people/${personId}`, { method: 'DELETE' }),
+  // partner-360-v1 Stage 3 - a Sync now with the Apollo partner-people step forced; same cooldown as Sync now.
+  refreshPartnerPeople: id => call(id, '/partners/refresh-people', { method: 'POST', body: {} }),
   // partner-touch-log-v1 - body { dry_run?, touches: [...] }; dry_run previews, the real run applies all or nothing.
   partnerTouches: (id, body) => call(id, '/partners/touches', { method: 'POST', body }),
   // partner-360-v1 Stage 2 - partner_domains rows + live suggestions; every write returns the same shape.
