@@ -1,7 +1,7 @@
 // node --test api/sales/partnerOutlookTouches.test.mjs  (microsoft-connect-v1 Stage 3)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { proposeOutlookMoves, matchPartner, buildIndex, isAutoMessage, messageKey, eventKey, SENT, REPLIED, MEETING, NEEDS_OK } from './partnerOutlookTouches.js';
+import { proposeOutlookMoves, matchPartner, buildIndex, isAutoMessage, messageKey, eventKey, touchKeyOf, SENT, REPLIED, MEETING, NEEDS_OK } from './partnerOutlookTouches.js';
 
 const now = new Date('2026-10-08T20:00:00Z');
 const partner = (id, pipeline_status, name = id) => ({ id, name, pipeline_status });
@@ -94,4 +94,52 @@ test('unmatched and ambiguous mail is only counted', () => {
   const r = run({ partners: [partner('g1', 'not_started', 'Acme'), partner('g2', 'not_started', 'Beta')], domains: [domain('g1', 'acme.com'), domain('g2', 'beta.io')],
     messages: [msg('sent', ['x@nowhere.com']), msg('sent', ['a@acme.com', 'b@beta.io'])] });
   assert.equal(r.counts.unmatched, 1); assert.equal(r.counts.ambiguous, 1); assert.equal(r.proposed.length, 0);
+});
+
+test('touches are facts: every matched sent mail and in-thread reply records a touch; cold replies and meetings do not', () => {
+  const sent = msg('sent', ['amy@acme.com'], { conversation_id: 'T1', occurred_at: '2026-10-05T17:00:00Z' });
+  const reply = msg('received', ['amy@acme.com'], { conversation_id: 'T1', occurred_at: '2026-10-06T17:00:00Z' });
+  const cold = msg('received', ['bob@acme.com'], { conversation_id: 'T9' });
+  const r = run({ partners: [partner('g1', 'meeting_set', 'Acme')], domains: [domain('g1', 'acme.com')], messages: [sent, reply, cold], events: [event(['amy@acme.com'])] });
+  assert.deepEqual(r.touches.would_record.map(t => [t.key, t.direction, t.contact, t.date, t.by_user]), [[touchKeyOf(messageKey(sent)), 'sent', 'amy@acme.com', '2026-10-05', 'u-jack'], [touchKeyOf(messageKey(reply)), 'received', 'amy@acme.com', '2026-10-06', 'u-jack']]);
+  assert.equal(r.counts.touches, 2);
+  // Facts record whatever the stage; the partner is already at Meeting so every move is skipped.
+  assert.equal(r.proposed.length + r.held.length, 0); assert.equal(r.skipped.length, 4);
+});
+
+test('touch contact name: partner_contacts name first, then the Graph name, then the address', () => {
+  const m = msg('sent', ['sbroadway@corestream.com'], { external_names: [''] });
+  const byContact = run({ partners: [partner('g1', 'not_started', 'Corestream')], domains: [domain('g1', 'corestream.com')], contacts: [contact('g1', 'sbroadway@corestream.com', 'Sharon Broadway')], messages: [m] });
+  assert.equal(byContact.touches.would_record[0].contact, 'Sharon Broadway');
+  assert.equal(byContact.proposed[0].person, 'Sharon Broadway <sbroadway@corestream.com>');
+  const byGraph = run({ partners: [partner('g1', 'not_started', 'Corestream')], domains: [domain('g1', 'corestream.com')], messages: [msg('sent', ['sbroadway@corestream.com'], { external_names: ['S. Broadway'] })] });
+  assert.equal(byGraph.touches.would_record[0].contact, 'S. Broadway');
+  const byEmail = run({ partners: [partner('g1', 'not_started', 'Corestream')], domains: [domain('g1', 'corestream.com')], messages: [m] });
+  assert.equal(byEmail.touches.would_record[0].contact, 'sbroadway@corestream.com');
+});
+
+test('dedupe: a manual touch for the same partner + contact (name or address, any case) + LA day skips the Outlook touch and says so; another day does not', () => {
+  const m = msg('sent', ['sbroadway@corestream.com'], { occurred_at: '2026-10-07T17:00:00Z' });
+  const base = { partners: [partner('g1', 'first_email_sent', 'Corestream')], domains: [domain('g1', 'corestream.com')], contacts: [contact('g1', 'sbroadway@corestream.com', 'Sharon Broadway')], messages: [m] };
+  const manual = at => ({ goal_id: 'g1', event: 'touch', source: 'manual', contact_names: ['sharon broadway'], at, meta: {} });
+  const same = run({ ...base, partnerEvents: [manual('2026-10-08T05:34:00Z')] });
+  assert.equal(same.touches.would_record.length, 0);
+  assert.equal(same.touches.skipped_manual.length, 1);
+  assert.match(same.touches.skipped_manual[0].reason, /logged by hand: Sharon Broadway on 2026-10-07/);
+  const byAddress = run({ ...base, partnerEvents: [{ ...manual('2026-10-08T05:34:00Z'), contact_names: ['SBroadway@Corestream.com'] }] });
+  assert.equal(byAddress.touches.skipped_manual.length, 1);
+  const otherDay = run({ ...base, partnerEvents: [manual('2026-10-07T05:34:00Z')] });
+  assert.equal(otherDay.touches.would_record.length, 1);
+  const otherPartner = run({ ...base, partnerEvents: [{ ...manual('2026-10-08T05:34:00Z'), goal_id: 'g2' }] });
+  assert.equal(otherPartner.touches.would_record.length, 1);
+});
+
+test('dedupe: an Outlook touch already recorded (its key in meta) is already; two mails to one person on one day collapse to one touch', () => {
+  const a = msg('sent', ['amy@acme.com'], { occurred_at: '2026-10-06T15:00:00Z' }), b = msg('sent', ['amy@acme.com'], { occurred_at: '2026-10-06T18:00:00Z' });
+  const r = run({ partners: [partner('g1', 'not_started', 'Acme')], domains: [domain('g1', 'acme.com')], messages: [a, b] });
+  assert.equal(r.touches.would_record.length, 1); assert.equal(r.touches.would_record[0].key, touchKeyOf(messageKey(a))); assert.equal(r.touches.duplicates, 1);
+  const done = run({ partners: [partner('g1', 'not_started', 'Acme')], domains: [domain('g1', 'acme.com')], messages: [a], partnerEvents: [{ goal_id: 'g1', event: 'touch', source: 'outlook', contact_names: ['amy@acme.com'], at: '2026-10-06T19:00:00Z', meta: { outlook_touch_key: touchKeyOf(messageKey(a)) } }] });
+  assert.equal(done.touches.would_record.length, 0); assert.equal(done.touches.already, 1);
+  // The recorded fact touch never settles the stage move - that key is separate.
+  assert.equal(done.proposed.length, 1);
 });

@@ -65,7 +65,7 @@ const NO_FILTERS = { category: '', tiers: [], stale: false, hot: false, owner: n
 
 // teamView: the person filter is on Team. Reorder needs the whole group in
 // view (see WorkflowView), so it's only offered then.
-export default function PartnersView({ partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusFilter, tasksFor, onPeople, onAddPerson, onDeletePerson, onRefreshPeople, onCreateTask, onTouches, onDomains, onAddDomain, onUpdateDomain, onDeleteDomain, onAllDomains, csvUrl, onApolloMoves, onApplyApollo, onDismissApollo, onOutlookMoves }) {
+export default function PartnersView({ partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusFilter, tasksFor, onPeople, onAddPerson, onDeletePerson, onRefreshPeople, onCreateTask, onTouches, onDomains, onAddDomain, onUpdateDomain, onDeleteDomain, onAllDomains, csvUrl, onApolloMoves, onApplyApollo, onDismissApollo, onOutlookMoves, onApplyOutlook, onDismissOutlook, onRecordOutlook }) {
   const [mode, setMode] = useState(readMode);
   const [stage, setStage] = useState(null);
   const compact = useMediaQuery('(max-width: 760px)');
@@ -279,7 +279,7 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
         {canEdit && <button type="button" onClick={refreshPeople} disabled={peopleBusy} title="Pull the people Apollo knows at partners with a confirmed domain (runs a Sync now)" style={{ ...pill(false), opacity: peopleBusy ? 0.6 : 1 }}>{peopleBusy ? 'Refreshing people…' : '↻ Refresh partner people'}</button>}
       </div>
       {reviewOpen && canEdit && domainSummary && <DomainReview suggestions={domainSummary.suggestions || []} onAdd={domains.add} onChanged={bumpDomains} onClose={() => setReviewOpen(false)} />}
-      {movesOpen && canEdit && <ApolloMoves load={onApolloMoves} loadOutlook={onOutlookMoves} onApply={onApplyApollo} onDismiss={onDismissApollo} onUndo={onUndo} lookup={lookup}
+      {movesOpen && canEdit && <ApolloMoves load={onApolloMoves} loadOutlook={onOutlookMoves} onApplyOutlook={onApplyOutlook} onDismissOutlook={onDismissOutlook} onRecordOutlook={onRecordOutlook} onApply={onApplyApollo} onDismiss={onDismissApollo} onUndo={onUndo} lookup={lookup}
         onChanged={() => { onRefresh(); setHistoryBump(k => k + 1); }} onClose={() => setMovesOpen(false)} />}
       {exportOpen && canEdit && <ApolloExport load={loadAllDomains} csvUrl={csvUrl} onClose={() => setExportOpen(false)} />}
       {bulkOpen && canEdit && (

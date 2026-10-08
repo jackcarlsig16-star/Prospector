@@ -642,6 +642,9 @@ app.get('/api/sales/:businessId/goals/partners/apollo-touches', salesModuleRoute
 app.post('/api/sales/:businessId/goals/partners/apollo-touches/apply', salesModuleRoute('./api/sales/partnerApolloTouches.js', 'apolloTouchesApplyRoute', 'goals/partners/apollo-touches/apply POST'));
 app.post('/api/sales/:businessId/goals/partners/apollo-touches/dismiss', salesModuleRoute('./api/sales/partnerApolloTouches.js', 'apolloTouchesDismissRoute', 'goals/partners/apollo-touches/dismiss POST'));
 app.get('/api/sales/:businessId/goals/partners/outlook-touches', salesModuleRoute('./api/sales/partnerOutlookTouches.js', 'outlookTouchesDryRunRoute', 'goals/partners/outlook-touches'));
+app.post('/api/sales/:businessId/goals/partners/outlook-touches/apply', salesModuleRoute('./api/sales/partnerOutlookTouches.js', 'outlookTouchesApplyRoute', 'goals/partners/outlook-touches/apply POST'));
+app.post('/api/sales/:businessId/goals/partners/outlook-touches/dismiss', salesModuleRoute('./api/sales/partnerOutlookTouches.js', 'outlookTouchesDismissRoute', 'goals/partners/outlook-touches/dismiss POST'));
+app.post('/api/sales/:businessId/goals/partners/outlook-touches/record', salesModuleRoute('./api/sales/partnerOutlookTouches.js', 'outlookTouchesRecordRoute', 'goals/partners/outlook-touches/record POST'));
 app.get('/api/sales/:businessId/goals/partners/domains', salesModuleRoute('./api/sales/partnerDomains.js', 'listAllDomainsRoute', 'goals/partners/domains'));
 app.get('/api/sales/:businessId/goals/partners/export-apollo.csv', salesModuleRoute('./api/sales/partnerDomains.js', 'exportApolloCsvRoute', 'goals/partners/export-apollo.csv'));
 app.get('/api/sales/:businessId/goals/partners/:id/domains', salesModuleRoute('./api/sales/partnerDomains.js', 'listDomainsRoute', 'goals/partners/:id/domains'));

@@ -16,7 +16,7 @@ const when = iso => new Date(iso).toLocaleString('en-US', { month: 'short', day:
 const day = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 const rowStyle = { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '4px 10px', alignItems: 'center', padding: '5px 0', borderTop: `1px solid ${SA.track}` };
 
-export default function ApolloMoves({ load, loadOutlook, onApply, onDismiss, onUndo, onChanged, onClose, lookup = () => ({ first: '' }) }) {
+export default function ApolloMoves({ load, loadOutlook, onApplyOutlook, onDismissOutlook, onRecordOutlook, onApply, onDismiss, onUndo, onChanged, onClose, lookup = () => ({ first: '' }) }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(null);     // key or event id in flight
@@ -102,7 +102,7 @@ export default function ApolloMoves({ load, loadOutlook, onApply, onDismiss, onU
           </div>
         </>
       )}
-      {loadOutlook && <OutlookMoves load={loadOutlook} />}
+      {loadOutlook && <OutlookMoves load={loadOutlook} onApply={onApplyOutlook} onDismiss={onDismissOutlook} onRecord={onRecordOutlook} onChanged={onChanged} />}
     </section>
   );
 }

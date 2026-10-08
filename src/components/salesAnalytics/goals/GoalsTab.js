@@ -378,6 +378,9 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
               onApplyApollo={(keys, includeHeld) => goalsApi.applyApolloMoves(businessId, keys, includeHeld)}
               onDismissApollo={key => goalsApi.dismissApolloMove(businessId, key)}
               onOutlookMoves={() => goalsApi.outlookMoves(businessId)}
+              onApplyOutlook={(keys, includeHeld) => goalsApi.applyOutlookMoves(businessId, keys, includeHeld)}
+              onDismissOutlook={key => goalsApi.dismissOutlookMove(businessId, key)}
+              onRecordOutlook={() => goalsApi.recordOutlookTouches(businessId)}
               onRefresh={() => goalsApi.partners(businessId).then(setPartners).catch(e => setError('partners', e))}
               onEvents={goalId => goalsApi.partnerEvents(businessId, { goal_id: goalId })}
               onRank={async (goalId, order) => {
