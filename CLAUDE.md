@@ -211,6 +211,13 @@ Standing rules for every sales spec — specs don't need to repeat them.
 - If a table count moves during a run, check who wrote it before assuming the test did — Jack and Cyrus click in the live app while tests run.
 - Real-data checks compare to the DB (or the API that reads it), never to the UI's own numbers.
 
+## Progress rules
+
+- At the start of every SPEC stage, FIX, or audit: create a task list (the built-in todo/task tool) with one item per implementation step from the spec, plus "verify" and "commit + push". Do this before touching any file.
+- Mark each item in_progress when you start it and completed the moment it's done. Never batch updates at the end.
+- Every status reply starts with a one-line progress bar: `[####------] 4/10 — <current step>`.
+- Never mark a step done before its check passes. Never mark "verify" done before "restored: yes".
+
 ## Stage report + session budget
 
 - Report shape after each stage, short: **What's new** (bullets) · **Tests** (counts) · **restored: yes** · **Choices to confirm** · **Next** ("Reply go for …"). Don't re-print earlier stages.
