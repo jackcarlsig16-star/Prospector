@@ -1,0 +1,85 @@
+SPEC — huddle-live-feed-v1
+
+## Status
+Source: Jack in chat, 2026-10-07, with a screenshot of Apollo → Emails filtered to Opened (197 rows: recipient,
+status icons sent/opened(×n)/clicked/replied, sent time, sequence step, message preview):
+  "for the standup page, the important thing isn't to make it complex. look at the Apollo email page — we can
+   see who opened and it gives us a status and those fun metrics. what we want is this but with more insights:
+   the most recent person to open, then buttons to flag to Cyrus, insights about how many times he opened, and
+   what the next step should be. we don't want it so convoluted, with too much grading and weighting before we
+   even know what the most recent stuff is."
+Builds on sales-huddle-v2 REVISION 1 (live: NBA ranking, Hot/Warm/Cold, filters, activity feed with bot opens
+hidden, Flag for…, one-click actions with undo, print agenda) and task-drawer-v1 (flags land in the drawer).
+This changes the DEFAULT layout to recency-first. Nothing built is deleted: the ranked view becomes a tab.
+QUEUED: right after call-notes-to-tasks-v1, before sales-quick-add-research-v1.
+
+## Problem
+1. The Huddle opens on ranked/graded lanes (heat + NBA). To answer "who just opened?" Jack has to read
+   scores first. Apollo's plain newest-first list answers it faster.
+2. Apollo's list lacks what Prospector knows: real vs bot opens, open count across steps, owner, whether
+   someone was already flagged/contacted, partner/company context, a suggested next step, one-click handoff.
+3. "Most recent" is only as fresh as the last sync (manual on Render Free). The page doesn't say how fresh.
+
+## Design decision
+
+DECIDED — default tab "Live" (tabs: Live · Priorities · Done). Priorities = today's ranked view, unchanged.
+- Top line: "Synced 12 min ago · Sync now" (Member+). If older than 2 hours, amber.
+- Four numbers since last huddle, each a filter (drill rule): Replies · Clicks · Opened 2+ times · Flagged
+  to me. Same counting rules as today (bot opens excluded).
+- Filter chips: All · Replied · Clicked · Opened 2+ · Mine / Cyrus / Team (member list, not hard-coded) ·
+  Sequence (dropdown). "Show bot opens (n)" toggle, off by default.
+- ONE ROW PER PERSON, newest real activity first (not one row per event):
+  name · company · title (if known) · owner dot · sequence short name + step ("Car Rental · Step 3") ·
+  activity badges: ✉ sent · 👁 ×N real opens · 🖱 clicked · ↩ replied (reply badge wins, green) ·
+  "last: 6:08 am" / "2 d ago" · already-handled markers (⚑ Flagged to Cyrus · ✓ Contacted today).
+- One-line insight under the name, plain words, from existing data only, e.g.
+  "Opened 3× since Tue, across steps 2–3 · clicked pricing link" or "Replied 6:08 am — not yet handled".
+- Next step: one suggested action as text, from the existing NBA rules (no new scoring), e.g.
+  "Call or LinkedIn today" / "Reply in thread" / "Wait — opened once". Shown as a quiet chip, not a grade.
+- Row buttons (Member+, labeled words, compact on phone): Flag → (member menu, optional note; existing flag
+  path, one open flag per prospect rule) · Mark contacted (existing, with undo) · LinkedIn (opens a LinkedIn
+  people search for name + company in a new tab) · Open in Apollo (new tab) · ▸ expand.
+- Expand: event timeline (sent / opened ×n with times / clicked which link / replied), the step's subject
+  line, linked tasks (task-drawer chips), partner/company link if matched. Escape closes.
+- Paging: 25 rows, "Load more". Search box (name / company).
+- No Hot/Warm/Cold labels or scores on Live. They stay on Priorities.
+
+DECIDED — keep
+- Print agenda, Flagged-for-you lane (now also in the task drawer), Done recap → "Done" tab.
+- All rules: Apollo read-only; no phone numbers; Viewer sees rows, no buttons.
+
+PROPOSED / REVISABLE
+- Stale-sync warning at 2 hours. 25 rows per page. Insight sentence wording.
+
+## Out of scope (named follow-ons)
+- Automatic sync on a schedule (Render Free sleeps). "Most recent" depends on it — next infra item:
+  scheduled-sync-v1.
+- Real reply times from Outlook (microsoft-connect-v1).
+- LinkedIn activity — LinkedIn offers no API to read messages/views; manual logging only (funnel work).
+- Any change to NBA rules or heat math.
+
+## Standing rules
+CLAUDE.md "Sales module rules" and "Testing rules" apply (API-only writes, flag rules FIX-3/4/5, Viewer
+read-only, selectAllPages for >1,000 rows, no phone numbers, Apollo read-only, owner enum gap M5).
+
+## Implementation
+FIRST: read the current Huddle (lanes, feed endpoint, prospect state, flag + contacted actions, NBA rules,
+sync status source). Report in 5–10 lines how one-row-per-person is built from existing events (group key,
+open counting with bots excluded) and whether any new endpoint is needed (prefer extending the feed route).
+  Stage 1: API — grouped "live" list (one row per person, counts, last activity, handled markers, next-step
+           text, insight inputs), filters, paging; tests on real data vs raw events.
+  Stage 2: UI — Live tab + top line + numbers + chips + rows + buttons + expand; Priorities/Done tabs keep
+           today's views. Screenshot 1440/390 and stop for Jack's look.
+
+## Verification
+- Stage 1: for 10 real people, open/click/reply counts and last-activity time match raw events (bots
+  excluded); bot toggle adds exactly the bot rows; newest-first order correct; Cyrus filter correct;
+  0 Apollo writes.
+- Stage 2: the newest real opener in Apollo's Emails → Opened list (after a sync) is the first row in Live;
+  Flag → Cyrus creates one flag (second attempt offers reassign); Mark contacted + undo; LinkedIn and
+  Apollo links open; Viewer sees no buttons; 0 console errors at 1440/390; restored: yes.
+- Bar 5: Jack opens the Huddle, and within 10 seconds can say who opened most recently, how many times,
+  and flags one to Cyrus.
+
+## Commit instructions
+One commit per stage referencing huddle-live-feed-v1. Push after each passes. Stop and report after each.
