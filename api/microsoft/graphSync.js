@@ -80,7 +80,10 @@ export function startUrl(folder, now = new Date()) {
     return `${base}/me/calendarView/delta?startDateTime=${encodeURIComponent(from)}&endDateTime=${encodeURIComponent(to)}`;
   }
   const since = new Date(now.getTime() - BACKFILL_DAYS * 864e5).toISOString();
-  return `${base}/me/mailFolders/${folder}/messages/delta?$select=${MESSAGE_SELECT}&$top=${PAGE_SIZE}&$filter=${encodeURIComponent(`receivedDateTime ge ${since}`)}`;
+  // Page size comes from the Prefer header only: a $top on the initial delta
+  // request made Graph end the round after one page (prod, 2026-10-08: 50
+  // seen per folder, then a deltaLink).
+  return `${base}/me/mailFolders/${folder}/messages/delta?$select=${MESSAGE_SELECT}&$filter=${encodeURIComponent(`receivedDateTime ge ${since}`)}`;
 }
 
 // supabase-js throws (not returns) on a dropped socket; one retry covers the

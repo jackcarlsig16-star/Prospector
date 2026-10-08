@@ -56,12 +56,12 @@ test('event: UTC times, organizer kept, internal / personal skipped', () => {
   assert.equal(classifyEvent({ ...ev, organizer: addr('a@gmail.com'), attendees: [] }, { own }).skip, 'personal');
 });
 
-test('start urls: 90-day filter on mail with a body-free $select, 30 back / 60 forward on calendar', () => {
+test('start urls: 90-day filter on mail with a body-free $select and no $top, 30 back / 60 forward on calendar', () => {
   const now = new Date('2026-10-08T12:00:00Z');
   const u = new URL(startUrl('inbox', now));
   assert.equal(u.pathname, '/v1.0/me/mailFolders/inbox/messages/delta');
   assert.ok(!/body/i.test(u.searchParams.get('$select')));
-  assert.equal(u.searchParams.get('$top'), String(PAGE_SIZE));
+  assert.equal(u.searchParams.get('$top'), null);
   assert.equal(u.searchParams.get('$filter'), `receivedDateTime ge ${new Date(now.getTime() - BACKFILL_DAYS * 864e5).toISOString()}`);
   const c = new URL(startUrl('calendar', now));
   assert.equal(c.pathname, '/v1.0/me/calendarView/delta');
