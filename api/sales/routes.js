@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { runSync } from './sync.js';
+import { asReported } from './syncRunStatus.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 
 function getSupabase() {
@@ -33,7 +34,8 @@ export async function runsRoute(req, res) {
     .order('started_at', { ascending: false })
     .limit(limit);
   if (error) return res.status(500).json({ error: error.message });
-  res.status(200).json({ runs: data });
+  const now = Date.now();
+  res.status(200).json({ runs: data.map(r => asReported(r, now)) });
 }
 
 // ~425 rows per sync day, so this passed the 1,000-row cap within 3 days.

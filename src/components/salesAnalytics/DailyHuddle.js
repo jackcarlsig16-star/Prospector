@@ -4,6 +4,7 @@ import { fetchRuns, triggerSync, fetchInsights } from './salesApi';
 import { fetchHuddle, startHuddle, fetchCollateral, updateProspect, fetchFlags, flagProspect, unflag, reassignFlag, dropFlag, completeFlag as completeFlagApi, announceFlagsChanged, FLAGS_CHANGED } from './huddleApi';
 import HuddleRow from './HuddleRow';
 import HuddleFeed from './HuddleFeed';
+import HuddleLive from './HuddleLive';
 import FlagDialog from './FlagDialog';
 import FlaggedLane from './FlaggedLane';
 import CollateralLibrary from './CollateralLibrary';
@@ -40,6 +41,11 @@ const HUDDLE_SHEET_COLUMNS = [
   { label: 'LinkedIn', key: 'linkedin_url' },
   { label: 'Apollo', key: 'apollo_url' },
 ];
+
+// A Live row that isn't in the Priorities list (e.g. excluded there) still
+// gets the flag dialog: give it the fields its defaults read.
+const liveFlagTarget = r => ({ contact_id: r.contact_id, name: r.name, company: r.company, owner: r.owner, next_best_action: { id: r.next_step.id },
+  last_human_signal: r.last_activity_kind ? { kind: r.last_activity_kind, step: r.step, count: r.real_opens, at: r.last_activity_at, reply_class: r.reply_class } : null });
 
 const DUE_OPTIONS = [['all', 'All'], ['overdue', 'Overdue'], ['today', 'Today'], ['week', 'This week'], ['none', 'No date']];
 const HEAT_OPTIONS = [['all', 'All'], ['hot', 'Hot'], ['warm', 'Warm'], ['cold', 'Cold']];
@@ -99,7 +105,8 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
   const [owner, setOwner] = useState(readOwner);
   const [needsOwner, setNeedsOwner] = useState(null); // set by the "today's actions by owner" ring
   const [feedKind, setFeedKind] = useState(null); // 'open' | 'click' | 'reply' - a strip number picked it
-  const doneRef = useRef(null);
+  const [tab, setTab] = useState('live'); // huddle-live-feed-v1: live | priorities | done
+  const [liveKey, setLiveKey] = useState(0);
   const [filters, setFilters] = useState({ heat: 'all', due: 'all', stale: false, sort: 'signal', hideBots: true });
   const [feedKey, setFeedKey] = useState(0);
   const [flags, setFlags] = useState([]);
@@ -114,10 +121,10 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
   const load = useCallback(async () => {
     setError('');
     try {
-      const [huddle, items, runs] = await Promise.all([fetchHuddle(businessId), fetchCollateral(businessId), fetchRuns(businessId, 1)]);
+      const [huddle, items, runs] = await Promise.all([fetchHuddle(businessId), fetchCollateral(businessId), fetchRuns(businessId, 10)]);
       setData(huddle);
       setCollateral(items);
-      setLastRun(runs[0] || null);
+      setLastRun(runs.find(r => r.finished_at && ['success', 'partial'].includes(r.status)) || null);
     } catch (e) {
       setError(e.message);
     }
@@ -163,6 +170,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
       setMessage(run.status === 'success' ? 'Sync complete.' : `Sync finished: ${run.status}`);
       await load();
       setFeedKey(k => k + 1);
+      setLiveKey(k => k + 1);
     } catch (e) {
       setMessage(e.message);
     } finally {
@@ -198,8 +206,9 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
     try {
       handleUpdated(await updateProspect(businessId, p.contact_id, patch));
     } catch (e) { handleUpdated({ contact_id: p.contact_id, ...prev }); throw e; }
+    setLiveKey(k => k + 1);
     // Undo only if the fields still hold what this click set (409 otherwise).
-    showToast(`${p.name || 'Prospect'} ${label}`, async () => handleUpdated(await updateProspect(businessId, p.contact_id, { ...prev, expect: patch })));
+    showToast(`${p.name || 'Prospect'} ${label}`, async () => { handleUpdated(await updateProspect(businessId, p.contact_id, { ...prev, expect: patch })); setLiveKey(k => k + 1); });
   };
   const undo = async () => {
     if (!toast) return;
@@ -304,6 +313,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
   // Arriving from a Goals to-do ("Open in Huddle"): jump once the rows exist.
   useEffect(() => {
     if (!focusContactId || !data) return;
+    setTab('priorities');
     const t = setTimeout(() => { openProspect(focusContactId); onFocused?.(); }, 200);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -312,6 +322,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
   const showFeed = kind => { setFeedKind(kind); setTimeout(() => flashTo('huddle-feed-section'), 60); };
   useEffect(() => {
     if (!focusTarget || !data) return;
+    setTab('priorities');
     const t = setTimeout(() => {
       if ('feed' in focusTarget) showFeed(focusTarget.feed);
       if (focusTarget.flags) flashTo(document.getElementById('huddle-flagged') ? 'huddle-flagged' : 'huddle-feed-section');
@@ -378,7 +389,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
           <div style={{ ...SA_TYPE.label, color: SA.muted }}>HomeLover · Command Center</div>
           <h1 style={{ margin: 0, ...SA_TYPE.pageTitle, color: SA.text }}>Daily Huddle{dateLabel && ` · ${dateLabel}`}</h1>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, color: SA.muted }}>
-            <span>As of last sync {fmtTime(lastRun?.finished_at)}</span>
+            {tab !== 'live' && <span>As of last sync {fmtTime(lastRun?.finished_at)}</span>}
             <span>Last huddle {fmtTime(lastHuddleAt)}</span>
           </div>
           {message && <span style={{ fontSize: 12, color: SA.warn }}>{message}</span>}
@@ -388,7 +399,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
           <button onClick={() => exportWidgetCsv('huddle_sheet', [...visible].sort((a, b) => a.owner.localeCompare(b.owner) || b.score - a.score), HUDDLE_SHEET_COLUMNS)}
             disabled={!data} style={headerButton}>Huddle sheet CSV</button>
           <button onClick={() => window.print()} disabled={!data} style={headerButton}>Print agenda</button>
-          <button onClick={handleSync} disabled={syncing} style={{ ...headerButton, opacity: syncing ? 0.6 : 1 }}>{syncing ? 'Syncing…' : 'Sync now'}</button>
+          {tab !== 'live' && <button onClick={handleSync} disabled={syncing} style={{ ...headerButton, opacity: syncing ? 0.6 : 1 }}>{syncing ? 'Syncing…' : 'Sync now'}</button>}
           <button onClick={handleStart} style={{ ...headerButton, fontWeight: 600, background: SA.accent, color: SA.ground, border: 0 }}>Start huddle</button>
         </div>
       </div>
@@ -399,7 +410,39 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
 
       {showLibrary && <CollateralLibrary businessId={businessId} items={collateral} onChanged={reloadCollateral} />}
 
-      {!data ? (
+      <div role="tablist" aria-label="Huddle views" style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${SA.border}`, marginBottom: 18 }}>
+        {[['live', 'Live'], ['priorities', 'Priorities'], ['done', `Done${done.length ? ` (${done.length})` : ''}`]].map(([id, lb]) => (
+          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
+            style={{ ...saSans, height: 44, padding: '0 16px', fontSize: 14, fontWeight: tab === id ? 600 : 500, cursor: 'pointer', background: 'transparent', border: 0, borderBottom: `2px solid ${tab === id ? SA.accent : 'transparent'}`, marginBottom: -1, color: tab === id ? SA.text : SA.muted }}>
+            {lb}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'live' && (
+        <HuddleLive businessId={businessId} members={members} myUserId={me?.profile?.id} canEdit={canEdit} phone={phone} reloadKey={liveKey}
+          ownerColor={ownerColor} ownerLabel={o => OWNER_LABELS[o] || o} onSync={handleSync} syncing={syncing}
+          onFlag={r => setFlagging(prospectsById.get(r.contact_id) || liveFlagTarget(r))}
+          onContacted={r => act(r, { status: 'contacted' }, 'marked contacted').catch(e => setMessage(e.message))} />
+      )}
+
+      {tab === 'done' && (
+        <section id="huddle-done" style={{ marginBottom: 16 }}>
+          {done.length === 0 ? (
+            <p style={{ fontSize: 13, color: SA.faint }}>Nothing marked Contacted or Booked yesterday or today.</p>
+          ) : (
+            <ul style={{ fontSize: 14, color: SA.soft, paddingLeft: 18, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {done.map(e => (
+                <li key={`${e.contact_id}:${e.changed_at}`}>
+                  {nameById.get(e.contact_id) || e.contact_id} → {e.to_value} · {fmtTime(e.changed_at)}{e.changed_by ? ` · ${e.changed_by}` : ''}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {tab === 'priorities' && (!data ? (
         !error && <p style={{ ...SA_TYPE.body, fontSize: 13, color: SA.muted }}>Loading…</p>
       ) : (
         <div style={{ display: 'flex', flexDirection: compact ? 'column' : 'row', gap: 24, alignItems: 'flex-start' }}>
@@ -410,7 +453,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
                 <span style={{ ...SA_TYPE.label, color: SA.muted }}>{lastHuddleAt ? `Since last huddle · ${fmtTime(lastHuddleAt)}` : 'Last 24 hours'}</span>
                 {[[since.replies, 'replies', () => showFeed('reply')], [since.real_clicks, 'real clicks', () => showFeed('click')], [since.real_opens, 'real opens', () => showFeed('open')],
                   [since.bot_hidden, 'bot opens hidden', () => { setFilters(x => ({ ...x, hideBots: false })); setFeedKind('open'); setTimeout(() => flashTo('huddle-feed-section'), 60); }],
-                  [since.done, 'done', () => { if (doneRef.current) doneRef.current.open = true; setTimeout(() => flashTo('huddle-done'), 60); }]].map(([n, lb, go]) => (
+                  [since.done, 'done', () => setTab('done')]].map(([n, lb, go]) => (
                   <span key={lb}><DrillNumber onClick={go} title={`Show the ${lb}`} style={{ fontWeight: 700, color: SA.text, fontVariantNumeric: 'tabular-nums' }}>{n}</DrillNumber> {lb}</span>
                 ))}
               </div>
@@ -461,23 +504,6 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
               {showAutopilot && <div className="sa-scroll" style={{ ...scrollList, marginTop: 8 }}>{autopilot.map(row)}</div>}
             </section>
 
-            <details id="huddle-done" ref={doneRef} style={{ marginBottom: 16 }}>
-              <summary style={{ ...SA_TYPE.cardTitle, color: SA.text, cursor: 'pointer' }}>
-                Done since yesterday <span style={{ ...SA_TYPE.label, color: SA.faint }}>{done.length}</span>
-              </summary>
-              {done.length === 0 ? (
-                <p style={{ fontSize: 13, color: SA.faint }}>Nothing marked Contacted or Booked yesterday or today.</p>
-              ) : (
-                <ul style={{ fontSize: 13, color: SA.muted, paddingLeft: 18 }}>
-                  {done.map(e => (
-                    <li key={`${e.contact_id}:${e.changed_at}`}>
-                      {nameById.get(e.contact_id) || e.contact_id} → {e.to_value} · {fmtTime(e.changed_at)}{e.changed_by ? ` · ${e.changed_by}` : ''}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </details>
-
             {Object.values(hidden).some(Boolean) && (
               <p style={{ fontSize: 12, color: SA.faint }}>
                 Hidden: {Object.entries(hidden).filter(([, n]) => n).map(([k, n]) => `${n} ${k.replace(/_/g, ' ')}`).join(' · ')}
@@ -486,7 +512,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
           </main>
           {!compact && <div style={{ flex: '0 0 300px', minWidth: 0 }}>{rail}</div>}
         </div>
-      )}
+      ))}
 
       {flagging && (
         <FlagDialog p={flagging} members={members} myUserId={me?.profile?.id} today={today}

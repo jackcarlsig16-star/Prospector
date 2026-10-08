@@ -1,10 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
-import { scoreProspect, isAutomated } from './heatScore.js';
+import { scoreProspect, isAutomated, HEAT } from './heatScore.js';
 import { nextBestAction, SCANNER_CLICK_WITHIN_SECONDS } from './nextBestAction.js';
 import { stageIndex } from './pipelineStages.js';
 import { ownerSlug, openFlagRows } from './huddleFlags.js';
+import { asReported, isDeadRun } from './syncRunStatus.js';
 
 // huddle-live-feed-v1 - the Huddle's "Live" tab: one row per person, newest
 // real activity first, Apollo's Emails list plus what Prospector knows. No
@@ -115,6 +116,8 @@ export function buildLiveRows({ prospects, messages, events, flags, members, sta
       in_pipeline: !!(opp && !opp.archived_at),
       in_pipeline_meeting_plus: !!(opp && !opp.archived_at && stageIndex(opp.stage) >= MEETING_INDEX),
       unsubscribed: !!p.email_unsubscribed,
+      // Closed = unsubscribed or a not-interested/unsubscribe reply; hidden behind "Show closed".
+      closed: !!p.email_unsubscribed || replies.some(m => HEAT.excludedReplyClasses.includes(m.reply_class)),
       next_step: { id: nba.id, label: nba.label, reason: nba.reason },
       timeline,
     };
@@ -145,6 +148,7 @@ export async function liveRoute(req, res) {
   const offset = Math.max(Number(req.query.offset) || 0, 0);
   const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 100);
   const showBots = req.query.show_bots === '1';
+  const showClosed = req.query.show_closed === '1';
   const supabase = getSupabase();
   try {
     const [prospects, messages, events, goalRows, statusEvents] = await Promise.all([
@@ -159,18 +163,21 @@ export async function liveRoute(req, res) {
       supabase.from('sales_opportunities').select('id,stage,archived_at').eq('business_id', businessId),
       supabase.from('sales_raw_snapshots').select('payload').eq('business_id', businessId).eq('entity', 'sequences').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('sales_huddles').select('huddle_at').eq('business_id', businessId).order('huddle_at', { ascending: false }).limit(1),
-      supabase.from('sales_sync_runs').select('status,started_at,finished_at').eq('business_id', businessId).neq('trigger', 'test').order('started_at', { ascending: false }).limit(10),
+      supabase.from('sales_sync_runs').select('status,started_at,finished_at,error_text').eq('business_id', businessId).neq('trigger', 'test').order('started_at', { ascending: false }).limit(10),
     ]);
     for (const r of [members, opps, seqSnap, huddles, runs]) if (r.error) throw new Error(r.error.message);
 
     const now = Date.now();
-    // A sync with no row for it (e.g. a newer one that died mid-run) never counts as fresh.
-    const done = runs.data.find(r => r.finished_at && ['success', 'partial'].includes(r.status)) || null;
+    const reported = runs.data.map(r => asReported(r, now));
+    const done = reported.find(r => r.finished_at && ['success', 'partial'].includes(r.status)) || null;
     const syncedAt = done?.finished_at || null;
+    const newer = reported.filter(r => r.started_at > (done?.started_at || ''));
+    const failed = newer.find(r => r.status === 'error');
     const sync = {
       synced_at: syncedAt,
       stale: !syncedAt || now - Date.parse(syncedAt) > STALE_SYNC_MS,
-      running: runs.data.some(r => r.status === 'running' && r.started_at > (done?.started_at || '')),
+      running: newer.some(r => r.status === 'running'),
+      failed: failed ? { started_at: failed.started_at, error: failed.error_text || null, stuck: isDeadRun(failed, now) } : null,
     };
     const sinceIso = huddles.data[0]?.huddle_at || new Date(now - 864e5).toISOString();
     const seqById = new Map((seqSnap.data?.payload || []).map(s => [s.id, s]));
@@ -178,7 +185,7 @@ export async function liveRoute(req, res) {
     const all = buildLiveRows({ prospects, messages, events, flags: openFlagRows(goalRows), members: members.data, statusEvents, seqById, oppById, now });
 
     const userId = req.auth.user.id;
-    const humanRows = all.filter(r => !r.bot_only);
+    const humanRows = all.filter(r => !r.bot_only && (showClosed || !r.closed));
     const numbers = Object.fromEntries(LIVE_FILTERS.map(f => [f, humanRows.filter(r => matchesFilter(r, f, { sinceIso: f === 'flagged_me' ? null : sinceIso, userId })).length]));
 
     let ownerSlugFilter = null;
@@ -188,7 +195,7 @@ export async function liveRoute(req, res) {
       ownerSlugFilter = ownerSlug(m.name);
     }
     const needle = (q || '').trim().toLowerCase();
-    const rows = all.filter(r => (showBots || !r.bot_only)
+    const rows = all.filter(r => (showBots || !r.bot_only) && (showClosed || !r.closed)
       && (!filter || matchesFilter(r, filter, { sinceIso: since === 'huddle' && filter !== 'flagged_me' ? sinceIso : null, userId }))
       && (!owner || (owner === 'unassigned' ? r.owner === 'unassigned' : r.owner === ownerSlugFilter))
       && (!sequence || r.sequence_ids.includes(sequence))
@@ -201,7 +208,8 @@ export async function liveRoute(req, res) {
       next_offset: offset + limit < rows.length ? offset + limit : null,
       numbers,
       since: sinceIso,
-      bot_only_count: all.length - humanRows.length,
+      bot_only_count: all.filter(r => r.bot_only && (showClosed || !r.closed)).length,
+      closed_count: all.filter(r => r.closed && (showBots || !r.bot_only)).length,
       sequences: seqIds.map(id => ({ id, name: seqById.get(id)?.name || null })).sort((a, b) => (a.name || '').localeCompare(b.name || '')),
       sync,
     });

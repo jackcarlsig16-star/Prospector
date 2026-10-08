@@ -76,3 +76,12 @@ test('filters: since-window drill rule, opened 2+, flagged to me', () => {
   const f = rows.find(r => r.contact_id === 'f');
   assert.equal(f.insight, 'Opened once, on step 1');
 });
+
+test('closed = unsubscribed or a not-interested/unsubscribe reply; other replies stay open', () => {
+  const rows = buildLiveRows(base({
+    prospects: [prospect('u', { email_unsubscribed: true }), prospect('n'), prospect('w')],
+    messages: [msg('m1', 'u'), msg('m2', 'n', { replied: true, reply_class: 'not_interested', replied_seen_at: '2026-10-06T18:00:00Z' }), msg('m3', 'w', { replied: true, reply_class: 'willing_to_meet', replied_seen_at: '2026-10-06T19:00:00Z' })],
+    events: [ev(1, 'm1', 'u', 'open', '2026-10-06T20:00:00Z')],
+  }));
+  assert.deepEqual(Object.fromEntries(rows.map(r => [r.contact_id, r.closed])), { u: true, n: true, w: false });
+});

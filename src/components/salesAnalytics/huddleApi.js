@@ -78,3 +78,9 @@ export async function reassignFlag(businessId, goalId, assigneeUserId) {
 // Lets the tab badge and the Huddle lane refresh after any flag change.
 export const FLAGS_CHANGED = 'prospector:flags-changed';
 export const announceFlagsChanged = () => window.dispatchEvent(new Event(FLAGS_CHANGED));
+
+// huddle-live-feed-v1 - one row per person, newest real activity first.
+export async function fetchLive(businessId, params) {
+  const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && v !== '' && v !== false).map(([k, v]) => [k, v === true ? '1' : String(v)]));
+  return call(`/api/sales/${businessId}/huddle/live?${q}`, undefined, 'Failed to load live activity');
+}

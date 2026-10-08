@@ -247,7 +247,9 @@ export default function SalesAnalyticsTab({ businessId }) {
     }
   };
 
-  const lastRun = runs[0];
+  // runs come back with stuck 'running' rows already reported as failed.
+  const lastRun = runs.find(r => r.finished_at && ['success', 'partial'].includes(r.status)) || runs[0];
+  const lastFailed = runs[0]?.status === 'error' ? runs[0] : null;
   const periodRows = rowsInRange(allRows, period.from, period.to);
   const prevPeriodRows = compareEnabled ? rowsInRange(allRows, prevPeriod.from, prevPeriod.to) : [];
 
@@ -304,6 +306,7 @@ export default function SalesAnalyticsTab({ businessId }) {
               Synced {relativeTime(lastRun?.finished_at || lastRun?.started_at)}
               {lastRun?.counts?.apollo_calls != null && ` · ${lastRun.counts.apollo_calls} Apollo calls`}
             </span>
+            {lastFailed && <span style={{ color: SA.bad }} title={lastFailed.error_text || ''}>· last sync failed</span>}
           </div>
           {syncMessage && <span style={{ fontSize: 12, color: SA.warn }}>{syncMessage}</span>}
         </div>

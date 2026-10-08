@@ -8,6 +8,7 @@ import * as prospects from './adapters/prospects.js';
 import * as mailboxes from './adapters/mailboxes.js';
 import { syncActivity, ACTIVITY_MAX_CALLS } from './activitySync.js';
 import { refreshRecentWeeks, EMAIL_COUNTS_MAX_CALLS } from './emailCounts.js';
+import { isDeadRun } from './syncRunStatus.js';
 
 // PROPOSED values (SPEC) - sized from real counts in the audit (21
 // sequences, 314 accounts, 9 active sequences, 2 mailboxes), confirmed at
@@ -68,13 +69,13 @@ async function checkManualLimits(supabase, businessId) {
   const lookbackIso = new Date(Date.now() - 36 * 3600 * 1000).toISOString();
   const { data } = await supabase
     .from('sales_sync_runs')
-    .select('id, started_at')
+    .select('id, started_at, status, error_text')
     .eq('business_id', businessId)
     .eq('trigger', 'manual')
     .gte('started_at', lookbackIso)
     .order('started_at', { ascending: false });
 
-  const rows = data || [];
+  const rows = (data || []).filter(r => !isDeadRun(r));
   const mostRecent = rows[0];
   if (mostRecent) {
     const minutesSince = (Date.now() - new Date(mostRecent.started_at).getTime()) / 60000;
