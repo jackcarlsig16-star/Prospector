@@ -47,7 +47,7 @@ export default function MicrosoftConnection() {
     setBusy(dryRun ? 'preview' : 'sync'); setRuns(null);
     const r = await fetch(`/api/microsoft/sync${dryRun ? '?dry_run=1' : ''}`, { method: 'POST' });
     const d = await r.json().catch(() => ({}));
-    if (r.ok) setRuns({ dry: dryRun, folders: d.folders });
+    if (r.ok) setRuns({ dry: dryRun, folders: d.folders, moves: d.moves });
     else setRuns({ dry: dryRun, error: d.error || `Sync failed (${r.status})` });
     setBusy(''); load(); loadSummary();
   };
@@ -116,6 +116,7 @@ export default function MicrosoftConnection() {
               {runs.error ? <span>{runs.error}</span> : <>
                 <span style={{ color:C.txt }}>{runs.dry ? "Preview - nothing stored:" : "Synced:"}</span>
                 {runs.folders.map(f => <span key={f.folder}>{describeRun(f)}</span>)}
+                {runs.moves && <span>{runs.moves.error ? `Partners: error - ${runs.moves.error}` : `Partners: ${n(runs.moves.recorded)} touches recorded · ${n(runs.moves.people)} people added · ${n(runs.moves.applied)} moves applied · ${n(runs.moves.held)} waiting for OK`}</span>}
               </>}
             </div>
           )}

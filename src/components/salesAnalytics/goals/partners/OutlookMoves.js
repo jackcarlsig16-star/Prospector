@@ -14,7 +14,7 @@ const keyStyle = { ...saMono, fontSize: 10, color: SA.muted, maxWidth: 220, over
 const day = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 
 export function moveLine(m) {
-  return `${stageName(m.from)} → ${stageName(m.to)} · ${m.person} · ${day(m.date)}${m.meeting_date && m.meeting_date !== m.date ? ` (meeting ${day(m.meeting_date)})` : ''}`;
+  return `${stageName(m.from)} → ${stageName(m.to)} · ${m.person || 'someone at the partner'} · ${day(m.date)}${m.meeting_date && m.meeting_date !== m.date ? ` (meeting ${day(m.meeting_date)})` : ''}`;
 }
 
 function MoveList({ name, items, pill, actions }) {
@@ -39,7 +39,9 @@ function MoveList({ name, items, pill, actions }) {
   );
 }
 
-export default function OutlookMoves({ load, onApply, onDismiss, onRecord, onChanged = () => {} }) {
+const when = iso => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' });
+
+export default function OutlookMoves({ load, onApply, onDismiss, onRecord, onUndo, onChanged = () => {} }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(null);
@@ -58,6 +60,8 @@ export default function OutlookMoves({ load, onApply, onDismiss, onRecord, onCha
   };
   const apply = (m, held) => act(m.key, () => onApply([m.key], held), r => (r.applied?.length ? `${m.partner} → ${stageName(m.to)} · from Outlook` : `${m.partner}: ${r.refused?.[0]?.reason || 'not applied'}`));
   const dismiss = m => act(m.key, () => onDismiss(m.key), () => `${m.partner}: dismissed - it won't come back`);
+  const undo = a => act(a.event_id, () => onUndo(a.goal_id, a.event_id), () => `${a.partner}: back to ${stageName(a.from)}`);
+  const last = data?.last_run;
   const record = () => act('record', onRecord, r => `${r.recorded.length} touch${r.recorded.length === 1 ? '' : 'es'} recorded · ${r.people.length} people added · ${r.skipped_manual} already logged by hand${r.refused.length ? ` · ${r.refused.length} refused` : ''}`);
   const c = data?.counts;
   const t = data?.touches;
@@ -73,6 +77,28 @@ export default function OutlookMoves({ load, onApply, onDismiss, onRecord, onCha
       {!data && !error && <span style={subStyle}>Loading…</span>}
       {data && (
         <>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+            <span style={{ color: SA.text, fontWeight: 500 }}>Last run</span>
+            <span style={{ ...subStyle, ...numStyle, fontSize: 12 }}>
+              {last ? `${when(last.at)} · ${last.recorded} touch${last.recorded === 1 ? '' : 'es'} recorded · ${last.people} people added · ${last.applied.length} applied${last.refused ? `, ${last.refused} refused` : ''}${last.held ? ` · ${last.held} waiting for OK` : ''}${last.error ? ` · error: ${last.error}` : ''}` : 'The daily step has not run yet - it runs after every Outlook sync'}
+            </span>
+          </div>
+          {last && last.applied.length > 0 && (
+            <ul aria-label="Outlook applied moves" style={{ margin: '4px 0 0', padding: 0, listStyle: 'none' }}>
+              {last.applied.map(a => (
+                <li key={a.event_id} style={rowStyle}>
+                  <span style={{ display: 'flex', gap: '2px 10px', flexWrap: 'wrap', alignItems: 'baseline', minWidth: 0, textDecoration: a.undone ? 'line-through' : 'none' }}>
+                    <span style={{ color: SA.text, fontWeight: 500 }}>{a.partner}</span>
+                    <span style={subStyle}>{moveLine(a)}</span>
+                    <span style={pillStyle}>from Outlook</span>
+                  </span>
+                  {a.undone ? <span style={{ ...subStyle, fontSize: 12 }}>undone</span>
+                    : a.undoable && onUndo ? <button type="button" style={tiny} disabled={busy === a.event_id} aria-label={`Undo ${a.partner}`} onClick={() => undo(a)}>Undo</button>
+                      : <span style={{ ...subStyle, fontSize: 12 }} title="Something happened to this partner since - undo from its Activity instead">—</span>}
+                </li>
+              ))}
+            </ul>
+          )}
           <span style={{ ...subStyle, ...numStyle, fontSize: 12 }}>
             {`${c.messages} messages · ${c.events} meetings read · ${c.touches} touches to record · ${c.proposed} ready · ${c.held} need OK · ${c.people} people to add · ${c.skipped_auto} auto-replies skipped · ${c.unmatched} unmatched`}
           </span>

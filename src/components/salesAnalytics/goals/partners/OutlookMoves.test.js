@@ -12,6 +12,8 @@ const data = {
   ],
   people: [{ key: 'person:g1:amy@acme.com', goal_id: 'g1', partner: 'Acme', email: 'amy@acme.com', name: 'Amy Adams', first_seen: '2026-10-06' }],
   skipped: [],
+  last_run: { at: '2026-10-09T13:00:00Z', trigger: 'piggyback', error: null, recorded: 6, people: 0, skipped_manual: 9, refused: 0, held: 1, recorded_touches: [], people_added: [],
+    applied: [{ key: 'outlook:<m7@x>', goal_id: 'g7', partner: 'Omega', from: 'researching', to: 'first_email_sent', date: '2026-10-08', person: 'o@omega.io', event_id: 'e7', undone: false, undoable: true }], refused_moves: [], held_moves: [] },
 };
 
 test('moveLine: stages, person, date, and the meeting day when it differs', () => {
@@ -37,6 +39,19 @@ test('renders counts, ready and needs-OK lists with keys and pills, and the peop
   const people = within(screen.getByRole('list', { name: 'Outlook people' })).getAllByRole('listitem').map(li => li.textContent);
   expect(people[0]).toContain('Amy Adams <amy@acme.com>');
   expect(screen.queryByRole('button')).toBeNull();
+  expect(screen.getByText(/6 touches recorded · 0 people added · 1 applied · 1 waiting for OK/)).toBeInTheDocument();
+  expect(within(screen.getByRole('list', { name: 'Outlook applied moves' })).getAllByRole('listitem')[0].textContent).toContain('Omega');
+});
+
+test('last run: Undo calls onUndo with the partner and event; no last run reads as not yet run', async () => {
+  const onUndo = jest.fn().mockResolvedValue({});
+  const { unmount } = render(<OutlookMoves load={() => Promise.resolve(data)} onApply={jest.fn()} onDismiss={jest.fn()} onRecord={jest.fn()} onUndo={onUndo} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Undo Omega' }));
+  await waitFor(() => expect(onUndo).toHaveBeenCalledWith('g7', 'e7'));
+  await screen.findByText('Omega: back to Researching');
+  unmount();
+  render(<OutlookMoves load={() => Promise.resolve({ ...data, last_run: null })} />);
+  await screen.findByText(/The daily step has not run yet/);
 });
 
 test('with actions: Record touches, Apply on ready, OK / Dismiss on held - each calls its prop, reloads and reports', async () => {

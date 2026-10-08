@@ -4,6 +4,7 @@
 // run, every run written to microsoft_sync_runs as counts.
 import { getServiceSupabase } from '../lib/authUser.js';
 import { accessTokenFor, getGrant } from '../lib/microsoftGrants.js';
+import { runDailyOutlookMoves } from '../sales/partnerOutlookTouches.js';
 
 export const GRAPH_URL = () => process.env.MICROSOFT_GRAPH_URL || 'https://graph.microsoft.com/v1.0';
 export const BACKFILL_DAYS = 90;
@@ -198,5 +199,12 @@ export async function runOutlookSync({ userId, businessId, trigger = 'manual', d
   for (const folder of FOLDERS) {
     folders.push(await syncFolder({ supabase, userId, businessId: target.businessId, mailbox: target.mailbox, folder, token, own: target.own, dryRun, trigger: dryRun ? 'dry_run' : trigger, now, fetchImpl }));
   }
-  return { businessId: target.businessId, mailbox: target.mailbox, dry_run: dryRun, folders };
+  // Stage 3: the daily step rides on every real sync. Its own failure lands
+  // on its run row and in the response, never on the folder syncs.
+  let moves = null;
+  if (!dryRun) {
+    try { moves = await runDailyOutlookMoves(supabase, target.businessId, { userId, trigger, now }); }
+    catch (err) { moves = { error: String(err.message || err).slice(0, 500) }; console.error('[outlook/moves]', moves.error); }
+  }
+  return { businessId: target.businessId, mailbox: target.mailbox, dry_run: dryRun, folders, moves };
 }

@@ -246,8 +246,8 @@ export async function recordOutlookTouches(supabase, businessId, { now = new Dat
 // still lists it, then moves the stage with `expect` = the stage the screen
 // showed (409 if a teammate moved it since). A meeting move is one meeting
 // touch dated as the dry run says, carrying the meeting day.
-export async function applyOutlookMoves(supabase, { businessId, keys, byUser, now = new Date(), includeHeld = false }) {
-  const dry = await dryRun(supabase, businessId, now);
+export async function applyOutlookMoves(supabase, { businessId, keys, byUser, now = new Date(), includeHeld = false, dry = null }) {
+  dry = dry || await dryRun(supabase, businessId, now);
   const byKey = list => new Map(list.filter(m => m.key).map(m => [m.key, m]));
   const open = byKey(dry.proposed), heldBy = byKey(dry.held), skippedBy = byKey(dry.skipped);
   const touchBy = new Map(dry.touches.would_record.map(t => [t.move_key, t]));
@@ -266,7 +266,7 @@ export async function applyOutlookMoves(supabase, { businessId, keys, byUser, no
         ? { type: 'touch', touch_type: 'meeting', date: m.date, move_to: MEETING, expect: m.from, contacts: [String(m.person_contact).slice(0, 80)], note: m.meeting_date !== m.date ? `Meeting on ${m.meeting_date} (Outlook calendar)` : null }
         : { type: 'status', to: m.to, expect: m.from };
       const { event } = await applyPartnerSignal(supabase, { businessId, goalId: m.goal_id, byUser, now, source: 'outlook', signal, meta });
-      applied.push({ key, goal_id: m.goal_id, partner: m.partner, from: m.from, to: m.to, date: m.date, person: m.person, reason: m.reason, event_id: event.id, touch_event_id: touchEventId, held_ok: !open.has(key) });
+      applied.push({ key, goal_id: m.goal_id, partner: m.partner, from: m.from, to: m.to, date: m.date, person: m.person, person_name: m.person_name || null, reason: m.reason, event_id: event.id, touch_event_id: touchEventId, held_ok: !open.has(key) });
     } catch (e) {
       if (!(e instanceof SignalError)) throw e;
       refused.push({ key, partner: m.partner, reason: e.message });
@@ -289,13 +289,74 @@ export async function dismissOutlookMove(supabase, { businessId, key, byUser, no
   return { dismissed: { key, goal_id: h.goal_id, partner: h.partner, event_id: event.id } };
 }
 
+// The daily step, after every real Outlook sync (manual or piggyback): the
+// facts first (touches + people), then every move the dry run calls auto
+// (Sent, in-thread Replied) by nobody (by_user null = "automatic" in
+// Activity); held moves (cold replies, meetings) only ever wait for an OK.
+// One microsoft_sync_runs row under folder 'moves' carries the counts and
+// the moves it made, so the panel can show the last run and offer Undo.
+// Like every microsoft_sync_runs row: counts and names, never an address.
+export async function runDailyOutlookMoves(supabase, businessId, { userId, trigger = 'manual', now = new Date() } = {}) {
+  const t0 = Date.now();
+  const { data: run, error: runErr } = await supabase.from('microsoft_sync_runs').insert({ business_id: businessId, user_id: userId, folder: 'moves', trigger, dry_run: false }).select('id').single();
+  if (runErr) throw new Error(runErr.message);
+  let counts = {}, error = null;
+  try {
+    const rec = await recordOutlookTouches(supabase, businessId, { now });
+    const dry = await dryRun(supabase, businessId, now);
+    const keys = dry.proposed.map(m => m.key);
+    const ap = keys.length ? await applyOutlookMoves(supabase, { businessId, keys, byUser: null, now, dry }) : { applied: [], refused: [] };
+    counts = {
+      recorded: rec.recorded.length, people: rec.people.length, skipped_manual: rec.skipped_manual, already: rec.already, duplicates: rec.duplicates, touch_refused: rec.refused.length,
+      applied: ap.applied.length, refused: ap.refused.length, held: dry.held.length,
+      recorded_touches: rec.recorded.map(t => ({ key: t.key, goal_id: t.goal_id, partner: t.partner, contact: /@/.test(t.contact) ? null : t.contact, date: t.date, direction: t.direction, event_id: t.event_id })),
+      people_added: rec.people.map(p => ({ goal_id: p.goal_id, partner: p.partner, name: p.name, id: p.id })),
+      applied_moves: ap.applied.map(a => ({ key: a.key, goal_id: a.goal_id, partner: a.partner, from: a.from, to: a.to, date: a.date, person: a.person_name, event_id: a.event_id })),
+      refused_moves: ap.refused.map(r => ({ key: r.key, partner: r.partner || null, reason: r.reason })),
+      held_moves: dry.held.map(h => ({ key: h.key, goal_id: h.goal_id, partner: h.partner, to: h.to, date: h.date, reason: h.hold_reason })),
+    };
+  } catch (e) {
+    error = String(e.message || e).slice(0, 500);
+  }
+  await supabase.from('microsoft_sync_runs').update({ seen: (counts.recorded || 0) + (counts.skipped_manual || 0) + (counts.already || 0) + (counts.duplicates || 0), stored: (counts.recorded || 0) + (counts.applied || 0), counts, error, duration_ms: Date.now() - t0, finished_at: new Date().toISOString() }).eq('id', run.id);
+  console.log(`[outlook/moves] business=${businessId} trigger=${trigger} recorded=${counts.recorded ?? 0} people=${counts.people ?? 0} by_hand=${counts.skipped_manual ?? 0} applied=${counts.applied ?? 0} refused=${counts.refused ?? 0} held=${counts.held ?? 0}${error ? ' error=' + error : ''} ${Date.now() - t0}ms`);
+  return { run_id: run.id, error, ...counts };
+}
+
+// The last daily step: its counts, and whether each applied move can still be
+// undone (still the latest event on its partner) or already was.
+export async function lastOutlookRun(supabase, businessId) {
+  const { data: runs, error } = await supabase.from('microsoft_sync_runs').select('id, started_at, finished_at, trigger, counts, error')
+    .eq('business_id', businessId).eq('folder', 'moves').order('started_at', { ascending: false }).limit(1);
+  if (error) throw new Error(`outlook moves: read runs failed: ${error.message}`);
+  const run = runs?.[0];
+  if (!run) return null;
+  const c = run.counts || {};
+  const goalIds = [...new Set((c.applied_moves || []).map(a => a.goal_id))];
+  const events = goalIds.length ? await selectAllPages(() => supabase.from('sales_partner_events').select('id, goal_id, event, recorded_at, meta')
+    .eq('business_id', businessId).in('goal_id', goalIds).order('recorded_at', { ascending: false }).order('id', { ascending: false })) : [];
+  const undone = new Set(events.filter(e => e.event === 'undo').map(e => e.meta?.undid).filter(Boolean));
+  const latest = new Map();
+  for (const e of events) if (!latest.has(e.goal_id)) latest.set(e.goal_id, e.id);
+  return {
+    at: run.started_at, trigger: run.trigger, error: run.error,
+    recorded: c.recorded ?? 0, people: c.people ?? 0, skipped_manual: c.skipped_manual ?? 0, refused: c.refused ?? 0, held: c.held ?? 0,
+    recorded_touches: c.recorded_touches || [], people_added: c.people_added || [],
+    applied: (c.applied_moves || []).map(a => ({ ...a, undone: undone.has(a.event_id), undoable: !undone.has(a.event_id) && latest.get(a.goal_id) === a.event_id })),
+    refused_moves: c.refused_moves || [], held_moves: c.held_moves || [],
+  };
+}
+
 const memberOnly = (req, res) => { if (hasRole(req, req.params.businessId, 'member')) return true; res.status(403).json({ error: 'You need member access to this workspace' }); return false; };
 
 // GET /goals/partners/outlook-touches - the dry run (members: it lists who wrote to whom).
 export async function outlookTouchesDryRunRoute(req, res) {
   if (!memberOnly(req, res)) return;
-  try { res.json(await dryRun(getSupabase(), req.params.businessId)); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  try {
+    const supabase = getSupabase();
+    const [dry, last] = await Promise.all([dryRun(supabase, req.params.businessId), lastOutlookRun(supabase, req.params.businessId)]);
+    res.json({ ...dry, last_run: last });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 }
 
 // POST /goals/partners/outlook-touches/apply  body { keys: [...], include_held?: true }

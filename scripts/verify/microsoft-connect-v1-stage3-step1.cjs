@@ -92,8 +92,10 @@ async function user(biz, name, role) {
     // B: HomeLover read-only - dry run vs hand count from raw rows
     const { dryRun, isAutoMessage, AUTO_SUBJECT_PREFIXES } = await import(ROOT + '/api/sales/partnerOutlookTouches.js');
     const hl = await dryRun(svc, HL);
-    const [{ data: msgs }, { data: doms }, { data: cons }, { data: evs }] = await Promise.all([
-      svc.from('microsoft_messages').select('direction, subject, external_emails, external_domains').eq('business_id', HL),
+    // Paged by hand: PostgREST caps a plain select at 1,000 rows and the store passed that on Oct 8.
+    const pageAll = async (table, cols) => { const out = []; for (let from = 0; ; from += 1000) { const { data } = await svc.from(table).select(cols).eq('business_id', HL).order('id').range(from, from + 999); out.push(...data); if (data.length < 1000) return out; } };
+    const [msgs, { data: doms }, { data: cons }, { data: evs }] = await Promise.all([
+      pageAll('microsoft_messages', 'direction, subject, external_emails, external_domains'),
       svc.from('partner_domains').select('domain, goal_id').eq('business_id', HL).eq('confirmed', true),
       svc.from('partner_contacts').select('email, goal_id').eq('business_id', HL).not('email', 'is', null),
       svc.from('microsoft_events').select('external_domains, external_emails, is_cancelled').eq('business_id', HL),

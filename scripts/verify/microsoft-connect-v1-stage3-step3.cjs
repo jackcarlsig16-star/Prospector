@@ -1,12 +1,12 @@
-// microsoft-connect-v1 Stage 3 Step 2 check (extends Step 1). A = temp workspace (allowlisted for the spawned server only) + 2 temp users with fixture partners / domains / contacts / Outlook rows, every rule exercised through GET /goals/partners/outlook-touches as a member (viewer 403). C-F = touches are facts: POST /record writes the touches (stage none, manual dedupe, already-recorded dedupe) + partner_contacts rows; POST /apply moves a ready key (status move, expect) and a held key with include_held (meeting touch); POST /dismiss settles a key; refusals; viewer 403 on every write. All rows deleted. B = HomeLover READ-ONLY, in-process dryRun vs a hand count from the raw rows (no membership added, nothing written). 0 Microsoft / Apollo / AI calls. ~40s, cap 4 min. Serves build/ via server.js. Usage: node <this> <outdir>
+// microsoft-connect-v1 Stage 3 Step 3 check (extends Step 2; needs migration 20261008_microsoft_connect_v1_stage3_step3.sql). A = temp workspace (allowlisted for the spawned server only) + 2 temp users with fixture partners / domains / contacts / Outlook rows, every rule exercised through GET /goals/partners/outlook-touches as a member (viewer 403). C-F = touches are facts: POST /record writes the touches (stage none, manual dedupe, already-recorded dedupe) + partner_contacts rows; POST /apply moves a ready key (status move, expect) and a held key with include_held (meeting touch); POST /dismiss settles a key; refusals; viewer 403 on every write. G = the daily step in-process on the fixture: records the facts + people, auto-applies the ready move, leaves held, writes the 'moves' run row with counts, re-run is a no-op, last run shows Undo-able moves, undo restores. All rows deleted. B = HomeLover READ-ONLY, in-process dryRun vs a hand count from the raw rows (no membership added, nothing written). 0 Microsoft / Apollo / AI calls. ~40s, cap 4 min. Serves build/ via server.js. Usage: node <this> <outdir>
 const ROOT = require('path').resolve(__dirname, '../..');
 require(ROOT + '/node_modules/dotenv').config({ path: ROOT + '/.env' });
 const { spawn } = require('child_process');
 const { createClient } = require(ROOT + '/node_modules/@supabase/supabase-js');
 const svc = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
-const PORT = 3969, tag = 'ms3b-' + Date.now();
+const PORT = 3970, tag = 'ms3c-' + Date.now();
 const HL = 'bc69beab-effd-452d-9e81-fd652333bb95';
-const WATCH = ['businesses', 'business_members', 'profiles', 'auth_events', 'sales_goals', 'partner_domains', 'partner_contacts', 'sales_partner_events', 'sales_mailbox_owners', 'microsoft_messages', 'microsoft_events'];
+const WATCH = ['businesses', 'business_members', 'profiles', 'auth_events', 'sales_goals', 'partner_domains', 'partner_contacts', 'sales_partner_events', 'sales_mailbox_owners', 'microsoft_messages', 'microsoft_events', 'microsoft_sync_runs'];
 const made = { users: [], biz: null };
 let srv, pass = 0, total = 0;
 const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS' : 'FAIL'}  ${n}${d ? ` - ${d}` : ''}`); };
@@ -19,7 +19,7 @@ const MAILBOX = `jack.${tag}@homelover.ai`;
 async function cleanup() {
   if (srv) srv.kill();
   const b = made.biz;
-  if (b) for (const t of ['microsoft_messages', 'microsoft_events', 'sales_partner_events', 'partner_contacts', 'partner_domains', 'sales_goals', 'sales_mailbox_owners', 'business_members', 'auth_events']) await svc.from(t).delete().eq('business_id', b);
+  if (b) for (const t of ['microsoft_sync_runs', 'microsoft_messages', 'microsoft_events', 'sales_partner_events', 'partner_contacts', 'partner_domains', 'sales_goals', 'sales_mailbox_owners', 'business_members', 'auth_events']) await svc.from(t).delete().eq('business_id', b);
   for (const u of made.users) { await svc.from('business_members').delete().eq('user_id', u); await svc.from('auth_events').delete().eq('user_id', u); await svc.from('auth_events').delete().eq('actor_id', u); }
   if (b) await svc.from('businesses').delete().eq('id', b);
   for (const u of made.users) await svc.auth.admin.deleteUser(u);
@@ -102,39 +102,30 @@ async function user(biz, name, role) {
     ok('C1 touches to record: Acme sent (Oct 5, Graph name), Acme in-thread reply (Oct 6), Paused sent (a fact whatever the stage); cold replies and meetings never', tw.length === 3 && tw.map(t => `${t.partner}:${t.direction}:${t.contact}:${t.date}`).sort().join('|') === ['Acme Test:received:Amy Acme:2026-10-06', 'Acme Test:sent:Amy Acme:2026-10-05', 'Paused Test:sent:p@paused.test:2026-10-06'].join('|'), JSON.stringify(tw.map(t => [t.partner, t.direction, t.contact, t.date])));
     ok('C2 dedupe: Ahead sent skipped - logged by hand same LA day by address (any case); Settled sent already recorded (its touch key)', tm.length === 1 && tm[0].partner === 'Ahead Test' && /logged by hand: a@ahead.test on 2026-10-06/.test(tm[0].reason) && d.touches.already === 1 && d.counts.touches === 3, JSON.stringify(tm));
     ok('C3 viewer -> 403 on record / apply / dismiss', (await post(viewer, base + '/record')).status === 403 && (await post(viewer, base + '/apply', { keys: ['x'] })).status === 403 && (await post(viewer, base + '/dismiss', { key: 'x' })).status === 403);
-    r = await post(jack, base + '/record'); const rec = await r.json();
-    const touchRows = (await svc.from('sales_partner_events').select('goal_id, event, source, touch_type, contact_names, at, to_status, by_user, meta').eq('business_id', B).eq('event', 'touch').eq('source', 'outlook').not('meta->>outlook_touch_key', 'is', null)).data.filter(e => e.meta.outlook_touch_key !== `touch:${M.settledSent.internet_message_id}`);
-    const acmeAfter = (await svc.from('sales_goals').select('pipeline_status, last_touch_at, first_email_at').eq('id', acme.id).single()).data;
-    ok('C4 record -> 3 touches written (email, stage none, contact + LA date, by the mailbox owner, key in meta), 1 skipped by hand, 1 already; Acme stays at researching with first_email_at Oct 5', r.status === 200 && rec.recorded.length === 3 && rec.skipped_manual === 1 && rec.already === 1 && rec.refused.length === 0 && touchRows.length === 3 && touchRows.every(e => e.touch_type === 'email' && e.to_status === null && e.by_user === jack.id && e.contact_names.length === 1) && acmeAfter.pipeline_status === 'researching' && acmeAfter.first_email_at === '2026-10-05' && acmeAfter.last_touch_at, JSON.stringify({ rec: rec.recorded.map(x => [x.partner, x.contact, x.date]), rows: touchRows.length, acme: acmeAfter }));
-    const added = (await svc.from('partner_contacts').select('goal_id, name, email, source, last_activity_type').eq('business_id', B).eq('source', 'outlook')).data;
-    ok('C5 people: 4 partner_contacts rows added (source outlook, Graph name or address, email in the DB only), known@ untouched', rec.people.length === 4 && added.length === 4 && added.map(x => x.email).sort().join() === 'a@ahead.test,amy@acme.test,p@paused.test,s@settled.test' && added.find(x => x.email === 'amy@acme.test').name === 'Amy Acme' && added.every(x => x.last_activity_type === 'email'), JSON.stringify(added.map(x => [x.email, x.name])));
-    r = await post(jack, base + '/record'); const rec2 = await r.json();
-    const d2 = await (await get(jack, base)).json();
-    ok('C6 record again -> 0 new (4 already), no second people row; the stage moves are untouched by the fact touches (Acme Replied still ready)', rec2.recorded.length === 0 && rec2.already === 4 && rec2.people.length === 0 && (await svc.from('partner_contacts').select('id', { count: 'exact', head: true }).eq('business_id', B).eq('source', 'outlook')).count === 4 && d2.touches.would_record.length === 0 && d2.proposed.some(m => m.partner === 'Acme Test' && m.to === 'replied'), JSON.stringify({ rec2: [rec2.recorded.length, rec2.already, rec2.people.length], ready: d2.proposed.map(m => m.partner) }));
-
-    // D: apply by key
-    const acmeKey = d2.proposed.find(m => m.partner === 'Acme Test').key;
-    r = await post(jack, base + '/apply', { keys: [acmeKey] }); const ap = await r.json();
-    const acmeMoved = (await svc.from('sales_goals').select('pipeline_status').eq('id', acme.id).single()).data;
+    // G: the daily step
+    const { runDailyOutlookMoves, lastOutlookRun } = await import(ROOT + '/api/sales/partnerOutlookTouches.js');
+    const { undoPartnerSignal } = await import(ROOT + '/api/sales/partnerSignals.js');
+    const day1 = await runDailyOutlookMoves(svc, B, { userId: jack.id, trigger: 'manual' });
+    const touchRows = (await svc.from('sales_partner_events').select('goal_id, event, touch_type, to_status, by_user, meta').eq('business_id', B).eq('event', 'touch').eq('source', 'outlook').not('meta->>outlook_touch_key', 'is', null)).data.filter(e => e.meta.outlook_touch_key !== `touch:${M.settledSent.internet_message_id}`);
+    const acmeAfter = (await svc.from('sales_goals').select('pipeline_status, first_email_at').eq('id', acme.id).single()).data;
     const moveRow = (await svc.from('sales_partner_events').select('event, source, from_status, to_status, by_user, meta').eq('goal_id', acme.id).eq('event', 'status').maybeSingle()).data;
-    ok('D1 apply ready key -> Acme researching -> replied as a status move from Outlook (fact touch already recorded, so no second touch), by the clicker, key in meta', r.status === 200 && ap.applied.length === 1 && ap.applied[0].to === 'replied' && ap.applied[0].touch_event_id === null && acmeMoved.pipeline_status === 'replied' && moveRow && moveRow.source === 'outlook' && moveRow.from_status === 'researching' && moveRow.meta.outlook_key === acmeKey && moveRow.by_user === jack.id, JSON.stringify(ap));
-    r = await post(jack, base + '/apply', { keys: [acmeKey, 'outlook:<nope>'] }); const ap2 = await r.json();
-    ok('D2 same key again -> refused already applied; unknown key refused', ap2.applied.length === 0 && ap2.refused.length === 2 && /already applied/.test(ap2.refused[0].reason) && /not proposed/.test(ap2.refused[1].reason), JSON.stringify(ap2.refused));
-    const betaKey = d2.held.find(m => m.partner === 'Beta Test').key, gammaKey = d2.held.find(m => m.partner === 'Gamma Test').key;
-    r = await post(jack, base + '/apply', { keys: [betaKey] }); const ap3 = await r.json();
-    ok('D3 held key without include_held -> refused with the hold reason', ap3.applied.length === 0 && /not in a thread we started|needs Jack/.test(ap3.refused[0].reason), JSON.stringify(ap3.refused));
-    r = await post(jack, base + '/apply', { keys: [betaKey, gammaKey], include_held: true }); const ap4 = await r.json();
-    const gammaRow = (await svc.from('sales_partner_events').select('event, touch_type, to_status, note, contact_names, at, meta').eq('goal_id', gamma.id).eq('source', 'outlook').maybeSingle()).data;
-    const gammaMoved = (await svc.from('sales_goals').select('pipeline_status').eq('id', gamma.id).single()).data;
-    ok('D4 OK (include_held): Beta cold reply -> replied; Gamma meeting -> one meeting touch to Meeting dated today with the Oct 20 note, held_ok', ap4.applied.length === 2 && ap4.applied.every(a => a.held_ok) && gammaMoved.pipeline_status === 'meeting_set' && gammaRow && gammaRow.event === 'touch' && gammaRow.touch_type === 'meeting' && gammaRow.to_status === 'meeting_set' && /Meeting on 2026-10-20/.test(gammaRow.note || '') && gammaRow.meta.outlook_key === gammaKey && gammaRow.meta.meeting_date === '2026-10-20', JSON.stringify({ ap4, gammaRow }));
-
-    // E: dismiss
-    const d3 = await (await get(jack, base)).json();
-    const deltaKey = d3.held.find(m => m.partner === 'Delta Test').key;
-    r = await post(jack, base + '/dismiss', { key: deltaKey }); const dm = await r.json();
-    const d4 = await (await get(jack, base)).json();
-    ok('E1 dismiss a held key -> note with the key, dismissed; the dry run now skips it "already dismissed" and Delta stays at Sent', r.status === 200 && dm.dismissed.key === deltaKey && !d4.held.some(m => m.key === deltaKey) && d4.skipped.some(m => m.key === deltaKey && /already dismissed/.test(m.reason)) && (await svc.from('sales_goals').select('pipeline_status').eq('id', delta.id).single()).data.pipeline_status === 'first_email_sent');
-    ok('E2 dismiss again -> 409; nothing proposed or held is left for the fixture', (await post(jack, base + '/dismiss', { key: deltaKey })).status === 409 && d4.proposed.length === 0 && d4.held.length === 0, JSON.stringify({ proposed: d4.proposed.length, held: d4.held.length }));
+    ok('G1 daily step: 3 touches recorded (stage none, by the owner) + 4 people added + 1 skipped by hand + 1 already; the ready move applied (Acme researching -> replied, status move, by nobody = automatic); held stay held (Beta cold reply, Gamma meeting, Delta cold reply)', !day1.error && day1.recorded === 3 && day1.people === 4 && day1.skipped_manual === 1 && day1.already === 1 && day1.applied === 1 && day1.refused === 0 && day1.held === 3 && touchRows.length === 3 && touchRows.every(e => e.to_status === null && e.by_user === jack.id) && acmeAfter.pipeline_status === 'replied' && acmeAfter.first_email_at === '2026-10-05' && moveRow && moveRow.by_user === null && moveRow.meta.outlook_key && day1.applied_moves[0].partner === 'Acme Test', JSON.stringify({ day1: { recorded: day1.recorded, people: day1.people, by_hand: day1.skipped_manual, already: day1.already, applied: day1.applied, held: day1.held, error: day1.error }, acme: acmeAfter }));
+    const runRow = (await svc.from('microsoft_sync_runs').select('folder, trigger, seen, stored, counts, error, finished_at').eq('id', day1.run_id).single()).data;
+    ok('G2 run row: folder moves, counts block with recorded_touches / people_added / applied_moves / held_moves (ids + partner names, no addresses), finished', runRow.folder === 'moves' && runRow.trigger === 'manual' && runRow.finished_at && runRow.error === null && runRow.counts.recorded_touches.length === 3 && runRow.counts.people_added.length === 4 && runRow.counts.applied_moves.length === 1 && runRow.counts.held_moves.length === 3 && !['amy@acme.test', 'known@acme.test', 'p@paused.test', 's@settled.test', 'a@ahead.test', 'bob@beta.test', 'gail@gamma.test', 'dee@delta.test'].some(e => JSON.stringify(runRow.counts).includes(e)), JSON.stringify(runRow.counts).slice(0, 200));
+    const day2 = await runDailyOutlookMoves(svc, B, { userId: jack.id, trigger: 'piggyback' });
+    ok('G3 daily step again: nothing new (0 recorded, 4 already, 0 applied, 3 still held), no second people row, no second move', !day2.error && day2.recorded === 0 && day2.already === 4 && day2.people === 0 && day2.applied === 0 && day2.held === 3 && (await svc.from('partner_contacts').select('id', { count: 'exact', head: true }).eq('business_id', B).eq('source', 'outlook')).count === 4 && (await svc.from('sales_partner_events').select('id', { count: 'exact', head: true }).eq('goal_id', acme.id).eq('event', 'status')).count === 1, JSON.stringify({ recorded: day2.recorded, already: day2.already, applied: day2.applied, held: day2.held }));
+    const last = await lastOutlookRun(svc, B);
+    const dryAfter = await (await get(jack, base)).json();
+    ok('G4 last run (= the latest moves row, the no-op one) reads 0 applied; the dry run GET carries last_run; the first run\'s Acme move is still undoable through its own row', last && last.applied.length === 0 && last.held === 3 && dryAfter.last_run && dryAfter.last_run.at === last.at, JSON.stringify(last).slice(0, 160));
+    const first = (await svc.from('microsoft_sync_runs').select('counts').eq('id', day1.run_id).single()).data.counts;
+    const firstMove = first.applied_moves[0];
+    await undoPartnerSignal(svc, { businessId: B, goalId: firstMove.goal_id, eventId: firstMove.event_id, byUser: jack.id });
+    const acmeUndone = (await svc.from('sales_goals').select('pipeline_status').eq('id', acme.id).single()).data;
+    const day3 = await runDailyOutlookMoves(svc, B, { userId: jack.id, trigger: 'manual' });
+    // An undo settles that one key. The sent mail is a different fact with its own key, so the next step moves Acme to Sent (forward from researching, never back to Replied).
+    const acmeFinal = (await svc.from('sales_goals').select('pipeline_status').eq('id', acme.id).single()).data;
+    ok('G5 undo the automatic move -> Acme back to researching; the next daily step never re-applies that key (Replied) but the sent mail still moves Acme to Sent; nothing new recorded', acmeUndone.pipeline_status === 'researching' && !day3.error && day3.applied === 1 && day3.applied_moves[0].to === 'first_email_sent' && day3.applied_moves[0].key !== firstMove.key && day3.recorded === 0 && acmeFinal.pipeline_status === 'first_email_sent', JSON.stringify({ applied: day3.applied_moves.map(a => [a.partner, a.to]), recorded: day3.recorded, acme: acmeFinal.pipeline_status }));
+    ok('G6 viewer -> 403 on record / apply / dismiss still', (await post(viewer, base + '/record')).status === 403 && (await post(viewer, base + '/apply', { keys: ['x'] })).status === 403);
 
     // B: HomeLover read-only - dry run vs hand count from raw rows
     const { dryRun, isAutoMessage, AUTO_SUBJECT_PREFIXES } = await import(ROOT + '/api/sales/partnerOutlookTouches.js');

@@ -102,7 +102,7 @@ export default function ApolloMoves({ load, loadOutlook, onApplyOutlook, onDismi
           </div>
         </>
       )}
-      {loadOutlook && <OutlookMoves load={loadOutlook} onApply={onApplyOutlook} onDismiss={onDismissOutlook} onRecord={onRecordOutlook} onChanged={onChanged} />}
+      {loadOutlook && <OutlookMoves load={loadOutlook} onApply={onApplyOutlook} onDismiss={onDismissOutlook} onRecord={onRecordOutlook} onUndo={onUndo} onChanged={onChanged} />}
     </section>
   );
 }
