@@ -787,7 +787,7 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
         {view === 'projects' && (
           <ProjectsSection business={business} userEmail={userEmail} activeUser={activeUser} projects={projects} campaigns={campaigns} outreachRules={profile?.outreach_rules} onProjectCreated={onProjectCreated} onProjectUpdated={onProjectUpdated} onCampaignCreated={onCampaignCreated} onCampaignUpdated={onCampaignUpdated} />
         )}
-        {view === 'sales-analytics' && <SalesAnalyticsTab businessId={business.id} accent={accent} />}
+        {view === 'sales-analytics' && <SalesAnalyticsTab businessId={business.id} accent={accent} features={business.features} />}
 
         {view === 'overview' && (<>
         <div style={{ marginBottom:32 }}>

@@ -8,7 +8,7 @@ const MANUAL = ['meetings_held', 'meetings_set'];
 // Where each row's list lives (goals-surface-v1 Stage 4). Manual rows have
 // none - they're typed in.
 const DRILL = {
-  target_orgs: 'overview:companies_by_cohort', dm_contacted: 'overview:kpi_tiles', positive_responses: 'huddle:reply',
+  target_orgs: 'view:companies', dm_contacted: 'overview:week_strip', positive_responses: 'huddle:reply',
   qualified_opps: 'overview:pipeline_table', covered_lives_pipeline: 'overview:pipeline_table', proposals_outstanding: 'overview:pipeline_table',
   verbal_commitments: 'overview:pipeline_table', contracts_signed: 'overview:pipeline_table', launches_90d: 'overview:pipeline_forecast',
 };

@@ -38,7 +38,7 @@ test('KPI rows link to Overview / Huddle; manual rows stay plain', () => {
   ];
   render(<KpiTable rows={rows} weekStart="2026-10-05" editable={false} onOpen={onOpen} onSaveTarget={jest.fn()} />);
   fireEvent.click(screen.getByTitle('Open the list behind Target organizations'));
-  expect(onOpen).toHaveBeenLastCalledWith('overview:companies_by_cohort');
+  expect(onOpen).toHaveBeenLastCalledWith('view:companies');
   fireEvent.click(screen.getByTitle('Open the list behind Qualified opportunities'));
   expect(onOpen).toHaveBeenLastCalledWith('overview:pipeline_table');
   expect(screen.queryByTitle('Open the list behind Meetings held')).toBeNull();

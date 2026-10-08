@@ -596,6 +596,7 @@ app.get('/api/sales/:businessId/email-counts', salesModuleRoute('./api/sales/tre
 app.get('/api/sales/:businessId/events', salesModuleRoute('./api/sales/trendRoutes.js', 'listEventsRoute', 'events'));
 app.post('/api/sales/:businessId/events', salesModuleRoute('./api/sales/trendRoutes.js', 'createEventRoute', 'events POST'));
 app.get('/api/sales/:businessId/insights', salesModuleRoute('./api/sales/trendRoutes.js', 'insightsRoute', 'insights'));
+app.get('/api/sales/:businessId/week-strip', salesModuleRoute('./api/sales/weekStripRoutes.js', 'weekStripRoute', 'week-strip'));
 app.post('/api/sales/:businessId/insights/dismiss', salesModuleRoute('./api/sales/trendRoutes.js', 'dismissInsightRoute', 'insights/dismiss'));
 // sales-goals-v1 REVISION 3 - Goals & Weekly Plan.
 app.get('/api/sales/:businessId/goals/members', salesModuleRoute('./api/sales/goalsRoutes.js', 'listGoalMembersRoute', 'goals/members'));

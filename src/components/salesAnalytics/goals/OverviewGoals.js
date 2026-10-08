@@ -3,13 +3,13 @@ import { SA } from '../theme';
 import { laWeekStart } from '../periods';
 import { WORKFLOW_STEPS, TOUCH_STATUSES, stepOf, isTouched } from '../../../constants/partnerPipeline';
 import { goalsApi } from './goalsApi';
-import GoalHero from './GoalHero';
-import { labelStyle, subStyle, numStyle, ErrorNote, DrillNumber, addDays } from './goalsUi';
+import { labelStyle, subStyle, numStyle, ErrorNote, DrillNumber, addDays, fmt, shortWeek } from './goalsUi';
 
-// goals-surface-v1 Stage 5 - the top of Overview: the Goals hero (same
-// component and endpoints, Team, this week) and a partner pipeline summary.
-// Every number opens Goals -> Partners (Workflow) filtered to what it counts.
-const ALL_WEEKS_FROM = '2020-01-06'; // same as GoalsTab's missing-headcount list
+// overview-home-v1 Stage 1 - the top of Overview: the Goals hero is one
+// line here (Goals owns the cards; this answers "how is the engine
+// running", Goals answers "am I on plan") and the partner pipeline summary
+// stays (Jack 2026-10-08). Every number opens Goals filtered to what it
+// counts.
 const stageKey = p => (stepOf(p.pipeline_status) === null ? 'paused' : WORKFLOW_STEPS[stepOf(p.pipeline_status)].id);
 
 // Touches this week = live status moves into a contact stage (undone ones
@@ -18,6 +18,33 @@ const stageKey = p => (stepOf(p.pipeline_status) === null ? 'paused' : WORKFLOW_
 export function weekTouches(events) {
   const undone = new Set(events.filter(e => e.event === 'undo').map(e => e.meta?.undid));
   return events.filter(e => e.event !== 'undo' && !undone.has(e.id) && TOUCH_STATUSES.includes(e.to_status));
+}
+
+// hero: GET /goals/hero for this week, team. "12/100" when the goal is set,
+// the number alone when it isn't.
+export function GoalLine({ hero, weekStart, onOpenGoals, onFocusWidget }) {
+  const wk = [...(hero.earlier || []), ...(hero.scorecard?.weeks || [])].find(w => w.week_start === weekStart)?.metrics || {};
+  const ft = hero.first_touched || {};
+  const people = ft.unit === 'people';
+  const of = (v, g) => (g == null ? fmt(v) : `${fmt(v)}/${fmt(g)}`);
+  const items = [
+    { key: 'first_touched', text: `${of(people ? (ft.people || []).length : wk.partners_first_touched?.value, ft.goal)} ${people ? 'people' : 'partners'} first-touched`, title: 'Open Goals › Partners (Sent)', go: () => onOpenGoals({ partners: { stage: 'first_email_sent' } }) },
+    { key: 'meetings', text: `${of(wk.meetings_set?.value ?? 0, wk.meetings_set?.goal)} meetings`, title: 'Open the scorecard row', go: () => onOpenGoals('score:meetings_set') },
+    { key: 'in_sequence', text: `${of(wk.total_in_sequence?.value, wk.total_in_sequence?.goal)} in sequence`, title: 'Open the week strip', go: () => onFocusWidget('week_strip') },
+  ];
+  return (
+    <div aria-label="Goals this week" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 10px', fontSize: 13, color: SA.muted, minHeight: 24 }}>
+      <span style={labelStyle}>{shortWeek(weekStart).replace('Wk', 'Week')}</span>
+      {items.map(it => (
+        <span key={it.key} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ color: SA.faint }}>·</span>
+          <DrillNumber onClick={it.go} title={it.title} style={{ ...numStyle, color: SA.text }}>{it.text}</DrillNumber>
+        </span>
+      ))}
+      <span style={{ color: SA.faint }}>·</span>
+      <DrillNumber onClick={() => onOpenGoals('view:week')} title="Open Goals" style={{ color: SA.link }}>Goals →</DrillNumber>
+    </div>
+  );
 }
 
 export function PartnerSummary({ partners, touches, onOpen }) {
@@ -58,38 +85,30 @@ export function PartnerSummary({ partners, touches, onOpen }) {
   );
 }
 
-export default function OverviewGoals({ businessId, canEdit, onOpenGoals, onFocusWidget, onOpenHuddle }) {
+export default function OverviewGoals({ businessId, onOpenGoals, onFocusWidget }) {
   const weekStart = laWeekStart();
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
-  const [heroKey, setHeroKey] = useState(0);
   useEffect(() => {
     let live = true;
     Promise.all([
       goalsApi.partners(businessId),
       goalsApi.partnerEvents(businessId, { from: weekStart, to: addDays(weekStart, 7) }),
-      goalsApi.weekGoals(businessId, weekStart, weekStart, 'commitment'),
-      goalsApi.companies(businessId, ALL_WEEKS_FROM, weekStart),
-    ]).then(([partners, events, commitments, companies]) => {
-      if (live) { setData({ partners, touches: weekTouches(events), commitments, missing: companies.companies.filter(c => c.employees == null).length }); setError(''); }
+      goalsApi.hero(businessId, weekStart, null, false),
+    ]).then(([partners, events, hero]) => {
+      if (live) { setData({ partners, touches: weekTouches(events), hero }); setError(''); }
     }).catch(e => live && setError(e.message));
     return () => { live = false; };
   }, [businessId, weekStart]);
 
-  // Hero cards from Overview: the same places they open from Goals.
-  const drill = id => {
-    if (id === 'in_sequence') return onFocusWidget('kpi_tiles');
-    if (id === 'engagement') return onOpenHuddle({ feed: null });
-    onOpenGoals({ audience: 'view:companies', missing: 'missing', partners: { partners: { stage: 'first_email_sent' } }, meetings: 'score:meetings_set' }[id]);
-  };
-
   return (
-    <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 24 }}>
-      <GoalHero businessId={businessId} weekStart={weekStart} owner="team" commitments={data?.commitments || []} missingHeadcount={data?.missing || 0}
-        canEdit={canEdit} reloadKey={heroKey} onDrill={drill} onGoalSaved={() => setHeroKey(k => k + 1)} />
+    <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 24 }}>
       {error ? <ErrorNote message={error} />
-        : !data ? <span style={{ ...subStyle, fontSize: 13 }}>Loading partners…</span>
-        : <PartnerSummary partners={data.partners} touches={data.touches} onOpen={onOpenGoals} />}
+        : !data ? <span style={{ ...subStyle, fontSize: 13 }}>Loading goals…</span>
+        : <>
+          <GoalLine hero={data.hero} weekStart={weekStart} onOpenGoals={onOpenGoals} onFocusWidget={onFocusWidget} />
+          <PartnerSummary partners={data.partners} touches={data.touches} onOpen={onOpenGoals} />
+        </>}
     </div>
   );
 }

@@ -67,8 +67,8 @@ export async function triggerSync(businessId) {
 
 // sales-email-trend-v1 REV2 - stored daily counts and chart events. Both
 // read the DB only; zero Apollo calls.
-export async function fetchEmailCounts(businessId) {
-  const res = await fetch(`/api/sales/${businessId}/email-counts`);
+export async function fetchEmailCounts(businessId, from) {
+  const res = await fetch(`/api/sales/${businessId}/email-counts${from ? `?from=${from}` : ''}`);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Failed to load email counts (${res.status})`);
   return data;
@@ -104,4 +104,13 @@ export async function dismissInsight(businessId, payload) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Failed to dismiss (${res.status})`);
   return data.dismissal;
+}
+
+// overview-home-v1 - the week strip's tracked half (human-open / real-reply
+// estimates, partner meetings), per LA day from `from`. 0 Apollo calls.
+export async function fetchWeekStrip(businessId, from) {
+  const res = await fetch(`/api/sales/${businessId}/week-strip?from=${from}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to load week strip (${res.status})`);
+  return data;
 }

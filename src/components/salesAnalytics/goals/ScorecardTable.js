@@ -21,7 +21,7 @@ const ROWS = [
 // Where each row's list lives (goals-surface-v1 Stage 4); meetings are typed
 // in, so no link.
 const DRILL = {
-  outbound_audience: 'view:companies', total_in_sequence: 'overview:kpi_tiles', sequences_running: 'overview:sequence_leaderboard', open_rate: 'overview:email_trend',
+  outbound_audience: 'view:companies', total_in_sequence: 'overview:week_strip', sequences_running: 'overview:sequence_leaderboard', open_rate: 'overview:email_trend',
   partners_first_touched: { partners: { stage: 'first_email_sent' } }, tier1_touched_pct: { partners: { tiers: ['1'] } },
   partner_meetings: { partners: { stage: 'meeting_set' } }, partners_pilot_live: { partners: { stage: ['proposal_pilot', 'live'] } },
 };

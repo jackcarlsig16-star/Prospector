@@ -198,9 +198,9 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
   const chip = (k, v, src, to) => (v == null ? null : { k, v: typeof v === 'number' ? v.toLocaleString('en-US') : v, src, to });
   const autoChips = {
     s1: [chip('to-dos done last week', `${lastDone} of ${lastWeekTodos.filter(t => todoStatus(t) !== 'dropped').length}`, 'App', 'week:prev'), chip('companies sequenced', companies.length, 'Apollo', 'view:companies'), chip('positive replies', kpi.positive_responses?.this_week, 'Apollo', 'huddle:reply')],
-    s3: [chip('companies in cadence', kpi.target_orgs?.this_week, 'Apollo', 'overview:companies_by_cohort'), chip('new companies sequenced', companies.length, 'Apollo', 'view:companies'),
+    s3: [chip('companies in cadence', kpi.target_orgs?.this_week, 'Apollo', 'view:companies'), chip('new companies sequenced', companies.length, 'Apollo', 'view:companies'),
       chip('headcount known', `${companies.filter(c => c.employees != null).length} of ${companies.length} companies`, 'App', 'missing'), chip('partners tracked', `${partners.length} · ${partners.filter(x => x.priority === 1).length} P1`, 'App', 'view:partners')],
-    s4: [chip('people in sequence', kpi.dm_contacted?.this_week, 'Apollo', 'overview:kpi_tiles'), chip('new companies sequenced', companies.length, 'Apollo', 'view:companies'),
+    s4: [chip('people in sequence', kpi.dm_contacted?.this_week, 'Apollo', 'overview:week_strip'), chip('new companies sequenced', companies.length, 'Apollo', 'view:companies'),
       // first-touch-people-v1: the row follows the goal's unit; a week frozen before people existed says "computed".
       partnerBlock?.first_touched_unit === 'people'
         ? chip(`people first-touched${pm.people_first_touched?.computed ? ' · computed' : ''}`, pm.people_first_touched?.value, 'App')
@@ -239,7 +239,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTarget]);
   // Goal hero cards.
-  const drill = id => go({ audience: 'view:companies', missing: 'missing', in_sequence: 'overview:kpi_tiles', partners: { partners: { stage: 'first_email_sent' } },
+  const drill = id => go({ audience: 'view:companies', missing: 'missing', in_sequence: 'overview:week_strip', partners: { partners: { stage: 'first_email_sent' } },
     meetings: 'score:meetings_set', engagement: 'huddle:feed' }[id]);
 
   // CSV exports (REV4 Stage 6) - what's on screen for the selected week and

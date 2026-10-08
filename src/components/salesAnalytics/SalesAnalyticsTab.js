@@ -6,8 +6,7 @@ import GoalsTab from './goals/GoalsTab';
 import { flashTo } from './goals/goalsUi';
 import OverviewGoals from './goals/OverviewGoals';
 import { OPEN_GOALS_WEEK } from './goals/goalsApi';
-import { roleAtLeast } from '../../constants/roles';
-import { WIDGETS } from './widgets.registry';
+import { visibleWidgets } from './widgets.registry';
 import { fetchMetrics, fetchRuns, fetchEntities, fetchCohortBreakdown, fetchInsights, triggerSync } from './salesApi';
 import { fetchFlags, FLAGS_CHANGED } from './huddleApi';
 import { fetchMe } from '../../utils/authSession';
@@ -55,59 +54,23 @@ const PRINT_STYLES = `
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     @page { size: landscape letter; margin: 0.4in; }
   }
-  .sa-row-2fr1fr { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
-  .sa-row-1fr1fr { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  @media (max-width: 1100px) {
-    .sa-row-2fr1fr, .sa-row-1fr1fr { grid-template-columns: minmax(0, 1fr); }
-  }
-  /* Jack's Stage 4 correction: the KPI row's flex-wrap let Bounce Rate
-     wrap to its own line on the real printed page (page width minus the
-     widget card's own padding left less room than the flex-basis math
-     assumed). A fixed 5-column grid in print removes the ambiguity -
-     screen keeps the flexible flex-wrap layout unchanged. */
+  /* overview-home-v1 - the week strip: 7 tiles in one row wherever the
+     card is wide enough (the sidebar leaves ~1100px at 1440), 2 columns at
+     phone width, 7 across on the landscape print page. */
+  .sa-strip { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
+  @media (min-width: 1200px), print { .sa-strip { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
   @media print {
-    .sa-kpi-row { display: grid !important; grid-template-columns: repeat(5, minmax(0, 1fr)) !important; gap: 10px !important; }
-    /* sales-pipeline-v1 Stage 4 - Pipeline prints as its own page "after
-       the existing widgets" (SPEC's own words), a different position than
-       its screen placement right after the KPI tiles (Stage 3's own
-       requirement). Reordering the SAME dom nodes rather than rendering a
-       second tree: the widget-list becomes a flex column only under
-       print, so each row's CSS order (printOrder, from widgets.registry.js)
-       takes effect - on screen this container is plain block flow, where
-       order has no effect at all, so screen placement is untouched. */
+    /* overview-home-v1 - bands print in printOrder (widgets.registry.js):
+       the widget list becomes a flex column only under print so CSS order
+       applies (on screen it is block flow, where order does nothing); a
+       widget flagged printPage starts a new page, so each band gets its
+       own. Deltas print in text ink: the arrow carries the direction, and
+       the status green/red sit under 3:1 on white. */
     .sa-widget-list { display: flex; flex-direction: column; }
+    .sa-band-start { break-before: page; page-break-before: always; }
+    .sa-delta { color: var(--sa-text) !important; }
   }
 `;
-
-// design-v1 Stage 3 - DECIDED layout pairs two widgets per row (items 4
-// and 7: Email Trend | Mailbox Health, and Companies by Cohort | Delivery
-// Mix), stacking under 1100px (.sa-row-2fr1fr/.sa-row-1fr1fr above). Every
-// other widget keeps its own full-width card. This also closes a gap from
-// Stage 2 - the Email Trend/Mailbox Health pairing was never built then
-// (Stage 2's own text only said "the mailbox health restyle"), caught
-// while building the mechanism Stage 3 needs for its own pair.
-const PAIRED_ROWS = [
-  { ids: ['email_trend', 'mailbox_health'], className: 'sa-row-2fr1fr' },
-  { ids: ['companies_by_cohort', 'delivery_mix'], className: 'sa-row-1fr1fr' },
-];
-
-function groupWidgetsIntoRows(widgets) {
-  const byId = new Map(widgets.map(w => [w.id, w]));
-  const consumed = new Set();
-  const rows = [];
-  for (const w of widgets) {
-    if (consumed.has(w.id)) continue;
-    const pair = PAIRED_ROWS.find(p => p.ids[0] === w.id && byId.has(p.ids[1]) && !consumed.has(p.ids[1]));
-    if (pair) {
-      consumed.add(pair.ids[0]); consumed.add(pair.ids[1]);
-      rows.push({ widgets: pair.ids.map(id => byId.get(id)), className: pair.className });
-    } else {
-      consumed.add(w.id);
-      rows.push({ widgets: [w], className: null });
-    }
-  }
-  return rows;
-}
 
 function rowsInRange(allRows, from, to) {
   return allRows.filter(r => r.metric_date >= from && r.metric_date <= to);
@@ -131,7 +94,7 @@ const STATUS_COLOR = { success: SA.good, partial: SA.warn, error: SA.bad, runnin
 // instead, independent of whatever accent the rest of the app assigned
 // this business. BusinessDetailPage still passes an accent prop; it's
 // simply not destructured here, so it's a no-op rather than used.
-export default function SalesAnalyticsTab({ businessId }) {
+export default function SalesAnalyticsTab({ businessId, features }) {
   const [view, setView] = useState('goals');
   const [huddleFocus, setHuddleFocus] = useState(null);
   const [huddleTarget, setHuddleTarget] = useState(null); // { feed } | { flags } from a Goals number
@@ -142,7 +105,7 @@ export default function SalesAnalyticsTab({ businessId }) {
   const [preset, setPreset] = useState('this_week');
   const [customFrom, setCustomFrom] = useState(laDateString());
   const [customTo, setCustomTo] = useState(laDateString());
-  const [compareEnabled, setCompareEnabled] = useState(false);
+  const [compareEnabled, setCompareEnabled] = useState(true); // overview-home-v1: the week strip reads "this week vs last" by default
 
   const [allRows, setAllRows] = useState([]);
   const [runs, setRuns] = useState([]);
@@ -257,6 +220,7 @@ export default function SalesAnalyticsTab({ businessId }) {
   const lastSyncLabel = lastRun?.finished_at ? new Date(lastRun.finished_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'never';
 
   const handlePrint = () => { setExportMenuOpen(false); window.print(); };
+  const openGoals = target => { setGoalsTarget({ target }); setView('goals'); };
 
   // design-v1 - "Export report" consolidates the entry point per the
   // mockup; PDF is wired to the existing print flow. There's no single
@@ -395,23 +359,17 @@ export default function SalesAnalyticsTab({ businessId }) {
           )}
         </div>
 
-        <OverviewGoals businessId={businessId} canEdit={!!me && (me.profile?.is_platform_owner || roleAtLeast(me.memberships?.find(m => m.business_id === businessId)?.role, 'member'))}
-          onOpenGoals={target => { setGoalsTarget({ target }); setView('goals'); }} onFocusWidget={id => flashTo(`sa-widget-${id}`)}
-          onOpenHuddle={target => { setHuddleFocus(null); setHuddleTarget({ ...target }); setView('huddle'); }} />
+        <OverviewGoals businessId={businessId} onOpenGoals={openGoals} onFocusWidget={id => flashTo(`sa-widget-${id}`)} />
         {!loading && <AlertsRow runs={runs} insights={insights} />}
 
         {loading ? (
           <p style={{ ...SA_TYPE.body, fontSize: 13, color: SA.muted }}>Loading…</p>
         ) : (
           <div className="sa-widget-list">
-          {groupWidgetsIntoRows(WIDGETS.filter(w => w.enabled).sort((a, b) => a.defaultOrder - b.defaultOrder)).map(row => (
-            <div key={row.widgets.map(w => w.id).join('+')} className={row.className ? `${row.className} print-avoid-break` : undefined} style={{ marginBottom: 12, display: row.className ? 'grid' : undefined, gap: row.className ? 12 : undefined, order: Math.min(...row.widgets.map(w => w.printOrder)) }}>
-              {row.widgets.map(w => (
-                <div key={w.id} id={`sa-widget-${w.id}`} className={row.className ? undefined : 'print-avoid-break'} style={{ padding: '22px 24px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusCard }}>
-                  <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: '0 0 14px' }}>{w.title}</p>
-                  <w.component businessId={businessId} allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} prevPeriod={prevPeriod} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} opportunities={opportunities} accent={SA.accent} widgetId={w.id} onDataChanged={load} onPipelineChanged={load} onFiltersChanged={setFilterSummary} insights={insights} onInsightsChanged={reloadInsights} />
-                </div>
-              ))}
+          {visibleWidgets(features).map(w => (
+            <div key={w.id} id={`sa-widget-${w.id}`} className={`print-avoid-break${w.printPage ? ' sa-band-start' : ''}`} style={{ marginBottom: 12, order: w.printOrder, padding: '22px 24px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusCard }}>
+              <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: '0 0 14px' }}>{w.title}</p>
+              <w.component businessId={businessId} allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} period={period} prevPeriod={prevPeriod} preset={preset} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} opportunities={opportunities} accent={SA.accent} widgetId={w.id} onDataChanged={load} onPipelineChanged={load} onFiltersChanged={setFilterSummary} insights={insights} onInsightsChanged={reloadInsights} onOpenGoals={openGoals} />
             </div>
           ))}
           </div>

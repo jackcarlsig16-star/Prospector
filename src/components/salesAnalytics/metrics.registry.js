@@ -25,6 +25,12 @@ export const METRICS = [
   { key: 'click_rate', label: 'Click Rate', source: 'derived', format: 'percent', aggregate: 'ratio', ratioOf: ['unique_clicked', 'unique_delivered'], goodDirection: 'up', enabled: true },
   { key: 'reply_rate', label: 'Reply Rate', source: 'derived', format: 'percent', aggregate: 'ratio', ratioOf: ['unique_replied', 'unique_delivered'], goodDirection: 'up', enabled: true },
   { key: 'bounce_rate', label: 'Bounce Rate', source: 'derived', format: 'percent', aggregate: 'ratio', ratioOf: ['unique_bounced', 'unique_delivered'], goodDirection: 'down', enabled: true },
+  // overview-home-v1 - week strip tiles with no Apollo lifetime counter:
+  // range sums of the stored daily counts / partner events (weekStrip.js).
+  { key: 'sent',           label: 'Sent',           source: 'email_counts', format: 'number',  aggregate: 'sum', goodDirection: 'up',   enabled: true },
+  { key: 'delivered_rate', label: 'Delivered Rate', source: 'email_counts', format: 'percent', aggregate: 'sum', goodDirection: 'up',   enabled: true },
+  { key: 'spam_blocked',   label: 'Spam Blocks',    source: 'email_counts', format: 'number',  aggregate: 'sum', goodDirection: 'down', enabled: true },
+  { key: 'meetings_set',   label: 'Meetings Set',   source: 'partners',     format: 'number',  aggregate: 'sum', goodDirection: 'up',   enabled: true },
 ];
 
 export function getMetric(key) {
