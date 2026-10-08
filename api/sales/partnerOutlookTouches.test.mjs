@@ -118,7 +118,7 @@ test('touch contact name: partner_contacts name first, then the Graph name, then
   assert.equal(byEmail.touches.would_record[0].contact, 'sbroadway@corestream.com');
 });
 
-test('dedupe: a manual touch for the same partner + contact (name or address, any case) + LA day skips the Outlook touch and says so; another day does not', () => {
+test('dedupe: a manual touch for the same partner + contact (name or address, any case) within a LA day either side skips the Outlook touch and says so; two days off does not', () => {
   const m = msg('sent', ['sbroadway@corestream.com'], { occurred_at: '2026-10-07T17:00:00Z' });
   const base = { partners: [partner('g1', 'first_email_sent', 'Corestream')], domains: [domain('g1', 'corestream.com')], contacts: [contact('g1', 'sbroadway@corestream.com', 'Sharon Broadway')], messages: [m] };
   const manual = at => ({ goal_id: 'g1', event: 'touch', source: 'manual', contact_names: ['sharon broadway'], at, meta: {} });
@@ -128,8 +128,13 @@ test('dedupe: a manual touch for the same partner + contact (name or address, an
   assert.match(same.touches.skipped_manual[0].reason, /logged by hand: Sharon Broadway on 2026-10-07/);
   const byAddress = run({ ...base, partnerEvents: [{ ...manual('2026-10-08T05:34:00Z'), contact_names: ['SBroadway@Corestream.com'] }] });
   assert.equal(byAddress.touches.skipped_manual.length, 1);
-  const otherDay = run({ ...base, partnerEvents: [manual('2026-10-07T05:34:00Z')] });
-  assert.equal(otherDay.touches.would_record.length, 1);
+  const dayBefore = run({ ...base, partnerEvents: [manual('2026-10-07T05:34:00Z')] });
+  assert.equal(dayBefore.touches.skipped_manual.length, 1);
+  assert.match(dayBefore.touches.skipped_manual[0].reason, /logged by hand: Sharon Broadway on 2026-10-06 \(mail 2026-10-07\)/);
+  const dayAfter = run({ ...base, partnerEvents: [manual('2026-10-09T05:34:00Z')] });
+  assert.equal(dayAfter.touches.skipped_manual.length, 1);
+  const twoDays = run({ ...base, partnerEvents: [manual('2026-10-10T05:34:00Z')] });
+  assert.equal(twoDays.touches.would_record.length, 1);
   const otherPartner = run({ ...base, partnerEvents: [{ ...manual('2026-10-08T05:34:00Z'), goal_id: 'g2' }] });
   assert.equal(otherPartner.touches.would_record.length, 1);
 });

@@ -3,13 +3,14 @@
 // STAGE MOVES ARE PROPOSALS. A sent mail (or a reply inside a thread we
 // started) to a matched partner always records an email touch, stage "none",
 // dated on the mail's LA day - no OK needed - unless a touch for the same
-// partner + contact + LA day already exists. The stage move is the separate
+// partner + contact within a LA day either side already exists (Jack,
+// 2026-10-08: a mail sent Oct 6 and logged by hand Oct 7 is one touch). The stage move is the separate
 // proposal: Sent and in-thread Replied may auto-apply (daily step), a cold
 // reply or a meeting waits for an OK. Keys live in event meta
 // (outlook_touch_key for the fact, outlook_key for the move) so nothing
 // repeats, even after an undo.
 import { selectAllPages } from '../lib/selectAllPages.js';
-import { getSupabase } from './goalsShared.js';
+import { getSupabase, addDays } from './goalsShared.js';
 import { hasRole } from '../lib/requireAuth.js';
 import { laDateString } from './laDate.js';
 import { isBehind, KEYS_MAX } from './partnerApolloTouches.js';
@@ -83,8 +84,15 @@ export function proposeOutlookMoves({ partners, domains, contacts, messages, eve
   const existingTouch = new Map();
   for (const e of partnerEvents) {
     if (e.event !== 'touch' || !e.at) continue;
-    for (const c of e.contact_names || []) existingTouch.set(`${e.goal_id}|${norm(c)}|${dateOf(e.at)}`, e.source || 'manual');
+    for (const c of e.contact_names || []) existingTouch.set(`${e.goal_id}|${norm(c)}|${dateOf(e.at)}`, { source: e.source || 'manual', date: dateOf(e.at) });
   }
+  const priorTouch = (goalId, contact, email, date) => {
+    for (const d of [date, addDays(date, -1), addDays(date, 1)]) {
+      const hit = existingTouch.get(`${goalId}|${norm(contact)}|${d}`) || (email && existingTouch.get(`${goalId}|${norm(email)}|${d}`));
+      if (hit) return hit;
+    }
+    return null;
+  };
   const ourThreads = new Set(messages.filter(m => m.direction === 'sent' && m.conversation_id).map(m => m.conversation_id));
   const today = laDateString(now);
   const counts = { messages: messages.length, events: events.length, skipped_auto: 0, unmatched: 0, ambiguous: 0, cancelled: 0 };
@@ -96,9 +104,9 @@ export function proposeOutlookMoves({ partners, domains, contacts, messages, eve
     const key = touchKeyOf(base.key);
     const t = { key, move_key: base.key, goal_id: base.goal_id, partner: base.partner, contact: base.person_contact, person: base.person, person_email: base.person_email, date: base.date, source_at: base.source_at, by_user: base.by_user, mailbox: base.mailbox, direction, internet_message_id: base.internet_message_id };
     if (recordedTouches.has(key)) { touches.already++; return; }
-    const slot = `${t.goal_id}|${norm(t.contact)}|${t.date}`, slotEmail = `${t.goal_id}|${norm(t.person_email)}|${t.date}`;
-    const prior = existingTouch.get(slot) || existingTouch.get(slotEmail);
-    if (prior) { touches.skipped_manual.push({ ...t, reason: `${prior === 'manual' ? 'logged by hand' : 'already recorded'}: ${t.contact} on ${t.date}` }); return; }
+    const slot = `${t.goal_id}|${norm(t.contact)}|${t.date}`;
+    const prior = priorTouch(t.goal_id, t.contact, t.person_email, t.date);
+    if (prior) { touches.skipped_manual.push({ ...t, reason: `${prior.source === 'manual' ? 'logged by hand' : 'already recorded'}: ${t.contact} on ${prior.date}${prior.date !== t.date ? ` (mail ${t.date})` : ''}` }); return; }
     if (seenTouch.has(slot)) { touches.duplicates++; return; }
     seenTouch.add(slot);
     touches.would_record.push({ ...t, reason: `${direction === 'sent' ? 'emailed' : 'reply from'} ${t.person} on ${t.date}` });
