@@ -90,9 +90,10 @@ const WEEK = monday(today), LAST = addDays(WEEK, -7);
     h = await hero('2026-09-28'); m = weekOf(h, '2026-09-28');
     const hOct = await hero('2026-10-05');
     ok('A2 the same person again Oct 1 -> still 2 people / 1 partner, nothing in the week of Oct 5', r.status === 200 && m?.people_first_touched.value === 2 && m?.partners_first_touched.value === 1 && weekOf(hOct, '2026-10-05')?.people_first_touched.value === 0 && hOct.first_touched.people.length === 0, JSON.stringify(m));
-    ins(await svc.from('partner_contacts').insert({ business_id: B, goal_id: bravo.id, name: 'Seq Person', source: 'apollo', apollo_contact_id: `${tag}-c1`, sequence_added_at: '2026-08-27T15:00:00Z', sequence_status: 'active' }).select());
+    ins(await svc.from('partner_contacts').insert([{ business_id: B, goal_id: bravo.id, name: 'Seq Person', source: 'apollo', apollo_contact_id: `${tag}-c1`, sequence_added_at: '2026-08-27T15:00:00Z', sequence_status: 'active' },
+      { business_id: B, goal_id: bravo.id, name: 'Paused Person', source: 'apollo', apollo_contact_id: `${tag}-c2`, sequence_added_at: '2026-08-27T16:00:00Z', sequence_status: 'paused' }]).select());
     h = await hero('2026-08-24'); m = weekOf(h, '2026-08-24');
-    ok('A3 Apollo sequence start Aug 27 -> week of Aug 24: 1 person (Apollo), 0 partners', m?.people_first_touched.value === 1 && m?.partners_first_touched.value === 0 && h.first_touched.people.length === 1 && h.first_touched.people[0].name === 'Seq Person' && h.first_touched.people[0].source === 'apollo', JSON.stringify(m));
+    ok('A3 Apollo sequence start Aug 27 -> week of Aug 24: 1 person (Apollo), the paused one not counted, 0 partners', m?.people_first_touched.value === 1 && m?.partners_first_touched.value === 0 && h.first_touched.people.length === 1 && h.first_touched.people[0].name === 'Seq Person' && h.first_touched.people[0].source === 'apollo', JSON.stringify(m));
     const hj = await hero('2026-09-28', jack.id), hc = await hero('2026-09-28', cy.id);
     ok('A4 owner filter follows the partner: Jack 2 people, Cyrus 0', weekOf(hj, '2026-09-28')?.people_first_touched.value === 2 && hj.first_touched.people.length === 2 && weekOf(hc, '2026-09-28')?.people_first_touched.value === 0 && hc.first_touched.people.length === 0);
     ok('A5 no goal row anywhere -> unit people, goal null, not carried', h.first_touched.unit === 'people' && h.first_touched.goal === null && h.first_touched.carried === false, JSON.stringify(h.first_touched));

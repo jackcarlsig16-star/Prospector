@@ -1,0 +1,79 @@
+SPEC — first-touch-people-v1
+
+## Status
+Source: Jack, 2026-10-07 night: "the goal was first-touch emails to 100 people, not 100 companies — need that
+distinction when making goals." Today the Goals hero card "Partners first-touched 5 · of 100 · 5%" counts
+partners (companies); Jack's 100 is people.
+Follows partner-360-v1 (DONE fe43ccd): people data now exists — partner_contacts (Apollo rows with
+sequence_added_at), touch events with contact_names, Apollo auto-touch events naming the contact.
+Ground truth is PARTIAL on the goals/targets schema and the metric function names: read them first and flag back
+if the design below conflicts with how targets are stored.
+
+## Problem
+1. The first-touched metric counts a partner once in the week of its earliest contact. There is no people-level
+   count anywhere, so 2 people emailed at BenefitHub = 1.
+2. Set goal has no unit. A number typed as "100 people" is read as "100 partners".
+3. The card's label, number, ring, and sparkline all speak partners; nothing shows the people side even as a
+   sub-line.
+
+## Design decision
+DECIDED
+- The first-touched goal gets a unit: people | partners. Card label follows it: "People first-touched" or
+  "Partners first-touched". Primary number + ring + sparkline in the chosen unit; the other unit on the
+  sub-line: "12 of 100 people · 5 partners · week 1 · Oct 5". Set goal dialog gets the toggle.
+- Migrate Jack's existing HomeLover first-touched goal (100) to unit = people. Default for new goals = people.
+- A person = a partner_contacts row (by id), or for a touch naming someone not in partner_contacts, (goal_id,
+  normalized name). Reuse the People merge from partner-360 Stage 1 (src/constants/partnerPeople.js) so the
+  card and the drop-down agree on who is one person.
+- First touch for a person = the earliest of: a touch event whose contact_names includes them (event date);
+  partner_contacts.sequence_added_at (Apollo); an Apollo auto-touch event naming them. Counted ONCE, in the week
+  of that earliest date; backdated touches land in the right week (same rule as partners). Outlook (microsoft
+  Stage 3) feeds the same path later — build the function once with a sources list.
+- No touch = not touched: Sheet-only names (known_contacts) and Apollo rows with no sequence and no touch do
+  not count.
+- Drill-down: clicking the number lists the week's people — name · partner · first touch date · source
+  (Logged / Apollo) — same pattern as the existing drill lists.
+- Weekly report / scorecard row for first-touched mirrors the unit.
+PROPOSED / REVISABLE
+- Label wording "People first-touched". Sparkline history recomputed for past weeks from events (cheap; events
+  are the source of truth) rather than stored snapshots — flag back if the scorecard stores weekly snapshots and
+  this would disagree with them.
+
+## Out of scope
+- "People in sequence" card (Apollo prospects, different population) — unchanged. Companies/cadence metrics.
+- Outlook as a source (microsoft-connect-v1 Stage 3 adds it through the same function).
+- Any change to how partners first-touched is computed.
+
+## Standing rules
+CLAUDE.md Sales module + Testing rules (API-only writes, Viewer read-only, workspace-bound, selectAllPages for
+big reads, no contact emails in files/logs, temp workspace, restored: yes, suites one at a time, no full syncs).
+
+## Implementation
+Stage 1 — unit + metric + card
+  a. Read the goals/targets schema and the partners-first-touched metric function. Report in 3 lines how the
+     target is stored and where the metric lives. STOP if the unit needs more than one new column.
+  b. Migration: unit column on the first-touched target (people|partners, default people). Jack runs it.
+     Data fix in the same migration: HomeLover's existing first-touched target → unit people.
+  c. Metric: peopleFirstTouched(business, week) from the sources above via the shared merge. One function,
+     sources listed, each source tagged for the drill-down.
+  d. Card: label/number/ring/sparkline by unit, other unit on the sub-line, drill-down list. Set goal toggle.
+     Viewer sees the card, no Set goal.
+  e. Screenshots 1440/390. STOP.
+Stage 2 — report + scorecard
+  Weekly report and scorecard rows follow the unit; past weeks recomputed from events. STOP.
+
+## Verification
+- Stage 1, TEMP workspace: log one call for 2 named people on one partner dated Sep 30 → people count for the week
+  of Sep 28 = 2, partners = 1; log the same person again dated Oct 1 → still 1 person; an Apollo partner_contacts
+  row with sequence_added_at Aug 27 → counts in the week of Aug 24; toggle unit → label, number, ring, sub-line
+  flip; drill-down lists exactly those people with the right source; Viewer sees the card and no toggle;
+  0 console errors at 1440/390; restored: yes.
+- HomeLover read-only: report this week's people and partners counts and the last 4 weeks' people counts, with
+  the list of names for this week (names only, no emails).
+- Bar 5: Jack opens Goals, the card reads "People first-touched · N of 100 people · M partners", clicks the
+  number and recognizes every name.
+- Stage 2: report row and scorecard equal the card for the current and previous week.
+
+## Commit instructions
+One commit per stage referencing first-touch-people-v1. Push after each passes. Stop and report after each.
+When Stage 2 ships: copy to specs/, delete this inbox file, STATUS line DONE.

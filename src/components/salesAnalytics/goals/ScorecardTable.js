@@ -25,6 +25,10 @@ const DRILL = {
   partners_first_touched: { partners: { stage: 'first_email_sent' } }, tier1_touched_pct: { partners: { tiers: ['1'] } },
   partner_meetings: { partners: { stage: 'meeting_set' } }, partners_pilot_live: { partners: { stage: ['proposal_pilot', 'live'] } },
 };
+// first-touch-people-v1 - the first-touched row follows the selected week's
+// unit: people = the week's people count against the same goal row.
+const FIRST = 'partners_first_touched', PEOPLE = 'people_first_touched';
+const peopleRow = r => ({ ...r, name: 'People first-touched', hint: 'people emailed, called, met or messaged', valueKey: PEOPLE });
 // These narrow to one person (partners by owner); the rest are team-wide numbers.
 const PER_PERSON = ['outbound_audience', 'open_rate', 'partners_first_touched', 'tier1_touched_pct', 'partner_meetings', 'partners_pilot_live'];
 
@@ -43,6 +47,8 @@ const linkBtn = { all: 'unset', cursor: 'pointer', fontSize: 11, color: SA.warn,
 export default function ScorecardTable({ data, error, weekStart, ownerName, canEdit, onSaveTarget, missingHeadcount, onFillHeadcount, onOpen }) {
   const [saveError, setSaveError] = useState('');
   const month = data?.month;
+  const unit = data?.weeks.find(w => w.week_start === weekStart)?.metrics[FIRST]?.unit || 'people';
+  const rows = ROWS.map(r => (r.key === FIRST && unit === 'people' ? peopleRow(r) : r));
   const save = async body => {
     setSaveError('');
     try { await onSaveTarget(body); } catch (e) { setSaveError(e.message); throw e; }
@@ -76,8 +82,8 @@ export default function ScorecardTable({ data, error, weekStart, ownerName, canE
               <th scope="col" style={th}>Month</th>
             </tr></thead>
             <tbody>
-              {ROWS.map(r => {
-                const m = data.month_total[r.key];
+              {rows.map(r => {
+                const m = r.valueKey ? { ...data.month_total[r.valueKey], goal: data.month_total[r.key].goal } : data.month_total[r.key];
                 const mp = m.value != null && m.goal ? m.value / m.goal : null;
                 const dimmed = ownerName && !PER_PERSON.includes(r.key);
                 return [
@@ -102,7 +108,7 @@ export default function ScorecardTable({ data, error, weekStart, ownerName, canE
                       </div>
                     </td>
                     {data.weeks.map(w => {
-                      const c = w.metrics[r.key];
+                      const c = r.valueKey ? { ...w.metrics[r.key], value: w.metrics[r.valueKey].value } : w.metrics[r.key];
                       const p = c.value != null && c.goal ? c.value / c.goal : null;
                       const sel = w.week_start === weekStart;
                       return (
@@ -119,7 +125,7 @@ export default function ScorecardTable({ data, error, weekStart, ownerName, canE
                             <span style={{ ...numStyle, ...subStyle, fontSize: 12 }}>
                               {canEdit
                                 ? <EditableNumber value={c.goal} rate={r.rate} placeholder="set goal" display={`of ${r.format(c.goal)}`} ariaLabel={`${r.name} goal, ${shortWeek(w.week_start)}`}
-                                    onSave={v => save({ period: 'week', period_start: w.week_start, metric_key: r.key, goal: v })} />
+                                    onSave={v => save({ period: 'week', period_start: w.week_start, metric_key: r.key, goal: v, ...(r.key === FIRST ? { unit: c.unit || 'people' } : {}) })} />
                                 : c.goal != null ? `of ${r.format(c.goal)}` : ''}
                             </span>
                             {r.key === 'outbound_audience' && c.companies > c.companies_with_employees && (

@@ -8,7 +8,7 @@ import { FIRST_TOUCH_TYPES } from './partnerPipeline.js';
 // One person per name; a DB row wins, then a logged name, then the sheet.
 // first_touch_at / first_touch_source (first-touch-people-v1): the earliest
 // of a counted touch naming the person (logged, or written by Apollo) and
-// the Apollo sequence start; a person with neither was never touched.
+// the Apollo sequence start (unless paused); a person with neither was never touched.
 
 export const PEOPLE_SOURCES = {
   apollo: 'Apollo', manual: 'Added', outlook: 'Outlook', logged: 'Logged', sheet: 'Sheet',
@@ -28,6 +28,9 @@ export function parseKnownContacts(text) {
   return out;
 }
 
+// A paused enrollment is not a touch (same rule as the Apollo moves' held partners, Jack 2026-10-08).
+const inSequence = c => !!c.sequence_added_at && c.sequence_status !== 'paused';
+
 const later = (a, b) => (!a || (b && Date.parse(b) > Date.parse(a)) ? b : a);
 
 // contacts: partner_contacts rows for this partner; events: its
@@ -42,7 +45,7 @@ export function mergePeople({ contacts = [], events = [], knownContacts = '' }) 
       id: c.id, name: c.name, title: c.title || null, note: null, email: c.email || null, linkedin_url: c.linkedin_url || null,
       source: c.source, last_activity_at: c.last_activity_at || null, last_activity_type: c.last_activity_type || null,
       sequence_status: c.sequence_status || null, sequence_added_at: c.sequence_added_at || null, sequence_finished_at: c.sequence_finished_at || null,
-      first_touch_at: c.sequence_added_at || null, first_touch_source: c.sequence_added_at ? 'apollo' : null,
+      first_touch_at: inSequence(c) ? c.sequence_added_at : null, first_touch_source: inSequence(c) ? 'apollo' : null,
       deletable: c.source === 'manual',
     });
   }

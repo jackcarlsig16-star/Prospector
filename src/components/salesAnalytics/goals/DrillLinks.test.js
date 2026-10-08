@@ -46,7 +46,7 @@ test('KPI rows link to Overview / Huddle; manual rows stay plain', () => {
 
 test('scorecard: row names link; a week\'s audience opens that week\'s companies', () => {
   const onOpen = jest.fn();
-  const metric = { value: 1200, goal: null, companies: 3, companies_with_employees: 3 };
+  const metric = { value: 1200, goal: null, companies: 3, companies_with_employees: 3, unit: 'partners' };
   const data = { month: '2026-09-01', weeks: [{ week_start: '2026-09-28', metrics: new Proxy({}, { get: () => metric }) }], month_total: new Proxy({}, { get: () => metric }), sources: {} };
   render(<ScorecardTable data={data} weekStart="2026-09-28" canEdit={false} onOpen={onOpen} />);
   fireEvent.click(screen.getByTitle('Open the list behind Partners first-touched'));

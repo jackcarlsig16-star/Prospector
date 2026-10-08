@@ -20,6 +20,17 @@ const HERO_WEEKS = 6;
 // with no row shows the latest earlier goal as "carried" (display only).
 const FIRST_TOUCHED = 'partners_first_touched';
 const UNITS = ['people', 'partners'];
+
+// The first-touched unit per week: the week's own goal row, else the latest
+// earlier one (carried), else people. One small read for any list of weeks.
+async function firstTouchedUnits(supabase, businessId, weeks) {
+  if (!weeks.length) return new Map();
+  const last = weeks.reduce((a, b) => (a > b ? a : b));
+  const { data, error } = await supabase.from('sales_metric_targets').select('period_start, unit')
+    .eq('business_id', businessId).eq('period', 'week').eq('metric_key', FIRST_TOUCHED).lte('period_start', last).not('goal', 'is', null).order('period_start');
+  if (error) throw new Error(error.message);
+  return new Map(weeks.map(w => { const row = data.filter(r => r.period_start <= w).pop(); return [w, row?.unit || 'people']; }));
+}
 // Seif's "positive responses": replies that move toward a meeting
 // (Jack 2026-10-02, sales-analytics-scorecard-v1 Stage 1).
 const POSITIVE_REPLY_CLASSES = ['willing_to_meet', 'follow_up_question', 'person_referral'];
@@ -135,17 +146,20 @@ async function targetsFor(supabase, businessId, period, starts) {
 // Scorecard rows (actual + week goal per metric) for any list of Mondays.
 async function scorecardWeeks(supabase, businessId, weeks, ownerUserId) {
   // Independent reads, so they run together (was ~2.5 s one after another).
-  const [manual, weekGoals, partnerData, boxes] = await Promise.all([
+  const [manual, weekGoals, partnerData, boxes, units] = await Promise.all([
     manualActuals(supabase, businessId, weeks),
     targetsFor(supabase, businessId, 'week', weeks),
     loadPartnerData(supabase, businessId),
     mailboxesFor(supabase, businessId, ownerUserId),
+    firstTouchedUnits(supabase, businessId, weeks),
   ]);
   const keys = [...SCORECARD_METRICS, ...PARTNER_METRICS, PEOPLE_METRIC];
   const weekActuals = await Promise.all(weeks.map(w => weekScorecard(supabase, businessId, w, boxes, manual)));
   return weeks.map((w, i) => {
     const actual = { ...weekActuals[i], ...partnerWeekMetrics(partnerData, w, ownerUserId) };
-    return { week_start: w, metrics: Object.fromEntries(keys.map(k => [k, { ...actual[k], goal: weekGoals.get(`${w}|${k}`) ?? null }])) };
+    const metrics = Object.fromEntries(keys.map(k => [k, { ...actual[k], goal: weekGoals.get(`${w}|${k}`) ?? null }]));
+    metrics[FIRST_TOUCHED].unit = units.get(w);
+    return { week_start: w, metrics };
   });
 }
 
@@ -402,20 +416,27 @@ export async function getReportRoute(req, res) {
   const businessId = req.params.businessId;
   const supabase = getSupabase();
   try {
-    const [{ data: report, error: rErr }, sections, infra, commitments, partnerData, huddle] = await Promise.all([
+    const [{ data: report, error: rErr }, sections, infra, commitments, partnerData, huddle, units] = await Promise.all([
       supabase.from('sales_week_report').select('*').eq('business_id', businessId).eq('week_start', week_start).maybeSingle(),
       selectAllPages(() => supabase.from('sales_week_report_sections').select('*').eq('business_id', businessId).eq('week_start', week_start).order('section_key')),
       selectAllPages(() => supabase.from('sales_infra_items').select('*').eq('business_id', businessId).eq('week_start', week_start).order('sort_order').order('created_at').order('id')),
       commitmentProgress(supabase, businessId, week_start),
       loadPartnerData(supabase, businessId),
       huddleWeekCounts(supabase, businessId, week_start),
+      firstTouchedUnits(supabase, businessId, [week_start]),
     ]);
     if (rErr) throw new Error(rErr.message);
+    const partners = partnerReportBlock(partnerData, week_start, units.get(week_start));
+    // A week frozen before first-touch-people-v1 has no people count in its
+    // block: it is computed live and says so. Partners stay as frozen.
+    const frozen = report?.status === 'final' && report.snapshot?.partners;
+    if (frozen && !frozen.metrics?.[PEOPLE_METRIC]) frozen.metrics = { ...frozen.metrics, [PEOPLE_METRIC]: { ...partners.metrics[PEOPLE_METRIC], computed: true } };
+    if (frozen && !frozen.first_touched_unit) frozen.first_touched_unit = partners.first_touched_unit;
     res.json({
       week_start,
       report: report || { status: 'draft', snapshot: null, finalized_at: null, finalized_by: null, reopened_at: null, reopened_by: null },
       sections, infra, commitments,
-      partners: partnerReportBlock(partnerData, week_start),
+      partners,
       huddle,
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -481,7 +502,7 @@ export async function finalizeReportRoute(req, res) {
   const supabase = getSupabase();
   try {
     if (await weekIsFinal(supabase, businessId, weekStart)) return res.status(409).json({ error: 'This week is already finalized' });
-    const [scorecard, kpi, commitments, sections, infra, partnerData, huddle] = await Promise.all([
+    const [scorecard, kpi, commitments, sections, infra, partnerData, huddle, units] = await Promise.all([
       buildScorecard(supabase, businessId, `${weekStart.slice(0, 7)}-01`, null),
       buildKpi(supabase, businessId, weekStart),
       commitmentProgress(supabase, businessId, weekStart),
@@ -489,11 +510,12 @@ export async function finalizeReportRoute(req, res) {
       selectAllPages(() => supabase.from('sales_infra_items').select('component, status, note').eq('business_id', businessId).eq('week_start', weekStart).order('sort_order').order('id')),
       loadPartnerData(supabase, businessId),
       huddleWeekCounts(supabase, businessId, weekStart),
+      firstTouchedUnits(supabase, businessId, [weekStart]),
     ]);
     const now = new Date().toISOString();
     const { data, error } = await supabase.from('sales_week_report').upsert({
       business_id: businessId, week_start: weekStart, status: 'final',
-      snapshot: { taken_at: now, scorecard, kpi, commitments, sections, infra, partners: partnerReportBlock(partnerData, weekStart), huddle },
+      snapshot: { taken_at: now, scorecard, kpi, commitments, sections, infra, partners: partnerReportBlock(partnerData, weekStart, units.get(weekStart)), huddle },
       finalized_at: now, finalized_by: req.auth.user.id, updated_at: now,
     }, { onConflict: 'business_id,week_start' }).select().single();
     if (error) throw new Error(error.message);

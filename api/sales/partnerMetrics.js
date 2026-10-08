@@ -33,7 +33,7 @@ export async function loadPartnerData(supabase, businessId) {
       .eq('business_id', businessId).eq('goal_type', 'partnership').is('archived_at', null).order('id')),
     selectAllPages(() => supabase.from('sales_partner_events').select('id, goal_id, event, from_status, to_status, touch_type, contact_names, source, meta, at')
       .eq('business_id', businessId).order('at').order('id')),
-    selectAllPages(() => supabase.from('partner_contacts').select('id, goal_id, name, source, sequence_added_at')
+    selectAllPages(() => supabase.from('partner_contacts').select('id, goal_id, name, source, sequence_added_at, sequence_status')
       .eq('business_id', businessId).order('id')),
   ]);
   const undone = new Set(events.filter(e => e.event === 'undo').map(e => e.meta?.undid).filter(Boolean));
@@ -115,4 +115,4 @@ export function partnerBreakdown(data) {
   return out;
 }
 
-export const partnerReportBlock = (data, weekStart) => ({ metrics: partnerWeekMetrics(data, weekStart, null), by_owner: partnerBreakdown(data) });
+export const partnerReportBlock = (data, weekStart, firstTouchedUnit = 'people') => ({ metrics: partnerWeekMetrics(data, weekStart, null), by_owner: partnerBreakdown(data), first_touched_unit: firstTouchedUnit });

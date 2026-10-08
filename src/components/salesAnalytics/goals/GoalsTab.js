@@ -201,7 +201,11 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
     s3: [chip('companies in cadence', kpi.target_orgs?.this_week, 'Apollo', 'overview:companies_by_cohort'), chip('new companies sequenced', companies.length, 'Apollo', 'view:companies'),
       chip('headcount known', `${companies.filter(c => c.employees != null).length} of ${companies.length} companies`, 'App', 'missing'), chip('partners tracked', `${partners.length} · ${partners.filter(x => x.priority === 1).length} P1`, 'App', 'view:partners')],
     s4: [chip('people in sequence', kpi.dm_contacted?.this_week, 'Apollo', 'overview:kpi_tiles'), chip('new companies sequenced', companies.length, 'Apollo', 'view:companies'),
-      chip('partners first-touched', pm.partners_first_touched?.value, 'App', { partners: { stage: 'first_email_sent' } }), chip('partner meetings', pm.partner_meetings?.value, 'App', { partners: { stage: 'meeting_set' } }),
+      // first-touch-people-v1: the row follows the goal's unit; a week frozen before people existed says "computed".
+      partnerBlock?.first_touched_unit === 'people'
+        ? chip(`people first-touched${pm.people_first_touched?.computed ? ' · computed' : ''}`, pm.people_first_touched?.value, 'App')
+        : chip('partners first-touched', pm.partners_first_touched?.value, 'App', { partners: { stage: 'first_email_sent' } }),
+      chip('partner meetings', pm.partner_meetings?.value, 'App', { partners: { stage: 'meeting_set' } }),
       chip('real opens', hw.real_opens, 'Apollo', 'huddle:open'), chip('real clicks', hw.real_clicks, 'Apollo', 'huddle:click'), chip('replies', hw.replies, 'Apollo', 'huddle:reply'),
       chip('flags handed off', hw.flags_handed_off, 'App', 'huddle:flags'), chip('flags completed', hw.flags_completed, 'App', 'huddle:flags')],
     // Meetings are typed in - there's no list behind them, so no link.

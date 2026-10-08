@@ -28,9 +28,9 @@ test('2 people on one partner on Sep 30 -> people 2, partners 1; the same person
   assert.deepEqual(peopleFirstTouchedInWeek(d, '2026-09-28', null).map(p => [p.name, p.partner, p.source]), [['Ken', 'BenefitHub', 'logged'], ['Lisa Park', 'BenefitHub', 'logged']]);
 });
 
-test('an Apollo sequence start counts in its own week; an Apollo-written touch is tagged apollo; sheet-only names never count', () => {
+test('an Apollo sequence start counts in its own week (not when paused); an Apollo-written touch is tagged apollo; sheet-only names never count', () => {
   const d = data(partners, [touch('e1', 'g2', ['Auto Reply'], '2026-10-06T19:00:00Z', { source: 'apollo' })],
-    [{ id: 'c1', goal_id: 'g2', name: 'Seq Person', source: 'apollo', sequence_added_at: '2026-08-27T15:00:00Z' }, { id: 'c2', goal_id: 'g2', name: 'Quiet', source: 'apollo', sequence_added_at: null }]);
+    [{ id: 'c1', goal_id: 'g2', name: 'Seq Person', source: 'apollo', sequence_added_at: '2026-08-27T15:00:00Z' }, { id: 'c2', goal_id: 'g2', name: 'Quiet', source: 'apollo', sequence_added_at: null }, { id: 'c3', goal_id: 'g2', name: 'Paused', source: 'apollo', sequence_added_at: '2026-08-27T16:00:00Z', sequence_status: 'paused' }]);
   assert.deepEqual(peopleFirstTouchedInWeek(d, '2026-08-24', null).map(p => [p.name, p.source]), [['Seq Person', 'apollo']]);
   assert.deepEqual(peopleFirstTouchedInWeek(d, '2026-10-05', null).map(p => [p.name, p.source]), [['Auto Reply', 'apollo']]);
   // the Apollo-written email is a real touch for the partner too; the sequence start alone is not

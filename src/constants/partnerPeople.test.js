@@ -33,12 +33,13 @@ test('mergePeople: DB row wins, logged names next, sheet last; one person per na
 // first-touch-people-v1 - a person's first touch: earliest of a counted touch
 // naming them (Logged / Apollo) and the Apollo sequence start; Event touches,
 // undone touches and sheet-only names never count.
-test('mergePeople: first touch per person = earliest counted touch or sequence start, tagged by source', () => {
+test('mergePeople: first touch per person = earliest counted touch or (unpaused) sequence start, tagged by source', () => {
   const people = mergePeople({
     contacts: [
       { id: 'c1', name: 'Seq Only', source: 'apollo', sequence_added_at: '2026-08-27T15:00:00Z' },
       { id: 'c2', name: 'Seq Then Email', source: 'apollo', sequence_added_at: '2026-09-02T15:00:00Z' },
       { id: 'c3', name: 'No Touch', source: 'apollo' },
+      { id: 'c4', name: 'Paused Seq', source: 'apollo', sequence_added_at: '2026-09-30T15:00:00Z', sequence_status: 'paused' },
     ],
     events: [
       { id: 'e1', event: 'touch', touch_type: 'email', contact_names: ['Seq Then Email', 'Lisa Park'], at: '2026-09-30T19:00:00Z', source: 'manual' },
@@ -55,6 +56,7 @@ test('mergePeople: first touch per person = earliest counted touch or sequence s
     'Seq Only': ['2026-08-27T15:00:00Z', 'apollo'],
     'Seq Then Email': ['2026-09-02T15:00:00Z', 'apollo'],
     'No Touch': [null, null],
+    'Paused Seq': [null, null],
     'Lisa Park': ['2026-09-30T19:00:00Z', 'logged'],
     'Event Only': [null, null],
     'Auto Apollo': ['2026-09-29T19:00:00Z', 'apollo'],
