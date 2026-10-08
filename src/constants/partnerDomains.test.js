@@ -1,4 +1,4 @@
-import { normalizeDomain, parseDomainsFromSources, ownDomainFromSources, normalizeName, matchApolloAccounts, suggestionsFor, apolloAccountFor, exportCandidates, buildApolloCsv } from './partnerDomains';
+import { normalizeDomain, parseDomainsFromSources, ownDomainFromSources, normalizeName, matchApolloAccounts, suggestionsFor, pendingSuggestions, SUGGESTION_BADGE, apolloAccountFor, exportCandidates, buildApolloCsv } from './partnerDomains';
 
 // partner-360-v1 Stage 2 - the audit's examples (audits/partner-apollo-link-audit-report.md §2).
 const accounts = [
@@ -60,16 +60,31 @@ test('matchApolloAccounts: the audit\'s 11 by name and 7 by domain, Piñata only
   expect(byDomain).not.toContain('Corestream');
 });
 
-test('suggestionsFor: sheet domain + Apollo domains, minus stored rows', () => {
+test('suggestionsFor: sheet domain + Apollo domains, minus stored rows; both = sheet and a same-name Apollo account agree', () => {
   expect(suggestionsFor(partners[4], [], accounts)).toEqual([
-    { domain: 'corp.corestream.com', source: 'sources', apollo_account: null },
-    { domain: 'corestream.com', source: 'apollo', apollo_account: { id: 'a4', name: 'Corestream', domain: 'corestream.com' } },
+    { domain: 'corp.corestream.com', source: 'sources', apollo_account: null, both: false },
+    { domain: 'corestream.com', source: 'apollo', apollo_account: { id: 'a4', name: 'Corestream', domain: 'corestream.com' }, both: false },
   ]);
-  expect(suggestionsFor(partners[1], [], accounts)).toEqual([{ domain: 'perkspot.com', source: 'sources', apollo_account: { id: 'a1', name: 'PerkSpot', domain: 'perkspot.com' } }]);
-  expect(suggestionsFor(partners[7], [], accounts)).toEqual([{ domain: 'stake.rent', source: 'apollo', apollo_account: { id: 'a7', name: 'Stake', domain: 'stake.rent' } }]);
-  expect(suggestionsFor(partners[0], [], accounts)).toEqual([{ domain: 'justworks.com', source: 'sources', apollo_account: null }]);
+  expect(suggestionsFor(partners[1], [], accounts)).toEqual([{ domain: 'perkspot.com', source: 'sources', apollo_account: { id: 'a1', name: 'PerkSpot', domain: 'perkspot.com' }, both: true }]);
+  expect(suggestionsFor(partners[7], [], accounts)).toEqual([{ domain: 'stake.rent', source: 'apollo', apollo_account: { id: 'a7', name: 'Stake', domain: 'stake.rent' }, both: false }]);
+  expect(suggestionsFor(partners[0], [], accounts)).toEqual([{ domain: 'justworks.com', source: 'sources', apollo_account: null, both: false }]);
   expect(suggestionsFor(partners[0], [{ domain: 'justworks.com', confirmed: false }], accounts)).toEqual([]);
-  expect(suggestionsFor(partners[14], [], accounts)).toEqual([{ domain: 'global.lockton.com', source: 'sources', apollo_account: null }]);
+  expect(suggestionsFor(partners[14], [], accounts)).toEqual([{ domain: 'global.lockton.com', source: 'sources', apollo_account: null, both: false }]);
+  // Apollo has the host under a different name: one signal, not two.
+  expect(suggestionsFor({ id: 'x', name: 'Perk Spot Benefits', sources: 'perkspot.com' }, [], accounts)[0].both).toBe(false);
+  expect(SUGGESTION_BADGE({ source: 'sources', both: true })).toBe('Both');
+  expect(SUGGESTION_BADGE({ source: 'sources', both: false })).toBe('Sheet');
+  expect(SUGGESTION_BADGE({ source: 'apollo', both: false })).toBe('Apollo');
+});
+
+test('pendingSuggestions: one row per suggestion, partners by name, stored rows excluded', () => {
+  const out = pendingSuggestions([partners[4], partners[1], partners[0]], { [partners[0].id]: [{ domain: 'justworks.com', confirmed: true }] }, accounts);
+  expect(out).toEqual([
+    { goal_id: partners[4].id, partner_name: 'Corestream', domain: 'corp.corestream.com', source: 'sources', both: false },
+    { goal_id: partners[4].id, partner_name: 'Corestream', domain: 'corestream.com', source: 'apollo', both: false },
+    { goal_id: partners[1].id, partner_name: 'PerkSpot', domain: 'perkspot.com', source: 'sources', both: true },
+  ]);
+  expect(new Set(out.map(s => s.goal_id)).size).toBe(2);
 });
 
 test('apolloAccountFor: only confirmed domains count, then the name', () => {

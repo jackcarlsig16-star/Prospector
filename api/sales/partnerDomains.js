@@ -1,6 +1,6 @@
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { getSupabase } from './goalsShared.js';
-import { normalizeDomain, suggestionsFor, apolloAccountFor, exportCandidates, buildApolloCsv } from '../../src/constants/partnerDomains.js';
+import { normalizeDomain, suggestionsFor, apolloAccountFor, exportCandidates, buildApolloCsv, pendingSuggestions } from '../../src/constants/partnerDomains.js';
 
 // partner-360-v1 Stage 2 - partner domains. Mounted under
 // /api/sales/:businessId (salesGate: GET = Viewer, writes = Member). Apollo
@@ -132,13 +132,14 @@ async function workspaceExport(supabase, businessId) {
 
 // GET /goals/partners/domains -> every partner's rows + the export preview
 // (what "Export to Apollo (CSV)" will contain) + how many partners have a
-// confirmed domain.
+// confirmed domain + every pending suggestion (what "Review domains" lists).
 export async function listAllDomainsRoute(req, res) {
   try {
     const { goals, rows, byGoal, accounts, candidates, captured_at } = await workspaceExport(getSupabase(), req.params.businessId);
     const in_apollo = goals.filter(g => apolloAccountFor(g, byGoal[g.id] || [], accounts)).length;
     const confirmed = goals.filter(g => (byGoal[g.id] || []).some(r => r.confirmed)).length;
-    res.json({ domains: rows, candidates: candidates.map(c => ({ name: c.name, domain: c.domain })), counts: { partners: goals.length, confirmed, in_apollo }, snapshot_at: captured_at });
+    const suggestions = pendingSuggestions(goals, byGoal, accounts);
+    res.json({ domains: rows, candidates: candidates.map(c => ({ name: c.name, domain: c.domain })), suggestions, counts: { partners: goals.length, confirmed, in_apollo, pending: new Set(suggestions.map(s => s.goal_id)).size }, snapshot_at: captured_at });
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
 

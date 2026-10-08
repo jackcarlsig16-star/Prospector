@@ -7,6 +7,7 @@ import PartnerCard, { statusOf, statusLabel, statusColor, tierLabel } from './pa
 import WorkflowView from './partners/WorkflowView';
 import BulkTouchLog from './partners/BulkTouchLog';
 import ApolloExport from './partners/ApolloExport';
+import DomainReview from './partners/DomainReview';
 import useMediaQuery from '../../../utils/useMediaQuery';
 
 // prospector_partners_mode - per-viewer convenience: last Partners layout
@@ -79,6 +80,11 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
   const [focus, setFocus] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  // partner-domains-bulk-review-v1 - the workspace's pending domain
+  // suggestions drive "Review domains (n)"; bumped after every domain write.
+  const [domainBump, setDomainBump] = useState(0);
+  const [domainSummary, setDomainSummary] = useState(null);
   // A Goals / Overview number opening Partners filtered ({ stage?, tiers?,
   // owner?, ids?, label? }, a new object each time). {} clears the filters.
   useEffect(() => {
@@ -175,8 +181,21 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
   const people = useMemo(() => ({ load: id => peopleRef.current.onPeople(id), add: (id, body) => peopleRef.current.onAddPerson(id, body), remove: (id, pid) => peopleRef.current.onDeletePerson(id, pid) }), []);
   const domainsRef = useRef({ onDomains, onAddDomain, onUpdateDomain, onDeleteDomain, onAllDomains });
   domainsRef.current = { onDomains, onAddDomain, onUpdateDomain, onDeleteDomain, onAllDomains };
-  const domains = useMemo(() => ({ load: id => domainsRef.current.onDomains(id), add: (id, body) => domainsRef.current.onAddDomain(id, body), update: (id, did, body) => domainsRef.current.onUpdateDomain(id, did, body), remove: (id, did) => domainsRef.current.onDeleteDomain(id, did) }), []);
-  const loadAllDomains = useCallback(() => domainsRef.current.onAllDomains(), []);
+  const bumpDomains = () => setDomainBump(k => k + 1);
+  const domains = useMemo(() => ({
+    load: id => domainsRef.current.onDomains(id),
+    add: (id, body) => domainsRef.current.onAddDomain(id, body).then(d => { bumpDomains(); return d; }),
+    update: (id, did, body) => domainsRef.current.onUpdateDomain(id, did, body).then(d => { bumpDomains(); return d; }),
+    remove: (id, did) => domainsRef.current.onDeleteDomain(id, did).then(d => { bumpDomains(); return d; }),
+  }), []);
+  const loadAllDomains = useCallback(() => domainsRef.current.onAllDomains(), [domainBump]);
+  useEffect(() => {
+    if (!canEdit) return;
+    let live = true;
+    loadAllDomains().then(d => live && setDomainSummary(d)).catch(() => {});
+    return () => { live = false; };
+  }, [canEdit, loadAllDomains]);
+  const pendingCount = domainSummary?.counts?.pending || 0;
   const onCount = useCallback((id, n) => onReplace({ id, people_count: n }), [onReplace]);
   const details = { canEdit, onUpdate, onEvents: fetchEvents, bump: historyBump, tasksFor, people, domains, onCreateTask, onCount };
 
@@ -238,9 +257,11 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
         <button type="button" aria-pressed={filters.hot} onClick={() => setFilters(f => ({ ...f, hot: !f.hot }))} style={pill(filters.hot)}>🔥 Hot only</button>
         {(filtering || stage) && <button type="button" onClick={() => { setFilters(NO_FILTERS); setStage(null); }} style={{ ...pill(false), border: 'none', background: 'transparent', color: SA.link }}>Clear</button>}
         <span style={{ ...subStyle, ...numStyle, fontSize: 13 }}>{shown.length} of {partners.length}</span>
-        {canEdit && <button type="button" aria-expanded={exportOpen} onClick={() => { setExportOpen(o => !o); setBulkOpen(false); }} style={{ ...pill(exportOpen), marginLeft: 'auto' }}>Export to Apollo (CSV)</button>}
-        {canEdit && <button type="button" aria-expanded={bulkOpen} onClick={() => { setBulkOpen(o => !o); setExportOpen(false); }} style={pill(bulkOpen)}>＋ Log touches</button>}
+        {canEdit && pendingCount > 0 && <button type="button" aria-expanded={reviewOpen} onClick={() => { setReviewOpen(o => !o); setExportOpen(false); setBulkOpen(false); }} style={{ ...pill(reviewOpen), marginLeft: 'auto' }}>Review domains ({pendingCount})</button>}
+        {canEdit && <button type="button" aria-expanded={exportOpen} onClick={() => { setExportOpen(o => !o); setReviewOpen(false); setBulkOpen(false); }} style={{ ...pill(exportOpen), marginLeft: pendingCount > 0 ? 0 : 'auto' }}>Export to Apollo (CSV)</button>}
+        {canEdit && <button type="button" aria-expanded={bulkOpen} onClick={() => { setBulkOpen(o => !o); setExportOpen(false); setReviewOpen(false); }} style={pill(bulkOpen)}>＋ Log touches</button>}
       </div>
+      {reviewOpen && canEdit && domainSummary && <DomainReview suggestions={domainSummary.suggestions || []} onAdd={domains.add} onChanged={bumpDomains} onClose={() => setReviewOpen(false)} />}
       {exportOpen && canEdit && <ApolloExport load={loadAllDomains} csvUrl={csvUrl} onClose={() => setExportOpen(false)} />}
       {bulkOpen && canEdit && (
         <BulkTouchLog partners={partners} onPreview={touches => onTouches({ dry_run: true, touches })} onApply={touches => onTouches({ touches })}

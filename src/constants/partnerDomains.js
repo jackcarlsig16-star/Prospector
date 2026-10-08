@@ -60,16 +60,30 @@ const pick = a => (a ? { id: a.id, name: a.name, domain: accountDomain(a) } : nu
 // What the drop-down offers for a partner that has no row for the domain
 // yet: the sheet's own domain (source 'sources'), and the domain of every
 // Apollo account with the partner's name (source 'apollo'). apollo_account
-// is set whenever Apollo already has that exact domain.
+// is set whenever Apollo already has that exact domain. both = the sheet
+// and a name-matched Apollo account agree on the host: two independent
+// signals, so bulk review can confirm it without a look.
 export function suggestionsFor(partner, rows, accounts) {
   const taken = new Set((rows || []).map(r => r.domain));
   const own = ownDomainFromSources(partner.sources);
   const { byDomain, byName } = matchApolloAccounts({ name: partner.name, domains: own ? [own] : [] }, accounts);
   const out = [];
-  if (own && !taken.has(own)) out.push({ domain: own, source: 'sources', apollo_account: pick(byDomain.find(a => accountDomain(a) === own)) });
+  if (own && !taken.has(own)) out.push({ domain: own, source: 'sources', apollo_account: pick(byDomain.find(a => accountDomain(a) === own)), both: byName.some(a => accountDomain(a) === own) });
   for (const a of byName) {
     const d = accountDomain(a);
-    if (d && !taken.has(d) && !out.some(s => s.domain === d)) out.push({ domain: d, source: 'apollo', apollo_account: pick(a) });
+    if (d && !taken.has(d) && !out.some(s => s.domain === d)) out.push({ domain: d, source: 'apollo', apollo_account: pick(a), both: false });
+  }
+  return out;
+}
+
+export const SUGGESTION_BADGE = s => (s.both ? 'Both' : DOMAIN_SOURCES[s.source] || s.source);
+
+// Bulk review: every pending suggestion in the workspace, one row each,
+// partners in name order.
+export function pendingSuggestions(partners, rowsByGoal, accounts) {
+  const out = [];
+  for (const p of [...partners].sort((a, b) => a.name.localeCompare(b.name))) {
+    for (const s of suggestionsFor(p, rowsByGoal[p.id] || [], accounts)) out.push({ goal_id: p.id, partner_name: p.name, domain: s.domain, source: s.source, both: s.both });
   }
   return out;
 }
