@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { classifyMessage, classifyEvent, ownership, isConsumerDomain, domainOf, startUrl, syncFolder, CAPS, PAGE_SIZE, BACKFILL_DAYS } from './graphSync.js';
 
 const own = ownership(['jack@homelover.ai', 'cyrus@homelover.ai']);
-const addr = a => ({ emailAddress: { address: a } });
+const addr = (a, name) => ({ emailAddress: { address: a, name: name ?? a } });
 const msg = (over = {}) => ({ id: 'm1', internetMessageId: '<im1@x>', conversationId: 'c1', subject: 'Hello', sentDateTime: '2026-10-01T10:00:00Z', receivedDateTime: '2026-10-01T10:00:05Z',
   from: addr('jack@homelover.ai'), toRecipients: [addr('amy@acme.com')], ccRecipients: [], isDraft: false, body: { content: 'NEVER STORED' }, ...over });
 
@@ -21,8 +21,9 @@ test('consumer domains: the listed ones plus yahoo.* and hotmail.*', () => {
 });
 
 test('message: kept with external side only, direction from the folder, no body field', () => {
-  const sent = classifyMessage(msg({ ccRecipients: [addr('cyrus@homelover.ai'), addr('bob@acme.com')] }), { folder: 'sentitems', own });
+  const sent = classifyMessage(msg({ toRecipients: [addr('amy@acme.com', 'Amy Adams')], ccRecipients: [addr('cyrus@homelover.ai'), addr('bob@acme.com')] }), { folder: 'sentitems', own });
   assert.deepEqual(sent.row.external_emails, ['amy@acme.com', 'bob@acme.com']);
+  assert.deepEqual(sent.row.external_names, ['Amy Adams', '']);
   assert.deepEqual(sent.row.external_domains, ['acme.com']);
   assert.equal(sent.row.direction, 'sent');
   assert.equal(sent.row.occurred_at, '2026-10-01T10:00:00Z');
@@ -44,7 +45,8 @@ test('message skips: draft, internal-only, consumer-only; mixed consumer + compa
 test('event: UTC times, organizer kept, internal / personal skipped', () => {
   const ev = { id: 'e1', iCalUId: 'ical-1', subject: 'Intro', start: { dateTime: '2026-10-09T17:00:00.0000000', timeZone: 'UTC' }, end: { dateTime: '2026-10-09T17:30:00.0000000', timeZone: 'UTC' },
     organizer: addr('amy@acme.com'), attendees: [addr('jack@homelover.ai')], isCancelled: false, body: { content: 'NEVER' } };
-  const r = classifyEvent(ev, { own }).row;
+  const r = classifyEvent({ ...ev, organizer: addr('amy@acme.com', 'Amy Adams') }, { own }).row;
+  assert.deepEqual(r.external_names, ['Amy Adams']);
   assert.equal(r.start_at, '2026-10-09T17:00:00.000Z');
   assert.equal(r.end_at, '2026-10-09T17:30:00.000Z');
   assert.equal(r.organizer_email, 'amy@acme.com');

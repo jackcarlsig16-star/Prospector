@@ -26,7 +26,7 @@ setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => proces
 
 // ── Graph fixture: metadata-only pages with Graph's real paging shape ────────
 const SECRET_SUBJECT = 'Partnership intro ' + tag, SECRET_EMAIL = `amy.${tag}@acme.com`, BODY = 'BODY-NEVER-STORED-' + tag;
-const a = address => ({ emailAddress: { address, name: address.split('@')[0] } });
+const a = address => ({ emailAddress: { address, name: address.startsWith('amy.') ? 'Amy ' + tag : address.split('@')[0] } });
 const m = (id, from, to, over = {}) => ({ id, internetMessageId: `<${id}@fixture>`, conversationId: 'conv-' + id, subject: `Subject ${id}`, sentDateTime: `2026-10-0${1 + (id.length % 7)}T10:00:00Z`, receivedDateTime: `2026-10-0${1 + (id.length % 7)}T10:00:05Z`,
   from: a(from), toRecipients: to.map(a), ccRecipients: [], isDraft: false, body: { contentType: 'text', content: BODY }, bodyPreview: BODY, ...over });
 const SENT = [
@@ -140,10 +140,10 @@ async function newPage(u, width, height) {
     ok('C1 real run: sent 4 stored, inbox 500 stored + capped, calendar 2 stored', r.status === 200 && f.sentitems.stored === 4 && f.inbox.stored === 500 && f.inbox.capped && f.calendar.stored === 2, JSON.stringify(b.folders));
     const sent = (await svc.from('microsoft_messages').select('*').eq('user_id', jack.id).eq('direction', 'sent').order('graph_id')).data;
     const ext1 = sent.find(x => x.graph_id === 's-ext1'), ext2 = sent.find(x => x.graph_id === 's-ext2'), mixed = sent.find(x => x.graph_id === 's-mixed');
-    ok('C2 sent rows: external side only (own cc dropped), domains deduped, mixed keeps gmail + beta.io', ext1 && ext1.external_emails.length === 1 && ext1.external_emails[0] === SECRET_EMAIL && ext1.external_domains[0] === 'acme.com' && mixed && mixed.external_domains.join() === 'gmail.com,beta.io', JSON.stringify(sent.map(x => [x.graph_id, x.external_emails, x.external_domains])));
+    ok('C2 sent rows: external side only (own cc dropped), Graph display name beside each address, domains deduped, mixed keeps gmail + beta.io', ext1 && ext1.external_emails.length === 1 && ext1.external_emails[0] === SECRET_EMAIL && ext1.external_names[0] === 'Amy ' + tag && mixed.external_names.join() === 'mom,bob' && ext1.external_domains[0] === 'acme.com' && mixed && mixed.external_domains.join() === 'gmail.com,beta.io', JSON.stringify(sent.map(x => [x.graph_id, x.external_emails, x.external_domains])));
     ok('C3 no row anywhere holds a body; subject capped at 500; mailbox + ids + times set', !JSON.stringify(sent).includes(BODY) && ext2.subject.length === 500 && ext1.mailbox_email === MAILBOX && ext1.internet_message_id === '<s-ext1@fixture>' && ext1.conversation_id === 'conv-s-ext1' && ext1.occurred_at.startsWith('2026-10-0'));
     const events = (await svc.from('microsoft_events').select('*').eq('user_id', jack.id).order('graph_id')).data;
-    ok('C4 events: the external + the cancelled one, UTC times, organizer kept, no body', events.length === 2 && events.map(x => x.graph_id).join() === 'e-cancelled,e-ext' && events[0].is_cancelled === true && events[1].organizer_email === SECRET_EMAIL && events[1].start_at === '2026-10-09T17:00:00+00:00' && !JSON.stringify(events).includes(BODY), JSON.stringify(events.map(x => [x.graph_id, x.start_at, x.external_domains])));
+    ok('C4 events: the external + the cancelled one, UTC times, organizer kept, no body', events.length === 2 && events.map(x => x.graph_id).join() === 'e-cancelled,e-ext' && events[0].is_cancelled === true && events[1].organizer_email === SECRET_EMAIL && events[1].external_names[0] === 'Amy ' + tag && events[1].start_at === '2026-10-09T17:00:00+00:00' && !JSON.stringify(events).includes(BODY), JSON.stringify(events.map(x => [x.graph_id, x.start_at, x.external_domains])));
     const inbox = (await svc.from('microsoft_messages').select('graph_id, direction, external_emails', { count: 'exact' }).eq('user_id', jack.id).eq('direction', 'received'));
     ok('C5 inbox: 500 received rows, each from its sender only', inbox.count === 500 && inbox.data.slice(0, 50).every(x => x.external_emails.length === 1 && /^p\d+@acme\.com$/.test(x.external_emails[0])));
     const state = (await svc.from('microsoft_sync_state').select('*').eq('user_id', jack.id)).data;

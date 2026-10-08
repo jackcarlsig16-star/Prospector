@@ -30,15 +30,20 @@ export function ownership(ownerAddresses) {
 }
 
 const address = r => String(r?.emailAddress?.address || '').toLowerCase().trim();
+const displayName = r => { const n = String(r?.emailAddress?.name || '').trim(); return n && n.toLowerCase() !== address(r) ? n.slice(0, 120) : ''; };
 
 // Keeps the external side of a message, or says why it's skipped. The folder
 // decides the direction: what sits in Sent Items was sent by this mailbox.
+// Names ride in the same order as the emails; a name that is just the
+// address again is stored as ''.
 function externals(participants, own) {
-  const emails = [...new Set(participants.map(address).filter(e => e.includes('@') && !own.isOwn(e)))];
+  const byEmail = new Map();
+  for (const r of participants) { const e = address(r); if (e.includes('@') && !own.isOwn(e) && !byEmail.has(e)) byEmail.set(e, displayName(r)); }
+  const emails = [...byEmail.keys()];
   if (!emails.length) return { skip: 'internal' };
   const domains = [...new Set(emails.map(domainOf))];
   if (domains.every(isConsumerDomain)) return { skip: 'personal' };
-  return { emails, domains };
+  return { emails, names: emails.map(e => byEmail.get(e)), domains };
 }
 
 export function classifyMessage(m, { folder, own }) {
@@ -48,7 +53,7 @@ export function classifyMessage(m, { folder, own }) {
   const direction = folder === 'sentitems' ? 'sent' : 'received';
   return { row: {
     graph_id: m.id, internet_message_id: m.internetMessageId || null, conversation_id: m.conversationId || null, direction,
-    external_emails: ext.emails, external_domains: ext.domains, subject: subjectOf(m.subject),
+    external_emails: ext.emails, external_names: ext.names, external_domains: ext.domains, subject: subjectOf(m.subject),
     occurred_at: direction === 'sent' ? (m.sentDateTime || m.receivedDateTime) : (m.receivedDateTime || m.sentDateTime),
   } };
 }
@@ -62,7 +67,7 @@ export function classifyEvent(e, { own }) {
   if (ext.skip) return ext;
   return { row: {
     graph_id: e.id, ical_uid: e.iCalUId || null, organizer_email: address(e.organizer) || null,
-    external_emails: ext.emails, external_domains: ext.domains, subject: subjectOf(e.subject),
+    external_emails: ext.emails, external_names: ext.names, external_domains: ext.domains, subject: subjectOf(e.subject),
     start_at: utc(e.start), end_at: utc(e.end), is_cancelled: !!e.isCancelled,
   } };
 }
