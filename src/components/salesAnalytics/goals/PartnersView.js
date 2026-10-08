@@ -8,6 +8,7 @@ import WorkflowView from './partners/WorkflowView';
 import BulkTouchLog from './partners/BulkTouchLog';
 import ApolloExport from './partners/ApolloExport';
 import DomainReview from './partners/DomainReview';
+import ApolloMoves from './partners/ApolloMoves';
 import useMediaQuery from '../../../utils/useMediaQuery';
 
 // prospector_partners_mode - per-viewer convenience: last Partners layout
@@ -64,7 +65,7 @@ const NO_FILTERS = { category: '', tiers: [], stale: false, hot: false, owner: n
 
 // teamView: the person filter is on Team. Reorder needs the whole group in
 // view (see WorkflowView), so it's only offered then.
-export default function PartnersView({ partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusFilter, tasksFor, onPeople, onAddPerson, onDeletePerson, onRefreshPeople, onCreateTask, onTouches, onDomains, onAddDomain, onUpdateDomain, onDeleteDomain, onAllDomains, csvUrl }) {
+export default function PartnersView({ partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusFilter, tasksFor, onPeople, onAddPerson, onDeletePerson, onRefreshPeople, onCreateTask, onTouches, onDomains, onAddDomain, onUpdateDomain, onDeleteDomain, onAllDomains, csvUrl, onApolloMoves, onApplyApollo, onDismissApollo }) {
   const [mode, setMode] = useState(readMode);
   const [stage, setStage] = useState(null);
   const compact = useMediaQuery('(max-width: 760px)');
@@ -81,6 +82,7 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
   const [bulkOpen, setBulkOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [movesOpen, setMovesOpen] = useState(false);
   const [peopleBusy, setPeopleBusy] = useState(false);
   // partner-domains-bulk-review-v1 - the workspace's pending domain
   // suggestions drive "Review domains (n)"; bumped after every domain write.
@@ -270,12 +272,15 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
         <button type="button" aria-pressed={filters.hot} onClick={() => setFilters(f => ({ ...f, hot: !f.hot }))} style={pill(filters.hot)}>🔥 Hot only</button>
         {(filtering || stage) && <button type="button" onClick={() => { setFilters(NO_FILTERS); setStage(null); }} style={{ ...pill(false), border: 'none', background: 'transparent', color: SA.link }}>Clear</button>}
         <span style={{ ...subStyle, ...numStyle, fontSize: 13 }}>{shown.length} of {partners.length}</span>
-        {canEdit && pendingCount > 0 && <button type="button" aria-expanded={reviewOpen} onClick={() => { setReviewOpen(o => !o); setExportOpen(false); setBulkOpen(false); }} style={{ ...pill(reviewOpen), marginLeft: 'auto' }}>Review domains ({pendingCount})</button>}
-        {canEdit && <button type="button" aria-expanded={exportOpen} onClick={() => { setExportOpen(o => !o); setReviewOpen(false); setBulkOpen(false); }} style={{ ...pill(exportOpen), marginLeft: pendingCount > 0 ? 0 : 'auto' }}>Export to Apollo (CSV)</button>}
-        {canEdit && <button type="button" aria-expanded={bulkOpen} onClick={() => { setBulkOpen(o => !o); setExportOpen(false); setReviewOpen(false); }} style={pill(bulkOpen)}>＋ Log touches</button>}
+        {canEdit && pendingCount > 0 && <button type="button" aria-expanded={reviewOpen} onClick={() => { setReviewOpen(o => !o); setExportOpen(false); setBulkOpen(false); setMovesOpen(false); }} style={{ ...pill(reviewOpen), marginLeft: 'auto' }}>Review domains ({pendingCount})</button>}
+        {canEdit && <button type="button" aria-expanded={exportOpen} onClick={() => { setExportOpen(o => !o); setReviewOpen(false); setBulkOpen(false); setMovesOpen(false); }} style={{ ...pill(exportOpen), marginLeft: pendingCount > 0 ? 0 : 'auto' }}>Export to Apollo (CSV)</button>}
+        {canEdit && <button type="button" aria-expanded={bulkOpen} onClick={() => { setBulkOpen(o => !o); setExportOpen(false); setReviewOpen(false); setMovesOpen(false); }} style={pill(bulkOpen)}>＋ Log touches</button>}
+        {canEdit && <button type="button" aria-expanded={movesOpen} onClick={() => { setMovesOpen(o => !o); setExportOpen(false); setReviewOpen(false); setBulkOpen(false); }} style={pill(movesOpen)} title="Stage moves made from Apollo data: last run's applied list (undo) and the held ones waiting on you">Apollo moves</button>}
         {canEdit && <button type="button" onClick={refreshPeople} disabled={peopleBusy} title="Pull the people Apollo knows at partners with a confirmed domain (runs a Sync now)" style={{ ...pill(false), opacity: peopleBusy ? 0.6 : 1 }}>{peopleBusy ? 'Refreshing people…' : '↻ Refresh partner people'}</button>}
       </div>
       {reviewOpen && canEdit && domainSummary && <DomainReview suggestions={domainSummary.suggestions || []} onAdd={domains.add} onChanged={bumpDomains} onClose={() => setReviewOpen(false)} />}
+      {movesOpen && canEdit && <ApolloMoves load={onApolloMoves} onApply={onApplyApollo} onDismiss={onDismissApollo} onUndo={onUndo} lookup={lookup}
+        onChanged={() => { onRefresh(); setHistoryBump(k => k + 1); }} onClose={() => setMovesOpen(false)} />}
       {exportOpen && canEdit && <ApolloExport load={loadAllDomains} csvUrl={csvUrl} onClose={() => setExportOpen(false)} />}
       {bulkOpen && canEdit && (
         <BulkTouchLog partners={partners} onPreview={touches => onTouches({ dry_run: true, touches })} onApply={touches => onTouches({ touches })}

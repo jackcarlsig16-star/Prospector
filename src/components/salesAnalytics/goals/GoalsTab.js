@@ -370,6 +370,9 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
               onDeleteDomain={(goalId, domainId) => goalsApi.deletePartnerDomain(businessId, goalId, domainId)}
               onAllDomains={() => goalsApi.allPartnerDomains(businessId)}
               csvUrl={goalsApi.apolloCsvUrl(businessId)}
+              onApolloMoves={() => goalsApi.apolloMoves(businessId)}
+              onApplyApollo={(keys, includeHeld) => goalsApi.applyApolloMoves(businessId, keys, includeHeld)}
+              onDismissApollo={key => goalsApi.dismissApolloMove(businessId, key)}
               onRefresh={() => goalsApi.partners(businessId).then(setPartners).catch(e => setError('partners', e))}
               onEvents={goalId => goalsApi.partnerEvents(businessId, { goal_id: goalId })}
               onRank={async (goalId, order) => {

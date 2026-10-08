@@ -80,6 +80,9 @@ export const goalsApi = {
   deletePartnerDomain: (id, goalId, domainId) => call(id, `/partners/${goalId}/domains/${domainId}`, { method: 'DELETE' }),
   allPartnerDomains: id => call(id, '/partners/domains'),
   apolloCsvUrl: id => `/api/sales/${id}/goals/partners/export-apollo.csv`,
+  apolloMoves: id => call(id, '/partners/apollo-touches'),
+  applyApolloMoves: (id, keys, includeHeld = false) => call(id, '/partners/apollo-touches/apply', { method: 'POST', body: { keys, include_held: includeHeld } }),
+  dismissApolloMove: (id, key) => call(id, '/partners/apollo-touches/dismiss', { method: 'POST', body: { key } }),
 
   companies: (id, from, to) => call(id, `/companies?${q({ from, to })}`),
   updateCompany: (id, accountId, body) => call(id, `/companies/${encodeURIComponent(accountId)}`, { method: 'PATCH', body }).then(d => d.company),

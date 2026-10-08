@@ -185,7 +185,9 @@ export async function undoPartnerSignal(supabase, { businessId, goalId, eventId,
   if (error) throw new SignalError(error.message, 500);
   if (!latest || latest.id !== eventId) throw new SignalError('only the latest change on this partner can be undone', 409);
   if (latest.event === 'undo') throw new SignalError('that change was already undone', 409);
-  if (now - Date.parse(latest.recorded_at) > UNDO_WINDOW_MS) throw new SignalError('too late to undo', 409);
+  // An automatic move (Apollo / Outlook) stays undoable while it is still the
+  // last thing that happened to the partner; only hand-made changes expire.
+  if (latest.source === 'manual' && now - Date.parse(latest.recorded_at) > UNDO_WINDOW_MS) throw new SignalError('too late to undo', 409);
   const restore = latest.meta?.prev || {};
   const drift = Object.keys(restore).find(k => k !== 'last_touch_at' && k !== 'first_email_at' && String(goal[k] ?? '') !== String(eventResult(latest, k) ?? ''));
   if (drift) throw new SignalError(`${drift} changed since - undo skipped`, 409);

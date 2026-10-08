@@ -1,0 +1,107 @@
+SPEC — partner-360-v1
+
+## Status
+Source: Jack in chat, 2026-10-07, with a screenshot of the Justworks drop-down: static intel + a History of
+test-like clicks, nothing about people or real activity. "We want it automated and connected… if I'm
+demonstrating this, I need to show how things are logged, what to log, and how this is useful."
+Ground truth: audits/partner-apollo-link-audit-report.md — 0 of 75 partners linked to any Apollo person;
+our sync only pulls contacts who opened/clicked/replied in 30 days (activitySync.js:7,17) and stores no
+email/domain; company_domain empty on all 75 (14 parseable from sources); 11 partners match an Apollo
+account by name, 7 by domain; Apollo holds 46 contacts at 10 partner accounts we never receive; 9 partners at
+Sent+ have no Apollo trail (7 with no history at all, stages from the import); all 17 partner events are
+Jack's try-out clicks.
+Jack's answers (2026-10-07): (1) YES store partner contact emails (DB only, never files). (2) Partner contacts
+sync once a day or with Sync now. (3) Log the 9 contacted partners with the bulk touch log now. (4) YES check
+the 200-row sales_email_activity cap first. (5) YES get the unmatched partners into Apollo — Prospector stays
+read-only on Apollo, so this is a CSV export Jack imports into Apollo himself.
+Absorbs partner-touch-log-v1 Stage 2 (UI). Stage 1 (API) is live (c924749).
+PRIORITY: next after huddle-live-feed Stage 2. Stage 1 below is demo-critical — ship it first.
+
+## Design decision
+
+DECIDED — the partner drop-down tells one story (top to bottom)
+1. Status & next step: stage bar, "Last touch: Call · Oct 2 · Jack", days since touch, one suggested next
+   action (existing rules), buttons: Next · Log touch · ⋯.
+2. People: everyone we know at this partner — from Apollo (Stage 3), from logged touches, from
+   known_contacts. Row: name · title · source badge (Apollo / Logged / Sheet) · last activity
+   ("Replied Oct 4", "Opened ×3", "Called Oct 2") · email/LinkedIn link icons. "+ Add person" (name, title,
+   email optional). Count shown on the Workflow row (👤 3).
+3. Activity: one timeline merging touches (manual / apollo / outlook, with source label), stage moves,
+   notes, call-notes tasks and flags linked to the partner. Filter chips: All · Emails · Calls & meetings ·
+   Notes. Noise hidden by default (hot on/off pairs, snooze+undo pairs, undone events) behind
+   "Show all activity (n)".
+4. Tasks: linked to-dos (task-drawer link chips), "+ Task" prefilled with the partner link.
+5. Intel (collapsed by default, one line preview): angle, role, target titles, sequence + Open in Apollo,
+   do-not-say (amber), their words, champion, sources, priority, Open first email.
+- "Log touch" form = partner-touch-log-v1 design (date, type, who with suggestions from People, note, stage
+  auto/none/pick; never backwards; backdated weeks; undo). "＋ Log touches" bulk catch-up in the Partners
+  header with paste-names, review (stage → stage, counting week), apply.
+
+DECIDED — identity: partner domains
+- New table partner_domains (business_id, goal_id, domain, is_primary, source: manual|sources|apollo,
+  confirmed bool). Seed: parse sources (14) as unconfirmed suggestions; Apollo account name/domain matches
+  (11/7) as unconfirmed suggestions. Drop-down Intel gets "Domain(s)" with confirm ✓ / edit / add.
+  Only confirmed domains are used for matching. Partners can have several domains (.ai/.io style).
+- "Export to Apollo (CSV)" in the Partners header: partners with a confirmed domain that aren't Apollo
+  accounts → CSV (company name, domain, category, tier, owner) for Jack to import into Apollo. No Apollo
+  writes from Prospector.
+
+DECIDED — partner contacts from Apollo (read-only)
+- New table partner_contacts (business_id, goal_id, apollo_contact_id null, name, title, email, linkedin_url,
+  source apollo|manual|outlook, first_seen, last_activity_at, last_activity_type). Server-only RLS like other
+  sales tables; email stored in DB only (never written to files/logs). No phone numbers.
+- Sync: once a day on the first Sync now of the day (and an explicit "Refresh partner people" button),
+  for confirmed partner domains that match an Apollo account: pull that account's contacts + their sequence
+  status and message events (sent/open real vs bot/click/reply). Capped per run, every Apollo call counted
+  and logged; report calls per run. Reuses the existing bot-open rule.
+
+DECIDED — automation (same path for every source)
+- Apollo emails to/from partner contacts become touches through the existing touch path
+  (applyPartnerSignal, source 'apollo', dedupe on Apollo message id): first email sent → Sent (if behind),
+  reply → Replied (if behind). Labeled "from Apollo", undoable, never backwards. Outlook (microsoft-connect
+  Stage 3) uses the identical path with source 'outlook' — build the matcher once (by confirmed domain /
+  contact email).
+
+PROPOSED / REVISABLE
+- Daily cadence + per-run cap number (coder proposes from real call counts). Noise rules for "Show all".
+
+## Out of scope
+- Writing to Apollo (contacts, accounts, sequences). Outlook reading itself (microsoft-connect-v1).
+- Owner identity unification (audit M5). Partner contacts outside Apollo/manual (no scraping).
+
+## Standing rules
+CLAUDE.md Sales module rules + Testing rules: API-only writes, applyPartnerSignal path only, never
+backwards, Viewer read-only, workspace-bound ids, selectAllPages for big reads, Apollo read-only, no phone
+numbers, contact emails never in files/commits, restored: yes, suites one at a time.
+
+## Implementation
+FIRST: (a) settle audit Q4 — is sales_email_activity's 200 rows a cap (ACTIVITIES_PER_RUN 30,
+ACTIVITIES_FIRST_BACKFILL 60 in activitySync.js)? Report with numbers; if it's a cap, say what partner
+activity it would hide and propose the fix inside Stage 3. (b) Plan in 5–10 lines.
+  Stage 1 (demo-critical, no new Apollo data): drop-down redesign (Status & next step, People from
+           touches/known_contacts + Add person, Activity timeline with noise hidden, Tasks, Intel collapsed)
+           + Log touch form + bulk catch-up. Migration only if needed for manual people (likely
+           partner_contacts now, Apollo columns unused until Stage 3). Screenshot 1440/390, STOP.
+  Stage 2: partner_domains + suggestions + confirm UI + Export to Apollo CSV.
+  Stage 3: partner contacts sync from Apollo (read-only, daily/Sync now, capped, logged) + People shows them.
+  Stage 4: Apollo auto-touches + stage reconciliation (dry-run report of what would move first, Jack OKs,
+           then live).
+
+## Verification
+- Stage 1: Justworks drop-down shows the 5 sections; the try-out clicks are hidden under "Show all (7)";
+  logging a call dated Oct 2 for "Jane Doe" adds Jane to People, puts the touch in Activity and moves the
+  week's first-touched count for the week of Sep 28 (not this week); bulk catch-up of 3 test partners shows
+  the right preview and applies exactly 3; Viewer sees everything, no buttons; 0 console errors at 1440/390;
+  restored: yes.
+- Stage 2: suggestions match the audit (14 + 11/7); confirming one makes it a matching domain; CSV lists only
+  confirmed, non-Apollo partners and contains no contact emails.
+- Stage 3: for 3 matched partners, People matches Apollo's contact count for that account; calls per run
+  reported and under cap; 0 Apollo writes.
+- Stage 4: dry run lists every proposed move with reason; after OK, moves land "from Apollo", undo works,
+  re-sync creates 0 duplicates.
+- Bar 5 (demo): Jack opens a partner and, in under a minute, shows who we know there, everything that's
+  happened, what's next — and logs a call that updates the goal card.
+
+## Commit instructions
+One commit per stage referencing partner-360-v1. Push after each passes. Stop and report after each.
+When Stage 1 ships, close partner-touch-log-v1 (its Stage 2 is delivered here).

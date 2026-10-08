@@ -10,6 +10,7 @@ import { syncActivity, ACTIVITY_MAX_CALLS } from './activitySync.js';
 import { refreshRecentWeeks, EMAIL_COUNTS_MAX_CALLS } from './emailCounts.js';
 import { isDeadRun } from './syncRunStatus.js';
 import { syncPartnerContacts, ranToday, PARTNER_CONTACTS_MAX_CALLS } from './partnerContactsSync.js';
+import { runDailyApolloMoves, movesRanToday } from './partnerApolloTouches.js';
 
 // PROPOSED values (SPEC) - sized from real counts in the audit (21
 // sequences, 314 accounts, 9 active sequences, 2 mailboxes), confirmed at
@@ -261,6 +262,16 @@ export async function runSync({ businessId, trigger, maxCalls, partnerPeople }) 
     adapterErrors.partner_contacts = err instanceof CallCapError ? 'call_cap' : err.message;
   }
 
+  // partner-360-v1 Stage 4 - stage moves from stored Apollo data, once per
+  // LA day, right after partner people so the sequence columns are fresh.
+  // 0 Apollo calls: it reads only what this run and earlier ones stored.
+  let apolloMoves = null;
+  try {
+    if (!(await movesRanToday(supabase, businessId))) apolloMoves = await runDailyApolloMoves(supabase, businessId);
+  } catch (err) {
+    adapterErrors.apollo_moves = err.message;
+  }
+
   const hasErrors = Object.keys(adapterErrors).length > 0;
   const status = stoppedForCap || hasErrors ? 'partial' : 'success';
 
@@ -277,6 +288,7 @@ export async function runSync({ businessId, trigger, maxCalls, partnerPeople }) 
     activity: activityCounts,
     email_counts: emailCountWeeks,
     partner_contacts: partnerContacts,
+    apollo_moves: apolloMoves,
     missing: missingAll,
     adapter_errors: adapterErrors,
     timing_ms: { apollo: apolloMs, supabase: supabaseMs, activity: activityMs, email_counts: emailCountsMs, partner_contacts: partnerContactsMs },

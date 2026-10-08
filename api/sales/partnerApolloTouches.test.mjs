@@ -134,3 +134,12 @@ test('a source date after today is skipped (no future touches)', () => {
   assert.equal(proposed.length, 0);
   assert.match(skipped[0].reason, /date is in the future/);
 });
+
+test('a dismissed key (note event with meta.dismissed) is skipped as "already dismissed" and never held again', () => {
+  const inputs = { partners: [partner('g1', 'not_started', 'Bilt')], contacts: [contact('g1', 'c1', 'A', '2026-09-30T12:00:00Z', 'paused')] };
+  assert.equal(run(inputs).held.length, 1);
+  const again = run({ ...inputs, events: [{ goal_id: 'g1', meta: { apollo_key: 'sent:c1:2026-09-30T12:00:00Z', dismissed: true, prev: {} } }] });
+  assert.equal(again.held.length, 0);
+  assert.equal(again.proposed.length, 0);
+  assert.match(again.skipped[0].reason, /already dismissed \(sent:c1:2026-09-30T12:00:00Z\)/);
+});
