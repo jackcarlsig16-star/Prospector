@@ -83,6 +83,7 @@ export const goalsApi = {
   apolloMoves: id => call(id, '/partners/apollo-touches'),
   applyApolloMoves: (id, keys, includeHeld = false) => call(id, '/partners/apollo-touches/apply', { method: 'POST', body: { keys, include_held: includeHeld } }),
   dismissApolloMove: (id, key) => call(id, '/partners/apollo-touches/dismiss', { method: 'POST', body: { key } }),
+  outlookMoves: id => call(id, '/partners/outlook-touches'),
 
   companies: (id, from, to) => call(id, `/companies?${q({ from, to })}`),
   updateCompany: (id, accountId, body) => call(id, `/companies/${encodeURIComponent(accountId)}`, { method: 'PATCH', body }).then(d => d.company),

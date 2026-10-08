@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { SA, saSans, saMono } from '../../theme';
 import { labelStyle, subStyle, numStyle } from '../goalsUi';
 import { stageName } from './activityTimeline';
+import OutlookMoves from './OutlookMoves';
 
 // partner-360-v1 Stage 4 - "Apollo moves": what the daily step applied last
 // (each row undoable while it is still the latest thing on its partner) and
@@ -15,7 +16,7 @@ const when = iso => new Date(iso).toLocaleString('en-US', { month: 'short', day:
 const day = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 const rowStyle = { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '4px 10px', alignItems: 'center', padding: '5px 0', borderTop: `1px solid ${SA.track}` };
 
-export default function ApolloMoves({ load, onApply, onDismiss, onUndo, onChanged, onClose, lookup = () => ({ first: '' }) }) {
+export default function ApolloMoves({ load, loadOutlook, onApply, onDismiss, onUndo, onChanged, onClose, lookup = () => ({ first: '' }) }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(null);     // key or event id in flight
@@ -101,6 +102,7 @@ export default function ApolloMoves({ load, onApply, onDismiss, onUndo, onChange
           </div>
         </>
       )}
+      {loadOutlook && <OutlookMoves load={loadOutlook} />}
     </section>
   );
 }
