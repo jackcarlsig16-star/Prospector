@@ -1,4 +1,4 @@
-import { rangeTotals, tileValues, sparkWeeks, buildStrip, formatDelta, compareRange } from './weekStripData';
+import { rangeTotals, tileValues, sparkWeeks, buildStrip, formatDelta, compareRange, perSender } from './weekStripData';
 
 // overview-home-v1 Stage 1: strip numbers are range sums of stored rows.
 const row = (day, mailbox, delivered, hard_bounced, spam_blocked, opened, replied) => ({ day, mailbox, delivered, hard_bounced, spam_blocked, opened, clicked: 0, replied });
@@ -82,4 +82,30 @@ test('a delta that rounds to 0.0 pts, or a count that did not move, is no change
   expect(by('meetings').deltaGood).toBeNull();
   expect(by('sent').delta).toBe(-1);
   expect(by('sent').deltaGood).toBe(false);
+});
+
+test('perSender: Apollo counts by mailbox + the tracked human share by sender, last send day from all history', () => {
+  const d = { ...data, senders: [
+    { day: '2026-10-06', sender: 'a@x', tracked_opens: 6, tracked_bot_opens: 3, tracked_replies: 1, tracked_real_replies: 1 },
+    { day: '2026-10-06', sender: 'b@x', tracked_opens: 2, tracked_bot_opens: 0, tracked_replies: 1, tracked_real_replies: 0 },
+  ] };
+  const rows = perSender(d, '2026-10-05', '2026-10-08');
+  expect(rows.map(r => r.mailbox)).toEqual(['a@x', 'b@x']);
+  const a = rows[0];
+  expect(a.sent).toBe(205);
+  expect(a.open_rate).toBeCloseTo(15 / 200);
+  expect(a.human_share).toBeCloseTo(0.5);
+  expect(a.human_open_rate).toBeCloseTo((15 / 200) * 0.5);
+  expect(a.reply_rate).toBe(0);
+  expect(a.last_send_day).toBe('2026-10-06');
+  expect(rows[1].last_send_day).toBe('2026-10-07');
+  expect(rows[1].human_share).toBe(1);
+});
+
+test('4-week avg: count tiles are divided by the weeks, rates are not', () => {
+  const by = id => buildStrip(data, { period: { from: '2026-09-14', to: '2026-10-11' }, prevPeriod: null, compareEnabled: false, perWeek: 4 }).find(t => t.id === id);
+  expect(by('sent').value).toBe(Math.round((156 + 41 + 305) / 4));
+  expect(by('meetings').value).toBe(Math.round(3 / 4));
+  expect(by('open_rate').value).toBeCloseTo((15 + 4 + 20) / (190 + 300));
+  expect(by('sent').perWeek).toBe(4);
 });

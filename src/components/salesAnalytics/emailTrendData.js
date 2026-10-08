@@ -6,6 +6,7 @@ import { EMAIL_LOW_VOLUME_SENT } from './metrics.registry';
 // of daily rates), with SENT as the denominator.
 
 export const RANGES = [
+  { id: '8w', label: '8w', days: 56 },
   { id: '30d', label: '30d', days: 30 },
   { id: '90d', label: '90d', days: 90 },
   { id: 'all', label: 'All', days: null },
@@ -34,7 +35,10 @@ function rate(n, sent) {
 // Continuous buckets from the range start to today, so a no-send stretch
 // shows as an empty slot instead of silently closing up the x-axis. Rates
 // are null where nothing was sent; lines break there.
-export function buildBuckets(rows, { granularity, rangeId }) {
+// days: GET /week-strip rows (tracked opens + bot opens per LA day) - the
+// human-open estimate per bucket = Apollo open rate x the tracked human
+// share of that bucket, null where nothing was tracked.
+export function buildBuckets(rows, { granularity, rangeId, days = [] }) {
   const today = laDateString();
   const firstDay = rows.reduce((min, r) => (r.day < min ? r.day : min), today);
   const range = RANGES.find(r => r.id === rangeId);
@@ -54,7 +58,7 @@ export function buildBuckets(rows, { granularity, rangeId }) {
       label: shortDate(start),
       partial: today >= start && today <= end,
       sentByMailbox: Object.fromEntries(mailboxes.map(m => [m, 0])),
-      delivered: 0, hard_bounced: 0, spam_blocked: 0, opened: 0, clicked: 0, replied: 0,
+      delivered: 0, hard_bounced: 0, spam_blocked: 0, opened: 0, clicked: 0, replied: 0, tracked_opens: 0, tracked_bot_opens: 0,
     });
   }
   const byKey = new Map(buckets.map(b => [b.key, b]));
@@ -65,10 +69,20 @@ export function buildBuckets(rows, { granularity, rangeId }) {
     for (const f of ['delivered', 'hard_bounced', 'spam_blocked', 'opened', 'clicked', 'replied']) b[f] += r[f];
     b.sentByMailbox[r.mailbox] += r.delivered + r.hard_bounced + r.spam_blocked;
   }
+  for (const d of days) {
+    if (d.day < fromDay) continue;
+    const b = byKey.get(bucketStart(d.day, granularity));
+    if (!b) continue;
+    b.tracked_opens += d.tracked_opens || 0;
+    b.tracked_bot_opens += d.tracked_bot_opens || 0;
+  }
   for (const b of buckets) {
     b.sent = b.delivered + b.hard_bounced + b.spam_blocked;
     b.lowVolume = b.sent > 0 && b.sent < EMAIL_LOW_VOLUME_SENT;
+    const share = b.tracked_opens > 0 ? 1 - b.tracked_bot_opens / b.tracked_opens : null;
+    b.humanShare = share;
     b.rates = {
+      humanOpen: share === null ? null : rate(b.opened, b.sent) === null ? null : rate(b.opened, b.sent) * share,
       hardBounce: rate(b.hard_bounced, b.sent),
       spamBlock: rate(b.spam_blocked, b.sent),
       totalBounce: rate(b.hard_bounced + b.spam_blocked, b.sent),
@@ -77,6 +91,7 @@ export function buildBuckets(rows, { granularity, rangeId }) {
       click: rate(b.clicked, b.sent),
     };
     b.counts = {
+      humanOpen: share === null ? null : Math.round(b.opened * share),
       hardBounce: b.hard_bounced, spamBlock: b.spam_blocked, totalBounce: b.hard_bounced + b.spam_blocked,
       open: b.opened, reply: b.replied, click: b.clicked,
     };

@@ -114,3 +114,12 @@ export async function fetchWeekStrip(businessId, from) {
   if (!res.ok) throw new Error(data.error || `Failed to load week strip (${res.status})`);
   return data;
 }
+
+// overview-home-v1 Stage 2 - where the hard bounces are, for one sequence
+// or one week (R1's "View bounces").
+export async function fetchBounces(businessId, params) {
+  const res = await fetch(`/api/sales/${businessId}/bounces?${new URLSearchParams(params)}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Failed to load bounces (${res.status})`);
+  return data;
+}

@@ -41,6 +41,7 @@ export function laWeekStart(date = new Date()) {
 export const PERIOD_PRESETS = [
   { id: 'this_week', label: 'This Week' },
   { id: 'last_week', label: 'Last Week' },
+  { id: 'four_weeks', label: '4-week avg' },
   { id: 'mtd', label: 'MTD' },
   { id: 'last_30d', label: 'Last 30d' },
   { id: 'custom', label: 'Custom' },
@@ -59,6 +60,14 @@ export function periodRange(preset, customFrom, customTo) {
     const lastWeekEnd = shiftLaDate(thisWeekStartNoon, -1);
     const lastWeekStart = shiftLaDate(lastWeekEnd, -6);
     return { from: laDateString(lastWeekStart), to: laDateString(lastWeekEnd) };
+  }
+
+  // overview-home-v1 Stage 2 - the last 4 full weeks (Mon-Sun); the week
+  // strip shows counts as per-week averages for it.
+  if (preset === 'four_weeks') {
+    const thisWeekStartNoon = new Date(laWeekStart(today) + 'T12:00:00Z');
+    const lastSunday = shiftLaDate(thisWeekStartNoon, -1);
+    return { from: laDateString(shiftLaDate(lastSunday, -27)), to: laDateString(lastSunday) };
   }
 
   if (preset === 'mtd') {

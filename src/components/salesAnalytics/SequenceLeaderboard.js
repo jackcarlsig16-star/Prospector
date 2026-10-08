@@ -1,7 +1,7 @@
 import { useState, useEffect, Fragment } from 'react';
 import { SA, SA_TYPE, SA_SHAPE, SA_BAD_TINT, SA_BAD_BG } from './theme';
 import { formatValue } from './computeMetric';
-import { cohortColor, bounceHealthColor, AUDIENCE_LABELS, audienceColor } from './palette';
+import { cohortColor, bounceHealthColor, AUDIENCE_LABELS, audienceColor, PARTNER_COLOR } from './palette';
 import { COHORTS } from './metrics.registry';
 import { buildSequenceRows, needsAttention } from './sequenceRows';
 import { BOUNCE_ALERT_THRESHOLD, BOUNCE_ALERT_MIN_DELIVERED } from './alertRules';
@@ -91,7 +91,8 @@ function Colgroup() {
 // text (the menu trigger area is marked no-print, nothing interactive in
 // print per the SPEC). data-audience-menu scopes the outside-click check
 // in the component below without needing a ref per row.
-function AudiencePill({ row, open, saving, error, onToggleOpen, onSelect }) {
+function AudiencePill({ row, open, saving, error, canEdit, onToggleOpen, onSelect }) {
+  if (!canEdit) return <span style={{ fontSize: 11, fontWeight: 600, color: audienceColor(row.audience), whiteSpace: 'nowrap' }}>{AUDIENCE_LABELS[row.audience] || row.audience}</span>;
   return (
     <div data-audience-menu style={{ position: 'relative' }}>
       <span
@@ -133,7 +134,7 @@ function AudiencePill({ row, open, saving, error, onToggleOpen, onSelect }) {
 // BOUNCE_ALERT_MIN_DELIVERED are imported from alertRules.js rather than
 // re-declared, so the leaderboard's tint and the alerts row's own bounce
 // rule can never drift apart.
-export default function SequenceLeaderboard({ businessId, allRows, entities, widgetId = 'sequence_leaderboard', onDataChanged, onFiltersChanged }) {
+export default function SequenceLeaderboard({ businessId, allRows, entities, canEdit = true, widgetId = 'sequence_leaderboard', onDataChanged, onFiltersChanged }) {
   const [cohortFilter, setCohortFilter] = useState(() => new Set(COHORTS));
   const [audienceFilter, setAudienceFilter] = useState('all');
   const [senderFilter, setSenderFilter] = useState('all');
@@ -141,7 +142,7 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
   const [healthFilter, setHealthFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [groupBy, setGroupBy] = useState('cohort');
-  const [sortKey, setSortKey] = useState('delivered');
+  const [sortKey, setSortKey] = useState('replyRate'); // overview-home-v1 Stage 2: reply % first
   const [sortDesc, setSortDesc] = useState(true);
   const [expandedIds, setExpandedIds] = useState(() => new Set());
   const [savingId, setSavingId] = useState(null);
@@ -365,7 +366,12 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
             onClick={() => toggleExpand(r.id)}
             title={r.name}
           >
-            <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}{r.active === false && ' (inactive)'}</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}{r.active === false && ' (inactive)'}</span>
+              {(r.audience === 'membership' || r.audience === 'channel_partner') && (
+                <span data-partner-badge="" title={`${AUDIENCE_LABELS[r.audience]} sequence`} style={{ ...SA_TYPE.label, fontSize: 9, flexShrink: 0, color: PARTNER_COLOR, border: `1px solid ${PARTNER_COLOR}`, borderRadius: SA_SHAPE.radiusPill, padding: '1px 6px' }}>Partner</span>
+              )}
+            </span>
           </td>
           <td style={cellStyle}>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: SA.muted }}>
@@ -392,7 +398,7 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, wid
           </td>
           <td style={cellStyle}>
             <AudiencePill
-              row={r} saving={saving} error={rowError}
+              row={r} saving={saving} error={rowError} canEdit={canEdit}
               open={audienceMenuRowId === r.id}
               onToggleOpen={() => setAudienceMenuRowId(id => (id === r.id ? null : r.id))}
               onSelect={audience => handleSetAudience(r, audience)}

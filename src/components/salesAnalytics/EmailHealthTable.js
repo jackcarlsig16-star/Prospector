@@ -16,7 +16,8 @@ const ROWS = [
   { key: 'hardBounce', label: 'Hard bounce', kind: 'health' },
   { key: 'spamBlock', label: 'Spam block', kind: 'health' },
   { key: 'totalBounce', label: 'Total (Apollo-style)', hint: 'Hard bounce + spam block — matches Apollo’s own “Bounce %”', kind: 'health' },
-  { key: 'open', label: 'Open', kind: 'rate' },
+  { key: 'open', label: 'Apollo open', kind: 'rate' },
+  { key: 'humanOpen', label: 'Human open (est.)', hint: 'Apollo opens × the human share of that week’s tracked opens', kind: 'rate' },
   { key: 'reply', label: 'Reply', kind: 'rate' },
   { key: 'click', label: 'Click', kind: 'rate' },
 ];
@@ -49,7 +50,7 @@ export default function EmailHealthTable({ buckets }) {
                 const v = b.rates[row.key];
                 const h = row.kind === 'health' && !b.lowVolume ? health(v) : null;
                 return (
-                  <td key={b.key} title={`${pct(v)} (${b.counts[row.key]} / ${b.sent})${b.lowVolume ? ' — low volume, rates unreliable' : ''}`}
+                  <td key={b.key} title={`${pct(v)} (${b.counts[row.key] ?? '—'} / ${b.sent})${b.lowVolume ? ' — low volume, rates unreliable' : ''}`}
                     style={{ ...cell, color: b.lowVolume ? SA.faint : SA.text }}>
                     {h && <span aria-label={h.word} style={{ color: h.color, fontSize: 9, marginRight: 5 }}>{h.mark}</span>}
                     {pct(v)}

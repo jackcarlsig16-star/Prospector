@@ -6,14 +6,16 @@ import GoalsTab from './goals/GoalsTab';
 import { flashTo } from './goals/goalsUi';
 import OverviewGoals from './goals/OverviewGoals';
 import { OPEN_GOALS_WEEK } from './goals/goalsApi';
+import { roleAtLeast } from '../../constants/roles';
 import { visibleWidgets } from './widgets.registry';
-import { fetchMetrics, fetchRuns, fetchEntities, fetchCohortBreakdown, fetchInsights, triggerSync } from './salesApi';
+import { fetchMetrics, fetchRuns, fetchEntities, fetchCohortBreakdown, fetchInsights, fetchEmailCounts, fetchWeekStrip, triggerSync } from './salesApi';
 import { fetchFlags, FLAGS_CHANGED } from './huddleApi';
 import { fetchMe } from '../../utils/authSession';
 import { fetchOpportunities } from './pipelineApi';
 import { PERIOD_PRESETS, periodRange, previousPeriodRange, laDateString } from './periods';
 
 const SPARKLINE_LOOKBACK_DAYS = 56; // ~8 weeks
+const EMAIL_TRACKED_LOOKBACK_DAYS = 91; // the strip's 8 weeks + the 4-week avg's compare window
 
 // dashboard-v2 Stage 5 - the "print only this area" trick: hide
 // everything on the page, then re-show only #sales-analytics-print-area
@@ -113,6 +115,8 @@ export default function SalesAnalyticsTab({ businessId, features }) {
   const [cohortBreakdown, setCohortBreakdown] = useState({});
   const [opportunities, setOpportunities] = useState([]);
   const [insights, setInsights] = useState(null);
+  const [emailData, setEmailData] = useState(null); // { emailRows, days, senders, manualMeetings } - shared by the strip, the chart and the mailbox table
+  const [humanOpens, setHumanOpens] = useState(true); // R9's toggle: human-open estimate on the strip + the chart
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [syncing, setSyncing] = useState(false);
@@ -159,7 +163,8 @@ export default function SalesAnalyticsTab({ businessId, features }) {
       const from = [period.from, prevPeriod.from, sparklineFrom].sort()[0];
       const to = [period.to, laDateString()].sort().reverse()[0];
 
-      const [metrics, latestRuns, latestEntities, latestCohortBreakdown, latestOpportunities, latestInsights] = await Promise.all([
+      const trackedFrom = (() => { const d = new Date(); d.setUTCDate(d.getUTCDate() - EMAIL_TRACKED_LOOKBACK_DAYS); return laDateString(d); })();
+      const [metrics, latestRuns, latestEntities, latestCohortBreakdown, latestOpportunities, latestInsights, counts, strip] = await Promise.all([
         fetchMetrics(businessId, from, to),
         fetchRuns(businessId, 5),
         fetchEntities(businessId),
@@ -167,8 +172,11 @@ export default function SalesAnalyticsTab({ businessId, features }) {
         fetchOpportunities(businessId),
         // A failing insights request shouldn't take the whole page down.
         fetchInsights(businessId).catch(e => ({ error: e.message, insights: [], not_enough_data: [], dismissed: [] })),
+        fetchEmailCounts(businessId),
+        fetchWeekStrip(businessId, trackedFrom),
       ]);
       setInsights(latestInsights);
+      setEmailData({ emailRows: counts.rows, incompleteWeeks: counts.incomplete_weeks, days: strip.days, senders: strip.senders, manualMeetings: strip.manual_meetings });
       setAllRows(metrics);
       setRuns(latestRuns);
       setEntities(latestEntities);
@@ -221,6 +229,8 @@ export default function SalesAnalyticsTab({ businessId, features }) {
 
   const handlePrint = () => { setExportMenuOpen(false); window.print(); };
   const openGoals = target => { setGoalsTarget({ target }); setView('goals'); };
+  const openHuddle = target => { setHuddleFocus(null); setHuddleTarget(target ? { ...target } : null); setView('huddle'); };
+  const canEdit = !!me && (me.profile?.is_platform_owner || roleAtLeast(me.memberships?.find(m => m.business_id === businessId)?.role, 'member'));
 
   // design-v1 - "Export report" consolidates the entry point per the
   // mockup; PDF is wired to the existing print flow. There's no single
@@ -369,7 +379,7 @@ export default function SalesAnalyticsTab({ businessId, features }) {
           {visibleWidgets(features).map(w => (
             <div key={w.id} id={`sa-widget-${w.id}`} className={`print-avoid-break${w.printPage ? ' sa-band-start' : ''}`} style={{ marginBottom: 12, order: w.printOrder, padding: '22px 24px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusCard }}>
               <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: '0 0 14px' }}>{w.title}</p>
-              <w.component businessId={businessId} allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} period={period} prevPeriod={prevPeriod} preset={preset} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} opportunities={opportunities} accent={SA.accent} widgetId={w.id} onDataChanged={load} onPipelineChanged={load} onFiltersChanged={setFilterSummary} insights={insights} onInsightsChanged={reloadInsights} onOpenGoals={openGoals} />
+              <w.component businessId={businessId} allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} period={period} prevPeriod={prevPeriod} preset={preset} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} opportunities={opportunities} accent={SA.accent} widgetId={w.id} onDataChanged={load} onPipelineChanged={load} onFiltersChanged={setFilterSummary} insights={insights} onInsightsChanged={reloadInsights} onOpenGoals={openGoals} onOpenHuddle={openHuddle} emailData={emailData} humanOpens={humanOpens} onToggleHumanOpens={() => setHumanOpens(h => !h)} canEdit={canEdit} lastRun={lastRun} />
             </div>
           ))}
           </div>

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { SA, SA_TYPE, SA_SHAPE, SA_BAD_TINT } from './theme';
 import { TREND_COLORS, TREND_THEME_CSS } from './palette';
 import { EMAIL_HEALTH_THRESHOLDS } from './metrics.registry';
-import { fetchEmailCounts, fetchSalesEvents, createSalesEvent } from './salesApi';
+import { fetchSalesEvents, createSalesEvent } from './salesApi';
 import { laDateString } from './periods';
 import { RANGES, buildBuckets, bucketStart, pct, shortDate } from './emailTrendData';
 import EmailHealthTable from './EmailHealthTable';
@@ -19,12 +19,18 @@ const DELIVERABILITY = [
   { key: 'hardBounce', label: 'Hard bounce', color: TREND_COLORS.hardBounce },
   { key: 'spamBlock', label: 'Spam block', color: TREND_COLORS.spamBlock },
 ];
-const ENGAGEMENT = [
-  { key: 'open', label: 'Open', color: TREND_COLORS.open },
+// overview-home-v1 Stage 2 - human opens on by default: the estimate is the
+// solid line, Apollo's own open rate the dashed ghost behind it (same hue,
+// so the pair reads as one measure seen two ways). With human opens off
+// Apollo's line is the solid one and the estimate is gone.
+const HUMAN_OPEN = { key: 'humanOpen', label: 'Human open (est.)', color: TREND_COLORS.open };
+const APOLLO_OPEN = { key: 'open', label: 'Apollo open', color: TREND_COLORS.open };
+const ENGAGEMENT_REST = [
   { key: 'reply', label: 'Reply', color: TREND_COLORS.reply },
   { key: 'click', label: 'Click', color: TREND_COLORS.click },
 ];
-const DEFAULT_ON = { hardBounce: true, spamBlock: true, open: true, reply: true, click: false };
+const engagementSeries = humanOpens => (humanOpens ? [HUMAN_OPEN, { ...APOLLO_OPEN, ghost: true }, ...ENGAGEMENT_REST] : [{ ...APOLLO_OPEN, label: 'Open' }, ...ENGAGEMENT_REST]);
+const DEFAULT_ON = { hardBounce: true, spamBlock: true, humanOpen: true, open: true, reply: true, click: false };
 const MAILBOX_COLORS = [TREND_COLORS.mailbox1, TREND_COLORS.mailbox2];
 const EVENT_CATEGORIES = ['deliverability', 'mailbox', 'sequence', 'list', 'other'];
 
@@ -56,12 +62,13 @@ const segButton = active => ({
 const segWrap = { display: 'inline-flex', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: 3 };
 const inputStyle = { ...SA_TYPE.body, fontSize: 12, height: 32, padding: '0 8px', background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: 7, color: SA.text };
 
-export default function EmailTrendChart({ businessId, widgetId = 'email_trend' }) {
-  const [data, setData] = useState(null);
+// emailData: loaded once by SalesAnalyticsTab (shared with the week strip
+// and the mailbox table); only the chart's own events are fetched here.
+export default function EmailTrendChart({ businessId, emailData: data, humanOpens = true, onToggleHumanOpens, canEdit = true, widgetId = 'email_trend' }) {
   const [events, setEvents] = useState([]);
   const [error, setError] = useState('');
   const [granularity, setGranularity] = useState('week');
-  const [rangeId, setRangeId] = useState('30d');
+  const [rangeId, setRangeId] = useState('8w');
   const [on, setOn] = useState(DEFAULT_ON);
   const [hover, setHover] = useState(null);
   const [width, setWidth] = useState(640);
@@ -73,9 +80,7 @@ export default function EmailTrendChart({ businessId, widgetId = 'email_trend' }
   const load = useCallback(async () => {
     setError('');
     try {
-      const [counts, evs] = await Promise.all([fetchEmailCounts(businessId), fetchSalesEvents(businessId)]);
-      setData(counts);
-      setEvents(evs);
+      setEvents(await fetchSalesEvents(businessId));
     } catch (e) {
       setError(e.message);
     }
@@ -105,13 +110,13 @@ export default function EmailTrendChart({ businessId, widgetId = 'email_trend' }
     }
   };
 
-  if (error && !data) return <p style={{ fontSize: 12, color: SA.bad }}>⚠ {error}</p>;
   if (!data) return <p style={{ fontSize: 12, color: SA.muted }}>Loading…</p>;
-  if (!data.rows.length) {
+  if (!data.emailRows.length) {
     return <p style={{ fontSize: 12, color: SA.muted, padding: '12px 0' }}>No email history yet — it fills in after the first sync.</p>;
   }
 
-  const { buckets, mailboxes } = buildBuckets(data.rows, { granularity, rangeId });
+  const { buckets, mailboxes } = buildBuckets(data.emailRows, { granularity, rangeId, days: data.days });
+  const ENGAGEMENT = engagementSeries(humanOpens);
   const n = buckets.length;
   const plotW = width - M.left - M.right;
   const band = plotW / n;
@@ -163,17 +168,17 @@ export default function EmailTrendChart({ businessId, widgetId = 'email_trend' }
         if (pts[i - 1] && pts[i]) segs.push({ a: pts[i - 1], z: pts[i], dashed: pts[i].b.partial || pts[i].offScale || pts[i - 1].offScale });
       }
       const last = [...pts].reverse().find(Boolean);
-      if (last) labels.push({ y: last.y + 4, color: s.color, text: `${s.label} ${pct(last.b.rates[s.key])}` });
+      if (last) labels.push({ y: last.y + 4, color: s.color, ghost: s.ghost, text: `${s.label} ${pct(last.b.rates[s.key])}` });
       return (
-        <g key={s.key}>
+        <g key={s.key} data-series={s.key} opacity={s.ghost ? 0.6 : 1}>
           {segs.map(sg => (
-            <line key={`${sg.a.i}-${sg.z.i}`} x1={sg.a.x} y1={sg.a.y} x2={sg.z.x} y2={sg.z.y} stroke={s.color} strokeWidth={2} strokeDasharray={sg.dashed ? '4 4' : undefined} strokeLinecap="round" />
+            <line key={`${sg.a.i}-${sg.z.i}`} x1={sg.a.x} y1={sg.a.y} x2={sg.z.x} y2={sg.z.y} stroke={s.color} strokeWidth={s.ghost ? 1.5 : 2} strokeDasharray={s.ghost ? '2 4' : sg.dashed ? '4 4' : undefined} strokeLinecap="round" />
           ))}
           {pts.filter(Boolean).map(p => {
-            const hollow = p.b.lowVolume || p.b.partial || p.offScale;
+            const hollow = s.ghost || p.b.lowVolume || p.b.partial || p.offScale;
             return (
               <g key={p.i}>
-                <circle cx={p.x} cy={p.y} r={4} fill={hollow ? SA.surface : s.color} stroke={hollow ? s.color : SA.surface} strokeWidth={2} />
+                <circle cx={p.x} cy={p.y} r={s.ghost ? 3 : 4} fill={hollow ? SA.surface : s.color} stroke={hollow ? s.color : SA.surface} strokeWidth={2} />
                 {p.offScale && <text x={p.x + 8} y={p.y + 4} fontSize={9} fill={SA.muted}>{pct(p.b.rates[s.key], 0)} ↑<title>{`${s.label} ${pct(p.b.rates[s.key])} on ${p.b.sent} sent — off the scale, low volume`}</title></text>}
               </g>
             );
@@ -185,7 +190,7 @@ export default function EmailTrendChart({ businessId, widgetId = 'email_trend' }
       <g>
         {lines}
         {spreadLabels(labels).map(l => (
-          <text key={l.text} x={width - M.right + 10} y={l.y} fontSize={11} fill={SA.text}><tspan fill={l.color}>●</tspan> {l.text}</text>
+          <text key={l.text} x={width - M.right + 10} y={l.y} fontSize={11} fill={l.ghost ? SA.muted : SA.text}><tspan fill={l.color}>{l.ghost ? '○' : '●'}</tspan> {l.text}</text>
         ))}
       </g>
     );
@@ -240,12 +245,13 @@ export default function EmailTrendChart({ businessId, widgetId = 'email_trend' }
         <div style={segWrap}>
           {RANGES.map(r => <button key={r.id} onClick={() => setRangeId(r.id)} style={segButton(rangeId === r.id)}>{r.label}</button>)}
         </div>
-        <button onClick={() => setAdding(a => !a)} style={{ ...segButton(false), border: `1px solid ${SA.border}`, height: 38 }}>+ Add event</button>
+        <button onClick={onToggleHumanOpens} aria-pressed={humanOpens} title="Human open (est.) = Apollo opens × the human share of that week's tracked opens" style={{ ...segButton(humanOpens), border: `1px solid ${SA.border}`, height: 38 }}>Human opens</button>
+        {canEdit && <button onClick={() => setAdding(a => !a)} style={{ ...segButton(false), border: `1px solid ${SA.border}`, height: 38 }}>+ Add event</button>}
         <span style={{ flex: 1 }} />
         <ExportButton onClick={handleExport} />
       </div>
 
-      {adding && (
+      {adding && canEdit && (
         <form onSubmit={saveEvent} className="no-print" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
           <input type="date" required value={draft.event_date} onChange={e => setDraft(d => ({ ...d, event_date: e.target.value }))} style={inputStyle} />
           <input required maxLength={120} placeholder="What changed (e.g. jack@ reconnected)" value={draft.label} onChange={e => setDraft(d => ({ ...d, label: e.target.value }))} style={{ ...inputStyle, flex: '1 1 220px' }} />
@@ -353,8 +359,8 @@ export default function EmailTrendChart({ businessId, widgetId = 'email_trend' }
             </div>
             <div>Sent {hb.sent.toLocaleString()}{mailboxes.length > 1 ? ` (${mailboxes.map(m => `${m.split('@')[0]} ${hb.sentByMailbox[m]}`).join(', ')})` : ''}</div>
             {hb.sent > 0 && [...DELIVERABILITY, { key: 'totalBounce', label: 'Total bounce (Apollo-style)' }, ...ENGAGEMENT].map(s => (
-              <div key={s.key} style={{ color: s.key === 'totalBounce' ? SA.muted : SA.text, fontVariantNumeric: 'tabular-nums' }}>
-                {s.label} {pct(hb.rates[s.key])} ({hb.counts[s.key]} / {hb.sent})
+              <div key={s.key} style={{ color: s.key === 'totalBounce' || s.ghost ? SA.muted : SA.text, fontVariantNumeric: 'tabular-nums' }}>
+                {s.label} {pct(hb.rates[s.key])} ({hb.counts[s.key] ?? '—'} / {hb.sent}){s.key === 'humanOpen' && hb.humanShare !== null && ` · ${hb.tracked_opens} tracked`}
               </div>
             ))}
             {hb.lowVolume && <div style={{ color: SA.warn, marginTop: 4 }}>low volume — rates unreliable</div>}
@@ -372,7 +378,8 @@ export default function EmailTrendChart({ businessId, widgetId = 'email_trend' }
       <p style={{ fontSize: 11, color: SA.faint, margin: '12px 0 0', lineHeight: 1.5 }}>
         Counts are by send date: an open or reply is credited to the day its email went out. Rates are % of sent, which matches how Apollo reports bounce, spam block and reply.
         Open rates are an imperfect signal — security scanners and privacy features can inflate or suppress them, and ours can differ from Apollo’s. Reply rate is the more reliable engagement measure.
-        {data.incomplete_weeks.length > 0 && ` Weeks ${data.incomplete_weeks.join(', ')} hit the fetch cap and may be undercounted.`}
+        {' '}Human open (est.) = Apollo opens × the human share of that week’s tracked opens (an open looks automated when it comes from a tracking service, a generic Linux agent, or within 60s of delivery); weeks with nothing tracked have no estimate.
+        {data.incompleteWeeks?.length > 0 && ` Weeks ${data.incompleteWeeks.join(', ')} hit the fetch cap and may be undercounted.`}
       </p>
     </div>
   );
