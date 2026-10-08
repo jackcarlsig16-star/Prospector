@@ -65,6 +65,12 @@ export const goalsApi = {
   partnerEvents: (id, params) => call(id, `/partners/events?${q(params)}`).then(d => d.events),
   // sales-partners-workflow-v1 - order = the group's ids top to bottom after the move.
   partnerRank: (id, goalId, order) => call(id, `/partners/${goalId}/rank`, { method: 'POST', body: { order } }).then(d => d.ranks),
+  // partner-360-v1 - partner_contacts rows; the drop-down merges them with logged touches + the sheet (src/constants/partnerPeople.js).
+  partnerPeople: (id, goalId) => call(id, `/partners/${goalId}/people`).then(d => d.people),
+  addPartnerPerson: (id, goalId, body) => call(id, `/partners/${goalId}/people`, { method: 'POST', body }).then(d => d.person),
+  deletePartnerPerson: (id, goalId, personId) => call(id, `/partners/${goalId}/people/${personId}`, { method: 'DELETE' }),
+  // partner-touch-log-v1 - body { dry_run?, touches: [...] }; dry_run previews, the real run applies all or nothing.
+  partnerTouches: (id, body) => call(id, '/partners/touches', { method: 'POST', body }),
 
   companies: (id, from, to) => call(id, `/companies?${q({ from, to })}`),
   updateCompany: (id, accountId, body) => call(id, `/companies/${encodeURIComponent(accountId)}`, { method: 'PATCH', body }).then(d => d.company),

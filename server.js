@@ -630,6 +630,9 @@ app.post('/api/sales/:businessId/goals/partners/:id/undo', salesModuleRoute('./a
 app.post('/api/sales/:businessId/goals/partners/:id/rank', salesModuleRoute('./api/sales/partnersRoutes.js', 'partnerRankRoute', 'goals/partners/:id/rank POST'));
 app.post('/api/sales/:businessId/goals/partners/touches', salesModuleRoute('./api/sales/partnersRoutes.js', 'logTouchesRoute', 'goals/partners/touches POST'));
 app.get('/api/sales/:businessId/goals/partners/events', salesModuleRoute('./api/sales/partnersRoutes.js', 'listPartnerEventsRoute', 'goals/partners/events'));
+app.get('/api/sales/:businessId/goals/partners/:id/people', salesModuleRoute('./api/sales/partnerPeople.js', 'listPeopleRoute', 'goals/partners/:id/people'));
+app.post('/api/sales/:businessId/goals/partners/:id/people', salesModuleRoute('./api/sales/partnerPeople.js', 'addPersonRoute', 'goals/partners/:id/people POST'));
+app.delete('/api/sales/:businessId/goals/partners/:id/people/:personId', salesModuleRoute('./api/sales/partnerPeople.js', 'deletePersonRoute', 'goals/partners/:id/people/:personId DELETE'));
 app.get('/api/sales/:businessId/goals/scorecard', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'scorecardRoute', 'goals/scorecard'));
 app.get('/api/sales/:businessId/goals/kpi', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'kpiRoute', 'goals/kpi'));
 app.get('/api/sales/:businessId/goals/companies', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'listCompaniesRoute', 'goals/companies'));

@@ -1,0 +1,77 @@
+SPEC — partner-touch-log-v1
+
+## Status
+Source: Jack in chat, 2026-10-07: "Why don't we just build something that allows us to manually add a touch
+point." He has been emailing/calling partners outside Prospector and needs the Partners view and the
+"partners first-touched" goal reconciled before meetings — without waiting for Outlook (microsoft-connect-v1
+is blocked on admin consent). Replaces the one-off backfill idea and the earlier "Mark sent on… (date)" and
+"partner contacts" asks — this covers all three.
+PRIORITY: next, ahead of huddle-live-feed-v1. Microsoft Stage 2 resumes when Jack reports Connect works.
+
+## Problem
+1. The only way to record partner activity is Next / Jump to stage, which stamps TODAY. Past outreach lands
+   in the wrong week, so "partners first-touched" per week is wrong.
+2. There's no record of WHO at the partner was contacted or HOW (email, call, LinkedIn, meeting, event).
+3. Catching up on many partners means one click-flow per partner.
+
+## Design decision
+
+DECIDED — "＋ Log touch" (one form, used everywhere)
+- Where: a "Log touch" button on every Partners Workflow row (and in its ⋯ menu), in the partner drop-down
+  above History, and a "＋ Log touches" button in the Partners header for bulk. Member+; Viewer sees none.
+- Fields: Date (default today; date picker; no future dates) · Type [Email · Call · LinkedIn · Meeting ·
+  Event · Other] · Who (one or more contact names, free text with suggestions from the partner's
+  known_contacts and earlier touches) · Note (optional) · Move stage to (optional; default "auto").
+- Auto stage rule (never moves backwards): an outbound touch (Email/Call/LinkedIn) on a partner at Not
+  started / Researching / Drafted → Sent (1st email sent), dated on the touch date. Meeting → Meeting stage
+  if behind it. Event/Other → no stage change. An explicit "Move stage to" wins, still never backwards.
+- Every touch writes one sales_partner_events row via applyPartnerSignal with the touch date as the event
+  time (it already accepts a date), so history, undo, last_touch_at, days-since-touch, scorecard
+  "partners first-touched" and the goal card all count it in the right week.
+- Undo toast 5s, same as other partner actions (FIX-2 stale-stage guard still applies to stage moves).
+
+DECIDED — bulk catch-up
+- "＋ Log touches" opens a table: pick partners (search + checkboxes, or paste names one per line —
+  matched to partners, unmatched shown in red to fix), then per row: date · type · who · note · stage.
+  "Apply to all" fills a column. Review screen shows current stage → new stage per partner and which
+  week each first-touch will count in. Nothing saves until "Log N touches".
+
+DECIDED — contacts on the partner
+- The partner drop-down gets a "People contacted" line: distinct names from touches, with last date and
+  type ("Matt Buthman · Email · Oct 2"), and a count on the Workflow row ("👤 3").
+- Names only (as typed). No emails/phones stored from this form.
+
+PROPOSED / REVISABLE
+- Which types count as a "first touch" for the goal: Email, Call, LinkedIn, Meeting (not Event/Other).
+
+## Out of scope
+- Outlook auto-touches (microsoft-connect-v1 Stage 3 will call the same path and label "from Outlook").
+- Touches for non-partner companies (sales-quick-add-research-v1 "Log outreach").
+- Editing or deleting a past touch beyond Undo (follow-on if needed; Owner/Admin can drop via history).
+
+## Standing rules
+CLAUDE.md Sales module rules + Testing rules (API-only writes, applyPartnerSignal only, never backwards,
+Viewer read-only, workspace-bound ids, restored: yes, suites one at a time).
+
+## Implementation
+FIRST: read applyPartnerSignal (date param), sales_partner_events columns, the scorecard first-touched
+query and the Workflow row/drop-down. Report in 5 lines whether touch type + contact names fit existing
+columns (event + note) or need a small migration (likely: touch_type text, contact_names text[] on
+sales_partner_events) — if so give Jack the SQL and wait for "done".
+  Stage 1: migration (if needed) + API: log touch (single + bulk, dry-run mode returning the per-partner
+           preview) + tests (dates land in the right week, never backwards, Viewer refused).
+  Stage 2: UI — Log touch form (row, ⋯, drop-down), bulk table with paste-names + review, People contacted.
+           Screenshot 1440/390, stop.
+
+## Verification
+- A touch dated 2026-09-30 on a Not started partner moves it to Sent and counts in the week of Sep 28
+  (scorecard + goal card), not this week; undo removes it and the count.
+- A Meeting touch on a partner at Replied → Meeting; an Email touch on a partner at Meeting → no stage
+  change, still logged in history and People contacted.
+- Bulk: 5 pasted names (1 misspelled shown red), review matches, apply writes exactly 5 events.
+- Viewer refused; other workspace refused; 0 console errors at 1440/390; restored: yes.
+- Bar 5: Jack logs his real outreach for the past two weeks in under 5 minutes and the goal card matches
+  what he expects.
+
+## Commit instructions
+One commit per stage referencing partner-touch-log-v1. Push after each passes. Stop and report after each.

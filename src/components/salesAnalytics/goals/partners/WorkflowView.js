@@ -157,7 +157,7 @@ function Group({ cat, items, lookup, compact, rowActions, onRank, movedNotes, de
           const actions = rowActions(p);
           return <PartnerRow key={p.id} partner={p} lookup={lookup} compact={compact} movedNote={movedNotes[p.id]} actions={actions && { ...actions, rank: rankFor(p, i) }}
             expanded={expandedId === p.id} onToggle={() => setExpandedId(expandedId === p.id ? null : p.id)}
-            details={<PartnerDetails partner={p} lookup={lookup} {...details} />} />;
+            details={<PartnerDetails partner={p} lookup={lookup} actions={actions} {...details} />} />;
         })}
       </div>
       {sorted.length > TOP && (
@@ -191,7 +191,7 @@ export default function WorkflowView({ partners, shown, lookup, compact, stage, 
             <span style={{ ...subStyle, fontSize: 12 }}>P1 and 🔥 hot partners across every category, highest first</span>
           </div>
           {top.map(p => <PartnerRow key={p.id} partner={p} lookup={lookup} compact={compact} showCategory movedNote={movedNotes[p.id]} actions={rowActions(p)}
-            expanded={topOpen === p.id} onToggle={() => setTopOpen(topOpen === p.id ? null : p.id)} details={<PartnerDetails partner={p} lookup={lookup} {...details} />} />)}
+            expanded={topOpen === p.id} onToggle={() => setTopOpen(topOpen === p.id ? null : p.id)} details={<PartnerDetails partner={p} lookup={lookup} actions={rowActions(p)} {...details} />} />)}
         </section>
       )}
       {cats.map(c => <Group key={c || 'none'} cat={c} items={visible.filter(p => (p.category || null) === c)} lookup={lookup} compact={compact}

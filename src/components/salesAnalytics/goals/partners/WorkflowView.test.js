@@ -106,43 +106,52 @@ const events = [
   { id: 'e2', event: 'status', from_status: 'first_email_drafted', to_status: 'live', at: '2026-10-06T18:01:00Z', by_user: 'u-jack' },
   { id: 'e1', event: 'note', note: 'Called Dana', at: '2026-10-05T16:00:00Z', by_user: null },
 ];
-const details = extra => ({ canEdit: false, onUpdate: jest.fn(), onEvents: jest.fn().mockResolvedValue(events), bump: 0, ...extra });
+const details = extra => ({ canEdit: false, onUpdate: jest.fn(), onEvents: jest.fn().mockResolvedValue(events), bump: 0, people: { load: jest.fn().mockResolvedValue([]), add: jest.fn(), remove: jest.fn() }, onCount: jest.fn(), onCreateTask: jest.fn(), tasksFor: null, ...extra });
 
-test('a row opens a drop-down with the sheet fields and its history; Escape closes; one open per group', async () => {
+test('a row opens the story: Status, Intel folded (sheet fields on open), Activity with the undone move behind Show all; Escape closes; one open per group', async () => {
   const rows = [p('A', { angle: 'Rent rewards for members', do_not_say: 'No "free"', known_contacts: 'Dana (VP Partnerships)', sequence_to_use: 'Platforms v2' }), p('B', { next_step: 'Send deck' })];
   const d = details();
   render(<WorkflowView partners={rows} shown={rows} lookup={lookup} compact={false} stage={null} onStage={jest.fn()} details={d} />);
   const grp = document.querySelector('section[aria-label="Rental Rewards & Renter Platforms"]');
   const rowA = grp.querySelector('[data-partner-id="A"]');
   fireEvent.click(within(rowA).getByTitle('Show research, intel and history'));
+  expect(within(rowA).getByRole('region', { name: 'Status and next step' })).toBeTruthy();
+  expect(within(rowA).queryByText('Rent rewards for members')).toBeNull();
+  fireEvent.click(within(rowA).getByRole('button', { name: /^Intel/ }));
   expect(within(rowA).getByText('Rent rewards for members')).toBeTruthy();
   expect(within(rowA).getByText('No "free"')).toBeTruthy();
   expect(within(rowA).getByText('Dana (VP Partnerships)')).toBeTruthy();
   expect(within(rowA).getByRole('link', { name: 'Open in Apollo ↗' })).toBeTruthy();
-  const hist = await within(rowA).findByRole('list', { name: 'History' });
-  expect(within(hist).getAllByRole('listitem').map(li => li.textContent)).toEqual([
-    expect.stringContaining('Undid the status change'), expect.stringContaining('Drafted → Live'), expect.stringContaining('Note: Called Dana'),
-  ]);
-  expect(within(hist).getByText('Drafted → Live').style.textDecoration).toBe('line-through');
-  expect(within(hist).getByText('automatic')).toBeTruthy();
+  const act = await within(rowA).findByRole('list', { name: 'Activity timeline' });
+  expect(within(act).getAllByRole('listitem').map(li => li.textContent)).toEqual([expect.stringContaining('Note: Called Dana')]);
+  expect(within(act).getByText('automatic')).toBeTruthy();
+  fireEvent.click(within(rowA).getByRole('button', { name: 'Show all activity (2)' }));
+  const all = within(within(rowA).getByRole('list', { name: 'Activity timeline' })).getAllByRole('listitem').map(li => li.textContent);
+  expect(all).toEqual([expect.stringContaining('Undid the status change'), expect.stringContaining('Drafted → Live'), expect.stringContaining('Note: Called Dana')]);
+  expect(within(rowA).getByText(/Drafted → Live/).style.textDecoration).toBe('line-through');
+  const people = await within(rowA).findByRole('list', { name: 'People at this partner' });
+  expect(within(people).getAllByRole('listitem').map(li => li.textContent)).toEqual([expect.stringMatching(/Dana.*VP Partnerships.*Sheet/)]);
   expect(within(rowA).queryByLabelText('Priority')).toBeNull();
   const rowB = grp.querySelector('[data-partner-id="B"]');
   fireEvent.click(within(rowB).getByTitle('Show research, intel and history'));
-  expect(within(rowA).queryByText('Rent rewards for members')).toBeNull();
+  expect(within(rowA).queryByRole('region', { name: 'Status and next step' })).toBeNull();
   expect(within(rowB).getByText('Send deck')).toBeTruthy();
   fireEvent.keyDown(rowB, { key: 'Escape' });
   expect(within(rowB).queryByText('Send deck')).toBeNull();
 });
-
-test('members can change priority in the drop-down', async () => {
+test('members can change priority in the drop-down (under Intel); the row\'s Next moves into Status while open', async () => {
   const d = details({ canEdit: true, onUpdate: jest.fn().mockResolvedValue() });
   const rows = [p('A', { priority: 2 })];
   render(<WorkflowView partners={rows} shown={rows} lookup={lookup} compact={false} stage={null} onStage={jest.fn()} details={d} canEdit rowActions={() => actions()} />);
   const rowA = document.querySelector('section[aria-label="Rental Rewards & Renter Platforms"] [data-partner-id="A"]');
+  expect(within(rowA).getAllByRole('button', { name: /^Next: / })).toHaveLength(1);
   fireEvent.click(within(rowA).getByTitle('Show research, intel and history'));
+  expect(within(rowA).getAllByRole('button', { name: /^Next: / })).toHaveLength(1);
+  expect(within(within(rowA).getByRole('region', { name: 'Status and next step' })).getByRole('button', { name: 'Log touch' })).toBeTruthy();
+  fireEvent.click(within(rowA).getByRole('button', { name: /^Intel/ }));
   fireEvent.change(within(rowA).getByLabelText('Priority'), { target: { value: '1' } });
   expect(d.onUpdate).toHaveBeenCalledWith('A', { priority: 1 });
-  await within(rowA).findByRole('list', { name: 'History' });
+  await within(rowA).findByRole('list', { name: 'Activity timeline' });
 });
 
 test('reorder hint shows for members when up/down are hidden, never for viewers', () => {

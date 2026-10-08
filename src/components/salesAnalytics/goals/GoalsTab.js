@@ -353,10 +353,16 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
 
           {view === 'partners' && (
             <PartnersView partners={myPartners} lookup={lookup} members={members} canEdit={canEdit} error={errors.partners}
-              onUpdate={async (goalId, body) => { const g = await goalsApi.updatePartner(businessId, goalId, body); setPartners(ps => ps.map(p => (p.id === g.id ? g : p))); }}
+              onUpdate={async (goalId, body) => { const g = await goalsApi.updatePartner(businessId, goalId, body); setPartners(ps => ps.map(p => (p.id === g.id ? { ...p, ...g } : p))); }}
               onSignal={(goalId, signal) => goalsApi.partnerSignal(businessId, goalId, signal)}
               onUndo={(goalId, eventId) => goalsApi.partnerUndo(businessId, goalId, eventId)}
-              onReplace={g => setPartners(ps => ps.map(p => (p.id === g.id ? g : p)))}
+              // Merge, never replace: a signal's reply is the sales_goals row, without the list's people_count.
+              onReplace={g => setPartners(ps => ps.map(p => (p.id === g.id ? { ...p, ...g } : p)))}
+              onPeople={goalId => goalsApi.partnerPeople(businessId, goalId)}
+              onAddPerson={(goalId, body) => goalsApi.addPartnerPerson(businessId, goalId, body)}
+              onDeletePerson={(goalId, personId) => goalsApi.deletePartnerPerson(businessId, goalId, personId)}
+              onCreateTask={body => goalsApi.createWeekGoal(businessId, { week_start: thisWeek, kind: 'todo', owner_user_id: (owner === 'team' ? me?.profile?.id : owner) || null, ...body })}
+              onTouches={body => goalsApi.partnerTouches(businessId, body)}
               onRefresh={() => goalsApi.partners(businessId).then(setPartners).catch(e => setError('partners', e))}
               onEvents={goalId => goalsApi.partnerEvents(businessId, { goal_id: goalId })}
               onRank={async (goalId, order) => {

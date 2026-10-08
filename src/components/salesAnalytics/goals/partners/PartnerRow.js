@@ -48,7 +48,7 @@ const menuItem = { all: 'unset', boxSizing: 'border-box', ...saSans, display: 'b
 const smallBtn = { all: 'unset', ...saSans, width: 32, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, color: SA.muted, cursor: 'pointer', fontSize: 11 };
 
 // Everything that isn't the one-step Next move, in words.
-function MoreMenu({ partner, members, onSignal }) {
+export function MoreMenu({ partner, members, onSignal }) {
   const [open, setOpen] = useState(false);
   const [panel, setPanel] = useState('root');
   const [note, setNote] = useState('');
@@ -115,7 +115,8 @@ function MoreMenu({ partner, members, onSignal }) {
 }
 
 // actions (Member+ only): { onNext, onSignal, members, rank: { onUp, onDown, canUp, canDown, drag } }
-// expanded/onToggle/details: the drop-down (research, intel, history).
+// expanded/onToggle/details: the drop-down. While it's open the row's Next
+// and More move down into its Status section (partner-360-v1).
 export default function PartnerRow({ partner, lookup, compact, showCategory, movedNote, actions, expanded, onToggle, details }) {
   const fam = familyOf(partner.category);
   const owner = partner.owner_user_id ? lookup(partner.owner_user_id) : null;
@@ -155,6 +156,7 @@ export default function PartnerRow({ partner, lookup, compact, showCategory, mov
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             {partner.priority && <Chip style={{ height: 20, color: partner.priority === 1 ? SA.text : SA.soft, borderColor: partner.priority === 1 ? SA.accent : SA.border }}>P{partner.priority}</Chip>}
             {partner.tier && <Chip style={{ height: 20 }}>{tierLabel(partner.tier)}</Chip>}
+            {partner.people_count > 0 && <Chip style={{ height: 20 }} title="People we know here" aria-label={`${partner.people_count} people known`}>👤 {partner.people_count}</Chip>}
             {paused && <Chip style={{ height: 20 }}>Paused</Chip>}
             {showCategory && <span style={{ ...subStyle, fontSize: 12 }}>{categoryName(partner.category)}</span>}
             {compact && <span title={touch.title} style={{ ...numStyle, fontSize: 12, color: touchColor }}>{touch.text}</span>}
@@ -163,7 +165,8 @@ export default function PartnerRow({ partner, lookup, compact, showCategory, mov
         </div>
         <StageBar status={partner.pipeline_status} color={fam.color} compact={compact} />
         {!actions && !compact && <span title={touch.title} style={{ ...numStyle, fontSize: 12, textAlign: 'right', color: touchColor }}>{touch.text}</span>}
-        {actions && (
+        {actions && expanded && !compact && <span title={touch.title} style={{ ...numStyle, fontSize: 12, color: touchColor, textAlign: 'right', whiteSpace: 'nowrap' }}>{touch.text}</span>}
+        {actions && !expanded && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: compact ? 'flex-start' : 'flex-end', flexWrap: compact ? 'wrap' : 'nowrap' }}>
             {!compact && <span title={touch.title} style={{ ...numStyle, fontSize: 12, color: touchColor, minWidth: 44, textAlign: 'right', whiteSpace: 'nowrap' }}>{touch.text}</span>}
             {next

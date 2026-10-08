@@ -7,6 +7,7 @@ import { PARTNER_METRICS } from './partnerMetrics.js';
 import { hasRole } from '../lib/requireAuth.js';
 import { PIPELINE_STATUS_IDS, TIERS, isStalePartner } from '../../src/constants/partnerPipeline.js';
 import { laDateString } from './laDate.js';
+import { peopleCounts } from './partnerPeople.js';
 
 // sales-goals-v1 - Goals & Weekly Plan API (REV3 Stage 2, extended in REV4
 // Stage 4). Weekly report, scorecard, KPI and companies live in
@@ -130,6 +131,10 @@ export async function listLandGoalsRoute(req, res) {
       return q.order('created_at').order('id');
     });
     if (stale === 'true') { const now = Date.now(), today = laDateString(); goals = goals.filter(g => isStalePartner(g, now, today)); }
+    if (goal_type === 'partnership' && goals.length) {
+      const counts = await peopleCounts(supabase, req.params.businessId, goals);
+      goals = goals.map(g => ({ ...g, people_count: counts[g.id] || 0 }));
+    }
     res.json({ goals });
   } catch (e) { res.status(500).json({ error: e.message }); }
 }

@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { SA, saSans } from '../theme';
 import Ring, { RingLegend } from '../charts/Ring';
-import { PIPELINE_STATUSES, WORKFLOW_STEPS, TIERS, TOUCH_STATUSES, isStalePartner, daysSinceTouch, stepOf, nextStepFor } from '../../../constants/partnerPipeline';
+import { PIPELINE_STATUSES, WORKFLOW_STEPS, TIERS, TOUCH_STATUSES, TOUCH_TYPES, isStalePartner, daysSinceTouch, stepOf, nextStepFor } from '../../../constants/partnerPipeline';
 import { cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle, Chip, Btn, AddButton, ErrorNote, ShowingChip } from './goalsUi';
 import PartnerCard, { statusOf, statusLabel, statusColor, tierLabel } from './partners/PartnerCard';
 import WorkflowView from './partners/WorkflowView';
+import BulkTouchLog from './partners/BulkTouchLog';
 import useMediaQuery from '../../../utils/useMediaQuery';
 
 // prospector_partners_mode - per-viewer convenience: last Partners layout
@@ -36,7 +37,7 @@ const writeMoved = m => { try { sessionStorage.setItem(MOVED_KEY, JSON.stringify
 const stageName = status => (status === 'paused' ? 'Paused' : WORKFLOW_STEPS[stepOf(status)].label);
 const CHANGED_TEXT = 'Changed by someone else — refreshed';
 
-const SIGNAL_TEXT = { status: s => `→ ${statusLabel(s.to)}`, deprioritize: () => '→ Paused', assign: () => 'reassigned', hot: s => (s.hot ? 'marked hot' : 'no longer hot'), snooze: () => 'snoozed 7 days', note: () => 'note saved' };
+const SIGNAL_TEXT = { status: s => `→ ${statusLabel(s.to)}`, deprioritize: () => '→ Paused', assign: () => 'reassigned', hot: s => (s.hot ? 'marked hot' : 'no longer hot'), snooze: () => 'snoozed 7 days', note: () => 'note saved', touch: s => `· ${TOUCH_TYPES.find(t => t.id === s.touch_type)?.label || 'touch'} logged` };
 
 const pill = on => ({ ...saSans, height: 32, padding: '0 12px', borderRadius: 999, fontSize: 13, cursor: 'pointer', border: `1px solid ${on ? SA.accent : SA.border}`, background: on ? 'color-mix(in srgb, var(--sa-accent) 18%, transparent)' : SA.surface2, color: on ? SA.text : SA.soft });
 
@@ -61,7 +62,7 @@ const NO_FILTERS = { category: '', tiers: [], stale: false, hot: false, owner: n
 
 // teamView: the person filter is on Team. Reorder needs the whole group in
 // view (see WorkflowView), so it's only offered then.
-export default function PartnersView({ partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusFilter, tasksFor }) {
+export default function PartnersView({ partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusFilter, tasksFor, onPeople, onAddPerson, onDeletePerson, onCreateTask, onTouches }) {
   const [mode, setMode] = useState(readMode);
   const [stage, setStage] = useState(null);
   const compact = useMediaQuery('(max-width: 760px)');
@@ -75,6 +76,7 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
   const [addError, setAddError] = useState('');
   const [moved, setMoved] = useState(readMoved);
   const [focus, setFocus] = useState(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
   // A Goals / Overview number opening Partners filtered ({ stage?, tiers?,
   // owner?, ids?, label? }, a new object each time). {} clears the filters.
   useEffect(() => {
@@ -140,10 +142,12 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
       }
       showToast({ text, goalId: p.id, eventId: event.id });
       setHistoryBump(n => n + 1);
+      return goal;
     } catch (e) {
       onReplace(p);
       if (/changed by someone else|already /i.test(e.message)) { await onRefresh(); showToast({ error: CHANGED_TEXT }); }
       else showToast({ error: e.message });
+      return null;
     }
   };
   // Paused resumes to the stage it was paused from (latest move into paused).
@@ -163,7 +167,12 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
   };
 
   const openPartner = id => { setOpenId(id); setFocus({ id }); };
-  const details = { canEdit, onUpdate, onEvents: fetchEvents, bump: historyBump, tasksFor };
+  // GoalsTab passes fresh functions each render; the drop-down's effects need stable ones.
+  const peopleRef = useRef({ onPeople, onAddPerson, onDeletePerson });
+  peopleRef.current = { onPeople, onAddPerson, onDeletePerson };
+  const people = useMemo(() => ({ load: id => peopleRef.current.onPeople(id), add: (id, body) => peopleRef.current.onAddPerson(id, body), remove: (id, pid) => peopleRef.current.onDeletePerson(id, pid) }), []);
+  const onCount = useCallback((id, n) => onReplace({ id, people_count: n }), [onReplace]);
+  const details = { canEdit, onUpdate, onEvents: fetchEvents, bump: historyBump, tasksFor, people, onCreateTask, onCount };
 
   const setModeSaved = m => { setMode(m); writeMode(m); };
   const toggleTier = t => setFilters(f => ({ ...f, tiers: f.tiers.includes(t) ? f.tiers.filter(x => x !== t) : [...f.tiers, t] }));
@@ -223,7 +232,12 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
         <button type="button" aria-pressed={filters.hot} onClick={() => setFilters(f => ({ ...f, hot: !f.hot }))} style={pill(filters.hot)}>🔥 Hot only</button>
         {(filtering || stage) && <button type="button" onClick={() => { setFilters(NO_FILTERS); setStage(null); }} style={{ ...pill(false), border: 'none', background: 'transparent', color: SA.link }}>Clear</button>}
         <span style={{ ...subStyle, ...numStyle, fontSize: 13 }}>{shown.length} of {partners.length}</span>
+        {canEdit && <button type="button" aria-expanded={bulkOpen} onClick={() => setBulkOpen(o => !o)} style={{ ...pill(bulkOpen), marginLeft: 'auto' }}>＋ Log touches</button>}
       </div>
+      {bulkOpen && canEdit && (
+        <BulkTouchLog partners={partners} onPreview={touches => onTouches({ dry_run: true, touches })} onApply={touches => onTouches({ touches })}
+          onDone={n => { setBulkOpen(false); showToast({ text: `Logged ${n} touch${n === 1 ? '' : 'es'}`, noUndo: true }); onRefresh(); setHistoryBump(k => k + 1); }} onClose={() => setBulkOpen(false)} />
+      )}
       {(filters.owner || filters.status || filters.ids) && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
           {filters.ids && <ShowingChip label={filters.idsLabel || 'Selected partners'} count={partners.filter(p => filters.ids.includes(p.id)).length} onClear={() => setFilters(f => ({ ...f, ids: null, idsLabel: '' }))} />}
@@ -280,7 +294,7 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
         {toast && (
           <div style={{ ...saSans, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 12, background: SA.surface2, border: `1px solid ${SA.borderStrong}`, boxShadow: '0 10px 30px #0008', fontSize: 14, color: SA.text }}>
             <span>{toast.error || toast.text}</span>
-            {!toast.error && <Btn style={{ height: 36 }} onClick={undo} disabled={toast.busy}>{toast.busy ? 'Undoing…' : 'Undo'}</Btn>}
+            {!toast.error && !toast.noUndo && <Btn style={{ height: 36 }} onClick={undo} disabled={toast.busy}>{toast.busy ? 'Undoing…' : 'Undo'}</Btn>}
           </div>
         )}
       </div>
