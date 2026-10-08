@@ -107,6 +107,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
   const [feedKind, setFeedKind] = useState(null); // 'open' | 'click' | 'reply' - a strip number picked it
   const [tab, setTab] = useState('live'); // huddle-live-feed-v1: live | priorities | done
   const [liveKey, setLiveKey] = useState(0);
+  const [phoneMenu, setPhoneMenu] = useState(false);
   const [filters, setFilters] = useState({ heat: 'all', due: 'all', stale: false, sort: 'signal', hideBots: true });
   const [feedKey, setFeedKey] = useState(0);
   const [flags, setFlags] = useState([]);
@@ -384,6 +385,27 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
   return (
     <>
     <div className="no-print">
+      {/* Phones: one line (title, Start huddle, ⋯ for the rest) so the Live list starts on the first screen. */}
+      {phone ? (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <h1 style={{ margin: 0, ...SA_TYPE.pageTitle, fontSize: 20, lineHeight: 1.2, color: SA.text, flex: '1 1 auto', minWidth: 0 }}>Huddle{dateLabel && ` · ${dateLabel}`}</h1>
+            <button onClick={handleStart} style={{ ...headerButton, height: 36, padding: '0 12px', fontWeight: 600, background: SA.accent, color: SA.ground, border: 0, flex: 'none' }}>Start huddle</button>
+            <button type="button" aria-label="More huddle actions" aria-expanded={phoneMenu} onClick={() => setPhoneMenu(o => !o)} style={{ ...headerButton, height: 36, width: 40, padding: 0, flex: 'none' }}>⋯</button>
+          </div>
+          {phoneMenu && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+              <button onClick={() => setShowLibrary(s => !s)} style={headerButton}>{showLibrary ? 'Hide library' : 'Collateral library'}</button>
+              <button onClick={() => exportWidgetCsv('huddle_sheet', [...visible].sort((a, b) => a.owner.localeCompare(b.owner) || b.score - a.score), HUDDLE_SHEET_COLUMNS)}
+            disabled={!data} style={headerButton}>Huddle sheet CSV</button>
+              <button onClick={() => window.print()} disabled={!data} style={headerButton}>Print agenda</button>
+          {tab !== 'live' && <button onClick={handleSync} disabled={syncing} style={{ ...headerButton, opacity: syncing ? 0.6 : 1 }}>{syncing ? 'Syncing…' : 'Sync now'}</button>}
+              <span style={{ fontSize: 13, color: SA.muted, alignSelf: 'center' }}>Last huddle {fmtTime(lastHuddleAt)}</span>
+            </div>
+          )}
+          {message && <div style={{ fontSize: 12, color: SA.warn, marginTop: 6 }}>{message}</div>}
+        </div>
+      ) : (
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, marginBottom: 24 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ ...SA_TYPE.label, color: SA.muted }}>HomeLover · Command Center</div>
@@ -403,6 +425,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
           <button onClick={handleStart} style={{ ...headerButton, fontWeight: 600, background: SA.accent, color: SA.ground, border: 0 }}>Start huddle</button>
         </div>
       </div>
+      )}
 
       {error && (
         <div style={{ fontSize: 13, color: SA.bad, padding: '10px 14px', background: SA_BAD_BG, border: `1px solid ${SA_BAD_BORDER}`, borderRadius: SA_SHAPE.radiusInner, marginBottom: 16 }}>⚠ {error}</div>

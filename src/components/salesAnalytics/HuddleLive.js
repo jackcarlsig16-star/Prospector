@@ -50,6 +50,7 @@ export default function HuddleLive({ businessId, members, myUserId, ownerColor, 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [expanded, setExpanded] = useState(null);
+  const [moreFilters, setMoreFilters] = useState(false);
   const reqId = useRef(0);
   const shownRef = useRef(PAGE);
 
@@ -84,6 +85,8 @@ export default function HuddleLive({ businessId, members, myUserId, ownerColor, 
   const sync = data?.sync;
   const people = [['', 'Team', SA.accent], ...members.map(m => [m.user_id, m.user_id === myUserId ? 'Mine' : m.name.split(' ')[0], ownerColor(m.name.split(' ')[0].toLowerCase())]), ['unassigned', 'Unassigned', ownerColor('unassigned')]];
   const now = Date.now();
+  // Phones fold owner / sequence / search / toggles under "Filters"; the count says what's on.
+  const activeMore = [owner, sequence, needle, showBots, showClosed].filter(Boolean).length;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -117,8 +120,12 @@ export default function HuddleLive({ businessId, members, myUserId, ownerColor, 
           <Pills label="Activity" options={ACTIVITY} value={filter === 'flagged_me' ? undefined : filter} onChange={f => pickFilter(f, false)} />
           {filter === 'flagged_me' && <ShowingChip label="Flagged to me" count={data?.total ?? 0} onClear={() => pickFilter(null)} />}
           {sinceHuddle && filter && filter !== 'flagged_me' && <ShowingChip label="since last huddle" count={data?.total ?? 0} onClear={() => setSinceHuddle(false)} />}
+          {phone && (
+            <button type="button" aria-expanded={moreFilters} onClick={() => setMoreFilters(o => !o)}
+              style={{ ...syncBtn, borderRadius: 999, borderColor: activeMore ? SA.accent : SA.border }}>Filters{activeMore ? ` (${activeMore})` : ''} {moreFilters ? '▴' : '▾'}</button>
+          )}
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+        {(!phone || moreFilters) && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
           <Pills label="Owner" options={people} value={owner} onChange={setOwner} />
           <select aria-label="Sequence" value={sequence} onChange={e => setSequence(e.target.value)} style={{ ...inputStyle, height: 32, fontSize: 13, maxWidth: phone ? '100%' : 260 }}>
             <option value="">All sequences</option>
@@ -128,7 +135,7 @@ export default function HuddleLive({ businessId, members, myUserId, ownerColor, 
             style={{ ...inputStyle, height: 32, fontSize: 13, flex: phone ? '1 1 100%' : '0 1 240px', minWidth: 0 }} />
           <label style={toggleStyle}><input type="checkbox" checked={showBots} onChange={e => setShowBots(e.target.checked)} /> Show bot opens ({data?.bot_only_count ?? 0})</label>
           <label style={toggleStyle}><input type="checkbox" checked={showClosed} onChange={e => setShowClosed(e.target.checked)} /> Show closed ({data?.closed_count ?? 0})</label>
-        </div>
+        </div>}
       </div>
 
       {error && <div style={{ fontSize: 13, color: SA.bad, padding: '10px 14px', background: SA_BAD_BG, border: `1px solid ${SA_BAD_BORDER}`, borderRadius: SA_SHAPE.radiusInner }}>⚠ {error}</div>}

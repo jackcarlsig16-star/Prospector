@@ -171,6 +171,15 @@ const humanClick = (e, d) => !!d && (Date.parse(e.occurred_at) - Date.parse(d)) 
     const m3 = await newPage(mara, 390, 844);
     await openHuddle(m3.page, hlName, true);
     ok('390: no sideways scroll', await m3.page.evaluate(() => document.documentElement.scrollWidth <= 390 + 1), String(await m3.page.evaluate(() => document.documentElement.scrollWidth)));
+    const firstTop = await m3.page.evaluate(() => { window.scrollTo(0, 0); document.getElementById('main-content')?.scrollTo(0, 0); return Math.round(document.querySelector('[id^="live-row-"]').getBoundingClientRect().top); });
+    ok('390: the first Live row starts on the first screen', firstTop < 844 - 60, `top ${firstTop}px of 844`);
+    await m3.page.getByRole('button', { name: 'More huddle actions' }).click(); await m3.page.waitForTimeout(200);
+    ok('390: ⋯ opens Collateral library / Huddle sheet CSV / Print agenda', await m3.page.getByRole('button', { name: 'Print agenda' }).isVisible() && await m3.page.getByRole('button', { name: 'Huddle sheet CSV' }).isVisible());
+    await m3.page.screenshot({ path: `${OUT}/live-390-menu.png` });
+    await m3.page.getByRole('button', { name: 'More huddle actions' }).click();
+    await m3.page.getByRole('button', { name: /^Filters/ }).click(); await m3.page.waitForTimeout(200);
+    ok('390: Filters opens owner / sequence / search', await m3.page.getByRole('group', { name: 'Owner' }).isVisible() && await m3.page.getByLabel('Search name or company').isVisible());
+    await m3.page.getByRole('button', { name: /^Filters/ }).click(); await m3.page.evaluate(() => { window.scrollTo(0, 0); document.getElementById('main-content')?.scrollTo(0, 0); });
     await m3.page.screenshot({ path: `${OUT}/live-390.png` });
     await m3.page.screenshot({ path: `${OUT}/live-390-full.png`, fullPage: true });
     ok('Mara 390: 0 console errors', m3.errs.length === 0, m3.errs.join(' | '));
