@@ -210,6 +210,7 @@ Standing rules for every sales spec — specs don't need to repeat them.
 - Writes: prefer a temporary workspace with test data (local server with `SALES_ANALYTICS_BUSINESS_IDS` extended, `features.goals_sales` on). If a real row must change, snapshot it and restore it exactly (values + timestamps). Delete temp users. End every report with **"restored: yes"** or say exactly what wasn't.
 - If a table count moves during a run, check who wrote it before assuming the test did — Jack and Cyrus click in the live app while tests run.
 - Real-data checks compare to the DB (or the API that reads it), never to the UI's own numbers.
+- The Apollo org is shared across all workspaces. A Sync now in a temp workspace spends real Apollo calls (measured: 92 + 42 on Oct 7). Live scripts never trigger a full sync — use `--skip-sync` or exercise the step function directly with a fixture. Any test that must call Apollo declares its call count before running and reports actual after.
 
 ## Progress rules
 
