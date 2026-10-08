@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { SA, saSans } from '../../theme';
 import { labelStyle, subStyle, inputStyle, Btn, ErrorNote } from '../goalsUi';
+import PartnerDomains from './PartnerDomains';
 
 // Apollo stays read-only: the link only opens Apollo's sequences page.
 const APOLLO_SEQUENCES = 'https://app.apollo.io/#/sequences';
@@ -18,7 +19,10 @@ function Field({ label, children, color }) {
 
 // partner-360-v1 - the sheet's research and the stored first email, folded
 // away behind one preview line (it was the whole drop-down before).
-export default function PartnerIntel({ partner, canEdit, onUpdate }) {
+// domains: the partner_domains api ({ load, add, update, remove }); the
+// Domains row stays visible while the rest is folded (it's what links the
+// partner to Apollo, so it shouldn't hide behind Show).
+export default function PartnerIntel({ partner, canEdit, onUpdate, domains }) {
   const [open, setOpen] = useState(false);
   const [showEmail, setShowEmail] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -33,6 +37,7 @@ export default function PartnerIntel({ partner, canEdit, onUpdate }) {
         <span style={{ color: SA.muted }}>{open ? 'Hide ▾' : 'Show ▸'}</span>
         {!open && <span style={{ ...subStyle, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>{preview}</span>}
       </button>
+      <PartnerDomains partner={partner} canEdit={canEdit} api={domains} />
       {open && <>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px 20px' }}>
           <Field label="Angle">{partner.angle}</Field>

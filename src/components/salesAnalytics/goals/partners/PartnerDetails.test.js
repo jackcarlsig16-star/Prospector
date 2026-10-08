@@ -24,6 +24,7 @@ function setup(over = {}) {
     partner, lookup, canEdit: true, onUpdate: jest.fn(), bump: 0,
     onEvents: jest.fn(() => Promise.resolve([...tryouts, real])),
     people: { load: jest.fn(() => Promise.resolve([{ id: 'c1', name: 'Dana Kim', title: 'VP Partnerships', email: 'dana@example.com', source: 'manual' }])), add: jest.fn(() => Promise.resolve({})), remove: jest.fn(() => Promise.resolve({})) },
+    domains: { load: jest.fn(() => Promise.resolve({ domains: [{ id: 'd1', domain: 'justworks.com', confirmed: true, is_primary: true, source: 'sources' }], suggestions: [], apollo_account: null })), add: jest.fn(), update: jest.fn(), remove: jest.fn() },
     actions: { members: [], onNext: jest.fn(), onSignal: jest.fn(() => Promise.resolve({ id: 'p1' })) },
     tasksFor: () => [{ id: 'k1', text: 'Send deck', created_at: '2026-10-04T12:00:00Z', owner_user_id: 'u-jack', status: 'open', steps: [], link_type: 'partner', link_id: 'p1' }],
     onCreateTask: jest.fn(() => Promise.resolve({})), onCount: jest.fn(),

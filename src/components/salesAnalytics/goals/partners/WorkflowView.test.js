@@ -106,7 +106,7 @@ const events = [
   { id: 'e2', event: 'status', from_status: 'first_email_drafted', to_status: 'live', at: '2026-10-06T18:01:00Z', by_user: 'u-jack' },
   { id: 'e1', event: 'note', note: 'Called Dana', at: '2026-10-05T16:00:00Z', by_user: null },
 ];
-const details = extra => ({ canEdit: false, onUpdate: jest.fn(), onEvents: jest.fn().mockResolvedValue(events), bump: 0, people: { load: jest.fn().mockResolvedValue([]), add: jest.fn(), remove: jest.fn() }, onCount: jest.fn(), onCreateTask: jest.fn(), tasksFor: null, ...extra });
+const details = extra => ({ canEdit: false, onUpdate: jest.fn(), onEvents: jest.fn().mockResolvedValue(events), bump: 0, people: { load: jest.fn().mockResolvedValue([]), add: jest.fn(), remove: jest.fn() }, domains: { load: jest.fn().mockResolvedValue({ domains: [], suggestions: [], apollo_account: null }), add: jest.fn(), update: jest.fn(), remove: jest.fn() }, onCount: jest.fn(), onCreateTask: jest.fn(), tasksFor: null, ...extra });
 
 test('a row opens the story: Status, Intel folded (sheet fields on open), Activity with the undone move behind Show all; Escape closes; one open per group', async () => {
   const rows = [p('A', { angle: 'Rent rewards for members', do_not_say: 'No "free"', known_contacts: 'Dana (VP Partnerships)', sequence_to_use: 'Platforms v2' }), p('B', { next_step: 'Send deck' })];

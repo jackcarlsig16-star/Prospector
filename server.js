@@ -633,6 +633,12 @@ app.get('/api/sales/:businessId/goals/partners/events', salesModuleRoute('./api/
 app.get('/api/sales/:businessId/goals/partners/:id/people', salesModuleRoute('./api/sales/partnerPeople.js', 'listPeopleRoute', 'goals/partners/:id/people'));
 app.post('/api/sales/:businessId/goals/partners/:id/people', salesModuleRoute('./api/sales/partnerPeople.js', 'addPersonRoute', 'goals/partners/:id/people POST'));
 app.delete('/api/sales/:businessId/goals/partners/:id/people/:personId', salesModuleRoute('./api/sales/partnerPeople.js', 'deletePersonRoute', 'goals/partners/:id/people/:personId DELETE'));
+app.get('/api/sales/:businessId/goals/partners/domains', salesModuleRoute('./api/sales/partnerDomains.js', 'listAllDomainsRoute', 'goals/partners/domains'));
+app.get('/api/sales/:businessId/goals/partners/export-apollo.csv', salesModuleRoute('./api/sales/partnerDomains.js', 'exportApolloCsvRoute', 'goals/partners/export-apollo.csv'));
+app.get('/api/sales/:businessId/goals/partners/:id/domains', salesModuleRoute('./api/sales/partnerDomains.js', 'listDomainsRoute', 'goals/partners/:id/domains'));
+app.post('/api/sales/:businessId/goals/partners/:id/domains', salesModuleRoute('./api/sales/partnerDomains.js', 'addDomainRoute', 'goals/partners/:id/domains POST'));
+app.patch('/api/sales/:businessId/goals/partners/:id/domains/:domainId', salesModuleRoute('./api/sales/partnerDomains.js', 'updateDomainRoute', 'goals/partners/:id/domains/:domainId PATCH'));
+app.delete('/api/sales/:businessId/goals/partners/:id/domains/:domainId', salesModuleRoute('./api/sales/partnerDomains.js', 'deleteDomainRoute', 'goals/partners/:id/domains/:domainId DELETE'));
 app.get('/api/sales/:businessId/goals/scorecard', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'scorecardRoute', 'goals/scorecard'));
 app.get('/api/sales/:businessId/goals/kpi', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'kpiRoute', 'goals/kpi'));
 app.get('/api/sales/:businessId/goals/companies', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'listCompaniesRoute', 'goals/companies'));

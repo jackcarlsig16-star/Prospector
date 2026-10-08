@@ -6,6 +6,7 @@ import { cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle
 import PartnerCard, { statusOf, statusLabel, statusColor, tierLabel } from './partners/PartnerCard';
 import WorkflowView from './partners/WorkflowView';
 import BulkTouchLog from './partners/BulkTouchLog';
+import ApolloExport from './partners/ApolloExport';
 import useMediaQuery from '../../../utils/useMediaQuery';
 
 // prospector_partners_mode - per-viewer convenience: last Partners layout
@@ -62,7 +63,7 @@ const NO_FILTERS = { category: '', tiers: [], stale: false, hot: false, owner: n
 
 // teamView: the person filter is on Team. Reorder needs the whole group in
 // view (see WorkflowView), so it's only offered then.
-export default function PartnersView({ partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusFilter, tasksFor, onPeople, onAddPerson, onDeletePerson, onCreateTask, onTouches }) {
+export default function PartnersView({ partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusFilter, tasksFor, onPeople, onAddPerson, onDeletePerson, onCreateTask, onTouches, onDomains, onAddDomain, onUpdateDomain, onDeleteDomain, onAllDomains, csvUrl }) {
   const [mode, setMode] = useState(readMode);
   const [stage, setStage] = useState(null);
   const compact = useMediaQuery('(max-width: 760px)');
@@ -77,6 +78,7 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
   const [moved, setMoved] = useState(readMoved);
   const [focus, setFocus] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   // A Goals / Overview number opening Partners filtered ({ stage?, tiers?,
   // owner?, ids?, label? }, a new object each time). {} clears the filters.
   useEffect(() => {
@@ -171,8 +173,12 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
   const peopleRef = useRef({ onPeople, onAddPerson, onDeletePerson });
   peopleRef.current = { onPeople, onAddPerson, onDeletePerson };
   const people = useMemo(() => ({ load: id => peopleRef.current.onPeople(id), add: (id, body) => peopleRef.current.onAddPerson(id, body), remove: (id, pid) => peopleRef.current.onDeletePerson(id, pid) }), []);
+  const domainsRef = useRef({ onDomains, onAddDomain, onUpdateDomain, onDeleteDomain, onAllDomains });
+  domainsRef.current = { onDomains, onAddDomain, onUpdateDomain, onDeleteDomain, onAllDomains };
+  const domains = useMemo(() => ({ load: id => domainsRef.current.onDomains(id), add: (id, body) => domainsRef.current.onAddDomain(id, body), update: (id, did, body) => domainsRef.current.onUpdateDomain(id, did, body), remove: (id, did) => domainsRef.current.onDeleteDomain(id, did) }), []);
+  const loadAllDomains = useCallback(() => domainsRef.current.onAllDomains(), []);
   const onCount = useCallback((id, n) => onReplace({ id, people_count: n }), [onReplace]);
-  const details = { canEdit, onUpdate, onEvents: fetchEvents, bump: historyBump, tasksFor, people, onCreateTask, onCount };
+  const details = { canEdit, onUpdate, onEvents: fetchEvents, bump: historyBump, tasksFor, people, domains, onCreateTask, onCount };
 
   const setModeSaved = m => { setMode(m); writeMode(m); };
   const toggleTier = t => setFilters(f => ({ ...f, tiers: f.tiers.includes(t) ? f.tiers.filter(x => x !== t) : [...f.tiers, t] }));
@@ -232,8 +238,10 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
         <button type="button" aria-pressed={filters.hot} onClick={() => setFilters(f => ({ ...f, hot: !f.hot }))} style={pill(filters.hot)}>🔥 Hot only</button>
         {(filtering || stage) && <button type="button" onClick={() => { setFilters(NO_FILTERS); setStage(null); }} style={{ ...pill(false), border: 'none', background: 'transparent', color: SA.link }}>Clear</button>}
         <span style={{ ...subStyle, ...numStyle, fontSize: 13 }}>{shown.length} of {partners.length}</span>
-        {canEdit && <button type="button" aria-expanded={bulkOpen} onClick={() => setBulkOpen(o => !o)} style={{ ...pill(bulkOpen), marginLeft: 'auto' }}>＋ Log touches</button>}
+        {canEdit && <button type="button" aria-expanded={exportOpen} onClick={() => { setExportOpen(o => !o); setBulkOpen(false); }} style={{ ...pill(exportOpen), marginLeft: 'auto' }}>Export to Apollo (CSV)</button>}
+        {canEdit && <button type="button" aria-expanded={bulkOpen} onClick={() => { setBulkOpen(o => !o); setExportOpen(false); }} style={pill(bulkOpen)}>＋ Log touches</button>}
       </div>
+      {exportOpen && canEdit && <ApolloExport load={loadAllDomains} csvUrl={csvUrl} onClose={() => setExportOpen(false)} />}
       {bulkOpen && canEdit && (
         <BulkTouchLog partners={partners} onPreview={touches => onTouches({ dry_run: true, touches })} onApply={touches => onTouches({ touches })}
           onDone={n => { setBulkOpen(false); showToast({ text: `Logged ${n} touch${n === 1 ? '' : 'es'}`, noUndo: true }); onRefresh(); setHistoryBump(k => k + 1); }} onClose={() => setBulkOpen(false)} />

@@ -363,6 +363,12 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
               onDeletePerson={(goalId, personId) => goalsApi.deletePartnerPerson(businessId, goalId, personId)}
               onCreateTask={body => goalsApi.createWeekGoal(businessId, { week_start: thisWeek, kind: 'todo', owner_user_id: (owner === 'team' ? me?.profile?.id : owner) || null, ...body })}
               onTouches={body => goalsApi.partnerTouches(businessId, body)}
+              onDomains={goalId => goalsApi.partnerDomains(businessId, goalId)}
+              onAddDomain={(goalId, body) => goalsApi.addPartnerDomain(businessId, goalId, body)}
+              onUpdateDomain={(goalId, domainId, body) => goalsApi.updatePartnerDomain(businessId, goalId, domainId, body)}
+              onDeleteDomain={(goalId, domainId) => goalsApi.deletePartnerDomain(businessId, goalId, domainId)}
+              onAllDomains={() => goalsApi.allPartnerDomains(businessId)}
+              csvUrl={goalsApi.apolloCsvUrl(businessId)}
               onRefresh={() => goalsApi.partners(businessId).then(setPartners).catch(e => setError('partners', e))}
               onEvents={goalId => goalsApi.partnerEvents(businessId, { goal_id: goalId })}
               onRank={async (goalId, order) => {

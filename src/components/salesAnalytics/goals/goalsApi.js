@@ -71,6 +71,13 @@ export const goalsApi = {
   deletePartnerPerson: (id, goalId, personId) => call(id, `/partners/${goalId}/people/${personId}`, { method: 'DELETE' }),
   // partner-touch-log-v1 - body { dry_run?, touches: [...] }; dry_run previews, the real run applies all or nothing.
   partnerTouches: (id, body) => call(id, '/partners/touches', { method: 'POST', body }),
+  // partner-360-v1 Stage 2 - partner_domains rows + live suggestions; every write returns the same shape.
+  partnerDomains: (id, goalId) => call(id, `/partners/${goalId}/domains`),
+  addPartnerDomain: (id, goalId, body) => call(id, `/partners/${goalId}/domains`, { method: 'POST', body }),
+  updatePartnerDomain: (id, goalId, domainId, body) => call(id, `/partners/${goalId}/domains/${domainId}`, { method: 'PATCH', body }),
+  deletePartnerDomain: (id, goalId, domainId) => call(id, `/partners/${goalId}/domains/${domainId}`, { method: 'DELETE' }),
+  allPartnerDomains: id => call(id, '/partners/domains'),
+  apolloCsvUrl: id => `/api/sales/${id}/goals/partners/export-apollo.csv`,
 
   companies: (id, from, to) => call(id, `/companies?${q({ from, to })}`),
   updateCompany: (id, accountId, body) => call(id, `/companies/${encodeURIComponent(accountId)}`, { method: 'PATCH', body }).then(d => d.company),

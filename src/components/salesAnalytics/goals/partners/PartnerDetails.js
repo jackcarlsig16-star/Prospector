@@ -17,7 +17,7 @@ import LogTouchForm from './LogTouchForm';
 // handlers (null for viewers). people: { load, add, remove } for
 // partner_contacts. tasksFor: this week's linked to-dos, or null when Goals
 // shows another week.
-export default function PartnerDetails({ partner, lookup, canEdit, onUpdate, onEvents, bump, tasksFor, actions, people, onCreateTask, onCount }) {
+export default function PartnerDetails({ partner, lookup, canEdit, onUpdate, onEvents, bump, tasksFor, actions, people, domains, onCreateTask, onCount }) {
   const [events, setEvents] = useState(null);
   const [contacts, setContacts] = useState(null);
   const [peopleBump, setPeopleBump] = useState(0);
@@ -79,7 +79,7 @@ export default function PartnerDetails({ partner, lookup, canEdit, onUpdate, onE
           </form>
         )}
       </section>
-      <PartnerIntel partner={partner} canEdit={canEdit} onUpdate={onUpdate} />
+      <PartnerIntel partner={partner} canEdit={canEdit} onUpdate={onUpdate} domains={domains} />
       {error && <ErrorNote message={error} />}
     </div>
   );
