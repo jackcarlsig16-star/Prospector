@@ -15,10 +15,13 @@ const readOpen = () => { try { return localStorage.getItem(HERO_KEY) !== 'collap
 const writeOpen = open => { try { localStorage.setItem(HERO_KEY, open ? 'open' : 'collapsed'); } catch { /* private mode */ } };
 const WEEKS = 6;
 
-// Weekly points with the goal dashed behind them; a missing week is a gap,
-// never a zero. Each point has a hover title with its value.
+// Weekly points; a missing week is a gap, never a zero. The goal is one flat
+// dashed line at this week's goal - weekly goals vary and some weeks have
+// none, so joining them drew broken diagonals. No goal this week, no line.
+// Each point has a hover title with its value.
 function Sparkline({ points, format, width = 104, height = 32 }) {
-  const vals = points.flatMap(p => [p.value, p.goal]).filter(v => v != null);
+  const goal = points[points.length - 1].goal;
+  const vals = [...points.map(p => p.value), goal].filter(v => v != null);
   if (points.filter(p => p.value != null).length < 2) return <span style={{ ...subStyle, fontSize: 11 }}>Not enough weeks yet</span>;
   const max = Math.max(...vals, 1), min = Math.min(...vals, 0);
   const x = i => 4 + (i * (width - 8)) / (points.length - 1);
@@ -32,7 +35,7 @@ function Sparkline({ points, format, width = 104, height = 32 }) {
   return (
     <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" style={{ display: 'block', overflow: 'visible' }}
       aria-label={`Last ${points.length} weeks: ${points.map(p => `${shortWeek(p.week)} ${format(p.value)}`).join(', ')}`}>
-      {points.some(p => p.goal != null) && <path d={path('goal')} fill="none" stroke={SA.muted} strokeWidth="1.5" strokeDasharray="3 3" />}
+      {goal != null && <line x1={x(0)} x2={x(points.length - 1)} y1={y(goal)} y2={y(goal)} stroke={SA.muted} strokeWidth="1.5" strokeDasharray="3 3"><title>{`Goal this week: ${format(goal)}`}</title></line>}
       <path d={path('value')} fill="none" stroke={SA.accent} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" />
       {points[last].value != null && <circle cx={x(last)} cy={y(points[last].value)} r="3" fill={SA.accent} />}
       {points.map((p, i) => (
@@ -69,33 +72,43 @@ function SetGoal({ label, onSave }) {
   );
 }
 
+// Each card is a subgrid over the row's 7 shared tracks (title, pill,
+// number + ring, of goal, sparkline, change, footer), so every part sits at
+// the same height across the cards in a row whatever wraps in one of them.
+const HERO_TRACKS = 7;
 function Card({ card, canEdit, onDrill, openTasks, onOpenTasks }) {
   const p = card.value != null && card.goal ? card.value / card.goal : null;
   const pctLabel = p == null ? '—' : `${Math.round(p * 100)}%`;
   return (
-    <section aria-label={card.name} style={{ background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: 14, padding: 14, display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start' }}>
-        <button type="button" onClick={onDrill} title={`Open ${card.drillLabel}`}
-          style={{ all: 'unset', ...saSans, cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, borderRadius: 6 }}>
-          <span style={{ ...labelStyle, display: 'flex', gap: 6, alignItems: 'center' }}>{card.name}{card.teamOnly && <Chip style={{ height: 18, fontSize: 10, padding: '0 6px' }}>team</Chip>}</span>
-          <span style={{ ...numStyle, fontSize: 24, fontWeight: 600, lineHeight: 1.1, color: SA.text }}>{card.format(card.value)}</span>
-          <span style={{ ...subStyle, fontSize: 12 }}>{card.goal != null ? `of ${card.format(card.goal)} · ${card.period}` : card.period}</span>
-          {card.thisWeek !== undefined && <span style={{ ...numStyle, fontSize: 12, color: SA.soft }}>This week: {card.format(card.thisWeek)}</span>}
-        </button>
+    <section aria-label={card.name} data-hero-card=""
+      style={{ gridRow: `span ${HERO_TRACKS}`, display: 'grid', gridTemplateRows: 'subgrid', rowGap: 6, alignContent: 'start', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: 14, padding: 14, marginBottom: 12, minWidth: 0 }}>
+      <span data-part="title" style={{ ...labelStyle, minWidth: 0 }}><span data-part="title-text" style={{ display: 'block', overflowWrap: 'normal', wordBreak: 'normal' }}>{card.name}</span></span>
+      <span>{card.teamOnly && <span data-part="pill"><Chip style={{ height: 18, fontSize: 10, padding: '0 6px' }} title="Team total - not split by person">team</Chip></span>}</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
+        <button type="button" data-part="number" onClick={onDrill} title={`Open ${card.drillLabel}`}
+          style={{ all: 'unset', ...saSans, ...numStyle, cursor: 'pointer', borderRadius: 6, fontSize: 24, fontWeight: 600, lineHeight: 1.1, color: SA.text, minWidth: 0 }}>{card.format(card.value)}</button>
         {card.goal != null && (
-          <Ring size={46} stroke={12} label={`${card.name} to goal`} center={pctLabel}
-            parts={[{ label: 'Reached', count: Math.round(Math.min(p || 0, 1) * 1000), color: progressColor(p) }, { label: 'Left', count: Math.round((1 - Math.min(p || 0, 1)) * 1000), color: SA.track }]} />
+          <span data-part="ring" style={{ flex: 'none', width: 46, height: 46 }}>
+            <Ring size={46} stroke={12} label={`${card.name} to goal`} center={pctLabel}
+              parts={[{ label: 'Reached', count: Math.round(Math.min(p || 0, 1) * 1000), color: progressColor(p) }, { label: 'Left', count: Math.round((1 - Math.min(p || 0, 1)) * 1000), color: SA.track }]} />
+          </span>
         )}
       </div>
-      <Sparkline points={card.weeks} format={card.format} />
-      <span style={{ ...numStyle, fontSize: 11, color: card.wow == null ? SA.faint : card.wow >= 0 ? SA.good : SA.bad }}
+      <div data-part="goal" style={{ display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12 }}>
+        <span style={subStyle}>{card.goal != null ? `of ${card.format(card.goal)} · ${card.period}` : card.period}</span>
+        {card.thisWeek !== undefined && <span style={{ ...numStyle, color: SA.soft }}>This week: {card.format(card.thisWeek)}</span>}
+      </div>
+      <div data-part="spark" style={{ height: 32, display: 'flex', alignItems: 'center' }}><Sparkline points={card.weeks} format={card.format} /></div>
+      <span data-part="delta" style={{ ...numStyle, fontSize: 11, color: card.wow == null ? SA.faint : card.wow >= 0 ? SA.good : SA.bad }}
         title="Change vs last week">{card.wow == null ? `${card.wowLabel || 'vs last week'} —` : `${card.wow >= 0 ? '▲' : '▼'} ${card.format(Math.abs(card.wow))} ${card.wowLabel || 'vs last week'}`}</span>
-      {openTasks > 0 && (
-        <button type="button" onClick={onOpenTasks} aria-label={`${openTasks} open task${openTasks === 1 ? '' : 's'} for ${card.name} - open in Tasks`}
-          style={{ all: 'unset', ...saSans, cursor: 'pointer', fontSize: 12, color: SA.link, minHeight: 24 }}>✓ {openTasks} open task{openTasks === 1 ? '' : 's'} →</button>
-      )}
-      {card.goal == null && (canEdit ? <SetGoal label={card.name} onSave={card.saveGoal} /> : <span style={{ ...subStyle, fontSize: 12 }}>No goal set</span>)}
-      {card.note}
+      <div data-part="footer" style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+        {openTasks > 0 && (
+          <button type="button" onClick={onOpenTasks} aria-label={`${openTasks} open task${openTasks === 1 ? '' : 's'} for ${card.name} - open in Tasks`}
+            style={{ all: 'unset', ...saSans, cursor: 'pointer', fontSize: 12, color: SA.link, minHeight: 24 }}>✓ {openTasks} open task{openTasks === 1 ? '' : 's'} →</button>
+        )}
+        {card.goal == null && (canEdit ? <SetGoal label={card.name} onSave={card.saveGoal} /> : <span style={{ ...subStyle, fontSize: 12 }}>No goal set</span>)}
+        {card.note}
+      </div>
     </section>
   );
 }
@@ -178,7 +191,7 @@ export default function GoalHero({ businessId, weekStart, owner, commitments, mi
       {open && (failure ? (failure.needsMigration ? <NeedsMigration what="The goal cards" /> : <ErrorNote message={failure.message} />)
         : !sc ? <span style={{ ...subStyle, fontSize: 13 }}>Loading goals…</span>
         : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 136px), 1fr))', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', columnGap: 12 }}>
             {cards.map(c => <Card key={c.id} card={c} canEdit={canEdit} onDrill={() => onDrill(c.id)} openTasks={openTasks?.[c.metric]} onOpenTasks={() => onOpenTasks(c.metric)} />)}
           </div>
         ))}
