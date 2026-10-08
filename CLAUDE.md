@@ -213,7 +213,7 @@ Standing rules for every sales spec — specs don't need to repeat them.
 
 ## Progress rules
 
-- At the start of every SPEC stage, FIX, or audit: create a task list (the built-in todo/task tool) with one item per implementation step from the spec, plus "verify" and "commit + push". Do this before touching any file.
+- At the start of every SPEC stage, FIX, or audit: create a task list (the TaskCreate tool, not a typed list) with one item per implementation step from the spec, plus "verify" and "commit + push". Do this before touching any file.
 - Mark each item in_progress when you start it and completed the moment it's done. Never batch updates at the end.
 - Every status reply starts with a one-line progress bar: `[####------] 4/10 — <current step>`.
 - Never mark a step done before its check passes. Never mark "verify" done before "restored: yes".
