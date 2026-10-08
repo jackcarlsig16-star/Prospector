@@ -85,3 +85,13 @@ test('closed = unsubscribed or a not-interested/unsubscribe reply; other replies
   }));
   assert.deepEqual(Object.fromEntries(rows.map(r => [r.contact_id, r.closed])), { u: true, n: true, w: false });
 });
+
+test('subject line: on each sent item and on the row (the latest activity\'s message)', () => {
+  const [r] = buildLiveRows(base({
+    prospects: [prospect('s')],
+    messages: [msg('m1', 's', { subject: 'Step one subject' }), msg('m2', 's', { step: 2, delivered_at: '2026-10-06T15:00:00Z', subject: 'Re: step two' })],
+    events: [ev(1, 'm2', 's', 'open', '2026-10-07T13:00:00Z')],
+  }));
+  assert.equal(r.subject, 'Re: step two');
+  assert.deepEqual(r.timeline.filter(t => t.kind === 'sent').map(t => t.subject), ['Re: step two', 'Step one subject']);
+});

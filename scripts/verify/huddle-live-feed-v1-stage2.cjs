@@ -1,4 +1,4 @@
-// huddle-live-feed-v1 Stage 2 check - the Live tab in a real browser. Part A: real HomeLover, READ ONLY (2 temp users: Mara = Member, Vera = Viewer, both deleted): newest row vs the DB, sync line, numbers, closed toggle, expand, links, load more, viewer, 1440 + 390 screenshots. Part B: a TEMP workspace with 3 seeded prospects (Jack + Cyrus temp members) for the writes: Flag -> Cyrus, second flag offers reassign, Mark contacted + Undo. All deleted. 0 AI / 0 Apollo calls. ~2 min, cap 4 min. Serves build/ via server.js - run npm run build first.
+// huddle-live-feed-v1 Stage 2 check (+ subject add-on: needs supabase/migrations/20261007_huddle_live_subject.sql) - the Live tab in a real browser. Part A: real HomeLover, READ ONLY (2 temp users: Mara = Member, Vera = Viewer, both deleted): newest row vs the DB, sync line, numbers, closed toggle, expand, links, load more, viewer, 1440 + 390 screenshots. Part B: a TEMP workspace with 3 seeded prospects (Jack + Cyrus temp members) for the writes: Flag -> Cyrus, second flag offers reassign, Mark contacted + Undo. All deleted. 0 AI / 0 Apollo calls. ~2 min, cap 4 min. Serves build/ via server.js - run npm run build first.
 const ROOT = require('path').resolve(__dirname, '../..');
 require(ROOT + '/node_modules/dotenv').config({ path: ROOT + '/.env' });
 const { spawn } = require('child_process');
@@ -92,9 +92,9 @@ const humanClick = (e, d) => !!d && (Date.parse(e.occurred_at) - Date.parse(d)) 
       { business_id: B, contact_id: 'zz-c', name: 'Casey Clicker', company: 'Cobalt Co', owner: 'unassigned', status: 'new' },
     ]).select());
     ins(await svc.from('sales_email_messages').insert([
-      { business_id: B, apollo_message_id: 'zm-a', contact_id: 'zz-a', step: 2, delivered_at: ago(50), replied: false, reply_class: null, replied_seen_at: null },
-      { business_id: B, apollo_message_id: 'zm-b', contact_id: 'zz-b', step: 1, delivered_at: ago(60), replied: true, reply_class: 'willing_to_meet', replied_seen_at: ago(5) },
-      { business_id: B, apollo_message_id: 'zm-c', contact_id: 'zz-c', step: 3, delivered_at: ago(40), replied: false, reply_class: null, replied_seen_at: null },
+      { business_id: B, apollo_message_id: 'zm-a', contact_id: 'zz-a', step: 2, delivered_at: ago(50), replied: false, reply_class: null, replied_seen_at: null, subject: 'ZZ: 40% of your team' },
+      { business_id: B, apollo_message_id: 'zm-b', contact_id: 'zz-b', step: 1, delivered_at: ago(60), subject: null, replied: true, reply_class: 'willing_to_meet', replied_seen_at: ago(5) },
+      { business_id: B, apollo_message_id: 'zm-c', contact_id: 'zz-c', step: 3, delivered_at: ago(40), replied: false, reply_class: null, replied_seen_at: null, subject: null },
     ]).select());
     ins(await svc.from('sales_email_activity').insert([
       { business_id: B, apollo_message_id: 'zm-a', contact_id: 'zz-a', step: 2, event: 'open', occurred_at: ago(20) },
@@ -197,6 +197,9 @@ const humanClick = (e, d) => !!d && (Date.parse(e.occurred_at) - Date.parse(d)) 
     ok('temp: rows newest first (Avery 1 h, Blake reply 5 h, Casey click 8 h)', JSON.stringify(await rowIds(J)) === JSON.stringify(['zz-a', 'zz-b', 'zz-c']));
     const A = J.locator('#live-row-zz-a');
     ok('Avery: 👁 ×3 real opens, insight + next step text', /👁 ×3/.test(await A.innerText()) && /Opened 3×/.test(await A.innerText()) && /→ /.test(await A.innerText()), (await A.innerText()).replace(/\n/g, ' | '));
+    await A.getByRole('button', { name: 'Expand timeline' }).click(); await J.waitForTimeout(200);
+    ok('expand shows the sent step\'s subject line', /✉ Sent[\s\S]*“ZZ: 40% of your team”/.test(await A.innerText()));
+    await A.getByRole('button', { name: 'Collapse' }).click();
     await A.getByRole('button', { name: 'Flag →' }).click();
     const dlg = J.getByRole('dialog');
     ok('flag dialog defaults to Cyrus (the other owner)', (await dlg.getByLabel('Hand to').inputValue()) === cyrus.id);

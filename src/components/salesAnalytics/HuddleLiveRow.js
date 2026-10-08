@@ -77,6 +77,7 @@ export default function HuddleLiveRow({ r, ownerColor, ownerLabel, canEdit, expa
               <span style={{ fontVariantNumeric: 'tabular-nums' }}>{t.kind === 'reply' ? (t.at ? `seen at sync ${fullWhen(t.at)}` : 'seen at sync (time not recorded)') : fullWhen(t.at)}</span>
               {t.automated && <span>· bot / scanner</span>}
               {t.reply_class && <span>· {t.reply_class.replace(/_/g, ' ')}</span>}
+              {t.subject && <span style={{ color: SA.text, minWidth: 0, overflowWrap: 'anywhere' }}>· “{t.subject}”</span>}
             </div>
           ))}
           {r.flag && <div style={{ color: SA.muted, marginTop: 4 }}>To-do: flagged to {r.flag.owner_name || 'a teammate'} (Goals → This week)</div>}

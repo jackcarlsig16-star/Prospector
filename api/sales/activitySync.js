@@ -73,6 +73,7 @@ function summaryRow(businessId, m) {
     replied: !!m.replied,
     reply_class: m.reply_class || null,
     bounced: !!m.bounce,
+    subject: m.subject || null,
     updated_at: new Date().toISOString(),
   };
 }

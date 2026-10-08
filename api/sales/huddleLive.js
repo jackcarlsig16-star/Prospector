@@ -73,7 +73,7 @@ export function buildLiveRows({ prospects, messages, events, flags, members, sta
     const timeline = [
       ...tagged.map(e => ({ kind: e.event, at: e.occurred_at, step: e.step, automated: e.automated, message_id: e.apollo_message_id })),
       ...replies.map(m => ({ kind: 'reply', at: m.replied_seen_at, step: m.step ?? null, automated: false, seen_at_sync: true, reply_class: m.reply_class || null, message_id: m.apollo_message_id })),
-      ...msgs.filter(m => m.delivered_at).map(m => ({ kind: 'sent', at: m.delivered_at, step: m.step ?? null, automated: false, message_id: m.apollo_message_id })),
+      ...msgs.filter(m => m.delivered_at).map(m => ({ kind: 'sent', at: m.delivered_at, step: m.step ?? null, automated: false, message_id: m.apollo_message_id, subject: m.subject || null })),
     ].sort((a, b) => (b.at || '').localeCompare(a.at || ''));
     // Last activity = newest real open/click/reply. A reply with no seen time
     // (pre-column rows) still counts as real activity at its delivery time.
@@ -96,6 +96,7 @@ export function buildLiveRows({ prospects, messages, events, flags, members, sta
       linkedin_search_url: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent([p.name, p.company].filter(Boolean).join(' '))}`,
       sequence: lastMsg.sequence_id ? { id: lastMsg.sequence_id, name: seq ? seq.name : null } : null,
       step: lastMsg.step ?? null,
+      subject: lastMsg.subject || null,
       sequence_ids: [...new Set(msgs.map(m => m.sequence_id).filter(Boolean))],
       sent: msgs.filter(m => m.delivered_at).length,
       real_opens: realOpens.length,
@@ -153,7 +154,7 @@ export async function liveRoute(req, res) {
   try {
     const [prospects, messages, events, goalRows, statusEvents] = await Promise.all([
       selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id,name,title,company,linkedin_url,email_unsubscribed,owner,status,opportunity_id').eq('business_id', businessId).order('contact_id')),
-      selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,contact_id,sequence_id,step,delivered_at,replied,reply_class,replied_seen_at').eq('business_id', businessId).order('apollo_message_id')),
+      selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,contact_id,sequence_id,step,delivered_at,replied,reply_class,replied_seen_at,subject').eq('business_id', businessId).order('apollo_message_id')),
       selectAllPages(() => supabase.from('sales_email_activity').select('id,apollo_message_id,contact_id,step,event,occurred_at,user_agent,tracking_service').eq('business_id', businessId).in('event', ['open', 'click']).order('id')),
       selectAllPages(() => supabase.from('sales_week_goals').select('id,owner_user_id,status,carried_from_id,prospect_contact_id,week_start').eq('business_id', businessId).not('prospect_contact_id', 'is', null).order('week_start', { ascending: false }).order('id')),
       selectAllPages(() => supabase.from('sales_prospect_events').select('id,contact_id,changed_at').eq('business_id', businessId).eq('field', 'status').in('to_value', ['contacted', 'booked']).order('id')),
