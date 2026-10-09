@@ -1,3 +1,4 @@
+import { replyAt, replyExact } from './replyTime.js';
 import { laDateString } from './laDate.js';
 
 // sales-hot-prospects-v1 - the ONE place heat weights live (REVISABLE).
@@ -107,8 +108,8 @@ export function huddleSignals(messages, events, scored, now = Date.now(), scanne
   const realOpens = events.filter(e => e.event === 'open' && !isBotOpen(e, deliveredById.get(e.apollo_message_id)));
   const replied = messages.filter(m => m.replied);
 
-  const seenTimes = replied.map(m => m.replied_seen_at).filter(Boolean);
-  const replySeenAt = seenTimes.length ? seenTimes.sort().pop() : null;
+  const latestReply = [...replied].filter(replyAt).sort((a, b) => replyAt(a).localeCompare(replyAt(b))).pop() || null;
+  const replySeenAt = latestReply ? replyAt(latestReply) : null;
   const replyHot = replied.length > 0 && (!replySeenAt || now - Date.parse(replySeenAt) <= HEAT_BANDS.recentDays * 864e5);
   const band = replied.length
     ? (replyHot || humanClicks.some(recent) ? 'hot' : 'warm')
@@ -118,7 +119,7 @@ export function huddleSignals(messages, events, scored, now = Date.now(), scanne
   let last = null;
   if (replied.length) {
     const m = [...replied].sort((a, b) => (b.step || 0) - (a.step || 0))[0];
-    last = { kind: 'reply', step: m.step ?? null, reply_class: m.reply_class || null, at: replySeenAt };
+    last = { kind: 'reply', step: m.step ?? null, reply_class: m.reply_class || null, at: replySeenAt, exact: !!latestReply && replyExact(latestReply) };
   } else {
     const latest = [...humanClicks, ...realOpens].sort((a, b) => b.occurred_at.localeCompare(a.occurred_at))[0];
     if (latest) {

@@ -78,6 +78,8 @@ test('Done (contacted) leaves Needs action unless a due date someone set is due'
 test('reply context shows when the sync first saw it', () => {
   const seen = { ...reply, last_human_signal: { ...reply.last_human_signal, at: '2026-10-05T21:10:00Z' } };
   expect(signalOf(seen, T).context).toBe('Replied to step 2 · follow up question · seen Oct 5');
+  const exact = { ...reply, last_human_signal: { ...reply.last_human_signal, at: '2026-10-05T21:10:00Z', exact: true } };
+  expect(signalOf(exact, T).context).toBe('Replied to step 2 · follow up question · replied Oct 5');
 });
 
 test('flag checklist defaults from Next Best Action', () => {

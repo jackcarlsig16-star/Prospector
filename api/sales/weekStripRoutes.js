@@ -1,3 +1,4 @@
+import { replyAt, replyWindow } from './replyTime.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
 import { getSupabase, laStartOfDayMs, isDate, isMonday, addDays } from './goalsShared.js';
@@ -43,8 +44,8 @@ export async function weekStripRoute(req, res) {
         .eq('business_id', businessId).gte('delivered_at', fromIso).order('apollo_message_id')),
       selectAllPages(() => supabase.from('sales_email_activity').select('id,apollo_message_id,sender,occurred_at,user_agent,tracking_service')
         .eq('business_id', businessId).eq('event', 'open').gte('occurred_at', fromIso).order('id')),
-      selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,sender,reply_class,replied_seen_at')
-        .eq('business_id', businessId).eq('replied', true).gte('replied_seen_at', fromIso).order('apollo_message_id')),
+      selectAllPages(() => replyWindow(supabase.from('sales_email_messages').select('apollo_message_id,sender,reply_class,replied_seen_at,replied_at')
+        .eq('business_id', businessId).eq('replied', true), fromIso).order('apollo_message_id')),
       selectAllPages(() => supabase.from('sales_partner_events').select('id,event,from_status,to_status,meta,at')
         .eq('business_id', businessId).order('at').order('id')),
       supabase.from('sales_metric_targets').select('period_start,actual').eq('business_id', businessId)
@@ -75,7 +76,7 @@ export async function weekStripRoute(req, res) {
       if (isBotOpen(o, deliveredAt.get(o.apollo_message_id))) bump(day, o.sender, 'tracked_bot_opens');
     }
     for (const r of replies) {
-      const day = laDay(r.replied_seen_at);
+      const day = laDay(replyAt(r));
       bump(day, r.sender, 'tracked_replies');
       if (!AUTO_REPLY_CLASSES.includes(r.reply_class)) bump(day, r.sender, 'tracked_real_replies');
     }

@@ -74,7 +74,7 @@ export default function HuddleLiveRow({ r, ownerColor, ownerLabel, canEdit, expa
             <div key={`${t.kind}:${t.message_id}:${t.at}:${i}`} style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', color: t.automated ? SA.faint : SA.soft }}>
               <span style={{ minWidth: 92, color: t.automated ? SA.faint : SA.text }}>{KIND_LABEL[t.kind]}</span>
               <span style={{ minWidth: 52 }}>{t.step != null ? `step ${t.step}` : ''}</span>
-              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{t.kind === 'reply' ? (t.at ? `seen at sync ${fullWhen(t.at)}` : 'seen at sync (time not recorded)') : fullWhen(t.at)}</span>
+              <span style={{ fontVariantNumeric: 'tabular-nums' }}>{t.kind === 'reply' ? (t.at ? `${t.seen_at_sync === false ? 'replied' : 'seen at sync'} ${fullWhen(t.at)}` : 'seen at sync (time not recorded)') : fullWhen(t.at)}</span>
               {t.automated && <span>· bot / scanner</span>}
               {t.reply_class && <span>· {t.reply_class.replace(/_/g, ' ')}</span>}
               {t.subject && <span style={{ color: SA.text, minWidth: 0, overflowWrap: 'anywhere' }}>· “{t.subject}”</span>}

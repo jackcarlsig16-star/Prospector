@@ -119,6 +119,18 @@ test('dedupe: a key already on an apollo-sourced event is skipped (or dropped fr
   assert.match(again.skipped.find(s => s.goal_id === 'g2').reason, /already applied \(sent:c2:2026-09-30T12:00:00Z\)/);
 });
 
+test('an exact Outlook reply time (replied_at) dates the move and is labeled "replied", beating a later seen-at-sync time', () => {
+  const partners = [{ id: 'g1', name: 'Acme', pipeline_status: 'researching' }];
+  const contacts = [{ goal_id: 'g1', apollo_contact_id: 'c1', name: 'Pat Lee', sequence_added_at: '2026-10-01T10:00:00Z' }];
+  const messages = [{ ...reply('m1', 'c1', '2026-10-05T20:00:00Z'), replied_at: '2026-10-02T15:30:00Z' }];
+  const { proposed } = proposeMoves({ partners, contacts, messages, events: [] });
+  assert.equal(proposed.length, 1);
+  assert.equal(proposed[0].date, '2026-10-02');
+  assert.equal(proposed[0].date_label, 'replied');
+  assert.equal(proposed[0].source_at, '2026-10-02T15:30:00Z');
+  assert.match(proposed[0].reason, /reply from Pat Lee \(replied 2026-10-02\)/);
+});
+
 test('replies with no replied_seen_at are reported, not dated from delivered_at; contacts without an Apollo id are ignored', () => {
   const { proposed, skipped } = run({
     partners: [partner('g1', 'not_started'), partner('g2', 'not_started')],

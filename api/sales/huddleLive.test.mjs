@@ -50,6 +50,11 @@ test('reply wins: newest-first by reply seen time, handled when flagged or conta
   assert.equal(r.replied, true); assert.equal(r.handled, false, 'contacted before the reply does not count');
   assert.equal(r.next_step.label, 'Book meeting');
   assert.match(r.insight, /^Replied \(willing to meet\) — seen today 6:08 am at sync · not yet handled$/);
+  // Stage 4a: an exact Outlook time replaces the sync time and drops the label.
+  const exact = buildLiveRows(base({ prospects: [prospect('r')], messages: [msg('m9', 'r', { replied: true, reply_class: 'willing_to_meet', replied_seen_at: '2026-10-07T13:08:00Z', replied_at: '2026-10-07T09:45:00Z' })] }))[0];
+  assert.equal(exact.reply_seen_at, '2026-10-07T09:45:00Z'); assert.equal(exact.reply_exact, true);
+  assert.match(exact.insight, /^Replied \(willing to meet\) — replied today 2:45 am · not yet handled$/);
+  assert.deepEqual(exact.timeline.filter(t => t.kind === 'reply').map(t => [t.at, t.seen_at_sync]), [['2026-10-07T09:45:00Z', false]]);
   const flagged = buildLiveRows(base({ prospects: [prospect('r')], messages: [msg('m9', 'r', { replied: true, replied_seen_at: '2026-10-07T13:08:00Z' })], flags: [{ id: 'g1', owner_user_id: 'u-cy', prospect_contact_id: 'r' }] }))[0];
   assert.equal(flagged.handled, true); assert.deepEqual(flagged.flag, { goal_id: 'g1', owner_user_id: 'u-cy', owner_name: 'Cyrus K' });
 });

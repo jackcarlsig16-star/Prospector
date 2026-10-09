@@ -1,3 +1,4 @@
+import { replyWindow } from './replyTime.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laStartOfDayMs, addDays } from './goalsShared.js';
 import { isAutomated } from './heatScore.js';
@@ -15,8 +16,8 @@ export async function weekEngagement(supabase, businessId, weekStart) {
   const [events, replies] = await Promise.all([
     selectAllPages(() => supabase.from('sales_email_activity').select('id,apollo_message_id,event,occurred_at,user_agent,tracking_service')
       .eq('business_id', businessId).gte('occurred_at', fromIso).lt('occurred_at', toIso).order('id')),
-    selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id')
-      .eq('business_id', businessId).eq('replied', true).gte('replied_seen_at', fromIso).lt('replied_seen_at', toIso).order('apollo_message_id')),
+    selectAllPages(() => replyWindow(supabase.from('sales_email_messages').select('apollo_message_id')
+      .eq('business_id', businessId).eq('replied', true), fromIso, toIso).order('apollo_message_id')),
   ]);
   const msgIds = [...new Set(events.map(e => e.apollo_message_id))];
   const msgs = msgIds.length ? await selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,delivered_at')

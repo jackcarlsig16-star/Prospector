@@ -5,6 +5,8 @@
 import { getServiceSupabase } from '../lib/authUser.js';
 import { accessTokenFor, getGrant } from '../lib/microsoftGrants.js';
 import { runDailyOutlookMoves } from '../sales/partnerOutlookTouches.js';
+import { businessFeatureOn } from '../lib/outlookFeatures.js';
+import { runOutlookReplyTimes } from '../sales/outlookReplyTimes.js';
 
 export const GRAPH_URL = () => process.env.MICROSOFT_GRAPH_URL || 'https://graph.microsoft.com/v1.0';
 export const BACKFILL_DAYS = 90;
@@ -203,10 +205,14 @@ export async function runOutlookSync({ userId, businessId, trigger = 'manual', d
   }
   // Stage 3: the daily step rides on every real sync. Its own failure lands
   // on its run row and in the response, never on the folder syncs.
-  let moves = null;
+  let moves = null, replyTimes = null;
   if (!dryRun) {
     try { moves = await runDailyOutlookMoves(supabase, target.businessId, { userId, trigger, now }); }
     catch (err) { moves = { error: String(err.message || err).slice(0, 500) }; console.error('[outlook/moves]', moves.error); }
+    // Stage 4a: exact reply times for sequenced prospects, only where the
+    // workspace switched it on; its failure stays here too.
+    try { if (await businessFeatureOn(supabase, target.businessId, 'outlook_reply_times')) replyTimes = await runOutlookReplyTimes(supabase, target.businessId); }
+    catch (err) { replyTimes = { error: String(err.message || err).slice(0, 500) }; console.error('[outlook/reply-times]', replyTimes.error); }
   }
-  return { businessId: target.businessId, mailbox: target.mailbox, dry_run: dryRun, folders, moves };
+  return { businessId: target.businessId, mailbox: target.mailbox, dry_run: dryRun, folders, moves, reply_times: replyTimes };
 }

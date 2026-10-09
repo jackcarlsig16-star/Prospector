@@ -107,7 +107,7 @@ export function signalOf(p, today) {
     : due === 'today' ? { label: 'Due', tone: 'due' } : null;
   const step = s?.step ? ` step ${s.step}` : '';
   const context = !s ? null
-    : s.kind === 'reply' ? `Replied to${step || ' an email'}${s.reply_class && s.reply_class !== 'none_of_the_above' ? ` · ${s.reply_class.replace(/_/g, ' ')}` : ''}${s.at ? ` · seen ${md(s.at)}` : ''}`
+    : s.kind === 'reply' ? `Replied to${step || ' an email'}${s.reply_class && s.reply_class !== 'none_of_the_above' ? ` · ${s.reply_class.replace(/_/g, ' ')}` : ''}${s.at ? ` · ${s.exact ? 'replied' : 'seen'} ${md(s.at)}` : ''}`
     : s.kind === 'click' ? `Clicked${step} · ${md(s.at)}`
     : `Opened${step}${s.count > 1 ? ` ×${s.count}` : ''} · ${md(s.at)}`;
   return { chip, context };
@@ -120,7 +120,7 @@ export const laDay = iso => new Date(iso).toLocaleDateString('en-CA', { timeZone
 
 export function feedText(i) {
   const step = i.step ? ` step ${i.step}` : '';
-  if (i.kind === 'reply') return `replied${step ? ` to${step}` : ''}${i.reply_class && i.reply_class !== 'none_of_the_above' ? `: ${i.reply_class.replace(/_/g, ' ')}` : ''} · seen at ${TIME(i.at)}`;
+  if (i.kind === 'reply') return `replied${step ? ` to${step}` : ''}${i.reply_class && i.reply_class !== 'none_of_the_above' ? `: ${i.reply_class.replace(/_/g, ' ')}` : ''} · ${i.seen_at_sync === false ? '' : 'seen at '}${TIME(i.at)}`;
   if (i.kind === 'click') return `clicked${step}`;
   return `opened${step}${i.nth > 1 ? ` (${ORD(i.nth)} time)` : ''}`;
 }

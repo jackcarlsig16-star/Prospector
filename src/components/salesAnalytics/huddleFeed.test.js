@@ -9,6 +9,7 @@ test('feed wording: opens with nth, clicks, replies labelled with sync time', ()
   expect(feedText(I({ step: 2, nth: 11 }))).toBe('opened step 2 (11th time)');
   expect(feedText(I({ kind: 'click', step: 1 }))).toBe('clicked step 1');
   expect(feedText(I({ kind: 'reply', step: 2, reply_class: 'willing_to_meet', at: '2026-10-05T21:10:00Z' }))).toBe('replied to step 2: willing to meet · seen at Oct 5, 2:10 PM');
+  expect(feedText(I({ kind: 'reply', step: 2, reply_class: 'willing_to_meet', at: '2026-10-05T21:10:00Z', seen_at_sync: false }))).toBe('replied to step 2: willing to meet · Oct 5, 2:10 PM');
 });
 
 test('groups by LA day and places the new-since-last-huddle divider', () => {

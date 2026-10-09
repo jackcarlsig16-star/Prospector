@@ -1,3 +1,4 @@
+import { replyAt, replyExact, replyWindow } from './replyTime.js';
 import { createClient } from '@supabase/supabase-js';
 import { stageIndex, ORG_TYPE_ENUM } from './pipelineStages.js';
 import { laDateString } from './laDate.js';
@@ -119,7 +120,7 @@ export async function huddleRoute(req, res) {
     else if (e.event === 'click') since.real_clicks++;
     else if (e.event === 'open') since.real_opens++;
   }
-  since.replies = (messages.data || []).filter(m => m.replied && m.replied_seen_at && m.replied_seen_at > sinceIso).length;
+  since.replies = (messages.data || []).filter(m => m.replied && replyAt(m) && replyAt(m) > sinceIso).length;
   const { count: doneSince, error: doneErr } = await supabase.from('sales_prospect_events').select('id', { count: 'exact', head: true })
     .eq('business_id', businessId).eq('field', 'status').in('to_value', ['contacted', 'booked']).gt('changed_at', sinceIso);
   if (doneErr) return res.status(500).json({ error: doneErr.message });
@@ -308,8 +309,8 @@ export async function huddleFeedRoute(req, res) {
     const [events, replies] = await Promise.all([
       selectAllPages(() => supabase.from('sales_email_activity').select('id,apollo_message_id,contact_id,event,step,occurred_at,user_agent,tracking_service')
         .eq('business_id', businessId).gte('occurred_at', fromIso).order('occurred_at', { ascending: false }).order('id')),
-      selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,contact_id,step,reply_class,replied_seen_at')
-        .eq('business_id', businessId).eq('replied', true).gte('replied_seen_at', fromIso).order('replied_seen_at', { ascending: false }).order('apollo_message_id')),
+      selectAllPages(() => replyWindow(supabase.from('sales_email_messages').select('apollo_message_id,contact_id,step,reply_class,replied_seen_at,replied_at')
+        .eq('business_id', businessId).eq('replied', true), fromIso).order('replied_seen_at', { ascending: false }).order('apollo_message_id')),
     ]);
     const msgIds = [...new Set(events.map(e => e.apollo_message_id))];
     const contactIds = [...new Set([...events, ...replies].map(x => x.contact_id))];
@@ -331,7 +332,7 @@ export async function huddleFeedRoute(req, res) {
         automated: isAutomated(e, deliveredById.get(e.apollo_message_id), SCANNER_CLICK_WITHIN_SECONDS),
         nth: e.event === 'open' ? (opensByMsg.get(e.apollo_message_id) || []).filter(o => o.occurred_at <= e.occurred_at).length : null,
       })),
-      ...replies.map(m => item(m, { key: `r:${m.apollo_message_id}`, kind: 'reply', at: m.replied_seen_at, seen_at_sync: true, reply_class: m.reply_class || null, automated: false })),
+      ...replies.map(m => item(m, { key: `r:${m.apollo_message_id}`, kind: 'reply', at: replyAt(m), seen_at_sync: !replyExact(m), reply_class: m.reply_class || null, automated: false })),
     ].sort((a, b) => b.at.localeCompare(a.at) || a.key.localeCompare(b.key));
     if (before) items = items.filter(i => i.at < before);
     const page = items.slice(0, limit);

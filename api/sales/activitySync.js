@@ -179,6 +179,9 @@ export async function syncActivity({ ctx, supabase, businessId }) {
           title: c.title || null,
           company: c.organization_name || null,
           linkedin_url: c.linkedin_url || null,
+          // microsoft-connect-v1 Stage 4a: the address lets a synced Outlook
+          // reply give this prospect's exact reply time. DB only - never logged.
+          email: typeof c.email === 'string' && c.email.includes('@') ? c.email.trim().toLowerCase().slice(0, 254) : null,
           // No phone, permanently (Jack, 2026-10-01): Apollo phone reveals cost
           // credits. Don't store it and don't add a reveal/enrich endpoint.
           email_unsubscribed: !!c.email_unsubscribed || m.reply_class === 'unsubscribe' || !!(prev && prev.snapshot.email_unsubscribed),

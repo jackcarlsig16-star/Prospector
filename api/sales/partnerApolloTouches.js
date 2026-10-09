@@ -4,6 +4,7 @@
 // each approved move through applyPartnerSignal as a touch "from Apollo".
 // Dedupe keys live in the event's meta.apollo_key once a move is applied, so
 // a re-run skips it even after an undo (an undone move was rejected, not lost).
+import { replyAt, replyExact } from './replyTime.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { getSupabase } from './goalsShared.js';
 import { hasRole } from '../lib/requireAuth.js';
@@ -14,7 +15,7 @@ import { PIPELINE_STATUS_IDS } from '../../src/constants/partnerPipeline.js';
 export const SENT = 'first_email_sent', REPLIED = 'replied';
 // Apollo never recorded when the reply arrived; replied_seen_at is the sync
 // that first saw it. The label travels with the date so the UI can't drop it.
-export const DATE_LABELS = { [SENT]: 'in sequence since', [REPLIED]: 'seen at sync' };
+export const DATE_LABELS = { [SENT]: 'in sequence since', [REPLIED]: 'seen at sync', replied_exact: 'replied' };
 // Jack, 2026-10-08: enrollment in a paused sequence doesn't prove step 1 went
 // out. A partner whose sequenced contacts are ALL paused is held, never proposed.
 export const HELD_REASON = 'enrolled, paused — needs Jack';
@@ -57,14 +58,15 @@ export function proposeMoves({ partners, contacts, messages, events, now = new D
 
     let candidate = null;
     if (replies.length) {
-      const seen = replies.filter(r => r.m.replied_seen_at);
+      const seen = replies.filter(r => replyAt(r.m));
       if (!seen.length) skipped.push({ ...base, to: REPLIED, reason: `${replies.length} stored reply with no replied_seen_at` });
       else {
-        const first = earliest(seen.map(r => ({ ...r, replied_seen_at: r.m.replied_seen_at })), 'replied_seen_at');
-        const date = laDateString(new Date(first.m.replied_seen_at));
+        const first = earliest(seen.map(r => ({ ...r, reply_at: replyAt(r.m) })), 'reply_at');
+        const date = laDateString(new Date(first.reply_at));
+        const label = replyExact(first.m) ? DATE_LABELS.replied_exact : DATE_LABELS[REPLIED];
         candidate = { ...base, to: REPLIED, key: replyKey(first.m), contact_name: first.c.name, apollo_contact_id: first.c.apollo_contact_id, apollo_message_id: first.m.apollo_message_id,
-          source_at: first.m.replied_seen_at, date, date_label: DATE_LABELS[REPLIED],
-          reason: `reply from ${first.c.name} (${DATE_LABELS[REPLIED]} ${date})${seen.length > 1 ? `, +${seen.length - 1} more` : ''}` };
+          source_at: first.reply_at, date, date_label: label,
+          reason: `reply from ${first.c.name} (${label} ${date})${seen.length > 1 ? `, +${seen.length - 1} more` : ''}` };
       }
     }
     if (!candidate && sequenced.length) {
@@ -103,7 +105,7 @@ export async function loadApolloTouchInputs(supabase, businessId) {
   const ids = [...new Set(contacts.map(c => c.apollo_contact_id))];
   const messages = [];
   for (const part of chunk(ids, 150)) {
-    messages.push(...await selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id, contact_id, replied, replied_seen_at')
+    messages.push(...await selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id, contact_id, replied, replied_seen_at, replied_at')
       .eq('business_id', businessId).eq('replied', true).in('contact_id', part).order('apollo_message_id')));
   }
   return { partners, contacts, messages, events };
