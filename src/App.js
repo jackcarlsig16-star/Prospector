@@ -57,6 +57,7 @@ const logStageBatch = (trigger, prev, next) => {
 const AccountsPage          = React.lazy(() => import('./components/AccountsPage'));
 const ProductionRequestsPage = React.lazy(() => import('./components/ProductionRequestsPage'));
 const IntelligencePage      = React.lazy(() => import('./components/IntelligencePage'));
+const UiKitGallery          = React.lazy(() => import('./ui/UiKitGallery'));
 const AnalyticsPage         = React.lazy(() => import('./components/AnalyticsPage'));
 const UploadsPage           = React.lazy(() => import('./components/UploadsPage'));
 const ClaimJumperPage       = React.lazy(() => import('./components/ClaimJumperPage'));
@@ -73,7 +74,7 @@ try{["gmail_access_token","gmail_refresh_token","gmail_token_expiry","gmail_emai
 // (Portfolio, Territory/Prod Requests, Ledger, Outbound, Ideas-global,
 // Handoffs, Analytics, Intelligence, Uploads, Claim Jumper) is hidden: its
 // code stays, but any navigation to it lands on the workspace list.
-const VISIBLE_PAGES = ["businesses-home","business-detail","admin","voice-profile","google-connections","microsoft-connection"];
+const VISIBLE_PAGES = ["businesses-home","business-detail","admin","voice-profile","google-connections","microsoft-connection","ui-kit"];
 
 // Live BDR list — updated at runtime via teamUsers state, but AccountCard needs a static fallback
 let BDR_LIST = [];
@@ -1211,13 +1212,14 @@ export default function App({ me }) {
   // Must be above all early returns — hooks can't be conditional, navTo used in OAuth callbacks
   // Admin follows real roles (business_members), not the old AE/Admin app role.
   const showAdmin=!!me.profile.is_platform_owner||me.memberships.some(m=>m.role==="owner"||m.role==="admin");
+  const showUiKit=!!me.profile.is_platform_owner||me.memberships.some(m=>m.role==="owner");
   const onBusinessFeaturesChanged=useCallback((id,features)=>{
     setMyBusinesses(prev=>prev.map(b=>b.id===id?{...b,features}:b));
     setActiveBusiness(b=>b?.id===id?{...b,features}:b);
   },[]);
   useEffect(()=>{
-    if(!VISIBLE_PAGES.includes(page)||(page==="admin"&&!showAdmin)||(page==="business-detail"&&!activeBusiness)) setPage("businesses-home");
-  },[page,showAdmin,activeBusiness]);
+    if(!VISIBLE_PAGES.includes(page)||(page==="admin"&&!showAdmin)||(page==="ui-kit"&&!showUiKit)||(page==="business-detail"&&!activeBusiness)) setPage("businesses-home");
+  },[page,showAdmin,showUiKit,activeBusiness]);
   const navTo=(pg,tab)=>{
     if(pg==="accounts"||APP_LEVEL_VIEWS.includes(pg)){
       if(activeBusiness){ setBusinessPage(pg); setPage("business-detail"); }
@@ -1250,7 +1252,7 @@ export default function App({ me }) {
 
   return(
     <div style={{ display:"flex", flexDirection:compact?"column":"row", background:C.bg, minHeight:"100vh", width:"100%" }}>
-      <Sidebar compact={compact} page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();}}} showAdmin={showAdmin} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} newNuggetCount={newNuggetCount} businesses={myBusinesses} onSelectBusiness={selectBusiness} onGoToBusinesses={()=>navTo('businesses-home')} activeBusiness={activeBusiness} businessPage={businessPage} setBusinessPage={setBusinessPage} onOpenDigest={()=>setDigestOpen(true)} onOpenBugReport={()=>setBugOpen(true)} tasksButton={showTasks} />
+      <Sidebar compact={compact} page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();}}} showAdmin={showAdmin} showUiKit={showUiKit} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} newNuggetCount={newNuggetCount} businesses={myBusinesses} onSelectBusiness={selectBusiness} onGoToBusinesses={()=>navTo('businesses-home')} activeBusiness={activeBusiness} businessPage={businessPage} setBusinessPage={setBusinessPage} onOpenDigest={()=>setDigestOpen(true)} onOpenBugReport={()=>setBugOpen(true)} tasksButton={showTasks} />
       <div id="main-content" style={{ flex:1, padding:compact?"12px 12px":"18px 20px", overflowY:"auto", minWidth:0 }}>
         <PersistentScout
           isBusinessContext={page==="business-detail"&&!!activeBusiness}
@@ -1305,6 +1307,7 @@ export default function App({ me }) {
         {page==="business-detail"&&businessPage==="ideas"&&<IdeasPage nuggets={nuggets} onSaveNuggets={setNuggets} activeUser={activeUser} onViewIdeas={onViewIdeas}/>}
         {page==="ledger"&&<LedgerPage accounts={accounts} setAccounts={setAccounts} teamUsers={teamUsers} activeUser={activeUser} tasks={tasks} winsLog={winsLog} setWinsLog={setWinsLog} managerSelectedAeId={managerScopedAeId}/>}
         {page==="business-detail"&&businessPage==="tools"&&<ToolsPage accounts={accounts} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} launchAccountId={toolsLaunchId} onLaunched={()=>setToolsLaunchId(null)} activeTool={toolsActiveTool} onToolSelect={setToolsActiveTool} onCreateTask={(prefill)=>setTaskModal(prefill||{})}/>}
+        {page==="ui-kit"&&showUiKit&&<UiKitGallery/>}
         {page==="admin"&&showAdmin&&<AdminPage isPlatformOwner={!!me.profile.is_platform_owner} businesses={myBusinesses} onBusinessFeaturesChanged={onBusinessFeaturesChanged} teamUsers={teamUsers} onSaveUsers={setTeamUsers} currentUser={user} onUpdateCurrentUser={patch=>{setUser(u=>{const next={...u,...patch};localStorage.setItem("prospector_user",JSON.stringify(next));return next;});}} rolePerms={rolePerms} onSaveRolePerms={setRolePerms} onSave={saveAccounts} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} onSaveBatch={saveBatch} accounts={accounts}/>}
         {page==="businesses-home"&&<BusinessesHomePage businesses={myBusinesses} loading={businessesLoading} projects={myProjects} onSelect={selectBusiness} onCreated={b=>{setMyBusinesses(prev=>[b,...prev]);selectBusiness(b);}}/>}
         {page==="business-detail"&&activeBusiness&&!APP_LEVEL_VIEWS.includes(businessPage)&&<BusinessDetailPage key={activeBusiness.id} business={activeBusiness} userEmail={user.email} fullListAccess={!!me.profile.is_platform_owner||me.memberships.some(m=>m.business_id===activeBusiness.id&&(m.role==="owner"||m.role==="admin"))} projects={myProjects.filter(p=>p.business_id===activeBusiness.id)} campaigns={myCampaigns.filter(c=>c.business_id===activeBusiness.id)} view={businessPage} onUpdated={onBusinessUpdated} onProjectCreated={p=>setMyProjects(prev=>[p,...prev])} onProjectUpdated={p=>setMyProjects(prev=>prev.map(x=>x.id===p.id?p:x))} onCampaignCreated={c=>setMyCampaigns(prev=>[c,...prev])} onCampaignUpdated={c=>setMyCampaigns(prev=>prev.map(x=>x.id===c.id?c:x))} sharedAccounts={accounts} sharedTasks={tasks} setSharedTasks={setTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={navTo} onUpdateAccount={perms.canEditStage?(id,patch)=>setAccounts(as=>as.map(a=>a.id===id?{...a,...patch}:a)):undefined}/>}

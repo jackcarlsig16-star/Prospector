@@ -15,7 +15,7 @@ const sectionLabel = { ...mono, margin:0, fontSize:9, color:C.dim, textTransform
 // nav-admin-cleanup-v1 - one sidebar for desktop and phone. Under 900px
 // (`compact`) it becomes a drawer behind a top-bar menu button: closes on
 // navigate, backdrop tap and Esc, and keeps keyboard focus inside while open.
-export default function Sidebar({ compact, page, setPage, toolsActiveTool, setToolsActiveTool, viewAs, setViewAs, activeInitials, hasUnviewedBadges, onOpenProfile, diamonds, activeUser, teamUsers, newJoinCount=0, newNuggetCount=0, showAdmin, businesses=[], onSelectBusiness, onGoToBusinesses, activeBusiness=null, businessPage, setBusinessPage, onOpenDigest, onOpenBugReport, tasksButton=false }) {
+export default function Sidebar({ compact, page, setPage, toolsActiveTool, setToolsActiveTool, viewAs, setViewAs, activeInitials, hasUnviewedBadges, onOpenProfile, diamonds, activeUser, teamUsers, newJoinCount=0, newNuggetCount=0, showAdmin, showUiKit, businesses=[], onSelectBusiness, onGoToBusinesses, activeBusiness=null, businessPage, setBusinessPage, onOpenDigest, onOpenBugReport, tasksButton=false }) {
   const [avatarImage, setAvatarImage] = useState(()=>readImgPref("avatarImage"));
   const [companyLogo, setCompanyLogo] = useState(()=>readImgPref("companyLogo"));
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -133,6 +133,7 @@ export default function Sidebar({ compact, page, setPage, toolsActiveTool, setTo
             <NavRow icon="🎙" label="Voice Profile" tall={compact} active={page==="voice-profile"} onClick={go(()=>setPage("voice-profile"))} />
             <NavRow icon="G" label="Google connections" tall={compact} active={page==="google-connections"} onClick={go(()=>setPage("google-connections"))} />
             <NavRow icon="M" label="Microsoft connection" tall={compact} active={page==="microsoft-connection"} onClick={go(()=>setPage("microsoft-connection"))} />
+            {showUiKit&&<NavRow icon="◧" label="UI kit" tall={compact} active={page==="ui-kit"} onClick={go(()=>setPage("ui-kit"))} />}
             <NavRow icon="⏻" label="Sign out" tall={compact} accent={C.red} onClick={signOut} />
           </div>
         )}
