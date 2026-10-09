@@ -52,6 +52,8 @@ test('event: UTC times, organizer kept, internal / personal skipped', () => {
   assert.equal(r.organizer_email, 'amy@acme.com');
   assert.deepEqual(r.external_domains, ['acme.com']);
   assert.ok(!('body' in r));
+  assert.equal(r.created_at_graph, null);
+  assert.equal(classifyEvent({ ...ev, createdDateTime: '2026-10-01T08:15:00.0000000Z' }, { own }).row.created_at_graph, '2026-10-01T08:15:00.000Z');
   assert.equal(classifyEvent({ ...ev, organizer: addr('jack@homelover.ai'), attendees: [addr('cyrus@homelover.ai')] }, { own }).skip, 'internal');
   assert.equal(classifyEvent({ ...ev, organizer: addr('a@gmail.com'), attendees: [] }, { own }).skip, 'personal');
 });

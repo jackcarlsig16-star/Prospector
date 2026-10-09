@@ -70,6 +70,8 @@ export function classifyEvent(e, { own }) {
     graph_id: e.id, ical_uid: e.iCalUId || null, organizer_email: address(e.organizer) || null,
     external_emails: ext.emails, external_names: ext.names, external_domains: ext.domains, subject: subjectOf(e.subject),
     start_at: utc(e.start), end_at: utc(e.end), is_cancelled: !!e.isCancelled,
+    // Stage 4b: when the meeting was put on the calendar ("booked").
+    created_at_graph: e.createdDateTime ? new Date(e.createdDateTime).toISOString() : null,
   } };
 }
 

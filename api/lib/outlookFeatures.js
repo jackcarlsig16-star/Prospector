@@ -11,3 +11,10 @@ export async function workspacesWithFeature(req, feature) {
   if (error) throw new Error(error.message);
   return data.filter(b => b.features?.[feature] === true).map(b => b.id);
 }
+
+// Same switch read for one workspace the caller already passed salesGate for.
+export async function businessFeatureOn(supabase, businessId, feature) {
+  const { data, error } = await supabase.from('businesses').select('features').eq('id', businessId).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.features?.[feature] === true;
+}

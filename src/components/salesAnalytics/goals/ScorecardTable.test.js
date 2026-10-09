@@ -58,3 +58,15 @@ test('unit partners on the selected week: the row stays "Partners first-touched"
   expect(cells[1].textContent).toMatch(/^5of 100/);
   expect(cells[3].textContent).toMatch(/^7of 200/);
 });
+
+// microsoft-connect-v1 Stage 4b - the meetings_set week cell carries the calendar's count under the typed one.
+test('meetings_set: "from Outlook: N" under the typed number only on weeks the route sent it', () => {
+  cleanupRender();
+  const d = data('people', 'people');
+  d.weeks[0].metrics.meetings_set = m(1, 4, { outlook: 2 });
+  render(<ScorecardTable data={d} weekStart="2026-10-05" canEdit={false} onSaveTarget={() => {}} />);
+  const row = within(document.getElementById('score-row-meetings_set'));
+  const cells = row.getAllByRole('cell');
+  expect(cells[1].textContent).toMatch(/^1of 4from Outlook: 2/);
+  expect(cells[2].textContent).not.toMatch(/from Outlook/);
+});

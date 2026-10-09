@@ -2,6 +2,8 @@ import { selectAllPages } from '../lib/selectAllPages.js';
 import { STAGE_ORDER } from './pipelineStages.js';
 import { PARTNER_METRICS, PARTNER_FLOWS, PEOPLE_METRIC, loadPartnerData, partnerWeekMetrics, partnerReportBlock, peopleFirstTouchedInWeek } from './partnerMetrics.js';
 import { huddleWeekCounts, weekEngagement } from './huddleWeek.js';
+import { businessFeatureOn } from '../lib/outlookFeatures.js';
+import { outlookMeetingsByWeek } from './outlookMeetings.js';
 import {
   getSupabase, validate, fail, findRow, weekIsFinal, FINAL_ERROR,
   isMonday, isFirstOfMonth, addDays, laStartOfDayMs,
@@ -151,18 +153,24 @@ async function targetsFor(supabase, businessId, period, starts) {
 // Scorecard rows (actual + week goal per metric) for any list of Mondays.
 async function scorecardWeeks(supabase, businessId, weeks, ownerUserId) {
   // Independent reads, so they run together (was ~2.5 s one after another).
-  const [manual, weekGoals, partnerData, boxes, units] = await Promise.all([
+  const [manual, weekGoals, partnerData, boxes, units, outlookOn] = await Promise.all([
     manualActuals(supabase, businessId, weeks),
     targetsFor(supabase, businessId, 'week', weeks),
     loadPartnerData(supabase, businessId),
     mailboxesFor(supabase, businessId, ownerUserId),
     firstTouchedGoals(supabase, businessId, weeks),
+    businessFeatureOn(supabase, businessId, 'outlook_meetings'),
   ]);
   const keys = [...SCORECARD_METRICS, ...PARTNER_METRICS, PEOPLE_METRIC];
-  const weekActuals = await Promise.all(weeks.map(w => weekScorecard(supabase, businessId, w, boxes, manual)));
+  const [weekActuals, outlook] = await Promise.all([
+    Promise.all(weeks.map(w => weekScorecard(supabase, businessId, w, boxes, manual))),
+    outlookOn ? outlookMeetingsByWeek(supabase, businessId, weeks) : null,
+  ]);
   return weeks.map((w, i) => {
     const actual = { ...weekActuals[i], ...partnerWeekMetrics(partnerData, w, ownerUserId) };
     const metrics = Object.fromEntries(keys.map(k => [k, { ...actual[k], goal: weekGoals.get(`${w}|${k}`) ?? null }]));
+    // Stage 4b: the calendar's count beside the typed one; typed stays the value.
+    if (outlook) metrics.meetings_set.outlook = outlook.get(w).meetings_set;
     const ft = units.get(w);
     metrics[FIRST_TOUCHED].unit = ft.unit;
     if (ft.carried) metrics[FIRST_TOUCHED].carried_goal = ft.goal;
@@ -267,16 +275,22 @@ async function kpiTargets(supabase, businessId, weekStart) {
 
 export async function buildKpi(supabase, businessId, weekStart) {
   const lastWeek = addDays(weekStart, -7);
-  const manual = await manualActuals(supabase, businessId, [lastWeek, weekStart]);
-  const [prev, now, targets] = await Promise.all([
+  const [manual, outlookOn] = await Promise.all([
+    manualActuals(supabase, businessId, [lastWeek, weekStart]),
+    businessFeatureOn(supabase, businessId, 'outlook_meetings'),
+  ]);
+  const [prev, now, targets, outlook] = await Promise.all([
     kpiForWeek(supabase, businessId, lastWeek, manual),
     kpiForWeek(supabase, businessId, weekStart, manual),
     kpiTargets(supabase, businessId, weekStart),
+    outlookOn ? outlookMeetingsByWeek(supabase, businessId, [lastWeek, weekStart]) : null,
   ]);
   return KPI_ROWS.map(([key, label, source]) => ({
     key, label, source, last_week: prev[key], this_week: now[key],
     change: prev[key] != null && now[key] != null ? now[key] - prev[key] : null,
     target: targets[key] ?? null,
+    // Stage 4b: the calendar's count beside the typed one (manual rows only).
+    ...(outlook && MANUAL_METRICS.includes(key) ? { last_week_outlook: outlook.get(lastWeek)[key], this_week_outlook: outlook.get(weekStart)[key] } : {}),
   }));
 }
 

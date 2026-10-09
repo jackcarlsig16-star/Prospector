@@ -1,6 +1,6 @@
 import { SA } from '../theme';
 import { SEMANTIC } from '../palette';
-import { cardStyle, labelStyle, h2Style, numStyle, SourceBadge, NeedsMigration, ErrorNote, EditableNumber, DrillNumber, fmt } from './goalsUi';
+import { cardStyle, labelStyle, h2Style, numStyle, SourceBadge, NeedsMigration, ErrorNote, EditableNumber, DrillNumber, FromOutlook, fmt } from './goalsUi';
 
 // Seif's 11-row table (api/sales/goalsReportRoutes.js buildKpi). Targets
 // carry forward until changed; Manual rows take a typed weekly value.
@@ -46,7 +46,7 @@ export default function KpiTable({ rows, error, weekStart, editable, onSaveTarge
                     <td style={{ ...td, textAlign: 'left', paddingLeft: 0 }}>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}><span>{r.label}</span><SourceBadge source={r.source} /></div>
                     </td>
-                    <td style={{ ...td, ...numStyle }}>{fmt(r.last_week)}</td>
+                    <td style={{ ...td, ...numStyle }}>{fmt(r.last_week)}<FromOutlook n={r.last_week_outlook} /></td>
                     <td style={{ ...td, ...numStyle, fontWeight: 600 }}>
                       {DRILL[r.key] && onOpen && r.this_week != null
                         ? <DrillNumber onClick={() => onOpen(DRILL[r.key])} title={`Open the list behind ${r.label}`}>{fmt(r.this_week)}</DrillNumber>
@@ -54,6 +54,7 @@ export default function KpiTable({ rows, error, weekStart, editable, onSaveTarge
                         ? <EditableNumber value={r.this_week} placeholder="enter" display={fmt(r.this_week)} ariaLabel={`${r.label} this week`}
                             onSave={v => onSaveTarget({ period: 'week', period_start: weekStart, metric_key: r.key, actual: v })} />
                         : fmt(r.this_week)}
+                      <FromOutlook n={r.this_week_outlook} />
                     </td>
                     <td style={{ ...td, ...numStyle, color: c.color }}>{c.text}</td>
                     <td style={{ ...td, ...numStyle, color: SA.muted }}>

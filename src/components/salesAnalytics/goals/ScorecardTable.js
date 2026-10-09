@@ -2,8 +2,7 @@ import { useState } from 'react';
 import { SA } from '../theme';
 import Ring from '../charts/Ring';
 import {
-  cardStyle, labelStyle, h2Style, subStyle, numStyle, SourceBadge, NeedsMigration, ErrorNote, EditableNumber, DrillNumber,
-  fmt, short, pct, progressColor, shortWeek, monthName,
+  cardStyle, labelStyle, h2Style, subStyle, numStyle, SourceBadge, NeedsMigration, ErrorNote, EditableNumber, DrillNumber, fmt, short, pct, progressColor, shortWeek, monthName, FromOutlook,
 } from './goalsUi';
 
 const ROWS = [
@@ -131,6 +130,7 @@ export default function ScorecardTable({ data, error, weekStart, ownerName, canE
                                     onSave={v => save({ period: 'week', period_start: w.week_start, metric_key: r.key, goal: v, ...(r.key === FIRST ? { unit: c.unit || 'people' } : {}) })} />
                                 : carried ? <span style={{ color: SA.muted }}>of {r.format(c.carried_goal)} · carried</span> : c.goal != null ? `of ${r.format(c.goal)}` : ''}
                             </span>
+                            {r.manual && <FromOutlook n={c.outlook} />}
                             {r.key === 'outbound_audience' && c.companies > c.companies_with_employees && (
                               <button type="button" onClick={onFillHeadcount} style={linkBtn}>{c.companies - c.companies_with_employees} of {c.companies} need headcount</button>
                             )}

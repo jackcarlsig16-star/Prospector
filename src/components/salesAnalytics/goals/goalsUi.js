@@ -153,3 +153,10 @@ export function EditableNumber({ value, rate, placeholder, onSave, ariaLabel, di
       style={{ ...inputStyle, height: 30, width: 96, textAlign: 'right', fontSize: 13 }} />
   );
 }
+
+// microsoft-connect-v1 Stage 4b - the calendar's count sits under the typed
+// number on the meeting rows (only when the workspace has Outlook meetings on).
+export function FromOutlook({ n }) {
+  if (n == null) return null;
+  return <div style={{ fontSize: 11, fontWeight: 400, color: SA.muted, marginTop: 4, whiteSpace: 'nowrap' }} title="Counted from synced Outlook calendar events with a confirmed partner domain">from Outlook: {fmt(n)}</div>;
+}
