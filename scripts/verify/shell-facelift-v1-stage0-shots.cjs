@@ -170,7 +170,7 @@ async function gate(file) {
     ok('viewer: page state found and set to ui-kit', await forcePage(vw.page, 'ui-kit'));
     await vw.page.waitForTimeout(1500);
     ok('viewer: gallery never renders', await vw.page.locator('[data-ui-gallery]').count() === 0);
-    ok('viewer: lands back on the workspace list', await vw.page.getByRole('heading', { name: 'Businesses' }).count() === 1);
+    ok('viewer: lands back on the workspace list', await vw.page.getByRole('heading', { name: 'Workspaces' }).count() === 1);
     ok('0 console errors', own.errs.length + vw.errs.length === 0, [...own.errs, ...vw.errs].slice(0, 5).join(' | '));
   } finally { await browser.close(); srv.kill(); }
   console.log(`gate: ${pass}/${total}`);

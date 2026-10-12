@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { C, mono } from '../constants/colors';
 import { getAccountsForBusiness } from '../utils/db';
+import { KIT_MAX_WIDTH } from '../ui/tokens';
 import ScoutCommandBar from './ScoutCommandBar';
 
 // scout-global-persistent-v1 — Scout mounted once, persistently, above every
@@ -72,7 +73,7 @@ function ConfirmAllStrip({ onCancel, onConfirm }) {
 }
 
 export default function PersistentScout({
-  isBusinessContext, activeBusiness, businesses = [], territoryAccounts = [],
+  plain = false, isBusinessContext, activeBusiness, businesses = [], territoryAccounts = [],
   activeUser, aeMap = {}, allBusinessesConfirmed, onConfirmAllBusinesses,
   onNav, onCreateTask,
 }) {
@@ -148,13 +149,14 @@ export default function PersistentScout({
   const scoutAccounts = isBusinessContext ? bizAccounts : territoryAccounts;
 
   return (
-    <div ref={outerRef} style={{ marginBottom: 10 }}>
+    <div ref={outerRef} style={plain ? { maxWidth: KIT_MAX_WIDTH, margin: '0 auto', minWidth: 0 } : { marginBottom: 10 }}>
       {showPills && (
         pendingConfirm
           ? <ConfirmAllStrip onCancel={() => setPendingConfirm(false)} onConfirm={handleConfirmAll} />
           : <PillRow businesses={businesses} activeBusiness={activeBusiness} selectedPillId={selectedPillId} onSelect={handleSelectPill} />
       )}
       <ScoutCommandBar
+        plain={plain}
         accounts={scoutAccounts}
         onNav={onNav}
         onCreateTask={onCreateTask}

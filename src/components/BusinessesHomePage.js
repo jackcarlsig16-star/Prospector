@@ -1,12 +1,21 @@
 import { useState, useEffect } from 'react';
-import useMediaQuery from '../utils/useMediaQuery';
 import { C, mono, PRESET_SWATCH_COLORS } from '../constants/colors';
 import { getAccountsForBusiness } from '../utils/db';
-import { isStale } from '../utils/staleness';
+import { ui } from '../ui/kitTheme';
+import { KIT_MAX_WIDTH, KIT_RADIUS, KIT_SPACE, KIT_TYPE } from '../ui/tokens';
+import PageHeader from '../ui/PageHeader';
+import Card from '../ui/Card';
+import Button from '../ui/Button';
+import StatusPill from '../ui/StatusPill';
+import { goalsApi } from './salesAnalytics/goals/goalsApi';
+import { weekTouches } from './salesAnalytics/goals/OverviewGoals';
+import { isOpenTask } from './salesAnalytics/tasks/LinkedTasks';
+import { laWeekStart } from './salesAnalytics/periods';
+import { addDays } from './salesAnalytics/goals/goalsUi';
 
 const STATUS_PILL = {
-  researching: { label: 'Researching…', color: C.orange },
-  error: { label: 'Error', color: C.red },
+  researching: { label: 'Researching…', status: 'warn' },
+  error: { label: 'Error', status: 'bad' },
 };
 
 export function CreateBusinessModal({ onClose, onCreated }) {
@@ -104,129 +113,100 @@ export function CreateBusinessModal({ onClose, onCreated }) {
   );
 }
 
-// global-workspace-navigation-v1 Section 5 — cross-business rollup built
-// only from real queries (getAccountsForBusiness, already used elsewhere
-// for the per-business Accounts tab) rather than fabricated metrics.
-// "At risk" reuses the same isStale threshold (90d since last touch) the
-// account card itself uses, so the number means the same thing here as
-// it does inside a workspace.
-function StatTile({ label, value, color }) {
+const fmtDay = iso => {
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles', ...(d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' } : {}) });
+};
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const liveText = v => {
+  if (!v) return ' ';
+  if (v.kind === 'sales') return `${plural(v.touched, 'partner')} touched this week · ${plural(v.due, 'task')} due`;
+  if (v.kind === 'activity') return `last activity ${fmtDay(v.at)}`;
+  return 'no sales module';
+};
+
+// The one live line per card reads existing routes only: a sales workspace
+// asks the partner events + this week's to-dos (the same rows Overview and
+// the Tasks drawer show); anything else, or a sales read that is refused,
+// falls back to the latest account touch the page already loaded before.
+function liveFor(b, week) {
+  const fromAccounts = () => getAccountsForBusiness(b.id).then(accs => {
+    const at = accs.map(a => a.lastTouchedAt).filter(Boolean).sort().pop();
+    return at ? { kind: 'activity', at } : { kind: 'none' };
+  });
+  if (!b.features?.goals_sales) return fromAccounts();
+  return Promise.all([goalsApi.partnerEvents(b.id, { from: week, to: addDays(week, 7) }), goalsApi.weekGoals(b.id, week, week, 'todo')])
+    .then(([events, todos]) => ({ kind: 'sales', touched: new Set(weekTouches(events).map(e => e.goal_id)).size, due: todos.filter(isOpenTask).length }))
+    .catch(fromAccounts);
+}
+
+function WorkspaceCard({ b, live, onSelect }) {
+  const pill = STATUS_PILL[b.research_status];
+  const accent = b.color || C.gold;
   return (
-    <div style={{ padding:"10px 16px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, minWidth:100 }}>
-      <div style={{ ...mono, fontSize:20, fontWeight:700, color: color || C.txt }}>{value}</div>
-      <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em", marginTop:2 }}>{label}</div>
-    </div>
+    <button type="button" onClick={() => onSelect(b)} data-workspace-card
+      style={{ display: 'flex', flexDirection: 'column', gap: 8, minHeight: 132, padding: KIT_SPACE[3], textAlign: 'left', cursor: 'pointer', minWidth: 0,
+        background: ui.surface, border: `1px solid ${ui.border}`, borderLeft: `4px solid ${accent}`, borderRadius: KIT_RADIUS.card, color: ui.text, ...KIT_TYPE.body }}>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+        <span aria-hidden="true" style={{ width: 32, height: 32, borderRadius: KIT_RADIUS.control, background: accent, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, ...KIT_TYPE.cardTitle, color: '#0B0D10' }}>
+          {(b.name || '?')[0].toUpperCase()}
+        </span>
+        <span style={{ ...KIT_TYPE.cardTitle, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</span>
+        {pill && <StatusPill status={pill.status}>{pill.label}</StatusPill>}
+      </span>
+      <span style={{ ...KIT_TYPE.small, color: ui.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.tagline || ' '}</span>
+      <span style={{ ...KIT_TYPE.small, color: ui.soft, marginTop: 'auto' }}>{liveText(live)}</span>
+    </button>
   );
 }
 
 export default function BusinessesHomePage({ businesses, loading, projects=[], onSelect, onCreated }) {
   const [modalOpen, setModalOpen] = useState(false);
-  const compact = useMediaQuery('(max-width: 899px)');
+  const [live, setLive] = useState({});
   const unassignedProjects = projects.filter(p => !p.business_id);
-  const [rollup, setRollup] = useState(null);
-  const businessIdsKey = businesses.map(b=>b.id).join(',');
+  const businessesKey = businesses.map(b => `${b.id}:${b.features?.goals_sales ? 1 : 0}`).join(',');
 
   useEffect(() => {
-    if (!businesses.length) { setRollup(null); return; }
+    if (!businesses.length) { setLive({}); return; }
     let cancelled = false;
-    Promise.all(businesses.map(b => getAccountsForBusiness(b.id).then(accs => ({ id: b.id, accs }))))
-      .then(results => {
-        if (cancelled) return;
-        let total = 0, atRisk = 0;
-        const perBusiness = {};
-        results.forEach(({ id, accs }) => {
-          const risk = accs.filter(a => isStale(a.lastTouchedAt)).length;
-          total += accs.length;
-          atRisk += risk;
-          perBusiness[id] = { total: accs.length, atRisk: risk };
-        });
-        setRollup({ total, atRisk, perBusiness });
-      });
+    const week = laWeekStart();
+    Promise.all(businesses.map(b => liveFor(b, week).then(v => [b.id, v])))
+      .then(rows => { if (!cancelled) setLive(Object.fromEntries(rows)); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [businessIdsKey]);
-
-  const researchingCount = businesses.filter(b=>b.research_status==='researching').length;
+  }, [businessesKey]);
 
   return (
-    <div style={{ minHeight:"100vh", background:C.bg, padding:compact?"8px 0":"48px 40px" }}>
-      <div style={{ maxWidth:900, margin:"0 auto" }}>
-        <h1 style={{ ...mono, fontSize:20, color:C.txt, fontWeight:700, margin:"0 0 24px" }}>Businesses</h1>
+    <div style={{ maxWidth: KIT_MAX_WIDTH, margin: '0 auto', padding: `${KIT_SPACE[4]}px 0`, minWidth: 0, ...KIT_TYPE.body, color: ui.text }}>
+      <PageHeader
+        title="Workspaces"
+        subtitle={loading ? 'Loading…' : plural(businesses.length, 'workspace')}
+        actions={<Button variant="primary" onClick={() => setModalOpen(true)}>+ New Business</Button>}
+      />
 
-        {rollup && (
-          <div style={{ display:"flex", gap:12, marginBottom:24, flexWrap:"wrap" }}>
-            <StatTile label="Total Accounts" value={rollup.total} />
-            <StatTile label="Accounts At Risk" value={rollup.atRisk} color={rollup.atRisk>0?C.red:C.green} />
-            {researchingCount > 0 && <StatTile label="Still Researching" value={researchingCount} color={C.orange} />}
-          </div>
-        )}
+      {!loading && businesses.length === 0 && (
+        <Card title="No workspaces yet" subtitle="Create your first one with + New Business." />
+      )}
 
-        {loading ? (
-          <p style={{ ...mono, fontSize:13, color:C.dim, margin:"0 0 20px" }}>Loading…</p>
-        ) : businesses.length === 0 && (
-          <p style={{ ...mono, fontSize:13, color:C.dim, margin:"0 0 20px" }}>
-            No businesses yet. Add your first one below.
-          </p>
-        )}
+      <div data-workspace-grid style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 300px), 1fr))', gap: KIT_SPACE[3] }}>
+        {businesses.map(b => <WorkspaceCard key={b.id} b={b} live={live[b.id]} onSelect={onSelect} />)}
+      </div>
 
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(220px, 1fr))", gap:16 }}>
-          {businesses.map(b => {
-            const pill = STATUS_PILL[b.research_status];
-            const atRisk = rollup?.perBusiness?.[b.id]?.atRisk || 0;
-            return (
-              <button key={b.id} onClick={()=>onSelect(b)}
-                style={{
-                  display:"flex", flexDirection:"column", justifyContent:"flex-end", height:140,
-                  borderRadius:10, border:`1px solid ${C.brd}`, borderLeft:`4px solid ${b.color||C.gold}`,
-                  background:`linear-gradient(160deg, ${b.color||C.gold}33, ${C.card})`,
-                  padding:16, cursor:"pointer", textAlign:"left", position:"relative",
-                }}
-              >
-                <div style={{ position:"absolute", top:16, right:16, width:32, height:32, borderRadius:6, background:b.color||C.gold, display:"flex", alignItems:"center", justifyContent:"center" }}>
-                  <span style={{ ...mono, fontSize:14, color:C.bg, fontWeight:700 }}>{(b.name||'?')[0].toUpperCase()}</span>
-                </div>
-                {atRisk > 0 && (
-                  <span title={`${atRisk} account${atRisk===1?'':'s'} not touched in 90+ days`} style={{ ...mono, position:"absolute", top:16, right:56, fontSize:9, padding:"2px 6px", borderRadius:9, background:`${C.red}18`, border:`1px solid ${C.red}44`, color:C.red }}>
-                    ⚠ {atRisk}
-                  </span>
-                )}
-                {pill && (
-                  <span style={{ ...mono, fontSize:9, padding:"2px 7px", borderRadius:9, background:`${pill.color}18`, border:`1px solid ${pill.color}44`, color:pill.color, alignSelf:"flex-start", marginBottom:6 }}>
-                    {pill.label}
-                  </span>
-                )}
-                <span style={{ ...mono, fontSize:14, color:C.txt, fontWeight:700 }}>{b.name}</span>
-                {b.tagline && (
-                  <span style={{ ...mono, fontSize:11, color:C.dim, marginTop:4, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{b.tagline}</span>
-                )}
-              </button>
-            );
-          })}
-
-          <button onClick={()=>setModalOpen(true)}
-            style={{ display:"flex", alignItems:"center", justifyContent:"center", height:140, borderRadius:10, border:`1.5px dashed ${C.brd}`, background:"transparent", cursor:"pointer" }}>
-            <span style={{ ...mono, fontSize:13, color:C.dim, fontWeight:600 }}>+ New Business</span>
-          </button>
-        </div>
-
-        {unassignedProjects.length > 0 && (
-          <div style={{ marginTop:32 }}>
-            <h2 style={{ ...mono, fontSize:13, color:C.dim, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", margin:"0 0 12px" }}>Unassigned Projects</h2>
-            <p style={{ ...mono, fontSize:11, color:C.dim, margin:"0 0 12px" }}>
-              These projects predate business-level tracking and aren't linked to a business yet.
-            </p>
-            <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+      {unassignedProjects.length > 0 && (
+        <div style={{ marginTop: KIT_SPACE[5] }}>
+          <Card title="Unassigned projects" subtitle="These projects predate business-level tracking and aren't linked to a business yet.">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {unassignedProjects.map(p => (
-                <div key={p.id} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 12px", background:C.card, border:`1px solid ${C.brd}`, borderRadius:8 }}>
-                  <span style={{ width:10, height:10, borderRadius:"50%", background:p.color||C.gold, flexShrink:0 }} />
-                  <span style={{ ...mono, fontSize:13, color:C.txt, flex:1 }}>{p.name}</span>
-                  <span style={{ ...mono, fontSize:9, padding:"2px 7px", borderRadius:9, background:`${C.dim}18`, border:`1px solid ${C.dim}44`, color:C.dim }}>Unassigned</span>
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', background: ui.inset, border: `1px solid ${ui.border}`, borderRadius: KIT_RADIUS.inner }}>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: p.color || C.gold, flexShrink: 0 }} />
+                  <span style={{ ...KIT_TYPE.body, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</span>
+                  <StatusPill status="off">Unassigned</StatusPill>
                 </div>
               ))}
             </div>
-          </div>
-        )}
-      </div>
+          </Card>
+        </div>
+      )}
 
       {modalOpen && (
         <CreateBusinessModal

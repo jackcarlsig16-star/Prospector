@@ -7,6 +7,8 @@ import { MODELS } from '../config/models';
 import { SCOUT_LAYERS, filterAccountsByLayers } from '../utils/scoutLayers';
 import { buildScoutContext } from '../utils/buildScoutContext';
 import { subscribeIndexerStatus } from '../utils/threadIndexer';
+import { ui } from '../ui/kitTheme';
+import { KIT_TYPE } from '../ui/tokens';
 import ScoutActionButtons from './ScoutActionButtons';
 
 const RECENT_QUERIES_KEY = 'prospector_scout_recent_queries';
@@ -80,7 +82,8 @@ const KEYFRAMES = `
 @keyframes scoutBarPulse { 0%,100% { opacity:0.3 } 50% { opacity:1 } }
 `;
 
-export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, activeUser, aeMap = {}, onOpenChange }) {
+// plain: the Workspaces page (shell-facelift-v1 Stage 1) - a kit search input with one hint line, no scope row; palette, response and query handling are the same.
+export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, activeUser, aeMap = {}, onOpenChange, plain = false }) {
   const [query, setQuery] = useState('');
   const [focused, setFocused] = useState(false);
   const [response, setResponse] = useState('');
@@ -288,7 +291,7 @@ export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, ac
       <style>{KEYFRAMES}</style>
 
       {/* Scope toggle — narrow (apply layers) vs full territory */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+      {!plain && <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
         {[
           { id: 'narrow', label: 'Active/Qualified' },
           { id: 'full',   label: 'Full territory' },
@@ -309,11 +312,11 @@ export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, ac
         <span style={{ ...mono, fontSize: 9, color: '#3a4a3a', marginLeft: 'auto' }}>
           {inScope.length} deal{inScope.length !== 1 ? 's' : ''} in scope
         </span>
-      </div>
+      </div>}
 
       {/* ── Compact bar ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 0, position: 'relative' }}>
-        <span style={{ ...mono, position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: T.neon, fontWeight: 700, letterSpacing: '0.1em', pointerEvents: 'none', zIndex: 1 }}>⛏ SCOUT</span>
+        {!plain && <span style={{ ...mono, position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: T.neon, fontWeight: 700, letterSpacing: '0.1em', pointerEvents: 'none', zIndex: 1 }}>⛏ SCOUT</span>}
         <input
           ref={inputRef}
           value={query}
@@ -322,8 +325,10 @@ export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, ac
           onKeyDown={e => {
             if (e.key === 'Enter' && query.trim()) handleSubmit(query);
           }}
-          placeholder=""
-          style={{
+          aria-label="Scout"
+          placeholder={plain ? 'Search accounts, pages, or ask Scout' : ''}
+          className={plain ? 'ui-input' : undefined}
+          style={plain ? { paddingRight: 32 } : {
             ...mono,
             width: '100%',
             boxSizing: 'border-box',
@@ -339,7 +344,7 @@ export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, ac
             boxShadow: focused ? `0 0 0 3px ${T.neon}14` : 'none',
           }}
         />
-        {!query && !focused && (
+        {!plain && !query && !focused && (
           <span aria-hidden="true" style={{ ...mono, position: 'absolute', left: 92, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: `${T.neon}66`, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
             Search accounts, pages, or ask anything...
             <span style={{ marginLeft: 3, color: T.neon, animation: 'scoutBarBlink 1s steps(2) infinite' }}>▊</span>
@@ -347,9 +352,10 @@ export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, ac
         )}
         {query && (
           <button onClick={() => { setQuery(''); inputRef.current?.focus(); }}
-            style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: T.neon, fontSize: 14, cursor: 'pointer', padding: '0 6px', lineHeight: 1, zIndex: 1 }}>×</button>
+            style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: plain ? ui.muted : T.neon, fontSize: 14, cursor: 'pointer', padding: '0 6px', lineHeight: 1, zIndex: 1 }}>×</button>
         )}
       </div>
+      {plain && <div style={{ ...KIT_TYPE.small, color: ui.muted, marginTop: 6 }}>Enter to ask Scout · Esc to close</div>}
 
       {/* ── Command palette overlay ── */}
       {showPalette && (

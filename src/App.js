@@ -1255,6 +1255,7 @@ export default function App({ me }) {
       <Sidebar compact={compact} page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();}}} showAdmin={showAdmin} showUiKit={showUiKit} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} newNuggetCount={newNuggetCount} businesses={myBusinesses} onSelectBusiness={selectBusiness} onGoToBusinesses={()=>navTo('businesses-home')} activeBusiness={activeBusiness} businessPage={businessPage} setBusinessPage={setBusinessPage} onOpenDigest={()=>setDigestOpen(true)} onOpenBugReport={()=>setBugOpen(true)} tasksButton={showTasks} />
       <div id="main-content" style={{ flex:1, padding:compact?"12px 12px":"18px 20px", overflowY:"auto", minWidth:0 }}>
         <PersistentScout
+          plain={page==="businesses-home"}
           isBusinessContext={page==="business-detail"&&!!activeBusiness}
           activeBusiness={activeBusiness}
           businesses={myBusinesses}
