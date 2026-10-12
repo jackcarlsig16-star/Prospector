@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { C, mono } from '../constants/colors';
 import { getAccountsForBusiness } from '../utils/db';
-import { KIT_MAX_WIDTH } from '../ui/tokens';
+import { ui } from '../ui/kitTheme';
+import { KIT_MAX_WIDTH, KIT_RADIUS } from '../ui/tokens';
 import ScoutCommandBar from './ScoutCommandBar';
 
 // scout-global-persistent-v1 — Scout mounted once, persistently, above every
@@ -72,8 +73,10 @@ function ConfirmAllStrip({ onCancel, onConfirm }) {
   );
 }
 
+// compact: rendered inside the workspace header row (shell-facelift-v1 Stage 2) - the pill row becomes a
+// strip that drops under the input, and Scout's own dropdowns start below that strip.
 export default function PersistentScout({
-  plain = false, isBusinessContext, activeBusiness, businesses = [], territoryAccounts = [],
+  plain = false, compact = false, isBusinessContext, activeBusiness, businesses = [], territoryAccounts = [],
   activeUser, aeMap = {}, allBusinessesConfirmed, onConfirmAllBusinesses,
   onNav, onCreateTask,
 }) {
@@ -84,8 +87,10 @@ export default function PersistentScout({
   const [bizLoading, setBizLoading] = useState(false);
 
   const outerRef = useRef(null);
+  const stripRef = useRef(null);
   const cacheRef = useRef(new Map());
   const fetchSeq = useRef(0);
+  const [stripHeight, setStripHeight] = useState(0);
 
   // Default selection: the active business, unless the user has already
   // confirmed "All businesses" as their standing preference - then that
@@ -148,13 +153,45 @@ export default function PersistentScout({
   const showPills = isBusinessContext && scoutOpen;
   const scoutAccounts = isBusinessContext ? bizAccounts : territoryAccounts;
 
+  useLayoutEffect(() => {
+    setStripHeight(compact && showPills && stripRef.current ? stripRef.current.offsetHeight + 4 : 0);
+  });
+
+  const pills = pendingConfirm
+    ? <ConfirmAllStrip onCancel={() => setPendingConfirm(false)} onConfirm={handleConfirmAll} />
+    : <PillRow businesses={businesses} activeBusiness={activeBusiness} selectedPillId={selectedPillId} onSelect={handleSelectPill} />;
+  const loadingLine = isBusinessContext && bizLoading && (
+    <p style={{ ...mono, fontSize: 10, color: C.dim, margin: '4px 2px 0' }}>
+      Loading {selectedPillId === 'all' ? 'all businesses’' : 'business'} accounts…
+    </p>
+  );
+
+  if (compact) {
+    return (
+      <div ref={outerRef} style={{ position: 'relative', display: 'flex', justifyContent: 'flex-end', flex: '1 1 auto', minWidth: 0 }}>
+        {showPills && (
+          <div ref={stripRef} data-scout-pills style={{ position: 'absolute', top: '100%', right: 0, marginTop: 4, zIndex: 401, width: 'min(560px, calc(100vw - 48px))', boxSizing: 'border-box', background: ui.surface, border: `1px solid ${ui.border}`, borderRadius: KIT_RADIUS.control, padding: '8px 8px 2px' }}>
+            {pills}
+            {loadingLine}
+          </div>
+        )}
+        <ScoutCommandBar
+          compact
+          dropTop={stripHeight}
+          accounts={scoutAccounts}
+          onNav={onNav}
+          onCreateTask={onCreateTask}
+          activeUser={activeUser}
+          aeMap={aeMap}
+          onOpenChange={handleOpenChange}
+        />
+      </div>
+    );
+  }
+
   return (
     <div ref={outerRef} style={plain ? { maxWidth: KIT_MAX_WIDTH, margin: '0 auto', minWidth: 0 } : { marginBottom: 10 }}>
-      {showPills && (
-        pendingConfirm
-          ? <ConfirmAllStrip onCancel={() => setPendingConfirm(false)} onConfirm={handleConfirmAll} />
-          : <PillRow businesses={businesses} activeBusiness={activeBusiness} selectedPillId={selectedPillId} onSelect={handleSelectPill} />
-      )}
+      {showPills && pills}
       <ScoutCommandBar
         plain={plain}
         accounts={scoutAccounts}
@@ -164,11 +201,7 @@ export default function PersistentScout({
         aeMap={aeMap}
         onOpenChange={handleOpenChange}
       />
-      {isBusinessContext && bizLoading && (
-        <p style={{ ...mono, fontSize: 10, color: C.dim, margin: '4px 2px 0' }}>
-          Loading {selectedPillId === 'all' ? 'all businesses’' : 'business'} accounts…
-        </p>
-      )}
+      {loadingLine}
     </div>
   );
 }

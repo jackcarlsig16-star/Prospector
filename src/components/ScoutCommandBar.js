@@ -7,6 +7,7 @@ import { MODELS } from '../config/models';
 import { SCOUT_LAYERS, filterAccountsByLayers } from '../utils/scoutLayers';
 import { buildScoutContext } from '../utils/buildScoutContext';
 import { subscribeIndexerStatus } from '../utils/threadIndexer';
+import useMediaQuery from '../utils/useMediaQuery';
 import { ui } from '../ui/kitTheme';
 import { KIT_TYPE } from '../ui/tokens';
 import ScoutActionButtons from './ScoutActionButtons';
@@ -82,8 +83,13 @@ const KEYFRAMES = `
 @keyframes scoutBarPulse { 0%,100% { opacity:0.3 } 50% { opacity:1 } }
 `;
 
-// plain: the Workspaces page (shell-facelift-v1 Stage 1) - a kit search input with one hint line, no scope row; palette, response and query handling are the same.
-export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, activeUser, aeMap = {}, onOpenChange, plain = false }) {
+// plain: the Workspaces page (shell-facelift-v1 Stage 1) - a kit search input with one hint line, no scope row.
+// compact: the workspace header row (Stage 2) - the same kit input, 240px wide until it is engaged, with the
+// palette and the response panel dropping down under it (dropTop = room the caller's pill strip takes).
+// Palette, response and query handling are the same in every mode.
+export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, activeUser, aeMap = {}, onOpenChange, plain = false, compact = false, dropTop = 0 }) {
+  const kit = plain || compact;
+  const phone = useMediaQuery('(max-width: 899px)');
   const [query, setQuery] = useState('');
   const [focused, setFocused] = useState(false);
   const [response, setResponse] = useState('');
@@ -287,11 +293,13 @@ export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, ac
   const showPalette = focused && !response && !loading;
 
   return (
-    <div ref={wrapperRef} style={{ position: 'relative', marginBottom: response || loading ? 10 : 0 }}>
+    <div ref={wrapperRef} style={compact
+      ? { position: 'relative', width: phone ? '100%' : focused || query || response || loading || error ? 'min(560px, 100%)' : 240, maxWidth: '100%', minWidth: 0, transition: 'width .15s' }
+      : { position: 'relative', marginBottom: response || loading ? 10 : 0 }}>
       <style>{KEYFRAMES}</style>
 
       {/* Scope toggle — narrow (apply layers) vs full territory */}
-      {!plain && <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+      {!kit && <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
         {[
           { id: 'narrow', label: 'Active/Qualified' },
           { id: 'full',   label: 'Full territory' },
@@ -316,7 +324,7 @@ export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, ac
 
       {/* ── Compact bar ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 0, position: 'relative' }}>
-        {!plain && <span style={{ ...mono, position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: T.neon, fontWeight: 700, letterSpacing: '0.1em', pointerEvents: 'none', zIndex: 1 }}>⛏ SCOUT</span>}
+        {!kit && <span style={{ ...mono, position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', fontSize: 11, color: T.neon, fontWeight: 700, letterSpacing: '0.1em', pointerEvents: 'none', zIndex: 1 }}>⛏ SCOUT</span>}
         <input
           ref={inputRef}
           value={query}
@@ -326,9 +334,9 @@ export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, ac
             if (e.key === 'Enter' && query.trim()) handleSubmit(query);
           }}
           aria-label="Scout"
-          placeholder={plain ? 'Search accounts, pages, or ask Scout' : ''}
-          className={plain ? 'ui-input' : undefined}
-          style={plain ? { paddingRight: 32 } : {
+          placeholder={compact ? 'Search or ask Scout' : plain ? 'Search accounts, pages, or ask Scout' : ''}
+          className={kit ? 'ui-input' : undefined}
+          style={kit ? { paddingRight: 32 } : {
             ...mono,
             width: '100%',
             boxSizing: 'border-box',
@@ -344,7 +352,7 @@ export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, ac
             boxShadow: focused ? `0 0 0 3px ${T.neon}14` : 'none',
           }}
         />
-        {!plain && !query && !focused && (
+        {!kit && !query && !focused && (
           <span aria-hidden="true" style={{ ...mono, position: 'absolute', left: 92, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: `${T.neon}66`, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
             Search accounts, pages, or ask anything...
             <span style={{ marginLeft: 3, color: T.neon, animation: 'scoutBarBlink 1s steps(2) infinite' }}>▊</span>
@@ -352,7 +360,7 @@ export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, ac
         )}
         {query && (
           <button onClick={() => { setQuery(''); inputRef.current?.focus(); }}
-            style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: plain ? ui.muted : T.neon, fontSize: 14, cursor: 'pointer', padding: '0 6px', lineHeight: 1, zIndex: 1 }}>×</button>
+            style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: kit ? ui.muted : T.neon, fontSize: 14, cursor: 'pointer', padding: '0 6px', lineHeight: 1, zIndex: 1 }}>×</button>
         )}
       </div>
       {plain && <div style={{ ...KIT_TYPE.small, color: ui.muted, marginTop: 6 }}>Enter to ask Scout · Esc to close</div>}
@@ -360,7 +368,7 @@ export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, ac
       {/* ── Command palette overlay ── */}
       {showPalette && (
         <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 400,
+          position: 'absolute', top: `calc(100% + ${4 + dropTop}px)`, left: 0, right: 0, zIndex: 400,
           background: '#050f05', border: `1px solid ${T.neon}55`, borderRadius: 6,
           boxShadow: `0 12px 40px rgba(0,0,0,0.6), 0 0 24px ${T.neon}18`,
           overflow: 'hidden', maxHeight: '60vh', overflowY: 'auto',
@@ -432,7 +440,10 @@ export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, ac
 
       {/* ── Response panel ── */}
       {(response || loading || error) && (
-        <div style={{ marginTop: 8, background: '#050f05', border: `1px solid ${T.neon}55`, borderRadius: 6, padding: '14px 16px', boxShadow: `0 0 24px ${T.neon}11` }}>
+        <div style={{ ...(compact
+            ? { position: 'absolute', top: `calc(100% + ${4 + dropTop}px)`, right: 0, width: 'min(720px, calc(100vw - 48px))', zIndex: 400, maxHeight: '70vh', overflowY: 'auto' }
+            : { marginTop: 8 }),
+          background: '#050f05', border: `1px solid ${T.neon}55`, borderRadius: 6, padding: '14px 16px', boxShadow: `0 0 24px ${T.neon}11` }}>
           {/* Header: query echo + layers + copy + close */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
             <span style={{ ...mono, fontSize: 10, color: T.neon, fontWeight: 700, letterSpacing: '0.1em', flexShrink: 0 }}>⛏ SCOUT</span>

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import useMediaQuery from '../utils/useMediaQuery';
 import { C, mono, PRESET_SWATCH_COLORS } from '../constants/colors';
+import { ui } from '../ui/kitTheme';
+import { KIT_RADIUS, KIT_TYPE } from '../ui/tokens';
 import { createProject, createList, setProjectListId, getAccountsForBusiness, linkAccountToLists, createCampaign, setCampaignListId } from '../utils/db';
 import BusinessAccountsTab from './BusinessAccountsTab';
 import BusinessCommandCenterTab from './BusinessCommandCenterTab';
@@ -469,7 +471,7 @@ function ProjectsSection({ business, userEmail, activeUser, projects, campaigns=
   );
 }
 
-export default function BusinessDetailPage({ business: businessProp, userEmail, fullListAccess, projects=[], campaigns=[], view='command-center', onUpdated, onProjectCreated, onProjectUpdated, onCampaignCreated, onCampaignUpdated, sharedAccounts, sharedTasks, setSharedTasks, dailyStats, activeUser, onNav, onUpdateAccount }) {
+export default function BusinessDetailPage({ scout, business: businessProp, userEmail, fullListAccess, projects=[], campaigns=[], view='command-center', onUpdated, onProjectCreated, onProjectUpdated, onCampaignCreated, onCampaignUpdated, sharedAccounts, sharedTasks, setSharedTasks, dailyStats, activeUser, onNav, onUpdateAccount }) {
   const [business, setBusiness] = useState(businessProp);
   const compact = useMediaQuery('(max-width: 899px)');
   const [profile, setProfile] = useState(null);
@@ -695,21 +697,24 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
   const accent = business.color || C.gold;
 
   return (
-    <div style={{ minHeight:"100vh", background:C.bg, padding:compact?"8px 0":"48px 40px" }}>
+    <div style={{ minHeight:"100vh", background:C.bg, padding:compact?"0 0 8px":"0 40px 48px" }}>
       <div style={{ maxWidth: wideView ? 1100 : 700, margin:"0 auto" }}>
-        {/* nav-active-state-v1 - the more prominent "which business am I in"
-            signal for when you're looking at content, not the sidebar.
-            Present on every sub-view, not just overview. */}
-        <div style={{ height:3, borderRadius:2, marginBottom:24, background:`linear-gradient(90deg, ${accent}, ${accent}00)` }} />
-        <div style={{ display:"flex", alignItems:"flex-start", gap:16, marginBottom:28 }}>
+        {/* shell-facelift-v1 Stage 2 - one sticky row: avatar · name · emoji · (Goals & Sales tabs, portaled
+            into #workspace-header-tabs by SalesAnalyticsTab) · Scout on the right. The accent bottom border
+            keeps nav-active-state-v1's "which business am I in" signal on the content. Tagline + URL live in
+            a 20px line under the row on the Business Intel & Strategy view only. Not sticky on phones, where
+            the row wraps to two lines. */}
+        <div data-workspace-header style={{ position: compact ? "static" : "sticky", top: 0, zIndex: 30, background: ui.surface, border: `1px solid ${ui.border}`, borderBottom: `2px solid ${accent}`, borderRadius: `0 0 ${KIT_RADIUS.inner}px ${KIT_RADIUS.inner}px`, padding: "0 12px", marginBottom: 24, ...KIT_TYPE.body, color: ui.text }}>
+          <div data-workspace-row style={{ display:"flex", alignItems:"center", gap:12, minHeight:56, flexWrap: compact ? "wrap" : "nowrap", minWidth:0 }}>
           <div style={{ position:"relative", flexShrink:0 }}>
-            <div
+            <button
+              type="button"
               onClick={() => setSocialPopoverOpen(o => !o)}
               title="Edit social links"
-              style={{ width:56, height:56, borderRadius:10, background:accent, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center" }}
+              style={{ width:32, height:32, borderRadius:KIT_RADIUS.control, background:accent, border:"none", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0, ...KIT_TYPE.cardTitle, color:"#0B0D10" }}
             >
-              <span style={{ ...mono, fontSize:22, color:C.bg, fontWeight:700 }}>{(business.name||'?')[0].toUpperCase()}</span>
-            </div>
+              {(business.name||'?')[0].toUpperCase()}
+            </button>
             {socialPopoverOpen && (
               <>
                 <div onClick={() => setSocialPopoverOpen(false)} style={{ position:"fixed", inset:0, zIndex:19 }} />
@@ -722,45 +727,18 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
               </>
             )}
           </div>
-          <div style={{ flex:1, minWidth:0 }}>
-            <h1 style={{ ...mono, fontSize:20, color:C.txt, fontWeight:700, margin:"0 0 4px" }}>{business.name}</h1>
-            {business.tagline && <p style={{ ...mono, fontSize:12, color:C.dim, margin:"0 0 6px" }}>{business.tagline}</p>}
-            <div style={{ position:"relative", display:"inline-block" }}>
-              <a href={business.website_url} target="_blank" rel="noreferrer" style={{ ...mono, fontSize:11, color:C.blue }}>
-                {business.website_url}
-              </a>
-              <button
-                onClick={() => setWebsiteUrlPopoverOpen(o => !o)}
-                title="Edit website URL"
-                style={{ ...mono, fontSize:10, color:C.dim, background:"transparent", border:"none", cursor:"pointer", marginLeft:6, padding:0 }}
-              >
-                ✎
-              </button>
-              {websiteUrlPopoverOpen && (
-                <>
-                  <div onClick={() => setWebsiteUrlPopoverOpen(false)} style={{ position:"fixed", inset:0, zIndex:19 }} />
-                  <BusinessWebsiteUrlPopover
-                    businessId={business.id}
-                    websiteUrl={business.website_url}
-                    onSaved={url => setBusiness(b => ({ ...b, website_url: url }))}
-                    onClose={() => setWebsiteUrlPopoverOpen(false)}
-                  />
-                </>
-              )}
-            </div>
-          </div>
+          <h1 style={{ ...KIT_TYPE.cardTitle, fontSize:16, color:ui.text, margin:0, minWidth:0, flexShrink:1, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{business.name}</h1>
           {/* business-emoji-manual-picker-v1 - manually picked, no longer
-              AI-generated (see shared.js). Top-right of the shared header,
-              visible on every sub-view. */}
+              AI-generated (see shared.js). Visible on every sub-view. */}
           <div style={{ position:"relative", flexShrink:0 }}>
             <button
               onClick={() => setEmojiPopoverOpen(o => !o)}
               title={profile?.emoji ? "Change emoji" : "Pick an emoji"}
-              style={{ width:36, height:36, borderRadius:8, background:"transparent", border:profile?.emoji ? "none" : `1.5px dashed ${C.brdM}`, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}
+              style={{ width:28, height:28, borderRadius:KIT_RADIUS.control, background:"transparent", border:profile?.emoji ? "none" : `1px dashed ${ui.control}`, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", padding:0 }}
             >
               {profile?.emoji
-                ? <span style={{ fontSize:28, lineHeight:1 }}>{profile.emoji}</span>
-                : <span style={{ fontSize:16, color:C.dim }}>+</span>}
+                ? <span style={{ fontSize:20, lineHeight:1 }}>{profile.emoji}</span>
+                : <span style={{ fontSize:14, color:ui.muted, lineHeight:1 }}>+</span>}
             </button>
             {emojiPopoverOpen && (
               <>
@@ -776,6 +754,38 @@ export default function BusinessDetailPage({ business: businessProp, userEmail, 
               </>
             )}
           </div>
+          <div id="workspace-header-tabs" style={{ display:"flex", alignItems:"center", minWidth:0 }} />
+          <div style={{ flex: compact ? "1 1 100%" : "1 1 auto", display:"flex", justifyContent:"flex-end", minWidth:0, paddingBottom: compact ? 8 : 0 }}>{scout}</div>
+          </div>
+          {view === 'overview' && (
+            <div data-workspace-identity style={{ display:"flex", alignItems:"center", gap:10, height:20, marginBottom:6, ...KIT_TYPE.small, fontSize:12, color:ui.muted, minWidth:0 }}>
+              {business.tagline && <span style={{ overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", minWidth:0 }}>{business.tagline}</span>}
+              {business.tagline && <span style={{ color:ui.faint }}>·</span>}
+              <span style={{ position:"relative", display:"inline-flex", alignItems:"center", gap:6, flexShrink:0 }}>
+                <a href={business.website_url} target="_blank" rel="noreferrer" style={{ color:ui.accent, textDecoration:"none" }}>
+                  {business.website_url}
+                </a>
+                <button
+                  onClick={() => setWebsiteUrlPopoverOpen(o => !o)}
+                  title="Edit website URL"
+                  style={{ fontSize:11, color:ui.muted, background:"transparent", border:"none", cursor:"pointer", padding:0, lineHeight:1 }}
+                >
+                  ✎
+                </button>
+                {websiteUrlPopoverOpen && (
+                  <>
+                    <div onClick={() => setWebsiteUrlPopoverOpen(false)} style={{ position:"fixed", inset:0, zIndex:19 }} />
+                    <BusinessWebsiteUrlPopover
+                      businessId={business.id}
+                      websiteUrl={business.website_url}
+                      onSaved={url => setBusiness(b => ({ ...b, website_url: url }))}
+                      onClose={() => setWebsiteUrlPopoverOpen(false)}
+                    />
+                  </>
+                )}
+              </span>
+            </div>
+          )}
         </div>
 
         {view === 'command-center' && (<>

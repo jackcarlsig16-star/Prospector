@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { SA, SA_TYPE, SA_SHAPE, SA_THEME_CSS, SA_THEME_ROOT_ID, SA_BAD_BG, SA_BAD_BORDER, saSans } from './theme';
+import { ui } from '../../ui/kitTheme';
 import AlertsRow from './AlertsRow';
 import DailyHuddle from './DailyHuddle';
 import GoalsTab from './goals/GoalsTab';
@@ -98,6 +100,8 @@ const STATUS_COLOR = { success: SA.good, partial: SA.warn, error: SA.bad, runnin
 // simply not destructured here, so it's a no-op rather than used.
 export default function SalesAnalyticsTab({ businessId, features }) {
   const [view, setView] = useState('goals');
+  const [tabsSlot, setTabsSlot] = useState(null);
+  useEffect(() => { setTabsSlot(document.getElementById('workspace-header-tabs')); }, []);
   const [huddleFocus, setHuddleFocus] = useState(null);
   const [huddleTarget, setHuddleTarget] = useState(null); // { feed } | { flags } from a Goals number
   const [overviewFocus, setOverviewFocus] = useState(null); // widget id a Goals number opens
@@ -247,23 +251,29 @@ export default function SalesAnalyticsTab({ businessId, features }) {
     });
   };
 
+  // shell-facelift-v1 Stage 2 - the tab row sits in the workspace header's sticky row when that slot exists
+  // (BusinessDetailPage), inline otherwise. Kit vars, not SA vars: the slot is outside #sales-analytics-root.
+  const tabRow = (
+    <div className="no-print" style={{ display: 'inline-flex', background: ui.surface2, border: `1px solid ${ui.border}`, borderRadius: SA_SHAPE.radiusInner, padding: 3, marginBottom: tabsSlot ? 0 : 20 }}>
+      {[['goals', 'Goals'], ['overview', 'Overview'], ['huddle', 'Daily Huddle']].map(([id, label]) => (
+        <button key={id} onClick={() => { setView(id); setGoalsTarget(null); setHuddleTarget(null); }}
+          style={{ ...SA_TYPE.body, fontSize: 13, border: 0, borderRadius: 7, padding: '0 14px', height: 32, cursor: 'pointer', background: view === id ? ui.surface : 'transparent', color: view === id ? ui.text : ui.muted, whiteSpace: 'nowrap' }}>
+          {label}
+          {id === 'huddle' && myFlagCount > 0 && (
+            <span aria-label={`${myFlagCount} flagged for you`} style={{ marginLeft: 8, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: ui.warn, color: ui.ground, fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{myFlagCount}</span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div id={SA_THEME_ROOT_ID} style={{ ...saSans, background: SA.ground, color: SA.text, minHeight: '100%', padding: '0 0 32px' }}>
       <style>{SA_THEME_CSS}</style>
       <style>{PRINT_STYLES}</style>
       <div style={{ maxWidth: 1360, margin: '0 auto' }}>
 
-      <div className="no-print" style={{ display: 'inline-flex', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: 3, marginBottom: 20 }}>
-        {[['goals', 'Goals'], ['overview', 'Overview'], ['huddle', 'Daily Huddle']].map(([id, label]) => (
-          <button key={id} onClick={() => { setView(id); setGoalsTarget(null); setHuddleTarget(null); }}
-            style={{ ...SA_TYPE.body, fontSize: 13, border: 0, borderRadius: 7, padding: '0 16px', height: 38, cursor: 'pointer', background: view === id ? SA.surface2 : 'transparent', color: view === id ? SA.text : SA.muted }}>
-            {label}
-            {id === 'huddle' && myFlagCount > 0 && (
-              <span aria-label={`${myFlagCount} flagged for you`} style={{ marginLeft: 8, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: SA.warn, color: SA.ground, fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{myFlagCount}</span>
-            )}
-          </button>
-        ))}
-      </div>
+      {tabsSlot ? createPortal(tabRow, tabsSlot) : tabRow}
 
       {view === 'goals' ? <GoalsTab businessId={businessId} initialTarget={goalsTarget} onOpenOverview={widget => { setOverviewFocus(widget || null); setView('overview'); }}
           onOpenHuddle={(contactId, target) => { setHuddleFocus(contactId); setHuddleTarget(target ? { ...target } : null); setView('huddle'); }} />

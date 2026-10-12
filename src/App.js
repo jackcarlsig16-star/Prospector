@@ -1249,24 +1249,30 @@ export default function App({ me }) {
   const activeInitials=activeUser.initials||(activeUser.name||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
   const firstName=activeUser.name.split(" ")[0];
   const showTasks=page==="business-detail"&&!!activeBusiness?.features?.goals_sales;
+  // shell-facelift-v1 Stage 2 - inside a workspace Scout sits in the page's sticky header row, otherwise above the page.
+  const scoutInHeader=page==="business-detail"&&!!activeBusiness&&!APP_LEVEL_VIEWS.includes(businessPage);
+  const scoutEl=(
+    <PersistentScout
+      plain={page==="businesses-home"}
+      compact={scoutInHeader}
+      isBusinessContext={page==="business-detail"&&!!activeBusiness}
+      activeBusiness={activeBusiness}
+      businesses={myBusinesses}
+      territoryAccounts={scoutTerritoryAccounts}
+      activeUser={activeUser}
+      aeMap={scoutAeMap}
+      allBusinessesConfirmed={scoutAllBusinessesConfirmed}
+      onConfirmAllBusinesses={()=>updateTeamUser(activeUser.id,{scoutAllBusinessesConfirmed:true})}
+      onNav={navTo}
+      onCreateTask={task=>setTasks(ts=>[...ts,task])}
+    />
+  );
 
   return(
     <div style={{ display:"flex", flexDirection:compact?"column":"row", background:C.bg, minHeight:"100vh", width:"100%" }}>
       <Sidebar compact={compact} page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();}}} showAdmin={showAdmin} showUiKit={showUiKit} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} newNuggetCount={newNuggetCount} businesses={myBusinesses} onSelectBusiness={selectBusiness} onGoToBusinesses={()=>navTo('businesses-home')} activeBusiness={activeBusiness} businessPage={businessPage} setBusinessPage={setBusinessPage} onOpenDigest={()=>setDigestOpen(true)} onOpenBugReport={()=>setBugOpen(true)} tasksButton={showTasks} />
-      <div id="main-content" style={{ flex:1, padding:compact?"12px 12px":"18px 20px", overflowY:"auto", minWidth:0 }}>
-        <PersistentScout
-          plain={page==="businesses-home"}
-          isBusinessContext={page==="business-detail"&&!!activeBusiness}
-          activeBusiness={activeBusiness}
-          businesses={myBusinesses}
-          territoryAccounts={scoutTerritoryAccounts}
-          activeUser={activeUser}
-          aeMap={scoutAeMap}
-          allBusinessesConfirmed={scoutAllBusinessesConfirmed}
-          onConfirmAllBusinesses={()=>updateTeamUser(activeUser.id,{scoutAllBusinessesConfirmed:true})}
-          onNav={navTo}
-          onCreateTask={task=>setTasks(ts=>[...ts,task])}
-        />
+      <div id="main-content" style={{ flex:1, padding:compact?"12px 12px":"18px 20px", overflowX:"clip", minWidth:0 }}>
+        {!scoutInHeader&&scoutEl}
         <AssayBanner/>
         {showStaleBanner && !staleDismissed && <StaleSfdcBanner onDismiss={()=>setStaleDismissed(true)} />}
         {viewAs&&(
@@ -1311,7 +1317,7 @@ export default function App({ me }) {
         {page==="ui-kit"&&showUiKit&&<UiKitGallery/>}
         {page==="admin"&&showAdmin&&<AdminPage isPlatformOwner={!!me.profile.is_platform_owner} businesses={myBusinesses} onBusinessFeaturesChanged={onBusinessFeaturesChanged} teamUsers={teamUsers} onSaveUsers={setTeamUsers} currentUser={user} onUpdateCurrentUser={patch=>{setUser(u=>{const next={...u,...patch};localStorage.setItem("prospector_user",JSON.stringify(next));return next;});}} rolePerms={rolePerms} onSaveRolePerms={setRolePerms} onSave={saveAccounts} onSaveToPool={(accs)=>addToPool(accs,activeUser?.name)} onSaveBatch={saveBatch} accounts={accounts}/>}
         {page==="businesses-home"&&<BusinessesHomePage businesses={myBusinesses} loading={businessesLoading} projects={myProjects} onSelect={selectBusiness} onCreated={b=>{setMyBusinesses(prev=>[b,...prev]);selectBusiness(b);}}/>}
-        {page==="business-detail"&&activeBusiness&&!APP_LEVEL_VIEWS.includes(businessPage)&&<BusinessDetailPage key={activeBusiness.id} business={activeBusiness} userEmail={user.email} fullListAccess={!!me.profile.is_platform_owner||me.memberships.some(m=>m.business_id===activeBusiness.id&&(m.role==="owner"||m.role==="admin"))} projects={myProjects.filter(p=>p.business_id===activeBusiness.id)} campaigns={myCampaigns.filter(c=>c.business_id===activeBusiness.id)} view={businessPage} onUpdated={onBusinessUpdated} onProjectCreated={p=>setMyProjects(prev=>[p,...prev])} onProjectUpdated={p=>setMyProjects(prev=>prev.map(x=>x.id===p.id?p:x))} onCampaignCreated={c=>setMyCampaigns(prev=>[c,...prev])} onCampaignUpdated={c=>setMyCampaigns(prev=>prev.map(x=>x.id===c.id?c:x))} sharedAccounts={accounts} sharedTasks={tasks} setSharedTasks={setTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={navTo} onUpdateAccount={perms.canEditStage?(id,patch)=>setAccounts(as=>as.map(a=>a.id===id?{...a,...patch}:a)):undefined}/>}
+        {page==="business-detail"&&activeBusiness&&!APP_LEVEL_VIEWS.includes(businessPage)&&<BusinessDetailPage key={activeBusiness.id} business={activeBusiness} userEmail={user.email} fullListAccess={!!me.profile.is_platform_owner||me.memberships.some(m=>m.business_id===activeBusiness.id&&(m.role==="owner"||m.role==="admin"))} projects={myProjects.filter(p=>p.business_id===activeBusiness.id)} campaigns={myCampaigns.filter(c=>c.business_id===activeBusiness.id)} view={businessPage} scout={scoutEl} onUpdated={onBusinessUpdated} onProjectCreated={p=>setMyProjects(prev=>[p,...prev])} onProjectUpdated={p=>setMyProjects(prev=>prev.map(x=>x.id===p.id?p:x))} onCampaignCreated={c=>setMyCampaigns(prev=>[c,...prev])} onCampaignUpdated={c=>setMyCampaigns(prev=>prev.map(x=>x.id===c.id?c:x))} sharedAccounts={accounts} sharedTasks={tasks} setSharedTasks={setTasks} dailyStats={dailyStats} activeUser={activeUser} onNav={navTo} onUpdateAccount={perms.canEditStage?(id,patch)=>setAccounts(as=>as.map(a=>a.id===id?{...a,...patch}:a)):undefined}/>}
         {page==="handoffs"&&<HandoffsPage accounts={accounts} onAddAccount={acc=>{setAccounts(a=>[acc,...a]);trackStat("accounts_added");trackDailyStat("accounts_added");}} activeUser={activeUser} activeRole={activeRole} teamUsers={teamUsers}/>}
         </Suspense>
       </div>
