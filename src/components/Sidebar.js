@@ -131,8 +131,7 @@ export default function Sidebar({ compact, page, setPage, toolsActiveTool, setTo
           <div id="user-menu" style={{ margin:"0 -12px 8px", paddingBottom:6, borderBottom:`1px solid ${C.brd}` }}>
             <NavRow icon="☆" label="Profile & badges" tall={compact} onClick={go(onOpenProfile)} />
             <NavRow icon="🎙" label="Voice Profile" tall={compact} active={page==="voice-profile"} onClick={go(()=>setPage("voice-profile"))} />
-            <NavRow icon="G" label="Google connections" tall={compact} active={page==="google-connections"} onClick={go(()=>setPage("google-connections"))} />
-            <NavRow icon="M" label="Microsoft connection" tall={compact} active={page==="microsoft-connection"} onClick={go(()=>setPage("microsoft-connection"))} />
+            <NavRow icon="🔗" label="Connections" tall={compact} active={page==="connections"} onClick={go(()=>setPage("connections"))} />
             {showUiKit&&<NavRow icon="◧" label="UI kit" tall={compact} active={page==="ui-kit"} onClick={go(()=>setPage("ui-kit"))} />}
             <NavRow icon="⏻" label="Sign out" tall={compact} accent={C.red} onClick={signOut} />
           </div>
@@ -183,7 +182,7 @@ export default function Sidebar({ compact, page, setPage, toolsActiveTool, setTo
 
   if (!compact) return panel;
 
-  const title = inWorkspace ? activeBusiness.name : { admin:"Admin", "voice-profile":"Voice Profile", "google-connections":"Google connections", "microsoft-connection":"Microsoft connection" }[page] || "Workspaces";
+  const title = inWorkspace ? activeBusiness.name : { admin:"Admin", "voice-profile":"Voice Profile", connections:"Connections" }[page] || "Workspaces";
   return (
     <>
       {/* tasksButton: TaskDrawer pins its Tasks button over this header's right end. */}

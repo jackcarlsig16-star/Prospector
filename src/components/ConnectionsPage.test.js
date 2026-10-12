@@ -1,10 +1,12 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import MicrosoftConnection, { describeRun } from './MicrosoftConnection';
+import ConnectionsPage, { describeRun } from './ConnectionsPage';
 
-// microsoft-connect-v1 Stage 2: the Outlook sync block under the connection card.
+// shell-facelift-v1 Stage 3: the three provider cards on one page. The Microsoft
+// cases come from microsoft-connect-v1 Stage 2 (the Outlook sync block) unchanged.
 const json = (status, body) => Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) });
 const connected = { configured: true, email: 'jack@homelover.ai', scopes: ['Mail.Read', 'Calendars.Read', 'User.Read', 'openid'], connected_at: '2026-10-08T10:00:00Z', last_used_at: null, error: null };
 const folderRun = (folder, over = {}) => ({ folder, pages: 2, seen: 60, stored: 20, skipped_draft: 1, skipped_internal: 30, skipped_personal: 9, capped: false, error: null, ...over });
+const page = (props = {}) => render(<ConnectionsPage businesses={[]} {...props} />);
 
 afterEach(() => { delete global.fetch; });
 
@@ -23,8 +25,9 @@ test('connected member: summary line, preview + sync buttons, a dry run reports 
     if (url.startsWith('/api/microsoft/sync')) return json(200, { dry_run: true, folders: [folderRun('sentitems'), folderRun('inbox', { capped: true }), folderRun('calendar', { seen: 3, stored: 1, skipped_internal: 1, skipped_personal: 1, skipped_draft: 0 })] });
     return json(404, {});
   };
-  render(<MicrosoftConnection />);
+  page({ microsoftResult: { ok: true, text: 'Microsoft connected' } });
   await screen.findByText(/Sent 120 · Received 340 · Events 12 since Jul 10/);
+  expect(screen.getByText('Microsoft connected')).toBeInTheDocument();
   expect(screen.getByText(/Continues next run: Inbox/)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: /Sync Outlook/ })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: /Preview sync/ }));
@@ -38,21 +41,54 @@ test('connected member: summary line, preview + sync buttons, a dry run reports 
 test('viewer: sees the counts, no sync buttons; unmapped mailbox: the refusal is shown', async () => {
   global.fetch = url => url === '/api/microsoft/status' ? json(200, connected)
     : url === '/api/microsoft/sync-summary' ? json(200, { can_sync: false, sent: 0, received: 0, events: 0, since: null, last_synced_at: null, pending: [], last_run: {} }) : json(404, {});
-  const first = render(<MicrosoftConnection />);
+  const first = page();
   await screen.findByText('Sent 0 · Received 0 · Events 0');
   expect(screen.queryByRole('button', { name: /Sync Outlook/ })).toBeNull();
   first.unmount();
   global.fetch = url => url === '/api/microsoft/status' ? json(200, connected)
     : url === '/api/microsoft/sync-summary' ? json(409, { error: "x@y.ai isn't mapped to a workspace mailbox - ask an admin to add it", refused: 'mailbox_not_mapped' }) : json(404, {});
-  render(<MicrosoftConnection />);
+  page();
   await screen.findByText(/isn.t mapped to a workspace mailbox/);
   expect(screen.queryByRole('button', { name: /Sync Outlook/ })).toBeNull();
   expect(screen.queryByRole('button', { name: /Preview sync/ })).toBeNull();
 });
 
-test('not connected: no Outlook block at all', async () => {
-  global.fetch = url => url === '/api/microsoft/status' ? json(200, { ...connected, email: null, scopes: [] }) : json(409, { error: 'Connect Microsoft to use this', needs_microsoft: true });
-  render(<MicrosoftConnection />);
-  await screen.findByText('○ Not connected');
+test('not connected: no Outlook block, no sync-summary call, Connect Microsoft', async () => {
+  const calls = [];
+  global.fetch = url => { calls.push(url); return url === '/api/microsoft/status' ? json(200, { ...connected, email: null, scopes: [] }) : json(409, { error: 'Connect Microsoft to use this', needs_microsoft: true }); };
+  page();
+  await screen.findByRole('button', { name: 'Connect Microsoft →' });
   expect(screen.queryByTestId('outlook-sync')).toBeNull();
+  expect(calls).not.toContain('/api/microsoft/sync-summary');
+});
+
+test('Google: one row per feature, Connect only for the ungranted ones (same connect route per feature), Disconnect Google clears all three', async () => {
+  const calls = [];
+  const assign = jest.fn();
+  delete window.location; window.location = { pathname: '/', search: '', assign };
+  global.fetch = (url, init) => { calls.push(`${init?.method || 'GET'} ${url}`); return url === '/api/google/status' ? json(200, { email: 'jack@homelover.ai', features: ['calendar'] }) : url === '/api/google/disconnect' ? json(200, {}) : json(409, {}); };
+  page();
+  await screen.findByText('jack@homelover.ai');
+  expect(screen.getByRole('button', { name: 'Connect Gmail →' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Connect Google Slides →' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Connect Google Calendar →' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Connect Gmail →' }));
+  expect(assign).toHaveBeenCalledWith('/api/google/connect?feature=gmail&return=%2F');
+  fireEvent.click(screen.getByRole('button', { name: 'Disconnect Google' }));
+  await screen.findByRole('button', { name: 'Connect Google Calendar →' });
+  expect(calls).toContain('POST /api/google/disconnect');
+  expect(screen.queryByRole('button', { name: 'Disconnect Google' })).toBeNull();
+});
+
+test('Apollo: mailboxes + last sync per sales workspace from the snapshot routes, read-only; none without the sales module', async () => {
+  global.fetch = url => url === '/api/sales/b1/entities' ? json(200, { sequences: [], mailboxes: [{ id: 'm1', email: 'one@x.com', active: true, last_synced_at: '2026-10-08T11:00:00Z' }, { id: 'm2', email: 'two@x.com', active: false, unlink_error_code: 'needs_reauth' }] })
+    : url === '/api/sales/b1/runs?limit=1' ? json(200, { runs: [{ status: 'success', finished_at: '2026-10-08T11:05:00Z', counts: { apollo_calls: 7 } }] })
+    : json(409, {});
+  page({ businesses: [{ id: 'b1', name: 'HomeLover', features: { goals_sales: true } }, { id: 'b2', name: 'Plain', features: {} }] });
+  await screen.findByText('one@x.com');
+  expect(screen.getByText('two@x.com')).toBeInTheDocument();
+  expect(screen.getByText('needs_reauth')).toBeInTheDocument();
+  expect(screen.getByText(/Last sync Oct 8, .* · 7 Apollo calls/)).toBeInTheDocument();
+  expect(screen.queryByText('Plain')).toBeNull();
+  expect(screen.getByText('one@x.com').closest('[data-provider="apollo"]').querySelectorAll('button').length).toBe(0);
 });

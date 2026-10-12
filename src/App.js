@@ -12,8 +12,7 @@ import ProfilePanel, { BadgeToast, BADGES, getQuarterKey, calcTerritoryBreakdown
 import { TaskModal } from './components/TaskPanel';
 import HomePage from './components/HomePage';
 import Sidebar from './components/Sidebar';
-import GoogleConnections from './components/GoogleConnections';
-import MicrosoftConnection from './components/MicrosoftConnection';
+import ConnectionsPage from './components/ConnectionsPage';
 import BugReporter from './components/BugReporter';
 import DailyDigest from './components/DailyDigest';
 import ManagerCommandCenter from './components/ManagerCommandCenter';
@@ -74,7 +73,9 @@ try{["gmail_access_token","gmail_refresh_token","gmail_token_expiry","gmail_emai
 // (Portfolio, Territory/Prod Requests, Ledger, Outbound, Ideas-global,
 // Handoffs, Analytics, Intelligence, Uploads, Claim Jumper) is hidden: its
 // code stays, but any navigation to it lands on the workspace list.
-const VISIBLE_PAGES = ["businesses-home","business-detail","admin","voice-profile","google-connections","microsoft-connection","ui-kit"];
+const VISIBLE_PAGES = ["businesses-home","business-detail","admin","voice-profile","connections","ui-kit"];
+// The two pages Connections replaced (shell-facelift-v1 Stage 3): any caller still naming them lands on Connections.
+const RENAMED_PAGES = { "google-connections":"connections", "microsoft-connection":"connections" };
 
 // Live BDR list — updated at runtime via teamUsers state, but AccountCard needs a static fallback
 let BDR_LIST = [];
@@ -281,7 +282,7 @@ export default function App({ me }) {
     const err=url.searchParams.get("microsoft_error");
     if(!err&&!url.searchParams.has("microsoft_connected"))return;
     setMicrosoftResult(err?{ok:false,text:err}:{ok:true,text:"Microsoft connected"});
-    setPage("microsoft-connection");
+    setPage("connections");
     url.searchParams.delete("microsoft_error");url.searchParams.delete("microsoft_connected");
     window.history.replaceState({},"",url.pathname+url.search+url.hash);
   },[]);
@@ -1218,13 +1219,14 @@ export default function App({ me }) {
     setActiveBusiness(b=>b?.id===id?{...b,features}:b);
   },[]);
   useEffect(()=>{
-    if(!VISIBLE_PAGES.includes(page)||(page==="admin"&&!showAdmin)||(page==="ui-kit"&&!showUiKit)||(page==="business-detail"&&!activeBusiness)) setPage("businesses-home");
+    if(RENAMED_PAGES[page]) setPage(RENAMED_PAGES[page]);
+    else if(!VISIBLE_PAGES.includes(page)||(page==="admin"&&!showAdmin)||(page==="ui-kit"&&!showUiKit)||(page==="business-detail"&&!activeBusiness)) setPage("businesses-home");
   },[page,showAdmin,showUiKit,activeBusiness]);
   const navTo=(pg,tab)=>{
     if(pg==="accounts"||APP_LEVEL_VIEWS.includes(pg)){
       if(activeBusiness){ setBusinessPage(pg); setPage("business-detail"); }
       else setPage("businesses-home");
-    } else setPage(VISIBLE_PAGES.includes(pg)?pg:"businesses-home");
+    } else setPage(RENAMED_PAGES[pg]||(VISIBLE_PAGES.includes(pg)?pg:"businesses-home"));
     const tabStr=tab!=null?String(tab):null;
     if(pg==="tools"&&tabStr&&tabStr.startsWith("roi:")){setToolsLaunchId(tab.slice(4));setToolsActiveTool("deal");}
     else if(pg==="tools"&&tabStr==="roi"){setToolsActiveTool("deal");}
@@ -1253,7 +1255,7 @@ export default function App({ me }) {
   const scoutInHeader=page==="business-detail"&&!!activeBusiness&&!APP_LEVEL_VIEWS.includes(businessPage);
   const scoutEl=(
     <PersistentScout
-      plain={page==="businesses-home"}
+      plain={page==="businesses-home"||page==="connections"}
       compact={scoutInHeader}
       isBusinessContext={page==="business-detail"&&!!activeBusiness}
       activeBusiness={activeBusiness}
@@ -1308,8 +1310,7 @@ export default function App({ me }) {
         {page==="analytics"&&<AnalyticsPage accounts={accounts} tasks={tasks} stealthList={stealthList} frontier={frontier} pool={claimJumper.filter(a=>!accounts.some(x=>poolKey(x)===poolKey(a)))} teamUsers={teamUsers} currentUser={user} activeRole={activeRole}/>}
         {page==="intelligence"&&<IntelligencePage user={user} activeUser={activeUser} outlookVoice={myBusinesses.some(b=>b.features?.outlook_voice)}/>}
         {page==="voice-profile"&&<IntelligencePage only="Voice Profile" user={user} activeUser={activeUser} outlookVoice={myBusinesses.some(b=>b.features?.outlook_voice)}/>}
-        {page==="google-connections"&&<div style={{ maxWidth:700 }}><h2 style={{ margin:"0 0 14px", fontSize:20, fontWeight:600, color:C.txt }}>Google connections</h2><GoogleConnections/></div>}
-        {page==="microsoft-connection"&&<div style={{ maxWidth:700 }}><h2 style={{ margin:"0 0 14px", fontSize:20, fontWeight:600, color:C.txt }}>Microsoft connection</h2>{microsoftResult&&<p role="status" style={{ fontSize:13, color:microsoftResult.ok?C.green:C.red, margin:"0 0 12px" }}>{microsoftResult.text}</p>}<MicrosoftConnection/></div>}
+        {page==="connections"&&<ConnectionsPage businesses={myBusinesses} microsoftResult={microsoftResult}/>}
         {(page==="outbound"||page==="team")&&<OutboundPage accounts={accounts} onNav={navTo} user={user} activeUser={activeUser} perms={perms} stealthList={stealthList} onSaveStealthList={setStealthList} onPromoteToAccount={promoteToAccount} onSfStatus={setSfStatus} frontier={frontier} onSaveFrontier={setFrontier} onAssignToBDR={assignToBDR} onUnassignFromFrontier={unassignFromFrontier} onSetFrontierStatus={setFrontierStatus} onRemoveDemoAccount={()=>setFrontier(fl=>fl.filter(f=>!f.isDemo))} onHandoff={f=>{setAccounts(as=>as.map(a=>{if(a.name.toLowerCase()!==f.name.toLowerCase())return a;logStageChange('onHandoff (OutboundPage)',a.name,a.stage,'Engaged');return {...a,stage:"Engaged",last:new Date().toISOString().slice(0,10)};}));setFrontier(fl=>fl.filter(x=>x.id!==f.id));trackStat("tasks_assigned_to_bdr");}} teamUsers={teamUsers} setAccounts={setAccounts} onCreateTask={task=>setTasks(ts=>[...ts,task])}/>}
         {page==="business-detail"&&businessPage==="ideas"&&<IdeasPage nuggets={nuggets} onSaveNuggets={setNuggets} activeUser={activeUser} onViewIdeas={onViewIdeas}/>}
         {page==="ledger"&&<LedgerPage accounts={accounts} setAccounts={setAccounts} teamUsers={teamUsers} activeUser={activeUser} tasks={tasks} winsLog={winsLog} setWinsLog={setWinsLog} managerSelectedAeId={managerScopedAeId}/>}
