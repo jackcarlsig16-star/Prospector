@@ -183,6 +183,8 @@ async function after(file) {
     ok('header row present once', (await h.count()) === 1);
     const rowH = await h.locator('[data-workspace-row]').evaluate(e => e.getBoundingClientRect().height);
     ok('row is 56px', Math.round(rowH) === 56, `${rowH}px`);
+    const hr = await h.evaluate(e => { const c = getComputedStyle(e); return [c.borderBottomLeftRadius, c.borderBottomRightRadius]; });
+    ok('header bottom corners = KIT_RADIUS.inner (10px)', hr[0] === '10px' && hr[1] === '10px', hr.join(' / '));
     ok('row: avatar · name · emoji · Scout', (await h.getByTitle('Edit social links').count()) === 1 && (await h.getByRole('heading', { level: 1, name: NAME }).count()) === 1 && (await h.getByTitle(/emoji/i).count()) === 1 && (await h.getByLabel('Scout').count()) === 1);
     ok('no identity line on Command Center', (await page.locator('[data-workspace-identity]').count()) === 0 && (await page.locator('#main-content').getByText('A tagline long enough to read').count()) === 0);
     ok('no tabs in the row outside Goals & Sales', (await page.locator('#workspace-header-tabs button').count()) === 0);

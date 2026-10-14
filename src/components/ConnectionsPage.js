@@ -195,7 +195,7 @@ function ApolloCard({ businesses }) {
                 {d.mailboxes.map(m => {
                   const bad = !m.active || !!m.unlink_error_code;
                   return (
-                    <div key={m.id || m.email} style={{ ...row, padding: '6px 10px', background: ui.inset, border: `1px solid ${ui.border}`, borderRadius: KIT_RADIUS.control }}>
+                    <div key={m.id || m.email} style={{ ...row, padding: '6px 10px', background: ui.inset, border: `1px solid ${ui.border}`, borderRadius: KIT_RADIUS.inner }}>
                       <span style={{ ...KIT_TYPE.small, color: ui.text, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.email}</span>
                       <span style={{ ...KIT_TYPE.label, color: ui.faint, fontWeight: 400 }}>{m.last_synced_at ? when(m.last_synced_at) : '—'}</span>
                       <StatusPill status={bad ? 'bad' : 'ok'}>{bad ? (m.unlink_error_code || 'Inactive') : 'Active'}</StatusPill>

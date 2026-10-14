@@ -229,7 +229,7 @@ export const SA_SHAPE = {
 // - dangerInk: danger button text; light bad is 4.0:1 on white, under 4.5.
 export const KIT_SPACE = [4, 8, 12, 16, 24, 32];
 export const KIT_MAX_WIDTH = 1100;
-export const KIT_RADIUS = { card: SA_SHAPE.radiusCard, control: 8, pill: SA_SHAPE.radiusPill };
+export const KIT_RADIUS = { card: SA_SHAPE.radiusCard, inner: SA_SHAPE.radiusInner, control: 8, pill: SA_SHAPE.radiusPill };
 
 export const KIT_DARK = {
   ground: SA_DARK_VALUES.ground,
