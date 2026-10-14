@@ -1,5 +1,8 @@
 import { useState } from 'react';
-import { C, mono } from '../../constants/colors';
+import { ui } from '../../ui/kitTheme';
+import { KIT_SPACE, KIT_TYPE } from '../../ui/tokens';
+import Card from '../../ui/Card';
+import ToggleRow from '../../ui/ToggleRow';
 
 // nav-admin-cleanup-v1 Stage 3 - platform owner switches per workspace.
 // Goals & Sales here only controls the menu; its data routes are still gated
@@ -32,24 +35,21 @@ export default function WorkspaceFeatures({ businesses = [], onFeaturesChanged }
   };
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.brd}`, borderRadius: 8, padding: '16px 18px', marginBottom: 16 }}>
-      <p style={{ margin: '0 0 4px', fontSize: 14, color: C.txt, fontWeight: 500 }}>Workspace features</p>
-      {FEATURES.map(f => <p key={f.key} style={{ ...mono, margin: '0 0 12px', fontSize: 11, color: C.dim }}>{f.label}: {f.note}</p>)}
-      {error && <p style={{ ...mono, margin: '0 0 10px', fontSize: 11, color: C.red }}>{error}</p>}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <Card title="Workspace features" subtitle="Per workspace · hover ⓘ for what each switch does">
+      {error && <p role="alert" style={{ ...KIT_TYPE.small, color: ui.dangerInk, margin: `0 0 ${KIT_SPACE[2]}px` }}>{error}</p>}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 220px), 1fr))', gap: `${KIT_SPACE[4]}px ${KIT_SPACE[5]}px` }}>
         {businesses.map(b => (
-          <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '6px 0', borderTop: `1px solid ${C.brd}` }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: b.color || C.gold }} />
-            <span style={{ fontSize: 13, color: C.txt, flex: 1, minWidth: 120 }}>{b.name}</span>
+          <div key={b.id} data-workspace={b.id} style={{ minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: KIT_SPACE[1], ...KIT_TYPE.body, fontWeight: 500, color: ui.text, paddingBottom: KIT_SPACE[1], borderBottom: `1px solid ${ui.border}` }}>
+              <span style={{ width: 8, height: 8, borderRadius: '50%', background: b.color || ui.accent, flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name}</span>
+            </div>
             {FEATURES.map(f => (
-              <label key={f.key} style={{ ...mono, fontSize: 12, color: C.mut, display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', minHeight: 32 }}>
-                <input type="checkbox" checked={!!b.features?.[f.key]} disabled={!!busy} onChange={() => toggle(b, f.key)} />
-                {f.label}
-              </label>
+              <ToggleRow key={f.key} label={f.label} help={f.note} checked={!!b.features?.[f.key]} disabled={!!busy} onChange={() => toggle(b, f.key)} />
             ))}
           </div>
         ))}
       </div>
-    </div>
+    </Card>
   );
 }

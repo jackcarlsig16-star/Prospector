@@ -1,5 +1,12 @@
 import { useState, useEffect } from "react";
 import { C, mono } from '../constants/colors';
+import { ui } from '../ui/kitTheme';
+import { KIT_RADIUS, KIT_SPACE, KIT_TYPE } from '../ui/tokens';
+import PageHeader from '../ui/PageHeader';
+import Card from '../ui/Card';
+import Field from '../ui/Field';
+import Button, { ButtonRow } from '../ui/Button';
+import StatusPill from '../ui/StatusPill';
 import AdminOrgChart from './admin/AdminOrgChart';
 import { PRODUCTS_OVERRIDE_KEY, loadProductOverrides } from './PricingPage';
 import { PRICING_PRODUCTS_DEFAULT } from '../constants/products';
@@ -13,9 +20,9 @@ import MembersAccess from './admin/MembersAccess';
 
 // Duplicated from App.js — also used in AdminPanel there; kept in sync
 const INTEGRATION_DEFS = [
-  { id:"hunter", name:"Hunter.io", color:"#F06A35", desc:"Find and verify professional email addresses for outbound prospecting.", keyLabel:"API Key", storageKey:null },
-  { id:"resend", name:"Resend", color:"#7C3AED", desc:"Email delivery for BDR notifications and campaign triggers.", keyLabel:"API Key", storageKey:null },
-  { id:"zoominfo", name:"ZoomInfo", color:"#0066CC", desc:"B2B contact intelligence — firmographics, org charts, intent signals.", keyLabel:"API Key", storageKey:null },
+  { id:"hunter", name:"Hunter.io", desc:"Find and verify professional email addresses for outbound prospecting.", keyLabel:"API Key", storageKey:null },
+  { id:"resend", name:"Resend", desc:"Email delivery for BDR notifications and campaign triggers.", keyLabel:"API Key", storageKey:null },
+  { id:"zoominfo", name:"ZoomInfo", desc:"B2B contact intelligence — firmographics, org charts, intent signals.", keyLabel:"API Key", storageKey:null },
   { id:"clearbit", name:"Clearbit", color:"#4945FF", desc:"Company enrichment — funding, headcount, tech stack, industry classification.", keyLabel:"API Key", storageKey:null },
 ];
 
@@ -520,16 +527,13 @@ function AdminPage({ isPlatformOwner=false, businesses=[], onBusinessFeaturesCha
   // Pricing tab state (must live at component level — can't be inside a conditional)
   const [pricingOverrides, setPricingOverrides] = useState(()=>loadProductOverrides());
   const [pricingSearch, setPricingSearch] = useState("");
+  const [diamondsOn, setDiamondsOn] = useState(()=>localStorage.getItem("prospector_diamonds_enabled")!=="false");
+  const [openCards, setOpenCards] = useState({});
 
   return (
     <div>
-      {/* Header */}
-      <div style={{ marginBottom:18 }}>
-        <h2 style={{ margin:"0 0 3px", fontSize:20, fontWeight:600, color:C.txt }}>Admin</h2>
-        <p style={{ ...mono, margin:0, fontSize:12, color:C.dim }}>Members, roles, integrations and platform settings</p>
-      </div>
+      <PageHeader title="Admin" subtitle="Members, roles, integrations and platform settings" />
 
-      {/* Tab bar — grouped */}
       {(()=>{
         // Org Chart / Permissions tabs are hidden (old AE/BDR/Manager model,
         // nav-admin-cleanup-v1); their render blocks below are kept.
@@ -551,26 +555,15 @@ function AdminPage({ isPlatformOwner=false, businesses=[], onBusinessFeaturesCha
             ["settings", "⚙️ Settings"],
           ]},
         ];
-        const tabColor = (id) => {
-          if (tab===id) return C.gold;
-          return C.mut;
-        };
         return (
-          <div style={{ display:"flex", alignItems:"flex-end", gap:0, rowGap:10, marginBottom:22, borderBottom:`1px solid ${C.brd}`, paddingBottom:0, flexWrap:"wrap" }}>
+          <div data-testid="admin-tabs" style={{ display:"flex", alignItems:"stretch", overflowX:"auto", marginBottom:KIT_SPACE[5], borderBottom:`1px solid ${ui.border}` }}>
             {TAB_GROUPS.map((grp, gi) => (
-              <div key={grp.label} style={{ display:"flex", alignItems:"flex-end", gap:0, minWidth:0, maxWidth:"100%" }}>
-                {/* Vertical divider between groups */}
-                {gi>0 && <div style={{ width:1, height:28, background:C.brd, margin:"0 8px 1px", flexShrink:0 }}/>}
-                <div style={{ display:"flex", flexDirection:"column", gap:0, minWidth:0 }}>
-                  {/* Group label */}
-                  <span style={{ ...mono, fontSize:9, color:`${C.gold}66`, letterSpacing:"0.12em", textTransform:"uppercase", paddingLeft:12, marginBottom:4 }}>{grp.label}</span>
-                  {/* Tabs in group */}
-                  <div style={{ display:"flex", flexWrap:"wrap", gap:0 }}>
-                    {grp.tabs.map(([id,lb])=>(
-                      <button key={id} onClick={()=>setTab(id)} style={{ ...mono, fontSize:12, padding:"6px 14px", background:"transparent", border:"none", borderBottom:`2px solid ${tab===id?C.gold:"transparent"}`, color:tabColor(id), cursor:"pointer", marginBottom:-1, whiteSpace:"nowrap" }}>{lb}</button>
-                    ))}
-                  </div>
-                </div>
+              <div key={grp.label} style={{ display:"flex", alignItems:"center", flexShrink:0 }}>
+                {gi>0 && <div style={{ width:1, height:20, background:ui.border, margin:`0 ${KIT_SPACE[2]}px` }}/>}
+                <span data-group-label style={{ ...KIT_TYPE.label, color:ui.faint, fontWeight:400, padding:`0 ${KIT_SPACE[1]}px` }}>{grp.label}</span>
+                {grp.tabs.map(([id,lb])=>(
+                  <button key={id} onClick={()=>setTab(id)} style={{ ...KIT_TYPE.small, height:40, padding:`0 ${KIT_SPACE[2]}px`, background:"transparent", border:"none", borderBottom:`2px solid ${tab===id?ui.accent:"transparent"}`, color:tab===id?ui.text:ui.muted, fontWeight:tab===id?500:400, cursor:"pointer", marginBottom:-1, whiteSpace:"nowrap" }}>{lb}</button>
+                ))}
               </div>
             ))}
           </div>
@@ -651,145 +644,104 @@ function AdminPage({ isPlatformOwner=false, businesses=[], onBusinessFeaturesCha
       </>)}
 
       {/* ── INTEGRATIONS TAB ── */}
-      {tab==="apikeys"&&(
-        <div>
-          <p style={{ margin:"0 0 4px", fontSize:15, fontWeight:500, color:C.txt }}>Integrations</p>
-          <p style={{ ...mono, margin:"0 0 14px", fontSize:12, color:C.mut }}>Stored locally in your browser only — never sent to any server other than the named service.</p>
-          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+      {tab==="apikeys"&&(()=>{
+        const small = { ...KIT_TYPE.small, color:ui.muted, margin:0 };
+        const fine = { ...KIT_TYPE.small, fontSize:12, color:ui.faint, margin:0 };
+        const tag = (text, warn) => <span style={{ ...KIT_TYPE.label, fontWeight:400, color:warn?ui.warn:ui.faint, border:`1px solid ${ui.border}`, borderRadius:KIT_RADIUS.pill, padding:"1px 8px" }}>{text}</span>;
+        const pill = on => <StatusPill status={on?"ok":"off"}>{on?"Connected":"Disconnected"}</StatusPill>;
+        const manualReady = !!sfdcManualInputs.token.trim() && !!sfdcManualInputs.instance.trim();
+        return (
+          <div>
+            <p style={{ ...small, marginBottom:KIT_SPACE[4] }}>Stored locally in your browser only — never sent to any server other than the named service.</p>
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(min(100%, 420px), 1fr))", gap:KIT_SPACE[4], alignItems:"start" }}>
 
-            {/* ── Salesforce ── */}
-            <div style={{ background:C.card, border:`1px solid ${sfdcConnected?"#00A1E044":C.brd}`, borderRadius:8, padding:"14px 16px" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
-                <p style={{ margin:0, fontSize:15, fontWeight:500, color:sfdcConnected?"#00A1E0":C.txt }}>Salesforce</p>
-                <span style={{ ...mono, fontSize:10, color:C.dim, border:`1px solid ${C.brd}`, borderRadius:3, padding:"0 5px" }}>optional</span>
-                <span style={{ ...mono, fontSize:11, color:sfdcConnected?C.green:C.dim, marginLeft:"auto" }}>{sfdcConnected?"● Connected":"○ Disconnected"}</span>
-              </div>
-              <p style={{ margin:"0 0 10px", fontSize:13, color:C.mut, lineHeight:1.5 }}>
-                Connect via OAuth to pull My Accounts and Dormant accounts directly from SFDC — no CSV needed.{sfdcConnected&&sfdcUserName&&<span style={{ color:C.dim }}> Signed in as <span style={{ color:C.txt }}>{sfdcUserName}</span>.</span>}
-              </p>
-              {sfdcConnected ? (
-                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                  <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                    <button onClick={()=>syncFromSfdc("my_accounts")} disabled={!!sfdcSyncing}
-                      style={{ fontSize:13, padding:"7px 16px", background:sfdcSyncing==="my_accounts"?"#001408":"#041408", border:`1px solid ${C.green}55`, color:C.green, borderRadius:5, cursor:sfdcSyncing?"default":"pointer", fontWeight:500, opacity:sfdcSyncing&&sfdcSyncing!=="my_accounts"?0.5:1 }}>
-                      {sfdcSyncing==="my_accounts"?"Pulling…":"⊕ My Accounts"}
-                    </button>
-                    <button onClick={()=>syncFromSfdc("dormant")} disabled={!!sfdcSyncing}
-                      style={{ fontSize:13, padding:"7px 16px", background:sfdcSyncing==="dormant"?"#0C0C00":"#1A1A00", border:`1px solid ${C.tin}55`, color:C.tin, borderRadius:5, cursor:sfdcSyncing?"default":"pointer", fontWeight:500, opacity:sfdcSyncing&&sfdcSyncing!=="dormant"?0.5:1 }}>
-                      {sfdcSyncing==="dormant"?"Pulling…":"◎ Dormant → Pool"}
-                    </button>
-                    <button onClick={disconnectSfdc}
-                      style={{ fontSize:12, padding:"7px 14px", background:"transparent", border:`1px solid ${C.red}44`, color:C.red, borderRadius:5, cursor:"pointer", marginLeft:"auto" }}>
-                      Disconnect
-                    </button>
-                  </div>
-                  {sfdcResult&&(
-                    <div style={{ ...mono, fontSize:12, padding:"7px 12px", borderRadius:5, background:sfdcResult.error?"#1A0000":"#001408", border:`1px solid ${sfdcResult.error?C.red:C.green}44`, color:sfdcResult.error?C.red:C.green }}>
-                      {sfdcResult.error ? `✕ ${sfdcResult.error}` : `✓ ${sfdcResult.count} account${sfdcResult.count!==1?"s":""} pulled from ${sfdcResult.mode==="dormant"?"Dormant → Claim Jumper pool":"My Accounts → territory"}. Run assay to score.`}
-                    </div>
-                  )}
-                  <p style={{ ...mono, margin:0, fontSize:11, color:C.dim, lineHeight:1.5 }}>Pulls: Account Name, Website, Owner, Billing State, Vertical, Subvertical, Last Activity Date, Account ID. Accounts are added without scores — run a batch assay from Uploads to analyze them.</p>
-                </div>
-              ) : (
-                <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                  <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                    <button onClick={()=>{ window.location.href="/api/sfdc/auth"; }}
-                      style={{ fontSize:13, padding:"7px 18px", background:"#001828", border:"1px solid #00A1E066", color:"#00A1E0", borderRadius:5, cursor:"pointer", fontWeight:600 }}>
-                      Connect via OAuth →
-                    </button>
-                    <button onClick={()=>setSfdcManual(m=>!m)}
-                      style={{ fontSize:12, padding:"7px 14px", background:"transparent", border:`1px solid ${C.brd}`, color:C.mut, borderRadius:5, cursor:"pointer" }}>
-                      {sfdcManual?"Cancel":"Paste token manually"}
-                    </button>
-                  </div>
-                  {sfdcManual&&(
-                    <div style={{ display:"flex", flexDirection:"column", gap:7, padding:"12px 14px", background:C.sur, border:`1px solid ${C.brd}`, borderRadius:7 }}>
-                      <p style={{ ...mono, margin:"0 0 4px", fontSize:10, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em" }}>From: <code style={{ color:C.txt }}>sf org display --verbose</code></p>
-                      {[["Access Token","token","eyJ0eXAiOiJKV1QiLCJh…"],["Instance URL","instance","https://your-org.my.salesforce.com"],["User ID (optional)","userId","0055g000000xxxABC"]].map(([label,key,ph])=>(
-                        <div key={key}>
-                          <div style={{ ...mono, fontSize:10, color:C.dim, marginBottom:3 }}>{label}</div>
-                          <input type={key==="token"?"password":"text"} value={sfdcManualInputs[key]} onChange={e=>setSfdcManualInputs(p=>({...p,[key]:e.target.value}))} placeholder={ph}
-                            style={{ ...mono, width:"100%", boxSizing:"border-box", fontSize:12, padding:"6px 10px", background:C.bg, border:`1px solid ${C.brd}`, borderRadius:5, color:C.txt, outline:"none" }}/>
-                        </div>
-                      ))}
-                      <button onClick={connectSfdcManual} disabled={!sfdcManualInputs.token.trim()||!sfdcManualInputs.instance.trim()}
-                        style={{ fontSize:13, padding:"7px 14px", background:sfdcManualInputs.token&&sfdcManualInputs.instance?"#001828":"transparent", border:`1px solid ${sfdcManualInputs.token&&sfdcManualInputs.instance?"#00A1E066":C.brd}`, color:sfdcManualInputs.token&&sfdcManualInputs.instance?"#00A1E0":C.dim, borderRadius:5, cursor:sfdcManualInputs.token&&sfdcManualInputs.instance?"pointer":"default", fontWeight:600, alignSelf:"flex-start" }}>
-                        Connect →
-                      </button>
-                    </div>
-                  )}
-                  <p style={{ ...mono, margin:0, fontSize:11, color:C.dim }}>OAuth requires a Connected App. Manual token works with the Salesforce CLI.</p>
-                </div>
-              )}
-            </div>
-
-            {INTEGRATION_DEFS.map(def=>{
-              const connected=isConnected(def);
-              const maskedKey=connected?`${getKeyValue(def).slice(0,8)}${"•".repeat(16)}`:"";
-              return(
-                <div key={def.id} style={{ background:C.card, border:`1px solid ${connected?def.color+"44":C.brd}`, borderRadius:8, padding:"14px 16px" }}>
-                  <div style={{ display:"flex", alignItems:"flex-start", gap:12 }}>
-                    <div style={{ flex:1 }}>
-                      <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
-                        <p style={{ margin:0, fontSize:15, fontWeight:500, color:connected?def.color:C.txt }}>{def.name}</p>
-                        {def.required&&<span style={{ ...mono, fontSize:10, color:C.orange, border:`1px solid ${C.orange}44`, borderRadius:3, padding:"0 5px" }}>required</span>}
-                        <span style={{ ...mono, fontSize:11, color:connected?C.green:C.dim, marginLeft:"auto" }}>{connected?"● Connected":"○ Disconnected"}</span>
+              <Card title="Salesforce" actions={<>{tag("optional")}{pill(sfdcConnected)}</>}
+                footer={<p style={fine}>{sfdcConnected ? "Pulls: Account Name, Website, Owner, Billing State, Vertical, Subvertical, Last Activity Date, Account ID. Accounts are added without scores — run a batch assay from Uploads to analyze them." : "OAuth requires a Connected App. Manual token works with the Salesforce CLI."}</p>}>
+                <div style={{ display:"flex", flexDirection:"column", gap:KIT_SPACE[3] }}>
+                  <p style={small}>Connect via OAuth to pull My Accounts and Dormant accounts directly from SFDC — no CSV needed.{sfdcConnected&&sfdcUserName&&<> Signed in as <span style={{ color:ui.text }}>{sfdcUserName}</span>.</>}</p>
+                  {sfdcConnected ? (<>
+                    <ButtonRow align="start">
+                      <Button onClick={()=>syncFromSfdc("my_accounts")} disabled={!!sfdcSyncing}>{sfdcSyncing==="my_accounts"?"Pulling…":"⊕ My Accounts"}</Button>
+                      <Button onClick={()=>syncFromSfdc("dormant")} disabled={!!sfdcSyncing}>{sfdcSyncing==="dormant"?"Pulling…":"◎ Dormant → Pool"}</Button>
+                      <Button variant="danger" onClick={disconnectSfdc}>Disconnect</Button>
+                    </ButtonRow>
+                    {sfdcResult&&(
+                      <p role="status" style={{ ...KIT_TYPE.small, margin:0, color:sfdcResult.error?ui.dangerInk:ui.good }}>
+                        {sfdcResult.error ? `✕ ${sfdcResult.error}` : `✓ ${sfdcResult.count} account${sfdcResult.count!==1?"s":""} pulled from ${sfdcResult.mode==="dormant"?"Dormant → Claim Jumper pool":"My Accounts → territory"}. Run assay to score.`}
+                      </p>
+                    )}
+                  </>) : (<>
+                    <ButtonRow align="start">
+                      <Button variant="primary" onClick={()=>{ window.location.href="/api/sfdc/auth"; }}>Connect via OAuth →</Button>
+                      <Button variant="ghost" onClick={()=>setSfdcManual(m=>!m)}>{sfdcManual?"Cancel":"Paste token manually"}</Button>
+                    </ButtonRow>
+                    {sfdcManual&&(
+                      <div style={{ display:"flex", flexDirection:"column", gap:KIT_SPACE[2], padding:KIT_SPACE[3], background:ui.inset, border:`1px solid ${ui.border}`, borderRadius:KIT_RADIUS.inner }}>
+                        <p style={fine}>From: <code style={{ color:ui.text }}>sf org display --verbose</code></p>
+                        {[["Access Token","token","eyJ0eXAiOiJKV1QiLCJh…"],["Instance URL","instance","https://your-org.my.salesforce.com"],["User ID (optional)","userId","0055g000000xxxABC"]].map(([label,key,ph])=>(
+                          <Field key={key} label={label} htmlFor={`sfdc-manual-${key}`}>
+                            <input id={`sfdc-manual-${key}`} className="ui-input" type={key==="token"?"password":"text"} value={sfdcManualInputs[key]} onChange={e=>setSfdcManualInputs(p=>({...p,[key]:e.target.value}))} placeholder={ph}/>
+                          </Field>
+                        ))}
+                        <ButtonRow align="start">
+                          <Button variant="primary" onClick={connectSfdcManual} disabled={!manualReady}>Connect →</Button>
+                        </ButtonRow>
                       </div>
-                      <p style={{ margin:"0 0 10px", fontSize:13, color:C.mut, lineHeight:1.5 }}>{def.desc}</p>
+                    )}
+                  </>)}
+                </div>
+              </Card>
+
+              {INTEGRATION_DEFS.map(def=>{
+                const connected=isConnected(def);
+                const maskedKey=connected?`${getKeyValue(def).slice(0,8)}${"•".repeat(16)}`:"";
+                return(
+                  <Card key={def.id} title={def.name} actions={<>{def.required&&tag("required", true)}{pill(connected)}</>}>
+                    <div style={{ display:"flex", flexDirection:"column", gap:KIT_SPACE[3] }}>
+                      <p style={small}>{def.desc}</p>
                       {connected
-                        ? <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                            <span style={{ ...mono, fontSize:12, color:C.dim, background:C.bg, border:`1px solid ${C.brd}`, borderRadius:4, padding:"4px 10px" }}>{maskedKey}</span>
-                            <button onClick={()=>disconnectIntegration(def.id,def.storageKey)} style={{ fontSize:12, padding:"4px 12px", background:"transparent", border:`1px solid ${C.red}44`, color:C.red, borderRadius:5, cursor:"pointer" }}>Disconnect</button>
-                          </div>
-                        : <div style={{ display:"flex", gap:8 }}>
-                            <input type="password" placeholder={`Paste ${def.keyLabel}`} value={keyInputs[def.id]||""} onChange={e=>setKeyInputs(p=>({...p,[def.id]:e.target.value}))} style={{ ...mono, fontSize:13, padding:"7px 10px", background:C.sur, border:`1px solid ${C.brd}`, borderRadius:5, color:C.txt, outline:"none", width:280, boxSizing:"border-box" }}/>
-                            <button onClick={()=>connectIntegration(def.id,def.storageKey)} style={{ fontSize:13, padding:"7px 14px", background:C.sur, border:`1px solid ${def.color}66`, color:def.color, borderRadius:5, cursor:"pointer", fontWeight:500 }}>Connect →</button>
+                        ? <ButtonRow align="start">
+                            <span style={{ ...KIT_TYPE.small, color:ui.muted, background:ui.inset, border:`1px solid ${ui.border}`, borderRadius:KIT_RADIUS.inner, padding:"4px 10px" }}>{maskedKey}</span>
+                            <Button variant="danger" onClick={()=>disconnectIntegration(def.id,def.storageKey)}>Disconnect</Button>
+                          </ButtonRow>
+                        : <div style={{ display:"flex", gap:KIT_SPACE[1] }}>
+                            <input className="ui-input" type="password" aria-label={`${def.name} ${def.keyLabel}`} placeholder={`Paste ${def.keyLabel}`} value={keyInputs[def.id]||""} onChange={e=>setKeyInputs(p=>({...p,[def.id]:e.target.value}))} style={{ flex:1, minWidth:0 }}/>
+                            <Button onClick={()=>connectIntegration(def.id,def.storageKey)}>Connect →</Button>
                           </div>
                       }
 
                       {/* Hunter.io: live connection test + quota display + key-handling warning */}
                       {def.id === 'hunter' && (
-                        <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${C.brd}` }}>
-                          <div style={{ display:"flex", alignItems:"center", gap:10, flexWrap:"wrap" }}>
-                            <button onClick={testHunterConnection} disabled={hunterTesting}
-                              style={{ ...mono, fontSize:11, padding:"4px 12px", background:`${def.color}14`, border:`1px solid ${def.color}66`, color:def.color, borderRadius:4, cursor:hunterTesting?'default':'pointer' }}>
-                              {hunterTesting ? "Testing…" : "✓ Test connection"}
-                            </button>
+                        <div style={{ display:"flex", flexDirection:"column", gap:KIT_SPACE[1], paddingTop:KIT_SPACE[3], borderTop:`1px solid ${ui.border}` }}>
+                          <ButtonRow align="start">
+                            <Button variant="ghost" onClick={testHunterConnection} disabled={hunterTesting}>{hunterTesting ? "Testing…" : "✓ Test connection"}</Button>
                             {hunterAccount && (
-                              <span style={{ ...mono, fontSize:11, color:C.dim }}>
-                                {hunterAccount.plan && <span style={{ color:def.color, marginRight:8 }}>{hunterAccount.plan}</span>}
+                              <span style={small}>
+                                {hunterAccount.plan && <span style={{ color:ui.text, marginRight:8 }}>{hunterAccount.plan}</span>}
                                 {hunterAccount.searches && <span>searches {hunterAccount.searches.used}/{hunterAccount.searches.available}</span>}
                                 {hunterAccount.verifications && <span style={{ marginLeft:8 }}>verifications {hunterAccount.verifications.used}/{hunterAccount.verifications.available}</span>}
                               </span>
                             )}
-                            {hunterTestError && (
-                              <span style={{ ...mono, fontSize:11, color:C.red }}>⚠ {hunterTestError}</span>
-                            )}
-                          </div>
-                          <p style={{ ...mono, margin:"8px 0 0", fontSize:10, color:C.orange, opacity:0.8 }}>
-                            ⚠ Key stored locally — move to server env (HUNTER_API_KEY) for production
-                          </p>
+                            {hunterTestError && <span style={{ ...KIT_TYPE.small, color:ui.dangerInk }}>⚠ {hunterTestError}</span>}
+                          </ButtonRow>
+                          <p style={{ ...fine, color:ui.warn }}>⚠ Key stored locally — move to server env (HUNTER_API_KEY) for production</p>
                         </div>
                       )}
                     </div>
-                  </div>
+                  </Card>
+                );
+              })}
+
+              <Card title="6sense" actions={<>{tag("required", true)}<StatusPill status="off">CSV upload</StatusPill></>}>
+                <div style={{ display:"flex", flexDirection:"column", gap:KIT_SPACE[3] }}>
+                  <p style={small}>Intent data and account enrichment via CSV export. No API key — upload enrichment files directly through the Uploads flow.</p>
+                  <ButtonRow align="start"><Button>Go to Uploads →</Button></ButtonRow>
                 </div>
-              );
-            })}
-            <div style={{ background:C.card, border:`1px solid #0088CC44`, borderRadius:8, padding:"14px 16px" }}>
-              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:3 }}>
-                <p style={{ margin:0, fontSize:15, fontWeight:500, color:"#0099DD" }}>6sense</p>
-                <span style={{ ...mono, fontSize:10, color:C.orange, border:`1px solid ${C.orange}44`, borderRadius:3, padding:"0 5px" }}>required</span>
-                <span style={{ ...mono, fontSize:11, color:C.blue, marginLeft:"auto" }}>● CSV Upload</span>
-              </div>
-              <p style={{ margin:"0 0 10px", fontSize:13, color:C.mut, lineHeight:1.5 }}>Intent data and account enrichment via CSV export. No API key — upload enrichment files directly through the Uploads flow.</p>
-              <button style={{ fontSize:13, padding:"6px 14px", background:"#001828", border:"1px solid #0088CC44", color:"#0099DD", borderRadius:5, cursor:"pointer", fontWeight:500 }}>Go to Uploads →</button>
+              </Card>
             </div>
-
-
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── PRICING TAB ── */}
       {tab==="pricing"&&(()=>{
@@ -878,8 +830,10 @@ function AdminPage({ isPlatformOwner=false, businesses=[], onBusinessFeaturesCha
 
       {/* ── SETTINGS TAB ── */}
       {tab==="settings"&&(()=>{
-        const diamondsOn=localStorage.getItem("prospector_diamonds_enabled")!=="false";
-        const toggle=()=>{ localStorage.setItem("prospector_diamonds_enabled",diamondsOn?"false":"true"); setTab(""); setTimeout(()=>setTab("settings"),0); };
+        const toggle=()=>{ localStorage.setItem("prospector_diamonds_enabled",diamondsOn?"false":"true"); setDiamondsOn(!diamondsOn); };
+        const showHide = (id, title) => (
+          <Button variant="ghost" aria-expanded={!!openCards[id]} aria-label={`${openCards[id]?"Hide":"Show"} ${title}`} onClick={()=>setOpenCards(o=>({ ...o, [id]:!o[id] }))}>{openCards[id]?"Hide":"Show"}</Button>
+        );
 
         const exportData = () => {
           const data = {};
@@ -916,42 +870,28 @@ function AdminPage({ isPlatformOwner=false, businesses=[], onBusinessFeaturesCha
         };
 
         return (
-          <div>
-            <p style={{ ...mono, margin:"0 0 18px", fontSize:11, color:C.dim }}>Feature flags and system toggles</p>
-
+          <div style={{ display:"flex", flexDirection:"column", gap:KIT_SPACE[4] }}>
             {isPlatformOwner && <WorkspaceFeatures businesses={businesses} onFeaturesChanged={onBusinessFeaturesChanged} />}
 
-            {/* Export / Import */}
-            <div style={{ background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, padding:"16px 18px", marginBottom:16 }}>
-              <p style={{ margin:"0 0 4px", fontSize:14, color:C.txt, fontWeight:500 }}>📦 Data Backup & Restore</p>
-              <p style={{ ...mono, margin:"0 0 14px", fontSize:11, color:C.dim }}>Export all your accounts, pricing, tasks, and settings to a file. Import on any device or after a fresh deploy to Render.</p>
-              <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-                <button onClick={exportData} style={{ ...mono, fontSize:12, padding:"8px 20px", background:`${C.gold}18`, border:`1px solid ${C.gold}55`, color:C.gold, borderRadius:6, cursor:"pointer", fontWeight:600 }}>
-                  ↓ Export all data
-                </button>
-                <label style={{ ...mono, fontSize:12, padding:"8px 20px", background:`${C.blue}14`, border:`1px solid ${C.blue}44`, color:C.blue, borderRadius:6, cursor:"pointer", fontWeight:600 }}>
-                  ↑ Import backup
-                  <input type="file" accept=".json" onChange={importData} style={{ display:"none" }} />
-                </label>
-              </div>
-            </div>
+            <Card title="Data Backup & Restore" subtitle="Export all your accounts, pricing, tasks, and settings to a file. Import on any device or after a fresh deploy to Render." actions={showHide("backup", "Data Backup & Restore")}>
+              {openCards.backup && (
+                <ButtonRow align="start">
+                  <Button onClick={exportData}>↓ Export all data</Button>
+                  <label className="ui-btn ui-btn--secondary">
+                    ↑ Import backup
+                    <input type="file" accept=".json" onChange={importData} style={{ display:"none" }} />
+                  </label>
+                </ButtonRow>
+              )}
+            </Card>
 
-
-
-            {/* Diamonds toggle */}
-            <div style={{ background:C.card, border:`1px solid ${C.brd}`, borderRadius:8, padding:"16px 18px", display:"flex", alignItems:"center", gap:16 }}>
-              <div style={{ flex:1 }}>
-                <p style={{ margin:"0 0 3px", fontSize:14, color:C.txt, fontWeight:500 }}>💎 Diamond Token System</p>
-                <p style={{ ...mono, margin:0, fontSize:11, color:C.dim }}>Tracks diamonds earned for territory activity. Shows in profile panel with commission calculator.</p>
-              </div>
-              <button onClick={toggle}
-                style={{ ...mono, fontSize:12, padding:"7px 18px", borderRadius:6, cursor:"pointer", fontWeight:600, flexShrink:0,
-                  background: diamondsOn?`${C.green}18`:`${C.red}12`,
-                  border: `1px solid ${diamondsOn?C.green+"55":C.red+"44"}`,
-                  color: diamondsOn?C.green:C.red }}>
-                {diamondsOn?"● Diamonds ON":"○ Diamonds OFF"}
-              </button>
-            </div>
+            <Card title="Diamond Token System" subtitle="Tracks diamonds earned for territory activity. Shows in profile panel with commission calculator." actions={showHide("diamonds", "Diamond Token System")}>
+              {openCards.diamonds && (
+                <ButtonRow align="start">
+                  <Button onClick={toggle}>{diamondsOn?"● Diamonds ON":"○ Diamonds OFF"}</Button>
+                </ButtonRow>
+              )}
+            </Card>
           </div>
         );
       })()}
