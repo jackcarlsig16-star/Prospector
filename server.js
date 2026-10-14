@@ -615,6 +615,11 @@ app.get('/api/sales/:businessId/goals/week', salesModuleRoute('./api/sales/goals
 app.get('/api/sales/:businessId/goals/tasks', salesModuleRoute('./api/sales/goalsRoutes.js', 'listLinkedTasksRoute', 'goals/tasks'));
 app.post('/api/sales/:businessId/goals/week', salesModuleRoute('./api/sales/goalsRoutes.js', 'createWeekGoalRoute', 'goals/week POST'));
 app.post('/api/sales/:businessId/goals/week/carry-over', salesModuleRoute('./api/sales/goalsRoutes.js', 'carryOverWeekGoalsRoute', 'goals/week/carry-over POST'));
+// weekly-plan-v1 - "Plan this week" (before goals/week/:id).
+app.post('/api/sales/:businessId/goals/week/plan/propose', aiLimit, salesModuleRoute('./api/sales/weekPlanRoutes.js', 'proposeWeekPlanRoute', 'goals/week/plan/propose POST'));
+app.post('/api/sales/:businessId/goals/week/plan/save', salesModuleRoute('./api/sales/weekPlanRoutes.js', 'saveWeekPlanRoute', 'goals/week/plan/save POST'));
+app.get('/api/sales/:businessId/goals/week/plan', salesModuleRoute('./api/sales/weekPlanRoutes.js', 'getWeekPlanRoute', 'goals/week/plan'));
+app.get('/api/sales/:businessId/goals/week/plans', salesModuleRoute('./api/sales/weekPlanRoutes.js', 'listWeekPlansRoute', 'goals/week/plans'));
 app.patch('/api/sales/:businessId/goals/week/:id', salesModuleRoute('./api/sales/goalsRoutes.js', 'updateWeekGoalRoute', 'goals/week/:id PATCH'));
 app.delete('/api/sales/:businessId/goals/week/:id', salesModuleRoute('./api/sales/goalsRoutes.js', 'deleteWeekGoalRoute', 'goals/week/:id DELETE'));
 app.get('/api/sales/:businessId/goals/notes', salesModuleRoute('./api/sales/goalsRoutes.js', 'listWeekNotesRoute', 'goals/notes'));

@@ -32,6 +32,37 @@ export function meetingEventsByDay(events) {
   return out;
 }
 
+// Per LA day (and per day x sender) from `from` on. deliveredAt maps an
+// open's message id to its delivery time, for the bot-open check.
+export function weekStripCounts({ from, delivered, opens, replies, events, deliveredAt }) {
+  const days = new Map(), senders = new Map();
+  const bump = (day, sender, field, n = 1) => {
+    if (day < from) return;
+    if (!days.has(day)) days.set(day, { day, ...Object.fromEntries(TRACKED.map(f => [f, 0])), meetings: 0 });
+    days.get(day)[field] += n;
+    if (!sender || field === 'meetings') return;
+    const key = `${day}|${sender}`;
+    if (!senders.has(key)) senders.set(key, { day, sender, ...Object.fromEntries(TRACKED.map(f => [f, 0])) });
+    senders.get(key)[field] += n;
+  };
+  for (const m of delivered) bump(laDay(m.delivered_at), m.sender, 'tracked_delivered');
+  for (const o of opens) {
+    const day = laDay(o.occurred_at);
+    bump(day, o.sender, 'tracked_opens');
+    if (isBotOpen(o, deliveredAt.get(o.apollo_message_id))) bump(day, o.sender, 'tracked_bot_opens');
+  }
+  for (const r of replies) {
+    const day = laDay(replyAt(r));
+    bump(day, r.sender, 'tracked_replies');
+    if (!AUTO_REPLY_CLASSES.includes(r.reply_class)) bump(day, r.sender, 'tracked_real_replies');
+  }
+  for (const [day, n] of meetingEventsByDay(events)) bump(day, null, 'meetings', n);
+  return {
+    days: [...days.values()].sort((a, b) => a.day.localeCompare(b.day)),
+    senders: [...senders.values()].sort((a, b) => a.day.localeCompare(b.day) || a.sender.localeCompare(b.sender)),
+  };
+}
+
 export async function weekStripRoute(req, res) {
   const { from } = req.query;
   if (!isDate(from)) return res.status(400).json({ error: 'from must be YYYY-MM-DD' });
@@ -59,32 +90,9 @@ export async function weekStripRoute(req, res) {
       .eq('business_id', businessId).in('apollo_message_id', openIds).order('apollo_message_id')) : [];
     const deliveredAt = new Map(openMsgs.map(m => [m.apollo_message_id, m.delivered_at]));
 
-    const days = new Map(), senders = new Map();
-    const bump = (day, sender, field, n = 1) => {
-      if (day < from) return;
-      if (!days.has(day)) days.set(day, { day, ...Object.fromEntries(TRACKED.map(f => [f, 0])), meetings: 0 });
-      days.get(day)[field] += n;
-      if (!sender || field === 'meetings') return;
-      const key = `${day}|${sender}`;
-      if (!senders.has(key)) senders.set(key, { day, sender, ...Object.fromEntries(TRACKED.map(f => [f, 0])) });
-      senders.get(key)[field] += n;
-    };
-    for (const m of delivered) bump(laDay(m.delivered_at), m.sender, 'tracked_delivered');
-    for (const o of opens) {
-      const day = laDay(o.occurred_at);
-      bump(day, o.sender, 'tracked_opens');
-      if (isBotOpen(o, deliveredAt.get(o.apollo_message_id))) bump(day, o.sender, 'tracked_bot_opens');
-    }
-    for (const r of replies) {
-      const day = laDay(replyAt(r));
-      bump(day, r.sender, 'tracked_replies');
-      if (!AUTO_REPLY_CLASSES.includes(r.reply_class)) bump(day, r.sender, 'tracked_real_replies');
-    }
-    for (const [day, n] of meetingEventsByDay(events)) bump(day, null, 'meetings', n);
-
+    const { days, senders } = weekStripCounts({ from, delivered, opens, replies, events, deliveredAt });
     res.status(200).json({
-      days: [...days.values()].sort((a, b) => a.day.localeCompare(b.day)),
-      senders: [...senders.values()].sort((a, b) => a.day.localeCompare(b.day) || a.sender.localeCompare(b.sender)),
+      days, senders,
       manual_meetings: manual.data.map(r => ({ week_start: r.period_start, actual: Number(r.actual) })),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
