@@ -6,6 +6,7 @@ import { laDateString } from './laDate.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { callAnthropic } from '../businesses/shared.js';
 import { MODELS, estimateCostUsd } from '../../src/config/models.js';
+import { scrubPhones } from './scrubText.js';
 
 // call-notes-to-tasks-v1 - pasted internal call notes -> proposed Goals
 // to-dos -> the ones the person kept, created this week with a back-link to
@@ -18,9 +19,8 @@ const MAX_STEPS = 10;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TASK_FIELDS = Object.fromEntries(['text', 'owner_user_id', 'due_date', 'link_type', 'link_id'].map(k => [k, WEEK_FIELDS[k]]));
 const SIMILAR_WEEKS = 4;
-const PHONE = /(?:\+?\d[\d\s().-]{7,}\d)/g;
 
-const clean = (v, max) => (typeof v === 'string' ? v.replace(PHONE, '[number removed]').replace(/\s+/g, ' ').trim().slice(0, max) : '');
+const clean = (v, max) => (typeof v === 'string' ? scrubPhones(v).replace(/\s+/g, ' ').trim().slice(0, max) : '');
 export const noteHash = text => createHash('sha256').update(text.replace(/\s+/g, ' ').trim().toLowerCase()).digest('hex');
 
 const SYSTEM = `You turn an internal sales team call's notes (an AI meeting summary, a transcript, or typed notes) into to-dos for a shared task list.

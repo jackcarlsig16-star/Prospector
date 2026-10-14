@@ -48,3 +48,9 @@ test('re-pasting the same notes hashes the same; the category names the call', (
   assert.equal(callCategory('2026-10-07', 'Weekly sync'), 'From calls · Oct 7 · Weekly sync');
   assert.equal(callCategory('2026-10-07', null), 'From calls · Oct 7');
 });
+
+test('phone numbers are scrubbed from task text and evidence; YYYY-MM-DD dates are kept', () => {
+  const out = toProposals({ tasks: [task(null, { text: 'Send Norton the deck by 2026-10-16', evidence: 'call Ana at +1 (415) 555-0100 before 2026-10-16' })] }, ctx);
+  assert.equal(out.tasks[0].text, 'Send Norton the deck by 2026-10-16');
+  assert.equal(out.tasks[0].evidence, 'call Ana at [number removed] before 2026-10-16');
+});

@@ -4,6 +4,7 @@ import { laDateString } from './laDate.js';
 import { callAnthropic } from '../businesses/shared.js';
 import { buildPlanContext } from './weekPlanContext.js';
 import { MODELS, estimateCostUsd } from '../../src/config/models.js';
+import { scrubPhones } from './scrubText.js';
 
 // weekly-plan-v1 - "Plan this week": the seller's prompt + what Prospector
 // already knows -> a ranked list -> the kept ones saved as this week's
@@ -25,15 +26,12 @@ const CALL_TYPE = 'week_plan';
 const SOURCES = ['prompt', 'todo', 'reply', 'partner', 'flag', 'last_week', 'target'];
 const LINK_TYPES = ['partner', 'company', 'commitment', 'metric'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PHONE = /(?:\+?\d[\d\s().-]{7,}\d)/g;
 const EMAIL = /[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi;
 
 // Swapped in tests.
 export const planDeps = { getSupabase, callAnthropic, buildPlanContext };
 
-const ISO_DATE = /^\s*\d{4}-\d{2}-\d{2}\s*$/;
-// Reasons must cite dates, and a YYYY-MM-DD date looks like a phone number to PHONE.
-const clean = (v, max) => (typeof v === 'string' ? v.replace(EMAIL, '[email removed]').replace(PHONE, m => (ISO_DATE.test(m) ? m : '[number removed]'))
+const clean = (v, max) => (typeof v === 'string' ? scrubPhones(v.replace(EMAIL, '[email removed]'))
   .replace(/\s+/g, ' ').trim().slice(0, max) : '');
 const normText = s => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
