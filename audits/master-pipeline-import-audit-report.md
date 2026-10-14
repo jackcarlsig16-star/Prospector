@@ -1,5 +1,7 @@
 # master-pipeline-import-audit-v1 — report
 
+Q3 revised 2026-10-14: domain-first re-match. Two sections added: "sales_opportunities vs sales_targets" and "Upside as an owner".
+
 Run 2026-10-14. READ-ONLY: SELECTs on HomeLover (`bc69beab…`) only — 9 reads, ~3.5 s, 0 writes,
 0 Apollo / 0 Claude / 0 syncs. No email or phone column was selected. restored: n/a.
 
@@ -88,7 +90,7 @@ Unused by the sheet: researching, first_email_drafted.
 responded, Hold/disqualified → lost. Nurture has no match there either.
 
 **Tier:** HomeLover's partner tiers today are 1: 22 · 2: 24 · 3: 13 · 4: 9 · active: 7 · null: 1. The sheet's
-"1 - Priority … 4 - Hold" maps by its number prefix. Of the 24 partners matched in Q3, 11 have a different tier
+"1 - Priority … 4 - Hold" maps by its number prefix. Of the 22 partners matched in Q3, 11 have a different tier
 in Prospector:
 
 | Partner | Prospector tier | Sheet tier |
@@ -121,47 +123,79 @@ prefix (`src/components/salesAnalytics/goals/partners/partnerTypes.js:5-14`):
 
 Neither Partner Path nor Segment maps onto it.
 
-**Owner:** HomeLover partners today are owned by Cyrus (39), Jack (36) and nobody (1). Of the 24 matched partners:
+**Owner:** HomeLover partners today are owned by Cyrus (39), Jack (36) and nobody (1). Of the 22 matched partners:
 - **9 are Upside-owned in the sheet:** Aon, Alliant, Gallagher, HUB, Lockton, Mercer, WTW, Marsh McLennan Agency, NFP.
   Prospector has them on Jack (Aon, Mercer, WTW), Cyrus (Gallagher, HUB, Lockton, MMA, NFP) or unassigned (Alliant).
 - **4 disagree on a HomeLover owner:** the sheet says Jack, Prospector says Cyrus — Justworks, Insperity, TriNet, ADP.
 
-## Q3 — Matching
-Names were compared with the `normName` rule from `scripts/import-partners-sheet.js:44-50` (exact match, then whole-word
-partial match), plus confirmed `partner_domains` and `company_domain`. Sequenced accounts and prospect companies were
-compared by name.
+## Q3 — Matching (revised 2026-10-14: domain-first re-match)
+**Rule, in order:**
+1. **Domain match.** Compares the sheet row's domains (Primary Email Domain + Contacts Emailed Domains) against
+   confirmed `partner_domains` (`20261007_partner_360_v1_stage2.sql:17-26`) and each sequenced account's domain.
+   - `sales_sequenced_accounts` has no domain column (`20261006_sales_goals_v1_rev4_stage3.sql:155-167`). Its domains
+     come from the latest stored Apollo `accounts` snapshot: `sales_raw_snapshots`, captured 2026-10-09, 322 of 325
+     accounts with a domain, 192 of 193 sequenced accounts covered. That's the same source as
+     `api/sales/partnerDomains.js:20-25`.
+   - Domains are compared at company level (`global.lockton.com` = `lockton.com`).
+   - The matched record's name must also share a word with the sheet name. Many sheet contacts are brokers, so a
+     domain alone can point at the broker instead of the account.
+2. **Exact-name fallback**, flagged. Names are normalized with `normName` from `scripts/import-partners-sheet.js:44-50`.
+   - A different domain doesn't count against the match: 24hourfit.com vs 24hourfitness.com and macys.com vs
+     macysjobs.com are the same companies.
+3. **Partial name:** listed as possible, **not counted**.
 
-**Results for the 275 sheet rows:**
-- **24 → an existing partner:**
-  - 21 exact name matches.
-  - 2 partial name matches: Invest with Roots → Roots, Bilt Rewards → Bilt.
-  - 1 domain match: ADP → ADP TotalSource. The sheet calls it an Employer; Prospector has it as a partner.
-- **15 → a sequenced account:**
-  - 10 exact name matches: Solidcore, 24 Hour Fitness, Hilton, Hyatt, Marriott International, Netskope, AutoNation,
-    Macy's, Nike, Target.
-  - 5 partial name matches: Choice Hotels, Cox Communications California, Enterprise Rent-A-Car, Verizon Wireless,
-    and **Hilton Grand Vacations → Hilton, which is a false positive**. It's a different company.
-- **236 → nothing:** 188 Employer, 30 Partner, 15 Association, 2 Health plan, 1 Other.
-- 4 sheet names also match a `sales_prospect_state.company`.
+Only 21 of 76 partners have a confirmed domain, and `company_domain` is empty on all of them. That's why most partner
+matches are name-only.
+
+**Results for the 275 sheet rows:** 22 partner · 12 sequenced account · 241 no match.
+
+| Result | Rows | Accounts |
+|---|---|---|
+| Partner, by domain | 6 | Aon, Alliant Insurance Services, Gallagher (AJG), Lockton, WTW, ADP → ADP TotalSource (the sheet says Employer, Prospector has it as a partner) |
+| Partner, by exact name (flagged) | 16 | OneDigital, PerkSpot, BenefitHub, Corestream, Justworks, Esusu, Access Development, EBG, Insperity, Piñata, Stake; and HUB International, Mercer, Marsh McLennan Agency, NFP, TriNet |
+| Sequenced, by domain | 9 | Choice Hotels → Choice Hotels International, Hilton, Hyatt, Marriott International, Netskope, AutoNation, Cox Communications California → Cox Communications, Nike, Target |
+| Sequenced, by exact name (flagged) | 3 | Solidcore → [solidcore] (sheet row has no domain); 24 Hour Fitness, Macy's (domains differ) |
+| No match | 241 | 191 Employer, 32 Partner, 15 Association, 2 Health plan, 1 Other |
+
+In the exact-name partner row, the first 11 have no domain on the sheet row. The last 5 (HUB International, Mercer,
+Marsh McLennan Agency, NFP, TriNet) have no domain on the Prospector partner.
+
+**Possible, partial name only — NOT counted (5):**
+
+| Sheet row | Possible match |
+|---|---|
+| Invest with Roots | partner Roots |
+| Bilt Rewards | partner Bilt |
+| Hilton Grand Vacations | sequenced Hilton |
+| Enterprise Rent-A-Car | sequenced Enterprise |
+| Verizon Wireless | sequenced Verizon |
+
+**Hilton Grand Vacations is no longer matched to Hilton.** Its only domain is hgvc.com, while Hilton's is hilton.com,
+and the names match only partially.
+
+4 sheet names also match a `sales_prospect_state.company` (name only).
 
 **Duplicates inside the sheet:** 0, by both Record ID and normalized name.
 
-**Sheet Partners missing from Prospector (30):** Brown & Brown (sheet: Meeting scheduled, Priority), 32BJ Benefit Funds,
-Deloitte, Voluntary Advantage, Burnham Benefits, EPIC Insurance Brokers, Fairmount Benefits, GCG Financial,
-Hays Companies, Infiniti HR, Maniaci Insurance Services, Archetype Growth, BevCap Management,
-Conner Strong & Buckelew, Howden, IMA Financial Group, AutoPayChecks Clients, Brystra, CPI HR, McGrath Affinity,
-Member Savings Program, Merrimack, United Workers Wellness, Affinity Travel Benefits, Buyer's Edge Platform,
-Capital Group Financial, Lenser & Co, Life Expert How, MyPlanAdvocate, Comfort Insurance Services.
+**Sheet Partners missing from Prospector (32):** 32BJ Benefit Funds, Affinity Travel Benefits, Archetype Growth,
+AutoPayChecks Clients, BevCap Management, Bilt Rewards*, Brown & Brown (sheet: Meeting scheduled, Priority), Brystra,
+Burnham Benefits, Buyer's Edge Platform, CPI HR, Capital Group Financial, Comfort Insurance Services,
+Conner Strong & Buckelew, Deloitte, EPIC Insurance Brokers, Fairmount Benefits, GCG Financial, Hays Companies, Howden,
+IMA Financial Group, Infiniti HR, Invest with Roots*, Lenser & Co, Life Expert How, Maniaci Insurance Services,
+McGrath Affinity, Member Savings Program, Merrimack, MyPlanAdvocate, United Workers Wellness, Voluntary Advantage.
+\* possible match above. Without the 2 possibles, 30 are missing.
 
-**Prospector partners missing from the sheet (52):** ADP Marketplace, AFT, Action Property Management, Alera Group, Alight,
-Benevate, Brightside, Businessolver, CalHFA / California HCD, DailyPay, Domuso, Equifax, Financial Finesse,
+**Prospector partners missing from the sheet (54):** ADP Marketplace, AFT, Action Property Management, Alera Group, Alight,
+Benevate, Bilt*, Brightside, Businessolver, CalHFA / California HCD, DailyPay, Domuso, Equifax, Financial Finesse,
 Florida Housing Finance Corp., Framework, Gravy, Gusto, HoganTaylor, IHDA, Incentco, Iron Mountain, KPM CPAs,
 Lender Homepage, LCW, Local Housing Solutions, Mauldin & Jenkins, NCSHA, NEA Member Benefits, NAR, NHC, Nayya,
 NeighborWorks America, Norton / Gen Digital, Oro Impact, Payactiv, Paylocity, Perks at Work, RPM Resident Benefits
-Package, RentPlus, Rippling App Shop, SHRM, Segal, Self Financial, Sequoia, Sylvia, Tenvera, USI, Union Plus,
+Package, RentPlus, Rippling App Shop, Roots*, SHRM, Segal, Self Financial, Sequoia, Sylvia, Tenvera, USI, Union Plus,
 Upside, Workday Marketplace, WorldatWork, bswift.
+\* possible match above. Without the 2 possibles, 52 are missing.
 
-**Where the sheet would move a partner BACKWARDS (5):**
+**Where the sheet would move a partner BACKWARDS (5)** (all five are still matched; Jack, 2026-10-14: Prospector
+wins and the sheet gets fixed):
 
 | Partner | Prospector now | Sheet says |
 |---|---|---|
@@ -232,6 +266,61 @@ COMPANY, `inbox/2026-10-07-1310-sales-funnel-v1.txt:25-26`). It also overlaps th
 - **Any Funnel Stage behind Prospector's current stage:** the 5 rows in Q3. Prospector never moves a stage backwards.
 - **Anything that writes to Apollo:** Apollo is read-only.
 
+## sales_opportunities vs sales_targets
+**`sales_opportunities` — live; HomeLover: 1 row ("test", employer, target).**
+- **Schema** (`20261001_sales_pipeline_v1.sql:25-56`, 26 columns live):
+  - `organization` (required), `org_type` employer|membership|channel_partner (`:30`).
+  - `stage` target · contacted · responded · meeting · proposal_pilot · verbal · contract · launched · lost (`:32-34`).
+  - `owner` free text (`:37`), `next_action` (`:38`), `next_action_date` (`:39`).
+  - `champion`, `decision_makers`, `objections`, `est_value`, `probability`, `notes`.
+  - `source` manual|csv (`:50`). Name unique per workspace (`:54-56`).
+  - Every stage change is logged to `sales_opportunity_events` by a DB trigger (`:66`, `:77-97`).
+- **Writers:**
+  - `api/sales/pipelineRoutes.js`: create `:73`, update `:94`, archive `:114`, CSV import `:228` / `:235`.
+  - `api/sales/huddleRoutes.js:210`: Huddle "add to pipeline". Stage `responded`, owner set to the word "Jack"/"Cyrus" (`:189`, `:217`).
+- **Readers:**
+  - `pipelineRoutes.js:53` (list) and `:268-272` (movement).
+  - `huddleRoutes.js:51`, `huddleLive.js:166` (stage counts).
+  - `goalsReportRoutes.js:215-241` (weekly report: qualified pipeline and contract counts).
+  - It's linked from `sales_goals.linked_opportunity_id` (`20261005_sales_goals_v1_rev3.sql:25`) and `sales_prospect_state.opportunity_id` (`20261001_sales_hot_prospects_v1.sql:80`).
+  - UI widgets Pipeline / Movement / Forecast (`src/components/salesAnalytics/widgets.registry.js:53-63`, enabled).
+    Their `goalsSalesHidden` flag has no reader, so whether HomeLover sees them is unknown without a click-through.
+- **CSV import** (`pipelineRoutes.js:173-246`):
+  - It maps known headers only (`:131-153`) and silently drops unknown ones, such as a Record ID.
+  - It upserts on the lowercased organization name, and a blank cell never overwrites.
+  - It validates row by row and reports errors without stopping.
+  - It has **no** never-backwards check on stage.
+
+**`sales_targets` — planned by REV2, not built; HomeLover: no table** (`sales_targets` isn't in the schema cache).
+- **Planned columns** (`inbox/2026-10-14-0000-call-notes-targets-v1-REV2.txt:203-210`): name, kind partner|employer,
+  status proposed|researching|accepted|rejected, source_note_id, evidence, research_prompt, research_notes,
+  promoted_goal_id, created_by, decided_at, suggested_category, owner_team, co_owner_name, no_double_touch.
+- **Purpose:** a holding list for names pulled from pasted notes, with research, promote-to-partner and a memory of
+  rejected names. It has no stage, value or due date.
+
+**Overlap:**
+- Both can hold an employer that isn't in Apollo, by name.
+- Only `sales_opportunities` has a funnel stage, next action with a due date, and an import.
+- Only `sales_targets` would have ownership values, the note it came from, and a partner promotion.
+- Neither has a column for the sheet's Record ID.
+- Holding the sheet's employers in `sales_opportunities` needs no new table. It does need:
+  - a `record_id` column (and `owner_team` if wanted), via ALTER;
+  - import code that keys on that column;
+  - a stage mapping, since Nurture has no match.
+- This is also the territory of employer-records-v1 and sales-funnel-v1 (funnel unit = COMPANY,
+  `inbox/2026-10-07-1310-sales-funnel-v1.txt:25-26`).
+
+## Upside as an owner
+**Answer: nothing can store it as an owner today.**
+
+| Column | Why it can't hold "Upside" |
+|---|---|
+| `sales_goals.owner_user_id` (`20261005_sales_goals_v1_rev3.sql:18`) | Must reference a real user profile. |
+| `sales_prospect_state.owner` (`20261001_sales_hot_prospects_v1.sql:74`) | Limited to jack \| cyrus \| unassigned. |
+| `sales_sequenced_accounts` (`20261006_sales_goals_v1_rev4_stage3.sql:155-167`) | Has no owner column. |
+| `sales_opportunities.owner` (`20261001_sales_pipeline_v1.sql:37`) | Free text, so it would accept the word "Upside". Nothing reads it as ownership, though: it's display text, filled with "Jack"/"Cyrus" by `huddleRoutes.js:217`. |
+| REV2 `owner_team` homelover\|upside\|both | Not built. The column doesn't exist on HomeLover (checked 2026-10-14). |
+
 ## Shape Prospector wants
 - **Two files**, both CSV, UTF-8, with headers exactly as below.
 - **accounts.csv**, one row per account:
@@ -266,6 +355,6 @@ COMPANY, `inbox/2026-10-07-1310-sales-funnel-v1.txt:25-26`). It also overlaps th
    Insperity), does Prospector win? Its stages came from real events.
 3. **Owners:** for the 9 Upside-owned partners, should `owner_user_id` stay Jack/Cyrus (the internal contact) with
    `owner_team='upside'`, or be cleared? And who's right on Justworks, Insperity, TriNet and ADP?
-4. **New partners:** should the 30 sheet Partners missing from Prospector become partners, or REV2 targets?
+4. **New partners:** should the 32 sheet Partners missing from Prospector (30 without the 2 possible matches) become partners, or REV2 targets?
    Brown & Brown has a meeting on 2026-10-15.
 5. **Nurture (38 rows):** paused, or a new status?
