@@ -14,6 +14,8 @@ import PartnersView from './PartnersView';
 import CompaniesView from './CompaniesView';
 import ReportView from './ReportView';
 import GoalHero from './GoalHero';
+import PlanWeekDrawer from './PlanWeekDrawer';
+import { PlanNudge } from './FocusStrip';
 import { linkedTo, isOpenTask, openTasks } from '../tasks/LinkedTasks';
 import { exportWidgetCsv } from '../exportCsv';
 import {
@@ -65,6 +67,9 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
   const [missingOpen, setMissingOpen] = useState(false);
   const [heroKey, setHeroKey] = useState(0);
   const [partnerFocus, setPartnerFocus] = useState(null); // { stage?, tiers?, owner? } - a link opening Partners filtered
+  const [planOpen, setPlanOpen] = useState(false);
+  const [plans, setPlans] = useState(null);
+  const [toast, setToast] = useState('');
   const [errors, setErrors] = useState({});
   const setError = useCallback((key, e) => setErrors(prev => ({ ...prev, [key]: e })), []);
 
@@ -75,6 +80,8 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
   const thisWeek = laWeekStart();
   const myRole = me?.memberships?.find(m => m.business_id === businessId)?.role;
   const canEdit = !!me && (me.profile?.is_platform_owner || roleAtLeast(myRole, 'member'));
+  // weekly-plan-v1: a plan is one person's; on Team it's the signed-in user's.
+  const planOwner = owner === 'team' ? me?.profile?.id : owner;
 
   useEffect(() => {
     goalsApi.members(businessId).then(setMembers).catch(e => setError('members', e));
@@ -110,6 +117,13 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
     goalsApi.weekGoals(businessId, addDays(weekStart, -7), addDays(weekStart, -7), 'todo').then(setLastWeekTodos).catch(() => setLastWeekTodos([]));
   }, [businessId, weekStart]);
   useEffect(() => { loadScorecard(); }, [loadScorecard]);
+  const loadPlans = useCallback(() => { if (planOwner) goalsApi.weekPlans(businessId, planOwner).then(setPlans).catch(() => setPlans(null)); }, [businessId, planOwner]);
+  useEffect(() => { loadPlans(); }, [loadPlans]);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(''), 4000);
+    return () => clearTimeout(t);
+  }, [toast]);
   useEffect(() => { loadCompanies(); }, [loadCompanies]);
   useEffect(() => {
     goalsApi.companies(businessId, ALL_WEEKS_FROM, laWeekStart())
@@ -222,6 +236,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
   // 'week:prev', 'score:<metric>', 'huddle[:feed|open|click|reply|flags]',
   // { partners: { stage?, tiers?, owner? } }, { companies: <Monday> }.
   const go = target => {
+    if (target === 'plan') return setPlanOpen(true);
     if (target.partners) { setPartnerFocus({ ...target.partners }); return setView('partners'); }
     if (target.companies) { setWeekStart(target.companies); return setView('companies'); }
     const [kind, arg] = target.split(/:(.*)/);
@@ -309,6 +324,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
         <main style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
           {errors.members && <ErrorNote message={errors.members.message} />}
           {me && !canEdit && <div style={{ ...subStyle, fontSize: 13 }}>You have view access to this workspace, so Goals is read-only for you.</div>}
+          {canEdit && <PlanNudge week={weekStart} ownerId={planOwner} ownerName={lookup(planOwner).first} plans={plans} onPlan={() => setPlanOpen(true)} />}
           <GoalHero businessId={businessId} weekStart={weekStart} owner={owner} ownerName={owner === 'team' ? null : whoLabel} commitments={myCommitments} missingHeadcount={missingHeadcount} canEdit={canEdit}
             scorecard={scorecard} scorecardError={errors.scorecard} reloadKey={heroKey} onGoalSaved={() => { loadScorecard(); loadKpi(); }} onDrill={drill}
             openTasks={heroTasks} onOpenTasks={key => openTasks({ link: { type: 'metric', id: key }, filter: drawerFilter })} />
@@ -325,6 +341,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
               onUpdateCommitment={async (goalId, body) => { await goalsApi.updateWeekGoal(businessId, goalId, body); await loadCommitments(); }}
               onCarryCommitments={async () => { const r = await goalsApi.carryOver(businessId, weekStart, 'commitment'); await Promise.all([loadCommitments(), loadReport()]); return r; }}
               onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await Promise.all([loadKpi(), loadScorecard()]); setHeroKey(k => k + 1); }}
+              onPlanWeek={canEdit && planOwner ? () => setPlanOpen(true) : null}
               infraHandlers={{
                 onAdd: async body => { await goalsApi.createInfra(businessId, { ...body, week_start: weekStart }); await loadReport(); return true; },
                 onUpdate: async (itemId, body) => { await goalsApi.updateInfra(businessId, itemId, body); await loadReport(); },
@@ -403,6 +420,15 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
         </main>
         {!compact && <div style={{ flex: '0 0 300px', minWidth: 0 }}>{rail}</div>}
       </div>
+      {planOpen && canEdit && planOwner && (
+        <PlanWeekDrawer businessId={businessId} weekStart={weekStart} ownerId={planOwner} ownerName={lookup(planOwner).first} teamDefault={owner === 'team'} compact={compact}
+          hasPlanned={commitments.some(c => c.owner_user_id === planOwner && c.plan_id && c.status === 'open')}
+          onClose={() => setPlanOpen(false)}
+          onSaved={() => { setPlanOpen(false); setToast('Focus 5 saved'); loadCommitments(); loadTodos(); loadReport(); loadPlans(); }} />
+      )}
+      {toast && (
+        <div role="status" className="no-print" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 4005, padding: '10px 16px', borderRadius: 10, background: SA.surface2, border: `1px solid ${SA.border}`, color: SA.text, fontSize: 14 }}>{toast}</div>
+      )}
     </div>
   );
 }

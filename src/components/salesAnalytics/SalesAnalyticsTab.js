@@ -277,7 +277,7 @@ export default function SalesAnalyticsTab({ businessId, features }) {
 
       {view === 'goals' ? <GoalsTab businessId={businessId} initialTarget={goalsTarget} onOpenOverview={widget => { setOverviewFocus(widget || null); setView('overview'); }}
           onOpenHuddle={(contactId, target) => { setHuddleFocus(contactId); setHuddleTarget(target ? { ...target } : null); setView('huddle'); }} />
-        : view === 'huddle' ? <DailyHuddle businessId={businessId} focusContactId={huddleFocus} onFocused={() => setHuddleFocus(null)} focusTarget={huddleTarget} /> : <>
+        : view === 'huddle' ? <DailyHuddle businessId={businessId} focusContactId={huddleFocus} onFocused={() => setHuddleFocus(null)} focusTarget={huddleTarget} onOpenGoals={openGoals} /> : <>
       {/* Header - hidden in print; the print-only block below replaces it */}
       <div className="no-print" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, marginBottom: 24 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

@@ -84,6 +84,23 @@ export function toPlanProposals(raw, ids) {
   return out;
 }
 
+// Display names for the drawer and the Huddle Focus strip, taken from the
+// context (never the model). Saved inside the plan's proposals, which is the
+// only place a planned commitment's link lives.
+export function nameProposals(proposals, sections) {
+  const names = new Map();
+  for (const p of sections.partners) names.set(`partner:${p.id}`, p.name);
+  for (const r of sections.replies_waiting) if (r.company_id && r.company) names.set(`company:${r.company_id}`, r.company);
+  for (const t of sections.todos) if (t.link_type === 'company' && t.link) names.set(`company:${t.link_id}`, t.link.replace(/^company /, ''));
+  for (const c of sections.this_week_commitments) names.set(`commitment:${c.id}`, c.text);
+  const existing = new Map([...sections.todos.map(t => [t.id, t.text]), ...sections.flags.map(f => [f.id, [f.person, f.company].filter(Boolean).join(' · ') || f.note])]);
+  return proposals.map(p => ({
+    ...p,
+    link_name: p.link_type === 'metric' ? p.link_id.replace(/_/g, ' ') : p.link_type ? names.get(`${p.link_type}:${p.link_id}`) || null : null,
+    existing_text: p.existing_todo_id ? existing.get(p.existing_todo_id) || null : null,
+  }));
+}
+
 async function isMember(supabase, businessId, userId) {
   const { data, error } = await supabase.from('business_members').select('id').eq('business_id', businessId).eq('user_id', userId).maybeSingle();
   if (error) throw new Error(error.message);
@@ -124,7 +141,7 @@ export async function proposeWeekPlanRoute(req, res) {
     const out = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
     let raw;
     try { raw = JSON.parse(out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1)); } catch { raw = null; }
-    const proposals = toPlanProposals(raw, ctx.ids);
+    const proposals = nameProposals(toPlanProposals(raw, ctx.ids), ctx.inputs.sections);
     if (!proposals.length) return res.status(502).json({ error: 'Nothing usable came back - try a more specific prompt', usage });
     res.json({
       week_start, owner_user_id: ownerId, prompt,
@@ -302,12 +319,13 @@ export async function getWeekPlanRoute(req, res) {
   res.json({ plan: plan.data, planned_commitment_ids: planned.data.map(r => r.id) });
 }
 
-// GET /goals/week/plans?owner_user_id&limit=12 - plan history, newest first.
+// GET /goals/week/plans?owner_user_id&limit=12 - plan history, newest first,
+// with proposals (the drawer's read-only view and the Focus strip's link chips).
 export async function listWeekPlansRoute(req, res) {
   const { owner_user_id } = req.query;
   const limit = Math.min(Math.max(Number.parseInt(req.query.limit, 10) || 12, 1), 52);
   if (owner_user_id != null && !UUID.test(owner_user_id)) return res.status(400).json({ error: 'owner_user_id must be a member id' });
-  let q = planDeps.getSupabase().from('sales_week_plans').select('id, week_start, owner_user_id, prompt, chosen_count, created_at')
+  let q = planDeps.getSupabase().from('sales_week_plans').select('id, week_start, owner_user_id, prompt, proposals, chosen_count, created_at')
     .eq('business_id', req.params.businessId);
   if (owner_user_id) q = q.eq('owner_user_id', owner_user_id);
   const { data, error } = await q.order('created_at', { ascending: false }).limit(limit);

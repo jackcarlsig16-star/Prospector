@@ -30,7 +30,7 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 500 && MIGRATION_PATTERN.test(data.error || '')) throw new NeedsMigrationError();
-    throw new Error(data.error || `Request failed (${res.status})`);
+    throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   }
   if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
@@ -45,6 +45,9 @@ export const goalsApi = {
   createWeekGoal: (id, body) => call(id, '/week', { method: 'POST', body }).then(d => d.goal),
   updateWeekGoal: (id, goalId, body) => call(id, `/week/${goalId}`, { method: 'PATCH', body }).then(d => d.goal),
   deleteWeekGoal: (id, goalId) => call(id, `/week/${goalId}`, { method: 'DELETE' }),
+  proposePlan: (id, body) => call(id, '/week/plan/propose', { method: 'POST', body }),
+  savePlan: (id, body) => call(id, '/week/plan/save', { method: 'POST', body }),
+  weekPlans: (id, ownerId) => call(id, `/week/plans?${q({ owner_user_id: ownerId })}`).then(d => d.plans),
   carryOver: (id, weekStart, kind) => call(id, '/week/carry-over', { method: 'POST', body: { week_start: weekStart, kind } }),
 
   // call-notes-to-tasks-v1 - extract writes nothing; create stores the note + the kept to-dos.

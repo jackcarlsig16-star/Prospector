@@ -175,7 +175,7 @@ test('proposals: unknown ids dropped, known kept, deduped, renumbered, capped at
 // ── Propose route ───────────────────────────────────────────────────────────
 function withDeps(sb, anthropic) {
   planDeps.getSupabase = () => sb;
-  planDeps.buildPlanContext = async () => ({ inputs: { counts: { todos: 1 }, trimmed: {} }, text: 'ctx', ids: { commitment: new Set(), partner: new Set([uid(100)]), company: new Set(), todo: new Set() } });
+  planDeps.buildPlanContext = async () => ({ inputs: { counts: { todos: 1 }, trimmed: {}, sections: { partners: [{ id: uid(100), name: 'Partner 0' }], replies_waiting: [], todos: [], this_week_commitments: [], flags: [] } }, text: 'ctx', ids: { commitment: new Set(), partner: new Set([uid(100)]), company: new Set(), todo: new Set() } });
   planDeps.callAnthropic = anthropic;
 }
 const reply = proposals => ({ content: [{ type: 'text', text: JSON.stringify({ proposals }) }], usage: { input_tokens: 1000, output_tokens: 200 }, stop_reason: 'end_turn' });
@@ -192,6 +192,7 @@ test('propose: one Claude call per propose, logged as week_plan; 429 at the dail
   assert.equal(calls[0].thinking, false);
   assert.equal(sb.db.business_anthropic_usage.length, 1);
   assert.equal(ok.body.proposals.length, 1);
+  assert.equal(ok.body.proposals[0].link_name, 'Partner 0');
   assert.ok(ok.body.usage.cost_usd > 0);
 
   for (let i = 1; i < DAILY_PROPOSE_CAP; i++) sb.db.business_anthropic_usage.push({ user_id: JACK, call_type: 'week_plan', created_at: new Date().toISOString() });

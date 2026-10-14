@@ -4,6 +4,7 @@ import { SEMANTIC } from '../palette';
 import Ring from '../charts/Ring';
 import KpiTable from './KpiTable';
 import LinkedTasks from '../tasks/LinkedTasks';
+import Button from '../../../ui/Button';
 import { PIPELINE_STATUSES, WORKFLOW_STEPS, stepOf } from '../../../constants/partnerPipeline';
 import {
   cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, rowStyle, inputStyle,
@@ -214,7 +215,9 @@ function CommitmentRow({ c, lookup, editable, onOpen, onUpdate, tasks, liveWeek 
   return (
     <div style={{ ...rowStyle, flexWrap: 'wrap' }} className="print-avoid-break">
       <div style={{ flex: '1 1 300px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <span style={{ fontWeight: 600, textDecoration: c.status === 'dropped' ? 'line-through' : 'none' }}>{c.text}</span>
+        <span style={{ fontWeight: 600, textDecoration: c.status === 'dropped' ? 'line-through' : 'none' }} title={c.plan_id ? c.plan_reason || 'From this week\'s plan' : undefined}>
+          {c.plan_id && <span aria-label="Planned" style={{ color: SA.accent, marginRight: 6 }}>✦</span>}{c.text}
+        </span>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           {target && <Chip style={numStyle}>Target: {target}</Chip>}
           {c.link_target && <button type="button" onClick={() => onOpen(c.link_target)} style={{ all: 'unset', cursor: 'pointer' }}><Chip color={SA.link}>→ {linkLabel(c.link_target)}</Chip></button>}
@@ -286,7 +289,7 @@ export default function ReportView(props) {
   const {
     weekStart, report, reportError, sections, infra, commitments, commitmentsError, kpiRows, kpiError, autoChips, partnerBlock,
     canEdit, lookup, members, defaultOwner, onOpen, tasksFor, liveWeek, onSaveSection, onSectionSaved, onFinalize, onReopen,
-    onAddCommitment, onUpdateCommitment, onCarryCommitments, onSaveTarget, infraHandlers,
+    onAddCommitment, onUpdateCommitment, onCarryCommitments, onSaveTarget, infraHandlers, onPlanWeek,
   } = props;
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -347,6 +350,7 @@ export default function ReportView(props) {
             : <div className="no-print" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <div style={{ flex: '1 1 300px' }}><AddButton onClick={() => setAdding(true)}>+ Add commitment</AddButton></div>
                 <Btn style={{ marginTop: 8 }} disabled={busy} onClick={async () => { const r = await run(onCarryCommitments); if (r) setMsg(r.carried.length ? '' : 'No unfinished commitments to carry over'); }}>Carry over unfinished</Btn>
+                {onPlanWeek && <div style={{ marginTop: 8 }}><Button variant="primary" onClick={onPlanWeek}>Plan this week</Button></div>}
               </div>)}
         </div>
       </section>
