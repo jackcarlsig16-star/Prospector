@@ -660,6 +660,7 @@ app.delete('/api/sales/:businessId/goals/partners/:id/domains/:domainId', salesM
 app.get('/api/sales/:businessId/goals/scorecard', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'scorecardRoute', 'goals/scorecard'));
 app.get('/api/sales/:businessId/goals/kpi', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'kpiRoute', 'goals/kpi'));
 app.get('/api/sales/:businessId/goals/companies', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'listCompaniesRoute', 'goals/companies'));
+app.get('/api/sales/:businessId/goals/pipeline-board', salesModuleRoute('./api/sales/pipelineBoard.js', 'pipelineBoardRoute', 'goals/pipeline-board'));
 app.patch('/api/sales/:businessId/goals/companies/:accountId', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'updateCompanyRoute', 'goals/companies/:accountId PATCH'));
 app.get('/api/sales/:businessId/goals/targets', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'listTargetsRoute', 'goals/targets'));
 app.get('/api/sales/:businessId/goals/hero', salesModuleRoute('./api/sales/goalsReportRoutes.js', 'heroRoute', 'goals/hero'));
