@@ -21,8 +21,9 @@ import { roleAtLeast } from '../../constants/roles';
 import useMediaQuery from '../../utils/useMediaQuery';
 import {
   OWNER_LABELS, NEXT_ACTION_LABELS, HEAT_LABELS, SORTS, applyFilters, sortProspects, needsAction, onAutopilot,
-  byCompany, flagsFor,
+  byCompany, flagsFor, plusDays,
 } from './huddleView';
+import { laDateString } from './periods';
 
 const UNDO_MS = 5000; // REVISABLE (spec)
 
@@ -117,6 +118,9 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
   const [showAutopilot, setShowAutopilot] = useState(false);
   const [toast, setToast] = useState(null);
   const toastTimer = useRef(null);
+  // A step that runs when the undo window closes without an Undo (Not a fit's
+  // flag drop), so Undo never has to reopen anything. Runs early on unmount.
+  const toastExpire = useRef(null);
   const compact = useMediaQuery('(max-width: 1099px)');
   const phone = useMediaQuery('(max-width: 899px)');
 
@@ -146,7 +150,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
   // jack/cyrus/unassigned slugs, matched to members by first name.
   useEffect(() => { goalsApi.members(businessId).then(setMembers).catch(() => setMembers([])); }, [businessId]);
   useEffect(() => { fetchMe().then(setMe).catch(() => setMe(null)); }, []);
-  useEffect(() => () => clearTimeout(toastTimer.current), []);
+  useEffect(() => () => { clearTimeout(toastTimer.current); const f = toastExpire.current; toastExpire.current = null; f?.(); }, []);
 
   const loadFlags = useCallback(() => fetchFlags(businessId).then(setFlags).catch(e => setMessage(e.message)), [businessId]);
   useEffect(() => {
@@ -195,14 +199,17 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
     setData(d => ({ ...d, prospects: d.prospects.map(p => (p.contact_id === row.contact_id ? { ...p, ...row } : p)) }));
   };
 
-  const showToast = (text, undoFn) => {
+  const expireToast = () => { setToast(null); const f = toastExpire.current; toastExpire.current = null; f?.(); };
+  const showToast = (text, undoFn, { onExpire = null, link = null } = {}) => {
     clearTimeout(toastTimer.current);
-    setToast({ text, undo: undoFn });
-    toastTimer.current = setTimeout(() => setToast(null), UNDO_MS);
+    toastExpire.current?.();
+    toastExpire.current = onExpire;
+    setToast({ text, undo: undoFn, link });
+    toastTimer.current = setTimeout(expireToast, UNDO_MS);
   };
   // One-click row actions: optimistic, then the PATCH (its trigger logs
   // who/when), then a 5-second undo that PATCHes the previous values back.
-  const act = async (p, patch, label) => {
+  const act = async (p, patch, label, toastOpts) => {
     const prev = Object.fromEntries(Object.keys(patch).map(k => [k, p[k] ?? null]));
     handleUpdated({ contact_id: p.contact_id, ...patch });
     try {
@@ -210,15 +217,24 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
     } catch (e) { handleUpdated({ contact_id: p.contact_id, ...prev }); throw e; }
     setLiveKey(k => k + 1);
     // Undo only if the fields still hold what this click set (409 otherwise).
-    showToast(`${p.name || 'Prospect'} ${label}`, async () => { handleUpdated(await updateProspect(businessId, p.contact_id, { ...prev, expect: patch })); setLiveKey(k => k + 1); });
+    showToast(`${p.name || 'Prospect'} ${label}`, async () => { handleUpdated(await updateProspect(businessId, p.contact_id, { ...prev, expect: patch })); setLiveKey(k => k + 1); }, toastOpts);
+  };
+  // Not a fit: dead + a dated notes line now; the open flag is dropped when
+  // the undo window closes. Prospector never touches the Apollo sequence.
+  const markNotAFit = (r, reason) => {
+    const d = laDateString();
+    const notes = [r.notes, `(${d.slice(5, 7)}/${d.slice(8, 10)}) Not a fit${reason ? `: ${reason}` : ''}`].filter(Boolean).join('\n');
+    const dropOpenFlag = r.flag ? () => dropFlag(businessId, r.flag.goal_id).then(() => { loadFlags(); announceFlagsChanged(); setLiveKey(k => k + 1); }).catch(e => setMessage(e.message)) : null;
+    return act(r, { status: 'dead', notes }, 'marked not a fit - remove them from the Apollo sequence in Apollo', { onExpire: dropOpenFlag, link: r.apollo_url })
+      .catch(e => setMessage(e.message));
   };
   const undo = async () => {
     if (!toast) return;
     clearTimeout(toastTimer.current);
     const t = toast;
     setToast({ ...t, busy: true });
-    try { await t.undo(); setToast(null); }
-    catch (e) { setToast({ ...t, error: e.message }); toastTimer.current = setTimeout(() => setToast(null), UNDO_MS); }
+    try { await t.undo(); toastExpire.current = null; setToast(null); }
+    catch (e) { setToast({ ...t, error: e.message }); toastTimer.current = setTimeout(expireToast, UNDO_MS); }
   };
   // 🚩 Flag for ...: one Goals to-do + steps; undo deletes it and puts the
   // owner back if the flag had claimed an unassigned prospect.
@@ -451,7 +467,10 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
         <HuddleLive businessId={businessId} members={members} myUserId={me?.profile?.id} canEdit={canEdit} phone={phone} reloadKey={liveKey}
           ownerColor={ownerColor} ownerLabel={o => OWNER_LABELS[o] || o} onSync={handleSync} syncing={syncing}
           onFlag={r => setFlagging(prospectsById.get(r.contact_id) || liveFlagTarget(r))}
-          onContacted={r => act(r, { status: 'contacted' }, 'marked contacted').catch(e => setMessage(e.message))} />
+          onContacted={r => act(r, { status: 'contacted' }, 'marked contacted').catch(e => setMessage(e.message))}
+          onNotAFit={markNotAFit}
+          onNotNow={(r, days, lb) => act(r, { status: 'not_now', snooze_until: plusDays(laDateString(), days) }, `snoozed ${lb}`).catch(e => setMessage(e.message))}
+          onRestore={r => act(r, { status: 'contacted' }, 'restored').catch(e => setMessage(e.message))} />
       )}
 
       {tab === 'done' && (
@@ -551,6 +570,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
         {toast && (
           <div style={{ ...saSans, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 12, background: SA.surface2, border: `1px solid ${SA.borderStrong}`, boxShadow: '0 10px 30px #0008', fontSize: 14, color: SA.text }}>
             <span>{toast.error || toast.text}</span>
+            {!toast.error && toast.link && <a href={toast.link} target="_blank" rel="noreferrer" style={{ color: SA.link, whiteSpace: 'nowrap' }}>Apollo ↗</a>}
             {!toast.error && <button type="button" onClick={undo} disabled={toast.busy} style={{ ...headerButton, height: 36 }}>{toast.busy ? 'Undoing…' : 'Undo'}</button>}
           </div>
         )}

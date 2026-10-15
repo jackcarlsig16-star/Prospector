@@ -60,6 +60,8 @@ export function buildLiveRows({ prospects, messages, events, flags, members, sta
   const today = laDateString(new Date(now));
   const rows = [];
   for (const p of prospects) {
+    // Not now hides a person until snooze_until passes (no date = until changed), same rule as Priorities.
+    if (p.status === 'not_now' && (!p.snooze_until || p.snooze_until > today)) continue;
     const msgs = msgsBy.get(p.contact_id) || [];
     const evs = (eventsBy.get(p.contact_id) || []).filter(e => e.event === 'open' || e.event === 'click');
     const replies = msgs.filter(m => m.replied);
@@ -92,7 +94,7 @@ export function buildLiveRows({ prospects, messages, events, flags, members, sta
     const nba = nextBestAction(msgs, evs, scoreProspect(msgs, evs));
     const row = {
       contact_id: p.contact_id, name: p.name || null, company: p.company || null, title: p.title || null, owner: p.owner || 'unassigned',
-      status: p.status, linkedin_url: p.linkedin_url || null,
+      status: p.status, notes: p.notes || null, linkedin_url: p.linkedin_url || null,
       apollo_url: `https://app.apollo.io/#/contacts/${p.contact_id}`,
       linkedin_search_url: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent([p.name, p.company].filter(Boolean).join(' '))}`,
       sequence: lastMsg.sequence_id ? { id: lastMsg.sequence_id, name: seq ? seq.name : null } : null,
@@ -119,8 +121,9 @@ export function buildLiveRows({ prospects, messages, events, flags, members, sta
       in_pipeline: !!(opp && !opp.archived_at),
       in_pipeline_meeting_plus: !!(opp && !opp.archived_at && stageIndex(opp.stage) >= MEETING_INDEX),
       unsubscribed: !!p.email_unsubscribed,
-      // Closed = unsubscribed or a not-interested/unsubscribe reply; hidden behind "Show closed".
-      closed: !!p.email_unsubscribed || replies.some(m => HEAT.excludedReplyClasses.includes(m.reply_class)),
+      not_a_fit: p.status === 'dead',
+      // Closed = unsubscribed, a not-interested/unsubscribe reply, or Not a fit; hidden behind "Show closed".
+      closed: !!p.email_unsubscribed || p.status === 'dead' || replies.some(m => HEAT.excludedReplyClasses.includes(m.reply_class)),
       next_step: { id: nba.id, label: nba.label, reason: nba.reason },
       timeline,
     };
@@ -155,7 +158,7 @@ export async function liveRoute(req, res) {
   const supabase = getSupabase();
   try {
     const [prospects, messages, events, goalRows, statusEvents] = await Promise.all([
-      selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id,name,title,company,linkedin_url,email_unsubscribed,owner,status,opportunity_id').eq('business_id', businessId).order('contact_id')),
+      selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id,name,title,company,linkedin_url,email_unsubscribed,owner,status,snooze_until,notes,opportunity_id').eq('business_id', businessId).order('contact_id')),
       selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,contact_id,sequence_id,step,delivered_at,replied,reply_class,replied_seen_at,replied_at,subject').eq('business_id', businessId).order('apollo_message_id')),
       selectAllPages(() => supabase.from('sales_email_activity').select('id,apollo_message_id,contact_id,step,event,occurred_at,user_agent,tracking_service').eq('business_id', businessId).in('event', ['open', 'click']).order('id')),
       selectAllPages(() => supabase.from('sales_week_goals').select('id,owner_user_id,status,carried_from_id,prospect_contact_id,week_start').eq('business_id', businessId).not('prospect_contact_id', 'is', null).order('week_start', { ascending: false }).order('id')),

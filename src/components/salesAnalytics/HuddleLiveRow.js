@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { SA, SA_SHAPE, saSans } from './theme';
 import { SEMANTIC } from './palette';
 
@@ -19,9 +19,14 @@ const fullWhen = iso => (iso ? new Date(iso).toLocaleString('en-US', { timeZone:
 const badge = (color, strong) => ({ display: 'inline-flex', alignItems: 'center', gap: 4, height: 22, padding: '0 8px', borderRadius: 999, fontSize: 12, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums',
   color: strong ? color : SA.soft, border: `1px solid ${strong ? `color-mix(in srgb, ${color} 50%, transparent)` : SA.border}`, background: strong ? `color-mix(in srgb, ${color} 12%, transparent)` : 'transparent' });
 const btn = { ...saSans, height: 32, padding: '0 10px', borderRadius: 8, fontSize: 13, cursor: 'pointer', color: SA.text, border: `1px solid ${SA.border}`, background: SA.surface2, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap' };
+const FIT_REASONS = ['Wrong person', 'Not a decision maker', 'Left the company', 'Other'];
+const NOT_NOW = [[7, '1 week'], [30, '1 month'], [90, '3 months']];
+const chip = on => ({ ...btn, height: 28, fontSize: 12, borderRadius: 999, color: on ? SA.text : SA.soft, border: `1px solid ${on ? SA.accent : SA.border}`, background: on ? `color-mix(in srgb, ${SA.accent} 14%, transparent)` : 'transparent' });
 const KIND_LABEL = { sent: '✉ Sent', open: '👁 Opened', click: '🖱 Clicked', reply: '↩ Replied' };
 
-export default function HuddleLiveRow({ r, ownerColor, ownerLabel, canEdit, expanded, onToggle, onFlag, onContacted, stacked, now }) {
+export default function HuddleLiveRow({ r, ownerColor, ownerLabel, canEdit, expanded, onToggle, onFlag, onContacted, onNotAFit, onNotNow, onRestore, stacked, now }) {
+  const [panel, setPanel] = useState(null); // null | 'fit' | 'later'
+  const [reason, setReason] = useState(null);
   useEffect(() => {
     if (!expanded) return undefined;
     const onKey = e => { if (e.key === 'Escape') onToggle(); };
@@ -36,7 +41,7 @@ export default function HuddleLiveRow({ r, ownerColor, ownerLabel, canEdit, expa
   const expandBtn = <button type="button" style={btn} aria-expanded={expanded} aria-label={expanded ? 'Collapse' : 'Expand timeline'} onClick={onToggle}>{expanded ? '▾' : '▸'}</button>;
 
   return (
-    <div id={`live-row-${r.contact_id}`} style={{ padding: '10px 12px', borderRadius: SA_SHAPE.radiusInner, background: SA.surface, border: `1px solid ${expanded ? SA.borderStrong : SA.border}`, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+    <div id={`live-row-${r.contact_id}`} style={{ padding: '10px 12px', borderRadius: SA_SHAPE.radiusInner, background: SA.surface, border: `1px solid ${expanded ? SA.borderStrong : SA.border}`, display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0, opacity: r.not_a_fit ? 0.6 : 1 }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px 8px', minWidth: 0 }}>
         <span title={ownerLabel} aria-label={`Owner ${ownerLabel}`} style={{ width: 8, height: 8, borderRadius: 999, background: ownerColor, flex: 'none' }} />
         <span style={{ fontSize: 15, fontWeight: 600, color: SA.text }}>{r.name || 'Unknown contact'}</span>
@@ -57,17 +62,35 @@ export default function HuddleLiveRow({ r, ownerColor, ownerLabel, canEdit, expa
         {seq && <span style={{ color: SA.muted }}>{seq}</span>}
         {r.flag && <span style={badge(SA.accent, true)}>⚑ Flagged to {flagFirst || 'teammate'}</span>}
         {contactedLabel && <span style={badge(SEMANTIC.healthy, r.contacted_today)}>{contactedLabel}</span>}
-        {r.closed && <span style={badge(SA.faint)}>{r.unsubscribed ? 'Unsubscribed' : 'Not interested'}</span>}
+        {r.closed && <span style={badge(SA.faint)}>{r.not_a_fit ? 'Not a fit' : r.unsubscribed ? 'Unsubscribed' : 'Not interested'}</span>}
         <span style={{ flex: 1 }} />
         <span role="group" aria-label={`Actions for ${r.name || 'contact'}`} style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 6 }}>
-          {canEdit && <button type="button" style={btn} onClick={() => onFlag(r)}>Flag →</button>}
-          {canEdit && <button type="button" style={{ ...btn, opacity: alreadyContacted ? 0.5 : 1, cursor: alreadyContacted ? 'default' : 'pointer' }} disabled={alreadyContacted}
+          {canEdit && r.not_a_fit && <button type="button" style={btn} title="Back on the Huddle as Contacted (the notes keep the history)" onClick={() => onRestore(r)}>Restore</button>}
+          {canEdit && !r.not_a_fit && <button type="button" style={btn} onClick={() => onFlag(r)}>Flag →</button>}
+          {canEdit && !r.not_a_fit && <button type="button" style={btn} aria-expanded={panel === 'later'} onClick={() => setPanel(x => (x === 'later' ? null : 'later'))}>Not now…</button>}
+          {canEdit && !r.not_a_fit && <button type="button" style={btn} aria-expanded={panel === 'fit'} onClick={() => setPanel(x => (x === 'fit' ? null : 'fit'))}>Not a fit…</button>}
+          {canEdit && !r.not_a_fit && <button type="button" style={{ ...btn, opacity: alreadyContacted ? 0.5 : 1, cursor: alreadyContacted ? 'default' : 'pointer' }} disabled={alreadyContacted}
             title={alreadyContacted ? 'Already marked contacted' : 'Mark contacted (undo for 5 s)'} onClick={() => onContacted(r)}>{stacked ? '✓ Contacted' : 'Mark contacted'}</button>}
           <a href={r.linkedin_url || r.linkedin_search_url} target="_blank" rel="noreferrer" style={btn} title={r.linkedin_url ? 'LinkedIn profile' : 'LinkedIn people search for name + company'}>LinkedIn ↗</a>
           <a href={r.apollo_url} target="_blank" rel="noreferrer" style={btn}>Apollo ↗</a>
           {!stacked && expandBtn}
         </span>
       </div>
+      {canEdit && panel === 'fit' && (
+        <div role="group" aria-label="Not a fit" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, fontSize: 12, color: SA.soft }}>
+          <span>Not a fit? Leaves the Huddle{r.flag ? ' and closes the flag' : ''}. Reason (optional):</span>
+          {FIT_REASONS.map(x => <button key={x} type="button" aria-pressed={reason === x} style={chip(reason === x)} onClick={() => setReason(v => (v === x ? null : x))}>{x}</button>)}
+          <button type="button" style={{ ...btn, color: SA.bad }} onClick={() => { setPanel(null); onNotAFit(r, reason); }}>Mark not a fit</button>
+          <button type="button" style={{ ...btn, color: SA.muted }} onClick={() => setPanel(null)}>Cancel</button>
+        </div>
+      )}
+      {canEdit && panel === 'later' && (
+        <div role="group" aria-label="Not now" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, fontSize: 12, color: SA.soft }}>
+          <span>Hide until:</span>
+          {NOT_NOW.map(([n, lb]) => <button key={n} type="button" style={chip(false)} onClick={() => { setPanel(null); onNotNow(r, n, lb); }}>{lb}</button>)}
+          <button type="button" style={{ ...btn, color: SA.muted }} onClick={() => setPanel(null)}>Cancel</button>
+        </div>
+      )}
       {expanded && (
         <div style={{ borderTop: `1px solid ${SA.track}`, paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
           {r.timeline.map((t, i) => (

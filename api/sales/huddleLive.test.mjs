@@ -100,3 +100,14 @@ test('subject line: on each sent item and on the row (the latest activity\'s mes
   assert.equal(r.subject, 'Re: step two');
   assert.deepEqual(r.timeline.filter(t => t.kind === 'sent').map(t => t.subject), ['Re: step two', 'Step one subject']);
 });
+
+test('Not a fit (dead) is closed; Not now hides until snooze_until passes, then comes back', () => {
+  const rows = buildLiveRows(base({
+    prospects: [prospect('a', { status: 'dead' }), prospect('b', { status: 'not_now', snooze_until: '2026-10-08' }), prospect('c', { status: 'not_now', snooze_until: '2026-10-07' }), prospect('d', { status: 'not_now', snooze_until: null })],
+    messages: [msg('m1', 'a'), msg('m2', 'b'), msg('m3', 'c'), msg('m4', 'd')],
+    events: ['a', 'b', 'c', 'd'].map((c, i) => ev(i + 1, `m${i + 1}`, c, 'open', '2026-10-06T18:00:00Z')),
+  }));
+  assert.deepEqual(rows.map(r => r.contact_id), ['a', 'c'], 'b snoozed to tomorrow and d snoozed with no date are hidden; c is due today');
+  assert.deepEqual([rows[0].closed, rows[0].not_a_fit, rows[0].real_opens], [true, true, 1], 'opens still count');
+  assert.deepEqual([rows[1].closed, rows[1].not_a_fit], [false, false]);
+});

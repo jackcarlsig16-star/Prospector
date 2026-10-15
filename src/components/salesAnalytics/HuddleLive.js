@@ -36,7 +36,7 @@ function Pills({ label, options, value, onChange }) {
 const toggleStyle = { display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: SA.soft, cursor: 'pointer', minHeight: 32 };
 const syncBtn = { ...saSans, height: 32, padding: '0 12px', borderRadius: 8, fontSize: 13, cursor: 'pointer', color: SA.text, border: `1px solid ${SA.border}`, background: SA.surface2 };
 
-export default function HuddleLive({ businessId, members, myUserId, ownerColor, ownerLabel, canEdit, reloadKey, onFlag, onContacted, onSync, syncing, phone }) {
+export default function HuddleLive({ businessId, members, myUserId, ownerColor, ownerLabel, canEdit, reloadKey, onFlag, onContacted, onNotAFit, onNotNow, onRestore, onSync, syncing, phone }) {
   const [filter, setFilter] = useState(null);
   const [sinceHuddle, setSinceHuddle] = useState(false);
   const [owner, setOwner] = useState('');
@@ -146,7 +146,7 @@ export default function HuddleLive({ businessId, members, myUserId, ownerColor, 
           <HuddleLiveRow key={r.contact_id} r={r} now={now} canEdit={canEdit} stacked={phone}
             ownerColor={ownerColor(r.owner)} ownerLabel={ownerLabel(r.owner)}
             expanded={expanded === r.contact_id} onToggle={() => setExpanded(x => (x === r.contact_id ? null : r.contact_id))}
-            onFlag={onFlag} onContacted={onContacted} />
+            onFlag={onFlag} onContacted={onContacted} onNotAFit={onNotAFit} onNotNow={onNotNow} onRestore={onRestore} />
         ))}
         {data && !rows.length && !loading && <p style={{ fontSize: 13, color: SA.faint, margin: 0 }}>No activity for these filters.</p>}
       </div>
