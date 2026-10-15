@@ -1,5 +1,5 @@
 import { selectAllPages } from '../lib/selectAllPages.js';
-import { STAGE_ORDER } from './pipelineStages.js';
+import { STAGE_ORDER, SIDE_LANES } from './pipelineStages.js';
 import { PARTNER_METRICS, PARTNER_FLOWS, PEOPLE_METRIC, loadPartnerData, partnerWeekMetrics, partnerReportBlock, peopleFirstTouchedInWeek } from './partnerMetrics.js';
 import { huddleWeekCounts, weekEngagement } from './huddleWeek.js';
 import { businessFeatureOn } from '../lib/outlookFeatures.js';
@@ -234,10 +234,7 @@ async function kpiForWeek(supabase, businessId, weekStart, manual) {
   const weekEnd = addDays(weekStart, 6);
   const startMs = laStartOfDayMs(weekStart);
   const endMs = laStartOfDayMs(addDays(weekStart, 7));
-  const meetingIdx = STAGE_ORDER.indexOf('meeting');
   const opps = await pipelineAsOf(supabase, businessId, endMs);
-  const active = opps.filter(o => o.stage !== 'lost');
-  const qualified = active.filter(o => STAGE_ORDER.indexOf(o.stage) >= meetingIdx);
   const { count: contracts, error: cErr } = await supabase.from('sales_opportunity_events').select('id', { count: 'exact', head: true })
     .eq('business_id', businessId).eq('event_type', 'stage_change').eq('to_stage', 'contract')
     .gte('changed_at', new Date(startMs).toISOString()).lt('changed_at', new Date(endMs).toISOString());
@@ -246,18 +243,27 @@ async function kpiForWeek(supabase, businessId, weekStart, manual) {
     .eq('business_id', businessId).eq('replied', true).in('reply_class', POSITIVE_REPLY_CLASSES)
     .gte('delivered_at', new Date(startMs).toISOString()).lt('delivered_at', new Date(endMs).toISOString());
   if (pErr) throw new Error(pErr.message);
-  const launchBy = addDays(weekEnd, 90);
   return {
     target_orgs: await lastSyncedValue(supabase, businessId, 'companies_in_cadence', weekStart, weekEnd),
     dm_contacted: await lastSyncedValue(supabase, businessId, 'prospects_in_cadence', weekStart, weekEnd),
     positive_responses: positive,
     meetings_held: manual.get(`${weekStart}|meetings_held`)?.actual ?? null,
     meetings_set: manual.get(`${weekStart}|meetings_set`)?.actual ?? null,
+    ...pipelineKpis(opps, weekEnd),
+    contracts_signed: contracts,
+  };
+}
+
+export function pipelineKpis(opps, weekEnd) {
+  const meetingIdx = STAGE_ORDER.indexOf('meeting');
+  const launchBy = addDays(weekEnd, 90);
+  const active = opps.filter(o => !SIDE_LANES.includes(o.stage));
+  const qualified = active.filter(o => STAGE_ORDER.indexOf(o.stage) >= meetingIdx);
+  return {
     qualified_opps: qualified.length,
     covered_lives_pipeline: qualified.reduce((n, o) => n + (o.covered_lives || 0), 0),
     proposals_outstanding: active.filter(o => o.stage === 'proposal_pilot').length,
     verbal_commitments: active.filter(o => o.stage === 'verbal').length,
-    contracts_signed: contracts,
     launches_90d: active.filter(o => o.expected_launch && o.expected_launch > weekEnd && o.expected_launch <= launchBy).length,
   };
 }

@@ -7,18 +7,21 @@
 export const STAGE_ORDER = [
   'target', 'contacted', 'responded', 'meeting', 'proposal_pilot', 'verbal', 'contract', 'launched',
 ];
-export const STAGE_ENUM = [...STAGE_ORDER, 'lost'];
+export const PARKED_STAGES = ['nurture', 'on_hold'];
+export const SIDE_LANES = ['lost', ...PARKED_STAGES];
+export const STAGE_ENUM = [...STAGE_ORDER, ...SIDE_LANES];
 export const ORG_TYPE_ENUM = ['employer', 'membership', 'channel_partner'];
 
 export const STAGE_LABELS = {
   target: 'Target', contacted: 'Contacted', responded: 'Responded', meeting: 'Meeting',
   proposal_pilot: 'Proposal/Pilot', verbal: 'Verbal', contract: 'Contract', launched: 'Launched', lost: 'Lost',
+  nurture: 'Nurture', on_hold: 'On hold',
 };
 export const ORG_TYPE_LABELS = { employer: 'Employer', membership: 'Membership org', channel_partner: 'Channel partner' };
 
 export const DEFAULT_PROBABILITY = {
   target: 0.02, contacted: 0.05, responded: 0.10, meeting: 0.20,
-  proposal_pilot: 0.40, verbal: 0.70, contract: 0.90, launched: 1.0, lost: 0,
+  proposal_pilot: 0.40, verbal: 0.70, contract: 0.90, launched: 1.0, lost: 0, nurture: 0, on_hold: 0,
 };
 
 export function stageIndex(stage) {

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { STAGE_ENUM, ORG_TYPE_ENUM, compareStages } from './pipelineStages.js';
+import { STAGE_ENUM, ORG_TYPE_ENUM, PARKED_STAGES, compareStages, bulkStageRefusal } from './pipelineStages.js';
 import { parseCsv, toCsv } from '../../src/utils/csv.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { OWNER_TEAMS } from '../../src/constants/ownership.js';
@@ -170,12 +170,18 @@ function normalizeHeader(h) {
 // row is applied, so two rows in the same CSV with the same org name
 // correctly route the second one to UPDATE instead of a duplicate INSERT.
 export async function importOpportunitiesRoute(req, res) {
-  const businessId = req.params.businessId;
   const csvText = req.body?.csv;
   if (typeof csvText !== 'string' || !csvText.trim()) {
     return res.status(400).json({ error: 'body must be { csv: string }' });
   }
+  try {
+    res.status(200).json(await importOpportunities(getSupabase(), req.params.businessId, csvText));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+}
 
+// A row whose stage the bulk rule refuses still updates its other fields and
+// keeps the current stage, with an error line.
+export async function importOpportunities(supabase, businessId, csvText) {
   const { headers, rows } = parseCsv(csvText);
   const fieldByHeader = {};
   for (const h of headers) {
@@ -183,14 +189,13 @@ export async function importOpportunitiesRoute(req, res) {
     if (field) fieldByHeader[h] = field;
   }
 
-  const supabase = getSupabase();
   const { data: existingRows, error: fetchErr } = await supabase
     .from('sales_opportunities')
-    .select('id,organization')
+    .select('id,organization,stage')
     .eq('business_id', businessId)
     .is('archived_at', null);
-  if (fetchErr) return res.status(500).json({ error: fetchErr.message });
-  const existingByOrgLower = new Map(existingRows.map(r => [r.organization.toLowerCase(), r.id]));
+  if (fetchErr) throw new Error(fetchErr.message);
+  const existingByOrgLower = new Map(existingRows.map(r => [r.organization.toLowerCase(), r]));
 
   let inserted = 0, updated = 0;
   const errors = [];
@@ -224,14 +229,20 @@ export async function importOpportunitiesRoute(req, res) {
     if (!payload.organization) { errors.push({ row: rowNum, reason: 'organization is required' }); continue; }
 
     const orgLower = payload.organization.toLowerCase();
-    const existingId = existingByOrgLower.get(orgLower);
+    const existing = existingByOrgLower.get(orgLower);
 
-    if (existingId) {
+    if (existing) {
+      const refusal = payload.stage && bulkStageRefusal(existing.stage, payload.stage);
+      if (refusal) {
+        errors.push({ row: rowNum, reason: `${refusal} - kept ${existing.stage}` });
+        delete payload.stage;
+      }
       const { error: updErr } = await supabase
         .from('sales_opportunities')
         .update({ ...payload, updated_at: new Date().toISOString() })
-        .eq('id', existingId);
+        .eq('id', existing.id);
       if (updErr) { errors.push({ row: rowNum, reason: updErr.message }); continue; }
+      if (payload.stage) existing.stage = payload.stage;
       updated++;
     } else {
       const { data: insData, error: insErr } = await supabase
@@ -240,12 +251,12 @@ export async function importOpportunitiesRoute(req, res) {
         .select('id')
         .single();
       if (insErr) { errors.push({ row: rowNum, reason: insErr.message }); continue; }
-      existingByOrgLower.set(orgLower, insData.id);
+      existingByOrgLower.set(orgLower, { id: insData.id, stage: payload.stage || 'target' });
       inserted++;
     }
   }
 
-  res.status(200).json({ inserted, updated, errors });
+  return { inserted, updated, errors };
 }
 
 // GET /opportunities/movement?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -279,6 +290,12 @@ export async function movementRoute(req, res) {
       .order('changed_at', { ascending: true }).order('id'))).filter(e => open.has(e.opportunity_id));
   } catch (e) { return res.status(500).json({ error: e.message }); }
 
+  res.status(200).json(movementBuckets(opps, events, from, to));
+}
+
+// Rows ending in a parked lane (nurture / on_hold) are in no bucket - parking
+// is neither forward nor back, and a parked deal isn't "stalled".
+export function movementBuckets(opps, events, from, to) {
   const eventsByOpp = new Map();
   for (const ev of events) {
     if (!eventsByOpp.has(ev.opportunity_id)) eventsByOpp.set(ev.opportunity_id, []);
@@ -302,6 +319,7 @@ export async function movementRoute(req, res) {
     const stageAtEnd = oppEvents.length ? oppEvents[oppEvents.length - 1].to_stage : opp.stage;
 
     if (stageAtEnd === 'lost' && stageAtStart !== 'lost') { buckets.lost.push(opp); continue; }
+    if (PARKED_STAGES.includes(stageAtEnd)) continue;
 
     const cmp = compareStages(stageAtStart, stageAtEnd);
     if (cmp === 'forward') { buckets.moved_forward.push(opp); continue; }
@@ -312,6 +330,5 @@ export async function movementRoute(req, res) {
     const nextActionPast = !!(opp.next_action_date && opp.next_action_date < to);
     if (nextActionPast || daysSinceChange >= 14) buckets.stalled.push(opp);
   }
-
-  res.status(200).json(buckets);
+  return buckets;
 }

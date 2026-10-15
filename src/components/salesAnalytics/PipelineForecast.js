@@ -1,5 +1,5 @@
 import { SA, SA_TYPE } from './theme';
-import { effectiveProbability } from './pipelineStages';
+import { effectiveProbability, SIDE_LANES } from './pipelineStages';
 import { formatValue } from './computeMetric';
 import { laDateString } from './periods';
 import ExportButton from './ExportButton';
@@ -23,11 +23,10 @@ function daysFromToday(dateStr, today) {
   return Math.round((b - a) / 86400000);
 }
 
-export default function PipelineForecast({ opportunities, widgetId = 'pipeline_forecast' }) {
-  const today = laDateString();
-  const active = opportunities.filter(o => o.stage !== 'lost' && o.expected_close);
-
-  const buckets = BUCKET_DEFS.map(def => {
+// Side lanes are out even with a hand-typed probability.
+export function forecastBuckets(opportunities, today) {
+  const active = opportunities.filter(o => !SIDE_LANES.includes(o.stage) && o.expected_close);
+  return BUCKET_DEFS.map(def => {
     const rows = active.filter(o => {
       const days = daysFromToday(o.expected_close, today);
       return days >= def.min && days <= def.max;
@@ -42,6 +41,10 @@ export default function PipelineForecast({ opportunities, widgetId = 'pipeline_f
     }, { count: 0, coveredLives: 0, weightedLives: 0, weightedValue: 0 });
     return { ...def, rows, totals };
   });
+}
+
+export default function PipelineForecast({ opportunities, widgetId = 'pipeline_forecast' }) {
+  const buckets = forecastBuckets(opportunities, laDateString());
 
   const handleExport = () => {
     const flat = buckets.flatMap(b => b.rows.map(o => ({ bucket: b.label, ...o, weightedLives: (o.covered_lives || 0) * effectiveProbability(o), weightedValue: (o.est_value || 0) * effectiveProbability(o) })));
