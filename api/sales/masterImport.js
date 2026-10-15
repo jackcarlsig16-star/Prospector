@@ -231,13 +231,14 @@ function sequencedFor(r, state) {
   return findByName(r.name, state.sequenced, 'name', false);
 }
 
+// Only a Prospector record can be duplicated, so only partners and employers
+// hold a row back. A sequenced Apollo account just links: exact (or domain)
+// match fills apollo_account_id, a partial name is reported, never linked.
 function possibleFor(r, state) {
   const p = findByName(r.name, state.partners, 'name', true);
   if (p) return `partner ${p.name}`;
   const o = findByName(r.name, state.opps, 'organization', true);
-  if (o) return `employer ${o.organization}`;
-  const s = findByName(r.name, state.sequenced, 'name', true);
-  return s ? `sequenced ${s.name}` : null;
+  return o ? `employer ${o.organization}` : null;
 }
 
 function noteLines(r, extra = [], { segment = true } = {}) {
@@ -248,7 +249,7 @@ export function plan(state, input, { acceptPossible = [], today = laDateString()
   const actions = [];
   const report = {
     counts: { partner_update: 0, partner_to_target: 0, target_update: 0, opp_insert: 0, opp_update: 0, skipped: 0, invalid: input.invalid.length },
-    differences: [], partner_stages: [], opp_stage_moves: [], opp_stage_refused: [], possibles: [], kind_mismatches: [],
+    differences: [], partner_stages: [], opp_stage_moves: [], opp_stage_refused: [], possibles: [], apollo_possibles: [], apollo_links: 0, kind_mismatches: [],
     skipped: [], invalid: input.invalid, contacts: { partner_insert: 0, partner_update: 0, opp_lines: 0, target_lines: 0 }, todos: 0,
   };
   const diff = (r, field, prospector, sheet) => report.differences.push({ record_id: r.record_id, name: r.name, field, prospector, sheet });
@@ -350,7 +351,7 @@ export function plan(state, input, { acceptPossible = [], today = laDateString()
       if (o.org_type !== orgType) diff(r, 'org_type', o.org_type, orgType);
       if (r.owner_team && r.owner_team !== o.owner_team) patch.owner_team = r.owner_team;
       if (r.co_owner_name && r.co_owner_name !== o.co_owner_name) patch.co_owner_name = r.co_owner_name;
-      if (seq && empty(o.apollo_account_id)) patch.apollo_account_id = seq.account_id;
+      if (seq && empty(o.apollo_account_id)) { patch.apollo_account_id = seq.account_id; report.apollo_links++; }
       if (stage && stage !== o.stage) {
         const refusal = bulkStageRefusal(o.stage, stage);
         if (refusal) report.opp_stage_refused.push({ record_id: r.record_id, name: r.name, prospector: o.stage, sheet: stage, reason: refusal });
@@ -366,6 +367,11 @@ export function plan(state, input, { acceptPossible = [], today = laDateString()
     }
     const possible = possibleFor(r, state);
     if (possible && !accepted) { report.possibles.push({ record_id: r.record_id, name: r.name, possible }); skip(r, `possible match: ${possible} (--accept-possible ${r.record_id} to import as new)`); continue; }
+    if (seq) report.apollo_links++;
+    else {
+      const partial = findByName(r.name, state.sequenced, 'name', true);
+      if (partial) report.apollo_possibles.push({ record_id: r.record_id, name: r.name, possible: partial.name });
+    }
     const fields = {
       organization: r.name, org_type: r.kind === 'association' ? 'membership' : 'employer', stage: stage || 'target',
       ...(r.segment ? { cohort: r.segment } : {}), ...(r.tier ? { tier: r.tier } : {}), ...(r.next_step ? { next_action: r.next_step } : {}),

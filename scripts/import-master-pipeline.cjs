@@ -49,6 +49,8 @@ async function main() {
   list('Employer stage refused', r.opp_stage_refused, x => `${x.reason}`);
   list('Field differences - Prospector kept', r.differences, x => `${x.field}: Prospector "${x.prospector}" / sheet "${x.sheet}"`);
   list('Possibles - not matched', r.possibles, x => x.possible);
+  console.log(`\nApollo sequenced-account links (apollo_account_id): ${r.apollo_links}`);
+  list('Apollo partial-name look-alikes - imported, NOT linked', r.apollo_possibles, x => `Apollo "${x.possible}"`);
   list('Kind mismatches - stays the partner', r.kind_mismatches, x => `sheet ${x.sheet_kind}, Prospector ${x.prospector}`);
   list('Skipped', r.skipped, x => x.reason);
   list('Invalid rows', r.invalid, x => x.reason);

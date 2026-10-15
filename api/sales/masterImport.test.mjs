@@ -121,6 +121,19 @@ test('--accept-possible imports the possible as new', () => {
   assert.equal(actions[0].route, 'partner_to_target');
 });
 
+test('a sequenced Apollo account never holds an employer back: exact name links, partial name is reported only', () => {
+  const s = state();
+  s.sequenced.push({ account_id: 'ap-fit', name: '24 Hour Fitness', domain: null }, { account_id: 'ap-hil', name: 'Hilton', domain: null });
+  const { actions, report } = plan(s, readInput(csv([
+    { 'Record ID': 'E1', Account: '24 Hour Fitness', 'Account Type': 'Employer' },
+    { 'Record ID': 'E2', Account: 'Hilton Grand Vacations', 'Account Type': 'Employer' },
+  ])));
+  assert.deepEqual(actions.map(a => [a.route, a.row.apollo_account_id]), [['opp_insert', 'ap-fit'], ['opp_insert', null]]);
+  assert.deepEqual(report.possibles, []);
+  assert.deepEqual(report.apollo_possibles, [{ record_id: 'E2', name: 'Hilton Grand Vacations', possible: 'Hilton' }]);
+  assert.equal(report.apollo_links, 1);
+});
+
 test('employer stages move forward only; parking only from target/contacted', () => {
   const s = state();
   s.opps.push({ ...s.opps[0], id: 'o-c', organization: 'Contacted Co', stage: 'contacted', apollo_account_id: null });
