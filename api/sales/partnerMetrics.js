@@ -70,7 +70,9 @@ function statusAt(partner, goalEvents, ms, nowMs = Date.now()) {
   return changes.length ? changes[0].from_status : partner.pipeline_status;
 }
 
-export const isContact = e => TOUCH_STATUSES.includes(e.to_status) || (e.event === 'touch' && FIRST_TOUCH_TYPES.includes(e.touch_type));
+// A stage set from the joint sheet (pipeline-board-v1) records where a partner
+// stands, not when anyone talked to them: never a touch, never a first touch.
+export const isContact = e => e.meta?.source !== 'sheet' && (TOUCH_STATUSES.includes(e.to_status) || (e.event === 'touch' && FIRST_TOUCH_TYPES.includes(e.touch_type)));
 
 // The partner's earliest live contact (a move into a contact stage or a
 // counted touch) - the week it falls in is the partner's first-touched week.

@@ -138,9 +138,10 @@ async function user(T, role) {
     const [gal, brown, lock] = await Promise.all(['Gallagher Zz', 'Brown Zz', 'Lockton Zz'].map(goal));
     ok('sheet moves left last_touch_at alone (Gallagher, Brown, Lockton)', [gal, brown, lock].every(g => Date.parse(g.last_touch_at) === Date.parse(TOUCH)), JSON.stringify([gal, brown, lock]));
     const evs = ins(await svc.from('sales_partner_events').select('event, from_status, to_status, meta, by_user, source').eq('business_id', T));
-    // first_email_at is still stamped on a move to 1st email sent (spec: only last_touch_at is skipped).
-    ok('4 status events (2 round trip + 2 of the 10-row file), all meta.source sheet, by the member; prev never holds last_touch_at', evs.length === 4 && evs.every(e => e.event === 'status' && e.meta.source === 'sheet' && e.by_user === member.id && e.source === 'manual'
-      && Object.keys(e.meta.prev).every(k => k === 'pipeline_status' || (k === 'first_email_at' && e.to_status === 'first_email_sent'))), JSON.stringify(evs));
+    ok('4 status events (2 round trip + 2 of the 10-row file), all meta.source sheet, by the member; no dates set (prev = stage only)', evs.length === 4 && evs.every(e => e.event === 'status' && e.meta.source === 'sheet' && e.by_user === member.id && e.source === 'manual'
+      && Object.keys(e.meta.prev).join() === 'pipeline_status'), JSON.stringify(evs));
+    const hub = (await svc.from('sales_goals').select('first_email_at').eq('id', id('Hub Zz')).single()).data;
+    ok('Hub moved to 1st email sent by the sheet: first_email_at still empty', hub.first_email_at === null, JSON.stringify(hub));
     const again = (await post(member, cfile)).body;
     const a3 = (await post(member, cfile, tickAll(again))).body;
     ok('same file again = 0 changes', tickAll(again).length === 0 && a3.applied === 0, JSON.stringify(again.items.filter(i => i.tickable)));

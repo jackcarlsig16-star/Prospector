@@ -43,7 +43,9 @@ test('skipTouchStamp: default status moves still stamp last_touch_at; with it th
   const g = goalRow();
   assert.equal(signalPlan(g, { type: 'status', to: 'meeting_set' }, NOW).patch.last_touch_at, NOW.toISOString(), 'default unchanged');
   assert.deepEqual(signalPlan(g, { type: 'status', to: 'meeting_set' }, NOW, { skipTouchStamp: true }).patch, { pipeline_status: 'meeting_set' });
-  assert.ok(!('last_touch_at' in signalPlan(goalRow({ pipeline_status: 'not_started', first_email_at: null }), { type: 'status', to: 'first_email_sent' }, NOW, { skipTouchStamp: true }).patch));
+  const fresh = goalRow({ pipeline_status: 'not_started', first_email_at: null });
+  assert.deepEqual(signalPlan(fresh, { type: 'status', to: 'first_email_sent' }, NOW, { skipTouchStamp: true }).patch, { pipeline_status: 'first_email_sent' }, 'a sheet move sets no dates');
+  assert.equal(signalPlan(fresh, { type: 'status', to: 'first_email_sent' }, NOW).patch.first_email_at, '2026-10-15', 'default still stamps first_email_at');
   const touch = signalPlan(g, { type: 'touch', touch_type: 'call', date: '2026-10-15' }, NOW, { skipTouchStamp: true });
   assert.equal(touch.patch.last_touch_at, NOW.toISOString(), 'only the status path reads the option');
 });

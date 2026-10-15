@@ -13,10 +13,10 @@ import { OWNER_TEAMS } from '../../src/constants/ownership.js';
 //
 // Signals:
 //   { type: 'status', to: <pipeline_status> }   stamps last_touch_at on touch
-//                                                statuses (not with
-//                                                skipTouchStamp: a sheet move
-//                                                isn't a touch); first_email_at
-//                                                on first_email_sent if empty
+//                                                statuses; first_email_at on
+//                                                first_email_sent if empty.
+//                                                skipTouchStamp (a sheet move,
+//                                                not a touch): sets no dates
 //   { type: 'assign', owner_user_id?, owner_team?, co_owner_name?, no_double_touch? }
 //                                                caller validates membership
 //   { type: 'hot', hot: true|false }
@@ -98,7 +98,7 @@ export function plan(goal, signal, now, { skipTouchStamp = false } = {}) {
       if (signal.to === goal.pipeline_status) throw new SignalError(`already ${signal.to}`, 409);
       const patch = { pipeline_status: signal.to };
       if (TOUCH_STATUSES.includes(signal.to) && !skipTouchStamp) patch.last_touch_at = now.toISOString();
-      if (signal.to === 'first_email_sent' && !goal.first_email_at) patch.first_email_at = today;
+      if (signal.to === 'first_email_sent' && !goal.first_email_at && !skipTouchStamp) patch.first_email_at = today;
       return { patch, event: { event: 'status', from_status: goal.pipeline_status, to_status: signal.to } };
     }
     case 'deprioritize':

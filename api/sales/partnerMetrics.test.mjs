@@ -50,3 +50,17 @@ test('owner filter follows the partner; an undone touch and an Event touch do no
   assert.equal(partnerWeekMetrics(d, '2026-10-05', 'cyrus', NOW).people_first_touched.value, 0);
   assert.equal(partnerWeekMetrics(d, '2026-10-05', null, NOW).people_first_touched.value, 1);
 });
+
+test('pipeline-board-v1: a stage set from the joint sheet is never a first touch; a real touch later still is', () => {
+  const sheet = (id, goal_id, from, to, at) => ({ id, goal_id, event: 'status', from_status: from, to_status: to, touch_type: null, contact_names: null, source: 'manual', meta: { source: 'sheet' }, at });
+  const d = data(partners, [
+    sheet('s1', 'g1', 'not_started', 'replied', '2026-10-05T19:00:00Z'),
+    sheet('s2', 'g2', 'not_started', 'meeting_set', '2026-10-06T19:00:00Z'),
+    touch('t1', 'g2', ['Ann'], '2026-10-13T19:00:00Z'),
+  ]);
+  assert.equal(partnerWeekMetrics(d, '2026-10-05', null, NOW).partners_first_touched.value, 0, 'the sheet week counts nothing');
+  assert.equal(partnerWeekMetrics(d, '2026-10-12', null, Date.parse('2026-10-14T20:00:00Z')).partners_first_touched.value, 1, 'the real touch is the first touch');
+  // the same move clicked on the Partners view (no meta.source) still counts
+  const clicked = data(partners, [{ ...sheet('c1', 'g1', 'not_started', 'replied', '2026-10-05T19:00:00Z'), meta: {} }]);
+  assert.equal(partnerWeekMetrics(clicked, '2026-10-05', null, NOW).partners_first_touched.value, 1);
+});

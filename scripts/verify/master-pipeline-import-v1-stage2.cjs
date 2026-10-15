@@ -108,9 +108,14 @@ async function openEmployers(page, compact) {
   const menu = async () => { if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); } };
   await menu(); await page.getByLabel('Workspace').selectOption({ label: WS_NAME }); await page.waitForTimeout(2500);
   await menu(); await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).dispatchEvent('click'); await page.waitForTimeout(4000);
-  await page.getByRole('navigation', { name: 'Views' }).getByRole('button', { name: /^Employers/ }).first().click();
-  await page.locator('section[aria-labelledby="h-employers"] tbody tr').first().waitFor(); await page.waitForTimeout(500);
+  // pipeline-board-v1 Stage 2 replaced the Employers view with Pipeline: its Employers chip is the same list.
+  await page.getByRole('navigation', { name: 'Views' }).getByRole('button', { name: /^Pipeline/ }).first().click();
+  const board = page.locator('section[aria-labelledby="h-pipeline"]');
+  await board.locator('li').first().waitFor();
+  await board.getByRole('group', { name: 'Type' }).getByRole('button', { name: 'Employers', exact: true }).click();
+  await board.getByRole('button', { name: /^▸ Parked/ }).click(); await page.waitForTimeout(500);
 }
+const BOARD = 'section[aria-labelledby="h-pipeline"]';
 
 (async () => {
   const hlBefore = await counts(HOMELOVER, HL_TABLES);
@@ -243,20 +248,20 @@ async function openEmployers(page, compact) {
     const viewerWrite = await call(V, 'PATCH', `/opportunities/${row.id}`, { next_action: 'x' });
     ok('A7 tier is validated (9 -> 400) and a Viewer write is refused (403)', tierBad.status === 400 && viewerWrite.status === 403, `${tierBad.status} ${viewerWrite.status}`);
 
-    // Part B - Goals > Employers.
+    // Part B - Goals > Pipeline, Employers chip.
     browser = await chromium.launch();
     for (const [width, height, compact] of [[1440, 900, false], [390, 844, true]]) {
       const { page, errs } = await newPage(J, width, height);
       await openEmployers(page, compact);
-      const body = await page.locator('section[aria-labelledby="h-employers"]').innerText();
-      ok(`B ${width}: Employers lists the 6 employer/membership rows with stage, owner pill and tier`, /6 employers/.test(body) && ['24 Hour Fitness', 'Marriott International', 'Teachers Guild', 'Health Plan X', 'Meeting Co', 'Contacted Co'].every(n => body.includes(n))
-        && /Upside · Brad Cillian/.test(body) && /HomeLover/.test(body) && /T1/.test(body) && /Add opportunity/.test(body), body.slice(0, 300));
-      ok(`B ${width}: stage cells read Meeting / On hold / Responded`, await page.locator('tbody select').evaluateAll(s => s.map(x => x.selectedOptions[0]?.textContent)).then(v => ['Meeting', 'On hold', 'Responded'].every(x => v.includes(x))));
+      const body = await page.locator(BOARD).innerText();
+      ok(`B ${width}: Pipeline > Employers lists the 6 employer/membership rows with owner pill and tier`, /6 companies/.test(body) && ['24 Hour Fitness', 'Marriott International', 'Teachers Guild', 'Health Plan X', 'Meeting Co', 'Contacted Co'].every(n => body.includes(n))
+        && /Upside/.test(body) && /HomeLover/.test(body) && /T1/.test(body) && /\+ Add employer/.test(body), body.slice(0, 300));
+      ok(`B ${width}: stages read Meeting / On hold / Responded`, ['Meeting', 'On hold', 'Responded'].every(x => new RegExp(`(^|\\n)${x}( ·|\\n|$)`).test(body)), body.slice(0, 600));
       await page.screenshot({ path: `${OUT}/mpi2-${width}-employers.png`, fullPage: width === 390 });
       ok(`B ${width}: no sideways page scroll`, await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
       ok(`B ${width}: 0 console errors`, !errs.length, errs.join(' | '));
       if (width === 1440) {
-        await page.getByText('Marriott International', { exact: true }).click();
+        await page.locator(BOARD).getByRole('button', { name: 'Marriott International', exact: true }).click();
         await page.getByText('Edit opportunity').waitFor();
         await page.screenshot({ path: `${OUT}/mpi2-1440-panel.png` });
         ok('B 1440: a member opens the edit panel', await page.getByText('Edit opportunity').count() === 1);
@@ -264,11 +269,11 @@ async function openEmployers(page, compact) {
     }
     const { page: vp, errs: verrs } = await newPage(V, 1440, 900);
     await openEmployers(vp, false);
-    const vbody = await vp.locator('section[aria-labelledby="h-employers"]').innerText();
-    await vp.getByText('Marriott International', { exact: true }).click(); await vp.waitForTimeout(500);
-    const vControls = await vp.locator('tbody select, tbody input').count(), vPanel = await vp.getByText('Edit opportunity').count();
-    ok('B viewer: read-only - no Add / Import / Template, no row controls, no edit panel', !/Add opportunity|Import CSV|Template/.test(vbody) && vControls === 0 && vPanel === 0 && /On hold/.test(vbody),
-      JSON.stringify({ words: (vbody.match(/Add opportunity|Import CSV|Template/g) || []), vControls, vPanel, onHold: /On hold/.test(vbody) }));
+    const vbody = await vp.locator(BOARD).innerText();
+    await vp.locator(BOARD).getByText('Marriott International', { exact: true }).click(); await vp.waitForTimeout(500);
+    const vControls = await vp.locator(`${BOARD} li button`).count(), vPanel = await vp.getByText('Edit opportunity').count();
+    ok('B viewer: read-only - no Add / Update from sheet / Export, no row controls, no edit panel', !/Add employer|Update from sheet|Export joint sheet/.test(vbody) && vControls === 0 && vPanel === 0 && /On hold/.test(vbody),
+      JSON.stringify({ words: (vbody.match(/Add employer|Update from sheet|Export joint sheet/g) || []), vControls, vPanel, onHold: /On hold/.test(vbody) }));
     await vp.screenshot({ path: `${OUT}/mpi2-1440-viewer.png` });
     ok('B viewer: 0 console errors', !verrs.length, verrs.join(' | '));
     ok('B 0 sync / Apollo requests left the browser', blocked === 0, `blocked ${blocked}`);
