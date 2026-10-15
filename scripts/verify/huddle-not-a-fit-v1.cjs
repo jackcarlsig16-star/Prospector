@@ -1,4 +1,4 @@
-// FIX huddle-not-a-fit-v1 live check. TEMP data only: 1 workspace (goals_sales on, added to SALES_ANALYTICS_BUSINESS_IDS for the local server only), 3 temp users (Jack + Cyrus members, Vera viewer), 3 prospects with 1 delivered message + 1 real open each, 1 flag (via the real route). Browser: Not a fit + Undo, Not a fit -> flag dropped after the undo window, Show closed + Restore, Not now 1 week -> hidden, back once snooze_until has passed, 390 confirm screen, Viewer read-only. 0 Apollo / 0 Claude / 0 syncs; HomeLover is only COUNTED. Serves build/ via server.js - run npm run build first. ~2 min, cap 4 min.
+// FIX huddle-not-a-fit-v1 live check. TEMP data only: 1 workspace (goals_sales on, added to SALES_ANALYTICS_BUSINESS_IDS for the local server only), 3 temp users (Jack + Cyrus members, Vera viewer), 3 prospects with 1 delivered message + 1 real open each, 1 flag (via the real route). Browser: Not a fit + Undo, Not a fit -> flag dropped after the undo window, Show closed + Restore (previous status, no contacted event, not in Done), Not now 1 week -> hidden, back once snooze_until has passed, 390 confirm screen, Viewer read-only. 0 Apollo / 0 Claude / 0 syncs; HomeLover is only COUNTED. Serves build/ via server.js - run npm run build first. ~2 min, cap 4 min.
 // Usage: node scripts/verify/huddle-not-a-fit-v1.cjs <outdir>
 const ROOT = require('path').resolve(__dirname, '../..');
 require(ROOT + '/node_modules/dotenv').config({ path: ROOT + '/.env' });
@@ -115,7 +115,7 @@ const rowIds = page => page.locator('[id^="live-row-"]').evaluateAll(els => els.
     await J.screenshot({ path: `${OUT}/naf-1440-show-closed.png` });
     await A.getByRole('button', { name: 'Restore' }).click(); await J.waitForTimeout(2500);
     s = await state('zz-a');
-    ok('Restore: status contacted, notes keep the history line', s.status === 'contacted' && s.notes === `(${mmdd}) Not a fit`, JSON.stringify(s));
+    ok('Restore with nothing before but new: status new, notes keep the history line', s.status === 'new' && s.notes === `(${mmdd}) Not a fit`, JSON.stringify(s));
     await J.getByRole('checkbox', { name: /Show closed/ }).uncheck(); await J.waitForTimeout(2000);
     ok('Avery back on Live after Restore', (await rowIds(J)).includes('zz-a'));
 
@@ -129,6 +129,22 @@ const rowIds = page => page.locator('[id^="live-row-"]').evaluateAll(els => els.
     await J.reload(); await J.waitForTimeout(3000); await openHuddle(J, WS, false);
     ok('snooze_until in the past: Blake is back on Live on his own', (await rowIds(J)).includes('zz-b'));
     ok('Jack: 0 console errors', j.errs.length === 0, j.errs.join(' | '));
+
+    // Casey: a real Mark contacted, then Not a fit, then Restore -> contacted again, but only the real contact counts.
+    const Cj = J.locator('#live-row-zz-c');
+    await Cj.getByRole('button', { name: 'Mark contacted' }).click(); await J.waitForTimeout(6500);
+    await Cj.getByRole('button', { name: 'Not a fit…' }).click();
+    await Cj.getByRole('button', { name: 'Mark not a fit' }).click(); await J.waitForTimeout(6500);
+    await J.getByRole('checkbox', { name: /Show closed/ }).check(); await J.waitForTimeout(2000);
+    await Cj.getByRole('button', { name: 'Restore' }).click(); await J.waitForTimeout(2500);
+    await J.getByRole('checkbox', { name: /Show closed/ }).uncheck(); await J.waitForTimeout(1500);
+    const huddle = await (await fetch(`http://localhost:${PORT}/api/sales/${B}/huddle`, { headers: { Cookie: `prospector_at=${encodeURIComponent(jack.session.access_token)}` } })).json();
+    const contactedEvents = (await svc.from('sales_prospect_events').select('from_value,to_value').eq('business_id', B).eq('contact_id', 'zz-c').eq('field', 'status').eq('to_value', 'contacted')).data;
+    const doneC = (huddle.done_recent || []).filter(e => e.contact_id === 'zz-c').length, doneA = (huddle.done_recent || []).filter(e => e.contact_id === 'zz-a').length;
+    ok('Restore after contacted -> Not a fit: status contacted again; Done lists only the real Mark contacted (1), the restore (dead -> contacted) is not counted; Avery\'s restores not in Done',
+      (await state('zz-c')).status === 'contacted' && contactedEvents.length === 2 && contactedEvents.some(e => e.from_value === 'dead') && doneC === 1 && doneA === 0 && huddle.since_last_huddle?.done === 1,
+      JSON.stringify({ st: (await state('zz-c')).status, contactedEvents, doneC, doneA, since: huddle.since_last_huddle?.done }));
+    ins(await svc.from('sales_prospect_state').update({ status: 'new' }).eq('business_id', B).eq('contact_id', 'zz-c').select());
 
     const p = await newPage(jack, 390, 844), P = p.page;
     await openHuddle(P, WS, true);

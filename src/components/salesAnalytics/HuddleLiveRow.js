@@ -65,7 +65,7 @@ export default function HuddleLiveRow({ r, ownerColor, ownerLabel, canEdit, expa
         {r.closed && <span style={badge(SA.faint)}>{r.not_a_fit ? 'Not a fit' : r.unsubscribed ? 'Unsubscribed' : 'Not interested'}</span>}
         <span style={{ flex: 1 }} />
         <span role="group" aria-label={`Actions for ${r.name || 'contact'}`} style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 6 }}>
-          {canEdit && r.not_a_fit && <button type="button" style={btn} title="Back on the Huddle as Contacted (the notes keep the history)" onClick={() => onRestore(r)}>Restore</button>}
+          {canEdit && r.not_a_fit && <button type="button" style={btn} title="Back on the Huddle with the status they had before (the notes keep the history)" onClick={() => onRestore(r)}>Restore</button>}
           {canEdit && !r.not_a_fit && <button type="button" style={btn} onClick={() => onFlag(r)}>Flag →</button>}
           {canEdit && !r.not_a_fit && <button type="button" style={btn} aria-expanded={panel === 'later'} onClick={() => setPanel(x => (x === 'later' ? null : 'later'))}>Not now…</button>}
           {canEdit && !r.not_a_fit && <button type="button" style={btn} aria-expanded={panel === 'fit'} onClick={() => setPanel(x => (x === 'fit' ? null : 'fit'))}>Not a fit…</button>}

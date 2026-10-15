@@ -470,7 +470,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
           onContacted={r => act(r, { status: 'contacted' }, 'marked contacted').catch(e => setMessage(e.message))}
           onNotAFit={markNotAFit}
           onNotNow={(r, days, lb) => act(r, { status: 'not_now', snooze_until: plusDays(laDateString(), days) }, `snoozed ${lb}`).catch(e => setMessage(e.message))}
-          onRestore={r => act(r, { status: 'contacted' }, 'restored').catch(e => setMessage(e.message))} />
+          onRestore={r => act(r, { status: r.restore_status || 'new' }, 'restored').catch(e => setMessage(e.message))} />
       )}
 
       {tab === 'done' && (

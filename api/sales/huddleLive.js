@@ -52,10 +52,13 @@ function insightFor(r, now) {
 // Pure: every person with an open, click or reply. bot_only rows (no real
 // signal) are kept and flagged; the route drops them unless show_bots.
 // statusEvents: sales_prospect_events status -> contacted/booked rows.
-export function buildLiveRows({ prospects, messages, events, flags, members, statusEvents, seqById, oppById, now = Date.now() }) {
+// deadEvents: status -> dead rows; the newest one's from_value is what Restore puts back.
+const RESTORABLE = ['new', 'claimed', 'contacted', 'booked', 'not_now'];
+export function buildLiveRows({ prospects, messages, events, flags, members, statusEvents, deadEvents = [], seqById, oppById, now = Date.now() }) {
   const by = (rows, key) => { const m = new Map(); for (const r of rows) { if (!m.has(r[key])) m.set(r[key], []); m.get(r[key]).push(r); } return m; };
   const msgsBy = by(messages, 'contact_id'), eventsBy = by(events, 'contact_id'), contactedBy = by(statusEvents, 'contact_id');
   const flagBy = new Map(flags.map(f => [f.prospect_contact_id, f]));
+  const wasBefore = new Map([...deadEvents].sort((a, b) => a.changed_at.localeCompare(b.changed_at) || a.id - b.id).map(e => [e.contact_id, e.from_value]));
   const memberName = new Map(members.map(m => [m.user_id, m.name]));
   const today = laDateString(new Date(now));
   const rows = [];
@@ -122,6 +125,7 @@ export function buildLiveRows({ prospects, messages, events, flags, members, sta
       in_pipeline_meeting_plus: !!(opp && !opp.archived_at && stageIndex(opp.stage) >= MEETING_INDEX),
       unsubscribed: !!p.email_unsubscribed,
       not_a_fit: p.status === 'dead',
+      restore_status: p.status === 'dead' ? (RESTORABLE.includes(wasBefore.get(p.contact_id)) ? wasBefore.get(p.contact_id) : 'new') : null,
       // Closed = unsubscribed, a not-interested/unsubscribe reply, or Not a fit; hidden behind "Show closed".
       closed: !!p.email_unsubscribed || p.status === 'dead' || replies.some(m => HEAT.excludedReplyClasses.includes(m.reply_class)),
       next_step: { id: nba.id, label: nba.label, reason: nba.reason },
@@ -157,12 +161,14 @@ export async function liveRoute(req, res) {
   const showClosed = req.query.show_closed === '1';
   const supabase = getSupabase();
   try {
-    const [prospects, messages, events, goalRows, statusEvents] = await Promise.all([
+    const [prospects, messages, events, goalRows, statusEvents, deadEvents] = await Promise.all([
       selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id,name,title,company,linkedin_url,email_unsubscribed,owner,status,snooze_until,notes,opportunity_id').eq('business_id', businessId).order('contact_id')),
       selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,contact_id,sequence_id,step,delivered_at,replied,reply_class,replied_seen_at,replied_at,subject').eq('business_id', businessId).order('apollo_message_id')),
       selectAllPages(() => supabase.from('sales_email_activity').select('id,apollo_message_id,contact_id,step,event,occurred_at,user_agent,tracking_service').eq('business_id', businessId).in('event', ['open', 'click']).order('id')),
       selectAllPages(() => supabase.from('sales_week_goals').select('id,owner_user_id,status,carried_from_id,prospect_contact_id,week_start').eq('business_id', businessId).not('prospect_contact_id', 'is', null).order('week_start', { ascending: false }).order('id')),
-      selectAllPages(() => supabase.from('sales_prospect_events').select('id,contact_id,changed_at').eq('business_id', businessId).eq('field', 'status').in('to_value', ['contacted', 'booked']).order('id')),
+      // A move out of dead is a Restore / Undo of Not a fit, not a contact.
+      selectAllPages(() => supabase.from('sales_prospect_events').select('id,contact_id,changed_at').eq('business_id', businessId).eq('field', 'status').in('to_value', ['contacted', 'booked']).or('from_value.is.null,from_value.neq.dead').order('id')),
+      selectAllPages(() => supabase.from('sales_prospect_events').select('id,contact_id,from_value,changed_at').eq('business_id', businessId).eq('field', 'status').eq('to_value', 'dead').order('id')),
     ]);
     const [members, opps, seqSnap, huddles, runs] = await Promise.all([
       supabase.from('business_members').select('user_id,name').eq('business_id', businessId),
@@ -188,7 +194,7 @@ export async function liveRoute(req, res) {
     const sinceIso = huddles.data[0]?.huddle_at || new Date(now - 864e5).toISOString();
     const seqById = new Map((seqSnap.data?.payload || []).map(s => [s.id, s]));
     const oppById = new Map((opps.data || []).map(o => [o.id, o]));
-    const all = buildLiveRows({ prospects, messages, events, flags: openFlagRows(goalRows), members: members.data, statusEvents, seqById, oppById, now });
+    const all = buildLiveRows({ prospects, messages, events, flags: openFlagRows(goalRows), members: members.data, statusEvents, deadEvents, seqById, oppById, now });
 
     const userId = req.auth.user.id;
     const humanRows = all.filter(r => !r.bot_only && (showClosed || !r.closed));

@@ -111,3 +111,17 @@ test('Not a fit (dead) is closed; Not now hides until snooze_until passes, then 
   assert.deepEqual([rows[0].closed, rows[0].not_a_fit, rows[0].real_opens], [true, true, 1], 'opens still count');
   assert.deepEqual([rows[1].closed, rows[1].not_a_fit], [false, false]);
 });
+
+test('Restore puts back the status before Not a fit (newest dead event), else new', () => {
+  const rows = buildLiveRows(base({
+    prospects: [prospect('a', { status: 'dead' }), prospect('b', { status: 'dead' }), prospect('c', { status: 'dead' }), prospect('d')],
+    messages: ['a', 'b', 'c', 'd'].map((c, i) => msg(`m${i}`, c)),
+    events: ['a', 'b', 'c', 'd'].map((c, i) => ev(i + 1, `m${i}`, c, 'open', '2026-10-06T18:00:00Z')),
+    deadEvents: [
+      { id: 1, contact_id: 'a', from_value: 'new', changed_at: '2026-10-01T00:00:00Z' },
+      { id: 2, contact_id: 'a', from_value: 'contacted', changed_at: '2026-10-05T00:00:00Z' },
+      { id: 3, contact_id: 'b', from_value: 'dead', changed_at: '2026-10-05T00:00:00Z' },
+    ],
+  }));
+  assert.deepEqual(rows.map(r => [r.contact_id, r.restore_status]), [['a', 'contacted'], ['b', 'new'], ['c', 'new'], ['d', null]]);
+});

@@ -54,7 +54,7 @@ export async function huddleRoute(req, res) {
     supabase.from('sales_sequence_tags').select('sequence_id,audience').eq('business_id', businessId),
     supabase.from('sales_huddles').select('huddle_at,started_by').eq('business_id', businessId).order('huddle_at', { ascending: false }).limit(1),
     supabase.from('sales_prospect_events').select('contact_id,to_value,changed_at,changed_by').eq('business_id', businessId).eq('field', 'status')
-      .in('to_value', ['contacted', 'booked']).gte('changed_at', new Date(Date.now() - 3 * 864e5).toISOString()),
+      .in('to_value', ['contacted', 'booked']).or('from_value.is.null,from_value.neq.dead').gte('changed_at', new Date(Date.now() - 3 * 864e5).toISOString()),
   ]);
   for (const r of [opps, seqSnap, tags, huddles, statusEvents]) {
     if (r.error) return res.status(500).json({ error: r.error.message });
@@ -123,7 +123,7 @@ export async function huddleRoute(req, res) {
   }
   since.replies = (messages.data || []).filter(m => m.replied && replyAt(m) && replyAt(m) > sinceIso).length;
   const { count: doneSince, error: doneErr } = await supabase.from('sales_prospect_events').select('id', { count: 'exact', head: true })
-    .eq('business_id', businessId).eq('field', 'status').in('to_value', ['contacted', 'booked']).gt('changed_at', sinceIso);
+    .eq('business_id', businessId).eq('field', 'status').in('to_value', ['contacted', 'booked']).or('from_value.is.null,from_value.neq.dead').gt('changed_at', sinceIso);
   if (doneErr) return res.status(500).json({ error: doneErr.message });
   since.done = doneSince;
 
