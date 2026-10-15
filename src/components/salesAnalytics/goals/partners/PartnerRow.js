@@ -4,6 +4,7 @@ import { WORKFLOW_STEPS, STALE_DAYS, stepOf, daysSinceTouch, isTouched, nextStep
 import { subStyle, numStyle, inputStyle, Chip, Btn } from '../goalsUi';
 import { familyOf, categoryName } from './partnerTypes';
 import { tierLabel } from './PartnerCard';
+import OwnerPill from '../../OwnerPill';
 
 // sales-partners-workflow-v1 - one partner as a workflow row: type marker,
 // who / priority / tier, an 8-step stage bar filled in the type color, and
@@ -156,6 +157,7 @@ export default function PartnerRow({ partner, lookup, compact, showCategory, mov
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             {partner.priority && <Chip style={{ height: 20, color: partner.priority === 1 ? SA.text : SA.soft, borderColor: partner.priority === 1 ? SA.accent : SA.border }}>P{partner.priority}</Chip>}
             {partner.tier && <Chip style={{ height: 20 }}>{tierLabel(partner.tier)}</Chip>}
+            <OwnerPill row={partner} />
             {partner.people_count > 0 && <Chip style={{ height: 20 }} title="People we know here" aria-label={`${partner.people_count} people known`}>👤 {partner.people_count}</Chip>}
             {paused && <Chip style={{ height: 20 }}>Paused</Chip>}
             {showCategory && <span style={{ ...subStyle, fontSize: 12 }}>{categoryName(partner.category)}</span>}

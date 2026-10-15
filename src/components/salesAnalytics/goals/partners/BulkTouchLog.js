@@ -3,6 +3,7 @@ import { SA, saSans } from '../../theme';
 import { TOUCH_TYPES } from '../../../../constants/partnerPipeline';
 import { labelStyle, subStyle, inputStyle, numStyle, Btn, ErrorNote } from '../goalsUi';
 import { stageName } from './activityTimeline';
+import { doubleTouchWarning } from '../../../../constants/ownership';
 
 const localToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 const md = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -55,6 +56,7 @@ export default function BulkTouchLog({ partners, onPreview, onApply, onDone, onC
     catch (e) { setError(e.message); setBusy(false); }
   };
   const ok = preview ? preview.rows.filter(r => !r.error) : [];
+  const warningFor = id => doubleTouchWarning(partners.find(p => p.id === id));
   return (
     <section aria-label="Log touches for several partners" style={{ marginTop: 12, padding: 14, borderRadius: 12, background: SA.inset, border: `1px solid ${SA.borderStrong}`, display: 'flex', flexDirection: 'column', gap: 12, fontSize: 13 }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
@@ -85,7 +87,7 @@ export default function BulkTouchLog({ partners, onPreview, onApply, onDone, onC
             <tbody>
               {preview.rows.map(r => (
                 <tr key={r.goal_id} style={{ borderTop: `1px solid ${SA.track}`, color: r.error ? SA.bad : SA.text }}>
-                  <td style={{ padding: '6px 8px 6px 0' }}>{r.name || r.goal_id}</td>
+                  <td style={{ padding: '6px 8px 6px 0' }}>{r.name || r.goal_id}{warningFor(r.goal_id) && <div role="note" style={{ fontSize: 12, color: SA.warn }}>⚠ {warningFor(r.goal_id)}</div>}</td>
                   <td style={{ padding: 6 }}>{r.error ? r.error : r.to_status ? `${stageName(r.from_status)} → ${stageName(r.to_status)}` : `${stageName(r.from_status)} · unchanged`}</td>
                   <td style={{ padding: 6, ...numStyle }}>{r.week_start ? md(r.week_start) : '—'}</td>
                   <td style={{ padding: 6 }}>{r.first_touch ? (r.replaces_first_touch_week ? `✓ (was week of ${md(r.replaces_first_touch_week)})` : '✓ first') : ''}</td>

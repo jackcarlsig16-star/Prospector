@@ -4,6 +4,7 @@ import { goalsApi } from './goals/goalsApi';
 import { memberLookup } from './goals/goalsUi';
 import { STALE_DAYS, daysSinceTouch } from '../../constants/partnerPipeline';
 import { statusOf, statusLabel, statusColor, tierLabel } from './goals/partners/PartnerCard';
+import OwnerPill from './OwnerPill';
 
 // sales-partners-pipeline-v1 Stage 4 - partners someone flagged 🔥 in
 // Goals > Partners, at the top of the Daily Huddle. Read-only here; the
@@ -38,6 +39,7 @@ export default function HuddlePartners({ businessId }) {
               <span style={{ fontWeight: 600, color: SA.text }}>{p.name}</span>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: SA.soft }}><span style={{ width: 8, height: 8, borderRadius: 999, background: statusColor(status) }} />{statusLabel(status)}</span>
               {p.tier && <span style={{ color: SA.muted }}>{tierLabel(p.tier)}</span>}
+              <OwnerPill row={p} />
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: SA.soft }}><span style={{ width: 8, height: 8, borderRadius: 999, background: owner.color }} />{owner.first}</span>
               <span style={{ color: days !== null && days >= STALE_DAYS ? SA.bad : SA.muted }}>{days === null ? 'no touch yet' : days === 0 ? 'touched today' : `${days}d since touch`}</span>
               {p.next_step && <span style={{ color: SA.soft, flex: '1 1 200px' }}>Next: {p.next_step}</span>}

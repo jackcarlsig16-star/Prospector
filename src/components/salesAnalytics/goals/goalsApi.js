@@ -53,6 +53,8 @@ export const goalsApi = {
   // call-notes-to-tasks-v1 - extract writes nothing; create stores the note + the kept to-dos.
   extractCallNotes: (id, body) => call(id, '/call-notes/extract', { method: 'POST', body }),
   createFromCallNotes: (id, body) => call(id, '/call-notes', { method: 'POST', body }),
+  // call-notes-targets-v1 - companies from notes that aren't a partner or employer yet.
+  prospectTargets: id => call(id, '/prospect-targets').then(r => r.targets),
   callNote: (id, noteId) => call(id, `/call-notes/${noteId}`).then(d => d.note),
 
   createStep: (id, goalId, body) => call(id, `/week/${goalId}/steps`, { method: 'POST', body }).then(d => d.step),

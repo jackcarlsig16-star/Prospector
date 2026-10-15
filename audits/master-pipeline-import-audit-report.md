@@ -284,7 +284,7 @@ COMPANY, `inbox/2026-10-07-1310-sales-funnel-v1.txt:25-26`). It also overlaps th
   - `goalsReportRoutes.js:215-241` (weekly report: qualified pipeline and contract counts).
   - It's linked from `sales_goals.linked_opportunity_id` (`20261005_sales_goals_v1_rev3.sql:25`) and `sales_prospect_state.opportunity_id` (`20261001_sales_hot_prospects_v1.sql:80`).
   - UI widgets Pipeline / Movement / Forecast (`src/components/salesAnalytics/widgets.registry.js:53-63`, enabled).
-    Their `goalsSalesHidden` flag has no reader, so whether HomeLover sees them is unknown without a click-through.
+    They are hidden wherever `features.goals_sales` is on (`widgets.registry.js:85-86`, `visibleWidgets`), so HomeLover can't see them. (Corrected 2026-10-14: an earlier version of this line said the flag had no reader - the grep skipped the registry file that both sets and reads it.)
 - **CSV import** (`pipelineRoutes.js:173-246`):
   - It maps known headers only (`:131-153`) and silently drops unknown ones, such as a Record ID.
   - It upserts on the lowercased organization name, and a blank cell never overwrites.

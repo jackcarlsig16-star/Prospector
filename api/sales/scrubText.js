@@ -5,3 +5,8 @@ const PHONE = /(?:\+?\d[\d\s().-]{7,}\d)/g;
 const ISO_DATE = /^\s*\d{4}-\d{2}-\d{2}\s*$/;
 
 export const scrubPhones = s => s.replace(PHONE, m => (ISO_DATE.test(m) ? m : '[number removed]'));
+
+// Saved model text: no email addresses, no phone numbers, one line, capped.
+const EMAIL = /[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi;
+export const cleanText = (v, max) => (typeof v === 'string' ? scrubPhones(v.replace(EMAIL, '[email removed]'))
+  .replace(/\s+/g, ' ').trim().slice(0, max) : '');

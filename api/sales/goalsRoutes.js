@@ -20,7 +20,7 @@ const WEEK_STATUSES = ['open', 'done', 'dropped'];
 const WEEK_KINDS = ['commitment', 'todo'];
 // task-drawer-v1 - what a to-do serves. link_id: a commitment's or partner's
 // id, a metric key, or a company's Apollo account_id (Goals > Companies).
-const LINK_TYPES = ['commitment', 'metric', 'partner', 'company'];
+const LINK_TYPES = ['commitment', 'metric', 'partner', 'company', 'target'];
 export const LINKABLE_METRICS = [...SCORECARD_METRICS, ...KPI_METRICS, ...PARTNER_METRICS, ...HERO_METRICS];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -91,6 +91,11 @@ export async function checkLink(supabase, businessId, payload, existing) {
     return data.length ? null : notFound;
   }
   if (!UUID.test(id) || id === existing?.id) return notFound;
+  if (type === 'target') {
+    const { data, error } = await supabase.from('sales_targets').select('id').eq('business_id', businessId).eq('id', id).maybeSingle();
+    if (error) return { status: 500, error: error.message };
+    return data ? null : notFound;
+  }
   const { data, error } = type === 'commitment'
     ? await supabase.from('sales_week_goals').select('id').eq('business_id', businessId).eq('id', id).eq('kind', 'commitment').maybeSingle()
     : await supabase.from('sales_goals').select('id').eq('business_id', businessId).eq('id', id).eq('goal_type', 'partnership').maybeSingle();

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { SA, SA_TYPE, SA_SHAPE } from './theme';
 import { STAGE_ENUM, STAGE_LABELS, ORG_TYPE_ENUM, ORG_TYPE_LABELS } from './pipelineStages';
+import OwnerPill from './OwnerPill';
 
 const TEXT_FIELDS = [
   ['organization', 'Organization'], ['cohort', 'Cohort'], ['owner', 'Owner'],
@@ -56,7 +57,10 @@ export default function OpportunityPanel({ opportunity, saving, error, onSave, o
       <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
       <div style={{ position: 'relative', width: 420, maxWidth: '100%', height: '100%', overflowY: 'auto', background: SA.surface, borderLeft: `1px solid ${SA.border}`, padding: 20, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: 0 }}>{isCreate ? 'Add opportunity' : 'Edit opportunity'}</p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+            <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: 0 }}>{isCreate ? 'Add opportunity' : 'Edit opportunity'}</p>
+            <OwnerPill row={opportunity} />
+          </div>
           <span onClick={onClose} style={{ cursor: 'pointer', color: SA.muted, fontSize: 18, lineHeight: 1 }}>×</span>
         </div>
 

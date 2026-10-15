@@ -32,7 +32,7 @@ test('nothing is written until Create; only ticked, edited proposals are sent', 
   setup({ onCreated });
   fireEvent.change(screen.getByLabelText('Call title'), { target: { value: 'Weekly sync' } });
   paste('Jack will send the BenefitHub deck. Cyrus to call Brad by Friday.');
-  fireEvent.click(screen.getByRole('button', { name: 'Find tasks' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Read notes' }));
   await screen.findByText('Decided A');
   expect(goalsApi.extractCallNotes).toHaveBeenCalledWith('b1', expect.objectContaining({ title: 'Weekly sync' }));
   expect(goalsApi.createFromCallNotes).not.toHaveBeenCalled();
@@ -40,16 +40,18 @@ test('nothing is written until Create; only ticked, edited proposals are sent', 
   // The one that matches an earlier call starts unticked.
   expect(screen.getByRole('button', { name: 'Create: Follow up with Christina' })).toHaveAttribute('aria-pressed', 'false');
   expect(screen.getByText(/Already a task from an earlier call/)).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Create 4 tasks' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Accept 4' })).toBeEnabled();
 
   fireEvent.click(screen.getByRole('button', { name: 'Create: Re-review decks' }));
   fireEvent.change(screen.getByLabelText('Owner of Exhibit C on attribution'), { target: { value: CY } });
   fireEvent.click(screen.getByRole('button', { name: 'Remove step: Draft' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Create 3 tasks' }));
-  await waitFor(() => expect(onCreated).toHaveBeenCalledWith(3, { id: 'n1', title: 'Weekly sync' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Accept 3' }));
+  await waitFor(() => expect(onCreated).toHaveBeenCalledWith(3, { id: 'n1', title: 'Weekly sync' }, expect.anything()));
 
   const body = goalsApi.createFromCallNotes.mock.calls[0][1];
   expect(body.call_date).toBe('2026-10-07');
+  expect(body.source_type).toBe('call');
+  expect(body.companies).toEqual([]);
   expect(body.tasks).toEqual([
     { text: 'Send BenefitHub deck', owner_user_id: JACK, due_date: null, link_type: 'partner', link_id: 'p1', steps: ['Send'] },
     { text: 'Call Brad', owner_user_id: CY, due_date: '2026-10-09', link_type: null, link_id: null, steps: [] },
@@ -62,9 +64,9 @@ test('notes pasted before: says so, offers the earlier tasks, no Find', async ()
   const onShowCalls = jest.fn();
   setup({ onShowCalls });
   paste('same notes');
-  fireEvent.click(screen.getByRole('button', { name: 'Find tasks' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Read notes' }));
   expect(await screen.findByText(/already pasted as “Weekly sync” for the call on Oct 6 - 3 tasks came from them/)).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Find tasks' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Read notes' })).toBeDisabled();
   fireEvent.click(screen.getByRole('button', { name: 'Show tasks from calls' }));
   expect(onShowCalls).toHaveBeenCalled();
   expect(goalsApi.createFromCallNotes).not.toHaveBeenCalled();
@@ -75,10 +77,10 @@ test('a server error shows and keeps the review', async () => {
   goalsApi.createFromCallNotes.mockRejectedValue(new Error('This week is finalized - reopen it to edit'));
   setup();
   paste('notes');
-  fireEvent.click(screen.getByRole('button', { name: 'Find tasks' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Create 1 task' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Read notes' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Accept 1' }));
   expect(await screen.findByText('This week is finalized - reopen it to edit')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Create 1 task' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Accept 1' })).toBeEnabled();
 });
 
 test('summary reaches report §1 only on click, as one draft line for this week', async () => {
@@ -87,7 +89,7 @@ test('summary reaches report §1 only on click, as one draft line for this week'
   setup();
   fireEvent.change(screen.getByLabelText('Call title'), { target: { value: 'Weekly sync' } });
   paste('notes');
-  fireEvent.click(screen.getByRole('button', { name: 'Find tasks' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Read notes' }));
   await screen.findByText('Decided A.');
   expect(goalsApi.appendToSection).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Add to report §1' }));
@@ -103,8 +105,72 @@ test('a finalized week says so and the button stays', async () => {
   goalsApi.appendToSection.mockRejectedValue(new Error('This week is finalized - reopen it to edit'));
   setup();
   paste('notes');
-  fireEvent.click(screen.getByRole('button', { name: 'Find tasks' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Read notes' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Add to report §1' }));
   expect(await screen.findByText('This week is finalized - reopen it to edit')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Add to report §1' })).toBeEnabled();
+});
+
+const company = (key, name, extra) => ({ key, name, kind: 'partner', category: null, evidence: `${name} came up`, match: null, action: 'target_partner', on: true, ...extra });
+const GAL = { type: 'partner', id: 'p-gal', name: 'Gallagher', partial: false, pipeline_status: 'replied' };
+const SC = { type: 'account', id: 'a-sc', name: '[solidcore]', partial: false };
+
+test('Intake: five sections in order; only ticked rows are sent; rows on a skipped new company go nowhere', async () => {
+  goalsApi.extractCallNotes.mockResolvedValue({
+    call_date: '2026-10-13', summary: [], tasks: [proposal('Book Solidcore December call', { link_type: 'company', link_id: 'a-sc' })],
+    categories: ['4. Mid-Market Benefits Brokers'], rejected: ['ZeroBounce'],
+    companies: [
+      company('c0', 'Gallagher', { match: GAL, action: 'note' }),
+      company('c1', 'Lockton', { category: '4. Mid-Market Benefits Brokers' }),
+      company('c2', 'Fundrise'),
+      company('c3', 'Solidcore', { kind: 'employer', match: SC, action: 'none', on: false }),
+      company('c4', 'Plaid', { kind: 'not_target', action: 'skip', on: false }),
+    ],
+    people: [
+      { key: 'p0', name: 'Ana Zz', company: 'Fundrise', company_key: 'c2', match: null, title: 'VP', role: 'champion', moved_from: null, moved_from_match: null, evidence: '', dest: 'research_notes', existing: null, on: true },
+      { key: 'p1', name: 'Pat Nobody', company: 'Unknown', company_key: null, match: null, title: null, role: 'other', moved_from: null, moved_from_match: null, evidence: '', dest: null, existing: null, on: false },
+    ],
+    touches: [
+      { key: 't0', company: 'Gallagher', company_key: 'c0', match: GAL, touch_type: 'meeting', people: ['Kim Zz'], date: '2026-10-12', direction: 'out', stage: 'meeting_set', stage_on: true, evidence: 'met Kim', kept_with_note: false, duplicate: null, warning: "Upside owns this (Brad) - don't double-touch", on: true },
+      { key: 't1', company: '[solidcore]', company_key: 'c3', match: SC, touch_type: 'email', people: ['Crystal Pringle'], date: '2026-10-13', direction: 'in', stage: null, stage_on: false, evidence: 'circle back', kept_with_note: true, duplicate: null, warning: null, on: false },
+      { key: 't2', company: 'Gallagher', company_key: 'c0', match: GAL, touch_type: 'email', people: ['Pat Example'], date: '2026-10-13', direction: 'out', stage: null, stage_on: false, evidence: '', kept_with_note: false, duplicate: { source: 'outlook', date: '2026-10-12' }, warning: null, on: false },
+    ],
+    ownership: [{ key: 'o0', company: 'Gallagher', company_key: 'c0', match: GAL, owner_team: 'upside', co_owner_name: 'Brad', no_double_touch: true, owner_name: 'Brad', evidence: 'Upside owns Gallagher', old: { owner_team: null, co_owner_name: null, no_double_touch: false }, creates_opportunity: false, dest: 'partner', on: true }],
+    facts: [
+      { key: 'f0', company: 'Gallagher', company_key: 'c0', match: GAL, field: 'next_step', column: 'next_step', text: 'Send deck', single: true, old: 'Old step', due_date: null, evidence: '', creates_opportunity: false, on: true },
+      { key: 'f1', company: 'Fundrise', company_key: 'c2', match: null, field: 'angle', column: 'research_notes', text: 'Renters', single: false, old: null, due_date: null, evidence: '', creates_opportunity: false, on: true },
+    ],
+  });
+  goalsApi.createFromCallNotes.mockResolvedValue({ goals: [{}], note: { id: 'n2', title: null }, targets: [] });
+  setup();
+  fireEvent.change(screen.getByLabelText('What these notes are'), { target: { value: 'partner_update' } });
+  fireEvent.change(screen.getByLabelText('Source label'), { target: { value: 'Brad weekly 10/13' } });
+  paste('notes');
+  fireEvent.click(screen.getByRole('button', { name: 'Read notes' }));
+  await screen.findByRole('region', { name: 'Companies mentioned' });
+  expect(goalsApi.extractCallNotes).toHaveBeenCalledWith('b1', expect.objectContaining({ source_type: 'partner_update', source_label: 'Brad weekly 10/13' }));
+  expect(screen.getAllByRole('region').map(r => r.getAttribute('aria-label')).slice(1)).toEqual(['Companies mentioned', 'People', 'Touches', 'Tasks', 'Ownership & intel']);
+  expect(screen.getByText(/Already recorded Oct 12 via Outlook - left unticked/)).toBeInTheDocument();
+  expect(screen.getByText(/Kept with the note - employer timelines/)).toBeInTheDocument();
+  expect(screen.getByText(/Upside owns this \(Brad\) - don't double-touch/)).toBeInTheDocument();
+  expect(screen.getByText('Old step → Send deck')).toBeInTheDocument();
+  expect(screen.getByText(/Not proposed again \(you said never\): ZeroBounce/)).toBeInTheDocument();
+  // 3 companies + 1 person + 1 touch + 1 task + 1 ownership + 2 facts
+  expect(screen.getByRole('button', { name: 'Accept 9' })).toBeEnabled();
+
+  // Skipping Fundrise takes its person and fact with it; dropping the stage chip keeps the touch.
+  fireEvent.change(screen.getByLabelText('What to do with Fundrise'), { target: { value: 'skip' } });
+  expect(screen.getAllByText('Tick Fundrise as a target to keep this')).toHaveLength(2);
+  fireEvent.click(screen.getByRole('button', { name: 'Move Gallagher to Meeting' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Accept 6' }));
+  await waitFor(() => expect(goalsApi.createFromCallNotes).toHaveBeenCalled());
+  const body = goalsApi.createFromCallNotes.mock.calls[0][1];
+  expect(body.source_type).toBe('partner_update');
+  expect(body.companies.map(c => [c.name, c.action])).toEqual([['Gallagher', 'note'], ['Lockton', 'target_partner']]);
+  expect(body.companies[1].category).toBe('4. Mid-Market Benefits Brokers');
+  expect(body.people).toEqual([]);
+  expect(body.facts.map(f => f.text)).toEqual(['Send deck']);
+  expect(body.touches).toEqual([{ key: 't0', match: GAL, touch_type: 'meeting', people: ['Kim Zz'], date: '2026-10-12', evidence: 'met Kim', stage: 'meeting_set', stage_on: false, expect: 'replied' }]);
+  expect(body.ownership).toEqual([{ company_key: 'c0', match: GAL, owner_team: 'upside', co_owner_name: 'Brad', no_double_touch: true, owner_name: 'Brad' }]);
+  expect(JSON.stringify(body)).not.toMatch(/Pat Nobody|Crystal Pringle|Pat Example/);
 });

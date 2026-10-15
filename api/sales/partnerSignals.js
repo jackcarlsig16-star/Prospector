@@ -1,6 +1,7 @@
 import { laDateString } from './laDate.js';
 import { addDays, isDate, laStartOfDayMs } from './goalsShared.js';
 import { PIPELINE_STATUS_IDS, TOUCH_STATUSES, TOUCH_TYPE_IDS, touchStageMove } from '../../src/constants/partnerPipeline.js';
+import { OWNER_TEAMS } from '../../src/constants/ownership.js';
 
 // sales-partners-pipeline-v1 Stage 2 - the one way a partner's pipeline state
 // changes. The Partners buttons call it through partnersRoutes.js; Outlook
@@ -14,7 +15,8 @@ import { PIPELINE_STATUS_IDS, TOUCH_STATUSES, TOUCH_TYPE_IDS, touchStageMove } f
 //   { type: 'status', to: <pipeline_status> }   stamps last_touch_at on touch
 //                                                statuses; first_email_at on
 //                                                first_email_sent if empty
-//   { type: 'assign', owner_user_id }            caller validates membership
+//   { type: 'assign', owner_user_id?, owner_team?, co_owner_name?, no_double_touch? }
+//                                                caller validates membership
 //   { type: 'hot', hot: true|false }
 //   { type: 'snooze', days?: 1-90 (default 7) }
 //   { type: 'deprioritize' }                     -> pipeline_status 'paused'
@@ -100,10 +102,26 @@ export function plan(goal, signal, now) {
     case 'deprioritize':
       if (goal.pipeline_status === 'paused') throw new SignalError('already paused', 409);
       return { patch: { pipeline_status: 'paused' }, event: { event: 'deprioritize', from_status: goal.pipeline_status, to_status: 'paused' } };
-    case 'assign':
-      if (signal.owner_user_id !== null && typeof signal.owner_user_id !== 'string') throw new SignalError('owner_user_id must be a user id or null');
-      if (signal.owner_user_id === goal.owner_user_id) throw new SignalError('already assigned to them', 409);
-      return { patch: { owner_user_id: signal.owner_user_id }, event: { event: 'assign', meta: { to_owner: signal.owner_user_id } } };
+    case 'assign': {
+      // The person (owner_user_id) and/or the joint ownership
+      // (call-notes-targets-v1: owner_team / co_owner_name / no_double_touch).
+      const patch = {}, ownership = {};
+      if ('owner_user_id' in signal) {
+        if (signal.owner_user_id !== null && typeof signal.owner_user_id !== 'string') throw new SignalError('owner_user_id must be a user id or null');
+        if (signal.owner_user_id !== goal.owner_user_id) patch.owner_user_id = signal.owner_user_id;
+      }
+      if ('owner_team' in signal && signal.owner_team !== null && !OWNER_TEAMS.includes(signal.owner_team)) throw new SignalError(`owner_team must be one of ${OWNER_TEAMS.join('|')} or null`);
+      if ('co_owner_name' in signal && signal.co_owner_name !== null && (typeof signal.co_owner_name !== 'string' || signal.co_owner_name.length > 120)) throw new SignalError('co_owner_name must be text up to 120 characters or null');
+      if ('no_double_touch' in signal && typeof signal.no_double_touch !== 'boolean') throw new SignalError('no_double_touch must be true or false');
+      for (const k of ['owner_team', 'co_owner_name', 'no_double_touch']) {
+        if (!(k in signal)) continue;
+        const v = typeof signal[k] === 'string' ? signal[k].trim() || null : signal[k];
+        if (v !== (goal[k] ?? (k === 'no_double_touch' ? false : null))) { patch[k] = v; ownership[k] = v; }
+      }
+      if (!Object.keys(patch).length) throw new SignalError('already assigned to them', 409);
+      const meta = { ...('owner_user_id' in patch ? { to_owner: patch.owner_user_id } : {}), ...(Object.keys(ownership).length ? { ownership } : {}) };
+      return { patch, event: { event: 'assign', meta } };
+    }
     case 'hot':
       if (typeof signal.hot !== 'boolean') throw new SignalError('hot must be true or false');
       if (signal.hot === goal.hot) throw new SignalError(`already ${signal.hot ? 'hot' : 'not hot'}`, 409);
@@ -202,6 +220,7 @@ export async function undoPartnerSignal(supabase, { businessId, goalId, eventId,
 function eventResult(ev, key) {
   if (key === 'pipeline_status') return ev.to_status;
   if (key === 'owner_user_id') return ev.meta?.to_owner ?? null;
+  if (['owner_team', 'co_owner_name', 'no_double_touch'].includes(key)) return ev.meta?.ownership?.[key];
   if (key === 'hot') return ev.meta?.hot;
   if (key === 'snoozed_until') return ev.meta?.until;
   return undefined;

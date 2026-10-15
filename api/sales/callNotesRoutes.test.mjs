@@ -1,7 +1,8 @@
 // node --test api/sales/callNotesRoutes.test.mjs  (react-scripts' Jest only runs src/)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { matchOwner, toProposals, similarTask, callCategory, noteHash } from './callNotesRoutes.js';
+import { toProposals, similarTask, callCategory, noteHash } from './callNotesRoutes.js';
+import { matchOwner } from './intakeMatch.js';
 
 const JACK = '68e2a844-0000-4000-8000-000000000001', CYRUS = 'b8f32373-0000-4000-8000-000000000002';
 const members = [{ id: JACK, name: 'Jack Carlson' }, { id: CYRUS, name: 'Cyrus Radjoo' }];

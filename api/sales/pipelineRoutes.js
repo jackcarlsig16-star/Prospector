@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { STAGE_ENUM, ORG_TYPE_ENUM, compareStages } from './pipelineStages.js';
 import { parseCsv, toCsv } from '../../src/utils/csv.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
+import { OWNER_TEAMS } from '../../src/constants/ownership.js';
 
 // sales-pipeline-v1 - server-only access, same posture as every other
 // sales_* table (RLS enabled, zero policies).
@@ -18,11 +19,11 @@ const WRITABLE_FIELDS = [
   'organization', 'cohort', 'org_type', 'covered_lives', 'stage', 'probability', 'est_value',
   'owner', 'next_action', 'next_action_date', 'expected_close', 'expected_launch',
   'decision_makers', 'champion', 'objections', 'competitors', 'needed_to_advance', 'notes',
-  'is_top', 'lost_reason',
+  'is_top', 'lost_reason', 'owner_team', 'co_owner_name', 'no_double_touch',
 ];
 const NUMERIC_FIELDS = ['covered_lives', 'probability', 'est_value'];
 const DATE_FIELDS = ['next_action_date', 'expected_close', 'expected_launch'];
-const STRING_FIELDS = ['organization', 'cohort', 'owner', 'next_action', 'decision_makers', 'champion', 'objections', 'competitors', 'needed_to_advance', 'notes', 'lost_reason'];
+const STRING_FIELDS = ['organization', 'cohort', 'owner', 'next_action', 'decision_makers', 'champion', 'objections', 'competitors', 'needed_to_advance', 'notes', 'lost_reason', 'co_owner_name'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Shared by create/update - same validation pattern as putSequenceTagRoute
@@ -36,7 +37,8 @@ function validateFields(body) {
     if (key === 'stage' && !STAGE_ENUM.includes(value)) return { error: `bad enum: stage must be one of ${STAGE_ENUM.join('|')}` };
     if (key === 'org_type' && !ORG_TYPE_ENUM.includes(value)) return { error: `bad enum: org_type must be one of ${ORG_TYPE_ENUM.join('|')}` };
     if (NUMERIC_FIELDS.includes(key) && typeof value !== 'number') return { error: `${key} must be a number or null` };
-    if (key === 'is_top' && typeof value !== 'boolean') return { error: 'is_top must be a boolean' };
+    if ((key === 'is_top' || key === 'no_double_touch') && typeof value !== 'boolean') return { error: `${key} must be a boolean` };
+    if (key === 'owner_team' && !OWNER_TEAMS.includes(value)) return { error: `bad enum: owner_team must be one of ${OWNER_TEAMS.join('|')}` };
     if (DATE_FIELDS.includes(key) && (typeof value !== 'string' || !DATE_RE.test(value))) return { error: `${key} must be a YYYY-MM-DD date string or null` };
     if (STRING_FIELDS.includes(key) && typeof value !== 'string') return { error: `${key} must be a string` };
     payload[key] = value;
@@ -121,7 +123,8 @@ export async function archiveOpportunityRoute(req, res) {
 }
 
 export async function opportunityTemplateRoute(req, res) {
-  const columns = [...WRITABLE_FIELDS, 'lost_reason'].filter((v, i, a) => a.indexOf(v) === i);
+  // Ownership comes from notes / the master sheet import, not this CSV.
+  const columns = [...WRITABLE_FIELDS, 'lost_reason'].filter((v, i, a) => a.indexOf(v) === i && !['owner_team', 'co_owner_name', 'no_double_touch'].includes(v));
   const csv = toCsv([], columns.map(c => ({ label: c, key: c })));
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="sales-pipeline-template.csv"');

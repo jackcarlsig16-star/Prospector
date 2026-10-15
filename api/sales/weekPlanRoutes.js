@@ -4,7 +4,7 @@ import { laDateString } from './laDate.js';
 import { callAnthropic } from '../businesses/shared.js';
 import { buildPlanContext } from './weekPlanContext.js';
 import { MODELS, estimateCostUsd } from '../../src/config/models.js';
-import { scrubPhones } from './scrubText.js';
+import { cleanText as clean } from './scrubText.js';
 
 // weekly-plan-v1 - "Plan this week": the seller's prompt + what Prospector
 // already knows -> a ranked list -> the kept ones saved as this week's
@@ -26,13 +26,10 @@ const CALL_TYPE = 'week_plan';
 const SOURCES = ['prompt', 'todo', 'reply', 'partner', 'flag', 'last_week', 'target'];
 const LINK_TYPES = ['partner', 'company', 'commitment', 'metric'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const EMAIL = /[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi;
 
 // Swapped in tests.
 export const planDeps = { getSupabase, callAnthropic, buildPlanContext };
 
-const clean = (v, max) => (typeof v === 'string' ? scrubPhones(v.replace(EMAIL, '[email removed]'))
-  .replace(/\s+/g, ' ').trim().slice(0, max) : '');
 const normText = s => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 const SYSTEM = `You plan one seller's week. Rank what matters most for revenue this week. Warm before cold, owed reciprocity before new asks, replies waiting before outreach, meetings this week before next week, overdue before undated.

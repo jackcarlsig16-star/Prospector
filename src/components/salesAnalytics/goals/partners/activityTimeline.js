@@ -1,5 +1,6 @@
 import { WORKFLOW_STEPS, TOUCH_STATUSES, stepOf, isTouched } from '../../../../constants/partnerPipeline';
 import { todoStatus } from '../TodoList';
+import { TEAM_LABEL } from '../../../../constants/ownership';
 
 // partner-360-v1 - one timeline for a partner (pure, unit-tested): its
 // events, plus the to-dos linked to it, with the noise marked so the
@@ -25,7 +26,14 @@ export function eventText(e, lookup) {
   switch (e.event) {
     case 'status': return `${stageName(e.from_status)} → ${stageName(e.to_status)}`;
     case 'deprioritize': return `Paused (from ${stageName(e.from_status)})`;
-    case 'assign': return `Assigned to ${e.meta?.to_owner ? lookup(e.meta.to_owner).first : 'nobody'}`;
+    case 'assign': {
+      const o = e.meta?.ownership;
+      const team = o && [o.owner_team !== undefined && `owner ${o.owner_team ? TEAM_LABEL[o.owner_team] : 'unset'}`,
+        o.co_owner_name !== undefined && `co-owner ${o.co_owner_name || 'none'}`,
+        o.no_double_touch !== undefined && (o.no_double_touch ? "don't double-touch" : 'double-touch OK')].filter(Boolean).join(' · ');
+      const who = 'to_owner' in (e.meta || {}) || !team ? `Assigned to ${e.meta?.to_owner ? lookup(e.meta.to_owner).first : 'nobody'}` : '';
+      return [who, team && `Ownership: ${team}`].filter(Boolean).join(' · ');
+    }
     case 'hot': return e.meta?.hot ? 'Marked hot' : 'No longer hot';
     case 'snooze': return `Snoozed until ${e.meta?.until || '—'}`;
     case 'note': return `Note: ${e.note}`;

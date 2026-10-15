@@ -6,10 +6,16 @@ import { labelStyle, inputStyle, Btn, ErrorNote } from '../goals/goalsUi';
 import { docxText } from '../../../utils/docxText';
 import LinkPicker, { chipStyle } from './LinkPicker';
 import { Box, md, linkBtn } from './TaskRow';
+import { Section, CompanyRows, PeopleRows, TouchRows, IntelRows } from './IntakeSections';
+import { acceptBody, acceptCount } from './intakeBody';
 
 // call-notes-to-tasks-v1 - paste or upload call notes, review what the AI
-// proposes, create the ones kept. Nothing is written until "Create N tasks".
+// proposes, create the ones kept. call-notes-targets-v1 REV3 ("Intake"): any
+// source, and the review also lists the companies, people, past touches,
+// ownership and lasting facts in the notes. Nothing is written until Accept.
 const MAX_CHARS = 120000; // same cap as the extract route
+const SOURCE_TYPES = [['call', 'Call'], ['partner_update', 'Partner update'], ['email_thread', 'Email thread'], ['doc', 'Doc'], ['other', 'Other']];
+const NO_INTAKE = { companies: [], ownership: [], people: [], touches: [], facts: [] };
 const fieldStyle = { all: 'unset', ...saSans, fontSize: 12, color: SA.soft, cursor: 'pointer' };
 
 // Zoom transcripts (.vtt): drop the header, cue numbers and timestamps.
@@ -69,6 +75,9 @@ function Proposal({ p, i, members, lookup, links, set }) {
 
 export default function CallNotesPanel({ businessId, members, lookup, links, onClose, onCreated, onShowCalls }) {
   const [title, setTitle] = useState('');
+  const [sourceType, setSourceType] = useState('call');
+  const [sourceLabel, setSourceLabel] = useState('');
+  const [intake, setIntake] = useState(NO_INTAKE);
   const [callDate, setCallDate] = useState(laDateString);
   const [text, setText] = useState('');
   const [result, setResult] = useState(null); // { summary, tasks, call_date } | { duplicate }
@@ -78,6 +87,8 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
   const [error, setError] = useState('');
   const fileRef = useRef(null);
   const chosen = picks.filter(p => p.on && p.text.trim());
+  const body = acceptBody(intake);
+  const total = chosen.length + acceptCount(body);
 
   const upload = async e => {
     const file = e.target.files[0];
@@ -94,10 +105,11 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
   const extract = async () => {
     setBusy('extract'); setError('');
     try {
-      const r = await goalsApi.extractCallNotes(businessId, { text, call_date: callDate, title: title.trim() || null });
+      const r = await goalsApi.extractCallNotes(businessId, { text, call_date: callDate, title: title.trim() || null, source_type: sourceType, source_label: sourceLabel.trim() || null });
       setResult(r);
       setReportState('');
       setPicks((r.tasks || []).map(toPick));
+      setIntake(Object.fromEntries(Object.keys(NO_INTAKE).map(k => [k, r[k] || []])));
       if (r.tasks?.some(t => t.link_type && t.link_type !== 'metric')) links.load();
     } catch (err) { setError(err.message); }
     setBusy('');
@@ -105,11 +117,12 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
   const create = async () => {
     setBusy('create'); setError('');
     try {
-      const { goals, note } = await goalsApi.createFromCallNotes(businessId, {
-        text, title: title.trim() || null, call_date: result.call_date,
+      const out = await goalsApi.createFromCallNotes(businessId, {
+        text, title: title.trim() || null, call_date: result.call_date, source_type: sourceType, source_label: sourceLabel.trim() || null,
         tasks: chosen.map(p => ({ text: p.text.trim(), owner_user_id: p.owner_user_id, due_date: p.due_date, link_type: p.link_type, link_id: p.link_id, steps: p.steps })),
+        ...body,
       });
-      onCreated(goals.length, note);
+      onCreated(out.goals.length, out.note, out);
     } catch (err) { setError(err.message); setBusy(''); }
   };
   // Never automatic - the summary only reaches the report when a member clicks.
@@ -122,25 +135,34 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
     } catch (err) { setError(err.message); setReportState(''); }
   };
   const setPick = i => patch => setPicks(prev => prev.map((p, k) => (k === i ? { ...p, ...patch } : p)));
+  const setRow = list => i => patch => setIntake(prev => ({ ...prev, [list]: prev[list].map((r, k) => (k === i ? { ...r, ...patch } : r)) }));
 
   const reviewing = result && !result.duplicate;
   return (
-    <section aria-label="Paste call notes" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+    <section aria-label="Intake" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ ...labelStyle, color: SA.soft, flex: 1 }}>{reviewing ? 'Review the tasks' : 'Paste call notes'}</span>
+          <span style={{ ...labelStyle, color: SA.soft, flex: 1 }}>{reviewing ? 'Review · nothing is saved until Accept' : 'Intake · paste any notes'}</span>
           <button type="button" style={linkBtn} onClick={onClose}>Cancel</button>
         </div>
         {!reviewing && (
           <>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <input value={title} onChange={e => setTitle(e.target.value)} aria-label="Call title" placeholder="Call title (optional)" disabled={!!busy}
+              <select value={sourceType} onChange={e => setSourceType(e.target.value)} aria-label="What these notes are" disabled={!!busy}
+                style={{ ...inputStyle, flex: '0 0 auto', width: 'auto' }}>
+                {SOURCE_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+              <input value={sourceLabel} onChange={e => setSourceLabel(e.target.value)} aria-label="Source label" placeholder="Source, e.g. Brad weekly 10/13 (optional)" disabled={!!busy}
+                style={{ ...inputStyle, flex: '1 1 160px', minWidth: 0 }} />
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <input value={title} onChange={e => setTitle(e.target.value)} aria-label="Call title" placeholder="Title (optional)" disabled={!!busy}
                 style={{ ...inputStyle, flex: '1 1 160px', minWidth: 0 }} />
               <input type="date" value={callDate} onChange={e => setCallDate(e.target.value || laDateString())} aria-label="Call date" disabled={!!busy}
                 style={{ ...inputStyle, flex: '0 0 auto', colorScheme: 'dark' }} />
             </div>
             <textarea value={text} onChange={e => { setText(e.target.value); setResult(null); }} aria-label="Call notes" disabled={!!busy}
-              placeholder="Paste a Zoom AI summary, a transcript, or your own notes" rows={12}
+              placeholder="Paste a Zoom AI summary, a transcript, a partner's update, an email thread, or your own notes" rows={12}
               style={{ ...inputStyle, height: 'auto', minHeight: 220, padding: '10px 12px', resize: 'vertical', lineHeight: 1.5, fontSize: 13 }} />
             <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', fontSize: 12, color: SA.muted }}>
               <input ref={fileRef} type="file" accept=".txt,.md,.vtt,.docx" onChange={upload} hidden aria-label="Upload call notes file" />
@@ -174,14 +196,24 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
                 </ul>
               </div>
             )}
+            <Section title="Companies mentioned" count={intake.companies.length}>
+              <CompanyRows rows={intake.companies} categories={result.categories || []} set={setRow('companies')} />
+            </Section>
+            <Section title="People" count={intake.people.length}>
+              <PeopleRows rows={intake.people} companies={intake.companies} set={setRow('people')} />
+            </Section>
+            <Section title="Touches" count={intake.touches.length}>
+              <TouchRows rows={intake.touches} set={setRow('touches')} />
+            </Section>
             {picks.length ? (
-              <>
-                <span style={{ fontSize: 13, color: SA.muted }}>{picks.length} proposed · untick any you don’t want, edit the rest</span>
-                <ul aria-label="Proposed tasks" style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                  {picks.map((p, i) => <Proposal key={i} p={p} i={i} members={members} lookup={lookup} links={links} set={setPick(i)} />)}
-                </ul>
-              </>
+              <Section title="Tasks" count={picks.length}>
+                {picks.map((p, i) => <Proposal key={i} p={p} i={i} members={members} lookup={lookup} links={links} set={setPick(i)} />)}
+              </Section>
             ) : <p style={{ fontSize: 14, color: SA.muted, margin: 0 }}>No action items found in these notes.</p>}
+            <Section title="Ownership & intel" count={intake.ownership.length + intake.facts.length}>
+              <IntelRows ownership={intake.ownership} facts={intake.facts} companies={intake.companies} setOwnership={setRow('ownership')} setFact={setRow('facts')} />
+            </Section>
+            {result.rejected?.length > 0 && <span style={{ fontSize: 12, color: SA.muted }}>Not proposed again (you said never): {result.rejected.join(', ')}</span>}
           </>
         )}
         {error && <ErrorNote message={error} />}
@@ -190,15 +222,15 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
         {reviewing ? (
           <>
             <button type="button" style={linkBtn} disabled={!!busy} onClick={() => setResult(null)}>← Back to notes</button>
-            <Btn primary style={{ marginLeft: 'auto' }} disabled={!chosen.length || !!busy} onClick={create}>
-              {busy ? 'Creating…' : `Create ${chosen.length} task${chosen.length === 1 ? '' : 's'}`}
+            <Btn primary style={{ marginLeft: 'auto' }} disabled={!total || !!busy} onClick={create}>
+              {busy ? 'Saving…' : `Accept ${total}`}
             </Btn>
           </>
         ) : (
           <>
             {busy && <span role="status" style={{ fontSize: 13, color: SA.muted }}>Reading the notes - about 20 seconds…</span>}
             <Btn primary style={{ marginLeft: 'auto' }} disabled={!text.trim() || text.length > MAX_CHARS || !!busy || !!result?.duplicate} onClick={extract}>
-              Find tasks
+              Read notes
             </Btn>
           </>
         )}

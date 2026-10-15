@@ -10,11 +10,12 @@
 // (outlook_touch_key for the fact, outlook_key for the move) so nothing
 // repeats, even after an undo.
 import { selectAllPages } from '../lib/selectAllPages.js';
-import { getSupabase, addDays } from './goalsShared.js';
+import { getSupabase } from './goalsShared.js';
 import { hasRole } from '../lib/requireAuth.js';
 import { laDateString } from './laDate.js';
 import { isBehind, KEYS_MAX } from './partnerApolloTouches.js';
 import { applyPartnerSignal, SignalError } from './partnerSignals.js';
+import { touchDedupe } from './touchDedupe.js';
 
 export const SENT = 'first_email_sent', REPLIED = 'replied', MEETING = 'meeting_set';
 export const TARGET_RANK = { [SENT]: 1, [REPLIED]: 2, [MEETING]: 3 };
@@ -80,19 +81,7 @@ export function proposeOutlookMoves({ partners, domains, contacts, messages, eve
   const ownerByMailbox = new Map(mailboxOwners.map(o => [o.mailbox_email, o.user_id]));
   const settled = new Map(partnerEvents.filter(e => e.meta?.outlook_key).map(e => [e.meta.outlook_key, e.meta.dismissed ? 'dismissed' : 'applied']));
   const recordedTouches = new Set(partnerEvents.filter(e => e.meta?.outlook_touch_key).map(e => e.meta.outlook_touch_key));
-  // Existing touches by partner + contact (name or address) + LA day, with the source.
-  const existingTouch = new Map();
-  for (const e of partnerEvents) {
-    if (e.event !== 'touch' || !e.at) continue;
-    for (const c of e.contact_names || []) existingTouch.set(`${e.goal_id}|${norm(c)}|${dateOf(e.at)}`, { source: e.source || 'manual', date: dateOf(e.at) });
-  }
-  const priorTouch = (goalId, contact, email, date) => {
-    for (const d of [date, addDays(date, -1), addDays(date, 1)]) {
-      const hit = existingTouch.get(`${goalId}|${norm(contact)}|${d}`) || (email && existingTouch.get(`${goalId}|${norm(email)}|${d}`));
-      if (hit) return hit;
-    }
-    return null;
-  };
+  const priorTouch = touchDedupe(partnerEvents).prior;
   const ourThreads = new Set(messages.filter(m => m.direction === 'sent' && m.conversation_id).map(m => m.conversation_id));
   const today = laDateString(now);
   const counts = { messages: messages.length, events: events.length, skipped_auto: 0, unmatched: 0, ambiguous: 0, cancelled: 0 };

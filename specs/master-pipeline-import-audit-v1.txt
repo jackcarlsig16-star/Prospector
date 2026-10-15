@@ -1,0 +1,95 @@
+AUDIT — master-pipeline-import-audit-v1  (read-only: can the HomeLover × Upside master sheet go into Prospector, and in what shape?)
+
+## Status
+Source: Jack, 2026-10-14. With Brad (Upside), Jack built a "master pipeline" sheet in another Claude chat:
+one tab, 275 accounts, one row per account, contacts in a single cell. That chat will RESHAPE THE FILE to match
+whatever Prospector needs, so this audit answers what Prospector has today. It does not design an import.
+READ-ONLY. No import, no migration, no app code change, 0 Apollo calls, 0 Claude calls, 0 syncs.
+Timing: run it at a STOP point of call-notes-targets-v1 REV2 (inbox/2026-10-14-0000-…), never mid-stage. REV2's
+Stage 1 migration adds owner_team / co_owner_name / no_double_touch and sales_targets. Report REV2 as "pending"
+or "live", whichever the DB actually shows.
+Deliverable: audits/master-pipeline-import-audit-report.md. Commit and push the report only.
+
+## Input file
+inbox/2026-10-14-1030-master-pipeline-sanitized.csv (inbox/ is gitignored; never copy it out of inbox/)
+- SANITIZED by the planning chat. Primary Email → "Primary Email Domain" (company domain only, consumer domains
+  dropped). Contacts Emailed → "Contacts Emailed Domains". Phone → "Has Phone" (yes/blank). 0 "@" in the file.
+  The original with addresses stays with Jack. Prospector never takes contact emails or phones from a file.
+- 275 rows, 32 columns. Planning-chat counts (re-check them, don't trust them):
+  Account Type: Employer 204 · Partner 53 · Association 15 · Health plan 2 · Other 1
+  Priority Tier: 1-Priority 41 · 2-Secondary 153 · 3-Later 44 · 4-Hold 37
+  Funnel Stage (sheet has 9 values; 6 are used): 1 Not contacted 109 · 2 Contacted 85 · 3 Engaged 4 ·
+    4 Meeting scheduled 2 · 8 Nurture 38 · 9 Hold/disqualified 37 (unused: Meeting held, Pilot/proposal, Live)
+  Owner Team: Upside 238 · HomeLover 36 (1 blank) · Co-owner Team = always the other team
+  Partner Path: 38 filled (7 values) · Next Step Due: 1 filled · Last Touch Date / By: 0 filled (on purpose:
+    Prospector is meant to fill them) · Source: Upside (Brad) 259 · HomeLover 16
+  Other columns: Record ID (stable key), Account, Segment (66 values), Primary Contact, Primary Title,
+    Email Status, Contacts Emailed (#), Route In, Broker on Account, Brad Reached Out, HomeLover Outreach,
+    Both Teams Touched, On Brad Target List, Original Priority, Flags, Notes, Confirmed with Brad (empty).
+
+## Ground truth the planning chat already has (confirm each with file:line; correct it if wrong)
+- Partners = sales_goals goal_type='partnership'. pipeline_status CHECK (migration
+  20261006_sales_partners_pipeline_v1_stage1.sql:30-32): not_started, researching, first_email_drafted,
+  first_email_sent, in_sequence, replied, meeting_set, proposal_pilot, live, paused. Columns also include
+  owner_user_id, category, tier, partner_role, last_touch_at, sort_rank, and the intel columns (incl. next_step,
+  known_contacts). People = partner_contacts. History = sales_partner_events.
+- Employers = sales_sequenced_accounts. These are Apollo-sequenced accounts only (PK business_id + account_id,
+  name, employees), written by the service key. They have no stage, no owner, no next step and no contacts table.
+- Stage changes ONLY via applyPartnerSignal, never backwards, partnership rows only (partnerSignals.js:132).
+- Auto-moves today, partners only: Outlook daily step auto-applies Sent + in-thread Replied, holds meetings for
+  an OK (microsoft-connect-v1 Stage 3). Apollo gives dry-run proposals; sequence_added_at is a PROPOSED Sent only.
+- sales-funnel-v1 (inbox, NOT built) says the funnel unit = COMPANY (employer). Partners stay their own track.
+
+## Questions to answer (each ≤10 lines, file:line for every claim, real SELECT counts on HomeLover read-only)
+Q1  Unit. Where would each Account Type land today: partner row, employer (sequenced account), sales_targets
+    (if live), or nowhere? Is Prospector's tracked object the account, the person, or both by track? Should the
+    file be one row per account plus a separate contacts file keyed on Record ID, or one row per contact? Base
+    this on what the tables actually hold.
+Q2  Field map. One line per sheet column: exists (table.column, file:line) / added by REV2 / missing / must NOT
+    be stored. Required detail:
+    - Funnel Stage (9) ↔ pipeline_status (10): a mapping table, plus the values with no match (Nurture,
+      Hold/disqualified, Engaged, Meeting held).
+    - Priority Tier ↔ sales_goals.tier: the real values in the DB.
+    - Partner Path and Segment ↔ category: the real category list.
+    - Owner Team / Owner / Co-owner Team ↔ owner_user_id + REV2 owner_team (homelover|upside|both) /
+      co_owner_name. "Brad Cillian" is not a Prospector user, so say what owner_user_id would hold.
+    - Next Step / Next Step Due ↔ next_step plus any due field.
+    - Last Touch Date / By ↔ last_touch_at plus the events.
+    - Record ID: is there any column that could hold an external key today?
+Q3  Matching. How many of the 275 Account names match an existing partner (name or alias, plus partner_domains),
+    a sequenced account (name), or nothing? List: duplicates inside the sheet, sheet partners missing from
+    Prospector, Prospector partners missing from the sheet, and every row where the sheet's stage would move a
+    partner BACKWARDS from its current pipeline_status. Counts plus account names only.
+Q4  Automation. With file:line, what moves stage / last_touch_at automatically today, from Apollo and from
+    Outlook, for partners and for employers? What does a reply do? What does a calendar invite do? What would
+    "reply → Engaged, invite → Meeting scheduled" need for employers, which have no stage column? Name the gap;
+    don't design it.
+Q5  Upside/Brad side. Brad's outreach isn't in Jack's Apollo or Outlook. For each route, say what exists today and
+    what it would touch: (a) paste Brad's updates into Intake (REV2), (b) the manual Log touch + bulk catch-up
+    (partners only), (c) a repeat file import keyed on Record ID, (d) Brad as a Prospector user. REV2 lists Brad
+    as a user as out of scope. Facts only; a recommendation, if any, is plainly marked.
+Q6  Must-not-import list. Which columns or values should never be stored: contact emails come only from Apollo
+    or Outlook, phones never, plus anything else the rules forbid. Cite the rule.
+
+## Rules for this run (inlined landmines)
+- READ-ONLY. SELECTs only, on HomeLover. No inserts, updates, migrations or app code. restored: n/a.
+- Never print, log or commit a contact email or a phone number. The input has none. If you find one, stop
+  and report the row's Record ID only.
+- Shared Apollo org: 0 Apollo calls, no Sync now, no syncs of any kind. 0 Claude calls.
+- Reads that can pass 1,000 rows use selectAllPages (or paged SELECTs).
+- Stage changes only via applyPartnerSignal, never backwards. Here that is a thing to REPORT on, never to do.
+- Don't touch account cards. Prospector never writes to Apollo or sends Outlook mail.
+- If a question can't be answered from real code or data, write "unknown" and what would settle it. Don't guess.
+
+## Report format (audits/master-pipeline-import-audit-report.md)
+1. Q1–Q6 answers as above.
+2. "Shape Prospector wants": a plain list the sheet's author can follow. Column names and allowed values in
+   Prospector's words, one file or two, the key, date format, and the values that must be blank.
+3. Open questions for Jack (max 5).
+Then STOP. Commit the report only ("master-pipeline-import-audit-v1 report") and push.
+
+## Out of scope
+- Building the import or any field it needs: a SPEC follows from this report.
+- Employer stages, owners and a timeline. That is employer-records-v1 (own line, AUDIT first) and
+  sales-funnel-v1. Name the overlap with both; don't resolve it.
+- Re-coloring or editing the sheet. The other chat does that once it has the report.

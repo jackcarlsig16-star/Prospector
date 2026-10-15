@@ -3,6 +3,7 @@ import { SA, saSans } from '../../theme';
 import { TOUCH_TYPES, WORKFLOW_STEPS, stepOf, touchStageMove } from '../../../../constants/partnerPipeline';
 import { labelStyle, subStyle, inputStyle, Btn, Chip, ErrorNote } from '../goalsUi';
 import { stageName } from './activityTimeline';
+import { doubleTouchWarning } from '../../../../constants/ownership';
 
 const localToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 const addDays = (d, n) => new Date(Date.parse(`${d}T12:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
@@ -32,6 +33,7 @@ export default function LogTouchForm({ partner, names, onSubmit, onClose }) {
   const toggle = n => setWho(w => (w.includes(n) ? w.filter(x => x !== n) : [...w, n]));
   const addName = () => { const n = newName.trim().replace(/\s+/g, ' '); if (n && !who.some(w => w.toLowerCase() === n.toLowerCase())) setWho(w => [...w, n]); setNewName(''); };
   const backdated = date < mondayOf(today);
+  const warning = doubleTouchWarning(partner);
   const submit = async e => {
     e.preventDefault();
     if (move === 'pick' && !pick) { setError('Pick the stage to move to, or choose Auto'); return; }
@@ -43,6 +45,7 @@ export default function LogTouchForm({ partner, names, onSubmit, onClose }) {
   };
   return (
     <form onSubmit={submit} aria-label={`Log a touch on ${partner.name}`} style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: 12, borderRadius: 10, background: SA.surface, border: `1px solid ${SA.borderStrong}` }}>
+      {warning && <span role="note" style={{ fontSize: 12, color: SA.warn }}>⚠ {warning}</span>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8 }}>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <span style={labelStyle}>When</span>

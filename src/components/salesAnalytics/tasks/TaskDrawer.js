@@ -10,6 +10,7 @@ import { buildTaskGroups, badgeCount } from './taskGroups';
 import { useLinkOptions } from './linkTargets';
 import QuickAdd from './QuickAdd';
 import CallNotesPanel from './CallNotesPanel';
+import { acceptSummary } from './intakeBody';
 import TaskRow, { linkBtn } from './TaskRow';
 
 // task-drawer-v1 - a second view of the Goals to-dos, on every page of a
@@ -160,9 +161,9 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
 
   const loadNote = noteId => goalsApi.callNote(businessId, noteId);
   const showCalls = () => { setPasting(false); setLinkFilter(null); setFilter('team'); };
-  const created = (n, note) => {
+  const created = (n, note, out) => {
     showCalls();
-    setToast({ text: `Created ${n} task${n === 1 ? '' : 's'} from ${note.title ? `“${note.title}”` : 'the call notes'}` });
+    setToast({ text: `From ${note.title ? `“${note.title}”` : 'the notes'}: ${acceptSummary(n, out)}` });
   };
   const act = { setDone, reassign, update, toggleStep, addStep, remove, drop, openInGoals, loadNote };
   const row = t => (
@@ -197,7 +198,7 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
             <Badge n={badge} />
             <div style={{ flex: 1 }} />
             {/* Header slot: "Log outreach" (sales-quick-add-research-v1) goes next to this. */}
-            {canEdit && !pasting && <button type="button" onClick={() => setPasting(true)} style={pill(false)}>📝 Paste call notes</button>}
+            {canEdit && !pasting && <button type="button" onClick={() => setPasting(true)} style={pill(false)}>📝 Paste notes</button>}
             <button type="button" onClick={() => setOpen(false)} aria-label="Close tasks"
               style={{ all: 'unset', cursor: 'pointer', width: 44, height: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: SA.muted }}>×</button>
           </header>

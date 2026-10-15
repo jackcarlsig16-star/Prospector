@@ -31,6 +31,7 @@ export const LINK_GROUPS = [
   { type: 'metric', label: 'Goals', chip: 'Goal' },
   { type: 'partner', label: 'Partners', chip: 'Partner' },
   { type: 'company', label: 'Companies', chip: 'Company' },
+  { type: 'target', label: 'Targets', chip: 'Target' },
 ];
 
 const ALL_WEEKS_FROM = '2020-01-06'; // same as GoalsTab's all-companies list
@@ -43,7 +44,7 @@ export function filterLinkOptions(options, query, per = 5) {
     .filter(g => g.items.length);
 }
 
-// The four lists the Link picker searches, loaded on first need and again
+// The lists the Link picker searches, loaded on first need and again
 // when the picker opens a minute later (a partner added since shows up). A
 // list that fails to load stays empty rather than blocking the others.
 const FRESH_MS = 60e3;
@@ -58,13 +59,15 @@ export function useLinkOptions(businessId, week) {
       goalsApi.weekGoals(businessId, week, week, 'commitment'),
       goalsApi.partners(businessId),
       goalsApi.companies(businessId, ALL_WEEKS_FROM, week),
-    ]).then(([cs, ps, co]) => {
+      goalsApi.prospectTargets(businessId),
+    ]).then(([cs, ps, co, ts]) => {
       const ok = r => (r.status === 'fulfilled' ? r.value : null);
       setOptions({
         commitment: (ok(cs) || []).map(c => ({ id: c.id, label: c.text })),
         metric: metricOptions,
         partner: (ok(ps) || []).map(p => ({ id: p.id, label: p.name })).sort((a, b) => a.label.localeCompare(b.label)),
         company: (ok(co)?.companies || []).map(c => ({ id: c.account_id, label: c.name || c.account_id })).sort((a, b) => a.label.localeCompare(b.label)),
+        target: (ok(ts) || []).filter(t => t.status !== 'rejected').map(t => ({ id: t.id, label: t.name })).sort((a, b) => a.label.localeCompare(b.label)),
       });
       setLoaded(true);
     });

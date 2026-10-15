@@ -3,6 +3,7 @@ import { SA, SA_TYPE, SA_SHAPE } from './theme';
 import { STAGE_ENUM, STAGE_LABELS, effectiveProbability } from './pipelineStages';
 import { createOpportunity, updateOpportunity, archiveOpportunity, importOpportunitiesCsv, templateUrl } from './pipelineApi';
 import OpportunityPanel from './OpportunityPanel';
+import OwnerPill from './OwnerPill';
 import ExportButton from './ExportButton';
 import { exportWidgetCsv } from './exportCsv';
 import { formatValue } from './computeMetric';
@@ -214,7 +215,10 @@ export default function PipelineTable({ businessId, opportunities, onPipelineCha
                     {o.is_top && <span className="print-only" style={{ color: SA.warn, fontSize: 13 }}>★</span>}
                   </td>
                   <td style={{ ...cellStyle, cursor: 'pointer', fontWeight: 500 }} onClick={() => setPanelOpp(o)} title={o.organization}>
-                    <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.organization}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.organization}</span>
+                      <OwnerPill row={o} style={{ flex: 'none' }} />
+                    </span>
                     {err && <div style={{ color: SA.bad, fontSize: 9 }}>⚠ {err}</div>}
                   </td>
                   <td style={{ ...cellStyle, color: SA.muted, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.cohort || '—'}</td>

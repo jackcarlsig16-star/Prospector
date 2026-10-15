@@ -3,6 +3,7 @@ import { SA, saSans } from '../../theme';
 import { SEMANTIC } from '../../palette';
 import { PIPELINE_STATUSES, STALE_DAYS, daysSinceTouch } from '../../../../constants/partnerPipeline';
 import { labelStyle, subStyle, inputStyle, Chip, Dot, Btn, ErrorNote } from '../goalsUi';
+import OwnerPill from '../../OwnerPill';
 
 const STATUS_LABEL = Object.fromEntries(PIPELINE_STATUSES.map(s => [s.id, s.label]));
 // One color per stage of the funnel, from the shared palette: not yet out,
@@ -68,6 +69,7 @@ export default function PartnerCard({ partner, open, onToggle, canEdit, members,
           <Chip><Dot color={statusColor(status)} />{statusLabel(status)}</Chip>
           {partner.tier && <Chip>{tierLabel(partner.tier)}</Chip>}
           {partner.owner_user_id && <Chip><Dot color={owner.color} />{owner.first}</Chip>}
+          <OwnerPill row={partner} style={{ height: 26 }} />
           {snoozed && <Chip>⏸ until {new Date(`${partner.snoozed_until}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}</Chip>}
         </div>
         {partner.category && <span style={{ ...subStyle, fontSize: 12 }}>{partner.category.replace(/^\d+\.\s*/, '')}</span>}
