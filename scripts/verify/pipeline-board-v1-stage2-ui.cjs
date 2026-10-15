@@ -1,4 +1,4 @@
-// pipeline-board-v1 Stage 2 - Goals > Pipeline shots. TEMP data only: 1 workspace (goals_sales on, local server only), 2 temp users (owner Jack Zz, viewer), 5 partners, 4 opportunities, 2 targets, 2 sequenced accounts. Writes only inside the temp workspace (1 star on, 1 off). Sync/Apollo requests are blocked in the browser: 0 Apollo / 0 Claude. HomeLover is only COUNTED. Serves build/ (run npm run build first). ~60-90 s, cap 4 min.
+// pipeline-board-v1 Stage 2 - Goals > Pipeline shots. TEMP data only: 1 workspace (goals_sales on, local server only), 2 temp users (owner Jack Zz, viewer), 5 partners, 4 opportunities, 2 targets, 2 sequenced accounts. Writes only inside the temp workspace (1 star on, 1 off, 1 employer added, 1 add reused). Sync/Apollo requests are blocked in the browser: 0 Apollo / 0 Claude. HomeLover is only COUNTED. Serves build/ (run npm run build first). ~60-90 s, cap 4 min.
 // Usage: node scripts/verify/pipeline-board-v1-stage2-ui.cjs <outdir>
 const ROOT = require('path').resolve(__dirname, '../..');
 require(ROOT + '/node_modules/dotenv').config({ path: ROOT + '/.env' });
@@ -110,12 +110,14 @@ const shot = async (page, name) => { await board(page).screenshot({ path: `${OUT
       ok('1440: Top, then Live / Talking / In outreach / Not started (both Meeting rows are starred)', /^Top 3 of 25/.test(heads[0]) && JSON.stringify(heads.slice(1).map(h => h.replace(/\s*\d+$/, ''))) === JSON.stringify(['Live / strategic', 'Talking', 'In outreach', 'Not started']), JSON.stringify(heads));
       ok('1440: Parked (2) collapsed by default', await board(page).getByRole('button', { name: /Parked \(2\)/ }).getAttribute('aria-expanded') === 'false');
       await shot(page, 'pb2-1440-dark');
-      await board(page).getByRole('button', { name: 'Star OneDigital' }).click(); await page.waitForTimeout(1200);
+      await board(page).getByRole('button', { name: 'Star OneDigital', exact: true }).click();
+      await board(page).getByRole('button', { name: 'Unstar OneDigital', exact: true }).waitFor();
       const hot = ins(await svc.from('sales_goals').select('hot').eq('business_id', T).eq('name', 'OneDigital').single()).hot;
       ok('1440: ★ OneDigital -> hot = true in the DB, shows under Top 4 of 25', hot === true && /^Top 4 of 25/.test(await board(page).locator('h3').first().innerText()));
-      await board(page).getByRole('button', { name: 'Unstar Solidcore' }).click(); await page.waitForTimeout(1200);
-      const top = ins(await svc.from('sales_opportunities').select('is_top').eq('business_id', T).eq('organization', 'Solidcore').single()).is_top;
-      ok('1440: unstar Solidcore -> is_top = false in the DB', top === false);
+      await board(page).getByRole('button', { name: 'Unstar Solidcore', exact: true }).click();
+      await board(page).getByRole('button', { name: 'Star Solidcore', exact: true }).waitFor();
+      const solidRows = ins(await svc.from('sales_opportunities').select('is_top, updated_at').eq('business_id', T).eq('organization', 'Solidcore'));
+      ok('1440: unstar Solidcore -> is_top = false in the DB', solidRows.length === 1 && solidRows[0].is_top === false, JSON.stringify(solidRows));
       await board(page).getByLabel('Include Apollo-only companies').check(); await page.waitForTimeout(1500);
       const apollo = await board(page).getByRole('button', { name: 'Fresh Co', exact: true }).count();
       const dup = await board(page).getByText('Solidcore', { exact: true }).count();
@@ -125,6 +127,16 @@ const shot = async (page, name) => { await board(page).screenshot({ path: `${OUT
       ok('1440: Owner team = Upside -> OneDigital, Marriott, Gusto', upside === 3, String(upside));
       await shot(page, 'pb2-1440-dark-upside');
       await board(page).getByLabel('Owner team').selectOption(''); await page.waitForTimeout(300);
+      const oppCount = async () => (await svc.from('sales_opportunities').select('id', { count: 'exact', head: true }).eq('business_id', T).is('archived_at', null)).count;
+      const addEmployer = async name => {
+        await board(page).getByRole('button', { name: '+ Add employer' }).click(); await page.getByText('Add opportunity').waitFor();
+        await page.locator('span', { hasText: /^Organization$/ }).locator('xpath=following-sibling::*[1]').fill(name); await page.getByRole('button', { name: 'Save', exact: true }).click(); await page.waitForTimeout(1500);
+      };
+      const before = await oppCount();
+      await addEmployer('Zeta Labs');
+      ok('1440: + Add employer "Zeta Labs" -> 1 new row, shown on the board', await oppCount() === before + 1 && await board(page).getByRole('button', { name: 'Zeta Labs', exact: true }).count() === 1);
+      await addEmployer('SOLIDCORE, Inc.');
+      ok('1440: + Add employer "SOLIDCORE, Inc." -> reused Solidcore, no new row, notice shown', await oppCount() === before + 1 && /Solidcore is already in the pipeline/.test(await board(page).getByRole('status').innerText()));
       await board(page).getByRole('button', { name: 'Gallagher', exact: true }).click(); await page.waitForTimeout(2500);
       const detailsOpen = await page.getByText('Send the pilot one-pager').count();
       ok('1440: click Gallagher -> Partners view, focused on it, drop-down open', await board(page).count() === 0 && detailsOpen > 0, `details ${detailsOpen}`);
@@ -151,7 +163,7 @@ const shot = async (page, name) => { await board(page).screenshot({ path: `${OUT
     ok('0 sync/Apollo calls left the browser', true, `blocked ${blocked}`);
     console.log(`blocked sync/apollo requests: ${blocked}`);
   } catch (e) {
-    ok('script ran without throwing', false, e.message.split('\n')[0]);
+    ok('script ran without throwing', false, e.message.split('\n').slice(0, 4).join(' | '));
   } finally {
     await cleanup();
     const left = made.biz ? (await svc.from('businesses').select('id').eq('id', made.biz)).data.length : 0;

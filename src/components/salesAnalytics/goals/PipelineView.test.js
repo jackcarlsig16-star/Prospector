@@ -1,12 +1,12 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import PipelineView from './PipelineView';
 import { goalsApi } from './goalsApi';
-import { fetchOpportunities, updateOpportunity } from '../pipelineApi';
+import { fetchOpportunities, createOpportunity, updateOpportunity } from '../pipelineApi';
 import { OPEN_TASKS } from './goalsApi';
 
 // pipeline-board-v1 Stage 2 - Goals > Pipeline.
 jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { pipelineBoard: jest.fn(), partnerSignal: jest.fn() } }));
-jest.mock('../pipelineApi', () => ({ fetchOpportunities: jest.fn(), updateOpportunity: jest.fn(), archiveOpportunity: jest.fn() }));
+jest.mock('../pipelineApi', () => ({ fetchOpportunities: jest.fn(), createOpportunity: jest.fn(), updateOpportunity: jest.fn(), archiveOpportunity: jest.fn() }));
 
 const row = (id, type, color, extra = {}) => ({
   type, id, name: id, stage: 's', stage_label: 'Stage', color, owner_team: null, owner: null, tier: null,
@@ -118,12 +118,33 @@ test('click-through: partner -> Partners focus, target -> Tasks, Apollo -> Compa
   expect(props.onOpenCompanies).toHaveBeenCalledWith('2026-10-05');
 });
 
+test('+ Add employer opens a blank panel; save creates through the route and reloads; a reuse says so', async () => {
+  setup();
+  await screen.findByText('Solidcore');
+  createOpportunity.mockResolvedValueOnce({ opportunity: { id: 'n1', organization: 'Zeta Labs' } });
+  fireEvent.click(screen.getByRole('button', { name: '+ Add employer' }));
+  expect(screen.getByText('Add opportunity')).toBeTruthy();
+  fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: 'Zeta Labs' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(createOpportunity).toHaveBeenCalledWith('b1', expect.objectContaining({ organization: 'Zeta Labs' })));
+  await waitFor(() => expect(screen.queryByText('Add opportunity')).toBeNull());
+  expect(goalsApi.pipelineBoard).toHaveBeenCalledTimes(2);
+  expect(screen.queryByRole('status')).toBeNull();
+
+  createOpportunity.mockResolvedValueOnce({ opportunity: { id: 'Solidcore', organization: 'Solidcore' }, reused: true });
+  fireEvent.click(screen.getByRole('button', { name: '+ Add employer' }));
+  fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: 'solidcore inc' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  expect((await screen.findByRole('status')).textContent).toBe('Solidcore is already in the pipeline - no new row added.');
+});
+
 test('Viewer: stars are read-only, no employer panel, partners still open', async () => {
   const props = setup({ canEdit: false });
   await screen.findByText('Solidcore');
   expect(screen.queryByRole('button', { name: /^(Un)?[Ss]tar / })).toBeNull();
   expect(screen.getByLabelText('Top')).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Solidcore' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '+ Add employer' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Gallagher' }));
   expect(props.onOpenPartner).toHaveBeenCalled();
 });

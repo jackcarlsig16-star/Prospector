@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { SA } from '../theme';
 import { goalsApi } from './goalsApi';
-import { fetchOpportunities, updateOpportunity, archiveOpportunity } from '../pipelineApi';
+import { fetchOpportunities, createOpportunity, updateOpportunity, archiveOpportunity } from '../pipelineApi';
 import OpportunityPanel from '../OpportunityPanel';
 import OwnerPill from '../OwnerPill';
 import { openTasks } from '../tasks/LinkedTasks';
@@ -31,7 +31,7 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
   const [fadedOpen, setFadedOpen] = useState(false);
   const [notice, setNotice] = useState('');
   const [busyId, setBusyId] = useState(null);
-  const [panel, setPanel] = useState(null);
+  const [panel, setPanel] = useState(undefined); // undefined = closed, null = new employer, object = edit
   const [panelSaving, setPanelSaving] = useState(false);
   const [panelError, setPanelError] = useState('');
 
@@ -68,7 +68,7 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
   };
   const panelDo = async fn => {
     setPanelSaving(true); setPanelError('');
-    try { await fn(); setPanel(null); load(); } catch (e) { setPanelError(e.message); } finally { setPanelSaving(false); }
+    try { await fn(); setPanel(undefined); load(); } catch (e) { setPanelError(e.message); } finally { setPanelSaving(false); }
   };
 
   const top = visible.filter(r => r.top);
@@ -79,7 +79,10 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
     <section style={cardStyle} aria-labelledby="h-pipeline">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 16 }}>
         <span style={labelStyle}>Joint pipeline · HomeLover × Upside</span>
-        <h2 style={h2Style} id="h-pipeline">{rows ? `${shown.length} compan${shown.length === 1 ? 'y' : 'ies'}` : 'Pipeline'}</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+          <h2 style={h2Style} id="h-pipeline">{rows ? `${shown.length} compan${shown.length === 1 ? 'y' : 'ies'}` : 'Pipeline'}</h2>
+          {canEdit && <button type="button" className="ui-btn ui-btn--secondary no-print" onClick={() => { setPanel(null); setPanelError(''); setNotice(''); }}>+ Add employer</button>}
+        </div>
         <span style={subStyle}>Every partner, employer and target in one place. Color shows where it stands; ★ puts it in the Top {TOP_CAP}.</span>
       </div>
       {error && <ErrorNote message={error} />}
@@ -135,9 +138,14 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
         </>
       )}
 
-      {canEdit && panel && (
-        <OpportunityPanel opportunity={panel} saving={panelSaving} error={panelError} onClose={() => setPanel(null)}
-          onSave={payload => panelDo(() => updateOpportunity(businessId, panel.id, payload))}
+      {canEdit && panel !== undefined && (
+        <OpportunityPanel opportunity={panel} saving={panelSaving} error={panelError} onClose={() => setPanel(undefined)}
+          onSave={payload => panelDo(async () => {
+            if (panel) return updateOpportunity(businessId, panel.id, payload);
+            // The create route reuses a live opportunity with the same name first (opportunityMatch).
+            const { reused, opportunity } = await createOpportunity(businessId, payload);
+            if (reused) setNotice(`${opportunity.organization} is already in the pipeline - no new row added.`);
+          })}
           onArchive={() => panelDo(() => archiveOpportunity(businessId, panel.id))} />
       )}
     </section>
