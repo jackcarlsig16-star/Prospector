@@ -6,6 +6,11 @@
 // Same shape the table's CHECK enforces, plus a real TLD (2+ letters).
 const HOST_RE = /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
 
+// Personal mail domains: never a company's domain.
+const CONSUMER_DOMAINS = ['gmail.com', 'googlemail.com', 'outlook.com', 'live.com', 'icloud.com', 'me.com', 'aol.com', 'proton.me', 'protonmail.com'];
+const CONSUMER_PREFIXES = ['yahoo.', 'hotmail.'];
+export const isConsumerDomain = d => CONSUMER_DOMAINS.includes(d) || CONSUMER_PREFIXES.some(p => d.startsWith(p));
+
 export const DOMAIN_SOURCES = { manual: 'Added', sources: 'Sheet', apollo: 'Apollo' };
 
 export function normalizeDomain(input) {

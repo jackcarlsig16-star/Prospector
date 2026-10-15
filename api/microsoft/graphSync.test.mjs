@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyMessage, classifyEvent, ownership, isConsumerDomain, domainOf, startUrl, syncFolder, CAPS, PAGE_SIZE, BACKFILL_DAYS } from './graphSync.js';
+import { classifyMessage, classifyEvent, ownership, domainOf, startUrl, syncFolder, CAPS, PAGE_SIZE, BACKFILL_DAYS } from './graphSync.js';
+import { isConsumerDomain } from '../../src/constants/partnerDomains.js';
 
 const own = ownership(['jack@homelover.ai', 'cyrus@homelover.ai']);
 const addr = (a, name) => ({ emailAddress: { address: a, name: name ?? a } });

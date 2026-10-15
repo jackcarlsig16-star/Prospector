@@ -6,6 +6,7 @@ import { getServiceSupabase } from '../lib/authUser.js';
 import { accessTokenFor, getGrant } from '../lib/microsoftGrants.js';
 import { runDailyOutlookMoves } from '../sales/partnerOutlookTouches.js';
 import { businessFeatureOn } from '../lib/outlookFeatures.js';
+import { isConsumerDomain } from '../../src/constants/partnerDomains.js';
 import { runOutlookReplyTimes } from '../sales/outlookReplyTimes.js';
 
 export const GRAPH_URL = () => process.env.MICROSOFT_GRAPH_URL || 'https://graph.microsoft.com/v1.0';
@@ -19,12 +20,9 @@ export const PIGGYBACK_MIN_MS = 60 * 60e3;
 // Jack, 2026-10-08: own domains = every sales_mailbox_owners address plus
 // these two, so the .ai -> .io move changes nothing here.
 export const OWN_DOMAINS = ['homelover.ai', 'homelover.io'];
-export const CONSUMER_DOMAINS = ['gmail.com', 'googlemail.com', 'outlook.com', 'live.com', 'icloud.com', 'me.com', 'aol.com', 'proton.me', 'protonmail.com'];
-const CONSUMER_PREFIXES = ['yahoo.', 'hotmail.'];
 const MESSAGE_SELECT = 'id,internetMessageId,conversationId,subject,sentDateTime,receivedDateTime,from,toRecipients,ccRecipients,isDraft';
 
 export const domainOf = email => { const at = String(email || '').toLowerCase().lastIndexOf('@'); return at > 0 ? email.toLowerCase().slice(at + 1).trim() : ''; };
-export const isConsumerDomain = d => CONSUMER_DOMAINS.includes(d) || CONSUMER_PREFIXES.some(p => d.startsWith(p));
 
 export function ownership(ownerAddresses) {
   const addresses = new Set(ownerAddresses.map(a => a.toLowerCase()));

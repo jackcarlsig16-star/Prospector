@@ -19,17 +19,18 @@ const WRITABLE_FIELDS = [
   'organization', 'cohort', 'org_type', 'covered_lives', 'stage', 'probability', 'est_value',
   'owner', 'next_action', 'next_action_date', 'expected_close', 'expected_launch',
   'decision_makers', 'champion', 'objections', 'competitors', 'needed_to_advance', 'notes',
-  'is_top', 'lost_reason', 'owner_team', 'co_owner_name', 'no_double_touch',
+  'is_top', 'lost_reason', 'owner_team', 'co_owner_name', 'no_double_touch', 'tier',
 ];
 const NUMERIC_FIELDS = ['covered_lives', 'probability', 'est_value'];
 const DATE_FIELDS = ['next_action_date', 'expected_close', 'expected_launch'];
 const STRING_FIELDS = ['organization', 'cohort', 'owner', 'next_action', 'decision_makers', 'champion', 'objections', 'competitors', 'needed_to_advance', 'notes', 'lost_reason', 'co_owner_name'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const TIERS = ['1', '2', '3', '4'];
 
 // Shared by create/update - same validation pattern as putSequenceTagRoute
 // (api/sales/routes.js): unknown field -> 400, bad enum -> 400, wrong
 // type -> 400. Returns { payload } on success or { error } on failure.
-function validateFields(body) {
+export function validateFields(body) {
   const payload = {};
   for (const [key, value] of Object.entries(body || {})) {
     if (!WRITABLE_FIELDS.includes(key)) return { error: `unknown field: ${key}` };
@@ -38,6 +39,7 @@ function validateFields(body) {
     if (key === 'org_type' && !ORG_TYPE_ENUM.includes(value)) return { error: `bad enum: org_type must be one of ${ORG_TYPE_ENUM.join('|')}` };
     if (NUMERIC_FIELDS.includes(key) && typeof value !== 'number') return { error: `${key} must be a number or null` };
     if ((key === 'is_top' || key === 'no_double_touch') && typeof value !== 'boolean') return { error: `${key} must be a boolean` };
+    if (key === 'tier' && !TIERS.includes(value)) return { error: `bad enum: tier must be one of ${TIERS.join('|')}` };
     if (key === 'owner_team' && !OWNER_TEAMS.includes(value)) return { error: `bad enum: owner_team must be one of ${OWNER_TEAMS.join('|')}` };
     if (DATE_FIELDS.includes(key) && (typeof value !== 'string' || !DATE_RE.test(value))) return { error: `${key} must be a YYYY-MM-DD date string or null` };
     if (STRING_FIELDS.includes(key) && typeof value !== 'string') return { error: `${key} must be a string` };

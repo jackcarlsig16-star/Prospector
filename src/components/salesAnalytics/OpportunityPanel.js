@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { SA, SA_TYPE, SA_SHAPE } from './theme';
 import { STAGE_ENUM, STAGE_LABELS, ORG_TYPE_ENUM, ORG_TYPE_LABELS } from './pipelineStages';
 import OwnerPill from './OwnerPill';
+import { savePayload } from './opportunityPayload';
 
 const TEXT_FIELDS = [
   ['organization', 'Organization'], ['cohort', 'Cohort'], ['owner', 'Owner'],
@@ -41,15 +42,7 @@ export default function OpportunityPanel({ opportunity, saving, error, onSave, o
 
   const handleSave = () => {
     if (!draft.organization.trim()) return;
-    const payload = {};
-    for (const key of Object.keys(draft)) {
-      if (['id', 'business_id', 'source', 'archived_at', 'created_at', 'updated_at'].includes(key)) continue;
-      let v = draft[key];
-      if (v === '') v = null;
-      if (['covered_lives', 'probability', 'est_value'].includes(key) && v !== null) v = Number(v);
-      payload[key] = v;
-    }
-    onSave(payload);
+    onSave(savePayload(opportunity, draft));
   };
 
   return (

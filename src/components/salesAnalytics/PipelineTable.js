@@ -18,6 +18,7 @@ import { laDateString } from './periods';
 const COLUMNS = [
   { id: 'star', width: 32 },
   { id: 'organization', width: null },
+  { id: 'tier', width: 44 },
   { id: 'cohort', width: 80 },
   { id: 'stage', width: 110 },
   { id: 'next_action', width: 110 },
@@ -33,14 +34,16 @@ const COLUMNS = [
 // measured for the leaderboard), so Lives/Owner were clipped off the
 // right edge entirely with no way to scroll in a static PDF - this
 // table never got that same print-fit pass when it was first built in
-// Stage 3. New total ~876px.
+// Stage 3. New total ~876px (~920 with the Tier column).
 const NAME_COL_MIN_WIDTH = 150;
 const TABLE_MIN_WIDTH = COLUMNS.reduce((sum, c) => sum + (c.width ?? NAME_COL_MIN_WIDTH), 0);
 
 const fieldStyle = { ...SA_TYPE.body, fontSize: 12, width: '100%', padding: '4px 6px', background: 'transparent', border: `1px solid transparent`, borderRadius: 5, color: SA.text, boxSizing: 'border-box' };
 const fieldFocusStyle = { border: `1px solid ${SA.border}`, background: SA.ground };
 
-export default function PipelineTable({ businessId, opportunities, onPipelineChanged, widgetId = 'pipeline_table' }) {
+// canEdit false (a Viewer): no Add / Import / star / inline edits and no
+// edit panel - the server refuses Viewer writes anyway.
+export default function PipelineTable({ businessId, opportunities, onPipelineChanged, widgetId = 'pipeline_table', canEdit = true }) {
   const [stageFilter, setStageFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [sortKey, setSortKey] = useState('organization');
@@ -58,11 +61,11 @@ export default function PipelineTable({ businessId, opportunities, onPipelineCha
   if (!opportunities.length) {
     return (
       <div>
-        <p style={{ fontSize: 13, color: SA.muted, padding: '12px 0 4px' }}>No opportunities yet — add one or import a CSV.</p>
-        <div className="no-print" style={{ display: 'flex', gap: 10 }}>
+        <p style={{ fontSize: 13, color: SA.muted, padding: '12px 0 4px' }}>{canEdit ? 'No opportunities yet — add one or import a CSV.' : 'No opportunities yet.'}</p>
+        {canEdit && <div className="no-print" style={{ display: 'flex', gap: 10 }}>
           <button onClick={() => setPanelOpp(null)} style={addButtonStyle()}>Add opportunity</button>
           <a href={templateUrl(businessId)} style={{ ...SA_TYPE.body, fontSize: 12, color: SA.accent, alignSelf: 'center' }}>Download template</a>
-        </div>
+        </div>}
         {panelOpp !== undefined && (
           <OpportunityPanel
             opportunity={panelOpp} saving={panelSaving} error={panelError}
@@ -115,6 +118,7 @@ export default function PipelineTable({ businessId, opportunities, onPipelineCha
   const handleExport = () => {
     exportWidgetCsv(widgetId, sorted, [
       { label: 'Organization', key: 'organization' },
+      { label: 'Tier', key: 'tier' },
       { label: 'Cohort', key: 'cohort' },
       { label: 'Stage', value: o => STAGE_LABELS[o.stage] || o.stage },
       { label: 'Next Action', key: 'next_action' },
@@ -166,10 +170,12 @@ export default function PipelineTable({ businessId, opportunities, onPipelineCha
           {STAGE_ENUM.map(s => <option key={s} value={s}>{STAGE_LABELS[s]}</option>)}
         </select>
         <input placeholder="Search organization…" value={search} onChange={e => setSearch(e.target.value)} style={{ ...selectStyle(), flex: '1 1 160px', minWidth: 140 }} />
-        <button onClick={() => setPanelOpp(null)} style={addButtonStyle()}>Add opportunity</button>
-        <button onClick={() => fileInputRef.current?.click()} style={secondaryButtonStyle()}>Import CSV</button>
-        <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={e => { if (e.target.files[0]) handleImportFile(e.target.files[0]); e.target.value = ''; }} />
-        <a href={templateUrl(businessId)} style={{ ...SA_TYPE.body, fontSize: 12, color: SA.accent }}>Template</a>
+        {canEdit && <>
+          <button onClick={() => setPanelOpp(null)} style={addButtonStyle()}>Add opportunity</button>
+          <button onClick={() => fileInputRef.current?.click()} style={secondaryButtonStyle()}>Import CSV</button>
+          <input ref={fileInputRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={e => { if (e.target.files[0]) handleImportFile(e.target.files[0]); e.target.value = ''; }} />
+          <a href={templateUrl(businessId)} style={{ ...SA_TYPE.body, fontSize: 12, color: SA.accent }}>Template</a>
+        </>}
         <ExportButton onClick={handleExport} />
       </div>
       {importMessage && <p className="no-print" style={{ fontSize: 12, color: SA.muted, margin: '0 0 10px' }}>{importMessage}</p>}
@@ -181,6 +187,7 @@ export default function PipelineTable({ businessId, opportunities, onPipelineCha
             <tr>
               <th style={thStyle()} />
               <th style={thStyle(true)} onClick={() => toggleSort('organization')}>Organization</th>
+              <th style={thStyle(true)} onClick={() => toggleSort('tier')}>Tier</th>
               <th style={thStyle()}>Cohort</th>
               <th style={thStyle()}>Stage</th>
               <th style={thStyle()}>Next Action</th>
@@ -201,9 +208,9 @@ export default function PipelineTable({ businessId, opportunities, onPipelineCha
                 <tr key={o.id}>
                   <td style={{ ...cellStyle, textAlign: 'center' }}>
                     <span
-                      className="no-print"
-                      onClick={() => !saving && fieldUpdate(o, { is_top: !o.is_top })}
-                      style={{ cursor: saving ? 'default' : 'pointer', color: o.is_top ? SA.warn : SA.border, fontSize: 15 }}
+                      className="no-print" aria-label={o.is_top ? 'Top opportunity' : undefined}
+                      onClick={() => canEdit && !saving && fieldUpdate(o, { is_top: !o.is_top })}
+                      style={{ cursor: canEdit && !saving ? 'pointer' : 'default', color: o.is_top ? SA.warn : SA.border, fontSize: 15 }}
                     >
                       {o.is_top ? '★' : '☆'}
                     </span>
@@ -214,14 +221,14 @@ export default function PipelineTable({ businessId, opportunities, onPipelineCha
                         shows nothing rather than a confusing empty box. */}
                     {o.is_top && <span className="print-only" style={{ color: SA.warn, fontSize: 13 }}>★</span>}
                   </td>
-                  <td style={{ ...cellStyle, cursor: 'pointer', fontWeight: 500 }} onClick={() => setPanelOpp(o)} title={o.organization}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.organization}</span>
-                      <OwnerPill row={o} style={{ flex: 'none' }} />
-                    </span>
+                  <td style={{ ...cellStyle, cursor: canEdit ? 'pointer' : 'default', fontWeight: 500 }} onClick={() => canEdit && setPanelOpp(o)} title={o.organization}>
+                    <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.organization}</span>
+                    {o.owner_team && <OwnerPill row={o} style={{ marginTop: 4, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis' }} />}
                     {err && <div style={{ color: SA.bad, fontSize: 9 }}>⚠ {err}</div>}
                   </td>
+                  <td style={cellStyle}>{o.tier ? <TierChip tier={o.tier} /> : <span style={{ color: SA.faint }}>—</span>}</td>
                   <td style={{ ...cellStyle, color: SA.muted, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{o.cohort || '—'}</td>
+                  {canEdit ? <>
                   <td style={cellStyle}>
                     <select
                       className="no-print" disabled={saving} value={o.stage}
@@ -238,7 +245,7 @@ export default function PipelineTable({ businessId, opportunities, onPipelineCha
                       onBlur={e => { if (e.target.value !== (o.next_action || '')) fieldUpdate(o, { next_action: e.target.value || null }); }}
                       style={fieldStyle}
                     />
-                    <span className="print-only" style={{ fontSize: 12, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o.next_action || ''}>{o.next_action || '—'}</span>
+                    <span className="print-only" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o.next_action || ''}>{o.next_action || '—'}</span>
                   </td>
                   <td style={{ ...cellStyle, color: overdue ? SA.bad : SA.text, fontWeight: overdue ? 600 : 400 }}>
                     <input
@@ -256,6 +263,12 @@ export default function PipelineTable({ businessId, opportunities, onPipelineCha
                     />
                     <span className="print-only" style={{ fontSize: 12 }}>{o.expected_close || '—'}</span>
                   </td>
+                  </> : <>
+                  <td style={{ ...cellStyle, fontSize: 12 }}>{STAGE_LABELS[o.stage] || o.stage}</td>
+                  <td style={{ ...cellStyle, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={o.next_action || ''}>{o.next_action || '—'}</td>
+                  <td style={{ ...cellStyle, fontSize: 12, color: overdue ? SA.bad : SA.text, fontWeight: overdue ? 600 : 400 }}>{o.next_action_date || '—'}</td>
+                  <td style={{ ...cellStyle, fontSize: 12 }}>{o.expected_close || '—'}</td>
+                  </>}
                   <td style={{ ...cellStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                     {formatValue(effectiveProbability(o), 'percent')}
                   </td>
@@ -267,7 +280,7 @@ export default function PipelineTable({ businessId, opportunities, onPipelineCha
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={2} style={{ padding: '8px 8px', borderTop: `2px solid ${SA.border}`, fontWeight: 600, color: SA.text }}>
+              <td colSpan={3} style={{ padding: '8px 8px', borderTop: `2px solid ${SA.border}`, fontWeight: 600, color: SA.text }}>
                 {totals.count} opportunities
               </td>
               <td colSpan={5} style={{ padding: '8px 8px', borderTop: `2px solid ${SA.border}`, color: SA.muted, fontSize: 12 }}>
@@ -279,7 +292,7 @@ export default function PipelineTable({ businessId, opportunities, onPipelineCha
         </table>
       </div>
 
-      {panelOpp !== undefined && (
+      {canEdit && panelOpp !== undefined && (
         <OpportunityPanel
           opportunity={panelOpp} saving={panelSaving} error={panelError}
           onClose={() => { setPanelOpp(undefined); setPanelError(''); }}
@@ -293,6 +306,14 @@ export default function PipelineTable({ businessId, opportunities, onPipelineCha
         />
       )}
     </div>
+  );
+}
+
+function TierChip({ tier }) {
+  return (
+    <span title={`Tier ${tier}`} style={{ display: 'inline-block', padding: '1px 6px', borderRadius: 999, border: `1px solid ${SA.border}`, fontSize: 11, color: tier === '1' ? SA.text : SA.muted, fontVariantNumeric: 'tabular-nums' }}>
+      T{tier}
+    </span>
   );
 }
 
