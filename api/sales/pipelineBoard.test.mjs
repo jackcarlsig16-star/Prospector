@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildBoard, parseBoardFilters } from './pipelineBoard.js';
-import { boardStage, compareBoardRows, BOARD_COLOR_IDS } from '../../src/constants/pipelineBoard.js';
+import ExcelJS from 'exceljs';
+import { buildBoard, parseBoardFilters, buildSheet, pipelineBoardExportRoute, SHEET_COLUMNS } from './pipelineBoard.js';
+import { boardStage, compareBoardRows, BOARD_COLOR_IDS, SHEET_FILLS } from '../../src/constants/pipelineBoard.js';
 import { PIPELINE_STATUS_IDS } from '../../src/constants/partnerPipeline.js';
 import { STAGE_ENUM } from './pipelineStages.js';
 import { salesGate } from '../lib/requireAuth.js';
@@ -153,4 +154,55 @@ test('salesGate: a Viewer can GET the board, but not write', () => {
   };
   assert.deepEqual(run('GET'), { status: 200, nextCalled: true });
   assert.equal(run('POST').nextCalled, false);
+});
+
+const openSheet = async buf => {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(buf);
+  return wb.worksheets[0];
+};
+
+test('export sheet: board columns + Status, row fill = row color, Top first, Apollo-only rows left out', async () => {
+  const s = state();
+  s.partners.push({ id: 'p4', name: 'Sleepy Co', pipeline_status: 'paused', category: '3. Brokers' });
+  const rows = buildBoard(s, { includeApollo: true });
+  assert.ok(rows.some(r => r.type === 'apollo'));
+  const ws = await openSheet(await buildSheet(rows));
+  assert.deepEqual(ws.getRow(1).values.slice(1), ['Top', 'Account', 'Type', 'Status', 'Stage', 'Owner Team', 'Owner', 'Priority Tier', 'Next Step', 'Next Step Due', 'Last Touch', 'Record ID']);
+  const out = [];
+  ws.eachRow((row, n) => { if (n > 1) out.push(row); });
+  const board = rows.filter(r => r.type !== 'apollo');
+  assert.equal(out.length, board.length);
+  assert.deepEqual(out.map(r => r.getCell(2).value).slice(0, 2), ['Gallagher', 'Solidcore'], 'starred rows first');
+  for (const row of out) {
+    const b = board.find(r => r.name === row.getCell(2).value);
+    for (let c = 1; c <= SHEET_COLUMNS.length; c++) assert.equal(row.getCell(c).fill.fgColor.argb, SHEET_FILLS[b.color], `${b.name} col ${c}`);
+    assert.equal(row.getCell(4).value, { green: 'Live / strategic', yellow: 'Meeting', blue: 'Talking', gray: 'In outreach', light: 'Not started', faded: 'Parked' }[b.color]);
+  }
+  const g = out.find(r => r.getCell(2).value === 'Gallagher');
+  assert.deepEqual(g.values.slice(1), ['★', 'Gallagher', 'Partner', 'Meeting', 'Meeting set', 'HomeLover', 'Jack', '1', 'Send deck', '', '2026-10-10', 'HLU-0001']);
+  assert.equal(new Set(Object.values(SHEET_FILLS)).size, 6, 'six distinct fills');
+});
+
+test('export sheet: no "@", no phone numbers, no Apollo ids anywhere in the file', async () => {
+  const s = state();
+  s.partners[0].next_step = 'Email ann@gallagher.com or call 312-555-0100 by 2026-10-20';
+  s.partners[1].name = 'Odd @ Name';
+  const ws = await openSheet(await buildSheet(buildBoard(s, { includeApollo: true })));
+  const cells = [];
+  ws.eachRow(row => row.eachCell(c => cells.push(String(c.value))));
+  const text = cells.join('|');
+  assert.equal((text.match(/@/g) || []).length, 0);
+  assert.ok(!/\d{3}[-. ]\d{3}[-. ]\d{4}/.test(text), 'no phone');
+  assert.ok(text.includes('2026-10-20'), 'dates kept');
+  assert.ok(cells.includes('Odd at Name'));
+  for (const id of ['A1', 'A3', 'A4', 'A5']) assert.ok(!cells.includes(id), id);
+  assert.ok(!text.includes('Fresh Co'), 'Apollo-only company left out');
+});
+
+test('export route: Members only - a Viewer gets 403 before any read', async () => {
+  let status = 200;
+  const res = { status(x) { status = x; return this; }, json() { return this; }, setHeader() {}, send() {} };
+  await pipelineBoardExportRoute({ params: { businessId: 'biz-1' }, query: {}, auth: { isPlatformOwner: false, roles: new Map([['biz-1', 'viewer']]) } }, res);
+  assert.equal(status, 403);
 });

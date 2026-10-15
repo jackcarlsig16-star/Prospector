@@ -34,6 +34,7 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
   const [panel, setPanel] = useState(undefined); // undefined = closed, null = new employer, object = edit
   const [panelSaving, setPanelSaving] = useState(false);
   const [panelError, setPanelError] = useState('');
+  const [exporting, setExporting] = useState(false);
 
   const load = useCallback(() => goalsApi.pipelineBoard(businessId, includeApollo)
     .then(r => { setRows(r); setError(''); }).catch(e => setError(e.message)), [businessId, includeApollo]);
@@ -66,6 +67,19 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
       if (opp) { setPanel(opp); setPanelError(''); } else setNotice(`${r.name} is no longer in the pipeline.`);
     } catch (e) { setNotice(e.message); }
   };
+  const exportSheet = async () => {
+    setExporting(true); setNotice('');
+    try {
+      const res = await fetch(goalsApi.pipelineBoardExportUrl(businessId, filters));
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Export failed (${res.status})`);
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1] || 'joint-pipeline.xlsx';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    } catch (e) { setNotice(e.message); } finally { setExporting(false); }
+  };
   const panelDo = async fn => {
     setPanelSaving(true); setPanelError('');
     try { await fn(); setPanel(undefined); load(); } catch (e) { setPanelError(e.message); } finally { setPanelSaving(false); }
@@ -81,7 +95,13 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
         <span style={labelStyle}>Joint pipeline · HomeLover × Upside</span>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <h2 style={h2Style} id="h-pipeline">{rows ? `${shown.length} compan${shown.length === 1 ? 'y' : 'ies'}` : 'Pipeline'}</h2>
-          {canEdit && <button type="button" className="ui-btn ui-btn--secondary no-print" onClick={() => { setPanel(null); setPanelError(''); setNotice(''); }}>+ Add employer</button>}
+          {canEdit && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" className="ui-btn ui-btn--secondary no-print" disabled={exporting} onClick={exportSheet}
+                title="Excel file of the rows below (Apollo-only companies left out), colored like the board">{exporting ? 'Exporting…' : 'Export joint sheet'}</button>
+              <button type="button" className="ui-btn ui-btn--secondary no-print" onClick={() => { setPanel(null); setPanelError(''); setNotice(''); }}>+ Add employer</button>
+            </div>
+          )}
         </div>
         <span style={subStyle}>Every partner, employer and target in one place. Color shows where it stands; ★ puts it in the Top {TOP_CAP}.</span>
       </div>

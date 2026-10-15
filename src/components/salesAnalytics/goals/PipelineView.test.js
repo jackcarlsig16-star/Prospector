@@ -5,7 +5,7 @@ import { fetchOpportunities, createOpportunity, updateOpportunity } from '../pip
 import { OPEN_TASKS } from './goalsApi';
 
 // pipeline-board-v1 Stage 2 - Goals > Pipeline.
-jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { pipelineBoard: jest.fn(), partnerSignal: jest.fn() } }));
+jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, pipelineBoard: jest.fn(), partnerSignal: jest.fn() } }));
 jest.mock('../pipelineApi', () => ({ fetchOpportunities: jest.fn(), createOpportunity: jest.fn(), updateOpportunity: jest.fn(), archiveOpportunity: jest.fn() }));
 
 const row = (id, type, color, extra = {}) => ({
@@ -145,6 +145,27 @@ test('Viewer: stars are read-only, no employer panel, partners still open', asyn
   expect(screen.getByLabelText('Top')).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Solidcore' })).toBeNull();
   expect(screen.queryByRole('button', { name: '+ Add employer' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Export joint sheet' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Gallagher' }));
   expect(props.onOpenPartner).toHaveBeenCalled();
+});
+
+test('Export joint sheet fetches the .xlsx for the current filters and saves it; a refusal shows', async () => {
+  const blob = new Blob(['x']);
+  global.fetch = jest.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(blob), headers: { get: () => 'attachment; filename="joint-pipeline-2026-10-15.xlsx"' } });
+  URL.createObjectURL = jest.fn(() => 'blob:x');
+  URL.revokeObjectURL = jest.fn();
+  const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  setup();
+  await screen.findByText('Solidcore');
+  fireEvent.change(screen.getByLabelText('Owner team'), { target: { value: 'upside' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Partners' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Export joint sheet' }));
+  await waitFor(() => expect(click).toHaveBeenCalled());
+  expect(global.fetch).toHaveBeenCalledWith('/api/sales/b1/goals/pipeline-board/export?type=partner&owner_team=upside');
+  expect(click.mock.instances[0].download).toBe('joint-pipeline-2026-10-15.xlsx');
+  global.fetch.mockResolvedValue({ ok: false, status: 403, json: () => Promise.resolve({ error: 'Export is for members only' }) });
+  fireEvent.click(screen.getByRole('button', { name: 'Export joint sheet' }));
+  expect(await screen.findByText('Export is for members only')).toBeTruthy();
+  click.mockRestore();
 });

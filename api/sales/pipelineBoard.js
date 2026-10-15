@@ -1,8 +1,12 @@
+import ExcelJS from 'exceljs';
 import { selectAllPages } from '../lib/selectAllPages.js';
+import { hasRole } from '../lib/requireAuth.js';
 import { getSupabase } from './goalsShared.js';
 import { orgKey } from './opportunityMatch.js';
-import { OWNER_TEAMS } from '../../src/constants/ownership.js';
-import { BOARD_COLOR_IDS, BOARD_TYPES, boardStage, compareBoardRows, matchesBoardFilters } from '../../src/constants/pipelineBoard.js';
+import { OWNER_TEAMS, TEAM_LABEL } from '../../src/constants/ownership.js';
+import { cleanText } from './scrubText.js';
+import { laDateString } from './laDate.js';
+import { BOARD_COLORS, BOARD_COLOR_IDS, BOARD_TYPES, SHEET_FILLS, boardStage, compareBoardRows, matchesBoardFilters } from '../../src/constants/pipelineBoard.js';
 
 // pipeline-board-v1 - GET goals/pipeline-board: one row per company across
 // partners (sales_goals), employers (sales_opportunities), targets
@@ -67,32 +71,87 @@ export function parseBoardFilters(query) {
   return { filters: { type: t, ownerTeam: owner_team || null, owner: owner || null, tier: tier || null, color: color || null, q: q || null, includeApollo: include_apollo === 'true' || t === 'apollo' } };
 }
 
+async function loadBoard(businessId, filters) {
+  const supabase = getSupabase();
+  const [partners, opportunities, targets, sequenced, members] = await Promise.all([
+    selectAllPages(() => supabase.from('sales_goals')
+      .select('id, name, category, tier, pipeline_status, hot, next_step, last_touch_at, owner_user_id, owner_team, record_id')
+      .eq('business_id', businessId).eq('goal_type', 'partnership').is('archived_at', null).order('id')),
+    selectAllPages(() => supabase.from('sales_opportunities')
+      .select('id, organization, org_type, stage, owner, owner_team, tier, next_action, next_action_date, is_top, record_id, apollo_account_id')
+      .eq('business_id', businessId).is('archived_at', null).order('id')),
+    selectAllPages(() => supabase.from('sales_targets').select('id, name, status, owner_team, record_id')
+      .eq('business_id', businessId).in('status', ['proposed', 'researching']).order('id')),
+    filters.includeApollo
+      ? selectAllPages(() => supabase.from('sales_sequenced_accounts').select('account_id, name, first_sequenced_at')
+        .eq('business_id', businessId).order('account_id'))
+      : [],
+    supabase.from('business_members').select('user_id, name, profile:profiles!business_members_user_id_fkey(display_name)')
+      .eq('business_id', businessId).not('user_id', 'is', null),
+  ]);
+  if (members.error) throw new Error(members.error.message);
+  const memberNames = new Map(members.data.map(m => [m.user_id, m.profile?.display_name || m.name]));
+  return buildBoard({ partners, opportunities, targets, sequenced, memberNames }, filters);
+}
+
 // GET /goals/pipeline-board?type=&owner_team=&owner=&tier=&color=&q=&include_apollo=true
 export async function pipelineBoardRoute(req, res) {
   const { filters, error } = parseBoardFilters(req.query);
   if (error) return res.status(400).json({ error });
-  const businessId = req.params.businessId;
-  const supabase = getSupabase();
   try {
-    const [partners, opportunities, targets, sequenced, members] = await Promise.all([
-      selectAllPages(() => supabase.from('sales_goals')
-        .select('id, name, category, tier, pipeline_status, hot, next_step, last_touch_at, owner_user_id, owner_team, record_id')
-        .eq('business_id', businessId).eq('goal_type', 'partnership').is('archived_at', null).order('id')),
-      selectAllPages(() => supabase.from('sales_opportunities')
-        .select('id, organization, org_type, stage, owner, owner_team, tier, next_action, next_action_date, is_top, record_id, apollo_account_id')
-        .eq('business_id', businessId).is('archived_at', null).order('id')),
-      selectAllPages(() => supabase.from('sales_targets').select('id, name, status, owner_team, record_id')
-        .eq('business_id', businessId).in('status', ['proposed', 'researching']).order('id')),
-      filters.includeApollo
-        ? selectAllPages(() => supabase.from('sales_sequenced_accounts').select('account_id, name, first_sequenced_at')
-          .eq('business_id', businessId).order('account_id'))
-        : [],
-      supabase.from('business_members').select('user_id, name, profile:profiles!business_members_user_id_fkey(display_name)')
-        .eq('business_id', businessId).not('user_id', 'is', null),
-    ]);
-    if (members.error) throw new Error(members.error.message);
-    const memberNames = new Map(members.data.map(m => [m.user_id, m.profile?.display_name || m.name]));
-    const rows = buildBoard({ partners, opportunities, targets, sequenced, memberNames }, filters);
-    res.json({ rows });
+    res.json({ rows: await loadBoard(req.params.businessId, filters) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+}
+
+// The joint sheet for Upside: the board's columns + a Status word, the row's
+// color as the fill. Apollo-only rows never go out, and free text is scrubbed
+// of emails / phone numbers.
+export const SHEET_COLUMNS = [
+  { header: 'Top', width: 6, value: r => (r.top ? '★' : '') },
+  { header: 'Account', width: 36, value: r => r.name, free: true },
+  { header: 'Type', width: 10, value: r => TYPE_LABEL[r.type] },
+  { header: 'Status', width: 16, value: r => COLOR_LABEL[r.color] },
+  { header: 'Stage', width: 20, value: r => r.stage_label || '' },
+  { header: 'Owner Team', width: 12, value: r => TEAM_LABEL[r.owner_team] || '' },
+  { header: 'Owner', width: 18, value: r => r.owner || '', free: true },
+  { header: 'Priority Tier', width: 12, value: r => (r.tier === 'active' ? 'Active' : r.tier || '') },
+  { header: 'Next Step', width: 48, value: r => r.next_step || '', free: true },
+  { header: 'Next Step Due', width: 14, value: r => r.next_step_due || '' },
+  { header: 'Last Touch', width: 12, value: r => (r.last_touch_at || '').slice(0, 10) },
+  { header: 'Record ID', width: 12, value: r => r.record_id || '' },
+];
+const TYPE_LABEL = { partner: 'Partner', employer: 'Employer', target: 'Target' };
+const COLOR_LABEL = Object.fromEntries(BOARD_COLORS.map(c => [c.id, c.label]));
+// Upside receives this file: not even a stray "@" goes out.
+const sheetText = v => cleanText(v, 500).replace(/\s*@\s*/g, ' at ');
+
+export async function buildSheet(rows) {
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Joint pipeline', { views: [{ state: 'frozen', ySplit: 1 }] });
+  ws.columns = SHEET_COLUMNS.map(c => ({ header: c.header, width: c.width }));
+  ws.getRow(1).font = { bold: true };
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: SHEET_COLUMNS.length } };
+  // Same order as the screen: the Top section first, then the color sections.
+  const ordered = [...rows.filter(r => r.top), ...rows.filter(r => !r.top)].filter(r => r.type !== 'apollo');
+  for (const r of ordered) {
+    const row = ws.addRow(SHEET_COLUMNS.map(c => (c.free ? sheetText(c.value(r)) : c.value(r))));
+    const fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: SHEET_FILLS[r.color] } };
+    row.eachCell({ includeEmpty: true }, cell => { cell.fill = fill; });
+    if (r.color === 'faded') row.font = { color: { argb: 'FF808080' } };
+  }
+  return wb.xlsx.writeBuffer();
+}
+
+// GET /goals/pipeline-board/export?<same filters> - Member+ (the gate lets Viewers GET).
+export async function pipelineBoardExportRoute(req, res) {
+  const businessId = req.params.businessId;
+  if (!hasRole(req, businessId, 'member')) return res.status(403).json({ error: 'Export is for members only' });
+  const { filters, error } = parseBoardFilters({ ...req.query, include_apollo: 'false' });
+  if (error) return res.status(400).json({ error });
+  try {
+    const buf = await buildSheet(await loadBoard(businessId, { ...filters, includeApollo: false }));
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="joint-pipeline-${laDateString()}.xlsx"`);
+    res.send(Buffer.from(buf));
   } catch (e) { res.status(500).json({ error: e.message }); }
 }

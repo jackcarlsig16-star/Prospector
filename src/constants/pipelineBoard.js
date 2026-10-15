@@ -14,6 +14,8 @@ export const BOARD_COLORS = [
   { id: 'faded', label: 'Parked' },
 ];
 export const BOARD_COLOR_IDS = BOARD_COLORS.map(c => c.id);
+// The exported joint sheet's cell fills (ARGB), light enough for black text.
+export const SHEET_FILLS = { green: 'FFC6EFCE', yellow: 'FFFFEB9C', blue: 'FFBDD7EE', gray: 'FFD9D9D9', light: 'FFF2F2F2', faded: 'FFFFFFFF' };
 export const BOARD_TYPES = ['partner', 'employer', 'target', 'apollo'];
 export const TOP_CAP = 25;
 
