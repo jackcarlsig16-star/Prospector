@@ -1,9 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readInput, plan, withBlock, companyDomain, ACCOUNT_HEADERS, ImportRefused } from './masterImport.js';
+import { readInput, plan, withBlock, companyDomain, ImportRefused } from './masterImport.js';
 
-const csv = rows => [ACCOUNT_HEADERS.join(','), ...rows.map(r => ACCOUNT_HEADERS.map(h => r[h] ?? '').join(','))].join('\n');
-const contactsCsv = rows => ['record_id,name,title,role', ...rows.map(r => [r.record_id, r.name, r.title || '', r.role || ''].join(','))].join('\n');
+// The sheet's own 32-column export shape, cells in the sheet's vocabulary.
+const SHEET = ['Record ID', 'Account', 'Account Type', 'Segment', 'Priority Tier', 'Funnel Stage', 'Partner Path', 'Owner Team', 'Owner',
+  'Co-owner Team', 'Next Step', 'Next Step Due', 'Last Touch Date', 'Last Touch By', 'Primary Contact', 'Primary Title', 'Primary Email Domain',
+  'Email Status', 'Has Phone', 'Contacts Emailed (#)', 'Contacts Emailed Domains', 'Route In', 'Broker on Account', 'Brad Reached Out',
+  'HomeLover Outreach', 'Both Teams Touched', 'On Brad Target List', 'Original Priority', 'Flags', 'Notes', 'Source', 'Confirmed with Brad'];
+const cell = v => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+const csv = (rows, headers = SHEET) => [headers.join(','), ...rows.map(r => headers.map(h => cell(r[h] ?? '')).join(','))].join('\r\n');
 
 const state = () => ({
   partners: [
@@ -22,43 +27,62 @@ const state = () => ({
 });
 
 const ACCOUNTS = [
-  { record_id: 'HLU-0001', name: 'Aon', kind: 'partner', tier: '1', funnel_stage: 'Contacted', owner_team: 'upside', owner_name: 'Cyrus', co_owner_name: 'Brad', next_step: 'Send deck', next_step_due: '2026-10-20', notes: 'Joint account' },
-  { record_id: 'HLU-0002', name: 'ADP', kind: 'employer', company_domain: 'www.adp.com', funnel_stage: 'Engaged', owner_team: 'both' },
-  { record_id: 'HLU-0003', name: 'Burnham Benefits', kind: 'partner', category: 'Brokers', owner_team: 'upside', funnel_stage: 'Meeting held' },
-  { record_id: 'HLU-0004', name: 'Invest with Roots', kind: 'partner', funnel_stage: 'Contacted' },
-  { record_id: 'HLU-0005', name: 'Marriott International', kind: 'employer', company_domain: 'marriott.com', funnel_stage: 'Nurture', owner_team: 'upside', tier: '1', segment: 'Hospitality' },
-  { record_id: 'HLU-0006', name: '24 Hour Fitness', kind: 'employer', funnel_stage: 'Meeting scheduled', owner_team: 'homelover', owner_name: 'Jack', tier: '2', partner_path: 'Direct' },
-  { record_id: 'HLU-0007', name: 'Teachers Guild', kind: 'association', funnel_stage: 'Hold' },
-  { record_id: 'HLU-0008', name: 'Nope Inc', kind: 'partner' },
-  { record_id: 'HLU-0009', name: 'Bad Row', kind: 'vendor' },
+  { 'Record ID': 'HLU-0001', Account: 'Aon', 'Account Type': 'Partner', 'Priority Tier': '1 - Priority', 'Funnel Stage': '2 - Contacted', 'Owner Team': 'Upside', Owner: 'Cyrus', 'Next Step': 'Send deck', 'Next Step Due': '2026-10-20', Notes: 'Joint account', 'Primary Contact': 'Pat Lee', 'Primary Title': 'SVP', 'Last Touch Date': '2026-10-01', 'Has Phone': 'Yes' },
+  { 'Record ID': 'HLU-0002', Account: 'ADP', 'Account Type': 'Employer', 'Primary Email Domain': 'www.adp.com; adp.net', 'Funnel Stage': '3 - Engaged', 'Owner Team': 'Both' },
+  { 'Record ID': 'HLU-0003', Account: 'Burnham Benefits', 'Account Type': 'Partner', Segment: 'Broker', 'Owner Team': 'Upside', Owner: 'Brad Cillian', 'Funnel Stage': '5 - Meeting held', 'Primary Contact': 'Dana Fox; Lee Park' },
+  { 'Record ID': 'HLU-0004', Account: 'Invest with Roots', 'Account Type': 'Partner', 'Funnel Stage': '2 - Contacted' },
+  { 'Record ID': 'HLU-0005', Account: 'Marriott International', 'Account Type': 'Employer', 'Primary Email Domain': 'marriott.com', 'Funnel Stage': '8 - Nurture', 'Owner Team': 'Upside', 'Priority Tier': '1 - Priority', Segment: 'Hospitality' },
+  { 'Record ID': 'HLU-0006', Account: '24 Hour Fitness', 'Account Type': 'Employer', 'Funnel Stage': '4 - Meeting scheduled', 'Owner Team': 'HomeLover', Owner: 'Jack', 'Priority Tier': '2 - Secondary', 'Partner Path': 'Direct', 'Primary Contact': 'Jill Vaslow', 'Primary Title': 'Benefits lead' },
+  { 'Record ID': 'HLU-0007', Account: 'Teachers Guild', 'Account Type': 'Association', 'Funnel Stage': '9 - Hold / disqualified' },
+  { 'Record ID': 'HLU-0008', Account: 'Nope Inc', 'Account Type': 'Partner' },
+  { 'Record ID': 'HLU-0009', Account: 'Bad Row', 'Account Type': 'Vendor' },
 ];
-const CONTACTS = [
-  { record_id: 'HLU-0001', name: 'Pat Lee', title: 'SVP', role: 'champion' },
-  { record_id: 'HLU-0001', name: 'Sam Roe', title: 'Director' },
-  { record_id: 'HLU-0006', name: 'Jill Vaslow', title: 'Benefits lead', role: 'champion' },
-];
+const BASE = { 'Record ID': 'HLU-0001', Account: 'Aon', 'Account Type': 'Partner' };
 
-test('the file is refused on any "@" or phone number; a YYYY-MM-DD date is fine; headers must match', () => {
-  assert.throws(() => readInput(csv([{ ...ACCOUNTS[0], notes: 'ask pat at pat lee@aon.com' }]), contactsCsv([])), ImportRefused);
-  assert.throws(() => readInput(csv([{ ...ACCOUNTS[0], notes: 'call 312-555-0199' }]), contactsCsv([])), ImportRefused);
-  assert.throws(() => readInput(csv([ACCOUNTS[0]]), 'record_id,name,email\n'), ImportRefused);
-  assert.doesNotThrow(() => readInput(csv([ACCOUNTS[0]]), contactsCsv([])));
+test('refused only on a missing Record ID / Account column, any "@" or a phone number; dates are fine', () => {
+  assert.throws(() => readInput(csv([{ ...BASE, Notes: 'ask pat at pat lee@aon.com' }])), ImportRefused);
+  assert.throws(() => readInput(csv([{ ...BASE, 'Confirmed with Brad': 'call 312-555-0199' }])), ImportRefused, 'ignored columns are checked too');
+  assert.throws(() => readInput(csv([BASE], SHEET.filter(h => h !== 'Account'))), /missing required column: Account/);
+  assert.throws(() => readInput(csv([BASE], SHEET.filter(h => h !== 'Record ID'))), /missing required column: Record ID/);
+  assert.doesNotThrow(() => readInput(csv([{ ...BASE, 'Next Step Due': '2026-10-20', 'Last Touch Date': '2026-10-01' }])));
+});
+
+test('header map: case/space-insensitive, unknown + ignored headers listed, optional headers may be missing, prefixes stripped', () => {
+  const headers = ['record id', 'ACCOUNT', 'Account  Type', 'priority tier', 'Funnel Stage', 'Brand New Column'];
+  const input = readInput(csv([{ 'record id': 'X1', ACCOUNT: 'Acme', 'Account  Type': 'Health plan', 'priority tier': '4 - Hold', 'Funnel Stage': '9 - Hold / disqualified', 'Brand New Column': 'z' }], headers));
+  assert.deepEqual(input.ignored, ['Brand New Column']);
+  assert.deepEqual([input.accounts[0].kind, input.accounts[0].tier, input.accounts[0].funnel_stage, input.accounts[0].owner_team], ['health_plan', '4', 'Hold', '']);
+  const full = readInput(csv(ACCOUNTS));
+  assert.deepEqual(full.ignored, ['Co-owner Team', 'Last Touch Date', 'Last Touch By', 'Email Status', 'Has Phone', 'Contacts Emailed (#)', 'Contacts Emailed Domains',
+    'Brad Reached Out', 'HomeLover Outreach', 'Both Teams Touched', 'On Brad Target List', 'Original Priority', 'Confirmed with Brad']);
+  const adp = full.accounts.find(a => a.record_id === 'HLU-0002');
+  assert.deepEqual([adp.company_domain, adp.owner_team, adp.funnel_stage], ['adp.com', 'both', 'Engaged'], 'first domain only, owner team lowercased');
+  const burnham = full.accounts.find(a => a.record_id === 'HLU-0003');
+  assert.equal(burnham.co_owner_name, 'Brad Cillian', 'an Owner who is not Jack/Cyrus is the co-owner');
+  assert.deepEqual(full.multiPerson, [{ record_id: 'HLU-0003', name: 'Burnham Benefits' }]);
+  assert.ok(!full.contacts.has('HLU-0003'), 'a multi-person cell is reported, not split or imported');
+});
+
+test('a quoted cell with line breaks stays one cell', () => {
+  const input = readInput(csv([{ ...BASE, Notes: 'line one\nline two' }, { 'Record ID': 'HLU-0002', Account: 'ADP', 'Account Type': 'Employer' }]));
+  assert.equal(input.accounts.length, 2);
+  assert.equal(input.accounts[0].notes, 'line one line two');
 });
 
 test('routes: partner update / employer-that-is-a-partner / target / possible / opp update + insert / rejected target / invalid', () => {
-  const { actions, report } = plan(state(), readInput(csv(ACCOUNTS), contactsCsv(CONTACTS)), { today: '2026-10-15' });
+  const { actions, report } = plan(state(), readInput(csv(ACCOUNTS)), { today: '2026-10-15' });
   const by = Object.fromEntries(actions.map(a => [a.record_id, a]));
   assert.deepEqual(report.counts, { partner_update: 2, partner_to_target: 1, target_update: 0, opp_insert: 2, opp_update: 1, skipped: 2, invalid: 1 });
 
   const aon = by['HLU-0001'];
   assert.equal(aon.route, 'partner_update');
-  assert.deepEqual(aon.assign, { owner_team: 'upside', co_owner_name: 'Brad' }, 'owner kept (Jack), Cyrus reported');
+  assert.deepEqual(aon.assign, { owner_team: 'upside' }, 'owner kept (Jack), Cyrus reported');
   assert.ok(report.differences.some(d => d.record_id === 'HLU-0001' && d.field === 'tier'));
   assert.ok(report.differences.some(d => d.record_id === 'HLU-0001' && d.field === 'owner'));
   assert.equal(aon.patch.notes, 'Our own note\n\n— master sheet HLU-0001 —\nNotes: Joint account');
   assert.ok(!('pipeline_status' in aon.patch) && !('last_touch_at' in aon.patch), 'a partner is never stage-moved or touched');
   assert.deepEqual(report.partner_stages.find(s => s.record_id === 'HLU-0001'), { record_id: 'HLU-0001', name: 'Aon', prospector: 'meeting_set', sheet: 'Contacted', dir: 'behind' });
-  assert.deepEqual(aon.contacts, [{ op: 'update', id: 'c1', name: 'Pat Lee', patch: { title: 'SVP', role_in_notes: 'champion' } }, { op: 'insert', name: 'Sam Roe', title: 'Director', role_in_notes: null }]);
+  assert.deepEqual(aon.contacts, [{ op: 'update', id: 'c1', name: 'Pat Lee', patch: { title: 'SVP' } }]);
   assert.deepEqual(aon.todo, { text: 'Send deck', due_date: '2026-10-20', owner_user_id: 'u-jack' });
 
   assert.equal(by['HLU-0002'].route, 'partner_update');
@@ -69,6 +93,8 @@ test('routes: partner update / employer-that-is-a-partner / target / possible / 
   assert.equal(by['HLU-0003'].route, 'partner_to_target');
   assert.equal(by['HLU-0003'].row.status, 'proposed');
   assert.equal(by['HLU-0003'].row.evidence, 'master sheet HLU-0003');
+  assert.equal(by['HLU-0003'].row.co_owner_name, 'Brad Cillian');
+  assert.equal(by['HLU-0003'].row.research_notes, null, 'multi-person cell not imported');
   assert.ok(!by['HLU-0004'], 'possible is not imported');
   assert.deepEqual(report.possibles, [{ record_id: 'HLU-0004', name: 'Invest with Roots', possible: 'partner Roots' }]);
 
@@ -82,14 +108,16 @@ test('routes: partner update / employer-that-is-a-partner / target / possible / 
   const fit = by['HLU-0006'];
   assert.equal(fit.route, 'opp_insert');
   assert.deepEqual([fit.row.stage, fit.row.owner, fit.row.owner_team, fit.row.tier, fit.row.decision_makers, fit.row.record_id],
-    ['meeting', 'Jack', 'homelover', '2', 'Jill Vaslow — Benefits lead (champion)', 'HLU-0006']);
+    ['meeting', 'Jack', 'homelover', '2', 'Jill Vaslow — Benefits lead', 'HLU-0006']);
+  assert.equal(by['HLU-0005'].patch.cohort, 'Hospitality');
+  assert.ok(!/Segment/.test(by['HLU-0005'].patch.notes || ''), 'opps keep segment as cohort, not in notes');
   assert.deepEqual([by['HLU-0007'].row.org_type, by['HLU-0007'].row.stage], ['membership', 'on_hold']);
   assert.ok(report.skipped.some(s => s.record_id === 'HLU-0008' && /rejected/.test(s.reason)));
   assert.equal(report.invalid[0].record_id, 'HLU-0009');
 });
 
 test('--accept-possible imports the possible as new', () => {
-  const { actions } = plan(state(), readInput(csv([ACCOUNTS[3]]), contactsCsv([])), { acceptPossible: ['HLU-0004'] });
+  const { actions } = plan(state(), readInput(csv([ACCOUNTS[3]])), { acceptPossible: ['HLU-0004'] });
   assert.equal(actions[0].route, 'partner_to_target');
 });
 
@@ -98,10 +126,10 @@ test('employer stages move forward only; parking only from target/contacted', ()
   s.opps.push({ ...s.opps[0], id: 'o-c', organization: 'Contacted Co', stage: 'contacted', apollo_account_id: null });
   s.opps.push({ ...s.opps[0], id: 'o-m', organization: 'Meeting Co', stage: 'meeting', apollo_account_id: null });
   const rows = [
-    { record_id: 'A', name: 'Contacted Co', kind: 'employer', funnel_stage: 'Hold' },
-    { record_id: 'B', name: 'Meeting Co', kind: 'employer', funnel_stage: 'Contacted' },
+    { 'Record ID': 'A', Account: 'Contacted Co', 'Account Type': 'Employer', 'Funnel Stage': '9 - Hold / disqualified' },
+    { 'Record ID': 'B', Account: 'Meeting Co', 'Account Type': 'Employer', 'Funnel Stage': '2 - Contacted' },
   ];
-  const { actions, report } = plan(s, readInput(csv(rows), contactsCsv([])));
+  const { actions, report } = plan(s, readInput(csv(rows)));
   assert.equal(actions[0].patch.stage, 'on_hold');
   assert.ok(!('stage' in actions[1].patch));
   assert.equal(report.opp_stage_refused[0].reason, 'stage contacted is behind the current stage meeting');
@@ -109,7 +137,7 @@ test('employer stages move forward only; parking only from target/contacted', ()
 
 test('a re-run against the applied state plans no writes', () => {
   const s = state();
-  const input = readInput(csv(ACCOUNTS), contactsCsv(CONTACTS));
+  const input = readInput(csv(ACCOUNTS));
   const first = plan(s, input);
   for (const a of first.actions) {
     if (a.route === 'partner_update') {

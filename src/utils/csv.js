@@ -31,14 +31,33 @@ export function parseCsvLine(line) {
 // Full parse: returns { headers, rows } where rows is an array of plain
 // objects keyed by header (not positional arrays) - easier for callers to
 // work with than raw column arrays.
+// Records split on newlines outside quotes only - a sheet export puts a
+// cell's line breaks inside quotes, and those must stay in the cell.
+function splitRecords(text) {
+  const out = [];
+  let cur = "", inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') inQ = !inQ;
+    if (!inQ && (ch === "\n" || ch === "\r")) {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      out.push(cur); cur = "";
+      continue;
+    }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
 export function parseCsv(text) {
-  const lines = text.trim().split("\n").filter(l => l.trim());
+  const lines = splitRecords(text.trim()).filter(l => l.trim());
   if (lines.length < 1) return { headers: [], rows: [] };
-  const headers = parseCsvLine(lines[0]).map(h => h.replace(/^"|"$/g, "").trim());
+  const headers = parseCsvLine(lines[0]);
   const rows = lines.slice(1).filter(l => l.trim()).map(line => {
     const cols = parseCsvLine(line);
     const row = {};
-    headers.forEach((h, i) => { row[h] = (cols[i] || "").replace(/^"|"$/g, "").trim(); });
+    headers.forEach((h, i) => { row[h] = cols[i] || ""; });
     return row;
   });
   return { headers, rows };

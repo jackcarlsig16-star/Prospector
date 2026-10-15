@@ -1,4 +1,4 @@
-// master-pipeline-import-v1 REV3 Stage 2 live check. TEMP data only: 1 workspace (goals_sales on, added to SALES_ANALYTICS_BUSINESS_IDS for the local server only), 3 temp users (owner "Jack Zz", member "Cyrus Zz", viewer). Seed: 4 partners (Aon, ADP TotalSource + confirmed adp.com, Roots, OneDigital), 1 contact, 3 opportunities (Marriott International, Meeting Co, Contacted Co), 1 rejected target, 1 sequenced account + 1 accounts snapshot (needs 1 sync-run row). Fixture CSVs live in <outdir>, never inbox/. Runs the real importer CLI 6 times (refused, dry, apply, re-apply, edited-notes apply, accept-possible), then Part B in the browser (1440 + 390 member, 1440 viewer). 0 Apollo / 0 Claude / 0 syncs; HomeLover is only COUNTED. Serves build/ via server.js - run npm run build first. ~1-2 min, cap 4 min.
+// master-pipeline-import-v1 REV4 Stage 2 (+2b single-file reader) live check. TEMP data only: 1 workspace (goals_sales on, added to SALES_ANALYTICS_BUSINESS_IDS for the local server only), 3 temp users (owner "Jack Zz", member "Cyrus Zz", viewer). Seed: 4 partners (Aon, ADP TotalSource + confirmed adp.com, Roots, OneDigital), 1 contact, 3 opportunities (Marriott International, Meeting Co, Contacted Co), 1 rejected target, 1 sequenced account + 1 accounts snapshot (needs 1 sync-run row). The fixture CSV (the sheet's own 32-column shape) lives in <outdir>, never inbox/. Runs the real importer CLI 6 times (refused, dry, apply, re-apply, edited-notes apply, accept-possible), then Part B in the browser (1440 + 390 member, 1440 viewer). 0 Apollo / 0 Claude / 0 syncs; HomeLover is only COUNTED. Serves build/ via server.js - run npm run build first. ~1-2 min, cap 4 min.
 // Usage: node scripts/verify/master-pipeline-import-v1-stage2.cjs <outdir>
 const ROOT = require('path').resolve(__dirname, '../..');
 require(ROOT + '/node_modules/dotenv').config({ path: ROOT + '/.env' });
@@ -20,17 +20,32 @@ const ins = r => { if (r.error) throw new Error(r.error.message); return r.data;
 const wait = ms => new Promise(r => setTimeout(r, ms));
 setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
 
-const H = ['record_id', 'name', 'kind', 'category', 'segment', 'tier', 'funnel_stage', 'owner_team', 'owner_name', 'co_owner_name', 'next_step', 'next_step_due', 'company_domain', 'partner_path', 'route_in', 'broker_on_account', 'source', 'flags', 'notes'];
+// Fixture rows are written in field terms and exported in the sheet's own
+// vocabulary and 32-column shape (REV4), contacts in Primary Contact / Title.
+const SHEET = ['Record ID', 'Account', 'Account Type', 'Segment', 'Priority Tier', 'Funnel Stage', 'Partner Path', 'Owner Team', 'Owner',
+  'Co-owner Team', 'Next Step', 'Next Step Due', 'Last Touch Date', 'Last Touch By', 'Primary Contact', 'Primary Title', 'Primary Email Domain',
+  'Email Status', 'Has Phone', 'Contacts Emailed (#)', 'Contacts Emailed Domains', 'Route In', 'Broker on Account', 'Brad Reached Out',
+  'HomeLover Outreach', 'Both Teams Touched', 'On Brad Target List', 'Original Priority', 'Flags', 'Notes', 'Source', 'Confirmed with Brad'];
+const STAGE_NO = { 'Not contacted': 1, Contacted: 2, Engaged: 3, 'Meeting scheduled': 4, 'Meeting held': 5, 'Pilot/proposal': 6, Live: 7, Nurture: 8, Hold: 9 };
+const TIER_LABEL = { 1: '1 - Priority', 2: '2 - Secondary', 3: '3 - Later', 4: '4 - Hold' };
+const KIND_LABEL = { partner: 'Partner', employer: 'Employer', association: 'Association', health_plan: 'Health plan', other: 'Other' };
+const TEAM_LABEL = { homelover: 'HomeLover', upside: 'Upside', both: 'Both' };
 const csvCell = v => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-const accountsCsv = rows => [H.join(','), ...rows.map(r => H.map(h => csvCell(r[h] ?? '')).join(','))].join('\n') + '\n';
-const contactsCsv = rows => ['record_id,name,title,role', ...rows.map(r => [r.record_id, r.name, r.title || '', r.role || ''].map(csvCell).join(','))].join('\n') + '\n';
+const sheetRow = (r, c) => ({
+  'Record ID': r.record_id, Account: r.name, 'Account Type': KIND_LABEL[r.kind], Segment: r.segment, 'Priority Tier': TIER_LABEL[r.tier],
+  'Funnel Stage': r.funnel_stage && `${STAGE_NO[r.funnel_stage]} - ${r.funnel_stage === 'Hold' ? 'Hold / disqualified' : r.funnel_stage}`,
+  'Partner Path': r.partner_path, 'Owner Team': TEAM_LABEL[r.owner_team], Owner: r.owner_name, 'Next Step': r.next_step, 'Next Step Due': r.next_step_due,
+  'Primary Contact': c?.name, 'Primary Title': c?.title, 'Primary Email Domain': r.company_domain, Flags: r.flags, Notes: r.notes,
+  'Last Touch Date': '2026-10-01', 'Has Phone': 'Yes', 'Original Priority': 'P2',
+});
+const sheetCsv = (rows, contacts) => [SHEET.join(','), ...rows.map(r => { const x = sheetRow(r, contacts.find(c => c.record_id === r.record_id)); return SHEET.map(h => csvCell(x[h] ?? '')).join(','); })].join('\r\n') + '\r\n';
 const ACCOUNTS = [
-  { record_id: 'HLU-0001', name: 'Aon', kind: 'partner', tier: '1', funnel_stage: 'Contacted', owner_team: 'upside', owner_name: 'Cyrus', co_owner_name: 'Brad', next_step: 'Send the joint deck', next_step_due: '2026-10-20', notes: 'Joint account' },
+  { record_id: 'HLU-0001', name: 'Aon', kind: 'partner', tier: '1', funnel_stage: 'Contacted', owner_team: 'upside', owner_name: 'Cyrus', next_step: 'Send the joint deck', next_step_due: '2026-10-20', notes: 'Joint account\nsecond line' },
   { record_id: 'HLU-0002', name: 'ADP', kind: 'employer', company_domain: 'www.adp.com', funnel_stage: 'Engaged', owner_team: 'both' },
-  { record_id: 'HLU-0003', name: 'Burnham Benefits', kind: 'partner', category: 'Brokers', owner_team: 'upside', funnel_stage: 'Meeting held' },
+  { record_id: 'HLU-0003', name: 'Burnham Benefits', kind: 'partner', owner_team: 'upside', funnel_stage: 'Meeting held' },
   { record_id: 'HLU-0004', name: 'Invest with Roots', kind: 'partner', funnel_stage: 'Contacted' },
-  { record_id: 'HLU-0005', name: 'Marriott International', kind: 'employer', company_domain: 'marriott.com', segment: 'Hospitality', tier: '1', funnel_stage: 'Nurture', owner_team: 'upside', co_owner_name: 'Brad' },
-  { record_id: 'HLU-0006', name: '24 Hour Fitness', kind: 'employer', segment: 'Fitness', tier: '2', funnel_stage: 'Meeting scheduled', owner_team: 'homelover', owner_name: 'Jack', co_owner_name: 'Brad', partner_path: 'Direct', next_step: 'Joint note', next_step_due: '2026-10-22' },
+  { record_id: 'HLU-0005', name: 'Marriott International', kind: 'employer', company_domain: 'marriott.com', segment: 'Hospitality', tier: '1', funnel_stage: 'Nurture', owner_team: 'upside', owner_name: 'Brad Cillian' },
+  { record_id: 'HLU-0006', name: '24 Hour Fitness', kind: 'employer', segment: 'Fitness', tier: '2', funnel_stage: 'Meeting scheduled', owner_team: 'homelover', owner_name: 'Jack', partner_path: 'Direct', next_step: 'Joint note', next_step_due: '2026-10-22' },
   { record_id: 'HLU-0007', name: 'Teachers Guild', kind: 'association', tier: '3', funnel_stage: 'Hold', owner_team: 'both' },
   { record_id: 'HLU-0008', name: 'Nope Inc', kind: 'partner', funnel_stage: 'Contacted' },
   { record_id: 'HLU-0009', name: 'Meeting Co', kind: 'employer', funnel_stage: 'Contacted', tier: '4' },
@@ -39,10 +54,10 @@ const ACCOUNTS = [
   { record_id: 'HLU-0012', name: 'Health Plan X', kind: 'health_plan', funnel_stage: 'Not contacted' },
 ];
 const CONTACTS = [
-  { record_id: 'HLU-0001', name: 'Pat Lee', title: 'SVP Benefits', role: 'champion' },
-  { record_id: 'HLU-0001', name: 'Sam Roe', title: 'Director' },
-  { record_id: 'HLU-0006', name: 'Jill Vaslow', title: 'Managing VP Benefits', role: 'champion' },
+  { record_id: 'HLU-0001', name: 'Pat Lee', title: 'SVP Benefits' },
+  { record_id: 'HLU-0006', name: 'Jill Vaslow', title: 'Managing VP Benefits' },
   { record_id: 'HLU-0003', name: 'Dana Fox', title: 'Partner' },
+  { record_id: 'HLU-0009', name: 'Amy Ng and Bo Li', title: 'HR' },
 ];
 
 async function counts(biz, tables) {
@@ -73,10 +88,10 @@ async function user(name, role) {
   return { id: u.user.id, session: (await c.auth.signInWithPassword({ email, password })).data.session };
 }
 function importer(args) {
-  const r = spawnSync('node', [ROOT + '/scripts/import-master-pipeline.cjs', made.biz, `${OUT}/mpi2-accounts.csv`, `${OUT}/mpi2-contacts.csv`, ...args], { cwd: ROOT, encoding: 'utf8', timeout: 60000 });
+  const r = spawnSync('node', [ROOT + '/scripts/import-master-pipeline.cjs', made.biz, `${OUT}/mpi2-master-pipeline.csv`, ...args], { cwd: ROOT, encoding: 'utf8', timeout: 60000 });
   return { code: r.status, out: (r.stdout || '') + (r.stderr || '') };
 }
-const writeFiles = (accounts, contacts) => { fs.writeFileSync(`${OUT}/mpi2-accounts.csv`, accountsCsv(accounts)); fs.writeFileSync(`${OUT}/mpi2-contacts.csv`, contactsCsv(contacts)); };
+const writeFiles = (accounts, contacts) => fs.writeFileSync(`${OUT}/mpi2-master-pipeline.csv`, sheetCsv(accounts, contacts));
 const written = out => JSON.parse((out.match(/Written: (\{.*\})/) || [])[1] || 'null');
 
 async function newPage(u, width, height) {
@@ -131,7 +146,7 @@ async function openEmployers(page, compact) {
     let c0 = await counts(T, T_TABLES);
     writeFiles(ACCOUNTS.map(r => (r.record_id === 'HLU-0005' ? { ...r, notes: 'ask jill at jv@marriott.com' } : r)), CONTACTS);
     const refAt = importer(['--apply']);
-    writeFiles(ACCOUNTS, [...CONTACTS, { record_id: 'HLU-0006', name: 'Phone Person', title: 'call 312 555 0199' }]);
+    writeFiles(ACCOUNTS, CONTACTS.map(c => (c.record_id === 'HLU-0006' ? { ...c, title: 'call 312 555 0199' } : c)));
     const refPhone = importer(['--apply']);
     ok('A1 a file with an "@" or a phone number is refused, names the record not the value, writes nothing',
       refAt.code === 1 && /REFUSED.*HLU-0005.*"@"/.test(refAt.out) && !refAt.out.includes('jv@') && refPhone.code === 1 && /phone number/.test(refPhone.out) && !refPhone.out.includes('555')
@@ -146,7 +161,8 @@ async function openEmployers(page, compact) {
     ok('A2 dry run lists sheet-ahead / behind partners, the refused employer stages, the possible and the kind mismatch',
       plan1.partner_stages.some(s => s.name === 'OneDigital' && s.dir === 'ahead') && plan1.partner_stages.some(s => s.name === 'Aon' && s.dir === 'behind')
       && plan1.opp_stage_refused.map(s => s.name).sort().join() === 'Marriott International,Meeting Co' && plan1.possibles[0]?.record_id === 'HLU-0004'
-      && plan1.kind_mismatches[0]?.record_id === 'HLU-0002' && /sheet ahead: Live/.test(dry.out), JSON.stringify({ s: plan1.partner_stages, r: plan1.opp_stage_refused, p: plan1.possibles }));
+      && plan1.kind_mismatches[0]?.record_id === 'HLU-0002' && /sheet ahead: Live/.test(dry.out)
+      && /Ignored columns \(13\): Co-owner Team, Last Touch Date/.test(dry.out) && /2\+ people - not imported, not split \(1\)\n  HLU-0009  Meeting Co/.test(dry.out), JSON.stringify({ s: plan1.partner_stages, r: plan1.opp_stage_refused, p: plan1.possibles }));
 
     // A3 apply.
     const app = importer(['--apply']);
@@ -160,33 +176,33 @@ async function openEmployers(page, compact) {
     ok('A3 partner events are Assign only, each carrying meta.from_import (no status / touch events)', events.length === 3 && events.every(e => e.event === 'assign' && /^HLU-/.test(e.meta?.from_import || '')),
       JSON.stringify(events.map(e => [e.event, e.meta?.from_import])));
     const aon = g('Aon');
-    ok('A3 Aon: owner_team upside + co-owner Brad, owner stays Jack (Cyrus reported), tier 2 kept, record_id, notes block appended under the user note',
-      aon.owner_team === 'upside' && aon.co_owner_name === 'Brad' && aon.owner_user_id === J.id && aon.tier === '2' && aon.record_id === 'HLU-0001'
-      && aon.notes === 'Our own note\n\n— master sheet HLU-0001 —\nNotes: Joint account', JSON.stringify({ t: aon.owner_team, o: aon.owner_user_id === J.id, tier: aon.tier, n: aon.notes }));
+    ok('A3 Aon: owner_team upside, no co-owner, owner stays Jack (Cyrus reported), tier 2 kept, record_id, notes block appended under the user note',
+      aon.owner_team === 'upside' && aon.co_owner_name === null && aon.owner_user_id === J.id && aon.tier === '2' && aon.record_id === 'HLU-0001'
+      && aon.notes === 'Our own note\n\n— master sheet HLU-0001 —\nNotes: Joint account second line', JSON.stringify({ t: aon.owner_team, o: aon.owner_user_id === J.id, tier: aon.tier, n: aon.notes }));
     ok('A3 ADP (sheet "employer") stays the partner ADP TotalSource: record_id + owner_team both, no employer row', g('ADP TotalSource').record_id === 'HLU-0002' && g('ADP TotalSource').owner_team === 'both'
       && !(await svc.from('sales_opportunities').select('id').eq('business_id', T).ilike('organization', 'adp%')).data.length);
     ok('A3 OneDigital: still meeting_set (sheet says Live = reported, not applied)', g('OneDigital').pipeline_status === 'meeting_set' && g('OneDigital').owner_team === 'upside');
     const pc = ins(await svc.from('partner_contacts').select('name, title, role_in_notes, email, source').eq('goal_id', aon.id).order('name'));
-    ok('A3 Aon people: Pat Lee updated (SVP Benefits, champion), Sam Roe added with no email', JSON.stringify(pc) === JSON.stringify([
-      { name: 'Pat Lee', title: 'SVP Benefits', role_in_notes: 'champion', email: null, source: 'manual' }, { name: 'Sam Roe', title: 'Director', role_in_notes: null, email: null, source: 'manual' }]), JSON.stringify(pc));
+    ok('A3 Aon people: Pat Lee (Primary Contact) updated to SVP Benefits, nobody added, no email', JSON.stringify(pc) === JSON.stringify([
+      { name: 'Pat Lee', title: 'SVP Benefits', role_in_notes: null, email: null, source: 'manual' }]), JSON.stringify(pc));
     const todos = ins(await svc.from('sales_week_goals').select('text, due_date, owner_user_id, link_type, link_id, kind, status').eq('business_id', T));
     ok('A3 one to-do linked to Aon, due 10/20, owner Jack', todos.length === 1 && todos[0].text === 'Send the joint deck' && todos[0].due_date === '2026-10-20' && todos[0].owner_user_id === J.id && todos[0].link_type === 'partner' && todos[0].link_id === aon.id, JSON.stringify(todos));
     const targets = ins(await svc.from('sales_targets').select('*').eq('business_id', T));
     const burn = targets.find(t => t.name === 'Burnham Benefits');
-    ok('A3 Burnham Benefits -> target (proposed, evidence, Brokers, Upside, people as names/titles); Invest with Roots NOT imported; Nope Inc stays rejected',
-      burn && burn.status === 'proposed' && burn.evidence === 'master sheet HLU-0003' && burn.suggested_category === 'Brokers' && burn.owner_team === 'upside' && burn.record_id === 'HLU-0003' && burn.research_notes === 'Dana Fox — Partner'
+    ok('A3 Burnham Benefits -> target (proposed, evidence, no category - the sheet has none, Upside, people as names/titles); Invest with Roots NOT imported; Nope Inc stays rejected',
+      burn && burn.status === 'proposed' && burn.evidence === 'master sheet HLU-0003' && burn.suggested_category === null && burn.owner_team === 'upside' && burn.record_id === 'HLU-0003' && burn.research_notes === 'Dana Fox — Partner'
       && !targets.some(t => /roots/i.test(t.name)) && targets.find(t => t.name === 'Nope Inc').status === 'rejected' && !targets.find(t => t.name === 'Nope Inc').record_id, JSON.stringify(targets.map(t => [t.name, t.status])));
     const opps = ins(await svc.from('sales_opportunities').select('*').eq('business_id', T));
     const o = n => opps.find(x => x.organization === n);
-    ok('A3 Marriott: stays responded (no parking a live deal), Upside + Brad, tier 1, cohort, apollo_account_id from the sequenced match',
-      o('Marriott International').stage === 'responded' && o('Marriott International').owner_team === 'upside' && o('Marriott International').tier === '1' && o('Marriott International').cohort === 'Hospitality' && o('Marriott International').apollo_account_id === 'ap-mar-zz');
+    ok('A3 Marriott: stays responded (no parking a live deal), Upside + co-owner Brad Cillian, tier 1, cohort, apollo_account_id from the sequenced match',
+      o('Marriott International').stage === 'responded' && o('Marriott International').owner_team === 'upside' && o('Marriott International').co_owner_name === 'Brad Cillian' && o('Marriott International').tier === '1' && o('Marriott International').cohort === 'Hospitality' && o('Marriott International').apollo_account_id === 'ap-mar-zz');
     const fit = o('24 Hour Fitness');
-    ok('A3 24 Hour Fitness inserted: meeting, owner Jack, HomeLover + Brad, tier 2, decision maker line, next action, notes block, source csv',
-      fit && fit.stage === 'meeting' && fit.owner === 'Jack' && fit.owner_team === 'homelover' && fit.co_owner_name === 'Brad' && fit.tier === '2' && fit.decision_makers === 'Jill Vaslow — Managing VP Benefits (champion)'
+    ok('A3 24 Hour Fitness inserted: meeting, owner Jack, HomeLover, no co-owner, tier 2, decision maker line, next action, notes block, source csv',
+      fit && fit.stage === 'meeting' && fit.owner === 'Jack' && fit.owner_team === 'homelover' && fit.co_owner_name === null && fit.tier === '2' && fit.decision_makers === 'Jill Vaslow — Managing VP Benefits'
       && fit.next_action === 'Joint note' && fit.next_action_date === '2026-10-22' && fit.notes === '— master sheet HLU-0006 —\nPartner path: Direct' && fit.source === 'csv' && fit.record_id === 'HLU-0006', JSON.stringify(fit));
-    ok('A3 Teachers Guild = membership, on_hold; Health Plan X = employer with "Account type: Health plan"; Meeting Co stays meeting (backwards refused); Contacted Co parked on_hold',
+    ok('A3 Teachers Guild = membership, on_hold; Meeting Co\'s 2-person cell not imported; Health Plan X = employer with "Account type: Health plan"; Meeting Co stays meeting (backwards refused); Contacted Co parked on_hold',
       o('Teachers Guild')?.org_type === 'membership' && o('Teachers Guild')?.stage === 'on_hold' && /Account type: Health plan/.test(o('Health Plan X')?.notes || '') && o('Health Plan X')?.stage === 'target'
-      && o('Meeting Co').stage === 'meeting' && o('Meeting Co').tier === '4' && o('Contacted Co').stage === 'on_hold');
+      && o('Meeting Co').stage === 'meeting' && o('Meeting Co').tier === '4' && !o('Meeting Co').decision_makers && o('Contacted Co').stage === 'on_hold');
     const oev = ins(await svc.from('sales_opportunity_events').select('opportunity_id, event_type, from_stage, to_stage').eq('business_id', T).eq('event_type', 'stage_change'));
     ok('A3 the trigger logged exactly one employer stage change (Contacted Co contacted -> on_hold)', oev.length === 1 && oev[0].from_stage === 'contacted' && oev[0].to_stage === 'on_hold', JSON.stringify(oev));
     ok('A3 no partner_domains rows written', (await counts(T, ['partner_domains'])).partner_domains === domainsBefore);
@@ -234,7 +250,7 @@ async function openEmployers(page, compact) {
       await openEmployers(page, compact);
       const body = await page.locator('section[aria-labelledby="h-employers"]').innerText();
       ok(`B ${width}: Employers lists the 6 employer/membership rows with stage, owner pill and tier`, /6 employers/.test(body) && ['24 Hour Fitness', 'Marriott International', 'Teachers Guild', 'Health Plan X', 'Meeting Co', 'Contacted Co'].every(n => body.includes(n))
-        && /Upside · Brad/.test(body) && /HomeLover · Brad/.test(body) && /T1/.test(body) && /Add opportunity/.test(body), body.slice(0, 300));
+        && /Upside · Brad Cillian/.test(body) && /HomeLover/.test(body) && /T1/.test(body) && /Add opportunity/.test(body), body.slice(0, 300));
       ok(`B ${width}: stage cells read Meeting / On hold / Responded`, await page.locator('tbody select').evaluateAll(s => s.map(x => x.selectedOptions[0]?.textContent)).then(v => ['Meeting', 'On hold', 'Responded'].every(x => v.includes(x))));
       await page.screenshot({ path: `${OUT}/mpi2-${width}-employers.png`, fullPage: width === 390 });
       ok(`B ${width}: no sideways page scroll`, await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));

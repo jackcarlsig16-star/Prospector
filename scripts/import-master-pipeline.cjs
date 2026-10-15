@@ -5,13 +5,13 @@ const fs = require('fs');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 
-// master-pipeline-import-v1 - the master sheet's two CSVs into one workspace.
-//   node scripts/import-master-pipeline.cjs <businessId> <accounts.csv> <contacts.csv> [--apply] [--accept-possible <record_id> ...] [--json <file>]
+// master-pipeline-import-v1 - the master sheet's own CSV export into one workspace.
+//   node scripts/import-master-pipeline.cjs <businessId> <master-pipeline.csv> [--apply] [--accept-possible <record_id> ...] [--json <file>]
 // A DRY RUN unless --apply: reads the workspace (one pass, ~9 queries),
 // prints what would change and writes nothing. --apply writes exactly that
 // plan. 0 Apollo / 0 Claude. Reports name record_id + account name only.
 
-const USAGE = 'usage: import-master-pipeline.cjs <businessId> <accounts.csv> <contacts.csv> [--apply] [--accept-possible <record_id> ...] [--json <file>]';
+const USAGE = 'usage: import-master-pipeline.cjs <businessId> <master-pipeline.csv> [--apply] [--accept-possible <record_id> ...] [--json <file>]';
 
 async function main() {
   const args = process.argv.slice(2);
@@ -23,12 +23,12 @@ async function main() {
     else if (args[i] === '--json') flags.json = args[++i];
     else pos.push(args[i]);
   }
-  const [businessId, accountsFile, contactsFile] = pos;
-  if (!businessId || !accountsFile || !contactsFile) { console.error(USAGE); process.exit(2); }
+  const [businessId, file] = pos;
+  if (!businessId || !file) { console.error(USAGE); process.exit(2); }
 
   const { readInput, loadState, plan, applyPlan, ImportRefused } = await import(path.join(__dirname, '../api/sales/masterImport.js'));
   let input;
-  try { input = readInput(fs.readFileSync(accountsFile, 'utf8'), fs.readFileSync(contactsFile, 'utf8')); }
+  try { input = readInput(fs.readFileSync(file, 'utf8')); }
   catch (e) { if (e instanceof ImportRefused) { console.error(`REFUSED: ${e.message}`); process.exit(1); } throw e; }
 
   const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
@@ -42,6 +42,7 @@ async function main() {
   const r = result.report;
   console.log('\nRoutes:', JSON.stringify(r.counts));
   console.log('Contacts:', JSON.stringify(r.contacts), '· to-dos:', r.todos);
+  console.log(`\nIgnored columns (${input.ignored.length}): ${input.ignored.join(', ') || 'none'}`);
   const list = (title, rows, fmt) => { console.log(`\n${title} (${rows.length})`); for (const x of rows) console.log(`  ${x.record_id}  ${x.name}  ${fmt(x)}`); };
   list('Partner stages - sheet vs Prospector, never applied', r.partner_stages, x => `sheet ${x.dir}: ${x.sheet} (Prospector ${x.prospector})`);
   list('Employer stage moves', r.opp_stage_moves, x => `${x.from} -> ${x.to}`);
@@ -51,6 +52,7 @@ async function main() {
   list('Kind mismatches - stays the partner', r.kind_mismatches, x => `sheet ${x.sheet_kind}, Prospector ${x.prospector}`);
   list('Skipped', r.skipped, x => x.reason);
   list('Invalid rows', r.invalid, x => x.reason);
+  list('Primary Contact names 2+ people - not imported, not split', input.multiPerson, () => '');
   if (flags.json) fs.writeFileSync(flags.json, JSON.stringify(result, null, 2));
 
   if (!flags.apply) { console.log('\nNothing written (dry run). Re-run with --apply to write.'); return; }

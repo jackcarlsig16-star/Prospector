@@ -19,12 +19,37 @@ import { laDateString } from './laDate.js';
 // ownership goes through the Assign signal, everything else is a plain
 // fill-empty update. No partner_domains rows, no Apollo, no Claude.
 
-export const ACCOUNT_HEADERS = ['record_id', 'name', 'kind', 'category', 'segment', 'tier', 'funnel_stage', 'owner_team',
-  'owner_name', 'co_owner_name', 'next_step', 'next_step_due', 'company_domain', 'partner_path', 'route_in',
-  'broker_on_account', 'source', 'flags', 'notes'];
-export const CONTACT_HEADERS = ['record_id', 'name', 'title', 'role'];
+// The sheet's own CSV export, read through this one map: sheet header ->
+// field (+ parser). Headers match case/space-insensitively. A header not here
+// is ignored and listed in the dry run, so a new sheet column = one entry.
+// Record ID and Account are required; every other header is optional.
+const stripNumber = v => v.replace(/^\d+\s*-\s*/, '');
+export const HEADER_MAP = {
+  'Record ID': { field: 'record_id', required: true },
+  'Account': { field: 'name', required: true },
+  'Account Type': { field: 'kind', parse: v => v.toLowerCase().replace(/\s+/g, '_') },
+  'Segment': { field: 'segment' },
+  'Priority Tier': { field: 'tier', parse: v => v.match(/^(\d)\b/)?.[1] ?? v },
+  'Funnel Stage': { field: 'funnel_stage', parse: v => (/^hold\b/i.test(stripNumber(v)) ? 'Hold' : stripNumber(v)) },
+  'Owner Team': { field: 'owner_team', parse: v => v.toLowerCase() },
+  'Owner': { field: 'owner_name' },
+  'Next Step': { field: 'next_step' },
+  'Next Step Due': { field: 'next_step_due' },
+  'Primary Email Domain': { field: 'company_domain', parse: v => v.split(/[\s,;]+/)[0] },
+  'Primary Contact': { field: 'contact_name' },
+  'Primary Title': { field: 'contact_title' },
+  'Partner Path': { field: 'partner_path' },
+  'Route In': { field: 'route_in' },
+  'Broker on Account': { field: 'broker_on_account' },
+  'Source': { field: 'source' },
+  'Flags': { field: 'flags' },
+  'Notes': { field: 'notes' },
+};
+const headerKey = h => h.toLowerCase().replace(/\s+/g, '');
+const MAP_BY_KEY = new Map(Object.entries(HEADER_MAP).map(([h, m]) => [headerKey(h), m]));
 const KINDS = ['partner', 'employer', 'association', 'health_plan', 'other'];
-const ROLES = ['champion', 'blocker', 'referrer', 'counterpart', 'other'];
+// A Primary Contact cell naming 2+ people is reported, not split.
+const MULTI_PERSON = /;|\/|,|&|\band\b/i;
 const TIERS = ['1', '2', '3', '4'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -40,7 +65,7 @@ export const SHEET_STAGES = {
   'Nurture': [null, 'nurture'],
   'Hold': ['paused', 'on_hold'],
 };
-const NOTE_FIELDS = [['partner_path', 'Partner path'], ['route_in', 'Route in'], ['broker_on_account', 'Broker on account'],
+const NOTE_FIELDS = [['segment', 'Segment'], ['partner_path', 'Partner path'], ['route_in', 'Route in'], ['broker_on_account', 'Broker on account'],
   ['source', 'Source'], ['flags', 'Flags'], ['notes', 'Notes']];
 
 export class ImportRefused extends Error {}
@@ -49,18 +74,20 @@ export class ImportRefused extends Error {}
 // and the message names the record, never the value.
 const PHONE = /\+?\d[\d\s().-]{7,}\d/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
-function readFile(text, headers, label) {
-  const { headers: got, rows } = parseCsv(String(text || '').replace(/^﻿/, '').replace(/\r/g, ''));
-  if (got.join(',') !== headers.join(',')) throw new ImportRefused(`${label}: headers must be exactly ${headers.join(',')}`);
+function readSheet(text) {
+  const { headers, rows } = parseCsv(String(text || '').replace(/^\uFEFF/, ''));
+  const missing = Object.entries(HEADER_MAP).filter(([h, m]) => m.required && !headers.some(x => headerKey(x) === headerKey(h))).map(([h]) => h);
+  if (missing.length) throw new ImportRefused(`missing required column${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}`);
   rows.forEach((r, i) => {
     for (const [k, v] of Object.entries(r)) {
       const phone = v.match(PHONE);
       if (v.includes('@') || (phone && !ISO_DATE.test(phone[0]))) {
-        throw new ImportRefused(`${label} line ${i + 2} (${r.record_id || 'no record_id'}, ${k}): contains ${v.includes('@') ? 'an "@"' : 'a phone number'} - remove it and re-export`);
+        const id = r[headers.find(x => headerKey(x) === 'recordid')];
+        throw new ImportRefused(`row ${i + 1} (${id || 'no Record ID'}, ${k}): contains ${v.includes('@') ? 'an "@"' : 'a phone number'} - remove it and re-export`);
       }
     }
   });
-  return rows;
+  return { headers, rows, ignored: headers.filter(h => h && !MAP_BY_KEY.has(headerKey(h))) };
 }
 
 const one = v => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : '');
@@ -75,41 +102,46 @@ export function companyDomain(d) {
 const words = s => new Set(normName(s).split(' ').filter(w => w.length >= 3 && w !== 'and' && w !== 'the'));
 const shareWord = (a, b) => { const wb = words(b); return [...words(a)].some(w => wb.has(w)); };
 
-export function readInput(accountsText, contactsText) {
-  const accounts = readFile(accountsText, ACCOUNT_HEADERS, 'accounts.csv');
-  const contacts = readFile(contactsText, CONTACT_HEADERS, 'contacts.csv');
+export function readInput(text) {
+  const { rows, ignored } = readSheet(text);
   const invalid = [];
+  const multiPerson = [];
   const seen = new Set();
   const valid = [];
-  for (const raw of accounts) {
-    const r = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, one(v)]));
+  const people = new Map();
+  for (const raw of rows) {
+    const r = {};
+    for (const [h, v] of Object.entries(raw)) {
+      const m = MAP_BY_KEY.get(headerKey(h));
+      if (!m) continue;
+      const val = one(v);
+      r[m.field] = val && m.parse ? m.parse(val) : val;
+    }
+    for (const { field } of Object.values(HEADER_MAP)) if (r[field] == null) r[field] = '';
+    r.co_owner_name = r.owner_name && !/^(jack|cyrus)$/i.test(r.owner_name) ? r.owner_name : '';
     const bad = [];
-    if (!r.record_id) bad.push('record_id is empty');
-    else if (seen.has(r.record_id)) bad.push('record_id appears twice');
-    if (!r.name) bad.push('name is empty');
-    if (!KINDS.includes(r.kind)) bad.push(`kind "${r.kind}"`);
-    if (r.tier && !TIERS.includes(r.tier)) bad.push(`tier "${r.tier}"`);
-    if (r.funnel_stage && !(r.funnel_stage in SHEET_STAGES)) bad.push(`funnel_stage "${r.funnel_stage}"`);
-    if (r.owner_team && !OWNER_TEAMS.includes(r.owner_team)) bad.push(`owner_team "${r.owner_team}"`);
-    if (r.next_step_due && !DATE_RE.test(r.next_step_due)) bad.push(`next_step_due "${r.next_step_due}"`);
-    if (r.co_owner_name.length > 120) bad.push('co_owner_name over 120 characters');
+    if (!r.record_id) bad.push('Record ID is empty');
+    else if (seen.has(r.record_id)) bad.push('Record ID appears twice');
+    if (!r.name) bad.push('Account is empty');
+    if (!KINDS.includes(r.kind)) bad.push(`Account Type "${r.kind}"`);
+    if (r.tier && !TIERS.includes(r.tier)) bad.push(`Priority Tier "${r.tier}"`);
+    if (r.funnel_stage && !(r.funnel_stage in SHEET_STAGES)) bad.push(`Funnel Stage "${r.funnel_stage}"`);
+    if (r.owner_team && !OWNER_TEAMS.includes(r.owner_team)) bad.push(`Owner Team "${r.owner_team}"`);
+    if (r.next_step_due && !DATE_RE.test(r.next_step_due)) bad.push(`Next Step Due "${r.next_step_due}"`);
+    if (r.co_owner_name.length > 120) bad.push('Owner over 120 characters');
     if (r.company_domain) {
       const d = normalizeDomain(r.company_domain);
-      if (!d || isConsumerDomain(d)) bad.push(`company_domain "${r.company_domain}"`);
+      if (!d || isConsumerDomain(d)) bad.push(`Primary Email Domain "${r.company_domain}"`);
       else r.company_domain = d;
     }
     seen.add(r.record_id);
-    if (bad.length) invalid.push({ record_id: r.record_id, name: r.name, reason: bad.join('; ') });
-    else valid.push(r);
+    if (bad.length) { invalid.push({ record_id: r.record_id, name: r.name, reason: bad.join('; ') }); continue; }
+    valid.push(r);
+    if (!r.contact_name) continue;
+    if (MULTI_PERSON.test(r.contact_name)) multiPerson.push({ record_id: r.record_id, name: r.name });
+    else people.set(r.record_id, [{ name: r.contact_name, title: r.contact_title || null, role: null }]);
   }
-  const people = new Map();
-  for (const raw of contacts) {
-    const c = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, one(v)]));
-    if (!c.record_id || !c.name) continue;
-    if (!people.has(c.record_id)) people.set(c.record_id, []);
-    people.get(c.record_id).push({ name: c.name, title: c.title || null, role: ROLES.includes(c.role) ? c.role : null });
-  }
-  return { accounts: valid, contacts: people, invalid };
+  return { accounts: valid, contacts: people, invalid, ignored, multiPerson };
 }
 
 export async function loadState(supabase, businessId) {
@@ -208,8 +240,8 @@ function possibleFor(r, state) {
   return s ? `sequenced ${s.name}` : null;
 }
 
-function noteLines(r, extra = []) {
-  return [...extra, ...NOTE_FIELDS.filter(([k]) => r[k]).map(([k, label]) => `${label}: ${r[k]}`)];
+function noteLines(r, extra = [], { segment = true } = {}) {
+  return [...extra, ...NOTE_FIELDS.filter(([k]) => r[k] && (segment || k !== 'segment')).map(([k, label]) => `${label}: ${r[k]}`)];
 }
 
 export function plan(state, input, { acceptPossible = [], today = laDateString() } = {}) {
@@ -324,7 +356,7 @@ export function plan(state, input, { acceptPossible = [], today = laDateString()
         if (refusal) report.opp_stage_refused.push({ record_id: r.record_id, name: r.name, prospector: o.stage, sheet: stage, reason: refusal });
         else { patch.stage = stage; report.opp_stage_moves.push({ record_id: r.record_id, name: r.name, from: o.stage, to: stage }); }
       }
-      const notes = withBlock(o.notes, r.record_id, noteLines(r, extra));
+      const notes = withBlock(o.notes, r.record_id, noteLines(r, extra, { segment: false }));
       if ((notes || null) !== (o.notes || null)) patch.notes = notes;
       const dm = mergeLines(o.decision_makers, dmLines);
       if (dm) { patch.decision_makers = dm; report.contacts.opp_lines += dmLines.filter(l => !(o.decision_makers || '').toLowerCase().includes(personName(l))).length; }
@@ -341,7 +373,7 @@ export function plan(state, input, { acceptPossible = [], today = laDateString()
       ...(r.owner_team ? { owner_team: r.owner_team } : {}), ...(r.co_owner_name ? { co_owner_name: r.co_owner_name } : {}),
       ...(dmLines.length ? { decision_makers: dmLines.join('\n') } : {}),
     };
-    const notes = withBlock(null, r.record_id, noteLines(r, extra));
+    const notes = withBlock(null, r.record_id, noteLines(r, extra, { segment: false }));
     if (notes) fields.notes = notes;
     const { payload, error } = validateFields(fields);
     if (error) { skip(r, error); continue; }
