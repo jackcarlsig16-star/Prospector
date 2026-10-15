@@ -40,7 +40,7 @@ test('KPI rows link to Overview / Huddle; manual rows stay plain', () => {
   fireEvent.click(screen.getByTitle('Open the list behind Target organizations'));
   expect(onOpen).toHaveBeenLastCalledWith('view:companies');
   fireEvent.click(screen.getByTitle('Open the list behind Qualified opportunities'));
-  expect(onOpen).toHaveBeenLastCalledWith('view:employers');
+  expect(onOpen).toHaveBeenLastCalledWith('view:pipeline');
   expect(screen.queryByTitle('Open the list behind Meetings held')).toBeNull();
 });
 

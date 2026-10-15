@@ -1,6 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import PipelineTable from './PipelineTable';
-import { isEmployer } from './goals/EmployersView';
 
 const opps = [
   { id: 'a', organization: 'Marriott International', org_type: 'employer', stage: 'nurture', tier: '1', owner_team: 'upside', co_owner_name: 'Brad', cohort: 'Hospitality', probability: null },
@@ -27,8 +26,4 @@ test('a member keeps the editing controls and the stage list offers the side lan
   expect([...select.options].map(o => o.textContent)).toEqual(expect.arrayContaining(['Nurture', 'On hold']));
   fireEvent.click(screen.getByText('24 Hour Fitness'));
   expect(screen.getByText('Edit opportunity')).toBeTruthy();
-});
-
-test('Employers lists employer and membership rows only', () => {
-  expect([{ org_type: 'employer' }, { org_type: 'membership' }, { org_type: 'channel_partner' }].filter(isEmployer)).toHaveLength(2);
 });

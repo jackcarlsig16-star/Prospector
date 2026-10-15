@@ -44,7 +44,19 @@ export function boardStage(type, row) {
   return { stage: 'sequenced', stage_label: 'Sequenced in Apollo', color: 'gray' };
 }
 
-const TIER_RANK = { 1: 1, 2: 2, 3: 3, 4: 4, active: 0 };
+// filters: { type, ownerTeam ('unset' = none), owner, tier, color, q } - each optional.
+export function matchesBoardFilters(r, filters = {}) {
+  const q = (filters.q || '').trim().toLowerCase();
+  const owner = (filters.owner || '').trim().toLowerCase();
+  return (!filters.type || r.type === filters.type)
+    && (!filters.ownerTeam || (filters.ownerTeam === 'unset' ? !r.owner_team : r.owner_team === filters.ownerTeam))
+    && (!owner || (r.owner || '').toLowerCase() === owner)
+    && (!filters.tier || r.tier === filters.tier)
+    && (!filters.color || r.color === filters.color)
+    && (!q || r.name.toLowerCase().includes(q));
+}
+
+const TIER_RANK ={ 1: 1, 2: 2, 3: 3, 4: 4, active: 0 };
 // Color order, then tier (blank last), then next-step due (soonest, blank last), then name.
 export function compareBoardRows(a, b) {
   return BOARD_COLOR_IDS.indexOf(a.color) - BOARD_COLOR_IDS.indexOf(b.color)

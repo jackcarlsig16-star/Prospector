@@ -61,6 +61,8 @@ export const goalsApi = {
   updateStep: (id, stepId, body) => call(id, `/steps/${stepId}`, { method: 'PATCH', body }).then(d => d.step),
 
   partners: id => call(id, '/land?goal_type=partnership').then(d => d.goals),
+  // pipeline-board-v1 - one row per company, color + stage computed server-side.
+  pipelineBoard: (id, includeApollo) => call(id, `/pipeline-board?${q({ include_apollo: includeApollo ? 'true' : null })}`).then(d => d.rows),
   hotPartners: id => call(id, '/land?goal_type=partnership&hot=true').then(d => d.goals),
   createPartner: (id, body) => call(id, '/land', { method: 'POST', body: { goal_type: 'partnership', ...body } }).then(d => d.goal),
   updatePartner: (id, goalId, body) => call(id, `/land/${goalId}`, { method: 'PATCH', body }).then(d => d.goal),

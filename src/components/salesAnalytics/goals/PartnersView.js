@@ -89,12 +89,14 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
   const [domainBump, setDomainBump] = useState(0);
   const [domainSummary, setDomainSummary] = useState(null);
   // A Goals / Overview number opening Partners filtered ({ stage?, tiers?,
-  // owner?, ids?, label? }, a new object each time). {} clears the filters.
+  // owner?, ids?, label?, open? }, a new object each time; open = the partner
+  // whose drop-down opens). {} clears the filters.
   useEffect(() => {
     if (!focusFilter) return;
     setStage(focusFilter.stage || null);
     setFilters({ ...NO_FILTERS, tiers: focusFilter.tiers || [], owner: focusFilter.owner || null, ids: focusFilter.ids || null, idsLabel: focusFilter.label || '' });
     setMode('workflow'); writeMode('workflow');
+    if (focusFilter.open) setFocus({ id: focusFilter.open });
   }, [focusFilter]);
   const [historyBump, setHistoryBump] = useState(0);
   // GoalsTab passes a fresh function each render; the drop-down's history

@@ -12,7 +12,7 @@ import ScorecardTable from './ScorecardTable';
 import TodoList, { todoStatus } from './TodoList';
 import PartnersView from './PartnersView';
 import CompaniesView from './CompaniesView';
-import EmployersView from './EmployersView';
+import PipelineView from './PipelineView';
 import ReportView from './ReportView';
 import GoalHero from './GoalHero';
 import PlanWeekDrawer from './PlanWeekDrawer';
@@ -32,7 +32,7 @@ import {
 //   prospector_goals_owner - last person filter, as a first-name slug
 const VIEW_KEY = 'prospector_goals_view';
 const OWNER_KEY = 'prospector_goals_owner';
-const VIEWS = ['report', 'week', 'partners', 'companies', 'employers'];
+const VIEWS = ['report', 'week', 'partners', 'companies', 'pipeline'];
 // Earliest week the missing-headcount list reads from (a Monday, before any
 // synced data) - the list covers every week.
 const ALL_WEEKS_FROM = '2020-01-06';
@@ -67,7 +67,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
   const [allCompanies, setAllCompanies] = useState(null);
   const [missingOpen, setMissingOpen] = useState(false);
   const [heroKey, setHeroKey] = useState(0);
-  const [partnerFocus, setPartnerFocus] = useState(null); // { stage?, tiers?, owner? } - a link opening Partners filtered
+  const [partnerFocus, setPartnerFocus] = useState(null); // { stage?, tiers?, owner?, ids?, open? } - a link opening Partners filtered
   const [planOpen, setPlanOpen] = useState(false);
   const [plans, setPlans] = useState(null);
   const [toast, setToast] = useState('');
@@ -181,7 +181,7 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
     { id: 'week', name: 'This week', meta: `${todoDone}/${todoLive} to-dos` },
     { id: 'partners', name: 'Partners', meta: `${myPartners.length} · ${myPartners.filter(p => p.hot).length} hot` },
     { id: 'companies', name: 'Companies', meta: `${myCompanies.length} sequenced` },
-    { id: 'employers', name: 'Employers', meta: 'pipeline' },
+    { id: 'pipeline', name: 'Pipeline', meta: 'all companies' },
   ];
 
   // Rail summaries
@@ -226,8 +226,8 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
       chip('flags handed off', hw.flags_handed_off, 'App', 'huddle:flags'), chip('flags completed', hw.flags_completed, 'App', 'huddle:flags')],
     // Meetings are typed in - there's no list behind them, so no link.
     s5: [chip('meetings set this week', kpi.meetings_set?.this_week, 'Manual'), chip('meetings held', kpi.meetings_held?.this_week, 'Manual')],
-    s6: [chip('qualified opportunities', kpi.qualified_opps?.this_week, 'Pipeline', 'view:employers'), chip('covered lives in pipeline', kpi.covered_lives_pipeline?.this_week, 'Pipeline', 'view:employers')],
-    s12: [chip('expected launches, 90 days', kpi.launches_90d?.this_week, 'Pipeline', 'view:employers')],
+    s6: [chip('qualified opportunities', kpi.qualified_opps?.this_week, 'Pipeline', 'view:pipeline'), chip('covered lives in pipeline', kpi.covered_lives_pipeline?.this_week, 'Pipeline', 'view:pipeline')],
+    s12: [chip('expected launches, 90 days', kpi.launches_90d?.this_week, 'Pipeline', 'view:pipeline')],
     s13: [chip('positive replies this week', kpi.positive_responses?.this_week, 'Apollo', 'huddle:reply')],
   };
   for (const k of Object.keys(autoChips)) autoChips[k] = autoChips[k].filter(Boolean);
@@ -419,7 +419,10 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
               onCreateCadence={async body => { const c = await goalsApi.createCadence(businessId, body); setCadences(cs => [...cs, c]); }}
               onDeleteCadence={async cadenceId => { await goalsApi.deleteCadence(businessId, cadenceId); setCadences(cs => cs.filter(c => c.id !== cadenceId)); }} />
           )}
-          {view === 'employers' && <EmployersView businessId={businessId} canEdit={canEdit} />}
+          {view === 'pipeline' && (
+            <PipelineView businessId={businessId} canEdit={canEdit}
+              onOpenPartner={(id, name) => go({ partners: { ids: [id], open: id, label: name } })} onOpenCompanies={w => { setOwnerSlug('team'); go({ companies: w }); }} />
+          )}
         </main>
         {!compact && <div style={{ flex: '0 0 300px', minWidth: 0 }}>{rail}</div>}
       </div>

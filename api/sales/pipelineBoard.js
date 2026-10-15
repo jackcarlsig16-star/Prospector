@@ -2,7 +2,7 @@ import { selectAllPages } from '../lib/selectAllPages.js';
 import { getSupabase } from './goalsShared.js';
 import { orgKey } from './opportunityMatch.js';
 import { OWNER_TEAMS } from '../../src/constants/ownership.js';
-import { BOARD_COLOR_IDS, BOARD_TYPES, boardStage, compareBoardRows } from '../../src/constants/pipelineBoard.js';
+import { BOARD_COLOR_IDS, BOARD_TYPES, boardStage, compareBoardRows, matchesBoardFilters } from '../../src/constants/pipelineBoard.js';
 
 // pipeline-board-v1 - GET goals/pipeline-board: one row per company across
 // partners (sales_goals), employers (sales_opportunities), targets
@@ -54,15 +54,7 @@ export function buildBoard({ partners, opportunities, targets, sequenced, member
       });
     }
   }
-  const q = (filters.q || '').trim().toLowerCase();
-  const owner = (filters.owner || '').trim().toLowerCase();
-  return rows.filter(r => (!filters.type || r.type === filters.type)
-    && (!filters.ownerTeam || (filters.ownerTeam === 'unset' ? !r.owner_team : r.owner_team === filters.ownerTeam))
-    && (!owner || (r.owner || '').toLowerCase() === owner)
-    && (!filters.tier || r.tier === filters.tier)
-    && (!filters.color || r.color === filters.color)
-    && (!q || r.name.toLowerCase().includes(q)))
-    .sort(compareBoardRows);
+  return rows.filter(r => matchesBoardFilters(r, filters)).sort(compareBoardRows);
 }
 
 export function parseBoardFilters(query) {

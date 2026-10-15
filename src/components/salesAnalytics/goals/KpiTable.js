@@ -9,8 +9,8 @@ const MANUAL = ['meetings_held', 'meetings_set'];
 // none - they're typed in.
 const DRILL = {
   target_orgs: 'view:companies', dm_contacted: 'overview:week_strip', positive_responses: 'huddle:reply',
-  qualified_opps: 'view:employers', covered_lives_pipeline: 'view:employers', proposals_outstanding: 'view:employers',
-  verbal_commitments: 'view:employers', contracts_signed: 'view:employers', launches_90d: 'view:employers',
+  qualified_opps: 'view:pipeline', covered_lives_pipeline: 'view:pipeline', proposals_outstanding: 'view:pipeline',
+  verbal_commitments: 'view:pipeline', contracts_signed: 'view:pipeline', launches_90d: 'view:pipeline',
 };
 
 function change(last, now) {
