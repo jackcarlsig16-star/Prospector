@@ -58,7 +58,7 @@ test('header map: case/space-insensitive, unknown + ignored headers listed, opti
   const adp = full.accounts.find(a => a.record_id === 'HLU-0002');
   assert.deepEqual([adp.company_domain, adp.owner_team, adp.funnel_stage], ['adp.com', 'both', 'Engaged'], 'first domain only, owner team lowercased');
   const burnham = full.accounts.find(a => a.record_id === 'HLU-0003');
-  assert.equal(burnham.co_owner_name, 'Brad Cillian', 'an Owner who is not Jack/Cyrus is the co-owner');
+  assert.equal(burnham.owner_name, 'Brad Cillian', 'Owner read as-is; plan() makes a non-member the co-owner');
   assert.deepEqual(full.multiPerson, [{ record_id: 'HLU-0003', name: 'Burnham Benefits' }]);
   assert.ok(!full.contacts.has('HLU-0003'), 'a multi-person cell is reported, not split or imported');
 });
@@ -81,7 +81,7 @@ test('routes: partner update / employer-that-is-a-partner / target / possible / 
   assert.ok(report.differences.some(d => d.record_id === 'HLU-0001' && d.field === 'owner'));
   assert.equal(aon.patch.notes, 'Our own note\n\n— master sheet HLU-0001 —\nNotes: Joint account');
   assert.ok(!('pipeline_status' in aon.patch) && !('last_touch_at' in aon.patch), 'a partner is never stage-moved or touched');
-  assert.deepEqual(report.partner_stages.find(s => s.record_id === 'HLU-0001'), { record_id: 'HLU-0001', name: 'Aon', prospector: 'meeting_set', sheet: 'Contacted', dir: 'behind' });
+  assert.deepEqual(report.partner_stages.find(s => s.record_id === 'HLU-0001'), { record_id: 'HLU-0001', name: 'Aon', goal_id: 'g-aon', prospector: 'meeting_set', to: 'first_email_sent', sheet: 'Contacted', dir: 'behind' });
   assert.deepEqual(aon.contacts, [{ op: 'update', id: 'c1', name: 'Pat Lee', patch: { title: 'SVP' } }]);
   assert.deepEqual(aon.todo, { text: 'Send deck', due_date: '2026-10-20', owner_user_id: 'u-jack' });
 

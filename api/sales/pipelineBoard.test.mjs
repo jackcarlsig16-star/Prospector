@@ -168,7 +168,7 @@ test('export sheet: board columns + Status, row fill = row color, Top first, Apo
   const rows = buildBoard(s, { includeApollo: true });
   assert.ok(rows.some(r => r.type === 'apollo'));
   const ws = await openSheet(await buildSheet(rows));
-  assert.deepEqual(ws.getRow(1).values.slice(1), ['Top', 'Account', 'Type', 'Status', 'Stage', 'Owner Team', 'Owner', 'Priority Tier', 'Next Step', 'Next Step Due', 'Last Touch', 'Record ID']);
+  assert.deepEqual(ws.getRow(1).values.slice(1), ['Top', 'Account', 'Type', 'Status', 'Stage', 'Owner Team', 'Owner', 'Priority Tier', 'Next Step', 'Next Step Due', 'Last Touch', 'Record ID', 'Prospector ID']);
   const out = [];
   ws.eachRow((row, n) => { if (n > 1) out.push(row); });
   const board = rows.filter(r => r.type !== 'apollo');
@@ -180,7 +180,7 @@ test('export sheet: board columns + Status, row fill = row color, Top first, Apo
     assert.equal(row.getCell(4).value, { green: 'Live / strategic', yellow: 'Meeting', blue: 'Talking', gray: 'In outreach', light: 'Not started', faded: 'Parked' }[b.color]);
   }
   const g = out.find(r => r.getCell(2).value === 'Gallagher');
-  assert.deepEqual(g.values.slice(1), ['★', 'Gallagher', 'Partner', 'Meeting', 'Meeting set', 'HomeLover', 'Jack', '1', 'Send deck', '', '2026-10-10', 'HLU-0001']);
+  assert.deepEqual(g.values.slice(1), ['★', 'Gallagher', 'Partner', 'Meeting', 'Meeting set', 'HomeLover', 'Jack', '1', 'Send deck', '', '2026-10-10', 'HLU-0001', `partner:${s.partners[0].id}`]);
   assert.equal(new Set(Object.values(SHEET_FILLS)).size, 6, 'six distinct fills');
 });
 

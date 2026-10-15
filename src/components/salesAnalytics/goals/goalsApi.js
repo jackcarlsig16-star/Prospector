@@ -65,6 +65,9 @@ export const goalsApi = {
   pipelineBoard: (id, includeApollo) => call(id, `/pipeline-board?${q({ include_apollo: includeApollo ? 'true' : null })}`).then(d => d.rows),
   // The joint sheet (.xlsx) for the board's current filters; fetched as a blob, not JSON.
   pipelineBoardExportUrl: (id, f) => `/api/sales/${id}/goals/pipeline-board/export?${q({ type: f.type, owner_team: f.ownerTeam, owner: f.owner, tier: f.tier, color: f.color, q: f.q })}`,
+  // pipeline-board-v1 Stage 4 - file = { name, data: base64 }. Preview writes nothing; apply = [{ key, sig }] from the preview.
+  sheetUpdatePreview: (id, file) => call(id, '/pipeline-board/update', { method: 'POST', body: { file } }),
+  sheetUpdateApply: (id, file, apply) => call(id, '/pipeline-board/update', { method: 'POST', body: { file, apply } }),
   hotPartners: id => call(id, '/land?goal_type=partnership&hot=true').then(d => d.goals),
   createPartner: (id, body) => call(id, '/land', { method: 'POST', body: { goal_type: 'partnership', ...body } }).then(d => d.goal),
   updatePartner: (id, goalId, body) => call(id, `/land/${goalId}`, { method: 'PATCH', body }).then(d => d.goal),

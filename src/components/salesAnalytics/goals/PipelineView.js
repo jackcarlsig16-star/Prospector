@@ -4,6 +4,7 @@ import { goalsApi } from './goalsApi';
 import { fetchOpportunities, createOpportunity, updateOpportunity, archiveOpportunity } from '../pipelineApi';
 import OpportunityPanel from '../OpportunityPanel';
 import OwnerPill from '../OwnerPill';
+import SheetUpdateDrawer from './SheetUpdateDrawer';
 import { openTasks } from '../tasks/LinkedTasks';
 import { laWeekStart } from '../periods';
 import { cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle, ErrorNote } from './goalsUi';
@@ -35,6 +36,7 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
   const [panelSaving, setPanelSaving] = useState(false);
   const [panelError, setPanelError] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
   const load = useCallback(() => goalsApi.pipelineBoard(businessId, includeApollo)
     .then(r => { setRows(r); setError(''); }).catch(e => setError(e.message)), [businessId, includeApollo]);
@@ -99,6 +101,8 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button type="button" className="ui-btn ui-btn--secondary no-print" disabled={exporting} onClick={exportSheet}
                 title="Excel file of the rows below (Apollo-only companies left out), colored like the board">{exporting ? 'Exporting…' : 'Export joint sheet'}</button>
+              <button type="button" className="ui-btn ui-btn--secondary no-print" onClick={() => { setUpdating(true); setNotice(''); }}
+                title="Upload the joint sheet (.csv or .xlsx): preview what would change, tick, apply">Update from sheet</button>
               <button type="button" className="ui-btn ui-btn--secondary no-print" onClick={() => { setPanel(null); setPanelError(''); setNotice(''); }}>+ Add employer</button>
             </div>
           )}
@@ -158,6 +162,10 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
         </>
       )}
 
+      {canEdit && updating && (
+        <SheetUpdateDrawer businessId={businessId} onClose={() => setUpdating(false)}
+          onApplied={r => { setNotice(`Updated ${r.applied}${r.failed.length ? ` · ${r.failed.length} not applied` : ''}`); load(); }} />
+      )}
       {canEdit && panel !== undefined && (
         <OpportunityPanel opportunity={panel} saving={panelSaving} error={panelError} onClose={() => setPanel(undefined)}
           onSave={payload => panelDo(async () => {

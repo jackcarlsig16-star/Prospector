@@ -80,7 +80,7 @@ async function user(T, role) {
     ok('member export 200 as .xlsx with a dated filename', ex.status === 200 && /spreadsheetml/.test(ex.headers.get('content-type')) && /joint-pipeline-\d{4}-\d{2}-\d{2}\.xlsx/.test(ex.headers.get('content-disposition')), `${ex.status} ${ex.headers.get('content-type')}`);
     const s = await sheet(ex);
     if (process.argv[2]) require('fs').writeFileSync(require('path').join(process.argv[2], 'joint-pipeline-temp.xlsx'), s.buf);
-    ok('columns: board columns + Status', JSON.stringify(s.header) === JSON.stringify(['Top', 'Account', 'Type', 'Status', 'Stage', 'Owner Team', 'Owner', 'Priority Tier', 'Next Step', 'Next Step Due', 'Last Touch', 'Record ID']), JSON.stringify(s.header));
+    ok('columns: board columns + Status + Prospector ID', JSON.stringify(s.header) === JSON.stringify(['Top', 'Account', 'Type', 'Status', 'Stage', 'Owner Team', 'Owner', 'Priority Tier', 'Next Step', 'Next Step Due', 'Last Touch', 'Record ID', 'Prospector ID']), JSON.stringify(s.header));
     const names = s.rows.map(r => r.getCell(2).value);
     ok('rows = the board (Top first), Apollo-only Fresh Zz left out even with include_apollo=true',
       JSON.stringify(names) === JSON.stringify([...board.filter(r => r.top), ...board.filter(r => !r.top)].map(r => r.name)) && !names.includes('Fresh Zz') && names.length === 8, JSON.stringify(names));
@@ -88,7 +88,7 @@ async function user(T, role) {
     const LABEL = { green: 'Live / strategic', yellow: 'Meeting', blue: 'Talking', gray: 'In outreach', light: 'Not started', faded: 'Parked' };
     const badFill = s.rows.filter(row => {
       const b = board.find(r => r.name === row.getCell(2).value);
-      return [...Array(12).keys()].some(i => row.getCell(i + 1).fill?.fgColor?.argb !== FILL[b.color]) || row.getCell(4).value !== LABEL[b.color];
+      return [...Array(13).keys()].some(i => row.getCell(i + 1).fill?.fgColor?.argb !== FILL[b.color]) || row.getCell(4).value !== LABEL[b.color];
     }).map(r => r.getCell(2).value);
     ok('every cell of every row filled with its board color; Status word matches', !badFill.length, badFill.join(', '));
     ok('six colors present (green, yellow, blue, gray, light, faded)', new Set(board.map(r => r.color)).size === 6, JSON.stringify(board.map(r => r.color)));

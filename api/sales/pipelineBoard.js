@@ -119,6 +119,8 @@ export const SHEET_COLUMNS = [
   { header: 'Next Step Due', width: 14, value: r => r.next_step_due || '' },
   { header: 'Last Touch', width: 12, value: r => (r.last_touch_at || '').slice(0, 10) },
   { header: 'Record ID', width: 12, value: r => r.record_id || '' },
+  // Update from sheet matches on this first (type:id), so a renamed row still lands.
+  { header: 'Prospector ID', width: 46, value: r => `${r.type}:${r.id}` },
 ];
 const TYPE_LABEL = { partner: 'Partner', employer: 'Employer', target: 'Target' };
 const COLOR_LABEL = Object.fromEntries(BOARD_COLORS.map(c => [c.id, c.label]));

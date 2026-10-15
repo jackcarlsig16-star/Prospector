@@ -13,8 +13,10 @@ import { OWNER_TEAMS } from '../../src/constants/ownership.js';
 //
 // Signals:
 //   { type: 'status', to: <pipeline_status> }   stamps last_touch_at on touch
-//                                                statuses; first_email_at on
-//                                                first_email_sent if empty
+//                                                statuses (not with
+//                                                skipTouchStamp: a sheet move
+//                                                isn't a touch); first_email_at
+//                                                on first_email_sent if empty
 //   { type: 'assign', owner_user_id?, owner_team?, co_owner_name?, no_double_touch? }
 //                                                caller validates membership
 //   { type: 'hot', hot: true|false }
@@ -85,7 +87,7 @@ function planTouch(goal, signal, now) {
   };
 }
 
-export function plan(goal, signal, now) {
+export function plan(goal, signal, now, { skipTouchStamp = false } = {}) {
   const today = laDateString(now);
   if (['status', 'deprioritize', 'touch'].includes(signal?.type) && signal.expect !== undefined && (goal.pipeline_status || 'not_started') !== signal.expect) {
     throw new SignalError(CHANGED, 409);
@@ -95,7 +97,7 @@ export function plan(goal, signal, now) {
       if (!PIPELINE_STATUS_IDS.includes(signal.to)) throw new SignalError(`to must be one of ${PIPELINE_STATUS_IDS.join('|')}`);
       if (signal.to === goal.pipeline_status) throw new SignalError(`already ${signal.to}`, 409);
       const patch = { pipeline_status: signal.to };
-      if (TOUCH_STATUSES.includes(signal.to)) patch.last_touch_at = now.toISOString();
+      if (TOUCH_STATUSES.includes(signal.to) && !skipTouchStamp) patch.last_touch_at = now.toISOString();
       if (signal.to === 'first_email_sent' && !goal.first_email_at) patch.first_email_at = today;
       return { patch, event: { event: 'status', from_status: goal.pipeline_status, to_status: signal.to } };
     }
@@ -183,11 +185,11 @@ async function write(supabase, goal, patch, event) {
   return { goal: updated, event: row };
 }
 
-// source / meta are server-side only: the signal route never reads them
-// from the body, so a browser can't label its own click "from Apollo".
-export async function applyPartnerSignal(supabase, { businessId, goalId, signal, byUser = null, now = new Date(), source = 'manual', meta = {} }) {
+// source / meta / skipTouchStamp are server-side only: the signal route never
+// reads them from the body, so a browser can't label its own click "from Apollo".
+export async function applyPartnerSignal(supabase, { businessId, goalId, signal, byUser = null, now = new Date(), source = 'manual', meta = {}, skipTouchStamp = false }) {
   const goal = await partnerOrThrow(supabase, businessId, goalId);
-  const { patch, event } = plan(goal, signal, now);
+  const { patch, event } = plan(goal, signal, now, { skipTouchStamp });
   const prev = Object.fromEntries(Object.keys(patch).map(k => [k, goal[k] ?? null]));
   return write(supabase, goal, patch, { ...event, source, meta: { ...meta, ...(event.meta || {}), prev }, by_user: byUser });
 }
