@@ -5,6 +5,7 @@ import { laDateString } from './laDate.js';
 import { scoreProspect, huddleSignals, isAutomated, HEAT_BANDS } from './heatScore.js';
 import { nextBestAction, SCANNER_CLICK_WITHIN_SECONDS } from './nextBestAction.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
+import { findOpportunity, moveForward } from './opportunityMatch.js';
 
 // sales-hot-prospects-v1 - server-only access, same posture as every other
 // sales_* table (RLS enabled, zero policies).
@@ -207,6 +208,22 @@ export async function addToPipelineRoute(req, res) {
     if (existing && !existing.archived_at) return res.status(409).json({ error: 'already in pipeline' });
   }
 
+  const link = async opportunityId => supabase.from('sales_prospect_state')
+    .update({ opportunity_id: opportunityId, updated_by: req.auth.user.email, updated_at: new Date().toISOString() })
+    .eq('business_id', businessId).eq('contact_id', contactId).select().single();
+
+  let found;
+  try { found = await findOpportunity(supabase, businessId, { name: p.company }); }
+  catch (e) { return res.status(500).json({ error: e.message }); }
+  if (found) {
+    let opp;
+    try { opp = await moveForward(supabase, found, 'responded'); }
+    catch (e) { return res.status(500).json({ error: e.message }); }
+    const { data, error } = await link(opp.id);
+    if (error) return res.status(500).json({ error: error.message });
+    return res.status(200).json({ prospect: data, opportunity: opp, reused: true });
+  }
+
   const { data: opp, error: insErr } = await supabase.from('sales_opportunities').insert({
     business_id: businessId,
     source: 'manual',
@@ -219,9 +236,7 @@ export async function addToPipelineRoute(req, res) {
   }).select().single();
   if (insErr) return res.status(500).json({ error: insErr.message });
 
-  const { data, error } = await supabase.from('sales_prospect_state')
-    .update({ opportunity_id: opp.id, updated_by: req.auth.user.email, updated_at: new Date().toISOString() })
-    .eq('business_id', businessId).eq('contact_id', contactId).select().single();
+  const { data, error } = await link(opp.id);
   if (error) return res.status(500).json({ error: `opportunity ${opp.id} created but not linked: ${error.message}` });
   res.status(201).json({ prospect: data, opportunity: opp });
 }

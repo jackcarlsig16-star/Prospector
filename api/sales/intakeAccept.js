@@ -3,9 +3,10 @@ import { laDateString } from './laDate.js';
 import { applyPartnerSignal, SignalError } from './partnerSignals.js';
 import { cleanText } from './scrubText.js';
 import { touchDedupe } from './touchDedupe.js';
-import { MAX_ITEMS, ROLES, FACT_FIELDS, PARTNER_FACT_COLUMN, EMPLOYER_FACT_COLUMN, SINGLE_VALUED, findByName, matchOwner } from './intakeMatch.js';
+import { MAX_ITEMS, ROLES, FACT_FIELDS, PARTNER_FACT_COLUMN, EMPLOYER_FACT_COLUMN, SINGLE_VALUED, matchOwner } from './intakeMatch.js';
 import { OWNER_TEAMS } from '../../src/constants/ownership.js';
 import { TOUCH_TYPE_IDS, PIPELINE_STATUS_IDS } from '../../src/constants/partnerPipeline.js';
+import { findOpportunity } from './opportunityMatch.js';
 
 // call-notes-targets-v1 REV3 - Accept: everything ticked in the review, in
 // one request. There is no transaction across these tables, so writes run
@@ -175,7 +176,7 @@ export async function acceptIntake(supabase, { businessId, userId, note, ctx, in
     const opportunityFor = async s => {
       if (s.type === 'opportunity') return s.row;
       if (opps.has(s.id)) return opps.get(s.id);
-      const existing = findByName(s.name, ctx.opportunities, 'organization', false);
+      const existing = await findOpportunity(supabase, businessId, { name: s.name, apolloAccountId: s.type === 'account' ? s.id : null });
       if (existing) { opps.set(s.id, existing); return existing; }
       const named = ownerFor(s);
       const member = named && matchOwner(named, ctx.members);

@@ -16,7 +16,7 @@ export async function createOpportunity(businessId, payload) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `Failed to create opportunity (${res.status})`);
-  return data.opportunity;
+  return data;
 }
 
 export async function updateOpportunity(businessId, id, payload) {

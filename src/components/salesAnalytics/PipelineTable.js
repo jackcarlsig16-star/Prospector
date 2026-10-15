@@ -143,11 +143,13 @@ export default function PipelineTable({ businessId, opportunities, onPipelineCha
     }
   };
 
+  const noteReused = r => { if (r.reused) setImportMessage(`Already in pipeline: ${r.opportunity.organization}, linked`); };
+
   const openPanel = async payload => {
     setPanelSaving(true); setPanelError('');
     try {
       if (panelOpp) await updateOpportunity(businessId, panelOpp.id, payload);
-      else await createOpportunity(businessId, payload);
+      else noteReused(await createOpportunity(businessId, payload));
       setPanelOpp(undefined);
       onPipelineChanged?.();
     } catch (e) {

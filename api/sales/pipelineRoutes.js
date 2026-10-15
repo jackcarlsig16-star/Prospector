@@ -3,6 +3,7 @@ import { STAGE_ENUM, ORG_TYPE_ENUM, PARKED_STAGES, compareStages, bulkStageRefus
 import { parseCsv, toCsv } from '../../src/utils/csv.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { OWNER_TEAMS } from '../../src/constants/ownership.js';
+import { findOpportunity, moveForward } from './opportunityMatch.js';
 
 // sales-pipeline-v1 - server-only access, same posture as every other
 // sales_* table (RLS enabled, zero policies).
@@ -73,6 +74,10 @@ export async function createOpportunityRoute(req, res) {
     return res.status(400).json({ error: 'organization is required' });
   }
   const supabase = getSupabase();
+  try {
+    const found = await findOpportunity(supabase, req.params.businessId, { name: payload.organization });
+    if (found) return res.status(200).json({ opportunity: await moveForward(supabase, found, payload.stage), reused: true });
+  } catch (e) { return res.status(500).json({ error: e.message }); }
   const { data, error: insErr } = await supabase
     .from('sales_opportunities')
     .insert({ business_id: req.params.businessId, source: 'manual', ...payload })

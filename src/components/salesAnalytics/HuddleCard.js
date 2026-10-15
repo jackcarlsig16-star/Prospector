@@ -58,6 +58,7 @@ async function copy(text) {
 export default function HuddleCard({ businessId, prospect: p, collateral, today, isNewSinceHuddle, onUpdated }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [notes, setNotes] = useState(p.notes || '');
   const [collateralId, setCollateralId] = useState('');
   const [flow, setFlow] = useState(null); // null | 'snooze' | 'dead'
@@ -66,6 +67,7 @@ export default function HuddleCard({ businessId, prospect: p, collateral, today,
   const run = async request => {
     setSaving(true);
     setError('');
+    setNotice('');
     try {
       await request();
     } catch (e) {
@@ -76,7 +78,8 @@ export default function HuddleCard({ businessId, prospect: p, collateral, today,
   };
   const save = patch => run(async () => onUpdated(await updateProspect(businessId, p.contact_id, patch)));
   const addToPipeline = () => run(async () => {
-    const { prospect } = await addProspectToPipeline(businessId, p.contact_id, { org_type: p.sequence?.audience || 'employer', cohort: p.sequence?.cohort || null });
+    const { prospect, opportunity, reused } = await addProspectToPipeline(businessId, p.contact_id, { org_type: p.sequence?.audience || 'employer', cohort: p.sequence?.cohort || null });
+    if (reused) setNotice(`Already in pipeline: ${opportunity.organization}, linked`);
     onUpdated({ ...prospect, in_pipeline: true });
   });
 
@@ -205,6 +208,7 @@ export default function HuddleCard({ businessId, prospect: p, collateral, today,
         <a href={p.apollo_url} target="_blank" rel="noopener noreferrer" style={linkStyle}>Open in Apollo ↗</a>
         {p.linkedin_url && <a href={p.linkedin_url} target="_blank" rel="noopener noreferrer" style={linkStyle}>LinkedIn ↗</a>}
         {error && <span style={{ fontSize: 12, color: SA.bad, background: SA_BAD_BG, borderRadius: 6, padding: '2px 8px' }}>{error}</span>}
+        {notice && <span role="status" style={{ fontSize: 12, color: SA.good }}>{notice}</span>}
       </div>
     </div>
   );
