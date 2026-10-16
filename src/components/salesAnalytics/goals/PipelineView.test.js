@@ -4,7 +4,9 @@ import { goalsApi } from './goalsApi';
 import { fetchOpportunities, createOpportunity, updateOpportunity } from '../pipelineApi';
 import { OPEN_TASKS } from './goalsApi';
 
-// pipeline-board-v1 Stage 2 - Goals > Pipeline.
+// pipeline-board-v1 Stage 2 - Goals > Pipeline; pipeline-wide-table-v1 Stage 2 - the board is a DataTable.
+// jsdom has no matchMedia; PipelineView reads it for its phone list.
+window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
 jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, pipelineBoard: jest.fn(), partnerSignal: jest.fn() } }));
 jest.mock('../pipelineApi', () => ({ fetchOpportunities: jest.fn(), createOpportunity: jest.fn(), updateOpportunity: jest.fn(), archiveOpportunity: jest.fn() }));
 
@@ -32,17 +34,30 @@ const setup = (extra = {}) => {
   render(<PipelineView {...props} />);
   return props;
 };
-const section = name => screen.getByRole('heading', { name: new RegExp(`^${name}`) }).parentElement;
+// The rows of one group: everything after its header row up to the next header row.
+const section = name => {
+  let tr = screen.getByRole('heading', { name: new RegExp(`^${name}`) }).closest('tr').nextElementSibling;
+  const box = document.createElement('div');
+  while (tr && !tr.classList.contains('ui-table__group')) { box.appendChild(tr.cloneNode(true)); tr = tr.nextElementSibling; }
+  return box;
+};
 
 test('Top pinned first, then color sections in order; Parked collapsed; counts per color', async () => {
   setup();
   expect(await screen.findByRole('heading', { name: /^Top 1 of 25/ })).toBeTruthy();
   expect(within(section('Top 1 of 25')).getByText('Gallagher')).toBeTruthy();
   const heads = screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent.trim());
-  expect(heads).toEqual(['Top 1 of 25', 'Meeting 1', 'Talking 1', 'Not started 1']);
+  expect(heads).toEqual(['Top 1 of 25', 'Meeting 1', 'Talking 1', 'Not started 1', 'Parked 1']);
   expect(screen.queryByText('Old Union')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: /Parked \(1\)/ }));
+  const table = within(screen.getByRole('table'));
+  const parked = table.getByRole('button', { name: /^Parked 1/ });
+  expect(parked).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(parked);
   expect(screen.getByText('Old Union')).toBeTruthy();
+  fireEvent.click(table.getByRole('button', { name: /^Meeting 1/ }));
+  expect(screen.queryByText('Solidcore')).toBeNull();
+  fireEvent.click(table.getByRole('button', { name: /^Meeting 1/ }));
+  expect(screen.getByText('Solidcore')).toBeTruthy();
   const counts = screen.getByRole('group', { name: 'Counts by color' });
   expect(within(counts).getByRole('button', { name: /Meeting 2/ })).toBeTruthy();
   expect(within(counts).getByRole('button', { name: /Talking 1/ })).toBeTruthy();
@@ -66,18 +81,46 @@ test('type chips, owner team, owner and search filter the board; a count chip fi
   expect(screen.getByText('OneDigital')).toBeTruthy();
   expect(screen.queryByText('Solidcore')).toBeNull();
   fireEvent.change(screen.getByLabelText('Search companies'), { target: { value: '' } });
-  fireEvent.click(screen.getByRole('button', { name: /Talking 1/ }));
+  fireEvent.click(within(screen.getByRole('group', { name: 'Counts by color' })).getByRole('button', { name: /Talking 1/ }));
   expect(screen.getByText('OneDigital')).toBeTruthy();
   expect(screen.queryByText('Solidcore')).toBeNull();
 });
 
-test('Include Apollo-only refetches with the flag and shows the company', async () => {
+test('"In Apollo" refetches with the flag and shows the company', async () => {
   setup();
   await screen.findByText('Solidcore');
   expect(screen.queryByText('Fresh Co')).toBeNull();
-  fireEvent.click(screen.getByLabelText('Include Apollo-only companies'));
+  const chip = screen.getByRole('button', { name: 'In Apollo' });
+  expect(chip).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(chip);
   expect(await screen.findByText('Fresh Co')).toBeTruthy();
   expect(goalsApi.pipelineBoard).toHaveBeenLastCalledWith('b1', true);
+  expect(screen.getByRole('button', { name: 'In Apollo' })).toHaveAttribute('aria-pressed', 'true');
+});
+
+test('one line per company: aligned cells, record id on hover, sort by Due inside a band', async () => {
+  goalsApi.pipelineBoard.mockResolvedValue([
+    row('Beta Co', 'employer', 'yellow', { next_step_due: '2026-10-22', record_id: 'R-2', next_step: 'Send deck' }),
+    row('Alpha Co', 'employer', 'yellow', { next_step_due: '2026-10-20', record_id: 'R-1' }),
+    row('Gamma Co', 'partner', 'yellow'),
+  ]);
+  setup();
+  await screen.findByText('Beta Co');
+  const cells = tr => [...tr.querySelectorAll('td')].map(td => td.textContent);
+  const beta = screen.getByText('Beta Co').closest('tr');
+  expect(cells(beta)).toEqual(['☆', 'Beta Co', 'Employer', 'Stage', '—', '—', '—', 'Send deck', 'Oct 22', '—']);
+  expect(beta.querySelector('td.ui-table__sticky').title).toBe('Beta Co · R-2');
+  expect(screen.getByRole('columnheader', { name: /^Company/ })).toHaveAttribute('aria-sort', 'none');
+  const order = () => [...document.querySelectorAll('tr[data-row] td.ui-table__sticky')].map(td => td.textContent);
+  expect(order()).toEqual(['Beta Co', 'Alpha Co', 'Gamma Co']);
+  fireEvent.click(screen.getByRole('button', { name: /^Due/ }));
+  expect(order()).toEqual(['Alpha Co', 'Beta Co', 'Gamma Co']);
+  expect(screen.getByRole('columnheader', { name: /^Due/ })).toHaveAttribute('aria-sort', 'ascending');
+  fireEvent.click(screen.getByRole('button', { name: /^Due/ }));
+  expect(order()).toEqual(['Beta Co', 'Alpha Co', 'Gamma Co']);
+  fireEvent.click(screen.getByRole('button', { name: /^Due/ }));
+  expect(order()).toEqual(['Beta Co', 'Alpha Co', 'Gamma Co']);
+  expect(beta.style.getPropertyValue('--ui-row-bar')).toBe('var(--sa-warn)');
 });
 
 test('★ a partner goes through the hot signal, an employer through is_top; it moves into Top', async () => {
@@ -113,7 +156,7 @@ test('click-through: partner -> Partners focus, target -> Tasks, Apollo -> Compa
   expect(seen).toEqual([{ link: { type: 'target', id: 'New Target' }, filter: 'team' }]);
   fireEvent.click(screen.getByRole('button', { name: 'Solidcore' }));
   expect(await screen.findByText('Edit opportunity')).toBeTruthy();
-  fireEvent.click(screen.getByLabelText('Include Apollo-only companies'));
+  fireEvent.click(screen.getByRole('button', { name: 'In Apollo' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Fresh Co' }));
   expect(props.onOpenCompanies).toHaveBeenCalledWith('2026-10-05');
 });
@@ -146,6 +189,7 @@ test('Viewer: stars are read-only, no employer panel, partners still open', asyn
   expect(screen.queryByRole('button', { name: 'Solidcore' })).toBeNull();
   expect(screen.queryByRole('button', { name: '+ Add employer' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Export joint sheet' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Update from sheet' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Gallagher' }));
   expect(props.onOpenPartner).toHaveBeenCalled();
 });

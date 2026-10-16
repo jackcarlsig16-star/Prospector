@@ -1,4 +1,4 @@
-import { KIT_DARK, KIT_LIGHT, KIT_RADIUS, KIT_SEGMENTED } from './tokens';
+import { KIT_DARK, KIT_LIGHT, KIT_RADIUS, KIT_SEGMENTED, KIT_TABLE } from './tokens';
 
 // Every kit component reads var(--ui-*) so dark/light is pure CSS: :root holds
 // dark, the app's light mode (body.mode-straight-shooter) swaps to light, and
@@ -37,6 +37,32 @@ body.mode-straight-shooter, .ui-theme-light { ${vars(KIT_LIGHT)} }
 .ui-seg__btn[aria-pressed="true"] { background:var(--ui-surface); color:var(--ui-text); box-shadow:0 0 0 1px var(--ui-border); }
 .ui-seg__btn:focus-visible { outline:2px solid var(--ui-accent); outline-offset:2px; }
 .ui-seg__meta { color:var(--ui-muted); font-variant-numeric:tabular-nums; }
+.ui-table-box { overflow:auto; min-height:${KIT_TABLE.minHeight}px; border:1px solid var(--ui-border); border-radius:${KIT_RADIUS.card}px; background:var(--ui-surface); }
+.ui-table { border-collapse:separate; border-spacing:0; width:100%; table-layout:fixed; font:400 ${KIT_TABLE.fontSize}px 'Geist', ui-sans-serif, system-ui, sans-serif; color:var(--ui-soft); }
+.ui-table th { position:sticky; top:0; z-index:2; box-sizing:border-box; height:${KIT_TABLE.headHeight}px; padding:0 10px; background:var(--ui-surface); border-bottom:1px solid var(--ui-control); text-align:left; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ui-table th.ui-table__sticky { z-index:3; }
+.ui-table__sort { all:unset; cursor:pointer; display:inline-flex; align-items:center; gap:4px; max-width:100%; font:500 10.5px 'Geist Mono', ui-monospace, monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--ui-muted); }
+.ui-table__sort:focus-visible { outline:2px solid var(--ui-accent); outline-offset:2px; }
+.ui-table th[aria-sort="ascending"] .ui-table__sort, .ui-table th[aria-sort="descending"] .ui-table__sort { color:var(--ui-text); }
+.ui-table__label { font:500 10.5px 'Geist Mono', ui-monospace, monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--ui-muted); }
+.ui-table td { box-sizing:border-box; height:${KIT_TABLE.rowHeight}px; padding:0 10px; border-bottom:1px solid var(--ui-border); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; background:var(--ui-row-tint, transparent); }
+.ui-table tr[data-row] td:first-child { box-shadow:inset 3px 0 0 var(--ui-row-bar, transparent); }
+.ui-table td.ui-table__sticky { position:sticky; left:0; z-index:1; background:linear-gradient(var(--ui-row-tint, transparent), var(--ui-row-tint, transparent)), var(--ui-surface); color:var(--ui-text); font-weight:500; }
+.ui-table__group td { height:${KIT_TABLE.groupHeight}px; background:var(--ui-inset); color:var(--ui-text); font-weight:600; }
+.ui-table__group h3 { display:inline-flex; align-items:center; gap:8px; margin:0; font-size:13px; font-weight:600; color:inherit; }
+.ui-table__toggle { all:unset; cursor:pointer; display:inline-flex; align-items:center; gap:8px; }
+.ui-table__gh { display:inline-flex; align-items:center; gap:8px; }
+.ui-table__toggle::before { content:'▾'; color:var(--ui-muted); font-size:12px; }
+.ui-table__toggle[aria-expanded="false"]::before { content:'▸'; }
+.ui-table__toggle:focus-visible { outline:2px solid var(--ui-accent); outline-offset:2px; }
+.ui-table__count { color:var(--ui-muted); font-weight:400; font-variant-numeric:tabular-nums; }
+.ui-table__dim { color:var(--ui-faint); }
+.ui-table__empty { padding:12px 10px; color:var(--ui-muted); }
+.ui-list { list-style:none; margin:0; padding:0; border:1px solid var(--ui-border); border-radius:${KIT_RADIUS.card}px; background:var(--ui-surface); overflow:hidden; font:400 14px 'Geist', ui-sans-serif, system-ui, sans-serif; color:var(--ui-text); }
+.ui-list__group { display:flex; align-items:center; min-height:${KIT_TABLE.compactGroupHeight}px; padding:0 12px; background:var(--ui-inset); border-top:1px solid var(--ui-border); }
+.ui-list__group:first-child { border-top:0; }
+.ui-list__group h3 { display:inline-flex; align-items:center; gap:8px; margin:0; font-size:14px; font-weight:600; }
+.ui-list__row { display:flex; align-items:center; gap:10px; min-height:${KIT_TABLE.compactRowMinHeight}px; padding:6px 4px 6px 12px; box-sizing:border-box; border-top:1px solid var(--ui-border); background:var(--ui-row-tint, transparent); box-shadow:inset 3px 0 0 var(--ui-row-bar, transparent); }
 @media (max-width: 600px) { .ui-card { padding:16px; } }
 `;
 

@@ -8,6 +8,7 @@ import Field from './Field';
 import StatusPill from './StatusPill';
 import ToggleRow from './ToggleRow';
 import UiKitGallery from './UiKitGallery';
+import DataTable from './DataTable';
 
 const lum = hex => {
   const c = hex.replace('#', '').match(/../g).map(h => parseInt(h, 16) / 255).map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
@@ -100,4 +101,77 @@ test('Segmented: one pressed item, sentence-case label, dot + meta optional', ()
   fireEvent.click(buttons[1]);
   expect(onChange).toHaveBeenCalledWith('partners');
   expect(document.getElementById('ui-kit-css').textContent).toMatch(/\.ui-seg__btn \{[^}]*font:500 13px 'Geist', ui-sans-serif/);
+});
+
+// pipeline-wide-table-v1 - DataTable.
+const T_COLS = [
+  { id: 'name', label: 'Company', width: 120, sticky: true, sortValue: r => r.name, render: r => r.name },
+  { id: 'due', label: 'Due', width: 80, sortValue: r => r.due, render: r => r.due || '—' },
+  { id: 'star', label: 'Top', width: 30, render: () => '☆' },
+];
+const T_ROW = (name, due) => ({ name, due });
+const T_GROUPS = (collapsed = false, onToggle) => [
+  { id: 'a', header: <>Alpha <span className="ui-table__count">3</span></>, rows: [T_ROW('Mango', '2026-10-20'), T_ROW('Apple', null), T_ROW('Kiwi', '2026-10-05')] },
+  { id: 'b', header: 'Beta', rows: [T_ROW('Zed', '2026-10-01'), T_ROW('Bob', '2026-10-02')], collapsed, onToggle },
+];
+const names = () => [...document.querySelectorAll('tr[data-row] td:first-child')].map(td => td.textContent);
+
+test('DataTable: a header click cycles asc -> desc -> off inside each group; off = the given order', () => {
+  render(<DataTable columns={T_COLS} groups={T_GROUPS()} rowKey={r => r.name} />);
+  expect(names()).toEqual(['Mango', 'Apple', 'Kiwi', 'Zed', 'Bob']);
+  const due = screen.getByRole('button', { name: /^Due/ });
+  fireEvent.click(due);
+  expect(names()).toEqual(['Kiwi', 'Mango', 'Apple', 'Zed', 'Bob']);
+  fireEvent.click(due);
+  expect(names()).toEqual(['Mango', 'Kiwi', 'Apple', 'Bob', 'Zed']);
+  fireEvent.click(due);
+  expect(names()).toEqual(['Mango', 'Apple', 'Kiwi', 'Zed', 'Bob']);
+});
+
+test('DataTable: groups keep their order whatever the sort', () => {
+  render(<DataTable columns={T_COLS} groups={T_GROUPS()} rowKey={r => r.name} />);
+  fireEvent.click(screen.getByRole('button', { name: /^Company/ }));
+  fireEvent.click(screen.getByRole('button', { name: /^Company/ }));
+  expect([...document.querySelectorAll('tr[data-group]')].map(tr => tr.dataset.group)).toEqual(['a', 'b']);
+  expect(names()).toEqual(['Mango', 'Kiwi', 'Apple', 'Zed', 'Bob']);
+  expect(screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent)).toEqual(['Alpha 3', 'Beta']);
+});
+
+test('DataTable: a collapsed group renders only its header; the toggle expands it', () => {
+  const Wrap = () => { const [c, setC] = React.useState(true); return <DataTable columns={T_COLS} groups={T_GROUPS(c, () => setC(x => !x))} rowKey={r => r.name} />; };
+  render(<Wrap />);
+  expect(names()).toEqual(['Mango', 'Apple', 'Kiwi']);
+  const toggle = screen.getByRole('button', { name: 'Beta' });
+  expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(toggle);
+  expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  expect(names()).toEqual(['Mango', 'Apple', 'Kiwi', 'Zed', 'Bob']);
+});
+
+test('DataTable: aria-sort follows the sorted column; unsortable headers carry none', () => {
+  render(<DataTable columns={T_COLS} groups={T_GROUPS()} rowKey={r => r.name} />);
+  const th = label => screen.getByRole('columnheader', { name: label });
+  expect(th(/^Company/)).toHaveAttribute('aria-sort', 'none');
+  expect(th(/^Due/)).toHaveAttribute('aria-sort', 'none');
+  expect(th('Top')).not.toHaveAttribute('aria-sort');
+  fireEvent.click(screen.getByRole('button', { name: /^Due/ }));
+  expect(th(/^Due/)).toHaveAttribute('aria-sort', 'ascending');
+  expect(th(/^Company/)).toHaveAttribute('aria-sort', 'none');
+  fireEvent.click(screen.getByRole('button', { name: /^Due/ }));
+  expect(th(/^Due/)).toHaveAttribute('aria-sort', 'descending');
+  fireEvent.click(screen.getByRole('button', { name: /^Company/ }));
+  expect(th(/^Due/)).toHaveAttribute('aria-sort', 'none');
+  expect(th(/^Company/)).toHaveAttribute('aria-sort', 'ascending');
+});
+
+test('DataTable: the sticky first column keeps a solid surface under the row tint; the head is sticky', () => {
+  render(<DataTable columns={T_COLS} groups={T_GROUPS()} rowKey={r => r.name} rowStyle={() => ({ '--ui-row-tint': 'rgba(0,255,0,.06)' })} />);
+  const css = document.getElementById('ui-kit-css').textContent;
+  const sticky = css.match(/\.ui-table td\.ui-table__sticky \{[^}]*\}/)[0];
+  expect(sticky).toMatch(/position:sticky; left:0/);
+  expect(sticky).toMatch(/var\(--ui-surface\)/);
+  expect(css).toMatch(/\.ui-table th \{[^}]*position:sticky; top:0/);
+  expect(document.querySelector('tr[data-row] td:first-child')).toHaveClass('ui-table__sticky');
+  expect(document.querySelector('thead th:first-child')).toHaveClass('ui-table__sticky');
+  expect(document.querySelector('tr[data-row]').style.getPropertyValue('--ui-row-tint')).toBe('rgba(0,255,0,.06)');
 });

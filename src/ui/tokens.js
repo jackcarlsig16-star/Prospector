@@ -263,3 +263,8 @@ export const KIT_TYPE = {
 // sales-ia-v1 - segmented control (a page header's sub-views and person
 // filter). Mono labels like every kit label; one accent (focus ring only).
 export const KIT_SEGMENTED = { height: 28, padding: '0 12px', radius: 7, gap: 2, inset: 3 };
+
+// pipeline-wide-table-v1 - DataTable: one line per row, 13px text. The box
+// fits the viewport (minus bottomGap) so the sticky header holds while the
+// rows scroll; compact = the phone list.
+export const KIT_TABLE = { rowHeight: 34, headHeight: 34, groupHeight: 36, fontSize: 13, minHeight: 240, bottomGap: 8, compactRowMinHeight: 60, compactGroupHeight: 44 };
