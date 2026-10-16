@@ -30,6 +30,7 @@ test('header: name, category, stage, tier, owner, ownership pill; last 3 note/to
   const { unmount } = render(<PartnerQuickPanel businessId="b1" row={ROW} canEdit onChange={jest.fn()} onStar={jest.fn()} onClose={jest.fn()} onOpenFull={jest.fn()} />);
   expect(screen.getByRole('complementary', { name: 'Gallagher' })).toBeTruthy();
   expect(screen.getByText('Mid-Market Benefits Brokers')).toBeTruthy();
+  expect(screen.getByText('Brokers & PEOs')).toHaveAttribute('data-type-chip', 'brokers');
   expect(screen.getByText('Tier 2')).toBeTruthy();
   expect(screen.getByText('Jack')).toBeTruthy();
   expect(screen.getByLabelText("Owner: Upside, co-owner Brad - don't double-touch")).toBeTruthy();

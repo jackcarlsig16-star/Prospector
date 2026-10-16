@@ -6,6 +6,7 @@ import OpportunityPanel from '../OpportunityPanel';
 import PartnerQuickPanel from './PartnerQuickPanel';
 import OwnerPill from '../OwnerPill';
 import SheetUpdateDrawer from './SheetUpdateDrawer';
+import TypeChip, { typeSortValue } from './TypeChip';
 import DataTable from '../../../ui/DataTable';
 import EditableCell from '../../../ui/EditableCell';
 import { KIT_EDITABLE } from '../../../ui/tokens';
@@ -29,7 +30,6 @@ import { TIERS } from '../../../constants/partnerPipeline';
 // value changes only when the save lands, so an open editor never re-sorts.
 export const BOARD_TOKENS = { green: SA.good, yellow: SA.warn, blue: SA.link, gray: SA.muted, light: SA.faint, faded: SA.track };
 const TYPE_CHIPS = [['', 'All'], ['partner', 'Partners'], ['employer', 'Employers'], ['target', 'Targets']];
-const TYPE_LABEL = { partner: 'Partner', employer: 'Employer', target: 'Target', apollo: 'Apollo' };
 const TIER_RANK = { active: 0, 1: 1, 2: 2, 3: 3, 4: 4 };
 const md = d => new Date(`${d.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 const tierLabel = t => (t === 'active' ? 'Active' : t ? `T${t}` : null);
@@ -154,11 +154,11 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
       : <span aria-label={r.top ? 'Top' : undefined} style={{ fontSize: 15, color: r.top ? SA.warn : SA.faint }}>{r.top ? '★' : '☆'}</span>;
   };
   const nameCell = r => <button type="button" onClick={() => open(r)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit', textAlign: 'left', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</button>;
-  const typeCell = r => <span className="ui-table__label">{TYPE_LABEL[r.type]}</span>;
+  const typeCell = r => <TypeChip row={r} />;
   const columns = [
     { id: 'top', label: `Top ${TOP_CAP}`, width: 38, render: r => <span style={{ display: 'block', textAlign: 'center' }}>{starCell(r)}</span> },
     { id: 'name', label: 'Company', width: 250, sticky: true, sortValue: r => r.name, render: nameCell, title: r => `${r.name}${r.record_id ? ` · ${r.record_id}` : ''}` },
-    { id: 'type', label: 'Type', width: 84, sortValue: r => TYPE_LABEL[r.type], render: typeCell },
+    { id: 'type', label: 'Type', width: 124, sortValue: typeSortValue, render: typeCell },
     { id: 'stage', label: 'Stage', width: 124, sortValue: r => r.stage_label, render: r => r.stage_label || <Dim />, title: r => r.stage_label },
     { id: 'tier', label: 'Tier', width: 58, sortValue: r => TIER_RANK[r.tier] ?? null, render: r => tierLabel(r.tier) || <Dim /> },
     { id: 'owner', label: 'Owner', width: 116, sortValue: r => r.owner, render: r => r.owner || <Dim />, title: r => r.owner },

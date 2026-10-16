@@ -3,6 +3,7 @@ import { SA, SA_TYPE } from '../theme';
 import { goalsApi } from './goalsApi';
 import SidePanel from '../SidePanel';
 import OwnerPill from '../OwnerPill';
+import TypeChip from './TypeChip';
 import { statusLabel, statusColor, tierLabel } from './partners/PartnerCard';
 import { eventText } from './partners/activityTimeline';
 import { labelStyle, subStyle, inputStyle, Chip, Dot, Btn, ErrorNote } from './goalsUi';
@@ -64,6 +65,7 @@ export default function PartnerQuickPanel({ businessId, row, canEdit, onChange, 
           <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: 0, overflowWrap: 'anywhere' }}>{row.name}</p>
           {row.category && <span style={{ ...subStyle, fontSize: 12 }}>{row.category.replace(/^\d+\.\s*/, '')}</span>}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+            <TypeChip row={row} style={{ height: 24 }} />
             <Chip><Dot color={statusColor(row.stage)} />{statusLabel(row.stage) || row.stage_label}</Chip>
             {row.tier && <Chip>{tierLabel(row.tier)}</Chip>}
             {row.owner && <Chip>{row.owner}</Chip>}

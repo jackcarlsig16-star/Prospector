@@ -402,3 +402,25 @@ test('a failed save reverts the cell and shows the message; sorting is not re-ap
   await waitFor(() => expect(order()).toEqual(['Beta Co', 'Alpha Co']));
   expect(td('Alpha Co', NEXT).querySelector('[aria-busy]')).toBeNull();
 });
+
+test('Type column: pills with the partner type; sorting Type groups partners by type, then employers and targets', async () => {
+  goalsApi.pipelineBoard.mockResolvedValue([
+    row('Tgt', 'target', 'yellow'),
+    row('Emp', 'employer', 'yellow'),
+    row('NoCat', 'partner', 'yellow'),
+    row('Broker', 'partner', 'yellow', { category: '4. Mid-Market Benefits Brokers' }),
+    row('Platform', 'partner', 'yellow', { category: '2. Marketplaces' }),
+  ]);
+  setup();
+  await screen.findByText('Platform');
+  const chip = name => screen.getByText(name).closest('tr').querySelector('[data-type-chip]');
+  expect(chip('Broker').textContent).toBe('Brokers & PEOs'); expect(chip('Broker').dataset.typeChip).toBe('brokers'); expect(chip('Broker').title).toBe('Brokers, consultants & PEOs · partner');
+  expect(chip('Platform').textContent).toBe('Platforms');
+  expect(chip('NoCat').textContent).toBe('Partner'); expect(chip('NoCat').dataset.typeChip).toBe('partner');
+  expect(chip('Emp').textContent).toBe('Employer'); expect(chip('Tgt').textContent).toBe('Target');
+  expect(chip('Emp').style.getPropertyValue('--type-chip-hue')).toBe('var(--ui-accent, var(--sa-accent))'); expect(chip('Broker').style.getPropertyValue('--type-chip-hue')).toBe('#00A19D');
+  const order = () => [...document.querySelectorAll('tr[data-row] td.ui-table__sticky')].map(td => td.textContent);
+  fireEvent.click(screen.getByRole('button', { name: /^Type/ }));
+  expect(order()).toEqual(['Platform', 'Broker', 'NoCat', 'Emp', 'Tgt']);
+  expect(screen.getByRole('columnheader', { name: /^Type/ })).toHaveAttribute('aria-sort', 'ascending');
+});
