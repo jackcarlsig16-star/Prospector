@@ -28,7 +28,7 @@ beforeEach(() => { try { localStorage.clear(); } catch { /* none */ } });
 
 test('member gets "Plan this week"; planned commitments show ✦ with the reason', async () => {
   fetchMe.mockResolvedValue(me('member'));
-  render(<GoalsTab businessId="b1" />);
+  render(<GoalsTab businessId="b1" section="reports" view="weekly" onNav={jest.fn()} />);
   await waitFor(() => expect(screen.getAllByRole('button', { name: 'Plan this week' }).length).toBeGreaterThan(0));
   expect(screen.getByLabelText('Planned')).toBeTruthy();
   expect(screen.getByTitle('Replied Oct 9').textContent).toMatch(/Book Solidcore/);
@@ -36,8 +36,8 @@ test('member gets "Plan this week"; planned commitments show ✦ with the reason
 
 test('viewer sees ✦ but never the button or the nudge', async () => {
   fetchMe.mockResolvedValue(me('viewer'));
-  render(<GoalsTab businessId="b1" />);
-  await screen.findByText(/Goals is read-only for you/);
+  render(<GoalsTab businessId="b1" section="reports" view="weekly" onNav={jest.fn()} />);
+  await screen.findByText(/read-only for you/);
   expect(screen.getByLabelText('Planned')).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Plan this week' })).toBeNull();
   expect(screen.queryByRole('dialog')).toBeNull();

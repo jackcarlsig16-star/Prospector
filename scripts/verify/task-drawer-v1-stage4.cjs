@@ -174,7 +174,7 @@ const scrollState = page => page.evaluate(() => ({ win: window.scrollY, main: do
 
     // 5. Bar 5 - from the Huddle: add a task for Cyrus linked to a partner, check off one of mine
     const loadsBefore = loads;
-    await P.getByRole('button', { name: /^Daily Huddle/ }).first().click(); await P.waitForTimeout(2500);
+    await P.getByRole('button', { name: /^Huddle/ }).first().click(); await P.waitForTimeout(2500);
     if (!(await D.count())) await openDrawer(P, false);
     ok('reopened drawer is the plain list (link filter cleared on close)', !(await D.getByRole('button', { name: /^Showing/ }).count()));
     await D.getByLabel('New task', { exact: true }).fill('ZZ Bar5 for Cyrus');
@@ -188,7 +188,7 @@ const scrollState = page => page.evaluate(() => ({ win: window.scrollY, main: do
     await D.getByRole('button', { name: 'Me', exact: true }).click(); await P.waitForTimeout(300);
     await D.locator(`li[data-task-id="${id('ZZ mine to check')}"]`).getByRole('button', { name: 'Done: ZZ mine to check' }).click(); await P.waitForTimeout(1500);
     ok('Bar 5: my task checked off (DB done)', (await row(id('ZZ mine to check'))).status === 'done');
-    await D.getByRole('button', { name: 'Open Goals → This week' }).click(); await P.waitForTimeout(5000);
+    await D.getByRole('button', { name: 'Open Today →' }).click(); await P.waitForTimeout(5000);
     await closeDrawer();
     const weekText = await P.locator('section[aria-labelledby="h-todo"]').innerText();
     const mineRow = await P.locator('section[aria-labelledby="h-todo"] div', { hasText: /^ZZ mine to check/ }).first().innerText().catch(() => '');

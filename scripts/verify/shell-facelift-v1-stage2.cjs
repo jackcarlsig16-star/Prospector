@@ -95,13 +95,13 @@ async function shoot(file, out) {
     const owner = await session(st.users.Owner);
     { const { page, errs } = await newPage(st, owner);
       await openWorkspace(page); await shot(page, out, 'command-center-1440-dark'); await noScroll(page, 'command-center-1440');
-      await nav(page, 'Goals & Sales'); await salesTab(page, 'Overview'); await page.locator('[data-strip-tile]').first().waitFor(); await page.waitForTimeout(2000);
+      await nav(page, 'Goals & Sales'); await salesTab(page, 'Reports'); await salesTab(page, 'Analytics'); await page.locator('[data-strip-tile]').first().waitFor(); await page.waitForTimeout(2000);
       await shot(page, out, 'sales-overview-1440-dark'); await noScroll(page, 'sales-overview-1440');
       await nav(page, 'Business Intel & Strategy'); await shot(page, out, 'intel-1440-dark'); await noScroll(page, 'intel-1440');
       allErrs.push(...errs.map(e => `owner 1440: ${e}`)); }
     { const { page, errs } = await newPage(st, owner, { light: true });
       await openWorkspace(page); ok('light mode class on body', await page.evaluate(() => document.body.classList.contains('mode-straight-shooter')));
-      await nav(page, 'Goals & Sales'); await salesTab(page, 'Overview'); await page.locator('[data-strip-tile]').first().waitFor(); await page.waitForTimeout(2000);
+      await nav(page, 'Goals & Sales'); await salesTab(page, 'Reports'); await salesTab(page, 'Analytics'); await page.locator('[data-strip-tile]').first().waitFor(); await page.waitForTimeout(2000);
       await shot(page, out, 'sales-overview-1440-light');
       allErrs.push(...errs.map(e => `owner light: ${e}`)); }
     { const { page, errs } = await newPage(st, owner, { width: 390, height: 844 });
@@ -132,9 +132,9 @@ async function click(file) {
     await nav(page, 'Accounts'); ok('owner: Accounts lists the account', (await page.getByText('Acme Test Co').count()) >= 1);
     await nav(page, 'Goals & Sales');
     const goals = await mainText(page);
-    await salesTab(page, 'Overview'); ok('owner: Overview tab', (await page.locator('[data-strip-tile]').count()) >= 1);
-    await salesTab(page, 'Daily Huddle'); const huddle = await mainText(page); ok('owner: Daily Huddle tab', huddle !== goals && (await page.locator('[data-strip-tile]').count()) === 0);
-    await salesTab(page, 'Goals'); ok('owner: Goals tab again', (await mainText(page)) !== huddle);
+    await salesTab(page, 'Reports'); await salesTab(page, 'Analytics'); ok('owner: Reports › Analytics', (await page.locator('[data-strip-tile]').count()) >= 1);
+    await salesTab(page, 'Huddle'); const huddle = await mainText(page); ok('owner: Huddle tab', huddle !== goals && (await page.locator('[data-strip-tile]').count()) === 0);
+    await salesTab(page, 'Today'); ok('owner: Today tab again', (await mainText(page)) !== huddle);
     const inp = scoutInput(page);
     await inp.click(); await page.waitForTimeout(500);
     ok('owner: Scout focus opens the palette', (await page.getByText('Suggested', { exact: true }).count()) === 1);
@@ -164,7 +164,7 @@ async function click(file) {
     await openWorkspace(vw.page);
     ok('viewer: workspace name in the page', (await vw.page.locator('#main-content').getByText(NAME).count()) >= 1);
     await nav(vw.page, 'Goals & Sales');
-    ok('viewer: Goals & Sales tabs visible', (await vw.page.locator('#main-content').getByRole('button', { name: 'Daily Huddle', exact: true }).count()) === 1);
+    ok('viewer: Goals & Sales tabs visible', (await vw.page.locator('#main-content').getByRole('button', { name: 'Huddle', exact: true }).count()) === 1);
     const vwSales = await mainText(vw.page); await nav(vw.page, 'Accounts'); ok('viewer: Accounts view switches (list access is per member, so the owner\'s account may be hidden)', (await mainText(vw.page)) !== vwSales);
     ok('0 console errors', errs.length + vw.errs.length === 0, [...errs, ...vw.errs].slice(0, 5).join(' | '));
   } finally { await browser.close(); srv.kill(); }
@@ -201,8 +201,8 @@ async function after(file) {
     await page.keyboard.press('Escape'); await page.mouse.click(700, 850); await page.waitForTimeout(500);
     ok('Scout collapses again', (await h.getByLabel('Scout').evaluate(e => e.getBoundingClientRect().width)) <= 240);
     await nav(page, 'Goals & Sales');
-    ok('Goals & Sales: 3 tabs inside the row', (await page.locator('#workspace-header-tabs button').count()) === 3 && (await h.locator('[data-workspace-row]').evaluate(e => Math.round(e.getBoundingClientRect().height))) === 56);
-    await salesTab(page, 'Overview'); await page.locator('[data-strip-tile]').first().waitFor(); await page.waitForTimeout(1500);
+    ok('Goals & Sales: 4 tabs inside the row', (await page.locator('#workspace-header-tabs button').count()) === 4 && (await h.locator('[data-workspace-row]').evaluate(e => Math.round(e.getBoundingClientRect().height))) === 56);
+    await salesTab(page, 'Reports'); await salesTab(page, 'Analytics'); await page.locator('[data-strip-tile]').first().waitFor(); await page.waitForTimeout(1500);
     await page.evaluate(() => window.scrollTo(0, 900)); await page.waitForTimeout(400);
     const stuck = await page.evaluate(() => { const r = document.querySelector('[data-workspace-header]').getBoundingClientRect(); return { scrolled: window.scrollY, top: Math.round(r.top), visible: r.bottom > 0 }; });
     ok('row is sticky after scrolling the page', stuck.scrolled > 500 && stuck.top <= 1 && stuck.visible, JSON.stringify(stuck));

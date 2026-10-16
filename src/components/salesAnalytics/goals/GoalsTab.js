@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { SA, SA_TYPE } from '../theme';
+import { SA, SA_TYPE, SA_SHAPE } from '../theme';
 import { laWeekStart } from '../periods';
 import { roleAtLeast } from '../../../constants/roles';
 import { fetchMe } from '../../../utils/authSession';
 import useMediaQuery from '../../../utils/useMediaQuery';
-import RightRail from '../RightRail';
+import Segmented from '../../../ui/Segmented';
 import Ring, { RingLegend } from '../charts/Ring';
+import { SUB_VIEWS } from '../salesNav';
 import { goalsApi, TODOS_CHANGED } from './goalsApi';
 import { FLAGS_CHANGED } from '../huddleApi';
 import ScorecardTable from './ScorecardTable';
@@ -24,15 +25,13 @@ import {
   addDays, monthOf, monthName, weekLabel, memberLookup, ownedBy, flashTo,
 } from './goalsUi';
 
-// sales-goals-v1 REVISION 4 - Goals & Weekly Plan: week picker, right rail
-// (views + person filter + summaries), Weekly report (Stage 6, default),
-// This week, Partners, Companies; Export = report PDF + 4 CSVs.
-// localStorage keys (per viewer conveniences, never shared state):
-//   prospector_goals_view  - last view
+// sales-ia-v1 - the data hub behind Today / Pipeline / Reports. `section` is
+// the tab on screen and `view` its sub-view (SalesAnalyticsTab owns both, via
+// salesNav.js); this renders only that section. Export = report PDF + 4 CSVs.
+// localStorage key (per viewer convenience, never shared state):
 //   prospector_goals_owner - last person filter, as a first-name slug
-const VIEW_KEY = 'prospector_goals_view';
 const OWNER_KEY = 'prospector_goals_owner';
-const VIEWS = ['report', 'week', 'partners', 'companies', 'pipeline'];
+const TITLES = { today: 'Today', pipeline: 'Pipeline', reports: 'Reports' };
 // Earliest week the missing-headcount list reads from (a Monday, before any
 // synced data) - the list covers every week.
 const ALL_WEEKS_FROM = '2020-01-06';
@@ -41,15 +40,30 @@ const readStored = key => { try { return localStorage.getItem(key); } catch { re
 const writeStored = (key, value) => { try { localStorage.setItem(key, value); } catch { /* private mode */ } };
 const slugOf = name => name.split(' ')[0].toLowerCase();
 
-// initialTarget: a link from Overview ({ target }, new object per click) -
-// same targets as go() below.
-export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, initialTarget }) {
+// Design E - the one table from a link target to its home tab + sub-view.
+// 'view:week' sits with the scorecard until Stage 2 builds Today's "Your day".
+// Commitment link_target values live in the database, so anything unknown
+// still lands somewhere: Reports, with the target logged.
+const HOME = {
+  'view:report': ['reports', 'weekly'], 'view:week': ['reports', 'scorecard'], 'view:this_week': ['reports', 'scorecard'],
+  'view:partners': ['pipeline', 'partners'], 'view:companies': ['pipeline', 'sequenced'], 'view:pipeline': ['pipeline', 'board'],
+  'week:prev': ['today'], overview: ['reports', 'analytics'], section: ['reports', 'weekly'], score: ['reports', 'scorecard'],
+  missing: ['pipeline', 'sequenced'], huddle: ['huddle'], plan: ['today'],
+};
+export function homeOf(target) {
+  if (!target) return null;
+  if (target.partners) return { tab: 'pipeline', view: 'partners' };
+  if (target.companies) return { tab: 'pipeline', view: 'sequenced' };
+  if (typeof target !== 'string') return null;
+  const row = HOME[target] || HOME[target.split(':')[0]];
+  return row ? { tab: row[0], view: row[1] || null } : null;
+}
+
+// initialTarget: a link from the Huddle or Analytics ({ target }, new object
+// per click) - same targets as go() below.
+export default function GoalsTab({ businessId, section, view, onNav, onOpenOverview, onOpenHuddle, initialTarget, analytics }) {
   const compact = useMediaQuery('(max-width: 1099px)');
   const [weekStart, setWeekStart] = useState(() => laWeekStart());
-  const [view, setView] = useState(() => {
-    const v = new URLSearchParams(window.location.search).get('gview') || readStored(VIEW_KEY);
-    return VIEWS.includes(v) ? v : 'report';
-  });
   const [ownerSlug, setOwnerSlug] = useState(() => new URLSearchParams(window.location.search).get('owner') || readStored(OWNER_KEY) || 'team');
   const [members, setMembers] = useState([]);
   const [me, setMe] = useState(null);
@@ -134,20 +148,18 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
     goalsApi.cadences(businessId, weekStart, addDays(weekStart, 14)).then(setCadences).catch(e => setError('cadences', e));
   }, [businessId, weekStart, setError]);
 
-  // Selection is remembered per viewer and mirrored in the URL so a link
-  // opens the same view (?owner=cyrus&gview=partners).
+  // The person filter is remembered per viewer and mirrored in the URL
+  // (?owner=cyrus); the tab and sub-view are SalesAnalyticsTab's (?tab=, ?view=).
   useEffect(() => {
-    writeStored(VIEW_KEY, view);
     writeStored(OWNER_KEY, ownerSlug);
     const url = new URL(window.location.href);
-    url.searchParams.set('gview', view);
     if (ownerSlug === 'team') url.searchParams.delete('owner'); else url.searchParams.set('owner', ownerSlug);
     window.history.replaceState(window.history.state, '', url);
-  }, [view, ownerSlug]);
+  }, [ownerSlug]);
 
   const people = [
-    { id: 'team', name: 'Team', color: SA.accent },
-    ...members.map(m => ({ id: slugOf(m.name), name: lookup(m.user_id).first, color: lookup(m.user_id).color })),
+    { id: 'team', label: 'Team', color: SA.accent },
+    ...members.map(m => ({ id: slugOf(m.name), label: lookup(m.user_id).first, color: lookup(m.user_id).color })),
   ];
 
   const myTodos = todos.filter(t => ownedBy(owner, t.owner_user_id));
@@ -163,7 +175,6 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
   const myCompanies = companies.filter(c => ownedBy(owner, c.sequenced_by));
   const myAllCompanies = allCompanies && allCompanies.filter(c => ownedBy(owner, c.sequenced_by));
   const missingHeadcount = myAllCompanies ? myAllCompanies.filter(c => c.employees == null).length : null;
-  const openMissing = () => { setView('companies'); setMissingOpen(true); setTimeout(() => flashTo('goals-missing'), 80); };
   const saveEmployees = async (accountId, employees) => {
     const c = await goalsApi.updateCompany(businessId, accountId, { employees });
     const patch = list => list && list.map(x => (x.account_id === c.account_id ? { ...x, employees: c.employees } : x));
@@ -173,33 +184,22 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
   };
   const myCadences = cadences.filter(c => ownedBy(owner, c.owner_user_id));
   const myCommitments = commitments.filter(c => ownedBy(owner, c.owner_user_id));
-  const todoDone = myTodos.filter(t => todoStatus(t) === 'done').length;
-  const todoLive = myTodos.filter(t => todoStatus(t) !== 'dropped').length;
 
-  const views = [
-    { id: 'report', name: 'Weekly report', meta: reportData?.report?.status === 'final' ? 'final' : `${myCommitments.length} commitments` },
-    { id: 'week', name: 'This week', meta: `${todoDone}/${todoLive} to-dos` },
-    { id: 'partners', name: 'Partners', meta: `${myPartners.length} · ${myPartners.filter(p => p.hot).length} hot` },
-    { id: 'companies', name: 'Companies', meta: `${myCompanies.length} sequenced` },
-    { id: 'pipeline', name: 'Pipeline', meta: 'all companies' },
-  ];
-
-  // Rail summaries
+  // Sequenced: "Companies sequenced by owner" ring (Design C - moved from the rail).
   const ownerParts = [...members.map(m => ({ id: m.user_id, label: lookup(m.user_id).first, count: companies.filter(c => c.sequenced_by === m.user_id).length, color: lookup(m.user_id).color }))];
   const unowned = companies.filter(c => !members.some(m => m.user_id === c.sequenced_by)).length;
   if (unowned) ownerParts.push({ id: 'unassigned', label: 'Unassigned', count: unowned, color: lookup(null).color });
-  // The ring counts the whole team, so a slice opens Companies on Team with
-  // that owner picked out (a person filter would hide the other slices).
-  const focusCompanies = id => { setCompanyOwnerFocus(id); if (id) { setOwnerSlug('team'); setView('companies'); } };
-  const ringFocus = view === 'companies' ? companyOwnerFocus : null;
+  // The ring counts the whole team, so a slice picks that owner out on Team
+  // (a person filter would hide the other slices).
+  const focusCompanies = id => { setCompanyOwnerFocus(id); if (id) setOwnerSlug('team'); };
   const peopleSummary = (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-      <Ring parts={ownerParts} center={String(companies.length)} size={96} stroke={16} track={!companies.length} label="Companies sequenced by owner" onSelect={focusCompanies} selected={ringFocus} />
+    <section aria-label="Companies sequenced by owner" className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 16, padding: 20, background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusCard }}>
+      <Ring parts={ownerParts} center={String(companies.length)} size={96} stroke={16} track={!companies.length} label="Companies sequenced by owner" onSelect={focusCompanies} selected={companyOwnerFocus} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <span style={{ ...subStyle, fontSize: 12 }}>Companies sequenced, {weekLabel(weekStart).split(' · ')[0].toLowerCase()}</span>
-        <RingLegend parts={ownerParts} onSelect={focusCompanies} selected={ringFocus} />
+        <RingLegend parts={ownerParts} onSelect={focusCompanies} selected={companyOwnerFocus} />
       </div>
-    </div>
+    </section>
   );
   // Weekly report: live progress comes from the report endpoint (or the
   // frozen snapshot once final), merged onto the commitment rows.
@@ -232,25 +232,31 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
   };
   for (const k of Object.keys(autoChips)) autoChips[k] = autoChips[k].filter(Boolean);
 
-  // Goal hero: each card opens where its number comes from.
   // Every Goals link goes through here (goals-surface-v1 Stage 4). Targets:
   // 'overview[:<widget>]', 'view:<view>', 'section:<key>', 'missing',
   // 'week:prev', 'score:<metric>', 'huddle[:feed|open|click|reply|flags]',
-  // { partners: { stage?, tiers?, owner? } }, { companies: <Monday> }.
+  // 'plan', { partners: { stage?, tiers?, owner? } }, { companies: <Monday> }.
+  // homeOf() picks the tab + sub-view; the rest here is the focus inside it.
   const go = target => {
-    if (target === 'plan') return setPlanOpen(true);
-    if (target.partners) { setPartnerFocus({ ...target.partners }); return setView('partners'); }
-    if (target.companies) { setWeekStart(target.companies); return setView('companies'); }
+    const home = homeOf(target);
+    if (!home) {
+      console.warn(`sales-ia-v1: no home for link target ${JSON.stringify(target)} - opening Reports`);
+      return onNav('reports', 'weekly');
+    }
+    if (target.partners) { setPartnerFocus({ ...target.partners }); return onNav(home.tab, home.view); }
+    if (target.companies) { setWeekStart(target.companies); return onNav(home.tab, home.view); }
     const [kind, arg] = target.split(/:(.*)/);
-    if (kind === 'overview') return onOpenOverview && onOpenOverview(arg);
-    if (kind === 'view') { if (arg === 'partners') setPartnerFocus({}); return setView({ this_week: 'week' }[arg] || arg); }
-    if (kind === 'section') { setView('report'); return setTimeout(() => flashTo(`goals-sec-${arg}`), 50); }
-    if (kind === 'missing') return openMissing();
-    if (kind === 'week' && arg === 'prev') { setWeekStart(w => addDays(w, -7)); return setView('week'); }
-    if (kind === 'score') { setView('week'); return setTimeout(() => flashTo(`score-row-${arg}`), 120); }
     if (kind === 'huddle') return onOpenHuddle && onOpenHuddle(null, !arg ? null : arg === 'flags' ? { flags: true } : { feed: arg === 'feed' ? null : arg });
+    if (kind === 'overview') return onOpenOverview && onOpenOverview(arg);
+    if (target === 'plan') setPlanOpen(true);
+    if (target === 'view:partners') setPartnerFocus({});
+    if (target === 'week:prev') setWeekStart(w => addDays(w, -7));
+    if (kind === 'section') setTimeout(() => flashTo(`goals-sec-${arg}`), 50);
+    if (kind === 'score') setTimeout(() => flashTo(`score-row-${arg}`), 120);
+    if (kind === 'missing') { setMissingOpen(true); setTimeout(() => flashTo('goals-missing'), 80); }
+    onNav(home.tab, home.view);
   };
-  const openTarget = go;
+  const openMissing = () => go('missing');
   useEffect(() => {
     if (initialTarget) go(initialTarget.target);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -280,152 +286,160 @@ export default function GoalsTab({ businessId, onOpenOverview, onOpenHuddle, ini
       { label: 'Sequenced by', value: c => lookup(c.sequenced_by).name }, { key: 'mailbox_email', label: 'Mailbox' }, { key: 'first_sequenced_at', label: 'First email' }]) },
   ];
 
-  const rail = (
-    <RightRail views={views} view={view} onView={setView} people={people} owner={ownerSlug} onOwner={slug => { setOwnerSlug(slug); setCompanyOwnerFocus(null); }}
-      peopleSummary={peopleSummary} compact={compact} />
-  );
+  // Design C - what the page header carries per screen.
+  const showPeople = section === 'today' || ['partners', 'sequenced', 'weekly', 'scorecard'].includes(view);
+  const showWeek = section === 'today' || ['sequenced', 'weekly', 'scorecard'].includes(view);
+  const subViews = SUB_VIEWS[section];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div data-sales-section={section} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={labelStyle}>HomeLover · Command Center</span>
-          <h1 style={{ margin: 0, ...SA_TYPE.pageTitle, fontSize: compact ? 28 : 34, color: SA.text }}>Goals &amp; Weekly Plan</h1>
+          <h1 style={{ margin: 0, ...SA_TYPE.pageTitle, fontSize: compact ? 28 : 34, color: SA.text }}>{TITLES[section]}</h1>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Btn aria-label="Previous week" onClick={() => setWeekStart(w => addDays(w, -7))}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg>
-          </Btn>
-          <div style={{ height: 44, padding: '0 16px', border: `1px solid ${SA.border}`, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10, background: SA.surface }}>
-            <span style={{ fontWeight: 600, ...numStyle }}>{weekLabel(weekStart)}</span>
-            <Chip style={{ height: 22 }}>{monthName(monthOf(weekStart))}</Chip>
-          </div>
-          <Btn aria-label="Next week" onClick={() => setWeekStart(w => addDays(w, 7))}>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
-          </Btn>
-          {weekStart !== thisWeek && <Btn onClick={() => setWeekStart(thisWeek)}>This week</Btn>}
-          <div style={{ position: 'relative' }} className="no-print">
-            <Btn primary aria-haspopup="menu" aria-expanded={exportOpen} onClick={() => setExportOpen(o => !o)}>Export</Btn>
-            {exportOpen && (
-              <div role="menu" style={{ position: 'absolute', right: 0, top: 48, zIndex: 20, minWidth: 220, background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: 10, padding: 6, display: 'flex', flexDirection: 'column' }}>
-                <button role="menuitem" type="button" style={{ all: 'unset', cursor: 'pointer', padding: '10px 12px', borderRadius: 8, color: SA.text }}
-                  onClick={() => { setExportOpen(false); setView('report'); setTimeout(() => window.print(), 400); }}>Weekly report PDF</button>
-                {exports.map(x => (
-                  <button key={x.id} role="menuitem" type="button" disabled={x.disabled} title={x.disabled ? 'Needs the Stage 4 database update' : undefined}
-                    style={{ all: 'unset', cursor: x.disabled ? 'default' : 'pointer', padding: '10px 12px', borderRadius: 8, color: x.disabled ? SA.faint : SA.text }}
-                    onClick={() => { if (x.disabled) return; setExportOpen(false); x.run(); }}>{x.label}</button>
-                ))}
-              </div>
-            )}
-          </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
+          {subViews && <Segmented label={`${TITLES[section]} views`} items={subViews.map(([id, label]) => ({ id, label }))} value={view} onChange={v => onNav(section, v)} />}
+          {showPeople && <Segmented label="Filter by person" items={people} value={ownerSlug} onChange={slug => { setOwnerSlug(slug); setCompanyOwnerFocus(null); }} />}
+          {showWeek && <>
+            <Btn aria-label="Previous week" onClick={() => setWeekStart(w => addDays(w, -7))}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg>
+            </Btn>
+            <div style={{ height: 44, padding: '0 16px', border: `1px solid ${SA.border}`, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10, background: SA.surface }}>
+              <span style={{ fontWeight: 600, ...numStyle }}>{weekLabel(weekStart)}</span>
+              <Chip style={{ height: 22 }}>{monthName(monthOf(weekStart))}</Chip>
+            </div>
+            <Btn aria-label="Next week" onClick={() => setWeekStart(w => addDays(w, 7))}>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
+            </Btn>
+            {weekStart !== thisWeek && <Btn onClick={() => setWeekStart(thisWeek)}>This week</Btn>}
+          </>}
+          {section === 'reports' && (
+            <div style={{ position: 'relative' }} className="no-print">
+              <Btn primary aria-haspopup="menu" aria-expanded={exportOpen} onClick={() => setExportOpen(o => !o)}>Export</Btn>
+              {exportOpen && (
+                <div role="menu" style={{ position: 'absolute', right: 0, top: 48, zIndex: 20, minWidth: 220, background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: 10, padding: 6, display: 'flex', flexDirection: 'column' }}>
+                  <button role="menuitem" type="button" style={{ all: 'unset', cursor: 'pointer', padding: '10px 12px', borderRadius: 8, color: SA.text }}
+                    onClick={() => { setExportOpen(false); onNav('reports', 'weekly'); setTimeout(() => window.print(), 400); }}>Weekly report PDF</button>
+                  {exports.map(x => (
+                    <button key={x.id} role="menuitem" type="button" disabled={x.disabled} title={x.disabled ? 'Needs the Stage 4 database update' : undefined}
+                      style={{ all: 'unset', cursor: x.disabled ? 'default' : 'pointer', padding: '10px 12px', borderRadius: 8, color: x.disabled ? SA.faint : SA.text }}
+                      onClick={() => { if (x.disabled) return; setExportOpen(false); x.run(); }}>{x.label}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </header>
 
-      {compact && rail}
-      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
-        <main style={{ flex: '1 1 0', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {errors.members && <ErrorNote message={errors.members.message} />}
-          {me && !canEdit && <div style={{ ...subStyle, fontSize: 13 }}>You have view access to this workspace, so Goals is read-only for you.</div>}
+      <main style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
+        {errors.members && <ErrorNote message={errors.members.message} />}
+        {me && !canEdit && <div style={{ ...subStyle, fontSize: 13 }}>You have view access to this workspace, so Goals &amp; Sales is read-only for you.</div>}
+
+        {section === 'today' && <>
           {canEdit && <PlanNudge week={weekStart} ownerId={planOwner} ownerName={lookup(planOwner).first} plans={plans} onPlan={() => setPlanOpen(true)} />}
           <GoalHero businessId={businessId} weekStart={weekStart} owner={owner} ownerName={owner === 'team' ? null : whoLabel} commitments={myCommitments} missingHeadcount={missingHeadcount} canEdit={canEdit}
             scorecard={scorecard} scorecardError={errors.scorecard} reloadKey={heroKey} onGoalSaved={() => { loadScorecard(); loadKpi(); }} onDrill={drill}
             openTasks={heroTasks} onOpenTasks={key => openTasks({ link: { type: 'metric', id: key }, filter: drawerFilter })} />
+          <TodoList todos={myTodos} lookup={lookup} members={members} onOpenHuddle={onOpenHuddle} whoLabel={whoLabel} defaultOwner={owner === 'team' ? me?.profile?.id : owner}
+            canEdit={canEdit} error={errors.todos}
+            onToggleStep={async s => {
+              const step = await goalsApi.updateStep(businessId, s.id, { done: !s.done });
+              setTodos(ts => ts.map(t => (t.id === step.goal_id ? { ...t, steps: t.steps.map(x => (x.id === step.id ? step : x)) } : t)));
+            }}
+            onAddTodo={async body => {
+              const goal = await goalsApi.createWeekGoal(businessId, { ...body, kind: 'todo', week_start: weekStart });
+              setTodos(ts => [...ts, { ...goal, steps: [] }]);
+              return goal;
+            }}
+            onAddStep={async (t, text) => {
+              const step = await goalsApi.createStep(businessId, t.id, { text, sort_order: t.steps.length });
+              setTodos(ts => ts.map(x => (x.id === t.id ? { ...x, steps: [...x.steps, step] } : x)));
+            }}
+            onCarry={async () => { const r = await goalsApi.carryOver(businessId, weekStart, 'todo'); await loadTodos(); return r; }} />
+        </>}
 
-          {view === 'report' && (
-            <ReportView weekStart={weekStart} report={reportData?.report} reportError={errors.report} sections={reportData?.sections} infra={reportData?.infra}
-              commitments={reportCommitments} commitmentsError={errors.commitments} kpiRows={kpiRows} kpiError={errors.kpi} autoChips={autoChips} partnerBlock={partnerBlock}
-              canEdit={canEdit} lookup={lookup} members={members} defaultOwner={owner === 'team' ? me?.profile?.id : owner} onOpen={openTarget} tasksFor={tasksFor} liveWeek={liveWeek}
-              onSaveSection={(key, notes) => goalsApi.saveSection(businessId, weekStart, key, notes)}
-              onSectionSaved={s => setReportData(d => (d ? { ...d, sections: [...d.sections.filter(x => x.section_key !== s.section_key), s] } : d))}
-              onFinalize={async () => { await goalsApi.finalize(businessId, weekStart); await loadReport(); return true; }}
-              onReopen={async () => { await goalsApi.reopen(businessId, weekStart); await loadReport(); }}
-              onAddCommitment={async body => { await goalsApi.createWeekGoal(businessId, { ...body, kind: 'commitment', week_start: weekStart }); await Promise.all([loadCommitments(), loadReport()]); return true; }}
-              onUpdateCommitment={async (goalId, body) => { await goalsApi.updateWeekGoal(businessId, goalId, body); await loadCommitments(); }}
-              onCarryCommitments={async () => { const r = await goalsApi.carryOver(businessId, weekStart, 'commitment'); await Promise.all([loadCommitments(), loadReport()]); return r; }}
-              onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await Promise.all([loadKpi(), loadScorecard()]); setHeroKey(k => k + 1); }}
-              onPlanWeek={canEdit && planOwner ? () => setPlanOpen(true) : null}
-              infraHandlers={{
-                onAdd: async body => { await goalsApi.createInfra(businessId, { ...body, week_start: weekStart }); await loadReport(); return true; },
-                onUpdate: async (itemId, body) => { await goalsApi.updateInfra(businessId, itemId, body); await loadReport(); },
-                onDelete: async itemId => { await goalsApi.deleteInfra(businessId, itemId); await loadReport(); },
-                onCarry: async () => { const r = await goalsApi.carryInfra(businessId, weekStart); await loadReport(); return r; },
-              }} />
-          )}
+        {section === 'reports' && view === 'weekly' && (
+          <ReportView weekStart={weekStart} report={reportData?.report} reportError={errors.report} sections={reportData?.sections} infra={reportData?.infra}
+            commitments={reportCommitments} commitmentsError={errors.commitments} kpiRows={kpiRows} kpiError={errors.kpi} autoChips={autoChips} partnerBlock={partnerBlock}
+            canEdit={canEdit} lookup={lookup} members={members} defaultOwner={owner === 'team' ? me?.profile?.id : owner} onOpen={go} tasksFor={tasksFor} liveWeek={liveWeek}
+            onSaveSection={(key, notes) => goalsApi.saveSection(businessId, weekStart, key, notes)}
+            onSectionSaved={s => setReportData(d => (d ? { ...d, sections: [...d.sections.filter(x => x.section_key !== s.section_key), s] } : d))}
+            onFinalize={async () => { await goalsApi.finalize(businessId, weekStart); await loadReport(); return true; }}
+            onReopen={async () => { await goalsApi.reopen(businessId, weekStart); await loadReport(); }}
+            onAddCommitment={async body => { await goalsApi.createWeekGoal(businessId, { ...body, kind: 'commitment', week_start: weekStart }); await Promise.all([loadCommitments(), loadReport()]); return true; }}
+            onUpdateCommitment={async (goalId, body) => { await goalsApi.updateWeekGoal(businessId, goalId, body); await loadCommitments(); }}
+            onCarryCommitments={async () => { const r = await goalsApi.carryOver(businessId, weekStart, 'commitment'); await Promise.all([loadCommitments(), loadReport()]); return r; }}
+            onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await Promise.all([loadKpi(), loadScorecard()]); setHeroKey(k => k + 1); }}
+            onPlanWeek={canEdit && planOwner ? () => setPlanOpen(true) : null}
+            infraHandlers={{
+              onAdd: async body => { await goalsApi.createInfra(businessId, { ...body, week_start: weekStart }); await loadReport(); return true; },
+              onUpdate: async (itemId, body) => { await goalsApi.updateInfra(businessId, itemId, body); await loadReport(); },
+              onDelete: async itemId => { await goalsApi.deleteInfra(businessId, itemId); await loadReport(); },
+              onCarry: async () => { const r = await goalsApi.carryInfra(businessId, weekStart); await loadReport(); return r; },
+            }} />
+        )}
 
-          {view === 'week' && <>
-            <ScorecardTable data={scorecard} error={errors.scorecard} weekStart={weekStart} ownerName={owner === 'team' ? null : whoLabel} canEdit={canEdit} onOpen={go}
-              missingHeadcount={missingHeadcount} onFillHeadcount={openMissing}
-              onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await loadScorecard(); setHeroKey(k => k + 1); }} />
-            <TodoList todos={myTodos} lookup={lookup} members={members} onOpenHuddle={onOpenHuddle} whoLabel={whoLabel} defaultOwner={owner === 'team' ? me?.profile?.id : owner}
-              canEdit={canEdit} error={errors.todos}
-              onToggleStep={async s => {
-                const step = await goalsApi.updateStep(businessId, s.id, { done: !s.done });
-                setTodos(ts => ts.map(t => (t.id === step.goal_id ? { ...t, steps: t.steps.map(x => (x.id === step.id ? step : x)) } : t)));
-              }}
-              onAddTodo={async body => {
-                const goal = await goalsApi.createWeekGoal(businessId, { ...body, kind: 'todo', week_start: weekStart });
-                setTodos(ts => [...ts, { ...goal, steps: [] }]);
-                return goal;
-              }}
-              onAddStep={async (t, text) => {
-                const step = await goalsApi.createStep(businessId, t.id, { text, sort_order: t.steps.length });
-                setTodos(ts => ts.map(x => (x.id === t.id ? { ...x, steps: [...x.steps, step] } : x)));
-              }}
-              onCarry={async () => { const r = await goalsApi.carryOver(businessId, weekStart, 'todo'); await loadTodos(); return r; }} />
-          </>}
+        {section === 'reports' && view === 'scorecard' && (
+          <ScorecardTable data={scorecard} error={errors.scorecard} weekStart={weekStart} ownerName={owner === 'team' ? null : whoLabel} canEdit={canEdit} onOpen={go}
+            missingHeadcount={missingHeadcount} onFillHeadcount={openMissing}
+            onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await loadScorecard(); setHeroKey(k => k + 1); }} />
+        )}
 
-          {view === 'partners' && (
-            <PartnersView partners={myPartners} lookup={lookup} members={members} canEdit={canEdit} error={errors.partners}
-              onUpdate={async (goalId, body) => { const g = await goalsApi.updatePartner(businessId, goalId, body); setPartners(ps => ps.map(p => (p.id === g.id ? { ...p, ...g } : p))); }}
-              onSignal={(goalId, signal) => goalsApi.partnerSignal(businessId, goalId, signal)}
-              onUndo={(goalId, eventId) => goalsApi.partnerUndo(businessId, goalId, eventId)}
-              // Merge, never replace: a signal's reply is the sales_goals row, without the list's people_count.
-              onReplace={g => setPartners(ps => ps.map(p => (p.id === g.id ? { ...p, ...g } : p)))}
-              onPeople={goalId => goalsApi.partnerPeople(businessId, goalId)}
-              onAddPerson={(goalId, body) => goalsApi.addPartnerPerson(businessId, goalId, body)}
-              onDeletePerson={(goalId, personId) => goalsApi.deletePartnerPerson(businessId, goalId, personId)}
-              onRefreshPeople={() => goalsApi.refreshPartnerPeople(businessId)}
-              onCreateTask={body => goalsApi.createWeekGoal(businessId, { week_start: thisWeek, kind: 'todo', owner_user_id: (owner === 'team' ? me?.profile?.id : owner) || null, ...body })}
-              onTouches={body => goalsApi.partnerTouches(businessId, body)}
-              onDomains={goalId => goalsApi.partnerDomains(businessId, goalId)}
-              onAddDomain={(goalId, body) => goalsApi.addPartnerDomain(businessId, goalId, body)}
-              onUpdateDomain={(goalId, domainId, body) => goalsApi.updatePartnerDomain(businessId, goalId, domainId, body)}
-              onDeleteDomain={(goalId, domainId) => goalsApi.deletePartnerDomain(businessId, goalId, domainId)}
-              onAllDomains={() => goalsApi.allPartnerDomains(businessId)}
-              csvUrl={goalsApi.apolloCsvUrl(businessId)}
-              onApolloMoves={() => goalsApi.apolloMoves(businessId)}
-              onApplyApollo={(keys, includeHeld) => goalsApi.applyApolloMoves(businessId, keys, includeHeld)}
-              onDismissApollo={key => goalsApi.dismissApolloMove(businessId, key)}
-              onOutlookMoves={() => goalsApi.outlookMoves(businessId)}
-              onApplyOutlook={(keys, includeHeld) => goalsApi.applyOutlookMoves(businessId, keys, includeHeld)}
-              onDismissOutlook={key => goalsApi.dismissOutlookMove(businessId, key)}
-              onRecordOutlook={() => goalsApi.recordOutlookTouches(businessId)}
-              onRefresh={() => goalsApi.partners(businessId).then(setPartners).catch(e => setError('partners', e))}
-              onEvents={goalId => goalsApi.partnerEvents(businessId, { goal_id: goalId })}
-              onRank={async (goalId, order) => {
-                const ranks = await goalsApi.partnerRank(businessId, goalId, order);
-                setPartners(ps => ps.map(p => (p.id in ranks ? { ...p, sort_rank: ranks[p.id] } : p)));
-              }}
-              teamView={owner === 'team'} focusFilter={partnerFocus} tasksFor={liveWeek ? tasksFor : null}
-              onCreate={async body => { const g = await goalsApi.createPartner(businessId, { ...body, owner_user_id: owner === 'team' ? null : owner }); setPartners(ps => [...ps, g]); }} />
-          )}
+        {section === 'reports' && view === 'analytics' && analytics}
 
-          {view === 'companies' && (
-            <CompaniesView weekStart={weekStart} companies={myCompanies} cadences={myCadences} lookup={lookup} members={members} owner={owner} whoLabel={whoLabel}
-              canEdit={canEdit} error={errors.companies || errors.cadences}
-              allCompanies={myAllCompanies} allError={errors.allCompanies} missingOpen={missingOpen} onMissingOpen={setMissingOpen}
-              onSaveEmployees={saveEmployees}
-              ownerFocus={companyOwnerFocus} onOwnerFocus={setCompanyOwnerFocus} tasksFor={liveWeek ? tasksFor : null}
-              onCreateCadence={async body => { const c = await goalsApi.createCadence(businessId, body); setCadences(cs => [...cs, c]); }}
-              onDeleteCadence={async cadenceId => { await goalsApi.deleteCadence(businessId, cadenceId); setCadences(cs => cs.filter(c => c.id !== cadenceId)); }} />
-          )}
-          {view === 'pipeline' && (
-            <PipelineView businessId={businessId} canEdit={canEdit}
-              onOpenPartner={(id, name) => go({ partners: { ids: [id], open: id, label: name } })} onOpenCompanies={w => { setOwnerSlug('team'); go({ companies: w }); }} />
-          )}
-        </main>
-        {!compact && <div style={{ flex: '0 0 300px', minWidth: 0 }}>{rail}</div>}
-      </div>
+        {section === 'pipeline' && view === 'partners' && (
+          <PartnersView partners={myPartners} lookup={lookup} members={members} canEdit={canEdit} error={errors.partners}
+            onUpdate={async (goalId, body) => { const g = await goalsApi.updatePartner(businessId, goalId, body); setPartners(ps => ps.map(p => (p.id === g.id ? { ...p, ...g } : p))); }}
+            onSignal={(goalId, signal) => goalsApi.partnerSignal(businessId, goalId, signal)}
+            onUndo={(goalId, eventId) => goalsApi.partnerUndo(businessId, goalId, eventId)}
+            // Merge, never replace: a signal's reply is the sales_goals row, without the list's people_count.
+            onReplace={g => setPartners(ps => ps.map(p => (p.id === g.id ? { ...p, ...g } : p)))}
+            onPeople={goalId => goalsApi.partnerPeople(businessId, goalId)}
+            onAddPerson={(goalId, body) => goalsApi.addPartnerPerson(businessId, goalId, body)}
+            onDeletePerson={(goalId, personId) => goalsApi.deletePartnerPerson(businessId, goalId, personId)}
+            onRefreshPeople={() => goalsApi.refreshPartnerPeople(businessId)}
+            onCreateTask={body => goalsApi.createWeekGoal(businessId, { week_start: thisWeek, kind: 'todo', owner_user_id: (owner === 'team' ? me?.profile?.id : owner) || null, ...body })}
+            onTouches={body => goalsApi.partnerTouches(businessId, body)}
+            onDomains={goalId => goalsApi.partnerDomains(businessId, goalId)}
+            onAddDomain={(goalId, body) => goalsApi.addPartnerDomain(businessId, goalId, body)}
+            onUpdateDomain={(goalId, domainId, body) => goalsApi.updatePartnerDomain(businessId, goalId, domainId, body)}
+            onDeleteDomain={(goalId, domainId) => goalsApi.deletePartnerDomain(businessId, goalId, domainId)}
+            onAllDomains={() => goalsApi.allPartnerDomains(businessId)}
+            csvUrl={goalsApi.apolloCsvUrl(businessId)}
+            onApolloMoves={() => goalsApi.apolloMoves(businessId)}
+            onApplyApollo={(keys, includeHeld) => goalsApi.applyApolloMoves(businessId, keys, includeHeld)}
+            onDismissApollo={key => goalsApi.dismissApolloMove(businessId, key)}
+            onOutlookMoves={() => goalsApi.outlookMoves(businessId)}
+            onApplyOutlook={(keys, includeHeld) => goalsApi.applyOutlookMoves(businessId, keys, includeHeld)}
+            onDismissOutlook={key => goalsApi.dismissOutlookMove(businessId, key)}
+            onRecordOutlook={() => goalsApi.recordOutlookTouches(businessId)}
+            onRefresh={() => goalsApi.partners(businessId).then(setPartners).catch(e => setError('partners', e))}
+            onEvents={goalId => goalsApi.partnerEvents(businessId, { goal_id: goalId })}
+            onRank={async (goalId, order) => {
+              const ranks = await goalsApi.partnerRank(businessId, goalId, order);
+              setPartners(ps => ps.map(p => (p.id in ranks ? { ...p, sort_rank: ranks[p.id] } : p)));
+            }}
+            teamView={owner === 'team'} focusFilter={partnerFocus} tasksFor={liveWeek ? tasksFor : null}
+            onCreate={async body => { const g = await goalsApi.createPartner(businessId, { ...body, owner_user_id: owner === 'team' ? null : owner }); setPartners(ps => [...ps, g]); }} />
+        )}
+
+        {section === 'pipeline' && view === 'sequenced' && <>
+          {peopleSummary}
+          <CompaniesView weekStart={weekStart} companies={myCompanies} cadences={myCadences} lookup={lookup} members={members} owner={owner} whoLabel={whoLabel}
+            canEdit={canEdit} error={errors.companies || errors.cadences}
+            allCompanies={myAllCompanies} allError={errors.allCompanies} missingOpen={missingOpen} onMissingOpen={setMissingOpen}
+            onSaveEmployees={saveEmployees}
+            ownerFocus={companyOwnerFocus} onOwnerFocus={setCompanyOwnerFocus} tasksFor={liveWeek ? tasksFor : null}
+            onCreateCadence={async body => { const c = await goalsApi.createCadence(businessId, body); setCadences(cs => [...cs, c]); }}
+            onDeleteCadence={async cadenceId => { await goalsApi.deleteCadence(businessId, cadenceId); setCadences(cs => cs.filter(c => c.id !== cadenceId)); }} />
+        </>}
+        {section === 'pipeline' && view === 'board' && (
+          <PipelineView businessId={businessId} canEdit={canEdit}
+            onOpenPartner={(id, name) => go({ partners: { ids: [id], open: id, label: name } })} onOpenCompanies={w => { setOwnerSlug('team'); go({ companies: w }); }} />
+        )}
+      </main>
       {planOpen && canEdit && planOwner && (
         <PlanWeekDrawer businessId={businessId} weekStart={weekStart} ownerId={planOwner} ownerName={lookup(planOwner).first} teamDefault={owner === 'team'} compact={compact}
           hasPlanned={commitments.some(c => c.owner_user_id === planOwner && c.plan_id && c.status === 'open')}

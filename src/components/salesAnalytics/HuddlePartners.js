@@ -7,7 +7,7 @@ import { statusOf, statusLabel, statusColor, tierLabel } from './goals/partners/
 import OwnerPill from './OwnerPill';
 
 // sales-partners-pipeline-v1 Stage 4 - partners someone flagged 🔥 in
-// Goals > Partners, at the top of the Daily Huddle. Read-only here; the
+// Pipeline > Partner workflow, at the top of the Huddle. Read-only here; the
 // buttons live on the partner card. Hidden when nothing is hot.
 export default function HuddlePartners({ businessId }) {
   const [partners, setPartners] = useState(null);
@@ -27,7 +27,7 @@ export default function HuddlePartners({ businessId }) {
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
         <h2 id="huddle-partners" style={{ ...SA_TYPE.cardTitle, fontSize: 17, color: SA.text, margin: 0 }}>🔥 Partners</h2>
         <span style={{ ...SA_TYPE.label, color: SA.faint }}>{partners.length}</span>
-        <span style={{ fontSize: 12, color: SA.muted }}>Update them in Goals → Partners</span>
+        <span style={{ fontSize: 12, color: SA.muted }}>Update them in Pipeline → Partner workflow</span>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {partners.map(p => {

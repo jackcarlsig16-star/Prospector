@@ -1,4 +1,4 @@
-import { KIT_DARK, KIT_LIGHT, KIT_RADIUS } from './tokens';
+import { KIT_DARK, KIT_LIGHT, KIT_RADIUS, KIT_SEGMENTED } from './tokens';
 
 // Every kit component reads var(--ui-*) so dark/light is pure CSS: :root holds
 // dark, the app's light mode (body.mode-straight-shooter) swaps to light, and
@@ -31,6 +31,12 @@ body.mode-straight-shooter, .ui-theme-light { ${vars(KIT_LIGHT)} }
 .ui-switch[aria-checked="true"]::after { transform:translateX(16px); background:var(--ui-onAccent); }
 .ui-switch:disabled { opacity:.45; cursor:not-allowed; }
 .ui-card { padding:24px; }
+.ui-seg { display:inline-flex; gap:${KIT_SEGMENTED.gap}px; padding:${KIT_SEGMENTED.inset}px; max-width:100%; box-sizing:border-box; overflow-x:auto; border-radius:${KIT_RADIUS.control}px; border:1px solid var(--ui-border); background:var(--ui-inset); }
+.ui-seg__btn { display:inline-flex; align-items:center; gap:6px; flex:none; height:${KIT_SEGMENTED.height}px; padding:${KIT_SEGMENTED.padding}; border:0; border-radius:${KIT_SEGMENTED.radius}px; background:transparent; color:var(--ui-muted); font:500 11px "Geist Mono", ui-monospace, monospace; text-transform:uppercase; letter-spacing:.08em; cursor:pointer; white-space:nowrap; transition:background .12s, color .12s; }
+.ui-seg__btn:hover:not([aria-pressed="true"]) { color:var(--ui-text); }
+.ui-seg__btn[aria-pressed="true"] { background:var(--ui-surface); color:var(--ui-text); box-shadow:0 0 0 1px var(--ui-border); }
+.ui-seg__btn:focus-visible { outline:2px solid var(--ui-accent); outline-offset:2px; }
+.ui-seg__meta { color:var(--ui-muted); font-variant-numeric:tabular-nums; }
 @media (max-width: 600px) { .ui-card { padding:16px; } }
 `;
 

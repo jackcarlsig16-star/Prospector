@@ -15,7 +15,7 @@ export default function HuddlePrintSheet({ dateLabel, since, needs, prospects, f
   const byId = new Map(prospects.map(p => [p.contact_id, p]));
   return (
     <div id="sales-analytics-print-area" className="print-only" style={{ color: SA.text }}>
-      <h1 style={{ ...SA_TYPE.pageTitle, fontSize: 20, margin: '0 0 2px' }}>Daily Huddle agenda · {dateLabel}</h1>
+      <h1 style={{ ...SA_TYPE.pageTitle, fontSize: 20, margin: '0 0 2px' }}>Huddle agenda · {dateLabel}</h1>
       {since && (
         <p style={{ fontSize: 11, color: SA.muted, margin: '0 0 8px' }}>
           Since last huddle: {since.replies} replies · {since.real_clicks} real clicks · {since.real_opens} real opens · {since.done} done

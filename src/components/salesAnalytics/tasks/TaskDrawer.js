@@ -144,7 +144,7 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
   });
   const openInGoals = () => {
     const url = new URL(window.location.href);
-    url.searchParams.set('gview', 'week');
+    url.searchParams.set('tab', 'today'); url.searchParams.delete('view'); url.searchParams.delete('gview');
     window.history.replaceState(window.history.state, '', url);
     onOpenGoals();
     window.dispatchEvent(new Event(OPEN_GOALS_WEEK));
@@ -230,7 +230,7 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
                   </section>
                 ))}
                 {meId && !groups.some(g => g.items.length) && !error && <p style={{ fontSize: 14, color: SA.muted, marginTop: 16 }}>Nothing here for this week.</p>}
-                <button type="button" style={{ ...linkBtn, marginTop: 16 }} onClick={openInGoals}>Open Goals → This week</button>
+                <button type="button" style={{ ...linkBtn, marginTop: 16 }} onClick={openInGoals}>Open Today →</button>
               </div>
             </>
           )}

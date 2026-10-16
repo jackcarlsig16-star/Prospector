@@ -124,8 +124,8 @@ const scrollState = page => page.evaluate(() => ({ win: window.scrollY, main: do
     ok('drawer Team = DB', sameSet(teamGot, teamWant), `${teamGot.length} vs ${teamWant.size}`);
     await page.screenshot({ path: `${OUT}/td2-1440-command-center.png` });
     // Open in Goals -> This week
-    await page.locator(drawerSel).getByRole('button', { name: 'Open Goals → This week' }).click(); await page.waitForTimeout(6000);
-    ok('"Open Goals → This week" lands on Goals → This week, drawer stays open', await page.locator('section[aria-labelledby="h-todo"]').isVisible() && await page.locator(drawerSel).isVisible());
+    await page.locator(drawerSel).getByRole('button', { name: 'Open Today →' }).click(); await page.waitForTimeout(6000);
+    ok('"Open Today →" lands on Today, drawer stays open', await page.locator('section[aria-labelledby="h-todo"]').isVisible() && await page.locator(drawerSel).isVisible());
     // Goals This week counts per person = drawer (the open drawer covers the rail)
     await page.locator(drawerSel).getByRole('button', { name: 'Close tasks' }).click(); await page.waitForTimeout(300);
     for (const slug of Object.keys(drawerCounts)) {
@@ -155,8 +155,8 @@ const scrollState = page => page.evaluate(() => ({ win: window.scrollY, main: do
     const views = page.locator('nav[aria-label="Views"]');
     await keepState('goals-partners', () => views.getByRole('button', { name: /^Partners/ }).first().click(), () => page.locator('section[aria-labelledby="h-part"]').isVisible());
     await keepState('goals-companies', () => views.getByRole('button', { name: /^Companies/ }).first().click(), async () => (await page.locator('#root').innerText()).includes('Plan a cadence'));
-    await keepState('overview', () => page.getByRole('button', { name: 'Overview', exact: true }).first().click(), async () => (await page.getByRole('button', { name: 'Overview', exact: true }).first().evaluate(b => getComputedStyle(b).color)) !== '');
-    await keepState('huddle', () => page.getByRole('button', { name: /^Daily Huddle/ }).first().click(), () => page.locator('#huddle-feed-section, [aria-label="Activity feed"]').first().isVisible().catch(() => true));
+    await keepState('overview', async () => { await page.getByRole('button', { name: 'Reports', exact: true }).first().click(); await page.waitForTimeout(600); await page.getByRole('button', { name: 'Analytics', exact: true }).first().click(); }, async () => (await page.getByRole('button', { name: 'Analytics', exact: true }).first().evaluate(b => getComputedStyle(b).color)) !== '');
+    await keepState('huddle', () => page.getByRole('button', { name: /^Huddle/ }).first().click(), () => page.locator('#huddle-feed-section, [aria-label="Activity feed"]').first().isVisible().catch(() => true));
     // Remembered open
     await openDrawer(page, false);
     await page.reload(); await page.waitForTimeout(4000);
@@ -170,7 +170,7 @@ const scrollState = page => page.evaluate(() => ({ win: window.scrollY, main: do
     await ph.page.keyboard.press('Escape'); await ph.page.waitForTimeout(300);
     ok('390: Tasks button in the ☰ header', await ph.page.getByRole('button', { name: /^Tasks/ }).isVisible());
     await ph.page.screenshot({ path: `${OUT}/td2-390-header.png` });
-    for (const [name, go] of [['goals', () => navGoals(ph.page, true)], ['overview', () => ph.page.getByRole('button', { name: 'Overview', exact: true }).first().click()], ['huddle', () => ph.page.getByRole('button', { name: /^Daily Huddle/ }).first().click()]]) {
+    for (const [name, go] of [['goals', () => navGoals(ph.page, true)], ['overview', async () => { await ph.page.getByRole('button', { name: 'Reports', exact: true }).first().click(); await ph.page.waitForTimeout(600); await ph.page.getByRole('button', { name: 'Analytics', exact: true }).first().click(); }], ['huddle', () => ph.page.getByRole('button', { name: /^Huddle/ }).first().click()]]) {
       if (await ph.page.locator(drawerSel).count()) await ph.page.getByRole('button', { name: 'Close tasks' }).click();
       await go(); await ph.page.waitForTimeout(2500);
       await openDrawer(ph.page, true);

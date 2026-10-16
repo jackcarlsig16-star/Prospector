@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Today — viewer (Seif)</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#0B0D10}
+a{color:#AFC0FF;text-decoration:none}a:hover{color:#E9ECF0}
+.lbl{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8B95A3;font-weight:500}
+.num{font-variant-numeric:tabular-nums}
+.btn{height:32px;padding:0 12px;border-radius:8px;border:1px solid #232A33;background:#171C22;color:#E9ECF0;font:500 13px Geist,system-ui,sans-serif;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btnp{background:#8FA8FF;border-color:#8FA8FF;color:#0B0D10;font-weight:600}
+.pill{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:999px;border:1px solid #232A33;font-size:11px;color:#C9D0D9;white-space:nowrap}
+.navi{display:flex;align-items:center;height:34px;padding:0 12px;border-radius:8px;color:#8B95A3;font-size:13px}
+.trow{display:flex;align-items:center;gap:12px;min-height:38px;padding:5px 0;border-top:1px solid #1C222A}
+.card{background:#12161B;border:1px solid #232A33;border-radius:14px}
+.dot{width:6px;height:6px;flex:0 0 6px;border-radius:999px;background:#5E6773}
+</style>
+</helmet>
+<div style="width:1440px;height:1300px;display:flex;background:#0B0D10;color:#E9ECF0;font-family:Geist,system-ui,sans-serif;font-size:14px">
+
+  <nav aria-label="Prospector" style="width:220px;flex:0 0 220px;border-right:1px solid #232A33;padding:18px 12px;box-sizing:border-box;display:flex;flex-direction:column;gap:18px">
+    <span style="font-family:'Geist Mono',monospace;font-weight:600;font-size:13px;letter-spacing:.12em;padding:0 6px">PROSPECTOR</span>
+    <div style="display:flex;flex-direction:column;gap:2px">
+      <a class="navi" href="#" aria-current="page" style="background:#171C22;color:#E9ECF0;font-weight:500;box-shadow:inset 2px 0 0 #8FA8FF">Sales</a>
+    </div>
+    <div style="margin-top:auto;display:flex;align-items:center;gap:10px;padding:10px 6px;border-top:1px solid #232A33">
+      <span style="width:28px;height:28px;border-radius:999px;background:#232A33;color:#C9D0D9;font-size:12px;font-weight:600;display:inline-flex;align-items:center;justify-content:center">S</span>
+      <span style="display:flex;flex-direction:column;font-size:13px">Seif<span style="font-size:11px;color:#8B95A3">Viewer</span></span>
+    </div>
+  </nav>
+
+  <div style="flex:1 1 auto;min-width:0;padding:0 40px 48px;box-sizing:border-box">
+    <div style="max-width:1100px;margin:0 auto;display:flex;flex-direction:column;gap:24px">
+
+      <header style="display:flex;align-items:center;gap:12px;height:56px;padding:0 12px;background:#12161B;border:1px solid #232A33;border-top:0;border-bottom:2px solid #E2418A;border-radius:0 0 10px 10px">
+        <span aria-hidden="true" style="width:32px;height:32px;border-radius:8px;background:#E2418A;color:#0B0D10;font-weight:600;font-size:15px;display:inline-flex;align-items:center;justify-content:center">H</span>
+        <span style="font-size:16px;font-weight:600">HomeLover</span>
+        <div role="tablist" aria-label="Sales" style="display:inline-flex;gap:2px;padding:3px;background:#171C22;border:1px solid #232A33;border-radius:10px;margin-left:8px">
+          <button role="tab" aria-selected="true" style="height:30px;padding:0 14px;border:0;border-radius:7px;background:#12161B;color:#E9ECF0;font:500 13px Geist,sans-serif;box-shadow:0 0 0 1px #232A33">Today</button>
+          <button role="tab" aria-selected="false" style="height:30px;padding:0 14px;border:0;border-radius:7px;background:transparent;color:#8B95A3;font:500 13px Geist,sans-serif">Pipeline</button>
+          <button role="tab" aria-selected="false" style="height:30px;padding:0 14px;border:0;border-radius:7px;background:transparent;color:#8B95A3;font:500 13px Geist,sans-serif">Huddle</button>
+          <button role="tab" aria-selected="false" style="height:30px;padding:0 14px;border:0;border-radius:7px;background:transparent;color:#8B95A3;font:500 13px Geist,sans-serif">Reports</button>
+        </div>
+        <div style="flex:1"></div>
+        <label style="display:flex;align-items:center;gap:8px;width:300px;height:34px;padding:0 10px;box-sizing:border-box;border:1px solid #6B7480;border-radius:8px;background:#0F1317;color:#8B95A3">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="m10.5 10.5 3 3"></path></svg>
+          <input aria-label="Search everything" placeholder="Search everything" style="flex:1;min-width:0;background:transparent;border:0;outline:0;color:#E9ECF0;font:13px Geist,sans-serif">
+          <kbd style="font:11px 'Geist Mono',monospace;color:#8B95A3;border:1px solid #232A33;border-radius:4px;padding:1px 5px">⌘K</kbd>
+        </label>
+      </header>
+
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <span class="lbl">HomeLover · Today</span>
+          <div style="display:flex;align-items:center;gap:12px">
+            <h1 style="margin:0;font-size:34px;font-weight:600;letter-spacing:-.025em">Thursday, Oct 15</h1>
+            <span class="pill" style="height:24px;font-size:12px;color:#8B95A3"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z"></path><circle cx="8" cy="8" r="2"></circle></svg>View only</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div role="group" aria-label="Show" style="display:inline-flex;gap:2px;padding:3px;background:#171C22;border:1px solid #232A33;border-radius:10px">
+            <button aria-pressed="true" style="height:28px;padding:0 12px;border:0;border-radius:7px;background:#12161B;color:#E9ECF0;font:500 13px Geist,sans-serif;box-shadow:0 0 0 1px #232A33">Team</button>
+            <button aria-pressed="false" style="height:28px;padding:0 12px;border:0;border-radius:7px;background:transparent;color:#8B95A3;font:500 13px Geist,sans-serif"><span aria-hidden="true" style="display:inline-block;width:8px;height:8px;border-radius:999px;background:#6F8CF0;margin-right:6px"></span>Jack</button>
+            <button aria-pressed="false" style="height:28px;padding:0 12px;border:0;border-radius:7px;background:transparent;color:#8B95A3;font:500 13px Geist,sans-serif"><span aria-hidden="true" style="display:inline-block;width:8px;height:8px;border-radius:999px;background:#C97626;margin-right:6px"></span>Cyrus</button>
+          </div>
+          <div style="display:inline-flex;align-items:center;height:36px;border:1px solid #232A33;border-radius:8px;background:#12161B">
+            <button aria-label="Previous week" style="width:32px;height:34px;border:0;background:transparent;color:#C9D0D9"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10 3 5 8l5 5"></path></svg></button>
+            <span class="num" style="font-size:13px;font-weight:500;padding:0 6px">Week 2 · Oct 12 – 18</span>
+            <button aria-label="Next week" style="width:32px;height:34px;border:0;background:transparent;color:#C9D0D9"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m6 3 5 5-5 5"></path></svg></button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Latest report: the viewer's main job -->
+      <section aria-label="Latest weekly report" class="card" style="padding:16px 20px;display:flex;align-items:center;gap:16px">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#8FA8FF" stroke-width="1.6" aria-hidden="true"><rect x="7" y="4" width="18" height="24" rx="3"></rect><path d="M11 11h10M11 15h10M11 19h6"></path></svg>
+        <div style="flex:1;display:flex;flex-direction:column;gap:3px">
+          <span style="font-size:15px;font-weight:600">Week 1 report · Oct 5 – 11</span>
+          <span style="font-size:13px;color:#8B95A3"><span style="color:#3DD68C">✓</span> Finalized by Jack · Mon Oct 12 · Week 2 report is in progress</span>
+        </div>
+        <button class="btn">Download PDF</button>
+        <button class="btn btnp">Open report</button>
+      </section>
+
+      <section aria-label="October goals" style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px">
+        <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:10px">
+          <span class="lbl">Audience reached</span>
+          <div style="display:flex;align-items:center;justify-content:space-between"><span class="num" style="font-size:30px;font-weight:600;letter-spacing:-.03em">623K</span>
+            <svg width="44" height="44" viewBox="0 0 44 44" role="img" aria-label="62% of goal"><circle cx="22" cy="22" r="18" fill="none" stroke="#1C222A" stroke-width="4"></circle><circle cx="22" cy="22" r="18" fill="none" stroke="#8FA8FF" stroke-width="4" stroke-linecap="round" stroke-dasharray="70.1 113.1" transform="rotate(-90 22 22)"></circle><text x="22" y="25.5" text-anchor="middle" font-size="10" font-family="Geist" font-weight="600" fill="#E9ECF0">62%</text></svg></div>
+          <span class="num" style="font-size:12px;color:#8B95A3">of 1.00M · October</span>
+        </div>
+        <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:10px">
+          <span class="lbl">People in sequence</span>
+          <span class="num" style="font-size:30px;font-weight:600;letter-spacing:-.03em;line-height:44px">3,340</span>
+          <span class="num" style="font-size:12px;color:#3DD68C">▲ 50 vs last week</span>
+        </div>
+        <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:10px">
+          <span class="lbl">Partners first-touched</span>
+          <div style="display:flex;align-items:center;justify-content:space-between"><span class="num" style="font-size:30px;font-weight:600;letter-spacing:-.03em">4</span>
+            <svg width="44" height="44" viewBox="0 0 44 44" role="img" aria-label="4% of goal"><circle cx="22" cy="22" r="18" fill="none" stroke="#1C222A" stroke-width="4"></circle><circle cx="22" cy="22" r="18" fill="none" stroke="#8FA8FF" stroke-width="4" stroke-linecap="round" stroke-dasharray="4.5 113.1" transform="rotate(-90 22 22)"></circle><text x="22" y="25.5" text-anchor="middle" font-size="10" font-family="Geist" font-weight="600" fill="#E9ECF0">4%</text></svg></div>
+          <span class="num" style="font-size:12px;color:#FF6B6B">▼ 13 vs last week</span>
+        </div>
+        <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:10px">
+          <span class="lbl">Meetings set</span>
+          <span class="num" style="font-size:30px;font-weight:600;color:#8B95A3;line-height:44px">—</span>
+          <span style="font-size:12px;color:#8B95A3">No goal yet</span>
+        </div>
+        <div class="card" style="padding:16px;display:flex;flex-direction:column;gap:10px">
+          <span class="lbl">Real replies</span>
+          <span class="num" style="font-size:30px;font-weight:600;letter-spacing:-.03em;line-height:44px">9</span>
+          <span class="num" style="font-size:12px;color:#3DD68C">▲ 8 vs last week</span>
+        </div>
+      </section>
+
+      <div style="display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:16px;align-items:start">
+        <section aria-labelledby="hv-team" class="card" style="padding:20px 24px 14px;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;align-items:baseline;gap:10px"><h2 id="hv-team" style="margin:0;font-size:15px;font-weight:600">The team today</h2><span style="font-size:13px;color:#8B95A3">read-only</span></div>
+
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px">
+            <div style="background:#0F1317;border:1px solid #1C222A;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px">
+              <span style="display:flex;align-items:center;gap:8px;font-weight:600"><span aria-hidden="true" style="width:8px;height:8px;border-radius:999px;background:#6F8CF0"></span>Jack</span>
+              <span class="num" style="font-size:13px;color:#C9D0D9"><span style="color:#FF6B6B">! 2 overdue</span> · 3 due today · ⚑ 2 flags</span>
+            </div>
+            <div style="background:#0F1317;border:1px solid #1C222A;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px">
+              <span style="display:flex;align-items:center;gap:8px;font-weight:600"><span aria-hidden="true" style="width:8px;height:8px;border-radius:999px;background:#C97626"></span>Cyrus</span>
+              <span class="num" style="font-size:13px;color:#C9D0D9">✓ 0 overdue · 1 due today · ⚑ 0 flags</span>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column">
+            <div style="padding:4px 0 2px"><span class="lbl">Pipeline moves this week</span></div>
+            <div class="trow"><span aria-hidden="true" style="width:3px;height:22px;border-radius:2px;background:#F2B544"></span><span style="flex:1">Alliant Insurance Services <span style="color:#8B95A3;font-size:12px">Partner · <span class="pill" style="height:18px">Upside</span></span></span><span style="font-size:13px;color:#C9D0D9">→ Meeting set</span><span class="num" style="font-size:12px;color:#8B95A3;width:48px;text-align:right">Oct 15</span></div>
+            <div class="trow"><span aria-hidden="true" style="width:3px;height:22px;border-radius:2px;background:#F2B544"></span><span style="flex:1">Brown &amp; Brown <span style="color:#8B95A3;font-size:12px">Partner · <span class="pill" style="height:18px">HomeLover</span></span></span><span style="font-size:13px;color:#C9D0D9">→ Meeting set</span><span class="num" style="font-size:12px;color:#8B95A3;width:48px;text-align:right">Oct 15</span></div>
+            <div class="trow"><span aria-hidden="true" style="width:3px;height:22px;border-radius:2px;background:#AFC0FF"></span><span style="flex:1">Gallagher <span style="color:#8B95A3;font-size:12px">Partner · <span class="pill" style="height:18px">Upside</span></span></span><span style="font-size:13px;color:#C9D0D9">→ Replied</span><span class="num" style="font-size:12px;color:#8B95A3;width:48px;text-align:right">Oct 7</span></div>
+            <a href="#" style="font-size:13px;padding-top:10px">See the whole pipeline →</a>
+          </div>
+
+          <div style="display:flex;flex-direction:column">
+            <div style="padding:8px 0 2px"><span class="lbl">Top of the list</span></div>
+            <div class="trow"><span class="dot"></span><span style="flex:1">Finish joint deck; confirm target accounts</span><span style="font-size:12px;color:#8B95A3">Upside · Jack · today</span></div>
+            <div class="trow"><span class="dot"></span><span style="flex:1">Lock leadership meeting; document playbook</span><span style="font-size:12px;color:#8B95A3">OneDigital · Jack · today</span></div>
+            <div class="trow"><span class="dot"></span><span style="flex:1">Find contact + personalize Step 1</span><span style="font-size:12px;color:#8B95A3">Gallagher · Cyrus</span></div>
+          </div>
+        </section>
+
+        <div style="display:flex;flex-direction:column;gap:16px">
+          <section aria-labelledby="hv-focus" class="card" style="padding:20px 24px;display:flex;flex-direction:column;gap:12px">
+            <h2 id="hv-focus" style="margin:0;font-size:15px;font-weight:600">Focus 5</h2>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;justify-content:space-between;font-size:13px"><span style="display:flex;align-items:center;gap:6px"><span aria-hidden="true" style="width:8px;height:8px;border-radius:999px;background:#6F8CF0"></span>Jack</span><span class="num" style="color:#8B95A3">2 of 5 done</span></div>
+              <div style="height:4px;border-radius:999px;background:#1C222A"><div style="width:40%;height:4px;border-radius:999px;background:#8FA8FF"></div></div>
+            </div>
+            <ol style="margin:0;padding:0 0 0 18px;color:#C9D0D9;font-size:13px;display:flex;flex-direction:column;gap:6px">
+              <li><span style="color:#8B95A3;text-decoration:line-through">Book the Brown &amp; Brown meeting</span> <span style="color:#3DD68C">✓</span></li>
+              <li><span style="color:#8B95A3;text-decoration:line-through">Get the Alliant intro on the calendar</span> <span style="color:#3DD68C">✓</span></li>
+              <li>Joint deck to Brad at Upside</li>
+              <li>Step 1 out to every T1 partner</li>
+              <li>OneDigital playbook written</li>
+            </ol>
+            <div style="border-top:1px solid #1C222A;padding-top:12px;display:flex;justify-content:space-between;font-size:13px"><span style="display:flex;align-items:center;gap:6px"><span aria-hidden="true" style="width:8px;height:8px;border-radius:999px;background:#C97626"></span>Cyrus</span><span style="color:#8B95A3">– Not planned yet</span></div>
+          </section>
+
+          <section aria-labelledby="hv-week" class="card" style="padding:20px 24px;display:flex;flex-direction:column">
+            <h2 id="hv-week" class="lbl" style="margin:0 0 6px">This week at a glance</h2>
+            <div class="trow" style="border-top:0"><span style="flex:1">To-dos</span><span class="num" style="color:#C9D0D9">0 / 67</span></div>
+            <div class="trow"><span style="flex:1">Commitments</span><span class="num" style="color:#C9D0D9">16</span></div>
+            <div class="trow"><span style="flex:1">Partners</span><span class="num" style="color:#C9D0D9">77 · 1 hot</span></div>
+            <div class="trow"><span style="flex:1">Companies sequenced</span><span class="num" style="color:#C9D0D9">4</span></div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,23 +1,16 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { SA, SA_TYPE, SA_SHAPE, SA_THEME_CSS, SA_THEME_ROOT_ID, SA_BAD_BG, SA_BAD_BORDER, saSans } from './theme';
+import { SA, SA_TYPE, SA_SHAPE, SA_THEME_CSS, SA_THEME_ROOT_ID, saSans } from './theme';
 import { ui } from '../../ui/kitTheme';
-import AlertsRow from './AlertsRow';
+import { KIT_MAX_WIDTH } from '../../ui/tokens';
+import AnalyticsView from './AnalyticsView';
 import DailyHuddle from './DailyHuddle';
-import GoalsTab from './goals/GoalsTab';
-import { flashTo } from './goals/goalsUi';
-import OverviewGoals from './goals/OverviewGoals';
+import GoalsTab, { homeOf } from './goals/GoalsTab';
 import { OPEN_GOALS_WEEK } from './goals/goalsApi';
 import { roleAtLeast } from '../../constants/roles';
-import { visibleWidgets } from './widgets.registry';
-import { fetchMetrics, fetchRuns, fetchEntities, fetchCohortBreakdown, fetchInsights, fetchEmailCounts, fetchWeekStrip, triggerSync } from './salesApi';
 import { fetchFlags, FLAGS_CHANGED } from './huddleApi';
 import { fetchMe } from '../../utils/authSession';
-import { fetchOpportunities } from './pipelineApi';
-import { PERIOD_PRESETS, periodRange, previousPeriodRange, laDateString } from './periods';
-
-const SPARKLINE_LOOKBACK_DAYS = 56; // ~8 weeks
-const EMAIL_TRACKED_LOOKBACK_DAYS = 91; // the strip's 8 weeks + the 4-week avg's compare window
+import { TABS, DEFAULT_VIEW, readNav, writeNav, normalizeNav } from './salesNav';
 
 // dashboard-v2 Stage 5 - the "print only this area" trick: hide
 // everything on the page, then re-show only #sales-analytics-print-area
@@ -30,6 +23,9 @@ const EMAIL_TRACKED_LOOKBACK_DAYS = 91; // the strip's 8 weeks + the 4-week avg'
 // chart or table row from splitting across a page. print-color-adjust:
 // exact keeps the real cohort/semantic colors on the printed page instead
 // of browsers defaulting to grayscale-friendly stripping.
+// sales-ia-v1: this <style> stays mounted on every tab - the Weekly report
+// (Reports), the Huddle agenda and Analytics each mount their own
+// #sales-analytics-print-area, one at a time.
 const PRINT_STYLES = `
   .print-only { display: none; }
   @media print {
@@ -76,60 +72,31 @@ const PRINT_STYLES = `
   }
 `;
 
-function rowsInRange(allRows, from, to) {
-  return allRows.filter(r => r.metric_date >= from && r.metric_date <= to);
-}
-
-function relativeTime(iso) {
-  if (!iso) return 'never';
-  const diffMin = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (diffMin < 1) return 'just now';
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.round(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  return `${Math.round(diffHr / 24)}d ago`;
-}
-
-const STATUS_COLOR = { success: SA.good, partial: SA.warn, error: SA.bad, running: SA.accent };
-
-// design-v1 - the SPEC's "ONE accent" rule means this page no longer
-// takes the caller's (BusinessDetailPage's) per-business accent color for
-// its own chrome or widgets - SA.accent (#8FA8FF) is used consistently
-// instead, independent of whatever accent the rest of the app assigned
-// this business. BusinessDetailPage still passes an accent prop; it's
-// simply not destructured here, so it's a no-op rather than used.
+// sales-ia-v1 - four tabs (Today · Pipeline · Huddle · Reports). This owns
+// the tab + sub-view selection (URL ?tab= / ?view=, salesNav.js); GoalsTab
+// stays the data hub for Today / Pipeline / Reports and mounts Analytics
+// under Reports. The Pipeline tab runs full width; the rest keep 1100.
 export default function SalesAnalyticsTab({ businessId, features }) {
-  const [view, setView] = useState('goals');
+  const [tab, setTab] = useState(() => readNav().tab);
+  const [views, setViews] = useState(() => { const n = readNav(); return { ...DEFAULT_VIEW, ...(n.view ? { [n.tab]: n.view } : {}) }; });
+  const view = views[tab] || null;
   const [tabsSlot, setTabsSlot] = useState(null);
   useEffect(() => { setTabsSlot(document.getElementById('workspace-header-tabs')); }, []);
   const [huddleFocus, setHuddleFocus] = useState(null);
   const [huddleTarget, setHuddleTarget] = useState(null); // { feed } | { flags } from a Goals number
   const [overviewFocus, setOverviewFocus] = useState(null); // widget id a Goals number opens
-  const [goalsTarget, setGoalsTarget] = useState(null); // { target } an Overview number opens in Goals
+  const [goalsTarget, setGoalsTarget] = useState(null); // { target } a Huddle / Analytics number opens in Goals
   const [me, setMe] = useState(null);
   const [myFlagCount, setMyFlagCount] = useState(0);
-  const [preset, setPreset] = useState('this_week');
-  const [customFrom, setCustomFrom] = useState(laDateString());
-  const [customTo, setCustomTo] = useState(laDateString());
-  const [compareEnabled, setCompareEnabled] = useState(true); // overview-home-v1: the week strip reads "this week vs last" by default
 
-  const [allRows, setAllRows] = useState([]);
-  const [runs, setRuns] = useState([]);
-  const [entities, setEntities] = useState({ sequences: [], mailboxes: [] });
-  const [cohortBreakdown, setCohortBreakdown] = useState({});
-  const [opportunities, setOpportunities] = useState([]);
-  const [insights, setInsights] = useState(null);
-  const [emailData, setEmailData] = useState(null); // { emailRows, days, senders, manualMeetings } - shared by the strip, the chart and the mailbox table
-  const [humanOpens, setHumanOpens] = useState(true); // R9's toggle: human-open estimate on the strip + the chart
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [syncing, setSyncing] = useState(false);
-  const [syncMessage, setSyncMessage] = useState('');
-  const [filterSummary, setFilterSummary] = useState('');
-  const [exportMenuOpen, setExportMenuOpen] = useState(false);
-  const exportMenuRef = useRef(null);
+  const nav = useCallback((t, v) => {
+    const n = normalizeNav(t, v);
+    setTab(n.tab);
+    if (n.view) setViews(vs => (vs[n.tab] === n.view ? vs : { ...vs, [n.tab]: n.view }));
+  }, []);
+  useEffect(() => { writeNav(tab, view); }, [tab, view]);
 
-  // Badge on the Daily Huddle tab: open flags handed to the viewer.
+  // Badge on the Huddle tab: open flags handed to the viewer.
   useEffect(() => {
     let live = true;
     const count = () => Promise.all([fetchMe(), fetchFlags(businessId)])
@@ -141,123 +108,23 @@ export default function SalesAnalyticsTab({ businessId, features }) {
   }, [businessId]);
 
   useEffect(() => {
-    const open = () => { setView('goals'); setGoalsTarget({ target: 'view:week' }); };
+    const open = () => { setGoalsTarget(null); nav('today'); };
     window.addEventListener(OPEN_GOALS_WEEK, open);
     return () => window.removeEventListener(OPEN_GOALS_WEEK, open);
-  }, []);
-  useEffect(() => {
-    if (!exportMenuOpen) return;
-    const onClick = e => { if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) setExportMenuOpen(false); };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, [exportMenuOpen]);
+  }, [nav]);
 
-  const period = periodRange(preset, customFrom, customTo);
-  const prevPeriod = previousPeriodRange(period);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const sparklineFrom = (() => {
-        const d = new Date();
-        d.setUTCDate(d.getUTCDate() - SPARKLINE_LOOKBACK_DAYS);
-        return laDateString(d);
-      })();
-      const from = [period.from, prevPeriod.from, sparklineFrom].sort()[0];
-      const to = [period.to, laDateString()].sort().reverse()[0];
-
-      const trackedFrom = (() => { const d = new Date(); d.setUTCDate(d.getUTCDate() - EMAIL_TRACKED_LOOKBACK_DAYS); return laDateString(d); })();
-      const [metrics, latestRuns, latestEntities, latestCohortBreakdown, latestOpportunities, latestInsights, counts, strip] = await Promise.all([
-        fetchMetrics(businessId, from, to),
-        fetchRuns(businessId, 5),
-        fetchEntities(businessId),
-        fetchCohortBreakdown(businessId),
-        fetchOpportunities(businessId),
-        // A failing insights request shouldn't take the whole page down.
-        fetchInsights(businessId).catch(e => ({ error: e.message, insights: [], not_enough_data: [], dismissed: [] })),
-        fetchEmailCounts(businessId),
-        fetchWeekStrip(businessId, trackedFrom),
-      ]);
-      setInsights(latestInsights);
-      setEmailData({ emailRows: counts.rows, incompleteWeeks: counts.incomplete_weeks, days: strip.days, senders: strip.senders, manualMeetings: strip.manual_meetings });
-      setAllRows(metrics);
-      setRuns(latestRuns);
-      setEntities(latestEntities);
-      setCohortBreakdown(latestCohortBreakdown.breakdown || {});
-      setOpportunities(latestOpportunities);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [businessId, preset, customFrom, customTo]);
-
-  useEffect(() => { load(); }, [load]);
-  // A Goals number opened Overview on one widget: flash it once the widgets exist.
-  useEffect(() => {
-    if (view !== 'overview' || loading || !overviewFocus) return;
-    const t = setTimeout(() => { flashTo(`sa-widget-${overviewFocus}`); setOverviewFocus(null); }, 150);
-    return () => clearTimeout(t);
-  }, [view, loading, overviewFocus]);
-
-  // Shared by the alerts row and the insights panel - refreshed on its own
-  // after a dismiss, without reloading every widget.
-  const reloadInsights = useCallback(async () => {
-    setInsights(await fetchInsights(businessId));
-  }, [businessId]);
-
-  const handleSync = async () => {
-    setSyncing(true);
-    setSyncMessage('');
-    try {
-      const run = await triggerSync(businessId);
-      setSyncMessage(run.status === 'success' ? 'Sync complete.' : `Sync finished: ${run.status}${run.error_text ? ` (${run.error_text})` : ''}`);
-      await load();
-    } catch (e) {
-      setSyncMessage(e.message);
-    } finally {
-      setSyncing(false);
-    }
-  };
-
-  // runs come back with stuck 'running' rows already reported as failed.
-  const lastRun = runs.find(r => r.finished_at && ['success', 'partial'].includes(r.status)) || runs[0];
-  const lastFailed = runs[0]?.status === 'error' ? runs[0] : null;
-  const periodRows = rowsInRange(allRows, period.from, period.to);
-  const prevPeriodRows = compareEnabled ? rowsInRange(allRows, prevPeriod.from, prevPeriod.to) : [];
-
-  const presetLabel = PERIOD_PRESETS.find(p => p.id === preset)?.label || preset;
-  const lastSyncLabel = lastRun?.finished_at ? new Date(lastRun.finished_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'never';
-
-  const handlePrint = () => { setExportMenuOpen(false); window.print(); };
-  const openGoals = target => { setGoalsTarget({ target }); setView('goals'); };
-  const openHuddle = target => { setHuddleFocus(null); setHuddleTarget(target ? { ...target } : null); setView('huddle'); };
+  const openGoals = target => { const home = homeOf(target); setGoalsTarget({ target }); nav(home ? home.tab : 'reports', home?.view); };
+  const openHuddle = target => { setHuddleFocus(null); setHuddleTarget(target ? { ...target } : null); nav('huddle'); };
+  const clearFocus = useCallback(() => setOverviewFocus(null), []);
   const canEdit = !!me && (me.profile?.is_platform_owner || roleAtLeast(me.memberships?.find(m => m.business_id === businessId)?.role, 'member'));
-
-  // design-v1 - "Export report" consolidates the entry point per the
-  // mockup; PDF is wired to the existing print flow. There's no single
-  // combined "report CSV" anywhere in this feature's data model (every
-  // CSV export is per-widget, by design, including in the not-yet-built
-  // scorecard/pipeline SPECs) - "Download all CSVs" runs each currently-
-  // enabled widget's own existing export in sequence rather than
-  // inventing a new combined-file concept. Flagged back in the stage
-  // report; correct on a different reading if that's not what Jack meant.
-  const handleDownloadAllCsvs = () => {
-    setExportMenuOpen(false);
-    document.querySelectorAll('#sales-analytics-print-area button').forEach(btn => {
-      if (btn.textContent.trim() === 'Export CSV') btn.click();
-    });
-  };
 
   // shell-facelift-v1 Stage 2 - the tab row sits in the workspace header's sticky row when that slot exists
   // (BusinessDetailPage), inline otherwise. Kit vars, not SA vars: the slot is outside #sales-analytics-root.
   const tabRow = (
     <div className="no-print" style={{ display: 'inline-flex', background: ui.surface2, border: `1px solid ${ui.border}`, borderRadius: SA_SHAPE.radiusInner, padding: 3, marginBottom: tabsSlot ? 0 : 20 }}>
-      {[['goals', 'Goals'], ['overview', 'Overview'], ['huddle', 'Daily Huddle']].map(([id, label]) => (
-        <button key={id} onClick={() => { setView(id); setGoalsTarget(null); setHuddleTarget(null); }}
-          style={{ ...SA_TYPE.body, fontSize: 13, border: 0, borderRadius: 7, padding: '0 14px', height: 32, cursor: 'pointer', background: view === id ? ui.surface : 'transparent', color: view === id ? ui.text : ui.muted, whiteSpace: 'nowrap' }}>
+      {TABS.map(([id, label]) => (
+        <button key={id} onClick={() => { nav(id); setGoalsTarget(null); setHuddleTarget(null); }}
+          style={{ ...SA_TYPE.body, fontSize: 13, border: 0, borderRadius: 7, padding: '0 14px', height: 32, cursor: 'pointer', background: tab === id ? ui.surface : 'transparent', color: tab === id ? ui.text : ui.muted, whiteSpace: 'nowrap' }}>
           {label}
           {id === 'huddle' && myFlagCount > 0 && (
             <span aria-label={`${myFlagCount} flagged for you`} style={{ marginLeft: 8, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: ui.warn, color: ui.ground, fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{myFlagCount}</span>
@@ -271,131 +138,16 @@ export default function SalesAnalyticsTab({ businessId, features }) {
     <div id={SA_THEME_ROOT_ID} style={{ ...saSans, background: SA.ground, color: SA.text, minHeight: '100%', padding: '0 0 32px' }}>
       <style>{SA_THEME_CSS}</style>
       <style>{PRINT_STYLES}</style>
-      <div style={{ maxWidth: 1360, margin: '0 auto' }}>
+      <div data-sales-tab={tab} style={{ maxWidth: tab === 'pipeline' ? 'none' : KIT_MAX_WIDTH, margin: '0 auto' }}>
 
       {tabsSlot ? createPortal(tabRow, tabsSlot) : tabRow}
 
-      {view === 'goals' ? <GoalsTab businessId={businessId} initialTarget={goalsTarget} onOpenOverview={widget => { setOverviewFocus(widget || null); setView('overview'); }}
-          onOpenHuddle={(contactId, target) => { setHuddleFocus(contactId); setHuddleTarget(target ? { ...target } : null); setView('huddle'); }} />
-        : view === 'huddle' ? <DailyHuddle businessId={businessId} focusContactId={huddleFocus} onFocused={() => setHuddleFocus(null)} focusTarget={huddleTarget} onOpenGoals={openGoals} /> : <>
-      {/* Header - hidden in print; the print-only block below replaces it */}
-      <div className="no-print" style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, marginBottom: 24 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ ...SA_TYPE.label, color: SA.muted }}>HomeLover · Command Center</div>
-          <h1 style={{ margin: 0, ...SA_TYPE.pageTitle, color: SA.text }}>Sales Analytics</h1>
-          <div style={{ display: 'flex', gap: 16, alignItems: 'center', fontSize: 13, color: SA.muted }}>
-            <span>{presetLabel} ({period.from} – {period.to})</span>
-            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: lastRun ? (STATUS_COLOR[lastRun.status] || SA.faint) : SA.faint, display: 'inline-block' }} />
-              Synced {relativeTime(lastRun?.finished_at || lastRun?.started_at)}
-              {lastRun?.counts?.apollo_calls != null && ` · ${lastRun.counts.apollo_calls} Apollo calls`}
-            </span>
-            {lastFailed && <span style={{ color: SA.bad }} title={lastFailed.error_text || ''}>· last sync failed</span>}
-          </div>
-          {syncMessage && <span style={{ fontSize: 12, color: SA.warn }}>{syncMessage}</span>}
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-          <label style={{ fontSize: 12, color: SA.muted, display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', marginRight: 4 }}>
-            <input type="checkbox" checked={compareEnabled} onChange={e => setCompareEnabled(e.target.checked)} />
-            Compare to previous period
-          </label>
-
-          <div style={{ display: 'flex', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: 3 }}>
-            {PERIOD_PRESETS.map(p => (
-              <button
-                key={p.id}
-                onClick={() => setPreset(p.id)}
-                style={{
-                  ...SA_TYPE.body, fontSize: 13, border: 0, borderRadius: 7, padding: '9px 14px', minHeight: 36, cursor: 'pointer',
-                  background: preset === p.id ? SA.surface2 : 'transparent',
-                  color: preset === p.id ? SA.text : SA.muted,
-                }}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-
-          {preset === 'custom' && (
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-              <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={{ ...SA_TYPE.body, fontSize: 13, padding: '6px 8px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: 6, color: SA.text }} />
-              <span style={{ fontSize: 12, color: SA.faint }}>to</span>
-              <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} style={{ ...SA_TYPE.body, fontSize: 13, padding: '6px 8px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: 6, color: SA.text }} />
-            </div>
-          )}
-
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            style={{ ...SA_TYPE.body, fontSize: 13, fontWeight: 500, background: 'transparent', color: SA.text, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: '0 16px', height: 44, cursor: syncing ? 'default' : 'pointer', opacity: syncing ? 0.6 : 1 }}
-          >
-            {syncing ? 'Syncing…' : 'Sync now'}
-          </button>
-
-          <div ref={exportMenuRef} style={{ position: 'relative' }}>
-            <button
-              onClick={() => setExportMenuOpen(o => !o)}
-              style={{ ...SA_TYPE.body, fontSize: 13, fontWeight: 600, background: SA.accent, color: SA.ground, border: 0, borderRadius: SA_SHAPE.radiusInner, padding: '0 18px', height: 44, cursor: 'pointer' }}
-            >
-              Export report
-            </button>
-            {exportMenuOpen && (
-              <div style={{ position: 'absolute', right: 0, top: 48, zIndex: 10, background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: 4, minWidth: 180, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-                <button onClick={handlePrint} style={{ ...SA_TYPE.body, fontSize: 13, display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', background: 'transparent', border: 0, borderRadius: 7, color: SA.text, cursor: 'pointer' }}>PDF</button>
-                <button onClick={handleDownloadAllCsvs} style={{ ...SA_TYPE.body, fontSize: 13, display: 'block', width: '100%', textAlign: 'left', padding: '9px 12px', background: 'transparent', border: 0, borderRadius: 7, color: SA.text, cursor: 'pointer' }}>Download all CSVs</button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {error && (
-        <div className="no-print" style={{ fontSize: 13, color: SA.bad, padding: '10px 14px', background: SA_BAD_BG, border: `1px solid ${SA_BAD_BORDER}`, borderRadius: SA_SHAPE.radiusInner, marginBottom: 16 }}>
-          ⚠ {error}
-        </div>
-      )}
-
-      <div id="sales-analytics-print-area">
-        {/* Print-only header - never shown on screen (dashboard-v2 Stage 5,
-            restyled design-v1 Stage 4). No developer/placeholder text
-            (DECIDED "honesty and labels"): the Goals & Weekly Priorities
-            reserved-slot box is gone - sales-goals-v1 renders its real
-            block when it ships, same "render nothing until it's real"
-            rule the Weekly Scorecard slot already follows. The filters
-            line is SequenceLeaderboard's own readable sentence (built in
-            its onFiltersChanged, not a raw "key: value" dump) - no
-            separate "Filters applied:" label needed, the sentence already
-            reads as one. Section order is still a flagged interim: no
-            scorecard or Seif's 15-section report exist in this codebase
-            yet (separate, un-started SPECs), so this prints the
-            dashboard's own existing widget order. */}
-        <div className="print-only" style={{ marginBottom: 16 }}>
-          <p style={{ ...SA_TYPE.cardTitle, fontSize: 16, color: SA.text, margin: '0 0 4px' }}>
-            HomeLover · Sales Analytics · {presetLabel} ({period.from} – {period.to}) · as of {lastSyncLabel}
-          </p>
-          {filterSummary && (
-            <p style={{ ...SA_TYPE.body, fontSize: 11, color: SA.muted, margin: 0 }}>{filterSummary}</p>
-          )}
-        </div>
-
-        <OverviewGoals businessId={businessId} onOpenGoals={openGoals} onFocusWidget={id => flashTo(`sa-widget-${id}`)} />
-        {!loading && <AlertsRow runs={runs} insights={insights} />}
-
-        {loading ? (
-          <p style={{ ...SA_TYPE.body, fontSize: 13, color: SA.muted }}>Loading…</p>
-        ) : (
-          <div className="sa-widget-list">
-          {visibleWidgets(features).map(w => (
-            <div key={w.id} id={`sa-widget-${w.id}`} className={`print-avoid-break${w.printPage ? ' sa-band-start' : ''}`} style={{ marginBottom: 12, order: w.printOrder, padding: '22px 24px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusCard }}>
-              <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: '0 0 14px' }}>{w.title}</p>
-              <w.component businessId={businessId} allRows={allRows} periodRows={periodRows} prevPeriodRows={prevPeriodRows} period={period} prevPeriod={prevPeriod} preset={preset} compareEnabled={compareEnabled} entities={entities} cohortBreakdown={cohortBreakdown} opportunities={opportunities} accent={SA.accent} widgetId={w.id} onDataChanged={load} onPipelineChanged={load} onFiltersChanged={setFilterSummary} insights={insights} onInsightsChanged={reloadInsights} onOpenGoals={openGoals} onOpenHuddle={openHuddle} emailData={emailData} humanOpens={humanOpens} onToggleHumanOpens={() => setHumanOpens(h => !h)} canEdit={canEdit} lastRun={lastRun} />
-            </div>
-          ))}
-          </div>
-        )}
-      </div>
-      </>}
+      {tab === 'huddle'
+        ? <DailyHuddle businessId={businessId} focusContactId={huddleFocus} onFocused={() => setHuddleFocus(null)} focusTarget={huddleTarget} onOpenGoals={openGoals} />
+        : <GoalsTab businessId={businessId} section={tab} view={view} onNav={nav} initialTarget={goalsTarget}
+            onOpenOverview={widget => { setOverviewFocus(widget || null); nav('reports', 'analytics'); }}
+            onOpenHuddle={(contactId, target) => { setHuddleFocus(contactId); setHuddleTarget(target ? { ...target } : null); nav('huddle'); }}
+            analytics={<AnalyticsView businessId={businessId} features={features} canEdit={canEdit} onOpenGoals={openGoals} onOpenHuddle={openHuddle} focusWidget={overviewFocus} onFocused={clearFocus} />} />}
       </div>
     </div>
   );

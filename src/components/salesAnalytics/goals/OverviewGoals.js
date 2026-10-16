@@ -28,7 +28,7 @@ export function GoalLine({ hero, weekStart, onOpenGoals, onFocusWidget }) {
   const people = ft.unit === 'people';
   const of = (v, g) => (g == null ? fmt(v) : `${fmt(v)}/${fmt(g)}`);
   const items = [
-    { key: 'first_touched', text: `${of(people ? (ft.people || []).length : wk.partners_first_touched?.value, ft.goal)} ${people ? 'people' : 'partners'} first-touched`, title: 'Open Goals › Partners (Sent)', go: () => onOpenGoals({ partners: { stage: 'first_email_sent' } }) },
+    { key: 'first_touched', text: `${of(people ? (ft.people || []).length : wk.partners_first_touched?.value, ft.goal)} ${people ? 'people' : 'partners'} first-touched`, title: 'Open Pipeline › Partner workflow (Sent)', go: () => onOpenGoals({ partners: { stage: 'first_email_sent' } }) },
     { key: 'meetings', text: `${of(wk.meetings_set?.value ?? 0, wk.meetings_set?.goal)} meetings`, title: 'Open the scorecard row', go: () => onOpenGoals('score:meetings_set') },
     { key: 'in_sequence', text: `${of(wk.total_in_sequence?.value, wk.total_in_sequence?.goal)} in sequence`, title: 'Open the week strip', go: () => onFocusWidget('week_strip') },
   ];
@@ -42,7 +42,7 @@ export function GoalLine({ hero, weekStart, onOpenGoals, onFocusWidget }) {
         </span>
       ))}
       <span style={{ color: SA.faint }}>·</span>
-      <DrillNumber onClick={() => onOpenGoals('view:week')} title="Open Goals" style={{ color: SA.link }}>Goals →</DrillNumber>
+      <DrillNumber onClick={() => onOpenGoals('view:week')} title="Open the scorecard" style={{ color: SA.link }}>Scorecard →</DrillNumber>
     </div>
   );
 }

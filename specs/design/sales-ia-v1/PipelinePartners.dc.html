@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pipeline — partner workflow view</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#0B0D10}
+a{color:#AFC0FF;text-decoration:none}a:hover{color:#E9ECF0}
+.lbl{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8B95A3;font-weight:500}
+.num{font-variant-numeric:tabular-nums}
+.btn{height:32px;padding:0 12px;border-radius:8px;border:1px solid #232A33;background:#171C22;color:#E9ECF0;font:500 13px Geist,system-ui,sans-serif;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btnp{background:#8FA8FF;border-color:#8FA8FF;color:#0B0D10;font-weight:600}
+.chipf{height:30px;padding:0 12px;border-radius:999px;border:1px solid #232A33;background:transparent;color:#8B95A3;font:13px Geist,sans-serif;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.chipf.on{border-color:#8FA8FF;background:#171C22;color:#E9ECF0}
+.sel{height:30px;border-radius:8px;border:1px solid #6B7480;background:#12161B;color:#E9ECF0;font:13px Geist,sans-serif;padding:0 8px}
+.navi{display:flex;align-items:center;height:34px;padding:0 12px;border-radius:8px;color:#8B95A3;font-size:13px}
+.prow{display:grid;grid-template-columns:28px 250px 300px 74px minmax(0,1fr) 168px;align-items:center;gap:14px;min-height:46px;padding:0 14px;border-top:1px solid #1C222A;font-size:13px}
+.seg{width:30px;height:6px;border-radius:2px;background:#232A33}
+.done{background:#8FA8FF}
+.cur{background:#8FA8FF;box-shadow:0 0 0 2px rgba(143,168,255,.35)}
+.bar{display:flex;gap:3px}
+.tp{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;border:1px solid #232A33;font-size:11px;color:#C9D0D9}
+.ghdr{display:flex;align-items:center;gap:10px;height:42px;padding:0 14px;background:#0F1317;border-top:1px solid #232A33;font-weight:600;font-size:14px}
+.star{all:unset;cursor:pointer;font-size:15px;color:#5E6773;text-align:center}
+.nx{height:30px;padding:0 10px;border-radius:8px;border:1px solid #232A33;background:#171C22;color:#E9ECF0;font:500 12px Geist,sans-serif;display:inline-flex;align-items:center;gap:6px;justify-self:end;white-space:nowrap}
+.st{font-size:12px;color:#C9D0D9;white-space:nowrap}
+.ns{color:#C9D0D9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style>
+</helmet>
+<div style="width:1440px;height:1300px;display:flex;background:#0B0D10;color:#E9ECF0;font-family:Geist,system-ui,sans-serif;font-size:14px">
+
+  <nav aria-label="Prospector" style="width:220px;flex:0 0 220px;border-right:1px solid #232A33;padding:18px 12px;box-sizing:border-box;display:flex;flex-direction:column;gap:18px">
+    <span style="font-family:'Geist Mono',monospace;font-weight:600;font-size:13px;letter-spacing:.12em;padding:0 6px">PROSPECTOR</span>
+    <div style="display:flex;flex-direction:column;gap:2px">
+      <a class="navi" href="#">Command Center</a>
+      <a class="navi" href="#" aria-current="page" style="background:#171C22;color:#E9ECF0;font-weight:500;box-shadow:inset 2px 0 0 #8FA8FF">Sales</a>
+      <a class="navi" href="#">Accounts</a>
+      <a class="navi" href="#">Projects</a>
+      <a class="navi" href="#">Business Intel &amp; Strategy</a>
+      <a class="navi" href="#">Ideas</a>
+      <a class="navi" href="#">Tools</a>
+    </div>
+  </nav>
+
+  <div style="flex:1 1 auto;min-width:0;padding:0 24px 40px;box-sizing:border-box;display:flex;flex-direction:column;gap:20px">
+
+    <header style="display:flex;align-items:center;gap:12px;height:56px;padding:0 12px;background:#12161B;border:1px solid #232A33;border-top:0;border-bottom:2px solid #E2418A;border-radius:0 0 10px 10px">
+      <span aria-hidden="true" style="width:32px;height:32px;border-radius:8px;background:#E2418A;color:#0B0D10;font-weight:600;font-size:15px;display:inline-flex;align-items:center;justify-content:center">H</span>
+      <span style="font-size:16px;font-weight:600">HomeLover</span>
+      <div role="tablist" aria-label="Sales" style="display:inline-flex;gap:2px;padding:3px;background:#171C22;border:1px solid #232A33;border-radius:10px;margin-left:8px">
+        <button role="tab" aria-selected="false" style="height:30px;padding:0 14px;border:0;border-radius:7px;background:transparent;color:#8B95A3;font:500 13px Geist,sans-serif">Today</button>
+        <button role="tab" aria-selected="true" style="height:30px;padding:0 14px;border:0;border-radius:7px;background:#12161B;color:#E9ECF0;font:500 13px Geist,sans-serif;box-shadow:0 0 0 1px #232A33">Pipeline</button>
+        <button role="tab" aria-selected="false" style="height:30px;padding:0 14px;border:0;border-radius:7px;background:transparent;color:#8B95A3;font:500 13px Geist,sans-serif">Huddle</button>
+        <button role="tab" aria-selected="false" style="height:30px;padding:0 14px;border:0;border-radius:7px;background:transparent;color:#8B95A3;font:500 13px Geist,sans-serif">Reports</button>
+      </div>
+      <div style="flex:1"></div>
+      <label style="display:flex;align-items:center;gap:8px;width:300px;height:34px;padding:0 10px;box-sizing:border-box;border:1px solid #6B7480;border-radius:8px;background:#0F1317;color:#8B95A3">
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="m10.5 10.5 3 3"></path></svg>
+        <input aria-label="Search everything" placeholder="Search everything" style="flex:1;min-width:0;background:transparent;border:0;outline:0;color:#E9ECF0;font:13px Geist,sans-serif">
+      </label>
+      <button aria-label="Quick capture (C)" style="width:34px;height:34px;border-radius:8px;border:0;background:#8FA8FF;color:#0B0D10;display:inline-flex;align-items:center;justify-content:center"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg></button>
+    </header>
+
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <span class="lbl">HomeLover × Upside · Joint pipeline</span>
+        <div style="display:flex;align-items:baseline;gap:12px"><h1 style="margin:0;font-size:34px;font-weight:600;letter-spacing:-.025em">Pipeline</h1><span class="num" style="font-size:15px;color:#8B95A3">77 partners</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div role="tablist" aria-label="View" style="display:inline-flex;gap:2px;padding:3px;background:#171C22;border:1px solid #232A33;border-radius:10px;margin-right:8px">
+          <button role="tab" aria-selected="false" style="height:28px;padding:0 12px;border:0;border-radius:7px;background:transparent;color:#8B95A3;font:500 13px Geist,sans-serif">Board</button>
+          <button role="tab" aria-selected="true" style="height:28px;padding:0 12px;border:0;border-radius:7px;background:#12161B;color:#E9ECF0;font:500 13px Geist,sans-serif;box-shadow:0 0 0 1px #232A33">Partner workflow</button>
+        </div>
+        <button class="btn">Update from sheet</button>
+        <button class="btn">Export joint sheet</button>
+        <button class="btn btnp"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg>Add</button>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      <div role="group" aria-label="Stage" style="display:flex;gap:6px">
+        <button class="chipf on" aria-pressed="true">All stages</button>
+        <button class="chipf" aria-pressed="false">Needs a next step</button>
+        <button class="chipf" aria-pressed="false">No touch in 14 days</button>
+      </div>
+      <span aria-hidden="true" style="width:1px;height:20px;background:#232A33;margin:0 4px"></span>
+      <select class="sel" aria-label="Owner team"><option>All teams</option></select>
+      <select class="sel" aria-label="Owner"><option>All owners</option></select>
+      <select class="sel" aria-label="Tier"><option>All tiers</option></select>
+      <label style="flex:1 1 200px;min-width:160px;display:flex;align-items:center;gap:8px;height:30px;padding:0 10px;box-sizing:border-box;border:1px solid #6B7480;border-radius:8px;background:#12161B;color:#8B95A3"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="m10.5 10.5 3 3"></path></svg><input aria-label="Filter partners" placeholder="Filter partners" style="flex:1;min-width:0;background:transparent;border:0;outline:0;color:#E9ECF0;font:13px Geist,sans-serif"></label>
+    </div>
+
+    <div style="background:#12161B;border:1px solid #232A33;border-radius:14px;overflow:hidden">
+      <!-- column header -->
+      <div class="prow" style="min-height:34px;border-top:0;border-bottom:1px solid #46505E">
+        <span></span><span class="lbl" style="font-size:10.5px">Partner</span>
+        <span class="lbl" style="font-size:10.5px;display:flex;justify-content:space-between;width:261px"><span>Research</span><span>Sent</span><span>Replied</span><span>Live</span></span>
+        <span class="lbl" style="font-size:10.5px">Touched</span><span class="lbl" style="font-size:10.5px">Next step</span><span></span>
+      </div>
+
+      <div class="ghdr"><span aria-hidden="true" style="color:#8B95A3">▾</span>1. Current partners <span class="num" style="font-weight:400;color:#8B95A3;font-size:13px">7</span></div>
+      <div class="prow"><button class="star" aria-label="Star Upside">☆</button><span style="display:flex;align-items:center;gap:8px;min-width:0"><a href="#" style="color:#E9ECF0;font-weight:500">Upside</a><span style="font-size:12px;color:#8B95A3">Jack</span></span><span style="display:flex;align-items:center;gap:10px"><span class="bar" role="img" aria-label="Step 7 of 8: Proposal / pilot"><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg cur"></span><span class="seg"></span></span><span class="st">Proposal / pilot</span></span><span style="color:#5E6773">—</span><span class="ns">Finish joint deck; confirm target accounts</span><button class="nx">Next: Live <span aria-hidden="true">→</span></button></div>
+      <div class="prow"><button class="star" aria-label="Star">☆</button><span style="display:flex;align-items:center;gap:8px;min-width:0"><a href="#" style="color:#E9ECF0;font-weight:500">OneDigital</a><span class="tp">HomeLover</span></span><span style="display:flex;align-items:center;gap:10px"><span class="bar" role="img" aria-label="Step 6 of 8: Meeting set"><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg cur"></span><span class="seg"></span><span class="seg"></span></span><span class="st">Meeting set</span></span><span class="num" style="color:#C9D0D9">Sep 22</span><span class="ns">Lock leadership meeting; document playbook</span><button class="nx">Next: Proposal <span aria-hidden="true">→</span></button></div>
+      <div class="prow"><button class="star" aria-label="Star">☆</button><span style="display:flex;align-items:center;gap:8px;min-width:0"><a href="#" style="color:#E9ECF0;font-weight:500">Lender Homepage</a><span style="font-size:12px;color:#8B95A3">Jack</span></span><span style="display:flex;align-items:center;gap:10px"><span class="bar" role="img" aria-label="Step 6 of 8: Meeting set"><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg cur"></span><span class="seg"></span><span class="seg"></span></span><span class="st">Meeting set</span></span><span style="color:#5E6773">—</span><span class="ns">Send DPA data provider name to Rocky</span><button class="nx">Next: Proposal <span aria-hidden="true">→</span></button></div>
+      <div class="prow"><button class="star" aria-label="Star">☆</button><span style="display:flex;align-items:center;gap:8px;min-width:0"><a href="#" style="color:#E9ECF0;font-weight:500">Equifax</a><span style="font-size:12px;color:#8B95A3">Jack</span></span><span style="display:flex;align-items:center;gap:10px"><span class="bar" role="img" aria-label="Step 5 of 8: Replied"><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg cur"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span></span><span class="st">Replied</span></span><span style="color:#5E6773">—</span><span class="ns">Define IQ bundle + employer DPA program</span><button class="nx">Next: Meeting set <span aria-hidden="true">→</span></button></div>
+      <div class="prow"><button class="star" aria-label="Star">☆</button><span style="display:flex;align-items:center;gap:8px;min-width:0"><a href="#" style="color:#E9ECF0;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Iron Mountain / IronMount</a><span style="font-size:12px;color:#8B95A3">Jack</span></span><span style="display:flex;align-items:center;gap:10px"><span class="bar" role="img" aria-label="Step 5 of 8: Replied"><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg cur"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span></span><span class="st">Replied</span></span><span style="color:#5E6773">—</span><span class="ns">Turn intro meetings into a pilot</span><button class="nx">Next: Meeting set <span aria-hidden="true">→</span></button></div>
+      <div class="prow"><button class="star" aria-label="Star">☆</button><span style="display:flex;align-items:center;gap:8px;min-width:0"><a href="#" style="color:#E9ECF0;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Norton / Gen Digital</a><span style="font-size:12px;color:#8B95A3">Jack</span></span><span style="display:flex;align-items:center;gap:10px"><span class="bar" role="img" aria-label="Step 5 of 8: Replied"><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg cur"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span></span><span class="st">Replied</span></span><span style="color:#5E6773">—</span><span class="ns">Scope integration + account connection</span><button class="nx">Next: Meeting set <span aria-hidden="true">→</span></button></div>
+      <div class="prow"><button class="star" aria-label="Star">☆</button><span style="display:flex;align-items:center;gap:8px;min-width:0"><a href="#" style="color:#E9ECF0;font-weight:500">Sylvia</a><span style="font-size:12px;color:#8B95A3">Jack</span></span><span style="display:flex;align-items:center;gap:10px"><span class="bar" role="img" aria-label="Step 5 of 8: Replied"><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg cur"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span></span><span class="st">Replied</span></span><span style="color:#5E6773">—</span><span class="ns">Explore integration</span><button class="nx">Next: Meeting set <span aria-hidden="true">→</span></button></div>
+
+      <div class="ghdr"><span aria-hidden="true" style="color:#8B95A3">▾</span>2. Brokers &amp; consultants <span class="num" style="font-weight:400;color:#8B95A3;font-size:13px">3 shown</span></div>
+      <div class="prow"><button class="star" aria-label="Star">☆</button><span style="display:flex;align-items:center;gap:8px;min-width:0"><a href="#" style="color:#E9ECF0;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Alliant Insurance Services</a><span class="tp">Upside</span></span><span style="display:flex;align-items:center;gap:10px"><span class="bar" role="img" aria-label="Step 6 of 8: Meeting set"><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg cur"></span><span class="seg"></span><span class="seg"></span></span><span class="st">Meeting set</span></span><span class="num" style="color:#C9D0D9">Oct 15</span><span class="ns">Brad leads with his existing contacts; Jack joins the first meeting</span><button class="nx">Next: Proposal <span aria-hidden="true">→</span></button></div>
+      <div class="prow"><button class="star" aria-label="Star">☆</button><span style="display:flex;align-items:center;gap:8px;min-width:0"><a href="#" style="color:#E9ECF0;font-weight:500">Brown &amp; Brown</a><span class="tp">HomeLover</span></span><span style="display:flex;align-items:center;gap:10px"><span class="bar" role="img" aria-label="Step 6 of 8: Meeting set"><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg cur"></span><span class="seg"></span><span class="seg"></span></span><span class="st">Meeting set</span></span><span class="num" style="color:#C9D0D9">Oct 15</span><span class="ns">Meeting scheduled; Seif preparing</span><button class="nx">Next: Proposal <span aria-hidden="true">→</span></button></div>
+      <div class="prow"><button class="star" aria-label="Star">☆</button><span style="display:flex;align-items:center;gap:8px;min-width:0"><a href="#" style="color:#E9ECF0;font-weight:500">Gallagher</a><span class="tp">Upside</span><span style="font-size:12px;color:#8B95A3">Cyrus</span></span><span style="display:flex;align-items:center;gap:10px"><span class="bar" role="img" aria-label="Step 5 of 8: Replied"><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg done"></span><span class="seg cur"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span></span><span class="st">Replied</span></span><span class="num" style="color:#C9D0D9">Oct 7</span><span class="ns">Find contact + personalize Step 1</span><button class="nx">Next: Meeting set <span aria-hidden="true">→</span></button></div>
+
+      <div class="ghdr"><span aria-hidden="true" style="color:#8B95A3">▾</span>3. Benefits platforms <span class="num" style="font-weight:400;color:#8B95A3;font-size:13px">1 shown</span></div>
+      <div class="prow"><button class="star" aria-pressed="true" aria-label="Unstar BenefitHub" style="color:#F2B544">★</button><span style="display:flex;align-items:center;gap:8px;min-width:0"><a href="#" style="color:#E9ECF0;font-weight:500">BenefitHub</a><span class="tp">HomeLover</span></span><span style="display:flex;align-items:center;gap:10px"><span class="bar" role="img" aria-label="Step 3 of 8: 1st email sent"><span class="seg done"></span><span class="seg done"></span><span class="seg cur"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span><span class="seg"></span></span><span class="st">1st email sent</span></span><span class="num" style="color:#C9D0D9">Oct 8</span><span class="ns">Send Step 1</span><button class="nx">Next: In sequence <span aria-hidden="true">→</span></button></div>
+
+      <div class="ghdr" style="color:#8B95A3;font-weight:500"><span aria-hidden="true">▸</span>4. … more categories</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1300}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

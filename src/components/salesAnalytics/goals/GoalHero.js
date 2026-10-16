@@ -203,11 +203,11 @@ export default function GoalHero({ businessId, weekStart, owner, ownerName, comm
             {missingHeadcount > 0 && <button type="button" onClick={() => onDrill('missing')} style={{ all: 'unset', ...saSans, cursor: 'pointer', color: SA.warn, textDecoration: 'underline', textUnderlineOffset: 2 }}>{missingHeadcount} missing headcount → fill</button>}
           </div>
         ) },
-      weekCard('in_sequence', 'People in sequence', 'total_in_sequence', { teamOnly: owner !== 'team', drillLabel: 'Overview' }),
+      weekCard('in_sequence', 'People in sequence', 'total_in_sequence', { teamOnly: owner !== 'team', drillLabel: 'Analytics' }),
       firstTouchedCard(),
       weekCard('meetings', 'Meetings set', 'meetings_set', { teamOnly: owner !== 'team', drillLabel: 'the scorecard row' }),
       { id: 'engagement', metric: 'real_replies_clicks', name: 'Real replies + clicks', value: engagement[WEEKS - 1].value, goal: engagement[WEEKS - 1].goal, weeks: engagement, wow: wow(engagement),
-        format: fmt, period: shortWeek(weekStart).replace('Wk', 'week'), teamOnly: owner !== 'team', drillLabel: 'the Daily Huddle', saveGoal: saveGoal('week', weekStart, 'real_replies_clicks') },
+        format: fmt, period: shortWeek(weekStart).replace('Wk', 'week'), teamOnly: owner !== 'team', drillLabel: 'the Huddle', saveGoal: saveGoal('week', weekStart, 'real_replies_clicks') },
     ];
   }
 

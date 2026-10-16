@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pipeline — phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#0B0D10}
+a{color:#AFC0FF;text-decoration:none}
+.lbl{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8B95A3;font-weight:500}
+.num{font-variant-numeric:tabular-nums}
+.chipf{height:36px;padding:0 14px;border-radius:999px;border:1px solid #232A33;background:transparent;color:#8B95A3;font:13px Geist,sans-serif;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;flex:0 0 auto}
+.chipf.on{border-color:#8FA8FF;background:#171C22;color:#E9ECF0}
+.sw{width:10px;height:10px;border-radius:3px;display:inline-block}
+.r{display:flex;align-items:center;gap:10px;min-height:60px;padding:6px 4px 6px 12px;border-top:1px solid #1C222A}
+.g{display:flex;align-items:center;gap:8px;height:44px;padding:0 12px;background:#0F1317;border-top:1px solid #232A33;font-weight:600}
+.star{width:44px;height:44px;border:0;background:transparent;color:#5E6773;font-size:17px}
+.ty{font-family:'Geist Mono',monospace;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#8B95A3}
+.sub{font-size:12px;color:#8B95A3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style>
+</helmet>
+<div style="width:390px;height:1560px;background:#0B0D10;color:#E9ECF0;font-family:Geist,system-ui,sans-serif;font-size:14px;display:flex;flex-direction:column">
+
+  <header style="background:#12161B;border-bottom:2px solid #E2418A;padding:8px 16px 10px;display:flex;flex-direction:column;gap:8px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <button aria-label="Menu" style="width:44px;height:44px;margin-left:-10px;border:0;background:transparent;color:#C9D0D9"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12"></path></svg></button>
+      <span aria-hidden="true" style="width:28px;height:28px;border-radius:7px;background:#E2418A;color:#0B0D10;font-weight:600;font-size:13px;display:inline-flex;align-items:center;justify-content:center">H</span>
+      <span style="font-size:16px;font-weight:600;flex:1">HomeLover</span>
+      <button aria-label="Search everything" style="width:44px;height:44px;border-radius:10px;border:1px solid #232A33;background:#0F1317;color:#C9D0D9"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="m10.5 10.5 3 3"></path></svg></button>
+      <button aria-label="Quick capture" style="width:44px;height:44px;border-radius:10px;border:0;background:#8FA8FF;color:#0B0D10"><svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M8 3v10M3 8h10"></path></svg></button>
+    </div>
+    <div role="tablist" aria-label="Sales" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px;padding:3px;background:#171C22;border:1px solid #232A33;border-radius:10px">
+      <button role="tab" aria-selected="false" style="height:38px;border:0;border-radius:7px;background:transparent;color:#8B95A3;font:500 13px Geist,sans-serif">Today</button>
+      <button role="tab" aria-selected="true" style="height:38px;border:0;border-radius:7px;background:#12161B;color:#E9ECF0;font:500 13px Geist,sans-serif;box-shadow:0 0 0 1px #232A33">Pipeline</button>
+      <button role="tab" aria-selected="false" style="height:38px;border:0;border-radius:7px;background:transparent;color:#8B95A3;font:500 13px Geist,sans-serif">Huddle</button>
+      <button role="tab" aria-selected="false" style="height:38px;border:0;border-radius:7px;background:transparent;color:#8B95A3;font:500 13px Geist,sans-serif">Reports</button>
+    </div>
+  </header>
+
+  <main style="padding:20px 16px 32px;display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between">
+      <div style="display:flex;flex-direction:column;gap:6px"><span class="lbl">Joint pipeline</span><h1 style="margin:0;font-size:28px;font-weight:600;letter-spacing:-.025em">Pipeline <span class="num" style="font-size:15px;font-weight:400;color:#8B95A3">333</span></h1></div>
+      <div style="display:flex;gap:8px">
+        <button aria-label="Sheet actions: Update from sheet, Export joint sheet" style="width:44px;height:44px;border-radius:10px;border:1px solid #232A33;background:#171C22;color:#C9D0D9"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3" cy="8" r="1.4"></circle><circle cx="8" cy="8" r="1.4"></circle><circle cx="13" cy="8" r="1.4"></circle></svg></button>
+        <button style="height:44px;padding:0 16px;border-radius:10px;border:0;background:#8FA8FF;color:#0B0D10;font:600 14px Geist,sans-serif">+ Add</button>
+      </div>
+    </div>
+    <div role="tablist" aria-label="View" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px;padding:3px;background:#171C22;border:1px solid #232A33;border-radius:10px">
+      <button role="tab" aria-selected="true" style="height:38px;border:0;border-radius:7px;background:#12161B;color:#E9ECF0;font:500 13px Geist,sans-serif;box-shadow:0 0 0 1px #232A33">Board</button>
+      <button role="tab" aria-selected="false" style="height:38px;border:0;border-radius:7px;background:transparent;color:#8B95A3;font:500 13px Geist,sans-serif">Partner workflow</button>
+    </div>
+    <div role="group" aria-label="Type" style="display:flex;gap:6px;overflow-x:auto;margin:0 -16px;padding:0 16px">
+      <button class="chipf on" aria-pressed="true">All</button>
+      <button class="chipf" aria-pressed="false">Partners</button>
+      <button class="chipf" aria-pressed="false">Employers</button>
+      <button class="chipf" aria-pressed="false">Targets</button>
+      <button class="chipf" aria-pressed="false">In Apollo</button>
+      <button class="chipf" aria-pressed="false">Filters ▾</button>
+    </div>
+    <div role="group" aria-label="Counts by color" style="display:flex;gap:6px;overflow-x:auto;margin:0 -16px;padding:0 16px">
+      <button class="chipf"><span class="sw" aria-hidden="true" style="background:#3DD68C"></span>Live <span class="num" style="color:#E9ECF0">7</span></button>
+      <button class="chipf"><span class="sw" aria-hidden="true" style="background:#F2B544"></span>Meeting <span class="num" style="color:#E9ECF0">2</span></button>
+      <button class="chipf"><span class="sw" aria-hidden="true" style="background:#AFC0FF"></span>Talking <span class="num" style="color:#E9ECF0">2</span></button>
+      <button class="chipf"><span class="sw" aria-hidden="true" style="background:#8B95A3"></span>Outreach <span class="num" style="color:#E9ECF0">83</span></button>
+    </div>
+
+    <div style="background:#12161B;border:1px solid #232A33;border-radius:14px;overflow:hidden">
+      <div class="g" style="border-top:0"><span style="color:#F2B544">★</span>Top <span class="num" style="font-weight:400;color:#8B95A3">1 of 25</span></div>
+      <div class="r" style="box-shadow:inset 3px 0 0 #8B95A3;background:rgba(139,149,163,.05)"><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-weight:500">BenefitHub <span class="ty">Partner</span></span><span class="sub">1st email sent · HomeLover · Next: Send Step 1</span></div><button class="star" aria-pressed="true" aria-label="Unstar BenefitHub" style="color:#F2B544">★</button></div>
+
+      <div class="g"><span class="sw" aria-hidden="true" style="background:#3DD68C"></span>Live / strategic <span class="num" style="font-weight:400;color:#8B95A3">7</span></div>
+      <div class="r" style="box-shadow:inset 3px 0 0 #3DD68C;background:rgba(61,214,140,.06)"><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-weight:500">Upside <span class="ty">Partner</span></span><span class="sub">Proposal / pilot · Next: Finish joint deck; confirm target accounts</span></div><button class="star" aria-label="Star Upside">☆</button></div>
+      <div class="r" style="box-shadow:inset 3px 0 0 #3DD68C;background:rgba(61,214,140,.06)"><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-weight:500">OneDigital <span class="ty">Partner</span></span><span class="sub">Meeting set · HomeLover · Next: Lock leadership meeting</span></div><button class="star" aria-label="Star OneDigital">☆</button></div>
+      <div class="r" style="box-shadow:inset 3px 0 0 #3DD68C;background:rgba(61,214,140,.06)"><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-weight:500">Lender Homepage <span class="ty">Partner</span></span><span class="sub">Meeting set · Next: Send DPA data provider name to Rocky</span></div><button class="star" aria-label="Star Lender Homepage">☆</button></div>
+      <div class="r" style="box-shadow:inset 3px 0 0 #3DD68C;background:rgba(61,214,140,.06)"><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-weight:500">Equifax <span class="ty">Partner</span></span><span class="sub">Replied · Next: Define IQ bundle + employer DPA program</span></div><button class="star" aria-label="Star Equifax">☆</button></div>
+      <a href="#" style="display:flex;align-items:center;justify-content:center;height:44px;border-top:1px solid #1C222A;font-size:13px">Show all 7</a>
+
+      <div class="g"><span class="sw" aria-hidden="true" style="background:#F2B544"></span>Meeting <span class="num" style="font-weight:400;color:#8B95A3">2</span></div>
+      <div class="r" style="box-shadow:inset 3px 0 0 #F2B544;background:rgba(242,181,68,.06)"><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-weight:500">Alliant Insurance Services <span class="ty">Partner</span></span><span class="sub">Meeting set · Upside · Oct 15 · Next: Brad leads with his contacts</span></div><button class="star" aria-label="Star Alliant">☆</button></div>
+      <div class="r" style="box-shadow:inset 3px 0 0 #F2B544;background:rgba(242,181,68,.06)"><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-weight:500">Brown &amp; Brown <span class="ty">Partner</span></span><span class="sub">Meeting set · HomeLover · Oct 15 · Next: Seif preparing</span></div><button class="star" aria-label="Star Brown and Brown">☆</button></div>
+
+      <div class="g"><span class="sw" aria-hidden="true" style="background:#AFC0FF"></span>Talking <span class="num" style="font-weight:400;color:#8B95A3">2</span></div>
+      <div class="r" style="box-shadow:inset 3px 0 0 #AFC0FF;background:rgba(175,192,255,.06)"><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-weight:500">Gallagher <span class="ty">Partner</span></span><span class="sub">Replied · Upside · Cyrus · Next: Find contact + personalize Step 1</span></div><button class="star" aria-label="Star Gallagher">☆</button></div>
+      <div class="r" style="box-shadow:inset 3px 0 0 #AFC0FF;background:rgba(175,192,255,.06)"><div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span style="font-weight:500">Solidcore <span class="ty">Employer</span></span><span class="sub">Responded · HomeLover</span></div><button class="star" aria-label="Star Solidcore">☆</button></div>
+
+      <button class="g" style="width:100%;border:0;border-top:1px solid #232A33;color:#E9ECF0;font:600 14px Geist,sans-serif;text-align:left" aria-expanded="false"><span aria-hidden="true" style="color:#8B95A3">▸</span><span class="sw" aria-hidden="true" style="background:#8B95A3"></span>In outreach <span class="num" style="font-weight:400;color:#8B95A3">83</span></button>
+      <button class="g" style="width:100%;border:0;border-top:1px solid #232A33;color:#E9ECF0;font:600 14px Geist,sans-serif;text-align:left" aria-expanded="false"><span aria-hidden="true" style="color:#8B95A3">▸</span><span class="sw" aria-hidden="true" style="background:#5E6773"></span>Not started <span class="num" style="font-weight:400;color:#8B95A3">164</span></button>
+      <button class="g" style="width:100%;border:0;border-top:1px solid #232A33;color:#8B95A3;font:500 14px Geist,sans-serif;text-align:left" aria-expanded="false"><span aria-hidden="true">▸</span><span class="sw" aria-hidden="true" style="background:#1C222A;box-shadow:inset 0 0 0 1px #46505E"></span>Parked <span class="num" style="font-weight:400">75</span></button>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":1560}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

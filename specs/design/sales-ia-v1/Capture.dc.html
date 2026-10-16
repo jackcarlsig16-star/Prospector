@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Quick capture — four modes</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#0B0D10}
+a{color:#AFC0FF;text-decoration:none}a:hover{color:#E9ECF0}
+.lbl{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8B95A3;font-weight:500}
+.num{font-variant-numeric:tabular-nums}
+.btn{height:32px;padding:0 12px;border-radius:8px;border:1px solid #232A33;background:#12161B;color:#E9ECF0;font:500 13px Geist,system-ui,sans-serif;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btnp{background:#8FA8FF;border-color:#8FA8FF;color:#0B0D10;font-weight:600}
+.panel{background:#171C22;border:1px solid #46505E;border-radius:14px;box-shadow:0 18px 40px rgba(0,0,0,.45);display:flex;flex-direction:column;overflow:hidden}
+.modes{display:flex;gap:2px;padding:3px;background:#0F1317;border:1px solid #232A33;border-radius:10px}
+.mode{flex:1;height:30px;border:0;border-radius:7px;background:transparent;color:#8B95A3;font:500 13px Geist,sans-serif;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.mode.on{background:#171C22;color:#E9ECF0;box-shadow:0 0 0 1px #46505E}
+.key{font:10px 'Geist Mono',monospace;color:#8B95A3;border:1px solid #232A33;border-radius:4px;padding:0 4px;line-height:15px}
+.kbd{font:11px 'Geist Mono',monospace;color:#8B95A3;border:1px solid #232A33;border-radius:4px;padding:1px 5px}
+.chip{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:999px;border:1px solid #232A33;background:#12161B;color:#E9ECF0;font:13px Geist,sans-serif}
+.foot{display:flex;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid #232A33;background:#12161B}
+.inp{width:100%;box-sizing:border-box;border:1px solid #8FA8FF;box-shadow:0 0 0 2px rgba(143,168,255,.22);border-radius:10px;background:#0F1317;color:#E9ECF0;font:15px Geist,sans-serif;padding:12px 14px;outline:0}
+.rv{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-top:1px solid #232A33}
+.tick{width:18px;height:18px;flex:0 0 18px;border-radius:5px;background:#8FA8FF;border:0;display:inline-flex;align-items:center;justify-content:center;margin-top:1px}
+.untick{width:18px;height:18px;flex:0 0 18px;border-radius:5px;background:transparent;border:1.5px solid #6B7480;margin-top:1px}
+</style>
+</helmet>
+<div style="width:1440px;height:1320px;background:#0B0D10;color:#E9ECF0;font-family:Geist,system-ui,sans-serif;font-size:14px;padding:56px 64px;box-sizing:border-box;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:48px 56px;align-content:start">
+
+  <!-- TASK -->
+  <section aria-label="Quick capture — Task" class="panel">
+    <div style="padding:16px 16px 0;display:flex;flex-direction:column;gap:14px">
+      <div role="tablist" aria-label="Capture type" class="modes">
+        <button role="tab" aria-selected="true" class="mode on">Task <span class="key">T</span></button>
+        <button role="tab" aria-selected="false" class="mode">Note <span class="key">N</span></button>
+        <button role="tab" aria-selected="false" class="mode">Idea <span class="key">I</span></button>
+        <button role="tab" aria-selected="false" class="mode">Company <span class="key">O</span></button>
+      </div>
+      <label style="display:flex;flex-direction:column;gap:6px">
+        <span class="lbl">What needs doing</span>
+        <input class="inp" value="Send Brad the target list fri @jack #Upside">
+      </label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;padding-bottom:16px">
+        <button class="chip"><span class="lbl" style="font-size:10px">Owner</span><span aria-hidden="true" style="width:8px;height:8px;border-radius:999px;background:#6F8CF0"></span>Jack</button>
+        <button class="chip"><span class="lbl" style="font-size:10px">Due</span><span class="num">Fri Oct 16</span></button>
+        <button class="chip"><span class="lbl" style="font-size:10px">Linked</span><span aria-hidden="true" style="width:3px;height:14px;border-radius:2px;background:#3DD68C"></span>Upside · Partner</button>
+        <button class="chip" style="color:#8B95A3;border-style:dashed">+ Step</button>
+      </div>
+    </div>
+    <div class="foot">
+      <span style="font-size:12px;color:#8B95A3;display:inline-flex;gap:12px;flex:1"><span><span class="kbd">@</span> owner</span><span><span class="kbd">#</span> company</span><span>dates in plain words</span></span>
+      <button class="btn btnp">Save task <span class="kbd" style="border-color:rgba(11,13,16,.3);color:#0B0D10">↵</span></button>
+    </div>
+  </section>
+
+  <!-- NOTE -->
+  <section aria-label="Quick capture — Note, review step" class="panel">
+    <div style="padding:16px 16px 0;display:flex;flex-direction:column;gap:14px">
+      <div role="tablist" aria-label="Capture type" class="modes">
+        <button role="tab" aria-selected="false" class="mode">Task <span class="key">T</span></button>
+        <button role="tab" aria-selected="true" class="mode on">Note <span class="key">N</span></button>
+        <button role="tab" aria-selected="false" class="mode">Idea <span class="key">I</span></button>
+        <button role="tab" aria-selected="false" class="mode">Company <span class="key">O</span></button>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;background:#0F1317;border:1px solid #232A33;border-radius:10px;padding:10px 12px">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="#8B95A3" stroke-width="1.5" aria-hidden="true"><rect x="3" y="1.5" width="10" height="13" rx="2"></rect><path d="M5.5 5h5M5.5 8h5M5.5 11h3"></path></svg>
+        <span style="flex:1;font-size:13px;color:#C9D0D9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">“Call w/ Brad (Upside) — Alliant wants the one-pager before Tues. Roots booked a…”</span>
+        <a href="#" style="font-size:12px">Edit notes</a>
+      </div>
+      <div style="display:flex;align-items:baseline;justify-content:space-between">
+        <span style="font-size:15px;font-weight:600">Found 6 things <span style="font-weight:400;color:#8B95A3;font-size:13px">· tick what to keep</span></span>
+        <span class="num" style="font-size:12px;color:#8B95A3">5 ticked</span>
+      </div>
+      <div style="display:flex;flex-direction:column;padding-bottom:12px">
+        <span class="lbl" style="padding:2px 0 4px">Tasks</span>
+        <div class="rv"><span class="tick" role="checkbox" aria-checked="true" aria-label="Keep"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#0B0D10" stroke-width="2.4" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5"></path></svg></span><div style="flex:1;display:flex;flex-direction:column;gap:2px"><span>Send Alliant the partner one-pager</span><span style="font-size:12px;color:#8B95A3">Jack · due Tue Oct 20 · Alliant Insurance Services</span></div></div>
+        <div class="rv"><span class="tick" role="checkbox" aria-checked="true" aria-label="Keep"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#0B0D10" stroke-width="2.4" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5"></path></svg></span><div style="flex:1;display:flex;flex-direction:column;gap:2px"><span>Intro the Gallagher benefits lead</span><span style="font-size:12px;color:#8B95A3">Cyrus · no date · Gallagher</span></div></div>
+        <span class="lbl" style="padding:10px 0 4px">Companies</span>
+        <div class="rv"><span class="tick" role="checkbox" aria-checked="true" aria-label="Keep"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#0B0D10" stroke-width="2.4" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5"></path></svg></span><div style="flex:1;display:flex;flex-direction:column;gap:2px"><span>Roots <span style="font-size:12px;color:#8B95A3">· already a partner</span></span><span style="font-size:12px;color:#C9D0D9">Move forward: Replied → Meeting set</span></div></div>
+        <div class="rv"><span class="untick" role="checkbox" aria-checked="false" aria-label="Keep"></span><div style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="color:#8B95A3">Tuesday <span style="font-size:12px">· not a company — left out</span></span></div></div>
+        <span class="lbl" style="padding:10px 0 4px">Touches</span>
+        <div class="rv"><span class="tick" role="checkbox" aria-checked="true" aria-label="Keep"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#0B0D10" stroke-width="2.4" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5"></path></svg></span><div style="flex:1;display:flex;flex-direction:column;gap:2px"><span>Call with Brad</span><span style="font-size:12px;color:#8B95A3">Upside · today</span></div></div>
+        <div class="rv"><span class="tick" role="checkbox" aria-checked="true" aria-label="Keep"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#0B0D10" stroke-width="2.4" aria-hidden="true"><path d="M3 8.5 6.5 12 13 4.5"></path></svg></span><div style="flex:1;display:flex;flex-direction:column;gap:2px"><span>Meeting booked</span><span style="font-size:12px;color:#8B95A3">Roots · today</span></div></div>
+      </div>
+    </div>
+    <div class="foot">
+      <button class="btn" style="background:transparent">Back</button>
+      <span style="flex:1"></span>
+      <button class="btn btnp">Save 5</button>
+    </div>
+  </section>
+
+  <!-- IDEA -->
+  <section aria-label="Quick capture — Idea" class="panel" style="align-self:start">
+    <div style="padding:16px 16px 0;display:flex;flex-direction:column;gap:14px">
+      <div role="tablist" aria-label="Capture type" class="modes">
+        <button role="tab" aria-selected="false" class="mode">Task <span class="key">T</span></button>
+        <button role="tab" aria-selected="false" class="mode">Note <span class="key">N</span></button>
+        <button role="tab" aria-selected="true" class="mode on">Idea <span class="key">I</span></button>
+        <button role="tab" aria-selected="false" class="mode">Company <span class="key">O</span></button>
+      </div>
+      <label style="display:flex;flex-direction:column;gap:6px">
+        <span class="lbl">Idea</span>
+        <textarea class="inp" rows="3" style="resize:none;line-height:1.45">Joint webinar with Upside for broker partners — use the Alliant one-pager as the hook</textarea>
+      </label>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;padding-bottom:16px">
+        <button class="chip"><span class="lbl" style="font-size:10px">For</span>HomeLover</button>
+        <button class="chip" style="color:#8B95A3;border-style:dashed">+ Link a company</button>
+      </div>
+    </div>
+    <div class="foot">
+      <span style="font-size:12px;color:#8B95A3;flex:1">Saves to Ideas</span>
+      <button class="btn btnp">Save idea <span class="kbd" style="border-color:rgba(11,13,16,.3);color:#0B0D10">⌘↵</span></button>
+    </div>
+  </section>
+
+  <!-- COMPANY -->
+  <section aria-label="Quick capture — Company, duplicate found" class="panel" style="align-self:start">
+    <div style="padding:16px 16px 0;display:flex;flex-direction:column;gap:14px">
+      <div role="tablist" aria-label="Capture type" class="modes">
+        <button role="tab" aria-selected="false" class="mode">Task <span class="key">T</span></button>
+        <button role="tab" aria-selected="false" class="mode">Note <span class="key">N</span></button>
+        <button role="tab" aria-selected="false" class="mode">Idea <span class="key">I</span></button>
+        <button role="tab" aria-selected="true" class="mode on">Company <span class="key">O</span></button>
+      </div>
+      <div style="display:flex;gap:10px;align-items:flex-end">
+        <label style="flex:1;display:flex;flex-direction:column;gap:6px">
+          <span class="lbl">Company name</span>
+          <input class="inp" value="Brown and Brown">
+        </label>
+        <div role="radiogroup" aria-label="Type" class="modes" style="height:44px;box-sizing:border-box;width:200px">
+          <button role="radio" aria-checked="true" class="mode on" style="height:36px">Partner</button>
+          <button role="radio" aria-checked="false" class="mode" style="height:36px">Employer</button>
+        </div>
+      </div>
+      <div role="status" style="display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:10px;border:1px solid rgba(242,181,68,.45);background:rgba(242,181,68,.07)">
+        <span aria-hidden="true" style="color:#F2B544;font-weight:700">!</span>
+        <div style="flex:1;display:flex;flex-direction:column;gap:2px">
+          <span><b style="font-weight:600">Already here:</b> Brown &amp; Brown</span>
+          <span style="font-size:12px;color:#C9D0D9">Partner · Meeting set · HomeLover · touched Oct 15</span>
+        </div>
+        <button class="btn">Open</button>
+      </div>
+      <div style="font-size:12px;color:#8B95A3;padding-bottom:16px">Many at once: <a href="#">Update from sheet</a> · <a href="#">Paste notes</a></div>
+    </div>
+    <div class="foot">
+      <span style="font-size:12px;color:#8B95A3;flex:1">New partners get researched automatically</span>
+      <button class="btn" style="background:transparent">Add anyway</button>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1320}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

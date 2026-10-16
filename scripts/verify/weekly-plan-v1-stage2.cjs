@@ -141,7 +141,7 @@ const noSideScroll = page => page.evaluate(() => document.documentElement.scroll
     await shot(D.page, '1440-goals-stars');
     ok('nudge gone after a plan exists', await nudge.waitFor({ state: 'detached', timeout: 5000 }).then(() => true, () => false));
 
-    await D.page.getByRole('button', { name: 'Daily Huddle', exact: true }).first().click(); await D.page.waitForTimeout(3500);
+    await D.page.getByRole('button', { name: 'Huddle', exact: true }).first().click(); await D.page.waitForTimeout(3500);
     const focus = D.page.getByRole('region', { name: 'Focus' });
     ok('Huddle: Focus strip with 5 rows', await focus.getByRole('checkbox').count() === 5);
     ok('Huddle: link chips come from the plan proposals', /→ ZZ Solidcore[\s\S]*→ ZZ Upside[\s\S]*→ ZZ Marriott/.test(await focus.innerText()));
@@ -168,7 +168,7 @@ const noSideScroll = page => page.evaluate(() => document.documentElement.scroll
     ok('390 drawer: no sideways scroll', await noSideScroll(P.page));
     await shot(P.page, '390-drawer-proposals');
     await drawer(P.page).getByRole('button', { name: 'Close plan' }).click();
-    await P.page.getByRole('button', { name: 'Daily Huddle', exact: true }).first().click(); await P.page.waitForTimeout(3500);
+    await P.page.getByRole('button', { name: 'Huddle', exact: true }).first().click(); await P.page.waitForTimeout(3500);
     ok('390 Huddle: Focus strip', await P.page.getByRole('region', { name: 'Focus' }).getByRole('checkbox').count() === 5);
     ok('390 Huddle: no sideways scroll', await noSideScroll(P.page));
     await shot(P.page, '390-huddle-focus');
@@ -178,7 +178,7 @@ const noSideScroll = page => page.evaluate(() => document.documentElement.scroll
     const W = await newPage(V, 1440, 1000, fixture);
     await navSales(W.page, false);
     ok('viewer Goals: ✦ visible, no Plan button', await W.page.getByLabel('Planned').nth(4).waitFor().then(() => true, () => false) && await W.page.getByLabel('Planned').count() === 5 && await W.page.getByRole('button', { name: 'Plan this week' }).count() === 0);
-    await W.page.getByRole('button', { name: 'Daily Huddle', exact: true }).first().click(); await W.page.waitForTimeout(3500);
+    await W.page.getByRole('button', { name: 'Huddle', exact: true }).first().click(); await W.page.waitForTimeout(3500);
     ok('viewer Huddle: Focus (Team -> own, none) shows nothing to act on', await W.page.getByRole('button', { name: 'Plan this week' }).count() === 0);
     ok('viewer: 0 console errors', W.errs.length === 0, W.errs.join(' | '));
     ok('0 propose calls reached the server (fixture), 0 sync calls attempted', proposeCalls === 2 && syncBlocked === 0, `propose ${proposeCalls}, sync ${syncBlocked}`);

@@ -53,7 +53,7 @@ test('goal line: value/goal per item, number alone without a goal, people unit f
   expect(onOpenGoals).toHaveBeenLastCalledWith('score:meetings_set');
   fireEvent.click(screen.getByText('3,180/3,500 in sequence'));
   expect(onFocusWidget).toHaveBeenLastCalledWith('week_strip');
-  fireEvent.click(screen.getByText('Goals →'));
+  fireEvent.click(screen.getByText('Scorecard →'));
   expect(onOpenGoals).toHaveBeenLastCalledWith('view:week');
   render(<GoalLine hero={{ ...hero, first_touched: { unit: 'partners', goal: null, people: [] } }} weekStart="2026-10-05" onOpenGoals={onOpenGoals} onFocusWidget={onFocusWidget} />);
   expect(screen.getByText('5 partners first-touched')).toBeTruthy();

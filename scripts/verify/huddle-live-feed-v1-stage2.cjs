@@ -49,7 +49,7 @@ async function openHuddle(page, label, compact) {
   await page.getByLabel('Workspace').selectOption({ label }); await page.waitForTimeout(1500);
   if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
   await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).click(); await page.waitForTimeout(3000);
-  await page.getByRole('button', { name: /^Daily Huddle/ }).first().click();
+  await page.getByRole('button', { name: /^Huddle/ }).first().click();
   await page.locator('[id^="live-row-"]').first().waitFor({ timeout: 20000 });
   await page.waitForTimeout(500);
 }

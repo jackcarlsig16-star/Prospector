@@ -115,7 +115,7 @@ const WEEK = monday(today), LAST = addDays(WEEK, -7);
     const cell = (await P.locator('#score-row-partners_first_touched').getByRole('cell').nth(1).innerText()).replace(/\n+/g, ' | ');
     ok('B2 scorecard cell for the carried week: "of 10 · carried" (no "set goal"), 20%', /of 10 · carried/.test(cell) && !/set goal/.test(cell) && /20%/.test(cell), cell);
     await P.locator('#score-row-partners_first_touched').scrollIntoViewIfNeeded(); await P.screenshot({ path: `${OUT}/ghp-1440-scorecard-carried.png` });
-    await P.getByRole('button', { name: 'Overview', exact: true }).click(); await P.waitForTimeout(3500); await P.locator('[data-hero-card]').first().waitFor();
+    await P.getByRole('button', { name: 'Reports', exact: true }).click(); await P.waitForTimeout(600); await P.getByRole('button', { name: 'Analytics', exact: true }).click(); await P.waitForTimeout(3500); await P.locator('[data-hero-card]').first().waitFor();
     ok('B3 Overview hero: header "Goals" (team), Audience 51K (51,140 short-formatted), People first-touched 4', (await P.getByText('Goals · Jack').count()) === 0 && (await num('Audience reached')) === '51K' && (await num('People first-touched')) === '4', `${await num('Audience reached')} ${await num('People first-touched')}`);
     await P.screenshot({ path: `${OUT}/ghp-1440-overview.png` });
     ok('B4 1440: 0 console errors', J.errs.length === 0, J.errs.join(' | '));

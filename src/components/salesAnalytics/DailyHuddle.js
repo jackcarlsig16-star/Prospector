@@ -428,7 +428,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
       <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, marginBottom: 24 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ ...SA_TYPE.label, color: SA.muted }}>HomeLover · Command Center</div>
-          <h1 style={{ margin: 0, ...SA_TYPE.pageTitle, color: SA.text }}>Daily Huddle{dateLabel && ` · ${dateLabel}`}</h1>
+          <h1 style={{ margin: 0, ...SA_TYPE.pageTitle, color: SA.text }}>Huddle{dateLabel && ` · ${dateLabel}`}</h1>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, color: SA.muted }}>
             {tab !== 'live' && <span>As of last sync {fmtTime(lastRun?.finished_at)}</span>}
             <span>Last huddle {fmtTime(lastHuddleAt)}</span>

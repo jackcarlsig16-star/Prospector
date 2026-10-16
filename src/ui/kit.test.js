@@ -85,3 +85,19 @@ test('gallery shows every component in both themes', () => {
   fireEvent.click(screen.getAllByRole('switch', { name: /Meetings from Outlook/ })[0]);
   expect(screen.getAllByRole('switch', { name: /Meetings from Outlook/ })[0]).toHaveAttribute('aria-checked', 'true');
 });
+
+test('Segmented: one pressed item, mono label class, dot + meta optional', () => {
+  const Segmented = require('./Segmented').default;
+  const onChange = jest.fn();
+  render(<Segmented label="Pipeline views" items={[{ id: 'board', label: 'Board' }, { id: 'partners', label: 'Partner workflow', meta: 3 }, { id: 'jack', label: 'Jack', color: '#6F8CF0' }]} value="board" onChange={onChange} />);
+  const group = screen.getByRole('group', { name: 'Pipeline views' });
+  const buttons = group.querySelectorAll('button');
+  expect(buttons.length).toBe(3);
+  expect(buttons[0].getAttribute('aria-pressed')).toBe('true');
+  expect(buttons[1].getAttribute('aria-pressed')).toBe('false');
+  expect(buttons[1].textContent).toBe('Partner workflow3');
+  expect(buttons[2].querySelector('span[aria-hidden]')).toBeTruthy();
+  fireEvent.click(buttons[1]);
+  expect(onChange).toHaveBeenCalledWith('partners');
+  expect(document.getElementById('ui-kit-css').textContent).toMatch(/\.ui-seg__btn \{[^}]*Geist Mono/);
+});

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Quick capture — phone</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#0B0D10}
+a{color:#AFC0FF;text-decoration:none}
+.lbl{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8B95A3;font-weight:500}
+.mode{height:40px;border:0;border-radius:7px;background:transparent;color:#8B95A3;font:500 13px Geist,sans-serif}
+.mode.on{background:#171C22;color:#E9ECF0;box-shadow:0 0 0 1px #46505E}
+.skel{background:#12161B;border:1px solid #1C222A;border-radius:14px}
+</style>
+</helmet>
+<div style="width:390px;height:844px;position:relative;overflow:hidden;background:#0B0D10;color:#E9ECF0;font-family:Geist,system-ui,sans-serif;font-size:14px">
+
+  <div aria-hidden="true" style="position:absolute;inset:0;padding:16px;display:flex;flex-direction:column;gap:12px;opacity:.35">
+    <div style="height:104px;background:#12161B;border-bottom:2px solid #E2418A;margin:-16px -16px 0"></div>
+    <span style="font-size:28px;font-weight:600">Thu, Oct 15</span>
+    <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px"><div class="skel" style="height:96px"></div><div class="skel" style="height:96px"></div><div class="skel" style="height:96px"></div><div class="skel" style="height:96px"></div></div>
+    <div class="skel" style="height:300px"></div>
+  </div>
+  <div aria-hidden="true" style="position:absolute;inset:0;background:rgba(5,6,8,.55)"></div>
+
+  <section role="dialog" aria-label="Quick capture" style="position:absolute;left:0;right:0;bottom:0;background:#171C22;border-top:1px solid #46505E;border-radius:18px 18px 0 0;padding:8px 16px 28px;display:flex;flex-direction:column;gap:14px">
+    <span aria-hidden="true" style="align-self:center;width:36px;height:4px;border-radius:999px;background:#46505E;margin-bottom:4px"></span>
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <h2 style="margin:0;font-size:17px;font-weight:600">Capture</h2>
+      <button aria-label="Close" style="width:44px;height:44px;margin-right:-10px;border:0;background:transparent;color:#C9D0D9"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8"></path></svg></button>
+    </div>
+    <div role="tablist" aria-label="Capture type" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:2px;padding:3px;background:#0F1317;border:1px solid #232A33;border-radius:10px">
+      <button role="tab" aria-selected="false" class="mode">Task</button>
+      <button role="tab" aria-selected="true" class="mode on">Note</button>
+      <button role="tab" aria-selected="false" class="mode">Idea</button>
+      <button role="tab" aria-selected="false" class="mode">Company</button>
+    </div>
+    <label style="display:flex;flex-direction:column;gap:6px">
+      <span class="lbl">Paste any notes</span>
+      <textarea rows="11" style="resize:none;box-sizing:border-box;width:100%;border:1px solid #8FA8FF;box-shadow:0 0 0 2px rgba(143,168,255,.22);border-radius:10px;background:#0F1317;color:#E9ECF0;font:15px/1.5 Geist,sans-serif;padding:12px 14px;outline:0">Call w/ Brad (Upside)
+— Alliant wants the one-pager before Tues
+— Roots booked a meeting for next week
+— Cyrus to intro Gallagher's benefits lead
+— Brad will send the target list Fri</textarea>
+    </label>
+    <span style="font-size:12px;color:#8B95A3">Claude reads these into tasks, companies and touches. You review before anything is saved.</span>
+    <button style="height:48px;border-radius:10px;border:0;background:#8FA8FF;color:#0B0D10;font:600 15px Geist,sans-serif">Read notes</button>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

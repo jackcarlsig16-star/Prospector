@@ -259,3 +259,7 @@ export const KIT_TYPE = {
   small: { ...saSans, fontSize: 13 },
   label: SA_TYPE.label,
 };
+
+// sales-ia-v1 - segmented control (a page header's sub-views and person
+// filter). Mono labels like every kit label; one accent (focus ring only).
+export const KIT_SEGMENTED = { height: 28, padding: '0 12px', radius: 7, gap: 2, inset: 3 };
