@@ -277,3 +277,128 @@ test('Export joint sheet fetches the .xlsx for the current filters and saves it;
   expect(await screen.findByText('Export is for members only')).toBeTruthy();
   click.mockRestore();
 });
+
+// pipeline-quick-panel-v1 Stage 2 - Next step and Due typed straight into the table.
+const td = (name, col) => screen.getByText(name, { selector: 'td button' }).closest('tr').querySelectorAll('td')[col];
+const NEXT = 7, DUE = 8;
+
+test('Next step cell on a partner row: click -> input prefilled; Enter saves through updatePartner once and updates the row; the click never opens the panel', async () => {
+  setup();
+  await screen.findByText('Solidcore');
+  fireEvent.click(within(td('Gallagher', NEXT)).getByRole('button'));
+  expect(screen.queryByRole('complementary')).toBeNull();
+  const input = screen.getByRole('textbox', { name: 'Next step for Gallagher' });
+  expect(input.value).toBe('Send the one-pager');
+  expect(document.activeElement).toBe(input);
+  fireEvent.change(input, { target: { value: '  Book the pilot call ' } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  fireEvent.blur(input);
+  await waitFor(() => expect(goalsApi.updatePartner).toHaveBeenCalledWith('b1', 'Gallagher', { next_step: 'Book the pilot call' }));
+  expect(goalsApi.updatePartner).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(td('Gallagher', NEXT).textContent).toBe('Book the pilot call'));
+  expect(screen.queryByRole('textbox', { name: 'Next step for Gallagher' })).toBeNull();
+  expect(goalsApi.pipelineBoard).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('status')).toBeNull();
+});
+
+test('Esc cancels with no call and the old text; unchanged blur writes nothing; an employer Next step goes through next_action', async () => {
+  setup();
+  await screen.findByText('Solidcore');
+  fireEvent.click(within(td('Gallagher', NEXT)).getByRole('button'));
+  const input = screen.getByRole('textbox', { name: 'Next step for Gallagher' });
+  fireEvent.change(input, { target: { value: 'Something else' } });
+  fireEvent.keyDown(input, { key: 'Escape' });
+  expect(screen.queryByRole('textbox', { name: 'Next step for Gallagher' })).toBeNull();
+  expect(td('Gallagher', NEXT).textContent).toBe('Send the one-pager');
+  expect(goalsApi.updatePartner).not.toHaveBeenCalled();
+  fireEvent.click(within(td('Gallagher', NEXT)).getByRole('button'));
+  fireEvent.blur(screen.getByRole('textbox', { name: 'Next step for Gallagher' }));
+  expect(goalsApi.updatePartner).not.toHaveBeenCalled();
+  fireEvent.click(within(td('Solidcore', NEXT)).getByRole('button'));
+  expect(fetchOpportunities).not.toHaveBeenCalled();
+  const emp = screen.getByRole('textbox', { name: 'Next step for Solidcore' });
+  fireEvent.change(emp, { target: { value: 'Send the deck' } });
+  fireEvent.blur(emp);
+  await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', { next_action: 'Send the deck' }));
+  await waitFor(() => expect(td('Solidcore', NEXT).textContent).toBe('Send the deck'));
+});
+
+test('employer Due: a date input; a change saves next_action_date; clearing saves null; Tab from Next step opens Due', async () => {
+  setup();
+  await screen.findByText('Solidcore');
+  expect(td('Solidcore', DUE).textContent).toBe('Oct 20');
+  fireEvent.click(within(td('Solidcore', DUE)).getByRole('button'));
+  const date = screen.getByLabelText('Due for Solidcore');
+  expect(date.type).toBe('date');
+  expect(date.value).toBe('2026-10-20');
+  fireEvent.change(date, { target: { value: '2026-10-27' } });
+  fireEvent.keyDown(date, { key: 'Enter' });
+  await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', { next_action_date: '2026-10-27' }));
+  await waitFor(() => expect(td('Solidcore', DUE).textContent).toBe('Oct 27'));
+  fireEvent.click(within(td('Solidcore', DUE)).getByRole('button'));
+  const again = screen.getByLabelText('Due for Solidcore');
+  fireEvent.change(again, { target: { value: '' } });
+  fireEvent.blur(again);
+  await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', { next_action_date: null }));
+  await waitFor(() => expect(td('Solidcore', DUE).textContent).toBe('—'));
+  fireEvent.click(within(td('Solidcore', NEXT)).getByRole('button'));
+  fireEvent.keyDown(screen.getByRole('textbox', { name: 'Next step for Solidcore' }), { key: 'Tab' });
+  expect(document.activeElement).toBe(screen.getByLabelText('Due for Solidcore'));
+  expect(updateOpportunity).toHaveBeenCalledTimes(2);
+});
+
+test('partner Due stays a dash with a title; target and Apollo cells are text; a Viewer gets no editors', async () => {
+  setup();
+  fireEvent.click(await screen.findByRole('button', { name: 'In Apollo' }));
+  await screen.findByText('Fresh Co');
+  const due = td('Gallagher', DUE);
+  expect(due.textContent).toBe('—');
+  expect(due.title).toBe('Partners have no due date yet');
+  expect(due.querySelector('button')).toBeNull();
+  expect(td('Solidcore', DUE).title).toBe('2026-10-20');
+  for (const name of ['New Target', 'Fresh Co']) {
+    expect(td(name, NEXT).querySelector('button')).toBeNull();
+    expect(td(name, DUE).querySelector('button')).toBeNull();
+  }
+  document.body.innerHTML = '';
+  setup({ canEdit: false });
+  await screen.findByText('Solidcore');
+  expect(td('Gallagher', NEXT).textContent).toBe('Send the one-pager');
+  expect(td('Gallagher', NEXT).querySelector('button')).toBeNull();
+  expect(td('Solidcore', DUE).querySelector('button')).toBeNull();
+  expect(document.querySelectorAll('.ui-cell').length).toBe(0);
+});
+
+test('a failed save reverts the cell and shows the message; sorting is not re-applied while a cell is edited or saving', async () => {
+  goalsApi.pipelineBoard.mockResolvedValue([
+    row('Alpha Co', 'employer', 'yellow', { next_step: 'Aaa' }),
+    row('Beta Co', 'employer', 'yellow', { next_step: 'Bbb' }),
+  ]);
+  setup();
+  await screen.findByText('Alpha Co');
+  updateOpportunity.mockRejectedValueOnce(new Error('Opportunity not found'));
+  fireEvent.click(within(td('Alpha Co', NEXT)).getByRole('button'));
+  const bad = screen.getByRole('textbox', { name: 'Next step for Alpha Co' });
+  fireEvent.change(bad, { target: { value: 'Nope' } });
+  fireEvent.keyDown(bad, { key: 'Enter' });
+  expect((await screen.findByRole('status')).textContent).toBe('Opportunity not found');
+  expect(td('Alpha Co', NEXT).textContent).toBe('Aaa');
+  expect(td('Alpha Co', NEXT).querySelector('[aria-busy]')).toBeNull();
+
+  const order = () => [...document.querySelectorAll('tr[data-row] td.ui-table__sticky')].map(x => x.textContent);
+  fireEvent.click(screen.getByRole('button', { name: /^Next step/ }));
+  expect(order()).toEqual(['Alpha Co', 'Beta Co']);
+  let finish;
+  updateOpportunity.mockReturnValueOnce(new Promise(r => { finish = r; }));
+  fireEvent.click(within(td('Alpha Co', NEXT)).getByRole('button'));
+  const input = screen.getByRole('textbox', { name: 'Next step for Alpha Co' });
+  fireEvent.change(input, { target: { value: 'Zzz' } });
+  expect(order()).toEqual(['Alpha Co', 'Beta Co']);
+  fireEvent.keyDown(input, { key: 'Enter' });
+  await waitFor(() => expect(td('Alpha Co', NEXT).querySelector('[aria-busy="true"]')).toBeTruthy());
+  expect(td('Alpha Co', NEXT).textContent).toBe('Zzz');
+  expect(order()).toEqual(['Alpha Co', 'Beta Co']);
+  finish({});
+  await waitFor(() => expect(order()).toEqual(['Beta Co', 'Alpha Co']));
+  expect(td('Alpha Co', NEXT).querySelector('[aria-busy]')).toBeNull();
+});

@@ -7,6 +7,8 @@ import PartnerQuickPanel from './PartnerQuickPanel';
 import OwnerPill from '../OwnerPill';
 import SheetUpdateDrawer from './SheetUpdateDrawer';
 import DataTable from '../../../ui/DataTable';
+import EditableCell from '../../../ui/EditableCell';
+import { KIT_EDITABLE } from '../../../ui/tokens';
 import useMediaQuery from '../../../utils/useMediaQuery';
 import { openTasks } from '../tasks/LinkedTasks';
 import { laWeekStart } from '../periods';
@@ -22,7 +24,9 @@ import { TIERS } from '../../../constants/partnerPipeline';
 // is a DataTable (one line per company) with a compact toolbar; on a phone
 // it is the two-line list. pipeline-quick-panel-v1: a partner row opens
 // PartnerQuickPanel over the table (never a navigation); employers open
-// OpportunityPanel, read-only for a Viewer.
+// OpportunityPanel, read-only for a Viewer. Stage 2: Next step (partners +
+// employers) and Due (employers) are typed straight into the table; the row's
+// value changes only when the save lands, so an open editor never re-sorts.
 export const BOARD_TOKENS = { green: SA.good, yellow: SA.warn, blue: SA.link, gray: SA.muted, light: SA.faint, faded: SA.track };
 const TYPE_CHIPS = [['', 'All'], ['partner', 'Partners'], ['employer', 'Employers'], ['target', 'Targets']];
 const TYPE_LABEL = { partner: 'Partner', employer: 'Employer', target: 'Target', apollo: 'Apollo' };
@@ -36,6 +40,8 @@ const highlightTint = `color-mix(in srgb, ${SA.accent} 22%, transparent)`;
 const chipBtn = on => ({ height: 30, padding: '0 12px', borderRadius: 999, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', flex: 'none', border: `1px solid ${on ? SA.accent : SA.border}`, background: on ? SA.surface2 : 'transparent', color: on ? SA.text : SA.muted });
 const selectStyle = { ...inputStyle, height: 30, fontSize: 13, padding: '0 8px' };
 const Dim = () => <span className="ui-table__dim">—</span>;
+const rowKey = r => `${r.type}-${r.id}`;
+const CELL_FIELD = { next: 'next_step', due: 'next_step_due' };
 const Swatch = ({ color }) => <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, flex: 'none', background: BOARD_TOKENS[color] }} />;
 
 export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpenCompanies }) {
@@ -49,6 +55,8 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
   const [panel, setPanel] = useState(undefined); // undefined = closed, null = new employer, object = edit
   const [quick, setQuick] = useState(null); // partner id open in the quick panel
   const [highlight, setHighlight] = useState(null); // row key flashed after the quick panel closes
+  const [editing, setEditing] = useState(null); // { key, col } of the one open cell editor
+  const [saving, setSaving] = useState({}); // `${key}:${col}` -> value in flight, shown dimmed
   const [panelSaving, setPanelSaving] = useState(false);
   const [panelError, setPanelError] = useState('');
   const [exporting, setExporting] = useState(false);
@@ -116,6 +124,27 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
     setPanelSaving(true); setPanelError('');
     try { await fn(); setPanel(undefined); load(); } catch (e) { setPanelError(e.message); } finally { setPanelSaving(false); }
   };
+  const commitCell = async (r, col, value) => {
+    const id = `${rowKey(r)}:${col}`;
+    setEditing(null); setNotice('');
+    setSaving(s => ({ ...s, [id]: value }));
+    try {
+      if (r.type === 'partner') await goalsApi.updatePartner(businessId, r.id, { next_step: value });
+      else await updateOpportunity(businessId, r.id, col === 'next' ? { next_action: value } : { next_action_date: value });
+      setRows(rs => rs.map(x => (rowKey(x) === rowKey(r) ? { ...x, [CELL_FIELD[col]]: value } : x)));
+    } catch (e) { setNotice(e.message); } finally { setSaving(s => { const n = { ...s }; delete n[id]; return n; }); }
+  };
+  const editable = (r, col) => canEdit && (r.type === 'employer' || (r.type === 'partner' && col === 'next'));
+  const cell = (r, col, type, render) => {
+    if (!editable(r, col)) return render(r[CELL_FIELD[col]]);
+    const key = rowKey(r);
+    return (
+      <EditableCell type={type} label={`${col === 'next' ? 'Next step' : 'Due'} for ${r.name}`} value={r[CELL_FIELD[col]]} render={render}
+        editing={editing?.key === key && editing.col === col} saving={saving[`${key}:${col}`]}
+        onEdit={() => setEditing({ key, col })} onCancel={() => setEditing(null)} onCommit={v => commitCell(r, col, v)}
+        onTab={col === 'next' && r.type === 'employer' ? () => setEditing({ key, col: 'due' }) : undefined} />
+    );
+  };
 
   const starCell = r => {
     if (r.type !== 'partner' && r.type !== 'employer') return null;
@@ -134,8 +163,9 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
     { id: 'tier', label: 'Tier', width: 58, sortValue: r => TIER_RANK[r.tier] ?? null, render: r => tierLabel(r.tier) || <Dim /> },
     { id: 'owner', label: 'Owner', width: 116, sortValue: r => r.owner, render: r => r.owner || <Dim />, title: r => r.owner },
     { id: 'team', label: 'Team', width: 104, sortValue: r => TEAM_LABEL[r.owner_team] || null, render: r => (r.owner_team ? <OwnerPill row={r} /> : <Dim />) },
-    { id: 'next', label: 'Next step', minWidth: 160, sortValue: r => r.next_step, render: r => r.next_step || <Dim />, title: r => r.next_step },
-    { id: 'due', label: 'Due', width: 70, sortValue: r => r.next_step_due, render: r => (r.next_step_due ? <span style={numStyle}>{md(r.next_step_due)}</span> : <Dim />), title: r => r.next_step_due },
+    { id: 'next', label: 'Next step', minWidth: 160, sortValue: r => r.next_step, render: r => cell(r, 'next', 'text', v => v || <Dim />), title: r => r.next_step },
+    { id: 'due', label: 'Due', width: KIT_EDITABLE.dateWidth, sortValue: r => r.next_step_due, render: r => cell(r, 'due', 'date', v => (v ? <span style={numStyle}>{md(v)}</span> : <Dim />)),
+      title: r => (r.type === 'partner' ? 'Partners have no due date yet' : r.next_step_due) },
     { id: 'touch', label: 'Last touch', width: 86, sortValue: r => r.last_touch_at, render: r => (touchLabel(r) ? <span style={numStyle}>{touchLabel(r)}</span> : <Dim />), title: r => r.last_touch_at && r.last_touch_at.slice(0, 10) },
   ];
   const compactRow = r => (
@@ -159,7 +189,7 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
       collapsed: collapsed.has(g.id), onToggle: () => toggleBand(g.id),
     })),
   ];
-  const rowStyle = r => ({ '--ui-row-tint': highlight === `${r.type}-${r.id}` ? highlightTint : tint(r.color), '--ui-row-bar': BOARD_TOKENS[r.color] });
+  const rowStyle = r => ({ '--ui-row-tint': highlight === rowKey(r) ? highlightTint : tint(r.color), '--ui-row-bar': BOARD_TOKENS[r.color] });
 
   return (
     <section style={{ ...cardStyle, padding: 16 }} aria-labelledby="h-pipeline">
@@ -217,7 +247,7 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
       {rows && (
         // The module stays dark on screen in light mode; the kit's vars would go light here without the pin.
         <div className="ui-theme-dark">
-          <DataTable label="Joint pipeline" columns={columns} groups={groups} rowKey={r => `${r.type}-${r.id}`} rowStyle={rowStyle}
+          <DataTable label="Joint pipeline" columns={columns} groups={groups} rowKey={rowKey} rowStyle={rowStyle}
             compact={phone} renderCompact={compactRow} emptyText="No companies match these filters." />
         </div>
       )}

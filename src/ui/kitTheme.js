@@ -1,4 +1,4 @@
-import { KIT_DARK, KIT_LIGHT, KIT_RADIUS, KIT_SEGMENTED, KIT_TABLE } from './tokens';
+import { KIT_DARK, KIT_LIGHT, KIT_RADIUS, KIT_SEGMENTED, KIT_TABLE, KIT_EDITABLE } from './tokens';
 
 // Every kit component reads var(--ui-*) so dark/light is pure CSS: :root holds
 // dark, the app's light mode (body.mode-straight-shooter) swaps to light, and
@@ -58,6 +58,15 @@ body.mode-straight-shooter, .ui-theme-light { ${vars(KIT_LIGHT)} }
 .ui-table__count { color:var(--ui-muted); font-weight:400; font-variant-numeric:tabular-nums; }
 .ui-table__dim { color:var(--ui-faint); }
 .ui-table__empty { padding:12px 10px; color:var(--ui-muted); }
+.ui-cell { all:unset; display:flex; align-items:center; gap:4px; width:100%; height:100%; box-sizing:border-box; cursor:text; overflow:hidden; }
+.ui-cell > span { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ui-cell::after { content:'✎'; flex:none; font-size:${KIT_EDITABLE.pencil}px; line-height:1; color:var(--ui-muted); opacity:0; transition:opacity .12s; }
+.ui-table tr[data-row]:hover .ui-cell::after, .ui-cell:focus-visible::after { opacity:.7; }
+.ui-cell:focus-visible { outline:2px solid var(--ui-accent); outline-offset:-2px; border-radius:4px; }
+.ui-cell--saving { opacity:.45; cursor:progress; }
+.ui-cell-input { box-sizing:border-box; display:block; width:100%; height:${KIT_EDITABLE.height}px; padding:0 ${KIT_EDITABLE.padX}px; border-radius:${KIT_RADIUS.control - 2}px; border:1px solid var(--ui-accent); background:var(--ui-inset); color:var(--ui-text); font:inherit; outline:none; color-scheme:dark; }
+body.mode-straight-shooter :where(.ui-cell-input), .ui-theme-light .ui-cell-input { color-scheme:light; }
+.ui-theme-dark .ui-cell-input { color-scheme:dark; }
 .ui-list { list-style:none; margin:0; padding:0; border:1px solid var(--ui-border); border-radius:${KIT_RADIUS.card}px; background:var(--ui-surface); overflow:hidden; font:400 14px 'Geist', ui-sans-serif, system-ui, sans-serif; color:var(--ui-text); }
 .ui-list__group { display:flex; align-items:center; min-height:${KIT_TABLE.compactGroupHeight}px; padding:0 12px; background:var(--ui-inset); border-top:1px solid var(--ui-border); }
 .ui-list__group:first-child { border-top:0; }

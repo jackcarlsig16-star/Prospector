@@ -9,6 +9,7 @@ import StatusPill from './StatusPill';
 import ToggleRow from './ToggleRow';
 import UiKitGallery from './UiKitGallery';
 import DataTable from './DataTable';
+import EditableCell from './EditableCell';
 
 const lum = hex => {
   const c = hex.replace('#', '').match(/../g).map(h => parseInt(h, 16) / 255).map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
@@ -174,4 +175,46 @@ test('DataTable: the sticky first column keeps a solid surface under the row tin
   expect(document.querySelector('tr[data-row] td:first-child')).toHaveClass('ui-table__sticky');
   expect(document.querySelector('thead th:first-child')).toHaveClass('ui-table__sticky');
   expect(document.querySelector('tr[data-row]').style.getPropertyValue('--ui-row-tint')).toBe('rgba(0,255,0,.06)');
+});
+
+test('EditableCell: read mode is a button with the rendered value and a label when empty; the editor selects, Enter commits trimmed, blur unchanged cancels, Esc cancels, saving dims', () => {
+  const on = { onEdit: jest.fn(), onCommit: jest.fn(), onCancel: jest.fn() };
+  const base = { label: 'Next step for Acme', render: v => v || '—', ...on };
+  const { rerender } = render(<EditableCell value={null} {...base} />);
+  const empty = screen.getByRole('button', { name: 'Next step for Acme' });
+  expect(empty.textContent).toBe('—');
+  expect(empty.className).toBe('ui-cell');
+  rerender(<EditableCell value="Call back" {...base} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Call back' }));
+  expect(on.onEdit).toHaveBeenCalledTimes(1);
+  rerender(<EditableCell value="Call back" editing {...base} />);
+  const input = screen.getByRole('textbox', { name: 'Next step for Acme' });
+  expect(document.activeElement).toBe(input);
+  expect(input.selectionEnd - input.selectionStart).toBe('Call back'.length);
+  fireEvent.blur(input);
+  expect(on.onCancel).toHaveBeenCalledTimes(1);
+  expect(on.onCommit).not.toHaveBeenCalled();
+  rerender(<EditableCell value="Call back" {...base} />);
+  rerender(<EditableCell value="Call back" editing {...base} />);
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: '  Send deck ' } });
+  fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+  fireEvent.blur(screen.getByRole('textbox'));
+  expect(on.onCommit).toHaveBeenCalledTimes(1);
+  expect(on.onCommit).toHaveBeenCalledWith('Send deck');
+  rerender(<EditableCell value="Call back" {...base} />);
+  rerender(<EditableCell value="Call back" editing {...base} />);
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: '' } });
+  fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Enter' });
+  expect(on.onCommit).toHaveBeenLastCalledWith(null);
+  rerender(<EditableCell value="Call back" {...base} />);
+  rerender(<EditableCell value="Call back" editing {...base} />);
+  fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' });
+  expect(on.onCancel).toHaveBeenCalledTimes(2);
+  rerender(<EditableCell value="Call back" saving="Send deck" {...base} />);
+  const busy = screen.getByRole('button', { name: 'Send deck' });
+  expect(busy.className).toBe('ui-cell ui-cell--saving');
+  expect(busy).toHaveAttribute('aria-busy', 'true');
+  fireEvent.click(busy);
+  expect(on.onEdit).toHaveBeenCalledTimes(1);
+  expect(document.activeElement).toBe(busy);
 });

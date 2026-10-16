@@ -268,3 +268,8 @@ export const KIT_SEGMENTED = { height: 28, padding: '0 12px', radius: 7, gap: 2,
 // fits the viewport (minus bottomGap) so the sticky header holds while the
 // rows scroll; compact = the phone list.
 export const KIT_TABLE = { rowHeight: 34, headHeight: 34, groupHeight: 36, fontSize: 13, minHeight: 240, bottomGap: 8, compactRowMinHeight: 60, compactGroupHeight: 44 };
+
+// pipeline-quick-panel-v1 - EditableCell: the editor sits inside a KIT_TABLE
+// row, so it is shorter than .ui-input; dateWidth is what a native date input
+// (mm/dd/yyyy + its picker) needs as a column width at the table's font size.
+export const KIT_EDITABLE = { height: 26, padX: 6, pencil: 11, dateWidth: 118 };
