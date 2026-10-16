@@ -1,0 +1,84 @@
+AUDIT apollo-visitors-v1 - findings (2026-10-16, reads only; HEAD 38b12a9 at start)
+Cost: 2 Apollo calls (POST /accounts/search x2, 0 credits), 0 Claude, 0 writes, 0 syncs. DB: 553 rows read, HomeLover only.
+Apollo calls were declared before running: (1) accounts/search p1 per_page 100, (2) p2 only if p1 had 0 hits,
+(3) reserve for a transient error only. Call 3 was not spent.
+
+Q1 API - what Apollo documents (docs.apollo.io/llms.txt + the full OpenAPI spec, 75 paths, read 2026-10-16)
+  DOCUMENTED
+  - No website-visitor endpoint. No path lists, searches or filters visitors. /accounts/search takes only
+    q_organization_name, account_stage_ids, account_label_ids, sort_by_field (last_activity / created / updated),
+    page, per_page. /mixed_companies/search has no visitor filter either.
+  - Visitor data shows up only inside a single company record: GET /organizations/{id} ("Get Complete Organization
+    Info", 1 credit per company) carries intent_signal_account.website_visitor_metrics =
+    { overall_intent, total_visits, unique_visitors, pages[], page_view_aggregates {1/7/15/30/60/90-day counts},
+      domain_aggregates [{ domain, first/last_intent_signal_received_at }], first/last_intent_signal_received_at }.
+  - Account/contact records in /accounts/search examples carry show_intent, has_intent_signal_account and
+    intent_signal_account { unique_visitors, intent, intent_score } (schema is an empty {}: shape is example-only).
+  - Rate limits: per team, per endpoint. Search/record endpoints on Basic/Professional are 200/min, 400/h, 2,000/day
+    (Organization plan: 600/h, 6,000/day). The org is shared, so every workspace draws from the same counters.
+  - Help center: visitor data is company-level; people-level is US contacts only, behind "Company & person" tracking
+    and the plan/inbound package. Data can take up to 7 days to appear. The visitor quota resets each billing cycle.
+  INFERRED (not documented)
+  - The API is not built to "list companies that visited". Pulling visitors directly would mean
+    GET /organizations/{id} per company (1 credit each) for companies we already know about. That doesn't discover
+    anyone new.
+
+Q2 Probe (existing apolloRequest, allowlisted path only, ctx cap 3)
+  - Call 1: 200 OK, 100 of 334 accounts. Call 2: 200 OK, 100 more (page 2 of 4). 2 calls total.
+  - None of the 200 accounts had has_intent_signal_account. The account records on this org carry only two
+    visit-related keys: intent_strength and show_intent. Their values were NOT captured (the probe only counted
+    the has_ flag). Gap: one more 0-credit call would show them.
+  - Not known: whether the tracking script is live on the site yet, and whether 7 days of data exist. Zero hits is
+    consistent with "not installed yet / within the 7-day lag" and with "visitor data never rides on accounts/search".
+  - The plan's endpoint access to /organizations/{id} was not probed: it is off the allowlist and costs credits.
+
+Q3 Alternatives (help center: Use Website Visitors Data, Workflows Overview, Track Website Visitors)
+  - The workflow "Website Visited" trigger (account workflows) is documented. Its documented actions include: save
+    the account, add it to a list, create a task, notify Slack/email, add to a sequence. No generic webhook action
+    found in these 3 articles (not ruled out across the 200+ integration list). Google Sheets is an integration with
+    a limited field set.
+  - Best API-only route (INFERRED): an Apollo workflow "Website Visited -> save account + add to list 'Web visitors'".
+    Prospector then reads that list through the already-allowed, 0-credit /accounts/search with account_label_ids.
+    That gives discovery (who visited) for free. Visit counts/pages still need the record-level fields
+    (intent_strength / intent_signal_account), and nobody has confirmed those carry anything yet.
+  - CSV: the Website visitors > Visited companies list can be exported. The existing Update-from-sheet route
+    (sheetUpdate.js, POST goals/pipeline-board/update, server.js:677) only edits rows already on the board, so it
+    doesn't fit. A new small upload route would reuse readUpload (sheetUpdate.js:44, 2 MB / 2,000-row caps) and
+    the matching below. 0 Apollo calls.
+
+Q4 Matching (HomeLover, counts only)
+  - Helper: findDupes({ name, domain }, ctx) + loadDupeContext (api/sales/partnerDupeCheck.js:20,:42). It matches
+    exact names across partner > opportunity > Apollo account > target, plus a confirmed partner_domains hit.
+    resolveCompany (intakeMatch.js:57) is name-only and works as the fallback.
+  - Partners: 77 live, 21 with a confirmed domain (27%). 22 domain rows: 21 confirmed, 1 dismissed.
+  - Opportunities: 222 live, sequenced accounts: 197, targets: 34 (33 partner, 1 employer). None has a domain
+    column, so those match by name only. The accounts adapter reads domain from Apollo (adapters/accounts.js) but
+    the snapshot doesn't store it.
+  - Unmatched visitors: keep them in their own table, not sales_targets. Turning every visitor into a target would
+    flood Intake. Promote one to a target by hand, through the existing target path.
+
+Q5 Least schema + surfaces
+  (a) web_visits table (business_id, company_key, domain, apollo_account_id, first_seen, last_seen, visits,
+      pages jsonb, matched_type, matched_id, source 'apollo'|'csv'), written only by the pull or upload.
+      MIGRATION NEEDED (new table + s5_read like the other Goals tables).
+  (b) "Visited" column/badge (last visit + count): api/sales/pipelineBoard.js buildBoard :19 (row objects :25 partner,
+      :36 opportunity, :45 target, :59 sequenced) + loadBoard :76. UI: goals/PipelineView.js columns :158. No migration
+      beyond (a).
+  (c) Tidy rule "visited N times in 7 days, no touch in 14 days -> Reach out": new rule in api/sales/tidyRules.js
+      RULES :92, data loaded in tidyRoutes.js loadTidyContext :28. sales_suggestions.kind is free text and ref_type
+      already allows partner/opportunity/target, so no migration beyond (a).
+  (d) Today chip "Visitors (n)": goals/TodayView.js:56 (reserved slot comment). No migration.
+
+Q6 Cadence + cost
+  - Page-load pull on the first load of the LA day, same guard as Tidy: SalesAnalyticsTab.js:135 + localStorage
+    prospector_tidy_ran_<id>, server-side ranToday (tidyRoutes.js:53). A pull is 1-4 /accounts/search calls
+    (334 accounts today, 100/page; fewer when filtered to the visitor list label). Against a 2,000/day team cap that
+    is negligible, even with Sync now on the same counter.
+  - The /organizations/{id} route instead costs 1 credit per company per pull. Don't do it daily.
+  - Data lags up to 7 days, so a once-a-day pull is already finer than the data. Nothing needs a timer.
+
+Verdict: do not build apollo-visitors-v1 against the API yet. First: (1) Jack confirms the tracking script is
+installed and Website visitors > Visited companies shows companies in Apollo's UI. (2) One 0-credit call shows
+whether intent_strength is filled on those accounts. Then build the cheapest path: an Apollo workflow saves visitors to a list,
+and Prospector reads that list via /accounts/search. If (2) is empty, build the CSV upload instead. The people-tier
+upgrade changes neither path (no person-level API is documented, and no phones or emails are kept either way).
