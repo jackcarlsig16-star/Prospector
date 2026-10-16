@@ -16,6 +16,7 @@ import BusinessIntelKpiStrip from './BusinessIntelKpiStrip';
 import BusinessSocialLinksPopover from './BusinessSocialLinksPopover';
 import BusinessWebsiteUrlPopover from './BusinessWebsiteUrlPopover';
 import SalesAnalyticsTab from './salesAnalytics/SalesAnalyticsTab';
+import QuickCapture from './salesAnalytics/capture/QuickCapture';
 import { buildBusinessContextMarkdown } from '../utils/businessContextExport';
 
 // emoji-picker-react is ~75kB gzipped - lazy so it only loads when the
@@ -471,7 +472,7 @@ function ProjectsSection({ business, userEmail, activeUser, projects, campaigns=
   );
 }
 
-export default function BusinessDetailPage({ scout, business: businessProp, userEmail, fullListAccess, projects=[], campaigns=[], view='command-center', onUpdated, onProjectCreated, onProjectUpdated, onCampaignCreated, onCampaignUpdated, sharedAccounts, sharedTasks, setSharedTasks, dailyStats, activeUser, onNav, onUpdateAccount }) {
+export default function BusinessDetailPage({ scout, business: businessProp, userEmail, fullListAccess, projects=[], campaigns=[], view='command-center', onUpdated, onProjectCreated, onProjectUpdated, onCampaignCreated, onCampaignUpdated, sharedAccounts, sharedTasks, setSharedTasks, dailyStats, activeUser, onNav, onUpdateAccount, onSaveNuggets }) {
   const [business, setBusiness] = useState(businessProp);
   const compact = useMediaQuery('(max-width: 899px)');
   const [profile, setProfile] = useState(null);
@@ -756,7 +757,10 @@ export default function BusinessDetailPage({ scout, business: businessProp, user
             )}
           </div>
           <div id="workspace-header-tabs" style={{ display:"flex", alignItems:"center", minWidth:0 }} />
-          <div style={{ flex: compact ? "1 1 100%" : "1 1 auto", display:"flex", justifyContent:"flex-end", minWidth:0, paddingBottom: compact ? 8 : 0 }}>{scout}</div>
+          <div style={{ flex: compact ? "1 1 100%" : "1 1 auto", display:"flex", alignItems:"center", justifyContent:"flex-end", gap:8, minWidth:0, paddingBottom: compact ? 8 : 0 }}>
+            {scout}
+            <QuickCapture businessId={business.id} features={business.features} activeUser={activeUser} onSaveNuggets={onSaveNuggets} compact={compact} />
+          </div>
           </div>
           {view === 'overview' && (
             <div data-workspace-identity style={{ display:"flex", alignItems:"center", gap:10, height:20, marginBottom:6, ...KIT_TYPE.small, fontSize:12, color:ui.muted, minWidth:0 }}>

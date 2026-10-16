@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { C, mono } from '../../constants/colors';
-import { MODELS } from '../../config/models';
+import { createNugget } from '../../utils/nuggets';
 
 export const NUGGET_WORKFLOWS = ["Territory management","Account research","Meeting prep","Stealth pipeline","Analytics","Bulk assay","Task tracking","Email/outreach","Admin/settings","Other"];
 export const NUGGET_STATUS_COLORS = {"pending":C.mut,"reviewing":C.purple,"planned":C.blue||"#4A9EFF","shipped":C.green,"rejected":C.red};
@@ -20,28 +20,7 @@ export default function GoldenNuggetsTab({ nuggets=[], onSaveNuggets, activeUser
   const handleSubmit = async () => {
     if(!text.trim()) return;
     setSubmitting(true); setSubmitErr(null);
-    let category="Feature Request", priority="Medium", summary=text.trim().slice(0,120);
-    try {
-      const r = await fetch("/proxy/anthropic/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({
-        model:MODELS.FAST, max_tokens:120,
-        messages:[{role:"user",content:`Categorize this product feedback in JSON only (no markdown):\n"${text.trim().slice(0,600)}"\n\nReturn: {"category":"Bug|Feature Request|UX|Performance|Data|Other","priority":"High|Medium|Low","summary":"one sentence under 100 chars"}`}]
-      })});
-      const d = await r.json();
-      const raw = d.content?.[0]?.text || "{}";
-      const m = raw.match(/\{[\s\S]+\}/);
-      if(m){const parsed=JSON.parse(m[0]);category=parsed.category||category;priority=parsed.priority||priority;summary=parsed.summary||summary;}
-    } catch {} // silently fall back to defaults
-    const nugget = {
-      id:`ng_${Date.now()}`,
-      text:text.trim(), workflow:workflow||null,
-      category, priority, summary,
-      submittedBy: anonymous ? "Anonymous" : myName,
-      realName: myName,
-      anonymous,
-      submittedAt: new Date().toISOString(),
-      upvotes:[myName], downvotes:[],
-      status:"pending", adminNotes:"", releaseTag:"", shippedAt:null,
-    };
+    const nugget = await createNugget({ text, workflow, anonymous, myName });
     onSaveNuggets(ns=>[nugget,...ns]);
     setText(""); setWorkflow(""); setAnonymous(false);
     setSubmitOk(true); setTimeout(()=>setSubmitOk(false),3000);
