@@ -27,7 +27,7 @@ const counts = async () => { const o = {}; for (const t of WATCH) { const r = aw
 const otherFeatures = async B => Object.fromEntries((ins(await svc.from('businesses').select('id,features').neq('id', B).order('id'))).map(b => [b.id, b.features]));
 let srv, browser, pass = 0, total = 0;
 const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS' : 'FAIL'}  ${n}${d ? ` - ${d}` : ''}`); };
-setTimeout(() => { console.log('ABORT (4 min cap)'); if (browser) browser.close(); if (srv) srv.kill(); process.exit(2); }, 240000).unref();
+require('./lib/tempGuard.cjs')(async () => { if (browser) await browser.close().catch(() => {}); if (srv) srv.kill(); }, { capMs: 240000 });
 
 async function setup(file) {
   const before = await counts();

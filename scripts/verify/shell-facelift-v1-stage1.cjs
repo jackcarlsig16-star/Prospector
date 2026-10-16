@@ -23,7 +23,7 @@ const ins = r => { if (r.error) throw new Error(r.error.message); return r.data;
 const counts = async () => { const o = {}; for (const t of WATCH) o[t] = (await svc.from(t).select('*', { count: 'exact', head: true })).count; return o; };
 let srv, browser, pass = 0, total = 0;
 const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS' : 'FAIL'}  ${n}${d ? ` - ${d}` : ''}`); };
-setTimeout(() => { console.log('ABORT (4 min cap)'); if (browser) browser.close(); if (srv) srv.kill(); process.exit(2); }, 240000).unref();
+require('./lib/tempGuard.cjs')(async () => { if (browser) await browser.close().catch(() => {}); if (srv) srv.kill(); }, { capMs: 240000 });
 
 const laToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 const addDays = (v, n) => new Date(Date.parse(`${v}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);

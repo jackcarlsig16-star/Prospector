@@ -12,8 +12,8 @@ const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS'
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const snap = async () => { const o = {}; for (const t of WATCH) o[t] = (await svc.from(t).select('*', { count: 'exact', head: true })).count; return o; };
 const wait = ms => new Promise(r => setTimeout(r, ms));
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
-async function cleanup() {
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
+async function removeTemp() {
   if (srv) srv.kill();
   for (const b of made.biz) {
     await svc.from('sales_partner_events').delete().eq('business_id', b);
@@ -107,8 +107,9 @@ const WEEK = monday(today), LAST = addDays(WEEK, -7), PAST = addDays(WEEK, -5); 
     // 6. History list returns touches with their fields (UI reads this)
     r = await call(vera, 'GET', `/partners/events?goal_id=${p4.id}`);
     ok('viewer can read the touch in history', r.status === 200 && r.body.events?.[0]?.event === 'touch' && r.body.events[0].contact_names[0] === 'Person 0');
-  } catch (e) { ok('run', false, e.stack.split('\n').slice(0, 2).join(' ')); }
-  await cleanup();
+  } catch (e) { ok('run', false, e.stack.split('\n').slice(0, 2).join(' ')); } finally {
+    await cleanup();
+  }
   const after = await snap();
   const moved = WATCH.filter(t => before[t] !== after[t]);
   console.log(`\n${pass}/${total} passed`);

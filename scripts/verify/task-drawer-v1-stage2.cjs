@@ -16,8 +16,8 @@ const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS'
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const snap = async () => { const o = {}; for (const t of WATCH) o[t] = (await svc.from(t).select('*', { count: 'exact', head: true })).count; return o; };
 const wait = ms => new Promise(r => setTimeout(r, ms));
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
-async function cleanup() {
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
+async function removeTemp() {
   if (browser) await browser.close().catch(() => {});
   if (srv) srv.kill();
   const b = made.biz;
@@ -226,8 +226,9 @@ const scrollState = page => page.evaluate(() => ({ win: window.scrollY, main: do
     const enabled = await boxes.evaluateAll(bs => bs.filter(x => !x.disabled).length);
     ok('viewer: read-only (rows shown, no enabled checks, no owner pickers)', (await boxes.count()) >= 3 && enabled === 0 && (await v.page.locator(`${drawerSel} select`).count()) === 0 && (await v.page.locator(drawerSel).innerText()).includes('read-only'), `boxes ${await boxes.count()} enabled ${enabled} selects ${await v.page.locator(`${drawerSel} select`).count()}`);
     ok('viewer: 0 console errors', v.errs.length === 0, v.errs.join(' | '));
-  } catch (e) { ok('harness ran', false, e.stack.split('\n').slice(0, 3).join(' / ')); }
-  await cleanup();
+  } catch (e) { ok('harness ran', false, e.stack.split('\n').slice(0, 3).join(' / ')); } finally {
+    await cleanup();
+  }
   const after = await snap();
   ok('table counts back to before', JSON.stringify(before) === JSON.stringify(after), `${JSON.stringify(before)} vs ${JSON.stringify(after)}`);
   ok('HomeLover to-dos untouched (status/owner/updated_at)', (await hlState()) === hlBefore);

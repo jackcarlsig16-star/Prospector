@@ -12,8 +12,8 @@ const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS'
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const snap = async () => { const o = {}; for (const t of WATCH) o[t] = (await svc.from(t).select('*', { count: 'exact', head: true })).count; return o; };
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
-async function cleanup() {
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
+async function removeTemp() {
   if (srv) srv.kill();
   for (const b of made.biz) {
     await svc.from('sales_week_goals').update({ carried_from_id: null }).eq('business_id', b);
@@ -122,8 +122,9 @@ const workspace = async owner => { const b = ins(await svc.from('businesses').in
     ok('carry-over: partner link copied as-is', nk1 && nk1.link_type === 'partner' && nk1.link_id === partner.id);
     r = await call(M1, T1, 'POST', '/week/carry-over', { week_start: NEXT });
     ok('carry-over twice: nothing new', r.status === 200 && r.body.carried.length === 0);
-  } catch (e) { console.log('ERROR', e.stack.split('\n').slice(0, 2).join(' ')); total++; }
-  await cleanup();
+  } catch (e) { console.log('ERROR', e.stack.split('\n').slice(0, 2).join(' ')); total++; } finally {
+    await cleanup();
+  }
   const after = await snap();
   const diff = Object.keys(after).filter(k => after[k] !== before[k]).map(k => `${k} ${before[k]} -> ${after[k]}`);
   console.log(`\n${pass}/${total} passed in ${Math.round((Date.now() - t0) / 1000)}s | watched tables changed: ${diff.join('; ') || 'none'} | restored: ${diff.length ? 'NO' : 'yes'}`);

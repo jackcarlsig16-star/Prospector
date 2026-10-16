@@ -16,7 +16,7 @@ const made = { biz: null, users: [] };
 let srv, browser, pass = 0, total = 0, syncBlocked = 0, proposeCalls = 0;
 const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS' : 'FAIL'}  ${n}${!c && d ? ` - ${d}` : ''}`); };
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
 
 const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 const dow = new Date(`${today}T12:00:00Z`).getUTCDay();
@@ -28,7 +28,7 @@ async function hl() {
   for (const t of HL_TABLES) { const r = await svc.from(t).select('*', { count: 'exact', head: true }).eq('business_id', HOMELOVER); o[t] = r.error ? `n/a (${r.error.message.slice(0, 40)})` : r.count; }
   return o;
 }
-async function cleanup() {
+async function removeTemp() {
   if (browser) await browser.close().catch(() => {});
   if (srv) srv.kill();
   const b = made.biz;
@@ -184,8 +184,9 @@ const noSideScroll = page => page.evaluate(() => document.documentElement.scroll
     ok('0 propose calls reached the server (fixture), 0 sync calls attempted', proposeCalls === 2 && syncBlocked === 0, `propose ${proposeCalls}, sync ${syncBlocked}`);
   } catch (e) {
     ok('run', false, e.stack.split('\n').slice(0, 3).join(' '));
+  } finally {
+    await cleanup();
   }
-  await cleanup();
   const left = { biz: (await svc.from('businesses').select('id', { count: 'exact', head: true }).eq('id', made.biz)).count, users: (await svc.from('profiles').select('id', { count: 'exact', head: true }).in('id', made.users)).count };
   const hlAfter = await hl();
   const same = JSON.stringify(hlBefore) === JSON.stringify(hlAfter);

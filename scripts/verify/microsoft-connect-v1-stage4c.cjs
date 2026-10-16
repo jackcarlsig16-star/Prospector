@@ -21,7 +21,7 @@ const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS'
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const snap = async () => { const o = {}; for (const t of WATCH) o[t] = (await svc.from(t).select('*', { count: 'exact', head: true })).count; return o; };
 const wait = ms => new Promise(r => setTimeout(r, ms));
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
 
 // ── Graph fixture: Sent Items with text bodies, Graph's list shape ───────────
 const a = address => ({ emailAddress: { address, name: address.split('@')[0] } });
@@ -55,7 +55,7 @@ function startFixture() {
   });
 }
 
-async function cleanup() {
+async function removeTemp() {
   if (srv) srv.kill();
   if (fix) fix.close();
   for (const u of made.users) { for (const t of ['microsoft_grants', 'sales_mailbox_owners']) await svc.from(t).delete().eq('user_id', u); }
@@ -121,8 +121,9 @@ async function user(biz, name, role) {
 
     const hl = (await svc.from('businesses').select('features').eq('id', HL).maybeSingle()).data;
     ok('B1 HomeLover READ-ONLY: outlook_voice is not on yet (Jack switches it on in Admin > Workspace features)', hl && hl.features?.outlook_voice !== true, JSON.stringify(hl && hl.features));
-  } catch (e) { ok('run', false, e.stack.split('\n').slice(0, 3).join(' ')); }
-  await cleanup();
+  } catch (e) { ok('run', false, e.stack.split('\n').slice(0, 3).join(' ')); } finally {
+    await cleanup();
+  }
   const after = await snap();
   const moved = WATCH.filter(t => before[t] !== after[t]);
   console.log(`\n${pass}/${total} passed`);

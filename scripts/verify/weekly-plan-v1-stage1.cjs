@@ -12,14 +12,14 @@ let srv, log = '', pass = 0, total = 0;
 const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS' : 'FAIL'}  ${n}${!c && d ? ` - ${d}` : ''}`); };
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
 
 async function hl() {
   const o = { businesses: (await svc.from('businesses').select('*', { count: 'exact', head: true }).eq('id', HOMELOVER)).count };
   for (const t of HL_TABLES) { const r = await svc.from(t).select('*', { count: 'exact', head: true }).eq('business_id', HOMELOVER); o[t] = r.error ? `n/a (${r.error.message.slice(0, 40)})` : r.count; }
   return o;
 }
-async function cleanup() {
+async function removeTemp() {
   if (srv) srv.kill();
   const b = made.biz;
   if (b) {
@@ -172,8 +172,9 @@ async function user(name) {
     r = await call(V, 'POST', '/week/plan/save', { week_start: WEEK, owner_user_id: M.id, inputs: {}, proposals: [], chosen: [{ rank: 1, text: 'x', as: 'commitment' }] });
     ok('viewer cannot save (403)', r.status === 403, `${r.status}`);
     ok('still exactly 1 usage row after all saves', ins(await svc.from('business_anthropic_usage').select('id').eq('business_id', T)).length === 1);
-  } catch (e) { console.log('ERROR', e.message); ok('no exception', false, e.message); }
-  await cleanup();
+  } catch (e) { console.log('ERROR', e.message); ok('no exception', false, e.message); } finally {
+    await cleanup();
+  }
   const left = { businesses: (await svc.from('businesses').select('id').like('access_code', `${tag}%`)).data?.length, plans: made.biz ? (await svc.from('sales_week_plans').select('id').eq('business_id', made.biz)).data?.length : 0 };
   const hlAfter = await hl();
   ok('teardown: temp workspace + plans gone', left.businesses === 0 && left.plans === 0, JSON.stringify(left));

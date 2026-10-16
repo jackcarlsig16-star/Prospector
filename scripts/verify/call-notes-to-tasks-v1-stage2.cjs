@@ -16,8 +16,8 @@ const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS'
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const snap = async () => { const o = {}; for (const t of WATCH) o[t] = (await svc.from(t).select('*', { count: 'exact', head: true })).count; return o; };
 const wait = ms => new Promise(r => setTimeout(r, ms));
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
-async function cleanup() {
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
+async function removeTemp() {
   if (browser) await browser.close().catch(() => {});
   if (srv) srv.kill();
   const b = made.biz;
@@ -235,8 +235,9 @@ const api = (page, method, path, body) => page.evaluate(async ([url, method, bod
     await PD.getByRole('button', { name: 'Cancel' }).click();
     ok('390: Cancel returns to the list, nothing written', await PD.getByRole('region', { name: 'From calls' }).isVisible() && (await count('sales_week_goals')) === 3);
     ok('390: 0 console errors', ph.errs.length === 0, ph.errs.join(' | '));
-  } catch (e) { ok('harness ran', false, e.stack.split('\n').slice(0, 3).join(' / ')); }
-  await cleanup();
+  } catch (e) { ok('harness ran', false, e.stack.split('\n').slice(0, 3).join(' / ')); } finally {
+    await cleanup();
+  }
   const after = await snap();
   ok('table counts back to before', JSON.stringify(before) === JSON.stringify(after), `${JSON.stringify(before)} vs ${JSON.stringify(after)}`);
   ok('HomeLover to-dos untouched (status/owner/updated_at)', (await hlState()) === hlBefore);

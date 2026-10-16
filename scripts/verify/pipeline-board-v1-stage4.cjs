@@ -16,14 +16,14 @@ let srv, pass = 0, total = 0;
 const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS' : 'FAIL'}  ${n}${!c && d ? ` - ${d}` : ''}`); };
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const wait = ms => new Promise(r => setTimeout(r, ms));
-setTimeout(() => { console.log('ABORT (3 min cap)'); cleanup().then(() => process.exit(2)); }, 180000);
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 180000 });
 
 async function counts(biz) {
   const o = {};
   for (const t of TABLES) { const r = await svc.from(t).select('*', { count: 'exact', head: true }).eq('business_id', biz); o[t] = r.error ? 'err' : r.count; }
   return o;
 }
-async function cleanup() {
+async function removeTemp() {
   if (srv) srv.kill();
   const b = made.biz;
   if (b) for (const t of ['sales_partner_events', 'sales_week_goals', 'sales_targets', 'sales_opportunity_events', 'sales_opportunities', 'sales_goals', 'business_members', 'auth_events']) {

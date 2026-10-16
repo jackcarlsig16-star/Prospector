@@ -13,9 +13,9 @@ const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS'
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const snap = async () => { const o = {}; for (const t of WATCH) o[t] = (await svc.from(t).select('*', { count: 'exact', head: true })).count; return o; };
 const wait = ms => new Promise(r => setTimeout(r, ms));
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
 
-async function cleanup() {
+async function removeTemp() {
   if (srv) srv.kill();
   const b = made.biz;
   if (b) { for (const t of ['microsoft_events', 'sales_metric_targets', 'partner_contacts', 'partner_domains', 'sales_goals', 'business_members', 'auth_events']) await svc.from(t).delete().eq('business_id', b); }
@@ -116,8 +116,9 @@ const monday = () => { const today = new Intl.DateTimeFormat('en-CA', { timeZone
     console.log('HomeLover held this week:', r.held.map(h => `${h.domain} ${h.subject} ${h.end_at}`).join(' | ') || 'none');
     const hl = (await svc.from('businesses').select('features').eq('id', HL).maybeSingle()).data;
     ok(`B2 HomeLover: outlook_meetings is ${hl?.features?.outlook_meetings === true ? 'ON (Jack switched it on in Admin) - the KPI table shows "from Outlook" today' : 'off (Jack switches it on in Admin > Workspace features)'}`, !!hl, JSON.stringify(hl && hl.features));
-  } catch (e) { ok('run', false, e.stack.split('\n').slice(0, 3).join(' ')); }
-  await cleanup();
+  } catch (e) { ok('run', false, e.stack.split('\n').slice(0, 3).join(' ')); } finally {
+    await cleanup();
+  }
   const after = await snap();
   const moved = WATCH.filter(t => before[t] !== after[t]);
   console.log(`\n${pass}/${total} passed`);

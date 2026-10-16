@@ -19,8 +19,8 @@ const hlSnap = async () => JSON.stringify({
   goals: (await svc.from('sales_goals').select('id,pipeline_status,updated_at').eq('business_id', HL).eq('goal_type', 'partnership').order('id')).data,
 });
 const wait = ms => new Promise(r => setTimeout(r, ms));
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
-async function cleanup() {
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
+async function removeTemp() {
   if (srv) srv.kill();
   for (const b of made.biz) {
     for (const t of ['sales_partner_events', 'partner_contacts', 'sales_email_messages', 'sales_goals', 'business_members', 'auth_events']) await svc.from(t).delete().eq('business_id', b);

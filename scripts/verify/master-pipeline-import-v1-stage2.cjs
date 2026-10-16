@@ -18,7 +18,7 @@ let srv, browser, pass = 0, total = 0, blocked = 0;
 const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS' : 'FAIL'}  ${n}${!c && d ? ` - ${d}` : ''}`); };
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const wait = ms => new Promise(r => setTimeout(r, ms));
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
 
 // Fixture rows are written in field terms and exported in the sheet's own
 // vocabulary and 32-column shape (REV4), contacts in Primary Contact / Title.
@@ -65,7 +65,7 @@ async function counts(biz, tables) {
   for (const t of tables) { const r = await svc.from(t).select('*', { count: 'exact', head: true }).eq('business_id', biz); o[t] = r.error ? `n/a (${r.error.message.slice(0, 40)})` : r.count; }
   return o;
 }
-async function cleanup() {
+async function removeTemp() {
   if (browser) await browser.close().catch(() => {});
   if (srv) srv.kill();
   const b = made.biz;

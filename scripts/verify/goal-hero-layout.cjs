@@ -15,8 +15,8 @@ let srv, browser, log = '', pass = 0, total = 0;
 const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS' : 'FAIL'}  ${n}${d ? ` - ${d}` : ''}`); };
 const snap = async () => { const o = {}; for (const t of WATCH) o[t] = (await svc.from(t).select('*', { count: 'exact', head: true }).eq('business_id', HL)).count; return o; };
 const wait = ms => new Promise(r => setTimeout(r, ms));
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
-async function cleanup() {
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
+async function removeTemp() {
   if (browser) await browser.close().catch(() => {});
   if (srv) srv.kill();
   for (const u of made) { await svc.from('business_members').delete().eq('user_id', u); await svc.from('auth_events').delete().eq('user_id', u); await svc.from('auth_events').delete().eq('actor_id', u); await svc.auth.admin.deleteUser(u); }
@@ -81,8 +81,9 @@ const overlap = (a, b) => a && b && a.left < b.right && b.left < a.right && a.to
       }
     }
     ok('0 console errors', !errs.length, errs.join(' | '));
-  } catch (e) { ok('run without exceptions', false, e.stack); }
-  await cleanup();
+  } catch (e) { ok('run without exceptions', false, e.stack); } finally {
+    await cleanup();
+  }
   const after = await snap();
   const moved = WATCH.filter(t => before[t] !== after[t]);
   ok('HomeLover goal tables unchanged', !moved.length, moved.map(t => `${t} ${before[t]}->${after[t]}`).join(', '));

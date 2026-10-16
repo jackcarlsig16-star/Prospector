@@ -12,8 +12,8 @@ const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS'
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const snap = async () => { const o = {}; for (const t of WATCH) o[t] = (await svc.from(t).select('*', { count: 'exact', head: true })).count; return o; };
 const wait = ms => new Promise(r => setTimeout(r, ms));
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
-async function cleanup() {
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
+async function removeTemp() {
   if (srv) srv.kill();
   const b = made.biz;
   if (b) {
@@ -81,8 +81,9 @@ const FINAL_WEEK = '2099-01-05';
     const other = (await svc.from('businesses').select('id').neq('id', B).limit(1)).data[0].id;
     r = await fetch(`http://localhost:${PORT}/api/sales/${other}/goals/report/${WEEK}/sections/s1/append`, { method: 'POST', headers: { Cookie: `prospector_at=${encodeURIComponent(jack.token)}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ line: 'x' }) });
     ok('another workspace refused', r.status === 403 || r.status === 404, String(r.status));
-  } catch (e) { ok('run', false, e.message); }
-  await cleanup();
+  } catch (e) { ok('run', false, e.message); } finally {
+    await cleanup();
+  }
   const after = await snap();
   const moved = WATCH.filter(t => before[t] !== after[t]);
   console.log(`\n${pass}/${total} passed`);

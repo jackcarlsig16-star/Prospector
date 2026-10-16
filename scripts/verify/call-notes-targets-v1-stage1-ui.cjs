@@ -15,9 +15,9 @@ const made = { biz: null, users: [] };
 let srv, browser, pass = 0, total = 0, blocked = 0, extractCalls = 0, writes = 0;
 const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS' : 'FAIL'}  ${n}${!c && d ? ` - ${d}` : ''}`); };
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
 
-async function cleanup() {
+async function removeTemp() {
   if (browser) await browser.close().catch(() => {});
   if (srv) srv.kill();
   const b = made.biz;

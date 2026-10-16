@@ -13,10 +13,10 @@ const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS'
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const snap = async () => { const o = {}; for (const t of WATCH) o[t] = (await svc.from(t).select('*', { count: 'exact', head: true })).count; return o; };
 const wait = ms => new Promise(r => setTimeout(r, ms));
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
 const MAILBOX = `jack.${tag}@homelover.ai`;
 
-async function cleanup() {
+async function removeTemp() {
   if (srv) srv.kill();
   const b = made.biz;
   if (b) for (const t of ['microsoft_sync_runs', 'microsoft_messages', 'microsoft_events', 'sales_partner_events', 'partner_contacts', 'partner_domains', 'sales_goals', 'sales_mailbox_owners', 'business_members', 'auth_events']) await svc.from(t).delete().eq('business_id', b);
@@ -157,8 +157,9 @@ async function user(biz, name, role) {
     ok(`B3 HomeLover touches preview = hand count: would record ${hl.touches.would_record.length} + by hand ${hl.touches.skipped_manual.length} + already ${hl.touches.already} + duplicates ${hl.touches.duplicates} = ${factMsgs} matched sent + in-thread replies`, hl.touches.would_record.length + hl.touches.skipped_manual.length + hl.touches.already + hl.touches.duplicates === factMsgs);
     console.log('HomeLover touches to record:', hl.touches.would_record.map(t => `${t.partner} | ${t.contact} | ${t.date} | ${t.direction} | ${t.key}`).join('\n   ') || 'none');
     console.log('HomeLover touches already by hand:', hl.touches.skipped_manual.map(t => `${t.partner} | ${t.reason}`).join('\n   ') || 'none');
-  } catch (e) { ok('run', false, e.stack.split('\n').slice(0, 3).join(' ')); }
-  await cleanup();
+  } catch (e) { ok('run', false, e.stack.split('\n').slice(0, 3).join(' ')); } finally {
+    await cleanup();
+  }
   const after = await snap();
   const moved = WATCH.filter(t => before[t] !== after[t]);
   console.log(`\n${pass}/${total} passed`);

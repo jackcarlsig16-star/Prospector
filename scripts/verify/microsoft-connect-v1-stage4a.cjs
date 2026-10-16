@@ -21,7 +21,7 @@ const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS'
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const snap = async () => { const o = {}; for (const t of WATCH) o[t] = (await svc.from(t).select('*', { count: 'exact', head: true })).count; return o; };
 const wait = ms => new Promise(r => setTimeout(r, ms));
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
 // n days ago at h:mi UTC (so every fixture sits inside the readers' 7 / 30-day windows).
 const at = (n, h, mi = 0) => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - n, h, mi)).toISOString(); };
 const laDay = iso => new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
@@ -40,7 +40,7 @@ function startFixture() {
     }).listen(FIX, resolve);
   });
 }
-async function cleanup() {
+async function removeTemp() {
   if (srv) srv.kill();
   if (fix) fix.close();
   const b = made.biz;
@@ -152,8 +152,9 @@ async function user(biz, name, role) {
       hl.candidates + hl.already === hlMsgs.length && hl.already === hAlready && (withEmail !== 0 || hl.no_email === hlMsgs.length - hAlready) && hl.written === 0);
     const hlb = (await svc.from('businesses').select('features').eq('id', HL).maybeSingle()).data;
     ok(`B2 HomeLover: outlook_reply_times is ${hlb?.features?.outlook_reply_times === true ? 'ON - the step runs on Jack\'s next Sync Outlook once the Apollo sync has filled addresses' : 'off (Admin > Workspace features)'}`, !!hlb, JSON.stringify(hlb && hlb.features));
-  } catch (e) { ok('run', false, e.stack.split('\n').slice(0, 3).join(' ')); }
-  await cleanup();
+  } catch (e) { ok('run', false, e.stack.split('\n').slice(0, 3).join(' ')); } finally {
+    await cleanup();
+  }
   const after = await snap();
   const moved = WATCH.filter(t => before[t] !== after[t]);
   console.log(`\n${pass}/${total} passed`);

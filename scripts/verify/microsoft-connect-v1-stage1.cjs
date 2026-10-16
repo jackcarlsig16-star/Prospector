@@ -16,8 +16,8 @@ const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS'
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const snap = async () => { const o = {}; for (const t of WATCH) o[t] = (await svc.from(t).select('*', { count: 'exact', head: true })).count; return o; };
 const wait = ms => new Promise(r => setTimeout(r, ms));
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
-async function cleanup() {
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
+async function removeTemp() {
   if (srv) srv.kill();
   for (const u of made.users) await svc.from('microsoft_grants').delete().eq('user_id', u);
   const b = made.biz;
@@ -97,8 +97,9 @@ async function user(biz, name) {
     st = await (await get(jack, '/api/microsoft/status')).json();
     ok('disconnect deletes the grant', r.status === 200 && !(await row(jack)) && st.email === null);
     ok('server log never has the refresh token, secret or key', ![FAKE_RT, FAKE.MICROSOFT_CLIENT_SECRET, FAKE.MICROSOFT_TOKEN_KEY, verifier].some(s => serverLog.includes(s)));
-  } catch (e) { ok('run', false, e.stack.split('\n').slice(0, 2).join(' ')); }
-  await cleanup();
+  } catch (e) { ok('run', false, e.stack.split('\n').slice(0, 2).join(' ')); } finally {
+    await cleanup();
+  }
   const after = await snap();
   const moved = WATCH.filter(t => before[t] !== after[t]);
   console.log(`\n${pass}/${total} passed`);

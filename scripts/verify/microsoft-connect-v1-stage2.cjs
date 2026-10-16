@@ -22,7 +22,7 @@ const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS'
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const snap = async () => { const o = {}; for (const t of WATCH) o[t] = (await svc.from(t).select('*', { count: 'exact', head: true })).count; return o; };
 const wait = ms => new Promise(r => setTimeout(r, ms));
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
 
 // ── Graph fixture: metadata-only pages with Graph's real paging shape ────────
 const SECRET_SUBJECT = 'Partnership intro ' + tag, SECRET_EMAIL = `amy.${tag}@acme.com`, BODY = 'BODY-NEVER-STORED-' + tag;
@@ -63,7 +63,7 @@ function startFixture() {
   });
 }
 
-async function cleanup() {
+async function removeTemp() {
   if (browser) await browser.close().catch(() => {});
   if (srv) srv.kill();
   if (fix) fix.close();
@@ -189,8 +189,9 @@ async function newPage(u, width, height) {
     const vline = await V.page.getByTestId('outlook-sync').textContent().catch(() => '');
     ok('G2 viewer 1440: sees Sent 0 · Received 0 · Events 0, no Sync / Preview buttons, 0 console errors', /Sent 0 · Received 0 · Events 0/.test(vline) && !/Sync Outlook|Preview sync|member access/.test(vline) && V.errs.length === 0, `${vline.slice(0, 160)} errs=${V.errs.join(' | ')}`);
     await V.page.screenshot({ path: `${OUT}/ms2-viewer-1440.png`, fullPage: true });
-  } catch (e) { ok('run', false, e.stack.split('\n').slice(0, 3).join(' ')); }
-  await cleanup();
+  } catch (e) { ok('run', false, e.stack.split('\n').slice(0, 3).join(' ')); } finally {
+    await cleanup();
+  }
   const after = await snap();
   const moved = WATCH.filter(t => before[t] !== after[t]);
   console.log(`\n${pass}/${total} passed`);

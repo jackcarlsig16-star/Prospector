@@ -12,8 +12,8 @@ let srv, pass = 0, total = 0;
 const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS' : 'FAIL'}  ${n}${d ? ` - ${d}` : ''}`); };
 const snap = async () => { const o = {}; for (const t of WATCH) o[t] = (await svc.from(t).select('*', { count: 'exact', head: true }).eq(t === 'business_members' ? 'business_id' : 'business_id', B)).count; return o; };
 const wait = ms => new Promise(r => setTimeout(r, ms));
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
-async function cleanup() {
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
+async function removeTemp() {
   if (srv) srv.kill();
   for (const u of made.users) { await svc.from('business_members').delete().eq('user_id', u); await svc.from('auth_events').delete().eq('user_id', u); await svc.from('auth_events').delete().eq('actor_id', u); }
   for (const u of made.users) await svc.auth.admin.deleteUser(u);
@@ -110,8 +110,9 @@ const humanClick = (e, d) => !!d && (Date.parse(e.occurred_at) - Date.parse(d)) 
     ok('sync line = newest finished run', r.body.sync.synced_at === (done?.finished_at || null), `${r.body.sync.synced_at} stale=${r.body.sync.stale} running=${r.body.sync.running}`);
     ok('no phone field on any row', full.rows.every(x => !('phone' in x)));
     ok('non-member 403, bad filter 400', (await get(nora)).status === 403 && (await get(vera, '?filter=hot')).status === 400);
-  } catch (e) { ok('run without exceptions', false, e.stack); }
-  await cleanup();
+  } catch (e) { ok('run without exceptions', false, e.stack); } finally {
+    await cleanup();
+  }
   const after = await snap();
   const moved = WATCH.filter(t => before[t] !== after[t]);
   ok('watched tables unchanged (0 sync runs, 0 Apollo writes)', !moved.length, moved.map(t => `${t} ${before[t]}->${after[t]}`).join(', '));

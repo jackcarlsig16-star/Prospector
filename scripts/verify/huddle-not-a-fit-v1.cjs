@@ -19,9 +19,9 @@ const snap = async () => { const o = {}; for (const t of WATCH) o[t] = (await sv
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const laToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 const addDays = (d, n) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
-setTimeout(() => { console.log('ABORT (4 min cap)'); cleanup().then(() => process.exit(2)); }, 240000);
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 240000 });
 
-async function cleanup() {
+async function removeTemp() {
   if (browser) await browser.close().catch(() => {});
   if (srv) srv.kill();
   const b = made.biz;
@@ -160,8 +160,9 @@ const rowIds = page => page.locator('[id^="live-row-"]').evaluateAll(els => els.
     await openHuddle(V, WS, false);
     ok('Viewer: no Not a fit / Not now / Restore buttons', await V.getByRole('button', { name: /Not a fit…|Not now…|Restore/ }).count() === 0 && !v.errs.length, v.errs.join(' | '));
     ok('0 sync / Apollo requests left the browser', blocked === 0, `blocked ${blocked}`);
-  } catch (e) { ok('run without exceptions', false, e.stack?.split('\n').slice(0, 3).join(' ')); }
-  await cleanup();
+  } catch (e) { ok('run without exceptions', false, e.stack?.split('\n').slice(0, 3).join(' ')); } finally {
+    await cleanup();
+  }
   const after = await snap();
   const left = made.biz ? (await svc.from('businesses').select('id').eq('id', made.biz)).data.length : 0;
   const moved = WATCH.filter(t => before[t] !== after[t]);

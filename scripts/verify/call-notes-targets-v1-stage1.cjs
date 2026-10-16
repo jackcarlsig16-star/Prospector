@@ -15,7 +15,7 @@ let srv, log = '', pass = 0, total = 0;
 const ok = (n, c, d = '') => { total++; if (c) pass++; console.log(`${c ? 'PASS' : 'FAIL'}  ${n}${!c && d ? ` - ${d}` : ''}`); };
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
-setTimeout(() => { console.log('ABORT (5 min cap)'); cleanup().then(() => process.exit(2)); }, 300000);
+const cleanup = require('./lib/tempGuard.cjs')(removeTemp, { capMs: 300000 });
 
 const FIXTURE_A = `Call with Seif - Oct 12. Jack, Cyrus and Seif.
 Seif thinks renter-investing platforms could put HomeLover in front of renters: Fundrise, Roofstock, EquityZen, RealBricks and Sequoia One are all worth approaching as partners.
@@ -38,7 +38,7 @@ async function hl() {
   for (const t of HL_TABLES) { const r = await svc.from(t).select('*', { count: 'exact', head: true }).eq('business_id', HOMELOVER); o[t] = r.error ? `n/a (${r.error.message.slice(0, 40)})` : r.count; }
   return o;
 }
-async function cleanup() {
+async function removeTemp() {
   if (srv) srv.kill();
   const b = made.biz;
   if (b) {
