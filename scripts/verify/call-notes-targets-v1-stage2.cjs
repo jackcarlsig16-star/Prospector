@@ -186,8 +186,13 @@ const shot = (page, name) => page.screenshot({ path: `${OUT}/${name}.png`, fullP
       const drawer = page.locator(drawerSel);
       await drawer.waitFor(); await drawer.getByRole('region', { name: 'Targets' }).waitFor(); await page.waitForTimeout(600);
       const rows = await drawer.locator('li[data-target-id]').count();
-      ok(`${width}: chip opens the drawer on the Targets list - 6 rows (2 not-a-fit hidden)`, rows === 6, String(rows));
-      ok(`${width}: Targets pill pressed, "Show not-a-fit (2)" toggle present`, (await drawer.getByRole('button', { name: /^◎ Targets/ }).getAttribute('aria-pressed')) === 'true' && (await drawer.getByRole('button', { name: 'Show not-a-fit (2)' }).count()) === 1);
+      ok(`${width}: chip opens the drawer on the Targets list - 4 open rows (2 promoted + 2 not-a-fit closed, hidden)`, rows === 4, String(rows));
+      const closedToggle = drawer.getByRole('button', { name: 'Show closed (promoted · not a fit) · 4' });
+      ok(`${width}: Targets pill pressed, "Show closed (promoted · not a fit) · 4" toggle present`, (await drawer.getByRole('button', { name: /^◎ Targets/ }).getAttribute('aria-pressed')) === 'true' && (await closedToggle.count()) === 1);
+      await closedToggle.click();
+      ok(`${width}: Show closed reveals all 8 rows, Fundrise shows Promoted`, (await drawer.locator('li[data-target-id]').count()) === 8 && (await drawer.locator('li[data-target-id]', { hasText: 'Fundrise' }).getByText('Promoted').count()) === 1);
+      await drawer.getByRole('button', { name: 'Hide closed (promoted · not a fit) · 4' }).click();
+      ok(`${width}: Hide closed goes back to 4 rows`, (await drawer.locator('li[data-target-id]').count()) === 4);
       await shot(page, `cnt2-${width}-targets-list`);
       const marsh = drawer.locator('li[data-target-id]', { hasText: 'Marsh McLennan Agency' });
       await marsh.getByRole('button', { name: 'Promote → partner' }).click();
@@ -228,7 +233,7 @@ const shot = (page, name) => page.screenshot({ path: `${OUT}/${name}.png`, fullP
     const vd = vp.locator(drawerSel); await vd.waitFor();
     await vd.getByRole('button', { name: /^◎ Targets/ }).click(); await vd.getByRole('region', { name: 'Targets' }).waitFor(); await vp.waitForTimeout(500);
     const vRows = await vd.locator('li[data-target-id]').count();
-    ok('viewer: sees the list (6 rows), no Promote / Not a fit buttons, Copy present', vRows === 6 && (await vd.getByRole('button', { name: /Promote|Not a fit/ }).count()) === 0 && (await vd.getByRole('button', { name: 'Copy for Claude' }).count()) === 6, `rows ${vRows}`);
+    ok('viewer: sees the list (4 open rows), no Promote / Not a fit buttons, Copy present', vRows === 4 && (await vd.getByRole('button', { name: /Promote|Not a fit/ }).count()) === 0 && (await vd.getByRole('button', { name: 'Copy for Claude' }).count()) === 4, `rows ${vRows}`);
     ok('viewer: read-only note shown', (await vd.getByText('You have view access, so targets are read-only.').count()) === 1);
     await shot(vp, 'cnt2-1440-viewer-targets');
     ok('viewer: 0 console errors', !verrs.length, verrs.join(' | '));

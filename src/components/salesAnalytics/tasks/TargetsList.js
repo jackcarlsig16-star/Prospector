@@ -10,9 +10,10 @@ import { linkBtn } from './TaskRow';
 
 // call-notes-targets-v1 Stage 2 - the targets Intake proposed, newest first:
 // promote one to a partner or employer, mark it not a fit (its research
-// to-do is dropped, undo for 10 s), or copy it for Claude. Viewers see the
-// list and may copy; the buttons are Member+. Lives in the Tasks drawer; the
-// Today chip opens the same list.
+// to-do is dropped, undo for 10 s), or copy it for Claude. Promoted and
+// not-a-fit rows are closed: hidden behind one toggle. Viewers see the list
+// and may copy; the buttons are Member+. Lives in the Tasks drawer; the Today
+// chip opens the same list.
 const UNDO_MS = 10000;
 export const OPEN_STATUSES = ['proposed', 'researching'];
 export const openTargets = targets => targets.filter(t => OPEN_STATUSES.includes(t.status));
@@ -21,7 +22,7 @@ const md = d => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { mo
 const actBtn = { ...copyBtnStyle, color: SA.text };
 
 export default function TargetsList({ businessId, targets, canEdit, onChanged, onOpenRecord }) {
-  const [showRejected, setShowRejected] = useState(false);
+  const [showClosed, setShowClosed] = useState(false);
   const [panel, setPanel] = useState(null); // { id, to }
   const [categories, setCategories] = useState(null);
   const [toast, setToast] = useState(null); // { text, undo? }
@@ -51,22 +52,22 @@ export default function TargetsList({ businessId, targets, canEdit, onChanged, o
       undo: () => run(async () => { await goalsApi.rejectTarget(businessId, t.id, { undo: true, reopen: r.dropped }); onChanged(); }) });
   });
 
-  const shown = targets.filter(t => showRejected || t.status !== 'rejected');
-  const rejected = targets.length - targets.filter(t => t.status !== 'rejected').length;
+  const shown = targets.filter(t => showClosed || OPEN_STATUSES.includes(t.status));
+  const closed = targets.length - openTargets(targets).length;
   const typeLabel = { partner: 'partner', opportunity: 'employer', target: 'target' };
   return (
     <section aria-label="Targets" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ ...labelStyle, color: SA.soft }}>Targets · {openTargets(targets).length} open</span>
         <span style={{ flex: 1 }} />
-        {rejected > 0 && (
-          <button type="button" aria-pressed={showRejected} onClick={() => setShowRejected(v => !v)} style={{ ...linkBtn, fontSize: 12, color: SA.soft }}>
-            {showRejected ? 'Hide' : 'Show'} not-a-fit ({rejected})
+        {closed > 0 && (
+          <button type="button" aria-pressed={showClosed} onClick={() => setShowClosed(v => !v)} style={{ ...linkBtn, fontSize: 12, color: SA.soft }}>
+            {showClosed ? 'Hide' : 'Show'} closed (promoted · not a fit) · {closed}
           </button>
         )}
       </div>
       {error && <ErrorNote message={error} />}
-      {!shown.length && <p style={{ fontSize: 14, color: SA.muted, margin: '8px 0' }}>No targets yet. Paste notes that name a new company and tick it as a target.</p>}
+      {!shown.length && <p style={{ fontSize: 14, color: SA.muted, margin: '8px 0' }}>{closed ? 'No open targets.' : 'No targets yet. Paste notes that name a new company and tick it as a target.'}</p>}
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {shown.map(t => {
           const [label, color] = STATUS[t.status] || [t.status, SA.neutral];

@@ -19,19 +19,30 @@ test('openTargets counts proposed + researching only', () => {
   expect(openTargets(targets).map(t => t.id)).toEqual(['t1', 't2']);
 });
 
-test('a Viewer sees the rows and Copy for Claude, but no Promote / Not a fit; not-a-fit rows hide behind the toggle', () => {
+test('a Viewer sees the rows and Copy for Claude, but no Promote / Not a fit; promoted + not-a-fit rows hide behind the closed toggle', () => {
   render(<TargetsList businessId="b1" targets={targets} canEdit={false} onChanged={jest.fn()} />);
   expect(screen.getByText('Targets · 2 open')).toBeInTheDocument();
   expect(screen.getByText('Fundrise')).toBeInTheDocument();
-  expect(screen.getByText('Lockton')).toBeInTheDocument();
+  expect(screen.queryByText('Lockton')).not.toBeInTheDocument();
   expect(screen.queryByText('Plaid')).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Promote/ })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Not a fit' })).not.toBeInTheDocument();
-  expect(screen.getAllByRole('button', { name: 'Copy for Claude' })).toHaveLength(3);
-  expect(screen.getAllByText(/From Seif weekly · Oct 12/)).toHaveLength(3);
+  expect(screen.getAllByRole('button', { name: 'Copy for Claude' })).toHaveLength(2);
+  expect(screen.getAllByText(/From Seif weekly · Oct 12/)).toHaveLength(2);
   expect(screen.getByLabelText('Owner: Upside, co-owner Brad - don\'t double-touch')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Show not-a-fit (1)' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Show closed (promoted · not a fit) · 2' }));
   expect(screen.getByText('Plaid')).toBeInTheDocument();
+  expect(screen.getByText('Lockton')).toBeInTheDocument();
+  expect(screen.getAllByRole('button', { name: 'Copy for Claude' })).toHaveLength(4);
+  fireEvent.click(screen.getByRole('button', { name: 'Hide closed (promoted · not a fit) · 2' }));
+  expect(screen.queryByText('Lockton')).not.toBeInTheDocument();
+});
+
+test('only closed targets: the list says so instead of "No targets yet"', () => {
+  render(<TargetsList businessId="b1" targets={targets.slice(2)} canEdit={false} onChanged={jest.fn()} />);
+  expect(screen.getByText('Targets · 0 open')).toBeInTheDocument();
+  expect(screen.getByText('No open targets.')).toBeInTheDocument();
+  expect(screen.queryByText(/No targets yet/)).not.toBeInTheDocument();
 });
 
 test('Member: Promote → partner opens the confirm panel with the suggested category pre-set and sends the edited fields', async () => {
@@ -40,7 +51,8 @@ test('Member: Promote → partner opens the confirm panel with the suggested cat
   render(<TargetsList businessId="b1" targets={targets} canEdit onChanged={onChanged} />);
   const row = screen.getByText('Fundrise').closest('li');
   expect(within(row).getByRole('button', { name: 'Not a fit' })).toBeInTheDocument();
-  // A promoted row keeps only Copy.
+  // A promoted row is closed; once shown it keeps only Copy.
+  fireEvent.click(screen.getByRole('button', { name: /Show closed/ }));
   const done = screen.getByText('Lockton').closest('li');
   expect(within(done).queryByRole('button', { name: /Promote/ })).not.toBeInTheDocument();
   expect(within(done).getByText('Promoted')).toBeInTheDocument();
