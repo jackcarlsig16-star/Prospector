@@ -24,6 +24,8 @@ export function buildBoard({ partners, opportunities, targets, sequenced, member
       owner_team: g.owner_team || null, owner: memberNames.get(g.owner_user_id) || null, tier: g.tier || null,
       next_step: g.next_step || null, next_step_due: null, last_touch_at: g.last_touch_at || null,
       top: !!g.hot, record_id: g.record_id || null,
+      // pipeline-quick-panel-v1: the quick panel's header; not sheet columns.
+      category: g.category || null, co_owner_name: g.co_owner_name || null, no_double_touch: !!g.no_double_touch,
     });
   }
   const employers = opportunities.filter(isEmployer);
@@ -75,7 +77,7 @@ async function loadBoard(businessId, filters) {
   const supabase = getSupabase();
   const [partners, opportunities, targets, sequenced, members] = await Promise.all([
     selectAllPages(() => supabase.from('sales_goals')
-      .select('id, name, category, tier, pipeline_status, hot, next_step, last_touch_at, owner_user_id, owner_team, record_id')
+      .select('id, name, category, tier, pipeline_status, hot, next_step, last_touch_at, owner_user_id, owner_team, co_owner_name, no_double_touch, record_id')
       .eq('business_id', businessId).eq('goal_type', 'partnership').is('archived_at', null).order('id')),
     selectAllPages(() => supabase.from('sales_opportunities')
       .select('id, organization, org_type, stage, owner, owner_team, tier, next_action, next_action_date, is_top, record_id, apollo_account_id')

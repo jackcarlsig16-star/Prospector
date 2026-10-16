@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { SA, SA_TYPE, SA_SHAPE } from './theme';
 import { STAGE_ENUM, STAGE_LABELS, ORG_TYPE_ENUM, ORG_TYPE_LABELS } from './pipelineStages';
 import OwnerPill from './OwnerPill';
+import SidePanel from './SidePanel';
 import CopyForClaude from './CopyForClaude';
 import { savePayload } from './opportunityPayload';
 
@@ -19,6 +20,7 @@ const DATE_FIELDS = [
 
 const fieldStyle = { ...SA_TYPE.body, fontSize: 13, width: '100%', padding: '7px 9px', background: SA.ground, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, color: SA.text, boxSizing: 'border-box' };
 const labelStyle = { ...SA_TYPE.label, fontSize: 10, color: SA.muted, display: 'block', marginBottom: 4 };
+const textStyle = { ...SA_TYPE.body, fontSize: 13, color: SA.text, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', minHeight: 18 };
 
 function Field({ label, children }) {
   return <div><span style={labelStyle}>{label}</span>{children}</div>;
@@ -29,7 +31,9 @@ function Field({ label, children }) {
 // inline-edits 5 fields (stage/next_action/next_action_date/
 // expected_close/probability per the SPEC); everything else lives here.
 // `opportunity` null = create mode (an empty draft); otherwise edit mode.
-export default function OpportunityPanel({ businessId, opportunity, saving, error, onSave, onArchive, onClose }) {
+// readOnly (pipeline-quick-panel-v1): a Viewer's look at the same fields as
+// text, no Save / Archive.
+export default function OpportunityPanel({ businessId, opportunity, saving, error, onSave, onArchive, onClose, readOnly = false }) {
   const isCreate = !opportunity;
   const [draft, setDraft] = useState(() => ({
     organization: '', cohort: '', org_type: 'employer', covered_lives: '', stage: 'target',
@@ -46,91 +50,99 @@ export default function OpportunityPanel({ businessId, opportunity, saving, erro
     onSave(savePayload(opportunity, draft));
   };
 
+  const text = v => <div style={textStyle}>{v || '—'}</div>;
+  const title = readOnly ? 'Opportunity' : isCreate ? 'Add opportunity' : 'Edit opportunity';
   return (
-    <div className="no-print" style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', justifyContent: 'flex-end' }}>
-      <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
-      <div style={{ position: 'relative', width: 420, maxWidth: '100%', height: '100%', overflowY: 'auto', background: SA.surface, borderLeft: `1px solid ${SA.border}`, padding: 20, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-            <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: 0 }}>{isCreate ? 'Add opportunity' : 'Edit opportunity'}</p>
-            <OwnerPill row={opportunity} />
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {!isCreate && businessId && <CopyForClaude businessId={businessId} type="employer" id={opportunity.id} />}
-            <span onClick={onClose} style={{ cursor: 'pointer', color: SA.muted, fontSize: 18, lineHeight: 1 }}>×</span>
-          </div>
+    <SidePanel label={title} onClose={onClose}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+          <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: 0 }}>{title}</p>
+          <OwnerPill row={opportunity} />
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {!isCreate && businessId && <CopyForClaude businessId={businessId} type="employer" id={opportunity.id} />}
+          <span onClick={onClose} style={{ cursor: 'pointer', color: SA.muted, fontSize: 18, lineHeight: 1 }}>×</span>
+        </div>
+      </div>
 
-        {TEXT_FIELDS.map(([key, label]) => (
-          <Field key={key} label={label}>
-            <input style={fieldStyle} value={draft[key] || ''} onChange={e => set(key, e.target.value)} />
-          </Field>
-        ))}
+      {TEXT_FIELDS.map(([key, label]) => (
+        <Field key={key} label={label}>
+          {readOnly ? text(draft[key]) : <input style={fieldStyle} value={draft[key] || ''} onChange={e => set(key, e.target.value)} />}
+        </Field>
+      ))}
 
-        <Field label="Org type">
+      <Field label="Org type">
+        {readOnly ? text(ORG_TYPE_LABELS[draft.org_type]) : (
           <select style={fieldStyle} value={draft.org_type} onChange={e => set('org_type', e.target.value)}>
             {ORG_TYPE_ENUM.map(v => <option key={v} value={v}>{ORG_TYPE_LABELS[v]}</option>)}
           </select>
-        </Field>
-        <Field label="Stage">
+        )}
+      </Field>
+      <Field label="Stage">
+        {readOnly ? text(STAGE_LABELS[draft.stage]) : (
           <select style={fieldStyle} value={draft.stage} onChange={e => set('stage', e.target.value)}>
             {STAGE_ENUM.map(v => <option key={v} value={v}>{STAGE_LABELS[v]}</option>)}
           </select>
+        )}
+      </Field>
+      {draft.stage === 'lost' && (
+        <Field label="Lost reason">
+          {readOnly ? text(draft.lost_reason) : <input style={fieldStyle} value={draft.lost_reason || ''} onChange={e => set('lost_reason', e.target.value)} />}
         </Field>
-        {draft.stage === 'lost' && (
-          <Field label="Lost reason">
-            <input style={fieldStyle} value={draft.lost_reason || ''} onChange={e => set('lost_reason', e.target.value)} />
-          </Field>
+      )}
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Covered lives">
+          {readOnly ? text(draft.covered_lives) : <input type="number" style={fieldStyle} value={draft.covered_lives ?? ''} onChange={e => set('covered_lives', e.target.value)} />}
+        </Field>
+        <Field label={readOnly ? 'Probability' : 'Probability (0-1, blank = stage default)'}>
+          {readOnly ? text(draft.probability) : <input type="number" step="0.01" min="0" max="1" style={fieldStyle} value={draft.probability ?? ''} onChange={e => set('probability', e.target.value)} />}
+        </Field>
+      </div>
+      <Field label="Est. value ($)">
+        {readOnly ? text(draft.est_value) : <input type="number" style={fieldStyle} value={draft.est_value ?? ''} onChange={e => set('est_value', e.target.value)} />}
+      </Field>
+
+      {DATE_FIELDS.map(([key, label]) => (
+        <Field key={key} label={label}>
+          {readOnly ? text(draft[key]) : <input type="date" style={fieldStyle} value={draft[key] || ''} onChange={e => set(key, e.target.value)} />}
+        </Field>
+      ))}
+
+      {TEXTAREA_FIELDS.map(([key, label]) => (
+        <Field key={key} label={label}>
+          {readOnly ? text(draft[key]) : <textarea style={{ ...fieldStyle, minHeight: 56, resize: 'vertical', fontFamily: 'inherit' }} value={draft[key] || ''} onChange={e => set(key, e.target.value)} />}
+        </Field>
+      ))}
+
+      {readOnly
+        ? <Field label="Top opportunity">{text(draft.is_top ? 'Yes' : 'No')}</Field>
+        : (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: SA.text, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!draft.is_top} onChange={e => set('is_top', e.target.checked)} />
+            Top opportunity
+          </label>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <Field label="Covered lives">
-            <input type="number" style={fieldStyle} value={draft.covered_lives ?? ''} onChange={e => set('covered_lives', e.target.value)} />
-          </Field>
-          <Field label="Probability (0-1, blank = stage default)">
-            <input type="number" step="0.01" min="0" max="1" style={fieldStyle} value={draft.probability ?? ''} onChange={e => set('probability', e.target.value)} />
-          </Field>
-        </div>
-        <Field label="Est. value ($)">
-          <input type="number" style={fieldStyle} value={draft.est_value ?? ''} onChange={e => set('est_value', e.target.value)} />
-        </Field>
+      {error && <div style={{ color: SA.bad, fontSize: 12 }}>⚠ {error}</div>}
 
-        {DATE_FIELDS.map(([key, label]) => (
-          <Field key={key} label={label}>
-            <input type="date" style={fieldStyle} value={draft[key] || ''} onChange={e => set(key, e.target.value)} />
-          </Field>
-        ))}
-
-        {TEXTAREA_FIELDS.map(([key, label]) => (
-          <Field key={key} label={label}>
-            <textarea style={{ ...fieldStyle, minHeight: 56, resize: 'vertical', fontFamily: 'inherit' }} value={draft[key] || ''} onChange={e => set(key, e.target.value)} />
-          </Field>
-        ))}
-
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: SA.text, cursor: 'pointer' }}>
-          <input type="checkbox" checked={!!draft.is_top} onChange={e => set('is_top', e.target.checked)} />
-          Top opportunity
-        </label>
-
-        {error && <div style={{ color: SA.bad, fontSize: 12 }}>⚠ {error}</div>}
-
-        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+      {readOnly && <p style={{ ...SA_TYPE.body, fontSize: 12, color: SA.muted, margin: 0 }}>You have view access, so this is read-only.</p>}
+      {!readOnly && <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+        <button
+          onClick={handleSave} disabled={saving || !draft.organization.trim()}
+          style={{ ...SA_TYPE.body, fontSize: 13, fontWeight: 600, flex: 1, padding: '9px 0', background: SA.accent, color: SA.ground, border: 0, borderRadius: SA_SHAPE.radiusInner, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1 }}
+        >
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+        {!isCreate && (
           <button
-            onClick={handleSave} disabled={saving || !draft.organization.trim()}
-            style={{ ...SA_TYPE.body, fontSize: 13, fontWeight: 600, flex: 1, padding: '9px 0', background: SA.accent, color: SA.ground, border: 0, borderRadius: SA_SHAPE.radiusInner, cursor: saving ? 'default' : 'pointer', opacity: saving ? 0.6 : 1 }}
+            onClick={onArchive} disabled={saving}
+            style={{ ...SA_TYPE.body, fontSize: 13, padding: '9px 14px', background: 'transparent', color: SA.bad, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, cursor: saving ? 'default' : 'pointer' }}
           >
-            {saving ? 'Saving…' : 'Save'}
+            Archive
           </button>
-          {!isCreate && (
-            <button
-              onClick={onArchive} disabled={saving}
-              style={{ ...SA_TYPE.body, fontSize: 13, padding: '9px 14px', background: 'transparent', color: SA.bad, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, cursor: saving ? 'default' : 'pointer' }}
-            >
-              Archive
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
+        )}
+      </div>}
+    </SidePanel>
   );
 }

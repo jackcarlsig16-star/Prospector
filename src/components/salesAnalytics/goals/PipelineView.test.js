@@ -7,7 +7,8 @@ import { OPEN_TASKS } from './goalsApi';
 // pipeline-board-v1 Stage 2 - Goals > Pipeline; pipeline-wide-table-v1 Stage 2 - the board is a DataTable.
 // jsdom has no matchMedia; PipelineView reads it for its phone list.
 window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
-jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, pipelineBoard: jest.fn(), partnerSignal: jest.fn() } }));
+Element.prototype.scrollIntoView = Element.prototype.scrollIntoView || jest.fn();
+jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, pipelineBoard: jest.fn(), partnerSignal: jest.fn(), updatePartner: jest.fn(), partnerEvents: jest.fn() } }));
 jest.mock('../pipelineApi', () => ({ fetchOpportunities: jest.fn(), createOpportunity: jest.fn(), updateOpportunity: jest.fn(), archiveOpportunity: jest.fn() }));
 
 const row = (id, type, color, extra = {}) => ({
@@ -15,9 +16,9 @@ const row = (id, type, color, extra = {}) => ({
   next_step: null, next_step_due: null, last_touch_at: null, top: false, record_id: null, ...extra,
 });
 const ROWS = [
-  row('Gallagher', 'partner', 'yellow', { top: true, owner_team: 'homelover', owner: 'Jack', tier: '1' }),
+  row('Gallagher', 'partner', 'yellow', { top: true, owner_team: 'homelover', owner: 'Jack', tier: '1', stage: 'replied', stage_label: 'Replied', category: '4. Mid-Market Benefits Brokers', next_step: 'Send the one-pager' }),
   row('Solidcore', 'employer', 'yellow', { owner_team: 'upside', next_step: 'Call', next_step_due: '2026-10-20' }),
-  row('OneDigital', 'partner', 'blue', { owner_team: 'upside', tier: '2' }),
+  row('OneDigital', 'partner', 'blue', { owner_team: 'upside', tier: '2', stage: 'not_started', stage_label: 'Not started' }),
   row('New Target', 'target', 'light'),
   row('Old Union', 'employer', 'faded'),
 ];
@@ -26,6 +27,8 @@ const APOLLO = row('Fresh Co', 'apollo', 'gray', { last_touch_at: '2026-10-07T15
 beforeEach(() => {
   goalsApi.pipelineBoard.mockImplementation((id, includeApollo) => Promise.resolve(includeApollo ? [...ROWS, APOLLO] : ROWS));
   goalsApi.partnerSignal.mockResolvedValue({});
+  goalsApi.updatePartner.mockResolvedValue({});
+  goalsApi.partnerEvents.mockResolvedValue([]);
   updateOpportunity.mockResolvedValue({});
   fetchOpportunities.mockResolvedValue([{ id: 'Solidcore', organization: 'Solidcore', org_type: 'employer', stage: 'meeting' }]);
 });
@@ -140,14 +143,18 @@ test('soft cap: starring a 26th asks to unstar one first and writes nothing', as
   goalsApi.pipelineBoard.mockResolvedValue([...full, row('Extra', 'partner', 'gray')]);
   setup();
   fireEvent.click(await screen.findByRole('button', { name: 'Star Extra' }));
-  expect(screen.getByRole('status').textContent).toMatch(/Top is full \(25\): unstar one first/);
+  expect((await screen.findByRole('status')).textContent).toMatch(/Top is full \(25\): unstar one first/);
   expect(goalsApi.partnerSignal).not.toHaveBeenCalled();
 });
 
-test('click-through: partner -> Partners focus, target -> Tasks, Apollo -> Companies week, employer -> panel', async () => {
+test('click-through: partner -> quick panel (not Partners), target -> Tasks, Apollo -> Companies week, employer -> panel', async () => {
   const props = setup();
   fireEvent.click(await screen.findByRole('button', { name: 'OneDigital' }));
+  expect(screen.getByRole('complementary', { name: 'OneDigital' })).toBeTruthy();
+  expect(props.onOpenPartner).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Open full card →' }));
   expect(props.onOpenPartner).toHaveBeenCalledWith('OneDigital', 'OneDigital');
+  expect(screen.queryByRole('complementary')).toBeNull();
   const seen = [];
   const listen = e => seen.push(e.detail);
   window.addEventListener(OPEN_TASKS, listen);
@@ -181,17 +188,74 @@ test('+ Add employer opens a blank panel; save creates through the route and rel
   expect((await screen.findByRole('status')).textContent).toBe('Solidcore is already in the pipeline - no new row added.');
 });
 
-test('Viewer: stars are read-only, no employer panel, partners still open', async () => {
+test('Viewer: stars are read-only; employer and partner open read-only panels (text, no Save / ★ / note / Next)', async () => {
   const props = setup({ canEdit: false });
   await screen.findByText('Solidcore');
   expect(screen.queryByRole('button', { name: /^(Un)?[Ss]tar / })).toBeNull();
   expect(screen.getByLabelText('Top')).toBeTruthy();
-  expect(screen.queryByRole('button', { name: 'Solidcore' })).toBeNull();
   expect(screen.queryByRole('button', { name: '+ Add employer' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Export joint sheet' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Update from sheet' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Solidcore' }));
+  const opp = within(await screen.findByRole('complementary', { name: 'Opportunity' }));
+  expect(opp.getByText('Solidcore')).toBeTruthy();
+  expect(opp.queryByRole('textbox')).toBeNull();
+  expect(opp.queryByRole('button', { name: /Save|Archive/ })).toBeNull();
+  expect(opp.getByText('You have view access, so this is read-only.')).toBeTruthy();
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.queryByRole('complementary')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Gallagher' }));
-  expect(props.onOpenPartner).toHaveBeenCalled();
+  const panel = within(screen.getByRole('complementary', { name: 'Gallagher' }));
+  expect(panel.getByText('Send the one-pager')).toBeTruthy();
+  expect(panel.queryByRole('textbox')).toBeNull();
+  expect(panel.queryByRole('button', { name: /Star|Save note|^Next:/ })).toBeNull();
+  expect(panel.getByRole('button', { name: 'Open full card →' })).toBeTruthy();
+  expect(props.onOpenPartner).not.toHaveBeenCalled();
+});
+
+test('quick panel: Next step saves once on Enter and updates the row; unchanged blur writes nothing; note + ★ go through signals', async () => {
+  setup();
+  fireEvent.click(await screen.findByRole('button', { name: 'Gallagher' }));
+  const panel = within(screen.getByRole('complementary', { name: 'Gallagher' }));
+  expect(panel.getByText('Mid-Market Benefits Brokers')).toBeTruthy();
+  expect(panel.getAllByText('Replied').length).toBe(2);
+  const field = panel.getByLabelText('Next step');
+  expect(field.value).toBe('Send the one-pager');
+  fireEvent.blur(field);
+  expect(goalsApi.updatePartner).not.toHaveBeenCalled();
+  fireEvent.change(field, { target: { value: 'Book the pilot call' } });
+  fireEvent.keyDown(field, { key: 'Enter' });
+  await waitFor(() => expect(goalsApi.updatePartner).toHaveBeenCalledWith('b1', 'Gallagher', { next_step: 'Book the pilot call' }));
+  expect(goalsApi.updatePartner).toHaveBeenCalledTimes(1);
+  const gallagher = screen.getByText('Gallagher', { selector: 'td button' }).closest('tr');
+  await waitFor(() => expect([...gallagher.querySelectorAll('td')].map(td => td.textContent)).toContain('Book the pilot call'));
+  expect(goalsApi.pipelineBoard).toHaveBeenCalledTimes(1);
+  fireEvent.change(panel.getByLabelText('Add note'), { target: { value: 'Called, left voicemail' } });
+  fireEvent.click(panel.getByRole('button', { name: 'Save note' }));
+  await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'Gallagher', { type: 'note', note: 'Called, left voicemail' }));
+  await waitFor(() => expect(panel.getByLabelText('Add note').value).toBe(''));
+  fireEvent.click(panel.getByRole('button', { name: 'Unstar Gallagher' }));
+  await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'Gallagher', { type: 'hot', hot: false }));
+  await waitFor(() => expect(panel.getByRole('button', { name: 'Star Gallagher' })).toBeTruthy());
+  expect(screen.getByRole('button', { name: 'Export joint sheet' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Update from sheet' })).toBeTruthy();
+});
+
+test('quick panel: one forward step sends the status signal with expect and moves the row; Esc / backdrop close and flash the row', async () => {
+  setup();
+  fireEvent.click(await screen.findByRole('button', { name: 'OneDigital' }));
+  const panel = within(screen.getByRole('complementary', { name: 'OneDigital' }));
+  fireEvent.click(panel.getByRole('button', { name: 'Next: Start research' }));
+  await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'OneDigital', { type: 'status', to: 'researching', expect: 'not_started' }));
+  await waitFor(() => expect(panel.getByRole('button', { name: 'Next: Mark drafted' })).toBeTruthy());
+  const tr = screen.getByText('OneDigital', { selector: 'td button' }).closest('tr');
+  expect([...tr.querySelectorAll('td')].map(td => td.textContent)).toContain('Researching');
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.queryByRole('complementary')).toBeNull();
+  expect(tr.style.getPropertyValue('--ui-row-tint')).toContain('--sa-accent');
+  fireEvent.click(screen.getByRole('button', { name: 'OneDigital' }));
+  fireEvent.click(screen.getByTestId('side-panel-backdrop'));
+  expect(screen.queryByRole('complementary')).toBeNull();
 });
 
 test('Export joint sheet fetches the .xlsx for the current filters and saves it; a refusal shows', async () => {

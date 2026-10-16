@@ -3,6 +3,7 @@ import { SA } from '../theme';
 import { goalsApi } from './goalsApi';
 import { fetchOpportunities, createOpportunity, updateOpportunity, archiveOpportunity } from '../pipelineApi';
 import OpportunityPanel from '../OpportunityPanel';
+import PartnerQuickPanel from './PartnerQuickPanel';
 import OwnerPill from '../OwnerPill';
 import SheetUpdateDrawer from './SheetUpdateDrawer';
 import DataTable from '../../../ui/DataTable';
@@ -19,7 +20,9 @@ import { TIERS } from '../../../constants/partnerPipeline';
 // stage and color come from GET goals/pipeline-board; the UI only filters,
 // groups and maps a color key to a token. pipeline-wide-table-v1: the board
 // is a DataTable (one line per company) with a compact toolbar; on a phone
-// it is the two-line list.
+// it is the two-line list. pipeline-quick-panel-v1: a partner row opens
+// PartnerQuickPanel over the table (never a navigation); employers open
+// OpportunityPanel, read-only for a Viewer.
 export const BOARD_TOKENS = { green: SA.good, yellow: SA.warn, blue: SA.link, gray: SA.muted, light: SA.faint, faded: SA.track };
 const TYPE_CHIPS = [['', 'All'], ['partner', 'Partners'], ['employer', 'Employers'], ['target', 'Targets']];
 const TYPE_LABEL = { partner: 'Partner', employer: 'Employer', target: 'Target', apollo: 'Apollo' };
@@ -28,6 +31,8 @@ const md = d => new Date(`${d.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-U
 const tierLabel = t => (t === 'active' ? 'Active' : t ? `T${t}` : null);
 const touchLabel = r => ((r.type === 'partner' || r.type === 'apollo') && r.last_touch_at ? md(r.last_touch_at) : null);
 const tint = color => `color-mix(in srgb, ${BOARD_TOKENS[color]} 6%, transparent)`;
+const HIGHLIGHT_MS = 1500;
+const highlightTint = `color-mix(in srgb, ${SA.accent} 22%, transparent)`;
 const chipBtn = on => ({ height: 30, padding: '0 12px', borderRadius: 999, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', flex: 'none', border: `1px solid ${on ? SA.accent : SA.border}`, background: on ? SA.surface2 : 'transparent', color: on ? SA.text : SA.muted });
 const selectStyle = { ...inputStyle, height: 30, fontSize: 13, padding: '0 8px' };
 const Dim = () => <span className="ui-table__dim">—</span>;
@@ -42,11 +47,18 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
   const [notice, setNotice] = useState('');
   const [busyId, setBusyId] = useState(null);
   const [panel, setPanel] = useState(undefined); // undefined = closed, null = new employer, object = edit
+  const [quick, setQuick] = useState(null); // partner id open in the quick panel
+  const [highlight, setHighlight] = useState(null); // row key flashed after the quick panel closes
   const [panelSaving, setPanelSaving] = useState(false);
   const [panelError, setPanelError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [updating, setUpdating] = useState(false);
   const phone = useMediaQuery('(max-width: 760px)');
+  useEffect(() => {
+    if (!highlight) return;
+    const t = setTimeout(() => setHighlight(null), HIGHLIGHT_MS);
+    return () => clearTimeout(t);
+  }, [highlight]);
 
   const load = useCallback(() => goalsApi.pipelineBoard(businessId, includeApollo)
     .then(r => { setRows(r); setError(''); }).catch(e => setError(e.message)), [businessId, includeApollo]);
@@ -60,21 +72,28 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
   const set = (k, v) => setFilters(f => ({ ...f, [k]: v }));
   const toggleBand = id => setCollapsed(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
-  const star = async r => {
-    setNotice('');
-    if (!r.top && topAll >= TOP_CAP) return setNotice(`Top is full (${TOP_CAP}): unstar one first.`);
-    setBusyId(r.id);
-    try {
-      if (r.type === 'partner') await goalsApi.partnerSignal(businessId, r.id, { type: 'hot', hot: !r.top });
-      else await updateOpportunity(businessId, r.id, { is_top: !r.top });
-      setRows(rs => rs.map(x => (x.id === r.id ? { ...x, top: !r.top } : x)));
-    } catch (e) { setNotice(e.message); } finally { setBusyId(null); }
+  const starRow = async r => {
+    if (!r.top && topAll >= TOP_CAP) throw new Error(`Top is full (${TOP_CAP}): unstar one first.`);
+    if (r.type === 'partner') await goalsApi.partnerSignal(businessId, r.id, { type: 'hot', hot: !r.top });
+    else await updateOpportunity(businessId, r.id, { is_top: !r.top });
+    setRows(rs => rs.map(x => (x.id === r.id ? { ...x, top: !r.top } : x)));
   };
+  const star = async r => {
+    setNotice(''); setBusyId(r.id);
+    try { await starRow(r); } catch (e) { setNotice(e.message); } finally { setBusyId(null); }
+  };
+  const quickRow = quick === null ? null : (rows || []).find(r => r.type === 'partner' && r.id === quick) || null;
+  const patchQuick = patch => setRows(rs => rs.map(x => (x.type === 'partner' && x.id === quick ? { ...x, ...patch } : x)));
+  const closeQuick = useCallback(() => {
+    const key = `partner-${quick}`;
+    setQuick(null);
+    setHighlight(key);
+    document.querySelector(`[data-row][data-key="${key}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [quick]);
   const open = async r => {
-    if (r.type === 'partner') return onOpenPartner(r.id, r.name);
+    if (r.type === 'partner') return setQuick(r.id);
     if (r.type === 'target') return openTasks({ link: { type: 'target', id: r.id }, filter: 'team' });
     if (r.type === 'apollo') return onOpenCompanies(laWeekStart(new Date(r.last_touch_at)));
-    if (!canEdit) return;
     try {
       const opp = (await fetchOpportunities(businessId)).find(o => o.id === r.id);
       if (opp) { setPanel(opp); setPanelError(''); } else setNotice(`${r.name} is no longer in the pipeline.`);
@@ -98,7 +117,6 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
     try { await fn(); setPanel(undefined); load(); } catch (e) { setPanelError(e.message); } finally { setPanelSaving(false); }
   };
 
-  const clickable = r => r.type !== 'employer' || canEdit;
   const starCell = r => {
     if (r.type !== 'partner' && r.type !== 'employer') return null;
     return canEdit
@@ -106,9 +124,7 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
         style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 15, lineHeight: 1, color: r.top ? SA.warn : SA.faint }}>{r.top ? '★' : '☆'}</button>
       : <span aria-label={r.top ? 'Top' : undefined} style={{ fontSize: 15, color: r.top ? SA.warn : SA.faint }}>{r.top ? '★' : '☆'}</span>;
   };
-  const nameCell = r => (clickable(r)
-    ? <button type="button" onClick={() => open(r)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit', textAlign: 'left', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</button>
-    : r.name);
+  const nameCell = r => <button type="button" onClick={() => open(r)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit', textAlign: 'left', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</button>;
   const typeCell = r => <span className="ui-table__label">{TYPE_LABEL[r.type]}</span>;
   const columns = [
     { id: 'top', label: `Top ${TOP_CAP}`, width: 38, render: r => <span style={{ display: 'block', textAlign: 'center' }}>{starCell(r)}</span> },
@@ -143,7 +159,7 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
       collapsed: collapsed.has(g.id), onToggle: () => toggleBand(g.id),
     })),
   ];
-  const rowStyle = r => ({ '--ui-row-tint': tint(r.color), '--ui-row-bar': BOARD_TOKENS[r.color] });
+  const rowStyle = r => ({ '--ui-row-tint': highlight === `${r.type}-${r.id}` ? highlightTint : tint(r.color), '--ui-row-bar': BOARD_TOKENS[r.color] });
 
   return (
     <section style={{ ...cardStyle, padding: 16 }} aria-labelledby="h-pipeline">
@@ -210,8 +226,12 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
         <SheetUpdateDrawer businessId={businessId} onClose={() => setUpdating(false)}
           onApplied={r => { setNotice(`Updated ${r.applied}${r.failed.length ? ` · ${r.failed.length} not applied` : ''}`); load(); }} />
       )}
-      {canEdit && panel !== undefined && (
-        <OpportunityPanel businessId={businessId} opportunity={panel} saving={panelSaving} error={panelError} onClose={() => setPanel(undefined)}
+      {quickRow && (
+        <PartnerQuickPanel businessId={businessId} row={quickRow} canEdit={canEdit} onChange={patchQuick} onStar={() => starRow(quickRow)} onClose={closeQuick}
+          onOpenFull={() => { setQuick(null); onOpenPartner(quickRow.id, quickRow.name); }} />
+      )}
+      {panel !== undefined && (
+        <OpportunityPanel businessId={businessId} opportunity={panel} saving={panelSaving} error={panelError} readOnly={!canEdit} onClose={() => setPanel(undefined)}
           onSave={payload => panelDo(async () => {
             if (panel) return updateOpportunity(businessId, panel.id, payload);
             // The create route reuses a live opportunity with the same name first (opportunityMatch).

@@ -60,7 +60,7 @@ export default function DataTable({ columns, groups, rowStyle, rowKey, compact =
           <React.Fragment key={g.id}>
             <li className="ui-list__group"><GroupHeading group={g} /></li>
             {!g.collapsed && !g.rows.length && g.emptyText && <li className="ui-table__empty">{g.emptyText}</li>}
-            {!g.collapsed && g.rows.map(r => <li key={rowKey(r)} className="ui-list__row" data-row style={rowStyle?.(r)}>{renderCompact(r)}</li>)}
+            {!g.collapsed && g.rows.map(r => <li key={rowKey(r)} className="ui-list__row" data-row data-key={rowKey(r)} style={rowStyle?.(r)}>{renderCompact(r)}</li>)}
           </React.Fragment>
         ))}
         {!visible.length && emptyText && <li className="ui-table__empty">{emptyText}</li>}
@@ -90,7 +90,7 @@ export default function DataTable({ columns, groups, rowStyle, rowKey, compact =
               <tr className="ui-table__group" data-group={g.id}><td colSpan={columns.length}><GroupHeading group={g} /></td></tr>
               {!g.collapsed && !g.rows.length && g.emptyText && <tr><td colSpan={columns.length} className="ui-table__empty">{g.emptyText}</td></tr>}
               {!g.collapsed && sortRows(g.rows, sortCol, sort?.dir).map(r => (
-                <tr key={rowKey(r)} data-row style={rowStyle?.(r)}>
+                <tr key={rowKey(r)} data-row data-key={rowKey(r)} style={rowStyle?.(r)}>
                   {columns.map(c => <td key={c.id} className={c.sticky ? 'ui-table__sticky' : undefined} title={c.title?.(r) || undefined}>{c.render(r)}</td>)}
                 </tr>
               ))}
