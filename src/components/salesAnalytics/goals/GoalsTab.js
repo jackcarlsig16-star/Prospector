@@ -503,6 +503,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
               setPartners(ps => ps.map(p => (p.id in ranks ? { ...p, sort_rank: ranks[p.id] } : p)));
             }}
             teamView={owner === 'team'} focusFilter={partnerFocus} tasksFor={liveWeek ? tasksFor : null}
+            onDupeCheck={params => goalsApi.partnerDupeCheck(businessId, params)}
             onCreate={async body => { const g = await goalsApi.createPartner(businessId, { ...body, owner_user_id: owner === 'team' ? null : owner }); setPartners(ps => [...ps, g]); }} />
         )}
 

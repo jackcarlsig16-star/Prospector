@@ -9,6 +9,7 @@ import BulkTouchLog from './partners/BulkTouchLog';
 import ApolloExport from './partners/ApolloExport';
 import DomainReview from './partners/DomainReview';
 import ApolloMoves from './partners/ApolloMoves';
+import AddPartnerForm from './partners/AddPartnerForm';
 import useMediaQuery from '../../../utils/useMediaQuery';
 
 // prospector_partners_mode - per-viewer convenience: last Partners layout
@@ -65,7 +66,7 @@ const NO_FILTERS = { category: '', tiers: [], stale: false, hot: false, owner: n
 
 // teamView: the person filter is on Team. Reorder needs the whole group in
 // view (see WorkflowView), so it's only offered then.
-export default function PartnersView({ businessId, partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusFilter, tasksFor, onPeople, onAddPerson, onDeletePerson, onRefreshPeople, onCreateTask, onTouches, onDomains, onAddDomain, onUpdateDomain, onDeleteDomain, onAllDomains, csvUrl, onApolloMoves, onApplyApollo, onDismissApollo, onOutlookMoves, onApplyOutlook, onDismissOutlook, onRecordOutlook }) {
+export default function PartnersView({ businessId, partners, lookup, members, canEdit, error, onUpdate, onCreate, onDupeCheck, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusFilter, tasksFor, onPeople, onAddPerson, onDeletePerson, onRefreshPeople, onCreateTask, onTouches, onDomains, onAddDomain, onUpdateDomain, onDeleteDomain, onAllDomains, csvUrl, onApolloMoves, onApplyApollo, onDismissApollo, onOutlookMoves, onApplyOutlook, onDismissOutlook, onRecordOutlook }) {
   const [mode, setMode] = useState(readMode);
   const [stage, setStage] = useState(null);
   const compact = useMediaQuery('(max-width: 760px)');
@@ -75,8 +76,6 @@ export default function PartnersView({ businessId, partners, lookup, members, ca
   const [toast, setToast] = useState(null); // { text, goalId, eventId, busy, error }
   const toastTimer = useRef(null);
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ name: '', priority: '1' });
-  const [addError, setAddError] = useState('');
   const [moved, setMoved] = useState(readMoved);
   const [focus, setFocus] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -234,13 +233,6 @@ export default function PartnersView({ businessId, partners, lookup, members, ca
   const setStatus = id => setFilters(f => ({ ...f, status: id }));
 
 
-  const add = async () => {
-    if (!draft.name.trim()) return;
-    setAddError('');
-    try { await onCreate({ name: draft.name.trim(), priority: draft.priority ? Number(draft.priority) : null }); setDraft({ name: '', priority: '1' }); setAdding(false); }
-    catch (e) { setAddError(e.message); }
-  };
-
   return (
     <section style={cardStyle} aria-labelledby="h-part">
       <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -328,17 +320,9 @@ export default function PartnersView({ businessId, partners, lookup, members, ca
       )}
 
       {canEdit && (adding
-        ? <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <input autoFocus placeholder="Partner name (Enter to save)" aria-label="Partner name" value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
-              onKeyDown={e => { if (e.key === 'Enter') add(); if (e.key === 'Escape') setAdding(false); }} style={{ ...inputStyle, flex: '1 1 220px' }} />
-            <select aria-label="Priority" value={draft.priority} onChange={e => setDraft(d => ({ ...d, priority: e.target.value }))} style={{ ...inputStyle, width: 'auto' }}>
-              <option value="1">P1</option><option value="2">P2</option><option value="3">P3</option><option value="">Unprioritized</option>
-            </select>
-            <Btn primary style={{ height: 40 }} onClick={add} disabled={!draft.name.trim()}>Add</Btn>
-            <Btn style={{ height: 40 }} onClick={() => setAdding(false)}>Cancel</Btn>
-          </div>
+        ? <AddPartnerForm onCreate={onCreate} onDupeCheck={onDupeCheck} onDone={() => setAdding(false)} onCancel={() => setAdding(false)}
+            onOpenPartner={id => { setFilters(NO_FILTERS); setStage(null); setOpenId(id); setAdding(false); }} />
         : <AddButton onClick={() => setAdding(true)}>+ Add partner</AddButton>)}
-      {addError && <div style={{ marginTop: 8 }}><ErrorNote message={addError} /></div>}
 
       <div aria-live="polite" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 3500, maxWidth: 'calc(100vw - 32px)' }}>
         {toast && (

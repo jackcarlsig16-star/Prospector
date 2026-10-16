@@ -33,17 +33,21 @@ const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const hasWords = (inner, outer) => new RegExp(`(^| )${escape(inner)}( |$)`).test(outer);
 
 // Exact = same normalized name or the same with spaces removed ("Perk Spot"
-// = PerkSpot). Partial = one name is a whole-word part of the other, and
-// only when exactly one row fits.
-export function findByName(name, rows, key, partial) {
+// = PerkSpot). Partial = one name is a whole-word part of the other.
+export function nameMatches(name, rows, key, partial) {
   const n = normName(name);
-  if (n.length < 2) return null;
+  if (n.length < 2) return [];
   const tight = n.replace(/ /g, '');
-  const hits = rows.filter(r => {
+  return rows.filter(r => {
     const rn = normName(r[key]);
     if (!partial) return rn === n || rn.replace(/ /g, '') === tight;
     return rn.length >= 4 && n.length >= 4 && (hasWords(rn, n) || hasWords(n, rn));
   });
+}
+
+// Intake wants one answer: a hit only when exactly one row fits.
+export function findByName(name, rows, key, partial) {
+  const hits = nameMatches(name, rows, key, partial);
   return hits.length === 1 ? hits[0] : null;
 }
 

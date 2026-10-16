@@ -82,6 +82,8 @@ export const goalsApi = {
   sheetUpdatePreview: (id, file) => call(id, '/pipeline-board/update', { method: 'POST', body: { file } }),
   sheetUpdateApply: (id, file, apply) => call(id, '/pipeline-board/update', { method: 'POST', body: { file, apply } }),
   hotPartners: id => call(id, '/land?goal_type=partnership&hot=true').then(d => d.goals),
+  // partner-add-research-v1 - 0 AI, 0 Apollo; { exact: [{ type, id, name, archived, via }], partial: [...] }.
+  partnerDupeCheck: (id, params) => call(id, `/partners/dupe-check?${q(params)}`),
   createPartner: (id, body) => call(id, '/land', { method: 'POST', body: { goal_type: 'partnership', ...body } }).then(d => d.goal),
   updatePartner: (id, goalId, body) => call(id, `/land/${goalId}`, { method: 'PATCH', body }).then(d => d.goal),
   // sales-partners-pipeline-v1 - buttons go through signals so each click has a history row.
