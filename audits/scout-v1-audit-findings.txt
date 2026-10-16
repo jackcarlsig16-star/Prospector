@@ -1,0 +1,169 @@
+AUDIT scout-v1 - findings (read-only)
+Source: inbox/2026-10-15-1200-scout-v1-audit.txt. HEAD e71fba6. 2026-10-15.
+Method: grep + read of the repo; 25 count-only SELECTs (head:true, 0 rows transferred) on HomeLover with the
+service key; 0 Claude, 0 Apollo, 0 Google/Microsoft calls, 0 writes. No emails/phones in this file - tables
+and columns only.
+
+Ground-truth corrections to the audit file
+- Scout files are 6, not 3: ScoutCommandBar.js (556), PersistentScout.js (207), ScoutActionButtons.js (110),
+  src/utils/buildScoutContext.js (89), src/utils/scoutLayers.js (18), and a second copy
+  src/components/ledger/ScoutModal.js (322) that is unreachable (see Q1).
+- "Scout bar in the workspace header next to +": confirmed. App.js:1255-1271 builds one PersistentScout;
+  compact inside the BusinessDetailPage header (BusinessDetailPage.js:475 `scout` prop, :761 render),
+  plain on Workspaces/Connections, above the page elsewhere (App.js:1278).
+- The Aug memory "zero PDF/PPTX/multipart" is partly stale: .docx is parsed in the browser
+  (src/utils/docxText.js:6) and .xlsx on the server (api/sales/sheetUpdate.js:48-53, exceljs). Still true
+  for PDF, PPTX-in, email files and multipart (no multer/busboy; every upload is a JSON body).
+
+Q1 Scout today, end to end
+1. Mount: App.js:1257 PersistentScout, for every signed-in user on every page; no role gate (Viewer included).
+2. Scope: on a workspace page, pills = active business or "All businesses" (PersistentScout.js:98-120);
+   accounts come from getAccountsForBusiness (db.js:182-200, `accounts` table by business_id, browser anon
+   key). Off-workspace: the legacy territory list (App.js:1127-1130). "All businesses" needs a one-time
+   confirm stored on the team user (App.js:1135).
+3. Typing: client-side substring match on account NAME only (ScoutCommandBar.js:168-174, max 6) plus 4
+   static pages Accounts/Ideas/Pricing/ROI (:26-31). Nothing else is searched: no partners, opps, contacts,
+   targets, to-dos, notes, emails, intel. No server search route is called.
+4. Ask: buildScoutContext (buildScoutContext.js:55-89) renders every in-scope account as 6-10 lines
+   (stage, tier, ACV, close %, compliance from localStorage prospector_compliance :11, last call summary,
+   blockers, note, email sentiment from localStorage prospector_threads_cache :52). In scope = layers
+   Active Deal/Engaged/Prospecting by default or full territory (scoutLayers.js:8-13, ScoutCommandBar.js:182).
+   Size: ~150-250 tokens per account; HomeLover has 66 accounts -> ~10-16k input tokens per ask (estimate,
+   not measured - nothing logs it). Follow-ups resend the last 6 turns (:264).
+5. Model: MODELS.STANDARD = claude-sonnet-4-6 (models.js:9), max_tokens 2000, streamed
+   (ScoutCommandBar.js:202-210) through POST /proxy/anthropic/messages.
+6. Server: proxy forwards req.body verbatim to Anthropic with the server key (server.js:58-67); auth =
+   sessionAuth cookie (server.js:29, authUser.js:8,14-20) + anthropicRateLimit 60/h member, 600/h platform
+   owner, in-memory (requireAuth.js:124-137). It only console.logs model/status (server.js:73). No usage
+   row: business_anthropic_usage is written only by the server-side callAnthropic path
+   (api/businesses/shared.js:56), never by the proxy. Cost per Scout call is therefore unknown.
+7. Links: the response's account names are matched back to buttons (ScoutActionButtons.js:10-24, :102-103)
+   -> onNav('accounts', id). navTo drops the id: App.js:1225-1229 only uses the second arg for tools, so
+   a click opens the Accounts LIST, not the account. "Open in Ledger" -> navTo('ledger'); 'ledger' is not
+   in VISIBLE_PAGES (App.js:76) so it lands on Workspaces; the page==="ledger" branch (App.js:1316) and
+   ledger/ScoutModal.js are unreachable. "+ Add Task" writes the legacy tasks state (App.js:1270), not
+   sales_week_goals.
+8. Security: the browser decides system prompt, model and max_tokens; any signed-in user can send any body
+   to Anthropic within the hourly cap (noted REVISABLE at requireAuth.js:121). The API key never reaches the
+   browser. Context sent includes call summaries and compliance from localStorage. Basic Auth remains as an
+   emergency gate (server.js:17, basicAuth.js:19-22).
+
+Q2 Searchable inventory (HomeLover counts, 2026-10-15; * = holds email/phone, never surface in clear)
+  entity              table                      rows   searchable text cols                          opens via
+  partners/companies  sales_goals                77     name, company_domain, notes (goal_type)        Pipeline > Partner workflow (no record URL)
+  partner contacts*   partner_contacts           67     name, title; email*                            inside partner People drawer
+  partner domains     partner_domains            22     domain                                         inside partner Domains drawer
+  employers/opps      sales_opportunities        223    organization, cohort, org_type, stage          Pipeline board (no record URL)
+  Apollo companies*   sales_sequenced_accounts   197    name; mailbox_email*                           Pipeline > Sequenced
+  Apollo people*      sales_prospect_state       141    name, title, company, notes, next_action;      Huddle (flags live here: flag_note,
+                                                        phone*, email*                                 flagged_by - huddle_v2_stage3.sql:15-16)
+  targets             sales_targets              34     name, evidence, research_notes, kind, status   Today/Tasks drawer Targets list
+  to-dos/commitments  sales_week_goals           185    text, measurable_target, why_not_done          Today / Tasks drawer
+  call notes          sales_call_notes           13     title, text                                    nowhere directly (linked to-dos only)
+  partner events      sales_partner_events       78     event, note, from/to_status                    partner Activity drawer
+  huddles             sales_huddles              3      -                                              Huddle
+  Outlook messages*   microsoft_messages         2086   subject; mailbox_email*, external_emails*      not opened in-app (partner touches only)
+  Outlook events*     microsoft_events           12     subject; organizer_email*, external_emails*    not opened in-app
+  Apollo emails*      sales_email_messages       216    subject; sender                                not opened in-app
+  business intel      business_intel_entries     17     content, source                                Business Intel & Strategy
+  accounts*           accounts                   66     data jsonb (name/web/notes/calls); owner_email* Accounts list (card has no URL)
+  projects/campaigns  projects / campaigns       6 / 3  name / name, recipient_description             Projects view
+  prospects (legacy)* prospects                  14     name, website, notes; contact_email*           hidden legacy page
+  week notes          sales_week_notes           0      recap                                          Reports
+  Other email/phone holders: profiles.email, workspace_invites.email, google_grants.google_email,
+  microsoft_grants.account_email, voice_profiles.user_email, handoff_intel.contact_email
+  (create_core_tables.sql:71), account_influencer_details.scraped_email, sender_email
+  (sales_analytics_dashboard_v2.sql:27), accounts.data jsonb may hold contact emails.
+  Rough index size: ~3,200 rows for HomeLover, 2/3 of it microsoft_messages.
+
+Q3 Deep links
+- Page state is in-memory (App.js:76 VISIBLE_PAGES, :78 RENAMED_PAGES, :1225 navTo); nothing per record.
+- URL params that exist: /?business=<id> lands on a workspace (App.js:1008-1013, then replaceState to /);
+  ?tab=/?view= for the four Goals & Sales tabs (salesNav.js:5-10, :35-51); ?owner= (GoalsTab.js:72);
+  homeOf link targets (GoalsTab.js:50-66) map to tab/view only.
+- Missing for every Q2 entity: a URL or navTo target that opens one partner, opp, contact, target, to-do,
+  note, intel entry or account. Partner expansion is component state (WorkflowView.js:194-195 topOpen;
+  PartnersView.js:223 openId); account cards are list state; call notes have no opener at all.
+
+Q4 Search mechanics
+- Extensions/indexes: unknown. The audit RPCs only expose columns and policies
+  (supabase/migrations/20260813_create_audit_rpcs.sql:11, :46); no SQL-exec RPC exists. Migrations contain
+  no pg_trgm/unaccent/tsvector/GIN. Text indexes present: btree prospects.name_normalized, unique
+  sales_targets (business_id,name), unique partner_contacts name-without-email. Settle with one query in the
+  SQL editor: select extname from pg_extension; select indexname, indexdef from pg_indexes where
+  schemaname='public' and indexdef ilike '%gin%'.
+- Server-side search routes: none. The only ilike is an internal email match
+  (api/sales/partnerOutlookTouches.js:209).
+- Fan-out precedents with workspace scoping: salesGate on /api/sales/:businessId (server.js:34,
+  requireAuth.js:94); opportunityMatch.js (pipeline-add-dedupe), intakeMatch.js, masterImport.js:275
+  (dupes across partners + employers), weekPlanRoutes.js (context across to-dos/partners/opps), and
+  selectAllPages for >1,000-row reads.
+
+Q5 Uploads today (10 inputs; all browser-read, all JSON bodies, express.json cap 20 MB server.js:22)
+  CsvImportModal.js:228        .csv   -> file.text() :71 -> /api/businesses/:id/import/classify + directive (accounts)
+  UploadsPage.js:195           .csv   -> FileReader :44-64, parsed in-browser -> accounts state (legacy)
+  salesAnalytics/PipelineTable.js:178 .csv -> file.text() :135 -> /api/sales/:id/opportunities/import
+  goals/SheetUpdateDrawer.js:85 .csv/.xlsx -> base64 :18-21 -> sheetUpdate.js readUpload :44-53 (exceljs, 2 MB cap :18)
+  tasks/CallNotesPanel.js:168  .txt/.md/.vtt/.docx -> docxText.js / vttText :25-26 -> call-notes/extract (120k chars :16, route :20)
+  CallLogSection.js:125        .txt/.vtt/.srt -> readAsText :75-77 -> /api/businesses/:id/call-log (transcript text)
+  ActionItemsTab.js:599        image/* -> base64 :415-417 -> Claude vision via /proxy/anthropic (:205, :436)
+  BadgesProfile.js:292,:337    image/* -> base64 -> localStorage via saveImagePref (:250-259)
+  AdminPage.js:882             .json  -> localStorage restore (:856-868)
+  Paste: SmartIntakeBox.js:206 -> api/businesses/intake.js (text only, :17-19)
+  Handled: CSV, TXT/MD/VTT/SRT, DOCX, XLSX, JSON, images. Not handled: PDF, PPTX, EML/MSG, audio, ZIP,
+  multipart. Supabase Storage: no bucket is used anywhere (no storage.from in src/ or api/). pptxgenjs is
+  in package.json:20 with no importer.
+
+Q6 Outside sources
+- Google: features are a map (googleGrants.js:7-11); connect asks per feature with include_granted_scopes
+  + prompt=consent (api/google/connect.js:26-31) and featuresFromScope keeps what was granted (:16-19), so a
+  new `drive` feature would be one more map entry and one consent for that feature only; existing grants
+  stay. Narrowest scope: drive.readonly (restricted class) or drive.file (per-file, needs the Picker UI).
+  The repo has no verification notes (grep empty); Google's restricted-scope verification is policy, not
+  code - unknown here, settle on the Cloud Console OAuth consent page.
+- Microsoft: one scope string (microsoftGrants.js:6, connect.js:24) with REQUIRED :7 and missingScopes
+  :21; adding Files.Read (own OneDrive) or Files.Read.All / Sites.Read.All (shared + SharePoint) changes the
+  consent screen for everyone and needs a Reconnect; admin consent per specs/microsoft-connect-v1.txt:40.
+
+Q7 Outside AI client -> Prospector
+- No MCP server, no API keys, no public read API. Auth is the Supabase session cookie prospector_at
+  (authUser.js:8, :14-20) on every /api and /proxy call (server.js:29) plus the Basic Auth gate
+  (server.js:17); exempt: Zoom webhook, invite GET (requireAuth.js:11-14).
+- Precedent in the other direction: Prospector is already an MCP CLIENT of Glean over streamable HTTP with
+  a bearer token (api/glean.js:6-53, env GLEAN_BASE_URL/GLEAN_API_TOKEN).
+- An outside client today would need Basic creds (if on) + a user's Supabase access token in that cookie,
+  then GETs under /api/sales/:businessId/* as a Viewer. No read-only or per-client token exists.
+
+Q8 Cost and limits
+- Per Scout call: not logged (Q1.6). Estimate for HomeLover: ~10-16k input + <=2k output on Sonnet.
+- Cap: 60/h per member, 600/h platform owner, shared with every aiLimit route (server.js:42, :365-634).
+- Index rows: Q2 table, ~3.2k for HomeLover.
+
+Gaps vs Jack's ask
+  ask                         today                                   missing                                 blocked by
+  search everything           name substring over `accounts` only     server search route over ~17 tables,    nothing - needs a SPEC; pg_trgm/FTS
+                                                                      workspace-scoped, email/phone masked    status unknown (Q4)
+  open what you find          Accounts list, Pipeline tab/view        per-record navTo/URL for partner, opp,  nothing - nav design
+                                                                      contact, target, to-do, note, account
+  upload anything             CSV/TXT/DOCX/XLSX/images via JSON       PDF, PPTX, EML, audio; a storage bucket; consent? no; needs a parse path +
+                              bodies, 20 MB cap                       one intake that routes by type          storage decision
+  Drive / OneDrive            no scope; no bucket                     drive feature + Files.Read scope,       Google restricted-scope verification;
+                                                                      search/read code                        Microsoft admin consent
+  Claude app <-> Prospector   nothing inbound; Glean MCP client out   an MCP server or token-auth read API,   security: today's only credential is
+                                                                      per-workspace read-only tokens          a full user session
+
+Verdict: reuse vs rebuild
+Scout's shell (one persistent mount, compact/plain modes, palette, response panel, recent queries) is
+reusable as the UI. Its "search" is not: it is a name filter over one table plus a pipeline-brief prompt
+whose context, links and task writer are all tied to the legacy accounts model. "Search everything" needs
+a new server route + per-record navigation; the AI ask can later sit on top of that route's results
+instead of a whole-pipeline dump.
+
+Open questions for Jack (max 5)
+1. "Both Claudes" - is the planning chat's reading right: (a) Scout reads Drive/OneDrive, (b) claude.ai
+   reads Prospector through a connector? If (b), read-only and which workspaces?
+2. Should search return Outlook/Apollo email rows (subjects, counterpart domains) or only partners/people
+   they touch? They are 2/3 of the rows and the main email holders.
+3. Drive: whole-drive read (drive.readonly, verification) or picked files only (drive.file + Picker)?
+4. Uploads: should a file be stored (Supabase Storage) or only parsed and discarded like today?
+5. Should Scout's AI ask keep the whole-pipeline context, or switch to "answer over search results"?
