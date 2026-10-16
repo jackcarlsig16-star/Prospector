@@ -1,6 +1,5 @@
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import ReportView from './ReportView';
-import TodoList from './TodoList';
 import PartnersView from './PartnersView';
 import { memberLookup } from './goalsUi';
 
@@ -11,39 +10,6 @@ import { memberLookup } from './goalsUi';
 window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
 const members = [{ user_id: 'u-jack', name: 'Jack Carlson' }, { user_id: 'u-cyrus', name: 'Cyrus Lee' }];
 const lookup = memberLookup(members);
-const step = (id, done) => ({ id, text: `step ${id}`, done });
-const todo = (id, steps, extra = {}) => ({ id, text: `Todo ${id}`, category: 'Ops', owner_user_id: 'u-jack', contacts: [], steps, ...extra });
-
-function renderTodos() {
-  const todos = [todo('a', [step(1, true)]), todo('b', [step(2, true), step(3, false)]), todo('c', [step(4, false)]), todo('d', [step(5, false)])];
-  render(<TodoList todos={todos} lookup={lookup} members={members} whoLabel="Team" canEdit={false} />);
-}
-
-test('to-do legend rows are buttons; picking one filters the list and shows a chip', () => {
-  renderTodos();
-  const notStarted = screen.getByRole('button', { name: /Not started/ });
-  expect(notStarted.getAttribute('aria-pressed')).toBe('false');
-  fireEvent.click(notStarted);
-  expect(notStarted.getAttribute('aria-pressed')).toBe('true');
-  expect(screen.queryByText('Todo a')).toBeNull();
-  expect(screen.queryByText('Todo b')).toBeNull();
-  expect(screen.getByText('Todo c')).toBeTruthy();
-  expect(screen.getByText('Todo d')).toBeTruthy();
-  const chip = screen.getByRole('button', { name: 'Showing Not started (2). Clear filter' });
-  fireEvent.click(chip);
-  expect(screen.getByText('Todo a')).toBeTruthy();
-  expect(screen.queryByRole('button', { name: /Clear filter/ })).toBeNull();
-});
-
-test('clicking the selected legend row again clears it; empty slices are disabled', () => {
-  render(<TodoList todos={[todo('a', [step(1, true)])]} lookup={lookup} members={members} whoLabel="Team" canEdit={false} />);
-  expect(screen.getByRole('button', { name: /In progress/ }).disabled).toBe(true);
-  const done = screen.getByRole('button', { name: /^Done\s?\d/ });
-  fireEvent.click(done);
-  expect(screen.getByRole('button', { name: /Clear filter/ })).toBeTruthy();
-  fireEvent.click(done);
-  expect(screen.queryByRole('button', { name: /Clear filter/ })).toBeNull();
-});
 
 test('partner owner and status donuts filter the cards (P1s also show in Top priorities)', () => {
   const partners = [

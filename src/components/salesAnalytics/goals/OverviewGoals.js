@@ -42,7 +42,7 @@ export function GoalLine({ hero, weekStart, onOpenGoals, onFocusWidget }) {
         </span>
       ))}
       <span style={{ color: SA.faint }}>·</span>
-      <DrillNumber onClick={() => onOpenGoals('view:week')} title="Open the scorecard" style={{ color: SA.link }}>Scorecard →</DrillNumber>
+      <DrillNumber onClick={() => onOpenGoals('view:week')} title="Open Today" style={{ color: SA.link }}>Today →</DrillNumber>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { SA, SA_TYPE, SA_SHAPE } from '../theme';
-import { laWeekStart } from '../periods';
+import { laWeekStart, laDateString } from '../periods';
 import { roleAtLeast } from '../../../constants/roles';
 import { fetchMe } from '../../../utils/authSession';
 import useMediaQuery from '../../../utils/useMediaQuery';
@@ -8,9 +8,9 @@ import Segmented from '../../../ui/Segmented';
 import Ring, { RingLegend } from '../charts/Ring';
 import { SUB_VIEWS } from '../salesNav';
 import { goalsApi, TODOS_CHANGED } from './goalsApi';
-import { FLAGS_CHANGED } from '../huddleApi';
+import { fetchFlags, completeFlag, announceFlagsChanged, FLAGS_CHANGED } from '../huddleApi';
 import ScorecardTable from './ScorecardTable';
-import TodoList, { todoStatus } from './TodoList';
+import { todoStatus } from './todoStatus';
 import PartnersView from './PartnersView';
 import CompaniesView from './CompaniesView';
 import PipelineView from './PipelineView';
@@ -18,11 +18,16 @@ import ReportView from './ReportView';
 import GoalHero from './GoalHero';
 import PlanWeekDrawer from './PlanWeekDrawer';
 import { PlanNudge } from './FocusStrip';
+import TodayView, { partsInline } from './TodayView';
+import TodayViewer from './TodayViewer';
+import { yourDaySections, teamToday, topOfList, focusOf, dayTitle } from './todayModel';
+import { buildTaskGroups } from '../tasks/taskGroups';
+import { useLinkOptions } from '../tasks/linkTargets';
 import { linkedTo, isOpenTask, openTasks } from '../tasks/LinkedTasks';
 import { exportWidgetCsv } from '../exportCsv';
 import {
   labelStyle, subStyle, numStyle, Chip, Btn, ErrorNote,
-  addDays, monthOf, monthName, weekLabel, memberLookup, ownedBy, flashTo,
+  addDays, monthOf, monthName, weekLabel, weekOf, memberLookup, ownedBy, flashTo,
 } from './goalsUi';
 
 // sales-ia-v1 - the data hub behind Today / Pipeline / Reports. `section` is
@@ -41,11 +46,10 @@ const writeStored = (key, value) => { try { localStorage.setItem(key, value); } 
 const slugOf = name => name.split(' ')[0].toLowerCase();
 
 // Design E - the one table from a link target to its home tab + sub-view.
-// 'view:week' sits with the scorecard until Stage 2 builds Today's "Your day".
 // Commitment link_target values live in the database, so anything unknown
 // still lands somewhere: Reports, with the target logged.
 const HOME = {
-  'view:report': ['reports', 'weekly'], 'view:week': ['reports', 'scorecard'], 'view:this_week': ['reports', 'scorecard'],
+  'view:report': ['reports', 'weekly'], 'view:week': ['today'], 'view:this_week': ['today'],
   'view:partners': ['pipeline', 'partners'], 'view:companies': ['pipeline', 'sequenced'], 'view:pipeline': ['pipeline', 'board'],
   'week:prev': ['today'], overview: ['reports', 'analytics'], section: ['reports', 'weekly'], score: ['reports', 'scorecard'],
   missing: ['pipeline', 'sequenced'], huddle: ['huddle'], plan: ['today'],
@@ -68,6 +72,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const [members, setMembers] = useState([]);
   const [me, setMe] = useState(null);
   const [todos, setTodos] = useState([]);
+  const [flags, setFlags] = useState([]);
   const [partners, setPartners] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [cadences, setCadences] = useState([]);
@@ -106,6 +111,10 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
 
   const loadTodos = useCallback(() => goalsApi.weekGoals(businessId, weekStart, weekStart, 'todo')
     .then(g => { setTodos(g); setError('todos', null); }).catch(e => setError('todos', e)), [businessId, weekStart, setError]);
+  // Open flags (the Huddle badge's read; the route pages with selectAllPages
+  // and returns only open flags, so one call is the whole set).
+  const loadFlags = useCallback(() => fetchFlags(businessId)
+    .then(f => { setFlags(f); setError('flags', null); }).catch(e => setError('flags', e)), [businessId, setError]);
   const loadScorecard = useCallback(() => goalsApi.scorecard(businessId, monthOf(weekStart), owner === 'team' ? null : owner)
     .then(d => { setScorecard(d); setError('scorecard', null); }).catch(e => { setScorecard(null); setError('scorecard', e); }), [businessId, weekStart, owner, setError]);
   const loadCompanies = useCallback(() => goalsApi.companies(businessId, weekStart, weekStart)
@@ -119,12 +128,13 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
     .then(r => { setKpiRows(r); setError('kpi', null); }).catch(e => { setKpiRows(null); setError('kpi', e); }), [businessId, weekStart, setError]);
 
   useEffect(() => { loadTodos(); }, [loadTodos]);
+  useEffect(() => { loadFlags(); }, [loadFlags]);
   useEffect(() => {
-    const reload = () => loadTodos();
+    const reload = () => { loadTodos(); loadFlags(); };
     window.addEventListener(TODOS_CHANGED, reload);
     window.addEventListener(FLAGS_CHANGED, reload);
     return () => { window.removeEventListener(TODOS_CHANGED, reload); window.removeEventListener(FLAGS_CHANGED, reload); };
-  }, [loadTodos]);
+  }, [loadTodos, loadFlags]);
   useEffect(() => { loadCommitments(); }, [loadCommitments]);
   useEffect(() => { loadReport(); }, [loadReport]);
   useEffect(() => { loadKpi(); }, [loadKpi]);
@@ -184,6 +194,32 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   };
   const myCadences = cadences.filter(c => ownedBy(owner, c.owner_user_id));
   const myCommitments = commitments.filter(c => ownedBy(owner, c.owner_user_id));
+
+  // Today (sales-ia-v1 Stage 2): the same groups the Tasks drawer builds, for
+  // the person on screen; link chip names load only when something is linked.
+  const today = laDateString();
+  const meId = me?.profile?.id;
+  const groupsFor = filter => buildTaskGroups({ todos, flags, filter, meId, today });
+  const daySections = yourDaySections(meId ? groupsFor(drawerFilter) : [], today, { forMe: drawerFilter === 'me' });
+  const links = useLinkOptions(businessId, weekStart);
+  const needsLinkNames = section === 'today' && [...todos, ...flags].some(t => t.link_type && t.link_type !== 'metric');
+  const loadLinks = links.load;
+  useEffect(() => { if (needsLinkNames) loadLinks(); }, [needsLinkNames, loadLinks]);
+  const tickTodo = async (t, done) => {
+    await goalsApi.updateWeekGoal(businessId, t.id, { status: done ? 'done' : 'open' });
+    setToast(done ? `Done: ${t.text}` : `Reopened: ${t.text}`);
+  };
+  const markContacted = async f => {
+    await completeFlag(businessId, f.id);
+    announceFlagsChanged();
+    setToast(`${f.contacts[0] || 'Prospect'} marked contacted · flag closed`);
+  };
+  const toggleFocus = async c => {
+    await goalsApi.updateWeekGoal(businessId, c.id, { status: c.status === 'done' ? 'open' : 'done' });
+    await loadCommitments();
+  };
+  const plannedAt = plans?.find(p => p.week_start === weekStart)?.created_at;
+  const openAllTasks = () => openTasks({ link: null, filter: drawerFilter });
 
   // Sequenced: "Companies sequenced by owner" ring (Design C - moved from the rail).
   const ownerParts = [...members.map(m => ({ id: m.user_id, label: lookup(m.user_id).first, count: companies.filter(c => c.sequenced_by === m.user_id).length, color: lookup(m.user_id).color }))];
@@ -286,17 +322,43 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
       { label: 'Sequenced by', value: c => lookup(c.sequenced_by).name }, { key: 'mailbox_email', label: 'Mailbox' }, { key: 'first_sequenced_at', label: 'First email' }]) },
   ];
 
+  // "This week at a glance" (Design F) - the numbers the rail's views list used to carry.
+  const liveTodos = myTodos.filter(t => todoStatus(t) !== 'dropped');
+  const glance = {
+    rows: [
+      { id: 'todos', label: 'To-dos', value: `${liveTodos.filter(t => todoStatus(t) === 'done').length} / ${liveTodos.length}`, title: 'Open Tasks', onOpen: openAllTasks },
+      { id: 'commitments', label: 'Commitments', value: String(myCommitments.filter(c => c.status !== 'dropped').length), title: 'Open the weekly report', onOpen: () => go('view:report') },
+      { id: 'partners', label: 'Partners', value: `${myPartners.length} · ${myPartners.filter(p => p.hot).length} hot`, title: 'Open Pipeline › Partner workflow', onOpen: () => go('view:partners') },
+      { id: 'sequenced', label: 'Companies sequenced', value: owner === 'team' ? partsInline(ownerParts) : String(myCompanies.length), title: 'Open Pipeline › Sequenced', onOpen: () => go('view:companies') },
+    ],
+    onReport: () => go('view:report'),
+  };
+  const hero = (
+    <GoalHero businessId={businessId} weekStart={weekStart} owner={owner} ownerName={owner === 'team' ? null : whoLabel} commitments={myCommitments} missingHeadcount={missingHeadcount} canEdit={canEdit}
+      scorecard={scorecard} scorecardError={errors.scorecard} reloadKey={heroKey} onGoalSaved={() => { loadScorecard(); loadKpi(); }} onDrill={drill}
+      openTasks={heroTasks} onOpenTasks={key => openTasks({ link: { type: 'metric', id: key }, filter: drawerFilter })} />
+  );
+
   // Design C - what the page header carries per screen.
   const showPeople = section === 'today' || ['partners', 'sequenced', 'weekly', 'scorecard'].includes(view);
   const showWeek = section === 'today' || ['sequenced', 'weekly', 'scorecard'].includes(view);
   const subViews = SUB_VIEWS[section];
+  const title = section !== 'today' ? TITLES[section] : liveWeek ? dayTitle(today, compact) : weekOf(weekStart);
 
   return (
     <div data-sales-section={section} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={labelStyle}>HomeLover · Command Center</span>
-          <h1 style={{ margin: 0, ...SA_TYPE.pageTitle, fontSize: compact ? 28 : 34, color: SA.text }}>{TITLES[section]}</h1>
+          <span style={labelStyle}>HomeLover · {section === 'today' ? 'Today' : 'Command Center'}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <h1 style={{ margin: 0, ...SA_TYPE.pageTitle, fontSize: compact ? 28 : 34, color: SA.text }}>{title}</h1>
+            {section === 'today' && me && !canEdit && (
+              <Chip title="You have view access to this workspace, so Goals & Sales is read-only for you." style={{ height: 26, color: SA.soft }}>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" /><circle cx="8" cy="8" r="2" /></svg>
+                View only
+              </Chip>
+            )}
+          </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
           {subViews && <Segmented label={`${TITLES[section]} views`} items={subViews.map(([id, label]) => ({ id, label }))} value={view} onChange={v => onNav(section, v)} />}
@@ -314,6 +376,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
             </Btn>
             {weekStart !== thisWeek && <Btn onClick={() => setWeekStart(thisWeek)}>This week</Btn>}
           </>}
+          {section === 'today' && canEdit && planOwner && <Btn primary onClick={() => setPlanOpen(true)}>Plan this week</Btn>}
           {section === 'reports' && (
             <div style={{ position: 'relative' }} className="no-print">
               <Btn primary aria-haspopup="menu" aria-expanded={exportOpen} onClick={() => setExportOpen(o => !o)}>Export</Btn>
@@ -335,30 +398,23 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
 
       <main style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
         {errors.members && <ErrorNote message={errors.members.message} />}
-        {me && !canEdit && <div style={{ ...subStyle, fontSize: 13 }}>You have view access to this workspace, so Goals &amp; Sales is read-only for you.</div>}
+        {me && !canEdit && section !== 'today' && <div style={{ ...subStyle, fontSize: 13 }}>You have view access to this workspace, so Goals &amp; Sales is read-only for you.</div>}
 
-        {section === 'today' && <>
-          {canEdit && <PlanNudge week={weekStart} ownerId={planOwner} ownerName={lookup(planOwner).first} plans={plans} onPlan={() => setPlanOpen(true)} />}
-          <GoalHero businessId={businessId} weekStart={weekStart} owner={owner} ownerName={owner === 'team' ? null : whoLabel} commitments={myCommitments} missingHeadcount={missingHeadcount} canEdit={canEdit}
-            scorecard={scorecard} scorecardError={errors.scorecard} reloadKey={heroKey} onGoalSaved={() => { loadScorecard(); loadKpi(); }} onDrill={drill}
-            openTasks={heroTasks} onOpenTasks={key => openTasks({ link: { type: 'metric', id: key }, filter: drawerFilter })} />
-          <TodoList todos={myTodos} lookup={lookup} members={members} onOpenHuddle={onOpenHuddle} whoLabel={whoLabel} defaultOwner={owner === 'team' ? me?.profile?.id : owner}
-            canEdit={canEdit} error={errors.todos}
-            onToggleStep={async s => {
-              const step = await goalsApi.updateStep(businessId, s.id, { done: !s.done });
-              setTodos(ts => ts.map(t => (t.id === step.goal_id ? { ...t, steps: t.steps.map(x => (x.id === step.id ? step : x)) } : t)));
-            }}
-            onAddTodo={async body => {
-              const goal = await goalsApi.createWeekGoal(businessId, { ...body, kind: 'todo', week_start: weekStart });
-              setTodos(ts => [...ts, { ...goal, steps: [] }]);
-              return goal;
-            }}
-            onAddStep={async (t, text) => {
-              const step = await goalsApi.createStep(businessId, t.id, { text, sort_order: t.steps.length });
-              setTodos(ts => ts.map(x => (x.id === t.id ? { ...x, steps: [...x.steps, step] } : x)));
-            }}
-            onCarry={async () => { const r = await goalsApi.carryOver(businessId, weekStart, 'todo'); await loadTodos(); return r; }} />
-        </>}
+        {section === 'today' && me && (canEdit ? <>
+          <PlanNudge week={weekStart} ownerId={planOwner} ownerName={lookup(planOwner).first} plans={plans} onPlan={() => setPlanOpen(true)} />
+          {(errors.todos || errors.flags) && <ErrorNote message={(errors.todos || errors.flags).message} />}
+          <TodayView hero={hero} compact={compact}
+            yourDay={{ sections: daySections, today, lookup, links, teamView: owner === 'team', canEdit, onDone: tickTodo, onContacted: markContacted, onAllTasks: openAllTasks }}
+            focus={{ items: focusOf(commitments, planOwner), ownerName: owner === 'team' ? lookup(planOwner).first : null, canEdit, onToggle: toggleFocus, onEdit: () => setPlanOpen(true), onPlan: () => setPlanOpen(true),
+              plannedAt: plannedAt && new Date(plannedAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) }}
+            glance={glance} />
+        </> : (
+          <TodayViewer businessId={businessId} hero={hero} compact={compact} weekStart={weekStart} members={members} lookup={lookup} links={links} today={today} partners={partners} commitments={commitments}
+            team={teamToday(members, groupsFor, today)} top={topOfList(groupsFor('team'), today)} glance={glance}
+            onOpenReport={w => { setWeekStart(w); onNav('reports', 'weekly'); }}
+            onDownload={w => { setWeekStart(w); onNav('reports', 'weekly'); setTimeout(() => window.print(), 400); }}
+            onPipeline={() => go('view:pipeline')} />
+        ))}
 
         {section === 'reports' && view === 'weekly' && (
           <ReportView weekStart={weekStart} report={reportData?.report} reportError={errors.report} sections={reportData?.sections} infra={reportData?.infra}

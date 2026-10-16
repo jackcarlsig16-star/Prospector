@@ -4,11 +4,11 @@ jest.mock('./goalsApi', () => ({ goalsApi: {}, TODOS_CHANGED: 'todos', OPEN_TASK
 jest.mock('../../../utils/authSession', () => ({ fetchMe: jest.fn() }));
 jest.mock('../../../utils/useMediaQuery', () => () => false);
 
-// The Stage 0 link inventory: every go() target and its home (Design E; D6 for
-// 'view:week' + 'score:<m>' in Stage 1).
+// The Stage 0 link inventory: every go() target and its home (Design E; D9 in
+// Stage 2 sends 'view:week' to Today, 'score:<m>' stays with the scorecard).
 test.each([
   ['view:report', 'reports', 'weekly'], ['section:s4', 'reports', 'weekly'],
-  ['view:week', 'reports', 'scorecard'], ['view:this_week', 'reports', 'scorecard'], ['score:meetings_set', 'reports', 'scorecard'],
+  ['view:week', 'today', null], ['view:this_week', 'today', null], ['score:meetings_set', 'reports', 'scorecard'],
   ['week:prev', 'today', null], ['plan', 'today', null],
   ['view:partners', 'pipeline', 'partners'], ['view:companies', 'pipeline', 'sequenced'], ['missing', 'pipeline', 'sequenced'], ['view:pipeline', 'pipeline', 'board'],
   ['overview', 'reports', 'analytics'], ['overview:week_strip', 'reports', 'analytics'],

@@ -1,4 +1,4 @@
-import { todoStatus } from '../goals/TodoList';
+import { todoStatus } from '../goals/todoStatus';
 
 // task-drawer-v1 - the drawer's groups over this week's to-dos (the same rows
 // Goals -> This week lists) plus open flags, which can sit in an earlier week

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { SA } from '../theme';
 import { SEMANTIC } from '../palette';
-import { todoStatus } from '../goals/TodoList';
+import { todoStatus } from '../goals/todoStatus';
 import { OPEN_TASKS } from '../goals/goalsApi';
 import { chipStyle } from './LinkPicker';
 import { linkBtn } from './TaskRow';

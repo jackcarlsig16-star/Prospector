@@ -1,5 +1,5 @@
 import { WORKFLOW_STEPS, TOUCH_STATUSES, stepOf, isTouched } from '../../../../constants/partnerPipeline';
-import { todoStatus } from '../TodoList';
+import { todoStatus } from '../todoStatus';
 import { TEAM_LABEL } from '../../../../constants/ownership';
 
 // partner-360-v1 - one timeline for a partner (pure, unit-tested): its
