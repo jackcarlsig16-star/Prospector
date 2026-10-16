@@ -1,3 +1,4 @@
+import { kickResearch } from './partnerResearch.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import {
   getSupabase, validate, fail, findRow, weekIsFinal, FINAL_ERROR, OWN_DELETE_WINDOW_MS,
@@ -153,6 +154,12 @@ export async function createLandGoalRoute(req, res) {
   const { data, error } = await supabase.from('sales_goals')
     .insert({ business_id: req.params.businessId, ...v.payload, ...landTimestamps(v.payload), ...(v.payload.goal_type === 'partnership' ? { pipeline_status: 'not_started' } : {}) }).select().single();
   if (error) return res.status(500).json({ error: error.message });
+  // partner-add-research-v1: research starts after the save and never
+  // blocks it (form / AddCompany path only; Intake and import skip it, D10).
+  if (data.goal_type === 'partnership') {
+    kickResearch(supabase, { businessId: req.params.businessId, entityId: data.id, trigger: 'create', userId: req.auth.user.id })
+      .catch(e => console.warn('[goals/land] research on create skipped:', e.message));
+  }
   res.status(201).json({ goal: data });
 }
 

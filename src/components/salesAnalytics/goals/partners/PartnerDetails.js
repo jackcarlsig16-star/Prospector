@@ -10,6 +10,7 @@ import PartnerStatus from './PartnerStatus';
 import PartnerPeople from './PartnerPeople';
 import PartnerActivity from './PartnerActivity';
 import PartnerIntel from './PartnerIntel';
+import PartnerResearch from './PartnerResearch';
 import PartnerDomains from './PartnerDomains';
 import LogTouchForm from './LogTouchForm';
 import CopyForClaude from '../../CopyForClaude';
@@ -54,7 +55,7 @@ export function domainsSummary(data) {
   return n ? `${n} confirmed` : 'none confirmed';
 }
 
-export default function PartnerDetails({ partner, lookup, businessId, canEdit, onUpdate, onEvents, bump, tasksFor, actions, people, domains, onCreateTask, onCount }) {
+export default function PartnerDetails({ partner, lookup, businessId, canEdit, onUpdate, onEvents, bump, tasksFor, actions, people, domains, research, onCreateTask, onCount }) {
   const [events, setEvents] = useState(null);
   const [contacts, setContacts] = useState(null);
   const [domainData, setDomainData] = useState(null);
@@ -144,6 +145,8 @@ export default function PartnerDetails({ partner, lookup, businessId, canEdit, o
         <Drawer label="Intel" summary={intelSummary(partner)} persistKey={drawerKey('intel')}>
           <PartnerIntel partner={partner} canEdit={canEdit} onUpdate={onUpdate} />
         </Drawer>
+        {research && <PartnerResearch partner={partner} canEdit={canEdit} api={research} domains={domains} onDomainData={setDomainData} onUpdate={onUpdate}
+          confirmedDomains={(domainData?.domains || []).filter(d => d.confirmed).map(d => d.domain)} />}
         <Drawer label="Domains" summary={domainsSummary(domainData)} persistKey={drawerKey('domains')}>
           <PartnerDomains partner={partner} canEdit={canEdit} api={domains} data={domainData} onData={setDomainData} />
         </Drawer>

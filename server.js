@@ -604,7 +604,7 @@ app.post('/api/sales/:businessId/insights/dismiss', salesModuleRoute('./api/sale
 // sales-goals-v1 REVISION 3 - Goals & Weekly Plan.
 app.get('/api/sales/:businessId/goals/members', salesModuleRoute('./api/sales/goalsRoutes.js', 'listGoalMembersRoute', 'goals/members'));
 app.get('/api/sales/:businessId/goals/land', salesModuleRoute('./api/sales/goalsRoutes.js', 'listLandGoalsRoute', 'goals/land'));
-app.post('/api/sales/:businessId/goals/land', salesModuleRoute('./api/sales/goalsRoutes.js', 'createLandGoalRoute', 'goals/land POST'));
+app.post('/api/sales/:businessId/goals/land', aiLimit, salesModuleRoute('./api/sales/goalsRoutes.js', 'createLandGoalRoute', 'goals/land POST'));
 app.patch('/api/sales/:businessId/goals/land/:id', salesModuleRoute('./api/sales/goalsRoutes.js', 'updateLandGoalRoute', 'goals/land/:id PATCH'));
 app.post('/api/sales/:businessId/goals/land/:id/archive', salesModuleRoute('./api/sales/goalsRoutes.js', 'archiveLandGoalRoute', 'goals/land/:id/archive POST'));
 app.get('/api/sales/:businessId/goals/month', salesModuleRoute('./api/sales/goalsRoutes.js', 'listMonthGoalsRoute', 'goals/month'));
@@ -660,6 +660,8 @@ app.get('/api/sales/:businessId/goals/partners/outlook-touches', salesModuleRout
 app.post('/api/sales/:businessId/goals/partners/outlook-touches/apply', salesModuleRoute('./api/sales/partnerOutlookTouches.js', 'outlookTouchesApplyRoute', 'goals/partners/outlook-touches/apply POST'));
 app.post('/api/sales/:businessId/goals/partners/outlook-touches/dismiss', salesModuleRoute('./api/sales/partnerOutlookTouches.js', 'outlookTouchesDismissRoute', 'goals/partners/outlook-touches/dismiss POST'));
 app.post('/api/sales/:businessId/goals/partners/outlook-touches/record', salesModuleRoute('./api/sales/partnerOutlookTouches.js', 'outlookTouchesRecordRoute', 'goals/partners/outlook-touches/record POST'));
+app.get('/api/sales/:businessId/goals/partners/:id/research', salesModuleRoute('./api/sales/partnerResearch.js', 'listResearchRoute', 'goals/partners/:id/research'));
+app.post('/api/sales/:businessId/goals/partners/:id/research', aiLimit, salesModuleRoute('./api/sales/partnerResearch.js', 'runResearchRoute', 'goals/partners/:id/research POST'));
 app.get('/api/sales/:businessId/goals/partners/dupe-check', salesModuleRoute('./api/sales/partnerDupeCheck.js', 'dupeCheckRoute', 'goals/partners/dupe-check'));
 app.get('/api/sales/:businessId/goals/partners/domains', salesModuleRoute('./api/sales/partnerDomains.js', 'listAllDomainsRoute', 'goals/partners/domains'));
 app.get('/api/sales/:businessId/goals/partners/export-apollo.csv', salesModuleRoute('./api/sales/partnerDomains.js', 'exportApolloCsvRoute', 'goals/partners/export-apollo.csv'));
