@@ -6,7 +6,8 @@ import { KIT_MAX_WIDTH } from '../../ui/tokens';
 import AnalyticsView from './AnalyticsView';
 import DailyHuddle from './DailyHuddle';
 import GoalsTab, { homeOf } from './goals/GoalsTab';
-import { OPEN_GOALS_WEEK } from './goals/goalsApi';
+import { goalsApi, OPEN_GOALS_WEEK, OPEN_GOALS_TARGET } from './goals/goalsApi';
+import { laDateString } from './periods';
 import { roleAtLeast } from '../../constants/roles';
 import { fetchFlags, FLAGS_CHANGED } from './huddleApi';
 import { fetchMe } from '../../utils/authSession';
@@ -113,10 +114,28 @@ export default function SalesAnalyticsTab({ businessId, features }) {
     return () => window.removeEventListener(OPEN_GOALS_WEEK, open);
   }, [nav]);
 
-  const openGoals = target => { const home = homeOf(target); setGoalsTarget({ target }); nav(home ? home.tab : 'reports', home?.view); };
+  const openGoals = useCallback(target => { const home = homeOf(target); setGoalsTarget({ target }); nav(home ? home.tab : 'reports', home?.view); }, [nav]);
+  useEffect(() => {
+    const open = e => openGoals(e.detail.target);
+    window.addEventListener(OPEN_GOALS_TARGET, open);
+    return () => window.removeEventListener(OPEN_GOALS_TARGET, open);
+  }, [openGoals]);
   const openHuddle = target => { setHuddleFocus(null); setHuddleTarget(target ? { ...target } : null); nav('huddle'); };
   const clearFocus = useCallback(() => setOverviewFocus(null), []);
   const canEdit = !!me && (me.profile?.is_platform_owner || roleAtLeast(me.memberships?.find(m => m.business_id === businessId)?.role, 'member'));
+
+  // call-notes-targets-v1 Stage 3 - Tidy runs once per LA day on a Member's
+  // first Goals & Sales visit; the server guard is the real gate, this key
+  // only saves the call. Viewers never trigger it.
+  // localStorage key (per browser): prospector_tidy_ran_<businessId> = 'YYYY-MM-DD'
+  useEffect(() => {
+    if (!canEdit) return;
+    const key = `prospector_tidy_ran_${businessId}`, today = laDateString();
+    try { if (localStorage.getItem(key) === today) return; } catch { /* private mode */ }
+    goalsApi.runTidy(businessId, { trigger: 'pageload' })
+      .then(() => { try { localStorage.setItem(key, today); } catch { /* private mode */ } })
+      .catch(() => {});
+  }, [businessId, canEdit]);
 
   // shell-facelift-v1 Stage 2 - the tab row sits in the workspace header's sticky row when that slot exists
   // (BusinessDetailPage), inline otherwise. Kit vars, not SA vars: the slot is outside #sales-analytics-root.

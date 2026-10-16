@@ -18,8 +18,10 @@ const MIGRATION_PATTERN = /does not exist|schema cache|violates check constraint
 export const TODOS_CHANGED = 'prospector:todos-changed';
 // "Open in Goals" from the drawer when Goals & Sales is already on screen.
 export const OPEN_GOALS_WEEK = 'prospector:open-goals-week';
-// Opens the drawer filtered to one link; detail = { link: { type, id }, filter }.
+// Opens the drawer filtered to one link; detail = { link: { type, id }, filter, view? }.
 export const OPEN_TASKS = 'prospector:open-tasks';
+// From the drawer into Goals & Sales with a link target (GoalsTab go()); detail = { target }.
+export const OPEN_GOALS_TARGET = 'prospector:open-goals-target';
 
 async function call(businessId, path, { method = 'GET', body } = {}) {
   const res = await fetch(`/api/sales/${businessId}/goals${path}`, {
@@ -32,7 +34,7 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
     if (res.status === 500 && MIGRATION_PATTERN.test(data.error || '')) throw new NeedsMigrationError();
     throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   }
-  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/prospect-targets\/.+\/(promote|reject)$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
+  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/suggestions\/.+\/(accept|dismiss|snooze)$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
 }
 
@@ -61,6 +63,12 @@ export const goalsApi = {
   // Copy for Claude - markdown with no emails or phones (the route refuses otherwise). 0 AI calls.
   copyBundle: (id, type, recordId) => call(id, `/copy-bundle?${q({ type, id: recordId })}`).then(d => d.markdown),
   callNote: (id, noteId) => call(id, `/call-notes/${noteId}`).then(d => d.note),
+  // call-notes-targets-v1 Stage 3 - Tidy. suggestions = { suggestions (proposed), last_run };
+  // run = { ran, created, skipped } or { ran: false, reason, last_run }; force = "Tidy now". 0 AI, 0 Apollo.
+  suggestions: id => call(id, '/suggestions'),
+  runTidy: (id, { force = false, trigger = 'manual' } = {}) => call(id, '/tidy/run', { method: 'POST', body: { force, trigger } }),
+  acceptSuggestion: (id, sid) => call(id, `/suggestions/${sid}/accept`, { method: 'POST', body: {} }),
+  dismissSuggestion: (id, sid) => call(id, `/suggestions/${sid}/dismiss`, { method: 'POST', body: {} }),
 
   createStep: (id, goalId, body) => call(id, `/week/${goalId}/steps`, { method: 'POST', body }).then(d => d.step),
   updateStep: (id, stepId, body) => call(id, `/steps/${stepId}`, { method: 'PATCH', body }).then(d => d.step),

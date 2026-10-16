@@ -1,0 +1,922 @@
+ HOMELOVER PARTNER LANDSCAPE & PRIORITIES
+Research and analysis · September 2026 · Prepared by Jack 
+TIER 1 PARTNERS · A) PLATFORMS & PEOs · 4-STEP SEQUENCE (1 manual + 3 automated)
+Worked example: PerkSpot
+Sender: Jack Carlson, Head of GTM, HomeLover
+
+
+------------------------------------------------------------
+STEP 1 · MANUAL EMAIL · NEW THREAD · Day 1
+------------------------------------------------------------
+Subject: how PerkSpot clients can stand out in 2027
+
+Hi {{first_name}},
+PerkSpot believes savings are a stepping stone to things like a first home, and that's exactly what HomeLover helps employees reach. 
+With housing costs out of control, a home feels out of reach for most people, and the benefit platforms that help with housing are the ones that will stand out. 
+HomeLover gives your members down payment assistance, closing credits and a licensed loan officer that aren't available to the general public, at no cost to your clients. Would you be open to a quick chat, or could you point me to the right person for this?
+Best,
+Jack
+
+------------------------------------------------------------
+STEP 2 · AUTOMATED · REPLY TO THREAD · +2 days
+------------------------------------------------------------
+
+Subject: Re: how PerkSpot clients can stand out in 2027
+
+Hi {{first_name}},
+
+Curious how much of PerkSpot's catalog today helps members with their biggest financial goal?
+
+With housing the #1 thing on employees' minds, we're seeing it become the fastest-growing lifestyle benefit, and 3,000+ companies already have access to HomeLover. It's end to end, from renting to buying to refinancing, with deals not available to the general public and a strong partnership revenue stream for PerkSpot.
+
+Worth 15 minutes to see if it fits?
+
+Best,
+Jack
+
+(For all other companies, open Step 2 with: "How are you helping your clients stand out in 2027?"
+PerkSpot gets a different opener because its Step 1 subject already uses that line.)
+
+
+------------------------------------------------------------
+STEP 3 · AUTOMATED · NEW THREAD · +3 days · ATTACH ONE-PAGER
+------------------------------------------------------------
+
+Attachment: How_Your_Clients_Stand_Out_in_2027_HomeLover.pdf
+
+Subject: the benefit your clients are missing
+(Default for other companies: "how your clients stand out in 2027")
+
+Hi {{first_name}},
+
+What's the one benefit employees are asking for that most catalogs still don't offer? For most people right now, it's help with housing, and the platforms that add it first will be the ones clients choose.
+
+I attached a quick overview of how PerkSpot could offer that through HomeLover: down payment assistance, closing credits and a licensed loan officer for every employee, at $0 to your clients.
+
+Worth a look? Happy to walk you through it.
+
+Best,
+Jack
+
+
+------------------------------------------------------------
+STEP 4 · AUTOMATED · REPLY TO STEP 3 THREAD · +2 days
+------------------------------------------------------------
+
+Subject: Re: the benefit your clients are missing
+
+Hi {{first_name}},
+Wanted to bump this in case the overview got buried. One thing that surprises most platforms: HomeLover isn't a once-in-a-lifetime benefit. Renters use it to plan, buyers use it to close, and owners come back every month for their home wealth report and $0-cost refinancing when rates drop. That's year-round engagement your clients can point to.
+If it's worth a look for PerkSpot, I'd love 15 minutes. If someone else owns this, I'd be grateful for a pointer.
+Best,
+Jack
+
+
+
+
+
+BenefitHub  an executive-level perk for every BenefitHub member
+Hi {{first_name}},
+BenefitHub believes in bringing executive-level perks to everyday workers, and help buying a home has always been one of the biggest executive perks there is. With housing costs out of control, it's the thing employees stress about most, and the benefit platforms that help with housing are the ones that will stand out.
+HomeLover gives your members down payment assistance, closing credits and a licensed loan officer that aren't available to the general public, at no cost to your clients, with real partnership revenue behind it. Would you be open to a quick chat, or could you point me to the right person for this?
+Best,
+Jack
+Second message
+Hi {{first_name}},
+How are you helping your clients stand out in 2027? With housing the #1 thing on employees' minds, we're seeing it become the fastest-growing lifestyle benefit, and 3,000+ companies already have access to HomeLover. It's end to end, from renting to buying to refinancing, with deals not available to the general public and a strong partnership revenue stream for {{company}}. Worth 15 minutes to see if it fits?
+Best,
+Jack
+
+
+
+Hi {{first_name}},
+
+I've been digging into how the big benefit platforms handle housing, and BenefitHub's line about ""executive-level perks to everyday workers"" stuck with me. Help buying a home has always been an executive perk, yet it's missing from most catalogs, even though it's what employees stress about most. That's the gap we built HomeLover for: a $0 homeownership benefit (down payment help, closing credits and a licensed loan officer) that 3,000+ companies already have access to, with real partnership revenue behind it. I think it could be a genuine differentiator for you with clients. Would you be open to taking a closer look and telling me if I'm off base?
+
+
+PerkSpot   how PerkSpot clients can stand out in 2027
+
+Hi {{first_name}},
+PerkSpot believes savings are a stepping stone to things like a first home, and that's exactly what HomeLover helps employees reach.
+With housing costs out of control, a home feels out of reach for most people, and the benefit platforms that help with housing are the ones that will stand out.
+HomeLover gives your members down payment assistance, closing credits and a licensed loan officer that aren't available to the general public, at no cost to your clients.
+Would you be open to a quick chat, or could you point me to the right person for this?
+Best,
+Jack
+
+Corestream  "Subject: the missing piece in Corestream's catalog
+
+Hi {{first_name}},
+
+Congrats on the Lightyear investment. I saw part of it is going toward growing your partner ecosystem.
+
+Looking at your catalog, you've already covered student debt, loans and home insurance, which makes the absence of help actually buying the home stand out.
+
+That's the piece we built HomeLover for: a $0 homeownership benefit with down payment assistance, closing credits and a licensed loan officer, and no payroll deduction required. It feels like a clean "benefits without burden" fit, with partnership revenue on our side too.
+
+Worth a deeper look at this? If you're not the right person, I'd be grateful to be passed in the right direction.
+
+Thanks,
+
+Jack
+
+EBG (Entertainment Benefits Group)  "Subject: a bigger kind of perk for EBG
+
+Hi {{first_name}},
+
+EBG has become the go-to place for employees to find the fun stuff (tickets, travel, experiences), and "the best life has to offer" is a great way to put it.
+
+Going through your brands, I kept thinking that the biggest goal most employees have is a home of their own, and it's rarely something a perks program helps with.
+
+HomeLover is a $0 homeownership benefit (down payment help, closing credits, licensed loan officers) that could sit naturally in Beneplace's voluntary line. I think it would give your clients something their employees can't get anywhere else.
+
+Open to a closer look at this? 
+
+Thanks,
+
+Jack
+
+Access Development      "Subject: the biggest purchase your members make
+
+Hi {{first_name}},
+AD has built an impressive network, and your mission of adding value to every purchase lines up closely with what we do at HomeLover. We help members with the biggest purchase most of them will ever make, their home, through down payment assistance, closing credits and a licensed loan officer, at no cost to your clients.
+For Access, it's a meaningful new category your association and employer programs can offer, and for members it can mean thousands of dollars saved.
+Would you be open to a quick chat, or could you point me to the right person?
+Best,
+Jack
+
+
+1. SUMMARY
+
+HomeLover's current partners already cover all three employee income segments and both halves of the model: partners that bring employees in (distribution) and partners that deliver the service (data, agents, execution). The next step is scaling distribution. The fastest leverage is in places where one contract reaches many employers: perk marketplaces, PEOs, and benefits brokers. Enterprise consultants and HRIS marketplaces are the big long-cycle bets, so those relationships should start now.
+
+Key takeaways:
+• Employers are showing clear interest in housing benefits, but few employees have one today. In a 2024 survey, 25% of employers were considering housing benefits, and only 13% of employees currently get help renting or buying.
+• Competitors are already locking up channels. Foyer sells through Nayya, and Multiply Mortgage sells through Sequoia's PEO network. Distribution partnerships are the land grab.
+• HomeLover's edge over point solutions is that it covers renters, buyers and owners in one place, at $0 cost to the employer, with licensed professionals rather than coaching alone.
+
+
+2. CURRENT PARTNER MATRIX
+
+[Insert image: homelover-partner-matrix.png]
+
+How to read it: the columns are employee income segments. The top row is demand and distribution (who brings employees to HomeLover). The bottom row is tech and infrastructure (who delivers the service across every segment).
+
+Demand & distribution
+• Low income (renters to first-time buyers)
+  – Upside: rental rewards and a joint enterprise pitch (Boeing, Marriott, United Airlines), with a $1,000 closing-cost credit for renters. Stage: advanced, joint deck in build.
+  – Roots and other rental rewards companies: renter-to-owner funnel. Stage: early, targeting.
+• Medium income (mid-market workforce, credit and down payment assistance)
+  – Equifax: Equifax IQ credit bundle; custom employer DPA programs. Stage: warm, strong interest.
+  – One Digital: benefits broker reaching SaaS, FinTech and smaller enterprise clients. Stage: warm, leadership meeting being set.
+• High income (high earners, wealth and equity)
+  – Norton / Gen Digital (Moneyline): home reports, rate alerts and loan officer (LO) tools inside Norton Money Workplace. Stage: warm, exploratory calls.
+  – IronMount and wealth managers: Home Wealth Report, which lets clients tap home equity without liquidating investments. Stage: early.
+  – Sylvia: holistic financial advice; HomeLover would supply LO resources to their client base. Stage: early.
+• Across all segments
+  – Embrace: mortgage and benefit distribution. Intro and demo meeting scheduled.
+  – PerkSpot, BenefitHub, EBG: lifestyle and voluntary benefit marketplaces. Future channels.
+
+Tech & infrastructure (serves every segment)
+• Down Payment Resource: DPA program data.
+• HouseMe: homepage, dashboard and search UX. Active build; higher execution risk.
+• Clever Real Estate: vetted local agent network and closing execution. Lower risk.
+• Plaid: mortgage liability data. High cost; Norton's account connection is being evaluated as an alternative.
+• Hazard Hub: property hazard data. On hold due to API issues.
+
+Current gaps
+• Home savings: need a non-Foyer partner.
+• Demo readiness: Embrace and Norton demos rely on demo data and non-production features.
+• Service quality: Clever and HouseMe must meet enterprise standards (e.g., Walmart requirements).
+• Data costs: Plaid and Hazard Hub feeds are expensive and complex.
+
+
+3. MARKET CONTEXT
+
+• Employer demand: a January 2024 JW Surety Bonds survey (310 employers, 710 employees, reported by WorldatWork) found:
+  – 25% of employers were considering housing benefits.
+  – Employers already offering them planned about $6,201 per employee.
+  – More than a quarter of employees said they would switch jobs for this benefit, and nearly a third would take it over a raise.
+  – Only 13% of employees currently get employer help with housing.
+  Note: this data is from 2024, so cite it with the date.
+• Employer examples from 2026 coverage:
+  – BNY offers $6,500 in down payment assistance to eligible US employees earning $100K or less.
+  – Fannie Mae offers grants of up to $10,000.
+  – Freddie Mac offers $15,000 for first-time buyers.
+  – Amazon has a mortgage program with US Bank that counts stock and RSUs as income.
+• Competitive moves:
+  – Foyer (home savings) sells through the benefits navigation platform Nayya and is working with the National Association of Realtors to push for tax-advantaged homeownership savings accounts.
+  – Multiply Mortgage is available through Sequoia's PEO network.
+  – ORO Impact raised $3M in January 2026 (Slauson & Co., Northwestern Mutual Future Ventures) for a renter/buyer/owner housing benefit, with Framework as its homebuyer education partner.
+• Policy:
+  – Florida's proposed Homebuyer Workforce Tax Credit (HB 311 / SB 1672) would give employers a 100% tax credit for 1,000–5,000 toward a first-time buyer's down payment, for employees at or below 120% of area median income. It was moving through committees as of February 2026; final status needs to be confirmed.
+  – A White House idea to allow 401(k) money for down payments was floated in January 2026 but has not materialized.
+
+
+4. FUTURE LANDSCAPE: WHERE EMPLOYERS LOOK
+
+When employers search "employer housing benefits," "employee housing assistance" or "employer assisted housing (EAH)," results fall into five categories. Each is a partnership opportunity.
+
+4.1 Corporate perk platforms and marketplaces (top priority)
+• Who: BenefitHub, PerkSpot, Access Development, EBG.
+• What they are: employee perk and discount portals sold to employers, usually with single sign-on.
+• Angle: be the featured housing module inside their directory, as a white-label or co-branded vendor. Most existing mortgage listings are generic rate discounts. HomeLover offers an end-to-end benefit: DPA search, rental rewards, closing credits and a licensed LO and agent.
+• Economics: a listing or referral fee, or a revenue share, per closed transaction.
+
+4.2 HR and benefits research and thought leadership
+• Who: WorldatWork, National Housing Conference (NHC), Local Housing Solutions / Housing Solutions Lab, NAR.
+• Angle: co-authored research on the ROI of employer-assisted housing; webinars and conference speaking slots; EAH implementation toolkits for HR leaders that feature HomeLover.
+
+4.3 Tax, legal, accounting and consulting advisors
+• Who: KPM CPAs, Mauldin & Jenkins, HoganTaylor, Liebert Cassidy Whitmore (LCW); consultants such as WTW and Aon.
+• Angle: when these firms help employers structure down payment contributions or forgivable loans, HomeLover is the tech and execution layer. Co-host CPE webinars and set up referral relationships.
+
+4.4 Direct EAH software vendors and point solutions (co-opetition)
+• Who: ORO Impact, Benevate. (The original research also listed Crib Equity and Gerald. Gerald appears to be a cash-advance app, not an EAH vendor, and Crib Equity needs verification.)
+• Angle: many of these handle only one piece (buying, coaching or education). HomeLover can offer fulfillment (licensed LOs, the agent network, closing credits) as a white-label backend, or partner where they lack a real estate transaction layer.
+
+4.5 Government agencies and housing finance agencies
+• Who: state HFAs, California HCD, local housing authorities, states with employer tax credits.
+• Angle: stack state and municipal DPA with employer contributions for key workforce sectors (teachers, healthcare, municipal staff). HomeLover's DPA search already covers 2,600+ programs, which makes it the natural tool for stacking. Longer-term: public-private administration of public employee housing programs.
+
+
+5. ADDITIONAL CHANNELS (NOT IN ORIGINAL SEARCH RESEARCH)
+
+These don't rank for housing-benefit searches, but they control access to employers:
+
+• PEOs (Justworks, Insperity, TriNet, Sequoia): one partnership reaches thousands of small and mid-size employers. Multiply Mortgage has already done this through Sequoia, which proves the channel works.
+• Mid-market benefits brokers (Gallagher, Lockton, USI, NFP): the same motion as One Digital, repeated.
+• HRIS and payroll marketplaces (ADP Marketplace, Workday, Rippling, Gusto): app-store style listings next to where employers run benefits. Long cycle, huge reach.
+• Benefits administration and navigation (bswift, Businessolver, Nayya): where employees choose benefits during open enrollment. Foyer is already inside Nayya.
+• Financial wellness and earned wage access (Brightside, Financial Finesse, DailyPay, Payactiv): already selling "financial stress" solutions to HR. Housing is the biggest financial stressor, so HomeLover is a natural add-on or referral.
+• Membership organizations and unions: already a named HomeLover audience ("employers and membership organizations"). Member-benefit programs are a direct channel.
+• Housing counseling agencies (Framework, HUD-approved counselors): homebuyer education partners that also add credibility with lenders and DPA programs.
+• Anchor employers as case studies (hospitals, universities, school districts, cities): these organizations have run EAH programs for years and make strong proof points.
+
+
+6. POTENTIAL PARTNER PRIORITY MATRIX
+
+[Insert image: homelover-potential-partner-matrix.png]
+
+Axes: reach (employees accessible) vs. time to close. Quadrant placement is a working judgment, not data.
+
+1 · Priority now (large reach, shorter cycle)
+• PerkSpot, BenefitHub, EBG
+• Access Development
+• PEOs: Justworks, Insperity, TriNet
+• Mid-market brokers: Gallagher, Lockton, USI, NFP
+
+2 · Big bets (huge reach, long cycle; start relationships now)
+• WTW, Aon, Mercer
+• HRIS and payroll marketplaces: ADP, Workday, Rippling, Gusto
+• Benefits admin and navigation: bswift, Businessolver, Nayya
+• Financial wellness and EWA: Brightside, Financial Finesse, DailyPay, Payactiv
+
+3 · Quick wins (smaller direct reach, fast; credibility and inbound leads)
+• WorldatWork, NHC: joint webinar
+• CPA and tax firms: KPM, Mauldin & Jenkins, HoganTaylor
+• Employment law firms: LCW
+• Membership organizations and unions
+
+4 · Build and watch (longer-term or strategic)
+• State HFAs and state tax-credit programs (Florida HB 311, Illinois)
+• ORO Impact, Benevate (co-opetition)
+• Housing counseling agencies (Framework)
+• Anchor employers as case studies
+
+
+7. RECOMMENDED NEXT STEPS
+
+Next 30 days
+• Perk marketplaces: send a co-branded deck to PerkSpot, BenefitHub, EBG and Access Development that positions HomeLover as an end-to-end benefit, not a rate discount.
+• PEOs: build a target list (Justworks, Insperity, TriNet) and use Multiply/Sequoia as the proof point that the channel works.
+• One Digital: close the leadership meeting, then turn it into a repeatable broker playbook for Gallagher, Lockton, USI and NFP.
+• Thought leadership: pitch WorldatWork or NHC on a webinar, "Structuring Tax-Advantaged Housing Benefits in 2026."
+
+Next 60–90 days
+• Advisors: share the GivingGo + HomeLover tax framework with 2–3 CPA and law firms to get a compliance review and referral agreement.
+• Consultants: identify HR practice leads at WTW, Aon and Mercer, and request intro meetings with Seif.
+• HR tech: scope the listing requirements for the ADP Marketplace and Rippling app stores.
+• Public sector: confirm the status of Florida HB 311 and map the state programs HomeLover can stack with employer money.
+
+Ongoing
+• Close the current gaps: a non-Foyer home savings partner, production-ready demos for Embrace and Norton, and service standards for Clever and HouseMe.
+• Track competitor channel deals (Foyer, Multiply, ORO).
+
+
+8. NOTES ON THE ORIGINAL RESEARCH
+
+• The "25% of employers considering housing benefits" stat is from a January 2024 JW Surety Bonds survey reported by WorldatWork. It is not WorldatWork's own research, and it is two years old.
+• The claim that perk marketplaces reach "90%+ of the Fortune 500" was not verified. Use each company's own published figures before putting it in external materials.
+• Gerald appears to be a consumer cash-advance app, not an EAH vendor. Crib Equity could not be verified.
+• GivingGo is referenced as HomeLover's tax-advantaged structure. Confirm the naming and details internally before external use.
+
+
+9. SOURCES
+
+• WorldatWork, "Employers Explore Offering Housing Benefits to Workers" (Mar 2024): https://worldatwork.org/publications/workspan-daily/employers-explore-offering-housing-benefits-to-workers
+• HR Brew, employer-sponsored housing benefits (Apr 15, 2026): https://www.hr-brew.com/stories/2026/04/15/employer-sponsored-housing-benefits
+• Fortune, housing crisis and employer down payment assistance (Apr 16, 2026): https://fortune.com/2026/04/16/housing-crisis-employer-down-payment-assistance/
+• WLRN/WUSF, Florida employer homebuyer tax credit bill (Feb 25, 2026): https://www.wlrn.org/government-politics/2026-02-25/could-boss-help-buy-home-florida-bill-aims-make-that-happen
+• Coverager, Northwestern Mutual Future Ventures backs Oro (Jan 30, 2026): https://coverager.com/northwestern-mutual-future-ventures-backs-oro/
+• Metropolitan Planning Council, IHDA tax credits for employer-assisted housing: https://archive.metroplanning.org/news/3010/IHDA-approves-tax-credits-to-support-employer-assisted-housing-programs
+• HomeLover Employer Benefit Overview (internal one-pager)
+
+
+HOMELOVER PARTNER OUTREACH LIST
+Companies to contact and titles to look for · September 2026
+(* = added beyond the original research. Confirm each company's fit before outreach.)
+
+
+PART 1: COMPANIES TO CONTACT
+
+TIER 1 · PRIORITY NOW (large reach, shorter sales cycle)
+
+Perk marketplaces
+1. PerkSpot
+2. BenefitHub
+3. EBG (Entertainment Benefits Group)
+4. Access Development
+5. Perks at Work (Next Jump)*
+6. Beneplace*
+
+PEOs (professional employer organizations)
+7. Justworks*
+8. Insperity*
+9. TriNet*
+10. ADP TotalSource*
+11. Sequoia* (already carries Multiply Mortgage, so check for exclusivity first)
+
+Mid-market benefits brokers
+12. Gallagher*
+13. Lockton*
+14. USI*
+15. NFP*
+16. Marsh McLennan Agency*
+17. HUB International*
+18. Alera Group*
+(OneDigital is already in progress; use it as the playbook for this group.)
+
+
+TIER 2 · BIG BETS (huge reach, long cycle; start now)
+
+Enterprise benefits consultants
+19. WTW (Willis Towers Watson)
+20. Aon
+21. Mercer
+22. Segal* (strong with unions and the public sector)
+
+HR, payroll and HRIS app marketplaces
+23. ADP Marketplace*
+24. Workday Marketplace*
+25. Rippling App Shop*
+26. Gusto*
+27. Paylocity*
+
+Benefits administration and enrollment platforms
+28. Alight*
+29. bswift*
+30. Businessolver*
+31. Nayya* (Foyer already sells here; pitch HomeLover as broader than home savings)
+
+Financial wellness and earned wage access (EWA) apps
+32. Brightside*
+33. Financial Finesse*
+34. DailyPay*
+35. Payactiv*
+
+
+TIER 3 · QUICK WINS (credibility and inbound leads)
+
+HR research and thought leadership
+36. WorldatWork
+37. National Housing Conference (NHC)
+38. SHRM*
+39. Local Housing Solutions (NYU Furman Center)
+40. National Association of Realtors (NAR)
+
+CPA and tax firms
+41. KPM CPAs & Advisors
+42. Mauldin & Jenkins
+43. HoganTaylor
+
+Employment law firms
+44. Liebert Cassidy Whitmore (LCW)
+
+Membership organizations and unions
+45. Union Plus (AFL-CIO)*
+46. NEA Member Benefits*
+47. AFT (American Federation of Teachers)*
+
+
+TIER 4 · BUILD & WATCH (longer-term or strategic)
+
+Public sector
+48. NCSHA (National Council of State Housing Agencies)*: one entry point to every state housing finance agency
+49. Florida Housing Finance Corporation* (tied to the proposed employer tax credit, HB 311)
+50. IHDA, Illinois Housing Development Authority*
+51. CalHFA / California HCD
+
+Competitors that could also be partners
+52. Oro Impact
+53. Benevate
+
+Housing counseling and homebuyer education
+54. Framework*
+55. NeighborWorks America*
+
+
+FOLLOW-UPS ON CURRENT PARTNERS
+• Upside: finish the joint deck; confirm target accounts (Boeing, Marriott, United)
+• Embrace: intro and demo meeting (use a production-ready demo)
+• OneDigital: set the leadership meeting
+• Norton / Gen Digital (Moneyline): scope the integration and account connection
+• Equifax: define the Equifax IQ bundle and the employer DPA program
+• IronMount and wealth managers: turn intro meetings into a pilot
+• Sylvia: explore the integration
+• Roots and other rental rewards companies: first outreach
+• Home savings partner (non-Foyer): candidates still need research
+
+
+PART 2: PERSONAS AND TITLES TO LOOK FOR
+
+Perk marketplaces (PerkSpot, BenefitHub, EBG, Access, etc.)
+• Economic buyer: VP / Head of Partnerships; VP Business Development
+• Champion: Director of Merchant / Vendor Partnerships; Partner Manager; Category Manager (financial wellness, if the role exists)
+• Influencer: VP Product or Product Manager, Marketplace
+• Pitch: HomeLover is a high-value featured vendor that adds housing to their catalog at no cost to their employer clients.
+
+PEOs
+• Economic buyer: VP / Head of Benefits Strategy; VP Product, Benefits
+• Champion: Director of Voluntary Benefits; Director of Partner Programs / Strategic Partnerships
+• Influencer: Chief People or Benefits Officer at the PEO
+• Pitch: add a housing benefit for all client employers with one contract, at $0 cost.
+
+Mid-market benefits brokers
+• Economic buyer: Regional or National Practice Leader, Employee Benefits
+• Champion: Voluntary Benefits Practice Leader; Director of Carrier & Vendor Relations; Benefits Consultant / Account Executive
+• Influencer: Innovation or Point-Solutions Lead
+• Pitch: a $0 benefit that makes the broker look good at renewal, with a referral or revenue share.
+
+Enterprise consultants (WTW, Aon, Mercer, Segal)
+• Economic buyer: Health & Benefits Practice Leader; Managing Director, Benefits Consulting
+• Champion: Financial Wellbeing Practice Leader; Voluntary & Affinity Benefits Leader
+• Influencer: Vendor / Market Research team (the people who run vendor evaluations)
+• Pitch: get into their vendor catalog and RFP shortlists.
+
+HR, payroll and HRIS app marketplaces
+• Economic buyer: Head of Partner Ecosystem / Marketplace
+• Champion: Partner Manager, Technology Partnerships; Director of Integrations / ISV Partnerships
+• Influencer: Product Manager, Benefits module
+• Pitch: an app listing plus an integration. Expect technical requirements (APIs, security review).
+
+Benefits admin and enrollment platforms (Alight, bswift, Businessolver, Nayya)
+• Economic buyer: VP Partnerships; VP Product, Benefits Marketplace
+• Champion: Director of Strategic Alliances; Partner Manager
+• Pitch: be a benefit employees can choose during open enrollment.
+
+Financial wellness and EWA apps
+• Economic buyer: VP / Head of Partnerships; Chief Revenue Officer (smaller companies)
+• Champion: Director of Business Development; Head of Product (for integrations)
+• Pitch: housing is the biggest financial stressor, so offer HomeLover as a referral or add-on inside their app.
+
+HR research and thought leadership
+• Content / events: Director of Events or Conference Programming; Editor, Workspan (WorldatWork)
+• Partnerships: Director of Sponsorships / Corporate Partnerships
+• Research: Director of Research; Policy Director (NHC)
+• Pitch: a webinar, speaking slot or co-authored research. Sponsorship budget may be required.
+
+CPA and tax firms
+• Economic buyer: Tax Partner; Managing Partner
+• Champion: Partner or Director, Compensation & Benefits Tax; Director, Employee Benefit Plan Services
+• Pitch: HomeLover is the execution layer when their clients set up down payment assistance, with CPE webinars and referrals.
+
+Employment law firms
+• Champion: Partner, Employee Benefits / ERISA; Partner, Labor & Employment (public-sector clients for LCW)
+• Pitch: a compliance review of the program structure, then client referrals.
+
+Membership organizations and unions
+• Economic buyer: Executive Director, Member Benefits; VP Member Programs
+• Champion: Director of Member Benefits; Director of Partnerships / Affinity Programs
+• Pitch: a $0 homeownership benefit for members.
+
+Public sector (HFAs, NCSHA)
+• Economic buyer: Executive Director; Director of Homeownership Programs
+• Champion: Down Payment Assistance Program Manager; Director of Policy / Government Affairs (NCSHA)
+• Pitch: combine state DPA with employer money through HomeLover's DPA search and execution.
+
+Competitors that could also be partners (Oro Impact, Benevate)
+• Founder / CEO; Head of Partnerships
+• Pitch: fulfillment or white-label (licensed LOs, agent network, closing credits).
+
+Housing counseling (Framework, NeighborWorks)
+• VP / Director of Partnerships; Director of Homeownership Programs
+• Pitch: an education partner for HomeLover members; their credibility with lenders and DPA programs.
+
+
+QUICK RULES FOR FINDING THE RIGHT PERSON
+• At large companies (marketplaces, consultants, HR tech), start with the Director / Partner Manager. VPs rarely take cold intros but will take one from their own team.
+• At small companies (EWA apps, point solutions, PEO startups), go straight to the CEO / Co-founder or Head of Partnerships.
+• For brokers and consultants, the voluntary benefits or financial wellbeing leader is usually the best champion. Health & benefits leaders focus on medical.
+• LinkedIn / Apollo search keywords: "partnerships," "voluntary benefits," "financial wellness," "financial wellbeing," "marketplace," "alliances," "vendor relations," "member benefits."
+
+
+
+HOMELOVER PARTNER CADENCE: MARKETPLACES & BENEFITS CONSULTANTS
+PerkSpot · BenefitHub · Access Development · EBG · WTW · Aon
+September 2026
+
+How to use this:
+• Section A lists what changed from the draft and why. Read it first.
+• Section B is the master 4-step cadence for the perk marketplaces (PerkSpot, BenefitHub, Access, EBG).
+• Section C is a separate version for the consultants (WTW, Aon). Their business model is different.
+• Section D has company-specific swap-ins (subject line, opener, a Step 3 line, a close line) for each company.
+Anything in [brackets] needs your input before sending.
+
+
+==================================================
+A. WHAT CHANGED FROM THE DRAFT, AND WHY
+==================================================
+
+1. "Over 25,000 companies already offer HomeLover" → changed to "3,000+ employers."
+   The one-pager says 3,000+ employers. 25,000+ is the number of realtors in the network.
+
+2. "Platforms like PerkSpot and EBG are already live with it" → removed.
+   In our partner notes these are future channels, not live partners. It also backfires if the email goes to PerkSpot or EBG themselves. If any marketplace really is live, name it by hand.
+
+3. "The only end-to-end platform" → changed to "end-to-end."
+   Oro Impact pitches a renter/buyer/owner housing benefit too. "Only" invites pushback.
+
+4. "Fastest-growing lifestyle benefit" → replaced with sourced stats.
+   This couldn't be verified. The replacement is a 2024 survey: 25% of employers considering housing benefits, but only 13% of employees getting help today.
+
+5. "$26,000 average combined savings" → removed.
+   Nothing in the one-pager supports it. The real figures are listed separately instead:
+   • $4,173 in closing credits
+   • $10,700 back when selling
+   • $18,000 average down payment assistance award
+
+6. "Why be the only major consultant or platform without…" → removed.
+   The premise isn't true, and it reads as pushy to a partnerships lead.
+
+7. Referral fee language → softened to "partnership revenue." PLEASE CHECK WITH SEIF / COUNSEL.
+   Paying a third party a fee per closed mortgage or real estate transaction can raise RESPA Section 8 issues. Section 8 restricts referral fees tied to settlement services. Common compliant structures are flat marketing, listing or sponsorship fees. Confirm HomeLover's actual structure before promising "referral fees on originations." (Not legal advice; this is a flag to verify.)
+
+8. WTW and Aon get their own version.
+   Consultants advise employers and typically can't take vendor revenue, since it would create conflicts of interest. Pitching "referral yield" to them can end the conversation. Their version pitches client value and getting into vendor evaluations.
+
+
+==================================================
+B. MASTER CADENCE: PERK MARKETPLACES
+==================================================
+
+--- STEP 1 · Cold email (new thread) ---
+
+Subject: housing benefits for {{company.name}} clients
+
+Hi {{first_name}},
+
+[COMPANY OPENER from Section D]
+
+Housing is the #1 money worry employees have right now. Employers are starting to respond: 25% say they're considering a housing benefit, but only 13% of employees get any help today.
+
+HomeLover is an end-to-end homeownership and housing benefit, already available to employees at 3,000+ employers. Your clients' employees get perks the general public doesn't:
+
+• $18,000 average down payment assistance award, searched across 2,600+ programs
+• $4,173 average in closing credits
+• $0 cost for every tool, expert and refinance
+• $0 cost to your clients, live in one day, no IT or HR lift
+
+For {{company.name}}, it adds a high-value category to your catalog and a new partnership revenue stream.
+
+Open to a quick 10-minute chat about adding it to your catalog?
+
+Best,
+Jack
+
+
+--- STEP 2 · Follow-up (reply to thread, day 3–4) ---
+
+Subject: Re: housing benefits for {{company.name}} clients
+
+Hi {{first_name}},
+
+Quick follow-up. Most mortgage perks on marketplaces today are a retail loan officer discount. That helps someone who's already buying, and nobody else.
+
+HomeLover covers the whole population, renters through owners:
+
+• Renters: live pre-qualification, real rent vs. buy math, and AI matching across 2,600+ down payment programs
+• Buyers: a matched local loan officer and realtor, plus closing credits from a network of 25,000+ realtors and 400+ loan officers
+• Owners: monthly home equity tracking, 0-costrefinancealerts,andpre-negotiatedagentcredits(10,700 average back when they sell)
+
+Free for your clients, no integration, and a new revenue line for {{company.name}}.
+
+Worth 15 minutes to walk through the partnership structure?
+
+Thanks,
+Jack
+
+
+--- STEP 3 · Value angle (new thread, day 8–10) ---
+
+Subject: [COMPANY SUBJECT from Section D]
+
+Hi {{first_name}},
+
+Over the past decade home prices rose 43% while wages rose 12%, and interest costs on the same house are up 76%. Budgeting apps and discounts can't close that gap. Housing math stopped working.
+
+[COMPANY STEP 3 LINE from Section D]
+
+What adding HomeLover to {{company.name}} looks like:
+
+• Branded for each client: a co-branded experience under your clients' names, live in one day
+• Real dollars for members: $18,000 average down payment assistance, $4,173 in closing credits, $10,700 back when they sell
+• Partnership revenue: [structure confirmed with Seif, e.g., flat listing or marketing fee / rev share on eligible services]
+
+Free for a short call later this week?
+
+Best,
+Jack
+
+
+--- STEP 4 · Break-up / myth buster (reply to Step 3 thread, day 14–16) ---
+
+Subject: Re: [same as Step 3]
+
+Hi {{first_name}},
+
+One last note. The most common question we get from perk platforms is whether employees use a housing benefit outside open enrollment. They do, because housing decisions happen year-round. Here's what we hear most:
+
+• "I need 20% down." Conforming loans start at 3–5% down, and we match people to local assistance programs.
+• "Closing costs will wipe me out." Our realtor and lender network pays thousands in closing credits.
+• "I already own." Owners track their home wealth monthly and refinance at $0 cost when rates drop.
+
+We handle execution, licensing and support. {{company.name}} offers a standout benefit and shares in the partnership revenue.
+
+[COMPANY CLOSE LINE from Section D]
+
+If the timing's off, no worries. Grab time whenever it makes sense: [Calendar link]
+
+Best,
+Jack
+
+
+==================================================
+C. CONSULTANT VERSION: WTW & AON
+==================================================
+Target: Financial Wellbeing / Voluntary Benefits Practice Leader, or Health & Benefits Consultant.
+Ask: get HomeLover into client benefit strategy discussions and vendor evaluations. Don't mention revenue share.
+
+--- STEP 1 · Cold email ---
+
+Subject: a $0 housing benefit for your clients
+
+Hi {{first_name}},
+
+[COMPANY OPENER from Section D]
+
+The gap is housing. Only 13% of employees get any employer help with housing, and it's their #1 money worry.
+
+HomeLover is an end-to-end homeownership benefit that clients can add at $0 cost, live in one day, with no HR or IT lift. Employees get:
+
+• $18,000 average down payment assistance award (2,600+ programs searched)
+• $4,173 average in closing credits and $10,700 back when they sell
+• A matched, state-licensed loan officer and realtor. Concierge, not a call center.
+
+Would it be useful to have this on your radar for clients asking about financial wellbeing or retention? Happy to do a 15-minute walkthrough.
+
+Best,
+Jack
+
+--- STEP 2 · Follow-up (reply) ---
+
+Subject: Re: a $0 housing benefit for your clients
+
+Hi {{first_name}},
+
+Quick follow-up with the question consultants usually ask us first: how does this fit next to existing financial wellness vendors?
+
+• Complements, doesn't overlap: most wellness vendors coach on budgeting. We fund and execute the actual home purchase, refinance or sale.
+• Covers the whole workforce: renters, first-time buyers and owners, not just active buyers.
+• Supports employer-funded programs: if a client wants to add their own down payment match, we handle the execution. [Confirm GivingGo / tax structure language with Seif before mentioning.]
+
+Glad to send a one-pager you can share with clients.
+
+Thanks,
+Jack
+
+--- STEP 3 · Insight (new thread) ---
+
+Subject: housing and the employee value proposition
+
+Hi {{first_name}},
+
+[COMPANY STEP 3 LINE from Section D]
+
+In a 2024 survey, more than a quarter of employees said they'd switch jobs for a housing benefit, and nearly a third would take one over a raise. Very few employers offer one yet, which makes it a differentiator for your clients.
+
+Open to a short call to compare notes on what your clients are asking for?
+
+Best,
+Jack
+
+--- STEP 4 · Close (reply) ---
+
+Subject: Re: housing and the employee value proposition
+
+Hi {{first_name}},
+
+I'll leave it here. If a client asks about housing, retention in high-cost markets, or return-to-office incentives, we're glad to support you on the evaluation, with no cost to them.
+
+[Calendar link]
+
+Best,
+Jack
+
+
+==================================================
+D. COMPANY-SPECIFIC SWAP-INS
+==================================================
+
+--------------------------------------------------
+PERKSPOT
+--------------------------------------------------
+Research:
+• Mission: "To help employees save more so they can do more of what they love."
+• Careers page: savings as a stepping stone toward "a first home."
+• 2026 focus: personalization at scale (March 2026 blog). Calls itself a voluntary benefit tagged "financial wellness."
+• Scale: "more than 22 million employees" (About page) and 1,300+ customers (Mar 2026). Acquired Perkopolis (Canada) in 2025.
+• No mortgage or home-buying perk found.
+
+Step 1 opener:
+Your team talks about savings as a stepping stone to things like a first home. We'd like to help PerkSpot members actually get there.
+
+Step 3 subject: the biggest savings on PerkSpot
+
+Step 3 line:
+PerkSpot's mission is helping employees save more so they can do more of what they love. For most of your 22M+ members, the biggest savings they'll ever see is on their home: an $18,000 average down payment award, $4,173 at closing, and $10,700 back when they sell.
+
+Step 4 close line:
+It also gives your personalization engine a new signal to work with. Renters, first-time buyers and owners each get a different offer.
+
+Titles: VP / Director of Merchant or Vendor Partnerships; Partner Manager; VP Product (marketplace).
+
+--------------------------------------------------
+BENEFITHUB
+--------------------------------------------------
+Research:
+• Mission: "to help millions of people improve the quality of their daily lives through accessing the world's largest selection of personally relevant benefits."
+• Positioning: "executive-level perks to everyday workers"; AI-driven personalization; carrying the load for stretched HR teams (CEO Jeff Litvack).
+• Named Employee Benefits Platform of the Year by HRM Outlook, second year in a row (Feb 2026).
+• Scale: 17,000+ client organizations, 10M+ employees, 36% of Fortune 500.
+• Acquisitive: bought Abenity (2024) and says it is seeking more voluntary benefit and engagement businesses.
+• Already sells auto & home insurance. No mortgage or home-buying partner found.
+
+Step 1 opener:
+Congrats on Platform of the Year again. BenefitHub's promise of "executive-level perks to everyday workers" is exactly where housing fits.
+
+Step 3 subject: an executive-level perk for every BenefitHub member
+
+Step 3 line:
+Executives have always had help with housing: relocation packages, mortgage programs that count equity comp, private advisors. HomeLover brings that level of help to every employee across BenefitHub's 17,000+ client organizations, with no added work for HR teams.
+
+Step 4 close line:
+It also pairs naturally with your auto & home insurance offering. Every new homeowner needs a policy.
+
+Titles: VP Partnerships / Business Development; Director of Vendor Partnerships; VP Product.
+
+--------------------------------------------------
+ACCESS DEVELOPMENT
+--------------------------------------------------
+Research:
+• Mission: "To empower people to experience more by adding value to every purchase."
+• Tagline: "Saving the world one affinity group at a time."
+• Positioning: "America's largest loyalty discount network." White-label programs for associations, loyalty and rewards, and employee perks.
+• Scale: 1,000+ organizations, 10M+ members, over a million merchant providers.
+• No housing perk found. No 2025–2026 news found.
+
+Step 1 opener:
+Access adds value to every purchase your members make. We'd like to help with the biggest one most of them will ever make: a home.
+
+Step 3 subject: adding value to your members' biggest purchase
+
+Step 3 line:
+A discount on dinner is nice. $4,173 in closing credits and an $18,000 average down payment award change a member's life, and they reflect well on every association, loyalty and employer program built on Access.
+
+Step 4 close line:
+It fits your white-label model: HomeLover runs under your clients' brands, not ours.
+
+Titles: VP / Director of Merchant Partnerships; VP Business Development; Director of Product (Employee Perks or Associations).
+Note: Access's association and affinity clients also map to the membership organizations segment.
+
+--------------------------------------------------
+EBG (ENTERTAINMENT BENEFITS GROUP)
+--------------------------------------------------
+Research:
+• Taglines: "We Deliver The Best Life Has To Offer" and "Connecting People To What They Want."
+• Brands: TicketsatWork, Plum Benefits, Working Advantage, Beneplace, Undercover Tourist. Travel and entertainment focus; closed user group network; white-label.
+• Scale: "40,000+ corporate clients," "100+ million combined reach."
+• Acquisitions: Beneplace (2019), Sparkfly Perks (2022). Beneplace's voluntary suite has included auto & home insurance and financial services (confirm it's current).
+• No housing perk found.
+• Note: Beneplace is an EBG brand, so remove it as a separate target from the outreach list and pitch it through EBG.
+
+Step 1 opener:
+EBG delivers the best life has to offer across 40,000+ corporate clients. For most employees, a better life starts with a home they can afford.
+
+Step 3 subject: the best life has to offer starts at home
+
+Step 3 line:
+Tickets and travel are what employees look forward to. A home is what they're working toward. HomeLover gives EBG a way into that bigger goal, through Beneplace's voluntary benefits line or across your closed user group network.
+
+Step 4 close line:
+Happy to start with a single brand (Beneplace or Working Advantage) as a pilot if that's easier.
+
+Titles: VP / Director of Partnerships at EBG; head of Beneplace (voluntary benefits); Director of Vendor or Supplier Relations.
+
+--------------------------------------------------
+WTW (uses Section C)
+--------------------------------------------------
+Research:
+• Tagline: "perspective that moves you."
+• 2025 Benefit Trends Survey (Sept 2025, 5,583 employers): employers are prioritizing "emotional and financial wellbeing and family benefits," but there's "a disconnect between employer offerings and employee expectations."
+• Tools: Strategy Navigator (includes which benefits to offer as voluntary); Benefits Insights (AI-driven).
+• No housing offering found.
+
+Step 1 opener:
+WTW's latest Benefit Trends Survey found a disconnect between what employers offer and what employees expect, even as financial wellbeing climbs the priority list.
+
+Step 3 line:
+When clients use Strategy Navigator to decide which benefits to offer as voluntary, housing is usually missing from the options, even though it's the biggest line in most employees' budgets.
+
+Titles: Financial Wellbeing Practice Leader; Voluntary & Affinity Benefits Leader; Senior Director, Health & Benefits.
+
+--------------------------------------------------
+AON (uses Section C)
+--------------------------------------------------
+Research:
+• Tagline: "Aon is in the Business of Better Decisions."
+• Purpose: "to shape decisions for the better — to protect and enrich the lives of people around the world."
+• 2026 focus: Human Capital Trends Study (2,300+ leaders) on AI readiness and the employee value proposition.
+• Couldn't load Aon's voluntary benefits page, so its current voluntary lineup is unverified.
+
+Step 1 opener:
+Aon's purpose is helping clients make better decisions that enrich people's lives. Few decisions matter more to an employee than buying a home, and very few employers help with it today.
+
+Step 3 line:
+Your 2026 Human Capital Trends work puts the employee value proposition front and center. Housing is one of the few benefits that moves an EVP in high-cost markets, and one of the few that costs the employer nothing.
+
+Titles: Voluntary Benefits Practice Leader; Financial Wellbeing Leader; Health Solutions Senior Consultant.
+
+
+==================================================
+E. SEND NOTES
+==================================================
+• Timing: Step 1 on day 1; Step 2 on day 3–4; Step 3 on day 8–10 (new thread); Step 4 on day 14–16.
+• Before sending, confirm with Seif:
+  – the partnership revenue structure (and the RESPA review)
+  – GivingGo / tax structure language
+  – whether any marketplace is already live and can be named
+• Stats to keep dated if asked: the 25% / 13% / "switch jobs" figures are from a JW Surety Bonds survey (Jan 2024) reported by WorldatWork. Everything else is from the HomeLover Employer Benefit Overview.
+
+
+SOURCES
+• PerkSpot About: https://www.perkspot.com/about/
+• PerkSpot Careers: https://www.perkspot.com/careers/
+• Lincoln International, Perkopolis sold to PerkSpot: https://www.lincolninternational.com/transactions/perkopolis-has-been-sold-to-perkspot-a-portfolio-company-of-susquehanna-growth-equity/
+• BenefitHub, Platform of the Year 2026: https://www.benefithub.com/news/employee-benefits-platform-of-the-year-2026
+• BenefitHub, Abenity acquisition: https://www.benefithub.com/news/benefithub-announces-acquisition-of-abenity
+• Access Development About: https://www.accessdevelopment.com/about-access/
+• EBG: https://www.ebgsolutions.com/
+• EBG acquires Beneplace: https://bp.beneplace.com/blog/ebg-acquires-beneplace/
+• EBG acquires Sparkfly Perks: https://www.businesswire.com/news/home/20220524005082/en
+• WTW 2025 Benefit Trends Survey: https://www.wtwco.com/en-gb/news/2025/09/employers-prioritise-core-benefits-and-wellbeing-but-the-disconnect-with-employee-needs-persists
+• Aon: https://www.aon.com/
+• WorldatWork (JW Surety survey): https://worldatwork.org/publications/workspan-daily/employers-explore-offering-housing-benefits-to-workers
+
+
+HOMELOVER PARTNER OUTREACH: 5 BASELINE EMAILS FOR REVIEW
+Prepared by Jack · September 2026
+
+What this is:
+These are the five strongest emails from the partner cadence. Emails 1–4 are the perk marketplace sequence, each shown fully filled in for a real target so you can see the personalization. Email 5 is the version for benefits consultants.
+
+What I'd like your take on:
+1. Tone and length: is this the right voice for partnerships leads?
+2. Proof points: are these the right stats to lead with?
+3. Revenue language: how should we describe the partner economics? (See the open question at the bottom.)
+
+
+
+
+
+
+OPEN QUESTIONS FOR REVIEW
+
+1. Partner economics: how do we describe what the partner earns? The emails say "partnership revenue" for now. Paying per closed mortgage or home sale can raise RESPA Section 8 issues, so a flat listing, marketing or sponsorship fee may be the safer structure. Needs a decision and a compliance check.
+
+2. Live partners: is any marketplace already live that we can name as proof? If so, it would strengthen Email 1.
+
+3. Consultants: I don't mention revenue share to WTW or Aon, since consultants typically can't take vendor revenue. Agree?
+
+4. Stats: the 25% / 13% figures are from a 2024 JW Surety Bonds survey reported by WorldatWork. All other numbers are from our Employer Benefit Overview one-pager. OK to use as-is?
+

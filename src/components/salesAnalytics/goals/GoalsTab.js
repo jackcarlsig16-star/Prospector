@@ -76,6 +76,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const [flags, setFlags] = useState([]);
   const [partners, setPartners] = useState([]);
   const [targets, setTargets] = useState([]);
+  const [suggestedCount, setSuggestedCount] = useState(0);
   const [companies, setCompanies] = useState([]);
   const [cadences, setCadences] = useState([]);
   const [scorecard, setScorecard] = useState(null);
@@ -131,15 +132,18 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
 
   // call-notes-targets-v1 Stage 2 - the "Targets (n)" chip on Today; promote/reject announce TODOS_CHANGED.
   const loadTargets = useCallback(() => goalsApi.prospectTargets(businessId).then(setTargets).catch(() => setTargets([])), [businessId]);
+  // Stage 3 - the "Suggested (n)" chip; a Tidy run / accept / dismiss announces TODOS_CHANGED.
+  const loadSuggested = useCallback(() => goalsApi.suggestions(businessId).then(d => setSuggestedCount(d.suggestions.length)).catch(() => setSuggestedCount(0)), [businessId]);
   useEffect(() => { loadTodos(); }, [loadTodos]);
   useEffect(() => { loadFlags(); }, [loadFlags]);
   useEffect(() => { loadTargets(); }, [loadTargets]);
+  useEffect(() => { loadSuggested(); }, [loadSuggested]);
   useEffect(() => {
-    const reload = () => { loadTodos(); loadFlags(); loadTargets(); };
+    const reload = () => { loadTodos(); loadFlags(); loadTargets(); loadSuggested(); };
     window.addEventListener(TODOS_CHANGED, reload);
     window.addEventListener(FLAGS_CHANGED, reload);
     return () => { window.removeEventListener(TODOS_CHANGED, reload); window.removeEventListener(FLAGS_CHANGED, reload); };
-  }, [loadTodos, loadFlags, loadTargets]);
+  }, [loadTodos, loadFlags, loadTargets, loadSuggested]);
   useEffect(() => { loadCommitments(); }, [loadCommitments]);
   useEffect(() => { loadReport(); }, [loadReport]);
   useEffect(() => { loadKpi(); }, [loadKpi]);
@@ -226,11 +230,20 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const plannedAt = plans?.find(p => p.week_start === weekStart)?.created_at;
   const openAllTasks = () => openTasks({ link: null, filter: drawerFilter });
   const openTargetCount = openTargets(targets).length;
-  const todayChips = openTargetCount > 0 && (
-    <button type="button" onClick={() => openTasks({ link: null, view: 'targets', filter: drawerFilter })} aria-label={`Targets, ${openTargetCount} open - open the list`}
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 10px', borderRadius: 999, background: SA.surface2, border: `1px solid ${SA.border}`, fontSize: 12, color: SA.text, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-      ◎ Targets ({openTargetCount})
-    </button>
+  const chipStyle = { display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 10px', borderRadius: 999, background: SA.surface2, border: `1px solid ${SA.border}`, fontSize: 12, color: SA.text, cursor: 'pointer', whiteSpace: 'nowrap' };
+  const todayChips = (openTargetCount > 0 || suggestedCount > 0) && (
+    <>
+      {openTargetCount > 0 && (
+        <button type="button" onClick={() => openTasks({ link: null, view: 'targets', filter: drawerFilter })} aria-label={`Targets, ${openTargetCount} open - open the list`} style={chipStyle}>
+          ◎ Targets ({openTargetCount})
+        </button>
+      )}
+      {suggestedCount > 0 && (
+        <button type="button" onClick={() => openTasks({ link: null, view: 'suggested', filter: drawerFilter })} aria-label={`Suggested, ${suggestedCount} from Tidy - open the list`} style={chipStyle}>
+          ✦ Suggested ({suggestedCount})
+        </button>
+      )}
+    </>
   );
 
   // Sequenced: "Companies sequenced by owner" ring (Design C - moved from the rail).

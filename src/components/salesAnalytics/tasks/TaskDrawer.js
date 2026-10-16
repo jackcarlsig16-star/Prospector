@@ -3,7 +3,7 @@ import { SA, SA_TYPE, SA_SHAPE, SA_THEME_CSS, SA_THEME_CLASS, saSans } from '../
 import { laWeekStart, laDateString } from '../periods';
 import { roleAtLeast } from '../../../constants/roles';
 import { fetchMe } from '../../../utils/authSession';
-import { goalsApi, TODOS_CHANGED, OPEN_GOALS_WEEK, OPEN_TASKS } from '../goals/goalsApi';
+import { goalsApi, TODOS_CHANGED, OPEN_GOALS_WEEK, OPEN_TASKS, OPEN_GOALS_TARGET } from '../goals/goalsApi';
 import { fetchFlags, completeFlag, dropFlag, reassignFlag, announceFlagsChanged, FLAGS_CHANGED } from '../huddleApi';
 import { memberLookup, labelStyle, ErrorNote, ShowingChip } from '../goals/goalsUi';
 import { buildTaskGroups, badgeCount } from './taskGroups';
@@ -13,6 +13,7 @@ import CallNotesPanel from './CallNotesPanel';
 import { acceptSummary } from './intakeBody';
 import TaskRow, { linkBtn } from './TaskRow';
 import TargetsList, { openTargets } from './TargetsList';
+import SuggestedList from './SuggestedList';
 
 // task-drawer-v1 - a second view of the Goals to-dos, on every page of a
 // workspace with Goals & Sales on. Writes reuse the Goals/flag routes.
@@ -47,10 +48,11 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
   const [error, setError] = useState('');
   const [pasting, setPasting] = useState(false);
   const [targets, setTargets] = useState([]);
-  const [view, setView] = useState('tasks'); // 'tasks' | 'targets' (call-notes-targets-v1 Stage 2)
+  const [suggested, setSuggested] = useState({ suggestions: [], last_run: null });
+  const [view, setView] = useState('tasks'); // 'tasks' | 'targets' | 'suggested' (call-notes-targets-v1)
 
-  const load = useCallback(() => Promise.all([goalsApi.weekGoals(businessId, week, week, 'todo'), fetchFlags(businessId), goalsApi.prospectTargets(businessId)])
-    .then(([t, f, ts]) => { setTodos(t); setFlags(f); setTargets(ts); setError(''); })
+  const load = useCallback(() => Promise.all([goalsApi.weekGoals(businessId, week, week, 'todo'), fetchFlags(businessId), goalsApi.prospectTargets(businessId), goalsApi.suggestions(businessId)])
+    .then(([t, f, ts, sg]) => { setTodos(t); setFlags(f); setTargets(ts); setSuggested(sg); setError(''); })
     .catch(e => setError(e.message)), [businessId, week]);
 
   useEffect(() => {
@@ -64,7 +66,7 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
     return () => { window.removeEventListener(TODOS_CHANGED, load); window.removeEventListener(FLAGS_CHANGED, load); };
   }, [load]);
   useEffect(() => {
-    const onOpenTasks = e => { setLinkFilter(e.detail.link || null); setFilter(e.detail.filter || 'team'); setView(e.detail.view === 'targets' ? 'targets' : 'tasks'); setOpen(true); };
+    const onOpenTasks = e => { setLinkFilter(e.detail.link || null); setFilter(e.detail.filter || 'team'); setView(['targets', 'suggested'].includes(e.detail.view) ? e.detail.view : 'tasks'); setOpen(true); };
     window.addEventListener(OPEN_TASKS, onOpenTasks);
     return () => window.removeEventListener(OPEN_TASKS, onOpenTasks);
   }, []);
@@ -162,7 +164,17 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
     onOpenGoals();
     if (compact) setOpen(false);
   };
+  // A duplicate pair from Suggested: Goals & Sales > Pipeline > Partner workflow filtered to both rows.
+  const openPair = (ids, label) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', 'pipeline'); url.searchParams.set('view', 'partners'); url.searchParams.delete('gview');
+    window.history.replaceState(window.history.state, '', url);
+    onOpenGoals();
+    window.dispatchEvent(new CustomEvent(OPEN_GOALS_TARGET, { detail: { target: { partners: { ids, open: ids[0], label } } } }));
+    if (compact) setOpen(false);
+  };
   const openTargetCount = openTargets(targets).length;
+  const suggestedCount = suggested.suggestions.length;
 
   const filters = [
     { id: 'me', label: 'Me', color: meId && lookup(meId).color },
@@ -227,11 +239,15 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
                 <button type="button" aria-pressed={view === 'targets'} onClick={() => setView(v => (v === 'targets' ? 'tasks' : 'targets'))} style={{ ...pill(view === 'targets'), marginLeft: 'auto' }}>
                   ◎ Targets{openTargetCount ? ` (${openTargetCount})` : ''}
                 </button>
+                <button type="button" aria-pressed={view === 'suggested'} onClick={() => setView(v => (v === 'suggested' ? 'tasks' : 'suggested'))} style={pill(view === 'suggested')}>
+                  ✦ Suggested{suggestedCount ? ` (${suggestedCount})` : ''}
+                </button>
               </div>
               <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px' }}>
                 {view === 'targets' && <TargetsList businessId={businessId} targets={targets} canEdit={canEdit} onChanged={load} onOpenRecord={openRecord} />}
+                {view === 'suggested' && <SuggestedList businessId={businessId} data={suggested} canEdit={canEdit} onChanged={load} onOpenPair={openPair} />}
                 {view === 'tasks' && linkFilter && <div style={{ marginBottom: 4 }}><ShowingChip label={links.labelFor(linkFilter.type, linkFilter.id)} count={groups.reduce((n, g) => n + g.items.length, 0)} onClear={() => setLinkFilter(null)} /></div>}
-                {me && !canEdit && <p style={{ fontSize: 13, color: SA.muted, margin: '0 0 8px' }}>You have view access, so {view === 'targets' ? 'targets are' : 'tasks are'} read-only.</p>}
+                {me && !canEdit && <p style={{ fontSize: 13, color: SA.muted, margin: '0 0 8px' }}>You have view access, so {view === 'targets' ? 'targets are' : view === 'suggested' ? 'suggestions are' : 'tasks are'} read-only.</p>}
                 {error && <div style={{ marginBottom: 8 }}><ErrorNote message={error} /></div>}
                 {view === 'tasks' && groups.filter(g => g.items.length).map(g => (
                   <section key={g.id} aria-label={g.label} style={{ marginTop: 12 }}>

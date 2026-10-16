@@ -11,6 +11,7 @@ import CollateralLibrary from './CollateralLibrary';
 import HuddlePrintSheet from './HuddlePrintSheet';
 import HuddlePartners from './HuddlePartners';
 import FocusStrip from './goals/FocusStrip';
+import SuggestedStrip from './tasks/SuggestedStrip';
 import RightRail from './RightRail';
 import Ring, { RingLegend } from './charts/Ring';
 import { goalsApi } from './goals/goalsApi';
@@ -446,6 +447,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
       </div>
       )}
 
+      <SuggestedStrip businessId={businessId} />
       <FocusStrip businessId={businessId} ownerId={focusOwner} ownerName={focusOwner ? lookup(focusOwner).first : null} canEdit={canEdit} onPlan={() => onOpenGoals && onOpenGoals('plan')} />
 
       {error && (

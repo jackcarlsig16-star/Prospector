@@ -638,6 +638,12 @@ app.get('/api/sales/:businessId/goals/prospect-targets', salesModuleRoute('./api
 app.post('/api/sales/:businessId/goals/prospect-targets/:id/promote', salesModuleRoute('./api/sales/targetsRoutes.js', 'promoteTargetRoute', 'goals/prospect-targets/:id/promote POST'));
 app.post('/api/sales/:businessId/goals/prospect-targets/:id/reject', salesModuleRoute('./api/sales/targetsRoutes.js', 'rejectTargetRoute', 'goals/prospect-targets/:id/reject POST'));
 app.get('/api/sales/:businessId/goals/copy-bundle', salesModuleRoute('./api/sales/targetsRoutes.js', 'copyBundleRoute', 'goals/copy-bundle'));
+// call-notes-targets-v1 REV4 Stage 3 - Tidy (propose-only suggestions).
+app.post('/api/sales/:businessId/goals/tidy/run', salesModuleRoute('./api/sales/tidyRoutes.js', 'runTidyRoute', 'goals/tidy/run POST'));
+app.get('/api/sales/:businessId/goals/suggestions', salesModuleRoute('./api/sales/tidyRoutes.js', 'listSuggestionsRoute', 'goals/suggestions'));
+app.post('/api/sales/:businessId/goals/suggestions/:id/accept', salesModuleRoute('./api/sales/tidyRoutes.js', 'acceptSuggestionRoute', 'goals/suggestions/:id/accept POST'));
+app.post('/api/sales/:businessId/goals/suggestions/:id/dismiss', salesModuleRoute('./api/sales/tidyRoutes.js', 'parkSuggestionRoute', 'goals/suggestions/:id/dismiss POST'));
+app.post('/api/sales/:businessId/goals/suggestions/:id/snooze', salesModuleRoute('./api/sales/tidyRoutes.js', 'parkSuggestionRoute', 'goals/suggestions/:id/snooze POST'));
 app.post('/api/sales/:businessId/goals/partners/:id/signal', salesModuleRoute('./api/sales/partnersRoutes.js', 'partnerSignalRoute', 'goals/partners/:id/signal POST'));
 app.post('/api/sales/:businessId/goals/partners/:id/undo', salesModuleRoute('./api/sales/partnersRoutes.js', 'partnerUndoRoute', 'goals/partners/:id/undo POST'));
 app.post('/api/sales/:businessId/goals/partners/:id/rank', salesModuleRoute('./api/sales/partnersRoutes.js', 'partnerRankRoute', 'goals/partners/:id/rank POST'));
