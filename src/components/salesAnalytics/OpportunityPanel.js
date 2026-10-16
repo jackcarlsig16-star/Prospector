@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { SA, SA_TYPE, SA_SHAPE } from './theme';
 import { STAGE_ENUM, STAGE_LABELS, ORG_TYPE_ENUM, ORG_TYPE_LABELS } from './pipelineStages';
 import OwnerPill from './OwnerPill';
+import CopyForClaude from './CopyForClaude';
 import { savePayload } from './opportunityPayload';
 
 const TEXT_FIELDS = [
@@ -28,7 +29,7 @@ function Field({ label, children }) {
 // inline-edits 5 fields (stage/next_action/next_action_date/
 // expected_close/probability per the SPEC); everything else lives here.
 // `opportunity` null = create mode (an empty draft); otherwise edit mode.
-export default function OpportunityPanel({ opportunity, saving, error, onSave, onArchive, onClose }) {
+export default function OpportunityPanel({ businessId, opportunity, saving, error, onSave, onArchive, onClose }) {
   const isCreate = !opportunity;
   const [draft, setDraft] = useState(() => ({
     organization: '', cohort: '', org_type: 'employer', covered_lives: '', stage: 'target',
@@ -54,7 +55,10 @@ export default function OpportunityPanel({ opportunity, saving, error, onSave, o
             <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: 0 }}>{isCreate ? 'Add opportunity' : 'Edit opportunity'}</p>
             <OwnerPill row={opportunity} />
           </div>
-          <span onClick={onClose} style={{ cursor: 'pointer', color: SA.muted, fontSize: 18, lineHeight: 1 }}>×</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {!isCreate && businessId && <CopyForClaude businessId={businessId} type="employer" id={opportunity.id} />}
+            <span onClick={onClose} style={{ cursor: 'pointer', color: SA.muted, fontSize: 18, lineHeight: 1 }}>×</span>
+          </div>
         </div>
 
         {TEXT_FIELDS.map(([key, label]) => (

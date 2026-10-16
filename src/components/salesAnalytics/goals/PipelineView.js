@@ -211,7 +211,7 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
           onApplied={r => { setNotice(`Updated ${r.applied}${r.failed.length ? ` · ${r.failed.length} not applied` : ''}`); load(); }} />
       )}
       {canEdit && panel !== undefined && (
-        <OpportunityPanel opportunity={panel} saving={panelSaving} error={panelError} onClose={() => setPanel(undefined)}
+        <OpportunityPanel businessId={businessId} opportunity={panel} saving={panelSaving} error={panelError} onClose={() => setPanel(undefined)}
           onSave={payload => panelDo(async () => {
             if (panel) return updateOpportunity(businessId, panel.id, payload);
             // The create route reuses a live opportunity with the same name first (opportunityMatch).

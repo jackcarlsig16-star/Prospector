@@ -65,7 +65,7 @@ const NO_FILTERS = { category: '', tiers: [], stale: false, hot: false, owner: n
 
 // teamView: the person filter is on Team. Reorder needs the whole group in
 // view (see WorkflowView), so it's only offered then.
-export default function PartnersView({ partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusFilter, tasksFor, onPeople, onAddPerson, onDeletePerson, onRefreshPeople, onCreateTask, onTouches, onDomains, onAddDomain, onUpdateDomain, onDeleteDomain, onAllDomains, csvUrl, onApolloMoves, onApplyApollo, onDismissApollo, onOutlookMoves, onApplyOutlook, onDismissOutlook, onRecordOutlook }) {
+export default function PartnersView({ businessId, partners, lookup, members, canEdit, error, onUpdate, onCreate, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusFilter, tasksFor, onPeople, onAddPerson, onDeletePerson, onRefreshPeople, onCreateTask, onTouches, onDomains, onAddDomain, onUpdateDomain, onDeleteDomain, onAllDomains, csvUrl, onApolloMoves, onApplyApollo, onDismissApollo, onOutlookMoves, onApplyOutlook, onDismissOutlook, onRecordOutlook }) {
   const [mode, setMode] = useState(readMode);
   const [stage, setStage] = useState(null);
   const compact = useMediaQuery('(max-width: 760px)');
@@ -202,7 +202,7 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
   }, [canEdit, loadAllDomains]);
   const pendingCount = domainSummary?.counts?.pending || 0;
   const onCount = useCallback((id, n) => onReplace({ id, people_count: n }), [onReplace]);
-  const details = { canEdit, onUpdate, onEvents: fetchEvents, bump: historyBump, tasksFor, people, domains, onCreateTask, onCount };
+  const details = { businessId, canEdit, onUpdate, onEvents: fetchEvents, bump: historyBump, tasksFor, people, domains, onCreateTask, onCount };
 
   // partner-360-v1 Stage 3 - one Sync now with the partner-people step forced;
   // the toast reports what Apollo gave and what it cost.
@@ -221,7 +221,7 @@ export default function PartnersView({ partners, lookup, members, canEdit, error
 
   const render = p => (
     <PartnerCard key={p.id} partner={p} open={openId === p.id} onToggle={() => setOpenId(openId === p.id ? null : p.id)} today={today}
-      canEdit={canEdit} members={members} lookup={lookup} onUpdate={onUpdate} onSignal={signal} />
+      businessId={businessId} canEdit={canEdit} members={members} lookup={lookup} onUpdate={onUpdate} onSignal={signal} />
   );
 
   const ownerParts = [...members.map(m => ({ id: m.user_id, label: lookup(m.user_id).first, count: partners.filter(p => p.owner_user_id === m.user_id).length, color: lookup(m.user_id).color }))].filter(x => x.count);

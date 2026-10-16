@@ -67,7 +67,7 @@ export default function PipelineTable({ businessId, opportunities, onPipelineCha
           <a href={templateUrl(businessId)} style={{ ...SA_TYPE.body, fontSize: 12, color: SA.accent, alignSelf: 'center' }}>Download template</a>
         </div>}
         {panelOpp !== undefined && (
-          <OpportunityPanel
+          <OpportunityPanel businessId={businessId}
             opportunity={panelOpp} saving={panelSaving} error={panelError}
             onClose={() => { setPanelOpp(undefined); setPanelError(''); }}
             onSave={async payload => {
@@ -295,7 +295,7 @@ export default function PipelineTable({ businessId, opportunities, onPipelineCha
       </div>
 
       {canEdit && panelOpp !== undefined && (
-        <OpportunityPanel
+        <OpportunityPanel businessId={businessId}
           opportunity={panelOpp} saving={panelSaving} error={panelError}
           onClose={() => { setPanelOpp(undefined); setPanelError(''); }}
           onSave={openPanel}

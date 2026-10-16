@@ -4,6 +4,7 @@ import { SEMANTIC } from '../../palette';
 import { PIPELINE_STATUSES, STALE_DAYS, daysSinceTouch } from '../../../../constants/partnerPipeline';
 import { labelStyle, subStyle, inputStyle, Chip, Dot, Btn, ErrorNote } from '../goalsUi';
 import OwnerPill from '../../OwnerPill';
+import CopyForClaude from '../../CopyForClaude';
 
 const STATUS_LABEL = Object.fromEntries(PIPELINE_STATUSES.map(s => [s.id, s.label]));
 // One color per stage of the funnel, from the shared palette: not yet out,
@@ -41,7 +42,7 @@ function Field({ label, children, color }) {
   return <div><span style={labelStyle}>{label}</span><div style={{ color: color || SA.text, whiteSpace: 'pre-wrap' }}>{children}</div></div>;
 }
 
-export default function PartnerCard({ partner, open, onToggle, canEdit, members, lookup, onUpdate, onSignal, today }) {
+export default function PartnerCard({ partner, open, onToggle, businessId, canEdit, members, lookup, onUpdate, onSignal, today }) {
   const [panel, setPanel] = useState(null); // 'email' | 'note'
   const [note, setNote] = useState('');
   const [copied, setCopied] = useState(false);
@@ -85,8 +86,10 @@ export default function PartnerCard({ partner, open, onToggle, canEdit, members,
           <button type="button" title={partner.hot ? 'Not hot' : 'Hot'} aria-label={partner.hot ? 'Mark not hot' : 'Mark hot'} aria-pressed={!!partner.hot}
             onClick={() => signal({ type: 'hot', hot: !partner.hot })} style={iconBtn(false)}>{partner.hot ? '🔥' : '♨'}</button>
           <button type="button" title="Snooze 7 days" aria-label="Snooze 7 days" onClick={() => signal({ type: 'snooze', days: 7 })} style={iconBtn(false)}>⏸</button>
+          {businessId && <CopyForClaude businessId={businessId} type="partner" id={partner.id} style={{ marginLeft: 'auto' }} />}
         </div>
       )}
+      {!canEdit && businessId && <div><CopyForClaude businessId={businessId} type="partner" id={partner.id} /></div>}
 
       {open && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, borderTop: `1px solid ${SA.border}`, paddingTop: 10, fontSize: 13 }}>

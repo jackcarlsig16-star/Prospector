@@ -24,6 +24,7 @@ import { yourDaySections, teamToday, topOfList, focusOf, dayTitle } from './toda
 import { buildTaskGroups } from '../tasks/taskGroups';
 import { useLinkOptions } from '../tasks/linkTargets';
 import { linkedTo, isOpenTask, openTasks } from '../tasks/LinkedTasks';
+import { openTargets } from '../tasks/TargetsList';
 import { exportWidgetCsv } from '../exportCsv';
 import {
   labelStyle, subStyle, numStyle, Chip, Btn, ErrorNote,
@@ -74,6 +75,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const [todos, setTodos] = useState([]);
   const [flags, setFlags] = useState([]);
   const [partners, setPartners] = useState([]);
+  const [targets, setTargets] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [cadences, setCadences] = useState([]);
   const [scorecard, setScorecard] = useState(null);
@@ -127,14 +129,17 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const loadKpi = useCallback(() => goalsApi.kpi(businessId, weekStart)
     .then(r => { setKpiRows(r); setError('kpi', null); }).catch(e => { setKpiRows(null); setError('kpi', e); }), [businessId, weekStart, setError]);
 
+  // call-notes-targets-v1 Stage 2 - the "Targets (n)" chip on Today; promote/reject announce TODOS_CHANGED.
+  const loadTargets = useCallback(() => goalsApi.prospectTargets(businessId).then(setTargets).catch(() => setTargets([])), [businessId]);
   useEffect(() => { loadTodos(); }, [loadTodos]);
   useEffect(() => { loadFlags(); }, [loadFlags]);
+  useEffect(() => { loadTargets(); }, [loadTargets]);
   useEffect(() => {
-    const reload = () => { loadTodos(); loadFlags(); };
+    const reload = () => { loadTodos(); loadFlags(); loadTargets(); };
     window.addEventListener(TODOS_CHANGED, reload);
     window.addEventListener(FLAGS_CHANGED, reload);
     return () => { window.removeEventListener(TODOS_CHANGED, reload); window.removeEventListener(FLAGS_CHANGED, reload); };
-  }, [loadTodos, loadFlags]);
+  }, [loadTodos, loadFlags, loadTargets]);
   useEffect(() => { loadCommitments(); }, [loadCommitments]);
   useEffect(() => { loadReport(); }, [loadReport]);
   useEffect(() => { loadKpi(); }, [loadKpi]);
@@ -220,6 +225,13 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   };
   const plannedAt = plans?.find(p => p.week_start === weekStart)?.created_at;
   const openAllTasks = () => openTasks({ link: null, filter: drawerFilter });
+  const openTargetCount = openTargets(targets).length;
+  const todayChips = openTargetCount > 0 && (
+    <button type="button" onClick={() => openTasks({ link: null, view: 'targets', filter: drawerFilter })} aria-label={`Targets, ${openTargetCount} open - open the list`}
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 10px', borderRadius: 999, background: SA.surface2, border: `1px solid ${SA.border}`, fontSize: 12, color: SA.text, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+      ◎ Targets ({openTargetCount})
+    </button>
+  );
 
   // Sequenced: "Companies sequenced by owner" ring (Design C - moved from the rail).
   const ownerParts = [...members.map(m => ({ id: m.user_id, label: lookup(m.user_id).first, count: companies.filter(c => c.sequenced_by === m.user_id).length, color: lookup(m.user_id).color }))];
@@ -404,7 +416,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
           <PlanNudge week={weekStart} ownerId={planOwner} ownerName={lookup(planOwner).first} plans={plans} onPlan={() => setPlanOpen(true)} />
           {(errors.todos || errors.flags) && <ErrorNote message={(errors.todos || errors.flags).message} />}
           <TodayView hero={hero} compact={compact}
-            yourDay={{ sections: daySections, today, lookup, links, teamView: owner === 'team', canEdit, onDone: tickTodo, onContacted: markContacted, onAllTasks: openAllTasks }}
+            yourDay={{ sections: daySections, today, lookup, links, teamView: owner === 'team', canEdit, onDone: tickTodo, onContacted: markContacted, onAllTasks: openAllTasks, chips: todayChips }}
             focus={{ items: focusOf(commitments, planOwner), ownerName: owner === 'team' ? lookup(planOwner).first : null, canEdit, onToggle: toggleFocus, onEdit: () => setPlanOpen(true), onPlan: () => setPlanOpen(true),
               plannedAt: plannedAt && new Date(plannedAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) }}
             glance={glance} />
@@ -446,7 +458,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
         {section === 'reports' && view === 'analytics' && analytics}
 
         {section === 'pipeline' && view === 'partners' && (
-          <PartnersView partners={myPartners} lookup={lookup} members={members} canEdit={canEdit} error={errors.partners}
+          <PartnersView businessId={businessId} partners={myPartners} lookup={lookup} members={members} canEdit={canEdit} error={errors.partners}
             onUpdate={async (goalId, body) => { const g = await goalsApi.updatePartner(businessId, goalId, body); setPartners(ps => ps.map(p => (p.id === g.id ? { ...p, ...g } : p))); }}
             onSignal={(goalId, signal) => goalsApi.partnerSignal(businessId, goalId, signal)}
             onUndo={(goalId, eventId) => goalsApi.partnerUndo(businessId, goalId, eventId)}

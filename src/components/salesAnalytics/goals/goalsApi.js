@@ -32,7 +32,7 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
     if (res.status === 500 && MIGRATION_PATTERN.test(data.error || '')) throw new NeedsMigrationError();
     throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   }
-  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
+  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/prospect-targets\/.+\/(promote|reject)$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
 }
 
@@ -55,6 +55,11 @@ export const goalsApi = {
   createFromCallNotes: (id, body) => call(id, '/call-notes', { method: 'POST', body }),
   // call-notes-targets-v1 - companies from notes that aren't a partner or employer yet.
   prospectTargets: id => call(id, '/prospect-targets').then(r => r.targets),
+  // Stage 2 - promote = { created | already }; reject drops its open to-dos, { undo: true, reopen } puts it back.
+  promoteTarget: (id, targetId, body) => call(id, `/prospect-targets/${targetId}/promote`, { method: 'POST', body }),
+  rejectTarget: (id, targetId, body = {}) => call(id, `/prospect-targets/${targetId}/reject`, { method: 'POST', body }),
+  // Copy for Claude - markdown with no emails or phones (the route refuses otherwise). 0 AI calls.
+  copyBundle: (id, type, recordId) => call(id, `/copy-bundle?${q({ type, id: recordId })}`).then(d => d.markdown),
   callNote: (id, noteId) => call(id, `/call-notes/${noteId}`).then(d => d.note),
 
   createStep: (id, goalId, body) => call(id, `/week/${goalId}/steps`, { method: 'POST', body }).then(d => d.step),

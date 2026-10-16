@@ -9,6 +9,7 @@ import PartnerPeople from './PartnerPeople';
 import PartnerActivity from './PartnerActivity';
 import PartnerIntel from './PartnerIntel';
 import LogTouchForm from './LogTouchForm';
+import CopyForClaude from '../../CopyForClaude';
 
 // partner-360-v1 - a row's drop-down tells one story, top to bottom: where
 // we are and what's next, who we know, what happened, the to-dos, and the
@@ -17,7 +18,7 @@ import LogTouchForm from './LogTouchForm';
 // handlers (null for viewers). people: { load, add, remove } for
 // partner_contacts. tasksFor: this week's linked to-dos, or null when Goals
 // shows another week.
-export default function PartnerDetails({ partner, lookup, canEdit, onUpdate, onEvents, bump, tasksFor, actions, people, domains, onCreateTask, onCount }) {
+export default function PartnerDetails({ partner, lookup, businessId, canEdit, onUpdate, onEvents, bump, tasksFor, actions, people, domains, onCreateTask, onCount }) {
   const [events, setEvents] = useState(null);
   const [contacts, setContacts] = useState(null);
   const [peopleBump, setPeopleBump] = useState(0);
@@ -56,6 +57,7 @@ export default function PartnerDetails({ partner, lookup, canEdit, onUpdate, onE
   return (
     <div style={{ borderTop: `1px solid ${SA.border}`, padding: '12px 14px 14px', display: 'flex', flexDirection: 'column', gap: 16, fontSize: 13 }}>
       <PartnerStatus partner={partner} events={events || []} lookup={lookup} actions={actions} logOpen={logOpen} onLogTouch={() => setLogOpen(o => !o)} />
+      {businessId && <div><CopyForClaude businessId={businessId} type="partner" id={partner.id} /></div>}
       {logOpen && actions && <LogTouchForm partner={partner} names={(merged || []).map(p => p.name)} onSubmit={logTouch} onClose={() => setLogOpen(false)} />}
       {merged
         ? <PartnerPeople people={merged} canEdit={canEdit}
