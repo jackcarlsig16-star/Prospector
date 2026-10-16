@@ -1,0 +1,86 @@
+AUDIT FINDINGS — partner-call-structure-v1
+Run 2026-10-16 ~13:00 PT at HEAD 221bba5 by Claude Code. Reads only (service key): 0 Claude, 0 Apollo, 0 writes.
+HomeLover counts before = after (sales_call_notes 15, sales_week_goals 196, sales_partner_events 91, partner_contacts 69,
+sales_goals 77, sales_targets 34, sales_opportunities 223). No note text, people names, emails or phones below: ids
+(first 8 chars), counts, lengths and the note's own section headings only.
+
+Q1. Today's Equifax input (business bc69beab, partner 5ab3d048 "Equifax")
+- Path: Intake ("+" -> Note -> extract -> Accept), twice. Both rows are sales_call_notes with source_type 'call',
+  source_label null, title null, created_by the same member:
+    0e8535dc  call_date 2026-10-16  created 17:40:48Z (10:40 PT)  text 2,470 chars / 51 lines, no section headings
+    1e5caf93  call_date 2026-10-16  created 18:36:33Z (11:36 PT)  text 3,659 chars / 28 lines, 6 section headings
+  (A third note, 3ff62353, is yesterday's and unrelated.)
+- There is NO stored extract: sales_call_notes has title/call_date/text/hash/source_type/source_label only
+  (20261007_call_notes_to_tasks_v1_stage1.sql:14-24, 20261014_call_notes_targets_v1_stage1.sql:46-49). What the model
+  returned is only visible through what Accept wrote (rows carrying source_note_id / meta.from_note_id).
+- Quick note box / quick panel were NOT used for the notes. Two later manual signals exist on Equifax: status event
+  08356b73 meeting_set -> proposal_pilot at 18:48:44Z and hot event 143837c8 at 18:48:51Z (meta has no from_note_id).
+
+Q2. What Accept wrote (counts; derived rows, not the extract)
+  note 0e8535dc: to-dos 6 (owner member 2, owner null 4; 1 linked partner:5ab3d048, 1 linked partner:6fb331b1, 4 unlinked;
+    1 with due 2026-10-18) · partner events 4 across 3 partners (Equifax: touch 1ca101a1 meeting, 2 contact names, no stage
+    move; note bdb6df8a "From note …" 15 words) · people rows 0 · targets 0 · stage proposal: none applied
+  note 1e5caf93: to-dos 5 (owner null 5 of 5; all linked partner:5ab3d048; 1 with due 2026-10-26, id a169aafb; steps 0)
+    · partner events 3 across 2 partners (Equifax: touch 0dd996ee meeting, 1 contact name, stage replied -> meeting_set
+    applied; note d7116be1 "From note …" 16 words) · people rows 0 · targets 0
+  Equifax intel after both: angle 3 lines (1 unstamped older, 2 stamped (10/16): 11 and 26 words); watch_outs 1 line
+    stamped (10/16), 24 words; next_step replaced (single-valued, intakeMatch.js:22), 16 words, contains "26";
+    champion / target_titles / do_not_say / motto / notes / known_contacts all null.
+  partner_contacts for Equifax: 0 rows (0 created today on any partner). The counterpart names exist only inside the two
+    touch events' contact_names (3 distinct).
+
+Q3. The structured note (1e5caf93) block by block. Its headings, with body-line counts:
+  "Key Outcomes" 1 · "Decisions Made" 5 · "Proposed Economic Model" 3 · "Product Integration Ideas" 4 ·
+  "Pending Confirmation" 4 · "Action Items" 5. The next-meeting line is inside Action Items (1 line with a date/week token).
+  Attribution below is by word overlap (best match 9-25%, so approximate), plus the hard counts:
+  - Decisions (5)            -> at most 3 facts: 2 angle lines + 1 watch_outs line. No "decision" record exists.
+  - Proposed economic model  -> nothing distinct (no field for terms; overlap with the angle lines is weak).
+  - Product integration (4)  -> nothing.
+  - Pending confirmation (4, all 4 lines name a counterpart, 0 name a member) -> no rows (dropped), or folded into the
+                                5 unowned to-dos below; nothing marks them as waiting on the other side.
+  - Action items (5: 4 lines name a counterpart, 0 name a member) -> 5 to-dos, ALL owner null, all linked to Equifax.
+                                The model may only pick a MEMBER as owner (callNotesRoutes.js:36-41), so counterpart-owned
+                                items become OUR unowned to-dos, not dropped. That is the wrong outcome the audit asked about.
+  - Next meeting (week of the 26th) -> to-do a169aafb due 2026-10-26, owner null; AND next_step text carries "26" with no
+                                date column to land in (sales_goals has next_step text only, 20261006_..._pipeline_v1_stage1.sql:19;
+                                no next_step_due on partners - PipelineView.js:168 title "Partners have no due date yet").
+  - Two counterpart names     -> no people rows with roles (0 partner_contacts); names only on touch contact_names.
+
+Q4. Least-schema homes (what exists, file:line; migration yes/no)
+  (a) decisions -> sales_partner_events. event CHECK today: status, assign, hot, snooze, deprioritize, note, undo, touch
+      (20261007_partner_touch_log_v1.sql:13-14). A new kind 'decision' = migration (constraint swap, same shape as the
+      'touch' add). NO-migration option: event 'note' with meta.kind = 'decision' - applyPartnerSignal already takes a
+      server-side meta (partnerSignals.js:188-194) and writes it beside the note; the signal route never exposes it.
+  (b) waiting-on -> sales_week_goals: kind CHECK commitment|todo (20261006_sales_goals_v1_rev4_stage3.sql:22), status
+      CHECK open|done|dropped (20261005_sales_goals_v1_rev3.sql:59), no external-owner column anywhere (grep waiting_on: 0
+      hits in src/ and api/). A `waiting_on text` column + a kind or status 'waiting' = migration. NO-migration option: an
+      unowned to-do (owner_user_id null, as Accept produced today) with a text prefix - but then it is indistinguishable
+      from an unassigned task of ours in Tasks, Tidy and the bundle. Partner events 'waiting' with a due = same constraint
+      swap as (a) and no due column on events (events have `at` only).
+  (c) next meeting -> no partner column. Exists: a to-do with due_date linked to the partner (what landed today, no
+      migration) or next_step text (no date). A `next_meeting_at` column on sales_goals = migration; employers already
+      have next_action_date on sales_opportunities (pipelineBoard due column).
+  (d) economic terms -> sales_goals.notes (20261005_..._rev3.sql:23, free text, LAND_FIELDS accepts it, null on Equifax
+      today) or angle (where the stamped lines went). No migration. A 'terms' event = constraint swap.
+
+Q5. Copy-for-Claude partner bundle (targetsRoutes.js:264-291): head (stage, category, tier, hot, owner, next step) ·
+  ## Intel (champion, angle, watch-outs, don't say, target titles, known contacts, sequence) · ## People · ## Last touches
+  (touch events only, TOUCHES_MAX) · ## Open to-dos (text, owner, due). Note events, decisions and anything waiting on the
+  other side are NOT in it. Would need: ## Decisions, ## Waiting on them (with who/when), ## Terms, Next meeting in the head.
+
+Q6. Today / Tidy
+  - Your day = Overdue (due < today), Due today, Flagged, from buildTaskGroups (taskGroups.js:13-22, todayModel.js:17-24).
+    The 5 Equifax to-dos have no due date except 10/26 and no owner, so none shows on Your day today; a waiting-on item
+    stored as a to-do would surface only when its due date arrives, as if it were ours.
+  - Tidy replyTask (tidyRules.js:69-73): partner in replied|meeting_set with no open to-do linked -> "Reply/prep task".
+    Equifax is proposal_pilot now, so it is outside the rule either way. For a replied partner with ONLY waiting-on items:
+    stored as to-dos they count as open linked to-dos and SUPPRESS the rule (the partner looks handled while we wait on
+    them); stored as events/waiting rows they do not count and the rule fires (a prep task is proposed even though the
+    ball is in their court). Neither reading is right without a 'waiting' concept the rule can see.
+
+VERDICT: REV5 of call-notes-targets needs a migration: YES, for (b) waiting-on - a `waiting_on` external-owner column plus
+a kind/status on sales_week_goals (and a due on it) so Tasks, Tidy, Your day and the bundle can tell "theirs" from "ours".
+Decisions (a) and terms (d) can ship without one (note events with meta.kind; sales_goals.notes); next meeting (c) can
+reuse a dated to-do linked to the partner, or take a `next_meeting_at` column in the same migration if Jack wants it on the
+partner row. People with roles already have a home (partner_contacts.role_in_notes) - the gap today is that the two
+counterparts were not accepted as people, not the schema.
