@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import PartnerDomains from './PartnerDomains';
 import ApolloExport from './ApolloExport';
@@ -11,9 +12,16 @@ const empty = { domains: [], suggestions: [
 ], apollo_account: null };
 const confirmed = { domains: [{ id: 'd1', domain: 'corestream.com', confirmed: true, is_primary: true, source: 'apollo' }], suggestions: [{ domain: 'corp.corestream.com', source: 'sources', apollo_account: null }], apollo_account: { id: 'a4', name: 'Corestream', domain: 'corestream.com' } };
 
+// PartnerDetails owns the load (partner-details-drawers-v1); this stands in for it.
+function Owner({ partner, canEdit, api }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  useEffect(() => { api.load(partner.id).then(setData).catch(e => setError(e.message)); }, [partner.id, api]);
+  return <>{error && <span>{error}</span>}<PartnerDomains partner={partner} canEdit={canEdit} api={api} data={data} onData={setData} /></>;
+}
 function setup(data = empty, canEdit = true) {
   const api = { load: jest.fn().mockResolvedValue(data), add: jest.fn().mockResolvedValue(confirmed), update: jest.fn().mockResolvedValue(confirmed), remove: jest.fn().mockResolvedValue(empty) };
-  render(<PartnerDomains partner={partner} canEdit={canEdit} api={api} />);
+  render(<Owner partner={partner} canEdit={canEdit} api={api} />);
   return api;
 }
 
@@ -51,7 +59,7 @@ test('viewer: domains and suggestions as text, no buttons; api error shows', asy
   expect(screen.getByRole('list', { name: 'Suggested domains' })).toBeTruthy();
   expect(within(screen.getByRole('group', { name: 'Domains' })).queryAllByRole('button')).toHaveLength(0);
   const api = { load: jest.fn().mockRejectedValue(new Error('boom')), add: jest.fn(), update: jest.fn(), remove: jest.fn() };
-  render(<PartnerDomains partner={{ id: 'p9', name: 'X' }} canEdit api={api} />);
+  render(<Owner partner={{ id: 'p9', name: 'X' }} canEdit api={api} />);
   await screen.findByText('boom');
 });
 

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { SA, saSans } from '../../theme';
-import { labelStyle, subStyle } from '../goalsUi';
+import { subStyle } from '../goalsUi';
 import { FILTERS, inFilter } from './activityTimeline';
 
 const when = iso => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
@@ -16,12 +16,9 @@ export default function PartnerActivity({ items }) {
   const hidden = inScope.length - shown.length;
   const hiddenAll = inScope.filter(i => i.noise).length;
   return (
-    <section aria-label="Activity" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <span style={labelStyle}>Activity</span>
-        <div role="group" aria-label="Activity filter" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-          {FILTERS.map(f => <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)} style={chip(filter === f.id)}>{f.label}</button>)}
-        </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div role="group" aria-label="Activity filter" style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+        {FILTERS.map(f => <button key={f.id} type="button" aria-pressed={filter === f.id} onClick={() => setFilter(f.id)} style={chip(filter === f.id)}>{f.label}</button>)}
       </div>
       {!shown.length && <span style={{ ...subStyle, fontSize: 13 }}>{items.length ? 'Nothing here for this filter.' : 'Nothing yet. Log a touch or move the stage and it shows here.'}</span>}
       {shown.length > 0 && (
@@ -43,6 +40,6 @@ export default function PartnerActivity({ items }) {
           {showAll ? `Hide the noise (${hiddenAll})` : `Show all activity (${hidden})`}
         </button>
       )}
-    </section>
+    </div>
   );
 }

@@ -11,8 +11,9 @@ import PartnerDetails from './PartnerDetails';
 // then one group per category with its top 5.
 const TOP = 5;
 // prospector_partners_key - per-viewer convenience: key collapsed or open.
+// Closed until opened once (partner-details-drawers-v1); the stored choice wins after that.
 const KEY_KEY = 'prospector_partners_key';
-const readKeyOpen = () => { try { return localStorage.getItem(KEY_KEY) !== 'collapsed'; } catch { return true; } };
+const readKeyOpen = () => { try { return localStorage.getItem(KEY_KEY) === 'open'; } catch { return false; } };
 const writeKeyOpen = open => { try { localStorage.setItem(KEY_KEY, open ? 'open' : 'collapsed'); } catch { /* private mode */ } };
 const PAUSED = { id: 'paused', label: 'Paused' };
 // Stage colors for the overall bar: one sequential ramp, light -> accent.

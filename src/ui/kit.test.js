@@ -218,3 +218,64 @@ test('EditableCell: read mode is a button with the rendered value and a label wh
   expect(on.onEdit).toHaveBeenCalledTimes(1);
   expect(document.activeElement).toBe(busy);
 });
+
+// partner-details-drawers-v1 - Drawer.
+describe('Drawer', () => {
+  const Drawer = require('./Drawer').default;
+  beforeEach(() => localStorage.clear());
+
+  test('closed by default: header is a button with label + summary + count, body absent; click / Enter / Space toggle; aria-expanded + aria-controls follow', () => {
+    const onToggle = jest.fn();
+    render(<Drawer label="People" summary="3 people · Brad +2" count={3} onToggle={onToggle}><span>body here</span></Drawer>);
+    const head = screen.getByRole('button', { name: /^People/ });
+    expect(head).toHaveAttribute('aria-expanded', 'false');
+    expect(head.textContent).toBe('People3 people · Brad +23Show ▸');
+    expect(screen.getByRole('region', { name: 'People' })).toBeInTheDocument();
+    expect(screen.queryByText('body here')).toBeNull();
+    fireEvent.click(head);
+    expect(head).toHaveAttribute('aria-expanded', 'true');
+    expect(head.textContent).toBe('People3Hide ▾');
+    expect(document.getElementById(head.getAttribute('aria-controls'))).toHaveTextContent('body here');
+    fireEvent.keyDown(head, { key: 'Enter' });
+    expect(head).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('body here')).toBeNull();
+    fireEvent.keyDown(head, { key: ' ' });
+    expect(head).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.keyDown(head, { key: 'a' });
+    expect(head).toHaveAttribute('aria-expanded', 'true');
+    expect(onToggle.mock.calls.map(c => c[0])).toEqual([true, false, true]);
+    expect(document.getElementById('ui-kit-css').textContent).toMatch(/\.ui-drawer__head:focus-visible \{ outline:2px solid var\(--ui-accent\)/);
+  });
+
+  test('defaultOpen opens; persistKey round-trips through localStorage and a stored choice beats defaultOpen', () => {
+    const { unmount } = render(<Drawer label="Tasks" defaultOpen><span>t</span></Drawer>);
+    expect(screen.getByRole('button', { name: /^Tasks/ })).toHaveAttribute('aria-expanded', 'true');
+    unmount();
+    const { unmount: u2 } = render(<Drawer label="Activity" persistKey="prospector_test_drawer"><span>a</span></Drawer>);
+    fireEvent.click(screen.getByRole('button', { name: /^Activity/ }));
+    expect(localStorage.getItem('prospector_test_drawer')).toBe('open');
+    u2();
+    const { unmount: u3 } = render(<Drawer label="Activity" persistKey="prospector_test_drawer"><span>a</span></Drawer>);
+    expect(screen.getByRole('button', { name: /^Activity/ })).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.click(screen.getByRole('button', { name: /^Activity/ }));
+    expect(localStorage.getItem('prospector_test_drawer')).toBe('closed');
+    u3();
+    render(<Drawer label="Activity" persistKey="prospector_test_drawer" defaultOpen><span>a</span></Drawer>);
+    expect(screen.getByRole('button', { name: /^Activity/ })).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  test('a throwing localStorage never breaks the drawer: it still toggles in memory', () => {
+    const get = jest.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('private mode'); });
+    const set = jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('private mode'); });
+    try {
+      render(<Drawer label="Intel" persistKey="prospector_test_drawer"><span>i</span></Drawer>);
+      const head = screen.getByRole('button', { name: /^Intel/ });
+      expect(head).toHaveAttribute('aria-expanded', 'false');
+      fireEvent.click(head);
+      expect(head).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByText('i')).toBeInTheDocument();
+      fireEvent.click(head);
+      expect(head).toHaveAttribute('aria-expanded', 'false');
+    } finally { get.mockRestore(); set.mockRestore(); }
+  });
+});

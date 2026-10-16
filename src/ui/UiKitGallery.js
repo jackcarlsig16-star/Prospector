@@ -9,6 +9,7 @@ import Field from './Field';
 import StatusPill from './StatusPill';
 import ToggleRow from './ToggleRow';
 import DataTable from './DataTable';
+import Drawer from './Drawer';
 
 // Invented companies, no contacts.
 const TABLE_ROWS = [
@@ -85,6 +86,17 @@ function ThemePanel({ theme }) {
       <Card title="DataTable" subtitle={`sticky header + first column · sort asc → desc → off per group · ${KIT_TABLE.rowHeight}px rows`}>
         <DataTable label={`${theme} table`} columns={TABLE_COLUMNS} groups={tableGroups} rowKey={r => r.id}
           rowStyle={r => ({ '--ui-row-tint': `color-mix(in srgb, ${BAND_COLOR[r.band]} 6%, transparent)`, '--ui-row-bar': BAND_COLOR[r.band] })} />
+      </Card>
+      <Card title="Drawer" subtitle="label · summary · count · Show ▸ / Hide ▾ · Enter / Space · persistKey remembers the choice">
+        <Drawer label="People" summary="3 people · Brad (counterpart) +2" count={3}>
+          <span style={{ ...KIT_TYPE.small, color: ui.soft }}>Brad · Dana · Sam</span>
+        </Drawer>
+        <Drawer label="Activity" summary="Called · Oct 2" persistKey={`prospector_ui_gallery_drawer_${p}`}>
+          <span style={{ ...KIT_TYPE.small, color: ui.soft }}>Remembered on this browser (prospector_ui_gallery_drawer_{p}).</span>
+        </Drawer>
+        <Drawer label="Tasks" summary="none this week" defaultOpen>
+          <span style={{ ...KIT_TYPE.small, color: ui.muted }}>Open by default; nothing remembered.</span>
+        </Drawer>
       </Card>
       <Card title="Tokens" subtitle={`spacing ${KIT_SPACE.join(' / ')} · content max-width ${KIT_MAX_WIDTH}px`}>
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>

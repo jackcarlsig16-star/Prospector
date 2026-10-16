@@ -7,6 +7,7 @@ import { memberLookup } from '../goalsUi';
 // sales-partners-workflow-v1 Stage 2: grouping, top-5 order, touched counts,
 // stage bar filter.
 const lookup = memberLookup([{ user_id: 'u-jack', name: 'Jack Carlson' }]);
+beforeEach(() => localStorage.clear());
 const p = (id, extra) => ({ id, name: id, category: '5. Rental Rewards & Renter Platforms', pipeline_status: 'not_started', owner_user_id: 'u-jack', ...extra });
 
 test('order: hand rank first, then P1 > P2 > P3 > none, hot, tier, name', () => {
@@ -116,12 +117,16 @@ test('a row opens the story: Status, Intel folded (sheet fields on open), Activi
   const rowA = grp.querySelector('[data-partner-id="A"]');
   fireEvent.click(within(rowA).getByTitle('Show research, intel and history'));
   expect(within(rowA).getByRole('region', { name: 'Status and next step' })).toBeTruthy();
-  expect(within(rowA).queryByText('Rent rewards for members')).toBeNull();
+  expect(within(rowA).getByRole('button', { name: /^Intel/ }).textContent).toBe('IntelRent rewards for membersShow ▸');
+  expect(within(rowA).queryByText('Angle')).toBeNull();
+  expect(within(rowA).queryByText('No "free"')).toBeNull();
+  for (const name of ['People', 'Activity', 'Tasks', 'Intel', 'Domains']) expect(within(rowA).getByRole('button', { name: new RegExp(`^${name}`) })).toHaveAttribute('aria-expanded', 'false');
   fireEvent.click(within(rowA).getByRole('button', { name: /^Intel/ }));
   expect(within(rowA).getByText('Rent rewards for members')).toBeTruthy();
   expect(within(rowA).getByText('No "free"')).toBeTruthy();
   expect(within(rowA).getByText('Dana (VP Partnerships)')).toBeTruthy();
   expect(within(rowA).getByRole('link', { name: 'Open in Apollo ↗' })).toBeTruthy();
+  fireEvent.click(within(rowA).getByRole('button', { name: /^Activity/ }));
   const act = await within(rowA).findByRole('list', { name: 'Activity timeline' });
   expect(within(act).getAllByRole('listitem').map(li => li.textContent)).toEqual([expect.stringContaining('Note: Called Dana')]);
   expect(within(act).getByText('automatic')).toBeTruthy();
@@ -129,6 +134,7 @@ test('a row opens the story: Status, Intel folded (sheet fields on open), Activi
   const all = within(within(rowA).getByRole('list', { name: 'Activity timeline' })).getAllByRole('listitem').map(li => li.textContent);
   expect(all).toEqual([expect.stringContaining('Undid the status change'), expect.stringContaining('Drafted → Live'), expect.stringContaining('Note: Called Dana')]);
   expect(within(rowA).getByText(/Drafted → Live/).style.textDecoration).toBe('line-through');
+  fireEvent.click(within(rowA).getByRole('button', { name: /^People/ }));
   const people = await within(rowA).findByRole('list', { name: 'People at this partner' });
   expect(within(people).getAllByRole('listitem').map(li => li.textContent)).toEqual([expect.stringMatching(/Dana.*VP Partnerships.*Sheet/)]);
   expect(within(rowA).queryByLabelText('Priority')).toBeNull();
@@ -151,7 +157,25 @@ test('members can change priority in the drop-down (under Intel); the row\'s Nex
   fireEvent.click(within(rowA).getByRole('button', { name: /^Intel/ }));
   fireEvent.change(within(rowA).getByLabelText('Priority'), { target: { value: '1' } });
   expect(d.onUpdate).toHaveBeenCalledWith('A', { priority: 1 });
+  fireEvent.click(within(rowA).getByRole('button', { name: /^Activity/ }));
   await within(rowA).findByRole('list', { name: 'Activity timeline' });
+});
+
+// partner-details-drawers-v1: the Key starts closed; a stored choice wins.
+test('Key: closed with empty storage, open when stored open, and the toggle writes the choice', () => {
+  const rows = [p('A')];
+  const { unmount } = render(<WorkflowView partners={rows} shown={rows} lookup={lookup} compact={false} stage={null} onStage={jest.fn()} />);
+  const key = () => screen.getByRole('button', { name: /^Key/ });
+  expect(key()).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByText(/Stages, in order/)).toBeNull();
+  fireEvent.click(key());
+  expect(key()).toHaveAttribute('aria-expanded', 'true');
+  expect(localStorage.getItem('prospector_partners_key')).toBe('open');
+  unmount();
+  render(<WorkflowView partners={rows} shown={rows} lookup={lookup} compact={false} stage={null} onStage={jest.fn()} />);
+  expect(key()).toHaveAttribute('aria-expanded', 'true');
+  fireEvent.click(key());
+  expect(localStorage.getItem('prospector_partners_key')).toBe('collapsed');
 });
 
 test('reorder hint shows for members when up/down are hidden, never for viewers', () => {

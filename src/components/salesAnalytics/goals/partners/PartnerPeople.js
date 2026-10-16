@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { SA, saMono } from '../../theme';
-import { labelStyle, subStyle, inputStyle, Btn, ErrorNote } from '../goalsUi';
+import { subStyle, inputStyle, Btn, ErrorNote } from '../goalsUi';
 import { PEOPLE_SOURCES } from '../../../../constants/partnerPeople';
 import { ACTIVITY_PAST } from './activityTimeline';
 
@@ -39,11 +39,7 @@ export default function PartnerPeople({ people, canEdit, onAdd, onDelete }) {
     try { await onDelete(p.id); } catch (err) { setError(err.message); }
   };
   return (
-    <section aria-label="People" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
-        <span style={labelStyle}>People</span>
-        <span style={{ ...subStyle, fontSize: 12 }}>{people.length ? `${people.length} known` : 'nobody yet'}</span>
-      </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {!people.length && <span style={{ ...subStyle, fontSize: 13 }}>Add the people you've talked to, or log a touch with their names — they show up here.</span>}
       {people.length > 0 && (
         <ul aria-label="People at this partner" style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -77,6 +73,6 @@ export default function PartnerPeople({ people, canEdit, onAdd, onDelete }) {
         </form>
       )}
       {error && <ErrorNote message={error} />}
-    </section>
+    </div>
   );
 }

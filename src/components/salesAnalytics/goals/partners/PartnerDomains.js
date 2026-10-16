@@ -1,33 +1,28 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { SA, saMono } from '../../theme';
-import { labelStyle, subStyle, inputStyle, Btn, ErrorNote } from '../goalsUi';
+import { subStyle, inputStyle, Btn, ErrorNote } from '../goalsUi';
 import { DOMAIN_SOURCES } from '../../../../constants/partnerDomains';
 
-// partner-360-v1 Stage 2 - the partner's domains, inside Intel. Confirmed
-// domains are the key Apollo (and later Outlook) matching uses; suggestions
-// come from the sheet's sources and Apollo's account list and are offered
-// until confirmed or dismissed. api = { load, add, update, remove }, each
-// resolving to the same { domains, suggestions, apollo_account } payload.
+// partner-360-v1 Stage 2 - the partner's domains (its own drawer since
+// partner-details-drawers-v1). Confirmed domains are the key Apollo (and
+// later Outlook) matching uses; suggestions come from the sheet's sources and
+// Apollo's account list and are offered until confirmed or dismissed.
+// api = { add, update, remove }, each resolving to the same { domains,
+// suggestions, apollo_account } payload as data; onData stores the reply
+// (the owner loads data, so a closed drawer can still count them).
 const small = { ...saMono, fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', color: SA.muted };
 const tiny = { all: 'unset', cursor: 'pointer', fontSize: 12, color: SA.link, padding: '0 3px', lineHeight: '20px' };
 const chip = { display: 'inline-flex', alignItems: 'center', gap: 6, height: 24, padding: '0 8px 0 10px', borderRadius: 999, border: `1px solid ${SA.borderStrong}`, background: SA.surface2, fontSize: 12, color: SA.text, whiteSpace: 'nowrap' };
 
-export default function PartnerDomains({ partner, canEdit, api }) {
-  const [data, setData] = useState(null);
+export default function PartnerDomains({ partner, canEdit, api, data, onData }) {
   const [error, setError] = useState('');
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState('');
   const [editing, setEditing] = useState(null); // { id, value }
   const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    let live = true;
-    setData(null);
-    api.load(partner.id).then(d => { if (live) { setData(d); setError(''); } }).catch(e => live && setError(e.message));
-    return () => { live = false; };
-  }, [partner.id, api]);
   const run = async fn => {
     setBusy(true); setError('');
-    try { setData(await fn()); return true; } catch (e) { setError(e.message); return false; } finally { setBusy(false); }
+    try { onData(await fn()); return true; } catch (e) { setError(e.message); return false; } finally { setBusy(false); }
   };
   const add = async e => {
     e.preventDefault();
@@ -38,15 +33,14 @@ export default function PartnerDomains({ partner, canEdit, api }) {
     e.preventDefault();
     if (await run(() => api.update(partner.id, editing.id, { domain: editing.value.trim() }))) setEditing(null);
   };
-  if (!data && !error) return <div style={{ ...subStyle, fontSize: 12 }}>Domains: loading…</div>;
-  const confirmed = (data?.domains || []).filter(d => d.confirmed);
-  const dismissed = (data?.domains || []).filter(d => !d.confirmed);
-  const suggestions = data?.suggestions || [];
-  const apollo = data?.apollo_account;
+  if (!data) return <div style={{ ...subStyle, fontSize: 12 }}>Domains: loading…</div>;
+  const confirmed = (data.domains || []).filter(d => d.confirmed);
+  const dismissed = (data.domains || []).filter(d => !d.confirmed);
+  const suggestions = data.suggestions || [];
+  const apollo = data.apollo_account;
   return (
     <div role="group" aria-label="Domains" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', minHeight: 24 }}>
-        <span style={labelStyle}>Domain{confirmed.length === 1 ? '' : 's'}</span>
         {!confirmed.length && <span style={{ ...subStyle, fontSize: 12 }}>none confirmed{suggestions.length ? '' : canEdit ? ' - add one' : ''}</span>}
         {confirmed.map(d => (editing?.id === d.id
           ? <form key={d.id} onSubmit={saveEdit} style={{ display: 'flex', gap: 6 }}>

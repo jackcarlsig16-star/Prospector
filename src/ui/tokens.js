@@ -273,3 +273,7 @@ export const KIT_TABLE = { rowHeight: 34, headHeight: 34, groupHeight: 36, fontS
 // row, so it is shorter than .ui-input; dateWidth is what a native date input
 // (mm/dd/yyyy + its picker) needs as a column width at the table's font size.
 export const KIT_EDITABLE = { height: 26, padX: 6, pencil: 11, dateWidth: 118 };
+
+// partner-details-drawers-v1 - Drawer: the header row of a folded section
+// (label · summary · count · Show ▸ / Hide ▾) and the gap to its body.
+export const KIT_DRAWER = { headHeight: 36, gap: 8 };

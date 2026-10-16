@@ -1,4 +1,4 @@
-import { KIT_DARK, KIT_LIGHT, KIT_RADIUS, KIT_SEGMENTED, KIT_TABLE, KIT_EDITABLE } from './tokens';
+import { KIT_DARK, KIT_LIGHT, KIT_RADIUS, KIT_SEGMENTED, KIT_TABLE, KIT_EDITABLE, KIT_DRAWER } from './tokens';
 
 // Every kit component reads var(--ui-*) so dark/light is pure CSS: :root holds
 // dark, the app's light mode (body.mode-straight-shooter) swaps to light, and
@@ -72,6 +72,16 @@ body.mode-straight-shooter :where(.ui-cell-input), .ui-theme-light .ui-cell-inpu
 .ui-list__group:first-child { border-top:0; }
 .ui-list__group h3 { display:inline-flex; align-items:center; gap:8px; margin:0; font-size:14px; font-weight:600; }
 .ui-list__row { display:flex; align-items:center; gap:10px; min-height:${KIT_TABLE.compactRowMinHeight}px; padding:6px 4px 6px 12px; box-sizing:border-box; border-top:1px solid var(--ui-border); background:var(--ui-row-tint, transparent); box-shadow:inset 3px 0 0 var(--ui-row-bar, transparent); }
+.ui-drawer { display:flex; flex-direction:column; gap:${KIT_DRAWER.gap}px; min-width:0; }
+.ui-drawer + .ui-drawer { border-top:1px solid var(--ui-border); }
+.ui-drawer__head { all:unset; box-sizing:border-box; display:flex; align-items:center; gap:10px; width:100%; min-height:${KIT_DRAWER.headHeight}px; padding:0 2px; border-radius:${KIT_RADIUS.control}px; cursor:pointer; font:400 13px 'Geist', ui-sans-serif, system-ui, sans-serif; color:var(--ui-soft); }
+.ui-drawer__head:hover .ui-drawer__toggle { color:var(--ui-text); }
+.ui-drawer__head:focus-visible { outline:2px solid var(--ui-accent); outline-offset:2px; }
+.ui-drawer__label { flex:none; font:500 11px 'Geist Mono', ui-monospace, monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--ui-muted); }
+.ui-drawer__summary { flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--ui-muted); }
+.ui-drawer__count { flex:none; display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:20px; padding:0 6px; border-radius:999px; border:1px solid var(--ui-border); background:var(--ui-surface2); font-size:12px; color:var(--ui-text); font-variant-numeric:tabular-nums; }
+.ui-drawer__toggle { flex:none; margin-left:auto; white-space:nowrap; color:var(--ui-muted); }
+.ui-drawer__body { display:flex; flex-direction:column; gap:10px; min-width:0; padding-bottom:12px; }
 @media (max-width: 600px) { .ui-card { padding:16px; } }
 `;
 
