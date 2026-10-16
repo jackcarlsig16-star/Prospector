@@ -92,3 +92,40 @@ test('Apollo: mailboxes + last sync per sales workspace from the snapshot routes
   expect(screen.queryByText('Plain')).toBeNull();
   expect(screen.getByText('one@x.com').closest('[data-provider="apollo"]').querySelectorAll('button').length).toBe(0);
 });
+
+// FIX connections-mailbox-status-v1: one rule (mailboxConnectionProblem) for
+// the Apollo pill and each row, so Connections agrees with Mailbox Health.
+// Apollo keeps unlink_error_code after a reconnect - history, not a ✕.
+test('Apollo: a leftover unlink_error_code on an active mailbox is hover history, not ✕; inactive and needs_reauth_at are ✕', async () => {
+  global.fetch = url => url === '/api/sales/b1/entities' ? json(200, { sequences: [], mailboxes: [
+    { id: 'm1', email: 'one@x.com', active: true, needs_reauth_at: null, unlink_error_code: 'auth_token_expired', inactive_reason: 'old grant error for one@x.com', last_synced_at: '2026-10-15T14:52:00Z', snapshot_at: '2026-10-15T14:59:00Z' },
+    { id: 'm2', email: 'two@x.com', active: false, unlink_error_code: null },
+    { id: 'm3', email: 'three@x.com', active: true, needs_reauth_at: '2026-10-14T00:00:00Z' },
+  ] }) : url === '/api/sales/b1/runs?limit=1' ? json(200, { runs: [] }) : json(409, {});
+  page({ businesses: [{ id: 'b1', name: 'HomeLover', features: { goals_sales: true } }] });
+  await screen.findByText('one@x.com');
+  const pillOf = email => screen.getByText(email).parentElement.querySelector('[data-status]');
+  expect(pillOf('one@x.com').dataset.status).toBe('ok');
+  expect(pillOf('one@x.com')).toHaveTextContent('Active');
+  expect(screen.queryByText('auth_token_expired')).toBeNull();
+  const history = screen.getByText('old error');
+  expect(history).toHaveAttribute('title', 'Last error from Apollo: auth_token_expired');
+  expect(history.title).not.toMatch(/@/);
+  expect(screen.queryByText(/old grant error/)).toBeNull();
+  expect(pillOf('two@x.com').dataset.status).toBe('bad');
+  expect(pillOf('two@x.com')).toHaveTextContent('Inactive');
+  expect(pillOf('three@x.com').dataset.status).toBe('bad');
+  expect(pillOf('three@x.com')).toHaveTextContent('Needs re-auth');
+  expect(screen.getByText('Needs attention')).toBeInTheDocument();
+});
+
+test('Apollo: only a leftover code across the workspace -> the card pill is Connected', async () => {
+  global.fetch = url => url === '/api/sales/b1/entities' ? json(200, { sequences: [], mailboxes: [
+    { id: 'm1', email: 'one@x.com', active: true, unlink_error_code: 'auth_token_expired', last_synced_at: '2026-10-15T14:52:00Z', snapshot_at: '2026-10-15T14:59:00Z' },
+  ] }) : url === '/api/sales/b1/runs?limit=1' ? json(200, { runs: [] }) : json(409, {});
+  page({ businesses: [{ id: 'b1', name: 'HomeLover', features: { goals_sales: true } }] });
+  await screen.findByText('one@x.com');
+  expect(screen.getByText('Connected')).toBeInTheDocument();
+  expect(screen.queryByText('Needs attention')).toBeNull();
+  expect(screen.getByText('one@x.com').closest('[data-provider="apollo"]').querySelector('[data-status="bad"]')).toBeNull();
+});

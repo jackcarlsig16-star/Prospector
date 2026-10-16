@@ -7,6 +7,7 @@ import Button, { ButtonRow } from '../ui/Button';
 import StatusPill from '../ui/StatusPill';
 import SectionLabel from '../ui/SectionLabel';
 import { GOOGLE_FEATURE_LABELS, googleStatus, connectGoogle, disconnectGoogle } from '../utils/google';
+import { mailboxConnectionProblem } from '../utils/mailboxStatus';
 
 // shell-facelift-v1 Stage 3 - user menu > Connections: the signed-in user's
 // Google + Microsoft grants (held server-side; the browser only sees which
@@ -178,7 +179,7 @@ function ApolloCard({ businesses }) {
   }, [key]);
   const all = Object.values(data).flatMap(d => d.mailboxes || []);
   const loaded = sales.length > 0 && sales.every(b => data[b.id]);
-  const pill = !sales.length || (loaded && !all.length) ? ['off', 'Not connected'] : !loaded ? ['off', '…'] : all.some(m => !m.active || m.unlink_error_code) ? ['warn', 'Needs attention'] : ['ok', 'Connected'];
+  const pill = !sales.length || (loaded && !all.length) ? ['off', 'Not connected'] : !loaded ? ['off', '…'] : all.some(m => mailboxConnectionProblem(m)) ? ['warn', 'Needs attention'] : ['ok', 'Connected'];
   return (
     <Card title="Apollo" subtitle={sales.length ? 'Workspace mailboxes · read-only' : 'No workspace with the sales module'}
       actions={<StatusPill status={pill[0]}>{pill[1]}</StatusPill>}>
@@ -193,12 +194,17 @@ function ApolloCard({ businesses }) {
                 <span style={small}>Last sync {d.run?.finished_at ? when(d.run.finished_at) : 'never'}{d.run?.counts?.apollo_calls != null ? ` · ${n(d.run.counts.apollo_calls)} Apollo calls` : ''}</span>
                 {!d.mailboxes.length && <span style={small}>No mailboxes in the last snapshot.</span>}
                 {d.mailboxes.map(m => {
-                  const bad = !m.active || !!m.unlink_error_code;
+                  const problem = mailboxConnectionProblem(m);
+                  // Only the code: inactive_reason / unlink_error_message are free text from Apollo and can carry addresses.
+                  const code = m.unlink_error_code;
                   return (
                     <div key={m.id || m.email} style={{ ...row, padding: '6px 10px', background: ui.inset, border: `1px solid ${ui.border}`, borderRadius: KIT_RADIUS.inner }}>
                       <span style={{ ...KIT_TYPE.small, color: ui.text, flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.email}</span>
                       <span style={{ ...KIT_TYPE.label, color: ui.faint, fontWeight: 400 }}>{m.last_synced_at ? when(m.last_synced_at) : '—'}</span>
-                      <StatusPill status={bad ? 'bad' : 'ok'}>{bad ? (m.unlink_error_code || 'Inactive') : 'Active'}</StatusPill>
+                      {code && (problem
+                        ? <span style={{ ...KIT_TYPE.label, color: ui.faint, fontWeight: 400 }}>{code}</span>
+                        : <span data-mailbox-history title={`Last error from Apollo: ${code}`} style={{ ...KIT_TYPE.label, color: ui.faint, fontWeight: 400, opacity: 0.55, cursor: 'help' }}>old error</span>)}
+                      <StatusPill status={problem ? 'bad' : 'ok'}>{problem || 'Active'}</StatusPill>
                     </div>
                   );
                 })}
