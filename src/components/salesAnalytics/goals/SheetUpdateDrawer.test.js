@@ -3,6 +3,9 @@ import SheetUpdateDrawer from './SheetUpdateDrawer';
 import PipelineView from './PipelineView';
 import { goalsApi } from './goalsApi';
 
+// jsdom has no matchMedia; PipelineView reads it for its phone list.
+window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
+
 // pipeline-board-v1 Stage 4 - Update from sheet.
 jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, sheetUpdatePreview: jest.fn(), sheetUpdateApply: jest.fn(), pipelineBoard: jest.fn() } }));
 jest.mock('../pipelineApi', () => ({ fetchOpportunities: jest.fn(), createOpportunity: jest.fn(), updateOpportunity: jest.fn(), archiveOpportunity: jest.fn() }));
