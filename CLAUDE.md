@@ -166,20 +166,37 @@ Requirements:
 Adopted 2026-10-01. Jack's planning chat (Claude in Cowork) writes files directly into this repo so Jack doesn't have to copy-paste between windows. Two locations, both gitignored, never committed:
 
 - `inbox/` — one-shot work items (SPEC, FIX, AUDIT, prompts, answers to questions you asked). Named `YYYY-MM-DD-HHMM-<kebab-name>.txt`.
-- `todo/STATUS.txt` — the living status sheet. The chat overwrites it; you update lines in it as work lands.
+- `todo/STATUS.txt` — the living status sheet; you update lines in it as work lands. `todo/RESUME.txt` — your
+  ≤15-line restart note, overwritten at every stage close-out. Both gitignored.
 
 **At the start of every session, and whenever Jack says "check inbox" or runs `/inbox`:**
 1. `ls inbox/` — if empty, say so in one line and carry on.
 2. Read every file, oldest first by filename. Also read `todo/STATUS.txt`.
 3. Summarize what's waiting (one line per file) and start on the oldest, following BUILD DISCIPLINE as normal: stop after every stage and report; Jack replies "go".
 
-**While an item is in progress:** leave its file in `inbox/`. After each stage, update its line in `todo/STATUS.txt` (status tag, commit hash, next step).
+**Pinning.** Every "go" from Jack names one inbox file and its REV (e.g. `Spec: inbox/2026-10-15-1715-sales-ia-v1.txt REV1`).
+Build only from that file. Before the first edit AND before `git commit`, `ls inbox/` for a newer REV of the same
+spec; if one exists, STOP and say so. Two REVs of one spec in inbox/ = the planner is mid-swap; newest wins, but STOP.
 
-**When an item is fully finished** — every stage pushed, its checks passed, and Jack has seen the final report:
-1. Update `todo/STATUS.txt`: move it to DONE (recent) with the commit hash and date, and note any deliberate trade-off on the line.
-2. If the item belongs in `specs/` permanently (a real SPEC, not a prompt or answer), copy it there first under its kebab-case name.
-3. Delete the inbox file: `rm inbox/<that-file>`.
-4. Say in one line what you deleted.
+**Re-orient yourself at the start of every "go"** (no separate prompt needed): read CLAUDE.md, `todo/STATUS.txt`,
+`todo/RESUME.txt`; run `git rev-parse --short HEAD` and `git ls-remote origin main`; `ls inbox/`. If HEAD differs
+from the hash in the go, origin doesn't match, the tree has dirty TRACKED files, or the named inbox file isn't
+there, STOP and report the mismatch in ≤5 lines. Otherwise state "HEAD <hash>, matches, spec pinned" and build.
+
+**While an item is in progress:** leave its file in `inbox/`.
+
+**Stage close-out, in this order, before you write the report:**
+1. Commit, push, `git ls-remote origin main` (hash must match).
+2. Update the item's line in `todo/STATUS.txt` (tag, hash, next step).
+3. Overwrite `todo/RESUME.txt` (≤15 lines): HEAD, what just shipped, decisions applied, what waits on Jack's bar 5,
+   the next item and its inbox file + REV, gotchas.
+4. Report (shape below), then STOP. Jack will `/clear` and paste the next go.
+Never `git add` todo/ or inbox/.
+
+**Done = bar 5.** An item is finished only when Jack says "bar 5 ok <item>" after clicking through on prod. Then,
+and only then: STATUS line → DONE (recent) with hash + date + any deliberate trade-off; a real SPEC is copied to
+`specs/` under its kebab-case name; `rm inbox/<that-file>`; say in one line what you deleted. A pushed stage, a
+green verify run or a bundle check is NOT done. Superseded REV files are moved by the planner, not by you.
 
 **Rules:**
 - Only ever delete files inside `inbox/`, and only ones you finished. Never delete a file that's half-done, blocked or waiting on Jack — update STATUS instead and leave it.
@@ -221,7 +238,11 @@ Standing rules for every sales spec — specs don't need to repeat them.
 
 ## Stage report + session budget
 
-- Report shape after each stage, short: **What's new** (bullets) · **Tests** (counts) · **restored: yes** · **Choices to confirm** · **Next** ("Reply go for …"). Don't re-print earlier stages.
-- Update `todo/STATUS.txt` and push **before** writing the report, so a usage-limit cut-off loses nothing.
-- After a stage is pushed and reported, suggest `/compact` if the session is long.
+- Every report opens with `Spec: <inbox file> REVn · HEAD <hash> (remote matches)` and the progress bar.
+- Then, short: **What's new** · **Tests** (counts, temp workspace, **restored: yes**) · **Cost** (if any AI call:
+  calls, $ per call) · **Choices to confirm** (numbered) · **Waiting on you** · **Next** ("Reply go for …").
+  Don't re-print earlier stages. Under 40 lines.
+- Bars: 1 committed · 2 deployed · 3 bundle-verified · 4 live-verified (real data or temp workspace) · 5 Jack's
+  click-through on prod after Render "Live" + hard refresh. Report the bar you reached; never call 3 or 4 "done".
+- One stage per session. After the close-out, STOP; don't suggest `/compact` and don't start the next item.
 - Don't re-read files already read this session unless they changed.
