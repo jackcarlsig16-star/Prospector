@@ -67,7 +67,6 @@ test('real replay: no counterpart task, 4 waiting-on, next meeting snapped to Mo
   assert.ok(r.tasks.every(t => [JACK, CYRUS].includes(t.owner_user_id)));
   assert.equal(r.waiting_on.length, 4);
   assert.ok(r.waiting_on.every(w => w.on && w.match.id === EQ));
-  assert.equal(REAL.next_meeting.date, '2026-10-27', 'the model gave the Tuesday');
   assert.equal(r.next_meeting[0].date, '2026-10-26', 'the server snapped "week of" to Monday');
   const decided = r.decisions.map(d => d.text).join(' ').toLowerCase();
   for (const k of ['3 equifax employer clients', 'featured partner', 'owns the employer relationship', 'co-branded one-pager', 'monthly check-in']) assert.ok(decided.includes(k), k);

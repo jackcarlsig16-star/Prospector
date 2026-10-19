@@ -119,7 +119,9 @@ const partnerRow = (page, name) => page.locator('[data-partner-id]', { hasText: 
     ok('4+ waiting-on rows, each on Equifax with Dana or Priya', (r.waiting_on || []).length >= 4 && r.waiting_on.every(w => w.on && w.match?.id === EQ && /^(Dana|Priya)$/.test(w.who)), JSON.stringify(r.waiting_on).slice(0, 300));
     ok('Dana\'s list is due Oct 23', (r.waiting_on || []).some(w => w.who === 'Dana' && w.due_date === '2026-10-23'));
     const covers = (list, keys) => { const all = list.map(x => x.text).join(' ').toLowerCase(); return keys.every(k => all.includes(k)); };
-    console.log(`decisions ${(r.decisions || []).length} · terms ${(r.terms || []).length} (the note has 5 · 3)`);
+    const nextStep = (r.facts || []).filter(f => f.field === 'next_step');
+    console.log(`COUNTS decisions ${(r.decisions || []).length} · waiting_on ${(r.waiting_on || []).length} · terms ${(r.terms || []).length} · next_meeting ${JSON.stringify((r.next_meeting || []).map(n => n.date))} (model said ${JSON.stringify(r.extract?.next_meeting?.date ?? null)}) · next_step facts ${JSON.stringify(nextStep.map(f => f.text))}`);
+    ok('no meeting in next_step (no next_step fact about the meeting / reconvening)', !nextStep.some(f => /meet|reconvene|week of/i.test(f.text)), JSON.stringify(nextStep.map(f => f.text)));
     ok('decisions cover all 5 decision bullets', covers(r.decisions || [], ['3 equifax employer clients', 'featured partner', 'owns the employer relationship', 'co-branded one-pager', 'monthly check-in']));
     ok('terms cover all 3 economic-model bullets, each line "(10/16) Terms: …"', covers(r.terms || [], ['20%', 'pay nothing', '$500']) && r.terms.every(t => t.line.startsWith('(10/16) Terms: ')));
     ok('next meeting = Monday Oct 26 (the week of Oct 27)', r.next_meeting?.length === 1 && r.next_meeting[0].date === '2026-10-26', JSON.stringify(r.next_meeting));
@@ -167,6 +169,16 @@ const partnerRow = (page, name) => page.locator('[data-partner-id]', { hasText: 
     const co = await call(J, 'POST', '/week/carry-over', { week_start: next });
     ok('carry-over copies our open to-dos, never a waiting row', co.status === 200 && co.body.carried.length === todos.length && co.body.carried.every(x => x.kind === 'todo'), JSON.stringify(co.body).slice(0, 160));
     await svc.from('sales_week_goals').delete().in('id', co.body.carried.map(x => x.id));
+    // (b) An open waiting row from a PAST week: carry-over into this week leaves it alone (not copied, still open),
+    // and every waiting read is across weeks, so the card and Today still show it.
+    const lastMonday = new Date(Date.parse(`${monday}T12:00:00Z`) - 7 * DAY).toISOString().slice(0, 10);
+    const past = ins(await svc.from('sales_week_goals').insert({ business_id: T, week_start: lastMonday, kind: 'waiting', status: 'open', text: 'Send the signed pilot letter of intent', waiting_on: 'Dana', due_date: daysBack(9), link_type: 'partner', link_id: EQ, owner_user_id: null, created_by: J.id }).select().single());
+    const co2 = await call(J, 'POST', '/week/carry-over', { week_start: monday });
+    const pastAfter = ins(await svc.from('sales_week_goals').select('*').eq('id', past.id).single());
+    ok('(b) carry-over into this week: the past-week waiting row is not copied and stays open in its own week', co2.status === 200 && co2.body.carried.every(x => x.kind !== 'waiting' && x.carried_from_id !== past.id) && pastAfter.status === 'open' && pastAfter.week_start === lastMonday, JSON.stringify(co2.body).slice(0, 160));
+    await svc.from('sales_week_goals').delete().in('id', co2.body.carried.map(x => x.id));
+    const allW = await call(V, 'GET', '/tasks?link_type=partner&kind=waiting');
+    ok('(b) the all-partners waiting read (Today chip / drawer) includes the past-week row', allW.status === 200 && allW.body.tasks.some(t => t.id === past.id));
     const n1 = await call(C, 'POST', `/waiting/${dana.id}/nudge`, {});
     ok('Nudge (Cyrus) -> OUR open to-do "Nudge Dana re …", due today, owner Cyrus, linked to Equifax', n1.status === 201 && n1.body.todo.kind === 'todo' && n1.body.todo.text.startsWith('Nudge Dana re ') && n1.body.todo.due_date === today && n1.body.todo.owner_user_id === C.id && n1.body.todo.link_id === EQ, JSON.stringify(n1.body).slice(0, 200));
     const lastPriya = waiting.filter(w => w.waiting_on === 'Priya').slice(-1)[0];
@@ -178,8 +190,9 @@ const partnerRow = (page, name) => page.locator('[data-partner-id]', { hasText: 
     ins(await svc.from('sales_week_goals').update({ due_date: daysBack(3) }).eq('id', priya.id).select());
     const tr = await call(J, 'POST', '/tidy/run', { trigger: 'test', force: true });
     const sugg = await rows('sales_suggestions');
-    ok('Tidy: exactly one nudge (Priya, 3 days late), no Reply task for Equifax', tr.status === 200 && sugg.filter(s => s.kind === 'nudge').length === 1 && sugg.find(s => s.kind === 'nudge').ref_id === priya.id && sugg.find(s => s.kind === 'nudge').text === 'Nudge Priya at Equifax' && !sugg.some(s => s.kind === 'reply_task'), sugg.map(s => `${s.kind}:${s.text}`).join(' | '));
-    const ta = await call(J, 'POST', `/suggestions/${sugg.find(s => s.kind === 'nudge').id}/accept`, {});
+    const nudges = sugg.filter(s => s.kind === 'nudge');
+    ok('Tidy: one nudge per waiting row 2+ days late (Priya 3 d, the past-week Dana row 9 d), no Reply task for Equifax', tr.status === 200 && nudges.length === 2 && nudges.some(s => s.ref_id === priya.id && s.text === 'Nudge Priya at Equifax') && nudges.some(s => s.text === 'Nudge Dana at Equifax') && !sugg.some(s => s.kind === 'reply_task'), sugg.map(s => `${s.kind}:${s.text}`).join(' | '));
+    const ta = await call(J, 'POST', `/suggestions/${nudges.find(s => s.ref_id === priya.id).id}/accept`, {});
     ok('accept the nudge -> to-do "Nudge Priya re …", due today, linked to Equifax', ta.status === 200 && ta.body.todo?.text.startsWith('Nudge Priya re ') && ta.body.todo.due_date === today && ta.body.todo.link_id === EQ, JSON.stringify(ta.body).slice(0, 200));
 
     const cb = await call(V, 'GET', `/copy-bundle?type=partner&id=${EQ}`);
@@ -193,7 +206,9 @@ const partnerRow = (page, name) => page.locator('[data-partner-id]', { hasText: 
     const evCount = (await rows('sales_partner_events')).filter(e => e.meta?.from_note_id === note.id).length;
     extractReply = { ...r, recent_accepts: [{ partner: 'Equifax', partner_id: EQ, note_id: note.id, minutes_ago: Math.round((Date.now() - Date.parse(note.created_at)) / 60000), todos: todos.length + waiting.length, events: evCount }] };
     browser = await chromium.launch();
-    const openOn = (await rows('sales_week_goals')).filter(w => w.kind === 'waiting' && w.status === 'open').length;
+    const openRows = (await rows('sales_week_goals')).filter(w => w.kind === 'waiting' && w.status === 'open');
+    const openOn = openRows.length;
+    const lateN = openRows.filter(w => w.due_date && w.due_date < today).length;
     for (const [width, height, compact] of [[1440, 900, false], [390, 844, true]]) {
       const { page, errs } = await newPage(J, width, height);
       await navSales(page, compact);
@@ -201,7 +216,7 @@ const partnerRow = (page, name) => page.locator('[data-partner-id]', { hasText: 
       await chip.waitFor();
       ok(`${width}: Today chip "⏳ Waiting on (${openOn})"`, (await chip.innerText()).trim() === `⏳ Waiting on (${openOn})`, await chip.innerText());
       const late = page.locator('[aria-label="Waiting on them · overdue"]');
-      ok(`${width}: Your day "Waiting on them · overdue (1)" = Priya; not in Overdue`, (await late.locator('li').count()) === 1 && /Priya:/.test(await late.innerText()) && !(await page.locator('[aria-label="Overdue"]').innerText().catch(() => '')).includes('Priya'), await late.innerText().catch(() => 'missing'));
+      ok(`${width}: Your day "Waiting on them · overdue (${lateN})" = Priya + the past-week Dana row; neither in Overdue`, (await late.locator('li').count()) === lateN && /Priya:/.test(await late.innerText()) && /Dana: Send the signed pilot letter of intent/.test(await late.innerText()) && !/Priya|letter of intent/.test(await page.locator('[aria-label="Overdue"]').innerText().catch(() => '')), await late.innerText().catch(() => 'missing'));
       await shot(page, `cnt5-${width}-today`);
       await chip.click();
       const drawer = page.locator(drawerSel); await drawer.waitFor(); await page.waitForTimeout(800);
@@ -227,7 +242,7 @@ const partnerRow = (page, name) => page.locator('[data-partner-id]', { hasText: 
       const tasksHead = row.getByRole('button', { name: /^Tasks/ });
       if ((await tasksHead.getAttribute('aria-expanded')) !== 'true') await tasksHead.click();
       const group = row.locator(`section[aria-label="Waiting on Equifax"]`); await group.waitFor();
-      ok(`${width}: Tasks drawer "Waiting on Equifax (${openOn})" with Got it + Nudge`, (await group.innerText()).includes(`Waiting on Equifax (${openOn})`) && (await group.getByRole('button', { name: /^Got it/ }).count()) === openOn);
+      ok(`${width}: Tasks drawer "Waiting on Equifax (${openOn})" with Got it + Nudge, incl. the past-week row`, (await group.innerText()).includes(`Waiting on Equifax (${openOn})`) && (await group.getByRole('button', { name: /^Got it/ }).count()) === openOn && /letter of intent/.test(await group.innerText()));
       const actHead = row.getByRole('button', { name: /^Activity/ });
       if ((await actHead.getAttribute('aria-expanded')) !== 'true') await actHead.click();
       await page.waitForTimeout(500);
