@@ -4,6 +4,7 @@ import { laDateString } from './laDate.js';
 import { touchDedupe } from './touchDedupe.js';
 import { touchStageMove, TOUCH_TYPE_IDS } from '../../src/constants/partnerPipeline.js';
 import { OWNER_TEAMS, doubleTouchWarning } from '../../src/constants/ownership.js';
+import { toDeal } from './intakeDeal.js';
 
 // call-notes-targets-v1 REV3 - the four Intake lists the model returns
 // (companies, people, touches, facts) checked against this workspace. The
@@ -183,7 +184,8 @@ export function toIntake(raw, ctx, noteDate, today = laDateString()) {
     });
   }
 
-  return { companies: companies.map(({ _m, _ownership, ...c }) => c), ownership, people, touches, facts, rejected };
+  const deal = toDeal(raw, { companyOf, isMember: n => !!matchOwner(n, ctx.members || []), noteDate });
+  return { companies: companies.map(({ _m, _ownership, ...c }) => c), ownership, people, touches, facts, ...deal, rejected };
 }
 
 // What only the DB can say, for the partners the notes resolved to: who we

@@ -5,6 +5,14 @@ import { MoreMenu } from './PartnerRow';
 import { lastTouch, stageName } from './activityTimeline';
 
 const md = iso => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+const onDay = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+const cut = (s, n) => (s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s);
+// The newest "(M/D) Terms: …" line Intake appended to notes (call-notes-targets-v1 REV5).
+export const latestTerms = notes => (notes || '').split('\n').filter(l => /^\(\d{1,2}\/\d{1,2}\) Terms: /.test(l)).pop()?.replace(/^\(\d{1,2}\/\d{1,2}\) Terms: /, '') || null;
+export function dealLine(partner) {
+  const terms = latestTerms(partner.notes);
+  return [partner.next_meeting_at && `Next meeting ${onDay(partner.next_meeting_at)}`, terms && `Terms: ${cut(terms, 60)}`].filter(Boolean).join(' · ');
+}
 const daysAgo = iso => Math.floor((Date.now() - Date.parse(iso)) / 864e5);
 
 // partner-360-v1 - the top of the story: where the partner is, when we last
@@ -32,6 +40,7 @@ export default function PartnerStatus({ partner, events, lookup, actions, logOpe
           <span style={labelStyle}>Next</span>
           <span>{status === 'live' ? 'Live · keep the relationship warm' : next.label}</span>
           {(stale || partner.next_step) && <span style={{ ...subStyle, fontSize: 12, color: stale ? SA.bad : SA.muted }}>{stale ? `${days} days since the last touch — follow up` : partner.next_step}</span>}
+          {dealLine(partner) && <span style={{ ...subStyle, fontSize: 12, color: SA.soft }}>{dealLine(partner)}</span>}
         </div>
         {actions && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>

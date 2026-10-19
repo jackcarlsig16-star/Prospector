@@ -14,6 +14,7 @@ import { acceptSummary } from './intakeBody';
 import TaskRow, { linkBtn } from './TaskRow';
 import TargetsList, { openTargets } from './TargetsList';
 import SuggestedList from './SuggestedList';
+import WaitingList from './WaitingList';
 
 // task-drawer-v1 - a second view of the Goals to-dos, on every page of a
 // workspace with Goals & Sales on. Writes reuse the Goals/flag routes.
@@ -49,24 +50,28 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
   const [pasting, setPasting] = useState(false);
   const [targets, setTargets] = useState([]);
   const [suggested, setSuggested] = useState({ suggestions: [], last_run: null });
-  const [view, setView] = useState('tasks'); // 'tasks' | 'targets' | 'suggested' (call-notes-targets-v1)
+  const [view, setView] = useState('tasks'); // 'tasks' | 'targets' | 'suggested' | 'waiting' (call-notes-targets-v1)
+  const [waiting, setWaiting] = useState([]);
 
   const load = useCallback(() => Promise.all([goalsApi.weekGoals(businessId, week, week, 'todo'), fetchFlags(businessId), goalsApi.prospectTargets(businessId), goalsApi.suggestions(businessId)])
     .then(([t, f, ts, sg]) => { setTodos(t); setFlags(f); setTargets(ts); setSuggested(sg); setError(''); })
     .catch(e => setError(e.message)), [businessId, week]);
+  // REV5 - what counterparts owe us, across partners; never mixed into our to-dos.
+  const loadWaiting = useCallback(() => goalsApi.waitingRows(businessId).then(setWaiting).catch(() => setWaiting([])), [businessId]);
 
   useEffect(() => {
     fetchMe().then(setMe).catch(() => setMe(null));
     goalsApi.members(businessId).then(setMembers).catch(e => setError(e.message));
   }, [businessId]);
   useEffect(() => {
-    load();
+    load(); loadWaiting();
     window.addEventListener(TODOS_CHANGED, load);
+    window.addEventListener(TODOS_CHANGED, loadWaiting);
     window.addEventListener(FLAGS_CHANGED, load);
-    return () => { window.removeEventListener(TODOS_CHANGED, load); window.removeEventListener(FLAGS_CHANGED, load); };
-  }, [load]);
+    return () => { window.removeEventListener(TODOS_CHANGED, load); window.removeEventListener(TODOS_CHANGED, loadWaiting); window.removeEventListener(FLAGS_CHANGED, load); };
+  }, [load, loadWaiting]);
   useEffect(() => {
-    const onOpenTasks = e => { setLinkFilter(e.detail.link || null); setFilter(e.detail.filter || 'team'); setView(['targets', 'suggested'].includes(e.detail.view) ? e.detail.view : 'tasks'); setOpen(true); };
+    const onOpenTasks = e => { setLinkFilter(e.detail.link || null); setFilter(e.detail.filter || 'team'); setView(['targets', 'suggested', 'waiting'].includes(e.detail.view) ? e.detail.view : 'tasks'); setOpen(true); };
     window.addEventListener(OPEN_TASKS, onOpenTasks);
     return () => window.removeEventListener(OPEN_TASKS, onOpenTasks);
   }, []);
@@ -242,12 +247,20 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
                 <button type="button" aria-pressed={view === 'suggested'} onClick={() => setView(v => (v === 'suggested' ? 'tasks' : 'suggested'))} style={pill(view === 'suggested')}>
                   ✦ Suggested{suggestedCount ? ` (${suggestedCount})` : ''}
                 </button>
+                {waiting.length > 0 && (
+                  <button type="button" aria-pressed={view === 'waiting'} onClick={() => setView(v => (v === 'waiting' ? 'tasks' : 'waiting'))} style={pill(view === 'waiting')}>
+                    ⏳ Waiting on ({waiting.length})
+                  </button>
+                )}
               </div>
               <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px' }}>
                 {view === 'targets' && <TargetsList businessId={businessId} targets={targets} canEdit={canEdit} onChanged={load} onOpenRecord={openRecord} />}
+                {view === 'waiting' && <WaitingList businessId={businessId} rows={waiting} canEdit={canEdit} onChanged={loadWaiting}
+                  partnerName={id => (links.labelFor('partner', id) || '').replace(/^[^:]+: /, '')} />}
+                {view === 'waiting' && !waiting.length && <p style={{ fontSize: 14, color: SA.muted, marginTop: 16 }}>Nothing owed to us right now.</p>}
                 {view === 'suggested' && <SuggestedList businessId={businessId} data={suggested} canEdit={canEdit} onChanged={load} onOpenPair={openPair} />}
                 {view === 'tasks' && linkFilter && <div style={{ marginBottom: 4 }}><ShowingChip label={links.labelFor(linkFilter.type, linkFilter.id)} count={groups.reduce((n, g) => n + g.items.length, 0)} onClear={() => setLinkFilter(null)} /></div>}
-                {me && !canEdit && <p style={{ fontSize: 13, color: SA.muted, margin: '0 0 8px' }}>You have view access, so {view === 'targets' ? 'targets are' : view === 'suggested' ? 'suggestions are' : 'tasks are'} read-only.</p>}
+                {me && !canEdit && <p style={{ fontSize: 13, color: SA.muted, margin: '0 0 8px' }}>You have view access, so {view === 'targets' ? 'targets are' : view === 'suggested' ? 'suggestions are' : view === 'waiting' ? 'waiting-on items are' : 'tasks are'} read-only.</p>}
                 {error && <div style={{ marginBottom: 8 }}><ErrorNote message={error} /></div>}
                 {view === 'tasks' && groups.filter(g => g.items.length).map(g => (
                   <section key={g.id} aria-label={g.label} style={{ marginTop: 12 }}>

@@ -144,3 +144,40 @@ export function IntelRows({ ownership, facts, companies, setOwnership, setFact }
     </>
   );
 }
+
+// call-notes-targets-v1 REV5 - the deal side. Only a partner keeps these, so
+// a row whose company isn't a partner stays greyed with why.
+const NOT_PARTNER = 'Not stored - only a partner keeps it';
+function dealRow(x, set, i, label, children) {
+  return (
+    <Row key={x.key} on={x.on} disabled={!x.match} label={label} onToggle={() => set(i)({ on: !x.on })}>
+      {children}
+      {!x.match && <span style={small()}>{NOT_PARTNER}</span>}
+      <Evidence text={x.evidence} />
+    </Row>
+  );
+}
+
+export const DecisionRows = ({ rows, set }) => rows.map((d, i) => dealRow(d, set, i, `Keep decision: ${d.company}`,
+  <span><strong>{d.company}</strong> · {d.text}</span>));
+
+export const WaitingRows = ({ rows, set }) => rows.map((w, i) => dealRow(w, set, i, `Keep waiting-on: ${w.who}`, (
+  <>
+    <span><strong>{w.who}</strong> · {w.company} · {w.due_date ? `due ${md(w.due_date)}` : 'no date'}</span>
+    <span style={small(SA.soft)}>{w.text}</span>
+  </>
+)));
+
+export const TermsRows = ({ rows, set }) => rows.map((t, i) => dealRow(t, set, i, `Keep terms: ${t.company}`, (
+  <>
+    <span><strong>{t.company}</strong> · Notes</span>
+    <span style={small(SA.soft)}>+ {t.line}</span>
+  </>
+)));
+
+export const MeetingRows = ({ rows, set }) => rows.map((n, i) => dealRow(n, set, i, `Set next meeting: ${n.company}`, (
+  <>
+    <span><strong>{n.company}</strong> · Next meeting</span>
+    <span style={small(SA.soft)}>{n.old ? md(n.old) : '—'} → {md(n.date)}{n.text ? ` · ${n.text}` : ''}</span>
+  </>
+)));

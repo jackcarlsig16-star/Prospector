@@ -6,7 +6,7 @@ import { labelStyle, inputStyle, Btn, ErrorNote } from '../goals/goalsUi';
 import { docxText } from '../../../utils/docxText';
 import LinkPicker, { chipStyle } from './LinkPicker';
 import { Box, md, linkBtn } from './TaskRow';
-import { Section, CompanyRows, PeopleRows, TouchRows, IntelRows } from './IntakeSections';
+import { Section, CompanyRows, PeopleRows, TouchRows, IntelRows, DecisionRows, WaitingRows, TermsRows, MeetingRows } from './IntakeSections';
 import { acceptBody, acceptCount } from './intakeBody';
 
 // call-notes-to-tasks-v1 - paste or upload call notes, review what the AI
@@ -15,7 +15,7 @@ import { acceptBody, acceptCount } from './intakeBody';
 // ownership and lasting facts in the notes. Nothing is written until Accept.
 const MAX_CHARS = 120000; // same cap as the extract route
 const SOURCE_TYPES = [['call', 'Call'], ['partner_update', 'Partner update'], ['email_thread', 'Email thread'], ['doc', 'Doc'], ['other', 'Other']];
-const NO_INTAKE = { companies: [], ownership: [], people: [], touches: [], facts: [] };
+const NO_INTAKE = { companies: [], ownership: [], people: [], touches: [], facts: [], decisions: [], waiting_on: [], terms: [], next_meeting: [] };
 const fieldStyle = { all: 'unset', ...saSans, fontSize: 12, color: SA.soft, cursor: 'pointer' };
 
 // Zoom transcripts (.vtt): drop the header, cue numbers and timestamps.
@@ -120,7 +120,7 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
       const out = await goalsApi.createFromCallNotes(businessId, {
         text, title: title.trim() || null, call_date: result.call_date, source_type: sourceType, source_label: sourceLabel.trim() || null,
         tasks: chosen.map(p => ({ text: p.text.trim(), owner_user_id: p.owner_user_id, due_date: p.due_date, link_type: p.link_type, link_id: p.link_id, steps: p.steps })),
-        ...body,
+        ...body, extract: result.extract ?? null, extract_sig: result.extract_sig ?? null,
       });
       onCreated(out.goals.length, out.note, out);
     } catch (err) { setError(err.message); setBusy(''); }
@@ -181,6 +181,11 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
         )}
         {reviewing && (
           <>
+            {(result.recent_accepts || []).map(r => (
+              <span key={`${r.partner_id}:${r.note_id}`} role="note" style={{ fontSize: 13, color: SA.warn }}>
+                ⚠ Another note on {r.partner} was accepted {r.minutes_ago} min ago ({r.todos} to-do{r.todos === 1 ? '' : 's'}, {r.events} event{r.events === 1 ? '' : 's'})
+              </span>
+            ))}
             {result.summary.length > 0 && (
               <div style={{ padding: '10px 12px', borderRadius: SA_SHAPE.radiusInner, background: SA.surface, border: `1px solid ${SA.border}` }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap', marginBottom: 4 }}>
@@ -204,6 +209,18 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
             </Section>
             <Section title="Touches" count={intake.touches.length}>
               <TouchRows rows={intake.touches} set={setRow('touches')} />
+            </Section>
+            <Section title="Decisions" count={intake.decisions.length}>
+              <DecisionRows rows={intake.decisions} set={setRow('decisions')} />
+            </Section>
+            <Section title="Waiting on them" count={intake.waiting_on.length}>
+              <WaitingRows rows={intake.waiting_on} set={setRow('waiting_on')} />
+            </Section>
+            <Section title="Terms" count={intake.terms.length}>
+              <TermsRows rows={intake.terms} set={setRow('terms')} />
+            </Section>
+            <Section title="Next meeting" count={intake.next_meeting.length}>
+              <MeetingRows rows={intake.next_meeting} set={setRow('next_meeting')} />
             </Section>
             {picks.length ? (
               <Section title="Tasks" count={picks.length}>

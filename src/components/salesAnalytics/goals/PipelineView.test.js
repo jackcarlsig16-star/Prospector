@@ -347,13 +347,13 @@ test('employer Due: a date input; a change saves next_action_date; clearing save
   expect(updateOpportunity).toHaveBeenCalledTimes(2);
 });
 
-test('partner Due stays a dash with a title; target and Apollo cells are text; a Viewer gets no editors', async () => {
+test('partner Due is read-only (a dash until a next meeting is set); target and Apollo cells are text; a Viewer gets no editors', async () => {
   setup();
   fireEvent.click(await screen.findByRole('button', { name: 'In Apollo' }));
   await screen.findByText('Fresh Co');
   const due = td('Gallagher', DUE);
   expect(due.textContent).toBe('—');
-  expect(due.title).toBe('Partners have no due date yet');
+  expect(due.title).toBe('No next meeting set');
   expect(due.querySelector('button')).toBeNull();
   expect(td('Solidcore', DUE).title).toBe('2026-10-20');
   for (const name of ['New Target', 'Fresh Co']) {

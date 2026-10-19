@@ -1,0 +1,166 @@
+{
+ "facts": [
+  {
+   "text": "Equifax wants to offer HomeLover as a perk inside its employer benefits bundle; both sides see a small pilot as the right first step.",
+   "field": "angle",
+   "company": "Equifax",
+   "due_date": null,
+   "evidence": "Equifax wants to offer HomeLover as a perk inside its employer benefits bundle"
+  },
+  {
+   "text": "Product idea: pull Equifax credit-readiness score into HomeLover onboarding; build a shared dashboard showing pilot enrollment.",
+   "field": "angle",
+   "company": "Equifax",
+   "due_date": null,
+   "evidence": "Pull the Equifax credit-readiness score into HomeLover onboarding. A shared dashboard showing pilot enrollment."
+  },
+  {
+   "text": "Credit-readiness API use in pilot may require a new contract — Priya confirming.",
+   "field": "watch_outs",
+   "company": "Equifax",
+   "due_date": null,
+   "evidence": "Priya to confirm whether the credit-readiness API can be used in a pilot without a new contract"
+  },
+  {
+   "text": "Reconvene week of Oct 27 to select the 3 pilot employers.",
+   "field": "next_step",
+   "company": "Equifax",
+   "due_date": "2026-10-27",
+   "evidence": "reconvene the week of Oct 27 to pick the 3 pilot employers"
+  }
+ ],
+ "tasks": [
+  {
+   "link": {
+    "id": "92f08fe5-7b73-426e-be12-c84b903b0e1b",
+    "type": "partner"
+   },
+   "text": "Send co-branded one-pager draft to Equifax",
+   "owner": "Jack",
+   "steps": [],
+   "due_date": "2026-10-21",
+   "evidence": "Jack to send the co-branded one-pager draft by Oct 21",
+   "company_name": null
+  },
+  {
+   "link": {
+    "id": "92f08fe5-7b73-426e-be12-c84b903b0e1b",
+    "type": "partner"
+   },
+   "text": "Set up the pilot tracking sheet for Equifax pilot",
+   "owner": "Cyrus",
+   "steps": [],
+   "due_date": null,
+   "evidence": "Cyrus to set up the pilot tracking sheet",
+   "company_name": null
+  }
+ ],
+ "terms": [
+  {
+   "text": "Equifax keeps 20% of subscription revenue from referred members. Employers pay nothing during pilot; members pay standard monthly plan. Post-pilot, $500/month per-employer platform fee under consideration.",
+   "company": "Equifax",
+   "evidence": "Revenue share: Equifax keeps 20% of subscription revenue from members it refers"
+  }
+ ],
+ "people": [
+  {
+   "name": "Dana",
+   "role": "counterpart",
+   "title": "Partnerships lead",
+   "company": "Equifax",
+   "evidence": "Dana (Equifax, Partnerships lead)",
+   "moved_from": null
+  },
+  {
+   "name": "Priya",
+   "role": "counterpart",
+   "title": "Product",
+   "company": "Equifax",
+   "evidence": "Priya (Equifax, Product)",
+   "moved_from": null
+  }
+ ],
+ "summary": [
+  "Equifax will offer HomeLover as a perk in its employer benefits bundle, starting with a 3-employer pilot in January.",
+  "Revenue share is 20% to Equifax; employers pay nothing during pilot; a $500/month per-employer fee is under consideration post-pilot.",
+  "One co-branded one-pager agreed; HomeLover does not contact pilot employers directly; monthly check-ins during pilot."
+ ],
+ "touches": [
+  {
+   "date": "2026-10-16",
+   "stage": null,
+   "people": [
+    "Dana",
+    "Priya",
+    "Jack",
+    "Cyrus"
+   ],
+   "company": "Equifax",
+   "evidence": "Equifax partnership sync - Oct 16",
+   "direction": "out",
+   "touch_type": "meeting"
+  }
+ ],
+ "companies": [
+  {
+   "kind": "partner",
+   "name": "Equifax",
+   "category": null,
+   "evidence": "Equifax partnership sync",
+   "ownership": null
+  }
+ ],
+ "decisions": [
+  {
+   "text": "Pilot runs with 3 Equifax employer clients starting in January; HomeLover listed as featured partner in Equifax benefits portal.",
+   "company": "Equifax",
+   "evidence": "The pilot runs with 3 Equifax employer clients, starting in January"
+  },
+  {
+   "text": "Equifax owns the employer relationship; HomeLover does not contact pilot employers directly.",
+   "company": "Equifax",
+   "evidence": "Equifax owns the employer relationship; HomeLover does not contact pilot employers directly"
+  },
+  {
+   "text": "One co-branded one-pager instead of separate decks; Dana and Jack hold a monthly check-in during the pilot.",
+   "company": "Equifax",
+   "evidence": "One co-branded one-pager instead of separate decks"
+  }
+ ],
+ "waiting_on": [
+  {
+   "who": "Dana",
+   "text": "Send the list of candidate pilot employers.",
+   "company": "Equifax",
+   "due_date": "2026-10-23",
+   "evidence": "Dana to send the list of candidate pilot employers by Oct 23"
+  },
+  {
+   "who": "Dana",
+   "text": "Draft the co-marketing terms for legal review.",
+   "company": "Equifax",
+   "due_date": null,
+   "evidence": "Dana to draft the co-marketing terms for legal review"
+  },
+  {
+   "who": "Priya",
+   "text": "Confirm whether the credit-readiness API can be used in a pilot without a new contract.",
+   "company": "Equifax",
+   "due_date": null,
+   "evidence": "Priya to confirm whether the credit-readiness API can be used in a pilot without a new contract"
+  },
+  {
+   "who": "Priya",
+   "text": "Share the API documentation.",
+   "company": "Equifax",
+   "due_date": null,
+   "evidence": "Priya to share the API documentation"
+  }
+ ],
+ "next_meeting": {
+  "date": "2026-10-27",
+  "text": "Reconvene to select the 3 pilot employers.",
+  "company": "Equifax",
+  "evidence": "reconvene the week of Oct 27 to pick the 3 pilot employers"
+ }
+}

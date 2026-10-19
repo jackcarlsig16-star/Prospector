@@ -36,7 +36,7 @@ export function eventText(e, lookup) {
     }
     case 'hot': return e.meta?.hot ? 'Marked hot' : 'No longer hot';
     case 'snooze': return `Snoozed until ${e.meta?.until || '—'}`;
-    case 'note': return `Note: ${e.note}`;
+    case 'note': return e.meta?.kind === 'decision' ? e.note : `Note: ${e.note}`;
     case 'undo': return `Undid the ${e.meta?.undid_event || 'last'} change`;
     case 'touch': {
       const who = (e.contact_names || []).length ? ` ${e.contact_names.join(', ')}` : (e.touch_type === 'email' || e.touch_type === 'call' ? ' the partner' : '');
@@ -66,6 +66,7 @@ export function buildTimeline({ events = [], tasks = [], lookup }) {
   }
   const items = events.map(e => ({
     id: e.id, at: e.at, kind: kindOf(e), text: eventText(e, lookup), sub: e.event === 'touch' ? e.note : null,
+    chip: e.event === 'note' && e.meta?.kind === 'decision' ? 'Decision' : null,
     by: e.by_user ? lookup(e.by_user).first : 'automatic', source: SOURCE_LABEL[e.source] || null,
     noise: noise.has(e.id), undone: undone.has(e.id),
   }));

@@ -15,7 +15,8 @@ export const FLAG_DAYS = 5;
 export const TOUCH_WINDOW_DAYS = 7;
 export { KIND_LABEL, KINDS };
 // Days until the to-do Accept creates is due; null = Accept opens the records instead.
-export const DUE_DAYS = { research_or_drop: 3, follow_up: 1, set_a_date: 1, duplicate: null, reply_task: 1, check_co_owner: 1, flag_cold: 1 };
+export const DUE_DAYS = { research_or_drop: 3, follow_up: 1, set_a_date: 1, duplicate: null, reply_task: 1, check_co_owner: 1, flag_cold: 1, nudge: 0 };
+export const WAITING_LATE_DAYS = 2;
 
 const DAY = 864e5;
 const SENT = ['first_email_sent', 'in_sequence'];
@@ -66,9 +67,10 @@ export function duplicates({ partners, domains }) {
   return out;
 }
 
-export function replyTask({ partners, todos }) {
+// An open waiting row on the partner (they owe us the next move) counts as handled.
+export function replyTask({ partners, todos, waiting = [] }) {
   return partners
-    .filter(p => REPLIED.includes(p.pipeline_status) && !openLinked(todos, 'partner', p.id))
+    .filter(p => REPLIED.includes(p.pipeline_status) && !openLinked(todos, 'partner', p.id) && !openLinked(waiting, 'partner', p.id))
     .map(p => ({ kind: 'reply_task', ref_type: 'partner', ref_id: p.id, text: `Reply/prep task for ${p.name}`, reason: `${STATUS_LABEL[p.pipeline_status]} with no open to-do` }));
 }
 
@@ -89,7 +91,19 @@ export function flagCold({ flags, now }) {
     .map(f => ({ kind: 'flag_cold', ref_type: 'flag', ref_id: f.id, text: `Flag ${f.contacts?.[0] || f.text} is going cold`, reason: `Flagged ${days(daysAgo(f.created_at, now))} ago and still open` }));
 }
 
-export const RULES = [researchOrDrop, followUp, setADate, duplicates, replyTask, checkCoOwner, flagCold];
+// call-notes-targets-v1 REV5 - something they owe us, overdue by 2+ days.
+export function waitingOverdue({ waiting = [], partners, today }) {
+  const name = new Map(partners.map(p => [p.id, p.name]));
+  return waiting
+    .filter(w => isOpen(w) && w.due_date && Math.round((Date.parse(today) - Date.parse(w.due_date)) / DAY) >= WAITING_LATE_DAYS)
+    .map(w => {
+      const late = Math.round((Date.parse(today) - Date.parse(w.due_date)) / DAY);
+      const at = w.link_type === 'partner' && name.get(w.link_id);
+      return { kind: 'nudge', ref_type: 'todo', ref_id: w.id, text: `Nudge ${w.waiting_on || 'them'}${at ? ` at ${at}` : ''}`, reason: `Waiting on ${w.waiting_on || 'them'}: ${w.text.slice(0, 200)} · ${days(late)} late` };
+    });
+}
+
+export const RULES = [researchOrDrop, followUp, setADate, duplicates, replyTask, checkCoOwner, flagCold, waitingOverdue];
 export const runRules = ctx => RULES.flatMap(rule => rule(ctx));
 // Mirrors the partial unique index: (kind, ref_type, ref_id, coalesce(ref_id2, ref_id)).
 export const keyOf = s => [s.kind, s.ref_type, s.ref_id, s.ref_id2 || s.ref_id].join('|');

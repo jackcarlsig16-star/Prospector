@@ -77,6 +77,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const [partners, setPartners] = useState([]);
   const [targets, setTargets] = useState([]);
   const [suggestedCount, setSuggestedCount] = useState(0);
+  const [waiting, setWaiting] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [cadences, setCadences] = useState([]);
   const [scorecard, setScorecard] = useState(null);
@@ -134,16 +135,19 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const loadTargets = useCallback(() => goalsApi.prospectTargets(businessId).then(setTargets).catch(() => setTargets([])), [businessId]);
   // Stage 3 - the "Suggested (n)" chip; a Tidy run / accept / dismiss announces TODOS_CHANGED.
   const loadSuggested = useCallback(() => goalsApi.suggestions(businessId).then(d => setSuggestedCount(d.suggestions.length)).catch(() => setSuggestedCount(0)), [businessId]);
+  // REV5 - "⏳ Waiting on (n)" + the overdue section in Your day; a Got it / Nudge announces TODOS_CHANGED.
+  const loadWaiting = useCallback(() => goalsApi.waitingRows(businessId).then(setWaiting).catch(() => setWaiting([])), [businessId]);
   useEffect(() => { loadTodos(); }, [loadTodos]);
+  useEffect(() => { loadWaiting(); }, [loadWaiting]);
   useEffect(() => { loadFlags(); }, [loadFlags]);
   useEffect(() => { loadTargets(); }, [loadTargets]);
   useEffect(() => { loadSuggested(); }, [loadSuggested]);
   useEffect(() => {
-    const reload = () => { loadTodos(); loadFlags(); loadTargets(); loadSuggested(); };
+    const reload = () => { loadTodos(); loadFlags(); loadTargets(); loadSuggested(); loadWaiting(); };
     window.addEventListener(TODOS_CHANGED, reload);
     window.addEventListener(FLAGS_CHANGED, reload);
     return () => { window.removeEventListener(TODOS_CHANGED, reload); window.removeEventListener(FLAGS_CHANGED, reload); };
-  }, [loadTodos, loadFlags, loadTargets, loadSuggested]);
+  }, [loadTodos, loadFlags, loadTargets, loadSuggested, loadWaiting]);
   useEffect(() => { loadCommitments(); }, [loadCommitments]);
   useEffect(() => { loadReport(); }, [loadReport]);
   useEffect(() => { loadKpi(); }, [loadKpi]);
@@ -209,7 +213,10 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const today = laDateString();
   const meId = me?.profile?.id;
   const groupsFor = filter => buildTaskGroups({ todos, flags, filter, meId, today });
-  const daySections = yourDaySections(meId ? groupsFor(drawerFilter) : [], today, { forMe: drawerFilter === 'me' });
+  // Theirs, not ours: only overdue ones, and never in Overdue / Due today. The tick = Got it.
+  const waitingLate = waiting.filter(w => w.due_date && w.due_date < today).map(w => ({ ...w, st: 'open', text: `${w.waiting_on}: ${w.text}` }));
+  const daySections = [...yourDaySections(meId ? groupsFor(drawerFilter) : [], today, { forMe: drawerFilter === 'me' }),
+    { id: 'waiting', label: 'Waiting on them · overdue', glyph: '⏳', items: waitingLate }];
   const links = useLinkOptions(businessId, weekStart);
   const needsLinkNames = section === 'today' && [...todos, ...flags].some(t => t.link_type && t.link_type !== 'metric');
   const loadLinks = links.load;
@@ -231,7 +238,8 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const openAllTasks = () => openTasks({ link: null, filter: drawerFilter });
   const openTargetCount = openTargets(targets).length;
   const chipStyle = { display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 10px', borderRadius: 999, background: SA.surface2, border: `1px solid ${SA.border}`, fontSize: 12, color: SA.text, cursor: 'pointer', whiteSpace: 'nowrap' };
-  const todayChips = (openTargetCount > 0 || suggestedCount > 0) && (
+  const waitingCount = canEdit ? waiting.length : 0;
+  const todayChips = (openTargetCount > 0 || suggestedCount > 0 || waitingCount > 0) && (
     <>
       {openTargetCount > 0 && (
         <button type="button" onClick={() => openTasks({ link: null, view: 'targets', filter: drawerFilter })} aria-label={`Targets, ${openTargetCount} open - open the list`} style={chipStyle}>
@@ -241,6 +249,11 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
       {suggestedCount > 0 && (
         <button type="button" onClick={() => openTasks({ link: null, view: 'suggested', filter: drawerFilter })} aria-label={`Suggested, ${suggestedCount} from Tidy - open the list`} style={chipStyle}>
           ✦ Suggested ({suggestedCount})
+        </button>
+      )}
+      {waitingCount > 0 && (
+        <button type="button" onClick={() => openTasks({ link: null, view: 'waiting', filter: drawerFilter })} aria-label={`Waiting on them, ${waitingCount} open - open the list`} style={chipStyle}>
+          ⏳ Waiting on ({waitingCount})
         </button>
       )}
     </>

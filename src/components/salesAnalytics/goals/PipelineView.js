@@ -165,7 +165,7 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
     { id: 'team', label: 'Team', width: 104, sortValue: r => TEAM_LABEL[r.owner_team] || null, render: r => (r.owner_team ? <OwnerPill row={r} /> : <Dim />) },
     { id: 'next', label: 'Next step', minWidth: 160, sortValue: r => r.next_step, render: r => cell(r, 'next', 'text', v => v || <Dim />), title: r => r.next_step },
     { id: 'due', label: 'Due', width: KIT_EDITABLE.dateWidth, sortValue: r => r.next_step_due, render: r => cell(r, 'due', 'date', v => (v ? <span style={numStyle}>{md(v)}</span> : <Dim />)),
-      title: r => (r.type === 'partner' ? 'Partners have no due date yet' : r.next_step_due) },
+      title: r => (r.type === 'partner' ? (r.next_step_due ? `Next meeting ${r.next_step_due}` : 'No next meeting set') : r.next_step_due) },
     { id: 'touch', label: 'Last touch', width: 86, sortValue: r => r.last_touch_at, render: r => (touchLabel(r) ? <span style={numStyle}>{touchLabel(r)}</span> : <Dim />), title: r => r.last_touch_at && r.last_touch_at.slice(0, 10) },
   ];
   const compactRow = r => (

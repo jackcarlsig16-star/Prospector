@@ -9,13 +9,16 @@ import { MODELS, estimateCostUsd } from '../../src/config/models.js';
 import { cleanText as clean } from './scrubText.js';
 import { toIntake, enrichIntake, matchOwner, MAX_ITEMS } from './intakeMatch.js';
 import { acceptIntake, parseIntake } from './intakeAccept.js';
+import { scrubExtract, signExtract, extractIfSigned, recentAccepts } from './intakeDeal.js';
 
 // call-notes-to-tasks-v1 - pasted internal call notes -> proposed Goals
 // to-dos -> the ones the person kept, created this week with a back-link to
 // the stored note. Extract writes nothing but the AI usage row; the notes
 // text is never logged. call-notes-targets-v1 REV3 ("Intake"): any source,
 // and the same one call also lists the companies, people, past touches and
-// lasting facts in the notes (intakeMatch.js / intakeAccept.js).
+// lasting facts in the notes (intakeMatch.js / intakeAccept.js). REV5: and
+// the deal side - decisions, what they owe us, terms, the next meeting
+// (intakeDeal.js); the model's scrubbed reply is stored on the note.
 
 const MAX_CHARS = 120000;
 const MAX_TASKS = 30;
@@ -32,7 +35,8 @@ const SYSTEM = `You read internal sales notes (a call's AI summary or transcript
 Rules:
 - One task per concrete action someone committed to or was asked to do. Skip discussion, opinions and status updates with no action. Merge duplicates. Related small actions under one topic become steps of one task.
 - Task text: imperative, under 15 words, names the company/partner if there is one.
-- owner: the name of the person the notes say will do it, exactly as written ("Seif", "Jack") - from "X will...", "X to...", an action-item list under X's name. Give the name even when that person is not in MEMBERS; never swap in a member for someone else. null when the notes don't say who, or only say "I"/"we". Never guess from who talks most.
+- Tasks are OUR work only. An action item whose actor is someone outside MEMBERS (the partner's people, "their team", "Equifax to...") is NEVER a task - it goes in waiting_on. The next meeting or a "reconvene" is NEVER a task - it goes in next_meeting.
+- owner: the MEMBERS name the notes say will do it, exactly as written ("Jack") - from "X will...", "X to...", an action-item list under X's name; never swap in a member for someone else. null when the notes don't say who, or only say "I"/"we". Never guess from who talks most.
 - due_date: YYYY-MM-DD only when a deadline is stated ("by Friday", "next Tuesday", "Oct 12"); resolve relative days from NOTE DATE. Otherwise null. Never invent one.
 - link: at most one thing the task serves, only from the lists given: {"type":"partner","id":...} from PARTNERS, {"type":"commitment","id":...} from COMMITMENTS, {"type":"metric","id":...} from METRICS. If the task is about a prospect company not in those lists, set company_name to the company's name as written instead. Otherwise null.
 - evidence: the shortest phrase from the notes that shows the action (max 20 words).
@@ -46,11 +50,18 @@ companies - every company the notes name, once each, as written (keep "[solidcor
 people - people outside MEMBERS named in connection with a company: name, company, title as written or null, role ("champion" | "blocker" | "referrer" | "counterpart" | "other"), moved_from (the company they left, when the notes say they moved) or null.
 touches - contact with a company that ALREADY happened (not plans), only when the notes say how it happened (emailed, called, met, they replied); a status line such as "X wants a one-pager" or "X is moving forward" is not a touch: company, touch_type ("email" | "call" | "linkedin" | "meeting" | "event" | "other"; a meeting that took place is "meeting"), people (names), date (YYYY-MM-DD resolved from NOTE DATE; null if not stated), direction ("out" = we reached them, "in" = they replied or reached us), stage ("replied" when they replied, "meeting_set" when a meeting is now booked, else null).
 facts - lasting intel about a company worth keeping on its record: company, field ("champion" = who backs us there; "angle" = why they'd care; "watch_outs" = risks or objections; "next_step" = the single next move; "do_not_say"; "target_titles" = roles to reach; "their_words" = a short quote of what they said), text (max 40 words), due_date (YYYY-MM-DD only for a next_step with a stated date, else null).
-- Every company / people / touches / facts item carries evidence: the shortest phrase from the notes that shows it (max 20 words).
+decisions - what the parties agreed in this conversation, in the notes' words: company, text (max 40 words), evidence.
+waiting_on - anything someone outside MEMBERS owes us: their action items, pending confirmations, "X will send / check / draft / confirm": company, who (that person's name as written; the company's name when no person is named), text (what they owe, max 40 words), due_date (YYYY-MM-DD only when stated, resolved from NOTE DATE, else null), evidence.
+terms - pricing, revenue share, economic structure, bundles, who pays: company, text (max 40 words), evidence.
+next_meeting - the next meeting the notes set with a company: {company, date (YYYY-MM-DD resolved from NOTE DATE; "the week of X" = that week's Monday), text, evidence}, or null.
+- One decisions / waiting_on / terms item per point the notes make (a bullet, a sentence): never join two decisions or two terms into one item.
+- The next meeting is next_meeting only - never a next_step fact as well.
+- Product or integration ideas stay facts (angle).
+- Every company / people / touches / facts / decisions / waiting_on / terms / next_meeting item carries evidence: the shortest phrase from the notes that shows it (max 20 words).
 - Never include an email address or phone number in any field.
 
 Reply with JSON only, no prose:
-{"summary":["","",""],"tasks":[{"text":"","owner":null,"due_date":null,"link":null,"company_name":null,"steps":[],"evidence":""}],"companies":[{"name":"","kind":"","category":null,"ownership":null,"evidence":""}],"people":[{"name":"","company":"","title":null,"role":"","moved_from":null,"evidence":""}],"touches":[{"company":"","touch_type":"","people":[],"date":null,"direction":"","stage":null,"evidence":""}],"facts":[{"company":"","field":"","text":"","due_date":null,"evidence":""}]}`;
+{"summary":["","",""],"tasks":[{"text":"","owner":null,"due_date":null,"link":null,"company_name":null,"steps":[],"evidence":""}],"companies":[{"name":"","kind":"","category":null,"ownership":null,"evidence":""}],"people":[{"name":"","company":"","title":null,"role":"","moved_from":null,"evidence":""}],"touches":[{"company":"","touch_type":"","people":[],"date":null,"direction":"","stage":null,"evidence":""}],"facts":[{"company":"","field":"","text":"","due_date":null,"evidence":""}],"decisions":[{"company":"","text":"","evidence":""}],"waiting_on":[{"company":"","who":"","text":"","due_date":null,"evidence":""}],"terms":[{"company":"","text":"","evidence":""}],"next_meeting":null}`;
 
 const weekOf = day => addDays(day, -((new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7));
 const md = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -63,7 +74,7 @@ async function context(supabase, businessId, today) {
     supabase.from('businesses').select('name').eq('id', businessId).maybeSingle(),
     supabase.from('business_members').select('user_id, name, profile:profiles!business_members_user_id_fkey(display_name)')
       .eq('business_id', businessId).not('user_id', 'is', null),
-    supabase.from('sales_goals').select('id, name, category, pipeline_status, owner_team, co_owner_name, no_double_touch, champion, angle, watch_outs, next_step, do_not_say, target_titles')
+    supabase.from('sales_goals').select('id, name, category, pipeline_status, owner_team, co_owner_name, no_double_touch, champion, angle, watch_outs, next_step, do_not_say, target_titles, notes, next_meeting_at')
       .eq('business_id', businessId).eq('goal_type', 'partnership').is('archived_at', null),
     supabase.from('sales_week_goals').select('id, text').eq('business_id', businessId).eq('kind', 'commitment').eq('week_start', week).neq('status', 'dropped'),
     supabase.from('sales_week_goals').select('id, text').eq('business_id', businessId).eq('kind', 'todo').not('source_note_id', 'is', null)
@@ -168,8 +179,12 @@ export async function extractCallNotesRoute(req, res) {
     let raw;
     try { raw = JSON.parse(json); } catch { return res.status(502).json({ error: 'Could not read the AI reply - try again' }); }
     const intake = await enrichIntake(supabase, businessId, toIntake(raw, ctx, callDate));
+    const partnerIds = new Set(Object.values(intake).flat().map(x => x?.match?.type === 'partner' && x.match.id).filter(Boolean));
+    const extract = scrubExtract(raw);
     res.json({
       call_date: callDate, hash, ...toProposals(raw, ctx), ...intake, categories: ctx.categories,
+      recent_accepts: await recentAccepts(supabase, businessId, ctx.partners.filter(p => partnerIds.has(p.id))),
+      extract, extract_sig: signExtract(extract, hash),
       usage: { model, input_tokens: data.usage?.input_tokens ?? null, output_tokens: data.usage?.output_tokens ?? null, cost_usd: estimateCostUsd(model, data.usage) },
     });
   } catch (e) {
@@ -193,11 +208,12 @@ async function findNote(supabase, businessId, hash) {
 
 // POST /goals/call-notes { text, title?, call_date, source_type?, source_label?,
 // tasks: [{ text, owner_user_id, due_date, link_type, link_id, steps: [text] }],
-// companies, ownership, people, touches, facts } - Accept: stores the note and
+// companies, ownership, people, touches, facts, decisions, waiting_on, terms,
+// next_meeting, extract + extract_sig (from the extract reply) } - Accept: stores the note and
 // writes everything ticked in the review (intakeAccept.js). To-dos land in
 // this week, category "From calls · <date> · <title>".
 export async function createFromCallNotesRoute(req, res) {
-  const { text, title, call_date, tasks = [], source_type = 'call', source_label } = req.body || {};
+  const { text, title, call_date, tasks = [], source_type = 'call', source_label, extract, extract_sig } = req.body || {};
   if (typeof text !== 'string' || !text.trim()) return res.status(400).json({ error: 'text is required' });
   if (text.length > MAX_CHARS) return res.status(413).json({ error: `notes are too long (${text.length} characters, max ${MAX_CHARS})` });
   if (!isDate(call_date)) return res.status(400).json({ error: 'call_date must be YYYY-MM-DD' });
@@ -232,7 +248,7 @@ export async function createFromCallNotesRoute(req, res) {
 
     const hash = noteHash(text);
     const { data: note, error: noteErr } = await supabase.from('sales_call_notes')
-      .insert({ business_id: businessId, title: title?.trim() || null, call_date, text, hash, source_type, source_label: clean(source_label, 120) || null, created_by: userId })
+      .insert({ business_id: businessId, title: title?.trim() || null, call_date, text, hash, source_type, source_label: clean(source_label, 120) || null, extract: extractIfSigned(extract, extract_sig, hash), created_by: userId })
       .select('id, title, call_date, source_type, source_label, created_at').single();
     if (noteErr?.code === '23505') return res.status(409).json({ error: 'These notes were already accepted', duplicate: await findNote(supabase, businessId, hash) });
     if (noteErr) throw new Error(noteErr.message);

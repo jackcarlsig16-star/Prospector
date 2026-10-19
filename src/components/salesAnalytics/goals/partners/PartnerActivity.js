@@ -27,6 +27,7 @@ export default function PartnerActivity({ items }) {
             <li key={i.id} style={{ display: 'flex', gap: 10, fontSize: 13, alignItems: 'baseline', flexWrap: 'wrap' }}>
               <span style={{ color: SA.muted, minWidth: 108, fontVariantNumeric: 'tabular-nums' }}>{when(i.at)}</span>
               <span style={{ flex: '1 1 200px', minWidth: 0, color: i.undone || i.done ? SA.muted : SA.text, textDecoration: i.undone || i.done ? 'line-through' : 'none', overflowWrap: 'anywhere' }}>
+                {i.chip && <span style={{ fontSize: 11, padding: '1px 8px', borderRadius: 999, border: `1px solid ${SA.accent}`, color: SA.text, marginRight: 6 }}>{i.chip}</span>}
                 {i.text}{i.source && <span style={{ color: SA.muted }}> · {i.source}</span>}
                 {i.sub && <span style={{ display: 'block', color: SA.soft, fontSize: 12, whiteSpace: 'pre-wrap' }}>{i.sub}</span>}
               </span>

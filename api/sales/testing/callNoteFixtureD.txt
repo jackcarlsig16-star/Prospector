@@ -1,0 +1,33 @@
+Equifax partnership sync - Oct 16
+Attendees: Jack, Cyrus (HomeLover); Dana (Equifax, Partnerships lead), Priya (Equifax, Product)
+
+Key outcomes
+- Equifax wants to offer HomeLover as a perk inside its employer benefits bundle.
+- Both sides see a small pilot as the right first step.
+
+Decisions
+- The pilot runs with 3 Equifax employer clients, starting in January.
+- HomeLover is listed as a featured partner in the Equifax benefits portal.
+- Equifax owns the employer relationship; HomeLover does not contact pilot employers directly.
+- One co-branded one-pager instead of separate decks.
+- Dana and Jack hold a monthly check-in during the pilot.
+
+Economic model
+- Revenue share: Equifax keeps 20% of subscription revenue from members it refers.
+- Employers pay nothing during the pilot; members pay the standard monthly plan.
+- After the pilot, a per-employer platform fee of $500 a month is on the table.
+
+Product ideas
+- Pull the Equifax credit-readiness score into HomeLover onboarding.
+- A shared dashboard showing pilot enrollment.
+
+Pending confirmation
+- Priya to confirm whether the credit-readiness API can be used in a pilot without a new contract.
+
+Action items
+- Dana to send the list of candidate pilot employers by Oct 23.
+- Dana to draft the co-marketing terms for legal review.
+- Priya to share the API documentation.
+- Jack to send the co-branded one-pager draft by Oct 21.
+- Cyrus to set up the pilot tracking sheet.
+- All: reconvene the week of Oct 27 to pick the 3 pilot employers.

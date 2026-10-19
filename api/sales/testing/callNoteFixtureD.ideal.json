@@ -1,0 +1,157 @@
+{
+ "summary": [
+  "Equifax will offer HomeLover as a perk in its employer benefits bundle.",
+  "A pilot with 3 Equifax employer clients starts in January.",
+  "Revenue share is 20% to Equifax; a platform fee is on the table after the pilot."
+ ],
+ "tasks": [
+  {
+   "text": "Send Equifax the co-branded one-pager draft",
+   "owner": "Jack",
+   "due_date": "2026-10-21",
+   "link": null,
+   "company_name": "Equifax",
+   "steps": [],
+   "evidence": "Jack to send the co-branded one-pager draft by Oct 21"
+  },
+  {
+   "text": "Set up the Equifax pilot tracking sheet",
+   "owner": "Cyrus",
+   "due_date": null,
+   "link": null,
+   "company_name": "Equifax",
+   "steps": [],
+   "evidence": "Cyrus to set up the pilot tracking sheet"
+  }
+ ],
+ "companies": [
+  {
+   "name": "Equifax",
+   "kind": "partner",
+   "category": null,
+   "ownership": null,
+   "evidence": "Equifax wants to offer HomeLover as a perk"
+  }
+ ],
+ "people": [
+  {
+   "name": "Dana",
+   "company": "Equifax",
+   "title": "Partnerships lead",
+   "role": "counterpart",
+   "moved_from": null,
+   "evidence": "Dana (Equifax, Partnerships lead)"
+  },
+  {
+   "name": "Priya",
+   "company": "Equifax",
+   "title": "Product",
+   "role": "counterpart",
+   "moved_from": null,
+   "evidence": "Priya (Equifax, Product)"
+  }
+ ],
+ "touches": [
+  {
+   "company": "Equifax",
+   "touch_type": "meeting",
+   "people": [
+    "Dana",
+    "Priya"
+   ],
+   "date": "2026-10-16",
+   "direction": "out",
+   "stage": null,
+   "evidence": "Equifax partnership sync - Oct 16"
+  }
+ ],
+ "facts": [
+  {
+   "company": "Equifax",
+   "field": "angle",
+   "text": "Pull the Equifax credit-readiness score into HomeLover onboarding; shared pilot enrollment dashboard.",
+   "due_date": null,
+   "evidence": "Pull the Equifax credit-readiness score into HomeLover onboarding"
+  }
+ ],
+ "decisions": [
+  {
+   "company": "Equifax",
+   "text": "The pilot runs with 3 Equifax employer clients, starting in January.",
+   "evidence": "The pilot runs with 3 Equifax employer clients"
+  },
+  {
+   "company": "Equifax",
+   "text": "HomeLover is listed as a featured partner in the Equifax benefits portal.",
+   "evidence": "listed as a featured partner"
+  },
+  {
+   "company": "Equifax",
+   "text": "Equifax owns the employer relationship; HomeLover does not contact pilot employers directly.",
+   "evidence": "Equifax owns the employer relationship"
+  },
+  {
+   "company": "Equifax",
+   "text": "One co-branded one-pager instead of separate decks.",
+   "evidence": "One co-branded one-pager"
+  },
+  {
+   "company": "Equifax",
+   "text": "Dana and Jack hold a monthly check-in during the pilot.",
+   "evidence": "monthly check-in during the pilot"
+  }
+ ],
+ "waiting_on": [
+  {
+   "company": "Equifax",
+   "who": "Priya",
+   "text": "Confirm whether the credit-readiness API can be used in a pilot without a new contract.",
+   "due_date": null,
+   "evidence": "Priya to confirm whether the credit-readiness API"
+  },
+  {
+   "company": "Equifax",
+   "who": "Dana",
+   "text": "Send the list of candidate pilot employers.",
+   "due_date": "2026-10-23",
+   "evidence": "Dana to send the list of candidate pilot employers by Oct 23"
+  },
+  {
+   "company": "Equifax",
+   "who": "Dana",
+   "text": "Draft the co-marketing terms for legal review.",
+   "due_date": null,
+   "evidence": "Dana to draft the co-marketing terms"
+  },
+  {
+   "company": "Equifax",
+   "who": "Priya",
+   "text": "Share the API documentation.",
+   "due_date": null,
+   "evidence": "Priya to share the API documentation"
+  }
+ ],
+ "terms": [
+  {
+   "company": "Equifax",
+   "text": "Revenue share: Equifax keeps 20% of subscription revenue from members it refers.",
+   "evidence": "Equifax keeps 20%"
+  },
+  {
+   "company": "Equifax",
+   "text": "Employers pay nothing during the pilot; members pay the standard monthly plan.",
+   "evidence": "Employers pay nothing during the pilot"
+  },
+  {
+   "company": "Equifax",
+   "text": "After the pilot, a per-employer platform fee of $500 a month is on the table.",
+   "evidence": "per-employer platform fee of $500 a month"
+  }
+ ],
+ "next_meeting": {
+  "company": "Equifax",
+  "date": "2026-10-27",
+  "text": "Pick the 3 pilot employers",
+  "evidence": "reconvene the week of Oct 27"
+ }
+}

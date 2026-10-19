@@ -14,6 +14,8 @@ import PartnerResearch from './PartnerResearch';
 import PartnerDomains from './PartnerDomains';
 import LogTouchForm from './LogTouchForm';
 import CopyForClaude from '../../CopyForClaude';
+import WaitingList from '../../tasks/WaitingList';
+import { goalsApi } from '../goalsApi';
 
 // partner-360-v1 / partner-details-drawers-v1 - a row's drop-down: the header
 // (where we are, what's next, log a touch, a quick note) always shows; People,
@@ -41,12 +43,13 @@ export function activitySummary(items) {
   const first = items.find(i => !i.noise);
   return first ? `${first.text} · ${md(first.at)}` : 'nothing yet';
 }
-export function tasksSummary(tasks, tasksFor, today) {
-  if (!tasksFor) return 'shown for the current week';
+export function tasksSummary(tasks, tasksFor, today, waiting = 0) {
+  const theirs = waiting ? ` · waiting on them ${waiting}` : '';
+  if (!tasksFor) return `shown for the current week${theirs}`;
   const open = tasks.filter(isOpenTask);
-  if (!open.length) return tasks.length ? `${tasks.length} done` : 'none this week';
+  if (!open.length) return `${tasks.length ? `${tasks.length} done` : 'none this week'}${theirs}`;
   const overdue = open.filter(t => t.due_date && t.due_date < today).length;
-  return `${open.length} this week${overdue ? ` · ${overdue} overdue` : ''}`;
+  return `${open.length} this week${overdue ? ` · ${overdue} overdue` : ''}${theirs}`;
 }
 export const intelSummary = partner => cut(partner.angle || partner.partner_role, 80) || 'nothing yet';
 export function domainsSummary(data) {
@@ -59,6 +62,8 @@ export default function PartnerDetails({ partner, lookup, businessId, canEdit, o
   const [events, setEvents] = useState(null);
   const [contacts, setContacts] = useState(null);
   const [domainData, setDomainData] = useState(null);
+  const [waiting, setWaiting] = useState([]);
+  const [waitingBump, setWaitingBump] = useState(0);
   const [peopleBump, setPeopleBump] = useState(0);
   const [error, setError] = useState('');
   const [logOpen, setLogOpen] = useState(false);
@@ -83,6 +88,12 @@ export default function PartnerDetails({ partner, lookup, businessId, canEdit, o
     domains.load(partner.id).then(d => { if (live) setDomainData(d); }).catch(e => live && setError(e.message));
     return () => { live = false; };
   }, [partner.id, domains]);
+  useEffect(() => {
+    if (!businessId) return undefined;
+    let live = true;
+    goalsApi.waitingRows(businessId, partner.id).then(rows => { if (live) setWaiting(rows); }).catch(e => live && setError(e.message));
+    return () => { live = false; };
+  }, [businessId, partner.id, version, waitingBump]);
   const merged = events && contacts ? mergePeople({ contacts, events, knownContacts: partner.known_contacts }) : null;
   const count = merged ? merged.length : null;
   useEffect(() => { if (count !== null && count !== (partner.people_count || 0)) onCount(partner.id, count); }, [count, partner.id, partner.people_count, onCount]);
@@ -131,7 +142,13 @@ export default function PartnerDetails({ partner, lookup, businessId, canEdit, o
         <Drawer label="Activity" summary={activitySummary(timeline)} persistKey={drawerKey('activity')}>
           {timeline ? <PartnerActivity items={timeline} /> : <span style={{ ...subStyle, fontSize: 13 }}>Loading activity…</span>}
         </Drawer>
-        <Drawer label="Tasks" summary={tasksSummary(tasks, tasksFor, laDateString())} persistKey={drawerKey('tasks')}>
+        <Drawer label="Tasks" summary={tasksSummary(tasks, tasksFor, laDateString(), waiting.length)} persistKey={drawerKey('tasks')}>
+          {waiting.length > 0 && (
+            <section aria-label={`Waiting on ${partner.name}`} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <span style={{ ...subStyle, fontSize: 12, color: SA.soft }}>Waiting on {partner.name} ({waiting.length})</span>
+              <WaitingList businessId={businessId} rows={waiting} partnerName={null} canEdit={canEdit} onChanged={() => setWaitingBump(n => n + 1)} />
+            </section>
+          )}
           {!tasksFor && <span style={{ ...subStyle, fontSize: 12 }}>Linked to-dos show for the current week only.</span>}
           {tasksFor && !tasks.length && <span style={{ ...subStyle, fontSize: 12 }}>none linked this week</span>}
           {tasksFor && <LinkedTasks tasks={tasks} lookup={lookup} label={partner.name} link={{ type: 'partner', id: partner.id }} />}

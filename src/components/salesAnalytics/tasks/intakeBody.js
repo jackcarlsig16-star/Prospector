@@ -5,7 +5,7 @@
 
 export const isSkipped = c => !c.on || c.action === 'skip' || c.action === 'none';
 
-export function acceptBody({ companies, ownership, people, touches, facts }) {
+export function acceptBody({ companies, ownership, people, touches, facts, decisions = [], waiting_on = [], terms = [], next_meeting = [] }) {
   const ticked = companies.filter(c => !isSkipped(c));
   const targets = new Set(ticked.filter(c => c.action.startsWith('target_')).map(c => c.key));
   const reachable = x => !!x.match || targets.has(x.company_key);
@@ -19,6 +19,11 @@ export function acceptBody({ companies, ownership, people, touches, facts }) {
       .map(({ key, match, touch_type, people: who, date, evidence, stage, stage_on }) => ({ key, match, touch_type, people: who, date, evidence, stage, stage_on: !!stage && stage_on, expect: match.pipeline_status })),
     facts: facts.filter(f => f.on && f.column && reachable(f))
       .map(({ company_key, match, field, text, due_date }) => ({ company_key, match, field, text, due_date })),
+    // REV5 - partner-only rows: nothing hangs off a new company.
+    decisions: decisions.filter(d => d.on && d.match).map(({ match, text }) => ({ match, text })),
+    waiting_on: waiting_on.filter(w => w.on && w.match).map(({ match, who, text, due_date }) => ({ match, who, text, due_date })),
+    terms: terms.filter(t => t.on && t.match).map(({ match, text }) => ({ match, text })),
+    next_meeting: next_meeting.filter(n => n.on && n.match).map(({ match, date }) => ({ match, date })),
   };
 }
 
@@ -42,6 +47,8 @@ export function acceptSummary(n, out) {
     count((out.contacts?.added || 0) + (out.contacts?.updated || 0), 'person', 'people'),
     count((out.touches || []).length, 'touch', 'touches'), count(moves.length - refused.length, 'stage move'),
     count(out.ownership || 0, 'owner change'), count(out.intel || 0, 'intel line'), count((out.opportunities_created || []).length, 'pipeline add'),
+    count(out.decisions || 0, 'decision'), count((out.waiting || []).length, 'waiting-on'), count(out.terms || 0, 'terms line'),
+    count((out.next_meeting || []).length, 'next meeting'),
     refused.length ? `${refused.map(m => m.partner).join(', ')}: stage not moved (${refused[0].error})` : null,
   ].filter(Boolean).join(' · ') || 'Saved';
 }

@@ -644,6 +644,8 @@ app.get('/api/sales/:businessId/goals/suggestions', salesModuleRoute('./api/sale
 app.post('/api/sales/:businessId/goals/suggestions/:id/accept', salesModuleRoute('./api/sales/tidyRoutes.js', 'acceptSuggestionRoute', 'goals/suggestions/:id/accept POST'));
 app.post('/api/sales/:businessId/goals/suggestions/:id/dismiss', salesModuleRoute('./api/sales/tidyRoutes.js', 'parkSuggestionRoute', 'goals/suggestions/:id/dismiss POST'));
 app.post('/api/sales/:businessId/goals/suggestions/:id/snooze', salesModuleRoute('./api/sales/tidyRoutes.js', 'parkSuggestionRoute', 'goals/suggestions/:id/snooze POST'));
+// call-notes-targets-v1 REV5 - Nudge a waiting-on item into our own to-do.
+app.post('/api/sales/:businessId/goals/waiting/:id/nudge', salesModuleRoute('./api/sales/waitingRoutes.js', 'nudgeWaitingRoute', 'goals/waiting/:id/nudge POST'));
 app.post('/api/sales/:businessId/goals/partners/:id/signal', salesModuleRoute('./api/sales/partnersRoutes.js', 'partnerSignalRoute', 'goals/partners/:id/signal POST'));
 app.post('/api/sales/:businessId/goals/partners/:id/undo', salesModuleRoute('./api/sales/partnersRoutes.js', 'partnerUndoRoute', 'goals/partners/:id/undo POST'));
 app.post('/api/sales/:businessId/goals/partners/:id/rank', salesModuleRoute('./api/sales/partnersRoutes.js', 'partnerRankRoute', 'goals/partners/:id/rank POST'));

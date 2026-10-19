@@ -238,6 +238,8 @@ export async function rejectTargetRoute(req, res) {
 const BUNDLE_TYPES = ['partner', 'employer', 'target'];
 const PHONE = /(?:\+?\d[\d\s().-]{7,}\d)/g;
 const ISO_DATE = /^\s*\d{4}-\d{2}-\d{2}\s*$/;
+const DECISIONS_MAX = 10;
+const TERMS_LINE = /^\(\d{1,2}\/\d{1,2}\) Terms: /;
 export const hasPii = s => /@/.test(s) || (s.match(PHONE) || []).some(m => !ISO_DATE.test(m));
 const STATUS_LABEL = Object.fromEntries(PIPELINE_STATUSES.map(s => [s.id, s.label]));
 const when = iso => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Los_Angeles' }) : '');
@@ -265,10 +267,12 @@ async function openTodos(supabase, businessId, linkType, linkId, names) {
 async function partnerBundle(supabase, businessId, id, names) {
   const row = must(await supabase.from('sales_goals').select('*').eq('business_id', businessId).eq('id', id).eq('goal_type', 'partnership').maybeSingle());
   if (!row) throw err(404, 'partner not found');
-  const [people, events, todos] = await Promise.all([
+  const [people, events, todos, notes, waiting] = await Promise.all([
     supabase.from('partner_contacts').select('name, title, role_in_notes').eq('business_id', businessId).eq('goal_id', id).order('name').limit(50),
     supabase.from('sales_partner_events').select('at, touch_type, contact_names, source, by_user, meta').eq('business_id', businessId).eq('goal_id', id).eq('event', 'touch').order('at', { ascending: false }).limit(TOUCHES_MAX),
     openTodos(supabase, businessId, 'partner', id, names),
+    supabase.from('sales_partner_events').select('at, note, meta').eq('business_id', businessId).eq('goal_id', id).eq('event', 'note').order('at', { ascending: false }).limit(200),
+    supabase.from('sales_week_goals').select('text, waiting_on, due_date').eq('business_id', businessId).eq('kind', 'waiting').eq('link_type', 'partner').eq('link_id', id).eq('status', 'open').order('due_date').order('id').limit(50),
   ]);
   const status = row.pipeline_status || 'not_started';
   const head = [
@@ -276,12 +280,20 @@ async function partnerBundle(supabase, businessId, id, names) {
     ownershipLine(row),
     [`Stage: ${STATUS_LABEL[status] || status}`, row.category ? `Category: ${t(row.category, 120)}` : null, row.tier ? `Tier: ${row.tier}` : null, row.hot ? 'Hot' : null, first(names, row.owner_user_id) ? `Owner: ${first(names, row.owner_user_id)}` : null].filter(Boolean).join(' · '),
     row.next_step ? `Next step: ${t(row.next_step)}` : null,
+    row.next_meeting_at ? `Next meeting: ${onDay(row.next_meeting_at)}` : null,
   ].filter(Boolean);
+  // call-notes-targets-v1 REV5 - decisions are note events with meta.kind; terms are the "(M/D) Terms:" lines in notes.
+  const decisions = must(notes).filter(e => e.meta?.kind === 'decision').slice(0, DECISIONS_MAX).map(e => `- ${when(e.at)} · ${t(e.note, 400)}`);
+  const waitingLines = must(waiting).map(w => `- ${[t(w.waiting_on, 120), t(w.text, 300), w.due_date ? `due ${onDay(w.due_date)}` : null].filter(Boolean).join(' · ')}`);
+  const terms = (row.notes || '').split('\n').filter(l => TERMS_LINE.test(l)).map(l => `- ${t(l, 400)}`);
   const intel = fields([['Champion', row.champion], ['Angle', row.angle], ['Watch-outs', row.watch_outs], ["Don't say", row.do_not_say], ['Target titles', row.target_titles], ['Known contacts', row.known_contacts], ['Sequence to use', row.sequence_to_use]]);
   const peopleLines = (must(people)).map(p => `- ${[t(p.name, 120), p.title ? t(p.title, 160) : null, p.role_in_notes].filter(Boolean).join(' · ')}`);
   const touchLines = must(events).map(e => `- ${[when(e.at), e.touch_type, e.meta?.direction === 'received' ? 'in' : 'out', e.contact_names?.length ? t(e.contact_names.join(', '), 200) : null, first(names, e.by_user) ? `by ${first(names, e.by_user)}` : e.source !== 'manual' ? `via ${e.source}` : null].filter(Boolean).join(' · ')}`);
   return [...head, '', '## Intel', ...intel, '', `## People (${peopleLines.length})`, ...(peopleLines.length ? peopleLines : ['- none on file']),
-    '', `## Last touches (${touchLines.length})`, ...(touchLines.length ? touchLines : ['- none recorded']), '', '## Open to-dos', ...todos];
+    '', `## Last touches (${touchLines.length})`, ...(touchLines.length ? touchLines : ['- none recorded']),
+    '', '## Decisions', ...(decisions.length ? decisions : ['- none recorded']),
+    '', '## Waiting on them', ...(waitingLines.length ? waitingLines : ['- nothing']),
+    '', '## Terms', ...(terms.length ? terms : ['- none recorded']), '', '## Open to-dos', ...todos];
 }
 
 async function employerBundle(supabase, businessId, id, names) {

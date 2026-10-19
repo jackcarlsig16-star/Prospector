@@ -4,7 +4,7 @@ import { goalsApi } from './goalsApi';
 
 // pipeline-quick-panel-v1 Stage 1 - the panel on its own: events read,
 // Esc on the field reverts, errors show, Viewer gets text only.
-jest.mock('./goalsApi', () => ({ goalsApi: { updatePartner: jest.fn(), partnerSignal: jest.fn(), partnerEvents: jest.fn() } }));
+jest.mock('./goalsApi', () => ({ goalsApi: { updatePartner: jest.fn(), partnerSignal: jest.fn(), partnerEvents: jest.fn(), waitingRows: jest.fn() } }));
 
 const ROW = { type: 'partner', id: 'g1', name: 'Gallagher', stage: 'replied', stage_label: 'Replied', color: 'yellow', owner_team: 'upside', co_owner_name: 'Brad', no_double_touch: true, owner: 'Jack', tier: '2', next_step: 'Send deck', next_step_due: null, last_touch_at: null, top: false, record_id: null, category: '4. Mid-Market Benefits Brokers' };
 const EVENTS = [
@@ -23,6 +23,7 @@ beforeEach(() => {
   goalsApi.partnerEvents.mockResolvedValue(EVENTS);
   goalsApi.updatePartner.mockResolvedValue({});
   goalsApi.partnerSignal.mockResolvedValue({});
+  goalsApi.waitingRows.mockResolvedValue([]);
   document.body.style.overflow = '';
 });
 
@@ -110,4 +111,23 @@ test('Viewer: fields as text, no ★ button, no note box, no Next, note says rea
   expect(screen.queryByRole('button', { name: /Star|Save note|^Next:/ })).toBeNull();
   expect(screen.getByText('You have view access, so this is read-only.')).toBeTruthy();
   expect((await screen.findAllByRole('listitem')).length).toBe(3);
+});
+
+// call-notes-targets-v1 REV5 - read-only deal lines in the header.
+test('header shows the next meeting and "Waiting on (n)" with the earliest-due item; nothing when there is none', async () => {
+  goalsApi.waitingRows.mockResolvedValue([
+    { id: 'w2', waiting_on: 'Priya', text: 'Share the API docs', due_date: null, status: 'open', created_at: '2026-10-16T10:00:00Z' },
+    { id: 'w1', waiting_on: 'Dana', text: 'Send the pilot employer list', due_date: '2026-10-23', status: 'open', created_at: '2026-10-16T10:00:00Z' },
+  ]);
+  const { unmount } = render(<PartnerQuickPanel businessId="b1" row={{ ...ROW, next_step_due: '2026-10-26' }} canEdit={false} onChange={jest.fn()} onStar={jest.fn()} onClose={jest.fn()} onOpenFull={jest.fn()} />);
+  expect(screen.getByText('Next meeting Oct 26')).toBeInTheDocument();
+  expect(await screen.findByText('⏳ Waiting on (2) · oldest: Dana · Send the pilot employer list · due Oct 23')).toBeInTheDocument();
+  expect(goalsApi.waitingRows).toHaveBeenCalledWith('b1', 'g1');
+  expect(screen.queryByRole('button', { name: /Got it|Nudge/ })).toBeNull();
+  unmount();
+  goalsApi.waitingRows.mockResolvedValue([]);
+  setup();
+  await screen.findByText(/Newest note/);
+  expect(screen.queryByText(/Next meeting/)).toBeNull();
+  expect(screen.queryByText(/Waiting on/)).toBeNull();
 });

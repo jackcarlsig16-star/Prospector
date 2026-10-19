@@ -18,7 +18,11 @@ const GOAL_TYPES = ['company', 'partnership'];
 const LAND_STATUSES = ['not_started', 'in_progress', 'landed', 'paused', 'lost'];
 const MONTH_STATUSES = ['not_started', 'in_progress', 'done', 'dropped'];
 const WEEK_STATUSES = ['open', 'done', 'dropped'];
-const WEEK_KINDS = ['commitment', 'todo'];
+// 'waiting' (call-notes-targets-v1 REV5) = something a counterpart owes us:
+// waiting_on names them, owner_user_id stays null, and it is never one of our
+// to-dos - every to-do read filters kind 'todo'.
+const WEEK_KINDS = ['commitment', 'todo', 'waiting'];
+const WAITING_ON_MAX = 120;
 // task-drawer-v1 - what a to-do serves. link_id: a commitment's or partner's
 // id, a metric key, or a company's Apollo account_id (Goals > Companies).
 const LINK_TYPES = ['commitment', 'metric', 'partner', 'company', 'target'];
@@ -38,7 +42,7 @@ const LAND_FIELDS = {
   // every change has a history row.
   category: { kind: 'text' }, tier: { kind: 'nullableEnum', values: TIERS }, partner_role: { kind: 'text' },
   known_contacts: { kind: 'text' }, target_titles: { kind: 'text' }, sequence_to_use: { kind: 'text' },
-  next_step: { kind: 'text' }, do_not_say: { kind: 'text' },
+  next_step: { kind: 'text' }, do_not_say: { kind: 'text' }, next_meeting_at: { kind: 'date' },
 };
 const MONTH_FIELDS = {
   month: { kind: 'month' }, text: { kind: 'required' }, owner_user_id: { kind: 'member' },
@@ -55,7 +59,7 @@ export const WEEK_FIELDS = {
   link_target: { kind: 'nullableEnum', values: LINK_TARGETS },
   metric_key: { kind: 'nullableEnum', values: SCORECARD_METRICS }, target_value: { kind: 'number' },
   due_date: { kind: 'date' },
-  link_type: { kind: 'nullableEnum', values: LINK_TYPES }, link_id: { kind: 'text' },
+  link_type: { kind: 'nullableEnum', values: LINK_TYPES }, link_id: { kind: 'text' }, waiting_on: { kind: 'text' },
 };
 const STEP_FIELDS = { text: { kind: 'required' }, done: { kind: 'bool' }, sort_order: { kind: 'int' } };
 const CADENCE_FIELDS = {
@@ -82,7 +86,7 @@ export async function checkLink(supabase, businessId, payload, existing) {
   const id = 'link_id' in payload ? payload.link_id : existing?.link_id ?? null;
   if (touched && (type === null) !== (id === null)) return { error: 'link_type and link_id go together - set both, or both null to clear' };
   if (type === null) return null;
-  if ((payload.kind ?? existing?.kind ?? 'todo') !== 'todo') return { error: 'only a to-do can be linked' };
+  if ((payload.kind ?? existing?.kind ?? 'todo') === 'commitment') return { error: 'only a to-do can be linked' };
   if (!touched) return null;
   const notFound = { error: `link: ${type} not found in this workspace` };
   if (type === 'metric') return LINKABLE_METRICS.includes(id) ? null : { error: `link: metric must be one of ${LINKABLE_METRICS.join('|')}` };
@@ -268,12 +272,13 @@ export async function listWeekGoalsRoute(req, res) {
 // GET /goals/tasks?link_type=&link_id= - to-dos linked to one thing (or,
 // without link_id, to anything of that type), with steps, newest week first.
 export async function listLinkedTasksRoute(req, res) {
-  const { link_type, link_id } = req.query;
+  const { link_type, link_id, kind = 'todo' } = req.query;
   if (!LINK_TYPES.includes(link_type)) return res.status(400).json({ error: `bad enum: link_type must be one of ${LINK_TYPES.join('|')}` });
+  if (!['todo', 'waiting'].includes(kind)) return res.status(400).json({ error: 'bad enum: kind must be one of todo|waiting' });
   try {
     const tasks = await selectAllPages(() => {
       let q = getSupabase().from('sales_week_goals').select('*, steps:sales_week_goal_steps(*)')
-        .eq('business_id', req.params.businessId).eq('kind', 'todo').eq('link_type', link_type);
+        .eq('business_id', req.params.businessId).eq('kind', kind).eq('link_type', link_type);
       if (link_id) q = q.eq('link_id', link_id);
       return q.order('week_start', { ascending: false }).order('sort_order').order('id');
     });
@@ -288,6 +293,7 @@ export async function createWeekGoalRoute(req, res) {
   if (v.error) return fail(res, v);
   if (!v.payload.week_start) return res.status(400).json({ error: 'week_start is required' });
   if (!v.payload.text) return res.status(400).json({ error: 'text is required' });
+  if (v.payload.waiting_on?.length > WAITING_ON_MAX) return res.status(400).json({ error: `waiting_on must be up to ${WAITING_ON_MAX} characters` });
   const linkErr = await checkLink(supabase, req.params.businessId, v.payload, null);
   if (linkErr) return fail(res, linkErr);
   try {
@@ -306,10 +312,12 @@ export async function updateWeekGoalRoute(req, res) {
   if (!existing) return res.status(404).json({ error: 'goal not found' });
   const v = await validate(supabase, req.params.businessId, WEEK_FIELDS, req.body);
   if (v.error) return fail(res, v);
+  if (v.payload.waiting_on?.length > WAITING_ON_MAX) return res.status(400).json({ error: `waiting_on must be up to ${WAITING_ON_MAX} characters` });
   const linkErr = await checkLink(supabase, req.params.businessId, v.payload, existing);
   if (linkErr) return fail(res, linkErr);
   try {
-    for (const week of new Set([existing.week_start, v.payload.week_start].filter(Boolean))) {
+    // A waiting row is in no report, so a final week doesn't freeze "Got it".
+    for (const week of existing.kind === 'waiting' ? [] : new Set([existing.week_start, v.payload.week_start].filter(Boolean))) {
       if (await weekIsFinal(supabase, req.params.businessId, week)) return res.status(409).json({ error: FINAL_ERROR });
     }
   } catch (e) { return res.status(500).json({ error: e.message }); }
@@ -359,7 +367,7 @@ export async function carryOverWeekGoalsRoute(req, res) {
   const weekStart = req.body?.week_start;
   const kind = req.body?.kind;
   if (!isMonday(weekStart)) return res.status(400).json({ error: 'week_start must be a Monday (YYYY-MM-DD)' });
-  if (kind !== undefined && !WEEK_KINDS.includes(kind)) return res.status(400).json({ error: `bad enum: kind must be one of ${WEEK_KINDS.join('|')}` });
+  if (kind !== undefined && !['commitment', 'todo'].includes(kind)) return res.status(400).json({ error: 'bad enum: kind must be one of commitment|todo' });
   const businessId = req.params.businessId;
   const supabase = getSupabase();
   try {
@@ -368,7 +376,7 @@ export async function carryOverWeekGoalsRoute(req, res) {
       selectAllPages(() => {
         let q = supabase.from('sales_week_goals').select('*, steps:sales_week_goal_steps(*)').eq('business_id', businessId)
           .eq('week_start', addDays(weekStart, -7));
-        if (kind) q = q.eq('kind', kind);
+        q = kind ? q.eq('kind', kind) : q.neq('kind', 'waiting');
         return q.order('sort_order').order('id');
       }),
       selectAllPages(() => supabase.from('sales_week_goals').select('id, carried_from_id').eq('business_id', businessId)

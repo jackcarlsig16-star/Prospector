@@ -9,12 +9,14 @@ import { eventText } from './partners/activityTimeline';
 import { labelStyle, subStyle, inputStyle, Chip, Dot, Btn, ErrorNote } from './goalsUi';
 import { nextStepFor, TOUCH_STATUSES } from '../../../constants/partnerPipeline';
 import { boardStage } from '../../../constants/pipelineBoard';
+import { sortWaiting } from '../tasks/WaitingList';
 
 // pipeline-quick-panel-v1 - act on a Pipeline board partner row without
 // leaving the table: next step, a note, the one forward stage step, ★.
 // `row` is the board row (GET goals/pipeline-board), not the full partner;
 // every write patches it in place through onChange. Viewers get text only.
 const RECENT = 3;
+const onDay = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 const when = at => new Date(at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 const textStyle = { ...SA_TYPE.body, fontSize: 13, color: SA.text, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' };
 
@@ -26,6 +28,7 @@ export default function PartnerQuickPanel({ businessId, row, canEdit, onChange, 
   const [error, setError] = useState('');
   const [eventsError, setEventsError] = useState('');
   const [version, setVersion] = useState(0);
+  const [waiting, setWaiting] = useState([]);
 
   useEffect(() => { setNextStep(row.next_step || ''); }, [row.id, row.next_step]);
   useEffect(() => {
@@ -35,6 +38,11 @@ export default function PartnerQuickPanel({ businessId, row, canEdit, onChange, 
       .catch(e => live && setEventsError(e.message));
     return () => { live = false; };
   }, [businessId, row.id, version]);
+  useEffect(() => {
+    let live = true;
+    goalsApi.waitingRows(businessId, row.id).then(rows => { if (live) setWaiting(sortWaiting(rows)); }).catch(() => live && setWaiting([]));
+    return () => { live = false; };
+  }, [businessId, row.id]);
 
   const run = async (what, fn) => {
     setBusy(what); setError('');
@@ -64,6 +72,12 @@ export default function PartnerQuickPanel({ businessId, row, canEdit, onChange, 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
           <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: 0, overflowWrap: 'anywhere' }}>{row.name}</p>
           {row.category && <span style={{ ...subStyle, fontSize: 12 }}>{row.category.replace(/^\d+\.\s*/, '')}</span>}
+          {row.next_step_due && <span style={{ ...subStyle, fontSize: 12, color: SA.soft }}>Next meeting {onDay(row.next_step_due)}</span>}
+          {waiting.length > 0 && (
+            <span style={{ ...subStyle, fontSize: 12, overflowWrap: 'anywhere' }}>
+              ⏳ Waiting on ({waiting.length}) · oldest: {waiting[0].waiting_on} · {waiting[0].text}{waiting[0].due_date ? ` · due ${onDay(waiting[0].due_date)}` : ''}
+            </span>
+          )}
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
             <TypeChip row={row} style={{ height: 24 }} />
             <Chip><Dot color={statusColor(row.stage)} />{statusLabel(row.stage) || row.stage_label}</Chip>

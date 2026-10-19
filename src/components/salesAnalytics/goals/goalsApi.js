@@ -34,7 +34,7 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
     if (res.status === 500 && MIGRATION_PATTERN.test(data.error || '')) throw new NeedsMigrationError();
     throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   }
-  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/suggestions\/.+\/(accept|dismiss|snooze)$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
+  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/suggestions\/.+\/(accept|dismiss|snooze)$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
 }
 
@@ -69,6 +69,10 @@ export const goalsApi = {
   runTidy: (id, { force = false, trigger = 'manual' } = {}) => call(id, '/tidy/run', { method: 'POST', body: { force, trigger } }),
   acceptSuggestion: (id, sid) => call(id, `/suggestions/${sid}/accept`, { method: 'POST', body: {} }),
   dismissSuggestion: (id, sid) => call(id, `/suggestions/${sid}/dismiss`, { method: 'POST', body: {} }),
+  // REV5 - what counterparts owe us (kind 'waiting' rows; open ones only). No partnerId = every partner.
+  // Got it = updateWeekGoal { status: 'done' }; nudge = our own to-do, due today, owned by the clicker.
+  waitingRows: (id, partnerId) => call(id, `/tasks?${q({ link_type: 'partner', link_id: partnerId, kind: 'waiting' })}`).then(d => d.tasks.filter(t => t.status === 'open')),
+  nudgeWaiting: (id, rowId) => call(id, `/waiting/${rowId}/nudge`, { method: 'POST', body: {} }).then(d => d.todo),
 
   createStep: (id, goalId, body) => call(id, `/week/${goalId}/steps`, { method: 'POST', body }).then(d => d.step),
   updateStep: (id, stepId, body) => call(id, `/steps/${stepId}`, { method: 'PATCH', body }).then(d => d.step),

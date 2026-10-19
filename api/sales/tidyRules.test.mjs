@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { researchOrDrop, followUp, setADate, duplicates, replyTask, checkCoOwner, flagCold, runRules, keyOf, KINDS, DUE_DAYS } from './tidyRules.js';
+import { researchOrDrop, followUp, setADate, duplicates, replyTask, checkCoOwner, flagCold, waitingOverdue, runRules, keyOf, KINDS, DUE_DAYS } from './tidyRules.js';
 
 const NOW = Date.parse('2026-10-16T18:00:00Z'); // Oct 16, 11:00 LA
 const TODAY = '2026-10-16';
@@ -75,9 +75,31 @@ test('flag_cold: an open flag older than 5 days', () => {
   assert.deepEqual(out.map(s => [s.ref_type, s.ref_id, s.text]), [['flag', cold.id, 'Flag Pat Example is going cold']]);
 });
 
-test('runRules covers the seven kinds, each with a due rule; enrich is not a kind', () => {
-  assert.equal(KINDS.length, 7);
+test('runRules covers the eight kinds (REV5 adds nudge), each with a due rule; enrich is not a kind', () => {
+  assert.equal(KINDS.length, 8);
+  assert.ok(KINDS.includes('nudge'));
   assert.ok(!KINDS.includes('enrich'));
   for (const k of KINDS) assert.ok(k in DUE_DAYS, k);
   assert.deepEqual(runRules(ctx()), []);
+});
+
+// call-notes-targets-v1 REV5 - waiting rows (what a counterpart owes us).
+const waitingRow = (who, text, extra) => ({ id: id(), text, waiting_on: who, status: 'open', due_date: null, link_type: 'partner', link_id: null, ...extra });
+
+test('reply_task: an open waiting row on the partner counts as handled', () => {
+  const p = partner('Equifax', { pipeline_status: 'meeting_set' });
+  assert.equal(replyTask(ctx({ partners: [p] })).length, 1);
+  assert.deepEqual(replyTask(ctx({ partners: [p], waiting: [waitingRow('Dana', 'Send the pricing sheet', { link_id: p.id })] })), []);
+  assert.equal(replyTask(ctx({ partners: [p], waiting: [waitingRow('Dana', 'x', { link_id: p.id, status: 'done' })] })).length, 1);
+});
+
+test('waiting_overdue: fires once for a row 2+ days late; 1 day late, no date or done = nothing', () => {
+  const p = partner('Equifax');
+  const late = waitingRow('Dana', 'Confirm the bundle price', { link_id: p.id, due_date: '2026-10-14' });
+  const rows = [late, waitingRow('Dana', 'x', { link_id: p.id, due_date: '2026-10-15' }), waitingRow('Dana', 'y', { link_id: p.id }), waitingRow('Dana', 'z', { link_id: p.id, due_date: '2026-10-01', status: 'done' })];
+  const out = waitingOverdue(ctx({ partners: [p], waiting: rows }));
+  assert.deepEqual(out.map(s => [s.kind, s.ref_type, s.ref_id, s.text]), [['nudge', 'todo', late.id, 'Nudge Dana at Equifax']]);
+  assert.match(out[0].reason, /Confirm the bundle price · 2 days late/);
+  assert.equal(runRules(ctx({ partners: [p], waiting: rows })).filter(s => s.kind === 'nudge').length, 1);
+  assert.equal(DUE_DAYS.nudge, 0);
 });

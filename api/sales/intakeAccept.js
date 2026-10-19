@@ -7,12 +7,14 @@ import { MAX_ITEMS, ROLES, FACT_FIELDS, PARTNER_FACT_COLUMN, EMPLOYER_FACT_COLUM
 import { OWNER_TEAMS } from '../../src/constants/ownership.js';
 import { TOUCH_TYPE_IDS, PIPELINE_STATUS_IDS } from '../../src/constants/partnerPipeline.js';
 import { findOpportunity } from './opportunityMatch.js';
+import { parseDeal, queueDealFields, writeDeal, emptyDealOut } from './intakeDeal.js';
 
 // call-notes-targets-v1 REV3 - Accept: everything ticked in the review, in
 // one request. There is no transaction across these tables, so writes run
 // in a fixed order and each one pushes its own undo: targets -> people ->
 // intel + ownership (+ employers created from Apollo-only accounts) -> note
-// events -> touches -> to-dos. Any failure up to there runs the undos and
+// events -> touches -> to-dos -> decisions + waiting-on (REV5; terms and the
+// next meeting ride the intel column queue). Any failure up to there runs the undos and
 // the request fails as a whole. Stage moves run LAST and are reported per
 // row - a refused move (the partner moved since the review) never rolls
 // back the rest; Undo on the partner exists for a wrong one.
@@ -113,7 +115,7 @@ export function parseIntake(body, ctx) {
     const people = (Array.isArray(t.people) ? t.people : []).map(n => cleanText(n, 80)).filter(Boolean).slice(0, 10);
     return { key: typeof t.key === 'string' ? t.key : `t${i}`, s, touch_type: t.touch_type, date: t.date, people, note: cleanText(t.evidence, 300) || null, stage: t.stage_on ? t.stage : null, expect: t.expect ?? s.row.pipeline_status ?? 'not_started' };
   });
-  return { companies, ownership, people, facts, touches };
+  return { companies, ownership, people, facts, touches, ...parseDeal(body, ctx) };
 }
 
 export async function acceptIntake(supabase, { businessId, userId, note, ctx, intake, taskRows, week, category }) {
@@ -122,7 +124,7 @@ export async function acceptIntake(supabase, { businessId, userId, note, ctx, in
   const today = laDateString(now);
   const stamp = slash(note.call_date);
   const meta = { from_note_id: note.id };
-  const out = { targets: [], opportunities_created: [], contacts: { added: 0, updated: 0 }, intel: 0, ownership: 0, notes_added: 0, touches: [], touches_skipped: [], stage_moves: [], goals: [] };
+  const out = { targets: [], opportunities_created: [], contacts: { added: 0, updated: 0 }, intel: 0, ownership: 0, notes_added: 0, touches: [], touches_skipped: [], stage_moves: [], goals: [], ...emptyDealOut() };
   const must = r => { if (r.error) throw err(500, r.error.message); return r.data; };
   // Pending column changes per record, written once each with the values
   // this request read as the guard (a teammate's edit in between = 409).
@@ -133,8 +135,8 @@ export async function acceptIntake(supabase, { businessId, userId, note, ctx, in
     const p = pending.get(k);
     apply(col => (col in p.patch ? p.patch[col] : row[col] ?? null), (col, v) => { p.patch[col] = v; });
   };
-  const signal = async (goalId, s) => {
-    const { event, goal } = await applyPartnerSignal(supabase, { businessId, goalId, signal: s, byUser: userId, now, meta });
+  const signal = async (goalId, s, extra = {}) => {
+    const { event, goal } = await applyPartnerSignal(supabase, { businessId, goalId, signal: s, byUser: userId, now, meta: { ...meta, ...extra } });
     undo.push(async () => {
       const prev = event.meta?.prev || {};
       if (Object.keys(prev).length) await supabase.from('sales_goals').update(prev).eq('id', goalId);
@@ -257,6 +259,8 @@ export async function acceptIntake(supabase, { businessId, userId, note, ctx, in
       out.notes_added++;
     }
 
+    queueDealFields(intake, (p, apply) => queue('sales_goals', p.id, p, apply), note.call_date, out);
+
     for (const p of pending.values()) {
       const cols = Object.keys(p.patch);
       if (!cols.length) continue;
@@ -297,12 +301,15 @@ export async function acceptIntake(supabase, { businessId, userId, note, ctx, in
       if (steps.length) must(await supabase.from('sales_week_goal_steps').insert(steps));
       out.goals = goals;
     }
+
+    // 7. Decisions (partner note events) and what they owe us (waiting rows).
+    await writeDeal(supabase, intake, { businessId, userId, note, week, category, signal, undo, must, out });
   } catch (e) {
     for (const f of undo.reverse()) { try { await f(); } catch (u) { console.error('[call-notes/accept] undo failed:', u.message); } }
     throw e;
   }
 
-  // 7. Stage moves, last. Each touch carries its own move (dated on the
+  // 8. Stage moves, last. Each touch carries its own move (dated on the
   // touch, never backwards, expect = the stage the review showed).
   for (const t of intake.touches.filter(x => x.stage && !out.touches_skipped.some(s => s.key === x.key))) {
     try {

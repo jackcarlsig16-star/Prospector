@@ -174,3 +174,39 @@ test('Intake: five sections in order; only ticked rows are sent; rows on a skipp
   expect(body.ownership).toEqual([{ company_key: 'c0', match: GAL, owner_team: 'upside', co_owner_name: 'Brad', no_double_touch: true, owner_name: 'Brad' }]);
   expect(JSON.stringify(body)).not.toMatch(/Pat Nobody|Crystal Pringle|Pat Example/);
 });
+
+// call-notes-targets-v1 REV5 - the deal sections, the 24 h warning, and the stored extract riding back with Accept.
+test('review: Decisions · Waiting on them · Terms · Next meeting after Touches; non-partner rows greyed; 24 h warning; extract + sig sent back', async () => {
+  const eq = { type: 'partner', id: 'g1', name: 'Equifax', pipeline_status: 'meeting_set' };
+  goalsApi.extractCallNotes.mockResolvedValue({
+    call_date: '2026-10-16', summary: ['Pilot agreed'], tasks: [],
+    touches: [{ key: 't0', company: 'Equifax', match: eq, touch_type: 'meeting', people: ['Dana'], date: '2026-10-16', direction: 'out', stage: null, stage_on: false, evidence: 'sync', kept_with_note: false, duplicate: null, warning: null, on: true }],
+    decisions: [{ key: 'd0', company: 'Equifax', match: eq, text: 'Pilot with 3 employers', evidence: 'pilot runs', on: true }, { key: 'd1', company: 'Acme', match: null, text: 'Acme goes first', evidence: 'x', on: false }],
+    waiting_on: [{ key: 'w0', company: 'Equifax', match: eq, who: 'Dana', text: 'Send the employer list', due_date: '2026-10-23', evidence: 'Dana to send', on: true }],
+    terms: [{ key: 'm0', company: 'Equifax', match: eq, text: 'Equifax keeps 20%', line: '(10/16) Terms: Equifax keeps 20%', evidence: '20%', on: true }],
+    next_meeting: [{ key: 'n0', company: 'Equifax', match: eq, date: '2026-10-26', text: 'Pick employers', old: null, evidence: 'week of Oct 27', on: true }],
+    recent_accepts: [{ partner: 'Equifax', partner_id: 'g1', note_id: 'n0', minutes_ago: 42, todos: 5, events: 3 }],
+    extract: { tasks: [] }, extract_sig: 'sig-1',
+  });
+  goalsApi.createFromCallNotes.mockResolvedValue({ goals: [], note: { id: 'n1' } });
+  setup();
+  paste('Equifax sync notes');
+  fireEvent.click(screen.getByRole('button', { name: 'Read notes' }));
+  await screen.findByText('Pilot agreed');
+  expect(screen.getByRole('note')).toHaveTextContent('⚠ Another note on Equifax was accepted 42 min ago (5 to-dos, 3 events)');
+  const order = [...document.querySelectorAll('section[aria-label]')].map(s => s.getAttribute('aria-label'));
+  expect(order.slice(order.indexOf('Touches'), order.indexOf('Touches') + 5)).toEqual(['Touches', 'Decisions', 'Waiting on them', 'Terms', 'Next meeting']);
+  expect(screen.getByText('Not stored - only a partner keeps it')).toBeInTheDocument();
+  expect(screen.getByText('+ (10/16) Terms: Equifax keeps 20%')).toBeInTheDocument();
+  expect(screen.getByText('— → Oct 26 · Pick employers')).toBeInTheDocument();
+  expect(screen.getByText(/Dana/, { selector: 'strong' }).parentElement).toHaveTextContent('Dana · Equifax · due Oct 23');
+  fireEvent.click(screen.getByRole('button', { name: 'Accept 5' }));
+  await waitFor(() => expect(goalsApi.createFromCallNotes).toHaveBeenCalled());
+  const body = goalsApi.createFromCallNotes.mock.calls[0][1];
+  expect(body.decisions).toEqual([{ match: eq, text: 'Pilot with 3 employers' }]);
+  expect(body.waiting_on).toEqual([{ match: eq, who: 'Dana', text: 'Send the employer list', due_date: '2026-10-23' }]);
+  expect(body.terms).toEqual([{ match: eq, text: 'Equifax keeps 20%' }]);
+  expect(body.next_meeting).toEqual([{ match: eq, date: '2026-10-26' }]);
+  expect(body.extract).toEqual({ tasks: [] });
+  expect(body.extract_sig).toBe('sig-1');
+});

@@ -3,6 +3,7 @@ import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
 import { openFlagRows } from './huddleFlags.js';
 import { runRules, keyOf, DUE_DAYS, TOUCH_WINDOW_DAYS } from './tidyRules.js';
+import { nudgeText } from './waitingRoutes.js';
 
 // call-notes-targets-v1 REV4 Stage 3 - Tidy: a daily propose-only pass. A run
 // writes sales_suggestions rows and one sales_tidy_runs row, nothing else.
@@ -28,15 +29,16 @@ const laMonday = today => addDays(today, -((new Date(`${today}T12:00:00Z`).getUT
 export async function loadTidyContext(supabase, businessId, now = Date.now()) {
   const all = (table, cols, narrow = q => q) => selectAllPages(() => narrow(supabase.from(table).select(cols).eq('business_id', businessId)).order('id'));
   const since = new Date(now - TOUCH_WINDOW_DAYS * DAY).toISOString();
-  const [partners, targets, todos, events, domains, suggestions] = await Promise.all([
+  const [partners, targets, todos, waiting, events, domains, suggestions] = await Promise.all([
     all('sales_goals', 'id, name, pipeline_status, last_touch_at, snoozed_until, owner_team, co_owner_name, no_double_touch', q => q.eq('goal_type', 'partnership').is('archived_at', null)),
     all('sales_targets', 'id, name, status, research_notes, created_at'),
     all('sales_week_goals', 'id, text, status, due_date, link_type, link_id, created_at, prospect_contact_id, contacts, carried_from_id', q => q.eq('kind', 'todo')),
+    all('sales_week_goals', 'id, text, status, due_date, link_type, link_id, waiting_on', q => q.eq('kind', 'waiting').eq('status', 'open')),
     all('sales_partner_events', 'id, goal_id, event, at', q => q.eq('event', 'touch').gte('at', since)),
     all('partner_domains', 'id, goal_id, domain', q => q.eq('confirmed', true)),
     all('sales_suggestions', 'id, kind, ref_type, ref_id, ref_id2, status, dismissed_until, decided_at'),
   ]);
-  return { now, today: laDateString(new Date(now)), partners, targets, todos, flags: openFlagRows(todos.filter(t => t.prospect_contact_id)), events, domains, suggestions };
+  return { now, today: laDateString(new Date(now)), partners, targets, todos, waiting, flags: openFlagRows(todos.filter(t => t.prospect_contact_id)), events, domains, suggestions };
 }
 
 // Keys a run must not propose again: still proposed, parked, or accepted recently.
@@ -131,8 +133,10 @@ export async function todoFor(supabase, businessId, s, today) {
   let link = null;
   if (s.ref_type === 'partner' || s.ref_type === 'target') link = [s.ref_type, s.ref_id];
   else if (s.ref_type === 'todo' || s.ref_type === 'flag') {
-    const { data } = await supabase.from('sales_week_goals').select('link_type, link_id').eq('business_id', businessId).eq('id', s.ref_id).maybeSingle();
+    const { data } = await supabase.from('sales_week_goals').select('link_type, link_id, text, waiting_on').eq('business_id', businessId).eq('id', s.ref_id).maybeSingle();
     if (data?.link_type) link = [data.link_type, data.link_id];
+    // A nudge's to-do says what they owe, like the card's Nudge button.
+    if (s.kind === 'nudge' && data) return { text: nudgeText(data.waiting_on || 'them', data.text), due_date: addDays(today, due), link_type: link?.[0] || null, link_id: link?.[1] || null };
   }
   return { text: s.text, due_date: addDays(today, due), link_type: link?.[0] || null, link_id: link?.[1] || null };
 }
