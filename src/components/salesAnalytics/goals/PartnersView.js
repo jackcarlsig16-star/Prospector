@@ -66,7 +66,7 @@ const NO_FILTERS = { category: '', tiers: [], stale: false, hot: false, owner: n
 
 // teamView: the person filter is on Team. Reorder needs the whole group in
 // view (see WorkflowView), so it's only offered then.
-export default function PartnersView({ businessId, partners, lookup, members, canEdit, error, onUpdate, onCreate, onDupeCheck, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusFilter, tasksFor, onPeople, onAddPerson, onDeletePerson, onRefreshPeople, onCreateTask, onTouches, onDomains, onAddDomain, onUpdateDomain, onDeleteDomain, onAllDomains, onResearch, onRunResearch, csvUrl, onApolloMoves, onApplyApollo, onDismissApollo, onOutlookMoves, onApplyOutlook, onDismissOutlook, onRecordOutlook }) {
+export default function PartnersView({ businessId, partners, lookup, members, canEdit, error, onUpdate, onCreate, onDupeCheck, onSignal, onUndo, onReplace, onRank, onRefresh, onEvents, teamView, focusFilter, tasksFor, onPeople, onAddPerson, onDeletePerson, onRefreshPeople, onCreateTask, onTouches, onDomains, onAddDomain, onUpdateDomain, onDeleteDomain, onAllDomains, onResearch, onRunResearch, onCheckApollo, csvUrl, onApolloMoves, onApplyApollo, onDismissApollo, onOutlookMoves, onApplyOutlook, onDismissOutlook, onRecordOutlook }) {
   const [mode, setMode] = useState(readMode);
   const [stage, setStage] = useState(null);
   const compact = useMediaQuery('(max-width: 760px)');
@@ -192,9 +192,9 @@ export default function PartnersView({ businessId, partners, lookup, members, ca
     update: (id, did, body) => domainsRef.current.onUpdateDomain(id, did, body).then(d => { bumpDomains(); return d; }),
     remove: (id, did) => domainsRef.current.onDeleteDomain(id, did).then(d => { bumpDomains(); return d; }),
   }), []);
-  const researchRef = useRef({ onResearch, onRunResearch });
-  researchRef.current = { onResearch, onRunResearch };
-  const research = useMemo(() => ({ load: id => researchRef.current.onResearch(id), run: id => researchRef.current.onRunResearch(id) }), []);
+  const researchRef = useRef({ onResearch, onRunResearch, onCheckApollo, csvUrl });
+  researchRef.current = { onResearch, onRunResearch, onCheckApollo, csvUrl };
+  const research = useMemo(() => ({ load: id => researchRef.current.onResearch(id), run: id => researchRef.current.onRunResearch(id), checkApollo: id => researchRef.current.onCheckApollo(id), csvUrl: () => researchRef.current.csvUrl }), []);
   const loadAllDomains = useCallback(() => domainsRef.current.onAllDomains(), [domainBump]);
   useEffect(() => {
     if (!canEdit) return;

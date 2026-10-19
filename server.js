@@ -664,6 +664,8 @@ app.post('/api/sales/:businessId/goals/partners/outlook-touches/dismiss', salesM
 app.post('/api/sales/:businessId/goals/partners/outlook-touches/record', salesModuleRoute('./api/sales/partnerOutlookTouches.js', 'outlookTouchesRecordRoute', 'goals/partners/outlook-touches/record POST'));
 app.get('/api/sales/:businessId/goals/partners/:id/research', salesModuleRoute('./api/sales/partnerResearch.js', 'listResearchRoute', 'goals/partners/:id/research'));
 app.post('/api/sales/:businessId/goals/partners/:id/research', aiLimit, salesModuleRoute('./api/sales/partnerResearch.js', 'runResearchRoute', 'goals/partners/:id/research POST'));
+// partner-add-research-v1 Stage 3 - Apollo people check for one partner (max 2 /contacts/search calls, 0 credits).
+app.post('/api/sales/:businessId/goals/partners/:id/apollo-check', salesModuleRoute('./api/sales/partnerApolloCheck.js', 'checkPartnerApolloRoute', 'goals/partners/:id/apollo-check POST'));
 app.get('/api/sales/:businessId/goals/partners/dupe-check', salesModuleRoute('./api/sales/partnerDupeCheck.js', 'dupeCheckRoute', 'goals/partners/dupe-check'));
 app.get('/api/sales/:businessId/goals/partners/domains', salesModuleRoute('./api/sales/partnerDomains.js', 'listAllDomainsRoute', 'goals/partners/domains'));
 app.get('/api/sales/:businessId/goals/partners/export-apollo.csv', salesModuleRoute('./api/sales/partnerDomains.js', 'exportApolloCsvRoute', 'goals/partners/export-apollo.csv'));

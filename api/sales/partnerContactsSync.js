@@ -72,7 +72,7 @@ export async function ranToday(supabase, businessId) {
   return (data || []).some(r => r.status !== 'error' && r.counts?.partner_contacts && laDateString(new Date(r.started_at)) === today);
 }
 
-async function latestAccounts(supabase, businessId) {
+export async function latestAccounts(supabase, businessId) {
   const { data, error } = await supabase.from('sales_raw_snapshots').select('payload')
     .eq('business_id', businessId).eq('entity', 'accounts').order('captured_at', { ascending: false }).limit(1).maybeSingle();
   if (error) throw new Error(`partner contacts: read snapshot failed: ${error.message}`);
@@ -90,7 +90,7 @@ export function partnersToSync(goals, rowsByGoal, accounts) {
   return out;
 }
 
-async function fetchContacts(ctx, accountId) {
+export async function fetchContacts(ctx, accountId) {
   const contacts = [];
   for (let page = 1; page <= MAX_PAGES_PER_PARTNER; page++) {
     const json = await apolloRequest({ method: 'POST', path: '/contacts/search', body: { account_ids: [accountId], page, per_page: PER_PAGE }, ctx });
@@ -107,7 +107,7 @@ async function fetchContacts(ctx, accountId) {
 // Upsert by hand: the (goal_id, apollo_contact_id) unique index is partial,
 // which PostgREST's on_conflict can't name. A manual/outlook row with the
 // same email becomes the Apollo row (it's the same person).
-async function storeContacts(supabase, businessId, goalId, rows) {
+export async function storeContacts(supabase, businessId, goalId, rows) {
   const { data: existing, error } = await supabase.from('partner_contacts').select('id, apollo_contact_id, email, source, title, linkedin_url')
     .eq('business_id', businessId).eq('goal_id', goalId);
   if (error) throw new Error(`partner contacts: read failed: ${error.message}`);
@@ -132,7 +132,7 @@ async function storeContacts(supabase, businessId, goalId, rows) {
 
 // Zero Apollo calls: what the activity step already stored for these
 // contact ids, written onto the partner_contacts rows.
-async function applyStoredActivity(supabase, businessId, contactIds) {
+export async function applyStoredActivity(supabase, businessId, contactIds) {
   if (!contactIds.length) return 0;
   const [messages, events] = await Promise.all([
     selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id, contact_id, delivered_at, replied, bounced').eq('business_id', businessId).in('contact_id', contactIds).order('apollo_message_id')),

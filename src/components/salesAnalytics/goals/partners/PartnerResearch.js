@@ -9,8 +9,10 @@ import { laDateString } from '../../periods';
 // Confirm site -> partner_domains (confirmed) + company_domain when empty,
 // Wrong site -> nothing saved, Use -> appends "(M/D) AI: ..." to the mapped
 // intel field, Set category -> only when the partner has none. Viewer sees
-// the result, no buttons. api: { load(id), run(id) }; domains: { add };
+// the result, no buttons. api: { load(id), run(id), checkApollo(id), csvUrl() }; domains: { add };
 // confirmedDomains: the partner's confirmed domains (from the Domains drawer).
+// Stage 3: Confirm site (or "Check Apollo") runs the Apollo people check -
+// names + titles found, or the one "Enrich in Apollo" to-do it made / found.
 const POLL_MS = 3000;
 // result field -> [label, sales_goals column it appends to]
 export const USE_FIELDS = [
@@ -25,18 +27,27 @@ const when = iso => new Date(iso).toLocaleDateString('en-US', { month: 'short', 
 const small = { height: 28, padding: '0 10px', fontSize: 12 };
 const link = { color: SA.link, textDecoration: 'none' };
 
-export default function PartnerResearch({ partner, canEdit, api, domains, confirmedDomains = [], onDomainData, onUpdate }) {
+const todoDue = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+export function apolloLine(a, name) {
+  if (a.status === 'found') return `Apollo: ${a.people.length} ${a.people.length === 1 ? 'person' : 'people'}`;
+  if (a.status === 'skipped') return `Apollo check skipped - ${a.reason}`;
+  const why = a.status === 'no_account' ? 'is not in Apollo yet' : 'is in Apollo with no people';
+  return `${name} ${why} · ${a.todo_created ? 'to-do added' : 'to-do already open'}: ${a.todo.text}${a.todo.due_date ? ` (due ${todoDue(a.todo.due_date)})` : ''}`;
+}
+
+export default function PartnerResearch({ partner, canEdit, api, domains, confirmedDomains = [], onDomainData, onUpdate, onPeopleChanged }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [wrong, setWrong] = useState(false);
   const [used, setUsed] = useState({});
+  const [apollo, setApollo] = useState(null);
   const latest = data?.runs?.[0] || null;
   const running = latest?.status === 'running';
   useEffect(() => {
     if (!api) return undefined;
     let live = true;
-    setData(null); setWrong(false); setUsed({}); setError('');
+    setData(null); setWrong(false); setUsed({}); setError(''); setApollo(null);
     api.load(partner.id).then(d => { if (live) setData(d); }).catch(e => live && setError(e.message));
     return () => { live = false; };
   }, [partner.id, api]);
@@ -51,10 +62,16 @@ export default function PartnerResearch({ partner, canEdit, api, domains, confir
   const run = () => act(async () => { await api.run(partner.id); setWrong(false); setUsed({}); setData(await api.load(partner.id)); });
   const r = latest?.status === 'done' ? latest.result : null;
   const siteConfirmed = !!(r?.domain && confirmedDomains.includes(r.domain));
+  const checkApollo = async () => {
+    const a = await api.checkApollo(partner.id);
+    setApollo(a);
+    if (a.status === 'found' && onPeopleChanged) onPeopleChanged();
+  };
   const confirmSite = () => act(async () => {
     const d = await domains.add(partner.id, { domain: r.domain });
     if (onDomainData) onDomainData(d);
     if (!partner.company_domain) await onUpdate(partner.id, { company_domain: r.domain });
+    await checkApollo();
   });
   const use = (field, column) => act(async () => { await onUpdate(partner.id, { [column]: appendAi(partner[column], r[field]) }); setUsed(u => ({ ...u, [field]: true })); });
   const capReached = data ? data.today >= data.cap : false;
@@ -112,6 +129,24 @@ export default function PartnerResearch({ partner, canEdit, api, domains, confir
             </div>
           )}
         </>
+      )}
+      {(apollo || (canEdit && confirmedDomains.length > 0)) && (
+        <div aria-label="Apollo people" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={labelStyle}>Apollo</span>
+            {apollo && <span role="status" style={{ fontSize: 12, color: apollo.status === 'found' ? SA.text : SA.soft, overflowWrap: 'anywhere' }}>{apolloLine(apollo, partner.name)}</span>}
+            {canEdit && confirmedDomains.length > 0 && (
+              <button type="button" onClick={() => act(checkApollo)} disabled={busy} title="Reads Apollo's people at this partner's confirmed domain (no credits, at most 2 calls)"
+                style={{ ...saSans, border: 'none', background: 'transparent', color: SA.link, cursor: 'pointer', padding: 0, fontSize: 12 }}>{apollo ? 'Check again' : 'Check Apollo'}</button>
+            )}
+            {apollo && apollo.status !== 'found' && api.csvUrl && <a href={api.csvUrl()} download style={{ ...link, fontSize: 12 }}>Export to Apollo (CSV)</a>}
+          </div>
+          {apollo?.status === 'found' && (
+            <ul aria-label="Apollo people found" style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexWrap: 'wrap', gap: '2px 14px', fontSize: 12, color: SA.soft }}>
+              {apollo.people.map((p, i) => <li key={i}>{p.name}{p.title ? ` · ${p.title}` : ''}</li>)}
+            </ul>
+          )}
+        </div>
       )}
       {error && <ErrorNote message={error} />}
     </section>

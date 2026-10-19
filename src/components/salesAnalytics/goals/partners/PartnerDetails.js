@@ -162,7 +162,7 @@ export default function PartnerDetails({ partner, lookup, businessId, canEdit, o
         <Drawer label="Intel" summary={intelSummary(partner)} persistKey={drawerKey('intel')}>
           <PartnerIntel partner={partner} canEdit={canEdit} onUpdate={onUpdate} />
         </Drawer>
-        {research && <PartnerResearch partner={partner} canEdit={canEdit} api={research} domains={domains} onDomainData={setDomainData} onUpdate={onUpdate}
+        {research && <PartnerResearch partner={partner} canEdit={canEdit} api={research} domains={domains} onDomainData={setDomainData} onUpdate={onUpdate} onPeopleChanged={() => setPeopleBump(n => n + 1)}
           confirmedDomains={(domainData?.domains || []).filter(d => d.confirmed).map(d => d.domain)} />}
         <Drawer label="Domains" summary={domainsSummary(domainData)} persistKey={drawerKey('domains')}>
           <PartnerDomains partner={partner} canEdit={canEdit} api={domains} data={domainData} onData={setDomainData} />

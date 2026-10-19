@@ -34,7 +34,7 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
     if (res.status === 500 && MIGRATION_PATTERN.test(data.error || '')) throw new NeedsMigrationError();
     throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   }
-  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/suggestions\/.+\/(accept|dismiss|snooze)$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
+  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/partners\/.+\/apollo-check$|^\/suggestions\/.+\/(accept|dismiss|snooze)$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
 }
 
@@ -89,6 +89,8 @@ export const goalsApi = {
   // partner-add-research-v1 Stage 2 - GET { runs, today, cap }; POST starts a run (202, one Claude call with web_search) and the card polls GET.
   partnerResearch: (id, goalId) => call(id, `/partners/${goalId}/research`),
   runPartnerResearch: (id, goalId) => call(id, `/partners/${goalId}/research`, { method: 'POST' }),
+  // Stage 3 - { status: found|no_account|no_people|skipped, people: [{ name, title }], todo, todo_created, calls } (max 2 Apollo reads, 0 credits).
+  checkPartnerApollo: (id, goalId) => call(id, `/partners/${goalId}/apollo-check`, { method: 'POST' }),
   // partner-add-research-v1 - 0 AI, 0 Apollo; { exact: [{ type, id, name, archived, via }], partial: [...] }.
   partnerDupeCheck: (id, params) => call(id, `/partners/dupe-check?${q(params)}`),
   createPartner: (id, body) => call(id, '/land', { method: 'POST', body: { goal_type: 'partnership', ...body } }).then(d => d.goal),

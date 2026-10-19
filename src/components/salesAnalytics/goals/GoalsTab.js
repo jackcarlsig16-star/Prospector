@@ -503,6 +503,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
             onAllDomains={() => goalsApi.allPartnerDomains(businessId)}
             onResearch={goalId => goalsApi.partnerResearch(businessId, goalId)}
             onRunResearch={goalId => goalsApi.runPartnerResearch(businessId, goalId)}
+            onCheckApollo={goalId => goalsApi.checkPartnerApollo(businessId, goalId)}
             csvUrl={goalsApi.apolloCsvUrl(businessId)}
             onApolloMoves={() => goalsApi.apolloMoves(businessId)}
             onApplyApollo={(keys, includeHeld) => goalsApi.applyApolloMoves(businessId, keys, includeHeld)}
