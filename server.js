@@ -652,6 +652,16 @@ app.get('/api/sales/:businessId/goals/visits/skip', salesModuleRoute('./api/sale
 app.post('/api/sales/:businessId/goals/visits/skip', salesModuleRoute('./api/sales/visitReport.js', 'addSkipRoute', 'goals/visits/skip POST'));
 app.delete('/api/sales/:businessId/goals/visits/skip/:id', salesModuleRoute('./api/sales/visitReport.js', 'removeSkipRoute', 'goals/visits/skip DELETE'));
 app.post('/api/sales/:businessId/goals/visits/priority', salesModuleRoute('./api/sales/visitPriority.js', 'setVisitPriorityRoute', 'goals/visits/priority POST'));
+// sales-ia-v2 Stage 3 - the company side panel (every Pipeline row type): body sections, Add to pipeline, notes and
+// contacts for employers / targets, a target's ownership / step, and Research + Check Apollo for any record type.
+app.get('/api/sales/:businessId/goals/company', salesModuleRoute('./api/sales/companyPanel.js', 'companyDetailRoute', 'goals/company'));
+app.post('/api/sales/:businessId/goals/company/add-to-pipeline', salesModuleRoute('./api/sales/companyPanel.js', 'addToPipelineRoute', 'goals/company/add-to-pipeline POST'));
+app.post('/api/sales/:businessId/goals/company/:type/:id/note', salesModuleRoute('./api/sales/companyPanel.js', 'addNoteRoute', 'goals/company/:type/:id/note POST'));
+app.post('/api/sales/:businessId/goals/company/:type/:id/contact', salesModuleRoute('./api/sales/companyPanel.js', 'addContactRoute', 'goals/company/:type/:id/contact POST'));
+app.patch('/api/sales/:businessId/goals/company/target/:id', salesModuleRoute('./api/sales/companyPanel.js', 'updateTargetRoute', 'goals/company/target/:id PATCH'));
+app.get('/api/sales/:businessId/goals/company/:type/:id/research', salesModuleRoute('./api/sales/partnerResearch.js', 'listCompanyResearchRoute', 'goals/company/:type/:id/research'));
+app.post('/api/sales/:businessId/goals/company/:type/:id/research', aiLimit, salesModuleRoute('./api/sales/partnerResearch.js', 'runCompanyResearchRoute', 'goals/company/:type/:id/research POST'));
+app.post('/api/sales/:businessId/goals/company/:type/:id/apollo-check', salesModuleRoute('./api/sales/partnerApolloCheck.js', 'checkCompanyApolloRoute', 'goals/company/:type/:id/apollo-check POST'));
 app.get('/api/sales/:businessId/goals/copy-bundle', salesModuleRoute('./api/sales/targetsRoutes.js', 'copyBundleRoute', 'goals/copy-bundle'));
 // call-notes-targets-v1 REV4 Stage 3 - Tidy (propose-only suggestions).
 app.post('/api/sales/:businessId/goals/tidy/run', salesModuleRoute('./api/sales/tidyRoutes.js', 'runTidyRoute', 'goals/tidy/run POST'));

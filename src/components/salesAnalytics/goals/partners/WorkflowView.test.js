@@ -77,8 +77,18 @@ test('More menu: every action in words; jump-to-stage sends the stage the screen
   const menu = screen.getByRole('menu');
   expect(within(menu).getAllByRole('menuitem').map(b => b.textContent)).toEqual(['Jump to stage… ›', 'Assign… ›', '🔥 Hot on', 'Snooze 7 days', 'Deprioritize (pause)', 'Add note… ›']);
   fireEvent.click(within(menu).getByText('Jump to stage… ›'));
+  // sales-ia-v2 L3: Sent is behind Replied - the jump confirms and sends allow_backward; a No sends nothing.
+  window.confirm = jest.fn(() => false);
   fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitemradio', { name: /Sent/ }));
-  expect(a.onSignal).toHaveBeenCalledWith({ type: 'status', to: 'first_email_sent', expect: 'replied' });
+  expect(window.confirm).toHaveBeenCalledWith('Move A back to Sent?');
+  expect(a.onSignal).not.toHaveBeenCalled();
+  window.confirm = jest.fn(() => true);
+  fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitemradio', { name: /Sent/ }));
+  expect(a.onSignal).toHaveBeenCalledWith({ type: 'status', to: 'first_email_sent', expect: 'replied', allow_backward: true });
+  fireEvent.click(within(row).getByRole('button', { name: 'More actions for A' }));
+  fireEvent.click(within(screen.getByRole('menu')).getByText('Jump to stage… ›'));
+  fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitemradio', { name: /Meeting/ }));
+  expect(a.onSignal).toHaveBeenCalledWith({ type: 'status', to: 'meeting_set', expect: 'replied' });
 });
 
 test('viewers get no Next, More or up/down', () => {

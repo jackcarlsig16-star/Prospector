@@ -109,3 +109,45 @@ test('routes: POST 202 running row then GET shows done with today/cap; 404 for a
   for (let i = 1; i < RERUN_CAP_PER_DAY; i++) await research(sb, { businessId: B, entityId: P.bb, trigger: 'manual', call: async () => reply(GOOD) });
   r = res(); await runResearchRoute(req(P.bb), r, sb, call); assert.equal(r.code, 429);
 });
+
+// sales-ia-v2 Stage 3 (P4) - the same run for an employer and a target.
+import { listCompanyResearchRoute, runCompanyResearchRoute, RESEARCH_TYPES } from './partnerResearch.js';
+const E = randomUUID(), T = randomUUID();
+const seed2 = () => ({ ...seed(),
+  sales_opportunities: [{ id: E, business_id: B, organization: 'Solidcore', archived_at: null }],
+  sales_targets: [{ id: T, business_id: B, name: 'Zeta Labs', kind: 'partner', suggested_category: '4. Mid-Market Benefits Brokers', evidence: 'Opened a Chicago office' }],
+});
+const creq = (type, id) => ({ params: { businessId: B, type, id }, auth: { user: { id: U }, isPlatformOwner: false, roles: new Map([[B, 'member']]) } });
+
+test('employer research: entity_type employer, the employer framing, no categories (suggested_category null); target research: its kind picks the framing and the evidence is in the prompt', async () => {
+  const sb = fakeSupabase(seed2());
+  let args;
+  const row = await research(sb, { businessId: B, entityType: 'employer', entityId: E, trigger: 'manual', userId: U, call: async a => { args = a; return reply(GOOD); } });
+  assert.equal(row.entity_type, 'employer'); assert.equal(row.entity_id, E); assert.equal(row.status, 'done');
+  assert.match(args.system, /possible employer customer/); assert.match(args.system, /suggested_category: always null/); assert.match(args.system, /CATEGORIES: \[\]/);
+  assert.match(args.messages[0].content, /^COMPANY: Solidcore$/);
+  assert.equal(row.result.suggested_category, null);
+  const t = await research(sb, { businessId: B, entityType: 'target', entityId: T, trigger: 'manual', call: async a => { args = a; return reply(GOOD); } });
+  assert.equal(t.entity_type, 'target');
+  assert.match(args.system, /possible channel partner/); assert.match(args.messages[0].content, /category in our list: 4\./); assert.match(args.messages[0].content, /sources we noted: Opened a Chicago office/);
+  assert.equal(await runsToday(sb, B, 'partner', P.bb), 0, 'other entities never count against a partner');
+  await assert.rejects(research(sb, { businessId: B, entityType: 'employer', entityId: P.bb, trigger: 'manual', call: async () => reply(GOOD) }), e => e.status === 404);
+  await assert.rejects(research(sb, { businessId: B, entityType: 'visitor', entityId: E, trigger: 'manual', call: async () => reply(GOOD) }), e => e.status === 400);
+  assert.deepEqual(RESEARCH_TYPES, ['partner', 'employer', 'target']);
+});
+
+test('company routes: POST /company/:type/:id/research 202 then GET lists it per entity; the cap is per company per day (5), 429 after', async () => {
+  const sb = fakeSupabase(seed2());
+  const call = async () => reply(GOOD);
+  let r = res(); await runCompanyResearchRoute(creq('employer', E), r, sb, call);
+  assert.equal(r.code, 202); assert.equal(r.body.run.entity_type, 'employer');
+  await new Promise(x => setTimeout(x, 5));
+  r = res(); await listCompanyResearchRoute(creq('employer', E), r, sb);
+  assert.equal(r.code, 200); assert.equal(r.body.runs.length, 1); assert.equal(r.body.today, 1);
+  r = res(); await listCompanyResearchRoute(creq('target', T), r, sb);
+  assert.equal(r.body.runs.length, 0);
+  r = res(); await listCompanyResearchRoute(creq('visitor', 'acme'), r, sb); assert.equal(r.code, 400);
+  for (let i = 1; i < RERUN_CAP_PER_DAY; i++) await research(sb, { businessId: B, entityType: 'employer', entityId: E, trigger: 'manual', call });
+  r = res(); await runCompanyResearchRoute(creq('employer', E), r, sb, call);
+  assert.equal(r.code, 429); assert.match(r.body.error, /per company per day/);
+});

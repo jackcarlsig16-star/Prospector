@@ -13,8 +13,11 @@ import { normalizeDomain } from '../../src/constants/partnerDomains.js';
 // Queue runs (Stage 4) reuse startRun + completeRun with created_by null.
 // The model never gets or returns people: the prompt forbids names, emails
 // and phones and cleanText strips any address or number that slips through.
+// sales-ia-v2 P4: the same run, cap and card for an employer (sales_opportunities)
+// and a target (sales_targets); entityType picks the table and the framing.
 
-export const RERUN_CAP_PER_DAY = 5; // REVISABLE (spec): runs per partner per LA day, any trigger
+export const RERUN_CAP_PER_DAY = 5; // REVISABLE (spec): runs per company per LA day, any trigger
+export const RESEARCH_TYPES = ['partner', 'employer', 'target'];
 export const MAX_SEARCHES = 3; // REVISABLE (spec, D5)
 // Anthropic web search is billed per search on top of tokens ($10 / 1,000,
 // list price checked 2026-10-16). research_runs.cost_usd includes it so the
@@ -28,10 +31,14 @@ const CONFIDENCE = ['high', 'medium', 'low'];
 export const TEXT_FIELDS = { summary: 500, mission: 240, positioning: 320, size: 160, hq_city: 80, recent_news: 320, housing_perk: 200, why_homelover: 320, first_angle: 220, watch_outs: 220, titles: 240 };
 const err = (status, message) => Object.assign(new Error(message), { status });
 
-export function researchSystem(business, categories) {
+// 'partner' (default) = a channel partner; 'employer' = a company that would
+// offer the benefit to its own employees. A target researches as its kind.
+export function researchSystem(business, categories, framing = 'partner') {
   const who = `${business.name}${business.tagline ? ` (${business.tagline})` : ''}${business.website_url ? `, ${business.website_url}` : ''}`;
   return [
-    `You research one company as a possible channel partner for ${who}: a company that could offer ${business.name} to the employers, members or clients it already reaches.`,
+    framing === 'employer'
+      ? `You research one company as a possible employer customer for ${who}: an employer that could offer ${business.name} to its own employees as a benefit.`
+      : `You research one company as a possible channel partner for ${who}: a company that could offer ${business.name} to the employers, members or clients it already reaches.`,
     `Use web_search at most ${MAX_SEARCHES} times: first the company's own site (About, Careers, Partners pages), then one recent news or press source. Read what you find; do not guess.`,
     'Reply with ONE JSON object and nothing else - no prose before or after, no markdown fence:',
     '{"website": "https://...", "domain": "company.com", "website_confidence": "high|medium|low", "source_urls": ["https://..."], "summary": "", "mission": "", "positioning": "", "size": "", "hq_city": "", "recent_news": "", "housing_perk": "", "suggested_category": null, "why_homelover": "", "first_angle": "", "watch_outs": "", "titles": ""}',
@@ -45,7 +52,7 @@ export function researchSystem(business, categories) {
     '- hq_city: city and state or country.',
     '- recent_news: at most 40 words from the last 12 months with the month (acquisitions, funding, launches, leadership); "none found" otherwise.',
     `- housing_perk: any mortgage, home-buying or housing benefit they already offer or resell, in one line; otherwise exactly "no housing perk found".`,
-    `- suggested_category: exactly one string from CATEGORIES, or null when none fits.`,
+    categories.length ? '- suggested_category: exactly one string from CATEGORIES, or null when none fits.' : '- suggested_category: always null.',
     `- why_homelover: at most 40 words - why ${business.name} would matter to this company, in the company's own terms (their mission, their members, their catalog).`,
     '- first_angle: at most 25 words - the idea for an opening line that ties their words to a housing benefit.',
     '- watch_outs: at most 25 words - what makes this a poor or slow fit (competing perk, acquisition in progress, sells to the wrong audience).',
@@ -89,34 +96,54 @@ export async function runsToday(supabase, businessId, entityType, entityId, now 
   return (data || []).filter(r => laDateString(new Date(r.created_at)) === today).length;
 }
 
-async function partnerContext(supabase, businessId, entityId) {
-  const [partner, business, partners] = await Promise.all([
-    supabase.from('sales_goals').select('id, name, category, partner_role, sources, company_domain').eq('business_id', businessId).eq('id', entityId).eq('goal_type', 'partnership').maybeSingle(),
+// The company as the prompt sees it ({ id, name, category, partner_role,
+// sources, company_domain }) plus how to frame the research.
+async function loadEntity(supabase, businessId, entityType, entityId) {
+  if (entityType === 'partner') {
+    const { data, error } = await supabase.from('sales_goals').select('id, name, category, partner_role, sources, company_domain').eq('business_id', businessId).eq('id', entityId).eq('goal_type', 'partnership').maybeSingle();
+    if (error) throw new Error(error.message);
+    return data && { partner: data, framing: 'partner' };
+  }
+  if (entityType === 'employer') {
+    const { data, error } = await supabase.from('sales_opportunities').select('id, organization').eq('business_id', businessId).eq('id', entityId).is('archived_at', null).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data && { partner: { id: data.id, name: data.organization, category: null, partner_role: null, sources: null, company_domain: null }, framing: 'employer' };
+  }
+  const { data, error } = await supabase.from('sales_targets').select('id, name, kind, suggested_category, evidence').eq('business_id', businessId).eq('id', entityId).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data && { partner: { id: data.id, name: data.name, category: data.suggested_category, partner_role: null, sources: data.evidence, company_domain: null }, framing: data.kind === 'employer' ? 'employer' : 'partner' };
+}
+
+async function entityContext(supabase, businessId, entityType, entityId) {
+  if (!RESEARCH_TYPES.includes(entityType)) throw err(400, `type must be one of ${RESEARCH_TYPES.join('|')}`);
+  const [entity, business, partners] = await Promise.all([
+    loadEntity(supabase, businessId, entityType, entityId),
     supabase.from('businesses').select('name, website_url, tagline').eq('id', businessId).maybeSingle(),
     selectAllPages(() => supabase.from('sales_goals').select('id, category').eq('business_id', businessId).eq('goal_type', 'partnership').order('id')),
   ]);
-  for (const r of [partner, business]) if (r.error) throw new Error(r.error.message);
-  if (!partner.data) throw err(404, 'partner not found');
-  return { partner: partner.data, business: business.data || { name: 'this business' }, categories: [...new Set(partners.map(p => p.category).filter(Boolean))].sort() };
+  if (business.error) throw new Error(business.error.message);
+  if (!entity) throw err(404, `${entityType} not found`);
+  const categories = entity.framing === 'employer' ? [] : [...new Set(partners.map(p => p.category).filter(Boolean))].sort();
+  return { ...entity, entityType, business: business.data || { name: 'this business' }, categories };
 }
 
-// Checks the cap, writes the 'running' row. Throws 404 / 429.
-export async function startRun(supabase, { businessId, entityId, trigger, userId = null, now = Date.now() }) {
-  const ctx = await partnerContext(supabase, businessId, entityId);
-  if (await runsToday(supabase, businessId, 'partner', entityId, now) >= RERUN_CAP_PER_DAY) throw err(429, `Research cap reached (${RERUN_CAP_PER_DAY} per partner per day)`);
+// Checks the cap, writes the 'running' row. Throws 400 / 404 / 429.
+export async function startRun(supabase, { businessId, entityType = 'partner', entityId, trigger, userId = null, now = Date.now() }) {
+  const ctx = await entityContext(supabase, businessId, entityType, entityId);
+  if (await runsToday(supabase, businessId, entityType, entityId, now) >= RERUN_CAP_PER_DAY) throw err(429, `Research cap reached (${RERUN_CAP_PER_DAY} per company per day)`);
   const { data, error } = await supabase.from('research_runs')
-    .insert({ business_id: businessId, entity_type: 'partner', entity_id: entityId, trigger, status: 'running', model: MODELS.STANDARD, created_by: userId }).select().single();
+    .insert({ business_id: businessId, entity_type: entityType, entity_id: entityId, trigger, status: 'running', model: MODELS.STANDARD, created_by: userId }).select().single();
   if (error) throw new Error(error.message);
   return { ...ctx, run: data };
 }
 
 // The call itself; the row ends 'done' with the result or 'error' with the
 // message, never stays 'running'. call is swapped for a fixture in tests.
-export async function completeRun(supabase, { run, partner, business, categories, userId = null, call = callAnthropic }) {
+export async function completeRun(supabase, { run, partner, business, categories, framing = 'partner', userId = null, call = callAnthropic }) {
   const patch = {};
   try {
     const data = await call({
-      system: researchSystem(business, categories), messages: [{ role: 'user', content: researchUser(partner) }],
+      system: researchSystem(business, categories, framing), messages: [{ role: 'user', content: researchUser(partner) }],
       tools: [{ type: 'web_search_20260209', name: 'web_search', allowed_callers: ['direct'], max_uses: MAX_SEARCHES }],
       max_tokens: MAX_TOKENS, thinking: false, model: run.model, timeoutMs: 150000,
       supabase, businessId: run.business_id, userId, callType: 'partner_research',
@@ -165,22 +192,36 @@ export async function listRuns(supabase, businessId, entityType, entityId, now =
   return runs;
 }
 
+// { runs, today, cap } for one company; 400 / 404 as entityContext throws.
+export async function researchStatus(supabase, businessId, entityType, entityId) {
+  await entityContext(supabase, businessId, entityType, entityId);
+  const [runs, today] = await Promise.all([listRuns(supabase, businessId, entityType, entityId), runsToday(supabase, businessId, entityType, entityId)]);
+  return { runs, today, cap: RERUN_CAP_PER_DAY };
+}
+
 // GET /goals/partners/:id/research -> { runs, today, cap }
 export async function listResearchRoute(req, res, supabase = getSupabase()) {
-  const businessId = req.params.businessId;
-  try {
-    const { data: partner, error } = await supabase.from('sales_goals').select('id').eq('business_id', businessId).eq('id', req.params.id).eq('goal_type', 'partnership').maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!partner) return res.status(404).json({ error: 'partner not found' });
-    const [runs, today] = await Promise.all([listRuns(supabase, businessId, 'partner', partner.id), runsToday(supabase, businessId, 'partner', partner.id)]);
-    res.json({ runs, today, cap: RERUN_CAP_PER_DAY });
-  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+  try { res.json(await researchStatus(supabase, req.params.businessId, 'partner', req.params.id)); }
+  catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 }
 
 // POST /goals/partners/:id/research -> 202 { run } (status running); 429 at the cap.
 export async function runResearchRoute(req, res, supabase = getSupabase(), call) {
   try {
     const run = await kickResearch(supabase, { businessId: req.params.businessId, entityId: req.params.id, trigger: 'manual', userId: req.auth.user.id, call });
+    res.status(202).json({ run });
+  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+}
+
+// sales-ia-v2 P4 - the same two for any row type: GET / POST
+// /goals/company/:type/:id/research (type = partner | employer | target).
+export async function listCompanyResearchRoute(req, res, supabase = getSupabase()) {
+  try { res.json(await researchStatus(supabase, req.params.businessId, req.params.type, req.params.id)); }
+  catch (e) { res.status(e.status || 500).json({ error: e.message }); }
+}
+export async function runCompanyResearchRoute(req, res, supabase = getSupabase(), call) {
+  try {
+    const run = await kickResearch(supabase, { businessId: req.params.businessId, entityType: req.params.type, entityId: req.params.id, trigger: 'manual', userId: req.auth.user.id, call });
     res.status(202).json({ run });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 }

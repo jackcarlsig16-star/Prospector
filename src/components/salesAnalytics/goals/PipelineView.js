@@ -4,7 +4,7 @@ import { SA, SA_THEME_ROOT_ID } from '../theme';
 import { goalsApi } from './goalsApi';
 import { fetchOpportunities, createOpportunity, updateOpportunity, archiveOpportunity } from '../pipelineApi';
 import OpportunityPanel from '../OpportunityPanel';
-import PartnerQuickPanel from './PartnerQuickPanel';
+import CompanyPanel from './CompanyPanel';
 import OwnerPill from '../OwnerPill';
 import SheetUpdateDrawer from './SheetUpdateDrawer';
 import SidePanel from '../SidePanel';
@@ -22,6 +22,8 @@ import { BOARD_COLORS, TOP_CAP } from '../../../constants/pipelineBoard';
 import { OWNER_TEAMS, TEAM_LABEL } from '../../../constants/ownership';
 import { TIERS } from '../../../constants/partnerPipeline';
 import { CHANNEL_LABEL, PRIORITIES, PRIORITY_WORD } from '../../../constants/salesChannels';
+import { NOT_A_FIT, priorityValue, priorityText, writePriority, undoValue } from './priorityActions';
+import { PRIORITY_TYPES } from './companyPanelModel';
 import {
   CHANNEL_BUTTONS, TYPE_OPTIONS, EMPTY_FILTERS, activeFilterCount, channelFromParam, companiesView, ownersOf, stagesOf,
   readHidden, writeHidden, readSort, writeSort, prioritySetLabel,
@@ -35,9 +37,11 @@ import {
 // sideways instead of wrapping; notices and the column chooser float over
 // the page; the screen's buttons sit in the frame row (#sales-frame-tools).
 // Unsorted, rows keep the color bands (Top first); a header sort shows one
-// sorted list. A partner opens PartnerQuickPanel; an employer opens
-// OpportunityPanel (read-only for a Viewer). Priority is a dropdown with
-// "Not a fit" and a 10 s Undo.
+// sorted list. Any row but a Scout signal opens CompanyPanel (P4: the same
+// side panel + action bar for partner / employer / target / Apollo-only /
+// visitor); "Open full card" from there goes to the record's own screen.
+// Priority is a dropdown with "Not a fit" and a 10 s Undo (every priority
+// and stage change, hide and remove gets one).
 export const BOARD_TOKENS = { green: SA.good, yellow: SA.warn, blue: SA.link, gray: SA.muted, light: SA.faint, faded: SA.track };
 export const ROW_BAR_HEIGHT = 36;
 const TIER_RANK = { active: 0, 1: 1, 2: 2, 3: 3, 4: 4 };
@@ -56,12 +60,9 @@ const Dim = () => <span className="ui-table__dim">—</span>;
 const rowKey = r => `${r.type}-${r.id}`;
 const CELL_FIELD = { next: 'next_step', due: 'next_step_due' };
 const Swatch = ({ color }) => <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, flex: 'none', background: BOARD_TOKENS[color] }} />;
-const PRIORITY_TYPES = ['partner', 'employer', 'visitor'];
-const NOT_A_FIT = 'not_a_fit';
-const priorityValue = r => (r.not_a_fit ? NOT_A_FIT : r.priority == null ? '' : String(r.priority));
 const workCell = (n, late, what) => (n ? <span style={{ ...numStyle, color: late ? SA.bad : SA.text }} title={`${n} open ${what}${late ? ` · ${late} overdue` : ''}`}>{n}{late ? ' !' : ''}</span> : <Dim />);
 
-export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpenCompanies }) {
+export default function PipelineView({ businessId, canEdit, meId, onOpenPartner, onOpenCompanies }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState('');
   const [channel, setChannel] = useState(() => channelFromParam(new URLSearchParams(window.location.search).get('channel')));
@@ -75,8 +76,9 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
   const [toast, setToast] = useState(null); // { text, undo? }
   const [busyId, setBusyId] = useState(null);
   const [panel, setPanel] = useState(undefined); // undefined = closed, null = new employer, object = edit
-  const [quick, setQuick] = useState(null); // partner id open in the quick panel
-  const [highlight, setHighlight] = useState(null); // row key flashed after the quick panel closes
+  const [panelKey, setPanelKey] = useState(null); // row key open in the company panel
+  const [members, setMembers] = useState([]);
+  const [highlight, setHighlight] = useState(null); // row key flashed after the company panel closes
   const [editing, setEditing] = useState(null); // { key, col } of the one open cell editor
   const [saving, setSaving] = useState({}); // `${key}:${col}` -> value in flight, shown dimmed
   const [panelSaving, setPanelSaving] = useState(false);
@@ -87,6 +89,7 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
   const undoTimer = useRef(null);
   const phone = useMediaQuery('(max-width: 760px)');
   useEffect(() => { setToolsSlot(document.getElementById(FRAME_TOOLS_ID)); }, []);
+  useEffect(() => { goalsApi.members(businessId).then(setMembers).catch(() => setMembers([])); }, [businessId]);
   useEffect(() => {
     if (!highlight) return;
     const t = setTimeout(() => setHighlight(null), HIGHLIGHT_MS);
@@ -135,54 +138,33 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
     try { await starRow(r); } catch (e) { setToast({ text: e.message }); } finally { setBusyId(null); }
   };
 
-  // P3: one dropdown for every type that has a priority. Not a fit = the
-  // skip list for a visitor, P4 + a "Not a fit" note for a record. Undo puts
-  // back exactly what was there (a visitor with no override goes back to the
-  // pull's score).
-  const writePriority = async (r, value) => {
-    if (r.type === 'visitor') {
-      const body = value === NOT_A_FIT ? { company_key: r.id, not_a_fit: true } : { company_key: r.id, priority: value ? Number(value) : null };
-      await goalsApi.setVisitPriority(businessId, body);
-      return;
-    }
-    const priority = value === NOT_A_FIT ? 4 : value ? Number(value) : null;
-    if (r.type === 'partner') {
-      await goalsApi.updatePartner(businessId, r.id, { priority });
-      if (value === NOT_A_FIT) await goalsApi.partnerSignal(businessId, r.id, { type: 'note', note: 'Not a fit (set to P4 from Pipeline)' });
-    } else {
-      const extra = {};
-      if (value === NOT_A_FIT) {
-        const opp = (await fetchOpportunities(businessId)).find(o => o.id === r.id);
-        const line = `(${md(new Date().toISOString())}) Not a fit (set to P4 from Pipeline)`;
-        extra.notes = opp?.notes ? `${opp.notes}\n${line}` : line;
-      }
-      await updateOpportunity(businessId, r.id, { priority, ...extra });
-    }
-  };
+  // P3: one dropdown for every type that has a priority (priorityActions.js
+  // does the write; the panel's dropdown shares it).
   const changePriority = async (r, value) => {
-    const before = priorityValue(r);
-    const visitorBefore = r.type === 'visitor' && !r.priority_set_at ? '' : before;
+    const before = undoValue(r);
     setBusyId(rowKey(r));
     try {
-      await writePriority(r, value);
+      await writePriority(businessId, r, value);
       await load();
-      const label = value === NOT_A_FIT ? 'Not a fit' : value ? `P${value}` : 'no priority';
-      setToast({ text: `${r.name}: ${label}`, undo: async () => { await writePriority(r, r.type === 'visitor' ? visitorBefore : before); await load(); } });
+      setToast({ text: `${r.name}: ${priorityText(value)}`, undo: async () => { await writePriority(businessId, r, before); await load(); } });
     } catch (e) { setToast({ text: e.message }); } finally { setBusyId(null); }
   };
 
-  const quickRow = quick === null ? null : all.find(r => r.type === 'partner' && r.id === quick) || null;
-  const patchQuick = patch => setRows(rs => rs.map(x => (x.type === 'partner' && x.id === quick ? { ...x, ...patch } : x)));
-  const closeQuick = useCallback(() => {
-    const key = `partner-${quick}`;
-    setQuick(null);
-    setHighlight(key);
-    document.querySelector(`[data-row][data-key="${key}"]`)?.scrollIntoView({ block: 'nearest' });
-  }, [quick]);
-  const open = async r => {
-    if (r.type === 'partner') return setQuick(r.id);
-    if (r.type === 'target') return openTasks({ link: { type: 'target', id: r.id }, filter: 'team' });
+  const panelRow = panelKey === null ? null : all.find(r => rowKey(r) === panelKey) || null;
+  const closePanel = useCallback(() => {
+    setPanelKey(null);
+    setHighlight(panelKey);
+    document.querySelector(`[data-row][data-key="${panelKey}"]`)?.scrollIntoView({ block: 'nearest' });
+  }, [panelKey]);
+  const open = r => {
     if (r.type === 'signal') return openTasks({ link: null, view: 'signals', filter: 'team' });
+    return setPanelKey(rowKey(r));
+  };
+  // "Open full card": the record's own screen.
+  const openFull = async r => {
+    setPanelKey(null);
+    if (r.type === 'partner') return onOpenPartner(r.id, r.name);
+    if (r.type === 'target') return openTasks({ link: { type: 'target', id: r.id }, filter: 'team' });
     if (r.type === 'visitor') return setVisitorsOpen(true);
     if (r.type === 'apollo') return onOpenCompanies(laWeekStart(new Date(r.last_touch_at)));
     try {
@@ -190,6 +172,8 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
       if (opp) { setPanel(opp); setPanelError(''); } else setToast({ text: `${r.name} is no longer in the pipeline.` });
     } catch (e) { setToast({ text: e.message }); }
   };
+  // A visitor / Apollo-only row became (or already was) a record: show that record's panel.
+  const converted = async created => { await load(); setPanelKey(`${created.type}-${created.id}`); };
   const exportSheet = async () => {
     setExporting(true);
     try {
@@ -297,8 +281,7 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
   const groups = sort ? [
     { id: 'sorted', header: <>Sorted by {sortLabel} <span className="ui-table__count">{visible.length}</span></>, rows: visible, emptyText: 'No companies match these filters.' },
   ] : [
-    { id: 'top', header: <>Top <span className="ui-table__count">{topAll} of {TOP_CAP}</span></>, icon: <span aria-hidden="true" style={{ color: SA.warn }}>★</span>, rows: visible.filter(r => r.top),
-      emptyText: channel !== 'all' ? null : canEdit ? 'Nothing starred yet. ★ a row to pin it here.' : 'Nothing starred yet.' },
+    { id: 'top', header: <>Top <span className="ui-table__count">{topAll} of {TOP_CAP}</span></>, icon: <span aria-hidden="true" style={{ color: SA.warn }}>★</span>, rows: visible.filter(r => r.top) },
     ...BOARD_COLORS.map(c => ({ id: c.id, rows: visible.filter(r => !r.top && r.color === c.id) })).filter(g => g.rows.length).map(g => ({
       ...g, icon: <Swatch color={g.id} />, header: <>{BOARD_COLORS.find(c => c.id === g.id).label} <span className="ui-table__count">{g.rows.length}</span></>,
       collapsed: collapsed.has(g.id), onToggle: () => toggleBand(g.id),
@@ -383,7 +366,7 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
         // The module stays dark on screen in light mode; the kit's vars would go light here without the pin.
         <div className="ui-theme-dark">
           <DataTable label="Pipeline companies" columns={columns} groups={groups} rowKey={rowKey} rowStyle={rowStyle} sort={sort} onSort={onSort}
-            compact={phone} renderCompact={compactRow} emptyText="No companies match these filters." />
+            dense pinUnder="[data-workspace-header]" compact={phone} renderCompact={compactRow} emptyText="No companies match these filters." />
         </div>
       )}
 
@@ -420,9 +403,9 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
         <SheetUpdateDrawer businessId={businessId} onClose={() => setUpdating(false)}
           onApplied={r => { setToast({ text: `Updated ${r.applied}${r.failed.length ? ` · ${r.failed.length} not applied` : ''}` }); load(); }} />
       )}
-      {quickRow && (
-        <PartnerQuickPanel businessId={businessId} row={quickRow} canEdit={canEdit} onChange={patchQuick} onStar={() => starRow(quickRow)} onClose={closeQuick}
-          onOpenFull={() => { setQuick(null); onOpenPartner(quickRow.id, quickRow.name); }} />
+      {panelRow && (
+        <CompanyPanel businessId={businessId} row={panelRow} canEdit={canEdit} members={members} meId={meId} onStar={() => starRow(panelRow)} onPatch={patch => patchRow(panelRow, patch)} onChanged={load} onToast={setToast}
+          onConvert={converted} onClose={closePanel} onOpenFull={() => openFull(panelRow)} />
       )}
       {panel !== undefined && (
         <OpportunityPanel businessId={businessId} opportunity={panel} saving={panelSaving} error={panelError} readOnly={!canEdit} onClose={() => setPanel(undefined)}

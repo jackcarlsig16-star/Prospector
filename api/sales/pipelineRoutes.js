@@ -92,17 +92,25 @@ export async function createOpportunityRoute(req, res) {
   res.status(201).json({ opportunity: data });
 }
 
+// sales-ia-v2 L3: a stage behind the current one needs allow_backward: true
+// (sent by "Jump to stage" after its confirm); without it the move is 409.
+// Parking (nurture / on_hold) and lost are side lanes, not backward moves.
 export async function updateOpportunityRoute(req, res) {
   const businessId = req.params.businessId;
   const id = req.params.id;
-  const { payload, error } = validateFields(req.body);
+  const { allow_backward: allowBackward, ...body } = req.body || {};
+  if (allowBackward !== undefined && typeof allowBackward !== 'boolean') return res.status(400).json({ error: 'allow_backward must be true or false' });
+  const { payload, error } = validateFields(body);
   if (error) return res.status(400).json({ error });
 
   const supabase = getSupabase();
   const { data: existing, error: findErr } = await supabase
-    .from('sales_opportunities').select('id').eq('business_id', businessId).eq('id', id).maybeSingle();
+    .from('sales_opportunities').select('id, stage').eq('business_id', businessId).eq('id', id).maybeSingle();
   if (findErr) return res.status(500).json({ error: findErr.message });
   if (!existing) return res.status(404).json({ error: 'opportunity not found' });
+  if (payload.stage && compareStages(existing.stage, payload.stage) === 'back' && !allowBackward) {
+    return res.status(409).json({ error: `${payload.stage} is behind ${existing.stage} - use Jump to stage and confirm`, code: 'backward_stage' });
+  }
 
   const { data, error: updErr } = await supabase
     .from('sales_opportunities')

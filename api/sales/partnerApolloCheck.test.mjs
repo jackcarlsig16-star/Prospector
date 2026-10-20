@@ -116,3 +116,48 @@ test('unknown partner -> 404, no call', async () => {
   await assert.rejects(check(supabase, randomUUID()), e => e.status === 404);
   assert.deepEqual(calls(), []);
 });
+
+// sales-ia-v2 Stage 3 (P4) - the same check for an employer (by Apollo id or
+// name) and a target (by name): people come back as names + titles, nothing
+// is stored, and the enrich to-do links to the record.
+import { checkCompanyApollo, CHECK_TYPES } from './partnerApolloCheck.js';
+const E = { linked: randomUUID(), byName: randomUUID(), none: randomUUID() }, T = { two: randomUUID(), none: randomUUID() };
+const seed2 = () => {
+  const sb = seed();
+  sb.db.sales_opportunities = [
+    { id: E.linked, business_id: B, organization: 'Renamed Co', apollo_account_id: 'acc-two', archived_at: null },
+    { id: E.byName, business_id: B, organization: 'Big Co', apollo_account_id: null, archived_at: null },
+    { id: E.none, business_id: B, organization: 'Nowhere Employer', apollo_account_id: null, archived_at: null },
+  ];
+  sb.db.sales_targets = [{ id: T.two, business_id: B, name: 'two people co' }, { id: T.none, business_id: B, name: 'Unknown Target' }];
+  return sb;
+};
+const company = (sb, type, id) => checkCompanyApollo(sb, { businessId: B, type, id, userId: U, today: TODAY });
+
+test('employer with an Apollo id -> its people (names + titles), nothing stored, 1 call; an employer matched by name reads that account; a target by name too', async () => {
+  const sb = seed2(); calls();
+  const r = await company(sb, 'employer', E.linked);
+  assert.equal(r.status, 'found'); assert.deepEqual(r.people, [{ name: 'Person1 Zz', title: 'VP Partnerships' }, { name: 'Person2 Zz', title: 'Benefits Director' }]);
+  assert.equal(r.calls, 1); assert.deepEqual(calls(), ['POST /contacts/search']);
+  assert.equal(sb.db.partner_contacts.length, 0); assert.equal(sb.db.sales_week_goals.length, 0);
+  assert.equal(JSON.stringify(r).includes('@'), false);
+  const big = await company(sb, 'employer', E.byName);
+  assert.equal(big.status, 'found'); assert.equal(big.account.name, 'Big Co'); assert.equal(big.calls, 2); assert.equal(big.truncated, true);
+  const t = await company(sb, 'target', T.two);
+  assert.equal(t.status, 'found'); assert.equal(t.people.length, 2);
+});
+
+test('no account for an employer / target -> ONE enrich to-do linked to the opportunity / target; a partner goes through the partner check; bad type 400, unknown 404', async () => {
+  const sb = seed2(); calls();
+  const e = await company(sb, 'employer', E.none);
+  assert.equal(e.status, 'no_account'); assert.equal(e.todo_created, true); assert.deepEqual(calls(), []);
+  const t = await company(sb, 'target', T.none);
+  assert.equal(t.status, 'no_account'); assert.equal(t.todo_created, true);
+  assert.deepEqual(sb.db.sales_week_goals.map(x => [x.link_type, x.link_id, x.text]), [['opportunity', E.none, enrichText('Nowhere Employer', 'no_account')], ['target', T.none, enrichText('Unknown Target', 'no_account')]]);
+  assert.equal((await company(sb, 'employer', E.none)).todo_created, false);
+  const p = await company(sb, 'partner', G.two);
+  assert.equal(p.status, 'found'); assert.equal(sb.db.partner_contacts.length, 2, 'partners still store their people');
+  await assert.rejects(company(sb, 'visitor', 'x'), e => e.status === 400);
+  await assert.rejects(company(sb, 'employer', randomUUID()), e => e.status === 404);
+  assert.deepEqual(CHECK_TYPES, ['partner', 'employer', 'target']);
+});

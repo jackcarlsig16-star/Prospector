@@ -49,6 +49,9 @@ body.mode-straight-shooter, .ui-theme-light { ${vars(KIT_LIGHT)} }
 .ui-table tr[data-row] td:first-child { box-shadow:inset 3px 0 0 var(--ui-row-bar, transparent); }
 .ui-table td.ui-table__sticky { position:sticky; left:0; z-index:1; background:linear-gradient(var(--ui-row-tint, transparent), var(--ui-row-tint, transparent)), var(--ui-surface); color:var(--ui-text); font-weight:500; }
 .ui-table__group td { height:${KIT_TABLE.groupHeight}px; background:var(--ui-inset); color:var(--ui-text); font-weight:600; }
+.ui-table--dense td { height:${KIT_TABLE.denseRowHeight}px; }
+.ui-table--dense th { height:${KIT_TABLE.denseHeadHeight}px; }
+.ui-table--dense .ui-table__group td { height:${KIT_TABLE.denseGroupHeight}px; }
 .ui-table__group h3 { display:inline-flex; align-items:center; gap:8px; margin:0; font-size:13px; font-weight:600; color:inherit; }
 .ui-table__toggle { all:unset; cursor:pointer; display:inline-flex; align-items:center; gap:8px; }
 .ui-table__gh { display:inline-flex; align-items:center; gap:8px; }

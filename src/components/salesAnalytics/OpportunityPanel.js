@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { SA, SA_TYPE, SA_SHAPE } from './theme';
-import { STAGE_ENUM, STAGE_LABELS, ORG_TYPE_ENUM, ORG_TYPE_LABELS } from './pipelineStages';
+import { STAGE_ENUM, STAGE_LABELS, ORG_TYPE_ENUM, ORG_TYPE_LABELS, compareStages } from './pipelineStages';
 import OwnerPill from './OwnerPill';
 import SidePanel from './SidePanel';
 import CopyForClaude from './CopyForClaude';
@@ -46,9 +46,16 @@ export default function OpportunityPanel({ businessId, opportunity, saving, erro
 
   const set = (field, value) => setDraft(d => ({ ...d, [field]: value }));
 
+  // sales-ia-v2 L3: a stage behind the current one is confirmed here and
+  // flagged; the server refuses it otherwise.
   const handleSave = () => {
     if (!draft.organization.trim()) return;
-    onSave(savePayload(opportunity, draft));
+    const payload = savePayload(opportunity, draft);
+    if (payload.stage && opportunity && compareStages(opportunity.stage, payload.stage) === 'back') {
+      if (!window.confirm(`Move ${draft.organization} back from ${STAGE_LABELS[opportunity.stage]} to ${STAGE_LABELS[payload.stage]}?`)) return;
+      payload.allow_backward = true;
+    }
+    onSave(payload);
   };
 
   const text = v => <div style={textStyle}>{v || '—'}</div>;

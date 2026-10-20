@@ -85,7 +85,7 @@ export function MoreMenu({ partner, members, onSignal }) {
             {WORKFLOW_STEPS.map((st, i) => (
               <button key={st.id} role="menuitemradio" aria-checked={i === current} type="button" disabled={i === current}
                 style={{ ...menuItem, color: i === current ? SA.muted : SA.text, cursor: i === current ? 'default' : 'pointer' }}
-                onClick={() => go({ type: 'status', to: st.id, expect: status })}>
+                onClick={() => { if (i < current && !window.confirm(`Move ${partner.name} back to ${st.label}?`)) return; go({ type: 'status', to: st.id, expect: status, ...(i < current ? { allow_backward: true } : {}) }); }}>
                 <span style={{ ...numStyle, color: SA.muted, marginRight: 8 }}>{i + 1}</span>{st.label}{i === current ? ' · now' : ''}
               </button>
             ))}

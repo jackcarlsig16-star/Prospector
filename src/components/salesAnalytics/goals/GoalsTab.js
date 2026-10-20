@@ -542,7 +542,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
             onDeleteCadence={async cadenceId => { await goalsApi.deleteCadence(businessId, cadenceId); setCadences(cs => cs.filter(c => c.id !== cadenceId)); }} />
         </>}
         {section === 'pipeline' && view === 'companies' && (
-          <PipelineView businessId={businessId} canEdit={canEdit}
+          <PipelineView businessId={businessId} canEdit={canEdit} meId={meId}
             onOpenPartner={(id, name) => go({ partners: { ids: [id], open: id, label: name } })} onOpenCompanies={w => { setOwnerSlug('team'); go({ companies: w }); }} />
         )}
       </main>

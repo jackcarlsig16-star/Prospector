@@ -34,7 +34,7 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
     if (res.status === 500 && MIGRATION_PATTERN.test(data.error || '')) throw new NeedsMigrationError();
     throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   }
-  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/partners\/.+\/apollo-check$|^\/suggestions\/.+\/(accept|dismiss|snooze)$|^\/signals\/(scout-import|.+\/(accept|dismiss))$|^\/visits\/pull$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
+  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/(partners|company\/[a-z]+)\/.+\/apollo-check$|^\/company\/add-to-pipeline$|^\/suggestions\/.+\/(accept|dismiss|snooze)$|^\/signals\/(scout-import|.+\/(accept|dismiss))$|^\/visits\/pull$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
 }
 
@@ -86,6 +86,19 @@ export const goalsApi = {
   removeVisitSkip: (id, skipId) => call(id, `/visits/skip/${skipId}`, { method: 'DELETE' }),
   // sales-ia-v2 P3 - a visitor's P1-P4 / Not a fit; { priority: null } = back to the pull's own score.
   setVisitPriority: (id, body) => call(id, '/visits/priority', { method: 'POST', body }),
+  // sales-ia-v2 P4 - the company side panel for any Pipeline row (type = partner | employer | target | apollo | visitor).
+  // detail = { record, todos, waiting, visits, signals, recent, people, research, decisions, terms }; 0 AI, 0 Apollo.
+  companyDetail: (id, type, recordId) => call(id, `/company?${q({ type, id: recordId })}`),
+  // -> 201 { created: { type, id, name } } | 200 { already }. A visitor / Apollo-only company becomes a target (default), partner or employer.
+  addToPipeline: (id, body) => call(id, '/company/add-to-pipeline', { method: 'POST', body }),
+  addCompanyNote: (id, type, recordId, note) => call(id, `/company/${type}/${recordId}/note`, { method: 'POST', body: { note } }),
+  // name, title, LinkedIn URL only - never an email or phone (L1).
+  addCompanyContact: (id, type, recordId, body) => call(id, `/company/${type}/${recordId}/contact`, { method: 'POST', body }),
+  updateTarget: (id, targetId, body) => call(id, `/company/target/${targetId}`, { method: 'PATCH', body }).then(d => d.target),
+  // Research + Check Apollo for any record type (same caps as the partner ones below).
+  companyResearch: (id, type, recordId) => call(id, `/company/${type}/${recordId}/research`),
+  runCompanyResearch: (id, type, recordId) => call(id, `/company/${type}/${recordId}/research`, { method: 'POST' }),
+  checkCompanyApollo: (id, type, recordId) => call(id, `/company/${type}/${recordId}/apollo-check`, { method: 'POST' }),
   // REV5 - what counterparts owe us (kind 'waiting' rows; open ones only). No partnerId = every partner.
   // Got it = updateWeekGoal { status: 'done' }; nudge = our own to-do, due today, owned by the clicker.
   waitingRows: (id, partnerId) => call(id, `/tasks?${q({ link_type: 'partner', link_id: partnerId, kind: 'waiting' })}`).then(d => d.tasks.filter(t => t.status === 'open')),

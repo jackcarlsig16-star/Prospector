@@ -1,6 +1,6 @@
 import { laDateString } from './laDate.js';
 import { addDays, isDate, laStartOfDayMs } from './goalsShared.js';
-import { PIPELINE_STATUS_IDS, TOUCH_STATUSES, TOUCH_TYPE_IDS, touchStageMove } from '../../src/constants/partnerPipeline.js';
+import { PIPELINE_STATUS_IDS, TOUCH_STATUSES, TOUCH_TYPE_IDS, touchStageMove, stepOf } from '../../src/constants/partnerPipeline.js';
 import { OWNER_TEAMS } from '../../src/constants/ownership.js';
 
 // sales-partners-pipeline-v1 Stage 2 - the one way a partner's pipeline state
@@ -16,7 +16,14 @@ import { OWNER_TEAMS } from '../../src/constants/ownership.js';
 //                                                statuses; first_email_at on
 //                                                first_email_sent if empty.
 //                                                skipTouchStamp (a sheet move,
-//                                                not a touch): sets no dates
+//                                                not a touch): sets no dates.
+//                                                A move to an earlier workflow
+//                                                step is refused (409) unless
+//                                                allow_backward: true - the
+//                                                flag "Jump to stage" sends
+//                                                after its confirm (sales-ia-v2
+//                                                L3). Resuming from paused is
+//                                                not a backward move.
 //   { type: 'assign', owner_user_id?, owner_team?, co_owner_name?, no_double_touch? }
 //                                                caller validates membership
 //   { type: 'hot', hot: true|false }
@@ -54,6 +61,13 @@ export function touchTime(date, now) {
 }
 
 const later = (a, b) => (!a || Date.parse(b) > Date.parse(a) ? b : a);
+
+// An earlier workflow step than the current one (in_sequence and
+// first_email_sent share a step; paused has none, so leaving it never counts).
+export function isBackward(from, to) {
+  const a = stepOf(from || 'not_started'), b = stepOf(to);
+  return a !== null && b !== null && b < a;
+}
 
 function planTouch(goal, signal, now) {
   if (!TOUCH_TYPE_IDS.includes(signal.touch_type)) throw new SignalError(`touch_type must be one of ${TOUCH_TYPE_IDS.join('|')}`);
@@ -96,10 +110,12 @@ export function plan(goal, signal, now, { skipTouchStamp = false } = {}) {
     case 'status': {
       if (!PIPELINE_STATUS_IDS.includes(signal.to)) throw new SignalError(`to must be one of ${PIPELINE_STATUS_IDS.join('|')}`);
       if (signal.to === goal.pipeline_status) throw new SignalError(`already ${signal.to}`, 409);
+      const backward = isBackward(goal.pipeline_status, signal.to);
+      if (backward && signal.allow_backward !== true) throw new SignalError(`${signal.to} is behind ${goal.pipeline_status || 'not_started'} - use Jump to stage and confirm`, 409);
       const patch = { pipeline_status: signal.to };
       if (TOUCH_STATUSES.includes(signal.to) && !skipTouchStamp) patch.last_touch_at = now.toISOString();
       if (signal.to === 'first_email_sent' && !goal.first_email_at && !skipTouchStamp) patch.first_email_at = today;
-      return { patch, event: { event: 'status', from_status: goal.pipeline_status, to_status: signal.to } };
+      return { patch, event: { event: 'status', from_status: goal.pipeline_status, to_status: signal.to, ...(backward ? { meta: { backward: true } } : {}) } };
     }
     case 'deprioritize':
       if (goal.pipeline_status === 'paused') throw new SignalError('already paused', 409);

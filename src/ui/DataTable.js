@@ -13,6 +13,14 @@ import { KIT_TABLE } from './tokens';
 //   compact + renderCompact(row): the phone list, same groups and keys.
 // A header click cycles asc -> desc -> off; off = the rows as given. Pass
 // sort ({ id, dir } | null) + onSort to own the sort (e.g. to remember it).
+//   dense: KIT_TABLE.denseRowHeight rows (sales-ia-v2 Pipeline > Companies).
+//   pinUnder: selector of the page's sticky header. The box is as tall as the
+//   window under that header (a fixed height, so the page never grows while
+//   it scrolls); at the top of the page its bottom sits below the fold, and
+//   scrolling the page by the rows above it (filters) brings it up until it
+//   fills the window under the header. A wheel down over the box scrolls the
+//   page first (until pinned), then the rows - without it the page would
+//   never move while the pointer is over the table.
 
 const compare = (a, b) => (typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }));
 
@@ -30,7 +38,7 @@ function GroupHeading({ group }) {
     : <span className="ui-table__gh">{group.icon}{h}</span>;
 }
 
-export default function DataTable({ columns, groups, rowStyle, rowKey, compact = false, renderCompact, emptyText, label, sort: sortProp, onSort }) {
+export default function DataTable({ columns, groups, rowStyle, rowKey, compact = false, renderCompact, emptyText, label, sort: sortProp, onSort, dense = false, pinUnder = null }) {
   const [sortState, setSortState] = useState(null);
   const sort = onSort ? sortProp : sortState;
   const setSort = onSort ? f => onSort(f(sortProp)) : setSortState;
@@ -40,16 +48,35 @@ export default function DataTable({ columns, groups, rowStyle, rowKey, compact =
 
   useEffect(() => {
     if (compact) return undefined;
+    // The header's bottom while stuck; its own height if the page has scrolled past where it stays stuck.
+    const pin = () => { const r = pinUnder && document.querySelector(pinUnder)?.getBoundingClientRect(); return r ? Math.max(r.bottom, r.height) : 0; };
+    const slack = () => Math.max(0, boxRef.current.getBoundingClientRect().top - pin());
     const fit = () => {
       const el = boxRef.current;
       if (!el) return;
-      const top = el.getBoundingClientRect().top + window.scrollY;
-      setHeight(Math.max(KIT_TABLE.minHeight, window.innerHeight - top - KIT_TABLE.bottomGap));
+      const top = pinUnder ? pin() : el.getBoundingClientRect().top;
+      const h = Math.max(KIT_TABLE.minHeight, window.innerHeight - top - KIT_TABLE.bottomGap);
+      setHeight(prev => (prev != null && Math.abs(prev - h) < 1 ? prev : h));
+      if (!pinUnder) return;
+      // Whatever the page keeps under the table (shell padding) would let it scroll past the
+      // pin and under the header; pull it up by that much so the page stops exactly pinned.
+      el.style.marginBottom = '';
+      const below = document.documentElement.scrollHeight - (el.getBoundingClientRect().bottom + window.scrollY);
+      el.style.marginBottom = `${-Math.max(0, below - KIT_TABLE.bottomGap)}px`;
+    };
+    const onWheel = e => {
+      if (e.deltaY <= 0 || e.ctrlKey) return;
+      const by = Math.min(e.deltaY, slack());
+      if (by < 1) return;
+      e.preventDefault();
+      window.scrollBy(0, by);
     };
     fit();
+    const el = boxRef.current;
     window.addEventListener('resize', fit);
-    return () => window.removeEventListener('resize', fit);
-  }, [compact]);
+    if (pinUnder) { window.addEventListener('scroll', fit, { passive: true }); el?.addEventListener('wheel', onWheel, { passive: false }); }
+    return () => { window.removeEventListener('resize', fit); window.removeEventListener('scroll', fit); el?.removeEventListener('wheel', onWheel); };
+  }, [compact, pinUnder]);
 
   const cycle = col => setSort(s => (s?.id !== col.id ? { id: col.id, dir: 'asc' } : s.dir === 'asc' ? { id: col.id, dir: 'desc' } : null));
   const ariaSort = col => (!col.sortValue ? undefined : sort?.id !== col.id ? 'none' : sort.dir === 'asc' ? 'ascending' : 'descending');
@@ -74,7 +101,7 @@ export default function DataTable({ columns, groups, rowStyle, rowKey, compact =
   const minWidth = columns.reduce((n, c) => n + (c.width || c.minWidth || 0), 0);
   return (
     <div ref={boxRef} className="ui-table-box" style={{ maxHeight: height || undefined }}>
-      <table className="ui-table" style={{ minWidth }} aria-label={label}>
+      <table className={dense ? 'ui-table ui-table--dense' : 'ui-table'} style={{ minWidth }} aria-label={label}>
         <colgroup>{columns.map(c => <col key={c.id} style={c.width ? { width: c.width } : undefined} />)}</colgroup>
         <thead>
           <tr>
