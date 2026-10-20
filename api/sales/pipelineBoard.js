@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { hasRole } from '../lib/requireAuth.js';
-import { getSupabase } from './goalsShared.js';
+import { getSupabase, addDays } from './goalsShared.js';
 import { orgKey } from './opportunityMatch.js';
 import { OWNER_TEAMS, TEAM_LABEL } from '../../src/constants/ownership.js';
 import { cleanText } from './scrubText.js';
@@ -16,7 +16,20 @@ import { BOARD_COLORS, BOARD_COLOR_IDS, BOARD_TYPES, SHEET_FILLS, boardStage, co
 
 const isEmployer = o => o.org_type === 'employer' || o.org_type === 'membership';
 
-export function buildBoard({ partners, opportunities, targets, sequenced, memberNames }, filters = {}) {
+// signals-v1 Stage 4 (D11): the latest visit per matched record, keyed as the
+// board keys its rows (an opportunity match lands on the employer row).
+const VISIT_TYPE = { partner: 'partner', opportunity: 'employer', target: 'target' };
+export function visitedByRow(visits) {
+  const out = new Map();
+  for (const v of visits) {
+    const key = `${VISIT_TYPE[v.matched_type]}:${v.matched_id}`;
+    const prior = out.get(key);
+    if (!prior || v.pulled_on > prior.pulled_on) out.set(key, { last_visit: v.last_visit || v.pulled_on, visits_7d: v.visits_7d ?? null, pulled_on: v.pulled_on });
+  }
+  return out;
+}
+
+export function buildBoard({ partners, opportunities, targets, sequenced, memberNames, visits = [] }, filters = {}) {
   const rows = [];
   for (const g of partners) {
     rows.push({
@@ -60,6 +73,8 @@ export function buildBoard({ partners, opportunities, targets, sequenced, member
       });
     }
   }
+  const visited = visitedByRow(visits);
+  for (const r of rows) r.visited = visited.get(`${r.type}:${r.id}`) || null;
   return rows.filter(r => matchesBoardFilters(r, filters)).sort(compareBoardRows);
 }
 
@@ -75,7 +90,7 @@ export function parseBoardFilters(query) {
 
 async function loadBoard(businessId, filters) {
   const supabase = getSupabase();
-  const [partners, opportunities, targets, sequenced, members] = await Promise.all([
+  const [partners, opportunities, targets, sequenced, members, visits] = await Promise.all([
     selectAllPages(() => supabase.from('sales_goals')
       .select('id, name, category, tier, pipeline_status, hot, next_step, next_meeting_at, last_touch_at, owner_user_id, owner_team, co_owner_name, no_double_touch, record_id')
       .eq('business_id', businessId).eq('goal_type', 'partnership').is('archived_at', null).order('id')),
@@ -90,10 +105,12 @@ async function loadBoard(businessId, filters) {
       : [],
     supabase.from('business_members').select('user_id, name, profile:profiles!business_members_user_id_fkey(display_name)')
       .eq('business_id', businessId).not('user_id', 'is', null),
+    selectAllPages(() => supabase.from('web_visits').select('id, matched_type, matched_id, last_visit, visits_7d, pulled_on')
+      .eq('business_id', businessId).not('matched_id', 'is', null).gte('pulled_on', addDays(laDateString(), -7)).order('id')),
   ]);
   if (members.error) throw new Error(members.error.message);
   const memberNames = new Map(members.data.map(m => [m.user_id, m.profile?.display_name || m.name]));
-  return buildBoard({ partners, opportunities, targets, sequenced, memberNames }, filters);
+  return buildBoard({ partners, opportunities, targets, sequenced, memberNames, visits }, filters);
 }
 
 // GET /goals/pipeline-board?type=&owner_team=&owner=&tier=&color=&q=&include_apollo=true

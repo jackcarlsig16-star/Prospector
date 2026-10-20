@@ -7,7 +7,11 @@
 // ./api/sales/testing/apolloFixture.mjs server.js with APOLLO_FIXTURE='<json>'.
 export const apolloFixtureCalls = [];
 
-export function installApolloFixture(accounts) {
+// signals-v1 Stage 4: `visitors` = { all, us, balances } also answers
+// GET /users/api_profile (balances in order, the last one repeats) and the
+// website-visitor POST /mixed_companies/search (`us` when the US/500+
+// filters are on, else `all`; each { organizations, accounts }).
+export function installApolloFixture(accounts, visitors = null) {
   const realFetch = globalThis.fetch;
   process.env.APOLLO_API_KEY ||= 'fixture-key-not-real';
   globalThis.fetch = async (url, init = {}) => {
@@ -16,6 +20,18 @@ export function installApolloFixture(accounts) {
     const path = new URL(u).pathname.replace('/api/v1', '');
     apolloFixtureCalls.push(`${init.method} ${path}`);
     if (process.env.APOLLO_FIXTURE) console.log(`[apollo fixture] answered ${init.method} ${path}`);
+    const answer = json => new Response(JSON.stringify(json), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    if (visitors && init.method === 'GET' && path === '/users/api_profile') {
+      const n = visitors.balances.length > 1 ? visitors.balances.shift() : visitors.balances[0];
+      return answer({ num_credits_remaining: n, total_unified_credits_used: 0 });
+    }
+    if (visitors && init.method === 'POST' && path === '/mixed_companies/search') {
+      const body = JSON.parse(init.body);
+      if (visitors.fail) return new Response(JSON.stringify({ error: 'fixture failure' }), { status: 422, headers: { 'Content-Type': 'application/json' } });
+      const set = (body.organization_locations ? visitors.us : visitors.all) || {};
+      const total = (set.organizations || []).length + (set.accounts || []).length;
+      return answer({ organizations: set.organizations || [], accounts: set.accounts || [], pagination: { page: body.page || 1, per_page: body.per_page, total_entries: total, total_pages: 1 } });
+    }
     if (init.method !== 'POST' || path !== '/contacts/search') throw new Error(`fixture Apollo: ${init.method} ${path} is not faked`);
     const body = JSON.parse(init.body);
     const id = body.account_ids?.[0];
@@ -26,7 +42,7 @@ export function installApolloFixture(accounts) {
       contacts: all.slice((page - 1) * per, page * per),
       pagination: { page, per_page: per, total_entries: all.length, total_pages: Math.max(1, Math.ceil(all.length / per)) },
     };
-    return new Response(JSON.stringify(json), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    return answer(json);
   };
   return () => { globalThis.fetch = realFetch; };
 }

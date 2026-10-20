@@ -29,7 +29,7 @@ const laMonday = today => addDays(today, -((new Date(`${today}T12:00:00Z`).getUT
 export async function loadTidyContext(supabase, businessId, now = Date.now()) {
   const all = (table, cols, narrow = q => q) => selectAllPages(() => narrow(supabase.from(table).select(cols).eq('business_id', businessId)).order('id'));
   const since = new Date(now - TOUCH_WINDOW_DAYS * DAY).toISOString();
-  const [partners, targets, todos, waiting, events, domains, suggestions] = await Promise.all([
+  const [partners, targets, todos, waiting, events, domains, suggestions, visits] = await Promise.all([
     all('sales_goals', 'id, name, pipeline_status, last_touch_at, snoozed_until, owner_team, co_owner_name, no_double_touch', q => q.eq('goal_type', 'partnership').is('archived_at', null)),
     all('sales_targets', 'id, name, status, research_notes, created_at'),
     all('sales_week_goals', 'id, text, status, due_date, link_type, link_id, created_at, prospect_contact_id, contacts, carried_from_id', q => q.eq('kind', 'todo')),
@@ -37,8 +37,9 @@ export async function loadTidyContext(supabase, businessId, now = Date.now()) {
     all('sales_partner_events', 'id, goal_id, event, at', q => q.eq('event', 'touch').gte('at', since)),
     all('partner_domains', 'id, goal_id, domain', q => q.eq('confirmed', true)),
     all('sales_suggestions', 'id, kind, ref_type, ref_id, ref_id2, status, dismissed_until, decided_at'),
+    all('web_visits', 'id, matched_id, last_visit, visits_7d, pulled_on', q => q.eq('matched_type', 'partner').in('priority', ['P1', 'P2']).gte('pulled_on', addDays(laDateString(new Date(now)), -7))),
   ]);
-  return { now, today: laDateString(new Date(now)), partners, targets, todos, waiting, flags: openFlagRows(todos.filter(t => t.prospect_contact_id)), events, domains, suggestions };
+  return { now, today: laDateString(new Date(now)), partners, targets, todos, waiting, flags: openFlagRows(todos.filter(t => t.prospect_contact_id)), events, domains, suggestions, visits };
 }
 
 // Keys a run must not propose again: still proposed, parked, or accepted recently.

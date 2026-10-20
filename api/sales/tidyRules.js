@@ -15,8 +15,9 @@ export const FLAG_DAYS = 5;
 export const TOUCH_WINDOW_DAYS = 7;
 export { KIND_LABEL, KINDS };
 // Days until the to-do Accept creates is due; null = Accept opens the records instead.
-export const DUE_DAYS = { research_or_drop: 3, follow_up: 1, set_a_date: 1, duplicate: null, reply_task: 1, check_co_owner: 1, flag_cold: 1, nudge: 0 };
+export const DUE_DAYS = { research_or_drop: 3, follow_up: 1, set_a_date: 1, duplicate: null, reply_task: 1, check_co_owner: 1, flag_cold: 1, nudge: 0, visited_no_touch: 1 };
 export const WAITING_LATE_DAYS = 2;
+export const VISIT_NO_TOUCH_DAYS = 14;
 
 const DAY = 864e5;
 const SENT = ['first_email_sent', 'in_sequence'];
@@ -103,7 +104,20 @@ export function waitingOverdue({ waiting = [], partners, today }) {
     });
 }
 
-export const RULES = [researchOrDrop, followUp, setADate, duplicates, replyTask, checkCoOwner, flagCold, waitingOverdue];
+// signals-v1 Stage 4 (D11) - a matched partner whose company visited the site
+// (a P1/P2 pull in the last 7 days) with no touch in 14 days and no open to-do.
+export function visitedNoTouch({ partners, todos, visits = [], now }) {
+  const latest = new Map();
+  for (const v of visits) if (!latest.has(v.matched_id) || v.last_visit > latest.get(v.matched_id).last_visit) latest.set(v.matched_id, v);
+  return partners
+    .filter(p => latest.has(p.id) && !openLinked(todos, 'partner', p.id) && (daysSinceTouch(p, now) ?? Infinity) >= VISIT_NO_TOUCH_DAYS)
+    .map(p => {
+      const v = latest.get(p.id), d = daysSinceTouch(p, now);
+      return { kind: 'visited_no_touch', ref_type: 'partner', ref_id: p.id, text: `Reach out to ${p.name}`, reason: `Visited the site ${v.last_visit || v.pulled_on} (${v.visits_7d ?? 0} visits in 7 days) · ${d == null ? 'never touched' : `last touch ${ago(d)}`}` };
+    });
+}
+
+export const RULES = [researchOrDrop, followUp, setADate, duplicates, replyTask, checkCoOwner, flagCold, waitingOverdue, visitedNoTouch];
 export const runRules = ctx => RULES.flatMap(rule => rule(ctx));
 // Mirrors the partial unique index: (kind, ref_type, ref_id, coalesce(ref_id2, ref_id)).
 export const keyOf = s => [s.kind, s.ref_type, s.ref_id, s.ref_id2 || s.ref_id].join('|');

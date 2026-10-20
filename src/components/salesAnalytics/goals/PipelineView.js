@@ -34,6 +34,7 @@ const TIER_RANK = { active: 0, 1: 1, 2: 2, 3: 3, 4: 4 };
 const md = d => new Date(`${d.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 const tierLabel = t => (t === 'active' ? 'Active' : t ? `T${t}` : null);
 const touchLabel = r => ((r.type === 'partner' || r.type === 'apollo') && r.last_touch_at ? md(r.last_touch_at) : null);
+const visitedLabel = r => (r.visited ? `${md(r.visited.last_visit)}${r.visited.visits_7d != null ? ` · ${r.visited.visits_7d}` : ''}` : null);
 const tint = color => `color-mix(in srgb, ${BOARD_TOKENS[color]} 6%, transparent)`;
 const HIGHLIGHT_MS = 1500;
 const highlightTint = `color-mix(in srgb, ${SA.accent} 22%, transparent)`;
@@ -167,13 +168,15 @@ export default function PipelineView({ businessId, canEdit, onOpenPartner, onOpe
     { id: 'due', label: 'Due', width: KIT_EDITABLE.dateWidth, sortValue: r => r.next_step_due, render: r => cell(r, 'due', 'date', v => (v ? <span style={numStyle}>{md(v)}</span> : <Dim />)),
       title: r => (r.type === 'partner' ? (r.next_step_due ? `Next meeting ${r.next_step_due}` : 'No next meeting set') : r.next_step_due) },
     { id: 'touch', label: 'Last touch', width: 86, sortValue: r => r.last_touch_at, render: r => (touchLabel(r) ? <span style={numStyle}>{touchLabel(r)}</span> : <Dim />), title: r => r.last_touch_at && r.last_touch_at.slice(0, 10) },
+    { id: 'visited', label: 'Visited', width: 96, sortValue: r => r.visited?.last_visit || null, render: r => (visitedLabel(r) ? <span style={numStyle}>{visitedLabel(r)}</span> : <Dim />),
+      title: r => r.visited && `Last website visit ${r.visited.last_visit}${r.visited.visits_7d != null ? ` · ${r.visited.visits_7d} visits in 7 days` : ''}` },
   ];
   const compactRow = r => (
     <>
       <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
         <span style={{ fontWeight: 500, color: SA.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nameCell(r)} {typeCell(r)}</span>
         <span style={{ fontSize: 12, color: SA.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {[r.stage_label, tierLabel(r.tier), TEAM_LABEL[r.owner_team], r.owner, r.next_step_due && md(r.next_step_due), r.next_step && `Next: ${r.next_step}`, touchLabel(r) && `Touched ${touchLabel(r)}`].filter(Boolean).join(' · ')}
+          {[r.stage_label, tierLabel(r.tier), TEAM_LABEL[r.owner_team], r.owner, r.next_step_due && md(r.next_step_due), r.next_step && `Next: ${r.next_step}`, touchLabel(r) && `Touched ${touchLabel(r)}`, visitedLabel(r) && `Visited ${visitedLabel(r)}`].filter(Boolean).join(' · ')}
         </span>
       </div>
       <span style={{ width: 44, height: 44, flex: 'none', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{starCell(r)}</span>

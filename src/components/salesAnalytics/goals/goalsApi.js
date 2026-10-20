@@ -34,7 +34,7 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
     if (res.status === 500 && MIGRATION_PATTERN.test(data.error || '')) throw new NeedsMigrationError();
     throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   }
-  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/partners\/.+\/apollo-check$|^\/suggestions\/.+\/(accept|dismiss|snooze)$|^\/signals\/(scout-import|.+\/(accept|dismiss))$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
+  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/partners\/.+\/apollo-check$|^\/suggestions\/.+\/(accept|dismiss|snooze)$|^\/signals\/(scout-import|.+\/(accept|dismiss))$|^\/visits\/pull$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
 }
 
@@ -75,6 +75,9 @@ export const goalsApi = {
   scoutImport: (id, file, dryRun) => call(id, '/signals/scout-import', { method: 'POST', body: { file, dryRun } }),
   acceptSignal: (id, sid) => call(id, `/signals/${sid}/accept`, { method: 'POST', body: {} }),
   dismissSignal: (id, sid) => call(id, `/signals/${sid}/dismiss`, { method: 'POST', body: {} }),
+  // signals-v1 Stage 4 - the daily website-visitor pull (Members) and its status (Viewers too).
+  visitPull: (id, { force = false, trigger = 'manual' } = {}) => call(id, '/visits/pull', { method: 'POST', body: { force, trigger } }),
+  visitStatus: id => call(id, '/visits/status'),
   // REV5 - what counterparts owe us (kind 'waiting' rows; open ones only). No partnerId = every partner.
   // Got it = updateWeekGoal { status: 'done' }; nudge = our own to-do, due today, owned by the clicker.
   waitingRows: (id, partnerId) => call(id, `/tasks?${q({ link_type: 'partner', link_id: partnerId, kind: 'waiting' })}`).then(d => d.tasks.filter(t => t.status === 'open')),

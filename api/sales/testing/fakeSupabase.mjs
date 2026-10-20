@@ -1,6 +1,6 @@
 // In-memory stand-in for the slice of supabase-js the sales routes use:
-// filters, order, range, limit, single/maybeSingle, insert/update/delete with
-// .select(), the one embed the targets list uses (note:sales_call_notes(...)),
+// filters, order, range, limit, single/maybeSingle, insert/upsert/update/delete
+// with .select(), the one embed the targets list uses (note:sales_call_notes(...)),
 // and optional unique keys ({ unique: { table: row => key | null } }) that
 // answer a colliding insert with code 23505 like Postgres does.
 import { randomUUID } from 'node:crypto';
@@ -22,6 +22,15 @@ export function fakeSupabase(seed, { unique = {} } = {}) {
       const key = unique[table];
       if (key && rows.some(r => key(r) != null && db[table].some(x => key(x) === key(r)))) return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
       db[table].push(...rows);
+    } else if (q.op === 'upsert') {
+      const cols = q.onConflict.split(',');
+      rows = (Array.isArray(q.payload) ? q.payload : [q.payload]).map(r => {
+        const hit = db[table].find(x => cols.every(c => x[c] === r[c]));
+        if (hit) return Object.assign(hit, r);
+        const row = { id: randomUUID(), created_at: new Date().toISOString(), ...r };
+        db[table].push(row);
+        return row;
+      });
     } else {
       const sel = db[table].filter(r => q.filters.every(f => matches(r, f)));
       if (q.op === 'update') sel.forEach(r => Object.assign(r, q.payload));
@@ -48,7 +57,7 @@ export function fakeSupabase(seed, { unique = {} } = {}) {
     const f = op => (k, v) => { q.filters.push({ op, k, v }); return b; };
     const b = {
       select(cols = '*', opts = {}) { if (q.op === 'select') { q.cols = cols; q.head = !!opts.head; } return b; },
-      insert(p) { q.op = 'insert'; q.payload = p; return b; }, update(p) { q.op = 'update'; q.payload = p; return b; }, delete() { q.op = 'delete'; return b; },
+      insert(p) { q.op = 'insert'; q.payload = p; return b; }, upsert(p, o = {}) { q.op = 'upsert'; q.payload = p; q.onConflict = o.onConflict; return b; }, update(p) { q.op = 'update'; q.payload = p; return b; }, delete() { q.op = 'delete'; return b; },
       eq: f('eq'), neq: f('neq'), in: f('in'), gte: f('gte'), is: f('is'), not(k) { q.filters.push({ op: 'not_is', k }); return b; },
       order(k, o = {}) { q.order.push([k, o.ascending !== false]); return b; }, limit(n) { q.limit = n; return b; }, range(a, z) { q.range = [a, z]; return b; },
       maybeSingle() { q.single = 'maybe'; return b; }, single() { q.single = 'one'; return b; },

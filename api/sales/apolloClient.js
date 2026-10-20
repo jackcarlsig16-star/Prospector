@@ -10,8 +10,7 @@ const MAX_PAGES_PER_CALL = 10;
 
 // Exact method+path pairs only - confirmed against Apollo's real docs in
 // Stage 0/the audit, not guessed. Anything else throws before any request
-// is made. /mixed_companies/search (Organization Search, 1 credit/page)
-// and every enrich/match/write endpoint are deliberately absent.
+// is made. Every enrich/match/write endpoint is deliberately absent.
 const ALLOWED_CALLS = [
   { method: 'POST', path: '/emailer_campaigns/search' },
   { method: 'GET', path: '/email_accounts' },
@@ -20,7 +19,17 @@ const ALLOWED_CALLS = [
   // sales-hot-prospects-v1 - both 0 credits, confirmed live in Stage 1.
   { method: 'GET', path: '/emailer_messages/search' },
   { method: 'GET', path: '/emailer_messages/:id/activities', pattern: /^\/emailer_messages\/[0-9a-f]{24}\/activities$/ },
+  // signals-v1 Stage 4 - proven in Stages 2b/2c. api_profile is the credit
+  // balance (0 credits); mixed_companies/search may cost 1 credit and is only
+  // ever the website-visitor search (see visitorOnly below).
+  { method: 'GET', path: '/users/api_profile' },
+  { method: 'POST', path: '/mixed_companies/search' },
 ];
+
+// A mixed_companies call without the visitor filter would be a general
+// company search - refused before any request.
+const visitorOnly = (path, body) => path !== '/mixed_companies/search'
+  || (Array.isArray(body?.website_visitors_from_domains) && body.website_visitors_from_domains.length > 0);
 
 // Returns the matched entry's canonical path, so per-message paths are
 // counted under one endpoint key instead of one key per message id.
@@ -51,6 +60,9 @@ export async function apolloRequest({ method, path, query, body, ctx }) {
   const countKey = allowedPath(method, path);
   if (!countKey) {
     throw new Error(`apolloClient: ${method} ${path} is not on the allowlist - refusing before any request`);
+  }
+  if (!visitorOnly(countKey, body)) {
+    throw new Error('apolloClient: mixed_companies/search needs website_visitors_from_domains - refusing before any request');
   }
 
   let lastErr;

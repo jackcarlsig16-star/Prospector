@@ -20,10 +20,10 @@ export const MAX_NAME = 160;
 export async function loadDupeContext(supabase, businessId) {
   const page = build => selectAllPages(() => build(supabase).eq('business_id', businessId));
   const [partners, opportunities, companies, targets, domains] = await Promise.all([
-    page(s => s.from('sales_goals').select('id, name, archived_at, pipeline_status').eq('goal_type', 'partnership').order('id')),
-    page(s => s.from('sales_opportunities').select('id, organization, archived_at').order('id')),
-    page(s => s.from('sales_sequenced_accounts').select('account_id, name').order('account_id')),
-    page(s => s.from('sales_targets').select('id, name, status').order('id')),
+    page(s => s.from('sales_goals').select('id, name, archived_at, pipeline_status, owner_team').eq('goal_type', 'partnership').order('id')),
+    page(s => s.from('sales_opportunities').select('id, organization, archived_at, org_type, owner_team').order('id')),
+    page(s => s.from('sales_sequenced_accounts').select('account_id, name, employees').order('account_id')),
+    page(s => s.from('sales_targets').select('id, name, status, owner_team, kind').order('id')),
     page(s => s.from('partner_domains').select('goal_id, domain').eq('confirmed', true).order('goal_id').order('domain')),
   ]);
   return { partners, opportunities, companies: companies.filter(c => c.name), targets, domains };

@@ -75,9 +75,10 @@ test('flag_cold: an open flag older than 5 days', () => {
   assert.deepEqual(out.map(s => [s.ref_type, s.ref_id, s.text]), [['flag', cold.id, 'Flag Pat Example is going cold']]);
 });
 
-test('runRules covers the eight kinds (REV5 adds nudge), each with a due rule; enrich is not a kind', () => {
-  assert.equal(KINDS.length, 8);
+test('runRules covers the nine kinds (REV5 adds nudge, signals-v1 visited_no_touch), each with a due rule; enrich is not a kind', () => {
+  assert.equal(KINDS.length, 9);
   assert.ok(KINDS.includes('nudge'));
+  assert.ok(KINDS.includes('visited_no_touch'));
   assert.ok(!KINDS.includes('enrich'));
   for (const k of KINDS) assert.ok(k in DUE_DAYS, k);
   assert.deepEqual(runRules(ctx()), []);

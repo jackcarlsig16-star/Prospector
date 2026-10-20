@@ -642,6 +642,9 @@ app.get('/api/sales/:businessId/goals/signals', salesModuleRoute('./api/sales/si
 app.post('/api/sales/:businessId/goals/signals/scout-import', salesModuleRoute('./api/sales/signalsRoutes.js', 'scoutImportRoute', 'goals/signals/scout-import POST'));
 app.post('/api/sales/:businessId/goals/signals/:id/accept', salesModuleRoute('./api/sales/signalsRoutes.js', 'acceptSignalRoute', 'goals/signals/:id/accept POST'));
 app.post('/api/sales/:businessId/goals/signals/:id/dismiss', salesModuleRoute('./api/sales/signalsRoutes.js', 'dismissSignalRoute', 'goals/signals/:id/dismiss POST'));
+// signals-v1 Stage 4 - the daily website-visitor pull (page load / Pull now) and its status.
+app.post('/api/sales/:businessId/goals/visits/pull', salesModuleRoute('./api/sales/visitPull.js', 'runVisitPullRoute', 'goals/visits/pull POST'));
+app.get('/api/sales/:businessId/goals/visits/status', salesModuleRoute('./api/sales/visitPull.js', 'visitStatusRoute', 'goals/visits/status'));
 app.get('/api/sales/:businessId/goals/copy-bundle', salesModuleRoute('./api/sales/targetsRoutes.js', 'copyBundleRoute', 'goals/copy-bundle'));
 // call-notes-targets-v1 REV4 Stage 3 - Tidy (propose-only suggestions).
 app.post('/api/sales/:businessId/goals/tidy/run', salesModuleRoute('./api/sales/tidyRoutes.js', 'runTidyRoute', 'goals/tidy/run POST'));

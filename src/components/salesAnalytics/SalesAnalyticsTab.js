@@ -125,16 +125,21 @@ export default function SalesAnalyticsTab({ businessId, features }) {
   const canEdit = !!me && (me.profile?.is_platform_owner || roleAtLeast(me.memberships?.find(m => m.business_id === businessId)?.role, 'member'));
 
   // call-notes-targets-v1 Stage 3 - Tidy runs once per LA day on a Member's
-  // first Goals & Sales visit; the server guard is the real gate, this key
-  // only saves the call. Viewers never trigger it.
-  // localStorage key (per browser): prospector_tidy_ran_<businessId> = 'YYYY-MM-DD'
+  // first Goals & Sales visit; the server guard is the real gate, these keys
+  // only save the call. Viewers never trigger it. signals-v1 Stage 4: the
+  // website-visitor pull goes first so Tidy's "visited, no touch" sees it; a
+  // failed pull is retried on the next load and never blocks Tidy.
+  // localStorage keys (per browser): prospector_tidy_ran_<businessId>,
+  // prospector_visits_ran_<businessId> = 'YYYY-MM-DD'
   useEffect(() => {
     if (!canEdit) return;
-    const key = `prospector_tidy_ran_${businessId}`, today = laDateString();
-    try { if (localStorage.getItem(key) === today) return; } catch { /* private mode */ }
-    goalsApi.runTidy(businessId, { trigger: 'pageload' })
-      .then(() => { try { localStorage.setItem(key, today); } catch { /* private mode */ } })
-      .catch(() => {});
+    const today = laDateString();
+    const ran = key => { try { return localStorage.getItem(key) === today; } catch { return false; } };
+    const mark = key => { try { localStorage.setItem(key, today); } catch { /* private mode */ } };
+    const visitsKey = `prospector_visits_ran_${businessId}`, tidyKey = `prospector_tidy_ran_${businessId}`;
+    const pull = ran(visitsKey) ? Promise.resolve() : goalsApi.visitPull(businessId, { trigger: 'pageload' }).then(() => mark(visitsKey)).catch(() => {});
+    if (ran(tidyKey)) return;
+    pull.then(() => goalsApi.runTidy(businessId, { trigger: 'pageload' })).then(() => mark(tidyKey)).catch(() => {});
   }, [businessId, canEdit]);
 
   // shell-facelift-v1 Stage 2 - the tab row sits in the workspace header's sticky row when that slot exists

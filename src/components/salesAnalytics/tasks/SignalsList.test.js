@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import SignalsList from './SignalsList';
 import { goalsApi } from '../goals/goalsApi';
 
-jest.mock('../goals/goalsApi', () => ({ goalsApi: { acceptSignal: jest.fn(), dismissSignal: jest.fn(), scoutImport: jest.fn() } }));
+jest.mock('../goals/goalsApi', () => ({ goalsApi: { acceptSignal: jest.fn(), dismissSignal: jest.fn(), scoutImport: jest.fn(), visitStatus: jest.fn(), visitPull: jest.fn() } }));
 
 const sig = (id, company, extra) => ({ id, source: 'scout', company_name: company, kind: 'employer', kind_guessed: false, who: 'VP People · Avery Q.', signal: 'Hiring 40 drivers', why_now: 'New depot', first_line: 'Saw the depot news', score: 9, upside_joint: false, match: null, status: 'new', ...extra });
 const signals = [
@@ -10,6 +10,7 @@ const signals = [
   sig('s2', 'Kestrel Pay', { kind: 'partner', match: { type: 'partner', id: 'g1', name: 'Kestrel Pay', archived: false, possible: false }, score: 8 }),
   sig('s3', 'Orchard Table', { kind: 'partner', kind_guessed: true, upside_joint: true, first_line: null, score: null }),
 ];
+beforeEach(() => goalsApi.visitStatus.mockResolvedValue(null));
 afterEach(() => jest.clearAllMocks());
 
 test('a Viewer sees every field and the match hint, but no Accept / Dismiss / Upload', () => {

@@ -5,6 +5,7 @@ import { labelStyle, Chip, ErrorNote } from '../goals/goalsUi';
 import { copyBtnStyle } from '../CopyForClaude';
 import { linkBtn } from './TaskRow';
 import ScoutUpload, { matchText } from './ScoutUpload';
+import VisitPullBar from './VisitPullBar';
 
 // signals-v1 Stage 2 - outside signals waiting for a person (D1, D8): the
 // Signal Scout rows (and, from Stage 4, website visits). Accept = ONE open
@@ -51,6 +52,7 @@ export default function SignalsList({ businessId, signals, canEdit, onChanged, o
         <span style={{ flex: 1 }} />
         {canEdit && !uploading && <button type="button" onClick={() => setUploading(true)} style={{ ...linkBtn, fontSize: 12, fontWeight: 600 }}>Upload Scout file</button>}
       </div>
+      <VisitPullBar businessId={businessId} canEdit={canEdit} onPulled={onChanged} />
       {uploading && <ScoutUpload businessId={businessId} onApplied={applied} onClose={() => setUploading(false)} />}
       {error && <ErrorNote message={error} />}
       {!signals.length && <p style={{ fontSize: 14, color: SA.muted, margin: '8px 0' }}>No signals to review.{canEdit ? ' Upload this week’s Signal Scout file to add some.' : ''}</p>}
