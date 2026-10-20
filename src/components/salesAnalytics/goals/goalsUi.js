@@ -160,3 +160,11 @@ export function FromOutlook({ n }) {
   if (n == null) return null;
   return <div style={{ fontSize: 11, fontWeight: 400, color: SA.muted, marginTop: 4, whiteSpace: 'nowrap' }} title="Counted from synced Outlook calendar events with a confirmed partner domain">from Outlook: {fmt(n)}</div>;
 }
+
+// An upload's { name, data } body: the file as base64, no data: prefix.
+export const toBase64 = file => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(String(r.result).split(',')[1] || '');
+  r.onerror = () => reject(new Error("Couldn't read that file"));
+  r.readAsDataURL(file);
+});

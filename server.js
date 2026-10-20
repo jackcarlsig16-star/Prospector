@@ -637,6 +637,11 @@ app.get('/api/sales/:businessId/goals/call-notes/:id', salesModuleRoute('./api/s
 app.get('/api/sales/:businessId/goals/prospect-targets', salesModuleRoute('./api/sales/targetsRoutes.js', 'listProspectTargetsRoute', 'goals/prospect-targets'));
 app.post('/api/sales/:businessId/goals/prospect-targets/:id/promote', salesModuleRoute('./api/sales/targetsRoutes.js', 'promoteTargetRoute', 'goals/prospect-targets/:id/promote POST'));
 app.post('/api/sales/:businessId/goals/prospect-targets/:id/reject', salesModuleRoute('./api/sales/targetsRoutes.js', 'rejectTargetRoute', 'goals/prospect-targets/:id/reject POST'));
+// signals-v1 Stage 2 - Signal Scout import + the Signals review queue.
+app.get('/api/sales/:businessId/goals/signals', salesModuleRoute('./api/sales/signalsRoutes.js', 'listSignalsRoute', 'goals/signals'));
+app.post('/api/sales/:businessId/goals/signals/scout-import', salesModuleRoute('./api/sales/signalsRoutes.js', 'scoutImportRoute', 'goals/signals/scout-import POST'));
+app.post('/api/sales/:businessId/goals/signals/:id/accept', salesModuleRoute('./api/sales/signalsRoutes.js', 'acceptSignalRoute', 'goals/signals/:id/accept POST'));
+app.post('/api/sales/:businessId/goals/signals/:id/dismiss', salesModuleRoute('./api/sales/signalsRoutes.js', 'dismissSignalRoute', 'goals/signals/:id/dismiss POST'));
 app.get('/api/sales/:businessId/goals/copy-bundle', salesModuleRoute('./api/sales/targetsRoutes.js', 'copyBundleRoute', 'goals/copy-bundle'));
 // call-notes-targets-v1 REV4 Stage 3 - Tidy (propose-only suggestions).
 app.post('/api/sales/:businessId/goals/tidy/run', salesModuleRoute('./api/sales/tidyRoutes.js', 'runTidyRoute', 'goals/tidy/run POST'));

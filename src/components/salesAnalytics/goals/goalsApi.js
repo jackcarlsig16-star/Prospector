@@ -34,7 +34,7 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
     if (res.status === 500 && MIGRATION_PATTERN.test(data.error || '')) throw new NeedsMigrationError();
     throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   }
-  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/partners\/.+\/apollo-check$|^\/suggestions\/.+\/(accept|dismiss|snooze)$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
+  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/partners\/.+\/apollo-check$|^\/suggestions\/.+\/(accept|dismiss|snooze)$|^\/signals\/(scout-import|.+\/(accept|dismiss))$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
 }
 
@@ -69,6 +69,12 @@ export const goalsApi = {
   runTidy: (id, { force = false, trigger = 'manual' } = {}) => call(id, '/tidy/run', { method: 'POST', body: { force, trigger } }),
   acceptSuggestion: (id, sid) => call(id, `/suggestions/${sid}/accept`, { method: 'POST', body: {} }),
   dismissSuggestion: (id, sid) => call(id, `/suggestions/${sid}/dismiss`, { method: 'POST', body: {} }),
+  // signals-v1 Stage 2 - the Signals review queue. scoutImport: dryRun = preview, nothing written.
+  // accept = { signal, todo, via, record }; dismiss parks the company 7 days. 0 AI, 0 Apollo.
+  signals: (id, status = 'new') => call(id, `/signals?${q({ status })}`).then(d => d.signals),
+  scoutImport: (id, file, dryRun) => call(id, '/signals/scout-import', { method: 'POST', body: { file, dryRun } }),
+  acceptSignal: (id, sid) => call(id, `/signals/${sid}/accept`, { method: 'POST', body: {} }),
+  dismissSignal: (id, sid) => call(id, `/signals/${sid}/dismiss`, { method: 'POST', body: {} }),
   // REV5 - what counterparts owe us (kind 'waiting' rows; open ones only). No partnerId = every partner.
   // Got it = updateWeekGoal { status: 'done' }; nudge = our own to-do, due today, owned by the clicker.
   waitingRows: (id, partnerId) => call(id, `/tasks?${q({ link_type: 'partner', link_id: partnerId, kind: 'waiting' })}`).then(d => d.tasks.filter(t => t.status === 'open')),

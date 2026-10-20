@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { SA, SA_TYPE, SA_THEME_CSS, SA_THEME_CLASS, saSans } from '../theme';
 import { goalsApi } from './goalsApi';
-import { ErrorNote, labelStyle, numStyle } from './goalsUi';
+import { ErrorNote, labelStyle, numStyle, toBase64 } from './goalsUi';
 import Button from '../../../ui/Button';
 
 // pipeline-board-v1 Stage 4 - "Update from sheet": pick the joint sheet
@@ -13,13 +13,6 @@ const WIDTH = 560;
 const GROUPS = [['stage', 'Stage changes'], ['fill', 'Field fills (empty → value)'], ['new', 'New rows']];
 const TYPE_LABEL = { partner: 'Partner', employer: 'Employer', target: 'Target' };
 const linkBtn = { all: 'unset', cursor: 'pointer', color: SA.link, fontSize: 13 };
-
-const toBase64 = file => new Promise((resolve, reject) => {
-  const r = new FileReader();
-  r.onload = () => resolve(String(r.result).split(',')[1] || '');
-  r.onerror = () => reject(new Error("Couldn't read that file"));
-  r.readAsDataURL(file);
-});
 
 export default function SheetUpdateDrawer({ businessId, onClose, onApplied }) {
   const [file, setFile] = useState(null); // { name, data }

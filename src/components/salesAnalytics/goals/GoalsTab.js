@@ -77,6 +77,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const [partners, setPartners] = useState([]);
   const [targets, setTargets] = useState([]);
   const [suggestedCount, setSuggestedCount] = useState(0);
+  const [signalsCount, setSignalsCount] = useState(0);
   const [waiting, setWaiting] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [cadences, setCadences] = useState([]);
@@ -135,6 +136,8 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const loadTargets = useCallback(() => goalsApi.prospectTargets(businessId).then(setTargets).catch(() => setTargets([])), [businessId]);
   // Stage 3 - the "Suggested (n)" chip; a Tidy run / accept / dismiss announces TODOS_CHANGED.
   const loadSuggested = useCallback(() => goalsApi.suggestions(businessId).then(d => setSuggestedCount(d.suggestions.length)).catch(() => setSuggestedCount(0)), [businessId]);
+  // signals-v1 - the "⚡ Signals (n)" chip (status 'new'); import / accept / dismiss announce TODOS_CHANGED.
+  const loadSignals = useCallback(() => goalsApi.signals(businessId).then(rows => setSignalsCount(rows.length)).catch(() => setSignalsCount(0)), [businessId]);
   // REV5 - "⏳ Waiting on (n)" + the overdue section in Your day; a Got it / Nudge announces TODOS_CHANGED.
   const loadWaiting = useCallback(() => goalsApi.waitingRows(businessId).then(setWaiting).catch(() => setWaiting([])), [businessId]);
   useEffect(() => { loadTodos(); }, [loadTodos]);
@@ -142,12 +145,13 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   useEffect(() => { loadFlags(); }, [loadFlags]);
   useEffect(() => { loadTargets(); }, [loadTargets]);
   useEffect(() => { loadSuggested(); }, [loadSuggested]);
+  useEffect(() => { loadSignals(); }, [loadSignals]);
   useEffect(() => {
-    const reload = () => { loadTodos(); loadFlags(); loadTargets(); loadSuggested(); loadWaiting(); };
+    const reload = () => { loadTodos(); loadFlags(); loadTargets(); loadSuggested(); loadSignals(); loadWaiting(); };
     window.addEventListener(TODOS_CHANGED, reload);
     window.addEventListener(FLAGS_CHANGED, reload);
     return () => { window.removeEventListener(TODOS_CHANGED, reload); window.removeEventListener(FLAGS_CHANGED, reload); };
-  }, [loadTodos, loadFlags, loadTargets, loadSuggested, loadWaiting]);
+  }, [loadTodos, loadFlags, loadTargets, loadSuggested, loadSignals, loadWaiting]);
   useEffect(() => { loadCommitments(); }, [loadCommitments]);
   useEffect(() => { loadReport(); }, [loadReport]);
   useEffect(() => { loadKpi(); }, [loadKpi]);
@@ -239,7 +243,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const openTargetCount = openTargets(targets).length;
   const chipStyle = { display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 10px', borderRadius: 999, background: SA.surface2, border: `1px solid ${SA.border}`, fontSize: 12, color: SA.text, cursor: 'pointer', whiteSpace: 'nowrap' };
   const waitingCount = canEdit ? waiting.length : 0;
-  const todayChips = (openTargetCount > 0 || suggestedCount > 0 || waitingCount > 0) && (
+  const todayChips = (openTargetCount > 0 || suggestedCount > 0 || signalsCount > 0 || waitingCount > 0) && (
     <>
       {openTargetCount > 0 && (
         <button type="button" onClick={() => openTasks({ link: null, view: 'targets', filter: drawerFilter })} aria-label={`Targets, ${openTargetCount} open - open the list`} style={chipStyle}>
@@ -249,6 +253,11 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
       {suggestedCount > 0 && (
         <button type="button" onClick={() => openTasks({ link: null, view: 'suggested', filter: drawerFilter })} aria-label={`Suggested, ${suggestedCount} from Tidy - open the list`} style={chipStyle}>
           ✦ Suggested ({suggestedCount})
+        </button>
+      )}
+      {signalsCount > 0 && (
+        <button type="button" onClick={() => openTasks({ link: null, view: 'signals', filter: drawerFilter })} aria-label={`Signals, ${signalsCount} to review - open the list`} style={chipStyle}>
+          ⚡ Signals ({signalsCount})
         </button>
       )}
       {waitingCount > 0 && (

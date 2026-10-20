@@ -28,7 +28,7 @@ const FIELD_LABEL = {
   decision_makers: 'Decision makers', research_notes: 'Research notes',
 };
 
-const cellText = v => {
+export const cellText = v => {
   if (v == null) return '';
   if (v instanceof Date) return v.toISOString().slice(0, 10);
   if (typeof v === 'object') {
@@ -40,17 +40,25 @@ const cellText = v => {
   return String(v);
 };
 
-// { name, data (base64) } -> CSV text or { headers, rows } for readInput.
-export async function readUpload(file) {
+// { name, data (base64) } -> { csv: text } | { workbook } after the size and
+// type checks every upload shares.
+export async function openUpload(file) {
   if (!file || typeof file.name !== 'string' || typeof file.data !== 'string') throw new ImportRefused('pick a .csv or .xlsx file');
   const buf = Buffer.from(file.data, 'base64');
   if (!buf.length) throw new ImportRefused('the file is empty');
   if (buf.length > UPLOAD_MAX_BYTES) throw new ImportRefused(`the file is over ${UPLOAD_MAX_BYTES / 1024 / 1024} MB`);
   const ext = file.name.toLowerCase().split('.').pop();
-  if (ext === 'csv') return buf.toString('utf8');
+  if (ext === 'csv') return { csv: buf.toString('utf8') };
   if (ext !== 'xlsx') throw new ImportRefused('upload a .csv or .xlsx file');
   const wb = new ExcelJS.Workbook();
   try { await wb.xlsx.load(buf); } catch { throw new ImportRefused("that .xlsx file couldn't be opened"); }
+  return { workbook: wb };
+}
+
+// { name, data (base64) } -> CSV text or { headers, rows } for readInput.
+export async function readUpload(file) {
+  const { csv, workbook: wb } = await openUpload(file);
+  if (csv != null) return csv;
   const ws = wb.worksheets[0];
   if (!ws) throw new ImportRefused('the workbook has no sheet');
   const headers = (ws.getRow(1).values || []).slice(1).map(v => cellText(v).trim());
