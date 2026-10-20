@@ -5,6 +5,7 @@ import OwnerPill from './OwnerPill';
 import SidePanel from './SidePanel';
 import CopyForClaude from './CopyForClaude';
 import { savePayload } from './opportunityPayload';
+import { CHANNELS, CHANNEL_LABEL, PRIORITIES, PRIORITY_WORD } from '../../constants/salesChannels';
 
 const TEXT_FIELDS = [
   ['organization', 'Organization'], ['cohort', 'Cohort'], ['owner', 'Owner'],
@@ -85,6 +86,24 @@ export default function OpportunityPanel({ businessId, opportunity, saving, erro
           </select>
         )}
       </Field>
+      {/* sales-ia-v2 P2/P3 - where it came from (Jack corrects it here) and its P1-P4. */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <Field label="Channel">
+          {readOnly ? text(CHANNEL_LABEL[draft.channel]) : (
+            <select style={fieldStyle} value={draft.channel || (isCreate ? 'manual' : 'unknown')} onChange={e => set('channel', e.target.value)}>
+              {CHANNELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          )}
+        </Field>
+        <Field label="Priority">
+          {readOnly ? text(draft.priority ? `P${draft.priority}` : '') : (
+            <select style={fieldStyle} value={draft.priority ?? ''} onChange={e => set('priority', e.target.value)}>
+              <option value="">—</option>
+              {PRIORITIES.map(p => <option key={p} value={p}>P{p} · {PRIORITY_WORD[p]}</option>)}
+            </select>
+          )}
+        </Field>
+      </div>
       {draft.stage === 'lost' && (
         <Field label="Lost reason">
           {readOnly ? text(draft.lost_reason) : <input style={fieldStyle} value={draft.lost_reason || ''} onChange={e => set('lost_reason', e.target.value)} />}

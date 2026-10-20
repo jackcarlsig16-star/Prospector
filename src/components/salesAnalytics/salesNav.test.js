@@ -2,20 +2,39 @@ import { navFrom, normalizeNav } from './salesNav';
 
 test('?tab= wins and an unknown sub-view falls back to the tab default', () => {
   expect(navFrom({ tab: 'pipeline', view: 'partners' })).toEqual({ tab: 'pipeline', view: 'partners' });
-  expect(navFrom({ tab: 'reports', view: 'nope' })).toEqual({ tab: 'reports', view: 'weekly' });
-  expect(navFrom({ tab: 'huddle', view: 'weekly' })).toEqual({ tab: 'huddle', view: null });
-  expect(normalizeNav('bogus')).toEqual({ tab: 'today', view: null });
+  expect(navFrom({ tab: 'dashboard', view: 'nope' })).toEqual({ tab: 'dashboard', view: 'weekly' });
+  expect(navFrom({ tab: 'actions', view: 'weekly' })).toEqual({ tab: 'actions', view: null });
+  expect(normalizeNav('bogus')).toEqual({ tab: 'actions', view: null });
 });
 
 test.each([
-  ['report', 'reports', 'weekly'], ['week', 'today', null], ['partners', 'pipeline', 'partners'],
-  ['companies', 'pipeline', 'sequenced'], ['pipeline', 'pipeline', 'board'],
-])('old ?gview=%s lands on %s / %s', (gview, tab, view) => {
-  expect(navFrom({ gview, storedTab: 'reports', storedView: 'analytics' })).toEqual({ tab, view });
+  ['today', null, 'actions', null],
+  ['huddle', null, 'pipeline', 'people'],
+  ['reports', 'weekly', 'dashboard', 'weekly'],
+  ['reports', 'scorecard', 'dashboard', 'scorecard'],
+  ['reports', 'analytics', 'dashboard', 'analytics'],
+  ['pipeline', 'board', 'pipeline', 'companies'],
+  ['pipeline', 'sequenced', 'dashboard', 'sequenced'],
+  ['pipeline', 'partners', 'pipeline', 'partners'],
+])('old ?tab=%s&view=%s lands on %s / %s', (tab, view, toTab, toView) => {
+  expect(navFrom({ tab, view })).toEqual({ tab: toTab, view: toView });
 });
 
-test('a stored prospector_goals_view maps the same way, only while no new key exists', () => {
-  expect(navFrom({ storedLegacy: 'companies' })).toEqual({ tab: 'pipeline', view: 'sequenced' });
-  expect(navFrom({ storedLegacy: 'companies', storedTab: 'reports', storedView: 'scorecard' })).toEqual({ tab: 'reports', view: 'scorecard' });
-  expect(navFrom({})).toEqual({ tab: 'today', view: null });
+test('old Reports > Website visitors lands on Pipeline with the Website visitors channel', () => {
+  expect(navFrom({ tab: 'reports', view: 'visitors' })).toEqual({ tab: 'pipeline', view: 'companies', channel: 'website_visit' });
+  expect(navFrom({ storedTab: 'reports', storedView: 'visitors' })).toEqual({ tab: 'pipeline', view: 'companies', channel: 'website_visit' });
+});
+
+test.each([
+  ['report', 'dashboard', 'weekly'], ['week', 'actions', null], ['partners', 'pipeline', 'partners'],
+  ['companies', 'dashboard', 'sequenced'], ['pipeline', 'pipeline', 'companies'],
+])('old ?gview=%s lands on %s / %s', (gview, tab, view) => {
+  expect(navFrom({ gview, storedTab: 'dashboard', storedView: 'analytics' })).toEqual({ tab, view });
+});
+
+test('stored keys from v1 and the old prospector_goals_view map the same way', () => {
+  expect(navFrom({ storedTab: 'huddle' })).toEqual({ tab: 'pipeline', view: 'people' });
+  expect(navFrom({ storedLegacy: 'companies' })).toEqual({ tab: 'dashboard', view: 'sequenced' });
+  expect(navFrom({ storedLegacy: 'companies', storedTab: 'dashboard', storedView: 'scorecard' })).toEqual({ tab: 'dashboard', view: 'scorecard' });
+  expect(navFrom({})).toEqual({ tab: 'actions', view: null });
 });

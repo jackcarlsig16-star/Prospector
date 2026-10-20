@@ -7,6 +7,7 @@ import { laMonday, matchOf } from './scoutImport.js';
 import { normName } from './intakeMatch.js';
 import { cleanText } from './scrubText.js';
 import { VISITOR_DOMAINS, US_500_FILTERS, SEED_SKIP, mergeResults, toVisit, liveMatch, knownSmall, prioritize, toWebSignal } from './visitRules.js';
+import { loadOverrides, effectiveVisit } from './visitPriority.js';
 
 // signals-v1 REV4 Stage 4 (D9) - Prospector's own daily website-visitor
 // pull. Kicked by a Member's first Goals & Sales load of the LA day or by
@@ -78,10 +79,11 @@ async function store(supabase, { businessId, userId, today, all, usIds, first, n
     if (!have.length) must(await supabase.from('sales_visit_skip').insert(SEED_SKIP.map(n => ({ business_id: businessId, company_key: normName(n), reason: 'Seed (D10)' }))));
   }
   const week = laMonday(today);
-  const [ctx, skipRows, signals] = await Promise.all([
+  const [ctx, skipRows, signals, overrides] = await Promise.all([
     loadDupeContext(supabase, businessId),
     selectAllPages(() => supabase.from('sales_visit_skip').select('id, company_key').eq('business_id', businessId).order('id')),
     selectAllPages(() => supabase.from('sales_signals').select('id, source, signal_week, company_key, status, dismissed_until').eq('business_id', businessId).order('id')),
+    loadOverrides(supabase, businessId),
   ]);
   const skip = new Set(skipRows.map(s => s.company_key));
   const byKey = new Map();
@@ -97,7 +99,9 @@ async function store(supabase, { businessId, userId, today, all, usIds, first, n
     const match = liveMatch(v, ctx);
     const scored = { ...v, ...prioritize(v, { match, small: knownSmall(v, ctx), skip }) };
     rows.push({ business_id: businessId, pulled_on: today, ...scored, matched_type: match?.type || null, matched_id: match?.id || null, updated_at: stamp });
-    if (scored.priority === 'P1' || scored.priority === 'P2') proposals.push(toWebSignal(scored, { businessId, week, userId, match, hint: matchOf(v.company_name, ctx) }));
+    // web_visits keeps the computed priority; a person's override decides the signal.
+    const eff = effectiveVisit(scored, overrides.get(v.company_key));
+    if (eff.priority === 'P1' || eff.priority === 'P2') proposals.push(toWebSignal(eff, { businessId, week, userId, match, hint: matchOf(v.company_name, ctx) }));
   }
   if (rows.length) must(await supabase.from('web_visits').upsert(rows, { onConflict: 'business_id,company_key,pulled_on' }));
   // One open signal per company per week; a company dismissed in Signals

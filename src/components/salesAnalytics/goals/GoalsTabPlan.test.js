@@ -22,13 +22,15 @@ jest.mock('./goalsApi', () => {
 jest.mock('../../../utils/authSession', () => ({ fetchMe: jest.fn() }));
 jest.mock('../../../utils/useMediaQuery', () => () => false);
 
+// sales-ia-v2 N2: the tools (Plan this week, View only, Export) portal into the frame row.
+beforeEach(() => { if (!document.getElementById('sales-frame-tools')) { const slot = document.createElement('div'); slot.id = 'sales-frame-tools'; document.body.appendChild(slot); } });
 const me = role => ({ profile: { id: 'u-jack' }, memberships: [{ business_id: 'b1', role }] });
 
 beforeEach(() => { try { localStorage.clear(); } catch { /* none */ } });
 
 test('member gets "Plan this week"; planned commitments show ✦ with the reason', async () => {
   fetchMe.mockResolvedValue(me('member'));
-  render(<GoalsTab businessId="b1" section="reports" view="weekly" onNav={jest.fn()} />);
+  render(<GoalsTab businessId="b1" section="dashboard" view="weekly" onNav={jest.fn()} />);
   await waitFor(() => expect(screen.getAllByRole('button', { name: 'Plan this week' }).length).toBeGreaterThan(0));
   expect(screen.getByLabelText('Planned')).toBeTruthy();
   expect(screen.getByTitle('Replied Oct 9').textContent).toMatch(/Book Solidcore/);
@@ -36,8 +38,8 @@ test('member gets "Plan this week"; planned commitments show ✦ with the reason
 
 test('viewer sees ✦ but never the button or the nudge', async () => {
   fetchMe.mockResolvedValue(me('viewer'));
-  render(<GoalsTab businessId="b1" section="reports" view="weekly" onNav={jest.fn()} />);
-  await screen.findByText(/read-only for you/);
+  render(<GoalsTab businessId="b1" section="dashboard" view="weekly" onNav={jest.fn()} />);
+  await screen.findByText('View only');
   expect(screen.getByLabelText('Planned')).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Plan this week' })).toBeNull();
   expect(screen.queryByRole('dialog')).toBeNull();

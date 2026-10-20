@@ -84,7 +84,8 @@ test('board rows: partners + employer/membership opportunities + open targets, s
     type: 'partner', id: 'p1', name: 'Gallagher', stage: 'meeting_set', stage_label: 'Meeting set', color: 'yellow',
     owner_team: 'homelover', owner: 'Jack', tier: '1', next_step: 'Send deck', next_step_due: null,
     last_touch_at: '2026-10-10T00:00:00Z', top: true, record_id: 'HLU-0001',
-    category: '3. Brokers', co_owner_name: null, no_double_touch: false, visited: null,
+    channel: 'unknown', priority: null, priority_set_by: null, priority_set_at: null, covered_lives: null,
+    category: '3. Brokers', co_owner_name: null, no_double_touch: false, visited: null, work: null, channels: ['all', 'partners'],
   });
   assert.equal(rows.find(r => r.id === 'o1').top, true);
   assert.equal(rows.find(r => r.id === 'o1').next_step_due, '2026-10-20');
@@ -115,7 +116,8 @@ test('no email, phone or Apollo id anywhere in the payload', () => {
   assert.ok(!json.includes('@'), 'no email');
   assert.ok(!/\d{3}[-. ]\d{3}[-. ]\d{4}/.test(json), 'no phone');
   assert.ok(!JSON.stringify(buildBoard(s)).includes('"A1"'), 'an opportunity\'s apollo_account_id never leaks');
-  const base = ['color', 'id', 'last_touch_at', 'name', 'next_step', 'next_step_due', 'owner', 'owner_team', 'record_id', 'stage', 'stage_label', 'tier', 'top', 'type', 'visited'];
+  const base = ['channel', 'channels', 'color', 'covered_lives', 'id', 'last_touch_at', 'name', 'next_step', 'next_step_due', 'owner', 'owner_team', 'priority', 'priority_set_at', 'priority_set_by',
+    'record_id', 'stage', 'stage_label', 'tier', 'top', 'type', 'visited', 'work'];
   for (const r of buildBoard(s, { includeApollo: true })) {
     assert.deepEqual(Object.keys(r).sort(), r.type === 'partner' ? [...base, 'category', 'co_owner_name', 'no_double_touch'].sort() : base);
   }
@@ -207,4 +209,99 @@ test('export route: Members only - a Viewer gets 403 before any read', async () 
   const res = { status(x) { status = x; return this; }, json() { return this; }, setHeader() {}, send() {} };
   await pipelineBoardExportRoute({ params: { businessId: 'biz-1' }, query: {}, auth: { isPlatformOwner: false, roles: new Map([['biz-1', 'viewer']]) } }, res);
   assert.equal(status, 403);
+});
+
+// ── sales-ia-v2 Stage 2 (P1-P3) ─────────────────────────────────────────────
+const NOW = Date.parse('2026-10-20T18:00:00Z'); // LA Tue Oct 20
+const v2 = () => {
+  const s = state();
+  s.partners[0] = { ...s.partners[0], channel: 'import', priority: 2, priority_set_by: 'u1', priority_set_at: '2026-10-20T17:00:00Z', created_at: '2026-10-06T16:00:00Z' };
+  s.opportunities[0] = { ...s.opportunities[0], channel: 'call_note', priority: 4, covered_lives: 1200, created_at: '2026-10-15T16:00:00Z' };
+  s.targets[0] = { ...s.targets[0], channel: 'scout', created_at: '2026-10-19T16:00:00Z' };
+  return { ...s, now: NOW };
+};
+
+test('v2 rows: channel, priority + who set it, covered lives (employers only)', () => {
+  const rows = buildBoard(v2());
+  const p1 = rows.find(r => r.id === 'p1'), o1 = rows.find(r => r.id === 'o1'), t1 = rows.find(r => r.id === 't1');
+  assert.deepEqual([p1.channel, p1.priority, p1.priority_set_by, p1.priority_set_at], ['import', 2, 'Jack', '2026-10-20T17:00:00Z']);
+  assert.deepEqual([o1.channel, o1.priority, o1.covered_lives], ['call_note', 4, 1200]);
+  assert.deepEqual([t1.channel, t1.priority], ['scout', null]);
+  assert.equal(rows.find(r => r.id === 'p2').channel, 'unknown');
+});
+
+test('open to-dos and waiting per row: open only, newest carried copy, overdue = due before LA today', () => {
+  const s = v2();
+  s.linked = [
+    { id: 'a', kind: 'todo', status: 'open', due_date: '2026-10-19', link_type: 'partner', link_id: 'p1' },
+    { id: 'b', kind: 'todo', status: 'open', due_date: '2026-10-20', link_type: 'partner', link_id: 'p1' },
+    { id: 'c', kind: 'todo', status: 'done', due_date: '2026-10-01', link_type: 'partner', link_id: 'p1' },
+    { id: 'd', kind: 'todo', status: 'open', due_date: '2026-10-12', link_type: 'opportunity', link_id: 'o1' },
+    { id: 'e', kind: 'todo', status: 'open', due_date: '2026-10-19', link_type: 'opportunity', link_id: 'o1', carried_from_id: 'd' },
+    { id: 'f', kind: 'waiting', status: 'open', due_date: '2026-10-18', link_type: 'opportunity', link_id: 'o1' },
+    { id: 'g', kind: 'todo', status: 'dropped', link_type: 'target', link_id: 't1' },
+  ];
+  const rows = buildBoard(s);
+  assert.deepEqual(rows.find(r => r.id === 'p1').work, { todos: 2, todos_overdue: 1, waiting: 0, waiting_overdue: 0 });
+  assert.deepEqual(rows.find(r => r.id === 'o1').work, { todos: 1, todos_overdue: 1, waiting: 1, waiting_overdue: 1 });
+  assert.equal(rows.find(r => r.id === 't1').work, null);
+});
+
+test('employer last touch = latest stage change (not created) or linked to-do done', () => {
+  const s = v2();
+  s.oppEvents = [{ opportunity_id: 'o1', event_type: 'stage_change', changed_at: '2026-10-10T00:00:00Z' }, { opportunity_id: 'o1', event_type: 'created', changed_at: '2026-10-18T00:00:00Z' }];
+  s.linked = [{ id: 'x', kind: 'todo', status: 'done', link_type: 'opportunity', link_id: 'o1', completed_at: '2026-10-12T00:00:00Z' }];
+  const rows = buildBoard(s);
+  assert.equal(rows.find(r => r.id === 'o1').last_touch_at, '2026-10-12T00:00:00Z');
+  assert.equal(rows.find(r => r.id === 'o4').last_touch_at, null);
+});
+
+test('website visitors: matched records get Visited with the effective priority; unmatched become Visitor rows (override wins)', () => {
+  const s = v2();
+  s.allVisits = [
+    { company_key: 'gallagher', company_name: 'Gallagher', matched_type: 'partner', matched_id: 'p1', last_visit: '2026-10-19', visits_7d: 3, priority: 'P1', pulled_on: '2026-10-20' },
+    { company_key: 'acme widgets', company_name: 'Acme Widgets', matched_type: null, matched_id: null, last_visit: '2026-10-18', visits_7d: 6, priority: 'P1', priority_rule: 'US 500+', pulled_on: '2026-10-19' },
+    { company_key: 'acme widgets', company_name: 'Acme Widgets', matched_type: null, matched_id: null, last_visit: '2026-10-19', visits_7d: 7, priority: 'P1', priority_rule: 'US 500+', pulled_on: '2026-10-20' },
+    { company_key: 'noisy', company_name: 'Noisy', matched_type: null, matched_id: null, visits_7d: 1, priority: 'P3', pulled_on: '2026-10-20' },
+  ];
+  s.visits = s.allVisits.filter(v => v.matched_id);
+  s.overrides = new Map([['acme widgets', { company_key: 'acme widgets', priority: 2, not_a_fit: false, set_by: 'u1', set_at: '2026-10-20T17:30:00Z' }],
+    ['noisy', { company_key: 'noisy', priority: null, not_a_fit: true, set_by: 'u1', set_at: '2026-10-20T17:31:00Z' }]]);
+  const rows = buildBoard(s);
+  assert.deepEqual(rows.find(r => r.id === 'p1').visited, { last_visit: '2026-10-19', visits_7d: 3, pulled_on: '2026-10-20', priority: 1 });
+  assert.ok(rows.find(r => r.id === 'p1').channels.includes('website'));
+  const acme = rows.find(r => r.type === 'visitor' && r.id === 'acme widgets');
+  assert.deepEqual([acme.name, acme.priority, acme.priority_set_by, acme.channel, acme.visited.visits_7d, acme.not_a_fit], ['Acme Widgets', 2, 'Jack', 'website_visit', 7, false]);
+  assert.deepEqual(acme.channels, ['website']);
+  const noisy = rows.find(r => r.id === 'noisy');
+  assert.deepEqual([noisy.priority, noisy.not_a_fit, noisy.priority_rule], [4, true, 'Not a fit']);
+  assert.equal(rows.filter(r => r.type === 'visitor').length, 2, 'one row per company');
+});
+
+test('channel buttons: scout, Apollo outbound, partners, call notes (30 days), targets; All = records only', () => {
+  const s = v2();
+  s.scout = [{ id: 's1', company_key: 'new target', company_name: 'New Target', status: 'accepted', created_at: '2026-10-19T00:00:00Z' },
+    { id: 's2', company_key: 'zeta labs', company_name: 'Zeta Labs', status: 'new', created_at: '2026-10-19T00:00:00Z' }];
+  s.noteEvents = [{ id: 'e1', goal_id: 'p2' }];
+  const rows = buildBoard(s, { includeApollo: true });
+  const ch = id => rows.find(r => r.id === id).channels;
+  assert.deepEqual(ch('t1'), ['all', 'scout', 'targets']);
+  assert.deepEqual(ch('o1'), ['all', 'apollo', 'call_notes'], 'employer with an Apollo id; created from a call note 5 days ago');
+  assert.deepEqual(ch('p2'), ['all', 'partners', 'call_notes'], 'touched by a call note');
+  assert.deepEqual(ch('A5'), ['apollo']);
+  const sig = rows.find(r => r.type === 'signal');
+  assert.deepEqual([sig.name, sig.stage_label, sig.channels], ['Zeta Labs', 'New signal', ['scout']]);
+  const old = v2();
+  old.opportunities[0].created_at = '2026-09-01T00:00:00Z';
+  assert.ok(!buildBoard(old).find(r => r.id === 'o1').channels.includes('call_notes'), 'older than 30 days');
+});
+
+test('export sheet: visitor and signal rows never go out', async () => {
+  const s = v2();
+  s.allVisits = [{ company_key: 'acme widgets', company_name: 'Acme Widgets', matched_id: null, priority: 'P1', pulled_on: '2026-10-20' }];
+  s.scout = [{ id: 's2', company_key: 'zeta labs', company_name: 'Zeta Labs', status: 'new', created_at: '2026-10-19T00:00:00Z' }];
+  const ws = await openSheet(await buildSheet(buildBoard(s)));
+  const names = [];
+  ws.eachRow((row, n) => { if (n > 1) names.push(row.getCell(2).value); });
+  assert.ok(!names.includes('Acme Widgets') && !names.includes('Zeta Labs'));
 });

@@ -4,6 +4,7 @@ import { laDateString } from './laDate.js';
 import { openFlagRows } from './huddleFlags.js';
 import { runRules, keyOf, DUE_DAYS, TOUCH_WINDOW_DAYS } from './tidyRules.js';
 import { nudgeText } from './waitingRoutes.js';
+import { loadOverrides, effectiveVisit } from './visitPriority.js';
 
 // call-notes-targets-v1 REV4 Stage 3 - Tidy: a daily propose-only pass. A run
 // writes sales_suggestions rows and one sales_tidy_runs row, nothing else.
@@ -29,7 +30,7 @@ const laMonday = today => addDays(today, -((new Date(`${today}T12:00:00Z`).getUT
 export async function loadTidyContext(supabase, businessId, now = Date.now()) {
   const all = (table, cols, narrow = q => q) => selectAllPages(() => narrow(supabase.from(table).select(cols).eq('business_id', businessId)).order('id'));
   const since = new Date(now - TOUCH_WINDOW_DAYS * DAY).toISOString();
-  const [partners, targets, todos, waiting, events, domains, suggestions, visits] = await Promise.all([
+  const [partners, targets, todos, waiting, events, domains, suggestions, rawVisits, overrides, opportunities] = await Promise.all([
     all('sales_goals', 'id, name, pipeline_status, last_touch_at, snoozed_until, owner_team, co_owner_name, no_double_touch', q => q.eq('goal_type', 'partnership').is('archived_at', null)),
     all('sales_targets', 'id, name, status, research_notes, created_at'),
     all('sales_week_goals', 'id, text, status, due_date, link_type, link_id, created_at, prospect_contact_id, contacts, carried_from_id', q => q.eq('kind', 'todo')),
@@ -37,9 +38,13 @@ export async function loadTidyContext(supabase, businessId, now = Date.now()) {
     all('sales_partner_events', 'id, goal_id, event, at', q => q.eq('event', 'touch').gte('at', since)),
     all('partner_domains', 'id, goal_id, domain', q => q.eq('confirmed', true)),
     all('sales_suggestions', 'id, kind, ref_type, ref_id, ref_id2, status, dismissed_until, decided_at'),
-    all('web_visits', 'id, matched_id, last_visit, visits_7d, pulled_on', q => q.eq('matched_type', 'partner').in('priority', ['P1', 'P2']).gte('pulled_on', addDays(laDateString(new Date(now)), -7))),
+    all('web_visits', 'id, company_key, matched_id, last_visit, visits_7d, priority, pulled_on', q => q.eq('matched_type', 'partner').gte('pulled_on', addDays(laDateString(new Date(now)), -7))),
+    loadOverrides(supabase, businessId),
+    all('sales_opportunities', 'id, organization', q => q.is('archived_at', null)),
   ]);
-  return { now, today: laDateString(new Date(now)), partners, targets, todos, waiting, flags: openFlagRows(todos.filter(t => t.prospect_contact_id)), events, domains, suggestions, visits };
+  // P1/P2 after a person's override (sales-ia-v2 P3), not the pull's own score.
+  const hot = rawVisits.map(v => effectiveVisit(v, overrides.get(v.company_key))).filter(v => v.priority === 'P1' || v.priority === 'P2');
+  return { now, today: laDateString(new Date(now)), partners, targets, todos, waiting, flags: openFlagRows(todos.filter(t => t.prospect_contact_id)), events, domains, suggestions, visits: hot, opportunities };
 }
 
 // Keys a run must not propose again: still proposed, parked, or accepted recently.

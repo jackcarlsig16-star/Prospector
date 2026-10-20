@@ -18,7 +18,7 @@ test('actionFor: the 10 rules map to the spec\'s buttons', () => {
   expect(by.R1.label).toBe('View bounces');
   for (const id of ['R2', 'R5', 'R6']) { expect(by[id].label).toBe('Open mailbox'); expect(by[id].href).toBe(APOLLO_MAILBOXES_URL); }
   expect(by.R3.label).toBe('View week');
-  expect(by.R4.label).toBe('Open Huddle');
+  expect(by.R4.label).toBe('Open People');
   by.R4.onClick(); expect(ctx.onOpenHuddle).toHaveBeenCalledWith({ feed: null });
   for (const id of ['R7', 'R8']) { expect(by[id].label).toBe('Open sequence in Apollo'); expect(by[id].href).toBe('https://app.apollo.io/#/sequences/seq-1'); }
   expect(by.R9.label).toBe('Hide human opens');

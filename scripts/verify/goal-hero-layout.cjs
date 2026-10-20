@@ -54,7 +54,7 @@ const overlap = (a, b) => a && b && a.left < b.right && b.left < a.right && a.to
         if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
         await page.getByLabel('Workspace').selectOption({ label: hlName }); await page.waitForTimeout(1500);
         if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
-        await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).click();
+        await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).click();
         await page.getByRole('region', { name: 'Audience reached' }).waitFor({ timeout: 20000 }); await page.waitForTimeout(1200);
         for (const who of ['team', 'jack']) {
           if (who === 'jack') { await page.getByRole('group', { name: 'Filter by person' }).getByRole('button', { name: /^Jack/ }).first().click(); await page.waitForTimeout(2500); }

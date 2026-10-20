@@ -52,8 +52,8 @@ async function navOverview(page, label) {
   if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
   await page.getByLabel('Workspace').selectOption({ label }); await page.waitForTimeout(1500);
   if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
-  await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).click(); await page.waitForTimeout(2500);
-  await page.getByRole('button', { name: 'Reports', exact: true }).click(); await page.waitForTimeout(600); await page.getByRole('button', { name: 'Analytics', exact: true }).click();
+  await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).click(); await page.waitForTimeout(2500);
+  await page.getByRole('button', { name: 'Dashboard', exact: true }).click(); await page.waitForTimeout(600); await page.getByRole('button', { name: 'Analytics', exact: true }).click();
   await page.locator('[data-strip-tile]').first().waitFor(); await page.waitForTimeout(2500);
 }
 const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
@@ -161,12 +161,12 @@ const sameStrip = (strip, h) => ['sent', 'delivered_rate', 'bounce_rate', 'spam_
     ok('A11b sparkline draws a line through 8 weeks (7 line segments), 7 tiles on one row at 1440', (spark.d.match(/L /g) || []).length === 7 && spark.rows === 1, JSON.stringify(spark));
     await P.screenshot({ path: `${OUT}/ohs1-1440-overview.png`, fullPage: true });
     await P.locator('[data-strip-tile="meetings"] [data-part="number"]').click(); await P.waitForTimeout(1500);
-    ok('A12 meetings number opens Pipeline › Partner workflow', (await P.getByRole('button', { name: 'Today', exact: true }).count()) >= 1 && (await P.locator('[data-strip-tile]').count()) === 0);
-    await P.getByRole('button', { name: 'Reports', exact: true }).click(); await P.waitForTimeout(600); await P.getByRole('button', { name: 'Analytics', exact: true }).click(); await P.locator('[data-strip-tile]').first().waitFor(); await P.waitForTimeout(1500);
+    ok('A12 meetings number opens Pipeline › Partner workflow', (await P.getByRole('button', { name: 'Actions', exact: true }).count()) >= 1 && (await P.locator('[data-strip-tile]').count()) === 0);
+    await P.getByRole('button', { name: 'Dashboard', exact: true }).click(); await P.waitForTimeout(600); await P.getByRole('button', { name: 'Analytics', exact: true }).click(); await P.locator('[data-strip-tile]').first().waitFor(); await P.waitForTimeout(1500);
     await P.getByLabel('Goals this week').getByText('Scorecard →').click();
     const heroShown = await P.locator('[data-hero-card]').first().waitFor({ timeout: 10000 }).then(() => true).catch(() => false);
     ok('A13 "Scorecard →" opens Reports › Scorecard', heroShown && (await P.locator('[data-strip-tile]').count()) === 0);
-    await P.getByRole('button', { name: 'Reports', exact: true }).click(); await P.waitForTimeout(600); await P.getByRole('button', { name: 'Analytics', exact: true }).click(); await P.locator('[data-strip-tile]').first().waitFor(); await P.waitForTimeout(1500);
+    await P.getByRole('button', { name: 'Dashboard', exact: true }).click(); await P.waitForTimeout(600); await P.getByRole('button', { name: 'Analytics', exact: true }).click(); await P.locator('[data-strip-tile]').first().waitFor(); await P.waitForTimeout(1500);
     await P.getByLabel('Compare to previous period').uncheck(); await P.waitForTimeout(800);
     const off = await readStrip(P);
     ok('A14 compare off: deltas gone, numbers unchanged', off.sent.delta === 'compare off' && off.sent.number === '305');

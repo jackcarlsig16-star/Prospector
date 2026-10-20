@@ -651,6 +651,7 @@ app.get('/api/sales/:businessId/goals/visits/export', salesModuleRoute('./api/sa
 app.get('/api/sales/:businessId/goals/visits/skip', salesModuleRoute('./api/sales/visitReport.js', 'listSkipRoute', 'goals/visits/skip'));
 app.post('/api/sales/:businessId/goals/visits/skip', salesModuleRoute('./api/sales/visitReport.js', 'addSkipRoute', 'goals/visits/skip POST'));
 app.delete('/api/sales/:businessId/goals/visits/skip/:id', salesModuleRoute('./api/sales/visitReport.js', 'removeSkipRoute', 'goals/visits/skip DELETE'));
+app.post('/api/sales/:businessId/goals/visits/priority', salesModuleRoute('./api/sales/visitPriority.js', 'setVisitPriorityRoute', 'goals/visits/priority POST'));
 app.get('/api/sales/:businessId/goals/copy-bundle', salesModuleRoute('./api/sales/targetsRoutes.js', 'copyBundleRoute', 'goals/copy-bundle'));
 // call-notes-targets-v1 REV4 Stage 3 - Tidy (propose-only suggestions).
 app.post('/api/sales/:businessId/goals/tidy/run', salesModuleRoute('./api/sales/tidyRoutes.js', 'runTidyRoute', 'goals/tidy/run POST'));

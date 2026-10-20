@@ -6,6 +6,7 @@ import { findDupes, loadDupeContext } from './partnerDupeCheck.js';
 import { validateFields } from './pipelineRoutes.js';
 import { ImportRefused } from './masterImport.js';
 import { scoutImport, laMonday, DISMISS_DAYS } from './scoutImport.js';
+import { SIGNAL_CHANNEL } from '../../src/constants/salesChannels.js';
 
 // signals-v1 Stage 2 - the review queue for outside signals (D1). Import
 // only proposes; a Member decides each row. Accept (D2-D4) makes ONE open
@@ -81,7 +82,7 @@ export async function acceptSignal(supabase, { businessId, userId, id, now = new
 
     if (!m) {
       const r = await supabase.from('sales_targets').insert({
-        business_id: businessId, name: s.company_name, kind: s.kind, status: 'researching', source: s.source, signal_id: s.id,
+        business_id: businessId, name: s.company_name, kind: s.kind, status: 'researching', source: s.source, signal_id: s.id, channel: SIGNAL_CHANNEL[s.source] || 'unknown',
         evidence: s.signal, owner_team: s.upside_joint ? 'both' : null, co_owner_name: s.upside_joint ? 'Brad' : null, created_by: userId,
       }).select().single();
       if (r.error?.code === '23505') throw err(409, `${s.company_name} is already a target - reload`);

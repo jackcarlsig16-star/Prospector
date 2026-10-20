@@ -20,15 +20,18 @@ export function typeChipOf(row) {
   }
   if (row.type === 'employer') return { id: 'employer', label: 'Employer', title: 'Employer', color: ACCENT, wash: true, border: 27 };
   if (row.type === 'apollo') return { id: 'apollo', label: 'Apollo', title: 'Sequenced in Apollo, not on the board yet', color: 'var(--sa-faint)', wash: false, border: 45 };
+  // sales-ia-v2: companies no record carries yet - outlined, faint, never a fill.
+  if (row.type === 'visitor') return { id: 'visitor', label: 'Visitor', title: 'Visited the website, not in the pipeline yet', color: 'var(--sa-faint)', wash: false, border: 45 };
+  if (row.type === 'signal') return { id: 'signal', label: 'Signal', title: 'Scout signal, not in the pipeline yet', color: 'var(--sa-faint)', wash: false, border: 45 };
   return { id: 'target', label: 'Target', title: 'Target', color: 'var(--sa-neutral)', wash: false, border: 45 };
 }
 
 // Sorting the Type column groups partners by type (family order, then
-// uncategorized), then employers, targets, Apollo.
-const GROUP = { employer: 1, target: 2, apollo: 3 };
+// uncategorized), then employers, targets, Apollo, visitors, signals.
+const GROUP = { employer: 1, target: 2, apollo: 3, visitor: 4, signal: 5 };
 export function typeSortValue(row) {
   const c = typeChipOf(row);
-  if (row.type !== 'partner') return `${GROUP[row.type] ?? 4} ${c.label}`;
+  if (row.type !== 'partner') return `${GROUP[row.type] ?? 6} ${c.label}`;
   const i = FAMILIES.findIndex(f => f.id === c.id);
   return `0.${i === -1 ? 9 : i} ${c.label}`;
 }

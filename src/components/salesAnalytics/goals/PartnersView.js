@@ -16,7 +16,7 @@ import useMediaQuery from '../../../utils/useMediaQuery';
 // ('workflow' | 'board'). Anything else (the retired 'priority' / 'columns'
 // layouts) opens on Workflow, the default.
 const MODE_KEY = 'prospector_partners_mode';
-const MODES = [['workflow', 'Workflow'], ['board', 'Board']];
+const MODES = [['workflow', 'Workflow'], ['board', 'By stage']];
 const UNDO_MS = 5000; // REVISABLE (spec)
 const readMode = () => { try { const m = localStorage.getItem(MODE_KEY); return MODES.some(([id]) => id === m) ? m : 'workflow'; } catch { return 'workflow'; } };
 const writeMode = m => { try { localStorage.setItem(MODE_KEY, m); } catch { /* private mode */ } };

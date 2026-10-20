@@ -33,7 +33,7 @@ export async function loadPlanData(supabase, businessId, ownerId, weekStart) {
   const replySince = new Date(Date.now() - REPLY_DAYS * DAY_MS).toISOString();
   const lastWeekIso = new Date(laStartOfDayMs(lastWeek)).toISOString();
   const q = (table, cols) => supabase.from(table).select(cols).eq('business_id', businessId);
-  const [goals, partnerData, partnerExtra, mailboxes, replied, recentDelivered, recentReplies, dailyCounts, targets, accounts] = await Promise.all([
+  const [goals, partnerData, partnerExtra, mailboxes, replied, recentDelivered, recentReplies, dailyCounts, targets, accounts, opportunities, prospectTargets] = await Promise.all([
     selectAllPages(() => q('sales_week_goals', 'id, kind, text, status, owner_user_id, week_start, due_date, link_type, link_id, carried_from_id, prospect_contact_id, flag_note, why_not_done, plan_id, created_at, steps:sales_week_goal_steps(done)')
       .gte('week_start', addDays(weekStart, -7 * TODO_WEEKS_BACK)).lte('week_start', weekStart).order('week_start').order('id')),
     loadPartnerData(supabase, businessId),
@@ -45,6 +45,8 @@ export async function loadPlanData(supabase, businessId, ownerId, weekStart) {
     selectAllPages(() => q('sales_email_daily_counts', 'day, mailbox, sequence_id, step, delivered').gte('day', lastWeek).lte('day', addDays(lastWeek, 6)).order('day').order('mailbox').order('sequence_id').order('step')),
     q('sales_metric_targets', 'period_start, metric_key, goal, actual').eq('period', 'week').in('period_start', [lastWeek, weekStart]),
     selectAllPages(() => q('sales_sequenced_accounts', 'account_id, name').order('account_id')),
+    selectAllPages(() => q('sales_opportunities', 'id, organization').order('id')),
+    selectAllPages(() => q('sales_targets', 'id, name').order('id')),
   ]);
   for (const r of [mailboxes, targets]) if (r.error) throw new Error(r.error.message);
 
@@ -53,7 +55,7 @@ export async function loadPlanData(supabase, businessId, ownerId, weekStart) {
     .in('contact_id', contactIds).order('contact_id')) : [];
   return {
     goals, partnerData, partnerExtra, mailboxes: mailboxes.data, replied, recentDelivered, recentReplies,
-    dailyCounts, targets: targets.data, accounts, prospects,
+    dailyCounts, targets: targets.data, accounts, prospects, opportunities, prospectTargets,
   };
 }
 
@@ -66,12 +68,13 @@ export function assemblePlanContext(data, { ownerId, weekStart, nowMs = Date.now
   const prospectById = new Map(data.prospects.map(p => [p.contact_id, p]));
   const partnerById = new Map(data.partnerData.partners.map(p => [p.id, p]));
   const accountById = new Map(data.accounts.map(a => [a.account_id, a]));
+  const recordName = new Map([...(data.opportunities || []).map(o => [`opportunity:${o.id}`, `employer ${o.organization}`]), ...(data.prospectTargets || []).map(t => [`target:${t.id}`, `target ${t.name}`])]);
   const linkName = g => {
     if (g.link_type === 'partner') { const p = partnerById.get(g.link_id); return p ? `partner ${p.name} (${stageLabel(p.pipeline_status)})` : null; }
     if (g.link_type === 'company') return accountById.get(g.link_id)?.name ? `company ${accountById.get(g.link_id).name}` : null;
     if (g.link_type === 'metric') return `metric ${g.link_id}`;
     if (g.link_type === 'commitment') return 'commitment';
-    return null;
+    return recordName.get(`${g.link_type}:${g.link_id}`) || null;
   };
 
   // Newest copy only: a to-do carried to a later week is the later row.

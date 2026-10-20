@@ -65,7 +65,7 @@ async function openWorkspace(page, label, compact) {
 }
 async function navGoals(page, compact) {
   if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
-  await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).click(); await page.waitForTimeout(5000);
+  await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).click(); await page.waitForTimeout(5000);
 }
 const openDrawer = async (page, compact) => { await page.getByRole('button', { name: compact ? /^Tasks/ : /^Open tasks/ }).click(); await page.locator(drawerSel).waitFor(); await page.waitForTimeout(400); };
 const drawerIds = async page => {

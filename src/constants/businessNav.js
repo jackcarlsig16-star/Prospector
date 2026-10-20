@@ -6,7 +6,7 @@
 // them for these views instead of BusinessDetailPage (APP_LEVEL_VIEWS).
 export const BUSINESS_NAV = [
   { id: "command-center",  ic: "⌂", lb: "Command Center" },
-  { id: "sales-analytics", ic: "📈", lb: "Goals & Sales", feature: "goals_sales" },
+  { id: "sales-analytics", ic: "📈", lb: "Sales & Marketing", feature: "goals_sales" },
   { id: "accounts",        ic: "◈", lb: "Accounts" },
   { id: "projects",        ic: "▣", lb: "Projects" },
   { id: "overview",        ic: "◉", lb: "Business Intel & Strategy" },

@@ -389,6 +389,7 @@ export function plan(state, input, { acceptPossible = [], today = laDateString()
       actions.push({ route: 'partner_to_target', record_id: r.record_id, name: r.name, row: {
         name: r.name, kind: 'partner', status: 'proposed', evidence: r.record_id ? `master sheet ${r.record_id}` : 'joint sheet', suggested_category: r.category || null,
         owner_team: r.owner_team || null, co_owner_name: r.co_owner_name || null, record_id: r.record_id || null, research_notes: lines.join('\n') || null,
+        channel: 'import',
       } });
       continue;
     }
@@ -448,7 +449,7 @@ export function plan(state, input, { acceptPossible = [], today = laDateString()
     if (error) { skip(r, error); continue; }
     report.contacts.opp_lines += dmLines.length;
     report.counts.opp_insert++;
-    actions.push({ route: 'opp_insert', record_id: r.record_id, name: r.name, row: { ...payload, record_id: r.record_id || null, apollo_account_id: seq?.account_id || null, source: 'csv' } });
+    actions.push({ route: 'opp_insert', record_id: r.record_id, name: r.name, row: { ...payload, record_id: r.record_id || null, apollo_account_id: seq?.account_id || null, source: 'csv', channel: 'import' } });
   }
   return { actions, report };
 }

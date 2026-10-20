@@ -19,7 +19,7 @@ const WATCH = ['businesses', 'business_members', 'profiles', 'auth_events', 'acc
 const NAME = 'ZZ Facelift Admin';
 const TABS_ALL = ['👥 Members & Access', '🔌 Integrations', '💰 Pricing', '⚙️ Settings'];
 const TABS_OWNER = ['👥 Members & Access', '🔌 Integrations', '💰 Pricing', '✉ Outreach Intelligence', '📋 Access Log', '☎ Zoom Events', '☁ Salesforce Tools', '⚙️ Settings'];
-const FEATURE_LABELS = ['Goals & Sales', 'Outlook voice', 'Outlook meetings', 'Outlook reply times'];
+const FEATURE_LABELS = ['Sales & Marketing', 'Outlook voice', 'Outlook meetings', 'Outlook reply times'];
 const KEYS = ['prospector_diamonds_enabled', 'prospector_integrations', 'sfdc_access_token', 'sfdc_instance_url', 'sfdc_user_id', 'sfdc_user_name'];
 const [mode, a1, a2, a3] = process.argv.slice(2);
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
@@ -157,7 +157,7 @@ async function click(file, phase) {
       const c = await featureControl(page, phase, label);
       const start = await featureOn(c, phase);
       await c.click(); await page.waitForTimeout(1200);
-      const mid = (ins(await svc.from('businesses').select('features').eq('id', st.B).single())).features?.[label === 'Goals & Sales' ? 'goals_sales' : 'outlook_' + label.split(' ').slice(1).join('_')];
+      const mid = (ins(await svc.from('businesses').select('features').eq('id', st.B).single())).features?.[label === 'Sales & Marketing' ? 'goals_sales' : 'outlook_' + label.split(' ').slice(1).join('_')];
       const midUi = await featureOn(c, phase);
       await c.click(); await page.waitForTimeout(1200);
       const end = await featureOn(c, phase);

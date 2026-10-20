@@ -18,7 +18,7 @@ import WaitingList from './WaitingList';
 import SignalsList from './SignalsList';
 
 // task-drawer-v1 - a second view of the Goals to-dos, on every page of a
-// workspace with Goals & Sales on. Writes reuse the Goals/flag routes.
+// workspace with Sales & Marketing on. Writes reuse the Goals/flag routes.
 // localStorage key (per viewer convenience): prospector_task_drawer_open = '1' | '0'
 const OPEN_KEY = 'prospector_task_drawer_open';
 const UNDO_MS = 5000;
@@ -156,22 +156,22 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
   });
   const openInGoals = () => {
     const url = new URL(window.location.href);
-    url.searchParams.set('tab', 'today'); url.searchParams.delete('view'); url.searchParams.delete('gview');
+    url.searchParams.set('tab', 'actions'); url.searchParams.delete('view'); url.searchParams.delete('gview');
     window.history.replaceState(window.history.state, '', url);
     onOpenGoals();
     window.dispatchEvent(new Event(OPEN_GOALS_WEEK));
     if (compact) setOpen(false);
   };
   const toggleExpanded = id => setExpanded(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
-  // "Already here" from a promote: show that record in Goals & Sales > Pipeline.
+  // "Already here" from a promote: show that record in Sales & Marketing > Pipeline.
   const openRecord = already => {
     const url = new URL(window.location.href);
-    url.searchParams.set('tab', 'pipeline'); url.searchParams.set('view', already.type === 'partner' ? 'partners' : 'board'); url.searchParams.delete('gview');
+    url.searchParams.set('tab', 'pipeline'); url.searchParams.set('view', already.type === 'partner' ? 'partners' : 'companies'); url.searchParams.delete('gview');
     window.history.replaceState(window.history.state, '', url);
     onOpenGoals();
     if (compact) setOpen(false);
   };
-  // A duplicate pair from Suggested: Goals & Sales > Pipeline > Partner workflow filtered to both rows.
+  // A duplicate pair from Suggested: Sales & Marketing > Pipeline > Partner workflow filtered to both rows.
   const openPair = (ids, label) => {
     const url = new URL(window.location.href);
     url.searchParams.set('tab', 'pipeline'); url.searchParams.set('view', 'partners'); url.searchParams.delete('gview');
@@ -282,7 +282,7 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
                   </section>
                 ))}
                 {view === 'tasks' && meId && !groups.some(g => g.items.length) && !error && <p style={{ fontSize: 14, color: SA.muted, marginTop: 16 }}>Nothing here for this week.</p>}
-                <button type="button" style={{ ...linkBtn, marginTop: 16 }} onClick={openInGoals}>Open Today →</button>
+                <button type="button" style={{ ...linkBtn, marginTop: 16 }} onClick={openInGoals}>Open Actions →</button>
               </div>
             </>
           )}

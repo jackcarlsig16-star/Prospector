@@ -46,7 +46,7 @@ export function actionFor(insight, ctx) {
     case 'R1': return { label: 'View bounces', onClick: () => ctx.toggleBounces(insight) };
     case 'R2': case 'R5': case 'R6': return { label: 'Open mailbox', href: APOLLO_MAILBOXES_URL, title: 'Apollo › Settings › Mailboxes (reconnect or check the mailbox there)' };
     case 'R3': return { label: 'View week', onClick: () => flashTo('sa-widget-email_trend') };
-    case 'R4': return { label: 'Open Huddle', onClick: () => ctx.onOpenHuddle({ feed: null }) };
+    case 'R4': return { label: 'Open People', onClick: () => ctx.onOpenHuddle({ feed: null }) };
     case 'R7': case 'R8': return seq ? { label: 'Open sequence in Apollo', href: apolloSequenceUrl(seq.id), title: `${seq.label} in Apollo (read-only)` } : null;
     case 'R9': return { label: ctx.humanOpens ? 'Hide human opens' : 'Show human opens', onClick: ctx.onToggleHumanOpens };
     default: return null;

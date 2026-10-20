@@ -7,10 +7,12 @@ import { linkBtn } from '../tasks/TaskRow';
 import { goalsApi } from './goalsApi';
 import { cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle, Chip, Btn, ErrorNote } from './goalsUi';
 
-// signals-v1 Stage 5 (D12) - Reports > Website visitors: the daily visitor
-// report from Prospector's own pulls (last 7 LA days), "Export for Brad"
-// (.xlsx, P1-P3, Upside first) and the skip list. Members and Viewers both
-// read and export; only Members mark "Not a fit" or edit the skip list.
+// signals-v1 Stage 5 (D12) - the daily visitor report from Prospector's own
+// pulls (last 7 LA days), "Export for Brad" (.xlsx, P1-P3, Upside first) and
+// the skip list. sales-ia-v2: opened from Pipeline > Companies > Website
+// visitors; a visitor's priority (and Not a fit) is the Priority dropdown on
+// that table, so this report has no row buttons. Members and Viewers both
+// read and export; only Members edit the skip list.
 // Company data only - no emails, phones or people's names reach this view.
 const PRIORITY_COLOR = { P1: SEMANTIC.problem, P2: SEMANTIC.warning, P3: SA.soft, P4: SA.faint };
 const PRIORITY_WORD = { P1: 'Act today', P2: 'This week', P3: 'Watch', P4: 'Noise' };
@@ -30,11 +32,8 @@ function Stat({ label, value, color }) {
   );
 }
 
-function RowActions({ r, canEdit, onNotAFit }) {
-  if (r.skipped) return <span style={{ ...subStyle, fontSize: 12 }}>On the skip list</span>;
-  if (!canEdit) return null;
-  return <button type="button" style={{ ...linkBtn, fontSize: 12 }} onClick={() => onNotAFit(r)}>Not a fit</button>;
-}
+const setNote = r => (r.override ? `Set by hand${r.skipped ? ' · on the skip list' : ''}` : r.skipped ? 'On the skip list' : null);
+const RowNote = ({ r }) => (setNote(r) ? <span style={{ ...subStyle, fontSize: 12 }}>{setNote(r)}</span> : null);
 
 function SkipList({ businessId, canEdit, onChanged }) {
   const [rows, setRows] = useState(null);
@@ -84,11 +83,6 @@ export default function VisitorReport({ businessId, canEdit }) {
   const load = useCallback(() => goalsApi.visitReport(businessId).then(d => { setReport(d); setError(''); }).catch(e => setError(e.message)), [businessId]);
   useEffect(() => { load(); }, [load]);
 
-  const notAFit = async r => {
-    setNotice('');
-    try { await goalsApi.addVisitSkip(businessId, { company_key: r.company_key, reason: 'Not a fit' }); setNotice(`${r.company_name} moved to the skip list`); load(); }
-    catch (e) { setNotice(e.message); }
-  };
   const exportSheet = async () => {
     setExporting(true); setNotice('');
     try {
@@ -167,7 +161,7 @@ export default function VisitorReport({ businessId, canEdit }) {
                 {r.sources.length > 0 && <span style={{ color: SA.muted }}>In sequence: {r.sources.join('; ')}</span>}
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
                   <span style={{ color: SA.text }}>{r.next_action}</span>
-                  <RowActions r={r} canEdit={canEdit} onNotAFit={notAFit} />
+                  <RowNote r={r} />
                 </div>
               </li>
             ))}
@@ -191,7 +185,7 @@ export default function VisitorReport({ businessId, canEdit }) {
                     <td style={{ ...cell, color: SA.soft, maxWidth: 220, overflowWrap: 'anywhere' }}>{r.top_pages.join(', ') || '—'}</td>
                     <td style={{ ...cell, color: SA.soft, maxWidth: 200 }}>{r.sources.join('; ') || '—'}</td>
                     <td style={cell}><div>{r.next_action}</div>{r.priority !== 'P4' && <div style={{ color: SA.muted, fontSize: 12 }}>{r.priority_rule}</div>}</td>
-                    <td style={{ ...cell, whiteSpace: 'nowrap' }}><RowActions r={r} canEdit={canEdit} onNotAFit={notAFit} /></td>
+                    <td style={{ ...cell, whiteSpace: 'nowrap' }}><RowNote r={r} /></td>
                   </tr>
                 ))}
               </tbody>

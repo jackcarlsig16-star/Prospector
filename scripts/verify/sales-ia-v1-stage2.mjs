@@ -118,7 +118,7 @@ try {
     if (page.compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
     await page.getByLabel('Workspace').selectOption({ label: NAME }); await page.waitForTimeout(1500);
     if (page.compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
-    await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
+    await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
     return { page, errs };
   }
   const tabBtn = (page, label) => page.locator('#workspace-header-tabs').getByRole('button', { name: new RegExp(`^${label}`) }).first();

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within, cleanup } from '@testing-library/react';
 import PipelineView from './PipelineView';
 import { goalsApi } from './goalsApi';
 import { fetchOpportunities, createOpportunity, updateOpportunity } from '../pipelineApi';
@@ -8,12 +8,14 @@ import { OPEN_TASKS } from './goalsApi';
 // jsdom has no matchMedia; PipelineView reads it for its phone list.
 window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
 Element.prototype.scrollIntoView = Element.prototype.scrollIntoView || jest.fn();
-jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, pipelineBoard: jest.fn(), partnerSignal: jest.fn(), updatePartner: jest.fn(), partnerEvents: jest.fn() } }));
+jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, pipelineBoard: jest.fn(), partnerSignal: jest.fn(), updatePartner: jest.fn(), partnerEvents: jest.fn(), setVisitPriority: jest.fn() } }));
 jest.mock('../pipelineApi', () => ({ fetchOpportunities: jest.fn(), createOpportunity: jest.fn(), updateOpportunity: jest.fn(), archiveOpportunity: jest.fn() }));
 
+const CHANNELS = { partner: ['all', 'partners'], employer: ['all'], target: ['all', 'targets'], apollo: ['apollo'], visitor: ['website'] };
 const row = (id, type, color, extra = {}) => ({
   type, id, name: id, stage: 's', stage_label: 'Stage', color, owner_team: null, owner: null, tier: null,
-  next_step: null, next_step_due: null, last_touch_at: null, top: false, record_id: null, ...extra,
+  next_step: null, next_step_due: null, last_touch_at: null, top: false, record_id: null,
+  channel: 'unknown', priority: null, priority_set_by: null, priority_set_at: null, covered_lives: null, visited: null, work: null, channels: CHANNELS[type], ...extra,
 });
 const ROWS = [
   row('Gallagher', 'partner', 'yellow', { top: true, owner_team: 'homelover', owner: 'Jack', tier: '1', stage: 'replied', stage_label: 'Replied', category: '4. Mid-Market Benefits Brokers', next_step: 'Send the one-pager' }),
@@ -25,18 +27,23 @@ const ROWS = [
 const APOLLO = row('Fresh Co', 'apollo', 'gray', { last_touch_at: '2026-10-07T15:00:00Z' });
 
 beforeEach(() => {
-  goalsApi.pipelineBoard.mockImplementation((id, includeApollo) => Promise.resolve(includeApollo ? [...ROWS, APOLLO] : ROWS));
+  localStorage.clear();
+  window.history.replaceState(null, '', '/');
+  goalsApi.pipelineBoard.mockImplementation(() => Promise.resolve([...ROWS, APOLLO]));
   goalsApi.partnerSignal.mockResolvedValue({});
   goalsApi.updatePartner.mockResolvedValue({});
   goalsApi.partnerEvents.mockResolvedValue([]);
   updateOpportunity.mockResolvedValue({});
   fetchOpportunities.mockResolvedValue([{ id: 'Solidcore', organization: 'Solidcore', org_type: 'employer', stage: 'meeting' }]);
 });
+// sales-ia-v2: the screen's buttons portal into the frame row's tools slot.
 const setup = (extra = {}) => {
   const props = { businessId: 'b1', canEdit: true, onOpenPartner: jest.fn(), onOpenCompanies: jest.fn(), ...extra };
+  if (!document.getElementById('sales-frame-tools')) { const slot = document.createElement('div'); slot.id = 'sales-frame-tools'; document.body.appendChild(slot); }
   render(<PipelineView {...props} />);
   return props;
 };
+const channelBtn = name => within(screen.getByRole('group', { name: 'Channel' })).getByRole('button', { name: new RegExp(`^${name}`) });
 // The rows of one group: everything after its header row up to the next header row.
 const section = name => {
   let tr = screen.getByRole('heading', { name: new RegExp(`^${name}`) }).closest('tr').nextElementSibling;
@@ -61,44 +68,59 @@ test('Top pinned first, then color sections in order; Parked collapsed; counts p
   expect(screen.queryByText('Solidcore')).toBeNull();
   fireEvent.click(table.getByRole('button', { name: /^Meeting 1/ }));
   expect(screen.getByText('Solidcore')).toBeTruthy();
-  const counts = screen.getByRole('group', { name: 'Counts by color' });
-  expect(within(counts).getByRole('button', { name: /Meeting 2/ })).toBeTruthy();
-  expect(within(counts).getByRole('button', { name: /Talking 1/ })).toBeTruthy();
+  expect(channelBtn('All').textContent).toBe('All5');
+  expect(channelBtn('Apollo outbound').textContent).toBe('Apollo outbound1');
+  expect(channelBtn('Partners & referrals').textContent).toBe('Partners & referrals2');
 });
 
-test('type chips, owner team, owner and search filter the board; a count chip filters to its color', async () => {
+test('one filter row: type, team, owner, search; the channel counts follow the filters; Clear resets all', async () => {
   setup();
   await screen.findByText('Solidcore');
-  fireEvent.click(screen.getByRole('button', { name: 'Partners' }));
+  fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'partner' } });
   expect(screen.queryByText('Solidcore')).toBeNull();
   expect(screen.getByText('OneDigital')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'All' }));
-  fireEvent.change(screen.getByLabelText('Owner team'), { target: { value: 'upside' } });
+  expect(channelBtn('All').textContent).toBe('All2');
+  fireEvent.change(screen.getByLabelText('Type'), { target: { value: '' } });
+  fireEvent.change(screen.getByLabelText('Team'), { target: { value: 'upside' } });
   expect(screen.queryByText('Gallagher')).toBeNull();
   expect(screen.getByText('Solidcore')).toBeTruthy();
-  fireEvent.change(screen.getByLabelText('Owner team'), { target: { value: '' } });
+  fireEvent.change(screen.getByLabelText('Team'), { target: { value: '' } });
   fireEvent.change(screen.getByLabelText('Owner'), { target: { value: 'Jack' } });
   expect(screen.queryByText('Solidcore')).toBeNull();
   fireEvent.change(screen.getByLabelText('Owner'), { target: { value: '' } });
   fireEvent.change(screen.getByLabelText('Search companies'), { target: { value: 'one' } });
   expect(screen.getByText('OneDigital')).toBeTruthy();
   expect(screen.queryByText('Solidcore')).toBeNull();
-  fireEvent.change(screen.getByLabelText('Search companies'), { target: { value: '' } });
-  fireEvent.click(within(screen.getByRole('group', { name: 'Counts by color' })).getByRole('button', { name: /Talking 1/ }));
+  fireEvent.change(screen.getByLabelText('Stage'), { target: { value: 'Not started' } });
   expect(screen.getByText('OneDigital')).toBeTruthy();
-  expect(screen.queryByText('Solidcore')).toBeNull();
+  const clear = screen.getByRole('button', { name: /^Clear/ });
+  expect(clear.textContent).toBe('Clear(2)');
+  fireEvent.click(clear);
+  expect(screen.getByText('Solidcore')).toBeTruthy();
+  expect(screen.getByLabelText('Search companies').value).toBe('');
+  expect(screen.getByRole('button', { name: /^Clear/ })).toBeDisabled();
 });
 
-test('"In Apollo" refetches with the flag and shows the company', async () => {
+test('channel buttons: All = records; Apollo outbound shows the Apollo-only company; ?channel= opens on that channel', async () => {
   setup();
   await screen.findByText('Solidcore');
+  expect(goalsApi.pipelineBoard).toHaveBeenCalledWith('b1', true);
   expect(screen.queryByText('Fresh Co')).toBeNull();
-  const chip = screen.getByRole('button', { name: 'In Apollo' });
-  expect(chip).toHaveAttribute('aria-pressed', 'false');
-  fireEvent.click(chip);
+  expect(channelBtn('All')).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(channelBtn('Apollo outbound'));
   expect(await screen.findByText('Fresh Co')).toBeTruthy();
-  expect(goalsApi.pipelineBoard).toHaveBeenLastCalledWith('b1', true);
-  expect(screen.getByRole('button', { name: 'In Apollo' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.queryByText('Solidcore')).toBeNull();
+  expect(window.location.search).toContain('channel=apollo');
+  fireEvent.click(channelBtn('All'));
+  expect(window.location.search).not.toContain('channel=');
+  document.body.innerHTML = '';
+  window.history.replaceState(null, '', '/?tab=pipeline&channel=website_visit');
+  goalsApi.pipelineBoard.mockResolvedValue([...ROWS, row('Acme Widgets', 'visitor', 'light', { priority: 1 })]);
+  setup();
+  expect(await screen.findByText('Acme Widgets')).toBeTruthy();
+  expect(channelBtn('Website visitors')).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: 'Visitor report' })).toBeTruthy();
+  window.history.replaceState(null, '', '/');
 });
 
 test('one line per company: aligned cells, record id on hover, sort by Due inside a band', async () => {
@@ -111,7 +133,9 @@ test('one line per company: aligned cells, record id on hover, sort by Due insid
   await screen.findByText('Beta Co');
   const cells = tr => [...tr.querySelectorAll('td')].map(td => td.textContent);
   const beta = screen.getByText('Beta Co').closest('tr');
-  expect(cells(beta)).toEqual(['☆', 'Beta Co', 'Employer', 'Stage', '—', '—', '—', 'Send deck', 'Oct 22', '—']);
+  expect(cells(beta).length).toBe(16);
+  expect([0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map(i => cells(beta)[i])).toEqual(['☆', 'Beta Co', 'Employer', '—', 'Stage', '—', '—', '—', 'Send deck', 'Oct 22', '—', '—', '—', '—', '—']);
+  expect(within(beta).getByLabelText('Priority for Beta Co').value).toBe('');
   expect(beta.querySelector('td.ui-table__sticky').title).toBe('Beta Co · R-2');
   expect(screen.getByRole('columnheader', { name: /^Company/ })).toHaveAttribute('aria-sort', 'none');
   const order = () => [...document.querySelectorAll('tr[data-row] td.ui-table__sticky')].map(td => td.textContent);
@@ -123,7 +147,7 @@ test('one line per company: aligned cells, record id on hover, sort by Due insid
   expect(order()).toEqual(['Beta Co', 'Alpha Co', 'Gamma Co']);
   fireEvent.click(screen.getByRole('button', { name: /^Due/ }));
   expect(order()).toEqual(['Beta Co', 'Alpha Co', 'Gamma Co']);
-  expect(beta.style.getPropertyValue('--ui-row-bar')).toBe('var(--sa-warn)');
+  expect(screen.getByText('Beta Co').closest('tr').style.getPropertyValue('--ui-row-bar')).toBe('var(--sa-warn)');
 });
 
 test('★ a partner goes through the hot signal, an employer through is_top; it moves into Top', async () => {
@@ -163,7 +187,8 @@ test('click-through: partner -> quick panel (not Partners), target -> Tasks, Apo
   expect(seen).toEqual([{ link: { type: 'target', id: 'New Target' }, filter: 'team' }]);
   fireEvent.click(screen.getByRole('button', { name: 'Solidcore' }));
   expect(await screen.findByText('Edit opportunity')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'In Apollo' }));
+  fireEvent.keyDown(document, { key: 'Escape' });
+  fireEvent.click(channelBtn('Apollo outbound'));
   fireEvent.click(await screen.findByRole('button', { name: 'Fresh Co' }));
   expect(props.onOpenCompanies).toHaveBeenCalledWith('2026-10-05');
 });
@@ -266,8 +291,8 @@ test('Export joint sheet fetches the .xlsx for the current filters and saves it;
   const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
   setup();
   await screen.findByText('Solidcore');
-  fireEvent.change(screen.getByLabelText('Owner team'), { target: { value: 'upside' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Partners' }));
+  fireEvent.change(screen.getByLabelText('Team'), { target: { value: 'upside' } });
+  fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'partner' } });
   fireEvent.click(screen.getByRole('button', { name: 'Export joint sheet' }));
   await waitFor(() => expect(click).toHaveBeenCalled());
   expect(global.fetch).toHaveBeenCalledWith('/api/sales/b1/goals/pipeline-board/export?type=partner&owner_team=upside');
@@ -280,7 +305,7 @@ test('Export joint sheet fetches the .xlsx for the current filters and saves it;
 
 // pipeline-quick-panel-v1 Stage 2 - Next step and Due typed straight into the table.
 const td = (name, col) => screen.getByText(name, { selector: 'td button' }).closest('tr').querySelectorAll('td')[col];
-const NEXT = 7, DUE = 8;
+const NEXT = 9, DUE = 10;
 
 test('Next step cell on a partner row: click -> input prefilled; Enter saves through updatePartner once and updates the row; the click never opens the panel', async () => {
   setup();
@@ -349,17 +374,19 @@ test('employer Due: a date input; a change saves next_action_date; clearing save
 
 test('partner Due is read-only (a dash until a next meeting is set); target and Apollo cells are text; a Viewer gets no editors', async () => {
   setup();
-  fireEvent.click(await screen.findByRole('button', { name: 'In Apollo' }));
-  await screen.findByText('Fresh Co');
+  await screen.findByText('Solidcore');
   const due = td('Gallagher', DUE);
   expect(due.textContent).toBe('—');
   expect(due.title).toBe('No next meeting set');
   expect(due.querySelector('button')).toBeNull();
   expect(td('Solidcore', DUE).title).toBe('2026-10-20');
-  for (const name of ['New Target', 'Fresh Co']) {
-    expect(td(name, NEXT).querySelector('button')).toBeNull();
-    expect(td(name, DUE).querySelector('button')).toBeNull();
-  }
+  expect(td('New Target', NEXT).querySelector('button')).toBeNull();
+  expect(td('New Target', DUE).querySelector('button')).toBeNull();
+  fireEvent.click(channelBtn('Apollo outbound'));
+  await screen.findByText('Fresh Co');
+  expect(td('Fresh Co', NEXT).querySelector('button')).toBeNull();
+  expect(td('Fresh Co', DUE).querySelector('button')).toBeNull();
+  fireEvent.click(channelBtn('All'));
   document.body.innerHTML = '';
   setup({ canEdit: false });
   await screen.findByText('Solidcore');
@@ -423,4 +450,89 @@ test('Type column: pills with the partner type; sorting Type groups partners by 
   fireEvent.click(screen.getByRole('button', { name: /^Type/ }));
   expect(order()).toEqual(['Platform', 'Broker', 'NoCat', 'Emp', 'Tgt']);
   expect(screen.getByRole('columnheader', { name: /^Type/ })).toHaveAttribute('aria-sort', 'ascending');
+});
+
+// sales-ia-v2 P3 - one Priority dropdown (P1-P4 + Not a fit) with a 10 s Undo.
+test('priority: partner and employer write their record; who set it shows; Undo puts the old value back', async () => {
+  goalsApi.pipelineBoard.mockResolvedValue([
+    row('Gallagher', 'partner', 'yellow', { priority: 2, priority_set_by: 'Jack Carlson', priority_set_at: '2026-10-20T17:00:00Z' }),
+    row('Solidcore', 'employer', 'yellow'),
+  ]);
+  setup();
+  const g = await screen.findByLabelText('Priority for Gallagher');
+  expect(g.value).toBe('2');
+  expect(g.closest('span').title).toBe('P2 · set by Jack Oct 20');
+  expect(g.closest('span').textContent).toContain('Jack Oct 20');
+  fireEvent.change(screen.getByLabelText('Priority for Solidcore'), { target: { value: '1' } });
+  await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', { priority: 1 }));
+  expect((await screen.findByRole('status')).textContent).toContain('Solidcore: P1');
+  fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(updateOpportunity).toHaveBeenLastCalledWith('b1', 'Solidcore', { priority: null }));
+  fireEvent.change(g, { target: { value: 'not_a_fit' } });
+  await waitFor(() => expect(goalsApi.updatePartner).toHaveBeenCalledWith('b1', 'Gallagher', { priority: 4 }));
+  await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'Gallagher', { type: 'note', note: 'Not a fit (set to P4 from Pipeline)' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(goalsApi.updatePartner).toHaveBeenLastCalledWith('b1', 'Gallagher', { priority: 2 }));
+});
+
+test('priority on a visitor: P2 overrides the pull; Undo goes back to the pull score; Not a fit; targets have none', async () => {
+  goalsApi.setVisitPriority.mockResolvedValue({});
+  goalsApi.pipelineBoard.mockResolvedValue([row('Acme Widgets', 'visitor', 'light', { id: 'acme widgets', priority: 1, priority_rule: 'US 500+' }), row('New Target', 'target', 'light')]);
+  setup();
+  fireEvent.click(await screen.findByRole('button', { name: /^Website visitors/ }));
+  const sel = await screen.findByLabelText('Priority for Acme Widgets');
+  expect(sel.closest('span').title).toBe('P1 · scored by the visitor pull');
+  fireEvent.change(sel, { target: { value: '2' } });
+  await waitFor(() => expect(goalsApi.setVisitPriority).toHaveBeenCalledWith('b1', { company_key: 'acme widgets', priority: 2 }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(goalsApi.setVisitPriority).toHaveBeenLastCalledWith('b1', { company_key: 'acme widgets', priority: null }));
+  fireEvent.change(screen.getByLabelText('Priority for Acme Widgets'), { target: { value: 'not_a_fit' } });
+  await waitFor(() => expect(goalsApi.setVisitPriority).toHaveBeenLastCalledWith('b1', { company_key: 'acme widgets', not_a_fit: true }));
+  fireEvent.click(channelBtn('Targets'));
+  expect(await screen.findByText('New Target')).toBeTruthy();
+  expect(screen.queryByLabelText('Priority for New Target')).toBeNull();
+});
+
+test('Viewer: priority is text, no dropdown', async () => {
+  goalsApi.pipelineBoard.mockResolvedValue([row('Gallagher', 'partner', 'yellow', { priority: 3 })]);
+  setup({ canEdit: false });
+  await screen.findByText('Gallagher');
+  expect(screen.queryByLabelText('Priority for Gallagher')).toBeNull();
+  expect(screen.getByText('P3', { selector: 'td span' })).toBeTruthy();
+});
+
+test('columns: the chooser hides a column and the choice and the last sort are remembered', async () => {
+  setup();
+  await screen.findByText('Solidcore');
+  expect(screen.queryByRole('columnheader', { name: /^Record ID/ })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+  fireEvent.click(within(screen.getByRole('dialog', { name: 'Columns' })).getByLabelText('Channel'));
+  expect(screen.queryByRole('columnheader', { name: /^Channel/ })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /^Last touch/ }));
+  fireEvent.click(screen.getByRole('button', { name: /^Last touch/ }));
+  expect(screen.getByRole('heading', { name: /^Sorted by Last touch/ })).toBeTruthy();
+  expect(JSON.parse(localStorage.getItem('prospector_pipeline_columns'))).toEqual(['record', 'channel']);
+  expect(JSON.parse(localStorage.getItem('prospector_pipeline_sort'))).toEqual({ id: 'touch', dir: 'desc' });
+  cleanup();
+  setup();
+  await screen.findByText('Solidcore');
+  expect(screen.queryByRole('columnheader', { name: /^Channel/ })).toBeNull();
+  expect(screen.getByRole('columnheader', { name: /^Last touch/ })).toHaveAttribute('aria-sort', 'descending');
+});
+
+test('Has open to-do and Overdue filter on the row counts; the cells show them, red when overdue', async () => {
+  goalsApi.pipelineBoard.mockResolvedValue([
+    row('Busy Co', 'employer', 'yellow', { work: { todos: 2, todos_overdue: 1, waiting: 1, waiting_overdue: 0 } }),
+    row('Calm Co', 'employer', 'yellow', { work: { todos: 1, todos_overdue: 0, waiting: 0, waiting_overdue: 0 } }),
+    row('Idle Co', 'employer', 'yellow'),
+  ]);
+  setup();
+  await screen.findByText('Idle Co');
+  expect(td('Busy Co', 13).textContent).toBe('2 !');
+  fireEvent.click(screen.getByRole('button', { name: 'Has open to-do' }));
+  expect(screen.queryByText('Idle Co')).toBeNull();
+  expect(screen.getByText('Calm Co')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Overdue' }));
+  expect(screen.queryByText('Calm Co')).toBeNull();
+  expect(screen.getByText('Busy Co')).toBeTruthy();
 });

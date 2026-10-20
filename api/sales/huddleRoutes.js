@@ -227,6 +227,7 @@ export async function addToPipelineRoute(req, res) {
   const { data: opp, error: insErr } = await supabase.from('sales_opportunities').insert({
     business_id: businessId,
     source: 'manual',
+    channel: 'apollo_outbound',
     organization: p.company.trim(),
     stage: 'responded',
     org_type: orgType,

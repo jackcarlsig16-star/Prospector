@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { SA, SA_TYPE, SA_SHAPE, SA_THEME_CSS, SA_THEME_ROOT_ID, saSans } from './theme';
 import { ui } from '../../ui/kitTheme';
-import { KIT_MAX_WIDTH } from '../../ui/tokens';
+import Segmented from '../../ui/Segmented';
 import AnalyticsView from './AnalyticsView';
 import DailyHuddle from './DailyHuddle';
 import GoalsTab, { homeOf } from './goals/GoalsTab';
@@ -11,7 +11,8 @@ import { laDateString } from './periods';
 import { roleAtLeast } from '../../constants/roles';
 import { fetchFlags, FLAGS_CHANGED } from './huddleApi';
 import { fetchMe } from '../../utils/authSession';
-import { TABS, DEFAULT_VIEW, readNav, writeNav, normalizeNav } from './salesNav';
+import { TABS, SUB_VIEWS, DEFAULT_VIEW, readNav, writeNav, normalizeNav } from './salesNav';
+import { FRAME_ROW_HEIGHT, FRAME_TOOLS_ID } from './salesFrame';
 
 // dashboard-v2 Stage 5 - the "print only this area" trick: hide
 // everything on the page, then re-show only #sales-analytics-print-area
@@ -73,10 +74,15 @@ const PRINT_STYLES = `
   }
 `;
 
-// sales-ia-v1 - four tabs (Today · Pipeline · Huddle · Reports). This owns
-// the tab + sub-view selection (URL ?tab= / ?view=, salesNav.js); GoalsTab
-// stays the data hub for Today / Pipeline / Reports and mounts Analytics
-// under Reports. The Pipeline tab runs full width; the rest keep 1100.
+// sales-ia-v2 N1/N2 - Sales & Marketing: Sales = Dashboard · Pipeline ·
+// Actions, Marketing shown disabled. This owns the tab + sub-view selection
+// (URL ?tab= / ?view=, salesNav.js) and the one page frame every tab shares:
+// full width, the tab row in the workspace header, then a fixed-height frame
+// row (sub-view switch on the left, the screen's own tools portaled into
+// #sales-frame-tools on the right) so switching tabs or toggling filters
+// never moves what sits above. GoalsTab stays the data hub for Actions /
+// Pipeline / Dashboard; Pipeline > People is the Huddle until Stage 4.
+
 export default function SalesAnalyticsTab({ businessId, features }) {
   const [tab, setTab] = useState(() => readNav().tab);
   const [views, setViews] = useState(() => { const n = readNav(); return { ...DEFAULT_VIEW, ...(n.view ? { [n.tab]: n.view } : {}) }; });
@@ -109,23 +115,23 @@ export default function SalesAnalyticsTab({ businessId, features }) {
   }, [businessId]);
 
   useEffect(() => {
-    const open = () => { setGoalsTarget(null); nav('today'); };
+    const open = () => { setGoalsTarget(null); nav('actions'); };
     window.addEventListener(OPEN_GOALS_WEEK, open);
     return () => window.removeEventListener(OPEN_GOALS_WEEK, open);
   }, [nav]);
 
-  const openGoals = useCallback(target => { const home = homeOf(target); setGoalsTarget({ target }); nav(home ? home.tab : 'reports', home?.view); }, [nav]);
+  const openGoals = useCallback(target => { const home = homeOf(target); setGoalsTarget({ target }); nav(home ? home.tab : 'dashboard', home?.view); }, [nav]);
   useEffect(() => {
     const open = e => openGoals(e.detail.target);
     window.addEventListener(OPEN_GOALS_TARGET, open);
     return () => window.removeEventListener(OPEN_GOALS_TARGET, open);
   }, [openGoals]);
-  const openHuddle = target => { setHuddleFocus(null); setHuddleTarget(target ? { ...target } : null); nav('huddle'); };
+  const openHuddle = target => { setHuddleFocus(null); setHuddleTarget(target ? { ...target } : null); nav('pipeline', 'people'); };
   const clearFocus = useCallback(() => setOverviewFocus(null), []);
   const canEdit = !!me && (me.profile?.is_platform_owner || roleAtLeast(me.memberships?.find(m => m.business_id === businessId)?.role, 'member'));
 
   // call-notes-targets-v1 Stage 3 - Tidy runs once per LA day on a Member's
-  // first Goals & Sales visit; the server guard is the real gate, these keys
+  // first Sales & Marketing visit; the server guard is the real gate, these keys
   // only save the call. Viewers never trigger it. signals-v1 Stage 4: the
   // website-visitor pull goes first so Tidy's "visited, no touch" sees it; a
   // failed pull is retried on the next load and never blocks Tidy.
@@ -144,33 +150,58 @@ export default function SalesAnalyticsTab({ businessId, features }) {
 
   // shell-facelift-v1 Stage 2 - the tab row sits in the workspace header's sticky row when that slot exists
   // (BusinessDetailPage), inline otherwise. Kit vars, not SA vars: the slot is outside #sales-analytics-root.
+  // The flag badge sits on Actions (flags handed to you are actions) and
+  // always keeps its slot so a new flag never shifts the tab labels.
+  const tabBtn = (id, label, extra) => (
+    <button key={id} type="button" aria-current={tab === id ? 'page' : undefined} onClick={() => { nav(id); setGoalsTarget(null); setHuddleTarget(null); }}
+      style={{ ...SA_TYPE.body, fontSize: 13, border: 0, borderRadius: 7, padding: '0 14px', height: 32, cursor: 'pointer', background: tab === id ? ui.surface : 'transparent', color: tab === id ? ui.text : ui.muted, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}>
+      {label}{extra}
+    </button>
+  );
+  const flagBadge = (
+    <span aria-label={myFlagCount ? `${myFlagCount} flagged for you` : undefined} aria-hidden={myFlagCount ? undefined : true}
+      style={{ marginLeft: 8, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: myFlagCount ? ui.warn : 'transparent', color: ui.ground, fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontVariantNumeric: 'tabular-nums', visibility: myFlagCount ? 'visible' : 'hidden' }}>{myFlagCount || 0}</span>
+  );
+  const groupLabel = { ...SA_TYPE.label, fontSize: 10.5, color: ui.muted, padding: '0 8px 0 6px', whiteSpace: 'nowrap' };
   const tabRow = (
-    <div className="no-print" style={{ display: 'inline-flex', background: ui.surface2, border: `1px solid ${ui.border}`, borderRadius: SA_SHAPE.radiusInner, padding: 3, marginBottom: tabsSlot ? 0 : 20 }}>
-      {TABS.map(([id, label]) => (
-        <button key={id} onClick={() => { nav(id); setGoalsTarget(null); setHuddleTarget(null); }}
-          style={{ ...SA_TYPE.body, fontSize: 13, border: 0, borderRadius: 7, padding: '0 14px', height: 32, cursor: 'pointer', background: tab === id ? ui.surface : 'transparent', color: tab === id ? ui.text : ui.muted, whiteSpace: 'nowrap' }}>
-          {label}
-          {id === 'huddle' && myFlagCount > 0 && (
-            <span aria-label={`${myFlagCount} flagged for you`} style={{ marginLeft: 8, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: ui.warn, color: ui.ground, fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{myFlagCount}</span>
-          )}
+    <div className="no-print" data-sales-tabrow style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: tabsSlot ? 0 : 20 }}>
+      <div role="navigation" aria-label="Sales" style={{ display: 'inline-flex', alignItems: 'center', background: ui.surface2, border: `1px solid ${ui.border}`, borderRadius: SA_SHAPE.radiusInner, padding: 3 }}>
+        <span style={groupLabel}>Sales</span>
+        {TABS.map(([id, label]) => tabBtn(id, label, id === 'actions' ? flagBadge : null))}
+      </div>
+      <div data-sales-marketing style={{ display: 'inline-flex', alignItems: 'center', background: ui.surface2, border: `1px solid ${ui.border}`, borderRadius: SA_SHAPE.radiusInner, padding: 3 }}>
+        <button type="button" disabled aria-disabled="true" title="Marketing is coming soon"
+          style={{ ...SA_TYPE.body, fontSize: 13, border: 0, borderRadius: 7, padding: '0 12px', height: 32, cursor: 'not-allowed', background: 'transparent', color: ui.faint, whiteSpace: 'nowrap' }}>
+          Marketing <span style={{ ...SA_TYPE.label, fontSize: 10, marginLeft: 6 }}>Coming soon</span>
         </button>
-      ))}
+      </div>
     </div>
   );
+  const subViews = SUB_VIEWS[tab];
+  const frameRow = (
+    <div className="no-print" data-sales-frame style={{ height: FRAME_ROW_HEIGHT, display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, minWidth: 0 }}>
+      <div data-sales-subviews style={{ flex: 'none', display: 'flex', alignItems: 'center', minHeight: 34 }}>
+        {subViews && <Segmented label={`${TABS.find(([id]) => id === tab)[1]} views`} items={subViews.map(([id, label]) => ({ id, label }))} value={view} onChange={v => { nav(tab, v); setHuddleTarget(null); }} />}
+      </div>
+      <div id={FRAME_TOOLS_ID} style={{ flex: '1 1 auto', minWidth: 0, height: FRAME_ROW_HEIGHT, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, overflowX: 'auto', overflowY: 'hidden' }} />
+    </div>
+  );
+  const people = tab === 'pipeline' && view === 'people';
 
   return (
     <div id={SA_THEME_ROOT_ID} style={{ ...saSans, background: SA.ground, color: SA.text, minHeight: '100%', padding: '0 0 32px' }}>
       <style>{SA_THEME_CSS}</style>
       <style>{PRINT_STYLES}</style>
-      <div data-sales-tab={tab} style={{ maxWidth: tab === 'pipeline' ? 'none' : KIT_MAX_WIDTH, margin: '0 auto' }}>
+      <div data-sales-tab={tab} style={{ maxWidth: 'none', margin: '0 auto' }}>
 
       {tabsSlot ? createPortal(tabRow, tabsSlot) : tabRow}
+      {frameRow}
 
-      {tab === 'huddle'
+      {people
         ? <DailyHuddle businessId={businessId} focusContactId={huddleFocus} onFocused={() => setHuddleFocus(null)} focusTarget={huddleTarget} onOpenGoals={openGoals} />
         : <GoalsTab businessId={businessId} section={tab} view={view} onNav={nav} initialTarget={goalsTarget}
-            onOpenOverview={widget => { setOverviewFocus(widget || null); nav('reports', 'analytics'); }}
-            onOpenHuddle={(contactId, target) => { setHuddleFocus(contactId); setHuddleTarget(target ? { ...target } : null); nav('huddle'); }}
+            onOpenOverview={widget => { setOverviewFocus(widget || null); nav('dashboard', 'analytics'); }}
+            onOpenHuddle={(contactId, target) => { setHuddleFocus(contactId); setHuddleTarget(target ? { ...target } : null); nav('pipeline', 'people'); }}
             analytics={<AnalyticsView businessId={businessId} features={features} canEdit={canEdit} onOpenGoals={openGoals} onOpenHuddle={openHuddle} focusWidget={overviewFocus} onFocused={clearFocus} />} />}
       </div>
     </div>

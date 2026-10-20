@@ -42,7 +42,7 @@ jest.mock('./goalsApi', () => {
     } }),
   };
 });
-jest.mock('../pipelineApi', () => ({ fetchMovement: () => Promise.resolve({ moved_forward: [{ id: 'o1', organization: 'Northwind Benefits', stage: 'meeting', updated_at: '2026-10-14T10:00:00Z' }], moved_back: [], added: [], lost: [], stalled: [] }) }));
+jest.mock('../pipelineApi', () => ({ fetchOpportunities: () => Promise.resolve([]), fetchMovement: () => Promise.resolve({ moved_forward: [{ id: 'o1', organization: 'Northwind Benefits', stage: 'meeting', updated_at: '2026-10-14T10:00:00Z' }], moved_back: [], added: [], lost: [], stalled: [] }) }));
 jest.mock('../huddleApi', () => ({ fetchFlags: () => Promise.resolve(global.__flags || []), completeFlag: jest.fn(() => Promise.resolve({})), announceFlagsChanged: jest.fn(), FLAGS_CHANGED: 'flags' }));
 jest.mock('../../../utils/authSession', () => ({ fetchMe: jest.fn() }));
 jest.mock('../../../utils/useMediaQuery', () => () => false);
@@ -85,7 +85,7 @@ test('a tick uses the Tasks drawer path and Mark contacted the Huddle path', asy
   global.__todos = todos; global.__flags = flags; global.__commitments = [];
   global.__update = jest.fn(() => Promise.resolve({}));
   fetchMe.mockResolvedValue({ profile: { id: 'u-jack' }, memberships: [{ business_id: 'b1', role: 'member' }] });
-  render(<GoalsTab businessId="b1" section="today" view={null} onNav={jest.fn()} />);
+  render(<GoalsTab businessId="b1" section="actions" view={null} onNav={jest.fn()} />);
   await screen.findByText('Your day');
   await screen.findByText('Todo late');
   fireEvent.click(screen.getByRole('button', { name: 'Done: Todo late' }));

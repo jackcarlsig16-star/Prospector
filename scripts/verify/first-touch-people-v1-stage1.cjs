@@ -52,7 +52,7 @@ async function navGoals(page, compact) {
     if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
     await page.getByLabel('Workspace').selectOption({ label: bizLabel }); await page.waitForTimeout(1500);
     if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
-    await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).click(); await page.waitForTimeout(3500);
+    await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).click(); await page.waitForTimeout(3500);
     await page.locator('[data-hero-card]').first().waitFor();
   } catch (e) {
     await page.screenshot({ path: `${OUT}/ftp-nav-fail-${compact ? 390 : 1440}.png`, fullPage: true }).catch(() => {});

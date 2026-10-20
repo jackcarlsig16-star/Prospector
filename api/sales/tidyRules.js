@@ -93,13 +93,13 @@ export function flagCold({ flags, now }) {
 }
 
 // call-notes-targets-v1 REV5 - something they owe us, overdue by 2+ days.
-export function waitingOverdue({ waiting = [], partners, today }) {
-  const name = new Map(partners.map(p => [p.id, p.name]));
+export function waitingOverdue({ waiting = [], partners, opportunities = [], today }) {
+  const name = new Map([...partners.map(p => [`partner:${p.id}`, p.name]), ...opportunities.map(o => [`opportunity:${o.id}`, o.organization])]);
   return waiting
     .filter(w => isOpen(w) && w.due_date && Math.round((Date.parse(today) - Date.parse(w.due_date)) / DAY) >= WAITING_LATE_DAYS)
     .map(w => {
       const late = Math.round((Date.parse(today) - Date.parse(w.due_date)) / DAY);
-      const at = w.link_type === 'partner' && name.get(w.link_id);
+      const at = name.get(`${w.link_type}:${w.link_id}`);
       return { kind: 'nudge', ref_type: 'todo', ref_id: w.id, text: `Nudge ${w.waiting_on || 'them'}${at ? ` at ${at}` : ''}`, reason: `Waiting on ${w.waiting_on || 'them'}: ${w.text.slice(0, 200)} · ${days(late)} late` };
     });
 }

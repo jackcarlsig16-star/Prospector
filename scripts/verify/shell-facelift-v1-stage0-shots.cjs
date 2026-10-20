@@ -73,8 +73,8 @@ const openUserMenu = async page => { await page.getByRole('button', { name: /^My
 const shot = (page, out, name) => page.screenshot({ path: `${out}/${name}.png`, fullPage: true, animations: 'disabled', caret: 'hide' });
 async function openWorkspace(page) { await page.getByLabel('Workspace').selectOption({ label: 'ZZ Facelift Check' }); await page.waitForTimeout(2500); }
 async function openOverview(page) {
-  await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).click(); await page.waitForTimeout(2500);
-  await page.getByRole('button', { name: 'Reports', exact: true }).click(); await page.waitForTimeout(600); await page.getByRole('button', { name: 'Analytics', exact: true }).click();
+  await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).click(); await page.waitForTimeout(2500);
+  await page.getByRole('button', { name: 'Dashboard', exact: true }).click(); await page.waitForTimeout(600); await page.getByRole('button', { name: 'Analytics', exact: true }).click();
   await page.locator('[data-strip-tile]').first().waitFor(); await page.waitForTimeout(2500);
 }
 

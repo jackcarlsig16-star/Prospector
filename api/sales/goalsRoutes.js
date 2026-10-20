@@ -2,13 +2,14 @@ import { kickResearch } from './partnerResearch.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import {
   getSupabase, validate, fail, findRow, weekIsFinal, FINAL_ERROR, OWN_DELETE_WINDOW_MS,
-  isMonday, isFirstOfMonth, addDays, SCORECARD_METRICS, KPI_METRICS, HERO_METRICS, LINK_TARGETS,
+  isMonday, isFirstOfMonth, addDays, SCORECARD_METRICS, KPI_METRICS, HERO_METRICS, LINK_TARGETS, priorityStamp,
 } from './goalsShared.js';
 import { PARTNER_METRICS } from './partnerMetrics.js';
 import { hasRole } from '../lib/requireAuth.js';
 import { PIPELINE_STATUS_IDS, TIERS, isStalePartner } from '../../src/constants/partnerPipeline.js';
 import { laDateString } from './laDate.js';
 import { peopleCounts } from './partnerPeople.js';
+import { CHANNEL_IDS } from '../../src/constants/salesChannels.js';
 
 // sales-goals-v1 - Goals & Weekly Plan API (REV3 Stage 2, extended in REV4
 // Stage 4). Weekly report, scorecard, KPI and companies live in
@@ -23,9 +24,10 @@ const WEEK_STATUSES = ['open', 'done', 'dropped'];
 // to-dos - every to-do read filters kind 'todo'.
 const WEEK_KINDS = ['commitment', 'todo', 'waiting'];
 const WAITING_ON_MAX = 120;
-// task-drawer-v1 - what a to-do serves. link_id: a commitment's or partner's
-// id, a metric key, or a company's Apollo account_id (Goals > Companies).
-const LINK_TYPES = ['commitment', 'metric', 'partner', 'company', 'target'];
+// task-drawer-v1 - what a to-do serves. link_id: a commitment's, partner's,
+// target's or employer's (sales-ia-v2: 'opportunity') id, a metric key, or a
+// company's Apollo account_id (Goals > Companies).
+export const LINK_TYPES = ['commitment', 'metric', 'partner', 'company', 'target', 'opportunity'];
 export const LINKABLE_METRICS = [...SCORECARD_METRICS, ...KPI_METRICS, ...PARTNER_METRICS, ...HERO_METRICS];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -43,6 +45,7 @@ const LAND_FIELDS = {
   category: { kind: 'text' }, tier: { kind: 'nullableEnum', values: TIERS }, partner_role: { kind: 'text' },
   known_contacts: { kind: 'text' }, target_titles: { kind: 'text' }, sequence_to_use: { kind: 'text' },
   next_step: { kind: 'text' }, do_not_say: { kind: 'text' }, next_meeting_at: { kind: 'date' },
+  channel: { kind: 'enum', values: CHANNEL_IDS },
 };
 const MONTH_FIELDS = {
   month: { kind: 'month' }, text: { kind: 'required' }, owner_user_id: { kind: 'member' },
@@ -96,8 +99,8 @@ export async function checkLink(supabase, businessId, payload, existing) {
     return data.length ? null : notFound;
   }
   if (!UUID.test(id) || id === existing?.id) return notFound;
-  if (type === 'target') {
-    const { data, error } = await supabase.from('sales_targets').select('id').eq('business_id', businessId).eq('id', id).maybeSingle();
+  if (type === 'target' || type === 'opportunity') {
+    const { data, error } = await supabase.from(type === 'target' ? 'sales_targets' : 'sales_opportunities').select('id').eq('business_id', businessId).eq('id', id).maybeSingle();
     if (error) return { status: 500, error: error.message };
     return data ? null : notFound;
   }
@@ -156,7 +159,7 @@ export async function createLandGoalRoute(req, res) {
   if (!v.payload.goal_type) return res.status(400).json({ error: 'goal_type is required' });
   if (!v.payload.name) return res.status(400).json({ error: 'name is required' });
   const { data, error } = await supabase.from('sales_goals')
-    .insert({ business_id: req.params.businessId, ...v.payload, ...landTimestamps(v.payload), ...(v.payload.goal_type === 'partnership' ? { pipeline_status: 'not_started' } : {}) }).select().single();
+    .insert({ business_id: req.params.businessId, channel: 'manual', ...v.payload, ...landTimestamps(v.payload), ...priorityStamp(v.payload, req.auth.user.id), ...(v.payload.goal_type === 'partnership' ? { pipeline_status: 'not_started' } : {}) }).select().single();
   if (error) return res.status(500).json({ error: error.message });
   // partner-add-research-v1: research starts after the save and never
   // blocks it (form / AddCompany path only; Intake and import skip it, D10).
@@ -179,7 +182,7 @@ export async function updateLandGoalRoute(req, res) {
     return res.status(400).json({ error: 'owner_user_id: use the partner Assign action (POST /goals/partners/:id/signal)' });
   }
   const { data, error } = await supabase.from('sales_goals')
-    .update({ ...v.payload, ...landTimestamps(v.payload, existing), updated_at: new Date().toISOString() })
+    .update({ ...v.payload, ...landTimestamps(v.payload, existing), ...priorityStamp(v.payload, req.auth.user.id), updated_at: new Date().toISOString() })
     .eq('id', existing.id).select().single();
   if (error) return res.status(500).json({ error: error.message });
   res.json({ goal: data });

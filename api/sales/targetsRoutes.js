@@ -14,7 +14,7 @@ import { PIPELINE_STATUSES } from '../../src/constants/partnerPipeline.js';
 // Copy-for-Claude bundle for a partner, employer or target.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TARGET_COLS = 'id, name, kind, status, suggested_category, owner_team, co_owner_name, no_double_touch, evidence, research_notes, promoted_goal_id, source_note_id, created_at, decided_at';
+const TARGET_COLS = 'id, name, kind, status, suggested_category, owner_team, co_owner_name, no_double_touch, evidence, research_notes, promoted_goal_id, source_note_id, channel, created_at, decided_at';
 const NOTE_COLS = 'title, call_date, source_label';
 const PROMOTE_TO = ['partner', 'employer'];
 const REOPEN_MAX = 50;
@@ -116,7 +116,7 @@ async function promoteToPartner(supabase, { businessId, userId, target, payload,
     const ins = await supabase.from('sales_goals').insert({
       business_id: businessId, goal_type: 'partnership', name: payload.name, category: payload.category,
       owner_team: payload.owner_team, co_owner_name: payload.co_owner_name, no_double_touch: payload.no_double_touch,
-      pipeline_status: 'not_started',
+      pipeline_status: 'not_started', channel: target.channel || 'unknown',
     }).select().single();
     if (ins.error?.code === '23505') throw err(409, `${payload.name} is already a partner`);
     const goal = must(ins);
@@ -144,7 +144,7 @@ async function promoteToEmployer(supabase, { businessId, target, payload, apollo
   // The notes carry the target id: there is no employer link column (REV4 T3).
   const notes = [`(${slash(laDateString())}) from target ${target.id}: ${cleanText(target.evidence, 400) || payload.name}`, cleanLines(target.research_notes, 400)].filter(Boolean).join('\n');
   const ins = await supabase.from('sales_opportunities').insert({
-    business_id: businessId, organization: payload.name, org_type: 'employer', stage: 'target', source: 'manual', notes,
+    business_id: businessId, organization: payload.name, org_type: 'employer', stage: 'target', source: 'manual', channel: target.channel || 'unknown', notes,
     owner_team: payload.owner_team, co_owner_name: payload.co_owner_name, no_double_touch: payload.no_double_touch,
     ...(apolloAccountId ? { apollo_account_id: apolloAccountId } : {}),
   }).select().single();

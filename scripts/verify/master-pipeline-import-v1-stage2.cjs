@@ -107,7 +107,7 @@ let WS_NAME;
 async function openEmployers(page, compact) {
   const menu = async () => { if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); } };
   await menu(); await page.getByLabel('Workspace').selectOption({ label: WS_NAME }); await page.waitForTimeout(2500);
-  await menu(); await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).dispatchEvent('click'); await page.waitForTimeout(4000);
+  await menu(); await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(4000);
   // pipeline-board-v1 Stage 2 replaced the Employers view with Pipeline: its Employers chip is the same list.
   await page.getByRole('navigation', { name: 'Views' }).getByRole('button', { name: /^Pipeline/ }).first().click();
   const board = page.locator('section[aria-labelledby="h-pipeline"]');

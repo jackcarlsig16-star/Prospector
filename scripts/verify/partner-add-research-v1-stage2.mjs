@@ -155,7 +155,7 @@ try {
     if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
     await page.getByLabel('Workspace').selectOption({ label: NAME }); await page.waitForTimeout(1500);
     if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
-    await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
+    await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
     await page.locator('#workspace-header-tabs').getByRole('button', { name: /^Pipeline/ }).first().click(); await page.waitForTimeout(1500);
     await page.locator('.ui-seg').getByRole('button', { name: 'Partner workflow', exact: true }).first().click(); await page.waitForTimeout(1800);
     return { page, errs };

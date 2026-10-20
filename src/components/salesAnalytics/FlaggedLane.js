@@ -52,7 +52,7 @@ export default function FlaggedLane({ flags, prospectsById, lookup, canEdit, onT
                   <button type="button" style={{ ...btn, borderColor: SEMANTIC.healthy }} onClick={() => run(() => onComplete(f))}>Mark contacted</button>
                 </div>
               )}
-              <span style={{ fontSize: 11, color: SA.faint }}>Also in Goals → This week · Huddle follow-ups</span>
+              <span style={{ fontSize: 11, color: SA.faint }}>Also in Actions · Pipeline › People follow-ups</span>
             </div>
           );
         })}

@@ -10,6 +10,7 @@ import { labelStyle, subStyle, inputStyle, Chip, Dot, Btn, ErrorNote } from './g
 import { nextStepFor, TOUCH_STATUSES } from '../../../constants/partnerPipeline';
 import { boardStage } from '../../../constants/pipelineBoard';
 import { sortWaiting } from '../tasks/WaitingList';
+import { CHANNELS, CHANNEL_LABEL } from '../../../constants/salesChannels';
 
 // pipeline-quick-panel-v1 - act on a Pipeline board partner row without
 // leaving the table: next step, a note, the one forward stage step, ★.
@@ -57,6 +58,8 @@ export default function PartnerQuickPanel({ businessId, row, canEdit, onChange, 
     if (!note.trim()) return;
     if (await run('note', () => goalsApi.partnerSignal(businessId, row.id, { type: 'note', note: note.trim() }))) { setNote(''); setVersion(v => v + 1); }
   };
+  // sales-ia-v2 P2 - where this partner came from; Jack corrects it here.
+  const saveChannel = channel => run('channel', async () => { await goalsApi.updatePartner(businessId, row.id, { channel }); onChange({ channel }); });
   const next = row.stage === 'paused' ? null : nextStepFor(row.stage);
   const moveForward = () => run('stage', async () => {
     await goalsApi.partnerSignal(businessId, row.id, { type: 'status', to: next.to, expect: row.stage });
@@ -102,6 +105,15 @@ export default function PartnerQuickPanel({ businessId, row, canEdit, onChange, 
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveNextStep(); } if (e.key === 'Escape') { e.stopPropagation(); setNextStep(row.next_step || ''); } }}
             placeholder="e.g. Send the one-pager" style={{ ...inputStyle, width: '100%', marginTop: 4 }} />
           : <div style={{ ...textStyle, marginTop: 4 }}>{row.next_step || '—'}</div>}
+      </div>
+
+      <div>
+        <label htmlFor="pqp-channel" style={labelStyle}>Channel</label>
+        {canEdit
+          ? <select id="pqp-channel" value={row.channel || 'unknown'} disabled={busy === 'channel'} onChange={e => saveChannel(e.target.value)} style={{ ...inputStyle, width: '100%', marginTop: 4 }}>
+            {CHANNELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+          : <div style={{ ...textStyle, marginTop: 4 }}>{CHANNEL_LABEL[row.channel] || '—'}</div>}
       </div>
 
       {canEdit && (

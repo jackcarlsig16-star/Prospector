@@ -92,7 +92,7 @@ try {
     if (page.compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
     await page.getByLabel('Workspace').selectOption({ label: NAME }); await page.waitForTimeout(1500);
     if (page.compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
-    await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
+    await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
     return { page, errs };
   }
   const tab = async (page, label) => { await page.locator('#workspace-header-tabs').getByRole('button', { name: new RegExp(`^${label}`) }).first().click(); await page.waitForTimeout(1800); };
@@ -165,7 +165,7 @@ try {
     ok('Ideas page (same browser) lists the idea', (await page.locator('#main-content').getByText(IDEA).count()) >= 1);
     await shot(page, 'ideas-page-1440');
     ok('Ideas page (app-level view): no "+" in a header', (await plus(page).count()) === 0);
-    await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2000);
+    await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2000);
     // Landmine: the Weekly report PDF still prints.
     await tab(page, 'Reports'); await sub(page, 'Scorecard');
     await page.getByRole('button', { name: 'Export', exact: true }).click(); await page.waitForTimeout(300);

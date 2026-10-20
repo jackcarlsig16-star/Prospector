@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { SA, SA_TYPE, SA_SHAPE } from '../theme';
+import { createPortal } from 'react-dom';
+import { SA, SA_TYPE, SA_SHAPE, SA_THEME_ROOT_ID } from '../theme';
 import { laWeekStart, laDateString } from '../periods';
+import { FRAME_TOOLS_ID } from '../salesFrame';
 import { roleAtLeast } from '../../../constants/roles';
 import { fetchMe } from '../../../utils/authSession';
 import useMediaQuery from '../../../utils/useMediaQuery';
 import Segmented from '../../../ui/Segmented';
 import Ring, { RingLegend } from '../charts/Ring';
-import { SUB_VIEWS } from '../salesNav';
 import { goalsApi, TODOS_CHANGED } from './goalsApi';
 import { fetchFlags, completeFlag, announceFlagsChanged, FLAGS_CHANGED } from '../huddleApi';
 import ScorecardTable from './ScorecardTable';
@@ -15,7 +16,6 @@ import PartnersView from './PartnersView';
 import CompaniesView from './CompaniesView';
 import PipelineView from './PipelineView';
 import ReportView from './ReportView';
-import VisitorReport from './VisitorReport';
 import GoalHero from './GoalHero';
 import PlanWeekDrawer from './PlanWeekDrawer';
 import { PlanNudge } from './FocusStrip';
@@ -28,17 +28,18 @@ import { linkedTo, isOpenTask, openTasks } from '../tasks/LinkedTasks';
 import { openTargets } from '../tasks/TargetsList';
 import { exportWidgetCsv } from '../exportCsv';
 import {
-  labelStyle, subStyle, numStyle, Chip, Btn, ErrorNote,
+  subStyle, numStyle, Chip, Btn, ErrorNote,
   addDays, monthOf, monthName, weekLabel, weekOf, memberLookup, ownedBy, flashTo,
 } from './goalsUi';
 
-// sales-ia-v1 - the data hub behind Today / Pipeline / Reports. `section` is
-// the tab on screen and `view` its sub-view (SalesAnalyticsTab owns both, via
-// salesNav.js); this renders only that section. Export = report PDF + 4 CSVs.
+// sales-ia-v1 - the data hub behind Actions (the v1 Today) / Pipeline /
+// Dashboard (the v1 reports). `section` is the tab on screen and `view` its
+// sub-view (SalesAnalyticsTab owns both, via salesNav.js, and draws the
+// sub-view switch); this renders only that section, with its tools portaled
+// into the frame row (sales-ia-v2 N2). Export = report PDF + 4 CSVs.
 // localStorage key (per viewer convenience, never shared state):
 //   prospector_goals_owner - last person filter, as a first-name slug
 const OWNER_KEY = 'prospector_goals_owner';
-const TITLES = { today: 'Today', pipeline: 'Pipeline', reports: 'Reports' };
 // Earliest week the missing-headcount list reads from (a Monday, before any
 // synced data) - the list covers every week.
 const ALL_WEEKS_FROM = '2020-01-06';
@@ -49,17 +50,17 @@ const slugOf = name => name.split(' ')[0].toLowerCase();
 
 // Design E - the one table from a link target to its home tab + sub-view.
 // Commitment link_target values live in the database, so anything unknown
-// still lands somewhere: Reports, with the target logged.
+// still lands somewhere: the Dashboard, with the target logged.
 const HOME = {
-  'view:report': ['reports', 'weekly'], 'view:week': ['today'], 'view:this_week': ['today'],
-  'view:partners': ['pipeline', 'partners'], 'view:companies': ['pipeline', 'sequenced'], 'view:pipeline': ['pipeline', 'board'],
-  'week:prev': ['today'], overview: ['reports', 'analytics'], section: ['reports', 'weekly'], score: ['reports', 'scorecard'],
-  missing: ['pipeline', 'sequenced'], huddle: ['huddle'], plan: ['today'],
+  'view:report': ['dashboard', 'weekly'], 'view:week': ['actions'], 'view:this_week': ['actions'],
+  'view:partners': ['pipeline', 'partners'], 'view:companies': ['dashboard', 'sequenced'], 'view:pipeline': ['pipeline', 'companies'],
+  'week:prev': ['actions'], overview: ['dashboard', 'analytics'], section: ['dashboard', 'weekly'], score: ['dashboard', 'scorecard'],
+  missing: ['dashboard', 'sequenced'], huddle: ['pipeline', 'people'], plan: ['actions'],
 };
 export function homeOf(target) {
   if (!target) return null;
   if (target.partners) return { tab: 'pipeline', view: 'partners' };
-  if (target.companies) return { tab: 'pipeline', view: 'sequenced' };
+  if (target.companies) return { tab: 'dashboard', view: 'sequenced' };
   if (typeof target !== 'string') return null;
   const row = HOME[target] || HOME[target.split(':')[0]];
   return row ? { tab: row[0], view: row[1] || null } : null;
@@ -97,6 +98,8 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const [plans, setPlans] = useState(null);
   const [toast, setToast] = useState('');
   const [errors, setErrors] = useState({});
+  const [toolsSlot, setToolsSlot] = useState(null);
+  useEffect(() => { setToolsSlot(document.getElementById(FRAME_TOOLS_ID)); }, []);
   const setError = useCallback((key, e) => setErrors(prev => ({ ...prev, [key]: e })), []);
 
   const lookup = useMemo(() => memberLookup(members), [members]);
@@ -223,7 +226,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const daySections = [...yourDaySections(meId ? groupsFor(drawerFilter) : [], today, { forMe: drawerFilter === 'me' }),
     { id: 'waiting', label: 'Waiting on them · overdue', glyph: '⏳', items: waitingLate }];
   const links = useLinkOptions(businessId, weekStart);
-  const needsLinkNames = section === 'today' && [...todos, ...flags].some(t => t.link_type && t.link_type !== 'metric');
+  const needsLinkNames = section === 'actions' && [...todos, ...flags].some(t => t.link_type && t.link_type !== 'metric');
   const loadLinks = links.load;
   useEffect(() => { if (needsLinkNames) loadLinks(); }, [needsLinkNames, loadLinks]);
   const tickTodo = async (t, done) => {
@@ -324,8 +327,8 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const go = target => {
     const home = homeOf(target);
     if (!home) {
-      console.warn(`sales-ia-v1: no home for link target ${JSON.stringify(target)} - opening Reports`);
-      return onNav('reports', 'weekly');
+      console.warn(`sales-ia-v2: no home for link target ${JSON.stringify(target)} - opening the Dashboard`);
+      return onNav('dashboard', 'weekly');
     }
     if (target.partners) { setPartnerFocus({ ...target.partners }); return onNav(home.tab, home.view); }
     if (target.companies) { setWeekStart(target.companies); return onNav(home.tab, home.view); }
@@ -377,7 +380,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
       { id: 'todos', label: 'To-dos', value: `${liveTodos.filter(t => todoStatus(t) === 'done').length} / ${liveTodos.length}`, title: 'Open Tasks', onOpen: openAllTasks },
       { id: 'commitments', label: 'Commitments', value: String(myCommitments.filter(c => c.status !== 'dropped').length), title: 'Open the weekly report', onOpen: () => go('view:report') },
       { id: 'partners', label: 'Partners', value: `${myPartners.length} · ${myPartners.filter(p => p.hot).length} hot`, title: 'Open Pipeline › Partner workflow', onOpen: () => go('view:partners') },
-      { id: 'sequenced', label: 'Companies sequenced', value: owner === 'team' ? partsInline(ownerParts) : String(myCompanies.length), title: 'Open Pipeline › Sequenced', onOpen: () => go('view:companies') },
+      { id: 'sequenced', label: 'Companies sequenced', value: owner === 'team' ? partsInline(ownerParts) : String(myCompanies.length), title: 'Open Dashboard › Sequenced', onOpen: () => go('view:companies') },
     ],
     onReport: () => go('view:report'),
   };
@@ -387,68 +390,63 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
       openTasks={heroTasks} onOpenTasks={key => openTasks({ link: { type: 'metric', id: key }, filter: drawerFilter })} />
   );
 
-  // Design C - what the page header carries per screen.
-  const showPeople = section === 'today' || ['partners', 'sequenced', 'weekly', 'scorecard'].includes(view);
-  const showWeek = section === 'today' || ['sequenced', 'weekly', 'scorecard'].includes(view);
-  const subViews = SUB_VIEWS[section];
-  const title = section !== 'today' ? TITLES[section] : liveWeek ? dayTitle(today, compact) : weekOf(weekStart);
+  // Design C - what the frame row carries per screen (sales-ia-v2 N2: one
+  // fixed-height row, portaled into SalesAnalyticsTab's #sales-frame-tools).
+  const showPeople = section === 'actions' || ['partners', 'sequenced', 'weekly', 'scorecard'].includes(view);
+  const showWeek = section === 'actions' || ['sequenced', 'weekly', 'scorecard'].includes(view);
+  const title = liveWeek ? dayTitle(today, compact) : weekOf(weekStart);
+  const exportRect = exportOpen && document.getElementById('sales-export-btn')?.getBoundingClientRect();
+  const tools = (
+    <>
+      {section === 'actions' && <h1 style={{ margin: '0 auto 0 0', ...SA_TYPE.pageTitle, fontSize: 22, color: SA.text, whiteSpace: 'nowrap' }}>{title}</h1>}
+      {me && !canEdit && (
+        <Chip title="You have view access to this workspace, so Sales & Marketing is read-only for you." style={{ height: 26, color: SA.soft, flex: 'none' }}>
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" /><circle cx="8" cy="8" r="2" /></svg>
+          View only
+        </Chip>
+      )}
+      {showPeople && <div style={{ flex: 'none' }}><Segmented label="Filter by person" items={people} value={ownerSlug} onChange={slug => { setOwnerSlug(slug); setCompanyOwnerFocus(null); }} /></div>}
+      {showWeek && <>
+        <Btn aria-label="Previous week" onClick={() => setWeekStart(w => addDays(w, -7))}>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg>
+        </Btn>
+        <div style={{ height: 36, padding: '0 12px', border: `1px solid ${SA.border}`, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10, background: SA.surface, flex: 'none' }}>
+          <span style={{ fontWeight: 600, whiteSpace: 'nowrap', ...numStyle }}>{weekLabel(weekStart)}</span>
+          <Chip style={{ height: 22 }}>{monthName(monthOf(weekStart))}</Chip>
+        </div>
+        <Btn aria-label="Next week" onClick={() => setWeekStart(w => addDays(w, 7))}>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
+        </Btn>
+        {weekStart !== thisWeek && <Btn onClick={() => setWeekStart(thisWeek)}>This week</Btn>}
+      </>}
+      {section === 'actions' && canEdit && planOwner && <Btn primary onClick={() => setPlanOpen(true)}>Plan this week</Btn>}
+      {section === 'dashboard' && <Btn primary id="sales-export-btn" aria-haspopup="menu" aria-expanded={exportOpen} onClick={() => setExportOpen(o => !o)}>Export</Btn>}
+    </>
+  );
+  // The tools row scrolls sideways when narrow, so the Export menu is drawn
+  // over the page (fixed) instead of inside it, where it would be clipped.
+  const exportMenu = exportOpen && exportRect && createPortal(
+    <div role="menu" className="no-print" style={{ position: 'fixed', right: window.innerWidth - exportRect.right, top: exportRect.bottom + 4, zIndex: 4010, minWidth: 220, background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: 10, padding: 6, display: 'flex', flexDirection: 'column' }}>
+      <button role="menuitem" type="button" style={{ all: 'unset', cursor: 'pointer', padding: '10px 12px', borderRadius: 8, color: SA.text }}
+        onClick={() => { setExportOpen(false); onNav('dashboard', 'weekly'); setTimeout(() => window.print(), 400); }}>Weekly report PDF</button>
+      {exports.map(x => (
+        <button key={x.id} role="menuitem" type="button" disabled={x.disabled} title={x.disabled ? 'Needs the Stage 4 database update' : undefined}
+          style={{ all: 'unset', cursor: x.disabled ? 'default' : 'pointer', padding: '10px 12px', borderRadius: 8, color: x.disabled ? SA.faint : SA.text }}
+          onClick={() => { if (x.disabled) return; setExportOpen(false); x.run(); }}>{x.label}</button>
+      ))}
+    </div>,
+    document.getElementById(SA_THEME_ROOT_ID) || document.body,
+  );
 
   return (
     <div data-sales-section={section} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={labelStyle}>HomeLover · {section === 'today' ? 'Today' : 'Command Center'}</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <h1 style={{ margin: 0, ...SA_TYPE.pageTitle, fontSize: compact ? 28 : 34, color: SA.text }}>{title}</h1>
-            {section === 'today' && me && !canEdit && (
-              <Chip title="You have view access to this workspace, so Goals & Sales is read-only for you." style={{ height: 26, color: SA.soft }}>
-                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8Z" /><circle cx="8" cy="8" r="2" /></svg>
-                View only
-              </Chip>
-            )}
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', minWidth: 0 }}>
-          {subViews && <Segmented label={`${TITLES[section]} views`} items={subViews.map(([id, label]) => ({ id, label }))} value={view} onChange={v => onNav(section, v)} />}
-          {showPeople && <Segmented label="Filter by person" items={people} value={ownerSlug} onChange={slug => { setOwnerSlug(slug); setCompanyOwnerFocus(null); }} />}
-          {showWeek && <>
-            <Btn aria-label="Previous week" onClick={() => setWeekStart(w => addDays(w, -7))}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg>
-            </Btn>
-            <div style={{ height: 44, padding: '0 16px', border: `1px solid ${SA.border}`, borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10, background: SA.surface }}>
-              <span style={{ fontWeight: 600, ...numStyle }}>{weekLabel(weekStart)}</span>
-              <Chip style={{ height: 22 }}>{monthName(monthOf(weekStart))}</Chip>
-            </div>
-            <Btn aria-label="Next week" onClick={() => setWeekStart(w => addDays(w, 7))}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
-            </Btn>
-            {weekStart !== thisWeek && <Btn onClick={() => setWeekStart(thisWeek)}>This week</Btn>}
-          </>}
-          {section === 'today' && canEdit && planOwner && <Btn primary onClick={() => setPlanOpen(true)}>Plan this week</Btn>}
-          {section === 'reports' && (
-            <div style={{ position: 'relative' }} className="no-print">
-              <Btn primary aria-haspopup="menu" aria-expanded={exportOpen} onClick={() => setExportOpen(o => !o)}>Export</Btn>
-              {exportOpen && (
-                <div role="menu" style={{ position: 'absolute', right: 0, top: 48, zIndex: 20, minWidth: 220, background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: 10, padding: 6, display: 'flex', flexDirection: 'column' }}>
-                  <button role="menuitem" type="button" style={{ all: 'unset', cursor: 'pointer', padding: '10px 12px', borderRadius: 8, color: SA.text }}
-                    onClick={() => { setExportOpen(false); onNav('reports', 'weekly'); setTimeout(() => window.print(), 400); }}>Weekly report PDF</button>
-                  {exports.map(x => (
-                    <button key={x.id} role="menuitem" type="button" disabled={x.disabled} title={x.disabled ? 'Needs the Stage 4 database update' : undefined}
-                      style={{ all: 'unset', cursor: x.disabled ? 'default' : 'pointer', padding: '10px 12px', borderRadius: 8, color: x.disabled ? SA.faint : SA.text }}
-                      onClick={() => { if (x.disabled) return; setExportOpen(false); x.run(); }}>{x.label}</button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </header>
+      {toolsSlot && createPortal(tools, toolsSlot)}
+      {exportMenu}
 
       <main style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
         {errors.members && <ErrorNote message={errors.members.message} />}
-        {me && !canEdit && section !== 'today' && <div style={{ ...subStyle, fontSize: 13 }}>You have view access to this workspace, so Goals &amp; Sales is read-only for you.</div>}
 
-        {section === 'today' && me && (canEdit ? <>
+        {section === 'actions' && me && (canEdit ? <>
           <PlanNudge week={weekStart} ownerId={planOwner} ownerName={lookup(planOwner).first} plans={plans} onPlan={() => setPlanOpen(true)} />
           {(errors.todos || errors.flags) && <ErrorNote message={(errors.todos || errors.flags).message} />}
           <TodayView hero={hero} compact={compact}
@@ -459,12 +457,12 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
         </> : (
           <TodayViewer businessId={businessId} hero={hero} compact={compact} weekStart={weekStart} members={members} lookup={lookup} links={links} today={today} partners={partners} commitments={commitments}
             team={teamToday(members, groupsFor, today)} top={topOfList(groupsFor('team'), today)} glance={glance}
-            onOpenReport={w => { setWeekStart(w); onNav('reports', 'weekly'); }}
-            onDownload={w => { setWeekStart(w); onNav('reports', 'weekly'); setTimeout(() => window.print(), 400); }}
+            onOpenReport={w => { setWeekStart(w); onNav('dashboard', 'weekly'); }}
+            onDownload={w => { setWeekStart(w); onNav('dashboard', 'weekly'); setTimeout(() => window.print(), 400); }}
             onPipeline={() => go('view:pipeline')} />
         ))}
 
-        {section === 'reports' && view === 'weekly' && (
+        {section === 'dashboard' && view === 'weekly' && (
           <ReportView weekStart={weekStart} report={reportData?.report} reportError={errors.report} sections={reportData?.sections} infra={reportData?.infra}
             commitments={reportCommitments} commitmentsError={errors.commitments} kpiRows={kpiRows} kpiError={errors.kpi} autoChips={autoChips} partnerBlock={partnerBlock}
             canEdit={canEdit} lookup={lookup} members={members} defaultOwner={owner === 'team' ? me?.profile?.id : owner} onOpen={go} tasksFor={tasksFor} liveWeek={liveWeek}
@@ -485,15 +483,13 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
             }} />
         )}
 
-        {section === 'reports' && view === 'scorecard' && (
+        {section === 'dashboard' && view === 'scorecard' && (
           <ScorecardTable data={scorecard} error={errors.scorecard} weekStart={weekStart} ownerName={owner === 'team' ? null : whoLabel} canEdit={canEdit} onOpen={go}
             missingHeadcount={missingHeadcount} onFillHeadcount={openMissing}
             onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await loadScorecard(); setHeroKey(k => k + 1); }} />
         )}
 
-        {section === 'reports' && view === 'analytics' && analytics}
-
-        {section === 'reports' && view === 'visitors' && <VisitorReport businessId={businessId} canEdit={canEdit} />}
+        {section === 'dashboard' && view === 'analytics' && analytics}
 
         {section === 'pipeline' && view === 'partners' && (
           <PartnersView businessId={businessId} partners={myPartners} lookup={lookup} members={members} canEdit={canEdit} error={errors.partners}
@@ -535,7 +531,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
             onCreate={async body => { const g = await goalsApi.createPartner(businessId, { ...body, owner_user_id: owner === 'team' ? null : owner }); setPartners(ps => [...ps, g]); }} />
         )}
 
-        {section === 'pipeline' && view === 'sequenced' && <>
+        {section === 'dashboard' && view === 'sequenced' && <>
           {peopleSummary}
           <CompaniesView weekStart={weekStart} companies={myCompanies} cadences={myCadences} lookup={lookup} members={members} owner={owner} whoLabel={whoLabel}
             canEdit={canEdit} error={errors.companies || errors.cadences}
@@ -545,7 +541,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
             onCreateCadence={async body => { const c = await goalsApi.createCadence(businessId, body); setCadences(cs => [...cs, c]); }}
             onDeleteCadence={async cadenceId => { await goalsApi.deleteCadence(businessId, cadenceId); setCadences(cs => cs.filter(c => c.id !== cadenceId)); }} />
         </>}
-        {section === 'pipeline' && view === 'board' && (
+        {section === 'pipeline' && view === 'companies' && (
           <PipelineView businessId={businessId} canEdit={canEdit}
             onOpenPartner={(id, name) => go({ partners: { ids: [id], open: id, label: name } })} onOpenCompanies={w => { setOwnerSlug('team'); go({ companies: w }); }} />
         )}

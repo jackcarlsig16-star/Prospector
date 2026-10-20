@@ -77,11 +77,13 @@ async function newPage(u, width, height) {
 async function navSales(page, compact) {
   const menu = async () => { if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); } };
   await menu(); await page.getByLabel('Workspace').selectOption({ label: WS_NAME }); await page.waitForTimeout(2500);
-  await menu(); await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).dispatchEvent('click'); await page.waitForTimeout(4000);
+  await menu(); await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(4000);
 }
 async function openVisitors(page) {
-  await page.locator('#workspace-header-tabs').getByRole('button', { name: /^Reports/ }).first().click(); await page.waitForTimeout(1500);
-  await page.getByRole('group', { name: 'Reports views' }).getByRole('button', { name: 'Website visitors' }).click();
+  // sales-ia-v2: the report lives under Pipeline > Companies > Website visitors > Visitor report.
+  await page.locator('#workspace-header-tabs').getByRole('button', { name: /^Pipeline/ }).first().click(); await page.waitForTimeout(1500);
+  await page.getByRole('group', { name: 'Channel' }).getByRole('button', { name: /^Website visitors/ }).click(); await page.waitForTimeout(800);
+  await page.getByRole('button', { name: 'Visitor report' }).click();
   await page.locator('[data-visitor-report]').waitFor(); await page.waitForTimeout(800);
 }
 const noSideScroll = page => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
@@ -200,7 +202,7 @@ function scan(rows, names) {
       ok(`${width}: ${shown} P1-P3 rows shown, P4 hidden by default`, (await page.locator('[data-visit-row]').count()) === shown && (await page.locator('[data-visit-row="P4"]').count()) === 0);
       if (!compact) ok('1440: table header "Unique visitors (Apollo)"', (await page.getByRole('columnheader', { name: 'Unique visitors (Apollo)' }).count()) === 1);
       if (compact) ok('390: list rows say "unique visitors (Apollo)"', shown === 0 || (await page.getByText(/unique visitors \(Apollo\)/).count()) >= 1);
-      ok(`${width}: Member sees Not a fit`, shown === 0 || (await page.getByRole('button', { name: 'Not a fit' }).count()) >= 1);
+      ok(`${width}: no standalone Not a fit in the report (sales-ia-v2: the Pipeline priority dropdown)`, (await page.locator('[data-visitor-report]').getByRole('button', { name: 'Not a fit' }).count()) === 0);
       await shot(page, `sig5-${width}-visitors`);
       await page.getByRole('button', { name: 'Skip list' }).click(); await page.waitForTimeout(800);
       await shot(page, `sig5-${width}-skiplist`);
@@ -230,8 +232,8 @@ function scan(rows, names) {
 
     const { page: rp, errs: rerrs } = await newPage(M, 1440, 900);
     await navSales(rp, false);
-    await rp.locator('#workspace-header-tabs').getByRole('button', { name: /^Reports/ }).first().click(); await rp.waitForTimeout(1200);
-    await rp.getByRole('group', { name: 'Reports views' }).getByRole('button', { name: 'Weekly report' }).click(); await rp.waitForTimeout(2500);
+    await rp.locator('#workspace-header-tabs').getByRole('button', { name: /^Dashboard/ }).first().click(); await rp.waitForTimeout(1200);
+    await rp.getByRole('group', { name: 'Dashboard views' }).getByRole('button', { name: 'Weekly report' }).click(); await rp.waitForTimeout(2500);
     await rp.pdf({ path: `${OUT}/sig5-report.pdf`, landscape: true });
     ok('Weekly report PDF still prints', fs.statSync(`${OUT}/sig5-report.pdf`).size > 1000);
     ok('weekly page: 0 console errors', !rerrs.length, rerrs.join(' | '));

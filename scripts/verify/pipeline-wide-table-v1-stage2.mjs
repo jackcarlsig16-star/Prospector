@@ -84,7 +84,7 @@ try {
     if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
     await page.getByLabel('Workspace').selectOption({ label: NAME }); await page.waitForTimeout(1500);
     if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
-    await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2000);
+    await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2000);
     await page.locator('#workspace-header-tabs').getByRole('button', { name: /^Pipeline/ }).first().click(); await page.waitForTimeout(2200);
     await page.locator('tr[data-row], li[data-row]').first().waitFor({ timeout: 15000 });
     await page.waitForTimeout(600);
@@ -157,7 +157,7 @@ try {
     await rowOf('Partner').locator('td.ui-table__sticky button').click(); await page.waitForTimeout(1500);
     ok(`partner click → Pipeline › Partner workflow (${partnerName.slice(0, 20)})`, (await state(page)) === 'pipeline/partners', await state(page));
     await page.locator('#workspace-header-tabs').getByRole('button', { name: /^Pipeline/ }).first().click(); await page.waitForTimeout(800);
-    await page.locator('.ui-seg').getByRole('button', { name: 'Board', exact: true }).first().click(); await page.waitForTimeout(1800);
+    await page.locator('.ui-seg').getByRole('button', { name: 'Companies', exact: true }).first().click(); await page.waitForTimeout(1800);
     const empRow = rowOf('Employer');
     const empName = await empRow.locator('td.ui-table__sticky').textContent();
     await empRow.locator('td.ui-table__sticky button').click(); await page.waitForTimeout(1200);
@@ -181,7 +181,7 @@ try {
       ok('Apollo click → Pipeline › Sequenced', (await state(page)) === 'pipeline/sequenced', await state(page));
     } else console.log('SKIP  Apollo click - no Apollo-only rows');
     // Print path.
-    await page.locator('#workspace-header-tabs').getByRole('button', { name: /^Reports/ }).first().click(); await page.waitForTimeout(1500);
+    await page.locator('#workspace-header-tabs').getByRole('button', { name: /^Dashboard/ }).first().click(); await page.waitForTimeout(1500);
     await page.locator('.ui-seg').getByRole('button', { name: 'Scorecard', exact: true }).first().click(); await page.waitForTimeout(1000);
     await page.getByRole('button', { name: 'Export', exact: true }).click(); await page.waitForTimeout(300);
     await page.getByRole('menuitem', { name: 'Weekly report PDF' }).click(); await page.waitForTimeout(1200);

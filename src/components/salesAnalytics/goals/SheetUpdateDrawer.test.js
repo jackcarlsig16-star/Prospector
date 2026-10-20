@@ -68,6 +68,8 @@ test('a refused file shows the server message; a failed row is listed after appl
 
 test('Pipeline view: Update from sheet is Member+ only and reloads the board after apply', async () => {
   goalsApi.pipelineBoard.mockResolvedValue([]);
+  // sales-ia-v2 N2: the button portals into the frame row's tools slot.
+  const slot = document.createElement('div'); slot.id = 'sales-frame-tools'; document.body.appendChild(slot);
   const { unmount } = render(<PipelineView businessId="b1" canEdit={false} onOpenPartner={jest.fn()} onOpenCompanies={jest.fn()} />);
   await waitFor(() => expect(goalsApi.pipelineBoard).toHaveBeenCalled());
   expect(screen.queryByRole('button', { name: 'Update from sheet' })).toBeNull();

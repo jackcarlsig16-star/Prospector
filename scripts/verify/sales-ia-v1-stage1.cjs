@@ -75,7 +75,7 @@ async function openSales(page) {
   if (page.compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
   await page.getByLabel('Workspace').selectOption({ label: NAME }); await page.waitForTimeout(2000);
   if (page.compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
-  await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
+  await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
 }
 const tabBtn = (page, label) => page.locator('#workspace-header-tabs, #sales-analytics-root').getByRole('button', { name: new RegExp(`^${label}`) }).first();
 async function tab(page, label) { await tabBtn(page, label).click(); await page.waitForTimeout(1800); }
@@ -83,8 +83,9 @@ async function sub(page, label) { await page.locator('.ui-seg').getByRole('butto
 const state = page => page.evaluate(() => { const u = new URL(location.href); return `${u.searchParams.get('tab')}/${u.searchParams.get('view')}`; });
 const noScroll = page => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 const printAreas = page => page.locator('#sales-analytics-print-area').count();
-const VIEWS = [['Today', null, 'today/null'], ['Pipeline', 'Board', 'pipeline/board'], ['Pipeline', 'Partner workflow', 'pipeline/partners'], ['Pipeline', 'Sequenced', 'pipeline/sequenced'],
-  ['Huddle', null, 'huddle/null'], ['Reports', 'Weekly report', 'reports/weekly'], ['Reports', 'Scorecard', 'reports/scorecard'], ['Reports', 'Analytics', 'reports/analytics']];
+// sales-ia-v2 N1: the tabs these views moved to.
+const VIEWS = [['Actions', null, 'actions/null'], ['Pipeline', 'Companies', 'pipeline/companies'], ['Pipeline', 'Partner workflow', 'pipeline/partners'], ['Dashboard', 'Sequenced', 'dashboard/sequenced'],
+  ['Pipeline', 'People', 'pipeline/people'], ['Dashboard', 'Weekly report', 'dashboard/weekly'], ['Dashboard', 'Scorecard', 'dashboard/scorecard'], ['Dashboard', 'Analytics', 'dashboard/analytics']];
 async function goView(page, [t, s]) { await tab(page, t); if (s) await sub(page, s); }
 
 async function checks(file) {

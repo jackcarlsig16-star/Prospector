@@ -61,7 +61,7 @@ async function newPage(u, width, height) {
   const compact = width < 900;
   const menu = async () => { if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); } };
   await menu(); await page.getByLabel('Workspace').selectOption({ label: WS_NAME }); await page.waitForTimeout(2500);
-  await menu(); await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
+  await menu(); await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
   await page.locator('#workspace-header-tabs').getByRole('button', { name: /^Pipeline/ }).first().click(); await page.waitForTimeout(2200);
   await page.locator('tr[data-row], li[data-row]').first().waitFor({ timeout: 15000 });
   await page.waitForTimeout(600);
@@ -147,7 +147,7 @@ const rowCells = (page, name) => page.evaluate(n => { const b = [...document.que
       await aonPanel.getByRole('button', { name: 'Open full card →' }).click(); await page.waitForTimeout(1500);
       ok('Open full card -> Pipeline › Partner workflow (the old path)', (await state(page)) === 'pipeline/partners', await state(page));
       ok('Export joint sheet + Update from sheet still on the Board', true);
-      await page.locator('#workspace-header-tabs').getByRole('button', { name: /^Reports/ }).first().click(); await page.waitForTimeout(1500);
+      await page.locator('#workspace-header-tabs').getByRole('button', { name: /^Dashboard/ }).first().click(); await page.waitForTimeout(1500);
       await page.locator('.ui-seg').getByRole('button', { name: 'Scorecard', exact: true }).first().click(); await page.waitForTimeout(1000);
       await page.getByRole('button', { name: 'Export', exact: true }).click(); await page.waitForTimeout(300);
       await page.getByRole('menuitem', { name: 'Weekly report PDF' }).click(); await page.waitForTimeout(1200);

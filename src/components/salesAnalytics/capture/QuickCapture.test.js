@@ -60,7 +60,7 @@ test('mode keys switch the mode only while focus is outside a text field', async
   expect(pressed('Task')).toBe('true');
 });
 
-test('a Viewer never sees the "+"; neither does a workspace without Goals & Sales', async () => {
+test('a Viewer never sees the "+"; neither does a workspace without Sales & Marketing', async () => {
   fetchMe.mockResolvedValue(VIEWER);
   setup();
   await waitFor(() => expect(fetchMe).toHaveBeenCalled());

@@ -58,7 +58,7 @@ async function navPartners(page, compact) {
     if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
     await page.getByLabel('Workspace').selectOption({ label: bizLabel }); await page.waitForTimeout(1500);
     if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
-    await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).click(); await page.waitForTimeout(3000);
+    await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).click(); await page.waitForTimeout(3000);
     const views = page.getByRole('button', { name: /^Partners/ }).first();
     if (await views.count()) { await views.click(); await page.waitForTimeout(2500); }
     await page.locator('section[aria-labelledby="h-part"]').waitFor();

@@ -1,8 +1,8 @@
 // shell-facelift-v1 Stage 2 - the workspace header row, before and after. TEMP data only: 1 businesses row (goals_sales on, tagline + website), 2 temp users (owner + viewer), 1 accounts row - all deleted by teardown. 0 AI / 0 Apollo. HomeLover is never touched (its counts come from the Stage 1 script's hl mode). ~40s per mode, cap 4 min each.
 // Modes (fixtures persist between runs so before and after see the same names and data):
 //   setup <state.json>            create fixtures, write ids + passwords + a fixed clock + temp-table counts
-//   shoot <state.json> <outdir>   serve build/ via server.js, screenshot: Command Center / Goals & Sales Overview / Business Intel & Strategy at 1440 dark, Goals & Sales Overview light, Command Center + Goals & Sales at 390, viewer Command Center; 0 console errors
-//   click <state.json>            every control still works: all 7 sidebar views, the 3 Goals & Sales tabs, Scout (focus, palette, business pills, Escape), avatar -> Social Links, emoji picker, website ✎ -> Website URL (on Business Intel & Strategy); viewer sees the page
+//   shoot <state.json> <outdir>   serve build/ via server.js, screenshot: Command Center / Sales & Marketing Overview / Business Intel & Strategy at 1440 dark, Sales & Marketing Overview light, Command Center + Sales & Marketing at 390, viewer Command Center; 0 console errors
+//   click <state.json>            every control still works: all 7 sidebar views, the 3 Sales & Marketing tabs, Scout (focus, palette, business pills, Escape), avatar -> Social Links, emoji picker, website ✎ -> Website URL (on Business Intel & Strategy); viewer sees the page
 //   after <state.json>            Stage 2 structure: one 56px row with avatar · name · tabs · Scout; sticky after scrolling; identity line (20px) only on Business Intel & Strategy; Scout 240px idle and wider engaged; 390 wraps, not sticky, no sideways scroll
 //   teardown <state.json>         delete everything setup made, print table counts before/after
 const ROOT = require('path').resolve(__dirname, '../..');
@@ -16,7 +16,7 @@ const PORT = 3964;
 const REF = new URL(process.env.SUPABASE_URL).host.split('.')[0];
 const WATCH = ['businesses', 'business_members', 'accounts', 'profiles', 'auth_events'];
 const NAME = 'ZZ Facelift Header';
-const VIEWS = ['Command Center', 'Goals & Sales', 'Accounts', 'Projects', 'Business Intel & Strategy', 'Ideas', 'Tools'];
+const VIEWS = ['Command Center', 'Sales & Marketing', 'Accounts', 'Projects', 'Business Intel & Strategy', 'Ideas', 'Tools'];
 const [mode, a1, a2] = process.argv.slice(2);
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const counts = async () => { const o = {}; for (const t of WATCH) o[t] = (await svc.from(t).select('*', { count: 'exact', head: true })).count; return o; };
@@ -95,18 +95,18 @@ async function shoot(file, out) {
     const owner = await session(st.users.Owner);
     { const { page, errs } = await newPage(st, owner);
       await openWorkspace(page); await shot(page, out, 'command-center-1440-dark'); await noScroll(page, 'command-center-1440');
-      await nav(page, 'Goals & Sales'); await salesTab(page, 'Reports'); await salesTab(page, 'Analytics'); await page.locator('[data-strip-tile]').first().waitFor(); await page.waitForTimeout(2000);
+      await nav(page, 'Sales & Marketing'); await salesTab(page, 'Dashboard'); await salesTab(page, 'Analytics'); await page.locator('[data-strip-tile]').first().waitFor(); await page.waitForTimeout(2000);
       await shot(page, out, 'sales-overview-1440-dark'); await noScroll(page, 'sales-overview-1440');
       await nav(page, 'Business Intel & Strategy'); await shot(page, out, 'intel-1440-dark'); await noScroll(page, 'intel-1440');
       allErrs.push(...errs.map(e => `owner 1440: ${e}`)); }
     { const { page, errs } = await newPage(st, owner, { light: true });
       await openWorkspace(page); ok('light mode class on body', await page.evaluate(() => document.body.classList.contains('mode-straight-shooter')));
-      await nav(page, 'Goals & Sales'); await salesTab(page, 'Reports'); await salesTab(page, 'Analytics'); await page.locator('[data-strip-tile]').first().waitFor(); await page.waitForTimeout(2000);
+      await nav(page, 'Sales & Marketing'); await salesTab(page, 'Dashboard'); await salesTab(page, 'Analytics'); await page.locator('[data-strip-tile]').first().waitFor(); await page.waitForTimeout(2000);
       await shot(page, out, 'sales-overview-1440-light');
       allErrs.push(...errs.map(e => `owner light: ${e}`)); }
     { const { page, errs } = await newPage(st, owner, { width: 390, height: 844 });
       await openWorkspace(page); await shot(page, out, 'command-center-390-dark'); await noScroll(page, 'command-center-390');
-      await nav(page, 'Goals & Sales'); await shot(page, out, 'sales-390-dark'); await noScroll(page, 'sales-390');
+      await nav(page, 'Sales & Marketing'); await shot(page, out, 'sales-390-dark'); await noScroll(page, 'sales-390');
       allErrs.push(...errs.map(e => `owner 390: ${e}`)); }
     { const { page, errs } = await newPage(st, await session(st.users.Viewer));
       await openWorkspace(page); await shot(page, out, 'command-center-1440-viewer');
@@ -130,11 +130,11 @@ async function click(file) {
       prev = now;
     }
     await nav(page, 'Accounts'); ok('owner: Accounts lists the account', (await page.getByText('Acme Test Co').count()) >= 1);
-    await nav(page, 'Goals & Sales');
+    await nav(page, 'Sales & Marketing');
     const goals = await mainText(page);
-    await salesTab(page, 'Reports'); await salesTab(page, 'Analytics'); ok('owner: Reports › Analytics', (await page.locator('[data-strip-tile]').count()) >= 1);
-    await salesTab(page, 'Huddle'); const huddle = await mainText(page); ok('owner: Huddle tab', huddle !== goals && (await page.locator('[data-strip-tile]').count()) === 0);
-    await salesTab(page, 'Today'); ok('owner: Today tab again', (await mainText(page)) !== huddle);
+    await salesTab(page, 'Dashboard'); await salesTab(page, 'Analytics'); ok('owner: Reports › Analytics', (await page.locator('[data-strip-tile]').count()) >= 1);
+    await salesTab(page, 'Pipeline'); await salesTab(page, 'People'); const huddle = await mainText(page); ok('owner: Pipeline › People', huddle !== goals && (await page.locator('[data-strip-tile]').count()) === 0);
+    await salesTab(page, 'Actions'); ok('owner: Actions tab', (await mainText(page)) !== huddle);
     const inp = scoutInput(page);
     await inp.click(); await page.waitForTimeout(500);
     ok('owner: Scout focus opens the palette', (await page.getByText('Suggested', { exact: true }).count()) === 1);
@@ -163,8 +163,8 @@ async function click(file) {
     const vw = await newPage(st, await session(st.users.Viewer));
     await openWorkspace(vw.page);
     ok('viewer: workspace name in the page', (await vw.page.locator('#main-content').getByText(NAME).count()) >= 1);
-    await nav(vw.page, 'Goals & Sales');
-    ok('viewer: Goals & Sales tabs visible', (await vw.page.locator('#main-content').getByRole('button', { name: 'Huddle', exact: true }).count()) === 1);
+    await nav(vw.page, 'Sales & Marketing');
+    ok('viewer: Sales & Marketing tabs visible', (await vw.page.locator('#main-content').getByRole('button', { name: 'Actions', exact: true }).count()) === 1);
     const vwSales = await mainText(vw.page); await nav(vw.page, 'Accounts'); ok('viewer: Accounts view switches (list access is per member, so the owner\'s account may be hidden)', (await mainText(vw.page)) !== vwSales);
     ok('0 console errors', errs.length + vw.errs.length === 0, [...errs, ...vw.errs].slice(0, 5).join(' | '));
   } finally { await browser.close(); srv.kill(); }
@@ -187,7 +187,7 @@ async function after(file) {
     ok('header bottom corners = KIT_RADIUS.inner (10px)', hr[0] === '10px' && hr[1] === '10px', hr.join(' / '));
     ok('row: avatar · name · emoji · Scout', (await h.getByTitle('Edit social links').count()) === 1 && (await h.getByRole('heading', { level: 1, name: NAME }).count()) === 1 && (await h.getByTitle(/emoji/i).count()) === 1 && (await h.getByLabel('Scout').count()) === 1);
     ok('no identity line on Command Center', (await page.locator('[data-workspace-identity]').count()) === 0 && (await page.locator('#main-content').getByText('A tagline long enough to read').count()) === 0);
-    ok('no tabs in the row outside Goals & Sales', (await page.locator('#workspace-header-tabs button').count()) === 0);
+    ok('no tabs in the row outside Sales & Marketing', (await page.locator('#workspace-header-tabs button').count()) === 0);
     ok('no old territory Scout bar above the page', (await page.locator('#main-content').getByText('Full territory').count()) === 0 && (await page.locator('#main-content').getByText('deals in scope').count()) === 0);
     const idle = await h.getByLabel('Scout').evaluate(e => e.getBoundingClientRect().width);
     ok('Scout idle width <= 240', idle <= 240, `${idle}px`);
@@ -200,9 +200,9 @@ async function after(file) {
     ok('palette starts below the pill strip', palTop >= pillBottom, `${Math.round(palTop)} >= ${Math.round(pillBottom)}`);
     await page.keyboard.press('Escape'); await page.mouse.click(700, 850); await page.waitForTimeout(500);
     ok('Scout collapses again', (await h.getByLabel('Scout').evaluate(e => e.getBoundingClientRect().width)) <= 240);
-    await nav(page, 'Goals & Sales');
-    ok('Goals & Sales: 4 tabs inside the row', (await page.locator('#workspace-header-tabs button').count()) === 4 && (await h.locator('[data-workspace-row]').evaluate(e => Math.round(e.getBoundingClientRect().height))) === 56);
-    await salesTab(page, 'Reports'); await salesTab(page, 'Analytics'); await page.locator('[data-strip-tile]').first().waitFor(); await page.waitForTimeout(1500);
+    await nav(page, 'Sales & Marketing');
+    ok('Sales & Marketing: 4 tabs inside the row', (await page.locator('#workspace-header-tabs button').count()) === 4 && (await h.locator('[data-workspace-row]').evaluate(e => Math.round(e.getBoundingClientRect().height))) === 56);
+    await salesTab(page, 'Dashboard'); await salesTab(page, 'Analytics'); await page.locator('[data-strip-tile]').first().waitFor(); await page.waitForTimeout(1500);
     await page.evaluate(() => window.scrollTo(0, 900)); await page.waitForTimeout(400);
     const stuck = await page.evaluate(() => { const r = document.querySelector('[data-workspace-header]').getBoundingClientRect(); return { scrolled: window.scrollY, top: Math.round(r.top), visible: r.bottom > 0 }; });
     ok('row is sticky after scrolling the page', stuck.scrolled > 500 && stuck.top <= 1 && stuck.visible, JSON.stringify(stuck));

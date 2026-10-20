@@ -63,7 +63,7 @@ async function newPage(u, width, height) {
   const compact = width < 900;
   const menu = async () => { if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); } };
   await menu(); await page.getByLabel('Workspace').selectOption({ label: WS_NAME }); await page.waitForTimeout(2500);
-  await menu(); await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
+  await menu(); await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
   await page.locator('#workspace-header-tabs').getByRole('button', { name: /^Pipeline/ }).first().click(); await page.waitForTimeout(1800);
   await page.locator('.ui-seg').getByRole('button', { name: 'Partner workflow', exact: true }).first().click().catch(() => {}); await page.waitForTimeout(1800);
   await page.locator('[data-partner-id]').first().waitFor({ timeout: 15000 });

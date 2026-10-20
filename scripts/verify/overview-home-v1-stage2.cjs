@@ -45,8 +45,8 @@ async function navOverview(page) {
   if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
   await page.getByLabel('Workspace').selectOption({ label: 'HomeLover' }); await page.waitForTimeout(1500);
   if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
-  await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).click(); await page.waitForTimeout(2500);
-  await page.getByRole('button', { name: 'Reports', exact: true }).click(); await page.waitForTimeout(600); await page.getByRole('button', { name: 'Analytics', exact: true }).click();
+  await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).click(); await page.waitForTimeout(2500);
+  await page.getByRole('button', { name: 'Dashboard', exact: true }).click(); await page.waitForTimeout(600); await page.getByRole('button', { name: 'Analytics', exact: true }).click();
   await page.locator('[data-strip-tile]').first().waitFor({ timeout: 25000 }); await page.waitForTimeout(3000);
 }
 const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
@@ -104,8 +104,8 @@ const ACTION = { R1: 'View bounces', R2: 'Open mailbox', R3: 'View week', R4: 'O
     } else ok('A4 R1 not fired on HomeLover today - bounce list covered by the unit test', true);
     if (fired.some(i => i.id === 'R4')) {
       await P.locator('[data-insight="R4"] [data-action]').first().click(); await P.waitForTimeout(1500);
-      ok('A5 R4 Open Huddle switches to the Huddle', (await P.locator('[data-strip-tile]').count()) === 0 && (await P.getByRole('button', { name: 'Huddle' }).count()) >= 1);
-      await P.getByRole('button', { name: 'Reports', exact: true }).click(); await P.waitForTimeout(600); await P.getByRole('button', { name: 'Analytics', exact: true }).click(); await P.locator('[data-strip-tile]').first().waitFor({ timeout: 25000 }); await P.waitForTimeout(2500);
+      ok('A5 R4 Open People switches to Pipeline › People', (await P.locator('[data-strip-tile]').count()) === 0 && (await P.getByRole('button', { name: 'People' }).count()) >= 1);
+      await P.getByRole('button', { name: 'Dashboard', exact: true }).click(); await P.waitForTimeout(600); await P.getByRole('button', { name: 'Analytics', exact: true }).click(); await P.locator('[data-strip-tile]').first().waitFor({ timeout: 25000 }); await P.waitForTimeout(2500);
     } else ok('A5 R4 not fired today - Open Huddle covered by the unit test', true);
 
     // B: mailbox table

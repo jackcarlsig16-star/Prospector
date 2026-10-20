@@ -240,6 +240,6 @@ test('Board: the latest visit lands on the matched partner and employer rows', (
       { matched_type: 'opportunity', matched_id: 'o1', last_visit: '2026-10-19', visits_7d: 1, pulled_on: '2026-10-20' },
     ],
   });
-  assert.deepEqual(rows.find(r => r.id === 'p1').visited, { last_visit: '2026-10-19', visits_7d: 3, pulled_on: '2026-10-20' });
+  assert.deepEqual(rows.find(r => r.id === 'p1').visited, { last_visit: '2026-10-19', visits_7d: 3, pulled_on: '2026-10-20', priority: null });
   assert.equal(rows.find(r => r.id === 'o1').visited.visits_7d, 1);
 });

@@ -35,7 +35,7 @@ export function laStartOfDayMs(d) {
 }
 
 // Field kinds: text, required (non-empty text), int (>= 0), number (>= 0),
-// date, monday, month, enum, nullableEnum, textArray, priority (1-3),
+// date, monday, month, enum, nullableEnum, textArray, priority (1-4),
 // member (workspace member's user id), ref (row of `table` in this
 // workspace). Only required/enum/monday/month refuse null.
 export async function validate(supabase, businessId, fields, body) {
@@ -53,7 +53,7 @@ export async function validate(supabase, businessId, fields, body) {
     if (f.kind === 'required' && (typeof value !== 'string' || !value.trim())) return { error: `${key} must be non-empty text` };
     if (f.kind === 'int' && !(Number.isInteger(value) && value >= 0)) return { error: `${key} must be a whole number >= 0 or null` };
     if (f.kind === 'number' && !(typeof value === 'number' && Number.isFinite(value) && value >= 0)) return { error: `${key} must be a number >= 0 or null` };
-    if (f.kind === 'priority' && ![1, 2, 3].includes(value)) return { error: `${key} must be 1, 2, 3 or null` };
+    if (f.kind === 'priority' && ![1, 2, 3, 4].includes(value)) return { error: `${key} must be 1, 2, 3, 4 or null` };
     if (f.kind === 'date' && !isDate(value)) return { error: `${key} must be a YYYY-MM-DD date or null` };
     if (f.kind === 'monday' && !isMonday(value)) return { error: `${key} must be a Monday (YYYY-MM-DD)` };
     if (f.kind === 'month' && !isFirstOfMonth(value)) return { error: `${key} must be the 1st of a month (YYYY-MM-01)` };
@@ -74,6 +74,9 @@ export async function validate(supabase, businessId, fields, body) {
   }
   return { payload };
 }
+
+// sales-ia-v2 P3: who set a partner's / employer's priority, and when.
+export const priorityStamp = (payload, userId) => ('priority' in payload ? { priority_set_by: userId, priority_set_at: new Date().toISOString() } : {});
 
 export const fail = (res, v) => res.status(v.status || 400).json({ error: v.error });
 

@@ -105,7 +105,7 @@ export default function TaskRow({ t, isFlag, isOpen, onToggle, members, lookup, 
               {t.source_note_id && <SourceNote noteId={t.source_note_id} category={t.category} canRead={can.edit} load={act.loadNote} />}
               {t.week_start !== week && <span style={{ fontSize: 12, color: SA.warn }}>From the week of {md(t.week_start)}</span>}
               <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-                <button type="button" style={linkBtn} onClick={act.openInGoals}>Open in Goals →</button>
+                <button type="button" style={linkBtn} onClick={act.openInGoals}>Open in Sales →</button>
                 {can.edit && can.remove === 'delete' && <button type="button" style={{ ...linkBtn, color: SA.bad }} onClick={() => act.remove(t)}>Delete</button>}
                 {can.edit && can.remove === 'drop' && <button type="button" style={{ ...linkBtn, color: SA.muted }} onClick={() => act.drop(t)}>{isFlag ? 'Drop flag' : 'Drop'}</button>}
               </div>

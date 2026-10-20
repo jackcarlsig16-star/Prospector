@@ -6,6 +6,7 @@ import { normName } from './intakeMatch.js';
 import { cleanText } from './scrubText.js';
 import { hasPii } from './targetsRoutes.js';
 import { PRIORITY_LABEL } from './visitRules.js';
+import { loadOverrides, effectiveVisit } from './visitPriority.js';
 
 // signals-v1 REV4 Stage 5 (D12) - the daily "Website visitors" report, built
 // only from what the visit pull stored (web_visits) plus records Prospector
@@ -68,8 +69,9 @@ export function sequencesByCompany({ prospects, messages, sequencedAccounts, seq
 }
 
 // One row per company over the last 7 LA days: the latest pull's priority and
-// counts, the earliest first visit and latest last visit across pulls.
-export function buildReport({ visits, skipKeys, records, signals, sources, today }) {
+// counts, the earliest first visit and latest last visit across pulls. A
+// person's override (sales-ia-v2 P3) beats both the pull and the skip list.
+export function buildReport({ visits, skipKeys, records, signals, sources, today, overrides = new Map() }) {
   const byKey = new Map();
   for (const v of [...visits].sort((a, b) => a.pulled_on.localeCompare(b.pulled_on))) {
     const prior = byKey.get(v.company_key);
@@ -80,12 +82,12 @@ export function buildReport({ visits, skipKeys, records, signals, sources, today
   const signalOf = new Map();
   for (const s of [...signals].sort((a, b) => a.created_at.localeCompare(b.created_at))) signalOf.set(s.company_key, s);
   const rows = [...byKey.values()].map(raw => {
-    const v = skipKeys.has(raw.company_key) ? { ...raw, ...SKIPPED, maybe_user: false } : raw;
+    const v = effectiveVisit(skipKeys.has(raw.company_key) ? { ...raw, ...SKIPPED, maybe_user: false } : raw, overrides.get(raw.company_key));
     const rec = v.matched_id ? records.get(`${v.matched_type}:${v.matched_id}`) : null;
     const team = rec?.owner_team || null;
     return {
       company_key: v.company_key, company_name: v.company_name, domain: v.domain || null,
-      priority: v.priority, priority_rule: v.priority_rule, maybe_user: !!v.maybe_user, skipped: skipKeys.has(v.company_key),
+      priority: v.priority, priority_rule: v.priority_rule, maybe_user: !!v.maybe_user, skipped: skipKeys.has(v.company_key), override: v.override || null,
       type: typeOf(v, rec), size: v.us_500 ? 'US 500+' : 'size unknown',
       match: rec ? { type: v.matched_type, label: MATCH_LABEL[v.matched_type], id: v.matched_id, record_id: rec.record_id || null, owner_team: team, upside: UPSIDE_TEAMS.includes(team) } : null,
       visits_7d: v.visits_7d ?? 0, unique_visitors_apollo: v.unique_visitors_7d ?? 0,
@@ -109,7 +111,7 @@ export async function visitReport(supabase, businessId, now = Date.now()) {
   const ids = type => [...new Set(visits.filter(v => v.matched_type === type).map(v => v.matched_id))];
   const byIds = (table, cols, list) => (list.length
     ? selectAllPages(() => supabase.from(table).select(cols).eq('business_id', businessId).in('id', list).order('id')) : []);
-  const [skip, partners, opps, targets, signals, prospects, messages, sequencedAccounts, snap, members] = await Promise.all([
+  const [skip, partners, opps, targets, signals, prospects, messages, sequencedAccounts, snap, members, overrides] = await Promise.all([
     selectAllPages(() => supabase.from('sales_visit_skip').select('company_key').eq('business_id', businessId).order('id')),
     byIds('sales_goals', 'id, category, owner_team, record_id', ids('partner')),
     byIds('sales_opportunities', 'id, owner_team, record_id', ids('opportunity')),
@@ -121,13 +123,14 @@ export async function visitReport(supabase, businessId, now = Date.now()) {
     selectAllPages(() => supabase.from('sales_sequenced_accounts').select('account_id, name, sequence_id').eq('business_id', businessId).order('account_id')),
     supabase.from('sales_raw_snapshots').select('payload').eq('business_id', businessId).eq('entity', 'sequences').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('business_members').select('name, profile:profiles!business_members_user_id_fkey(display_name)').eq('business_id', businessId),
+    loadOverrides(supabase, businessId),
   ]);
   const records = new Map();
   for (const [type, list] of [['partner', partners], ['opportunity', opps], ['target', targets]]) for (const r of list) records.set(`${type}:${r.id}`, r);
   const scrub = nameScrubber(must(members).flatMap(m => [m.name, m.profile?.display_name]));
   const sequences = (must(snap)?.payload || []).filter(s => s && s.id);
   const sources = sequencesByCompany({ prospects, messages, sequencedAccounts, sequences, scrub });
-  return buildReport({ visits, skipKeys: new Set(skip.map(s => s.company_key)), records, signals, sources, today });
+  return buildReport({ visits, skipKeys: new Set(skip.map(s => s.company_key)), records, signals, sources, today, overrides });
 }
 
 // GET /goals/visits/report -> { today, since, counts, rows } (Viewer+)

@@ -62,7 +62,7 @@ async function openWorkspace(page, label, compact) {
 }
 async function navGoals(page, compact) {
   if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
-  await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).click(); await page.waitForTimeout(5000);
+  await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).click(); await page.waitForTimeout(5000);
 }
 const openDrawer = async (page, compact) => { await page.getByRole('button', { name: compact ? /^Tasks/ : /^Open tasks/ }).click(); await page.locator(drawerSel).waitFor(); await page.waitForTimeout(400); };
 const drawerIds = async page => {
@@ -155,7 +155,7 @@ const scrollState = page => page.evaluate(() => ({ win: window.scrollY, main: do
     const views = page.locator('nav[aria-label="Views"]');
     await keepState('goals-partners', () => views.getByRole('button', { name: /^Partners/ }).first().click(), () => page.locator('section[aria-labelledby="h-part"]').isVisible());
     await keepState('goals-companies', () => views.getByRole('button', { name: /^Companies/ }).first().click(), async () => (await page.locator('#root').innerText()).includes('Plan a cadence'));
-    await keepState('overview', async () => { await page.getByRole('button', { name: 'Reports', exact: true }).first().click(); await page.waitForTimeout(600); await page.getByRole('button', { name: 'Analytics', exact: true }).first().click(); }, async () => (await page.getByRole('button', { name: 'Analytics', exact: true }).first().evaluate(b => getComputedStyle(b).color)) !== '');
+    await keepState('overview', async () => { await page.getByRole('button', { name: 'Dashboard', exact: true }).first().click(); await page.waitForTimeout(600); await page.getByRole('button', { name: 'Analytics', exact: true }).first().click(); }, async () => (await page.getByRole('button', { name: 'Analytics', exact: true }).first().evaluate(b => getComputedStyle(b).color)) !== '');
     await keepState('huddle', () => page.getByRole('button', { name: /^Huddle/ }).first().click(), () => page.locator('#huddle-feed-section, [aria-label="Activity feed"]').first().isVisible().catch(() => true));
     // Remembered open
     await openDrawer(page, false);
@@ -170,7 +170,7 @@ const scrollState = page => page.evaluate(() => ({ win: window.scrollY, main: do
     await ph.page.keyboard.press('Escape'); await ph.page.waitForTimeout(300);
     ok('390: Tasks button in the ☰ header', await ph.page.getByRole('button', { name: /^Tasks/ }).isVisible());
     await ph.page.screenshot({ path: `${OUT}/td2-390-header.png` });
-    for (const [name, go] of [['goals', () => navGoals(ph.page, true)], ['overview', async () => { await ph.page.getByRole('button', { name: 'Reports', exact: true }).first().click(); await ph.page.waitForTimeout(600); await ph.page.getByRole('button', { name: 'Analytics', exact: true }).first().click(); }], ['huddle', () => ph.page.getByRole('button', { name: /^Huddle/ }).first().click()]]) {
+    for (const [name, go] of [['goals', () => navGoals(ph.page, true)], ['overview', async () => { await ph.page.getByRole('button', { name: 'Dashboard', exact: true }).first().click(); await ph.page.waitForTimeout(600); await ph.page.getByRole('button', { name: 'Analytics', exact: true }).first().click(); }], ['huddle', () => ph.page.getByRole('button', { name: /^Huddle/ }).first().click()]]) {
       if (await ph.page.locator(drawerSel).count()) await ph.page.getByRole('button', { name: 'Close tasks' }).click();
       await go(); await ph.page.waitForTimeout(2500);
       await openDrawer(ph.page, true);

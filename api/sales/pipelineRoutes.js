@@ -4,6 +4,8 @@ import { parseCsv, toCsv } from '../../src/utils/csv.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { OWNER_TEAMS } from '../../src/constants/ownership.js';
 import { findOpportunity, moveForward } from './opportunityMatch.js';
+import { CHANNEL_IDS, PRIORITIES } from '../../src/constants/salesChannels.js';
+import { priorityStamp } from './goalsShared.js';
 
 // sales-pipeline-v1 - server-only access, same posture as every other
 // sales_* table (RLS enabled, zero policies).
@@ -15,12 +17,13 @@ function getSupabase() {
 // Every column a caller may write via create/update. organization/
 // business_id/source/id/created_at/updated_at/archived_at are either
 // required-on-create, server-controlled, or handled by their own action
-// (archive) - never accepted as a free-form field here.
+// (archive) - never accepted as a free-form field here. priority_set_by /
+// priority_set_at are stamped by the server whenever priority is written.
 const WRITABLE_FIELDS = [
   'organization', 'cohort', 'org_type', 'covered_lives', 'stage', 'probability', 'est_value',
   'owner', 'next_action', 'next_action_date', 'expected_close', 'expected_launch',
   'decision_makers', 'champion', 'objections', 'competitors', 'needed_to_advance', 'notes',
-  'is_top', 'lost_reason', 'owner_team', 'co_owner_name', 'no_double_touch', 'tier',
+  'is_top', 'lost_reason', 'owner_team', 'co_owner_name', 'no_double_touch', 'tier', 'priority', 'channel',
 ];
 const NUMERIC_FIELDS = ['covered_lives', 'probability', 'est_value'];
 const DATE_FIELDS = ['next_action_date', 'expected_close', 'expected_launch'];
@@ -42,6 +45,8 @@ export function validateFields(body) {
     if ((key === 'is_top' || key === 'no_double_touch') && typeof value !== 'boolean') return { error: `${key} must be a boolean` };
     if (key === 'tier' && !TIERS.includes(value)) return { error: `bad enum: tier must be one of ${TIERS.join('|')}` };
     if (key === 'owner_team' && !OWNER_TEAMS.includes(value)) return { error: `bad enum: owner_team must be one of ${OWNER_TEAMS.join('|')}` };
+    if (key === 'priority' && !PRIORITIES.includes(value)) return { error: 'priority must be 1, 2, 3, 4 or null' };
+    if (key === 'channel' && !CHANNEL_IDS.includes(value)) return { error: `bad enum: channel must be one of ${CHANNEL_IDS.join('|')}` };
     if (DATE_FIELDS.includes(key) && (typeof value !== 'string' || !DATE_RE.test(value))) return { error: `${key} must be a YYYY-MM-DD date string or null` };
     if (STRING_FIELDS.includes(key) && typeof value !== 'string') return { error: `${key} must be a string` };
     payload[key] = value;
@@ -80,7 +85,7 @@ export async function createOpportunityRoute(req, res) {
   } catch (e) { return res.status(500).json({ error: e.message }); }
   const { data, error: insErr } = await supabase
     .from('sales_opportunities')
-    .insert({ business_id: req.params.businessId, source: 'manual', ...payload })
+    .insert({ business_id: req.params.businessId, source: 'manual', channel: 'manual', ...payload, ...priorityStamp(payload, req.auth.user.id) })
     .select()
     .single();
   if (insErr) return res.status(500).json({ error: insErr.message });
@@ -101,7 +106,7 @@ export async function updateOpportunityRoute(req, res) {
 
   const { data, error: updErr } = await supabase
     .from('sales_opportunities')
-    .update({ ...payload, updated_at: new Date().toISOString() })
+    .update({ ...payload, ...priorityStamp(payload, req.auth.user.id), updated_at: new Date().toISOString() })
     .eq('id', id)
     .select()
     .single();
@@ -131,7 +136,7 @@ export async function archiveOpportunityRoute(req, res) {
 
 export async function opportunityTemplateRoute(req, res) {
   // Ownership comes from notes / the master sheet import, not this CSV.
-  const columns = [...WRITABLE_FIELDS, 'lost_reason'].filter((v, i, a) => a.indexOf(v) === i && !['owner_team', 'co_owner_name', 'no_double_touch'].includes(v));
+  const columns = [...WRITABLE_FIELDS, 'lost_reason'].filter((v, i, a) => a.indexOf(v) === i && !['owner_team', 'co_owner_name', 'no_double_touch', 'channel', 'priority'].includes(v));
   const csv = toCsv([], columns.map(c => ({ label: c, key: c })));
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', 'attachment; filename="sales-pipeline-template.csv"');
@@ -254,7 +259,7 @@ export async function importOpportunities(supabase, businessId, csvText) {
     } else {
       const { data: insData, error: insErr } = await supabase
         .from('sales_opportunities')
-        .insert({ business_id: businessId, source: 'csv', ...payload })
+        .insert({ business_id: businessId, source: 'csv', channel: 'import', ...payload })
         .select('id')
         .single();
       if (insErr) { errors.push({ row: rowNum, reason: insErr.message }); continue; }

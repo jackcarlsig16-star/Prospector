@@ -42,13 +42,13 @@ test('headline, Act today, Apollo-labeled uniques, P4 hidden until asked', async
   expect(within(table).getByText('Partner · Upside-owned · HLU-0007')).toBeInTheDocument();
 });
 
-test('Member: Not a fit adds the company to the skip list and reloads', async () => {
+test('Member: no standalone Not a fit button (it lives in the Pipeline priority dropdown); a hand-set row says so; skip list edits', async () => {
+  goalsApi.visitReport.mockResolvedValue({ ...REPORT, rows: REPORT.rows.map((r, i) => (i === 1 ? { ...r, override: { priority: 2 } } : r)) });
   goalsApi.addVisitSkip.mockResolvedValue({ id: 's2' });
   render(<VisitorReport businessId="b1" canEdit />);
   const table = await screen.findByRole('table');
-  fireEvent.click(within(table).getAllByRole('button', { name: 'Not a fit' })[1]);
-  await waitFor(() => expect(goalsApi.addVisitSkip).toHaveBeenCalledWith('b1', { company_key: 'sizeless co', reason: 'Not a fit' }));
-  await waitFor(() => expect(goalsApi.visitReport).toHaveBeenCalledTimes(2));
+  expect(within(table).queryByRole('button', { name: 'Not a fit' })).not.toBeInTheDocument();
+  expect(within(table).getByText('Set by hand')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Skip list' }));
   const skip = await screen.findByRole('region', { name: 'Skip list' });
   fireEvent.change(within(skip).getByLabelText('Company to skip'), { target: { value: 'Vendor Two' } });

@@ -70,7 +70,7 @@ async function newPage(u, width, height, url = '/?tab=today') {
 async function navSales(page, compact) {
   const menu = async () => { if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); } };
   await menu(); await page.getByLabel('Workspace').selectOption({ label: WS_NAME }); await page.waitForTimeout(2500);
-  await menu(); await page.locator('#root').getByRole('button', { name: 'Goals & Sales', exact: true }).dispatchEvent('click'); await page.waitForTimeout(4000);
+  await menu(); await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(4000);
 }
 const drawerSel = 'aside[aria-labelledby="task-drawer-title"]';
 const noSideScroll = page => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
@@ -250,7 +250,7 @@ const partnerRow = (page, name) => page.locator('[data-partner-id]', { hasText: 
       await group.scrollIntoViewIfNeeded();
       await shot(page, `cnt5-${width}-card`);
       if (!compact) {
-        await page.getByRole('group', { name: 'Layout' }).getByRole('button', { name: 'Board' }).click().catch(() => {});
+        await page.getByRole('group', { name: 'Layout' }).getByRole('button', { name: 'By stage' }).click().catch(() => {});
         await page.locator('.ui-seg').getByRole('button', { name: /Board|Pipeline/, exact: false }).first().click().catch(() => {});
         await page.waitForTimeout(2000);
         const due = page.locator(`[data-row][data-key="partner-${EQ}"]`);

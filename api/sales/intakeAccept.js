@@ -158,7 +158,7 @@ export async function acceptIntake(supabase, { businessId, userId, note, ctx, in
       if (!c.action.startsWith('target_') && c.action !== 'never') continue;
       const never = c.action === 'never';
       const r = await supabase.from('sales_targets').insert({
-        business_id: businessId, name: c.name, kind: c.kind, status: never ? 'rejected' : 'researching', source_note_id: note.id,
+        business_id: businessId, name: c.name, kind: c.kind, status: never ? 'rejected' : 'researching', source_note_id: note.id, channel: 'call_note',
         evidence: c.evidence || null, research_prompt: never ? null : researchPrompt(c.name, c.kind, business),
         suggested_category: c.category, created_by: userId, decided_at: never ? now.toISOString() : null,
       }).select().single();
@@ -183,7 +183,7 @@ export async function acceptIntake(supabase, { businessId, userId, note, ctx, in
       const named = ownerFor(s);
       const member = named && matchOwner(named, ctx.members);
       const owner = member ? ctx.members.find(m => m.id === member).name.split(' ')[0] : named;
-      const row = must(await supabase.from('sales_opportunities').insert({ business_id: businessId, organization: s.name, org_type: 'employer', stage: 'contacted', source: 'manual', owner }).select().single());
+      const row = must(await supabase.from('sales_opportunities').insert({ business_id: businessId, organization: s.name, org_type: 'employer', stage: 'contacted', source: 'manual', channel: 'call_note', owner }).select().single());
       undo.push(() => supabase.from('sales_opportunities').delete().eq('id', row.id));
       opps.set(s.id, row);
       out.opportunities_created.push({ id: row.id, organization: row.organization, from_account: s.id });

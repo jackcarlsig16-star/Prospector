@@ -16,11 +16,11 @@ const MIGRATION_PATTERN = /does not exist|schema cache|violates check constraint
 // task-drawer-v1 - the Tasks drawer and Goals -> This week show the same
 // to-dos at once; any to-do/step write tells the other to reload.
 export const TODOS_CHANGED = 'prospector:todos-changed';
-// "Open in Goals" from the drawer when Goals & Sales is already on screen.
+// "Open in Sales" from the drawer when Sales & Marketing is already on screen.
 export const OPEN_GOALS_WEEK = 'prospector:open-goals-week';
 // Opens the drawer filtered to one link; detail = { link: { type, id }, filter, view? }.
 export const OPEN_TASKS = 'prospector:open-tasks';
-// From the drawer into Goals & Sales with a link target (GoalsTab go()); detail = { target }.
+// From the drawer into Sales & Marketing with a link target (GoalsTab go()); detail = { target }.
 export const OPEN_GOALS_TARGET = 'prospector:open-goals-target';
 
 async function call(businessId, path, { method = 'GET', body } = {}) {
@@ -84,6 +84,8 @@ export const goalsApi = {
   visitSkip: id => call(id, '/visits/skip'),
   addVisitSkip: (id, body) => call(id, '/visits/skip', { method: 'POST', body }),
   removeVisitSkip: (id, skipId) => call(id, `/visits/skip/${skipId}`, { method: 'DELETE' }),
+  // sales-ia-v2 P3 - a visitor's P1-P4 / Not a fit; { priority: null } = back to the pull's own score.
+  setVisitPriority: (id, body) => call(id, '/visits/priority', { method: 'POST', body }),
   // REV5 - what counterparts owe us (kind 'waiting' rows; open ones only). No partnerId = every partner.
   // Got it = updateWeekGoal { status: 'done' }; nudge = our own to-do, due today, owned by the clicker.
   waitingRows: (id, partnerId) => call(id, `/tasks?${q({ link_type: 'partner', link_id: partnerId, kind: 'waiting' })}`).then(d => d.tasks.filter(t => t.status === 'open')),

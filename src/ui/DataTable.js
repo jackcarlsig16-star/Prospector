@@ -11,7 +11,8 @@ import { KIT_TABLE } from './tokens';
 //   custom properties paint the tint and the 3px bar (the sticky cell keeps a
 //   solid surface under the tint so it covers scrolled columns).
 //   compact + renderCompact(row): the phone list, same groups and keys.
-// A header click cycles asc -> desc -> off; off = the rows as given.
+// A header click cycles asc -> desc -> off; off = the rows as given. Pass
+// sort ({ id, dir } | null) + onSort to own the sort (e.g. to remember it).
 
 const compare = (a, b) => (typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }));
 
@@ -29,8 +30,10 @@ function GroupHeading({ group }) {
     : <span className="ui-table__gh">{group.icon}{h}</span>;
 }
 
-export default function DataTable({ columns, groups, rowStyle, rowKey, compact = false, renderCompact, emptyText, label }) {
-  const [sort, setSort] = useState(null);
+export default function DataTable({ columns, groups, rowStyle, rowKey, compact = false, renderCompact, emptyText, label, sort: sortProp, onSort }) {
+  const [sortState, setSortState] = useState(null);
+  const sort = onSort ? sortProp : sortState;
+  const setSort = onSort ? f => onSort(f(sortProp)) : setSortState;
   const boxRef = useRef(null);
   const [height, setHeight] = useState(null);
   const sortCol = useMemo(() => columns.find(c => c.id === sort?.id) || null, [columns, sort]);

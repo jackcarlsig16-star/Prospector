@@ -699,9 +699,9 @@ export default function BusinessDetailPage({ scout, business: businessProp, user
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, padding:compact?"0 0 8px":"0 40px 48px" }}>
-      {/* sales-ia-v1 - Goals & Sales caps itself per tab (SalesAnalyticsTab) so the Pipeline board can run full width inside the 40px padding; its header row spans the width on every sales tab. */}
+      {/* sales-ia-v1 - Sales & Marketing caps itself per tab (SalesAnalyticsTab) so the Pipeline board can run full width inside the 40px padding; its header row spans the width on every sales tab. */}
       <div style={{ maxWidth: view === "sales-analytics" ? "none" : wideView ? 1100 : 700, margin:"0 auto" }}>
-        {/* shell-facelift-v1 Stage 2 - one sticky row: avatar · name · emoji · (Goals & Sales tabs, portaled
+        {/* shell-facelift-v1 Stage 2 - one sticky row: avatar · name · emoji · (Sales & Marketing tabs, portaled
             into #workspace-header-tabs by SalesAnalyticsTab) · Scout on the right. The accent bottom border
             keeps nav-active-state-v1's "which business am I in" signal on the content. Tagline + URL live in
             a 20px line under the row on the Business Intel & Strategy view only. Not sticky on phones, where
