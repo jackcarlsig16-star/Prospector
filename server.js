@@ -645,6 +645,12 @@ app.post('/api/sales/:businessId/goals/signals/:id/dismiss', salesModuleRoute('.
 // signals-v1 Stage 4 - the daily website-visitor pull (page load / Pull now) and its status.
 app.post('/api/sales/:businessId/goals/visits/pull', salesModuleRoute('./api/sales/visitPull.js', 'runVisitPullRoute', 'goals/visits/pull POST'));
 app.get('/api/sales/:businessId/goals/visits/status', salesModuleRoute('./api/sales/visitPull.js', 'visitStatusRoute', 'goals/visits/status'));
+// signals-v1 Stage 5 - the Website visitors report, Brad's .xlsx, and the skip list.
+app.get('/api/sales/:businessId/goals/visits/report', salesModuleRoute('./api/sales/visitReport.js', 'visitReportRoute', 'goals/visits/report'));
+app.get('/api/sales/:businessId/goals/visits/export', salesModuleRoute('./api/sales/visitReport.js', 'visitExportRoute', 'goals/visits/export'));
+app.get('/api/sales/:businessId/goals/visits/skip', salesModuleRoute('./api/sales/visitReport.js', 'listSkipRoute', 'goals/visits/skip'));
+app.post('/api/sales/:businessId/goals/visits/skip', salesModuleRoute('./api/sales/visitReport.js', 'addSkipRoute', 'goals/visits/skip POST'));
+app.delete('/api/sales/:businessId/goals/visits/skip/:id', salesModuleRoute('./api/sales/visitReport.js', 'removeSkipRoute', 'goals/visits/skip DELETE'));
 app.get('/api/sales/:businessId/goals/copy-bundle', salesModuleRoute('./api/sales/targetsRoutes.js', 'copyBundleRoute', 'goals/copy-bundle'));
 // call-notes-targets-v1 REV4 Stage 3 - Tidy (propose-only suggestions).
 app.post('/api/sales/:businessId/goals/tidy/run', salesModuleRoute('./api/sales/tidyRoutes.js', 'runTidyRoute', 'goals/tidy/run POST'));

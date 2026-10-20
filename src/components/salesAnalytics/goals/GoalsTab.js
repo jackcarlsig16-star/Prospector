@@ -15,6 +15,7 @@ import PartnersView from './PartnersView';
 import CompaniesView from './CompaniesView';
 import PipelineView from './PipelineView';
 import ReportView from './ReportView';
+import VisitorReport from './VisitorReport';
 import GoalHero from './GoalHero';
 import PlanWeekDrawer from './PlanWeekDrawer';
 import { PlanNudge } from './FocusStrip';
@@ -491,6 +492,8 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
         )}
 
         {section === 'reports' && view === 'analytics' && analytics}
+
+        {section === 'reports' && view === 'visitors' && <VisitorReport businessId={businessId} canEdit={canEdit} />}
 
         {section === 'pipeline' && view === 'partners' && (
           <PartnersView businessId={businessId} partners={myPartners} lookup={lookup} members={members} canEdit={canEdit} error={errors.partners}

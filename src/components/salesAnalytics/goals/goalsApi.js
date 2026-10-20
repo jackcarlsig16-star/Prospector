@@ -78,6 +78,12 @@ export const goalsApi = {
   // signals-v1 Stage 4 - the daily website-visitor pull (Members) and its status (Viewers too).
   visitPull: (id, { force = false, trigger = 'manual' } = {}) => call(id, '/visits/pull', { method: 'POST', body: { force, trigger } }),
   visitStatus: id => call(id, '/visits/status'),
+  // signals-v1 Stage 5 - the Website visitors report, Brad's .xlsx (fetched as a blob) and the skip list.
+  visitReport: id => call(id, '/visits/report'),
+  visitExportUrl: id => `/api/sales/${id}/goals/visits/export`,
+  visitSkip: id => call(id, '/visits/skip'),
+  addVisitSkip: (id, body) => call(id, '/visits/skip', { method: 'POST', body }),
+  removeVisitSkip: (id, skipId) => call(id, `/visits/skip/${skipId}`, { method: 'DELETE' }),
   // REV5 - what counterparts owe us (kind 'waiting' rows; open ones only). No partnerId = every partner.
   // Got it = updateWeekGoal { status: 'done' }; nudge = our own to-do, due today, owned by the clicker.
   waitingRows: (id, partnerId) => call(id, `/tasks?${q({ link_type: 'partner', link_id: partnerId, kind: 'waiting' })}`).then(d => d.tasks.filter(t => t.status === 'open')),

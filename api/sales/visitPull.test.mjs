@@ -97,8 +97,8 @@ test('one pull: 4 calls, measured delta 1 recorded, merged rows, P1-P4 rules, ph
   assert.deepEqual(sb.db.web_visits.filter(v => v.us_500).map(v => v.company_name).sort(), ['Nimbus Freight', 'Ridgeline Health']);
   const expect = {
     'Harbor Lane': ['P1', 'Matched partner visited'], 'Brightmill Foods': ['P1', 'Matched employer visited'],
-    'Quarry Labs': ['P1', 'Upside-owned target visited'], 'Nimbus Freight': ['P1', 'US 500+ with 5+ visits or 3+ people in 7 days'],
-    'Cedar Row': ['P1', 'Employer/contact page plus a repeat visit'], 'Ridgeline Health': ['P2', 'US 500+ with 2+ visits or 2+ people in 7 days'],
+    'Quarry Labs': ['P1', 'Upside-owned target visited'], 'Nimbus Freight': ['P1', 'US 500+ with 5+ visits in 7 days or 3+ unique visitors (Apollo)'],
+    'Cedar Row': ['P1', 'Employer/contact page plus a repeat visit'], 'Ridgeline Health': ['P2', 'US 500+ with 2+ visits in 7 days or 2+ unique visitors (Apollo)'],
     'Sizeless Co': ['P3', 'Size unknown - watch'], Lovable: ['P4', 'On the skip list'], HomeLover: ['P4', 'HomeLover’s own site'],
     Cloudflare: ['P4', 'ISP, hosting or bot traffic'], 'Juniper Bank': ['P4', 'Only /auth, /help, /privacy or /terms - may already be a user'],
     'Tiny Shop': ['P4', 'Under 500 employees with 1–2 visits'],
@@ -125,7 +125,7 @@ test('one pull: 4 calls, measured delta 1 recorded, merged rows, P1-P4 rules, ph
   assert.ok(sig.every(s => s.source === 'web_visit' && s.signal_week === '2026-10-19' && s.status === 'new' && s.who === null));
   const harbor = sig.find(s => s.company_name === 'Harbor Lane');
   assert.deepEqual([harbor.kind, harbor.kind_guessed, harbor.upside_joint], ['partner', false, true]);
-  assert.equal(harbor.signal, '1 visit / 1 person in 7 days; top pages /');
+  assert.equal(harbor.signal, '1 visit in 7 days / 1 unique visitor (Apollo); top pages /');
   assert.equal(harbor.why_now, 'P1 act today: Matched partner visited');
   assert.equal(r.body.counts.signals, 6);
 });

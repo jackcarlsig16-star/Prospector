@@ -110,9 +110,9 @@ export function prioritize(v, { match, small = false, skip = new Set() }) {
   if (match?.type === 'partner') return p('P1', 'Matched partner visited');
   if (match?.type === 'opportunity') return p('P1', 'Matched employer visited');
   if (match?.type === 'target' && UPSIDE.includes(match.owner_team)) return p('P1', 'Upside-owned target visited');
-  if (v.us_500 && (n >= 5 || people >= 3)) return p('P1', 'US 500+ with 5+ visits or 3+ people in 7 days');
+  if (v.us_500 && (n >= 5 || people >= 3)) return p('P1', 'US 500+ with 5+ visits in 7 days or 3+ unique visitors (Apollo)');
   if (paths.some(x => CONTACT_PATH.test(x)) && n >= 2) return p('P1', 'Employer/contact page plus a repeat visit');
-  if (v.us_500 && (n >= 2 || people >= 2)) return p('P2', 'US 500+ with 2+ visits or 2+ people in 7 days');
+  if (v.us_500 && (n >= 2 || people >= 2)) return p('P2', 'US 500+ with 2+ visits in 7 days or 2+ unique visitors (Apollo)');
   return p('P3', v.us_500 ? 'US 500+ with one visit' : 'Size unknown - watch');
 }
 
@@ -124,7 +124,7 @@ export function toWebSignal(v, { businessId, week, userId, match, hint }) {
     business_id: businessId, source: 'web_visit', signal_week: week, company_name: v.company_name, company_key: v.company_key,
     kind: match?.type === 'partner' || match?.kind === 'partner' ? 'partner' : 'employer', kind_guessed: !match,
     who: null, who_key: null,
-    signal: cleanText(`${n} visit${n === 1 ? '' : 's'} / ${people} ${people === 1 ? 'person' : 'people'} in 7 days${pages ? `; top pages ${pages}` : ''}`, 400),
+    signal: cleanText(`${n} visit${n === 1 ? '' : 's'} in 7 days / ${people} unique visitor${people === 1 ? '' : 's'} (Apollo)${pages ? `; top pages ${pages}` : ''}`, 400),
     why_now: cleanText(`${v.priority} ${PRIORITY_LABEL[v.priority]}: ${v.priority_rule}`, 400),
     first_line: null, score: null, upside_joint: !!match && UPSIDE.includes(match.owner_team), match: hint, status: 'new', created_by: userId,
   };

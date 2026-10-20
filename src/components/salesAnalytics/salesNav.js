@@ -5,7 +5,7 @@
 export const TABS = [['today', 'Today'], ['pipeline', 'Pipeline'], ['huddle', 'Huddle'], ['reports', 'Reports']];
 export const SUB_VIEWS = {
   pipeline: [['board', 'Board'], ['partners', 'Partner workflow'], ['sequenced', 'Sequenced']],
-  reports: [['weekly', 'Weekly report'], ['scorecard', 'Scorecard'], ['analytics', 'Analytics']],
+  reports: [['weekly', 'Weekly report'], ['scorecard', 'Scorecard'], ['analytics', 'Analytics'], ['visitors', 'Website visitors']],
 };
 export const DEFAULT_VIEW = { pipeline: 'board', reports: 'weekly' };
 const LEGACY = { report: ['reports', 'weekly'], week: ['today'], partners: ['pipeline', 'partners'], companies: ['pipeline', 'sequenced'], pipeline: ['pipeline', 'board'] };
