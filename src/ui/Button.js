@@ -2,14 +2,14 @@ import React from 'react';
 import './kitTheme';
 
 // ui-clarity-v1 R6: primary (one per area) · secondary · tertiary (a link-looking
-// text action) · danger. `ghost` is the pre-Stage-2 name callers still pass for
-// the text action; it renders as tertiary.
+// text action) · danger. size 'sm' = the 24 px button a dense table row holds.
 const VARIANTS = ['primary', 'secondary', 'tertiary', 'danger'];
 
-export default function Button({ variant = 'secondary', type = 'button', disabledReason, children, ...rest }) {
-  const v = variant === 'ghost' ? 'tertiary' : VARIANTS.includes(variant) ? variant : 'secondary';
+export default function Button({ variant = 'secondary', size, type = 'button', disabledReason, className, children, ...rest }) {
+  const v = VARIANTS.includes(variant) ? variant : 'secondary';
   const title = rest.disabled && disabledReason ? disabledReason : rest.title;
-  return <button type={type} className={`ui-btn ui-btn--${v}`} {...rest} title={title}>{children}</button>;
+  const cls = ['ui-btn', `ui-btn--${v}`, size === 'sm' && 'ui-btn--sm', className].filter(Boolean).join(' ');
+  return <button type={type} className={cls} {...rest} title={title}>{children}</button>;
 }
 
 export function ButtonRow({ align = 'end', children }) {

@@ -12,6 +12,9 @@ import VisitorReport from './VisitorReport';
 import TypeChip, { typeSortValue } from './TypeChip';
 import DataTable from '../../../ui/DataTable';
 import EditableCell from '../../../ui/EditableCell';
+import FilterSelect from '../../../ui/FilterSelect';
+import Button from '../../../ui/Button';
+import { ToggleChip } from '../../../ui/Chip';
 import { KIT_EDITABLE } from '../../../ui/tokens';
 import useMediaQuery from '../../../utils/useMediaQuery';
 import { openTasks } from '../tasks/LinkedTasks';
@@ -52,9 +55,8 @@ const visitedLabel = r => (r.visited ? `${md(r.visited.last_visit)}${r.visited.v
 const tint = color => `color-mix(in srgb, ${BOARD_TOKENS[color]} 6%, transparent)`;
 const HIGHLIGHT_MS = 1500;
 const highlightTint = `color-mix(in srgb, ${SA.accent} 22%, transparent)`;
-const chipBtn = on => ({ height: 30, padding: '0 12px', borderRadius: 999, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', flex: 'none', border: `1px solid ${on ? SA.accent : SA.border}`, background: on ? SA.surface2 : 'transparent', color: on ? SA.text : SA.muted, display: 'inline-flex', alignItems: 'center', gap: 6 });
 const selectStyle = { ...inputStyle, height: 30, fontSize: 13, padding: '0 8px', flex: 'none' };
-const countStyle = { ...numStyle, display: 'inline-block', minWidth: '3ch', textAlign: 'right', color: SA.muted };
+const opts = (first, list) => [{ value: '', label: first }, ...list];
 const rowBar = { height: ROW_BAR_HEIGHT, display: 'flex', alignItems: 'center', gap: 8, overflowX: 'auto', overflowY: 'hidden', flexWrap: 'nowrap', minWidth: 0 };
 const Dim = () => <span className="ui-table__dim">—</span>;
 const rowKey = r => `${r.type}-${r.id}`;
@@ -218,9 +220,9 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
   const starCell = r => {
     if (r.type !== 'partner' && r.type !== 'employer') return null;
     return canEdit
-      ? <button type="button" disabled={busyId === r.id} aria-pressed={r.top} aria-label={`${r.top ? 'Unstar' : 'Star'} ${r.name}`} onClick={() => star(r)}
-        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 15, lineHeight: 1, color: r.top ? SA.warn : SA.faint }}>{r.top ? '★' : '☆'}</button>
-      : <span aria-label={r.top ? 'Top' : undefined} style={{ fontSize: 15, color: r.top ? SA.warn : SA.faint }}>{r.top ? '★' : '☆'}</span>;
+      ? <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm ui-btn--icon" disabled={busyId === r.id} aria-pressed={r.top} aria-label={`${r.top ? 'Unstar' : 'Star'} ${r.name}`} onClick={() => star(r)}
+        style={{ color: r.top ? SA.warn : SA.muted }}>{r.top ? '★' : '☆'}</button>
+      : <span aria-label={r.top ? 'Top' : undefined} style={{ fontSize: 15, color: r.top ? SA.warn : SA.muted }}>{r.top ? '★' : '☆'}</span>;
   };
   const priorityCell = r => {
     if (!PRIORITY_TYPES.includes(r.type)) return <Dim />;
@@ -239,7 +241,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
       </span>
     );
   };
-  const nameCell = r => <button type="button" data-row-name onClick={() => open(r)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit', textAlign: 'left', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</button>;
+  const nameCell = r => <button type="button" data-row-name className="ui-link ui-link--cell" onClick={() => open(r)}>{r.name}</button>;
   const typeCell = r => <TypeChip row={r} />;
   const allColumns = [
     { id: 'top', label: `Top ${TOP_CAP}`, width: 38, fixed: true, render: r => <span style={{ display: 'block', textAlign: 'center' }}>{starCell(r)}</span> },
@@ -291,41 +293,22 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
   ];
   const rowStyle = r => ({ '--ui-row-tint': highlight === rowKey(r) || panelKey === rowKey(r) ? highlightTint : tint(r.color), '--ui-row-bar': BOARD_TOKENS[r.color] });
 
+  // R4: labelled dropdowns that show their value, toggle chips for the yes/no filters, Clear as a text button
+  // (only while a filter is on); R7: the row carries its label.
   const filterControls = (
     <>
-      <select aria-label="Owner" value={filters.owner} onChange={e => set('owner', e.target.value)} style={selectStyle}>
-        <option value="">All owners</option>
-        {owners.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-      <select aria-label="Team" value={filters.ownerTeam} onChange={e => set('ownerTeam', e.target.value)} style={selectStyle}>
-        <option value="">All teams</option>
-        {OWNER_TEAMS.map(t => <option key={t} value={t}>{TEAM_LABEL[t]}</option>)}
-        <option value="unset">No team set</option>
-      </select>
-      <select aria-label="Type" value={filters.type} onChange={e => set('type', e.target.value)} style={selectStyle}>
-        <option value="">All types</option>
-        {TYPE_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-      </select>
-      <select aria-label="Stage" value={filters.stage} onChange={e => set('stage', e.target.value)} style={selectStyle}>
-        <option value="">All stages</option>
-        {stages.map(s => <option key={s} value={s}>{s}</option>)}
-      </select>
-      <select aria-label="Priority" value={filters.priority} onChange={e => set('priority', e.target.value)} style={selectStyle}>
-        <option value="">All priorities</option>
-        {PRIORITIES.map(p => <option key={p} value={String(p)}>P{p}</option>)}
-        <option value="none">No priority</option>
-      </select>
-      <select aria-label="Tier" value={filters.tier} onChange={e => set('tier', e.target.value)} style={selectStyle}>
-        <option value="">All tiers</option>
-        {TIERS.map(t => <option key={t} value={t}>{t === 'active' ? 'Active' : `T${t}`}</option>)}
-      </select>
-      <button type="button" aria-pressed={filters.visited} style={chipBtn(filters.visited)} onClick={() => set('visited', !filters.visited)}>Visited 7 d</button>
-      <button type="button" aria-pressed={filters.hasTodo} style={chipBtn(filters.hasTodo)} onClick={() => set('hasTodo', !filters.hasTodo)}>Has open to-do</button>
-      <button type="button" aria-pressed={filters.overdue} style={chipBtn(filters.overdue)} onClick={() => set('overdue', !filters.overdue)}>Overdue</button>
-      <input type="search" aria-label="Search companies" placeholder="Search" value={filters.q} onChange={e => set('q', e.target.value)} style={{ ...selectStyle, width: 160 }} />
-      <button type="button" disabled={!nFilters} onClick={() => setFilters(EMPTY_FILTERS)} style={{ ...chipBtn(false), opacity: nFilters ? 1 : 0.45, cursor: nFilters ? 'pointer' : 'default' }}>
-        Clear<span style={{ ...countStyle, minWidth: '2ch' }}>{nFilters ? `(${nFilters})` : ''}</span>
-      </button>
+      <span className="ui-group-label" aria-hidden="true">Filter</span>
+      <FilterSelect label="Owner" value={filters.owner} options={opts('All owners', owners.map(o => ({ value: o, label: o })))} onChange={v => set('owner', v)} />
+      <FilterSelect label="Team" value={filters.ownerTeam} options={[...opts('All teams', OWNER_TEAMS.map(t => ({ value: t, label: TEAM_LABEL[t] }))), { value: 'unset', label: 'No team set' }]} onChange={v => set('ownerTeam', v)} />
+      <FilterSelect label="Type" value={filters.type} options={opts('All types', TYPE_OPTIONS.map(([value, label]) => ({ value, label })))} onChange={v => set('type', v)} />
+      <FilterSelect label="Stage" value={filters.stage} options={opts('All stages', stages.map(s => ({ value: s, label: s })))} onChange={v => set('stage', v)} />
+      <FilterSelect label="Priority" value={filters.priority} options={[...opts('All priorities', PRIORITIES.map(p => ({ value: String(p), label: `P${p}` }))), { value: 'none', label: 'No priority' }]} onChange={v => set('priority', v)} />
+      <FilterSelect label="Tier" value={filters.tier} options={opts('All tiers', TIERS.map(t => ({ value: t, label: t === 'active' ? 'Active' : `T${t}` })))} onChange={v => set('tier', v)} />
+      <ToggleChip pressed={filters.visited} onClick={() => set('visited', !filters.visited)}>Visited 7 d</ToggleChip>
+      <ToggleChip pressed={filters.hasTodo} onClick={() => set('hasTodo', !filters.hasTodo)}>Has open to-do</ToggleChip>
+      <ToggleChip pressed={filters.overdue} onClick={() => set('overdue', !filters.overdue)}>Overdue</ToggleChip>
+      <input type="search" className="ui-input ui-input--sm" aria-label="Search companies" placeholder="Search" value={filters.q} onChange={e => set('q', e.target.value)} style={{ width: 160 }} />
+      {nFilters > 0 && <Button variant="tertiary" onClick={() => setFilters(EMPTY_FILTERS)}>Clear ({nFilters})</Button>}
     </>
   );
 
@@ -348,15 +331,14 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
     <section aria-label="Pipeline companies" data-pipeline-companies style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
       {toolsSlot && createPortal(tools, toolsSlot)}
       <div role="group" aria-label="Channel" data-channel-row style={rowBar}>
+        <span className="ui-group-label" aria-hidden="true">Channel</span>
         {CHANNEL_BUTTONS.map(([id, label]) => (
-          <button key={id} type="button" aria-pressed={channel === id} data-channel={id} style={chipBtn(channel === id)} onClick={() => setChannel(id)}>
-            {label}<span style={countStyle}>{rows ? view.counts[id] : ''}</span>
-          </button>
+          <ToggleChip key={id} pressed={channel === id} data-channel={id} count={rows ? view.counts[id] : ''} onClick={() => setChannel(id)}>{label}</ToggleChip>
         ))}
       </div>
       {phone ? (
         <div data-filter-row style={rowBar}>
-          <button type="button" style={chipBtn(nFilters > 0)} aria-expanded={sheetOpen} onClick={() => setSheetOpen(true)}>Filters<span style={countStyle}>{nFilters || ''}</span></button>
+          <Button aria-expanded={sheetOpen} onClick={() => setSheetOpen(true)}>Filters{nFilters ? ` (${nFilters})` : ''}</Button>
           <span style={{ fontSize: 13, color: SA.muted, ...numStyle }}>{rows ? `${visible.length} shown` : ''}</span>
         </div>
       ) : (
@@ -392,8 +374,8 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
       {toast && createPortal(
         <div role="status" className="no-print" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 4005, padding: '10px 16px', borderRadius: 10, background: SA.surface2, border: `1px solid ${SA.border}`, color: SA.text, fontSize: 14, display: 'flex', gap: 14, alignItems: 'center' }}>
           {toast.text}
-          {toast.undo && <button type="button" style={{ all: 'unset', cursor: 'pointer', color: SA.link, fontWeight: 600 }}
-            onClick={async () => { const u = toast.undo; setToast(null); try { await u(); } catch (e) { setToast({ text: e.message }); } }}>Undo</button>}
+          {toast.undo && <Button variant="tertiary" style={{ fontWeight: 600 }}
+            onClick={async () => { const u = toast.undo; setToast(null); try { await u(); } catch (e) { setToast({ text: e.message }); } }}>Undo</Button>}
         </div>, overlayRoot)}
 
       {visitorsOpen && (

@@ -16,6 +16,9 @@ import TargetsList, { openTargets } from './TargetsList';
 import SuggestedList from './SuggestedList';
 import WaitingList from './WaitingList';
 import SignalsList from './SignalsList';
+import Segmented from '../../../ui/Segmented';
+import Button from '../../../ui/Button';
+import { ToggleChip } from '../../../ui/Chip';
 
 // task-drawer-v1 - a second view of the Goals to-dos, on every page of a
 // workspace with Sales & Marketing on. Writes reuse the Goals/flag routes.
@@ -27,8 +30,6 @@ const OWN_DELETE_MS = 2 * 60e3; // FIX-5, same window as the server's OWN_DELETE
 
 const readOpen = () => { try { return localStorage.getItem(OPEN_KEY) === '1'; } catch { return false; } };
 const writeOpen = v => { try { localStorage.setItem(OPEN_KEY, v ? '1' : '0'); } catch { /* private mode */ } };
-
-const pill = on => ({ ...saSans, height: 32, padding: '0 12px', borderRadius: 999, fontSize: 13, cursor: 'pointer', border: `1px solid ${on ? SA.accent : SA.border}`, background: on ? SA.surface2 : 'transparent', color: on ? SA.text : SA.muted, display: 'inline-flex', alignItems: 'center', gap: 6 });
 
 function Badge({ n }) {
   if (!n) return null;
@@ -229,34 +230,22 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
             <Badge n={badge} />
             <div style={{ flex: 1 }} />
             {/* Header slot: "Log outreach" (sales-quick-add-research-v1) goes next to this. */}
-            {canEdit && !pasting && <button type="button" onClick={() => setPasting(true)} style={pill(false)}>📝 Paste notes</button>}
-            <button type="button" onClick={() => setOpen(false)} aria-label="Close tasks"
-              style={{ all: 'unset', cursor: 'pointer', width: 44, height: 44, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, color: SA.muted }}>×</button>
+            {canEdit && !pasting && <Button onClick={() => setPasting(true)}>📝 Paste notes</Button>}
+            <Button className="ui-btn--icon" onClick={() => setOpen(false)} aria-label="Close tasks" style={{ width: 36, height: 36, fontSize: 20 }}>×</Button>
           </header>
           {pasting && canEdit && <CallNotesPanel businessId={businessId} members={members} lookup={lookup} links={links} onClose={() => setPasting(false)} onCreated={created} onShowCalls={showCalls} />}
           {!pasting && canEdit && <QuickAdd meId={meId} members={members} lookup={lookup} links={links} onAdd={add} />}
           {!pasting && (
             <>
-              <div role="group" aria-label="Whose tasks" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', padding: '12px 16px' }}>
-                {filters.map(f => (
-                  <button key={f.id} type="button" aria-pressed={view === 'tasks' && filter === f.id} onClick={() => { setFilter(f.id); setView('tasks'); }} style={pill(view === 'tasks' && filter === f.id)}>
-                    {f.color && <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: f.color }} />}{f.label}
-                  </button>
-                ))}
-                <button type="button" aria-pressed={view === 'targets'} onClick={() => setView(v => (v === 'targets' ? 'tasks' : 'targets'))} style={{ ...pill(view === 'targets'), marginLeft: 'auto' }}>
-                  ◎ Targets{openTargetCount ? ` (${openTargetCount})` : ''}
-                </button>
-                <button type="button" aria-pressed={view === 'suggested'} onClick={() => setView(v => (v === 'suggested' ? 'tasks' : 'suggested'))} style={pill(view === 'suggested')}>
-                  ✦ Suggested{suggestedCount ? ` (${suggestedCount})` : ''}
-                </button>
-                <button type="button" aria-pressed={view === 'signals'} onClick={() => setView(v => (v === 'signals' ? 'tasks' : 'signals'))} style={pill(view === 'signals')}>
-                  ⚡ Signals{signals.length ? ` (${signals.length})` : ''}
-                </button>
-                {waiting.length > 0 && (
-                  <button type="button" aria-pressed={view === 'waiting'} onClick={() => setView(v => (v === 'waiting' ? 'tasks' : 'waiting'))} style={pill(view === 'waiting')}>
-                    ⏳ Waiting on ({waiting.length})
-                  </button>
-                )}
+              {/* ui-clarity-v1: whose tasks = the R2 segmented switch; Targets / Suggested / Signals / Waiting are R3 toggles (on = that list). */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', padding: '12px 16px' }}>
+                <span className="ui-group-label" aria-hidden="true">Whose</span>
+                <Segmented label="Whose tasks" items={filters} value={view === 'tasks' ? filter : null} onChange={id => { setFilter(id); setView('tasks'); }} />
+                <span className="ui-group-label" aria-hidden="true" style={{ marginLeft: 'auto' }}>Lists</span>
+                <ToggleChip pressed={view === 'targets'} onClick={() => setView(v => (v === 'targets' ? 'tasks' : 'targets'))}>◎ Targets{openTargetCount ? ` (${openTargetCount})` : ''}</ToggleChip>
+                <ToggleChip pressed={view === 'suggested'} onClick={() => setView(v => (v === 'suggested' ? 'tasks' : 'suggested'))}>✦ Suggested{suggestedCount ? ` (${suggestedCount})` : ''}</ToggleChip>
+                <ToggleChip pressed={view === 'signals'} onClick={() => setView(v => (v === 'signals' ? 'tasks' : 'signals'))}>⚡ Signals{signals.length ? ` (${signals.length})` : ''}</ToggleChip>
+                {waiting.length > 0 && <ToggleChip pressed={view === 'waiting'} onClick={() => setView(v => (v === 'waiting' ? 'tasks' : 'waiting'))}>⏳ Waiting on ({waiting.length})</ToggleChip>}
               </div>
               <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px' }}>
                 {view === 'targets' && <TargetsList businessId={businessId} targets={targets} canEdit={canEdit} onChanged={load} onOpenRecord={openRecord} />}

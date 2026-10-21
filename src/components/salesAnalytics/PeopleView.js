@@ -3,11 +3,14 @@ import { createPortal } from 'react-dom';
 import { SA, SA_THEME_ROOT_ID } from './theme';
 import { SEMANTIC } from './palette';
 import { fetchLive, FLAGS_CHANGED } from './huddleApi';
-import { inputStyle, numStyle, ErrorNote } from './goals/goalsUi';
+import { numStyle, ErrorNote } from './goals/goalsUi';
 import DataTable from '../../ui/DataTable';
+import FilterSelect from '../../ui/FilterSelect';
+import Button from '../../ui/Button';
+import Tag from '../../ui/Tag';
 import { OWNER_OPTIONS, ACTIVITY_OPTIONS, STATUS_OPTIONS, EMPTY_FILTERS, activeFilterCount, peopleView, displayName, readSort, writeSort } from './peopleModel';
 import { readPeopleCompany, writePeopleCompany } from './salesNav';
-import { ActiveFilterChip } from '../../ui/Chip';
+import { ActiveFilterChip, ToggleChip } from '../../ui/Chip';
 
 // sales-ia-v2 P5 - Pipeline > People: Huddle Live on the kit table. One row
 // per person with real activity (GET huddle/live, one page, closed rows
@@ -33,11 +36,9 @@ const KIND = { reply: ['↩ Replied', SEMANTIC.healthy], click: ['🖱 Clicked',
 const KIND_RANK = { reply: 3, click: 2, open: 1 };
 
 const rowBar = { height: ROW_BAR_HEIGHT, display: 'flex', alignItems: 'center', gap: 8, overflowX: 'auto', overflowY: 'hidden', flexWrap: 'nowrap', minWidth: 0 };
-const selectStyle = { ...inputStyle, height: 30, fontSize: 13, padding: '0 8px', flex: 'none' };
-const chipBtn = on => ({ height: 30, padding: '0 12px', borderRadius: 999, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', flex: 'none', border: `1px solid ${on ? SA.accent : SA.border}`, background: on ? SA.surface2 : 'transparent', color: on ? SA.text : SA.muted, display: 'inline-flex', alignItems: 'center', gap: 6 });
-const countStyle = { ...numStyle, display: 'inline-block', minWidth: '2ch', textAlign: 'right', color: SA.muted };
-const actBtn = { height: 24, padding: '0 8px', borderRadius: 6, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', border: `1px solid ${SA.border}`, background: SA.surface2, color: SA.text, display: 'inline-flex', alignItems: 'center', gap: 4 };
-const linkBtn = { background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit', textAlign: 'left', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+// A row's Snooze… is a select acting as a small menu: the kit filter-select edge at the dense row's 24 px.
+const rowSelect = { height: 24, fontSize: 12, borderRadius: 6, padding: '0 4px' };
+const opts = (first, list) => [{ value: '', label: first }, ...list.map(([value, label]) => ({ value, label }))];
 const Dim = () => <span className="ui-table__dim">—</span>;
 const rowKey = r => r.contact_id;
 
@@ -73,7 +74,7 @@ export default function PeopleView({ businessId, myUserId, ownerColor, ownerLabe
   };
   const nameCell = r => <span title={r.name || undefined} style={{ fontWeight: 500, color: r.closed ? SA.muted : SA.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{displayName(r)}</span>;
   const companyCell = r => (r.company
-    ? <button type="button" style={linkBtn} title={`Open ${r.company}`} onClick={() => onOpenCompany(r)}>{r.company}</button>
+    ? <button type="button" className="ui-link ui-link--cell" title={`Open ${r.company}`} onClick={() => onOpenCompany(r)}>{r.company}</button>
     : <Dim />);
   const ownerCell = r => <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: ownerColor(r.owner), flex: 'none' }} />{ownerLabel(r.owner)}</span>;
   const statusCell = r => <span style={{ color: r.closed ? SA.muted : SA.text, whiteSpace: 'nowrap' }}>{r.closed && r.unsubscribed ? 'Unsubscribed' : r.status_label}{r.snoozed && r.snooze_until ? <span style={{ ...numStyle, color: SA.faint, fontSize: 11 }}> · until {r.snooze_until.slice(5).replace('-', '/')}</span> : null}</span>;
@@ -84,17 +85,17 @@ export default function PeopleView({ businessId, myUserId, ownerColor, ownerLabe
     return (
       <span role="group" aria-label={`Actions for ${name}`} style={{ display: 'inline-flex', gap: 4, alignItems: 'center', whiteSpace: 'nowrap' }}>
         {r.not_a_fit
-          ? <button type="button" style={actBtn} title="Back on the list with the status they had before" onClick={() => onRestore(r)}>Restore</button>
+          ? <Button size="sm" title="Back on the list with the status they had before" onClick={() => onRestore(r)}>Restore</Button>
           : <>
-            <button type="button" style={{ ...actBtn, opacity: r.status === 'contacted' ? 0.5 : 1 }} disabled={r.status === 'contacted'} title={r.status === 'contacted' ? 'Already marked contacted' : 'Mark contacted (Undo for 10 s)'} onClick={() => onContacted(r)}>Mark contacted</button>
-            <button type="button" style={actBtn} title="Flag for a teammate (a to-do with a checklist)" onClick={() => onFlag(r)}>Flag</button>
-            <select aria-label={`Snooze ${name}`} value="" title="Hide until" onChange={e => { const n = Number(e.target.value); if (n) onNotNow(r, n, NOT_NOW.find(([d]) => d === n)[1]); }} style={{ ...actBtn, padding: '0 4px', width: 76 }}>
+            <Button size="sm" disabled={r.status === 'contacted'} disabledReason="Already marked contacted" title="Mark contacted (Undo for 10 s)" onClick={() => onContacted(r)}>Mark contacted</Button>
+            <Button size="sm" title="Flag for a teammate (a to-do with a checklist)" onClick={() => onFlag(r)}>Flag</Button>
+            <select className="ui-filter__select" aria-label={`Snooze ${name}`} value="" title="Hide until" onChange={e => { const n = Number(e.target.value); if (n) onNotNow(r, n, NOT_NOW.find(([d]) => d === n)[1]); }} style={{ ...rowSelect, width: 76 }}>
               <option value="">Snooze…</option>
               {NOT_NOW.map(([n, lb]) => <option key={n} value={n}>{lb}</option>)}
             </select>
-            <button type="button" style={{ ...actBtn, color: SA.bad }} title="Not a fit (Undo for 10 s)" onClick={() => onNotAFit(r)}>Not a fit</button>
+            <Button size="sm" variant="danger" title="Not a fit (Undo for 10 s)" onClick={() => onNotAFit(r)}>Not a fit</Button>
           </>}
-        {r.company && <button type="button" style={actBtn} title={`Open ${r.company} in the company panel`} onClick={() => onOpenCompany(r)}>Open company</button>}
+        {r.company && <Button size="sm" title={`Open ${r.company} in the company panel`} onClick={() => onOpenCompany(r)}>Open company</Button>}
       </span>
     );
   };
@@ -106,7 +107,7 @@ export default function PeopleView({ businessId, myUserId, ownerColor, ownerLabe
     { id: 'activity', label: 'Last activity', width: 170, sortValue: r => r.last_activity_at, render: activityCell, title: r => `${r.insight || ''}${r.last_activity_at ? ` · ${fullWhen(r.last_activity_at)}` : ''}` },
     { id: 'sequence', label: 'Sequence', width: 180, sortValue: r => r.sequence?.name || null, render: r => (r.sequence ? <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{r.sequence.name || 'Sequence'}{r.step != null ? <span style={{ color: SA.muted }}> · step {r.step}</span> : null}</span> : <Dim />), title: r => r.sequence && `${r.sequence.name || 'Sequence'}${r.step != null ? ` · step ${r.step}` : ''}` },
     { id: 'heat', label: 'Heat', width: 56, sortValue: r => r.heat_7d, render: r => <span style={{ ...numStyle, color: r.heat_7d ? SA.text : SA.faint }}>{r.heat_7d}</span>, title: r => `${r.heat_7d} real opens + clicks in 7 days (bot opens excluded)${r.replied ? ' · replied' : ''}` },
-    { id: 'kind', label: 'Signal', width: 76, sortValue: r => KIND_RANK[r.last_activity_kind] || null, render: r => (r.replied ? <span style={{ color: SEMANTIC.healthy }}>Reply</span> : r.human_clicks ? <span style={{ color: SEMANTIC.warning }}>Click</span> : r.real_opens ? <span style={{ color: SA.link }}>Open ×{r.real_opens}</span> : <Dim />) },
+    { id: 'kind', label: 'Signal', width: 96, sortValue: r => KIND_RANK[r.last_activity_kind] || null, render: r => (r.replied ? <Tag color={SEMANTIC.healthy}>Reply</Tag> : r.human_clicks ? <Tag color={SEMANTIC.warning}>Click</Tag> : r.real_opens ? <Tag color={SA.link}>Open ×{r.real_opens}</Tag> : <Dim />) },
     { id: 'owner', label: 'Owner', width: 90, sortValue: r => ownerLabel(r.owner), render: ownerCell },
     { id: 'status', label: 'Status', width: 96, sortValue: r => r.status_label, render: statusCell },
     { id: 'flag', label: 'Flag', width: 96, sortValue: r => r.flag?.owner_name || null, render: flagCell },
@@ -125,31 +126,19 @@ export default function PeopleView({ businessId, myUserId, ownerColor, ownerLabe
     </div>
   );
 
+  // R4: labelled dropdowns that show their value; an active company filter is the accent-outlined chip; Clear is a
+  // text button (only while a filter is on); Show closed is a toggle chip. R7: the row carries its label.
   const filterControls = (
     <>
-      <select aria-label="Owner" value={filters.owner} onChange={e => set('owner', e.target.value)} style={selectStyle}>
-        {OWNER_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-      </select>
-      <select aria-label="Sequence" value={filters.sequence} onChange={e => set('sequence', e.target.value)} style={{ ...selectStyle, maxWidth: 220 }}>
-        <option value="">All sequences</option>
-        {(data?.sequences || []).map(s => <option key={s.id} value={s.id}>{s.name || s.id}</option>)}
-      </select>
-      <select aria-label="Last activity" value={filters.activity} onChange={e => set('activity', e.target.value)} style={selectStyle}>
-        <option value="">Any activity</option>
-        {ACTIVITY_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-      </select>
-      <select aria-label="Status" value={filters.status} onChange={e => set('status', e.target.value)} style={selectStyle}>
-        <option value="">All statuses</option>
-        {STATUS_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-      </select>
-      <input type="search" aria-label="Search people" placeholder="Search" value={filters.q} onChange={e => set('q', e.target.value)} style={{ ...selectStyle, width: 160 }} />
-      {filters.company && <span className="ui-theme-dark" style={{ display: 'inline-flex' }}><ActiveFilterChip onRemove={clearCompany}>Company: {filters.company.name || filters.company.type}</ActiveFilterChip></span>}
-      <button type="button" disabled={!nFilters} onClick={clearAll} style={{ ...chipBtn(false), opacity: nFilters ? 1 : 0.45, cursor: nFilters ? 'pointer' : 'default' }}>
-        Clear<span style={countStyle}>{nFilters ? `(${nFilters})` : ''}</span>
-      </button>
-      <button type="button" aria-pressed={showClosed} style={chipBtn(showClosed)} onClick={() => setShowClosed(s => !s)} title="Booked, Not now, Not a fit, unsubscribed and snoozed people">
-        Show closed<span style={countStyle}>{data ? `(${view.closed})` : ''}</span>
-      </button>
+      <span className="ui-group-label" aria-hidden="true">Filter</span>
+      <FilterSelect label="Owner" value={filters.owner} options={OWNER_OPTIONS.map(([value, label]) => ({ value, label }))} onChange={v => set('owner', v)} />
+      <FilterSelect label="Sequence" value={filters.sequence} options={opts('All sequences', (data?.sequences || []).map(s => [s.id, s.name || s.id]))} onChange={v => set('sequence', v)} />
+      <FilterSelect label="Last activity" value={filters.activity} options={opts('Any activity', ACTIVITY_OPTIONS)} onChange={v => set('activity', v)} />
+      <FilterSelect label="Status" value={filters.status} options={opts('All statuses', STATUS_OPTIONS)} onChange={v => set('status', v)} />
+      <input type="search" className="ui-input ui-input--sm" aria-label="Search people" placeholder="Search" value={filters.q} onChange={e => set('q', e.target.value)} style={{ width: 160 }} />
+      {filters.company && <ActiveFilterChip onRemove={clearCompany}>Company: {filters.company.name || filters.company.type}</ActiveFilterChip>}
+      {nFilters > 0 && <Button variant="tertiary" onClick={clearAll}>Clear ({nFilters})</Button>}
+      <ToggleChip pressed={showClosed} count={data ? `(${view.closed})` : ''} onClick={() => setShowClosed(s => !s)} title="Booked, Not now, Not a fit, unsubscribed and snoozed people">Show closed</ToggleChip>
     </>
   );
   const overlayRoot = document.getElementById(SA_THEME_ROOT_ID) || document.body;
@@ -158,7 +147,7 @@ export default function PeopleView({ businessId, myUserId, ownerColor, ownerLabe
     <section aria-label="Pipeline people" data-pipeline-people style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
       {phone ? (
         <div data-filter-row style={rowBar}>
-          <button type="button" style={chipBtn(nFilters > 0)} aria-expanded={sheetOpen} onClick={() => setSheetOpen(true)}>Filters<span style={countStyle}>{nFilters || ''}</span></button>
+          <Button aria-expanded={sheetOpen} onClick={() => setSheetOpen(true)}>Filters{nFilters ? ` (${nFilters})` : ''}</Button>
           <span style={{ fontSize: 13, color: SA.muted, ...numStyle }}>{data ? `${view.rows.length} shown` : ''}</span>
         </div>
       ) : (

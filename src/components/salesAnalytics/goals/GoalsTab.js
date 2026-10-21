@@ -7,6 +7,7 @@ import { roleAtLeast } from '../../../constants/roles';
 import { fetchMe } from '../../../utils/authSession';
 import useMediaQuery from '../../../utils/useMediaQuery';
 import Segmented from '../../../ui/Segmented';
+import FilterSelect from '../../../ui/FilterSelect';
 import Ring, { RingLegend } from '../charts/Ring';
 import { goalsApi, TODOS_CHANGED } from './goalsApi';
 import ScorecardTable from './ScorecardTable';
@@ -27,7 +28,7 @@ import { dayTitle } from './todayModel';
 import { linkedTo, openTasks, isOpenTask } from '../tasks/LinkedTasks';
 import { exportWidgetCsv } from '../exportCsv';
 import {
-  subStyle, numStyle, inputStyle, Chip, Btn, ErrorNote,
+  subStyle, numStyle, Chip, Btn, ErrorNote,
   addDays, monthOf, monthName, weekLabel, weekOf, memberLookup, ownedBy, flashTo,
 } from './goalsUi';
 
@@ -314,13 +315,9 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
           View only
         </Chip>
       )}
-      {overview && <div style={{ flex: 'none' }}><Segmented label="Date range" items={RANGE_OPTIONS.map(([id, label]) => ({ id, label }))} value={range} onChange={setRange} /></div>}
-      {showPeople && <div style={{ flex: 'none' }}><Segmented label="Filter by person" items={people} value={ownerSlug} onChange={slug => { setOwnerSlug(slug); setCompanyOwnerFocus(null); }} /></div>}
-      {overview && (
-        <select aria-label="Team" value={team} onChange={e => setTeam(e.target.value)} style={{ ...inputStyle, height: 36, fontSize: 13, padding: '0 10px', flex: 'none' }}>
-          {TEAM_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-        </select>
-      )}
+      {overview && <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><span className="ui-group-label" aria-hidden="true">Range</span><Segmented label="Date range" items={RANGE_OPTIONS.map(([id, label]) => ({ id, label }))} value={range} onChange={setRange} /></div>}
+      {showPeople && <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><span className="ui-group-label" aria-hidden="true">Who</span><Segmented label="Filter by person" items={people} value={ownerSlug} onChange={slug => { setOwnerSlug(slug); setCompanyOwnerFocus(null); }} /></div>}
+      {overview && <FilterSelect label="Team" value={team} options={TEAM_OPTIONS.map(([value, label]) => ({ value, label }))} onChange={setTeam} />}
       {showWeek && <>
         <Btn aria-label="Previous week" onClick={() => setWeekStart(w => addDays(w, -7))}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg>
@@ -342,11 +339,11 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   // over the page (fixed) instead of inside it, where it would be clipped.
   const exportMenu = exportOpen && exportRect && createPortal(
     <div role="menu" className="no-print" style={{ position: 'fixed', right: window.innerWidth - exportRect.right, top: exportRect.bottom + 4, zIndex: 4010, minWidth: 220, background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: 10, padding: 6, display: 'flex', flexDirection: 'column' }}>
-      <button role="menuitem" type="button" style={{ all: 'unset', cursor: 'pointer', padding: '10px 12px', borderRadius: 8, color: SA.text }}
+      <button role="menuitem" type="button" className="ui-btn ui-btn--secondary ui-btn--block" style={{ height: 36, border: 0 }}
         onClick={() => { setExportOpen(false); onNav('dashboard', 'overview'); setTimeout(() => window.print(), 400); }}>Weekly report PDF</button>
       {exports.map(x => (
-        <button key={x.id} role="menuitem" type="button" disabled={x.disabled} title={x.disabled ? 'Needs the Stage 4 database update' : undefined}
-          style={{ all: 'unset', cursor: x.disabled ? 'default' : 'pointer', padding: '10px 12px', borderRadius: 8, color: x.disabled ? SA.faint : SA.text }}
+        <button key={x.id} role="menuitem" type="button" className="ui-btn ui-btn--secondary ui-btn--block" disabled={x.disabled} title={x.disabled ? 'Needs the Stage 4 database update' : undefined}
+          style={{ height: 36, ...(x.disabled ? {} : { border: 0 }) }}
           onClick={() => { if (x.disabled) return; setExportOpen(false); x.run(); }}>{x.label}</button>
       ))}
     </div>,

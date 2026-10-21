@@ -115,12 +115,14 @@ test('one filter row: type, team, owner, search; the channel counts follow the f
   expect(screen.queryByText('Solidcore')).toBeNull();
   fireEvent.change(screen.getByLabelText('Stage'), { target: { value: 'Not started' } });
   expect(screen.getByText('OneDigital')).toBeTruthy();
+  // ui-clarity-v1 R4: Clear is a text button that counts the filters and leaves when none is on.
   const clear = screen.getByRole('button', { name: /^Clear/ });
-  expect(clear.textContent).toBe('Clear(2)');
+  expect(clear.textContent).toBe('Clear (2)');
+  expect(clear).toHaveClass('ui-btn--tertiary');
   fireEvent.click(clear);
   expect(screen.getByText('Solidcore')).toBeTruthy();
   expect(screen.getByLabelText('Search companies').value).toBe('');
-  expect(screen.getByRole('button', { name: /^Clear/ })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: /^Clear/ })).toBeNull();
 });
 
 test('channel buttons: All = records; Apollo outbound shows the Apollo-only company; ?channel= opens on that channel', async () => {

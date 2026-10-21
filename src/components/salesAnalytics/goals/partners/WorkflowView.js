@@ -16,8 +16,9 @@ const KEY_KEY = 'prospector_partners_key';
 const readKeyOpen = () => { try { return localStorage.getItem(KEY_KEY) === 'open'; } catch { return false; } };
 const writeKeyOpen = open => { try { localStorage.setItem(KEY_KEY, open ? 'open' : 'collapsed'); } catch { /* private mode */ } };
 const PAUSED = { id: 'paused', label: 'Paused' };
-// Stage colors for the overall bar: one sequential ramp, light -> accent.
-const stageColor = i => `color-mix(in srgb, var(--sa-accent) ${20 + i * 11}%, var(--sa-track))`;
+// Stage colors for the overall bar: one sequential ramp towards the accent. ui-clarity-v1: every step starts at
+// 55% accent so the ground-colour count on it reads at >= 4.5:1 and the segment edge clears 3:1 on the card.
+const stageColor = i => `color-mix(in srgb, var(--sa-accent) ${55 + i * 6}%, var(--sa-track))`;
 const stageKey = p => (stepOf(p.pipeline_status) === null ? 'paused' : WORKFLOW_STEPS[stepOf(p.pipeline_status)].id);
 // stage filter: one stage id, or several (e.g. Pilot + Live from "Partners in pilot / live").
 const stagesOf = stage => (stage ? [].concat(stage) : []);
@@ -36,7 +37,7 @@ function OverallBar({ partners, stage, onStage }) {
             <button key={s.id} type="button" aria-pressed={on} onClick={() => onStage(on ? null : s.id)} title={`${s.label}: ${s.count}`}
               aria-label={`${s.label} ${s.count}`}
               style={{ all: 'unset', cursor: 'pointer', flex: `${s.count / total} 1 0`, minWidth: 22, background: s.color, opacity: stage && !on ? 0.35 : 1,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: SA.text, ...numStyle,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 600, color: SA.ground, ...numStyle,
                 outline: on ? `2px solid ${SA.text}` : undefined, outlineOffset: -2 }}>
               {s.count}
             </button>
@@ -61,7 +62,7 @@ function Key({ open, onToggle }) {
         style={{ all: 'unset', ...saSans, cursor: 'pointer', display: 'flex', gap: 10, alignItems: 'center', fontSize: 13, color: SA.soft, minHeight: 28 }}>
         <span style={{ ...labelStyle }}>Key</span>
         {!open && <span style={{ ...subStyle, fontSize: 12 }}>8 stages · 6 partner types · Next moves one step</span>}
-        <span style={{ marginLeft: 'auto', color: SA.muted }}>{open ? 'Hide ▾' : 'Show ▸'}</span>
+        <span className="ui-link" style={{ marginLeft: 'auto' }}>{open ? 'Hide ▾' : 'Show ▸'}</span>
       </button>
       {open && <>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -162,8 +163,7 @@ function Group({ cat, items, lookup, compact, rowActions, onRank, movedNotes, de
         })}
       </div>
       {sorted.length > TOP && (
-        <button type="button" aria-expanded={showAll} onClick={() => setShowAll(s => !s)}
-          style={{ all: 'unset', ...saSans, cursor: 'pointer', color: SA.link, fontSize: 13, minHeight: 28, alignSelf: 'flex-start' }}>
+        <button type="button" className="ui-link" aria-expanded={showAll} onClick={() => setShowAll(s => !s)} style={{ fontSize: 13, minHeight: 28, alignSelf: 'flex-start' }}>
           {showAll ? 'Show top 5 ▴' : `Show ${sorted.length - TOP} more ▾`}
         </button>
       )}

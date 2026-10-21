@@ -1,9 +1,13 @@
 import { useState, useId } from 'react';
 import { SA, saSans } from '../theme';
+import '../../../ui/kitTheme';
 import { labelStyle } from '../goals/goalsUi';
 import { filterLinkOptions } from './linkTargets';
 
-export const chipStyle = { ...saSans, display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 8px', borderRadius: 999, border: `1px solid ${SA.border}`, background: SA.surface2, color: SA.soft, fontSize: 12, cursor: 'pointer', maxWidth: '100%' };
+// ui-clarity-v1: a labelled field chip (dot / "Due" + its control); R6 secondary edge at 3:1. The control inside
+// carries the same edge (fieldChip) so it is identifiable on its own.
+export const chipStyle = { ...saSans, display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 8px', borderRadius: 6, border: `1px solid ${SA.border}`, background: SA.surface2, color: SA.text, fontSize: 12, cursor: 'pointer', maxWidth: '100%' };
+export const fieldChip = { ...saSans, height: 24, boxSizing: 'border-box', padding: '0 6px', borderRadius: 6, border: `1px solid ${SA.border}`, background: SA.inset, color: SA.text, fontSize: 12, cursor: 'pointer' };
 
 // Typeahead over commitments, goals, partners, companies, targets and employers, grouped.
 // onChange(type, id) - both null clears the link.
@@ -26,8 +30,7 @@ export default function LinkPicker({ link, links, onChange, disabled, taskText }
           {link ? links.labelFor(link.type, link.id) : '🔗 Link'}
         </button>
         {link && !disabled && (
-          <button type="button" onClick={() => onChange(null, null)} aria-label={`Remove link${what}`}
-            style={{ all: 'unset', cursor: 'pointer', width: 24, height: 26, textAlign: 'center', color: SA.muted }}>×</button>
+          <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm ui-btn--icon" onClick={() => onChange(null, null)} aria-label={`Remove link${what}`}>×</button>
         )}
       </span>
     );

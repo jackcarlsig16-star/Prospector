@@ -77,7 +77,8 @@ function Section({ title, count, sub, children, empty }) {
   );
 }
 
-const headerButton = { ...SA_TYPE.body, fontSize: 13, fontWeight: 500, background: 'transparent', color: SA.text, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: '0 16px', height: 36, cursor: 'pointer', whiteSpace: 'nowrap', flex: 'none' };
+// ui-clarity-v1 R6: the frame-row buttons are kit secondary buttons at 36 px; Start huddle is the one primary.
+const headerButton = { ...SA_TYPE.body, fontSize: 13, fontWeight: 500, background: SA.surface2, color: SA.text, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: '0 16px', height: 36, cursor: 'pointer', whiteSpace: 'nowrap', flex: 'none' };
 const railCard = { background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusCard, padding: 18, display: 'flex', flexDirection: 'column', gap: 10 };
 const railLabel = { ...SA_TYPE.label, color: SA.muted, fontWeight: 500 };
 const scrollList = { display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 640, overflowY: 'auto', paddingRight: 4 };
@@ -88,9 +89,8 @@ function Segmented({ label, options, value, onChange, counts }) {
       {options.map(([id, lb]) => {
         const on = value === id;
         return (
-          <button key={id} type="button" aria-pressed={on} onClick={() => onChange(id)}
-            style={{ ...saSans, height: 32, padding: '0 10px', borderRadius: 999, fontSize: 13, cursor: 'pointer', border: `1px solid ${on ? SA.accent : SA.border}`, background: on ? 'color-mix(in srgb, var(--sa-accent) 18%, transparent)' : SA.surface2, color: on ? SA.text : SA.soft }}>
-            {lb}{counts && counts[id] != null ? <span style={{ color: SA.muted, marginLeft: 5 }}>{counts[id]}</span> : null}
+          <button key={id} type="button" className="ui-chip" aria-pressed={on} onClick={() => onChange(id)}>
+            {lb}{counts && counts[id] != null ? <span className="ui-chip__count">{counts[id]}</span> : null}
           </button>
         );
       })}
@@ -451,10 +451,10 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
       {showLibrary && <CollateralLibrary businessId={businessId} items={collateral} onChanged={reloadCollateral} />}
 
       <div role="tablist" aria-label="Huddle views" data-channel-row style={{ height: ROW_BAR_HEIGHT, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8, overflowX: 'auto', overflowY: 'hidden', flexWrap: 'nowrap', minWidth: 0 }}>
+        <span className="ui-group-label" aria-hidden="true" style={{ marginRight: 4 }}>Show</span>
         {[['live', 'Live'], ['priorities', 'Priorities'], ['done', 'Done']].map(([id, lb]) => (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-            style={{ ...saSans, height: 30, padding: '0 12px', borderRadius: 999, fontSize: 13, fontWeight: tab === id ? 600 : 500, cursor: 'pointer', whiteSpace: 'nowrap', flex: 'none', border: `1px solid ${tab === id ? SA.accent : SA.border}`, background: tab === id ? SA.surface2 : 'transparent', color: tab === id ? SA.text : SA.muted, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            {lb}{id === 'done' && <span style={{ fontVariantNumeric: 'tabular-nums', display: 'inline-block', minWidth: '2ch', textAlign: 'right', color: SA.muted }}>{done.length || ''}</span>}
+          <button key={id} type="button" role="tab" className="ui-seg__btn" aria-selected={tab === id} aria-pressed={tab === id} onClick={() => setTab(id)} style={{ height: 30 }}>
+            {lb}{id === 'done' && <span className="ui-seg__meta">{done.length || ''}</span>}
           </button>
         ))}
         <span style={{ fontSize: 12, color: SA.muted, whiteSpace: 'nowrap', marginLeft: 8 }}>{tab !== 'live' ? `As of last sync ${fmtTime(lastRun?.finished_at)} · ` : ''}Last huddle {fmtTime(lastHuddleAt)}</span>
@@ -578,7 +578,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
         {message && (
           <div role="status" style={{ ...saSans, marginTop: 8, padding: '8px 14px', borderRadius: 12, background: SA.surface2, border: `1px solid ${SA.warn}`, fontSize: 13, color: SA.text, display: 'flex', gap: 12, alignItems: 'center' }}>
             <span>{message}</span>
-            <button type="button" aria-label="Dismiss" onClick={() => setMessage('')} style={{ all: 'unset', cursor: 'pointer', color: SA.muted }}>×</button>
+            <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm ui-btn--icon" aria-label="Dismiss" onClick={() => setMessage('')}>×</button>
           </div>
         )}
       </div>

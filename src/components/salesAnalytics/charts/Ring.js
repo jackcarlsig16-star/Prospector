@@ -1,4 +1,5 @@
 import { SA, saSans } from '../theme';
+import '../../../ui/kitTheme';
 
 const R = 36;
 const C = 2 * Math.PI * R;
@@ -53,11 +54,8 @@ export function RingLegend({ parts, showPct = false, onSelect, selected }) {
         const on = selected === keyOf(p);
         return (
           <li key={keyOf(p)}>
-            <button type="button" aria-pressed={on} disabled={!p.count} onClick={() => onSelect(on ? null : keyOf(p))}
-              title={p.count ? `Show only ${p.label}` : undefined}
-              style={{ ...saSans, display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, minHeight: 28, padding: '0 8px', marginLeft: -8, borderRadius: 8, cursor: p.count ? 'pointer' : 'default',
-                border: `1px solid ${on ? SA.accent : 'transparent'}`, background: on ? 'color-mix(in srgb, var(--sa-accent) 14%, transparent)' : 'transparent',
-                color: SA.text, opacity: selected != null && !on ? 0.6 : 1, textAlign: 'left' }}>
+            <button type="button" className="ui-chip" aria-pressed={on} disabled={!p.count} onClick={() => onSelect(on ? null : keyOf(p))}
+              title={p.count ? `Show only ${p.label}` : undefined} style={{ gap: 8, textAlign: 'left' }}>
               {swatch}{p.label}{num}
             </button>
           </li>

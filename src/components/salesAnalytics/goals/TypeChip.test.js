@@ -2,11 +2,11 @@ import { render, screen } from '@testing-library/react';
 import TypeChip, { typeChipOf, typeSortValue } from './TypeChip';
 import { PARTNER_TYPE_COLORS } from '../palette';
 
-// FIX pipeline-type-pills-v1 - one pill per row type: partners by family
-// label + hue, uncategorized neutral "Partner", employer accent-muted,
-// target / Apollo outlined. The word is always there. jsdom drops var() and
-// color-mix() declarations, so the hue is read from --type-chip-hue and the
-// wash / border weights from typeChipOf.
+// FIX pipeline-type-pills-v1 - one chip per row type: partners by family
+// label + hue, uncategorized neutral "Partner", employer accent, target /
+// Apollo grey. ui-clarity-v1 R5: every chip is the kit Tag (wash + dot +
+// word, never a border). jsdom drops var() and color-mix() declarations, so
+// the hue is read from --type-chip-hue.
 const hue = el => el.style.getPropertyValue('--type-chip-hue');
 const partner = category => ({ type: 'partner', category });
 const CASES = [
@@ -26,16 +26,20 @@ test('each partner family renders its short label in its PARTNER_TYPE_COLORS hue
   expect(typeChipOf(partner('1. Current partners')).label.startsWith('★')).toBe(true);
 });
 
-test('uncategorized partner -> "Partner" in the neutral token; employer -> accent-muted "Employer"; target / Apollo outlined with no wash', () => {
+test('uncategorized partner -> "Partner" in the neutral token; employer -> accent "Employer"; target / Apollo grey; every chip is a kit Tag with a dot and no border', () => {
   render(<div><TypeChip row={partner(null)} /><TypeChip row={{ type: 'employer' }} /><TypeChip row={{ type: 'target' }} /><TypeChip row={{ type: 'apollo' }} /></div>);
   const none = screen.getByText('Partner');
   expect(none).toHaveAttribute('data-type-chip', 'partner'); expect(hue(none)).toBe('var(--sa-neutral)'); expect(none.title).toBe('Uncategorized · partner');
   const emp = screen.getByText('Employer');
   expect(hue(emp)).toBe('var(--ui-accent, var(--sa-accent))');
-  expect(typeChipOf({ type: 'employer' })).toMatchObject({ wash: true, border: 27 });
   for (const [label, color] of [['Target', 'var(--sa-neutral)'], ['Apollo', 'var(--sa-faint)']]) {
     const chip = screen.getByText(label);
-    expect(hue(chip)).toBe(color); expect(chip.style.background).toBe('transparent'); expect(typeChipOf({ type: label.toLowerCase() })).toMatchObject({ wash: false, border: 45 });
+    expect(hue(chip)).toBe(color);
+  }
+  for (const chip of document.querySelectorAll('[data-type-chip]')) {
+    expect(chip).toHaveClass('ui-tag');
+    expect(chip.querySelector('.ui-tag__dot')).not.toBeNull();
+    expect(chip.style.border).toBe('');
   }
 });
 

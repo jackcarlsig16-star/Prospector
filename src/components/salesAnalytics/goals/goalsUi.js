@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { SA, SA_TYPE, SA_SHAPE, saSans, saMono } from '../theme';
+import '../../../ui/kitTheme';
 import { SEMANTIC, memberColor, UNASSIGNED_COLOR } from '../palette';
 
 // ── Dates (YYYY-MM-DD, America/Los_Angeles weeks from periods.js) ───────────
@@ -51,45 +52,48 @@ export const numStyle = { fontVariantNumeric: 'tabular-nums' };
 export const rowStyle = { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', borderTop: `1px solid ${SA.track}` };
 export const inputStyle = { ...saSans, fontSize: 14, height: 40, boxSizing: 'border-box', background: SA.inset, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, color: SA.text, padding: '0 12px' };
 
-export function Chip({ children, color, style, ...rest }) {
+// ui-clarity-v1 R5 - a label chip (the kit Tag look: a wash of `color`, no
+// border, no pointer). `color` is the wash hue, neutral when absent; callers
+// that need a dot add their own. Never a control - ToggleChip / Button for that.
+export function Chip({ children, color, style, className, ...rest }) {
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 24, padding: '0 10px', borderRadius: 999, background: SA.surface2, border: `1px solid ${SA.border}`, fontSize: 12, color: color || SA.soft, whiteSpace: 'nowrap', ...style }} {...rest}>
+    <span className={['ui-tag', className].filter(Boolean).join(' ')} style={{ '--tag-color': color || SA.borderStrong, height: 24, fontSize: 12, ...style }} {...rest}>
       {children}
     </span>
   );
 }
 export const Dot = ({ color, square }) => <span style={{ width: 8, height: 8, borderRadius: square ? 2 : 999, background: color, flex: 'none' }} />;
 
-export function Btn({ primary, children, style, ...rest }) {
+// R6 - the kit button at the Goals screens' 44 px size; primary = accent fill (one per area).
+export function Btn({ primary, children, style, className, ...rest }) {
   return (
-    <button type="button" style={{ ...saSans, height: 44, padding: '0 16px', borderRadius: SA_SHAPE.radiusInner, border: `1px solid ${primary ? SA.accent : SA.border}`, background: primary ? SA.accent : SA.surface2, color: primary ? SA.ground : SA.text, fontSize: 14, fontWeight: 500, cursor: rest.disabled ? 'default' : 'pointer', opacity: rest.disabled ? 0.6 : 1, display: 'inline-flex', alignItems: 'center', gap: 8, ...style }} {...rest}>
+    <button type="button" className={['ui-btn', primary ? 'ui-btn--primary' : 'ui-btn--secondary', className].filter(Boolean).join(' ')} style={{ height: 44, padding: '0 16px', borderRadius: SA_SHAPE.radiusInner, fontSize: 14, gap: 8, ...style }} {...rest}>
       {children}
     </button>
   );
 }
 export function AddButton({ children, ...rest }) {
   return (
-    <button type="button" style={{ ...saSans, height: 44, width: '100%', marginTop: 8, border: `1px dashed ${SA.borderStrong}`, borderRadius: SA_SHAPE.radiusInner, background: 'transparent', color: SA.muted, fontSize: 14, fontWeight: 500, textAlign: 'left', padding: '0 14px', cursor: 'pointer' }} {...rest}>
+    <button type="button" className="ui-btn ui-btn--secondary ui-btn--block" style={{ height: 44, marginTop: 8, borderRadius: SA_SHAPE.radiusInner, fontSize: 14, padding: '0 14px' }} {...rest}>
       {children}
     </button>
   );
 }
 export function SourceBadge({ source }) {
   return (
-    <span style={{ ...saMono, fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '2px 6px', borderRadius: 6, border: `1px solid ${SA.borderStrong}`, color: source === 'Manual' ? SA.soft : SA.link }}>
-      {source}
+    <span className="ui-tag ui-tag--sm" style={{ '--tag-color': source === 'Manual' ? SA.borderStrong : SA.link, ...saMono, fontSize: 10, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+      <span className="ui-tag__dot" aria-hidden="true" />{source}
     </span>
   );
 }
 
-// goals-surface-v1 - the one "a ring is filtering this list" marker.
+// goals-surface-v1 - the one "a ring is filtering this list" marker (R4: an
+// active filter is an accent-outlined chip; the whole chip clears it).
 export function ShowingChip({ label, count, onClear }) {
   return (
-    <button type="button" onClick={onClear} aria-label={`Showing ${label} (${count}). Clear filter`}
-      style={{ ...saSans, display: 'inline-flex', alignItems: 'center', gap: 8, height: 30, padding: '0 6px 0 12px', borderRadius: 999, cursor: 'pointer', fontSize: 13,
-        border: `1px solid ${SA.accent}`, background: 'color-mix(in srgb, var(--sa-accent) 14%, transparent)', color: SA.text }}>
+    <button type="button" className="ui-chip ui-chip--active" onClick={onClear} aria-label={`Showing ${label} (${count}). Clear filter`} style={{ height: 30 }}>
       <span><span style={{ color: SA.muted }}>Showing:</span> {label} <span style={numStyle}>({count})</span></span>
-      <span aria-hidden="true" style={{ width: 20, height: 20, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: SA.muted }}>×</span>
+      <span className="ui-chip__x" aria-hidden="true">×</span>
     </button>
   );
 }
@@ -135,7 +139,7 @@ export function EditableNumber({ value, rate, placeholder, onSave, ariaLabel, di
   if (draft === null) {
     return (
       <button type="button" onClick={() => setDraft(value == null ? '' : String(rate ? +(value * 100).toFixed(2) : value))} aria-label={ariaLabel}
-        style={{ all: 'unset', cursor: 'pointer', color: value == null ? (muted ? SA.muted : SA.link) : 'inherit', ...numStyle }}>
+        style={{ all: 'unset', cursor: 'pointer', color: value == null ? (muted ? SA.muted : SA.link) : 'inherit', textDecoration: 'underline dotted', textDecorationColor: SA.borderStrong, textUnderlineOffset: 3, ...numStyle }}>
         {value == null ? placeholder : display}
       </button>
     );

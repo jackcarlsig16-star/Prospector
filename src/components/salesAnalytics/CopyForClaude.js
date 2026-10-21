@@ -7,7 +7,8 @@ import { goalsApi } from './goals/goalsApi';
 // clipboard, for pasting into Claude. The server scrubs it (no emails, no
 // phones) and refuses to answer if anything slipped. Viewers may copy too.
 const SHOWN_MS = 1800;
-export const copyBtnStyle = { ...saSans, height: 28, padding: '0 10px', borderRadius: 999, border: `1px solid ${SA.border}`, background: 'transparent', color: SA.soft, fontSize: 12, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' };
+// ui-clarity-v1 R6 secondary at 28 px (callers spread it, so it stays a style object).
+export const copyBtnStyle = { ...saSans, height: 28, padding: '0 10px', borderRadius: 6, border: `1px solid ${SA.border}`, background: SA.surface2, color: SA.text, fontSize: 12, fontWeight: 500, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' };
 
 export default function CopyForClaude({ businessId, type, id, label, style }) {
   const [state, setState] = useState(null); // 'busy' | 'copied' | { error }
@@ -28,7 +29,7 @@ export default function CopyForClaude({ businessId, type, id, label, style }) {
   return (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, ...style }}>
       <button type="button" onClick={copy} disabled={state === 'busy'} aria-label={name} title="Copies this record as text for Claude - no emails or phone numbers"
-        style={{ ...copyBtnStyle, color: state === 'copied' ? SA.text : SA.soft, borderColor: state === 'copied' ? SA.accent : SA.border }}>
+        style={{ ...copyBtnStyle, borderColor: state === 'copied' ? SA.accent : SA.border }}>
         {state === 'copied' ? 'Copied for Claude ✓' : state === 'busy' ? 'Copying…' : name}
       </button>
       <span role="status" style={{ fontSize: 12, color: SA.bad }}>{state?.error || ''}</span>

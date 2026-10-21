@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { SA, SA_TYPE, SA_SHAPE, SA_THEME_CSS, SA_THEME_ROOT_ID, saSans } from './theme';
+import { SA, SA_THEME_CSS, SA_THEME_ROOT_ID, saSans } from './theme';
 import { ui } from '../../ui/kitTheme';
 import Segmented from '../../ui/Segmented';
+import Tag from '../../ui/Tag';
 import AnalyticsView from './AnalyticsView';
 import DailyHuddle from './DailyHuddle';
 import GoalsTab, { homeOf } from './goals/GoalsTab';
@@ -151,37 +152,34 @@ export default function SalesAnalyticsTab({ businessId, features }) {
 
   // shell-facelift-v1 Stage 2 - the tab row sits in the workspace header's sticky row when that slot exists
   // (BusinessDetailPage), inline otherwise. Kit vars, not SA vars: the slot is outside #sales-analytics-root.
+  // ui-clarity-v1 R1: text tabs with the kit's 3 px underline (.ui-tab, keyed on aria-current so the tabs stay
+  // buttons for every verify script that clicks them), the "Sales" group label beside them (R7), Marketing
+  // disabled with its dashed edge and "Coming soon". The row keeps its 38 px height (N2).
   // The flag badge sits on Actions (flags handed to you are actions) and
   // always keeps its slot so a new flag never shifts the tab labels.
-  const tabBtn = (id, label, extra) => (
-    <button key={id} type="button" aria-current={tab === id ? 'page' : undefined} onClick={() => { nav(id); setGoalsTarget(null); setHuddleTarget(null); }}
-      style={{ ...SA_TYPE.body, fontSize: 13, border: 0, borderRadius: 7, padding: '0 14px', height: 32, cursor: 'pointer', background: tab === id ? ui.surface : 'transparent', color: tab === id ? ui.text : ui.muted, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center' }}>
+  const tabBtn = (id, label, extra, more) => (
+    <button key={id} type="button" className="ui-tab" aria-current={tab === id ? 'page' : undefined} onClick={() => { nav(id); setGoalsTarget(null); setHuddleTarget(null); }} {...more}>
       {label}{extra}
     </button>
   );
   const flagBadge = (
     <span aria-label={myFlagCount ? `${myFlagCount} flagged for you` : undefined} aria-hidden={myFlagCount ? undefined : true}
-      style={{ marginLeft: 8, minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: myFlagCount ? ui.warn : 'transparent', color: ui.ground, fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontVariantNumeric: 'tabular-nums', visibility: myFlagCount ? 'visible' : 'hidden' }}>{myFlagCount || 0}</span>
+      style={{ minWidth: 18, height: 18, padding: '0 5px', borderRadius: 999, background: myFlagCount ? ui.warn : 'transparent', color: ui.ground, fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontVariantNumeric: 'tabular-nums', visibility: myFlagCount ? 'visible' : 'hidden' }}>{myFlagCount || 0}</span>
   );
-  const groupLabel = { ...SA_TYPE.label, fontSize: 10.5, color: ui.muted, padding: '0 8px 0 6px', whiteSpace: 'nowrap' };
   const tabRow = (
-    <div className="no-print" data-sales-tabrow style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginBottom: tabsSlot ? 0 : 20 }}>
-      <div role="navigation" aria-label="Sales" style={{ display: 'inline-flex', alignItems: 'center', background: ui.surface2, border: `1px solid ${ui.border}`, borderRadius: SA_SHAPE.radiusInner, padding: 3 }}>
-        <span style={groupLabel}>Sales</span>
+    <div className="no-print" data-sales-tabrow style={{ display: 'inline-flex', alignItems: 'center', gap: 10, height: 38, marginBottom: tabsSlot ? 0 : 20 }}>
+      <span className="ui-group-label" aria-hidden="true">Sales</span>
+      <div role="navigation" aria-label="Sales" className="ui-tabs" style={{ height: 38, alignItems: 'center', overflow: 'visible' }}>
         {TABS.map(([id, label]) => tabBtn(id, label, id === 'actions' ? flagBadge : null))}
-      </div>
-      <div data-sales-marketing style={{ display: 'inline-flex', alignItems: 'center', background: ui.surface2, border: `1px solid ${ui.border}`, borderRadius: SA_SHAPE.radiusInner, padding: 3 }}>
-        <button type="button" disabled aria-disabled="true" title="Marketing is coming soon"
-          style={{ ...SA_TYPE.body, fontSize: 13, border: 0, borderRadius: 7, padding: '0 12px', height: 32, cursor: 'not-allowed', background: 'transparent', color: ui.faint, whiteSpace: 'nowrap' }}>
-          Marketing <span style={{ ...SA_TYPE.label, fontSize: 10, marginLeft: 6 }}>Coming soon</span>
-        </button>
+        {tabBtn('marketing', 'Marketing', <Tag color={ui.off}>Coming soon</Tag>, { disabled: true, 'aria-disabled': 'true', title: 'Marketing is coming soon', 'data-sales-marketing': true })}
       </div>
     </div>
   );
   const subViews = SUB_VIEWS[tab];
   const frameRow = (
     <div className="no-print" data-sales-frame style={{ height: FRAME_ROW_HEIGHT, display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, minWidth: 0 }}>
-      <div data-sales-subviews style={{ flex: 'none', display: 'flex', alignItems: 'center', minHeight: 34 }}>
+      <div data-sales-subviews style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8, minHeight: 36 }}>
+        {subViews && <span className="ui-group-label" aria-hidden="true">View</span>}
         {subViews && <Segmented label={`${TABS.find(([id]) => id === tab)[1]} views`} items={subViews.map(([id, label]) => ({ id, label }))} value={view} onChange={v => { nav(tab, v); setHuddleTarget(null); }} />}
       </div>
       <div id={FRAME_TOOLS_ID} style={{ flex: '1 1 auto', minWidth: 0, height: FRAME_ROW_HEIGHT, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, overflowX: 'auto', overflowY: 'hidden' }} />

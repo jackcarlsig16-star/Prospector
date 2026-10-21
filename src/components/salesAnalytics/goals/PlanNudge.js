@@ -24,7 +24,7 @@ export function PlanNudge({ week, ownerId, ownerName, plans, onPlan }) {
     <div role="status" className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 16px', borderRadius: SA_SHAPE.radiusInner, border: `1px solid color-mix(in srgb, var(--sa-accent) 40%, var(--sa-border))`, background: SA.surface }}>
       <span style={{ flex: '1 1 220px', fontSize: 14 }}>No plan for {ownerName ? `${ownerName}'s` : 'this'} week yet. Pick the five that matter.</span>
       <Button variant="primary" onClick={onPlan}>Plan this week</Button>
-      <Button variant="ghost" onClick={dismiss}>Dismiss</Button>
+      <Button variant="tertiary" onClick={dismiss}>Dismiss</Button>
     </div>
   );
 }

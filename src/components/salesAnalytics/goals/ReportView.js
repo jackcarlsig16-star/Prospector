@@ -192,7 +192,7 @@ function SectionsRing({ written, toWrite }) {
   return (
     <div ref={box} style={{ position: 'relative' }}>
       <button type="button" aria-haspopup="dialog" aria-expanded={open} onClick={() => { setAlignLeft(box.current.getBoundingClientRect().left + 316 <= window.innerWidth); setOpen(o => !o); }} title="Which sections are written?"
-        style={{ all: 'unset', cursor: 'pointer', borderRadius: 999, display: 'flex' }}>
+        style={{ all: 'unset', cursor: 'pointer', borderRadius: 999, display: 'flex', border: `1px solid ${SA.border}`, padding: 2 }}>
         <Ring parts={[{ label: 'Written', count: written.length, color: SEMANTIC.healthy }, { label: 'To write', count: toWrite.length, color: SA.neutral }]} center={`${written.length}/12`} caption="sections" label="Report sections written" />
       </button>
       {open && (

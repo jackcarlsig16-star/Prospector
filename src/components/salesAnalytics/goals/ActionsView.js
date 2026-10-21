@@ -3,10 +3,15 @@ import { createPortal } from 'react-dom';
 import { SA, SA_THEME_ROOT_ID } from '../theme';
 import useMediaQuery from '../../../utils/useMediaQuery';
 import DataTable from '../../../ui/DataTable';
+import FilterSelect from '../../../ui/FilterSelect';
+import Segmented from '../../../ui/Segmented';
+import Button from '../../../ui/Button';
+import Tag from '../../../ui/Tag';
+import { ui } from '../../../ui/kitTheme';
 import PeopleCompanyPanel from '../PeopleCompanyPanel';
 import { goalsApi, TODOS_CHANGED } from './goalsApi';
 import { completeFlag, announceFlagsChanged, FLAGS_CHANGED } from '../huddleApi';
-import { inputStyle, numStyle, ErrorNote } from './goalsUi';
+import { numStyle, ErrorNote } from './goalsUi';
 import { KIND_LABEL, KIND_OPTIONS, EMPTY_FILTERS, activeFilterCount, actionsView, priorityText, dueText, readSort, writeSort, SNOOZE_OPTIONS, snoozeTo } from './actionsModel';
 
 // sales-ia-v2 A1 - Actions: one ranked list (GET goals/actions) on the kit
@@ -19,11 +24,9 @@ import { KIND_LABEL, KIND_OPTIONS, EMPTY_FILTERS, activeFilterCount, actionsView
 const UNDO_MS = 10000; // REVISABLE (spec)
 const ROW_BAR_HEIGHT = 36;
 const rowBar = { height: ROW_BAR_HEIGHT, display: 'flex', alignItems: 'center', gap: 8, overflowX: 'auto', overflowY: 'hidden', flexWrap: 'nowrap', minWidth: 0 };
-const selectStyle = { ...inputStyle, height: 30, fontSize: 13, padding: '0 8px', flex: 'none' };
-const chipBtn = on => ({ height: 30, padding: '0 12px', borderRadius: 999, fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap', flex: 'none', border: `1px solid ${on ? SA.accent : SA.border}`, background: on ? SA.surface2 : 'transparent', color: on ? SA.text : SA.muted, display: 'inline-flex', alignItems: 'center', gap: 6 });
-const countStyle = { ...numStyle, display: 'inline-block', minWidth: '2ch', textAlign: 'right', color: SA.muted };
-const actBtn = { height: 24, padding: '0 8px', borderRadius: 6, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap', border: `1px solid ${SA.border}`, background: SA.surface2, color: SA.text, display: 'inline-flex', alignItems: 'center', gap: 4 };
-const linkBtn = { background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit', textAlign: 'left', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+// A row's Snooze… / Reassign… are selects acting as small menus: the kit filter-select edge at the dense row's 24 px.
+const rowSelect = { height: 24, fontSize: 12, borderRadius: 6, padding: '0 4px' };
+const WHO = [{ id: 'mine', label: 'Mine' }, { id: 'team', label: 'Team' }];
 const ellipsis = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' };
 const Dim = () => <span className="ui-table__dim">—</span>;
 const rowKey = it => it.key;
@@ -94,36 +97,36 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
   const today = data?.today;
   const acts = {
     signal: it => <>
-      <button type="button" style={actBtn} title="Accept: one to-do (due Friday) and a target / note on the matched record" onClick={() => finish(it, () => goalsApi.acceptSignal(businessId, it.id), r => `Accepted · to-do added: ${r.todo.text}`, () => goalsApi.undoSignal(businessId, it.id))}>Accept</button>
-      <button type="button" style={actBtn} title="Dismiss for 7 days" onClick={() => finish(it, () => goalsApi.dismissSignal(businessId, it.id), `Dismissed ${it.company?.name || 'the signal'} for 7 days`, () => goalsApi.undoSignal(businessId, it.id))}>Dismiss</button>
+      <Button size="sm" title="Accept: one to-do (due Friday) and a target / note on the matched record" onClick={() => finish(it, () => goalsApi.acceptSignal(businessId, it.id), r => `Accepted · to-do added: ${r.todo.text}`, () => goalsApi.undoSignal(businessId, it.id))}>Accept</Button>
+      <Button size="sm" title="Dismiss for 7 days" onClick={() => finish(it, () => goalsApi.dismissSignal(businessId, it.id), `Dismissed ${it.company?.name || 'the signal'} for 7 days`, () => goalsApi.undoSignal(businessId, it.id))}>Dismiss</Button>
     </>,
     tidy: it => <>
-      <button type="button" style={actBtn} title="Accept: one to-do" onClick={() => finish(it, () => goalsApi.acceptSuggestion(businessId, it.id), r => (r.todo ? `Accepted · to-do added: ${r.todo.text}` : 'Accepted'), r => goalsApi.undoSuggestion(businessId, it.id, r.todo?.id))}>Accept</button>
-      <button type="button" style={actBtn} title="Dismiss for 7 days" onClick={() => finish(it, () => goalsApi.dismissSuggestion(businessId, it.id), 'Dismissed for 7 days', () => goalsApi.undoSuggestion(businessId, it.id))}>Dismiss</button>
-      <button type="button" style={actBtn} title="Snooze 7 days" onClick={() => finish(it, () => goalsApi.snoozeSuggestion(businessId, it.id), 'Snoozed 7 days', () => goalsApi.undoSuggestion(businessId, it.id))}>Snooze</button>
+      <Button size="sm" title="Accept: one to-do" onClick={() => finish(it, () => goalsApi.acceptSuggestion(businessId, it.id), r => (r.todo ? `Accepted · to-do added: ${r.todo.text}` : 'Accepted'), r => goalsApi.undoSuggestion(businessId, it.id, r.todo?.id))}>Accept</Button>
+      <Button size="sm" title="Dismiss for 7 days" onClick={() => finish(it, () => goalsApi.dismissSuggestion(businessId, it.id), 'Dismissed for 7 days', () => goalsApi.undoSuggestion(businessId, it.id))}>Dismiss</Button>
+      <Button size="sm" title="Snooze 7 days" onClick={() => finish(it, () => goalsApi.snoozeSuggestion(businessId, it.id), 'Snoozed 7 days', () => goalsApi.undoSuggestion(businessId, it.id))}>Snooze</Button>
     </>,
     waiting: it => <>
-      <button type="button" style={actBtn} title="Got it: they delivered" onClick={() => finish(it, () => patch(it.id, { status: 'done' }), `Got it: ${it.text}`, () => patch(it.id, { status: 'open' }))}>Got it</button>
-      <button type="button" style={actBtn} title="Nudge: a to-do for you, due today" onClick={() => change(() => goalsApi.nudgeWaiting(businessId, it.id), r => `Nudge to-do added, due today: ${r.text}`, r => goalsApi.deleteWeekGoal(businessId, r.id))}>Nudge</button>
+      <Button size="sm" title="Got it: they delivered" onClick={() => finish(it, () => patch(it.id, { status: 'done' }), `Got it: ${it.text}`, () => patch(it.id, { status: 'open' }))}>Got it</Button>
+      <Button size="sm" title="Nudge: a to-do for you, due today" onClick={() => change(() => goalsApi.nudgeWaiting(businessId, it.id), r => `Nudge to-do added, due today: ${r.text}`, r => goalsApi.deleteWeekGoal(businessId, r.id))}>Nudge</Button>
     </>,
     todo: it => <>
-      <button type="button" style={actBtn} title="Done (Undo for 10 s)" onClick={() => finish(it, () => patch(it.id, { status: 'done' }), `Done: ${it.text}`, () => patch(it.id, { status: 'open' }))}>Done</button>
-      <select aria-label={`Snooze ${it.text}`} value="" title="New due date" onChange={e => { const d = e.target.value; if (d) change(() => patch(it.id, { due_date: snoozeTo(today, d) }), `Snoozed to ${dueText({ due_date: snoozeTo(today, d) }, today)}`, () => patch(it.id, { due_date: it.due_date })); }} style={{ ...actBtn, padding: '0 4px', width: 74 }}>
+      <Button size="sm" title="Done (Undo for 10 s)" onClick={() => finish(it, () => patch(it.id, { status: 'done' }), `Done: ${it.text}`, () => patch(it.id, { status: 'open' }))}>Done</Button>
+      <select className="ui-filter__select" aria-label={`Snooze ${it.text}`} value="" title="New due date" onChange={e => { const d = e.target.value; if (d) change(() => patch(it.id, { due_date: snoozeTo(today, d) }), `Snoozed to ${dueText({ due_date: snoozeTo(today, d) }, today)}`, () => patch(it.id, { due_date: it.due_date })); }} style={{ ...rowSelect, width: 74 }}>
         <option value="">Snooze…</option>
         {SNOOZE_OPTIONS.map(([d, lb]) => <option key={d} value={d}>{lb}</option>)}
       </select>
-      <select aria-label={`Reassign ${it.text}`} value="" title="New owner" onChange={e => { const u = e.target.value; if (u) change(() => patch(it.id, { owner_user_id: u }), `Reassigned to ${lookup(u).first}`, () => patch(it.id, { owner_user_id: it.owner_user_id })); }} style={{ ...actBtn, padding: '0 4px', width: 84 }}>
+      <select className="ui-filter__select" aria-label={`Reassign ${it.text}`} value="" title="New owner" onChange={e => { const u = e.target.value; if (u) change(() => patch(it.id, { owner_user_id: u }), `Reassigned to ${lookup(u).first}`, () => patch(it.id, { owner_user_id: it.owner_user_id })); }} style={{ ...rowSelect, width: 84 }}>
         <option value="">Reassign…</option>
         {members.filter(m => m.user_id !== it.owner_user_id).map(m => <option key={m.user_id} value={m.user_id}>{lookup(m.user_id).first}</option>)}
       </select>
     </>,
-    flag: it => <button type="button" style={actBtn} title="Mark contacted: closes the flag when the Undo window ends" onClick={() => {
+    flag: it => <Button size="sm" title="Mark contacted: closes the flag when the Undo window ends" onClick={() => {
       remove(it);
       showToast(`${it.meta.contact || 'Prospect'} marked contacted · flag closes in 10 s`, () => load(), ({ unloading = false } = {}) => completeFlag(businessId, it.id, { keepalive: true }).then(() => { if (!unloading) { announceFlagsChanged(); load(); } }).catch(e => { if (!unloading) { setError(e.message); load(); } }));
-    }}>Mark contacted</button>,
+    }}>Mark contacted</Button>,
     focus: it => (it.status === 'done'
-      ? <button type="button" style={actBtn} onClick={() => change(() => patch(it.id, { status: 'open' }), `Reopened: ${it.text}`, () => patch(it.id, { status: 'done' }))}>Reopen</button>
-      : <button type="button" style={actBtn} title="Done (Undo for 10 s)" onClick={() => change(() => patch(it.id, { status: 'done' }), `Done: ${it.text}`, () => patch(it.id, { status: 'open' }))}>Done</button>),
+      ? <Button size="sm" onClick={() => change(() => patch(it.id, { status: 'open' }), `Reopened: ${it.text}`, () => patch(it.id, { status: 'done' }))}>Reopen</Button>
+      : <Button size="sm" title="Done (Undo for 10 s)" onClick={() => change(() => patch(it.id, { status: 'done' }), `Done: ${it.text}`, () => patch(it.id, { status: 'open' }))}>Done</Button>),
   };
 
   const items = useMemo(() => data?.items || [], [data]);
@@ -132,9 +135,10 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
   const nFilters = activeFilterCount(filters);
   const onSort = s => { setSort(s); writeSort(s); };
 
-  const priorityCell = it => <span style={{ ...numStyle, color: it.overdue ? SA.bad : it.priority === 1 ? SA.warn : SA.text, whiteSpace: 'nowrap' }}>{priorityText(it)}</span>;
+  // R5: priority is a status chip - overdue red, P1 amber, P2-P4 the kit priority ramp; the word is always on it.
+  const priorityCell = it => <Tag color={it.overdue ? SA.bad : it.priority === 1 ? SA.warn : ui[`prioP${it.priority}`] || SA.borderStrong}><span style={numStyle}>{priorityText(it)}</span></Tag>;
   const companyCell = it => (!it.company ? <Dim />
-    : it.company.type ? <button type="button" style={linkBtn} title={`Open ${it.company.name}`} onClick={() => setCompany({ company: it.company.name, link: { type: it.company.type, id: it.company.id } })}>{it.company.name}</button>
+    : it.company.type ? <button type="button" className="ui-link ui-link--cell" title={`Open ${it.company.name}`} onClick={() => setCompany({ company: it.company.name, link: { type: it.company.type, id: it.company.id } })}>{it.company.name}</button>
       : <span style={ellipsis} title={`${it.company.name} is not in the Pipeline yet`}>{it.company.name}</span>);
   const ownerCell = it => (it.owner_user_id
     ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: lookup(it.owner_user_id).color, flex: 'none' }} />{lookup(it.owner_user_id).first}</span>
@@ -169,22 +173,16 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
     </div>
   );
 
+  // R2 Mine | Team is the whose-list switch (segmented); R4 Kind is a labelled dropdown; Clear is a text button
+  // (only while a filter is on); R7: labels on the row.
   const filterControls = (
     <>
-      {canEdit && (
-        <span role="group" aria-label="Who" style={{ display: 'inline-flex', gap: 4, flex: 'none' }}>
-          {[['mine', 'Mine'], ['team', 'Team']].map(([id, lb]) => <button key={id} type="button" aria-pressed={filters.who === id} style={chipBtn(filters.who === id)} onClick={() => set('who', id)}>{lb}</button>)}
-        </span>
-      )}
-      <select aria-label="Kind" value={filters.kind} onChange={e => set('kind', e.target.value)} style={selectStyle}>
-        <option value="">All kinds</option>
-        {KIND_OPTIONS.filter(([id]) => canEdit || ['todo', 'focus', 'flag'].includes(id)).map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-      </select>
-      <input type="search" aria-label="Search actions" placeholder="Search" value={filters.q} onChange={e => set('q', e.target.value)} style={{ ...selectStyle, width: 160 }} />
-      <button type="button" disabled={!nFilters} onClick={() => setFilters(f => ({ ...EMPTY_FILTERS, who: f.who }))} style={{ ...chipBtn(false), opacity: nFilters ? 1 : 0.45, cursor: nFilters ? 'pointer' : 'default' }}>
-        Clear<span style={countStyle}>{nFilters ? `(${nFilters})` : ''}</span>
-      </button>
-      {canEdit && onPlan && !items.some(it => it.kind === 'focus') && <button type="button" style={chipBtn(false)} onClick={onPlan}>Plan this week</button>}
+      {canEdit && <span className="ui-group-label" aria-hidden="true">Who</span>}
+      {canEdit && <Segmented label="Who" items={WHO} value={filters.who} onChange={v => set('who', v)} />}
+      <FilterSelect label="Kind" value={filters.kind} options={[{ value: '', label: 'All kinds' }, ...KIND_OPTIONS.filter(([id]) => canEdit || ['todo', 'focus', 'flag'].includes(id)).map(([value, label]) => ({ value, label }))]} onChange={v => set('kind', v)} />
+      <input type="search" className="ui-input ui-input--sm" aria-label="Search actions" placeholder="Search" value={filters.q} onChange={e => set('q', e.target.value)} style={{ width: 160 }} />
+      {nFilters > 0 && <Button variant="tertiary" onClick={() => setFilters(f => ({ ...EMPTY_FILTERS, who: f.who }))}>Clear ({nFilters})</Button>}
+      {canEdit && onPlan && !items.some(it => it.kind === 'focus') && <Button onClick={onPlan}>Plan this week</Button>}
     </>
   );
   const overlayRoot = document.getElementById(SA_THEME_ROOT_ID) || document.body;
@@ -193,7 +191,7 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
     <section aria-label="Actions" data-actions style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
       {phone ? (
         <div data-filter-row style={rowBar}>
-          <button type="button" style={chipBtn(nFilters > 0)} aria-expanded={sheetOpen} onClick={() => setSheetOpen(true)}>Filters<span style={countStyle}>{nFilters || ''}</span></button>
+          <Button aria-expanded={sheetOpen} onClick={() => setSheetOpen(true)}>Filters{nFilters ? ` (${nFilters})` : ''}</Button>
           <span style={{ fontSize: 13, color: SA.muted, ...numStyle }}>{data ? `${view.open.length} open` : ''}</span>
         </div>
       ) : (
@@ -221,7 +219,7 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
       {toast && createPortal(
         <div role="status" className="no-print" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 4005, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderRadius: 10, background: SA.surface2, border: `1px solid ${SA.border}`, color: SA.text, fontSize: 14, maxWidth: 'min(640px, 92vw)' }}>
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{toast.error ? `Undo failed: ${toast.error}` : toast.text}</span>
-          {!toast.error && toast.undo && <button type="button" onClick={undo} disabled={toast.busy} style={{ ...actBtn, height: 28 }}>{toast.busy ? 'Undoing…' : 'Undo'}</button>}
+          {!toast.error && toast.undo && <Button size="sm" onClick={undo} disabled={toast.busy} style={{ height: 28 }}>{toast.busy ? 'Undoing…' : 'Undo'}</Button>}
         </div>, overlayRoot)}
     </section>
   );

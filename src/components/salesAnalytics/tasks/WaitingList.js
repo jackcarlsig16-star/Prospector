@@ -9,7 +9,7 @@ import { laDateString } from '../periods';
 // rows): who · what · due. Got it closes the row (it counts as nothing in a
 // report); Nudge makes OUR to-do "Nudge <who> re <what>", due today, owned
 // by whoever clicked. partnerName: id -> name, or null on one partner's card.
-const btn = { ...linkBtn, border: `1px solid ${SA.border}`, borderRadius: 999, padding: '0 10px', height: 28, color: SA.text, fontSize: 12 };
+const btn = { ...linkBtn, textDecoration: 'none', border: `1px solid ${SA.border}`, background: SA.surface2, borderRadius: 6, padding: '0 10px', height: 28, color: SA.text, fontSize: 12, fontWeight: 500 };
 
 export const sortWaiting = rows => [...rows].sort((a, b) => (a.due_date || '9').localeCompare(b.due_date || '9') || String(a.created_at).localeCompare(String(b.created_at)));
 

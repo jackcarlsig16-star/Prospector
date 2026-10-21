@@ -2,8 +2,12 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { SA, saSans } from '../theme';
 import Ring, { RingLegend } from '../charts/Ring';
 import { PIPELINE_STATUSES, WORKFLOW_STEPS, TIERS, TOUCH_STATUSES, TOUCH_TYPES, isStalePartner, daysSinceTouch, stepOf, nextStepFor } from '../../../constants/partnerPipeline';
-import { cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle, Chip, Btn, AddButton, ErrorNote, ShowingChip } from './goalsUi';
+import { cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, Btn, AddButton, ErrorNote, ShowingChip } from './goalsUi';
 import PartnerCard, { statusOf, statusLabel, statusColor, tierLabel } from './partners/PartnerCard';
+import Segmented from '../../../ui/Segmented';
+import FilterSelect from '../../../ui/FilterSelect';
+import Button from '../../../ui/Button';
+import { ToggleChip } from '../../../ui/Chip';
 import WorkflowView from './partners/WorkflowView';
 import BulkTouchLog from './partners/BulkTouchLog';
 import ApolloExport from './partners/ApolloExport';
@@ -43,8 +47,6 @@ const CHANGED_TEXT = 'Changed by someone else — refreshed';
 
 const SIGNAL_TEXT = { status: s => `→ ${statusLabel(s.to)}`, deprioritize: () => '→ Paused', assign: () => 'reassigned', hot: s => (s.hot ? 'marked hot' : 'no longer hot'), snooze: () => 'snoozed 7 days', note: () => 'note saved', touch: s => `· ${TOUCH_TYPES.find(t => t.id === s.touch_type)?.label || 'touch'} logged` };
 
-const pill = on => ({ ...saSans, height: 32, padding: '0 12px', borderRadius: 999, fontSize: 13, cursor: 'pointer', border: `1px solid ${on ? SA.accent : SA.border}`, background: on ? 'color-mix(in srgb, var(--sa-accent) 18%, transparent)' : SA.surface2, color: on ? SA.text : SA.soft });
-
 function Column({ title, sub, color, items, collapsed, onCollapse, render }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
@@ -52,7 +54,7 @@ function Column({ title, sub, color, items, collapsed, onCollapse, render }) {
         style={{ all: 'unset', display: 'flex', alignItems: 'center', gap: 8, cursor: onCollapse ? 'pointer' : 'default' }}>
         <span style={{ width: 10, height: 10, borderRadius: 3, background: color }} />
         <span style={h3Style}>{title}</span><span style={{ ...numStyle, ...subStyle }}>{items.length}</span>
-        {onCollapse && <span style={{ ...subStyle, fontSize: 12 }}>{collapsed ? 'Show ▸' : 'Hide ▾'}</span>}
+        {onCollapse && <span className="ui-link" style={{ fontSize: 12 }}>{collapsed ? 'Show ▸' : 'Hide ▾'}</span>}
       </button>
       {sub && <span style={{ ...subStyle, fontSize: 12, marginTop: -6 }}>{sub}</span>}
       {!collapsed && <div style={{ display: 'flex', flexDirection: 'column', gap: 10, maxHeight: 640, overflowY: 'auto', paddingRight: 2 }}>{items.map(render)}</div>}
@@ -256,24 +258,22 @@ export default function PartnersView({ businessId, partners, lookup, members, ca
         </div>
       </div>
 
+      {/* ui-clarity-v1: R2 layout switch · R4 Category dropdown + Clear text button · R3 tier / stale / hot toggles · R6 secondary buttons (R7 labels). */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginTop: 20 }}>
-        <div role="group" aria-label="Layout" style={{ display: 'inline-flex', gap: 4, padding: 3, borderRadius: 999, background: SA.inset, border: `1px solid ${SA.border}` }}>
-          {MODES.map(([id, label]) => <button key={id} type="button" aria-pressed={mode === id} onClick={() => setModeSaved(id)} style={{ ...pill(mode === id), border: 'none' }}>{label}</button>)}
-        </div>
-        <select aria-label="Category" value={filters.category} onChange={e => setFilters(f => ({ ...f, category: e.target.value }))} style={{ ...inputStyle, height: 32, width: 'auto', maxWidth: '100%', borderRadius: 999, fontSize: 13 }}>
-          <option value="">All categories</option>
-          {categories.map(c => <option key={c} value={c}>{c.replace(/^\d+\.\s*/, '')}</option>)}
-        </select>
-        {TIERS.map(t => <button key={t} type="button" aria-pressed={filters.tiers.includes(t)} onClick={() => toggleTier(t)} style={pill(filters.tiers.includes(t))}>{tierLabel(t)}</button>)}
-        <button type="button" aria-pressed={filters.stale} onClick={() => setFilters(f => ({ ...f, stale: !f.stale }))} style={pill(filters.stale)}>Stale only</button>
-        <button type="button" aria-pressed={filters.hot} onClick={() => setFilters(f => ({ ...f, hot: !f.hot }))} style={pill(filters.hot)}>🔥 Hot only</button>
-        {(filtering || stage) && <button type="button" onClick={() => { setFilters(NO_FILTERS); setStage(null); }} style={{ ...pill(false), border: 'none', background: 'transparent', color: SA.link }}>Clear</button>}
+        <span className="ui-group-label" aria-hidden="true">Layout</span>
+        <Segmented label="Layout" items={MODES.map(([id, label]) => ({ id, label }))} value={mode} onChange={setModeSaved} />
+        <span className="ui-group-label" aria-hidden="true" style={{ marginLeft: 8 }}>Filter</span>
+        <FilterSelect label="Category" value={filters.category} options={[{ value: '', label: 'All categories' }, ...categories.map(c => ({ value: c, label: c.replace(/^\d+\.\s*/, '') }))]} onChange={v => setFilters(f => ({ ...f, category: v }))} />
+        {TIERS.map(t => <ToggleChip key={t} pressed={filters.tiers.includes(t)} onClick={() => toggleTier(t)}>{tierLabel(t)}</ToggleChip>)}
+        <ToggleChip pressed={filters.stale} onClick={() => setFilters(f => ({ ...f, stale: !f.stale }))}>Stale only</ToggleChip>
+        <ToggleChip pressed={filters.hot} onClick={() => setFilters(f => ({ ...f, hot: !f.hot }))}>🔥 Hot only</ToggleChip>
+        {(filtering || stage) && <Button variant="tertiary" onClick={() => { setFilters(NO_FILTERS); setStage(null); }}>Clear</Button>}
         <span style={{ ...subStyle, ...numStyle, fontSize: 13 }}>{shown.length} of {partners.length}</span>
-        {canEdit && pendingCount > 0 && <button type="button" aria-expanded={reviewOpen} onClick={() => { setReviewOpen(o => !o); setExportOpen(false); setBulkOpen(false); setMovesOpen(false); }} style={{ ...pill(reviewOpen), marginLeft: 'auto' }}>Review domains ({pendingCount})</button>}
-        {canEdit && <button type="button" aria-expanded={exportOpen} onClick={() => { setExportOpen(o => !o); setReviewOpen(false); setBulkOpen(false); setMovesOpen(false); }} style={{ ...pill(exportOpen), marginLeft: pendingCount > 0 ? 0 : 'auto' }}>Export to Apollo (CSV)</button>}
-        {canEdit && <button type="button" aria-expanded={bulkOpen} onClick={() => { setBulkOpen(o => !o); setExportOpen(false); setReviewOpen(false); setMovesOpen(false); }} style={pill(bulkOpen)}>＋ Log touches</button>}
-        {canEdit && <button type="button" aria-expanded={movesOpen} onClick={() => { setMovesOpen(o => !o); setExportOpen(false); setReviewOpen(false); setBulkOpen(false); }} style={pill(movesOpen)} title="Stage moves made from Apollo data: last run's applied list (undo) and the held ones waiting on you">Apollo moves</button>}
-        {canEdit && <button type="button" onClick={refreshPeople} disabled={peopleBusy} title="Pull the people Apollo knows at partners with a confirmed domain (runs a Sync now)" style={{ ...pill(false), opacity: peopleBusy ? 0.6 : 1 }}>{peopleBusy ? 'Refreshing people…' : '↻ Refresh partner people'}</button>}
+        {canEdit && pendingCount > 0 && <Button aria-expanded={reviewOpen} onClick={() => { setReviewOpen(o => !o); setExportOpen(false); setBulkOpen(false); setMovesOpen(false); }} style={{ marginLeft: 'auto' }}>Review domains ({pendingCount})</Button>}
+        {canEdit && <Button aria-expanded={exportOpen} onClick={() => { setExportOpen(o => !o); setReviewOpen(false); setBulkOpen(false); setMovesOpen(false); }} style={{ marginLeft: pendingCount > 0 ? 0 : 'auto' }}>Export to Apollo (CSV)</Button>}
+        {canEdit && <Button aria-expanded={bulkOpen} onClick={() => { setBulkOpen(o => !o); setExportOpen(false); setReviewOpen(false); setMovesOpen(false); }}>＋ Log touches</Button>}
+        {canEdit && <Button aria-expanded={movesOpen} onClick={() => { setMovesOpen(o => !o); setExportOpen(false); setReviewOpen(false); setBulkOpen(false); }} title="Stage moves made from Apollo data: last run's applied list (undo) and the held ones waiting on you">Apollo moves</Button>}
+        {canEdit && <Button onClick={refreshPeople} disabled={peopleBusy} disabledReason="Refreshing people" title="Pull the people Apollo knows at partners with a confirmed domain (runs a Sync now)">{peopleBusy ? 'Refreshing people…' : '↻ Refresh partner people'}</Button>}
       </div>
       {reviewOpen && canEdit && domainSummary && <DomainReview suggestions={domainSummary.suggestions || []} onAdd={domains.add} onChanged={bumpDomains} onClose={() => setReviewOpen(false)} />}
       {movesOpen && canEdit && <ApolloMoves load={onApolloMoves} loadOutlook={onOutlookMoves} onApplyOutlook={onApplyOutlook} onDismissOutlook={onDismissOutlook} onRecordOutlook={onRecordOutlook} onApply={onApplyApollo} onDismiss={onDismissApollo} onUndo={onUndo} lookup={lookup}
@@ -297,9 +297,9 @@ export default function PartnersView({ businessId, partners, lookup, members, ca
           ? <div style={{ ...subStyle, fontSize: 13, marginTop: 4 }}>Nothing stale. Partners you haven't contacted yet don't count.</div>
           : <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
               {stale.map(p => (
-                <Chip key={p.id} role="button" tabIndex={0} style={{ cursor: 'pointer' }} onClick={() => openPartner(p.id)} onKeyDown={e => { if (e.key === 'Enter') openPartner(p.id); }}>
+                <button key={p.id} type="button" className="ui-chip" onClick={() => openPartner(p.id)}>
                   <span style={{ color: SA.bad, ...numStyle }}>{daysSinceTouch(p)}d</span>{p.name} · {lookup(p.owner_user_id).first}
-                </Chip>
+                </button>
               ))}
             </div>}
       </div>

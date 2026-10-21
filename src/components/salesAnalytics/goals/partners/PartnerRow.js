@@ -46,7 +46,8 @@ function touchLabel(partner, days) {
 }
 
 const menuItem = { all: 'unset', boxSizing: 'border-box', ...saSans, display: 'block', width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 14, color: SA.text, cursor: 'pointer' };
-const smallBtn = { all: 'unset', ...saSans, width: 32, height: 28, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, color: SA.muted, cursor: 'pointer', fontSize: 11 };
+const smallBtn = 'ui-btn ui-btn--secondary ui-btn--sm ui-btn--icon';
+const grip = { ...saSans, width: 24, height: 18, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: SA.muted, cursor: 'grab', fontSize: 13 };
 
 // Everything that isn't the one-step Next move, in words.
 export function MoreMenu({ partner, members, onSignal }) {
@@ -138,9 +139,9 @@ export default function PartnerRow({ partner, lookup, compact, showCategory, mov
       <span aria-hidden="true" title={fam.label} style={{ width: 4, flex: 'none', background: fam.color, borderRadius: '10px 0 0 10px' }} />
       {rank && (
         <div role="group" aria-label={`Order of ${partner.name}`} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2, padding: '0 2px' }}>
-          <button type="button" style={{ ...smallBtn, opacity: rank.canUp ? 1 : 0.3 }} disabled={!rank.canUp} aria-label={`Move ${partner.name} up`} onClick={rank.onUp}>▲</button>
-          {drag && <span aria-hidden="true" title="Drag to reorder" style={{ ...smallBtn, height: 18, cursor: 'grab', fontSize: 13 }}>⠿</span>}
-          <button type="button" style={{ ...smallBtn, opacity: rank.canDown ? 1 : 0.3 }} disabled={!rank.canDown} aria-label={`Move ${partner.name} down`} onClick={rank.onDown}>▼</button>
+          <button type="button" className={smallBtn} style={{ fontSize: 11 }} disabled={!rank.canUp} aria-label={`Move ${partner.name} up`} onClick={rank.onUp}>▲</button>
+          {drag && <span aria-hidden="true" title="Drag to reorder" style={grip}>⠿</span>}
+          <button type="button" className={smallBtn} style={{ fontSize: 11 }} disabled={!rank.canDown} aria-label={`Move ${partner.name} down`} onClick={rank.onDown}>▼</button>
         </div>
       )}
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
@@ -151,11 +152,11 @@ export default function PartnerRow({ partner, lookup, compact, showCategory, mov
             <span aria-hidden="true" style={{ color: SA.muted, fontSize: 11, width: 10 }}>{expanded ? '▾' : '▸'}</span>
             {fam.mark && <span aria-label={fam.label} title={fam.label} style={{ color: fam.color }}>{fam.mark}</span>}
             {owner && <span title={owner.first} aria-label={`Owner ${owner.first}`} style={{ width: 8, height: 8, borderRadius: 999, background: owner.color, flex: 'none' }} />}
-            <span style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{partner.name}</span>
+            <span className="ui-link ui-link--quiet" style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{partner.name}</span>
             {partner.hot && <span aria-label="Hot" title="Hot">🔥</span>}
           </button>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-            {partner.priority && <Chip style={{ height: 20, color: partner.priority === 1 ? SA.text : SA.soft, borderColor: partner.priority === 1 ? SA.accent : SA.border }}>P{partner.priority}</Chip>}
+            {partner.priority && <Chip color={partner.priority === 1 ? SA.accent : undefined} style={{ height: 20 }}>P{partner.priority}</Chip>}
             {partner.tier && <Chip style={{ height: 20 }}>{tierLabel(partner.tier)}</Chip>}
             <OwnerPill row={partner} />
             {partner.people_count > 0 && <Chip style={{ height: 20 }} title="People we know here" aria-label={`${partner.people_count} people known`}>👤 {partner.people_count}</Chip>}

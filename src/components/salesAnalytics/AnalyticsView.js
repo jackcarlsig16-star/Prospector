@@ -172,19 +172,11 @@ export default function AnalyticsView({ businessId, features, canEdit, onOpenGoa
             Compare to previous period
           </label>
 
-          <div style={{ display: 'flex', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: 3 }}>
+          {/* ui-clarity-v1 R2: the period presets are the kit segmented control (R7 label beside it). */}
+          <span className="ui-group-label" aria-hidden="true">Period</span>
+          <div role="group" aria-label="Period" className="ui-seg">
             {PERIOD_PRESETS.map(p => (
-              <button
-                key={p.id}
-                onClick={() => setPreset(p.id)}
-                style={{
-                  ...SA_TYPE.body, fontSize: 13, border: 0, borderRadius: 7, padding: '9px 14px', minHeight: 36, cursor: 'pointer',
-                  background: preset === p.id ? SA.surface2 : 'transparent',
-                  color: preset === p.id ? SA.text : SA.muted,
-                }}
-              >
-                {p.label}
-              </button>
+              <button key={p.id} type="button" className="ui-seg__btn" aria-pressed={preset === p.id} onClick={() => setPreset(p.id)} style={{ height: 36 }}>{p.label}</button>
             ))}
           </div>
 
@@ -196,19 +188,12 @@ export default function AnalyticsView({ businessId, features, canEdit, onOpenGoa
             </div>
           )}
 
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            style={{ ...SA_TYPE.body, fontSize: 13, fontWeight: 500, background: 'transparent', color: SA.text, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: '0 16px', height: 44, cursor: syncing ? 'default' : 'pointer', opacity: syncing ? 0.6 : 1 }}
-          >
+          <button type="button" className="ui-btn ui-btn--secondary" onClick={handleSync} disabled={syncing} title={syncing ? 'A sync is running' : undefined} style={{ height: 44, padding: '0 16px', borderRadius: SA_SHAPE.radiusInner }}>
             {syncing ? 'Syncing…' : 'Sync now'}
           </button>
 
           <div ref={exportMenuRef} style={{ position: 'relative' }}>
-            <button
-              onClick={() => setExportMenuOpen(o => !o)}
-              style={{ ...SA_TYPE.body, fontSize: 13, fontWeight: 600, background: SA.accent, color: SA.ground, border: 0, borderRadius: SA_SHAPE.radiusInner, padding: '0 18px', height: 44, cursor: 'pointer' }}
-            >
+            <button type="button" className="ui-btn ui-btn--primary" aria-haspopup="menu" aria-expanded={exportMenuOpen} onClick={() => setExportMenuOpen(o => !o)} style={{ height: 44, padding: '0 18px', borderRadius: SA_SHAPE.radiusInner, fontWeight: 600 }}>
               Export report
             </button>
             {exportMenuOpen && (

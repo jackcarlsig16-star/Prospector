@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { SA, saSans } from '../theme';
 import { SEMANTIC } from '../palette';
-import LinkPicker, { chipStyle } from './LinkPicker';
+import LinkPicker, { fieldChip } from './LinkPicker';
 import SourceNote from './SourceNote';
 
 export const md = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-export const linkBtn = { all: 'unset', cursor: 'pointer', color: SA.link, fontSize: 13, minHeight: 28, display: 'inline-flex', alignItems: 'center' };
-const fieldStyle = { all: 'unset', ...saSans, fontSize: 12, color: SA.soft, cursor: 'pointer' };
+// ui-clarity-v1 R6 tertiary: a text action is identifiable only as a link, so it is underlined.
+export const linkBtn = { all: 'unset', cursor: 'pointer', color: SA.link, fontSize: 13, minHeight: 28, display: 'inline-flex', alignItems: 'center', textDecoration: 'underline', textUnderlineOffset: 3 };
 
 export function Box({ checked, disabled, title, onClick, label }) {
   return (
@@ -51,35 +51,35 @@ export default function TaskRow({ t, isFlag, isOpen, onToggle, members, lookup, 
             onClick={() => act.setDone(t, !done)} />
         </div>
         <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <button type="button" onClick={onToggle} aria-expanded={isOpen}
-            style={{ all: 'unset', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: done ? SA.muted : SA.text, textDecoration: done ? 'line-through' : 'none', overflowWrap: 'anywhere' }}>
+          <button type="button" className="ui-link ui-link--quiet" onClick={onToggle} aria-expanded={isOpen}
+            style={{ fontSize: 14, fontWeight: 600, color: done ? SA.muted : SA.text, textDecoration: done ? 'line-through' : undefined, overflowWrap: 'anywhere', textAlign: 'left' }}>
             {isFlag && '🚩 '}{t.text}
           </button>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', fontSize: 12, color: SA.muted }}>
             {can.edit ? (
-              <label style={chipStyle}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: owner.color }} />
-                <select aria-label={`Owner of ${t.text}`} value={t.owner_user_id || ''} onChange={e => act.reassign(t, e.target.value)} style={fieldStyle}>
+                <select aria-label={`Owner of ${t.text}`} value={t.owner_user_id || ''} onChange={e => act.reassign(t, e.target.value)} style={fieldChip}>
                   {!isFlag && <option value="">Unassigned</option>}
                   {members.map(m => <option key={m.user_id} value={m.user_id}>{lookup(m.user_id).first}</option>)}
                 </select>
-              </label>
+              </span>
             ) : (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: owner.color }} />{owner.first}</span>
             )}
             {t.due_date && !isOpen && <span style={{ color: overdue ? SA.bad : SA.muted }}>due {md(t.due_date)}</span>}
             {t.steps.length > 0 && <span style={{ fontVariantNumeric: 'tabular-nums' }}>{nDone}/{t.steps.length}</span>}
-            {link && !isOpen && <span style={{ padding: '2px 8px', borderRadius: 999, border: `1px solid ${SA.border}`, color: SA.soft, overflowWrap: 'anywhere' }}>{links.labelFor(link.type, link.id)}</span>}
+            {link && !isOpen && <span className="ui-tag ui-tag--sm" style={{ '--tag-color': SA.borderStrong, height: 'auto', minHeight: 20, whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{links.labelFor(link.type, link.id)}</span>}
           </div>
           {isOpen && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8, paddingTop: 4 }}>
               {can.edit && !isFlag ? (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                  <label style={{ ...chipStyle, borderColor: overdue ? SA.bad : SA.border }}>
-                    <span>Due</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: overdue ? SA.bad : SA.muted }}>
+                    Due
                     <input type="date" aria-label={`Due date of ${t.text}`} value={t.due_date || ''} onChange={e => act.update(t, { due_date: e.target.value || null })}
-                      style={{ ...fieldStyle, colorScheme: 'dark' }} />
-                  </label>
+                      style={{ ...fieldChip, borderColor: overdue ? SA.bad : SA.border, colorScheme: 'dark' }} />
+                  </span>
                   <LinkPicker link={link} links={links} taskText={t.text}
                     onChange={(type, id) => act.update(t, { link_type: type, link_id: id })} />
                 </div>

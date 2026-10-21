@@ -44,7 +44,7 @@ function GoogleCard() {
   return (
     <Card title="Google" subtitle={status === null ? '…' : any ? status.email : 'Not connected'}
       actions={<StatusPill status={any ? 'ok' : 'off'}>{any ? 'Connected' : 'Not connected'}</StatusPill>}
-      footer={any && <ButtonRow align="start"><Button variant="ghost" title="Google removes Prospector's access to all three at once" onClick={async () => { await disconnectGoogle(); setStatus({ email: null, features: [] }); }}>Disconnect Google</Button></ButtonRow>}>
+      footer={any && <ButtonRow align="start"><Button variant="tertiary" title="Google removes Prospector's access to all three at once" onClick={async () => { await disconnectGoogle(); setStatus({ email: null, features: [] }); }}>Disconnect Google</Button></ButtonRow>}>
       <div style={{ display: 'grid', gap: KIT_SPACE[1] }}>
         <div style={fine}>EACH FEATURE ASKS GOOGLE SEPARATELY, THE FIRST TIME YOU USE IT</div>
         {Object.entries(GOOGLE_FEATURE_LABELS).map(([feature, label]) => {
@@ -151,7 +151,7 @@ function MicrosoftCard({ result }) {
             {connected ? 'Reconnect / switch account →' : 'Connect Microsoft →'}
           </Button>
           {healthy && <Button onClick={check} disabled={!!busy}>{busy === 'check' ? 'Checking…' : 'Check connection'}</Button>}
-          {connected && <Button variant="ghost" onClick={disconnect} disabled={!!busy}>{busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}</Button>}
+          {connected && <Button variant="tertiary" onClick={disconnect} disabled={!!busy}>{busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}</Button>}
         </ButtonRow>
         {note && statusLine(note)}
       </div>

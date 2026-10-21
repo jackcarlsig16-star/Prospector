@@ -78,6 +78,7 @@ module.exports.measureScript = function measureScript({ scope = '#sales-analytic
   const underlined = el => { const has = e => /underline/.test(getComputedStyle(e).textDecorationLine); if (has(el)) return true; for (const d of el.querySelectorAll('*')) if (d.textContent.trim() && has(d)) return true; return false; };
   for (const el of scope.querySelectorAll('button, input, select, textarea, a[href], [role=button], [role=tab], [role=switch], [role=checkbox], [role=menuitem], summary')) {
     if (!visible(el) || excluded(el) || seen.has(el)) continue; seen.add(el);
+    if (el.tagName === 'INPUT' && ['checkbox', 'radio'].includes(el.type)) continue; // drawn by the browser, no CSS edge to read
     const cs = getComputedStyle(el); const chain = chainOf(el);
     const outside = chain.length > 1 ? paint(chain.slice(0, -1), 0, CANVAS, null) : CANVAS;
     const own = chain[chain.length - 1];

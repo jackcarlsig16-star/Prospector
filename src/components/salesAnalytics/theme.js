@@ -35,8 +35,10 @@ export const SA_THEME_ROOT_ID = 'sales-analytics-root';
 // SA_THEME_CLASS: for SA-styled UI mounted outside the page root (the Tasks
 // drawer lives at the app shell, on every workspace page).
 export const SA_THEME_CLASS = 'sa-theme';
+// ui-clarity-v1 H1: placeholder text reads at the muted token (the UA default grey sits under 4.5:1 on the inset).
 export const SA_THEME_CSS = `
   #${SA_THEME_ROOT_ID}, .${SA_THEME_CLASS} { ${cssVarBlock(SA_DARK_VALUES)} }
+  #${SA_THEME_ROOT_ID} ::placeholder, .${SA_THEME_CLASS} ::placeholder { color: var(--sa-muted); opacity: 1; }
   @media print {
     #${SA_THEME_ROOT_ID} { ${cssVarBlock(SA_PRINT_VALUES)} }
   }

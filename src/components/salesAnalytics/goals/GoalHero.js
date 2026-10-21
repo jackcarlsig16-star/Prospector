@@ -3,6 +3,7 @@ import { SA, saSans } from '../theme';
 import Ring from '../charts/Ring';
 import { goalsApi } from './goalsApi';
 import FirstTouchPeople from './FirstTouchPeople';
+import Segmented from '../../../ui/Segmented';
 import { labelStyle, subStyle, numStyle, inputStyle, Btn, Chip, ErrorNote, NeedsMigration, addDays, monthOf, monthName, shortWeek, fmt, short, progressColor } from './goalsUi';
 
 // goals-surface-v1 Stage 3 - the five goals at the top of Goals, on every
@@ -53,14 +54,7 @@ function Sparkline({ points, format, width = 104, height = 32 }) {
 
 const UNITS = [['people', 'People'], ['partners', 'Partners']];
 function UnitToggle({ unit, onChange, label }) {
-  return (
-    <div role="group" aria-label={`Count for ${label}`} style={{ display: 'inline-flex', border: `1px solid ${SA.border}`, borderRadius: 8, overflow: 'hidden' }}>
-      {UNITS.map(([id, name]) => (
-        <button key={id} type="button" aria-pressed={unit === id} onClick={() => unit !== id && onChange(id)}
-          style={{ all: 'unset', ...saSans, cursor: unit === id ? 'default' : 'pointer', fontSize: 11, padding: '0 8px', height: 24, color: unit === id ? SA.text : SA.muted, background: unit === id ? SA.inset : 'transparent', fontWeight: unit === id ? 600 : 400 }}>{name}</button>
-      ))}
-    </div>
-  );
+  return <Segmented label={`Count for ${label}`} items={UNITS.map(([id, name]) => ({ id, label: name }))} value={unit} onChange={id => unit !== id && onChange(id)} />;
 }
 
 function SetGoal({ label, onSave, unit: initialUnit }) {
@@ -68,7 +62,7 @@ function SetGoal({ label, onSave, unit: initialUnit }) {
   const [state, setState] = useState('');
   const [unit, setUnit] = useState(initialUnit);
   if (draft === null) {
-    return <Btn style={{ height: 32, fontSize: 13, borderColor: SA.accent, color: SA.text }} onClick={() => { setDraft(''); setState(''); }}>Set goal</Btn>;
+    return <Btn style={{ height: 32, fontSize: 13 }} onClick={() => { setDraft(''); setState(''); }}>Set goal</Btn>;
   }
   const save = async e => {
     e.preventDefault();
@@ -103,8 +97,8 @@ function Card({ card, canEdit, onDrill, openTasks, onOpenTasks }) {
       <span data-part="title" style={{ ...labelStyle, minWidth: 0 }}><span data-part="title-text" style={{ display: 'block', overflowWrap: 'normal', wordBreak: 'normal' }}>{card.name}</span></span>
       <span>{card.teamOnly && <span data-part="pill"><Chip style={{ height: 18, fontSize: 10, padding: '0 6px' }} title="Team total - not split by person">team</Chip></span>}</span>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, minWidth: 0 }}>
-        <button type="button" data-part="number" onClick={onDrill} title={`Open ${card.drillLabel}`}
-          style={{ all: 'unset', ...saSans, ...numStyle, cursor: 'pointer', borderRadius: 6, fontSize: 24, fontWeight: 600, lineHeight: 1.1, color: SA.text, minWidth: 0 }}>{card.format(card.value)}</button>
+        <button type="button" data-part="number" className="ui-link ui-link--quiet" onClick={onDrill} title={`Open ${card.drillLabel}`}
+          style={{ ...saSans, ...numStyle, fontSize: 24, fontWeight: 600, lineHeight: 1.1, minWidth: 0, textUnderlineOffset: 5 }}>{card.format(card.value)}</button>
         {card.goal != null && (
           <span data-part="ring" style={{ flex: 'none', width: 46, height: 46 }}>
             <Ring size={46} stroke={12} label={`${card.name} to goal`} center={pctLabel}
@@ -121,8 +115,8 @@ function Card({ card, canEdit, onDrill, openTasks, onOpenTasks }) {
         title="Change vs last week">{card.wow == null ? `${card.wowLabel || 'vs last week'} —` : `${card.wow >= 0 ? '▲' : '▼'} ${card.format(Math.abs(card.wow))} ${card.wowLabel || 'vs last week'}`}</span>
       <div data-part="footer" style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
         {openTasks > 0 && (
-          <button type="button" onClick={onOpenTasks} aria-label={`${openTasks} open task${openTasks === 1 ? '' : 's'} for ${card.name} - open in Tasks`}
-            style={{ all: 'unset', ...saSans, cursor: 'pointer', fontSize: 12, color: SA.link, minHeight: 24 }}>✓ {openTasks} open task{openTasks === 1 ? '' : 's'} →</button>
+          <button type="button" className="ui-link" onClick={onOpenTasks} aria-label={`${openTasks} open task${openTasks === 1 ? '' : 's'} for ${card.name} - open in Tasks`}
+            style={{ fontSize: 12, minHeight: 24 }}>✓ {openTasks} open task{openTasks === 1 ? '' : 's'} →</button>
         )}
         {card.goal == null && (canEdit ? <SetGoal label={card.name} onSave={card.saveGoal} unit={card.unit} /> : <span style={{ ...subStyle, fontSize: 12 }}>No goal set</span>)}
         {card.goal != null && card.unit && canEdit && <UnitToggle unit={card.unit} onChange={unit => card.saveGoal(card.goal, { unit })} label={card.name} />}
@@ -220,7 +214,7 @@ export default function GoalHero({ businessId, weekStart, owner, ownerName, comm
             {cards.map(c => <span key={c.id}>{c.name.split(' ')[0]} <b style={{ color: SA.text }}>{c.format(c.value)}</b>{c.goal != null ? ` / ${c.format(c.goal)}` : ''}</span>)}
           </span>
         )}
-        <button type="button" aria-expanded={open} onClick={toggle} style={{ all: 'unset', ...saSans, cursor: 'pointer', marginLeft: 'auto', fontSize: 13, color: SA.link, minHeight: 28 }}>
+        <button type="button" className="ui-link" aria-expanded={open} onClick={toggle} style={{ marginLeft: 'auto', fontSize: 13, minHeight: 28 }}>
           {open ? 'Collapse ▴' : 'Expand ▾'}
         </button>
       </div>

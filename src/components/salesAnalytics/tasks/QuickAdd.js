@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { SA, saSans } from '../theme';
-import LinkPicker, { chipStyle } from './LinkPicker';
-
-const fieldStyle = { all: 'unset', ...saSans, fontSize: 12, color: SA.soft, cursor: 'pointer' };
+import LinkPicker, { fieldChip } from './LinkPicker';
+import Button from '../../../ui/Button';
 
 // Type and press Enter. Defaults: owner = me, this week, no due date, no
 // link; the chips appear once there's text.
@@ -29,19 +28,19 @@ export default function QuickAdd({ meId, members, lookup, links, onAdd }) {
         style={{ ...saSans, fontSize: 14, height: 40, boxSizing: 'border-box', background: SA.inset, border: `1px solid ${SA.border}`, borderRadius: 10, color: SA.text, padding: '0 12px' }} />
       {text.trim() && (
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-          <label style={chipStyle}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: lookup(ownerId || null).color }} />
-            <select aria-label="Owner of the new task" value={ownerId} onChange={e => setOwner(e.target.value)} style={fieldStyle}>
+            <select aria-label="Owner of the new task" value={ownerId} onChange={e => setOwner(e.target.value)} style={fieldChip}>
               <option value="">Unassigned</option>
               {members.map(m => <option key={m.user_id} value={m.user_id}>{m.user_id === meId ? `${lookup(m.user_id).first} (me)` : lookup(m.user_id).first}</option>)}
             </select>
-          </label>
-          <label style={chipStyle}>
-            <span>Due</span>
-            <input type="date" aria-label="Due date of the new task" value={due} onChange={e => setDue(e.target.value)} style={{ ...fieldStyle, colorScheme: 'dark' }} />
-          </label>
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: SA.muted }}>
+            Due
+            <input type="date" aria-label="Due date of the new task" value={due} onChange={e => setDue(e.target.value)} style={{ ...fieldChip, colorScheme: 'dark' }} />
+          </span>
           <LinkPicker link={link} links={links} onChange={(type, id) => setLink(type ? { type, id } : null)} taskText="the new task" />
-          <button type="submit" disabled={busy} style={{ ...chipStyle, marginLeft: 'auto', borderColor: SA.accent, color: SA.text }}>{busy ? 'Adding…' : 'Add ↵'}</button>
+          <Button type="submit" variant="primary" size="sm" disabled={busy} style={{ marginLeft: 'auto' }}>{busy ? 'Adding…' : 'Add ↵'}</Button>
         </div>
       )}
     </form>

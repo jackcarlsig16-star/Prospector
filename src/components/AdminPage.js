@@ -673,7 +673,7 @@ function AdminPage({ isPlatformOwner=false, businesses=[], onBusinessFeaturesCha
                   </>) : (<>
                     <ButtonRow align="start">
                       <Button variant="primary" onClick={()=>{ window.location.href="/api/sfdc/auth"; }}>Connect via OAuth →</Button>
-                      <Button variant="ghost" onClick={()=>setSfdcManual(m=>!m)}>{sfdcManual?"Cancel":"Paste token manually"}</Button>
+                      <Button variant="tertiary" onClick={()=>setSfdcManual(m=>!m)}>{sfdcManual?"Cancel":"Paste token manually"}</Button>
                     </ButtonRow>
                     {sfdcManual&&(
                       <div style={{ display:"flex", flexDirection:"column", gap:KIT_SPACE[2], padding:KIT_SPACE[3], background:ui.inset, border:`1px solid ${ui.border}`, borderRadius:KIT_RADIUS.inner }}>
@@ -714,7 +714,7 @@ function AdminPage({ isPlatformOwner=false, businesses=[], onBusinessFeaturesCha
                       {def.id === 'hunter' && (
                         <div style={{ display:"flex", flexDirection:"column", gap:KIT_SPACE[1], paddingTop:KIT_SPACE[3], borderTop:`1px solid ${ui.border}` }}>
                           <ButtonRow align="start">
-                            <Button variant="ghost" onClick={testHunterConnection} disabled={hunterTesting}>{hunterTesting ? "Testing…" : "✓ Test connection"}</Button>
+                            <Button variant="tertiary" onClick={testHunterConnection} disabled={hunterTesting}>{hunterTesting ? "Testing…" : "✓ Test connection"}</Button>
                             {hunterAccount && (
                               <span style={small}>
                                 {hunterAccount.plan && <span style={{ color:ui.text, marginRight:8 }}>{hunterAccount.plan}</span>}
@@ -832,7 +832,7 @@ function AdminPage({ isPlatformOwner=false, businesses=[], onBusinessFeaturesCha
       {tab==="settings"&&(()=>{
         const toggle=()=>{ localStorage.setItem("prospector_diamonds_enabled",diamondsOn?"false":"true"); setDiamondsOn(!diamondsOn); };
         const showHide = (id, title) => (
-          <Button variant="ghost" aria-expanded={!!openCards[id]} aria-label={`${openCards[id]?"Hide":"Show"} ${title}`} onClick={()=>setOpenCards(o=>({ ...o, [id]:!o[id] }))}>{openCards[id]?"Hide":"Show"}</Button>
+          <Button variant="tertiary" aria-expanded={!!openCards[id]} aria-label={`${openCards[id]?"Hide":"Show"} ${title}`} onClick={()=>setOpenCards(o=>({ ...o, [id]:!o[id] }))}>{openCards[id]?"Hide":"Show"}</Button>
         );
 
         const exportData = () => {

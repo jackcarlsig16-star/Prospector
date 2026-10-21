@@ -68,14 +68,14 @@ test('PageHeader + Card render title, subtitle, actions, footer', () => {
 
 test('Button variants, default type, disabled, click', () => {
   const click = jest.fn();
-  render(<ButtonRow><Button variant="primary" onClick={click}>Save</Button><Button variant="danger" disabled disabledReason="Viewers cannot" onClick={click}>Delete</Button><Button variant="nope">X</Button><Button variant="ghost">Old</Button><Button variant="tertiary">Clear</Button></ButtonRow>);
+  render(<ButtonRow><Button variant="primary" onClick={click}>Save</Button><Button variant="danger" disabled disabledReason="Viewers cannot" onClick={click}>Delete</Button><Button variant="nope">X</Button><Button variant="tertiary" size="sm">Old</Button><Button variant="tertiary">Clear</Button></ButtonRow>);
   fireEvent.click(screen.getByText('Save')); fireEvent.click(screen.getByText('Delete'));
   expect(click).toHaveBeenCalledTimes(1);
   expect(screen.getByText('Save')).toHaveClass('ui-btn', 'ui-btn--primary');
   expect(screen.getByText('Save')).toHaveAttribute('type', 'button');
   expect(screen.getByText('Delete')).toHaveAttribute('title', 'Viewers cannot');
   expect(screen.getByText('X')).toHaveClass('ui-btn--secondary');
-  expect(screen.getByText('Old')).toHaveClass('ui-btn--tertiary');
+  expect(screen.getByText('Old')).toHaveClass('ui-btn--tertiary', 'ui-btn--sm');
   expect(screen.getByText('Clear')).toHaveClass('ui-btn--tertiary');
   const css = document.getElementById('ui-kit-css').textContent;
   expect(css).toMatch(/\.ui-btn:disabled \{[^}]*border:1px dashed var\(--ui-border\)[^}]*cursor:not-allowed/);
