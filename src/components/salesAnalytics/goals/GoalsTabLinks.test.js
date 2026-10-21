@@ -6,10 +6,11 @@ jest.mock('../../../utils/useMediaQuery', () => () => false);
 
 // The Stage 0 link inventory: every go() target and its home (Design E;
 // sales-ia-v2 N1: Today -> Actions, Reports -> Dashboard, Huddle -> Pipeline >
-// People, Board -> Companies, Sequenced -> Dashboard).
+// People, Board -> Companies, Sequenced -> Dashboard; Stage 6: the Weekly
+// report and the Scorecard are the Goals section of Dashboard > Overview).
 test.each([
-  ['view:report', 'dashboard', 'weekly'], ['section:s4', 'dashboard', 'weekly'],
-  ['view:week', 'actions', null], ['view:this_week', 'actions', null], ['score:meetings_set', 'dashboard', 'scorecard'],
+  ['view:report', 'dashboard', 'overview'], ['section:s4', 'dashboard', 'overview'],
+  ['view:week', 'actions', null], ['view:this_week', 'actions', null], ['score:meetings_set', 'dashboard', 'overview'],
   ['week:prev', 'actions', null], ['plan', 'actions', null],
   ['view:partners', 'pipeline', 'partners'], ['view:companies', 'dashboard', 'sequenced'], ['missing', 'dashboard', 'sequenced'], ['view:pipeline', 'pipeline', 'companies'],
   ['overview', 'dashboard', 'analytics'], ['overview:week_strip', 'dashboard', 'analytics'],

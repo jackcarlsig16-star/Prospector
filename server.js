@@ -673,6 +673,7 @@ app.post('/api/sales/:businessId/goals/suggestions/:id/snooze', salesModuleRoute
 app.post('/api/sales/:businessId/goals/suggestions/:id/undo', salesModuleRoute('./api/sales/tidyRoutes.js', 'undoSuggestionRoute', 'goals/suggestions/:id/undo POST'));
 // sales-ia-v2 A1 - the Actions list (reads only).
 app.get('/api/sales/:businessId/goals/actions', salesModuleRoute('./api/sales/actionsRoutes.js', 'listActionsRoute', 'goals/actions'));
+app.get('/api/sales/:businessId/goals/dashboard', salesModuleRoute('./api/sales/dashboardRoutes.js', 'dashboardRoute', 'goals/dashboard'));
 // call-notes-targets-v1 REV5 - Nudge a waiting-on item into our own to-do.
 app.post('/api/sales/:businessId/goals/waiting/:id/nudge', salesModuleRoute('./api/sales/waitingRoutes.js', 'nudgeWaitingRoute', 'goals/waiting/:id/nudge POST'));
 app.post('/api/sales/:businessId/goals/partners/:id/signal', salesModuleRoute('./api/sales/partnersRoutes.js', 'partnerSignalRoute', 'goals/partners/:id/signal POST'));

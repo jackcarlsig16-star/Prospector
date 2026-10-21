@@ -181,7 +181,24 @@ test('Mark contacted is the deferred write: the row leaves, the flag closes only
     await screen.findByText('Follow up the benefits lead');
     fireEvent.click(within(screen.getByRole('group', { name: 'Actions for Follow up the benefits lead' })).getByRole('button', { name: 'Mark contacted' }));
     act(() => { jest.advanceTimersByTime(10000); });
-    await waitFor(() => expect(completeFlag).toHaveBeenCalledWith('b1', 'f1'));
+    await waitFor(() => expect(completeFlag).toHaveBeenCalledWith('b1', 'f1', { keepalive: true }));
+  } finally { jest.useRealTimers(); }
+});
+
+test('Mark contacted flushes on page unload and on unmount - never lost', async () => {
+  jest.useFakeTimers();
+  try {
+    const view = setup();
+    await screen.findByText('Follow up the benefits lead');
+    fireEvent.click(within(screen.getByRole('group', { name: 'Actions for Follow up the benefits lead' })).getByRole('button', { name: 'Mark contacted' }));
+    expect(completeFlag).not.toHaveBeenCalled();
+    act(() => { window.dispatchEvent(new Event('pagehide')); });
+    expect(completeFlag).toHaveBeenCalledTimes(1);
+    expect(completeFlag).toHaveBeenCalledWith('b1', 'f1', { keepalive: true });
+    act(() => { jest.advanceTimersByTime(10000); });
+    expect(completeFlag).toHaveBeenCalledTimes(1);
+    view.unmount();
+    expect(completeFlag).toHaveBeenCalledTimes(1);
   } finally { jest.useRealTimers(); }
 });
 

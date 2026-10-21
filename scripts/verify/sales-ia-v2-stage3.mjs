@@ -210,7 +210,7 @@ try {
   { const { page, errs } = await newPage(owner, { url: '/?tab=pipeline&view=companies' });
     await page.locator('tr[data-row]').first().waitFor();
     const n2 = {};
-    for (const [t, s, key] of [['Actions', null, 'actions'], ['Dashboard', 'Weekly report', 'dashboard'], ['Pipeline', 'Partner workflow', 'partners'], ['Pipeline', 'People', 'people'], ['Pipeline', 'Companies', 'companies']]) { await tab(page, t); if (s) await sub(page, s); n2[key] = await boxes(page); }
+    for (const [t, s, key] of [['Actions', null, 'actions'], ['Dashboard', 'Overview', 'dashboard'], ['Pipeline', 'Partner workflow', 'partners'], ['Pipeline', 'People', 'people'], ['Pipeline', 'Companies', 'companies']]) { await tab(page, t); if (s) await sub(page, s); n2[key] = await boxes(page); }
     const ref = n2.companies;
     const tabMove = Math.max(...Object.values(n2).map(b => Math.max(Math.abs(b['data-sales-tabrow'].x - ref['data-sales-tabrow'].x), Math.abs(b['data-sales-tabrow'].y - ref['data-sales-tabrow'].y))));
     const subMove = Math.max(...Object.values(n2).map(b => Math.max(Math.abs(b['data-sales-subviews'].y - ref['data-sales-subviews'].y), Math.abs(b['data-sales-subviews'].x - ref['data-sales-subviews'].x))));
@@ -351,7 +351,7 @@ try {
     // to-do is in Cyrus's week (the Tasks drawer and the Actions week list read this) and lands on Today on Friday.
     ok(`Actions (owner Cyrus): the to-do is in Cyrus's week list (${inWeek}); on the Today page itself ${seen ? 'listed' : 'not until its due day (v1 Today shows overdue / due today only - Stage 5 rule A1 is the same)'}`, inWeek, `found on page ${seen}`);
     await shot(page, 'ia2s3-actions-cyrus-1440');
-    await tab(page, 'Dashboard'); await sub(page, 'Weekly report');
+    await tab(page, 'Dashboard'); await sub(page, 'Overview'); // sales-ia-v2 Stage 6: the Weekly report lives under Dashboard > Overview
     await page.getByRole('button', { name: 'Export' }).click(); await page.getByRole('menuitem', { name: 'Weekly report PDF' }).click(); await page.waitForTimeout(1500);
     ok('Weekly report PDF prints once, one print area', (await page.evaluate(() => window.__prints)) === 1 && (await page.locator('#sales-analytics-print-area').count()) === 1);
     ok('owner 1440: 0 page errors', !errs.length, errs.join(' | '));

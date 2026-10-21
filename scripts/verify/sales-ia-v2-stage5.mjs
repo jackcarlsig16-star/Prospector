@@ -159,7 +159,7 @@ try {
   { const { page, errs } = await newPage(owner);
     await page.locator('tr[data-row]').first().waitFor();
     const n2 = {};
-    for (const [t, s, key] of [['Actions', null, 'actions'], ['Dashboard', 'Weekly report', 'dashboard'], ['Pipeline', 'Companies', 'companies'], ['Pipeline', 'People', 'people'], ['Actions', null, 'actions2']]) { await tab(page, t); if (s) await sub(page, s); n2[key] = await boxes(page); }
+    for (const [t, s, key] of [['Actions', null, 'actions'], ['Dashboard', 'Overview', 'dashboard'], ['Pipeline', 'Companies', 'companies'], ['Pipeline', 'People', 'people'], ['Actions', null, 'actions2']]) { await tab(page, t); if (s) await sub(page, s); n2[key] = await boxes(page); }
     const ref = n2.actions;
     const tabMove = Math.max(...Object.values(n2).map(b => Math.max(Math.abs(b['data-sales-tabrow'].x - ref['data-sales-tabrow'].x), Math.abs(b['data-sales-tabrow'].y - ref['data-sales-tabrow'].y))));
     const subMove = Math.max(...Object.values(n2).map(b => Math.max(Math.abs(b['data-sales-subviews'].y - ref['data-sales-subviews'].y), Math.abs(b['data-sales-subviews'].x - ref['data-sales-subviews'].x))));
@@ -222,7 +222,7 @@ try {
     await toast(page).getByRole('button', { name: 'Undo' }).click(); await page.waitForTimeout(1200);
     ok('…Undo reopens it', ins(await svc.from('sales_week_goals').select('status').eq('text', 'ZZ Book two partner meetings').single()).status === 'open');
     // L7: the Weekly report PDF still prints once.
-    await tab(page, 'Dashboard'); await sub(page, 'Weekly report');
+    await tab(page, 'Dashboard'); await sub(page, 'Overview'); // sales-ia-v2 Stage 6: the Weekly report lives under Dashboard > Overview
     await page.getByRole('button', { name: 'Export' }).click(); await page.getByRole('menuitem', { name: 'Weekly report PDF' }).click(); await page.waitForTimeout(1500);
     ok('Weekly report PDF still prints once, one print area (L7)', (await page.evaluate(() => window.__prints)) === 1 && (await page.locator('#sales-analytics-print-area').count()) === 1);
     ok('owner 1440: 0 page errors', !errs.length, errs.join(' | '));

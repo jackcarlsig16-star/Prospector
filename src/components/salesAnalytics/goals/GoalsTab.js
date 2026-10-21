@@ -18,19 +18,25 @@ import ReportView from './ReportView';
 import PlanWeekDrawer from './PlanWeekDrawer';
 import { PlanNudge } from './PlanNudge';
 import ActionsView from './ActionsView';
+import GoalHero from './GoalHero';
+import DashboardCharts from './DashboardCharts';
+import GoalsSection from './GoalsSection';
+import { RANGE_OPTIONS, DEFAULT_RANGE, TEAM_OPTIONS } from './dashboardModel';
 import { dayTitle } from './todayModel';
-import { linkedTo, openTasks } from '../tasks/LinkedTasks';
+import { linkedTo, openTasks, isOpenTask } from '../tasks/LinkedTasks';
 import { exportWidgetCsv } from '../exportCsv';
 import {
-  subStyle, numStyle, Chip, Btn, ErrorNote,
+  subStyle, numStyle, inputStyle, Chip, Btn, ErrorNote,
   addDays, monthOf, monthName, weekLabel, weekOf, memberLookup, ownedBy, flashTo,
 } from './goalsUi';
 
 // sales-ia-v1 - the data hub behind Actions (sales-ia-v2 A1: ActionsView) /
-// Pipeline / Dashboard (the v1 reports). `section` is the tab on screen and `view` its
-// sub-view (SalesAnalyticsTab owns both, via salesNav.js, and draws the
-// sub-view switch); this renders only that section, with its tools portaled
-// into the frame row (sales-ia-v2 N2). Export = report PDF + 4 CSVs.
+// Pipeline / Dashboard (sales-ia-v2 D1: the charts with the Goals section -
+// hero, commitments, report card, moves, Scorecard, Weekly report - under
+// them; Analytics and Sequenced ride along). `section` is the tab on screen
+// and `view` its sub-view (SalesAnalyticsTab owns both, via salesNav.js, and
+// draws the sub-view switch); this renders only that section, with its tools
+// portaled into the frame row (sales-ia-v2 N2). Export = report PDF + 4 CSVs.
 // localStorage key (per viewer convenience, never shared state):
 //   prospector_goals_owner - last person filter, as a first-name slug
 const OWNER_KEY = 'prospector_goals_owner';
@@ -46,9 +52,9 @@ const slugOf = name => name.split(' ')[0].toLowerCase();
 // Commitment link_target values live in the database, so anything unknown
 // still lands somewhere: the Dashboard, with the target logged.
 const HOME = {
-  'view:report': ['dashboard', 'weekly'], 'view:week': ['actions'], 'view:this_week': ['actions'],
+  'view:report': ['dashboard', 'overview'], 'view:week': ['actions'], 'view:this_week': ['actions'],
   'view:partners': ['pipeline', 'partners'], 'view:companies': ['dashboard', 'sequenced'], 'view:pipeline': ['pipeline', 'companies'],
-  'week:prev': ['actions'], overview: ['dashboard', 'analytics'], section: ['dashboard', 'weekly'], score: ['dashboard', 'scorecard'],
+  'week:prev': ['actions'], overview: ['dashboard', 'analytics'], section: ['dashboard', 'overview'], score: ['dashboard', 'overview'],
   missing: ['dashboard', 'sequenced'], huddle: ['pipeline', 'people'], plan: ['actions'],
 };
 export function homeOf(target) {
@@ -85,6 +91,9 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const [planOpen, setPlanOpen] = useState(false);
   const [plans, setPlans] = useState(null);
   const [toast, setToast] = useState('');
+  const [range, setRange] = useState(DEFAULT_RANGE); // Dashboard: 7 | 30 | 90 days
+  const [team, setTeam] = useState(''); // Dashboard: owner_team, '' = all
+  const [heroKey, setHeroKey] = useState(0);
   const [errors, setErrors] = useState({});
   const [toolsSlot, setToolsSlot] = useState(null);
   useEffect(() => { setToolsSlot(document.getElementById(FRAME_TOOLS_ID)); }, []);
@@ -163,6 +172,9 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   ];
 
   const myTodos = todos.filter(t => ownedBy(owner, t.owner_user_id));
+  const heroTasks = weekStart === thisWeek ? Object.fromEntries(['outbound_audience', 'total_in_sequence', 'partners_first_touched', 'meetings_set', 'real_replies_clicks']
+    .map(k => [k, linkedTo(myTodos, 'metric', k).filter(isOpenTask).length])) : null;
+  const drawerFilter = owner === 'team' ? 'team' : owner === me?.profile?.id ? 'me' : owner;
   // task-drawer-v1 Stage 4 - to-dos linked to a commitment, goal, partner or
   // company, from the week on screen. The drawer only holds the current week,
   // so links into it (and partner/company/goal counts) show for that week only.
@@ -240,7 +252,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
     const home = homeOf(target);
     if (!home) {
       console.warn(`sales-ia-v2: no home for link target ${JSON.stringify(target)} - opening the Dashboard`);
-      return onNav('dashboard', 'weekly');
+      return onNav('dashboard', 'overview');
     }
     if (target.partners) { setPartnerFocus({ ...target.partners }); return onNav(home.tab, home.view); }
     if (target.companies) { setWeekStart(target.companies); return onNav(home.tab, home.view); }
@@ -250,12 +262,15 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
     if (target === 'plan') setPlanOpen(true);
     if (target === 'view:partners') setPartnerFocus({});
     if (target === 'week:prev') setWeekStart(w => addDays(w, -7));
+    if (target === 'view:report') setTimeout(() => flashTo('goals-sec-s15'), 50);
     if (kind === 'section') setTimeout(() => flashTo(`goals-sec-${arg}`), 50);
     if (kind === 'score') setTimeout(() => flashTo(`score-row-${arg}`), 120);
     if (kind === 'missing') { setMissingOpen(true); setTimeout(() => flashTo('goals-missing'), 80); }
     onNav(home.tab, home.view);
   };
   const openMissing = () => go('missing');
+  const drill = id => go({ audience: 'view:companies', missing: 'missing', in_sequence: 'overview:week_strip', partners: { partners: { stage: 'first_email_sent' } },
+    meetings: 'score:meetings_set', engagement: 'huddle:feed' }[id]);
   useEffect(() => {
     if (initialTarget) go(initialTarget.target);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -284,8 +299,9 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
 
   // Design C - what the frame row carries per screen (sales-ia-v2 N2: one
   // fixed-height row, portaled into SalesAnalyticsTab's #sales-frame-tools).
-  const showPeople = section === 'actions' || ['partners', 'sequenced', 'weekly', 'scorecard'].includes(view);
-  const showWeek = section === 'actions' || ['sequenced', 'weekly', 'scorecard'].includes(view);
+  const showPeople = section === 'actions' || ['partners', 'sequenced', 'overview'].includes(view);
+  const showWeek = section === 'actions' || view === 'sequenced'; // Overview's week nav sits in its Goals section
+  const overview = section === 'dashboard' && view === 'overview';
   const title = liveWeek ? dayTitle(today, compact) : weekOf(weekStart);
   const exportRect = exportOpen && document.getElementById('sales-export-btn')?.getBoundingClientRect();
   const tools = (
@@ -297,7 +313,13 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
           View only
         </Chip>
       )}
+      {overview && <div style={{ flex: 'none' }}><Segmented label="Date range" items={RANGE_OPTIONS.map(([id, label]) => ({ id, label }))} value={range} onChange={setRange} /></div>}
       {showPeople && <div style={{ flex: 'none' }}><Segmented label="Filter by person" items={people} value={ownerSlug} onChange={slug => { setOwnerSlug(slug); setCompanyOwnerFocus(null); }} /></div>}
+      {overview && (
+        <select aria-label="Team" value={team} onChange={e => setTeam(e.target.value)} style={{ ...inputStyle, height: 36, fontSize: 13, padding: '0 10px', flex: 'none' }}>
+          {TEAM_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+        </select>
+      )}
       {showWeek && <>
         <Btn aria-label="Previous week" onClick={() => setWeekStart(w => addDays(w, -7))}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg>
@@ -320,7 +342,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const exportMenu = exportOpen && exportRect && createPortal(
     <div role="menu" className="no-print" style={{ position: 'fixed', right: window.innerWidth - exportRect.right, top: exportRect.bottom + 4, zIndex: 4010, minWidth: 220, background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: 10, padding: 6, display: 'flex', flexDirection: 'column' }}>
       <button role="menuitem" type="button" style={{ all: 'unset', cursor: 'pointer', padding: '10px 12px', borderRadius: 8, color: SA.text }}
-        onClick={() => { setExportOpen(false); onNav('dashboard', 'weekly'); setTimeout(() => window.print(), 400); }}>Weekly report PDF</button>
+        onClick={() => { setExportOpen(false); onNav('dashboard', 'overview'); setTimeout(() => window.print(), 400); }}>Weekly report PDF</button>
       {exports.map(x => (
         <button key={x.id} role="menuitem" type="button" disabled={x.disabled} title={x.disabled ? 'Needs the Stage 4 database update' : undefined}
           style={{ all: 'unset', cursor: x.disabled ? 'default' : 'pointer', padding: '10px 12px', borderRadius: 8, color: x.disabled ? SA.faint : SA.text }}
@@ -344,7 +366,16 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
             onOpenFull={row => go(row.type === 'partner' ? { partners: { ids: [row.id], open: row.id, label: row.name } } : 'view:pipeline')} />
         </>}
 
-        {section === 'dashboard' && view === 'weekly' && (
+        {overview && <>
+          <DashboardCharts businessId={businessId} days={range} owner={owner === 'team' ? null : owner} team={team || null} lookup={lookup} />
+          <GoalsSection businessId={businessId} weekStart={weekStart} thisWeek={thisWeek} onWeek={setWeekStart} members={ownerMember ? [ownerMember] : members} lookup={lookup}
+            commitments={myCommitments} report={reportData?.report} partners={partners}
+            hero={<GoalHero businessId={businessId} weekStart={weekStart} owner={owner} ownerName={owner === 'team' ? null : whoLabel} commitments={myCommitments} missingHeadcount={missingHeadcount} canEdit={canEdit}
+              scorecard={scorecard} scorecardError={errors.scorecard} reloadKey={heroKey} onGoalSaved={() => { loadScorecard(); loadKpi(); }} onDrill={drill}
+              openTasks={heroTasks} onOpenTasks={key => openTasks({ link: { type: 'metric', id: key }, filter: drawerFilter })} />}>
+          <ScorecardTable data={scorecard} error={errors.scorecard} weekStart={weekStart} ownerName={owner === 'team' ? null : whoLabel} canEdit={canEdit} onOpen={go}
+            missingHeadcount={missingHeadcount} onFillHeadcount={openMissing}
+            onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await loadScorecard(); setHeroKey(k => k + 1); }} />
           <ReportView weekStart={weekStart} report={reportData?.report} reportError={errors.report} sections={reportData?.sections} infra={reportData?.infra}
             commitments={reportCommitments} commitmentsError={errors.commitments} kpiRows={kpiRows} kpiError={errors.kpi} autoChips={autoChips} partnerBlock={partnerBlock}
             canEdit={canEdit} lookup={lookup} members={members} defaultOwner={owner === 'team' ? me?.profile?.id : owner} onOpen={go} tasksFor={tasksFor} liveWeek={liveWeek}
@@ -355,7 +386,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
             onAddCommitment={async body => { await goalsApi.createWeekGoal(businessId, { ...body, kind: 'commitment', week_start: weekStart }); await Promise.all([loadCommitments(), loadReport()]); return true; }}
             onUpdateCommitment={async (goalId, body) => { await goalsApi.updateWeekGoal(businessId, goalId, body); await loadCommitments(); }}
             onCarryCommitments={async () => { const r = await goalsApi.carryOver(businessId, weekStart, 'commitment'); await Promise.all([loadCommitments(), loadReport()]); return r; }}
-            onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await Promise.all([loadKpi(), loadScorecard()]); }}
+            onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await Promise.all([loadKpi(), loadScorecard()]); setHeroKey(k => k + 1); }}
             onPlanWeek={canEdit && planOwner ? () => setPlanOpen(true) : null}
             infraHandlers={{
               onAdd: async body => { await goalsApi.createInfra(businessId, { ...body, week_start: weekStart }); await loadReport(); return true; },
@@ -363,13 +394,8 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
               onDelete: async itemId => { await goalsApi.deleteInfra(businessId, itemId); await loadReport(); },
               onCarry: async () => { const r = await goalsApi.carryInfra(businessId, weekStart); await loadReport(); return r; },
             }} />
-        )}
-
-        {section === 'dashboard' && view === 'scorecard' && (
-          <ScorecardTable data={scorecard} error={errors.scorecard} weekStart={weekStart} ownerName={owner === 'team' ? null : whoLabel} canEdit={canEdit} onOpen={go}
-            missingHeadcount={missingHeadcount} onFillHeadcount={openMissing}
-            onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await loadScorecard(); }} />
-        )}
+          </GoalsSection>
+        </>}
 
         {section === 'dashboard' && view === 'analytics' && analytics}
 

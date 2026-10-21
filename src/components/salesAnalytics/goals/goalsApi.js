@@ -82,6 +82,8 @@ export const goalsApi = {
   undoSignal: (id, sid) => call(id, `/signals/${sid}/undo`, { method: 'POST', body: {} }),
   // sales-ia-v2 A1 - the Actions list: { items, today, week_start }; items ranked overdue -> P1..P4 -> due. 0 AI, 0 Apollo.
   actions: id => call(id, '/actions'),
+  // sales-ia-v2 D1 - the Dashboard's 13 chart series in one read; days 7 | 30 | 90, owner = a member's user id, team = owner_team. 0 AI, 0 Apollo.
+  dashboard: (id, { days, owner, team }) => call(id, `/dashboard?${q({ days, owner, team })}`),
   // signals-v1 Stage 4 - the daily website-visitor pull (Members) and its status (Viewers too).
   visitPull: (id, { force = false, trigger = 'manual' } = {}) => call(id, '/visits/pull', { method: 'POST', body: { force, trigger } }),
   visitStatus: id => call(id, '/visits/status'),

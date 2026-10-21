@@ -2,27 +2,31 @@
 // Actions), their sub-views, and where the selection lives: ?tab= / ?view= in
 // the URL, mirrored to localStorage as a per-viewer convenience. Every older
 // home (sales-ia-v1 tabs, ?gview=, prospector_goals_view) maps to its new one.
-// Until Stage 5/6 build them, Actions shows the v1 Today and Dashboard the v1
-// reports; Sequenced (Apollo companies by week) rides along under Dashboard.
+// Dashboard > Overview (sales-ia-v2 D1) holds the charts with the Goals
+// section (Weekly report + Scorecard) underneath; Analytics (email + Apollo
+// widgets) and Sequenced (Apollo companies by week) ride along as sub-views.
 export const TABS = [['dashboard', 'Dashboard'], ['pipeline', 'Pipeline'], ['actions', 'Actions']];
 export const SUB_VIEWS = {
   pipeline: [['companies', 'Companies'], ['people', 'People'], ['partners', 'Partner workflow']],
-  dashboard: [['weekly', 'Weekly report'], ['scorecard', 'Scorecard'], ['analytics', 'Analytics'], ['sequenced', 'Sequenced']],
+  dashboard: [['overview', 'Overview'], ['analytics', 'Analytics'], ['sequenced', 'Sequenced']],
 };
 export const DEFAULT_TAB = 'actions';
-export const DEFAULT_VIEW = { pipeline: 'companies', dashboard: 'weekly' };
+export const DEFAULT_VIEW = { pipeline: 'companies', dashboard: 'overview' };
 // The Website visitors report moved into Pipeline as a channel (?channel=).
 export const VISITOR_CHANNEL = 'website_visit';
 
+// The v1 Dashboard sub-views Weekly report and Scorecard are the Goals section of Overview now.
+const dashView = v => (['weekly', 'scorecard'].includes(v) ? 'overview' : v);
 // Old tab -> [tab, view (null = keep / default), channel?]
 const OLD_TABS = {
   today: () => ['actions'],
   huddle: () => ['pipeline', 'people'],
-  reports: v => (v === 'visitors' ? ['pipeline', 'companies', VISITOR_CHANNEL] : ['dashboard', v]),
+  reports: v => (v === 'visitors' ? ['pipeline', 'companies', VISITOR_CHANNEL] : ['dashboard', dashView(v)]),
+  dashboard: v => ['dashboard', dashView(v)],
   pipeline: v => ['pipeline', v === 'board' ? 'companies' : v],
 };
 const OLD_VIEWS = { sequenced: ['dashboard', 'sequenced'] };
-const LEGACY = { report: ['dashboard', 'weekly'], week: ['actions'], partners: ['pipeline', 'partners'], companies: ['dashboard', 'sequenced'], pipeline: ['pipeline', 'companies'] };
+const LEGACY = { report: ['dashboard', 'overview'], week: ['actions'], partners: ['pipeline', 'partners'], companies: ['dashboard', 'sequenced'], pipeline: ['pipeline', 'companies'] };
 
 // localStorage keys: prospector_sales_tab + prospector_sales_view (written
 // here); prospector_goals_view is read once for the mapping, never written.

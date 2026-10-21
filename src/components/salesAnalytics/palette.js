@@ -96,6 +96,21 @@ export const TREND_THEME_CSS = `
   }
 `;
 
+// sales-ia-v2 D1 - the P1-P4 steps for the "visitors by priority" stack: one
+// hue (the accent blue), brightest = act today, dimmest = noise. Checked with
+// the dataviz validator 2026-10-20: lightness falls monotonically on both
+// surfaces; adjacent steps are >= 10 dE for CVD readers; P4 sits at 2.9:1 on
+// the dark surface, so the legend + the 2 px stack gaps + the hover value carry
+// it (relief rule). Status colors stay out of this ramp on purpose.
+const PRIORITY_VALUES = { P1: ['#C7D3FF', '#1F2F80'], P2: ['#8FA8FF', '#3A55C8'], P3: ['#5F78D6', '#7C8FE0'], P4: ['#4A5CA8', '#B7C3F0'] };
+export const PRIORITY_COLORS = Object.fromEntries(Object.keys(PRIORITY_VALUES).map(k => [k, `var(--sa-prio-${k.toLowerCase()})`]));
+export const PRIORITY_THEME_CSS = `
+  #sales-analytics-root { ${Object.entries(PRIORITY_VALUES).map(([k, [dark]]) => `--sa-prio-${k.toLowerCase()}: ${dark};`).join(' ')} }
+  @media print {
+    #sales-analytics-root { ${Object.entries(PRIORITY_VALUES).map(([k, [, print]]) => `--sa-prio-${k.toLowerCase()}: ${print};`).join(' ')} }
+  }
+`;
+
 // sales-goals-v1 REV4 - member colors, assigned in workspace join order so
 // a person keeps theirs and no two members share one. The first two are the
 // mockup's (validated CVD-safe on the dark ground); the rest keep the same

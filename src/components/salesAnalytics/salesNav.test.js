@@ -2,7 +2,9 @@ import { navFrom, normalizeNav } from './salesNav';
 
 test('?tab= wins and an unknown sub-view falls back to the tab default', () => {
   expect(navFrom({ tab: 'pipeline', view: 'partners' })).toEqual({ tab: 'pipeline', view: 'partners' });
-  expect(navFrom({ tab: 'dashboard', view: 'nope' })).toEqual({ tab: 'dashboard', view: 'weekly' });
+  expect(navFrom({ tab: 'dashboard', view: 'nope' })).toEqual({ tab: 'dashboard', view: 'overview' });
+  expect(navFrom({ tab: 'dashboard', view: 'weekly' })).toEqual({ tab: 'dashboard', view: 'overview' });
+  expect(navFrom({ tab: 'dashboard', view: 'scorecard' })).toEqual({ tab: 'dashboard', view: 'overview' });
   expect(navFrom({ tab: 'actions', view: 'weekly' })).toEqual({ tab: 'actions', view: null });
   expect(normalizeNav('bogus')).toEqual({ tab: 'actions', view: null });
 });
@@ -10,8 +12,9 @@ test('?tab= wins and an unknown sub-view falls back to the tab default', () => {
 test.each([
   ['today', null, 'actions', null],
   ['huddle', null, 'pipeline', 'people'],
-  ['reports', 'weekly', 'dashboard', 'weekly'],
-  ['reports', 'scorecard', 'dashboard', 'scorecard'],
+  ['reports', 'weekly', 'dashboard', 'overview'],
+  ['reports', 'scorecard', 'dashboard', 'overview'],
+  ['reports', null, 'dashboard', 'overview'],
   ['reports', 'analytics', 'dashboard', 'analytics'],
   ['pipeline', 'board', 'pipeline', 'companies'],
   ['pipeline', 'sequenced', 'dashboard', 'sequenced'],
@@ -26,7 +29,7 @@ test('old Reports > Website visitors lands on Pipeline with the Website visitors
 });
 
 test.each([
-  ['report', 'dashboard', 'weekly'], ['week', 'actions', null], ['partners', 'pipeline', 'partners'],
+  ['report', 'dashboard', 'overview'], ['week', 'actions', null], ['partners', 'pipeline', 'partners'],
   ['companies', 'dashboard', 'sequenced'], ['pipeline', 'pipeline', 'companies'],
 ])('old ?gview=%s lands on %s / %s', (gview, tab, view) => {
   expect(navFrom({ gview, storedTab: 'dashboard', storedView: 'analytics' })).toEqual({ tab, view });
@@ -35,6 +38,6 @@ test.each([
 test('stored keys from v1 and the old prospector_goals_view map the same way', () => {
   expect(navFrom({ storedTab: 'huddle' })).toEqual({ tab: 'pipeline', view: 'people' });
   expect(navFrom({ storedLegacy: 'companies' })).toEqual({ tab: 'dashboard', view: 'sequenced' });
-  expect(navFrom({ storedLegacy: 'companies', storedTab: 'dashboard', storedView: 'scorecard' })).toEqual({ tab: 'dashboard', view: 'scorecard' });
+  expect(navFrom({ storedLegacy: 'companies', storedTab: 'dashboard', storedView: 'scorecard' })).toEqual({ tab: 'dashboard', view: 'overview' });
   expect(navFrom({})).toEqual({ tab: 'actions', view: null });
 });

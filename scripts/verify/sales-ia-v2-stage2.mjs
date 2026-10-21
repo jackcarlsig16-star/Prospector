@@ -193,7 +193,7 @@ try {
     ok('N1: Sales = Dashboard · Pipeline · Actions; Marketing shown disabled, Coming soon', tabs.join('|').replace(/\d/g, '').startsWith('Dashboard|Pipeline|Actions') && await page.locator('[data-sales-marketing] button').isDisabled() && tabs.some(t => t.includes('Coming soon')), tabs.join('|'));
     ok('N1: the sidebar says Sales & Marketing (no "Goals & Sales" anywhere on the page)', !(await page.content()).includes('Goals &amp; Sales'));
     const n2 = {};
-    for (const [t, s, key] of [['Actions', null, 'actions'], ['Dashboard', 'Weekly report', 'dashboard'], ['Pipeline', 'Partner workflow', 'partners'], ['Pipeline', 'People', 'people'], ['Pipeline', 'Companies', 'companies']]) {
+    for (const [t, s, key] of [['Actions', null, 'actions'], ['Dashboard', 'Overview', 'dashboard'], ['Pipeline', 'Partner workflow', 'partners'], ['Pipeline', 'People', 'people'], ['Pipeline', 'Companies', 'companies']]) {
       await tab(page, t); if (s) await sub(page, s); n2[key] = await boxes(page);
     }
     const ref = n2.companies;
@@ -266,7 +266,7 @@ try {
     ok('last sort remembered when Companies mounts again', await page.locator('th[aria-sort="ascending"]', { hasText: 'Last touch' }).count() === 1);
 
     // Dashboard: Weekly report PDF still prints once with one print area.
-    await tab(page, 'Dashboard'); await sub(page, 'Weekly report');
+    await tab(page, 'Dashboard'); await sub(page, 'Overview'); // sales-ia-v2 Stage 6: the Weekly report lives under Dashboard > Overview
     await page.getByRole('button', { name: 'Export' }).click(); await page.getByRole('menuitem', { name: 'Weekly report PDF' }).click(); await page.waitForTimeout(1500);
     ok('Weekly report PDF prints once, one print area', (await page.evaluate(() => window.__prints)) === 1 && (await page.locator('#sales-analytics-print-area').count()) === 1);
     await tab(page, 'Actions'); await shot(page, 'ia2-actions-1440');
@@ -299,7 +299,7 @@ try {
   // ── 390 owner: N2 + phone list + filter sheet ──
   { const { page, errs } = await newPage(owner, { width: 390, height: 844, url: '/?tab=pipeline&view=companies' });
     const n2 = {};
-    for (const [t, s, key] of [['Actions', null, 'actions'], ['Dashboard', 'Weekly report', 'dashboard'], ['Pipeline', 'Companies', 'companies']]) { await tab(page, t); if (s) await sub(page, s); n2[key] = await boxes(page); }
+    for (const [t, s, key] of [['Actions', null, 'actions'], ['Dashboard', 'Overview', 'dashboard'], ['Pipeline', 'Companies', 'companies']]) { await tab(page, t); if (s) await sub(page, s); n2[key] = await boxes(page); }
     const ref = n2.companies;
     const mv = Math.max(...Object.values(n2).map(b => Math.max(Math.abs(b['data-sales-tabrow'].y - ref['data-sales-tabrow'].y), Math.abs(b['data-sales-subviews'].y - ref['data-sales-subviews'].y))));
     const b0 = await boxes(page);

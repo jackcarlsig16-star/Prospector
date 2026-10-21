@@ -30,17 +30,18 @@ beforeEach(() => { try { localStorage.clear(); } catch { /* none */ } });
 
 test('member gets "Plan this week"; planned commitments show ✦ with the reason', async () => {
   fetchMe.mockResolvedValue(me('member'));
-  render(<GoalsTab businessId="b1" section="dashboard" view="weekly" onNav={jest.fn()} />);
+  render(<GoalsTab businessId="b1" section="dashboard" view="overview" onNav={jest.fn()} />);
   await waitFor(() => expect(screen.getAllByRole('button', { name: 'Plan this week' }).length).toBeGreaterThan(0));
-  expect(screen.getByLabelText('Planned')).toBeTruthy();
-  expect(screen.getByTitle('Replied Oct 9').textContent).toMatch(/Book Solidcore/);
+  // ✦ shows in the Goals section's per-person list and on the Weekly report's commitment row (sales-ia-v2 Stage 6).
+  expect(screen.getAllByLabelText('Planned')).toHaveLength(2);
+  expect(screen.getAllByTitle('Replied Oct 9').some(el => el.textContent.includes('Book Solidcore'))).toBe(true);
 });
 
 test('viewer sees ✦ but never the button or the nudge', async () => {
   fetchMe.mockResolvedValue(me('viewer'));
-  render(<GoalsTab businessId="b1" section="dashboard" view="weekly" onNav={jest.fn()} />);
+  render(<GoalsTab businessId="b1" section="dashboard" view="overview" onNav={jest.fn()} />);
   await screen.findByText('View only');
-  expect(screen.getByLabelText('Planned')).toBeTruthy();
+  expect(screen.getAllByLabelText('Planned')).toHaveLength(2);
   expect(screen.queryByRole('button', { name: 'Plan this week' })).toBeNull();
   expect(screen.queryByRole('dialog')).toBeNull();
 });

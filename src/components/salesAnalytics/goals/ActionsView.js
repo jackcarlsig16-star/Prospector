@@ -48,7 +48,14 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
     window.addEventListener(FLAGS_CHANGED, load);
     return () => { window.removeEventListener(TODOS_CHANGED, load); window.removeEventListener(FLAGS_CHANGED, load); };
   }, [load]);
-  useEffect(() => () => { clearTimeout(toastTimer.current); toastExpire.current?.(); }, []);
+  // The deferred write runs early when the list unmounts (another tab, another
+  // workspace) and when the page itself goes away (pagehide covers close,
+  // reload and bfcache); the write is keepalive so unload can't cancel it.
+  useEffect(() => {
+    const flush = () => { const f = toastExpire.current; toastExpire.current = null; f?.({ unloading: true }); };
+    window.addEventListener('pagehide', flush);
+    return () => { clearTimeout(toastTimer.current); window.removeEventListener('pagehide', flush); flush(); };
+  }, []);
 
   const expireToast = () => { setToast(null); const f = toastExpire.current; toastExpire.current = null; f?.(); };
   const showToast = (text, undoFn, onExpire = null) => {
@@ -112,7 +119,7 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
     </>,
     flag: it => <button type="button" style={actBtn} title="Mark contacted: closes the flag when the Undo window ends" onClick={() => {
       remove(it);
-      showToast(`${it.meta.contact || 'Prospect'} marked contacted · flag closes in 10 s`, () => load(), () => completeFlag(businessId, it.id).then(() => { announceFlagsChanged(); load(); }).catch(e => { setError(e.message); load(); }));
+      showToast(`${it.meta.contact || 'Prospect'} marked contacted · flag closes in 10 s`, () => load(), ({ unloading = false } = {}) => completeFlag(businessId, it.id, { keepalive: true }).then(() => { if (!unloading) { announceFlagsChanged(); load(); } }).catch(e => { if (!unloading) { setError(e.message); load(); } }));
     }}>Mark contacted</button>,
     focus: it => (it.status === 'done'
       ? <button type="button" style={actBtn} onClick={() => change(() => patch(it.id, { status: 'open' }), `Reopened: ${it.text}`, () => patch(it.id, { status: 'done' }))}>Reopen</button>
@@ -135,14 +142,15 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
   const actionsCell = it => <span role="group" aria-label={`Actions for ${it.text}`} style={{ display: 'inline-flex', gap: 4, alignItems: 'center', whiteSpace: 'nowrap' }}>{acts[it.kind](it)}</span>;
 
   const columns = [
-    { id: 'priority', label: 'Priority', width: 96, sticky: true, sortValue: it => (it.overdue ? -it.late_days : it.priority), render: priorityCell, title: it => (it.overdue ? `${it.late_days} days late` : `P${it.priority}`) },
-    { id: 'text', label: 'What to do', width: 220, sortValue: it => it.text, render: it => <span style={{ ...ellipsis, fontWeight: 500, color: it.status === 'done' ? SA.muted : SA.text }}>{it.text}</span>, title: it => it.text },
+    { id: 'priority', label: 'Priority', width: 124, sticky: true, sortValue: it => (it.overdue ? -it.late_days : it.priority), render: priorityCell, title: it => (it.overdue ? `${it.late_days} days late` : `P${it.priority}`) },
+    { id: 'text', label: 'What to do', width: 200, sortValue: it => it.text, render: it => <span style={{ ...ellipsis, fontWeight: 500, color: it.status === 'done' ? SA.muted : SA.text }}>{it.text}</span>, title: it => it.text },
     { id: 'company', label: 'Company', width: 150, sortValue: it => it.company?.name || null, render: companyCell, title: it => it.company?.name },
-    { id: 'why', label: 'Why', width: 170, sortValue: it => it.why, render: it => (it.why ? <span style={{ ...ellipsis, color: SA.soft }}>{it.why}</span> : <Dim />), title: it => it.why },
+    { id: 'why', label: 'Why', width: 162, sortValue: it => it.why, render: it => (it.why ? <span style={{ ...ellipsis, color: SA.soft }}>{it.why}</span> : <Dim />), title: it => it.why },
     { id: 'kind', label: 'Kind', width: 72, sortValue: it => KIND_LABEL[it.kind], render: it => <span style={{ whiteSpace: 'nowrap' }}>{KIND_LABEL[it.kind]}</span> },
     { id: 'due', label: 'Due', width: 72, sortValue: it => it.due_date, render: it => <span style={{ ...numStyle, color: it.overdue ? SA.bad : it.due_date ? SA.text : SA.faint, whiteSpace: 'nowrap' }}>{dueText(it, today)}</span> },
     { id: 'owner', label: 'Owner', width: 84, sortValue: it => (it.owner_user_id ? lookup(it.owner_user_id).first : null), render: ownerCell },
-    // Widths add up to ~1134 so the Member table fits a 1440 window without a sideways scroll (Priority and Actions pin either way).
+    // Widths add up to 1134 so the Member table fits a 1440 window without a sideways scroll (Priority and Actions pin either way);
+    // Priority is 124 so "Overdue · 12 d" never clips.
     ...(canEdit ? [{ id: 'actions', label: 'Actions', width: 270, stickyEnd: true, render: actionsCell }] : []),
   ];
   const sortLabel = sort && columns.find(c => c.id === sort.id)?.label;
