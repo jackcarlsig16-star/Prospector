@@ -39,11 +39,14 @@ export function PlanNudge({ week, ownerId, ownerName, plans, onPlan }) {
 }
 
 // The Huddle's Focus strip for one owner: this week's planned commitments.
+// sales-ia-v2 P5: done items fold into "n done ▸" (open to see or untick them)
+// instead of staying in the list struck through.
 export default function FocusStrip({ businessId, ownerId, ownerName, canEdit, onPlan }) {
   const week = laWeekStart();
   const [goals, setGoals] = useState(null);
   const [plans, setPlans] = useState(null);
   const [error, setError] = useState('');
+  const [showDone, setShowDone] = useState(false);
 
   const load = useCallback(() => {
     if (!ownerId) return;
@@ -77,7 +80,20 @@ export default function FocusStrip({ businessId, ownerId, ownerName, canEdit, on
       </div>
     );
   }
-  const done = focus.filter(c => c.status === 'done').length;
+  const doneItems = focus.filter(c => c.status === 'done');
+  const done = doneItems.length;
+  const item = c => {
+    const link = focusLink(c, plans);
+    return (
+      <li key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', minHeight: 36 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '1 1 240px', minWidth: 0, cursor: canEdit ? 'pointer' : 'default' }} title={c.plan_reason || undefined}>
+          <input type="checkbox" checked={c.status === 'done'} disabled={!canEdit} onChange={() => toggle(c)} style={{ width: 18, height: 18, accentColor: 'var(--sa-accent)', flex: 'none' }} />
+          <span style={{ fontSize: 14, color: c.status === 'done' ? SA.muted : SA.text, overflowWrap: 'anywhere' }}>{c.text}</span>
+        </label>
+        {link && <Chip color={SA.link}>→ {link}</Chip>}
+      </li>
+    );
+  };
   return (
     <section aria-label="Focus" className="no-print" style={{ marginBottom: 16, padding: '12px 16px', borderRadius: SA_SHAPE.radiusInner, border: `1px solid ${SA.border}`, background: SA.surface }}>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 6 }}>
@@ -86,18 +102,13 @@ export default function FocusStrip({ businessId, ownerId, ownerName, canEdit, on
       </div>
       {error && <ErrorNote message={error} />}
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {focus.map(c => {
-          const link = focusLink(c, plans);
-          return (
-            <li key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', minHeight: 36 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 10, flex: '1 1 240px', minWidth: 0, cursor: canEdit ? 'pointer' : 'default' }} title={c.plan_reason || undefined}>
-                <input type="checkbox" checked={c.status === 'done'} disabled={!canEdit} onChange={() => toggle(c)} style={{ width: 18, height: 18, accentColor: 'var(--sa-accent)', flex: 'none' }} />
-                <span style={{ fontSize: 14, textDecoration: c.status === 'done' ? 'line-through' : 'none', color: c.status === 'done' ? SA.muted : SA.text, overflowWrap: 'anywhere' }}>{c.text}</span>
-              </label>
-              {link && <Chip color={SA.link}>→ {link}</Chip>}
-            </li>
-          );
-        })}
+        {focus.filter(c => c.status !== 'done').map(item)}
+        {done > 0 && (
+          <li style={{ minHeight: 32, display: 'flex', alignItems: 'center' }}>
+            <button type="button" aria-expanded={showDone} onClick={() => setShowDone(o => !o)} style={{ all: 'unset', cursor: 'pointer', fontSize: 13, color: SA.muted, fontVariantNumeric: 'tabular-nums' }}>{done} done {showDone ? '▾' : '▸'}</button>
+          </li>
+        )}
+        {showDone && doneItems.map(item)}
       </ul>
     </section>
   );

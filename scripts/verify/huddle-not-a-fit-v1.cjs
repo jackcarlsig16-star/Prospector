@@ -1,3 +1,5 @@
+// SUPERSEDED (sales-ia-v2 Stage 4, Oct 20 2026): the Huddle Live tab became Pipeline > People (PeopleView.js, a kit table with no #live-row- ids,
+// "Not a fit" without the reason chips, "Show closed (n)" as a button). The same checks run in scripts/verify/sales-ia-v2-stage4.mjs. Kept for history; do not run.
 // FIX huddle-not-a-fit-v1 live check. TEMP data only: 1 workspace (goals_sales on, added to SALES_ANALYTICS_BUSINESS_IDS for the local server only), 3 temp users (Jack + Cyrus members, Vera viewer), 3 prospects with 1 delivered message + 1 real open each, 1 flag (via the real route). Browser: Not a fit + Undo, Not a fit -> flag dropped after the undo window, Show closed + Restore (previous status, no contacted event, not in Done), Not now 1 week -> hidden, back once snooze_until has passed, 390 confirm screen, Viewer read-only. 0 Apollo / 0 Claude / 0 syncs; HomeLover is only COUNTED. Serves build/ via server.js - run npm run build first. ~2 min, cap 4 min.
 // Usage: node scripts/verify/huddle-not-a-fit-v1.cjs <outdir>
 const ROOT = require('path').resolve(__dirname, '../..');

@@ -1,3 +1,5 @@
+// SUPERSEDED (sales-ia-v2 Stage 4, Oct 20 2026): the Huddle Live tab became Pipeline > People (PeopleView.js, a kit table with no #live-row- ids,
+// no timeline expand, the sync line in the frame row). The same checks run in scripts/verify/sales-ia-v2-stage4.mjs. Kept for history; do not run.
 // huddle-live-feed-v1 Stage 2 check (+ subject add-on: needs supabase/migrations/20261007_huddle_live_subject.sql) - the Live tab in a real browser. Part A: real HomeLover, READ ONLY (2 temp users: Mara = Member, Vera = Viewer, both deleted): newest row vs the DB, sync line, numbers, closed toggle, expand, links, load more, viewer, 1440 + 390 screenshots. Part B: a TEMP workspace with 3 seeded prospects (Jack + Cyrus temp members) for the writes: Flag -> Cyrus, second flag offers reassign, Mark contacted + Undo. All deleted. 0 AI / 0 Apollo calls. ~2 min, cap 4 min. Serves build/ via server.js - run npm run build first.
 const ROOT = require('path').resolve(__dirname, '../..');
 require(ROOT + '/node_modules/dotenv').config({ path: ROOT + '/.env' });

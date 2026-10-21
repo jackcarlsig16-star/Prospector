@@ -81,7 +81,8 @@ const PRINT_STYLES = `
 // row (sub-view switch on the left, the screen's own tools portaled into
 // #sales-frame-tools on the right) so switching tabs or toggling filters
 // never moves what sits above. GoalsTab stays the data hub for Actions /
-// Pipeline / Dashboard; Pipeline > People is the Huddle until Stage 4.
+// Pipeline / Dashboard; Pipeline > People is DailyHuddle (the People table
+// on its Live tab, Priorities and Done beside it).
 
 export default function SalesAnalyticsTab({ businessId, features }) {
   const [tab, setTab] = useState(() => readNav().tab);

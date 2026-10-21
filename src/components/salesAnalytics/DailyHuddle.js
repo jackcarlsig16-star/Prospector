@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { SA, SA_TYPE, SA_SHAPE, SA_BAD_BG, SA_BAD_BORDER, saSans } from './theme';
 import { fetchRuns, triggerSync, fetchInsights } from './salesApi';
 import { fetchHuddle, startHuddle, fetchCollateral, updateProspect, fetchFlags, flagProspect, unflag, reassignFlag, dropFlag, completeFlag as completeFlagApi, announceFlagsChanged, FLAGS_CHANGED } from './huddleApi';
 import HuddleRow from './HuddleRow';
 import HuddleFeed from './HuddleFeed';
-import HuddleLive from './HuddleLive';
+import PeopleView from './PeopleView';
+import PeopleCompanyPanel from './PeopleCompanyPanel';
 import FlagDialog from './FlagDialog';
 import FlaggedLane from './FlaggedLane';
 import CollateralLibrary from './CollateralLibrary';
@@ -15,7 +17,7 @@ import SuggestedStrip from './tasks/SuggestedStrip';
 import RightRail from './RightRail';
 import Ring, { RingLegend } from './charts/Ring';
 import { goalsApi } from './goals/goalsApi';
-import { memberLookup, ShowingChip, DrillNumber, flashTo } from './goals/goalsUi';
+import { memberLookup, ShowingChip, DrillNumber, flashTo, Chip } from './goals/goalsUi';
 import { exportWidgetCsv } from './exportCsv';
 import { fetchMe } from '../../utils/authSession';
 import { roleAtLeast } from '../../constants/roles';
@@ -25,8 +27,10 @@ import {
   byCompany, flagsFor, plusDays,
 } from './huddleView';
 import { laDateString } from './periods';
+import { FRAME_TOOLS_ID } from './salesFrame';
 
-const UNDO_MS = 5000; // REVISABLE (spec)
+const UNDO_MS = 10000; // REVISABLE (spec)
+const ROW_BAR_HEIGHT = 36;
 
 const HUDDLE_SHEET_COLUMNS = [
   { label: 'Owner', value: p => OWNER_LABELS[p.owner] || p.owner },
@@ -57,6 +61,10 @@ const readOwner = () => { const o = new URLSearchParams(window.location.search).
 function fmtTime(iso) {
   return iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : 'never';
 }
+const ago = iso => {
+  const min = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+  return min < 1 ? 'just now' : min < 60 ? `${min} min ago` : min < 48 * 60 ? `${Math.round(min / 60)} h ago` : `${Math.round(min / 1440)} d ago`;
+};
 
 function Section({ title, count, sub, children, empty }) {
   return (
@@ -70,7 +78,7 @@ function Section({ title, count, sub, children, empty }) {
   );
 }
 
-const headerButton = { ...SA_TYPE.body, fontSize: 13, fontWeight: 500, background: 'transparent', color: SA.text, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: '0 16px', height: 44, cursor: 'pointer' };
+const headerButton = { ...SA_TYPE.body, fontSize: 13, fontWeight: 500, background: 'transparent', color: SA.text, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusInner, padding: '0 16px', height: 36, cursor: 'pointer', whiteSpace: 'nowrap', flex: 'none' };
 const railCard = { background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusCard, padding: 18, display: 'flex', flexDirection: 'column', gap: 10 };
 const railLabel = { ...SA_TYPE.label, color: SA.muted, fontWeight: 500 };
 const scrollList = { display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 640, overflowY: 'auto', paddingRight: 4 };
@@ -93,6 +101,10 @@ function Segmented({ label, options, value, onChange, counts }) {
 
 // focusTarget (from Goals): { feed: 'open'|'click'|'reply'|null } opens the
 // activity feed (on that kind); { flags: true } jumps to Flagged for you.
+// sales-ia-v2 P5: this is Pipeline > People. The Live tab is the People table
+// (PeopleView); Priorities and Done stay as the second and third tab. The
+// screen's buttons sit in the frame row (#sales-frame-tools, N2) and the tab
+// strip is one fixed-height row, so nothing above the table moves.
 export default function DailyHuddle({ businessId, focusContactId, onFocused, focusTarget, onOpenGoals }) {
   const [data, setData] = useState(null);
   const [collateral, setCollateral] = useState([]);
@@ -110,7 +122,9 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
   const [feedKind, setFeedKind] = useState(null); // 'open' | 'click' | 'reply' - a strip number picked it
   const [tab, setTab] = useState('live'); // huddle-live-feed-v1: live | priorities | done
   const [liveKey, setLiveKey] = useState(0);
-  const [phoneMenu, setPhoneMenu] = useState(false);
+  const [toolsSlot, setToolsSlot] = useState(null);
+  const [syncInfo, setSyncInfo] = useState(null); // GET huddle/live's sync block
+  const [companyPerson, setCompanyPerson] = useState(null); // People row whose company panel is open
   const [filters, setFilters] = useState({ heat: 'all', due: 'all', stale: false, sort: 'signal', hideBots: true });
   const [feedKey, setFeedKey] = useState(0);
   const [flags, setFlags] = useState([]);
@@ -138,6 +152,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
   }, [businessId]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { setToolsSlot(document.getElementById(FRAME_TOOLS_ID)); }, []);
 
   // Separate from load(): insights take ~1-3s and shouldn't hold up the rows.
   // info-level (R10 "back in the green") isn't an issue.
@@ -201,6 +216,10 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
   };
 
   const expireToast = () => { setToast(null); const f = toastExpire.current; toastExpire.current = null; f?.(); };
+  const panelToast = useCallback(t => showToast(t.text, t.undo), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const closeCompany = useCallback(() => setCompanyPerson(null), []);
+  // "Open full card" from the company panel: partners go to Partner workflow, everything else to Companies.
+  const openFull = row => { setCompanyPerson(null); onOpenGoals?.(row.type === 'partner' ? { partners: { ids: [row.id], open: row.id, label: row.name } } : 'view:pipeline'); };
   const showToast = (text, undoFn, { onExpire = null, link = null } = {}) => {
     clearTimeout(toastTimer.current);
     toastExpire.current?.();
@@ -210,8 +229,14 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
   };
   // One-click row actions: optimistic, then the PATCH (its trigger logs
   // who/when), then a 5-second undo that PATCHes the previous values back.
+  // prev comes from the newest server row this page holds (handleUpdated keeps
+  // data.prospects current after every PATCH), not from the table row, which
+  // can lag a reload - two clicks on one person within a few seconds would
+  // otherwise make Undo put back the wrong value.
   const act = async (p, patch, label, toastOpts) => {
-    const prev = Object.fromEntries(Object.keys(patch).map(k => [k, p[k] ?? null]));
+    const latest = data?.prospects.find(x => x.contact_id === p.contact_id);
+    const src = latest ? { ...p, ...latest } : p;
+    const prev = Object.fromEntries(Object.keys(patch).map(k => [k, src[k] ?? null]));
     handleUpdated({ contact_id: p.contact_id, ...patch });
     try {
       handleUpdated(await updateProspect(businessId, p.contact_id, patch));
@@ -358,6 +383,20 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
   );
   const dateLabel = today ? new Date(`${today}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
 
+  // N2: the screen's buttons live in the frame row; the sync line is text there, not a strip above the table.
+  const tools = (
+    <>
+      {me && !canEdit && <Chip title="You have view access to this workspace, so Sales & Marketing is read-only for you." style={{ height: 26, color: SA.soft, flex: 'none' }}>View only</Chip>}
+      {syncInfo?.failed && <span style={{ fontSize: 12, color: SA.bad, whiteSpace: 'nowrap' }} title={syncInfo.failed.error || ''}>⚠ Last sync failed {fmtTime(syncInfo.failed.started_at)}{syncInfo.failed.stuck ? ', never finished' : ''}</span>}
+      {syncInfo && !syncInfo.failed && <span style={{ fontSize: 12, color: syncInfo.stale ? SA.warn : SA.muted, whiteSpace: 'nowrap' }} title={syncInfo.synced_at ? fmtTime(syncInfo.synced_at) : ''}>{syncInfo.running ? 'Sync running…' : syncInfo.synced_at ? `Synced ${ago(syncInfo.synced_at)}${syncInfo.stale ? ' · over 2 h old' : ''}` : 'Never synced'}</span>}
+      <button onClick={() => setShowLibrary(s => !s)} style={headerButton}>{showLibrary ? 'Hide library' : 'Collateral library'}</button>
+      <button onClick={() => exportWidgetCsv('huddle_sheet', [...visible].sort((a, b) => a.owner.localeCompare(b.owner) || b.score - a.score), HUDDLE_SHEET_COLUMNS)} disabled={!data} style={headerButton}>Huddle sheet CSV</button>
+      <button onClick={() => window.print()} disabled={!data} style={headerButton}>Print agenda</button>
+      {canEdit && <button onClick={handleSync} disabled={syncing} style={{ ...headerButton, opacity: syncing ? 0.6 : 1 }}>{syncing ? 'Syncing…' : 'Sync now'}</button>}
+      <button onClick={handleStart} title={`Last huddle ${fmtTime(lastHuddleAt)}`} style={{ ...headerButton, fontWeight: 600, background: SA.accent, color: SA.ground, border: 0 }}>Start huddle</button>
+    </>
+  );
+
   const rail = (
     <RightRail label="Huddle filters" moreLabel="filters & summary" people={people} owner={owner} onOwner={o => { setOwner(o); setNeedsOwner(null); }} compact={compact}>
       <div style={railCard}>
@@ -405,48 +444,7 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
   return (
     <>
     <div className="no-print">
-      {/* Phones: one line (title, Start huddle, ⋯ for the rest) so the Live list starts on the first screen. */}
-      {phone ? (
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <h1 style={{ margin: 0, ...SA_TYPE.pageTitle, fontSize: 20, lineHeight: 1.2, color: SA.text, flex: '1 1 auto', minWidth: 0 }}>Huddle{dateLabel && ` · ${dateLabel}`}</h1>
-            <button onClick={handleStart} style={{ ...headerButton, height: 36, padding: '0 12px', fontWeight: 600, background: SA.accent, color: SA.ground, border: 0, flex: 'none' }}>Start huddle</button>
-            <button type="button" aria-label="More huddle actions" aria-expanded={phoneMenu} onClick={() => setPhoneMenu(o => !o)} style={{ ...headerButton, height: 36, width: 40, padding: 0, flex: 'none' }}>⋯</button>
-          </div>
-          {phoneMenu && (
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-              <button onClick={() => setShowLibrary(s => !s)} style={headerButton}>{showLibrary ? 'Hide library' : 'Collateral library'}</button>
-              <button onClick={() => exportWidgetCsv('huddle_sheet', [...visible].sort((a, b) => a.owner.localeCompare(b.owner) || b.score - a.score), HUDDLE_SHEET_COLUMNS)}
-            disabled={!data} style={headerButton}>Huddle sheet CSV</button>
-              <button onClick={() => window.print()} disabled={!data} style={headerButton}>Print agenda</button>
-          {tab !== 'live' && <button onClick={handleSync} disabled={syncing} style={{ ...headerButton, opacity: syncing ? 0.6 : 1 }}>{syncing ? 'Syncing…' : 'Sync now'}</button>}
-              <span style={{ fontSize: 13, color: SA.muted, alignSelf: 'center' }}>Last huddle {fmtTime(lastHuddleAt)}</span>
-            </div>
-          )}
-          {message && <div style={{ fontSize: 12, color: SA.warn, marginTop: 6 }}>{message}</div>}
-        </div>
-      ) : (
-      <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'flex-end', gap: 24, marginBottom: 24 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <div style={{ ...SA_TYPE.label, color: SA.muted }}>Sales & Marketing · Pipeline › People</div>
-          <h1 style={{ margin: 0, ...SA_TYPE.pageTitle, color: SA.text }}>Huddle{dateLabel && ` · ${dateLabel}`}</h1>
-          <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, color: SA.muted }}>
-            {tab !== 'live' && <span>As of last sync {fmtTime(lastRun?.finished_at)}</span>}
-            <span>Last huddle {fmtTime(lastHuddleAt)}</span>
-          </div>
-          {message && <span style={{ fontSize: 12, color: SA.warn }}>{message}</span>}
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button onClick={() => setShowLibrary(s => !s)} style={headerButton}>{showLibrary ? 'Hide library' : 'Collateral library'}</button>
-          <button onClick={() => exportWidgetCsv('huddle_sheet', [...visible].sort((a, b) => a.owner.localeCompare(b.owner) || b.score - a.score), HUDDLE_SHEET_COLUMNS)}
-            disabled={!data} style={headerButton}>Huddle sheet CSV</button>
-          <button onClick={() => window.print()} disabled={!data} style={headerButton}>Print agenda</button>
-          {tab !== 'live' && <button onClick={handleSync} disabled={syncing} style={{ ...headerButton, opacity: syncing ? 0.6 : 1 }}>{syncing ? 'Syncing…' : 'Sync now'}</button>}
-          <button onClick={handleStart} style={{ ...headerButton, fontWeight: 600, background: SA.accent, color: SA.ground, border: 0 }}>Start huddle</button>
-        </div>
-      </div>
-      )}
-
+      {toolsSlot && createPortal(tools, toolsSlot)}
       <SuggestedStrip businessId={businessId} />
       <FocusStrip businessId={businessId} ownerId={focusOwner} ownerName={focusOwner ? lookup(focusOwner).first : null} canEdit={canEdit} onPlan={() => onOpenGoals && onOpenGoals('plan')} />
 
@@ -456,23 +454,28 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
 
       {showLibrary && <CollateralLibrary businessId={businessId} items={collateral} onChanged={reloadCollateral} />}
 
-      <div role="tablist" aria-label="Huddle views" style={{ display: 'flex', gap: 4, borderBottom: `1px solid ${SA.border}`, marginBottom: 18 }}>
-        {[['live', 'Live'], ['priorities', 'Priorities'], ['done', `Done${done.length ? ` (${done.length})` : ''}`]].map(([id, lb]) => (
+      <div role="tablist" aria-label="Huddle views" data-channel-row style={{ height: ROW_BAR_HEIGHT, display: 'flex', alignItems: 'center', gap: 4, marginBottom: 8, overflowX: 'auto', overflowY: 'hidden', flexWrap: 'nowrap', minWidth: 0 }}>
+        {[['live', 'Live'], ['priorities', 'Priorities'], ['done', 'Done']].map(([id, lb]) => (
           <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-            style={{ ...saSans, height: 44, padding: '0 16px', fontSize: 14, fontWeight: tab === id ? 600 : 500, cursor: 'pointer', background: 'transparent', border: 0, borderBottom: `2px solid ${tab === id ? SA.accent : 'transparent'}`, marginBottom: -1, color: tab === id ? SA.text : SA.muted }}>
-            {lb}
+            style={{ ...saSans, height: 30, padding: '0 12px', borderRadius: 999, fontSize: 13, fontWeight: tab === id ? 600 : 500, cursor: 'pointer', whiteSpace: 'nowrap', flex: 'none', border: `1px solid ${tab === id ? SA.accent : SA.border}`, background: tab === id ? SA.surface2 : 'transparent', color: tab === id ? SA.text : SA.muted, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {lb}{id === 'done' && <span style={{ fontVariantNumeric: 'tabular-nums', display: 'inline-block', minWidth: '2ch', textAlign: 'right', color: SA.muted }}>{done.length || ''}</span>}
           </button>
         ))}
+        <span style={{ fontSize: 12, color: SA.muted, whiteSpace: 'nowrap', marginLeft: 8 }}>{tab !== 'live' ? `As of last sync ${fmtTime(lastRun?.finished_at)} · ` : ''}Last huddle {fmtTime(lastHuddleAt)}</span>
       </div>
 
       {tab === 'live' && (
-        <HuddleLive businessId={businessId} members={members} myUserId={me?.profile?.id} canEdit={canEdit} phone={phone} reloadKey={liveKey}
-          ownerColor={ownerColor} ownerLabel={o => OWNER_LABELS[o] || o} onSync={handleSync} syncing={syncing}
+        <PeopleView businessId={businessId} myUserId={me?.profile?.id} canEdit={canEdit} phone={phone} reloadKey={liveKey}
+          ownerColor={ownerColor} ownerLabel={o => OWNER_LABELS[o] || o} onSyncInfo={setSyncInfo}
           onFlag={r => setFlagging(prospectsById.get(r.contact_id) || liveFlagTarget(r))}
           onContacted={r => act(r, { status: 'contacted' }, 'marked contacted').catch(e => setMessage(e.message))}
           onNotAFit={markNotAFit}
           onNotNow={(r, days, lb) => act(r, { status: 'not_now', snooze_until: plusDays(laDateString(), days) }, `snoozed ${lb}`).catch(e => setMessage(e.message))}
-          onRestore={r => act(r, { status: r.restore_status || 'new' }, 'restored').catch(e => setMessage(e.message))} />
+          onRestore={r => act(r, { status: r.restore_status || 'new' }, 'restored').catch(e => setMessage(e.message))}
+          onOpenCompany={setCompanyPerson} />
+      )}
+      {companyPerson && (
+        <PeopleCompanyPanel businessId={businessId} person={companyPerson} canEdit={canEdit} members={members} meId={me?.profile?.id} onToast={panelToast} onClose={closeCompany} onOpenFull={openFull} />
       )}
 
       {tab === 'done' && (
@@ -573,7 +576,13 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
           <div style={{ ...saSans, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 12, background: SA.surface2, border: `1px solid ${SA.borderStrong}`, boxShadow: '0 10px 30px #0008', fontSize: 14, color: SA.text }}>
             <span>{toast.error || toast.text}</span>
             {!toast.error && toast.link && <a href={toast.link} target="_blank" rel="noreferrer" style={{ color: SA.link, whiteSpace: 'nowrap' }}>Apollo ↗</a>}
-            {!toast.error && <button type="button" onClick={undo} disabled={toast.busy} style={{ ...headerButton, height: 36 }}>{toast.busy ? 'Undoing…' : 'Undo'}</button>}
+            {!toast.error && toast.undo && <button type="button" onClick={undo} disabled={toast.busy} style={{ ...headerButton, height: 36 }}>{toast.busy ? 'Undoing…' : 'Undo'}</button>}
+          </div>
+        )}
+        {message && (
+          <div role="status" style={{ ...saSans, marginTop: 8, padding: '8px 14px', borderRadius: 12, background: SA.surface2, border: `1px solid ${SA.warn}`, fontSize: 13, color: SA.text, display: 'flex', gap: 12, alignItems: 'center' }}>
+            <span>{message}</span>
+            <button type="button" aria-label="Dismiss" onClick={() => setMessage('')} style={{ all: 'unset', cursor: 'pointer', color: SA.muted }}>×</button>
           </div>
         )}
       </div>

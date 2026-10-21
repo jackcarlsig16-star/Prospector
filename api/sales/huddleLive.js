@@ -7,18 +7,24 @@ import { nextBestAction, SCANNER_CLICK_WITHIN_SECONDS } from './nextBestAction.j
 import { stageIndex } from './pipelineStages.js';
 import { ownerSlug, openFlagRows } from './huddleFlags.js';
 import { asReported, isDeadRun } from './syncRunStatus.js';
+import { STATUS_LABEL, CLOSED_STATUSES } from '../../src/constants/prospectStatus.js';
 
-// huddle-live-feed-v1 - the Huddle's "Live" tab: one row per person, newest
-// real activity first, Apollo's Emails list plus what Prospector knows. No
-// new scoring: counts come from the event rows (bot opens / scanner clicks
-// excluded by isAutomated, the same rule as the feed) and the next step is
-// nextBestAction's label.
+// huddle-live-feed-v1 - one row per person, newest real activity first,
+// Apollo's Emails list plus what Prospector knows. No new scoring: counts come
+// from the event rows (bot opens / scanner clicks excluded by isAutomated, the
+// same rule as the feed) and the next step is nextBestAction's label.
+// sales-ia-v2 P5: Pipeline > People reads this. Closed rows (Booked, Not now,
+// Not a fit, unsubscribed, a negative reply) and snoozed rows stay in the
+// build, flagged `closed`, so the page can show them behind one toggle; the
+// route drops them unless show_closed. heat_7d = real opens + clicks in 7 d.
 function getSupabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 }
 
 export const LIVE_FILTERS = ['replied', 'clicked', 'opened2', 'flagged_me'];
 export const STALE_SYNC_MS = 2 * 3600e3;
+export const MAX_LIMIT = 1000;
+const HEAT_DAYS = 7;
 const MEETING_INDEX = stageIndex('meeting');
 
 const laTime = iso => new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' }).format(new Date(iso)).toLowerCase();
@@ -51,6 +57,7 @@ function insightFor(r, now) {
 
 // Pure: every person with an open, click or reply. bot_only rows (no real
 // signal) are kept and flagged; the route drops them unless show_bots.
+// snoozed = Not now until snooze_until passes (no date = until changed).
 // statusEvents: sales_prospect_events status -> contacted/booked rows.
 // deadEvents: status -> dead rows; the newest one's from_value is what Restore puts back.
 const RESTORABLE = ['new', 'claimed', 'contacted', 'booked', 'not_now'];
@@ -61,10 +68,9 @@ export function buildLiveRows({ prospects, messages, events, flags, members, sta
   const wasBefore = new Map([...deadEvents].sort((a, b) => a.changed_at.localeCompare(b.changed_at) || a.id - b.id).map(e => [e.contact_id, e.from_value]));
   const memberName = new Map(members.map(m => [m.user_id, m.name]));
   const today = laDateString(new Date(now));
+  const heatSince = new Date(now - HEAT_DAYS * 864e5).toISOString();
   const rows = [];
   for (const p of prospects) {
-    // Not now hides a person until snooze_until passes (no date = until changed), same rule as Priorities.
-    if (p.status === 'not_now' && (!p.snooze_until || p.snooze_until > today)) continue;
     const msgs = msgsBy.get(p.contact_id) || [];
     const evs = (eventsBy.get(p.contact_id) || []).filter(e => e.event === 'open' || e.event === 'click');
     const replies = msgs.filter(m => m.replied);
@@ -97,7 +103,8 @@ export function buildLiveRows({ prospects, messages, events, flags, members, sta
     const nba = nextBestAction(msgs, evs, scoreProspect(msgs, evs));
     const row = {
       contact_id: p.contact_id, name: p.name || null, company: p.company || null, title: p.title || null, owner: p.owner || 'unassigned',
-      status: p.status, notes: p.notes || null, linkedin_url: p.linkedin_url || null,
+      status: p.status, status_label: STATUS_LABEL[p.status] || p.status, notes: p.notes || null, opportunity_id: p.opportunity_id || null,
+      snoozed: p.status === 'not_now' && (!p.snooze_until || p.snooze_until > today), snooze_until: p.snooze_until || null, linkedin_url: p.linkedin_url || null,
       apollo_url: `https://app.apollo.io/#/contacts/${p.contact_id}`,
       linkedin_search_url: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent([p.name, p.company].filter(Boolean).join(' '))}`,
       sequence: lastMsg.sequence_id ? { id: lastMsg.sequence_id, name: seq ? seq.name : null } : null,
@@ -108,6 +115,7 @@ export function buildLiveRows({ prospects, messages, events, flags, members, sta
       real_opens: realOpens.length,
       bot_opens: tagged.filter(e => e.event === 'open' && e.automated).length,
       human_clicks: real.filter(e => e.event === 'click').length,
+      heat_7d: real.filter(e => e.occurred_at > heatSince).length,
       scanner_clicks: tagged.filter(e => e.event === 'click' && e.automated).length,
       replied: replies.length > 0,
       reply_class: replies.map(m => m.reply_class).find(Boolean) || null,
@@ -126,8 +134,8 @@ export function buildLiveRows({ prospects, messages, events, flags, members, sta
       unsubscribed: !!p.email_unsubscribed,
       not_a_fit: p.status === 'dead',
       restore_status: p.status === 'dead' ? (RESTORABLE.includes(wasBefore.get(p.contact_id)) ? wasBefore.get(p.contact_id) : 'new') : null,
-      // Closed = unsubscribed, a not-interested/unsubscribe reply, or Not a fit; hidden behind "Show closed".
-      closed: !!p.email_unsubscribed || p.status === 'dead' || replies.some(m => HEAT.excludedReplyClasses.includes(m.reply_class)),
+      // Closed = Booked, Not now, Not a fit, unsubscribed or a not-interested/unsubscribe reply; hidden behind "Show closed".
+      closed: !!p.email_unsubscribed || CLOSED_STATUSES.includes(p.status) || replies.some(m => HEAT.excludedReplyClasses.includes(m.reply_class)),
       next_step: { id: nba.id, label: nba.label, reason: nba.reason },
       timeline,
     };
@@ -149,14 +157,14 @@ export function matchesFilter(r, filter, { sinceIso = null, userId = null } = {}
   return true;
 }
 
-// GET /huddle/live?filter=&since=huddle&owner=<user_id|unassigned>&sequence=&q=&show_bots=1&offset=0&limit=25
+// GET /huddle/live?filter=&since=huddle&owner=<user_id|unassigned>&sequence=&q=&show_bots=1&show_closed=1&offset=0&limit=25 (max 1000)
 export async function liveRoute(req, res) {
   const { businessId } = req.params;
   const { filter, since, owner, sequence, q } = req.query;
   if (filter && !LIVE_FILTERS.includes(filter)) return res.status(400).json({ error: `filter must be one of ${LIVE_FILTERS.join('|')}` });
   if (since && since !== 'huddle') return res.status(400).json({ error: 'since must be huddle' });
   const offset = Math.max(Number(req.query.offset) || 0, 0);
-  const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), 100);
+  const limit = Math.min(Math.max(Number(req.query.limit) || 25, 1), MAX_LIMIT);
   const showBots = req.query.show_bots === '1';
   const showClosed = req.query.show_closed === '1';
   const supabase = getSupabase();

@@ -48,6 +48,8 @@ body.mode-straight-shooter, .ui-theme-light { ${vars(KIT_LIGHT)} }
 .ui-table td { box-sizing:border-box; height:${KIT_TABLE.rowHeight}px; padding:0 10px; border-bottom:1px solid var(--ui-border); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; background:var(--ui-row-tint, transparent); }
 .ui-table tr[data-row] td:first-child { box-shadow:inset 3px 0 0 var(--ui-row-bar, transparent); }
 .ui-table td.ui-table__sticky { position:sticky; left:0; z-index:1; background:linear-gradient(var(--ui-row-tint, transparent), var(--ui-row-tint, transparent)), var(--ui-surface); color:var(--ui-text); font-weight:500; }
+.ui-table th.ui-table__sticky-end { position:sticky; right:0; z-index:3; }
+.ui-table td.ui-table__sticky-end { position:sticky; right:0; z-index:1; background:linear-gradient(var(--ui-row-tint, transparent), var(--ui-row-tint, transparent)), var(--ui-surface); box-shadow:-1px 0 0 var(--ui-border); }
 .ui-table__group td { height:${KIT_TABLE.groupHeight}px; background:var(--ui-inset); color:var(--ui-text); font-weight:600; }
 .ui-table--dense td { height:${KIT_TABLE.denseRowHeight}px; }
 .ui-table--dense th { height:${KIT_TABLE.denseHeadHeight}px; }

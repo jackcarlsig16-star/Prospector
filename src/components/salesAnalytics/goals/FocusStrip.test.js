@@ -26,6 +26,16 @@ test('Huddle Focus: only the owner\'s planned commitments, link chip from the pl
   fireEvent.click(screen.getAllByRole('checkbox')[0]);
   await waitFor(() => expect(screen.getByText('1 of 2 done')).toBeTruthy());
   expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 'a', { status: 'done' });
+  // P5: the done item folds into "1 done ▸" (no struck-through row); opening it lists the item, still untickable.
+  expect(screen.queryByText('Commitment a')).toBeNull();
+  expect(screen.getAllByRole('checkbox')).toHaveLength(1);
+  const fold = screen.getByRole('button', { name: '1 done ▸' });
+  expect(fold.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(fold);
+  expect(screen.getByText('Commitment a').style.textDecoration).not.toBe('line-through');
+  expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+  expect(screen.getAllByRole('checkbox')[1].checked).toBe(true);
+  expect(screen.getByRole('button', { name: '1 done ▾' })).toBeTruthy();
 });
 
 test('viewer sees the strip but cannot check', async () => {
