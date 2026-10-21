@@ -44,6 +44,11 @@ export async function deleteCollateral(businessId, id) {
   return call(`/api/sales/${businessId}/collateral/${id}`, { method: 'DELETE' }, 'Failed to delete collateral');
 }
 
+// company-panel-v2 D1 - "Not this company": the link goes to null with link_via 'manual'.
+export async function unlinkProspect(businessId, contactId, which) {
+  return call(`/api/sales/${businessId}/prospects/${encodeURIComponent(contactId)}/unlink`, json('POST', { which }), 'Failed to unlink');
+}
+
 export async function addProspectToPipeline(businessId, contactId, payload) {
   return call(`/api/sales/${businessId}/prospects/${contactId}/pipeline`,
     json('POST', payload), 'Failed to add to pipeline');

@@ -103,7 +103,7 @@ export function buildLiveRows({ prospects, messages, events, flags, members, sta
     const nba = nextBestAction(msgs, evs, scoreProspect(msgs, evs));
     const row = {
       contact_id: p.contact_id, name: p.name || null, company: p.company || null, title: p.title || null, owner: p.owner || 'unassigned',
-      status: p.status, status_label: STATUS_LABEL[p.status] || p.status, notes: p.notes || null, opportunity_id: p.opportunity_id || null,
+      status: p.status, status_label: STATUS_LABEL[p.status] || p.status, notes: p.notes || null, opportunity_id: p.opportunity_id || null, goal_id: p.goal_id || null,
       snoozed: p.status === 'not_now' && (!p.snooze_until || p.snooze_until > today), snooze_until: p.snooze_until || null, linkedin_url: p.linkedin_url || null,
       apollo_url: `https://app.apollo.io/#/contacts/${p.contact_id}`,
       linkedin_search_url: `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent([p.name, p.company].filter(Boolean).join(' '))}`,
@@ -170,7 +170,7 @@ export async function liveRoute(req, res) {
   const supabase = getSupabase();
   try {
     const [prospects, messages, events, goalRows, statusEvents, deadEvents] = await Promise.all([
-      selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id,name,title,company,linkedin_url,email_unsubscribed,owner,status,snooze_until,notes,opportunity_id').eq('business_id', businessId).order('contact_id')),
+      selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id,name,title,company,linkedin_url,email_unsubscribed,owner,status,snooze_until,notes,opportunity_id,goal_id').eq('business_id', businessId).order('contact_id')),
       selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,contact_id,sequence_id,step,delivered_at,replied,reply_class,replied_seen_at,replied_at,subject').eq('business_id', businessId).order('apollo_message_id')),
       selectAllPages(() => supabase.from('sales_email_activity').select('id,apollo_message_id,contact_id,step,event,occurred_at,user_agent,tracking_service').eq('business_id', businessId).in('event', ['open', 'click']).order('id')),
       selectAllPages(() => supabase.from('sales_week_goals').select('id,owner_user_id,status,carried_from_id,prospect_contact_id,week_start').eq('business_id', businessId).not('prospect_contact_id', 'is', null).order('week_start', { ascending: false }).order('id')),

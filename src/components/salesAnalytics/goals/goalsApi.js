@@ -104,6 +104,10 @@ export const goalsApi = {
   // name, title, LinkedIn URL only - never an email or phone (L1).
   addCompanyContact: (id, type, recordId, body) => call(id, `/company/${type}/${recordId}/contact`, { method: 'POST', body }),
   updateTarget: (id, targetId, body) => call(id, `/company/target/${targetId}`, { method: 'PATCH', body }).then(d => d.target),
+  // company-panel-v2 Stage 2 - the Interest band's buttons; every write returns what Undo needs.
+  bookMeeting: (id, type, recordId, body = {}) => call(id, `/company/${type}/${recordId}/book-meeting`, { method: 'POST', body }),
+  markContacted: (id, type, recordId, body = {}) => call(id, `/company/${type}/${recordId}/contacted`, { method: 'POST', body }),
+  notNow: (id, type, recordId, body = {}) => call(id, `/company/${type}/${recordId}/not-now`, { method: 'POST', body }),
   // Research + Check Apollo for any record type (same caps as the partner ones below).
   companyResearch: (id, type, recordId) => call(id, `/company/${type}/${recordId}/research`),
   runCompanyResearch: (id, type, recordId) => call(id, `/company/${type}/${recordId}/research`, { method: 'POST' }),

@@ -14,6 +14,7 @@ import { todoStatus } from './todoStatus';
 import PartnersView from './PartnersView';
 import CompaniesView from './CompaniesView';
 import PipelineView from './PipelineView';
+import { writePeopleCompany } from '../salesNav';
 import ReportView from './ReportView';
 import PlanWeekDrawer from './PlanWeekDrawer';
 import { PlanNudge } from './PlanNudge';
@@ -451,7 +452,8 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
         </>}
         {section === 'pipeline' && view === 'companies' && (
           <PipelineView businessId={businessId} canEdit={canEdit} meId={meId}
-            onOpenPartner={(id, name) => go({ partners: { ids: [id], open: id, label: name } })} onOpenCompanies={w => { setOwnerSlug('team'); go({ companies: w }); }} />
+            onOpenPartner={(id, name) => go({ partners: { ids: [id], open: id, label: name } })} onOpenCompanies={w => { setOwnerSlug('team'); go({ companies: w }); }}
+            onOpenPeople={company => { writePeopleCompany(company); onNav('pipeline', 'people'); }} />
         )}
       </main>
       {planOpen && canEdit && planOwner && (

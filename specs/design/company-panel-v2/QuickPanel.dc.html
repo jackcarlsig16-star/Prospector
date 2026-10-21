@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Company quick panel</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#0B0D10}
+a{color:#AFC0FF;text-decoration:none}a:hover{color:#E9ECF0}
+.lbl{font-family:'Geist Mono',ui-monospace,monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8B95A3;font-weight:500}
+.num{font-variant-numeric:tabular-nums}
+.btn{height:32px;padding:0 12px;border-radius:8px;border:1px solid #232A33;background:#171C22;color:#E9ECF0;font:500 13px Geist,system-ui,sans-serif;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btnp{background:#8FA8FF;border-color:#8FA8FF;color:#0B0D10;font-weight:600}
+.btng{background:transparent;border-color:transparent;color:#C9D0D9}
+.sel{height:32px;border-radius:8px;border:1px solid #6B7480;background:#12161B;color:#E9ECF0;font:13px Geist,sans-serif;padding:0 8px}
+.fld{display:flex;flex-direction:column;gap:4px}
+.fact{display:flex;flex-direction:column;gap:3px;min-width:0}
+.fact b{font-weight:500;color:#E9ECF0;font-size:13px;white-space:nowrap}
+.sec{background:#12161B;border:1px solid #232A33;border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.sech{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.sech .lbl{display:inline-flex;align-items:center;gap:6px}
+.cnt{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;box-sizing:border-box;border-radius:999px;background:#1C222A;color:#C9D0D9;font:500 11px Geist,sans-serif}
+.cnt.hot{background:rgba(242,181,68,.18);color:#F2B544}
+.mini{all:unset;cursor:pointer;font:500 12px Geist,sans-serif;color:#AFC0FF;white-space:nowrap}
+.empty{color:#5E6773;font-size:13px}
+.row{display:flex;align-items:center;gap:10px;font-size:13px;color:#C9D0D9;min-height:24px}
+.ty{font-family:'Geist Mono',monospace;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase}
+.pill{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;border:1px solid;font-size:11px}
+.person{display:grid;grid-template-columns:1fr auto;align-items:center;gap:12px;padding:7px 0;border-bottom:1px solid #1C222A;font-size:13px}
+.person:last-of-type{border-bottom:0}
+.person b{color:#E9ECF0;font-weight:600}
+.person span{color:#8B95A3}
+.person a{font-size:12px;white-space:nowrap}
+.ck{display:inline-flex;align-items:center;gap:8px}
+.ck input{width:14px;height:14px;margin:0;accent-color:#8FA8FF}
+.sig{display:grid;grid-template-columns:48px 1fr auto;align-items:center;gap:10px;font-size:13px;padding:6px 0;border-bottom:1px solid #1C222A}
+.sig:last-of-type{border-bottom:0}
+.sig .d{color:#8B95A3}
+.sig .k{display:inline-flex;align-items:center;gap:6px;color:#E9ECF0}
+.sig .k i{width:8px;height:8px;border-radius:2px;display:inline-block}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:13px}
+.kv .lbl{padding-top:2px}
+.kv div{color:#E9ECF0}
+.news{display:grid;grid-template-columns:48px 1fr;gap:10px;font-size:13px;color:#C9D0D9}
+.news .d{color:#8B95A3}
+.ph{color:#8B95A3}
+</style>
+</helmet>
+<div style="width:1120px;height:1260px;box-sizing:border-box;padding:28px;background:#0B0D10;color:#E9ECF0;font-family:Geist,system-ui,sans-serif;font-size:14px;display:flex;align-items:flex-start;justify-content:center">
+
+  <div role="dialog" aria-labelledby="qp-title" style="width:1064px;background:#0F1317;border:1px solid #232A33;border-radius:14px;display:flex;flex-direction:column;overflow:hidden">
+
+    <!-- Title + facts -->
+    <div style="padding:18px 20px 14px;border-bottom:1px solid #232A33;display:flex;flex-direction:column;gap:14px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <h2 id="qp-title" style="margin:0;font-size:22px;font-weight:600;letter-spacing:-.02em">PerkSpot</h2>
+        <span class="pill" style="color:#FF6B6B;border-color:rgba(255,107,107,.45);background:rgba(255,107,107,.10)"><span class="ty">Platforms</span></span>
+        <button class="btn" aria-pressed="true" style="height:26px;padding:0 10px;font-size:12px;color:#F2B544;border-color:rgba(242,181,68,.45)">★ Top</button>
+        <a href="#" style="font-size:13px">perkspot.com ↗</a>
+        <div style="flex:1"></div>
+        <button class="btn btng" aria-label="Close" style="width:32px;padding:0;font-size:16px">✕</button>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,auto);justify-content:start;gap:28px">
+        <div class="fact"><span class="lbl">Stage</span><b>1st email sent</b></div>
+        <div class="fact"><span class="lbl">Priority</span><b>P1 · Act today</b></div>
+        <div class="fact"><span class="lbl">Owner</span><b>Jack Carlson</b></div>
+        <div class="fact"><span class="lbl">Team</span><b>HomeLover</b></div>
+        <div class="fact"><span class="lbl">Source</span><b>Import</b></div>
+        <div class="fact"><span class="lbl">Last touch</span><b class="num">Oct 17 · Step 1 sent</b></div>
+        <div class="fact"><span class="lbl">Next step</span><b>Follow up on click</b></div>
+      </div>
+    </div>
+
+    <!-- Interest band: only shown when there is a signal or a web visit -->
+    <div role="region" aria-label="Interest" style="padding:12px 20px;border-bottom:1px solid #232A33;background:linear-gradient(90deg,rgba(143,168,255,.18) 0%,rgba(255,138,61,.18) 100%);box-shadow:inset 3px 0 0 #FF8A3D;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+      <span class="lbl" style="color:#FF8A3D;width:72px">Interest</span>
+      <span style="font-size:13px;color:#E9ECF0"><b style="font-weight:600">Blake Hill clicked Step 1</b> <span style="color:#8B95A3">Oct 20</span> · <b style="font-weight:600">3 site visits this week</b> <span style="color:#8B95A3">pricing, employers, partners <span class="ph">(placeholder)</span></span></span>
+      <div style="flex:1"></div>
+      <button class="btn btnp">Follow up: draft reply</button>
+      <button class="btn">Book meeting</button>
+      <button class="btn">Mark contacted</button>
+      <button class="btn btng">Not now</button>
+    </div>
+
+    <!-- Actions, labeled -->
+    <div style="padding:12px 20px;border-bottom:1px solid #232A33;display:flex;flex-direction:column;gap:10px;background:#12161B">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 -8px;padding:8px;border-radius:10px;background:linear-gradient(90deg,rgba(143,168,255,.12) 0%,rgba(255,138,61,.12) 100%);box-shadow:inset 0 0 0 1px rgba(255,138,61,.18)">
+        <span class="lbl" style="width:72px">Actions</span>
+        <button class="btn">Add note</button>
+        <button class="btn">Add to-do</button>
+        <button class="btn">Add contact</button>
+        <button class="btn">Draft email in Claude</button>
+        <button class="btn">Research</button>
+        <button class="btn">Check Apollo</button>
+        <span aria-hidden="true" style="width:1px;height:20px;background:#232A33;margin:0 4px"></span>
+        <button class="btn">Next: Mark Step 2 sent</button>
+        <div style="flex:1"></div>
+        <span class="ty" style="color:#FF8A3D;white-space:nowrap">✦ generated · updates with stage + signals</span>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap">
+        <span class="lbl" style="width:72px;padding-bottom:9px">Edit</span>
+        <label class="fld"><span class="lbl">Stage</span><select class="sel" aria-label="Stage"><option>1st email sent</option></select></label>
+        <label class="fld"><span class="lbl">Owner</span><select class="sel" aria-label="Owner"><option>Jack Carlson</option><option>Cyrus Radjoo</option><option>Unassigned</option></select></label>
+        <label class="fld"><span class="lbl">Team</span><select class="sel" aria-label="Team"><option>HomeLover</option><option>Upside</option></select></label>
+        <label class="fld"><span class="lbl">Priority</span><select class="sel" aria-label="Priority"><option>P1 · Act today</option><option>P2 · This week</option><option>P3 · Later</option></select></label>
+        <span style="font-size:12px;color:#5E6773;padding-bottom:9px">Stage only moves forward · changes save on close</span>
+      </div>
+    </div>
+
+    <!-- Body: two columns -->
+    <div style="padding:16px 20px;display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+      <!-- Left: what is happening, what to do -->
+      <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+
+        <section class="sec" aria-labelledby="s-sig" style="gap:4px">
+          <div class="sech" style="margin-bottom:4px"><span class="lbl" id="s-sig">Signals &amp; visits <span class="cnt hot num">4</span></span><button class="mini">Open in Huddle →</button></div>
+          <div class="sig"><span class="d num">Oct 20</span><span class="k"><i style="background:#F2B544"></i>Blake Hill clicked Step 1 · <span style="color:#8B95A3">Head of Channel and Partnerships</span></span><button class="mini">Follow up</button></div>
+          <div class="sig"><span class="d num">Oct 20</span><span class="k"><i style="background:#F2B544"></i>Site visit · 2 pages · pricing, partners <span class="ph">(placeholder)</span></span><button class="mini">Find who</button></div>
+          <div class="sig"><span class="d num">Oct 19</span><span class="k"><i style="background:#AFC0FF"></i>Blake Hill opened Step 1 ×2</span><span></span></div>
+          <div class="sig"><span class="d num">Oct 18</span><span class="k"><i style="background:#F2B544"></i>Site visit · 1 page · employers <span class="ph">(placeholder)</span></span><button class="mini">Find who</button></div>
+        </section>
+
+        <section class="sec" aria-labelledby="s-todo">
+          <div class="sech"><span class="lbl" id="s-todo">Open to-dos <span class="cnt num">2</span></span><button class="mini">+ Add</button></div>
+          <label class="row ck"><input type="checkbox" aria-label="Done"><span style="flex:1;color:#E9ECF0">Follow up with Blake Hill — clicked Step 1</span><span style="font-size:12px;color:#F2B544">due today</span><span style="display:inline-flex;align-items:center;gap:6px;color:#8B95A3;font-size:12px"><i style="width:8px;height:8px;border-radius:999px;background:#6F8CF0;display:inline-block"></i>Jack</span></label>
+          <label class="row ck"><input type="checkbox" aria-label="Done"><span style="flex:1;color:#E9ECF0">Reach out to PerkSpot and Corestream as potential partners</span><span style="display:inline-flex;align-items:center;gap:6px;color:#8B95A3;font-size:12px"><i style="width:8px;height:8px;border-radius:999px;background:#6F8CF0;display:inline-block"></i>Jack</span></label>
+        </section>
+
+        <section class="sec" aria-labelledby="s-wait">
+          <div class="sech"><span class="lbl" id="s-wait">Waiting on them <span class="cnt num">0</span></span></div>
+          <div class="empty">Nothing owed.</div>
+        </section>
+
+        <section class="sec" aria-labelledby="s-notes">
+          <div class="sech"><span class="lbl" id="s-notes">Notes &amp; touches <span class="cnt num">2</span></span><button class="mini">+ Note</button></div>
+          <div class="row" style="align-items:flex-start"><span class="num" style="color:#8B95A3;width:48px;flex:0 0 48px">Oct 17</span><span class="ty" style="color:#8B95A3;width:40px;flex:0 0 40px;padding-top:2px">Touch</span><span style="color:#E9ECF0">Step 1 sent to Blake Hill</span></div>
+          <div class="row" style="align-items:flex-start"><span class="num" style="color:#8B95A3;width:48px;flex:0 0 48px">Oct 15</span><span class="ty" style="color:#8B95A3;width:40px;flex:0 0 40px;padding-top:2px">Note</span><span style="color:#E9ECF0">From note 10/15: upcoming meetings with potential partners including Perk Spot</span></div>
+        </section>
+      </div>
+
+      <!-- Right: who they are -->
+      <div style="display:flex;flex-direction:column;gap:12px;min-width:0">
+
+        <section class="sec" aria-labelledby="s-intel" style="gap:12px">
+          <div class="sech"><span class="lbl" id="s-intel">Intel</span><span style="display:flex;gap:12px;align-items:center"><span style="font-size:12px;color:#5E6773">Researched Oct 21 · Claude + web</span><button class="mini">Refresh</button><button class="mini">Use on card</button></span></div>
+          <p style="margin:0;font-size:13px;line-height:1.5;color:#E9ECF0">[Two-sentence summary: what they do and who they sell to, written by research. Placeholder.]</p>
+          <div class="kv">
+            <span class="lbl">HQ</span><div>[City, ST]</div>
+            <span class="lbl">Size</span><div>[employees] · [founded]</div>
+            <span class="lbl">Sells to</span><div>[employers / brokers / consumers]</div>
+            <span class="lbl">Site</span><div style="display:flex;align-items:center;gap:8px"><a href="#">perkspot.com</a><span class="pill" style="color:#3DD68C;border-color:rgba(61,214,140,.45)">✓ confirmed</span></div>
+            <span class="lbl">Why fit</span><div>[One line on the HomeLover angle. Placeholder.]</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span class="lbl">Recent</span>
+            <div class="news"><span class="d num">[date]</span><span>[Headline or product change] <a href="#">source ↗</a></span></div>
+            <div class="news"><span class="d num">[date]</span><span>[Hire, funding or partnership] <a href="#">source ↗</a></span></div>
+          </div>
+        </section>
+
+        <section class="sec" aria-labelledby="s-people" style="gap:6px">
+          <div class="sech" style="margin-bottom:4px"><span class="lbl" id="s-people">People <span class="cnt num">8</span></span><div style="display:flex;gap:10px;align-items:center"><label style="display:flex;align-items:center;gap:6px;height:26px;padding:0 8px;box-sizing:border-box;border:1px solid #46505E;border-radius:8px;background:#0F1317;color:#8B95A3"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="7" cy="7" r="4.5"></circle><path d="m10.5 10.5 3 3"></path></svg><input aria-label="Filter people" placeholder="Filter" style="width:90px;background:transparent;border:0;outline:0;color:#E9ECF0;font:12px Geist,sans-serif"></label><button class="mini">+ Contact</button></div></div>
+          <div class="person" style="background:rgba(242,181,68,.06);margin:0 -16px;padding:7px 16px"><div><b>Blake Hill</b> <span>· Head of Channel and Partnerships</span> <span class="pill" style="margin-left:6px;color:#F2B544;border-color:rgba(242,181,68,.45)">clicked</span></div><a href="#">LinkedIn ↗</a></div>
+          <div class="person"><div><b>Yoni Balan</b> <span>· VP, Strategic Alliances &amp; Business Development</span></div><a href="#">LinkedIn ↗</a></div>
+          <div class="person"><div><b>Hamlet Salazar</b> <span>· SVP of Sales &amp; Strategy</span></div><a href="#">LinkedIn ↗</a></div>
+          <div class="person"><div><b>Daniel Flannery</b> <span>· Director of Merchant Partnerships</span></div><a href="#">LinkedIn ↗</a></div>
+          <div class="person"><div><b>Anne Purcell</b> <span>· Director, Marketing Operations</span></div><a href="#">LinkedIn ↗</a></div>
+          <div class="person"><div><b>Kara Stormer</b> <span>· Strategic Partnerships</span></div><a href="#">LinkedIn ↗</a></div>
+          <div class="person"><div><b>Luke Van Drunen</b> <span>· Manager of New Merchant Partnerships</span></div><a href="#">LinkedIn ↗</a></div>
+          <div class="person"><div><b>Jake Hill</b> <span style="color:#5E6773">· no title</span></div><button class="mini" style="color:#8B95A3">Find on LinkedIn</button></div>
+        </section>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:12px 20px;border-top:1px solid #232A33;display:flex;align-items:center;justify-content:space-between;background:#12161B">
+      <button class="btn">Open full card →</button>
+      <span style="font-size:12px;color:#5E6773">Esc closes · ↑↓ moves between companies on the board</span>
+      <button class="btn">Close</button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1120,"height":1260}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

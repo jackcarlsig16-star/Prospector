@@ -14,8 +14,9 @@ export function ToggleChip({ pressed, count, children, ...rest }) {
 
 // R4 - an active filter: accent-outlined chip; the whole chip removes it.
 export function ActiveFilterChip({ onRemove, children }) {
+  const text = [].concat(children).filter(c => typeof c === 'string' || typeof c === 'number').join('');
   return (
-    <button type="button" className="ui-chip ui-chip--active" aria-label={`Remove filter ${children}`} onClick={onRemove}>
+    <button type="button" className="ui-chip ui-chip--active" aria-label={`Remove filter ${text}`} onClick={onRemove}>
       {children}
       <span className="ui-chip__x" aria-hidden="true">×</span>
     </button>

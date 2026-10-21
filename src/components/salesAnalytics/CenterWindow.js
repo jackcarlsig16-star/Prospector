@@ -20,7 +20,7 @@ export default function CenterWindow({ label, head, onClose, children }) {
   return (
     <div className="no-print" style={{ position: 'fixed', inset: 0, zIndex: 4003, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
       <div data-testid="side-panel-backdrop" onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
-      <aside aria-label={label} tabIndex={-1} ref={ref} data-center-window={phone ? 'sheet' : 'window'}
+      <aside aria-label={label} tabIndex={-1} ref={ref} data-center-window={phone ? 'sheet' : 'window'} className="ui-theme-dark"
         style={{ position: 'relative', ...frame, background: SA.surface, boxSizing: 'border-box', display: 'flex', flexDirection: 'column', overflow: 'hidden', outline: 'none' }}>
         <div data-window-head style={{ flex: 'none', padding: '20px 20px 14px', display: 'flex', flexDirection: 'column', gap: 14, borderBottom: `1px solid ${SA.border}` }}>{head}</div>
         <div data-window-body style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '14px 20px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>{children}</div>

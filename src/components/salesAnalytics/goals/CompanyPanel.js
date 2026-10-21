@@ -1,46 +1,36 @@
 import { useState, useEffect, useCallback } from 'react';
 import { SA, SA_TYPE } from '../theme';
 import { goalsApi } from './goalsApi';
+import useMediaQuery from '../../../utils/useMediaQuery';
 import CenterWindow from '../CenterWindow';
-import OwnerPill from '../OwnerPill';
 import TypeChip from './TypeChip';
 import CompanyActions from './CompanyActions';
-import { eventText } from './partners/activityTimeline';
-import { labelStyle, subStyle, numStyle, Chip, Btn, ErrorNote, memberLookup } from './goalsUi';
-import { CHANNEL_LABEL } from '../../../constants/salesChannels';
-import { prioritySetLabel } from './companiesModel';
-import { stageLabel } from './companyPanelModel';
+import CompanyEditRow from './CompanyEditRow';
+import InterestBand from './InterestBand';
+import { SignalsCard, TodosCard, WaitingCard, NotesCard, IntelCard, PeopleCard, ExtraCards } from './CompanyPanelSections';
+import { ErrorNote, memberLookup } from './goalsUi';
+import { factsFor } from './companyPanelFacts';
+import { needsRecord } from './companyPanelModel';
+import { Link } from '../../../ui/Button';
 
-// sales-ia-v2 P4 - the one company panel for every Pipeline row (partner,
-// employer, target, Apollo-only, visitor), a centered window since FIX
-// company-panel-promote-research-v1. Pinned head: type · channel · stage ·
-// priority · owner · team · last touch, then the action bar (Members). The
-// scrolling body comes from GET goals/company: next step, open to-dos, waiting on them,
-// website visits, signals, last notes and touches, people, research,
-// decisions and terms, and Open full card. `row` is the board row; every
-// write reloads the board (onChanged) and this body (version).
+// company-panel-v2 - the one company window for every Pipeline row (partner,
+// employer, target, Apollo-only, visitor). Pinned head: L1 title row (name ·
+// type · ★ Top · site · ✕), L2 the seven labelled facts, L3 the Interest band
+// while a signal is fresh, L4 the labelled Actions row, L5 the Edit row.
+// Scrolling body (L6): two columns from 980 px, one below. L7 footer. Viewers
+// (L8) see facts and body only. Every write reloads the board (onChanged) and
+// this body (version). `row` is the board row; the body is GET goals/company.
 const POLL_MS = 3000;
-const md = d => (d ? new Date(`${String(d).slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '—');
-const when = at => new Date(at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-const text = { ...SA_TYPE.body, fontSize: 13, color: SA.text, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' };
-const line = { display: 'flex', gap: 10, fontSize: 13, alignItems: 'baseline' };
-const dim = { ...subStyle, fontSize: 13 };
-const money = c => (c == null ? '' : `$${Number(c).toFixed(3)}`);
-const RESEARCH_FIELDS = [['summary', 'Summary'], ['size', 'Scale'], ['hq_city', 'HQ'], ['recent_news', 'Recent news'], ['housing_perk', 'Housing perk'], ['why_homelover', 'Why us'], ['first_angle', 'First angle'], ['watch_outs', 'Watch-outs'], ['titles', 'Titles to approach']];
+const btn = 'ui-btn ui-btn--secondary';
 
-function Section({ label, count, children, testId }) {
-  return (
-    <div data-section={testId} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <span style={labelStyle}>{label}{count != null ? <span style={{ ...numStyle, marginLeft: 6, color: SA.soft }}>{count}</span> : null}</span>
-      {children}
-    </div>
-  );
-}
-
-export default function CompanyPanel({ businessId, row, canEdit, members, meId, onStar, onPatch, onChanged, onToast, onConvert, onClose, onOpenFull }) {
+export default function CompanyPanel({ businessId, row, canEdit, members, meId, onStar, onPatch, onChanged, onToast, onConvert, onClose, onOpenFull, onOpenPeople }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState('');
   const [version, setVersion] = useState(0);
+  const [form, setForm] = useState(null); // 'note' | 'todo' | 'contact' | 'promote' | 'add'
+  const [starBusy, setStarBusy] = useState(false);
+  // L6 (REVISABLE 980): two columns only when the window gets its full 1040 px, so a 1000 px viewport stacks.
+  const wide = useMediaQuery('(min-width: 1040px)');
   const running = detail?.research?.runs?.[0]?.status === 'running';
   useEffect(() => {
     let live = true;
@@ -53,91 +43,67 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
     return () => clearInterval(t);
   }, [running]);
   const changed = useCallback(() => { setVersion(v => v + 1); onChanged(); }, [onChanged]);
+  const star = async () => { setStarBusy(true); try { await onStar(); } catch (e) { onToast({ text: e.message }); } finally { setStarBusy(false); } };
 
-  const r = detail?.record;
   const lookup = memberLookup(members);
-  const latest = detail?.research?.runs?.[0] || null;
-  const result = latest?.status === 'done' ? latest.result : null;
+  const facts = factsFor(row, detail?.record);
+  const site = detail?.record?.site || null;
+  const bandShown = !!detail?.interest?.show;
   const fullLabel = row.type === 'visitor' ? 'Open visitor report →' : row.type === 'apollo' ? 'Open in Companies →' : row.type === 'target' ? 'Open in Tasks →' : 'Open full card →';
   const head = (
     <>
-      <div data-company-panel={row.type} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
-          <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: 0, overflowWrap: 'anywhere' }}>{row.name}</p>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-            <TypeChip row={row} style={{ height: 24 }} />
-            {row.channel && row.channel !== 'unknown' && <Chip title="Channel">{CHANNEL_LABEL[row.channel]}</Chip>}
-            <Chip title="Stage">{stageLabel(row)}</Chip>
-            {(row.priority != null || row.not_a_fit) && <Chip title={prioritySetLabel(row)}>{prioritySetLabel(row)}</Chip>}
-            {row.owner && <Chip title="Owner">{row.owner}</Chip>}
-            {row.owner_team && <OwnerPill row={row} style={{ height: 24 }} />}
-            <Chip title="Last touch">{row.last_touch_at ? `Touched ${md(row.last_touch_at)}` : 'No touch yet'}</Chip>
-          </div>
-        </div>
-        <button type="button" aria-label="Close panel" onClick={onClose} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: SA.muted, fontSize: 18, lineHeight: 1, flex: 'none' }}>×</button>
+      <div data-company-panel={row.type} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: SA.text, overflowWrap: 'anywhere', minWidth: 0 }}>{row.name}</h2>
+        <TypeChip row={row} style={{ height: 24 }} />
+        {canEdit && (row.type === 'partner' || row.type === 'employer') && (
+          <button type="button" className={btn} aria-pressed={row.top} disabled={starBusy} onClick={star} style={{ height: 26, padding: '0 10px', fontSize: 12, color: row.top ? SA.warn : undefined }}>{row.top ? '★ Top' : '☆ Top'}</button>
+        )}
+        {!canEdit && row.top && <span aria-label="Top" style={{ color: SA.warn, fontSize: 13 }}>★ Top</span>}
+        {site?.domain && <Link href={`https://${site.domain}`} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>{site.domain} ↗</Link>}
+        <span style={{ flex: 1 }} />
+        <button type="button" aria-label="Close panel" onClick={onClose} className={btn} style={{ width: 32, padding: 0, fontSize: 16, lineHeight: 1 }}>✕</button>
       </div>
-
+      <div data-facts-row style={{ display: 'flex', gap: '12px 28px', flexWrap: 'wrap' }}>
+        {facts.map(([label, value, muted]) => (
+          <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+            <span className="ui-group-label">{label}</span>
+            <b title={label} style={{ fontWeight: 500, fontSize: 13, color: muted ? SA.muted : SA.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260 }}>{value}</b>
+          </div>
+        ))}
+      </div>
+      {bandShown && <InterestBand businessId={businessId} row={row} interest={detail.interest} canEdit={canEdit} onChanged={changed} onToast={onToast} />}
       {canEdit
-        ? <CompanyActions businessId={businessId} row={row} members={members} meId={meId} onStar={onStar} onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} onClose={onClose} />
+        ? <>
+          <CompanyActions businessId={businessId} row={row} members={members} meId={meId} form={form} setForm={setForm} bandShown={bandShown} onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} onClose={onClose} />
+          <CompanyEditRow businessId={businessId} row={row} members={members} onPatch={onPatch} onChanged={changed} onToast={onToast} />
+        </>
         : <p style={{ ...SA_TYPE.body, fontSize: 12, color: SA.muted, margin: 0 }}>You have view access, so this is read-only.</p>}
     </>
   );
+  const cardProps = { businessId, row, detail, canEdit, onForm: setForm, onChanged: changed, onToast };
   return (
     <CenterWindow label={row.name} head={head} onClose={onClose}>
       {error && <ErrorNote message={error} />}
-      {!detail && !error && <span style={dim}>Loading…</span>}
+      {!detail && !error && <span style={{ fontSize: 13, color: SA.muted }}>Loading…</span>}
       {detail && (
-        <>
-          {r.next_step !== undefined && <Section label="Next step"><div style={text}>{r.next_step || '—'}{r.next_step_due ? <span style={{ ...dim, marginLeft: 8 }}>due {md(r.next_step_due)}</span> : null}</div></Section>}
-          <Section label="Open to-dos" count={detail.todos.length} testId="todos">
-            {!detail.todos.length && <span style={dim}>None open.</span>}
-            {detail.todos.map(t => <div key={t.id} style={line}><span style={{ ...numStyle, color: SA.muted, minWidth: 48 }}>{t.due_date ? md(t.due_date) : '—'}</span><span style={{ ...text, flex: 1 }}>{t.text}</span><span style={dim}>{t.owner ? t.owner.split(' ')[0] : 'Unassigned'}</span></div>)}
-          </Section>
-          <Section label="Waiting on them" count={detail.waiting.length} testId="waiting">
-            {!detail.waiting.length && <span style={dim}>Nothing owed.</span>}
-            {detail.waiting.map(w => <div key={w.id} style={line}><span style={{ ...numStyle, color: SA.muted, minWidth: 48 }}>{w.due_date ? md(w.due_date) : '—'}</span><span style={{ ...text, flex: 1 }}>{w.waiting_on ? `${w.waiting_on} · ` : ''}{w.text}</span></div>)}
-          </Section>
-          <Section label="Website visits" count={detail.visits.length} testId="visits">
-            {!detail.visits.length && <span style={dim}>No visits pulled.</span>}
-            {detail.visits.map(v => <div key={v.id} style={line}><span style={{ ...numStyle, color: SA.muted, minWidth: 48 }}>{md(v.last_visit || v.pulled_on)}</span><span style={{ ...text, flex: 1 }}>{v.visits_7d != null ? `${v.visits_7d} visits (7 d)` : 'visited'}{v.priority ? ` · ${v.priority}` : ''}{v.top_paths.length ? ` · ${v.top_paths.join(', ')}` : ''}</span></div>)}
-          </Section>
-          <Section label="Signals" count={detail.signals.length} testId="signals">
-            {!detail.signals.length && <span style={dim}>None.</span>}
-            {detail.signals.map(s => <div key={s.id} style={line}><span style={{ ...numStyle, color: SA.muted, minWidth: 48 }}>{md(s.signal_week || s.created_at)}</span><span style={{ ...text, flex: 1 }}>{s.signal || s.source}{s.why_now ? <span style={{ display: 'block', color: SA.soft, fontSize: 12 }}>Why now: {s.why_now}</span> : null}</span><span style={dim}>{s.status}</span></div>)}
-          </Section>
-          <Section label="Last notes & touches" count={detail.recent.length} testId="recent">
-            {!detail.recent.length && <span style={dim}>Nothing yet.</span>}
-            {detail.recent.map(e => <div key={e.id} style={line}><span style={{ ...numStyle, color: SA.muted, minWidth: 48 }}>{when(e.at)}</span><span style={{ ...text, flex: 1 }}>{e.text || eventText(e, lookup)}{e.event === 'touch' && e.note ? <span style={{ display: 'block', color: SA.soft, fontSize: 12 }}>{e.note}</span> : null}</span></div>)}
-          </Section>
-          <Section label="People" count={detail.people.length} testId="people">
-            {!detail.people.length && <span style={dim}>None on file.</span>}
-            {detail.people.map(p => <div key={p.id || p.name} style={line}><span style={{ ...text, flex: 1 }}>{p.name}{p.title ? ` · ${p.title}` : ''}</span>{p.linkedin_url && <a href={p.linkedin_url} target="_blank" rel="noreferrer" style={{ color: SA.link, fontSize: 12, textDecoration: 'none' }}>LinkedIn ↗</a>}</div>)}
-          </Section>
-          {detail.research && (
-            <Section label="Research" testId="research">
-              <div data-research-card style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <span role="status" style={dim}>{running ? 'Researching…' : !latest ? 'None yet - Research runs one Claude call.' : latest.status === 'error' ? `Failed ${when(latest.created_at)}: ${latest.error}` : `${when(latest.created_at)}${latest.cost_usd != null ? ` · ${money(latest.cost_usd)}` : ''} · ${detail.research.today}/${detail.research.cap} today`}</span>
-                {result && RESEARCH_FIELDS.filter(([k]) => result[k]).map(([k, label]) => <div key={k} style={line}><span style={{ ...labelStyle, minWidth: 96 }}>{label}</span><span style={{ ...text, flex: 1 }}>{result[k]}</span></div>)}
-                {result?.domain && <div style={line}><span style={{ ...labelStyle, minWidth: 96 }}>Site</span><a href={result.website || `https://${result.domain}`} target="_blank" rel="noreferrer" style={{ color: SA.link, fontSize: 13, textDecoration: 'none' }}>{result.domain}</a></div>}
-              </div>
-            </Section>
-          )}
-          {(detail.decisions.length > 0 || detail.terms.length > 0) && (
-            <Section label="Decisions & terms" testId="decisions">
-              {detail.decisions.map((d, i) => <div key={`d${i}`} style={line}><span style={{ ...numStyle, color: SA.muted, minWidth: 48 }}>{when(d.at)}</span><span style={{ ...text, flex: 1 }}>{d.text}</span></div>)}
-              {detail.terms.map((t, i) => <div key={`t${i}`} style={text}>{t}</div>)}
-            </Section>
-          )}
-          {r.evidence && <Section label="Evidence"><div style={text}>{r.evidence}</div></Section>}
-          {r.research_notes && <Section label="Research notes"><div style={text}>{r.research_notes}</div></Section>}
-          {r.notes && <Section label="Notes"><div style={text}>{r.notes}</div></Section>}
-          {row.type === 'apollo' && <Section label="Apollo"><div style={text}>Sequenced since {md(r.first_sequenced_at)}{r.employees != null ? ` · ${r.employees.toLocaleString('en-US')} employees` : ''}</div></Section>}
-        </>
+        <div data-panel-body style={{ display: 'grid', gridTemplateColumns: wide ? '1fr 1fr' : '1fr', gap: 12, alignItems: 'start' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+            <SignalsCard {...cardProps} onOpenPeople={onOpenPeople} />
+            <TodosCard {...cardProps} />
+            <WaitingCard {...cardProps} />
+            <NotesCard {...cardProps} lookup={lookup} />
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+            {detail.research && <IntelCard {...cardProps} />}
+            {!needsRecord(row.type) || detail.people.length > 0 ? <PeopleCard {...cardProps} /> : null}
+            <ExtraCards row={row} detail={detail} />
+          </div>
+        </div>
       )}
-
-      <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 8 }}>
-        <Btn style={{ height: 40 }} onClick={onOpenFull}>{fullLabel}</Btn>
-        <Btn style={{ height: 40, marginLeft: 'auto' }} onClick={onClose}>Close</Btn>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 'auto', paddingTop: 8 }}>
+        <button type="button" className={btn} onClick={onOpenFull}>{fullLabel}</button>
+        <span style={{ flex: 1, textAlign: 'center', fontSize: 12, color: SA.muted }}>Esc closes</span>
+        <button type="button" className={btn} onClick={onClose}>Close</button>
       </div>
     </CenterWindow>
   );

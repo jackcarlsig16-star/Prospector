@@ -6,6 +6,8 @@ import { fetchLive, FLAGS_CHANGED } from './huddleApi';
 import { inputStyle, numStyle, ErrorNote } from './goals/goalsUi';
 import DataTable from '../../ui/DataTable';
 import { OWNER_OPTIONS, ACTIVITY_OPTIONS, STATUS_OPTIONS, EMPTY_FILTERS, activeFilterCount, peopleView, displayName, readSort, writeSort } from './peopleModel';
+import { readPeopleCompany, writePeopleCompany } from './salesNav';
+import { ActiveFilterChip } from '../../ui/Chip';
 
 // sales-ia-v2 P5 - Pipeline > People: Huddle Live on the kit table. One row
 // per person with real activity (GET huddle/live, one page, closed rows
@@ -42,7 +44,7 @@ const rowKey = r => r.contact_id;
 export default function PeopleView({ businessId, myUserId, ownerColor, ownerLabel, canEdit, reloadKey, onFlag, onContacted, onNotAFit, onNotNow, onRestore, onOpenCompany, onSyncInfo, phone }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
-  const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [filters, setFilters] = useState(() => ({ ...EMPTY_FILTERS, company: readPeopleCompany() }));
   const [showClosed, setShowClosed] = useState(false);
   const [sort, setSort] = useState(readSort);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -59,6 +61,8 @@ export default function PeopleView({ businessId, myUserId, ownerColor, ownerLabe
   const view = useMemo(() => peopleView(all, filters, showClosed), [all, filters, showClosed]);
   const set = (k, v) => setFilters(f => ({ ...f, [k]: v }));
   const nFilters = activeFilterCount(filters);
+  const clearCompany = () => { writePeopleCompany(null); set('company', null); };
+  const clearAll = () => { writePeopleCompany(null); setFilters(EMPTY_FILTERS); };
   const onSort = s => { setSort(s); writeSort(s); };
   const now = Date.now();
 
@@ -139,7 +143,8 @@ export default function PeopleView({ businessId, myUserId, ownerColor, ownerLabe
         {STATUS_OPTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
       </select>
       <input type="search" aria-label="Search people" placeholder="Search" value={filters.q} onChange={e => set('q', e.target.value)} style={{ ...selectStyle, width: 160 }} />
-      <button type="button" disabled={!nFilters} onClick={() => setFilters(EMPTY_FILTERS)} style={{ ...chipBtn(false), opacity: nFilters ? 1 : 0.45, cursor: nFilters ? 'pointer' : 'default' }}>
+      {filters.company && <span className="ui-theme-dark" style={{ display: 'inline-flex' }}><ActiveFilterChip onRemove={clearCompany}>Company: {filters.company.name || filters.company.type}</ActiveFilterChip></span>}
+      <button type="button" disabled={!nFilters} onClick={clearAll} style={{ ...chipBtn(false), opacity: nFilters ? 1 : 0.45, cursor: nFilters ? 'pointer' : 'default' }}>
         Clear<span style={countStyle}>{nFilters ? `(${nFilters})` : ''}</span>
       </button>
       <button type="button" aria-pressed={showClosed} style={chipBtn(showClosed)} onClick={() => setShowClosed(s => !s)} title="Booked, Not now, Not a fit, unsubscribed and snoozed people">

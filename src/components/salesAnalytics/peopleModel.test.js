@@ -1,4 +1,4 @@
-import { matchesPeopleFilters, peopleView, displayName, companyRowFor, readSort, writeSort, DEFAULT_SORT, EMPTY_FILTERS } from './peopleModel';
+import { matchesPeopleFilters, peopleView, displayName, companyRowFor, readSort, writeSort, DEFAULT_SORT, EMPTY_FILTERS, activeFilterCount } from './peopleModel';
 
 const row = (id, extra) => ({ contact_id: id, name: `Pat ${id}`, company: `Co ${id}`, title: null, owner: 'jack', status: 'new', status_label: 'Active', closed: false, snoozed: false, sequence_ids: ['s1'], last_activity_kind: 'open', last_activity_at: '2026-10-20T10:00:00Z', in_pipeline: false, opportunity_id: null, ...extra });
 const rows = [
@@ -59,4 +59,15 @@ test('the last header sort is remembered per browser; default = newest activity'
   expect(readSort()).toEqual(DEFAULT_SORT);
   localStorage.setItem('prospector_people_sort', '{bad');
   expect(readSort()).toEqual(DEFAULT_SORT);
+});
+
+// company-panel-v2 L6 - "Open in People →" filters to one company by its link (goal_id for a partner, opportunity_id for an employer).
+test('company filter: partner rows match on goal_id, employer rows on opportunity_id; it counts as an active filter; null = everyone', () => {
+  const linked = [row('a', { goal_id: 'g1' }), row('b', { opportunity_id: 'o1' }), row('g', { goal_id: 'g1', opportunity_id: 'o1' })];
+  const f = company => ({ ...EMPTY_FILTERS, company });
+  expect(peopleView(linked, f({ type: 'partner', id: 'g1', name: 'Gallagher' }), false).rows.map(r => r.contact_id)).toEqual(['a', 'g']);
+  expect(peopleView(linked, f({ type: 'employer', id: 'o1', name: 'Solidcore' }), false).rows.map(r => r.contact_id)).toEqual(['b', 'g']);
+  expect(peopleView(linked, f(null), false).rows.length).toBe(3);
+  expect(activeFilterCount(f({ type: 'partner', id: 'g1', name: 'Gallagher' }))).toBe(1);
+  expect(activeFilterCount(EMPTY_FILTERS)).toBe(0);
 });

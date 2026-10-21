@@ -62,7 +62,7 @@ const CELL_FIELD = { next: 'next_step', due: 'next_step_due' };
 const Swatch = ({ color }) => <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, flex: 'none', background: BOARD_TOKENS[color] }} />;
 const workCell = (n, late, what) => (n ? <span style={{ ...numStyle, color: late ? SA.bad : SA.text }} title={`${n} open ${what}${late ? ` · ${late} overdue` : ''}`}>{n}{late ? ' !' : ''}</span> : <Dim />);
 
-export default function PipelineView({ businessId, canEdit, meId, onOpenPartner, onOpenCompanies }) {
+export default function PipelineView({ businessId, canEdit, meId, onOpenPartner, onOpenCompanies, onOpenPeople }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState('');
   const [channel, setChannel] = useState(() => channelFromParam(new URLSearchParams(window.location.search).get('channel')));
@@ -407,7 +407,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
       )}
       {panelRow && (
         <CompanyPanel businessId={businessId} row={panelRow} canEdit={canEdit} members={members} meId={meId} onStar={() => starRow(panelRow)} onPatch={patch => patchRow(panelRow, patch)} onChanged={load} onToast={setToast}
-          onConvert={converted} onClose={closePanel} onOpenFull={() => openFull(panelRow)} />
+          onConvert={converted} onClose={closePanel} onOpenFull={() => openFull(panelRow)} onOpenPeople={onOpenPeople && (c => { closePanel(); onOpenPeople(c); })} />
       )}
       {panel !== undefined && (
         <OpportunityPanel businessId={businessId} opportunity={panel} saving={panelSaving} error={panelError} readOnly={!canEdit} onClose={() => setPanel(undefined)}

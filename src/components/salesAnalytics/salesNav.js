@@ -80,3 +80,16 @@ export function writeNav(tab, view) {
   url.searchParams.delete('gview');
   window.history.replaceState(window.history.state, '', url);
 }
+
+// company-panel-v2 - Pipeline > People filtered to one company: ?company=<partner|employer>:<id>&cname=<name>.
+export function readPeopleCompany(search = window.location.search) {
+  const p = new URLSearchParams(search);
+  const [type, id] = (p.get('company') || '').split(':');
+  return ['partner', 'employer'].includes(type) && id ? { type, id, name: p.get('cname') || '' } : null;
+}
+export function writePeopleCompany(company) {
+  const url = new URL(window.location.href);
+  if (company) { url.searchParams.set('company', `${company.type}:${company.id}`); url.searchParams.set('cname', company.name || ''); }
+  else { url.searchParams.delete('company'); url.searchParams.delete('cname'); }
+  window.history.replaceState(window.history.state, '', url);
+}

@@ -9,7 +9,7 @@ import { OPEN_TASKS } from './goalsApi';
 window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
 Element.prototype.scrollIntoView = Element.prototype.scrollIntoView || jest.fn();
 jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, pipelineBoard: jest.fn(), partnerSignal: jest.fn(), partnerUndo: jest.fn(), updatePartner: jest.fn(), setVisitPriority: jest.fn(),
-  members: jest.fn(), companyDetail: jest.fn(), addCompanyNote: jest.fn(), addToPipeline: jest.fn(), runCompanyResearch: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), updateTarget: jest.fn(), copyBundle: jest.fn(), checkCompanyApollo: jest.fn(), addCompanyContact: jest.fn(), rejectTarget: jest.fn(), promoteTarget: jest.fn() } }));
+  members: jest.fn(), companyDetail: jest.fn(), addCompanyNote: jest.fn(), addToPipeline: jest.fn(), runCompanyResearch: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), updateTarget: jest.fn(), copyBundle: jest.fn(), checkCompanyApollo: jest.fn(), addCompanyContact: jest.fn(), rejectTarget: jest.fn(), promoteTarget: jest.fn(), bookMeeting: jest.fn(), markContacted: jest.fn(), notNow: jest.fn(), updateWeekGoal: jest.fn() } }));
 jest.mock('../pipelineApi', () => ({ fetchOpportunities: jest.fn(), createOpportunity: jest.fn(), updateOpportunity: jest.fn(), archiveOpportunity: jest.fn() }));
 
 const CHANNELS = { partner: ['all', 'partners'], employer: ['all'], target: ['all', 'targets'], apollo: ['apollo'], visitor: ['website'] };
@@ -29,8 +29,15 @@ const APOLLO = row('Fresh Co', 'apollo', 'gray', { last_touch_at: '2026-10-07T15
 
 const VISITOR = row('Acme Visit', 'visitor', 'light', { channel: 'website_visit', stage: 'visited', stage_label: 'Website visit', priority: 1, visited: { last_visit: '2026-10-20', visits_7d: 6, pulled_on: '2026-10-20', priority: 1 } });
 // sales-ia-v2 P4 - GET goals/company for the panel body (the header comes from the row).
+const NO_INTEREST = { items: [], strongest: null, newest_id: null, dismissed: false, show: false };
 const DETAIL = { todos: [{ id: 't1', text: 'Send the deck', owner: 'Jack Carlson', owner_user_id: 'u1', due_date: '2026-10-22' }], waiting: [], visits: [], signals: [],
-  recent: [{ id: 'e1', event: 'note', at: '2026-10-15T10:00:00Z', note: 'Newest note' }], people: [], research: { runs: [], today: 0, cap: 5 }, decisions: [], terms: [] };
+  recent: [{ id: 'e1', event: 'note', at: '2026-10-15T10:00:00Z', note: 'Newest note' }], people: [], research: { runs: [], today: 0, cap: 5 }, decisions: [], terms: [],
+  interest: NO_INTEREST, timeline: [], decision_makers: [] };
+// company-panel-v2 L3 - a fresh click on Gallagher: the band, the People pill and the timeline row.
+const CLICK = { id: 'ev-click', kind: 'click', count: 1, step: 1, at: '2026-10-19T12:00:00Z', person: { contact_id: 'c-pat', name: 'Pat Lee' }, text: 'Pat Lee clicked Step 1' };
+const INTEREST_DETAIL = { ...DETAIL, interest: { items: [CLICK], strongest: CLICK, newest_id: 'ev-click', dismissed: false, show: true },
+  timeline: [{ id: 'ev-click', kind: 'clicked', at: '2026-10-19T12:00:00Z', step: 1, person: CLICK.person, count: null, text: 'Pat Lee clicked Step 1' }],
+  people: [{ id: 'p:c-pat', contact_id: 'c-pat', name: 'Pat Lee', title: 'VP', linkedin_url: null, source: 'apollo', status: 'new', signal: { kind: 'click', count: 1, step: 1, at: '2026-10-19T12:00:00Z', text: 'clicked Step 1' } }] };
 const MEMBERS = [{ user_id: 'u1', name: 'Jack Carlson', role: 'owner' }, { user_id: 'u2', name: 'Cyrus Test', role: 'member' }];
 
 beforeEach(() => {
@@ -608,4 +615,66 @@ test('Has open to-do and Overdue filter on the row counts; the cells show them, 
   fireEvent.click(screen.getByRole('button', { name: 'Overdue' }));
   expect(screen.queryByText('Calm Co')).toBeNull();
   expect(screen.getByText('Busy Co')).toBeTruthy();
+});
+
+// company-panel-v2 Stage 3 - the Interest band and its buttons; Viewers see the text alone; Not now is hidden on a visitor.
+test('interest band: the strongest signal in bold with its date; Mark contacted names the person and offers Undo; Not now snoozes the person; Book meeting sets the next step; the People row carries the pill', async () => {
+  goalsApi.companyDetail.mockImplementation((b, type, id) => Promise.resolve({ ...INTEREST_DETAIL, record: { type, id, name: id, stage: 'replied', next_step: 'Send the one-pager', last_touch: null, site: { domain: 'gallagher.example', confirmed: true } } }));
+  goalsApi.markContacted.mockResolvedValue({ event: { id: 'ev9', touch_type: 'email', to_status: null }, person: { contact_id: 'c-pat', before: { status: 'new' } } });
+  goalsApi.notNow.mockResolvedValue({ person: { contact_id: 'c-pat', status: 'not_now', snooze_until: '2026-10-27', before: { status: 'new', snooze_until: null } } });
+  goalsApi.bookMeeting.mockResolvedValue({ todo: { id: 'wg7' }, next_step: 'Book meeting with Pat Lee', before: { next_step: 'Send the one-pager' } });
+  setup();
+  fireEvent.click(await screen.findByRole('button', { name: 'Gallagher' }));
+  const panel = within(screen.getByRole('complementary', { name: 'Gallagher' }));
+  const band = within(await panel.findByRole('region', { name: 'Interest' }));
+  expect(band.getByText('Pat Lee clicked Step 1')).toBeTruthy();
+  expect(band.getByText('Oct 19')).toBeTruthy();
+  expect(panel.getAllByRole('link', { name: 'gallagher.example ↗' }).map(a => a.getAttribute('href'))).toEqual(['https://gallagher.example', 'https://gallagher.example']);
+  expect(panel.getByText('✓ confirmed')).toBeTruthy();
+  expect(within(panel.getByRole('region', { name: 'People' })).getByText('clicked Step 1')).toBeTruthy();
+  expect(within(panel.getByRole('region', { name: 'Signals & visits' })).getByText('Pat Lee clicked Step 1')).toBeTruthy();
+  fireEvent.click(band.getByRole('button', { name: 'Mark contacted' }));
+  await waitFor(() => expect(goalsApi.markContacted).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', { contact_id: 'c-pat', person: 'Pat Lee', touch_type: 'email' }));
+  const status = (await screen.findByText(/Pat Lee marked contacted/)).closest('[role="status"]');
+  fireEvent.click(within(status).getByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(goalsApi.partnerUndo).toHaveBeenCalledWith('b1', 'Gallagher', 'ev9'));
+  fireEvent.click(band.getByRole('button', { name: 'Not now' }));
+  await waitFor(() => expect(goalsApi.notNow).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', { contact_id: 'c-pat' }));
+  fireEvent.click(band.getByRole('button', { name: 'Book meeting' }));
+  await waitFor(() => expect(goalsApi.bookMeeting).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', { person: 'Pat Lee' }));
+  expect(panel.getByText('Stage only moves forward · saves at once, Undo for 10 s')).toBeTruthy();
+  expect(panel.getByRole('region', { name: 'Actions' })).toBeTruthy();
+});
+
+test('Viewer: the band shows the signal but no buttons; the facts row and the cards still render; no edit row', async () => {
+  goalsApi.companyDetail.mockImplementation((b, type, id) => Promise.resolve({ ...INTEREST_DETAIL, record: { type, id, name: id, stage: 'replied', next_step: null } }));
+  setup({ canEdit: false });
+  fireEvent.click(await screen.findByRole('button', { name: 'Gallagher' }));
+  const panel = within(screen.getByRole('complementary', { name: 'Gallagher' }));
+  const band = within(await panel.findByRole('region', { name: 'Interest' }));
+  expect(band.getByText('Pat Lee clicked Step 1')).toBeTruthy();
+  expect(band.queryByRole('button')).toBeNull();
+  expect(panel.queryByRole('group', { name: 'Edit' })).toBeNull();
+  expect(panel.getByTitle('Stage').textContent).toBe('Replied');
+  expect(panel.getByTitle('Last touch').textContent).toBe('No touch yet');
+  expect(panel.queryByRole('button', { name: /Not this company|\+ Add|\+ Note|Follow up|Find who/ })).toBeNull();
+});
+
+test('visitor: facts are Priority · Source · Last visit; no Edit row but Priority; Not now is not offered on the band', async () => {
+  goalsApi.pipelineBoard.mockImplementation(() => Promise.resolve([...ROWS, APOLLO, VISITOR]));
+  const VISIT = { id: 'v1', kind: 'visit', count: 6, step: null, at: '2026-10-20', person: null, text: '6 site visits this week · /pricing' };
+  goalsApi.companyDetail.mockImplementation((b, type, id) => Promise.resolve({ ...DETAIL, interest: { items: [VISIT], strongest: VISIT, newest_id: 'v1', dismissed: false, show: true }, record: { type, id, name: id, stage: 'visited', channel: 'website_visit' } }));
+  setup();
+  fireEvent.click(await screen.findByRole('button', { name: /^Website visitors/ }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Acme Visit' }));
+  const panel = within(screen.getByRole('complementary', { name: 'Acme Visit' }));
+  const band = within(await panel.findByRole('region', { name: 'Interest' }));
+  expect(band.getByText('6 site visits this week · /pricing')).toBeTruthy();
+  expect(band.queryByRole('button', { name: 'Not now' })).toBeNull();
+  expect(band.getByRole('button', { name: 'Book meeting' })).toBeTruthy();
+  expect(panel.getByTitle('Source').textContent).toBe('Website');
+  expect(panel.getByTitle('Last visit').textContent).toBe('Oct 20');
+  expect(panel.queryByTitle('Owner')).toBeNull();
+  expect(within(panel.getByRole('group', { name: 'Edit' })).getByLabelText('Priority')).toBeTruthy();
+  expect(within(panel.getByRole('group', { name: 'Edit' })).queryByLabelText('Stage')).toBeNull();
 });

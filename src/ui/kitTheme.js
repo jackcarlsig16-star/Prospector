@@ -33,7 +33,7 @@ body.mode-straight-shooter, .ui-theme-light { ${vars(KIT_LIGHT)} }
 .ui-btn--secondary:hover:not(:disabled) { border-color:var(--ui-control); background:color-mix(in srgb, var(--ui-surface2) 80%, var(--ui-text)); }
 .ui-btn--tertiary { background:transparent; color:var(--ui-link); padding:0 4px; text-decoration:underline; text-underline-offset:3px; text-decoration-thickness:1px; }
 .ui-btn--tertiary:hover:not(:disabled) { color:var(--ui-text); text-decoration-thickness:2px; }
-.ui-btn--danger { background:transparent; color:var(--ui-dangerInk); border-color:color-mix(in srgb, var(--ui-dangerInk) 66%, var(--ui-surface)); }
+.ui-btn--danger { background:transparent; color:var(--ui-dangerInk); border-color:color-mix(in srgb, var(--ui-dangerInk) 82%, var(--ui-surface)); }
 .ui-btn--danger:hover:not(:disabled) { background:color-mix(in srgb, var(--ui-dangerInk) 10%, transparent); }
 .ui-btn:disabled { background:transparent; color:var(--ui-muted); border:1px dashed var(--ui-border); text-decoration:none; cursor:not-allowed; }
 .ui-link { color:var(--ui-link); text-decoration:underline; text-underline-offset:3px; text-decoration-thickness:1px; cursor:pointer; background:none; border:0; padding:0; font:inherit; }

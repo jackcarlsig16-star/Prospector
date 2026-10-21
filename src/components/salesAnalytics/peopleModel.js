@@ -6,7 +6,9 @@ import { STATUS_OPTIONS, CLOSED_STATUSES, statusKey } from '../../constants/pros
 export const OWNER_OPTIONS = [['', 'Team'], ['jack', 'Jack'], ['cyrus', 'Cyrus'], ['unassigned', 'Unassigned']];
 export const ACTIVITY_OPTIONS = [['reply', 'Replied'], ['click', 'Clicked'], ['open', 'Opened']];
 export { STATUS_OPTIONS };
-export const EMPTY_FILTERS = { owner: '', sequence: '', activity: '', status: '', q: '' };
+// company-panel-v2 L6: { type: 'partner' | 'employer', id, name } from the company window's "Open in People →" (?company=).
+export const EMPTY_FILTERS = { owner: '', sequence: '', activity: '', status: '', q: '', company: null };
+export const matchesCompany = (r, c) => !c || (c.type === 'partner' ? r.goal_id === c.id : r.opportunity_id === c.id);
 export const activeFilterCount = f => Object.values(f).filter(Boolean).length;
 
 // Closed and snoozed rows hide unless Show closed is on - or the Status filter
@@ -15,6 +17,7 @@ export function matchesPeopleFilters(r, f, showClosed) {
   if (r.closed && !showClosed && !(CLOSED_STATUSES.includes(f.status) && statusKey(r.status) === f.status)) return false;
   const needle = f.q.trim().toLowerCase();
   return (!f.owner || r.owner === f.owner)
+    && matchesCompany(r, f.company)
     && (!f.sequence || (r.sequence_ids || []).includes(f.sequence))
     && (!f.activity || r.last_activity_kind === f.activity)
     && (!f.status || statusKey(r.status) === f.status)

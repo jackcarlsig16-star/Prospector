@@ -172,7 +172,7 @@ export const SA_DARK_VALUES = {
   borderStrong: '#8792A2', // checkbox outlines, an expanded card's border
   link: '#AFC0FF',
   soft: '#C9D0D9', // secondary text a step brighter than muted
-  neutral: '#788290', // "not started" status
+  neutral: '#99A3B2', // "not started" status; also the text of an uncategorised type chip, so it passes 4.5:1 like faint
 };
 
 // Print media (DECIDED): white ground/surface, dark text, same accent/
