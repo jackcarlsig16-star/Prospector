@@ -16,7 +16,7 @@ export default function Card({ title, subtitle, actions, footer, children }) {
         </div>
       )}
       {children}
-      {footer && <div style={{ borderTop: `1px solid ${ui.border}`, marginTop: 16, paddingTop: 16 }}>{footer}</div>}
+      {footer && <div style={{ borderTop: `1px solid ${ui.divider}`, marginTop: 16, paddingTop: 16 }}>{footer}</div>}
     </section>
   );
 }

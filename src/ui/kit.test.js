@@ -1,6 +1,10 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { KIT_DARK, KIT_LIGHT } from './tokens';
+import { KIT_DARK, KIT_LIGHT, KIT_PRIORITY } from './tokens';
+import Tabs from './Tabs';
+import Tag from './Tag';
+import FilterSelect from './FilterSelect';
+import { ToggleChip, ActiveFilterChip, Group } from './Chip';
 import PageHeader from './PageHeader';
 import Card from './Card';
 import Button, { ButtonRow } from './Button';
@@ -26,6 +30,26 @@ describe.each([['dark', KIT_DARK], ['light', KIT_LIGHT]])('%s kit colors', (_, k
   });
   test('primary button label >= 4.5', () => expect(contrast(k.onAccent, k.accent)).toBeGreaterThanOrEqual(4.5));
   test('same token names in both themes', () => expect(Object.keys(k).sort()).toEqual(Object.keys(KIT_DARK).sort()));
+  // ui-clarity-v1 Stage 1 (H1/H2): faint is readable text, border is a visible edge, surfaces step.
+  test('faint >= 4.5 on surface + surface2; border + control >= 3 on surface2; divider is below 3', () => {
+    for (const s of ['surface', 'surface2']) expect([s, contrast(k.faint, k[s]) >= 4.5]).toEqual([s, true]);
+    for (const g of ['border', 'control']) expect([g, contrast(k[g], k.surface2) >= 3]).toEqual([g, true]);
+    expect(contrast(k.divider, k.surface)).toBeLessThan(3);
+  });
+  test('text on accent is the ground colour, never white', () => expect(k.onAccent).toBe(k.ground));
+  test('P1-P4 >= 3 on surface, each step >= 1.3 apart, text on a 22% wash >= 4.5', () => {
+    const ramp = ['P1', 'P2', 'P3', 'P4'].map(p => k[`prio${p}`]);
+    for (const c of ramp) expect([c, contrast(c, k.surface) >= 3]).toEqual([c, true]);
+    for (let i = 1; i < ramp.length; i++) expect([i, contrast(ramp[i], ramp[i - 1]) >= 1.3]).toEqual([i, true]);
+  });
+  test('generated ombre tokens', () => { expect(k.generatedFrom).toBe(k.accent); expect(k.generatedTo).toBe('#FF8A3D'); });
+});
+
+test('dark surfaces are three visible steps (>= 1.2 each) and the ramp is the sales priority ramp', () => {
+  expect(contrast(KIT_DARK.surface, KIT_DARK.ground)).toBeGreaterThanOrEqual(1.2);
+  expect(contrast(KIT_DARK.surface2, KIT_DARK.surface)).toBeGreaterThanOrEqual(1.2);
+  expect(KIT_DARK.prioP4).toBe(KIT_PRIORITY.P4[0]);
+  expect(KIT_LIGHT.prioP4).toBe(KIT_PRIORITY.P4[1]);
 });
 
 test('kit CSS is injected once with dark on :root and light on the app light mode', () => {
@@ -44,12 +68,55 @@ test('PageHeader + Card render title, subtitle, actions, footer', () => {
 
 test('Button variants, default type, disabled, click', () => {
   const click = jest.fn();
-  render(<ButtonRow><Button variant="primary" onClick={click}>Save</Button><Button variant="danger" disabled onClick={click}>Delete</Button><Button variant="nope">X</Button></ButtonRow>);
+  render(<ButtonRow><Button variant="primary" onClick={click}>Save</Button><Button variant="danger" disabled disabledReason="Viewers cannot" onClick={click}>Delete</Button><Button variant="nope">X</Button><Button variant="ghost">Old</Button><Button variant="tertiary">Clear</Button></ButtonRow>);
   fireEvent.click(screen.getByText('Save')); fireEvent.click(screen.getByText('Delete'));
   expect(click).toHaveBeenCalledTimes(1);
   expect(screen.getByText('Save')).toHaveClass('ui-btn', 'ui-btn--primary');
   expect(screen.getByText('Save')).toHaveAttribute('type', 'button');
+  expect(screen.getByText('Delete')).toHaveAttribute('title', 'Viewers cannot');
   expect(screen.getByText('X')).toHaveClass('ui-btn--secondary');
+  expect(screen.getByText('Old')).toHaveClass('ui-btn--tertiary');
+  expect(screen.getByText('Clear')).toHaveClass('ui-btn--tertiary');
+  const css = document.getElementById('ui-kit-css').textContent;
+  expect(css).toMatch(/\.ui-btn:disabled \{[^}]*border:1px dashed var\(--ui-border\)[^}]*cursor:not-allowed/);
+  expect(css).toMatch(/\.ui-btn--tertiary \{[^}]*text-decoration:underline/);
+  expect(css).toMatch(/\.ui-seg__btn\[aria-pressed="true"\] \{ background:var\(--ui-text\); border-color:var\(--ui-text\); color:var\(--ui-ground\); \}/);
+});
+
+test('Tabs: one selected tab, a disabled tab says why and keeps its note', () => {
+  const onChange = jest.fn();
+  render(<Tabs label="Sales" items={[{ id: 'a', label: 'Dashboard' }, { id: 'b', label: 'Pipeline' }, { id: 'm', label: 'Marketing', disabled: true, note: 'Coming soon' }]} value="b" onChange={onChange} />);
+  const tabs = screen.getAllByRole('tab');
+  expect(tabs.map(t => t.getAttribute('aria-selected'))).toEqual(['false', 'true', 'false']);
+  expect(tabs[2]).toBeDisabled();
+  expect(tabs[2]).toHaveAttribute('title', 'Coming soon');
+  expect(tabs[2].querySelector('.ui-tag')).toHaveTextContent('Coming soon');
+  fireEvent.click(tabs[0]); expect(onChange).toHaveBeenCalledWith('a');
+  fireEvent.click(tabs[2]); expect(onChange).toHaveBeenCalledTimes(1);
+});
+
+test('ToggleChip / ActiveFilterChip / Group / Tag / FilterSelect', () => {
+  const on = jest.fn(), remove = jest.fn(), change = jest.fn();
+  render(<>
+    <Group label="Channel"><ToggleChip pressed count={12} onClick={on}>Call notes</ToggleChip><ToggleChip count={3}>Scout</ToggleChip></Group>
+    <ActiveFilterChip onRemove={remove}>Owner: Cyrus</ActiveFilterChip>
+    <Tag color="#3DD68C">Meeting set</Tag>
+    <FilterSelect label="Owner" value="jack" options={[{ value: 'jack', label: 'Jack' }, { value: 'cyrus', label: 'Cyrus' }]} onChange={change} />
+  </>);
+  const group = screen.getByRole('group', { name: 'Channel' });
+  const chips = group.querySelectorAll('button.ui-chip');
+  expect(chips[0]).toHaveAttribute('aria-pressed', 'true');
+  expect(chips[0].querySelector('.ui-chip__count')).toHaveTextContent('12');
+  expect(chips[1]).toHaveAttribute('aria-pressed', 'false');
+  fireEvent.click(chips[0]); expect(on).toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Remove filter Owner: Cyrus' })); expect(remove).toHaveBeenCalled();
+  const tag = screen.getByText('Meeting set');
+  expect(tag).toHaveClass('ui-tag');
+  expect(tag.querySelector('.ui-tag__dot')).not.toBeNull();
+  expect(tag.tagName).toBe('SPAN');
+  const sel = screen.getByLabelText('Owner');
+  expect(sel).toHaveClass('ui-filter__select');
+  fireEvent.change(sel, { target: { value: 'cyrus' } }); expect(change).toHaveBeenCalledWith('cyrus');
 });
 
 test('Field ties its label to the control and shows error over hint', () => {
@@ -81,9 +148,12 @@ test('ToggleRow is a labelled switch with one-line help; disabled never fires', 
 test('gallery shows every component in both themes', () => {
   render(<UiKitGallery />);
   expect(document.querySelector('[data-ui-gallery]')).not.toBeNull();
-  expect(document.querySelectorAll('[data-theme-panel]')).toHaveLength(2);
+  expect(document.querySelectorAll('[data-theme-panel]')).toHaveLength(3);
   expect(screen.getAllByRole('switch')).toHaveLength(6);
-  expect(document.querySelectorAll('[data-status]')).toHaveLength(8);
+  expect(document.querySelectorAll('[data-status]')).toHaveLength(10);
+  expect(document.querySelectorAll('[data-role]')).toHaveLength(7);
+  for (const el of document.querySelectorAll('[data-before] button, [data-before] a, [data-before] select')) expect(el).toBeNull();
+  expect(document.querySelectorAll('[data-after] button').length).toBeGreaterThan(10);
   fireEvent.click(screen.getAllByRole('switch', { name: /Meetings from Outlook/ })[0]);
   expect(screen.getAllByRole('switch', { name: /Meetings from Outlook/ })[0]).toHaveAttribute('aria-checked', 'true');
 });

@@ -158,18 +158,21 @@ export const CARD_RADIUS = { sm: 4, md: 6, lg: 8 };
 
 // ── Sales module (salesAnalytics/theme.js, sales-analytics-design-v1) ─────────
 export const SA_DARK_VALUES = {
-  ground: '#0B0D10', surface: '#12161B', surface2: '#171C22', border: '#232A33',
-  text: '#E9ECF0', muted: '#8B95A3', faint: '#5E6773',
+  // ui-clarity-v1 Stage 1 (H1/H2): ground < surface < surface2 are three visible steps (~1.25:1 each); border passes
+  // 3:1 on surface2 so every control edge and card edge is visible; faint passes 4.5:1 on surface2 so no readable text
+  // fails. inset stays below surface (cards inside cards, text areas); track is the low-contrast divider.
+  ground: '#0B0D10', surface: '#1E242C', surface2: '#2E3540', border: '#788290',
+  text: '#E9ECF0', muted: '#A8B2C0', faint: '#99A3B2',
   accent: '#8FA8FF', // the ONE accent - primary button, selected states, Apollo source badge
-  good: '#3DD68C', warn: '#F2B544', bad: '#FF6B6B',
-  barNeutral: '#4A5565', // the leaderboard's inline Delivered bar fill (mockup value, not cohort/status-colored on purpose)
+  good: '#3DD68C', warn: '#F2B544', bad: '#FF7878',
+  barNeutral: '#6E7A8A', // the leaderboard's inline Delivered bar fill (not cohort/status-colored on purpose)
   // sales-goals-v1 REV4 (specs/design/goals-mockup.dc.html)
-  track: '#1C222A', // row dividers, empty bar/ring track
-  inset: '#0F1317', // cards inside cards, text areas
-  borderStrong: '#46505E', // checkbox outlines, an expanded card's border
+  track: '#3C444F', // row dividers, empty bar/ring track
+  inset: '#12161B', // cards inside cards, text areas
+  borderStrong: '#8792A2', // checkbox outlines, an expanded card's border
   link: '#AFC0FF',
   soft: '#C9D0D9', // secondary text a step brighter than muted
-  neutral: '#4A5462', // "not started" status
+  neutral: '#788290', // "not started" status
 };
 
 // Print media (DECIDED): white ground/surface, dark text, same accent/
@@ -221,34 +224,45 @@ export const SA_SHAPE = {
 // Mono labels, one blue accent) for every page that adopts src/ui. Dark is the
 // sales screen palette; light (body.mode-straight-shooter) starts from the
 // sales print palette. New values only where a check needed them:
-// - control: input / switch outlines need 3:1 against the surface (WCAG
-//   1.4.11); SA borderStrong is 2.2:1.
-// - light good/warn/bad: the sales print hues are 1.8-2.1:1 on white. These
-//   pass the dataviz validator (light, all pairs; CVD 6.7 = floor band, so a
+// - control: input / switch outlines (3:1 against surface2, WCAG 1.4.11).
+// - light good/warn/bad: the sales print hues are 1.8-2.1:1 on white; these
+//   sit at >= 5:1 on white and carry a ground-colour glyph at >= 4.5:1 (a
 //   StatusPill always carries an icon + label, never color alone).
 // - dangerInk: danger button text; light bad is 4.0:1 on white, under 4.5.
 export const KIT_SPACE = [4, 8, 12, 16, 24, 32];
 export const KIT_MAX_WIDTH = 1100;
 export const KIT_RADIUS = { card: SA_SHAPE.radiusCard, inner: SA_SHAPE.radiusInner, control: 8, pill: SA_SHAPE.radiusPill };
 
+// ui-clarity-v1 Stage 1 - the P1-P4 priority ramp ([screen, print/light]): every step >= 3:1 on surface and each
+// neighbour >= 1.3:1 apart, so a bar or a chip dot can be told from the next one (labels always present anyway).
+export const KIT_PRIORITY = { P1: ['#D6DEFF', '#1F2F80'], P2: ['#A3B5FF', '#3A55C8'], P3: ['#7A8EE8', '#5F74D6'], P4: ['#6378D8', '#7D90E0'] };
+const prio = i => Object.fromEntries(Object.entries(KIT_PRIORITY).map(([k, v]) => [`prio${k}`, v[i]]));
+
 export const KIT_DARK = {
   ground: SA_DARK_VALUES.ground,
   surface: SA_DARK_VALUES.surface, surface2: SA_DARK_VALUES.surface2, inset: SA_DARK_VALUES.inset,
-  border: SA_DARK_VALUES.border, control: '#6B7480',
+  border: SA_DARK_VALUES.border, divider: SA_DARK_VALUES.track, control: SA_DARK_VALUES.borderStrong,
   text: SA_DARK_VALUES.text, soft: SA_DARK_VALUES.soft, muted: SA_DARK_VALUES.muted, faint: SA_DARK_VALUES.faint,
-  accent: SA_DARK_VALUES.accent, onAccent: SA_DARK_VALUES.ground,
-  good: SA_DARK_VALUES.good, warn: SA_DARK_VALUES.warn, bad: SA_DARK_VALUES.bad, off: '#6B7480',
+  accent: SA_DARK_VALUES.accent, onAccent: SA_DARK_VALUES.ground, link: SA_DARK_VALUES.link,
+  good: SA_DARK_VALUES.good, warn: SA_DARK_VALUES.warn, bad: SA_DARK_VALUES.bad, off: SA_DARK_VALUES.borderStrong,
   dangerInk: SA_DARK_VALUES.bad,
+  // company-panel-v2 L9 - the "generated" ombre runs accent -> the app's Generate orange.
+  generatedFrom: SA_DARK_VALUES.accent, generatedTo: ROLE.generateAccent,
+  ...prio(0),
 };
 
+// Light keeps the print palette's text and status hues; its own ground / surface2 / border / control / faint are the
+// values that pass the same floors on a white surface (the print palette itself is unchanged, the PDF still prints).
 export const KIT_LIGHT = {
-  ground: SA_PRINT_VALUES.surface2,
-  surface: SA_PRINT_VALUES.surface, surface2: SA_PRINT_VALUES.surface2, inset: SA_PRINT_VALUES.inset,
-  border: SA_PRINT_VALUES.border, control: '#7A828E',
-  text: SA_PRINT_VALUES.text, soft: SA_PRINT_VALUES.soft, muted: SA_PRINT_VALUES.muted, faint: SA_PRINT_VALUES.faint,
-  accent: SA_PRINT_VALUES.link, onAccent: '#FFFFFF',
-  good: '#1E8A4C', warn: '#A06A00', bad: '#E0465A', off: '#7A828E',
+  ground: '#E9ECF1',
+  surface: SA_PRINT_VALUES.surface, surface2: '#DDE2E9', inset: '#F3F5F8',
+  border: '#727C89', divider: '#CDD3DB', control: '#6B7582',
+  text: SA_PRINT_VALUES.text, soft: SA_PRINT_VALUES.soft, muted: '#596270', faint: '#5B6471',
+  accent: SA_PRINT_VALUES.link, onAccent: '#E9ECF1', link: SA_PRINT_VALUES.link,
+  good: '#167A3F', warn: '#8A5B00', bad: '#C42D3C', off: '#5F6975',
   dangerInk: '#B42F3E',
+  generatedFrom: SA_PRINT_VALUES.link, generatedTo: ROLE.generateAccent,
+  ...prio(1),
 };
 
 export const KIT_TYPE = {
