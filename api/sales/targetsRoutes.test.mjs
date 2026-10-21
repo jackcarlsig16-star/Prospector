@@ -7,12 +7,16 @@ import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
 import { promoteTarget, rejectTarget, copyBundle, listProspectTargets, hasPii, validatePromote } from './targetsRoutes.js';
 import { toIntake } from './intakeMatch.js';
+import { listRuns } from './partnerResearch.js';
 
 
 const B = randomUUID(), U = randomUUID(), N1 = randomUUID();
 const T = { fundrise: randomUUID(), gallagherInc: randomUUID(), solidcore: randomUUID(), deloitte: randomUUID(), done: randomUUID() };
 const G = { gallagher: randomUUID() };
 const W = { research: randomUUID(), doneOne: randomUUID(), deloitteTodo: randomUUID() };
+const R = { fundriseOld: randomUUID(), fundriseNew: randomUUID(), deloitte: randomUUID() };
+const V = { fundrise: randomUUID(), other: randomUUID() };
+const run = (id, entityId, createdAt, extra) => ({ id, business_id: B, entity_type: 'target', entity_id: entityId, trigger: 'manual', status: 'done', result: { summary: `summary ${id.slice(0, 4)}` }, cost_usd: 0.08, created_by: U, created_at: createdAt, ...extra });
 const WEEK = '2026-10-12';
 const target = (id, name, kind, extra) => ({ id, business_id: B, name, kind, status: 'researching', suggested_category: null, owner_team: null, co_owner_name: null, no_double_touch: false, evidence: null, research_notes: null, research_prompt: 'x', promoted_goal_id: null, source_note_id: N1, created_by: U, decided_at: null, created_at: '2026-10-13T00:00:00Z', updated_at: '2026-10-13T00:00:00Z', ...extra });
 const seed = () => fakeSupabase({
@@ -37,6 +41,15 @@ const seed = () => fakeSupabase({
   sales_partner_events: [{ id: randomUUID(), business_id: B, goal_id: G.gallagher, event: 'touch', touch_type: 'email', contact_names: ['Pat Example'], source: 'outlook', by_user: U, at: '2026-10-12T19:00:00Z', recorded_at: '2026-10-12T19:00:00Z', meta: { direction: 'sent' } }],
   partner_contacts: [{ id: randomUUID(), business_id: B, goal_id: G.gallagher, name: 'Pat Example', title: 'VP Benefits', role_in_notes: 'champion', email: 'pat@gallagher.com', source: 'manual' }],
   sales_opportunity_events: [],
+  research_runs: [
+    run(R.fundriseOld, T.fundrise, '2026-10-13T10:00:00Z'),
+    run(R.fundriseNew, T.fundrise, '2026-10-14T10:00:00Z'),
+    run(R.deloitte, T.deloitte, '2026-10-14T11:00:00Z'),
+  ],
+  web_visits: [
+    { id: V.fundrise, business_id: B, pulled_on: '2026-10-14', company_key: 'fundrise', company_name: 'Fundrise', matched_type: 'target', matched_id: T.fundrise, visits_7d: 4 },
+    { id: V.other, business_id: B, pulled_on: '2026-10-14', company_key: 'gallagher', company_name: 'Gallagher', matched_type: 'partner', matched_id: G.gallagher, visits_7d: 1 },
+  ],
   business_members: [{ business_id: B, user_id: U, name: 'Jack Zz', role: 'owner' }],
 });
 
@@ -79,6 +92,60 @@ test('promote -> partner: not_started, category + ownership, intake note event, 
   // Promoting again is refused.
   const again = await promoteTarget(s, { businessId: B, userId: U, targetId: T.fundrise, body: { to: 'partner' } });
   assert.equal(again.status, 409);
+});
+
+test('promote -> partner: both research runs and the matched visit follow the partner; the panel reads the latest run there', async () => {
+  const s = seed();
+  const r = await promoteTarget(s, { businessId: B, userId: U, targetId: T.fundrise, body: { to: 'partner' } });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const goal = s.db.sales_goals.find(g => g.name === 'Fundrise');
+  assert.deepEqual([r.body.research_moved, r.body.visits_moved], [2, 1]);
+  const moved = s.db.research_runs.filter(x => x.entity_type === 'partner' && x.entity_id === goal.id).map(x => x.id).sort();
+  assert.deepEqual(moved, [R.fundriseOld, R.fundriseNew].sort());
+  assert.equal(s.db.research_runs.filter(x => x.entity_type === 'target' && x.entity_id === T.fundrise).length, 0);
+  assert.equal(s.db.research_runs.find(x => x.id === R.deloitte).entity_id, T.deloitte, 'another target\'s runs stay');
+  const latest = await listRuns(s, B, 'partner', goal.id);
+  assert.equal(latest[0].id, R.fundriseNew, 'the panel\'s read for the partner returns the newest run first');
+  assert.equal(latest.length, 2);
+  const visit = s.db.web_visits.find(v => v.id === V.fundrise);
+  assert.deepEqual([visit.matched_type, visit.matched_id], ['partner', goal.id]);
+  assert.deepEqual([s.db.web_visits.find(v => v.id === V.other).matched_type, s.db.web_visits.find(v => v.id === V.other).matched_id], ['partner', G.gallagher]);
+});
+
+test('promote -> partner: a teammate\'s change in between (409) undoes the move - runs and the visit back on the target, partner gone', async () => {
+  const s = seed();
+  // The research move runs before the guarded accept; flipping the target's status there is the race.
+  const raw = s.from;
+  s.from = table => {
+    const b = raw(table);
+    if (table === 'research_runs') { const u = b.update; b.update = p => { const i = s.db.sales_targets.findIndex(x => x.id === T.fundrise); s.db.sales_targets[i] = { ...s.db.sales_targets[i], status: 'rejected' }; return u(p); }; }
+    return b;
+  };
+  const r = await promoteTarget(s, { businessId: B, userId: U, targetId: T.fundrise, body: { to: 'partner' } });
+  assert.equal(r.status, 409, JSON.stringify(r.body));
+  assert.equal(s.db.sales_goals.find(g => g.name === 'Fundrise'), undefined);
+  assert.deepEqual(s.db.research_runs.filter(x => x.entity_type === 'target' && x.entity_id === T.fundrise).map(x => x.id).sort(), [R.fundriseOld, R.fundriseNew].sort());
+  assert.equal(s.db.research_runs.filter(x => x.entity_type === 'partner').length, 0);
+  const visit = s.db.web_visits.find(v => v.id === V.fundrise);
+  assert.deepEqual([visit.matched_type, visit.matched_id], ['target', T.fundrise]);
+  assert.deepEqual([s.db.sales_week_goals.find(w => w.id === W.research).link_type, s.db.sales_week_goals.find(w => w.id === W.research).link_id], ['target', T.fundrise]);
+});
+
+test('promote -> employer: the run follows as entity_type employer; a target with no runs promotes unchanged', async () => {
+  const s = seed();
+  const r = await promoteTarget(s, { businessId: B, userId: U, targetId: T.deloitte, body: { to: 'employer' } });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const opp = s.db.sales_opportunities.find(o => o.organization === 'Deloitte');
+  assert.deepEqual([r.body.research_moved, r.body.visits_moved], [1, 0]);
+  const moved = s.db.research_runs.find(x => x.id === R.deloitte);
+  assert.deepEqual([moved.entity_type, moved.entity_id], ['employer', opp.id]);
+  assert.equal((await listRuns(s, B, 'employer', opp.id))[0].id, R.deloitte);
+  assert.equal(s.db.research_runs.filter(x => x.entity_type === 'target' && x.entity_id === T.fundrise).length, 2, 'Fundrise\'s runs untouched');
+  const before = JSON.stringify([s.db.research_runs, s.db.web_visits]);
+  const r2 = await promoteTarget(s, { businessId: B, userId: U, targetId: T.gallagherInc, body: { to: 'partner', name: 'Zeppelin Co' } });
+  assert.equal(r2.status, 201, JSON.stringify(r2.body));
+  assert.deepEqual([r2.body.research_moved, r2.body.visits_moved], [0, 0]);
+  assert.equal(JSON.stringify([s.db.research_runs, s.db.web_visits]), before, 'nothing moved for a target with no runs or visits');
 });
 
 test('promote -> partner: the confirm panel can change name, category and ownership', async () => {

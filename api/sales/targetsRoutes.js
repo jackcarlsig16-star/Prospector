@@ -100,6 +100,25 @@ export function validatePromote(body, target) {
   };
 }
 
+// Rows the company panel reads by target id follow the new record: research
+// runs and the web visits matched to the target. Signals and priority
+// overrides key on the company name, so they follow on their own; to-dos
+// are relinked by the partner path only (an employer has no link type yet).
+const VISIT_TYPE = { partner: 'partner', employer: 'opportunity' };
+async function moveTargetData(supabase, { businessId, target, to, id, undo }) {
+  const runs = must(await supabase.from('research_runs').update({ entity_type: to, entity_id: id })
+    .eq('business_id', businessId).eq('entity_type', 'target').eq('entity_id', target.id).select('id'));
+  if (runs.length) undo.push(() => supabase.from('research_runs').update({ entity_type: 'target', entity_id: target.id }).in('id', runs.map(r => r.id)));
+  const visits = must(await supabase.from('web_visits').update({ matched_type: VISIT_TYPE[to], matched_id: id })
+    .eq('business_id', businessId).eq('matched_type', 'target').eq('matched_id', target.id).select('id'));
+  if (visits.length) undo.push(() => supabase.from('web_visits').update({ matched_type: 'target', matched_id: target.id }).in('id', visits.map(v => v.id)));
+  return { research_moved: runs.length, visits_moved: visits.length };
+}
+
+async function rollback(undo) {
+  for (const f of undo.reverse()) { try { await f(); } catch (u) { console.error('[prospect-targets/promote] undo failed:', u.message); } }
+}
+
 // Target -> accepted, in one guarded write (a teammate's click in between = 409).
 async function acceptTarget(supabase, target, extra, now) {
   const rows = must(await supabase.from('sales_targets')
@@ -129,10 +148,11 @@ async function promoteToPartner(supabase, { businessId, userId, target, payload,
     const relinked = must(await supabase.from('sales_week_goals').update({ link_type: 'partner', link_id: goal.id, updated_at: now })
       .eq('business_id', businessId).eq('link_type', 'target').eq('link_id', target.id).select('id'));
     if (relinked.length) undo.push(() => supabase.from('sales_week_goals').update({ link_type: 'target', link_id: target.id }).in('id', relinked.map(r => r.id)));
+    const moved = await moveTargetData(supabase, { businessId, target, to: 'partner', id: goal.id, undo });
     const updated = await acceptTarget(supabase, target, { promoted_goal_id: goal.id }, now);
-    return { created: { type: 'partner', id: goal.id, name: goal.name }, goal, target: updated, relinked: relinked.length };
+    return { created: { type: 'partner', id: goal.id, name: goal.name }, goal, target: updated, relinked: relinked.length, ...moved };
   } catch (e) {
-    for (const f of undo.reverse()) { try { await f(); } catch (u) { console.error('[prospect-targets/promote] undo failed:', u.message); } }
+    await rollback(undo);
     throw e;
   }
 }
@@ -150,11 +170,13 @@ async function promoteToEmployer(supabase, { businessId, target, payload, apollo
   }).select().single();
   if (ins.error?.code === '23505') throw err(409, `${payload.name} is already in the pipeline`);
   const opportunity = must(ins);
+  const undo = [() => supabase.from('sales_opportunities').delete().eq('id', opportunity.id)];
   try {
+    const moved = await moveTargetData(supabase, { businessId, target, to: 'employer', id: opportunity.id, undo });
     const updated = await acceptTarget(supabase, target, {}, now);
-    return { created: { type: 'opportunity', id: opportunity.id, name: opportunity.organization }, opportunity, target: updated, relinked: 0 };
+    return { created: { type: 'opportunity', id: opportunity.id, name: opportunity.organization }, opportunity, target: updated, relinked: 0, ...moved };
   } catch (e) {
-    await supabase.from('sales_opportunities').delete().eq('id', opportunity.id);
+    await rollback(undo);
     throw e;
   }
 }
@@ -165,6 +187,8 @@ async function promoteToEmployer(supabase, { businessId, target, payload, apollo
 // employer already. Never a stage: a partner lands at not_started, an
 // employer at target. To-dos linked to the target follow a new partner; for
 // an employer they stay on the target (no opportunity link type - REV4 T3 a).
+// Research runs and matched web visits follow either way (research_moved,
+// visits_moved in the body).
 export async function promoteTarget(supabase, { businessId, userId, targetId, body }) {
   try {
     const target = await targetOrNull(supabase, businessId, targetId);
