@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { SA, SA_TYPE } from '../theme';
 import { goalsApi } from './goalsApi';
-import SidePanel from '../SidePanel';
+import CenterWindow from '../CenterWindow';
 import OwnerPill from '../OwnerPill';
 import TypeChip from './TypeChip';
 import CompanyActions from './CompanyActions';
@@ -11,10 +11,11 @@ import { CHANNEL_LABEL } from '../../../constants/salesChannels';
 import { prioritySetLabel } from './companiesModel';
 import { stageLabel } from './companyPanelModel';
 
-// sales-ia-v2 P4 - the one side panel for every Pipeline row (partner,
-// employer, target, Apollo-only, visitor). Header: type · channel · stage ·
-// priority · owner · team · last touch. Then the action bar (Members), then
-// the body from GET goals/company: next step, open to-dos, waiting on them,
+// sales-ia-v2 P4 - the one company panel for every Pipeline row (partner,
+// employer, target, Apollo-only, visitor), a centered window since FIX
+// company-panel-promote-research-v1. Pinned head: type · channel · stage ·
+// priority · owner · team · last touch, then the action bar (Members). The
+// scrolling body comes from GET goals/company: next step, open to-dos, waiting on them,
 // website visits, signals, last notes and touches, people, research,
 // decisions and terms, and Open full card. `row` is the board row; every
 // write reloads the board (onChanged) and this body (version).
@@ -58,8 +59,8 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
   const latest = detail?.research?.runs?.[0] || null;
   const result = latest?.status === 'done' ? latest.result : null;
   const fullLabel = row.type === 'visitor' ? 'Open visitor report →' : row.type === 'apollo' ? 'Open in Companies →' : row.type === 'target' ? 'Open in Tasks →' : 'Open full card →';
-  return (
-    <SidePanel label={row.name} onClose={onClose} width={560}>
+  const head = (
+    <>
       <div data-company-panel={row.type} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
           <p style={{ ...SA_TYPE.cardTitle, color: SA.text, margin: 0, overflowWrap: 'anywhere' }}>{row.name}</p>
@@ -79,7 +80,10 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
       {canEdit
         ? <CompanyActions businessId={businessId} row={row} members={members} meId={meId} onStar={onStar} onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} onClose={onClose} />
         : <p style={{ ...SA_TYPE.body, fontSize: 12, color: SA.muted, margin: 0 }}>You have view access, so this is read-only.</p>}
-
+    </>
+  );
+  return (
+    <CenterWindow label={row.name} head={head} onClose={onClose}>
       {error && <ErrorNote message={error} />}
       {!detail && !error && <span style={dim}>Loading…</span>}
       {detail && (
@@ -135,6 +139,6 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
         <Btn style={{ height: 40 }} onClick={onOpenFull}>{fullLabel}</Btn>
         <Btn style={{ height: 40, marginLeft: 'auto' }} onClick={onClose}>Close</Btn>
       </div>
-    </SidePanel>
+    </CenterWindow>
   );
 }

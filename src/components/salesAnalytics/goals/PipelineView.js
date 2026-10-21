@@ -78,7 +78,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
   const [panel, setPanel] = useState(undefined); // undefined = closed, null = new employer, object = edit
   const [panelKey, setPanelKey] = useState(null); // row key open in the company panel
   const [members, setMembers] = useState([]);
-  const [highlight, setHighlight] = useState(null); // row key flashed after the company panel closes
+  const [highlight, setHighlight] = useState(null); // row key kept tinted after the company panel closes (tinted while open via panelKey)
   const [editing, setEditing] = useState(null); // { key, col } of the one open cell editor
   const [saving, setSaving] = useState({}); // `${key}:${col}` -> value in flight, shown dimmed
   const [panelSaving, setPanelSaving] = useState(false);
@@ -154,7 +154,9 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
   const closePanel = useCallback(() => {
     setPanelKey(null);
     setHighlight(panelKey);
-    document.querySelector(`[data-row][data-key="${panelKey}"]`)?.scrollIntoView({ block: 'nearest' });
+    const rowEl = document.querySelector(`[data-row][data-key="${panelKey}"]`);
+    rowEl?.scrollIntoView({ block: 'nearest' });
+    rowEl?.querySelector('[data-row-name]')?.focus({ preventScroll: true });
   }, [panelKey]);
   const open = r => {
     if (r.type === 'signal') return openTasks({ link: null, view: 'signals', filter: 'team' });
@@ -237,7 +239,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
       </span>
     );
   };
-  const nameCell = r => <button type="button" onClick={() => open(r)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit', textAlign: 'left', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</button>;
+  const nameCell = r => <button type="button" data-row-name onClick={() => open(r)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', font: 'inherit', textAlign: 'left', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</button>;
   const typeCell = r => <TypeChip row={r} />;
   const allColumns = [
     { id: 'top', label: `Top ${TOP_CAP}`, width: 38, fixed: true, render: r => <span style={{ display: 'block', textAlign: 'center' }}>{starCell(r)}</span> },
@@ -287,7 +289,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
       collapsed: collapsed.has(g.id), onToggle: () => toggleBand(g.id),
     })),
   ];
-  const rowStyle = r => ({ '--ui-row-tint': highlight === rowKey(r) ? highlightTint : tint(r.color), '--ui-row-bar': BOARD_TOKENS[r.color] });
+  const rowStyle = r => ({ '--ui-row-tint': highlight === rowKey(r) || panelKey === rowKey(r) ? highlightTint : tint(r.color), '--ui-row-bar': BOARD_TOKENS[r.color] });
 
   const filterControls = (
     <>
