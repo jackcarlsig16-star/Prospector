@@ -1,3 +1,4 @@
+// SUPERSEDED (sales-ia-v2 Stage 5): the v1 Today page (Your day / Focus 5 strip / glance / viewer cards) was replaced by the Actions list - do not run.
 // weekly-plan-v1 Stage 2 - UI shots + click-through. TEMP data only: 1 workspace (goals_sales on, added to SALES_ANALYTICS_BUSINESS_IDS for the local server only), 2 temp users (member-owner M "Plan Tester", viewer V). Seed: 3 partners, 2 open to-dos for M this week. 0 Claude calls (propose is answered in the browser by a fixture whose ids are the seeded rows), 0 Apollo (any /sync request is refused in the browser and counted). ONE real Save into the temp workspace (5 commitments + linked to-do), one Focus check + uncheck. HomeLover is only COUNTED (15 tables, head requests). Teardown deletes everything. ~90s, cap 4 min.
 // Usage: node scripts/verify/weekly-plan-v1-stage2.cjs <outdir>
 const ROOT = require('path').resolve(__dirname, '../..');

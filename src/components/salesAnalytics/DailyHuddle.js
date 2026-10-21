@@ -12,7 +12,6 @@ import FlaggedLane from './FlaggedLane';
 import CollateralLibrary from './CollateralLibrary';
 import HuddlePrintSheet from './HuddlePrintSheet';
 import HuddlePartners from './HuddlePartners';
-import FocusStrip from './goals/FocusStrip';
 import SuggestedStrip from './tasks/SuggestedStrip';
 import RightRail from './RightRail';
 import Ring, { RingLegend } from './charts/Ring';
@@ -325,8 +324,6 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
   const doneToday = done.filter(e => new Date(e.changed_at).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }) === today).length;
 
   const lookup = memberLookup(members);
-  // Focus is one person's; Team shows the signed-in user's.
-  const focusOwner = owner === 'team' ? me?.profile?.id : members.find(m => m.name.split(' ')[0].toLowerCase() === owner)?.user_id;
   const ownerColor = slug => lookup(members.find(m => m.name.split(' ')[0].toLowerCase() === slug)?.user_id).color;
   const people = [{ id: 'team', name: 'Team', color: SA.accent }, { id: 'jack', name: 'Jack', color: ownerColor('jack') }, { id: 'cyrus', name: 'Cyrus', color: ownerColor('cyrus') }];
   const ownerParts = ['jack', 'cyrus', 'unassigned'].map(o => ({ id: o, label: OWNER_LABELS[o], count: teamNeeds.filter(p => p.owner === o).length, color: ownerColor(o) })).filter(x => x.count);
@@ -446,7 +443,6 @@ export default function DailyHuddle({ businessId, focusContactId, onFocused, foc
     <div className="no-print">
       {toolsSlot && createPortal(tools, toolsSlot)}
       <SuggestedStrip businessId={businessId} />
-      <FocusStrip businessId={businessId} ownerId={focusOwner} ownerName={focusOwner ? lookup(focusOwner).first : null} canEdit={canEdit} onPlan={() => onOpenGoals && onOpenGoals('plan')} />
 
       {error && (
         <div style={{ fontSize: 13, color: SA.bad, padding: '10px 14px', background: SA_BAD_BG, border: `1px solid ${SA_BAD_BORDER}`, borderRadius: SA_SHAPE.radiusInner, marginBottom: 16 }}>⚠ {error}</div>

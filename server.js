@@ -642,6 +642,7 @@ app.get('/api/sales/:businessId/goals/signals', salesModuleRoute('./api/sales/si
 app.post('/api/sales/:businessId/goals/signals/scout-import', salesModuleRoute('./api/sales/signalsRoutes.js', 'scoutImportRoute', 'goals/signals/scout-import POST'));
 app.post('/api/sales/:businessId/goals/signals/:id/accept', salesModuleRoute('./api/sales/signalsRoutes.js', 'acceptSignalRoute', 'goals/signals/:id/accept POST'));
 app.post('/api/sales/:businessId/goals/signals/:id/dismiss', salesModuleRoute('./api/sales/signalsRoutes.js', 'dismissSignalRoute', 'goals/signals/:id/dismiss POST'));
+app.post('/api/sales/:businessId/goals/signals/:id/undo', salesModuleRoute('./api/sales/signalsRoutes.js', 'undoSignalRoute', 'goals/signals/:id/undo POST'));
 // signals-v1 Stage 4 - the daily website-visitor pull (page load / Pull now) and its status.
 app.post('/api/sales/:businessId/goals/visits/pull', salesModuleRoute('./api/sales/visitPull.js', 'runVisitPullRoute', 'goals/visits/pull POST'));
 app.get('/api/sales/:businessId/goals/visits/status', salesModuleRoute('./api/sales/visitPull.js', 'visitStatusRoute', 'goals/visits/status'));
@@ -669,6 +670,9 @@ app.get('/api/sales/:businessId/goals/suggestions', salesModuleRoute('./api/sale
 app.post('/api/sales/:businessId/goals/suggestions/:id/accept', salesModuleRoute('./api/sales/tidyRoutes.js', 'acceptSuggestionRoute', 'goals/suggestions/:id/accept POST'));
 app.post('/api/sales/:businessId/goals/suggestions/:id/dismiss', salesModuleRoute('./api/sales/tidyRoutes.js', 'parkSuggestionRoute', 'goals/suggestions/:id/dismiss POST'));
 app.post('/api/sales/:businessId/goals/suggestions/:id/snooze', salesModuleRoute('./api/sales/tidyRoutes.js', 'parkSuggestionRoute', 'goals/suggestions/:id/snooze POST'));
+app.post('/api/sales/:businessId/goals/suggestions/:id/undo', salesModuleRoute('./api/sales/tidyRoutes.js', 'undoSuggestionRoute', 'goals/suggestions/:id/undo POST'));
+// sales-ia-v2 A1 - the Actions list (reads only).
+app.get('/api/sales/:businessId/goals/actions', salesModuleRoute('./api/sales/actionsRoutes.js', 'listActionsRoute', 'goals/actions'));
 // call-notes-targets-v1 REV5 - Nudge a waiting-on item into our own to-do.
 app.post('/api/sales/:businessId/goals/waiting/:id/nudge', salesModuleRoute('./api/sales/waitingRoutes.js', 'nudgeWaitingRoute', 'goals/waiting/:id/nudge POST'));
 app.post('/api/sales/:businessId/goals/partners/:id/signal', salesModuleRoute('./api/sales/partnersRoutes.js', 'partnerSignalRoute', 'goals/partners/:id/signal POST'));

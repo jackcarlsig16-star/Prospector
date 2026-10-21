@@ -206,7 +206,7 @@ try {
     const chMove = Math.max(Math.abs(n2.people['data-channel-row'].y - n2.companies['data-channel-row'].y), Math.abs(n2.people['data-channel-row'].h - n2.companies['data-channel-row'].h));
     results.n2['1440 across tabs'] = { tabRow: ref['data-sales-tabrow'], subViews: ref['data-sales-subviews'], peopleTabRow: ref['data-channel-row'], peopleFilterRow: ref['data-filter-row'], companiesChannelRow: n2.companies['data-channel-row'], companiesFilterRow: n2.companies['data-filter-row'], tabRowMaxMove: tabMove, subViewsMaxMove: subMove, peopleVsCompaniesRowMove: chMove };
     console.log('N2 1440', JSON.stringify(results.n2['1440 across tabs']));
-    ok(`N2 1440: tab row and sub-view switch at the same x/y on all 5 screens (max move ${tabMove} / ${subMove} px); People's tab strip is the same height as Companies' channel row (strip y differs by ${chMove} px: Focus 5 sits above it)`, tabMove <= 1 && subMove <= 1 && n2.people['data-channel-row'].h === n2.companies['data-channel-row'].h);
+    ok(`N2 1440: tab row and sub-view switch at the same x/y on all 5 screens (max move ${tabMove} / ${subMove} px); People's tab strip is the same height as Companies' channel row (strip y differs by ${chMove} px)`, tabMove <= 1 && subMove <= 1 && n2.people['data-channel-row'].h === n2.companies['data-channel-row'].h);
     await page.locator('tr[data-row]').first().waitFor();
     const d0 = await visibleRows(page);
     ok(`People: 28 px rows, 4 open people shown, no struck-through text, no Done rows, no sideways page scroll`, d0.rowH === 28 && d0.rendered === 4 && d0.struck === 0 && d0.docW <= d0.winW && (await table(page).getByRole('cell', { name: 'Done' }).count()) === 0, JSON.stringify(d0));

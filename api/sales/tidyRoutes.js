@@ -199,3 +199,34 @@ export async function parkSuggestion(supabase, { businessId, userId, id, now = D
 export async function parkSuggestionRoute(req, res) {
   send(res, await parkSuggestion(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, id: req.params.id }));
 }
+
+// POST /goals/suggestions/:id/undo { todo_id? } -> { suggestion }. Back to
+// proposed (sales-ia-v2 A1: the Actions row's Undo); todo_id = the to-do that
+// Accept returned, deleted only while it is still an open Tidy to-do of the
+// caller's. Refused after UNDO_WINDOW_MS.
+export const UNDO_WINDOW_MS = 10 * 60e3;
+export async function undoSuggestion(supabase, { businessId, userId, id, body, now = Date.now() }) {
+  try {
+    if (!UUID.test(id || '')) return reply(404, { error: 'suggestion not found' });
+    const todoId = body?.todo_id ?? null;
+    if (todoId !== null && !UUID.test(todoId)) return reply(400, { error: 'todo_id must be a uuid' });
+    const { data: s, error } = await findRow(supabase, 'sales_suggestions', businessId, id);
+    if (error) throw err(500, error.message);
+    if (!s) return reply(404, { error: 'suggestion not found' });
+    if (s.status === 'proposed') return reply(409, { error: 'still proposed - nothing to undo' });
+    if (!s.decided_at || now - Date.parse(s.decided_at) > UNDO_WINDOW_MS) return reply(409, { error: 'decided too long ago to undo' });
+    if (s.status === 'accepted' && todoId) {
+      must(await supabase.from('sales_week_goals').delete().eq('business_id', businessId).eq('id', todoId).eq('category', TIDY_CATEGORY).eq('status', 'open').eq('created_by', userId));
+    }
+    const rows = must(await supabase.from('sales_suggestions').update({ status: 'proposed', dismissed_until: null, decided_at: null, decided_by: null })
+      .eq('id', s.id).eq('status', s.status).select());
+    if (!rows.length) return reply(409, { error: 'changed since - reload' });
+    return reply(200, { suggestion: rows[0] });
+  } catch (e) {
+    return reply(e.status || 500, { error: e.message });
+  }
+}
+export async function undoSuggestionRoute(req, res) {
+  send(res, await undoSuggestion(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, id: req.params.id, body: req.body }));
+}
+

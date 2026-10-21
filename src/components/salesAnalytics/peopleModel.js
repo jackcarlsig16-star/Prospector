@@ -50,6 +50,11 @@ export const writeSort = s => { try { localStorage.setItem(SORT_KEY, JSON.string
 // whose name matches. null = nothing in the Pipeline yet.
 const norm = s => (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\b(inc|llc|ltd|co|corp|corporation|company)\b/g, '').trim();
 export function companyRowFor(person, boardRows) {
+  // sales-ia-v2 A1: an Actions item names its row outright ({ type, id }).
+  if (person.link?.type && person.link.id) {
+    const row = boardRows.find(r => r.type === person.link.type && r.id === person.link.id);
+    if (row) return row;
+  }
   if (person.opportunity_id) {
     const opp = boardRows.find(r => r.type === 'employer' && r.id === person.opportunity_id);
     if (opp) return opp;

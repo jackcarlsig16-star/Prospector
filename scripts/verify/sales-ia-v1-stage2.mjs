@@ -1,3 +1,4 @@
+// SUPERSEDED (sales-ia-v2 Stage 5): the v1 Today page (Your day / Focus 5 strip / glance / viewer cards) was replaced by the Actions list - do not run.
 // sales-ia-v1 Stage 2 bar 4 - Today (Your day, Focus 5, glance) + the viewer's Today. TEMP data: 1 workspace, 2 temp users (owner, viewer)
 // and one temp to-do, all torn down via tempGuard. HomeLover: READ-ONLY - every GET the Today page makes is answered by calling the real
 // route function for HomeLover with the service key (no HomeLover membership is touched, nothing is written); writes stay in the temp

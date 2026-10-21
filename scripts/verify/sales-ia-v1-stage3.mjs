@@ -1,3 +1,4 @@
+// SUPERSEDED (sales-ia-v2 Stage 5): the v1 Today page (Your day / Focus 5 strip / glance / viewer cards) was replaced by the Actions list - do not run.
 // sales-ia-v1 Stage 3 bar 4 - the quick capture "+" (Task / Note / Idea), keys, phone sheet. TEMP data only: 1 workspace, 2 temp users
 // (owner, viewer), 1 to-do from Task mode, 1 call note + 1 to-do from Note mode, 1 idea in the browser's localStorage; all torn down via
 // tempGuard. HomeLover: never opened, counts read before/after to prove it. 0 Apollo (sync/apollo requests aborted). 0 Claude: the extract

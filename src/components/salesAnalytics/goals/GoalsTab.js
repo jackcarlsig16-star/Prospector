@@ -9,31 +9,25 @@ import useMediaQuery from '../../../utils/useMediaQuery';
 import Segmented from '../../../ui/Segmented';
 import Ring, { RingLegend } from '../charts/Ring';
 import { goalsApi, TODOS_CHANGED } from './goalsApi';
-import { fetchFlags, completeFlag, announceFlagsChanged, FLAGS_CHANGED } from '../huddleApi';
 import ScorecardTable from './ScorecardTable';
 import { todoStatus } from './todoStatus';
 import PartnersView from './PartnersView';
 import CompaniesView from './CompaniesView';
 import PipelineView from './PipelineView';
 import ReportView from './ReportView';
-import GoalHero from './GoalHero';
 import PlanWeekDrawer from './PlanWeekDrawer';
-import { PlanNudge } from './FocusStrip';
-import TodayView, { partsInline } from './TodayView';
-import TodayViewer from './TodayViewer';
-import { yourDaySections, teamToday, topOfList, focusOf, dayTitle } from './todayModel';
-import { buildTaskGroups } from '../tasks/taskGroups';
-import { useLinkOptions } from '../tasks/linkTargets';
-import { linkedTo, isOpenTask, openTasks } from '../tasks/LinkedTasks';
-import { openTargets } from '../tasks/TargetsList';
+import { PlanNudge } from './PlanNudge';
+import ActionsView from './ActionsView';
+import { dayTitle } from './todayModel';
+import { linkedTo, openTasks } from '../tasks/LinkedTasks';
 import { exportWidgetCsv } from '../exportCsv';
 import {
   subStyle, numStyle, Chip, Btn, ErrorNote,
   addDays, monthOf, monthName, weekLabel, weekOf, memberLookup, ownedBy, flashTo,
 } from './goalsUi';
 
-// sales-ia-v1 - the data hub behind Actions (the v1 Today) / Pipeline /
-// Dashboard (the v1 reports). `section` is the tab on screen and `view` its
+// sales-ia-v1 - the data hub behind Actions (sales-ia-v2 A1: ActionsView) /
+// Pipeline / Dashboard (the v1 reports). `section` is the tab on screen and `view` its
 // sub-view (SalesAnalyticsTab owns both, via salesNav.js, and draws the
 // sub-view switch); this renders only that section, with its tools portaled
 // into the frame row (sales-ia-v2 N2). Export = report PDF + 4 CSVs.
@@ -75,12 +69,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const [members, setMembers] = useState([]);
   const [me, setMe] = useState(null);
   const [todos, setTodos] = useState([]);
-  const [flags, setFlags] = useState([]);
   const [partners, setPartners] = useState([]);
-  const [targets, setTargets] = useState([]);
-  const [suggestedCount, setSuggestedCount] = useState(0);
-  const [signalsCount, setSignalsCount] = useState(0);
-  const [waiting, setWaiting] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [cadences, setCadences] = useState([]);
   const [scorecard, setScorecard] = useState(null);
@@ -92,7 +81,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const [companyOwnerFocus, setCompanyOwnerFocus] = useState(null);
   const [allCompanies, setAllCompanies] = useState(null);
   const [missingOpen, setMissingOpen] = useState(false);
-  const [heroKey, setHeroKey] = useState(0);
   const [partnerFocus, setPartnerFocus] = useState(null); // { stage?, tiers?, owner?, ids?, open? } - a link opening Partners filtered
   const [planOpen, setPlanOpen] = useState(false);
   const [plans, setPlans] = useState(null);
@@ -120,10 +108,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
 
   const loadTodos = useCallback(() => goalsApi.weekGoals(businessId, weekStart, weekStart, 'todo')
     .then(g => { setTodos(g); setError('todos', null); }).catch(e => setError('todos', e)), [businessId, weekStart, setError]);
-  // Open flags (the Huddle badge's read; the route pages with selectAllPages
-  // and returns only open flags, so one call is the whole set).
-  const loadFlags = useCallback(() => fetchFlags(businessId)
-    .then(f => { setFlags(f); setError('flags', null); }).catch(e => setError('flags', e)), [businessId, setError]);
   const loadScorecard = useCallback(() => goalsApi.scorecard(businessId, monthOf(weekStart), owner === 'team' ? null : owner)
     .then(d => { setScorecard(d); setError('scorecard', null); }).catch(e => { setScorecard(null); setError('scorecard', e); }), [businessId, weekStart, owner, setError]);
   const loadCompanies = useCallback(() => goalsApi.companies(businessId, weekStart, weekStart)
@@ -136,26 +120,11 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const loadKpi = useCallback(() => goalsApi.kpi(businessId, weekStart)
     .then(r => { setKpiRows(r); setError('kpi', null); }).catch(e => { setKpiRows(null); setError('kpi', e); }), [businessId, weekStart, setError]);
 
-  // call-notes-targets-v1 Stage 2 - the "Targets (n)" chip on Today; promote/reject announce TODOS_CHANGED.
-  const loadTargets = useCallback(() => goalsApi.prospectTargets(businessId).then(setTargets).catch(() => setTargets([])), [businessId]);
-  // Stage 3 - the "Suggested (n)" chip; a Tidy run / accept / dismiss announces TODOS_CHANGED.
-  const loadSuggested = useCallback(() => goalsApi.suggestions(businessId).then(d => setSuggestedCount(d.suggestions.length)).catch(() => setSuggestedCount(0)), [businessId]);
-  // signals-v1 - the "⚡ Signals (n)" chip (status 'new'); import / accept / dismiss announce TODOS_CHANGED.
-  const loadSignals = useCallback(() => goalsApi.signals(businessId).then(rows => setSignalsCount(rows.length)).catch(() => setSignalsCount(0)), [businessId]);
-  // REV5 - "⏳ Waiting on (n)" + the overdue section in Your day; a Got it / Nudge announces TODOS_CHANGED.
-  const loadWaiting = useCallback(() => goalsApi.waitingRows(businessId).then(setWaiting).catch(() => setWaiting([])), [businessId]);
   useEffect(() => { loadTodos(); }, [loadTodos]);
-  useEffect(() => { loadWaiting(); }, [loadWaiting]);
-  useEffect(() => { loadFlags(); }, [loadFlags]);
-  useEffect(() => { loadTargets(); }, [loadTargets]);
-  useEffect(() => { loadSuggested(); }, [loadSuggested]);
-  useEffect(() => { loadSignals(); }, [loadSignals]);
   useEffect(() => {
-    const reload = () => { loadTodos(); loadFlags(); loadTargets(); loadSuggested(); loadSignals(); loadWaiting(); };
-    window.addEventListener(TODOS_CHANGED, reload);
-    window.addEventListener(FLAGS_CHANGED, reload);
-    return () => { window.removeEventListener(TODOS_CHANGED, reload); window.removeEventListener(FLAGS_CHANGED, reload); };
-  }, [loadTodos, loadFlags, loadTargets, loadSuggested, loadSignals, loadWaiting]);
+    window.addEventListener(TODOS_CHANGED, loadTodos);
+    return () => window.removeEventListener(TODOS_CHANGED, loadTodos);
+  }, [loadTodos]);
   useEffect(() => { loadCommitments(); }, [loadCommitments]);
   useEffect(() => { loadReport(); }, [loadReport]);
   useEffect(() => { loadKpi(); }, [loadKpi]);
@@ -199,9 +168,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   // so links into it (and partner/company/goal counts) show for that week only.
   const liveWeek = weekStart === thisWeek;
   const tasksFor = (type, id) => linkedTo(todos, type, id);
-  const heroTasks = liveWeek ? Object.fromEntries(['outbound_audience', 'total_in_sequence', 'partners_first_touched', 'meetings_set', 'real_replies_clicks']
-    .map(k => [k, linkedTo(myTodos, 'metric', k).filter(isOpenTask).length])) : null;
-  const drawerFilter = owner === 'team' ? 'team' : owner === me?.profile?.id ? 'me' : owner;
   const myPartners = partners.filter(p => ownedBy(owner, p.owner_user_id));
   const myCompanies = companies.filter(c => ownedBy(owner, c.sequenced_by));
   const myAllCompanies = allCompanies && allCompanies.filter(c => ownedBy(owner, c.sequenced_by));
@@ -216,62 +182,8 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const myCadences = cadences.filter(c => ownedBy(owner, c.owner_user_id));
   const myCommitments = commitments.filter(c => ownedBy(owner, c.owner_user_id));
 
-  // Today (sales-ia-v1 Stage 2): the same groups the Tasks drawer builds, for
-  // the person on screen; link chip names load only when something is linked.
   const today = laDateString();
   const meId = me?.profile?.id;
-  const groupsFor = filter => buildTaskGroups({ todos, flags, filter, meId, today });
-  // Theirs, not ours: only overdue ones, and never in Overdue / Due today. The tick = Got it.
-  const waitingLate = waiting.filter(w => w.due_date && w.due_date < today).map(w => ({ ...w, st: 'open', text: `${w.waiting_on}: ${w.text}` }));
-  const daySections = [...yourDaySections(meId ? groupsFor(drawerFilter) : [], today, { forMe: drawerFilter === 'me' }),
-    { id: 'waiting', label: 'Waiting on them · overdue', glyph: '⏳', items: waitingLate }];
-  const links = useLinkOptions(businessId, weekStart);
-  const needsLinkNames = section === 'actions' && [...todos, ...flags].some(t => t.link_type && t.link_type !== 'metric');
-  const loadLinks = links.load;
-  useEffect(() => { if (needsLinkNames) loadLinks(); }, [needsLinkNames, loadLinks]);
-  const tickTodo = async (t, done) => {
-    await goalsApi.updateWeekGoal(businessId, t.id, { status: done ? 'done' : 'open' });
-    setToast(done ? `Done: ${t.text}` : `Reopened: ${t.text}`);
-  };
-  const markContacted = async f => {
-    await completeFlag(businessId, f.id);
-    announceFlagsChanged();
-    setToast(`${f.contacts[0] || 'Prospect'} marked contacted · flag closed`);
-  };
-  const toggleFocus = async c => {
-    await goalsApi.updateWeekGoal(businessId, c.id, { status: c.status === 'done' ? 'open' : 'done' });
-    await loadCommitments();
-  };
-  const plannedAt = plans?.find(p => p.week_start === weekStart)?.created_at;
-  const openAllTasks = () => openTasks({ link: null, filter: drawerFilter });
-  const openTargetCount = openTargets(targets).length;
-  const chipStyle = { display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 10px', borderRadius: 999, background: SA.surface2, border: `1px solid ${SA.border}`, fontSize: 12, color: SA.text, cursor: 'pointer', whiteSpace: 'nowrap' };
-  const waitingCount = canEdit ? waiting.length : 0;
-  const todayChips = (openTargetCount > 0 || suggestedCount > 0 || signalsCount > 0 || waitingCount > 0) && (
-    <>
-      {openTargetCount > 0 && (
-        <button type="button" onClick={() => openTasks({ link: null, view: 'targets', filter: drawerFilter })} aria-label={`Targets, ${openTargetCount} open - open the list`} style={chipStyle}>
-          ◎ Targets ({openTargetCount})
-        </button>
-      )}
-      {suggestedCount > 0 && (
-        <button type="button" onClick={() => openTasks({ link: null, view: 'suggested', filter: drawerFilter })} aria-label={`Suggested, ${suggestedCount} from Tidy - open the list`} style={chipStyle}>
-          ✦ Suggested ({suggestedCount})
-        </button>
-      )}
-      {signalsCount > 0 && (
-        <button type="button" onClick={() => openTasks({ link: null, view: 'signals', filter: drawerFilter })} aria-label={`Signals, ${signalsCount} to review - open the list`} style={chipStyle}>
-          ⚡ Signals ({signalsCount})
-        </button>
-      )}
-      {waitingCount > 0 && (
-        <button type="button" onClick={() => openTasks({ link: null, view: 'waiting', filter: drawerFilter })} aria-label={`Waiting on them, ${waitingCount} open - open the list`} style={chipStyle}>
-          ⏳ Waiting on ({waitingCount})
-        </button>
-      )}
-    </>
-  );
-
   // Sequenced: "Companies sequenced by owner" ring (Design C - moved from the rail).
   const ownerParts = [...members.map(m => ({ id: m.user_id, label: lookup(m.user_id).first, count: companies.filter(c => c.sequenced_by === m.user_id).length, color: lookup(m.user_id).color }))];
   const unowned = companies.filter(c => !members.some(m => m.user_id === c.sequenced_by)).length;
@@ -348,9 +260,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
     if (initialTarget) go(initialTarget.target);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialTarget]);
-  // Goal hero cards.
-  const drill = id => go({ audience: 'view:companies', missing: 'missing', in_sequence: 'overview:week_strip', partners: { partners: { stage: 'first_email_sent' } },
-    meetings: 'score:meetings_set', engagement: 'huddle:feed' }[id]);
 
   // CSV exports (REV4 Stage 6) - what's on screen for the selected week and
   // person filter.
@@ -372,23 +281,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
       { key: 'name', label: 'Company' }, { key: 'employees', label: 'Employees' }, { key: 'cohort', label: 'Cohort' },
       { label: 'Sequenced by', value: c => lookup(c.sequenced_by).name }, { key: 'mailbox_email', label: 'Mailbox' }, { key: 'first_sequenced_at', label: 'First email' }]) },
   ];
-
-  // "This week at a glance" (Design F) - the numbers the rail's views list used to carry.
-  const liveTodos = myTodos.filter(t => todoStatus(t) !== 'dropped');
-  const glance = {
-    rows: [
-      { id: 'todos', label: 'To-dos', value: `${liveTodos.filter(t => todoStatus(t) === 'done').length} / ${liveTodos.length}`, title: 'Open Tasks', onOpen: openAllTasks },
-      { id: 'commitments', label: 'Commitments', value: String(myCommitments.filter(c => c.status !== 'dropped').length), title: 'Open the weekly report', onOpen: () => go('view:report') },
-      { id: 'partners', label: 'Partners', value: `${myPartners.length} · ${myPartners.filter(p => p.hot).length} hot`, title: 'Open Pipeline › Partner workflow', onOpen: () => go('view:partners') },
-      { id: 'sequenced', label: 'Companies sequenced', value: owner === 'team' ? partsInline(ownerParts) : String(myCompanies.length), title: 'Open Dashboard › Sequenced', onOpen: () => go('view:companies') },
-    ],
-    onReport: () => go('view:report'),
-  };
-  const hero = (
-    <GoalHero businessId={businessId} weekStart={weekStart} owner={owner} ownerName={owner === 'team' ? null : whoLabel} commitments={myCommitments} missingHeadcount={missingHeadcount} canEdit={canEdit}
-      scorecard={scorecard} scorecardError={errors.scorecard} reloadKey={heroKey} onGoalSaved={() => { loadScorecard(); loadKpi(); }} onDrill={drill}
-      openTasks={heroTasks} onOpenTasks={key => openTasks({ link: { type: 'metric', id: key }, filter: drawerFilter })} />
-  );
 
   // Design C - what the frame row carries per screen (sales-ia-v2 N2: one
   // fixed-height row, portaled into SalesAnalyticsTab's #sales-frame-tools).
@@ -446,21 +338,11 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
       <main style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 24 }}>
         {errors.members && <ErrorNote message={errors.members.message} />}
 
-        {section === 'actions' && me && (canEdit ? <>
-          <PlanNudge week={weekStart} ownerId={planOwner} ownerName={lookup(planOwner).first} plans={plans} onPlan={() => setPlanOpen(true)} />
-          {(errors.todos || errors.flags) && <ErrorNote message={(errors.todos || errors.flags).message} />}
-          <TodayView hero={hero} compact={compact}
-            yourDay={{ sections: daySections, today, lookup, links, teamView: owner === 'team', canEdit, onDone: tickTodo, onContacted: markContacted, onAllTasks: openAllTasks, chips: todayChips }}
-            focus={{ items: focusOf(commitments, planOwner), ownerName: owner === 'team' ? lookup(planOwner).first : null, canEdit, onToggle: toggleFocus, onEdit: () => setPlanOpen(true), onPlan: () => setPlanOpen(true),
-              plannedAt: plannedAt && new Date(plannedAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) }}
-            glance={glance} />
-        </> : (
-          <TodayViewer businessId={businessId} hero={hero} compact={compact} weekStart={weekStart} members={members} lookup={lookup} links={links} today={today} partners={partners} commitments={commitments}
-            team={teamToday(members, groupsFor, today)} top={topOfList(groupsFor('team'), today)} glance={glance}
-            onOpenReport={w => { setWeekStart(w); onNav('dashboard', 'weekly'); }}
-            onDownload={w => { setWeekStart(w); onNav('dashboard', 'weekly'); setTimeout(() => window.print(), 400); }}
-            onPipeline={() => go('view:pipeline')} />
-        ))}
+        {section === 'actions' && me && <>
+          {canEdit && <PlanNudge week={weekStart} ownerId={planOwner} ownerName={lookup(planOwner).first} plans={plans} onPlan={() => setPlanOpen(true)} />}
+          <ActionsView businessId={businessId} canEdit={canEdit} meId={meId} members={members} lookup={lookup} onPlan={planOwner ? () => setPlanOpen(true) : null}
+            onOpenFull={row => go(row.type === 'partner' ? { partners: { ids: [row.id], open: row.id, label: row.name } } : 'view:pipeline')} />
+        </>}
 
         {section === 'dashboard' && view === 'weekly' && (
           <ReportView weekStart={weekStart} report={reportData?.report} reportError={errors.report} sections={reportData?.sections} infra={reportData?.infra}
@@ -473,7 +355,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
             onAddCommitment={async body => { await goalsApi.createWeekGoal(businessId, { ...body, kind: 'commitment', week_start: weekStart }); await Promise.all([loadCommitments(), loadReport()]); return true; }}
             onUpdateCommitment={async (goalId, body) => { await goalsApi.updateWeekGoal(businessId, goalId, body); await loadCommitments(); }}
             onCarryCommitments={async () => { const r = await goalsApi.carryOver(businessId, weekStart, 'commitment'); await Promise.all([loadCommitments(), loadReport()]); return r; }}
-            onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await Promise.all([loadKpi(), loadScorecard()]); setHeroKey(k => k + 1); }}
+            onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await Promise.all([loadKpi(), loadScorecard()]); }}
             onPlanWeek={canEdit && planOwner ? () => setPlanOpen(true) : null}
             infraHandlers={{
               onAdd: async body => { await goalsApi.createInfra(businessId, { ...body, week_start: weekStart }); await loadReport(); return true; },
@@ -486,7 +368,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
         {section === 'dashboard' && view === 'scorecard' && (
           <ScorecardTable data={scorecard} error={errors.scorecard} weekStart={weekStart} ownerName={owner === 'team' ? null : whoLabel} canEdit={canEdit} onOpen={go}
             missingHeadcount={missingHeadcount} onFillHeadcount={openMissing}
-            onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await loadScorecard(); setHeroKey(k => k + 1); }} />
+            onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await loadScorecard(); }} />
         )}
 
         {section === 'dashboard' && view === 'analytics' && analytics}

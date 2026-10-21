@@ -152,6 +152,56 @@ export async function dismissSignalRoute(req, res) {
 
 // POST /goals/signals/scout-import { file: { name, data: base64 }, dryRun }
 // Member+ (salesGate). Anything but dryRun: false is a preview: nothing written.
+// POST /goals/signals/:id/undo -> { signal }. Puts a just-decided signal back
+// to 'new' (sales-ia-v2 A1: the Actions row's Undo). Accept's writes come off
+// in reverse: the to-do, then the target it made / the partner's note event /
+// the employer's notes line; the import-time match hint is gone, so match
+// goes back to null (the next Accept recomputes it). Refused after UNDO_WINDOW_MS.
+export const UNDO_WINDOW_MS = 10 * 60e3;
+export async function undoSignal(supabase, { businessId, id, now = new Date() }) {
+  try {
+    if (!UUID.test(id || '')) return reply(404, { error: 'signal not found' });
+    const { data: s, error } = await findRow(supabase, 'sales_signals', businessId, id);
+    if (error) throw err(500, error.message);
+    if (!s) return reply(404, { error: 'signal not found' });
+    if (s.status === 'new') return reply(409, { error: `${s.company_name} is still new - nothing to undo` });
+    if (!s.decided_at || now - Date.parse(s.decided_at) > UNDO_WINDOW_MS) return reply(409, { error: `${s.company_name} was decided too long ago to undo` });
+    if (s.status === 'accepted') {
+      if (s.todo_id) must(await supabase.from('sales_week_goals').delete().eq('business_id', businessId).eq('id', s.todo_id).eq('status', 'open'));
+      const via = s.match?.via;
+      if (via === 'new_target' && s.target_id) {
+        must(await supabase.from('sales_week_goals').update({ link_type: null, link_id: null }).eq('business_id', businessId).eq('link_type', 'target').eq('link_id', s.target_id));
+        must(await supabase.from('sales_targets').delete().eq('business_id', businessId).eq('id', s.target_id).eq('signal_id', s.id));
+      } else if (via === 'partner' && s.match?.id) {
+        const events = must(await supabase.from('sales_partner_events').select('id, meta').eq('business_id', businessId).eq('goal_id', s.match.id).eq('event', 'note'));
+        const mine = events.filter(e => e.meta?.from_signal_id === s.id).map(e => e.id);
+        if (mine.length) must(await supabase.from('sales_partner_events').delete().in('id', mine));
+      } else if (via === 'employer' && s.match?.id) {
+        const opp = must(await supabase.from('sales_opportunities').select('id, notes').eq('business_id', businessId).eq('id', s.match.id).maybeSingle());
+        const stamp = slash(laDateString(new Date(s.decided_at)));
+        const detail = [s.signal, s.why_now && `Why now: ${s.why_now}`].filter(Boolean).join(' · ') || s.company_name;
+        const line = `(${stamp}) Signal: ${detail}`;
+        if (opp && opp.notes) {
+          const lines = opp.notes.split('\n');
+          const at = lines.lastIndexOf(line);
+          if (at >= 0) { lines.splice(at, 1); must(await supabase.from('sales_opportunities').update({ notes: lines.join('\n') || null, updated_at: now.toISOString() }).eq('id', opp.id).eq('notes', opp.notes)); }
+        }
+      }
+    }
+    const rows = must(await supabase.from('sales_signals').update({
+      status: 'new', dismissed_until: null, decided_by: null, decided_at: null, target_id: null, todo_id: null, match: null, updated_at: now.toISOString(),
+    }).eq('id', s.id).eq('status', s.status).select(COLS));
+    if (!rows.length) return reply(409, { error: `${s.company_name} changed since - reload` });
+    return reply(200, { signal: rows[0] });
+  } catch (e) {
+    if (!e.status || e.status >= 500) console.error('[signals/undo]', e.message);
+    return reply(e.status || 500, { error: e.message });
+  }
+}
+export async function undoSignalRoute(req, res) {
+  send(res, await undoSignal(getSupabase(), { businessId: req.params.businessId, id: req.params.id }));
+}
+
 export async function scoutImportRoute(req, res) {
   const { file, dryRun } = req.body || {};
   try {

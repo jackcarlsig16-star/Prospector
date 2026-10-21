@@ -34,7 +34,7 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
     if (res.status === 500 && MIGRATION_PATTERN.test(data.error || '')) throw new NeedsMigrationError();
     throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   }
-  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/(partners|company\/[a-z]+)\/.+\/apollo-check$|^\/company\/add-to-pipeline$|^\/suggestions\/.+\/(accept|dismiss|snooze)$|^\/signals\/(scout-import|.+\/(accept|dismiss))$|^\/visits\/pull$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
+  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/(partners|company\/[a-z]+)\/.+\/apollo-check$|^\/company\/add-to-pipeline$|^\/suggestions\/.+\/(accept|dismiss|snooze|undo)$|^\/signals\/(scout-import|.+\/(accept|dismiss|undo))$|^\/visits\/pull$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
 }
 
@@ -69,12 +69,19 @@ export const goalsApi = {
   runTidy: (id, { force = false, trigger = 'manual' } = {}) => call(id, '/tidy/run', { method: 'POST', body: { force, trigger } }),
   acceptSuggestion: (id, sid) => call(id, `/suggestions/${sid}/accept`, { method: 'POST', body: {} }),
   dismissSuggestion: (id, sid) => call(id, `/suggestions/${sid}/dismiss`, { method: 'POST', body: {} }),
+  snoozeSuggestion: (id, sid) => call(id, `/suggestions/${sid}/snooze`, { method: 'POST', body: {} }),
+  // sales-ia-v2 A1 - back to proposed within 10 min; todo_id = the to-do Accept returned (deleted if still open).
+  undoSuggestion: (id, sid, todoId) => call(id, `/suggestions/${sid}/undo`, { method: 'POST', body: todoId ? { todo_id: todoId } : {} }),
   // signals-v1 Stage 2 - the Signals review queue. scoutImport: dryRun = preview, nothing written.
   // accept = { signal, todo, via, record }; dismiss parks the company 7 days. 0 AI, 0 Apollo.
   signals: (id, status = 'new') => call(id, `/signals?${q({ status })}`).then(d => d.signals),
   scoutImport: (id, file, dryRun) => call(id, '/signals/scout-import', { method: 'POST', body: { file, dryRun } }),
   acceptSignal: (id, sid) => call(id, `/signals/${sid}/accept`, { method: 'POST', body: {} }),
   dismissSignal: (id, sid) => call(id, `/signals/${sid}/dismiss`, { method: 'POST', body: {} }),
+  // sales-ia-v2 A1 - a just-accepted / dismissed signal back to new (its to-do, target or note come off too).
+  undoSignal: (id, sid) => call(id, `/signals/${sid}/undo`, { method: 'POST', body: {} }),
+  // sales-ia-v2 A1 - the Actions list: { items, today, week_start }; items ranked overdue -> P1..P4 -> due. 0 AI, 0 Apollo.
+  actions: id => call(id, '/actions'),
   // signals-v1 Stage 4 - the daily website-visitor pull (Members) and its status (Viewers too).
   visitPull: (id, { force = false, trigger = 'manual' } = {}) => call(id, '/visits/pull', { method: 'POST', body: { force, trigger } }),
   visitStatus: id => call(id, '/visits/status'),
