@@ -590,6 +590,7 @@ app.post('/api/sales/:businessId/flags/:goalId/complete', salesModuleRoute('./ap
 app.post('/api/sales/:businessId/huddles', salesModuleRoute('./api/sales/huddleRoutes.js', 'startHuddleRoute', 'huddles'));
 app.patch('/api/sales/:businessId/prospects/:contactId', salesModuleRoute('./api/sales/huddleRoutes.js', 'updateProspectRoute', 'prospects/:contactId'));
 app.post('/api/sales/:businessId/prospects/:contactId/pipeline', salesModuleRoute('./api/sales/huddleRoutes.js', 'addToPipelineRoute', 'prospects/:contactId/pipeline'));
+app.post('/api/sales/:businessId/prospects/:contactId/unlink', salesModuleRoute('./api/sales/prospectLinks.js', 'unlinkProspectRoute', 'prospects/:contactId/unlink POST'));
 app.get('/api/sales/:businessId/collateral', salesModuleRoute('./api/sales/huddleRoutes.js', 'listCollateralRoute', 'collateral'));
 app.post('/api/sales/:businessId/collateral', salesModuleRoute('./api/sales/huddleRoutes.js', 'createCollateralRoute', 'collateral POST'));
 app.patch('/api/sales/:businessId/collateral/:id', salesModuleRoute('./api/sales/huddleRoutes.js', 'updateCollateralRoute', 'collateral/:id'));
@@ -660,6 +661,10 @@ app.post('/api/sales/:businessId/goals/company/add-to-pipeline', salesModuleRout
 app.post('/api/sales/:businessId/goals/company/:type/:id/note', salesModuleRoute('./api/sales/companyPanel.js', 'addNoteRoute', 'goals/company/:type/:id/note POST'));
 app.post('/api/sales/:businessId/goals/company/:type/:id/contact', salesModuleRoute('./api/sales/companyPanel.js', 'addContactRoute', 'goals/company/:type/:id/contact POST'));
 app.patch('/api/sales/:businessId/goals/company/target/:id', salesModuleRoute('./api/sales/companyPanel.js', 'updateTargetRoute', 'goals/company/target/:id PATCH'));
+// company-panel-v2 Stage 2 - the Interest band's buttons.
+app.post('/api/sales/:businessId/goals/company/:type/:id/book-meeting', salesModuleRoute('./api/sales/companyPanel.js', 'bookMeetingRoute', 'goals/company/:type/:id/book-meeting POST'));
+app.post('/api/sales/:businessId/goals/company/:type/:id/contacted', salesModuleRoute('./api/sales/companyPanel.js', 'markContactedRoute', 'goals/company/:type/:id/contacted POST'));
+app.post('/api/sales/:businessId/goals/company/:type/:id/not-now', salesModuleRoute('./api/sales/companyPanel.js', 'notNowRoute', 'goals/company/:type/:id/not-now POST'));
 app.get('/api/sales/:businessId/goals/company/:type/:id/research', salesModuleRoute('./api/sales/partnerResearch.js', 'listCompanyResearchRoute', 'goals/company/:type/:id/research'));
 app.post('/api/sales/:businessId/goals/company/:type/:id/research', aiLimit, salesModuleRoute('./api/sales/partnerResearch.js', 'runCompanyResearchRoute', 'goals/company/:type/:id/research POST'));
 app.post('/api/sales/:businessId/goals/company/:type/:id/apollo-check', salesModuleRoute('./api/sales/partnerApolloCheck.js', 'checkCompanyApolloRoute', 'goals/company/:type/:id/apollo-check POST'));

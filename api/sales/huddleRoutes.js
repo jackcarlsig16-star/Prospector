@@ -209,7 +209,7 @@ export async function addToPipelineRoute(req, res) {
   }
 
   const link = async opportunityId => supabase.from('sales_prospect_state')
-    .update({ opportunity_id: opportunityId, updated_by: req.auth.user.email, updated_at: new Date().toISOString() })
+    .update({ opportunity_id: opportunityId, opportunity_link_via: 'pipeline', updated_by: req.auth.user.email, updated_at: new Date().toISOString() })
     .eq('business_id', businessId).eq('contact_id', contactId).select().single();
 
   let found;

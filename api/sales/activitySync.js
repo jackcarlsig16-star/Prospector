@@ -1,4 +1,5 @@
 import { apolloRequest, CallCapError } from './apolloClient.js';
+import { loadLinkIndex, linkPatch, LINK_COLUMNS } from './prospectLinks.js';
 
 // sales-hot-prospects-v1 Stage 2. Values decided by Jack 2026-10-01 after
 // the Stage 1 discovery. The date filter is on DELIVERY date (Apollo's own
@@ -216,21 +217,29 @@ export async function syncActivity({ ctx, supabase, businessId }) {
   }
 
   const contactIds = [...contacts.keys()];
-  const existingContacts = new Set();
+  const existingContacts = new Map();
   for (const ids of chunk(contactIds, 150)) {
     const { data, error } = await supabase
       .from('sales_prospect_state')
-      .select('contact_id')
+      .select(`contact_id, ${LINK_COLUMNS.join(', ')}`)
       .eq('business_id', businessId)
       .in('contact_id', ids);
     if (error) throw new Error(`activity: read prospects failed: ${error.message}`);
-    for (const r of data) existingContacts.add(r.contact_id);
+    for (const r of data) existingContacts.set(r.contact_id, r);
   }
+  // company-panel-v2 D1: every row carries its company links (fill-only - a
+  // link already there, 'manual' or 'pipeline', is passed back unchanged so
+  // one upsert batch keeps uniform columns).
+  const linkIndex = contactIds.length ? await loadLinkIndex(supabase, businessId) : null;
+  const withLinks = (snapshot, current) => {
+    const person = { ...Object.fromEntries(LINK_COLUMNS.map(k => [k, current?.[k] ?? null])), ...snapshot };
+    return { ...person, ...linkPatch(person, linkIndex) };
+  };
   // Existing rows get the snapshot columns only, so the huddle-owned fields
   // (owner, status, next action, notes) are never touched by a sync.
   const newProspects = contactIds.filter(id => !existingContacts.has(id))
-    .map(id => ({ ...contacts.get(id).snapshot, owner: contacts.get(id).owner }));
-  const snapshotUpdates = contactIds.filter(id => existingContacts.has(id)).map(id => contacts.get(id).snapshot);
+    .map(id => ({ ...withLinks(contacts.get(id).snapshot, null), owner: contacts.get(id).owner }));
+  const snapshotUpdates = contactIds.filter(id => existingContacts.has(id)).map(id => withLinks(contacts.get(id).snapshot, existingContacts.get(id)));
   for (const part of chunk(newProspects, 500)) {
     const { error } = await supabase.from('sales_prospect_state').insert(part);
     if (error) throw new Error(`activity: insert prospects failed: ${error.message}`);

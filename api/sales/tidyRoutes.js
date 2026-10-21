@@ -1,8 +1,9 @@
-import { getSupabase, findRow, weekIsFinal, FINAL_ERROR, addDays } from './goalsShared.js';
+import { getSupabase, findRow, weekIsFinal, FINAL_ERROR, addDays, laMonday } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
 import { openFlagRows } from './huddleFlags.js';
 import { runRules, keyOf, DUE_DAYS, TOUCH_WINDOW_DAYS } from './tidyRules.js';
+import { personSignals, INTEREST_DAYS } from './interestSignals.js';
 import { nudgeText } from './waitingRoutes.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
 
@@ -25,12 +26,12 @@ const must = r => { if (r.error) throw err(500, r.error.message); return r.data;
 const reply = (status, body) => ({ status, body });
 const send = (res, r) => res.status(r.status).json(r.body);
 const cut = (s, max = 400) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
-const laMonday = today => addDays(today, -((new Date(`${today}T12:00:00Z`).getUTCDay() + 6) % 7));
 
 export async function loadTidyContext(supabase, businessId, now = Date.now()) {
   const all = (table, cols, narrow = q => q) => selectAllPages(() => narrow(supabase.from(table).select(cols).eq('business_id', businessId)).order('id'));
   const since = new Date(now - TOUCH_WINDOW_DAYS * DAY).toISOString();
-  const [partners, targets, todos, waiting, events, domains, suggestions, rawVisits, overrides, opportunities] = await Promise.all([
+  const interestSince = new Date(now - INTEREST_DAYS * DAY).toISOString();
+  const [partners, targets, todos, waiting, events, domains, suggestions, rawVisits, overrides, opportunities, prospects, messages, emailEvents] = await Promise.all([
     all('sales_goals', 'id, name, pipeline_status, last_touch_at, snoozed_until, owner_team, co_owner_name, no_double_touch', q => q.eq('goal_type', 'partnership').is('archived_at', null)),
     all('sales_targets', 'id, name, status, research_notes, created_at'),
     all('sales_week_goals', 'id, text, status, due_date, link_type, link_id, created_at, prospect_contact_id, contacts, carried_from_id', q => q.eq('kind', 'todo')),
@@ -41,10 +42,21 @@ export async function loadTidyContext(supabase, businessId, now = Date.now()) {
     all('web_visits', 'id, company_key, matched_id, last_visit, visits_7d, priority, pulled_on', q => q.eq('matched_type', 'partner').gte('pulled_on', addDays(laDateString(new Date(now)), -7))),
     loadOverrides(supabase, businessId),
     all('sales_opportunities', 'id, organization', q => q.is('archived_at', null)),
+    // company-panel-v2 D7: linked people and their last 14 days of email events (never email or phone columns).
+    all('sales_prospect_state', 'contact_id, name, goal_id, opportunity_id'),
+    all('sales_email_messages', 'apollo_message_id, contact_id, step, delivered_at, replied, replied_at, replied_seen_at'),
+    all('sales_email_activity', 'id, apollo_message_id, contact_id, step, event, occurred_at, user_agent, tracking_service', q => q.in('event', ['open', 'click', 'reply']).gte('occurred_at', interestSince)),
   ]);
+  const signals = personSignals({ messages, events: emailEvents, now });
+  const interest = prospects.filter(p => p.goal_id || p.opportunity_id).flatMap(p => {
+    const s = signals.get(p.contact_id)?.strongest;
+    if (!s || !s.id) return [];
+    const ref = p.goal_id ? ['partner', p.goal_id] : ['opportunity', p.opportunity_id];
+    return [{ ref_type: ref[0], ref_id: ref[1], contact_id: p.contact_id, name: p.name, signal: s }];
+  });
   // P1/P2 after a person's override (sales-ia-v2 P3), not the pull's own score.
   const hot = rawVisits.map(v => effectiveVisit(v, overrides.get(v.company_key))).filter(v => v.priority === 'P1' || v.priority === 'P2');
-  return { now, today: laDateString(new Date(now)), partners, targets, todos, waiting, flags: openFlagRows(todos.filter(t => t.prospect_contact_id)), events, domains, suggestions, visits: hot, opportunities };
+  return { now, today: laDateString(new Date(now)), partners, targets, todos, waiting, flags: openFlagRows(todos.filter(t => t.prospect_contact_id)), events, domains, suggestions, visits: hot, opportunities, interest };
 }
 
 // Keys a run must not propose again: still proposed, parked, or accepted recently.
@@ -137,7 +149,7 @@ export async function todoFor(supabase, businessId, s, today) {
   const due = DUE_DAYS[s.kind];
   if (due == null) return null;
   let link = null;
-  if (s.ref_type === 'partner' || s.ref_type === 'target') link = [s.ref_type, s.ref_id];
+  if (['partner', 'target', 'opportunity'].includes(s.ref_type)) link = [s.ref_type, s.ref_id];
   else if (s.ref_type === 'todo' || s.ref_type === 'flag') {
     const { data } = await supabase.from('sales_week_goals').select('link_type, link_id, text, waiting_on').eq('business_id', businessId).eq('id', s.ref_id).maybeSingle();
     if (data?.link_type) link = [data.link_type, data.link_id];

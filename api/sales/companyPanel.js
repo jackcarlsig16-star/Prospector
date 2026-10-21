@@ -1,4 +1,5 @@
-import { getSupabase } from './goalsShared.js';
+import { getSupabase, addDays, laMonday, weekIsFinal, FINAL_ERROR } from './goalsShared.js';
+import { selectAllPages } from '../lib/selectAllPages.js';
 import { cleanText } from './scrubText.js';
 import { laDateString } from './laDate.js';
 import { normName } from './intakeMatch.js';
@@ -9,6 +10,8 @@ import { listRuns, runsToday, RERUN_CAP_PER_DAY } from './partnerResearch.js';
 import { hasPii } from './targetsRoutes.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
 import { OWNER_TEAMS } from '../../src/constants/ownership.js';
+import { TOUCH_TYPE_IDS } from '../../src/constants/partnerPipeline.js';
+import { personSignals, byStrength, signalText, INTEREST_DAYS, TIMELINE_DAYS } from './interestSignals.js';
 
 // sales-ia-v2 P4 - one side panel for every Pipeline row type. GET
 // goals/company?type=&id= returns the body sections (to-dos, waiting on them,
@@ -24,6 +27,12 @@ export const PANEL_TYPES = ['partner', 'employer', 'target', 'apollo', 'visitor'
 export const ADD_FROM = ['visitor', 'apollo'];
 export const ADD_TO = ['target', 'partner', 'employer'];
 const RECORD_TYPES = ['partner', 'employer', 'target'];
+const REF_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target' };
+const PROSPECT_COLS = 'contact_id, name, title, company, linkedin_url, status, owner, goal_id, opportunity_id';
+const VISIT_WEEK_DAYS = 7;
+const NOT_NOW_DAYS = 7;
+const DISMISS_DAYS = 90;
+const PEOPLE_LINE = /^(People|Person): /;
 const LINK_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target', apollo: 'company' };
 const VISIT_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target' };
 const TARGET_STATUSES = ['proposed', 'researching'];
@@ -107,16 +116,131 @@ async function recentFor(supabase, businessId, record) {
   return [];
 }
 
-async function peopleFor(supabase, businessId, record) {
+// company-panel-v2 D4 - the people behind a record, never with an email or a
+// phone: partners = partner_contacts plus the prospects D1 linked (deduped by
+// name, the prospect carries the signal); employers = linked prospects (+ the
+// champion); targets = the People lines in research_notes; Apollo-only =
+// prospects whose company is the account's name (read-time, exact, no link
+// stored); visitors = nobody.
+async function prospectsFor(supabase, businessId, record) {
+  const base = () => supabase.from('sales_prospect_state').select(PROSPECT_COLS).eq('business_id', businessId);
+  if (record.type === 'partner') return must(await base().eq('goal_id', record.id).order('contact_id').limit(200));
+  if (record.type === 'employer') return must(await base().eq('opportunity_id', record.id).order('contact_id').limit(200));
+  if (record.type === 'apollo') { const key = normName(record.name); return key ? (await selectAllPages(() => base().order('contact_id'))).filter(p => normName(p.company) === key) : []; }
+  return [];
+}
+
+// The email rows behind a set of people (last TIMELINE_DAYS of events).
+async function emailFor(supabase, businessId, contactIds, now) {
+  if (!contactIds.length) return { messages: [], events: [] };
+  const since = new Date(now.getTime() - TIMELINE_DAYS * 864e5).toISOString();
+  const [messages, events] = await Promise.all([
+    selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id, contact_id, step, delivered_at, replied, replied_at, replied_seen_at, reply_class').eq('business_id', businessId).in('contact_id', contactIds).order('apollo_message_id')),
+    selectAllPages(() => supabase.from('sales_email_activity').select('id, apollo_message_id, contact_id, step, event, occurred_at, user_agent, tracking_service').eq('business_id', businessId).in('contact_id', contactIds).in('event', ['open', 'click', 'reply']).gte('occurred_at', since).order('id')),
+  ]);
+  return { messages, events };
+}
+
+const personOut = p => ({ id: `p:${p.contact_id}`, contact_id: p.contact_id, name: cleanText(p.name, 120) || 'Unnamed', title: p.title ? cleanText(p.title, 160) : null, linkedin_url: p.linkedin_url || null, source: 'apollo', status: p.status || null, signal: null });
+const peopleSort = (a, b) => (a.signal && b.signal ? byStrength(a.signal, b.signal) : a.signal ? -1 : b.signal ? 1 : a.name.localeCompare(b.name));
+
+async function peopleFor(supabase, businessId, record, prospects, signals) {
+  const withSignal = rows => rows.map(p => { const s = p.contact_id ? signals.get(p.contact_id)?.strongest : null; return { ...p, signal: s ? { kind: s.kind, count: s.count, step: s.step, at: s.at, text: signalText(s) } : null }; });
   if (record.type === 'partner') {
-    const rows = must(await supabase.from('partner_contacts').select('id, name, title, linkedin_url, source').eq('business_id', businessId).eq('goal_id', record.id).order('name').limit(50));
-    return rows.map(p => ({ id: p.id, name: cleanText(p.name, 120), title: p.title ? cleanText(p.title, 160) : null, linkedin_url: p.linkedin_url || null, source: p.source }));
+    const contacts = must(await supabase.from('partner_contacts').select('id, name, title, linkedin_url, source, apollo_contact_id').eq('business_id', businessId).eq('goal_id', record.id).order('name').limit(50));
+    const rows = contacts.map(c => ({ id: c.id, contact_id: c.apollo_contact_id || null, name: cleanText(c.name, 120), title: c.title ? cleanText(c.title, 160) : null, linkedin_url: c.linkedin_url || null, source: c.source, status: null, signal: null }));
+    const byName = new Map(rows.map(r => [normName(r.name), r]));
+    for (const p of prospects.map(personOut)) {
+      const hit = byName.get(normName(p.name));
+      if (hit) { hit.contact_id = hit.contact_id || p.contact_id; hit.title = hit.title || p.title; hit.linkedin_url = hit.linkedin_url || p.linkedin_url; hit.status = p.status; }
+      else { rows.push(p); byName.set(normName(p.name), p); }
+    }
+    return withSignal(rows).sort(peopleSort);
   }
   if (record.type === 'employer') {
-    const lines = (record.decision_makers || '').split('\n').map(l => cleanText(l, 200)).filter(Boolean).map((name, i) => ({ id: `dm${i}`, name, title: null, linkedin_url: null, source: 'notes' }));
-    return record.champion ? [{ id: 'champion', name: cleanText(record.champion, 200), title: 'Champion', linkedin_url: null, source: 'notes' }, ...lines] : lines;
+    const rows = withSignal(prospects.map(personOut));
+    if (record.champion) rows.push({ id: 'champion', contact_id: null, name: cleanText(record.champion, 200), title: 'Champion', linkedin_url: null, source: 'notes', status: null, signal: null });
+    return rows.sort(peopleSort);
   }
+  if (record.type === 'target') {
+    return (record.research_notes || '').split('\n').filter(l => PEOPLE_LINE.test(l)).map((l, i) => ({ id: `t${i}`, contact_id: null, name: cleanText(l.replace(PEOPLE_LINE, ''), 200), title: null, linkedin_url: null, source: 'notes', status: null, signal: null }));
+  }
+  if (record.type === 'apollo') return withSignal(prospects.map(personOut)).sort(peopleSort);
   return [];
+}
+
+// L3: the band's items, strongest first (reply > click > 2+ opens > visits).
+// L6: the merged Signals & visits rows, newest first. dismissed = a Not now
+// on the newest signal (sales_suggestions, kind interest_follow_up, dismissed)
+// hides the band until a newer signal arrives.
+async function interestFor(supabase, businessId, record, { people, signals, timelineSignals, visits, scoutSignals, now }) {
+  const nameOf = new Map(people.filter(p => p.contact_id).map(p => [p.contact_id, p.name]));
+  const since = new Date(now.getTime() - INTEREST_DAYS * 864e5).toISOString();
+  const today = laDateString(now);
+  const items = [];
+  for (const [contactId, s] of signals) {
+    if (!s.strongest || !nameOf.has(contactId)) continue;
+    items.push({ ...s.strongest, person: { contact_id: contactId, name: nameOf.get(contactId) }, text: `${nameOf.get(contactId)} ${signalText(s.strongest)}` });
+  }
+  const latestVisit = visits.find(v => (v.last_visit || v.pulled_on) >= addDays(today, -VISIT_WEEK_DAYS));
+  if (latestVisit) items.push({ kind: 'visit', count: latestVisit.visits_7d ?? null, step: null, at: latestVisit.last_visit || latestVisit.pulled_on, id: latestVisit.id, person: null, top_paths: latestVisit.top_paths, text: `${latestVisit.visits_7d ?? '?'} site visits this week${latestVisit.top_paths?.length ? ` · ${latestVisit.top_paths.slice(0, 3).join(', ')}` : ''}` });
+  items.sort(byStrength);
+  // "Newer signal" means any reply, click, second open or visit - not only each person's strongest.
+  const dayEnd = at => (at && at.length === 10 ? `${at}T23:59:59Z` : at || '');
+  const every = [...items.filter(i => i.kind === 'visit')];
+  for (const [contactId, s] of signals) if (nameOf.has(contactId)) every.push(...s.replies, ...s.clicks, ...(s.opens.length >= 2 ? s.opens : []));
+  const newest = every.filter(e => e.id).sort((a, b) => dayEnd(b.at).localeCompare(dayEnd(a.at)))[0] || null;
+  let dismissed = false;
+  if (newest?.id && REF_TYPE[record.type]) {
+    const rows = must(await supabase.from('sales_suggestions').select('id, ref_id2, status').eq('business_id', businessId).eq('kind', 'interest_follow_up').eq('ref_type', REF_TYPE[record.type]).eq('ref_id', record.id).eq('status', 'dismissed').limit(200));
+    dismissed = rows.some(r => r.ref_id2 === newest.id);
+  }
+  const timeline = [];
+  for (const [contactId, s] of timelineSignals) {
+    const person = nameOf.has(contactId) ? { contact_id: contactId, name: nameOf.get(contactId) } : null;
+    if (!person) continue;
+    for (const r of s.replies) timeline.push({ id: r.id, kind: 'replied', at: r.at, step: r.step, person, count: null, text: `${person.name} replied${r.step != null ? ` to Step ${r.step}` : ''}` });
+    for (const c of s.clicks) timeline.push({ id: c.id, kind: 'clicked', at: c.at, step: c.step, person, count: null, text: `${person.name} clicked${c.step != null ? ` Step ${c.step}` : ''}` });
+    const byMsg = new Map();
+    for (const o of s.opens) { const g = byMsg.get(o.message_id) || { ...o, count: 0 }; g.count++; if (o.at > g.at) { g.at = o.at; g.id = o.id; } byMsg.set(o.message_id, g); }
+    for (const o of byMsg.values()) timeline.push({ id: o.id, kind: 'opened', at: o.at, step: o.step, person, count: o.count, text: `${person.name} opened${o.step != null ? ` Step ${o.step}` : ''}${o.count > 1 ? ` ×${o.count}` : ''}` });
+  }
+  for (const v of visits) timeline.push({ id: v.id, kind: 'visited', at: v.last_visit || v.pulled_on, step: null, person: null, count: v.visits_7d ?? null, text: `Visited${v.visits_7d != null ? ` · ${v.visits_7d} in 7 days` : ''}${v.top_paths?.length ? ` · ${v.top_paths.slice(0, 3).join(', ')}` : ''}`, top_paths: v.top_paths });
+  for (const g of scoutSignals) timeline.push({ id: g.id, kind: 'signal', at: g.created_at, step: null, person: null, count: null, text: g.signal, status: g.status, source: g.source });
+  timeline.sort((a, b) => dayEnd(b.at).localeCompare(dayEnd(a.at)));
+  return { interest: { items, strongest: items[0] || null, newest_id: newest?.id || null, since, dismissed, show: items.length > 0 && !dismissed }, timeline: timeline.slice(0, 40) };
+}
+
+// L2: Last touch as the facts row shows it.
+async function lastTouchFor(supabase, businessId, record) {
+  if (record.type === 'partner') {
+    if (!record.last_touch_at) return null;
+    const ev = must(await supabase.from('sales_partner_events').select('touch_type, at').eq('business_id', businessId).eq('goal_id', record.id).eq('event', 'touch').order('at', { ascending: false }).limit(1));
+    return { at: record.last_touch_at, touch_type: ev[0]?.touch_type || null };
+  }
+  if (record.type === 'employer') {
+    const [ev, done] = await Promise.all([
+      supabase.from('sales_opportunity_events').select('changed_at').eq('business_id', businessId).eq('opportunity_id', record.id).neq('event_type', 'created').order('changed_at', { ascending: false }).limit(1).then(must),
+      supabase.from('sales_week_goals').select('completed_at').eq('business_id', businessId).eq('kind', 'todo').eq('link_type', 'opportunity').eq('link_id', record.id).eq('status', 'done').order('completed_at', { ascending: false }).limit(1).then(must),
+    ]);
+    const stage = ev[0]?.changed_at || null, todo = done[0]?.completed_at || null;
+    if (!stage && !todo) return null;
+    return todo && (!stage || todo > stage) ? { at: todo, touch_type: 'done' } : { at: stage, touch_type: 'stage' };
+  }
+  return null;
+}
+
+// L1 / L6 Intel: the site the window links to and whether a person confirmed it.
+async function siteFor(supabase, businessId, record, research) {
+  if (record.type === 'partner') {
+    const rows = must(await supabase.from('partner_domains').select('domain, is_primary').eq('business_id', businessId).eq('goal_id', record.id).eq('confirmed', true).limit(20));
+    const primary = rows.find(r => r.is_primary) || rows[0];
+    if (primary) return { domain: primary.domain, confirmed: true };
+  }
+  const done = research?.runs?.find(r => r.status === 'done' && r.result?.domain);
+  if (done) return { domain: done.result.domain, confirmed: false };
+  if (record.domain) return { domain: record.domain, confirmed: false };
+  return null;
 }
 
 async function decisionsFor(supabase, businessId, record) {
@@ -125,25 +249,35 @@ async function decisionsFor(supabase, businessId, record) {
   return notes.filter(e => e.meta?.kind === 'decision').slice(0, 10).map(e => ({ at: e.at, text: cleanText(e.note, 400) }));
 }
 
-// GET /goals/company?type=&id= -> { record, todos, waiting, visits, signals, recent, people, research, decisions, terms }
-export async function companyDetail(supabase, { businessId, type, id }) {
+// GET /goals/company?type=&id= -> { record (+ last_touch, site), interest, timeline, todos, waiting, visits, signals,
+// recent, people, decision_makers, research, decisions, terms }
+export async function companyDetail(supabase, { businessId, type, id, now = new Date() }) {
   if (!PANEL_TYPES.includes(type)) return reply(400, { error: `type must be one of ${PANEL_TYPES.join('|')}` });
   if (!validId(type, id)) return reply(400, { error: 'id is required' });
   try {
     const [names, record] = await Promise.all([memberNames(supabase, businessId), loadRecord(supabase, businessId, type, id)]);
     if (!record) return reply(404, { error: `${type} not found` });
     const key = type === 'visitor' ? id : normName(record.name);
-    const [todos, waiting, visits, signals, recent, people, research, decisions, overrides] = await Promise.all([
+    const prospects = await prospectsFor(supabase, businessId, record);
+    const [todos, waiting, visits, signals, recent, research, decisions, overrides, email, lastTouch] = await Promise.all([
       linkedWork(supabase, businessId, type, id, 'todo', names),
       linkedWork(supabase, businessId, type, id, 'waiting', names),
       visitsFor(supabase, businessId, type, id, key),
       supabase.from('sales_signals').select('id, source, kind, signal, why_now, status, signal_week, created_at').eq('business_id', businessId).eq('company_key', key).order('created_at', { ascending: false }).limit(10).then(must),
       recentFor(supabase, businessId, record),
-      peopleFor(supabase, businessId, record),
       RECORD_TYPES.includes(type) ? Promise.all([listRuns(supabase, businessId, type, id), runsToday(supabase, businessId, type, id)]).then(([runs, today]) => ({ runs, today, cap: RERUN_CAP_PER_DAY })) : null,
       decisionsFor(supabase, businessId, record),
       loadOverrides(supabase, businessId),
+      emailFor(supabase, businessId, prospects.map(p => p.contact_id), now),
+      lastTouchFor(supabase, businessId, record),
     ]);
+    const personSig = personSignals({ messages: email.messages, events: email.events, now: now.getTime() });
+    const timelineSig = personSignals({ messages: email.messages, events: email.events, now: now.getTime(), days: TIMELINE_DAYS });
+    const people = await peopleFor(supabase, businessId, record, prospects, personSig);
+    const visitRows = visits.map(v => visitOut(v, overrides.get(v.company_key)));
+    const scoutSignals = signals.map(s => ({ ...s, signal: cleanText(s.signal, 400), why_now: cleanText(s.why_now, 400) }));
+    const { interest, timeline } = await interestFor(supabase, businessId, record, { people, signals: personSig, timelineSignals: timelineSig, visits: visitRows, scoutSignals, now });
+    const site = await siteFor(supabase, businessId, record, research);
     const terms = (record.notes || '').split('\n').filter(l => TERMS_LINE.test(l)).map(l => cleanText(l, 400));
     const { notes, decision_makers, champion, ...head } = record;
     const out = {
@@ -151,17 +285,142 @@ export async function companyDetail(supabase, { businessId, type, id }) {
       priority_set_by: record.priority_set_by ? names.get(record.priority_set_by) || null : null,
       ...(type === 'partner' || type === 'employer' ? { next_step: record.next_step ? cleanText(record.next_step, 400) : null } : {}),
       ...(type === 'target' ? { evidence: t(record.evidence), research_notes: t(record.research_notes, 4000) } : {}),
-      ...(type === 'employer' ? { notes: t(notes, 4000) } : {}),
+      ...(type === 'employer' ? { notes: t(notes, 4000), last_touch_at: lastTouch?.at || null } : {}),
+      last_touch: lastTouch, site,
     };
     return reply(200, {
-      record: out, todos, waiting, visits: visits.map(v => visitOut(v, overrides.get(v.company_key))),
-      signals: signals.map(s => ({ ...s, signal: cleanText(s.signal, 400), why_now: cleanText(s.why_now, 400) })),
-      recent, people, research, decisions, terms,
+      record: out, interest, timeline, todos, waiting, visits: visitRows, signals: scoutSignals,
+      recent, people, decision_makers: type === 'employer' ? (decision_makers || '').split('\n').map(l => cleanText(l, 200)).filter(Boolean) : [],
+      research, decisions, terms,
     });
   } catch (e) { return reply(e.status || 500, { error: e.message }); }
 }
 export async function companyDetailRoute(req, res) {
   send(res, await companyDetail(getSupabase(), { businessId: req.params.businessId, type: req.query.type, id: req.query.id }));
+}
+
+// A to-do on the record, open or already done (a "Contacted" touch).
+async function todoOn(supabase, { businessId, userId, type, id, text, today, done = false, now }) {
+  const week = laMonday(today);
+  if (await weekIsFinal(supabase, businessId, week)) throw err(409, FINAL_ERROR);
+  return must(await supabase.from('sales_week_goals').insert({
+    business_id: businessId, week_start: week, kind: 'todo', status: done ? 'done' : 'open', text, due_date: today, link_type: LINK_TYPE[type], link_id: id,
+    owner_user_id: userId, created_by: userId, sort_order: 0, contacts: [], ...(done ? { completed_at: now.toISOString() } : {}),
+  }).select().single());
+}
+const personName = v => { if (v == null || v === '') return { value: null }; if (typeof v !== 'string') return { error: 'person must be text' }; const s = v.trim().replace(/\s+/g, ' ').slice(0, 120); return hasPii(s) ? { error: "person can't hold an email address or phone number" } : { value: s || null }; };
+async function prospectOrNull(supabase, businessId, contactId) {
+  if (contactId == null) return null;
+  if (typeof contactId !== 'string' || !contactId.trim()) throw err(400, 'contact_id must be text');
+  const row = must(await supabase.from('sales_prospect_state').select('contact_id, name, status, snooze_until').eq('business_id', businessId).eq('contact_id', contactId).maybeSingle());
+  if (!row) throw err(404, 'person not found');
+  return row;
+}
+
+// POST /goals/company/:type/:id/book-meeting { person? } -> 201 { todo, next_step, before }.
+// Partner: next_step text only - never next_meeting_at (that means a meeting
+// IS booked). Employer: next_action + next_action_date = today. Plus ONE open
+// to-do due today on the record. Undo = before + the to-do dropped.
+export async function bookMeeting(supabase, { businessId, userId, type, id, body, now = new Date() }) {
+  if (!RECORD_TYPES.includes(type)) return reply(400, { error: `type must be one of ${RECORD_TYPES.join('|')}` });
+  if (!validId(type, id)) return reply(400, { error: 'id is required' });
+  const person = personName(body?.person);
+  if (person.error) return reply(400, { error: person.error });
+  try {
+    const record = await loadRecord(supabase, businessId, type, id);
+    if (!record) return reply(404, { error: `${type} not found` });
+    const today = laDateString(now);
+    const text = `Book meeting with ${person.value || record.name}`;
+    let before = null;
+    if (type === 'partner') {
+      before = { next_step: record.next_step ?? null };
+      must(await supabase.from('sales_goals').update({ next_step: text, updated_at: now.toISOString() }).eq('id', id).select('id'));
+    } else if (type === 'employer') {
+      before = { next_action: record.next_step ?? null, next_action_date: record.next_step_due ?? null };
+      must(await supabase.from('sales_opportunities').update({ next_action: text, next_action_date: today, updated_at: now.toISOString() }).eq('id', id).select('id'));
+    }
+    const todo = await todoOn(supabase, { businessId, userId, type, id, text, today, now });
+    return reply(201, { todo, next_step: text, before });
+  } catch (e) { return reply(e.status || 500, { error: e.message }); }
+}
+export async function bookMeetingRoute(req, res) {
+  send(res, await bookMeeting(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, type: req.params.type, id: req.params.id, body: req.body }));
+}
+
+// POST /goals/company/:type/:id/contacted { contact_id?, person?, touch_type? } -> 200 { event?, todo?, person? }.
+// Person: Huddle's status path (contacted). Partner: a touch that never moves
+// the stage (move_to 'none', expect = the stage the screen showed). Employer /
+// target: ONE done to-do on the record (what Last touch reads) - never a
+// sales_opportunity_events row.
+export async function markContacted(supabase, { businessId, userId, byUser, type, id, body, now = new Date() }) {
+  if (!RECORD_TYPES.includes(type)) return reply(400, { error: `type must be one of ${RECORD_TYPES.join('|')}` });
+  if (!validId(type, id)) return reply(400, { error: 'id is required' });
+  const person = personName(body?.person);
+  if (person.error) return reply(400, { error: person.error });
+  const touchType = body?.touch_type ?? 'email';
+  if (!TOUCH_TYPE_IDS.includes(touchType)) return reply(400, { error: `touch_type must be one of ${TOUCH_TYPE_IDS.join('|')}` });
+  try {
+    const record = await loadRecord(supabase, businessId, type, id);
+    if (!record) return reply(404, { error: `${type} not found` });
+    const prospect = await prospectOrNull(supabase, businessId, body?.contact_id);
+    const today = laDateString(now);
+    const who = person.value || (prospect?.name ? cleanText(prospect.name, 120) : null);
+    const out = {};
+    if (prospect) {
+      must(await supabase.from('sales_prospect_state').update({ status: 'contacted', updated_by: byUser || userId, updated_at: now.toISOString() }).eq('business_id', businessId).eq('contact_id', prospect.contact_id).select('contact_id'));
+      out.person = { contact_id: prospect.contact_id, before: { status: prospect.status } };
+    }
+    if (type === 'partner') {
+      const { event } = await applyPartnerSignal(supabase, { businessId, goalId: id, signal: { type: 'touch', touch_type: touchType, date: today, move_to: 'none', expect: record.stage, contacts: who ? [who] : [] }, byUser: userId, now });
+      out.event = { id: event.id, touch_type: event.touch_type, at: event.at, to_status: event.to_status };
+    } else {
+      out.todo = await todoOn(supabase, { businessId, userId, type, id, text: `Contacted ${who || record.name}`, today, done: true, now });
+    }
+    return reply(200, out);
+  } catch (e) {
+    if (e instanceof SignalError) return reply(e.status || 400, { error: e.message });
+    return reply(e.status || 500, { error: e.message });
+  }
+}
+export async function markContactedRoute(req, res) {
+  send(res, await markContacted(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, byUser: req.auth.user.email, type: req.params.type, id: req.params.id, body: req.body }));
+}
+
+// Not now on a person: Huddle's not_now with a week's snooze (the server has no default).
+export const notNowPatch = today => ({ status: 'not_now', snooze_until: addDays(today, NOT_NOW_DAYS) });
+
+// POST /goals/company/:type/:id/not-now { contact_id? } -> 200 { person } or { dismissed: { signal_id, until } }.
+// Without a person the band itself is parked: a dismissed interest_follow_up
+// row keyed on the newest signal (sales_suggestions - no new store), so it
+// stays hidden until a newer signal arrives. Partner / employer / target only.
+export async function notNow(supabase, { businessId, userId, byUser, type, id, body, now = new Date() }) {
+  if (!PANEL_TYPES.includes(type)) return reply(400, { error: `type must be one of ${PANEL_TYPES.join('|')}` });
+  if (!validId(type, id)) return reply(400, { error: 'id is required' });
+  try {
+    const record = await loadRecord(supabase, businessId, type, id);
+    if (!record) return reply(404, { error: `${type} not found` });
+    const today = laDateString(now);
+    const prospect = await prospectOrNull(supabase, businessId, body?.contact_id);
+    if (prospect) {
+      const patch = notNowPatch(today);
+      must(await supabase.from('sales_prospect_state').update({ ...patch, updated_by: byUser || userId, updated_at: now.toISOString() }).eq('business_id', businessId).eq('contact_id', prospect.contact_id).select('contact_id'));
+      return reply(200, { person: { contact_id: prospect.contact_id, ...patch, before: { status: prospect.status, snooze_until: prospect.snooze_until } } });
+    }
+    if (!REF_TYPE[type]) return reply(400, { error: 'Not now needs a person for this row - add it to the pipeline first' });
+    const detail = await companyDetail(supabase, { businessId, type, id, now });
+    if (detail.status !== 200) return detail;
+    const newest = detail.body.interest.newest_id;
+    if (!newest) return reply(400, { error: 'no interest to park' });
+    const until = new Date(now.getTime() + DISMISS_DAYS * 864e5).toISOString();
+    const row = { status: 'dismissed', dismissed_until: until, decided_at: now.toISOString(), decided_by: userId };
+    const open = must(await supabase.from('sales_suggestions').select('id').eq('business_id', businessId).eq('kind', 'interest_follow_up').eq('ref_type', REF_TYPE[type]).eq('ref_id', id).eq('ref_id2', newest).eq('status', 'proposed').limit(1));
+    if (open.length) must(await supabase.from('sales_suggestions').update(row).eq('id', open[0].id).select('id'));
+    else must(await supabase.from('sales_suggestions').insert({ business_id: businessId, kind: 'interest_follow_up', ref_type: REF_TYPE[type], ref_id: id, ref_id2: newest, text: `Not now: ${cleanText(detail.body.interest.strongest.text, 300)}`, reason: null, ...row }).select('id'));
+    return reply(200, { dismissed: { signal_id: newest, until } });
+  } catch (e) { return reply(e.status || 500, { error: e.message }); }
+}
+export async function notNowRoute(req, res) {
+  send(res, await notNow(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, byUser: req.auth.user.email, type: req.params.type, id: req.params.id, body: req.body }));
 }
 
 // POST /goals/company/add-to-pipeline { type: visitor|apollo, id, to: target|partner|employer, kind? }

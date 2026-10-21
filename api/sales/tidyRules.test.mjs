@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { researchOrDrop, followUp, setADate, duplicates, replyTask, checkCoOwner, flagCold, waitingOverdue, runRules, keyOf, KINDS, DUE_DAYS } from './tidyRules.js';
+import { researchOrDrop, followUp, setADate, duplicates, replyTask, checkCoOwner, flagCold, waitingOverdue, interestFollowUp, runRules, keyOf, KINDS, DUE_DAYS } from './tidyRules.js';
 
 const NOW = Date.parse('2026-10-16T18:00:00Z'); // Oct 16, 11:00 LA
 const TODAY = '2026-10-16';
@@ -75,10 +75,11 @@ test('flag_cold: an open flag older than 5 days', () => {
   assert.deepEqual(out.map(s => [s.ref_type, s.ref_id, s.text]), [['flag', cold.id, 'Flag Pat Example is going cold']]);
 });
 
-test('runRules covers the nine kinds (REV5 adds nudge, signals-v1 visited_no_touch), each with a due rule; enrich is not a kind', () => {
-  assert.equal(KINDS.length, 9);
+test('runRules covers the ten kinds (REV5 adds nudge, signals-v1 visited_no_touch, company-panel-v2 interest_follow_up), each with a due rule; enrich is not a kind', () => {
+  assert.equal(KINDS.length, 10);
   assert.ok(KINDS.includes('nudge'));
   assert.ok(KINDS.includes('visited_no_touch'));
+  assert.ok(KINDS.includes('interest_follow_up')); assert.equal(DUE_DAYS.interest_follow_up, 0);
   assert.ok(!KINDS.includes('enrich'));
   for (const k of KINDS) assert.ok(k in DUE_DAYS, k);
   assert.deepEqual(runRules(ctx()), []);
@@ -103,4 +104,24 @@ test('waiting_overdue: fires once for a row 2+ days late; 1 day late, no date or
   assert.match(out[0].reason, /Confirm the bundle price · 2 days late/);
   assert.equal(runRules(ctx({ partners: [p], waiting: rows })).filter(s => s.kind === 'nudge').length, 1);
   assert.equal(DUE_DAYS.nudge, 0);
+});
+
+// company-panel-v2 D7 - one follow-up per linked person per signal; the key is the record + the signal's event id.
+test('interest_follow_up: a linked person with a signal proposes once per signal (keyOf de-dupes); a person with an open to-do of their own is skipped; a signal with no event id never proposes', () => {
+  const partnerId = id(), oppId = id(), click = id(), reply = id();
+  const interest = [
+    { ref_type: 'partner', ref_id: partnerId, contact_id: 'c-pat', name: 'Pat Lee', signal: { id: click, kind: 'click', count: 1, step: 1, at: '2026-10-15T12:00:00Z' } },
+    { ref_type: 'opportunity', ref_id: oppId, contact_id: 'c-dana', name: 'Dana Q', signal: { id: reply, kind: 'reply', count: 1, step: 2, at: '2026-10-14T12:00:00Z' } },
+    { ref_type: 'opportunity', ref_id: oppId, contact_id: 'c-busy', name: 'Busy Person', signal: { id: id(), kind: 'opens', count: 2, step: 1, at: '2026-10-14T12:00:00Z' } },
+  ];
+  const out = interestFollowUp(ctx({ interest, todos: [todo('Follow up: Busy', { prospect_contact_id: 'c-busy' })] }));
+  assert.deepEqual(out.map(s => [s.kind, s.ref_type, s.ref_id, s.ref_id2, s.text]), [
+    ['interest_follow_up', 'partner', partnerId, click, 'Follow up with Pat Lee — clicked Step 1'],
+    ['interest_follow_up', 'opportunity', oppId, reply, 'Follow up with Dana Q — replied Step 2'],
+  ]);
+  assert.match(out[1].reason, /Dana Q replied Step 2 on 2026-10-14/);
+  assert.equal(keyOf(out[0]), `interest_follow_up|partner|${partnerId}|${click}`);
+  assert.notEqual(keyOf(out[0]), keyOf({ ...out[0], ref_id2: id() }));
+  assert.deepEqual(interestFollowUp(ctx({ interest: [], todos: [] })), []);
+  assert.deepEqual(runRules(ctx({ interest })).filter(s => s.kind === 'interest_follow_up').length, 3);
 });

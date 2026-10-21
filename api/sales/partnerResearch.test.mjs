@@ -64,6 +64,28 @@ test('parse: category outside the list -> null, bad URLs dropped, no domain -> c
   assert.match(researchSystem({ name: 'HomeLover' }, []), /Never include any person's name, email address or phone number/);
 });
 
+// company-panel-v2 D3 - sells_to is one more capped text field; recent is up to 3 dated items with a real url.
+test('parse: sells_to capped at 120; recent keeps at most 3 items with text, a YYYY-MM month and an http url, drops the rest; missing -> [] and null', () => {
+  const r = parseResearch(JSON.stringify({ ...GOOD, sells_to: 'Mid-market employers and the brokers who serve them. '.repeat(5), recent: [
+    { month: '2026-09', text: 'Raised a Series B', url: 'https://news.example/b' },
+    { month: 'Sept 2026', text: 'Opened Chicago office', url: 'javascript:alert(1)' },
+    { month: '2026-13', text: '' },
+    'not an item',
+    { month: '2026-07', text: 'Hired a CRO', url: 'https://news.example/cro' },
+    { month: '2026-06', text: 'Fifth item is cut', url: null },
+  ] }), []);
+  assert.ok(r.sells_to.length <= 120 && r.sells_to.startsWith('Mid-market employers'));
+  assert.deepEqual(r.recent, [
+    { month: '2026-09', text: 'Raised a Series B', url: 'https://news.example/b' },
+    { month: null, text: 'Opened Chicago office', url: null },
+    { month: '2026-07', text: 'Hired a CRO', url: 'https://news.example/cro' },
+  ]);
+  const none = parseResearch(JSON.stringify(GOOD), []);
+  assert.deepEqual(none.recent, []); assert.equal(none.sells_to, null);
+  const sys = researchSystem({ name: 'HomeLover' }, []);
+  assert.match(sys, /"sells_to": ""/); assert.match(sys, /"recent": \[\{"month": "YYYY-MM"/); assert.match(sys, /- sells_to: at most 20 words/); assert.match(sys, /- recent: up to 3 dated items/);
+});
+
 test(`cap: run ${RERUN_CAP_PER_DAY + 1} the same LA day is 429; yesterday's runs don't count; another partner is unaffected`, async () => {
   const sb = fakeSupabase(seed());
   const now = Date.parse('2026-10-16T18:00:00Z');

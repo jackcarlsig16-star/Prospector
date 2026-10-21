@@ -25,6 +25,7 @@ export const isDate = v => typeof v === 'string' && DATE_RE.test(v) && !Number.i
 export const isMonday = v => isDate(v) && new Date(`${v}T00:00:00Z`).getUTCDay() === 1;
 export const isFirstOfMonth = v => isDate(v) && v.endsWith('-01');
 export const addDays = (v, n) => new Date(Date.parse(`${v}T00:00:00Z`) + n * 864e5).toISOString().slice(0, 10);
+export const laMonday = today => addDays(today, -((new Date(`${today}T12:00:00Z`).getUTCDay() + 6) % 7));
 
 // UTC instant of 00:00 America/Los_Angeles on date d (handles PST/PDT).
 export function laStartOfDayMs(d) {

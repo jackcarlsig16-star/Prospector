@@ -2,6 +2,7 @@ import { normName } from './intakeMatch.js';
 import { isStalePartner, daysSinceTouch, PIPELINE_STATUSES } from '../../src/constants/partnerPipeline.js';
 import { TEAM_LABEL } from '../../src/constants/ownership.js';
 import { KIND_LABEL, KINDS } from '../../src/constants/tidy.js';
+import { signalText } from './interestSignals.js';
 
 // call-notes-targets-v1 REV4 Stage 3 - Tidy rule set v1: pure functions over
 // rows the route already loaded; the clock comes in as ctx.now. Nothing here
@@ -15,7 +16,7 @@ export const FLAG_DAYS = 5;
 export const TOUCH_WINDOW_DAYS = 7;
 export { KIND_LABEL, KINDS };
 // Days until the to-do Accept creates is due; null = Accept opens the records instead.
-export const DUE_DAYS = { research_or_drop: 3, follow_up: 1, set_a_date: 1, duplicate: null, reply_task: 1, check_co_owner: 1, flag_cold: 1, nudge: 0, visited_no_touch: 1 };
+export const DUE_DAYS = { research_or_drop: 3, follow_up: 1, set_a_date: 1, duplicate: null, reply_task: 1, check_co_owner: 1, flag_cold: 1, nudge: 0, visited_no_touch: 1, interest_follow_up: 0 };
 export const WAITING_LATE_DAYS = 2;
 export const VISIT_NO_TOUCH_DAYS = 14;
 
@@ -117,7 +118,18 @@ export function visitedNoTouch({ partners, todos, visits = [], now }) {
     });
 }
 
-export const RULES = [researchOrDrop, followUp, setADate, duplicates, replyTask, checkCoOwner, flagCold, waitingOverdue, visitedNoTouch];
+// company-panel-v2 D7 - a linked person replied, clicked or opened twice in the
+// last 14 days: propose one follow-up per person per signal (keyOf: the
+// record + the signal's event id). Nothing is written until someone accepts.
+// A person who already has an open to-do of their own is left alone.
+export function interestFollowUp({ interest = [], todos }) {
+  const handled = new Set(todos.filter(t => isOpen(t) && t.prospect_contact_id).map(t => t.prospect_contact_id));
+  return interest
+    .filter(i => !handled.has(i.contact_id))
+    .map(i => ({ kind: 'interest_follow_up', ref_type: i.ref_type, ref_id: i.ref_id, ref_id2: i.signal.id, text: `Follow up with ${i.name || 'them'} — ${signalText(i.signal)}`, reason: `${i.name || 'They'} ${signalText(i.signal)} on ${i.signal.at.slice(0, 10)}` }));
+}
+
+export const RULES = [researchOrDrop, followUp, setADate, duplicates, replyTask, checkCoOwner, flagCold, waitingOverdue, visitedNoTouch, interestFollowUp];
 export const runRules = ctx => RULES.flatMap(rule => rule(ctx));
 // Mirrors the partial unique index: (kind, ref_type, ref_id, coalesce(ref_id2, ref_id)).
 export const keyOf = s => [s.kind, s.ref_type, s.ref_id, s.ref_id2 || s.ref_id].join('|');

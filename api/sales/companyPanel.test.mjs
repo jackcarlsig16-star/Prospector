@@ -7,13 +7,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
-import { companyDetail, addToPipeline, addNote, addContact, updateTarget } from './companyPanel.js';
+import { companyDetail, addToPipeline, addNote, addContact, updateTarget, bookMeeting, markContacted, notNow, notNowPatch } from './companyPanel.js';
+
+const NOW = new Date('2026-10-20T20:00:00Z'); // Tue Oct 20, 1pm LA
 
 const B = randomUUID(), U = randomUUID(), U2 = randomUUID();
-const ID = { partner: randomUUID(), employer: randomUUID(), target: randomUUID(), todo: randomUUID() };
+const ID = { partner: randomUUID(), employer: randomUUID(), target: randomUUID(), todo: randomUUID(), click: randomUUID(), reply: randomUUID(), open2: randomUUID() };
 const seed = () => fakeSupabase({
   business_members: [{ business_id: B, user_id: U, name: 'Jack Carlson' }, { business_id: B, user_id: U2, name: 'Cyrus Test' }],
-  sales_goals: [{ id: ID.partner, business_id: B, goal_type: 'partnership', name: 'Gallagher', pipeline_status: 'replied', category: '4. Brokers', hot: true, owner_user_id: U, owner_team: 'upside', next_step: 'Send deck', channel: 'import', priority: 2, priority_set_by: U2, priority_set_at: '2026-10-20T10:00:00Z', notes: '(10/15) Terms: 20% rev share\nplain line' }],
+  sales_goals: [{ id: ID.partner, business_id: B, goal_type: 'partnership', name: 'Gallagher', pipeline_status: 'replied', category: '4. Brokers', hot: true, owner_user_id: U, owner_team: 'upside', next_step: 'Send deck', next_meeting_at: '2026-11-02', channel: 'import', priority: 2, priority_set_by: U2, priority_set_at: '2026-10-20T10:00:00Z', notes: '(10/15) Terms: 20% rev share\nplain line' }],
   sales_opportunities: [{ id: ID.employer, business_id: B, organization: 'Solidcore', stage: 'contacted', org_type: 'employer', owner: 'Jack Carlson', owner_team: 'homelover', notes: 'old note', decision_makers: 'Pat Lee · VP People', champion: 'Sam', covered_lives: 1200, archived_at: null }],
   sales_targets: [{ id: ID.target, business_id: B, name: 'Zeta Labs', kind: 'employer', status: 'proposed', owner_team: null, evidence: 'Opened an office', research_notes: null, channel: 'scout' }],
   sales_sequenced_accounts: [{ business_id: B, account_id: 'acc-1', name: 'Fresh Co', first_sequenced_at: '2026-10-07T15:00:00Z', sequence_id: 'seq-1', employees: 400 }],
@@ -34,13 +36,37 @@ const seed = () => fakeSupabase({
     { id: randomUUID(), business_id: B, goal_id: ID.partner, event: 'assign', at: '2026-10-18T10:00:00Z', meta: { to_owner: U } },
   ],
   sales_opportunity_events: [{ id: randomUUID(), business_id: B, opportunity_id: ID.employer, event_type: 'stage_change', from_stage: 'target', to_stage: 'contacted', changed_at: '2026-10-19T10:00:00Z' }],
-  partner_contacts: [{ id: randomUUID(), business_id: B, goal_id: ID.partner, name: 'Pat Lee', title: 'VP', email: 'pat@example.com', linkedin_url: 'https://linkedin.com/in/pat', source: 'manual' }],
-  partner_domains: [], research_runs: [], visit_priority_override: [],
+  partner_contacts: [{ id: randomUUID(), business_id: B, goal_id: ID.partner, name: 'Pat Lee', title: 'VP', email: null, linkedin_url: 'https://linkedin.com/in/pat', source: 'manual' }],
+  partner_domains: [{ id: randomUUID(), business_id: B, goal_id: ID.partner, domain: 'gallagher.example', confirmed: true, is_primary: true }], research_runs: [], visit_priority_override: [],
+  // company-panel-v2: linked people (D1) and their email rows. No email or phone columns anywhere in this seed.
+  sales_prospect_state: [
+    { business_id: B, contact_id: 'c-pat', name: 'Pat Lee', title: 'VP Partnerships', company: 'Gallagher', linkedin_url: null, status: 'new', owner: 'jack', goal_id: ID.partner, goal_link_via: 'name', opportunity_id: null, opportunity_link_via: null, snooze_until: null },
+    { business_id: B, contact_id: 'c-bot', name: 'Robin Scanner', title: 'IT', company: 'Gallagher', linkedin_url: null, status: 'new', owner: 'cyrus', goal_id: ID.partner, goal_link_via: 'name', opportunity_id: null, opportunity_link_via: null, snooze_until: null },
+    { business_id: B, contact_id: 'c-dana', name: 'Dana Q', title: 'CHRO', company: 'Solidcore', linkedin_url: 'https://linkedin.com/in/danaq', status: 'contacted', owner: 'jack', goal_id: null, goal_link_via: null, opportunity_id: ID.employer, opportunity_link_via: 'name', snooze_until: null },
+    { business_id: B, contact_id: 'c-fresh', name: 'Fran Fresh', title: 'Benefits Lead', company: 'Fresh Co', linkedin_url: null, status: 'new', owner: 'unassigned', goal_id: null, goal_link_via: null, opportunity_id: null, opportunity_link_via: null, snooze_until: null },
+  ],
+  sales_email_messages: [
+    { business_id: B, apollo_message_id: 'm-pat', contact_id: 'c-pat', step: 1, delivered_at: '2026-10-15T10:00:00Z', replied: false },
+    { business_id: B, apollo_message_id: 'm-bot', contact_id: 'c-bot', step: 1, delivered_at: '2026-10-15T10:00:00Z', replied: false },
+    { business_id: B, apollo_message_id: 'm-dana', contact_id: 'c-dana', step: 2, delivered_at: '2026-10-16T10:00:00Z', replied: true, replied_at: '2026-10-18T09:00:00Z', reply_class: 'willing_to_meet' },
+    { business_id: B, apollo_message_id: 'm-fresh', contact_id: 'c-fresh', step: 1, delivered_at: '2026-10-17T10:00:00Z', replied: false },
+  ],
+  sales_email_activity: [
+    { id: ID.click, business_id: B, apollo_message_id: 'm-pat', contact_id: 'c-pat', step: 1, event: 'click', occurred_at: '2026-10-19T12:00:00Z', user_agent: null, tracking_service: null },
+    { id: randomUUID(), business_id: B, apollo_message_id: 'm-pat', contact_id: 'c-pat', step: 1, event: 'open', occurred_at: '2026-10-19T11:00:00Z', user_agent: null, tracking_service: null },
+    { id: randomUUID(), business_id: B, apollo_message_id: 'm-bot', contact_id: 'c-bot', step: 1, event: 'open', occurred_at: '2026-10-15T10:00:20Z', user_agent: null, tracking_service: null },
+    { id: randomUUID(), business_id: B, apollo_message_id: 'm-bot', contact_id: 'c-bot', step: 1, event: 'open', occurred_at: '2026-10-16T10:00:00Z', user_agent: null, tracking_service: 'proofpoint' },
+    { id: randomUUID(), business_id: B, apollo_message_id: 'm-bot', contact_id: 'c-bot', step: 1, event: 'click', occurred_at: '2026-10-15T10:00:40Z', user_agent: null, tracking_service: null },
+    { id: ID.reply, business_id: B, apollo_message_id: 'm-dana', contact_id: 'c-dana', step: 2, event: 'reply', occurred_at: '2026-10-18T09:00:00Z', user_agent: null, tracking_service: null },
+    { id: randomUUID(), business_id: B, apollo_message_id: 'm-fresh', contact_id: 'c-fresh', step: 1, event: 'open', occurred_at: '2026-10-18T15:00:00Z', user_agent: null, tracking_service: null },
+    { id: ID.open2, business_id: B, apollo_message_id: 'm-fresh', contact_id: 'c-fresh', step: 1, event: 'open', occurred_at: '2026-10-19T15:00:00Z', user_agent: null, tracking_service: null },
+  ],
+  sales_suggestions: [], sales_week_report: [],
 }, { unique: { sales_targets: r => `${r.business_id}:${r.name.trim().toLowerCase()}`, sales_goals: r => (r.goal_type === 'partnership' ? `${r.business_id}:${r.name.toLowerCase()}` : null) } });
 
 test('partner body: to-dos, waiting, matched visits, decisions, terms, people without emails, last notes/touches (no assign rows), research status', async () => {
   const sb = seed();
-  const r = await companyDetail(sb, { businessId: B, type: 'partner', id: ID.partner });
+  const r = await companyDetail(sb, { businessId: B, type: 'partner', id: ID.partner, now: NOW });
   assert.equal(r.status, 200);
   const d = r.body;
   assert.equal(d.record.name, 'Gallagher'); assert.equal(d.record.stage, 'replied'); assert.equal(d.record.owner, 'Jack Carlson'); assert.equal(d.record.priority_set_by, 'Cyrus Test'); assert.equal(d.record.top, true);
@@ -50,22 +76,32 @@ test('partner body: to-dos, waiting, matched visits, decisions, terms, people wi
   assert.deepEqual(d.visits.map(v => [v.last_visit, v.visits_7d, v.top_paths, v.priority]), [['2026-10-20', 2, ['/partners'], 'P1']]);
   assert.deepEqual(d.decisions.map(x => x.text), ['Decided: pilot in Q1']);
   assert.deepEqual(d.terms, ['(10/15) Terms: 20% rev share']);
-  assert.deepEqual(d.people, [{ id: d.people[0].id, name: 'Pat Lee', title: 'VP', linkedin_url: 'https://linkedin.com/in/pat', source: 'manual' }]);
+  // D4: the manual contact and the linked prospect of the same name are one row (contact id, prospect's contact_id + signal); the bot-only person follows.
+  assert.deepEqual(d.people.map(p => [p.name, p.title, p.linkedin_url, p.source, p.contact_id, p.signal?.text ?? null]), [['Pat Lee', 'VP', 'https://linkedin.com/in/pat', 'manual', 'c-pat', 'clicked Step 1'], ['Robin Scanner', 'IT', null, 'apollo', 'c-bot', null]]);
   assert.deepEqual(d.recent.map(e => e.event), ['touch', 'note']);
+  assert.equal(d.record.last_touch, null);
+  assert.deepEqual(d.record.site, { domain: 'gallagher.example', confirmed: true });
   assert.deepEqual(d.research, { runs: [], today: 0, cap: 5 });
   assert.equal(JSON.stringify(d).includes('@'), false);
 });
 
 test('employer body: stage history + done to-dos as recent, decision makers and champion as people, notes; target body: evidence, no research notes; apollo + visitor bodies', async () => {
   const sb = seed();
-  const e = (await companyDetail(sb, { businessId: B, type: 'employer', id: ID.employer })).body;
+  const e = (await companyDetail(sb, { businessId: B, type: 'employer', id: ID.employer, now: NOW })).body;
   assert.deepEqual(e.recent.map(x => x.text), ['target → contacted', 'Done: Intro call']);
-  assert.deepEqual(e.people.map(p => [p.name, p.title]), [['Sam', 'Champion'], ['Pat Lee · VP People', null]]);
+  assert.deepEqual(e.people.map(p => [p.name, p.title, p.signal?.text ?? null]), [['Dana Q', 'CHRO', 'replied Step 2'], ['Sam', 'Champion', null]]);
+  assert.deepEqual(e.decision_makers, ['Pat Lee · VP People']);
+  assert.deepEqual(e.record.last_touch, { at: '2026-10-19T10:00:00Z', touch_type: 'stage' });
   assert.equal(e.record.notes, 'old note'); assert.equal(e.record.covered_lives, 1200); assert.equal(e.record.owner, 'Jack Carlson');
+  sb.db.sales_targets[0].research_notes = '(10/19) Looks good\nPeople: Lee Park · Head of HR\nPerson: Ana Ruiz';
   const t = (await companyDetail(sb, { businessId: B, type: 'target', id: ID.target })).body;
-  assert.equal(t.record.evidence, 'Opened an office'); assert.equal(t.record.research_notes, null); assert.equal(t.record.stage, 'proposed'); assert.ok(t.research);
-  const a = (await companyDetail(sb, { businessId: B, type: 'apollo', id: 'acc-1' })).body;
+  assert.equal(t.record.evidence, 'Opened an office'); assert.equal(t.record.stage, 'proposed'); assert.ok(t.research);
+  assert.deepEqual(t.people.map(p => [p.name, p.source]), [['Lee Park · Head of HR', 'notes'], ['Ana Ruiz', 'notes']]);
+  const a = (await companyDetail(sb, { businessId: B, type: 'apollo', id: 'acc-1', now: NOW })).body;
   assert.equal(a.record.name, 'Fresh Co'); assert.equal(a.record.employees, 400); assert.equal(a.research, null); assert.deepEqual(a.todos, []);
+  // Apollo-only: people whose company is the account's name, matched at read time (nothing stored); 2 human opens = a signal.
+  assert.deepEqual(a.people.map(p => [p.name, p.signal.text]), [['Fran Fresh', 'opened ×2 Step 1']]);
+  assert.equal(a.interest.strongest.kind, 'opens'); assert.equal(a.interest.show, true);
   const v = (await companyDetail(sb, { businessId: B, type: 'visitor', id: 'acme widgets' })).body;
   assert.equal(v.record.name, 'Acme Widgets'); assert.equal(v.record.channel, 'website_visit');
   assert.deepEqual(v.visits.map(x => [x.pulled_on, x.visits_7d]), [['2026-10-20', 6], ['2026-10-19', 4]]);
@@ -156,4 +192,93 @@ test('target step: proposed -> researching; back to proposed is 409 without allo
   assert.equal((await updateTarget(sb, { businessId: B, id: ID.target, body: { name: 'x' } })).status, 400);
   sb.db.sales_targets[0].status = 'accepted';
   assert.equal((await updateTarget(sb, { businessId: B, id: ID.target, body: { status: 'researching' } })).status, 409);
+});
+
+// company-panel-v2 Stage 2 - the Interest band, the merged timeline, and the band's buttons.
+test('interest: strongest first (reply > click > 2+ human opens > visits), bot opens and scanner clicks excluded; the timeline merges email events, visits and signals newest first; nothing carries an email', async () => {
+  const sb = seed();
+  const p = (await companyDetail(sb, { businessId: B, type: 'partner', id: ID.partner, now: NOW })).body;
+  assert.deepEqual(p.interest.items.map(i => [i.kind, i.person?.name ?? null, i.text]), [['click', 'Pat Lee', 'Pat Lee clicked Step 1'], ['visit', null, '2 site visits this week · /partners']]);
+  assert.equal(p.interest.newest_id, p.visits[0].id); assert.equal(p.interest.show, true); assert.equal(p.interest.dismissed, false);
+  assert.deepEqual(p.timeline.map(x => [x.kind, x.at.slice(0, 10), x.text]), [
+    ['visited', '2026-10-20', 'Visited · 2 in 7 days · /partners'],
+    ['clicked', '2026-10-19', 'Pat Lee clicked Step 1'],
+    ['opened', '2026-10-19', 'Pat Lee opened Step 1'],
+  ]);
+  const e = (await companyDetail(sb, { businessId: B, type: 'employer', id: ID.employer, now: NOW })).body;
+  assert.deepEqual(e.interest.items.map(i => [i.kind, i.person.name, i.count]), [['reply', 'Dana Q', 1]]);
+  assert.equal(e.interest.strongest.id, ID.reply);
+  const v = (await companyDetail(sb, { businessId: B, type: 'visitor', id: 'acme widgets', now: NOW })).body;
+  assert.deepEqual(v.interest.items.map(i => i.kind), ['visit']);
+  assert.deepEqual(v.timeline.map(x => x.kind), ['visited', 'visited', 'signal']);
+  for (const body of [p, e, v]) assert.equal(JSON.stringify(body).includes('@'), false);
+  // 15 days on, the click is outside the window: no band.
+  const later = (await companyDetail(sb, { businessId: B, type: 'partner', id: ID.partner, now: new Date('2026-11-05T20:00:00Z') })).body;
+  assert.equal(later.interest.show, false); assert.deepEqual(later.interest.items, []);
+});
+
+test('book meeting: partner next_step set, next_meeting_at untouched, one open to-do due today on the record; employer next_action + date; before values for Undo; a person with an email is refused', async () => {
+  const sb = seed();
+  const r = await bookMeeting(sb, { businessId: B, userId: U, type: 'partner', id: ID.partner, body: { person: 'Pat Lee' }, now: NOW });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const g = sb.db.sales_goals.find(x => x.id === ID.partner);
+  assert.equal(g.next_step, 'Book meeting with Pat Lee'); assert.equal(g.next_meeting_at, '2026-11-02');
+  assert.deepEqual(r.body.before, { next_step: 'Send deck' });
+  assert.deepEqual([r.body.todo.text, r.body.todo.status, r.body.todo.due_date, r.body.todo.week_start, r.body.todo.link_type, r.body.todo.link_id, r.body.todo.owner_user_id], ['Book meeting with Pat Lee', 'open', '2026-10-20', '2026-10-19', 'partner', ID.partner, U]);
+  const e = await bookMeeting(sb, { businessId: B, userId: U, type: 'employer', id: ID.employer, body: {}, now: NOW });
+  assert.equal(e.status, 201);
+  const o = sb.db.sales_opportunities.find(x => x.id === ID.employer);
+  assert.equal(o.next_action, 'Book meeting with Solidcore'); assert.equal(o.next_action_date, '2026-10-20');
+  assert.deepEqual(e.body.before, { next_action: null, next_action_date: null });
+  assert.equal(e.body.todo.link_type, 'opportunity');
+  assert.equal((await bookMeeting(sb, { businessId: B, userId: U, type: 'partner', id: ID.partner, body: { person: 'pat@example.com' }, now: NOW })).status, 400);
+  assert.equal((await bookMeeting(sb, { businessId: B, userId: U, type: 'visitor', id: 'acme widgets', body: {}, now: NOW })).status, 400);
+});
+
+test('mark contacted: partner = a touch with move_to none (stage stays, last touch moves, event names the person); the person goes to contacted; employer / target = ONE done to-do that becomes Last touch - never an opportunity event row', async () => {
+  const sb = seed();
+  const r = await markContacted(sb, { businessId: B, userId: U, byUser: 'tester', type: 'partner', id: ID.partner, body: { contact_id: 'c-pat' }, now: NOW });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const g = sb.db.sales_goals.find(x => x.id === ID.partner);
+  assert.equal(g.pipeline_status, 'replied'); assert.equal(g.last_touch_at, NOW.toISOString());
+  const ev = sb.db.sales_partner_events.find(x => x.id === r.body.event.id);
+  assert.deepEqual([ev.event, ev.touch_type, ev.to_status, ev.contact_names], ['touch', 'email', null, ['Pat Lee']]);
+  assert.deepEqual(sb.db.sales_prospect_state.find(x => x.contact_id === 'c-pat').status, 'contacted');
+  assert.deepEqual(r.body.person, { contact_id: 'c-pat', before: { status: 'new' } });
+  // A not-started partner: 'auto' would move it to first_email_sent; the panel's touch does not.
+  const fresh = sb.db.sales_goals.find(x => x.id === ID.partner); fresh.pipeline_status = 'not_started';
+  const r2 = await markContacted(sb, { businessId: B, userId: U, type: 'partner', id: ID.partner, body: { touch_type: 'call' }, now: NOW });
+  assert.equal(r2.status, 200); assert.equal(fresh.pipeline_status, 'not_started');
+  const eventsBefore = sb.db.sales_opportunity_events.length;
+  const e = await markContacted(sb, { businessId: B, userId: U, type: 'employer', id: ID.employer, body: { person: 'Dana Q' }, now: NOW });
+  assert.equal(e.status, 200, JSON.stringify(e.body));
+  assert.deepEqual([e.body.todo.text, e.body.todo.status, e.body.todo.completed_at, e.body.todo.link_type, e.body.todo.link_id], ['Contacted Dana Q', 'done', NOW.toISOString(), 'opportunity', ID.employer]);
+  assert.equal(sb.db.sales_opportunity_events.length, eventsBefore);
+  const d = (await companyDetail(sb, { businessId: B, type: 'employer', id: ID.employer, now: NOW })).body;
+  assert.deepEqual(d.record.last_touch, { at: NOW.toISOString(), touch_type: 'done' }); assert.equal(d.record.last_touch_at, NOW.toISOString());
+  assert.equal(d.recent[0].text, 'Done: Contacted Dana Q');
+  const t = await markContacted(sb, { businessId: B, userId: U, type: 'target', id: ID.target, body: {}, now: NOW });
+  assert.equal(t.status, 200); assert.equal(t.body.todo.text, 'Contacted Zeta Labs'); assert.equal(t.body.todo.link_type, 'target');
+  assert.equal((await markContacted(sb, { businessId: B, userId: U, type: 'partner', id: ID.partner, body: { touch_type: 'fax' }, now: NOW })).status, 400);
+  assert.equal((await markContacted(sb, { businessId: B, userId: U, type: 'partner', id: ID.partner, body: { contact_id: 'nobody' }, now: NOW })).status, 404);
+});
+
+test('not now: a person is snoozed a week (today + 7); the company parks the band on its newest signal until a newer one arrives; no store for a visitor', async () => {
+  const sb = seed();
+  assert.deepEqual(notNowPatch('2026-10-20'), { status: 'not_now', snooze_until: '2026-10-27' });
+  const p = await notNow(sb, { businessId: B, userId: U, byUser: 'tester', type: 'partner', id: ID.partner, body: { contact_id: 'c-pat' }, now: NOW });
+  assert.equal(p.status, 200); assert.deepEqual(p.body.person, { contact_id: 'c-pat', status: 'not_now', snooze_until: '2026-10-27', before: { status: 'new', snooze_until: null } });
+  assert.equal(sb.db.sales_prospect_state.find(x => x.contact_id === 'c-pat').snooze_until, '2026-10-27');
+  const c = await notNow(sb, { businessId: B, userId: U, type: 'employer', id: ID.employer, body: {}, now: NOW });
+  assert.equal(c.status, 200, JSON.stringify(c.body)); assert.equal(c.body.dismissed.signal_id, ID.reply);
+  const row = sb.db.sales_suggestions[0];
+  assert.deepEqual([row.kind, row.ref_type, row.ref_id, row.ref_id2, row.status, row.decided_by, row.text], ['interest_follow_up', 'opportunity', ID.employer, ID.reply, 'dismissed', U, 'Not now: Dana Q replied Step 2']);
+  const hidden = (await companyDetail(sb, { businessId: B, type: 'employer', id: ID.employer, now: NOW })).body.interest;
+  assert.equal(hidden.dismissed, true); assert.equal(hidden.show, false); assert.equal(hidden.items.length, 1);
+  // A newer signal (a click the next day) brings the band back.
+  sb.db.sales_email_activity.push({ id: randomUUID(), business_id: B, apollo_message_id: 'm-dana', contact_id: 'c-dana', step: 2, event: 'click', occurred_at: '2026-10-21T09:00:00Z', user_agent: null, tracking_service: null });
+  const back = (await companyDetail(sb, { businessId: B, type: 'employer', id: ID.employer, now: new Date('2026-10-21T20:00:00Z') })).body.interest;
+  assert.equal(back.show, true); assert.equal(back.dismissed, false); assert.equal(back.strongest.kind, 'reply');
+  assert.equal((await notNow(sb, { businessId: B, userId: U, type: 'visitor', id: 'acme widgets', body: {}, now: NOW })).status, 400);
+  assert.equal((await notNow(sb, { businessId: B, userId: U, type: 'target', id: ID.target, body: {}, now: NOW })).status, 400);
 });

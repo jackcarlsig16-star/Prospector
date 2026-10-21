@@ -28,7 +28,11 @@ export const SEARCH_USD = 0.01;
 export const STALE_RUNNING_MS = 10 * 60e3;
 const MAX_TOKENS = 4096;
 const CONFIDENCE = ['high', 'medium', 'low'];
-export const TEXT_FIELDS = { summary: 500, mission: 240, positioning: 320, size: 160, hq_city: 80, recent_news: 320, housing_perk: 200, why_homelover: 320, first_angle: 220, watch_outs: 220, titles: 240 };
+export const TEXT_FIELDS = { summary: 500, mission: 240, positioning: 320, size: 160, hq_city: 80, sells_to: 120, recent_news: 320, housing_perk: 200, why_homelover: 320, first_angle: 220, watch_outs: 220, titles: 240 };
+// company-panel-v2 D3 - dated recent items beside the recent_news paragraph.
+export const RECENT_MAX = 3;
+export const RECENT_TEXT_MAX = 140;
+const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 const err = (status, message) => Object.assign(new Error(message), { status });
 
 // 'partner' (default) = a channel partner; 'employer' = a company that would
@@ -41,7 +45,7 @@ export function researchSystem(business, categories, framing = 'partner') {
       : `You research one company as a possible channel partner for ${who}: a company that could offer ${business.name} to the employers, members or clients it already reaches.`,
     `Use web_search at most ${MAX_SEARCHES} times: first the company's own site (About, Careers, Partners pages), then one recent news or press source. Read what you find; do not guess.`,
     'Reply with ONE JSON object and nothing else - no prose before or after, no markdown fence:',
-    '{"website": "https://...", "domain": "company.com", "website_confidence": "high|medium|low", "source_urls": ["https://..."], "summary": "", "mission": "", "positioning": "", "size": "", "hq_city": "", "recent_news": "", "housing_perk": "", "suggested_category": null, "why_homelover": "", "first_angle": "", "watch_outs": "", "titles": ""}',
+    '{"website": "https://...", "domain": "company.com", "website_confidence": "high|medium|low", "source_urls": ["https://..."], "summary": "", "mission": "", "positioning": "", "size": "", "hq_city": "", "sells_to": "", "recent_news": "", "recent": [{"month": "YYYY-MM", "text": "", "url": "https://..."}], "housing_perk": "", "suggested_category": null, "why_homelover": "", "first_angle": "", "watch_outs": "", "titles": ""}',
     'Field rules:',
     '- website / domain: the official site. website_confidence high only when the site itself names the company; low when you could not find it (then website and domain are null).',
     '- source_urls: up to 3 real pages you opened.',
@@ -50,7 +54,9 @@ export function researchSystem(business, categories, framing = 'partner') {
     '- positioning: at most 40 words - how they describe themselves, notable awards or claims.',
     '- size: employees or a range, plus customers / members / clients if stated, each marked "est." when estimated, and where it comes from.',
     '- hq_city: city and state or country.',
+    '- sells_to: at most 20 words - who they sell to (the segments, buyers or members they serve).',
     '- recent_news: at most 40 words from the last 12 months with the month (acquisitions, funding, launches, leadership); "none found" otherwise.',
+    `- recent: up to ${RECENT_MAX} dated items from the last 12 months, newest first, each with month "YYYY-MM", text at most 25 words and the url of the page it came from; [] when none found.`,
     `- housing_perk: any mortgage, home-buying or housing benefit they already offer or resell, in one line; otherwise exactly "no housing perk found".`,
     categories.length ? '- suggested_category: exactly one string from CATEGORIES, or null when none fits.' : '- suggested_category: always null.',
     `- why_homelover: at most 40 words - why ${business.name} would matter to this company, in the company's own terms (their mission, their members, their catalog).`,
@@ -85,6 +91,9 @@ export function parseResearch(text, categories) {
     suggested_category: categories.includes(raw.suggested_category) ? raw.suggested_category : null,
   };
   for (const [k, max] of Object.entries(TEXT_FIELDS)) out[k] = cleanText(raw[k], max) || null;
+  out.recent = (Array.isArray(raw.recent) ? raw.recent : [])
+    .map(r => (r && typeof r === 'object' ? { month: MONTH_RE.test(r.month) ? r.month : null, text: cleanText(r.text, RECENT_TEXT_MAX) || null, url: url(r.url) } : null))
+    .filter(r => r && r.text).slice(0, RECENT_MAX);
   return out;
 }
 
