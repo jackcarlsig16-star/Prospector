@@ -135,14 +135,17 @@ test('accept, partner match: 1 note event, 0 status signals, 1 to-do linked to t
   assert.deepEqual([sb.db.sales_week_goals[0].link_type, sb.db.sales_week_goals[0].link_id], ['partner', P.kestrel]);
 });
 
-test('accept, employer match: a notes line + one unlinked to-do naming the company; Upside joint -> (cc Brad)', async () => {
+test('accept, employer match: a notes line + one to-do linked to the employer, naming the company; Upside joint -> (cc Brad); Undo takes both back', async () => {
   const sb = fresh(); await imp(sb);
   const r = await accept(sb, byCompany(sb, 'Brightmill Foods'));
   assert.equal(r.status, 200, r.body.error);
   assert.equal(sb.db.sales_opportunities[0].notes, 'Met at expo\n(10/19) Signal: Benefits RFP · Why now: Renewal in Q1');
   const todo = sb.db.sales_week_goals[0];
-  assert.deepEqual([todo.link_type, todo.link_id], [null, null]);
+  assert.deepEqual([todo.link_type, todo.link_id], ['opportunity', sb.db.sales_opportunities[0].id], 'FIX loop-quickfixes Q1: the to-do carries the employer');
   assert.equal(todo.text, 'Reach out: Brightmill Foods — CHRO · Sam T. (cc Brad)');
+  const u = await undo(sb, byCompany(sb, 'Brightmill Foods'));
+  assert.equal(u.status, 200, u.body.error);
+  assert.deepEqual([sb.db.sales_week_goals.length, sb.db.sales_opportunities[0].notes, byCompany(sb, 'Brightmill Foods').status], [0, 'Met at expo', 'new']);
 });
 
 test('accept, target match: reuses the target (no second one) + 1 to-do', async () => {
@@ -248,7 +251,7 @@ test('Done, employer match: the notes line + a done to-do, 0 partner events; don
   const r = await done(sb, byCompany(sb, 'Brightmill Foods'));
   assert.equal(r.status, 200, r.body.error);
   assert.equal(sb.db.sales_opportunities[0].notes, 'Met at expo\n(10/19) Signal: Benefits RFP · Why now: Renewal in Q1');
-  assert.deepEqual([sb.db.sales_week_goals[0].status, sb.db.sales_partner_events.length], ['done', 0]);
+  assert.deepEqual([sb.db.sales_week_goals[0].status, sb.db.sales_week_goals[0].link_type, sb.db.sales_week_goals[0].link_id, sb.db.sales_partner_events.length], ['done', 'opportunity', sb.db.sales_opportunities[0].id, 0]);
   const before = JSON.stringify(sb.db);
   const bad = await acceptSignal(sb, { businessId: B, userId: U, id: byCompany(sb, 'Kestrel Pay').id, now: NOW, done: 'yes' });
   assert.deepEqual([bad.status, bad.body.error], [400, 'done must be true']);

@@ -112,7 +112,7 @@ export async function acceptSignal(supabase, { businessId, userId, id, now = new
       const rows = must(await (opp.notes == null ? q.is('notes', null) : q.eq('notes', opp.notes)).select('id'));
       if (!rows.length) throw err(409, `${opp.organization} changed since - reload and accept again`);
       undo.push(() => supabase.from('sales_opportunities').update({ notes: opp.notes }).eq('id', opp.id));
-      via = 'employer'; record = { type: 'opportunity', id: opp.id, name: opp.organization };
+      link = ['opportunity', opp.id]; via = 'employer'; record = { type: 'opportunity', id: opp.id, name: opp.organization };
     } else {
       link = ['target', m.id]; targetId = m.id; via = 'target'; record = { type: 'target', id: m.id, name: m.name };
     }
