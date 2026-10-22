@@ -662,7 +662,7 @@ test('Viewer: the band shows the signal but no buttons; the facts row and the ca
   expect(panel.queryByRole('button', { name: /Not this company|\+ Add|\+ Note|Follow up|Find who/ })).toBeNull();
 });
 
-test('visitor: facts are Priority · Source · Last visit; no Edit row but Priority; Not now is not offered on the band', async () => {
+test('visitor: facts are Priority · Source · Last visit; no Edit row but Priority; the band offers only Add to pipeline ▾ (FIX loop-quickfixes Q3)', async () => {
   goalsApi.pipelineBoard.mockImplementation(() => Promise.resolve([...ROWS, APOLLO, VISITOR]));
   const VISIT = { id: 'v1', kind: 'visit', count: 6, step: null, at: '2026-10-20', person: null, text: '6 site visits this week · /pricing' };
   goalsApi.companyDetail.mockImplementation((b, type, id) => Promise.resolve({ ...DETAIL, interest: { items: [VISIT], strongest: VISIT, newest_id: 'v1', dismissed: false, show: true }, record: { type, id, name: id, stage: 'visited', channel: 'website_visit' } }));
@@ -673,7 +673,7 @@ test('visitor: facts are Priority · Source · Last visit; no Edit row but Prior
   const band = within(await panel.findByRole('region', { name: 'Interest' }));
   expect(band.getByText('6 site visits this week · /pricing')).toBeTruthy();
   expect(band.queryByRole('button', { name: 'Not now' })).toBeNull();
-  expect(band.getByRole('button', { name: 'Book meeting' })).toBeTruthy();
+  expect(band.getAllByRole('button').map(b => b.textContent)).toEqual(['Add to pipeline ▾']);
   expect(panel.getByTitle('Source').textContent).toBe('Website');
   expect(panel.getByTitle('Last visit').textContent).toBe('Oct 20');
   expect(panel.queryByTitle('Owner')).toBeNull();
