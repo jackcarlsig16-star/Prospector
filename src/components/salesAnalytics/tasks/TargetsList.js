@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { SA, SA_SHAPE, saSans } from '../theme';
 import { SEMANTIC } from '../palette';
 import { goalsApi } from '../goals/goalsApi';
@@ -21,6 +21,28 @@ const STATUS = { proposed: ['Proposed', SA.neutral], researching: ['Researching'
 const md = d => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '');
 const actBtn = { ...copyBtnStyle, color: SA.text };
 
+// FIX loop-quickfixes Q8: the evidence line is one clipped line; "more" opens the whole of it in place (only shown
+// when it is actually cut off). The list keeps one open at a time; Esc closes it.
+function Evidence({ id, text, open, onToggle }) {
+  const ref = useRef(null);
+  const [clipped, setClipped] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || open) return undefined;
+    const measure = () => setClipped(el.scrollWidth > el.clientWidth);
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [text, open]);
+  const one = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' };
+  return (
+    <span style={{ display: 'flex', gap: 6, alignItems: 'baseline', minWidth: 0 }}>
+      <span ref={ref} id={`ev-${id}`} title={open ? undefined : text} style={{ fontSize: 12, color: SA.muted, minWidth: 0, ...(open ? { whiteSpace: 'normal', overflowWrap: 'anywhere' } : one) }}>“{text}”</span>
+      {(clipped || open) && <button type="button" id={`ev-btn-${id}`} aria-expanded={open} aria-controls={`ev-${id}`} onClick={onToggle} style={{ ...linkBtn, fontSize: 12, flex: 'none' }}>{open ? 'less' : 'more'}</button>}
+    </span>
+  );
+}
+
 export default function TargetsList({ businessId, targets, canEdit, onChanged, onOpenRecord }) {
   const [showClosed, setShowClosed] = useState(false);
   const [panel, setPanel] = useState(null); // { id, to }
@@ -28,6 +50,7 @@ export default function TargetsList({ businessId, targets, canEdit, onChanged, o
   const [toast, setToast] = useState(null); // { text, undo? }
   const [already, setAlready] = useState(null); // { targetId, type, id, name }
   const [error, setError] = useState('');
+  const [openEvidence, setOpenEvidence] = useState(null); // one target id
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), toast.undo ? UNDO_MS : 4000);
@@ -56,7 +79,8 @@ export default function TargetsList({ businessId, targets, canEdit, onChanged, o
   const closed = targets.length - openTargets(targets).length;
   const typeLabel = { partner: 'partner', opportunity: 'employer', target: 'target' };
   return (
-    <section aria-label="Targets" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <section aria-label="Targets" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}
+      onKeyDown={e => { if (e.key !== 'Escape' || !openEvidence) return; e.stopPropagation(); const id = openEvidence; setOpenEvidence(null); document.getElementById(`ev-btn-${id}`)?.focus(); }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         <span style={{ ...labelStyle, color: SA.soft }}>Targets · {openTargets(targets).length} open</span>
         <span style={{ flex: 1 }} />
@@ -82,7 +106,7 @@ export default function TargetsList({ businessId, targets, canEdit, onChanged, o
                 <OwnerPill row={t} />
               </div>
               {t.suggested_category && <span style={{ fontSize: 12, color: SA.soft }}>{t.suggested_category.replace(/^\d+\.\s*/, '')}</span>}
-              {t.evidence && <span title={t.evidence} style={{ fontSize: 12, color: SA.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>“{t.evidence}”</span>}
+              {t.evidence && <Evidence id={t.id} text={t.evidence} open={openEvidence === t.id} onToggle={() => setOpenEvidence(o => (o === t.id ? null : t.id))} />}
               <span style={{ fontSize: 11, color: SA.muted }}>
                 {t.source ? `From ${t.source.label || 'notes'}${t.source.date ? ` · ${md(t.source.date)}` : ''}` : `Added ${md(t.created_at?.slice(0, 10))}`}
               </span>

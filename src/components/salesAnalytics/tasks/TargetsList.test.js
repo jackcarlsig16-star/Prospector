@@ -113,3 +113,28 @@ test('Copy for Claude puts the bundle on the clipboard and says so', async () =>
   await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining('## What I need:')));
   await screen.findByText('Copied for Claude ✓');
 });
+
+// FIX loop-quickfixes Q8 - a cut-off evidence line opens in place: "more" only when clipped, one at a time, Esc closes.
+test('evidence: more opens the whole line in place, one at a time; less / Esc closes; short lines get no toggle', () => {
+  const sw = jest.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function () { return this.textContent.length > 40 ? 900 : 100; });
+  const cw = jest.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(300);
+  const long = 'renter-investing platforms are worth approaching because their users move every 18 months on average';
+  const list = [target('t1', 'Fundrise', { evidence: long }), target('t2', 'Deloitte', { evidence: `${long} - second` }), target('t5', 'Short Co', { evidence: 'small' })];
+  const onKeyWindow = jest.fn();
+  window.addEventListener('keydown', onKeyWindow);
+  render(<TargetsList businessId="b1" targets={list} canEdit={false} onChanged={jest.fn()} />);
+  const [m1, m2] = screen.getAllByRole('button', { name: 'more' });
+  expect(screen.getAllByRole('button', { name: 'more' })).toHaveLength(2); // not on the short one
+  fireEvent.click(m1);
+  expect(m1).toHaveAttribute('aria-expanded', 'true');
+  expect(document.getElementById(m1.getAttribute('aria-controls'))).toHaveStyle({ whiteSpace: 'normal' });
+  fireEvent.click(m2);
+  expect(m1).toHaveAttribute('aria-expanded', 'false');
+  expect(m2).toHaveAttribute('aria-expanded', 'true');
+  fireEvent.keyDown(m2, { key: 'Escape' });
+  expect(m2).toHaveAttribute('aria-expanded', 'false');
+  expect(m2).toHaveFocus();
+  expect(onKeyWindow).not.toHaveBeenCalled(); // the drawer's own Esc (close) doesn't fire while a line was open
+  window.removeEventListener('keydown', onKeyWindow);
+  sw.mockRestore(); cw.mockRestore();
+});
