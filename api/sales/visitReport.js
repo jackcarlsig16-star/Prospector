@@ -3,8 +3,7 @@ import { getSupabase, addDays } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
 import { normName } from './intakeMatch.js';
-import { cleanText } from './scrubText.js';
-import { hasPii } from './targetsRoutes.js';
+import { cleanText, hasPii } from './scrubText.js';
 import { PRIORITY_LABEL } from './visitRules.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
 

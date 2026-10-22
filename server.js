@@ -679,6 +679,14 @@ app.post('/api/sales/:businessId/goals/suggestions/:id/undo', salesModuleRoute('
 // sales-ia-v2 A1 - the Actions list (reads only).
 app.get('/api/sales/:businessId/goals/actions', salesModuleRoute('./api/sales/actionsRoutes.js', 'listActionsRoute', 'goals/actions'));
 app.get('/api/sales/:businessId/goals/attention', salesModuleRoute('./api/sales/attentionRoutes.js', 'attentionRoute', 'goals/attention'));
+// lead-source-v1 Stage 2 - source edit / history, referred-by, Sources report + partner export, backfill (export / backfill before :id-style routes).
+app.get('/api/sales/:businessId/goals/sources', salesModuleRoute('./api/sales/sourceRoutes.js', 'sourcesReportRoute', 'goals/sources'));
+app.get('/api/sales/:businessId/goals/sources/export', salesModuleRoute('./api/sales/sourceRoutes.js', 'sourcesExportRoute', 'goals/sources/export'));
+app.get('/api/sales/:businessId/goals/sources/backfill', salesModuleRoute('./api/sales/sourceRoutes.js', 'backfillPreviewRoute', 'goals/sources/backfill'));
+app.post('/api/sales/:businessId/goals/sources/backfill/apply', salesModuleRoute('./api/sales/sourceRoutes.js', 'backfillApplyRoute', 'goals/sources/backfill/apply POST'));
+app.get('/api/sales/:businessId/goals/source/:type/:id', salesModuleRoute('./api/sales/sourceRoutes.js', 'getSourceRoute', 'goals/source/:type/:id'));
+app.patch('/api/sales/:businessId/goals/source/:type/:id', salesModuleRoute('./api/sales/sourceRoutes.js', 'editSourceRoute', 'goals/source/:type/:id PATCH'));
+app.get('/api/sales/:businessId/goals/partners/:id/referred', salesModuleRoute('./api/sales/sourceRoutes.js', 'referredByRoute', 'goals/partners/:id/referred'));
 // seif-campaign-v1 Stage 2 - outreach campaigns (summary before :id; import before :action).
 app.get('/api/sales/:businessId/goals/campaigns', salesModuleRoute('./api/sales/outreachRoutes.js', 'listCampaignsRoute', 'goals/campaigns'));
 app.get('/api/sales/:businessId/goals/campaigns/summary', salesModuleRoute('./api/sales/outreachRoutes.js', 'campaignSummaryRoute', 'goals/campaigns/summary'));

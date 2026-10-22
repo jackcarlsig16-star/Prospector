@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import ExcelJS from 'exceljs';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
 import { visitReport, visitExport, nameScrubber, addSkip, removeSkip, listSkip, EXPORT_COLUMNS } from './visitReport.js';
-import { hasPii } from './targetsRoutes.js';
+import { hasPii } from './scrubText.js';
 import { normName } from './intakeMatch.js';
 import { salesGate } from '../lib/requireAuth.js';
 

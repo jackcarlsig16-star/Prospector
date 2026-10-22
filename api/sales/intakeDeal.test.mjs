@@ -13,7 +13,8 @@ import { toIntake } from './intakeMatch.js';
 import { parseIntake, acceptIntake } from './intakeAccept.js';
 import { signExtract, extractIfSigned, scrubExtract, recentAccepts, toDeal } from './intakeDeal.js';
 import { replyTask, waitingOverdue } from './tidyRules.js';
-import { copyBundle, hasPii } from './targetsRoutes.js';
+import { copyBundle } from './targetsRoutes.js';
+import { hasPii } from './scrubText.js';
 import { acceptBody } from '../../src/components/salesAnalytics/tasks/intakeBody.js';
 
 const NOTE = readFileSync(new URL('./testing/callNoteFixtureD.txt', import.meta.url), 'utf8');

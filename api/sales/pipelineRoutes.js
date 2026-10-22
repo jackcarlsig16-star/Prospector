@@ -6,6 +6,7 @@ import { OWNER_TEAMS } from '../../src/constants/ownership.js';
 import { findOpportunity, moveForward } from './opportunityMatch.js';
 import { CHANNEL_IDS, PRIORITIES } from '../../src/constants/salesChannels.js';
 import { priorityStamp } from './goalsShared.js';
+import { validateSource, sourceColumns, logSource } from './leadSource.js';
 
 // sales-pipeline-v1 - server-only access, same posture as every other
 // sales_* table (RLS enabled, zero policies).
@@ -72,8 +73,12 @@ export async function listOpportunitiesRoute(req, res) {
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
 
+// lead-source-v1: the Add company form's optional Source picker = a person's pick ({ source: { source_kind, … } }).
 export async function createOpportunityRoute(req, res) {
-  const { payload, error } = validateFields(req.body);
+  const { source, ...body } = req.body || {};
+  const s = source == null ? null : validateSource(source);
+  if (s?.error) return res.status(400).json({ error: `source: ${s.error}` });
+  const { payload, error } = validateFields(body);
   if (error) return res.status(400).json({ error });
   if (!payload.organization || !payload.organization.trim()) {
     return res.status(400).json({ error: 'organization is required' });
@@ -85,10 +90,15 @@ export async function createOpportunityRoute(req, res) {
   } catch (e) { return res.status(500).json({ error: e.message }); }
   const { data, error: insErr } = await supabase
     .from('sales_opportunities')
-    .insert({ business_id: req.params.businessId, source: 'manual', channel: 'manual', ...payload, ...priorityStamp(payload, req.auth.user.id) })
+    .insert({ business_id: req.params.businessId, source: 'manual', channel: 'manual', ...payload, ...priorityStamp(payload, req.auth.user.id),
+      ...(s?.source.source_kind ? sourceColumns(s.source, { userId: req.auth.user.id, manual: true }) : {}) })
     .select()
     .single();
   if (insErr) return res.status(500).json({ error: insErr.message });
+  if (s?.source.source_kind) {
+    try { await logSource(supabase, { businessId: req.params.businessId, type: 'employer', id: data.id, to: data, reason: 'create', byUser: req.auth.user.id }); }
+    catch (e) { return res.status(500).json({ error: e.message }); }
+  }
   res.status(201).json({ opportunity: data });
 }
 

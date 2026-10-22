@@ -8,6 +8,7 @@ import { validateFields } from './pipelineRoutes.js';
 import { ImportRefused } from './masterImport.js';
 import { scoutImport, laMonday, DISMISS_DAYS } from './scoutImport.js';
 import { SIGNAL_CHANNEL } from '../../src/constants/salesChannels.js';
+import { sourceColumns, logSource } from './leadSource.js';
 
 // signals-v1 Stage 2 - the review queue for outside signals (D1). Import
 // only proposes; a Member decides each row. Accept (D2-D4) makes ONE open
@@ -37,6 +38,9 @@ const appendLine = (old, line) => (old ? `${old}\n${line}` : line);
 export const nextFriday = day => addDays(day, (5 - new Date(`${day}T12:00:00Z`).getUTCDay() + 7) % 7);
 
 export const todoText = s => `Reach out: ${s.company_name}${s.who ? ` — ${s.who}` : ''}${s.upside_joint ? ' (cc Brad)' : ''}`;
+
+// lead-source-v1: a target a signal creates was found by our Scout or visited our website.
+const SIGNAL_SOURCE = s => ({ source_kind: s.source === 'web_visit' ? 'website' : 'scout' });
 
 // The record Accept writes to: an exact name match only, live before
 // archived, partner > employer > target. Apollo-only accounts don't count.
@@ -89,10 +93,13 @@ export async function acceptSignal(supabase, { businessId, userId, id, now = new
       const r = await supabase.from('sales_targets').insert({
         business_id: businessId, name: s.company_name, kind: s.kind, status: 'researching', source: s.source, signal_id: s.id, channel: SIGNAL_CHANNEL[s.source] || 'unknown',
         evidence: s.signal, owner_team: s.upside_joint ? 'both' : null, co_owner_name: s.upside_joint ? 'Brad' : null, created_by: userId,
+        ...sourceColumns(SIGNAL_SOURCE(s), { now }),
       }).select().single();
       if (r.error?.code === '23505') throw err(409, `${s.company_name} is already a target - reload`);
       const t = must(r);
       undo.push(() => supabase.from('sales_targets').delete().eq('id', t.id));
+      await logSource(supabase, { businessId, type: 'target', id: t.id, to: SIGNAL_SOURCE(s), reason: 'create', byUser: userId, at: now });
+      undo.push(() => supabase.from('sales_source_events').delete().eq('record_type', 'target').eq('record_id', t.id));
       link = ['target', t.id]; targetId = t.id; via = 'new_target'; record = { type: 'target', id: t.id, name: t.name };
     } else if (m.type === 'partner') {
       const note = `${SOURCE_LABEL[s.source]} ${stamp}: ${detail}`;
@@ -186,6 +193,7 @@ export async function undoSignal(supabase, { businessId, userId = null, id, body
       if (via === 'new_target' && s.target_id) {
         must(await supabase.from('sales_week_goals').update({ link_type: null, link_id: null }).eq('business_id', businessId).eq('link_type', 'target').eq('link_id', s.target_id));
         must(await supabase.from('sales_targets').delete().eq('business_id', businessId).eq('id', s.target_id).eq('signal_id', s.id));
+        must(await supabase.from('sales_source_events').delete().eq('business_id', businessId).eq('record_type', 'target').eq('record_id', s.target_id));
       } else if (via === 'partner' && s.match?.id) {
         const events = must(await supabase.from('sales_partner_events').select('id, meta').eq('business_id', businessId).eq('goal_id', s.match.id).eq('event', 'note'));
         const mine = events.filter(e => e.meta?.from_signal_id === s.id).map(e => e.id);

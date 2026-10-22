@@ -10,6 +10,7 @@ import { PIPELINE_STATUS_IDS, TIERS, isStalePartner } from '../../src/constants/
 import { laDateString } from './laDate.js';
 import { peopleCounts } from './partnerPeople.js';
 import { CHANNEL_IDS } from '../../src/constants/salesChannels.js';
+import { validateSource, sourceColumns, logSource } from './leadSource.js';
 
 // sales-goals-v1 - Goals & Weekly Plan API (REV3 Stage 2, extended in REV4
 // Stage 4). Weekly report, scorecard, KPI and companies live in
@@ -152,15 +153,24 @@ export async function listLandGoalsRoute(req, res) {
   } catch (e) { res.status(500).json({ error: e.message }); }
 }
 
+// lead-source-v1: the Add partner form's optional Source picker = a person's pick ({ source: { source_kind, … } }).
 export async function createLandGoalRoute(req, res) {
   const supabase = getSupabase();
-  const v = await validate(supabase, req.params.businessId, LAND_FIELDS, req.body);
+  const { source, ...body } = req.body || {};
+  const s = source == null ? null : validateSource(source);
+  if (s?.error) return res.status(400).json({ error: `source: ${s.error}` });
+  const v = await validate(supabase, req.params.businessId, LAND_FIELDS, body);
   if (v.error) return fail(res, v);
   if (!v.payload.goal_type) return res.status(400).json({ error: 'goal_type is required' });
   if (!v.payload.name) return res.status(400).json({ error: 'name is required' });
   const { data, error } = await supabase.from('sales_goals')
-    .insert({ business_id: req.params.businessId, channel: 'manual', ...v.payload, ...landTimestamps(v.payload), ...priorityStamp(v.payload, req.auth.user.id), ...(v.payload.goal_type === 'partnership' ? { pipeline_status: 'not_started' } : {}) }).select().single();
+    .insert({ business_id: req.params.businessId, channel: 'manual', ...v.payload, ...landTimestamps(v.payload), ...priorityStamp(v.payload, req.auth.user.id), ...(v.payload.goal_type === 'partnership' ? { pipeline_status: 'not_started' } : {}),
+      ...(s?.source.source_kind ? sourceColumns(s.source, { userId: req.auth.user.id, manual: true }) : {}) }).select().single();
   if (error) return res.status(500).json({ error: error.message });
+  if (s?.source.source_kind && data.goal_type === 'partnership') {
+    try { await logSource(supabase, { businessId: req.params.businessId, type: 'partner', id: data.id, to: data, reason: 'create', byUser: req.auth.user.id }); }
+    catch (e) { return res.status(500).json({ error: e.message }); }
+  }
   // partner-add-research-v1: research starts after the save and never
   // blocks it (form / AddCompany path only; Intake and import skip it, D10).
   if (data.goal_type === 'partnership') {

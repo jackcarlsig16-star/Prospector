@@ -1,7 +1,6 @@
 import { openUpload, cellText, UPLOAD_MAX_ROWS } from './sheetUpdate.js';
 import { ImportRefused } from './masterImport.js';
-import { hasPii } from './targetsRoutes.js';
-import { cleanText } from './scrubText.js';
+import { cleanText, hasPii } from './scrubText.js';
 import { normName } from './intakeMatch.js';
 import { findDupes, loadDupeContext } from './partnerDupeCheck.js';
 import { selectAllPages } from '../lib/selectAllPages.js';

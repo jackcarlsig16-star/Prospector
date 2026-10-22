@@ -5,6 +5,7 @@ import { touchDedupe } from './touchDedupe.js';
 import { touchStageMove, TOUCH_TYPE_IDS } from '../../src/constants/partnerPipeline.js';
 import { OWNER_TEAMS, doubleTouchWarning } from '../../src/constants/ownership.js';
 import { toDeal } from './intakeDeal.js';
+import { cleanReferral } from './leadSource.js';
 
 // call-notes-targets-v1 REV3 - the four Intake lists the model returns
 // (companies, people, touches, facts) checked against this workspace. The
@@ -96,6 +97,8 @@ export function toIntake(raw, ctx, noteDate, today = laDateString()) {
       key: `c${i}`, name, kind, evidence: cleanText(c.evidence, 200), match: publicMatch(m), _m: m, action,
       category: kind === 'partner' && (ctx.categories || []).includes(c.category) ? c.category : null,
       on: action !== 'skip' && action !== 'none', _ownership: c.ownership,
+      // lead-source-v1: who brought it, as a proposal the review can edit; applied only to a record Accept creates.
+      referred_by: cleanReferral(c.referred_by, ctx.partners || []),
     });
   }
   // A person / touch / fact names its company; it belongs to the listed

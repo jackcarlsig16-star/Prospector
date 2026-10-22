@@ -10,6 +10,7 @@ import { validateFields } from './pipelineRoutes.js';
 import { applyPartnerSignal } from './partnerSignals.js';
 import { addDays } from './goalsShared.js';
 import { laDateString } from './laDate.js';
+import { sourceDirectory, mapSheetSource, sourceColumns, sourceOf, isOpen, logSource } from './leadSource.js';
 
 // master-pipeline-import-v1 - the HomeLover x Upside master sheet into
 // partners (sales_goals), targets (sales_targets) and employers
@@ -187,7 +188,7 @@ export function readInput(text, { recordIdRequired = true } = {}) {
 export async function loadState(supabase, businessId) {
   const all = (table, cols, extra = q => q) => selectAllPages(() => extra(supabase.from(table).select(cols).eq('business_id', businessId)).order('id'));
   const [partners, domains, opps, targets, contacts, todos, sequenced] = await Promise.all([
-    all('sales_goals', 'id, name, record_id, tier, category, owner_user_id, owner_team, co_owner_name, next_step, notes, company_domain, pipeline_status, last_touch_at',
+    all('sales_goals', 'id, name, record_id, tier, category, owner_user_id, owner_team, co_owner_name, next_step, notes, company_domain, pipeline_status, last_touch_at, source_kind, source_partner_id, source_person, source_office, source_campaign_id, route_in, source_note, source_set_by',
       q => q.eq('goal_type', 'partnership').is('archived_at', null)),
     all('partner_domains', 'id, goal_id, domain', q => q.eq('confirmed', true)),
     all('sales_opportunities', '*', q => q.is('archived_at', null)),
@@ -294,6 +295,13 @@ export function plan(state, input, { acceptPossible = [], today = laDateString()
     possibles: [], apollo_possibles: [], apollo_links: 0, kind_mismatches: [], skipped: [], invalid: input.invalid, contacts: { partner_insert: 0, partner_update: 0, opp_lines: 0, target_lines: 0 }, todos: 0,
   };
   const diff = (r, field, prospector, sheet) => report.differences.push({ record_id: r.record_id, name: r.name, field, prospector, sheet });
+  // lead-source-v1: the sheet's Source / Route in / Broker on account -> the record's source (D5 rulings). A new
+  // record takes it; an existing one only while its source is open (never set, or an automatic unknown) and the
+  // sheet says something different. Applied after the row's own write, with an 'import' event.
+  const dir = sourceDirectory(state.partners, [...state.partners, ...state.opps, ...state.targets]);
+  const sheetSource = r => (r.source || r.route_in || r.broker_on_account ? mapSheetSource({ source: r.source, route_in: r.route_in, broker: r.broker_on_account }, dir).source : null);
+  const same = (row, s) => Object.keys(s).every(k => (row[k] ?? null) === (s[k] ?? null));
+  const sourceFor = (row, r) => { const s = sheetSource(r); return s && (!row || (isOpen(row) && !same(row, s))) ? { from: row ? sourceOf(row) : null, to: s } : null; };
   const skip = (r, reason) => { report.counts.skipped++; report.skipped.push({ record_id: r.record_id, name: r.name, reason }); };
   // "Jack" / "Cyrus" or a member's full name (the board exports display names) = that member.
   const ownerId = r => (r.owner_name ? matchOwner(r.owner_name, state.members)
@@ -359,6 +367,7 @@ export function plan(state, input, { acceptPossible = [], today = laDateString()
         report.todos++;
       }
       report.counts.partner_update++;
+      a.source = sourceFor(p, r);
       actions.push(a);
       continue;
     }
@@ -390,7 +399,7 @@ export function plan(state, input, { acceptPossible = [], today = laDateString()
         name: r.name, kind: 'partner', status: 'proposed', evidence: r.record_id ? `master sheet ${r.record_id}` : 'joint sheet', suggested_category: r.category || null,
         owner_team: r.owner_team || null, co_owner_name: r.co_owner_name || null, record_id: r.record_id || null, research_notes: lines.join('\n') || null,
         channel: 'import',
-      } });
+      }, source: sourceFor(null, r) });
       continue;
     }
 
@@ -426,7 +435,7 @@ export function plan(state, input, { acceptPossible = [], today = laDateString()
       const dm = mergeLines(o.decision_makers, dmLines);
       if (dm) { patch.decision_makers = dm; report.contacts.opp_lines += dmLines.filter(l => !(o.decision_makers || '').toLowerCase().includes(personName(l))).length; }
       report.counts.opp_update++;
-      actions.push({ route: 'opp_update', record_id: r.record_id, name: r.name, opp_id: o.id, matched_by: oppHit.by, patch });
+      actions.push({ route: 'opp_update', record_id: r.record_id, name: r.name, opp_id: o.id, matched_by: oppHit.by, patch, source: sourceFor(o, r) });
       continue;
     }
     const possible = possibleFor(r, state);
@@ -449,7 +458,7 @@ export function plan(state, input, { acceptPossible = [], today = laDateString()
     if (error) { skip(r, error); continue; }
     report.contacts.opp_lines += dmLines.length;
     report.counts.opp_insert++;
-    actions.push({ route: 'opp_insert', record_id: r.record_id, name: r.name, row: { ...payload, record_id: r.record_id || null, apollo_account_id: seq?.account_id || null, source: 'csv', channel: 'import' } });
+    actions.push({ route: 'opp_insert', record_id: r.record_id, name: r.name, row: { ...payload, record_id: r.record_id || null, apollo_account_id: seq?.account_id || null, source: 'csv', channel: 'import' }, source: sourceFor(null, r) });
   }
   return { actions, report };
 }
@@ -458,9 +467,16 @@ export function plan(state, input, { acceptPossible = [], today = laDateString()
 const mondayOf = d => addDays(d, -((new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7));
 
 export async function applyPlan(supabase, businessId, { actions }, { now = new Date(), byUser = null } = {}) {
-  const done = { partner_update: 0, assign: 0, partner_to_target: 0, target_update: 0, opp_insert: 0, opp_update: 0, contacts: 0, todos: 0, errors: [] };
+  const done = { partner_update: 0, assign: 0, partner_to_target: 0, target_update: 0, opp_insert: 0, opp_update: 0, contacts: 0, todos: 0, sources: 0, errors: [] };
   const week = mondayOf(laDateString(now));
   const must = r => { if (r.error) throw new Error(r.error.message); return r.data; };
+  const TABLE = { partner: 'sales_goals', employer: 'sales_opportunities', target: 'sales_targets' };
+  // A person's source set between the preview and now still wins (the update only lands on a row nobody picked for).
+  const writeSource = async (type, id, src) => {
+    if (!src || !id) return;
+    const rows = must(await supabase.from(TABLE[type]).update(sourceColumns(src.to, { now })).eq('id', id).is('source_set_by', null).select('id'));
+    if (rows.length) { await logSource(supabase, { businessId, type, id, from: src.from, to: src.to, reason: 'import', byUser, at: now }); done.sources++; }
+  };
   for (const a of actions) {
     try {
       if (a.route === 'partner_update') {
@@ -479,18 +495,24 @@ export async function applyPlan(supabase, businessId, { actions }, { now = new D
             due_date: a.todo.due_date, owner_user_id: a.todo.owner_user_id, link_type: 'partner', link_id: a.goal_id }).select('id'));
           done.todos++;
         }
+        await writeSource('partner', a.goal_id, a.source);
       } else if (a.route === 'partner_to_target') {
-        must(await supabase.from('sales_targets').insert({ business_id: businessId, ...a.row }).select('id'));
+        const [t] = must(await supabase.from('sales_targets').insert({ business_id: businessId, ...a.row }).select('id'));
         done.partner_to_target++;
+        await writeSource('target', t?.id, a.source);
       } else if (a.route === 'target_update' && Object.keys(a.patch).length) {
         must(await supabase.from('sales_targets').update({ ...a.patch, updated_at: now.toISOString() }).eq('id', a.target_id).select('id'));
         done.target_update++;
       } else if (a.route === 'opp_insert') {
-        must(await supabase.from('sales_opportunities').insert({ business_id: businessId, ...a.row }).select('id'));
+        const [o] = must(await supabase.from('sales_opportunities').insert({ business_id: businessId, ...a.row }).select('id'));
         done.opp_insert++;
-      } else if (a.route === 'opp_update' && Object.keys(a.patch).length) {
-        must(await supabase.from('sales_opportunities').update({ ...a.patch, updated_at: now.toISOString() }).eq('id', a.opp_id).select('id'));
-        done.opp_update++;
+        await writeSource('employer', o?.id, a.source);
+      } else if (a.route === 'opp_update') {
+        if (Object.keys(a.patch).length) {
+          must(await supabase.from('sales_opportunities').update({ ...a.patch, updated_at: now.toISOString() }).eq('id', a.opp_id).select('id'));
+          done.opp_update++;
+        }
+        await writeSource('employer', a.opp_id, a.source);
       }
     } catch (e) { done.errors.push({ record_id: a.record_id, name: a.name, error: e.message }); }
   }

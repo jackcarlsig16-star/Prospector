@@ -6,6 +6,9 @@ import { scoreProspect, huddleSignals, isAutomated, HEAT_BANDS } from './heatSco
 import { nextBestAction, SCANNER_CLICK_WITHIN_SECONDS } from './nextBestAction.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { findOpportunity, moveForward } from './opportunityMatch.js';
+import { sourceColumns, logSource } from './leadSource.js';
+
+const HUDDLE_SOURCE = { source_kind: 'homelover_outreach' };
 
 // sales-hot-prospects-v1 - server-only access, same posture as every other
 // sales_* table (RLS enabled, zero policies).
@@ -234,8 +237,12 @@ export async function addToPipelineRoute(req, res) {
     cohort,
     owner: OWNER_NAMES[p.owner] || null,
     champion: [p.name, p.title].filter(Boolean).join(', ') || null,
+    // lead-source-v1: a prospect from our own Apollo sequences.
+    ...sourceColumns(HUDDLE_SOURCE),
   }).select().single();
   if (insErr) return res.status(500).json({ error: insErr.message });
+  try { await logSource(supabase, { businessId, type: 'employer', id: opp.id, to: HUDDLE_SOURCE, reason: 'create', byUser: req.auth.user.id }); }
+  catch (e) { return res.status(500).json({ error: e.message }); }
 
   const { data, error } = await link(opp.id);
   if (error) return res.status(500).json({ error: `opportunity ${opp.id} created but not linked: ${error.message}` });

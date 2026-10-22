@@ -296,8 +296,8 @@ const expectStep = (contact, body) => {
 const LINK = { partner: 'goal_id', employer: 'opportunity_id', target: 'target_id' };
 
 // Promote (B5): the contact's company -> a partner (consultant / broker), an
-// employer (corporate) or a target, with the campaign as its source line
-// (channel partner_referral; a real source column waits on lead-source-v1).
+// employer (corporate) or a target, with the campaign as its lead source
+// (lead-source-v1: kind campaign, the campaign, the sender) and channel partner_referral.
 // A company already in Pipeline is linked, never duplicated, and keeps its
 // owner; a new partner's owner goes through the Assign signal. The person is
 // added to a partner as a contact without an address.
@@ -308,11 +308,12 @@ async function promote(supabase, { contact, campaign, body, userId, team, now })
   checkMember(team, owner, 'owner_user_id');
   const name = cleanText(contact.company, 160);
   if (!name) throw err(400, `${contact.name} has no company to promote`);
-  const referrer = first(team.get(campaign.sender_user_id)) || 'the sender';
-  const evidence = `From campaign "${campaign.name}" (referred by ${referrer}): ${[contact.name, contact.title].filter(Boolean).join(', ')}`;
+  const evidence = `From campaign "${campaign.name}": ${[contact.name, contact.title].filter(Boolean).join(', ')}`;
+  // lead-source-v1: the campaign is the source, its sender the person (replaces the old "(referred by …)" text).
   const out = await insertCompanyRecord(supabase, {
     businessId: contact.business_id, userId, name, to, kind: contact.segment === 'corporate' ? 'employer' : 'partner',
     channel: PROMOTE_CHANNEL, evidence, now, noteMeta: { from_campaign_contact_id: contact.id },
+    source: { source_kind: 'campaign', source_campaign_id: campaign.id, source_person: team.get(campaign.sender_user_id) || null },
   });
   const rec = out.created || out.already;
   if (rec.type === 'partner') {

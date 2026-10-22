@@ -128,3 +128,18 @@ test('the research prompt is plain text with no address in it', () => {
   assert.match(p, /Research Fundrise as a possible channel partner/);
   assert.doesNotMatch(p, /@/);
 });
+
+// lead-source-v1 - who brought it: the review row carries the proposal with the partner resolved; Accept's parse keeps it.
+test('referred_by: proposed on the review row (partner resolved), kept by the accept parse, never an address', () => {
+  const out = toIntake({ companies: [
+    { name: 'Fundrise', kind: 'partner', referred_by: { partner: 'upside', person: 'Brad', office: 'Chicago', evidence: 'Brad introduced them' } },
+    { name: 'Deloitte', kind: 'employer', referred_by: { partner: null, person: 'pat@deloitte.example' } },
+    { name: 'Roofstock', kind: 'partner' },
+  ] }, ctx, '2026-10-13', '2026-10-14');
+  const by = n => out.companies.find(c => c.name === n);
+  assert.deepEqual(by('Fundrise').referred_by, { partner: 'Upside', partner_id: 'p-up', person: 'Brad', office: 'Chicago' });
+  assert.equal(by('Deloitte').referred_by, null, 'an address is not a referrer');
+  assert.equal(by('Roofstock').referred_by, null);
+  const parsed = parseIntake({ companies: [{ key: 'c0', name: 'Fundrise', action: 'target_partner', kind: 'partner', referred_by: by('Fundrise').referred_by }] }, ctx);
+  assert.deepEqual(parsed.companies[0].referred_by, { partner: 'Upside', partner_id: 'p-up', person: 'Brad', office: 'Chicago' });
+});

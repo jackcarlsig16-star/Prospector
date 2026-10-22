@@ -1,13 +1,13 @@
 import { getSupabase, addDays, laMonday, weekIsFinal, FINAL_ERROR } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
-import { cleanText } from './scrubText.js';
+import { cleanText, hasPii } from './scrubText.js';
+import { sourceColumns, logSource } from './leadSource.js';
 import { laDateString } from './laDate.js';
 import { normName } from './intakeMatch.js';
 import { findDupes, loadDupeContext } from './partnerDupeCheck.js';
 import { findOpportunity } from './opportunityMatch.js';
 import { applyPartnerSignal, SignalError } from './partnerSignals.js';
 import { listRuns, runsToday, RERUN_CAP_PER_DAY } from './partnerResearch.js';
-import { hasPii } from './targetsRoutes.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
 import { OWNER_TEAMS } from '../../src/constants/ownership.js';
 import { TOUCH_TYPE_IDS } from '../../src/constants/partnerPipeline.js';
@@ -433,27 +433,34 @@ const RANK = { partner: 0, opportunity: 1, target: 2 };
 // (exact name or confirmed domain; live before archived, partner > employer
 // > target). -> { already: { type, id, name } } | { created: { type, id, name } };
 // a create that loses a race throws 409. A new partner gets the evidence as
-// a note event (never a stage); also used by seif-campaign Promote.
-export async function insertCompanyRecord(supabase, { businessId, userId, name, domain = null, to, kind = null, channel, evidence, apolloAccountId = null, noteMeta = {}, now = new Date() }) {
+// a note event (never a stage); also used by seif-campaign Promote. source
+// (lead-source-v1) lands on a new record with its create event; an existing
+// one keeps its own (first touch).
+export async function insertCompanyRecord(supabase, { businessId, userId, name, domain = null, to, kind = null, channel, evidence, apolloAccountId = null, noteMeta = {}, source = null, now = new Date() }) {
+  const src = source ? sourceColumns(source, { now }) : {};
+  const created = async (type, id) => {
+    if (source) await logSource(supabase, { businessId, type, id, to: src, reason: 'create', byUser: userId, at: now });
+    return { created: { type, id, name } };
+  };
   const hit = findDupes({ name, domain }, await loadDupeContext(supabase, businessId)).exact.filter(h => h.type in RANK).sort((a, b) => a.archived - b.archived || RANK[a.type] - RANK[b.type])[0];
   if (hit) return { already: { type: hit.type === 'opportunity' ? 'employer' : hit.type, id: hit.id, name: hit.name } };
   if (to === 'target') {
-    const r = await supabase.from('sales_targets').insert({ business_id: businessId, name, kind: kind || 'employer', status: 'researching', channel, evidence: cleanText(evidence, 400), created_by: userId }).select('id, name').single();
+    const r = await supabase.from('sales_targets').insert({ business_id: businessId, name, kind: kind || 'employer', status: 'researching', channel, evidence: cleanText(evidence, 400), created_by: userId, ...src }).select('id, name').single();
     if (r.error?.code === '23505') throw err(409, `${name} is already a target - reload`);
-    return { created: { type: 'target', id: must(r).id, name } };
+    return created('target', must(r).id);
   }
   if (to === 'partner') {
-    const r = await supabase.from('sales_goals').insert({ business_id: businessId, goal_type: 'partnership', name, pipeline_status: 'not_started', channel }).select('id, name').single();
+    const r = await supabase.from('sales_goals').insert({ business_id: businessId, goal_type: 'partnership', name, pipeline_status: 'not_started', channel, ...src }).select('id, name').single();
     if (r.error?.code === '23505') throw err(409, `${name} is already a partner - reload`);
     const goal = must(r);
     await applyPartnerSignal(supabase, { businessId, goalId: goal.id, signal: { type: 'note', note: cleanText(evidence, NOTE_MAX) }, byUser: userId, now, meta: noteMeta });
-    return { created: { type: 'partner', id: goal.id, name } };
+    return created('partner', goal.id);
   }
   const found = await findOpportunity(supabase, businessId, { name, apolloAccountId });
   if (found) return { already: { type: 'employer', id: found.id, name: found.organization } };
-  const r = await supabase.from('sales_opportunities').insert({ business_id: businessId, organization: name, org_type: 'employer', stage: 'target', source: 'manual', channel, notes: `(${slash(laDateString(now))}) ${cleanText(evidence, 400)}`, ...(apolloAccountId ? { apollo_account_id: apolloAccountId } : {}) }).select('id, organization').single();
+  const r = await supabase.from('sales_opportunities').insert({ business_id: businessId, organization: name, org_type: 'employer', stage: 'target', source: 'manual', channel, notes: `(${slash(laDateString(now))}) ${cleanText(evidence, 400)}`, ...(apolloAccountId ? { apollo_account_id: apolloAccountId } : {}), ...src }).select('id, organization').single();
   if (r.error?.code === '23505') throw err(409, `${name} is already in the pipeline - reload`);
-  return { created: { type: 'employer', id: must(r).id, name } };
+  return created('employer', must(r).id);
 }
 
 export async function addToPipeline(supabase, { businessId, userId, body, now = new Date() }) {
@@ -476,6 +483,8 @@ export async function addToPipeline(supabase, { businessId, userId, body, now = 
     const out = await insertCompanyRecord(supabase, {
       businessId, userId, name, domain: src.domain, to, kind, channel, evidence, now,
       apolloAccountId: type === 'apollo' ? id : null, noteMeta: type === 'visitor' ? { from_visit_key: id } : { from_apollo_account: true },
+      // A website visitor found us; an Apollo-only company is our own outbound.
+      source: { source_kind: type === 'visitor' ? 'website' : 'homelover_outreach' },
     });
     if (out.already) return reply(200, { already: out.already });
     const { created } = out;

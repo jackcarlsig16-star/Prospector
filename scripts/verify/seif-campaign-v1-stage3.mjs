@@ -278,7 +278,7 @@ try {
   const pNote = pGoal && ins(await svc.from('sales_partner_events').select('event, note').eq('goal_id', pGoal.id));
   const pPerson = pGoal && ins(await svc.from('partner_contacts').select('name, email').eq('goal_id', pGoal.id));
   ok('Promote (Actions) -> new partner: partner_referral, not started, owner Jack via Assign, source line, the person without an address',
-    pGoal?.channel === 'partner_referral' && pGoal.pipeline_status === 'not_started' && pGoal.owner_user_id === owner.id && pNote.some(e => e.event === 'assign') && pNote.some(e => /^From campaign "ZZ Fall campaign" \(referred by Seif\): Ana Alder, Principal$/.test(e.note || '')) && pPerson.length === 1 && pPerson[0].email == null,
+    pGoal?.channel === 'partner_referral' && pGoal.pipeline_status === 'not_started' && pGoal.owner_user_id === owner.id && pNote.some(e => e.event === 'assign') && pNote.some(e => /^From campaign "ZZ Fall campaign": Ana Alder, Principal$/.test(e.note || '')) && pPerson.length === 1 && pPerson[0].email == null,
     JSON.stringify({ pGoal, notes: pNote?.map(e => e.event), person: pPerson }));
   ok('After Promote the reply row is gone', !(await S.page.locator('[data-actions] [data-row]').filter({ hasText: 'Reply from Ana Alder' }).count()));
 
@@ -292,7 +292,7 @@ try {
   ok('Promote dialog defaults a corporate contact to Employer', await d2.getByRole('button', { name: 'Employer', pressed: true }).isVisible());
   await d2.getByRole('button', { name: 'Promote', exact: true }).click(); await J.page.waitForTimeout(2500);
   const opp = ins(await svc.from('sales_opportunities').select('id, organization, channel, stage, notes').eq('business_id', B).eq('organization', 'ZZ Brightmill Foods').maybeSingle());
-  ok('Promote (table) -> new employer: partner_referral, stage target, source line in the notes', opp?.channel === 'partner_referral' && opp.stage === 'target' && /From campaign "ZZ Fall campaign" \(referred by Seif\): Jon Jade, CFO/.test(opp.notes || ''), JSON.stringify(opp && { channel: opp.channel, stage: opp.stage }));
+  ok('Promote (table) -> new employer: partner_referral, stage target, source line in the notes', opp?.channel === 'partner_referral' && opp.stage === 'target' && /From campaign "ZZ Fall campaign": Jon Jade, CFO/.test(opp.notes || ''), JSON.stringify(opp && { channel: opp.channel, stage: opp.stage }));
   await tableAct('Kai Knoll', 'They replied');
   await J.page.getByRole('group', { name: 'Actions for Kai Knoll' }).getByRole('button', { name: 'Promote…' }).click();
   const d3 = J.page.getByRole('dialog', { name: 'Promote ZZ Knoll Labs' });

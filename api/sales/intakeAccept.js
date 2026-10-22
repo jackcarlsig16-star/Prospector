@@ -8,6 +8,7 @@ import { OWNER_TEAMS } from '../../src/constants/ownership.js';
 import { TOUCH_TYPE_IDS, PIPELINE_STATUS_IDS } from '../../src/constants/partnerPipeline.js';
 import { findOpportunity } from './opportunityMatch.js';
 import { parseDeal, queueDealFields, writeDeal, emptyDealOut } from './intakeDeal.js';
+import { cleanReferral, referralSource, sourceColumns, logSource } from './leadSource.js';
 
 // call-notes-targets-v1 REV3 - Accept: everything ticked in the review, in
 // one request. There is no transaction across these tables, so writes run
@@ -69,7 +70,8 @@ export function parseIntake(body, ctx) {
     if (c.action === 'never' && m && m.type !== 'target') throw err(400, `company ${i + 1}: only a new name or a target can be "never again"`);
     const kind = c.action === 'target_partner' || (c.action === 'never' && c.kind === 'partner') ? 'partner' : 'employer';
     return { key: c.key, name, action: c.action, m, kind, evidence: cleanText(c.evidence, 200),
-      category: kind === 'partner' && ctx.categories.includes(c.category) ? c.category : null };
+      category: kind === 'partner' && ctx.categories.includes(c.category) ? c.category : null,
+      referred_by: cleanReferral(c.referred_by, ctx.partners) };
   });
   const byKey = new Map(companies.map(c => [c.key, c]));
   // Where a person / fact / ownership row lands: a matched record, or a
@@ -124,6 +126,8 @@ export async function acceptIntake(supabase, { businessId, userId, note, ctx, in
   const today = laDateString(now);
   const stamp = slash(note.call_date);
   const meta = { from_note_id: note.id };
+  // A referral the person kept in the review is their pick (manual) for the record Accept creates.
+  const referred = c => referralSource(c.referred_by);
   const out = { targets: [], opportunities_created: [], contacts: { added: 0, updated: 0 }, intel: 0, ownership: 0, notes_added: 0, touches: [], touches_skipped: [], stage_moves: [], goals: [], ...emptyDealOut() };
   const must = r => { if (r.error) throw err(500, r.error.message); return r.data; };
   // Pending column changes per record, written once each with the values
@@ -161,10 +165,15 @@ export async function acceptIntake(supabase, { businessId, userId, note, ctx, in
         business_id: businessId, name: c.name, kind: c.kind, status: never ? 'rejected' : 'researching', source_note_id: note.id, channel: 'call_note',
         evidence: c.evidence || null, research_prompt: never ? null : researchPrompt(c.name, c.kind, business),
         suggested_category: c.category, created_by: userId, decided_at: never ? now.toISOString() : null,
+        ...(referred(c) ? sourceColumns(referred(c), { userId, manual: true, now }) : {}),
       }).select().single();
       if (r.error?.code === '23505') throw err(409, `${c.name} is already a target - reload the review`);
       const t = must(r);
       undo.push(() => supabase.from('sales_targets').delete().eq('id', t.id));
+      if (referred(c)) {
+        await logSource(supabase, { businessId, type: 'target', id: t.id, to: referred(c), reason: 'create', byUser: userId, at: now });
+        undo.push(() => supabase.from('sales_source_events').delete().eq('record_type', 'target').eq('record_id', t.id));
+      }
       newTargets.set(c.key, t);
       out.targets.push({ id: t.id, name: t.name, kind: t.kind, status: t.status });
     }
@@ -175,7 +184,7 @@ export async function acceptIntake(supabase, { businessId, userId, note, ctx, in
     // pipeline" makes, at 'contacted').
     const opps = new Map();
     const ownerFor = s => intake.ownership.find(o => o.s.type === s.type && o.s.id === s.id)?.owner_name || null;
-    const opportunityFor = async s => {
+    const opportunityFor = async (s, ref = null) => {
       if (s.type === 'opportunity') return s.row;
       if (opps.has(s.id)) return opps.get(s.id);
       const existing = await findOpportunity(supabase, businessId, { name: s.name, apolloAccountId: s.type === 'account' ? s.id : null });
@@ -183,8 +192,13 @@ export async function acceptIntake(supabase, { businessId, userId, note, ctx, in
       const named = ownerFor(s);
       const member = named && matchOwner(named, ctx.members);
       const owner = member ? ctx.members.find(m => m.id === member).name.split(' ')[0] : named;
-      const row = must(await supabase.from('sales_opportunities').insert({ business_id: businessId, organization: s.name, org_type: 'employer', stage: 'contacted', source: 'manual', channel: 'call_note', owner }).select().single());
+      const row = must(await supabase.from('sales_opportunities').insert({ business_id: businessId, organization: s.name, org_type: 'employer', stage: 'contacted', source: 'manual', channel: 'call_note', owner,
+        ...(ref ? sourceColumns(ref, { userId, manual: true, now }) : {}) }).select().single());
       undo.push(() => supabase.from('sales_opportunities').delete().eq('id', row.id));
+      if (ref) {
+        await logSource(supabase, { businessId, type: 'employer', id: row.id, to: ref, reason: 'create', byUser: userId, at: now });
+        undo.push(() => supabase.from('sales_source_events').delete().eq('record_type', 'employer').eq('record_id', row.id));
+      }
       opps.set(s.id, row);
       out.opportunities_created.push({ id: row.id, organization: row.organization, from_account: s.id });
       return row;
@@ -196,7 +210,7 @@ export async function acceptIntake(supabase, { businessId, userId, note, ctx, in
       return queue('sales_targets', t.id, t, apply);
     };
 
-    for (const c of intake.companies) if (c.action === 'pipeline') await opportunityFor(c.m);
+    for (const c of intake.companies) if (c.action === 'pipeline') await opportunityFor(c.m, referred(c));
 
     // 2. People.
     for (const p of intake.people) {

@@ -10,7 +10,7 @@ export function acceptBody({ companies, ownership, people, touches, facts, decis
   const targets = new Set(ticked.filter(c => c.action.startsWith('target_')).map(c => c.key));
   const reachable = x => !!x.match || targets.has(x.company_key);
   return {
-    companies: ticked.map(({ key, name, kind, action, match, category, evidence }) => ({ key, name, kind, action, match, category, evidence })),
+    companies: ticked.map(({ key, name, kind, action, match, category, evidence, referred_by = null }) => ({ key, name, kind, action, match, category, evidence, referred_by })),
     ownership: ownership.filter(o => o.on && reachable(o))
       .map(({ company_key, match, owner_team, co_owner_name, no_double_touch, owner_name }) => ({ company_key, match, owner_team, co_owner_name, no_double_touch, owner_name })),
     people: people.filter(p => p.on && p.dest && reachable(p))

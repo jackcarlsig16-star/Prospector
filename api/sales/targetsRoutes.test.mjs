@@ -5,7 +5,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
-import { promoteTarget, rejectTarget, copyBundle, listProspectTargets, hasPii, validatePromote } from './targetsRoutes.js';
+import { promoteTarget, rejectTarget, copyBundle, listProspectTargets, validatePromote } from './targetsRoutes.js';
+import { hasPii } from './scrubText.js';
 import { toIntake } from './intakeMatch.js';
 import { listRuns } from './partnerResearch.js';
 

@@ -294,7 +294,10 @@ test('Promote: a new partner with the campaign source, owner via Assign, the per
   const goal = s.db.sales_goals.find(g => g.name === 'Alder Consulting');
   assert.deepEqual([r.body.record.type, r.body.record.id, goal.channel, goal.pipeline_status, goal.owner_user_id], ['partner', goal.id, 'partner_referral', 'not_started', CYRUS]);
   const note = s.db.sales_partner_events.find(e => e.goal_id === goal.id && e.event === 'note');
-  assert.match(note.note, /^From campaign "Seif fall campaign" \(referred by Seif\): Ana Alder, Principal$/);
+  assert.match(note.note, /^From campaign "Seif fall campaign": Ana Alder, Principal$/);
+  // lead-source-v1: the campaign is the structured source (kind, campaign, the sender), logged once.
+  assert.deepEqual([goal.source_kind, goal.source_campaign_id, goal.source_person, goal.source_set_by], ['campaign', campaign.id, 'Seif Example', null]);
+  assert.equal(s.db.sales_source_events.filter(e => e.record_id === goal.id && e.reason === 'create').length, 1);
   assert.ok(s.db.sales_partner_events.some(e => e.goal_id === goal.id && e.event === 'assign'));
   const person = s.db.partner_contacts.find(p => p.goal_id === goal.id);
   assert.deepEqual([person.name, person.title, person.email], ['Ana Alder', 'Principal', undefined]);
@@ -317,7 +320,8 @@ test('Promote: a new partner with the campaign source, owner via Assign, the per
   assert.equal(q.body.record.type, 'employer');
   const opp = s.db.sales_opportunities.find(o => o.organization === 'Quill Labs');
   assert.deepEqual([opp.channel, opp.stage], ['partner_referral', 'target']);
-  assert.match(opp.notes, /From campaign "Seif fall campaign" \(referred by Seif\): Quinn Quill, COO/);
+  assert.match(opp.notes, /From campaign "Seif fall campaign": Quinn Quill, COO/);
+  assert.equal(opp.source_kind, 'campaign');
   noAt('campaign after promotes', (await getCampaign(s, { businessId: B, id: campaign.id })).body);
 });
 

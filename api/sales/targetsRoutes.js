@@ -1,6 +1,7 @@
 import { getSupabase, findRow, weekIsFinal } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
-import { cleanText } from './scrubText.js';
+import { cleanText, hasPii } from './scrubText.js';
+import { SOURCE_COLS, sourceOf, logSource } from './leadSource.js';
 import { laDateString } from './laDate.js';
 import { resolveCompany } from './intakeMatch.js';
 import { findOpportunity } from './opportunityMatch.js';
@@ -14,7 +15,7 @@ import { PIPELINE_STATUSES } from '../../src/constants/partnerPipeline.js';
 // Copy-for-Claude bundle for a partner, employer or target.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TARGET_COLS = 'id, name, kind, status, suggested_category, owner_team, co_owner_name, no_double_touch, evidence, research_notes, promoted_goal_id, source_note_id, channel, created_at, decided_at';
+const TARGET_COLS = `id, name, kind, status, suggested_category, owner_team, co_owner_name, no_double_touch, evidence, research_notes, promoted_goal_id, source_note_id, channel, created_at, decided_at, ${SOURCE_COLS}`;
 const NOTE_COLS = 'title, call_date, source_label';
 const PROMOTE_TO = ['partner', 'employer'];
 const REOPEN_MAX = 50;
@@ -115,6 +116,11 @@ async function moveTargetData(supabase, { businessId, target, to, id, undo }) {
   return { research_moved: runs.length, visits_moved: visits.length };
 }
 
+// lead-source-v1: a promoted target hands its source on unchanged (a person's pick stays theirs).
+const inheritedSource = target => (target.source_kind ? { ...sourceOf(target), source_set_by: target.source_set_by || null, source_set_at: new Date().toISOString() } : {});
+const logInherited = (supabase, { businessId, target, type, id, userId }) => (target.source_kind
+  ? logSource(supabase, { businessId, type, id, to: target, reason: 'promote', byUser: userId }) : null);
+
 async function rollback(undo) {
   for (const f of undo.reverse()) { try { await f(); } catch (u) { console.error('[prospect-targets/promote] undo failed:', u.message); } }
 }
@@ -135,11 +141,13 @@ async function promoteToPartner(supabase, { businessId, userId, target, payload,
     const ins = await supabase.from('sales_goals').insert({
       business_id: businessId, goal_type: 'partnership', name: payload.name, category: payload.category,
       owner_team: payload.owner_team, co_owner_name: payload.co_owner_name, no_double_touch: payload.no_double_touch,
-      pipeline_status: 'not_started', channel: target.channel || 'unknown',
+      pipeline_status: 'not_started', channel: target.channel || 'unknown', ...inheritedSource(target),
     }).select().single();
     if (ins.error?.code === '23505') throw err(409, `${payload.name} is already a partner`);
     const goal = must(ins);
     undo.push(() => supabase.from('sales_goals').delete().eq('id', goal.id));
+    await logInherited(supabase, { businessId, target, type: 'partner', id: goal.id, userId });
+    undo.push(() => supabase.from('sales_source_events').delete().eq('record_type', 'partner').eq('record_id', goal.id));
     const { event } = await applyPartnerSignal(supabase, {
       businessId, goalId: goal.id, signal: { type: 'note', note: intakeNote(target, note) }, byUser: userId,
       meta: { from_target_id: target.id, ...(target.source_note_id ? { from_note_id: target.source_note_id } : {}) },
@@ -157,7 +165,7 @@ async function promoteToPartner(supabase, { businessId, userId, target, payload,
   }
 }
 
-async function promoteToEmployer(supabase, { businessId, target, payload, apolloAccountId }) {
+async function promoteToEmployer(supabase, { businessId, userId, target, payload, apolloAccountId }) {
   const found = await findOpportunity(supabase, businessId, { name: payload.name, apolloAccountId });
   if (found) return { already: { type: 'opportunity', id: found.id, name: found.organization } };
   const now = new Date().toISOString();
@@ -166,12 +174,14 @@ async function promoteToEmployer(supabase, { businessId, target, payload, apollo
   const ins = await supabase.from('sales_opportunities').insert({
     business_id: businessId, organization: payload.name, org_type: 'employer', stage: 'target', source: 'manual', channel: target.channel || 'unknown', notes,
     owner_team: payload.owner_team, co_owner_name: payload.co_owner_name, no_double_touch: payload.no_double_touch,
-    ...(apolloAccountId ? { apollo_account_id: apolloAccountId } : {}),
+    ...(apolloAccountId ? { apollo_account_id: apolloAccountId } : {}), ...inheritedSource(target),
   }).select().single();
   if (ins.error?.code === '23505') throw err(409, `${payload.name} is already in the pipeline`);
   const opportunity = must(ins);
   const undo = [() => supabase.from('sales_opportunities').delete().eq('id', opportunity.id)];
   try {
+    await logInherited(supabase, { businessId, target, type: 'employer', id: opportunity.id, userId });
+    undo.push(() => supabase.from('sales_source_events').delete().eq('record_type', 'employer').eq('record_id', opportunity.id));
     const moved = await moveTargetData(supabase, { businessId, target, to: 'employer', id: opportunity.id, undo });
     const updated = await acceptTarget(supabase, target, {}, now);
     return { created: { type: 'opportunity', id: opportunity.id, name: opportunity.organization }, opportunity, target: updated, relinked: 0, ...moved };
@@ -201,7 +211,7 @@ export async function promoteTarget(supabase, { businessId, userId, targetId, bo
     if (hit && (hit.type === 'partner' || hit.type === 'opportunity')) return reply(200, { already: { type: hit.type, id: hit.id, name: hit.name } });
     const out = v.payload.to === 'partner'
       ? await promoteToPartner(supabase, { businessId, userId, target, payload: v.payload, note })
-      : await promoteToEmployer(supabase, { businessId, target, payload: v.payload, apolloAccountId: hit?.type === 'account' ? hit.id : null });
+      : await promoteToEmployer(supabase, { businessId, userId, target, payload: v.payload, apolloAccountId: hit?.type === 'account' ? hit.id : null });
     return reply(out.already ? 200 : 201, out);
   } catch (e) {
     if (!e.status || e.status >= 500) console.error('[prospect-targets/promote]', e.message);
@@ -260,11 +270,8 @@ export async function rejectTargetRoute(req, res) {
 // No AI call. Every string passes cleanText; the route refuses to answer at
 // all if an "@" or a phone shape is still in the result.
 const BUNDLE_TYPES = ['partner', 'employer', 'target'];
-const PHONE = /(?:\+?\d[\d\s().-]{7,}\d)/g;
-const ISO_DATE = /^\s*\d{4}-\d{2}-\d{2}\s*$/;
 const DECISIONS_MAX = 10;
 const TERMS_LINE = /^\(\d{1,2}\/\d{1,2}\) Terms: /;
-export const hasPii = s => /@/.test(s) || (s.match(PHONE) || []).some(m => !ISO_DATE.test(m));
 const STATUS_LABEL = Object.fromEntries(PIPELINE_STATUSES.map(s => [s.id, s.label]));
 const when = iso => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/Los_Angeles' }) : '');
 const onDay = d => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '');
