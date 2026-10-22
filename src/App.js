@@ -18,7 +18,8 @@ import DailyDigest from './components/DailyDigest';
 import ManagerCommandCenter from './components/ManagerCommandCenter';
 import HandoffsPage from './components/HandoffsPage';
 import { ROLE_PERMS, isAdmin } from './constants/appConfig';
-import { APP_LEVEL_VIEWS } from './constants/businessNav';
+import { APP_LEVEL_VIEWS, homePage } from './constants/businessNav';
+import { writeNav } from './components/salesAnalytics/salesNav';
 import useMediaQuery from './utils/useMediaQuery';
 import { trackStat, trackDailyStat } from './utils/stats';
 import { indexAccountThreads } from './utils/threadIndexer';
@@ -992,6 +993,13 @@ export default function App({ me }) {
   // same pattern as accountsSubPage/toolsActiveTool - lifted here so both Sidebar
   // (renders the nav) and BusinessDetailPage (renders the matching view) read it.
   const [businessPage, setBusinessPage] = useState('command-center');
+  // actions-home-attention-v1 D1: a goals_sales workspace opens on Sales & Marketing › Actions, even if this
+  // browser last left it on another sales tab; any other workspace on Command Center.
+  const landOn = useCallback(b => {
+    const pg = homePage(b);
+    if (pg === 'sales-analytics') writeNav('actions');
+    setBusinessPage(pg);
+  }, []);
   const compact = useMediaQuery('(max-width: 899px)');
   const [digestOpen, setDigestOpen] = useState(false);
   const [bugOpen, setBugOpen] = useState(false);
@@ -1008,7 +1016,7 @@ export default function App({ me }) {
       const landId = new URLSearchParams(window.location.search).get('business');
       if (landId) {
         const landing = businesses.find(b => b.id === landId);
-        if (landing) { setActiveBusiness(landing); setBusinessPage('command-center'); setPage('business-detail'); }
+        if (landing) { setActiveBusiness(landing); landOn(landing); setPage('business-detail'); }
         window.history.replaceState({}, '', '/');
       }
     });
@@ -1233,11 +1241,11 @@ export default function App({ me }) {
     else if(pg==="tools"&&tabStr==="pricing"){setToolsActiveTool("deal");}
     else if(pg==="tools"&&tabStr){setToolsLaunchId(tabStr);setToolsActiveTool("deal");}
   };
-  // Selecting a business always lands on its Command Center, whether coming
-  // from the sidebar list, the businesses gallery, or creating a new one.
+  // Selecting a business lands on its home (homePage), whether coming from the
+  // sidebar list, the businesses gallery, or creating a new one.
   const selectBusiness=(b)=>{
     setActiveBusiness(b);
-    setBusinessPage('command-center');
+    landOn(b);
     navTo('business-detail');
   };
 

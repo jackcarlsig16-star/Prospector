@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { C, mono } from '../constants/colors';
 import { initials, isAdmin } from '../constants/appConfig';
-import { BUSINESS_NAV, TOOLS_NAV } from '../constants/businessNav';
+import { workspaceNav as navFor, TOOLS_NAV } from '../constants/businessNav';
 import NavRow from './NavRow';
 import { signOut } from '../utils/authSession';
 
@@ -54,7 +54,7 @@ export default function Sidebar({ compact, page, setPage, toolsActiveTool, setTo
   const go = fn => (...args) => { fn?.(...args); setDrawerOpen(false); setUserMenuOpen(false); };
   const inWorkspace = !!activeBusiness && page === "business-detail";
   const accent = activeBusiness?.color || C.gold;
-  const workspaceNav = activeBusiness ? BUSINESS_NAV.filter(n => !n.feature || activeBusiness.features?.[n.feature]) : [];
+  const workspaceNav = navFor(activeBusiness);
   const totalDiamonds = (diamonds?.log||[]).reduce((s,e)=>s+e.amount,0);
 
   const panel = (

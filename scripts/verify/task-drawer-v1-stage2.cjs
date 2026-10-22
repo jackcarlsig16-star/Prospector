@@ -48,6 +48,9 @@ async function newPage(u, width, height) {
   const page = await (await browser.newContext({ viewport: { width, height } })).newPage(); page.setDefaultTimeout(8000);
   page.on('console', m => { if (m.type() === 'error') errs.push(m.text().slice(0, 160)); }); page.on('pageerror', e => errs.push('PAGE ' + e.message.slice(0, 160)));
   await page.addInitScript(([k, v]) => { if (sessionStorage.getItem('__s')) return; sessionStorage.setItem('__s', '1'); localStorage.clear(); localStorage.setItem(k, v); }, [`sb-${REF}-auth-token`, JSON.stringify(u.session)]);
+  // Real-call guard (actions-home-attention-v1: a goals_sales workspace now opens on Sales & Marketing, whose page load
+  // runs the visitor pull + Tidy): no sync / Apollo / visit pull / Tidy / research / Claude from this check.
+  await page.route(/\/api\/sales\/[^/]+\/(sync|apollo)|\/goals\/visits\/pull|\/goals\/tidy\/run|\/research\/run|\/research$|\/proxy\/anthropic/, route => route.abort());
   await page.goto(`http://localhost:${PORT}/`); await page.waitForTimeout(3000);
   return { page, errs };
 }
@@ -64,7 +67,9 @@ async function navGoals(page, compact) {
   if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
   await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).click(); await page.waitForTimeout(5000);
 }
-const openDrawer = async (page, compact) => { await page.getByRole('button', { name: compact ? /^Tasks/ : /^Open tasks/ }).click(); await page.locator(drawerSel).waitFor(); await page.waitForTimeout(400); };
+// Waits for the list itself, not a fixed 400 ms: since actions-home-attention-v1 the workspace opens on Actions, whose own
+// loads race the drawer's first read (an empty list read too early looked like 0 to-dos).
+const openDrawer = async (page, compact) => { await page.getByRole('button', { name: compact ? /^Tasks/ : /^Open tasks/ }).click(); await page.locator(drawerSel).waitFor(); await page.locator(`${drawerSel} li[data-task-id]`).first().waitFor({ timeout: 8000 }).catch(() => {}); await page.waitForTimeout(400); };
 const drawerIds = async page => {
   const done = page.locator(`${drawerSel} button[aria-expanded="false"]`, { hasText: 'Done this week' });
   if (await done.count()) await done.click();
@@ -98,7 +103,8 @@ const scrollState = page => page.evaluate(() => ({ win: window.scrollY, main: do
     // ── Part A: HomeLover, read-only ──
     const { page, errs } = await newPage(R, 1440, 1000);
     await openWorkspace(page, 'HomeLover', false);
-    ok('Command Center: Tasks handle shown on a non-sales workspace page', await page.getByRole('button', { name: /^Open tasks/ }).isVisible());
+    // actions-home-attention-v1 D1: a goals_sales workspace (HomeLover) opens on Sales & Marketing › Actions, not Command Center.
+    ok('home = Sales & Marketing › Actions (no Command Center in the side panel); Tasks handle shown', await page.getByRole('button', { name: /^Open tasks/ }).isVisible() && (await page.locator('#workspace-header-tabs button[aria-current="page"]').textContent().catch(() => '')).startsWith('Actions') && (await page.locator('#root').getByRole('button', { name: 'Command Center', exact: true }).count()) === 0);
     await openDrawer(page, false);
     const { data: hlMembers } = await svc.from('business_members').select('user_id, name').eq('business_id', HL).order('created_at');
     const { data: wk } = await svc.from('sales_week_goals').select('id, owner_user_id, status, week_start, carried_from_id, prospect_contact_id, steps:sales_week_goal_steps(done)').eq('business_id', HL).eq('kind', 'todo').eq('week_start', WEEK);
@@ -122,7 +128,7 @@ const scrollState = page => page.evaluate(() => ({ win: window.scrollY, main: do
     const teamGot = await drawerIds(page), teamWant = expectFor('team');
     drawerCounts.team = teamGot.filter(id => wk.some(r => r.id === id)).length;
     ok('drawer Team = DB', sameSet(teamGot, teamWant), `${teamGot.length} vs ${teamWant.size}`);
-    await page.screenshot({ path: `${OUT}/td2-1440-command-center.png` });
+    await page.screenshot({ path: `${OUT}/td2-1440-home-actions.png` });
     // Open in Goals -> This week
     await page.locator(drawerSel).getByRole('button', { name: 'Open Today →' }).click(); await page.waitForTimeout(6000);
     ok('"Open Today →" lands on Today, drawer stays open', await page.locator('section[aria-labelledby="h-todo"]').isVisible() && await page.locator(drawerSel).isVisible());

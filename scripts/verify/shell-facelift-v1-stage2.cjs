@@ -1,8 +1,8 @@
 // shell-facelift-v1 Stage 2 - the workspace header row, before and after. TEMP data only: 1 businesses row (goals_sales on, tagline + website), 2 temp users (owner + viewer), 1 accounts row - all deleted by teardown. 0 AI / 0 Apollo. HomeLover is never touched (its counts come from the Stage 1 script's hl mode). ~40s per mode, cap 4 min each.
 // Modes (fixtures persist between runs so before and after see the same names and data):
 //   setup <state.json>            create fixtures, write ids + passwords + a fixed clock + temp-table counts
-//   shoot <state.json> <outdir>   serve build/ via server.js, screenshot: Command Center / Sales & Marketing Overview / Business Intel & Strategy at 1440 dark, Sales & Marketing Overview light, Command Center + Sales & Marketing at 390, viewer Command Center; 0 console errors
-//   click <state.json>            every control still works: all 7 sidebar views, the 3 Sales & Marketing tabs, Scout (focus, palette, business pills, Escape), avatar -> Social Links, emoji picker, website ✎ -> Website URL (on Business Intel & Strategy); viewer sees the page
+//   shoot <state.json> <outdir>   serve build/ via server.js, screenshot: the home (Sales & Marketing › Actions - actions-home-attention-v1 D1, this workspace has goals_sales) / Sales & Marketing Overview / Business Intel & Strategy at 1440 dark, Sales & Marketing Overview light, home + Sales & Marketing at 390, viewer home; 0 console errors
+//   click <state.json>            every control still works: all 6 sidebar views (no Command Center in a goals_sales workspace), the 3 Sales & Marketing tabs, Scout (focus, palette, business pills, Escape), avatar -> Social Links, emoji picker, website ✎ -> Website URL (on Business Intel & Strategy); viewer sees the page
 //   after <state.json>            Stage 2 structure: one 56px row with avatar · name · tabs · Scout; sticky after scrolling; identity line (20px) only on Business Intel & Strategy; Scout 240px idle and wider engaged; 390 wraps, not sticky, no sideways scroll
 //   teardown <state.json>         delete everything setup made, print table counts before/after
 const ROOT = require('path').resolve(__dirname, '../..');
@@ -16,7 +16,8 @@ const PORT = 3964;
 const REF = new URL(process.env.SUPABASE_URL).host.split('.')[0];
 const WATCH = ['businesses', 'business_members', 'accounts', 'profiles', 'auth_events'];
 const NAME = 'ZZ Facelift Header';
-const VIEWS = ['Command Center', 'Sales & Marketing', 'Accounts', 'Projects', 'Business Intel & Strategy', 'Ideas', 'Tools'];
+// actions-home-attention-v1 D1: a goals_sales workspace opens on Sales & Marketing › Actions; Command Center is not in its side panel.
+const VIEWS = ['Sales & Marketing', 'Accounts', 'Projects', 'Business Intel & Strategy', 'Ideas', 'Tools'];
 const [mode, a1, a2] = process.argv.slice(2);
 const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const counts = async () => { const o = {}; for (const t of WATCH) o[t] = (await svc.from(t).select('*', { count: 'exact', head: true })).count; return o; };
@@ -57,12 +58,16 @@ async function startServer(st) {
 async function newPage(st, sess, { width = 1440, height = 900, light = false } = {}) {
   const errs = [];
   const page = await (await browser.newContext({ viewport: { width, height } })).newPage(); page.setDefaultTimeout(10000);
-  page.on('console', m => { if (m.type() === 'error') errs.push(m.text().slice(0, 160)); }); page.on('pageerror', e => errs.push('PAGE ' + e.message.slice(0, 160)));
+  // net::ERR_FAILED = a request the real-call guard below aborted (a real server error logs its status code instead).
+  page.on('console', m => { if (m.type() === 'error' && !/net::ERR_FAILED/.test(m.text())) errs.push(m.text().slice(0, 160)); }); page.on('pageerror', e => errs.push('PAGE ' + e.message.slice(0, 160)));
   await page.clock.setFixedTime(new Date(st.clock));
   await page.addInitScript(([k, v, light]) => {
     if (sessionStorage.getItem('__s')) return; sessionStorage.setItem('__s', '1'); localStorage.clear(); localStorage.setItem(k, v);
     if (light) localStorage.setItem('prospector_prefs', JSON.stringify({ displayMode: 'straight_shooter' }));
   }, [`sb-${REF}-auth-token`, JSON.stringify(sess), light]);
+  // Real-call guard (actions-home-attention-v1: a goals_sales workspace now opens on Sales & Marketing, whose page load
+  // runs the visitor pull + Tidy): no sync / Apollo / visit pull / Tidy / research / Claude from this check.
+  await page.route(/\/api\/sales\/[^/]+\/(sync|apollo)|\/goals\/visits\/pull|\/goals\/tidy\/run|\/research\/run|\/research$|\/proxy\/anthropic/, route => route.abort());
   await page.goto(`http://localhost:${PORT}/`);
   await page.locator('#main-content').getByText(NAME).first().waitFor({ timeout: 20000 });
   await page.waitForTimeout(2000);
@@ -94,7 +99,7 @@ async function shoot(file, out) {
   try {
     const owner = await session(st.users.Owner);
     { const { page, errs } = await newPage(st, owner);
-      await openWorkspace(page); await shot(page, out, 'command-center-1440-dark'); await noScroll(page, 'command-center-1440');
+      await openWorkspace(page); await shot(page, out, 'home-actions-1440-dark'); await noScroll(page, 'home-actions-1440');
       await nav(page, 'Sales & Marketing'); await salesTab(page, 'Dashboard'); await salesTab(page, 'Analytics'); await page.locator('[data-strip-tile]').first().waitFor(); await page.waitForTimeout(2000);
       await shot(page, out, 'sales-overview-1440-dark'); await noScroll(page, 'sales-overview-1440');
       await nav(page, 'Business Intel & Strategy'); await shot(page, out, 'intel-1440-dark'); await noScroll(page, 'intel-1440');
@@ -105,11 +110,11 @@ async function shoot(file, out) {
       await shot(page, out, 'sales-overview-1440-light');
       allErrs.push(...errs.map(e => `owner light: ${e}`)); }
     { const { page, errs } = await newPage(st, owner, { width: 390, height: 844 });
-      await openWorkspace(page); await shot(page, out, 'command-center-390-dark'); await noScroll(page, 'command-center-390');
+      await openWorkspace(page); await shot(page, out, 'home-actions-390-dark'); await noScroll(page, 'home-actions-390');
       await nav(page, 'Sales & Marketing'); await shot(page, out, 'sales-390-dark'); await noScroll(page, 'sales-390');
       allErrs.push(...errs.map(e => `owner 390: ${e}`)); }
     { const { page, errs } = await newPage(st, await session(st.users.Viewer));
-      await openWorkspace(page); await shot(page, out, 'command-center-1440-viewer');
+      await openWorkspace(page); await shot(page, out, 'home-actions-1440-viewer');
       allErrs.push(...errs.map(e => `viewer: ${e}`)); }
     ok('0 console errors', allErrs.length === 0, allErrs.slice(0, 5).join(' | '));
   } finally { await browser.close(); srv.kill(); }
@@ -132,7 +137,7 @@ async function click(file) {
     await nav(page, 'Accounts'); ok('owner: Accounts lists the account', (await page.getByText('Acme Test Co').count()) >= 1);
     await nav(page, 'Sales & Marketing');
     const goals = await mainText(page);
-    await salesTab(page, 'Dashboard'); await salesTab(page, 'Analytics'); ok('owner: Reports › Analytics', (await page.locator('[data-strip-tile]').count()) >= 1);
+    await salesTab(page, 'Dashboard'); await salesTab(page, 'Analytics'); await page.locator('[data-strip-tile]').first().waitFor({ timeout: 15000 }).catch(() => {}); ok('owner: Reports › Analytics', (await page.locator('[data-strip-tile]').count()) >= 1);
     await salesTab(page, 'Pipeline'); await salesTab(page, 'People'); const huddle = await mainText(page); ok('owner: Pipeline › People', huddle !== goals && (await page.locator('[data-strip-tile]').count()) === 0);
     await salesTab(page, 'Actions'); ok('owner: Actions tab', (await mainText(page)) !== huddle);
     const inp = scoutInput(page);
@@ -180,13 +185,15 @@ async function after(file) {
     const { page, errs } = await newPage(st, owner);
     await openWorkspace(page);
     const h = header(page);
+    ok('home: lands on Sales & Marketing › Actions; no Command Center in the side panel', (await page.locator('#workspace-header-tabs button[aria-current="page"]').textContent().catch(() => '')).startsWith('Actions') && (await page.locator('#root').getByRole('button', { name: 'Command Center', exact: true }).count()) === 0);
+    await nav(page, 'Accounts');
     ok('header row present once', (await h.count()) === 1);
     const rowH = await h.locator('[data-workspace-row]').evaluate(e => e.getBoundingClientRect().height);
     ok('row is 56px', Math.round(rowH) === 56, `${rowH}px`);
     const hr = await h.evaluate(e => { const c = getComputedStyle(e); return [c.borderBottomLeftRadius, c.borderBottomRightRadius]; });
     ok('header bottom corners = KIT_RADIUS.inner (10px)', hr[0] === '10px' && hr[1] === '10px', hr.join(' / '));
     ok('row: avatar · name · emoji · Scout', (await h.getByTitle('Edit social links').count()) === 1 && (await h.getByRole('heading', { level: 1, name: NAME }).count()) === 1 && (await h.getByTitle(/emoji/i).count()) === 1 && (await h.getByLabel('Scout').count()) === 1);
-    ok('no identity line on Command Center', (await page.locator('[data-workspace-identity]').count()) === 0 && (await page.locator('#main-content').getByText('A tagline long enough to read').count()) === 0);
+    ok('no identity line on Accounts', (await page.locator('[data-workspace-identity]').count()) === 0 && (await page.locator('#main-content').getByText('A tagline long enough to read').count()) === 0);
     ok('no tabs in the row outside Sales & Marketing', (await page.locator('#workspace-header-tabs button').count()) === 0);
     ok('no old territory Scout bar above the page', (await page.locator('#main-content').getByText('Full territory').count()) === 0 && (await page.locator('#main-content').getByText('deals in scope').count()) === 0);
     const idle = await h.getByLabel('Scout').evaluate(e => e.getBoundingClientRect().width);
