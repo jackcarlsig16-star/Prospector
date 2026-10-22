@@ -5,7 +5,7 @@ import { laDay } from '../huddleView';
 // returns (already ranked overdue -> P1..P4 -> due). Filters: Mine | Team
 // (Mine = owned by me or by no one - a signal, a Tidy row or a waiting row is
 // everyone's to act on), Kind, Search. The sort is remembered per browser.
-export const KIND_LABEL = { signal: 'Signal', tidy: 'Tidy', waiting: 'Waiting on', todo: 'To-do', flag: 'Flag', focus: 'Focus' };
+export const KIND_LABEL = { signal: 'Signal', tidy: 'Tidy', waiting: 'Waiting on', todo: 'To-do', flag: 'Flag', focus: 'Focus', campaign: 'Campaign' };
 export const KIND_OPTIONS = Object.entries(KIND_LABEL);
 // What a Viewer's Team list holds (A1): to-dos, Focus 5 per member, flags.
 export const VIEWER_KINDS = ['todo', 'focus', 'flag'];
@@ -58,6 +58,7 @@ export function actionSource(it) {
   if (it.kind === 'todo') return m.from_note ? `From call notes${m.note_date ? ` ${day(m.note_date)}` : ''}` : m.category ? `To-do · ${m.category}` : 'To-do added by hand';
   if (it.kind === 'waiting') return `${m.waiting_on || 'They'} owe${m.waiting_on ? 's' : ''} it · due ${day(it.due_date)} · ${it.late_days} day${it.late_days === 1 ? '' : 's'} late`;
   if (it.kind === 'flag') return `Flagged by ${m.flagged_by_name || 'a teammate'}${m.flag_note ? ` · “${m.flag_note}”` : ''}`;
+  if (it.kind === 'campaign') return m.action === 'reply' ? `Campaign “${m.campaign}” · replied ${day(m.replied_at) || ''}`.trim() : `Campaign “${m.campaign}” · ${m.track}`;
   return `Focus 5${m.plan_rank ? ` #${m.plan_rank}` : ''}${it.why && it.why !== 'Focus 5' ? ` · ${it.why}` : ''}`;
 }
 
@@ -67,3 +68,11 @@ export function companyLine(c) {
 }
 
 export const datesLine = (it, ownerName) => [`Added ${day(it.created_at) || '—'}`, it.due_date ? `due ${day(it.due_date)}` : 'no due date', ownerName ? `owner ${ownerName}` : 'owner Team'].join(' · ');
+
+// seif-campaign-v1 - a campaign row's own detail line: which step, when the last one went out.
+export function campaignLine(it) {
+  const m = it.meta || {};
+  if (it.kind !== 'campaign') return null;
+  const steps = m.steps ? ` of ${m.steps}` : '';
+  return [m.action === 'reply' ? `Replied after step ${m.step_no}${steps}` : `Step ${m.step_no}${steps}`, m.title, m.last_sent_at ? `last sent ${day(m.last_sent_at)}` : 'nothing sent yet'].filter(Boolean).join(' · ');
+}

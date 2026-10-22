@@ -339,6 +339,12 @@ test('draft: the current step with merge fields filled; summary counts for the D
   const k = list.body.campaigns[0].counts;
   assert.deepEqual([k.sent_by_step[1], k.replies, k.reply_rate], [1, 1, 100]);
   assert.equal(k.by_track.find(t => t.name === 'Consultants / brokers · knows Seif').replies, 1);
+  // A reply logged before any send counts as a reply, but not toward the rate (never over 100%).
+  const ben = contactByName(s, 'Ben Birch');
+  await contactAction(s, { businessId: B, id: ben.id, action: 'replied', userId: SEIF, now: later(120e3) });
+  const k2 = (await listCampaigns(s, { businessId: B })).body.campaigns[0].counts;
+  assert.deepEqual([k2.replies, k2.sent_contacts, k2.reply_rate], [2, 1, 100]);
+  assert.deepEqual(k2.by_track.map(t => [t.sent, t.replies]).filter(([x, y]) => x || y), [[1, 1]]);
 });
 
 test('Outlook: a send to the address advances the step; a same-day manual Sent is folded; a reply after the first send stops it', async () => {

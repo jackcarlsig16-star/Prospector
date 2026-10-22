@@ -104,7 +104,7 @@ export function buildActions({ todos = [], flags = [], waiting = [], signals = [
     const linked = r => { const l = campaignLink(r); return l ? company(l.type, l.id) : null; };
     const metaOf = (r, action) => {
       const k = campaign.campaigns.get(r.campaign_id), t = campaign.tracks.get(r.track_id);
-      return { action, campaign_id: r.campaign_id, campaign: k?.name || null, track: t?.name || null, step_no: r.current_step, steps: t?.steps.length || null, company_name: r.company || null, title: r.title || null, last_sent_at: r.last_sent_at, replied_at: r.replied_at, conflict: r.conflict };
+      return { action, campaign_id: r.campaign_id, campaign: k?.name || null, track: t?.name || null, name: r.name, segment: r.segment, step_no: r.current_step, steps: t?.steps.length || null, company_name: r.company || null, title: r.title || null, last_sent_at: r.last_sent_at, replied_at: r.replied_at, conflict: r.conflict };
     };
     const at = r => (r.company ? ` (${r.company})` : '');
     for (const r of campaign.sends) {

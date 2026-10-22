@@ -7,7 +7,7 @@
 // widgets) and Sequenced (Apollo companies by week) ride along as sub-views.
 export const TABS = [['dashboard', 'Dashboard'], ['pipeline', 'Pipeline'], ['actions', 'Actions']];
 export const SUB_VIEWS = {
-  pipeline: [['companies', 'Companies'], ['people', 'People'], ['partners', 'Partner workflow']],
+  pipeline: [['companies', 'Companies'], ['people', 'People'], ['partners', 'Partner workflow'], ['campaigns', 'Campaigns']],
   dashboard: [['overview', 'Overview'], ['analytics', 'Analytics'], ['sequenced', 'Sequenced']],
 };
 export const DEFAULT_TAB = 'actions';

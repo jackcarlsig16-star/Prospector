@@ -12,6 +12,7 @@ jest.mock('./goalsApi', () => ({
     actions: jest.fn(), acceptSignal: jest.fn(), dismissSignal: jest.fn(), undoSignal: jest.fn(),
     acceptSuggestion: jest.fn(), dismissSuggestion: jest.fn(), snoozeSuggestion: jest.fn(), undoSuggestion: jest.fn(),
     updateWeekGoal: jest.fn(), nudgeWaiting: jest.fn(), deleteWeekGoal: jest.fn(),
+    contactAction: jest.fn(), contactDraft: jest.fn(),
     pipelineBoard: jest.fn(() => new Promise(() => {})), companyDetail: jest.fn(() => new Promise(() => {})),
   },
 }));
@@ -56,8 +57,8 @@ test('model: Mine = mine or unowned, Team = all; Viewer kinds; priority / due te
   expect(actionsView(items, { who: 'team', kind: '', q: 'lakeshore' }, { meId: JACK }).open.map(i => i.key)).toEqual(['tidy-g1']);
   const viewer = actionsView(items, { who: 'team', kind: '', q: '' }, { meId: 'u-seif', viewer: true });
   expect([...new Set(viewer.open.map(i => i.kind))].sort()).toEqual(['flag', 'focus', 'todo']);
-  // A kind the screen has no buttons for yet (seif-campaign-v1's server rows ahead of their UI) is hidden, not a crash.
-  expect(actionsView([...items, { ...items[0], key: 'campaign-x', kind: 'campaign' }], { who: 'team', kind: '', q: '' }, { meId: JACK }).open.map(i => i.key)).not.toContain('campaign-x');
+  // A kind the screen has no buttons for yet (a server row ahead of its UI) is hidden, not a crash.
+  expect(actionsView([...items, { ...items[0], key: 'later-x', kind: 'later' }], { who: 'team', kind: '', q: '' }, { meId: JACK }).open.map(i => i.key)).not.toContain('later-x');
   expect(matchesActionFilters(items[0], { who: 'mine', kind: '', q: 'MSA' }, JACK)).toBe(true);
   expect(priorityText(items[0])).toBe('Overdue · 6 d');
   expect(priorityText(items[1])).toBe('P1');
@@ -302,4 +303,48 @@ test('Member: the disclosure opens the full row under it; the text cell toggles 
   expect(document.querySelector('[data-action-detail]').closest('[data-detail]')).toHaveAttribute('data-detail', 'tidy-g1');
   fireEvent.click(screen.getByRole('button', { name: 'Open company →' }));
   expect(goalsApi.pipelineBoard).toHaveBeenCalledWith('b1', true);
+});
+
+// seif-campaign-v1 B4/B5 - campaign rows. A send: Copy email puts subject + body on the clipboard (never an address),
+// Sent removes the row and Undo sends the server's undo with the event id. A reply: Promote opens the dialog.
+test('campaign rows: Copy email, Sent with Undo, Promote dialog; no address on screen', async () => {
+  const send = item('campaign', 'k1', { text: 'Send step 1 to Ana Alder (Alder Consulting)', why: 'Fall campaign · Consultants / brokers · knows Seif', due_date: TODAY, owner_user_id: JACK,
+    meta: { action: 'send', campaign: 'Fall campaign', track: 'Consultants / brokers · knows Seif', name: 'Ana Alder', segment: 'consultant_broker', step_no: 1, steps: 3, company_name: 'Alder Consulting', title: 'Principal', last_sent_at: null, conflict: 'already in an Apollo sequence' } });
+  const reply = item('campaign', 'k2', { text: 'Reply from Ben Birch (Birch Group) — respond', priority: 1, owner_user_id: JACK,
+    meta: { action: 'reply', campaign: 'Fall campaign', name: 'Ben Birch', segment: 'corporate', step_no: 2, steps: 3, company_name: 'Birch Group', replied_at: '2026-10-21T17:00:00Z' } });
+  goalsApi.actions.mockResolvedValue({ items: [send, reply], today: TODAY, week_start: '2026-10-19' });
+  goalsApi.contactDraft.mockResolvedValue({ step_no: 1, subject: 'Hi from us', body: 'Hi Ana, a quick idea.' });
+  goalsApi.contactAction.mockImplementation((b, id, action) => Promise.resolve(action === 'sent' ? { contact: { id }, event: { id: 'ev-1' } } : action === 'undo' ? { contact: { id }, undone: 'ev-1' } : { contact: { id }, record: { type: 'employer', id: 'o9', name: 'Birch Group' }, created: true, event: { id: 'ev-2' } }));
+  const writeText = jest.fn(() => Promise.resolve());
+  Object.assign(navigator, { clipboard: { writeText } });
+  render(<ActionsView businessId="b1" canEdit meId={JACK} members={members} lookup={lookup} onPlan={jest.fn()} onOpenFull={jest.fn()} />);
+  const sendRow = await screen.findByRole('group', { name: 'Actions for Send step 1 to Ana Alder (Alder Consulting)' });
+  expect(within(sendRow).queryByRole('button', { name: 'Promote…' })).toBeNull();
+  fireEvent.click(within(sendRow).getByRole('button', { name: 'Copy email' }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith('Subject: Hi from us\n\nHi Ana, a quick idea.'));
+  expect(await screen.findByRole('status')).toHaveTextContent('Step 1 email for Ana Alder copied');
+  fireEvent.click(within(sendRow).getByRole('button', { name: 'Sent' }));
+  await waitFor(() => expect(goalsApi.contactAction).toHaveBeenCalledWith('b1', 'k1', 'sent', { step_no: 1 }));
+  expect(await screen.findByText('Ana Alder: step 1 sent')).toBeInTheDocument();
+  expect(rows()).not.toContain('campaign-k1');
+  fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(goalsApi.contactAction).toHaveBeenCalledWith('b1', 'k1', 'undo', { event_id: 'ev-1' }));
+
+  const replyRow = screen.getByRole('group', { name: 'Actions for Reply from Ben Birch (Birch Group) — respond' });
+  expect(within(replyRow).queryByRole('button', { name: 'Sent' })).toBeNull();
+  fireEvent.click(within(replyRow).getByRole('button', { name: 'Promote…' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Promote Birch Group' });
+  expect(within(dialog).getByRole('button', { name: 'Employer', pressed: true })).toBeInTheDocument();
+  fireEvent.change(within(dialog).getByLabelText(/Hand to/), { target: { value: CY } });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Promote' }));
+  await waitFor(() => expect(goalsApi.contactAction).toHaveBeenCalledWith('b1', 'k2', 'promote', { to: 'employer', owner_user_id: CY }));
+  expect(await screen.findByText('Birch Group added to Pipeline as employer')).toBeInTheDocument();
+  expect(document.body.textContent).not.toContain('@');
+});
+
+test('Viewer: campaign rows are not on a Viewer list', async () => {
+  goalsApi.actions.mockResolvedValue({ items: [item('campaign', 'k1', { text: 'Send step 1 to Ana', meta: { action: 'send', name: 'Ana', step_no: 1 } }), items[3]], today: TODAY, week_start: '2026-10-19' });
+  render(<ActionsView businessId="b1" canEdit={false} meId="u-seif" members={members} lookup={lookup} onPlan={null} onOpenFull={jest.fn()} />);
+  await screen.findByText('Call back');
+  expect(screen.queryByText('Send step 1 to Ana')).toBeNull();
 });

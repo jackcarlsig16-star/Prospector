@@ -80,10 +80,11 @@ export function campaignCounts(contacts, events, tracks = []) {
   for (const e of ev) if (e.kind === 'sent' && e.step_no) sentByStep[e.step_no] = (sentByStep[e.step_no] || 0) + 1;
   const replied = c => c.replied_at != null;
   const byStatus = contacts.reduce((o, c) => ({ ...o, [c.status]: (o[c.status] || 0) + 1 }), {});
+  // The rate counts replies from people who were sent a step: a reply logged before any send isn't a response to one.
   const per = list => {
-    const sent = list.filter(c => sentContacts.has(c.id)).length;
-    const replies = list.filter(replied).length;
-    return { contacts: list.length, sent, replies, reply_rate: sent ? Math.round((replies / sent) * 100) : null };
+    const sentTo = list.filter(c => sentContacts.has(c.id));
+    const replies = sentTo.filter(replied).length;
+    return { contacts: list.length, sent: sentTo.length, replies, reply_rate: sentTo.length ? Math.round((replies / sentTo.length) * 100) : null };
   };
   return {
     contacts: contacts.length, by_status: byStatus, sent_by_step: sentByStep, sent_contacts: sentContacts.size,
@@ -249,10 +250,14 @@ export async function campaignAction(supabase, { businessId, id, action, now = n
       const load = await senderLoad(supabase, businessId, campaign);
       for (const c of contacts) if (c.status === 'active' && c.next_due_date) load.set(c.next_due_date, Math.max(0, (load.get(c.next_due_date) || 1) - 1));
       const due = spreadStarts(contacts, from, load);
+      // One write per (day, status): ~5 for a 180-person start at 40 a day, not 180.
+      const groups = new Map();
+      for (const c of contacts) { const key = `${due[c.id]}|${c.status}`; groups.set(key, [...(groups.get(key) || []), c.id]); }
       let moved = 0;
-      for (const c of contacts) {
-        const rows = must(await supabase.from('sales_outreach_contacts').update({ status: 'active', next_due_date: due[c.id], updated_at: now.toISOString() })
-          .eq('id', c.id).eq('status', c.status).eq('current_step', c.current_step).select('id'));
+      for (const [key, ids] of groups) {
+        const [day, status] = key.split('|');
+        const rows = must(await supabase.from('sales_outreach_contacts').update({ status: 'active', next_due_date: day, updated_at: now.toISOString() })
+          .in('id', ids).eq('status', status).select('id'));
         moved += rows.length;
       }
       return moved;

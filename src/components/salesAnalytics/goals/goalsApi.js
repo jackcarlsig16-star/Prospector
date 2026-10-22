@@ -83,6 +83,20 @@ export const goalsApi = {
   undoSignal: (id, sid, touchEventId) => call(id, `/signals/${sid}/undo`, { method: 'POST', body: touchEventId ? { touch_event_id: touchEventId } : {} }),
   // sales-ia-v2 A1 - the Actions list: { items, today, week_start }; items ranked overdue -> P1..P4 -> due. 0 AI, 0 Apollo.
   actions: id => call(id, '/actions'),
+  // seif-campaign-v1 - outreach campaigns (Pipeline > Campaigns). No response carries a contact's address.
+  campaigns: id => call(id, '/campaigns').then(d => d.campaigns),
+  campaign: (id, cid) => call(id, `/campaigns/${cid}`),
+  campaignSummary: id => call(id, '/campaigns/summary'),
+  createCampaign: (id, body) => call(id, '/campaigns', { method: 'POST', body }),
+  updateCampaign: (id, cid, body) => call(id, `/campaigns/${cid}`, { method: 'PATCH', body }).then(d => d.campaign),
+  updateCampaignStep: (id, cid, stepId, body) => call(id, `/campaigns/${cid}/steps/${stepId}`, { method: 'PATCH', body }).then(d => d.step),
+  // dryRun (default) = preview, nothing written; include = sheet rows to add despite Brad / Upside.
+  importCampaign: (id, cid, body) => call(id, `/campaigns/${cid}/import`, { method: 'POST', body }),
+  // activate | pause | resume | done
+  campaignAction: (id, cid, action) => call(id, `/campaigns/${cid}/${action}`, { method: 'POST' }),
+  // sent | skip | stop | replied | status | pause | resume | promote | undo -> { contact, event? , record? }
+  contactAction: (id, contactId, action, body = {}) => call(id, `/campaign-contacts/${contactId}/${action}`, { method: 'POST', body }),
+  contactDraft: (id, contactId) => call(id, `/campaign-contacts/${contactId}/draft`),
   // sales-ia-v2 D1 - the Dashboard's 13 chart series in one read; days 7 | 30 | 90, owner = a member's user id, team = owner_team. 0 AI, 0 Apollo.
   dashboard: (id, { days, owner, team }) => call(id, `/dashboard?${q({ days, owner, team })}`),
   // signals-v1 Stage 4 - the daily website-visitor pull (Members) and its status (Viewers too).

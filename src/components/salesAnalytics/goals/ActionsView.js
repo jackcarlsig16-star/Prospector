@@ -13,7 +13,9 @@ import PeopleCompanyPanel from '../PeopleCompanyPanel';
 import { goalsApi, TODOS_CHANGED } from './goalsApi';
 import { completeFlag, announceFlagsChanged, FLAGS_CHANGED } from '../huddleApi';
 import { numStyle, ErrorNote } from './goalsUi';
-import { KIND_LABEL, KIND_OPTIONS, EMPTY_FILTERS, activeFilterCount, actionsView, priorityText, dueText, readSort, writeSort, SNOOZE_OPTIONS, snoozeTo, actionSource, companyLine, datesLine } from './actionsModel';
+import { KIND_LABEL, KIND_OPTIONS, EMPTY_FILTERS, activeFilterCount, actionsView, priorityText, dueText, readSort, writeSort, SNOOZE_OPTIONS, snoozeTo, actionSource, companyLine, datesLine, campaignLine } from './actionsModel';
+import ContactActions from './campaigns/ContactActions';
+import { clipboardText, LINK_LABEL } from './campaigns/campaignModel';
 
 // sales-ia-v2 A1 - Actions: one ranked list (GET goals/actions) on the kit
 // table. Every kind keeps the write it already had (signals, Tidy, waiting-on,
@@ -98,6 +100,19 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
   };
   const patch = (id, body) => goalsApi.updateWeekGoal(businessId, id, body);
   const today = data?.today;
+  // seif-campaign-v1 B4/B5: every campaign write but Promote has the server's Undo (the caller's own latest change).
+  const CAMPAIGN_DONE = { sent: 'sent', skip: 'skipped', stop: 'stopped', replied: 'reply logged', pause: 'taken off the schedule', resume: 'back on the schedule' };
+  const campaignAct = (it, action, body) => finish(it, () => goalsApi.contactAction(businessId, it.id, action, body),
+    r => (action === 'promote' ? `${r.record.name} ${r.created ? 'added to Pipeline' : 'linked'} as ${LINK_LABEL[r.record.type].toLowerCase()}`
+      : action === 'status' ? `${it.meta.name}: ${body.status.replace('_', ' ')}` : `${it.meta.name}: step ${it.meta.step_no} ${CAMPAIGN_DONE[action]}`),
+    action === 'promote' ? null : r => goalsApi.contactAction(businessId, it.id, 'undo', { event_id: r.event.id }));
+  const copyDraft = async it => {
+    try {
+      const d = await goalsApi.contactDraft(businessId, it.id);
+      await navigator.clipboard.writeText(clipboardText(d));
+      showToast(`Step ${d.step_no} email for ${it.meta.name} copied - paste it into your mailbox`);
+    } catch (e) { setError(`Couldn't copy the email: ${e.message}`); }
+  };
   const acts = {
     signal: it => <>
       <Button size="sm" title="Accept: one to-do (due Friday) and a target / note on the matched record" onClick={() => finish(it, () => goalsApi.acceptSignal(businessId, it.id), r => `Accepted · to-do added: ${r.todo.text}`, () => goalsApi.undoSignal(businessId, it.id))}>Accept</Button>
@@ -129,6 +144,8 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
       remove(it);
       showToast(`${it.meta.contact || 'Prospect'} marked contacted · flag closes in 10 s`, () => load(), ({ unloading = false } = {}) => completeFlag(businessId, it.id, { keepalive: true }).then(() => { if (!unloading) { announceFlagsChanged(); load(); } }).catch(e => { if (!unloading) { setError(e.message); load(); } }));
     }}>Mark contacted</Button>,
+    campaign: it => <ContactActions members={members} lookup={lookup} onCopy={() => copyDraft(it)} onAct={(action, body) => campaignAct(it, action, body)}
+      contact={{ id: it.id, name: it.meta.name, company: it.meta.company_name, segment: it.meta.segment, status: it.meta.action === 'reply' ? 'replied' : 'active', current_step: it.meta.step_no, track_id: true }} />,
     focus: it => (it.status === 'done'
       ? <Button size="sm" onClick={() => change(() => patch(it.id, { status: 'open' }), `Reopened: ${it.text}`, () => patch(it.id, { status: 'done' }))}>Reopen</Button>
       : <Button size="sm" title="Done (Undo for 10 s)" onClick={() => change(() => patch(it.id, { status: 'done' }), `Done: ${it.text}`, () => patch(it.id, { status: 'open' }))}>Done</Button>),
@@ -176,6 +193,8 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
       ['What to do', it.text],
       ['Why', it.why || <span style={{ color: SA.muted }}>No reason given</span>],
       ['Where it came from', actionSource(it)],
+      ['Campaign step', campaignLine(it)],
+      ['Heads-up', it.kind === 'campaign' && it.meta.conflict],
       ['Company', it.company && <span className="ui-detail-list__actions"><span>{companyLine(it.company)}</span>
         {it.company.type && <button type="button" className="ui-link" onClick={() => openCompany(it)}>Open company →</button>}</span>],
       ['Dates', datesLine(it, it.owner_user_id ? lookup(it.owner_user_id).first : null)],

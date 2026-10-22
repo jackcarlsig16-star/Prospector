@@ -20,6 +20,7 @@ import ReportView from './ReportView';
 import PlanWeekDrawer from './PlanWeekDrawer';
 import { PlanNudge } from './PlanNudge';
 import ActionsView from './ActionsView';
+import CampaignsView from './campaigns/CampaignsView';
 import GoalHero from './GoalHero';
 import DashboardCharts from './DashboardCharts';
 import GoalsSection from './GoalsSection';
@@ -447,6 +448,9 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
             onCreateCadence={async body => { const c = await goalsApi.createCadence(businessId, body); setCadences(cs => [...cs, c]); }}
             onDeleteCadence={async cadenceId => { await goalsApi.deleteCadence(businessId, cadenceId); setCadences(cs => cs.filter(c => c.id !== cadenceId)); }} />
         </>}
+        {section === 'pipeline' && view === 'campaigns' && me && (
+          <CampaignsView businessId={businessId} canEdit={canEdit} members={members} lookup={lookup} meId={meId} />
+        )}
         {section === 'pipeline' && view === 'companies' && (
           <PipelineView businessId={businessId} canEdit={canEdit} meId={meId}
             onOpenPartner={(id, name) => go({ partners: { ids: [id], open: id, label: name } })} onOpenCompanies={w => { setOwnerSlug('team'); go({ companies: w }); }}
