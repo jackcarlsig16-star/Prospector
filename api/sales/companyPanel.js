@@ -220,7 +220,7 @@ async function lastTouchFor(supabase, businessId, record) {
   }
   if (record.type === 'employer') {
     const [ev, done] = await Promise.all([
-      supabase.from('sales_opportunity_events').select('changed_at').eq('business_id', businessId).eq('opportunity_id', record.id).neq('event_type', 'created').order('changed_at', { ascending: false }).limit(1).then(must),
+      supabase.from('sales_opportunity_events').select('changed_at').eq('business_id', businessId).eq('opportunity_id', record.id).eq('event_type', 'stage_change').order('changed_at', { ascending: false }).limit(1).then(must),
       supabase.from('sales_week_goals').select('completed_at').eq('business_id', businessId).eq('kind', 'todo').eq('link_type', 'opportunity').eq('link_id', record.id).eq('status', 'done').order('completed_at', { ascending: false }).limit(1).then(must),
     ]);
     const stage = ev[0]?.changed_at || null, todo = done[0]?.completed_at || null;

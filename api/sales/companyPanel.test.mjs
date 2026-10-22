@@ -92,6 +92,10 @@ test('employer body: stage history + done to-dos as recent, decision makers and 
   assert.deepEqual(e.people.map(p => [p.name, p.title, p.signal?.text ?? null]), [['Dana Q', 'CHRO', 'replied Step 2'], ['Sam', 'Champion', null]]);
   assert.deepEqual(e.decision_makers, ['Pat Lee · VP People']);
   assert.deepEqual(e.record.last_touch, { at: '2026-10-19T10:00:00Z', touch_type: 'stage' });
+  // FIX loop-quickfixes Q4: a later archived / created event is not contact.
+  sb.db.sales_opportunity_events.push({ id: randomUUID(), business_id: B, opportunity_id: ID.employer, event_type: 'archived', from_stage: 'contacted', to_stage: 'contacted', changed_at: '2026-10-20T10:00:00Z' });
+  assert.deepEqual((await companyDetail(sb, { businessId: B, type: 'employer', id: ID.employer, now: NOW })).body.record.last_touch, { at: '2026-10-19T10:00:00Z', touch_type: 'stage' });
+  sb.db.sales_opportunity_events.pop();
   assert.equal(e.record.notes, 'old note'); assert.equal(e.record.covered_lives, 1200); assert.equal(e.record.owner, 'Jack Carlson');
   sb.db.sales_targets[0].research_notes = '(10/19) Looks good\nPeople: Lee Park · Head of HR\nPerson: Ana Ruiz';
   const t = (await companyDetail(sb, { businessId: B, type: 'target', id: ID.target })).body;

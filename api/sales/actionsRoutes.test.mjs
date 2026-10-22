@@ -106,7 +106,7 @@ const seed = () => fakeSupabase({
   business_members: [{ business_id: B, user_id: JACK, name: 'Jack Zz' }, { business_id: B, user_id: CY, name: 'Cyrus Yy' }],
   sales_goals: [{ id: P.lake, business_id: B, goal_type: 'partnership', name: 'Lakeshore Mutual', priority: 1, archived_at: null, pipeline_status: 'replied', owner_user_id: JACK, last_touch_at: '2026-10-09T15:00:00Z' }],
   sales_opportunities: [{ id: O.mill, business_id: B, organization: 'Old Mill Union', priority: null, archived_at: null, notes: '(10/01) first line', stage: 'prospect', owner_team: 'upside' }],
-  sales_opportunity_events: [{ id: randomUUID(), business_id: B, opportunity_id: O.mill, event_type: 'stage_changed', changed_at: '2026-10-12T10:00:00Z' }],
+  sales_opportunity_events: [{ id: randomUUID(), business_id: B, opportunity_id: O.mill, event_type: 'stage_change', changed_at: '2026-10-12T10:00:00Z' }],
   sales_targets: [],
   sales_week_goals: [
     row('todo', { id: 'todo-today', text: 'Call back', due_date: TODAY, link_type: 'partner', link_id: P.lake }),

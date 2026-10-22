@@ -142,7 +142,7 @@ export async function listActions(supabase, businessId, now = new Date()) {
   // Employer last touch = the Pipeline's: the latest stage event or done linked to-do (FIX actions-row-detail-v1).
   const oppIds = [...ids.opportunity];
   const [oppEvents, oppDone, noteRows] = await Promise.all([
-    oppIds.length ? all('sales_opportunity_events', 'opportunity_id, event_type, changed_at', q => q.in('opportunity_id', oppIds).neq('event_type', 'created')) : [],
+    oppIds.length ? all('sales_opportunity_events', 'opportunity_id, event_type, changed_at', q => q.in('opportunity_id', oppIds).eq('event_type', 'stage_change')) : [],
     oppIds.length ? all('sales_week_goals', 'link_type, link_id, status, completed_at', q => q.eq('link_type', 'opportunity').in('link_id', oppIds).eq('status', 'done')) : [],
     noteIds.length ? all('sales_call_notes', 'id, call_date', q => q.in('id', noteIds)) : [],
   ]);

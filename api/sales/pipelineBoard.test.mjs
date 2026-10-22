@@ -247,9 +247,9 @@ test('open to-dos and waiting per row: open only, newest carried copy, overdue =
   assert.equal(rows.find(r => r.id === 't1').work, null);
 });
 
-test('employer last touch = latest stage change (not created) or linked to-do done', () => {
+test('employer last touch = latest stage change or linked to-do done; created / archived are not contact (FIX loop-quickfixes Q4)', () => {
   const s = v2();
-  s.oppEvents = [{ opportunity_id: 'o1', event_type: 'stage_change', changed_at: '2026-10-10T00:00:00Z' }, { opportunity_id: 'o1', event_type: 'created', changed_at: '2026-10-18T00:00:00Z' }];
+  s.oppEvents = [{ opportunity_id: 'o1', event_type: 'stage_change', changed_at: '2026-10-10T00:00:00Z' }, { opportunity_id: 'o1', event_type: 'created', changed_at: '2026-10-18T00:00:00Z' }, { opportunity_id: 'o1', event_type: 'archived', changed_at: '2026-10-19T00:00:00Z' }, { opportunity_id: 'o4', event_type: 'archived', changed_at: '2026-10-19T00:00:00Z' }];
   s.linked = [{ id: 'x', kind: 'todo', status: 'done', link_type: 'opportunity', link_id: 'o1', completed_at: '2026-10-12T00:00:00Z' }];
   const rows = buildBoard(s);
   assert.equal(rows.find(r => r.id === 'o1').last_touch_at, '2026-10-12T00:00:00Z');

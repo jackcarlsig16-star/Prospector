@@ -58,12 +58,12 @@ export function openWorkByRow(linked, today) {
   return out;
 }
 
-// An employer's last touch: its latest stage change (not 'created') or a
-// linked to-do ticked done, whichever is later.
+// An employer's last touch: its latest stage change or a linked to-do ticked
+// done, whichever is later. Created / archived are not contact (FIX loop-quickfixes Q4).
 export function employerTouches(oppEvents, linked) {
   const out = new Map();
   const bump = (id, at) => { if (at && (!out.has(id) || at > out.get(id))) out.set(id, at); };
-  for (const e of oppEvents) if (e.event_type !== 'created') bump(e.opportunity_id, e.changed_at);
+  for (const e of oppEvents) if (e.event_type === 'stage_change') bump(e.opportunity_id, e.changed_at);
   for (const t of linked) if (t.link_type === 'opportunity' && t.status === 'done') bump(t.link_id, t.completed_at);
   return out;
 }
@@ -218,7 +218,7 @@ async function loadBoard(businessId, filters) {
     all('web_visits', 'id, company_key, company_name, matched_type, matched_id, last_visit, visits_7d, priority, priority_rule, noise_reason, pulled_on', x => x.gte('pulled_on', weekAgo).order('id')),
     all('sales_week_goals', 'id, kind, status, due_date, link_type, link_id, carried_from_id, completed_at, source_note_id, created_at',
       x => x.in('kind', ['todo', 'waiting']).in('link_type', Object.keys(LINK_ROW)).order('id')),
-    all('sales_opportunity_events', 'opportunity_id, event_type, changed_at', x => x.neq('event_type', 'created').order('id')),
+    all('sales_opportunity_events', 'opportunity_id, event_type, changed_at', x => x.eq('event_type', 'stage_change').order('id')),
     all('sales_partner_events', 'id, goal_id', x => x.not('meta->>from_note_id', 'is', null).gte('at', new Date(now - CALL_NOTE_DAYS * DAY).toISOString()).order('id')),
     loadOverrides(supabase, businessId),
     all('sales_signals', 'id, company_key, company_name, status, upside_joint, created_at', x => x.eq('source', 'scout').order('id')),
