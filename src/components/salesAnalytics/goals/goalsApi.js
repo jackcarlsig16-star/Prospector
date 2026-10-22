@@ -67,19 +67,20 @@ export const goalsApi = {
   // run = { ran, created, skipped } or { ran: false, reason, last_run }; force = "Tidy now". 0 AI, 0 Apollo.
   suggestions: id => call(id, '/suggestions'),
   runTidy: (id, { force = false, trigger = 'manual' } = {}) => call(id, '/tidy/run', { method: 'POST', body: { force, trigger } }),
-  acceptSuggestion: (id, sid) => call(id, `/suggestions/${sid}/accept`, { method: 'POST', body: {} }),
+  // FIX actions-done-button-v1: { done: true } = the to-do is born done; a partner-linked one logs an email touch (touch_event_id back).
+  acceptSuggestion: (id, sid, { done = false } = {}) => call(id, `/suggestions/${sid}/accept`, { method: 'POST', body: done ? { done: true } : {} }),
   dismissSuggestion: (id, sid) => call(id, `/suggestions/${sid}/dismiss`, { method: 'POST', body: {} }),
   snoozeSuggestion: (id, sid) => call(id, `/suggestions/${sid}/snooze`, { method: 'POST', body: {} }),
   // sales-ia-v2 A1 - back to proposed within 10 min; todo_id = the to-do Accept returned (deleted if still open).
-  undoSuggestion: (id, sid, todoId) => call(id, `/suggestions/${sid}/undo`, { method: 'POST', body: todoId ? { todo_id: todoId } : {} }),
+  undoSuggestion: (id, sid, todoId, touchEventId) => call(id, `/suggestions/${sid}/undo`, { method: 'POST', body: { ...(todoId ? { todo_id: todoId } : {}), ...(touchEventId ? { touch_event_id: touchEventId } : {}) } }),
   // signals-v1 Stage 2 - the Signals review queue. scoutImport: dryRun = preview, nothing written.
   // accept = { signal, todo, via, record }; dismiss parks the company 7 days. 0 AI, 0 Apollo.
   signals: (id, status = 'new') => call(id, `/signals?${q({ status })}`).then(d => d.signals),
   scoutImport: (id, file, dryRun) => call(id, '/signals/scout-import', { method: 'POST', body: { file, dryRun } }),
-  acceptSignal: (id, sid) => call(id, `/signals/${sid}/accept`, { method: 'POST', body: {} }),
+  acceptSignal: (id, sid, { done = false } = {}) => call(id, `/signals/${sid}/accept`, { method: 'POST', body: done ? { done: true } : {} }),
   dismissSignal: (id, sid) => call(id, `/signals/${sid}/dismiss`, { method: 'POST', body: {} }),
   // sales-ia-v2 A1 - a just-accepted / dismissed signal back to new (its to-do, target or note come off too).
-  undoSignal: (id, sid) => call(id, `/signals/${sid}/undo`, { method: 'POST', body: {} }),
+  undoSignal: (id, sid, touchEventId) => call(id, `/signals/${sid}/undo`, { method: 'POST', body: touchEventId ? { touch_event_id: touchEventId } : {} }),
   // sales-ia-v2 A1 - the Actions list: { items, today, week_start }; items ranked overdue -> P1..P4 -> due. 0 AI, 0 Apollo.
   actions: id => call(id, '/actions'),
   // sales-ia-v2 D1 - the Dashboard's 13 chart series in one read; days 7 | 30 | 90, owner = a member's user id, team = owner_team. 0 AI, 0 Apollo.

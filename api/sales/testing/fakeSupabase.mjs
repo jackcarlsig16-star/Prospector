@@ -18,7 +18,7 @@ export function fakeSupabase(seed, { unique = {} } = {}) {
     db[table] ||= [];
     let rows;
     if (q.op === 'insert') {
-      rows = (Array.isArray(q.payload) ? q.payload : [q.payload]).map(r => ({ id: randomUUID(), created_at: new Date().toISOString(), ...r }));
+      rows = (Array.isArray(q.payload) ? q.payload : [q.payload]).map(r => ({ id: randomUUID(), created_at: new Date().toISOString(), recorded_at: new Date().toISOString(), ...r }));
       const key = unique[table];
       if (key && rows.some(r => key(r) != null && db[table].some(x => key(x) === key(r)))) return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
       db[table].push(...rows);
@@ -27,7 +27,7 @@ export function fakeSupabase(seed, { unique = {} } = {}) {
       rows = (Array.isArray(q.payload) ? q.payload : [q.payload]).map(r => {
         const hit = db[table].find(x => cols.every(c => x[c] === r[c]));
         if (hit) return Object.assign(hit, r);
-        const row = { id: randomUUID(), created_at: new Date().toISOString(), ...r };
+        const row = { id: randomUUID(), created_at: new Date().toISOString(), recorded_at: new Date().toISOString(), ...r };
         db[table].push(row);
         return row;
       });

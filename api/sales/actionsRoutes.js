@@ -3,6 +3,7 @@ import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
 import { openFlagRows } from './huddleFlags.js';
 import { todoText } from './signalsRoutes.js';
+import { DUE_DAYS } from './tidyRules.js';
 
 // sales-ia-v2 A1 - Actions: one ranked list of everything that wants a click
 // today. Six kinds, each from the table that already holds it (nothing is
@@ -71,7 +72,8 @@ export function buildActions({ todos = [], flags = [], waiting = [], signals = [
     if (s.kind === 'nudge' && waitingIds.has(s.ref_id)) continue; // the waiting row itself is on the list, with Got it / Nudge
     const ref = ['todo', 'flag'].includes(s.ref_type) ? refById.get(s.ref_id) : null;
     const c = s.ref_type === 'pair' ? company('partner', s.ref_id) : ref ? linkCompany(ref) : company(s.ref_type, s.ref_id);
-    push('tidy', s, { text: s.text, why: s.reason, company: c, priority: TIDY_PRIORITY[s.kind] || DEFAULT_PRIORITY.tidy, owner_user_id: null, due_date: null, meta: { kind: s.kind, ref_type: s.ref_type, ref_id: s.ref_id, ref_id2: s.ref_id2 } });
+    // makes_todo: Accept would create a to-do (FIX actions-done-button-v1: only then can the row be marked Done).
+    push('tidy', s, { text: s.text, why: s.reason, company: c, priority: TIDY_PRIORITY[s.kind] || DEFAULT_PRIORITY.tidy, owner_user_id: null, due_date: null, meta: { kind: s.kind, ref_type: s.ref_type, ref_id: s.ref_id, ref_id2: s.ref_id2, makes_todo: s.ref_type !== 'pair' && DUE_DAYS[s.kind] != null } });
   }
 
   const flagIds = new Set(flags.map(f => f.id));

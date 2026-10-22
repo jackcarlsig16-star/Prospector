@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import ExcelJS from 'exceljs';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
 import { readScout, scoutImport, kindOf } from './scoutImport.js';
-import { acceptSignal, dismissSignal, listSignals, nextFriday } from './signalsRoutes.js';
+import { acceptSignal, dismissSignal, undoSignal, listSignals, nextFriday } from './signalsRoutes.js';
 import { salesGate } from '../lib/requireAuth.js';
 import { FINAL_ERROR } from './goalsShared.js';
 
@@ -213,6 +213,104 @@ test('dismiss parks 7 days; a re-import that week proposes nothing for it; list 
   const nextWeek = await imp(sb, { now: new Date('2026-10-26T18:00:00Z') });
   assert.equal(nextWeek.added, 4);
   assert.equal(nextWeek.rows.find(x => x.company === 'Orchard Table').would, 'dismissed');
+});
+
+// FIX actions-done-button-v1 REV2 - Done = Accept with { done: true }.
+const done = (sb, s, now = NOW) => acceptSignal(sb, { businessId: B, userId: U, id: s.id, now, done: true });
+const undo = (sb, s, body = {}, now = new Date(NOW.getTime() + 60e3)) => undoSignal(sb, { businessId: B, userId: U, id: s.id, body, now });
+
+test('Done, no match: the same target + the to-do born done (completed_at = now), signal accepted, no touch', async () => {
+  const sb = fresh(); await imp(sb);
+  const r = await done(sb, byCompany(sb, 'Nimbus Freight'));
+  assert.equal(r.status, 200, r.body.error);
+  assert.deepEqual([r.body.via, r.body.touch_event_id], ['new_target', null]);
+  const todo = sb.db.sales_week_goals[0];
+  assert.deepEqual([todo.status, todo.completed_at, todo.due_date, todo.link_type, todo.owner_user_id], ['done', NOW.toISOString(), '2026-10-23', 'target', U]);
+  assert.equal(sb.db.sales_targets.find(x => x.name === 'Nimbus Freight').status, 'researching');
+  assert.deepEqual([byCompany(sb, 'Nimbus Freight').status, byCompany(sb, 'Nimbus Freight').todo_id, sb.db.sales_partner_events.length], ['accepted', todo.id, 0]);
+});
+
+test('Done, partner match: ONE email touch (no stage move, last_touch_at + first_email_at stamped, the signal note on it), no note event', async () => {
+  const sb = fresh(); await imp(sb);
+  const r = await done(sb, byCompany(sb, 'Kestrel Pay'));
+  assert.equal(r.status, 200, r.body.error);
+  const ev = sb.db.sales_partner_events;
+  assert.deepEqual(ev.map(e => [e.event, e.touch_type, e.to_status, e.source, e.meta.from_signal_id]), [['touch', 'email', null, 'manual', byCompany(sb, 'Kestrel Pay').id]]);
+  assert.match(ev[0].note, /^Signal Scout 10\/19: Launched an employer portal · Why now: Portal is live$/);
+  assert.equal(r.body.touch_event_id, ev[0].id);
+  const g = sb.db.sales_goals[0];
+  assert.deepEqual([g.pipeline_status, g.last_touch_at, g.first_email_at], ['replied', NOW.toISOString(), '2026-10-19']);
+  assert.deepEqual([sb.db.sales_week_goals[0].status, sb.db.sales_week_goals[0].link_id], ['done', P.kestrel]);
+});
+
+test('Done, employer match: the notes line + a done to-do, 0 partner events; done: "yes" is 400 and writes nothing', async () => {
+  const sb = fresh(); await imp(sb);
+  const r = await done(sb, byCompany(sb, 'Brightmill Foods'));
+  assert.equal(r.status, 200, r.body.error);
+  assert.equal(sb.db.sales_opportunities[0].notes, 'Met at expo\n(10/19) Signal: Benefits RFP · Why now: Renewal in Q1');
+  assert.deepEqual([sb.db.sales_week_goals[0].status, sb.db.sales_partner_events.length], ['done', 0]);
+  const before = JSON.stringify(sb.db);
+  const bad = await acceptSignal(sb, { businessId: B, userId: U, id: byCompany(sb, 'Kestrel Pay').id, now: NOW, done: 'yes' });
+  assert.deepEqual([bad.status, bad.body.error], [400, 'done must be true']);
+  assert.equal(JSON.stringify(sb.db), before);
+});
+
+test('Done on a partner whose stage moved between the read and the touch: 409, nothing written', async () => {
+  const sb = fresh(); await imp(sb);
+  const from = sb.from; let n = 0;
+  // acceptMatch reads sales_goals first; the Done's own stage read is the second - make it stale.
+  sb.from = t => (t === 'sales_goals' && n++ === 1 ? { select: () => ({ eq: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { pipeline_status: 'in_sequence' } }) }) }) }) } : from(t));
+  const r = await done(sb, byCompany(sb, 'Kestrel Pay'));
+  assert.equal(r.status, 409);
+  assert.deepEqual([sb.db.sales_partner_events.length, sb.db.sales_week_goals.length, byCompany(sb, 'Kestrel Pay').status, sb.db.sales_goals[0].last_touch_at], [0, 0, 'new', undefined]);
+});
+
+test('Undo a partner Done: the touch comes off first (undo event, stamps restored), then the done to-do, signal back to new', async () => {
+  const sb = fresh(); await imp(sb);
+  const s = byCompany(sb, 'Kestrel Pay');
+  const r = await done(sb, s);
+  const u = await undo(sb, s, { touch_event_id: r.body.touch_event_id });
+  assert.equal(u.status, 200, u.body.error);
+  assert.deepEqual(sb.db.sales_partner_events.map(e => e.event), ['touch', 'undo']);
+  assert.equal(sb.db.sales_partner_events[1].meta.undid, r.body.touch_event_id);
+  const g = sb.db.sales_goals[0];
+  assert.deepEqual([g.pipeline_status, g.last_touch_at, g.first_email_at], ['replied', null, null]);
+  assert.deepEqual([sb.db.sales_week_goals.length, byCompany(sb, 'Kestrel Pay').status, byCompany(sb, 'Kestrel Pay').todo_id], [0, 'new', null]);
+  // Without the id the undo still finds its touch by the signal id in meta.
+  const r2 = await done(sb, byCompany(sb, 'Kestrel Pay'));
+  assert.equal(r2.status, 200, r2.body.error);
+  assert.equal((await undo(sb, byCompany(sb, 'Kestrel Pay'))).status, 200);
+  assert.deepEqual(sb.db.sales_partner_events.map(e => e.event), ['touch', 'undo', 'touch', 'undo']);
+});
+
+test('Undo a partner Done after a later change on the partner: 409 from undoPartnerSignal and nothing changes', async () => {
+  const sb = fresh(); await imp(sb);
+  const s = byCompany(sb, 'Kestrel Pay');
+  const r = await done(sb, s);
+  // recorded_at is the real clock in the fake (like the DB default), so "later" is later than the touch just written.
+  sb.db.sales_partner_events.push({ id: randomUUID(), business_id: B, goal_id: P.kestrel, event: 'note', note: 'later', source: 'manual', meta: {}, recorded_at: new Date(Date.now() + 60e3).toISOString() });
+  const before = JSON.stringify(sb.db);
+  const u = await undo(sb, s, { touch_event_id: r.body.touch_event_id });
+  assert.deepEqual([u.status, u.body.error], [409, 'only the latest change on this partner can be undone']);
+  assert.equal(JSON.stringify(sb.db), before);
+  assert.equal((await undo(sb, s, { touch_event_id: 'nope' })).status, 400);
+});
+
+test('Undo an Accept (no Done) still deletes its open to-do and note; Undo a no-match Done removes the done to-do and the target', async () => {
+  const sb = fresh(); await imp(sb);
+  assert.equal((await accept(sb, byCompany(sb, 'Kestrel Pay'))).status, 200);
+  assert.equal((await undo(sb, byCompany(sb, 'Kestrel Pay'))).status, 200);
+  assert.deepEqual([sb.db.sales_partner_events.length, sb.db.sales_week_goals.length, byCompany(sb, 'Kestrel Pay').status], [0, 0, 'new']);
+  assert.equal((await done(sb, byCompany(sb, 'Nimbus Freight'))).status, 200);
+  assert.equal((await undo(sb, byCompany(sb, 'Nimbus Freight'))).status, 200);
+  assert.deepEqual([sb.db.sales_week_goals.length, sb.db.sales_targets.length, byCompany(sb, 'Nimbus Freight').status], [0, 1, 'new']);
+});
+
+test('Done in a finalized week is the same 409 as Accept', async () => {
+  const sb = fresh(); await imp(sb);
+  sb.db.sales_week_report.push({ business_id: B, week_start: '2026-10-19', status: 'final' });
+  const r = await done(sb, byCompany(sb, 'Orchard Table'));
+  assert.deepEqual([r.status, r.body.error, sb.db.sales_week_goals.length], [409, FINAL_ERROR, 0]);
 });
 
 test('Viewer: GET passes the gate, the upload and accept are 403', () => {

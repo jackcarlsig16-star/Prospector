@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
-import { runTidy, listSuggestions, acceptSuggestion, parkSuggestion, skipKeys, TIDY_CATEGORY } from './tidyRoutes.js';
+import { runTidy, listSuggestions, acceptSuggestion, parkSuggestion, undoSuggestion, skipKeys, TIDY_CATEGORY } from './tidyRoutes.js';
 
 const NOW = Date.parse('2026-10-16T18:00:00Z'); // Thu Oct 16, 11:00 LA -> week of Mon Oct 12
 const DAY = 864e5;
@@ -126,6 +126,53 @@ test('accept on a duplicate pair creates no to-do and returns the two partners; 
   const flag = sb.db.sales_suggestions.find(x => x.kind === 'flag_cold');
   const f = await acceptSuggestion(sb, { businessId: B, userId: U, id: flag.id, now: NOW });
   assert.deepEqual([f.body.todo.text, f.body.todo.link_type, f.body.todo.link_id, f.body.todo.due_date], ['Flag Pat Example is going cold', null, null, '2026-10-17']);
+});
+
+// FIX actions-done-button-v1 REV2 - Done = Accept with { done: true }.
+const doneOn = (sb, s, over = {}) => acceptSuggestion(sb, { businessId: B, userId: U, id: s.id, now: NOW, done: true, ...over });
+const undoOn = (sb, s, body = {}) => undoSuggestion(sb, { businessId: B, userId: U, id: s.id, body, now: NOW + 60e3 });
+
+test('Done on a partner follow-up: the to-do born done + ONE email touch (no stage move, last_touch_at today); the next run does not re-propose it; Undo restores all of it', async () => {
+  const sb = fresh();
+  await run(sb);
+  const s = sb.db.sales_suggestions.find(x => x.kind === 'follow_up');
+  const r = await doneOn(sb, s);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const t = r.body.todo;
+  assert.deepEqual([t.status, t.completed_at, t.link_type, t.link_id, t.category, t.text], ['done', new Date(NOW).toISOString(), 'partner', G.gallagher, TIDY_CATEGORY, 'Follow up Gallagher']);
+  const ev = sb.db.sales_partner_events.filter(e => e.goal_id === G.gallagher);
+  assert.deepEqual(ev.map(e => [e.event, e.touch_type, e.to_status, e.note, e.meta.from_suggestion_id]), [['touch', 'email', null, 'Follow up Gallagher', s.id]]);
+  assert.equal(r.body.touch_event_id, ev[0].id);
+  const g = sb.db.sales_goals.find(x => x.id === G.gallagher);
+  assert.deepEqual([g.pipeline_status, g.last_touch_at], ['first_email_sent', new Date(NOW).toISOString()]);
+  assert.equal(r.body.suggestion.status, 'accepted');
+  const next = await run(sb, { force: true, now: NOW + DAY });
+  assert.equal(sb.db.sales_suggestions.filter(x => x.kind === 'follow_up' && x.ref_id === G.gallagher).length, 1, JSON.stringify(next.body));
+  const u = await undoOn(sb, s, { todo_id: t.id, touch_event_id: r.body.touch_event_id });
+  assert.equal(u.status, 200, u.body.error);
+  assert.deepEqual(sb.db.sales_partner_events.filter(e => e.goal_id === G.gallagher).map(e => e.event), ['touch', 'undo']);
+  assert.deepEqual([g.last_touch_at, sb.db.sales_week_goals.some(x => x.id === t.id), sb.db.sales_suggestions.find(x => x.id === s.id).status], [iso(10), false, 'proposed']);
+});
+
+test('Done on a target suggestion: a done to-do and no touch; a pair and done: "yes" are 400; a later change on the partner makes Undo a 409', async () => {
+  const sb = fresh();
+  await run(sb);
+  const before = snapshot(sb);
+  const research = sb.db.sales_suggestions.find(x => x.kind === 'research_or_drop');
+  const r = await doneOn(sb, research);
+  assert.deepEqual([r.status, r.body.todo.status, r.body.todo.link_type, r.body.touch_event_id, snapshot(sb)], [200, 'done', 'target', null, before]);
+  const pair = sb.db.sales_suggestions.find(x => x.kind === 'duplicate');
+  const p = await doneOn(sb, pair);
+  assert.deepEqual([p.status, p.body.error, pair.status], [400, 'nothing to mark done — use Accept', 'proposed']);
+  const bad = await doneOn(sb, sb.db.sales_suggestions.find(x => x.kind === 'follow_up'), { done: 'yes' });
+  assert.deepEqual([bad.status, bad.body.error], [400, 'done must be true']);
+  const follow = sb.db.sales_suggestions.find(x => x.kind === 'follow_up');
+  const d = await doneOn(sb, follow);
+  assert.equal(d.status, 200);
+  sb.db.sales_partner_events.push({ id: randomUUID(), business_id: B, goal_id: G.gallagher, event: 'note', note: 'later', source: 'manual', meta: {}, recorded_at: new Date(Date.now() + 60e3).toISOString() });
+  const frozen = JSON.stringify(sb.db);
+  const u = await undoOn(sb, follow, { todo_id: d.body.todo.id, touch_event_id: d.body.touch_event_id });
+  assert.deepEqual([u.status, JSON.stringify(sb.db) === frozen], [409, true]);
 });
 
 test('list returns proposed rows only, newest first, with the last run', async () => {

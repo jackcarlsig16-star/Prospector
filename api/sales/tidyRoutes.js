@@ -6,6 +6,7 @@ import { runRules, keyOf, DUE_DAYS, TOUCH_WINDOW_DAYS } from './tidyRules.js';
 import { personSignals, INTEREST_DAYS } from './interestSignals.js';
 import { nudgeText } from './waitingRoutes.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
+import { doneFlag, partnerDoneTouch, revertTouch, doneTouchEvent, undoDoneTouch } from './doneTouch.js';
 
 // call-notes-targets-v1 REV4 Stage 3 - Tidy: a daily propose-only pass. A run
 // writes sales_suggestions rows and one sales_tidy_runs row, nothing else.
@@ -28,7 +29,9 @@ const send = (res, r) => res.status(r.status).json(r.body);
 const cut = (s, max = 400) => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
 
 export async function loadTidyContext(supabase, businessId, now = Date.now()) {
-  const all = (table, cols, narrow = q => q) => selectAllPages(() => narrow(supabase.from(table).select(cols).eq('business_id', businessId)).order('id'));
+  // orderBy: the page key (sales_prospect_state and sales_email_messages have no id column - every run errored
+  // from 1cf4b21 until FIX actions-done-button-v1 named it).
+  const all = (table, cols, narrow = q => q, orderBy = 'id') => selectAllPages(() => narrow(supabase.from(table).select(cols).eq('business_id', businessId)).order(orderBy));
   const since = new Date(now - TOUCH_WINDOW_DAYS * DAY).toISOString();
   const interestSince = new Date(now - INTEREST_DAYS * DAY).toISOString();
   const [partners, targets, todos, waiting, events, domains, suggestions, rawVisits, overrides, opportunities, prospects, messages, emailEvents] = await Promise.all([
@@ -43,8 +46,8 @@ export async function loadTidyContext(supabase, businessId, now = Date.now()) {
     loadOverrides(supabase, businessId),
     all('sales_opportunities', 'id, organization', q => q.is('archived_at', null)),
     // company-panel-v2 D7: linked people and their last 14 days of email events (never email or phone columns).
-    all('sales_prospect_state', 'contact_id, name, goal_id, opportunity_id'),
-    all('sales_email_messages', 'apollo_message_id, contact_id, step, delivered_at, replied, replied_at, replied_seen_at'),
+    all('sales_prospect_state', 'contact_id, name, goal_id, opportunity_id', q => q, 'contact_id'),
+    all('sales_email_messages', 'apollo_message_id, contact_id, step, delivered_at, replied, replied_at, replied_seen_at', q => q, 'apollo_message_id'),
     all('sales_email_activity', 'id, apollo_message_id, contact_id, step, event, occurred_at, user_agent, tracking_service', q => q.in('event', ['open', 'click', 'reply']).gte('occurred_at', interestSince)),
   ]);
   const signals = personSignals({ messages, events: emailEvents, now });
@@ -159,38 +162,49 @@ export async function todoFor(supabase, businessId, s, today) {
   return { text: s.text, due_date: addDays(today, due), link_type: link?.[0] || null, link_id: link?.[1] || null };
 }
 
-// POST /goals/suggestions/:id/accept -> { suggestion, todo, open }. The to-do
+// POST /goals/suggestions/:id/accept { done? } -> { suggestion, todo, open, touch_event_id }. The to-do
 // is the only other write: no status, stage, touch or done flag anywhere.
 // A duplicate pair creates nothing; open = the two partner ids to show.
-export async function acceptSuggestion(supabase, { businessId, userId, id, now = Date.now() }) {
+// FIX actions-done-button-v1 REV2: { done: true } = the to-do is born done, and
+// a partner-linked to-do also logs ONE email touch on that partner (no stage
+// move; doneTouch.js). A suggestion that makes no to-do refuses done.
+export async function acceptSuggestion(supabase, { businessId, userId, id, now = Date.now(), done = false }) {
   try {
+    const isDone = doneFlag(done);
     const { s, fail } = await proposedOrReply(supabase, businessId, id);
     if (fail) return fail;
     const today = laDateString(new Date(now));
     const spec = await todoFor(supabase, businessId, s, today);
-    let todo = null;
+    if (isDone && !spec) return reply(400, { error: 'nothing to mark done — use Accept' });
+    let todo = null, touch = null;
     if (spec) {
       const week = laMonday(today);
       if (await weekIsFinal(supabase, businessId, week)) return reply(409, { error: FINAL_ERROR });
-      todo = must(await supabase.from('sales_week_goals').insert({
-        business_id: businessId, week_start: week, kind: 'todo', status: 'open', category: TIDY_CATEGORY, sort_order: 0,
-        owner_user_id: userId, created_by: userId, ...spec,
-      }).select().single());
+      if (isDone && spec.link_type === 'partner') {
+        ({ event: touch } = await partnerDoneTouch(supabase, { businessId, goalId: spec.link_id, userId, now: new Date(now), today, note: spec.text, meta: { from_suggestion_id: s.id } }));
+      }
+      const ins = await supabase.from('sales_week_goals').insert({
+        business_id: businessId, week_start: week, kind: 'todo', status: isDone ? 'done' : 'open', category: TIDY_CATEGORY, sort_order: 0,
+        owner_user_id: userId, created_by: userId, ...spec, ...(isDone ? { completed_at: new Date(now).toISOString() } : {}),
+      }).select().single();
+      if (ins.error) { if (touch) await revertTouch(supabase, touch); throw err(500, ins.error.message); }
+      todo = ins.data;
     }
     const rows = must(await supabase.from('sales_suggestions').update({ status: 'accepted', decided_at: new Date(now).toISOString(), decided_by: userId })
       .eq('id', s.id).eq('status', 'proposed').select());
     if (!rows.length) {
       if (todo) await supabase.from('sales_week_goals').delete().eq('id', todo.id);
+      if (touch) await revertTouch(supabase, touch);
       return reply(409, { error: 'changed since - reload' });
     }
-    return reply(200, { suggestion: rows[0], todo, open: s.ref_type === 'pair' ? [s.ref_id, s.ref_id2] : null });
+    return reply(200, { suggestion: rows[0], todo, open: s.ref_type === 'pair' ? [s.ref_id, s.ref_id2] : null, touch_event_id: touch?.id || null });
   } catch (e) {
     if (!e.status || e.status >= 500) console.error('[suggestions/accept]', e.message);
     return reply(e.status || 500, { error: e.message });
   }
 }
 export async function acceptSuggestionRoute(req, res) {
-  send(res, await acceptSuggestion(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, id: req.params.id }));
+  send(res, await acceptSuggestion(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, id: req.params.id, done: req.body?.done }));
 }
 
 // POST /goals/suggestions/:id/dismiss and .../snooze -> { suggestion }. Both
@@ -212,10 +226,11 @@ export async function parkSuggestionRoute(req, res) {
   send(res, await parkSuggestion(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, id: req.params.id }));
 }
 
-// POST /goals/suggestions/:id/undo { todo_id? } -> { suggestion }. Back to
+// POST /goals/suggestions/:id/undo { todo_id?, touch_event_id? } -> { suggestion }. Back to
 // proposed (sales-ia-v2 A1: the Actions row's Undo); todo_id = the to-do that
-// Accept returned, deleted only while it is still an open Tidy to-do of the
-// caller's. Refused after UNDO_WINDOW_MS.
+// Accept returned, deleted only while it is still a Tidy to-do of the
+// caller's (open, or done by a Done). A Done's partner touch comes off first,
+// through undoPartnerSignal; its refusal is the answer. Refused after UNDO_WINDOW_MS.
 export const UNDO_WINDOW_MS = 10 * 60e3;
 export async function undoSuggestion(supabase, { businessId, userId, id, body, now = Date.now() }) {
   try {
@@ -227,8 +242,10 @@ export async function undoSuggestion(supabase, { businessId, userId, id, body, n
     if (!s) return reply(404, { error: 'suggestion not found' });
     if (s.status === 'proposed') return reply(409, { error: 'still proposed - nothing to undo' });
     if (!s.decided_at || now - Date.parse(s.decided_at) > UNDO_WINDOW_MS) return reply(409, { error: 'decided too long ago to undo' });
-    if (s.status === 'accepted' && todoId) {
-      must(await supabase.from('sales_week_goals').delete().eq('business_id', businessId).eq('id', todoId).eq('category', TIDY_CATEGORY).eq('status', 'open').eq('created_by', userId));
+    if (s.status === 'accepted') {
+      const touch = await doneTouchEvent(supabase, businessId, body?.touch_event_id, e => e.meta?.from_suggestion_id === s.id);
+      if (touch) { const refused = await undoDoneTouch(supabase, { businessId, touch, userId, now: new Date(now) }); if (refused) return refused; }
+      if (todoId) must(await supabase.from('sales_week_goals').delete().eq('business_id', businessId).eq('id', todoId).eq('category', TIDY_CATEGORY).in('status', ['open', 'done']).eq('created_by', userId));
     }
     const rows = must(await supabase.from('sales_suggestions').update({ status: 'proposed', dismissed_until: null, decided_at: null, decided_by: null })
       .eq('id', s.id).eq('status', s.status).select());

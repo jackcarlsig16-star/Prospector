@@ -2,6 +2,7 @@ import { getSupabase, findRow, weekIsFinal, FINAL_ERROR, addDays } from './goals
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
 import { applyPartnerSignal } from './partnerSignals.js';
+import { doneFlag, partnerDoneTouch, revertTouch, doneTouchEvent, undoDoneTouch } from './doneTouch.js';
 import { findDupes, loadDupeContext } from './partnerDupeCheck.js';
 import { validateFields } from './pipelineRoutes.js';
 import { ImportRefused } from './masterImport.js';
@@ -15,6 +16,9 @@ import { SIGNAL_CHANNEL } from '../../src/constants/salesChannels.js';
 // notes, or nothing more on a matched target. Writes run in a fixed order,
 // each pushing its undo; any failure (or a teammate's accept in between)
 // runs the undos and the request fails whole.
+// FIX actions-done-button-v1 REV2: { done: true } = the same Accept, but the
+// to-do is born done and a matched partner gets ONE email touch (no stage
+// move) in place of the note event (doneTouch.js).
 
 export const SIGNAL_CATEGORY = 'Signals';
 export const SIGNAL_STATUSES = ['new', 'accepted', 'dismissed'];
@@ -65,10 +69,11 @@ async function newOrReply(supabase, businessId, id) {
   return { s: data };
 }
 
-// POST /goals/signals/:id/accept -> { signal, todo, via, record }
-export async function acceptSignal(supabase, { businessId, userId, id, now = new Date() }) {
+// POST /goals/signals/:id/accept { done? } -> { signal, todo, via, record, touch_event_id }
+export async function acceptSignal(supabase, { businessId, userId, id, now = new Date(), done = false }) {
   const undo = [];
   try {
+    const isDone = doneFlag(done);
     const { s, fail } = await newOrReply(supabase, businessId, id);
     if (fail) return fail;
     const today = laDateString(now);
@@ -78,7 +83,7 @@ export async function acceptSignal(supabase, { businessId, userId, id, now = new
     const m = acceptMatch(s.company_name, await loadDupeContext(supabase, businessId));
     const stamp = slash(today);
     const detail = [s.signal, s.why_now && `Why now: ${s.why_now}`].filter(Boolean).join(' · ') || s.company_name;
-    let link = null, targetId = null, via, record;
+    let link = null, targetId = null, via, record, touchEventId = null;
 
     if (!m) {
       const r = await supabase.from('sales_targets').insert({
@@ -90,10 +95,13 @@ export async function acceptSignal(supabase, { businessId, userId, id, now = new
       undo.push(() => supabase.from('sales_targets').delete().eq('id', t.id));
       link = ['target', t.id]; targetId = t.id; via = 'new_target'; record = { type: 'target', id: t.id, name: t.name };
     } else if (m.type === 'partner') {
-      const { event } = await applyPartnerSignal(supabase, {
-        businessId, goalId: m.id, signal: { type: 'note', note: `${SOURCE_LABEL[s.source]} ${stamp}: ${detail}` }, byUser: userId, now, meta: { from_signal_id: s.id },
-      });
-      undo.push(() => supabase.from('sales_partner_events').delete().eq('id', event.id));
+      const note = `${SOURCE_LABEL[s.source]} ${stamp}: ${detail}`;
+      const meta = { from_signal_id: s.id };
+      const { event } = isDone
+        ? await partnerDoneTouch(supabase, { businessId, goalId: m.id, userId, now, today, note, meta })
+        : await applyPartnerSignal(supabase, { businessId, goalId: m.id, signal: { type: 'note', note }, byUser: userId, now, meta });
+      undo.push(() => (isDone ? revertTouch(supabase, event) : supabase.from('sales_partner_events').delete().eq('id', event.id)));
+      if (isDone) touchEventId = event.id;
       link = ['partner', m.id]; via = 'partner'; record = { type: 'partner', id: m.id, name: m.name };
     } else if (m.type === 'opportunity') {
       const opp = must(await supabase.from('sales_opportunities').select('id, organization, notes').eq('business_id', businessId).eq('id', m.id).maybeSingle());
@@ -110,8 +118,9 @@ export async function acceptSignal(supabase, { businessId, userId, id, now = new
     }
 
     const todo = must(await supabase.from('sales_week_goals').insert({
-      business_id: businessId, week_start: week, kind: 'todo', status: 'open', category: SIGNAL_CATEGORY, sort_order: 0,
+      business_id: businessId, week_start: week, kind: 'todo', status: isDone ? 'done' : 'open', category: SIGNAL_CATEGORY, sort_order: 0,
       text: todoText(s), due_date: due, owner_user_id: userId, created_by: userId, link_type: link?.[0] || null, link_id: link?.[1] || null,
+      ...(isDone ? { completed_at: now.toISOString() } : {}),
     }).select().single());
     undo.push(() => supabase.from('sales_week_goals').delete().eq('id', todo.id));
 
@@ -120,7 +129,7 @@ export async function acceptSignal(supabase, { businessId, userId, id, now = new
       match: { type: record.type, id: record.id, name: record.name, via },
     }).eq('id', s.id).eq('status', 'new').select(COLS));
     if (!rows.length) throw err(409, `${s.company_name} was decided by someone else - reload`);
-    return reply(200, { signal: rows[0], todo, via, record });
+    return reply(200, { signal: rows[0], todo, via, record, touch_event_id: touchEventId });
   } catch (e) {
     for (const f of undo.reverse()) { try { await f(); } catch (u) { console.error('[signals/accept] undo failed:', u.message); } }
     if (!e.status || e.status >= 500) console.error('[signals/accept]', e.message);
@@ -128,7 +137,7 @@ export async function acceptSignal(supabase, { businessId, userId, id, now = new
   }
 }
 export async function acceptSignalRoute(req, res) {
-  send(res, await acceptSignal(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, id: req.params.id }));
+  send(res, await acceptSignal(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, id: req.params.id, done: req.body?.done }));
 }
 
 // POST /goals/signals/:id/dismiss -> { signal }. Parked DISMISS_DAYS: an
@@ -152,13 +161,14 @@ export async function dismissSignalRoute(req, res) {
 
 // POST /goals/signals/scout-import { file: { name, data: base64 }, dryRun }
 // Member+ (salesGate). Anything but dryRun: false is a preview: nothing written.
-// POST /goals/signals/:id/undo -> { signal }. Puts a just-decided signal back
+// POST /goals/signals/:id/undo { touch_event_id? } -> { signal }. Puts a just-decided signal back
 // to 'new' (sales-ia-v2 A1: the Actions row's Undo). Accept's writes come off
-// in reverse: the to-do, then the target it made / the partner's note event /
+// in reverse: the to-do (open, or done by a Done), then the target it made / the partner's note event /
 // the employer's notes line; the import-time match hint is gone, so match
 // goes back to null (the next Accept recomputes it). Refused after UNDO_WINDOW_MS.
+// A Done's partner touch comes off first, through undoPartnerSignal; its refusal is the answer.
 export const UNDO_WINDOW_MS = 10 * 60e3;
-export async function undoSignal(supabase, { businessId, id, now = new Date() }) {
+export async function undoSignal(supabase, { businessId, userId = null, id, body = {}, now = new Date() }) {
   try {
     if (!UUID.test(id || '')) return reply(404, { error: 'signal not found' });
     const { data: s, error } = await findRow(supabase, 'sales_signals', businessId, id);
@@ -167,7 +177,11 @@ export async function undoSignal(supabase, { businessId, id, now = new Date() })
     if (s.status === 'new') return reply(409, { error: `${s.company_name} is still new - nothing to undo` });
     if (!s.decided_at || now - Date.parse(s.decided_at) > UNDO_WINDOW_MS) return reply(409, { error: `${s.company_name} was decided too long ago to undo` });
     if (s.status === 'accepted') {
-      if (s.todo_id) must(await supabase.from('sales_week_goals').delete().eq('business_id', businessId).eq('id', s.todo_id).eq('status', 'open'));
+      if (s.match?.via === 'partner' && s.match?.id) {
+        const touch = await doneTouchEvent(supabase, businessId, body?.touch_event_id, e => e.meta?.from_signal_id === s.id);
+        if (touch) { const refused = await undoDoneTouch(supabase, { businessId, touch, userId, now }); if (refused) return refused; }
+      }
+      if (s.todo_id) must(await supabase.from('sales_week_goals').delete().eq('business_id', businessId).eq('id', s.todo_id).in('status', ['open', 'done']));
       const via = s.match?.via;
       if (via === 'new_target' && s.target_id) {
         must(await supabase.from('sales_week_goals').update({ link_type: null, link_id: null }).eq('business_id', businessId).eq('link_type', 'target').eq('link_id', s.target_id));
@@ -199,7 +213,7 @@ export async function undoSignal(supabase, { businessId, id, now = new Date() })
   }
 }
 export async function undoSignalRoute(req, res) {
-  send(res, await undoSignal(getSupabase(), { businessId: req.params.businessId, id: req.params.id }));
+  send(res, await undoSignal(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, id: req.params.id, body: req.body }));
 }
 
 export async function scoutImportRoute(req, res) {

@@ -17,7 +17,9 @@ import { KIND_LABEL, KIND_OPTIONS, EMPTY_FILTERS, activeFilterCount, actionsView
 // sales-ia-v2 A1 - Actions: one ranked list (GET goals/actions) on the kit
 // table. Every kind keeps the write it already had (signals, Tidy, waiting-on,
 // to-dos, flags, Focus 5); finishing removes the row at once and offers Undo
-// for 10 s. Undo reverses the write (the signal / suggestion undo routes, a
+// for 10 s. FIX actions-done-button-v1: Done on a signal / to-do-making Tidy
+// row = Accept with { done: true } (the to-do is born done; a partner gets one
+// email touch) - Undo hands the touch id back so the touch comes off first. Undo reverses the write (the signal / suggestion undo routes, a
 // PATCH back, deleting the nudge to-do); Mark contacted is the one deferred
 // write - the flag closes when the window ends, so Undo only keeps the row.
 // Company opens the P4 company window. Viewers get the Team list, read-only.
@@ -98,10 +100,12 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
   const acts = {
     signal: it => <>
       <Button size="sm" title="Accept: one to-do (due Friday) and a target / note on the matched record" onClick={() => finish(it, () => goalsApi.acceptSignal(businessId, it.id), r => `Accepted · to-do added: ${r.todo.text}`, () => goalsApi.undoSignal(businessId, it.id))}>Accept</Button>
+      <Button size="sm" title="Already did it — logs it as done (Undo for 10 s)" onClick={() => finish(it, () => goalsApi.acceptSignal(businessId, it.id, { done: true }), r => `Done: ${r.todo.text}`, r => goalsApi.undoSignal(businessId, it.id, r.touch_event_id))}>Done</Button>
       <Button size="sm" title="Dismiss for 7 days" onClick={() => finish(it, () => goalsApi.dismissSignal(businessId, it.id), `Dismissed ${it.company?.name || 'the signal'} for 7 days`, () => goalsApi.undoSignal(businessId, it.id))}>Dismiss</Button>
     </>,
     tidy: it => <>
       <Button size="sm" title="Accept: one to-do" onClick={() => finish(it, () => goalsApi.acceptSuggestion(businessId, it.id), r => (r.todo ? `Accepted · to-do added: ${r.todo.text}` : 'Accepted'), r => goalsApi.undoSuggestion(businessId, it.id, r.todo?.id))}>Accept</Button>
+      {it.meta.makes_todo && <Button size="sm" title="Already did it — logs it as done (Undo for 10 s)" onClick={() => finish(it, () => goalsApi.acceptSuggestion(businessId, it.id, { done: true }), r => `Done: ${r.todo.text}`, r => goalsApi.undoSuggestion(businessId, it.id, r.todo.id, r.touch_event_id))}>Done</Button>}
       <Button size="sm" title="Dismiss for 7 days" onClick={() => finish(it, () => goalsApi.dismissSuggestion(businessId, it.id), 'Dismissed for 7 days', () => goalsApi.undoSuggestion(businessId, it.id))}>Dismiss</Button>
       <Button size="sm" title="Snooze 7 days" onClick={() => finish(it, () => goalsApi.snoozeSuggestion(businessId, it.id), 'Snoozed 7 days', () => goalsApi.undoSuggestion(businessId, it.id))}>Snooze</Button>
     </>,

@@ -30,7 +30,7 @@ const items = [
   item('signal', 's1', { text: 'Reach out: Acme Widgets', why: 'P1 Act today: US 500+ with 5+ visits', priority: 1, company: { type: 'visitor', id: 'acme widgets', name: 'Acme Widgets', priority: null }, meta: { source: 'web_visit' } }),
   item('todo', 't1', { text: 'Call back', why: 'Signals', due_date: TODAY, owner_user_id: JACK, company: { type: 'employer', id: 'o1', name: 'Old Mill Union', priority: null } }),
   item('todo', 't2', { text: 'Draft the one-pager', due_date: '2026-10-23', owner_user_id: CY, priority: 3 }),
-  item('tidy', 'g1', { text: 'Follow up Lakeshore Mutual', why: 'Replied · no open to-do', priority: 3, company: { type: 'partner', id: 'p2', name: 'Lakeshore Mutual', priority: null } }),
+  item('tidy', 'g1', { text: 'Follow up Lakeshore Mutual', why: 'Replied · no open to-do', priority: 3, company: { type: 'partner', id: 'p2', name: 'Lakeshore Mutual', priority: null }, meta: { kind: 'follow_up', ref_type: 'partner', makes_todo: true } }),
   item('focus', 'c1', { text: 'Book two meetings', why: 'Pipeline is thin', owner_user_id: JACK }),
   item('focus', 'c2', { text: 'Ship the deck', owner_user_id: JACK, status: 'done' }),
   item('signal', 's2', { text: 'Reach out: Hot Co', priority: 2, company: { type: null, id: null, name: 'Hot Co', priority: null }, meta: { source: 'scout' } }),
@@ -126,6 +126,46 @@ test('Accept a signal: the row leaves at once, the to-do text is in the toast, U
   await waitFor(() => expect(goalsApi.acceptSuggestion).toHaveBeenCalledWith('b1', 'g1'));
   fireEvent.click(within(await screen.findByRole('status')).getByRole('button', { name: 'Undo' }));
   await waitFor(() => expect(goalsApi.undoSuggestion).toHaveBeenCalledWith('b1', 'g1', 'td2'));
+});
+
+// FIX actions-done-button-v1 REV2 - Done on a signal / to-do-making Tidy row.
+test('Done on a signal and on a Tidy row: Accept with done, "Done: <text>" toast, Undo hands the touch id back; no Done on a pair row or for a Viewer', async () => {
+  goalsApi.acceptSignal.mockResolvedValue({ todo: { id: 'td', text: 'Reach out: Acme Widgets' }, via: 'partner', touch_event_id: 'ev1' });
+  goalsApi.undoSignal.mockResolvedValue({ signal: { status: 'new' } });
+  goalsApi.acceptSuggestion.mockResolvedValue({ suggestion: {}, todo: { id: 'td2', text: 'Follow up Lakeshore Mutual' }, touch_event_id: 'ev2' });
+  goalsApi.undoSuggestion.mockResolvedValue({ suggestion: { status: 'proposed' } });
+  const pair = item('tidy', 'g2', { text: 'Possible duplicate: Lockton / Lockton Inc', priority: 3, meta: { kind: 'duplicate', ref_type: 'pair', makes_todo: false } });
+  goalsApi.actions.mockResolvedValue({ items: [...items, pair], today: TODAY, week_start: '2026-10-19' });
+  render(<ActionsView businessId="b1" canEdit meId={JACK} members={members} lookup={lookup} onPlan={jest.fn()} onOpenFull={jest.fn()} />);
+  await screen.findByText('Reach out: Acme Widgets');
+  const acts = text => within(screen.getByRole('group', { name: `Actions for ${text}` }));
+  const doneBtn = acts('Reach out: Acme Widgets').getByRole('button', { name: 'Done' });
+  expect(doneBtn).toHaveAttribute('title', 'Already did it — logs it as done (Undo for 10 s)');
+  expect(doneBtn).toHaveClass('ui-btn--secondary');
+  expect(acts('Reach out: Acme Widgets').getAllByRole('button').map(b => b.textContent)).toEqual(['Accept', 'Done', 'Dismiss']);
+  expect(acts('Follow up Lakeshore Mutual').getAllByRole('button').map(b => b.textContent)).toEqual(['Accept', 'Done', 'Dismiss', 'Snooze']);
+  expect(acts('Possible duplicate: Lockton / Lockton Inc').getAllByRole('button').map(b => b.textContent)).toEqual(['Accept', 'Dismiss', 'Snooze']);
+  fireEvent.click(doneBtn);
+  expect(rows()).not.toContain('signal-s1');
+  await waitFor(() => expect(goalsApi.acceptSignal).toHaveBeenCalledWith('b1', 's1', { done: true }));
+  const toast = await screen.findByRole('status');
+  expect(toast.textContent).toContain('Done: Reach out: Acme Widgets');
+  fireEvent.click(within(toast).getByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(goalsApi.undoSignal).toHaveBeenCalledWith('b1', 's1', 'ev1'));
+  await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+  fireEvent.click(acts('Follow up Lakeshore Mutual').getByRole('button', { name: 'Done' }));
+  await waitFor(() => expect(goalsApi.acceptSuggestion).toHaveBeenCalledWith('b1', 'g1', { done: true }));
+  const t2 = await screen.findByRole('status');
+  expect(t2.textContent).toContain('Done: Follow up Lakeshore Mutual');
+  fireEvent.click(within(t2).getByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(goalsApi.undoSuggestion).toHaveBeenCalledWith('b1', 'g1', 'td2', 'ev2'));
+});
+
+test('Viewer: no Done button anywhere (no signal or Tidy rows, no actions column)', async () => {
+  setup({ canEdit: false, meId: 'u-seif' });
+  await screen.findByText('Call back');
+  expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+  expect(screen.queryByText('Reach out: Acme Widgets')).toBeNull();
 });
 
 test('to-do Done / Snooze / Reassign, waiting Got it / Nudge, Focus Done - each with its reverse write on Undo', async () => {
