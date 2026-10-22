@@ -6,12 +6,15 @@ import { updateOpportunity } from '../pipelineApi';
 import { updateProspect } from '../huddleApi';
 import { playbookPrompt } from './companyPanelModel';
 import { md, showsNotNow } from './companyPanelFacts';
+import { needsRecord } from './companyPanelModel';
 
 // company-panel-v2 L3 - the Interest band: shown only while GET goals/company
 // says interest.show (a signal in the last 14 days nobody parked). Strongest
 // signal first in bold, dated, then the rest. Members get four buttons; each
 // write hands back a 10 s Undo. Viewers see the text alone. Not now is hidden
 // on visitor / Apollo-only rows (the route refuses them - no record to park).
+// FIX loop-quickfixes Q3: a visitor / Apollo-only row has no record for the
+// four to act on, so the band offers the Actions row's Add to pipeline ▾ instead.
 const btn = 'ui-btn ui-btn--secondary';
 const onBand = { borderColor: SA.borderStrong };
 
@@ -25,7 +28,7 @@ export async function copyFollowUp({ businessId, row, person, signal, onToast })
   } catch (e) { onToast({ text: e.message }); }
 }
 
-export default function InterestBand({ businessId, row, interest, canEdit, onChanged, onToast }) {
+export default function InterestBand({ businessId, row, interest, canEdit, addOpen = false, onAdd, onChanged, onToast }) {
   const [busy, setBusy] = useState('');
   const strongest = interest.strongest;
   const person = strongest?.person || null;
@@ -68,7 +71,10 @@ export default function InterestBand({ businessId, row, interest, canEdit, onCha
         <b style={{ fontWeight: 600 }}>{strongest.text}</b> <span style={{ color: SA.muted }}>{md(strongest.at)}</span>
         {interest.items.slice(1).map(i => <span key={i.id || i.text}> · <b style={{ fontWeight: 600 }}>{i.text}</b> <span style={{ color: SA.muted }}>{md(i.at)}</span></span>)}
       </span>
-      {canEdit && (
+      {canEdit && needsRecord(row.type) && (
+        <button type="button" className="ui-btn ui-btn--primary" aria-expanded={addOpen} onClick={onAdd} title="Add it as a target, partner or employer first - then the follow-up buttons work">Add to pipeline ▾</button>
+      )}
+      {canEdit && !needsRecord(row.type) && (
         <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button type="button" className="ui-btn ui-btn--primary" disabled={b('draft')} onClick={draftReply} title="Copies the record + the signal for Claude. Never sends.">{b('draft') ? 'Copying…' : 'Follow up: draft reply'}</button>
           <button type="button" className={btn} style={onBand} disabled={b('book')} onClick={bookMeeting} title="Sets the next step and adds a to-do due today. No calendar write.">{b('book') ? 'Saving…' : 'Book meeting'}</button>

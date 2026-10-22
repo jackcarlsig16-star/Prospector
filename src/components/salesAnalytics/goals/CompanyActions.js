@@ -13,7 +13,8 @@ import { updateOpportunity } from '../pipelineApi';
 // the stage and the signals): Add note · Add to-do · Add contact · Draft email
 // in Claude · Research · Check Apollo · | · Next: <verb>. Targets add Promote ▾
 // and Not a fit; visitor / Apollo-only rows get Add to pipeline ▾ (an action
-// that needs a record asks "Add <X> as a target?" first). Every write offers
+// that needs a record asks "Add <X> as a target?" first; Draft email asks
+// employer or partner instead, so the target gets the right kind). Every write offers
 // Undo where one exists. Draft email never sends. Members only. The open
 // form is owned by the panel so a card's "+ Add" link can open it.
 const LINK_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target' };
@@ -32,10 +33,10 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
     setBusy(what); setError('');
     try { return await fn(); } catch (e) { setError(e.message); return undefined; } finally { setBusy(''); }
   };
-  const ensureRecord = async () => {
+  const ensureRecord = async kind => {
     if (!needsRecord(row.type)) return row;
-    if (!window.confirm(addAsk(row.name))) return null;
-    const r = await goalsApi.addToPipeline(businessId, { type: row.type, id: row.id, to: 'target' });
+    if (!kind && !window.confirm(addAsk(row.name))) return null;
+    const r = await goalsApi.addToPipeline(businessId, { type: row.type, id: row.id, to: 'target', ...(kind ? { kind } : {}) });
     const rec = r.created || r.already;
     onConvert(rec, !!r.already);
     return { ...row, type: rec.type, id: rec.id, name: rec.name, stage: r.created ? 'researching' : row.stage };
@@ -59,8 +60,9 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
     await goalsApi.addCompanyContact(businessId, rec.type, rec.id, { name: draft.name.trim(), title: draft.title?.trim() || null, linkedin_url: draft.linkedin?.trim() || null });
     setForm(null); onChanged(); onToast({ text: `${draft.name.trim()} added to ${rec.name}` });
   });
-  const draftEmail = () => act('draft', async () => {
-    const rec = await ensureRecord(); if (!rec) return;
+  const draftEmail = kind => act('draft', async () => {
+    const rec = await ensureRecord(kind); if (!rec) return;
+    setForm(null);
     const markdown = await goalsApi.copyBundle(businessId, rec.type, rec.id);
     await navigator.clipboard.writeText(`${markdown}${playbookPrompt(rec)}\n`);
     onToast({ text: 'Copied for Claude - paste it into a Claude chat. Nothing was sent.' });
@@ -122,12 +124,12 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
         <button type="button" className={btn} aria-expanded={form === 'note'} onClick={() => open('note')}>Add note</button>
         <button type="button" className={btn} aria-expanded={form === 'todo'} onClick={() => open('todo')}>Add to-do</button>
         <button type="button" className={btn} aria-expanded={form === 'contact'} onClick={() => open('contact')}>Add contact</button>
-        <button type="button" className={btn} disabled={b('draft')} onClick={draftEmail} title="Copies the record + a short playbook prompt for Claude. Never sends.">{b('draft') ? 'Copying…' : 'Draft email in Claude'}</button>
+        <button type="button" className={btn} disabled={b('draft')} aria-expanded={needsRecord(row.type) ? form === 'draft-kind' : undefined} onClick={() => (needsRecord(row.type) ? open('draft-kind') : draftEmail())} title="Copies the record + a short playbook prompt for Claude. Never sends.">{b('draft') ? 'Copying…' : 'Draft email in Claude'}</button>
         <button type="button" className={btn} disabled={b('research')} onClick={research} title="One Claude call with up to 3 web searches; 5 per company per day">{b('research') ? 'Starting…' : 'Research'}</button>
         <button type="button" className={btn} disabled={b('apollo')} onClick={checkApollo} title="Reads Apollo's people at this company (no credits, at most 2 calls)">{b('apollo') ? 'Checking…' : 'Check Apollo'}</button>
         {(next || needsRecord(row.type) || row.type === 'target') && <span aria-hidden="true" style={{ width: 1, height: 20, background: SA.border, margin: '0 4px' }} />}
         {next && <button type="button" className={nextClass} disabled={b('stage')} onClick={() => nextStep(next.to)}>{b('stage') ? 'Saving…' : `Next: ${next.label}`}</button>}
-        {needsRecord(row.type) && <button type="button" className="ui-btn ui-btn--primary" aria-expanded={form === 'add'} onClick={() => open('add')}>Add to pipeline ▾</button>}
+        {needsRecord(row.type) && <button type="button" className={nextClass} aria-expanded={form === 'add'} onClick={() => open('add')}>Add to pipeline ▾</button>}
         {row.type === 'target' && <>
           <button type="button" className={btn} aria-expanded={form === 'promote'} disabled={b('promote')} onClick={() => open('promote')}>Promote ▾</button>
           <button type="button" className="ui-btn ui-btn--danger" disabled={b('reject')} onClick={notAFit}>Not a fit</button>
@@ -174,6 +176,13 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
         <div role="group" aria-label="Promote to" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button type="button" className={btn} disabled={b('promote')} onClick={() => promote('partner')}>Promote to partner</button>
           <button type="button" className={btn} disabled={b('promote')} onClick={() => promote('employer')}>Promote to employer</button>
+        </div>
+      )}
+      {form === 'draft-kind' && (
+        <div role="group" aria-label={`Add ${row.name} as a target first`} style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 13, color: SA.soft }}>Add {row.name} as a target first - employer or partner?</span>
+          <button type="button" className={btn} disabled={b('draft')} onClick={() => draftEmail('employer')}>Employer</button>
+          <button type="button" className={btn} disabled={b('draft')} onClick={() => draftEmail('partner')}>Partner</button>
         </div>
       )}
       {form === 'add' && (

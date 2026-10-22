@@ -241,7 +241,7 @@ try {
     await page.getByRole('group', { name: 'Channel' }).getByRole('button', { name: /^Website visitors/ }).click(); await page.waitForTimeout(600);
     await page.getByRole('button', { name: 'ZZ Panel Visitor', exact: true }).click(); await page.locator('aside[data-center-window] [data-panel-body]').waitFor(); await page.waitForTimeout(400);
     const mvis = await win(page);
-    ok('visitor: facts Priority · Source · Last visit; band = the visits with no Not now; Edit = Priority only; Add to pipeline ▾', mvis.facts.join('|') === 'Priority|Source|Last visit' && !!mvis.band && /6 site visits this week/.test(mvis.band.text) && !mvis.band.buttons.includes('Not now') && mvis.edit.join('|') === 'Priority' && mvis.actions.includes('Add to pipeline ▾'), JSON.stringify({ facts: mvis.facts, band: mvis.band, edit: mvis.edit }));
+    ok('visitor: facts Priority · Source · Last visit; band = the visits + Add to pipeline ▾ only (FIX loop-quickfixes Q3); Edit = Priority only; Add to pipeline ▾', mvis.facts.join('|') === 'Priority|Source|Last visit' && !!mvis.band && /6 site visits this week/.test(mvis.band.text) && JSON.stringify(mvis.band.buttons) === JSON.stringify(['Add to pipeline ▾']) && mvis.edit.join('|') === 'Priority' && mvis.actions.includes('Add to pipeline ▾'), JSON.stringify({ facts: mvis.facts, band: mvis.band, edit: mvis.edit }));
     await measure(page, '1440 visitor');
     await shot(page, 'cp3-visitor-1440');
     await page.keyboard.press('Escape');

@@ -28,7 +28,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState('');
   const [version, setVersion] = useState(0);
-  const [form, setForm] = useState(null); // 'note' | 'todo' | 'contact' | 'promote' | 'add'
+  const [form, setForm] = useState(null); // 'note' | 'todo' | 'contact' | 'promote' | 'add' | 'draft-kind'
   const [starBusy, setStarBusy] = useState(false);
   // L6 (REVISABLE 980): two columns only when the window gets its full 1040 px, so a 1000 px viewport stacks.
   const wide = useMediaQuery('(min-width: 1040px)');
@@ -74,7 +74,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
           </div>
         ))}
       </div>
-      {bandShown && <InterestBand businessId={businessId} row={row} interest={detail.interest} canEdit={canEdit} onChanged={changed} onToast={onToast} />}
+      {bandShown && <InterestBand businessId={businessId} row={row} interest={detail.interest} canEdit={canEdit} addOpen={form === 'add'} onAdd={() => setForm(f => (f === 'add' ? null : 'add'))} onChanged={changed} onToast={onToast} />}
       {canEdit
         ? <>
           <CompanyActions businessId={businessId} row={row} members={members} meId={meId} form={form} setForm={setForm} bandShown={bandShown} onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} onClose={onClose} />
