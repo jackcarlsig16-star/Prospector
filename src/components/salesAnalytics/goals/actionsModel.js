@@ -21,7 +21,9 @@ export function matchesActionFilters(it, f, meId) {
 
 // { open, done }: Focus items already done fold under "n done ▸".
 export function actionsView(items, f, { meId, viewer = false } = {}) {
-  const base = viewer ? items.filter(it => VIEWER_KINDS.includes(it.kind)) : items;
+  // A kind this screen has no label and buttons for yet (the server's campaign rows ahead of their UI) stays hidden.
+  const known = items.filter(it => it.kind in KIND_LABEL);
+  const base = viewer ? known.filter(it => VIEWER_KINDS.includes(it.kind)) : known;
   const shown = base.filter(it => matchesActionFilters(it, f, meId));
   return { open: shown.filter(it => it.status !== 'done'), done: shown.filter(it => it.status === 'done') };
 }

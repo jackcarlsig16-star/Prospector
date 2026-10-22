@@ -56,6 +56,8 @@ test('model: Mine = mine or unowned, Team = all; Viewer kinds; priority / due te
   expect(actionsView(items, { who: 'team', kind: '', q: 'lakeshore' }, { meId: JACK }).open.map(i => i.key)).toEqual(['tidy-g1']);
   const viewer = actionsView(items, { who: 'team', kind: '', q: '' }, { meId: 'u-seif', viewer: true });
   expect([...new Set(viewer.open.map(i => i.kind))].sort()).toEqual(['flag', 'focus', 'todo']);
+  // A kind the screen has no buttons for yet (seif-campaign-v1's server rows ahead of their UI) is hidden, not a crash.
+  expect(actionsView([...items, { ...items[0], key: 'campaign-x', kind: 'campaign' }], { who: 'team', kind: '', q: '' }, { meId: JACK }).open.map(i => i.key)).not.toContain('campaign-x');
   expect(matchesActionFilters(items[0], { who: 'mine', kind: '', q: 'MSA' }, JACK)).toBe(true);
   expect(priorityText(items[0])).toBe('Overdue · 6 d');
   expect(priorityText(items[1])).toBe('P1');

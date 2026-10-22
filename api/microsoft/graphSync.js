@@ -8,6 +8,7 @@ import { runDailyOutlookMoves } from '../sales/partnerOutlookTouches.js';
 import { businessFeatureOn } from '../lib/outlookFeatures.js';
 import { isConsumerDomain } from '../../src/constants/partnerDomains.js';
 import { runOutlookReplyTimes } from '../sales/outlookReplyTimes.js';
+import { campaignAddresses, runCampaignOutlookMatch } from '../sales/outreachOutlook.js';
 
 export const GRAPH_URL = () => process.env.MICROSOFT_GRAPH_URL || 'https://graph.microsoft.com/v1.0';
 export const BACKFILL_DAYS = 90;
@@ -36,20 +37,21 @@ const displayName = r => { const n = String(r?.emailAddress?.name || '').trim();
 // Keeps the external side of a message, or says why it's skipped. The folder
 // decides the direction: what sits in Sent Items was sent by this mailbox.
 // Names ride in the same order as the emails; a name that is just the
-// address again is stored as ''.
-function externals(participants, own) {
+// address again is stored as ''. keep (seif-campaign-v1 B6a): exact campaign
+// contact addresses - a personal-domain message naming one is stored too.
+function externals(participants, own, keep) {
   const byEmail = new Map();
   for (const r of participants) { const e = address(r); if (e.includes('@') && !own.isOwn(e) && !byEmail.has(e)) byEmail.set(e, displayName(r)); }
   const emails = [...byEmail.keys()];
   if (!emails.length) return { skip: 'internal' };
   const domains = [...new Set(emails.map(domainOf))];
-  if (domains.every(isConsumerDomain)) return { skip: 'personal' };
+  if (domains.every(isConsumerDomain) && !emails.some(e => keep?.has(e))) return { skip: 'personal' };
   return { emails, names: emails.map(e => byEmail.get(e)), domains };
 }
 
-export function classifyMessage(m, { folder, own }) {
+export function classifyMessage(m, { folder, own, keep = null }) {
   if (m.isDraft) return { skip: 'draft' };
-  const ext = externals([m.from, ...(m.toRecipients || []), ...(m.ccRecipients || [])], own);
+  const ext = externals([m.from, ...(m.toRecipients || []), ...(m.ccRecipients || [])], own, keep);
   if (ext.skip) return ext;
   const direction = folder === 'sentitems' ? 'sent' : 'received';
   return { row: {
@@ -116,7 +118,7 @@ async function getPage(url, token, fetchImpl) {
 // One folder, one run row. Reads from the stored delta/next link (or the
 // backfill start), classifies each item, upserts the kept rows, and stores
 // where to resume: the nextLink when capped, the deltaLink when finished.
-export async function syncFolder({ supabase, userId, businessId, mailbox, folder, token, own, dryRun = false, trigger, now = new Date(), fetchImpl = fetch }) {
+export async function syncFolder({ supabase, userId, businessId, mailbox, folder, token, own, keep = null, dryRun = false, trigger, now = new Date(), fetchImpl = fetch }) {
   const t0 = Date.now();
   const counts = { pages: 0, seen: 0, stored: 0, skipped_draft: 0, skipped_internal: 0, skipped_personal: 0, capped: false };
   const { data: run, error: runErr } = await supabase.from('microsoft_sync_runs')
@@ -135,7 +137,7 @@ export async function syncFolder({ supabase, userId, businessId, mailbox, folder
     const backfillFrom = resume ? state.backfill_from : new Date(now.getTime() - (folder === 'calendar' ? CALENDAR_BACK_DAYS : BACKFILL_DAYS) * 864e5).toISOString();
     let url = resume || startUrl(folder, now), deltaLink = null, nextLink = null;
     const table = folder === 'calendar' ? 'microsoft_events' : 'microsoft_messages';
-    const classify = folder === 'calendar' ? e => classifyEvent(e, { own }) : m => classifyMessage(m, { folder, own });
+    const classify = folder === 'calendar' ? e => classifyEvent(e, { own }) : m => classifyMessage(m, { folder, own, keep });
     while (url) {
       const page = await getPage(url, token, fetchImpl);
       counts.pages++;
@@ -198,13 +200,18 @@ export async function runOutlookSync({ userId, businessId, trigger = 'manual', d
     if (last && now.getTime() - last < PIGGYBACK_MIN_MS) return { refused: 'too_soon', message: 'Outlook synced within the hour' };
   }
   const token = await accessTokenFor(userId);
+  // B6a's keep set; if it can't be read the sync runs without it (personal
+  // mail is skipped as before) rather than not at all.
+  let keep = null;
+  try { keep = await campaignAddresses(supabase, target.businessId); }
+  catch (err) { console.error('[outlook/campaign-keep]', String(err.message || err).slice(0, 500)); }
   const folders = [];
   for (const folder of FOLDERS) {
-    folders.push(await syncFolder({ supabase, userId, businessId: target.businessId, mailbox: target.mailbox, folder, token, own: target.own, dryRun, trigger: dryRun ? 'dry_run' : trigger, now, fetchImpl }));
+    folders.push(await syncFolder({ supabase, userId, businessId: target.businessId, mailbox: target.mailbox, folder, token, own: target.own, keep, dryRun, trigger: dryRun ? 'dry_run' : trigger, now, fetchImpl }));
   }
   // Stage 3: the daily step rides on every real sync. Its own failure lands
   // on its run row and in the response, never on the folder syncs.
-  let moves = null, replyTimes = null;
+  let moves = null, replyTimes = null, campaigns = null;
   if (!dryRun) {
     try { moves = await runDailyOutlookMoves(supabase, target.businessId, { userId, trigger, now }); }
     catch (err) { moves = { error: String(err.message || err).slice(0, 500) }; console.error('[outlook/moves]', moves.error); }
@@ -212,6 +219,9 @@ export async function runOutlookSync({ userId, businessId, trigger = 'manual', d
     // workspace switched it on; its failure stays here too.
     try { if (await businessFeatureOn(supabase, target.businessId, 'outlook_reply_times')) replyTimes = await runOutlookReplyTimes(supabase, target.businessId); }
     catch (err) { replyTimes = { error: String(err.message || err).slice(0, 500) }; console.error('[outlook/reply-times]', replyTimes.error); }
+    // seif-campaign-v1 B6: this sender's campaign sends and replies.
+    try { campaigns = await runCampaignOutlookMatch(supabase, { businessId: target.businessId, userId, now }); }
+    catch (err) { campaigns = { error: String(err.message || err).slice(0, 500) }; console.error('[outlook/campaigns]', campaigns.error); }
   }
-  return { businessId: target.businessId, mailbox: target.mailbox, dry_run: dryRun, folders, moves, reply_times: replyTimes };
+  return { businessId: target.businessId, mailbox: target.mailbox, dry_run: dryRun, folders, moves, reply_times: replyTimes, campaigns };
 }

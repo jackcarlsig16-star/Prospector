@@ -43,6 +43,17 @@ test('message skips: draft, internal-only, consumer-only; mixed consumer + compa
   assert.deepEqual(mixed.row.external_domains, ['gmail.com', 'acme.com']);
 });
 
+test('B6a: a personal-domain message naming a campaign contact (exact address) is kept; any other is still skipped', () => {
+  const keep = new Set(['pat@gmail.com']);
+  const kept = classifyMessage(msg({ toRecipients: [addr('Pat@Gmail.com', 'Pat Lee')] }), { folder: 'sentitems', own, keep });
+  assert.deepEqual([kept.row.external_emails, kept.row.direction], [['pat@gmail.com'], 'sent']);
+  const reply = classifyMessage(msg({ from: addr('pat@gmail.com'), toRecipients: [addr('jack@homelover.ai')] }), { folder: 'inbox', own, keep });
+  assert.equal(reply.row.direction, 'received');
+  assert.equal(classifyMessage(msg({ toRecipients: [addr('mom@gmail.com')] }), { folder: 'sentitems', own, keep }).skip, 'personal');
+  assert.equal(classifyMessage(msg({ toRecipients: [addr('pat.lee@gmail.com')] }), { folder: 'sentitems', own, keep }).skip, 'personal', 'exact address only');
+  assert.equal(classifyMessage(msg({ toRecipients: [addr('pat@gmail.com')] }), { folder: 'sentitems', own }).skip, 'personal', 'no keep set = as before');
+});
+
 test('event: UTC times, organizer kept, internal / personal skipped', () => {
   const ev = { id: 'e1', iCalUId: 'ical-1', subject: 'Intro', start: { dateTime: '2026-10-09T17:00:00.0000000', timeZone: 'UTC' }, end: { dateTime: '2026-10-09T17:30:00.0000000', timeZone: 'UTC' },
     organizer: addr('amy@acme.com'), attendees: [addr('jack@homelover.ai')], isCancelled: false, body: { content: 'NEVER' } };

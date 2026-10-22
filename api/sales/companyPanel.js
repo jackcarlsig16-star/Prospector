@@ -428,6 +428,34 @@ export async function notNowRoute(req, res) {
 // A visitor's web_visits rows are matched to the new record at once, so the
 // board shows one row (the record, with its Visited cell) from the next load.
 const RANK = { partner: 0, opportunity: 1, target: 2 };
+
+// A company -> a new target / partner / employer, unless it's already one
+// (exact name or confirmed domain; live before archived, partner > employer
+// > target). -> { already: { type, id, name } } | { created: { type, id, name } };
+// a create that loses a race throws 409. A new partner gets the evidence as
+// a note event (never a stage); also used by seif-campaign Promote.
+export async function insertCompanyRecord(supabase, { businessId, userId, name, domain = null, to, kind = null, channel, evidence, apolloAccountId = null, noteMeta = {}, now = new Date() }) {
+  const hit = findDupes({ name, domain }, await loadDupeContext(supabase, businessId)).exact.filter(h => h.type in RANK).sort((a, b) => a.archived - b.archived || RANK[a.type] - RANK[b.type])[0];
+  if (hit) return { already: { type: hit.type === 'opportunity' ? 'employer' : hit.type, id: hit.id, name: hit.name } };
+  if (to === 'target') {
+    const r = await supabase.from('sales_targets').insert({ business_id: businessId, name, kind: kind || 'employer', status: 'researching', channel, evidence: cleanText(evidence, 400), created_by: userId }).select('id, name').single();
+    if (r.error?.code === '23505') throw err(409, `${name} is already a target - reload`);
+    return { created: { type: 'target', id: must(r).id, name } };
+  }
+  if (to === 'partner') {
+    const r = await supabase.from('sales_goals').insert({ business_id: businessId, goal_type: 'partnership', name, pipeline_status: 'not_started', channel }).select('id, name').single();
+    if (r.error?.code === '23505') throw err(409, `${name} is already a partner - reload`);
+    const goal = must(r);
+    await applyPartnerSignal(supabase, { businessId, goalId: goal.id, signal: { type: 'note', note: cleanText(evidence, NOTE_MAX) }, byUser: userId, now, meta: noteMeta });
+    return { created: { type: 'partner', id: goal.id, name } };
+  }
+  const found = await findOpportunity(supabase, businessId, { name, apolloAccountId });
+  if (found) return { already: { type: 'employer', id: found.id, name: found.organization } };
+  const r = await supabase.from('sales_opportunities').insert({ business_id: businessId, organization: name, org_type: 'employer', stage: 'target', source: 'manual', channel, notes: `(${slash(laDateString(now))}) ${cleanText(evidence, 400)}`, ...(apolloAccountId ? { apollo_account_id: apolloAccountId } : {}) }).select('id, organization').single();
+  if (r.error?.code === '23505') throw err(409, `${name} is already in the pipeline - reload`);
+  return { created: { type: 'employer', id: must(r).id, name } };
+}
+
 export async function addToPipeline(supabase, { businessId, userId, body, now = new Date() }) {
   const { type, id, to = 'target', kind = null } = body || {};
   if (!ADD_FROM.includes(type)) return reply(400, { error: `type must be one of ${ADD_FROM.join('|')}` });
@@ -445,26 +473,12 @@ export async function addToPipeline(supabase, { businessId, userId, body, now = 
       ? `Visited the website: ${visit?.visits_7d ?? '?'} visits in 7 days, last ${visit?.last_visit || visit?.pulled_on || today}${visit?.top_paths?.length ? ` · ${(Array.isArray(visit.top_paths) ? visit.top_paths : []).slice(0, 3).map(p => (typeof p === 'string' ? p : p?.path || '')).filter(Boolean).join(', ')}` : ''}`
       : `Sequenced in Apollo since ${String(src.first_sequenced_at || '').slice(0, 10)}`;
     const channel = type === 'visitor' ? 'website_visit' : 'apollo_outbound';
-    const hit = findDupes({ name, domain: src.domain }, await loadDupeContext(supabase, businessId)).exact.filter(h => h.type in RANK).sort((a, b) => a.archived - b.archived || RANK[a.type] - RANK[b.type])[0];
-    if (hit) return reply(200, { already: { type: hit.type === 'opportunity' ? 'employer' : hit.type, id: hit.id, name: hit.name } });
-    let created;
-    if (to === 'target') {
-      const r = await supabase.from('sales_targets').insert({ business_id: businessId, name, kind: kind || 'employer', status: 'researching', channel, evidence: cleanText(evidence, 400), created_by: userId }).select('id, name').single();
-      if (r.error?.code === '23505') return reply(409, { error: `${name} is already a target - reload` });
-      created = { type: 'target', id: must(r).id, name };
-    } else if (to === 'partner') {
-      const r = await supabase.from('sales_goals').insert({ business_id: businessId, goal_type: 'partnership', name, pipeline_status: 'not_started', channel }).select('id, name').single();
-      if (r.error?.code === '23505') return reply(409, { error: `${name} is already a partner - reload` });
-      const goal = must(r);
-      await applyPartnerSignal(supabase, { businessId, goalId: goal.id, signal: { type: 'note', note: cleanText(evidence, NOTE_MAX) }, byUser: userId, now, meta: type === 'visitor' ? { from_visit_key: id } : { from_apollo_account: true } });
-      created = { type: 'partner', id: goal.id, name };
-    } else {
-      const found = await findOpportunity(supabase, businessId, { name, apolloAccountId: type === 'apollo' ? id : null });
-      if (found) return reply(200, { already: { type: 'employer', id: found.id, name: found.organization } });
-      const r = await supabase.from('sales_opportunities').insert({ business_id: businessId, organization: name, org_type: 'employer', stage: 'target', source: 'manual', channel, notes: `(${slash(today)}) ${cleanText(evidence, 400)}`, ...(type === 'apollo' ? { apollo_account_id: id } : {}) }).select('id, organization').single();
-      if (r.error?.code === '23505') return reply(409, { error: `${name} is already in the pipeline - reload` });
-      created = { type: 'employer', id: must(r).id, name };
-    }
+    const out = await insertCompanyRecord(supabase, {
+      businessId, userId, name, domain: src.domain, to, kind, channel, evidence, now,
+      apolloAccountId: type === 'apollo' ? id : null, noteMeta: type === 'visitor' ? { from_visit_key: id } : { from_apollo_account: true },
+    });
+    if (out.already) return reply(200, { already: out.already });
+    const { created } = out;
     if (type === 'visitor') {
       must(await supabase.from('web_visits').update({ matched_type: VISIT_TYPE[created.type], matched_id: created.id }).eq('business_id', businessId).eq('company_key', id).is('matched_id', null));
     }

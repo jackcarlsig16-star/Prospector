@@ -7,19 +7,24 @@ import { DUE_DAYS, RULE_TEXT } from './tidyRules.js';
 import { employerTouches } from './pipelineBoard.js';
 import { boardStage } from '../../src/constants/pipelineBoard.js';
 import { TEAM_LABEL } from '../../src/constants/ownership.js';
+import { campaignActionRows } from './outreachRoutes.js';
 
 // sales-ia-v2 A1 - Actions: one ranked list of everything that wants a click
-// today. Six kinds, each from the table that already holds it (nothing is
+// today. Seven kinds, each from the table that already holds it (nothing is
 // written here): new signals (Scout + website P1-P2), Tidy suggestions, open
-// waiting-on rows that are overdue, this week's open to-dos, open flags and
+// waiting-on rows that are overdue, this week's open to-dos, open flags,
 // this week's Focus 5 (planned commitments, done ones included so the screen
-// can fold them). Rank: overdue first, then P1 -> P4, then due date, then age.
+// can fold them) and campaign sends due + unanswered campaign replies
+// (seif-campaign-v1 B4/B5; a reply is always P1).
+// Rank: overdue first, then P1 -> P4, then due date, then age.
 // Priority = the company's own P1-P4 when the item points at a partner or
 // employer that has one, else the kind's default below.
 
-export const KINDS = ['signal', 'tidy', 'waiting', 'todo', 'flag', 'focus'];
-export const KIND_LABEL = { signal: 'Signal', tidy: 'Tidy', waiting: 'Waiting on', todo: 'To-do', flag: 'Flag', focus: 'Focus' };
-const DEFAULT_PRIORITY = { flag: 1, signal: 2, waiting: 2, focus: 2, tidy: 3 };
+export const KINDS = ['signal', 'tidy', 'waiting', 'todo', 'flag', 'focus', 'campaign'];
+export const KIND_LABEL = { signal: 'Signal', tidy: 'Tidy', waiting: 'Waiting on', todo: 'To-do', flag: 'Flag', focus: 'Focus', campaign: 'Campaign' };
+const DEFAULT_PRIORITY = { flag: 1, signal: 2, waiting: 2, focus: 2, tidy: 3, campaign: 2 };
+const CAMPAIGN_LINK = [['goal_id', 'partner'], ['opportunity_id', 'opportunity'], ['target_id', 'target']];
+export const campaignLink = c => CAMPAIGN_LINK.map(([col, type]) => (c[col] ? { type, id: c[col] } : null)).find(Boolean) || null;
 const TIDY_PRIORITY = { visited_no_touch: 2, nudge: 2 };
 const SCOUT_P1_SCORE = 80;
 const DAY = 864e5;
@@ -32,7 +37,7 @@ const todoDone = t => t.status === 'done' || (t.steps?.length > 0 && t.steps.eve
 // link_type / match.type -> the company panel's row type.
 const PANEL_TYPE = { partner: 'partner', opportunity: 'employer', target: 'target', company: 'apollo' };
 
-export function buildActions({ todos = [], flags = [], waiting = [], signals = [], suggestions = [], commitments = [], refTodos = [], notes = new Map(), companies, members = new Map(), today }) {
+export function buildActions({ todos = [], flags = [], waiting = [], signals = [], suggestions = [], commitments = [], refTodos = [], campaign = null, notes = new Map(), companies, members = new Map(), today }) {
   const company = (type, id) => {
     const t = PANEL_TYPE[type];
     const c = t && companies[t]?.get(id);
@@ -49,7 +54,7 @@ export function buildActions({ todos = [], flags = [], waiting = [], signals = [
       key: `${kind}-${row.id}`, kind, id: row.id, text: fields.text, why: fields.why || null, company: c,
       due_date: due, overdue, late_days: overdue ? lateDays(due, today) : 0,
       owner_user_id: fields.owner_user_id === undefined ? row.owner_user_id || null : fields.owner_user_id,
-      priority: c?.priority || fields.priority, status: fields.status || 'open', created_at: row.created_at, meta: fields.meta || {},
+      priority: fields.fixed_priority ? fields.priority : c?.priority || fields.priority, status: fields.status || 'open', created_at: row.created_at, meta: fields.meta || {},
     });
   };
 
@@ -94,6 +99,23 @@ export function buildActions({ todos = [], flags = [], waiting = [], signals = [
     if (c.kind !== 'commitment' || !c.plan_id || c.status === 'dropped') continue;
     push('focus', c, { text: c.text, why: c.plan_reason || 'Focus 5', company: null, priority: DEFAULT_PRIORITY.focus, due_date: null, status: c.status, meta: { plan_rank: c.plan_rank } });
   }
+
+  if (campaign) {
+    const linked = r => { const l = campaignLink(r); return l ? company(l.type, l.id) : null; };
+    const metaOf = (r, action) => {
+      const k = campaign.campaigns.get(r.campaign_id), t = campaign.tracks.get(r.track_id);
+      return { action, campaign_id: r.campaign_id, campaign: k?.name || null, track: t?.name || null, step_no: r.current_step, steps: t?.steps.length || null, company_name: r.company || null, title: r.title || null, last_sent_at: r.last_sent_at, replied_at: r.replied_at, conflict: r.conflict };
+    };
+    const at = r => (r.company ? ` (${r.company})` : '');
+    for (const r of campaign.sends) {
+      const m = metaOf(r, 'send');
+      push('campaign', r, { text: `Send step ${r.current_step} to ${r.name}${at(r)}`, why: [m.campaign, m.track].filter(Boolean).join(' · '), company: linked(r), priority: DEFAULT_PRIORITY.campaign, due_date: r.next_due_date, meta: m });
+    }
+    for (const r of campaign.replies) {
+      const m = metaOf(r, 'reply');
+      push('campaign', r, { text: `Reply from ${r.name}${at(r)} — respond`, why: m.campaign, company: linked(r), priority: 1, fixed_priority: true, due_date: null, meta: m });
+    }
+  }
   return rankActions(items);
 }
 
@@ -108,13 +130,14 @@ export async function listActions(supabase, businessId, now = new Date()) {
   const today = laDateString(now);
   const week = laMonday(today);
   const all = (table, cols, narrow) => selectAllPages(() => narrow(supabase.from(table).select(cols).eq('business_id', businessId)).order('id'));
-  const [weekRows, flagRows, waiting, signals, suggestions, memberRows] = await Promise.all([
+  const [weekRows, flagRows, waiting, signals, suggestions, memberRows, campaign] = await Promise.all([
     all('sales_week_goals', '*', q => q.eq('week_start', week).in('kind', ['todo', 'commitment'])),
     all('sales_week_goals', '*', q => q.not('prospect_contact_id', 'is', null).neq('status', 'dropped').neq('status', 'done')),
     all('sales_week_goals', '*', q => q.eq('kind', 'waiting').eq('status', 'open')),
     all('sales_signals', 'id, source, company_name, company_key, kind, who, signal, why_now, score, match, status, created_at', q => q.eq('status', 'new')),
     all('sales_suggestions', '*', q => q.eq('status', 'proposed')),
     supabase.from('business_members').select('user_id, name').eq('business_id', businessId).not('user_id', 'is', null).then(must),
+    campaignActionRows(supabase, businessId, today),
   ]);
   const flags = openFlagRows(flagRows);
   const todoIds = weekRows.filter(r => r.kind === 'todo').map(r => r.id);
@@ -127,6 +150,7 @@ export async function listActions(supabase, businessId, now = new Date()) {
   for (const r of [...weekRows, ...flags, ...waiting, ...refTodos]) note(r.link_type, r.link_id);
   for (const s of signals) note(s.match?.type, s.match?.id);
   for (const s of suggestions) { note(s.ref_type === 'pair' ? 'partner' : s.ref_type, s.ref_id); }
+  for (const r of [...campaign.sends, ...campaign.replies]) { const l = campaignLink(r); if (l) note(l.type, l.id); }
   const noteIds = [...new Set(weekRows.map(r => r.source_note_id).filter(Boolean))];
   const memberName = new Map(memberRows.map(m => [m.user_id, m.name]));
   const ownerOf = (userId, team) => (memberName.get(userId) || '').split(' ')[0] || TEAM_LABEL[team] || null;
@@ -150,7 +174,7 @@ export async function listActions(supabase, businessId, now = new Date()) {
   for (const [id, c] of opportunities) c.last_touch_at = oppTouch.get(id) || null;
   const companies = { partner: new Map(partners), employer: new Map(opportunities), target: new Map(targets), apollo: new Map(apollo) };
   const items = buildActions({
-    todos: weekRows.filter(r => r.kind === 'todo'), commitments: weekRows.filter(r => r.kind === 'commitment'), flags, waiting, signals, suggestions, refTodos,
+    todos: weekRows.filter(r => r.kind === 'todo'), commitments: weekRows.filter(r => r.kind === 'commitment'), flags, waiting, signals, suggestions, refTodos, campaign,
     notes: new Map(noteRows.map(n => [n.id, n.call_date])), companies, members: memberName, today,
   });
   return { items, today, week_start: week };

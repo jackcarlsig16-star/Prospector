@@ -678,6 +678,17 @@ app.post('/api/sales/:businessId/goals/suggestions/:id/snooze', salesModuleRoute
 app.post('/api/sales/:businessId/goals/suggestions/:id/undo', salesModuleRoute('./api/sales/tidyRoutes.js', 'undoSuggestionRoute', 'goals/suggestions/:id/undo POST'));
 // sales-ia-v2 A1 - the Actions list (reads only).
 app.get('/api/sales/:businessId/goals/actions', salesModuleRoute('./api/sales/actionsRoutes.js', 'listActionsRoute', 'goals/actions'));
+// seif-campaign-v1 Stage 2 - outreach campaigns (summary before :id; import before :action).
+app.get('/api/sales/:businessId/goals/campaigns', salesModuleRoute('./api/sales/outreachRoutes.js', 'listCampaignsRoute', 'goals/campaigns'));
+app.get('/api/sales/:businessId/goals/campaigns/summary', salesModuleRoute('./api/sales/outreachRoutes.js', 'campaignSummaryRoute', 'goals/campaigns/summary'));
+app.post('/api/sales/:businessId/goals/campaigns', salesModuleRoute('./api/sales/outreachRoutes.js', 'createCampaignRoute', 'goals/campaigns POST'));
+app.get('/api/sales/:businessId/goals/campaigns/:id', salesModuleRoute('./api/sales/outreachRoutes.js', 'getCampaignRoute', 'goals/campaigns/:id'));
+app.patch('/api/sales/:businessId/goals/campaigns/:id', salesModuleRoute('./api/sales/outreachRoutes.js', 'updateCampaignRoute', 'goals/campaigns/:id PATCH'));
+app.patch('/api/sales/:businessId/goals/campaigns/:id/steps/:stepId', salesModuleRoute('./api/sales/outreachRoutes.js', 'updateStepRoute', 'goals/campaigns/:id/steps PATCH'));
+app.post('/api/sales/:businessId/goals/campaigns/:id/import', salesModuleRoute('./api/sales/outreachRoutes.js', 'importCampaignRoute', 'goals/campaigns/:id/import POST'));
+app.post('/api/sales/:businessId/goals/campaigns/:id/:action', salesModuleRoute('./api/sales/outreachRoutes.js', 'campaignActionRoute', 'goals/campaigns/:id/:action POST'));
+app.get('/api/sales/:businessId/goals/campaign-contacts/:id/draft', salesModuleRoute('./api/sales/outreachRoutes.js', 'contactDraftRoute', 'goals/campaign-contacts/:id/draft'));
+app.post('/api/sales/:businessId/goals/campaign-contacts/:id/:action', salesModuleRoute('./api/sales/outreachRoutes.js', 'contactActionRoute', 'goals/campaign-contacts/:id/:action POST'));
 app.get('/api/sales/:businessId/goals/dashboard', salesModuleRoute('./api/sales/dashboardRoutes.js', 'dashboardRoute', 'goals/dashboard'));
 // call-notes-targets-v1 REV5 - Nudge a waiting-on item into our own to-do.
 app.post('/api/sales/:businessId/goals/waiting/:id/nudge', salesModuleRoute('./api/sales/waitingRoutes.js', 'nudgeWaitingRoute', 'goals/waiting/:id/nudge POST'));
