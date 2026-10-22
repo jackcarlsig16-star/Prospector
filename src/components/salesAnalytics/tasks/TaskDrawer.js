@@ -3,7 +3,7 @@ import { SA, SA_TYPE, SA_SHAPE, SA_THEME_CSS, SA_THEME_CLASS, saSans } from '../
 import { laWeekStart, laDateString } from '../periods';
 import { roleAtLeast } from '../../../constants/roles';
 import { fetchMe } from '../../../utils/authSession';
-import { goalsApi, TODOS_CHANGED, OPEN_GOALS_WEEK, OPEN_TASKS, OPEN_GOALS_TARGET } from '../goals/goalsApi';
+import { goalsApi, TODOS_CHANGED, OPEN_GOALS_WEEK, OPEN_TASKS, OPEN_GOALS_TARGET, OPEN_ATTENTION } from '../goals/goalsApi';
 import { fetchFlags, completeFlag, dropFlag, reassignFlag, announceFlagsChanged, FLAGS_CHANGED } from '../huddleApi';
 import { memberLookup, labelStyle, ErrorNote, ShowingChip } from '../goals/goalsUi';
 import { buildTaskGroups, badgeCount } from './taskGroups';
@@ -74,9 +74,13 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
     return () => { window.removeEventListener(TODOS_CHANGED, load); window.removeEventListener(TODOS_CHANGED, loadWaiting); window.removeEventListener(FLAGS_CHANGED, load); };
   }, [load, loadWaiting]);
   useEffect(() => {
-    const onOpenTasks = e => { setLinkFilter(e.detail.link || null); setFilter(e.detail.filter || 'team'); setView(['targets', 'suggested', 'waiting', 'signals'].includes(e.detail.view) ? e.detail.view : 'tasks'); setOpen(true); };
+    // detail.paste (actions-home-attention-v1 Quick add) opens straight on the call-notes panel.
+    const onOpenTasks = e => { setLinkFilter(e.detail.link || null); setFilter(e.detail.filter || 'team'); setView(['targets', 'suggested', 'waiting', 'signals'].includes(e.detail.view) ? e.detail.view : 'tasks'); setOpen(true); if (e.detail.paste) setPasting(true); };
+    // One drawer at a time: the Needs attention drawer opening closes this one.
+    const onOpenAttention = () => setOpen(false);
     window.addEventListener(OPEN_TASKS, onOpenTasks);
-    return () => window.removeEventListener(OPEN_TASKS, onOpenTasks);
+    window.addEventListener(OPEN_ATTENTION, onOpenAttention);
+    return () => { window.removeEventListener(OPEN_TASKS, onOpenTasks); window.removeEventListener(OPEN_ATTENTION, onOpenAttention); };
   }, []);
   // A Goals link's filter lasts until the drawer closes; the next open is the plain list.
   useEffect(() => { writeOpen(open); if (!open) { setLinkFilter(null); setPasting(false); setView('tasks'); } }, [open]);

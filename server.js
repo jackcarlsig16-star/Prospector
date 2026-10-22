@@ -678,6 +678,7 @@ app.post('/api/sales/:businessId/goals/suggestions/:id/snooze', salesModuleRoute
 app.post('/api/sales/:businessId/goals/suggestions/:id/undo', salesModuleRoute('./api/sales/tidyRoutes.js', 'undoSuggestionRoute', 'goals/suggestions/:id/undo POST'));
 // sales-ia-v2 A1 - the Actions list (reads only).
 app.get('/api/sales/:businessId/goals/actions', salesModuleRoute('./api/sales/actionsRoutes.js', 'listActionsRoute', 'goals/actions'));
+app.get('/api/sales/:businessId/goals/attention', salesModuleRoute('./api/sales/attentionRoutes.js', 'attentionRoute', 'goals/attention'));
 // seif-campaign-v1 Stage 2 - outreach campaigns (summary before :id; import before :action).
 app.get('/api/sales/:businessId/goals/campaigns', salesModuleRoute('./api/sales/outreachRoutes.js', 'listCampaignsRoute', 'goals/campaigns'));
 app.get('/api/sales/:businessId/goals/campaigns/summary', salesModuleRoute('./api/sales/outreachRoutes.js', 'campaignSummaryRoute', 'goals/campaigns/summary'));

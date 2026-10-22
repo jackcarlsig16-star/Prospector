@@ -20,6 +20,7 @@ import ReportView from './ReportView';
 import PlanWeekDrawer from './PlanWeekDrawer';
 import { PlanNudge } from './PlanNudge';
 import ActionsView from './ActionsView';
+import AttentionDrawer from './AttentionDrawer';
 import CampaignsView from './campaigns/CampaignsView';
 import GoalHero from './GoalHero';
 import DashboardCharts from './DashboardCharts';
@@ -71,7 +72,7 @@ export function homeOf(target) {
 
 // initialTarget: a link from the Huddle or Analytics ({ target }, new object
 // per click) - same targets as go() below.
-export default function GoalsTab({ businessId, section, view, onNav, onOpenOverview, onOpenHuddle, initialTarget, analytics }) {
+export default function GoalsTab({ businessId, section, view, onNav, onOpenOverview, onOpenHuddle, initialTarget, analytics, pageLoadFailures }) {
   const compact = useMediaQuery('(max-width: 1099px)');
   const [weekStart, setWeekStart] = useState(() => laWeekStart());
   const [ownerSlug, setOwnerSlug] = useState(() => new URLSearchParams(window.location.search).get('owner') || readStored(OWNER_KEY) || 'team');
@@ -332,6 +333,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
         </Btn>
         {weekStart !== thisWeek && <Btn onClick={() => setWeekStart(thisWeek)}>This week</Btn>}
       </>}
+      {section === 'actions' && me && <AttentionDrawer businessId={businessId} canEdit={canEdit} compact={compact} pageLoadFailures={pageLoadFailures} onNav={onNav} />}
       {section === 'actions' && canEdit && planOwner && <Btn primary onClick={() => setPlanOpen(true)}>Plan this week</Btn>}
       {section === 'dashboard' && <Btn primary id="sales-export-btn" aria-haspopup="menu" aria-expanded={exportOpen} onClick={() => setExportOpen(o => !o)}>Export</Btn>}
     </>

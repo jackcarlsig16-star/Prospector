@@ -36,6 +36,7 @@ import { getTeamUsers, saveTeamUsers, getFrontier, saveFrontier, getAccounts, sa
 import BusinessesHomePage from './components/BusinessesHomePage';
 import BusinessDetailPage from './components/BusinessDetailPage';
 import TaskDrawer from './components/salesAnalytics/tasks/TaskDrawer';
+import { OPEN_CONNECTIONS } from './components/salesAnalytics/goals/goalsApi';
 import { isSupabaseEnabled } from './utils/supabase';
 
 // Stage-change debug logger — remove once root cause is confirmed
@@ -1225,6 +1226,12 @@ export default function App({ me }) {
   const onBusinessFeaturesChanged=useCallback((id,features)=>{
     setMyBusinesses(prev=>prev.map(b=>b.id===id?{...b,features}:b));
     setActiveBusiness(b=>b?.id===id?{...b,features}:b);
+  },[]);
+  // actions-home-attention-v1: the Needs attention drawer's "Connections" link (Outlook not connected).
+  useEffect(()=>{
+    const open=()=>setPage("connections");
+    window.addEventListener(OPEN_CONNECTIONS,open);
+    return()=>window.removeEventListener(OPEN_CONNECTIONS,open);
   },[]);
   useEffect(()=>{
     if(RENAMED_PAGES[page]) setPage(RENAMED_PAGES[page]);

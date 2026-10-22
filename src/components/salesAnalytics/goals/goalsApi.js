@@ -22,6 +22,10 @@ export const OPEN_GOALS_WEEK = 'prospector:open-goals-week';
 export const OPEN_TASKS = 'prospector:open-tasks';
 // From the drawer into Sales & Marketing with a link target (GoalsTab go()); detail = { target }.
 export const OPEN_GOALS_TARGET = 'prospector:open-goals-target';
+// actions-home-attention-v1 - the Needs attention drawer opening (the Tasks drawer closes: one at a time), and a
+// link to the app's Connections page from inside Sales & Marketing.
+export const OPEN_ATTENTION = 'prospector:open-attention';
+export const OPEN_CONNECTIONS = 'prospector:open-connections';
 
 async function call(businessId, path, { method = 'GET', body } = {}) {
   const res = await fetch(`/api/sales/${businessId}/goals${path}`, {
@@ -83,6 +87,8 @@ export const goalsApi = {
   undoSignal: (id, sid, touchEventId) => call(id, `/signals/${sid}/undo`, { method: 'POST', body: touchEventId ? { touch_event_id: touchEventId } : {} }),
   // sales-ia-v2 A1 - the Actions list: { items, today, week_start }; items ranked overdue -> P1..P4 -> due. 0 AI, 0 Apollo.
   actions: id => call(id, '/actions'),
+  // actions-home-attention-v1 D4 - sync status + counts; fresh = re-read the held partner moves (cached 15 min otherwise).
+  attention: (id, { fresh = false } = {}) => call(id, `/attention${fresh ? '?fresh=1' : ''}`),
   // seif-campaign-v1 - outreach campaigns (Pipeline > Campaigns). No response carries a contact's address.
   campaigns: id => call(id, '/campaigns').then(d => d.campaigns),
   campaign: (id, cid) => call(id, `/campaigns/${cid}`),

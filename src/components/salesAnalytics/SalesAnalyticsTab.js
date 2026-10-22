@@ -139,9 +139,9 @@ export default function SalesAnalyticsTab({ businessId, features }) {
   // failed pull is retried on the next load and never blocks Tidy.
   // localStorage keys (per browser): prospector_tidy_ran_<businessId>,
   // prospector_visits_ran_<businessId> = 'YYYY-MM-DD'
-  // FIX loop-quickfixes Q5: a failed page-load pull / Tidy still never blocks the page, but is kept here for the
-  // coming sync-status box ({ visits?, tidy? } = the error text; no UI yet).
-  const [pageLoadFailures, setPageLoadFailures] = useState({}); // eslint-disable-line no-unused-vars
+  // FIX loop-quickfixes Q5: a failed page-load pull / Tidy still never blocks the page; it shows in the Needs
+  // attention drawer (actions-home-attention-v1) as Failed "on page load" ({ visits?, tidy? } = the error text).
+  const [pageLoadFailures, setPageLoadFailures] = useState({});
   useEffect(() => {
     if (!canEdit) return;
     const today = laDateString();
@@ -201,7 +201,7 @@ export default function SalesAnalyticsTab({ businessId, features }) {
 
       {people
         ? <DailyHuddle businessId={businessId} focusContactId={huddleFocus} onFocused={() => setHuddleFocus(null)} focusTarget={huddleTarget} onOpenGoals={openGoals} />
-        : <GoalsTab businessId={businessId} section={tab} view={view} onNav={nav} initialTarget={goalsTarget}
+        : <GoalsTab businessId={businessId} section={tab} view={view} onNav={nav} initialTarget={goalsTarget} pageLoadFailures={pageLoadFailures}
             onOpenOverview={widget => { setOverviewFocus(widget || null); nav('dashboard', 'analytics'); }}
             onOpenHuddle={(contactId, target) => { setHuddleFocus(contactId); setHuddleTarget(target ? { ...target } : null); nav('pipeline', 'people'); }}
             analytics={<AnalyticsView businessId={businessId} features={features} canEdit={canEdit} onOpenGoals={openGoals} onOpenHuddle={openHuddle} focusWidget={overviewFocus} onFocused={clearFocus} />} />}
