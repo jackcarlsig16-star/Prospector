@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useId } from 'react';
 import './kitTheme';
 import { KIT_TABLE } from './tokens';
 
@@ -23,6 +23,10 @@ import { KIT_TABLE } from './tokens';
 //   fills the window under the header. A wheel down over the box scrolls the
 //   page first (until pinned), then the rows - without it the page would
 //   never move while the pointer is over the table.
+//   renderDetail(row) + a column with detail: true: that cell starts with a
+//   ▸ / ▾ button, and the button or a click on the cell opens the detail panel
+//   in a full-width row under it (phone list: under the item). One open at a
+//   time; Esc or the button closes it. Controls inside a row never toggle it.
 
 const compare = (a, b) => (typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }));
 
@@ -33,7 +37,9 @@ export function sortRows(rows, column, dir) {
   return rows.map((r, i) => [r, i, column.sortValue(r)]).sort(([, i, a], [, j, b]) => ((a == null) - (b == null)) || (a == null ? 0 : sign * compare(a, b)) || i - j).map(([r]) => r);
 }
 
-const cellClass = c => (c.sticky ? 'ui-table__sticky' : c.stickyEnd ? 'ui-table__sticky-end' : undefined);
+const cellClass = c => [c.sticky ? 'ui-table__sticky' : c.stickyEnd ? 'ui-table__sticky-end' : null, c.detail ? 'ui-table__detail-cell' : null].filter(Boolean).join(' ') || undefined;
+const INTERACTIVE = 'button, a, input, select, textarea, label, [role="button"]';
+const detailText = (r, c) => String(c?.title?.(r) || '');
 
 function GroupHeading({ group }) {
   const h = <h3>{group.header}</h3>;
@@ -42,8 +48,10 @@ function GroupHeading({ group }) {
     : <span className="ui-table__gh">{group.icon}{h}</span>;
 }
 
-export default function DataTable({ columns, groups, rowStyle, rowKey, compact = false, renderCompact, emptyText, label, sort: sortProp, onSort, dense = false, pinUnder = null }) {
+export default function DataTable({ columns, groups, rowStyle, rowKey, compact = false, renderCompact, renderDetail, emptyText, label, sort: sortProp, onSort, dense = false, pinUnder = null }) {
   const [sortState, setSortState] = useState(null);
+  const [openKey, setOpenKey] = useState(null);
+  const idBase = useId();
   const sort = onSort ? sortProp : sortState;
   const setSort = onSort ? f => onSort(f(sortProp)) : setSortState;
   const boxRef = useRef(null);
@@ -86,15 +94,34 @@ export default function DataTable({ columns, groups, rowStyle, rowKey, compact =
   const ariaSort = col => (!col.sortValue ? undefined : sort?.id !== col.id ? 'none' : sort.dir === 'asc' ? 'ascending' : 'descending');
   const glyph = col => (sort?.id !== col.id ? '↕' : sort.dir === 'asc' ? '▲' : '▼');
   const visible = groups.filter(g => g.rows.length || g.emptyText);
+  const detailCol = renderDetail ? columns.find(c => c.detail) || null : null;
+  const hasDetail = !!renderDetail && (compact || !!detailCol);
+  const panelId = key => `${idBase}-detail-${key}`;
+  const buttonId = key => `${idBase}-disclose-${key}`;
+  const toggle = key => setOpenKey(k => (k === key ? null : key));
+  // Clicks on the row's own controls (and the disclosure, which handles itself) never toggle.
+  const onAreaClick = key => e => { if (e.target.closest(INTERACTIVE)) return; toggle(key); document.getElementById(buttonId(key))?.focus(); };
+  const onKeyDown = e => { if (e.key !== 'Escape' || openKey == null) return; const key = openKey; setOpenKey(null); document.getElementById(buttonId(key))?.focus(); };
+  const disclose = r => {
+    const key = rowKey(r);
+    const open = openKey === key;
+    const text = detailText(r, detailCol);
+    return <button type="button" id={buttonId(key)} className="ui-table__disclose" aria-expanded={open} aria-controls={open ? panelId(key) : undefined} aria-label={`${open ? 'Hide' : 'Show'} details${text ? ` for ${text}` : ''}`} onClick={() => toggle(key)} />;
+  };
 
   if (compact) {
     return (
-      <ul className="ui-list" aria-label={label}>
+      <ul className="ui-list" aria-label={label} onKeyDown={hasDetail ? onKeyDown : undefined}>
         {visible.map(g => (
           <React.Fragment key={g.id}>
             <li className="ui-list__group"><GroupHeading group={g} /></li>
             {!g.collapsed && !g.rows.length && g.emptyText && <li className="ui-table__empty">{g.emptyText}</li>}
-            {!g.collapsed && g.rows.map(r => <li key={rowKey(r)} className="ui-list__row" data-row data-key={rowKey(r)} style={rowStyle?.(r)}>{renderCompact(r)}</li>)}
+            {!g.collapsed && g.rows.map(r => (
+              <React.Fragment key={rowKey(r)}>
+                <li className={hasDetail ? 'ui-list__row ui-list__row--detail' : 'ui-list__row'} data-row data-key={rowKey(r)} style={rowStyle?.(r)} onClick={hasDetail ? onAreaClick(rowKey(r)) : undefined}>{hasDetail && disclose(r)}{renderCompact(r)}</li>
+                {hasDetail && openKey === rowKey(r) && <li id={panelId(rowKey(r))} className="ui-list__detail" data-detail={rowKey(r)}><div className="ui-detail">{renderDetail(r)}</div></li>}
+              </React.Fragment>
+            ))}
           </React.Fragment>
         ))}
         {!visible.length && emptyText && <li className="ui-table__empty">{emptyText}</li>}
@@ -104,7 +131,7 @@ export default function DataTable({ columns, groups, rowStyle, rowKey, compact =
 
   const minWidth = columns.reduce((n, c) => n + (c.width || c.minWidth || 0), 0);
   return (
-    <div ref={boxRef} className="ui-table-box" style={{ maxHeight: height || undefined }}>
+    <div ref={boxRef} className="ui-table-box" style={{ maxHeight: height || undefined }} onKeyDown={hasDetail ? onKeyDown : undefined}>
       <table className={dense ? 'ui-table ui-table--dense' : 'ui-table'} style={{ minWidth }} aria-label={label}>
         <colgroup>{columns.map(c => <col key={c.id} style={c.width ? { width: c.width } : undefined} />)}</colgroup>
         <thead>
@@ -124,9 +151,14 @@ export default function DataTable({ columns, groups, rowStyle, rowKey, compact =
               <tr className="ui-table__group" data-group={g.id}><td colSpan={columns.length}><GroupHeading group={g} /></td></tr>
               {!g.collapsed && !g.rows.length && g.emptyText && <tr><td colSpan={columns.length} className="ui-table__empty">{g.emptyText}</td></tr>}
               {!g.collapsed && sortRows(g.rows, sortCol, sort?.dir).map(r => (
-                <tr key={rowKey(r)} data-row data-key={rowKey(r)} style={rowStyle?.(r)}>
-                  {columns.map(c => <td key={c.id} className={cellClass(c)} title={c.title?.(r) || undefined}>{c.render(r)}</td>)}
-                </tr>
+                <React.Fragment key={rowKey(r)}>
+                  <tr data-row data-key={rowKey(r)} style={rowStyle?.(r)}>
+                    {columns.map(c => (hasDetail && c === detailCol
+                      ? <td key={c.id} className={cellClass(c)} title={c.title?.(r) || undefined} onClick={onAreaClick(rowKey(r))}><span className="ui-table__detail-wrap">{disclose(r)}{c.render(r)}</span></td>
+                      : <td key={c.id} className={cellClass(c)} title={c.title?.(r) || undefined}>{c.render(r)}</td>))}
+                  </tr>
+                  {hasDetail && openKey === rowKey(r) && <tr className="ui-table__detail-row" data-detail={rowKey(r)}><td id={panelId(rowKey(r))} colSpan={columns.length}><div className="ui-detail">{renderDetail(r)}</div></td></tr>}
+                </React.Fragment>
               ))}
             </React.Fragment>
           ))}

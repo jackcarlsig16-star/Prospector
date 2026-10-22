@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { SA, SA_THEME_ROOT_ID } from '../theme';
 import useMediaQuery from '../../../utils/useMediaQuery';
 import DataTable from '../../../ui/DataTable';
+import DetailList from '../../../ui/DetailList';
 import FilterSelect from '../../../ui/FilterSelect';
 import Segmented from '../../../ui/Segmented';
 import Button from '../../../ui/Button';
@@ -12,7 +13,7 @@ import PeopleCompanyPanel from '../PeopleCompanyPanel';
 import { goalsApi, TODOS_CHANGED } from './goalsApi';
 import { completeFlag, announceFlagsChanged, FLAGS_CHANGED } from '../huddleApi';
 import { numStyle, ErrorNote } from './goalsUi';
-import { KIND_LABEL, KIND_OPTIONS, EMPTY_FILTERS, activeFilterCount, actionsView, priorityText, dueText, readSort, writeSort, SNOOZE_OPTIONS, snoozeTo } from './actionsModel';
+import { KIND_LABEL, KIND_OPTIONS, EMPTY_FILTERS, activeFilterCount, actionsView, priorityText, dueText, readSort, writeSort, SNOOZE_OPTIONS, snoozeTo, actionSource, companyLine, datesLine } from './actionsModel';
 
 // sales-ia-v2 A1 - Actions: one ranked list (GET goals/actions) on the kit
 // table. Every kind keeps the write it already had (signals, Tidy, waiting-on,
@@ -141,8 +142,9 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
 
   // R5: priority is a status chip - overdue red, P1-P4 each their own hue (FIX priority-colors-v1); the word is always on it.
   const priorityCell = it => <Tag color={it.overdue ? SA.bad : priorityColor(it.priority) || SA.borderStrong}><span style={numStyle}>{priorityText(it)}</span></Tag>;
+  const openCompany = it => setCompany({ company: it.company.name, link: { type: it.company.type, id: it.company.id } });
   const companyCell = it => (!it.company ? <Dim />
-    : it.company.type ? <button type="button" className="ui-link ui-link--cell" title={`Open ${it.company.name}`} onClick={() => setCompany({ company: it.company.name, link: { type: it.company.type, id: it.company.id } })}>{it.company.name}</button>
+    : it.company.type ? <button type="button" className="ui-link ui-link--cell" title={`Open ${it.company.name}`} onClick={() => openCompany(it)}>{it.company.name}</button>
       : <span style={ellipsis} title={`${it.company.name} is not in the Pipeline yet`}>{it.company.name}</span>);
   const ownerCell = it => (it.owner_user_id
     ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: lookup(it.owner_user_id).color, flex: 'none' }} />{lookup(it.owner_user_id).first}</span>
@@ -151,7 +153,7 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
 
   const columns = [
     { id: 'priority', label: 'Priority', width: 124, sticky: true, sortValue: it => (it.overdue ? -it.late_days : it.priority), render: priorityCell, title: it => (it.overdue ? `${it.late_days} days late` : `P${it.priority}`) },
-    { id: 'text', label: 'What to do', width: 200, sortValue: it => it.text, render: it => <span style={{ ...ellipsis, fontWeight: 500, color: it.status === 'done' ? SA.muted : SA.text }}>{it.text}</span>, title: it => it.text },
+    { id: 'text', label: 'What to do', width: 200, detail: true, sortValue: it => it.text, render: it => <span style={{ ...ellipsis, fontWeight: 500, color: it.status === 'done' ? SA.muted : SA.text }}>{it.text}</span>, title: it => it.text },
     { id: 'company', label: 'Company', width: 150, sortValue: it => it.company?.name || null, render: companyCell, title: it => it.company?.name },
     { id: 'why', label: 'Why', width: 162, sortValue: it => it.why, render: it => (it.why ? <span style={{ ...ellipsis, color: SA.soft }}>{it.why}</span> : <Dim />), title: it => it.why },
     { id: 'kind', label: 'Kind', width: 72, sortValue: it => KIND_LABEL[it.kind], render: it => <span style={{ whiteSpace: 'nowrap' }}>{KIND_LABEL[it.kind]}</span> },
@@ -167,6 +169,18 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
     ...(view.done.length ? [{ id: 'done', header: <>{view.done.length} done {showDone ? '▾' : '▸'}</>, rows: view.done, collapsed: !showDone, onToggle: () => setShowDone(o => !o) }] : []),
   ];
   const rowStyle = it => (it.status === 'done' ? { '--ui-row-tint': `color-mix(in srgb, ${SA.track} 40%, transparent)` } : it.overdue ? { '--ui-row-bar': SA.bad } : it.priority === 1 ? { '--ui-row-bar': priorityColor(1) } : undefined);
+
+  // FIX actions-row-detail-v1: the whole row, read-only - the actions stay in the row. Never an email or phone.
+  const renderDetail = it => (
+    <DetailList data-action-detail rows={[
+      ['What to do', it.text],
+      ['Why', it.why || <span style={{ color: SA.muted }}>No reason given</span>],
+      ['Where it came from', actionSource(it)],
+      ['Company', it.company && <span className="ui-detail-list__actions"><span>{companyLine(it.company)}</span>
+        {it.company.type && <button type="button" className="ui-link" onClick={() => openCompany(it)}>Open company →</button>}</span>],
+      ['Dates', datesLine(it, it.owner_user_id ? lookup(it.owner_user_id).first : null)],
+    ]} />
+  );
 
   const compactRow = it => (
     <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -206,7 +220,7 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
       {data && (
         <div className="ui-theme-dark">
           <DataTable label="Actions" columns={columns} groups={groups} rowKey={rowKey} rowStyle={rowStyle} sort={sort} onSort={onSort}
-            dense pinUnder="[data-workspace-header]" compact={phone} renderCompact={compactRow} emptyText="Nothing to act on." />
+            dense pinUnder="[data-workspace-header]" compact={phone} renderCompact={compactRow} renderDetail={renderDetail} emptyText="Nothing to act on." />
         </div>
       )}
       {company && (

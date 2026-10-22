@@ -3,7 +3,10 @@ import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
 import { openFlagRows } from './huddleFlags.js';
 import { todoText } from './signalsRoutes.js';
-import { DUE_DAYS } from './tidyRules.js';
+import { DUE_DAYS, RULE_TEXT } from './tidyRules.js';
+import { employerTouches } from './pipelineBoard.js';
+import { boardStage } from '../../src/constants/pipelineBoard.js';
+import { TEAM_LABEL } from '../../src/constants/ownership.js';
 
 // sales-ia-v2 A1 - Actions: one ranked list of everything that wants a click
 // today. Six kinds, each from the table that already holds it (nothing is
@@ -29,11 +32,11 @@ const todoDone = t => t.status === 'done' || (t.steps?.length > 0 && t.steps.eve
 // link_type / match.type -> the company panel's row type.
 const PANEL_TYPE = { partner: 'partner', opportunity: 'employer', target: 'target', company: 'apollo' };
 
-export function buildActions({ todos = [], flags = [], waiting = [], signals = [], suggestions = [], commitments = [], refTodos = [], companies, members = new Map(), today }) {
+export function buildActions({ todos = [], flags = [], waiting = [], signals = [], suggestions = [], commitments = [], refTodos = [], notes = new Map(), companies, members = new Map(), today }) {
   const company = (type, id) => {
     const t = PANEL_TYPE[type];
     const c = t && companies[t]?.get(id);
-    return c ? { type: t, id, name: c.name, priority: c.priority ?? null } : null;
+    return c ? { type: t, id, name: c.name, priority: c.priority ?? null, stage_label: c.stage_label || null, owner: c.owner || null, last_touch_at: c.last_touch_at || null } : null;
   };
   const linkCompany = row => (row.link_type ? company(row.link_type, row.link_id) : null);
   const first = id => (members.get(id) || '').split(' ')[0] || null;
@@ -54,7 +57,7 @@ export function buildActions({ todos = [], flags = [], waiting = [], signals = [
     if (s.status !== 'new') continue;
     const m = s.match;
     const matched = m?.type ? company(m.type, m.id) : null;
-    const c = matched || (s.source === 'web_visit' ? { type: 'visitor', id: s.company_key, name: s.company_name, priority: null } : { type: null, id: null, name: s.company_name, priority: null });
+    const c = matched || (s.source === 'web_visit' ? { type: 'visitor', id: s.company_key, name: s.company_name, priority: null, stage_label: 'Website visit' } : { type: null, id: null, name: s.company_name, priority: null });
     const web = s.source === 'web_visit' ? Number((s.why_now || '').match(/^P([1-4])\b/)?.[1]) : null;
     const priority = web || (s.score != null && s.score >= SCOUT_P1_SCORE ? 1 : DEFAULT_PRIORITY.signal);
     push('signal', s, { text: todoText(s), why: s.why_now || s.signal, company: c, priority: c.priority || priority, owner_user_id: null, due_date: null, meta: { source: s.source, score: s.score, kind: s.kind, who: s.who } });
@@ -73,18 +76,18 @@ export function buildActions({ todos = [], flags = [], waiting = [], signals = [
     const ref = ['todo', 'flag'].includes(s.ref_type) ? refById.get(s.ref_id) : null;
     const c = s.ref_type === 'pair' ? company('partner', s.ref_id) : ref ? linkCompany(ref) : company(s.ref_type, s.ref_id);
     // makes_todo: Accept would create a to-do (FIX actions-done-button-v1: only then can the row be marked Done).
-    push('tidy', s, { text: s.text, why: s.reason, company: c, priority: TIDY_PRIORITY[s.kind] || DEFAULT_PRIORITY.tidy, owner_user_id: null, due_date: null, meta: { kind: s.kind, ref_type: s.ref_type, ref_id: s.ref_id, ref_id2: s.ref_id2, makes_todo: s.ref_type !== 'pair' && DUE_DAYS[s.kind] != null } });
+    push('tidy', s, { text: s.text, why: s.reason, company: c, priority: TIDY_PRIORITY[s.kind] || DEFAULT_PRIORITY.tidy, owner_user_id: null, due_date: null, meta: { kind: s.kind, rule: RULE_TEXT[s.kind] || null, ref_type: s.ref_type, ref_id: s.ref_id, ref_id2: s.ref_id2, makes_todo: s.ref_type !== 'pair' && DUE_DAYS[s.kind] != null } });
   }
 
   const flagIds = new Set(flags.map(f => f.id));
   for (const f of flags) {
-    push('flag', f, { text: f.text, why: `Flagged by ${first(f.flagged_by) || 'a teammate'}${f.flag_note ? ` · “${f.flag_note}”` : ''}`, priority: DEFAULT_PRIORITY.flag, meta: { contact: f.contacts?.[0] || null, prospect_contact_id: f.prospect_contact_id, flagged_by: f.flagged_by } });
+    push('flag', f, { text: f.text, why: `Flagged by ${first(f.flagged_by) || 'a teammate'}${f.flag_note ? ` · “${f.flag_note}”` : ''}`, priority: DEFAULT_PRIORITY.flag, meta: { contact: f.contacts?.[0] || null, prospect_contact_id: f.prospect_contact_id, flagged_by: f.flagged_by, flagged_by_name: first(f.flagged_by), flag_note: f.flag_note || null } });
   }
 
   for (const t of todos) {
     if (t.kind !== 'todo' || flagIds.has(t.id) || t.prospect_contact_id || t.status === 'dropped' || todoDone(t)) continue;
     const soon = t.due_date && t.due_date <= today;
-    push('todo', t, { text: t.text, why: t.category || (t.source_note_id ? 'From call notes' : null), priority: soon ? 2 : 3, meta: { category: t.category, link_type: t.link_type, link_id: t.link_id } });
+    push('todo', t, { text: t.text, why: t.category || (t.source_note_id ? 'From call notes' : null), priority: soon ? 2 : 3, meta: { category: t.category, link_type: t.link_type, link_id: t.link_id, from_note: !!t.source_note_id, note_date: notes.get(t.source_note_id) || null } });
   }
 
   for (const c of commitments) {
@@ -124,17 +127,31 @@ export async function listActions(supabase, businessId, now = new Date()) {
   for (const r of [...weekRows, ...flags, ...waiting, ...refTodos]) note(r.link_type, r.link_id);
   for (const s of signals) note(s.match?.type, s.match?.id);
   for (const s of suggestions) { note(s.ref_type === 'pair' ? 'partner' : s.ref_type, s.ref_id); }
+  const noteIds = [...new Set(weekRows.map(r => r.source_note_id).filter(Boolean))];
+  const memberName = new Map(memberRows.map(m => [m.user_id, m.name]));
+  const ownerOf = (userId, team) => (memberName.get(userId) || '').split(' ')[0] || TEAM_LABEL[team] || null;
   const pick = async (table, type, cols, map) => (ids[type].size ? (await selectAllPages(() => supabase.from(table).select(cols).eq('business_id', businessId).in(cols.split(',')[0].trim(), [...ids[type]]).order(cols.split(',')[0].trim()))).map(map) : []);
   const [partners, opportunities, targets, apollo] = await Promise.all([
-    pick('sales_goals', 'partner', 'id, name, priority', r => [r.id, { name: r.name, priority: r.priority }]),
-    pick('sales_opportunities', 'opportunity', 'id, organization, priority', r => [r.id, { name: r.organization, priority: r.priority }]),
-    pick('sales_targets', 'target', 'id, name', r => [r.id, { name: r.name, priority: null }]),
-    pick('sales_sequenced_accounts', 'company', 'account_id, name', r => [r.account_id, { name: r.name || r.account_id, priority: null }]),
+    pick('sales_goals', 'partner', 'id, name, priority, pipeline_status, category, owner_user_id, owner_team, last_touch_at',
+      r => [r.id, { name: r.name, priority: r.priority, stage_label: boardStage('partner', r).stage_label, owner: ownerOf(r.owner_user_id, r.owner_team), last_touch_at: r.last_touch_at }]),
+    pick('sales_opportunities', 'opportunity', 'id, organization, priority, stage, owner, owner_team',
+      r => [r.id, { name: r.organization, priority: r.priority, stage_label: boardStage('employer', r).stage_label, owner: (r.owner || '').split(' ')[0] || TEAM_LABEL[r.owner_team] || null }]),
+    pick('sales_targets', 'target', 'id, name, status, owner_team', r => [r.id, { name: r.name, priority: null, stage_label: boardStage('target', r)?.stage_label, owner: TEAM_LABEL[r.owner_team] || null }]),
+    pick('sales_sequenced_accounts', 'company', 'account_id, name, first_sequenced_at', r => [r.account_id, { name: r.name || r.account_id, priority: null, stage_label: boardStage('apollo', r).stage_label, last_touch_at: r.first_sequenced_at }]),
   ]);
+  // Employer last touch = the Pipeline's: the latest stage event or done linked to-do (FIX actions-row-detail-v1).
+  const oppIds = [...ids.opportunity];
+  const [oppEvents, oppDone, noteRows] = await Promise.all([
+    oppIds.length ? all('sales_opportunity_events', 'opportunity_id, event_type, changed_at', q => q.in('opportunity_id', oppIds).neq('event_type', 'created')) : [],
+    oppIds.length ? all('sales_week_goals', 'link_type, link_id, status, completed_at', q => q.eq('link_type', 'opportunity').in('link_id', oppIds).eq('status', 'done')) : [],
+    noteIds.length ? all('sales_call_notes', 'id, call_date', q => q.in('id', noteIds)) : [],
+  ]);
+  const oppTouch = employerTouches(oppEvents, oppDone);
+  for (const [id, c] of opportunities) c.last_touch_at = oppTouch.get(id) || null;
   const companies = { partner: new Map(partners), employer: new Map(opportunities), target: new Map(targets), apollo: new Map(apollo) };
   const items = buildActions({
     todos: weekRows.filter(r => r.kind === 'todo'), commitments: weekRows.filter(r => r.kind === 'commitment'), flags, waiting, signals, suggestions, refTodos,
-    companies, members: new Map(memberRows.map(m => [m.user_id, m.name])), today,
+    notes: new Map(noteRows.map(n => [n.id, n.call_date])), companies, members: memberName, today,
   });
   return { items, today, week_start: week };
 }

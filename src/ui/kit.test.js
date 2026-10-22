@@ -361,3 +361,63 @@ describe('Drawer', () => {
     } finally { get.mockRestore(); set.mockRestore(); }
   });
 });
+
+// FIX actions-row-detail-v1 - DataTable renderDetail.
+const D_COLS = [
+  { id: 'name', label: 'Company', width: 120, sticky: true, render: r => r.name },
+  { id: 'text', label: 'What', width: 100, detail: true, render: r => r.text, title: r => r.text },
+  { id: 'act', label: 'Actions', width: 80, render: r => <button type="button" onClick={() => r.onAct?.()}>Act {r.name}</button> },
+];
+const D_GROUPS = rows => [{ id: 'a', header: 'A', rows }];
+const D_ROWS = act => [{ name: 'Mango', text: 'Call the long-winded buyer back', onAct: act }, { name: 'Kiwi', text: 'Send the deck' }];
+const detail = r => <p>Full: {r.text}</p>;
+
+test('DataTable renderDetail: the disclosure or the text cell opens one panel under its row; aria wired; one at a time', () => {
+  render(<DataTable columns={D_COLS} groups={D_GROUPS(D_ROWS())} rowKey={r => r.name} renderDetail={detail} />);
+  const mango = screen.getByRole('button', { name: 'Show details for Call the long-winded buyer back' });
+  expect(mango).toHaveAttribute('aria-expanded', 'false');
+  fireEvent.click(mango);
+  expect(mango).toHaveAttribute('aria-expanded', 'true');
+  const panel = document.getElementById(mango.getAttribute('aria-controls'));
+  expect(panel).toHaveTextContent('Full: Call the long-winded buyer back');
+  expect(panel.closest('tr').previousSibling).toHaveAttribute('data-key', 'Mango');
+  expect(panel).toHaveAttribute('colspan', '3');
+  expect(document.querySelectorAll('tr[data-row]')).toHaveLength(2);
+  fireEvent.click(screen.getByText('Send the deck'));
+  expect(document.querySelectorAll('[data-detail]')).toHaveLength(1);
+  expect(document.querySelector('[data-detail]')).toHaveAttribute('data-detail', 'Kiwi');
+  expect(mango).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.getByRole('button', { name: 'Hide details for Send the deck' })).toHaveFocus();
+  fireEvent.click(screen.getByRole('button', { name: 'Hide details for Send the deck' }));
+  expect(document.querySelectorAll('[data-detail]')).toHaveLength(0);
+});
+
+test('DataTable renderDetail: Esc closes and focus stays on the button; row buttons never toggle', () => {
+  const act = jest.fn();
+  render(<DataTable columns={D_COLS} groups={D_GROUPS(D_ROWS(act))} rowKey={r => r.name} renderDetail={detail} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Act Mango' }));
+  expect(act).toHaveBeenCalledTimes(1);
+  expect(document.querySelectorAll('[data-detail]')).toHaveLength(0);
+  const btn = screen.getByRole('button', { name: /details for Call/ });
+  fireEvent.click(screen.getByText('Call the long-winded buyer back'));
+  expect(document.querySelectorAll('[data-detail]')).toHaveLength(1);
+  fireEvent.keyDown(btn, { key: 'Escape' });
+  expect(document.querySelectorAll('[data-detail]')).toHaveLength(0);
+  expect(btn).toHaveFocus();
+  expect(btn).toHaveAttribute('aria-expanded', 'false');
+});
+
+test('DataTable renderDetail: the phone list opens the same panel under the item; without renderDetail there is no disclosure', () => {
+  const { unmount } = render(<DataTable compact columns={D_COLS} groups={D_GROUPS(D_ROWS(jest.fn()))} rowKey={r => r.name} renderCompact={r => <span>{r.text} <button type="button">Do {r.name}</button></span>} renderDetail={detail} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Do Mango' }));
+  expect(document.querySelectorAll('[data-detail]')).toHaveLength(0);
+  fireEvent.click(screen.getByText(/Call the long-winded/));
+  const li = document.querySelector('li[data-detail]');
+  expect(li).toHaveTextContent('Full: Call the long-winded buyer back');
+  expect(li.previousSibling).toHaveAttribute('data-key', 'Mango');
+  fireEvent.keyDown(li, { key: 'Escape' });
+  expect(document.querySelectorAll('[data-detail]')).toHaveLength(0);
+  unmount();
+  render(<DataTable columns={D_COLS} groups={D_GROUPS(D_ROWS())} rowKey={r => r.name} />);
+  expect(document.querySelector('.ui-table__disclose')).toBeNull();
+});

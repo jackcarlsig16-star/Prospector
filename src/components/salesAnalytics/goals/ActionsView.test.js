@@ -250,9 +250,54 @@ test('Viewer: the Team list with to-dos, Focus 5 and flags only, read-only - no 
   expect(screen.queryByRole('group', { name: /^Actions for/ })).toBeNull();
   const table = screen.getByRole('table', { name: 'Actions' });
   expect(within(table).getAllByRole('columnheader')).toHaveLength(7); // no Actions column at all for a Viewer
-  const buttons = within(table).getAllByRole('button').filter(b => !b.classList.contains('ui-table__sort') && !b.classList.contains('ui-table__toggle'));
+  const buttons = within(table).getAllByRole('button').filter(b => !['ui-table__sort', 'ui-table__toggle', 'ui-table__disclose'].some(c => b.classList.contains(c)));
   expect(buttons.map(b => b.textContent)).toEqual(['Old Mill Union']);
+  expect(table.querySelectorAll('.ui-table__disclose')).toHaveLength(4); // the read-only detail is a Viewer's too
   expect(within(table).queryByRole('combobox')).toBeNull();
   expect(screen.getByLabelText('Kind').querySelectorAll('option')).toHaveLength(4);
   expect(screen.queryByRole('button', { name: 'Plan this week' })).toBeNull();
+});
+
+// FIX actions-row-detail-v1 - the row detail, one per kind.
+test('model: where each kind came from, the company line and the dates, in words', () => {
+  const { actionSource, companyLine, datesLine } = require('./actionsModel');
+  expect(actionSource(item('signal', 'a', { meta: { source: 'scout', score: 82, who: 'Head of People' } }))).toBe('Signal Scout · score 82 · Head of People');
+  expect(actionSource(item('signal', 'b', { meta: { source: 'web_visit' } }))).toBe('Website visit');
+  expect(actionSource(item('tidy', 'c', { meta: { rule: 'No touch in 14 days after a site visit' } }))).toBe('Tidy rule: No touch in 14 days after a site visit');
+  expect(actionSource(item('todo', 'd', { meta: { from_note: true, note_date: '2026-10-14' } }))).toBe('From call notes Oct 14');
+  expect(actionSource(item('todo', 'e', { meta: { category: 'Signals' } }))).toBe('To-do · Signals');
+  expect(actionSource(item('waiting', 'f', { due_date: '2026-10-15', late_days: 6, meta: { waiting_on: 'Pat' } }))).toBe('Pat owes it · due Oct 15 · 6 days late');
+  expect(actionSource(item('flag', 'g', { meta: { flagged_by_name: 'Cyrus', flag_note: 'opened 3x' } }))).toBe('Flagged by Cyrus · “opened 3x”');
+  expect(actionSource(item('focus', 'h', { why: 'Pipeline is thin', meta: { plan_rank: 2 } }))).toBe('Focus 5 #2 · Pipeline is thin');
+  expect(companyLine({ type: 'partner', name: 'Lakeshore Mutual', stage_label: 'Replied', priority: 1, owner: 'Jack', last_touch_at: '2026-10-09T15:00:00Z' })).toBe('Lakeshore Mutual · Replied · P1 · Jack · last touch Oct 9');
+  expect(companyLine({ type: 'employer', name: 'Old Mill Union', priority: null })).toBe('Old Mill Union · no touch yet');
+  expect(companyLine({ type: 'visitor', name: 'Acme Widgets', stage_label: 'Website visit' })).toBe('Acme Widgets · Website visit');
+  // 03:00 UTC on the 21st is the 20th in LA.
+  expect(datesLine(item('todo', 'i', { created_at: '2026-10-21T03:00:00Z', due_date: '2026-10-23' }), 'Jack')).toBe('Added Oct 20 · due Oct 23 · owner Jack');
+  expect(datesLine(item('signal', 'j'), null)).toBe('Added Oct 20 · no due date · owner Team');
+});
+
+test('Member: the disclosure opens the full row under it; the text cell toggles too; row buttons do not; Open company opens the window', async () => {
+  setup();
+  await screen.findByText('Waiting on Pat: the MSA');
+  const btn = screen.getByRole('button', { name: 'Show details for Waiting on Pat: the MSA' });
+  fireEvent.click(btn);
+  const panel = document.getElementById(btn.getAttribute('aria-controls'));
+  expect(within(panel).getByText('Where it came from').nextSibling).toHaveTextContent('They owe it · due Oct 15 · 6 days late');
+  expect(within(panel).getByText('Company').nextSibling).toHaveTextContent('Northwind Benefits · no touch yet');
+  expect(within(panel).getByText('Dates').nextSibling).toHaveTextContent('Added Oct 20 · due Oct 15 · owner Team');
+  expect(panel.textContent).not.toMatch(/@/);
+  expect(within(panel).queryAllByRole('button').map(b => b.textContent)).toEqual(['Open company →']);
+  fireEvent.click(screen.getByText('Follow up the benefits lead'));
+  expect(document.querySelectorAll('[data-action-detail]')).toHaveLength(1);
+  expect(screen.getByText('Flagged by a teammate')).toBeInTheDocument();
+  fireEvent.keyDown(screen.getByRole('button', { name: /Hide details for Follow up the benefits lead/ }), { key: 'Escape' });
+  expect(document.querySelectorAll('[data-action-detail]')).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Show details for Follow up Lakeshore Mutual' }));
+  expect(screen.getByText('Tidy rule: a housekeeping check')).toBeInTheDocument();
+  fireEvent.change(screen.getByRole('combobox', { name: 'Snooze Call back' }), { target: { value: '' } });
+  fireEvent.click(screen.getByRole('group', { name: 'Actions for Call back' }));
+  expect(document.querySelector('[data-action-detail]').closest('[data-detail]')).toHaveAttribute('data-detail', 'tidy-g1');
+  fireEvent.click(screen.getByRole('button', { name: 'Open company →' }));
+  expect(goalsApi.pipelineBoard).toHaveBeenCalledWith('b1', true);
 });

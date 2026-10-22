@@ -1,5 +1,5 @@
 import { normName } from './intakeMatch.js';
-import { isStalePartner, daysSinceTouch, PIPELINE_STATUSES } from '../../src/constants/partnerPipeline.js';
+import { isStalePartner, daysSinceTouch, PIPELINE_STATUSES, STALE_DAYS } from '../../src/constants/partnerPipeline.js';
 import { TEAM_LABEL } from '../../src/constants/ownership.js';
 import { KIND_LABEL, KINDS } from '../../src/constants/tidy.js';
 import { signalText } from './interestSignals.js';
@@ -128,6 +128,20 @@ export function interestFollowUp({ interest = [], todos }) {
     .filter(i => !handled.has(i.contact_id))
     .map(i => ({ kind: 'interest_follow_up', ref_type: i.ref_type, ref_id: i.ref_id, ref_id2: i.signal.id, text: `Follow up with ${i.name || 'them'} — ${signalText(i.signal)}`, reason: `${i.name || 'They'} ${signalText(i.signal)} on ${i.signal.at.slice(0, 10)}` }));
 }
+
+// FIX actions-row-detail-v1 - each rule in plain words, for the Actions row detail.
+export const RULE_TEXT = {
+  research_or_drop: `Researching for ${RESEARCH_DAYS}+ days with no research notes`,
+  follow_up: `Sent, then no touch in ${STALE_DAYS} days and no open to-do`,
+  set_a_date: `An open to-do with no due date after ${NO_DATE_DAYS} days`,
+  duplicate: 'Two partners share a name or a website domain',
+  reply_task: 'Replied or meeting set, with no open to-do',
+  check_co_owner: `Touched in the last ${TOUCH_WINDOW_DAYS} days while another team owns it`,
+  flag_cold: `A flag still open after ${FLAG_DAYS} days`,
+  nudge: `Waiting on someone ${WAITING_LATE_DAYS}+ days past the due date`,
+  visited_no_touch: `No touch in ${VISIT_NO_TOUCH_DAYS} days after a site visit`,
+  interest_follow_up: 'A linked person replied, clicked or opened twice in the last 14 days',
+};
 
 export const RULES = [researchOrDrop, followUp, setADate, duplicates, replyTask, checkCoOwner, flagCold, waitingOverdue, visitedNoTouch, interestFollowUp];
 export const runRules = ctx => RULES.flatMap(rule => rule(ctx));

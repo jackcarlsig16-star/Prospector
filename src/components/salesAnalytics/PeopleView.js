@@ -5,6 +5,7 @@ import { SEMANTIC } from './palette';
 import { fetchLive, FLAGS_CHANGED } from './huddleApi';
 import { numStyle, ErrorNote } from './goals/goalsUi';
 import DataTable from '../../ui/DataTable';
+import DetailList from '../../ui/DetailList';
 import FilterSelect from '../../ui/FilterSelect';
 import Button from '../../ui/Button';
 import Tag from '../../ui/Tag';
@@ -101,7 +102,7 @@ export default function PeopleView({ businessId, myUserId, ownerColor, ownerLabe
   };
 
   const columns = [
-    { id: 'person', label: 'Person', width: 150, sticky: true, sortValue: r => r.name, render: nameCell, title: r => r.name },
+    { id: 'person', label: 'Person', width: 150, sticky: true, detail: true, sortValue: r => r.name, render: nameCell, title: r => r.name },
     { id: 'title', label: 'Title', width: 150, sortValue: r => r.title, render: r => (r.title ? <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{r.title}</span> : <Dim />), title: r => r.title },
     { id: 'company', label: 'Company', width: 170, sortValue: r => r.company, render: companyCell, title: r => r.company },
     { id: 'activity', label: 'Last activity', width: 170, sortValue: r => r.last_activity_at, render: activityCell, title: r => `${r.insight || ''}${r.last_activity_at ? ` · ${fullWhen(r.last_activity_at)}` : ''}` },
@@ -116,6 +117,18 @@ export default function PeopleView({ businessId, myUserId, ownerColor, ownerLabe
   const sortLabel = sort && columns.find(c => c.id === sort.id)?.label;
   const groups = [{ id: 'people', header: <>{sort ? `Sorted by ${sortLabel}` : 'Newest activity first'} <span className="ui-table__count">{view.rows.length}</span></>, rows: view.rows, emptyText: 'No people match these filters.' }];
   const rowStyle = r => (r.closed ? { '--ui-row-tint': `color-mix(in srgb, ${SA.track} 40%, transparent)` } : undefined);
+
+  // FIX actions-row-detail-v1: the full text of every cell the row cuts off, read-only. Never an email or phone.
+  const renderDetail = r => (
+    <DetailList data-person-detail rows={[
+      ['Person', displayName(r)],
+      ['Title', r.title],
+      ['Company', r.company && <span className="ui-detail-list__actions"><span>{r.company}</span><button type="button" className="ui-link" onClick={() => onOpenCompany(r)}>Open company →</button></span>],
+      ['Last activity', r.last_activity_kind && [KIND[r.last_activity_kind][0], r.insight, fullWhen(r.last_activity_at)].filter(Boolean).join(' · ')],
+      ['Sequence', r.sequence && `${r.sequence.name || 'Sequence'}${r.step != null ? ` · step ${r.step}` : ''}`],
+      ['Flag', r.flag && `Flagged to ${r.flag.owner_name || 'a teammate'}`],
+    ]} />
+  );
 
   const compactRow = r => (
     <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -157,7 +170,7 @@ export default function PeopleView({ businessId, myUserId, ownerColor, ownerLabe
       {data && (
         <div className="ui-theme-dark">
           <DataTable label="Pipeline people" columns={columns} groups={groups} rowKey={rowKey} rowStyle={rowStyle} sort={sort} onSort={onSort}
-            dense pinUnder="[data-workspace-header]" compact={phone} renderCompact={compactRow} emptyText="No people match these filters." />
+            dense pinUnder="[data-workspace-header]" compact={phone} renderCompact={compactRow} renderDetail={renderDetail} emptyText="No people match these filters." />
         </div>
       )}
       {data && view.rows.length > 0 && <span style={{ fontSize: 12, color: SA.faint }}>Times are Pacific · a reply's time is when the sync first saw it (Apollo gives no reply time).</span>}

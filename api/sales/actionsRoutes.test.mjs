@@ -74,26 +74,39 @@ test('buildActions: six kinds, company + priority resolved, ranked overdue -> P1
   assert.equal(by['tidy-sug-nudge-dup'], undefined, 'a Tidy nudge for a waiting row already on the list is dropped');
   assert.equal(by['waiting-wait-fine'], undefined, 'a waiting row that is not overdue is not an action yet');
   for (const k of ['todo-todo-done', 'todo-todo-steps-done', 'todo-todo-dropped', 'signal-sig-old', 'focus-typed']) assert.equal(by[k], undefined, `${k} is out`);
-  assert.deepEqual(by['signal-sig-web'].company, { type: 'visitor', id: 'acme widgets', name: 'Acme Widgets', priority: null });
+  assert.deepEqual(by['signal-sig-web'].company, { type: 'visitor', id: 'acme widgets', name: 'Acme Widgets', priority: null, stage_label: 'Website visit' });
   assert.deepEqual(by['signal-sig-hot'].company, { type: null, id: null, name: 'Hot Co', priority: null });
-  assert.deepEqual(by['signal-sig-scout'].company, { type: 'target', id: T.zeta, name: 'Zeta Labs', priority: null });
+  assert.deepEqual(by['signal-sig-scout'].company, { type: 'target', id: T.zeta, name: 'Zeta Labs', priority: null, stage_label: null, owner: null, last_touch_at: null });
   assert.equal(by['signal-sig-scout'].text, 'Reach out: Zeta Labs — Head of People');
-  assert.deepEqual(by['todo-todo-today'].company, { type: 'employer', id: O.mill, name: 'Old Mill Union', priority: 3 });
+  assert.deepEqual(by['todo-todo-today'].company, { type: 'employer', id: O.mill, name: 'Old Mill Union', priority: 3, stage_label: null, owner: null, last_touch_at: null });
   assert.equal(by['flag-flag-1'].why, 'Flagged by Cyrus · “opened 3x”');
   assert.deepEqual([by['waiting-wait-late'].late_days, by['waiting-wait-late'].why, by['waiting-wait-late'].text], [6, '6 d late', 'Waiting on Pat: the signed MSA']);
   assert.equal(by['todo-todo-today'].why, 'Signals');
   assert.equal(by['tidy-sug-date'].company, null);
   // Every text/why is free of "@" (L1 is the data's job, but the list never invents one).
   assert.ok(items.every(i => !/@/.test(`${i.text} ${i.why || ''}`)));
+  // FIX actions-row-detail-v1: the row detail's source facts ride on the same row.
+  assert.equal(by['tidy-sug-visited'].meta.rule, 'No touch in 14 days after a site visit');
+  assert.deepEqual([by['flag-flag-1'].meta.flagged_by_name, by['flag-flag-1'].meta.flag_note], ['Cyrus', 'opened 3x']);
+  assert.deepEqual([by['todo-todo-today'].meta.from_note, by['todo-todo-today'].meta.note_date], [false, null]);
   // rankActions is stable for ties and keeps blanks last within a priority.
   const ranked = rankActions([{ key: 'b', overdue: false, priority: 2, due_date: null, created_at: '1' }, { key: 'a', overdue: false, priority: 2, due_date: '2026-10-22', created_at: '2' }, { key: 'c', overdue: true, priority: 4, due_date: '2026-10-01', created_at: '3' }]);
   assert.deepEqual(ranked.map(r => r.key), ['c', 'a', 'b']);
 });
 
+test('buildActions: a call-note to-do carries the note date; a company carries stage, owner and last touch', () => {
+  const co = { ...companies, partner: new Map([[P.lake, { name: 'Lakeshore Mutual', priority: 1, stage_label: 'Replied', owner: 'Jack', last_touch_at: '2026-10-09T15:00:00Z' }]]) };
+  const todos = [row('todo', { id: 'todo-note', text: 'Send the pricing sheet', due_date: '2026-10-23', source_note_id: 'note-1', link_type: 'partner', link_id: P.lake })];
+  const [it] = buildActions({ todos, notes: new Map([['note-1', '2026-10-14']]), companies: co, members, today: TODAY });
+  assert.deepEqual([it.why, it.meta.from_note, it.meta.note_date], ['From call notes', true, '2026-10-14']);
+  assert.deepEqual(it.company, { type: 'partner', id: P.lake, name: 'Lakeshore Mutual', priority: 1, stage_label: 'Replied', owner: 'Jack', last_touch_at: '2026-10-09T15:00:00Z' });
+});
+
 const seed = () => fakeSupabase({
   business_members: [{ business_id: B, user_id: JACK, name: 'Jack Zz' }, { business_id: B, user_id: CY, name: 'Cyrus Yy' }],
-  sales_goals: [{ id: P.lake, business_id: B, goal_type: 'partnership', name: 'Lakeshore Mutual', priority: 1, archived_at: null, pipeline_status: 'replied' }],
-  sales_opportunities: [{ id: O.mill, business_id: B, organization: 'Old Mill Union', priority: null, archived_at: null, notes: '(10/01) first line' }],
+  sales_goals: [{ id: P.lake, business_id: B, goal_type: 'partnership', name: 'Lakeshore Mutual', priority: 1, archived_at: null, pipeline_status: 'replied', owner_user_id: JACK, last_touch_at: '2026-10-09T15:00:00Z' }],
+  sales_opportunities: [{ id: O.mill, business_id: B, organization: 'Old Mill Union', priority: null, archived_at: null, notes: '(10/01) first line', stage: 'prospect', owner_team: 'upside' }],
+  sales_opportunity_events: [{ id: randomUUID(), business_id: B, opportunity_id: O.mill, event_type: 'stage_changed', changed_at: '2026-10-12T10:00:00Z' }],
   sales_targets: [],
   sales_week_goals: [
     row('todo', { id: 'todo-today', text: 'Call back', due_date: TODAY, link_type: 'partner', link_id: P.lake }),
@@ -121,6 +134,10 @@ test('listActions reads every source once and resolves companies from the refere
   assert.equal(items.find(i => i.key === 'todo-todo-today').company.name, 'Lakeshore Mutual');
   assert.equal(items.find(i => i.key === 'waiting-wait-late').company.name, 'Old Mill Union');
   assert.equal(items.find(i => i.kind === 'flag').why, 'Flagged by Cyrus');
+  const lake = items.find(i => i.key === 'todo-todo-today').company;
+  assert.deepEqual([lake.stage_label, lake.owner, lake.last_touch_at], ['Replied', 'Jack', '2026-10-09T15:00:00Z']);
+  const mill = items.find(i => i.key === 'waiting-wait-late').company;
+  assert.deepEqual([mill.owner, mill.last_touch_at], ['Upside', '2026-10-12T10:00:00Z'], 'employer owner falls back to the team; last touch = the latest stage event');
 });
 
 test('signal Undo: a dismissed signal is new again; an accepted one loses its to-do and new target / partner note / employer line', async () => {

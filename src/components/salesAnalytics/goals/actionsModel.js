@@ -1,4 +1,5 @@
 import { md } from '../tasks/TaskRow';
+import { laDay } from '../huddleView';
 
 // sales-ia-v2 A1 - Actions: the pure pieces over the items GET goals/actions
 // returns (already ranked overdue -> P1..P4 -> due). Filters: Mine | Team
@@ -42,3 +43,25 @@ export const writeSort = s => { try { if (s) localStorage.setItem(SORT_KEY, JSON
 // Snooze targets for a to-do (REVISABLE): a new due date from today.
 export const SNOOZE_OPTIONS = [['1', 'Tomorrow'], ['3', '3 days'], ['7', 'Next week']];
 export const snoozeTo = (today, days) => new Date(Date.parse(`${today}T12:00:00Z`) + Number(days) * 864e5).toISOString().slice(0, 10);
+
+// FIX actions-row-detail-v1 - the row detail: where the row came from, in words, and its company line.
+// Timestamps read as the LA day (the team's day), plain dates as given.
+const SIGNAL_SOURCE = { scout: 'Signal Scout', web_visit: 'Website visit' };
+const day = d => (!d ? null : String(d).length > 10 ? md(laDay(d)) : md(d));
+
+export function actionSource(it) {
+  const m = it.meta || {};
+  if (it.kind === 'signal') return [SIGNAL_SOURCE[m.source] || 'Signal', m.score != null && `score ${m.score}`, m.who].filter(Boolean).join(' · ');
+  if (it.kind === 'tidy') return `Tidy rule: ${m.rule || 'a housekeeping check'}`;
+  if (it.kind === 'todo') return m.from_note ? `From call notes${m.note_date ? ` ${day(m.note_date)}` : ''}` : m.category ? `To-do · ${m.category}` : 'To-do added by hand';
+  if (it.kind === 'waiting') return `${m.waiting_on || 'They'} owe${m.waiting_on ? 's' : ''} it · due ${day(it.due_date)} · ${it.late_days} day${it.late_days === 1 ? '' : 's'} late`;
+  if (it.kind === 'flag') return `Flagged by ${m.flagged_by_name || 'a teammate'}${m.flag_note ? ` · “${m.flag_note}”` : ''}`;
+  return `Focus 5${m.plan_rank ? ` #${m.plan_rank}` : ''}${it.why && it.why !== 'Focus 5' ? ` · ${it.why}` : ''}`;
+}
+
+export function companyLine(c) {
+  if (!c) return null;
+  return [c.name, c.stage_label, c.priority && `P${c.priority}`, c.owner, c.type && c.type !== 'visitor' ? (c.last_touch_at ? `last touch ${day(c.last_touch_at)}` : 'no touch yet') : null].filter(Boolean).join(' · ');
+}
+
+export const datesLine = (it, ownerName) => [`Added ${day(it.created_at) || '—'}`, it.due_date ? `due ${day(it.due_date)}` : 'no due date', ownerName ? `owner ${ownerName}` : 'owner Team'].join(' · ');
