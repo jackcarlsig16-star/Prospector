@@ -14,6 +14,8 @@ import DataTable from '../../../ui/DataTable';
 import EditableCell from '../../../ui/EditableCell';
 import FilterSelect from '../../../ui/FilterSelect';
 import Button from '../../../ui/Button';
+import Tag from '../../../ui/Tag';
+import { priorityColor } from '../palette';
 import { ToggleChip } from '../../../ui/Chip';
 import { KIT_EDITABLE } from '../../../ui/tokens';
 import useMediaQuery from '../../../utils/useMediaQuery';
@@ -228,9 +230,11 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
     if (!PRIORITY_TYPES.includes(r.type)) return <Dim />;
     const label = prioritySetLabel(r);
     const value = priorityValue(r);
-    if (!canEdit) return value ? <span title={label} style={numStyle}>{value === NOT_A_FIT ? 'Not a fit' : `P${value}`}</span> : <Dim />;
+    // FIX priority-colors-v1: the level's hue on the chip (Viewers) and as a dot beside the dropdown (Members).
+    if (!canEdit) return value ? <Tag color={value === NOT_A_FIT ? SA.borderStrong : priorityColor(value)} title={label}><span style={numStyle}>{value === NOT_A_FIT ? 'Not a fit' : `P${value}`}</span></Tag> : <Dim />;
     return (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%' }} title={label || undefined}>
+        {value && value !== NOT_A_FIT && <span className="ui-tag__dot" data-priority-dot={`P${value}`} aria-hidden="true" style={{ '--tag-color': priorityColor(value) }} />}
         <select aria-label={`Priority for ${r.name}`} data-priority={r.type} value={value} disabled={busyId === rowKey(r)} onChange={e => changePriority(r, e.target.value)}
           style={{ ...selectStyle, height: 26, fontSize: 12, padding: '0 4px', color: value ? SA.text : SA.muted }}>
           <option value="">—</option>

@@ -20,6 +20,11 @@ const lum = hex => {
   return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
 };
 const contrast = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+const rgb = hex => hex.replace('#', '').match(/../g).map(h => parseInt(h, 16));
+const hue = hex => { const [r, g, b] = rgb(hex).map(v => v / 255); const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min; if (!d) return 0; let h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4; h = Math.round(h * 60); return h < 0 ? h + 360 : h; };
+const saturation = hex => { const [r, g, b] = rgb(hex).map(v => v / 255); const max = Math.max(r, g, b), min = Math.min(r, g, b); return max ? (max - min) / max : 0; };
+// color-mix(in srgb, c p%, surface) as the browser paints a 22% wash.
+const mix = (c, s, p) => '#' + rgb(c).map((v, i) => Math.round(v * p + rgb(s)[i] * (1 - p)).toString(16).padStart(2, '0')).join('');
 
 describe.each([['dark', KIT_DARK], ['light', KIT_LIGHT]])('%s kit colors', (_, k) => {
   test.each([['surface'], ['surface2'], ['ground']])('text on %s >= 4.5 (text, muted, accent, dangerInk)', s => {
@@ -37,10 +42,17 @@ describe.each([['dark', KIT_DARK], ['light', KIT_LIGHT]])('%s kit colors', (_, k
     expect(contrast(k.divider, k.surface)).toBeLessThan(3);
   });
   test('text on accent is the ground colour, never white', () => expect(k.onAccent).toBe(k.ground));
-  test('P1-P4 >= 3 on surface, each step >= 1.3 apart, text on a 22% wash >= 4.5', () => {
+  // FIX priority-colors-v1: four hue families (orange, amber, teal, slate), not one ramp.
+  test('P1-P4 >= 3 on surface, four distinct hue families, label text >= 4.5 on a 22% wash, none the danger red or the Generate orange', () => {
     const ramp = ['P1', 'P2', 'P3', 'P4'].map(p => k[`prio${p}`]);
     for (const c of ramp) expect([c, contrast(c, k.surface) >= 3]).toEqual([c, true]);
-    for (let i = 1; i < ramp.length; i++) expect([i, contrast(ramp[i], ramp[i - 1]) >= 1.3]).toEqual([i, true]);
+    const hues = ramp.map(hue);
+    expect(hues[0]).toBeGreaterThanOrEqual(15); expect(hues[0]).toBeLessThanOrEqual(35); // orange
+    expect(hues[1]).toBeGreaterThanOrEqual(38); expect(hues[1]).toBeLessThanOrEqual(55); // amber
+    expect(hues[2]).toBeGreaterThanOrEqual(160); expect(hues[2]).toBeLessThanOrEqual(190); // teal
+    expect(saturation(ramp[3])).toBeLessThan(0.3); // slate: the grey one
+    for (const c of ramp.slice(0, 3)) expect(saturation(c)).toBeGreaterThan(0.4);
+    for (const c of ramp) { expect(contrast(k.text, mix(c, k.surface, 0.22)) >= 4.5).toBe(true); expect(c.toUpperCase()).not.toBe(k.bad.toUpperCase()); expect(c.toUpperCase()).not.toBe('#FF8A3D'); }
   });
   test('generated ombre tokens', () => { expect(k.generatedFrom).toBe(k.accent); expect(k.generatedTo).toBe('#FF8A3D'); });
 });

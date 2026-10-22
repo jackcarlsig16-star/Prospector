@@ -12,6 +12,7 @@ import { ErrorNote, memberLookup } from './goalsUi';
 import { factsFor } from './companyPanelFacts';
 import { needsRecord } from './companyPanelModel';
 import { Link } from '../../../ui/Button';
+import { priorityColor } from '../palette';
 
 // company-panel-v2 - the one company window for every Pipeline row (partner,
 // employer, target, Apollo-only, visitor). Pinned head: L1 title row (name ·
@@ -67,7 +68,9 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
         {facts.map(([label, value, muted]) => (
           <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
             <span className="ui-group-label">{label}</span>
-            <b title={label} style={{ fontWeight: 500, fontSize: 13, color: muted ? SA.muted : SA.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260 }}>{value}</b>
+            <b title={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500, fontSize: 13, color: muted ? SA.muted : SA.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260 }}>
+              {label === 'Priority' && !muted && !row.not_a_fit && priorityColor(row.priority) && <span className="ui-tag__dot" data-priority-dot aria-hidden="true" style={{ '--tag-color': priorityColor(row.priority) }} />}{value}
+            </b>
           </div>
         ))}
       </div>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { SA } from '../theme';
-import { SEMANTIC } from '../palette';
+import { PRIORITY_COLORS } from '../palette';
 import useMediaQuery from '../../../utils/useMediaQuery';
 import VisitPullBar from '../tasks/VisitPullBar';
 import { linkBtn } from '../tasks/TaskRow';
@@ -14,7 +14,7 @@ import { cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle
 // that table, so this report has no row buttons. Members and Viewers both
 // read and export; only Members edit the skip list.
 // Company data only - no emails, phones or people's names reach this view.
-const PRIORITY_COLOR = { P1: SEMANTIC.problem, P2: SEMANTIC.warning, P3: SA.soft, P4: SA.faint };
+const PRIORITY_COLOR = PRIORITY_COLORS; // FIX priority-colors-v1: the same four hues as every other priority display
 const PRIORITY_WORD = { P1: 'Act today', P2: 'This week', P3: 'Watch', P4: 'Noise' };
 const md = d => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '—');
 const matchText = m => (m ? `${m.label}${m.upside ? ` · ${m.owner_team === 'both' ? 'joint' : 'Upside-owned'}` : ''}${m.record_id ? ` · ${m.record_id}` : ''}` : '—');

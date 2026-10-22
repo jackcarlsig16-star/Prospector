@@ -11,6 +11,7 @@ import { forwardStages, editControls } from './companyPanelFacts';
 import { boardStage } from '../../../constants/pipelineBoard';
 import { TOUCH_STATUSES } from '../../../constants/partnerPipeline';
 import FilterSelect from '../../../ui/FilterSelect';
+import { priorityColor } from '../palette';
 
 // company-panel-v2 L5 - the labelled Edit row: Stage (forward moves only, plus
 // Jump to stage with confirm for the way back), Owner, Team, Priority. Every
@@ -83,7 +84,8 @@ export default function CompanyEditRow({ businessId, row, members, onPatch, onCh
           <FilterSelect label="Team" value={row.owner_team || ''} disabled={b('team')} options={[{ value: '', label: 'None' }, ...OWNER_TEAMS.map(t => ({ value: t, label: TEAM_LABEL[t] }))]} onChange={changeTeam} />
         )}
         {controls.includes('priority') && (
-          <span data-priority={row.type}>
+          <span data-priority={row.type} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {priorityValue(row) && priorityValue(row) !== NOT_A_FIT && <span className="ui-tag__dot" data-priority-dot aria-hidden="true" style={{ '--tag-color': priorityColor(priorityValue(row)) }} />}
             <FilterSelect label="Priority" value={priorityValue(row)} disabled={b('priority')} options={[{ value: '', label: '—' }, ...PRIORITIES.map(p => ({ value: String(p), label: `P${p} · ${PRIORITY_WORD[p]}` })), { value: NOT_A_FIT, label: 'Not a fit' }]} onChange={changePriority} />
           </span>
         )}

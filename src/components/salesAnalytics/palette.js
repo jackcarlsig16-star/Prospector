@@ -97,18 +97,13 @@ export const TREND_THEME_CSS = `
   }
 `;
 
-// sales-ia-v2 D1 - the P1-P4 steps for the "visitors by priority" stack: one
-// hue (the accent blue), brightest = act today, dimmest = noise. The values
-// live with the kit tokens (ui-clarity-v1: every step >= 3:1 on the surface,
-// neighbours apart) so the kit's priority chips and this chart share them.
-const PRIORITY_VALUES = KIT_PRIORITY;
-export const PRIORITY_COLORS = Object.fromEntries(Object.keys(PRIORITY_VALUES).map(k => [k, `var(--sa-prio-${k.toLowerCase()})`]));
-export const PRIORITY_THEME_CSS = `
-  #sales-analytics-root { ${Object.entries(PRIORITY_VALUES).map(([k, [dark]]) => `--sa-prio-${k.toLowerCase()}: ${dark};`).join(' ')} }
-  @media print {
-    #sales-analytics-root { ${Object.entries(PRIORITY_VALUES).map(([k, [, print]]) => `--sa-prio-${k.toLowerCase()}: ${print};`).join(' ')} }
-  }
-`;
+// FIX priority-colors-v1 - P1-P4 each have their own hue (tokens.js KIT_PRIORITY:
+// orange, amber, teal, slate; overdue is SEMANTIC.problem / SA.bad with the word).
+// The vars are defined on the module root + the Tasks drawer by theme.js
+// (SA_THEME_CSS, dark + print), so chips, dots and the Dashboard stack agree.
+export const PRIORITY_COLORS = Object.fromEntries(Object.keys(KIT_PRIORITY).map(k => [k, `var(--sa-prio-${k.toLowerCase()})`]));
+// A row's priority (1-4, '1'-'4' or 'P1'-'P4') -> its var; null for none / Not a fit.
+export const priorityColor = p => PRIORITY_COLORS[typeof p === 'string' && p.startsWith('P') ? p : `P${p}`] || null;
 
 // sales-goals-v1 REV4 - member colors, assigned in workspace join order so
 // a person keeps theirs and no two members share one. The first two are the

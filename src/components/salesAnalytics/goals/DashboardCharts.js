@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SA } from '../theme';
-import { TREND_COLORS, TREND_THEME_CSS, PRIORITY_COLORS, PRIORITY_THEME_CSS } from '../palette';
+import { TREND_COLORS, TREND_THEME_CSS, PRIORITY_COLORS } from '../palette';
 import { ui } from '../../../ui/kitTheme';
 import { ChartCard, StatTile, fmtNum } from '../../../ui/charts/chartKit';
 import BarChart from '../../../ui/charts/BarChart';
@@ -57,7 +57,7 @@ export default function DashboardCharts({ businessId, days, owner, team, lookup 
 
   return (
     <div data-dashboard-charts data-days={data.days} className="ui-theme-dark" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: 12 }}>
-      <style>{TREND_THEME_CSS}{PRIORITY_THEME_CSS}</style>
+      <style>{TREND_THEME_CSS}</style>
       <ChartCard id="chart-pipeline-stage" title="Pipeline by stage" caption={captionFor(`Employers · ${asOf}`, scope)} empty={empty(data.pipeline_by_stage.map(s => ({ value: s.count })), 'employers')}>
         <BarChart label="Pipeline by stage" rows={data.pipeline_by_stage.map(s => ({ id: s.id, label: s.label, value: s.count }))} />
       </ChartCard>

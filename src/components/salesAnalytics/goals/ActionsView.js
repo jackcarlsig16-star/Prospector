@@ -7,7 +7,7 @@ import FilterSelect from '../../../ui/FilterSelect';
 import Segmented from '../../../ui/Segmented';
 import Button from '../../../ui/Button';
 import Tag from '../../../ui/Tag';
-import { ui } from '../../../ui/kitTheme';
+import { priorityColor } from '../palette';
 import PeopleCompanyPanel from '../PeopleCompanyPanel';
 import { goalsApi, TODOS_CHANGED } from './goalsApi';
 import { completeFlag, announceFlagsChanged, FLAGS_CHANGED } from '../huddleApi';
@@ -139,8 +139,8 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
   const nFilters = activeFilterCount(filters);
   const onSort = s => { setSort(s); writeSort(s); };
 
-  // R5: priority is a status chip - overdue red, P1 amber, P2-P4 the kit priority ramp; the word is always on it.
-  const priorityCell = it => <Tag color={it.overdue ? SA.bad : it.priority === 1 ? SA.warn : ui[`prioP${it.priority}`] || SA.borderStrong}><span style={numStyle}>{priorityText(it)}</span></Tag>;
+  // R5: priority is a status chip - overdue red, P1-P4 each their own hue (FIX priority-colors-v1); the word is always on it.
+  const priorityCell = it => <Tag color={it.overdue ? SA.bad : priorityColor(it.priority) || SA.borderStrong}><span style={numStyle}>{priorityText(it)}</span></Tag>;
   const companyCell = it => (!it.company ? <Dim />
     : it.company.type ? <button type="button" className="ui-link ui-link--cell" title={`Open ${it.company.name}`} onClick={() => setCompany({ company: it.company.name, link: { type: it.company.type, id: it.company.id } })}>{it.company.name}</button>
       : <span style={ellipsis} title={`${it.company.name} is not in the Pipeline yet`}>{it.company.name}</span>);
@@ -166,7 +166,7 @@ export default function ActionsView({ businessId, canEdit, meId, members, lookup
     { id: 'open', header: <>{sort ? `Sorted by ${sortLabel}` : 'Overdue first, then P1 → P4, then due'} <span className="ui-table__count">{view.open.length}</span></>, rows: view.open, emptyText: canEdit ? 'Nothing to act on - accept a signal, plan the week or open Pipeline.' : 'Nothing open for the team.' },
     ...(view.done.length ? [{ id: 'done', header: <>{view.done.length} done {showDone ? '▾' : '▸'}</>, rows: view.done, collapsed: !showDone, onToggle: () => setShowDone(o => !o) }] : []),
   ];
-  const rowStyle = it => (it.status === 'done' ? { '--ui-row-tint': `color-mix(in srgb, ${SA.track} 40%, transparent)` } : it.overdue ? { '--ui-row-bar': SA.bad } : it.priority === 1 ? { '--ui-row-bar': SA.warn } : undefined);
+  const rowStyle = it => (it.status === 'done' ? { '--ui-row-tint': `color-mix(in srgb, ${SA.track} 40%, transparent)` } : it.overdue ? { '--ui-row-bar': SA.bad } : it.priority === 1 ? { '--ui-row-bar': priorityColor(1) } : undefined);
 
   const compactRow = it => (
     <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>

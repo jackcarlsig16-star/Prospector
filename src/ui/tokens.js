@@ -233,9 +233,10 @@ export const KIT_SPACE = [4, 8, 12, 16, 24, 32];
 export const KIT_MAX_WIDTH = 1100;
 export const KIT_RADIUS = { card: SA_SHAPE.radiusCard, inner: SA_SHAPE.radiusInner, control: 8, pill: SA_SHAPE.radiusPill };
 
-// ui-clarity-v1 Stage 1 - the P1-P4 priority ramp ([screen, print/light]): every step >= 3:1 on surface and each
-// neighbour >= 1.3:1 apart, so a bar or a chip dot can be told from the next one (labels always present anyway).
-export const KIT_PRIORITY = { P1: ['#D6DEFF', '#1F2F80'], P2: ['#A3B5FF', '#3A55C8'], P3: ['#7A8EE8', '#5F74D6'], P4: ['#6378D8', '#7D90E0'] };
+// FIX priority-colors-v1 - one hue per priority level ([screen, print/light]): P1 orange (not the Generate orange
+// #FF8A3D), P2 amber, P3 teal, P4 slate; overdue is the danger red elsewhere. Every value >= 3:1 on its surface and
+// the label text >= 4.5:1 on a 22% wash of it (labels always present anyway - never colour alone). REVISABLE hexes.
+export const KIT_PRIORITY = { P1: ['#FF9F57', '#C2410C'], P2: ['#F2C94C', '#9A6700'], P3: ['#4FD1C5', '#0F766E'], P4: ['#94A3B8', '#4B5563'] };
 const prio = i => Object.fromEntries(Object.entries(KIT_PRIORITY).map(([k, v]) => [`prio${k}`, v[i]]));
 
 export const KIT_DARK = {

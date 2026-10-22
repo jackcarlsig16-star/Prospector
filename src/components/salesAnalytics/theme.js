@@ -13,7 +13,7 @@
 // Chrome's "Background graphics" setting (SPEC requirement) - the browser
 // itself resolves the right value per media context, same as any other
 // CSS cascade.
-import { SA_DARK_VALUES, SA_PRINT_VALUES } from '../../ui/tokens';
+import { SA_DARK_VALUES, SA_PRINT_VALUES, KIT_PRIORITY } from '../../ui/tokens';
 
 export { SA_BAD_TINT, SA_BAD_BG, SA_BAD_BORDER, saSans, saMono, SA_TYPE, SA_SHAPE } from '../../ui/tokens';
 
@@ -36,10 +36,13 @@ export const SA_THEME_ROOT_ID = 'sales-analytics-root';
 // drawer lives at the app shell, on every workspace page).
 export const SA_THEME_CLASS = 'sa-theme';
 // ui-clarity-v1 H1: placeholder text reads at the muted token (the UA default grey sits under 4.5:1 on the inset).
+// FIX priority-colors-v1: the P1-P4 hues (--sa-prio-p1..p4, palette.js PRIORITY_COLORS) ride on the same root and
+// drawer class, dark on screen and the print pair under print, so every priority chip, dot and chart stack agrees.
+const prioBlock = i => Object.entries(KIT_PRIORITY).map(([k, v]) => `--sa-prio-${k.toLowerCase()}: ${v[i]};`).join(' ');
 export const SA_THEME_CSS = `
-  #${SA_THEME_ROOT_ID}, .${SA_THEME_CLASS} { ${cssVarBlock(SA_DARK_VALUES)} }
+  #${SA_THEME_ROOT_ID}, .${SA_THEME_CLASS} { ${cssVarBlock(SA_DARK_VALUES)} ${prioBlock(0)} }
   #${SA_THEME_ROOT_ID} ::placeholder, .${SA_THEME_CLASS} ::placeholder { color: var(--sa-muted); opacity: 1; }
   @media print {
-    #${SA_THEME_ROOT_ID} { ${cssVarBlock(SA_PRINT_VALUES)} }
+    #${SA_THEME_ROOT_ID} { ${cssVarBlock(SA_PRINT_VALUES)} ${prioBlock(1)} }
   }
 `;

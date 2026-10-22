@@ -6,6 +6,7 @@ import SidePanel from './SidePanel';
 import CopyForClaude from './CopyForClaude';
 import { savePayload } from './opportunityPayload';
 import { CHANNELS, CHANNEL_LABEL, PRIORITIES, PRIORITY_WORD } from '../../constants/salesChannels';
+import { priorityColor } from './palette';
 
 const TEXT_FIELDS = [
   ['organization', 'Organization'], ['cohort', 'Cohort'], ['owner', 'Owner'],
@@ -104,10 +105,13 @@ export default function OpportunityPanel({ businessId, opportunity, saving, erro
         </Field>
         <Field label="Priority">
           {readOnly ? text(draft.priority ? `P${draft.priority}` : '') : (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            {draft.priority && <span className="ui-tag__dot" data-priority-dot aria-hidden="true" style={{ '--tag-color': priorityColor(draft.priority) }} />}
             <select style={fieldStyle} value={draft.priority ?? ''} onChange={e => set('priority', e.target.value)}>
               <option value="">—</option>
               {PRIORITIES.map(p => <option key={p} value={p}>P{p} · {PRIORITY_WORD[p]}</option>)}
             </select>
+            </span>
           )}
         </Field>
       </div>
