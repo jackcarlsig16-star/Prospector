@@ -275,6 +275,18 @@ test('copy bundle (employer + target): scrubbed, source note named, 404 / 400 on
   assert.match(e.body.markdown, /- Notes: Crystal: \[email removed\]/);
   assert.match(e.body.markdown, /Stage: contacted · Type: employer/);
   assert.equal(e.body.markdown.includes('@'), false);
+  // FIX loop-quickfixes Q2: the employer's open to-dos and waiting-on rows, same format as a partner's; still scrubbed.
+  assert.match(e.body.markdown, /## Waiting on them\n- nothing\n\n## Open to-dos\n- none/);
+  const opp = s.db.sales_opportunities[0].id;
+  const row = extra => ({ id: randomUUID(), business_id: B, week_start: WEEK, status: 'open', owner_user_id: null, link_type: 'opportunity', link_id: opp, ...extra });
+  s.db.sales_week_goals.push(row({ kind: 'todo', text: 'Send the pilot terms to crystal@solidcore.example', due_date: '2026-10-20' }),
+    row({ kind: 'waiting', text: 'the eligibility file', waiting_on: 'Crystal', due_date: '2026-10-18' }),
+    row({ kind: 'todo', text: 'Already done', status: 'done' }));
+  const e2 = await copyBundle(s, { businessId: B, type: 'employer', id: opp });
+  assert.equal(e2.status, 200, JSON.stringify(e2.body));
+  assert.match(e2.body.markdown, /## Waiting on them\n- Crystal · the eligibility file · due Oct 18, 2026\n\n## Open to-dos\n- Send the pilot terms to \[email removed\] · due Oct 20, 2026\n/);
+  assert.equal(e2.body.markdown.includes('Already done'), false);
+  assert.equal(hasPii(e2.body.markdown), false);
   const t = await copyBundle(s, { businessId: B, type: 'target', id: T.fundrise });
   assert.equal(t.status, 200, JSON.stringify(t.body));
   assert.match(t.body.markdown, /^# Fundrise — target \(partner\)\n/);

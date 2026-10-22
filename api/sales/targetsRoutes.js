@@ -288,6 +288,12 @@ async function openTodos(supabase, businessId, linkType, linkId, names) {
   return rows.length ? rows.map(r => `- ${t(r.text, 300)}${first(names, r.owner_user_id) ? ` · ${first(names, r.owner_user_id)}` : ''}${r.due_date ? ` · due ${onDay(r.due_date)}` : ''}`) : ['- none'];
 }
 
+async function openWaiting(supabase, businessId, linkType, linkId) {
+  const rows = must(await supabase.from('sales_week_goals').select('text, waiting_on, due_date')
+    .eq('business_id', businessId).eq('kind', 'waiting').eq('link_type', linkType).eq('link_id', linkId).eq('status', 'open').order('due_date').order('id').limit(50));
+  return rows.length ? rows.map(w => `- ${[t(w.waiting_on, 120), t(w.text, 300), w.due_date ? `due ${onDay(w.due_date)}` : null].filter(Boolean).join(' · ')}`) : ['- nothing'];
+}
+
 async function partnerBundle(supabase, businessId, id, names) {
   const row = must(await supabase.from('sales_goals').select('*').eq('business_id', businessId).eq('id', id).eq('goal_type', 'partnership').maybeSingle());
   if (!row) throw err(404, 'partner not found');
@@ -296,7 +302,7 @@ async function partnerBundle(supabase, businessId, id, names) {
     supabase.from('sales_partner_events').select('at, touch_type, contact_names, source, by_user, meta').eq('business_id', businessId).eq('goal_id', id).eq('event', 'touch').order('at', { ascending: false }).limit(TOUCHES_MAX),
     openTodos(supabase, businessId, 'partner', id, names),
     supabase.from('sales_partner_events').select('at, note, meta').eq('business_id', businessId).eq('goal_id', id).eq('event', 'note').order('at', { ascending: false }).limit(200),
-    supabase.from('sales_week_goals').select('text, waiting_on, due_date').eq('business_id', businessId).eq('kind', 'waiting').eq('link_type', 'partner').eq('link_id', id).eq('status', 'open').order('due_date').order('id').limit(50),
+    openWaiting(supabase, businessId, 'partner', id),
   ]);
   const status = row.pipeline_status || 'not_started';
   const head = [
@@ -308,7 +314,6 @@ async function partnerBundle(supabase, businessId, id, names) {
   ].filter(Boolean);
   // call-notes-targets-v1 REV5 - decisions are note events with meta.kind; terms are the "(M/D) Terms:" lines in notes.
   const decisions = must(notes).filter(e => e.meta?.kind === 'decision').slice(0, DECISIONS_MAX).map(e => `- ${when(e.at)} · ${t(e.note, 400)}`);
-  const waitingLines = must(waiting).map(w => `- ${[t(w.waiting_on, 120), t(w.text, 300), w.due_date ? `due ${onDay(w.due_date)}` : null].filter(Boolean).join(' · ')}`);
   const terms = (row.notes || '').split('\n').filter(l => TERMS_LINE.test(l)).map(l => `- ${t(l, 400)}`);
   const intel = fields([['Champion', row.champion], ['Angle', row.angle], ['Watch-outs', row.watch_outs], ["Don't say", row.do_not_say], ['Target titles', row.target_titles], ['Known contacts', row.known_contacts], ['Sequence to use', row.sequence_to_use]]);
   const peopleLines = (must(people)).map(p => `- ${[t(p.name, 120), p.title ? t(p.title, 160) : null, p.role_in_notes].filter(Boolean).join(' · ')}`);
@@ -316,15 +321,19 @@ async function partnerBundle(supabase, businessId, id, names) {
   return [...head, '', '## Intel', ...intel, '', `## People (${peopleLines.length})`, ...(peopleLines.length ? peopleLines : ['- none on file']),
     '', `## Last touches (${touchLines.length})`, ...(touchLines.length ? touchLines : ['- none recorded']),
     '', '## Decisions', ...(decisions.length ? decisions : ['- none recorded']),
-    '', '## Waiting on them', ...(waitingLines.length ? waitingLines : ['- nothing']),
+    '', '## Waiting on them', ...waiting,
     '', '## Terms', ...(terms.length ? terms : ['- none recorded']), '', '## Open to-dos', ...todos];
 }
 
 async function employerBundle(supabase, businessId, id, names) {
   const row = must(await supabase.from('sales_opportunities').select('*').eq('business_id', businessId).eq('id', id).maybeSingle());
   if (!row) throw err(404, 'opportunity not found');
-  const events = must(await supabase.from('sales_opportunity_events').select('event_type, from_stage, to_stage, changed_at')
-    .eq('business_id', businessId).eq('opportunity_id', id).order('changed_at', { ascending: false }).limit(TOUCHES_MAX));
+  const [events, todos, waiting] = await Promise.all([
+    supabase.from('sales_opportunity_events').select('event_type, from_stage, to_stage, changed_at')
+      .eq('business_id', businessId).eq('opportunity_id', id).order('changed_at', { ascending: false }).limit(TOUCHES_MAX).then(must),
+    openTodos(supabase, businessId, 'opportunity', id, names),
+    openWaiting(supabase, businessId, 'opportunity', id),
+  ]);
   const head = [
     `# ${t(row.organization, 160)} — employer`,
     [ownershipLine(row), row.owner ? `Owner: ${t(row.owner, 80)}` : null].filter(Boolean).join(' · '),
@@ -334,7 +343,7 @@ async function employerBundle(supabase, businessId, id, names) {
   const intel = fields([['Champion', row.champion], ['Decision makers', row.decision_makers], ['Objections', row.objections], ['Needed to advance', row.needed_to_advance], ['Competitors', row.competitors], ['Notes', row.notes]]);
   const history = events.map(e => `- ${when(e.changed_at)} · ${e.event_type === 'stage_change' ? `${e.from_stage} → ${e.to_stage}` : e.event_type}`);
   return [...head, '', '## Intel', ...intel, '', `## History (${history.length})`, ...(history.length ? history : ['- none recorded']),
-    '', '## Open to-dos', '- to-dos cannot link to an employer yet'];
+    '', '## Waiting on them', ...waiting, '', '## Open to-dos', ...todos];
 }
 
 async function targetBundle(supabase, businessId, id, names) {
