@@ -158,10 +158,11 @@ export async function runVisitPull(supabase, { businessId, userId, trigger = 'ma
   } catch (e) {
     // A search that spent before failing still gets its delta recorded.
     if (before != null && after == null) {
-      try { after = await balance(ctx); credits = before - after; await recordSpend(); } catch { /* balance unreadable - nothing to record */ }
+      try { after = await balance(ctx); credits = before - after; must(await recordSpend()); } catch (spendErr) { console.error('[visits/pull] spend not recorded', cleanText(String(spendErr.message || ''), 200)); }
     }
     const message = cleanText(String(e.message || 'failed'), 200);
-    await finish({ status: 'error', error: message });
+    const closed = await finish({ status: 'error', error: message });
+    if (closed.error) console.error('[visits/pull] could not close the run row', claim.run.id, closed.error.message);
     console.error('[visits/pull]', message);
     return reply(502, { error: `Visitor pull failed: ${message}` });
   }

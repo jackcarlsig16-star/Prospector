@@ -192,6 +192,19 @@ test('a failed search: 502, run marked error, the spend still measured; the next
   } finally { console.error = orig; restore(); }
 });
 
+test('FIX loop-quickfixes Q5: a failed search whose run row cannot be closed says so in the log (no silent running row)', async () => {
+  const { sb, restore } = setup(visitors({ fail: true, balances: [9910] }));
+  const orig = console.error; const logged = [];
+  console.error = (...a) => logged.push(a.join(' '));
+  const from = sb.from;
+  sb.from = t => (t === 'visit_pull_runs' ? { ...from(t), update: () => ({ eq: () => ({ select: async () => ({ data: null, error: { message: 'write refused' } }) }) }) } : from(t));
+  try {
+    const r = await runVisitPull(sb, { businessId: B, userId: U, trigger: 'pageload', now: NOW });
+    assert.equal(r.status, 502);
+    assert.ok(logged.some(l => /could not close the run row .* write refused/.test(l)), logged.join(' | '));
+  } finally { console.error = orig; restore(); }
+});
+
 test('the allowlist: a mixed_companies call without the visitor filter is refused before any request', async () => {
   const restore = installApolloFixture({}, visitors());
   const ctx = { callCounter: { count: 0, max: 5 }, endpointCounts: {} };

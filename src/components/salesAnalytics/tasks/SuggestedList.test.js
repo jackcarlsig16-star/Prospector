@@ -19,6 +19,7 @@ test('lastRunText', () => {
   expect(lastRunText(null)).toBe('Tidy hasn’t run yet');
   expect(lastRunText(data.last_run)).toBe('Tidy ran Oct 16, 8:04 AM');
   expect(lastRunText({ ...data.last_run, status: 'error' })).toBe('Tidy ran Oct 16, 8:04 AM · failed');
+  expect(lastRunText({ ...data.last_run, status: 'running' })).toBe('Tidy started Oct 16, 8:04 AM · running'); // FIX loop-quickfixes Q5
 });
 
 test('a Viewer sees the rows, kind chips, reasons and the last run, but no Accept / Dismiss / Tidy now', () => {

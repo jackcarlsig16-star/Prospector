@@ -8,5 +8,9 @@ export const isStuck = (run, now = Date.now()) => run.status === 'running' && no
 
 export const asReported = (run, now = Date.now()) => (isStuck(run, now) ? { ...run, status: 'error', error_text: STUCK_TEXT, stuck: true } : run);
 
+// FIX loop-quickfixes Q5: every metrics adapter failed = nothing synced = 'error', not 'partial'.
+export const finalStatus = ({ adapterErrors, stoppedForCap, adapterNames }) => (
+  adapterNames.every(n => adapterErrors[n]) ? 'error' : stoppedForCap || Object.keys(adapterErrors).length ? 'partial' : 'success');
+
 // Runs that died without doing anything - left out of the manual limits.
 export const isDeadRun = (run, now = Date.now()) => isStuck(run, now) || (run.status === 'error' && ['stale lock', STUCK_TEXT].includes(run.error_text));

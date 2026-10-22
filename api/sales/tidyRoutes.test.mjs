@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
-import { runTidy, listSuggestions, acceptSuggestion, parkSuggestion, undoSuggestion, skipKeys, TIDY_CATEGORY } from './tidyRoutes.js';
+import { runTidy, listSuggestions, acceptSuggestion, parkSuggestion, undoSuggestion, skipKeys, TIDY_CATEGORY, TIDY_STALE_MS } from './tidyRoutes.js';
 
 const NOW = Date.parse('2026-10-16T18:00:00Z'); // Thu Oct 16, 11:00 LA -> week of Mon Oct 12
 const DAY = 864e5;
@@ -54,6 +54,38 @@ test('first run proposes each kind once and writes one ok run row', async () => 
   const texts = sb.db.sales_suggestions.map(s => s.text).sort();
   assert.deepEqual(texts, ['Check with Brad about Mercer', 'Flag Pat Example is going cold', 'Follow up Gallagher', 'Possible duplicate: Lockton / Lockton Inc', 'Reply/prep task for Aon', 'Research Fundrise or drop', 'Set a date or drop: Call Pat'].sort());
   assert.ok(sb.db.sales_suggestions.every(s => s.status === 'proposed' && s.business_id === B));
+});
+
+// FIX loop-quickfixes Q5 - the run row goes in first ('running') and is closed ok | error; every run write is checked.
+test('run row: running while the rules write, then ok; a failure mid-run closes it as error; a failed close is a 500', async () => {
+  const sb = fresh();
+  const from = sb.from; const seen = [];
+  sb.from = t => { if (t === 'sales_suggestions') seen.push(sb.db.sales_tidy_runs.map(x => x.status).join()); return from(t); };
+  assert.equal((await run(sb)).status, 200);
+  assert.ok(seen.length && seen.every(v => v === 'running'), 'the row says running while suggestions are written');
+  assert.deepEqual(sb.db.sales_tidy_runs.map(x => [x.status, !!x.finished_at]), [['ok', true]]);
+
+  const bad = fresh();
+  const f2 = bad.from;
+  bad.from = t => (t === 'sales_suggestions' ? { ...f2(t), insert: () => ({ select: async () => ({ data: null, error: { message: 'boom' } }) }) } : f2(t));
+  const r = await run(bad);
+  assert.equal(r.status, 500);
+  assert.deepEqual(bad.db.sales_tidy_runs.map(x => [x.status, x.counts.error, !!x.finished_at]), [['error', 'boom', true]]);
+
+  const noClose = fresh();
+  const f3 = noClose.from;
+  noClose.from = t => (t === 'sales_tidy_runs' ? { ...f3(t), update: () => ({ eq: () => ({ select: () => ({ single: async () => ({ data: null, error: { message: 'write refused' } }) }) }) }) } : f3(t));
+  const r3 = await run(noClose);
+  assert.deepEqual([r3.status, r3.body.error], [500, 'write refused'], 'an unchecked close would have said ran: true');
+});
+
+test('a fresh running row blocks today ("Tidy is running"); a stale one does not', async () => {
+  const sb = fresh();
+  sb.db.sales_tidy_runs.push({ id: randomUUID(), business_id: B, status: 'running', trigger: 'pageload', counts: {}, started_at: new Date(NOW - 60e3).toISOString() });
+  const r = await run(sb);
+  assert.deepEqual([r.body.ran, r.body.reason], [false, 'Tidy is running']);
+  sb.db.sales_tidy_runs[0].started_at = new Date(NOW - TIDY_STALE_MS - 1).toISOString();
+  assert.equal((await run(sb)).body.ran, true);
 });
 
 test('a second run the same LA day is refused by the guard; force runs but the keys are skipped', async () => {

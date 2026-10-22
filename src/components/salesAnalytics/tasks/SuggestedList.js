@@ -12,7 +12,7 @@ import { KIND_LABEL } from '../../../constants/tidy';
 // key for 7 days. "Tidy now" forces a run. Viewers see the list only.
 const actBtn = { ...copyBtnStyle, color: SA.text };
 const when = iso => new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' });
-export const lastRunText = r => (r ? `Tidy ran ${when(r.started_at)}${r.status === 'error' ? ' · failed' : ''}` : 'Tidy hasn’t run yet');
+export const lastRunText = r => (!r ? 'Tidy hasn’t run yet' : r.status === 'running' ? `Tidy started ${when(r.started_at)} · running` : `Tidy ran ${when(r.started_at)}${r.status === 'error' ? ' · failed' : ''}`);
 
 export default function SuggestedList({ businessId, data, canEdit, onChanged, onOpenPair }) {
   const [toast, setToast] = useState('');

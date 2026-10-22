@@ -20,6 +20,8 @@ export const ACCEPTED_QUIET_DAYS = 7;
 export const TIDY_CATEGORY = 'Tidy';
 export const TRIGGERS = ['pageload', 'manual', 'test'];
 const RUN_LOOKBACK_MS = 36 * 3600e3; // mirrors partnerContactsSync ranToday
+// A 'running' row older than this never finished (the process died): it no longer blocks today's run. REVISABLE.
+export const TIDY_STALE_MS = 10 * 60e3;
 const DAY = 864e5;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const err = (status, error) => Object.assign(new Error(error), { status });
@@ -78,7 +80,8 @@ export async function ranToday(supabase, businessId, now = Date.now()) {
     .eq('business_id', businessId).gte('started_at', new Date(now - RUN_LOOKBACK_MS).toISOString()).order('started_at', { ascending: false });
   if (error) throw err(500, error.message);
   const today = laDateString(new Date(now));
-  return (data || []).find(r => r.status !== 'error' && laDateString(new Date(r.started_at)) === today) || null;
+  const live = r => r.status === 'ok' || (r.status === 'running' && now - Date.parse(r.started_at) < TIDY_STALE_MS);
+  return (data || []).find(r => live(r) && laDateString(new Date(r.started_at)) === today) || null;
 }
 
 // POST /goals/tidy/run { force?, trigger? } -> { ran: false, reason, last_run }
@@ -88,9 +91,11 @@ export async function runTidy(supabase, { businessId, trigger = 'manual', force 
     if (!TRIGGERS.includes(trigger)) return reply(400, { error: `trigger must be one of ${TRIGGERS.join('|')}` });
     if (typeof force !== 'boolean') return reply(400, { error: 'force must be true or false' });
     const prior = await ranToday(supabase, businessId, now);
-    if (prior && !force) return reply(200, { ran: false, reason: 'Tidy already ran today', last_run: prior });
-    const startedAt = new Date(now).toISOString();
+    if (prior && !force) return reply(200, { ran: false, reason: prior.status === 'running' ? 'Tidy is running' : 'Tidy already ran today', last_run: prior });
     const counts = { proposed: 0, skipped: 0, by_kind: {} };
+    // FIX loop-quickfixes Q5: the run row goes in first, so a run that dies midway still leaves a trace.
+    const started = must(await supabase.from('sales_tidy_runs').insert({ business_id: businessId, started_at: new Date(now).toISOString(), status: 'running', counts, trigger }).select('id').single());
+    const close = (status, c) => supabase.from('sales_tidy_runs').update({ status, counts: c, finished_at: new Date().toISOString() }).eq('id', started.id).select().single();
     try {
       const ctx = await loadTidyContext(supabase, businessId, now);
       const skip = skipKeys(ctx.suggestions, now);
@@ -108,10 +113,11 @@ export async function runTidy(supabase, { businessId, trigger = 'manual', force 
         counts.by_kind[s.kind] = (counts.by_kind[s.kind] || 0) + 1;
       }
     } catch (e) {
-      await supabase.from('sales_tidy_runs').insert({ business_id: businessId, started_at: startedAt, finished_at: new Date().toISOString(), status: 'error', counts: { ...counts, error: String(e.message).slice(0, 300) }, trigger });
+      const closed = await close('error', { ...counts, error: String(e.message).slice(0, 300) });
+      if (closed.error) console.error('[tidy/run] could not close the run row', started.id, closed.error.message);
       throw e;
     }
-    const run = must(await supabase.from('sales_tidy_runs').insert({ business_id: businessId, started_at: startedAt, finished_at: new Date().toISOString(), status: 'ok', counts, trigger }).select().single());
+    const run = must(await close('ok', counts));
     return reply(200, { ran: true, run, created: counts.proposed, skipped: counts.skipped });
   } catch (e) {
     if (!e.status || e.status >= 500) console.error('[tidy/run]', e.message);

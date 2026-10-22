@@ -139,15 +139,18 @@ export default function SalesAnalyticsTab({ businessId, features }) {
   // failed pull is retried on the next load and never blocks Tidy.
   // localStorage keys (per browser): prospector_tidy_ran_<businessId>,
   // prospector_visits_ran_<businessId> = 'YYYY-MM-DD'
+  // FIX loop-quickfixes Q5: a failed page-load pull / Tidy still never blocks the page, but is kept here for the
+  // coming sync-status box ({ visits?, tidy? } = the error text; no UI yet).
+  const [pageLoadFailures, setPageLoadFailures] = useState({}); // eslint-disable-line no-unused-vars
   useEffect(() => {
     if (!canEdit) return;
     const today = laDateString();
     const ran = key => { try { return localStorage.getItem(key) === today; } catch { return false; } };
     const mark = key => { try { localStorage.setItem(key, today); } catch { /* private mode */ } };
     const visitsKey = `prospector_visits_ran_${businessId}`, tidyKey = `prospector_tidy_ran_${businessId}`;
-    const pull = ran(visitsKey) ? Promise.resolve() : goalsApi.visitPull(businessId, { trigger: 'pageload' }).then(() => mark(visitsKey)).catch(() => {});
+    const pull = ran(visitsKey) ? Promise.resolve() : goalsApi.visitPull(businessId, { trigger: 'pageload' }).then(() => mark(visitsKey)).catch(e => setPageLoadFailures(f => ({ ...f, visits: e.message })));
     if (ran(tidyKey)) return;
-    pull.then(() => goalsApi.runTidy(businessId, { trigger: 'pageload' })).then(() => mark(tidyKey)).catch(() => {});
+    pull.then(() => goalsApi.runTidy(businessId, { trigger: 'pageload' })).then(() => mark(tidyKey)).catch(e => setPageLoadFailures(f => ({ ...f, tidy: e.message })));
   }, [businessId, canEdit]);
 
   // shell-facelift-v1 Stage 2 - the tab row sits in the workspace header's sticky row when that slot exists

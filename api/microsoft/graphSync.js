@@ -123,7 +123,8 @@ export async function syncFolder({ supabase, userId, businessId, mailbox, folder
     .insert({ business_id: businessId, user_id: userId, folder, trigger, dry_run: dryRun }).select('id').single();
   if (runErr) throw new Error(runErr.message);
   const finish = async patch => {
-    await supabase.from('microsoft_sync_runs').update({ ...counts, ...patch, duration_ms: Date.now() - t0, finished_at: new Date().toISOString() }).eq('id', run.id);
+    const { error: closeErr } = await supabase.from('microsoft_sync_runs').update({ ...counts, ...patch, duration_ms: Date.now() - t0, finished_at: new Date().toISOString() }).eq('id', run.id);
+    if (closeErr) { console.error(`[microsoft/sync] could not close run ${run.id}: ${closeErr.message}`); patch = { ...patch, error: patch.error || `run row not closed: ${closeErr.message}` }; }
     console.log(`[microsoft/sync] user=${userId} folder=${folder} trigger=${trigger}${dryRun ? ' dry' : ''} pages=${counts.pages} seen=${counts.seen} stored=${counts.stored} skipped draft=${counts.skipped_draft} internal=${counts.skipped_internal} personal=${counts.skipped_personal} capped=${counts.capped ? 'yes' : 'no'}${patch.error ? ' error=' + patch.error : ''} ${Date.now() - t0}ms`);
     return { folder, ...counts, error: patch.error || null };
   };

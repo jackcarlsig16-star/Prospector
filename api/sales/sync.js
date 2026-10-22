@@ -8,7 +8,7 @@ import * as prospects from './adapters/prospects.js';
 import * as mailboxes from './adapters/mailboxes.js';
 import { syncActivity, ACTIVITY_MAX_CALLS } from './activitySync.js';
 import { refreshRecentWeeks, EMAIL_COUNTS_MAX_CALLS } from './emailCounts.js';
-import { isDeadRun } from './syncRunStatus.js';
+import { isDeadRun, finalStatus } from './syncRunStatus.js';
 import { syncPartnerContacts, ranToday, PARTNER_CONTACTS_MAX_CALLS } from './partnerContactsSync.js';
 import { runDailyApolloMoves, movesRanToday } from './partnerApolloTouches.js';
 
@@ -54,10 +54,11 @@ async function checkConcurrencyLock(supabase, businessId) {
     if (ageMinutes < STALE_LOCK_MINUTES) {
       return { locked: true, reason: 'a sync is already running for this business' };
     }
-    await supabase
+    const { error: staleErr } = await supabase
       .from('sales_sync_runs')
       .update({ status: 'error', error_text: 'stale lock', finished_at: new Date().toISOString() })
       .eq('id', row.id);
+    if (staleErr) return { locked: true, reason: `could not clear a stale sync lock: ${staleErr.message}` };
   }
   return { locked: false };
 }
@@ -273,7 +274,7 @@ export async function runSync({ businessId, trigger, maxCalls, partnerPeople }) 
   }
 
   const hasErrors = Object.keys(adapterErrors).length > 0;
-  const status = stoppedForCap || hasErrors ? 'partial' : 'success';
+  const status = finalStatus({ adapterErrors, stoppedForCap, adapterNames: ADAPTERS.map(a => a.name) });
 
   const counts = {
     apollo_calls: ctx.callCounter.count + activityCtx.callCounter.count + countsCtx.callCounter.count + peopleCtx.callCounter.count,
@@ -299,12 +300,13 @@ export async function runSync({ businessId, trigger, maxCalls, partnerPeople }) 
     ? 'call_cap'
     : (hasErrors ? Object.entries(adapterErrors).map(([a, e]) => `${a}: ${e}`).join('; ') : null);
 
-  const { data: finalRun } = await supabase
+  const { data: finalRun, error: finalErr } = await supabase
     .from('sales_sync_runs')
     .update({ status, finished_at: new Date().toISOString(), counts, error_text: errorText })
     .eq('id', run.id)
     .select()
     .single();
+  if (finalErr) { console.error('[sync] could not close the run row', run.id, finalErr.message); return { refused: false, error: `run row not closed: ${finalErr.message}` }; }
 
   return { refused: false, run: finalRun };
 }
