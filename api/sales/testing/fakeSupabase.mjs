@@ -2,13 +2,16 @@
 // filters, order, range, limit, single/maybeSingle, insert/upsert/update/delete
 // with .select(), the one embed the targets list uses (note:sales_call_notes(...)),
 // and optional unique keys ({ unique: { table: row => key | null } }) that
-// answer a colliding insert with code 23505 like Postgres does.
+// answer a colliding insert with code 23505 like Postgres does. now: a clock
+// (() => ms) for the created_at / recorded_at an insert stamps, so a test that
+// pins its own `now` stamps rows on that day, not the real one.
 import { randomUUID } from 'node:crypto';
 
 // Enough of supabase-js for these routes: filters, order, range, limit,
 // single/maybeSingle, insert/update/delete with .select(), and the one
 // embed the targets list uses (note:sales_call_notes(...)).
-export function fakeSupabase(seed, { unique = {} } = {}) {
+export function fakeSupabase(seed, { unique = {}, now = Date.now } = {}) {
+  const stamp = () => new Date(now()).toISOString();
   const db = Object.fromEntries(Object.entries(seed).map(([k, v]) => [k, v.map(r => ({ ...r }))]));
   const matches = (row, f) => ({
     eq: () => row[f.k] === f.v, neq: () => row[f.k] !== f.v, in: () => f.v.includes(row[f.k]), gte: () => row[f.k] >= f.v,
@@ -18,7 +21,7 @@ export function fakeSupabase(seed, { unique = {} } = {}) {
     db[table] ||= [];
     let rows;
     if (q.op === 'insert') {
-      rows = (Array.isArray(q.payload) ? q.payload : [q.payload]).map(r => ({ id: randomUUID(), created_at: new Date().toISOString(), recorded_at: new Date().toISOString(), ...r }));
+      rows = (Array.isArray(q.payload) ? q.payload : [q.payload]).map(r => ({ id: randomUUID(), created_at: stamp(), recorded_at: stamp(), ...r }));
       const key = unique[table];
       if (key && rows.some(r => key(r) != null && db[table].some(x => key(x) === key(r)))) return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
       db[table].push(...rows);
@@ -27,7 +30,7 @@ export function fakeSupabase(seed, { unique = {} } = {}) {
       rows = (Array.isArray(q.payload) ? q.payload : [q.payload]).map(r => {
         const hit = db[table].find(x => cols.every(c => x[c] === r[c]));
         if (hit) return Object.assign(hit, r);
-        const row = { id: randomUUID(), created_at: new Date().toISOString(), recorded_at: new Date().toISOString(), ...r };
+        const row = { id: randomUUID(), created_at: stamp(), recorded_at: stamp(), ...r };
         db[table].push(row);
         return row;
       });

@@ -87,8 +87,8 @@ test('parse: sells_to capped at 120; recent keeps at most 3 items with text, a Y
 });
 
 test(`cap: run ${RERUN_CAP_PER_DAY + 1} the same LA day is 429; yesterday's runs don't count; another partner is unaffected`, async () => {
-  const sb = fakeSupabase(seed());
   const now = Date.parse('2026-10-16T18:00:00Z');
+  const sb = fakeSupabase(seed(), { now: () => now }); // runs are stamped on the test's day, not the real one
   for (let i = 0; i < RERUN_CAP_PER_DAY; i++) await research(sb, { businessId: B, entityId: P.bb, trigger: i ? 'manual' : 'create', call: async () => reply(GOOD), now });
   await assert.rejects(research(sb, { businessId: B, entityId: P.bb, trigger: 'manual', call: async () => reply(GOOD), now }), e => e.status === 429 && /cap/.test(e.message));
   assert.equal(await runsToday(sb, B, 'partner', P.bb, now), RERUN_CAP_PER_DAY);
@@ -99,9 +99,11 @@ test(`cap: run ${RERUN_CAP_PER_DAY + 1} the same LA day is 429; yesterday's runs
 });
 
 test('partner must be in the workspace (404); a stale running row is closed as an error by listRuns; newest first, 3 max', async () => {
-  const sb = fakeSupabase(seed());
-  await assert.rejects(research(sb, { businessId: B, entityId: P.other, trigger: 'manual', call: async () => reply(GOOD) }), e => e.status === 404);
+  // The running row is stamped at exactly `now`, so now + STALE_RUNNING_MS + 1 is always past the cutoff
+  // (read before the insert, a 1 ms later stamp left it 1 ms short and the test failed ~1 run in 6).
   const now = Date.now();
+  const sb = fakeSupabase(seed(), { now: () => now });
+  await assert.rejects(research(sb, { businessId: B, entityId: P.other, trigger: 'manual', call: async () => reply(GOOD) }), e => e.status === 404);
   const run = await kickResearch(sb, { businessId: B, entityId: P.bb, trigger: 'manual', call: () => new Promise(() => {}) });
   assert.equal(run.status, 'running');
   assert.equal((await listRuns(sb, B, 'partner', P.bb, now))[0].status, 'running');
