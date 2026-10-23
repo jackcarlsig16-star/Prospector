@@ -28,8 +28,8 @@ export function peopleView(rows, f, showClosed) {
   return { rows: rows.filter(r => matchesPeopleFilters(r, f, showClosed)), closed: rows.filter(r => r.closed).length };
 }
 
-// "Sam R." until the person is saved on a Pipeline record (in_pipeline);
-// the full name sits in the cell's title either way (L1: no emails, no phones).
+// "Sam R." until the person is saved on a Pipeline record (in_pipeline); Members get the full name in the
+// cell's title and the row detail, and search always matches the full stored name (L1: no emails, no phones).
 export function displayName(r) {
   if (!r.name) return 'Unknown contact';
   if (r.in_pipeline) return r.name;

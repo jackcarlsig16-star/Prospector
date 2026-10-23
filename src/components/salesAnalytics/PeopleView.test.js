@@ -28,3 +28,24 @@ test('People: the Person cell opens the full row under it; Open company opens th
   fireEvent.click(within(panel).getByRole('button', { name: 'Open company →' }));
   expect(onOpenCompany).toHaveBeenCalledWith(row);
 });
+
+// FIX people-apollo-visibility-v1 F2 - search by last name finds a "First L." row; Members see the full name, Viewers don't.
+test('People: last-name search finds the shortened row; full name in the tooltip + detail for Members only', async () => {
+  const short = { ...row, contact_id: 'c2', name: 'Avery Quillfeather', in_pipeline: false, company: "Daisy's Gym", flag: null };
+  fetchLive.mockResolvedValue({ rows: [row, short] });
+  const props = { businessId: 'b1', myUserId: 'u1', ownerColor: () => '#888', ownerLabel: () => 'Team', onOpenCompany: jest.fn() };
+  const { unmount } = render(<PeopleView {...props} canEdit />);
+  await screen.findByText('Avery Q.');
+  fireEvent.change(screen.getByLabelText('Search people'), { target: { value: 'quillfeather' } });
+  expect(screen.queryByText('Morgan Example')).toBeNull();
+  expect(screen.getByText('Avery Q.')).toHaveAttribute('title', 'Avery Quillfeather');
+  fireEvent.click(screen.getByRole('button', { name: /^Show details for/ }));
+  expect(within(document.querySelector('[data-person-detail]')).getByText('Person').nextSibling).toHaveTextContent('Avery Quillfeather');
+  unmount();
+  render(<PeopleView {...props} canEdit={false} />);
+  fireEvent.change(await screen.findByLabelText('Search people'), { target: { value: 'quillfeather' } });
+  expect(await screen.findByText('Avery Q.')).not.toHaveAttribute('title');
+  expect(document.body.innerHTML).not.toMatch(/Quillfeather/);
+  fireEvent.click(screen.getByRole('button', { name: 'Show details for Avery Q.' }));
+  expect(within(document.querySelector('[data-person-detail]')).getByText('Person').nextSibling).toHaveTextContent('Avery Q.');
+});

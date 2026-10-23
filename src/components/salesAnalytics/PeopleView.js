@@ -73,7 +73,8 @@ export default function PeopleView({ businessId, myUserId, ownerColor, ownerLabe
     const [label, color] = KIND[r.last_activity_kind];
     return <span style={{ display: 'inline-flex', gap: 6, alignItems: 'baseline', whiteSpace: 'nowrap' }}><span style={{ color }}>{label}</span><span style={{ ...numStyle, color: SA.muted, fontSize: 12 }}>{whenText(r.last_activity_at, now)}</span></span>;
   };
-  const nameCell = r => <span title={r.name || undefined} style={{ fontWeight: 500, color: r.closed ? SA.muted : SA.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{displayName(r)}</span>;
+  // FIX people-apollo-visibility-v1 F2: Members see the full name (tooltip + row detail); Viewers keep "First L.".
+  const nameCell = r => <span title={canEdit ? r.name || undefined : undefined} style={{ fontWeight: 500, color: r.closed ? SA.muted : SA.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{displayName(r)}</span>;
   const companyCell = r => (r.company
     ? <button type="button" className="ui-link ui-link--cell" title={`Open ${r.company}`} onClick={() => onOpenCompany(r)}>{r.company}</button>
     : <Dim />);
@@ -102,7 +103,7 @@ export default function PeopleView({ businessId, myUserId, ownerColor, ownerLabe
   };
 
   const columns = [
-    { id: 'person', label: 'Person', width: 150, sticky: true, detail: true, sortValue: r => r.name, render: nameCell, title: r => r.name },
+    { id: 'person', label: 'Person', width: 150, sticky: true, detail: true, sortValue: r => r.name, render: nameCell, title: r => (canEdit ? r.name : displayName(r)) },
     { id: 'title', label: 'Title', width: 150, sortValue: r => r.title, render: r => (r.title ? <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' }}>{r.title}</span> : <Dim />), title: r => r.title },
     { id: 'company', label: 'Company', width: 170, sortValue: r => r.company, render: companyCell, title: r => r.company },
     { id: 'activity', label: 'Last activity', width: 170, sortValue: r => r.last_activity_at, render: activityCell, title: r => `${r.insight || ''}${r.last_activity_at ? ` · ${fullWhen(r.last_activity_at)}` : ''}` },
@@ -121,7 +122,7 @@ export default function PeopleView({ businessId, myUserId, ownerColor, ownerLabe
   // FIX actions-row-detail-v1: the full text of every cell the row cuts off, read-only. Never an email or phone.
   const renderDetail = r => (
     <DetailList data-person-detail rows={[
-      ['Person', displayName(r)],
+      ['Person', canEdit ? r.name || 'Unknown contact' : displayName(r)],
       ['Title', r.title],
       ['Company', r.company && <span className="ui-detail-list__actions"><span>{r.company}</span><button type="button" className="ui-link" onClick={() => onOpenCompany(r)}>Open company →</button></span>],
       ['Last activity', r.last_activity_kind && [KIND[r.last_activity_kind][0], r.insight, fullWhen(r.last_activity_at)].filter(Boolean).join(' · ')],

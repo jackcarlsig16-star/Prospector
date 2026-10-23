@@ -71,3 +71,14 @@ test('company filter: partner rows match on goal_id, employer rows on opportunit
   expect(activeFilterCount(f({ type: 'partner', id: 'g1', name: 'Gallagher' }))).toBe(1);
   expect(activeFilterCount(EMPTY_FILTERS)).toBe(0);
 });
+
+test('FIX people-apollo-visibility-v1 F2: search matches the full stored name and the company while the row shows "First L."', () => {
+  const r = row('v', { name: 'Avery Quillfeather', company: "Daisy's Gym", in_pipeline: false });
+  expect(displayName(r)).toBe('Avery Q.');
+  const f = q => ({ ...EMPTY_FILTERS, q });
+  expect(matchesPeopleFilters(r, f('quillfeather'), false)).toBe(true);
+  expect(matchesPeopleFilters(r, f('Avery Quill'), false)).toBe(true);
+  expect(matchesPeopleFilters(r, f("daisy's"), false)).toBe(true);
+  expect(matchesPeopleFilters(r, f('quillfeather daisy'), false)).toBe(true);
+  expect(matchesPeopleFilters(r, f('avery q.'), false)).toBe(false);
+});
