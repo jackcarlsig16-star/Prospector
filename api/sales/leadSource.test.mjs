@@ -115,6 +115,20 @@ test('edit: a person\'s pick, logged with from / to, stale screen refused; the b
   assert.ok(!pre.body.groups.some(g => g.key === 'Source: Some Fair'), 'Elm is manual now');
 });
 
+test('edit: Undo of a first pick clears back to never set (not manual), logged; an empty body is still refused', async () => {
+  const s = seed();
+  const elm = opps(s)['Elm Health'];
+  const r = await editSource(s, { businessId: B, type: 'employer', id: elm.id, userId: JACK, body: { source_kind: 'event', expect_set_at: null }, now: NOW });
+  assert.equal(r.status, 200);
+  assert.equal((await editSource(s, { businessId: B, type: 'employer', id: elm.id, userId: JACK, body: {} })).status, 400);
+  const u = await editSource(s, { businessId: B, type: 'employer', id: elm.id, userId: JACK, body: { source_kind: null, expect_set_at: r.body.source.set_at } });
+  assert.equal(u.status, 200, JSON.stringify(u.body));
+  const row = s.db.sales_opportunities.find(x => x.id === elm.id);
+  assert.deepEqual([row.source_kind, row.source_set_by, row.source_set_at, u.body.source.manual], [null, null, null, false]);
+  const got = await getSource(s, { businessId: B, type: 'employer', id: elm.id });
+  assert.equal(got.body.history.length, 2);
+});
+
 test('promote inherits the target\'s source (manual stays manual) with a promote event; a new company record gets its create source', async () => {
   const s = seed();
   const T = randomUUID();

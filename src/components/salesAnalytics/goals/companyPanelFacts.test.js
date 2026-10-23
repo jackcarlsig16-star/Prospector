@@ -1,4 +1,5 @@
-import { factsFor, lastTouchText, forwardStages, editControls, showsNotNow, filterPeople, bandText, sourceLabel } from './companyPanelFacts';
+import { factsFor, lastTouchText, forwardStages, editControls, showsNotNow, filterPeople, bandText, sourceLabel, sourceText } from './companyPanelFacts';
+import { historyText, sourceBody } from './LeadSource';
 
 // company-panel-v2 L2 / L5 - the facts row and the Edit row per row type (the matrix), pure.
 const base = { name: 'X', stage: 'replied', owner: 'Jack', owner_team: 'homelover', channel: 'import', priority: 1, next_step: 'Send deck', next_step_due: '2026-10-22', last_touch_at: '2026-10-17T10:00:00Z' };
@@ -37,9 +38,9 @@ test('Edit row: the Stage select lists now + forward only; the matrix picks the 
   expect(ids).toContain('meeting_set');
   expect(forwardStages({ type: 'employer', stage: 'contacted' }).map(s => s.id)).not.toContain('target');
   expect(forwardStages({ type: 'target', stage: 'researching' }).map(s => s.id)).toEqual(['researching']);
-  expect(editControls({ type: 'partner' })).toEqual(['stage', 'owner', 'team', 'priority']);
-  expect(editControls({ type: 'employer' })).toEqual(['stage', 'owner', 'team', 'priority']);
-  expect(editControls({ type: 'target' })).toEqual(['stage', 'team']);
+  expect(editControls({ type: 'partner' })).toEqual(['stage', 'owner', 'team', 'priority', 'source']);
+  expect(editControls({ type: 'employer' })).toEqual(['stage', 'owner', 'team', 'priority', 'source']);
+  expect(editControls({ type: 'target' })).toEqual(['stage', 'team', 'source']);
   expect(editControls({ type: 'visitor' })).toEqual(['priority']);
   expect(editControls({ type: 'apollo' })).toEqual([]);
   expect([showsNotNow({ type: 'partner' }), showsNotNow({ type: 'employer' }), showsNotNow({ type: 'target' }), showsNotNow({ type: 'visitor' }), showsNotNow({ type: 'apollo' })]).toEqual([true, true, true, false, false]);
@@ -52,4 +53,15 @@ test('People filter matches name or title; the band text is strongest first then
   const click = { text: 'Pat clicked Step 1' }, visit = { text: '3 site visits this week' };
   expect(bandText({ strongest: click, items: [click, visit] })).toBe('Pat clicked Step 1 · 3 site visits this week');
   expect(bandText({ strongest: null, items: [] })).toBe('');
+});
+
+test('lead-source-v1: the Source fact is the lead source (kind · partner · rep · office) with the channel small beside it', () => {
+  const row = { type: 'employer', stage: 'contacted', channel: 'import' };
+  const src = { source_kind: 'partner_referral', partner_name: 'Upside', source_person: 'Brad Cillian', source_office: 'Chicago', route_in: 'Brad admin' };
+  expect(factsFor(row, null, src).find(f => f[0] === 'Source')).toEqual(['Source', 'Partner referral · Upside · Brad Cillian · Chicago', false, 'via Import']);
+  expect(sourceText({ source_kind: 'homelover_outreach', route_in: 'HomeLover existing outreach' }).text).toBe('HomeLover outreach · route in: HomeLover existing outreach');
+  expect(factsFor(row, null, { source_kind: null }).find(f => f[0] === 'Source')).toEqual(['Source', 'Not set', true, 'via Import']);
+  expect(factsFor({ type: 'target', stage: 'researching', channel: 'unknown' }, null, { source_kind: 'campaign', campaign_name: 'Seif Q4', source_person: 'Seif' }).find(f => f[0] === 'Source')).toEqual(['Source', 'Campaign · Seif Q4 · Seif', false, null]);
+  expect(historyText({ from_source: null, to_source: { source_kind: 'partner_referral', partner_name: 'Upside', source_person: 'Brad Cillian' } })).toBe('Not set → Partner referral · Upside · Brad Cillian');
+  expect(sourceBody({ source_kind: 'event', label: 'Event', set_at: 'x' })).toEqual({ source_kind: 'event', source_partner_id: null, source_person: null, source_office: null, source_campaign_id: null, route_in: null, source_note: null });
 });

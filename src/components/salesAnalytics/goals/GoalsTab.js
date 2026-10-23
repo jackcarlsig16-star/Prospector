@@ -22,6 +22,7 @@ import { PlanNudge } from './PlanNudge';
 import ActionsView from './ActionsView';
 import AttentionDrawer from './AttentionDrawer';
 import CampaignsView from './campaigns/CampaignsView';
+import SourcesView from './SourcesView';
 import GoalHero from './GoalHero';
 import DashboardCharts from './DashboardCharts';
 import GoalsSection from './GoalsSection';
@@ -110,6 +111,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const thisWeek = laWeekStart();
   const myRole = me?.memberships?.find(m => m.business_id === businessId)?.role;
   const canEdit = !!me && (me.profile?.is_platform_owner || roleAtLeast(myRole, 'member'));
+  const isAdmin = !!me && (me.profile?.is_platform_owner || roleAtLeast(myRole, 'admin'));
   // weekly-plan-v1: a plan is one person's; on Team it's the signed-in user's.
   const planOwner = owner === 'team' ? me?.profile?.id : owner;
 
@@ -398,6 +400,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
           </GoalsSection>
         </>}
 
+        {section === 'dashboard' && view === 'sources' && <SourcesView businessId={businessId} partners={partners} isAdmin={isAdmin} />}
         {section === 'dashboard' && view === 'analytics' && analytics}
 
         {section === 'pipeline' && view === 'partners' && (

@@ -6,9 +6,10 @@ import { toCsv } from '../../src/utils/csv.js';
 import { boardStage, BOARD_COLORS } from '../../src/constants/pipelineBoard.js';
 import { TEAM_LABEL } from '../../src/constants/ownership.js';
 import {
-  SOURCE_COLS, SOURCE_LABEL, RECORD_TYPES, RECORD_TABLE, validateSource, sourceColumns, sourceOf, isOpen, logSource,
+  SOURCE_COLS, RECORD_TYPES, RECORD_TABLE, validateSource, sourceColumns, sourceOf, isOpen, logSource,
   sourceDirectory, mapSheetSource, mapChannel, sheetLines,
 } from './leadSource.js';
+import { SOURCE_LABEL } from '../../src/constants/leadSources.js';
 
 // lead-source-v1 Stage 2 - edit + history (B2/D4), a partner's referred
 // companies (B3), the Sources report + Export for <partner> (B4) and the
@@ -72,7 +73,7 @@ async function namesFor(supabase, businessId, s) {
   return { partner_name: p?.name || null, campaign_name: c?.name || null };
 }
 
-// GET /goals/source/:type/:id -> { source (+ partner / campaign names, set by / at), history }
+// GET /goals/source/:type/:id -> { source (+ partner / campaign names, set by / at), history (+ partner names) }
 export async function getSource(supabase, { businessId, type, id }) {
   try {
     const row = await recordOr404(supabase, businessId, type, id);
@@ -80,22 +81,27 @@ export async function getSource(supabase, { businessId, type, id }) {
       namesFor(supabase, businessId, row), members(supabase, businessId),
       supabase.from('sales_source_events').select('id, from_source, to_source, reason, by_user, at').eq('business_id', businessId).eq('record_type', type).eq('record_id', id).order('at', { ascending: false }).limit(50).then(must),
     ]);
+    const ids = [...new Set(events.flatMap(e => [e.from_source?.source_partner_id, e.to_source?.source_partner_id]).filter(Boolean))];
+    const pnames = new Map(ids.length ? must(await supabase.from('sales_goals').select('id, name').eq('business_id', businessId).in('id', ids)).map(p => [p.id, p.name]) : []);
+    const named = x => (x ? { ...x, partner_name: pnames.get(x.source_partner_id) || null } : null);
     return reply(200, {
       source: { ...sourceOf(row), ...names, label: row.source_kind ? SOURCE_LABEL[row.source_kind] : null, set_by: row.source_set_by ? (team.get(row.source_set_by) || '').split(' ')[0] || null : null, manual: !!row.source_set_by, set_at: row.source_set_at },
-      history: events.map(e => ({ ...e, by: e.by_user ? (team.get(e.by_user) || '').split(' ')[0] || null : null })),
+      history: events.map(e => ({ ...e, from_source: named(e.from_source), to_source: named(e.to_source), by: e.by_user ? (team.get(e.by_user) || '').split(' ')[0] || null : null })),
     });
   } catch (e) { return caught('get', e); }
 }
 
 // PATCH /goals/source/:type/:id { source fields..., expect_set_at? } (Members) - a person's pick: logged, never
-// overwritten by an import or the backfill. expect_set_at = the set_at the screen showed (stale-screen guard).
+// overwritten by an import or the backfill (all fields null = clear). expect_set_at = the set_at the screen showed (stale-screen guard).
 export async function editSource(supabase, { businessId, type, id, userId, body = {}, now = new Date() }) {
   try {
     const row = await recordOr404(supabase, businessId, type, id);
     const v = validateSource(body);
     if (v.error) return reply(400, { error: v.error });
     const s = v.source;
-    if (!s.source_kind) return reply(400, { error: 'source_kind is required' });
+    // source_kind: null with every field empty = clear (the Undo of a first pick): back to never set, not a person's pick.
+    const clear = 'source_kind' in body && body.source_kind === null && Object.values(s).every(x => x == null);
+    if (!s.source_kind && !clear) return reply(400, { error: 'source_kind is required' });
     if (s.source_partner_id) {
       if (type === 'partner' && s.source_partner_id === id) return reply(400, { error: "a partner can't be its own source" });
       const p = must(await supabase.from('sales_goals').select('id').eq('business_id', businessId).eq('id', s.source_partner_id).eq('goal_type', 'partnership').maybeSingle());
@@ -105,11 +111,12 @@ export async function editSource(supabase, { businessId, type, id, userId, body 
       return reply(400, { error: 'source_campaign_id must be a campaign in this workspace' });
     }
     if ('expect_set_at' in body && (body.expect_set_at ?? null) !== (row.source_set_at ?? null)) return reply(409, { error: 'The source changed since - reload' });
-    const q = supabase.from(RECORD_TABLE[type]).update({ ...sourceColumns(s, { userId, manual: true, now }), updated_at: now.toISOString() }).eq('id', id);
+    const cols = clear ? { ...s, source_set_by: null, source_set_at: null } : sourceColumns(s, { userId, manual: true, now });
+    const q = supabase.from(RECORD_TABLE[type]).update({ ...cols, updated_at: now.toISOString() }).eq('id', id);
     const rows = must(await (row.source_set_at ? q.eq('source_set_at', row.source_set_at) : q.is('source_set_at', null)).select(`id, ${SOURCE_COLS}`));
     if (!rows.length) return reply(409, { error: 'The source changed since - reload' });
     await logSource(supabase, { businessId, type, id, from: row, to: rows[0], reason: 'edit', byUser: userId, at: now });
-    return reply(200, { source: { ...sourceOf(rows[0]), ...(await namesFor(supabase, businessId, rows[0])), label: SOURCE_LABEL[rows[0].source_kind], manual: true, set_at: rows[0].source_set_at } });
+    return reply(200, { source: { ...sourceOf(rows[0]), ...(await namesFor(supabase, businessId, rows[0])), label: SOURCE_LABEL[rows[0].source_kind] || null, manual: !clear, set_at: rows[0].source_set_at } });
   } catch (e) { return caught('edit', e); }
 }
 

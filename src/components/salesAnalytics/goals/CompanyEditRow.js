@@ -12,13 +12,16 @@ import { boardStage } from '../../../constants/pipelineBoard';
 import { TOUCH_STATUSES } from '../../../constants/partnerPipeline';
 import FilterSelect from '../../../ui/FilterSelect';
 import { priorityColor } from '../palette';
+import { SourceForm } from './LeadSource';
 
 // company-panel-v2 L5 - the labelled Edit row: Stage (forward moves only, plus
 // Jump to stage with confirm for the way back), Owner, Team, Priority. Every
 // change saves at once with a 10 s Undo (D2). Which controls show follows the
 // per-type matrix (companyPanelFacts editControls). Members only.
-export default function CompanyEditRow({ businessId, row, members, onPatch, onChanged, onToast }) {
+// lead-source-v1 B2: Source opens its own form under the row (partner / employer / target).
+export default function CompanyEditRow({ businessId, row, members, source, onPatch, onChanged, onToast }) {
   const [jump, setJump] = useState(false);
+  const [sourceOpen, setSourceOpen] = useState(false);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const act = async (what, fn) => {
@@ -89,6 +92,7 @@ export default function CompanyEditRow({ businessId, row, members, onPatch, onCh
             <FilterSelect label="Priority" value={priorityValue(row)} disabled={b('priority')} options={[{ value: '', label: '—' }, ...PRIORITIES.map(p => ({ value: String(p), label: `P${p} · ${PRIORITY_WORD[p]}` })), { value: NOT_A_FIT, label: 'Not a fit' }]} onChange={changePriority} />
           </span>
         )}
+        {controls.includes('source') && <button type="button" className="ui-btn ui-btn--secondary" aria-expanded={sourceOpen} onClick={() => setSourceOpen(o => !o)}>Source ▾</button>}
         {controls.includes('stage') && <span style={{ fontSize: 12, color: SA.muted }}>Stage only moves forward · saves at once, Undo for 10 s</span>}
       </div>
       {jump && (
@@ -101,6 +105,7 @@ export default function CompanyEditRow({ businessId, row, members, onPatch, onCh
           ))}
         </div>
       )}
+      {sourceOpen && <SourceForm key={source?.set_at || 'none'} businessId={businessId} row={row} source={source} onSaved={() => { setSourceOpen(false); onChanged(); }} onToast={onToast} onCancel={() => setSourceOpen(false)} />}
       {error && <ErrorNote message={error} />}
     </div>
   );

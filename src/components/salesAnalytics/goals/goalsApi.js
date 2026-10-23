@@ -129,6 +129,19 @@ export const goalsApi = {
   bookMeeting: (id, type, recordId, body = {}) => call(id, `/company/${type}/${recordId}/book-meeting`, { method: 'POST', body }),
   markContacted: (id, type, recordId, body = {}) => call(id, `/company/${type}/${recordId}/contacted`, { method: 'POST', body }),
   notNow: (id, type, recordId, body = {}) => call(id, `/company/${type}/${recordId}/not-now`, { method: 'POST', body }),
+  // lead-source-v1 - type = partner | employer | target. source = { source, history }; edit body = the source fields +
+  // expect_set_at (409 when it moved); source_kind: null with every field empty clears it (Undo of a first pick).
+  source: (id, type, recordId) => call(id, `/source/${type}/${recordId}`),
+  editSource: (id, type, recordId, body) => call(id, `/source/${type}/${recordId}`, { method: 'PATCH', body }).then(d => d.source),
+  referredBy: (id, partnerId) => call(id, `/partners/${partnerId}/referred`),
+  // days / team / partner; { totals, by_kind, by_partner, by_person, by_office }.
+  sources: (id, { days, team, partner } = {}) => call(id, `/sources?${q({ days, team, partner })}`),
+  // Structured fields only (company, type, stage, owner, covered lives, rep, office) - never route_in or notes.
+  sourcesExport: (id, partner) => call(id, `/sources/export?${q({ partner })}`),
+  sourcesExportCsvUrl: (id, partner) => `/api/sales/${id}/goals/sources/export?${q({ partner, format: 'csv' })}`,
+  // Owner / Admin. apply mappings = { [group key]: { source_kind, source_partner_id?, source_person?, source_office? } }.
+  sourcesBackfill: id => call(id, '/sources/backfill'),
+  applySourcesBackfill: (id, mappings) => call(id, '/sources/backfill/apply', { method: 'POST', body: { mappings } }),
   // Research + Check Apollo for any record type (same caps as the partner ones below).
   companyResearch: (id, type, recordId) => call(id, `/company/${type}/${recordId}/research`),
   runCompanyResearch: (id, type, recordId) => call(id, `/company/${type}/${recordId}/research`, { method: 'POST' }),

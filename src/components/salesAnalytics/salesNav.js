@@ -4,11 +4,12 @@
 // home (sales-ia-v1 tabs, ?gview=, prospector_goals_view) maps to its new one.
 // Dashboard > Overview (sales-ia-v2 D1) holds the charts with the Goals
 // section (Weekly report + Scorecard) underneath; Analytics (email + Apollo
-// widgets) and Sequenced (Apollo companies by week) ride along as sub-views.
+// widgets) and Sequenced (Apollo companies by week) ride along as sub-views;
+// Sources (lead-source-v1 B4) = who brought each lead, by partner / rep / office.
 export const TABS = [['dashboard', 'Dashboard'], ['pipeline', 'Pipeline'], ['actions', 'Actions']];
 export const SUB_VIEWS = {
   pipeline: [['companies', 'Companies'], ['people', 'People'], ['partners', 'Partner workflow'], ['campaigns', 'Campaigns']],
-  dashboard: [['overview', 'Overview'], ['analytics', 'Analytics'], ['sequenced', 'Sequenced']],
+  dashboard: [['overview', 'Overview'], ['sources', 'Sources'], ['analytics', 'Analytics'], ['sequenced', 'Sequenced']],
 };
 export const DEFAULT_TAB = 'actions';
 export const DEFAULT_VIEW = { pipeline: 'companies', dashboard: 'overview' };

@@ -1,5 +1,6 @@
 import { CHANNEL_LABEL, PRIORITY_WORD } from '../../../constants/salesChannels';
 import { TEAM_LABEL } from '../../../constants/ownership';
+import { SOURCE_LABEL } from '../../../constants/leadSources';
 import { stageLabel, stageOptions, needsRecord } from './companyPanelModel';
 
 // company-panel-v2 L2 / L5 / L6 - what the window shows for each row type
@@ -21,10 +22,26 @@ export function lastTouchText(lastTouch, lastTouchAt) {
 
 export const sourceLabel = row => (row.type === 'apollo' ? 'Apollo' : row.type === 'visitor' ? 'Website' : row.channel && row.channel !== 'unknown' ? CHANNEL_LABEL[row.channel] || row.channel : '—');
 
+// lead-source-v1 B2 - who / what originated it ("Partner referral · Upside · Brad Cillian · Chicago"); the route in
+// only when nothing names a partner or person. A source the window hasn't read yet (undefined) falls back to channel.
+export function sourceText(source) {
+  if (!source?.source_kind) return { text: 'Not set', empty: true };
+  const who = [source.partner_name, source.campaign_name, source.source_person, source.source_office].filter(Boolean);
+  const route = !who.length && source.route_in ? [`route in: ${source.route_in}`] : [];
+  return { text: [SOURCE_LABEL[source.source_kind], ...who, ...route].join(' · '), empty: false };
+}
+const sourceFact = (row, source) => {
+  if (source === undefined) return ['Source', sourceLabel(row), false];
+  const s = sourceText(source);
+  const channel = sourceLabel(row);
+  return ['Source', s.text, s.empty, channel !== '—' ? `via ${channel}` : null];
+};
+
 export const priorityText = row => (row.not_a_fit ? 'Not a fit' : row.priority != null ? `P${row.priority} · ${PRIORITY_WORD[row.priority] || ''}`.trim() : '—');
 
-// The seven facts (fewer for the record-less rows), [label, value, muted?].
-export function factsFor(row, record) {
+// The seven facts (fewer for the record-less rows), [label, value, muted?, sub?]. source = GET goals/source's
+// source (partner / employer / target only).
+export function factsFor(row, record, source) {
   const touch = lastTouchText(record?.last_touch, row.last_touch_at);
   const next = record?.next_step ?? row.next_step;
   const nextText = next ? `${next}${record?.next_step_due || row.next_step_due ? ` · due ${md(record?.next_step_due || row.next_step_due)}` : ''}` : '—';
@@ -35,14 +52,14 @@ export function factsFor(row, record) {
     return [['Stage', 'In sequence', false], ['Source', 'Apollo', false], ['Last touch', touch.text, touch.empty]];
   }
   if (row.type === 'target') {
-    return [['Stage', stageLabel(row), false], ['Team', row.owner_team ? TEAM_LABEL[row.owner_team] : '—', !row.owner_team], ['Source', sourceLabel(row), false], ['Last touch', touch.text, touch.empty]];
+    return [['Stage', stageLabel(row), false], ['Team', row.owner_team ? TEAM_LABEL[row.owner_team] : '—', !row.owner_team], sourceFact(row, source), ['Last touch', touch.text, touch.empty]];
   }
   return [
     ['Stage', stageLabel(row), false],
     ['Priority', priorityText(row), row.priority == null && !row.not_a_fit],
     ['Owner', row.owner || 'Unassigned', !row.owner],
     ['Team', row.owner_team ? TEAM_LABEL[row.owner_team] : '—', !row.owner_team],
-    ['Source', sourceLabel(row), false],
+    sourceFact(row, source),
     ['Last touch', touch.text, touch.empty],
     ['Next step', nextText, !next],
   ];
@@ -55,8 +72,8 @@ export const forwardStages = row => stageOptions(row).filter(s => s.dir === 'now
 // L5 per the matrix: partner / employer all four; target Stage + Team (a target
 // has no owner); visitor Priority only; Apollo-only nothing.
 export function editControls(row) {
-  if (row.type === 'partner' || row.type === 'employer') return ['stage', 'owner', 'team', 'priority'];
-  if (row.type === 'target') return ['stage', 'team'];
+  if (row.type === 'partner' || row.type === 'employer') return ['stage', 'owner', 'team', 'priority', 'source'];
+  if (row.type === 'target') return ['stage', 'team', 'source'];
   if (row.type === 'visitor') return ['priority'];
   return [];
 }

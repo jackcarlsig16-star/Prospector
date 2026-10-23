@@ -43,6 +43,25 @@ const companyActions = c => (c.match
   : [['target_partner', 'Partner target'], ['target_employer', 'Employer target'], ['skip', 'Skip'], ['never', 'Skip + never again']]);
 const defaultAction = c => (c.match ? (c.match.type === 'account' ? 'pipeline' : 'note') : c.kind === 'employer' ? 'target_employer' : 'target_partner');
 
+// lead-source-v1 - who brought it, as the notes say; kept only on a record Accept creates (a target or Add to pipeline).
+const REF_FIELDS = [['partner', 'Partner', 160], ['person', 'Person', 120], ['office', 'Office', 120]];
+const createsRecord = c => c.action.startsWith('target_') || c.action === 'pipeline';
+function ReferredBy({ c, onChange }) {
+  const ref = c.referred_by;
+  if (!ref) return <button type="button" className="ui-btn ui-btn--tertiary" style={{ height: 24, fontSize: 12, alignSelf: 'flex-start' }} onClick={() => onChange({ partner: '', person: '', office: '' })}>+ Referred by</button>;
+  return (
+    <div role="group" aria-label={`Referred by for ${c.name}`} data-referred-by style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+      <span style={small(SA.soft)}>Referred by</span>
+      {REF_FIELDS.map(([k, label, max]) => (
+        <input key={k} aria-label={`${label} who referred ${c.name}`} placeholder={label} maxLength={max} value={ref[k] || ''} style={{ ...selectStyle, width: 130 }}
+          onChange={e => onChange({ ...ref, [k]: e.target.value, ...(k === 'partner' ? { partner_id: null } : {}) })} />
+      ))}
+      {ref.partner_id ? <span style={small(SA.good)}>✓ in Pipeline</span> : ref.partner ? <span style={small()}>not in Pipeline yet</span> : null}
+      <button type="button" className="ui-btn ui-btn--tertiary" style={{ height: 24, fontSize: 12 }} aria-label={`Clear referred by for ${c.name}`} onClick={() => onChange(null)}>✕</button>
+    </div>
+  );
+}
+
 export function CompanyRows({ rows, categories, set }) {
   return rows.map((c, i) => {
     const toggle = () => set(i)(isSkipped(c) ? { on: true, action: ['skip', 'none'].includes(c.action) ? defaultAction(c) : c.action } : { on: false });
@@ -64,6 +83,7 @@ export function CompanyRows({ rows, categories, set }) {
         </div>
         {c.action.startsWith('target_') && <span style={small()}>Becomes a target at Researching, with a research to-do due in 3 days</span>}
         {c.action === 'never' && <span style={small()}>Won't be proposed from notes again</span>}
+        {createsRecord(c) && <ReferredBy c={c} onChange={referred_by => set(i)({ referred_by })} />}
         <Evidence text={c.evidence} />
       </Row>
     );

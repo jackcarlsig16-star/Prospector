@@ -11,6 +11,7 @@ import { SignalsCard, TodosCard, WaitingCard, NotesCard, IntelCard, PeopleCard, 
 import { ErrorNote, memberLookup } from './goalsUi';
 import { factsFor } from './companyPanelFacts';
 import { needsRecord } from './companyPanelModel';
+import { SourceHistoryCard, ReferredByCard } from './LeadSource';
 import { Link } from '../../../ui/Button';
 import { priorityColor } from '../palette';
 
@@ -30,6 +31,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
   const [version, setVersion] = useState(0);
   const [form, setForm] = useState(null); // 'note' | 'todo' | 'contact' | 'promote' | 'add' | 'draft-kind'
   const [starBusy, setStarBusy] = useState(false);
+  const [source, setSource] = useState(null); // lead-source-v1: GET goals/source -> { source, history }
   // L6 (REVISABLE 980): two columns only when the window gets its full 1040 px, so a 1000 px viewport stacks.
   const wide = useMediaQuery('(min-width: 1040px)');
   const running = detail?.research?.runs?.[0]?.status === 'running';
@@ -38,6 +40,13 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
     goalsApi.companyDetail(businessId, row.type, row.id).then(d => { if (live) { setDetail(d); setError(''); } }).catch(e => live && setError(e.message));
     return () => { live = false; };
   }, [businessId, row.type, row.id, version]);
+  const sourced = !needsRecord(row.type); // partner / employer / target carry a source
+  useEffect(() => {
+    if (!sourced) return undefined;
+    let live = true;
+    goalsApi.source(businessId, row.type, row.id).then(d => live && setSource(d)).catch(() => live && setSource(null));
+    return () => { live = false; };
+  }, [businessId, row.type, row.id, version, sourced]);
   useEffect(() => {
     if (!running) return undefined;
     const t = setInterval(() => setVersion(v => v + 1), POLL_MS);
@@ -47,7 +56,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
   const star = async () => { setStarBusy(true); try { await onStar(); } catch (e) { onToast({ text: e.message }); } finally { setStarBusy(false); } };
 
   const lookup = memberLookup(members);
-  const facts = factsFor(row, detail?.record);
+  const facts = factsFor(row, detail?.record, sourced && source ? source.source : undefined);
   const site = detail?.record?.site || null;
   const bandShown = !!detail?.interest?.show;
   const fullLabel = row.type === 'visitor' ? 'Open visitor report →' : row.type === 'apollo' ? 'Open in Companies →' : row.type === 'target' ? 'Open in Tasks →' : 'Open full card →';
@@ -65,12 +74,15 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
         <button type="button" aria-label="Close panel" onClick={onClose} className={btn} style={{ width: 32, padding: 0, fontSize: 16, lineHeight: 1 }}>✕</button>
       </div>
       <div data-facts-row style={{ display: 'flex', gap: '12px 28px', flexWrap: 'wrap' }}>
-        {facts.map(([label, value, muted]) => (
-          <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+        {facts.map(([label, value, muted, sub]) => (
+          <div key={label} data-fact={label} style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
             <span className="ui-group-label">{label}</span>
-            <b title={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500, fontSize: 13, color: muted ? SA.muted : SA.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260 }}>
-              {label === 'Priority' && !muted && !row.not_a_fit && priorityColor(row.priority) && <span className="ui-tag__dot" data-priority-dot aria-hidden="true" style={{ '--tag-color': priorityColor(row.priority) }} />}{value}
-            </b>
+            <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
+              <b title={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500, fontSize: 13, color: muted ? SA.muted : SA.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: label === 'Source' ? 420 : 260 }}>
+                {label === 'Priority' && !muted && !row.not_a_fit && priorityColor(row.priority) && <span className="ui-tag__dot" data-priority-dot aria-hidden="true" style={{ '--tag-color': priorityColor(row.priority) }} />}{label === 'Source' ? <span title={value} style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</span> : value}
+              </b>
+              {sub && <span data-fact-sub style={{ fontSize: 11, color: SA.muted, whiteSpace: 'nowrap' }}>{sub}</span>}
+            </span>
           </div>
         ))}
       </div>
@@ -78,7 +90,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
       {canEdit
         ? <>
           <CompanyActions businessId={businessId} row={row} members={members} meId={meId} form={form} setForm={setForm} bandShown={bandShown} onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} onClose={onClose} />
-          <CompanyEditRow businessId={businessId} row={row} members={members} onPatch={onPatch} onChanged={changed} onToast={onToast} />
+          <CompanyEditRow businessId={businessId} row={row} members={members} source={sourced && source ? source.source : null} onPatch={onPatch} onChanged={changed} onToast={onToast} />
         </>
         : <p style={{ ...SA_TYPE.body, fontSize: 12, color: SA.muted, margin: 0 }}>You have view access, so this is read-only.</p>}
     </>
@@ -99,6 +111,8 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
             {detail.research && <IntelCard {...cardProps} />}
             {!needsRecord(row.type) || detail.people.length > 0 ? <PeopleCard {...cardProps} /> : null}
+            {row.type === 'partner' && <ReferredByCard businessId={businessId} row={row} version={version} />}
+            {sourced && <SourceHistoryCard data={source} />}
             <ExtraCards row={row} detail={detail} />
           </div>
         </div>

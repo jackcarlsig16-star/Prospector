@@ -210,3 +210,33 @@ test('review: Decisions · Waiting on them · Terms · Next meeting after Touche
   expect(body.extract).toEqual({ tasks: [] });
   expect(body.extract_sig).toBe('sig-1');
 });
+
+// lead-source-v1 - the extract's referred_by is an editable proposal on a company Accept creates; cleared = not sent.
+test('Intake: referred_by shows as editable fields on a new target, edits ride with Accept, clear sends null', async () => {
+  goalsApi.extractCallNotes.mockResolvedValue({
+    call_date: '2026-10-13', summary: [], tasks: [], categories: [],
+    companies: [
+      company('c0', 'Lockton', { referred_by: { partner: 'Upside', partner_id: 'g-up', person: 'Brad', office: null } }),
+      company('c1', 'Fundrise', { referred_by: { partner: 'Hub', partner_id: null, person: null, office: null } }),
+      company('c2', 'Gallagher', { match: GAL, action: 'note' }),
+    ],
+    people: [], touches: [], ownership: [], facts: [],
+  });
+  goalsApi.createFromCallNotes.mockResolvedValue({ goals: [], note: { id: 'n3', title: null }, targets: [] });
+  setup();
+  paste('notes');
+  fireEvent.click(screen.getByRole('button', { name: 'Read notes' }));
+  await screen.findByRole('region', { name: 'Companies mentioned' });
+  expect(screen.getByLabelText('Person who referred Lockton')).toHaveValue('Brad');
+  expect(screen.getByText('✓ in Pipeline')).toBeInTheDocument();
+  expect(screen.getByText('not in Pipeline yet')).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Referred by for Gallagher' })).toBeNull();
+  fireEvent.change(screen.getByLabelText('Office who referred Lockton'), { target: { value: 'Chicago' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Clear referred by for Fundrise' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Accept/ }));
+  await waitFor(() => expect(goalsApi.createFromCallNotes).toHaveBeenCalled());
+  const body = goalsApi.createFromCallNotes.mock.calls[0][1];
+  expect(body.companies.map(c => [c.name, c.referred_by])).toEqual([
+    ['Lockton', { partner: 'Upside', partner_id: 'g-up', person: 'Brad', office: 'Chicago' }], ['Fundrise', null], ['Gallagher', null],
+  ]);
+});

@@ -1,6 +1,7 @@
 import { cleanText, hasPii } from './scrubText.js';
 import { normName } from './intakeMatch.js';
 import { TEAM_LABEL } from '../../src/constants/ownership.js';
+import { SOURCE_KINDS } from '../../src/constants/leadSources.js';
 
 // lead-source-v1 - who / what ORIGINATED a lead (the attribution a channel
 // partner gets credit for), kept apart from channel (how the record entered
@@ -10,11 +11,6 @@ import { TEAM_LABEL } from '../../src/constants/ownership.js';
 // import or the backfill; NULL source_kind = never set. Text fields are
 // names / short phrases only: an address or phone is scrubbed out.
 
-export const SOURCE_KINDS = ['homelover_outreach', 'partner_referral', 'person_referral', 'campaign', 'website', 'scout', 'event', 'inbound', 'unknown'];
-export const SOURCE_LABEL = {
-  homelover_outreach: 'HomeLover outreach', partner_referral: 'Partner referral', person_referral: 'Person referral', campaign: 'Campaign',
-  website: 'Website', scout: 'Scout', event: 'Event', inbound: 'Inbound', unknown: 'Unknown',
-};
 export const SOURCE_FIELDS = ['source_kind', 'source_partner_id', 'source_person', 'source_office', 'source_campaign_id', 'route_in', 'source_note'];
 export const SOURCE_COLS = [...SOURCE_FIELDS, 'source_set_by', 'source_set_at'].join(', ');
 export const RECORD_TYPES = ['partner', 'employer', 'target'];
