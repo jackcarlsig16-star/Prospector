@@ -25,12 +25,16 @@ export const HEAT = {
   decayFactor: 0.5,
   botOpenWithinSeconds: 60,
   botUserAgents: [/generic linux/i],
+  // Gmail's image proxy (Apollo labels its agent "Gmail") fetches images only when the recipient opens the message,
+  // so a fast open there is a person, not a scanner: the timing rule doesn't apply (FIX people-apollo-visibility-v1 F1).
+  humanUserAgents: [/^gmail$/i],
 };
 
 export function isBotOpen(ev, deliveredAt) {
   if (ev.tracking_service) return true;
   if (ev.user_agent && HEAT.botUserAgents.some(re => re.test(ev.user_agent))) return true;
   if (!deliveredAt) return false;
+  if (ev.user_agent && HEAT.humanUserAgents.some(re => re.test(ev.user_agent))) return false;
   return (new Date(ev.occurred_at) - new Date(deliveredAt)) / 1000 <= HEAT.botOpenWithinSeconds;
 }
 
