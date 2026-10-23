@@ -52,6 +52,7 @@ function SourceLine({ s, canEdit, busy, onRun }) {
         {s.status === 'not_connected'
           ? <>Not connected — <button type="button" className="ui-link" onClick={() => window.dispatchEvent(new Event(OPEN_CONNECTIONS))}>Connections</button></>
           : s.last_at ? `last ${timeAgo(s.last_at)}` : 'no run yet'}
+        {s.left > 0 && <> · <span data-backlog style={{ color: SA.warn }}>{s.left} message{s.left === 1 ? '' : 's'} left</span>{canEdit && s.status !== 'running' && <> — <button type="button" className="ui-link" disabled={busy} onClick={() => onRun(s.id)}>Sync again</button></>}</>}
       </span>
       {s.error && (
         <span role="note" title={s.error} style={{ fontSize: 12, color: SA.bad, overflowWrap: 'anywhere' }}>

@@ -11,7 +11,11 @@ export const apolloFixtureCalls = [];
 // GET /users/api_profile (balances in order, the last one repeats) and the
 // website-visitor POST /mixed_companies/search (`us` when the US/500+
 // filters are on, else `all`; each { organizations, accounts }).
-export function installApolloFixture(accounts, visitors = null) {
+// FIX people-apollo-visibility-v1: `email` = { messages: [{ id, contact_id, completed_at, stats: ['opened'…] }],
+// activities: { <message id>: emailer_message } } answers GET /emailer_messages/search (by the stat filter, paged)
+// and GET /emailer_messages/:id/activities. empty: true answers every other allowlisted call with an empty
+// result instead of throwing (a whole Sync now against the fixture). Made-up rows only; no emails or phones.
+export function installApolloFixture(accounts, visitors = null, email = null) {
   const realFetch = globalThis.fetch;
   process.env.APOLLO_API_KEY ||= 'fixture-key-not-real';
   globalThis.fetch = async (url, init = {}) => {
@@ -32,6 +36,15 @@ export function installApolloFixture(accounts, visitors = null) {
       const total = (set.organizations || []).length + (set.accounts || []).length;
       return answer({ organizations: set.organizations || [], accounts: set.accounts || [], pagination: { page: body.page || 1, per_page: body.per_page, total_entries: total, total_pages: 1 } });
     }
+    if (email && init.method === 'GET' && path === '/emailer_messages/search') {
+      const q = new URL(u).searchParams;
+      const per = Number(q.get('per_page')) || 100, page = Number(q.get('page')) || 1;
+      const hits = (email.messages || []).filter(m => (m.stats || []).includes(q.get('emailer_message_stats[]')));
+      return answer({ emailer_messages: hits.slice((page - 1) * per, page * per) });
+    }
+    const act = path.match(/^\/emailer_messages\/([^/]+)\/activities$/);
+    if (email && init.method === 'GET' && act) return answer({ emailer_message: (email.activities || {})[act[1]] || { emailer_message_events: [] } });
+    if (email?.empty && !(init.method === 'POST' && path === '/contacts/search')) return answer({ emailer_campaigns: [], accounts: [], contacts: [], email_accounts: [], emailer_messages: [], pagination: { page: 1, per_page: 100, total_entries: 0, total_pages: 1 } });
     if (init.method !== 'POST' || path !== '/contacts/search') throw new Error(`fixture Apollo: ${init.method} ${path} is not faked`);
     const body = JSON.parse(init.body);
     const id = body.account_ids?.[0];
@@ -48,6 +61,6 @@ export function installApolloFixture(accounts, visitors = null) {
 }
 
 if (process.env.APOLLO_FIXTURE) {
-  installApolloFixture(JSON.parse(process.env.APOLLO_FIXTURE));
+  installApolloFixture(JSON.parse(process.env.APOLLO_FIXTURE), null, process.env.APOLLO_FIXTURE_EMAIL ? JSON.parse(process.env.APOLLO_FIXTURE_EMAIL) : null);
   console.log('[apollo fixture] installed - no real Apollo calls');
 }

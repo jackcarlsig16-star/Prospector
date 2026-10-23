@@ -122,8 +122,7 @@ export async function syncActivity({ ctx, supabase, businessId }) {
     ...neverFetched.filter(isHot).sort(newestFirst),
     ...recheck,
     ...neverFetched.filter(m => !isHot(m)).sort(newestFirst),
-  ].slice(0, cap);
-  const queueBacklog = neverFetched.length + recheck.length - queue.length;
+  ];
 
   const fetchedRows = [];
   const eventRows = [];
@@ -131,14 +130,28 @@ export async function syncActivity({ ctx, supabase, businessId }) {
   const unknownEventTypes = new Set();
   let capHit = false;
 
-  for (const m of queue) {
+  // FIX people-apollo-visibility-v1 F3a - catch-up: batches of `cap` back to back while this step's own call budget
+  // (ACTIVITY_MAX_CALLS, shared with the searches above) lasts, so a backlog clears in one run instead of one batch a day.
+  const callsLeft = () => ctx.callCounter.max - ctx.callCounter.count;
+  let attempted = 0, batches = 0;
+  for (let start = 0; start < queue.length && callsLeft() > 0; start += cap) {
+    batches++;
+    for (const m of queue.slice(start, start + cap)) {
+      if (callsLeft() <= 0) { capHit = true; break; }
+      attempted++;
+      await fetchActivities(m);
+    }
+  }
+  if (attempted < queue.length && callsLeft() <= 0) capHit = true;
+
+  async function fetchActivities(m) {
     let json;
     try {
       json = await apolloRequest({ method: 'GET', path: `/emailer_messages/${m.id}/activities`, ctx });
     } catch (err) {
-      if (err instanceof CallCapError) { capHit = true; break; }
+      if (err instanceof CallCapError) { capHit = true; return; }
       missing.push(`activity: activities for message ${m.id} failed: ${err.message}`);
-      continue;
+      return;
     }
     const em = (json && json.emailer_message) || {};
     fetchedRows.push({
@@ -193,7 +206,7 @@ export async function syncActivity({ ctx, supabase, businessId }) {
     }
   }
   if (unknownEventTypes.size) missing.push(`activity: unmapped event types skipped: ${[...unknownEventTypes].join(', ')}`);
-  if (capHit) missing.push('activity: call cap hit mid-run - remaining messages carried to the next run');
+  if (capHit) missing.push(`activity: call budget spent - ${queue.length - attempted} messages carried to the next run`);
 
   // Two upserts with uniform columns each - a mixed batch would null out the
   // activity columns on rows not fetched this run.
@@ -255,7 +268,8 @@ export async function syncActivity({ ctx, supabase, businessId }) {
       messages_seen: messages.length,
       activities_fetched: fetchedRows.length,
       activities_cap: cap,
-      backlog_after_run: queueBacklog + (queue.length - fetchedRows.length),
+      activity_batches: batches,
+      backlog_after_run: queue.length - fetchedRows.length,
       events_inserted: eventsInserted,
       prospects_new: newProspects.length,
       prospects_updated: snapshotUpdates.length,

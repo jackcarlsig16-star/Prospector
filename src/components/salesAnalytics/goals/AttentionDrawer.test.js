@@ -95,3 +95,20 @@ test('Viewer: statuses and counts, no manual buttons, no Quick add', async () =>
   for (const name of ['Sync now', 'Sync Outlook', 'Pull now', 'Tidy now', '📝 Paste call notes']) expect(within(drawer).queryByRole('button', { name })).toBeNull();
   expect(drawer.querySelector('[data-source="tidy"]')).toHaveTextContent('Failed');
 });
+
+// FIX people-apollo-visibility-v1 F3c - a run that left a backlog says so, with Sync again (Members only).
+test('Apollo backlog: "13 messages left — Sync again" runs the sync; Viewers see the count without the button', async () => {
+  triggerSync.mockResolvedValue({ id: 'r2' });
+  goalsApi.attention.mockResolvedValue({ ...DATA, sources: [src('apollo', 'Apollo (sequences, opens, replies)', 'ok', { left: 13 }), ...SOURCES.slice(1)] });
+  const { unmount } = render(<AttentionDrawer businessId="b1" canEdit compact={false} pageLoadFailures={{}} onNav={jest.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Needs attention/ }));
+  const line = await screen.findByText('13 messages left');
+  const row = line.closest('li');
+  fireEvent.click(within(row).getByRole('button', { name: 'Sync again' }));
+  await waitFor(() => expect(triggerSync).toHaveBeenCalledWith('b1'));
+  unmount();
+  render(<AttentionDrawer businessId="b1" canEdit={false} compact={false} pageLoadFailures={{}} onNav={jest.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Needs attention/ }));
+  const vrow = (await screen.findByText('13 messages left')).closest('li');
+  expect(within(vrow).queryByRole('button', { name: 'Sync again' })).toBeNull();
+});

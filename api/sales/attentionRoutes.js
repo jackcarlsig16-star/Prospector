@@ -47,7 +47,8 @@ export function apolloLine(runs, now) {
   }
   if (latest?.status === 'error') return line('apollo', 'failed', latest.finished_at || latest.started_at, latest.error_text || 'the last sync failed', { last_ok_at: lastOk });
   if (!lastOk) return line('apollo', 'stale', null, null);
-  return line('apollo', now - Date.parse(lastOk) > DAY_MS ? 'stale' : 'ok', lastOk);
+  // FIX people-apollo-visibility-v1 F3c: messages the last good run couldn't reach ("n messages left - Sync again").
+  return line('apollo', now - Date.parse(lastOk) > DAY_MS ? 'stale' : 'ok', lastOk, null, { left: success.counts?.activity?.backlog_after_run || 0 });
 }
 
 // Outlook: the caller's own grant and runs (one run = up to 3 folder rows started together).
@@ -108,7 +109,7 @@ export async function attention(supabase, { businessId, userId, fresh = false, n
   const today = laDateString(at);
   const since = new Date(now - 7 * DAY_MS).toISOString();
   const [syncRuns, grant, msRuns, visitRuns, tidyRuns, researchRuns, overdue, waiting, held, campaign] = await Promise.all([
-    supabase.from('sales_sync_runs').select('status, started_at, finished_at, error_text').eq('business_id', businessId).neq('trigger', 'test').order('started_at', { ascending: false }).limit(20).then(must),
+    supabase.from('sales_sync_runs').select('status, started_at, finished_at, error_text, counts').eq('business_id', businessId).neq('trigger', 'test').order('started_at', { ascending: false }).limit(20).then(must),
     supabase.from('microsoft_grants').select('user_id, error').eq('user_id', userId).maybeSingle().then(must),
     supabase.from('microsoft_sync_runs').select('folder, started_at, finished_at, error').eq('user_id', userId).eq('dry_run', false).order('started_at', { ascending: false }).limit(6).then(must),
     supabase.from('visit_pull_runs').select('la_date, status, error, created_at, updated_at').eq('business_id', businessId).gte('la_date', addDays(today, -7)).order('la_date', { ascending: false }).limit(10).then(must),

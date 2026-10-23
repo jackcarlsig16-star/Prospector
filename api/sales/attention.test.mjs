@@ -18,6 +18,9 @@ test('Apollo: ok within 24 h, stale after, failed on an errored or stuck latest 
   assert.equal(apolloLine([{ status: 'partial', started_at: ago(3), finished_at: ago(3) }], NOW).status, 'ok');
   assert.equal(apolloLine([{ status: 'success', started_at: ago(30), finished_at: ago(30) }], NOW).status, 'stale');
   assert.equal(apolloLine([], NOW).status, 'stale');
+  // FIX people-apollo-visibility-v1 F3c - the last good run's leftover messages.
+  assert.equal(apolloLine([{ status: 'success', started_at: ago(3), finished_at: ago(3), counts: { activity: { backlog_after_run: 13 } } }], NOW).left, 13);
+  assert.equal(apolloLine([{ status: 'success', started_at: ago(3), finished_at: ago(3), counts: {} }], NOW).left, 0);
   const f = apolloLine([{ status: 'error', started_at: ago(1), finished_at: ago(1), error_text: 'Apollo 401' }, { status: 'success', started_at: ago(5), finished_at: ago(5) }], NOW);
   assert.deepEqual([f.status, f.error, f.last_ok_at], ['failed', 'Apollo 401', ago(5)]);
   assert.equal(apolloLine([{ status: 'running', started_at: ago(0.2) }], NOW).status, 'running');
