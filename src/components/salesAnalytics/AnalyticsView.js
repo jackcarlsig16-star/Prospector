@@ -158,7 +158,8 @@ export default function AnalyticsView({ businessId, features, canEdit, onOpenGoa
             <span>{presetLabel} ({period.from} – {period.to})</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: lastRun ? (STATUS_COLOR[lastRun.status] || SA.faint) : SA.faint, display: 'inline-block' }} />
-              Synced {relativeTime(lastRun?.finished_at || lastRun?.started_at)}
+              {/* FIX people-apollo-visibility-v1 F4: named so it can't be mistaken for the Outlook sync. */}
+              Apollo (sequences, opens, replies) · synced {relativeTime(lastRun?.finished_at || lastRun?.started_at)}
               {lastRun?.counts?.apollo_calls != null && ` · ${lastRun.counts.apollo_calls} Apollo calls`}
             </span>
             {lastFailed && <span style={{ color: SA.bad }} title={lastFailed.error_text || ''}>· last sync failed</span>}
@@ -188,7 +189,7 @@ export default function AnalyticsView({ businessId, features, canEdit, onOpenGoa
             </div>
           )}
 
-          <button type="button" className="ui-btn ui-btn--secondary" onClick={handleSync} disabled={syncing} title={syncing ? 'A sync is running' : undefined} style={{ height: 44, padding: '0 16px', borderRadius: SA_SHAPE.radiusInner }}>
+          <button type="button" className="ui-btn ui-btn--secondary" onClick={handleSync} disabled={syncing} title={syncing ? 'A sync is running' : 'Sync Apollo (sequences, opens, replies)'} style={{ height: 44, padding: '0 16px', borderRadius: SA_SHAPE.radiusInner }}>
             {syncing ? 'Syncing…' : 'Sync now'}
           </button>
 

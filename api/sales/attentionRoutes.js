@@ -23,7 +23,7 @@ import { campaignActionRows } from './outreachRoutes.js';
 // The two held-moves counts scan every stored Outlook message, so they are
 // kept per workspace for HELD_CACHE_MS; ?fresh=1 (the drawer opening) reads anew.
 
-export const SOURCES = [['apollo', 'Apollo email sync'], ['outlook', 'Outlook (mail + calendar)'], ['visitors', 'Website visitors'], ['tidy', 'Tidy'], ['research', 'Research']];
+export const SOURCES = [['apollo', 'Apollo (sequences, opens, replies)'], ['outlook', 'Outlook (mail + calendar)'], ['visitors', 'Website visitors'], ['tidy', 'Tidy'], ['research', 'Research']];
 export const DAY_MS = 864e5;
 export const MORNING_HOUR = 10; // LA hour after which today's pull / Tidy should have run (REVISABLE)
 export const OUTLOOK_DEAD_MS = 30 * 60e3;

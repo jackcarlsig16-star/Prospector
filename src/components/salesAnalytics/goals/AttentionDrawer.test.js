@@ -12,7 +12,7 @@ jest.mock('../salesApi', () => ({ triggerSync: jest.fn() }));
 
 const src = (id, label, status, extra = {}) => ({ id, label, status, last_at: '2026-10-22T16:00:00Z', error: null, ...extra });
 const SOURCES = [
-  src('apollo', 'Apollo email sync', 'stale', { last_at: '2026-10-15T18:05:00Z' }),
+  src('apollo', 'Apollo (sequences, opens, replies)', 'stale', { last_at: '2026-10-15T18:05:00Z' }),
   src('outlook', 'Outlook (mail + calendar)', 'ok'),
   src('visitors', 'Website visitors', 'ok'),
   src('tidy', 'Tidy', 'failed', { error: 'x'.repeat(120) }),
@@ -50,7 +50,7 @@ test('Member: "Needs attention (n)" opens the drawer (fresh read), statuses in w
   fireEvent.click(within(apollo).getByRole('button', { name: 'Sync now' }));
   await waitFor(() => expect(triggerSync).toHaveBeenCalledWith('b1'));
   await waitFor(() => expect(goalsApi.attention).toHaveBeenCalledTimes(3));
-  expect(await within(drawer).findByRole('status')).toHaveTextContent('Apollo email sync: done');
+  expect(await within(drawer).findByRole('status')).toHaveTextContent('Apollo (sequences, opens, replies): done');
 
   const tasks = jest.fn();
   window.addEventListener(OPEN_TASKS, tasks);
