@@ -74,6 +74,8 @@ try {
     page.on('pageerror', e => errs.push('PAGE ' + e.message.slice(0, 160)));
     await page.addInitScript(([k, v, bs, dd, tab]) => {
       if (sessionStorage.getItem('__s')) return; sessionStorage.setItem('__s', '1'); localStorage.clear(); localStorage.setItem(k, v);
+      // actions-v2 REV2: Actions opens on the signed-in person with Housekeeping folded; these checks read the whole team, unfolded.
+      localStorage.setItem('prospector_goals_owner', 'team'); localStorage.setItem('prospector_actions_folded', '[]');
       for (const b of bs) { localStorage.setItem(`prospector_visits_ran_${b}`, dd); localStorage.setItem(`prospector_tidy_ran_${b}`, dd); }
       localStorage.setItem('prospector_sales_tab', tab);
     }, [`sb-${REF}-auth-token`, JSON.stringify(s.session), [S, P], today, salesTab]);

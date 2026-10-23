@@ -142,3 +142,23 @@ test('Viewer: reads the campaign and its templates - no New, Import, Activate, r
   expect(await screen.findByRole('button', { name: 'Fall campaign' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'New campaign' })).toBeNull();
 });
+
+// actions-v2 REV2 A3 - a campaign row's Actions slots: a send = Copy email · Sent · More (Stop, Skip, …);
+// a reply = Respond · — · More (Promote…, statuses). Every write is the existing contact action.
+test('contactSlots: send and reply rows map onto Primary · second · More', () => {
+  const { contactSlots } = require('./ContactActions');
+  const onAct = jest.fn(), onCopy = jest.fn(), onRespond = jest.fn(), onPromote = jest.fn();
+  const send = contactSlots({ contact: { id: 'c1', name: 'Ana', status: 'active', current_step: 2, track_id: true }, onAct, onCopy, onRespond, onPromote });
+  expect([send.primary.label, send.second.label]).toEqual(['Copy email', 'Sent']);
+  expect(send.more.map(m => m.label).slice(0, 3)).toEqual(['Stop (no more steps)', 'Skip step 2', 'They replied']);
+  send.second.run();
+  expect(onAct).toHaveBeenCalledWith('sent', { step_no: 2 });
+  send.more.find(m => m.id === 'skip').run();
+  expect(onAct).toHaveBeenCalledWith('skip', { step_no: 2 });
+  const reply = contactSlots({ contact: { id: 'c2', name: 'Ben', status: 'replied', current_step: 2 }, onAct, onCopy, onRespond, onPromote });
+  expect([reply.primary.label, reply.second]).toEqual(['Respond', null]);
+  expect(reply.more[0].label).toBe('Promote…');
+  reply.primary.run(); reply.more[0].run();
+  expect(onRespond).toHaveBeenCalled();
+  expect(onPromote).toHaveBeenCalled();
+});

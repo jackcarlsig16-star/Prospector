@@ -76,7 +76,7 @@ export function buildActions({ todos = [], flags = [], waiting = [], signals = [
   const lateWaiting = waiting.filter(w => w.status === 'open' && w.due_date && w.due_date < today);
   const waitingIds = new Set(lateWaiting.map(w => w.id));
   for (const w of lateWaiting) {
-    push('waiting', w, { text: `Waiting on ${w.waiting_on || 'them'}: ${w.text}`, why: `${lateDays(w.due_date, today)} d late`, priority: DEFAULT_PRIORITY.waiting, owner_user_id: null, meta: { waiting_on: w.waiting_on } });
+    push('waiting', w, { text: `Waiting on ${w.waiting_on || 'them'}: ${w.text}`, why: `${lateDays(w.due_date, today)} d late`, priority: DEFAULT_PRIORITY.waiting, owner_user_id: null, meta: { waiting_on: w.waiting_on, text: w.text } });
   }
 
   const refById = new Map(refTodos.map(t => [t.id, t]));

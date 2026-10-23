@@ -140,6 +140,8 @@ try {
     });
     await page.addInitScript(([k, v, b, dd]) => {
       if (sessionStorage.getItem('__s')) return; sessionStorage.setItem('__s', '1'); localStorage.clear(); localStorage.setItem(k, v);
+      // actions-v2 REV2: Actions opens on the signed-in person with Housekeeping folded; these checks read the whole team, unfolded.
+      localStorage.setItem('prospector_goals_owner', 'team'); localStorage.setItem('prospector_actions_folded', '[]');
       localStorage.setItem(`prospector_visits_ran_${b}`, dd); localStorage.setItem(`prospector_tidy_ran_${b}`, dd);
     }, [`sb-${REF}-auth-token`, JSON.stringify(u.session), B, today]);
     // Real-call guard: anything that could spend Claude, Apollo or Graph never leaves the browser.
@@ -253,7 +255,8 @@ try {
   const rowA2 = S.page.locator('[data-actions] [data-row]').filter({ hasText: `Send step 1 to ${nameA}` });
   await rowA2.getByRole('button', { name: 'Sent', exact: true }).click(); await S.page.waitForTimeout(1500);
   const rowB = S.page.locator('[data-actions] [data-row]').filter({ hasText: /Send step 1 to/ }).nth(0), nameB = (await textOf(rowB)).replace(/^Send step 1 to (.+?) \(.*$/, '$1');
-  await rowB.getByRole('button', { name: 'Stop', exact: true }).click(); await S.page.waitForTimeout(1500);
+  // actions-v2 REV2 A3: Stop sits in the row's More ▾ (Copy email · Sent · More).
+  await rowB.getByLabel(/^More for /).selectOption({ label: 'Stop (no more steps)' }); await S.page.waitForTimeout(1500);
   ok('Stop: that person is finished, nothing due', (await contactsOf()).find(c => c.name === nameB)?.status === 'done');
   // They replied on a consultant / broker, then Promote -> partner, handed to the owner.
   const all = await contactsOf();
@@ -263,12 +266,13 @@ try {
   await reloadActions(S.page);
   const anaRow = S.page.locator('[data-actions] [data-row]').filter({ hasText: 'Send step' }).filter({ hasText: 'Ana Alder' }).first();
   await anaRow.waitFor({ timeout: 15000 });
-  await anaRow.getByLabel('More for Ana Alder').selectOption({ label: 'They replied' }); await S.page.waitForTimeout(1500);
+  await anaRow.getByLabel(/^More for Send step/).selectOption({ label: 'They replied' }); await S.page.waitForTimeout(1500);
   await reloadActions(S.page);
   const replyRow = S.page.locator('[data-actions] [data-row]').filter({ hasText: 'Reply from Ana Alder' }).first();
   await replyRow.waitFor({ timeout: 15000 });
   ok('They replied: a P1 "Reply from …" row for the sender', /P1/.test(await replyRow.textContent()));
-  await replyRow.getByRole('button', { name: 'Promote…' }).click();
+  ok('A reply row: Respond is the primary; Promote… is in More ▾', (await replyRow.getByRole('button', { name: 'Respond', exact: true }).count()) === 1, JSON.stringify({ buttons: await replyRow.getByRole('button').allTextContents(), selects: await replyRow.locator('select').evaluateAll(ss => ss.map(x => x.getAttribute('aria-label'))) }));
+  await replyRow.getByLabel(/^More for Reply from/).selectOption({ label: 'Promote…' });
   const dlg = S.page.getByRole('dialog', { name: 'Promote ZZ Alder Consulting' });
   await dlg.waitFor();
   await measure(S.page, 'promote-dialog@1440'); await shot(S.page, 'seif3-promote-1440');
@@ -327,9 +331,11 @@ try {
   await measure(P.page, 'campaign-contacts@390'); await shot(P.page, 'seif3-campaign-390');
   await P.page.getByRole('button', { name: 'Templates', exact: true }).click(); await P.page.waitForTimeout(800);
   await measure(P.page, 'templates@390'); await shot(P.page, 'seif3-templates-390');
+  // On a Fri-Sun run only three sends were pulled to today and the steps above used them; bring the rest due today.
+  for (const c of (await contactsOf()).filter(c => c.status === 'active' && c.next_due_date > today)) ins(await svc.from('sales_outreach_contacts').update({ next_due_date: today }).eq('id', c.id).select('id'));
   const SP = await newPage(seif, { width: 390, height: 844 });
   await tab(SP.page, 'Actions'); await SP.page.waitForTimeout(2000);
-  ok('390 (sender): campaign rows as phone items with their buttons', (await SP.page.locator('[data-actions]').getByRole('button', { name: 'Copy email' }).count()) > 0);
+  ok('390 (sender): campaign rows as phone items with their buttons', (await SP.page.locator('[data-actions]').getByRole('button', { name: 'Copy email' }).count()) > 0, JSON.stringify((await SP.page.locator('[data-actions] [data-row]').allInnerTexts()).map(t => t.replace(/\s+/g, ' ').slice(0, 90)).slice(0, 6)));
   await measure(SP.page, 'actions-sender@390'); await shot(SP.page, 'seif3-actions-390');
   const narrow = Object.entries(results.screens).filter(([key]) => key.endsWith('@390')).every(([, s]) => s.scrollW <= s.vw + 1);
   ok('390: no sideways page scroll on the campaign, templates and Actions', narrow, JSON.stringify(Object.fromEntries(Object.entries(results.screens).filter(([key]) => key.endsWith('@390')).map(([key, s]) => [key, `${s.scrollW}/${s.vw}`]))));

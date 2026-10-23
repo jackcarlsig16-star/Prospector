@@ -2,30 +2,59 @@ import { md } from '../tasks/TaskRow';
 import { laDay } from '../huddleView';
 
 // sales-ia-v2 A1 - Actions: the pure pieces over the items GET goals/actions
-// returns (already ranked overdue -> P1..P4 -> due). Filters: Mine | Team
-// (Mine = owned by me or by no one - a signal, a Tidy row or a waiting row is
-// everyone's to act on), Kind, Search. The sort is remembered per browser.
+// returns (already ordered band -> company P -> due -> age, actions-v2 REV2).
+// actions-v2 A1: whose list comes from the frame's one Who control (a member's
+// user id = rows they own; 'team' = everything); the Unassigned chip shows the
+// rows nobody owns. Kind and Search narrow it. The sort is remembered per browser.
 export const KIND_LABEL = { signal: 'Signal', tidy: 'Tidy', waiting: 'Waiting on', todo: 'To-do', flag: 'Flag', focus: 'Focus', campaign: 'Campaign' };
 export const KIND_OPTIONS = Object.entries(KIND_LABEL);
 // What a Viewer's Team list holds (A1): to-dos, Focus 5 per member, flags.
 export const VIEWER_KINDS = ['todo', 'focus', 'flag'];
-export const EMPTY_FILTERS = { who: 'mine', kind: '', q: '' };
-export const activeFilterCount = f => (f.kind ? 1 : 0) + (f.q ? 1 : 0);
+export const EMPTY_FILTERS = { kind: '', q: '', unassigned: false };
+export const activeFilterCount = f => (f.kind ? 1 : 0) + (f.q ? 1 : 0) + (f.unassigned ? 1 : 0);
 
-export function matchesActionFilters(it, f, meId) {
+const narrowed = (it, f) => {
   const needle = f.q.trim().toLowerCase();
-  return (f.who !== 'mine' || !it.owner_user_id || it.owner_user_id === meId)
-    && (!f.kind || it.kind === f.kind)
-    && (!needle || `${it.text} ${it.why || ''} ${it.company?.name || ''}`.toLowerCase().includes(needle));
+  return (!f.kind || it.kind === f.kind) && (!needle || `${it.text} ${it.why || ''} ${it.company?.name || ''}`.toLowerCase().includes(needle));
+};
+// owner: a member's user id or 'team'.
+export function matchesActionFilters(it, f, owner) {
+  if (f.unassigned) return !it.owner_user_id && narrowed(it, f);
+  return (owner === 'team' || it.owner_user_id === owner) && narrowed(it, f);
 }
 
-// { open, done }: Focus items already done fold under "n done ▸".
-export function actionsView(items, f, { meId, viewer = false } = {}) {
-  // A kind this screen has no label and buttons for yet (the server's campaign rows ahead of their UI) stays hidden.
+// actions-v2 A2 - the bands, in order, each with its open rows; Focus items already done fold under "n done ▸".
+// unassigned = how many rows (Kind / Search applied) nobody owns, for the chip.
+export const BANDS = [['now', 'Now'], ['today', 'Today'], ['week', 'This week'], ['housekeeping', 'Housekeeping']];
+export function actionsView(items, f, { owner = 'team', viewer = false } = {}) {
+  // A kind this screen has no label and buttons for yet stays hidden.
   const known = items.filter(it => it.kind in KIND_LABEL);
   const base = viewer ? known.filter(it => VIEWER_KINDS.includes(it.kind)) : known;
-  const shown = base.filter(it => matchesActionFilters(it, f, meId));
-  return { open: shown.filter(it => it.status !== 'done'), done: shown.filter(it => it.status === 'done') };
+  const shown = base.filter(it => matchesActionFilters(it, f, owner));
+  const open = shown.filter(it => it.status !== 'done');
+  return {
+    bands: BANDS.map(([id, label]) => ({ id, label, rows: open.filter(it => (it.band || 'housekeeping') === id) })),
+    open, done: shown.filter(it => it.status === 'done'),
+    unassigned: base.filter(it => !it.owner_user_id && it.status !== 'done' && narrowed(it, f)).length,
+  };
+}
+
+// localStorage key (per browser): prospector_actions_folded - JSON list of folded band ids; absent = Housekeeping folded.
+const FOLD_KEY = 'prospector_actions_folded';
+export const DEFAULT_FOLDED = ['housekeeping'];
+export function readFolded() {
+  try {
+    const v = JSON.parse(localStorage.getItem(FOLD_KEY));
+    return Array.isArray(v) && v.every(x => BANDS.some(([id]) => id === x)) ? v : DEFAULT_FOLDED;
+  } catch { return DEFAULT_FOLDED; }
+}
+export const writeFolded = v => { try { localStorage.setItem(FOLD_KEY, JSON.stringify(v)); } catch { /* private mode */ } };
+
+// actions-v2 A4 - the due-date button's choices from today (REVISABLE): Friday / next Monday never land on today.
+const dow = d => new Date(`${d}T12:00:00Z`).getUTCDay();
+export function dueChoices(today) {
+  const plus = n => snoozeTo(today, n);
+  return [['today', 'Today', today], ['tomorrow', 'Tomorrow', plus(1)], ['friday', 'Friday', plus(((5 - dow(today) + 7) % 7) || 7)], ['monday', 'Next Monday', plus(((8 - dow(today)) % 7) || 7)], ['none', 'No date', null]];
 }
 
 export const priorityText = it => (it.overdue ? `Overdue · ${it.late_days} d` : `P${it.priority}`);
@@ -42,8 +71,6 @@ export function readSort() {
 }
 export const writeSort = s => { try { if (s) localStorage.setItem(SORT_KEY, JSON.stringify(s)); else localStorage.removeItem(SORT_KEY); } catch { /* private mode */ } };
 
-// Snooze targets for a to-do (REVISABLE): a new due date from today.
-export const SNOOZE_OPTIONS = [['1', 'Tomorrow'], ['3', '3 days'], ['7', 'Next week']];
 export const snoozeTo = (today, days) => new Date(Date.parse(`${today}T12:00:00Z`) + Number(days) * 864e5).toISOString().slice(0, 10);
 
 // FIX actions-row-detail-v1 - the row detail: where the row came from, in words, and its company line.
@@ -67,7 +94,7 @@ export function companyLine(c) {
   return [c.name, c.stage_label, c.priority && `P${c.priority}`, c.owner, c.type && c.type !== 'visitor' ? (c.last_touch_at ? `last touch ${day(c.last_touch_at)}` : 'no touch yet') : null].filter(Boolean).join(' · ');
 }
 
-export const datesLine = (it, ownerName) => [`Added ${day(it.created_at) || '—'}`, it.due_date ? `due ${day(it.due_date)}` : 'no due date', ownerName ? `owner ${ownerName}` : 'owner Team'].join(' · ');
+export const datesLine = (it, ownerName) => [`Added ${day(it.created_at) || '—'}`, it.due_date ? `due ${day(it.due_date)}` : 'no due date', ownerName ? `owner ${ownerName}` : 'no owner'].join(' · ');
 
 // seif-campaign-v1 - a campaign row's own detail line: which step, when the last one went out.
 export function campaignLine(it) {

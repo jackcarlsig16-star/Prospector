@@ -76,7 +76,8 @@ export function homeOf(target) {
 export default function GoalsTab({ businessId, section, view, onNav, onOpenOverview, onOpenHuddle, initialTarget, analytics, pageLoadFailures }) {
   const compact = useMediaQuery('(max-width: 1099px)');
   const [weekStart, setWeekStart] = useState(() => laWeekStart());
-  const [ownerSlug, setOwnerSlug] = useState(() => new URLSearchParams(window.location.search).get('owner') || readStored(OWNER_KEY) || 'team');
+  // null until the first choice: actions-v2 REV2 A1 defaults it to the signed-in Member (Team for a Viewer).
+  const [ownerSlug, setOwnerSlug] = useState(() => new URLSearchParams(window.location.search).get('owner') || readStored(OWNER_KEY) || null);
   const [members, setMembers] = useState([]);
   const [me, setMe] = useState(null);
   const [todos, setTodos] = useState([]);
@@ -166,6 +167,12 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   // The person filter is remembered per viewer and mirrored in the URL
   // (?owner=cyrus); the tab and sub-view are SalesAnalyticsTab's (?tab=, ?view=).
   useEffect(() => {
+    if (ownerSlug || !me || !members.length) return;
+    const mine = members.find(m => m.user_id === me.profile?.id);
+    setOwnerSlug(mine && mine.role !== 'viewer' ? slugOf(mine.name) : 'team');
+  }, [ownerSlug, me, members]);
+  useEffect(() => {
+    if (!ownerSlug) return;
     writeStored(OWNER_KEY, ownerSlug);
     const url = new URL(window.location.href);
     if (ownerSlug === 'team') url.searchParams.delete('owner'); else url.searchParams.set('owner', ownerSlug);
@@ -365,7 +372,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
 
         {section === 'actions' && me && <>
           {canEdit && <PlanNudge week={weekStart} ownerId={planOwner} ownerName={lookup(planOwner).first} plans={plans} onPlan={() => setPlanOpen(true)} />}
-          <ActionsView businessId={businessId} canEdit={canEdit} meId={meId} members={members} lookup={lookup} onPlan={planOwner ? () => setPlanOpen(true) : null}
+          <ActionsView businessId={businessId} canEdit={canEdit} meId={meId} owner={owner} members={members} lookup={lookup}
             onOpenFull={row => go(row.type === 'partner' ? { partners: { ids: [row.id], open: row.id, label: row.name } } : 'view:pipeline')} />
         </>}
 

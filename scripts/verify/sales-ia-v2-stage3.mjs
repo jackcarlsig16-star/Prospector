@@ -165,6 +165,8 @@ try {
     page.on('dialog', d => { page.__dialogs = (page.__dialogs || []).concat(d.message()); d.accept(); });
     await page.addInitScript(([k, v, b, d]) => {
       if (sessionStorage.getItem('__s')) return; sessionStorage.setItem('__s', '1'); localStorage.clear(); localStorage.setItem(k, v);
+      // actions-v2 REV2: Actions opens on the signed-in person with Housekeeping folded; these checks read the whole team, unfolded.
+      localStorage.setItem('prospector_goals_owner', 'team'); localStorage.setItem('prospector_actions_folded', '[]');
       localStorage.setItem(`prospector_visits_ran_${b}`, d); localStorage.setItem(`prospector_tidy_ran_${b}`, d);
     }, [`sb-${REF}-auth-token`, JSON.stringify(u.session), B, today]);
     await page.addInitScript(() => { window.__prints = 0; window.print = () => { window.__prints++; }; });

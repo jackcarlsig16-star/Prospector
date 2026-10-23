@@ -95,6 +95,8 @@ try {
   // Visits marked pulled today (no Apollo); Tidy left to run on page load (Q5's path).
   await page.addInitScript(([k, v, b, dd]) => {
     if (sessionStorage.getItem('__s')) return; sessionStorage.setItem('__s', '1'); localStorage.clear(); localStorage.setItem(k, v);
+      // actions-v2 REV2: Actions opens on the signed-in person with Housekeeping folded; these checks read the whole team, unfolded.
+      localStorage.setItem('prospector_goals_owner', 'team'); localStorage.setItem('prospector_actions_folded', '[]');
     localStorage.setItem(`prospector_visits_ran_${b}`, dd);
   }, [`sb-${REF}-auth-token`, JSON.stringify(owner.session), B, today]);
   await page.route(/\/api\/sales\/[^/]+\/(sync|apollo)|\/goals\/visits\/pull|\/research\/run|\/research$|\/apollo-check|\/proxy\/anthropic/, route => { blocked.push(route.request().url()); route.abort(); });

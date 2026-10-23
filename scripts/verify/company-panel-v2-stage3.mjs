@@ -105,6 +105,8 @@ try {
     page.on('dialog', d => d.accept());
     await page.addInitScript(([k, v, b, d]) => {
       if (sessionStorage.getItem('__s')) return; sessionStorage.setItem('__s', '1'); localStorage.clear(); localStorage.setItem(k, v);
+      // actions-v2 REV2: Actions opens on the signed-in person with Housekeeping folded; these checks read the whole team, unfolded.
+      localStorage.setItem('prospector_goals_owner', 'team'); localStorage.setItem('prospector_actions_folded', '[]');
       localStorage.setItem(`prospector_visits_ran_${b}`, d); localStorage.setItem(`prospector_tidy_ran_${b}`, d);
     }, [`sb-${REF}-auth-token`, JSON.stringify(user.session), B, today]);
     await page.route(/\/api\/sales\/[^/]+\/(sync|apollo)|\/goals\/visits\/pull|\/apollo-check/, route => route.abort());
@@ -116,6 +118,9 @@ try {
     await page.getByLabel('Workspace').selectOption({ label: NAME }); await page.waitForTimeout(1500);
     if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
     await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
+    // Sales & Marketing opens on Actions since actions-home-attention-v1; this check is about Pipeline > Companies.
+    await page.locator('#workspace-header-tabs, [data-sales-tabrow]').getByRole('button', { name: /^Pipeline/ }).first().dispatchEvent('click'); await page.waitForTimeout(1200);
+    await page.locator('[data-sales-subviews]').getByRole('button', { name: 'Companies', exact: true }).dispatchEvent('click'); await page.waitForTimeout(1500);
     await page.locator('[data-row]').first().waitFor();
     return { page, errs };
   }
@@ -151,13 +156,14 @@ try {
     const m = await win(page);
     ok(`1440 partner: two body columns (${m.cols}), window ${m.w} wide, no sideways scroll`, m.kind === 'window' && m.cols === 2 && m.docW <= m.vw && m.asideScrollW <= m.w + 1, JSON.stringify({ cols: m.cols, w: m.w, docW: m.docW }));
     ok('L2: seven labelled facts in order', JSON.stringify(m.facts) === JSON.stringify(['Stage', 'Priority', 'Owner', 'Team', 'Source', 'Last touch', 'Next step']), JSON.stringify(m.facts));
-    ok('L2: Last touch reads "<date> · Email sent", Source "Import"', /Email sent/.test(await w.locator('[title="Last touch"]').textContent()) && (await w.locator('[title="Source"]').textContent()) === 'Import', await w.locator('[data-facts-row]').textContent());
+    // lead-source-v1 Stage 3: the Source fact is the lead source (not set here) with the channel small beside it.
+    ok('L2: Last touch reads "<date> · Email sent", Source "Not set · via Import"', /Email sent/.test(await w.locator('[title="Last touch"]').textContent()) && /^Not set$/.test(await w.locator('[title="Source"]').textContent()) && /via Import/.test(await w.locator('[data-fact="Source"]').textContent()), await w.locator('[data-facts-row]').textContent());
     ok('L3: the band names the clicker first (click beats the 3 visits), then the visits; four buttons', !!m.band && /^ZZ Pat Lee clicked Step 1/.test(m.band.text.replace(/^Interest/, '')) && /3 site visits this week/.test(m.band.text) && JSON.stringify(m.band.buttons) === JSON.stringify(['Follow up: draft reply', 'Book meeting', 'Mark contacted', 'Not now']), JSON.stringify(m.band));
     ok('L4: labelled Actions row with the six actions and Next (secondary while the band shows) + "✦ generated"', m.actions.slice(0, 6).join('|') === 'Add note|Add to-do|Add contact|Draft email in Claude|Research|Check Apollo' && m.actions.some(a => a.startsWith('Next:')) && (await w.locator('[data-actions-row]').textContent()).includes('✦ generated'), JSON.stringify(m.actions));
     ok('L5: Edit row = Stage · Owner · Team · Priority', JSON.stringify(m.edit) === JSON.stringify(['Stage', 'Owner', 'Team', 'Priority']), JSON.stringify(m.edit));
     const stageOpts = await w.getByLabel('Stage').locator('option').allTextContents();
     ok(`L5: the Stage select lists forward moves only (${stageOpts.join(' / ')})`, stageOpts[0] === 'Replied' && !stageOpts.includes('1st email sent') && !stageOpts.includes('Not started') && stageOpts.includes('Meeting set'));
-    ok('L6: cards in order - Signals & visits · Open to-dos · Waiting on them · Notes & touches · Intel · People', m.cards.join('|') === 'Signals & visits|Open to-dos|Waiting on them|Notes & touches|Intel|People', m.cards.join('|'));
+    ok('L6: cards in order - Signals & visits · Open to-dos · Waiting on them · Notes & touches · Intel · People (+ lead-source: Referred by <partner> · Source history)', m.cards.join('|') === `Signals & visits|Open to-dos|Waiting on them|Notes & touches|Intel|People|Referred by ${PARTNER}|Source history`, m.cards.join('|'));
     ok('L6 People: the clicker first with the pill, the quiet one after; no email anywhere in the window', m.people.length === 2 && m.people[0].includes('ZZ Pat Lee') && m.people[0].includes('clicked Step 1') && m.people[1].includes('ZZ Robin Quiet') && !(await w.textContent()).includes('@'), JSON.stringify(m.people));
     ok('L1: the confirmed site link + ✓ confirmed in Intel', (await w.getByRole('link', { name: 'patagonia.com ↗' }).count()) >= 1 && (await w.getByText('✓ confirmed').count()) === 1);
     await measure(page, '1440 partner');

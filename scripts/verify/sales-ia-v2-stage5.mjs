@@ -128,6 +128,8 @@ try {
     page.on('dialog', d => d.accept());
     await page.addInitScript(([k, v, b, d]) => {
       if (sessionStorage.getItem('__s')) return; sessionStorage.setItem('__s', '1'); localStorage.clear(); localStorage.setItem(k, v);
+      // actions-v2 REV2: Actions opens on the signed-in person with Housekeeping folded; these checks read the whole team, unfolded.
+      localStorage.setItem('prospector_goals_owner', 'team'); localStorage.setItem('prospector_actions_folded', '[]');
       localStorage.setItem(`prospector_visits_ran_${b}`, d); localStorage.setItem(`prospector_tidy_ran_${b}`, d);
     }, [`sb-${REF}-auth-token`, JSON.stringify(u.session), B, today]);
     await page.addInitScript(() => { window.__prints = 0; window.print = () => { window.__prints++; }; });
@@ -167,11 +169,15 @@ try {
     ok(`N2 1440: tab row and sub-view switch at the same x/y on Actions, Dashboard, Companies, People and back (max move ${tabMove} / ${subMove} px)`, tabMove <= 1 && subMove <= 1, JSON.stringify(results.n2['1440 across tabs']));
     await page.locator('tr[data-row]').first().waitFor();
     const rows0 = await rowTexts(page);
-    ok(`bar-5: the top row is overdue (${rows0[0]?.p}); Mine hides Cyrus's to-do; 8 open rows + the "1 done ▸" fold`, /^Overdue/.test(rows0[0]?.p || '') && !rows0.some(r => r.text === 'ZZ Draft the one-pager') && rows0.length === 8 && (await page.getByRole('button', { name: '1 done ▸' }).count()) === 1, JSON.stringify(rows0));
+    // actions-v2 REV2 A1: whose list = the frame's one Who control (this page starts on Team); the top row sits in Now.
+    ok(`bar-5: Team - the top row is overdue in Now (${rows0[0]?.p}); 9 open rows incl. Cyrus's to-do + the "1 done ▸" fold`, /^Overdue/.test(rows0[0]?.p || '') && rows0.some(r => r.text === 'ZZ Draft the one-pager') && rows0.length === 9 && (await page.getByRole('button', { name: '1 done ▸' }).count()) === 1, JSON.stringify(rows0));
     const b0 = await boxes(page);
-    await page.getByRole('group', { name: 'Who' }).getByRole('button', { name: 'Team' }).click(); await page.waitForTimeout(300);
+    await page.getByRole('group', { name: 'Filter by person' }).getByRole('button', { name: 'Jack' }).click(); await page.waitForTimeout(300);
+    const rowsJ = await rowTexts(page);
+    ok('Who = Jack: only Jack\'s rows - Cyrus\'s to-do and the unowned signals leave', !rowsJ.some(r => r.text === 'ZZ Draft the one-pager') && !rowsJ.some(r => r.key.startsWith('signal-')) && rowsJ.length > 0, JSON.stringify(rowsJ.map(r => r.key)));
+    await page.getByRole('group', { name: 'Filter by person' }).getByRole('button', { name: 'Team' }).click(); await page.waitForTimeout(300);
     const rows1 = await rowTexts(page);
-    ok('Team shows the teammate\'s to-do as well (9 open rows)', rows1.length === 9 && rows1.some(r => r.text === 'ZZ Draft the one-pager'));
+    ok('Team shows the teammate\'s to-do again (9 open rows)', rows1.length === 9 && rows1.some(r => r.text === 'ZZ Draft the one-pager'));
     await page.getByLabel('Kind').selectOption('signal'); await page.waitForTimeout(200);
     await page.getByLabel('Search actions').fill('scout'); await page.waitForTimeout(300);
     const b1 = await boxes(page);
@@ -205,7 +211,7 @@ try {
     ok('Undo: the to-do is open again and back on the list (within 6 s)', undone);
     const mv = Math.max(maxMove(b0, b1), maxMove(b0, b2));
     results.n2['1440 filters/notice'] = { before: b0, afterFilters: b1, afterToast: b2, maxMove: mv };
-    ok(`N2 1440: Team + Kind + Search and a toast move nothing above the table (max ${mv} px)`, mv <= 1, JSON.stringify(results.n2['1440 filters/notice']));
+    ok(`N2 1440: Who + Kind + Search and a toast move nothing above the table (max ${mv} px)`, mv <= 1, JSON.stringify(results.n2['1440 filters/notice']));
     // Company opens the P4 window (Part B's CenterWindow); Esc closes it.
     await page.getByRole('button', { name: 'ZZ Northwind Benefits' }).first().click();
     const win = page.locator('aside[data-center-window]'); await win.waitFor(); await win.locator('[data-company-panel="partner"]').waitFor();
@@ -216,7 +222,8 @@ try {
     // Focus: Done folds the item into "2 done ▸"; the fold opens with Reopen.
     await acts(page, 'ZZ Book two partner meetings').getByRole('button', { name: 'Done' }).click(); await page.waitForTimeout(1500);
     const fold = page.getByRole('button', { name: '2 done ▸' });
-    ok('Focus Done: no struck-through row, the item folds into "2 done ▸"', (await fold.count()) === 1 && !(await rowTexts(page)).some(r => r.text === 'ZZ Book two partner meetings'));
+    await fold.waitFor({ timeout: 8000 }).catch(() => {}); // the list reloads after the write (TODOS_CHANGED)
+    ok('Focus Done: no struck-through row, the item folds into "2 done ▸"', (await fold.count()) === 1 && !(await rowTexts(page)).some(r => r.text === 'ZZ Book two partner meetings'), JSON.stringify({ toggles: await page.locator('.ui-table__toggle').allInnerTexts(), rows: (await rowTexts(page)).map(r => r.text) }));
     await fold.click(); await page.waitForTimeout(300);
     ok('…opening the fold lists it with Reopen', (await acts(page, 'ZZ Book two partner meetings').getByRole('button', { name: 'Reopen' }).count()) === 1);
     await toast(page).getByRole('button', { name: 'Undo' }).click(); await page.waitForTimeout(1200);
@@ -233,11 +240,10 @@ try {
     await page.locator('[data-row]').first().waitFor();
     const b0 = await boxes(page);
     await page.getByRole('button', { name: /^Filters/ }).click(); await page.getByRole('dialog', { name: 'Filters' }).waitFor();
-    await page.getByRole('dialog', { name: 'Filters' }).getByRole('button', { name: 'Team' }).click();
     await page.getByRole('dialog', { name: 'Filters' }).getByRole('button', { name: /^Show / }).click(); await page.waitForTimeout(400);
     const b1 = await boxes(page);
     const n = await page.locator('[data-row]').count();
-    ok(`390: the card list with the filter sheet; Team shows 9 open cards (${n}); no sideways scroll`, n >= 9 && (await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)));
+    ok(`390: the card list with the filter sheet; Team (the frame's Who) shows 9 open cards (${n}); no sideways scroll`, n >= 9 && (await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)));
     const mv = maxMove(b0, b1);
     results.n2['390'] = { before: b0, afterSheet: b1, maxMove: mv };
     ok(`N2 390: the filter sheet moves nothing above the list (max ${mv} px)`, mv <= 1, JSON.stringify(results.n2['390']));

@@ -43,6 +43,30 @@ export function PromoteDialog({ contact, members, lookup, onPromote, onClose }) 
     </div>, document.getElementById(SA_THEME_ROOT_ID) || document.body);
 }
 
+// actions-v2 REV2 A3 - the same buttons as Actions slots: a send = Copy email · Sent · More (Stop, Skip, …);
+// a reply = Respond (onRespond, the company window) · — · More (Promote…, Stop, statuses). onPromote opens the dialog.
+export function contactSlots({ contact, onAct, onCopy, onRespond, onPromote }) {
+  const can = contactMoves(contact);
+  const step = contact.current_step;
+  const reply = contact.status === 'replied';
+  const more = [
+    !reply && can.stop && { id: 'stop', label: 'Stop (no more steps)', run: () => onAct('stop') },
+    can.skip && { id: 'skip', label: `Skip step ${step}`, run: () => onAct('skip', { step_no: step }) },
+    can.replied && { id: 'replied', label: 'They replied', run: () => onAct('replied') },
+    reply && can.promote && { id: 'promote', label: 'Promote…', run: onPromote },
+    reply && can.stop && { id: 'stop', label: 'Stop', run: () => onAct('stop') },
+    can.pause && { id: 'pause', label: 'Take off the schedule', run: () => onAct('pause') },
+    can.resume && { id: 'resume', label: 'Put back on the schedule', run: () => onAct('resume') },
+    ...(can.mark ? MARK_OPTIONS.filter(([st]) => st !== contact.status).map(([st, label]) => ({ id: `status:${st}`, label, run: () => onAct('status', { status: st }) })) : []),
+  ].filter(Boolean);
+  if (reply) return { primary: { label: 'Respond', title: 'Open the company window to answer', run: onRespond }, second: null, more };
+  return {
+    primary: can.send ? { label: 'Copy email', title: `Copy step ${step}'s subject and body to paste into your mailbox`, run: onCopy } : null,
+    second: can.send ? { label: 'Sent', title: `Step ${step} went out from your mailbox`, run: () => onAct('sent', { step_no: step }) } : null,
+    more,
+  };
+}
+
 export default function ContactActions({ contact, members, lookup, onAct, onCopy }) {
   const [promoting, setPromoting] = useState(false);
   const can = contactMoves(contact);

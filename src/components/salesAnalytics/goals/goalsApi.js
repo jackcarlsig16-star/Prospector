@@ -72,7 +72,8 @@ export const goalsApi = {
   suggestions: id => call(id, '/suggestions'),
   runTidy: (id, { force = false, trigger = 'manual' } = {}) => call(id, '/tidy/run', { method: 'POST', body: { force, trigger } }),
   // FIX actions-done-button-v1: { done: true } = the to-do is born done; a partner-linked one logs an email touch (touch_event_id back).
-  acceptSuggestion: (id, sid, { done = false } = {}) => call(id, `/suggestions/${sid}/accept`, { method: 'POST', body: done ? { done: true } : {} }),
+  // actions-v2 REV2 A4: ownerUserId = accept on a Member's behalf (the to-do is theirs).
+  acceptSuggestion: (id, sid, { done = false, ownerUserId = null } = {}) => call(id, `/suggestions/${sid}/accept`, { method: 'POST', body: { ...(done ? { done: true } : {}), ...(ownerUserId ? { owner_user_id: ownerUserId } : {}) } }),
   dismissSuggestion: (id, sid) => call(id, `/suggestions/${sid}/dismiss`, { method: 'POST', body: {} }),
   snoozeSuggestion: (id, sid) => call(id, `/suggestions/${sid}/snooze`, { method: 'POST', body: {} }),
   // sales-ia-v2 A1 - back to proposed within 10 min; todo_id = the to-do Accept returned (deleted if still open).
@@ -81,7 +82,7 @@ export const goalsApi = {
   // accept = { signal, todo, via, record }; dismiss parks the company 7 days. 0 AI, 0 Apollo.
   signals: (id, status = 'new') => call(id, `/signals?${q({ status })}`).then(d => d.signals),
   scoutImport: (id, file, dryRun) => call(id, '/signals/scout-import', { method: 'POST', body: { file, dryRun } }),
-  acceptSignal: (id, sid, { done = false } = {}) => call(id, `/signals/${sid}/accept`, { method: 'POST', body: done ? { done: true } : {} }),
+  acceptSignal: (id, sid, { done = false, ownerUserId = null } = {}) => call(id, `/signals/${sid}/accept`, { method: 'POST', body: { ...(done ? { done: true } : {}), ...(ownerUserId ? { owner_user_id: ownerUserId } : {}) } }),
   dismissSignal: (id, sid) => call(id, `/signals/${sid}/dismiss`, { method: 'POST', body: {} }),
   // sales-ia-v2 A1 - a just-accepted / dismissed signal back to new (its to-do, target or note come off too).
   undoSignal: (id, sid, touchEventId) => call(id, `/signals/${sid}/undo`, { method: 'POST', body: touchEventId ? { touch_event_id: touchEventId } : {} }),

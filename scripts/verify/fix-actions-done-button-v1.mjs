@@ -92,6 +92,8 @@ try {
     page.on('dialog', d => d.accept());
     await page.addInitScript(([k, v, b, dd]) => {
       if (sessionStorage.getItem('__s')) return; sessionStorage.setItem('__s', '1'); localStorage.clear(); localStorage.setItem(k, v);
+      // actions-v2 REV2: Actions opens on the signed-in person with Housekeeping folded; these checks read the whole team, unfolded.
+      localStorage.setItem('prospector_goals_owner', 'team'); localStorage.setItem('prospector_actions_folded', '[]');
       localStorage.setItem(`prospector_visits_ran_${b}`, dd); localStorage.setItem(`prospector_tidy_ran_${b}`, dd);
     }, [`sb-${REF}-auth-token`, JSON.stringify(owner.session), B, today]);
     // Real-call guard (ui-clarity-v1 Stage 2): nothing that could spend Apollo or Claude leaves the browser.
@@ -168,10 +170,12 @@ try {
   {
     const { page: p2, errs: e2 } = await newPage({ width: 390, height: 844 });
     const row = acts(p2, texts[2]);
-    ok('390: the Tidy card carries Accept · Done · Dismiss · Snooze', JSON.stringify(await row.getByRole('button').allTextContents()) === JSON.stringify(['Accept', 'Done', 'Dismiss', 'Snooze']), JSON.stringify(await row.getByRole('button').allTextContents()));
+    // actions-v2 REV2 A3: on a phone the slots collapse to Primary + More ▾ (Done, Dismiss, Snooze inside More).
+    const moreOpts = await row.getByRole('combobox').locator('option').allTextContents();
+    ok('390: the Tidy card carries Accept + More ▾ (Done · Dismiss · Snooze)', JSON.stringify(await row.getByRole('button').allTextContents()) === JSON.stringify(['Accept']) && JSON.stringify(moreOpts) === JSON.stringify(['More ▾', 'Done', 'Dismiss for 7 days', 'Snooze 7 days']), JSON.stringify(moreOpts));
     await shot(p2, 'fixad-actions-390', false);
     const c0 = await above(p2);
-    await row.getByRole('button', { name: 'Done' }).click(); await p2.waitForTimeout(1500);
+    await row.getByRole('combobox').selectOption({ label: 'Done' }); await p2.waitForTimeout(1500);
     const c1 = await above(p2);
     ok('390: Done works from the card list and moves nothing above the list', (await events()).length === 4 && Object.keys(c0).every(k => Math.abs((c0[k] ?? 0) - (c1[k] ?? 0)) <= 1), JSON.stringify({ c0, c1 }));
     await shot(p2, 'fixad-actions-after-390', false);
