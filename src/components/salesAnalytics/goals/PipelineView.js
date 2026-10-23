@@ -63,6 +63,7 @@ const rowBar = { height: ROW_BAR_HEIGHT, display: 'flex', alignItems: 'center', 
 const Dim = () => <span className="ui-table__dim">—</span>;
 const rowKey = r => `${r.type}-${r.id}`;
 const CELL_FIELD = { next: 'next_step', due: 'next_step_due' };
+const SIZE_TAG = { research: 'Research', manual: 'Typed' };
 const Swatch = ({ color }) => <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, flex: 'none', background: BOARD_TOKENS[color] }} />;
 const workCell = (n, late, what) => (n ? <span style={{ ...numStyle, color: late ? SA.bad : SA.text }} title={`${n} open ${what}${late ? ` · ${late} overdue` : ''}`}>{n}{late ? ' !' : ''}</span> : <Dim />);
 
@@ -120,7 +121,11 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
     .then(r => { setRows(r); setError(''); }).catch(e => setError(e.message)), [businessId]);
   useEffect(() => { load(); }, [load]);
 
-  const all = useMemo(() => rows || [], [rows]);
+  // company-workflow-v1 W3: Owner = the person (first name) wherever the record has one; the old text otherwise.
+  const all = useMemo(() => {
+    const first = new Map(members.map(m => [m.user_id, (m.name || '').split(' ')[0]]));
+    return (rows || []).map(r => (r.owner_user_id && first.get(r.owner_user_id) ? { ...r, owner: first.get(r.owner_user_id) } : r));
+  }, [rows, members]);
   const owners = useMemo(() => ownersOf(all), [all]);
   const stages = useMemo(() => stagesOf(all), [all]);
   const view = useMemo(() => companiesView(all, channel, filters), [all, channel, filters]);
@@ -266,6 +271,12 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
     { id: 'todos', label: 'To-dos', width: 72, sortValue: r => r.work?.todos || null, render: r => workCell(r.work?.todos, r.work?.todos_overdue, 'to-dos') },
     { id: 'waiting', label: 'Waiting', width: 76, sortValue: r => r.work?.waiting || null, render: r => workCell(r.work?.waiting, r.work?.waiting_overdue, 'waiting on them') },
     { id: 'lives', label: 'Covered lives', width: 104, sortValue: r => r.covered_lives, render: r => (r.covered_lives != null ? <span style={numStyle}>{r.covered_lives.toLocaleString('en-US')}</span> : <Dim />) },
+    // company-workflow-v1 W4/W5: Employees (number + where it came from) and a partner's Reach / Clients - sortable.
+    { id: 'employees', label: 'Employees', width: 116, sortValue: r => r.employees, render: r => (r.employees != null
+      ? <span style={{ display: 'inline-flex', gap: 6, alignItems: 'baseline', whiteSpace: 'nowrap' }}><span style={numStyle}>{r.employees.toLocaleString('en-US')}</span>{SIZE_TAG[r.employees_source] && <span style={{ fontSize: 11, color: SA.muted }}>{SIZE_TAG[r.employees_source]}</span>}</span>
+      : <Dim />), title: r => (r.employees != null ? `${r.employees.toLocaleString('en-US')} employees · ${SIZE_TAG[r.employees_source] || ''}` : undefined) },
+    { id: 'reach', label: 'Reach', width: 92, sortValue: r => r.reach_employees, render: r => (r.reach_employees != null ? <span style={numStyle}>{r.reach_employees.toLocaleString('en-US')}</span> : <Dim />), title: () => 'Employees it covers across its clients (PEO / HR / benefit platforms)' },
+    { id: 'clients', label: 'Clients', width: 76, sortValue: r => r.reach_clients, render: r => (r.reach_clients != null ? <span style={numStyle}>{r.reach_clients.toLocaleString('en-US')}</span> : <Dim />), title: () => 'Client companies it serves' },
     { id: 'record', label: 'Record ID', width: 92, sortValue: r => r.record_id, render: r => r.record_id || <Dim /> },
   ];
   const columns = allColumns.filter(c => c.fixed || !hidden.includes(c.id));
@@ -396,7 +407,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
           onConvert={converted} onClose={closePanel} onOpenFull={() => openFull(panelRow)} onOpenPeople={onOpenPeople && (c => { closePanel(); onOpenPeople(c); })} />
       )}
       {panel !== undefined && (
-        <OpportunityPanel businessId={businessId} opportunity={panel} saving={panelSaving} error={panelError} readOnly={!canEdit} onClose={() => setPanel(undefined)}
+        <OpportunityPanel businessId={businessId} opportunity={panel} saving={panelSaving} error={panelError} readOnly={!canEdit} members={members} onClose={() => setPanel(undefined)}
           onSave={payload => panelDo(async () => {
             if (panel) return updateOpportunity(businessId, panel.id, payload);
             // The create route reuses a live opportunity with the same name first (opportunityMatch).

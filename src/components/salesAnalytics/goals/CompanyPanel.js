@@ -12,6 +12,7 @@ import { ErrorNote, memberLookup } from './goalsUi';
 import { factsFor } from './companyPanelFacts';
 import { needsRecord } from './companyPanelModel';
 import { SourceHistoryCard, ReferredByCard } from './LeadSource';
+import CompanyStepsStrip from './CompanyStepsStrip';
 import { Link } from '../../../ui/Button';
 import { priorityColor } from '../palette';
 
@@ -86,10 +87,11 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
           </div>
         ))}
       </div>
-      {bandShown && <InterestBand businessId={businessId} row={row} interest={detail.interest} canEdit={canEdit} addOpen={form === 'add'} onAdd={() => setForm(f => (f === 'add' ? null : 'add'))} onChanged={changed} onToast={onToast} />}
+      {detail?.steps && <CompanyStepsStrip businessId={businessId} row={row} detail={detail} canEdit={canEdit} members={members} onChanged={changed} onConvert={onConvert} onToast={onToast} setForm={setForm} />}
+      {bandShown && <InterestBand businessId={businessId} row={row} interest={detail.interest} canEdit={canEdit} onChanged={changed} onToast={onToast} />}
       {canEdit
         ? <>
-          <CompanyActions businessId={businessId} row={row} members={members} meId={meId} form={form} setForm={setForm} bandShown={bandShown} onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} onClose={onClose} />
+          <CompanyActions businessId={businessId} row={row} members={members} meId={meId} form={form} setForm={setForm} bandShown={bandShown || !!detail?.steps?.next} onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} onClose={onClose} />
           <CompanyEditRow businessId={businessId} row={row} members={members} source={sourced && source ? source.source : null} onPatch={onPatch} onChanged={changed} onToast={onToast} />
         </>
         : <p style={{ ...SA_TYPE.body, fontSize: 12, color: SA.muted, margin: 0 }}>You have view access, so this is read-only.</p>}

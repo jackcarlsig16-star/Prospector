@@ -49,10 +49,13 @@ export default function CompanyEditRow({ businessId, row, members, source, onPat
     setJump(false); onPatch(patch); onChanged();
     onToast({ text: `${row.name}: ${stageLabel(row, to)}`, undo: async () => { await undo(); onChanged(); } });
   });
+  // company-workflow-v1 W3: the owner is a person on every type (an employer's owner text follows it server-side).
   const changeOwner = userId => act('owner', async () => {
-    if (row.type === 'partner') await goalsApi.partnerSignal(businessId, row.id, { type: 'assign', owner_user_id: userId || null });
-    else await updateOpportunity(businessId, row.id, { owner: members.find(m => m.user_id === userId)?.name || null });
+    const before = ownerId || null;
+    const write = u => (row.type === 'partner' ? goalsApi.partnerSignal(businessId, row.id, { type: 'assign', owner_user_id: u || null }) : goalsApi.editCompanyFields(businessId, row.type, row.id, { owner_user_id: u || null }));
+    await write(userId);
     onChanged();
+    onToast({ text: `${row.name}: owner ${members.find(m => m.user_id === userId)?.name.split(' ')[0] || 'nobody'}`, undo: async () => { await write(before); onChanged(); } });
   });
   const changeTeam = team => act('team', async () => {
     if (row.type === 'partner') await goalsApi.partnerSignal(businessId, row.id, { type: 'assign', owner_team: team || null });
@@ -69,7 +72,7 @@ export default function CompanyEditRow({ businessId, row, members, source, onPat
 
   const controls = editControls(row);
   if (!controls.length) return null;
-  const ownerId = row.type === 'partner' ? row.owner_user_id : members.find(m => m.name === row.owner)?.user_id;
+  const ownerId = row.owner_user_id || null;
   const b = what => busy === what;
   const stages = forwardStages(row);
   return (

@@ -143,6 +143,8 @@ export const goalsApi = {
   // Owner / Admin. apply mappings = { [group key]: { source_kind, source_partner_id?, source_person?, source_office? } }.
   sourcesBackfill: id => call(id, '/sources/backfill'),
   applySourcesBackfill: (id, mappings) => call(id, '/sources/backfill/apply', { method: 'POST', body: { mappings } }),
+  // company-workflow-v1 - employees / reach (typed = manual) and an employer's / target's owner person.
+  editCompanyFields: (id, type, recordId, body) => call(id, `/company/${type}/${recordId}/fields`, { method: 'PATCH', body }).then(d => d.fields),
   // Research + Check Apollo for any record type (same caps as the partner ones below).
   companyResearch: (id, type, recordId) => call(id, `/company/${type}/${recordId}/research`),
   runCompanyResearch: (id, type, recordId) => call(id, `/company/${type}/${recordId}/research`, { method: 'POST' }),

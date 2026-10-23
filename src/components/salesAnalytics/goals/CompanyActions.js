@@ -8,6 +8,7 @@ import { needsRecord, addAsk, nextStage, stageLabel, playbookPrompt, mondayOf } 
 import { boardStage } from '../../../constants/pipelineBoard';
 import { TOUCH_STATUSES } from '../../../constants/partnerPipeline';
 import { updateOpportunity } from '../pipelineApi';
+import OwnerPicker from './OwnerPicker';
 
 // company-panel-v2 L4 - the labelled Actions row (ombre: it is generated from
 // the stage and the signals): Add note · Add to-do · Add contact · Draft email
@@ -26,6 +27,9 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [draft, setDraft] = useState({});
+  // company-workflow-v1 W3: the owner person for Add to pipeline / Promote (defaults to me; a target keeps its own).
+  const [owner, setOwner] = useState(undefined);
+  const ownerPick = owner === undefined ? row.owner_user_id || meId || null : owner;
   const set = (k, v) => setDraft(d => ({ ...d, [k]: v }));
   const open = f => { setForm(form === f ? null : f); setDraft({}); setError(''); };
 
@@ -101,13 +105,13 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
     onToast({ text: `${row.name}: Not a fit`, undo: async () => { await goalsApi.rejectTarget(businessId, row.id, { undo: true, reopen: r.dropped }); onChanged(); } });
   });
   const promote = to => act('promote', async () => {
-    const r = await goalsApi.promoteTarget(businessId, row.id, { to });
+    const r = await goalsApi.promoteTarget(businessId, row.id, { to, ...(ownerPick ? { owner_user_id: ownerPick } : {}) });
     const rec = r.created || r.already;
     setForm(null);
     onConvert({ ...rec, type: rec.type === 'opportunity' ? 'employer' : rec.type }, !!r.already);
   });
   const addTo = to => act('add', async () => {
-    const r = await goalsApi.addToPipeline(businessId, { type: row.type, id: row.id, to });
+    const r = await goalsApi.addToPipeline(businessId, { type: row.type, id: row.id, to, ...(ownerPick ? { owner_user_id: ownerPick } : {}) });
     const rec = r.created || r.already;
     setForm(null);
     onConvert(rec, !!r.already);
@@ -173,7 +177,8 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
         </div>
       )}
       {form === 'promote' && (
-        <div role="group" aria-label="Promote to" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div role="group" aria-label="Promote to" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <OwnerPicker members={members} value={ownerPick} onChange={setOwner} disabled={b('promote')} />
           <button type="button" className={btn} disabled={b('promote')} onClick={() => promote('partner')}>Promote to partner</button>
           <button type="button" className={btn} disabled={b('promote')} onClick={() => promote('employer')}>Promote to employer</button>
         </div>
@@ -186,7 +191,8 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
         </div>
       )}
       {form === 'add' && (
-        <div role="group" aria-label="Add to pipeline as" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+        <div role="group" aria-label="Add to pipeline as" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <OwnerPicker members={members} value={ownerPick} onChange={setOwner} disabled={b('add')} />
           {[['target', 'Target'], ['partner', 'Partner'], ['employer', 'Employer']].map(([to, label]) => (
             <button key={to} type="button" className={btn} disabled={b('add')} onClick={() => addTo(to)}>{label}</button>
           ))}

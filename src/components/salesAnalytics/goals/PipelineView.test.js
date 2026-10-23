@@ -157,7 +157,7 @@ test('one line per company: aligned cells, record id on hover, sort by Due insid
   await screen.findByText('Beta Co');
   const cells = tr => [...tr.querySelectorAll('td')].map(td => td.textContent);
   const beta = screen.getByText('Beta Co').closest('tr');
-  expect(cells(beta).length).toBe(16);
+  expect(cells(beta).length).toBe(19); // company-workflow-v1: + Employees, Reach, Clients
   expect([0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map(i => cells(beta)[i])).toEqual(['☆', 'Beta Co', 'Employer', '—', 'Stage', '—', '—', '—', 'Send deck', 'Oct 22', '—', '—', '—', '—', '—']);
   expect(within(beta).getByLabelText('Priority for Beta Co').value).toBe('');
   expect(beta.querySelector('td.ui-table__sticky').title).toBe('Beta Co · R-2');
@@ -662,7 +662,7 @@ test('Viewer: the band shows the signal but no buttons; the facts row and the ca
   expect(panel.queryByRole('button', { name: /Not this company|\+ Add|\+ Note|Follow up|Find who/ })).toBeNull();
 });
 
-test('visitor: facts are Priority · Source · Last visit; no Edit row but Priority; the band offers only Add to pipeline ▾ (FIX loop-quickfixes Q3)', async () => {
+test('visitor: facts are Priority · Source · Last visit; no Edit row but Priority; the band shows the signal only - the one Add to pipeline is the Actions row\'s (company-workflow-v1 W2)', async () => {
   goalsApi.pipelineBoard.mockImplementation(() => Promise.resolve([...ROWS, APOLLO, VISITOR]));
   const VISIT = { id: 'v1', kind: 'visit', count: 6, step: null, at: '2026-10-20', person: null, text: '6 site visits this week · /pricing' };
   goalsApi.companyDetail.mockImplementation((b, type, id) => Promise.resolve({ ...DETAIL, interest: { items: [VISIT], strongest: VISIT, newest_id: 'v1', dismissed: false, show: true }, record: { type, id, name: id, stage: 'visited', channel: 'website_visit' } }));
@@ -673,7 +673,8 @@ test('visitor: facts are Priority · Source · Last visit; no Edit row but Prior
   const band = within(await panel.findByRole('region', { name: 'Interest' }));
   expect(band.getByText('6 site visits this week · /pricing')).toBeTruthy();
   expect(band.queryByRole('button', { name: 'Not now' })).toBeNull();
-  expect(band.getAllByRole('button').map(b => b.textContent)).toEqual(['Add to pipeline ▾']);
+  expect(band.queryAllByRole('button')).toEqual([]);
+  expect(panel.getAllByRole('button', { name: 'Add to pipeline ▾' })).toHaveLength(1);
   expect(panel.getByTitle('Source').textContent).toBe('Website');
   expect(panel.getByTitle('Last visit').textContent).toBe('Oct 20');
   expect(panel.queryByTitle('Owner')).toBeNull();

@@ -252,7 +252,7 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
                 {waiting.length > 0 && <ToggleChip pressed={view === 'waiting'} onClick={() => setView(v => (v === 'waiting' ? 'tasks' : 'waiting'))}>⏳ Waiting on ({waiting.length})</ToggleChip>}
               </div>
               <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px' }}>
-                {view === 'targets' && <TargetsList businessId={businessId} targets={targets} canEdit={canEdit} onChanged={load} onOpenRecord={openRecord} />}
+                {view === 'targets' && <TargetsList businessId={businessId} targets={targets} canEdit={canEdit} onChanged={load} onOpenRecord={openRecord} members={members} />}
                 {view === 'waiting' && <WaitingList businessId={businessId} rows={waiting} canEdit={canEdit} onChanged={loadWaiting}
                   partnerName={id => (links.labelFor('partner', id) || '').replace(/^[^:]+: /, '')} />}
                 {view === 'waiting' && !waiting.length && <p style={{ fontSize: 14, color: SA.muted, marginTop: 16 }}>Nothing owed to us right now.</p>}

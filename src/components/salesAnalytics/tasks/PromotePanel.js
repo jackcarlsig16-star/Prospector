@@ -1,3 +1,4 @@
+import OwnerPicker from '../goals/OwnerPicker';
 import { useState, useEffect } from 'react';
 import { SA } from '../theme';
 import { OWNER_TEAMS, TEAM_LABEL } from '../../../constants/ownership';
@@ -9,7 +10,9 @@ import { labelStyle, inputStyle, Btn, ErrorNote } from '../goals/goalsUi';
 const field = { display: 'flex', flexDirection: 'column', gap: 4, flex: '1 1 160px' };
 const input = { ...inputStyle, height: 36, fontSize: 13, width: '100%' };
 
-export default function PromotePanel({ target, to, categories, onLoadCategories, onPromote, onCancel }) {
+export default function PromotePanel({ target, to, categories, onLoadCategories, onPromote, onCancel, members = [] }) {
+  // company-workflow-v1 W3: the owner person ('' = the target's own, else me - the server's default).
+  const [owner, setOwner] = useState(target.owner_user_id || null);
   const [name, setName] = useState(target.name);
   const [category, setCategory] = useState(target.suggested_category || '');
   const [ownerTeam, setOwnerTeam] = useState(target.owner_team || '');
@@ -23,7 +26,7 @@ export default function PromotePanel({ target, to, categories, onLoadCategories,
     if (!name.trim()) return;
     setBusy(true); setError('');
     try {
-      await onPromote({ to, name: name.trim(), ...(to === 'partner' ? { category: category.trim() || null } : {}), owner_team: ownerTeam || null, co_owner_name: coOwner.trim() || null, no_double_touch: noDouble });
+      await onPromote({ to, name: name.trim(), ...(to === 'partner' ? { category: category.trim() || null } : {}), owner_team: ownerTeam || null, co_owner_name: coOwner.trim() || null, no_double_touch: noDouble, ...(owner ? { owner_user_id: owner } : {}) });
     } catch (err) { setError(err.message); setBusy(false); }
   };
   const what = to === 'partner' ? 'partner' : 'employer';
@@ -41,6 +44,7 @@ export default function PromotePanel({ target, to, categories, onLoadCategories,
         )}
       </div>
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        {members.length > 0 && <OwnerPicker members={members} value={owner} onChange={setOwner} />}
         <label style={field}><span style={labelStyle}>Owner team</span>
           <select value={ownerTeam} onChange={e => setOwnerTeam(e.target.value)} style={input}>
             <option value="">Unset</option>

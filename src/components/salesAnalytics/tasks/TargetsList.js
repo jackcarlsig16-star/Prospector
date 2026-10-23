@@ -43,7 +43,7 @@ function Evidence({ id, text, open, onToggle }) {
   );
 }
 
-export default function TargetsList({ businessId, targets, canEdit, onChanged, onOpenRecord }) {
+export default function TargetsList({ businessId, targets, canEdit, onChanged, onOpenRecord, members = [] }) {
   const [showClosed, setShowClosed] = useState(false);
   const [panel, setPanel] = useState(null); // { id, to }
   const [categories, setCategories] = useState(null);
@@ -126,7 +126,7 @@ export default function TargetsList({ businessId, targets, canEdit, onChanged, o
                 </div>
               )}
               {panel?.id === t.id && (
-                <PromotePanel key={`${t.id}-${panel.to}`} target={t} to={panel.to} categories={categories} onLoadCategories={loadCategories}
+                <PromotePanel key={`${t.id}-${panel.to}`} target={t} to={panel.to} categories={categories} onLoadCategories={loadCategories} members={members}
                   onPromote={body => promote(t, body)} onCancel={() => setPanel(null)} />
               )}
             </li>

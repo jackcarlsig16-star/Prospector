@@ -323,7 +323,7 @@ export default function PartnersView({ businessId, partners, lookup, members, ca
       )}
 
       {canEdit && (adding
-        ? <AddPartnerForm onCreate={onCreate} onDupeCheck={onDupeCheck} onDone={() => setAdding(false)} onCancel={() => setAdding(false)}
+        ? <AddPartnerForm members={members} onCreate={onCreate} onDupeCheck={onDupeCheck} onDone={() => setAdding(false)} onCancel={() => setAdding(false)}
             onOpenPartner={id => { setFilters(NO_FILTERS); setStage(null); setOpenId(id); setAdding(false); }} />
         : <AddButton onClick={() => setAdding(true)}>+ Add partner</AddButton>)}
 

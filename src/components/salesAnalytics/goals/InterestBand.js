@@ -14,7 +14,8 @@ import { needsRecord } from './companyPanelModel';
 // write hands back a 10 s Undo. Viewers see the text alone. Not now is hidden
 // on visitor / Apollo-only rows (the route refuses them - no record to park).
 // FIX loop-quickfixes Q3: a visitor / Apollo-only row has no record for the
-// four to act on, so the band offers the Actions row's Add to pipeline ▾ instead.
+// four to act on, so it shows the signal only (company-workflow-v1 W2: the one
+// Add to pipeline is the Actions row's, which the steps strip also opens).
 const btn = 'ui-btn ui-btn--secondary';
 const onBand = { borderColor: SA.borderStrong };
 
@@ -28,7 +29,7 @@ export async function copyFollowUp({ businessId, row, person, signal, onToast })
   } catch (e) { onToast({ text: e.message }); }
 }
 
-export default function InterestBand({ businessId, row, interest, canEdit, addOpen = false, onAdd, onChanged, onToast }) {
+export default function InterestBand({ businessId, row, interest, canEdit, onChanged, onToast }) {
   const [busy, setBusy] = useState('');
   const strongest = interest.strongest;
   const person = strongest?.person || null;
@@ -71,9 +72,6 @@ export default function InterestBand({ businessId, row, interest, canEdit, addOp
         <b style={{ fontWeight: 600 }}>{strongest.text}</b> <span style={{ color: SA.muted }}>{md(strongest.at)}</span>
         {interest.items.slice(1).map(i => <span key={i.id || i.text}> · <b style={{ fontWeight: 600 }}>{i.text}</b> <span style={{ color: SA.muted }}>{md(i.at)}</span></span>)}
       </span>
-      {canEdit && needsRecord(row.type) && (
-        <button type="button" className="ui-btn ui-btn--primary" aria-expanded={addOpen} onClick={onAdd} title="Add it as a target, partner or employer first - then the follow-up buttons work">Add to pipeline ▾</button>
-      )}
       {canEdit && !needsRecord(row.type) && (
         <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button type="button" className="ui-btn ui-btn--primary" disabled={b('draft')} onClick={draftReply} title="Copies the record + the signal for Claude. Never sends.">{b('draft') ? 'Copying…' : 'Follow up: draft reply'}</button>

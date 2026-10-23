@@ -3,7 +3,7 @@ import InterestBand from './InterestBand';
 import CompanyActions from './CompanyActions';
 import { goalsApi } from './goalsApi';
 
-// FIX loop-quickfixes-v1 Q3 - rows with no record: the band offers Add to pipeline, Draft email asks the kind.
+// FIX loop-quickfixes-v1 Q3 - rows with no record: Draft email asks the kind (the band's Add to pipeline copy went in company-workflow-v1).
 // Made-up names only; no emails or phones.
 jest.mock('./goalsApi', () => ({ goalsApi: { addToPipeline: jest.fn(), copyBundle: jest.fn() } }));
 jest.mock('../pipelineApi', () => ({ updateOpportunity: jest.fn() }));
@@ -11,13 +11,14 @@ jest.mock('../huddleApi', () => ({ updateProspect: jest.fn() }));
 jest.mock('./partners/PartnerResearch', () => ({ apolloLine: () => '' }));
 
 const interest = { show: true, strongest: { text: '3 site visits this week', at: '2026-10-20' }, items: [{ text: '3 site visits this week', at: '2026-10-20' }] };
-const band = row => render(<InterestBand businessId="b1" row={row} interest={interest} canEdit onAdd={jest.fn()} onChanged={jest.fn()} onToast={jest.fn()} />);
+const band = row => render(<InterestBand businessId="b1" row={row} interest={interest} canEdit onChanged={jest.fn()} onToast={jest.fn()} />);
 const bandButtons = () => [...document.querySelectorAll('[data-interest-band] button')].map(b => b.textContent);
 
-test.each([['apollo'], ['visitor']])('band on a %s row: the signal + Add to pipeline ▾ only', type => {
+// company-workflow-v1 W2: one Add to pipeline in the window - the Actions row's; the band shows the signal only.
+test.each([['apollo'], ['visitor']])('band on a %s row: the signal only, no Add to pipeline copy', type => {
   band({ type, id: 'x1', name: 'ZZ Acme' });
   expect(screen.getByText('3 site visits this week')).toBeInTheDocument();
-  expect(bandButtons()).toEqual(['Add to pipeline ▾']);
+  expect(bandButtons()).toEqual([]);
 });
 
 test.each([['partner', 4], ['employer', 4], ['target', 4]])('band on a %s row keeps its buttons', (type, n) => {

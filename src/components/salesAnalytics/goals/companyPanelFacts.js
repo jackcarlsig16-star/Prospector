@@ -37,6 +37,22 @@ const sourceFact = (row, source) => {
   return ['Source', s.text, s.empty, channel !== '—' ? `via ${channel}` : null];
 };
 
+// company-workflow-v1 W4/W5 - the size facts: Employees (number + where it came from) and, for PEO / HR / benefit-platform
+// partners (categories 2, 3, 7, 8), Reach = employees it covers across clients · client count.
+const REACH_CATS = [2, 3, 7, 8];
+const SOURCE_TAG = { research: 'Research', manual: 'Typed' };
+const n = v => Number(v).toLocaleString('en-US');
+export const showsReach = (row, record) => row.type === 'partner' && REACH_CATS.includes(Number(/^(\d+)\./.exec(record?.category || row.category || '')?.[1]));
+export function sizeFacts(row, record) {
+  if (!record || !['partner', 'employer', 'target'].includes(row.type)) return [];
+  const out = [['Employees', record.employees != null ? n(record.employees) : '—', record.employees == null, SOURCE_TAG[record.employees_source] || null]];
+  if (showsReach(row, record)) {
+    const parts = [record.reach_employees != null && `covers ${n(record.reach_employees)}`, record.reach_clients != null && `${n(record.reach_clients)} clients`].filter(Boolean);
+    out.push(['Reach', parts.join(' · ') || '—', !parts.length, SOURCE_TAG[record.reach_employees_source || record.reach_clients_source] || null]);
+  }
+  return out;
+}
+
 export const priorityText = row => (row.not_a_fit ? 'Not a fit' : row.priority != null ? `P${row.priority} · ${PRIORITY_WORD[row.priority] || ''}`.trim() : '—');
 
 // The seven facts (fewer for the record-less rows), [label, value, muted?, sub?]. source = GET goals/source's
@@ -52,7 +68,8 @@ export function factsFor(row, record, source) {
     return [['Stage', 'In sequence', false], ['Source', 'Apollo', false], ['Last touch', touch.text, touch.empty]];
   }
   if (row.type === 'target') {
-    return [['Stage', stageLabel(row), false], ['Team', row.owner_team ? TEAM_LABEL[row.owner_team] : '—', !row.owner_team], sourceFact(row, source), ['Last touch', touch.text, touch.empty]];
+    const owner = record?.owner_name || row.owner || null;
+    return [['Stage', stageLabel(row), false], ['Owner', owner || 'Unassigned', !owner], ['Team', row.owner_team ? TEAM_LABEL[row.owner_team] : '—', !row.owner_team], sourceFact(row, source), ['Last touch', touch.text, touch.empty], ...sizeFacts(row, record)];
   }
   return [
     ['Stage', stageLabel(row), false],
@@ -62,6 +79,7 @@ export function factsFor(row, record, source) {
     sourceFact(row, source),
     ['Last touch', touch.text, touch.empty],
     ['Next step', nextText, !next],
+    ...sizeFacts(row, record),
   ];
 }
 
@@ -73,7 +91,7 @@ export const forwardStages = row => stageOptions(row).filter(s => s.dir === 'now
 // has no owner); visitor Priority only; Apollo-only nothing.
 export function editControls(row) {
   if (row.type === 'partner' || row.type === 'employer') return ['stage', 'owner', 'team', 'priority', 'source'];
-  if (row.type === 'target') return ['stage', 'team', 'source'];
+  if (row.type === 'target') return ['stage', 'owner', 'team', 'source'];
   if (row.type === 'visitor') return ['priority'];
   return [];
 }

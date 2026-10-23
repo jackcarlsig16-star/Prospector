@@ -1,3 +1,4 @@
+import OwnerPicker from './goals/OwnerPicker';
 import { useState } from 'react';
 import { SA, SA_TYPE, SA_SHAPE } from './theme';
 import { STAGE_ENUM, STAGE_LABELS, ORG_TYPE_ENUM, ORG_TYPE_LABELS, compareStages } from './pipelineStages';
@@ -35,7 +36,7 @@ function Field({ label, children }) {
 // `opportunity` null = create mode (an empty draft); otherwise edit mode.
 // readOnly (pipeline-quick-panel-v1): a Viewer's look at the same fields as
 // text, no Save / Archive.
-export default function OpportunityPanel({ businessId, opportunity, saving, error, onSave, onArchive, onClose, readOnly = false }) {
+export default function OpportunityPanel({ businessId, opportunity, saving, error, onSave, onArchive, onClose, readOnly = false, members = [] }) {
   const isCreate = !opportunity;
   const [draft, setDraft] = useState(() => ({
     organization: '', cohort: '', org_type: 'employer', covered_lives: '', stage: 'target',
@@ -46,12 +47,15 @@ export default function OpportunityPanel({ businessId, opportunity, saving, erro
   }));
 
   const set = (field, value) => setDraft(d => ({ ...d, [field]: value }));
+  // company-workflow-v1 W3: a new employer's owner person ('' = me; the server defaults to whoever adds it).
+  const [ownerPick, setOwnerPick] = useState(null);
 
   // sales-ia-v2 L3: a stage behind the current one is confirmed here and
   // flagged; the server refuses it otherwise.
   const handleSave = () => {
     if (!draft.organization.trim()) return;
     const payload = savePayload(opportunity, draft);
+    if (isCreate && ownerPick) payload.owner_user_id = ownerPick;
     if (payload.stage && opportunity && compareStages(opportunity.stage, payload.stage) === 'back') {
       if (!window.confirm(`Move ${draft.organization} back from ${STAGE_LABELS[opportunity.stage]} to ${STAGE_LABELS[payload.stage]}?`)) return;
       payload.allow_backward = true;
@@ -73,6 +77,8 @@ export default function OpportunityPanel({ businessId, opportunity, saving, erro
           <span onClick={onClose} style={{ cursor: 'pointer', color: SA.muted, fontSize: 18, lineHeight: 1 }}>×</span>
         </div>
       </div>
+
+      {isCreate && !readOnly && members.length > 0 && <div style={{ marginTop: 8 }}><OwnerPicker members={members} value={ownerPick} onChange={setOwnerPick} /></div>}
 
       {TEXT_FIELDS.map(([key, label]) => (
         <Field key={key} label={label}>
