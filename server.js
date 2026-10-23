@@ -442,6 +442,15 @@ app.post('/api/sales/:businessId/sync', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+app.post('/api/sales/:businessId/sync/pageload', async (req, res) => {
+  try {
+    const { pageloadSyncRoute } = await import('./api/sales/routes.js');
+    return pageloadSyncRoute(req, res);
+  } catch (err) {
+    console.error('[sales/sync/pageload] handler error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 app.get('/api/sales/:businessId/runs', async (req, res) => {
   try {
     const { runsRoute } = await import('./api/sales/routes.js');

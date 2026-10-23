@@ -2,7 +2,8 @@
 // F1 a fast Gmail open shows as a real open in People (a fast Chrome open stays hidden as a bot);
 // F2 People search by last name / company finds the "First L." row, full name for Members only;
 // F3a Sync now (Needs attention) catches up in batches inside the activity budget; F3c the drawer then shows
-// "n messages left — Sync again"; F4 the Apollo / Outlook labels in the drawer and on Dashboard > Analytics.
+// "n messages left — Sync again"; F4 the Apollo / Outlook labels in the drawer and on Dashboard > Analytics;
+// F3b the daily first-load sync (trigger 'pageload': runs once, skipped on the next load, never from a Viewer).
 // SCOPE (declared): TEMP data only - 1 goals_sales workspace (added to SALES_ANALYTICS_BUSINESS_IDS for the local
 // server only), 2 temp users (owner, viewer); seeds 2 prospects + 2 messages + 2 open events. One Sync now writes
 // <= 100 fixture messages / events / prospects ("ZZ Person n", no addresses) into the temp workspace + its run row.
@@ -109,16 +110,20 @@ try {
   for (let i = 0; i < 40; i++) { try { await fetch(`http://localhost:${PORT}/`); break; } catch { await new Promise(r => setTimeout(r, 250)); } }
   browser = await chromium.launch();
   const blocked = [];
-  async function newPage(u, { width = 1440, height = 900 } = {}) {
+  const pageloadPosts = [];
+  // apollo: false = leave the page-load Apollo sync on (F3b); every other page skips it like the visitor pull / Tidy.
+  async function newPage(u, { width = 1440, height = 900, apollo = true } = {}) {
     const errs = [];
     const ctx = await browser.newContext({ viewport: { width, height } });
     const page = await ctx.newPage(); page.setDefaultTimeout(15000);
     page.on('pageerror', e => errs.push(`PAGE ${u.name}@${width}: ${e.message.slice(0, 160)}`));
     page.on('requestfailed', r => { if (!blocked.includes(r.url())) results.errors.push(`request failed ${u.name}@${width}: ${r.method()} ${r.url().replace(/^https?:\/\/[^/]+/, '')} ${r.failure()?.errorText}`); });
-    await page.addInitScript(([k, v, b, dd]) => {
+    await page.addInitScript(([k, v, b, dd, skipApollo]) => {
       if (sessionStorage.getItem('__s')) return; sessionStorage.setItem('__s', '1'); localStorage.clear(); localStorage.setItem(k, v);
       localStorage.setItem(`prospector_visits_ran_${b}`, dd); localStorage.setItem(`prospector_tidy_ran_${b}`, dd);
-    }, [`sb-${REF}-auth-token`, JSON.stringify(u.session), B, today]);
+      if (skipApollo) localStorage.setItem(`prospector_apollo_sync_ran_${b}`, dd);
+    }, [`sb-${REF}-auth-token`, JSON.stringify(u.session), B, today, apollo]);
+    page.on('request', r => { if (/\/sync\/pageload$/.test(r.url())) pageloadPosts.push(u.name); });
     // Real-call guard (Claude / Graph / research / pulls); Sync now goes to the server, whose Apollo is the fixture.
     await page.route(/\/goals\/visits\/pull|\/goals\/tidy\/run|\/research\/run|\/research$|\/proxy\/anthropic|\/api\/microsoft\/|\/goals\/call-notes\/extract/, route => { blocked.push(route.request().url()); route.abort(); });
     await page.goto(`http://localhost:${PORT}/`);
@@ -206,9 +211,30 @@ try {
   const vd = await openDrawer(V.page);
   ok('Viewer drawer: "32 messages left", no Sync again / Sync now', /32 messages left/.test(await vd.locator('li[data-source="apollo"]').innerText()) && !(await vd.getByRole('button', { name: /Sync again|Sync now/ }).count()));
 
+  // ---- F3b: the daily first-load sync. Back-date the temp runs past 20 h, then a Member's first load starts one.
+  ins(await svc.from('sales_sync_runs').update({ started_at: new Date(NOWMS - 30 * 3600e3).toISOString(), finished_at: new Date(NOWMS - 30 * 3600e3 + 60e3).toISOString() }).eq('business_id', B).select('id'));
+  const runsOf = async () => ins(await svc.from('sales_sync_runs').select('trigger, status, counts, started_at').eq('business_id', B).order('started_at', { ascending: false }));
+  const before = (await runsOf()).length;
+  const L1 = await newPage(owner, { apollo: false });
+  let pl = null;
+  for (let i = 0; i < 60 && !pl; i++) { pl = (await runsOf()).find(r => r.trigger === 'pageload' && r.status !== 'running'); if (!pl) await L1.page.waitForTimeout(1000); }
+  ok('F3b: a Member\'s first load (last sync 30 h old) starts one pageload sync; it catches up the 32 left (0 left)', pl?.status === 'success' && pl.counts.activity.activities_fetched === 32 && pl.counts.activity.backlog_after_run === 0 && (await runsOf()).length === before + 1, JSON.stringify(pl && { status: pl.status, a: pl.counts.activity }));
+  ok('F3b: it marks this browser (prospector_apollo_sync_ran_<id> = today)', (await L1.page.evaluate(b => localStorage.getItem(`prospector_apollo_sync_ran_${b}`), B)) === today);
+  await tab(L1.page, 'Actions');
+  const pld = await openDrawer(L1.page);
+  ok('F3b: Needs attention shows Apollo OK, no backlog left', /\bOK\b/.test(await pld.locator('li[data-source="apollo"]').innerText()) && !/messages left/.test(await pld.locator('li[data-source="apollo"]').innerText()), (await pld.locator('li[data-source="apollo"]').innerText()).replace(/\s+/g, ' '));
+  const L2 = await newPage(owner, { apollo: false });
+  await L2.page.waitForTimeout(4000);
+  ok('F3b: a second fresh browser asks again but the server skips it (no new run)', pageloadPosts.filter(n => n === owner.name).length === 2 && (await runsOf()).length === before + 1, JSON.stringify(pageloadPosts));
+  const V2 = await newPage(viewer, { apollo: false });
+  await V2.page.waitForTimeout(3000);
+  ok('F3b: a Viewer\'s load never asks', !pageloadPosts.includes(viewer.name));
+  const manual = (await runsOf()).filter(r => r.trigger === 'manual').length;
+  ok('F3b: the pageload run is not a manual one (manual count unchanged at 1)', manual === 1);
+
   const fails = Object.entries(results.screens).filter(([, s]) => s.textFails || s.controlFails);
   ok(`ui-clarity measure: 0 failures on ${Object.keys(results.screens).length} screens`, !fails.length, JSON.stringify(fails.map(([k, s]) => [k, s.textFails, s.controlFails])));
-  const errs = [...J.errs, ...P.errs, ...V.errs];
+  const errs = [...J.errs, ...P.errs, ...V.errs, ...L1.errs, ...L2.errs, ...V2.errs];
   ok('No page errors', !errs.length, JSON.stringify(errs.slice(0, 5)));
   const runsAfter = {}; for (const t of RUNS) runsAfter[t] = await count(t, 'business_id', B);
   const graphRuns = (await Promise.all(users.map(u => count('microsoft_sync_runs', 'user_id', u.id)))).reduce((x, y) => x + y, 0);

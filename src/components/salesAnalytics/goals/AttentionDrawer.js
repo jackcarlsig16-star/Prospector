@@ -18,7 +18,7 @@ import { ErrorNote, numStyle } from './goalsUi';
 // as Failed "on page load" until the source reports OK again. Viewers read.
 const WIDTH = 380;
 const STATUS = { ok: ['OK', SA.good], stale: ['Stale', SA.warn], failed: ['Failed', SA.bad], running: ['Running', SA.accent], not_connected: ['Not connected', SA.borderStrong] };
-const PAGE_LOAD = { visitors: 'visits', tidy: 'tidy' };
+const PAGE_LOAD = { apollo: 'apollo', visitors: 'visits', tidy: 'tidy' };
 const ERR_SHOWN = 90;
 
 export function withPageLoad(sources, failures = {}) {

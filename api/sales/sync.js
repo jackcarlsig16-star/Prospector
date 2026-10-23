@@ -95,8 +95,33 @@ async function checkManualLimits(supabase, businessId) {
   return { refused: false };
 }
 
+// FIX people-apollo-visibility-v1 F3b - the daily first-load sync (trigger 'pageload'): a Member's first Sales &
+// Marketing load of the LA day starts one, because the 06:00 cron never fires. Never counted in the manual 6;
+// skipped when a page-load run already ran today (a failed one may retry), when the last good sync is under
+// 20 h old (REVISABLE) or when any run started in the last 10 min. runs = non-test runs, newest first.
+export const PAGELOAD_FRESH_HOURS = 20;
+export function pageloadSkip(runs, now = Date.now()) {
+  const live = runs.filter(r => !isDeadRun(r, now));
+  const today = laDateString(new Date(now));
+  if (live.some(r => r.trigger === 'pageload' && r.status !== 'error' && laDateString(new Date(r.started_at)) === today)) return 'already ran today';
+  const ok = live.find(r => ['success', 'partial'].includes(r.status));
+  if (ok && now - Date.parse(ok.finished_at || ok.started_at) < PAGELOAD_FRESH_HOURS * 3600e3) return `synced under ${PAGELOAD_FRESH_HOURS} h ago`;
+  if (live.some(r => now - Date.parse(r.started_at) < MANUAL_COOLDOWN_MINUTES * 60e3)) return 'another sync started in the last 10 min';
+  return null;
+}
+
+export async function runPageloadSync({ businessId, now = Date.now() }) {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.from('sales_sync_runs').select('trigger, status, started_at, finished_at, error_text')
+    .eq('business_id', businessId).neq('trigger', 'test').gte('started_at', new Date(now - 36 * 3600e3).toISOString()).order('started_at', { ascending: false });
+  if (error) return { refused: false, error: error.message };
+  const skip = pageloadSkip(data || [], now);
+  if (skip) return { skipped: skip };
+  return runSync({ businessId, trigger: 'pageload' });
+}
+
 // trigger is 'cron' (the scheduled job), 'manual' (the Sync now button,
-// via routes.js - subject to the cooldown/daily cap below), or 'test' (a
+// via routes.js - subject to the cooldown/daily cap below), 'pageload' (runPageloadSync above), or 'test' (a
 // real verification run, called directly the same way this function is
 // always called - never through the HTTP route). 'test' is intentionally
 // exempt from checkManualLimits() below since it isn't 'manual', and

@@ -65,6 +65,14 @@ export async function triggerSync(businessId) {
   return data.run;
 }
 
+// FIX people-apollo-visibility-v1 F3b - the daily first-load sync; { ran: false, reason } when a server guard skips it.
+export async function pageloadSync(businessId) {
+  const res = await fetch(`/api/sales/${businessId}/sync/pageload`, { method: 'POST' });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Apollo sync failed (${res.status})`);
+  return data;
+}
+
 // sales-email-trend-v1 REV2 - stored daily counts and chart events. Both
 // read the DB only; zero Apollo calls.
 export async function fetchEmailCounts(businessId, from) {

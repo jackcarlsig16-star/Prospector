@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { runSync } from './sync.js';
+import { runSync, runPageloadSync } from './sync.js';
 import { asReported } from './syncRunStatus.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { runOutlookSync } from '../microsoft/graphSync.js';
@@ -21,6 +21,22 @@ export async function syncRoute(req, res) {
       .catch(err => console.error('[microsoft/sync] piggyback', err.message));
   } catch (err) {
     console.error('[sales/sync]', err.message);
+    res.status(500).json({ error: err.message });
+  }
+}
+
+// FIX people-apollo-visibility-v1 F3b - POST /sync/pageload (Members, via salesGate): { ran: false, reason } when a
+// guard skips it, else the run. The page never waits on it; a failure shows in Needs attention "on page load".
+export async function pageloadSyncRoute(req, res) {
+  try {
+    const result = await runPageloadSync({ businessId: req.params.businessId });
+    if (result.skipped) return res.status(200).json({ ran: false, reason: result.skipped });
+    if (result.refused) return res.status(200).json({ ran: false, reason: result.reason });
+    if (result.error) return res.status(500).json({ error: result.error });
+    if (result.run.status === 'error') return res.status(502).json({ error: result.run.error_text || 'the sync failed', run: result.run });
+    res.status(200).json({ ran: true, run: result.run });
+  } catch (err) {
+    console.error('[sales/sync/pageload]', err.message);
     res.status(500).json({ error: err.message });
   }
 }

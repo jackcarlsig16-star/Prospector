@@ -11,6 +11,7 @@ import { goalsApi, OPEN_GOALS_WEEK, OPEN_GOALS_TARGET } from './goals/goalsApi';
 import { laDateString } from './periods';
 import { roleAtLeast } from '../../constants/roles';
 import { fetchFlags, FLAGS_CHANGED } from './huddleApi';
+import { pageloadSync } from './salesApi';
 import { fetchMe } from '../../utils/authSession';
 import { TABS, SUB_VIEWS, DEFAULT_VIEW, readNav, writeNav, normalizeNav } from './salesNav';
 import { FRAME_ROW_HEIGHT, FRAME_TOOLS_ID } from './salesFrame';
@@ -138,16 +139,19 @@ export default function SalesAnalyticsTab({ businessId, features }) {
   // website-visitor pull goes first so Tidy's "visited, no touch" sees it; a
   // failed pull is retried on the next load and never blocks Tidy.
   // localStorage keys (per browser): prospector_tidy_ran_<businessId>,
-  // prospector_visits_ran_<businessId> = 'YYYY-MM-DD'
-  // FIX loop-quickfixes Q5: a failed page-load pull / Tidy still never blocks the page; it shows in the Needs
-  // attention drawer (actions-home-attention-v1) as Failed "on page load" ({ visits?, tidy? } = the error text).
+  // prospector_visits_ran_<businessId>, prospector_apollo_sync_ran_<businessId> = 'YYYY-MM-DD'
+  // FIX people-apollo-visibility-v1 F3b: the Apollo sync starts alongside (the cron never fires); the server skips it
+  // when it already ran today, the last sync is fresh or another started in the last 10 min.
+  // FIX loop-quickfixes Q5: a failed page-load pull / Tidy / Apollo sync never blocks the page; it shows in the Needs
+  // attention drawer (actions-home-attention-v1) as Failed "on page load" ({ visits?, tidy?, apollo? } = the error text).
   const [pageLoadFailures, setPageLoadFailures] = useState({});
   useEffect(() => {
     if (!canEdit) return;
     const today = laDateString();
     const ran = key => { try { return localStorage.getItem(key) === today; } catch { return false; } };
     const mark = key => { try { localStorage.setItem(key, today); } catch { /* private mode */ } };
-    const visitsKey = `prospector_visits_ran_${businessId}`, tidyKey = `prospector_tidy_ran_${businessId}`;
+    const visitsKey = `prospector_visits_ran_${businessId}`, tidyKey = `prospector_tidy_ran_${businessId}`, apolloKey = `prospector_apollo_sync_ran_${businessId}`;
+    if (!ran(apolloKey)) pageloadSync(businessId).then(() => mark(apolloKey)).catch(e => setPageLoadFailures(f => ({ ...f, apollo: e.message })));
     const pull = ran(visitsKey) ? Promise.resolve() : goalsApi.visitPull(businessId, { trigger: 'pageload' }).then(() => mark(visitsKey)).catch(e => setPageLoadFailures(f => ({ ...f, visits: e.message })));
     if (ran(tidyKey)) return;
     pull.then(() => goalsApi.runTidy(businessId, { trigger: 'pageload' })).then(() => mark(tidyKey)).catch(e => setPageLoadFailures(f => ({ ...f, tidy: e.message })));
