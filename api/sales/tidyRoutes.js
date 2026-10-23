@@ -1,4 +1,4 @@
-import { getSupabase, findRow, weekIsFinal, FINAL_ERROR, addDays, laMonday } from './goalsShared.js';
+import { getSupabase, findRow, weekIsFinal, FINAL_ERROR, addDays, laMonday, acceptOwner } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
 import { openFlagRows } from './huddleFlags.js';
@@ -174,9 +174,12 @@ export async function todoFor(supabase, businessId, s, today) {
 // FIX actions-done-button-v1 REV2: { done: true } = the to-do is born done, and
 // a partner-linked to-do also logs ONE email touch on that partner (no stage
 // move; doneTouch.js). A suggestion that makes no to-do refuses done.
-export async function acceptSuggestion(supabase, { businessId, userId, id, now = Date.now(), done = false }) {
+// owner_user_id (actions-v2 REV2 A4): accept on a Member's behalf - the to-do is theirs; created_by stays the caller (Undo).
+export async function acceptSuggestion(supabase, { businessId, userId, id, now = Date.now(), done = false, ownerUserId = null }) {
   try {
     const isDone = doneFlag(done);
+    const who = await acceptOwner(supabase, businessId, ownerUserId, userId);
+    if (who.error) return reply(400, { error: who.error });
     const { s, fail } = await proposedOrReply(supabase, businessId, id);
     if (fail) return fail;
     const today = laDateString(new Date(now));
@@ -191,7 +194,7 @@ export async function acceptSuggestion(supabase, { businessId, userId, id, now =
       }
       const ins = await supabase.from('sales_week_goals').insert({
         business_id: businessId, week_start: week, kind: 'todo', status: isDone ? 'done' : 'open', category: TIDY_CATEGORY, sort_order: 0,
-        owner_user_id: userId, created_by: userId, ...spec, ...(isDone ? { completed_at: new Date(now).toISOString() } : {}),
+        owner_user_id: who.owner, created_by: userId, ...spec, ...(isDone ? { completed_at: new Date(now).toISOString() } : {}),
       }).select().single();
       if (ins.error) { if (touch) await revertTouch(supabase, touch); throw err(500, ins.error.message); }
       todo = ins.data;
@@ -210,7 +213,7 @@ export async function acceptSuggestion(supabase, { businessId, userId, id, now =
   }
 }
 export async function acceptSuggestionRoute(req, res) {
-  send(res, await acceptSuggestion(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, id: req.params.id, done: req.body?.done }));
+  send(res, await acceptSuggestion(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, id: req.params.id, done: req.body?.done, ownerUserId: req.body?.owner_user_id ?? null }));
 }
 
 // POST /goals/suggestions/:id/dismiss and .../snooze -> { suggestion }. Both

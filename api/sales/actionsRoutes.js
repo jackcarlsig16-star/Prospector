@@ -8,6 +8,7 @@ import { employerTouches } from './pipelineBoard.js';
 import { boardStage } from '../../src/constants/pipelineBoard.js';
 import { TEAM_LABEL } from '../../src/constants/ownership.js';
 import { campaignActionRows } from './outreachRoutes.js';
+import { itemUrgency, BAND_ORDER } from './priority.js';
 
 // sales-ia-v2 A1 - Actions: one ranked list of everything that wants a click
 // today. Seven kinds, each from the table that already holds it (nothing is
@@ -16,9 +17,10 @@ import { campaignActionRows } from './outreachRoutes.js';
 // this week's Focus 5 (planned commitments, done ones included so the screen
 // can fold them) and campaign sends due + unanswered campaign replies
 // (seif-campaign-v1 B4/B5; a reply is always P1).
-// Rank: overdue first, then P1 -> P4, then due date, then age.
-// Priority = the company's own P1-P4 when the item points at a partner or
-// employer that has one, else the kind's default below.
+// actions-v2 REV2 A2: every row carries a band (priority.js itemUrgency: now / today / week / housekeeping) and
+// the list is ordered band -> company P (company_p; none last) -> due date -> age. priority = the chip: the
+// company's own P1-P4 when the item points at a partner or employer that has one, else the kind's default below
+// (shown, never used to order).
 
 export const KINDS = ['signal', 'tidy', 'waiting', 'todo', 'flag', 'focus', 'campaign'];
 export const KIND_LABEL = { signal: 'Signal', tidy: 'Tidy', waiting: 'Waiting on', todo: 'To-do', flag: 'Flag', focus: 'Focus', campaign: 'Campaign' };
@@ -55,6 +57,8 @@ export function buildActions({ todos = [], flags = [], waiting = [], signals = [
       due_date: due, overdue, late_days: overdue ? lateDays(due, today) : 0,
       owner_user_id: fields.owner_user_id === undefined ? row.owner_user_id || null : fields.owner_user_id,
       priority: fields.fixed_priority ? fields.priority : c?.priority || fields.priority, status: fields.status || 'open', created_at: row.created_at, meta: fields.meta || {},
+      company_p: fields.company_p !== undefined ? fields.company_p : c?.priority ?? null,
+      band: itemUrgency(kind, { overdue, due_date: due, today, ...fields.urgency }),
     });
   };
 
@@ -65,7 +69,8 @@ export function buildActions({ todos = [], flags = [], waiting = [], signals = [
     const c = matched || (s.source === 'web_visit' ? { type: 'visitor', id: s.company_key, name: s.company_name, priority: null, stage_label: 'Website visit' } : { type: null, id: null, name: s.company_name, priority: null });
     const web = s.source === 'web_visit' ? Number((s.why_now || '').match(/^P([1-4])\b/)?.[1]) : null;
     const priority = web || (s.score != null && s.score >= SCOUT_P1_SCORE ? 1 : DEFAULT_PRIORITY.signal);
-    push('signal', s, { text: todoText(s), why: s.why_now || s.signal, company: c, priority: c.priority || priority, owner_user_id: null, due_date: null, meta: { source: s.source, score: s.score, kind: s.kind, who: s.who } });
+    // An unmatched visitor's own visit P is its company P; a Scout score isn't.
+    push('signal', s, { text: todoText(s), why: s.why_now || s.signal, company: c, priority: c.priority || priority, company_p: c.priority || web || null, owner_user_id: null, due_date: null, meta: { source: s.source, score: s.score, kind: s.kind, who: s.who } });
   }
 
   const lateWaiting = waiting.filter(w => w.status === 'open' && w.due_date && w.due_date < today);
@@ -81,12 +86,12 @@ export function buildActions({ todos = [], flags = [], waiting = [], signals = [
     const ref = ['todo', 'flag'].includes(s.ref_type) ? refById.get(s.ref_id) : null;
     const c = s.ref_type === 'pair' ? company('partner', s.ref_id) : ref ? linkCompany(ref) : company(s.ref_type, s.ref_id);
     // makes_todo: Accept would create a to-do (FIX actions-done-button-v1: only then can the row be marked Done).
-    push('tidy', s, { text: s.text, why: s.reason, company: c, priority: TIDY_PRIORITY[s.kind] || DEFAULT_PRIORITY.tidy, owner_user_id: null, due_date: null, meta: { kind: s.kind, rule: RULE_TEXT[s.kind] || null, ref_type: s.ref_type, ref_id: s.ref_id, ref_id2: s.ref_id2, makes_todo: s.ref_type !== 'pair' && DUE_DAYS[s.kind] != null } });
+    push('tidy', s, { text: s.text, why: s.reason, company: c, priority: TIDY_PRIORITY[s.kind] || DEFAULT_PRIORITY.tidy, owner_user_id: null, due_date: null, urgency: { tidy_kind: s.kind }, meta: { kind: s.kind, rule: RULE_TEXT[s.kind] || null, ref_type: s.ref_type, ref_id: s.ref_id, ref_id2: s.ref_id2, makes_todo: s.ref_type !== 'pair' && DUE_DAYS[s.kind] != null } });
   }
 
   const flagIds = new Set(flags.map(f => f.id));
   for (const f of flags) {
-    push('flag', f, { text: f.text, why: `Flagged by ${first(f.flagged_by) || 'a teammate'}${f.flag_note ? ` · “${f.flag_note}”` : ''}`, priority: DEFAULT_PRIORITY.flag, meta: { contact: f.contacts?.[0] || null, prospect_contact_id: f.prospect_contact_id, flagged_by: f.flagged_by, flagged_by_name: first(f.flagged_by), flag_note: f.flag_note || null } });
+    push('flag', f, { urgency: { flag_age_days: f.created_at ? (Date.parse(`${today}T12:00:00Z`) - Date.parse(f.created_at)) / DAY : null }, text: f.text, why: `Flagged by ${first(f.flagged_by) || 'a teammate'}${f.flag_note ? ` · “${f.flag_note}”` : ''}`, priority: DEFAULT_PRIORITY.flag, meta: { contact: f.contacts?.[0] || null, prospect_contact_id: f.prospect_contact_id, flagged_by: f.flagged_by, flagged_by_name: first(f.flagged_by), flag_note: f.flag_note || null } });
   }
 
   for (const t of todos) {
@@ -109,18 +114,19 @@ export function buildActions({ todos = [], flags = [], waiting = [], signals = [
     const at = r => (r.company ? ` (${r.company})` : '');
     for (const r of campaign.sends) {
       const m = metaOf(r, 'send');
-      push('campaign', r, { text: `Send step ${r.current_step} to ${r.name}${at(r)}`, why: [m.campaign, m.track].filter(Boolean).join(' · '), company: linked(r), priority: DEFAULT_PRIORITY.campaign, due_date: r.next_due_date, meta: m });
+      push('campaign', r, { urgency: { campaign_action: 'send' }, text: `Send step ${r.current_step} to ${r.name}${at(r)}`, why: [m.campaign, m.track].filter(Boolean).join(' · '), company: linked(r), priority: DEFAULT_PRIORITY.campaign, due_date: r.next_due_date, meta: m });
     }
     for (const r of campaign.replies) {
       const m = metaOf(r, 'reply');
-      push('campaign', r, { text: `Reply from ${r.name}${at(r)} — respond`, why: m.campaign, company: linked(r), priority: 1, fixed_priority: true, due_date: null, meta: m });
+      push('campaign', r, { urgency: { campaign_action: 'reply' }, text: `Reply from ${r.name}${at(r)} — respond`, why: m.campaign, company: linked(r), priority: 1, fixed_priority: true, due_date: null, meta: m });
     }
   }
   return rankActions(items);
 }
 
+const pRank = p => p ?? 9;
 export function rankActions(items) {
-  return [...items].sort((a, b) => (b.overdue - a.overdue) || (a.priority - b.priority)
+  return [...items].sort((a, b) => (BAND_ORDER[a.band] - BAND_ORDER[b.band]) || (pRank(a.company_p) - pRank(b.company_p))
     || ((a.due_date == null) - (b.due_date == null)) || (a.due_date && b.due_date ? a.due_date.localeCompare(b.due_date) : 0)
     || String(a.created_at || '').localeCompare(String(b.created_at || '')));
 }

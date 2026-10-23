@@ -1,4 +1,4 @@
-import { getSupabase, findRow, weekIsFinal, FINAL_ERROR, addDays } from './goalsShared.js';
+import { getSupabase, findRow, weekIsFinal, FINAL_ERROR, addDays, acceptOwner } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
 import { applyPartnerSignal } from './partnerSignals.js';
@@ -74,10 +74,13 @@ async function newOrReply(supabase, businessId, id) {
 }
 
 // POST /goals/signals/:id/accept { done? } -> { signal, todo, via, record, touch_event_id }
-export async function acceptSignal(supabase, { businessId, userId, id, now = new Date(), done = false }) {
+// owner_user_id (actions-v2 REV2 A4): accept on a Member's behalf - the to-do is theirs; the caller stays decided_by.
+export async function acceptSignal(supabase, { businessId, userId, id, now = new Date(), done = false, ownerUserId = null }) {
   const undo = [];
   try {
     const isDone = doneFlag(done);
+    const who = await acceptOwner(supabase, businessId, ownerUserId, userId);
+    if (who.error) return reply(400, { error: who.error });
     const { s, fail } = await newOrReply(supabase, businessId, id);
     if (fail) return fail;
     const today = laDateString(now);
@@ -126,7 +129,7 @@ export async function acceptSignal(supabase, { businessId, userId, id, now = new
 
     const todo = must(await supabase.from('sales_week_goals').insert({
       business_id: businessId, week_start: week, kind: 'todo', status: isDone ? 'done' : 'open', category: SIGNAL_CATEGORY, sort_order: 0,
-      text: todoText(s), due_date: due, owner_user_id: userId, created_by: userId, link_type: link?.[0] || null, link_id: link?.[1] || null,
+      text: todoText(s), due_date: due, owner_user_id: who.owner, created_by: userId, link_type: link?.[0] || null, link_id: link?.[1] || null,
       ...(isDone ? { completed_at: now.toISOString() } : {}),
     }).select().single());
     undo.push(() => supabase.from('sales_week_goals').delete().eq('id', todo.id));
@@ -144,7 +147,7 @@ export async function acceptSignal(supabase, { businessId, userId, id, now = new
   }
 }
 export async function acceptSignalRoute(req, res) {
-  send(res, await acceptSignal(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, id: req.params.id, done: req.body?.done }));
+  send(res, await acceptSignal(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, id: req.params.id, done: req.body?.done, ownerUserId: req.body?.owner_user_id ?? null }));
 }
 
 // POST /goals/signals/:id/dismiss -> { signal }. Parked DISMISS_DAYS: an

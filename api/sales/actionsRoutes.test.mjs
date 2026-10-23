@@ -22,7 +22,7 @@ const companies = {
 };
 const members = new Map([[JACK, 'Jack Zz'], [CY, 'Cyrus Yy']]);
 
-test('buildActions: six kinds, company + priority resolved, ranked overdue -> P1..P4 -> due -> age', () => {
+test('buildActions: six kinds, company + priority resolved, ranked band -> company P -> due -> age', () => {
   const todos = [
     row('todo', { id: 'todo-late', text: 'Send the deck', due_date: '2026-10-19', link_type: 'partner', link_id: P.north }),
     row('todo', { id: 'todo-today', text: 'Call back', due_date: TODAY, link_type: 'opportunity', link_id: O.mill, category: 'Signals' }),
@@ -57,11 +57,14 @@ test('buildActions: six kinds, company + priority resolved, ranked overdue -> P1
   const refTodos = [{ id: 'todo-nodate', link_type: null, link_id: null }];
   const items = buildActions({ todos, flags, waiting, signals, suggestions, commitments, refTodos, companies, members, today: TODAY });
   const keys = items.map(i => i.key);
-  // Overdue first (P2 waiting 6 d late, P2 to-do 2 d late), then P1 (flag on a P1 partner, web P1, scout score 90),
-  // then P2 (to-do due today, Zeta signal, focus), then P3 (Old Mill's to-do? no - it is P3 by the employer's own priority
-  // but due today... priority wins over kind default) etc.
-  assert.deepEqual(keys.slice(0, 2), ['waiting-wait-late', 'todo-todo-late'], 'overdue rows first, most overdue first by due date');
-  assert.deepEqual(keys.slice(2, 5), ['flag-flag-1', 'signal-sig-web', 'signal-sig-hot'], 'then P1: a flag on a P1 partner, a P1 website signal, a scout score >= 80');
+  // actions-v2 REV2: band (now -> today -> week -> housekeeping), then company P (none last), then due, then age.
+  assert.deepEqual(keys, [
+    'flag-flag-1', 'waiting-wait-late', 'todo-todo-late', // now: a 2-day flag on a P1 partner, then the overdue rows by due date
+    'tidy-sug-follow', 'todo-todo-today', 'focus-focus-a', 'focus-focus-done', 'tidy-sug-visited', // today: P1, P3, then no P by age
+    'signal-sig-web', 'todo-todo-later', 'signal-sig-scout', 'signal-sig-hot', // week: the visitor's own P1, then a dated to-do, then age
+    'todo-todo-nodate', 'tidy-sug-date', // housekeeping
+  ]);
+  assert.deepEqual(items.map(i => i.band), ['now', 'now', 'now', 'today', 'today', 'today', 'today', 'today', 'week', 'week', 'week', 'week', 'housekeeping', 'housekeeping']);
   const by = Object.fromEntries(items.map(i => [i.key, i]));
   assert.equal(by['todo-todo-today'].priority, 3, "a to-do on an employer with its own P3 takes the employer's priority");
   assert.equal(by['todo-todo-later'].priority, 3, 'a to-do due later this week is P3');
@@ -89,9 +92,15 @@ test('buildActions: six kinds, company + priority resolved, ranked overdue -> P1
   assert.equal(by['tidy-sug-visited'].meta.rule, 'No touch in 14 days after a site visit');
   assert.deepEqual([by['flag-flag-1'].meta.flagged_by_name, by['flag-flag-1'].meta.flag_note], ['Cyrus', 'opened 3x']);
   assert.deepEqual([by['todo-todo-today'].meta.from_note, by['todo-todo-today'].meta.note_date], [false, null]);
-  // rankActions is stable for ties and keeps blanks last within a priority.
-  const ranked = rankActions([{ key: 'b', overdue: false, priority: 2, due_date: null, created_at: '1' }, { key: 'a', overdue: false, priority: 2, due_date: '2026-10-22', created_at: '2' }, { key: 'c', overdue: true, priority: 4, due_date: '2026-10-01', created_at: '3' }]);
-  assert.deepEqual(ranked.map(r => r.key), ['c', 'a', 'b']);
+  // The chip keeps the kind default; it no longer orders: a P1-chip housekeeping row ranks below a no-P reply.
+  assert.equal(by['tidy-sug-date'].priority, 3);
+  // rankActions: band first, then company P (none last), then dated before undated, then age.
+  const ranked = rankActions([
+    { key: 'b', band: 'today', company_p: 2, due_date: null, created_at: '1' }, { key: 'a', band: 'today', company_p: 2, due_date: '2026-10-22', created_at: '2' },
+    { key: 'c', band: 'now', company_p: null, due_date: null, created_at: '3' }, { key: 'd', band: 'housekeeping', company_p: 1, priority: 1, due_date: null, created_at: '0' },
+    { key: 'e', band: 'today', company_p: null, due_date: null, created_at: '0' },
+  ]);
+  assert.deepEqual(ranked.map(r => r.key), ['c', 'a', 'b', 'e', 'd']);
 });
 
 test('buildActions: a call-note to-do carries the note date; a company carries stage, owner and last touch', () => {
@@ -205,4 +214,56 @@ test('suggestion Undo: dismissed / snoozed / accepted back to proposed; the Tidy
   assert.equal(s.db.sales_suggestions[0].status, 'proposed');
   assert.equal((await undoSuggestion(s, { businessId: B, userId: JACK, id: sug.id, body: {}, now })).status, 409, 'still proposed');
   assert.equal((await undoSuggestion(s, { businessId: B, userId: JACK, id: sug.id, body: { todo_id: 'nope' }, now })).status, 400);
+});
+
+// actions-v2 REV2 - a reply is Now whatever the company's P; housekeeping on a P1 company stays below it.
+test('bands: reply_task and a campaign reply are Now; a P1 set-a-date stays Housekeeping; a campaign send is Today', () => {
+  const suggestions = [
+    { id: 'sug-date-p1', status: 'proposed', kind: 'set_a_date', ref_type: 'partner', ref_id: P.lake, text: 'Set a date', reason: 'x', created_at: '2026-10-20T06:00:00Z' },
+    { id: 'sug-reply', status: 'proposed', kind: 'reply_task', ref_type: 'partner', ref_id: P.north, text: 'Answer the reply', reason: 'Replied 2 d ago — no next step', created_at: '2026-10-21T06:00:00Z' },
+  ];
+  const k = { name: 'ZZ Fall', id: 'k1' }, t = { name: 'Brokers', steps: [1, 2, 3] };
+  const campaign = {
+    campaigns: new Map([['k1', k]]), tracks: new Map([['t1', t]]),
+    sends: [{ id: 'cs1', campaign_id: 'k1', track_id: 't1', name: 'Ana Alder', current_step: 1, next_due_date: TODAY, created_at: '2026-10-20T00:00:00Z' }],
+    replies: [{ id: 'cr1', campaign_id: 'k1', track_id: 't1', name: 'Ben Birch', current_step: 1, created_at: '2026-10-20T00:00:00Z' }],
+  };
+  const items = buildActions({ suggestions, campaign, companies, members, today: TODAY });
+  assert.deepEqual(items.map(i => [i.key, i.band]), [['campaign-cr1', 'now'], ['tidy-sug-reply', 'now'], ['campaign-cs1', 'today'], ['tidy-sug-date-p1', 'housekeeping']]);
+  assert.equal(items.find(i => i.key === 'tidy-sug-date-p1').priority, 1, 'the chip still shows the company P');
+});
+
+// actions-v2 REV2 A4 - Accept on a Member's behalf: the to-do is theirs, the caller decided it; Undo and the
+// final-week guard work as before; a Viewer or a stranger can't be picked.
+test('accept with owner_user_id: signal + suggestion to-dos owned by the pick; Undo removes them; Viewer / stranger 400; final week 409', async () => {
+  const s = seed();
+  const VIC = randomUUID();
+  s.db.business_members.forEach(m => { m.role = 'member'; });
+  s.db.business_members.push({ business_id: B, user_id: VIC, name: 'Vic Viewer', role: 'viewer' });
+  const now = new Date(`${TODAY}T18:00:00Z`);
+  const [fresh] = s.db.sales_signals;
+  const a = await acceptSignal(s, { businessId: B, userId: JACK, id: fresh.id, now, ownerUserId: CY });
+  assert.equal(a.status, 200, JSON.stringify(a.body));
+  assert.deepEqual([a.body.todo.owner_user_id, a.body.todo.created_by, a.body.signal.decided_by], [CY, JACK, JACK]);
+  assert.equal((await undoSignal(s, { businessId: B, id: fresh.id, now: new Date(now.getTime() + 5000) })).status, 200);
+  assert.equal(s.db.sales_week_goals.find(g => g.id === a.body.todo.id), undefined, "Undo takes Cyrus's to-do off");
+  assert.equal((await acceptSignal(s, { businessId: B, userId: JACK, id: fresh.id, now, ownerUserId: VIC })).status, 400);
+  assert.equal((await acceptSignal(s, { businessId: B, userId: JACK, id: fresh.id, now, ownerUserId: randomUUID() })).status, 400);
+  assert.equal(s.db.sales_signals.find(x => x.id === fresh.id).status, 'new', 'a refused pick writes nothing');
+  const self = await acceptSignal(s, { businessId: B, userId: JACK, id: fresh.id, now, ownerUserId: null });
+  assert.equal(self.body.todo.owner_user_id, JACK, 'no pick = the caller');
+
+  const sug = s.db.sales_suggestions[0];
+  const t = Date.parse(`${TODAY}T18:00:00Z`);
+  const b = await acceptSuggestion(s, { businessId: B, userId: JACK, id: sug.id, now: t, ownerUserId: CY });
+  assert.equal(b.status, 200, JSON.stringify(b.body));
+  assert.deepEqual([b.body.todo.owner_user_id, b.body.todo.created_by], [CY, JACK]);
+  assert.equal((await undoSuggestion(s, { businessId: B, userId: JACK, id: sug.id, body: { todo_id: b.body.todo.id }, now: t + 5000 })).status, 200);
+  assert.equal(s.db.sales_week_goals.find(g => g.id === b.body.todo.id), undefined);
+  assert.equal((await acceptSuggestion(s, { businessId: B, userId: JACK, id: sug.id, now: t, ownerUserId: VIC })).status, 400);
+
+  s.db.sales_week_report.push({ business_id: B, week_start: WEEK, status: 'final' });
+  assert.equal((await acceptSuggestion(s, { businessId: B, userId: JACK, id: sug.id, now: t, ownerUserId: CY })).status, 409);
+  const [, onPartner] = s.db.sales_signals;
+  assert.equal((await acceptSignal(s, { businessId: B, userId: JACK, id: onPartner.id, now, ownerUserId: CY })).status, 409);
 });

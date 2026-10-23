@@ -95,6 +95,17 @@ export async function weekIsFinal(supabase, businessId, weekStart) {
 
 export const FINAL_ERROR = 'This week is finalized - reopen it to edit';
 
+// actions-v2 REV2 A4 - who a to-do made by Accept belongs to: the picked person when they are a member of this
+// workspace who can act (not a Viewer), else the caller. -> { owner } | { error } (400).
+export async function acceptOwner(supabase, businessId, ownerUserId, callerId) {
+  if (ownerUserId == null || ownerUserId === callerId) return { owner: callerId };
+  if (typeof ownerUserId !== 'string') return { error: 'owner_user_id must be a member id' };
+  const { data, error } = await supabase.from('business_members').select('role').eq('business_id', businessId).eq('user_id', ownerUserId).maybeSingle();
+  if (error) throw Object.assign(new Error(error.message), { status: 500 });
+  if (!data || data.role === 'viewer') return { error: 'owner_user_id must be a Member of this workspace' };
+  return { owner: ownerUserId };
+}
+
 // Deleting a to-do (a flag's delete is its undo): whoever added it, within
 // this window, or an Owner/Admin. Everyone else drops it, which keeps the
 // to-do and its history (builds-audit FIX-5; task-drawer-v1 for plain to-dos).
