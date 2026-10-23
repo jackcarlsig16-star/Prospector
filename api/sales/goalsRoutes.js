@@ -165,6 +165,8 @@ export async function createLandGoalRoute(req, res) {
   if (!v.payload.name) return res.status(400).json({ error: 'name is required' });
   const { data, error } = await supabase.from('sales_goals')
     .insert({ business_id: req.params.businessId, channel: 'manual', ...v.payload, ...landTimestamps(v.payload), ...priorityStamp(v.payload, req.auth.user.id), ...(v.payload.goal_type === 'partnership' ? { pipeline_status: 'not_started' } : {}),
+      // company-workflow-v1 W3: a new partner with no owner picked belongs to whoever added it.
+      ...(v.payload.goal_type === 'partnership' && !v.payload.owner_user_id ? { owner_user_id: req.auth.user.id } : {}),
       ...(s?.source.source_kind ? sourceColumns(s.source, { userId: req.auth.user.id, manual: true }) : {}) }).select().single();
   if (error) return res.status(500).json({ error: error.message });
   if (s?.source.source_kind && data.goal_type === 'partnership') {

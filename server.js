@@ -668,6 +668,8 @@ app.post('/api/sales/:businessId/goals/visits/priority', salesModuleRoute('./api
 app.get('/api/sales/:businessId/goals/company', salesModuleRoute('./api/sales/companyPanel.js', 'companyDetailRoute', 'goals/company'));
 app.post('/api/sales/:businessId/goals/company/add-to-pipeline', salesModuleRoute('./api/sales/companyPanel.js', 'addToPipelineRoute', 'goals/company/add-to-pipeline POST'));
 app.post('/api/sales/:businessId/goals/company/:type/:id/note', salesModuleRoute('./api/sales/companyPanel.js', 'addNoteRoute', 'goals/company/:type/:id/note POST'));
+// company-workflow-v1 W3/W4/W5 - employees, a partner's reach, an employer's / target's owner person (Members).
+app.patch('/api/sales/:businessId/goals/company/:type/:id/fields', salesModuleRoute('./api/sales/companyFields.js', 'editCompanyFieldsRoute', 'goals/company/:type/:id/fields PATCH'));
 app.post('/api/sales/:businessId/goals/company/:type/:id/contact', salesModuleRoute('./api/sales/companyPanel.js', 'addContactRoute', 'goals/company/:type/:id/contact POST'));
 app.patch('/api/sales/:businessId/goals/company/target/:id', salesModuleRoute('./api/sales/companyPanel.js', 'updateTargetRoute', 'goals/company/target/:id PATCH'));
 // company-panel-v2 Stage 2 - the Interest band's buttons.

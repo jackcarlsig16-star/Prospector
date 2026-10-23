@@ -1,3 +1,4 @@
+import { ownerOrCaller, employerOwner } from './companyFields.js';
 import { replyAt, replyExact, replyWindow } from './replyTime.js';
 import { createClient } from '@supabase/supabase-js';
 import { stageIndex, ORG_TYPE_ENUM } from './pipelineStages.js';
@@ -227,6 +228,16 @@ export async function addToPipelineRoute(req, res) {
     return res.status(200).json({ prospect: data, opportunity: opp, reused: true });
   }
 
+  // company-workflow-v1 W3: the owner person - a picked Member, else the member the prospect's owner names, else the caller.
+  let person;
+  try {
+    const named = !req.body?.owner_user_id && OWNER_NAMES[p.owner]
+      ? (await supabase.from('business_members').select('user_id, name').eq('business_id', businessId).not('user_id', 'is', null)).data?.find(m => (m.name || '').split(' ')[0] === OWNER_NAMES[p.owner])
+      : null;
+    const who = await ownerOrCaller(supabase, businessId, req.body?.owner_user_id || named?.user_id || null, req.auth.user.id);
+    if (who.error) return res.status(400).json({ error: who.error });
+    person = who.person;
+  } catch (e) { return res.status(500).json({ error: e.message }); }
   const { data: opp, error: insErr } = await supabase.from('sales_opportunities').insert({
     business_id: businessId,
     source: 'manual',
@@ -235,7 +246,7 @@ export async function addToPipelineRoute(req, res) {
     stage: 'responded',
     org_type: orgType,
     cohort,
-    owner: OWNER_NAMES[p.owner] || null,
+    ...employerOwner(person),
     champion: [p.name, p.title].filter(Boolean).join(', ') || null,
     // lead-source-v1: a prospect from our own Apollo sequences.
     ...sourceColumns(HUDDLE_SOURCE),

@@ -1,3 +1,4 @@
+import { ownerOrCaller, employerOwner } from './companyFields.js';
 import { getSupabase, findRow, weekIsFinal } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { cleanText, hasPii } from './scrubText.js';
@@ -15,7 +16,7 @@ import { PIPELINE_STATUSES } from '../../src/constants/partnerPipeline.js';
 // Copy-for-Claude bundle for a partner, employer or target.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const TARGET_COLS = `id, name, kind, status, suggested_category, owner_team, co_owner_name, no_double_touch, evidence, research_notes, promoted_goal_id, source_note_id, channel, created_at, decided_at, ${SOURCE_COLS}`;
+const TARGET_COLS = `id, name, kind, status, suggested_category, owner_team, co_owner_name, no_double_touch, owner_user_id, employees, employees_source, employees_at, evidence, research_notes, promoted_goal_id, source_note_id, channel, created_at, decided_at, ${SOURCE_COLS}`;
 const NOTE_COLS = 'title, call_date, source_label';
 const PROMOTE_TO = ['partner', 'employer'];
 const REOPEN_MAX = 50;
@@ -134,6 +135,9 @@ async function acceptTarget(supabase, target, extra, now) {
   return rows[0];
 }
 
+// company-workflow-v1 W4: a promoted target hands its employee count (and where it came from) to the new record.
+const inheritedEmployees = t => (t.employees != null ? { employees: t.employees, employees_source: t.employees_source, employees_at: t.employees_at } : {});
+
 async function promoteToPartner(supabase, { businessId, userId, target, payload, note }) {
   const now = new Date().toISOString();
   const undo = [];
@@ -141,13 +145,14 @@ async function promoteToPartner(supabase, { businessId, userId, target, payload,
     const ins = await supabase.from('sales_goals').insert({
       business_id: businessId, goal_type: 'partnership', name: payload.name, category: payload.category,
       owner_team: payload.owner_team, co_owner_name: payload.co_owner_name, no_double_touch: payload.no_double_touch,
-      pipeline_status: 'not_started', channel: target.channel || 'unknown', ...inheritedSource(target),
+      pipeline_status: 'not_started', channel: target.channel || 'unknown', ...inheritedSource(target), ...inheritedEmployees(target),
     }).select().single();
     if (ins.error?.code === '23505') throw err(409, `${payload.name} is already a partner`);
     const goal = must(ins);
     undo.push(() => supabase.from('sales_goals').delete().eq('id', goal.id));
     await logInherited(supabase, { businessId, target, type: 'partner', id: goal.id, userId });
     undo.push(() => supabase.from('sales_source_events').delete().eq('record_type', 'partner').eq('record_id', goal.id));
+    if (payload.owner) await applyPartnerSignal(supabase, { businessId, goalId: goal.id, signal: { type: 'assign', owner_user_id: payload.owner.user_id }, byUser: userId });
     const { event } = await applyPartnerSignal(supabase, {
       businessId, goalId: goal.id, signal: { type: 'note', note: intakeNote(target, note) }, byUser: userId,
       meta: { from_target_id: target.id, ...(target.source_note_id ? { from_note_id: target.source_note_id } : {}) },
@@ -174,7 +179,8 @@ async function promoteToEmployer(supabase, { businessId, userId, target, payload
   const ins = await supabase.from('sales_opportunities').insert({
     business_id: businessId, organization: payload.name, org_type: 'employer', stage: 'target', source: 'manual', channel: target.channel || 'unknown', notes,
     owner_team: payload.owner_team, co_owner_name: payload.co_owner_name, no_double_touch: payload.no_double_touch,
-    ...(apolloAccountId ? { apollo_account_id: apolloAccountId } : {}), ...inheritedSource(target),
+    ...(apolloAccountId ? { apollo_account_id: apolloAccountId } : {}), ...inheritedSource(target), ...inheritedEmployees(target),
+    ...(payload.owner ? employerOwner(payload.owner) : {}),
   }).select().single();
   if (ins.error?.code === '23505') throw err(409, `${payload.name} is already in the pipeline`);
   const opportunity = must(ins);
@@ -206,6 +212,10 @@ export async function promoteTarget(supabase, { businessId, userId, targetId, bo
     if (target.status === 'accepted') return reply(409, { error: `${target.name} was already promoted` });
     const v = validatePromote(body, target);
     if (v.error) return reply(400, { error: v.error });
+    // company-workflow-v1 W3: the owner person - a picked Member, else the target's own, else the caller.
+    const who = await ownerOrCaller(supabase, businessId, body?.owner_user_id || target.owner_user_id || null, userId);
+    if (who.error) return reply(400, { error: who.error });
+    v.payload.owner = who.person;
     const [ctx, note] = await Promise.all([companyContext(supabase, businessId, target.id), sourceNote(supabase, target)]);
     const hit = resolveCompany(v.payload.name, ctx);
     if (hit && (hit.type === 'partner' || hit.type === 'opportunity')) return reply(200, { already: { type: hit.type, id: hit.id, name: hit.name } });

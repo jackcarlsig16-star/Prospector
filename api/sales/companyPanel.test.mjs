@@ -67,6 +67,9 @@ const seed = () => fakeSupabase({
 test('partner body: to-dos, waiting, matched visits, decisions, terms, people without emails, last notes/touches (no assign rows), research status', async () => {
   const sb = seed();
   const r = await companyDetail(sb, { businessId: B, type: 'partner', id: ID.partner, now: NOW });
+  // company-workflow-v1 W1: the guided steps ride on the detail, one next.
+  assert.deepEqual(r.body.steps.steps.map(x => x.id), ['research', 'site', 'size', 'owner', 'add', 'touch']);
+  assert.equal(r.body.steps.steps.filter(x => x.status === 'next').length <= 1, true);
   assert.equal(r.status, 200);
   const d = r.body;
   assert.equal(d.record.name, 'Gallagher'); assert.equal(d.record.stage, 'replied'); assert.equal(d.record.owner, 'Jack Carlson'); assert.equal(d.record.priority_set_by, 'Cyrus Test'); assert.equal(d.record.top, true);
@@ -143,7 +146,10 @@ test('add to pipeline as a partner: a sales_goals row at not_started with one no
   const g = sb.db.sales_goals.find(x => x.id === r.body.created.id);
   assert.equal(g.pipeline_status, 'not_started'); assert.equal(g.channel, 'website_visit'); assert.equal(g.goal_type, 'partnership');
   const ev = sb.db.sales_partner_events.filter(e => e.goal_id === g.id);
-  assert.equal(ev.length, 1); assert.equal(ev[0].event, 'note'); assert.match(ev[0].note, /^Visited the website/); assert.equal(ev[0].meta.from_visit_key, 'acme widgets'); assert.equal(ev[0].by_user, U);
+  assert.equal(ev[0].event, 'note'); assert.match(ev[0].note, /^Visited the website/); assert.equal(ev[0].meta.from_visit_key, 'acme widgets'); assert.equal(ev[0].by_user, U);
+  // company-workflow-v1 W3: no pick = the caller owns it, through the Assign signal (FIX-7).
+  assert.deepEqual(ev.map(e => e.event), ['note', 'assign']);
+  assert.equal(g.owner_user_id, U);
 });
 
 test('add note: a partner gets a note event; an employer a dated notes line; a target a dated research_notes line; empty / long / wrong type refused', async () => {
@@ -285,4 +291,16 @@ test('not now: a person is snoozed a week (today + 7); the company parks the ban
   assert.equal(back.show, true); assert.equal(back.dismissed, false); assert.equal(back.strongest.kind, 'reply');
   assert.equal((await notNow(sb, { businessId: B, userId: U, type: 'visitor', id: 'acme widgets', body: {}, now: NOW })).status, 400);
   assert.equal((await notNow(sb, { businessId: B, userId: U, type: 'target', id: ID.target, body: {}, now: NOW })).status, 400);
+});
+
+// company-workflow-v1 W3 - Add to pipeline takes an owner person: a Member pick wins, a stranger is refused.
+test('add to pipeline with owner_user_id: an employer gets the person (and the owner text in step); a non-member pick is 400', async () => {
+  const sb = seed();
+  sb.db.web_visits = sb.db.web_visits.filter(v => v.company_key !== 'gallagher');
+  const bad = await addToPipeline(sb, { businessId: B, userId: U, body: { type: 'visitor', id: 'acme widgets', to: 'employer', owner_user_id: randomUUID() } });
+  assert.equal(bad.status, 400);
+  const r = await addToPipeline(sb, { businessId: B, userId: U, body: { type: 'visitor', id: 'acme widgets', to: 'employer', owner_user_id: U2 } });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const o = sb.db.sales_opportunities.find(x => x.id === r.body.created.id);
+  assert.deepEqual([o.owner_user_id, o.owner], [U2, 'Cyrus']);
 });

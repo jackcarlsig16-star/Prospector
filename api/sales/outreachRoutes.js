@@ -5,6 +5,7 @@ import { cleanText } from './scrubText.js';
 import { ImportRefused } from './masterImport.js';
 import { applyPartnerSignal, SignalError } from './partnerSignals.js';
 import { insertCompanyRecord } from './companyPanel.js';
+import { employerOwner } from './companyFields.js';
 import { importContacts, MAPPABLE } from './outreachImport.js';
 import { STEP_OFFSETS, STOP_STATUSES, DAILY_CAP, addSendDays, bookDay, gapAfter, stepAfter, spreadStarts } from './outreachSchedule.js';
 
@@ -324,7 +325,9 @@ async function promote(supabase, { contact, campaign, body, userId, team, now })
     const { error } = await supabase.from('partner_contacts').insert({ business_id: contact.business_id, goal_id: rec.id, name: contact.name.slice(0, 120), title: contact.title ? contact.title.slice(0, 160) : null, source: 'manual', created_by: userId });
     if (error && error.code !== '23505') throw err(500, error.message);
   } else if (rec.type === 'employer' && owner && out.created) {
-    must(await supabase.from('sales_opportunities').update({ owner: team.get(owner) || null, updated_at: now.toISOString() }).eq('id', rec.id).select('id'));
+    must(await supabase.from('sales_opportunities').update({ ...employerOwner({ user_id: owner, name: team.get(owner) || '' }), updated_at: now.toISOString() }).eq('id', rec.id).select('id'));
+  } else if (rec.type === 'target' && owner && out.created) {
+    must(await supabase.from('sales_targets').update({ owner_user_id: owner, updated_at: now.toISOString() }).eq('id', rec.id).select('id'));
   }
   return { record: { type: rec.type, id: rec.id, name: rec.name }, created: !!out.created, patch: { [LINK[rec.type]]: rec.id } };
 }

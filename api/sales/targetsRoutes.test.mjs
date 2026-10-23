@@ -76,9 +76,11 @@ test('promote -> partner: not_started, category + ownership, intake note event, 
   assert.equal(goal.pipeline_status, 'not_started');
   assert.equal(goal.category, '3. Renter Platforms');
   assert.deepEqual([goal.owner_team, goal.co_owner_name, goal.no_double_touch], ['upside', 'Brad', true]);
-  assert.equal(goal.owner_user_id ?? null, null, 'no person owner is picked - Assign does that');
-  const events = s.db.sales_partner_events.filter(e => e.goal_id === goal.id);
-  assert.equal(events.length, 1);
+  // company-workflow-v1 W3: no pick = the caller owns it, set through the Assign signal (FIX-7), before the note.
+  assert.equal(goal.owner_user_id, U);
+  const all = s.db.sales_partner_events.filter(e => e.goal_id === goal.id);
+  assert.deepEqual(all.map(e => e.event), ['assign', 'note']);
+  const events = all.filter(e => e.event === 'note');
   assert.equal(events[0].event, 'note');
   assert.match(events[0].note, /^From intake \(Seif weekly, 2026-10-12\): renter-investing platforms are worth approaching\nPerson: Ana Example — CEO \(champion\)/);
   assert.equal(events[0].meta.from_target_id, T.fundrise);

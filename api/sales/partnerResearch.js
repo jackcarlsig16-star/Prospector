@@ -1,3 +1,4 @@
+import { applyResearchNumbers, wholeNumber } from './companyFields.js';
 import { callAnthropic } from '../businesses/shared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { MODELS, estimateCostUsd } from '../../src/config/models.js';
@@ -7,7 +8,8 @@ import { laDateString } from './laDate.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
 
 // partner-add-research-v1 REV3 Stage 2 - one Claude call with web_search per
-// run, stored as a research_runs row. The run writes NOTHING to the partner:
+// run, stored as a research_runs row. The run writes no text to the partner
+// (company-workflow-v1: only the numbers - employees and a partner's reach - fill in, never over a typed value):
 // every field waits for a click (Confirm site / Use / Set category) in the
 // card. Routes start the run and answer at once (202); the card polls GET.
 // Queue runs (Stage 4) reuse startRun + completeRun with created_by null.
@@ -33,6 +35,7 @@ export const TEXT_FIELDS = { summary: 500, mission: 240, positioning: 320, size:
 export const RECENT_MAX = 3;
 export const RECENT_TEXT_MAX = 140;
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+export const NUMBER_FIELDS = ['employees_count', 'reach_employees', 'reach_clients'];
 const err = (status, message) => Object.assign(new Error(message), { status });
 
 // 'partner' (default) = a channel partner; 'employer' = a company that would
@@ -45,7 +48,7 @@ export function researchSystem(business, categories, framing = 'partner') {
       : `You research one company as a possible channel partner for ${who}: a company that could offer ${business.name} to the employers, members or clients it already reaches.`,
     `Use web_search at most ${MAX_SEARCHES} times: first the company's own site (About, Careers, Partners pages), then one recent news or press source. Read what you find; do not guess.`,
     'Reply with ONE JSON object and nothing else - no prose before or after, no markdown fence:',
-    '{"website": "https://...", "domain": "company.com", "website_confidence": "high|medium|low", "source_urls": ["https://..."], "summary": "", "mission": "", "positioning": "", "size": "", "hq_city": "", "sells_to": "", "recent_news": "", "recent": [{"month": "YYYY-MM", "text": "", "url": "https://..."}], "housing_perk": "", "suggested_category": null, "why_homelover": "", "first_angle": "", "watch_outs": "", "titles": ""}',
+    '{"website": "https://...", "domain": "company.com", "website_confidence": "high|medium|low", "source_urls": ["https://..."], "summary": "", "mission": "", "positioning": "", "size": "", "hq_city": "", "sells_to": "", "recent_news": "", "recent": [{"month": "YYYY-MM", "text": "", "url": "https://..."}], "housing_perk": "", "suggested_category": null, "why_homelover": "", "first_angle": "", "watch_outs": "", "titles": "", "employees_count": null, "reach_employees": null, "reach_clients": null}',
     'Field rules:',
     '- website / domain: the official site. website_confidence high only when the site itself names the company; low when you could not find it (then website and domain are null).',
     '- source_urls: up to 3 real pages you opened.',
@@ -53,6 +56,8 @@ export function researchSystem(business, categories, framing = 'partner') {
     '- mission: their own mission or tagline, quoted verbatim from their site, one sentence; "" if none found.',
     '- positioning: at most 40 words - how they describe themselves, notable awards or claims.',
     '- size: employees or a range, plus customers / members / clients if stated, each marked "est." when estimated, and where it comes from.',
+    '- employees_count: the company\'s OWN headcount as one whole number (the low end of a range), or null when no source states it.',
+    '- reach_employees / reach_clients: only when the company administers or covers employees FOR OTHER companies (PEOs, HR / payroll, benefits administration, benefit platforms): the employees it covers across its clients and the number of client companies, each one whole number, or null when not stated. Never the company\'s own headcount.',
     '- hq_city: city and state or country.',
     '- sells_to: at most 20 words - who they sell to (the segments, buyers or members they serve).',
     '- recent_news: at most 40 words from the last 12 months with the month (acquisitions, funding, launches, leadership); "none found" otherwise.',
@@ -91,6 +96,8 @@ export function parseResearch(text, categories) {
     suggested_category: categories.includes(raw.suggested_category) ? raw.suggested_category : null,
   };
   for (const [k, max] of Object.entries(TEXT_FIELDS)) out[k] = cleanText(raw[k], max) || null;
+  // company-workflow-v1 W4/W5: whole numbers only (a numeric string is read; anything else is null).
+  for (const k of NUMBER_FIELDS) out[k] = wholeNumber(raw[k]);
   out.recent = (Array.isArray(raw.recent) ? raw.recent : [])
     .map(r => (r && typeof r === 'object' ? { month: MONTH_RE.test(r.month) ? r.month : null, text: cleanText(r.text, RECENT_TEXT_MAX) || null, url: url(r.url) } : null))
     .filter(r => r && r.text).slice(0, RECENT_MAX);
@@ -168,6 +175,7 @@ export async function completeRun(supabase, { run, partner, business, categories
   }
   const { data, error } = await supabase.from('research_runs').update(patch).eq('id', run.id).select().single();
   if (error) throw new Error(error.message);
+  if (data.status === 'done') await applyResearchNumbers(supabase, { businessId: run.business_id, type: run.entity_type, id: run.entity_id, result: data.result });
   return data;
 }
 

@@ -164,7 +164,7 @@ export async function acceptIntake(supabase, { businessId, userId, note, ctx, in
       const r = await supabase.from('sales_targets').insert({
         business_id: businessId, name: c.name, kind: c.kind, status: never ? 'rejected' : 'researching', source_note_id: note.id, channel: 'call_note',
         evidence: c.evidence || null, research_prompt: never ? null : researchPrompt(c.name, c.kind, business),
-        suggested_category: c.category, created_by: userId, decided_at: never ? now.toISOString() : null,
+        suggested_category: c.category, created_by: userId, owner_user_id: never ? null : userId, decided_at: never ? now.toISOString() : null,
         ...(referred(c) ? sourceColumns(referred(c), { userId, manual: true, now }) : {}),
       }).select().single();
       if (r.error?.code === '23505') throw err(409, `${c.name} is already a target - reload the review`);
@@ -192,7 +192,8 @@ export async function acceptIntake(supabase, { businessId, userId, note, ctx, in
       const named = ownerFor(s);
       const member = named && matchOwner(named, ctx.members);
       const owner = member ? ctx.members.find(m => m.id === member).name.split(' ')[0] : named;
-      const row = must(await supabase.from('sales_opportunities').insert({ business_id: businessId, organization: s.name, org_type: 'employer', stage: 'contacted', source: 'manual', channel: 'call_note', owner,
+      // company-workflow-v1 W3: the member the notes name owns it, else whoever accepted.
+      const row = must(await supabase.from('sales_opportunities').insert({ business_id: businessId, organization: s.name, org_type: 'employer', stage: 'contacted', source: 'manual', channel: 'call_note', owner: owner || ctx.members.find(m => m.id === userId)?.name.split(' ')[0] || null, owner_user_id: member || userId,
         ...(ref ? sourceColumns(ref, { userId, manual: true, now }) : {}) }).select().single());
       undo.push(() => supabase.from('sales_opportunities').delete().eq('id', row.id));
       if (ref) {

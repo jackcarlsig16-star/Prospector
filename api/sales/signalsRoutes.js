@@ -95,7 +95,7 @@ export async function acceptSignal(supabase, { businessId, userId, id, now = new
     if (!m) {
       const r = await supabase.from('sales_targets').insert({
         business_id: businessId, name: s.company_name, kind: s.kind, status: 'researching', source: s.source, signal_id: s.id, channel: SIGNAL_CHANNEL[s.source] || 'unknown',
-        evidence: s.signal, owner_team: s.upside_joint ? 'both' : null, co_owner_name: s.upside_joint ? 'Brad' : null, created_by: userId,
+        evidence: s.signal, owner_team: s.upside_joint ? 'both' : null, co_owner_name: s.upside_joint ? 'Brad' : null, created_by: userId, owner_user_id: who.owner,
         ...sourceColumns(SIGNAL_SOURCE(s), { now }),
       }).select().single();
       if (r.error?.code === '23505') throw err(409, `${s.company_name} is already a target - reload`);

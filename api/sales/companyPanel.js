@@ -2,6 +2,8 @@ import { getSupabase, addDays, laMonday, weekIsFinal, FINAL_ERROR } from './goal
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { cleanText, hasPii } from './scrubText.js';
 import { sourceColumns, logSource } from './leadSource.js';
+import { ownerOrCaller, employerOwner } from './companyFields.js';
+import { companySteps } from './companySteps.js';
 import { laDateString } from './laDate.js';
 import { normName } from './intakeMatch.js';
 import { findDupes, loadDupeContext } from './partnerDupeCheck.js';
@@ -55,26 +57,31 @@ async function memberNames(supabase, businessId) {
   return new Map((data || []).map(m => [m.user_id, m.profile?.display_name || m.name]));
 }
 
+// company-workflow-v1 W4/W5 - the size columns the window and its steps read.
+const SIZE_COLS = 'employees, employees_source, employees_at';
+const REACH_COLS = 'reach_employees, reach_employees_source, reach_employees_at, reach_clients, reach_clients_source, reach_clients_at';
+const pick = (row, cols) => Object.fromEntries(cols.split(', ').map(c => [c, row[c] ?? null]));
+
 // The record behind a row, as the panel header reads it. null = gone.
 async function loadRecord(supabase, businessId, type, id) {
   if (type === 'partner') {
-    const g = must(await supabase.from('sales_goals').select('id, name, pipeline_status, category, tier, hot, owner_user_id, owner_team, co_owner_name, no_double_touch, next_step, next_meeting_at, last_touch_at, channel, priority, priority_set_by, priority_set_at, notes, record_id')
+    const g = must(await supabase.from('sales_goals').select(`id, name, pipeline_status, category, tier, hot, owner_user_id, owner_team, co_owner_name, no_double_touch, next_step, next_meeting_at, last_touch_at, channel, priority, priority_set_by, priority_set_at, notes, record_id, ${SIZE_COLS}, ${REACH_COLS}`)
       .eq('business_id', businessId).eq('id', id).eq('goal_type', 'partnership').maybeSingle());
-    return g && { type, id: g.id, name: g.name, stage: g.pipeline_status || 'not_started', category: g.category, tier: g.tier, top: !!g.hot, owner_user_id: g.owner_user_id, owner_team: g.owner_team, co_owner_name: g.co_owner_name, no_double_touch: !!g.no_double_touch, next_step: g.next_step, next_step_due: g.next_meeting_at, last_touch_at: g.last_touch_at, channel: g.channel, priority: g.priority, priority_set_by: g.priority_set_by, priority_set_at: g.priority_set_at, record_id: g.record_id, notes: g.notes };
+    return g && { type, id: g.id, name: g.name, stage: g.pipeline_status || 'not_started', category: g.category, tier: g.tier, top: !!g.hot, owner_user_id: g.owner_user_id, owner_team: g.owner_team, co_owner_name: g.co_owner_name, no_double_touch: !!g.no_double_touch, next_step: g.next_step, next_step_due: g.next_meeting_at, last_touch_at: g.last_touch_at, channel: g.channel, priority: g.priority, priority_set_by: g.priority_set_by, priority_set_at: g.priority_set_at, record_id: g.record_id, notes: g.notes, ...pick(g, SIZE_COLS), ...pick(g, REACH_COLS) };
   }
   if (type === 'employer') {
-    const o = must(await supabase.from('sales_opportunities').select('id, organization, stage, org_type, owner, owner_team, co_owner_name, tier, is_top, next_action, next_action_date, channel, priority, priority_set_by, priority_set_at, notes, decision_makers, champion, covered_lives, record_id, apollo_account_id')
+    const o = must(await supabase.from('sales_opportunities').select(`id, organization, stage, org_type, owner, owner_user_id, owner_team, co_owner_name, tier, is_top, next_action, next_action_date, channel, priority, priority_set_by, priority_set_at, notes, decision_makers, champion, covered_lives, record_id, apollo_account_id, ${SIZE_COLS}`)
       .eq('business_id', businessId).eq('id', id).is('archived_at', null).maybeSingle());
-    return o && { type, id: o.id, name: o.organization, stage: o.stage, org_type: o.org_type, owner: o.owner, owner_team: o.owner_team, co_owner_name: o.co_owner_name, tier: o.tier, top: !!o.is_top, next_step: o.next_action, next_step_due: o.next_action_date, channel: o.channel, priority: o.priority, priority_set_by: o.priority_set_by, priority_set_at: o.priority_set_at, covered_lives: o.covered_lives, record_id: o.record_id, notes: o.notes, decision_makers: o.decision_makers, champion: o.champion, apollo_linked: !!o.apollo_account_id };
+    return o && { type, id: o.id, name: o.organization, stage: o.stage, org_type: o.org_type, owner: o.owner, owner_team: o.owner_team, co_owner_name: o.co_owner_name, tier: o.tier, top: !!o.is_top, next_step: o.next_action, next_step_due: o.next_action_date, channel: o.channel, priority: o.priority, priority_set_by: o.priority_set_by, priority_set_at: o.priority_set_at, covered_lives: o.covered_lives, record_id: o.record_id, notes: o.notes, decision_makers: o.decision_makers, champion: o.champion, apollo_linked: !!o.apollo_account_id, owner_user_id: o.owner_user_id, ...pick(o, SIZE_COLS) };
   }
   if (type === 'target') {
-    const r = must(await supabase.from('sales_targets').select('id, name, kind, status, suggested_category, owner_team, co_owner_name, evidence, research_notes, channel, created_at, promoted_goal_id')
+    const r = must(await supabase.from('sales_targets').select(`id, name, kind, status, suggested_category, owner_team, co_owner_name, owner_user_id, evidence, research_notes, channel, created_at, promoted_goal_id, ${SIZE_COLS}`)
       .eq('business_id', businessId).eq('id', id).maybeSingle());
-    return r && { type, id: r.id, name: r.name, kind: r.kind, stage: r.status, category: r.suggested_category, owner_team: r.owner_team, co_owner_name: r.co_owner_name, channel: r.channel, created_at: r.created_at, evidence: r.evidence, research_notes: r.research_notes, promoted_goal_id: r.promoted_goal_id };
+    return r && { type, id: r.id, name: r.name, kind: r.kind, stage: r.status, category: r.suggested_category, owner_team: r.owner_team, co_owner_name: r.co_owner_name, channel: r.channel, created_at: r.created_at, evidence: r.evidence, research_notes: r.research_notes, promoted_goal_id: r.promoted_goal_id, owner_user_id: r.owner_user_id, ...pick(r, SIZE_COLS) };
   }
   if (type === 'apollo') {
     const a = must(await supabase.from('sales_sequenced_accounts').select('account_id, name, first_sequenced_at, sequence_id, employees').eq('business_id', businessId).eq('account_id', id).maybeSingle());
-    return a && { type, id: a.account_id, name: a.name || 'Unnamed company', stage: 'sequenced', channel: 'apollo_outbound', first_sequenced_at: a.first_sequenced_at, sequence_id: a.sequence_id, employees: a.employees };
+    return a && { type, id: a.account_id, name: a.name || 'Unnamed company', stage: 'sequenced', channel: 'apollo_outbound', first_sequenced_at: a.first_sequenced_at, sequence_id: a.sequence_id, employees: a.employees, employees_source: a.employees != null ? 'manual' : null };
   }
   const v = must(await supabase.from('web_visits').select('company_key, company_name, domain, pulled_on').eq('business_id', businessId).eq('company_key', id).order('pulled_on', { ascending: false }).limit(1));
   return v[0] && { type, id: v[0].company_key, name: v[0].company_name, stage: 'visited', channel: 'website_visit', domain: v[0].domain };
@@ -280,8 +287,9 @@ export async function companyDetail(supabase, { businessId, type, id, now = new 
     const site = await siteFor(supabase, businessId, record, research);
     const terms = (record.notes || '').split('\n').filter(l => TERMS_LINE.test(l)).map(l => cleanText(l, 400));
     const { notes, decision_makers, champion, ...head } = record;
+    const ownerName = record.owner_user_id ? names.get(record.owner_user_id) || null : null;
     const out = {
-      ...head, owner: type === 'partner' ? names.get(record.owner_user_id) || null : record.owner || null,
+      ...head, owner: type === 'partner' ? ownerName : type === 'target' ? ownerName : record.owner || null, owner_name: ownerName,
       priority_set_by: record.priority_set_by ? names.get(record.priority_set_by) || null : null,
       ...(type === 'partner' || type === 'employer' ? { next_step: record.next_step ? cleanText(record.next_step, 400) : null } : {}),
       ...(type === 'target' ? { evidence: t(record.evidence), research_notes: t(record.research_notes, 4000) } : {}),
@@ -292,6 +300,8 @@ export async function companyDetail(supabase, { businessId, type, id, now = new 
       record: out, interest, timeline, todos, waiting, visits: visitRows, signals: scoutSignals,
       recent, people, decision_makers: type === 'employer' ? (decision_makers || '').split('\n').map(l => cleanText(l, 200)).filter(Boolean) : [],
       research, decisions, terms,
+      // company-workflow-v1 W1: the guided steps (one "next").
+      steps: companySteps({ record: { ...record, last_touch: lastTouch }, research, site, ownerName, now: now.getTime() }),
     });
   } catch (e) { return reply(e.status || 500, { error: e.message }); }
 }
@@ -436,8 +446,10 @@ const RANK = { partner: 0, opportunity: 1, target: 2 };
 // a note event (never a stage); also used by seif-campaign Promote. source
 // (lead-source-v1) lands on a new record with its create event; an existing
 // one keeps its own (first touch).
-export async function insertCompanyRecord(supabase, { businessId, userId, name, domain = null, to, kind = null, channel, evidence, apolloAccountId = null, noteMeta = {}, source = null, now = new Date() }) {
+export async function insertCompanyRecord(supabase, { businessId, userId, name, domain = null, to, kind = null, channel, evidence, apolloAccountId = null, noteMeta = {}, source = null, owner = null, employees = null, now = new Date() }) {
   const src = source ? sourceColumns(source, { now }) : {};
+  // company-workflow-v1 W3/W4: owner = { user_id, name } (a partner's goes through Assign); employees = a typed count.
+  const emp = employees != null ? { employees, employees_source: 'manual', employees_at: now.toISOString() } : {};
   const created = async (type, id) => {
     if (source) await logSource(supabase, { businessId, type, id, to: src, reason: 'create', byUser: userId, at: now });
     return { created: { type, id, name } };
@@ -445,31 +457,34 @@ export async function insertCompanyRecord(supabase, { businessId, userId, name, 
   const hit = findDupes({ name, domain }, await loadDupeContext(supabase, businessId)).exact.filter(h => h.type in RANK).sort((a, b) => a.archived - b.archived || RANK[a.type] - RANK[b.type])[0];
   if (hit) return { already: { type: hit.type === 'opportunity' ? 'employer' : hit.type, id: hit.id, name: hit.name } };
   if (to === 'target') {
-    const r = await supabase.from('sales_targets').insert({ business_id: businessId, name, kind: kind || 'employer', status: 'researching', channel, evidence: cleanText(evidence, 400), created_by: userId, ...src }).select('id, name').single();
+    const r = await supabase.from('sales_targets').insert({ business_id: businessId, name, kind: kind || 'employer', status: 'researching', channel, evidence: cleanText(evidence, 400), created_by: userId, ...src, ...emp, ...(owner ? { owner_user_id: owner.user_id } : {}) }).select('id, name').single();
     if (r.error?.code === '23505') throw err(409, `${name} is already a target - reload`);
     return created('target', must(r).id);
   }
   if (to === 'partner') {
-    const r = await supabase.from('sales_goals').insert({ business_id: businessId, goal_type: 'partnership', name, pipeline_status: 'not_started', channel, ...src }).select('id, name').single();
+    const r = await supabase.from('sales_goals').insert({ business_id: businessId, goal_type: 'partnership', name, pipeline_status: 'not_started', channel, ...src, ...emp }).select('id, name').single();
     if (r.error?.code === '23505') throw err(409, `${name} is already a partner - reload`);
     const goal = must(r);
     await applyPartnerSignal(supabase, { businessId, goalId: goal.id, signal: { type: 'note', note: cleanText(evidence, NOTE_MAX) }, byUser: userId, now, meta: noteMeta });
+    if (owner) await applyPartnerSignal(supabase, { businessId, goalId: goal.id, signal: { type: 'assign', owner_user_id: owner.user_id }, byUser: userId, now });
     return created('partner', goal.id);
   }
   const found = await findOpportunity(supabase, businessId, { name, apolloAccountId });
   if (found) return { already: { type: 'employer', id: found.id, name: found.organization } };
-  const r = await supabase.from('sales_opportunities').insert({ business_id: businessId, organization: name, org_type: 'employer', stage: 'target', source: 'manual', channel, notes: `(${slash(laDateString(now))}) ${cleanText(evidence, 400)}`, ...(apolloAccountId ? { apollo_account_id: apolloAccountId } : {}), ...src }).select('id, organization').single();
+  const r = await supabase.from('sales_opportunities').insert({ business_id: businessId, organization: name, org_type: 'employer', stage: 'target', source: 'manual', channel, notes: `(${slash(laDateString(now))}) ${cleanText(evidence, 400)}`, ...(apolloAccountId ? { apollo_account_id: apolloAccountId } : {}), ...src, ...emp, ...(owner ? employerOwner(owner) : {}) }).select('id, organization').single();
   if (r.error?.code === '23505') throw err(409, `${name} is already in the pipeline - reload`);
   return created('employer', must(r).id);
 }
 
 export async function addToPipeline(supabase, { businessId, userId, body, now = new Date() }) {
-  const { type, id, to = 'target', kind = null } = body || {};
+  const { type, id, to = 'target', kind = null, owner_user_id: pickedOwner = null } = body || {};
   if (!ADD_FROM.includes(type)) return reply(400, { error: `type must be one of ${ADD_FROM.join('|')}` });
   if (!ADD_TO.includes(to)) return reply(400, { error: `to must be one of ${ADD_TO.join('|')}` });
   if (kind !== null && !['partner', 'employer'].includes(kind)) return reply(400, { error: 'kind must be partner, employer or null' });
   if (!validId(type, id)) return reply(400, { error: 'id is required' });
   try {
+    const who = await ownerOrCaller(supabase, businessId, pickedOwner, userId);
+    if (who.error) return reply(400, { error: who.error });
     const src = await loadRecord(supabase, businessId, type, id);
     if (!src) return reply(404, { error: `${type} not found` });
     const name = cleanText(src.name, 160);
@@ -485,6 +500,7 @@ export async function addToPipeline(supabase, { businessId, userId, body, now = 
       apolloAccountId: type === 'apollo' ? id : null, noteMeta: type === 'visitor' ? { from_visit_key: id } : { from_apollo_account: true },
       // A website visitor found us; an Apollo-only company is our own outbound.
       source: { source_kind: type === 'visitor' ? 'website' : 'homelover_outreach' },
+      owner: who.person, employees: type === 'apollo' ? src.employees ?? null : null,
     });
     if (out.already) return reply(200, { already: out.already });
     const { created } = out;

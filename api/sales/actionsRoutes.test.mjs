@@ -245,6 +245,7 @@ test('accept with owner_user_id: signal + suggestion to-dos owned by the pick; U
   const a = await acceptSignal(s, { businessId: B, userId: JACK, id: fresh.id, now, ownerUserId: CY });
   assert.equal(a.status, 200, JSON.stringify(a.body));
   assert.deepEqual([a.body.todo.owner_user_id, a.body.todo.created_by, a.body.signal.decided_by], [CY, JACK, JACK]);
+  assert.equal(s.db.sales_targets.find(t => t.id === a.body.signal.target_id).owner_user_id, CY, 'company-workflow-v1 W3: the new target is theirs too');
   assert.equal((await undoSignal(s, { businessId: B, id: fresh.id, now: new Date(now.getTime() + 5000) })).status, 200);
   assert.equal(s.db.sales_week_goals.find(g => g.id === a.body.todo.id), undefined, "Undo takes Cyrus's to-do off");
   assert.equal((await acceptSignal(s, { businessId: B, userId: JACK, id: fresh.id, now, ownerUserId: VIC })).status, 400);

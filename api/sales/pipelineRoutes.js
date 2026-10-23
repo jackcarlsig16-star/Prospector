@@ -1,3 +1,4 @@
+import { ownerOrCaller, employerOwner, memberNamed } from './companyFields.js';
 import { createClient } from '@supabase/supabase-js';
 import { STAGE_ENUM, ORG_TYPE_ENUM, PARKED_STAGES, compareStages, bulkStageRefusal } from './pipelineStages.js';
 import { parseCsv, toCsv } from '../../src/utils/csv.js';
@@ -75,7 +76,7 @@ export async function listOpportunitiesRoute(req, res) {
 
 // lead-source-v1: the Add company form's optional Source picker = a person's pick ({ source: { source_kind, … } }).
 export async function createOpportunityRoute(req, res) {
-  const { source, ...body } = req.body || {};
+  const { source, owner_user_id: pickedOwner = null, ...body } = req.body || {};
   const s = source == null ? null : validateSource(source);
   if (s?.error) return res.status(400).json({ error: `source: ${s.error}` });
   const { payload, error } = validateFields(body);
@@ -84,13 +85,21 @@ export async function createOpportunityRoute(req, res) {
     return res.status(400).json({ error: 'organization is required' });
   }
   const supabase = getSupabase();
+  // company-workflow-v1 W3: the owner person - a picked Member, else the member the typed owner names, else the caller.
+  let owner;
+  try {
+    const named = !pickedOwner && payload.owner ? (await memberNamed(supabase, req.params.businessId, payload.owner)) : null;
+    const who = await ownerOrCaller(supabase, req.params.businessId, pickedOwner || named, req.auth.user.id);
+    if (who.error) return res.status(400).json({ error: who.error });
+    owner = pickedOwner || named || !payload.owner ? employerOwner(who.person) : { owner_user_id: who.person?.user_id ?? null };
+  } catch (e) { return res.status(500).json({ error: e.message }); }
   try {
     const found = await findOpportunity(supabase, req.params.businessId, { name: payload.organization });
     if (found) return res.status(200).json({ opportunity: await moveForward(supabase, found, payload.stage), reused: true });
   } catch (e) { return res.status(500).json({ error: e.message }); }
   const { data, error: insErr } = await supabase
     .from('sales_opportunities')
-    .insert({ business_id: req.params.businessId, source: 'manual', channel: 'manual', ...payload, ...priorityStamp(payload, req.auth.user.id),
+    .insert({ business_id: req.params.businessId, source: 'manual', channel: 'manual', ...payload, ...owner, ...priorityStamp(payload, req.auth.user.id),
       ...(s?.source.source_kind ? sourceColumns(s.source, { userId: req.auth.user.id, manual: true }) : {}) })
     .select()
     .single();

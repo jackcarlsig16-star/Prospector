@@ -86,6 +86,8 @@ test('board rows: partners + employer/membership opportunities + open targets, s
     last_touch_at: '2026-10-10T00:00:00Z', top: true, record_id: 'HLU-0001',
     channel: 'unknown', priority: null, priority_set_by: null, priority_set_at: null, covered_lives: null,
     category: '3. Brokers', co_owner_name: null, no_double_touch: false, visited: null, work: null, channels: ['all', 'partners'],
+    // company-workflow-v1: the size columns + the owner person.
+    employees: null, employees_source: null, reach_employees: null, reach_clients: null, owner_user_id: g.owner_user_id,
   });
   assert.equal(rows.find(r => r.id === 'o1').top, true);
   assert.equal(rows.find(r => r.id === 'o1').next_step_due, '2026-10-20');
@@ -116,8 +118,8 @@ test('no email, phone or Apollo id anywhere in the payload', () => {
   assert.ok(!json.includes('@'), 'no email');
   assert.ok(!/\d{3}[-. ]\d{3}[-. ]\d{4}/.test(json), 'no phone');
   assert.ok(!JSON.stringify(buildBoard(s)).includes('"A1"'), 'an opportunity\'s apollo_account_id never leaks');
-  const base = ['channel', 'channels', 'color', 'covered_lives', 'id', 'last_touch_at', 'name', 'next_step', 'next_step_due', 'owner', 'owner_team', 'priority', 'priority_set_at', 'priority_set_by',
-    'record_id', 'stage', 'stage_label', 'tier', 'top', 'type', 'visited', 'work'];
+  const base = ['channel', 'channels', 'color', 'covered_lives', 'employees', 'employees_source', 'id', 'last_touch_at', 'name', 'next_step', 'next_step_due', 'owner', 'owner_team', 'owner_user_id', 'priority', 'priority_set_at', 'priority_set_by',
+    'reach_clients', 'reach_employees', 'record_id', 'stage', 'stage_label', 'tier', 'top', 'type', 'visited', 'work'];
   for (const r of buildBoard(s, { includeApollo: true })) {
     assert.deepEqual(Object.keys(r).sort(), r.type === 'partner' ? [...base, 'category', 'co_owner_name', 'no_double_touch'].sort() : base);
   }
