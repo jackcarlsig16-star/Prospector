@@ -10,6 +10,7 @@
 export const BUSINESS_NAV = [
   { id: "command-center",  ic: "⌂", lb: "Command Center", hiddenWith: "goals_sales" },
   { id: "sales-analytics", ic: "📈", lb: "Sales & Marketing", feature: "goals_sales" },
+  { id: "hk-sales",        ic: "✿", lb: "Sales OS", feature: "hk_sales" },
   { id: "accounts",        ic: "◈", lb: "Accounts" },
   { id: "projects",        ic: "▣", lb: "Projects" },
   { id: "overview",        ic: "◉", lb: "Business Intel & Strategy" },
@@ -27,5 +28,6 @@ export const APP_LEVEL_VIEWS = ["ideas", "tools"];
 
 const on = (b, f) => !!b?.features?.[f];
 export const workspaceNav = b => (b ? BUSINESS_NAV.filter(n => (!n.feature || on(b, n.feature)) && !(n.hiddenWith && on(b, n.hiddenWith))) : []);
-// Where a workspace opens: Sales & Marketing (its Actions tab) with goals_sales, else Command Center.
-export const homePage = b => (on(b, 'goals_sales') ? 'sales-analytics' : 'command-center');
+// Where a workspace opens: Sales & Marketing (its Actions tab) with goals_sales, the HumanKind Sales OS shell with
+// hk_sales, else Command Center.
+export const homePage = b => (on(b, 'goals_sales') ? 'sales-analytics' : on(b, 'hk_sales') ? 'hk-sales' : 'command-center');

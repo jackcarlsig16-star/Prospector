@@ -21,6 +21,7 @@ const require = createRequire(ROOT + '/package.json');
 require('dotenv').config({ path: ROOT + '/.env' });
 const { chromium } = require('playwright');
 const { createClient } = require('@supabase/supabase-js');
+const { ownerSession } = await import(ROOT + '/scripts/verify/lib/ownerSession.mjs');
 
 const MODE = process.argv[2] === 'compare' ? 'compare' : 'capture';
 const FILE = process.argv[3] || path.join(ROOT, 'scripts', 'verify', 'baselines', `hkos-shell-v1-${MODE === 'capture' ? 'before' : 'after'}.json`);
@@ -43,29 +44,15 @@ if ((minsToSix >= 0 && minsToSix < 5) || (now.getHours() % 6 === 0 && now.getMin
 const count = async t => (await svc.from(t).select('*', { count: 'exact', head: true }).eq('business_id', HOMELOVER)).count;
 const hlCounts = async () => { const o = {}; for (const t of HL_TABLES) o[t] = await count(t); return o; };
 
-const { data: owners, error: oErr } = await svc.from('profiles').select('id,email,last_seen_at').eq('is_platform_owner', true);
-if (oErr || owners?.length !== 1) { console.log('ABORT: expected exactly one platform owner profile'); process.exit(1); }
-const jack = owners[0];
-const { data: lastEvt } = await svc.from('auth_events').select('id').order('id', { ascending: false }).limit(1);
-const maxEvt = lastEvt?.[0]?.id || 0;
 const hlBefore = await hlCounts();
 log('HomeLover before', JSON.stringify(hlBefore));
 
-let srv, browser, session;
+let srv, browser, owner, session;
 const blocked = [];
 async function teardown() {
   if (browser) await browser.close().catch(() => {}); browser = null;
   if (srv) srv.kill(); srv = null;
-  if (session) {
-    const anon = createClient(process.env.SUPABASE_URL, process.env.REACT_APP_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
-    await anon.auth.setSession(session).catch(() => {});
-    const { error } = await anon.auth.signOut({ scope: 'local' });
-    log('session signed out (local):', error ? error.message : 'ok');
-    session = null;
-  }
-  const r1 = await svc.from('profiles').update({ last_seen_at: jack.last_seen_at }).eq('id', jack.id);
-  const { count: added } = await svc.from('auth_events').select('*', { count: 'exact', head: true }).eq('user_id', jack.id).eq('event', 'sign_in').gt('id', maxEvt);
-  log('restore last_seen_at:', r1.error ? r1.error.message : 'ok', `· sign_in rows added (kept, by rule): ${added}`);
+  if (owner) { log(await owner.release()); owner = null; }
 }
 const cleanup = require(ROOT + '/scripts/verify/lib/tempGuard.cjs')(teardown, { capMs: 240000 });
 
@@ -147,12 +134,8 @@ function diff(a, b) {
 
 let code = 0;
 try {
-  const { data: link, error: lErr } = await svc.auth.admin.generateLink({ type: 'magiclink', email: jack.email });
-  if (lErr) throw new Error(`generateLink: ${lErr.message}`);
-  const anon = createClient(process.env.SUPABASE_URL, process.env.REACT_APP_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
-  const { data: v, error: vErr } = await anon.auth.verifyOtp({ token_hash: link.properties.hashed_token, type: 'magiclink' });
-  if (vErr) throw new Error(`verifyOtp: ${vErr.message}`);
-  session = v.session;
+  owner = await ownerSession(svc);
+  session = owner.session;
   srv = spawn('node', ['server.js'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), BASIC_AUTH_ENABLED: 'false' }, stdio: ['ignore', 'ignore', 'ignore'] });
   for (let i = 0; i < 40; i++) { try { await fetch(`http://localhost:${PORT}/`); break; } catch { await new Promise(r => setTimeout(r, 250)); } }
   browser = await chromium.launch();

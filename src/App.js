@@ -36,6 +36,8 @@ import { getTeamUsers, saveTeamUsers, getFrontier, saveFrontier, getAccounts, sa
 import BusinessesHomePage from './components/BusinessesHomePage';
 import BusinessDetailPage from './components/BusinessDetailPage';
 import TaskDrawer from './components/salesAnalytics/tasks/TaskDrawer';
+import HkShell from './hk/HkShell';
+import { parseHkHash } from './hk/hkScreens';
 import { OPEN_CONNECTIONS } from './components/salesAnalytics/goals/goalsApi';
 import { isSupabaseEnabled } from './utils/supabase';
 
@@ -1019,6 +1021,10 @@ export default function App({ me }) {
         const landing = businesses.find(b => b.id === landId);
         if (landing) { setActiveBusiness(landing); landOn(landing); setPage('business-detail'); }
         window.history.replaceState({}, '', '/');
+      } else if (parseHkHash(window.location.hash)) {
+        // hkos-project-shell-v1 S10 - a #hk/... link opens the Sales OS of the first hk_sales workspace you're in.
+        const hk = businesses.find(b => b.features?.hk_sales);
+        if (hk) { setActiveBusiness(hk); setBusinessPage('hk-sales'); setPage('business-detail'); }
       }
     });
     return () => { cancelled = true; };
@@ -1283,6 +1289,14 @@ export default function App({ me }) {
       onNav={navTo}
       onCreateTask={task=>setTasks(ts=>[...ts,task])}
     />
+  );
+
+  // hkos-project-shell-v1 S2 - an hk_sales workspace on its Sales OS page renders the full-screen shell instead of the
+  // Prospector shell (no Sidebar, TaskDrawer, DailyDigest, BugReporter or BadgeToast). Below every hook on purpose.
+  if (page==="business-detail"&&activeBusiness?.features?.hk_sales&&businessPage==="hk-sales") return (
+    <HkShell business={activeBusiness} businesses={myBusinesses} userId={me.profile.id} compact={compact}
+      onSelectBusiness={selectBusiness} onOldScreens={()=>setBusinessPage('accounts')} onAllWorkspaces={()=>navTo('businesses-home')}
+      onOpenAdmin={()=>setPage('admin')} />
   );
 
   return(
