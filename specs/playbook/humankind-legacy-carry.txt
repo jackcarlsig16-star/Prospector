@@ -1,0 +1,171 @@
+HUMANKIND - LEGACY STRATEGY CARRY
+Carried 2026-10-26 (hk-legacy-cleanup-v1 Stage 1) from the August 2026 Prospector rows HumanKind no longer uses:
+business_profiles (1), the three legacy projects' guidance columns, and three business_intel_entries bodies (each
+duplicate pair counted once). Person names, addresses and handles are stripped; prospect-session lists, open items and
+file names were left behind as August state, not strategy. Hard rules and banned words live in api/hk/lintSeed.json.
+Business names (founding partners, venues, media) are kept as written; nothing here is a contact record.
+
+STALE STATS - every member / completion count in this file is August 2026 history. Draft from hk_settings, never from
+here: STALE 1,000+ / 4,000+ (and the later 1,100+ / 5,000+) -> use hk_settings 1,500+ / 6,000+ (stats_confirmed_at
+governs; re-confirm after 14 days).
+
+=====================================================================
+1. POSITIONING (business_profiles, generated 2026-08-19, rules edited 2026-08-21)
+=====================================================================
+Mission: make it easier and more fun to improve your life and your city - small, verified real-world actions that add
+up to shared community progress. Tagline / motto: "Community starts with you."
+
+Core problem solved: the gap between passive digital engagement and real-world community participation. Residents get a
+structured, rewarding way to build better habits and support local businesses; local sponsors get verified, trackable
+consumer behavior instead of impressions or clicks.
+
+What it is: a free community wellness platform, live in Chicago (iOS and Android). Members complete weekly verified
+challenges across five pillars - fitness, community, mindfulness, sustainability, learning - and earn points redeemable
+for rewards and raffle entries from local business partners.
+
+Products
+- Sponsored Challenge: a 2-week featured brand challenge with verified completions and user-generated content from every
+  submission; rewards or raffle entries can unlock on completion; average 50-150 completions per challenge (August 2026);
+  comes with a monthly analytics report. Higher-consideration ask - pair it with a brand-specific challenge concept.
+- Sponsored Reward / Raffle: a listing in the rotating rewards marketplace, redeemed only by members who have already
+  earned points; tracks verified in-person or product redemptions; builds a loyalty loop. Lower-friction ask - the
+  starting point for hesitant prospects.
+- The HumanKind app itself (free to members).
+
+Value props
+- Every completion is verified - sponsors pay for real behavior, not impressions or clicks.
+- Free for members, with real rewards from local Chicago businesses.
+- Weekly challenges across five pillars keep engagement fresh.
+- Sponsors get a monthly analytics report and measurable foot traffic, not vanity metrics.
+
+Go-to-market (August 2026): grow the Chicago member base and the sponsor pipeline at the same time, with verified weekly
+challenges as the connective tissue between members and local partners. Near-term priorities then: an influencer push,
+in-person events with studio partners, and a possible national expansion through a distribution partnership with Do
+Good media (see section 3b). First paying sponsors had given verbal commitment - the first signal that brands would pay
+rather than only participate for free. Press at the time: a feature in CBS's Do Good Crew newsletter and a HALOTalks
+guest slot being scheduled.
+
+Industry line: community wellness / local sponsorship platform. Launch: on the App Store from April 2026 (one later
+example says May - treat the month as history).
+
+Outreach voice (outreach_rules, 2026-08-21) - the parts not already in skill v2
+- Two sender registers exist: a traction-led, stats-forward founder voice (when there is no personal hook) and a
+  personal-hook-led, warm, anecdotal voice (when a genuine connection to the brand exists). Business outreach is more
+  polished; creator outreach is more casual and direct.
+- Open with 1-2 sentences that show why this prospect was chosen, from real research. Name a concrete challenge concept
+  tied to the brand that would not make sense for a generic sponsor - the challenge concept is the highest-leverage part
+  of a cold business pitch.
+- Intro names the 3 most relevant pillars only, never all five. The community link is its own standalone line.
+- Cut a sentence before adding one. Plain hyphens, never em dashes.
+- Creator outreach is one short, friendly, direct message: introduce HumanKind, explain the challenge / reward model in
+  one compact paragraph, say HumanKind is looking for creators, ask whether they are interested and what their rates are.
+  Never a sponsorship deck; the opportunity should be understandable in seconds.
+- A generic contact form gets one form-sized message, never a five-touch sequence.
+
+=====================================================================
+2. THE TWO-STEP SEQUENCE AND THE WINNING PATTERN (legacy project guidance, between 2026-08-14 and 2026-08-21)
+=====================================================================
+Objective then: get small Chicago businesses to pay to sponsor challenges; book as many meetings as possible and convert
+them to paid challenge sponsors. Sponsoring challenges and reward redemption drives foot traffic, sales and awareness.
+Target: small businesses in Chicago. Ask: 15 minutes on how HumanKind can drive foot traffic and / or sales.
+
+What converted (Q3 strategy synthesis, 2026-08-19): the "challenge concept" framing with a 15-minute-call CTA.
+
+Two-step sequence for larger retailers (NOT in skill v2 - carry): pushback from larger retailers prompted a shift to
+two steps - lead with the challenge idea and request the call only after a positive reply. Smaller local businesses
+can still get the single-touch concept + soft call ask.
+
+Targeting note: geographic focus was being tightened around Logan Square and Humboldt Park small businesses, where a
+"bring your own container" framing showed particular traction (sustainability pillar).
+
+Winning pattern from a closed thread (Outbound Refined 2026 objective, 2026-08-21): a specific product-tie-in hook
+(match the recipient's product to a concrete member behavior, not a generic "partnership"), a single soft CTA (15-minute
+call), one polite bump if no reply, and case studies offered proactively the moment the prospect shows interest. That
+sequence took a cold prospect to a booked meeting in three touches.
+
+Distilled message shape (from the sent examples; the examples themselves are not carried)
+- Brief casual greeting, sometimes first name only, sometimes the team name.
+- One-sentence intro that always says "free community wellness platform / app" and anchors credibility with two stats:
+  current member count and total challenge completions since launch (take both from hk_settings).
+- A standalone "You can check out the community here!" line.
+- The core: a highly personalized challenge concept tailored to the prospect's business, framed as an obvious fit ("a
+  natural fit", "one of the easiest fits we've come across"), with a named challenge idea in quotes and a short list of
+  reward options (discount, branded product, or raffle entry).
+- One line on verification: every completion is verified, so the sponsor drives real behavior, not clicks and impressions.
+- Close with a soft, low-pressure CTA - "Worth a 15-minute call to see if it makes sense?" - and a first-name sign-off.
+- Tone: warm, direct, enthusiastic without being salesy; short, punchy sentences.
+- The bump: a single polite nudge referencing the prior email and repeating the 15-minute ask, nothing else.
+
+=====================================================================
+3. INTEL BODIES (business_intel_entries, three distinct bodies; both copies of each duplicate pair are archived)
+=====================================================================
+
+3a. Outreach strategy context summary (2026-08-13; stored twice) - the strategy parts
+- What HumanKind is: as in section 1. Platform URL: humankindcollective.app. Traction line at the time: STALE 1,000+
+  members / 4,000+ verified completions -> hk_settings.
+- Key differentiator for sponsor pitches: every completion is VERIFIED - real, trackable consumer behavior (someone
+  actually walked in and did the thing), not impressions or clicks. This is the core of traction-led outreach.
+- Revenue model: the two sponsorship formats in section 1 (Sponsored Challenge = higher-consideration, brand-tailored
+  concept; Sponsored Reward / Raffle = lower-friction starting point).
+- Founding partners already closed in August 2026 (never cold-pitch): Chicago White Sox, Shred415, Barry's, Studio
+  Three, Protein Bar & Kitchen, WasteNot, Augustnoa, Paleovalley, David Bar, SEEQ, Lou Malnati's, LOADED, SWTHZ, Protein
+  Pints, SydPlayEat. Caveat recorded then: several of these still sat in the older prospect-tracking list mixed with open
+  prospects, so a name on that list is not proof it is still open. (The Sheet is truth; prospects rows only cross-check
+  the 14 is_founding_partner flags.)
+- Outreach system rules of the time (business drafts): five separate cards - cold email, two follow-ups, a mini LinkedIn
+  version, a contact-form version (skipped when no real partnership form exists); creators get a single casual DM; real
+  details pulled from the prospect's site and socials before drafting, never invented; always a specific brand-tailored
+  challenge / reward concept; first-name-only sign-off; hyphens never em dashes; name only 3 of the 5 pillars per email;
+  subject "HumanKind x [Company] - [descriptor]" (clarity over curiosity). Drafting is not sending: the tracker's
+  Outreach Date stays blank and Status defaults to "Drafted - not sent".
+- Tracker caveats: the sponsor spreadsheet had tabs for monthly confirmed sponsors, per-sender outreach, non-profits,
+  press, podcasts, with inconsistent tab names and a freeform status taxonomy - lookups used loose, case-insensitive
+  matching. Non-profit, press and podcast channels were idle; the second sender's outreach tab was largely empty.
+- Prospect segments seen then: boutique fitness and yoga studios, zero-waste / refill shops, food co-ops, pottery and
+  craft studios, sound-bath / mindfulness studios, run clubs (informal groups with no storefront need a DM, not email).
+  Skip rule: B2B corporate-wellness providers with no storefront have no in-person redemption mechanism; generic
+  grocery chains are low-priority gift-card raffle filler only. (Named prospects, contacts and open items dropped.)
+
+3b. Do Good partnership summary (2026-08-17) - the strategic logic and the pitch structure
+- Do Good: a cause-driven media company with a podcast, newsletter and live events; about 500K monthly podcast
+  listeners and 60K newsletter subscribers as of August 2026. On a call it offered to promote HumanKind as "the do good
+  app" across both channels.
+- Logic: HumanKind becomes a new revenue stream for Do Good and a new brand-sponsorship placement alongside its podcast,
+  newsletter and events; a nationalized HumanKind powered by Do Good's audience would generate immediate revenue and
+  growth for Do Good; longer term HumanKind backs into a local sponsor model city by city as member-density hotspots
+  emerge from national usage data. Framing used: "huge audience through extension" that "powers the whole engine".
+- One-pager structure (v2, external): The Fit (cause / audience alignment) -> The Opportunity (new revenue stream +
+  unique brand placement) -> Proof It Works, Chicago Today (live since April 2026, sponsorship model, founding partners,
+  challenge areas) -> Phased Roadmap (Chicago proof of concept -> Do Good partnership launch -> nationalized platform ->
+  back into local markets; each phase split into value to Do Good vs value to HumanKind) -> The Ask: a low-risk pilot
+  (one podcast episode, one newsletter placement, one live event, tracked attribution) before a full partnership.
+- "The Engine" schematic: four components feeding a central Sponsorship Engine - Audience Extension (listeners,
+  subscribers, live reach); New Revenue Line for Do Good (podcast, newsletter, live-event placements); Nationalized
+  Platform (immediate revenue, immediate growth, national sponsor base); Local Reactivation (density hotspots,
+  city-specific sponsors, hyper-local activation).
+- Unresolved then: a partnership / distribution deal does not belong in the standard sponsor-tracker flow.
+  (Participants, Do Good contact names and generated file names dropped.)
+
+3c. Revenue-architecture draft (2026-08-18) - EXPLORATORY, not business logic
+The source carries its own directive: these transactional percentages, B2B frameworks and partnership structures are
+early product-development concepts, not finalized business logic or binding commitments. Carried as history.
+- Core framing: a community-powered behavior-change engine and dual-sided marketplace that replaces passive social media
+  engagement with verified real-world impact. Principles: verified action (photo / video proof, QR scans at partner
+  locations, GPS check-ins - never self-reported); action-based funding (every verified action triggers a local reward
+  and / or a micro-donation to a designated non-profit); ego-free reputation (verified community impact over clout).
+- Flywheel: members complete verified actions -> earn local rewards and trigger non-profit donations -> sponsors gain
+  foot traffic and ROI data -> platform value grows.
+- Monetization channels sketched: sponsor SaaS plans (dashboard, custom challenge creation, ESG / CSR reporting; tiered
+  from about 49 to 4,999+ per month); performance fees per verified action, QR check-in or redeemed reward; donation
+  routing fee of 3% - 7% per transaction; an optional consumer tier at 5 per month; corporate wellness on a per-employee
+  per-month B2B model aimed at corporate health and insurance risk pools.
+- Payments stack idea: Stripe for subscriptions, per-action micro-charges and donation routing; Plaid plus ACH for larger
+  B2B transactions; auto-routed funds 70-95% to the non-profit with a 3-7% processing fee.
+- Pilot frameworks sketched: a fitness studio funding a 1-5 dollar food-pantry donation per verified workout with a free
+  or discounted class as the member reward; a grocery "Serve & Save" (verified volunteer shift -> 10% coupon + a 5 dollar
+  donation per action); a cafe "Volunteer & Sip" (volunteer at neighborhood non-profits -> free latte). Pitch value in
+  each: clean ROI, clear foot-traffic tracking, measurable community goodwill.
+
+NOT CARRIED (by ruling): the 17,471-character "intel dump" prompt pair, the two site scrapes, the raw mail thread dump
+(deleted outright in Stage 3), assay_criteria (HomeLover-style scoring - UNSURE), the raw outreach examples (they are
+real sent mails), the per-sender voice profile (stays in its user-scoped table).

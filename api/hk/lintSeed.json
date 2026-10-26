@@ -1,0 +1,33 @@
+{
+  "carried_at": "2026-10-26",
+  "source": "HumanKind business_profiles.outreach_rules (edited 2026-08-21) + outreach_doctrine HARD rows (platform scope, left in place); hk-legacy-cleanup-v1 Stage 1. Consumed by hkos-data-foundation-v1 lint_draft.",
+  "banned_words": [
+    "synergies",
+    "solutions",
+    "leverage",
+    "excited to connect",
+    "hope this finds you well",
+    "reach out",
+    "touch base",
+    "circle back",
+    "innovative",
+    "best-in-class",
+    "seamlessly"
+  ],
+  "banned_patterns": [
+    { "id": "pressure_guilt", "rule": "No pressure or guilt in the subject line or body.", "source": "outreach_rules.donts" },
+    { "id": "fake_urgency", "rule": "No fake urgency.", "source": "outreach_rules.donts / tone" },
+    { "id": "curiosity_bait_subject", "rule": "No curiosity-bait subject lines; the subject is 'HumanKind x [Company] - [clear descriptor]'.", "source": "outreach_rules.donts / structure" },
+    { "id": "invented_details", "rule": "No invented prospect details - only what research surfaced.", "source": "outreach_rules.donts" },
+    { "id": "fabricated_prior_contact", "rule": "Never imply a prior meeting, call or conversation that is not in the inputs.", "source": "outreach_doctrine grounding HARD" },
+    { "id": "em_dash", "rule": "No em dashes; plain hyphens only.", "match": "—", "source": "outreach_rules.dos" },
+    { "id": "generic_challenge_ask", "rule": "No generic 'sponsor a challenge' ask - the challenge or reward concept must be specific to the prospect's product, audience or values.", "source": "outreach_rules.key_points / example_snippets" },
+    { "id": "sequence_to_contact_form", "rule": "A generic contact form gets one form-sized message, never a multi-touch sequence.", "source": "outreach_rules.donts" },
+    { "id": "demanding_cta", "rule": "The close is a soft, low-friction CTA - suggest a 15-minute call (email) or a quick chat (LinkedIn), never demand one.", "source": "outreach_doctrine cta HARD x2" },
+    { "id": "creator_deck", "rule": "Creator outreach is never a sponsorship deck - one short, direct message understandable in seconds.", "source": "outreach_rules.donts" },
+    { "id": "all_five_pillars", "rule": "The intro names the 3 most relevant pillars only, never all five.", "source": "outreach_rules.structure" }
+  ],
+  "pillars_rule": "Name only the 3 most relevant of the five pillars (fitness, community, mindfulness, sustainability, learning) in the intro - never all five.",
+  "ask_rule": "Calibrate the ask to the commitment level: ask directly for a reward or raffle listing; propose a short 15-minute call for a sponsored challenge; with larger retailers lead with the challenge idea and ask for the call only after a positive reply. Always suggest, never demand.",
+  "stats_rule": "Member and completion counts come from hk_settings, never from carried text; 1,000+ / 4,000+ and 1,100+ / 5,000+ are stale August 2026 figures."
+}
