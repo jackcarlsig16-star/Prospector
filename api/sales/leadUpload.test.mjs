@@ -4,10 +4,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
 import { toLeads, crossCheck, loadLeadContext, MAX_PEOPLE } from './leadUploadMatch.js';
 import { extractLeadsRoute, fileLeadsRoute } from './leadUploadRoutes.js';
 import { doubleTouchWarning } from '../../src/constants/ownership.js';
+import { salesGate } from '../lib/requireAuth.js';
+
+const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..');
 
 const NOW = new Date('2026-10-26T18:00:00Z'); // Mon Oct 26, 11am LA
 const B = randomUUID(), U = randomUUID(), REF = randomUUID();
@@ -200,4 +205,38 @@ test('File a new partner: people go to partner_contacts, the why lines ride its 
   const note = supabase.db.sales_partner_events.find(e => e.goal_id === goal.id && e.event === 'note');
   assert.match(note.note, /Apollo recommended Oct 26.*Alex Doe \(VP Human Resources\): Recently changed roles/);
   assert.equal(supabase.db.sales_people.length, 0);
+});
+
+// FIX verify-no-temp-workspace-v1 - the Viewer 403 lives here, not in a live run with a temp viewer user. The lead
+// handlers themselves don't check role: salesGate (mounted on /api/sales/:businessId in server.js) answers 403 to a
+// Viewer's POST before the handler's own text check runs.
+test('FIX verify-no-temp-workspace: a Viewer gets 403 from salesGate on extract + File (POST); GET passes; the handler alone would only 400', async () => {
+  process.env.SALES_ANALYTICS_BUSINESS_IDS = B;
+  const gate = method => {
+    const out = { code: 200, next: false };
+    const res = { status(c) { out.code = c; return { json() {} }; } };
+    salesGate({ method, params: { businessId: B }, auth: { isPlatformOwner: false, roles: new Map([[B, 'viewer']]) } }, res, () => { out.next = true; });
+    return out;
+  };
+  assert.deepEqual(gate('POST'), { code: 403, next: false });
+  assert.deepEqual(gate('GET'), { code: 200, next: true });
+  const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+  assert.match(server, /app\.use\('\/api\/sales\/:businessId', authMw\('salesGate'\)\)/);
+  assert.match(server, /app\.post\('\/api\/sales\/:businessId\/goals\/leads\/extract'/);
+  assert.match(server, /app\.post\('\/api\/sales\/:businessId\/goals\/leads',/);
+  for (const route of [extractLeadsRoute, fileLeadsRoute]) {
+    const res = resOf();
+    await route(reqOf({ text: '', source: { pick: 'apollo' }, companies: [] }), res, { supabase: seed(), call: async () => { throw new Error('no model call'); }, kick: async () => {} });
+    assert.deepEqual([res.code, res.body.error], [400, 'paste the lead list first']);
+  }
+});
+
+test('FIX verify-no-temp-workspace: the Stage 3 verify script creates no workspace or user and deletes no auth_events; its restored check can fail', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'scripts', 'verify', 'lead-upload-v1-stage3.mjs'), 'utf8');
+  assert.ok(!src.includes("from('businesses').insert"), 'no businesses insert');
+  assert.ok(!src.includes("auth_events').delete"), 'no auth_events delete');
+  assert.ok(!src.includes('auth.admin.createUser'), 'no temp user');
+  assert.ok(!src.includes('.delete()'), 'no delete at all');
+  assert.match(src, /NO \(check failed: \$\{e\.message\}\)/);
+  assert.match(src, /process\.exit\(restored \? 0 : 1\)/);
 });

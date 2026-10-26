@@ -9,10 +9,16 @@
 //     at an Anthropic / Apollo / Gmail host from the browser fails the run). The 390 review re-uses the 1440 reply
 //     (route.fulfill) - 0 extra calls. HomeLover sales_* counts are compared before / after (must be identical);
 //     business_anthropic_usage is expected to grow by exactly 1.
-//  B. Viewer pass: 1 temp workspace (goals_sales on, added to SALES_ANALYTICS_BUSINESS_IDS for the local server only)
-//     + 1 temp viewer user, torn down (the temp user's own auth_events go with it). 0 Claude / 0 Apollo there.
+//  B. Viewer pass: Jack's own session on HomeLover with GET /api/me answered by the real reply edited to
+//     is_platform_owner false + the HomeLover membership role 'viewer' (route.fulfill) - the payload SalesAnalyticsTab,
+//     QuickCapture and TaskDrawer read canEdit from. No temp workspace, no temp user, no prod writes at all
+//     (FIX verify-no-temp-workspace-v1); the route 403 is a node test in api/sales/leadUpload.test.mjs. 0 Claude /
+//     0 Apollo there.
 //  The pasted list is never printed or stored; the report carries company names, counts, kinds, chips only.
-//  Runtime ~2-3 min, hard cap 300 s (tempGuard). Shots + report: .screenshots/lead-upload-v1/. Run npm run build first.
+//  restored = HomeLover sales_* counts identical before / after AND businesses named 'ZZ%' = 0 before and after. A
+//  count() that errors or returns no number (a missing table is a 204 with count null, no error) THROWS: the line reads "restored: NO (check failed: ...)" and the exit code is 1 - a check
+//  that cannot fail is not a check (the Oct 26 leftover workspace passed as "0 rows" that way).
+//  Runtime ~2-3 min, hard cap 300 s. Shots + report: .screenshots/lead-upload-v1/. Run npm run build first.
 //  --replay: the saved reply from an earlier real run (<outdir>/extract-reply.json) answers the extract in the
 //  browser - 0 Claude calls; the usage check then expects +0. The saved file holds the model's companies and people;
 //  the cross-check (match, owner chip, source, defaults) is recomputed here from live HomeLover rows through the
@@ -39,15 +45,13 @@ const PORT = 3991, BASE = `http://localhost:${PORT}`;
 const REF = new URL(process.env.SUPABASE_URL).host.split('.')[0];
 const SUPA_HOST = new URL(process.env.SUPABASE_URL).host;
 const HOMELOVER = process.env.SALES_ANALYTICS_BUSINESS_IDS.split(',')[0];
-const NAME = 'ZZ Lead Upload S3';
 const HL = ['sales_goals', 'sales_opportunities', 'sales_targets', 'sales_people', 'sales_lead_uploads', 'sales_source_events', 'sales_partner_events', 'partner_contacts', 'sales_week_goals', 'research_runs'];
-const TEMP_TABLES = ['sales_people', 'sales_lead_uploads', 'sales_source_events', 'sales_partner_events', 'sales_week_goals', 'sales_targets', 'sales_opportunities', 'sales_goals', 'auth_events', 'business_members'];
 const ADDRESS = /[^\s@<>()"']+@[^\s@<>()"']+\.[a-z]{2,}/i;
 const PHONE = /\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}/;
 const DRAWER = 'aside[aria-labelledby="task-drawer-title"]';
-const ins = r => { if (r.error) throw new Error(r.error.message); return r.data; };
-const count = async (t, col, v, extra) => { let q = svc.from(t).select('*', { count: 'exact', head: true }).eq(col, v); if (extra) q = extra(q); return (await q).count; };
+const count = async (t, col, v, extra) => { let q = svc.from(t).select('*', { count: 'exact', head: true }).eq(col, v); if (extra) q = extra(q); const r = await q; if (r.error || typeof r.count !== 'number') throw new Error(`count ${t}: ${r.error?.message || `no count (HTTP ${r.status})`}`); return r.count; };
 const hlCounts = async () => { const o = {}; for (const t of HL) o[t] = await count(t, 'business_id', HOMELOVER); return o; };
+const zzCount = async (t = 'businesses') => { const r = await svc.from(t).select('*', { count: 'exact', head: true }).like('name', 'ZZ%'); if (r.error || typeof r.count !== 'number') throw new Error(`count ${t} 'ZZ%': ${r.error?.message || `no count (HTTP ${r.status})`}`); return r.count; };
 const usageCount = () => count('business_anthropic_usage', 'business_id', HOMELOVER, q => q.eq('call_type', 'lead_upload'));
 const T0 = Date.now();
 const log = (...a) => console.log(`[${Math.round((Date.now() - T0) / 1000)}s]`, ...a);
@@ -58,27 +62,20 @@ if ((minsToSix >= 0 && minsToSix < 5) || (now.getHours() % 6 === 0 && now.getMin
 if (!fs.existsSync(SAMPLE)) { console.log('ABORT: the Apollo sample is not in inbox/'); process.exit(1); }
 const sampleText = fs.readFileSync(SAMPLE, 'utf8');
 
-let srv, browser, owner, B, users = [];
+let srv, browser, owner, meEdits = 0;
 const blocked = [], realCalls = [], leadPosts = { extract: 0, file: 0 };
 async function teardown() {
   if (browser) await browser.close().catch(() => {}); browser = null;
   if (srv) srv.kill(); srv = null;
   if (owner) { log(await owner.release()); owner = null; }
-  if (B) {
-    for (const t of TEMP_TABLES) { const r = await svc.from(t).delete().eq('business_id', B); if (r.error && !/does not exist/.test(r.error.message)) console.log(`cleanup ${t}: ${r.error.message}`); }
-    await svc.from('businesses').delete().eq('id', B);
-  }
-  for (const u of users) {
-    await svc.from('auth_events').delete().eq('user_id', u.id); await svc.from('auth_events').delete().eq('actor_id', u.id);
-    await svc.auth.admin.deleteUser(u.id);
-  }
 }
 const cleanup = require(ROOT + '/scripts/verify/lib/tempGuard.cjs')(teardown, { capMs: 300000 });
 const laToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 fs.mkdirSync(OUT, { recursive: true });
 const hlBefore = await hlCounts();
+const zzBefore = await zzCount();
 const usageBefore = await usageCount();
-log('HomeLover before', JSON.stringify(hlBefore), `lead_upload usage rows ${usageBefore}`);
+log('HomeLover before', JSON.stringify(hlBefore), `lead_upload usage rows ${usageBefore}`, `'ZZ%' businesses ${zzBefore}`);
 const results = { screens: {}, checks: [], errors: [], review: null, calls: null };
 const ok = (name, pass, detail) => { results.checks.push({ name, pass: !!pass, detail }); log(pass ? 'PASS' : 'FAIL', name, detail ? `- ${detail}` : ''); };
 const MEASURE = measureScript({ scope: DRAWER });
@@ -106,30 +103,14 @@ try {
   const HL_NAME = hlRow.name;
   owner = await ownerSession(svc);
 
-  // Part B fixture: the temp workspace + viewer.
-  const tag = 'lu3-' + Date.now();
-  B = ins(await svc.from('businesses').insert({ name: NAME, website_url: 'https://lu3.example.com', color: '#6F8CF0', owner_email: `${tag}-owner@example.com`, access_code: tag, features: { goals_sales: true } }).select().single()).id;
-  const mk = async (name, role) => {
-    const email = `${tag}-${name.toLowerCase().replace(/\s+/g, '-')}@example.com`, password = 'Tmp-' + Math.random().toString(36).slice(2) + '!9';
-    const { data: u, error } = await svc.auth.admin.createUser({ email, password, email_confirm: true });
-    if (error) throw new Error(error.message);
-    await svc.from('profiles').update({ display_name: name, welcomed_at: new Date().toISOString() }).eq('id', u.user.id);
-    ins(await svc.from('business_members').insert({ business_id: B, email, name, user_id: u.user.id, role }).select());
-    const anon = createClient(process.env.SUPABASE_URL, process.env.REACT_APP_SUPABASE_ANON_KEY, { auth: { persistSession: false } });
-    const { data: s, error: sErr } = await anon.auth.signInWithPassword({ email, password });
-    if (sErr) throw new Error(sErr.message);
-    const u2 = { id: u.user.id, session: s.session, name }; users.push(u2); return u2;
-  };
-  const viewer = await mk('Viewer Test', 'viewer');
-  log('fixture in');
-
-  srv = spawn('node', ['server.js'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), BASIC_AUTH_ENABLED: 'false', SALES_ANALYTICS_BUSINESS_IDS: `${process.env.SALES_ANALYTICS_BUSINESS_IDS},${B}` }, stdio: ['ignore', 'ignore', 'ignore'] });
+  srv = spawn('node', ['server.js'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), BASIC_AUTH_ENABLED: 'false' }, stdio: ['ignore', 'ignore', 'ignore'] });
   for (let i = 0; i < 40; i++) { try { await fetch(`${BASE}/`); break; } catch { await new Promise(r => setTimeout(r, 250)); } }
   browser = await chromium.launch();
   const today = laToday();
 
-  // One context per pass. who = { session, name }; wsName = the workspace to open; real = the one extract may pass.
-  async function newPage(who, wsName, bizId, { width = 1440, height = 900, real = false, probe = false } = {}) {
+  // One context per pass. who = { session, name }; wsName = the workspace to open; real = the one extract may pass;
+  // viewer = GET /api/me is answered as a plain viewer of bizId (the real reply, edited in flight).
+  async function newPage(who, wsName, bizId, { width = 1440, height = 900, real = false, viewer = false } = {}) {
     const errs = [];
     const ctx = await browser.newContext({ viewport: { width, height } });
     await ctx.addInitScript(([k, v, b, d]) => {
@@ -142,9 +123,13 @@ try {
       const req = route.request(); const u = new URL(req.url());
       if (/anthropic\.com$|apollo\.io$|gmail\.googleapis\.com$/.test(u.host) || (u.host === 'www.googleapis.com' && u.pathname.startsWith('/gmail'))) realCalls.push(`${req.method()} ${u.host}${u.pathname}`);
       const isLocal = u.host === `localhost:${PORT}`, isSupa = u.host === SUPA_HOST, isFont = /fonts\.(googleapis|gstatic)\.com$/.test(u.host);
-      // The viewer's probe: both lead routes reach the server with an EMPTY text (the gate answers 403; even a broken
-      // gate would stop at the 400 text check before any model call or write).
-      if (probe && isLocal && req.method() === 'POST' && /\/goals\/leads(\/extract)?$/.test(u.pathname) && req.postData()?.includes('"text":""')) return route.continue();
+      if (viewer && isLocal && req.method() === 'GET' && u.pathname === '/api/me') {
+        const r = await route.fetch(); const me = await r.json();
+        me.profile.is_platform_owner = false;
+        me.memberships = me.memberships.map(m => m.business_id === bizId ? { ...m, role: 'viewer' } : m);
+        meEdits++;
+        return route.fulfill({ response: r, body: JSON.stringify(me) });
+      }
       if (isLocal && req.method() === 'POST' && /\/goals\/leads\/extract$/.test(u.pathname)) {
         // The real-call guard: the ONE declared extract passes (as Jack, 1440); a repeat is answered from its reply.
         if (real && !REPLAY && leadPosts.extract === 0) { leadPosts.extract++; return route.continue(); }
@@ -264,15 +249,13 @@ try {
   await pd.getByRole('button', { name: 'Cancel' }).click(); await P.page.waitForTimeout(300);
   await P.ctx.close();
 
-  // ---- B. Viewer (temp workspace): no upload control anywhere; the routes refuse.
-  const V = await newPage(viewer, NAME, B, { probe: true });
+  // ---- B. Viewer: Jack's session, /api/me answered as a HomeLover viewer; no upload control anywhere.
+  const V = await newPage(owner, HL_NAME, HOMELOVER, { viewer: true });
   try {
     await tab(V.page, 'Actions');
     await V.page.getByRole('button', { name: /^(Open tasks|Tasks)/ }).first().click();
     const vd = V.page.locator(DRAWER); await vd.waitFor(); await V.page.waitForTimeout(500);
-    const ex = await V.api(B, '/leads/extract', { method: 'POST', body: { text: '', source: { pick: 'apollo' } } });
-    const fl = await V.api(B, '/leads', { method: 'POST', body: { text: '', source: { pick: 'apollo' }, companies: [] } });
-    ok('Viewer: no Paste notes button, no Quick capture "+", extract + File refuse (403, before the text check)', (await vd.getByRole('button', { name: '📝 Paste notes' }).count()) === 0 && (await V.page.locator('[data-capture-button]').count()) === 0 && ex.status === 403 && fl.status === 403, `${ex.status}/${fl.status}`);
+    ok(`Viewer (edited /api/me, ${meEdits} replies): the drawer opens read-only - no Paste notes button, no Quick capture "+"`, meEdits > 0 && (await vd.getByRole('button', { name: '📝 Paste notes' }).count()) === 0 && (await V.page.locator('[data-capture-button]').count()) === 0);
     await measure(V.page, 'viewer-drawer@1440');
   } catch (e) { results.errors.push(`viewer: ${e.message}`); ok('Viewer pass ran', false, e.message.slice(0, 120)); }
   await V.ctx.close();
@@ -291,13 +274,20 @@ try {
   log('ERROR', e.message);
 } finally {
   await cleanup();
-  const hlAfter = await hlCounts();
-  const restored = JSON.stringify(hlBefore) === JSON.stringify(hlAfter) && !(await count('businesses', 'id', B)) && !(await count('business_members', 'business_id', B));
+  let restored = false, line;
+  try {
+    const hlAfter = await hlCounts();
+    const zzAfter = await zzCount();
+    restored = JSON.stringify(hlBefore) === JSON.stringify(hlAfter) && zzBefore === 0 && zzAfter === 0;
+    line = restored
+      ? `yes (HomeLover sales_* counts identical; 'ZZ%' businesses ${zzBefore} -> ${zzAfter}; business_anthropic_usage +${results.calls?.claude ?? '?'} declared; Jack sign-in rows kept by rule)`
+      : `NO - HomeLover ${JSON.stringify(hlBefore)} -> ${JSON.stringify(hlAfter)}; 'ZZ%' businesses ${zzBefore} -> ${zzAfter}`;
+  } catch (e) { line = `NO (check failed: ${e.message})`; }
   results.restored = restored;
   const pass = results.checks.filter(c => c.pass).length;
   fs.writeFileSync(path.join(OUT, 'lead-upload-v1-stage3.json'), JSON.stringify(results, null, 2));
   console.log(`\n${pass}/${results.checks.length} checks passed${results.errors.length ? ` · ${results.errors.length} errors` : ''} · Claude ${results.calls?.claude ?? '?'} ($${results.calls?.usage?.cost_usd ?? '?'})`);
   for (const e of results.errors) console.log('ERROR:', e.split('\n').slice(0, 3).join(' | '));
-  console.log(`restored: ${restored ? `yes (HomeLover sales_* counts identical; business_anthropic_usage +${results.calls?.claude ?? '?'} declared; Jack sign-in rows kept by rule)` : `NO - HomeLover ${JSON.stringify(hlBefore)} -> ${JSON.stringify(hlAfter)}`}`);
-  process.exit(0);
+  console.log(`restored: ${line}`);
+  process.exit(restored ? 0 : 1);
 }
