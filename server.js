@@ -32,6 +32,7 @@ app.use(['/api', '/proxy'], authMw('sessionAuth'));
 app.use(['/api/sfdc', '/api/hunter', '/api/databricks'], authMw('platformOwnerOnly'));
 app.use('/api/businesses/:id', authMw('businessGate'));
 app.use('/api/sales/:businessId', authMw('salesGate'));
+app.use('/api/hk/:businessId', authMw('hkGate'));
 app.use('/api/projects/:id', authMw('parentGate', 'projects'));
 app.use('/api/campaigns/:id', authMw('parentGate', 'campaigns'));
 
@@ -378,6 +379,7 @@ app.post('/api/sfdc/my-accounts',         esHandler('./api/sfdc/my-accounts.js')
 app.post('/api/sfdc/production-request',  esHandler('./api/sfdc/production-request.js'));
 app.post('/api/sfdc/update-opp',          esHandler('./api/sfdc/update-opp.js'));
 app.post('/api/gmail/draft',              esHandler('./api/gmail/draft.js'));
+app.get('/api/hk/:businessId/shell',      esHandler('./api/hk/shell.js'));
 app.post('/api/hunter/find',              esHandler('./api/hunter/find.js'));
 app.post('/api/hunter/domain-search',     esHandler('./api/hunter/domain-search.js'));
 app.get('/api/hunter/account',            esHandler('./api/hunter/account.js'));

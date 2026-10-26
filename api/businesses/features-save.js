@@ -6,7 +6,7 @@ import { getSupabase } from './shared.js';
 // browser can't wipe switches it didn't know about.
 // microsoft-connect-v1 Stage 4 (Jack, 2026-10-08): one key per Outlook use,
 // all off until switched on here.
-const FEATURES = ['goals_sales', 'outlook_voice', 'outlook_meetings', 'outlook_reply_times'];
+const FEATURES = ['goals_sales', 'outlook_voice', 'outlook_meetings', 'outlook_reply_times', 'hk_sales'];
 
 export default async function handler(req, res) {
   if (req.method !== 'PUT') return res.status(405).json({ error: 'Method not allowed' });

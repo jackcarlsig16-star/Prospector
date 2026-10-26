@@ -14,6 +14,7 @@ const FEATURES = [
   { key: 'outlook_voice', label: 'Outlook voice', note: 'Voice Profile can learn from a member\'s own Outlook Sent Items (click only, bodies never stored).' },
   { key: 'outlook_meetings', label: 'Outlook meetings', note: 'Meetings held / booked counted from synced calendar events beside the typed number.' },
   { key: 'outlook_reply_times', label: 'Outlook reply times', note: 'Exact reply times from synced Outlook mail on the feed and heat.' },
+  { key: 'hk_sales', label: 'HumanKind Sales OS', note: 'Opens the workspace in the Sales OS shell. Data routes follow this switch directly (no Render setting).' },
 ];
 
 export default function WorkspaceFeatures({ businesses = [], onFeaturesChanged }) {

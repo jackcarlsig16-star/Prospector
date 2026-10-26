@@ -1,0 +1,79 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { makeHkGate } from '../lib/requireAuth.js';
+import { shellPayload } from './shell.js';
+import { HK_MODULES } from '../../src/constants/hkModules.js';
+
+// hkos-project-shell-v1 Stage 1 - hkGate and the shell payload. req.auth is stubbed (Jack's ruling: no temp users).
+const HK = 'biz-hk';
+const auth = (roles = {}, isPlatformOwner = false) => ({ user: { id: 'u-me', name: 'Sam Rivers' }, isPlatformOwner, roles: new Map(Object.entries(roles)) });
+const call = async (gate, { method = 'GET', path = '/shell', a = auth({ [HK]: 'viewer' }) } = {}) => {
+  const out = { status: 200, body: null, next: false };
+  const res = { status(s) { out.status = s; return this; }, json(b) { out.body = b; return this; } };
+  await gate({ method, path, params: { businessId: HK }, auth: a }, res, () => { out.next = true; });
+  return out;
+};
+const gateWith = features => { let reads = 0; const g = makeHkGate(async () => { reads++; return features; }); g.reads = () => reads; return g; };
+
+test('gate: 403 when hk_sales is off or the workspace has no features', async () => {
+  for (const f of [{}, { hk_sales: false }, { goals_sales: true }, null]) {
+    const r = await call(gateWith(f), { a: auth({ [HK]: 'owner' }, true) });
+    assert.equal(r.status, 403); assert.equal(r.next, false);
+    assert.equal(r.body.error, 'HumanKind Sales OS is not enabled for this workspace');
+  }
+});
+
+test('gate: non-member 403, viewer GET passes, viewer POST/PATCH/DELETE 403 on any /api/hk path', async () => {
+  const g = gateWith({ hk_sales: true });
+  assert.equal((await call(g, { a: auth({ other: 'owner' }) })).status, 403);
+  assert.equal((await call(g, { a: auth() })).status, 403);
+  const v = await call(g); assert.equal(v.next, true);
+  for (const method of ['POST', 'PATCH', 'PUT', 'DELETE']) {
+    for (const path of ['/shell', '/brands', '/anything/else']) {
+      const r = await call(g, { method, path }); assert.equal(r.status, 403); assert.equal(r.next, false);
+    }
+  }
+  assert.equal((await call(g, { method: 'POST', a: auth({ [HK]: 'member' }) })).next, true);
+  assert.equal((await call(g, { method: 'POST', a: auth({}, true) })).next, true, 'platform owner passes like every other gate');
+});
+
+test('gate: the flag is read once per workspace per minute; a read error is a 500', async () => {
+  const g = gateWith({ hk_sales: true });
+  await call(g); await call(g); await call(g);
+  assert.equal(g.reads(), 1);
+  const bad = makeHkGate(async () => { throw new Error('db down'); });
+  const r = await call(bad); assert.equal(r.status, 500); assert.equal(r.next, false);
+});
+
+const rows = [
+  { user_id: 'u-me', name: 'Sam Rivers', role: 'owner', created_at: '2026-08-01T00:00:00Z', profile: { display_name: 'Sam Rivers' } },
+  { user_id: null, name: 'typed-with-@-sign', role: 'member', created_at: '2026-09-01T00:00:00Z', profile: null },
+  { user_id: 'u-3', name: 'Typed Name', role: 'viewer', created_at: '2026-09-02T00:00:00Z', profile: { display_name: '' } },
+  { user_id: 'u-4', name: 'Dee', role: 'admin', created_at: '2026-09-03T00:00:00Z', profile: { display_name: 'Deandra   Lopez' } },
+  { user_id: 'u-5', name: '', role: 'member', created_at: '2026-09-04T00:00:00Z', profile: null },
+];
+
+test('shell payload: no "@" anywhere, even when a member name has one typed into it', () => {
+  const p = shellPayload(rows, auth({ [HK]: 'owner' }), HK);
+  assert.ok(!JSON.stringify(p).includes('@'));
+});
+
+test('shell payload: first_name fallbacks (display_name, then member name, then "Invited member")', () => {
+  const p = shellPayload(rows, auth({ [HK]: 'owner' }), HK);
+  assert.deepEqual(p.members.map(m => m.first_name), ['Sam', 'Invited member', 'Typed', 'Deandra', 'Invited member']);
+  assert.deepEqual(p.members.map(m => m.signed_up), [true, false, true, true, true]);
+  assert.deepEqual(p.me, { user_id: 'u-me', role: 'owner', first_name: 'Sam' });
+});
+
+test('shell payload: palette order follows created_at order and wraps after four', () => {
+  const p = shellPayload(rows, auth({ [HK]: 'owner' }), HK);
+  assert.deepEqual(p.members.map(m => m.palette_index), [1, 2, 3, 4, 1]);
+});
+
+test('shell payload: platform owner without a membership reads as owner; modules = the read-only list', () => {
+  const p = shellPayload(rows.slice(1), auth({}, true), HK);
+  assert.equal(p.me.role, 'owner');
+  assert.equal(p.me.first_name, 'Sam');
+  assert.equal(p.modules, HK_MODULES);
+  assert.deepEqual(HK_MODULES.filter(m => m.on).map(m => m.key), ['email']);
+});

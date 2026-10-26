@@ -100,6 +100,37 @@ export function salesGate(req, res, next) {
   next();
 }
 
+// Mounted at /api/hk/:businessId (hkos-project-shell-v1). A feature gate, not an
+// allowlist: the HumanKind Sales OS is on wherever businesses.features.hk_sales
+// is, so the Admin toggle alone opens it. The flag is cached per workspace, so
+// turning it off takes up to a minute to bite.
+const HK_FLAG_TTL_MS = 60_000;
+
+export function makeHkGate(readFeatures) {
+  const flags = new Map();
+  const hkEnabled = async businessId => {
+    const hit = flags.get(businessId);
+    if (hit && Date.now() - hit.at < HK_FLAG_TTL_MS) return hit.on;
+    const on = !!(await readFeatures(businessId))?.hk_sales;
+    flags.set(businessId, { on, at: Date.now() });
+    return on;
+  };
+  return async (req, res, next) => {
+    let on;
+    try { on = await hkEnabled(req.params.businessId); } catch (e) { return res.status(500).json({ error: e.message }); }
+    if (!on) return res.status(403).json({ error: 'HumanKind Sales OS is not enabled for this workspace' });
+    const minRole = req.method === 'GET' ? 'viewer' : 'member';
+    if (!hasRole(req, req.params.businessId, minRole)) return deny(res, minRole);
+    next();
+  };
+}
+
+export const hkGate = makeHkGate(async businessId => {
+  const { data, error } = await getServiceSupabase().from('businesses').select('features').eq('id', businessId).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.features;
+});
+
 // Mounted at /api/projects/:id and /api/campaigns/:id - the workspace comes
 // from the row itself. Rows with no business_id are platform-owner only.
 export function parentGate(table) {

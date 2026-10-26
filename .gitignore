@@ -35,6 +35,9 @@ yarn-error.log*
 # Scratch Playwright screenshots (in-repo so reading them needs no
 # outside-working-directory permission) — never committed.
 .screenshots/
+# Verify baselines and outputs (computed styles of real pages) — local only.
+scripts/verify/baselines/
+scripts/verify/out/
 
 # Chat-to-Claude-Code handoff (see CLAUDE.md "Inbox handoff"). Local only, never commit.
 /inbox/
