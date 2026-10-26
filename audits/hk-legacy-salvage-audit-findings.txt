@@ -1,0 +1,120 @@
+AUDIT hk-legacy-salvage-v1 - findings. 2026-10-26 at HEAD ed18c57. READ-ONLY (service-key counts, column names, scrubbed quotes; 0 Claude, 0 Apollo,
+0 DB writes). Extends audits/hkos-groundtruth-v1-report.txt s2, 11, 12, 13, 17, 18 (not repeated). HumanKind = 981b790c. Verdicts are PROPOSED; Jack decides.
+
+A. DATA - what the legacy layer holds for HumanKind (HK rows · populated · last updated)
+ projects 3: "HumanKind" (2026-08-05) color only = EMPTY SHELL apart from its 14 prospects; "Outbound Refined 2026" (08-21) objective 594ch,
+   target_type, 2 outreach_examples, distilled 856ch; "Q3 Jack's Outbound Strategy" (08-14) objective, ask_type 94ch, project_hook 318ch,
+   strategy_synthesis 618ch, outreach_example 838ch, 2 examples, distilled 930ch. lists link via projects.list_id (2 of 3 set).
+ per project_id: "HumanKind" prospects 14, every other project-scoped table 0 (outreach_drafts, intel, campaigns, accounts, frontier, bdr, handoff); other two all 0.
+ prospects 14 (08-05): name, name_normalized, status all confirmed_partner, sponsor_type all live, is_founding_partner all true. 0/14 on
+   category, website, contact_name, contact_email, source_list, enrichment_notes, challenge_reward_idea, ask_type, personal_hook, assigned_to.
+   -> the founding-partner list, no contact data at all; a name-superset of the partners the skill package lists; 0 accounts share a name.
+ accounts 61 (all 08-26): business 35 / influencer 26; relationship_type Prospect/Lead 60, Partner 1. Everything lives in `data` jsonb (the
+   status/category/stage columns are 0/61): name 61, web 35, stage 35, listIds 34, lastTouchedAt/By 34, businessModel/productFit 51 (assay),
+   tier/score 25, dis 37, handoffNotes 3, emails 1, linkedin 1, tags 0.
+ account_business_details 25: score, tier, business_model, fit_rationale, fit_signals 25/25; disqualifier 10 (August assay cache). account_influencer_details 26: instagram_handle + url 26/26; relationship_stage all not_contacted; follower_count 1, bio_snapshot 2,
+   niche/fit 2, priority 1; next_action, tags, scraped_* 0/26 -> a handle list, 24 never assessed; nothing hkos creators need beyond the handle.
+ lists 4 / account_lists 44: "Jack" 19, "Peter" 20 (owner split), "Q3 Jack's Outbound Strategy" 4, "Outbound Refined 2026" 1.
+ business_profiles 1 (generated 08-19, rules 08-21, assay 08-14): vision 221ch, gtm_strategy 440ch, core_problem 310ch, motto, industry,
+   raw_synthesis 736ch, products 3, value_props 4, assay_criteria {fit_signals, disqualifiers, tier_guidance} 1.9k, outreach_rules {dos, tone,
+   donts, structure, key_points, example_snippets} 3.7k. No sales_methodology column value.
+ business_intel_entries 10 (08-13..08-18, all source_type note): 2 site scrapes (1 failed, 46ch), 2 exact duplicate pairs (17,471ch x2,
+   9,066ch x2), 1 raw Gmail thread dump 78,640ch, 1 Do Good partnership summary 4,191ch (competitive), 1 revenue-architecture draft 4,027ch.
+ outreach_doctrine 7 (platform, not HK-scoped; 08-18..08-25): 6 active - grounding HARD 314ch, cta HARD x2 (email / LinkedIn soft 15-min
+   ask), tone HARD (banned words), structure HARD (length), grounding default 2,365ch generic system text; 1 inactive 6,270ch book summary.
+ voice_profiles 1 total (user-scoped; the user is a HumanKind member; 2026-10-08, 25 emails): 18 keys (tone, greeting, closing, keyTraits,
+   avoidPhrases, signatureStyle, structureStyle, ...).
+ business_anthropic_usage 78: intake_classify 24, profile_light 18, project_examples_segment 12, influencer_assess 9, project_examples 4,
+   project_strategy 4, import_mapping_classify 4, outreach_rules 2, assay 1; last legacy AI call on HK 2026-08-21.
+ Other business_id tables with HK rows: business_members 2 only; 0 in every sales_*, hk_*, campaigns, web_visits, research_runs, microsoft_*, grants (75 scanned).
+
+B. CODE - legacy pages and APIs (page · entry file (lines, last commit) · tables / routes (file:line) · other-business dependency · dead)
+ command-center · BusinessCommandCenterTab.js (138, 10-02) · accounts read db.js:182 (:43), localStorage tasks (:84) · HomeLover hides it
+   (goals_sales); Master Magnetics / Kopi Kita see it · N
+ accounts · BusinessAccountsTab.js (252, 10-06) -> AccountsPage.js (1021, 10-02), OutreachMatrix.js (599, 08-21), SmartIntakeBox.js (413),
+   InfluencerAddModal.js (153), BulkOutreachModal.js (210) · reads accounts / account_lists / lists / business_members / member_list_permissions
+   / account_*_details (db.js:182, 468, 779, 837, 849, 339, 349); writes saveAccountsForBusiness db.js:214, linkAccountToLists :437,
+   createInfluencerAccount :321; AccountsPage POSTs /api/sfdc/update-opp (:121) · Y: HomeLover 66 accounts, 7 lists; account cards protected · N
+ projects · ProjectsSection in BusinessDetailPage.js:405 (1041, 10-20) + ProjectGuidanceCard (110, 08-20), CampaignGuidanceCard (82) ·
+   projects / campaigns db.js:663, 691, 419, 710; /api/projects/*, /api/campaigns/* via shared/OutreachExamplesEditor + FieldExtractionPanel ·
+   Y: HomeLover 3 projects, 3 campaigns · N
+ overview (Business Intel & Strategy) · BusinessDetailPage.js:765-807 + ProfileFieldBlock (183), AssayCriteriaCard (121), OutreachRulesCard
+   (138), SalesMethodologyCard (81), CallLogSection (268, 10-02) · GET /api/businesses/:id (:221), /status, /retry-research, /intel,
+   /profile-refresh, /profile-field(+resolve), /assay-criteria(+generate), /outreach-rules(+generate), /sales-methodology, /call-log(+reassign)
+   · Y: every workspace has a profile; Master Magnetics 23 intel entries, HomeLover 17 · N
+ ideas · IdeasPage.js (20, 08-05) -> frontier/GoldenNuggetsTab (160) · browser-only nuggets store (src/utils/nuggets) · Y: Sales QuickCapture
+   writes the same store · N
+ tools (deal / blueprints / lookalike) · ToolsPage.js (233, 10-06): DealWorkspace (241), pricing/BlueprintTool (330), LookalikeTool :10 ·
+   localStorage only (DealWorkspace.js:9-10, BlueprintTool.js:8-11); lookalike reads HomeLover accounts + claimJumper pool (App.js:1346) · Y · N
+ api/businesses/* (30 files): every route has a client caller - intake(/confirm) <- SmartIntakeBox:206,264; influencer/assess <-
+   SmartIntakeBox:333, InfluencerAddModal:46, CreatorFitRelationship; import/* <- CsvImportModal; call-log(/reassign) <- CallLogSection:86,154;
+   rules / criteria / methodology / profile-field <- the cards above; create, features, members, invites, status, emoji, social-links,
+   website-url <- Admin, auth and header widgets. Dead: 0. api/projects/* + api/campaigns/* (4 + 4) <- the two shared editors only.
+ Claude calls (api/businesses/shared.js; MODELS.STANDARD unless noted): classifyIntake :1074 FAST 500; classifyImportMapping :1121 FAST 800;
+   classifyImportDirective :1189 FAST 200; assessInfluencerAccount :414 2048; generateOutreachRules :286 1024; generateAssayCriteria :635
+   2048; generateProfile :537 8192/20000 (+ web :1242 4096); generateProjectStrategy :705 512; distillOutreachExamples :759 1024;
+   segmentOutreachExamples :261 4096; extractEntityFields :845 8192. api/email.js:8 FAST (shared, HomeLover-live). No legacy API touches Gmail / Outlook.
+ Influencer code (s11 confirmed): 2/26 assessed, 0 scraped_* -> hkos creators would REWRITE InfluencerAddModal, the assess prompt and the
+   db.js helpers; REUSE as-is only api/lib/safeFetch + fetchSiteContent (imported by shared.js alone) and detectInstagramProfileBlock
+   (shared.js:1047). No scrape path, IG session or rate limit exists to inherit.
+ Shared primitives a retirement must not take: api/lib/selectAllPages.js (42 sales/hk imports), api/lib/requireAuth.js (12), src/utils/csv.js
+   (6), useMediaQuery (9), authSession (7), mailboxStatus (2), docxText (1), src/utils/nuggets (QuickCapture + GoldenNuggetsTab), src/utils/voice*
+   (EmailModal, IntelligencePage, FrontierPage, api/microsoft/voiceSamples.js = HomeLover outlook_voice), api/lib/safeFetch.js. intakeMatch / scrubText
+   live in api/sales. The legacy pages import only src/utils/db.js (947 lines; 36 legacy-table call sites), never the src/ui kit.
+
+C. STRATEGY - what a new member would lose, against the hkos package (skill v2, playbook, lint_draft)
+ outreach_rules (08-21): dos = open with 1-2 researched sentences on why this prospect, name a brand-specific challenge; tone = plain, human,
+   confident, never salesy or fake-urgent; donts = no pressure / guilt / curiosity-bait subjects, never invent prospect details; structure =
+   "HumanKind x [Company] - [clear descriptor]", hook -> intro (3 pillars) -> community link line -> fit bridge -> concrete challenge or
+   reward -> calibrated ask; key_points = free Chicago platform, verified real-world action beats impressions; 2 example snippets. Skill v2
+   covers the subject format, the hook/intro/link/fit/challenge/15-min flow, the verified-behavior line, no invented facts, founder voice.
+   NOT in v2: the explicit banned-pattern list, "3 most relevant pillars only", "calibrate the ask" -> CARRY into lint_draft.
+ outreach_doctrine: the 5 HARD rows map 1:1 onto v2 hard rules except the banned-word list (synergies, leverage, hope this finds you well,
+   circle back, ...) -> CARRY into lint_draft. The 2,365ch generic doctrine text and the inactive book summary are B2B boilerplate, not
+   HumanKind -> out of hkos scope (platform rows; not HK's to archive).
+ voice_profile (1 member, 25 emails): greeting / closing / signature / avoid-phrases / sample opener. v2 has "Who is sending" + example mails
+   but no per-sender learned voice -> CARRY as the seed for hkos per-sender voice; the user-scoped table itself can stay.
+ project guidance: Q3 project_hook = the April intro with 1,000+ / 4,000+ stats (stale vs v2's 1,500+ / 6,000+); strategy_synthesis = two-step
+   sequence after retailer pushback (challenge idea first, call ask only after a positive reply) + tighter Chicago targeting; Outbound
+   Refined objective = book meetings, paid challenge sponsors, product-tie-in hook that closed a thread; distilled examples = casual
+   first-name tone, two-stat intro, bump brevity (all in v2). NOT in v2: the two-step "idea first, call after a reply" sequence for larger retailers -> CARRY.
+ business_profiles vision / gtm / core_problem / raw_synthesis: mission, five pillars, "verified trackable behavior not impressions", Do Good
+   podcast partnership as a national pivot, influencer push -> CARRY one positioning paragraph into hk_settings market lines.
+   assay_criteria = HomeLover-style account scoring on HK brands -> UNSURE (only if the hkos Step 3 screen wants a fit rubric).
+ business_intel_entries (10): topics = site scrape x2, "intel dump" prompt x2 (dup), outreach-strategy context summary x2 (dup: founding
+   partners, sponsor pitch, Chicago-only), raw Gmail training thread 78,640ch (sender names + addresses inline - never import as-is), Do Good
+   summary (national pivot, pitch materials), revenue-architecture draft (pricing tiers, pilot workflow). Sponsor pricing appears only in that
+   draft; proof points (members, completions, photo verification) in the strategy summary; segments (local / national, sponsor / creator) in gtm + Do Good.
+
+D. SALVAGE TABLE (proposed; Jack rules)  asset · verdict · note
+ prospects (14 founding partners) · IMPORT · names + is_founding_partner -> hk brands relationship = founding_partner; nothing else to carry
+ accounts 35 business (data.web / stage / listIds) · UNSURE · owner split Jack 19 / Peter 20 mirrors the Sheet tabs; import name + web + owner
+   only for rows the Sheet lacks
+ accounts 26 influencer + influencer_details · RETIRE · a handle list, 2 assessed, 0 contacted; hkos creators (Phase 2) start from the Sheet / IG
+ account_business_details (25 assay rows), lists / account_lists · RETIRE · August HomeLover-style scores; the owner split travels with any import
+ projects x3 + guidance columns · CARRY then RETIRE · strategy text (C) -> playbook / lint; the rows are then shells (archive, never delete)
+ outreach_rules (business_profiles) · CARRY · banned patterns, pillars-only, calibrated ask -> lint_draft; the rest is already in v2
+ outreach_doctrine HARD rows · CARRY · banned-word list -> lint_draft (platform rows stay)
+ voice_profiles (1) · CARRY · per-sender voice seed; user-scoped table left as is
+ business_profiles positioning + stats · CARRY · hk_settings market lines; stats stale (1,000 / 4,000 vs 1,500 / 6,000) - confirm first
+ assay_criteria (HK) · UNSURE · only if hkos Step 3 wants a fit rubric; otherwise RETIRE
+ business_intel_entries: strategy summary, Do Good summary, revenue draft · CARRY · 3 distinct bodies (dup pairs count once) -> playbook appendix
+ business_intel_entries: Gmail thread dump + 2 site scrapes · RETIRE · names + addresses inline; the voice profile already learned from mail
+ pages command-center, accounts, projects, overview, ideas, tools · RETIRE for HK only · all serve other workspaces (B); hide via hiddenWith hk_sales (businessNav.js:11)
+ api/businesses/*, api/projects/*, api/campaigns/* · RECYCLE · none dead; classifyIntake (:1061), fileCompanyIntel (:940), safeFetch are the
+   generic pieces hkos could import; everything else stays for the other workspaces
+ InfluencerAddModal, assess prompt, db.js influencer helpers · RETIRE (Phase 2 rewrite) · per s11; keep detectInstagramProfileBlock
+ src/utils/db.js browser writes to projects / campaigns / influencer_details (RLS s5_write) · UNSURE · not HK's; flag for the cleanup SPEC
+ Verdict counts: IMPORT 1 · RECYCLE 1 · CARRY 7 · RETIRE 7 · UNSURE 4.
+
+E. OPEN QUESTIONS FOR JACK
+ 1. Are the 35 business accounts already in the Google Sheet tabs? If yes, RETIRE them with the influencers (nothing to import).
+ 2. Should the 14 founding partners import from prospects or from the Sheet's sponsor tabs (the skill names the Sheet as truth)?
+ 3. Keep Business Intel & Strategy visible on HumanKind (profile, rules, intel entries) or hide it with hk_sales too?
+ 4. On carry, do the stale stats in project_hook / key_points get replaced by hk_settings, or kept as history?
+ 5. Is a lint_draft seed from outreach_rules + doctrine banned words wanted in hkos-data-foundation-v1, or later?
+ 6. The 78,640ch Gmail dump: archive with the rest, or delete that one row outright (it carries third-party addresses)?
+
+F. Calls made: Claude 0 · Apollo 0 · DB writes 0. Reads: ~110 count / head queries + 8 small row reads (<= 61 rows each), service key.
+ Side finding (not legacy): temp workspace "ZZ Lead Upload S3" (2026-10-26 13:34 PT; 1 member, 1 temp profile, 0 auth_events, 0 other rows) from the
+ dupe-generic-words replay verify is still present; its "restored: yes" came from a count error reading as 0. Untouched here; needs a go to remove + a check fix.
