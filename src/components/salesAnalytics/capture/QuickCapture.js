@@ -119,7 +119,7 @@ export default function QuickCapture({ businessId, features, activeUser, onSaveN
             )}
             {mode === 'note' && (
               <div onInput={() => { noteDirty.current = true; }} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                <CallNotesPanel businessId={businessId} members={members} lookup={lookup} links={links} onClose={close} onCreated={noteCreated} onShowCalls={() => { close(); openTasks('team'); }} />
+                <CallNotesPanel businessId={businessId} members={members} lookup={lookup} links={links} onClose={close} onCreated={noteCreated} onShowCalls={() => { close(); openTasks('team'); }} onFiled={t => { noteDirty.current = false; setMode('task'); setStatus(t); }} />
               </div>
             )}
             {mode === 'idea' && (

@@ -38,7 +38,7 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
     if (res.status === 500 && MIGRATION_PATTERN.test(data.error || '')) throw new NeedsMigrationError();
     throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   }
-  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/(partners|company\/[a-z]+)\/.+\/apollo-check$|^\/company\/add-to-pipeline$|^\/suggestions\/.+\/(accept|dismiss|snooze|undo)$|^\/signals\/(scout-import|.+\/(accept|dismiss|undo))$|^\/visits\/pull$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
+  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/leads$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/(partners|company\/[a-z]+)\/.+\/apollo-check$|^\/company\/add-to-pipeline$|^\/suggestions\/.+\/(accept|dismiss|snooze|undo)$|^\/signals\/(scout-import|.+\/(accept|dismiss|undo))$|^\/visits\/pull$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
 }
 
@@ -59,6 +59,9 @@ export const goalsApi = {
   // call-notes-to-tasks-v1 - extract writes nothing; create stores the note + the kept to-dos.
   extractCallNotes: (id, body) => call(id, '/call-notes/extract', { method: 'POST', body }),
   createFromCallNotes: (id, body) => call(id, '/call-notes', { method: 'POST', body }),
+  // lead-upload-v1 - a pasted lead list: one read, then File (all or nothing).
+  extractLeads: (id, body) => call(id, '/leads/extract', { method: 'POST', body }),
+  fileLeads: (id, body) => call(id, '/leads', { method: 'POST', body }),
   // call-notes-targets-v1 - companies from notes that aren't a partner or employer yet.
   prospectTargets: id => call(id, '/prospect-targets').then(r => r.targets),
   // Stage 2 - promote = { created | already }; reject drops its open to-dos, { undo: true, reopen } puts it back.

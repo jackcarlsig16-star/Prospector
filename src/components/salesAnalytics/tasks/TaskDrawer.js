@@ -237,7 +237,7 @@ export default function TaskDrawer({ businessId, compact, onOpenGoals }) {
             {canEdit && !pasting && <Button onClick={() => setPasting(true)}>📝 Paste notes</Button>}
             <Button className="ui-btn--icon" onClick={() => setOpen(false)} aria-label="Close tasks" style={{ width: 36, height: 36, fontSize: 20 }}>×</Button>
           </header>
-          {pasting && canEdit && <CallNotesPanel businessId={businessId} members={members} lookup={lookup} links={links} onClose={() => setPasting(false)} onCreated={created} onShowCalls={showCalls} />}
+          {pasting && canEdit && <CallNotesPanel businessId={businessId} members={members} lookup={lookup} links={links} onClose={() => setPasting(false)} onCreated={created} onShowCalls={showCalls} onFiled={t => { showCalls(); setToast({ text: t }); }} />}
           {!pasting && canEdit && <QuickAdd meId={meId} members={members} lookup={lookup} links={links} onAdd={add} />}
           {!pasting && (
             <>

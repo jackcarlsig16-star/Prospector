@@ -166,7 +166,8 @@ export async function fileLeads(supabase, { businessId, userId, src, rows, hash,
           await supabase.from(TABLE[type]).delete().eq('id', id);
         });
         if (type === 'target') {
-          must(await supabase.from('sales_targets').update({ research_notes: `(${stamp}) ${line}` }).eq('id', id));
+          // sales_targets.source is the signals-v1 enum (note / scout / web_visit / manual); an upload is a hand-filed target.
+          must(await supabase.from('sales_targets').update({ research_notes: `(${stamp}) ${line}`, source: 'manual' }).eq('id', id));
         }
         out.created.push({ type, id, name: r.name });
       } else {

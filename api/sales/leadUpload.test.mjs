@@ -169,6 +169,20 @@ test('source picker: a partner referral must name a partner in Pipeline; person 
   assert.equal(res3.code, 200); assert.equal(res3.body.source.source_partner_id, REF);
 });
 
+test("File an unclear company as a target: sales_targets.source = 'manual' (signals-v1 enum), the dated line in research_notes, people in sales_people", async () => {
+  const supabase = seed();
+  const rows = crossCheck(toLeads({ companies: [{ name: 'Quill & Oak Studio', kind_guess: 'unclear' }], people: [person('Ira Noe', 'Quill & Oak Studio')] }), await loadLeadContext(supabase, B));
+  assert.equal(rows[0].kind, 'target');
+  const res = resOf();
+  await fileLeadsRoute(reqOf({ text: 'Ira Noe @Quill & Oak Studio', source: { pick: 'event', note: 'HR Tech expo' }, companies: rows }), res, { supabase, now: NOW, kick: async () => {} });
+  assert.equal(res.code, 201, JSON.stringify(res.body));
+  const target = supabase.db.sales_targets.find(t => t.name === 'Quill & Oak Studio');
+  assert.equal(target.source, 'manual'); assert.equal(target.source_kind, 'event'); assert.equal(target.channel, 'import');
+  assert.match(target.research_notes, /^\(10\/26\) Lead list \(Event\) Oct 26: VP Human Resources$/);
+  const ppl = supabase.db.sales_people.filter(p => p.target_id === target.id);
+  assert.deepEqual(ppl.map(p => [p.company_type, p.name, p.source_note]), [['target', 'Ira Noe', 'HR Tech expo']]);
+});
+
 test('File a new partner: people go to partner_contacts, the why lines ride its note, owner = the uploader', async () => {
   const supabase = seed();
   const rows = crossCheck(toLeads({ companies: [{ name: 'Harbor Benefits Consulting', kind_guess: 'partner' }], people: [person('Alex Doe', 'Harbor Benefits Consulting')] }), await loadLeadContext(supabase, B));

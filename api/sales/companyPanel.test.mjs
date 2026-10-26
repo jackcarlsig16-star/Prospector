@@ -62,6 +62,12 @@ const seed = () => fakeSupabase({
     { id: ID.open2, business_id: B, apollo_message_id: 'm-fresh', contact_id: 'c-fresh', step: 1, event: 'open', occurred_at: '2026-10-19T15:00:00Z', user_agent: null, tracking_service: null },
   ],
   sales_suggestions: [], sales_week_report: [],
+  // lead-upload-v1: people filed from a lead list. "Dana Q" is already linked above, so only Kit Vale is new.
+  sales_people: [
+    { id: randomUUID(), business_id: B, company_type: 'employer', opportunity_id: ID.employer, target_id: null, name: 'Kit Vale', title: 'VP Total Rewards', linkedin_url: 'https://www.linkedin.com/in/kitvale', note: 'Recently changed roles', source_kind: 'apollo' },
+    { id: randomUUID(), business_id: B, company_type: 'employer', opportunity_id: ID.employer, target_id: null, name: 'dana q', title: 'CHRO', linkedin_url: null, note: null, source_kind: 'apollo' },
+    { id: randomUUID(), business_id: B, company_type: 'target', opportunity_id: null, target_id: ID.target, name: 'Mo Reyes', title: 'HR Director', linkedin_url: null, note: 'Hiring signal', source_kind: 'event' },
+  ],
 }, { unique: { sales_targets: r => `${r.business_id}:${r.name.trim().toLowerCase()}`, sales_goals: r => (r.goal_type === 'partnership' ? `${r.business_id}:${r.name.toLowerCase()}` : null) } });
 
 test('partner body: to-dos, waiting, matched visits, decisions, terms, people without emails, last notes/touches (no assign rows), research status', async () => {
@@ -92,7 +98,9 @@ test('employer body: stage history + done to-dos as recent, decision makers and 
   const sb = seed();
   const e = (await companyDetail(sb, { businessId: B, type: 'employer', id: ID.employer, now: NOW })).body;
   assert.deepEqual(e.recent.map(x => x.text), ['target → contacted', 'Done: Intro call']);
-  assert.deepEqual(e.people.map(p => [p.name, p.title, p.signal?.text ?? null]), [['Dana Q', 'CHRO', 'replied Step 2'], ['Sam', 'Champion', null]]);
+  assert.deepEqual(e.people.map(p => [p.name, p.title, p.signal?.text ?? null]), [['Dana Q', 'CHRO', 'replied Step 2'], ['Kit Vale', 'VP Total Rewards', null], ['Sam', 'Champion', null]]);
+  // lead-upload-v1: the uploaded person carries the upload's source and the list's why line; the duplicate (by name) is not repeated.
+  assert.deepEqual(e.people.filter(p => p.source === 'upload').map(p => [p.name, p.source_kind, p.note, p.linkedin_url]), [['Kit Vale', 'apollo', 'Recently changed roles', 'https://www.linkedin.com/in/kitvale']]);
   assert.deepEqual(e.decision_makers, ['Pat Lee · VP People']);
   assert.deepEqual(e.record.last_touch, { at: '2026-10-19T10:00:00Z', touch_type: 'stage' });
   // FIX loop-quickfixes Q4: a later archived / created event is not contact.
@@ -103,7 +111,7 @@ test('employer body: stage history + done to-dos as recent, decision makers and 
   sb.db.sales_targets[0].research_notes = '(10/19) Looks good\nPeople: Lee Park · Head of HR\nPerson: Ana Ruiz';
   const t = (await companyDetail(sb, { businessId: B, type: 'target', id: ID.target })).body;
   assert.equal(t.record.evidence, 'Opened an office'); assert.equal(t.record.stage, 'proposed'); assert.ok(t.research);
-  assert.deepEqual(t.people.map(p => [p.name, p.source]), [['Lee Park · Head of HR', 'notes'], ['Ana Ruiz', 'notes']]);
+  assert.deepEqual(t.people.map(p => [p.name, p.source]), [['Lee Park · Head of HR', 'notes'], ['Ana Ruiz', 'notes'], ['Mo Reyes', 'upload']]);
   const a = (await companyDetail(sb, { businessId: B, type: 'apollo', id: 'acc-1', now: NOW })).body;
   assert.equal(a.record.name, 'Fresh Co'); assert.equal(a.record.employees, 400); assert.equal(a.research, null); assert.deepEqual(a.todos, []);
   // Apollo-only: people whose company is the account's name, matched at read time (nothing stored); 2 human opens = a signal.

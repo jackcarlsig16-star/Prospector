@@ -8,24 +8,30 @@ import LinkPicker, { chipStyle } from './LinkPicker';
 import { Box, md, linkBtn } from './TaskRow';
 import { Section, CompanyRows, PeopleRows, TouchRows, IntelRows, DecisionRows, WaitingRows, TermsRows, MeetingRows } from './IntakeSections';
 import { acceptBody, acceptCount } from './intakeBody';
+import LeadListPanel from './LeadListPanel';
+import Segmented from '../../../ui/Segmented';
 
 // call-notes-to-tasks-v1 - paste or upload call notes, review what the AI
 // proposes, create the ones kept. call-notes-targets-v1 REV3 ("Intake"): any
 // source, and the review also lists the companies, people, past touches,
 // ownership and lasting facts in the notes. Nothing is written until Accept.
+// lead-upload-v1: the same panel reads a lead list (LeadListPanel) behind the "Call notes | Lead list" switch.
 const MAX_CHARS = 120000; // same cap as the extract route
 const SOURCE_TYPES = [['call', 'Call'], ['partner_update', 'Partner update'], ['email_thread', 'Email thread'], ['doc', 'Doc'], ['other', 'Other']];
 const NO_INTAKE = { companies: [], ownership: [], people: [], touches: [], facts: [], decisions: [], waiting_on: [], terms: [], next_meeting: [] };
 const fieldStyle = { all: 'unset', ...saSans, fontSize: 12, color: SA.soft, cursor: 'pointer' };
+const MODES = [{ id: 'notes', label: 'Call notes' }, { id: 'leads', label: 'Lead list' }];
 
 // Zoom transcripts (.vtt): drop the header, cue numbers and timestamps.
 const vttText = t => t.replace(/^WEBVTT.*$/m, '').replace(/^\d+\s*$/gm, '').replace(/^[\d:.]+ --> [\d:.]+.*$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
 
-async function readFile(file) {
+async function readFile(file, { vtt = true } = {}) {
   if (/\.docx$/i.test(file.name)) return docxText(await file.arrayBuffer());
-  if (/\.(txt|md|vtt)$/i.test(file.name)) { const t = await file.text(); return /\.vtt$/i.test(file.name) ? vttText(t) : t; }
-  throw new Error('Upload a .txt, .docx, .vtt or .md file');
+  if (/\.(txt|md)$/i.test(file.name)) return file.text();
+  if (vtt && /\.vtt$/i.test(file.name)) return vttText(await file.text());
+  throw new Error(`Upload a .txt, .docx${vtt ? ', .vtt' : ''} or .md file`);
 }
+const readLeadFile = file => readFile(file, { vtt: false });
 
 const toPick = p => ({ ...p, on: !p.similar_to });
 
@@ -73,7 +79,8 @@ function Proposal({ p, i, members, lookup, links, set }) {
   );
 }
 
-export default function CallNotesPanel({ businessId, members, lookup, links, onClose, onCreated, onShowCalls }) {
+export default function CallNotesPanel({ businessId, members, lookup, links, onClose, onCreated, onShowCalls, onFiled }) {
+  const [mode, setMode] = useState('notes');
   const [title, setTitle] = useState('');
   const [sourceType, setSourceType] = useState('call');
   const [sourceLabel, setSourceLabel] = useState('');
@@ -138,10 +145,15 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
   const setRow = list => i => patch => setIntake(prev => ({ ...prev, [list]: prev[list].map((r, k) => (k === i ? { ...r, ...patch } : r)) }));
 
   const reviewing = result && !result.duplicate;
+  const switcher = <Segmented label="What to read" items={MODES} value={mode} onChange={m => { setMode(m); setResult(null); }} />;
+  if (mode === 'leads') {
+    return <LeadListPanel businessId={businessId} members={members} text={text} setText={setText} onClose={onClose} onFiled={onFiled} switcher={switcher} readFile={readLeadFile} />;
+  }
   return (
     <section aria-label="Intake" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {!reviewing && switcher}
           <span style={{ ...labelStyle, color: SA.soft, flex: 1 }}>{reviewing ? 'Review · nothing is saved until Accept' : 'Intake · paste any notes'}</span>
           <button type="button" style={linkBtn} onClick={onClose}>Cancel</button>
         </div>

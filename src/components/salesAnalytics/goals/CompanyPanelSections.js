@@ -9,6 +9,7 @@ import { copyFollowUp } from './InterestBand';
 import Tag from '../../../ui/Tag';
 import Drawer from '../../../ui/Drawer';
 import { Link } from '../../../ui/Button';
+import { SOURCE_LABEL } from '../../../constants/leadSources';
 
 // company-panel-v2 L6 - the body cards. Each is a card with a label, a count
 // pill and at most one link-button. LEFT: Signals & visits · Open to-dos ·
@@ -166,11 +167,12 @@ export function PeopleCard({ businessId, row, detail, canEdit, onForm, onChanged
       </span>}>
       {!detail.people.length && <Empty>{row.type === 'visitor' || row.type === 'apollo' ? 'Nobody on file - Find who checks Apollo.' : 'None on file.'}</Empty>}
       {people.map(p => (
-        <div key={p.id || p.name} data-person={p.contact_id || undefined} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', margin: '0 -8px', borderRadius: 6, background: p.signal ? `color-mix(in srgb, ${SA.warn} 8%, transparent)` : 'transparent', fontSize: 13 }}>
+        <div key={p.id || p.name} data-person={p.contact_id || undefined} title={p.note || undefined} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', margin: '0 -8px', borderRadius: 6, background: p.signal ? `color-mix(in srgb, ${SA.warn} 8%, transparent)` : 'transparent', fontSize: 13 }}>
           <span style={{ flex: 1, minWidth: 0, display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
             <b style={{ color: SA.text, fontWeight: 600 }}>{p.name}</b>
             {p.title ? <span style={{ color: SA.muted }}>· {p.title}</span> : <span style={{ color: SA.muted }}>· no title</span>}
             {p.signal && <Tag color={p.signal.kind === 'reply' ? SA.good : SA.warn}>{p.signal.text}</Tag>}
+            {p.source === 'upload' && p.source_kind && <Tag>{SOURCE_LABEL[p.source_kind] || p.source_kind}</Tag>}
           </span>
           {p.linkedin_url ? <Link href={p.linkedin_url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>LinkedIn ↗</Link> : <Link href={linkedinSearchUrl(p.name, row.name)} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: SA.muted }}>Find on LinkedIn</Link>}
           {canUnlink && p.contact_id && <Mini onClick={() => unlink(p)} title="Clears the link; no sync sets it again">Not this company</Mini>}

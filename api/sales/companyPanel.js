@@ -148,6 +148,17 @@ async function emailFor(supabase, businessId, contactIds, now) {
   return { messages, events };
 }
 
+// lead-upload-v1 S5 - people filed from a lead list (sales_people) on an employer or target, deduped against the
+// rows already there by name; the upload's source rides along as a tag and the list's "why" as the note.
+async function uploadedPeople(supabase, businessId, col, id) {
+  const rows = must(await supabase.from('sales_people').select('id, name, title, linkedin_url, note, source_kind').eq('business_id', businessId).eq(col, id).order('name').limit(100));
+  return rows.map(r => ({ id: r.id, contact_id: null, name: cleanText(r.name, 120), title: r.title ? cleanText(r.title, 160) : null, linkedin_url: r.linkedin_url || null, source: 'upload', source_kind: r.source_kind || null, note: r.note ? cleanText(r.note, 500) : null, status: null, signal: null }));
+}
+function withUploaded(rows, uploaded) {
+  const seen = new Set(rows.map(r => normName(r.name)));
+  return [...rows, ...uploaded.filter(u => !seen.has(normName(u.name)))];
+}
+
 const personOut = p => ({ id: `p:${p.contact_id}`, contact_id: p.contact_id, name: cleanText(p.name, 120) || 'Unnamed', title: p.title ? cleanText(p.title, 160) : null, linkedin_url: p.linkedin_url || null, source: 'apollo', status: p.status || null, signal: null });
 const peopleSort = (a, b) => (a.signal && b.signal ? byStrength(a.signal, b.signal) : a.signal ? -1 : b.signal ? 1 : a.name.localeCompare(b.name));
 
@@ -167,10 +178,11 @@ async function peopleFor(supabase, businessId, record, prospects, signals) {
   if (record.type === 'employer') {
     const rows = withSignal(prospects.map(personOut));
     if (record.champion) rows.push({ id: 'champion', contact_id: null, name: cleanText(record.champion, 200), title: 'Champion', linkedin_url: null, source: 'notes', status: null, signal: null });
-    return rows.sort(peopleSort);
+    return withUploaded(rows, await uploadedPeople(supabase, businessId, 'opportunity_id', record.id)).sort(peopleSort);
   }
   if (record.type === 'target') {
-    return (record.research_notes || '').split('\n').filter(l => PEOPLE_LINE.test(l)).map((l, i) => ({ id: `t${i}`, contact_id: null, name: cleanText(l.replace(PEOPLE_LINE, ''), 200), title: null, linkedin_url: null, source: 'notes', status: null, signal: null }));
+    const rows = (record.research_notes || '').split('\n').filter(l => PEOPLE_LINE.test(l)).map((l, i) => ({ id: `t${i}`, contact_id: null, name: cleanText(l.replace(PEOPLE_LINE, ''), 200), title: null, linkedin_url: null, source: 'notes', status: null, signal: null }));
+    return withUploaded(rows, await uploadedPeople(supabase, businessId, 'target_id', record.id));
   }
   if (record.type === 'apollo') return withSignal(prospects.map(personOut)).sort(peopleSort);
   return [];
