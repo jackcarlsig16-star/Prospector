@@ -60,14 +60,28 @@ test('shell payload: no "@" anywhere, even when a member name has one typed into
 
 test('shell payload: first_name fallbacks (display_name, then member name, then "Invited member")', () => {
   const p = shellPayload(rows, auth({ [HK]: 'owner' }), HK);
-  assert.deepEqual(p.members.map(m => m.first_name), ['Sam', 'Invited member', 'Typed', 'Deandra', 'Invited member']);
-  assert.deepEqual(p.members.map(m => m.signed_up), [true, false, true, true, true]);
+  assert.deepEqual(p.members.map(m => m.first_name), ['Sam', 'Deandra', 'Invited member', 'Invited member', 'Typed']);
+  assert.deepEqual(p.members.map(m => m.signed_up), [true, true, true, false, true]);
   assert.deepEqual(p.me, { user_id: 'u-me', role: 'owner', first_name: 'Sam' });
 });
 
-test('shell payload: palette order follows created_at order and wraps after four', () => {
+// FIX hkos-avatar-order-v1 - palette and list order: role, then signed up, then join date.
+test('shell payload: the signed-in owner is slot 1 even when an invited member joined earlier', () => {
+  const p = shellPayload([
+    { user_id: null, name: 'Peter Example', role: 'member', created_at: '2026-08-13T00:00:00Z', profile: null },
+    { user_id: 'u-me', name: 'Jack Example', role: 'owner', created_at: '2026-10-02T00:00:00Z', profile: { display_name: 'Jack Example' } },
+  ], auth({ [HK]: 'owner' }), HK);
+  assert.deepEqual(p.members.map(m => [m.first_name, m.palette_index]), [['Jack', 1], ['Peter', 2]]);
+});
+
+test('shell payload: palette by role, then signed up, then join date; wraps after four', () => {
   const p = shellPayload(rows, auth({ [HK]: 'owner' }), HK);
   assert.deepEqual(p.members.map(m => m.palette_index), [1, 2, 3, 4, 1]);
+  const tie = shellPayload([
+    { user_id: 'u-b', name: 'Bea', role: 'owner', created_at: '2026-09-02T00:00:00Z', profile: null },
+    { user_id: 'u-a', name: 'Ari', role: 'owner', created_at: '2026-09-01T00:00:00Z', profile: null },
+  ], auth({ [HK]: 'owner' }), HK);
+  assert.deepEqual(tie.members.map(m => [m.first_name, m.palette_index]), [['Ari', 1], ['Bea', 2]]);
 });
 
 test('shell payload: platform owner without a membership reads as owner; modules = the read-only list', () => {
