@@ -28,7 +28,7 @@ const seed = () => fakeSupabase({
       source_kind: 'partner_referral', source_partner_id: REF, source_person: 'Rob Example', source_set_by: U },
   ],
   sales_targets: [{ id: ID.ndtTarget, business_id: B, name: 'Eastgate Hospital Partners', kind: 'employer', status: 'researching', owner_team: 'upside', co_owner_name: 'Rob Example', no_double_touch: true, research_notes: null }],
-  sales_sequenced_accounts: [], partner_domains: [], partner_contacts: [], sales_people: [], sales_lead_uploads: [], sales_source_events: [], sales_partner_events: [],
+  sales_sequenced_accounts: [{ business_id: B, account_id: 'a-ent', name: 'Enterprise', employees: 90000 }], partner_domains: [], partner_contacts: [], sales_people: [], sales_lead_uploads: [], sales_source_events: [], sales_partner_events: [],
 }, { now: () => NOW.getTime(), unique: { sales_people: r => `${r.company_type}:${r.opportunity_id || r.target_id}:${r.name.toLowerCase()}` } });
 
 const person = (name, company, extra = {}) => ({ name, company, title: 'VP Human Resources', location: 'Chicago, IL', linkedin_url: null, why: 'Recently changed roles', ...extra });
@@ -46,6 +46,11 @@ test('a broker / consultant is guessed as a partner; two people at one company a
   assert.equal(harbor.kind, 'partner'); assert.equal(harbor.category, '4. Brokers'); assert.equal(harbor.action, 'create');
   assert.deepEqual(acme.people.map(p => p.name), ['Pat Roe', 'Lee Moe']);
   assert.equal(acme.employees, 12500); assert.equal(acme.kind, 'employer');
+});
+
+test('FIX dupe-generic-words: "Hewlett Packard Enterprise" next to a stored Apollo-only "Enterprise" reviews as New -> Create, no reason', async () => {
+  const [hpe] = crossCheck(toLeads({ companies: [{ name: 'Hewlett Packard Enterprise', kind_guess: 'employer' }], people: [person('Val Lee', 'Hewlett Packard Enterprise')] }), await loadLeadContext(seed(), B));
+  assert.equal(hpe.status, 'new'); assert.equal(hpe.action, 'create'); assert.equal(hpe.reason, null); assert.deepEqual(hpe.possible, []);
 });
 
 test("ownership: owner_team 'upside' (no_double_touch false) -> chip + default Skip; 'both' -> chip + Add people; no_double_touch -> the exact warning", async () => {

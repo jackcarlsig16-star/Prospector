@@ -14,13 +14,16 @@
 //  The pasted list is never printed or stored; the report carries company names, counts, kinds, chips only.
 //  Runtime ~2-3 min, hard cap 300 s (tempGuard). Shots + report: .screenshots/lead-upload-v1/. Run npm run build first.
 //  --replay: the saved reply from an earlier real run (<outdir>/extract-reply.json) answers the extract in the
-//  browser - 0 Claude calls; the usage check then expects +0.
+//  browser - 0 Claude calls; the usage check then expects +0. The saved file holds the model's companies and people;
+//  the cross-check (match, owner chip, source, defaults) is recomputed here from live HomeLover rows through the
+//  real leadUploadMatch code (service-key READS only), so a matcher change shows in the replayed review.
 // Usage: node scripts/verify/lead-upload-v1-stage3.mjs [outdir] [--replay]
 import { createRequire } from 'module';
 import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { ownerSession } from './lib/ownerSession.mjs';
+import { toLeads, crossCheck, loadLeadContext } from '../../api/sales/leadUploadMatch.js';
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..');
 const require = createRequire(ROOT + '/package.json');
 require('dotenv').config({ path: ROOT + '/.env' });
@@ -85,7 +88,18 @@ const BOXES = `(() => Object.fromEntries(['data-workspace-header', 'data-sales-t
 })))()`;
 const maxMove = (a, b, keys) => Math.max(...keys.map(k => (a[k] && b[k] ? Math.max(Math.abs(a[k].x - b[k].x), Math.abs(a[k].y - b[k].y), Math.abs(a[k].h - b[k].h)) : 0)));
 let extractReply = null;
-if (REPLAY) { if (!fs.existsSync(REPLY_FILE)) { console.log(`ABORT: --replay needs ${REPLY_FILE} from a real run`); process.exit(1); } extractReply = fs.readFileSync(REPLY_FILE, 'utf8'); log('REPLAY: the saved reply answers the extract, 0 Claude calls'); }
+if (REPLAY) {
+  if (!fs.existsSync(REPLY_FILE)) { console.log(`ABORT: --replay needs ${REPLY_FILE} from a real run`); process.exit(1); }
+  const saved = JSON.parse(fs.readFileSync(REPLY_FILE, 'utf8'));
+  const ctx = await loadLeadContext(svc, HOMELOVER);
+  const categories = [...new Set(ctx.partners.map(p => p.category).filter(Boolean))].sort();
+  const leads = toLeads({
+    companies: saved.companies.map(({ name, domain, employees, hq, kind_guess, category, evidence }) => ({ name, domain, employees, hq, kind_guess, category, evidence })),
+    people: saved.companies.flatMap(c => c.people.map(({ name, title, location, linkedin_url, why }) => ({ name, title, location, linkedin_url, why, company: c.name }))),
+  }, categories);
+  extractReply = JSON.stringify({ ...saved, companies: crossCheck(leads, ctx), people_count: leads.people_count, earlier: null });
+  log('REPLAY: the saved model reply + a live cross-check answer the extract, 0 Claude calls');
+}
 
 try {
   const { data: hlRow } = await svc.from('businesses').select('name').eq('id', HOMELOVER).single();
@@ -224,6 +238,13 @@ try {
   ok('no email address or phone number anywhere in the review (titles like "VP HR @Company" allowed)', !ADDRESS.test(drawerText) && !PHONE.test(drawerText));
   const status = await drawer.getByRole('status').innerText();
   ok(`footer counts: "${status.trim()}"`, /^Create \d+ compan(y|ies) · add \d+ (person|people) · skip \d+$/.test(status.trim()));
+  // FIX dupe-generic-words-v1: HPE is no longer "Looks like Enterprise"; the rest of the review is unchanged.
+  const hpe = groups.find(g => /hewlett packard/i.test(g.name));
+  ok('FIX dupe-generic-words: Hewlett Packard Enterprise = New -> Create, no reason', !!hpe && hpe.status === 'new' && hpe.action === 'create' && (await drawer.locator('[data-lead-company="Hewlett Packard Enterprise"]').getByText(/^Skipped:/).count()) === 0, JSON.stringify(hpe));
+  const byName = re => groups.find(g => re.test(g.name)) || {};
+  ok('unchanged: Gallagher Skip (Upside chip), American Family + Apple Add people; footer "Create 4 companies · add 8 people · skip 1"', byName(/gallagher/i).action === 'skip' && /^Upside owns this/.test(byName(/gallagher/i).chip || '') && byName(/american family/i).action === 'add_people' && byName(/^apple$/i).action === 'add_people' && status.trim() === 'Create 4 companies · add 8 people · skip 1', status.trim());
+  const dc = await J.api(HOMELOVER, '/partners/dupe-check?name=Hewlett%20Packard%20Enterprise');
+  ok('dupe-check route on HomeLover: Hewlett Packard Enterprise -> exact [] partial []', dc.status === 200 && Array.isArray(dc.body.exact) && !dc.body.exact.length && Array.isArray(dc.body.partial) && !dc.body.partial.length, JSON.stringify(dc.body).slice(0, 200));
   ok('S4: a Create row shows kind, Owner (Me) and Research now; a matched row offers Add people / Skip only', (await drawer.locator('[data-lead-company] select[aria-label^="Kind of"]').count()) === groups.filter(g => g.action === 'create').length && (await drawer.getByRole('button', { name: 'Create' }).count()) === groups.filter(g => !g.status.match(/^(partner|employer|target)$/)).length);
   const box1 = await J.page.evaluate(BOXES);
   const mv = maxMove(box0, box1, ['data-workspace-header', 'data-sales-tabrow', 'data-sales-subviews', 'data-sales-frame']);

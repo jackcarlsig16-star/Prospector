@@ -33,9 +33,17 @@ export function normName(s) {
 }
 const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const hasWords = (inner, outer) => new RegExp(`(^| )${escape(inner)}( |$)`).test(outer);
+// FIX dupe-generic-words-v1 - words that name nothing on their own: a stored row called "Enterprise" must not
+// flag every pasted company with that word. REVISABLE list; 'insurance', 'financial', 'bank', 'health' are
+// deliberately not here, they tell companies in this pipeline apart.
+export const GENERIC_WORDS = new Set(['company', 'companies', 'group', 'holdings', 'enterprise', 'enterprises',
+  'international', 'global', 'national', 'worldwide', 'services', 'solutions', 'partners', 'industries', 'systems',
+  'technologies', 'associates', 'brands', 'america', 'american', 'usa', 'us', 'of', 'and', 'the']);
+const meaningful = n => n.split(' ').some(w => w && !GENERIC_WORDS.has(w));
 
 // Exact = same normalized name or the same with spaces removed ("Perk Spot"
-// = PerkSpot). Partial = one name is a whole-word part of the other.
+// = PerkSpot). Partial = one name is a whole-word part of the other, and a
+// partial needs at least one non-generic word on the contained side.
 export function nameMatches(name, rows, key, partial) {
   const n = normName(name);
   if (n.length < 2) return [];
@@ -43,7 +51,7 @@ export function nameMatches(name, rows, key, partial) {
   return rows.filter(r => {
     const rn = normName(r[key]);
     if (!partial) return rn === n || rn.replace(/ /g, '') === tight;
-    return rn.length >= 4 && n.length >= 4 && (hasWords(rn, n) || hasWords(n, rn));
+    return rn.length >= 4 && n.length >= 4 && ((hasWords(rn, n) && meaningful(rn)) || (hasWords(n, rn) && meaningful(n)));
   });
 }
 

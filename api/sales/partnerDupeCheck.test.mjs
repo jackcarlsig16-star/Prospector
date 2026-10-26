@@ -89,6 +89,11 @@ test('partial: whole-word overlap is a warning list, never repeats an exact hit,
   assert.equal(findDupes({ name: 'Fundrise' }, ctx).partial.length, 0);
   const many = { ...ctx, targets: Array.from({ length: 9 }, (_, i) => ({ id: `t${i}`, name: `Acme Holdings ${i}`, status: 'proposed' })) };
   assert.equal(findDupes({ name: 'Acme Holdings' }, many).partial.length, MAX_PARTIAL);
+  // FIX dupe-generic-words: an Apollo-only account named just "Enterprise" is not a warning for Hewlett Packard Enterprise.
+  const generic = { ...ctx, companies: [...ctx.companies, { account_id: 'a-ent', name: 'Enterprise' }] };
+  assert.deepEqual(findDupes({ name: 'Hewlett Packard Enterprise' }, generic), { exact: [], partial: [] });
+  assert.deepEqual(ids(findDupes({ name: 'Gallagher Bassett' }, generic).partial), [`partner:${P.gal}`]);
+  assert.equal(findDupes({ name: 'Enterprise' }, generic).exact[0].id, 'a-ent', 'exact still finds the row itself');
 });
 
 const res = () => ({ code: 200, body: null, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; } });

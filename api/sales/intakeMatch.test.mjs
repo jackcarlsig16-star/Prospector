@@ -28,6 +28,16 @@ test('names: case, punctuation, brackets, spacing ("Perk Spot") and suffixes all
   assert.equal(findByName('Hilton Grand Vacations', ctx.companies, 'name', false), null);
 });
 
+test('FIX dupe-generic-words: a stored row that is only a generic word ("Enterprise") never partial-matches; a real word still does', () => {
+  const companies = [...ctx.companies, { account_id: 'a-ent', name: 'Enterprise' }, { account_id: 'a-grp', name: 'Enterprise Group Holdings' }];
+  assert.equal(findByName('Hewlett Packard Enterprise', companies, 'name', true), null);
+  assert.equal(resolveCompany('Hewlett Packard Enterprise', { ...ctx, companies }), null);
+  assert.equal(findByName('Enterprise Group', companies, 'name', true), null, 'two all-generic names have nothing to protect');
+  assert.equal(findByName('Enterprise', companies, 'name', false).account_id, 'a-ent', 'exact is untouched');
+  assert.equal(findByName('Alliant', ctx.partners, 'name', true).id, 'p-all');
+  assert.equal(findByName('Marriott', ctx.companies, 'name', true).account_id, 'a-mar');
+});
+
 test('matching order: partner, then pipeline employer, then Apollo-only account, then target; exact beats partial', () => {
   assert.equal(resolveCompany('24 Hour Fitness', ctx).type, 'opportunity');
   assert.equal(resolveCompany('Solidcore', ctx).type, 'account');
