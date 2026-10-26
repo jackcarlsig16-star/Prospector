@@ -380,6 +380,33 @@ app.post('/api/sfdc/production-request',  esHandler('./api/sfdc/production-reque
 app.post('/api/sfdc/update-opp',          esHandler('./api/sfdc/update-opp.js'));
 app.post('/api/gmail/draft',              esHandler('./api/gmail/draft.js'));
 app.get('/api/hk/:businessId/shell',      esHandler('./api/hk/shell.js'));
+// hkos-data-foundation-v1 D4 - brands / contacts / sponsors / review / activity / settings / prefs (hkGate already ran:
+// viewer = GET, member = writes; owner-role checks live inside the routes). brands/check before brands/:id on purpose.
+const hkRoute = (file, name) => async (req, res) => {
+  try { const mod = await import(file); return mod[name](req, res); }
+  catch (err) { console.error(`[hk/${name}] handler error:`, err); res.status(500).json({ error: err.message }); }
+};
+const HK_BRANDS = './api/hk/brandsRoutes.js', HK_OPS = './api/hk/opsRoutes.js';
+app.get('/api/hk/:businessId/brands',                         hkRoute(HK_BRANDS, 'listBrandsRoute'));
+app.post('/api/hk/:businessId/brands/check',                  hkRoute(HK_BRANDS, 'checkBrandsRoute'));
+app.post('/api/hk/:businessId/brands',                        hkRoute(HK_BRANDS, 'createBrandRoute'));
+app.get('/api/hk/:businessId/brands/:id',                     hkRoute(HK_BRANDS, 'getBrandRoute'));
+app.patch('/api/hk/:businessId/brands/:id',                   hkRoute(HK_BRANDS, 'patchBrandRoute'));
+app.get('/api/hk/:businessId/brands/:id/contacts',            hkRoute(HK_BRANDS, 'listContactsRoute'));
+app.post('/api/hk/:businessId/brands/:id/contacts',           hkRoute(HK_BRANDS, 'createContactRoute'));
+app.patch('/api/hk/:businessId/brands/:id/contacts/:cid',     hkRoute(HK_BRANDS, 'patchContactRoute'));
+app.get('/api/hk/:businessId/sponsors',                       hkRoute(HK_OPS, 'sponsorsRoute'));
+app.post('/api/hk/:businessId/sponsors/:brandId/periods',     hkRoute(HK_OPS, 'addPeriodRoute'));
+app.delete('/api/hk/:businessId/sponsors/:brandId/periods/:pid', hkRoute(HK_OPS, 'deletePeriodRoute'));
+app.get('/api/hk/:businessId/review/duplicates',              hkRoute(HK_OPS, 'duplicatesRoute'));
+app.post('/api/hk/:businessId/review/duplicates/decide',      hkRoute(HK_OPS, 'decideDuplicateRoute'));
+app.get('/api/hk/:businessId/review/warnings',                hkRoute(HK_OPS, 'warningsRoute'));
+app.get('/api/hk/:businessId/activity',                       hkRoute(HK_OPS, 'activityRoute'));
+app.get('/api/hk/:businessId/settings',                       hkRoute(HK_OPS, 'getSettingsRoute'));
+app.patch('/api/hk/:businessId/settings',                     hkRoute(HK_OPS, 'patchSettingsRoute'));
+app.post('/api/hk/:businessId/settings/confirm-stats',        hkRoute(HK_OPS, 'confirmStatsRoute'));
+app.get('/api/hk/:businessId/me/prefs',                       hkRoute(HK_OPS, 'getPrefsRoute'));
+app.patch('/api/hk/:businessId/me/prefs',                     hkRoute(HK_OPS, 'patchPrefsRoute'));
 app.post('/api/hunter/find',              esHandler('./api/hunter/find.js'));
 app.post('/api/hunter/domain-search',     esHandler('./api/hunter/domain-search.js'));
 app.get('/api/hunter/account',            esHandler('./api/hunter/account.js'));

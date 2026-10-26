@@ -24,3 +24,14 @@ test('no send path in api/, src/ or server.js', () => {
   }
   assert.deepEqual(hits, []);
 });
+
+// hkos-data-foundation-v1 Stage 2 - the scan walks api/hk/** (the new route files included), and hk_replies.from_email
+// is named nowhere in api/hk route code: the one serializer (hkShared.replyRow) picks a column list that leaves it out,
+// so no handler can add it back by accident.
+test('api/hk/** is in the walk and never names from_email outside a comment', () => {
+  const hk = files(path.join(ROOT, 'api', 'hk')).filter(f => !/\.test\.mjs$|testing\.mjs$/.test(f));
+  assert.ok(hk.length >= 6, `hk files walked: ${hk.length}`);
+  const hits = [];
+  for (const f of hk) fs.readFileSync(f, 'utf8').split('\n').forEach((line, i) => { if (line.includes('from' + '_email') && !/^\s*\/\//.test(line)) hits.push(`${path.relative(ROOT, f)}:${i + 1}`); });
+  assert.deepEqual(hits, []);
+});

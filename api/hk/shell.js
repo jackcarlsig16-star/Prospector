@@ -9,20 +9,25 @@ const PALETTE_SIZE = 4;
 
 const firstWord = s => (s && !s.includes('@') ? s.trim().split(/\s+/)[0] || null : null);
 
-// Palette slots and list order: role (owner first), then signed up before invited, then join date - so the owner who
-// works in the shell gets slot 1 (green) even when an invited member's row is older. Until a stored per-member color
-// exists (hkos-data-foundation-v1), two signed-in owners fall back to join date and could swap.
+// List order: role (owner first), then signed up before invited, then join date. Palette slot: hk_member_prefs.avatar_slot
+// when the member has one (hkos-data-foundation-v1); members without a stored slot take the free slots in list order,
+// so the order-only fallback (hkos-avatar-order-v1) still holds for a workspace with no prefs rows.
 const rank = m => { const i = ROLES.indexOf(m.role); return i < 0 ? ROLES.length : i; };
 const byPaletteOrder = (a, b) => rank(a) - rank(b) || !!b.user_id - !!a.user_id || String(a.created_at).localeCompare(String(b.created_at));
 
 // rows: business_members (any order), each with created_at and profile { display_name } or null.
-export function shellPayload(rows, auth, businessId) {
-  const members = [...rows].sort(byPaletteOrder).map((m, i) => ({
+// prefs: hk_member_prefs rows [{ user_id, avatar_slot }] for the workspace.
+export function shellPayload(rows, auth, businessId, prefs = []) {
+  const stored = new Map(prefs.filter(p => p.user_id && p.avatar_slot).map(p => [p.user_id, p.avatar_slot]));
+  const taken = new Set(stored.values());
+  let next = 0;
+  const freeSlot = () => { for (let k = 0; k < PALETTE_SIZE; k++) { const slot = (next++ % PALETTE_SIZE) + 1; if (!taken.has(slot)) return slot; } return (next++ % PALETTE_SIZE) + 1; };
+  const members = [...rows].sort(byPaletteOrder).map(m => ({
     user_id: m.user_id || null,
     first_name: firstWord(m.profile?.display_name) || firstWord(m.name) || 'Invited member',
     role: m.role,
     signed_up: !!m.user_id,
-    palette_index: (i % PALETTE_SIZE) + 1,
+    palette_index: (m.user_id && stored.get(m.user_id)) || freeSlot(),
   }));
   const mine = members.find(m => m.user_id === auth.user.id);
   const role = auth.roles.get(businessId) || (auth.isPlatformOwner ? 'owner' : 'viewer');
@@ -36,9 +41,24 @@ export function shellPayload(rows, auth, businessId) {
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
   const { businessId } = req.params;
-  const { data, error } = await getServiceSupabase().from('business_members')
+  const supabase = getServiceSupabase();
+  const { data, error } = await supabase.from('business_members')
     .select('user_id,name,role,created_at,profile:profiles!business_members_user_id_fkey(display_name)')
     .eq('business_id', businessId).order('created_at');
   if (error) return res.status(500).json({ error: error.message });
-  res.status(200).json(shellPayload(data, req.auth, businessId));
+  const prefs = await memberPrefs(supabase, businessId, data, req.auth.user.id);
+  res.status(200).json(shellPayload(data, req.auth, businessId, prefs));
+}
+
+// The caller's first visit seeds their prefs row with the lowest free slot (the migration seeded the owner only; the
+// second member has no profile until they sign in). A lost race on the slot is harmless - the next read sees the row.
+export async function memberPrefs(supabase, businessId, members, userId) {
+  const { data: prefs, error } = await supabase.from('hk_member_prefs').select('user_id, avatar_slot, owner_filter').eq('business_id', businessId);
+  if (error) throw new Error(error.message);
+  const rows = prefs || [];
+  if (!members.some(m => m.user_id === userId) || rows.some(p => p.user_id === userId)) return rows;
+  const taken = new Set(rows.map(p => p.avatar_slot));
+  const slot = [1, 2, 3, 4].find(s => !taken.has(s)) || null;
+  const { data: created } = await supabase.from('hk_member_prefs').upsert({ business_id: businessId, user_id: userId, avatar_slot: slot }, { onConflict: 'business_id,user_id', ignoreDuplicates: true }).select();
+  return created?.length ? [...rows, ...created] : rows;
 }
