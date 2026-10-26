@@ -51,7 +51,7 @@ export function SideNav({ screens, current, onGo, owner }) {
   );
 }
 
-export function WorkspaceMenu({ business, businesses, onSelectBusiness, onOldScreens, onAllWorkspaces }) {
+export function WorkspaceMenu({ business, businesses, onSelectBusiness, onAllWorkspaces }) {
   const [open, setOpen] = useState(false);
   const close = React.useCallback(() => setOpen(false), []);
   const ref = useDismiss(open, close);
@@ -71,7 +71,6 @@ export function WorkspaceMenu({ business, businesses, onSelectBusiness, onOldScr
             <button key={b.id} type="button" role="menuitem" className="hk-btn hk-menu__item" onClick={pick(() => onSelectBusiness(b))}>{b.name}</button>
           ))}
           {others.length > 0 && <div className="hk-menu__rule" role="separator" />}
-          <button type="button" role="menuitem" className="hk-btn hk-menu__item" onClick={pick(onOldScreens)}>Old {business.name} screens</button>
           <button type="button" role="menuitem" className="hk-btn hk-menu__item" onClick={pick(onAllWorkspaces)}>All workspaces</button>
         </div>
       )}

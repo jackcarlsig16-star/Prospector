@@ -17,7 +17,16 @@ test('home: hk_sales -> the Sales OS shell; goals_sales result unchanged; neithe
   expect(homePage({ id: 'h1', features: { hk_sales: true } })).toBe('hk-sales');
   expect(homePage({ id: 'h2', features: { goals_sales: true, hk_sales: true } })).toBe('sales-analytics');
   expect(homePage({ id: 'h3', features: { hk_sales: false } })).toBe('command-center');
-  expect(workspaceNav({ id: 'h1', features: { hk_sales: true } }).map(n => n.id)).toEqual(['command-center', 'hk-sales', 'accounts', 'projects', 'overview', 'ideas', 'tools']);
+});
+
+// hk-legacy-cleanup-v1 Stage 2 (R2) - an hk_sales workspace shows the Sales OS only; the six legacy pages hide
+// there (hiddenWith as a string or an array) and every other workspace is unchanged.
+test('side panel: hk_sales -> exactly [hk-sales]; hk_sales off or absent -> the legacy pages are back', () => {
+  expect(workspaceNav({ id: 'h1', features: { hk_sales: true } }).map(n => n.id)).toEqual(['hk-sales']);
+  expect(workspaceNav({ id: 'h2', features: { goals_sales: true, hk_sales: true } }).map(n => n.id)).toEqual(['sales-analytics', 'hk-sales']);
+  expect(workspaceNav({ id: 'h3', features: { hk_sales: false } }).map(n => n.id)).toEqual(['command-center', 'accounts', 'projects', 'overview', 'ideas', 'tools']);
+  expect(workspaceNav(sales).map(n => n.id)).toEqual(['sales-analytics', 'accounts', 'projects', 'overview', 'ideas', 'tools']);
+  expect(workspaceNav(plain).map(n => n.id)).toEqual(['command-center', 'accounts', 'projects', 'overview', 'ideas', 'tools']);
 });
 
 test('side panel: Command Center off and Sales & Marketing first for goals_sales; unchanged without it; empty with no workspace', () => {

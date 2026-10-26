@@ -4,8 +4,8 @@
 //  2 390x844: 5-tab bottom bar, More sheet lists the rest, no horizontal scroll, targets >= 44 px
 //  3 owner toggle = Me / <other signed-in member> / All, switches, survives reload (a second signed-in member is
 //    injected into the /shell response, since HumanKind's second member hasn't signed in)
-//  4 workspace pill -> HomeLover lands on Sales & Marketing Actions; "Old HumanKind screens" -> Prospector shell with a
-//    "Sales OS" item that returns
+//  4 workspace pill -> HomeLover lands on Sales & Marketing Actions; the menu has NO "Old ... screens" item
+//    (hk-legacy-cleanup-v1 Stage 2, R2: no path back to the legacy pages from the shell)
 //  5 #hk/settings/members deep link after reload; Back/Forward between screens
 //  6 Cmd+K and Ctrl+K palette: filter, jump, Esc; after leaving the shell Cmd+K opens nothing
 //  7 contrast: every text pair in the shell >= 4.5 (>= 3 for large), icons >= 3; prints the pair table
@@ -204,13 +204,10 @@ try {
   const hkFonts = async () => D.page.evaluate(() => [...document.querySelectorAll('body *')].filter(el => !el.closest('.hk-theme') && /Fredoka|Jost/.test(getComputedStyle(el).fontFamily)).length);
   let fontLeaks = await hkFonts();
   await D.page.getByLabel('Workspace').selectOption({ label: 'HumanKind' }); await shellReady(D.page);
-  await D.page.locator('[data-hk-workspace]').click(); await D.page.getByRole('menuitem', { name: 'Old HumanKind screens' }).click();
-  await D.page.locator('#main-content').waitFor({ timeout: 20000 }); await D.page.waitForTimeout(800);
-  fontLeaks += await hkFonts();
-  const salesOsItem = D.page.locator('#root').getByRole('button', { name: 'Sales OS', exact: true });
-  const hasItem = await salesOsItem.count();
-  await salesOsItem.first().click(); await shellReady(D.page);
-  ok('4 Old HumanKind screens -> Prospector shell with a Sales OS item that returns', hasItem === 1 && (await D.page.locator('[data-hk-shell]').count()) === 1);
+  await D.page.locator('[data-hk-workspace]').click(); await D.page.waitForTimeout(250);
+  const oldItems = await D.page.getByRole('menuitem', { name: /^Old .* screens$/ }).count();
+  await D.page.keyboard.press('Escape'); await D.page.waitForTimeout(250);
+  ok('4 (R2) the workspace menu has no "Old ... screens" item; the shell stays', oldItems === 0 && (await D.page.locator('[data-hk-shell]').count()) === 1);
   await D.page.locator('[data-hk-avatar]').click(); await D.page.getByRole('menuitem', { name: 'Back to Prospector' }).click();
   await D.page.getByLabel('Workspace').waitFor({ timeout: 20000 }); await D.page.waitForTimeout(500);
   fontLeaks += await hkFonts();

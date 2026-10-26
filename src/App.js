@@ -1295,7 +1295,7 @@ export default function App({ me }) {
   // Prospector shell (no Sidebar, TaskDrawer, DailyDigest, BugReporter or BadgeToast). Below every hook on purpose.
   if (page==="business-detail"&&activeBusiness?.features?.hk_sales&&businessPage==="hk-sales") return (
     <HkShell business={activeBusiness} businesses={myBusinesses} userId={me.profile.id} compact={compact}
-      onSelectBusiness={selectBusiness} onOldScreens={()=>setBusinessPage('accounts')} onAllWorkspaces={()=>navTo('businesses-home')}
+      onSelectBusiness={selectBusiness} onAllWorkspaces={()=>navTo('businesses-home')}
       onOpenAdmin={()=>setPage('admin')} />
   );
 

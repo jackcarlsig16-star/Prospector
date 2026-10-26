@@ -15,7 +15,7 @@ function readOwner(userId) {
   try { return localStorage.getItem(ownerKey(userId)) || 'me'; } catch { return 'me'; }
 }
 
-export default function HkShell({ business, businesses, userId, compact, onSelectBusiness, onOldScreens, onAllWorkspaces, onOpenAdmin }) {
+export default function HkShell({ business, businesses, userId, compact, onSelectBusiness, onAllWorkspaces, onOpenAdmin }) {
   const [nav, setNav] = useState(() => parseHkHash(window.location.hash) || { screen: 'today', section: null });
   const [shell, setShell] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -116,7 +116,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
           <SideNav screens={screens} current={current.id} onGo={go} owner={ownerToggle} />
           <div className="hk-main">
             <header className="hk-top">
-              <WorkspaceMenu business={business} businesses={businesses} onSelectBusiness={onSelectBusiness} onOldScreens={onOldScreens} onAllWorkspaces={onAllWorkspaces} />
+              <WorkspaceMenu business={business} businesses={businesses} onSelectBusiness={onSelectBusiness} onAllWorkspaces={onAllWorkspaces} />
               <SearchPill onOpen={() => setPaletteOpen(true)} />
               <span className="hk-spacer" />
               {avatar}
