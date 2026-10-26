@@ -28,6 +28,10 @@ CREATE INDEX IF NOT EXISTS legacy_archive_business_source_idx ON public.legacy_a
 ALTER TABLE public.legacy_archive ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.legacy_archive FROM anon, authenticated;
 
+-- Session-temporary assert helper (PL/pgSQL has no local procedures); it vanishes with the SQL editor session.
+CREATE OR REPLACE FUNCTION pg_temp.expect(what text, got int, want int) RETURNS void LANGUAGE plpgsql AS $f$
+BEGIN IF got <> want THEN RAISE EXCEPTION '% = % (expected %) - nothing changed', what, got, want; END IF; END $f$;
+
 DO $$
 DECLARE
   hk   CONSTANT uuid := '981b790c-a3b0-4265-b32e-1f701d5731ff';
@@ -35,91 +39,89 @@ DECLARE
   who  CONSTANT text := 'hk-legacy-cleanup-v1 Stage 3';
   hl   CONSTANT uuid := (SELECT id FROM public.businesses WHERE name = 'HomeLover' LIMIT 1);
   n int; hl_accounts int; hl_lists int;
-  PROCEDURE expect(what text, got int, want int) LANGUAGE plpgsql AS $p$
-  BEGIN IF got <> want THEN RAISE EXCEPTION '% = % (expected %) - nothing changed', what, got, want; END IF; END $p$;
 BEGIN
   -- Guards: the archive is empty for HumanKind, the live counts are exactly the audited ones.
-  SELECT count(*) INTO n FROM public.legacy_archive WHERE business_id = hk;                       CALL expect('legacy_archive rows for HumanKind', n, 0);
-  SELECT count(*) INTO hl_accounts FROM public.accounts WHERE business_id = hl;                   CALL expect('HomeLover accounts', hl_accounts, 66);
-  SELECT count(*) INTO hl_lists FROM public.lists WHERE business_id = hl;                         CALL expect('HomeLover lists', hl_lists, 7);
-  SELECT count(*) INTO n FROM public.accounts WHERE business_id = hk AND account_kind = 'influencer';  CALL expect('influencer accounts', n, 26);
-  SELECT count(*) INTO n FROM public.accounts WHERE business_id = hk AND account_kind = 'business';    CALL expect('business accounts (deferred)', n, 35);
-  SELECT count(*) INTO n FROM public.accounts WHERE business_id = hk;                             CALL expect('accounts total', n, 61);
+  SELECT count(*) INTO n FROM public.legacy_archive WHERE business_id = hk;                       PERFORM pg_temp.expect('legacy_archive rows for HumanKind', n, 0);
+  SELECT count(*) INTO hl_accounts FROM public.accounts WHERE business_id = hl;                   PERFORM pg_temp.expect('HomeLover accounts', hl_accounts, 66);
+  SELECT count(*) INTO hl_lists FROM public.lists WHERE business_id = hl;                         PERFORM pg_temp.expect('HomeLover lists', hl_lists, 7);
+  SELECT count(*) INTO n FROM public.accounts WHERE business_id = hk AND account_kind = 'influencer';  PERFORM pg_temp.expect('influencer accounts', n, 26);
+  SELECT count(*) INTO n FROM public.accounts WHERE business_id = hk AND account_kind = 'business';    PERFORM pg_temp.expect('business accounts (deferred)', n, 35);
+  SELECT count(*) INTO n FROM public.accounts WHERE business_id = hk;                             PERFORM pg_temp.expect('accounts total', n, 61);
   SELECT count(*) INTO n FROM public.account_influencer_details d JOIN public.accounts a ON a.id = d.account_id
-    WHERE a.business_id = hk;                                                                     CALL expect('account_influencer_details', n, 26);
+    WHERE a.business_id = hk;                                                                     PERFORM pg_temp.expect('account_influencer_details', n, 26);
   SELECT count(*) INTO n FROM public.account_business_details d JOIN public.accounts a ON a.id = d.account_id
-    WHERE a.business_id = hk AND a.account_kind = 'influencer';                                   CALL expect('business_details on influencer accounts', n, 0);
+    WHERE a.business_id = hk AND a.account_kind = 'influencer';                                   PERFORM pg_temp.expect('business_details on influencer accounts', n, 0);
   SELECT count(*) INTO n FROM public.account_business_details d JOIN public.accounts a ON a.id = d.account_id
-    WHERE a.business_id = hk;                                                                     CALL expect('account_business_details (deferred)', n, 25);
+    WHERE a.business_id = hk;                                                                     PERFORM pg_temp.expect('account_business_details (deferred)', n, 25);
   SELECT count(*) INTO n FROM public.account_lists l JOIN public.accounts a ON a.id = l.account_id
-    WHERE a.business_id = hk AND a.account_kind = 'influencer';                                   CALL expect('influencer account_lists', n, 2);
+    WHERE a.business_id = hk AND a.account_kind = 'influencer';                                   PERFORM pg_temp.expect('influencer account_lists', n, 2);
   SELECT count(*) INTO n FROM public.account_lists l JOIN public.accounts a ON a.id = l.account_id
-    WHERE a.business_id = hk AND a.account_kind = 'business';                                     CALL expect('business account_lists (deferred)', n, 42);
-  SELECT count(*) INTO n FROM public.business_intel_entries WHERE business_id = hk;              CALL expect('business_intel_entries', n, 10);
+    WHERE a.business_id = hk AND a.account_kind = 'business';                                     PERFORM pg_temp.expect('business account_lists (deferred)', n, 42);
+  SELECT count(*) INTO n FROM public.business_intel_entries WHERE business_id = hk;              PERFORM pg_temp.expect('business_intel_entries', n, 10);
   SELECT count(*) INTO n FROM public.business_intel_entries WHERE business_id = hk AND id = dump
-    AND source_type = 'note' AND length(content) > 70000;                                        CALL expect('the mail-thread dump row', n, 1);
+    AND source_type = 'note' AND length(content) > 70000;                                        PERFORM pg_temp.expect('the mail-thread dump row', n, 1);
   SELECT count(*) INTO n FROM public.zoom_webhook_events WHERE call_log_entry_id IN
-    (SELECT id FROM public.business_intel_entries WHERE business_id = hk);                        CALL expect('zoom events pointing at HK intel', n, 0);
-  SELECT count(*) INTO n FROM public.business_profiles WHERE business_id = hk;                   CALL expect('business_profiles', n, 1);
-  SELECT count(*) INTO n FROM public.lists WHERE business_id = hk;                               CALL expect('lists (deferred)', n, 4);
-  SELECT count(*) INTO n FROM public.projects WHERE business_id = hk;                            CALL expect('projects (deferred)', n, 3);
+    (SELECT id FROM public.business_intel_entries WHERE business_id = hk);                        PERFORM pg_temp.expect('zoom events pointing at HK intel', n, 0);
+  SELECT count(*) INTO n FROM public.business_profiles WHERE business_id = hk;                   PERFORM pg_temp.expect('business_profiles', n, 1);
+  SELECT count(*) INTO n FROM public.lists WHERE business_id = hk;                               PERFORM pg_temp.expect('lists (deferred)', n, 4);
+  SELECT count(*) INTO n FROM public.projects WHERE business_id = hk;                            PERFORM pg_temp.expect('projects (deferred)', n, 3);
   SELECT count(*) INTO n FROM public.prospects WHERE project_id IN (SELECT id FROM public.projects WHERE business_id = hk);
-                                                                                                 CALL expect('prospects (deferred)', n, 14);
+                                                                                                 PERFORM pg_temp.expect('prospects (deferred)', n, 14);
   SELECT count(*) INTO n FROM public.member_list_permissions WHERE list_id IN (SELECT id FROM public.lists WHERE business_id = hk);
-                                                                                                 CALL expect('member_list_permissions (deferred)', n, 3);
+                                                                                                 PERFORM pg_temp.expect('member_list_permissions (deferred)', n, 3);
 
   -- Archive, child -> parent. Each INSERT's row count is asserted; nothing is deleted until every copy is in.
   INSERT INTO public.legacy_archive (business_id, source_table, source_id, row, archived_by)
     SELECT hk, 'account_lists', l.id::text, to_jsonb(l), who FROM public.account_lists l
     JOIN public.accounts a ON a.id = l.account_id WHERE a.business_id = hk AND a.account_kind = 'influencer';
-  GET DIAGNOSTICS n = ROW_COUNT;                                                                  CALL expect('archived account_lists', n, 2);
+  GET DIAGNOSTICS n = ROW_COUNT;                                                                  PERFORM pg_temp.expect('archived account_lists', n, 2);
   INSERT INTO public.legacy_archive (business_id, source_table, source_id, row, archived_by)
     SELECT hk, 'account_influencer_details', d.id::text, to_jsonb(d), who FROM public.account_influencer_details d
     JOIN public.accounts a ON a.id = d.account_id WHERE a.business_id = hk AND a.account_kind = 'influencer';
-  GET DIAGNOSTICS n = ROW_COUNT;                                                                  CALL expect('archived account_influencer_details', n, 26);
+  GET DIAGNOSTICS n = ROW_COUNT;                                                                  PERFORM pg_temp.expect('archived account_influencer_details', n, 26);
   INSERT INTO public.legacy_archive (business_id, source_table, source_id, row, archived_by)
     SELECT hk, 'accounts', a.id, to_jsonb(a), who FROM public.accounts a WHERE a.business_id = hk AND a.account_kind = 'influencer';
-  GET DIAGNOSTICS n = ROW_COUNT;                                                                  CALL expect('archived accounts', n, 26);
+  GET DIAGNOSTICS n = ROW_COUNT;                                                                  PERFORM pg_temp.expect('archived accounts', n, 26);
   INSERT INTO public.legacy_archive (business_id, source_table, source_id, row, archived_by)
     SELECT hk, 'business_intel_entries', e.id::text, to_jsonb(e), who FROM public.business_intel_entries e
     WHERE e.business_id = hk AND e.id <> dump;
-  GET DIAGNOSTICS n = ROW_COUNT;                                                                  CALL expect('archived business_intel_entries', n, 9);
+  GET DIAGNOSTICS n = ROW_COUNT;                                                                  PERFORM pg_temp.expect('archived business_intel_entries', n, 9);
   INSERT INTO public.legacy_archive (business_id, source_table, source_id, row, archived_by)
     SELECT hk, 'business_profiles', p.id::text, to_jsonb(p), who FROM public.business_profiles p WHERE p.business_id = hk;
-  GET DIAGNOSTICS n = ROW_COUNT;                                                                  CALL expect('archived business_profiles', n, 1);
+  GET DIAGNOSTICS n = ROW_COUNT;                                                                  PERFORM pg_temp.expect('archived business_profiles', n, 1);
 
   -- Delete the same rows, children first (explicit, so the CASCADE never does silent work).
   DELETE FROM public.account_lists l USING public.accounts a
     WHERE a.id = l.account_id AND a.business_id = hk AND a.account_kind = 'influencer';
-  GET DIAGNOSTICS n = ROW_COUNT;                                                                  CALL expect('deleted account_lists', n, 2);
+  GET DIAGNOSTICS n = ROW_COUNT;                                                                  PERFORM pg_temp.expect('deleted account_lists', n, 2);
   DELETE FROM public.account_influencer_details d USING public.accounts a
     WHERE a.id = d.account_id AND a.business_id = hk AND a.account_kind = 'influencer';
-  GET DIAGNOSTICS n = ROW_COUNT;                                                                  CALL expect('deleted account_influencer_details', n, 26);
+  GET DIAGNOSTICS n = ROW_COUNT;                                                                  PERFORM pg_temp.expect('deleted account_influencer_details', n, 26);
   DELETE FROM public.accounts WHERE business_id = hk AND account_kind = 'influencer';
-  GET DIAGNOSTICS n = ROW_COUNT;                                                                  CALL expect('deleted accounts', n, 26);
+  GET DIAGNOSTICS n = ROW_COUNT;                                                                  PERFORM pg_temp.expect('deleted accounts', n, 26);
   DELETE FROM public.business_intel_entries WHERE business_id = hk AND id <> dump;
-  GET DIAGNOSTICS n = ROW_COUNT;                                                                  CALL expect('deleted business_intel_entries (archived)', n, 9);
+  GET DIAGNOSTICS n = ROW_COUNT;                                                                  PERFORM pg_temp.expect('deleted business_intel_entries (archived)', n, 9);
   DELETE FROM public.business_intel_entries WHERE business_id = hk AND id = dump;                -- the one outright delete
-  GET DIAGNOSTICS n = ROW_COUNT;                                                                  CALL expect('deleted the dump', n, 1);
+  GET DIAGNOSTICS n = ROW_COUNT;                                                                  PERFORM pg_temp.expect('deleted the dump', n, 1);
   DELETE FROM public.business_profiles WHERE business_id = hk;
-  GET DIAGNOSTICS n = ROW_COUNT;                                                                  CALL expect('deleted business_profiles', n, 1);
+  GET DIAGNOSTICS n = ROW_COUNT;                                                                  PERFORM pg_temp.expect('deleted business_profiles', n, 1);
 
   -- After: the deferred set and every other workspace are exactly as before.
-  SELECT count(*) INTO n FROM public.legacy_archive WHERE business_id = hk;                       CALL expect('legacy_archive rows for HumanKind', n, 64);
-  SELECT count(*) INTO n FROM public.accounts WHERE business_id = hk;                             CALL expect('accounts left (all business)', n, 35);
+  SELECT count(*) INTO n FROM public.legacy_archive WHERE business_id = hk;                       PERFORM pg_temp.expect('legacy_archive rows for HumanKind', n, 64);
+  SELECT count(*) INTO n FROM public.accounts WHERE business_id = hk;                             PERFORM pg_temp.expect('accounts left (all business)', n, 35);
   SELECT count(*) INTO n FROM public.account_business_details d JOIN public.accounts a ON a.id = d.account_id
-    WHERE a.business_id = hk;                                                                     CALL expect('account_business_details left', n, 25);
+    WHERE a.business_id = hk;                                                                     PERFORM pg_temp.expect('account_business_details left', n, 25);
   SELECT count(*) INTO n FROM public.account_lists l JOIN public.accounts a ON a.id = l.account_id
-    WHERE a.business_id = hk;                                                                     CALL expect('account_lists left', n, 42);
-  SELECT count(*) INTO n FROM public.business_intel_entries WHERE business_id = hk;              CALL expect('business_intel_entries left', n, 0);
-  SELECT count(*) INTO n FROM public.lists WHERE business_id = hk;                               CALL expect('lists left', n, 4);
-  SELECT count(*) INTO n FROM public.projects WHERE business_id = hk;                            CALL expect('projects left', n, 3);
+    WHERE a.business_id = hk;                                                                     PERFORM pg_temp.expect('account_lists left', n, 42);
+  SELECT count(*) INTO n FROM public.business_intel_entries WHERE business_id = hk;              PERFORM pg_temp.expect('business_intel_entries left', n, 0);
+  SELECT count(*) INTO n FROM public.lists WHERE business_id = hk;                               PERFORM pg_temp.expect('lists left', n, 4);
+  SELECT count(*) INTO n FROM public.projects WHERE business_id = hk;                            PERFORM pg_temp.expect('projects left', n, 3);
   SELECT count(*) INTO n FROM public.prospects WHERE project_id IN (SELECT id FROM public.projects WHERE business_id = hk);
-                                                                                                 CALL expect('prospects left', n, 14);
+                                                                                                 PERFORM pg_temp.expect('prospects left', n, 14);
   SELECT count(*) INTO n FROM public.member_list_permissions WHERE list_id IN (SELECT id FROM public.lists WHERE business_id = hk);
-                                                                                                 CALL expect('member_list_permissions left', n, 3);
-  SELECT count(*) INTO n FROM public.accounts WHERE business_id = hl;                             CALL expect('HomeLover accounts after', n, hl_accounts);
-  SELECT count(*) INTO n FROM public.lists WHERE business_id = hl;                               CALL expect('HomeLover lists after', n, hl_lists);
+                                                                                                 PERFORM pg_temp.expect('member_list_permissions left', n, 3);
+  SELECT count(*) INTO n FROM public.accounts WHERE business_id = hl;                             PERFORM pg_temp.expect('HomeLover accounts after', n, hl_accounts);
+  SELECT count(*) INTO n FROM public.lists WHERE business_id = hl;                               PERFORM pg_temp.expect('HomeLover lists after', n, hl_lists);
 END $$;
 
 -- Proof - paste these rows back. Expect:

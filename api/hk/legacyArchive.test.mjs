@@ -24,16 +24,18 @@ test('legacy_archive: service-only table (RLS on, anon + authenticated revoked, 
 
 test('one DO block for HumanKind archives the five Stage 3 sources child -> parent with the literal counts, then deletes the same', () => {
   assert.equal((sql.match(/^DO \$\$/gm) || []).length, 1);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION pg_temp\.expect\(what text, got int, want int\) RETURNS void/);
+  assert.doesNotMatch(sql, /PROCEDURE expect/, 'PL\/pgSQL has no local procedures');
   assert.ok(sql.includes(`hk   CONSTANT uuid := '${HK}'`));
   const order = Object.keys(ARCHIVED).map(t => sql.indexOf(`SELECT hk, '${t}', `));
   assert.ok(order.every(i => i > 0), 'every source has an archive insert');
   assert.deepEqual(order, [...order].sort((a, b) => a - b), 'archive inserts run child -> parent');
   for (const [t, n] of Object.entries(ARCHIVED)) {
-    assert.ok(sql.includes(`CALL expect('archived ${t}', n, ${n});`), `archived ${t} = ${n}`);
-    assert.ok(new RegExp(`CALL expect\\('deleted ${t}[^']*', n, ${n}\\);`).test(sql), `deleted ${t} = ${n}`);
+    assert.ok(sql.includes(`PERFORM pg_temp.expect('archived ${t}', n, ${n});`), `archived ${t} = ${n}`);
+    assert.ok(new RegExp(`PERFORM pg_temp\\.expect\\('deleted ${t}[^']*', n, ${n}\\);`).test(sql), `deleted ${t} = ${n}`);
   }
-  assert.ok(sql.includes("CALL expect('legacy_archive rows for HumanKind', n, 0);"), 'empty-archive guard');
-  assert.ok(sql.includes("CALL expect('legacy_archive rows for HumanKind', n, 64);"), '2+26+26+9+1 after');
+  assert.ok(sql.includes("PERFORM pg_temp.expect('legacy_archive rows for HumanKind', n, 0);"), 'empty-archive guard');
+  assert.ok(sql.includes("PERFORM pg_temp.expect('legacy_archive rows for HumanKind', n, 64);"), '2+26+26+9+1 after');
   assert.match(sql, /DELETE FROM public\.accounts WHERE business_id = hk AND account_kind = 'influencer';/);
 });
 
@@ -41,7 +43,7 @@ test('the dump is the only row deleted without a copy; the archive select exclud
   assert.ok(sql.includes(`dump CONSTANT uuid := '${DUMP}'`));
   assert.match(sql, /WHERE e\.business_id = hk AND e\.id <> dump;/);
   assert.match(sql, /DELETE FROM public\.business_intel_entries WHERE business_id = hk AND id = dump;/);
-  assert.ok(sql.includes("CALL expect('deleted the dump', n, 1);"));
+  assert.ok(sql.includes("PERFORM pg_temp.expect('deleted the dump', n, 1);"));
   assert.ok(sql.includes("AND source_type = 'note' AND length(content) > 70000;"), 'the dump is re-identified by shape, not only by id');
 });
 
@@ -51,8 +53,8 @@ test('deferred set (R3) is asserted present and never deleted; HomeLover 66 / 7 
     assert.doesNotMatch(sql, new RegExp(`'${t}', [a-z]\\.id`), `no archive insert for ${t}`);
   }
   for (const line of ["'business accounts (deferred)', n, 35", "'account_business_details (deferred)', n, 25", "'business account_lists (deferred)', n, 42", "'lists (deferred)', n, 4", "'projects (deferred)', n, 3", "'prospects (deferred)', n, 14", "'member_list_permissions (deferred)', n, 3"]) assert.ok(sql.includes(line), line);
-  assert.ok(sql.includes("CALL expect('HomeLover accounts', hl_accounts, 66);"));
-  assert.ok(sql.includes("CALL expect('HomeLover lists', hl_lists, 7);"));
-  assert.ok(sql.includes("CALL expect('HomeLover accounts after', n, hl_accounts);"));
+  assert.ok(sql.includes("PERFORM pg_temp.expect('HomeLover accounts', hl_accounts, 66);"));
+  assert.ok(sql.includes("PERFORM pg_temp.expect('HomeLover lists', hl_lists, 7);"));
+  assert.ok(sql.includes("PERFORM pg_temp.expect('HomeLover accounts after', n, hl_accounts);"));
   assert.doesNotMatch(sql, /DELETE FROM public\.(auth_events|business_members|outreach_doctrine|voice_profiles|businesses)\b/);
 });
