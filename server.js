@@ -645,6 +645,9 @@ app.patch('/api/sales/:businessId/goals/cadences/:id', salesModuleRoute('./api/s
 app.delete('/api/sales/:businessId/goals/cadences/:id', salesModuleRoute('./api/sales/goalsRoutes.js', 'deleteCadenceRoute', 'goals/cadences/:id DELETE'));
 app.post('/api/sales/:businessId/goals/call-notes/extract', aiLimit, salesModuleRoute('./api/sales/callNotesRoutes.js', 'extractCallNotesRoute', 'goals/call-notes/extract POST'));
 app.post('/api/sales/:businessId/goals/call-notes', salesModuleRoute('./api/sales/callNotesRoutes.js', 'createFromCallNotesRoute', 'goals/call-notes POST'));
+// lead-upload-v1 - paste a lead list -> review -> File (companies + people + source).
+app.post('/api/sales/:businessId/goals/leads/extract', aiLimit, salesModuleRoute('./api/sales/leadUploadRoutes.js', 'extractLeadsRoute', 'goals/leads/extract'));
+app.post('/api/sales/:businessId/goals/leads', salesModuleRoute('./api/sales/leadUploadRoutes.js', 'fileLeadsRoute', 'goals/leads POST'));
 app.get('/api/sales/:businessId/goals/call-notes/:id', salesModuleRoute('./api/sales/callNotesRoutes.js', 'getCallNoteRoute', 'goals/call-notes/:id'));
 app.get('/api/sales/:businessId/goals/prospect-targets', salesModuleRoute('./api/sales/targetsRoutes.js', 'listProspectTargetsRoute', 'goals/prospect-targets'));
 app.post('/api/sales/:businessId/goals/prospect-targets/:id/promote', salesModuleRoute('./api/sales/targetsRoutes.js', 'promoteTargetRoute', 'goals/prospect-targets/:id/promote POST'));

@@ -12,3 +12,7 @@ export const hasPii = s => /@/.test(s) || (s.match(PHONE) || []).some(m => !ISO_
 const EMAIL = /[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}/gi;
 export const cleanText = (v, max) => (typeof v === 'string' ? scrubPhones(v.replace(EMAIL, '[email removed]'))
   .replace(/\s+/g, ' ').trim().slice(0, max) : '');
+// Pasted text before a model sees it: addresses and phones replaced, line breaks kept. A bare "@" stays
+// (Apollo writes "VP HR @Acme"), so this is not hasPii.
+export const scrubAddresses = s => scrubPhones(String(s).replace(EMAIL, '[email removed]'));
+export const hasAddress = s => new RegExp(EMAIL.source, 'i').test(String(s));
