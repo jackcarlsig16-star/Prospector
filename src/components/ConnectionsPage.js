@@ -6,8 +6,8 @@ import Card from '../ui/Card';
 import Button, { ButtonRow } from '../ui/Button';
 import StatusPill from '../ui/StatusPill';
 import SectionLabel from '../ui/SectionLabel';
-import { GOOGLE_FEATURE_LABELS, googleStatus, connectGoogle, disconnectGoogle } from '../utils/google';
 import { mailboxConnectionProblem } from '../utils/mailboxStatus';
+import TetherMap from './connections/TetherMap';
 
 // shell-facelift-v1 Stage 3 - user menu > Connections: the signed-in user's
 // Google + Microsoft grants (held server-side; the browser only sees which
@@ -31,35 +31,6 @@ export function connectMicrosoft() {
 export function describeRun(f) {
   const skipped = f.skipped_draft + f.skipped_internal + f.skipped_personal;
   return `${FOLDER_LABEL[f.folder]}: ${n(f.seen)} seen · ${n(f.stored)} kept · ${n(skipped)} skipped (${n(f.skipped_internal)} internal, ${n(f.skipped_personal)} personal, ${n(f.skipped_draft)} drafts)${f.capped ? ' · capped, continues next run' : ''}${f.error ? ` · error: ${f.error}` : ''}`;
-}
-
-function GoogleCard() {
-  const [status, setStatus] = useState(null);
-  useEffect(() => {
-    let live = true;
-    googleStatus().then(s => { if (live) setStatus(s); });
-    return () => { live = false; };
-  }, []);
-  const any = !!status?.features.length;
-  return (
-    <Card title="Google" subtitle={status === null ? '…' : any ? status.email : 'Not connected'}
-      actions={<StatusPill status={any ? 'ok' : 'off'}>{any ? 'Connected' : 'Not connected'}</StatusPill>}
-      footer={any && <ButtonRow align="start"><Button variant="tertiary" title="Google removes Prospector's access to all three at once" onClick={async () => { await disconnectGoogle(); setStatus({ email: null, features: [] }); }}>Disconnect Google</Button></ButtonRow>}>
-      <div style={{ display: 'grid', gap: KIT_SPACE[1] }}>
-        <div style={fine}>EACH FEATURE ASKS GOOGLE SEPARATELY, THE FIRST TIME YOU USE IT</div>
-        {Object.entries(GOOGLE_FEATURE_LABELS).map(([feature, label]) => {
-          const on = !!status?.features.includes(feature);
-          return (
-            <div key={feature} style={row}>
-              <span style={{ ...KIT_TYPE.body, color: ui.text, flex: 1, minWidth: 120 }}>{label}</span>
-              <StatusPill status={on ? 'ok' : 'off'}>{on ? 'Connected' : 'Not connected'}</StatusPill>
-              {!on && <Button onClick={() => connectGoogle(feature)} disabled={status === null}>Connect {label} →</Button>}
-            </div>
-          );
-        })}
-      </div>
-    </Card>
-  );
 }
 
 function MicrosoftCard({ result }) {
@@ -220,9 +191,9 @@ function ApolloCard({ businesses }) {
 export default function ConnectionsPage({ businesses, microsoftResult }) {
   return (
     <div style={{ maxWidth: KIT_MAX_WIDTH, margin: '0 auto', padding: `${KIT_SPACE[4]}px 0`, minWidth: 0, ...KIT_TYPE.body, color: ui.text }}>
-      <PageHeader title="Connections" subtitle="Your Google and Microsoft access, and the Apollo mailboxes of your sales workspaces" />
+      <PageHeader title="Connections" subtitle="Every mailbox you connected, and the exact workspace it works for. A line means that workspace uses that mailbox. No line, no access." />
       <div data-connections-grid style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: KIT_SPACE[3], alignItems: 'start' }}>
-        <div data-provider="google"><GoogleCard /></div>
+        <div data-provider="google" style={{ gridColumn: '1 / -1' }}><TetherMap businesses={businesses} /></div>
         <div data-provider="microsoft"><MicrosoftCard result={microsoftResult} /></div>
         <div data-provider="apollo"><ApolloCard businesses={businesses} /></div>
       </div>

@@ -62,23 +62,29 @@ test('not connected: no Outlook block, no sync-summary call, Connect Microsoft',
   expect(calls).not.toContain('/api/microsoft/sync-summary');
 });
 
-test('Google: one row per feature, Connect only for the ungranted ones (same connect route per feature), Disconnect Google clears all three', async () => {
-  const calls = [];
+test('Google (mailbox-connections-v1 REV2): the tether map replaces the card - own accounts with Default, workspaces with Link a mailbox, the connect-another URL carries account=new', async () => {
   const assign = jest.fn();
   delete window.location; window.location = { pathname: '/', search: '', assign };
-  global.fetch = (url, init) => { calls.push(`${init?.method || 'GET'} ${url}`); return url === '/api/google/status' ? json(200, { email: 'jack@homelover.ai', features: ['calendar'] }) : url === '/api/google/disconnect' ? json(200, {}) : json(409, {}); };
-  page();
-  await screen.findByText('jack@homelover.ai');
-  expect(screen.getByRole('button', { name: 'Connect Gmail →' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Connect Google Slides →' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Connect Google Calendar →' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Connect Gmail →' }));
-  expect(assign).toHaveBeenCalledWith('/api/google/connect?feature=gmail&return=%2F');
-  fireEvent.click(screen.getByRole('button', { name: 'Disconnect Google' }));
-  await screen.findByRole('button', { name: 'Connect Google Calendar →' });
-  expect(calls).toContain('POST /api/google/disconnect');
-  expect(screen.queryByRole('button', { name: 'Disconnect Google' })).toBeNull();
+  const HK = '981b790c-a3b0-4265-b32e-1f701d5731ff';
+  const mailboxes = { accounts: [{ id: '11111111-1111-4111-8111-111111111111', provider: 'google', email: 'jack.personal@example.test', is_default: true, features: ['gmail', 'calendar'], state: 'ok', error_at: null, last_used_at: null, linked_business_ids: [] }], microsoft: null, apollo: [], workspaces: [{ id: HK, name: 'HumanKind', color: '#22c55e', role: 'owner', google_link: null, microsoft_derived: [], apollo_derived: false }] };
+  const calls = [];
+  global.fetch = (url, init) => { calls.push(`${init?.method || 'GET'} ${url}`); return url === '/api/mailboxes' ? json(200, mailboxes) : url === '/api/microsoft/status' ? json(200, { ...connected, email: null, scopes: [] }) : json(404, {}); };
+  page({ businesses: [{ id: HK, name: 'HumanKind', features: { hk_sales: true } }] });
+  await screen.findByText('jack.personal@example.test');
+  expect(screen.getByText('Default')).toBeInTheDocument();
+  expect(screen.getByText('Personal tools')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Link a mailbox' })).toBeInTheDocument();
+  expect(screen.getByText(/Every mailbox you connected, and the exact workspace it works for/)).toBeInTheDocument();
+  expect(calls).not.toContain('GET /api/google/status');
+  fireEvent.click(screen.getByRole('button', { name: '+ Connect another Google account' }));
+  expect(assign).toHaveBeenCalledWith('/api/google/connect?feature=gmail&return=%2F&account=new');
+  fireEvent.click(screen.getByRole('button', { name: 'Link a mailbox' }));
+  await screen.findByText('Which mailbox should HumanKind use?');
+  expect(screen.getByText(/Your default account\. HumanKind drafts would land in your personal Drafts\./)).toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole('button', { name: '+ Connect another Google account' }).at(-1));
+  expect(assign).toHaveBeenLastCalledWith(`/api/google/connect?feature=gmail&return=%2F&account=new&business=${HK}&purposes=drafts%2Cinbox`);
 });
+
 
 test('Apollo: mailboxes + last sync per sales workspace from the snapshot routes, read-only; none without the sales module', async () => {
   global.fetch = url => url === '/api/sales/b1/entities' ? json(200, { sequences: [], mailboxes: [{ id: 'm1', email: 'one@x.com', active: true, last_synced_at: '2026-10-08T11:00:00Z' }, { id: 'm2', email: 'two@x.com', active: false, unlink_error_code: 'needs_reauth' }] })
