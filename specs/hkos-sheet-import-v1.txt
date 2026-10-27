@@ -1,0 +1,164 @@
+SPEC — hkos-sheet-import-v1 (HumanKind Grow, build step 2: the tracker workbook + the legacy rows become Brands)
+Written Oct 26, 2026 10:30 PM PT against HEAD e623894 (origin/main). Ground truth: the workbook itself —
+inbox/2026-10-26-Chicago_Sponsors.xlsx (325 KB; placed by the planner; it never leaves inbox/; the planner read structure
+and value shapes only, never rows). hk_* schema (hkos-data-foundation D1: hk_brands status/relationship/source/segment
+CHECKs, import_ref; hk_contacts email allowed, email_source CHECK IN apollo_verified|site_published|user_supplied|import;
+hk_touches kind/channel/state, created_by; hk_sponsor_periods (brand_id, period, kind launch|monthly); hk_import_runs;
+hk_duplicate_decisions); api/hk/brandsRoutes.js checkBrandsRoute (exact + partial + legacy); intakeMatch normName /
+nameMatches / GENERIC_WORDS; api/sales/sheetUpdate.js readUpload :44-53 (exceljs, base64 JSON body, 2 MB cap :18) and
+goals/SheetUpdateDrawer.js:18-21 (browser base64) as the upload mechanics; api/sales/masterImport.js:117 refuses "@" cells
+(HomeLover rule — NOT applied here); lead-upload REV2's all-or-nothing File + undo as the commit pattern; legacy rows still
+live: accounts 35 business (= the Jack Outreach tab), prospects 14 (= Confirmed Launch Sponsors), audits/hk-legacy-salvage-
+audit-findings.txt. Partial ground truth is marked; Stage 0 closes it.
+
+## Status
+Jack handed over the workbook at 10:17 PM ("import where and what format?") after Add brand flagged "Coconut Cult" as a
+possible duplicate from the invisible legacy list. This spec makes the list visible: one import, previewed in Review ›
+Imports, committed all-or-nothing, undoable. The Sheet is truth for founding partners (ruling 3:17 PM); the legacy DB
+rows only cross-check. After bar 5, hk-legacy-cleanup's deferred stage archives the legacy rows.
+
+## Workbook facts (planner read, structure only)
+Tabs and data rows: Pete Outreach 696 (cols: Name, Type, Contact, Outreach Date, Jack Outreach, Status, Notes,
+Challenge/Reward Ideas; Contact is an address on 644 rows; Type = "National CPG" on 179; Status on 186: "IG DM ready" 68,
+"Email sent M/D" ~75, "Email drafted M/D" ~30, a few "Meeting with … on M/D", "Responded with questions on M/D", "Replied on
+IG; email drafted M/D", "In" ×3; Outreach Date on 124 rows, sometimes 2–3 dates in one cell "M/D/YYYY, M/D/YY" or ISO;
+Jack Outreach date on 4). Jack Outreach 35 (Name, Website, Contact, Email, Outreach Date, Status "sent" ×3, Enrichment
+Notes, Type e.g. "Partnership Inquiry on website" / "Sponsored Reward/Raffle", Notes, Challenge/Reward Ideas).
+Confirmed Launch Sponsors 14 (Name, Type Reward|Challenge / Raffle|Challenge / Reward|Raffle, Contact, Challenge
+Sponsor?, Challenge Name, schedules, Raffle Item, Reward, Agreement?, Redemption Method, Discount Code, Percentage Off, IG
+Post?). Monthly "<Month> Confirmed Sponsors": June 17, July 16, August 17, Septmeber 16 (spelled so), October 27 (Status
+"Done"/"Done."/"Need to set up"), November 25 (+ Paid?, Amount), December 2, January Sponsors 1 — same shape + Status.
+73 distinct sponsor names across the sponsor tabs, 33 in more than one tab. Non-Profits 5. Chicago Press Hit LIst 32
+(Name, Contacts, Outreach Date). Podcasts 30 (Name, Contacts, Status, Lane Chicago|Wellness|Founder, Pitch Angle, Host
+Email Source, Notes). Events 16 (Event, Date(s), Location, Organizer / Contact, Participation Type, Cost, Apply By, Status,
+Notes, Pitch Angle). Sheet8 185 (Business Name, Website) — provenance unknown. "Orgs to Reach Out to" = 2 templates;
+Meliora / Copy of Meliora empty. Addresses appear in Contact/Contacts/Notes/Enrichment Notes/Organizer columns.
+
+## Problem (real, grounded)
+1. HumanKind has 0 brands; every Add brand hits the legacy duplicate check (Coconut Cult tonight) against rows no screen
+   shows. The real list lives in this workbook and in the Claude skill's Manual mode.
+2. Statuses are freeform text with dates inside them; dates are sometimes several per cell; one tab name is misspelled;
+   sponsors repeat across monthly tabs; contacts are mostly bare addresses with no name. None of that can be mapped by hand.
+3. The HomeLover importers refuse any cell with an address (masterImport.js:117) — correct there, wrong here: HumanKind
+   contact emails are stored by Jack's ruling (shown only on Brand › Contacts to HK members).
+4. Pete has not signed in (invite pending), so rows that are his cannot carry owner_user_id (profiles FK) yet.
+
+## Design decision (DECIDED unless marked PROPOSED / REVISABLE)
+S1 Mechanism: Review › Imports › [New import] → pick the .xlsx (browser reads it as base64, same as SheetUpdateDrawer;
+   server parses with exceljs like sheetUpdate.readUpload — cap raised to 1 MB for this route, REVISABLE) → server builds a
+   PREVIEW (nothing written except an hk_import_runs row status 'preview' holding the parsed plan as jsonb, ≤ 2 MB,
+   addresses included because it is server-only) → the screen shows per-tab counts and the per-row result table (New /
+   Matches existing / Possible duplicate / Warning) → [Commit import] writes everything inside one transaction-like pass
+   with an undo set (every created id recorded on the run) → [Undo import] deletes exactly those ids if nothing changed
+   since (updated_at check; lead-upload precedent). The parsed plan is deleted from the run row on commit or after 24 h.
+S2 Tab → entity map (DECIDED; REVISABLE items marked):
+   - Pete Outreach, Jack Outreach → hk_brands segment sponsor_brand, source 'import', import_ref '<tab>:<row>'.
+     owner: Jack tab → Jack's profile id; Pete tab → owner_hint 'pete' (new nullable column hk_brands.owner_hint text —
+     the ONE migration; Jack runs it) resolved to owner_user_id by a one-time assign when Pete's profile first appears
+     (shell.js on his first load, same place his prefs seed). Rows with no Status and no date → status candidate (Pete's
+     sourced list; still owner_hint pete — REVISABLE: or unclaimed).
+     Website → domain (normalizeDomain). Type: "National CPG" → category "National CPG", is_local false; Jack's Type
+     values → notes line "Route: <Type>". Notes / Enrichment Notes / Challenge/Reward Ideas → notes (first), challenge_idea
+     (Challenge/Reward Ideas), origin_hook (Enrichment Notes) — each cleanText'd EXCEPT that addresses inside them are
+     moved out to contacts when they parse as one, never left in notes.
+     Contact / Email → hk_contacts: an address → email (email_source 'import'), name = the brand name + " contact"
+     (REVISABLE) unless the cell also has a name; a bare name → contact with no email. Jack tab: Contact = name, Email =
+     address → one contact.
+     Status + Outreach Date → status + touches (S3). "Jack Outreach" date on a Pete row → an extra touch for Jack
+     (sender = Jack, kind outside, channel email, state sent, sent_at = that date).
+   - Confirmed Launch Sponsors → relationship founding_partner, status sponsor, hk_sponsor_periods (period 'launch', kind
+     launch); notes carry Challenge Name, Raffle Item, Reward, Redemption Method, Discount Code, Percentage Off, Agreement?
+     as "Launch: …" lines. Monthly tabs → relationship sponsor (unless already founding_partner), status sponsor,
+     hk_sponsor_periods (period 2026-06 … 2026-12, 2027-01; kind monthly; note = Status + Challenge Name); 33 repeated
+     names → one brand, many periods. "Septmeber" matched literally. November's Paid? / Amount are NOT imported (no
+     pricing or invoice data in Phase 1 — design rule).
+   - Non-Profits → segment nonprofit; Chicago Press Hit LIst → segment press; Podcasts → segment podcast (Lane → category,
+     Pitch Angle → challenge_idea, Host Email Source → notes). Modules stay off; the rows exist for Phase 3.
+   - Events → NOT imported in v1 (not brand-shaped; no 'event' segment). Listed in the preview as "skipped tab" with its
+     row count. REVISABLE: widen the segment CHECK with 'event' later.
+   - Sheet8 (185 Name + Website) → imported as candidates, segment sponsor_brand, source 'import', import_ref 'Sheet8:<row>',
+     unowned, status candidate. PROPOSED — Jack says "skip Sheet8" if that list is not his.
+   - "Orgs to Reach Out to", Meliora, Copy of Meliora → skipped (templates / empty).
+S3 Status normalization (pure function, unit-tested; unknown text → Review warning "unmapped status", brand stays
+   candidate/claimed, text kept in notes; nothing auto-fixed):
+   "Email sent M/D" → status sent; touch cold, channel email, state sent, sent_at = M/D/2026 (REVISABLE year rule: the
+   year is 2026 unless the cell carries one), created_by system, no Gmail ids; next_due_at = sent_at + bump_after_days.
+   "Email drafted M/D" → status drafted; touch cold state drafted, drafted_at = date, no Gmail ids; Review warning "draft
+   not linked to Gmail" (the sync cannot follow it) — REVISABLE: status claimed instead.
+   "IG DM ready" → status claimed; touch channel ig_dm kind dm_text state drafted.
+   "Meeting with … on M/D" → status meeting; "Responded with questions …" / "Replied …" → status replied (no hk_replies
+   row — nothing to link); "In" → warning. Multiple dates in Outreach Date → first = cold sent, second = bump sent, third
+   = final sent (REVISABLE), each a touch; status from the last. Sponsor-tab Status ("Done", "Need to set up") → period
+   note only. Future-dated dates (after today) → warning, imported as given.
+S4 Matching inside the import and against hk_brands: normName exact → one brand (merge rows: periods append, contacts
+   dedupe by email, notes append, status = the most advanced per the status order candidate < claimed < drafted < sent <
+   bumped < final_sent < replied < meeting < signed < sponsor; passed/skipped only if every row says so). Partial (whole-
+   word, non-generic) → created separately AND a hk_duplicate_decisions-aware pair listed under Review › Possible
+   duplicates — never auto-merged (SALT vs Hogsalt rule). Legacy DB rows (accounts 35 / prospects 14): cross-check only —
+   a founding partner present in prospects but missing from the Launch tab → warning; nothing read from them into brands.
+S5 Review › Imports screen: runs table (date, source file name, rows read, created, matched, flagged, by whom, [Undo] when
+   allowed); [New import] → file picker (.xlsx only) → preview: per-tab card (rows, to create, to match, warnings, skipped)
+   + the row table with filters (New / Matches / Possible duplicate / Warning) and the mapped status per row; [Commit
+   import] primary / [Cancel]. After commit: toast + links to Brands and Review › Data warnings. Import adds hk_events
+   import_committed { run_id, counts } and one brand_created event per brand (no addresses in detail).
+S6 Privacy: addresses go ONLY into hk_contacts.email; every other text field is cleanText'd; the preview table shows
+   contact presence ("1 contact · has email") never the address; events/logs/reports never carry one; the parsed plan
+   lives in the server-only run row and is wiped on commit. Phone numbers: refused (cleanText strips; no phone column).
+
+Landmines (inlined — the coder cannot read project docs):
+- inbox/2026-10-26-Chicago_Sponsors.xlsx never leaves inbox/ and is never committed, copied into fixtures, or quoted
+  (names + addresses). Tests use invented workbooks built in the test with exceljs.
+- No send path; no Gmail calls in this spec. No Apollo. 0 Claude (status normalization is rules, not a model).
+- HumanKind contact emails: stored, shown only on Brand › Contacts to HK members; never in list rows, previews, events,
+  logs, verify shots or reports. Do NOT reuse the HomeLover importer's "@" refusal here; do keep cleanText on free text.
+- Fuzzy matches go to Review, never auto-merge. The Sheet is truth after import; no dual-writing; the legacy DB rows are
+  cross-check only and get archived later by hk-legacy-cleanup (prospects → projects CASCADE: prospects first).
+- Dates: future-dated typos are flagged, never corrected. "Septmeber" matched literally. Pete's column E = Jack's touch.
+- outreach_doctrine platform-scope only; voiceExamples / Project outreach_examples separate; Project panel read-only for
+  Company Intel; SEGMENT_PASTE_MAX_CHARS is a cap. salesGate untouched; hkGate is the gate; owner role to commit an import
+  (REVISABLE: member).
+- No pricing / invoice amounts in Phase 1 (skip Paid?, Amount). Mockup data never seeded.
+- Jack runs the one migration (owner_hint) in Supabase and replies "ran". Verify scripts never create workspaces/users on
+  prod; "restored" checks throw; live runs on prod use an INVENTED mini-workbook, committed then undone, never the real
+  file — the real import is Jack's bar 5.
+- HumanKind theme only under .hk-theme; contrast rules; no em/en dashes in UI copy; localStorage keys prefixed prospector_.
+
+## Out of scope (own lines)
+- Events tab (segment 'event' later); Sheet8 if Jack says skip; the Meliora templates.
+- Archiving the legacy DB rows (hk-legacy-cleanup deferred stage, after this spec's bar 5).
+- Re-import / incremental sync from Google Sheets (the Sheet is an archive after this).
+- Linking imported "drafted" rows to real Gmail drafts (hkos-gmail-connect sync can't see them; they age out as warnings).
+
+## Implementation
+Stage 0 — reads only (≤25 lines): exceljs read path to reuse (sheetUpdate.readUpload) and its cap; lead-upload's undo
+  set shape; checkBrandsRoute's internal matcher entry to reuse for S4; Review › Imports empty state component; where
+  Pete's first-load prefs seeding lives in shell.js (for the owner_hint assign); hk_brands CHECK lists at HEAD. Then
+  continue into Stage 1 if the go says so.
+Stage 1 — migration FILE (hk_brands.owner_hint text NULL CHECK IN ('jack','pete') — REVISABLE: generic text) + pure
+  modules with tests: api/hk/importParse.js (workbook → rows per tab with the header map above; tolerant of the trailing
+  empty columns), importStatus.js (S3 normalization; ≥ 15 cases incl. multi-date cells, "Septmeber", future date,
+  "In", Done.), importPlan.js (S2/S4 plan builder over parsed rows + existing brands → create/match/warn with counts;
+  tests with an invented workbook of ~20 rows covering every tab shape, repeated sponsor names, a partial duplicate, an
+  address inside Notes). Full suite, commit, push. STOP with the migration text.
+Stage 2 — after "ran": routes POST /api/hk/:b/imports/preview (multipart-free base64 body), POST …/imports/:id/commit,
+  POST …/imports/:id/undo, GET …/imports; owner_hint assign on Pete's first shell load; events; tests: preview writes only
+  the run row, commit creates exactly the plan and records ids, undo removes exactly them and refuses after a later edit,
+  no address in any response except contacts' own route, Review warnings populated. Full suite, commit, push. STOP.
+Stage 3 — UI S5 (Review › Imports) + Brands/Sponsors reflecting imports (source chip "Import", period chips). Jest. Full
+  suite, prod build, contrast, 390 px. Live as Jack on HumanKind with an INVENTED 12-row workbook: preview → commit →
+  Brands shows them → undo → counts back to before; 0 Claude, 0 Apollo, 0 Gmail. Commit, push, close out. STOP.
+
+## Verification
+Per stage. Bar 5 (Jack, prod): Review › Imports › New import → pick inbox/2026-10-26-Chicago_Sponsors.xlsx from your Mac →
+preview shows Pete Outreach ~696, Jack Outreach 35, sponsors 73 distinct with periods, press/podcast/nonprofit rows, Events
+skipped, warnings for unmapped statuses and future dates → Commit → Brands lists them; Coconut Cult is a real brand; the 14
+founding partners carry the lock and refuse drafting; Sponsors shows periods Launch · Jun … Jan; Review › Data warnings lists
+the odd statuses; Add brand on a name from the list says Matches. "bar 5 ok hkos-sheet-import". Then the legacy archive stage.
+
+## Definition of done
+Stage 3 live with the invented workbook (bar 4); DONE at Jack's real import (bar 5).
+
+## Commit instructions
+One commit per stage: "hkos-sheet-import-v1 Stage N: <what>". Push after the full suite; ls-remote; STATUS/RESUME;
+reports open "Spec: 2026-10-26-2230-hkos-sheet-import-v1.txt · HEAD <hash> (remote matches)". STOP after each stage and at
+the migration.
