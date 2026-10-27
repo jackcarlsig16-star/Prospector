@@ -205,6 +205,12 @@ app.get('/api/google/connect',    esHandler('./api/google/connect.js'));
 app.get('/api/gmail/callback',    esHandler('./api/google/callback.js'));
 app.get('/api/google/status',     esHandler('./api/google/status.js'));
 app.post('/api/google/disconnect', esHandler('./api/google/disconnect.js'));
+// mailbox-connections-v1 REV2 (M5) - the caller's Google accounts, workspace tethers and the map's data.
+app.get('/api/mailboxes',                 esHandler('./api/mailboxes.js'));
+app.put('/api/mailboxes/link',            esHandler('./api/mailboxes.js'));
+app.delete('/api/mailboxes/link',         esHandler('./api/mailboxes.js'));
+app.post('/api/mailboxes/default',        esHandler('./api/mailboxes.js'));
+app.delete('/api/mailboxes/accounts/:id', esHandler('./api/mailboxes.js'));
 app.get('/api/microsoft/connect',     esHandler('./api/microsoft/connect.js'));
 app.get('/api/microsoft/callback',    esHandler('./api/microsoft/callback.js'));
 app.get('/api/microsoft/status',      esHandler('./api/microsoft/status.js'));

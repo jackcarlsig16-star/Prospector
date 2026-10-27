@@ -35,3 +35,9 @@ test('api/hk/** is in the walk and never names from_email outside a comment', ()
   for (const f of hk) fs.readFileSync(f, 'utf8').split('\n').forEach((line, i) => { if (line.includes('from' + '_email') && !/^\s*\/\//.test(line)) hits.push(`${path.relative(ROOT, f)}:${i + 1}`); });
   assert.deepEqual(hits, []);
 });
+
+// mailbox-connections-v1 REV2 - api/mailboxes.js is in the walk and names no send path (the needles above cover it;
+// this pins that the file exists where the scan looks).
+test('api/mailboxes.js is scanned', () => {
+  assert.ok(files(path.join(ROOT, 'api')).some(f => f.endsWith(path.join('api', 'mailboxes.js'))));
+});

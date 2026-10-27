@@ -1,4 +1,5 @@
-import { featuresFromScope, saveGrant } from '../lib/googleGrants.js';
+import { featuresFromScope, saveGrant, setTether, purposesCovered, OtherLogin } from '../lib/googleGrants.js';
+import { roleAtLeast } from '../../src/constants/roles.js';
 import { redirectUri, STATE_COOKIE, returnPath, withParam } from './oauth.js';
 
 function readCookie(req, name) {
@@ -53,13 +54,20 @@ export default async function handler(req, res) {
       headers: { Authorization: `Bearer ${tokens.access_token}` },
     });
     const profile = await profileRes.json();
-    await saveGrant(req.auth.user.id, {
+    const saved = await saveGrant(req.auth.user.id, {
       googleEmail: (profile.email || '').toLowerCase(),
       features,
       refreshToken: tokens.refresh_token,
     });
+    // mailbox-connections-v1 REV2 (M4): the state may ask to tether a workspace to the account Google returned - only
+    // for a member+ of that workspace, and only the purposes the granted scopes cover.
+    if (state.b && Array.isArray(state.p)) {
+      const canLink = req.auth.isPlatformOwner || roleAtLeast(req.auth.roles.get(state.b), 'member');
+      const covered = purposesCovered(state.p, features);
+      if (canLink && covered.length) await setTether(state.b, req.auth.user.id, saved.id, covered);
+    }
     res.redirect(withParam(back, 'google_connected', state.f));
   } catch (err) {
-    res.redirect(withParam(back, 'google_error', err.message));
+    res.redirect(withParam(back, 'google_error', err instanceof OtherLogin ? err.message : err.message));
   }
 }
