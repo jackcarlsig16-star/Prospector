@@ -49,6 +49,8 @@ const minsToSix = ((6 - (now.getHours() % 6)) % 6) * 60 - now.getMinutes();
 if ((minsToSix >= 0 && minsToSix < 5) || (now.getHours() % 6 === 0 && now.getMinutes() < 2)) { console.log('ABORT: within 5 min of a server.js cron time'); process.exit(1); }
 const ADDR = /[^\s@<>()"',;=&#]+(?:@|%40)[^\s@<>()"',;=&#]+\.[a-z]{2,}/gi;
 const redact = s => String(s).replace(ADDR, '<address>');
+// Recordings keep a parseable placeholder so --replay still finds a To domain; the real addresses are never written.
+const scrub = s => String(s).replace(ADDR, 'redacted@example.invalid');
 
 // Gmail at the fetch seam: count every HTTP call, record for --replay, replay from the recording.
 const gmailCalls = [], recording = REPLAY ? JSON.parse(fs.readFileSync(REC, 'utf8')) : [];
@@ -59,7 +61,7 @@ const gmailFetch = async (url, init = {}) => {
   if (gmailCalls.length > GMAIL_CAP) throw new Error(`Gmail cap ${GMAIL_CAP} exceeded (${key})`);
   if (REPLAY) { const i = recording.findIndex(r => r && r.key === key); if (i < 0) throw new Error(`replay: no recorded answer for ${key}`); const r = recording[i]; recording[i] = null; return { status: r.status, ok: r.status >= 200 && r.status < 300, text: async () => r.text }; }
   const r = await fetch(url, init); const text = await r.text();
-  recording.push({ key, status: r.status, text });
+  recording.push({ key, status: r.status, text: scrub(text) });
   return { status: r.status, ok: r.ok, text: async () => text };
 };
 const gmail = gmailClient(gmailFetch);
