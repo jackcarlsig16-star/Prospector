@@ -1,6 +1,6 @@
 // intent-score-v1 S3 - the pure half of the Priorities view (unit-tested): the Y-axis switch, ring / halo / hollow
-// rules, legend dimming, paging and the filter <-> query mapping. The chart components draw from these; nothing
-// here reads the network or the DOM.
+// rules, legend dimming, paging, the filter <-> query mapping, the name-label rule and its collision pass. The chart
+// components draw from these; nothing here reads the network or the DOM.
 export const Y_METRICS = [['intent', 'Intent'], ['size', 'Size'], ['activity', 'Activity']];
 export const VIEWS = [['dots', 'Dots'], ['bars', 'Bars'], ['table', 'Table']];
 export const SEGMENTS = [['all', 'All'], ['visitors', 'Web visitors'], ['partners', 'Partners'], ['employers', 'Employers'], ['targets', 'Targets']];
@@ -15,6 +15,10 @@ export const HALO = { bright: 7, faint: 30 }; // days since the last touch (REVI
 export const ACTIVITY_MAX_DAYS = 90;
 export const EMPTY_FILTERS = { segment: 'all', owner: '', source: [], band: '', needs_touch: false, min: 0, window: '', q: '' };
 export const LS_KEY = 'prospector_priorities_view'; // { view, y } - per-viewer convenience
+export const NAME_MODES = [['on', 'On'], ['all', 'All'], ['off', 'Off']];
+export const NAMES_LS_KEY = 'prospector_sales_priorities_names'; // 'on' | 'all' | 'off' - per-viewer convenience
+export const LABEL_TOP = 10;
+export const LABEL_MIN_CHARS = 14;
 
 export const activeFilterCount = f => ['owner', 'band', 'window', 'q'].filter(k => f[k]).length + (f.segment !== 'all' ? 1 : 0) + (f.source.length ? 1 : 0) + (f.needs_touch ? 1 : 0) + (f.min > 0 ? 1 : 0);
 export const filterParams = f => ({ segment: f.segment !== 'all' ? f.segment : null, owner: f.owner || null, source: f.source.length ? f.source.join(',') : null, band: f.band || null, needs_touch: f.needs_touch ? '1' : null, min: f.min > 0 ? f.min : null, window: f.window || null, q: f.q || null });
@@ -71,3 +75,59 @@ export function readViewPrefs() {
   try { const v = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
 }
 export function writeViewPrefs(prefs) { try { localStorage.setItem(LS_KEY, JSON.stringify(prefs)); } catch { /* private mode */ } }
+
+export function readNamesMode() {
+  try { const v = localStorage.getItem(NAMES_LS_KEY); return NAME_MODES.some(([id]) => id === v) ? v : 'on'; } catch { return 'on'; }
+}
+export function writeNamesMode(mode) { try { localStorage.setItem(NAMES_LS_KEY, mode); } catch { /* private mode */ } }
+
+export const labelText = (name, max = LABEL_MIN_CHARS) => { const n = String(name || ''); const m = Math.max(LABEL_MIN_CHARS, max); return n.length <= m ? n : `${n.slice(0, m - 1).trimEnd()}…`; };
+
+// Which rows carry a name, in priority order: the selected row first, then every P1 (and P2 off the phone), then the
+// top LABEL_TOP by the current Y metric, then - mode 'all' - everyone else in rank order. 'off' = the selected row only.
+export function labelCandidates(rows, { mode = 'on', selectedKey = null, phone = false, y = 'intent' } = {}) {
+  if (mode === 'off') return rows.filter(r => r.key === selectedKey);
+  const scale = yScale(y, rows);
+  const bands = phone ? ['P1'] : ['P1', 'P2'];
+  const top = new Set(phone ? [] : [...rows].sort((a, b) => scale.to(yValue(b, y)) - scale.to(yValue(a, y))).slice(0, LABEL_TOP).map(r => r.key));
+  const pick = rows.filter(r => r.key !== selectedKey && (bands.includes(r.band) || top.has(r.key)));
+  const rest = mode === 'all' ? rows.filter(r => r.key !== selectedKey && !pick.includes(r)) : [];
+  return [...rows.filter(r => r.key === selectedKey), ...pick, ...rest];
+}
+
+// The collision pass. items (priority order): { key, text, x, y, pad, anchor? } - the mark's center and how far the
+// label starts from it. A label tries its own y, then up / down in `step` px up to maxSteps; at each y it tries the
+// right side then the left (left first when the right would leave maxX; anchor 'middle' = centered on x, then to the
+// right, then to the left - the bars' labels above the top), and is dropped when nothing is free - the Table always
+// has the name. obstacles: boxes ({ x0, x1, y0, y1 }) labels must also avoid (the marks themselves).
+export function placeLabels(items, { charW = 6.3, lineH = 12, step = 12, maxSteps = 3, minX = -Infinity, maxX = Infinity, minY = -Infinity, maxY = Infinity, obstacles = [] } = {}) {
+  const taken = [...obstacles];
+  const hits = b => taken.some(p => b.x0 < p.x1 && p.x0 < b.x1 && b.y0 < p.y1 && p.y0 < b.y1);
+  const placed = [];
+  for (const it of items) {
+    const w = it.text.length * charW;
+    const right = { x0: it.x + it.pad, x: it.x + it.pad, anchor: 'start' };
+    const left = { x0: it.x - it.pad - w, x: it.x - it.pad, anchor: 'end' };
+    const sides = it.anchor === 'middle'
+      ? [{ x0: it.x - w / 2, x: it.x, anchor: 'middle' }, right, left]
+      : it.x + it.pad + w <= maxX || it.x - it.pad - w < minX ? [right, left] : [left, right];
+    const fits = sd => sd.x0 >= minX && sd.x0 + w <= maxX;
+    const open = sides.filter(fits).length ? sides.filter(fits) : [sides[0]];
+    let done = null;
+    for (let s = 0; s <= maxSteps && !done; s++) {
+      for (const dir of s === 0 ? [0] : [-1, 1]) {
+        const yc = it.y + dir * s * step;
+        if (yc - lineH / 2 < minY || yc + lineH / 2 > maxY) continue;
+        for (const sd of open) {
+          const box = { x0: sd.x0, x1: sd.x0 + w, y0: yc - lineH / 2, y1: yc + lineH / 2 };
+          if (hits(box)) continue;
+          done = { key: it.key, text: it.text, x: sd.x, y: yc, anchor: sd.anchor, shifted: dir * s * step, box };
+          break;
+        }
+        if (done) break;
+      }
+    }
+    if (done) { placed.push(done); taken.push(done.box); }
+  }
+  return placed;
+}

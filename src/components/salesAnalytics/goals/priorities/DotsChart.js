@@ -2,13 +2,16 @@ import { useState } from 'react';
 import { SA } from '../../theme';
 import { sourceColor, SOURCE_LABELS } from '../../palette';
 import { numStyle } from '../goalsUi';
-import { yValue, yScale, ringSpecs, haloLevel, hollowness, isDimmed, rowLabel, touchText, RING_ORDER, TOP_LABELS } from './prioritiesModel';
+import { yValue, yScale, ringSpecs, haloLevel, hollowness, isDimmed, rowLabel, touchText, labelCandidates, labelText, placeLabels, RING_ORDER, TOP_LABELS, LABEL_MIN_CHARS } from './prioritiesModel';
 
 // intent-score-v1 S3 DOTS - companies on X in rank order, Y = the selected metric. Each dot: a core in the source
 // hue, one translucent ring per component (RING_ORDER) in the same hue with radius ∝ points, a grey rank line
 // threading the dots, dashed band guides at the thresholds with the band counts at the right edge, an activity halo
 // (bright <= 7 d, faint <= 30 d), hollow when unresearched. Switching Y moves each dot (CSS transform transition);
 // colors, selection and the lit set never change with it. Hand-built SVG on kit tokens, no chart library.
+// Names (FIX priorities-labels-v1): the selected dot, every P1 / P2 and the top 10 by the current Y carry their name
+// beside the mark in the text color (mode 'all' = everyone the collision pass can fit); a phone has no hover, so the
+// selected dot keeps its breakdown card open.
 export const CHART_H = 360;
 const M = { l: 44, r: 64, t: 30, b: 28 };
 const ringKey = RING_ORDER.map(k => k[0].toUpperCase() + k.slice(1)).join(' · ');
@@ -39,7 +42,7 @@ export function Tooltip({ row, x, y, metric }) {
   );
 }
 
-export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, counts = {}, selectedKey, onSelect, showTrend = false, width = 960, anchors = {}, now = Date.now() }) {
+export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, counts = {}, selectedKey, onSelect, showTrend = false, width = 960, anchors = {}, names = 'on', phone = false }) {
   const [hover, setHover] = useState(null);
   const n = rows.length;
   const W = Math.max(320, width), plotW = W - M.l - M.r, plotH = CHART_H - M.t - M.b;
@@ -51,9 +54,18 @@ export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, c
   const pts = rows.map((r, i) => ({ r, x: cx(i), y: cy(yValue(r, y)), unknown: yValue(r, y) == null }));
   const guides = y === 'intent' && thresholds ? [['P1', thresholds.P1], ['P2', thresholds.P2], ['P3', thresholds.P3]] : [];
   const litList = [...lit];
+  const byKey = new Map(pts.map(p => [p.r.key, p]));
+  const maxChars = Math.max(LABEL_MIN_CHARS, Math.min(24, Math.floor((slot * 3) / 6.3)));
+  const scoreY = p => p.y - (base + (haloLevel(p.r) ? 20 : 8));
+  const obstacles = pts.flatMap((p, i) => [{ x0: p.x - base - 2, x1: p.x + base + 2, y0: p.y - base - 2, y1: p.y + base + 2 }, ...(i < TOP_LABELS ? [{ x0: p.x - 8, x1: p.x + 8, y0: scoreY(p) - 10, y1: scoreY(p) + 2 }] : [])]);
+  const labels = placeLabels(
+    labelCandidates(rows, { mode: names, selectedKey, phone, y }).map(r => { const p = byKey.get(r.key); return { key: r.key, text: labelText(r.name, maxChars), x: p.x, y: p.y, pad: base + 7 }; }),
+    { minX: M.l, maxX: W - M.r, minY: M.t - 12, maxY: CHART_H - M.b + 12, obstacles },
+  );
+  const pinned = phone && !hover ? pts.find(p => p.r.key === selectedKey) : null;
   return (
     <div data-dots-chart style={{ position: 'relative', width: '100%' }}>
-      <svg width="100%" height={CHART_H} viewBox={`0 0 ${W} ${CHART_H}`} role="img" aria-label={`Companies ranked by intent, Y axis ${scale.label}`} style={{ display: 'block', overflow: 'visible', fontFamily: 'inherit' }}>
+      <svg width="100%" height={CHART_H} viewBox={`0 0 ${W} ${CHART_H}`} role="group" aria-label={`Companies ranked by intent, Y axis ${scale.label}`} style={{ display: 'block', overflow: 'visible', fontFamily: 'inherit' }}>
         {scale.ticks.map(t => (
           <g key={t.v}>
             <line x1={M.l} x2={W - M.r} y1={cy(t.v)} y2={cy(t.v)} stroke={SA.track} strokeWidth={1} />
@@ -95,13 +107,18 @@ export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, c
             </g>
           );
         })}
+        <g data-name-labels aria-hidden="true" style={{ pointerEvents: 'none' }}>
+          {labels.map(l => <text key={l.key} data-name-label={l.key} x={0} y={0} textAnchor={l.anchor} dominantBaseline="central" fontSize={11} fontWeight={500} fill={SA.text} style={{ transform: `translate(${l.x}px, ${l.y}px)`, transition: 'transform 400ms ease', paintOrder: 'stroke', stroke: SA.inset, strokeWidth: 3, strokeLinejoin: 'round' }}>{l.text}</text>)}
+        </g>
         {!n && <text x={W / 2} y={CHART_H / 2} textAnchor="middle" fontSize={13} fill={SA.muted}>No companies under these filters</text>}
       </svg>
+      {names === 'all' && n > 0 && <div data-names-count style={{ fontSize: 11, color: SA.muted, padding: '0 0 0 44px' }}>{labels.length} of {n} named - see Table for all</div>}
       <div aria-hidden="true" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: SA.muted, padding: '0 0 0 44px' }}>
         <span>Rank 1 → {n}</span>
         <span>Rings: {ringKey} · outer ring = touched (bright ≤ 7 d, faint ≤ 30 d) · hollow = not researched</span>
       </div>
       {hover && <Tooltip row={hover.row} x={hover.x} y={hover.y} metric={y} />}
+      {pinned && <Tooltip row={pinned.r} x={pinned.x} y={pinned.y} metric={y} />}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { yValue, yScale, ringSpecs, haloLevel, hollowness, isDimmed, toggleLit, pageOf, filterParams, filtersFromView, activeFilterCount, EMPTY_FILTERS, RING_ORDER } from './prioritiesModel';
+import { yValue, yScale, ringSpecs, haloLevel, hollowness, isDimmed, toggleLit, pageOf, filterParams, filtersFromView, activeFilterCount, labelCandidates, labelText, placeLabels, readNamesMode, writeNamesMode, EMPTY_FILTERS, RING_ORDER, NAMES_LS_KEY } from './prioritiesModel';
 
 // intent-score-v1 S3 - the pure half of the Priorities view.
 const row = (over = {}) => ({ key: 'employer-1', name: 'Acme', score: 55, band: 'P2', source_label: 'upside', employees: 5000, days_since_touch: 3, researched: 'fresh', components: { visits: { points: 17 }, people: { points: 6 }, fit: { points: 15 }, research: { points: 10 }, engagement: { points: 0 } }, ...over });
@@ -59,4 +59,67 @@ test('filters <-> query: only the set filters become params; a saved view round-
   expect(activeFilterCount(f)).toBe(6);
   expect(filtersFromView({ source: 'upside,website', min: '40', needs_touch: '1', band: 'P1' })).toEqual({ ...EMPTY_FILTERS, source: ['upside', 'website'], min: 40, needs_touch: true, band: 'P1' });
   expect(filtersFromView(null)).toEqual(EMPTY_FILTERS);
+});
+
+// FIX priorities-labels-v1 - the name-label rule and its collision pass.
+const ranked = [
+  row({ key: 'a', name: 'Hilton', score: 73, band: 'P1', employees: 100 }),
+  row({ key: 'b', name: 'Apple', score: 63, band: 'P1', employees: 90000 }),
+  row({ key: 'c', name: 'City of Minneapolis', score: 45, band: 'P2', employees: null }),
+  row({ key: 'd', name: 'Veritiv', score: 30, band: 'P3', employees: 7000 }),
+  ...Array.from({ length: 12 }, (_, i) => row({ key: `p4-${i}`, name: `Small ${i}`, score: 12 - i, band: 'P4', employees: 10 + i, days_since_touch: i })),
+];
+
+test('labelCandidates: the selected row first, then P1 / P2, then the top 10 by the current Y; off = selected only; all = everyone; a phone = P1 + selected only', () => {
+  const on = labelCandidates(ranked, { mode: 'on', selectedKey: 'p4-5' }).map(r => r.key);
+  expect(on[0]).toBe('p4-5');
+  expect(on.slice(1, 4)).toEqual(['a', 'b', 'c']);
+  expect(on).toEqual(['p4-5', 'a', 'b', 'c', 'd', 'p4-0', 'p4-1', 'p4-2', 'p4-3', 'p4-4']); // top 10 by intent = a..d + 6 P4s; the selected one counted once
+  expect(on).toContain('d');
+  expect(labelCandidates(ranked, { mode: 'off', selectedKey: 'd' }).map(r => r.key)).toEqual(['d']);
+  expect(labelCandidates(ranked, { mode: 'off' })).toEqual([]);
+  expect(labelCandidates(ranked, { mode: 'all' })).toHaveLength(ranked.length);
+  expect(labelCandidates(ranked, { mode: 'on', phone: true, selectedKey: 'd' }).map(r => r.key)).toEqual(['d', 'a', 'b']);
+  const bySize = labelCandidates(ranked, { mode: 'on', y: 'size' }).map(r => r.key);
+  expect(bySize.slice(0, 3)).toEqual(['a', 'b', 'c']);
+  expect(bySize).toContain('d'); // 7,000 employees is in the top 10 by size
+  expect(bySize).not.toContain('p4-0'); // 10 employees is not
+});
+
+test('labelText: whole up to 14 characters, then an ellipsis; a bigger budget keeps more', () => {
+  expect(labelText('Hilton Example')).toBe('Hilton Example');
+  expect(labelText('City of Minneapolis')).toBe('City of Minne…');
+  expect(labelText('City of Minneapolis', 24)).toBe('City of Minneapolis');
+  expect(labelText('City of Minneapolis', 8)).toBe('City of Minne…');
+  expect(labelText(null)).toBe('');
+});
+
+test('placeLabels: same spot -> right then left, then shift up, down in 12 px steps, max 3 steps, then drop; obstacles count; right overflow flips left; middle anchor tries centered, right, left', () => {
+  const same = Array.from({ length: 16 }, (_, i) => ({ key: `k${i}`, text: 'Acme', x: 100, y: 100, pad: 8 }));
+  const placed = placeLabels(same, { maxX: 1000 });
+  expect(placed.map(l => l.shifted)).toEqual([0, 0, -12, -12, 12, 12, -24, -24, 24, 24, -36, -36, 36, 36]);
+  expect(placed.map(l => l.anchor)).toEqual(['start', 'end', 'start', 'end', 'start', 'end', 'start', 'end', 'start', 'end', 'start', 'end', 'start', 'end']);
+  expect(placed.map(l => l.key)).toEqual(Array.from({ length: 14 }, (_, i) => `k${i}`));
+  expect(placed[0]).toMatchObject({ x: 108, y: 100, anchor: 'start' });
+  expect(placed[1]).toMatchObject({ x: 92, y: 100, anchor: 'end' });
+  expect(placeLabels(same, { maxX: 1000 })).toEqual(placed);
+  const blocked = placeLabels([{ key: 'z', text: 'Acme', x: 100, y: 100, pad: 8 }], { obstacles: [{ x0: 60, x1: 140, y0: 95, y1: 105 }] });
+  expect(blocked[0]).toMatchObject({ shifted: -12, anchor: 'start' });
+  expect(placeLabels([{ key: 'z', text: 'Acme', x: 100, y: 100, pad: 8 }], { obstacles: [{ x0: 100, x1: 140, y0: 95, y1: 105 }] })[0]).toMatchObject({ shifted: 0, anchor: 'end' });
+  const left = placeLabels([{ key: 'r', text: 'Long company name', x: 980, y: 50, pad: 8 }], { minX: 0, maxX: 1000 });
+  expect(left[0]).toMatchObject({ anchor: 'end', x: 972 });
+  const mid = placeLabels([{ key: 'm1', text: 'Acme', x: 300, y: 40, pad: 0, anchor: 'middle' }, { key: 'm2', text: 'Acme', x: 320, y: 40, pad: 0, anchor: 'middle' }, { key: 'm3', text: 'Acme', x: 280, y: 40, pad: 0, anchor: 'middle' }, { key: 'm4', text: 'Acme', x: 300, y: 40, pad: 0, anchor: 'middle' }]);
+  expect(mid.map(l => [l.x, l.y, l.anchor])).toEqual([[300, 40, 'middle'], [320, 40, 'start'], [280, 40, 'end'], [300, 28, 'middle']]);
+  expect(placeLabels([{ key: 'top', text: 'Acme', x: 10, y: 5, pad: 8 }], { minY: 0 })).toHaveLength(1);
+  expect(placeLabels([{ key: 'top', text: 'Acme', x: 10, y: 5, pad: 8 }], { minY: 0 })[0].shifted).toBe(12);
+});
+
+test('names mode: on by default, a stored value round-trips, junk falls back to on', () => {
+  localStorage.clear();
+  expect(readNamesMode()).toBe('on');
+  writeNamesMode('all');
+  expect(localStorage.getItem(NAMES_LS_KEY)).toBe('all');
+  expect(readNamesMode()).toBe('all');
+  localStorage.setItem(NAMES_LS_KEY, 'everything');
+  expect(readNamesMode()).toBe('on');
 });

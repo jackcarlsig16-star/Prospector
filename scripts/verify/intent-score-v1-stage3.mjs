@@ -165,9 +165,9 @@ try {
     const b1 = await boxes(page);
     await view.getByRole('button', { name: 'Size' }).click(); await page.waitForTimeout(700);
     const keptSel = await view.locator('[data-dot][data-selected="true"]').count();
-    const ySize = await page.getByRole('img', { name: /Y axis Employees/ }).count();
+    const ySize = await page.getByRole('group', { name: /Y axis Employees/ }).count();
     await view.getByRole('button', { name: 'Activity' }).click(); await page.waitForTimeout(700);
-    const yAct = await page.getByRole('img', { name: /Y axis Days since last touch/ }).count();
+    const yAct = await page.getByRole('group', { name: /Y axis Days since last touch/ }).count();
     ok(`1440 Y switch Size then Activity: the axis label changes, the selection stays (${keptSel})`, keptSel === 1 && ySize === 1 && yAct === 1);
     await shot(page, 'stage3-activity-1440');
     await view.getByRole('button', { name: 'Intent' }).click(); await page.waitForTimeout(400);

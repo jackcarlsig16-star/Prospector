@@ -19,7 +19,7 @@ import PrioritiesTable from './PrioritiesTable';
 import QuickMenu from './QuickMenu';
 import BriefCard from './BriefCard';
 import ComposePanel from './ComposePanel';
-import { Y_METRICS, VIEWS, SEGMENTS, WINDOWS, BANDS, EMPTY_FILTERS, PAGE_SIZE, filterParams, filtersFromView, activeFilterCount, isDimmed, toggleLit, pageOf, readViewPrefs, writeViewPrefs } from './prioritiesModel';
+import { Y_METRICS, VIEWS, SEGMENTS, WINDOWS, BANDS, NAME_MODES, EMPTY_FILTERS, PAGE_SIZE, filterParams, filtersFromView, activeFilterCount, toggleLit, pageOf, readViewPrefs, writeViewPrefs, readNamesMode, writeNamesMode } from './prioritiesModel';
 
 // intent-score-v1 S3 / S5 - Sales > Pipeline > Priorities: the book ranked by intent as DOTS (default), BARS or a
 // TABLE; filters in one row above; the legend IS the source toggle (dims, never removes; colors follow the entity);
@@ -44,6 +44,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
   const [y, setY] = useState(() => (Y_METRICS.some(([id]) => id === prefs.y) ? prefs.y : 'intent'));
   const [view, setView] = useState(() => (VIEWS.some(([id]) => id === prefs.view) ? prefs.view : null)); // null = dots (table on a phone)
   const [lit, setLit] = useState(() => new Set());
+  const [names, setNames] = useState(readNamesMode);
   const [page, setPage] = useState(0);
   const [topN, setTopN] = useState('40');
   const [showTrend, setShowTrend] = useState(false);
@@ -76,6 +77,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
   useEffect(() => { goalsApi.composeStatus(businessId).then(setCompose).catch(() => setCompose(null)); }, [businessId]);
   useEffect(() => { goalsApi.scoreViews(businessId).then(setViews).catch(() => setViews([])); }, [businessId]);
   useEffect(() => { writeViewPrefs({ y, view: view || undefined }); }, [y, view]);
+  useEffect(() => { writeNamesMode(names); }, [names]);
   useEffect(() => {
     if (!toast) return undefined;
     undoTimer.current = setTimeout(() => setToast(null), toast.undo ? 8000 : 4000);
@@ -158,7 +160,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
   };
   const patchRow = (r, patch) => setBoard(bs => bs.map(x => (rowKey(x) === rowKey(r) ? { ...x, ...patch } : x)));
 
-  const chartProps = { rows: paged.rows, lit, y, thresholds: data?.thresholds, caps: data?.caps, counts: data?.counts || {}, selectedKey, onSelect: select, showTrend, width: phone ? Math.max(width, 720) : width };
+  const chartProps = { rows: paged.rows, lit, y, thresholds: data?.thresholds, caps: data?.caps, counts: data?.counts || {}, selectedKey, onSelect: select, showTrend, width: phone ? Math.max(width, 720) : width, names, phone };
   const legend = (
     <div ref={legendRef} role="group" aria-label="Source" data-legend style={rowBar}>
       <span className="ui-group-label" aria-hidden="true">Source</span>
@@ -208,6 +210,8 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
           <Segmented label="Y axis" items={Y_METRICS.map(([id, label]) => ({ id, label }))} value={y} onChange={setY} />
           <span style={{ fontSize: 12, color: SA.muted }}>Rank by Intent</span>
           <FilterSelect label="Show" value={topN} options={TOP_N.map(([value, label]) => ({ value, label }))} onChange={setTopN} />
+          <span className="ui-group-label" aria-hidden="true">Names</span>
+          <Segmented label="Names" items={NAME_MODES.map(([id, label]) => ({ id, label }))} value={names} onChange={setNames} />
         </>}
         <span style={{ flex: 1 }} />
         {data && <span style={{ ...numStyle, fontSize: 12, color: SA.muted }} data-counts>{data.counts.shown} of {data.counts.ranked} ranked · P1 {data.counts.P1} · P2 {data.counts.P2} · P3 {data.counts.P3} · P4 {data.counts.P4}{data.counts.live ? ` · ${data.counts.live} live` : ''}{stale ? ' · scores older than a day' : ''}</span>}

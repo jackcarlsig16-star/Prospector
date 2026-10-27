@@ -92,9 +92,9 @@ test('click selects (ring + quick menu + the company window loads by key); the Y
   expect(dot('Quarry Labs').getAttribute('data-selected')).toBe('true');
   expect(dot('Quarry Labs').getAttribute('data-dimmed')).toBe('true');
   expect(dot('Harbor Lane').querySelector('[data-core]').getAttribute('stroke-dasharray')).toBe('2 2'); // size unknown on the baseline
-  expect(screen.getByRole('img', { name: /Y axis Employees/ })).toBeInTheDocument();
+  expect(screen.getByRole('group', { name: /Y axis Employees/ })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
-  expect(screen.getByRole('img', { name: /Y axis Days since last touch/ })).toBeInTheDocument();
+  expect(screen.getByRole('group', { name: /Y axis Days since last touch/ })).toBeInTheDocument();
   expect(dot('Quarry Labs').getAttribute('data-selected')).toBe('true');
 });
 
@@ -184,4 +184,59 @@ test('Share saves the filter state as a named view and exposes the CSV link; a V
   fireEvent.click(dot('Quarry Labs'));
   const menu = await screen.findByRole('toolbar', { name: 'Actions for Quarry Labs' });
   expect(within(menu).getAllByRole('button').map(b => b.textContent)).toEqual(['Brief', 'Open']);
+});
+
+// FIX priorities-labels-v1 - names without hovering.
+const nameLabels = () => [...document.querySelectorAll('[data-name-label]')].map(t => t.textContent);
+
+test('names: P1, P2 and the top 10 carry their name beside the dot by default; Off keeps only the selected; All names everyone and counts; the choice persists', async () => {
+  render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+  await waitFor(() => expect(dots()).toHaveLength(3));
+  expect(nameLabels().sort()).toEqual(['Harbor Lane', 'Hilton Example', 'Quarry Labs']);
+  const label = document.querySelector('[data-name-label="target-t1"]');
+  expect(label.getAttribute('fill')).toBe('var(--sa-text)');
+  expect(document.querySelector('[data-names-count]')).toBeNull();
+  const names = screen.getByRole('group', { name: 'Names' });
+  fireEvent.click(within(names).getByRole('button', { name: 'Off' }));
+  expect(nameLabels()).toEqual([]);
+  fireEvent.click(dot('Hilton Example'));
+  await waitFor(() => expect(nameLabels()).toEqual(['Hilton Example']));
+  expect(localStorage.getItem('prospector_sales_priorities_names')).toBe('off');
+  fireEvent.click(within(names).getByRole('button', { name: 'All' }));
+  expect(nameLabels().sort()).toEqual(['Harbor Lane', 'Hilton Example', 'Quarry Labs']);
+  expect(document.querySelector('[data-names-count]').textContent).toBe('3 of 3 named - see Table for all');
+  expect(nameLabels()[0]).toBe('Hilton Example'); // the selected row is placed first
+  expect(localStorage.getItem('prospector_sales_priorities_names')).toBe('all');
+});
+
+test('bars: the same name rule replaces the top-5 score labels (above the thin bars; inside only when the name fits)', async () => {
+  render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+  await waitFor(() => expect(dots()).toHaveLength(3));
+  fireEvent.click(screen.getByRole('button', { name: 'Bars' }));
+  await waitFor(() => expect(document.querySelectorAll('[data-bar]')).toHaveLength(3));
+  expect(nameLabels().sort()).toEqual(['Harbor Lane', 'Hilton Example', 'Quarry Labs']);
+  expect(document.querySelector('[data-bars-chart] [data-direct-label]')).toBeNull();
+  expect(document.querySelectorAll('[data-label-inside]').length).toBe(3); // 3 bars across 960 px: wide enough to hold the names
+  fireEvent.click(within(screen.getByRole('group', { name: 'Names' })).getByRole('button', { name: 'Off' }));
+  expect(nameLabels()).toEqual([]);
+});
+
+test('phone: the table lands first; Dots names only P1 + the selected; a tap selects and keeps the breakdown card open', async () => {
+  const desktop = window.matchMedia;
+  window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+  try {
+    render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Chart view' })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Hilton Example')).toBeInTheDocument());
+    expect(dots()).toHaveLength(0);
+    expect(within(screen.getByRole('group', { name: 'Chart view' })).getByRole('button', { name: 'Table' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Dots' }));
+    await waitFor(() => expect(dots()).toHaveLength(3));
+    expect(nameLabels()).toEqual(['Quarry Labs']);
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    fireEvent.click(dot('Harbor Lane'));
+    await waitFor(() => expect(nameLabels()).toEqual(['Harbor Lane', 'Quarry Labs']));
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Harbor Lane');
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Not researched yet');
+  } finally { window.matchMedia = desktop; }
 });
