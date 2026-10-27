@@ -143,6 +143,9 @@ export function buildPlan({ parsed, brands = [], legacy = [], members = {}, sett
     }
   }
   const planned = order.map(finish);
+  // hk_brands keeps one live row per domain: a later brand on a domain already planned loses it and says so.
+  const seenDomain = new Map();
+  for (const b of planned) { if (!b.domain) continue; const first = seenDomain.get(b.domain); if (!first) seenDomain.set(b.domain, b); else { b.warnings.push({ code: 'duplicate_domain', detail: `${b.domain} is also ${first.name}'s`, ref: b.refs[0] }); b.domain = null; } }
   // Exact match against existing brands: domain, name or alias.
   const existingByKey = new Map(), existingByDomain = new Map();
   for (const e of brands) { existingByKey.set(tightKey(e.name), e); for (const a of e.aliases || []) existingByKey.set(tightKey(a), e); if (e.domain) existingByDomain.set(e.domain, e); }

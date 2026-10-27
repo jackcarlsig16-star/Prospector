@@ -426,6 +426,12 @@ app.get('/api/hk/:businessId/replies',                        hkRoute(HK_GMAIL, 
 app.patch('/api/hk/:businessId/replies/:id',                  hkRoute(HK_GMAIL, 'patchReplyRoute'));
 app.get('/api/hk/:businessId/gmail/status',                   hkRoute(HK_GMAIL, 'gmailStatusRoute'));
 app.patch('/api/hk/:businessId/gmail/signature',              hkRoute(HK_GMAIL, 'patchSignatureRoute'));
+// hkos-sheet-import-v1 S1 - preview writes only the run row; commit / undo need the owner role (checked inside).
+const HK_IMPORTS = './api/hk/importRoutes.js';
+app.get('/api/hk/:businessId/imports',                        hkRoute(HK_IMPORTS, 'listImportsRoute'));
+app.post('/api/hk/:businessId/imports/preview',               hkRoute(HK_IMPORTS, 'previewImportRoute'));
+app.post('/api/hk/:businessId/imports/:id/commit',            hkRoute(HK_IMPORTS, 'commitImportRoute'));
+app.post('/api/hk/:businessId/imports/:id/undo',              hkRoute(HK_IMPORTS, 'undoImportRoute'));
 // hkos-inbox-v1 I1 - the caller's own tethered mailbox, read live; member+ inside the routes (a viewer has no mailbox).
 const HK_INBOX = './api/hk/inboxRoutes.js';
 app.get('/api/hk/:businessId/inbox/threads',                  hkRoute(HK_INBOX, 'listThreadsRoute'));

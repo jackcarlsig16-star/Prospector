@@ -1,6 +1,7 @@
 import { getServiceSupabase } from '../lib/authUser.js';
 import { HK_MODULES } from '../../src/constants/hkModules.js';
 import { ROLES } from '../../src/constants/roles.js';
+import { assignOwnerHint } from './importRoutes.js';
 
 // hkos-project-shell-v1 S11 - GET /api/hk/:businessId/shell (hkGate already ran). Members for the owner toggle,
 // Settings > Members and avatars. Never an email or a phone: business_members.name can hold a typed address, so
@@ -61,5 +62,9 @@ export async function memberPrefs(supabase, businessId, members, userId) {
   const taken = new Set(rows.map(p => p.avatar_slot));
   const slot = [1, 2, 3, 4].find(s => !taken.has(s)) || null;
   const { data: created } = await supabase.from('hk_member_prefs').upsert({ business_id: businessId, user_id: userId, avatar_slot: slot }, { onConflict: 'business_id,user_id', ignoreDuplicates: true }).select();
+  // hkos-sheet-import-v1 S2 - the same first load resolves imported brands hinted to this member (owner_hint 'pete')
+  // to their id. A failure here never blocks the shell.
+  const mine = members.find(m => m.user_id === userId);
+  await assignOwnerHint(supabase, businessId, userId, mine?.profile?.display_name || mine?.name).catch(e => console.error('[hk/shell] owner_hint assign failed:', e.message));
   return created?.length ? [...rows, ...created] : rows;
 }
