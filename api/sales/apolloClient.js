@@ -24,12 +24,17 @@ const ALLOWED_CALLS = [
   // ever the website-visitor search (see visitorOnly below).
   { method: 'GET', path: '/users/api_profile' },
   { method: 'POST', path: '/mixed_companies/search' },
+  // visitor-to-record-v1 V2b - a people SEARCH (0 credits, Stage 0 call 2), only ever scoped to one company's domain
+  // or the website-visitor filter (see peopleScoped). Never a reveal, never a general people search.
+  { method: 'POST', path: '/mixed_people/api_search' },
 ];
 
 // A mixed_companies call without the visitor filter would be a general
-// company search - refused before any request.
-const visitorOnly = (path, body) => path !== '/mixed_companies/search'
-  || (Array.isArray(body?.website_visitors_from_domains) && body.website_visitors_from_domains.length > 0);
+// company search - refused before any request. Same for mixed_people/api_search
+// without a company domain or the visitor filter.
+const hasList = v => Array.isArray(v) && v.length > 0;
+const visitorOnly = (path, body) => path !== '/mixed_companies/search' || hasList(body?.website_visitors_from_domains);
+const peopleScoped = (path, body) => path !== '/mixed_people/api_search' || hasList(body?.q_organization_domains) || hasList(body?.website_visitors_from_domains);
 
 // Returns the matched entry's canonical path, so per-message paths are
 // counted under one endpoint key instead of one key per message id.
@@ -63,6 +68,9 @@ export async function apolloRequest({ method, path, query, body, ctx }) {
   }
   if (!visitorOnly(countKey, body)) {
     throw new Error('apolloClient: mixed_companies/search needs website_visitors_from_domains - refusing before any request');
+  }
+  if (!peopleScoped(countKey, body)) {
+    throw new Error('apolloClient: mixed_people/api_search needs q_organization_domains (one company) - refusing before any request');
   }
 
   let lastErr;

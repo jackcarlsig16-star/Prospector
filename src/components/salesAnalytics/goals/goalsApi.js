@@ -38,7 +38,7 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
     if (res.status === 500 && MIGRATION_PATTERN.test(data.error || '')) throw new NeedsMigrationError();
     throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   }
-  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/leads$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/(partners|company\/[a-z]+)\/.+\/apollo-check$|^\/company\/add-to-pipeline$|^\/suggestions\/.+\/(accept|dismiss|snooze|undo)$|^\/signals\/(scout-import|.+\/(accept|dismiss|undo))$|^\/visits\/pull$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
+  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/leads$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/(partners|company\/[a-z]+)\/.+\/apollo-check$|^\/company\/add-to-pipeline$|^\/suggestions\/.+\/(accept|dismiss|snooze|undo)$|^\/signals\/(scout-import|.+\/(accept|dismiss|undo|auto-create))$|^\/visits\/(pull|people-csv)$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
 }
 
@@ -121,6 +121,10 @@ export const goalsApi = {
   removeVisitSkip: (id, skipId) => call(id, `/visits/skip/${skipId}`, { method: 'DELETE' }),
   // sales-ia-v2 P3 - a visitor's P1-P4 / Not a fit; { priority: null } = back to the pull's own score.
   setVisitPriority: (id, body) => call(id, '/visits/priority', { method: 'POST', body }),
+  // visitor-to-record-v1 - auto-create a company from a website-visit signal, Apollo's Visited People export (CSV text), the People search.
+  autoCreateSignal: (id, sid) => call(id, `/signals/${sid}/auto-create`, { method: 'POST', body: {} }),
+  uploadVisitedPeople: (id, text) => call(id, '/visits/people-csv', { method: 'POST', body: { text } }),
+  people: (id, params = {}) => call(id, `/people?${q(params)}`),
   // sales-ia-v2 P4 - the company side panel for any Pipeline row (type = partner | employer | target | apollo | visitor).
   // detail = { record, todos, waiting, visits, signals, recent, people, research, decisions, terms }; 0 AI, 0 Apollo.
   companyDetail: (id, type, recordId) => call(id, `/company?${q({ type, id: recordId })}`),

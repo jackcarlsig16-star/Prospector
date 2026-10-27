@@ -9,6 +9,7 @@ import { cleanText } from './scrubText.js';
 import { VISITOR_DOMAINS, US_500_FILTERS, SEED_SKIP, mergeResults, toVisit, liveMatch, knownSmall, prioritize, toWebSignal } from './visitRules.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
 import { windowFor, LOOKBACK_CAP } from './visitWindow.js';
+import { autoCreateFromVisits, salesSettings } from './visitorRoutes.js';
 import { hasRole } from '../lib/requireAuth.js';
 
 // signals-v1 REV4 Stage 4 (D9) - Prospector's own daily website-visitor
@@ -86,7 +87,7 @@ async function claimRun(supabase, businessId, today, win, force, now) {
   return { run: must(ins)[0], first: !any.length };
 }
 
-async function store(supabase, { businessId, userId, today, win, all, usIds, first, now }) {
+async function store(supabase, { businessId, userId, today, win, all, usIds, first, now, apollo = null }) {
   if (first) {
     const have = must(await supabase.from('sales_visit_skip').select('id').eq('business_id', businessId).limit(1));
     if (!have.length) must(await supabase.from('sales_visit_skip').insert(SEED_SKIP.map(n => ({ business_id: businessId, company_key: normName(n), reason: 'Seed (D10)' }))));
@@ -107,16 +108,18 @@ async function store(supabase, { businessId, userId, today, win, all, usIds, fir
     if (!prior || (v.visits_7d || 0) > (prior.visits_7d || 0)) byKey.set(v.company_key, v);
   }
   const stamp = new Date(now).toISOString();
-  const rows = [], proposals = [];
+  const rows = [], proposals = [], effective = [];
   for (const v of byKey.values()) {
     const match = liveMatch(v, ctx);
     const scored = { ...v, ...prioritize(v, { match, small: knownSmall(v, ctx), skip }) };
     rows.push({ business_id: businessId, pulled_on: today, seen_from: win.window_start, seen_to: win.window_end, ...scored, matched_type: match?.type || null, matched_id: match?.id || null, updated_at: stamp });
-    // web_visits keeps the computed priority; a person's override decides the signal.
+    // web_visits keeps the computed priority; a person's override decides the signal (and the auto-create bar).
     const eff = effectiveVisit(scored, overrides.get(v.company_key));
+    effective.push({ ...eff, pulled_on: today, matched_type: match?.type || null, matched_id: match?.id || null, match_owner_team: match?.owner_team || null });
     if (eff.priority === 'P1' || eff.priority === 'P2') proposals.push(toWebSignal(eff, { businessId, week, userId, match, hint: matchOf(v.company_name, ctx) }));
   }
-  if (rows.length) must(await supabase.from('web_visits').upsert(rows, { onConflict: 'business_id,company_key,pulled_on' }));
+  const stored = rows.length ? must(await supabase.from('web_visits').upsert(rows, { onConflict: 'business_id,company_key,pulled_on' }).select('id, company_key')) : [];
+  const idByKey = new Map(stored.map(r => [r.company_key, r.id]));
   // One open signal per company per week; a company dismissed in Signals
   // stays out until its dismissal runs out.
   const taken = new Set(signals.filter(s => s.source === 'web_visit' && s.signal_week === week).map(s => s.company_key));
@@ -132,6 +135,11 @@ async function store(supabase, { businessId, userId, today, win, all, usIds, fir
   }
   const counts = { companies: rows.length, us_500: rows.filter(r => r.us_500).length, P1: 0, P2: 0, P3: 0, P4: 0, signals: added };
   for (const r of rows) counts[r.priority]++;
+  // visitor-to-record-v1 V1 / V2b: a qualifying visit becomes an employer target (its signal auto-accepted) and, with
+  // a domain, up to people_per_company people from one domain-scoped search - after the rows and signals are stored.
+  const settings = await salesSettings(supabase, businessId);
+  const auto = await autoCreateFromVisits(supabase, { businessId, userId, visits: effective.map(v => ({ ...v, id: idByKey.get(v.company_key) || null })), apollo, dupeCtx: ctx, settings, skip, week, now: new Date(now) });
+  counts.auto = { created: auto.created.length, people: auto.people, searches: auto.searches, attached: auto.attached, waited: auto.waited, duplicates: auto.duplicates, capped: auto.capped, no_signal: auto.no_signal, search_errors: auto.search_errors };
   return counts;
 }
 
@@ -168,7 +176,7 @@ export async function runVisitPull(supabase, { businessId, userId, trigger = 'ma
     after = await balance(ctx);
     credits = before - after;
     must(await recordSpend());
-    const counts = await store(supabase, { businessId, userId, today, win, all, usIds: new Set(us.map(r => r._org_id)), first: claim.first, now });
+    const counts = await store(supabase, { businessId, userId, today, win, all, usIds: new Set(us.map(r => r._org_id)), first: claim.first, now, apollo: ctx });
     const run = must(await finish({ status: 'ok', error: null }))[0];
     return reply(200, { ran: true, run, counts, credits, window: win });
   } catch (e) {

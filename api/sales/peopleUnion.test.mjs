@@ -11,7 +11,7 @@ const targets = [{ id: 't1', name: 'Zz Calpine', owner_team: null }];
 const visits = [{ id: 'v1', last_visit: '2026-10-18', pulled_on: '2026-10-27' }];
 const rows = () => unionRows({
   salesPeople: [
-    { id: 'sp1', company_type: 'employer', opportunity_id: 'o1', name: 'Jean Horton', title: 'VP Human Resources', source_kind: 'web_visit', visit_id: 'v1', updated_at: '2026-10-27T10:00:00Z' },
+    { id: 'sp1', company_type: 'employer', opportunity_id: 'o1', name: 'Jean Horton', title: 'VP Human Resources', source_kind: 'web_visit', visit_id: 'v1', note: 'Found via visit · Apollo search · reveal to see full name', updated_at: '2026-10-27T10:00:00Z' },
     { id: 'sp2', company_type: 'target', target_id: 't1', name: 'Margo R.', title: 'Benefits Manager', source_kind: 'partner_referral', source_partner_id: 'g2', created_at: '2026-10-20T10:00:00Z' },
     { id: 'sp3', company_type: 'employer', opportunity_id: 'o2', name: 'Old Person', title: 'x', archived_at: '2026-10-01T00:00:00Z' },
     { id: 'sp4', company_type: 'employer', opportunity_id: 'o2', name: 'Cam Fields', title: 'Head of People', source_kind: 'campaign', source_campaign_id: 'c1', updated_at: '2026-10-25T10:00:00Z' },
@@ -34,6 +34,7 @@ test('union: every table in one shape with its company and ties; has_email only 
   assert.deepEqual(by.ap1.ties.map(t => t.kind), ['company', 'sequence', 'upside']);
   assert.deepEqual(by.ap2.company, { type: 'account', id: null, name: 'Zz Unknown Co' });
   assert.equal(by.sp3, undefined, 'archived');
+  assert.deepEqual([by.sp1.name_partial, by.sp2.name_partial, by.pc1.name_partial], [true, false, false]);
   assert.ok(!JSON.stringify(r).includes('@'));
 });
 
@@ -45,7 +46,7 @@ test('search: by name or company, the company / tie / title filters, newest acti
   assert.deepEqual(searchPeople(r, { tie: 'visit' }).map(x => x.name), ['Jean Horton']);
   assert.deepEqual(searchPeople(r, { tie: 'upside' }).map(x => x.name), ['Jean Horton', 'Dev Patel']);
   assert.deepEqual(searchPeople(r, { title: 'benefits' }).map(x => x.name), ['Eve Solo', 'Margo R.']);
-  assert.deepEqual(Object.keys(searchPeople(r, { q: 'horton' })[0]), ['person_id', 'source_table', 'name', 'title', 'company', 'ties', 'last_activity', 'has_email']);
+  assert.deepEqual(Object.keys(searchPeople(r, { q: 'horton' })[0]), ['person_id', 'source_table', 'name', 'title', 'company', 'ties', 'last_activity', 'has_email', 'name_partial']);
   assert.throws(() => searchPeople(r, { tie: 'friend' }), /tie must be one of/);
   assert.deepEqual(TIES, ['company', 'partner_referral', 'campaign', 'sequence', 'visit', 'upside']);
   const many = Array.from({ length: 80 }, (_, i) => ({ person_id: `x${i}`, source_table: 'sales_people', name: `Zz Person ${i}`, title: null, company: null, ties: [], last_activity: null, has_email: false }));

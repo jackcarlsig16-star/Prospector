@@ -14,16 +14,20 @@ export const PEOPLE_SEARCH_PATH = '/mixed_people/api_search';
 export const PEOPLE_PER_COMPANY = 3; // REVISABLE
 export const PEOPLE_SEARCH_DAILY_CAP = 25; // REVISABLE
 export const PER_PAGE = 10; // REVISABLE
+export const REVEAL_NOTE = 'reveal to see full name';
+export const isPartialName = note => String(note || '').includes(REVEAL_NOTE);
 const PERSON_KEYS = ['name', 'title', 'location', 'linkedin_url', 'note', 'apollo_person_id', 'source_kind', 'visit_id', 'company', 'domain', 'last_visit', 'visits', 'pages'];
 const ADDRESS = /[^\s@<>()"',;=&#]+@[^\s@<>()"',;=&#]+\.[a-z]{2,}/i;
 // A phone is 10+ digits in one run (a date like 2026-10-27 has 8 and must pass).
 const looksPhone = s => (String(s).match(/\+?\d[\d\s().-]{7,}\d/g) || []).some(x => x.replace(/\D/g, '').length >= 10);
 const LINKEDIN = /^https?:\/\/(www\.)?linkedin\.com\//i;
 
+// Free-text keys get the phone test too; ids (visit_id, apollo_person_id) and links are digit-heavy by nature.
+const TEXT_KEYS = new Set(['name', 'title', 'location', 'note', 'company', 'pages', 'domain']);
 export function assertNoAddress(rows) {
   for (const r of rows) for (const [k, v] of Object.entries(r)) {
     if (typeof v !== 'string') continue;
-    if (ADDRESS.test(v) || (k !== 'linkedin_url' && looksPhone(v))) throw new Error(`peopleFind: ${k} carries an address or phone - refused`);
+    if (ADDRESS.test(v) || (TEXT_KEYS.has(k) && looksPhone(v))) throw new Error(`peopleFind: ${k} carries an address or phone - refused`);
   }
   return rows;
 }
@@ -50,7 +54,8 @@ export function mapPeople(json, { visitId = null, max = PEOPLE_PER_COMPANY, day 
     const first = name(p.first_name, 60), last = name(p.last_name || p.last_name_obfuscated, 60);
     const full = [first, last].filter(Boolean).join(' ');
     if (!full) continue;
-    out.push(pick({ name: full, title: str(p.title, 160), location: null, linkedin_url: LINKEDIN.test(String(p.linkedin_url || '')) ? String(p.linkedin_url).slice(0, 300) : null, note: `Found via visit · Apollo search${day ? ` · ${day}` : ''}`, apollo_person_id: str(p.id, 80), source_kind: 'web_visit', visit_id: visitId }));
+    const partial = !p.last_name && !!p.last_name_obfuscated;
+    out.push(pick({ name: full, title: str(p.title, 160), location: null, linkedin_url: LINKEDIN.test(String(p.linkedin_url || '')) ? String(p.linkedin_url).slice(0, 300) : null, note: `Found via visit · Apollo search${day ? ` · ${day}` : ''}${partial ? ` · ${REVEAL_NOTE}` : ''}`, apollo_person_id: str(p.id, 80), source_kind: 'web_visit', visit_id: visitId }));
   }
   return out;
 }

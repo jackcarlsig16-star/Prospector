@@ -61,6 +61,8 @@ const seed = (extra = {}) => ({
   sales_sequenced_accounts: [{ business_id: B, account_id: 'a-tiny', name: 'Tiny Shop', employees: 40 }],
   sales_targets: [{ id: T.quarry, business_id: B, name: 'Quarry Labs', kind: 'employer', status: 'researching', owner_team: 'both' }],
   partner_domains: [], sales_signals: [], sales_visit_skip: [], web_visits: [], visit_pull_runs: [], apollo_credit_spend: [],
+  // visitor-to-record-v1: the pull's auto-create is off here (its own suite covers it) so these rules stay about the pull.
+  sales_settings: [{ business_id: B, buyer_titles: [], auto_create_daily_cap: 0, people_search_daily_cap: 0, people_per_company: 3 }],
   ...extra,
 });
 const unique = {

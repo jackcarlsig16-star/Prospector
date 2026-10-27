@@ -15,7 +15,11 @@ export const apolloFixtureCalls = [];
 // activities: { <message id>: emailer_message } } answers GET /emailer_messages/search (by the stat filter, paged)
 // and GET /emailer_messages/:id/activities. empty: true answers every other allowlisted call with an empty
 // result instead of throwing (a whole Sync now against the fixture). Made-up rows only; no emails or phones.
-export function installApolloFixture(accounts, visitors = null, email = null) {
+// visitor-to-record-v1: `people` = { <domain>: [{ id, first_name, last_name_obfuscated, title, ... }] } answers
+// POST /mixed_people/api_search by q_organization_domains[0] (a request without a domain never gets here: the
+// allowlist guard throws first). Made-up rows; a row may carry email / phone keys ON PURPOSE so tests prove they are
+// never mapped.
+export function installApolloFixture(accounts, visitors = null, email = null, people = null) {
   const realFetch = globalThis.fetch;
   process.env.APOLLO_API_KEY ||= 'fixture-key-not-real';
   globalThis.fetch = async (url, init = {}) => {
@@ -35,6 +39,11 @@ export function installApolloFixture(accounts, visitors = null, email = null) {
       const set = (body.organization_locations ? visitors.us : visitors.all) || {};
       const total = (set.organizations || []).length + (set.accounts || []).length;
       return answer({ organizations: set.organizations || [], accounts: set.accounts || [], pagination: { page: body.page || 1, per_page: body.per_page, total_entries: total, total_pages: 1 } });
+    }
+    if (people && init.method === 'POST' && path === '/mixed_people/api_search') {
+      const body = JSON.parse(init.body);
+      const rows = people[body.q_organization_domains?.[0]] || [];
+      return answer({ total_entries: rows.length, people: rows.slice(0, body.per_page || 10) });
     }
     if (email && init.method === 'GET' && path === '/emailer_messages/search') {
       const q = new URL(u).searchParams;

@@ -9,6 +9,7 @@ import { ImportRefused } from './masterImport.js';
 import { scoutImport, laMonday, DISMISS_DAYS } from './scoutImport.js';
 import { SIGNAL_CHANNEL } from '../../src/constants/salesChannels.js';
 import { sourceColumns, logSource } from './leadSource.js';
+import { undoPlan } from './visitorRecords.js';
 
 // signals-v1 Stage 2 - the review queue for outside signals (D1). Import
 // only proposes; a Member decides each row. Accept (D2-D4) makes ONE open
@@ -25,7 +26,7 @@ export const SIGNAL_CATEGORY = 'Signals';
 export const SIGNAL_STATUSES = ['new', 'accepted', 'dismissed'];
 const SOURCE_LABEL = { scout: 'Signal Scout', web_visit: 'Website visit' };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const COLS = 'id, source, signal_week, company_name, company_key, kind, kind_guessed, who, signal, why_now, first_line, score, upside_joint, match, status, dismissed_until, target_id, todo_id, created_at, decided_by, decided_at';
+const COLS = 'id, source, signal_week, company_name, company_key, kind, kind_guessed, who, signal, why_now, first_line, score, upside_joint, match, status, dismissed_until, target_id, todo_id, created_at, decided_by, decided_at, auto';
 const err = (status, error) => Object.assign(new Error(error), { status });
 const must = r => { if (r.error) throw err(500, r.error.message); return r.data; };
 const reply = (status, body) => ({ status, body });
@@ -185,6 +186,18 @@ export async function undoSignal(supabase, { businessId, userId = null, id, body
     if (error) throw err(500, error.message);
     if (!s) return reply(404, { error: 'signal not found' });
     if (s.status === 'new') return reply(409, { error: `${s.company_name} is still new - nothing to undo` });
+    // visitor-to-record-v1 V6: an auto-created company comes off by archiving (the target reads rejected, its visit
+    // people archived_at - never a delete), the signal reopens; no time window, a person reviews it whenever.
+    if (s.status === 'accepted' && s.auto) {
+      const target = s.target_id ? must(await supabase.from('sales_targets').select('id, status, research_notes').eq('business_id', businessId).eq('id', s.target_id).maybeSingle()) : null;
+      const people = s.target_id ? must(await supabase.from('sales_people').select('id, archived_at').eq('business_id', businessId).eq('target_id', s.target_id)) : [];
+      const plan = undoPlan({ signal: s, target, people }, { now });
+      if (plan.target) must(await supabase.from('sales_targets').update({ ...plan.target.patch, research_notes: appendLine(target.research_notes, `(${slash(laDateString(now))}) Auto-create undone from Signals`) }).eq('id', plan.target.id));
+      for (const p of plan.people) must(await supabase.from('sales_people').update(p.patch).eq('id', p.id));
+      const rows = must(await supabase.from('sales_signals').update({ ...plan.signal, match: null }).eq('id', s.id).eq('status', 'accepted').select(COLS));
+      if (!rows.length) return reply(409, { error: `${s.company_name} changed since - reload` });
+      return reply(200, { signal: rows[0], archived: { target: plan.target?.id || null, people: plan.people.length } });
+    }
     if (!s.decided_at || now - Date.parse(s.decided_at) > UNDO_WINDOW_MS) return reply(409, { error: `${s.company_name} was decided too long ago to undo` });
     if (s.status === 'accepted') {
       if (s.match?.via === 'partner' && s.match?.id) {

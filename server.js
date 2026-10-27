@@ -740,6 +740,10 @@ app.get('/api/sales/:businessId/goals/visits/skip', salesModuleRoute('./api/sale
 app.post('/api/sales/:businessId/goals/visits/skip', salesModuleRoute('./api/sales/visitReport.js', 'addSkipRoute', 'goals/visits/skip POST'));
 app.delete('/api/sales/:businessId/goals/visits/skip/:id', salesModuleRoute('./api/sales/visitReport.js', 'removeSkipRoute', 'goals/visits/skip DELETE'));
 app.post('/api/sales/:businessId/goals/visits/priority', salesModuleRoute('./api/sales/visitPriority.js', 'setVisitPriorityRoute', 'goals/visits/priority POST'));
+// visitor-to-record-v1 Stage 2 - a visit builds the company (on demand from Signals), Apollo's Visited People export, the People search.
+app.post('/api/sales/:businessId/goals/signals/:id/auto-create', salesModuleRoute('./api/sales/visitorRoutes.js', 'autoCreateSignalRoute', 'goals/signals/:id/auto-create POST'));
+app.post('/api/sales/:businessId/goals/visits/people-csv', salesModuleRoute('./api/sales/visitorRoutes.js', 'uploadVisitedPeopleRoute', 'goals/visits/people-csv POST'));
+app.get('/api/sales/:businessId/goals/people', salesModuleRoute('./api/sales/visitorRoutes.js', 'peopleSearchRoute', 'goals/people'));
 // sales-ia-v2 Stage 3 - the company side panel (every Pipeline row type): body sections, Add to pipeline, notes and
 // contacts for employers / targets, a target's ownership / step, and Research + Check Apollo for any record type.
 app.get('/api/sales/:businessId/goals/company', salesModuleRoute('./api/sales/companyPanel.js', 'companyDetailRoute', 'goals/company'));
