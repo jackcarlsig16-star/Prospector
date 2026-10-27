@@ -2,7 +2,7 @@
 // for the screen to render (src/constants/hkModules.js); reserved slots stay hidden until their module's SPEC turns
 // it on (never shown disabled). No em or en dashes in any UI text.
 export const HK_SCREENS = [
-  { id: 'today', label: 'Today', icon: 'today', phoneTab: true, module: 'email', emptyTitle: 'Nothing needs you right now.', emptyLine: 'Today fills in after the Sheet import and the first Gmail sync: due follow-ups, new replies and drafts waiting.' },
+  { id: 'today', label: 'Today', icon: 'today', phoneTab: true, module: 'email', emptyTitle: 'Nothing needs you right now.', emptyLine: 'Replies, drafts and due follow-ups land here each morning.' },
   { id: 'inbox', label: 'Inbox', icon: 'inbox', phoneTab: false, module: 'email', emptyTitle: 'Your inbox is empty.', emptyLine: 'Mail in your HumanKind Gmail shows here as it arrives. Only you see your inbox.' },
   { id: 'replies', label: 'Replies', icon: 'replies', phoneTab: true, module: 'email', emptyTitle: 'No replies waiting.', emptyLine: 'Replies land here after each Gmail sync, labeled and summarized.' },
   { id: 'drafts', label: 'Drafts', icon: 'drafts', phoneTab: true, module: 'email', emptyTitle: 'No drafts waiting.', emptyLine: 'Drafts come from Draft email on a brand page or from Claude. Nothing is ever sent from here.' },
@@ -20,7 +20,7 @@ export const HK_SCREENS = [
   { id: 'settings', label: 'Settings', icon: 'settings', phoneTab: false, divider: true },
 ];
 
-export const SETTINGS_SECTIONS = [['pitch', 'Pitch'], ['connections', 'Connections'], ['members', 'Members'], ['modules', 'Modules']];
+export const SETTINGS_SECTIONS = [['pitch', 'Pitch'], ['followups', 'Follow-up timing'], ['digest', 'Digest'], ['connections', 'Connections'], ['members', 'Members'], ['modules', 'Modules']];
 
 // Screens that render: no module (Settings) or its module on.
 export function visibleScreens(modules) {

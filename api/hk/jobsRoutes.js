@@ -2,7 +2,7 @@
 // (their own mailbox + the workspace daily-check); Run daily check now, Sync Gmail now and Send test digest = owner role;
 // Today's read and the runs list = any member. No address in any response.
 import { getSupabase, HkError, fail, isOwner, me } from './hkShared.js';
-import { gmailSyncAll, dailyCheck, pageloadJob, todayPayload, testDigest, runRow } from './jobs/runner.js';
+import { gmailSyncAll, dailyCheck, pageloadJob, todayPayload, testDigest, retryDraft, skipTouch, markDmSent, runRow } from './jobs/runner.js';
 
 const JOBS = new Set(['gmail-sync-all', 'daily-check']);
 
@@ -57,4 +57,19 @@ export async function testDigestRoute(req, res, d = {}) {
     if (!isOwner(req)) throw new HkError(403, 'only an owner-role member can send a test digest');
     res.json(await testDigest({ businessId: req.params.businessId, d }));
   } catch (e) { fail(res, e, 'jobs/test-digest'); }
+}
+
+// POST /jobs/retry-draft { brand_id } (member)
+export async function retryDraftRoute(req, res, d = {}) {
+  try { if (!req.body?.brand_id) throw new HkError(400, 'brand_id is required'); res.json(await retryDraft({ businessId: req.params.businessId, brandId: String(req.body.brand_id), d })); } catch (e) { fail(res, e, 'jobs/retry-draft'); }
+}
+
+// POST /jobs/skip-touch { brand_id } (member)
+export async function skipTouchRoute(req, res, d = {}) {
+  try { if (!req.body?.brand_id) throw new HkError(400, 'brand_id is required'); res.json(await skipTouch({ businessId: req.params.businessId, brandId: String(req.body.brand_id), userId: me(req), d })); } catch (e) { fail(res, e, 'jobs/skip-touch'); }
+}
+
+// POST /drafts/:touchId/dm-sent (member)
+export async function dmSentRoute(req, res, d = {}) {
+  try { res.json(await markDmSent({ businessId: req.params.businessId, touchId: req.params.touchId, userId: me(req), d })); } catch (e) { fail(res, e, 'jobs/dm-sent'); }
 }

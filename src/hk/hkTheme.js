@@ -209,6 +209,19 @@ ${PINNED} {
 .hk-theme .hk-drawer .hk-form label { display:flex; flex-direction:column; gap:4px; }
 .hk-theme.hk-shell--phone .hk-drawer { width:100vw; }
 .hk-theme .hk-phone-top .hk-sync { font-size:12px; padding:5px 10px; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* hkos-daily-check-v1 - Today's cards */
+.hk-theme .hk-today { display:flex; flex-direction:column; gap:14px; }
+.hk-theme .hk-today .hk-toolbar { margin:0; }
+.hk-theme .hk-today__card { padding:14px 16px; border-radius:var(--hk-radius-card); background:var(--hk-surface); box-shadow:var(--hk-shadow-card); border-left:4px solid var(--hk-line); }
+.hk-theme .hk-today__card--urgent { border-left-color:var(--hk-orange); }
+.hk-theme .hk-today__card--mustard { border-left-color:var(--hk-mustard); }
+.hk-theme .hk-today__card .hk-row { background:var(--hk-sand); box-shadow:none; }
+.hk-theme .hk-today__summary { flex:1 1 220px; min-width:0; }
+.hk-theme .hk-today__actions { display:inline-flex; gap:6px; flex-wrap:wrap; align-items:center; width:100%; }
+.hk-theme .hk-today__strip { width:100%; margin:0; }
+.hk-theme .hk-today__foot { margin:4px 0 0; }
+.hk-theme.hk-shell--phone .hk-today__card { padding:12px; }
+.hk-theme.hk-shell--phone .hk-today__actions .ui-btn, .hk-theme.hk-shell--phone .hk-today__actions .ui-input { flex:1 1 auto; }
 /* hkos-sheet-import-v1 - "+ New" and Review > Imports */
 .hk-theme .hk-new { display:inline-flex; align-items:center; gap:6px; padding:7px 14px; border-radius:var(--hk-radius-control); background:var(--hk-green-fill); color:#fff; font:600 14px var(--hk-font-body); }
 .hk-theme .hk-new:hover { background:var(--hk-forest); }

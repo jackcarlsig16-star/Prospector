@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 process.env.GOOGLE_TOKEN_KEY ||= 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
 const { fakeSupabase } = await import('../../sales/testing/fakeSupabase.mjs');
 const { NeedsGoogle } = await import('../../lib/googleGrants.js');
-const { gmailSyncAll, dailyCheck, pageloadJob, todayPayload, testDigest, DRAFTS_PER_RUN } = await import('./runner.js');
+const { gmailSyncAll, dailyCheck, pageloadJob, todayPayload, testDigest, retryDraft, skipTouch, markDmSent, DRAFTS_PER_RUN } = await import('./runner.js');
 const { registerHkCron, SYNC_EXPR } = await import('./cron.js');
 
 const HK = 'biz-hk', JACK = 'u-jack', PETE = 'u-pete';
@@ -204,4 +204,28 @@ test('cron registration: two schedules per hk_sales workspace, timezone + noOver
   await scheduled[0].fn(); await scheduled[1].fn();
   assert.deepEqual(ran, [['sync', { businessId: HK, trigger: 'cron' }], ['daily', { businessId: HK, trigger: 'cron' }]]);
   assert.equal(DRAFTS_PER_RUN, 25);
+});
+
+test('Today actions: Retry draft writes the one due draft on its owner\'s grant (quiet rule aside) or says why not; Skip this touch clears next_due_at + logs; Mark DM sent flips an ig_dm touch only', async () => {
+  fresh({ hk_brands: [brand('a', 'Zz A'), brand('d', 'Zz D')], hk_contacts: [contact('a')], hk_touches: [cold('a', JACK, 6), cold('d', JACK, 6)] }); now = SAT;
+  let r = await retryDraft({ businessId: HK, brandId: 'a', d: deps() });
+  assert.equal(r.drafted, true); assert.equal(r.kind, 'bump'); assert.equal(calls.filter(c => c[0] === 'createDraft').length, 1);
+  r = await retryDraft({ businessId: HK, brandId: 'a', d: deps() });
+  assert.deepEqual([r.drafted, r.reason], [false, 'draft_exists']);
+  r = await retryDraft({ businessId: HK, brandId: 'd', d: deps() });
+  assert.deepEqual([r.drafted, r.reason], [false, 'no_contact']);
+  await assert.rejects(retryDraft({ businessId: HK, brandId: 'nope', d: deps() }), /brand not found/);
+  const sk = await skipTouch({ businessId: HK, brandId: 'd', userId: JACK, d: deps() });
+  assert.equal(sk.ok, true); assert.equal(sb.db.hk_brands.find(b => b.id === 'd').next_due_at, null);
+  assert.equal(sb.db.hk_events.at(-1).action, 'followup_skipped');
+  const bump = sb.db.hk_touches.find(t => t.kind === 'bump');
+  await assert.rejects(markDmSent({ businessId: HK, touchId: bump.id, userId: JACK, d: deps() }), /only an Instagram DM/);
+  sb.db.hk_touches.push({ id: 'dm-1', business_id: HK, brand_id: 'a', sender_user_id: JACK, channel: 'ig_dm', kind: 'dm_text', state: 'drafted', body_text: 'x', created_by: 'system', created_at: daysAgo(0) });
+  const ok = await markDmSent({ businessId: HK, touchId: 'dm-1', userId: JACK, d: deps() });
+  assert.equal(ok.ok, true);
+  const dm = sb.db.hk_touches.find(t => t.id === 'dm-1');
+  assert.equal(dm.state, 'sent'); assert.ok(dm.sent_at);
+  assert.equal(sb.db.hk_events.at(-1).action, 'touch_sent'); assert.equal(sb.db.hk_events.at(-1).detail.by_hand, true);
+  await assert.rejects(markDmSent({ businessId: HK, touchId: 'dm-1', userId: JACK, d: deps() }), /that DM is sent/);
+  noSend();
 });

@@ -113,6 +113,9 @@ const TABLE = [
   ['jobsRoutes', 'testDigestRoute', owner({ method: 'POST' }), [200]],
   ['jobsRoutes', 'todayRoute', member(), [200]],
   ['jobsRoutes', 'runsRoute', member({ query: { job: 'daily-check' } }), [200]],
+  ['jobsRoutes', 'retryDraftRoute', member({ method: 'POST', body: { brand_id: ID.run } }), [200]],
+  ['jobsRoutes', 'skipTouchRoute', member({ method: 'POST', body: { brand_id: ID.run } }), [200]],
+  ['jobsRoutes', 'dmSentRoute', member({ method: 'POST', params: { touchId: 'no-such-touch' } }), [404]],
   ['inboxRoutes', 'listThreadsRoute', member({ query: { tab: 'inbox' } }), [200]],
   ['inboxRoutes', 'openThreadRoute', member({ params: { id: 'th-new' } }), [200]],
   ['inboxRoutes', 'linkThreadRoute', member({ method: 'POST', params: { id: 'th-run' }, body: { brand_id: ID.run } }), [201]],
@@ -129,7 +132,7 @@ test('server.js wires every handler in the table, and the table covers every han
   const extra = [...src.matchAll(/(HK_[A-Z]+) = '\.\/api\/hk\/(\w+)\.js'/g)].map(m => [m[1], m[2]]);
   for (const [k, v] of extra) files[k] = v;
   const wired = [...src.matchAll(/hkRoute\((HK_[A-Z]+), '(\w+)'\)/g)].map(m => `${files[m[1]]}.${m[2]}`).sort();
-  assert.ok(wired.length >= 48, `found ${wired.length} wired hk routes`);
+  assert.ok(wired.length >= 51, `found ${wired.length} wired hk routes`);
   assert.deepEqual(wired, TABLE.map(([m, h]) => `${m}.${h}`).sort());
   for (const [m, h] of TABLE) assert.equal(typeof MODULES[m][h], 'function', `${m}.${h} is exported`);
   assert.match(src, /return mod\[name\]\(req, res\);/, 'hkRoute passes (req, res) and nothing else');

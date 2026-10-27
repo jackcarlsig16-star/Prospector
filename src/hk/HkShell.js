@@ -10,6 +10,7 @@ import { roleAtLeast } from '../constants/roles';
 import { signOut } from '../utils/authSession';
 import { hkPatch, hkGet, hkPost } from './hkApi';
 import { syncPillState, pageloadDue, syncKey } from './hkSync';
+import { todayBadge } from './screens/TodayScreen';
 
 // hkos-project-shell-v1 - the HumanKind Sales OS: a full-screen shell App.js renders INSTEAD of the Prospector shell
 // for an hk_sales workspace. The current screen lives in the URL hash (#hk/<screen>, #hk/settings/<section>,
@@ -27,6 +28,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
   const [syncing, setSyncing] = useState(false);
   const [inboxUnread, setInboxUnread] = useState(null);
   const [intent, setIntent] = useState(null);
+  const [todayCounts, setTodayCounts] = useState(null);
 
   ensureHkTheme();
 
@@ -43,6 +45,9 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
   // hkos-gmail-connect-v1 G5.5 - the mailbox state + badges, then one page-load sync per hour per user (the server
   // guards the same window; prospector_hk_sync_<business>_<user> mirrors it so a reload never fires a second one).
   const loadGmail = useCallback(() => hkGet(business.id, '/gmail/status').then(setGmail).catch(() => setGmail(null)), [business.id]);
+  // The Today badge: urgent + replies + drafts + due, from one read at load (the screen refreshes it as it acts).
+  const loadToday = useCallback(() => hkGet(business.id, '/jobs/today').then(t => setTodayCounts(t.digest?.counts || null)).catch(() => {}), [business.id]);
+  useEffect(() => { loadToday(); }, [loadToday]);
   useEffect(() => { loadGmail(); }, [loadGmail]);
   const runSync = useCallback(async (trigger = 'manual') => {
     setSyncing(true);
@@ -53,7 +58,8 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
     let last = null; try { last = localStorage.getItem(syncKey(business.id, userId)); } catch {}
     if (!pageloadDue(last)) return;
     try { localStorage.setItem(syncKey(business.id, userId), String(Date.now())); } catch {}
-    runSync('pageload');
+    // hkos-daily-check-v1 J2 - the page-load runner: the caller's sync (60-min guard) + the workspace daily-check when due.
+    hkPost(business.id, '/jobs/pageload', {}).catch(() => {}).then(() => { loadGmail(); loadToday(); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gmail?.mailbox?.linked, gmail?.mailbox?.state, business.id, userId]);
 
@@ -92,7 +98,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
 
   // hkos-inbox-v1 - the Inbox badge is the unread count from the last Inbox page 1 this session read (0 Gmail cost
   // until the screen is opened).
-  const screens = useMemo(() => visibleScreens(shell?.modules || HK_MODULES).map(s => (s.id === 'drafts' ? { ...s, count: gmail?.badges?.drafts || 0 } : s.id === 'replies' ? { ...s, count: gmail?.badges?.replies || 0 } : s.id === 'inbox' ? { ...s, count: inboxUnread || 0 } : s)), [shell, gmail, inboxUnread]);
+  const screens = useMemo(() => visibleScreens(shell?.modules || HK_MODULES).map(s => (s.id === 'drafts' ? { ...s, count: gmail?.badges?.drafts || 0 } : s.id === 'replies' ? { ...s, count: gmail?.badges?.replies || 0 } : s.id === 'inbox' ? { ...s, count: inboxUnread || 0 } : s.id === 'today' ? { ...s, count: todayBadge(todayCounts) } : s)), [shell, gmail, inboxUnread, todayCounts]);
   const options = useMemo(() => ownerOptions(shell?.me, shell?.members), [shell]);
   const ownerValue = options.some(o => o.id === owner) ? owner : 'me';
   const pickOwner = id => {
@@ -122,7 +128,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
     ? <p className="hk-meta" role="alert">{loadError}</p>
     : !shell
       ? <p className="hk-meta">Loading the Sales OS…</p>
-      : <HkScreen screen={current} section={nav.section} brandId={nav.brandId || null} businessId={business.id} owner={ownerValue} compact={compact} shell={shell} now={now} gmail={gmail} syncing={syncing} onSync={() => runSync('manual')} onGmailChanged={loadGmail} onOpenConnections={onOpenConnections} onInboxUnread={setInboxUnread} onSection={s => go('settings', s)} onOpenAdmin={onOpenAdmin} onOpenBrand={id => go('brands', null, id)} onGo={go} intent={intent} onIntentDone={clearIntent} />;
+      : <HkScreen screen={current} section={nav.section} brandId={nav.brandId || null} businessId={business.id} owner={ownerValue} compact={compact} shell={shell} now={now} gmail={gmail} syncing={syncing} onSync={() => runSync('manual')} onGmailChanged={loadGmail} onOpenConnections={onOpenConnections} onInboxUnread={setInboxUnread} onSection={s => go('settings', s)} onOpenAdmin={onOpenAdmin} onOpenBrand={id => go('brands', null, id)} onGo={go} onTodayCounts={setTodayCounts} intent={intent} onIntentDone={clearIntent} />;
 
   const avatar = shell && <AvatarMenu me={shell.me} paletteIndex={mine?.palette_index || 1} size={compact ? 30 : 34} onBack={onAllWorkspaces} onSignOut={signOut} />;
   const newMenu = shell && roleAtLeast(shell.me.role, 'member') && <NewMenu compact={compact} onPick={pickNew} />;

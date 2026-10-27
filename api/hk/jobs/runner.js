@@ -72,6 +72,29 @@ export async function gmailSyncAll({ businessId, trigger = 'manual', startedBy =
 
 const contactFirstName = (contacts, item, brandName) => { const c = contacts.find(x => x.id === item.contact_id); const n = c?.name && c.name !== `${brandName} contact` ? firstWord(c.name) : null; return n; };
 
+// J1c for one due item on its owner's grant. -> { drafted: true, touch } | { drafted: false, reason, detail, error }
+async function draftOne(D, { businessId, item, founder: f, contacts }) {
+  const no = (reason, detail = null, error = false) => ({ drafted: false, reason, detail, error });
+  if (!f?.m) return no('no_mailbox');
+  if (f.m.state === RECONNECT) return no('reconnect');
+  if (!item.has_email) return no('no_contact');
+  if (!item.prior_thread_id) return no('no_thread');
+  let token;
+  try { token = await D.tokenForGrant(f.m.grant, 'gmail'); }
+  catch (e) { if (e instanceof NeedsGoogle) await D.flag(f.m.grant.id).catch(() => {}); return no('reconnect', null, true); }
+  const args = { brandName: item.brand_name, brandId: item.brand_id, firstName: contactFirstName(contacts, item, item.brand_name), concept: item.challenge_concept, ownerFirstName: f.first_name };
+  const text = item.kind === 'bump' ? bumpText(args) : finalText(args);
+  try {
+    const out = await createDraftFor({ D: { ...D, mailbox: async () => f.m }, businessId, userId: item.owner_user_id, body: { brand_id: item.brand_id, channel: 'email', kind: item.kind, subject: followupSubject(item.prior_subject), body_markdown: text.body, challenge_concept: item.challenge_concept, reply_to_touch_id: item.prior_touch_id, contact_id: item.contact_id }, tokenFor: async () => token, createdBy: 'system' });
+    return out ? { drafted: true, touch: out.touch } : no('gmail', 'no token', true);
+  } catch (e) {
+    if (e instanceof HkError && e.status === 422) return no('lint', e.extra?.problems?.[0]?.message || null);
+    if (e instanceof HkError) return no(e.extra?.needs_contact ? 'no_contact' : e.extra?.needs_prior_touch ? 'no_thread' : 'blocked', e.message);
+    if ((e instanceof GmailError && e.status === 401) || e instanceof NeedsGoogle) { await D.flag(f.m.grant.id).catch(() => {}); return no('reconnect', null, true); }
+    return no('gmail', errText(e).slice(0, 120), true);
+  }
+}
+
 // J1 daily-check. -> { run, counts, digest } or { skipped: 'already ran today' }. Drafts land on each owner's grant.
 export async function dailyCheck({ businessId, trigger = 'manual', startedBy = null, d = {} }) {
   const D = jobDeps(d), now = D.now(), settings = await settingsOf(D.supabase, businessId);
@@ -87,25 +110,8 @@ export async function dailyCheck({ businessId, trigger = 'manual', startedBy = n
     const miss = (item, reason, detail = null) => noDraft.push({ brand_id: item.brand_id, kind: item.kind, reason, detail });
     for (const item of follow.items) {
       if (made >= DRAFTS_PER_RUN) { capped++; continue; }
-      const f = byUser[item.owner_user_id];
-      if (!f?.m) { miss(item, 'no_mailbox'); continue; }
-      if (f.m.state === RECONNECT) { miss(item, 'reconnect'); continue; }
-      if (!item.has_email) { miss(item, 'no_contact'); continue; }
-      if (!item.prior_thread_id) { miss(item, 'no_thread'); continue; }
-      let token;
-      try { token = await D.tokenForGrant(f.m.grant, 'gmail'); }
-      catch (e) { if (e instanceof NeedsGoogle) await D.flag(f.m.grant.id).catch(() => {}); miss(item, 'reconnect'); errors++; continue; }
-      const args = { brandName: item.brand_name, brandId: item.brand_id, firstName: contactFirstName(contacts, item, item.brand_name), concept: item.challenge_concept, ownerFirstName: f.first_name };
-      const text = item.kind === 'bump' ? bumpText(args) : finalText(args);
-      try {
-        const out = await createDraftFor({ D: { ...D, mailbox: async () => f.m }, businessId, userId: item.owner_user_id, body: { brand_id: item.brand_id, channel: 'email', kind: item.kind, subject: followupSubject(item.prior_subject), body_markdown: text.body, challenge_concept: item.challenge_concept, reply_to_touch_id: item.prior_touch_id, contact_id: item.contact_id }, tokenFor: async () => token, createdBy: 'system' });
-        if (out) { newTouches.push(out.touch); made++; }
-      } catch (e) {
-        if (e instanceof HkError && e.status === 422) miss(item, 'lint', e.extra?.problems?.[0]?.message || null);
-        else if (e instanceof HkError) miss(item, e.extra?.needs_contact ? 'no_contact' : e.extra?.needs_prior_touch ? 'no_thread' : 'blocked', e.message);
-        else if ((e instanceof GmailError && e.status === 401) || e instanceof NeedsGoogle) { await D.flag(f.m.grant.id).catch(() => {}); miss(item, 'reconnect'); errors++; }
-        else { miss(item, 'gmail', errText(e).slice(0, 120)); errors++; }
-      }
+      const r = await draftOne(D, { businessId, item, founder: byUser[item.owner_user_id], contacts });
+      if (r.drafted) { newTouches.push(r.touch); made++; } else { miss(item, r.reason, r.detail); if (r.error) errors++; }
     }
     // J1d - DM texts: a touch to copy from Today, no Gmail.
     for (const item of dms.items) {
@@ -182,4 +188,43 @@ export async function testDigest({ businessId, d = {} }) {
   const { brands, touches, replies } = await workspaceRows(D, businessId);
   const digest = buildDigest({ replies, touches, brands, members: members(fs), dmReady: touches.filter(t => t.channel === 'ig_dm' && t.state === 'drafted').map(t => ({ brand_id: t.brand_id, touch_id: t.id })), warningsCount: dataWarnings(brands, now).length, settings, events: await recentEvents(D, businessId, now), now, test: true });
   return { digest, slack: await postSlack(D, digest), slack_configured: !!D.slackUrl };
+}
+
+// J5 [Retry draft]: the J1c path for one brand, now, quiet rule aside (a person asked). -> { drafted, touch_id?, reason?, detail? }
+export async function retryDraft({ businessId, brandId, d = {} }) {
+  const D = jobDeps(d), now = D.now(), settings = await settingsOf(D.supabase, businessId);
+  const fs = await founders(D, businessId), byUser = Object.fromEntries(fs.map(f => [f.user_id, f]));
+  const rows = await workspaceRows(D, businessId);
+  const only = { ...rows, brands: rows.brands.filter(b => b.id === brandId) };
+  if (!only.brands.length) throw new HkError(404, 'brand not found');
+  const follow = dueFollowups({ ...only, settings: { ...settings, quiet_weekends: false }, now });
+  const item = follow.items[0];
+  if (!item) { const sk = follow.skipped[0]; return { drafted: false, reason: sk ? sk.reason : 'not_due', detail: null }; }
+  const r = await draftOne(D, { businessId, item, founder: byUser[item.owner_user_id], contacts: rows.contacts });
+  return r.drafted ? { drafted: true, touch_id: r.touch.id, kind: item.kind } : { drafted: false, reason: r.reason, detail: r.detail, kind: item.kind };
+}
+
+// J5 [Skip this touch]: the due date is cleared (the sync sets the next one after the next send); logged.
+export async function skipTouch({ businessId, brandId, userId, d = {} }) {
+  const D = jobDeps(d);
+  const { data: b, error } = await D.supabase.from('hk_brands').select('id, name, next_due_at').eq('business_id', businessId).eq('id', brandId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!b) throw new HkError(404, 'brand not found');
+  await D.supabase.from('hk_brands').update({ next_due_at: null, updated_at: D.now().toISOString() }).eq('id', b.id);
+  await logEvent(D.supabase, { businessId, actorUserId: userId, entityType: 'brand', entityId: b.id, action: 'followup_skipped', detail: { was_due: b.next_due_at } });
+  return { ok: true, brand_id: b.id };
+}
+
+// J5 [Mark DM sent]: an Instagram DM text copied and sent by hand -> the touch reads sent (no Gmail, nothing posted).
+export async function markDmSent({ businessId, touchId, userId, d = {} }) {
+  const D = jobDeps(d), at = D.now().toISOString();
+  const { data: t, error } = await D.supabase.from('hk_touches').select('*').eq('business_id', businessId).eq('id', touchId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!t) throw new HkError(404, 'draft not found');
+  if (t.channel !== 'ig_dm') throw new HkError(400, 'only an Instagram DM is marked sent by hand; email goes out from Gmail');
+  if (t.state !== 'drafted') throw new HkError(409, `that DM is ${t.state}`);
+  await D.supabase.from('hk_touches').update({ state: 'sent', sent_at: at }).eq('id', t.id);
+  await D.supabase.from('hk_brands').update({ last_touch_at: at, updated_at: at }).eq('id', t.brand_id);
+  await logEvent(D.supabase, { businessId, actorUserId: userId, entityType: 'brand', entityId: t.brand_id, action: 'touch_sent', detail: { touch_id: t.id, kind: 'dm_text', channel: 'ig_dm', by_hand: true } });
+  return { ok: true, touch_id: t.id };
 }

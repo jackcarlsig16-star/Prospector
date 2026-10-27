@@ -440,6 +440,9 @@ app.post('/api/hk/:businessId/jobs/gmail-sync-all',           hkRoute(HK_JOBS, '
 app.post('/api/hk/:businessId/jobs/test-digest',              hkRoute(HK_JOBS, 'testDigestRoute'));
 app.get('/api/hk/:businessId/jobs/today',                     hkRoute(HK_JOBS, 'todayRoute'));
 app.get('/api/hk/:businessId/jobs/runs',                      hkRoute(HK_JOBS, 'runsRoute'));
+app.post('/api/hk/:businessId/jobs/retry-draft',              hkRoute(HK_JOBS, 'retryDraftRoute'));
+app.post('/api/hk/:businessId/jobs/skip-touch',               hkRoute(HK_JOBS, 'skipTouchRoute'));
+app.post('/api/hk/:businessId/drafts/:touchId/dm-sent',       hkRoute(HK_JOBS, 'dmSentRoute'));
 // hkos-inbox-v1 I1 - the caller's own tethered mailbox, read live; member+ inside the routes (a viewer has no mailbox).
 const HK_INBOX = './api/hk/inboxRoutes.js';
 app.get('/api/hk/:businessId/inbox/threads',                  hkRoute(HK_INBOX, 'listThreadsRoute'));
