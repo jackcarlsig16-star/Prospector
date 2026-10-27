@@ -16,9 +16,13 @@ test('a clean draft passes every rule', () => {
   assert.ok(r.words > 20 && r.words < 150);
 });
 
-test('a claim that does not trace to a Brief line fails (missing ref, unknown ref)', () => {
+test('a claim that does not trace to a Brief line fails (missing ref, unknown ref); a claim may cite several lines, all of which must exist', () => {
   assert.deepEqual(rules({ claims: [{ claim: 'they raised a round', brief_ref: 'B9' }] }), ['claim_unmatched']);
   assert.deepEqual(rules({ claims: [{ claim: 'they raised a round' }] }), ['claim_unmatched']);
+  assert.deepEqual(rules({ claims: [{ claim: 'visits + relocation', brief_ref: 'B2, B3' }] }), [], 'two real refs in one string (the model does this)');
+  assert.deepEqual(rules({ claims: [{ claim: 'visits + relocation', brief_ref: ['b2', 'B3'] }] }), [], 'an array, case-insensitive');
+  const r = lintDraft({ ...GOOD, refs: REFS, signOff: 'Jack', claims: [{ claim: 'x', brief_ref: 'B2, B9' }] });
+  assert.match(r.issues[0].detail, /B9 is not in the Brief/);
 });
 
 test('a number not in the Brief or the proof points fails; the ask minutes and Brief numbers are fine; proof points allow their numbers', () => {

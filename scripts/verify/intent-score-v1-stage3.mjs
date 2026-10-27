@@ -83,7 +83,7 @@ try {
   const sc = await real('/scores');
   ok(`real wiring: GET goals/scores -> ${sc.code}; ${sc.body?.counts?.companies ?? '?'} companies scored (0 until Stage 4), rows / live / counts / sources / thresholds / caps present, stale ${sc.body?.stale}, no address`, sc.code === 200 && Array.isArray(sc.body.rows) && Array.isArray(sc.body.live) && sc.body.counts && sc.body.sources && sc.body.thresholds && sc.body.caps && !JSON.stringify(sc.body).includes('@'));
   const cs = await real('/compose/status');
-  ok(`real wiring: GET goals/compose/status -> ${cs.code}; used ${cs.body?.used} of ${cs.body?.max}, estimate $${cs.body?.cost_estimate_usd}`, cs.code === 200 && typeof cs.body.used === 'number' && cs.body.max === 30);
+  ok(`real wiring: GET goals/compose/status -> ${cs.code}; used ${cs.body?.used} of ${cs.body?.max}, observed costs research ${cs.body?.research_cost_usd ?? 'n/a yet'} / compose ${cs.body?.cost_estimate_usd ?? '—'}`, cs.code === 200 && typeof cs.body.used === 'number' && cs.body.max === 30 && 'research_cost_usd' in cs.body);
   const vw = await real('/scores/views');
   ok(`real wiring: GET goals/scores/views -> ${vw.code}; ${vw.body?.views?.length} saved views`, vw.code === 200 && Array.isArray(vw.body.views));
   ok('real wiring: GET goals/scores/visitor/x -> 400', (await real('/scores/visitor/x')).code === 400);

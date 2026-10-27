@@ -96,7 +96,11 @@ test('composeEmail: one STANDARD call with the Brief as the user turn, the draft
   assert.equal(r.body.sign_off, 'Jack');
   assert.ok(!ADDRESS.test(JSON.stringify(r.body)));
   const st = await composeStatus(db, B, { now: NOW });
-  assert.deepEqual([st.body.used, st.body.max], [1, COMPOSE_DAILY_CAP]);
+  assert.deepEqual([st.body.used, st.body.max, st.body.research_cost_usd, st.body.cost_estimate_usd], [1, COMPOSE_DAILY_CAP, null, null], 'no cost_usd on the fixture usage row and 1 research run -> no observed means');
+  db.db.research_runs.push(...[0.09, 0.07, 0.08].map(c => ({ id: randomUUID(), business_id: B, entity_type: 'target', entity_id: ID.quarry, status: 'done', cost_usd: c, created_at: ago(1), result: {} })));
+  db.db.business_anthropic_usage.find(u => u.call_type === 'intent_compose').cost_usd = 0.031;
+  const st2 = await composeStatus(db, B, { now: NOW });
+  assert.deepEqual([st2.body.research_cost_usd, st2.body.cost_estimate_usd], [0.08, 0.031], 'means of the observed costs');
   assert.equal((await composeEmail(db, { businessId: B, userId: JACK, userName: 'Jack', type: 'visitor', id: 'x', now: NOW, call })).status, 400);
   for (let i = 1; i < COMPOSE_DAILY_CAP; i++) db.db.business_anthropic_usage.push({ id: randomUUID(), business_id: B, call_type: 'intent_compose', created_at: new Date(NOW).toISOString() });
   const capped = await composeEmail(db, { businessId: B, userId: JACK, userName: 'Jack', type: 'target', id: ID.quarry, now: NOW, call });

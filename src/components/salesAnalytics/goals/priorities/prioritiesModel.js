@@ -13,7 +13,6 @@ export const PAGE_SIZE = 40;
 export const TOP_LABELS = 5;
 export const HALO = { bright: 7, faint: 30 }; // days since the last touch (REVISABLE, = the server's TOUCH_WINDOWS)
 export const ACTIVITY_MAX_DAYS = 90;
-export const RESEARCH_USD_PER_RUN = 0.08; // REVISABLE - the observed partner_research cost
 export const EMPTY_FILTERS = { segment: 'all', owner: '', source: [], band: '', needs_touch: false, min: 0, window: '', q: '' };
 export const LS_KEY = 'prospector_priorities_view'; // { view, y } - per-viewer convenience
 

@@ -1,5 +1,6 @@
 // intent-score-v1 Stage 0 - READ-ONLY (0 writes, 0 model, 0 Apollo). For every live HomeLover company (partner / employer /
-// target) gather the S1 raw inputs and apply the PROPOSED weights offline with the planner's rulings: unresearched = 0
+// target) gather the S1 raw inputs and apply the weights offline - since Stage 4 the planner's CONFIRMED table (the same
+// numbers as intentScore.js DEFAULT_WEIGHTS, written independently here as Stage 4's oracle) - with the rulings: unresearched = 0
 // research points and -3; research older than 60 d = unresearched; closed-won (launched / live / contract) and pilot
 // (proposal_pilot) are FLAGGED OUT of the ranking; lost / paused / rejected = closed (score forced <= 10). Prints counts,
 // distributions and NAMES ONLY (never a person, address or phone). Usage: node scripts/verify/intent-score-v1-stage0.mjs
@@ -18,9 +19,9 @@ const HL = (await svc.from('businesses').select('id').ilike('name', '%homelover%
 const NOW = Date.now(), TODAY = laDateString(new Date(NOW)), DAY = 864e5;
 const all = (t, cols, build = x => x) => selectAllPages(() => build(svc.from(t).select(cols).eq('business_id', HL)).order('id'));
 const [partners, opps, targets, visits, skip, research, people, settings, prospects, messages, events, partnerEvents] = await Promise.all([
-  all('sales_goals', 'id, name, pipeline_status, owner_team, co_owner_name, source_kind, source_partner_id, employees, last_touch_at, category, archived_at, updated_at', x => x.eq('goal_type', 'partnership')),
-  all('sales_opportunities', 'id, organization, stage, owner_team, co_owner_name, source_kind, source_partner_id, employees, archived_at, updated_at'),
-  all('sales_targets', 'id, name, kind, status, owner_team, co_owner_name, source_kind, source_partner_id, employees, visit_id, updated_at'),
+  all('sales_goals', 'id, name, pipeline_status, owner_team, co_owner_name, no_double_touch, source_person, source_set_by, source_kind, source_partner_id, employees, last_touch_at, category, archived_at, updated_at', x => x.eq('goal_type', 'partnership')),
+  all('sales_opportunities', 'id, organization, stage, owner_team, co_owner_name, no_double_touch, source_person, source_set_by, source_kind, source_partner_id, employees, archived_at, updated_at'),
+  all('sales_targets', 'id, name, kind, status, owner_team, co_owner_name, no_double_touch, source_person, source_set_by, source_kind, source_partner_id, employees, visit_id, updated_at'),
   all('web_visits', 'company_key, company_name, matched_type, matched_id, priority, visits_7d, unique_visitors_7d, apollo_intent, intent_score, top_paths, maybe_user, us_500, last_visit, pulled_on'),
   all('sales_visit_skip', 'company_key'),
   all('research_runs', 'entity_type, entity_id, status, result, created_at', x => x.eq('status', 'done')),
@@ -40,12 +41,12 @@ const daysAgo = iso => (iso ? (NOW - Date.parse(iso)) / DAY : Infinity);
 const latest = new Map();
 for (const v of [...visits].sort((a, b) => a.pulled_on.localeCompare(b.pulled_on))) latest.set(v.company_key, v);
 const visitByRecord = new Map();
-for (const v of latest.values()) if (v.matched_type && v.matched_id) visitByRecord.set(`${v.matched_type}:${v.matched_id}`, v);
+for (const v of latest.values()) if (v.matched_type && v.matched_id) visitByRecord.set(`${v.matched_type === 'opportunity' ? 'employer' : v.matched_type}:${v.matched_id}`, v);
 const skipKeys = new Set(skip.map(s => s.company_key));
 const researchBy = new Map();
 for (const r of [...research].sort((a, b) => a.created_at.localeCompare(b.created_at))) researchBy.set(`${r.entity_type}:${r.entity_id}`, r);
 const peopleBy = new Map();
-for (const p of people) { const k = p.opportunity_id ? `opportunity:${p.opportunity_id}` : `target:${p.target_id}`; if (!peopleBy.has(k)) peopleBy.set(k, []); peopleBy.get(k).push(p); }
+for (const p of people) { const k = p.opportunity_id ? `employer:${p.opportunity_id}` : `target:${p.target_id}`; if (!peopleBy.has(k)) peopleBy.set(k, []); peopleBy.get(k).push(p); }
 // heat per prospect -> max per company (by opportunity_id / goal_id, else by company name)
 const msgsBy = new Map(), evsBy = new Map();
 for (const m of messages) { if (!msgsBy.has(m.contact_id)) msgsBy.set(m.contact_id, []); msgsBy.get(m.contact_id).push(m); }
@@ -55,7 +56,7 @@ const heatPush = (k, h) => { const prev = heatBy.get(k); if (!prev || h.score > 
 for (const p of prospects) {
   const s = scoreProspect(msgsBy.get(p.contact_id) || [], evsBy.get(p.contact_id) || []);
   const h = { score: s.score ?? s.total ?? 0, replied: (msgsBy.get(p.contact_id) || []).some(m => m.replied), opens: (msgsBy.get(p.contact_id) || []).reduce((n, m) => n + (m.num_opens || 0), 0), clicks: (msgsBy.get(p.contact_id) || []).reduce((n, m) => n + (m.num_clicks || 0), 0) };
-  if (p.opportunity_id) heatPush(`opportunity:${p.opportunity_id}`, h);
+  if (p.opportunity_id) heatPush(`employer:${p.opportunity_id}`, h);
   if (p.goal_id) heatPush(`partner:${p.goal_id}`, h);
   if (p.company) heatPush(`name:${normName(p.company)}`, h);
 }
@@ -72,14 +73,14 @@ function score(c) {
   const comp = {};
   const v = visitByRecord.get(c.key) || latest.get(normName(c.name)) || null;
   const vAge = v ? daysAgo(v.last_visit ? `${v.last_visit}T12:00:00Z` : `${v.pulled_on}T12:00:00Z`) : Infinity;
-  comp.visits = v && vAge <= 14 ? Math.round(14 * lg(v.visits_7d || 0, 20) + 6 * lg(v.unique_visitors_7d || 0, 5)) : 0;
+  comp.visits = v && vAge <= 14 ? Math.min(25, Math.round(17 * lg(v.visits_7d || 0, 20) + 8 * lg(v.unique_visitors_7d || 0, 5))) : 0;
   const paths = (v?.top_paths || []).map(p => p.path);
-  comp.pages = !v || v.maybe_user || (paths.length && paths.every(p => PAGE_USER.test(p))) ? 0 : paths.some(p => PAGE_HOT.test(p)) ? 8 : paths.some(p => p && p !== '/') ? 4 : paths.length ? 2 : 0;
-  comp.apollo_intent = v ? (v.intent_score != null ? clamp(Math.round(v.intent_score / 10), 0, 10) : { high: 10, medium: 6, low: 2 }[String(v.apollo_intent || '').toLowerCase()] || 0) : 0;
+  comp.pages = !v || v.maybe_user || (paths.length && paths.every(p => PAGE_USER.test(p))) ? 0 : paths.some(p => PAGE_HOT.test(p)) ? 10 : paths.some(p => p && p !== '/') ? 5 : paths.length ? 2 : 0;
+  comp.apollo_intent = v ? (v.intent_score != null ? clamp(Math.round(v.intent_score / 20), 0, 5) : { high: 5, medium: 3, low: 1 }[String(v.apollo_intent || '').toLowerCase()] || 0) : 0;
   const ppl = peopleBy.get(c.key) || [];
-  comp.people = clamp(ppl.reduce((n, p) => n + (isBuyer(p.title) ? 6 : 2), 0), 0, 12);
+  comp.people = clamp(ppl.reduce((n, p) => n + (isBuyer(p.title) ? 6 : 2), 0), 0, 15);
   const emp = c.employees ?? null;
-  comp.fit = skipKeys.has(normName(c.name)) ? 0 : (v?.us_500 || (emp != null && emp >= 500)) ? 15 : emp != null && emp >= 200 ? 8 : c.type === 'partner' ? (c.category ? 10 : 5) : 0;
+  comp.fit = skipKeys.has(normName(c.name)) ? 0 : (v?.us_500 || (emp != null && emp >= 500)) ? 15 : emp != null && emp >= 200 ? 8 : emp != null ? 0 : c.type === 'partner' ? (c.category ? 10 : 5) : 4;
   const r = researchBy.get(c.key);
   const fresh = r && daysAgo(r.created_at) <= 60;
   if (!fresh) comp.research = -3;
@@ -93,7 +94,8 @@ function score(c) {
   const heat = heatBy.get(c.key) || heatBy.get(`name:${normName(c.name)}`) || null;
   const sk = c.source_kind || 'unknown';
   const viaUpside = sk === 'partner_referral' && (upsideNames.has(c.source_partner_id) || ['upside', 'both'].includes(c.owner_team));
-  comp.source = viaUpside ? 15 : { partner_referral: 12, person_referral: 10, campaign: heat?.replied ? 10 : 4, website: 6, inbound: 12, homelover_outreach: 3, scout: 4, event: 4 }[sk] || 0;
+  const named = !!(c.co_owner_name || c.no_double_touch === true || c.source_person || c.source_set_by);
+  comp.source = viaUpside ? (named ? 12 : 6) : { partner_referral: 12, person_referral: 10, campaign: heat?.replied ? 10 : 4, website: 6, inbound: 12, homelover_outreach: 3, scout: 4, event: 4 }[sk] || 0;
   comp.engagement = heat ? clamp(Math.round(heat.replied ? 10 : heat.clicks ? 6 : heat.opens ? 3 : 0), 0, 10) : 0;
   const st = c.stage;
   const closedWon = CLOSED_WON.has(st), pilot = PILOT.has(st), closed = CLOSED.has(st);
@@ -102,13 +104,13 @@ function score(c) {
   comp.recency = lastTouch <= 30 ? 0 : lastTouch <= 60 ? -5 : -10;
   let total = clamp(Object.values(comp).reduce((a, b) => a + b, 0), 0, 100);
   if (closed) total = Math.min(total, 10);
-  const band = total >= 70 ? 'P1' : total >= 45 ? 'P2' : total >= 20 ? 'P3' : 'P4';
+  const band = total >= 60 ? 'P1' : total >= 40 ? 'P2' : total >= 15 ? 'P3' : 'P4';
   return { ...c, comp, total, band, closed, flaggedOut: closedWon || pilot, hasVisit: !!v, heat, sourceLabel: viaUpside ? 'upside' : sk };
 }
 const companies = [
-  ...partners.filter(p => !p.archived_at).map(p => ({ key: `partner:${p.id}`, type: 'partner', name: p.name, stage: p.pipeline_status, owner_team: p.owner_team, source_kind: p.source_kind, source_partner_id: p.source_partner_id, employees: p.employees, category: p.category, last_touch_at: p.last_touch_at || lastPartnerTouch.get(p.id) || null })),
-  ...opps.filter(o => !o.archived_at).map(o => ({ key: `opportunity:${o.id}`, type: 'employer', name: o.organization, stage: o.stage, owner_team: o.owner_team, source_kind: o.source_kind, source_partner_id: o.source_partner_id, employees: o.employees, last_touch_at: o.updated_at })),
-  ...targets.filter(t => t.status !== 'rejected').map(t => ({ key: `target:${t.id}`, type: 'target', name: t.name, stage: t.status, owner_team: t.owner_team, source_kind: t.source_kind, source_partner_id: t.source_partner_id, employees: t.employees, last_touch_at: t.updated_at })),
+  ...partners.filter(p => !p.archived_at).map(p => ({ key: `partner:${p.id}`, type: 'partner', name: p.name, stage: p.pipeline_status, owner_team: p.owner_team, co_owner_name: p.co_owner_name, no_double_touch: p.no_double_touch, source_person: p.source_person, source_set_by: p.source_set_by, source_kind: p.source_kind, source_partner_id: p.source_partner_id, employees: p.employees, category: p.category, last_touch_at: p.last_touch_at || lastPartnerTouch.get(p.id) || null })),
+  ...opps.filter(o => !o.archived_at).map(o => ({ key: `employer:${o.id}`, type: 'employer', name: o.organization, stage: o.stage, owner_team: o.owner_team, co_owner_name: o.co_owner_name, no_double_touch: o.no_double_touch, source_person: o.source_person, source_set_by: o.source_set_by, source_kind: o.source_kind, source_partner_id: o.source_partner_id, employees: o.employees, last_touch_at: o.updated_at })),
+  ...targets.filter(t => t.status !== 'rejected').map(t => ({ key: `target:${t.id}`, type: 'target', name: t.name, stage: t.status, owner_team: t.owner_team, co_owner_name: t.co_owner_name, no_double_touch: t.no_double_touch, source_person: t.source_person, source_set_by: t.source_set_by, source_kind: t.source_kind, source_partner_id: t.source_partner_id, employees: t.employees, last_touch_at: t.updated_at })),
 ].map(score);
 const ranked = companies.filter(c => !c.flaggedOut).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
 const tally = (arr, f) => arr.reduce((o, x) => { const k = f(x); o[k] = (o[k] || 0) + 1; return o; }, {});
@@ -118,7 +120,7 @@ const todayVisits = [...latest.values()].filter(v => v.pulled_on === TODAY);
 const bucket = (vals, edges) => edges.map((e, i) => `${i ? edges[i - 1] : '-inf'}..${e}: ${vals.filter(x => (i ? x > edges[i - 1] : true) && x <= e).length}`).join(' · ');
 
 console.log(`intent-score-v1 Stage 0 · HomeLover · ${TODAY} · companies ${companies.length} (partners ${partners.filter(p => !p.archived_at).length}, employers ${opps.filter(o => !o.archived_at).length}, targets ${targets.filter(t => t.status !== 'rejected').length}) · flagged out (closed-won / pilot) ${companies.filter(c => c.flaggedOut).length} · closed (lost/paused) ${companies.filter(c => c.closed).length} · ranked ${ranked.length}`);
-console.log(`bands (proposed thresholds 70/45/20): ${fmt(tally(ranked, c => c.band))}   vs today's visitor P (web_visits pulled_on ${TODAY}, ${todayVisits.length} companies): ${fmt(tally(todayVisits, v => v.priority))}`);
+console.log(`bands (confirmed thresholds 60/40/15): ${fmt(tally(ranked, c => c.band))}   vs today's visitor P (web_visits pulled_on ${TODAY}, ${todayVisits.length} companies): ${fmt(tally(todayVisits, v => v.priority))}`);
 console.log(`visitor rows today with a matching record: ${todayVisits.filter(v => v.matched_type).length}; companies with any visit row in 14 d: ${companies.filter(c => c.hasVisit).length}`);
 console.log('TOP 10:');  for (const c of ranked.slice(0, 10)) console.log(`  ${String(c.total).padStart(3)} ${c.band} ${c.type.padEnd(8)} ${c.name} - ${top3(c)}`);
 console.log('BOTTOM 10:'); for (const c of ranked.slice(-10)) console.log(`  ${String(c.total).padStart(3)} ${c.band} ${c.type.padEnd(8)} ${c.name} - ${top3(c) || 'nothing'}`);

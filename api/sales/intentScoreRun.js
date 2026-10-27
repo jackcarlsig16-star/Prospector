@@ -45,7 +45,7 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
     all('web_visits', 'id, company_key, company_name, matched_type, matched_id, priority, visits_7d, unique_visitors_7d, apollo_intent, intent_score, top_paths, maybe_user, us_500, last_visit, pulled_on'),
     all('sales_visit_skip', 'company_key'),
     all('research_runs', 'entity_type, entity_id, status, result, created_at', x => x.eq('status', 'done')),
-    all('sales_people', 'name, title, source_kind, opportunity_id, target_id, goal_id, archived_at', x => x.eq('source_kind', 'web_visit').is('archived_at', null)),
+    all('sales_people', 'title, source_kind, opportunity_id, target_id, archived_at', x => x.eq('source_kind', 'web_visit').is('archived_at', null)),
     supabase.from('sales_settings').select('*').eq('business_id', businessId).maybeSingle().then(must),
     selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id, company, opportunity_id, goal_id').eq('business_id', businessId).order('contact_id')),
     selectAllPages(() => supabase.from('sales_email_messages').select('contact_id, apollo_message_id, delivered_at, replied, reply_class, num_opens, num_clicks, last_opened_at, last_clicked_at').eq('business_id', businessId).order('apollo_message_id')),
@@ -67,14 +67,15 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
   const latest = new Map();
   for (const v of [...visits].sort((a, b) => String(a.pulled_on).localeCompare(String(b.pulled_on)))) latest.set(v.company_key, v);
   const visitByRecord = new Map();
-  for (const v of latest.values()) if (v.matched_type && v.matched_id) visitByRecord.set(`${v.matched_type}:${v.matched_id}`, v);
+  // web_visits says 'opportunity' for an employer match (visitRules liveMatch); the score keys employers as 'employer'.
+  for (const v of latest.values()) if (v.matched_type && v.matched_id) visitByRecord.set(`${v.matched_type === 'opportunity' ? 'employer' : v.matched_type}:${v.matched_id}`, v);
   const skipKeys = new Set(skip.map(s => s.company_key));
   const overrideByKey = new Map(overrides.map(o => [o.company_key, o]));
   const researchBy = new Map();
   for (const r of [...research].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))) researchBy.set(`${r.entity_type}:${r.entity_id}`, r);
   const peopleBy = new Map();
   for (const p of people) {
-    const k = p.opportunity_id ? `employer:${p.opportunity_id}` : p.target_id ? `target:${p.target_id}` : p.goal_id ? `partner:${p.goal_id}` : null;
+    const k = p.opportunity_id ? `employer:${p.opportunity_id}` : p.target_id ? `target:${p.target_id}` : null;
     if (!k) continue;
     if (!peopleBy.has(k)) peopleBy.set(k, []);
     peopleBy.get(k).push({ title: p.title || null, is_buyer: isBuyer(p.title) });

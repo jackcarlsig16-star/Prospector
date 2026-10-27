@@ -11,7 +11,11 @@ import { lintDraft, mergeRules } from './composeLint.js';
 // (voice, structure hook -> why them -> proof -> ask, tone) and the HARD rules enforced by composeLint on the draft
 // the model returns and on any pasted draft. Daily cap per workspace (compose_rules.daily_cap, default 30, REVISABLE).
 export const COMPOSE_DAILY_CAP = 30;
-export const COMPOSE_COST_ESTIMATE_USD = 0.03; // REVISABLE - shown on the button until the first real cost comes back
+// Costs shown on the buttons are observed means, never constants (planner, Oct 27): Write email = the running mean of
+// this workspace's intent_compose rows (null until the first); Research = the mean of its last 10 research_runs costs
+// once 3 exist, else null ("cost: n/a yet").
+export const RESEARCH_COST_MIN_RUNS = 3;
+export const COST_SAMPLE = 10;
 export const COMPOSE_MAX_TOKENS = 1200;
 export const DEFAULT_COMPOSE_PROMPT = `You write short, plain first emails for a HomeLover account executive to a company the team wants to reach.
 Voice: direct, warm, specific, no hype, no jargon, no exclamation marks. Short sentences. Hyphens only, never dashes.
@@ -35,7 +39,7 @@ export function parseDraft(text) {
   try { j = JSON.parse(m[0]); } catch { throw Object.assign(new Error('The model returned an unreadable draft - try again'), { status: 502 }); }
   return {
     subject: cleanText(String(j.subject || ''), 200), body: scrubAddresses(String(j.body || '')).replace(/\r/g, '').split('\n').map(l => l.trim()).join('\n').trim().slice(0, 4000), why: cleanText(String(j.why_this_company || ''), 400),
-    claims: (Array.isArray(j.claims) ? j.claims : []).slice(0, 40).map(c => ({ claim: cleanText(String(c?.claim || ''), 300), brief_ref: typeof c?.brief_ref === 'string' ? c.brief_ref.trim() : null })),
+    claims: (Array.isArray(j.claims) ? j.claims : []).slice(0, 40).map(c => ({ claim: cleanText(String(c?.claim || ''), 300), brief_ref: Array.isArray(c?.brief_ref) ? c.brief_ref.map(String).join(', ') : typeof c?.brief_ref === 'string' ? c.brief_ref.trim() : null })),
   };
 }
 
@@ -52,9 +56,17 @@ async function settingsFor(supabase, businessId) {
   return { prompt: typeof s.compose_prompt === 'string' && s.compose_prompt.trim() ? s.compose_prompt : DEFAULT_COMPOSE_PROMPT, rules, cap: Number.isInteger(s.compose_rules?.daily_cap) ? s.compose_rules.daily_cap : COMPOSE_DAILY_CAP, custom_prompt: !!(typeof s.compose_prompt === 'string' && s.compose_prompt.trim()) };
 }
 
+const meanCost = (rows, min) => { const v = rows.map(r => Number(r.cost_usd)).filter(Number.isFinite); return v.length >= min ? Math.round((v.reduce((a, b) => a + b, 0) / v.length) * 1e4) / 1e4 : null; };
+export async function observedCosts(supabase, businessId) {
+  const [research, compose] = await Promise.all([
+    supabase.from('research_runs').select('cost_usd').eq('business_id', businessId).eq('status', 'done').not('cost_usd', 'is', null).order('created_at', { ascending: false }).limit(COST_SAMPLE).then(must),
+    supabase.from('business_anthropic_usage').select('cost_usd').eq('business_id', businessId).eq('call_type', 'intent_compose').not('cost_usd', 'is', null).order('created_at', { ascending: false }).limit(COST_SAMPLE).then(must),
+  ]);
+  return { research_cost_usd: meanCost(research, RESEARCH_COST_MIN_RUNS), cost_estimate_usd: meanCost(compose, 1) };
+}
 export async function composeStatus(supabase, businessId, { now = Date.now() } = {}) {
-  const [used, s] = await Promise.all([composeUsedToday(supabase, businessId, now), settingsFor(supabase, businessId)]);
-  return reply(200, { used, max: s.cap, cost_estimate_usd: COMPOSE_COST_ESTIMATE_USD, custom_prompt: s.custom_prompt, rules: s.rules });
+  const [used, s, costs] = await Promise.all([composeUsedToday(supabase, businessId, now), settingsFor(supabase, businessId), observedCosts(supabase, businessId)]);
+  return reply(200, { used, max: s.cap, ...costs, custom_prompt: s.custom_prompt, rules: s.rules });
 }
 
 export async function composeEmail(supabase, { businessId, userId, userName, type, id, now = Date.now(), call = callAnthropic }) {

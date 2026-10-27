@@ -17,6 +17,7 @@ const words = s => String(s || '').trim().split(/\s+/).filter(Boolean).length;
 const norm = s => String(s || '').toLowerCase();
 // Times of day and [placeholders] like [Tue 10am] are not facts; everything else with a digit must trace.
 const NOT_FACTS = /\[[^\]]*\]|\b\d{1,2}(?::\d{2})?\s?(?:am|pm)\b/gi;
+export const refsOf = v => (Array.isArray(v) ? v : String(v || '').split(/[,\s;/&]+/)).map(x => String(x).trim().toUpperCase()).filter(x => /^B\d+$/.test(x));
 const numbersIn = s => (String(s || '').replace(NOT_FACTS, ' ').match(NUMBER) || []).map(n => n.replace(/,/g, ''));
 
 export function mergeRules(row) {
@@ -37,8 +38,11 @@ export function lintDraft({ subject, body, claims = [], refs = [], rules = DEFAU
   if (!String(subject || '').trim()) add('subject_missing', 'The draft has no subject line');
   if (!String(body || '').trim()) add('body_missing', 'The draft has no body');
   const refIds = new Set(refs.map(r => r.ref));
+  // A claim may cite several lines ("B13, B14" or ["B13", "B14"]); every one it cites must be a Brief line.
   for (const c of Array.isArray(claims) ? claims : []) {
-    if (!c || !refIds.has(c.brief_ref)) add('claim_unmatched', `"${String(c?.claim || '').slice(0, 120)}" does not trace to a Brief line${c?.brief_ref ? ` (${c.brief_ref} is not in the Brief)` : ''}`);
+    const cited = refsOf(c?.brief_ref);
+    const missing = cited.filter(r => !refIds.has(r));
+    if (!c || !cited.length || missing.length) add('claim_unmatched', `"${String(c?.claim || '').slice(0, 120)}" does not trace to a Brief line${missing.length ? ` (${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} not in the Brief)` : ''}`);
   }
   const known = new Set([...refs.flatMap(r => numbersIn(r.text)), ...rules.proof_points.flatMap(numbersIn), String(rules.ask_minutes)]);
   for (const n of new Set(numbersIn(body))) if (!known.has(n) && !known.has(n.replace(/%$/, ''))) add('number_unverified', `${n} is not in the Brief or the proof points`);

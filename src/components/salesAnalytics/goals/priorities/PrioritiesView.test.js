@@ -31,7 +31,7 @@ beforeEach(() => {
     return { ...DATA, rows, counts: { ...DATA.counts, shown: rows.length } };
   });
   goalsApi.members.mockResolvedValue(MEMBERS);
-  goalsApi.composeStatus.mockResolvedValue({ used: 2, max: 30, cost_estimate_usd: 0.03, custom_prompt: false });
+  goalsApi.composeStatus.mockResolvedValue({ used: 2, max: 30, cost_estimate_usd: 0.03, research_cost_usd: 0.08, custom_prompt: false });
   goalsApi.scoreViews.mockResolvedValue([]);
   goalsApi.saveScoreView.mockResolvedValue({ view: { id: 'v1', name: 'Brad', filters: {}, y: 'intent', view: 'dots' }, views: [{ id: 'v1', name: 'Brad', filters: { source: ['upside'] }, y: 'intent', view: 'dots' }] });
   goalsApi.pipelineBoard.mockResolvedValue([]);
@@ -96,6 +96,16 @@ test('click selects (ring + quick menu + the company window loads by key); the Y
   fireEvent.click(screen.getByRole('button', { name: 'Activity' }));
   expect(screen.getByRole('img', { name: /Y axis Days since last touch/ })).toBeInTheDocument();
   expect(dot('Quarry Labs').getAttribute('data-selected')).toBe('true');
+});
+
+test('no observed costs yet: Write email shows a dash and Research reads cost: n/a yet (never a constant)', async () => {
+  goalsApi.composeStatus.mockResolvedValue({ used: 0, max: 30, cost_estimate_usd: null, research_cost_usd: null, custom_prompt: false });
+  render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+  await waitFor(() => expect(dots()).toHaveLength(3));
+  fireEvent.click(dot('Quarry Labs'));
+  const menu = await screen.findByRole('toolbar', { name: 'Actions for Quarry Labs' });
+  expect(within(menu).getByRole('button', { name: 'Write email · — · 0/30 today' })).toBeInTheDocument();
+  expect(within(menu).getByRole('button', { name: 'Research · cost: n/a yet' })).toBeInTheDocument();
 });
 
 test('Upside-owned with no double touch: Assign, Write email and Add task are disabled with the reason; Brief, Research, Not a fit and Open stay', async () => {

@@ -4,7 +4,7 @@ import { goalsApi } from '../goalsApi';
 import { updateOpportunity } from '../../pipelineApi';
 import { Chip } from '../goalsUi';
 import { mondayOf } from '../companyPanelModel';
-import { hollowness, RESEARCH_USD_PER_RUN } from './prioritiesModel';
+import { hollowness } from './prioritiesModel';
 
 // intent-score-v1 S3 - the quick-action bar under the chart for the selected company, in the spec's order:
 // Brief · Write email · Research · Assign to ▾ · Add task · Not a fit · Open. On an Upside-owned / no-double-touch row
@@ -42,7 +42,9 @@ export default function QuickMenu({ businessId, row, members, meId, canEdit, com
   });
   const research = () => run('research', async () => { await goalsApi.runCompanyResearch(businessId, row.type, row.id); }, `Researching ${row.name} - one Claude call, about a minute`);
   const hollow = hollowness(row) === 'hollow';
-  const composeLabel = compose ? `Write email · ~$${compose.cost_estimate_usd.toFixed(2)} · ${compose.used}/${compose.max} today` : 'Write email';
+  // Observed means only (planner, Oct 27): "—" until the first Write email cost exists; "cost: n/a yet" under 3 research runs.
+  const composeLabel = compose ? `Write email · ${compose.cost_estimate_usd != null ? `~$${Number(compose.cost_estimate_usd).toFixed(2)}` : '—'} · ${compose.used}/${compose.max} today` : 'Write email';
+  const researchLabel = `Research · ${compose?.research_cost_usd != null ? `~$${Number(compose.research_cost_usd).toFixed(2)} per run` : 'cost: n/a yet'}`;
   const composeCapped = !!compose && compose.used >= compose.max;
   const lockTitle = locked ? LOCK_REASON : undefined;
   return (
@@ -51,7 +53,7 @@ export default function QuickMenu({ businessId, row, members, meId, canEdit, com
       {row.upside_owned && <Chip title={row.touch_locked ? LOCK_REASON : 'Upside-owned'} data-upside-chip style={{ height: 22 }}>Upside{row.touch_locked ? ' · no double touch' : ''}</Chip>}
       <button type="button" className={btn} onClick={onBrief}>Brief</button>
       {canEdit && <button type="button" className={btn} disabled={locked || composeCapped} aria-disabled={locked || composeCapped} title={lockTitle || (composeCapped ? 'Daily Write email cap reached' : 'One Claude call, never sends')} onClick={onCompose}>{composeLabel}</button>}
-      {canEdit && <button type="button" className={`ui-btn ui-btn--sm ${hollow ? 'ui-btn--primary' : 'ui-btn--secondary'}`} disabled={busy === 'research'} title="Research this company - one Claude call" onClick={research}>{busy === 'research' ? 'Starting…' : `Research · ~$${RESEARCH_USD_PER_RUN.toFixed(2)} per run`}</button>}
+      {canEdit && <button type="button" className={`ui-btn ui-btn--sm ${hollow ? 'ui-btn--primary' : 'ui-btn--secondary'}`} disabled={busy === 'research'} title="Research this company - one Claude call" onClick={research}>{busy === 'research' ? 'Starting…' : researchLabel}</button>}
       {canEdit && (
         <span style={{ position: 'relative' }}>
           <button type="button" className={btn} disabled={locked || busy === 'assign'} aria-disabled={locked} aria-expanded={assignOpen} title={lockTitle || 'Change the owner (partners through Assign, never a stage move)'} onClick={() => setAssignOpen(o => !o)}>Assign to{row.owner ? ` · ${row.owner.split(' ')[0]}` : ''} ▾</button>
