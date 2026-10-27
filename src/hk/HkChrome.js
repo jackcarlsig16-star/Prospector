@@ -103,6 +103,18 @@ export function AvatarMenu({ me, paletteIndex, size, onBack, onSignOut }) {
   );
 }
 
+// hkos-gmail-connect-v1 G5.6 - the Gmail sync pill. state = syncPillState(...) from hkSync.js; the word carries the
+// meaning, the tone only repeats it.
+export function SyncPill({ state, onSync, onConnections }) {
+  if (!state) return null;
+  const act = state.action === 'sync' ? onSync : state.action === 'connections' ? onConnections : null;
+  return (
+    <button type="button" className={`hk-btn hk-pill hk-sync hk-sync--${state.tone}`} onClick={act || undefined} disabled={!act} aria-label={`Gmail: ${state.text}`} data-hk-sync={state.tone}>
+      <span className="hk-pill__dot" aria-hidden="true" />{state.text}
+    </button>
+  );
+}
+
 export function SearchPill({ onOpen }) {
   return (
     <button type="button" className="hk-btn hk-search" onClick={onOpen} data-hk-search>

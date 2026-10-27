@@ -8,6 +8,7 @@ import VerdictBanner from './VerdictBanner';
 import { Chip } from './BrandsScreen';
 import { fromDetail, STATUS_LABELS, RELATIONSHIP_LABELS, STATUS_TONE, RELATIONSHIP_TONE, SOURCE_LABELS } from './verdict';
 import { hkGet, hkPatch, hkPost } from '../hkApi';
+import ComposerModal from './ComposerModal';
 
 // hkos-data-foundation-v1 D6 - the Brand page: header + chips + touch counter, the Verdict banner, the primary action
 // by state, More, and four tabs. Contact emails show here only (D5), as mailto links.
@@ -15,12 +16,13 @@ const TABS = [['timeline', 'Timeline'], ['contacts', 'Contacts'], ['notes', 'Not
 const fmt = iso => (iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
 const ACTION_WORDS = { 'brand.created': 'added the brand', 'brand.claimed': 'claimed it', 'brand.released': 'released it', 'brand.status': 'set the status', 'brand.relationship': 'changed the relationship', 'brand.updated': 'edited', 'brand.merged': 'merged a duplicate into it', 'contact.added': 'added a contact', 'contact.updated': 'edited a contact', 'sponsor.period_added': 'added a sponsor period', 'sponsor.period_removed': 'removed a sponsor period' };
 
-export default function BrandPage({ businessId, brandId, shell, onBack, canEdit }) {
+export default function BrandPage({ businessId, brandId, shell, gmail, onBack, canEdit, onGmailChanged }) {
+  const [composer, setComposer] = useState(false);
+  const [savedNote, setSavedNote] = useState('');
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [tab, setTab] = useState('timeline');
   const [moreOpen, setMoreOpen] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [dncReason, setDncReason] = useState(null);
   const me = shell?.me, members = shell?.members || [];
   const isOwnerRole = me?.role === 'owner';
@@ -39,18 +41,17 @@ export default function BrandPage({ businessId, brandId, shell, onBack, canEdit 
   const owner = member(brand.owner_user_id);
   const mine = brand.owner_user_id && brand.owner_user_id === me?.user_id;
   const hasDraft = touches.some(t => t.state === 'drafted');
-  const command = `hk pitch ${brand.domain || brand.name}`;
-  const copy = async () => { try { await navigator.clipboard.writeText(command); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { setError('Copy failed. The command is: ' + command); } };
   const primary = !canEdit ? null
     : !brand.owner_user_id && brand.relationship === 'prospect' ? <Button variant="primary" onClick={() => patch({ claim: true })} data-hk-claim>Claim</Button>
-    : mine && !hasDraft ? <Button variant="primary" onClick={copy} data-hk-copy>{copied ? 'Copied' : 'Copy Claude command'}</Button>
-    : <Button variant="primary" disabled disabledReason={mine ? 'Drafting arrives with Gmail (step 3)' : owner ? `Owned by ${owner.first_name}` : 'Not a prospect'}>Draft</Button>;
+    : mine && !hasDraft ? <Button variant="primary" onClick={() => setComposer(true)} data-hk-draft-email-primary>Draft email</Button>
+    : <Button variant="primary" disabled disabledReason={mine ? 'A draft is already waiting in Gmail' : owner ? `Owned by ${owner.first_name}` : 'Not a prospect'}>Draft</Button>;
 
   const more = canEdit && (
     <div className="hk-anchor">
       <Button aria-haspopup="menu" aria-expanded={moreOpen} onClick={() => setMoreOpen(o => !o)} data-hk-more>More</Button>
       {moreOpen && (
         <div className="hk-menu hk-menu--right" role="menu" onMouseLeave={() => setMoreOpen(false)}>
+          <button type="button" role="menuitem" className="hk-btn hk-menu__item" onClick={() => { setMoreOpen(false); setComposer(true); }} data-hk-draft-email>Draft email…</button>
           <button type="button" role="menuitem" className="hk-btn hk-menu__item" onClick={() => { setMoreOpen(false); setTab('details'); }}>Edit</button>
           {brand.owner_user_id && (mine || isOwnerRole) && <button type="button" role="menuitem" className="hk-btn hk-menu__item" onClick={() => { setMoreOpen(false); patch({ claim: false }); }}>Release</button>}
           {brand.relationship !== 'do_not_contact' && <button type="button" role="menuitem" className="hk-btn hk-menu__item" onClick={() => { setMoreOpen(false); setDncReason(''); }}>Mark do-not-contact</button>}
@@ -81,6 +82,7 @@ export default function BrandPage({ businessId, brandId, shell, onBack, canEdit 
         <div className="hk-brand__actions">{primary}{more}</div>
       </header>
       <VerdictBanner verdict={fromDetail(verdict)} members={members} brandName={brand.name} />
+      {savedNote && <p className="hk-banner hk-banner--green" role="status" data-hk-draft-saved><span className="hk-banner__title">{savedNote}</span></p>}
       {dncReason !== null && (
         <form className="hk-inline-form" onSubmit={e => { e.preventDefault(); if (dncReason.trim()) { patch({ relationship: 'do_not_contact', dnc_reason: dncReason.trim() }); setDncReason(null); } }}>
           <Field label="Why should this brand never be contacted?" htmlFor="hk-dnc"><input id="hk-dnc" className="ui-input" value={dncReason} maxLength={200} autoFocus onChange={e => setDncReason(e.target.value)} /></Field>
@@ -90,11 +92,12 @@ export default function BrandPage({ businessId, brandId, shell, onBack, canEdit 
       {error && <p className="hk-error" role="alert">{error}</p>}
       <Tabs label="Brand sections" items={TABS.map(([id, label]) => ({ id, label }))} value={tab} onChange={setTab} />
       <div className="hk-brand__body">
-        {tab === 'timeline' && <Timeline events={events} touches={touches} replies={replies} member={member} />}
+        {tab === 'timeline' && <Timeline events={events} touches={touches} replies={replies} member={member} mailbox={gmail?.mailbox} me={me} />}
         {tab === 'contacts' && <Contacts businessId={businessId} brandId={brand.id} contacts={contacts} canEdit={canEdit} onChanged={load} />}
         {tab === 'notes' && <Notes businessId={businessId} brand={brand} canEdit={canEdit} onSaved={load} />}
         {tab === 'details' && <Details businessId={businessId} brand={brand} canEdit={canEdit} member={member} onSaved={load} />}
       </div>
+      {composer && <ComposerModal businessId={businessId} brand={brand} contacts={contacts} touches={touches} gmail={gmail} onClose={() => setComposer(false)} onSaved={r => { setComposer(false); setSavedNote(r.gmail_draft_url ? 'Saved to your HumanKind Gmail Drafts.' : 'Draft saved.'); load(); onGmailChanged?.(); if (r.gmail_draft_url) window.open(r.gmail_draft_url, '_blank', 'noopener'); }} />}
     </div>
   );
 }
@@ -105,16 +108,18 @@ function Actor({ kind, userId, member }) {
   return <span className="hk-owner"><span className="hk-avatar hk-avatar--system" style={{ width: 22, height: 22, fontSize: 11 }}>{kind === 'claude' ? 'C' : 'S'}</span>{kind === 'claude' ? 'Claude' : 'System'}</span>;
 }
 
-function Timeline({ events, touches, replies, member }) {
+function Timeline({ events, touches, replies, member, mailbox, me }) {
+  const own = mailbox?.linked ? mailbox.email : null;
+  const gmailLink = t => (own && t.sender_user_id === me?.user_id && t.gmail_message_id ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(own)}#${t.state === 'drafted' ? 'drafts' : 'all'}/${encodeURIComponent(t.gmail_message_id)}` : null);
   const items = [
     ...events.map(e => ({ at: e.created_at, key: `e-${e.id}`, actor: <Actor kind={e.actor_kind} userId={e.actor_user_id} member={member} />, text: ACTION_WORDS[e.action] || e.action, extra: e.detail?.changed?.length ? e.detail.changed.join(', ') : e.detail?.name || '' })),
-    ...touches.map(t => ({ at: t.sent_at || t.drafted_at || t.created_at, key: `t-${t.id}`, actor: <Actor kind={t.created_by} userId={t.sender_user_id} member={member} />, text: `${t.state} ${t.kind} (${t.channel})`, extra: t.subject || '' })),
+    ...touches.map(t => ({ at: t.sent_at || t.drafted_at || t.created_at, key: `t-${t.id}`, actor: <Actor kind={t.created_by} userId={t.sender_user_id} member={member} />, text: `${t.state} ${t.kind} (${t.channel})`, extra: t.subject || '', link: gmailLink(t) })),
     ...replies.map(r => ({ at: r.received_at, key: `r-${r.id}`, actor: <span className="hk-owner">{r.from_name || r.from_domain || 'Reply'}</span>, text: `replied${r.label ? ` (${r.label.replace('_', ' ')})` : ''}`, extra: r.summary || '' })),
   ].sort((a, b) => String(b.at).localeCompare(String(a.at)));
   if (!items.length) return <p className="hk-meta">Nothing yet. Claims, notes, touches and replies land here.</p>;
   return (
     <ol className="hk-timeline" data-hk-timeline>
-      {items.map(it => <li key={it.key} className="hk-timeline__item">{it.actor}<span className="hk-timeline__text">{it.text}{it.extra ? <span className="hk-meta"> · {it.extra}</span> : null}</span><time className="hk-meta">{fmt(it.at)}</time></li>)}
+      {items.map(it => <li key={it.key} className="hk-timeline__item">{it.actor}<span className="hk-timeline__text">{it.text}{it.extra ? <span className="hk-meta"> · {it.extra}</span> : null}{it.link ? <> · <a className="hk-link" href={it.link} target="_blank" rel="noopener noreferrer">Open in Gmail</a></> : null}</span><time className="hk-meta">{fmt(it.at)}</time></li>)}
     </ol>
   );
 }

@@ -2,17 +2,18 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ensureHkTheme } from './hkTheme';
 import { HK_SCREENS, visibleScreens, phoneTabs, moreScreens, parseHkHash, hkHash, ownerOptions } from './hkScreens';
 import { HK_MODULES } from '../constants/hkModules';
-import { SideNav, OwnerToggle, WorkspaceMenu, AvatarMenu, SearchPill, TabBar, MoreSheet, Palette } from './HkChrome';
+import { SideNav, OwnerToggle, WorkspaceMenu, AvatarMenu, SearchPill, SyncPill, TabBar, MoreSheet, Palette } from './HkChrome';
 import { Sprout } from './HkMarks';
 import HkScreen from './HkScreen';
 import { signOut } from '../utils/authSession';
-import { hkPatch } from './hkApi';
+import { hkPatch, hkGet, hkPost } from './hkApi';
+import { syncPillState, pageloadDue, syncKey } from './hkSync';
 
 // hkos-project-shell-v1 - the HumanKind Sales OS: a full-screen shell App.js renders INSTEAD of the Prospector shell
 // for an hk_sales workspace. The current screen lives in the URL hash (#hk/<screen>, #hk/settings/<section>,
 // #hk/brands/<id>). The owner filter is hk_member_prefs.owner_filter (data-foundation D7), no localStorage.
 
-export default function HkShell({ business, businesses, userId, compact, onSelectBusiness, onAllWorkspaces, onOpenAdmin }) {
+export default function HkShell({ business, businesses, userId, compact, onSelectBusiness, onAllWorkspaces, onOpenAdmin, onOpenConnections }) {
   const [nav, setNav] = useState(() => parseHkHash(window.location.hash) || { screen: 'today', section: null });
   const [shell, setShell] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -20,6 +21,8 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [now, setNow] = useState(() => new Date());
+  const [gmail, setGmail] = useState(null);
+  const [syncing, setSyncing] = useState(false);
 
   ensureHkTheme();
 
@@ -32,6 +35,23 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
       .catch(e => { if (!cancelled) setLoadError(e.message); });
     return () => { cancelled = true; };
   }, [business.id]);
+
+  // hkos-gmail-connect-v1 G5.5 - the mailbox state + badges, then one page-load sync per hour per user (the server
+  // guards the same window; prospector_hk_sync_<business>_<user> mirrors it so a reload never fires a second one).
+  const loadGmail = useCallback(() => hkGet(business.id, '/gmail/status').then(setGmail).catch(() => setGmail(null)), [business.id]);
+  useEffect(() => { loadGmail(); }, [loadGmail]);
+  const runSync = useCallback(async (trigger = 'manual') => {
+    setSyncing(true);
+    try { await hkPost(business.id, `/sync?trigger=${trigger}`, {}); } catch {} finally { setSyncing(false); await loadGmail(); }
+  }, [business.id, loadGmail]);
+  useEffect(() => {
+    if (!gmail?.mailbox?.linked || gmail.mailbox.state !== 'ok') return;
+    let last = null; try { last = localStorage.getItem(syncKey(business.id, userId)); } catch {}
+    if (!pageloadDue(last)) return;
+    try { localStorage.setItem(syncKey(business.id, userId), String(Date.now())); } catch {}
+    runSync('pageload');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gmail?.mailbox?.linked, gmail?.mailbox?.state, business.id, userId]);
 
   // The address follows the screen; Back/Forward move between screens. Leaving the shell drops the #hk/ hash so a
   // reload of the Prospector screen stays there.
@@ -66,7 +86,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
     return () => clearInterval(t);
   }, []);
 
-  const screens = useMemo(() => visibleScreens(shell?.modules || HK_MODULES), [shell]);
+  const screens = useMemo(() => visibleScreens(shell?.modules || HK_MODULES).map(s => (s.id === 'drafts' ? { ...s, count: gmail?.badges?.drafts || 0 } : s.id === 'replies' ? { ...s, count: gmail?.badges?.replies || 0 } : s)), [shell, gmail]);
   const options = useMemo(() => ownerOptions(shell?.me, shell?.members), [shell]);
   const ownerValue = options.some(o => o.id === owner) ? owner : 'me';
   const pickOwner = id => {
@@ -89,9 +109,10 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
     ? <p className="hk-meta" role="alert">{loadError}</p>
     : !shell
       ? <p className="hk-meta">Loading the Sales OS…</p>
-      : <HkScreen screen={current} section={nav.section} brandId={nav.brandId || null} businessId={business.id} owner={ownerValue} compact={compact} shell={shell} now={now} onSection={s => go('settings', s)} onOpenAdmin={onOpenAdmin} onOpenBrand={id => go('brands', null, id)} />;
+      : <HkScreen screen={current} section={nav.section} brandId={nav.brandId || null} businessId={business.id} owner={ownerValue} compact={compact} shell={shell} now={now} gmail={gmail} syncing={syncing} onSync={() => runSync('manual')} onGmailChanged={loadGmail} onOpenConnections={onOpenConnections} onSection={s => go('settings', s)} onOpenAdmin={onOpenAdmin} onOpenBrand={id => go('brands', null, id)} />;
 
   const avatar = shell && <AvatarMenu me={shell.me} paletteIndex={mine?.palette_index || 1} size={compact ? 30 : 34} onBack={onAllWorkspaces} onSignOut={signOut} />;
+  const syncPill = <SyncPill state={syncPillState(gmail, syncing)} onSync={() => runSync('manual')} onConnections={onOpenConnections} />;
 
   return (
     <div className={`hk-theme hk-shell${compact ? ' hk-shell--phone' : ''}`} data-hk-shell>
@@ -101,6 +122,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
             <Sprout size={24} />
             <span className="hk-phone-top__name">Sales OS</span>
             <span className="hk-spacer" />
+            {syncPill}
             {avatar}
           </header>
           {ownerToggle && <div style={{ padding: '12px 16px 0' }}>{ownerToggle}</div>}
@@ -114,6 +136,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
             <header className="hk-top">
               <WorkspaceMenu business={business} businesses={businesses} onSelectBusiness={onSelectBusiness} onAllWorkspaces={onAllWorkspaces} />
               <SearchPill onOpen={() => setPaletteOpen(true)} />
+              {syncPill}
               <span className="hk-spacer" />
               {avatar}
             </header>

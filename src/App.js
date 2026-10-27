@@ -1296,7 +1296,7 @@ export default function App({ me }) {
   if (page==="business-detail"&&activeBusiness?.features?.hk_sales&&businessPage==="hk-sales") return (
     <HkShell business={activeBusiness} businesses={myBusinesses} userId={me.profile.id} compact={compact}
       onSelectBusiness={selectBusiness} onAllWorkspaces={()=>navTo('businesses-home')}
-      onOpenAdmin={()=>setPage('admin')} />
+      onOpenAdmin={()=>setPage('admin')} onOpenConnections={()=>setPage('connections')} />
   );
 
   return(

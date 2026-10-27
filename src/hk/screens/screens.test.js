@@ -33,8 +33,9 @@ test('activity detail text summarises the logged detail without dumping JSON', (
   expect(detailText(null)).toBe('');
 });
 
-test('Settings has a Pitch section first, and #hk/settings/pitch round-trips', () => {
-  expect(SETTINGS_SECTIONS.map(([id]) => id)).toEqual(['pitch', 'members', 'modules']);
+test('Settings has a Pitch section first, then Connections, and #hk/settings/pitch round-trips', () => {
+  expect(SETTINGS_SECTIONS.map(([id]) => id)).toEqual(['pitch', 'connections', 'members', 'modules']);
+  expect(parseHkHash('#hk/settings/connections')).toEqual({ screen: 'settings', section: 'connections' });
   expect(parseHkHash('#hk/settings/pitch')).toEqual({ screen: 'settings', section: 'pitch' });
   expect(hkHash('settings', 'pitch')).toBe('#hk/settings/pitch');
   expect(parseHkHash('#hk/settings')).toEqual({ screen: 'settings', section: 'members' });
