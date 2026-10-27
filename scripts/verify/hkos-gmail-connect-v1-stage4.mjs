@@ -17,6 +17,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { ownerSession } from './lib/ownerSession.mjs';
+import { realGet, keysOf } from './lib/realWiring.mjs';
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..');
 const require = createRequire(ROOT + '/package.json');
 require('dotenv').config({ path: ROOT + '/.env' });
@@ -122,6 +123,12 @@ try {
   owner = await ownerSession(svc);
   srv = spawn('node', ['server.js'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), BASIC_AUTH_ENABLED: 'false' }, stdio: ['ignore', 'ignore', 'ignore'] });
   for (let i = 0; i < 40; i++) { try { await fetch(`${BASE}/`); break; } catch { await new Promise(r => setTimeout(r, 250)); } }
+  // FIX inbox-tokenfor-v1: one request through the REAL wiring (spawned server.js, no injected deps) must answer the
+  // same shape as the in-process call. gmail/status reads the DB only (0 Gmail); the body (it carries the mailbox
+  // address) is never printed.
+  const sIn = await call(R.gmailStatusRoute, reqOf({ method: 'GET' }));
+  const sReal = await realGet({ base: BASE, businessId: HK, session: owner.session, path: '/gmail/status' });
+  ok(`real wiring: GET /gmail/status through the spawned server.js (cookie -> hkGate -> hkRoute -> handler(req, res)) -> ${sReal.code}, same keys and mailbox state as the in-process call, 0 Gmail`, sReal.code === 200 && sIn.code === 200 && keysOf(sReal.body) === keysOf(sIn.body) && keysOf(sReal.body.mailbox) === keysOf(sIn.body.mailbox) && sReal.body.mailbox.linked === sIn.body.mailbox.linked && sReal.body.mailbox.state === sIn.body.mailbox.state, sReal.code === 200 ? '' : redact(JSON.stringify(sReal.body)).slice(0, 160));
   browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });

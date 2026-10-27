@@ -16,6 +16,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { ownerSession } from './lib/ownerSession.mjs';
+import { realGet, keysOf } from './lib/realWiring.mjs';
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..');
 const require = createRequire(ROOT + '/package.json');
 require('dotenv').config({ path: ROOT + '/.env' });
@@ -32,6 +33,7 @@ const HK_TABLES = ['hk_brands', 'hk_contacts', 'hk_touches', 'hk_replies', 'hk_s
 const HL_TABLES = ['accounts', 'lists', 'projects', 'sales_goals', 'sales_opportunities', 'sales_targets', 'sales_people', 'sales_source_events', 'sales_partner_events', 'partner_contacts', 'sales_week_goals'];
 const NAMES = ['Zz Verify Bakery', 'Zz Verify Bakery Shop'];
 const svc = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
+const { listBrandsRoute } = await import('../../api/hk/brandsRoutes.js');
 const T0 = Date.now();
 const log = (...a) => console.log(`[${Math.round((Date.now() - T0) / 1000)}s]`, ...a);
 const count = async (t, biz) => { const r = await svc.from(t).select('*', { count: 'exact', head: true }).eq('business_id', biz); if (r.error || typeof r.count !== 'number') throw new Error(`count ${t}: ${r.error?.message || `no count (HTTP ${r.status})`}`); return r.count; };
@@ -74,6 +76,12 @@ try {
   owner = await ownerSession(svc);
   srv = spawn('node', ['server.js'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), BASIC_AUTH_ENABLED: 'false' }, stdio: ['ignore', 'ignore', 'ignore'] });
   for (let i = 0; i < 40; i++) { try { await fetch(`${BASE}/`); break; } catch { await new Promise(r => setTimeout(r, 250)); } }
+  // FIX inbox-tokenfor-v1: one request through the REAL wiring (spawned server.js, no injected deps) must answer the
+  // same shape and count as the in-process call. Read-only, 0 Gmail.
+  const bRes = { code: 200, body: null, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; } };
+  await listBrandsRoute({ method: 'GET', params: { businessId: HK }, query: {}, body: {}, auth: { user: { id: owner.userId, name: 'Jack' }, isPlatformOwner: true, roles: new Map([[HK, 'owner']]) } }, bRes, { supabase: svc });
+  const bReal = await realGet({ base: BASE, businessId: HK, session: owner.session, path: '/brands' });
+  ok(`real wiring: GET /brands through the spawned server.js (cookie -> hkGate -> hkRoute -> handler(req, res)) -> ${bReal.code}, ${bReal.body?.brands?.length} brands, same keys and count as the in-process call, no address`, bReal.code === 200 && bRes.code === 200 && keysOf(bReal.body) === keysOf(bRes.body) && bReal.body.brands.length === bRes.body.brands.length && keysOf(bReal.body.brands[0]) === keysOf(bRes.body.brands[0]) && !JSON.stringify(bReal.body).includes('@'), bReal.code === 200 ? '' : JSON.stringify(bReal.body).slice(0, 160));
   browser = await chromium.launch();
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
   async function open(viewport) {

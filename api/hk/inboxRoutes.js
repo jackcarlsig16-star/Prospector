@@ -37,8 +37,9 @@ const deps0 = d => ({ supabase: d.supabase || getSupabase(), gmail: d.gmail || g
 const member = req => { if (!(req.auth.isPlatformOwner || roleAtLeast(req.auth.roles.get(req.params.businessId), 'member'))) throw new HkError(403, 'Members only'); };
 
 // The caller's token for purpose 'inbox', or null once tokenForMailbox has answered 409 { needs_mailbox | needs_reconnect }.
-async function ownToken(req, res, d) { member(req); return d.tokenFor(req, res, req.params.businessId, 'inbox'); }
-async function ownerEmail(d, businessId, uid) { const m = await d.mailbox(businessId, uid, 'inbox').catch(() => null); return m?.grant?.google_email || null; }
+// Both take the RESOLVED deps (deps0(d)); server.js calls every handler with (req, res) only, so the raw d is {}.
+async function ownToken(req, res, D) { member(req); return D.tokenFor(req, res, req.params.businessId, 'inbox'); }
+async function ownerEmail(D, businessId, uid) { const m = await D.mailbox(businessId, uid, 'inbox').catch(() => null); return m?.grant?.google_email || null; }
 
 // Matching context, read fresh per request (no cache: a brand or a link made seconds ago must show).
 async function matchContext(supabase, businessId, uid, ownerAddress) {
@@ -67,7 +68,7 @@ async function threadMeta({ gmail, now }, businessId, uid, token, id) {
 
 // GET /inbox/threads?tab=inbox|brands|sent|drafts&q=&pageToken=&refresh=1
 export async function listThreadsRoute(req, res, d = {}) {
-  const { supabase, gmail, now } = deps0(d);
+  const D = deps0(d), { supabase, gmail, now } = D;
   const businessId = req.params.businessId, uid = me(req), q = req.query || {};
   try {
     const tab = q.tab && TABS[q.tab] ? q.tab : 'inbox';
@@ -81,8 +82,8 @@ export async function listThreadsRoute(req, res, d = {}) {
     if (q.refresh === '1') inboxCache.dropUser(businessId, uid, { all: true });
     const hit = inboxCache.get(key, now().getTime());
     if (hit) { member(req); return res.json({ ...hit.value, from_cache: true }); }
-    const token = await ownToken(req, res, d); if (!token) return;
-    const owner = await ownerEmail(deps0(d), businessId, uid);
+    const token = await ownToken(req, res, D); if (!token) return;
+    const owner = await ownerEmail(D, businessId, uid);
     const ctx = await matchContext(supabase, businessId, uid, owner);
     const rows = []; let next = pageToken, scanned = 0, calls = 0, listCalls = 0;
     do {
@@ -112,15 +113,15 @@ async function brandPanel(supabase, businessId, uid, brand, ctx) {
 
 // GET /inbox/threads/:id - the caller's own thread, full. Nothing is written or logged.
 export async function openThreadRoute(req, res, d = {}) {
-  const { supabase, gmail, now } = deps0(d);
+  const D = deps0(d), { supabase, gmail, now } = D;
   const businessId = req.params.businessId, uid = me(req), id = String(req.params.id || '');
   try {
     const key = `${businessId}:${uid}:thread:${id}`;
     if (req.query?.refresh === '1') inboxCache.dropUser(businessId, uid, { all: true });
     const hit = inboxCache.get(key, now().getTime());
     if (hit) { member(req); return res.json({ ...hit.value, from_cache: true }); }
-    const token = await ownToken(req, res, d); if (!token) return;
-    const owner = await ownerEmail(deps0(d), businessId, uid);
+    const token = await ownToken(req, res, D); if (!token) return;
+    const owner = await ownerEmail(D, businessId, uid);
     let thread;
     try { thread = await gmail.getThreadFull(token, id); } catch (e) { if (e instanceof GmailError && (e.status === 404 || e.status === 400)) throw new HkError(404, 'that thread is not in your mailbox'); throw e; }
     const ctx = await matchContext(supabase, businessId, uid, owner);
@@ -173,7 +174,7 @@ export async function linkThreadRoute(req, res, d = {}) {
   try {
     const brand = await brandById(D.supabase, businessId, req.body?.brand_id);
     if (brand.archived_at) throw new HkError(409, 'that brand is archived');
-    const token = await ownToken(req, res, d); if (!token) return;
+    const token = await ownToken(req, res, D); if (!token) return;
     const owner = await ownerEmail(D, businessId, uid);
     const row = await linkThread(D, { businessId, uid, brand, threadId, token, owner });
     res.status(201).json({ reply: replyRow(row), brand_id: brand.id });
@@ -188,7 +189,7 @@ export async function trackRoute(req, res, d = {}) {
     // Gmail thread ids are hex and often digit-heavy, so they skip the free-text (phone) guard.
     const threadId = typeof body.thread_id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(body.thread_id) ? body.thread_id : null;
     if (!threadId) throw new HkError(400, 'thread_id is required');
-    const token = await ownToken(req, res, d); if (!token) return;
+    const token = await ownToken(req, res, D); if (!token) return;
     const owner = await ownerEmail(D, businessId, uid);
     const { data: existing } = await D.supabase.from('hk_replies').select('brand_id').eq('business_id', businessId).eq('gmail_thread_id', threadId);
     if (existing?.length) throw new HkError(409, 'that thread is already tracked', { already_tracked: existing[0].brand_id });

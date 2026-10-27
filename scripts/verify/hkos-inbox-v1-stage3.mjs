@@ -12,12 +12,17 @@
 // scrubbed of addresses before it is written and lives in .screenshots (gitignored). No screenshot of real mail is
 // taken. restored = every hk_* count + HomeLover counts identical after cleanup; a count() error THROWS -> "restored:
 // NO", exit 1. Runtime ~1-2 min, cap 240 s.
-// Usage: node scripts/verify/hkos-inbox-v1-stage3.mjs [--replay]   (npm run build first)
+// FIX inbox-tokenfor-v1: step 0 sends Inbox page 1 through the REAL wiring (the spawned server.js: cookie -> hkGate ->
+// hkRoute -> handler(req, res) with no injected deps) and must answer the same shape as the in-process call; its Gmail
+// calls (1 list + 1 metadata get per thread, from the response) count toward the cap. --wiring-only runs step 0 alone
+// (Gmail <= 1 + limit, no rows written). --replay skips step 0 (it would spend real Gmail calls).
+// Usage: node scripts/verify/hkos-inbox-v1-stage3.mjs [--replay | --wiring-only]   (npm run build first)
 import { createRequire } from 'module';
 import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import { ownerSession } from './lib/ownerSession.mjs';
+import { realGet, keysOf } from './lib/realWiring.mjs';
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..');
 const require = createRequire(ROOT + '/package.json');
 require('dotenv').config({ path: ROOT + '/.env' });
@@ -27,7 +32,7 @@ const { gmailClient } = await import('../../api/hk/gmailClient.js');
 const R = await import('../../api/hk/inboxRoutes.js');
 const { stripBodies } = await import('../../api/hk/inboxRules.js');
 const { mailboxFor, tokenForMailbox } = await import('../../api/lib/googleGrants.js');
-const REPLAY = process.argv.includes('--replay');
+const REPLAY = process.argv.includes('--replay'), WIRING_ONLY = process.argv.includes('--wiring-only');
 const OUT = path.join(ROOT, '.screenshots', 'hkos-inbox-v1');
 const REC = path.join(OUT, 'stage3-gmail-recording.json');
 const PORT = 3996, BASE = `http://localhost:${PORT}`;
@@ -37,7 +42,8 @@ const HOMELOVER = process.env.SALES_ANALYTICS_BUSINESS_IDS.split(',')[0];
 const HK = '981b790c-a3b0-4265-b32e-1f701d5731ff';
 const HK_TABLES = ['hk_brands', 'hk_contacts', 'hk_touches', 'hk_replies', 'hk_sponsor_periods', 'hk_settings', 'hk_events', 'hk_duplicate_decisions', 'hk_import_runs', 'hk_ignored_senders', 'hk_member_prefs', 'hk_gmail_sync_state', 'hk_sync_runs', 'business_members', 'workspace_mailboxes'];
 const HL_TABLES = ['accounts', 'lists', 'projects', 'sales_goals', 'sales_opportunities', 'sales_targets', 'sales_people', 'sales_source_events', 'sales_partner_events', 'partner_contacts', 'sales_week_goals'];
-const GMAIL_CAP = 15, CLAUDE_CAP = 1, LIMIT = 5;
+const LIMIT = 5, WIRING_GMAIL_CAP = 1 + LIMIT, GMAIL_CAP = (WIRING_ONLY ? 0 : 15) + (REPLAY ? 0 : WIRING_GMAIL_CAP), CLAUDE_CAP = 1;
+const LIST_KEYS = 'fetched_at,from_cache,gmail_calls,next_page_token,scanned,tab,threads,unread', ROW_KEYS = 'chip,date,from_domain,from_hint,from_name,has_attachments,message_count,snippet,subject,thread_id,unread';
 const BRAND_NAME = 'Zz Verify Inbox Brand';
 // The recording scrubs every address to redacted@example.invalid, so a replay cannot reuse a real sender domain.
 const safeDomain = d => (REPLAY ? 'zz-verify-replay.com' : d);
@@ -74,6 +80,7 @@ let srv, browser, owner, JACK;
 const created = { brand: null, reply: null, ignoredDomain: null };
 const blocked = [], outside = [], fulfilled = [];
 const results = { checks: [], errors: [], gmailCalls, measured: {} };
+let wiringGmail = 0;
 const ok = (name, pass, detail) => { results.checks.push({ name, pass: !!pass, detail }); log(pass ? 'PASS' : 'FAIL', name, detail ? `- ${redact(detail)}` : ''); };
 const skip = (name, why) => { results.checks.push({ name, pass: true, skipped: true, detail: why }); log('SKIP', name, `- ${why}`); };
 const reqOf = ({ method = 'GET', params = {}, query = {}, body = {} } = {}) => ({ method, params: { businessId: HK, ...params }, query, body, auth: { user: { id: JACK, name: 'Jack' }, isPlatformOwner: true, roles: new Map([[HK, 'owner']]) } });
@@ -101,7 +108,7 @@ for (const v of ['GMAIL_CLIENT_ID', 'GMAIL_CLIENT_SECRET', 'GOOGLE_TOKEN_KEY']) 
 const pre = await svc.from('hk_brands').select('id').eq('business_id', HK).ilike('name', 'Zz Verify%');
 if (pre.data?.length) { console.log('ABORT: leftover verify brands exist - remove them first:', pre.data.map(b => b.id).join(', ')); process.exit(1); }
 const before = await snapshot();
-log(REPLAY ? 'REPLAY run (0 real Gmail calls)' : 'LIVE run', 'before', JSON.stringify(before.humankind), 'HomeLover accounts', before.homelover.accounts);
+log(REPLAY ? 'REPLAY run (0 real Gmail calls)' : WIRING_ONLY ? 'WIRING-ONLY run' : 'LIVE run', 'before', JSON.stringify(before.humankind), 'HomeLover accounts', before.homelover.accounts);
 
 try {
   const members = await svc.from('business_members').select('user_id, role').eq('business_id', HK);
@@ -109,6 +116,21 @@ try {
   const m0 = await mailboxFor(HK, JACK, 'inbox');
   if (!m0 || m0.state !== 'ok') throw new Error(`mailbox not ready for purpose inbox: ${m0 ? m0.state : 'none'}`);
   R.inboxCache.clear();
+  owner = await ownerSession(svc);
+  srv = spawn('node', ['server.js'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), BASIC_AUTH_ENABLED: 'false' }, stdio: ['ignore', 'ignore', 'ignore'] });
+  for (let i = 0; i < 40; i++) { try { await fetch(`${BASE}/`); break; } catch { await new Promise(r => setTimeout(r, 250)); } }
+  // 0 Inbox page 1 through the real wiring (the server resolves every dependency itself)
+  let w = null;
+  if (REPLAY) skip('0 real wiring: Inbox page 1 through the spawned server.js', 'replay spends no real Gmail calls');
+  else {
+    w = await realGet({ base: BASE, businessId: HK, session: owner.session, path: `/inbox/threads?tab=inbox&limit=${LIMIT}` });
+    wiringGmail = Number(w.body?.gmail_calls) || 0;
+    const wrows = Array.isArray(w.body?.threads) ? w.body.threads : [];
+    const wkinds = wrows.reduce((o, r) => { o[r.chip?.kind] = (o[r.chip?.kind] || 0) + 1; return o; }, {});
+    results.measured.wiring = { code: w.code, threads: wrows.length, gmail_calls: wiringGmail, kinds: wkinds, error: w.code === 200 ? null : redact(JSON.stringify(w.body)).slice(0, 160) };
+    ok(`0 real wiring: GET /inbox/threads?tab=inbox&limit=${LIMIT} through the spawned server.js (cookie -> hkGate -> hkRoute -> handler(req, res)) -> ${w.code}, ${wrows.length} threads, chips ${JSON.stringify(wkinds)}, ${wiringGmail} Gmail calls <= ${WIRING_GMAIL_CAP}, 0 addresses`, w.code === 200 && wrows.length > 0 && wrows.length <= LIMIT && keysOf(w.body) === LIST_KEYS && wrows.every(r => keysOf(r) === ROW_KEYS && r.chip?.kind) && wiringGmail === 1 + wrows.length && !hasAt(w.body), w.code === 200 ? '' : results.measured.wiring.error);
+  }
+  if (!WIRING_ONLY) {
   // 1 Inbox page 1
   const p1 = await call(R.listThreadsRoute, reqOf({ query: { tab: 'inbox', limit: String(LIMIT) } }));
   if (p1.code !== 200) throw new Error(`list: ${p1.code} ${redact(JSON.stringify(p1.body))}`);
@@ -116,7 +138,7 @@ try {
   const kinds = rows.reduce((o, r) => { o[r.chip.kind] = (o[r.chip.kind] || 0) + 1; return o; }, {});
   results.measured.list_page = { threads: rows.length, gmail_calls: p1.body.gmail_calls, unread: p1.body.unread, kinds };
   const callsAfterList = gmailCalls.length;
-  ok(`1 Inbox page 1 (limit ${LIMIT}): ${rows.length} threads, chips ${JSON.stringify(kinds)}, unread ${p1.body.unread}, ${p1.body.gmail_calls} Gmail calls (1 list + 1 metadata get per thread), 0 addresses in the payload`, rows.length > 0 && rows.length <= LIMIT && !hasAt(p1.body) && p1.body.gmail_calls === callsAfterList && callsAfterList === 1 + rows.length && rows.every(r => r.from_name && typeof r.subject === 'string' && r.snippet.length <= 140));
+  ok(`1 Inbox page 1 (limit ${LIMIT}): ${rows.length} threads, chips ${JSON.stringify(kinds)}, unread ${p1.body.unread}, ${p1.body.gmail_calls} Gmail calls (1 list + 1 metadata get per thread), 0 addresses in the payload${w ? '; same shape and thread count as the real-wiring answer' : ''}`, rows.length > 0 && rows.length <= LIMIT && !hasAt(p1.body) && p1.body.gmail_calls === callsAfterList && callsAfterList === 1 + rows.length && rows.every(r => r.from_name && typeof r.subject === 'string' && r.snippet.length <= 140) && (!w || (keysOf(w.body) === keysOf(p1.body) && w.body.threads.length === rows.length && keysOf(w.body.threads[0]) === keysOf(rows[0]))));
   // 2 open one thread (the one to track: untracked with a domain, else bulk, else the first)
   const target = rows.find(r => r.chip.kind === 'untracked' && r.from_domain) || rows.find(r => r.chip.kind === 'not_tracked' && r.from_domain) || rows[0];
   const o = await call(R.openThreadRoute, reqOf({ params: { id: target.thread_id } }));
@@ -125,9 +147,6 @@ try {
   results.measured.open = { gmail_calls: openCalls, messages: o.body.messages.length, html_messages: o.body.messages.filter(m => m.html).length };
   ok(`2 open: ${o.body.messages.length} message(s) (${results.measured.open.html_messages} with html, raw, for the owner only), names + domains only outside the bodies, brand panel ${o.body.brand ? 'present' : 'null'}, ${openCalls} Gmail call`, openCalls === 1 && o.body.messages.length >= 1 && !hasAt(stripBodies(o.body)) && o.body.messages.every(m => Array.isArray(m.to_names) && !m.to_names.some(n => /@/.test(n))));
   // 3 browser, GET-only, inbox GETs answered from the payloads above
-  owner = await ownerSession(svc);
-  srv = spawn('node', ['server.js'], { cwd: ROOT, env: { ...process.env, PORT: String(PORT), BASIC_AUTH_ENABLED: 'false' }, stdio: ['ignore', 'ignore', 'ignore'] });
-  for (let i = 0; i < 40; i++) { try { await fetch(`${BASE}/`); break; } catch { await new Promise(r => setTimeout(r, 250)); } }
   browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
@@ -218,9 +237,10 @@ try {
     const evs = (await svc.from('hk_events').select('action').eq('business_id', HK).eq('entity_type', 'sender').eq('actor_user_id', JACK).gte('created_at', START_ISO)).data || [];
     ok('11 ignore a real sender domain for Jack only, it lists under Ignored senders, un-ignore removes it; two sender events; 0 Gmail calls', ig.code === 200 && ig.body.ignored === true && rowIn.length === 1 && listed.body.domains.some(d => d.domain === igDomain) && un.code === 200 && rowOut.length === 0 && evs.map(e => e.action).sort().join() === 'sender_ignored,sender_unignored' && gmailCalls.length === callsBefore11);
   } else skip('11 ignore + un-ignore', 'no candidate domain on page 1');
-  results.measured.total_gmail = gmailCalls.length;
-  ok(`caps: Gmail ${gmailCalls.length} <= ${GMAIL_CAP} (all GET), Claude ${claudeCalls} <= ${CLAUDE_CAP}, Apollo 0; browser made 0 outside calls and ${fulfilled.length} inbox GETs were served from the payloads${REPLAY ? ' (replay: 0 real Gmail calls)' : ''}`, gmailCalls.length <= GMAIL_CAP && claudeCalls <= CLAUDE_CAP && !outside.length && gmailCalls.every(k => k.startsWith('GET')), gmailCalls.join(' | '));
   if (!REPLAY) fs.writeFileSync(REC, JSON.stringify(recording));
+  }
+  results.measured.total_gmail = gmailCalls.length + wiringGmail;
+  ok(`caps: Gmail ${gmailCalls.length} in-process + ${wiringGmail} through the real wiring <= ${GMAIL_CAP} (all GET), Claude ${claudeCalls} <= ${CLAUDE_CAP}, Apollo 0; browser made 0 outside calls and ${fulfilled.length} inbox GETs were served from the payloads${REPLAY ? ' (replay: 0 real Gmail calls)' : ''}`, gmailCalls.length + wiringGmail <= GMAIL_CAP && claudeCalls <= CLAUDE_CAP && !outside.length && gmailCalls.every(k => k.startsWith('GET')), gmailCalls.join(' | '));
 } catch (e) {
   results.errors.push(e.stack || e.message); log('ERROR', redact(e.message));
 } finally {
@@ -233,7 +253,7 @@ try {
   } catch (e) { line = `NO (check failed: ${e.message})`; }
   const pass = results.checks.filter(c => c.pass).length;
   fs.writeFileSync(path.join(OUT, 'hkos-inbox-v1-stage3.json'), JSON.stringify({ ...results, checks: results.checks.map(c => ({ ...c, detail: redact(c.detail || '') })), created, blocked, restored, replay: REPLAY }, null, 2));
-  console.log(`\n${pass}/${results.checks.length} checks passed${results.errors.length ? ` · ${results.errors.length} errors` : ''} · Gmail ${REPLAY ? `0 real (${gmailCalls.length} replayed)` : gmailCalls.length} · Claude ${claudeCalls} · Apollo 0 · measured ${JSON.stringify(results.measured)}`);
+  console.log(`\n${pass}/${results.checks.length} checks passed${results.errors.length ? ` · ${results.errors.length} errors` : ''} · Gmail ${REPLAY ? `0 real (${gmailCalls.length} replayed)` : `${gmailCalls.length + wiringGmail} (${wiringGmail} through the real wiring)`} · Claude ${claudeCalls} · Apollo 0 · measured ${JSON.stringify(results.measured)}`);
   for (const e of results.errors) console.log('ERROR:', redact(e.split('\n').slice(0, 3).join(' | ')));
   console.log(`restored: ${line}`);
   process.exit(restored && pass === results.checks.length && !results.errors.length ? 0 : 1);

@@ -11,7 +11,9 @@ import { selectAllPages } from '../lib/selectAllPages.js';
 import { canContact } from './rules.js';
 
 export { normName, nameMatches, normalizeDomain, selectAllPages, canContact, hasPii };
-export const getSupabase = () => getServiceSupabase();
+// Test seam (prodWiring.test.mjs): the client a route resolves when it is called with (req, res) only, as server.js calls it.
+export const seams = { supabase: getServiceSupabase };
+export const getSupabase = () => seams.supabase();
 export const SPONSOR_RELATIONSHIPS = new Set(['sponsor', 'founding_partner']);
 export const MANUAL_STATUSES = new Set(['meeting', 'signed', 'passed', 'skipped']);
 export const EMAIL_RE = /^[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}$/i;
