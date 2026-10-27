@@ -20,7 +20,7 @@ export const HK_SCREENS = [
   { id: 'settings', label: 'Settings', icon: 'settings', phoneTab: false, divider: true },
 ];
 
-export const SETTINGS_SECTIONS = [['members', 'Members'], ['modules', 'Modules']];
+export const SETTINGS_SECTIONS = [['pitch', 'Pitch'], ['members', 'Members'], ['modules', 'Modules']];
 
 // Screens that render: no module (Settings) or its module on.
 export function visibleScreens(modules) {

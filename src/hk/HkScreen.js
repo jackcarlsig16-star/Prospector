@@ -4,6 +4,10 @@ import { SETTINGS_SECTIONS, chicagoGreeting } from './hkScreens';
 import { ROLE_LABELS, roleAtLeast } from '../constants/roles';
 import BrandsScreen from './brands/BrandsScreen';
 import BrandPage from './brands/BrandPage';
+import SponsorsScreen from './screens/SponsorsScreen';
+import ReviewScreen from './screens/ReviewScreen';
+import ActivityScreen from './screens/ActivityScreen';
+import PitchSettings from './screens/PitchSettings';
 
 // hkos-project-shell-v1 S5 - one screen: the page header and an empty state (no buttons in Phase 0; each later SPEC
 // adds its own), or Settings with its Members / Modules sections.
@@ -75,6 +79,10 @@ export default function HkScreen({ screen, section, brandId, businessId, owner, 
       </>
     );
   }
+  if (screen.id === 'pipeline') return <><Header title="Pipeline" line={SCREEN_LINES.pipeline} /><BrandsScreen pipeline businessId={businessId} shell={shell} owner={owner} compact={compact} canEdit={canEdit} onOpenBrand={onOpenBrand} /></>;
+  if (screen.id === 'sponsors') return <><Header title="Sponsors" line={SCREEN_LINES.sponsors} /><SponsorsScreen businessId={businessId} shell={shell} canEdit={canEdit} onOpenBrand={onOpenBrand} /></>;
+  if (screen.id === 'review') return <><Header title="Review" line={SCREEN_LINES.review} /><ReviewScreen businessId={businessId} shell={shell} canEdit={canEdit} onOpenBrand={onOpenBrand} /></>;
+  if (screen.id === 'activity') return <><Header title="Activity" line={SCREEN_LINES.activity} /><ActivityScreen businessId={businessId} shell={shell} owner={owner} compact={compact} onOpenBrand={onOpenBrand} /></>;
   if (screen.id === 'settings') {
     return (
       <>
@@ -85,7 +93,7 @@ export default function HkScreen({ screen, section, brandId, businessId, owner, 
               <button key={id} type="button" className="hk-btn hk-subnav__item" aria-current={section === id ? 'page' : undefined} onClick={() => onSection(id)}>{label}</button>
             ))}
           </nav>
-          <div>{section === 'modules' ? <Modules shell={shell} /> : <Members shell={shell} onOpenAdmin={onOpenAdmin} />}</div>
+          <div>{section === 'modules' ? <Modules shell={shell} /> : section === 'pitch' ? <PitchSettings businessId={businessId} shell={shell} canEdit={canEdit} /> : <Members shell={shell} onOpenAdmin={onOpenAdmin} />}</div>
         </div>
       </>
     );

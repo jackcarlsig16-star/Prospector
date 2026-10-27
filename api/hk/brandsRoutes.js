@@ -117,10 +117,11 @@ export async function patchBrandRoute(req, res, { supabase = getSupabase(), now 
     const changed = Object.keys(patch).filter(k => k !== 'normalized_name' && JSON.stringify(patch[k]) !== JSON.stringify(brand[k]));
     if (!changed.length) return res.json({ brand: brandDetail(brand), changed: [] });
     const prev = Object.fromEntries(changed.map(k => [k, brand[k] ?? null]));
+    const reason = text(body.reason, 200, 'reason');
     patch.updated_at = now().toISOString();
     const { data, error } = await supabase.from('hk_brands').update(patch).eq('id', brand.id).eq('business_id', businessId).select().single();
     if (error) throw error;
-    await logEvent(supabase, { businessId, actorUserId: uid, entityType: 'brand', entityId: brand.id, action, detail: { changed, prev } });
+    await logEvent(supabase, { businessId, actorUserId: uid, entityType: 'brand', entityId: brand.id, action, detail: { changed, prev, ...(reason ? { reason } : {}) } });
     res.json({ brand: brandDetail(data), changed });
   } catch (e) { fail(res, e, 'brands/patch'); }
 }

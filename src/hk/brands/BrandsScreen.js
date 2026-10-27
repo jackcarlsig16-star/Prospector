@@ -14,7 +14,9 @@ const MANUAL = [['meeting', 'Meeting'], ['signed', 'Signed'], ['passed', 'Passed
 const fmt = iso => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '');
 export const Chip = ({ tone, children }) => <span className={`hk-chip hk-chip--${tone || 'grey'}`}>{children}</span>;
 
-export default function BrandsScreen({ businessId, shell, owner, compact, onOpenBrand, canEdit }) {
+const PIPELINE_HIDDEN = new Set(['candidate', 'passed', 'skipped', 'sponsor']);
+
+export default function BrandsScreen({ businessId, shell, owner, compact, onOpenBrand, canEdit, pipeline = false }) {
   const [view, setView] = useState('all');
   const [q, setQ] = useState('');
   const [rows, setRows] = useState(null);
@@ -27,9 +29,9 @@ export default function BrandsScreen({ businessId, shell, owner, compact, onOpen
 
   const load = useCallback(async () => {
     setError('');
-    try { const { brands } = await hkGet(businessId, '/brands', { view, q: q.trim(), owner }); setRows(brands); }
+    try { const { brands } = await hkGet(businessId, '/brands', { view: pipeline ? 'all' : view, q: q.trim(), owner }); setRows(pipeline ? brands.filter(b => !PIPELINE_HIDDEN.has(b.status)) : brands); }
     catch (e) { setError(e.message); setRows([]); }
-  }, [businessId, view, q, owner]);
+  }, [businessId, view, q, owner, pipeline]);
   useEffect(() => { const t = setTimeout(load, q ? 250 : 0); return () => clearTimeout(t); }, [load, q]);
   useEffect(() => { setSelected(new Set()); }, [view, q, owner]);
 
@@ -62,12 +64,12 @@ export default function BrandsScreen({ businessId, shell, owner, compact, onOpen
   ], [canEdit, selected, members, onOpenBrand]);
 
   return (
-    <div className="hk-brands" data-hk-brands>
+    <div className="hk-brands" data-hk-brands={pipeline ? 'pipeline' : 'brands'}>
       <div className="hk-toolbar">
-        <Tabs label="Saved views" items={VIEWS.map(([id, label]) => ({ id, label }))} value={view} onChange={setView} />
+        {pipeline ? <span className="hk-meta">Brands in motion: claimed through replied. Candidates, passed, skipped and sponsors live under Brands and Sponsors.</span> : <Tabs label="Saved views" items={VIEWS.map(([id, label]) => ({ id, label }))} value={view} onChange={setView} />}
         <span className="hk-spacer" />
         <input className="ui-input hk-search-input" type="search" placeholder="Search name, domain or alias" aria-label="Search brands" value={q} onChange={e => setQ(e.target.value)} />
-        {canEdit && <Button variant="primary" onClick={() => setAdding(true)} data-hk-add>+ Add brand</Button>}
+        {canEdit && !pipeline && <Button variant="primary" onClick={() => setAdding(true)} data-hk-add>+ Add brand</Button>}
       </div>
       {canEdit && selected.size > 0 && (
         <div className="hk-bulk" role="toolbar" aria-label="Bulk actions">
@@ -86,8 +88,8 @@ export default function BrandsScreen({ businessId, shell, owner, compact, onOpen
       {rows === null ? <p className="hk-meta">Loading brands…</p> : rows.length === 0 ? (
         <div className="hk-empty" data-hk-empty>
           <Sprout size={40} />
-          <p className="hk-empty__title">{q ? 'No brand matches.' : view === 'all' ? 'No brands yet.' : 'Nothing in this view.'}</p>
-          <p className="hk-empty__line">{q ? 'Try the domain or an alias.' : 'Add a brand, or wait for the Sheet import.'}</p>
+          <p className="hk-empty__title">{q ? 'No brand matches.' : pipeline ? 'No brands in motion yet.' : view === 'all' ? 'No brands yet.' : 'Nothing in this view.'}</p>
+          <p className="hk-empty__line">{q ? 'Try the domain or an alias.' : pipeline ? 'Claim a brand under Brands and it shows here.' : 'Add a brand, or wait for the Sheet import.'}</p>
         </div>
       ) : (
         <DataTable label="Brands" columns={columns} rowKey={r => r.id} compact={compact} groups={[{ id: 'all', header: `${rows.length} brand${rows.length === 1 ? '' : 's'}`, rows }]}

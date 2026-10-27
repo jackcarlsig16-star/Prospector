@@ -1,6 +1,10 @@
 // hkos-data-foundation-v1 D4 - sponsors, review, activity, settings and member prefs (under /api/hk/:businessId behind
 // hkGate). Nothing here returns an address: replies go through replyRow, events were PII-guarded when written.
+import { createRequire } from 'module';
 import { getSupabase, HkError, fail, isOwner, me, text, bool, oneOf, logEvent, brandRow, brandSummary, liveBrands, allBrands, brandById, nameMatches, selectAllPages, hasPii, SPONSOR_RELATIONSHIPS } from './hkShared.js';
+const seed = createRequire(import.meta.url)('./lintSeed.json');
+// Settings > Pitch shows the rules nobody can edit here: the lint seed's patterns plus the email-touch cap.
+const LOCKED_RULES = [...seed.banned_patterns.map(p => ({ id: p.id, rule: p.rule })), { id: 'max_email_touches', rule: 'At most 3 email touches per brand: cold, bump, final.' }, { id: 'no_send', rule: 'Nothing is ever sent from Prospector. Drafts land in Gmail for you to send.' }];
 
 const PERIOD = /^([0-9]{4}-(0[1-9]|1[0-2])|launch)$/;
 const SETTINGS_DEFAULTS = { members_stat: null, completions_stat: null, stats_confirmed_at: null, market_line_local: null, market_line_national: null, subject_format: null, banned_phrases: [], bump_after_days: 5, dm_after_days: 9, final_after_days: 14, max_email_touches: 3, apollo_batch_cap: 25, digest_time: '07:30', digest_days: 'weekdays', timezone: 'America/Chicago', modules: {}, theme: {} };
@@ -124,7 +128,7 @@ export async function activityRoute(req, res, { supabase = getSupabase() } = {})
 
 async function settingsRow(supabase, businessId) { const { data, error } = await supabase.from('hk_settings').select('*').eq('business_id', businessId).maybeSingle(); if (error) throw new Error(error.message); return data; }
 export async function getSettingsRoute(req, res, { supabase = getSupabase() } = {}) {
-  try { const row = await settingsRow(supabase, req.params.businessId); res.json({ settings: { ...SETTINGS_DEFAULTS, business_id: req.params.businessId, ...(row || {}) }, seeded: !!row }); } catch (e) { fail(res, e, 'settings/get'); }
+  try { const row = await settingsRow(supabase, req.params.businessId); res.json({ settings: { ...SETTINGS_DEFAULTS, business_id: req.params.businessId, ...(row || {}) }, seeded: !!row, locked_rules: LOCKED_RULES }); } catch (e) { fail(res, e, 'settings/get'); }
 }
 // PATCH /settings (owner role); max_email_touches is read-only
 export async function patchSettingsRoute(req, res, { supabase = getSupabase(), now = () => new Date() } = {}) {
