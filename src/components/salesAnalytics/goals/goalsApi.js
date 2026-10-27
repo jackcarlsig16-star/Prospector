@@ -217,6 +217,13 @@ export const goalsApi = {
   recomputeScores: (id, body = {}) => call(id, '/scores/recompute', { method: 'POST', body }),
   scoresCsvUrl: (id, params = {}) => `/api/sales/${id}/goals/scores/export.csv?${q(params)}`,
   brief: (id, type, recordId) => call(id, `/brief/${type}/${recordId}`),
+  scoreOf: (id, type, recordId) => call(id, `/scores/${type}/${recordId}`),
+  scoreViews: id => call(id, '/scores/views').then(d => d.views),
+  saveScoreView: (id, body) => call(id, '/scores/views', { method: 'POST', body }),
+  deleteScoreView: (id, viewId) => call(id, `/scores/views/${viewId}`, { method: 'DELETE' }).then(d => d.views),
+  composeStatus: id => call(id, '/compose/status'),
+  compose: (id, type, recordId) => call(id, `/compose/${type}/${recordId}`, { method: 'POST', body: {} }),
+  composeLint: (id, body) => call(id, '/compose/lint', { method: 'POST', body }),
 
   companies: (id, from, to) => call(id, `/companies?${q({ from, to })}`),
   updateCompany: (id, accountId, body) => call(id, `/companies/${encodeURIComponent(accountId)}`, { method: 'PATCH', body }).then(d => d.company),

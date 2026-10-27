@@ -15,6 +15,7 @@ import { todoStatus } from './todoStatus';
 import PartnersView from './PartnersView';
 import CompaniesView from './CompaniesView';
 import PipelineView from './PipelineView';
+import PrioritiesView from './priorities/PrioritiesView';
 import { writePeopleCompany } from '../salesNav';
 import ReportView from './ReportView';
 import PlanWeekDrawer from './PlanWeekDrawer';
@@ -462,6 +463,9 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
         </>}
         {section === 'pipeline' && view === 'campaigns' && me && (
           <CampaignsView businessId={businessId} canEdit={canEdit} members={members} lookup={lookup} meId={meId} />
+        )}
+        {section === 'pipeline' && view === 'priorities' && me && (
+          <PrioritiesView businessId={businessId} canEdit={canEdit} isAdmin={isAdmin} meId={meId} onOpenPeople={company => { writePeopleCompany(company); onNav('pipeline', 'people'); }} />
         )}
         {section === 'pipeline' && view === 'companies' && (
           <PipelineView businessId={businessId} canEdit={canEdit} meId={meId}

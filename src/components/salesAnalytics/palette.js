@@ -132,3 +132,28 @@ export const PARTNER_TYPE_COLORS = {
   current: 'var(--sa-soft)', platforms: '#C33D59', brokers: '#00A19D',
   renters: '#9550BB', influence: '#3E8651', professional: '#C068AC',
 };
+
+// intent-score-v1 S3 - the lead-source hues, FIXED order (SOURCE_ORDER = the server's intentScore.js), assigned to
+// the entity never the rank. The project's muted cohort / partner-type sets fail the dataviz validator's lightness
+// band and chroma floor on both surfaces, so each slot was re-stepped onto the skill's reference ramps (dataviz
+// references/palette.md, same hue family per slot) and validated 2026-10-27 as a set: adjacent CVD dE 8.4 dark /
+// 9.1 light, normal-vision 19.3 / 19.6, every slot >= 3:1 on the dark inset (#12161B) and surface (#1E242C); on
+// the white print surface aqua / yellow / magenta sit under 3:1, so the legend, the hover and the table always say
+// the source in words. "Other" is the fold slot in the muted ink, never a ninth hue. Never a member or status color.
+const SOURCE_VALUES = {
+  upside: ['#3987e5', '#2a78d6'], partner_referral: ['#d95926', '#eb6834'], person_referral: ['#199e70', '#1baf7a'],
+  campaign: ['#c98500', '#eda100'], website: ['#d55181', '#e87ba4'], inbound: ['#008300', '#008300'],
+  homelover_outreach: ['#9085e9', '#6250d6'], scout: ['#e66767', '#e34948'], other: ['#898781', '#898781'],
+};
+export const SOURCE_ORDER = ['upside', 'partner_referral', 'person_referral', 'campaign', 'website', 'inbound', 'homelover_outreach', 'scout', 'other'];
+export const SOURCE_LABELS = { upside: 'Brad / Upside', partner_referral: 'Partner referral', person_referral: 'Person referral', campaign: 'Campaign', website: 'Website', inbound: 'Inbound', homelover_outreach: 'Outreach', scout: 'Scout', other: 'Other' };
+export const SOURCE_HEX = SOURCE_VALUES;
+const sourceVar = k => `--sa-src-${k.replace(/_/g, '-')}`;
+export const SOURCE_COLORS = Object.fromEntries(SOURCE_ORDER.map(k => [k, `var(${sourceVar(k)})`]));
+export const sourceColor = label => SOURCE_COLORS[label] || SOURCE_COLORS.other;
+export const SOURCE_THEME_CSS = `
+  #sales-analytics-root { ${SOURCE_ORDER.map(k => `${sourceVar(k)}: ${SOURCE_VALUES[k][0]};`).join(' ')} }
+  @media print {
+    #sales-analytics-root { ${SOURCE_ORDER.map(k => `${sourceVar(k)}: ${SOURCE_VALUES[k][1]};`).join(' ')} }
+  }
+`;

@@ -14,6 +14,7 @@ const mdShort = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { mo
 import { needsRecord } from './companyPanelModel';
 import { SourceHistoryCard, ReferredByCard } from './LeadSource';
 import CompanyStepsStrip from './CompanyStepsStrip';
+import IntentFact from './IntentFact';
 import { Link } from '../../../ui/Button';
 import { priorityColor } from '../palette';
 
@@ -91,6 +92,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
           </div>
         ))}
       </div>
+      {!needsRecord(row.type) && <IntentFact businessId={businessId} row={row} canEdit={canEdit} version={version} />}
       {detail?.steps && <CompanyStepsStrip businessId={businessId} row={row} detail={detail} canEdit={canEdit} members={members} onChanged={changed} onConvert={onConvert} onToast={onToast} setForm={setForm} />}
       {bandShown && <InterestBand businessId={businessId} row={row} interest={detail.interest} canEdit={canEdit} onChanged={changed} onToast={onToast} />}
       {canEdit

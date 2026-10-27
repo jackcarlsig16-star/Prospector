@@ -6,6 +6,7 @@ import { cleanText } from './scrubText.js';
 import { DEFAULT_WEIGHTS, SOURCE_ORDER, trendOf, COMPONENTS } from './intentScore.js';
 import { recomputeScores, mergeWeights, isStale, NEEDS_TOUCH_MIN, TOUCH_WINDOWS } from './intentScoreRun.js';
 import { sourceLabelOf } from './companyBrief.js';
+import { breakdownLines } from './intentScore.js';
 
 // intent-score-v1 Stage 2 - GET goals/scores (the ranked rows + components under the S3 filters, with yesterday's band
 // for the ▲ / ▼ markers), POST goals/scores/recompute (owner / admin, optional one company), GET goals/scores/export.csv.
@@ -103,7 +104,7 @@ export async function listScores(supabase, businessId, query = {}, { now = Date.
   for (const b of ['P1', 'P2', 'P3', 'P4']) counts[b] = rows.filter(r => r.band === b).length;
   const sources = Object.fromEntries(SOURCE_ORDER.map(k => [k, ranked.filter(r => r.source_label === k).length]));
   const owners = [...new Map(ranked.filter(r => r.owner_user_id).map(r => [r.owner_user_id, r.owner])).entries()].map(([id, name]) => ({ user_id: id, name }));
-  return reply(200, { rows: rows.map(r => ({ ...r, rank: ranked.indexOf(r) + 1 })), live, counts, sources, owners, filters: f, computed_at: computedAt, stale: isStale(computedAt, now), today, has_previous: hasPrev, thresholds: weights.thresholds, needs_touch_rule: { min: NEEDS_TOUCH_MIN, days: TOUCH_WINDOWS.needs }, source_order: SOURCE_ORDER });
+  return reply(200, { rows: rows.map(r => ({ ...r, rank: ranked.indexOf(r) + 1 })), live, counts, sources, owners, filters: f, computed_at: computedAt, stale: isStale(computedAt, now), today, has_previous: hasPrev, thresholds: weights.thresholds, caps: weights.caps, needs_touch_rule: { min: NEEDS_TOUCH_MIN, days: TOUCH_WINDOWS.needs }, source_order: SOURCE_ORDER });
 }
 export async function listScoresRoute(req, res) {
   try { send(res, await listScores(getSupabase(), req.params.businessId, req.query)); }
@@ -122,6 +123,52 @@ export async function recomputeRoute(req, res) {
     res.status(200).json({ ran: true, counts: r.counts, computed_at: r.computed_at, ...(one ? { row: r.rows[0] ? { score: r.rows[0].score, band: r.rows[0].band } : null } : {}) });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 }
+
+// GET goals/scores/:type/:id -> the one row + its breakdown lines (S4 Facts); 404 until the first recompute.
+export async function scoreOf(supabase, businessId, { type, id, now = Date.now() }) {
+  if (!['partner', 'employer', 'target'].includes(type)) return reply(400, { error: 'type must be partner|employer|target' });
+  const s = must(await supabase.from('sales_company_scores').select('*').eq('business_id', businessId).eq('company_type', type).eq('company_id', id).maybeSingle());
+  if (!s) return reply(404, { error: 'No score yet - recompute' });
+  const today = laDateString(new Date(now));
+  const prev = (await previousSnapshot(supabase, businessId, today)).get(`${type}-${id}`) || null;
+  const row = publicRow(s, prev, now);
+  return reply(200, { row, lines: breakdownLines({ components: row.components }), thresholds: DEFAULT_WEIGHTS.thresholds });
+}
+export async function scoreOfRoute(req, res) {
+  try { send(res, await scoreOf(getSupabase(), req.params.businessId, { type: req.params.type, id: req.params.id })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+}
+
+// S5 saved views: sales_settings.saved_views = [{ id, name, filters, y, view, created_by, created_at }] (<= 30).
+export const SAVED_VIEWS_MAX = 30;
+const VIEW_KEYS = ['segment', 'owner', 'source', 'band', 'needs_touch', 'min', 'window', 'q'];
+export async function listViews(supabase, businessId) {
+  const s = must(await supabase.from('sales_settings').select('saved_views').eq('business_id', businessId).maybeSingle());
+  return reply(200, { views: Array.isArray(s?.saved_views) ? s.saved_views : [] });
+}
+export async function saveView(supabase, { businessId, userId, body = {}, now = Date.now() }) {
+  const name = cleanText(String(body.name || ''), 60);
+  if (!name) return reply(400, { error: 'name is required (up to 60 characters)' });
+  const filters = Object.fromEntries(VIEW_KEYS.filter(k => body.filters && body.filters[k] != null && body.filters[k] !== '').map(k => [k, Array.isArray(body.filters[k]) ? body.filters[k].map(String).slice(0, 9) : typeof body.filters[k] === 'boolean' ? body.filters[k] : cleanText(String(body.filters[k]), 80)]));
+  const y = ['intent', 'size', 'activity'].includes(body.y) ? body.y : 'intent';
+  const view = ['dots', 'bars', 'table'].includes(body.view) ? body.view : 'dots';
+  const cur = (await listViews(supabase, businessId)).body.views;
+  if (cur.length >= SAVED_VIEWS_MAX && !cur.some(v => v.name === name)) return reply(409, { error: `At most ${SAVED_VIEWS_MAX} saved views - delete one first` });
+  const entry = { id: cur.find(v => v.name === name)?.id || `v_${Math.random().toString(36).slice(2, 10)}`, name, filters, y, view, created_by: userId, created_at: new Date(now).toISOString() };
+  const views = [...cur.filter(v => v.name !== name), entry];
+  must(await supabase.from('sales_settings').upsert({ business_id: businessId, saved_views: views, updated_at: new Date(now).toISOString() }, { onConflict: 'business_id' }).select('business_id'));
+  return reply(201, { view: entry, views });
+}
+export async function deleteView(supabase, { businessId, id, now = Date.now() }) {
+  const cur = (await listViews(supabase, businessId)).body.views;
+  if (!cur.some(v => v.id === id)) return reply(404, { error: 'view not found' });
+  const views = cur.filter(v => v.id !== id);
+  must(await supabase.from('sales_settings').update({ saved_views: views, updated_at: new Date(now).toISOString() }).eq('business_id', businessId).select('business_id'));
+  return reply(200, { views });
+}
+export async function listViewsRoute(req, res) { try { send(res, await listViews(getSupabase(), req.params.businessId)); } catch (e) { res.status(500).json({ error: e.message }); } }
+export async function saveViewRoute(req, res) { try { send(res, await saveView(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, body: req.body })); } catch (e) { res.status(500).json({ error: e.message }); } }
+export async function deleteViewRoute(req, res) { try { send(res, await deleteView(getSupabase(), { businessId: req.params.businessId, id: req.params.id })); } catch (e) { res.status(500).json({ error: e.message }); } }
 
 // CSV: the table's columns, same filters; closed-won / pilot rows under "Live"; quoted; nothing with an "@".
 export const CSV_COLUMNS = ['Company', 'Type', 'Score', 'Band', 'Status', 'Source', 'Owner', 'Visits 7d', 'People', 'Last touch', 'Employees', 'Stage', 'Researched', 'Change'];

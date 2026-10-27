@@ -749,6 +749,14 @@ app.get('/api/sales/:businessId/goals/scores', salesModuleRoute('./api/sales/sco
 app.post('/api/sales/:businessId/goals/scores/recompute', salesModuleRoute('./api/sales/scoresRoutes.js', 'recomputeRoute', 'goals/scores/recompute POST'));
 app.get('/api/sales/:businessId/goals/scores/export.csv', salesModuleRoute('./api/sales/scoresRoutes.js', 'exportScoresRoute', 'goals/scores/export.csv'));
 app.get('/api/sales/:businessId/goals/brief/:type/:id', salesModuleRoute('./api/sales/companyBrief.js', 'briefRoute', 'goals/brief/:type/:id'));
+// intent-score-v1 Stage 3 - one company's score (S4), saved share views (S5), Write email + its lint + the day's cap (S7).
+app.get('/api/sales/:businessId/goals/scores/views', salesModuleRoute('./api/sales/scoresRoutes.js', 'listViewsRoute', 'goals/scores/views'));
+app.post('/api/sales/:businessId/goals/scores/views', salesModuleRoute('./api/sales/scoresRoutes.js', 'saveViewRoute', 'goals/scores/views POST'));
+app.delete('/api/sales/:businessId/goals/scores/views/:id', salesModuleRoute('./api/sales/scoresRoutes.js', 'deleteViewRoute', 'goals/scores/views/:id DELETE'));
+app.get('/api/sales/:businessId/goals/scores/:type/:id', salesModuleRoute('./api/sales/scoresRoutes.js', 'scoreOfRoute', 'goals/scores/:type/:id'));
+app.get('/api/sales/:businessId/goals/compose/status', salesModuleRoute('./api/sales/composeRoutes.js', 'composeStatusRoute', 'goals/compose/status'));
+app.post('/api/sales/:businessId/goals/compose/lint', salesModuleRoute('./api/sales/composeRoutes.js', 'composeLintRoute', 'goals/compose/lint POST'));
+app.post('/api/sales/:businessId/goals/compose/:type/:id', aiLimit, salesModuleRoute('./api/sales/composeRoutes.js', 'composeRoute', 'goals/compose/:type/:id POST'));
 // sales-ia-v2 Stage 3 - the company side panel (every Pipeline row type): body sections, Add to pipeline, notes and
 // contacts for employers / targets, a target's ownership / step, and Research + Check Apollo for any record type.
 app.get('/api/sales/:businessId/goals/company', salesModuleRoute('./api/sales/companyPanel.js', 'companyDetailRoute', 'goals/company'));
