@@ -35,3 +35,43 @@ export const reqOf = ({ method = 'GET', params = {}, query = {}, body = {}, user
 export const resOf = () => { const r = { code: 200, body: null }; r.status = c => { r.code = c; return r; }; r.json = b => { r.body = b; return r; }; return r; };
 export const call = async (route, req, deps) => { const res = resOf(); await route(req, res, deps); return res; };
 export const hasAt = v => JSON.stringify(v).includes('@');
+
+// hkos-sheet-import-v1 - an INVENTED tracker workbook with every tab shape (names on .invalid, never the real file).
+// Returns an exceljs Workbook; a test may write it to a buffer and load it again to go through the real read path.
+export async function inventedWorkbook() {
+  const { default: ExcelJS } = await import('exceljs');
+  const wb = new ExcelJS.Workbook();
+  const sheet = (name, headers, rows) => { const ws = wb.addWorksheet(name); ws.addRow(headers); for (const r of rows) ws.addRow(r); return ws; };
+  const SPONSOR = ['Name', 'Status', 'Type', 'Contact', 'Challenge Sponsor?', 'Challenge Name', 'Reward/Raffle tied to Challenge?', 'Challange Schedule', 'Reward / Raffle Schedule', 'Raffle Confirmed?', 'Raffle Item', 'Reward', 'Reward Confirmed?', 'Agreement?', 'Redemption Method', 'Discount Code', 'Percentage Off'];
+  sheet('Pete Outreach', ['Name', 'Type', 'Contact', 'Outreach Date', 'Jack Outreach', 'Status', 'Notes', 'Challenge/Reward Ideas', '', ''], [
+    ['Zz Northwind Juice', 'National CPG', 'ana@northwind.invalid', '9/1/2026, 9/8/26', '', 'Email sent 9/1', 'Loves the idea. Reach Sam at sam@northwind.invalid', 'Juice week'],
+    ['Zz Harbor Yoga', '', 'Pete Yogi <pete@harbor.invalid>', '', '10/1', 'IG DM ready', '', ''],
+    ['Zz Bluefin Run Club', '', '', '', '', 'Email drafted 10/3', '', ''],
+    ['Zz Copperleaf Cafe', '', '', '', '', 'In', '', ''],
+    ['Zz Granite Gym', '', '', '', '', '', 'IG @granitegym, ask for Jo', ''],
+    ['', '', 'orphan@nowhere.invalid', '', '', 'Email sent 9/9', '', ''],
+    ['Zz Northwind', '', '', '', '', 'Replied on IG; email drafted 10/4', '', ''],
+    ['Zz Future Foods', '', '', new Date(Date.UTC(2026, 11, 24)), '', '', '', ''],
+    ['Zz Salt Spa', '', '', '', '', '', '', ''],
+  ]);
+  sheet('Jack Outreach', ['Name', 'Website', 'Contact', 'Email', 'Outreach Date', 'Status', 'Enrichment Notes', 'Type', 'Notes', 'Challenge/Reward Ideas'], [
+    ['Zz Dunmore Mills', 'https://www.dunmore.invalid/about', 'Lee Dunmore', 'lee@dunmore.invalid', '10/10', 'sent', 'Family-run mill', 'Partnership Inquiry on website', 'Call 312-555-0100 after 5', 'Flour challenge'],
+    ['Zz Harbor Yoga', 'harbor.invalid', '', '', '', '', '', 'Sponsored Reward/Raffle', '', ''],
+  ]);
+  sheet('Meliora', [], []);
+  sheet('Non-Profits', ['Name', 'Summary', 'Contact', 'Outreach Date', 'Status', 'Notes', 'Challenge/Reward Ideas'], [['Zz Lakefront Trust', 'Beach cleanups', 'info@lakefront.invalid', '', '', '', '']]);
+  sheet('Sheet8', ['Business Name', 'Website'], [['Zz Pine Supply', 'pinesupply.invalid'], ['Zz Harbor Yoga', 'harbor.invalid']]);
+  sheet('Orgs to Reach Out to', ['IG Template', 'Email Template'], [['Hi there', 'Hello there']]);
+  sheet('Chicago Press Hit LIst', ['Name', 'Contacts', 'Outreach Date'], [['Zz Chicago Daily', 'tips@daily.invalid; Dana Reporter', '10/2']]);
+  sheet('Podcasts', ['Name', 'Contacts', 'Outreach Date', 'Status', 'Lane', 'Pitch Angle', 'Host Email Source', 'Notes'], [['Zz Founder Hour', 'host@founderhour.invalid', '', 'Email sent 10/6', 'Founder', "Jack's origin story", 'LinkedIn', 'Weekly show']]);
+  sheet('Events', ['Event', 'Date(s)', 'Location', 'Organizer / Contact', 'Status'], [['Zz Lakefront 5K', '11/2', 'Chicago', 'org@run.invalid', 'Applied'], ['Zz Winter Market', '12/6', 'Chicago', '', '']]);
+  sheet('Confirmed Launch Sponsors', ['Name', 'Type', 'Contact', 'Challenge Sponsor?', 'Challenge Name', 'Challange Schedule', 'Reward / Raffle Schedule', 'Raffle Confirmed?', 'Raffle Item', 'Reward', 'Reward Confirmed?', 'Agreement?', 'Redemption Method', 'Discount Code', 'Percentage Off', 'IG Post?'], [
+    ['Zz Harbor Yoga', 'Reward|Challenge', 'hello@harbor.invalid', 'Yes', 'Mat Time', 'June', 'June', 'Yes', 'Class pass', '20% off a month', 'Yes', 'Yes', 'Code at checkout', 'HK20', '20%', 'Yes'],
+    ['Zz River Kayak', 'Raffle|Challenge', '', 'Yes', 'Paddle Week', '', '', 'Yes', 'Two rentals', '', '', 'Yes', '', '', '', ''],
+  ]);
+  sheet('June Confirmed Sponsors', SPONSOR, [['Zz Harbor Yoga', 'Done', 'Reward|Challenge', '', 'Yes', 'Mat Time June'], ['Zz Oak Street Bakery', 'Need to set up', 'Reward', 'owner@oakstreet.invalid', '', 'Bread Week']]);
+  sheet('Septmeber Confirmed Sponsors', SPONSOR, [['Zz Oak Street Bakery', 'Done.', 'Reward', '', '', 'Bread Week II']]);
+  sheet('November Confirmed Sponsors', ['Name', 'Paid?', 'Amount', ...SPONSOR.slice(1)], [['Zz Cedar Coffee', 'Yes', 500, 'Done', 'Reward', '', '', 'Latte Ladder']]);
+  sheet('January Sponsors', SPONSOR, [['Zz Oak Street Bakery', '', 'Reward', '', '', 'New Year Loaf']]);
+  return wb;
+}

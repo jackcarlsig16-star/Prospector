@@ -1,0 +1,155 @@
+SPEC — hkos-inbox-v1 (HumanKind Grow, build step 3a: your own HumanKind Gmail, live, inside the app, with brand context)
+Written Oct 26, 2026 10:00 PM PT against HEAD c5bb0c1 (origin/main). Ground truth: api/hk/gmailClient.js (c5bb0c1:
+GMAIL base :7, GmailError :9, gmailClient(fetchFn) :11, toMeta(msg) :35); api/hk/gmailRoutes.js (drafts / sync / replies
+routes, server.js:418-426); api/hk/warm.js; api/hk/hkShared.js (events, hasPii guard, serializers — from_email stripped);
+api/lib/googleGrants.js tokenForMailbox(req, res, businessId, purpose) with PURPOSES drafts|inbox|calendar (purpose
+'inbox' exists and is covered by the same gmail.modify feature); hk_ignored_senders table (20261026_hkos_data_foundation_v1
+.sql:201, RLS on); hk_brands.domain + hk_touches.gmail_thread_id + hk_replies (gmail_thread_id, label); dompurify ^3.4.16
+already in package.json:14; src/hk/hkScreens.js:6 inbox placeholder (module 'email', phoneTab false); hkos design §2.2
+Inbox + §5 inbox privacy rules (summarized here — the coder cannot read it). Partial ground truth is marked; Stage 0 closes it.
+
+## Status
+Follows hkos-gmail-connect-v1 (all stages pushed, bar 4; Jack's bar 5 pending). Jack's order: HumanKind end to end
+first. Inbox needs nothing from Jack (no migration, no new scope: gmail.modify already covers reads). Live, not copied:
+the screen reads the signed-in founder's own tethered mailbox on demand and stores NOTHING about untracked mail.
+
+## Problem (real, grounded)
+1. The Inbox screen is an empty state (hkScreens.js:6). Reading a reply today means switching to Gmail with no brand
+   context, and new sponsor-looking senders can't be tracked from where you see them.
+2. The only inbox-shaped code is HomeLover's user-level /proxy/gmail/* (server.js:140-175) on the DEFAULT account — wrong
+   mailbox for HumanKind and no brand matching.
+3. hk_ignored_senders exists with no reader or writer.
+
+## Design decision (DECIDED unless marked PROPOSED / REVISABLE)
+I1 Routes (all /api/hk/:businessId/inbox/*, hkGate member+ — Viewer gets 403: a viewer has no mailbox; token =
+   tokenForMailbox(req, res, businessId, 'inbox') on the CALLER's tether; there is no parameter that selects another
+   user's mailbox, and a test proves user A's session can't read user B's):
+   GET  inbox/threads?tab=inbox|brands|sent|drafts&q=&pageToken=  → users.threads.list (labelIds INBOX / SENT / DRAFT per
+        tab; tab brands = INBOX filtered server-side to matched threads, paging until 50 matches or 200 scanned —
+        REVISABLE), maxResults 50, q passed through verbatim (Gmail syntax works); for each thread one users.threads.get
+        format=metadata (Subject, From, To, Date; snippet) — batched with Promise.all in groups of 10 (REVISABLE; Gmail
+        per-user quota). Response rows: { thread_id, unread, from_name, from_domain, from_hint (role word if the display
+        name has one, else domain), date, subject, snippet ≤ 140, chips: { kind: tracked|matches|untracked|team|not_tracked,
+        brand_id?, brand_name?, status?, label? }, has_attachments }. Matching at read time, in memory: thread_id ∈
+        hk_touches.gmail_thread_id or hk_replies.gmail_thread_id → tracked; from_domain = an hk_brands.domain (this
+        workspace, not archived) → matches; from_domain = humankindcollective.app → team; from_domain ∈ the caller's
+        hk_ignored_senders → not_tracked (dimmed, no chip); known bulk senders (List-Unsubscribe header present or
+        noreply/no-reply/notifications/newsletter local parts — REVISABLE heuristic) → not_tracked; else untracked
+        ([Track as brand]). Addresses never leave the server: from_name + from_domain only.
+   GET  inbox/threads/:id → users.threads.get format=full for the caller; messages in order; per message: from_name,
+        from_domain, to_names (names only; "you" for the caller), date, text (text/plain part decoded) and html
+        (sanitized server-side with DOMPurify in jsdom-free mode — Stage 0 confirms dompurify runs server-side in this
+        repo or whether isomorphic-dompurify is needed; if a new dep is needed, FLAG BACK — the approved-deps landmine)
+        with: scripts/forms/iframes/objects stripped, all `src` on img/picture/source/video rewritten to a data-URI
+        placeholder and the original kept in data-blocked-src ONLY when the user asked for images (I2), external
+        stylesheets dropped, links forced target=_blank rel=noopener; attachments as [{ name, size }] (no download proxy
+        — [Open in Gmail]); quoted history collapsed client-side. Brand panel data: the matched brand's summary (name,
+        domain, status, owner first name, touch count, verdict via canContact for the caller, challenge_idea, last reply
+        label) or null. Nothing is written; no event is logged for reading.
+   POST inbox/threads/:id/link { brand_id }  → records the thread exactly as gmail-sync does for a tracked thread: an
+        hk_replies row for the latest inbound message (label new_thread or the auto label via replyLabel, cap counts as
+        in gmail-connect), gmail_thread_id set, event inbox_linked { brand_id, thread_id } — message content is never in
+        the event; gmail-sync then follows the thread. Linking never changes the owner; canContact still gates drafts.
+   POST inbox/track { name, domain, thread_id }  → the Add brand flow server-side (brands create via checkBrandsRoute
+        rules: sponsor/dnc verdicts refuse, possible_duplicate requires force) then link; returns the brand.
+   POST inbox/ignore { domain } / DELETE inbox/ignore/:domain → hk_ignored_senders for the caller only.
+   GET  inbox/prefs / PATCH inbox/prefs { show_images_default } → hk_member_prefs (add column show_images boolean DEFAULT
+        false — the ONE migration line, folded into Stage 1 as a tiny migration Jack runs; PROPOSED alternative: store in
+        localStorage prospector_hk_inbox_images and skip the migration — coder picks localStorage if a migration would be
+        the only DB change; flag which).
+   Cache: per user + tab + q + page, 120 s in-memory (REVISABLE), invalidated by [Refresh] and by any link/track action.
+I2 Rendering (client): the html part renders in a sandboxed <iframe sandbox="" srcdoc=…> (no allow-scripts, no
+   allow-same-origin, no forms) inside the reading pane, sized to content via a postMessage-free approach (fixed max
+   height + inner scroll; REVISABLE); text part shown when no html. Remote images blocked by default; a per-thread "Show
+   images" link swaps data-blocked-src back in for that render only; Settings › Connections › Inbox options: "Show images
+   by default" (I1 prefs) and "Ignored senders [Manage]".
+I3 Screen (route id inbox, module email; desktop three panes; phone one pane at a time list → thread):
+   - Left: tabs as a kit Segmented (Inbox · Brands only · Sent · Drafts); search box (placeholder "Search Gmail, e.g.
+     from:rumpl.com"); rows: unread dot + bold, from_name, from_hint muted, date right, subject, snippet, one chip line per
+     I1 (Tracked: Status chip + reply label chip · Matches <Brand> + [Link to brand] · [Track as brand] · Team · Not
+     tracked in faint text, row dimmed); [Load more]; [Refresh]. Selected row: cream with a 4 px green left bar.
+   - Middle: messages newest at the bottom, older quoted history collapsed, hidden-images sand strip with "Show images",
+     attachments list with [Open in Gmail]; buttons [Reply in Gmail] primary (https://mail.google.com/mail/?authuser=
+     <tethered email>#all/<thread_id>), [Copy Claude command] ("hk reply <Brand>" when matched), [Mark handled] (only when
+     the thread has an unhandled hk_replies row → PATCH replies/:id handled). NO compose box, NO send, NO mark-read (needs
+     a broader write; Phase 1 read-only).
+   - Right: brand panel (I1) with [Open brand page], quick manual status chips (Meeting / Signed / Passed via the existing
+     PATCH), Verdict banner; or "Not a brand yet" + [Track as brand] (opens the Add brand modal prefilled with the sender's
+     display name and domain; on Save → inbox/track) + [Ignore this sender]; Team mail → no panel. Footer: "Only you see
+     your inbox."
+   - States: no tether → the existing "Link your HumanKind Gmail" prompt (409 needs_mailbox); needs_reconnect → amber
+     banner + Connections link; Gmail 429/5xx → keep the last list with "Showing the list from <n> minutes ago" + [Try
+     again]; empty → "Your inbox is empty." Nav badge = unread count from the first Inbox page (REVISABLE: or none).
+   - Phone: list pane; tapping opens the thread pane with a back arrow; brand panel folds under the messages.
+I4 Privacy rules enforced in code + tests: own token only; untracked mail never written to any table, event or log
+   (a test spies the service client during list/open and asserts zero inserts); addresses never serialized (from_name /
+   from_domain / to_names only; "@" assertion over every inbox response); html sanitized before it leaves the server;
+   iframe sandbox attributes asserted in Jest; the no-send scan covers the new files; reading logs nothing (only link /
+   track / ignore write events). The other founder's mail is never reachable from this screen; shared brand threads keep
+   appearing on the Brand page timeline and Replies as before.
+I5 Cost: 0 Claude except the auto label on link (replyLabel, under the existing 60/day cap). Gmail: ≤ 1 + ceil(n/10)
+   batched calls per list page; the 120 s cache keeps repeated opens free; Stage 3 reports measured calls for one list
+   page + one open.
+
+Landmines (inlined — the coder cannot read project docs):
+- NO SEND PATH (scan refuses drafts.send / messages.send / 'messages/send' / 'drafts/send'); no compose box here; no
+  mark-read / archive / label writes (gmail.modify would allow them — Phase 1 is read-only by decision; hkos-inbox-actions-v1
+  later if Jack says so).
+- Own inbox only: tokenForMailbox on the caller's tether, purpose 'inbox'; never getGrant / googleTokenFor / another
+  user's grant; no fallback to the default account; a flagged grant is kept (needs_reconnect), never deleted.
+- Untracked mail is never persisted or logged. Addresses and phone numbers never reach the browser, events, logs, verify
+  shots or reports (name + domain only); contact emails are shown ONLY on Brand › Contacts (data-foundation D5).
+- Email HTML is untrusted: sanitize server-side, render in a sandboxed frame with scripts off, never inject into the app
+  DOM; remote images blocked by default (tracking pixels). Approved new deps: exceljs only — if DOMPurify needs a DOM
+  shim on the server, FLAG BACK before adding anything.
+- Gmail quotas: metadata lists, full fetch only on open, page at 50, cache briefly; never fetch every body for a list.
+- outreach_doctrine platform-scope only; voiceExamples / Project outreach_examples separate; Project panel read-only for
+  Company Intel; SEGMENT_PASTE_MAX_CHARS is a cap. salesGate / allowlist untouched; hkGate is the gate.
+- Crons never fire; nothing here depends on one. HumanKind theme only under .hk-theme; contrast rules (#278245 on green
+  tints, #A8441A orange text, #9A8F7E never text); color never the only signal; no em/en dashes in UI copy; localStorage
+  keys prefixed prospector_.
+- Verify scripts never create workspaces/users on prod; "restored" checks throw; declared real-call counts are caps
+  (Stage 3: Gmail ≤ 15, Claude ≤ 1); live runs read Jack's own tethered mailbox only; any recording is scrubbed of
+  addresses before it is written (ruling Oct 26 9:25 PM) and never committed.
+- Mockup data is illustrative; never seed it.
+
+## Out of scope (own lines)
+- hkos-inbox-actions-v1: mark read / archive / label, in-app reply box that saves a draft (Jack decides; needs no new
+  scope but a write path).
+- Gmail push notifications (watch) for faster refresh — later.
+- Attachment download proxy — [Open in Gmail] in Phase 1.
+- Instagram DMs tab (Phase 2 module).
+
+## Implementation
+Stage 0 — reads only (≤30 lines): (a) does dompurify import/run server-side here without a DOM (try in a node test; if
+  not, list the options and STOP for the planner — do not add a dep); (b) gmailClient capabilities today (list/get/
+  threads?) and where to add threads.list/threads.get format=full + header picking; (c) the sync's thread-id index
+  (hk_touches/hk_replies by gmail_thread_id) to reuse for matching; (d) HkShell's three-pane/phone patterns from Replies +
+  drawer and the Segmented in use; (e) prefs storage decision for show_images (migration vs localStorage); (f) where the
+  nav badge counts come from (status route) to add unread. STOP (or continue into Stage 1 if the go says so).
+Stage 1 — server: I1 routes + sanitizer + matcher + cache + (tiny migration if chosen); tests with a fake Gmail: own-token
+  isolation (A can't read B), zero inserts on list/open, no "@" in any response, sanitizer strips scripts/forms/iframes
+  and rewrites img src, link/track write exactly the sync shapes + one event with no content, ignore list per user, cache
+  hit/miss, 409 shapes. Full suite, commit, push. STOP (and the migration text, if any, for Jack).
+Stage 2 — UI I2/I3 + Settings › Connections Inbox options + badge. Jest: sandbox attrs present, images blocked by default
+  and shown on click, chips per kind, no compose/send controls rendered, phone pane switch. Full suite, prod build,
+  contrast 3 screens, 390 px. Commit, push. STOP.
+Stage 3 — live as Jack on HumanKind with the tethered mailbox (Gmail ≤ 15, Claude ≤ 1, writes: only the test link/track
+  rows, deleted by id): list Inbox page 1 (counts by chip kind, 0 addresses in the payload), open one thread (html
+  sanitized, images blocked, iframe sandbox), Brands-only tab, search "from:<a domain Jack has mail from>" (domain never
+  printed), Track as brand on an invented sender → refused (no such thread) / on a real untracked thread → brand + reply
+  row created then deleted by id, ignore + un-ignore a domain; measured Gmail calls per list page + per open; before/after
+  hk_* counts; HomeLover identical. Close out. STOP.
+
+## Verification
+Per stage. Bar 5 (Jack, prod): HumanKind › Inbox shows your HumanKind Gmail; a brand thread carries its status chip; a
+newsletter is dimmed; open a thread — images blocked until you click Show images; [Reply in Gmail] opens the right account;
+Track as brand on a new sender creates the brand and the thread shows as tracked; Pete sees only his own inbox.
+"bar 5 ok hkos-inbox".
+
+## Definition of done
+Stage 3 measured (bar 4); DONE at Jack's bar 5.
+
+## Commit instructions
+One commit per stage: "hkos-inbox-v1 Stage N: <what>". Push after the full suite; ls-remote; STATUS/RESUME; reports open
+"Spec: 2026-10-26-2200-hkos-inbox-v1.txt · HEAD <hash> (remote matches)". STOP after each stage.
