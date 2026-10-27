@@ -69,7 +69,7 @@ test('report: one row per company over 7 LA days, latest priority, merged visit 
   const vendor = byName(r, 'Vendor Co');
   assert.deepEqual([vendor.priority, vendor.skipped, vendor.next_action], ['P4', true, 'None - On the skip list']);
   assert.equal(byName(r, 'Portal User Inc').maybe_user, true);
-  assert.deepEqual(r.counts, { companies: 7, P1: 3, P2: 1, P3: 1, P4: 2, on_brads_list: 2 });
+  assert.deepEqual(r.counts, { companies: 7, P1: 3, P2: 1, P3: 1, P4: 2, on_brads_list: 2, people_identified: 0, with_people: 0, created: 0, person_only: 0 });
   assert.deepEqual(r.rows.slice(0, 3).map(x => x.company_name), ['Harbor Lane', 'Quarry Labs', 'Brightmill Foods'], 'P1 first, Upside-owned/joint first within it');
 });
 
@@ -149,4 +149,32 @@ test('skip list: add by name or key ("Not a fit"), duplicate 409, PII refused, r
   assert.equal((await removeSkip(sb, B, fit.body.id)).status, 200);
   assert.equal(byName(await visitReport(sb, B, NOW), 'Nimbus Freight').priority, 'P2', 'back to its stored priority');
   assert.deepEqual((await listSkip(sb, B)).map(s => s.company_key), [normName('Sizeless Co'), normName('Vendor Co')].sort());
+});
+
+// visitor-to-record-v1 Stage 3 - V5: the people a visit found ride on the company row (buyer titles flagged), Created
+// comes from targets with a visit_id, a company with people but no visit row this window is listed "filed by Prospector".
+test('V5: people on the row with HR / benefits flagged + the reveal flag, Created chip, a person-only company filed by Prospector sorts last with priority null; counts', async () => {
+  const T2 = randomUUID(), T3 = randomUUID();
+  const sb = fakeSupabase(seed({
+    sales_targets: [{ id: T.quarry, business_id: B, kind: 'employer', owner_team: 'both', record_id: null }, { id: T2, business_id: B, name: 'Nimbus Freight', kind: 'employer', owner_team: null, visit_id: randomUUID(), status: 'researching' }, { id: T3, business_id: B, name: 'Zz Calpine', kind: 'employer', owner_team: null, visit_id: null, status: 'researching' }],
+    sales_people: [
+      { id: randomUUID(), business_id: B, company_type: 'target', target_id: T2, name: 'Larry F.', title: 'Chief People Officer', source_kind: 'web_visit', note: 'Found via visit · Apollo search · 2026-10-20 · reveal to see full name', archived_at: null },
+      { id: randomUUID(), business_id: B, company_type: 'target', target_id: T2, name: 'Sam Rivera', title: 'Driver', source_kind: 'web_visit', note: 'Found via visit · Apollo search', archived_at: null },
+      { id: randomUUID(), business_id: B, company_type: 'target', target_id: T2, name: 'Gone Person', title: 'x', source_kind: 'web_visit', note: null, archived_at: '2026-10-19T00:00:00Z' },
+      { id: randomUUID(), business_id: B, company_type: 'target', target_id: T3, name: 'Margo R.', title: 'Benefits Manager', source_kind: 'web_visit', note: 'Identified visitor · 2026-10-18 · pages /', archived_at: null },
+      { id: randomUUID(), business_id: B, company_type: 'target', target_id: T3, name: 'Lead Person', title: 'CFO', source_kind: 'scout', note: null, archived_at: null },
+    ],
+    sales_settings: [{ business_id: B, buyer_titles: ['Chief People Officer', 'Benefits Manager'] }],
+  }));
+  const r = await visitReport(sb, B, NOW);
+  const nimbus = byName(r, 'Nimbus Freight');
+  assert.deepEqual(nimbus.people.map(p => [p.name, p.title, p.buyer, p.partial, p.identified]), [['Larry F.', 'Chief People Officer', true, true, false], ['Sam Rivera', 'Driver', false, false, false]], 'archived people left out');
+  assert.equal(nimbus.created, true);
+  assert.equal(byName(r, 'Harbor Lane').created, false);
+  const calpine = byName(r, 'Zz Calpine');
+  assert.deepEqual([calpine.priority, calpine.filed_by_prospector, calpine.type, calpine.match.label, calpine.visits_7d, calpine.last_visit, calpine.next_action], [null, true, 'Target (employer)', 'Target', 0, '2026-10-18', 'Review 1 identified person']);
+  assert.deepEqual(calpine.people.map(p => [p.name, p.buyer, p.identified]), [['Margo R.', true, true]], 'a scout-sourced person is not a visitor');
+  assert.equal(r.rows[r.rows.length - 1].company_name, 'Zz Calpine', 'person-only rows sort last');
+  assert.deepEqual([r.counts.companies, r.counts.people_identified, r.counts.with_people, r.counts.created, r.counts.person_only], [8, 3, 2, 1, 1]);
+  assert.ok(!/@/.test(JSON.stringify(r)), 'no address in the report (ids are uuids, so the phone test is not used here)');
 });

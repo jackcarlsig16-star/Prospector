@@ -10,6 +10,7 @@ import InterestBand from './InterestBand';
 import { SignalsCard, TodosCard, WaitingCard, NotesCard, IntelCard, PeopleCard, ExtraCards } from './CompanyPanelSections';
 import { ErrorNote, memberLookup } from './goalsUi';
 import { factsFor } from './companyPanelFacts';
+const mdShort = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 import { needsRecord } from './companyPanelModel';
 import { SourceHistoryCard, ReferredByCard } from './LeadSource';
 import CompanyStepsStrip from './CompanyStepsStrip';
@@ -58,6 +59,9 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
 
   const lookup = memberLookup(members);
   const facts = factsFor(row, detail?.record, sourced && source ? source.source : undefined);
+  // visitor-to-record-v1 V5: a record that visited the site says so in its facts (first visit · visits / 7 d · pages).
+  const web = (row.type === 'employer' || row.type === 'target' || row.type === 'partner') && detail?.visits?.length ? detail.visits[0] : null;
+  if (web) facts.push(['Website', `first visit ${web.first_visit ? mdShort(web.first_visit) : '—'} · ${web.visits_7d ?? 0} visit${web.visits_7d === 1 ? '' : 's'} / 7 d${(web.top_paths || []).length ? ` · ${web.top_paths.slice(0, 2).map(x => x.path || x).join(', ')}` : ''}`, false]);
   const site = detail?.record?.site || null;
   const bandShown = !!detail?.interest?.show;
   const fullLabel = row.type === 'visitor' ? 'Open visitor report →' : row.type === 'apollo' ? 'Open in Companies →' : row.type === 'target' ? 'Open in Tasks →' : 'Open full card →';

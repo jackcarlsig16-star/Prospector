@@ -172,7 +172,9 @@ export function PeopleCard({ businessId, row, detail, canEdit, onForm, onChanged
             <b style={{ color: SA.text, fontWeight: 600 }}>{p.name}</b>
             {p.title ? <span style={{ color: SA.muted }}>· {p.title}</span> : <span style={{ color: SA.muted }}>· no title</span>}
             {p.signal && <Tag color={p.signal.kind === 'reply' ? SA.good : SA.warn}>{p.signal.text}</Tag>}
-            {p.source === 'upload' && p.source_kind && <Tag>{SOURCE_LABEL[p.source_kind] || p.source_kind}</Tag>}
+            {p.source === 'upload' && p.source_kind === 'web_visit' && <Tag color={SA.warn}>{/^Identified visitor/.test(p.note || '') ? 'Identified visitor' : 'Found via visit'}</Tag>}
+            {p.source === 'upload' && p.source_kind === 'web_visit' && /reveal to see full name/.test(p.note || '') && <Tag title="Apollo hides the last name until a reveal">reveal to see full name</Tag>}
+            {p.source === 'upload' && p.source_kind && p.source_kind !== 'web_visit' && <Tag>{SOURCE_LABEL[p.source_kind] || p.source_kind}</Tag>}
           </span>
           {p.linkedin_url ? <Link href={p.linkedin_url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>LinkedIn ↗</Link> : <Link href={linkedinSearchUrl(p.name, row.name)} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: SA.muted }}>Find on LinkedIn</Link>}
           {canUnlink && p.contact_id && <Mini onClick={() => unlink(p)} title="Clears the link; no sync sets it again">Not this company</Mini>}

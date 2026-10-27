@@ -19,9 +19,40 @@ const PRIORITY_WORD = { P1: 'Act today', P2: 'This week', P3: 'Watch', P4: 'Nois
 const md = d => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '—');
 const matchText = m => (m ? `${m.label}${m.upside ? ` · ${m.owner_team === 'both' ? 'joint' : 'Upside-owned'}` : ''}${m.record_id ? ` · ${m.record_id}` : ''}` : '—');
 const cell = { padding: '10px 12px', borderTop: `1px solid ${SA.track}`, verticalAlign: 'top', fontSize: 13, color: SA.text };
-const COLUMNS = ['Priority', 'Company', 'Type', 'Match', 'Visits (7 d)', 'Unique visitors (Apollo)', 'First / last visit', 'Top pages', 'In sequence', 'Next action'];
+// visitor-to-record-v1 V5: one row per company; the people a visit identified sit on the row (expand for names + titles,
+// HR / benefits titles flagged), Created / Upside chips, "filed by Prospector" for a person-only company.
+const COLUMNS = ['Priority', 'Company', 'People identified', 'Match', 'Visits (7 d)', 'Unique visitors (Apollo)', 'First / last visit', 'Top pages', 'In sequence', 'Next action'];
+const FILTERS = { prio: 'all', people: false, created: false, unmatched: false };
+export const applyFilters = (rows, f) => rows.filter(r => (f.prio === 'all' || r.priority === f.prio) && (!f.people || r.people?.length) && (!f.created || r.created) && (!f.unmatched || (!r.match && !r.created)));
 
-const PriorityChip = ({ p }) => <Chip color={PRIORITY_COLOR[p]} title={PRIORITY_WORD[p]} style={{ height: 22, fontWeight: 600 }}>{p}</Chip>;
+function PeopleCell({ r, narrow }) {
+  const people = r.people || [];
+  if (!people.length) return <span style={{ color: SA.soft }}>—</span>;
+  return (
+    <details data-people-cell style={{ fontSize: 13 }}>
+      <summary style={{ cursor: 'pointer', color: SA.text, ...numStyle }}>{people.length} {people.length === 1 ? 'person' : 'people'}{people.some(p => p.buyer) ? ` · ${people.filter(p => p.buyer).length} HR / benefits` : ''}</summary>
+      <ul style={{ listStyle: 'none', margin: '6px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {people.map((p, i) => (
+          <li key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontWeight: 600, color: SA.text }}>{p.name}</span>
+            {p.title && <span style={{ color: SA.muted }}>{p.title}</span>}
+            {p.buyer && <Chip color={SA.good} style={{ height: 20, fontSize: 11 }}>HR / benefits</Chip>}
+            {p.partial && <Chip style={{ height: 20, fontSize: 11 }} title="Apollo hides the last name until a reveal">reveal to see full name</Chip>}
+            {p.identified && !narrow && <span style={{ color: SA.soft, fontSize: 11 }}>identified visitor</span>}
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+const RowChips = ({ r }) => (
+  <>
+    {r.created && <Chip color={SA.good} title="Created by Prospector from this visit">Created</Chip>}
+    {r.filed_by_prospector && <Chip title="Apollo listed the people, not the company; Prospector filed them under this record">filed by Prospector</Chip>}
+  </>
+);
+
+const PriorityChip = ({ p }) => (p ? <Chip color={PRIORITY_COLOR[p]} title={PRIORITY_WORD[p]} style={{ height: 22, fontWeight: 600 }}>{p}</Chip> : <Chip title="No company-level visit in this window" style={{ height: 22 }}>—</Chip>);
 
 function Stat({ label, value, color }) {
   return (
@@ -80,6 +111,19 @@ export default function VisitorReport({ businessId, canEdit }) {
   const [showNoise, setShowNoise] = useState(false);
   const [skipOpen, setSkipOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [filters, setFilters] = useState(FILTERS);
+  const [uploading, setUploading] = useState(false);
+  const toggle = k => setFilters(f => ({ ...f, [k]: !f[k] }));
+  const uploadCsv = async file => {
+    if (!file) return;
+    setUploading(true); setNotice('');
+    try {
+      const r = await goalsApi.uploadVisitedPeople(businessId, await file.text());
+      const created = r.companies.filter(c => c.action === 'created').length, matched = r.companies.length - created, added = r.companies.reduce((n, c) => n + c.people_added, 0), already = r.companies.reduce((n, c) => n + c.already_in, 0);
+      setNotice(`Filed ${added} ${added === 1 ? 'person' : 'people'} from the export: ${created} compan${created === 1 ? 'y' : 'ies'} created, ${matched} matched${already ? `, ${already} already on file` : ''}${r.skipped ? `, ${r.skipped} row${r.skipped === 1 ? '' : 's'} skipped` : ''}`);
+      await load();
+    } catch (e) { setNotice(e.message); } finally { setUploading(false); }
+  };
   const load = useCallback(() => goalsApi.visitReport(businessId).then(d => { setReport(d); setError(''); }).catch(e => setError(e.message)), [businessId]);
   useEffect(() => { load(); }, [load]);
 
@@ -101,7 +145,7 @@ export default function VisitorReport({ businessId, canEdit }) {
   if (!report) return <span style={subStyle}>Loading website visitors…</span>;
   const c = report.counts;
   const actToday = report.rows.filter(r => r.priority === 'P1');
-  const rows = report.rows.filter(r => showNoise || r.priority !== 'P4');
+  const rows = applyFilters(report.rows.filter(r => showNoise || r.priority !== 'P4'), filters);
 
   return (
     <div data-visitor-report style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -113,6 +157,12 @@ export default function VisitorReport({ businessId, canEdit }) {
             <VisitPullBar businessId={businessId} canEdit={canEdit} onPulled={load} />
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }} className="no-print">
+            {canEdit && (
+              <label className="ui-btn ui-btn--secondary" style={{ cursor: uploading ? 'wait' : 'pointer' }} title="Apollo › Website visitors › People › Export (CSV). Each person is filed under their company; email and phone columns are never read.">
+                {uploading ? 'Filing…' : 'Upload Visited People CSV'}
+                <input type="file" accept=".csv,text/csv" aria-label="Upload Visited People CSV" disabled={uploading} style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; uploadCsv(f); }} />
+              </label>
+            )}
             <Btn onClick={() => setSkipOpen(o => !o)} aria-expanded={skipOpen}>Skip list</Btn>
             <Btn primary disabled={exporting || !report.rows.length} onClick={exportSheet}>{exporting ? 'Exporting…' : 'Export for Brad (.xlsx)'}</Btn>
           </div>
@@ -121,6 +171,17 @@ export default function VisitorReport({ businessId, canEdit }) {
           <Stat label="Companies (7 d)" value={c.companies} />
           {['P1', 'P2', 'P3', 'P4'].map(p => <Stat key={p} label={`${p} · ${PRIORITY_WORD[p]}`} value={c[p]} color={PRIORITY_COLOR[p]} />)}
           <Stat label="On Brad's list" value={c.on_brads_list} />
+          <Stat label="People identified" value={c.people_identified ?? 0} />
+          <Stat label="Created" value={c.created ?? 0} />
+        </div>
+        <div role="group" aria-label="Filters" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }} className="no-print">
+          <select aria-label="Priority filter" value={filters.prio} onChange={e => setFilters(f => ({ ...f, prio: e.target.value }))} style={{ ...inputStyle, height: 32, width: 'auto', fontSize: 13 }}>
+            <option value="all">All priorities</option>{['P1', 'P2', 'P3'].map(p => <option key={p} value={p}>{p} · {PRIORITY_WORD[p]}</option>)}
+          </select>
+          {[['people', 'Has people'], ['created', 'Created'], ['unmatched', 'Unmatched']].map(([k, label]) => (
+            <Btn key={k} aria-pressed={filters[k]} onClick={() => toggle(k)} style={filters[k] ? { borderColor: SA.accent, color: SA.text } : undefined}>{label}</Btn>
+          ))}
+          {(filters.prio !== 'all' || filters.people || filters.created || filters.unmatched) && <button type="button" style={linkBtn} onClick={() => setFilters(FILTERS)}>Clear</button>}
         </div>
         <span style={{ ...subStyle, fontSize: 12 }}>Export: P1–P3, Upside-owned and joint records first. "Unique visitors (Apollo)" is Apollo's own count; its time window isn't stated.</span>
         {notice && <span role="status" style={{ fontSize: 13, color: SA.soft }}>{notice}</span>}
@@ -146,7 +207,7 @@ export default function VisitorReport({ businessId, canEdit }) {
           <h3 style={h3Style}>Last 7 days</h3>
           {c.P4 > 0 && <button type="button" style={linkBtn} onClick={() => setShowNoise(s => !s)}>{showNoise ? 'Hide P4 noise' : `Show P4 noise (${c.P4})`}</button>}
         </div>
-        {!rows.length && <span style={subStyle}>No website visitors pulled in the last 7 days.</span>}
+        {!rows.length && <span style={subStyle}>{report.rows.length ? 'No companies match these filters.' : 'No website visitors pulled in the last 7 days.'}</span>}
         {rows.length > 0 && (narrow ? (
           <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
             {rows.map(r => (
@@ -154,8 +215,10 @@ export default function VisitorReport({ businessId, canEdit }) {
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                   <PriorityChip p={r.priority} />
                   <span style={{ fontWeight: 600, color: SA.text, overflowWrap: 'anywhere' }}>{r.company_name}</span>
+                  <RowChips r={r} />
                 </div>
                 <span style={{ color: SA.muted }}>{r.type} · {r.size} · {matchText(r.match)}</span>
+                <PeopleCell r={r} narrow />
                 <span style={{ color: SA.soft, ...numStyle }}>{r.visits_7d} visits (7 d) · {r.unique_visitors_apollo} unique visitors (Apollo) · {md(r.first_visit)} – {md(r.last_visit)}</span>
                 {r.top_pages.length > 0 && <span style={{ color: SA.muted, overflowWrap: 'anywhere' }}>{r.top_pages.join(', ')}</span>}
                 {r.sources.length > 0 && <span style={{ color: SA.muted }}>In sequence: {r.sources.join('; ')}</span>}
@@ -176,8 +239,8 @@ export default function VisitorReport({ businessId, canEdit }) {
                 {rows.map(r => (
                   <tr key={r.company_key} data-visit-row={r.priority}>
                     <td style={cell}><PriorityChip p={r.priority} /></td>
-                    <td style={cell}><div style={{ fontWeight: 600 }}>{r.company_name}</div><div style={{ color: SA.muted, fontSize: 12 }}>{r.domain || ''}</div></td>
-                    <td style={cell}><div>{r.type}</div><div style={{ color: SA.muted, fontSize: 12 }}>{r.size}</div></td>
+                    <td style={cell}><div style={{ fontWeight: 600, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>{r.company_name}<RowChips r={r} /></div><div style={{ color: SA.muted, fontSize: 12 }}>{r.type} · {r.size}{r.domain ? ` · ${r.domain}` : ''}</div></td>
+                    <td style={cell}><PeopleCell r={r} /></td>
                     <td style={cell}>{matchText(r.match)}</td>
                     <td style={{ ...cell, ...numStyle }}>{r.visits_7d}</td>
                     <td style={{ ...cell, ...numStyle }}>{r.unique_visitors_apollo}</td>

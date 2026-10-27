@@ -16,6 +16,9 @@ import { loadOverrides, effectiveVisit } from './visitPriority.js';
 export const REPORT_DAYS = 7;
 export const UPSIDE_TEAMS = ['upside', 'both'];
 const RANK = { P1: 0, P2: 1, P3: 2, P4: 3 };
+const rank = p => (p in RANK ? RANK[p] : 4); // a person-only row (no company visit) sorts after P4
+const isBuyer = (title, buyerTitles) => { const t = String(title || '').toLowerCase(); return !!t && buyerTitles.some(b => { const x = String(b).toLowerCase(); return t.includes(x) || x.includes(t); }); };
+export const PERSON_ONLY_RULE = 'Identified visitor only (Apollo did not resolve the company)';
 const MATCH_LABEL = { partner: 'Partner', opportunity: 'Employer', target: 'Target' };
 const SKIPPED = { priority: 'P4', priority_rule: 'On the skip list', noise_reason: 'On the skip list' };
 const VISIT_COLS = 'id, company_key, company_name, domain, us_500, first_visit, last_visit, visits_7d, unique_visitors_7d, top_paths, priority, priority_rule, noise_reason, maybe_user, matched_type, matched_id, pulled_on';
@@ -70,7 +73,10 @@ export function sequencesByCompany({ prospects, messages, sequencedAccounts, seq
 // One row per company over the last 7 LA days: the latest pull's priority and
 // counts, the earliest first visit and latest last visit across pulls. A
 // person's override (sales-ia-v2 P3) beats both the pull and the skip list.
-export function buildReport({ visits, skipKeys, records, signals, sources, today, overrides = new Map() }) {
+// visitor-to-record-v1 V5: peopleByKey = company_key -> [{ name, title, buyer, partial, identified }] (sales_people from
+// the visit search or the Visited People export), createdKeys = companies the pull / the export created,
+// personOnly = company_key -> { type, id, name } for people whose company Apollo never listed (filed by Prospector).
+export function buildReport({ visits, skipKeys, records, signals, sources, today, overrides = new Map(), peopleByKey = new Map(), createdKeys = new Set(), personOnly = new Map() }) {
   const byKey = new Map();
   for (const v of [...visits].sort((a, b) => a.pulled_on.localeCompare(b.pulled_on))) {
     const prior = byKey.get(v.company_key);
@@ -94,11 +100,26 @@ export function buildReport({ visits, skipKeys, records, signals, sources, today
       top_pages: (v.top_paths || []).map(p => p.path),
       sources: [...(sources.get(v.company_key) || [])].sort(),
       next_action: nextAction(v, signalOf.get(v.company_key)),
+      people: peopleByKey.get(v.company_key) || [], created: createdKeys.has(v.company_key), filed_by_prospector: false,
     };
-  }).sort((a, b) => RANK[a.priority] - RANK[b.priority] || (b.match?.upside ? 1 : 0) - (a.match?.upside ? 1 : 0)
+  });
+  for (const [key, rec] of personOnly) {
+    if (byKey.has(key)) continue;
+    const people = peopleByKey.get(key) || [];
+    if (!people.length) continue;
+    rows.push({
+      company_key: key, company_name: rec.name, domain: rec.domain || null, priority: null, priority_rule: PERSON_ONLY_RULE, maybe_user: false, skipped: false, override: null,
+      type: rec.type === 'partner' ? 'Partner' : rec.type === 'opportunity' ? 'Employer' : 'Target (employer)', size: 'size unknown',
+      match: { type: rec.type, label: MATCH_LABEL[rec.type], id: rec.id, record_id: rec.record_id || null, owner_team: rec.owner_team || null, upside: UPSIDE_TEAMS.includes(rec.owner_team) },
+      visits_7d: 0, unique_visitors_apollo: people.length, first_visit: null, last_visit: people.map(p => p.last_visit).filter(Boolean).sort().pop() || null, pulled_on: null,
+      top_pages: [], sources: [], next_action: `Review ${people.length} identified ${people.length === 1 ? 'person' : 'people'}`,
+      people, created: createdKeys.has(key), filed_by_prospector: true,
+    });
+  }
+  rows.sort((a, b) => rank(a.priority) - rank(b.priority) || (b.match?.upside ? 1 : 0) - (a.match?.upside ? 1 : 0)
     || b.visits_7d - a.visits_7d || a.company_name.localeCompare(b.company_name));
-  const counts = { companies: rows.length, P1: 0, P2: 0, P3: 0, P4: 0, on_brads_list: rows.filter(r => r.match?.upside).length };
-  for (const r of rows) counts[r.priority]++;
+  const counts = { companies: rows.length, P1: 0, P2: 0, P3: 0, P4: 0, on_brads_list: rows.filter(r => r.match?.upside).length, people_identified: rows.reduce((n, r) => n + r.people.length, 0), with_people: rows.filter(r => r.people.length).length, created: rows.filter(r => r.created).length, person_only: rows.filter(r => r.filed_by_prospector).length };
+  for (const r of rows) if (r.priority) counts[r.priority]++;
   return { today, days: REPORT_DAYS, since: addDays(today, -(REPORT_DAYS - 1)), counts, rows };
 }
 
@@ -110,7 +131,7 @@ export async function visitReport(supabase, businessId, now = Date.now()) {
   const ids = type => [...new Set(visits.filter(v => v.matched_type === type).map(v => v.matched_id))];
   const byIds = (table, cols, list) => (list.length
     ? selectAllPages(() => supabase.from(table).select(cols).eq('business_id', businessId).in('id', list).order('id')) : []);
-  const [skip, partners, opps, targets, signals, prospects, messages, sequencedAccounts, snap, members, overrides] = await Promise.all([
+  const [skip, partners, opps, targets, signals, prospects, messages, sequencedAccounts, snap, members, overrides, visitPeople, createdTargets, settings] = await Promise.all([
     selectAllPages(() => supabase.from('sales_visit_skip').select('company_key').eq('business_id', businessId).order('id')),
     byIds('sales_goals', 'id, category, owner_team, record_id', ids('partner')),
     byIds('sales_opportunities', 'id, owner_team, record_id', ids('opportunity')),
@@ -123,13 +144,36 @@ export async function visitReport(supabase, businessId, now = Date.now()) {
     supabase.from('sales_raw_snapshots').select('payload').eq('business_id', businessId).eq('entity', 'sequences').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
     supabase.from('business_members').select('name, profile:profiles!business_members_user_id_fkey(display_name)').eq('business_id', businessId),
     loadOverrides(supabase, businessId),
+    selectAllPages(() => supabase.from('sales_people').select('id, name, title, note, company_type, opportunity_id, target_id, apollo_person_id').eq('business_id', businessId).eq('source_kind', 'web_visit').is('archived_at', null).order('id')),
+    selectAllPages(() => supabase.from('sales_targets').select('id, name, kind, owner_team, record_id, status').eq('business_id', businessId).not('visit_id', 'is', null).order('id')),
+    supabase.from('sales_settings').select('buyer_titles').eq('business_id', businessId).maybeSingle(),
   ]);
+  // V5: the people a visit found, keyed by their company's name; companies with people but no visit row this window
+  // are listed from the record itself ("filed by Prospector").
+  const buyerTitles = must(settings)?.buyer_titles || [];
+  const needOpp = [...new Set(visitPeople.filter(p => p.opportunity_id).map(p => p.opportunity_id))], needTgt = [...new Set(visitPeople.filter(p => p.target_id).map(p => p.target_id))];
+  const [peopleOpps, peopleTargets] = await Promise.all([byIds('sales_opportunities', 'id, organization, owner_team, record_id', needOpp), byIds('sales_targets', 'id, name, kind, owner_team, record_id', needTgt)]);
+  const peopleByKey = new Map(), personOnly = new Map(), peopleRecs = [];
+  for (const p of visitPeople) {
+    const rec = p.opportunity_id ? peopleOpps.find(o => o.id === p.opportunity_id) : peopleTargets.find(t => t.id === p.target_id);
+    if (!rec) continue;
+    const type = p.opportunity_id ? 'opportunity' : 'target', name = rec.organization || rec.name;
+    const key = normName(name);
+    if (!peopleByKey.has(key)) peopleByKey.set(key, []);
+    const dateIn = /(\d{4}-\d{2}-\d{2})/.exec(p.note || '')?.[1] || null;
+    peopleByKey.get(key).push({ name: cleanText(p.name, 120), title: p.title ? cleanText(p.title, 160) : null, buyer: isBuyer(p.title, buyerTitles), partial: /reveal to see full name/.test(p.note || ''), identified: /^Identified visitor/.test(p.note || ''), last_visit: dateIn });
+    if (!personOnly.has(key)) personOnly.set(key, { type, id: rec.id, name, owner_team: rec.owner_team || null, record_id: rec.record_id || null, domain: null });
+    peopleRecs.push([`${type}:${rec.id}`, rec]);
+  }
+  for (const list of peopleByKey.values()) list.sort((a, b) => Number(b.buyer) - Number(a.buyer) || a.name.localeCompare(b.name));
+  const createdKeys = new Set(createdTargets.map(t => normName(t.name)));
   const records = new Map();
   for (const [type, list] of [['partner', partners], ['opportunity', opps], ['target', targets]]) for (const r of list) records.set(`${type}:${r.id}`, r);
+  for (const [k, rec] of peopleRecs) records.set(k, rec);
   const scrub = nameScrubber(must(members).flatMap(m => [m.name, m.profile?.display_name]));
   const sequences = (must(snap)?.payload || []).filter(s => s && s.id);
   const sources = sequencesByCompany({ prospects, messages, sequencedAccounts, sequences, scrub });
-  return buildReport({ visits, skipKeys: new Set(skip.map(s => s.company_key)), records, signals, sources, today, overrides });
+  return buildReport({ visits, skipKeys: new Set(skip.map(s => s.company_key)), records, signals, sources, today, overrides, peopleByKey, createdKeys, personOnly });
 }
 
 // GET /goals/visits/report -> { today, since, counts, rows } (Viewer+)

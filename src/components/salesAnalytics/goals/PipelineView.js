@@ -9,6 +9,7 @@ import OwnerPill from '../OwnerPill';
 import SheetUpdateDrawer from './SheetUpdateDrawer';
 import SidePanel from '../SidePanel';
 import VisitorReport from './VisitorReport';
+import PeopleSearch from './PeopleSearch';
 import TypeChip, { typeSortValue } from './TypeChip';
 import DataTable from '../../../ui/DataTable';
 import EditableCell from '../../../ui/EditableCell';
@@ -77,6 +78,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
   const [chooser, setChooser] = useState(null); // DOMRect of the Columns button while the chooser is open
   const [sheetOpen, setSheetOpen] = useState(false); // phone filter sheet
   const [visitorsOpen, setVisitorsOpen] = useState(false);
+  const [peopleOpen, setPeopleOpen] = useState(false); // visitor-to-record-v1 V3
   const [collapsed, setCollapsed] = useState(() => new Set(['faded']));
   const [toast, setToast] = useState(null); // { text, undo? }
   const [busyId, setBusyId] = useState(null);
@@ -330,6 +332,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
   const tools = (
     <>
       {channel === 'website' && <button type="button" className="ui-btn ui-btn--secondary no-print" onClick={() => setVisitorsOpen(true)} title="The 7-day visitor report, Export for Brad and the skip list">Visitor report</button>}
+      <button type="button" className="ui-btn ui-btn--secondary no-print" onClick={() => setPeopleOpen(true)} title="Everyone Prospector knows, with their company and ties">People search</button>
       {!phone && <button type="button" data-column-chooser className="ui-btn ui-btn--secondary no-print" aria-expanded={!!chooser} onClick={e => { const rect = e.currentTarget.getBoundingClientRect(); setChooser(c => (c ? null : rect)); }}>Columns</button>}
       {canEdit && <>
         <button type="button" className="ui-btn ui-btn--secondary no-print" disabled={exporting} onClick={exportSheet}
@@ -396,6 +399,11 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
       {visitorsOpen && (
         <SidePanel label="Website visitors" width={1040} onClose={() => { setVisitorsOpen(false); load(); }}>
           <VisitorReport businessId={businessId} canEdit={canEdit} />
+        </SidePanel>
+      )}
+      {peopleOpen && (
+        <SidePanel label="People" width={760} onClose={() => setPeopleOpen(false)}>
+          <PeopleSearch businessId={businessId} onOpenCompany={c => { setPeopleOpen(false); setPanelKey(`${c.type}-${c.id}`); }} />
         </SidePanel>
       )}
       {canEdit && updating && (

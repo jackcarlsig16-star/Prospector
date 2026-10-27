@@ -26,6 +26,13 @@ export default function SignalsList({ businessId, signals, canEdit, onChanged, o
   const [uploading, setUploading] = useState(false);
   const [toast, setToast] = useState('');
   const [error, setError] = useState('');
+  // visitor-to-record-v1 V1 / V6: companies the visitor pull created on its own (signal accepted + auto) with Undo.
+  const [autoCreated, setAutoCreated] = useState([]);
+  useEffect(() => {
+    let live = true;
+    goalsApi.signals(businessId, 'accepted').then(rows => { if (live) setAutoCreated(rows.filter(r => r.auto)); }).catch(() => {});
+    return () => { live = false; };
+  }, [businessId, signals]);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(''), 5000);
@@ -44,6 +51,16 @@ export default function SignalsList({ businessId, signals, canEdit, onChanged, o
     setToast(`Dismissed for 7 days: ${s.company_name}`);
   });
   const applied = n => { setUploading(false); onChanged(); setToast(n ? `${n} new signal${n === 1 ? '' : 's'} to review` : '0 new'); };
+  const createCompany = s => run(async () => {
+    const r = await goalsApi.autoCreateSignal(businessId, s.id);
+    onChanged();
+    setToast(`Created ${r.record.name} as an employer target${r.people ? ` · ${r.people} ${r.people === 1 ? 'person' : 'people'} found via Apollo` : ''}`);
+  });
+  const undoAuto = s => run(async () => {
+    const r = await goalsApi.undoSignal(businessId, s.id);
+    onChanged();
+    setToast(`Undone: ${s.company_name} archived${r.archived?.people ? ` with ${r.archived.people} ${r.archived.people === 1 ? 'person' : 'people'}` : ''} · signal back to review`);
+  });
 
   return (
     <section aria-label="Signals" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -84,12 +101,30 @@ export default function SignalsList({ businessId, signals, canEdit, onChanged, o
             {canEdit && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                 <button type="button" style={actBtn} onClick={() => accept(s)}>Accept → to-do</button>
+                {s.source === 'web_visit' && !s.match && <button type="button" style={actBtn} title="Create the company as an employer target now, with the people Apollo finds at its domain" onClick={() => createCompany(s)}>Create company</button>}
                 <button type="button" style={{ ...actBtn, color: SA.muted }} onClick={() => dismiss(s)}>Dismiss · 7 d</button>
               </div>
             )}
           </li>
         ))}
       </ul>
+      {autoCreated.length > 0 && (
+        <section aria-label="Auto-created" data-auto-created style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+          <span style={{ ...labelStyle, color: SA.soft }}>Auto-created from website visits · {autoCreated.length}</span>
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+            {autoCreated.map(s => (
+              <li key={s.id} data-signal-id={s.id} style={{ borderTop: `1px solid ${SA.track}`, padding: '8px 0', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 13 }}>
+                <span style={{ fontWeight: 600, color: SA.text, overflowWrap: 'anywhere' }}>{s.company_name}</span>
+                <Chip color={SA.good}>Auto-created</Chip>
+                <span style={{ fontSize: 12, color: SA.muted }}>{s.decided_at ? md(s.decided_at.slice(0, 10)) : ''}</span>
+                <span style={{ flex: 1 }} />
+                {onOpenRecord && s.match && <button type="button" style={{ ...linkBtn, fontWeight: 600, fontSize: 12 }} onClick={() => onOpenRecord(s.match)}>Open</button>}
+                {canEdit && <button type="button" style={{ ...actBtn, color: SA.muted }} title="Archives the company and its people (nothing is deleted) and puts the signal back to review" onClick={() => undoAuto(s)}>Undo</button>}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {toast && (
         <div role="status" style={{ ...saSans, padding: '10px 12px', borderRadius: SA_SHAPE.radiusInner, background: SA.surface2, border: `1px solid ${SA.border}`, fontSize: 13, overflowWrap: 'anywhere' }}>{toast}</div>
       )}

@@ -182,7 +182,7 @@ export async function peopleSearch(supabase, { businessId, query = {} }) {
   if (tie && !TIES.includes(tie)) return reply(400, { error: `tie must be one of ${TIES.join('|')}` });
   const all = (table, cols, build = x => x) => selectAllPages(() => build(supabase.from(table).select(cols).eq('business_id', businessId)).order('id'));
   const [salesPeople, partnerContacts, prospects, opportunities, targets, partners, campaigns] = await Promise.all([
-    all('sales_people', 'id, company_type, opportunity_id, target_id, name, title, note, source_kind, source_partner_id, source_campaign_id, visit_id, archived_at, created_at, updated_at'),
+    all('sales_people', 'id, company_type, opportunity_id, target_id, name, title, note, source_kind, source_partner_id, visit_id, archived_at, created_at, updated_at'),
     all('partner_contacts', 'id, goal_id, name, title, email, source, first_seen, last_activity_at'),
     selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id, name, title, company, opportunity_id, updated_at').eq('business_id', businessId).order('contact_id')),
     all('sales_opportunities', 'id, organization, owner_team, co_owner_name'),
