@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
 import { installApolloFixture, apolloFixtureCalls } from './testing/apolloFixture.mjs';
 import { apolloRequest } from './apolloClient.js';
-import { runVisitPull, visitStatus, PAUSED, MONTHLY_CREDIT_CAP } from './visitPull.js';
+import { runVisitPull, runVisitPullRoute, visitStatus, PAUSED, MONTHLY_CREDIT_CAP } from './visitPull.js';
 import { mergeResults, toVisit, prioritize } from './visitRules.js';
 import { visitedNoTouch } from './tidyRules.js';
 import { buildBoard } from './pipelineBoard.js';
@@ -65,7 +65,7 @@ const seed = (extra = {}) => ({
 });
 const unique = {
   sales_signals: r => [r.business_id, r.source, r.signal_week, r.company_key, r.who_key || ''].join('|'),
-  visit_pull_runs: r => `${r.business_id}|${r.la_date}`,
+  visit_pull_runs: r => `${r.business_id}|${r.la_date}|${r.kind}`,
 };
 const setup = (v = visitors(), extra) => {
   const restore = installApolloFixture({}, v);
@@ -255,4 +255,88 @@ test('Board: the latest visit lands on the matched partner and employer rows', (
   });
   assert.deepEqual(rows.find(r => r.id === 'p1').visited, { last_visit: '2026-10-19', visits_7d: 3, pulled_on: '2026-10-20', priority: null });
   assert.equal(rows.find(r => r.id === 'o1').visited.visits_7d, 1);
+});
+
+// FIX visit-window-v1 Stage 2 - the window a pull asks for, the backfill kind, dedupe across windows, the seen_to reader.
+const captureBodies = () => { const bodies = [], f = globalThis.fetch; globalThis.fetch = (u, i) => { if (String(u).includes('mixed_companies')) bodies.push(JSON.parse(i.body)); return f(u, i); }; return bodies; };
+const DAY = 864e5;
+
+test('W1 window math: no history -> from_past 1 and a yesterday..today window on the run row and every visit row; a run after a 3-day gap asks for 4', async () => {
+  const { sb, restore } = setup(visitors({ balances: [9910] }));
+  try {
+    const bodies = captureBodies();
+    const r = await runVisitPull(sb, { businessId: B, userId: U, trigger: 'pageload', now: NOW });
+    assert.equal(r.body.ran, true);
+    assert.deepEqual(r.body.window, { kind: 'daily', lookback_days: 1, window_start: '2026-10-19', window_end: '2026-10-20' });
+    assert.ok(bodies.length === 2 && bodies.every(b => b.website_visitors_from_past === 1), 'both searches ask for 1 day');
+    const run = sb.db.visit_pull_runs[0];
+    assert.deepEqual([run.kind, run.window_start, run.window_end, run.lookback_days, run.status], ['daily', '2026-10-19', '2026-10-20', 1, 'ok']);
+    assert.ok(sb.db.web_visits.every(v => v.seen_from === '2026-10-19' && v.seen_to === '2026-10-20' && v.pulled_on === '2026-10-20'));
+    // three quiet days, then a page load on the 24th
+    const later = await runVisitPull(sb, { businessId: B, userId: U, trigger: 'pageload', now: NOW + 4 * DAY });
+    assert.deepEqual(later.body.window, { kind: 'daily', lookback_days: 4, window_start: '2026-10-20', window_end: '2026-10-24' });
+    assert.ok(bodies.slice(2).every(b => b.website_visitors_from_past === 4), 'the gap run reaches back 4 days');
+    const rows = sb.db.web_visits.filter(v => v.pulled_on === '2026-10-24');
+    assert.equal(rows.length, ORGS.length);
+    assert.ok(rows.every(v => v.seen_from === '2026-10-20' && v.seen_to === '2026-10-24'));
+  } finally { restore(); }
+});
+
+test('W2 backfill: kind backfill asks for 14 days, its own run row beside the daily one, once per LA day (force or not); a forced daily after it is a 1-day window again; bad backfill_days -> 400', async () => {
+  const { sb, restore } = setup(visitors({ balances: [9910] }));
+  try {
+    await runVisitPull(sb, { businessId: B, userId: U, trigger: 'pageload', now: NOW });
+    const bodies = captureBodies();
+    const bf = await runVisitPull(sb, { businessId: B, userId: U, backfillDays: 14, now: NOW + 3600e3 });
+    assert.equal(bf.body.ran, true, JSON.stringify(bf.body));
+    assert.deepEqual(bf.body.window, { kind: 'backfill', lookback_days: 14, window_start: '2026-10-06', window_end: '2026-10-20' });
+    assert.ok(bodies.length === 2 && bodies.every(b => b.website_visitors_from_past === 14));
+    assert.deepEqual(sb.db.visit_pull_runs.map(r => [r.kind, r.status, r.lookback_days]), [['daily', 'ok', 1], ['backfill', 'ok', 14]]);
+    assert.ok(sb.db.apollo_credit_spend.some(x => x.ref === 'visit_pull:2026-10-20:backfill'));
+    const again = await runVisitPull(sb, { businessId: B, userId: U, backfillDays: 14, force: true, now: NOW + 7200e3 });
+    assert.deepEqual([again.body.ran, again.body.reason, again.body.last_run.kind], [false, 'Already backfilled today', 'backfill']);
+    assert.equal(bodies.length, 2, '0 Apollo calls for the refused backfill');
+    const daily = await runVisitPull(sb, { businessId: B, userId: U, force: true, now: NOW + 10800e3 });
+    assert.deepEqual(daily.body.window, { kind: 'daily', lookback_days: 1, window_start: '2026-10-19', window_end: '2026-10-20' }, 'the last ok window_end is today, so 1');
+    assert.equal(sb.db.visit_pull_runs.length, 2, 'the forced daily reuses its row');
+    for (const bad of [0, 31, 1.5, '14']) assert.equal((await runVisitPull(sb, { businessId: B, userId: U, backfillDays: bad, now: NOW })).status, 400, String(bad));
+    const next = await runVisitPull(sb, { businessId: B, userId: U, backfillDays: 14, now: TOMORROW });
+    assert.equal(next.body.ran, true, 'a new LA day allows a backfill again');
+  } finally { restore(); }
+});
+
+test('W3 dedupe across windows: a backfill and a daily run the same day share one row per company (pulled_on), the later run\'s window wins; tomorrow gets its own rows; signals still one per company per week', async () => {
+  const { sb, restore } = setup(visitors({ balances: [9910] }));
+  try {
+    const bf = await runVisitPull(sb, { businessId: B, userId: U, backfillDays: 14, now: NOW });
+    assert.equal(bf.body.counts.signals, 6);
+    assert.ok(sb.db.web_visits.every(v => v.seen_from === '2026-10-06'));
+    const daily = await runVisitPull(sb, { businessId: B, userId: U, trigger: 'pageload', now: NOW + 3600e3 });
+    assert.equal(daily.body.ran, true);
+    assert.equal(daily.body.counts.signals, 0, 'no second signal that week');
+    assert.equal(sb.db.web_visits.length, ORGS.length, 'same pulled_on -> updated in place');
+    assert.ok(sb.db.web_visits.every(v => v.seen_from === '2026-10-19' && v.seen_to === '2026-10-20'));
+    await runVisitPull(sb, { businessId: B, userId: U, trigger: 'pageload', now: TOMORROW });
+    assert.equal(sb.db.web_visits.length, ORGS.length * 2);
+    assert.equal(sb.db.sales_signals.length, 6);
+  } finally { restore(); }
+});
+
+test('readers: visitStatus.today counts rows whose window ends today (seen_to), not a backfilled row from last week; last_run carries the window', async () => {
+  const { sb, restore } = setup(visitors({ balances: [9910] }));
+  try {
+    await runVisitPull(sb, { businessId: B, userId: U, trigger: 'pageload', now: NOW });
+    sb.db.web_visits.push({ id: 'old', business_id: B, company_key: 'old co', company_name: 'Old Co', priority: 'P1', pulled_on: '2026-10-20', seen_from: '2026-10-06', seen_to: '2026-10-13' });
+    const st = await visitStatus(sb, B, NOW);
+    assert.equal(st.today.P1 + st.today.P2 + st.today.P3 + st.today.P4, ORGS.length, 'the old-window row is not today');
+    assert.deepEqual([st.last_run.kind, st.last_run.window_start, st.last_run.window_end, st.last_run.lookback_days], ['daily', '2026-10-19', '2026-10-20', 1]);
+  } finally { restore(); }
+});
+
+test('route: backfill_days needs admin (403 before any read); a member\'s plain pull passes the body through', async () => {
+  const res = () => { const r = { code: 200, body: null }; r.status = c => { r.code = c; return r; }; r.json = b => { r.body = b; return r; }; return r; };
+  const req = (role, body) => ({ params: { businessId: B }, body, auth: { user: { id: U }, isPlatformOwner: false, roles: new Map([[B, role]]) } });
+  const r1 = res();
+  await runVisitPullRoute(req('member', { backfill_days: 14 }), r1);
+  assert.deepEqual([r1.code, r1.body.error], [403, 'Only an owner or admin can backfill visitors']);
 });

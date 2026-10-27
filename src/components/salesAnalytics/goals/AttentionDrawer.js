@@ -20,6 +20,10 @@ const WIDTH = 380;
 const STATUS = { ok: ['OK', SA.good], stale: ['Stale', SA.warn], failed: ['Failed', SA.bad], running: ['Running', SA.accent], not_connected: ['Not connected', SA.borderStrong] };
 const PAGE_LOAD = { apollo: 'apollo', visitors: 'visits', tidy: 'tidy' };
 const ERR_SHOWN = 90;
+export const BACKFILL_DAYS = 14; // REVISABLE (FIX visit-window-v1 W2)
+const md = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+// FIX visit-window-v1 W6: "Window Oct 13–Oct 27 · 138 companies · last ok 2 h ago", or the gap.
+export const windowText = w => (!w || !w.window_end ? 'No completed pull yet' : `Window ${md(w.window_start)}–${md(w.window_end)} · ${w.companies} compan${w.companies === 1 ? 'y' : 'ies'}${w.last_ok_at ? ` · last ok ${timeAgo(w.last_ok_at)}` : ''}`);
 
 export function withPageLoad(sources, failures = {}) {
   return sources.map(s => {
@@ -36,7 +40,7 @@ async function syncOutlook() {
   return d;
 }
 
-function SourceLine({ s, canEdit, busy, onRun }) {
+function SourceLine({ s, canEdit, isAdmin, busy, onRun }) {
   const [label, tone] = STATUS[s.status] || STATUS.ok;
   const [more, setMore] = useState(false);
   const control = { apollo: 'Sync now', outlook: 'Sync Outlook', visitors: 'Pull now', tidy: 'Tidy now' }[s.id];
@@ -54,6 +58,13 @@ function SourceLine({ s, canEdit, busy, onRun }) {
           : s.last_at ? `last ${timeAgo(s.last_at)}` : 'no run yet'}
         {s.left > 0 && <> · <span data-backlog style={{ color: SA.warn }}>{s.left} message{s.left === 1 ? '' : 's'} left</span>{canEdit && s.status !== 'running' && <> — <button type="button" className="ui-link" disabled={busy} onClick={() => onRun(s.id)}>Sync again</button></>}</>}
       </span>
+      {s.id === 'visitors' && s.window && (
+        <span data-visit-window style={{ fontSize: 12, color: SA.soft, ...numStyle, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span>{windowText(s.window)}</span>
+          {s.window.gap && <span data-visit-gap style={{ color: SA.warn }}>{s.window.window_end ? `Gap: nothing pulled since ${md(s.window.window_end)}` : 'Gap: no pull on record'}</span>}
+          {isAdmin && s.status !== 'running' && <Button size="sm" variant="tertiary" disabled={busy} disabledReason="Working…" onClick={() => onRun('backfill')}>{busy ? 'Working…' : `Backfill ${BACKFILL_DAYS} days`}</Button>}
+        </span>
+      )}
       {s.error && (
         <span role="note" title={s.error} style={{ fontSize: 12, color: SA.bad, overflowWrap: 'anywhere' }}>
           {long && !more ? `${s.error.slice(0, ERR_SHOWN)}…` : s.error}
@@ -73,7 +84,7 @@ const COUNT_LINES = [
   ['held_outlook', 'Held Outlook moves', 'partners'],
 ];
 
-export default function AttentionDrawer({ businessId, canEdit, compact, pageLoadFailures, onNav }) {
+export default function AttentionDrawer({ businessId, canEdit, isAdmin = false, compact, pageLoadFailures, onNav }) {
   const [data, setData] = useState(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(null);
@@ -96,14 +107,19 @@ export default function AttentionDrawer({ businessId, canEdit, compact, pageLoad
 
   const show = () => { window.dispatchEvent(new Event(OPEN_ATTENTION)); setOpen(true); setNote(''); load(true); };
   const run = async id => {
-    setBusy(id); setNote('');
+    const source = id === 'backfill' ? 'visitors' : id;
+    setBusy(source); setNote('');
     try {
       if (id === 'apollo') await triggerSync(businessId);
       else if (id === 'outlook') await syncOutlook();
       else if (id === 'visitors') await goalsApi.visitPull(businessId, { force: true });
+      else if (id === 'backfill') {
+        const r = await goalsApi.visitPull(businessId, { backfillDays: BACKFILL_DAYS });
+        return setNote(r.ran ? `Backfilled ${md(r.window.window_start)}–${md(r.window.window_end)}: ${r.counts.companies} compan${r.counts.companies === 1 ? 'y' : 'ies'} · ${r.counts.signals} new signal${r.counts.signals === 1 ? '' : 's'}` : `Website visitors: ${r.reason}`);
+      }
       else if (id === 'tidy') await goalsApi.runTidy(businessId, { force: true });
       setNote(`${data.sources.find(s => s.id === id).label}: done`);
-    } catch (e) { setNote(`${data.sources.find(s => s.id === id).label}: ${e.message}`); }
+    } catch (e) { setNote(`${data.sources.find(s => s.id === source).label}: ${e.message}`); }
     finally { setBusy(null); await load(true); }
   };
   const go = target => {
@@ -141,7 +157,7 @@ export default function AttentionDrawer({ businessId, canEdit, compact, pageLoad
               <section aria-label="Sync status">
                 <h3 className="ui-group-label" style={{ margin: '8px 0 0' }}>Sync status</h3>
                 <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
-                  {sources.map(s => <SourceLine key={s.id} s={s} canEdit={canEdit} busy={busy === s.id} onRun={run} />)}
+                  {sources.map(s => <SourceLine key={s.id} s={s} canEdit={canEdit} isAdmin={isAdmin} busy={busy === s.id} onRun={run} />)}
                 </ul>
                 {note && <p role="status" style={{ fontSize: 12, color: SA.soft, margin: '6px 0 0' }}>{note}</p>}
               </section>

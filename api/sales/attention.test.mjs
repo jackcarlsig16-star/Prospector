@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
-import { apolloLine, outlookLine, dailyLine, researchLine, attention, attentionCount, heldCounts, HELD_CACHE_MS } from './attentionRoutes.js';
+import { apolloLine, outlookLine, dailyLine, researchLine, visitWindow, attention, attentionCount, heldCounts, HELD_CACHE_MS } from './attentionRoutes.js';
 
 const NOW = Date.parse('2026-10-22T19:00:00Z'); // Thu 12:00 LA
 const EARLY = Date.parse('2026-10-22T15:00:00Z'); // Thu 08:00 LA
@@ -67,7 +67,8 @@ test('attention: the caller\'s counts (their overdue to-dos, campaign sends + re
     sales_sync_runs: [{ business_id: B, trigger: 'manual', status: 'success', started_at: '2026-10-15T18:00:00Z', finished_at: '2026-10-15T18:05:00Z' }],
     microsoft_grants: [{ user_id: JACK, account_email: 'jack@homelover.example', error: null }],
     microsoft_sync_runs: [{ user_id: JACK, business_id: B, folder: 'inbox', dry_run: false, started_at: ago(2), finished_at: ago(2), error: null }],
-    visit_pull_runs: [{ business_id: B, la_date: today, status: 'ok', error: null, created_at: ago(5), updated_at: ago(5) }],
+    visit_pull_runs: [{ business_id: B, la_date: today, kind: 'daily', window_start: '2026-10-21', window_end: today, lookback_days: 1, status: 'ok', error: null, created_at: ago(5), updated_at: ago(5) }],
+    web_visits: [{ business_id: B, company_key: 'alder', pulled_on: today }, { business_id: B, company_key: 'birch', pulled_on: today }, { business_id: B, company_key: 'cedar', pulled_on: '2026-10-21' }],
     sales_tidy_runs: [{ business_id: B, status: 'error', started_at: ago(4), finished_at: ago(4), counts: { error: 'boom' } }],
     research_runs: [],
     sales_week_goals: [
@@ -92,6 +93,7 @@ test('attention: the caller\'s counts (their overdue to-dos, campaign sends + re
   assert.ok(!JSON.stringify(r).includes('@'), 'no address in the reply');
   assert.deepEqual(r.sources.map(x => [x.id, x.status]), [['apollo', 'stale'], ['outlook', 'ok'], ['visitors', 'ok'], ['tidy', 'failed'], ['research', 'ok']]);
   assert.equal(r.sources.find(x => x.id === 'tidy').error, 'boom');
+  assert.deepEqual(r.sources.find(x => x.id === 'visitors').window, { window_start: '2026-10-21', window_end: today, lookback_days: 1, kind: 'daily', companies: 2, last_ok_at: ago(5), gap: false });
   assert.deepEqual(r.counts, { overdue_todos: 1, overdue_waiting: 1, held_apollo: 0, held_outlook: 0, campaign_sends: 1, campaign_replies: 1 });
   assert.equal(r.n, 2 + 4);
   const cy = await attention(s, { businessId: B, userId: CY, now: NOW, dry });
@@ -110,4 +112,16 @@ test('held moves: read once per workspace for 15 min; fresh reads anew', async (
   assert.deepEqual([a.apollo, a.outlook, b.at, reads], [2, 1, NOW, 3]);
   assert.equal(c.at, NOW + 60e3);
   assert.equal(d.at, NOW + 60e3 + HELD_CACHE_MS + 1);
+});
+
+// FIX visit-window-v1 W6 - the visitors line's window + gap.
+test('visit window: the last ok run\'s window and company count; gap when there is no ok run or its window_end is older than yesterday', () => {
+  const run = (la_date, window_end, status = 'ok', extra = {}) => ({ la_date, kind: 'daily', window_start: '2026-10-01', window_end, lookback_days: 1, status, created_at: ago(3), updated_at: ago(2), ...extra });
+  assert.deepEqual(visitWindow([], 0, NOW), { window_start: null, window_end: null, lookback_days: null, kind: null, companies: 0, last_ok_at: null, gap: true });
+  assert.equal(visitWindow([run('2026-10-22', '2026-10-22')], 138, NOW).gap, false);
+  assert.equal(visitWindow([run('2026-10-21', '2026-10-21')], 5, NOW).gap, false, 'yesterday is not a gap');
+  assert.equal(visitWindow([run('2026-10-20', '2026-10-20')], 5, NOW).gap, true, 'two days back is');
+  assert.equal(visitWindow([run('2026-10-22', '2026-10-22', 'error'), run('2026-10-19', '2026-10-19')], 5, NOW).window_end, '2026-10-19', 'an error run does not count');
+  const w = visitWindow([run('2026-10-22', '2026-10-22'), run('2026-10-22', '2026-10-22', 'ok', { kind: 'backfill', window_start: '2026-10-08', lookback_days: 14, updated_at: ago(1) })], 138, NOW);
+  assert.deepEqual([w.window_start, w.kind, w.companies, w.last_ok_at], ['2026-10-01', 'daily', 138, ago(2)], 'same window_end: the later la_date / first by sort wins, companies from the caller');
 });

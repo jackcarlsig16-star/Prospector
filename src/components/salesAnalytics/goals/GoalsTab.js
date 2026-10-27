@@ -342,7 +342,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
         </Btn>
         {weekStart !== thisWeek && <Btn onClick={() => setWeekStart(thisWeek)}>This week</Btn>}
       </>}
-      {section === 'actions' && me && <AttentionDrawer businessId={businessId} canEdit={canEdit} compact={compact} pageLoadFailures={pageLoadFailures} onNav={onNav} />}
+      {section === 'actions' && me && <AttentionDrawer businessId={businessId} canEdit={canEdit} isAdmin={isAdmin} compact={compact} pageLoadFailures={pageLoadFailures} onNav={onNav} />}
       {section === 'actions' && canEdit && planOwner && <Btn primary onClick={() => setPlanOpen(true)}>Plan this week</Btn>}
       {section === 'dashboard' && <Btn primary id="sales-export-btn" aria-haspopup="menu" aria-expanded={exportOpen} onClick={() => setExportOpen(o => !o)}>Export</Btn>}
     </>

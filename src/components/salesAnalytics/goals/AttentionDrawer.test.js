@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import AttentionDrawer, { withPageLoad, attentionN } from './AttentionDrawer';
+import AttentionDrawer, { withPageLoad, attentionN, windowText } from './AttentionDrawer';
 import { goalsApi, OPEN_TASKS, OPEN_ATTENTION, OPEN_CONNECTIONS } from './goalsApi';
 import { triggerSync } from '../salesApi';
 
@@ -111,4 +111,28 @@ test('Apollo backlog: "13 messages left — Sync again" runs the sync; Viewers s
   fireEvent.click(await screen.findByRole('button', { name: /^Needs attention/ }));
   const vrow = (await screen.findByText('13 messages left')).closest('li');
   expect(within(vrow).queryByRole('button', { name: 'Sync again' })).toBeNull();
+});
+
+// FIX visit-window-v1 W6 / W2 - the visitors line shows the last ok window and a gap warning; owners/admins get Backfill 14 days.
+test('visitors window: "Window Oct 13–Oct 27 · 138 companies", a gap warning, Backfill 14 days (admin only) posts backfill_days 14 and reports the result', async () => {
+  const window = { window_start: '2026-10-13', window_end: '2026-10-20', lookback_days: 1, kind: 'daily', companies: 138, last_ok_at: '2026-10-20T16:00:00Z', gap: true };
+  expect(windowText(window)).toMatch(/^Window Oct 13–Oct 20 · 138 companies · last ok /);
+  expect(windowText({ window_end: null })).toBe('No completed pull yet');
+  goalsApi.attention.mockResolvedValue({ ...DATA, sources: SOURCES.map(s => (s.id === 'visitors' ? { ...s, status: 'stale', window } : s)) });
+  goalsApi.visitPull.mockResolvedValue({ ran: true, window: { kind: 'backfill', window_start: '2026-10-08', window_end: '2026-10-22', lookback_days: 14 }, counts: { companies: 141, signals: 3 } });
+  const { unmount } = render(<AttentionDrawer businessId="b1" canEdit isAdmin compact={false} pageLoadFailures={{}} onNav={jest.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Needs attention/ }));
+  const row = screen.getByRole('dialog').querySelector('[data-source="visitors"]');
+  expect(row.querySelector('[data-visit-window]')).toHaveTextContent(/Window Oct 13–Oct 20 · 138 companies/);
+  expect(row.querySelector('[data-visit-gap]')).toHaveTextContent('Gap: nothing pulled since Oct 20');
+  fireEvent.click(within(row).getByRole('button', { name: 'Backfill 14 days' }));
+  await waitFor(() => expect(goalsApi.visitPull).toHaveBeenCalledWith('b1', { backfillDays: 14 }));
+  expect(await screen.findByRole('status')).toHaveTextContent('Backfilled Oct 8–Oct 22: 141 companies · 3 new signals');
+  unmount();
+  render(<AttentionDrawer businessId="b1" canEdit isAdmin={false} compact={false} pageLoadFailures={{}} onNav={jest.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Needs attention/ }));
+  const mrow = screen.getByRole('dialog').querySelector('[data-source="visitors"]');
+  expect(mrow.querySelector('[data-visit-window]')).toHaveTextContent('138 companies');
+  expect(within(mrow).queryByRole('button', { name: 'Backfill 14 days' })).toBeNull();
+  expect(within(mrow).getByRole('button', { name: 'Pull now' })).toBeInTheDocument();
 });

@@ -81,6 +81,17 @@ export function dailyLine(id, runs, { now, dateOf, startedOf, deadMs, errorOf })
   return line(id, laHour(now) >= MORNING_HOUR ? 'stale' : 'ok', lastAny);
 }
 
+// FIX visit-window-v1 W6: what the last ok visitor pull covered, and whether a day is missing in front of it.
+// companies = rows that run upserted (same pulled_on). gap = no ok run, or its window_end is older than yesterday.
+export function visitWindow(runs, companies, now) {
+  const today = laDateString(now);
+  const ok = runs.filter(r => r.status === 'ok' && r.window_end).sort((a, b) => b.window_end.localeCompare(a.window_end) || b.la_date.localeCompare(a.la_date))[0] || null;
+  return {
+    window_start: ok?.window_start || null, window_end: ok?.window_end || null, lookback_days: ok?.lookback_days ?? null, kind: ok?.kind || null,
+    companies: ok ? companies : 0, last_ok_at: ok ? ok.updated_at || ok.created_at : null, gap: !ok || ok.window_end < addDays(today, -1),
+  };
+}
+
 export function researchLine(runs, now) {
   const latest = runs[0];
   if (!latest) return line('research', 'ok');
@@ -112,7 +123,7 @@ export async function attention(supabase, { businessId, userId, fresh = false, n
     supabase.from('sales_sync_runs').select('status, started_at, finished_at, error_text, counts').eq('business_id', businessId).neq('trigger', 'test').order('started_at', { ascending: false }).limit(20).then(must),
     supabase.from('microsoft_grants').select('user_id, error').eq('user_id', userId).maybeSingle().then(must),
     supabase.from('microsoft_sync_runs').select('folder, started_at, finished_at, error').eq('user_id', userId).eq('dry_run', false).order('started_at', { ascending: false }).limit(6).then(must),
-    supabase.from('visit_pull_runs').select('la_date, status, error, created_at, updated_at').eq('business_id', businessId).gte('la_date', addDays(today, -7)).order('la_date', { ascending: false }).limit(10).then(must),
+    supabase.from('visit_pull_runs').select('la_date, kind, window_start, window_end, lookback_days, status, error, created_at, updated_at').eq('business_id', businessId).gte('la_date', addDays(today, -7)).order('la_date', { ascending: false }).limit(20).then(must),
     supabase.from('sales_tidy_runs').select('status, started_at, finished_at, counts').eq('business_id', businessId).gte('started_at', since).order('started_at', { ascending: false }).limit(20).then(must),
     supabase.from('research_runs').select('status, error, created_at').eq('business_id', businessId).order('created_at', { ascending: false }).limit(1).then(must),
     selectAllPages(() => supabase.from('sales_week_goals').select('id').eq('business_id', businessId).eq('kind', 'todo').eq('owner_user_id', userId).eq('status', 'open').lt('due_date', today).order('id')),
@@ -120,10 +131,12 @@ export async function attention(supabase, { businessId, userId, fresh = false, n
     heldCounts(supabase, businessId, { fresh, now, dry }),
     campaignActionRows(supabase, businessId, today),
   ]);
+  const lastOkPull = visitRuns.filter(r => r.status === 'ok' && r.window_end).sort((a, b) => b.window_end.localeCompare(a.window_end))[0];
+  const pulled = lastOkPull ? await supabase.from('web_visits').select('id', { count: 'exact', head: true }).eq('business_id', businessId).eq('pulled_on', lastOkPull.la_date).then(r => { if (r.error) throw Object.assign(new Error(r.error.message), { status: 500 }); return r.count || 0; }) : 0;
   const sources = [
     apolloLine(syncRuns, now),
     outlookLine(grant, msRuns, now),
-    dailyLine('visitors', visitRuns, { now, dateOf: r => r.la_date, startedOf: r => r.updated_at || r.created_at, deadMs: VISITS_DEAD_MS, errorOf: r => r.error }),
+    { ...dailyLine('visitors', visitRuns, { now, dateOf: r => r.la_date, startedOf: r => r.updated_at || r.created_at, deadMs: VISITS_DEAD_MS, errorOf: r => r.error }), window: visitWindow(visitRuns, pulled, now) },
     dailyLine('tidy', tidyRuns, { now, dateOf: r => laDateString(new Date(r.started_at)), startedOf: r => r.started_at, deadMs: TIDY_STALE_MS, errorOf: r => r.counts?.error }),
     researchLine(researchRuns, now),
   ];

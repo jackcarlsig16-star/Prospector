@@ -110,7 +110,8 @@ export const goalsApi = {
   // sales-ia-v2 D1 - the Dashboard's 13 chart series in one read; days 7 | 30 | 90, owner = a member's user id, team = owner_team. 0 AI, 0 Apollo.
   dashboard: (id, { days, owner, team }) => call(id, `/dashboard?${q({ days, owner, team })}`),
   // signals-v1 Stage 4 - the daily website-visitor pull (Members) and its status (Viewers too).
-  visitPull: (id, { force = false, trigger = 'manual' } = {}) => call(id, '/visits/pull', { method: 'POST', body: { force, trigger } }),
+  // FIX visit-window-v1 W2: backfillDays (owner/admin) asks Apollo for that many days regardless of history, once per LA day.
+  visitPull: (id, { force = false, trigger = 'manual', backfillDays = null } = {}) => call(id, '/visits/pull', { method: 'POST', body: { force, trigger, ...(backfillDays != null ? { backfill_days: backfillDays } : {}) } }),
   visitStatus: id => call(id, '/visits/status'),
   // signals-v1 Stage 5 - the Website visitors report, Brad's .xlsx (fetched as a blob) and the skip list.
   visitReport: id => call(id, '/visits/report'),
