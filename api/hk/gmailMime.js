@@ -45,6 +45,15 @@ export function buildDraftMime({ to = null, subject, bodyMarkdown, signatureText
 // The link the caller opens: their own tethered mailbox (authuser) at the draft's message id.
 export const draftUrl = (mailboxEmail, messageId) => `https://mail.google.com/mail/?authuser=${encodeURIComponent(mailboxEmail)}#drafts/${encodeURIComponent(messageId)}`;
 
+// Gmail returns snippet as HTML-escaped text (&#39; &amp; &quot;); decoded once at the seam so a reply summary never
+// shows an entity. Named + numeric forms only; nothing else is interpreted.
+const ENTITY = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+export const decodeEntities = s => String(s || '').replace(/&(#x([0-9a-f]+)|#(\d+)|[a-z]+);/gi, (m, name, hex, dec) => {
+  if (hex) return String.fromCodePoint(parseInt(hex, 16));
+  if (dec) return String.fromCodePoint(Number(dec));
+  return ENTITY[name.toLowerCase()] ?? m;
+});
+
 // Gmail metadata helpers for G5: headers come back as [{ name, value }].
 export const header = (msg, name) => (msg?.payload?.headers || []).find(h => h.name.toLowerCase() === name.toLowerCase())?.value || null;
 export function parseAddress(v) {

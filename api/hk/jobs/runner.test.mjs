@@ -141,13 +141,13 @@ test('Slack: posted with one JSON POST of Block Kit when the webhook is set; a n
   assert.equal(bad.counts.slack, 'error'); assert.equal(bad.run.status, 'ok', 'a Slack miss never fails the run');
 });
 
-test('gmail-sync-all: one sync per tethered founder in state ok, a flagged one counted as reconnect; per-mailbox rows read manual for a cron tick, the job row keeps cron', async () => {
+test('gmail-sync-all: one sync per tethered founder in state ok, a flagged one counted as reconnect; per-mailbox rows read cron for a cron tick (Stage 4 migration), the job row too', async () => {
   fresh(due());
   mail[PETE].state = 'needs_reconnect'; mail[PETE].grant.error = 'needs_reconnect';
   const out = await gmailSyncAll({ businessId: HK, trigger: 'cron', d: deps() });
   assert.deepEqual([out.counts.mailboxes, out.counts.synced, out.counts.reconnect, out.counts.errors], [2, 1, 1, 0]);
   assert.deepEqual(tokens, ['g-jack']);
-  assert.deepEqual(sb.db.hk_sync_runs.map(r => [r.user_id, r.trigger, r.status]), [[JACK, 'manual', 'ok']]);
+  assert.deepEqual(sb.db.hk_sync_runs.map(r => [r.user_id, r.trigger, r.status]), [[JACK, 'cron', 'ok']]);
   assert.deepEqual([out.run.job, out.run.trigger, out.run.status], ['gmail-sync-all', 'cron', 'ok']);
   assert.ok(calls.some(c => c[0] === 'getProfile'));
   noSend();
@@ -227,5 +227,24 @@ test('Today actions: Retry draft writes the one due draft on its owner\'s grant 
   assert.equal(dm.state, 'sent'); assert.ok(dm.sent_at);
   assert.equal(sb.db.hk_events.at(-1).action, 'touch_sent'); assert.equal(sb.db.hk_events.at(-1).detail.by_hand, true);
   await assert.rejects(markDmSent({ businessId: HK, touchId: 'dm-1', userId: JACK, d: deps() }), /that DM is sent/);
+  noSend();
+});
+
+test('omitRecipientFor (the Stage 4 live check only): that brand\'s bump draft carries no To header, every other draft keeps its contact; the route never passes it', async () => {
+  fresh(due());
+  const out = await dailyCheck({ businessId: HK, d: deps(), omitRecipientFor: ['a'] });
+  const drafts = calls.filter(c => c[0] === 'createDraft');
+  assert.equal(drafts.length, 2);
+  const mimeA = decode(drafts.find(c => c[1] === 'tok-g-jack')[2].raw), mimeB = decode(drafts.find(c => c[1] === 'tok-g-pete')[2].raw);
+  assert.doesNotMatch(mimeA, /^To: /m, 'the omitted draft has no To');
+  assert.match(mimeB, /^To: ana@b\.invalid$/m, 'the other draft keeps its contact');
+  assert.equal(out.counts.drafted, 2);
+  assert.equal(sb.db.hk_events.filter(e => e.action === 'draft_created').length, 2);
+  const { dailyCheckRoute } = await import('../jobsRoutes.js');
+  fresh(due());
+  const res = { code: 200, body: null, status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; } };
+  await dailyCheckRoute({ params: { businessId: HK }, body: { omitRecipientFor: ['a'], omit_recipient: true }, auth: { user: { id: JACK }, roles: new Map([[HK, 'owner']]) } }, res, deps());
+  assert.equal(res.code, 200);
+  for (const c of calls.filter(c => c[0] === 'createDraft')) assert.match(decode(c[2].raw), /^To: ana@[ab]\.invalid$/m, 'a route body cannot omit the recipient');
   noSend();
 });

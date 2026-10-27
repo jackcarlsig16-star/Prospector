@@ -35,3 +35,13 @@ test('proof rows: table grants, the partial index, the column, the HumanKind see
   assert.match(sql, /has_table_privilege\('anon', 'public\.hk_job_runs', 'SELECT'\)/);
   assert.ok(!sql.includes('@'));
 });
+
+test('Stage 4: the one-line hk_sync_runs.trigger migration adds cron, keeps manual / pageload / test, names the default constraint, is idempotent, and proves itself', () => {
+  const cron = fs.readFileSync(path.join(ROOT, 'supabase', 'migrations', '20261027_hk_sync_runs_cron_trigger.sql'), 'utf8');
+  const lines = cron.split('\n').filter(l => l.trim() && !l.startsWith('--'));
+  assert.equal(lines.length, 2, 'one ALTER line + one proof SELECT');
+  assert.equal(lines[0], "ALTER TABLE public.hk_sync_runs DROP CONSTRAINT IF EXISTS hk_sync_runs_trigger_check, ADD CONSTRAINT hk_sync_runs_trigger_check CHECK (trigger IN ('cron', 'manual', 'pageload', 'test'));");
+  assert.match(lines[1], /^SELECT conname, pg_get_constraintdef\(oid\) .* WHERE conrelid = 'public\.hk_sync_runs'::regclass AND conname = 'hk_sync_runs_trigger_check';$/);
+  assert.doesNotMatch(cron, /DELETE FROM|UPDATE public\.|DROP TABLE/);
+  assert.ok(!cron.includes('@'));
+});

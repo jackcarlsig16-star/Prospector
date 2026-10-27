@@ -46,8 +46,7 @@ async function startRun(D, { businessId, job, trigger, day, startedBy = null }) 
 }
 async function finishRun(D, run, patch) { const { data, error } = await D.supabase.from('hk_job_runs').update({ finished_at: D.now().toISOString(), ...patch }).eq('id', run.id).select().single(); if (error) throw new Error(error.message); return data; }
 const errText = e => scrubAddresses(String(e?.message || e)).slice(0, 200);
-// hk_sync_runs only knows manual | pageload | test; a cron tick's per-mailbox rows read manual, the job row keeps 'cron'.
-const syncTrigger = t => (t === 'pageload' || t === 'test' ? t : 'manual');
+const syncTrigger = t => (t === 'pageload' || t === 'test' || t === 'cron' ? t : 'manual');
 
 // J1 gmail-sync-all: one runMailboxSync per tethered founder in state ok. -> { run, counts }
 export async function gmailSyncAll({ businessId, trigger = 'manual', startedBy = null, d = {} }) {
@@ -73,7 +72,8 @@ export async function gmailSyncAll({ businessId, trigger = 'manual', startedBy =
 const contactFirstName = (contacts, item, brandName) => { const c = contacts.find(x => x.id === item.contact_id); const n = c?.name && c.name !== `${brandName} contact` ? firstWord(c.name) : null; return n; };
 
 // J1c for one due item on its owner's grant. -> { drafted: true, touch } | { drafted: false, reason, detail, error }
-async function draftOne(D, { businessId, item, founder: f, contacts }) {
+// omit: the Stage 4 live check only (a draft on an invented brand with no To header); no route ever sets it.
+async function draftOne(D, { businessId, item, founder: f, contacts, omit = false }) {
   const no = (reason, detail = null, error = false) => ({ drafted: false, reason, detail, error });
   if (!f?.m) return no('no_mailbox');
   if (f.m.state === RECONNECT) return no('reconnect');
@@ -85,7 +85,7 @@ async function draftOne(D, { businessId, item, founder: f, contacts }) {
   const args = { brandName: item.brand_name, brandId: item.brand_id, firstName: contactFirstName(contacts, item, item.brand_name), concept: item.challenge_concept, ownerFirstName: f.first_name };
   const text = item.kind === 'bump' ? bumpText(args) : finalText(args);
   try {
-    const out = await createDraftFor({ D: { ...D, mailbox: async () => f.m }, businessId, userId: item.owner_user_id, body: { brand_id: item.brand_id, channel: 'email', kind: item.kind, subject: followupSubject(item.prior_subject), body_markdown: text.body, challenge_concept: item.challenge_concept, reply_to_touch_id: item.prior_touch_id, contact_id: item.contact_id }, tokenFor: async () => token, createdBy: 'system' });
+    const out = await createDraftFor({ D: { ...D, mailbox: async () => f.m }, businessId, userId: item.owner_user_id, body: { brand_id: item.brand_id, channel: 'email', kind: item.kind, subject: followupSubject(item.prior_subject), body_markdown: text.body, challenge_concept: item.challenge_concept, reply_to_touch_id: item.prior_touch_id, contact_id: item.contact_id, ...(omit ? { omit_recipient: true } : {}) }, tokenFor: async () => token, createdBy: 'system' });
     return out ? { drafted: true, touch: out.touch } : no('gmail', 'no token', true);
   } catch (e) {
     if (e instanceof HkError && e.status === 422) return no('lint', e.extra?.problems?.[0]?.message || null);
@@ -96,7 +96,8 @@ async function draftOne(D, { businessId, item, founder: f, contacts }) {
 }
 
 // J1 daily-check. -> { run, counts, digest } or { skipped: 'already ran today' }. Drafts land on each owner's grant.
-export async function dailyCheck({ businessId, trigger = 'manual', startedBy = null, d = {} }) {
+// omitRecipientFor: brand ids whose draft gets no To header - the live verify script only, never a route or a runner.
+export async function dailyCheck({ businessId, trigger = 'manual', startedBy = null, d = {}, omitRecipientFor = [] }) {
   const D = jobDeps(d), now = D.now(), settings = await settingsOf(D.supabase, businessId);
   const run = await startRun(D, { businessId, job: 'daily-check', trigger, day: dayIn(now, settings.timezone), startedBy });
   if (!run) return { skipped: 'already ran today' };
@@ -110,7 +111,7 @@ export async function dailyCheck({ businessId, trigger = 'manual', startedBy = n
     const miss = (item, reason, detail = null) => noDraft.push({ brand_id: item.brand_id, kind: item.kind, reason, detail });
     for (const item of follow.items) {
       if (made >= DRAFTS_PER_RUN) { capped++; continue; }
-      const r = await draftOne(D, { businessId, item, founder: byUser[item.owner_user_id], contacts });
+      const r = await draftOne(D, { businessId, item, founder: byUser[item.owner_user_id], contacts, omit: omitRecipientFor.includes(item.brand_id) });
       if (r.drafted) { newTouches.push(r.touch); made++; } else { miss(item, r.reason, r.detail); if (r.error) errors++; }
     }
     // J1d - DM texts: a touch to copy from Today, no Gmail.

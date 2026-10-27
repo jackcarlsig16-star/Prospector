@@ -53,3 +53,13 @@ test('draft url opens the tethered mailbox; address parsing; header lookup', () 
   assert.equal(header({ payload: { headers: [{ name: 'Message-ID', value: '<x@y>' }] } }, 'message-id'), '<x@y>');
   assert.equal(header({}, 'From'), null);
 });
+
+test('decodeEntities: Gmail snippet entities (numeric, hex, named) decode once at the seam; unknown names and plain text are left alone', async () => {
+  const { decodeEntities } = await import('./gmailMime.js');
+  assert.equal(decodeEntities('We&#39;d love to &amp; chat &quot;soon&quot; &lt;3 &#x27;ok&#x27;&nbsp;now'), 'We\'d love to & chat "soon" <3 \'ok\' now');
+  assert.equal(decodeEntities('plain text, no entities; 5 &gt 3 is not one; &bogus; stays'), 'plain text, no entities; 5 &gt 3 is not one; &bogus; stays');
+  assert.equal(decodeEntities(null), '');
+  const { toMeta } = await import('./gmailClient.js');
+  const meta = toMeta({ id: 'm1', threadId: 't1', snippet: 'Thanks, we&#39;re in &amp; ready', payload: { headers: [{ name: 'From', value: 'Ana <ana@brand.invalid>' }, { name: 'Date', value: 'Mon, 26 Oct 2026 10:00:00 -0500' }] } });
+  assert.equal(meta.snippet, "Thanks, we're in & ready");
+});

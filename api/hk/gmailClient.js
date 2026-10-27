@@ -2,7 +2,7 @@
 // method is a read, a draft create or a draft delete. There is no send path here and none may be added: the only
 // writes are POST /drafts and DELETE /drafts/<id>. fetchFn is injected so tests run against a fake.
 import { cleanText } from '../sales/scrubText.js';
-import { header, parseAddress } from './gmailMime.js';
+import { header, parseAddress, decodeEntities } from './gmailMime.js';
 
 export const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const META = 'format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date&metadataHeaders=Message-ID&metadataHeaders=Subject';
@@ -39,5 +39,5 @@ export function toMeta(msg) {
   const dateHeader = header(msg, 'Date');
   const parsed = dateHeader ? Date.parse(dateHeader) : NaN;
   const date = !Number.isNaN(parsed) ? new Date(parsed).toISOString() : msg.internalDate ? new Date(Number(msg.internalDate)).toISOString() : new Date().toISOString();
-  return { id: msg.id, threadId: msg.threadId, labelIds: msg.labelIds || [], messageIdHeader: header(msg, 'Message-ID'), from: parseAddress(header(msg, 'From')), subject: header(msg, 'Subject'), date, snippet: cleanText(msg.snippet || '', 200) };
+  return { id: msg.id, threadId: msg.threadId, labelIds: msg.labelIds || [], messageIdHeader: header(msg, 'Message-ID'), from: parseAddress(header(msg, 'From')), subject: header(msg, 'Subject'), date, snippet: cleanText(decodeEntities(msg.snippet || ''), 200) };
 }
