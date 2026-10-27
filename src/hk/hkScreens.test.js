@@ -57,3 +57,15 @@ test("Today's greeting uses Chicago time, not the browser's", () => {
   expect(chicagoGreeting(new Date('2026-10-26T19:30:00Z'), 'Sam').title).toBe('Good afternoon, Sam');
   expect(chicagoGreeting(new Date('2026-10-27T02:00:00Z'), 'Sam')).toEqual({ title: 'Good evening, Sam', date: 'Monday, October 26' });
 });
+
+// hkos-data-foundation-v1 Stage 3 - #hk/brands/<id> opens the Brand page; other screens still refuse a second segment.
+test('hash: a brand id under brands round-trips; junk under brands or any other screen is null', () => {
+  const id = '6872d164-79b9-43a1-be3e-284c7621a463';
+  expect(parseHkHash(`#hk/brands/${id}`)).toEqual({ screen: 'brands', section: null, brandId: id });
+  expect(parseHkHash('#hk/brands')).toEqual({ screen: 'brands', section: null, brandId: null });
+  expect(hkHash('brands', null, id)).toBe(`#hk/brands/${id}`);
+  expect(hkHash('brands')).toBe('#hk/brands');
+  expect(parseHkHash('#hk/brands/not a brand id')).toBeNull();
+  expect(parseHkHash(`#hk/today/${id}`)).toBeNull();
+  expect(parseHkHash('#hk/settings/modules')).toEqual({ screen: 'settings', section: 'modules' });
+});

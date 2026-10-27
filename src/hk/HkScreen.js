@@ -2,6 +2,8 @@ import React from 'react';
 import { Icon, Sprout, Avatar } from './HkMarks';
 import { SETTINGS_SECTIONS, chicagoGreeting } from './hkScreens';
 import { ROLE_LABELS, roleAtLeast } from '../constants/roles';
+import BrandsScreen from './brands/BrandsScreen';
+import BrandPage from './brands/BrandPage';
 
 // hkos-project-shell-v1 S5 - one screen: the page header and an empty state (no buttons in Phase 0; each later SPEC
 // adds its own), or Settings with its Members / Modules sections.
@@ -62,7 +64,17 @@ function Modules({ shell }) {
   );
 }
 
-export default function HkScreen({ screen, section, shell, onSection, onOpenAdmin, now }) {
+export default function HkScreen({ screen, section, brandId, businessId, owner, compact, shell, onSection, onOpenAdmin, onOpenBrand, now }) {
+  const canEdit = roleAtLeast(shell.me.role, 'member');
+  if (screen.id === 'brands' && brandId) return <BrandPage businessId={businessId} brandId={brandId} shell={shell} canEdit={canEdit} onBack={() => onOpenBrand(null)} />;
+  if (screen.id === 'brands') {
+    return (
+      <>
+        <Header title="Brands" line={SCREEN_LINES.brands} />
+        <BrandsScreen businessId={businessId} shell={shell} owner={owner} compact={compact} canEdit={canEdit} onOpenBrand={onOpenBrand} />
+      </>
+    );
+  }
   if (screen.id === 'settings') {
     return (
       <>

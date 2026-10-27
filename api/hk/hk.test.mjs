@@ -62,7 +62,8 @@ test('shell payload: first_name fallbacks (display_name, then member name, then 
   const p = shellPayload(rows, auth({ [HK]: 'owner' }), HK);
   assert.deepEqual(p.members.map(m => m.first_name), ['Sam', 'Deandra', 'Invited member', 'Invited member', 'Typed']);
   assert.deepEqual(p.members.map(m => m.signed_up), [true, true, true, false, true]);
-  assert.deepEqual(p.me, { user_id: 'u-me', role: 'owner', first_name: 'Sam' });
+  assert.deepEqual(p.me, { user_id: 'u-me', role: 'owner', first_name: 'Sam', owner_filter: 'me', avatar_slot: null });
+  assert.deepEqual(shellPayload(rows, auth({ [HK]: 'owner' }), HK, [{ user_id: 'u-me', avatar_slot: 3, owner_filter: 'all' }]).me, { user_id: 'u-me', role: 'owner', first_name: 'Sam', owner_filter: 'all', avatar_slot: 3 });
 });
 
 // FIX hkos-avatar-order-v1 - palette and list order: role, then signed up, then join date.

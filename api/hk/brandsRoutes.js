@@ -88,8 +88,9 @@ export async function getBrandRoute(req, res, { supabase = getSupabase() } = {})
     const by = async (t, order = 'created_at') => { const { data, error } = await supabase.from(t).select('*').eq('business_id', businessId).eq('brand_id', brand.id).order(order, { ascending: false }); if (error) throw new Error(error.message); return data || []; };
     const [contacts, touches, replies, periods, events] = await Promise.all([by('hk_contacts'), by('hk_touches'), by('hk_replies', 'received_at'), by('hk_sponsor_periods'), (async () => { const { data, error } = await supabase.from('hk_events').select('*').eq('business_id', businessId).eq('entity_id', brand.id).order('created_at', { ascending: false }).limit(200); if (error) throw new Error(error.message); return data || []; })()]);
     const sponsorsNiches = sponsorsNichesOf(await liveBrands(supabase, businessId));
-    const verdict = canContact({ brand, touches, threadsByFounder: [], senderUserId: me(req), kind: 'cold', sponsorsNiches, maxEmailTouches: await maxTouches(supabase, businessId) });
-    res.json({ brand: brandDetail(brand), contacts: contacts.map(contactRow), touches: touches.map(touchRow), replies: replies.map(replyRow), sponsor_periods: periods, events, verdict, email_touches_sent: touches.filter(t => t.channel === 'email' && t.state === 'sent').length });
+    const max_email_touches = await maxTouches(supabase, businessId);
+    const verdict = canContact({ brand, touches, threadsByFounder: [], senderUserId: me(req), kind: 'cold', sponsorsNiches, maxEmailTouches: max_email_touches });
+    res.json({ brand: brandDetail(brand), contacts: contacts.map(contactRow), touches: touches.map(touchRow), replies: replies.map(replyRow), sponsor_periods: periods, events, verdict, email_touches_sent: touches.filter(t => t.channel === 'email' && t.state === 'sent').length, max_email_touches });
   } catch (e) { fail(res, e, 'brands/get'); }
 }
 async function maxTouches(supabase, businessId) { const { data } = await supabase.from('hk_settings').select('max_email_touches').eq('business_id', businessId).maybeSingle(); return data?.max_email_touches || 3; }

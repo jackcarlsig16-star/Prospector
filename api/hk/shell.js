@@ -31,8 +31,9 @@ export function shellPayload(rows, auth, businessId, prefs = []) {
   }));
   const mine = members.find(m => m.user_id === auth.user.id);
   const role = auth.roles.get(businessId) || (auth.isPlatformOwner ? 'owner' : 'viewer');
+  const myPrefs = prefs.find(p => p.user_id === auth.user.id);
   return {
-    me: { user_id: auth.user.id, role, first_name: mine?.first_name || firstWord(auth.user.name) || 'there' },
+    me: { user_id: auth.user.id, role, first_name: mine?.first_name || firstWord(auth.user.name) || 'there', owner_filter: myPrefs?.owner_filter || 'me', avatar_slot: myPrefs?.avatar_slot || null },
     members,
     modules: HK_MODULES,
   };

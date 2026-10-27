@@ -6,20 +6,17 @@ import { SideNav, OwnerToggle, WorkspaceMenu, AvatarMenu, SearchPill, TabBar, Mo
 import { Sprout } from './HkMarks';
 import HkScreen from './HkScreen';
 import { signOut } from '../utils/authSession';
+import { hkPatch } from './hkApi';
 
 // hkos-project-shell-v1 - the HumanKind Sales OS: a full-screen shell App.js renders INSTEAD of the Prospector shell
-// for an hk_sales workspace. The current screen lives in the URL hash (#hk/<screen>, #hk/settings/<section>).
-const ownerKey = userId => `prospector_hk_owner_filter:${userId}`;
-
-function readOwner(userId) {
-  try { return localStorage.getItem(ownerKey(userId)) || 'me'; } catch { return 'me'; }
-}
+// for an hk_sales workspace. The current screen lives in the URL hash (#hk/<screen>, #hk/settings/<section>,
+// #hk/brands/<id>). The owner filter is hk_member_prefs.owner_filter (data-foundation D7), no localStorage.
 
 export default function HkShell({ business, businesses, userId, compact, onSelectBusiness, onAllWorkspaces, onOpenAdmin }) {
   const [nav, setNav] = useState(() => parseHkHash(window.location.hash) || { screen: 'today', section: null });
   const [shell, setShell] = useState(null);
   const [loadError, setLoadError] = useState(null);
-  const [owner, setOwner] = useState(() => readOwner(userId));
+  const [owner, setOwner] = useState('me');
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
   const [now, setNow] = useState(() => new Date());
@@ -31,7 +28,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
     setShell(null); setLoadError(null);
     fetch(`/api/hk/${business.id}/shell`)
       .then(r => r.ok ? r.json() : r.json().catch(() => ({})).then(b => Promise.reject(new Error(b.error || `Sales OS failed to load (${r.status})`))))
-      .then(data => { if (!cancelled) setShell(data); })
+      .then(data => { if (!cancelled) { setShell(data); if (data.me?.owner_filter) setOwner(data.me.owner_filter); } })
       .catch(e => { if (!cancelled) setLoadError(e.message); });
     return () => { cancelled = true; };
   }, [business.id]);
@@ -47,7 +44,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
     };
   }, []);
   useEffect(() => {
-    const want = hkHash(nav.screen, nav.section);
+    const want = hkHash(nav.screen, nav.section, nav.brandId);
     if (window.location.hash !== want) {
       if (window.location.hash.startsWith('#hk/')) window.history.pushState(null, '', want);
       else window.history.replaceState(null, '', want);
@@ -74,13 +71,12 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
   const ownerValue = options.some(o => o.id === owner) ? owner : 'me';
   const pickOwner = id => {
     setOwner(id);
-    // prospector_hk_owner_filter:<userId> - the Today / lists owner filter, per user (moves server-side with data-foundation).
-    try { localStorage.setItem(ownerKey(userId), id); } catch {}
+    hkPatch(business.id, '/me/prefs', { owner_filter: id }).catch(() => {});
   };
 
-  const go = useCallback((screen, section = null) => {
+  const go = useCallback((screen, section = null, brandId = null) => {
     setPaletteOpen(false); setMoreOpen(false);
-    setNav({ screen, section: screen === 'settings' ? section || 'members' : null });
+    setNav({ screen, section: screen === 'settings' ? section || 'members' : null, brandId: screen === 'brands' ? brandId : null });
   }, []);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
   const closeMore = useCallback(() => setMoreOpen(false), []);
@@ -93,7 +89,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
     ? <p className="hk-meta" role="alert">{loadError}</p>
     : !shell
       ? <p className="hk-meta">Loading the Sales OS…</p>
-      : <HkScreen screen={current} section={nav.section} shell={shell} now={now} onSection={s => go('settings', s)} onOpenAdmin={onOpenAdmin} />;
+      : <HkScreen screen={current} section={nav.section} brandId={nav.brandId || null} businessId={business.id} owner={ownerValue} compact={compact} shell={shell} now={now} onSection={s => go('settings', s)} onOpenAdmin={onOpenAdmin} onOpenBrand={id => go('brands', null, id)} />;
 
   const avatar = shell && <AvatarMenu me={shell.me} paletteIndex={mine?.palette_index || 1} size={compact ? 30 : 34} onBack={onAllWorkspaces} onSignOut={signOut} />;
 

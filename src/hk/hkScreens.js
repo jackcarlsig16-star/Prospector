@@ -31,18 +31,21 @@ export function visibleScreens(modules) {
 export const phoneTabs = screens => screens.filter(s => s.phoneTab);
 export const moreScreens = screens => screens.filter(s => !s.phoneTab);
 
-// S10 - the address: #hk/<screen> and #hk/settings/<members|modules>. Anything else is not ours (null).
+// S10 - the address: #hk/<screen>, #hk/settings/<members|modules> and (data-foundation Stage 3) #hk/brands/<brand id>.
+// Anything else is not ours (null).
+const BRAND_ID = /^[0-9a-f-]{8,64}$/i;
 export function parseHkHash(hash) {
-  const m = /^#hk\/([a-z]+)(?:\/([a-z]+))?$/.exec(hash || '');
+  const m = /^#hk\/([a-z]+)(?:\/([a-z0-9-]+))?$/.exec(hash || '');
   if (!m) return null;
   const screen = HK_SCREENS.find(s => s.id === m[1] && !s.reserved);
   if (!screen) return null;
+  if (screen.id === 'brands') return m[2] ? (BRAND_ID.test(m[2]) ? { screen: 'brands', section: null, brandId: m[2] } : null) : { screen: 'brands', section: null, brandId: null };
   if (screen.id !== 'settings') return m[2] ? null : { screen: screen.id, section: null };
   const section = m[2] || 'members';
   return SETTINGS_SECTIONS.some(([id]) => id === section) ? { screen: 'settings', section } : null;
 }
 
-export const hkHash = (screen, section) => (screen === 'settings' ? `#hk/settings/${section || 'members'}` : `#hk/${screen}`);
+export const hkHash = (screen, section, brandId) => (screen === 'settings' ? `#hk/settings/${section || 'members'}` : screen === 'brands' && brandId ? `#hk/brands/${brandId}` : `#hk/${screen}`);
 
 // S6 - "Me", each other signed-in member's first name, "All". Built from members, never a fixed name list.
 export function ownerOptions(me, members) {
