@@ -9,10 +9,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 process.env.GOOGLE_TOKEN_KEY ||= 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
 process.env.GMAIL_CLIENT_ID ||= 'wiring-test'; process.env.GMAIL_CLIENT_SECRET ||= 'wiring-test';
+delete process.env.HK_SLACK_WEBHOOK_URL;
 const { seed, reqOf, resOf, HK, JACK, ID } = await import('./testing.mjs');
 const shared = await import('./hkShared.js');
 const grants = await import('../lib/googleGrants.js');
-const MODULES = { brandsRoutes: await import('./brandsRoutes.js'), opsRoutes: await import('./opsRoutes.js'), gmailRoutes: await import('./gmailRoutes.js'), inboxRoutes: await import('./inboxRoutes.js'), importRoutes: await import('./importRoutes.js') };
+const MODULES = { brandsRoutes: await import('./brandsRoutes.js'), opsRoutes: await import('./opsRoutes.js'), gmailRoutes: await import('./gmailRoutes.js'), inboxRoutes: await import('./inboxRoutes.js'), importRoutes: await import('./importRoutes.js'), jobsRoutes: await import('./jobsRoutes.js') };
 
 const OWNER = 'jack.work@humankind.invalid', TOKEN = 'tok-jack-wiring';
 const b64 = s => Buffer.from(s, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -56,7 +57,7 @@ const fresh = () => {
     hk_sync_runs: [], hk_gmail_sync_state: [],
     google_grants: [{ id: 'g-jack', user_id: JACK, google_email: OWNER, features: ['gmail'], refresh_token_enc: grants.encryptToken('refresh-wiring'), is_default: true, error: null, error_at: null, last_used_at: null, created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z' }],
     workspace_mailboxes: [{ business_id: HK, user_id: JACK, provider: 'google', google_grant_id: 'g-jack', purposes: ['drafts', 'inbox'] }],
-    business_members: [{ user_id: JACK, business_id: HK, name: 'Jack Carlson', role: 'owner', created_at: '2026-09-01T00:00:00Z' }], hk_import_runs: [],
+    business_members: [{ user_id: JACK, business_id: HK, name: 'Jack Carlson', role: 'owner', created_at: '2026-09-01T00:00:00Z' }], hk_import_runs: [], hk_job_runs: [],
   });
   shared.seams.supabase = () => sb;
   grants.deps.supabase = () => sb;
@@ -106,6 +107,12 @@ const TABLE = [
   ['importRoutes', 'previewImportRoute', member({ method: 'POST', body: { name: 'Sheet8.csv', data: Buffer.from('Business Name,Website\nZz Wiring Supply,wiring.invalid\n').toString('base64') } }), [201]],
   ['importRoutes', 'commitImportRoute', owner({ method: 'POST', params: { id: 'no-such-run' } }), [404]],
   ['importRoutes', 'undoImportRoute', owner({ method: 'POST', params: { id: 'no-such-run' } }), [404]],
+  ['jobsRoutes', 'pageloadRoute', member({ method: 'POST' }), [200]],
+  ['jobsRoutes', 'dailyCheckRoute', owner({ method: 'POST' }), [200]],
+  ['jobsRoutes', 'syncAllRoute', owner({ method: 'POST' }), [200]],
+  ['jobsRoutes', 'testDigestRoute', owner({ method: 'POST' }), [200]],
+  ['jobsRoutes', 'todayRoute', member(), [200]],
+  ['jobsRoutes', 'runsRoute', member({ query: { job: 'daily-check' } }), [200]],
   ['inboxRoutes', 'listThreadsRoute', member({ query: { tab: 'inbox' } }), [200]],
   ['inboxRoutes', 'openThreadRoute', member({ params: { id: 'th-new' } }), [200]],
   ['inboxRoutes', 'linkThreadRoute', member({ method: 'POST', params: { id: 'th-run' }, body: { brand_id: ID.run } }), [201]],
@@ -122,7 +129,7 @@ test('server.js wires every handler in the table, and the table covers every han
   const extra = [...src.matchAll(/(HK_[A-Z]+) = '\.\/api\/hk\/(\w+)\.js'/g)].map(m => [m[1], m[2]]);
   for (const [k, v] of extra) files[k] = v;
   const wired = [...src.matchAll(/hkRoute\((HK_[A-Z]+), '(\w+)'\)/g)].map(m => `${files[m[1]]}.${m[2]}`).sort();
-  assert.ok(wired.length >= 42, `found ${wired.length} wired hk routes`);
+  assert.ok(wired.length >= 48, `found ${wired.length} wired hk routes`);
   assert.deepEqual(wired, TABLE.map(([m, h]) => `${m}.${h}`).sort());
   for (const [m, h] of TABLE) assert.equal(typeof MODULES[m][h], 'function', `${m}.${h} is exported`);
   assert.match(src, /return mod\[name\]\(req, res\);/, 'hkRoute passes (req, res) and nothing else');

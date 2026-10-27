@@ -28,13 +28,14 @@ async function settingsOf(supabase, businessId) { const { data } = await supabas
 async function signatureOf(supabase, businessId, userId) { const { data } = await supabase.from('hk_member_prefs').select('signature_text').eq('business_id', businessId).eq('user_id', userId).maybeSingle(); return data?.signature_text || null; }
 async function touchesOf(supabase, businessId, brandId) { const { data, error } = await supabase.from('hk_touches').select('*').eq('business_id', businessId).eq('brand_id', brandId).order('created_at'); if (error) throw new Error(error.message); return data || []; }
 async function touchById(supabase, businessId, id) { const { data, error } = await supabase.from('hk_touches').select('*').eq('business_id', businessId).eq('id', id).maybeSingle(); if (error) throw new Error(error.message); if (!data) throw new HkError(404, 'draft not found'); return data; }
-const deps0 = d => ({ supabase: d.supabase || getSupabase(), gmail: d.gmail || gmailClient(), mailbox: d.mailbox || mailboxFor, tokenFor: d.tokenFor || tokenForMailbox, tokenForGrant: d.tokenForGrant || accessTokenForGrant, flag: d.flag || flagReconnect, call: d.call || callAnthropic, now: d.now || (() => new Date()) });
+export const deps0 = d => ({ supabase: d.supabase || getSupabase(), gmail: d.gmail || gmailClient(), mailbox: d.mailbox || mailboxFor, tokenFor: d.tokenFor || tokenForMailbox, tokenForGrant: d.tokenForGrant || accessTokenForGrant, flag: d.flag || flagReconnect, call: d.call || callAnthropic, now: d.now || (() => new Date()) });
 
-// POST /drafts  { brand_id, contact_id?, channel 'email'|'ig_dm', kind, subject, body_markdown, challenge_concept?, reply_to_touch_id?, omit_recipient? }
-export async function createDraftRoute(req, res, d = {}) {
-  const { supabase, gmail, mailbox, tokenFor, now } = deps0(d);
-  const businessId = req.params.businessId, uid = me(req), body = req.body || {};
-  try {
+// The draft builder the composer route and the daily-check job share (hkos-daily-check-v1 J1c). Validates, runs the
+// verdict + lint, reads To from hk_contacts, threads a follow-up, saves the draft on the mailbox D.mailbox resolves for
+// this user, writes the touch, patches the brand, logs the event. tokenFor() returns the token or null (the caller has
+// already answered). createdBy 'user' | 'claude' | 'system'. -> { touch, draft, verdict, mailboxEmail } | null
+export async function createDraftFor({ D, businessId, userId: uid, body, tokenFor, createdBy = 'user' }) {
+  const { supabase, gmail, mailbox, now } = D;
     const channel = oneOf(body.channel || 'email', new Set(['email', 'ig_dm']), 'channel');
     const kind = oneOf(body.kind || 'cold', KINDS, 'kind');
     if (channel === 'ig_dm' && kind !== 'cold') throw new HkError(400, 'an Instagram DM is a cold touch');
@@ -48,7 +49,7 @@ export async function createDraftRoute(req, res, d = {}) {
     const brands = await liveBrands(supabase, businessId);
     // 1 the verdict - with the warm check (tracked for both founders + one narrow search in the caller's mailbox)
     let token = null, m = null;
-    if (channel === 'email') { m = await mailbox(businessId, uid, 'drafts'); token = await tokenFor(req, res, businessId, 'drafts'); if (!token) return; }
+    if (channel === 'email') { m = await mailbox(businessId, uid, 'drafts'); token = await tokenFor(); if (!token) return null; }
     const threadsByFounder = await warmThreads({ supabase, businessId, brandId: brand.id, domain: brand.domain, callerUserId: uid, gmail: channel === 'email' ? gmail : null, token });
     const verdict = canContact({ brand, touches, threadsByFounder, senderUserId: uid, kind, sponsorsNiches: sponsorsNichesOf(brands), maxEmailTouches: settings.max_email_touches });
     if (!verdict.ok) throw new HkError(409, verdict.reason === 'warm' ? 'Another founder already has a thread with this brand' : `This brand is blocked: ${verdict.reason}`, { verdict });
@@ -75,7 +76,7 @@ export async function createDraftRoute(req, res, d = {}) {
       draft = await gmail.createDraft(token, { raw: mime.raw, threadId });
     }
     // 4 the touch
-    const { data: touch, error } = await supabase.from('hk_touches').insert({ business_id: businessId, brand_id: brand.id, contact_id: contact?.id || null, sender_user_id: uid, channel, kind, subject, body_text: bodyMd, body_html: draft ? buildDraftMime({ subject: subject || '', bodyMarkdown: bodyMd }).html : null, challenge_concept: concept, gmail_draft_id: draft?.id || null, gmail_thread_id: draft?.message?.threadId || null, gmail_message_id: draft?.message?.id || null, state: 'drafted', drafted_at: now().toISOString(), lint_passed: true, created_by: body.created_by === 'claude' ? 'claude' : 'user' }).select().single();
+    const { data: touch, error } = await supabase.from('hk_touches').insert({ business_id: businessId, brand_id: brand.id, contact_id: contact?.id || null, sender_user_id: uid, channel, kind, subject, body_text: bodyMd, body_html: draft ? buildDraftMime({ subject: subject || '', bodyMarkdown: bodyMd }).html : null, challenge_concept: concept, gmail_draft_id: draft?.id || null, gmail_thread_id: draft?.message?.threadId || null, gmail_message_id: draft?.message?.id || null, state: 'drafted', drafted_at: now().toISOString(), lint_passed: true, created_by: createdBy }).select().single();
     if (error) throw error;
     // 5 the brand: claim if unclaimed, status drafted from candidate / claimed
     const patch = { updated_at: now().toISOString() };
@@ -83,7 +84,18 @@ export async function createDraftRoute(req, res, d = {}) {
     if (DRAFTABLE_STATUS.has(brand.status)) patch.status = 'drafted';
     await supabase.from('hk_brands').update(patch).eq('id', brand.id);
     // 6 the event - no address, no body
-    await logEvent(supabase, { businessId, actorUserId: uid, actorKind: touch.created_by === 'claude' ? 'claude' : 'user', entityType: 'brand', entityId: brand.id, action: 'draft_created', detail: { touch_id: touch.id, kind, channel, subject: subject || null, claimed: !brand.owner_user_id, no_recipient: channel === 'email' && !contact?.email } });
+    await logEvent(supabase, { businessId, actorUserId: uid, actorKind: createdBy === 'user' ? 'user' : createdBy, entityType: 'brand', entityId: brand.id, action: 'draft_created', detail: { touch_id: touch.id, kind, channel, subject: subject || null, claimed: !brand.owner_user_id, no_recipient: channel === 'email' && !contact?.email } });
+    return { touch, draft, verdict, mailboxEmail };
+}
+
+// POST /drafts  { brand_id, contact_id?, channel 'email'|'ig_dm', kind, subject, body_markdown, challenge_concept?, reply_to_touch_id?, omit_recipient? }
+export async function createDraftRoute(req, res, d = {}) {
+  const D = deps0(d);
+  const businessId = req.params.businessId, uid = me(req), body = req.body || {};
+  try {
+    const out = await createDraftFor({ D, businessId, userId: uid, body, tokenFor: () => D.tokenFor(req, res, businessId, 'drafts'), createdBy: body.created_by === 'claude' ? 'claude' : 'user' });
+    if (!out) return;
+    const { touch, draft, verdict, mailboxEmail } = out;
     res.status(201).json({ touch_id: touch.id, touch: touchRow(touch), gmail_draft_url: draft?.message?.id && mailboxEmail ? draftUrl(mailboxEmail, draft.message.id) : null, warnings: verdict.warnings });
   } catch (e) { fail(res, e, 'drafts/create'); }
 }
@@ -166,20 +178,15 @@ export function pageloadSkip(runs, nowMs) {
   return null;
 }
 
-// POST /sync?trigger=manual|pageload - the CALLER's tethered mailbox only.
-export async function syncRoute(req, res, d = {}) {
-  const { supabase, gmail, mailbox, tokenForGrant, flag, call, now } = deps0(d);
-  const businessId = req.params.businessId, uid = me(req);
-  const trigger = req.query?.trigger === 'pageload' ? 'pageload' : req.query?.trigger === 'test' ? 'test' : 'manual';
+// One mailbox's sync, shared by the route and the gmail-sync-all job (hkos-daily-check-v1 J1). m = the resolved
+// mailbox ({ grant, tether, state ok }). Writes hk_gmail_sync_state + an hk_sync_runs row, logs sends / replies, labels
+// replies (daily cap). -> { status: 'running' } | { status: 'needs_reconnect', run_id } | { status: 'ok', run, history_id };
+// any other failure is written to the run row and rethrown.
+export async function runMailboxSync({ D, businessId, userId: uid, m, trigger }) {
+  const { supabase, gmail, tokenForGrant, flag, call, now } = D;
   const nowIso = () => now().toISOString();
-  try {
-    const m = await mailbox(businessId, uid, 'drafts');
-    if (!m) return res.status(409).json({ error: 'Link your HumanKind Gmail on Connections first', needs_mailbox: 'drafts' });
-    if (m.state === RECONNECT) return res.status(409).json({ error: 'Reconnect your HumanKind Gmail', needs_reconnect: m.grant.id, email: m.grant.google_email });
-    const { data: runs } = await supabase.from('hk_sync_runs').select('trigger, status, started_at, finished_at').eq('business_id', businessId).eq('user_id', uid).order('started_at', { ascending: false }).limit(20);
-    if (trigger === 'pageload') { const skip = pageloadSkip(runs || [], now().getTime()); if (skip) return res.json({ skipped: skip }); }
     const { data: state0 } = await supabase.from('hk_gmail_sync_state').select('*').eq('business_id', businessId).eq('user_id', uid).maybeSingle();
-    if (state0?.status === 'running' && now().getTime() - Date.parse(state0.updated_at) < RUNNING_STALE_MIN * 60e3) return res.status(409).json({ error: 'A sync is already running', running: true });
+    if (state0?.status === 'running' && now().getTime() - Date.parse(state0.updated_at) < RUNNING_STALE_MIN * 60e3) return { status: 'running' };
     await supabase.from('hk_gmail_sync_state').upsert({ business_id: businessId, user_id: uid, grant_id: m.grant.id, status: 'running', updated_at: nowIso() }, { onConflict: 'business_id,user_id' });
     const { data: run } = await supabase.from('hk_sync_runs').insert({ business_id: businessId, user_id: uid, trigger, started_at: nowIso(), status: 'ok' }).select().single();
     const finish = async (status, countsObj, error = null, stateExtra = {}) => {
@@ -188,7 +195,7 @@ export async function syncRoute(req, res, d = {}) {
     };
     let token;
     try { token = await tokenForGrant(m.grant, 'gmail'); }
-    catch (e) { await finish('error', {}, 'Gmail needs reconnect', { status: 'needs_reconnect' }); return res.status(409).json({ error: 'Reconnect your HumanKind Gmail', needs_reconnect: m.grant.id, email: m.grant.google_email, run_id: run.id }); }
+    catch (e) { await finish('error', {}, 'Gmail needs reconnect', { status: 'needs_reconnect' }); return { status: 'needs_reconnect', run_id: run.id }; }
     try {
       const { data: tracked } = await supabase.from('hk_touches').select('*').eq('business_id', businessId).eq('sender_user_id', uid).neq('state', 'discarded').not('gmail_thread_id', 'is', null);
       const touches = tracked || [];
@@ -239,12 +246,30 @@ export async function syncRoute(req, res, d = {}) {
       for (const n of c.newThreads) await storeReply({ brand_id: n.brand_id, touch: null, message: n.message }, { label: 'new_thread', summary: snippetOf(n.message.snippet), urgent: false, labeled: false });
       const countsObj = runCounts(c, { labels_called: labelsCalled, messages_scanned: scanned, full_scan: full });
       await finish('ok', countsObj, null, { fields: { history_id: profile?.historyId ? String(profile.historyId) : state0?.history_id || null, last_synced_at: nowIso(), ...(full ? { last_full_scan_at: nowIso() } : {}) } });
-      res.json({ run: { id: run.id, trigger, status: 'ok', counts: countsObj, started_at: run.started_at, finished_at: nowIso() }, history_id: profile?.historyId ? String(profile.historyId) : null });
+      return { status: 'ok', run: { id: run.id, trigger, status: 'ok', counts: countsObj, started_at: run.started_at, finished_at: nowIso() }, history_id: profile?.historyId ? String(profile.historyId) : null };
     } catch (e) {
-      if ((e instanceof GmailError && e.status === 401) || (e instanceof NeedsGoogle)) { await flag(m.grant.id); await finish('error', {}, 'Gmail needs reconnect', { status: 'needs_reconnect' }); return res.status(409).json({ error: 'Reconnect your HumanKind Gmail', needs_reconnect: m.grant.id, email: m.grant.google_email, run_id: run.id }); }
+      if ((e instanceof GmailError && e.status === 401) || (e instanceof NeedsGoogle)) { await flag(m.grant.id); await finish('error', {}, 'Gmail needs reconnect', { status: 'needs_reconnect' }); return { status: 'needs_reconnect', run_id: run.id }; }
       await finish('error', {}, e.message);
       throw e;
     }
+}
+
+// POST /sync?trigger=manual|pageload - the CALLER's tethered mailbox only.
+export async function syncRoute(req, res, d = {}) {
+  const D = deps0(d);
+  const { supabase, mailbox, now } = D;
+  const businessId = req.params.businessId, uid = me(req);
+  const trigger = req.query?.trigger === 'pageload' ? 'pageload' : req.query?.trigger === 'test' ? 'test' : 'manual';
+  try {
+    const m = await mailbox(businessId, uid, 'drafts');
+    if (!m) return res.status(409).json({ error: 'Link your HumanKind Gmail on Connections first', needs_mailbox: 'drafts' });
+    if (m.state === RECONNECT) return res.status(409).json({ error: 'Reconnect your HumanKind Gmail', needs_reconnect: m.grant.id, email: m.grant.google_email });
+    const { data: runs } = await supabase.from('hk_sync_runs').select('trigger, status, started_at, finished_at').eq('business_id', businessId).eq('user_id', uid).order('started_at', { ascending: false }).limit(20);
+    if (trigger === 'pageload') { const skip = pageloadSkip(runs || [], now().getTime()); if (skip) return res.json({ skipped: skip }); }
+    const out = await runMailboxSync({ D, businessId, userId: uid, m, trigger });
+    if (out.status === 'running') return res.status(409).json({ error: 'A sync is already running', running: true });
+    if (out.status === 'needs_reconnect') return res.status(409).json({ error: 'Reconnect your HumanKind Gmail', needs_reconnect: m.grant.id, email: m.grant.google_email, run_id: out.run_id });
+    res.json({ run: out.run, history_id: out.history_id });
   } catch (e) { fail(res, e, 'sync'); }
 }
 

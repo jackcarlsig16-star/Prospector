@@ -1,9 +1,10 @@
 // hkos-daily-check-v1 J4 - one digest payload, two renderings. buildDigest() turns the morning's rows into sections in
 // the design's order (urgent, replies waiting, drafts to review, follow-ups with no draft, DM text ready, data warnings,
 // stats stale, "done yesterday"); renderSlack() turns the payload into one Block Kit message. Pure. Names, domains, labels
-// and summaries only: every entry is built from allow-listed fields and the whole payload must pass hasPii before it is
-// stored or posted - a failure throws here so the runner counts it and never sends.
-import { hasPii } from '../../sales/scrubText.js';
+// and summaries only: every entry is built from allow-listed fields and the whole payload must pass the PII guard (ids and
+// timestamps stripped first, like every hk event) before it is stored or posted - a failure throws here, so the runner
+// counts it and never sends.
+import { detailHasPii } from '../hkShared.js';
 import { dayIn, statsStale } from './plan.js';
 
 const DAY = 86400e3;
@@ -44,7 +45,7 @@ export function buildDigest({ replies = [], touches = [], brands = [], members =
     counts: { urgent: urgent.length, replies: waiting.length, drafts: drafts.length, no_draft: no_draft.length, dm_ready: dm_ready.length, data_warnings: Number(warningsCount) || 0 },
   };
   payload.empty = Object.values(payload.counts).every(n => n === 0) && !payload.stats_stale;
-  if (hasPii(JSON.stringify(payload))) throw new Error('digest payload would carry an address or phone number');
+  if (detailHasPii(payload)) throw new Error('digest payload would carry an address or phone number');
   return payload;
 }
 
@@ -81,6 +82,6 @@ export function renderSlack(payload) {
   const d = payload.done_yesterday || { sent: 0, replies_handled: 0, meetings: 0 };
   blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: `Done yesterday: ${d.sent} sent · ${d.replies_handled} replies handled · ${d.meetings} meetings` }] });
   const out = { text: `HumanKind morning check - ${payload.day}: ${textLines.join(', ') || 'nothing needs you'}`, blocks };
-  if (hasPii(JSON.stringify(out))) throw new Error('Slack digest would carry an address or phone number');
+  if (detailHasPii(out)) throw new Error('Slack digest would carry an address or phone number');
   return out;
 }

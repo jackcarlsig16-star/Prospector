@@ -432,6 +432,14 @@ app.get('/api/hk/:businessId/imports',                        hkRoute(HK_IMPORTS
 app.post('/api/hk/:businessId/imports/preview',               hkRoute(HK_IMPORTS, 'previewImportRoute'));
 app.post('/api/hk/:businessId/imports/:id/commit',            hkRoute(HK_IMPORTS, 'commitImportRoute'));
 app.post('/api/hk/:businessId/imports/:id/undo',              hkRoute(HK_IMPORTS, 'undoImportRoute'));
+// hkos-daily-check-v1 J2 - jobs: page load (any member), Today's read, runs; daily check / sync all / test digest (owner).
+const HK_JOBS = './api/hk/jobsRoutes.js';
+app.post('/api/hk/:businessId/jobs/pageload',                 hkRoute(HK_JOBS, 'pageloadRoute'));
+app.post('/api/hk/:businessId/jobs/daily-check',              hkRoute(HK_JOBS, 'dailyCheckRoute'));
+app.post('/api/hk/:businessId/jobs/gmail-sync-all',           hkRoute(HK_JOBS, 'syncAllRoute'));
+app.post('/api/hk/:businessId/jobs/test-digest',              hkRoute(HK_JOBS, 'testDigestRoute'));
+app.get('/api/hk/:businessId/jobs/today',                     hkRoute(HK_JOBS, 'todayRoute'));
+app.get('/api/hk/:businessId/jobs/runs',                      hkRoute(HK_JOBS, 'runsRoute'));
 // hkos-inbox-v1 I1 - the caller's own tethered mailbox, read live; member+ inside the routes (a viewer has no mailbox).
 const HK_INBOX = './api/hk/inboxRoutes.js';
 app.get('/api/hk/:businessId/inbox/threads',                  hkRoute(HK_INBOX, 'listThreadsRoute'));
@@ -893,6 +901,21 @@ if (!salesAnalyticsCronRegistered) {
     { timezone: 'America/Los_Angeles', noOverlap: true }
   );
   console.log('[CRON] Sales Analytics Apollo sync scheduled daily at 06:00 America/Los_Angeles');
+}
+
+// ── HumanKind daily check — in-process runner, ON only when HK_SCHEDULER=cron ──
+// hkos-daily-check-v1 J2: the page-load runner (POST /api/hk/:b/jobs/pageload) is always the floor; this registers the
+// hourly gmail-sync-all + the digest-time daily-check per hk_sales workspace, once, America/Chicago, noOverlap. Jack
+// sets HK_SCHEDULER=cron in Render only after confirming the instance never sleeps.
+let hkCronRegistered = false;
+if (process.env.HK_SCHEDULER === 'cron' && !hkCronRegistered) {
+  hkCronRegistered = true;
+  import('./api/hk/jobs/cron.js')
+    .then(m => m.registerHkCronFromDb(cron))
+    .then(list => console.log('[CRON] HumanKind jobs scheduled:', JSON.stringify(list)))
+    .catch(err => console.error('[CRON] HumanKind jobs failed to register:', err.message));
+} else {
+  console.log('[CRON] HumanKind daily check: cron runner off (HK_SCHEDULER is not "cron"); page-load runner only');
 }
 
 // ── Start ─────────────────────────────────────────────────────────────────────

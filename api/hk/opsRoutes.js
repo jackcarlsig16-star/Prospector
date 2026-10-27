@@ -7,7 +7,7 @@ const seed = createRequire(import.meta.url)('./lintSeed.json');
 const LOCKED_RULES = [...seed.banned_patterns.map(p => ({ id: p.id, rule: p.rule })), { id: 'max_email_touches', rule: 'At most 3 email touches per brand: cold, bump, final.' }, { id: 'no_send', rule: 'Nothing is ever sent from Prospector. Drafts land in Gmail for you to send.' }];
 
 const PERIOD = /^([0-9]{4}-(0[1-9]|1[0-2])|launch)$/;
-const SETTINGS_DEFAULTS = { members_stat: null, completions_stat: null, stats_confirmed_at: null, market_line_local: null, market_line_national: null, subject_format: null, banned_phrases: [], bump_after_days: 5, dm_after_days: 9, final_after_days: 14, max_email_touches: 3, apollo_batch_cap: 25, digest_time: '07:30', digest_days: 'weekdays', timezone: 'America/Chicago', modules: {}, theme: {} };
+export const SETTINGS_DEFAULTS = { members_stat: null, completions_stat: null, stats_confirmed_at: null, market_line_local: null, market_line_national: null, subject_format: null, banned_phrases: [], bump_after_days: 5, dm_after_days: 9, final_after_days: 14, max_email_touches: 3, apollo_batch_cap: 25, digest_time: '07:30', digest_days: 'weekdays', timezone: 'America/Chicago', quiet_weekends: true, modules: {}, theme: {} };
 const INT_SETTINGS = { members_stat: [0, 10000000], completions_stat: [0, 100000000], bump_after_days: [1, 60], dm_after_days: [1, 90], final_after_days: [1, 120], apollo_batch_cap: [1, 500] };
 const TEXT_SETTINGS = { market_line_local: 200, market_line_national: 200, subject_format: 120, digest_time: 5, digest_days: 20, timezone: 60 };
 
@@ -97,18 +97,20 @@ export async function decideDuplicateRoute(req, res, { supabase = getSupabase(),
     res.json({ ok: true, verdict, winner: brandSummary(w), archived: loser.id, moved });
   } catch (e) { fail(res, e, 'review/decide'); }
 }
+// Review > Data warnings, pure (the daily check counts them for the digest).
+export function dataWarnings(brands, now = new Date()) {
+  const t = now.getTime(), warnings = [];
+  for (const b of brands) {
+    if (b.last_touch_at && new Date(b.last_touch_at).getTime() > t) warnings.push({ brand_id: b.id, name: b.name, kind: 'future_last_touch', detail: b.last_touch_at });
+    if (b.next_due_at && new Date(b.next_due_at).getTime() > t + 365 * 86400e3) warnings.push({ brand_id: b.id, name: b.name, kind: 'far_next_due', detail: b.next_due_at });
+    if (!b.domain && b.status !== 'candidate') warnings.push({ brand_id: b.id, name: b.name, kind: 'missing_domain', detail: b.status });
+    if (b.owner_user_id && b.owner_unclear) warnings.push({ brand_id: b.id, name: b.name, kind: 'owner_conflict', detail: b.owner_user_id });
+  }
+  return warnings;
+}
 // GET /review/warnings
 export async function warningsRoute(req, res, { supabase = getSupabase(), now = () => new Date() } = {}) {
-  try {
-    const brands = await liveBrands(supabase, req.params.businessId), t = now().getTime(), warnings = [];
-    for (const b of brands) {
-      if (b.last_touch_at && new Date(b.last_touch_at).getTime() > t) warnings.push({ brand_id: b.id, name: b.name, kind: 'future_last_touch', detail: b.last_touch_at });
-      if (b.next_due_at && new Date(b.next_due_at).getTime() > t + 365 * 86400e3) warnings.push({ brand_id: b.id, name: b.name, kind: 'far_next_due', detail: b.next_due_at });
-      if (!b.domain && b.status !== 'candidate') warnings.push({ brand_id: b.id, name: b.name, kind: 'missing_domain', detail: b.status });
-      if (b.owner_user_id && b.owner_unclear) warnings.push({ brand_id: b.id, name: b.name, kind: 'owner_conflict', detail: b.owner_user_id });
-    }
-    res.json({ warnings });
-  } catch (e) { fail(res, e, 'review/warnings'); }
+  try { res.json({ warnings: dataWarnings(await liveBrands(supabase, req.params.businessId), now()) }); } catch (e) { fail(res, e, 'review/warnings'); }
 }
 // GET /activity?actor=&action=&brand=&from=&to=
 export async function activityRoute(req, res, { supabase = getSupabase() } = {}) {
@@ -139,6 +141,7 @@ export async function patchSettingsRoute(req, res, { supabase = getSupabase(), n
     const patch = {};
     for (const [k, [lo, hi]] of Object.entries(INT_SETTINGS)) if (k in body) { const v = body[k]; if (v === null) { patch[k] = null; continue; } if (!Number.isInteger(v) || v < lo || v > hi) throw new HkError(400, `${k} must be a whole number between ${lo} and ${hi}`); patch[k] = v; }
     for (const [k, max] of Object.entries(TEXT_SETTINGS)) if (k in body) patch[k] = text(body[k], max, k);
+    if ('quiet_weekends' in body) patch.quiet_weekends = bool(body.quiet_weekends, 'quiet_weekends') ?? true;
     if ('banned_phrases' in body) { if (!Array.isArray(body.banned_phrases)) throw new HkError(400, 'banned_phrases must be a list'); patch.banned_phrases = [...new Set(body.banned_phrases.map(p => text(p, 60, 'banned phrase')).filter(Boolean).map(p => p.toLowerCase()))]; }
     for (const k of ['modules', 'theme']) if (k in body) { if (!body[k] || typeof body[k] !== 'object' || Array.isArray(body[k])) throw new HkError(400, `${k} must be an object`); if (hasPii(JSON.stringify(body[k]))) throw new HkError(400, `${k} can't hold an email address or phone number`); patch[k] = body[k]; }
     if (!Object.keys(patch).length) throw new HkError(400, 'nothing to change');
