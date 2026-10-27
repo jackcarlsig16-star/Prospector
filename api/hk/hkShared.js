@@ -56,7 +56,7 @@ export const brandRow = (b, extra = {}) => ({ ...pick(b, LIST_FIELDS), ...extra 
 export const brandDetail = b => ({ ...b });
 export const contactRow = c => pick(c, ['id', 'brand_id', 'name', 'title', 'email', 'email_source', 'apollo_person_id', 'is_primary', 'role_checked_at', 'left_company', 'created_by', 'created_at']);
 export const touchRow = t => pick(t, ['id', 'brand_id', 'contact_id', 'sender_user_id', 'channel', 'kind', 'subject', 'challenge_concept', 'state', 'drafted_at', 'sent_at', 'lint_passed', 'created_by', 'gmail_thread_id', 'created_at']);
-export const replyRow = r => pick(r, ['id', 'brand_id', 'touch_id', 'gmail_thread_id', 'from_name', 'from_domain', 'received_at', 'label', 'label_overridden_by', 'summary', 'handled', 'handled_by', 'handled_at', 'snoozed_until', 'created_at']);
+export const replyRow = r => pick(r, ['id', 'brand_id', 'touch_id', 'gmail_message_id', 'gmail_thread_id', 'from_name', 'from_domain', 'received_at', 'label', 'label_overridden_by', 'summary', 'urgent', 'handled', 'handled_by', 'handled_at', 'snoozed_until', 'created_at']);
 export const brandSummary = b => pick(b, ['id', 'name', 'domain', 'status', 'relationship', 'owner_user_id', 'niche', 'is_local', 'source', 'created_at']);
 
 export const liveBrands = (supabase, businessId) => selectAllPages(() => supabase.from('hk_brands').select('*').eq('business_id', businessId).is('archived_at', null).order('created_at').order('id'));
@@ -84,7 +84,7 @@ export async function legacyNames(supabase, businessId) {
 }
 
 // One verdict per { name, domain, niche? }: clear | warm | sponsor | do_not_contact | owned_by | possible_duplicate | niche_warning.
-export function verdictFor(item, { brands, legacy, senderUserId, sponsorsNiches }) {
+export function verdictFor(item, { brands, legacy, senderUserId, sponsorsNiches, threadsByBrand = {}, threadsByDomain = {} }) {
   const name = String(item.name || '').trim();
   const domain = item.domain ? normalizeDomain(String(item.domain)) : null;
   const n = normName(name);
@@ -93,13 +93,14 @@ export function verdictFor(item, { brands, legacy, senderUserId, sponsorsNiches 
   const legacyHits = exact ? [] : [...nameMatches(name, legacy, 'name', false), ...nameMatches(name, legacy, 'name', true)].filter((h, i, arr) => arr.indexOf(h) === i);
   const base = { name, domain, match: exact ? brandSummary(exact) : null, matches: partial.map(brandSummary), legacy: legacyHits.map(h => ({ id: h.id, name: h.name, kind: h.kind, table: h.table })), warnings: [] };
   if (exact) {
-    const v = canContact({ brand: exact, senderUserId, kind: 'cold', sponsorsNiches });
+    const v = canContact({ brand: exact, senderUserId, kind: 'cold', sponsorsNiches, threadsByFounder: threadsByBrand[exact.id] || [] });
     base.warnings = v.warnings;
     if (v.reason === 'sponsor' || v.reason === 'do_not_contact' || v.reason === 'owned_by') return { ...base, verdict: v.reason, owner_user_id: v.owner_user_id || null };
+    if (v.reason === 'warm') return { ...base, verdict: 'warm', founder_user_id: v.founder_user_id, last_at: v.last_at, exact: true };
     return { ...base, verdict: 'possible_duplicate', exact: true };
   }
   if (partial.length || legacyHits.length) return { ...base, verdict: 'possible_duplicate', exact: false };
-  const v = canContact({ brand: { status: 'candidate', relationship: 'prospect', owner_user_id: null, owner_unclear: false, niche: item.niche || null }, senderUserId, kind: 'cold', sponsorsNiches });
+  const v = canContact({ brand: { status: 'candidate', relationship: 'prospect', owner_user_id: null, owner_unclear: false, niche: item.niche || null }, senderUserId, kind: 'cold', sponsorsNiches, threadsByFounder: (domain && threadsByDomain[domain]) || [] });
   base.warnings = v.warnings;
   if (v.reason === 'warm') return { ...base, verdict: 'warm', founder_user_id: v.founder_user_id, last_at: v.last_at };
   return { ...base, verdict: v.warnings.some(w => w.code === 'niche_overlap') ? 'niche_warning' : 'clear' };

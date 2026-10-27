@@ -2,6 +2,9 @@
 // member = writes, owner-role = relationship upgrades + releasing another's claim). List rows never carry an address;
 // the brand detail and the contacts routes do (hk_contacts.email - the scoped HumanKind exception, D5).
 import { getSupabase, HkError, fail, isOwner, me, text, bool, oneOf, domainOf, emailOf, logEvent, brandRow, brandDetail, contactRow, touchRow, replyRow, liveBrands, brandById, legacyNames, verdictFor, sponsorsNichesOf, canContact, normName, SPONSOR_RELATIONSHIPS, MANUAL_STATUSES } from './hkShared.js';
+import { trackedThreads, liveThread } from './warm.js';
+import { mailboxFor, accessTokenForGrant } from '../lib/googleGrants.js';
+import { gmailClient } from './gmailClient.js';
 
 const SEGMENTS = new Set(['sponsor_brand', 'creator', 'nonprofit', 'press', 'podcast', 'university']);
 const SOURCES = new Set(['sourced', 'user_supplied', 'apollo_list', 'places', 'import']);
@@ -40,13 +43,38 @@ export async function listBrandsRoute(req, res, { supabase = getSupabase(), now 
   } catch (e) { fail(res, e, 'brands/list'); }
 }
 
-// POST /brands/check  [{ name, domain, niche? }]
-export async function checkBrandsRoute(req, res, { supabase = getSupabase() } = {}) {
+// POST /brands/check  [{ name, domain, niche? }]. Warm (G6): tracked threads for every exact match, plus - for up to
+// 5 items with a domain, when the caller has a tethered mailbox - one narrow search in the caller's own mailbox.
+const LIVE_WARM_MAX_ITEMS = 5;
+export async function checkBrandsRoute(req, res, { supabase = getSupabase(), gmail = null, mailbox = mailboxFor, tokenForGrant = accessTokenForGrant } = {}) {
   try {
     const items = Array.isArray(req.body) ? req.body : Array.isArray(req.body?.items) ? req.body.items : null;
     if (!items || !items.length || items.length > 50) throw new HkError(400, 'send 1 to 50 items as [{ name, domain }]');
-    const c = await ctx(supabase, req.params.businessId, me(req));
-    res.json({ results: items.map(it => verdictFor({ name: text(it.name, 160, 'name', { required: true }), domain: it.domain ? domainOf(it.domain) : null, niche: text(it.niche, 80, 'niche') }, c)) });
+    const businessId = req.params.businessId, uid = me(req);
+    const c = await ctx(supabase, businessId, uid);
+    const parsed = items.map(it => ({ name: text(it.name, 160, 'name', { required: true }), domain: it.domain ? domainOf(it.domain) : null, niche: text(it.niche, 80, 'niche') }));
+    const threadsByBrand = {}, threadsByDomain = {};
+    for (const it of parsed) {
+      const n = normName(it.name);
+      const exact = c.brands.find(b => (it.domain && b.domain === it.domain) || (n && normName(b.name) === n) || (n && (b.aliases || []).some(a => normName(a) === n)));
+      if (exact && !threadsByBrand[exact.id]) threadsByBrand[exact.id] = await trackedThreads(supabase, businessId, exact.id);
+    }
+    const withDomain = parsed.filter(it => it.domain);
+    if (withDomain.length && withDomain.length <= LIVE_WARM_MAX_ITEMS) {
+      const m = await mailbox(businessId, uid, 'drafts').catch(() => null);
+      if (m && m.state === 'ok') {
+        const client = gmail || gmailClient();
+        const token = await tokenForGrant(m.grant, 'gmail').catch(() => null);
+        if (token) for (const it of withDomain) {
+          const live = await liveThread({ gmail: client, token, domain: it.domain, callerUserId: uid }).catch(() => null);
+          if (!live) continue;
+          threadsByDomain[it.domain] = [live];
+          const exact = c.brands.find(b => b.domain === it.domain);
+          if (exact) { const list = threadsByBrand[exact.id] || (threadsByBrand[exact.id] = []); const mine = list.find(t => t.founder_user_id === uid); if (mine) { if (String(live.last_at) > String(mine.last_at)) mine.last_at = live.last_at; } else list.push(live); }
+        }
+      }
+    }
+    res.json({ results: parsed.map(it => verdictFor(it, { ...c, threadsByBrand, threadsByDomain })) });
   } catch (e) { fail(res, e, 'brands/check'); }
 }
 
@@ -89,7 +117,7 @@ export async function getBrandRoute(req, res, { supabase = getSupabase() } = {})
     const [contacts, touches, replies, periods, events] = await Promise.all([by('hk_contacts'), by('hk_touches'), by('hk_replies', 'received_at'), by('hk_sponsor_periods'), (async () => { const { data, error } = await supabase.from('hk_events').select('*').eq('business_id', businessId).eq('entity_id', brand.id).order('created_at', { ascending: false }).limit(200); if (error) throw new Error(error.message); return data || []; })()]);
     const sponsorsNiches = sponsorsNichesOf(await liveBrands(supabase, businessId));
     const max_email_touches = await maxTouches(supabase, businessId);
-    const verdict = canContact({ brand, touches, threadsByFounder: [], senderUserId: me(req), kind: 'cold', sponsorsNiches, maxEmailTouches: max_email_touches });
+    const verdict = canContact({ brand, touches, threadsByFounder: await trackedThreads(supabase, businessId, brand.id), senderUserId: me(req), kind: 'cold', sponsorsNiches, maxEmailTouches: max_email_touches });
     res.json({ brand: brandDetail(brand), contacts: contacts.map(contactRow), touches: touches.map(touchRow), replies: replies.map(replyRow), sponsor_periods: periods, events, verdict, email_touches_sent: touches.filter(t => t.channel === 'email' && t.state === 'sent').length, max_email_touches });
   } catch (e) { fail(res, e, 'brands/get'); }
 }

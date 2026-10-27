@@ -413,6 +413,19 @@ app.patch('/api/hk/:businessId/settings',                     hkRoute(HK_OPS, 'p
 app.post('/api/hk/:businessId/settings/confirm-stats',        hkRoute(HK_OPS, 'confirmStatsRoute'));
 app.get('/api/hk/:businessId/me/prefs',                       hkRoute(HK_OPS, 'getPrefsRoute'));
 app.patch('/api/hk/:businessId/me/prefs',                     hkRoute(HK_OPS, 'patchPrefsRoute'));
+// hkos-gmail-connect-v1 (G3-G7) - drafts into the tethered mailbox, sync, replies, status. No send path anywhere.
+const HK_GMAIL = './api/hk/gmailRoutes.js';
+app.get('/api/hk/:businessId/drafts',                         hkRoute(HK_GMAIL, 'listDraftsRoute'));
+app.post('/api/hk/:businessId/drafts',                        hkRoute(HK_GMAIL, 'createDraftRoute'));
+app.post('/api/hk/:businessId/drafts/lint',                   hkRoute(HK_GMAIL, 'lintPreviewRoute'));
+app.get('/api/hk/:businessId/drafts/:touchId',                hkRoute(HK_GMAIL, 'previewDraftRoute'));
+app.post('/api/hk/:businessId/drafts/:touchId/lint',          hkRoute(HK_GMAIL, 'relintDraftRoute'));
+app.delete('/api/hk/:businessId/drafts/:touchId',             hkRoute(HK_GMAIL, 'discardDraftRoute'));
+app.post('/api/hk/:businessId/sync',                          hkRoute(HK_GMAIL, 'syncRoute'));
+app.get('/api/hk/:businessId/replies',                        hkRoute(HK_GMAIL, 'listRepliesRoute'));
+app.patch('/api/hk/:businessId/replies/:id',                  hkRoute(HK_GMAIL, 'patchReplyRoute'));
+app.get('/api/hk/:businessId/gmail/status',                   hkRoute(HK_GMAIL, 'gmailStatusRoute'));
+app.patch('/api/hk/:businessId/gmail/signature',              hkRoute(HK_GMAIL, 'patchSignatureRoute'));
 app.post('/api/hunter/find',              esHandler('./api/hunter/find.js'));
 app.post('/api/hunter/domain-search',     esHandler('./api/hunter/domain-search.js'));
 app.get('/api/hunter/account',            esHandler('./api/hunter/account.js'));

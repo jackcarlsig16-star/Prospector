@@ -25,7 +25,7 @@ test('check: sponsor, do-not-contact, owned-by-other, exact duplicate (name / al
   assert.deepEqual([niche.verdict, niche.warnings], ['niche_warning', [{ code: 'niche_overlap', sponsor: 'Northwind Juice' }]]);
   assert.deepEqual([byDomain.verdict, byDomain.domain], ['sponsor', 'northwindjuice.example']);
   const [yogaAsPete] = await check(sb, [{ name: 'Harbor Yoga' }], PETE);
-  assert.deepEqual([yogaAsPete.verdict, yogaAsPete.exact], ['possible_duplicate', true]);
+  assert.deepEqual([yogaAsPete.verdict, yogaAsPete.exact, yogaAsPete.founder_user_id], ['warm', true, PETE], 'the fixture holds a sent thread by Pete, so even Pete reads warm for a cold');
   assert.equal((await call(checkBrandsRoute, reqOf({ method: 'POST', body: [] }), deps(sb))).code, 400);
   assert.equal((await call(checkBrandsRoute, reqOf({ method: 'POST', body: [{ name: 'x', domain: 'not a domain' }] }), deps(sb))).code, 400);
 });
@@ -79,9 +79,9 @@ test('detail: contacts carry the email, replies never carry from_email, touches 
   assert.ok(!JSON.stringify(r.touches).includes('secret'));
   assert.deepEqual([r.verdict.reason, r.email_touches_sent], ['owned_by', 2]);
   const p = (await call(getBrandRoute, reqOf({ params: { id: ID.yoga }, user: PETE }), deps(sb))).body;
-  assert.equal(p.verdict.ok, true);
+  assert.deepEqual([p.verdict.ok, p.verdict.reason, p.verdict.founder_user_id], [false, 'warm', PETE], 'a sent thread exists, so a cold is warm even for its owner');
   sb.db.hk_touches.push({ id: 't3', business_id: HK, brand_id: ID.yoga, sender_user_id: PETE, channel: 'email', kind: 'final', state: 'sent', created_by: 'claude', created_at: '2026-10-20T00:00:00Z' });
-  assert.equal((await call(getBrandRoute, reqOf({ params: { id: ID.yoga }, user: PETE }), deps(sb))).body.verdict.reason, 'max_touches');
+  assert.equal((await call(getBrandRoute, reqOf({ params: { id: ID.yoga }, user: PETE }), deps(sb))).body.verdict.reason, 'warm', 'warm precedes max_touches in canContact (max_touches itself is pinned in rules.test)');
   const without = JSON.parse(JSON.stringify(r)); delete without.contacts;
   assert.ok(!hasAt(without), 'the only address in the detail is on the contact');
   assert.equal((await call(getBrandRoute, reqOf({ params: { id: ID.yoga }, businessId: OTHER }), deps(sb))).code, 404);
