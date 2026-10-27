@@ -11,6 +11,7 @@ import PitchSettings from './screens/PitchSettings';
 import DraftsScreen from './screens/DraftsScreen';
 import RepliesScreen from './screens/RepliesScreen';
 import ConnectionsSettings from './screens/ConnectionsSettings';
+import InboxScreen from './screens/InboxScreen';
 
 // hkos-project-shell-v1 S5 - one screen: the page header and an empty state (no buttons in Phase 0; each later SPEC
 // adds its own), or Settings with its Members / Modules sections.
@@ -71,8 +72,9 @@ function Modules({ shell }) {
   );
 }
 
-export default function HkScreen({ screen, section, brandId, businessId, owner, compact, shell, gmail, syncing, onSync, onGmailChanged, onOpenConnections, onSection, onOpenAdmin, onOpenBrand, now }) {
+export default function HkScreen({ screen, section, brandId, businessId, owner, compact, shell, gmail, syncing, onSync, onGmailChanged, onOpenConnections, onInboxUnread, onSection, onOpenAdmin, onOpenBrand, now }) {
   const canEdit = roleAtLeast(shell.me.role, 'member');
+  if (screen.id === 'inbox') return <><Header title="Inbox" line={SCREEN_LINES.inbox} /><InboxScreen businessId={businessId} shell={shell} gmail={gmail} compact={compact} canEdit={canEdit} onOpenBrand={onOpenBrand} onOpenConnections={onOpenConnections} onUnread={onInboxUnread} /></>;
   if (screen.id === 'brands' && brandId) return <BrandPage businessId={businessId} brandId={brandId} shell={shell} gmail={gmail} canEdit={canEdit} onBack={() => onOpenBrand(null)} onGmailChanged={onGmailChanged} />;
   if (screen.id === 'drafts') return <><Header title="Drafts" line={SCREEN_LINES.drafts} /><DraftsScreen businessId={businessId} shell={shell} compact={compact} onOpenBrand={onOpenBrand} /></>;
   if (screen.id === 'replies') return <><Header title="Replies" line={SCREEN_LINES.replies} /><RepliesScreen businessId={businessId} shell={shell} owner={owner} compact={compact} onOpenBrand={onOpenBrand} /></>;
@@ -113,7 +115,7 @@ export default function HkScreen({ screen, section, brandId, businessId, owner, 
 }
 
 const SCREEN_LINES = {
-  inbox: 'Your own Gmail, read live.',
+  inbox: 'Your own HumanKind Gmail, read live. Only you see it.',
   replies: 'Brands that wrote back.',
   drafts: 'Drafts waiting in Gmail for you to send.',
   pipeline: 'Every brand by stage.',

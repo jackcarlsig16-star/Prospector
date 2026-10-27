@@ -13,6 +13,8 @@ test('pill: not linked -> Link your Gmail; flagged -> amber reconnect; syncing; 
   expect(syncPillState(linked(), false, NOW)).toEqual({ tone: 'grey', text: 'Gmail linked, not synced yet', action: 'sync' });
   expect(syncPillState(linked({ sync_state: { last_synced_at: new Date(NOW - 7 * 60e3).toISOString() } }), false, NOW)).toEqual({ tone: 'green', text: 'Gmail synced 7 min ago', action: 'sync' });
   expect(syncPillState(linked({ last_run: { status: 'error' } }), false, NOW).text).toBe('Gmail sync failed');
+  expect(syncPillState(linked({ sync_state: { last_synced_at: new Date(NOW - 7 * 60e3).toISOString() }, badges: { drafts: 0, replies: 0, tracked: 0 } }), false, NOW).text).toBe('Gmail synced · nothing tracked yet');
+  expect(syncPillState(linked({ sync_state: { last_synced_at: new Date(NOW - 7 * 60e3).toISOString() }, badges: { tracked: 3 } }), false, NOW).text).toBe('Gmail synced 7 min ago');
   expect([relative(new Date(NOW - 30e3).toISOString(), NOW), relative(new Date(NOW - 3 * 3600e3).toISOString(), NOW), relative(new Date(NOW - 49 * 3600e3).toISOString(), NOW)]).toEqual(['just now', '3 h ago', '2 d ago']);
   expect(syncPillState(linked()).text).not.toMatch(/[–—]/);
 });

@@ -2,10 +2,10 @@
 // for the screen to render (src/constants/hkModules.js); reserved slots stay hidden until their module's SPEC turns
 // it on (never shown disabled). No em or en dashes in any UI text.
 export const HK_SCREENS = [
-  { id: 'today', label: 'Today', icon: 'today', phoneTab: true, module: 'email', emptyTitle: 'Nothing needs you right now.', emptyLine: 'Today fills in once Gmail is connected and the daily check runs.' },
-  { id: 'inbox', label: 'Inbox', icon: 'inbox', phoneTab: false, module: 'email', emptyTitle: 'Your Gmail shows here.', emptyLine: 'Connect Gmail in a later step to read your own inbox here.' },
-  { id: 'replies', label: 'Replies', icon: 'replies', phoneTab: true, module: 'email', emptyTitle: 'No replies waiting.', emptyLine: 'Replies show here once Gmail is connected.' },
-  { id: 'drafts', label: 'Drafts', icon: 'drafts', phoneTab: true, module: 'email', emptyTitle: 'No drafts waiting.', emptyLine: 'Drafts show here once Gmail is connected. Nothing is ever sent from here.' },
+  { id: 'today', label: 'Today', icon: 'today', phoneTab: true, module: 'email', emptyTitle: 'Nothing needs you right now.', emptyLine: 'Today fills in after the Sheet import and the first Gmail sync: due follow-ups, new replies and drafts waiting.' },
+  { id: 'inbox', label: 'Inbox', icon: 'inbox', phoneTab: false, module: 'email', emptyTitle: 'Your inbox is empty.', emptyLine: 'Mail in your HumanKind Gmail shows here as it arrives. Only you see your inbox.' },
+  { id: 'replies', label: 'Replies', icon: 'replies', phoneTab: true, module: 'email', emptyTitle: 'No replies waiting.', emptyLine: 'Replies land here after each Gmail sync, labeled and summarized.' },
+  { id: 'drafts', label: 'Drafts', icon: 'drafts', phoneTab: true, module: 'email', emptyTitle: 'No drafts waiting.', emptyLine: 'Drafts come from Draft email on a brand page or from Claude. Nothing is ever sent from here.' },
   { id: 'pipeline', label: 'Pipeline', icon: 'pipeline', phoneTab: false, module: 'email', emptyTitle: 'No brands in motion yet.', emptyLine: 'Fills in after the Sheet import.' },
   { id: 'brands', label: 'Brands', icon: 'brands', phoneTab: true, module: 'email', emptyTitle: 'No brands yet.', emptyLine: 'Brands arrive with the Sheet import.' },
   { id: 'sponsors', label: 'Sponsors', icon: 'sponsors', phoneTab: false, module: 'email', emptyTitle: 'No sponsors yet.', emptyLine: 'Sponsors and the do-not-contact list arrive with the Sheet import.' },

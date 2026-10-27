@@ -300,8 +300,11 @@ export async function gmailStatusRoute(req, res, d = {}) {
     const { data: state } = await supabase.from('hk_gmail_sync_state').select('status, last_synced_at, history_id').eq('business_id', businessId).eq('user_id', uid).maybeSingle();
     const { data: drafts } = await supabase.from('hk_touches').select('id').eq('business_id', businessId).eq('state', 'drafted');
     const { data: unhandled } = await supabase.from('hk_replies').select('id').eq('business_id', businessId).eq('handled', false);
+    const { data: trackedTouches } = await supabase.from('hk_touches').select('gmail_thread_id').eq('business_id', businessId).neq('state', 'discarded').not('gmail_thread_id', 'is', null);
+    const { data: trackedReplies } = await supabase.from('hk_replies').select('gmail_thread_id').eq('business_id', businessId);
+    const tracked = new Set([...(trackedTouches || []), ...(trackedReplies || [])].map(r => r.gmail_thread_id).filter(Boolean)).size;
     const { data: prefs } = await supabase.from('hk_member_prefs').select('signature_text').eq('business_id', businessId).eq('user_id', uid).maybeSingle();
-    res.json({ mailbox: m ? { linked: true, state: m.state, email: m.grant.google_email, purposes: m.tether.purposes } : { linked: false, state: null, email: null, purposes: [] }, last_run: runs?.[0] || null, sync_state: state || null, badges: { drafts: (drafts || []).length, replies: (unhandled || []).length }, signature_text: prefs?.signature_text || null });
+    res.json({ mailbox: m ? { linked: true, state: m.state, email: m.grant.google_email, purposes: m.tether.purposes } : { linked: false, state: null, email: null, purposes: [] }, last_run: runs?.[0] || null, sync_state: state || null, badges: { drafts: (drafts || []).length, replies: (unhandled || []).length, tracked }, signature_text: prefs?.signature_text || null });
   } catch (e) { fail(res, e, 'gmail/status'); }
 }
 

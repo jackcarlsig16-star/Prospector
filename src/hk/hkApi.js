@@ -13,3 +13,4 @@ export async function hkFetch(businessId, path, { method = 'GET', body, query } 
 export const hkGet = (b, path, query) => hkFetch(b, path, { query });
 export const hkPost = (b, path, body) => hkFetch(b, path, { method: 'POST', body });
 export const hkPatch = (b, path, body) => hkFetch(b, path, { method: 'PATCH', body });
+export const hkDelete = (b, path) => hkFetch(b, path, { method: 'DELETE' });

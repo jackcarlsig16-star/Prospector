@@ -1,14 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import Button from '../../ui/Button';
 import Field from '../../ui/Field';
-import { hkPatch } from '../hkApi';
+import ToggleRow from '../../ui/ToggleRow';
+import { hkPatch, hkGet, hkDelete } from '../hkApi';
 import { relative } from '../hkSync';
+import { imagesDefault, setImagesDefault } from '../inbox/inboxPrefs';
 
 // hkos-gmail-connect-v1 G8 - Settings > Connections in the HK theme: one row per founder, the caller's own mailbox
 // state and Sync now, and the plain-text signature the server appends to drafts.
 export default function ConnectionsSettings({ businessId, shell, gmail, syncing, onSync, onOpenConnections, onGmailChanged }) {
   const [sig, setSig] = useState(gmail?.signature_text || '');
   const [state, setState] = useState('');
+  const [images, setImages] = useState(imagesDefault);
+  const [ignored, setIgnored] = useState(null);
+  const [ignoredError, setIgnoredError] = useState('');
+  const loadIgnored = async () => { try { setIgnored((await hkGet(businessId, '/inbox/ignore')).domains); } catch (e) { setIgnored([]); setIgnoredError(e.message); } };
+  useEffect(() => { loadIgnored(); }, [businessId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const toggleImages = v => { setImagesDefault(v); setImages(v); };
+  const unignore = async domain => { setIgnoredError(''); try { await hkDelete(businessId, `/inbox/ignore/${encodeURIComponent(domain)}`); await loadIgnored(); } catch (e) { setIgnoredError(e.message); } };
   useEffect(() => { setSig(gmail?.signature_text || ''); }, [gmail?.signature_text]);
   const me = shell?.me;
   const members = (shell?.members || []).filter(m => m.user_id);
@@ -40,6 +49,17 @@ export default function ConnectionsSettings({ businessId, shell, gmail, syncing,
         </Field>
         <div className="hk-note" data-hk-signature-preview>Preview: <em>Worth a 15-minute call to see if it makes sense?</em><br />{(sig || 'Thanks,\nJack').split('\n').map((l, i) => <span key={i}>{l}<br /></span>)}</div>
         <span style={{ display: 'inline-flex', gap: 10, alignItems: 'center' }}><Button variant="primary" onClick={save} data-hk-save-signature>Save signature</Button><span className="hk-meta" role="status">{state}</span></span>
+      </div>
+      <div className="hk-form" style={{ marginTop: 22, maxWidth: 520 }} data-hk-inbox-options>
+        <h3 className="hk-section-title" style={{ fontSize: 16 }}>Inbox options</h3>
+        <ToggleRow label="Show images by default" help="Off keeps remote images and tracking pixels blocked until you click Show images on a thread. Saved on this device only." checked={images} onChange={toggleImages} />
+        <div>
+          <span className="hk-meta">Ignored senders</span>
+          {ignoredError && <p className="hk-error" role="alert">{ignoredError}</p>}
+          {ignored === null ? <p className="hk-meta">Loading…</p> : !ignored.length ? <p className="hk-meta" data-hk-ignored-empty>None yet. Ignore a sender from the Inbox and its mail dims here.</p> : (
+            <ul className="hk-ignored" data-hk-ignored>{ignored.map(d => <li key={d.domain}><span>{d.domain}</span><Button size="sm" variant="tertiary" onClick={() => unignore(d.domain)} data-hk-unignore={d.domain}>Stop ignoring</Button></li>)}</ul>
+          )}
+        </div>
       </div>
     </section>
   );

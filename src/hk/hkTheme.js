@@ -217,6 +217,52 @@ ${PINNED} {
 .hk-theme .hk-palette__item { display:flex; align-items:center; gap:10px; width:100%; padding:9px 12px; border-radius:10px; font:500 14px var(--hk-font-body); color:var(--hk-cocoa); }
 .hk-theme .hk-palette__item[data-selected="true"] { background:var(--hk-sand); }
 .hk-theme .hk-palette__none { padding:10px 12px; color:var(--hk-muted); }
+/* hkos-inbox-v1 I3 - three panes on desktop, one at a time on the phone. */
+.hk-theme .hk-inbox { display:grid; grid-template-columns:minmax(300px, 380px) minmax(0, 1fr) 280px; gap:18px; align-items:start; }
+.hk-theme .hk-inbox__list { display:flex; flex-direction:column; gap:10px; min-width:0; }
+.hk-theme .hk-inbox__tools { display:flex; flex-direction:column; gap:8px; }
+.hk-theme .hk-inbox__search { display:flex; gap:8px; align-items:center; }
+.hk-theme .hk-inbox__search .hk-search-input { flex:1 1 auto; min-width:0; }
+.hk-theme .hk-inbox__rows { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; }
+.hk-theme .hk-inbox__row { display:flex; flex-direction:column; gap:3px; width:100%; text-align:left; padding:10px 12px 10px 14px; border-radius:var(--hk-radius-block); border-left:4px solid transparent; color:var(--hk-cocoa); }
+.hk-theme .hk-inbox__row:hover { background:var(--hk-sand); }
+.hk-theme .hk-inbox__row--on { background:var(--hk-cream); border-left-color:var(--hk-green); }
+.hk-theme .hk-inbox__row--dim .hk-inbox__from, .hk-theme .hk-inbox__row--dim .hk-inbox__subject { color:var(--hk-muted); font-weight:400; }
+.hk-theme .hk-inbox__row-top { display:flex; align-items:center; gap:8px; min-width:0; }
+.hk-theme .hk-inbox__dot { width:8px; height:8px; border-radius:999px; background:var(--hk-green); flex:none; }
+.hk-theme .hk-inbox__from { font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hk-theme .hk-inbox__row--unread .hk-inbox__from, .hk-theme .hk-inbox__row--unread .hk-inbox__subject { font-weight:700; }
+.hk-theme .hk-inbox__hint { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:40%; }
+.hk-theme .hk-inbox__subject { font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hk-theme .hk-inbox__snippet { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hk-theme .hk-inbox__chips { display:flex; gap:6px; align-items:center; flex-wrap:wrap; margin-top:2px; }
+.hk-theme .hk-inbox__foot { margin:8px 4px 0; }
+.hk-theme .hk-inbox__thread { min-width:0; display:flex; flex-direction:column; gap:12px; }
+.hk-theme .hk-inbox__thread--empty { padding:24px 0; }
+.hk-theme .hk-inbox__thread-head { display:flex; flex-direction:column; gap:8px; }
+.hk-theme .hk-inbox__subject-title { margin:0; font:600 20px var(--hk-font-display); color:var(--hk-cocoa); }
+.hk-theme .hk-inbox__actions { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+.hk-theme .hk-inbox__messages { display:flex; flex-direction:column; gap:10px; }
+.hk-theme .hk-inbox__strip { margin:0; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.hk-theme .hk-inbox__older { align-self:flex-start; }
+.hk-theme .hk-inbox__msg { border:1px solid var(--hk-line); border-radius:var(--hk-radius-block); background:var(--hk-surface); overflow:hidden; }
+.hk-theme .hk-inbox__msg-head { display:flex; gap:10px; align-items:center; width:100%; text-align:left; padding:10px 14px; color:var(--hk-cocoa); }
+.hk-theme .hk-inbox__msg--closed .hk-inbox__msg-head { background:var(--hk-cream); }
+.hk-theme .hk-inbox__msg-from { font-weight:600; white-space:nowrap; }
+.hk-theme .hk-inbox__msg-to { flex:1 1 auto; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hk-theme .hk-inbox__frame { display:block; width:100%; height:min(560px, 60vh); border:0; border-top:1px solid var(--hk-line); background:#fff; }
+.hk-theme .hk-inbox__text { padding:12px 14px; margin:0; border-top:1px solid var(--hk-line); }
+.hk-theme .hk-inbox__attachments { margin:0; padding:8px 14px 12px; list-style:none; display:flex; gap:12px; flex-wrap:wrap; border-top:1px solid var(--hk-line); }
+.hk-theme .hk-inbox__panel { display:flex; flex-direction:column; gap:10px; padding:14px 16px; border-radius:var(--hk-radius-card); background:var(--hk-surface); box-shadow:var(--hk-shadow-card); min-width:0; }
+.hk-theme .hk-inbox__panel--empty { box-shadow:none; background:transparent; }
+.hk-theme .hk-inbox__panel-title { margin:0; font:600 18px var(--hk-font-display); color:var(--hk-cocoa); }
+.hk-theme .hk-inbox__panel-actions { display:flex; gap:8px; flex-wrap:wrap; }
+.hk-theme .hk-inbox__panel .hk-banner { margin:0; }
+.hk-theme .hk-inbox--phone, .hk-theme.hk-shell--phone .hk-inbox { grid-template-columns:minmax(0, 1fr); }
+.hk-theme.hk-shell--phone .hk-inbox__frame { height:min(420px, 55vh); }
+.hk-theme .hk-ignored { list-style:none; margin:8px 0 0; padding:0; display:flex; flex-direction:column; gap:6px; }
+.hk-theme .hk-ignored li { display:flex; gap:10px; align-items:center; }
+
 `;
 
 export function ensureHkTheme() {

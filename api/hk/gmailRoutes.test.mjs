@@ -208,13 +208,13 @@ test('G7 cap: at 60 labels today a reply is stored as other with the snippet and
 test('status route: mailbox state, last run, badges (drafts awaiting, replies unhandled), signature; reply patch logs an override and handled', async () => {
   fresh();
   sb.db.hk_touches.push({ id: 't1', business_id: HK, brand_id: B.yoga, sender_user_id: JACK, channel: 'email', kind: 'cold', state: 'drafted', created_by: 'user', created_at: '2026-10-25T00:00:00Z' });
-  sb.db.hk_replies.push({ id: 'r1', business_id: HK, brand_id: B.yoga, touch_id: 't1', gmail_message_id: 'x', from_name: 'Ana', from_domain: 'harboryoga.invalid', from_email: REPLY_ADDRESS, received_at: '2026-10-26T00:00:00Z', label: 'other', handled: false, created_at: '2026-10-26T00:00:00Z' });
+  sb.db.hk_replies.push({ id: 'r1', business_id: HK, brand_id: B.yoga, touch_id: 't1', gmail_message_id: 'x', from_name: 'Ana', from_domain: 'harboryoga.invalid', from_email: REPLY_ADDRESS, received_at: '2026-10-26T00:00:00Z', label: 'other', handled: false, gmail_thread_id: 'th-x', created_at: '2026-10-26T00:00:00Z' });
   const s = await call(R.gmailStatusRoute, reqOf({ method: 'GET' }));
-  assert.deepEqual([s.body.mailbox.linked, s.body.mailbox.state, s.body.mailbox.email, s.body.badges, s.body.signature_text], [true, 'ok', MAILBOX, { drafts: 1, replies: 1 }, 'Jack\nCo-founder, HumanKind']);
+  assert.deepEqual([s.body.mailbox.linked, s.body.mailbox.state, s.body.mailbox.email, s.body.badges, s.body.signature_text], [true, 'ok', MAILBOX, { drafts: 1, replies: 1, tracked: 1 }, 'Jack\nCo-founder, HumanKind']);
   const p = await call(R.patchReplyRoute, reqOf({ method: 'PATCH', params: { id: 'r1' }, body: { label: 'pricing', handled: true } }));
   assert.deepEqual([p.code, p.body.reply.label, p.body.reply.handled, p.body.reply.urgent, 'from_email' in p.body.reply], [200, 'pricing', true, true, false]);
   assert.deepEqual(sb.db.hk_events.map(e => e.action), ['reply_label_override', 'reply_handled']);
-  assert.deepEqual((await call(R.gmailStatusRoute, reqOf({ method: 'GET' }))).body.badges, { drafts: 1, replies: 0 });
+  assert.deepEqual((await call(R.gmailStatusRoute, reqOf({ method: 'GET' }))).body.badges, { drafts: 1, replies: 0, tracked: 1 });
   const sig = await call(R.patchSignatureRoute, reqOf({ method: 'PATCH', body: { signature_text: 'Jack\nHumanKind' } }));
   assert.equal(sig.body.signature_text, 'Jack\nHumanKind');
   assert.equal((await call(R.patchSignatureRoute, reqOf({ method: 'PATCH', body: { signature_text: 'call 312-555-0142' } }))).code, 400);

@@ -23,6 +23,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
   const [now, setNow] = useState(() => new Date());
   const [gmail, setGmail] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  const [inboxUnread, setInboxUnread] = useState(null);
 
   ensureHkTheme();
 
@@ -86,7 +87,9 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
     return () => clearInterval(t);
   }, []);
 
-  const screens = useMemo(() => visibleScreens(shell?.modules || HK_MODULES).map(s => (s.id === 'drafts' ? { ...s, count: gmail?.badges?.drafts || 0 } : s.id === 'replies' ? { ...s, count: gmail?.badges?.replies || 0 } : s)), [shell, gmail]);
+  // hkos-inbox-v1 - the Inbox badge is the unread count from the last Inbox page 1 this session read (0 Gmail cost
+  // until the screen is opened).
+  const screens = useMemo(() => visibleScreens(shell?.modules || HK_MODULES).map(s => (s.id === 'drafts' ? { ...s, count: gmail?.badges?.drafts || 0 } : s.id === 'replies' ? { ...s, count: gmail?.badges?.replies || 0 } : s.id === 'inbox' ? { ...s, count: inboxUnread || 0 } : s)), [shell, gmail, inboxUnread]);
   const options = useMemo(() => ownerOptions(shell?.me, shell?.members), [shell]);
   const ownerValue = options.some(o => o.id === owner) ? owner : 'me';
   const pickOwner = id => {
@@ -109,7 +112,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
     ? <p className="hk-meta" role="alert">{loadError}</p>
     : !shell
       ? <p className="hk-meta">Loading the Sales OS…</p>
-      : <HkScreen screen={current} section={nav.section} brandId={nav.brandId || null} businessId={business.id} owner={ownerValue} compact={compact} shell={shell} now={now} gmail={gmail} syncing={syncing} onSync={() => runSync('manual')} onGmailChanged={loadGmail} onOpenConnections={onOpenConnections} onSection={s => go('settings', s)} onOpenAdmin={onOpenAdmin} onOpenBrand={id => go('brands', null, id)} />;
+      : <HkScreen screen={current} section={nav.section} brandId={nav.brandId || null} businessId={business.id} owner={ownerValue} compact={compact} shell={shell} now={now} gmail={gmail} syncing={syncing} onSync={() => runSync('manual')} onGmailChanged={loadGmail} onOpenConnections={onOpenConnections} onInboxUnread={setInboxUnread} onSection={s => go('settings', s)} onOpenAdmin={onOpenAdmin} onOpenBrand={id => go('brands', null, id)} />;
 
   const avatar = shell && <AvatarMenu me={shell.me} paletteIndex={mine?.palette_index || 1} size={compact ? 30 : 34} onBack={onAllWorkspaces} onSignOut={signOut} />;
   const syncPill = <SyncPill state={syncPillState(gmail, syncing)} onSync={() => runSync('manual')} onConnections={onOpenConnections} />;

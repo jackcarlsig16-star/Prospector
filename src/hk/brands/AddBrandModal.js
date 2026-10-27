@@ -11,8 +11,10 @@ import { hkPost } from '../hkApi';
 // dialog chrome is the shell's own (hk-modal) - flagged in the Stage 3 report.
 const EMPTY = { name: '', domain: '', category: '', is_local: false, neighborhood: '', notes: '', challenge_idea: '' };
 
-export default function AddBrandModal({ businessId, members, onClose, onSaved, onOpenMatch }) {
-  const [form, setForm] = useState(EMPTY);
+// initial prefills the form (Inbox > Track as brand); onSave replaces the POST /brands call and gets the body plus the
+// claim flag (inbox/track makes the brand and links the thread in one step).
+export default function AddBrandModal({ businessId, members, onClose, onSaved, onOpenMatch, initial = null, title = 'Add brand', onSave = null }) {
+  const [form, setForm] = useState(() => ({ ...EMPTY, ...(initial || {}) }));
   const [verdict, setVerdict] = useState(null);
   const [checking, setChecking] = useState(false);
   const [force, setForce] = useState(false);
@@ -47,7 +49,7 @@ export default function AddBrandModal({ businessId, members, onClose, onSaved, o
     setBusy(true); setError('');
     try {
       const body = { name: form.name.trim(), domain: form.domain.trim() || undefined, category: form.category.trim() || undefined, is_local: form.is_local, neighborhood: form.neighborhood.trim() || undefined, notes: form.notes.trim() || undefined, challenge_idea: form.challenge_idea.trim() || undefined, claim, force_duplicate: force || undefined };
-      const { brand } = await hkPost(businessId, '/brands', body);
+      const { brand } = onSave ? await onSave(body) : await hkPost(businessId, '/brands', body);
       onSaved(brand);
     } catch (e) {
       if (e.verdict) { setVerdict(e.verdict); checked.current = `${form.name.trim()}|${form.domain.trim()}`; }
@@ -59,7 +61,7 @@ export default function AddBrandModal({ businessId, members, onClose, onSaved, o
     <>
       <div className="hk-backdrop" onClick={onClose} aria-hidden="true" />
       <div className="hk-modal" role="dialog" aria-modal="true" aria-labelledby="hk-add-brand-title" data-hk-add-brand>
-        <h2 id="hk-add-brand-title" className="hk-modal__title">Add brand</h2>
+        <h2 id="hk-add-brand-title" className="hk-modal__title">{title}</h2>
         <form className="hk-form" onSubmit={e => { e.preventDefault(); if (rule.canSave) save(false); }}>
           <Field label="Name" htmlFor="hk-brand-name">
             <input id="hk-brand-name" className="ui-input" value={form.name} autoFocus maxLength={160} onChange={e => set('name', e.target.value)} onBlur={check} />

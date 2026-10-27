@@ -19,6 +19,7 @@ export function syncPillState(gmail, syncing = false, now = Date.now()) {
   const last = gmail.sync_state?.last_synced_at || (gmail.last_run?.status === 'ok' ? gmail.last_run.finished_at : null);
   if (gmail.last_run?.status === 'error' && !last) return { tone: 'amber', text: 'Gmail sync failed', action: 'sync' };
   if (!last) return { tone: 'grey', text: 'Gmail linked, not synced yet', action: 'sync' };
+  if (gmail.badges?.tracked === 0) return { tone: 'green', text: 'Gmail synced · nothing tracked yet', action: 'sync' };
   return { tone: 'green', text: `Gmail synced ${relative(last, now)}`, action: 'sync' };
 }
 

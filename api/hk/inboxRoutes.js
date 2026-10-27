@@ -100,6 +100,7 @@ export async function openThreadRoute(req, res, d = {}) {
   const businessId = req.params.businessId, uid = me(req), id = String(req.params.id || '');
   try {
     const key = `${businessId}:${uid}:thread:${id}`;
+    if (req.query?.refresh === '1') inboxCache.dropUser(businessId, uid);
     const hit = inboxCache.get(key, now().getTime());
     if (hit) { member(req); return res.json({ ...hit.value, from_cache: true }); }
     const token = await ownToken(req, res, d); if (!token) return;
@@ -176,7 +177,7 @@ export async function trackRoute(req, res, d = {}) {
     let thread;
     try { thread = await D.gmail.getThreadMeta(token, threadId); } catch (e) { if (e instanceof GmailError && e.status === 404) throw new HkError(404, 'that thread is not in your mailbox'); throw e; }
     if (!latestInbound(thread, owner)) throw new HkError(409, 'that thread has no message from the brand yet', { no_inbound: true });
-    const { data: brand, verdict } = await createBrand(D.supabase, { businessId, userId: uid, body: { name: body.name, domain: body.domain ? domainOf(body.domain) : null, claim: body.claim === true, force_duplicate: body.force_duplicate === true, source: 'user_supplied' }, now: D.now });
+    const { data: brand, verdict } = await createBrand(D.supabase, { businessId, userId: uid, body: { ...body, domain: body.domain ? domainOf(body.domain) : null, claim: body.claim === true, force_duplicate: body.force_duplicate === true, source: 'user_supplied' }, now: D.now });
     const row = await linkThread(D, { businessId, uid, brand, threadId, token, owner });
     res.status(201).json({ brand: brandDetail(brand), verdict, reply: replyRow(row) });
   } catch (e) { fail(res, e, 'inbox/track'); }
