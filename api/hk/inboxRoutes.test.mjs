@@ -112,6 +112,26 @@ test('I1 cache: a repeat list is served for 120 s with 0 Gmail calls; refresh=1 
   assert.deepEqual(writes, []);
 });
 
+test('I1 limit + metadata cache: a small page, then Brands only / link reuse the metadata page 1 fetched (1 list call, 0 metadata gets)', async () => {
+  fresh();
+  const p1 = await call(R.listThreadsRoute, reqOf({ query: { tab: 'inbox', limit: '5' } }));
+  assert.equal(p1.body.threads.length, 5); assert.equal(p1.body.next_page_token, '5'); assert.equal(p1.body.gmail_calls, 6);
+  assert.equal(gmailCallsFor('getThreadMeta'), 5);
+  const brands = await call(R.listThreadsRoute, reqOf({ query: { tab: 'brands', limit: '5' } }));
+  assert.equal(gmailCallsFor('listThreads'), 2); assert.equal(gmailCallsFor('getThreadMeta'), 5, 'no second metadata get for the same threads'); assert.equal(brands.body.gmail_calls, 1);
+  assert.deepEqual(brands.body.threads.map(t => t.thread_id).sort(), ['th-match', 'th-tracked'], 'one page scanned when limit is given; the Load more token pages on'); assert.equal(brands.body.next_page_token, '5');
+  const lk = await call(R.linkThreadRoute, reqOf({ method: 'POST', params: { id: 'th-match' }, body: { brand_id: ID.run } }));
+  assert.equal(lk.code, 201); assert.equal(gmailCallsFor('getThreadMeta'), 5, 'link reused the cached metadata');
+  const after = await call(R.listThreadsRoute, reqOf({ query: { tab: 'brands', limit: '5' } }));
+  assert.equal(after.body.from_cache, false); assert.equal(gmailCallsFor('getThreadMeta'), 5, 'a link drops the list cache but keeps thread metadata'); assert.equal(after.body.threads.find(t => t.thread_id === 'th-match').chip.kind, 'tracked');
+  await call(R.listThreadsRoute, reqOf({ query: { tab: 'inbox', limit: '5', refresh: '1' } }));
+  assert.equal(gmailCallsFor('getThreadMeta'), 10, 'Refresh re-reads everything');
+  assert.equal((await call(R.listThreadsRoute, reqOf({ query: { tab: 'inbox', limit: '2' } }))).body.threads.length, 5, 'limit floors at 5');
+  const full = await call(R.listThreadsRoute, reqOf({ query: { tab: 'brands' } }));
+  assert.equal(full.body.next_page_token, null, 'without limit the Brands page keeps scanning');
+  assert.deepEqual(writes.map(w => w[1]), ['hk_replies', 'hk_events']);
+});
+
 test('I1 tabs: brands = inbox filtered to tracked + matches; sent and drafts by label; a thread gone from Gmail is skipped', async () => {
   fresh();
   const brands = await call(R.listThreadsRoute, reqOf({ query: { tab: 'brands' } }));
@@ -248,6 +268,7 @@ test('I1 track: the Add brand rules (sponsor / dnc refuse, duplicate needs force
   assert.equal(forced.code, 201); assert.equal(sb.db.hk_brands.find(b => b.name === 'Bluefin Runners').owner_user_id, JACK);
   assert.equal((await call(R.trackRoute, reqOf({ method: 'POST', body: { name: 'X', thread_id: 'th-new' } }))).code, 409, 'already tracked');
   assert.equal((await call(R.trackRoute, reqOf({ method: 'POST', body: { name: 'X' } }))).code, 400, 'thread_id required');
+  assert.equal((await call(R.trackRoute, reqOf({ method: 'POST', body: { name: 'Digits Brand', thread_id: '1999999999999999' } }))).code, 404, 'a digit-heavy real-looking id is looked up, not refused as a phone number');
   assert.equal(claudeCalls, 0);
 });
 

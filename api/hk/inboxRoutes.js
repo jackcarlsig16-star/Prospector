@@ -3,7 +3,7 @@
 // no fallback). Reading writes nothing: no table, no event, no log. The only writes are link / track /
 // ignore. Addresses never leave the server except inside a message's own text / html body, which the browser gets only
 // from the owner's own mailbox and sanitizes before rendering. No send path, no mark-read, no label writes.
-import { getSupabase, HkError, fail, me, text, domainOf, logEvent, replyRow, brandDetail, brandSummary, liveBrands, brandById, sponsorsNichesOf, canContact, TEAM_DOMAINS } from './hkShared.js';
+import { getSupabase, HkError, fail, me, domainOf, logEvent, replyRow, brandDetail, brandSummary, liveBrands, brandById, sponsorsNichesOf, canContact, TEAM_DOMAINS } from './hkShared.js';
 import { roleAtLeast } from '../../src/constants/roles.js';
 import { gmailClient, GmailError } from './gmailClient.js';
 import { threadRow, messageView, latestInbound, senderOf, chipFor } from './inboxRules.js';
@@ -26,7 +26,8 @@ const cache = new Map();
 export const inboxCache = {
   get: (key, nowMs) => { const hit = cache.get(key); if (!hit) return null; if (nowMs - hit.at > CACHE_MS) { cache.delete(key); return null; } return hit; },
   set: (key, value, nowMs) => { cache.set(key, { at: nowMs, value }); },
-  dropUser: (businessId, userId) => { for (const k of [...cache.keys()]) if (k.startsWith(`${businessId}:${userId}:`)) cache.delete(k); },
+  // Link / track / ignore change the matching, not Gmail: list and thread entries go, thread metadata stays. Refresh drops all.
+  dropUser: (businessId, userId, { all = false } = {}) => { for (const k of [...cache.keys()]) if (k.startsWith(`${businessId}:${userId}:`) && (all || !k.includes(':meta:'))) cache.delete(k); },
   clear: () => cache.clear(),
   size: () => cache.size,
 };
@@ -54,6 +55,16 @@ async function matchContext(supabase, businessId, uid, ownerAddress) {
 
 async function inGroups(ids, size, fn) { const out = []; for (let i = 0; i < ids.length; i += size) out.push(...(await Promise.all(ids.slice(i, i + size).map(fn)))); return out; }
 
+// One threads.get (metadata) per thread per 120 s: Brands only, link and track reuse what the Inbox page just fetched.
+async function threadMeta({ gmail, now }, businessId, uid, token, id) {
+  const key = `${businessId}:${uid}:meta:${id}`;
+  const hit = inboxCache.get(key, now().getTime());
+  if (hit) return hit.value;
+  const th = await gmail.getThreadMeta(token, id);
+  inboxCache.set(key, th, now().getTime());
+  return th;
+}
+
 // GET /inbox/threads?tab=inbox|brands|sent|drafts&q=&pageToken=&refresh=1
 export async function listThreadsRoute(req, res, d = {}) {
   const { supabase, gmail, now } = deps0(d);
@@ -62,8 +73,12 @@ export async function listThreadsRoute(req, res, d = {}) {
     const tab = q.tab && TABS[q.tab] ? q.tab : 'inbox';
     const search = typeof q.q === 'string' ? q.q.trim().slice(0, 200) : '';
     const pageToken = typeof q.pageToken === 'string' && q.pageToken ? q.pageToken : null;
-    const key = `${businessId}:${uid}:list:${tab}:${search}:${pageToken || ''}`;
-    if (q.refresh === '1') inboxCache.dropUser(businessId, uid);
+    // limit (5..50) shrinks a page and, for Brands only, caps the scan at that one page (the client's Load more pages on);
+    // without it a Brands page scans up to BRANDS_SCAN_MAX threads.
+    const limit = q.limit ? Math.min(PAGE_SIZE, Math.max(5, Number(q.limit) || PAGE_SIZE)) : PAGE_SIZE;
+    const scanMax = q.limit ? limit : BRANDS_SCAN_MAX;
+    const key = `${businessId}:${uid}:list:${tab}:${search}:${pageToken || ''}:${limit}`;
+    if (q.refresh === '1') inboxCache.dropUser(businessId, uid, { all: true });
     const hit = inboxCache.get(key, now().getTime());
     if (hit) { member(req); return res.json({ ...hit.value, from_cache: true }); }
     const token = await ownToken(req, res, d); if (!token) return;
@@ -71,13 +86,14 @@ export async function listThreadsRoute(req, res, d = {}) {
     const ctx = await matchContext(supabase, businessId, uid, owner);
     const rows = []; let next = pageToken, scanned = 0, calls = 0, listCalls = 0;
     do {
-      const page = await gmail.listThreads(token, { labelIds: TABS[tab], q: search || null, pageToken: next, maxResults: PAGE_SIZE }); listCalls++;
+      const page = await gmail.listThreads(token, { labelIds: TABS[tab], q: search || null, pageToken: next, maxResults: limit }); listCalls++;
       const ids = (page?.threads || []).map(t => t.id);
-      const threads = await inGroups(ids, META_BATCH, id => gmail.getThreadMeta(token, id).catch(e => { if (e instanceof GmailError && e.status === 404) return null; throw e; }));
-      calls += ids.length; scanned += ids.length;
+      const nowMs = now().getTime();
+      calls += ids.filter(id => !inboxCache.get(`${businessId}:${uid}:meta:${id}`, nowMs)).length; scanned += ids.length;
+      const threads = await inGroups(ids, META_BATCH, id => threadMeta({ gmail, now }, businessId, uid, token, id).catch(e => { if (e instanceof GmailError && e.status === 404) return null; throw e; }));
       for (const th of threads) if (th) { const row = threadRow(th, ctx); if (tab !== 'brands' || row.chip.kind === 'tracked' || row.chip.kind === 'matches') rows.push(row); }
       next = page?.nextPageToken || null;
-    } while (tab === 'brands' && next && rows.length < PAGE_SIZE && scanned < BRANDS_SCAN_MAX);
+    } while (tab === 'brands' && next && rows.length < limit && scanned < scanMax);
     const value = { tab, threads: rows, next_page_token: next, unread: tab === 'inbox' && !pageToken ? rows.filter(r => r.unread).length : null, scanned, gmail_calls: listCalls + calls, fetched_at: now().toISOString() };
     inboxCache.set(key, value, now().getTime());
     res.json({ ...value, from_cache: false });
@@ -100,13 +116,13 @@ export async function openThreadRoute(req, res, d = {}) {
   const businessId = req.params.businessId, uid = me(req), id = String(req.params.id || '');
   try {
     const key = `${businessId}:${uid}:thread:${id}`;
-    if (req.query?.refresh === '1') inboxCache.dropUser(businessId, uid);
+    if (req.query?.refresh === '1') inboxCache.dropUser(businessId, uid, { all: true });
     const hit = inboxCache.get(key, now().getTime());
     if (hit) { member(req); return res.json({ ...hit.value, from_cache: true }); }
     const token = await ownToken(req, res, d); if (!token) return;
     const owner = await ownerEmail(deps0(d), businessId, uid);
     let thread;
-    try { thread = await gmail.getThreadFull(token, id); } catch (e) { if (e instanceof GmailError && e.status === 404) throw new HkError(404, 'that thread is not in your mailbox'); throw e; }
+    try { thread = await gmail.getThreadFull(token, id); } catch (e) { if (e instanceof GmailError && (e.status === 404 || e.status === 400)) throw new HkError(404, 'that thread is not in your mailbox'); throw e; }
     const ctx = await matchContext(supabase, businessId, uid, owner);
     const messages = (thread?.messages || []).map(m => messageView(m, { ownerEmail: owner }));
     const inbound = latestInbound(thread, owner);
@@ -128,7 +144,7 @@ async function linkThread({ supabase, gmail, call, now }, { businessId, uid, bra
   const { data: touchHits } = await supabase.from('hk_touches').select('id, brand_id').eq('business_id', businessId).eq('gmail_thread_id', threadId).neq('state', 'discarded');
   if (touchHits?.length) throw new HkError(409, 'that thread is already tracked', { already_tracked: touchHits[0].brand_id });
   let thread;
-  try { thread = await gmail.getThreadMeta(token, threadId); } catch (e) { if (e instanceof GmailError && e.status === 404) throw new HkError(404, 'that thread is not in your mailbox'); throw e; }
+  try { thread = await threadMeta({ gmail, now }, businessId, uid, token, threadId); } catch (e) { if (e instanceof GmailError && (e.status === 404 || e.status === 400)) throw new HkError(404, 'that thread is not in your mailbox'); throw e; }
   const msg = latestInbound(thread, owner);
   if (!msg) throw new HkError(409, 'that thread has no message from the brand yet', { no_inbound: true });
   const sender = senderOf(header(msg, 'From'));
@@ -169,13 +185,15 @@ export async function trackRoute(req, res, d = {}) {
   const D = deps0(d);
   const businessId = req.params.businessId, uid = me(req), body = req.body || {};
   try {
-    const threadId = text(body.thread_id, 64, 'thread_id', { required: true });
+    // Gmail thread ids are hex and often digit-heavy, so they skip the free-text (phone) guard.
+    const threadId = typeof body.thread_id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(body.thread_id) ? body.thread_id : null;
+    if (!threadId) throw new HkError(400, 'thread_id is required');
     const token = await ownToken(req, res, d); if (!token) return;
     const owner = await ownerEmail(D, businessId, uid);
     const { data: existing } = await D.supabase.from('hk_replies').select('brand_id').eq('business_id', businessId).eq('gmail_thread_id', threadId);
     if (existing?.length) throw new HkError(409, 'that thread is already tracked', { already_tracked: existing[0].brand_id });
     let thread;
-    try { thread = await D.gmail.getThreadMeta(token, threadId); } catch (e) { if (e instanceof GmailError && e.status === 404) throw new HkError(404, 'that thread is not in your mailbox'); throw e; }
+    try { thread = await threadMeta(D, businessId, uid, token, threadId); } catch (e) { if (e instanceof GmailError && (e.status === 404 || e.status === 400)) throw new HkError(404, 'that thread is not in your mailbox'); throw e; }
     if (!latestInbound(thread, owner)) throw new HkError(409, 'that thread has no message from the brand yet', { no_inbound: true });
     const { data: brand, verdict } = await createBrand(D.supabase, { businessId, userId: uid, body: { ...body, domain: body.domain ? domainOf(body.domain) : null, claim: body.claim === true, force_duplicate: body.force_duplicate === true, source: 'user_supplied' }, now: D.now });
     const row = await linkThread(D, { businessId, uid, brand, threadId, token, owner });

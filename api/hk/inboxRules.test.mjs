@@ -18,6 +18,15 @@ test('senderOf keeps a display name and a domain, never the address; a bare addr
   assert.equal(senderOf('').name, 'Unknown');
 });
 
+test('a bare @ in a display name, subject or snippet reads as "at" (the "@" rule is literal)', () => {
+  assert.equal(senderOf('"Jane @ Acme" <jane@acme.invalid>').name, 'Jane at Acme');
+  assert.deepEqual(recipientNames('"Sam @ Bluefin" <sam@bluefin.invalid>', OWNER), ['Sam at Bluefin']);
+  const th = { id: 'th-at', messages: [msg('m1', { from: '"Jane @ Acme" <jane@acme.invalid>', subject: 'Follow @acmeruns this fall', snippet: 'Tag us @acmeruns or write jane@acme.invalid' })] };
+  const row = threadRow(th, ctx());
+  assert.equal(row.subject, 'Follow at acmeruns this fall'); assert.equal(row.snippet, 'Tag us at acmeruns or write [email removed]');
+  assert.ok(!JSON.stringify(row).includes('@'));
+});
+
 test('fromHint is the role word in the display name, else the domain', () => {
   assert.equal(fromHint('Rumpl Marketing', 'rumpl.invalid'), 'Marketing');
   assert.equal(fromHint('Sam Lee, Co-founder', 'bluefin.invalid'), 'Co-founder');

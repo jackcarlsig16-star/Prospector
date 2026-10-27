@@ -10,6 +10,10 @@ export const CHIP_KINDS = ['tracked', 'matches', 'untracked', 'team', 'not_track
 export const BULK_LOCAL_PARTS = /^(?:no-?reply|do-?not-?reply|notifications?|newsletters?)(?:[-+._].*)?$/i;
 const ROLE_WORDS = ['co-founder', 'founder', 'ceo', 'owner', 'marketing', 'partnerships', 'team', 'support', 'sales', 'press', 'events', 'community', 'brand', 'studio', 'hello', 'info'];
 
+// The inbox's "@" rule is literal: after the address scrub, a bare @ ("Jane @ Acme", "@handle") reads as "at".
+export const noAt = s => String(s == null ? '' : s).replace(/\s*@\s*/g, ' at ').replace(/\s{2,}/g, ' ').trim();
+const clean = (v, max) => noAt(cleanText(v, max));
+
 const lastOf = arr => (arr && arr.length ? arr[arr.length - 1] : null);
 const dateOf = msg => { const d = header(msg, 'Date'); const t = d ? Date.parse(d) : NaN; return !Number.isNaN(t) ? new Date(t).toISOString() : msg?.internalDate ? new Date(Number(msg.internalDate)).toISOString() : null; };
 
@@ -18,7 +22,7 @@ const dateOf = msg => { const d = header(msg, 'Date'); const t = d ? Date.parse(
 export function senderOf(fromHeader) {
   const a = parseAddress(fromHeader);
   const local = a.email ? a.email.slice(0, a.email.lastIndexOf('@')) : null;
-  return { name: cleanText(a.name || a.domain || 'Unknown', 120), domain: a.domain, local, email: a.email };
+  return { name: clean(a.name || a.domain || 'Unknown', 120), domain: a.domain, local, email: a.email };
 }
 
 export function fromHint(name, domain) {
@@ -39,7 +43,7 @@ export function splitAddresses(value) {
   if (cur.trim()) out.push(cur);
   return out.map(s => s.trim()).filter(Boolean);
 }
-export const recipientNames = (value, ownerEmail) => splitAddresses(value).map(parseAddress).map(a => (ownerEmail && a.email === String(ownerEmail).toLowerCase() ? 'you' : cleanText(a.name || a.domain || 'Unknown', 120)));
+export const recipientNames = (value, ownerEmail) => splitAddresses(value).map(parseAddress).map(a => (ownerEmail && a.email === String(ownerEmail).toLowerCase() ? 'you' : clean(a.name || a.domain || 'Unknown', 120)));
 
 export const isBulk = (local, listUnsubscribe) => !!listUnsubscribe || (!!local && BULK_LOCAL_PARTS.test(local));
 
@@ -70,8 +74,8 @@ export function threadRow(thread, ctx) {
     from_domain: sender.domain,
     from_hint: fromHint(sender.name, sender.domain),
     date: dateOf(latest),
-    subject: cleanText(header(msgs[0] || latest, 'Subject') || '(no subject)', 200),
-    snippet: cleanText(latest.snippet || '', SNIPPET_MAX),
+    subject: clean(header(msgs[0] || latest, 'Subject') || '(no subject)', 200),
+    snippet: clean(latest.snippet || '', SNIPPET_MAX),
     message_count: msgs.length,
     has_attachments: msgs.some(m => /^multipart\/mixed/i.test(m.payload?.mimeType || '')),
     chip: chipFor({ threadId: thread.id, sender, listUnsubscribe: header(latest, 'List-Unsubscribe'), ...ctx }),
@@ -85,7 +89,7 @@ export function partsOf(payload) {
   const walk = p => {
     if (!p) return;
     const mime = (p.mimeType || '').toLowerCase();
-    if (p.filename) out.attachments.push({ name: cleanText(p.filename, 160), size: Number(p.body?.size) || 0 });
+    if (p.filename) out.attachments.push({ name: clean(p.filename, 160), size: Number(p.body?.size) || 0 });
     else if (mime === 'text/plain' && out.text == null && p.body?.data) out.text = decodeBody(p.body.data);
     else if (mime === 'text/html' && out.html == null && p.body?.data) out.html = decodeBody(p.body.data);
     for (const c of p.parts || []) walk(c);
@@ -107,7 +111,7 @@ export function messageView(msg, { ownerEmail = null } = {}) {
     to_names: recipientNames(header(msg, 'To'), ownerEmail),
     cc_names: recipientNames(header(msg, 'Cc'), ownerEmail),
     date: dateOf(msg),
-    subject: cleanText(header(msg, 'Subject') || '', 200),
+    subject: clean(header(msg, 'Subject') || '', 200),
     unread: (msg.labelIds || []).includes('UNREAD'),
     text: parts.text,
     html: parts.html,
