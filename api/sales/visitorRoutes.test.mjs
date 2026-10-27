@@ -59,6 +59,9 @@ const unique = {
 const setup = (extra, v = visitors()) => { const restore = installApolloFixture({}, v, null, PEOPLE); const sb = fakeSupabase(seed(extra), { unique }); return { sb, restore }; };
 const targets = sb => sb.db.sales_targets.filter(t => t.business_id === B && t.id !== T.quarry);
 const noAddress = sb => assert.ok(!ADDRESS.test(JSON.stringify([sb.db.sales_people, sb.db.sales_targets, sb.db.sales_signals])), 'no address in any stored row');
+// The phone marker (555) is probed on the human-text fields only: ids are random uuids and a uuid can contain "555"
+// (the flake fixed in Stage 4 - it was never shared state).
+const humanText = rows => JSON.stringify(rows.map(r => [r.name, r.title, r.note, r.location, r.evidence, r.research_notes]));
 
 test('V1 in the pull: Nimbus (P1 US 500+) and Ridgeline (P2 US 500+) and Cedar (P1 contact page) become employer targets with visit_id, source web_visit, channel website_visit, evidence; their signals read accepted / auto / decided_by null; Harbor (partner) and Quarry (Upside target) only attach; Sizeless (P3) waits', async () => {
   const { sb, restore } = setup();
@@ -92,8 +95,8 @@ test('V2b: one domain-scoped api_search per created company with a domain, throu
     const nimbus = targets(sb).find(t => t.name === 'Nimbus Freight');
     const people = sb.db.sales_people.filter(p => p.target_id === nimbus.id);
     assert.deepEqual(people.map(p => [p.name, p.title, p.apollo_person_id, p.source_kind, p.company_type]), [['Larry F.', 'Chief People Officer', 'ap-1', 'web_visit', 'target'], ['Mona Q.', 'VP People', 'ap-2', 'web_visit', 'target'], ['Ravi S.', 'Head of Total Rewards', 'ap-3', 'web_visit', 'target']]);
-    assert.ok(people.every(p => p.visit_id === nimbus.visit_id && /reveal to see full name/.test(p.note)));
-    assert.ok(people.every(p => !('email' in p) && !('phone' in p)) && !ADDRESS.test(JSON.stringify(people)) && !/555/.test(JSON.stringify(people)));
+    assert.ok(people.every(p => p.visit_id === nimbus.visit_id && /reveal to see full name/.test(p.note)), `visit ids ${JSON.stringify(people.map(p => p.visit_id))} vs target ${nimbus.visit_id}; notes ${JSON.stringify(people.map(p => p.note))}; targets ${JSON.stringify(targets(sb).map(t => [t.name, t.visit_id]))}; visits ${JSON.stringify(sb.db.web_visits.filter(v => v.company_name === 'Nimbus Freight').map(v => v.id))}`);
+    assert.ok(people.every(p => !('email' in p) && !('phone' in p)) && !ADDRESS.test(JSON.stringify(people)) && !/555/.test(humanText(people)), humanText(people));
     assert.equal(sb.db.sales_people.length, 3, 'companies the fixture does not know get 0 people, no error');
     await assert.rejects(apolloRequest({ method: 'POST', path: '/mixed_people/api_search', body: { person_titles: ['CHRO'], per_page: 2 }, ctx: { callCounter: { count: 0, max: 1 }, endpointCounts: {} } }), /needs q_organization_domains/);
     noAddress(sb);
@@ -166,7 +169,7 @@ test('V2a Visited People export: unknown company -> new employer target (source 
     assert.match(adpPeople[0].note, /^Identified visitor · 2026-10-17 · pages \/pricing, \/employer-partners$/);
     assert.deepEqual(sb.db.partner_contacts.map(c => [c.goal_id, c.name, c.title, c.source]), [[P.harbor, 'Margo R.', 'Benefits Manager', 'manual']]);
     assert.deepEqual(sb.db.sales_people.filter(p => p.target_id === T.quarry).map(p => p.name), ['Ana Example']);
-    assert.ok(!ADDRESS.test(JSON.stringify(sb.db)) && !/555/.test(JSON.stringify(sb.db.sales_people)) && !ADDRESS.test(JSON.stringify(r.body)));
+    assert.ok(!ADDRESS.test(JSON.stringify(sb.db)) && !/555/.test(humanText(sb.db.sales_people)) && !ADDRESS.test(JSON.stringify(r.body)), humanText(sb.db.sales_people));
     const again = await uploadVisitedPeople(sb, { businessId: B, userId: U, body: { text: CSV }, now: new Date(NOW) });
     assert.deepEqual(again.body.companies.map(c => [c.action, c.people_added, c.already_in]), [['matched', 0, 2], ['matched', 0, 1], ['matched', 0, 1]]);
     assert.equal((await uploadVisitedPeople(sb, { businessId: B, userId: U, body: { text: 'a,b\n1,2' } })).status, 400);
@@ -208,5 +211,25 @@ test('V6 undo on an auto-created signal: the target reads rejected (never delete
     assert.ok(sb.db.sales_people.filter(p => p.target_id === t.id).every(p => p.archived_at));
     assert.equal((await peopleSearch(sb, { businessId: B, query: { q: 'nimbus' } })).body.people.length, 0, 'archived people leave the search');
     assert.equal((await undoSignal(sb, { businessId: B, userId: U, id: sig.id })).status, 409, 'now new - nothing to undo');
+  } finally { restore(); }
+});
+
+// Stage 4: the injected input path - the same scoring / storage / signals / auto-create as a real pull with 0 visitor calls,
+// no run row, no credit row; only V2b's people search reaches Apollo. The route never passes it (it reads force / trigger /
+// backfill_days only).
+test('injected visit: 0 visitor searches, no run or credit row, the company stored + created + auto-accepted, one people search', async () => {
+  const { sb, restore } = setup();
+  try {
+    const start = apolloFixtureCalls.length;
+    const r = await runVisitPull(sb, { businessId: B, userId: U, now: NOW, injected: { organizations: [ORGS.find(o => o.id === 'o-nimbus')], us_ids: ['o-nimbus'] } });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual([r.body.injected, r.body.calls, r.body.credits, r.body.counts.companies, r.body.counts.auto.created, r.body.counts.auto.searches, r.body.counts.auto.people], [true, 1, 0, 1, 1, 1, 3]);
+    assert.deepEqual(apolloFixtureCalls.slice(start), ['POST /mixed_people/api_search']);
+    assert.deepEqual([sb.db.visit_pull_runs.length, sb.db.apollo_credit_spend.length, sb.db.web_visits.length], [0, 0, 1]);
+    const v = sb.db.web_visits[0], t = targets(sb)[0];
+    assert.deepEqual([v.company_name, v.us_500, v.pulled_on, v.seen_from, v.seen_to, t.name, t.visit_id === v.id, t.source], ['Nimbus Freight', true, '2026-10-20', '2026-10-19', '2026-10-20', 'Nimbus Freight', true, 'web_visit']);
+    assert.equal(sb.db.sales_signals[0].auto, true);
+    const src = await import('node:fs').then(fs => fs.readFileSync(new URL('./visitPull.js', import.meta.url), 'utf8'));
+    assert.match(src, /const \{ force = false, trigger = 'manual', backfill_days: backfillDays = null \} = req\.body \|\| \{\};/, 'the route reads three fields and nothing else');
   } finally { restore(); }
 });

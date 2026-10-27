@@ -147,7 +147,18 @@ async function store(supabase, { businessId, userId, today, win, all, usIds, fir
 // { ran: true, run, counts, credits, window }. backfill_days (owner/admin, once per LA day) asks Apollo for that many
 // days regardless of history; otherwise the window is days since the last ok run (visitWindow.js). A failed pull
 // answers 502 with a short message and leaves visit_pull_runs.status = 'error'; the page carries on.
-export async function runVisitPull(supabase, { businessId, userId, trigger = 'manual', force = false, backfillDays = null, now = Date.now() }) {
+// injected (visitor-to-record-v1 Stage 4, the live verify only - runVisitPullRoute never passes it): { organizations,
+// accounts?, us_ids? } stands in for Apollo's two visitor searches, so the rows go through the same scoring, storage,
+// signals and auto-create as a real pull with 0 visitor calls, no run row and no credit row; only V2b's people search
+// may call Apollo.
+export async function runVisitPull(supabase, { businessId, userId, trigger = 'manual', force = false, backfillDays = null, now = Date.now(), injected = null }) {
+  if (injected) {
+    const today = laDateString(new Date(now)), win = windowFor(null, today);
+    const ctx = { callCounter: { count: 0, max: 0 }, endpointCounts: {} };
+    const all = mergeResults({ organizations: injected.organizations || [], accounts: injected.accounts || [] });
+    const counts = await store(supabase, { businessId, userId, today, win, all, usIds: new Set(injected.us_ids || []), first: false, now, apollo: ctx });
+    return reply(200, { ran: true, injected: true, counts, credits: 0, window: win, calls: ctx.callCounter.count });
+  }
   if (!TRIGGERS.includes(trigger)) return reply(400, { error: `trigger must be one of ${TRIGGERS.join('|')}` });
   if (typeof force !== 'boolean') return reply(400, { error: 'force must be true or false' });
   if (backfillDays != null && !(Number.isInteger(backfillDays) && backfillDays >= 1 && backfillDays <= LOOKBACK_CAP)) return reply(400, { error: `backfill_days must be a whole number from 1 to ${LOOKBACK_CAP}` });
