@@ -76,6 +76,7 @@ export default function BrandPage({ businessId, brandId, shell, gmail, onBack, c
             <Chip tone={RELATIONSHIP_TONE[brand.relationship]}>{RELATIONSHIP_LABELS[brand.relationship]}</Chip>
             <Chip tone={brand.is_local ? 'green' : 'grey'}>{brand.is_local ? 'Local Chicago' : 'National'}</Chip>
             {brand.category && <Chip tone="grey">{brand.category}</Chip>}
+            {brand.source === 'import' && <Chip tone="lilac">Import</Chip>}
             <span className="hk-meta" data-hk-touches>{email_touches_sent} of {max_email_touches} email touches</span>
           </div>
         </div>

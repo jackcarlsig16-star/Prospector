@@ -6,7 +6,7 @@ import { RELATIONSHIP_LABELS } from '../brands/verdict';
 
 // hkos-data-foundation-v1 Stage 4 - pick one live brand by name (Sponsors "+ Add sponsor", DNC "+ Add"). Only brands
 // that are plain prospects are offered; the caller does the PATCH.
-export default function BrandPicker({ businessId, title, line, confirmLabel, withReason, onClose, onPick }) {
+export default function BrandPicker({ businessId, title, line, confirmLabel, withReason, any = false, onClose, onPick }) {
   const [q, setQ] = useState('');
   const [rows, setRows] = useState([]);
   const [picked, setPicked] = useState(null);
@@ -15,9 +15,9 @@ export default function BrandPicker({ businessId, title, line, confirmLabel, wit
   const [error, setError] = useState('');
   useEffect(() => {
     let live = true;
-    const t = setTimeout(() => hkGet(businessId, '/brands', { view: 'all', q: q.trim(), owner: 'all' }).then(r => { if (live) setRows(r.brands.filter(b => b.relationship === 'prospect').slice(0, 12)); }).catch(e => { if (live) setError(e.message); }), q ? 250 : 0);
+    const t = setTimeout(() => hkGet(businessId, '/brands', { view: 'all', q: q.trim(), owner: 'all' }).then(r => { if (live) setRows(r.brands.filter(b => any || b.relationship === 'prospect').slice(0, 12)); }).catch(e => { if (live) setError(e.message); }), q ? 250 : 0);
     return () => { live = false; clearTimeout(t); };
-  }, [businessId, q]);
+  }, [businessId, q, any]);
   useEffect(() => { const onKey = e => { if (e.key === 'Escape') onClose(); }; document.addEventListener('keydown', onKey); return () => document.removeEventListener('keydown', onKey); }, [onClose]);
   const submit = async e => {
     e.preventDefault(); if (!picked) return;
@@ -32,7 +32,7 @@ export default function BrandPicker({ businessId, title, line, confirmLabel, wit
         {line && <p className="hk-meta" style={{ marginTop: -8 }}>{line}</p>}
         <input className="ui-input" type="search" placeholder="Search brands" aria-label="Search brands" value={q} autoFocus onChange={e => setQ(e.target.value)} />
         <div className="hk-picker__list" role="radiogroup" aria-label="Brands">
-          {!rows.length && <p className="hk-meta">No prospect brand matches. Add it under Brands first.</p>}
+          {!rows.length && <p className="hk-meta">{any ? 'No brand matches.' : 'No prospect brand matches. Add it under Brands first.'}</p>}
           {rows.map(b => (
             <label key={b.id} className={`hk-picker__item${picked?.id === b.id ? ' hk-picker__item--on' : ''}`}>
               <input type="radio" name="hk-pick" checked={picked?.id === b.id} onChange={() => setPicked(b)} />

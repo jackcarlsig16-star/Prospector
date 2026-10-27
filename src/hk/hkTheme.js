@@ -208,7 +208,17 @@ ${PINNED} {
 .hk-theme .hk-drawer__row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .hk-theme .hk-drawer .hk-form label { display:flex; flex-direction:column; gap:4px; }
 .hk-theme.hk-shell--phone .hk-drawer { width:100vw; }
-.hk-theme .hk-phone-top .hk-sync { font-size:12px; padding:5px 10px; }
+.hk-theme .hk-phone-top .hk-sync { font-size:12px; padding:5px 10px; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* hkos-sheet-import-v1 - "+ New" and Review > Imports */
+.hk-theme .hk-new { display:inline-flex; align-items:center; gap:6px; padding:7px 14px; border-radius:var(--hk-radius-control); background:var(--hk-green-fill); color:#fff; font:600 14px var(--hk-font-body); }
+.hk-theme .hk-new:hover { background:var(--hk-forest); }
+.hk-theme .hk-new--compact { padding:7px 9px; }
+.hk-theme .hk-import-cards { display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:10px; margin:12px 0 14px; }
+.hk-theme .hk-import-card { padding:10px 12px; border-radius:var(--hk-radius-block); background:var(--hk-surface); box-shadow:var(--hk-shadow-card); }
+.hk-theme .hk-import-card--skipped { background:var(--hk-sand); box-shadow:none; }
+.hk-theme .hk-import-card__line { margin-top:6px; font-size:13px; color:var(--hk-cocoa); }
+.hk-theme .hk-import-warnings { margin:0 0 12px; padding-left:18px; }
+.hk-theme.hk-shell--phone .hk-import-cards { grid-template-columns:minmax(0,1fr); }
 
 .hk-theme .hk-palette { position:fixed; z-index:71; top:14vh; left:50%; transform:translateX(-50%); width:min(520px, calc(100vw - 32px)); padding:8px; border-radius:var(--hk-radius-card); background:var(--hk-surface); border:1px solid var(--hk-line); box-shadow:0 12px 40px rgba(43,29,20,.18); }
 .hk-theme .hk-palette__input { all:unset; box-sizing:border-box; width:100%; padding:10px 12px; font:400 15px var(--hk-font-body); color:var(--hk-cocoa); border-bottom:1px solid var(--hk-line); }

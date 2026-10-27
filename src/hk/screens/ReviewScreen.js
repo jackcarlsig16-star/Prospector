@@ -5,8 +5,9 @@ import { Sprout } from '../HkMarks';
 import { Chip } from '../brands/BrandsScreen';
 import { STATUS_LABELS, STATUS_TONE } from '../brands/verdict';
 import { hkGet, hkPost } from '../hkApi';
+import ImportsPanel from './ImportsPanel';
 
-// hkos-data-foundation-v1 D6 - Review: possible duplicates side by side, imports (empty until step 2), data warnings.
+// hkos-data-foundation-v1 D6 - Review: possible duplicates side by side, imports (hkos-sheet-import-v1: ImportsPanel), data warnings.
 const TABS = [['duplicates', 'Possible duplicates'], ['imports', 'Imports'], ['warnings', 'Data warnings']];
 const REASON = { same_domain: 'Same domain', same_name: 'Same name', name_contains: 'One name contains the other' };
 const WARN = { future_last_touch: 'Last touch is in the future', far_next_due: 'Next due is more than a year out', missing_domain: 'No domain past candidate', owner_conflict: 'Owner set while owner is unclear' };
@@ -23,8 +24,12 @@ function BrandCard({ b, member }) {
   );
 }
 
-export default function ReviewScreen({ businessId, shell, canEdit, onOpenBrand }) {
-  const [tab, setTab] = useState('duplicates');
+export default function ReviewScreen({ businessId, shell, canEdit, compact, onOpenBrand, onGo, intent, onIntentDone }) {
+  const [tab, setTab] = useState(() => (intent?.kind === 'import' ? 'imports' : 'duplicates'));
+  const [importCount, setImportCount] = useState(0);
+  const [autoOpen, setAutoOpen] = useState(() => intent?.kind === 'import');
+  useEffect(() => { if (intent?.kind === 'import') { setTab('imports'); setAutoOpen(true); } }, [intent]);
+  const autoOpened = useCallback(() => { setAutoOpen(false); onIntentDone?.(); }, [onIntentDone]);
   const [pairs, setPairs] = useState(null);
   const [warnings, setWarnings] = useState(null);
   const [confirm, setConfirm] = useState(null);
@@ -38,7 +43,7 @@ export default function ReviewScreen({ businessId, shell, canEdit, onOpenBrand }
   }, [businessId]);
   useEffect(() => { load(); }, [load]);
   const decide = async body => { setError(''); try { await hkPost(businessId, '/review/duplicates/decide', body); setConfirm(null); await load(); } catch (e) { setError(e.message); } };
-  const counts = { duplicates: pairs?.length || 0, imports: 0, warnings: warnings?.length || 0 };
+  const counts = { duplicates: pairs?.length || 0, imports: importCount, warnings: warnings?.length || 0 };
   return (
     <div data-hk-review>
       <Tabs label="Review sections" items={TABS.map(([id, label]) => ({ id, label: counts[id] ? `${label} (${counts[id]})` : label }))} value={tab} onChange={setTab} />
@@ -66,7 +71,7 @@ export default function ReviewScreen({ businessId, shell, canEdit, onOpenBrand }
           ))}
         </div>
       ))}
-      {tab === 'imports' && <div className="hk-empty" data-hk-empty><Sprout size={40} /><p className="hk-empty__title">No imports yet.</p><p className="hk-empty__line">The Sheet import (step 2) lands here with its counts and an undo.</p></div>}
+      {tab === 'imports' && <ImportsPanel businessId={businessId} shell={shell} canEdit={canEdit} compact={compact} autoOpen={autoOpen} onAutoOpened={autoOpened} onCount={setImportCount} onOpenBrands={() => onGo?.('brands')} onOpenWarnings={() => { setTab('warnings'); load(); }} />}
       {tab === 'warnings' && (warnings === null ? <p className="hk-meta">Checking…</p> : !warnings.length ? (
         <div className="hk-empty" data-hk-empty><Sprout size={40} /><p className="hk-empty__title">No data warnings.</p><p className="hk-empty__line">Future dates, missing domains and owner conflicts show here.</p></div>
       ) : (

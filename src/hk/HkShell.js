@@ -5,6 +5,8 @@ import { HK_MODULES } from '../constants/hkModules';
 import { SideNav, OwnerToggle, WorkspaceMenu, AvatarMenu, SearchPill, SyncPill, TabBar, MoreSheet, Palette } from './HkChrome';
 import { Sprout } from './HkMarks';
 import HkScreen from './HkScreen';
+import NewMenu from './NewMenu';
+import { roleAtLeast } from '../constants/roles';
 import { signOut } from '../utils/authSession';
 import { hkPatch, hkGet, hkPost } from './hkApi';
 import { syncPillState, pageloadDue, syncKey } from './hkSync';
@@ -24,6 +26,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
   const [gmail, setGmail] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [inboxUnread, setInboxUnread] = useState(null);
+  const [intent, setIntent] = useState(null);
 
   ensureHkTheme();
 
@@ -102,6 +105,13 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
     setNav({ screen, section: screen === 'settings' ? section || 'members' : null, brandId: screen === 'brands' ? brandId : null });
   }, []);
   const closePalette = useCallback(() => setPaletteOpen(false), []);
+  // hkos-sheet-import-v1 - "+ New" lands on the screen that does the thing and hands it the intent once.
+  const pickNew = useCallback(kind => {
+    const screen = kind === 'import' ? 'review' : 'brands';
+    go(screen);
+    setIntent({ kind, n: Date.now() });
+  }, [go]);
+  const clearIntent = useCallback(() => setIntent(null), []);
   const closeMore = useCallback(() => setMoreOpen(false), []);
 
   const current = HK_SCREENS.find(s => s.id === nav.screen) || HK_SCREENS[0];
@@ -112,9 +122,10 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
     ? <p className="hk-meta" role="alert">{loadError}</p>
     : !shell
       ? <p className="hk-meta">Loading the Sales OS…</p>
-      : <HkScreen screen={current} section={nav.section} brandId={nav.brandId || null} businessId={business.id} owner={ownerValue} compact={compact} shell={shell} now={now} gmail={gmail} syncing={syncing} onSync={() => runSync('manual')} onGmailChanged={loadGmail} onOpenConnections={onOpenConnections} onInboxUnread={setInboxUnread} onSection={s => go('settings', s)} onOpenAdmin={onOpenAdmin} onOpenBrand={id => go('brands', null, id)} />;
+      : <HkScreen screen={current} section={nav.section} brandId={nav.brandId || null} businessId={business.id} owner={ownerValue} compact={compact} shell={shell} now={now} gmail={gmail} syncing={syncing} onSync={() => runSync('manual')} onGmailChanged={loadGmail} onOpenConnections={onOpenConnections} onInboxUnread={setInboxUnread} onSection={s => go('settings', s)} onOpenAdmin={onOpenAdmin} onOpenBrand={id => go('brands', null, id)} onGo={go} intent={intent} onIntentDone={clearIntent} />;
 
   const avatar = shell && <AvatarMenu me={shell.me} paletteIndex={mine?.palette_index || 1} size={compact ? 30 : 34} onBack={onAllWorkspaces} onSignOut={signOut} />;
+  const newMenu = shell && roleAtLeast(shell.me.role, 'member') && <NewMenu compact={compact} onPick={pickNew} />;
   const syncPill = <SyncPill state={syncPillState(gmail, syncing)} onSync={() => runSync('manual')} onConnections={onOpenConnections} />;
 
   return (
@@ -125,6 +136,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
             <Sprout size={24} />
             <span className="hk-phone-top__name">Sales OS</span>
             <span className="hk-spacer" />
+            {newMenu}
             {syncPill}
             {avatar}
           </header>
@@ -141,6 +153,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
               <SearchPill onOpen={() => setPaletteOpen(true)} />
               {syncPill}
               <span className="hk-spacer" />
+              {newMenu}
               {avatar}
             </header>
             <main className="hk-content">{body}</main>

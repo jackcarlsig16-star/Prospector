@@ -44,6 +44,7 @@ export default function SponsorsScreen({ businessId, shell, canEdit, onOpenBrand
             <div key={b.id} className="hk-row hk-row--wrap" data-hk-sponsor={b.id}>
               <button type="button" className="hk-btn hk-table__title" onClick={() => onOpenBrand(b.id)}>{b.name}</button>
               <Chip tone={RELATIONSHIP_TONE[b.relationship]}>{RELATIONSHIP_LABELS[b.relationship]}</Chip>
+              {b.source === 'import' && <Chip tone="lilac">Import</Chip>}
               {b.niche && <span className="hk-meta">{b.niche}</span>}
               <span className="hk-period-chips">{b.periods.map(p => <span key={p.id} className="hk-chip hk-chip--green" title={p.note || ''}>{periodLabel(p.period)}{canEdit && isOwnerRole && <button type="button" className="hk-btn hk-chip__x" aria-label={`Remove ${periodLabel(p.period)}`} onClick={() => act(() => hkFetch(businessId, `/sponsors/${b.id}/periods/${p.id}`, { method: 'DELETE' }))}>×</button>}</span>)}</span>
               {o && <span className="hk-owner"><Avatar name={o.first_name} index={o.palette_index} size={22} />{o.first_name}</span>}

@@ -72,7 +72,7 @@ function Modules({ shell }) {
   );
 }
 
-export default function HkScreen({ screen, section, brandId, businessId, owner, compact, shell, gmail, syncing, onSync, onGmailChanged, onOpenConnections, onInboxUnread, onSection, onOpenAdmin, onOpenBrand, now }) {
+export default function HkScreen({ screen, section, brandId, businessId, owner, compact, shell, gmail, syncing, onSync, onGmailChanged, onOpenConnections, onInboxUnread, onSection, onOpenAdmin, onOpenBrand, onGo, intent, onIntentDone, now }) {
   const canEdit = roleAtLeast(shell.me.role, 'member');
   if (screen.id === 'inbox') return <><Header title="Inbox" line={SCREEN_LINES.inbox} /><InboxScreen businessId={businessId} shell={shell} gmail={gmail} compact={compact} canEdit={canEdit} onOpenBrand={onOpenBrand} onOpenConnections={onOpenConnections} onUnread={onInboxUnread} /></>;
   if (screen.id === 'brands' && brandId) return <BrandPage businessId={businessId} brandId={brandId} shell={shell} gmail={gmail} canEdit={canEdit} onBack={() => onOpenBrand(null)} onGmailChanged={onGmailChanged} />;
@@ -82,13 +82,13 @@ export default function HkScreen({ screen, section, brandId, businessId, owner, 
     return (
       <>
         <Header title="Brands" line={SCREEN_LINES.brands} />
-        <BrandsScreen businessId={businessId} shell={shell} owner={owner} compact={compact} canEdit={canEdit} onOpenBrand={onOpenBrand} />
+        <BrandsScreen businessId={businessId} shell={shell} owner={owner} compact={compact} canEdit={canEdit} onOpenBrand={onOpenBrand} intent={intent} onIntentDone={onIntentDone} />
       </>
     );
   }
   if (screen.id === 'pipeline') return <><Header title="Pipeline" line={SCREEN_LINES.pipeline} /><BrandsScreen pipeline businessId={businessId} shell={shell} owner={owner} compact={compact} canEdit={canEdit} onOpenBrand={onOpenBrand} /></>;
   if (screen.id === 'sponsors') return <><Header title="Sponsors" line={SCREEN_LINES.sponsors} /><SponsorsScreen businessId={businessId} shell={shell} canEdit={canEdit} onOpenBrand={onOpenBrand} /></>;
-  if (screen.id === 'review') return <><Header title="Review" line={SCREEN_LINES.review} /><ReviewScreen businessId={businessId} shell={shell} canEdit={canEdit} onOpenBrand={onOpenBrand} /></>;
+  if (screen.id === 'review') return <><Header title="Review" line={SCREEN_LINES.review} /><ReviewScreen businessId={businessId} shell={shell} canEdit={canEdit} compact={compact} onOpenBrand={onOpenBrand} onGo={onGo} intent={intent} onIntentDone={onIntentDone} /></>;
   if (screen.id === 'activity') return <><Header title="Activity" line={SCREEN_LINES.activity} /><ActivityScreen businessId={businessId} shell={shell} owner={owner} compact={compact} onOpenBrand={onOpenBrand} /></>;
   if (screen.id === 'settings') {
     return (

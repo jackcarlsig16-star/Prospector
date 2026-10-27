@@ -4,6 +4,7 @@ import Tabs from '../../ui/Tabs';
 import Button from '../../ui/Button';
 import { Avatar, Sprout } from '../HkMarks';
 import AddBrandModal from './AddBrandModal';
+import BrandPicker from '../screens/BrandPicker';
 import { STATUS_LABELS, RELATIONSHIP_LABELS, STATUS_TONE, RELATIONSHIP_TONE, SOURCE_LABELS } from './verdict';
 import { hkGet, hkPatch } from '../hkApi';
 
@@ -16,7 +17,7 @@ export const Chip = ({ tone, children }) => <span className={`hk-chip hk-chip--$
 
 const PIPELINE_HIDDEN = new Set(['candidate', 'passed', 'skipped', 'sponsor']);
 
-export default function BrandsScreen({ businessId, shell, owner, compact, onOpenBrand, canEdit, pipeline = false }) {
+export default function BrandsScreen({ businessId, shell, owner, compact, onOpenBrand, canEdit, pipeline = false, intent = null, onIntentDone }) {
   const [view, setView] = useState('all');
   const [q, setQ] = useState('');
   const [rows, setRows] = useState(null);
@@ -24,7 +25,15 @@ export default function BrandsScreen({ businessId, shell, owner, compact, onOpen
   const [selected, setSelected] = useState(() => new Set());
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState('');
+  const [contactPick, setContactPick] = useState(false);
   const members = shell?.members || [];
+  // hkos-sheet-import-v1 - "+ New": Add brand opens the modal; Add contact asks which brand, then opens its page.
+  useEffect(() => {
+    if (!intent || pipeline || !canEdit) return;
+    if (intent.kind === 'add_brand') setAdding(true);
+    if (intent.kind === 'add_contact') setContactPick(true);
+    if (intent.kind === 'add_brand' || intent.kind === 'add_contact') onIntentDone?.();
+  }, [intent, pipeline, canEdit, onIntentDone]);
   const member = id => members.find(m => m.user_id === id);
 
   const load = useCallback(async () => {
@@ -59,7 +68,7 @@ export default function BrandsScreen({ businessId, shell, owner, compact, onOpen
     { id: 'last_touch', label: 'Last touch', width: 100, sortValue: r => r.last_touch_at || '', render: r => fmt(r.last_touch_at) || <span className="hk-meta">None</span> },
     { id: 'next_due', label: 'Next due', width: 100, sortValue: r => r.next_due_at || '', render: r => fmt(r.next_due_at) || <span className="hk-meta">·</span> },
     { id: 'contact', label: 'Primary contact', width: 150, sortValue: r => r.primary_contact_name || '', render: r => r.primary_contact_name || <span className="hk-meta">·</span> },
-    { id: 'source', label: 'Source', width: 120, sortValue: r => r.source, render: r => SOURCE_LABELS[r.source] || r.source },
+    { id: 'source', label: 'Source', width: 120, sortValue: r => r.source, render: r => (r.source === 'import' ? <Chip tone="lilac">Import</Chip> : SOURCE_LABELS[r.source] || r.source) },
     { id: 'created', label: 'Created', width: 100, sortValue: r => r.created_at, render: r => fmt(r.created_at) },
   ], [canEdit, selected, members, onOpenBrand]);
 
@@ -96,9 +105,10 @@ export default function BrandsScreen({ businessId, shell, owner, compact, onOpen
           renderCompact={r => (
             <button type="button" className="hk-btn hk-card-row" onClick={() => onOpenBrand(r.id)} data-hk-brand={r.id}>
               <span className="hk-table__title">{r.name}</span>
-              <span className="hk-card-row__chips"><Chip tone={STATUS_TONE[r.status]}>{STATUS_LABELS[r.status]}</Chip><Chip tone={r.is_local ? 'green' : 'grey'}>{r.is_local ? 'Local' : 'National'}</Chip></span>
+              <span className="hk-card-row__chips"><Chip tone={STATUS_TONE[r.status]}>{STATUS_LABELS[r.status]}</Chip><Chip tone={r.is_local ? 'green' : 'grey'}>{r.is_local ? 'Local' : 'National'}</Chip>{r.source === 'import' && <Chip tone="lilac">Import</Chip>}</span>
             </button>)} />
       )}
+      {contactPick && <BrandPicker businessId={businessId} title="Which brand gets the contact?" line="Pick the brand, then add the contact on its Contacts tab." confirmLabel="Open brand" any onClose={() => setContactPick(false)} onPick={b => { setContactPick(false); onOpenBrand(b.id); }} />}
       {adding && <AddBrandModal businessId={businessId} members={members} onClose={() => setAdding(false)} onOpenMatch={id => { setAdding(false); onOpenBrand(id); }} onSaved={b => { setAdding(false); onOpenBrand(b.id); }} />}
     </div>
   );
