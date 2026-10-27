@@ -212,6 +212,12 @@ export const goalsApi = {
   dismissOutlookMove: (id, key) => call(id, '/partners/outlook-touches/dismiss', { method: 'POST', body: { key } }),
   recordOutlookTouches: id => call(id, '/partners/outlook-touches/record', { method: 'POST', body: {} }),
 
+  // intent-score-v1: the Priorities view.
+  scores: (id, params = {}) => call(id, `/scores?${q(params)}`),
+  recomputeScores: (id, body = {}) => call(id, '/scores/recompute', { method: 'POST', body }),
+  scoresCsvUrl: (id, params = {}) => `/api/sales/${id}/goals/scores/export.csv?${q(params)}`,
+  brief: (id, type, recordId) => call(id, `/brief/${type}/${recordId}`),
+
   companies: (id, from, to) => call(id, `/companies?${q({ from, to })}`),
   updateCompany: (id, accountId, body) => call(id, `/companies/${encodeURIComponent(accountId)}`, { method: 'PATCH', body }).then(d => d.company),
 

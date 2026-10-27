@@ -7,6 +7,7 @@ import * as accounts from './adapters/accounts.js';
 import * as prospects from './adapters/prospects.js';
 import * as mailboxes from './adapters/mailboxes.js';
 import { syncActivity, ACTIVITY_MAX_CALLS } from './activitySync.js';
+import { scheduleRecompute } from './intentScoreRun.js';
 import { refreshRecentWeeks, EMAIL_COUNTS_MAX_CALLS } from './emailCounts.js';
 import { isDeadRun, finalStatus } from './syncRunStatus.js';
 import { syncPartnerContacts, ranToday, PARTNER_CONTACTS_MAX_CALLS } from './partnerContactsSync.js';
@@ -251,6 +252,7 @@ export async function runSync({ businessId, trigger, maxCalls, partnerPeople }) 
     activityMs = Date.now() - activityStart;
     missingAll.push(...result.missing);
     activityCounts = result.counts;
+    scheduleRecompute(supabase, businessId, 'heat');
   } catch (err) {
     adapterErrors.activity = err instanceof CallCapError ? 'call_cap' : err.message;
   }

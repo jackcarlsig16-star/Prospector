@@ -1,5 +1,6 @@
 import { getSupabase } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
+import { scheduleRecompute } from './intentScoreRun.js';
 import { hasRole } from '../lib/requireAuth.js';
 import { cleanText } from './scrubText.js';
 import { toCsv } from '../../src/utils/csv.js';
@@ -116,6 +117,7 @@ export async function editSource(supabase, { businessId, type, id, userId, body 
     const rows = must(await (row.source_set_at ? q.eq('source_set_at', row.source_set_at) : q.is('source_set_at', null)).select(`id, ${SOURCE_COLS}`));
     if (!rows.length) return reply(409, { error: 'The source changed since - reload' });
     await logSource(supabase, { businessId, type, id, from: row, to: rows[0], reason: 'edit', byUser: userId, at: now });
+    scheduleRecompute(supabase, businessId, 'source');
     return reply(200, { source: { ...sourceOf(rows[0]), ...(await namesFor(supabase, businessId, rows[0])), label: SOURCE_LABEL[rows[0].source_kind] || null, manual: !clear, set_at: rows[0].source_set_at } });
   } catch (e) { return caught('edit', e); }
 }
@@ -267,6 +269,7 @@ export async function backfillApply(supabase, { businessId, userId, body = {}, n
         written++;
       }));
     }
+    scheduleRecompute(supabase, businessId, 'source');
     return reply(200, { written, skipped, groups: Object.keys(confirmed).length });
   } catch (e) { return caught('backfill/apply', e); }
 }

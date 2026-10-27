@@ -11,6 +11,7 @@ import { loadOverrides, effectiveVisit } from './visitPriority.js';
 import { windowFor, LOOKBACK_CAP } from './visitWindow.js';
 import { autoCreateFromVisits, salesSettings } from './visitorRoutes.js';
 import { hasRole } from '../lib/requireAuth.js';
+import { scheduleRecompute } from './intentScoreRun.js';
 
 // signals-v1 REV4 Stage 4 (D9) - Prospector's own daily website-visitor
 // pull. Kicked by a Member's first Goals & Sales load of the LA day or by
@@ -157,6 +158,7 @@ export async function runVisitPull(supabase, { businessId, userId, trigger = 'ma
     const ctx = { callCounter: { count: 0, max: 0 }, endpointCounts: {} };
     const all = mergeResults({ organizations: injected.organizations || [], accounts: injected.accounts || [] });
     const counts = await store(supabase, { businessId, userId, today, win, all, usIds: new Set(injected.us_ids || []), first: false, now, apollo: ctx });
+    scheduleRecompute(supabase, businessId, 'visit_pull');
     return reply(200, { ran: true, injected: true, counts, credits: 0, window: win, calls: ctx.callCounter.count });
   }
   if (!TRIGGERS.includes(trigger)) return reply(400, { error: `trigger must be one of ${TRIGGERS.join('|')}` });
@@ -189,6 +191,7 @@ export async function runVisitPull(supabase, { businessId, userId, trigger = 'ma
     must(await recordSpend());
     const counts = await store(supabase, { businessId, userId, today, win, all, usIds: new Set(us.map(r => r._org_id)), first: claim.first, now, apollo: ctx });
     const run = must(await finish({ status: 'ok', error: null }))[0];
+    scheduleRecompute(supabase, businessId, 'visit_pull');
     return reply(200, { ran: true, run, counts, credits, window: win });
   } catch (e) {
     // A search that spent before failing still gets its delta recorded.

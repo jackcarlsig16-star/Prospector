@@ -3,6 +3,7 @@ import { callAnthropic } from '../businesses/shared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { MODELS, estimateCostUsd } from '../../src/config/models.js';
 import { getSupabase } from './goalsShared.js';
+import { scheduleRecompute } from './intentScoreRun.js';
 import { cleanText } from './scrubText.js';
 import { laDateString } from './laDate.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
@@ -175,7 +176,10 @@ export async function completeRun(supabase, { run, partner, business, categories
   }
   const { data, error } = await supabase.from('research_runs').update(patch).eq('id', run.id).select().single();
   if (error) throw new Error(error.message);
-  if (data.status === 'done') await applyResearchNumbers(supabase, { businessId: run.business_id, type: run.entity_type, id: run.entity_id, result: data.result });
+  if (data.status === 'done') {
+    await applyResearchNumbers(supabase, { businessId: run.business_id, type: run.entity_type, id: run.entity_id, result: data.result });
+    scheduleRecompute(supabase, run.business_id, 'research');
+  }
   return data;
 }
 

@@ -744,6 +744,11 @@ app.post('/api/sales/:businessId/goals/visits/priority', salesModuleRoute('./api
 app.post('/api/sales/:businessId/goals/signals/:id/auto-create', salesModuleRoute('./api/sales/visitorRoutes.js', 'autoCreateSignalRoute', 'goals/signals/:id/auto-create POST'));
 app.post('/api/sales/:businessId/goals/visits/people-csv', salesModuleRoute('./api/sales/visitorRoutes.js', 'uploadVisitedPeopleRoute', 'goals/visits/people-csv POST'));
 app.get('/api/sales/:businessId/goals/people', salesModuleRoute('./api/sales/visitorRoutes.js', 'peopleSearchRoute', 'goals/people'));
+// intent-score-v1 Stage 2 - the ranked scores (filters), Recompute now (owner / admin; one company for a Member), the CSV, the Brief.
+app.get('/api/sales/:businessId/goals/scores', salesModuleRoute('./api/sales/scoresRoutes.js', 'listScoresRoute', 'goals/scores'));
+app.post('/api/sales/:businessId/goals/scores/recompute', salesModuleRoute('./api/sales/scoresRoutes.js', 'recomputeRoute', 'goals/scores/recompute POST'));
+app.get('/api/sales/:businessId/goals/scores/export.csv', salesModuleRoute('./api/sales/scoresRoutes.js', 'exportScoresRoute', 'goals/scores/export.csv'));
+app.get('/api/sales/:businessId/goals/brief/:type/:id', salesModuleRoute('./api/sales/companyBrief.js', 'briefRoute', 'goals/brief/:type/:id'));
 // sales-ia-v2 Stage 3 - the company side panel (every Pipeline row type): body sections, Add to pipeline, notes and
 // contacts for employers / targets, a target's ownership / step, and Research + Check Apollo for any record type.
 app.get('/api/sales/:businessId/goals/company', salesModuleRoute('./api/sales/companyPanel.js', 'companyDetailRoute', 'goals/company'));

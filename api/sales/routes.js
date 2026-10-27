@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import { runSync, runPageloadSync } from './sync.js';
 import { asReported } from './syncRunStatus.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
+import { recomputeIfStale } from './intentScoreRun.js';
 import { runOutlookSync } from '../microsoft/graphSync.js';
 
 function getSupabase() {
@@ -29,6 +30,8 @@ export async function syncRoute(req, res) {
 // guard skips it, else the run. The page never waits on it; a failure shows in Needs attention "on page load".
 export async function pageloadSyncRoute(req, res) {
   try {
+    // intent-score-v1 S2: the nightly consistency pass rides on the same page load (never awaited).
+    recomputeIfStale(getSupabase(), req.params.businessId).catch(e => console.error('[scores/recompute pageload]', e.message));
     const result = await runPageloadSync({ businessId: req.params.businessId });
     if (result.skipped) return res.status(200).json({ ran: false, reason: result.skipped });
     if (result.refused) return res.status(200).json({ ran: false, reason: result.reason });

@@ -1,5 +1,6 @@
 import { getSupabase, findRow, weekIsFinal, FINAL_ERROR, addDays, acceptOwner } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
+import { scheduleRecompute } from './intentScoreRun.js';
 import { laDateString } from './laDate.js';
 import { applyPartnerSignal } from './partnerSignals.js';
 import { doneFlag, partnerDoneTouch, revertTouch, doneTouchEvent, undoDoneTouch } from './doneTouch.js';
@@ -140,6 +141,7 @@ export async function acceptSignal(supabase, { businessId, userId, id, now = new
       match: { type: record.type, id: record.id, name: record.name, via },
     }).eq('id', s.id).eq('status', 'new').select(COLS));
     if (!rows.length) throw err(409, `${s.company_name} was decided by someone else - reload`);
+    scheduleRecompute(supabase, businessId, 'signal');
     return reply(200, { signal: rows[0], todo, via, record, touch_event_id: touchEventId });
   } catch (e) {
     for (const f of undo.reverse()) { try { await f(); } catch (u) { console.error('[signals/accept] undo failed:', u.message); } }
@@ -196,6 +198,7 @@ export async function undoSignal(supabase, { businessId, userId = null, id, body
       for (const p of plan.people) must(await supabase.from('sales_people').update(p.patch).eq('id', p.id));
       const rows = must(await supabase.from('sales_signals').update({ ...plan.signal, match: null }).eq('id', s.id).eq('status', 'accepted').select(COLS));
       if (!rows.length) return reply(409, { error: `${s.company_name} changed since - reload` });
+      scheduleRecompute(supabase, businessId, 'signal');
       return reply(200, { signal: rows[0], archived: { target: plan.target?.id || null, people: plan.people.length } });
     }
     if (!s.decided_at || now - Date.parse(s.decided_at) > UNDO_WINDOW_MS) return reply(409, { error: `${s.company_name} was decided too long ago to undo` });
@@ -230,6 +233,7 @@ export async function undoSignal(supabase, { businessId, userId = null, id, body
       status: 'new', dismissed_until: null, decided_by: null, decided_at: null, target_id: null, todo_id: null, match: null, updated_at: now.toISOString(),
     }).eq('id', s.id).eq('status', s.status).select(COLS));
     if (!rows.length) return reply(409, { error: `${s.company_name} changed since - reload` });
+    scheduleRecompute(supabase, businessId, 'signal');
     return reply(200, { signal: rows[0] });
   } catch (e) {
     if (!e.status || e.status >= 500) console.error('[signals/undo]', e.message);

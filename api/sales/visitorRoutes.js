@@ -1,5 +1,6 @@
 import { getSupabase, findRow } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
+import { scheduleRecompute } from './intentScoreRun.js';
 import { laDateString } from './laDate.js';
 import { apolloRequest } from './apolloClient.js';
 import { loadDupeContext, findDupes } from './partnerDupeCheck.js';
@@ -121,6 +122,7 @@ export async function autoCreateSignal(supabase, { businessId, userId, id, now =
   }
   const c = out.created[0];
   const rows = must(await supabase.from('sales_signals').select(SIGNAL_COLS).eq('id', s.id));
+  scheduleRecompute(supabase, businessId, 'signal');
   return reply(200, { signal: rows[0], record: { type: 'target', id: c.target_id, name: c.name }, people: c.people, searches: out.searches });
 }
 export async function autoCreateSignalRoute(req, res) {
