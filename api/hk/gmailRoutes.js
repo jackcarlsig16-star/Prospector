@@ -4,7 +4,7 @@
 // only Gmail writes are a draft create and a draft delete. Addresses: the contact's To is read from hk_contacts on the
 // server; hk_replies.from_email is stored and never returned; the only address a response carries is the caller's own
 // mailbox inside the Gmail URLs they open.
-import { getSupabase, HkError, fail, isOwner, me, text, oneOf, logEvent, touchRow, replyRow, liveBrands, brandById, sponsorsNichesOf, canContact } from './hkShared.js';
+import { getSupabase, HkError, fail, isOwner, me, text, oneOf, logEvent, touchRow, replyRow, liveBrands, brandById, sponsorsNichesOf, canContact, TEAM_DOMAINS } from './hkShared.js';
 import { lintDraft, lintRejects } from './lint.js';
 import { buildDraftMime, draftUrl, replySubject, header } from './gmailMime.js';
 import { gmailClient, toMeta, GmailError } from './gmailClient.js';
@@ -18,7 +18,6 @@ import { scrubAddresses } from '../sales/scrubText.js';
 
 export const PAGELOAD_GUARD_MIN = 60;
 export const RUNNING_STALE_MIN = 10;
-export const OWN_DOMAINS = ['humankindcollective.app'];
 const KINDS = new Set(['cold', 'bump', 'final', 'reply']);
 const EMAIL_KINDS_AFTER = new Set(['bump', 'final', 'reply']);
 const DRAFTABLE_STATUS = new Set(['candidate', 'claimed']);
@@ -211,7 +210,7 @@ export async function syncRoute(req, res, d = {}) {
       const brands = await liveBrands(supabase, businessId);
       const brandsByDomain = Object.fromEntries(brands.filter(b => b.domain).map(b => [b.domain, b.id]));
       const { data: known } = await supabase.from('hk_replies').select('gmail_message_id').eq('business_id', businessId);
-      const ownDomains = [...OWN_DOMAINS, (m.grant.google_email || '').split('@')[1]].filter(Boolean);
+      const ownDomains = [...TEAM_DOMAINS, (m.grant.google_email || '').split('@')[1]].filter(Boolean);
       const c = classify({ touches, replies: known || [], messages, drafts, brandsByDomain, ownDomains, historyEvents: state0?.history_id ? historyEvents : messages.length });
       const settings = await settingsOf(supabase, businessId);
       const byId = Object.fromEntries(brands.map(b => [b.id, b]));

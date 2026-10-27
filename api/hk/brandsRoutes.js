@@ -90,20 +90,26 @@ function brandFields(body, { partial = false } = {}) {
   return patch;
 }
 
+// The Add brand rules, shared with inbox/track: sponsor / do-not-contact refuse, a possible duplicate or another
+// founder's brand needs force_duplicate. Returns { data, verdict } or throws an HkError.
+export async function createBrand(supabase, { businessId, userId, body, now = () => new Date() }) {
+  const fields = brandFields(body);
+  const verdict = verdictFor({ name: fields.name, domain: fields.domain, niche: fields.niche }, await ctx(supabase, businessId, userId));
+  if (verdict.verdict === 'sponsor' || verdict.verdict === 'do_not_contact') throw new HkError(409, `${fields.name} is already a ${verdict.verdict === 'sponsor' ? 'sponsor or founding partner' : 'do-not-contact brand'}`, { verdict });
+  if ((verdict.verdict === 'possible_duplicate' || verdict.verdict === 'owned_by') && body.force_duplicate !== true) throw new HkError(409, verdict.verdict === 'owned_by' ? 'that brand exists and is owned by another founder' : 'a brand like that already exists', { verdict });
+  const claim = bool(body.claim, 'claim') === true;
+  const row = { ...fields, business_id: businessId, created_by: userId, owner_user_id: claim ? userId : null, status: claim ? 'claimed' : 'candidate', updated_at: now().toISOString() };
+  const { data, error } = await supabase.from('hk_brands').insert(row).select().single();
+  if (error) throw error;
+  await logEvent(supabase, { businessId, actorUserId: userId, entityType: 'brand', entityId: data.id, action: 'brand.created', detail: { name: data.name, domain: data.domain, verdict: verdict.verdict, forced: body.force_duplicate === true } });
+  if (claim) await logEvent(supabase, { businessId, actorUserId: userId, entityType: 'brand', entityId: data.id, action: 'brand.claimed', detail: { name: data.name } });
+  return { data, verdict };
+}
+
 // POST /brands  { ...fields, claim?, force_duplicate? }
 export async function createBrandRoute(req, res, { supabase = getSupabase(), now = () => new Date() } = {}) {
-  const businessId = req.params.businessId, body = req.body || {};
   try {
-    const fields = brandFields(body);
-    const verdict = verdictFor({ name: fields.name, domain: fields.domain, niche: fields.niche }, await ctx(supabase, businessId, me(req)));
-    if (verdict.verdict === 'sponsor' || verdict.verdict === 'do_not_contact') throw new HkError(409, `${fields.name} is already a ${verdict.verdict === 'sponsor' ? 'sponsor or founding partner' : 'do-not-contact brand'}`, { verdict });
-    if ((verdict.verdict === 'possible_duplicate' || verdict.verdict === 'owned_by') && body.force_duplicate !== true) throw new HkError(409, verdict.verdict === 'owned_by' ? 'that brand exists and is owned by another founder' : 'a brand like that already exists', { verdict });
-    const claim = bool(body.claim, 'claim') === true;
-    const row = { ...fields, business_id: businessId, created_by: me(req), owner_user_id: claim ? me(req) : null, status: claim ? 'claimed' : 'candidate', updated_at: now().toISOString() };
-    const { data, error } = await supabase.from('hk_brands').insert(row).select().single();
-    if (error) throw error;
-    await logEvent(supabase, { businessId, actorUserId: me(req), entityType: 'brand', entityId: data.id, action: 'brand.created', detail: { name: data.name, domain: data.domain, verdict: verdict.verdict, forced: body.force_duplicate === true } });
-    if (claim) await logEvent(supabase, { businessId, actorUserId: me(req), entityType: 'brand', entityId: data.id, action: 'brand.claimed', detail: { name: data.name } });
+    const { data, verdict } = await createBrand(supabase, { businessId: req.params.businessId, userId: me(req), body: req.body || {}, now });
     res.status(201).json({ brand: brandDetail(data), verdict });
   } catch (e) { fail(res, e, 'brands/create'); }
 }

@@ -426,6 +426,15 @@ app.get('/api/hk/:businessId/replies',                        hkRoute(HK_GMAIL, 
 app.patch('/api/hk/:businessId/replies/:id',                  hkRoute(HK_GMAIL, 'patchReplyRoute'));
 app.get('/api/hk/:businessId/gmail/status',                   hkRoute(HK_GMAIL, 'gmailStatusRoute'));
 app.patch('/api/hk/:businessId/gmail/signature',              hkRoute(HK_GMAIL, 'patchSignatureRoute'));
+// hkos-inbox-v1 I1 - the caller's own tethered mailbox, read live; member+ inside the routes (a viewer has no mailbox).
+const HK_INBOX = './api/hk/inboxRoutes.js';
+app.get('/api/hk/:businessId/inbox/threads',                  hkRoute(HK_INBOX, 'listThreadsRoute'));
+app.get('/api/hk/:businessId/inbox/threads/:id',              hkRoute(HK_INBOX, 'openThreadRoute'));
+app.post('/api/hk/:businessId/inbox/threads/:id/link',        hkRoute(HK_INBOX, 'linkThreadRoute'));
+app.post('/api/hk/:businessId/inbox/track',                   hkRoute(HK_INBOX, 'trackRoute'));
+app.get('/api/hk/:businessId/inbox/ignore',                   hkRoute(HK_INBOX, 'listIgnoredRoute'));
+app.post('/api/hk/:businessId/inbox/ignore',                  hkRoute(HK_INBOX, 'ignoreRoute'));
+app.delete('/api/hk/:businessId/inbox/ignore/:domain',        hkRoute(HK_INBOX, 'unignoreRoute'));
 app.post('/api/hunter/find',              esHandler('./api/hunter/find.js'));
 app.post('/api/hunter/domain-search',     esHandler('./api/hunter/domain-search.js'));
 app.get('/api/hunter/account',            esHandler('./api/hunter/account.js'));

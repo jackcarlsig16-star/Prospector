@@ -37,6 +37,17 @@ test('api/hk/** is in the walk and never names from_email outside a comment', ()
   assert.deepEqual(hits, []);
 });
 
+// hkos-inbox-v1 Stage 1 - the inbox routes and the browser sanitizer are in the walk, and the routes never reach for
+// another user's grant or the default account.
+test('inbox files are scanned and use only the caller\'s tethered mailbox', () => {
+  const api = files(path.join(ROOT, 'api')), src = files(path.join(ROOT, 'src'));
+  assert.ok(api.some(f => f.endsWith(path.join('api', 'hk', 'inboxRoutes.js'))));
+  assert.ok(api.some(f => f.endsWith(path.join('api', 'hk', 'inboxRules.js'))));
+  assert.ok(src.some(f => f.endsWith(path.join('src', 'hk', 'inbox', 'sanitizeEmail.js'))));
+  const routes = fs.readFileSync(path.join(ROOT, 'api', 'hk', 'inboxRoutes.js'), 'utf8');
+  for (const bad of ['googleToken' + 'For', 'get' + 'Grant(', 'accessToken' + 'For(', 'modify', 'batchModify', 'trash', '/' + 'labels', 'users.' + 'labels']) assert.ok(!routes.includes(bad), `inboxRoutes names ${bad}`);
+});
+
 // mailbox-connections-v1 REV2 - api/mailboxes.js is in the walk and names no send path (the needles above cover it;
 // this pins that the file exists where the scan looks).
 test('api/mailboxes.js is scanned', () => {

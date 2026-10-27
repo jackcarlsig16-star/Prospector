@@ -15,6 +15,7 @@ export const getSupabase = () => getServiceSupabase();
 export const SPONSOR_RELATIONSHIPS = new Set(['sponsor', 'founding_partner']);
 export const MANUAL_STATUSES = new Set(['meeting', 'signed', 'passed', 'skipped']);
 export const EMAIL_RE = /^[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}$/i;
+export const TEAM_DOMAINS = ['humankindcollective.app'];
 
 export class HkError extends Error { constructor(status, message, extra) { super(message); this.status = status; this.extra = extra; } }
 export const fail = (res, e, tag) => {
