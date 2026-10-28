@@ -52,7 +52,7 @@ async function syncOutlook() {
 function SourceLine({ s, canEdit, isAdmin, busy, onRun }) {
   const [label, tone] = STATUS[s.status] || STATUS.ok;
   const [more, setMore] = useState(false);
-  const control = { apollo: 'Sync now', outlook: 'Sync Outlook', visitors: 'Pull now', tidy: 'Tidy now' }[s.id];
+  const control = { apollo: 'Sync now', outlook: 'Sync Outlook', visitors: 'Pull now', tidy: 'Tidy now', headcount: isAdmin ? 'Fill headcounts' : null }[s.id];
   const long = s.error && s.error.length > ERR_SHOWN;
   return (
     <li data-source={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 0', borderTop: `1px solid ${SA.track}` }}>
@@ -72,6 +72,12 @@ function SourceLine({ s, canEdit, isAdmin, busy, onRun }) {
           <span>{windowText(s.window)}</span>
           {s.window.gap && <span data-visit-gap style={{ color: SA.warn }}>{s.window.window_end ? `Gap: nothing pulled since ${md(s.window.window_end)}` : 'Gap: no pull on record'}</span>}
           {isAdmin && s.status !== 'running' && <Button size="sm" variant="tertiary" disabled={busy} disabledReason="Working…" onClick={() => onRun('backfill')}>{busy ? 'Working…' : `Backfill ${BACKFILL_DAYS} days`}</Button>}
+        </span>
+      )}
+      {s.id === 'headcount' && (
+        <span data-headcount-line style={{ fontSize: 12, color: SA.soft, ...numStyle, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span>{s.line || 'No fill yet - the free paths run on first sight and on page load; Fill headcounts runs them all'}</span>
+          {s.spend && <span>Apollo this month: {s.spend.month} of {s.spend.cap} credits · today {s.spend.today?.lookups ?? 0} of {s.spend.daily_cap} lookups</span>}
         </span>
       )}
       {s.id === 'visitors' && s.people_pull && (
@@ -136,6 +142,10 @@ export default function AttentionDrawer({ businessId, canEdit, isAdmin = false, 
         const r = await goalsApi.visitPeoplePull(businessId, { force: true });
         const c = r.counts || {};
         return setNote(r.ran ? `Visitor people: ${c.contacts} contact${c.contacts === 1 ? '' : 's'} on the list · ${c.people_added} new · ${c.already_in} already on file · ${c.matched} compan${c.matched === 1 ? 'y' : 'ies'} matched · ${c.created} created${c.parked ? ` · ${c.parked} parked (${c.people_parked} people)` : ''}${r.migration_pending ? ` · ${r.migration_pending}` : ''}` : `Visitor people: ${r.reason}`);
+      }
+      else if (id === 'headcount') {
+        const r = await goalsApi.headcountFill(businessId, {});
+        return setNote(r.ran ? `Headcounts: ${r.line}${r.credits ? ` · ${r.credits} credits` : ' · 0 credits'}` : `Headcounts: ${r.reason}`);
       }
       else if (id === 'tidy') await goalsApi.runTidy(businessId, { force: true });
       setNote(`${data.sources.find(s => s.id === id).label}: done`);

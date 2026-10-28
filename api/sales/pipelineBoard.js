@@ -123,7 +123,7 @@ export function buildBoard({
       owner_team: o.owner_team || null, owner: o.owner || null, tier: o.tier || null,
       next_step: o.next_action || null, next_step_due: o.next_action_date || null, last_touch_at: touches.get(o.id) || null,
       top: !!o.is_top, record_id: o.record_id || null, channel: o.channel || 'unknown', priority: o.priority ?? null, ...setBy(o.priority_set_by, o.priority_set_at),
-      covered_lives: o.covered_lives ?? null, ...size(o), reach_employees: null, reach_clients: null, owner_user_id: o.owner_user_id || null,
+      covered_lives: o.covered_lives ?? null, ...size(o), domain: o.domain ?? null, domain_source: o.domain_source ?? null, reach_employees: null, reach_clients: null, owner_user_id: o.owner_user_id || null,
     });
     extra.set(`employer:${o.id}`, { created_at: o.created_at, apollo: !!o.apollo_account_id });
   }
@@ -134,7 +134,7 @@ export function buildBoard({
       type: 'target', id: t.id, name: t.name, ...stage, owner_team: t.owner_team || null, owner: memberNames.get(t.owner_user_id) || null, tier: null,
       next_step: null, next_step_due: null, last_touch_at: null, top: false, record_id: t.record_id || null,
       channel: t.channel || 'unknown', priority: null, priority_set_by: null, priority_set_at: null, covered_lives: null,
-      ...size(t), reach_employees: null, reach_clients: null, owner_user_id: t.owner_user_id || null,
+      ...size(t), domain: t.domain ?? null, domain_source: t.domain_source ?? null, reach_employees: null, reach_clients: null, owner_user_id: t.owner_user_id || null,
     });
     extra.set(`target:${t.id}`, { created_at: t.created_at });
   }
@@ -215,9 +215,9 @@ async function loadBoard(businessId, filters) {
   const [partners, opportunities, targets, sequenced, members, allVisits, linked, oppEvents, noteEvents, overrides, scout] = await Promise.all([
     all('sales_goals', 'id, name, category, tier, pipeline_status, hot, next_step, next_meeting_at, last_touch_at, owner_user_id, owner_team, co_owner_name, no_double_touch, record_id, channel, priority, priority_set_by, priority_set_at, created_at, employees, employees_source, reach_employees, reach_clients',
       x => x.eq('goal_type', 'partnership').is('archived_at', null).order('id')),
-    all('sales_opportunities', 'id, organization, org_type, stage, owner, owner_user_id, owner_team, tier, next_action, next_action_date, is_top, record_id, apollo_account_id, channel, priority, priority_set_by, priority_set_at, covered_lives, created_at, employees, employees_source',
+    all('sales_opportunities', 'id, organization, org_type, stage, owner, owner_user_id, owner_team, tier, next_action, next_action_date, is_top, record_id, apollo_account_id, channel, priority, priority_set_by, priority_set_at, covered_lives, created_at, domain, domain_source, employees, employees_source',
       x => x.is('archived_at', null).order('id')),
-    all('sales_targets', 'id, name, status, owner_team, owner_user_id, record_id, channel, created_at, employees, employees_source', x => x.in('status', ['proposed', 'researching']).order('id')),
+    all('sales_targets', 'id, name, status, owner_team, owner_user_id, record_id, channel, created_at, employees, employees_source, domain, domain_source', x => x.in('status', ['proposed', 'researching']).order('id')),
     filters.includeApollo ? all('sales_sequenced_accounts', 'account_id, name, first_sequenced_at, employees', x => x.order('account_id')) : [],
     supabase.from('business_members').select('user_id, name, profile:profiles!business_members_user_id_fkey(display_name)')
       .eq('business_id', businessId).not('user_id', 'is', null),

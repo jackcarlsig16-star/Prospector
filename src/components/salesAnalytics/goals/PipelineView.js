@@ -66,7 +66,7 @@ const rowBar = { height: ROW_BAR_HEIGHT, display: 'flex', alignItems: 'center', 
 const Dim = () => <span className="ui-table__dim">—</span>;
 const rowKey = r => `${r.type}-${r.id}`;
 const CELL_FIELD = { next: 'next_step', due: 'next_step_due' };
-const SIZE_TAG = { research: 'Research', manual: 'Typed' };
+const SIZE_TAG = { research: 'Research', manual: 'Typed', apollo: 'Apollo' };
 const Swatch = ({ color }) => <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, flex: 'none', background: BOARD_TOKENS[color] }} />;
 const workCell = (n, late, what) => (n ? <span style={{ ...numStyle, color: late ? SA.bad : SA.text }} title={`${n} open ${what}${late ? ` · ${late} overdue` : ''}`}>{n}{late ? ' !' : ''}</span> : <Dim />);
 

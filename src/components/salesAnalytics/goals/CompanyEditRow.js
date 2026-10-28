@@ -22,6 +22,8 @@ import { SourceForm } from './LeadSource';
 export default function CompanyEditRow({ businessId, row, members, source, onPatch, onChanged, onToast }) {
   const [jump, setJump] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
+  const [domainOpen, setDomainOpen] = useState(false);
+  const [domainDraft, setDomainDraft] = useState('');
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const act = async (what, fn) => {
@@ -63,6 +65,13 @@ export default function CompanyEditRow({ businessId, row, members, source, onPat
     else await goalsApi.updateTarget(businessId, row.id, { owner_team: team || null });
     onChanged();
   });
+  // FIX headcount-auto-v1 REV2 H7: Set domain (source 'manual') - the headcount lookup needs it; empty clears it.
+  const saveDomain = () => act('domain', async () => {
+    const r = await goalsApi.editCompanyFields(businessId, row.type, row.id, { domain: domainDraft.trim() || null });
+    onPatch({ domain: r.fields?.domain ?? null, domain_source: r.fields?.domain_source ?? null });
+    setDomainOpen(false); onChanged();
+    onToast({ text: `${row.name}: website ${r.fields?.domain || 'cleared'}` });
+  });
   const changePriority = value => act('priority', async () => {
     const before = undoValue(row);
     await writePriority(businessId, row, value);
@@ -96,8 +105,17 @@ export default function CompanyEditRow({ businessId, row, members, source, onPat
           </span>
         )}
         {controls.includes('source') && <button type="button" className="ui-btn ui-btn--secondary" aria-expanded={sourceOpen} onClick={() => setSourceOpen(o => !o)}>Source ▾</button>}
+        {controls.includes('domain') && <button type="button" className="ui-btn ui-btn--secondary" aria-expanded={domainOpen} title={row.domain ? `Website: ${row.domain} (${row.domain_source || 'set'})` : 'No website on file - the headcount lookup needs one'} onClick={() => { setDomainDraft(row.domain || ''); setDomainOpen(o => !o); }}>{row.domain ? `Website · ${row.domain}` : 'Set domain'}</button>}
         {controls.includes('stage') && <span style={{ fontSize: 12, color: SA.muted }}>Stage only moves forward · saves at once, Undo for 10 s</span>}
       </div>
+      {domainOpen && (
+        <form data-domain-form onSubmit={e => { e.preventDefault(); saveDomain(); }} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input aria-label="Website" placeholder="company.com" value={domainDraft} maxLength={120} onChange={e => setDomainDraft(e.target.value)} className="ui-input ui-input--sm" style={{ width: 220 }} />
+          <button type="submit" className="ui-btn ui-btn--primary ui-btn--sm" disabled={b('domain')}>{b('domain') ? 'Saving…' : 'Save website'}</button>
+          <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm" onClick={() => setDomainOpen(false)}>Cancel</button>
+          <span style={{ fontSize: 12, color: SA.muted }}>Fill-only elsewhere; a typed website is never overwritten</span>
+        </form>
+      )}
       {jump && (
         <div role="group" aria-label="Jump to stage" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {stageOptions(row).map(s => (

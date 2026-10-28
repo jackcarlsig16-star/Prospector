@@ -224,6 +224,9 @@ export const goalsApi = {
   // intent-score-v1: the Priorities view.
   scores: (id, params = {}) => call(id, `/scores?${q(params)}`),
   recomputeScores: (id, body = {}) => call(id, '/scores/recompute', { method: 'POST', body }),
+  // FIX headcount-auto-v1 REV2 - "Fill headcounts" (owner / admin): the free paths, then enrich under today's N; 0 credits measured so far.
+  headcountFill: (id, body = {}) => call(id, '/headcount/fill', { method: 'POST', body }),
+  headcountStatus: id => call(id, '/headcount/status'),
   scoresCsvUrl: (id, params = {}) => `/api/sales/${id}/goals/scores/export.csv?${q(params)}`,
   brief: (id, type, recordId) => call(id, `/brief/${type}/${recordId}`),
   scoreOf: (id, type, recordId) => call(id, `/scores/${type}/${recordId}`),

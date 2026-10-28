@@ -751,6 +751,8 @@ app.post('/api/sales/:businessId/goals/targets', salesModuleRoute('./api/sales/c
 // intent-score-v1 Stage 2 - the ranked scores (filters), Recompute now (owner / admin; one company for a Member), the CSV, the Brief.
 app.get('/api/sales/:businessId/goals/scores', salesModuleRoute('./api/sales/scoresRoutes.js', 'listScoresRoute', 'goals/scores'));
 app.post('/api/sales/:businessId/goals/scores/recompute', salesModuleRoute('./api/sales/scoresRoutes.js', 'recomputeRoute', 'goals/scores/recompute POST'));
+app.post('/api/sales/:businessId/goals/headcount/fill', salesModuleRoute('./api/sales/headcountRun.js', 'fillHeadcountsRoute', 'goals/headcount/fill POST'));
+app.get('/api/sales/:businessId/goals/headcount/status', salesModuleRoute('./api/sales/headcountRun.js', 'headcountStatusRoute', 'goals/headcount/status'));
 app.get('/api/sales/:businessId/goals/scores/export.csv', salesModuleRoute('./api/sales/scoresRoutes.js', 'exportScoresRoute', 'goals/scores/export.csv'));
 app.get('/api/sales/:businessId/goals/brief/:type/:id', salesModuleRoute('./api/sales/companyBrief.js', 'briefRoute', 'goals/brief/:type/:id'));
 // intent-score-v1 Stage 3 - one company's score (S4), saved share views (S5), Write email + its lint + the day's cap (S7).

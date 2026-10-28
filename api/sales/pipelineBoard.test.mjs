@@ -120,8 +120,9 @@ test('no email, phone or Apollo id anywhere in the payload', () => {
   assert.ok(!JSON.stringify(buildBoard(s)).includes('"A1"'), 'an opportunity\'s apollo_account_id never leaks');
   const base = ['channel', 'channels', 'color', 'covered_lives', 'employees', 'employees_source', 'id', 'last_touch_at', 'name', 'next_step', 'next_step_due', 'owner', 'owner_team', 'owner_user_id', 'priority', 'priority_set_at', 'priority_set_by',
     'reach_clients', 'reach_employees', 'record_id', 'stage', 'stage_label', 'tier', 'top', 'type', 'visited', 'work'];
+  // FIX headcount-auto-v1 REV2 H7: employers and targets carry domain / domain_source for the Set domain control.
   for (const r of buildBoard(s, { includeApollo: true })) {
-    assert.deepEqual(Object.keys(r).sort(), r.type === 'partner' ? [...base, 'category', 'co_owner_name', 'no_double_touch'].sort() : base);
+    assert.deepEqual(Object.keys(r).sort(), r.type === 'partner' ? [...base, 'category', 'co_owner_name', 'no_double_touch'].sort() : r.type === 'apollo' ? base : [...base, 'domain', 'domain_source'].sort());
   }
 });
 

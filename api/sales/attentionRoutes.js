@@ -1,6 +1,7 @@
 import { getSupabase, addDays } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
+import { monthSpend, MONTHLY_CREDIT_CAP } from './visitPull.js';
 import { STUCK_RUN_MINUTES } from './syncRunStatus.js';
 import { TIDY_STALE_MS } from './tidyRoutes.js';
 import { STALE_RUNNING_MS as RESEARCH_STALE_MS } from './partnerResearch.js';
@@ -23,7 +24,7 @@ import { campaignActionRows } from './outreachRoutes.js';
 // The two held-moves counts scan every stored Outlook message, so they are
 // kept per workspace for HELD_CACHE_MS; ?fresh=1 (the drawer opening) reads anew.
 
-export const SOURCES = [['apollo', 'Apollo (sequences, opens, replies)'], ['outlook', 'Outlook (mail + calendar)'], ['visitors', 'Website visitors'], ['tidy', 'Tidy'], ['research', 'Research']];
+export const SOURCES = [['apollo', 'Apollo (sequences, opens, replies)'], ['outlook', 'Outlook (mail + calendar)'], ['visitors', 'Website visitors'], ['headcount', 'Headcounts (Apollo)'], ['tidy', 'Tidy'], ['research', 'Research']];
 export const DAY_MS = 864e5;
 export const MORNING_HOUR = 10; // LA hour after which today's pull / Tidy should have run (REVISABLE)
 export const OUTLOOK_DEAD_MS = 30 * 60e3;
@@ -111,6 +112,14 @@ export function peoplePullLine(settings, peopleRuns = [], parked = 0) {
   return { last_on: s.last_pull_on || latest?.la_date || null, last_at: s.last_at || latest?.updated_at || null, status, counts: s.last_counts || null, list: s.list_name || null, list_count: s.list_count ?? null, error: latest?.status === 'error' ? latest.error : s.last_error || null, parked };
 }
 
+// FIX headcount-auto-v1 REV2 H5 / H6 - the Headcounts line: the last fill's result line, month-to-date Apollo spend from
+// the shared ledger, failed only when Apollo started charging (paused) or the last run errored.
+export function headcountLine(settings, monthSpent = 0, cap = 500) {
+  const h = settings?.visitor_filters?.headcount || {};
+  const status = h.charged ? 'failed' : h.last_error_at && (!h.last_at || h.last_error_at > h.last_at) ? 'failed' : 'ok';
+  return { id: 'headcount', label: 'Headcounts (Apollo)', status, last_at: h.last_at || null, error: h.charged ? h.charged.message : status === 'failed' ? h.last_error : null, line: h.last_line || null, counts: h.last_counts || null, filled: h.last_filled || [], spend: { month: monthSpent, cap, daily_cap: settings?.headcount_daily_credits ?? 25, today: h.today?.day === laDateString(new Date()) ? h.today : null } };
+}
+
 const DRY_RUNS = { apollo: apolloDryRun, outlook: outlookDryRun };
 export async function heldCounts(supabase, businessId, { fresh = false, now = Date.now(), dry = DRY_RUNS } = {}) {
   const hit = heldCache.get(businessId);
@@ -128,7 +137,7 @@ export async function attention(supabase, { businessId, userId, fresh = false, n
   const at = new Date(now);
   const today = laDateString(at);
   const since = new Date(now - 7 * DAY_MS).toISOString();
-  const [syncRuns, grant, msRuns, allVisitRuns, tidyRuns, researchRuns, overdue, waiting, held, campaign, settings, parked] = await Promise.all([
+  const [syncRuns, grant, msRuns, allVisitRuns, tidyRuns, researchRuns, overdue, waiting, held, campaign, settings, parked, monthSpent] = await Promise.all([
     supabase.from('sales_sync_runs').select('status, started_at, finished_at, error_text, counts').eq('business_id', businessId).neq('trigger', 'test').order('started_at', { ascending: false }).limit(20).then(must),
     supabase.from('microsoft_grants').select('user_id, error').eq('user_id', userId).maybeSingle().then(must),
     supabase.from('microsoft_sync_runs').select('folder, started_at, finished_at, error').eq('user_id', userId).eq('dry_run', false).order('started_at', { ascending: false }).limit(6).then(must),
@@ -139,8 +148,9 @@ export async function attention(supabase, { businessId, userId, fresh = false, n
     selectAllPages(() => supabase.from('sales_week_goals').select('id').eq('business_id', businessId).eq('kind', 'waiting').eq('status', 'open').lt('due_date', today).order('id')),
     heldCounts(supabase, businessId, { fresh, now, dry }),
     campaignActionRows(supabase, businessId, today),
-    supabase.from('sales_settings').select('visitor_filters').eq('business_id', businessId).maybeSingle().then(must),
+    supabase.from('sales_settings').select('visitor_filters, headcount_daily_credits').eq('business_id', businessId).maybeSingle().then(must),
     supabase.from('sales_people').select('id', { count: 'exact', head: true }).eq('business_id', businessId).eq('company_type', 'parked').is('archived_at', null).then(r => (r.error ? 0 : r.count || 0)),
+    monthSpend(supabase, today.slice(0, 7)).catch(() => 0),
   ]);
   const peopleRuns = allVisitRuns.filter(r => r.kind === 'people');
   const visitRuns = allVisitRuns.filter(r => r.kind !== 'people');
@@ -150,6 +160,7 @@ export async function attention(supabase, { businessId, userId, fresh = false, n
     apolloLine(syncRuns, now),
     outlookLine(grant, msRuns, now),
     { ...dailyLine('visitors', visitRuns, { now, dateOf: r => r.la_date, startedOf: r => r.updated_at || r.created_at, deadMs: VISITS_DEAD_MS, errorOf: r => r.error }), window: visitWindow(visitRuns, pulled, now), people_pull: peoplePullLine(settings, peopleRuns, parked) },
+    headcountLine(settings, monthSpent, MONTHLY_CREDIT_CAP),
     dailyLine('tidy', tidyRuns, { now, dateOf: r => laDateString(new Date(r.started_at)), startedOf: r => r.started_at, deadMs: TIDY_STALE_MS, errorOf: r => r.counts?.error }),
     researchLine(researchRuns, now),
   ];

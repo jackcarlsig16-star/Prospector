@@ -185,7 +185,12 @@ export const isStale = (computedAt, now = Date.now(), hours = STALE_HOURS) => !c
 export async function recomputeIfStale(supabase, businessId, { now = Date.now() } = {}) {
   const at = await lastComputedAt(supabase, businessId);
   if (!isStale(at, now)) return { ran: false, reason: 'fresh', computed_at: at };
-  return recomputeScores(supabase, { businessId, trigger: 'pageload', now });
+  const out = await recomputeScores(supabase, { businessId, trigger: 'pageload', now });
+  // FIX headcount-auto-v1 REV2 H5 (3): the same 24 h hook runs the free headcount paths for new companies + at most
+  // PAGE_LOAD_LOOKUPS enrich lookups, in the background (never on the in-memory test Supabase).
+  const { schedulePageLoadFill } = await import('./headcountRun.js');
+  schedulePageLoadFill(supabase, businessId);
+  return out;
 }
 
 // The hook the other routes call after a change: never awaited by them, one run in flight per workspace (a second

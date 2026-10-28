@@ -467,6 +467,9 @@ export async function insertCompanyRecord(supabase, { businessId, userId, name, 
   const emp = employees != null ? { employees, employees_source: employeesSource, employees_at: now.toISOString() } : {};
   const created = async (type, id) => {
     if (source) await logSource(supabase, { businessId, type, id, to: src, reason: 'create', byUser: userId, at: now });
+    // FIX headcount-auto-v1 REV2 H5 (2): first sight - the free headcount paths in the background, never a lookup inside a create.
+    const { scheduleFirstSight } = await import('./headcountRun.js');
+    scheduleFirstSight(supabase, { businessId, type, id });
     return { created: { type, id, name } };
   };
   const hit = findDupes({ name, domain }, dupeCtx || await loadDupeContext(supabase, businessId)).exact.filter(h => h.type in RANK).sort((a, b) => a.archived - b.archived || RANK[a.type] - RANK[b.type])[0];

@@ -178,6 +178,14 @@ export async function completeRun(supabase, { run, partner, business, categories
   if (error) throw new Error(error.message);
   if (data.status === 'done') {
     await applyResearchNumbers(supabase, { businessId: run.business_id, type: run.entity_type, id: run.entity_id, result: data.result });
+    // FIX headcount-auto-v1 REV2 H2 / H5: a high-confidence domain fills an empty employer / target domain (source 'research'),
+    // then the free headcount paths run for this company in the background.
+    if (['employer', 'target'].includes(run.entity_type) && data.result?.website_confidence === 'high' && data.result?.domain) {
+      const table = run.entity_type === 'employer' ? 'sales_opportunities' : 'sales_targets';
+      await supabase.from(table).update({ domain: data.result.domain, domain_source: 'research', domain_at: new Date().toISOString() }).eq('business_id', run.business_id).eq('id', run.entity_id).is('domain', null);
+    }
+    const { scheduleFirstSight } = await import('./headcountRun.js');
+    scheduleFirstSight(supabase, { businessId: run.business_id, type: run.entity_type, id: run.entity_id });
     scheduleRecompute(supabase, run.business_id, 'research');
   }
   return data;

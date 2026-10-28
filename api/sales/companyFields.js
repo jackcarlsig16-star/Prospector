@@ -1,4 +1,5 @@
 import { getSupabase } from './goalsShared.js';
+import { normalizeDomain } from '../../src/constants/partnerDomains.js';
 
 // company-workflow-v1 W3/W4/W5 - the numbers and the owner person on a company record (20261023_company_workflow_v1.sql):
 //   employees (+ _source research | manual, _at) on partners, employers and targets;
@@ -71,13 +72,19 @@ export async function editCompanyFields(supabase, { businessId, type, id, body =
   try {
     if (!RECORD_TABLE[type]) return reply(400, { error: `type must be one of ${Object.keys(RECORD_TABLE).join('|')}` });
     if (!UUID.test(id || '')) return reply(404, { error: `${type} not found` });
-    const allowed = [...NUMBERS[type], ...(type === 'partner' ? [] : ['owner_user_id'])];
+    // FIX headcount-auto-v1 REV2 H7: "Set domain" on an employer / target (source 'manual'; null clears it).
+    const allowed = [...NUMBERS[type], ...(type === 'partner' ? [] : ['owner_user_id', 'domain'])];
     const keys = Object.keys(body);
     const bad = keys.find(k => !allowed.includes(k));
-    if (bad) return reply(400, { error: bad === 'owner_user_id' ? "a partner's owner changes through Assign" : `${bad} can't be set on a ${type}` });
+    if (bad) return reply(400, { error: bad === 'owner_user_id' ? "a partner's owner changes through Assign" : bad === 'domain' ? "a partner's domain lives in Partner domains" : `${bad} can't be set on a ${type}` });
     if (!keys.length) return reply(400, { error: 'nothing to change' });
     const patch = {};
-    for (const k of keys.filter(x => x !== 'owner_user_id')) {
+    if ('domain' in body) {
+      const d = body.domain === null || body.domain === '' ? null : normalizeDomain(String(body.domain));
+      if (body.domain !== null && body.domain !== '' && !d) return reply(400, { error: 'domain must look like company.com' });
+      Object.assign(patch, { domain: d, domain_source: d ? 'manual' : null, domain_at: d ? now.toISOString() : null });
+    }
+    for (const k of keys.filter(x => x !== 'owner_user_id' && x !== 'domain')) {
       const v = body[k] === null || body[k] === '' ? null : wholeNumber(body[k]);
       if (body[k] !== null && body[k] !== '' && v == null) return reply(400, { error: `${k} must be a whole number` });
       Object.assign(patch, { [k]: v, [`${k}_source`]: v == null ? null : 'manual', [`${k}_at`]: v == null ? null : now.toISOString() });
@@ -87,9 +94,10 @@ export async function editCompanyFields(supabase, { businessId, type, id, body =
       if (body.owner_user_id && !person) return reply(400, { error: 'owner_user_id must be a Member of this workspace' });
       Object.assign(patch, type === 'employer' ? employerOwner(person) : { owner_user_id: person?.user_id ?? null });
     }
-    const select = `id, ${cols(type)}${type === 'partner' ? '' : ', owner_user_id'}${type === 'employer' ? ', owner' : ''}`;
+    const select = `id, ${cols(type)}${type === 'partner' ? '' : ', owner_user_id, domain, domain_source'}${type === 'employer' ? ', owner' : ''}`;
     const rows = must(await supabase.from(RECORD_TABLE[type]).update({ ...patch, updated_at: now.toISOString() }).eq('business_id', businessId).eq('id', id).select(select));
     if (!rows.length) return reply(404, { error: `${type} not found` });
+    if (patch.domain) { const { scheduleFirstSight } = await import('./headcountRun.js'); scheduleFirstSight(supabase, { businessId, type, id }); }
     return reply(200, { fields: rows[0] });
   } catch (e) { return reply(e.status || 500, { error: e.message }); }
 }

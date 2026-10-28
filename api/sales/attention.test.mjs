@@ -93,7 +93,10 @@ test('attention: the caller\'s counts (their overdue to-dos, campaign sends + re
   const dry = { apollo: async () => ({ held: [] }), outlook: async () => ({ held: [] }) };
   const r = await attention(s, { businessId: B, userId: JACK, now: NOW, dry, fresh: true });
   assert.ok(!JSON.stringify(r).includes('@'), 'no address in the reply');
-  assert.deepEqual(r.sources.map(x => [x.id, x.status]), [['apollo', 'stale'], ['outlook', 'ok'], ['visitors', 'ok'], ['tidy', 'failed'], ['research', 'ok']]);
+  assert.deepEqual(r.sources.map(x => [x.id, x.status]), [['apollo', 'stale'], ['outlook', 'ok'], ['visitors', 'ok'], ['headcount', 'ok'], ['tidy', 'failed'], ['research', 'ok']]);
+  // FIX headcount-auto-v1 REV2 H6: the Headcounts line reads the fill state + the shared ledger's month-to-date spend.
+  const hc = r.sources.find(x => x.id === 'headcount');
+  assert.deepEqual([hc.label, hc.line, hc.spend.month, hc.spend.cap, hc.spend.daily_cap], ['Headcounts (Apollo)', null, 0, 500, 25]);
   assert.equal(r.sources.find(x => x.id === 'tidy').error, 'boom');
   assert.deepEqual(r.sources.find(x => x.id === 'visitors').window, { window_start: '2026-10-21', window_end: today, lookback_days: 1, kind: 'daily', companies: 2, last_ok_at: ago(5), gap: false });
   // V2a follow-up: the people run row never colors the visitors line (still ok above); it feeds people_pull with the parked count.

@@ -6,7 +6,7 @@ import { triggerSync } from '../salesApi';
 // actions-home-attention-v1 Stage 2 - the Needs attention button + drawer. Made-up data; no emails or phones.
 jest.mock('./goalsApi', () => ({
   ...jest.requireActual('./goalsApi'),
-  goalsApi: { attention: jest.fn(), visitPull: jest.fn(), visitPeoplePull: jest.fn(), runTidy: jest.fn() },
+  goalsApi: { attention: jest.fn(), visitPull: jest.fn(), visitPeoplePull: jest.fn(), headcountFill: jest.fn(), runTidy: jest.fn() },
 }));
 jest.mock('../salesApi', () => ({ triggerSync: jest.fn() }));
 
@@ -162,4 +162,25 @@ test('visitor people: the line reads the last pull, Pull visitor people now post
   const vrow = screen.getByRole('dialog').querySelector('[data-source="visitors"]');
   expect(vrow.querySelector('[data-people-pull]')).toHaveTextContent('66 contacts');
   expect(within(vrow).queryByRole('button', { name: 'Pull visitor people now' })).toBeNull();
+});
+
+// FIX headcount-auto-v1 REV2 H5 / H6 - the Headcounts line: result line + month spend; "Fill headcounts" for owners / admins only.
+test('headcounts: the line shows the last fill and the month-to-date spend; Fill headcounts (admin) posts and reports; a Member sees the line without the button', async () => {
+  const hc = { id: 'headcount', label: 'Headcounts (Apollo)', status: 'ok', last_at: '2026-10-22T16:00:00Z', error: null, line: '3 domains found · 5 headcounts filled (4 via Apollo) · 12 still unknown · 1 name ambiguous', spend: { month: 0, cap: 500, daily_cap: 25, today: { day: '2026-10-22', lookups: 4, name_searches: 9 } } };
+  goalsApi.attention.mockResolvedValue({ ...DATA, sources: [...SOURCES.slice(0, 3), hc, ...SOURCES.slice(3)] });
+  goalsApi.headcountFill.mockResolvedValue({ ran: true, line: '1 domain found · 2 headcounts filled (2 via Apollo) · 10 still unknown · 0 names ambiguous', credits: 0 });
+  const { unmount } = render(<AttentionDrawer businessId="b1" canEdit isAdmin compact={false} pageLoadFailures={{}} onNav={jest.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Needs attention/ }));
+  const row = screen.getByRole('dialog').querySelector('[data-source="headcount"]');
+  expect(row.querySelector('[data-headcount-line]')).toHaveTextContent('5 headcounts filled (4 via Apollo)');
+  expect(row.querySelector('[data-headcount-line]')).toHaveTextContent('Apollo this month: 0 of 500 credits · today 4 of 25 lookups');
+  fireEvent.click(within(row).getByRole('button', { name: 'Fill headcounts' }));
+  await waitFor(() => expect(goalsApi.headcountFill).toHaveBeenCalledWith('b1', {}));
+  expect(await screen.findByRole('status')).toHaveTextContent('Headcounts: 1 domain found · 2 headcounts filled (2 via Apollo) · 10 still unknown · 0 names ambiguous · 0 credits');
+  unmount();
+  render(<AttentionDrawer businessId="b1" canEdit isAdmin={false} compact={false} pageLoadFailures={{}} onNav={jest.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Needs attention/ }));
+  const mrow = screen.getByRole('dialog').querySelector('[data-source="headcount"]');
+  expect(mrow.querySelector('[data-headcount-line]')).toHaveTextContent('5 headcounts filled');
+  expect(within(mrow).queryByRole('button', { name: 'Fill headcounts' })).toBeNull();
 });
