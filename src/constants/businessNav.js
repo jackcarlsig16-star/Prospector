@@ -13,7 +13,7 @@
 export const BUSINESS_NAV = [
   { id: "command-center",  ic: "⌂", lb: "Command Center", hiddenWith: ["goals_sales", "hk_sales"] },
   { id: "sales-analytics", ic: "📈", lb: "Sales & Marketing", feature: "goals_sales" },
-  { id: "hk-sales",        ic: "✿", lb: "Sales OS", feature: "hk_sales" },
+  { id: "hk-sales",        ic: "✿", lb: "Grow", feature: "hk_sales" },
   { id: "accounts",        ic: "◈", lb: "Accounts", hiddenWith: "hk_sales" },
   { id: "projects",        ic: "▣", lb: "Projects", hiddenWith: "hk_sales" },
   { id: "overview",        ic: "◉", lb: "Business Intel & Strategy", hiddenWith: "hk_sales" },

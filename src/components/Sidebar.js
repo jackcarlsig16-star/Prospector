@@ -20,6 +20,7 @@ export default function Sidebar({ compact, page, setPage, toolsActiveTool, setTo
   const [companyLogo, setCompanyLogo] = useState(()=>readImgPref("companyLogo"));
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false); // visual-nav-cleanup-v1 C3
   const menuBtnRef = useRef(null);
   const panelRef = useRef(null);
 
@@ -107,12 +108,18 @@ export default function Sidebar({ compact, page, setPage, toolsActiveTool, setTo
             <NavRow icon="⚙" label="Admin" tall={compact} active={page==="admin"} onClick={go(()=>setPage("admin"))} />
           </div>
         )}
-        {compact && (
-          <div style={{ borderTop:`1px solid ${C.brd}`, marginTop:6, paddingTop:6 }}>
-            <NavRow icon="☕" label="Daily digest" tall onClick={go(onOpenDigest)} />
-            <NavRow icon="🐞" label="Report a bug" tall onClick={go(onOpenBugReport)} />
-          </div>
-        )}
+        {/* visual-nav-cleanup-v1 C3 - the rarely-used rows live under one Help row (Voice Profile is HomeLover's live
+            voice source for Write email - moved here, never removed). */}
+        <div data-help-nav style={{ borderTop:`1px solid ${C.brd}`, marginTop:6, paddingTop:6 }}>
+          <NavRow icon="?" label={`Help ${helpOpen ? "▾" : "▸"}`} tall={compact} onClick={()=>setHelpOpen(o=>!o)} />
+          {helpOpen && <>
+            <NavRow sub icon="☕" label="Daily digest" tall={compact} onClick={go(onOpenDigest)} />
+            <NavRow sub icon="📅" label="Week ahead" tall={compact} onClick={go(onOpenDigest)} />
+            <NavRow sub icon="🐞" label="Report a bug" tall={compact} onClick={go(onOpenBugReport)} />
+            <NavRow sub icon="🎙" label="Voice Profile" tall={compact} active={page==="voice-profile"} onClick={go(()=>setPage("voice-profile"))} />
+            {showUiKit&&<NavRow sub icon="◧" label="UI kit" tall={compact} active={page==="ui-kit"} onClick={go(()=>setPage("ui-kit"))} />}
+          </>}
+        </div>
       </div>
 
       <div style={{ padding:"10px 12px", borderTop:`1px solid ${C.brd}` }}>
@@ -129,10 +136,8 @@ export default function Sidebar({ compact, page, setPage, toolsActiveTool, setTo
         )}
         {userMenuOpen && !viewAs && (
           <div id="user-menu" style={{ margin:"0 -12px 8px", paddingBottom:6, borderBottom:`1px solid ${C.brd}` }}>
-            <NavRow icon="☆" label="Profile & badges" tall={compact} onClick={go(onOpenProfile)} />
-            <NavRow icon="🎙" label="Voice Profile" tall={compact} active={page==="voice-profile"} onClick={go(()=>setPage("voice-profile"))} />
             <NavRow icon="🔗" label="Connections" tall={compact} active={page==="connections"} onClick={go(()=>setPage("connections"))} />
-            {showUiKit&&<NavRow icon="◧" label="UI kit" tall={compact} active={page==="ui-kit"} onClick={go(()=>setPage("ui-kit"))} />}
+            <NavRow icon="☆" label="Profile & badges" tall={compact} onClick={go(onOpenProfile)} />
             <NavRow icon="⏻" label="Sign out" tall={compact} accent={C.red} onClick={signOut} />
           </div>
         )}

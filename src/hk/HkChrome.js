@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Segmented from '../ui/Segmented';
 import { Icon, Sprout, Avatar } from './HkMarks';
 import { ROLE_LABELS } from '../constants/roles';
+import { wordFor, checkInWith, NUDGE_DAYS } from './wordOfDay';
 
 // hkos-project-shell-v1 S3/S4/S6/S7/S9 - the shell's own chrome. Nothing here is shared with the Prospector shell.
 
@@ -25,12 +26,12 @@ export function OwnerToggle({ options, value, onChange }) {
 
 export function SideNav({ screens, current, onGo, owner }) {
   return (
-    <nav className="hk-nav" aria-label="Sales OS">
+    <nav className="hk-nav" aria-label="Grow">
       <div className="hk-logo">
         <Sprout size={28} />
         <div>
           <div className="hk-logo__name">HumanKind</div>
-          <div className="hk-logo__sub">Sales OS</div>
+          <div className="hk-logo__sub">Grow</div>
         </div>
       </div>
       {owner}
@@ -61,7 +62,7 @@ export function WorkspaceMenu({ business, businesses, onSelectBusiness, onAllWor
     <div className="hk-anchor" ref={ref}>
       <button type="button" className="hk-btn hk-pill" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(o => !o)} data-hk-workspace>
         <span className="hk-pill__dot" aria-hidden="true" />
-        HumanKind Sales OS
+        HumanKind Grow
         <Icon name="chevron" size={16} />
       </button>
       {open && (
@@ -115,6 +116,38 @@ export function SyncPill({ state, onSync, onConnections }) {
   );
 }
 
+// visual-nav-cleanup-v1 W1 - the word of the day after the sync pill (HumanKind members): the word; a click shows the
+// definition, an example and, when the other founder hasn't loaded Grow in 3 days, a check-in nudge. "Seen" is a
+// per-viewer convenience in localStorage prospector_hk_wotd (the day it was last opened).
+const WOTD_KEY = 'prospector_hk_wotd';
+const readSeen = () => { try { return localStorage.getItem(WOTD_KEY); } catch { return null; } };
+export function WordPill({ me, members, now = new Date() }) {
+  const [open, setOpen] = useState(false);
+  const [seen, setSeen] = useState(readSeen);
+  const w = wordFor(now);
+  const nudge = checkInWith(me, members, now.getTime());
+  const toggle = () => {
+    setOpen(o => !o);
+    try { localStorage.setItem(WOTD_KEY, w.day); } catch { /* private mode */ }
+    setSeen(w.day);
+  };
+  return (
+    <span style={{ position: 'relative' }} data-hk-wotd>
+      <button type="button" className="hk-btn hk-pill" aria-expanded={open} aria-label={`Word of the day: ${w.word}`} onClick={toggle}>
+        {seen !== w.day && <span className="hk-pill__dot" aria-hidden="true" />}{w.word}
+      </button>
+      {open && (
+        <div role="dialog" aria-label={`${w.word} - word of the day`} className="hk-card" style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 30, width: 280, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <b>{w.word}</b>
+          <span>{w.definition}</span>
+          <i className="hk-meta">“{w.example}”</i>
+          {nudge && <span data-wotd-nudge>Check in with {nudge} - no Grow visit in {NUDGE_DAYS}+ days.</span>}
+        </div>
+      )}
+    </span>
+  );
+}
+
 export function SearchPill({ onOpen }) {
   return (
     <button type="button" className="hk-btn hk-search" onClick={onOpen} data-hk-search>
@@ -127,7 +160,7 @@ export function SearchPill({ onOpen }) {
 export function TabBar({ tabs, current, moreOpen, onGo, onMore }) {
   const inMore = !tabs.some(t => t.id === current);
   return (
-    <nav className="hk-tabbar" aria-label="Sales OS">
+    <nav className="hk-tabbar" aria-label="Grow">
       {tabs.map(t => (
         <button key={t.id} type="button" className="hk-btn hk-tab" aria-current={current === t.id ? 'page' : undefined} onClick={() => onGo(t.id)} data-hk-tab={t.id}>
           <Icon name={t.icon} size={22} />{t.label}

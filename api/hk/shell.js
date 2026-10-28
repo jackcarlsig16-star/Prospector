@@ -21,6 +21,7 @@ const byPaletteOrder = (a, b) => rank(a) - rank(b) || !!b.user_id - !!a.user_id 
 export function shellPayload(rows, auth, businessId, prefs = []) {
   const stored = new Map(prefs.filter(p => p.user_id && p.avatar_slot).map(p => [p.user_id, p.avatar_slot]));
   const taken = new Set(stored.values());
+  const seen = new Map(prefs.filter(p => p.user_id && p.last_seen_at).map(p => [p.user_id, p.last_seen_at]));
   let next = 0;
   const freeSlot = () => { for (let k = 0; k < PALETTE_SIZE; k++) { const slot = (next++ % PALETTE_SIZE) + 1; if (!taken.has(slot)) return slot; } return (next++ % PALETTE_SIZE) + 1; };
   const members = [...rows].sort(byPaletteOrder).map(m => ({
@@ -29,6 +30,7 @@ export function shellPayload(rows, auth, businessId, prefs = []) {
     role: m.role,
     signed_up: !!m.user_id,
     palette_index: (m.user_id && stored.get(m.user_id)) || freeSlot(),
+    last_seen_at: (m.user_id && seen.get(m.user_id)) || null,
   }));
   const mine = members.find(m => m.user_id === auth.user.id);
   const role = auth.roles.get(businessId) || (auth.isPlatformOwner ? 'owner' : 'viewer');
@@ -49,13 +51,23 @@ export default async function handler(req, res) {
     .eq('business_id', businessId).order('created_at');
   if (error) return res.status(500).json({ error: error.message });
   const prefs = await memberPrefs(supabase, businessId, data, req.auth.user.id);
+  await stampSeen(supabase, businessId, req.auth.user.id);
   res.status(200).json(shellPayload(data, req.auth, businessId, prefs));
 }
 
 // The caller's first visit seeds their prefs row with the lowest free slot (the migration seeded the owner only; the
 // second member has no profile until they sign in). A lost race on the slot is harmless - the next read sees the row.
+// visual-nav-cleanup-v1 W2: last_seen_at feeds the word-of-the-day check-in nudge; until its migration runs the column is
+// absent (42703) and the read / stamp quietly skip it.
+const MISSING_COLUMN = '42703';
+export async function stampSeen(supabase, businessId, userId, now = new Date()) {
+  const { error } = await supabase.from('hk_member_prefs').update({ last_seen_at: now.toISOString() }).eq('business_id', businessId).eq('user_id', userId);
+  if (error && error.code !== MISSING_COLUMN) console.error('[hk/shell] last_seen_at stamp failed:', error.message);
+}
 export async function memberPrefs(supabase, businessId, members, userId) {
-  const { data: prefs, error } = await supabase.from('hk_member_prefs').select('user_id, avatar_slot, owner_filter').eq('business_id', businessId);
+  const read = cols => supabase.from('hk_member_prefs').select(cols).eq('business_id', businessId);
+  let { data: prefs, error } = await read('user_id, avatar_slot, owner_filter, last_seen_at');
+  if (error?.code === MISSING_COLUMN) ({ data: prefs, error } = await read('user_id, avatar_slot, owner_filter'));
   if (error) throw new Error(error.message);
   const rows = prefs || [];
   if (!members.some(m => m.user_id === userId) || rows.some(p => p.user_id === userId)) return rows;

@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ensureHkTheme } from './hkTheme';
 import { HK_SCREENS, visibleScreens, phoneTabs, moreScreens, parseHkHash, hkHash, ownerOptions } from './hkScreens';
 import { HK_MODULES } from '../constants/hkModules';
-import { SideNav, OwnerToggle, WorkspaceMenu, AvatarMenu, SearchPill, SyncPill, TabBar, MoreSheet, Palette } from './HkChrome';
+import { SideNav, OwnerToggle, WorkspaceMenu, AvatarMenu, SearchPill, SyncPill, WordPill, TabBar, MoreSheet, Palette } from './HkChrome';
 import { Sprout } from './HkMarks';
 import HkScreen from './HkScreen';
 import NewMenu from './NewMenu';
@@ -36,7 +36,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
     let cancelled = false;
     setShell(null); setLoadError(null);
     fetch(`/api/hk/${business.id}/shell`)
-      .then(r => r.ok ? r.json() : r.json().catch(() => ({})).then(b => Promise.reject(new Error(b.error || `Sales OS failed to load (${r.status})`))))
+      .then(r => r.ok ? r.json() : r.json().catch(() => ({})).then(b => Promise.reject(new Error(b.error || `Grow failed to load (${r.status})`))))
       .then(data => { if (!cancelled) { setShell(data); if (data.me?.owner_filter) setOwner(data.me.owner_filter); } })
       .catch(e => { if (!cancelled) setLoadError(e.message); });
     return () => { cancelled = true; };
@@ -127,12 +127,13 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
   const body = loadError
     ? <p className="hk-meta" role="alert">{loadError}</p>
     : !shell
-      ? <p className="hk-meta">Loading the Sales OS…</p>
+      ? <p className="hk-meta">Loading Grow…</p>
       : <HkScreen screen={current} section={nav.section} brandId={nav.brandId || null} businessId={business.id} owner={ownerValue} compact={compact} shell={shell} now={now} gmail={gmail} syncing={syncing} onSync={() => runSync('manual')} onGmailChanged={loadGmail} onOpenConnections={onOpenConnections} onInboxUnread={setInboxUnread} onSection={s => go('settings', s)} onOpenAdmin={onOpenAdmin} onOpenBrand={id => go('brands', null, id)} onGo={go} onTodayCounts={setTodayCounts} intent={intent} onIntentDone={clearIntent} />;
 
   const avatar = shell && <AvatarMenu me={shell.me} paletteIndex={mine?.palette_index || 1} size={compact ? 30 : 34} onBack={onAllWorkspaces} onSignOut={signOut} />;
   const newMenu = shell && roleAtLeast(shell.me.role, 'member') && <NewMenu compact={compact} onPick={pickNew} />;
   const syncPill = <SyncPill state={syncPillState(gmail, syncing)} onSync={() => runSync('manual')} onConnections={onOpenConnections} />;
+  const wordPill = shell && <WordPill me={shell.me} members={shell.members} />;
 
   return (
     <div className={`hk-theme hk-shell${compact ? ' hk-shell--phone' : ''}`} data-hk-shell>
@@ -140,10 +141,11 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
         <>
           <header className="hk-phone-top">
             <Sprout size={24} />
-            <span className="hk-phone-top__name">Sales OS</span>
+            <span className="hk-phone-top__name">Grow</span>
             <span className="hk-spacer" />
             {newMenu}
             {syncPill}
+            {wordPill}
             {avatar}
           </header>
           {ownerToggle && <div style={{ padding: '12px 16px 0' }}>{ownerToggle}</div>}
@@ -158,6 +160,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
               <WorkspaceMenu business={business} businesses={businesses} onSelectBusiness={onSelectBusiness} onAllWorkspaces={onAllWorkspaces} />
               <SearchPill onOpen={() => setPaletteOpen(true)} />
               {syncPill}
+              {wordPill}
               <span className="hk-spacer" />
               {newMenu}
               {avatar}

@@ -23,9 +23,6 @@ import { writeNav } from './components/salesAnalytics/salesNav';
 import useMediaQuery from './utils/useMediaQuery';
 import { trackStat, trackDailyStat } from './utils/stats';
 import { indexAccountThreads } from './utils/threadIndexer';
-import { fetchRecentThreads, generateBrief } from './components/DailyDigest';
-import { loadCachedWeekAhead, buildWeekAhead } from './utils/weekAhead';
-import { hasGoogle } from './utils/google';
 import { saveToIdb, restoreFromIdb } from './utils/idb';
 import { dedupeAccounts } from './utils/normAccount';
 import { resolveUserId } from './utils/userIdentity';
@@ -1057,37 +1054,6 @@ export default function App({ me }) {
     startBulkAssay({ accounts, onSaveAccounts: setAccounts });
   }, [accsLoaded, accounts]);
 
-  // ── Eager Brief + WeekAhead — once per session after auth + accounts load ──
-  const briefEagerRan = useRef(false);
-  useEffect(() => {
-    if (briefEagerRan.current) return;
-    if (!accsLoaded) return;
-    briefEagerRan.current = true;
-    (async () => {
-      if (!(await hasGoogle('gmail'))) return;
-      const d = new Date();
-      const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-      // Brief — only if no valid today cache
-      let cachedBrief = null;
-      try { cachedBrief = JSON.parse(localStorage.getItem(`prospector_morning_brief_${ds}`) || 'null'); } catch {}
-      if (!cachedBrief) {
-        fetchRecentThreads()
-          .then(msgs => (msgs && msgs.length) ? generateBrief(msgs, accounts, tasks) : null)
-          .then(result => {
-            if (!result) return;
-            const stamped = { ...result, generatedAt: Date.now() };
-            try { localStorage.setItem(`prospector_morning_brief_${ds}`, JSON.stringify(stamped)); } catch {}
-            window.dispatchEvent(new CustomEvent('prospector_brief_updated'));
-          })
-          .catch(e => console.warn('[brief eager] failed', e));
-      }
-      // Week Ahead — only on Monday, only if no cache for this week
-      if (d.getDay() === 1 && !loadCachedWeekAhead()) {
-        buildWeekAhead().catch(e => console.warn('[weekAhead eager] failed', e));
-      }
-    })();
-  }, [accsLoaded, accounts, tasks]);
-
   // ── Ideas (Golden Nuggets) unread badge ───────────────────────────────────
   const [ideasLastViewed, setIdeasLastViewed] = useState(() => parseInt(localStorage.getItem('prospector_ideas_last_viewed') || '0', 10));
   const newNuggetCount = nuggets.filter(n => n.submittedAt && new Date(n.submittedAt).getTime() > ideasLastViewed).length;
@@ -1356,8 +1322,8 @@ export default function App({ me }) {
       {profileOpen&&<ProfilePanel user={user} accounts={accounts} tasks={tasks} snapshots={snapshots} stats={stats} earnedBadges={earnedBadges} score={appBreakdown?.score||0} grade={appBreakdown?.grade||"—"} gradeColor={appBreakdown?.c||C.dim} diamonds={diamonds} winsLog={winsLog} onClose={()=>setProfileOpen(false)}/>}
       <BadgeToast badge={badgeToast} onDismiss={()=>setBadgeToast(null)}/>
 
-      <DailyDigest open={digestOpen} setOpen={setDigestOpen} hideTrigger={compact} accounts={accounts} tasks={tasks} firstName={firstName} onNav={navTo} onUpdateTask={handleUpdateTask} onCreateTask={task=>setTasks(ts=>[task,...ts])}/>
-      <BugReporter open={bugOpen} setOpen={setBugOpen} hideTrigger={compact} page={page} reporterName={user?.name||"AE"}/>
+      <DailyDigest open={digestOpen} setOpen={setDigestOpen} hideTrigger accounts={accounts} tasks={tasks} firstName={firstName} onNav={navTo} onUpdateTask={handleUpdateTask} onCreateTask={task=>setTasks(ts=>[task,...ts])}/>
+      <BugReporter open={bugOpen} setOpen={setBugOpen} hideTrigger page={page} reporterName={user?.name||"AE"}/>
     </div>
   );
 }

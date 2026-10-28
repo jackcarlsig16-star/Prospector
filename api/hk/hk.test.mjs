@@ -92,3 +92,19 @@ test('shell payload: platform owner without a membership reads as owner; modules
   assert.equal(p.modules, HK_MODULES);
   assert.deepEqual(HK_MODULES.filter(m => m.on).map(m => m.key), ['email']);
 });
+
+test('visual-nav-cleanup-v1 W2: the shell payload carries each member\'s last_seen_at; the stamp writes mine and a missing column (42703) is skipped quietly', async () => {
+  const { shellPayload, stampSeen } = await import('./shell.js');
+  const rows = [{ user_id: 'u-jack', name: 'Jack Carlson', role: 'owner', created_at: '2026-10-01T00:00:00Z', profile: { display_name: 'Jack Carlson' } }, { user_id: 'u-pete', name: 'Pete Zz', role: 'member', created_at: '2026-10-02T00:00:00Z', profile: { display_name: 'Pete Zz' } }];
+  const auth = { user: { id: 'u-jack', name: 'Jack Carlson' }, roles: new Map([['b1', 'owner']]), isPlatformOwner: false };
+  const out = shellPayload(rows, auth, 'b1', [{ user_id: 'u-pete', avatar_slot: 2, last_seen_at: '2026-10-20T12:00:00Z' }]);
+  assert.deepEqual(out.members.map(m => [m.first_name, m.last_seen_at]), [['Jack', null], ['Pete', '2026-10-20T12:00:00Z']]);
+  const calls = [];
+  const fake = err => ({ from: t => ({ update: patch => ({ eq: (k1, v1) => ({ eq: async (k2, v2) => { calls.push([t, Object.keys(patch), v1, v2]); return { error: err }; } }) }) }) });
+  await stampSeen(fake(null), 'b1', 'u-jack', new Date('2026-10-28T12:00:00Z'));
+  assert.deepEqual(calls[0], ['hk_member_prefs', ['last_seen_at'], 'b1', 'u-jack']);
+  const logged = []; const orig = console.error; console.error = (...a) => logged.push(a.join(' '));
+  await stampSeen(fake({ code: '42703', message: 'column does not exist' }), 'b1', 'u-jack');
+  console.error = orig;
+  assert.deepEqual(logged, [], 'a missing column before the migration runs is not an error');
+});
