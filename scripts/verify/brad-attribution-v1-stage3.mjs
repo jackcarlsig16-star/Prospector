@@ -151,7 +151,7 @@ try {
     await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
     const tab = view === 'sources' ? /^Dashboard/ : /^Pipeline/;
     await page.locator('#workspace-header-tabs, [data-sales-tabrow]').getByRole('button', { name: tab }).first().dispatchEvent('click'); await page.waitForTimeout(1200);
-    await page.locator('[data-sales-subviews]').getByRole('button', { name: view === 'sources' ? 'Sources' : 'Priorities', exact: true }).dispatchEvent('click'); await page.waitForTimeout(1500);
+    await page.locator('[data-sales-subviews]').getByRole('tab', { name: view === 'sources' ? 'Sources' : 'Priorities', exact: true }).dispatchEvent('click'); await page.waitForTimeout(1500);
     await page.locator(view === 'sources' ? '[data-source-funnel]' : '[data-priorities]').waitFor({ timeout: 30000 });
     return { ctx, page, errors };
   }

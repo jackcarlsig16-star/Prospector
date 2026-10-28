@@ -120,7 +120,7 @@ try {
     if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
     await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
     await page.locator('#workspace-header-tabs, [data-sales-tabrow]').getByRole('button', { name: /^Pipeline/ }).first().dispatchEvent('click'); await page.waitForTimeout(1200);
-    await page.locator('[data-sales-subviews]').getByRole('button', { name: 'Companies', exact: true }).dispatchEvent('click'); await page.waitForTimeout(1500);
+    await page.locator('[data-sales-subviews]').getByRole('tab', { name: 'Companies', exact: true }).dispatchEvent('click'); await page.waitForTimeout(1500);
     await page.locator('[data-row]').first().waitFor({ timeout: 20000 });
     return { page, errs };
   }
@@ -165,8 +165,8 @@ try {
   }
   // Re-open the target fresh (out and back in).
   await J.page.keyboard.press('Escape'); await J.page.waitForTimeout(600);
-  await J.page.locator('[data-sales-subviews]').getByRole('button', { name: 'People', exact: true }).dispatchEvent('click'); await J.page.waitForTimeout(800);
-  await J.page.locator('[data-sales-subviews]').getByRole('button', { name: 'Companies', exact: true }).dispatchEvent('click'); await J.page.waitForTimeout(1500);
+  await J.page.locator('[data-sales-subviews]').getByRole('tab', { name: 'People', exact: true }).dispatchEvent('click'); await J.page.waitForTimeout(800);
+  await J.page.locator('[data-sales-subviews]').getByRole('tab', { name: 'Companies', exact: true }).dispatchEvent('click'); await J.page.waitForTimeout(1500);
   await channel(J.page, 'Targets');
   await openRow(J.page, VISITOR);
   const next1 = (await glow(J.page).innerText().catch(() => '')).trim();

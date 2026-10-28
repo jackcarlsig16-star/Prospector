@@ -170,7 +170,7 @@ try {
     return { page, errs };
   }
   const tab = async (page, label) => { await page.locator('#workspace-header-tabs').getByRole('button', { name: new RegExp(`^${label}`) }).first().click(); await page.waitForTimeout(1500); };
-  const sub = async (page, label) => { await page.locator('[data-sales-subviews]').getByRole('button', { name: label, exact: true }).click(); await page.waitForTimeout(1500); };
+  const sub = async (page, label) => { await page.locator('[data-sales-subviews]').getByRole('tab', { name: label, exact: true }).click(); await page.waitForTimeout(1500); };
   const nav = page => page.evaluate(() => { const u = new URL(location.href); return `${u.searchParams.get('tab')}/${u.searchParams.get('view')}${u.searchParams.get('channel') ? `/${u.searchParams.get('channel')}` : ''}`; });
   const boxes = page => page.evaluate(() => Object.fromEntries(['data-sales-tabrow', 'data-sales-subviews', 'data-channel-row', 'data-filter-row'].map(a => {
     const el = document.querySelector(`[${a}]`); if (!el) return [a, null];

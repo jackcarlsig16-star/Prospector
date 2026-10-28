@@ -123,7 +123,7 @@ try {
     return { page, errs };
   }
   const tab = async (page, label) => { await page.locator('#workspace-header-tabs, [data-sales-tabrow]').getByRole('button', { name: new RegExp(`^${label}`) }).first().dispatchEvent('click'); await page.waitForTimeout(1200); };
-  const sub = async (page, label) => { await page.locator('[data-sales-subviews]').getByRole('button', { name: label, exact: true }).dispatchEvent('click'); await page.waitForTimeout(1200); };
+  const sub = async (page, label) => { await page.locator('[data-sales-subviews]').getByRole('tab', { name: label, exact: true }).dispatchEvent('click'); await page.waitForTimeout(1200); };
   const shot = (page, n) => page.screenshot({ path: `${OUT}/${n}.png`, animations: 'disabled', caret: 'hide' });
   const measure = async (page, key) => {
     const m = await page.evaluate(DRAWER);

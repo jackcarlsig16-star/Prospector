@@ -176,7 +176,7 @@ try {
   await page.getByLabel('Workspace').waitFor({ timeout: 20000 }); await page.getByLabel('Workspace').selectOption({ label: 'HomeLover' }); await page.waitForTimeout(1500);
   await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
   await page.locator('#workspace-header-tabs, [data-sales-tabrow]').getByRole('button', { name: /^Pipeline/ }).first().dispatchEvent('click'); await page.waitForTimeout(1200);
-  await page.locator('[data-sales-subviews]').getByRole('button', { name: 'Priorities', exact: true }).dispatchEvent('click'); await page.waitForTimeout(1500);
+  await page.locator('[data-sales-subviews]').getByRole('tab', { name: 'Priorities', exact: true }).dispatchEvent('click'); await page.waitForTimeout(1500);
   const view = page.locator('[data-priorities]');
   await view.locator('[data-dot]').first().waitFor({ timeout: 25000 }); await page.waitForTimeout(1200);
   const dotsOnPage = await view.locator('[data-dot]').count();

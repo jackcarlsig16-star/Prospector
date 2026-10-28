@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { SA, SA_THEME_CSS, SA_THEME_ROOT_ID, saSans } from './theme';
 import { ui } from '../../ui/kitTheme';
-import Segmented from '../../ui/Segmented';
+import Tabs from '../../ui/Tabs';
+import { IconTable, IconMap, IconPeople, IconFlow, IconMegaphone, IconBars, IconSource, IconTrend, IconMail } from '../../ui/icons';
 import Tag from '../../ui/Tag';
 import AnalyticsView from './AnalyticsView';
 import DailyHuddle from './DailyHuddle';
@@ -85,6 +86,8 @@ const PRINT_STYLES = `
 // never moves what sits above. GoalsTab stays the data hub for Actions /
 // Pipeline / Dashboard; Pipeline > People is DailyHuddle (the People table
 // on its Live tab, Priorities and Done beside it).
+
+const SUB_VIEW_ICON = { companies: IconTable, priorities: IconMap, people: IconPeople, partners: IconFlow, campaigns: IconMegaphone, overview: IconBars, sources: IconSource, analytics: IconTrend, sequenced: IconMail };
 
 export default function SalesAnalyticsTab({ businessId, features }) {
   const [tab, setTab] = useState(() => readNav().tab);
@@ -189,10 +192,12 @@ export default function SalesAnalyticsTab({ businessId, features }) {
     </div>
   );
   const subViews = SUB_VIEWS[tab];
+  // companies-v2 C1: the sub-views are second-level underline tabs; the row's own rule runs under the tools too, and the
+  // tabs sit on it (-1 px) so the two rules are one line.
   const frameRow = (
-    <div className="no-print" data-sales-frame style={{ height: FRAME_ROW_HEIGHT, display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, minWidth: 0 }}>
-      <div data-sales-subviews style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8, minHeight: 36 }}>
-        {subViews && <Segmented label={`${TABS.find(([id]) => id === tab)[1]} views`} items={subViews.map(([id, label]) => ({ id, label }))} value={view} onChange={v => { nav(tab, v); setHuddleTarget(null); }} />}
+    <div className="no-print" data-sales-frame style={{ height: FRAME_ROW_HEIGHT, display: 'flex', alignItems: subViews ? 'flex-end' : 'center', gap: 12, marginBottom: 16, minWidth: 0, borderBottom: subViews ? `1px solid ${ui.subTabRule}` : undefined }}>
+      <div data-sales-subviews style={{ flex: '0 1 auto', display: 'flex', alignItems: 'flex-end', minWidth: 0, minHeight: 36, marginBottom: subViews ? -1 : 0 }}>
+        {subViews && <Tabs level="sub" label={`${TABS.find(([id]) => id === tab)[1]} views`} items={subViews.map(([id, label]) => ({ id, label, icon: SUB_VIEW_ICON[id] }))} value={view} onChange={v => { nav(tab, v); setHuddleTarget(null); }} />}
       </div>
       <div id={FRAME_TOOLS_ID} style={{ flex: '1 1 auto', minWidth: 0, height: FRAME_ROW_HEIGHT, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, overflowX: 'auto', overflowY: 'hidden' }} />
     </div>

@@ -158,7 +158,7 @@ try {
     return { page, errs, api };
   }
   const tab = async (page, label) => { await page.locator('#workspace-header-tabs, [data-sales-tabrow]').getByRole('button', { name: new RegExp(`^${label}`) }).first().dispatchEvent('click'); await page.waitForTimeout(1200); };
-  const sub = async (page, label) => { await page.locator('[data-sales-subviews]').getByRole('button', { name: label, exact: true }).dispatchEvent('click'); await page.waitForTimeout(1500); };
+  const sub = async (page, label) => { await page.locator('[data-sales-subviews]').getByRole('tab', { name: label, exact: true }).dispatchEvent('click'); await page.waitForTimeout(1500); };
   // Fresh data without a reload (a reload leaves the workspace): out to the list and back in, or to another tab and back.
   const reopenCampaign = async page => { await page.getByRole('button', { name: '← All campaigns' }).click(); await page.getByRole('button', { name: 'ZZ Fall campaign' }).first().click(); await page.locator('[data-campaign]').waitFor({ timeout: 15000 }); await page.waitForTimeout(800); };
   const reloadActions = async page => { await tab(page, 'Pipeline'); await tab(page, 'Actions'); await page.waitForTimeout(1500); };

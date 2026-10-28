@@ -122,3 +122,9 @@ test('Viewer: no CSV upload control', async () => {
   await screen.findByRole('table');
   expect(screen.queryByLabelText('Upload Visited People CSV')).not.toBeInTheDocument();
 });
+
+test('companies-v2 C5: the priority words come from PRIORITY_WORD (no local copy)', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, 'VisitorReport.js'), 'utf8');
+  expect(src).toMatch(/import \{ PRIORITY_WORD \} from '..\/..\/..\/constants\/salesChannels'/);
+  expect(src).not.toMatch(/const PRIORITY_WORD\s*=/);
+});

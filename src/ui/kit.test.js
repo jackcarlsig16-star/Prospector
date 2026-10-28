@@ -4,6 +4,7 @@ import { KIT_DARK, KIT_LIGHT, KIT_PRIORITY } from './tokens';
 import Tabs from './Tabs';
 import Tag from './Tag';
 import FilterSelect from './FilterSelect';
+import { IconTable, IconMap } from './icons';
 import { ToggleChip, ActiveFilterChip, Group } from './Chip';
 import PageHeader from './PageHeader';
 import Card from './Card';
@@ -105,6 +106,65 @@ test('Tabs: one selected tab, a disabled tab says why and keeps its note', () =>
   expect(tabs[2].querySelector('.ui-tag')).toHaveTextContent('Coming soon');
   fireEvent.click(tabs[0]); expect(onChange).toHaveBeenCalledWith('a');
   fireEvent.click(tabs[2]); expect(onChange).toHaveBeenCalledTimes(1);
+});
+
+test('Tabs level="sub" (companies-v2 C1): tablist + tabs, icon + word, one tab stop, arrows / Home / End move and select; main level unchanged', () => {
+  const Harness = () => {
+    const [v, setV] = React.useState('b');
+    return <Tabs level="sub" label="Pipeline views" value={v} onChange={setV} items={[{ id: 'a', label: 'Companies', icon: IconTable }, { id: 'b', label: 'Map', icon: IconMap }, { id: 'c', label: 'People' }]} />;
+  };
+  render(<Harness />);
+  const list = screen.getByRole('tablist', { name: 'Pipeline views' });
+  expect(list).toHaveClass('ui-tabs', 'ui-tabs--sub');
+  const tabs = () => screen.getAllByRole('tab');
+  expect(tabs().map(t => t.textContent)).toEqual(['Companies', 'Map', 'People']);
+  expect(tabs()[0].querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+  expect(tabs()[2].querySelector('svg')).toBeNull();
+  expect(tabs().map(t => [t.getAttribute('aria-selected'), t.tabIndex])).toEqual([['false', -1], ['true', 0], ['false', -1]]);
+  tabs()[1].focus();
+  fireEvent.keyDown(tabs()[1], { key: 'ArrowRight' });
+  expect(tabs()[2]).toHaveAttribute('aria-selected', 'true'); expect(tabs()[2]).toHaveFocus();
+  fireEvent.keyDown(tabs()[2], { key: 'ArrowRight' });
+  expect(tabs()[0]).toHaveAttribute('aria-selected', 'true'); expect(tabs()[0]).toHaveFocus();
+  fireEvent.keyDown(tabs()[0], { key: 'ArrowLeft' });
+  expect(tabs()[2]).toHaveAttribute('aria-selected', 'true');
+  fireEvent.keyDown(tabs()[2], { key: 'Home' });
+  expect(tabs()[0]).toHaveAttribute('aria-selected', 'true');
+  fireEvent.keyDown(tabs()[0], { key: 'End' });
+  expect(tabs()[2]).toHaveAttribute('aria-selected', 'true');
+  fireEvent.click(tabs()[1]);
+  expect(tabs()[1]).toHaveAttribute('aria-selected', 'true');
+});
+
+test('Tabs main level (HK screens use it) keeps no roving tabindex, no arrow handling and no icon', () => {
+  const onChange = jest.fn();
+  render(<Tabs label="Sales" items={[{ id: 'a', label: 'Dashboard', icon: IconTable }, { id: 'b', label: 'Pipeline' }]} value="a" onChange={onChange} />);
+  const tabs = screen.getAllByRole('tab');
+  expect(screen.getByRole('tablist')).not.toHaveClass('ui-tabs--sub');
+  expect(tabs.map(t => t.hasAttribute('tabindex'))).toEqual([false, false]);
+  expect(tabs[0].querySelector('svg')).toBeNull();
+  fireEvent.keyDown(tabs[0], { key: 'ArrowRight' });
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+test('FilterSelect variant="pill" (companies-v2 C3): one labelled pill with a caret; accent edge only off the default; same onChange', () => {
+  const change = jest.fn();
+  const opts = [{ value: '', label: 'All' }, { value: 'cyrus', label: 'Cyrus' }];
+  const { rerender } = render(<FilterSelect variant="pill" label="Owner" value="" options={opts} onChange={change} />);
+  const sel = screen.getByLabelText('Owner');
+  const pill = sel.closest('.ui-filter');
+  expect(pill).toHaveClass('ui-filter--pill');
+  expect(pill).not.toHaveAttribute('data-active');
+  expect(pill.querySelector('svg.ui-filter__caret[aria-hidden="true"]')).not.toBeNull();
+  fireEvent.change(sel, { target: { value: 'cyrus' } });
+  expect(change).toHaveBeenCalledWith('cyrus');
+  rerender(<FilterSelect variant="pill" label="Owner" value="cyrus" options={opts} onChange={change} />);
+  expect(screen.getByLabelText('Owner').closest('.ui-filter')).toHaveAttribute('data-active');
+  rerender(<FilterSelect label="Owner" value="cyrus" options={opts} onChange={change} />);
+  const plain = screen.getByLabelText('Owner').closest('.ui-filter');
+  expect(plain).not.toHaveClass('ui-filter--pill');
+  expect(plain).not.toHaveAttribute('data-active');
+  expect(plain.querySelector('svg')).toBeNull();
 });
 
 test('ToggleChip / ActiveFilterChip / Group / Tag / FilterSelect', () => {

@@ -110,7 +110,7 @@ try {
     if (compact) { await page.getByRole('button', { name: 'Open menu' }).click(); await page.waitForTimeout(400); }
     await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
     await page.locator('#workspace-header-tabs, [data-sales-tabrow]').getByRole('button', { name: /^Pipeline/ }).first().dispatchEvent('click'); await page.waitForTimeout(1200);
-    await page.locator('[data-sales-subviews]').getByRole('button', { name: 'Map', exact: true }).dispatchEvent('click'); await page.waitForTimeout(1500);
+    await page.locator('[data-sales-subviews]').getByRole('tab', { name: 'Map', exact: true }).dispatchEvent('click'); await page.waitForTimeout(1500);
     await page.locator('[data-priorities]').waitFor({ timeout: 30000 });
     return { ctx, page, errors };
   }

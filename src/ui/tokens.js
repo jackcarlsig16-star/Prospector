@@ -249,6 +249,8 @@ export const KIT_DARK = {
   dangerInk: SA_DARK_VALUES.bad,
   // company-panel-v2 L9 - the "generated" ombre runs accent -> the app's Generate orange.
   generatedFrom: SA_DARK_VALUES.accent, generatedTo: ROLE.generateAccent,
+  // companies-v2 C1 - the second-level (sub-view) tabs: word + icon, a rule under the row, no box.
+  subTab: '#8B95A3', subTabIcon: '#5E6773', subTabOn: SA_DARK_VALUES.text, subTabOnIcon: SA_DARK_VALUES.accent, subTabRule: '#232A33',
   ...prio(0),
 };
 
@@ -263,6 +265,7 @@ export const KIT_LIGHT = {
   good: '#167A3F', warn: '#8A5B00', bad: '#C42D3C', off: '#5F6975',
   dangerInk: '#B42F3E',
   generatedFrom: SA_PRINT_VALUES.link, generatedTo: ROLE.generateAccent,
+  subTab: '#596270', subTabIcon: '#6B7582', subTabOn: SA_PRINT_VALUES.text, subTabOnIcon: SA_PRINT_VALUES.link, subTabRule: '#CDD3DB',
   ...prio(1),
 };
 
@@ -278,6 +281,10 @@ export const KIT_TYPE = {
 // sales-ia-v1 - segmented control (a page header's sub-views and person
 // filter). Mono labels like every kit label; one accent (focus ring only).
 export const KIT_SEGMENTED = { height: 28, padding: '0 12px', radius: 7, gap: 2, inset: 3 };
+// companies-v2 C1 - second-level tabs (Tabs level="sub"); colors are the subTab* keys of KIT_DARK / KIT_LIGHT.
+export const KIT_SUBTAB = { height: 38, fontSize: 13, icon: 14, underline: 2, gap: 6, padX: 10 };
+// companies-v2 C3 - FilterSelect variant="pill": label + value + caret in one pill; accent edge when not the default.
+export const KIT_FILTER_PILL = { height: 30, padX: 12, caret: 12 };
 
 // pipeline-wide-table-v1 - DataTable: one line per row, 13px text. The box
 // fits the viewport (minus bottomGap) so the sticky header holds while the

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { SA } from '../../theme';
 import { sourceColor, SOURCE_LABELS } from '../../palette';
 import { numStyle } from '../goalsUi';
-import { yValue, yScale, ringSpecs, haloLevel, hollowness, isDimmed, rowLabel, touchText, labelCandidates, labelText, placeLabels, shortChain, RING_ORDER, TOP_LABELS, LABEL_MIN_CHARS, BAND_WORDS } from './prioritiesModel';
+import { yValue, yScale, ringSpecs, haloLevel, hollowness, isDimmed, rowLabel, touchText, labelCandidates, labelText, placeLabels, shortChain, RING_ORDER, TOP_LABELS, LABEL_MIN_CHARS } from './prioritiesModel';
+import { PRIORITY_WORD } from '../../../../constants/salesChannels';
 
 // intent-score-v1 S3 DOTS - companies on X in rank order, Y = the selected metric. Each dot: a core in the source
 // hue, one translucent ring per component (RING_ORDER) in the same hue with radius ∝ points, a grey rank line
@@ -120,7 +121,7 @@ export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, c
             {lo > 0 && <line x1={M.l} x2={W - M.r} y1={cy(lo)} y2={cy(lo)} stroke={SA.borderStrong} strokeWidth={1} strokeDasharray="3 4" data-band-guide={band} />}
             <text x={M.l - 10} y={(cy(lo) + cy(hi)) / 2 - 6} textAnchor="end" dominantBaseline="middle" fontSize={10.5} fontFamily="'Geist Mono', ui-monospace, monospace" letterSpacing=".06em" fill={BAND_COLOR[band]}>{band}</text>
             <text x={M.l - 10} y={(cy(lo) + cy(hi)) / 2 + 7} textAnchor="end" dominantBaseline="middle" fontSize={11} fill={SA.muted} style={numStyle} data-band-count={band}>{counts[band] ?? 0}</text>
-            <text x={M.l + 8} y={cy(hi) + 12} dominantBaseline="middle" fontSize={11} fill={BAND_COLOR[band]} fillOpacity={0.8} data-band-word={band}>{BAND_WORDS[band]}</text>
+            <text x={M.l + 8} y={cy(hi) + 12} dominantBaseline="middle" fontSize={11} fill={BAND_COLOR[band]} fillOpacity={0.8} data-band-word={band}>{PRIORITY_WORD[band.slice(1)]}</text>
           </g>
         ))}
         {scale.ticks.map(t => (

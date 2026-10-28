@@ -120,7 +120,7 @@ try {
     await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
     // Sales & Marketing opens on Actions since actions-home-attention-v1; this check is about Pipeline > Companies.
     await page.locator('#workspace-header-tabs, [data-sales-tabrow]').getByRole('button', { name: /^Pipeline/ }).first().dispatchEvent('click'); await page.waitForTimeout(1200);
-    await page.locator('[data-sales-subviews]').getByRole('button', { name: 'Companies', exact: true }).dispatchEvent('click'); await page.waitForTimeout(1500);
+    await page.locator('[data-sales-subviews]').getByRole('tab', { name: 'Companies', exact: true }).dispatchEvent('click'); await page.waitForTimeout(1500);
     await page.locator('[data-row]').first().waitFor();
     return { page, errs };
   }
@@ -223,7 +223,7 @@ try {
     ok(`Huddle Add to pipeline (once, POST prospects/:id/pipeline): ${added.status}; opportunity_link_via = 'pipeline'`, added.status === 201 && !!free.opportunity_id && free.opportunity_link_via === 'pipeline', JSON.stringify({ added: added.body?.opportunity?.organization, free }));
 
     // Back to Companies for N2: nothing on the page moved after open / close.
-    await page.locator('[data-sales-subviews]').getByRole('button', { name: 'Companies', exact: true }).click();
+    await page.locator('[data-sales-subviews]').getByRole('tab', { name: 'Companies', exact: true }).click();
     await page.locator('[data-pipeline-companies] [data-row]').first().waitFor(); await page.waitForTimeout(1200);
     const c0 = await boxes(page);
     await page.getByRole('button', { name: 'ZZ Panel Employer', exact: true }).click();

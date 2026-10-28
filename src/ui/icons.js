@@ -34,3 +34,16 @@ export const IconCheck = p => <Svg {...p}><path d="M3 8.5l3 3 7-7" /></Svg>;
 export const IconPause = p => <Svg {...p}><path d="M5.5 3.5v9M10.5 3.5v9" /></Svg>;
 export const IconArrowRight = p => <Svg {...p}><path d="M3 8h10M9 4l4 4-4 4" /></Svg>;
 export const IconPeople = p => <Svg {...p}><circle cx="6" cy="6" r="2.5" /><path d="M1.5 13.5c.5-2.5 2.3-3.5 4.5-3.5s4 1 4.5 3.5" /><path d="M10.5 3.6a2.4 2.4 0 0 1 0 4.8M12 10.3c1.4.4 2.2 1.5 2.5 3.2" /></Svg>;
+// companies-v2 - the sub-view tabs (Map · Partner workflow · Campaigns · Sources) and the channel glyphs (CHANNEL_ICON in
+// src/constants/salesChannels.js names these). Paths from specs/design/companies-v2 except IconSource (a branch).
+export const IconMap = p => <Svg {...p}><path d="M2.5 2.5v11h11" /><circle cx="6" cy="9.5" r="1.6" fill="currentColor" stroke="none" /><circle cx="9" cy="5.5" r="1.6" fill="currentColor" stroke="none" /><circle cx="12" cy="8" r="1.6" fill="currentColor" stroke="none" /></Svg>;
+export const IconFlow = p => <Svg {...p}><circle cx="3" cy="8" r="1.6" /><circle cx="13" cy="8" r="1.6" /><path d="M4.6 8h6.8M9.6 6l1.8 2-1.8 2" /></Svg>;
+export const IconMegaphone = p => <Svg {...p}><path d="M2.5 6.5v3h2.5l5 3V3.5l-5 3z" /><path d="M12.5 6a2.5 2.5 0 0 1 0 4" /></Svg>;
+export const IconSource = p => <Svg {...p}><circle cx="4" cy="3.5" r="1.5" /><circle cx="4" cy="12.5" r="1.5" /><circle cx="12" cy="5.5" r="1.5" /><path d="M4 5v6M4 10c0-2.5 2-3.5 6.5-4.2" /></Svg>;
+export const IconGlobe = p => <Svg {...p}><circle cx="8" cy="8" r="6" /><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12" /></Svg>;
+export const IconSend = p => <Svg {...p}><path d="M14 2 2 7l5 2 2 5z" /></Svg>;
+export const IconLink = p => <Svg {...p}><path d="M6.5 9.5a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2l-1 1" /><path d="M9.5 6.5a3 3 0 0 0-4.2 0l-2 2a3 3 0 0 0 4.2 4.2l1-1" /></Svg>;
+export const IconPhone = p => <Svg {...p}><path d="M3 2.5h3l1.2 3-1.6 1a8 8 0 0 0 4 4l1-1.6 3 1.2v3c-6.5.5-11-4-10.6-10.6z" /></Svg>;
+export const IconTarget = p => <Svg {...p}><circle cx="8" cy="8" r="6" /><circle cx="8" cy="8" r="3" /><circle cx="8" cy="8" r=".8" fill="currentColor" /></Svg>;
+export const IconRadar = p => <Svg {...p}><circle cx="8" cy="8" r="6" /><circle cx="8" cy="8" r="2.5" /><path d="M8 8l4-4" /></Svg>;
+export const IconUpload = p => <Svg {...p}><path d="M8 11V3M4.5 6.5 8 3l3.5 3.5M3 13h10" /></Svg>;

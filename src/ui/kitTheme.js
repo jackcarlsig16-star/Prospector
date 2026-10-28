@@ -1,4 +1,4 @@
-import { KIT_DARK, KIT_LIGHT, KIT_RADIUS, KIT_SEGMENTED, KIT_TABLE, KIT_EDITABLE, KIT_DRAWER } from './tokens';
+import { KIT_DARK, KIT_LIGHT, KIT_RADIUS, KIT_SEGMENTED, KIT_SUBTAB, KIT_FILTER_PILL, KIT_TABLE, KIT_EDITABLE, KIT_DRAWER } from './tokens';
 
 // Every kit component reads var(--ui-*) so dark/light is pure CSS: :root holds
 // dark, the app's light mode (body.mode-straight-shooter) swaps to light, and
@@ -7,9 +7,12 @@ import { KIT_DARK, KIT_LIGHT, KIT_RADIUS, KIT_SEGMENTED, KIT_TABLE, KIT_EDITABLE
 //
 // ui-clarity-v1 Stage 1 - one look per role (spec H3), each measurable:
 //   R1 .ui-tab       text + 3 px underline (accent when selected, border when not, dashed when disabled)
+//      .ui-tabs--sub second level (companies-v2 C1): icon + word, 2 px accent underline on the active tab only, one rule
+//                    under the row, no box; scrolls inside itself when narrow
 //   R2 .ui-seg__btn  pressed = solid text-colour fill + ground text; unpressed = border edge
 //   R3 .ui-chip      toggle chip: border edge off, accent fill on; counts in tabular numbers
 //   R4 .ui-filter    labelled select that shows its value; .ui-chip--active = accent-outlined chip with x
+//      .ui-filter--pill  one piece (companies-v2 C3): muted label, value, caret; accent edge when not the default
 //   R5 .ui-tag       status chip: filled wash + dot + label, no border, no hover, no pointer
 //   R6 .ui-btn       primary accent fill / secondary surface2 + border / tertiary link + underline /
 //                    danger red text + 3:1 red edge / disabled = no fill, dashed border, not-allowed
@@ -63,6 +66,13 @@ body.mode-straight-shooter, .ui-theme-light { ${vars(KIT_LIGHT)} }
 .ui-tab:hover:not(:disabled) { color:var(--ui-text); }
 .ui-tab[aria-selected="true"], .ui-tab[aria-current="page"] { color:var(--ui-text); font-weight:700; border-bottom-color:var(--ui-accent); }
 .ui-tab:disabled { color:var(--ui-muted); border-bottom-style:dashed; cursor:not-allowed; }
+.ui-tabs--sub { gap:0; flex-wrap:nowrap; border-bottom-color:var(--ui-subTabRule); scrollbar-width:none; }
+.ui-tabs--sub::-webkit-scrollbar { display:none; }
+.ui-tabs--sub .ui-tab { height:${KIT_SUBTAB.height}px; gap:${KIT_SUBTAB.gap}px; padding:0 ${KIT_SUBTAB.padX}px; border-bottom:${KIT_SUBTAB.underline}px solid transparent; color:var(--ui-subTab); font:500 ${KIT_SUBTAB.fontSize}px ${SANS}; }
+.ui-tabs--sub .ui-tab svg { color:var(--ui-subTabIcon); }
+.ui-tabs--sub .ui-tab:hover:not(:disabled) { color:var(--ui-subTabOn); }
+.ui-tabs--sub .ui-tab[aria-selected="true"] { color:var(--ui-subTabOn); font-weight:500; border-bottom-color:var(--ui-accent); }
+.ui-tabs--sub .ui-tab[aria-selected="true"] svg { color:var(--ui-subTabOnIcon); }
 .ui-seg { display:inline-flex; gap:${KIT_SEGMENTED.gap}px; padding:${KIT_SEGMENTED.inset}px; max-width:100%; box-sizing:border-box; overflow-x:auto; border-radius:${KIT_RADIUS.control}px; border:1px solid var(--ui-border); background:var(--ui-inset); }
 .ui-seg__btn { display:inline-flex; align-items:center; gap:6px; flex:none; box-sizing:border-box; height:${KIT_SEGMENTED.height}px; padding:${KIT_SEGMENTED.padding}; border:1px solid var(--ui-border); border-radius:${KIT_SEGMENTED.radius}px; background:transparent; color:var(--ui-soft); font:500 13px ${SANS}; cursor:pointer; white-space:nowrap; transition:background .12s, color .12s, border-color .12s; }
 .ui-seg__btn:hover:not([aria-pressed="true"]) { color:var(--ui-text); border-color:var(--ui-control); }
@@ -82,6 +92,14 @@ body.mode-straight-shooter, .ui-theme-light { ${vars(KIT_LIGHT)} }
 .ui-filter__label { display:inline-flex; align-items:center; padding:0 8px; border:1px solid var(--ui-control); border-right:0; border-radius:${KIT_RADIUS.control}px 0 0 ${KIT_RADIUS.control}px; background:var(--ui-surface2); font:500 11px ${MONO}; letter-spacing:.08em; text-transform:uppercase; color:var(--ui-muted); white-space:nowrap; }
 .ui-filter__select { box-sizing:border-box; height:32px; min-width:0; padding:0 8px; border:1px solid var(--ui-control); border-radius:0 ${KIT_RADIUS.control}px ${KIT_RADIUS.control}px 0; background:var(--ui-inset); color:var(--ui-text); font:500 13px ${SANS}; cursor:pointer; }
 .ui-filter__select:disabled { border-style:dashed; color:var(--ui-muted); background:transparent; cursor:not-allowed; }
+.ui-filter--pill { position:relative; align-items:center; box-sizing:border-box; height:${KIT_FILTER_PILL.height}px; padding-left:${KIT_FILTER_PILL.padX}px; border:1px solid var(--ui-border); border-radius:${KIT_RADIUS.pill}px; background:transparent; }
+.ui-filter--pill[data-active] { border-color:var(--ui-accent); }
+.ui-filter--pill:focus-within { outline:2px solid var(--ui-accent); outline-offset:2px; }
+.ui-filter--pill .ui-filter__label { padding:0 6px 0 0; border:0; border-radius:0; background:none; font:500 13px ${SANS}; letter-spacing:0; text-transform:none; color:var(--ui-muted); }
+.ui-filter--pill .ui-filter__select { appearance:none; -webkit-appearance:none; height:100%; padding:0 ${KIT_FILTER_PILL.padX + KIT_FILTER_PILL.caret + 4}px 0 0; border:0; border-radius:${KIT_RADIUS.pill}px; background:transparent; color:var(--ui-text); }
+.ui-filter--pill .ui-filter__select:focus-visible { outline:none; }
+.ui-filter--pill .ui-filter__caret { position:absolute; right:${KIT_FILTER_PILL.padX}px; top:50%; transform:translateY(-50%); color:var(--ui-muted); pointer-events:none; }
+.ui-filter--pill:has(select:disabled) { border-style:dashed; }
 .ui-tag { display:inline-flex; align-items:center; gap:6px; height:22px; padding:0 8px; border-radius:6px; background:color-mix(in srgb, var(--tag-color) 22%, var(--ui-surface)); color:var(--ui-text); font:500 12px ${SANS}; white-space:nowrap; cursor:default; vertical-align:middle; }
 .ui-tag__dot { width:8px; height:8px; border-radius:999px; background:var(--tag-color); flex:none; }
 .ui-tag--sm { height:20px; padding:0 6px; font-size:11px; gap:5px; }

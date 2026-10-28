@@ -1,4 +1,5 @@
-import { yValue, yScale, ringSpecs, haloLevel, hollowness, isDimmed, toggleLit, pageOf, filterParams, filtersFromView, activeFilterCount, labelCandidates, labelText, placeLabels, readPrefs, writePrefs, LS_KEY, HEIGHTS, heightPx, BAND_WORDS, BANDS, TOP_LABELS, EMPTY_FILTERS, RING_ORDER } from './prioritiesModel';
+import { yValue, yScale, ringSpecs, haloLevel, hollowness, isDimmed, toggleLit, pageOf, filterParams, filtersFromView, activeFilterCount, labelCandidates, labelText, placeLabels, readPrefs, writePrefs, LS_KEY, HEIGHTS, heightPx, TOP_LABELS, EMPTY_FILTERS, RING_ORDER } from './prioritiesModel';
+import * as model from './prioritiesModel';
 
 // intent-score-v1 S3 - the pure half of the Priorities view.
 const row = (over = {}) => ({ key: 'employer-1', name: 'Acme', score: 55, band: 'P2', source_label: 'upside', employees: 5000, days_since_touch: 3, researched: 'fresh', components: { visits: { points: 17 }, people: { points: 6 }, fit: { points: 15 }, research: { points: 10 }, engagement: { points: 0 } }, ...over });
@@ -126,9 +127,9 @@ test('prefs (priorities-v2): one key holds view / y / height / rings / names; de
   expect(readPrefs().height).toBe('standard');
 });
 
-test('heights, band words, top labels (priorities-v2)', () => {
+test('heights, top labels (priorities-v2); companies-v2 C5: one band-word set - the model keeps no words of its own', () => {
   expect(HEIGHTS.map(([id, , px]) => [id, px])).toEqual([['compact', 360], ['standard', 560], ['tall', 800]]);
   expect([heightPx('compact'), heightPx('tall'), heightPx('nope')]).toEqual([360, 800, 560]);
-  expect(BANDS.map(b => BAND_WORDS[b])).toEqual(['Act now', 'Warm', 'Watch', 'Backlog']);
+  expect(model.BAND_WORDS).toBeUndefined();
   expect(TOP_LABELS).toBe(10);
 });

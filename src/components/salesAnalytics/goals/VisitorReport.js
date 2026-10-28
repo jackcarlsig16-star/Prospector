@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { SA } from '../theme';
 import { PRIORITY_COLORS } from '../palette';
+import { PRIORITY_WORD } from '../../../constants/salesChannels';
 import useMediaQuery from '../../../utils/useMediaQuery';
 import VisitPullBar from '../tasks/VisitPullBar';
 import { linkBtn } from '../tasks/TaskRow';
@@ -15,7 +16,6 @@ import { cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle
 // read and export; only Members edit the skip list.
 // Company data only - no emails, phones or people's names reach this view.
 const PRIORITY_COLOR = PRIORITY_COLORS; // FIX priority-colors-v1: the same four hues as every other priority display
-const PRIORITY_WORD = { P1: 'Act today', P2: 'This week', P3: 'Watch', P4: 'Noise' };
 const md = d => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '—');
 const matchText = m => (m ? `${m.label}${m.upside ? ` · ${m.owner_team === 'both' ? 'joint' : 'Upside-owned'}` : ''}${m.record_id ? ` · ${m.record_id}` : ''}` : '—');
 const cell = { padding: '10px 12px', borderTop: `1px solid ${SA.track}`, verticalAlign: 'top', fontSize: 13, color: SA.text };
@@ -52,7 +52,7 @@ const RowChips = ({ r }) => (
   </>
 );
 
-const PriorityChip = ({ p }) => (p ? <Chip color={PRIORITY_COLOR[p]} title={PRIORITY_WORD[p]} style={{ height: 22, fontWeight: 600 }}>{p}</Chip> : <Chip title="No company-level visit in this window" style={{ height: 22 }}>—</Chip>);
+const PriorityChip = ({ p }) => (p ? <Chip color={PRIORITY_COLOR[p]} title={PRIORITY_WORD[p.slice(1)]} style={{ height: 22, fontWeight: 600 }}>{p}</Chip> : <Chip title="No company-level visit in this window" style={{ height: 22 }}>—</Chip>);
 
 function Stat({ label, value, color }) {
   return (
@@ -169,14 +169,14 @@ export default function VisitorReport({ businessId, canEdit }) {
         </div>
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
           <Stat label="Companies (7 d)" value={c.companies} />
-          {['P1', 'P2', 'P3', 'P4'].map(p => <Stat key={p} label={`${p} · ${PRIORITY_WORD[p]}`} value={c[p]} color={PRIORITY_COLOR[p]} />)}
+          {['P1', 'P2', 'P3', 'P4'].map(p => <Stat key={p} label={`${p} · ${PRIORITY_WORD[p.slice(1)]}`} value={c[p]} color={PRIORITY_COLOR[p]} />)}
           <Stat label="On Brad's list" value={c.on_brads_list} />
           <Stat label="People identified" value={c.people_identified ?? 0} />
           <Stat label="Created" value={c.created ?? 0} />
         </div>
         <div role="group" aria-label="Filters" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }} className="no-print">
           <select aria-label="Priority filter" value={filters.prio} onChange={e => setFilters(f => ({ ...f, prio: e.target.value }))} style={{ ...inputStyle, height: 32, width: 'auto', fontSize: 13 }}>
-            <option value="all">All priorities</option>{['P1', 'P2', 'P3'].map(p => <option key={p} value={p}>{p} · {PRIORITY_WORD[p]}</option>)}
+            <option value="all">All priorities</option>{['P1', 'P2', 'P3'].map(p => <option key={p} value={p}>{p} · {PRIORITY_WORD[p.slice(1)]}</option>)}
           </select>
           {[['people', 'Has people'], ['created', 'Created'], ['unmatched', 'Unmatched']].map(([k, label]) => (
             <Btn key={k} aria-pressed={filters[k]} onClick={() => toggle(k)} style={filters[k] ? { borderColor: SA.accent, color: SA.text } : undefined}>{label}</Btn>

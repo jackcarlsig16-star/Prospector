@@ -177,7 +177,7 @@ try {
     await page.locator('#root').getByRole('button', { name: 'Sales & Marketing', exact: true }).dispatchEvent('click'); await page.waitForTimeout(2500);
   };
   const tab = async (page, label) => { await page.locator('#workspace-header-tabs').getByRole('button', { name: new RegExp(`^${label}`) }).first().click(); await page.waitForTimeout(1500); };
-  const sub = async (page, label) => { await page.locator('[data-sales-subviews]').getByRole('button', { name: label, exact: true }).click(); await page.waitForTimeout(1500); };
+  const sub = async (page, label) => { await page.locator('[data-sales-subviews]').getByRole('tab', { name: label, exact: true }).click(); await page.waitForTimeout(1500); };
   const boxes = page => page.evaluate(() => Object.fromEntries(['data-workspace-header', 'data-sales-tabrow', 'data-sales-subviews', 'data-sales-frame'].map(a => {
     const el = document.querySelector(`[${a}]`); if (!el) return [a, null];
     const r = el.getBoundingClientRect(); return [a, { x: Math.round(r.x * 10) / 10, y: Math.round(r.y * 10) / 10, h: Math.round(r.height * 10) / 10 }];
@@ -193,7 +193,7 @@ try {
   // ── owner 1440 ──
   { const { page, errs } = await newPage(owner);
     await charts(page).first().waitFor();
-    ok('Dashboard opens on Overview (default sub-view), URL says so, 13 chart cards', /tab=dashboard/.test(page.url()) && /view=overview/.test(page.url()) && (await charts(page).count()) === 13 && (await page.locator('[data-sales-subviews] [aria-pressed="true"]').textContent()) === 'Overview', page.url());
+    ok('Dashboard opens on Overview (default sub-view), URL says so, 13 chart cards', /tab=dashboard/.test(page.url()) && /view=overview/.test(page.url()) && (await charts(page).count()) === 13 && (await page.locator('[data-sales-subviews] [aria-selected="true"]').textContent()) === 'Overview', page.url());
     const n2 = {};
     for (const [t, s, key] of [['Dashboard', null, 'dashboard'], ['Actions', null, 'actions'], ['Pipeline', 'Companies', 'companies'], ['Pipeline', 'People', 'people'], ['Dashboard', 'Analytics', 'analytics'], ['Dashboard', 'Overview', 'overview2']]) { await tab(page, t); if (s) await sub(page, s); n2[key] = await boxes(page); }
     const ref = n2.dashboard;

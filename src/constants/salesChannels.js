@@ -8,6 +8,8 @@ export const CHANNELS = [
 ];
 export const CHANNEL_IDS = CHANNELS.map(([id]) => id);
 export const CHANNEL_LABEL = Object.fromEntries(CHANNELS);
+// companies-v2 C3 - each channel's glyph, by name in src/ui/icons.js (names, not components: the routes import this file).
+export const CHANNEL_ICON = { website_visit: 'IconGlobe', scout: 'IconRadar', apollo_outbound: 'IconSend', partner_referral: 'IconLink', call_note: 'IconPhone', import: 'IconUpload', manual: 'IconPlus', unknown: 'IconMore' };
 // A signal's source -> the channel of the target its Accept creates.
 export const SIGNAL_CHANNEL = { scout: 'scout', web_visit: 'website_visit' };
 

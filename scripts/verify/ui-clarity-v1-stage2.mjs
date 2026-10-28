@@ -172,7 +172,7 @@ try {
     return { page, errs, compact };
   }
   const tab = async (page, label) => { await page.locator('#workspace-header-tabs, [data-sales-tabrow]').getByRole('button', { name: new RegExp(`^${label}`) }).first().dispatchEvent('click'); await page.waitForTimeout(1200); };
-  const sub = async (page, label) => { await page.locator('[data-sales-subviews]').getByRole('button', { name: label, exact: true }).dispatchEvent('click'); await page.waitForTimeout(1200); };
+  const sub = async (page, label) => { await page.locator('[data-sales-subviews]').getByRole('tab', { name: label, exact: true }).dispatchEvent('click'); await page.waitForTimeout(1200); };
   const settle = async (page, loc) => { if (loc) await page.locator(loc).first().waitFor({ timeout: 20000 }).catch(e => results.errors.push(`wait ${loc}: ${e.message.split('\n')[0]}`)); await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {}); await page.waitForTimeout(1200); };
   const shot = (page, n, full) => page.screenshot({ path: `${OUT}/${n}.png`, animations: 'disabled', caret: 'hide', fullPage: full });
   const measure = async (page, key, script) => {

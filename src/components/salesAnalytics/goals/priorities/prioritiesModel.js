@@ -6,8 +6,6 @@ export const VIEWS = [['dots', 'Dots'], ['bars', 'Bars'], ['table', 'Table']];
 export const SEGMENTS = [['all', 'All'], ['visitors', 'Web visitors'], ['partners', 'Partners'], ['employers', 'Employers'], ['targets', 'Targets']];
 export const WINDOWS = [['', 'Any time'], ['7', 'Visited 7 d'], ['30', 'Visited 30 d'], ['90', 'Visited 90 d']];
 export const BANDS = ['P1', 'P2', 'P3', 'P4'];
-// priorities-v2 D6 - the word inside each band zone, display only (never stored).
-export const BAND_WORDS = { P1: 'Act now', P2: 'Warm', P3: 'Watch', P4: 'Backlog' };
 // priorities-v2 C - the chart's height presets (only CHART_H changes).
 export const HEIGHTS = [['compact', 'Compact', 360], ['standard', 'Standard', 560], ['tall', 'Tall', 800]];
 export const heightPx = id => (HEIGHTS.find(([k]) => k === id) || HEIGHTS[1])[2];
