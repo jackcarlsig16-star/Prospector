@@ -274,7 +274,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
       {data && effectiveView !== 'table' && (
         <section aria-label="Detail" data-detail-card style={card}>
           <div style={{ ...rowBar, minHeight: 0 }}>
-            <span className="ui-group-label">{topN === 'all' ? 'Everything' : `Top ${topN}`} · detail</span>
+            <h2 className="ui-group-label" style={{ margin: 0 }}>{topN === 'all' ? 'Everything' : `Top ${topN}`} · detail</h2>
             <span style={{ fontSize: 12, color: SA.muted }}>Click a dot or a row — they select together</span>
             <span style={{ flex: 1 }} />
             <a className="ui-btn ui-btn--secondary ui-btn--sm" href={goalsApi.scoresCsvUrl(businessId, filterParams(filters))} target="_blank" rel="noreferrer">Export CSV</a>

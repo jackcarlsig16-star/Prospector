@@ -23,7 +23,7 @@ export default function ChartToolbar({ view, setView, y, setY, topN, setTopN, he
   const i = TOP_STEPS.indexOf(topN);
   return (
     <div role="group" aria-label="Chart controls" data-chart-toolbar style={{ display: 'flex', alignItems: 'center', gap: '8px 14px', flexWrap: 'wrap' }}>
-      {lbl('Chart')}
+      <h2 className="ui-group-label" style={{ margin: 0 }}>Chart</h2>
       <Segmented label="View" items={VIEWS.map(([id, label]) => ({ id, label, icon: VIEW_ICON[id] }))} value={view} onChange={setView} />
       {chart && <>
         <span {...keep}>{lbl('Y axis')}<Segmented label="Y axis" items={Y_METRICS.map(([id, label]) => ({ id, label, icon: Y_ICON[id] }))} value={y} onChange={setY} /></span>

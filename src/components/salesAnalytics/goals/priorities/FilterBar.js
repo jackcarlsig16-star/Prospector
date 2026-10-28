@@ -44,7 +44,7 @@ export default function FilterBar({ filters, set, onClear, data, members }) {
   return (
     <div role="group" aria-label="Filters" data-filter-row style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: 12 }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
-        <span className="ui-group-label" aria-hidden="true" style={{ alignSelf: 'center' }}>Filter</span>
+        <h2 className="ui-group-label" style={{ alignSelf: 'center', margin: 0 }}>Filter</h2>
         <div role="group" aria-label="Type" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           {SEGMENTS.map(([id, label]) => <ToggleChip key={id} data-segment={id} pressed={filters.segment === id} count={seg[id] ?? ''} onClick={() => set('segment', id)}>{label}</ToggleChip>)}
         </div>
@@ -61,10 +61,10 @@ export default function FilterBar({ filters, set, onClear, data, members }) {
         </span>
         {divider}
         <ToggleChip pressed={filters.needs_touch} count={data?.counts?.needs_touch ?? ''} title={data ? `Score ≥ ${data.needs_touch_rule.min} and no touch in ${data.needs_touch_rule.days} days` : undefined} onClick={() => set('needs_touch', !filters.needs_touch)}>Needs a touch</ToggleChip>
-        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, height: 30, padding: '0 8px', border: `1px solid ${SA.border}`, borderRadius: 8, background: SA.inset, color: SA.muted, flex: '1 1 160px', minWidth: 140, maxWidth: 240 }}>
-          <IconSearch size={13} />
-          <input type="search" aria-label="Search companies" placeholder="Search companies" value={filters.q} onChange={e => set('q', e.target.value)} style={{ flex: 1, minWidth: 0, background: 'transparent', border: 0, outline: 'none', color: SA.text, font: 'inherit', fontSize: 13 }} />
-        </label>
+        <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', flex: '1 1 160px', minWidth: 140, maxWidth: 240, color: SA.muted }}>
+          <span style={{ position: 'absolute', left: 9, display: 'inline-flex', pointerEvents: 'none' }}><IconSearch size={13} /></span>
+          <input type="search" className="ui-input ui-input--sm" aria-label="Search companies" placeholder="Search companies" value={filters.q} onChange={e => set('q', e.target.value)} style={{ width: '100%', height: 30, paddingLeft: 28 }} />
+        </span>
       </div>
       {active.length > 0 && (
         <div data-active-filters style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 12, color: SA.muted }}>
