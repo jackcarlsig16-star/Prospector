@@ -5,6 +5,7 @@ import { scoreProspect } from './heatScore.js';
 import { laDateString } from './laDate.js';
 import { cleanText } from './scrubText.js';
 import { DEFAULT_WEIGHTS, UPSIDE_TEAMS, scoreCompany, dedupeCompanies } from './intentScore.js';
+import { VISITOR_ROLE } from './visitorPeopleMove.js';
 
 // intent-score-v1 S2 - the inputs gatherer (ONE pass over the workspace with selectAllPages, no model, no Apollo), the
 // recompute runner that writes sales_company_scores + today's sales_company_score_days row, and the trigger hook the
@@ -16,6 +17,9 @@ export const SNAPSHOT_KEEP_DAYS = 30; // REVISABLE
 export const TRIGGERS = ['manual', 'visit_pull', 'signal', 'research', 'source', 'heat', 'pageload', 'test'];
 export const TOUCH_WINDOWS = { bright: 7, faint: 30, needs: 14 }; // REVISABLE (S3 halo + "Needs a touch")
 export const NEEDS_TOUCH_MIN = 40;
+// visitor-people-follow-record-v1 V3 (REVISABLE, Jack: "partners no" = false): a partner's identified website visitors
+// (partner_contacts marked VISITOR_ROLE) count toward its "people" points like an employer's or target's.
+export const COUNT_PARTNER_VISITORS = true;
 const DAY = 864e5;
 const NAMED_FIELDS = ['co_owner_name', 'no_double_touch', 'source_person', 'source_set_by'];
 const LINK_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target' };
@@ -38,7 +42,7 @@ export const latestTouch = touches => touches.reduce((best, t) => (t?.at && (!be
 
 export async function gatherInputs(supabase, businessId, { now = Date.now() } = {}) {
   const all = (t, cols, build = x => x) => selectAllPages(() => build(supabase.from(t).select(cols).eq('business_id', businessId)).order('id'));
-  const [partners, opps, targets, visits, skip, research, people, settings, prospects, messages, events, partnerEvents, oppEvents, doneTodos, overrides, members, marks, acceptedSignals] = await Promise.all([
+  const [partners, opps, targets, visits, skip, research, people, settings, prospects, messages, events, partnerEvents, oppEvents, doneTodos, overrides, members, marks, acceptedSignals, partnerVisitors] = await Promise.all([
     all('sales_goals', 'id, name, pipeline_status, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, category, last_touch_at, priority, priority_set_at, archived_at, updated_at, created_at', x => x.eq('goal_type', 'partnership')),
     all('sales_opportunities', 'id, organization, stage, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, priority, priority_set_at, archived_at, updated_at, created_at'),
     all('sales_targets', 'id, name, kind, status, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, updated_at, created_at, decided_at'),
@@ -59,6 +63,7 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
     // brad-attribution-v1 F3: hand-set stage dates (sales_stage_marks) - an empty list until that migration ran.
     selectAllPages(() => supabase.from('sales_stage_marks').select('record_type, record_id, stage, at, reason').eq('business_id', businessId).order('id')).catch(() => []),
     selectAllPages(() => supabase.from('sales_signals').select('source, status, decided_at, target_id, company_key').eq('business_id', businessId).eq('status', 'accepted').order('id')).catch(() => []),
+    COUNT_PARTNER_VISITORS ? all('partner_contacts', 'goal_id, title', x => x.eq('role_in_notes', VISITOR_ROLE)) : [],
   ]);
   const names = new Map(members.map(m => [m.user_id, m.profile?.display_name || m.name || null]));
   const weights = mergeWeights(settings?.score_weights);
@@ -83,6 +88,11 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
     if (!k) continue;
     if (!peopleBy.has(k)) peopleBy.set(k, []);
     peopleBy.get(k).push({ title: p.title || null, is_buyer: isBuyer(p.title) });
+  }
+  for (const c of partnerVisitors) {
+    const k = `partner:${c.goal_id}`;
+    if (!peopleBy.has(k)) peopleBy.set(k, []);
+    peopleBy.get(k).push({ title: c.title || null, is_buyer: isBuyer(c.title) });
   }
   // Heat + Apollo touches per prospect -> the hottest prospect per company (by link, else by company name).
   const msgsBy = new Map(), evsBy = new Map();
@@ -111,7 +121,8 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
   const companies = [
     ...partners.filter(p => !p.archived_at).map(p => ({ type: 'partner', id: p.id, name: p.name, stage: p.pipeline_status || 'not_started', row: p, created_at: p.updated_at })),
     ...opps.filter(o => !o.archived_at).map(o => ({ type: 'employer', id: o.id, name: o.organization, stage: o.stage || 'target', row: o, created_at: o.created_at })),
-    ...targets.filter(t => t.status !== 'rejected').map(t => ({ type: 'target', id: t.id, name: t.name, stage: t.status || 'proposed', row: t, created_at: t.created_at })),
+    // visitor-people-follow-record-v1 V2: an accepted target lives on as the record it was promoted to - not scored twice.
+    ...targets.filter(t => t.status !== 'rejected' && t.status !== 'accepted').map(t => ({ type: 'target', id: t.id, name: t.name, stage: t.status || 'proposed', row: t, created_at: t.created_at })),
   ];
   const inputs = dedupeCompanies(companies).map(c => {
     const r = c.row, key = `${c.type}:${c.id}`, nameKey = normName(c.name);

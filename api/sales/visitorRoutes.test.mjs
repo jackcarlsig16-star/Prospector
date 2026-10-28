@@ -216,10 +216,13 @@ test('V2a list pull: balance, ONE GET /labels (exact name, contacts modality) ca
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.deepEqual(apolloFixtureCalls.slice(start), ['GET /users/api_profile', 'GET /labels', 'POST /contacts/search', 'GET /users/api_profile']);
     assert.deepEqual([r.body.ran, r.body.calls, r.body.credits, r.body.list], [true, 4, 0, { name: VISITOR_LIST_NAME, count: 3, cached: false }]);
-    assert.deepEqual(r.body.counts, { contacts: 5, pages: 1, capped: false, with_email: 2, skipped: 1, companies: 4, matched: 2, created: 1, parked: 0, skipped_companies: 1, people_added: 3, people_parked: 0, already_in: 0, employees_filled: 1, parked_unfiled: 0 });
+    assert.deepEqual(r.body.counts, { contacts: 5, pages: 1, capped: false, with_email: 2, skipped: 1, companies: 4, matched: 2, created: 1, parked: 1, skipped_companies: 1, people_added: 3, people_parked: 1, already_in: 0, employees_filled: 1, parked_unfiled: 0 });
     assert.deepEqual(sb.db.visit_pull_runs.filter(x => x.kind === 'people').map(x => [x.la_date, x.status, x.calls, x.credits]), [['2026-10-20', 'ok', 4, 0]], 'its own run row');
-    assert.deepEqual(r.body.companies.map(c => [c.name, c.action, c.type, c.people_added]), [['Zz ADP', 'created', 'target', 1], ['Harbor Lane', 'matched', 'partner', 1], ['Quarry Labs', 'matched', 'target', 1], ['Cloudflare', 'skipped', null, 0]]);
-    assert.ok(!sb.db.sales_targets.some(t => t.name === 'Cloudflare') && !sb.db.sales_people.some(p => p.name === 'Cal Skipped'), 'a skip-list company gets no record and its people wait');
+    assert.deepEqual(r.body.companies.map(c => [c.name, c.action, c.type, c.people_added]), [['Zz ADP', 'created', 'target', 1], ['Harbor Lane', 'matched', 'partner', 1], ['Quarry Labs', 'matched', 'target', 1], ['Cloudflare', 'parked', null, 0]]);
+    // visitor-people-follow-record-v1 V4: a skip-list company still gets no record, but its people are parked with the note.
+    const cal = sb.db.sales_people.find(p => p.name === 'Cal Skipped');
+    assert.ok(!sb.db.sales_targets.some(t => t.name === 'Cloudflare'), 'a skip-list company gets no record');
+    assert.deepEqual([cal.company_type, cal.company_name, cal.note, cal.target_id ?? null, cal.opportunity_id ?? null], ['parked', 'Cloudflare', 'Company is on the visit skip list', null, null]);
     assert.deepEqual(r.body.sample.map(x => `${x.name[0]}. ${x.name.split(' ').slice(1).join(' ')} · ${x.company}`), ['J. Horton · Zz ADP', 'M. R. · Harbor Lane', 'A. Example · Quarry Labs']);
     const state = sb.db.sales_settings[0].visitor_filters.visitor_people;
     assert.deepEqual([state.list_id, state.list_name, state.list_count, state.last_pull_on, state.last_error], [LIST_ID, VISITOR_LIST_NAME, 3, '2026-10-20', null]);
@@ -242,8 +245,8 @@ test('V2a list pull: balance, ONE GET /labels (exact name, contacts modality) ca
     assert.equal(schedulePeoplePull(sb, { businessId: B, userId: U }), null, 'the in-memory Supabase never gets a background run');
     const forced = await runVisitorPeoplePull(sb, { businessId: B, userId: U, force: true, now: NOW + 7200e3 });
     assert.deepEqual(apolloFixtureCalls.slice(start + 4), ['GET /users/api_profile', 'POST /contacts/search', 'GET /users/api_profile'], 'the cached id skips GET /labels');
-    assert.deepEqual([forced.body.ran, forced.body.list.cached, forced.body.counts.people_added, forced.body.counts.already_in, forced.body.counts.created], [true, true, 0, 3, 0]);
-    assert.equal(sb.db.sales_people.length, 2);
+    assert.deepEqual([forced.body.ran, forced.body.list.cached, forced.body.counts.people_added, forced.body.counts.already_in, forced.body.counts.created], [true, true, 0, 4, 0], "the parked skip-list person is already in on a re-run (V4)");
+    assert.equal(sb.db.sales_people.length, 3); // 2 filed + the parked skip-list person (V4), no duplicate on the re-run
     assert.equal(sb.db.apollo_credit_spend.length, 2);
     noAddress(sb);
   } finally { restore(); }

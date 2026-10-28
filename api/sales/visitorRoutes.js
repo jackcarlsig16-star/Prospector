@@ -11,6 +11,7 @@ import { cleanText, hasPii } from './scrubText.js';
 import { autoCreatePlan, autoSignalPatch, recordDecision } from './visitorRecords.js';
 import { peopleSearchRequest, mapPeople, parseVisitedPeopleCsv, capLeft } from './peopleFind.js';
 import { unionRows, searchPeople, TIES } from './peopleUnion.js';
+import { VISITOR_ROLE, SKIP_NOTE, relinkParked } from './visitorPeopleMove.js';
 
 // visitor-to-record-v1 REV2 Stage 2 - the runner behind the pure modules: V1 inside the visitor pull (and on demand
 // from Signals), V2a the Visited People export + the list pull's filer (visitorPeoplePull.js calls fileVisitedPeople),
@@ -51,7 +52,7 @@ async function filePerson(supabase, { businessId, userId, type, id, person, exis
   const key = normName(person.name);
   if (known(existingKeys, person)) return false;
   if (type === 'partner') {
-    must(await supabase.from('partner_contacts').insert({ business_id: businessId, goal_id: id, name: person.name, title: person.title || null, linkedin_url: person.linkedin_url || null, source: 'manual', created_by: userId }).select('id').single());
+    must(await supabase.from('partner_contacts').insert({ business_id: businessId, goal_id: id, name: person.name, title: person.title || null, linkedin_url: person.linkedin_url || null, role_in_notes: VISITOR_ROLE, source: 'manual', created_by: userId }).select('id').single());
   } else {
     must(await supabase.from('sales_people').insert({
       business_id: businessId, company_type: type, ...(type === 'employer' ? { opportunity_id: id } : { target_id: id }),
@@ -164,7 +165,8 @@ async function fillEmployees(supabase, { type, id, employees, now }) {
 // V2a - the one filer behind the CSV upload and the list pull: each company -> its matched record (V0) or, when the
 // record rule says so (recordDecision: US and 500+ / unknown, or a buyer title), a new employer target - else its people
 // are PARKED (sales_people company_type 'parked', company name only, no record; Add in People search files them later).
-// A company on the visit skip list (Cloudflare, Lovable, ...) gets no record and its people wait. Each person ->
+// A company on the visit skip list (Cloudflare, Lovable, ...) gets no record; its people are PARKED with the note
+// SKIP_NOTE (visitor-people-follow-record-v1 V4 - they used to be dropped unstored) and never re-link on their own. Each person ->
 // sales_people (partner_contacts on a partner), names as given, never an email; idempotent by name and by Apollo contact
 // id. preview: the same decisions with no write. -> { companies: [{ name, action: matched | created | parked |
 // would_create | would_park | skipped, type, id, people_added, already_in, reason }], people: n, counts, sample }
@@ -178,9 +180,9 @@ export async function fileVisitedPeople(supabase, { businessId, userId, parsed, 
   for (const c of parsed.companies) {
     const people = parsed.people.filter(p => (normName(p.company) || p.domain) === c.company_key);
     const m = exactRecord(c.name, c.domain, ctx);
-    let type = null, id = null, action, reason = null;
+    let type = null, id = null, action, reason = null, skipListed = false;
     if (m) { type = m.type === 'opportunity' ? 'employer' : m.type; id = m.id; action = 'matched'; }
-    else if (skip.has(normName(c.name))) { counts.skipped_companies++; companies.push({ name: c.name, action: 'skipped', type: null, id: null, people_added: 0, already_in: 0, waiting: people.length, employees: c.employees }); continue; }
+    else if (skip.has(normName(c.name))) { counts.skipped_companies++; skipListed = true; reason = SKIP_NOTE; action = preview ? 'would_park' : 'parked'; }
     else {
       const d = recordDecision(c, people, { buyerTitles: settings.buyer_titles });
       reason = d.reason;
@@ -207,7 +209,7 @@ export async function fileVisitedPeople(supabase, { businessId, userId, parsed, 
       const fresh = !known(keys, p);
       if (fresh && !preview && parking) {
         if (parkedStore) {
-          const ins = await supabase.from('sales_people').insert({ business_id: businessId, company_type: 'parked', company_name: c.name, company_domain: c.domain, name: p.name, title: p.title || null, note: p.note || null, source_kind: 'web_visit', source_note: cleanText([sourceNote, p.lists].filter(Boolean).join(' · '), 300), apollo_person_id: p.apollo_person_id || null, created_by: userId }).select('id').single();
+          const ins = await supabase.from('sales_people').insert({ business_id: businessId, company_type: 'parked', company_name: c.name, company_domain: c.domain, name: p.name, title: p.title || null, note: skipListed ? SKIP_NOTE : p.note || null, source_kind: 'web_visit', source_note: cleanText([sourceNote, p.lists].filter(Boolean).join(' · '), 300), apollo_person_id: p.apollo_person_id || null, created_by: userId }).select('id').single();
           if (ins.error && MIGRATION_PENDING(ins.error)) parkedStore = false; else must(ins);
         }
         if (!parkedStore) counts.parked_unfiled++;
@@ -236,19 +238,12 @@ export async function addRecordFromPerson(supabase, { businessId, userId, id, no
   const today = laDateString(now);
   try {
     const evidence = cleanText(`Identified visitor${siblings.length === 1 ? '' : 's'}: ${siblings.length} · added from People search ${today}`, 400);
-    const r = await insertCompanyRecord(supabase, { businessId, userId, name: p.company_name, domain: p.company_domain || null, to: 'target', kind: 'employer', channel: 'website_visit', evidence, source: { source_kind: 'website', source_note: 'Added from People search' }, owner: null, now });
+    const r = await insertCompanyRecord(supabase, { businessId, userId, name: p.company_name, domain: p.company_domain || null, to: 'target', kind: 'employer', channel: 'website_visit', evidence, source: { source_kind: 'website', source_note: 'Added from People search' }, owner: null, now , relink: false });
     const rec = r.already || r.created;
     const type = r.already ? r.already.type : 'target';
     if (!r.already) must(await supabase.from('sales_targets').update({ source: 'web_visit', research_notes: `(${slash(today)}) ${evidence}`, updated_at: now.toISOString() }).eq('id', rec.id));
-    let moved = 0;
-    if (type === 'partner') {
-      const keys = await peopleKeys(supabase, businessId, 'partner', rec.id);
-      for (const s of siblings) if (await filePerson(supabase, { businessId, userId, type: 'partner', id: rec.id, person: s, existingKeys: keys })) moved++;
-      must(await supabase.from('sales_people').update({ archived_at: now.toISOString(), updated_at: now.toISOString() }).in('id', siblings.map(s => s.id)));
-    } else {
-      must(await supabase.from('sales_people').update({ company_type: type, ...(type === 'employer' ? { opportunity_id: rec.id } : { target_id: rec.id }), updated_at: now.toISOString() }).in('id', siblings.map(s => s.id)));
-      moved = siblings.length;
-    }
+    // The explicit Add moves every parked person of this company - skip-listed ones too (V4 / V5).
+    const moved = await relinkParked(supabase, { businessId, userId, type, id: rec.id, name: p.company_name, now, includeSkipped: true });
     scheduleRecompute(supabase, businessId, 'signal');
     return reply(r.already ? 200 : 201, { record: { type, id: rec.id, name: rec.name || p.company_name }, people_moved: moved, already: !!r.already });
   } catch (e) { return reply(e.status || 500, { error: e.message }); }

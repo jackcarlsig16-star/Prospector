@@ -1,4 +1,5 @@
 import { ownerOrCaller, employerOwner, memberNamed } from './companyFields.js';
+import { relinkParked } from './visitorPeopleMove.js';
 import { createClient } from '@supabase/supabase-js';
 import { STAGE_ENUM, ORG_TYPE_ENUM, PARKED_STAGES, compareStages, bulkStageRefusal } from './pipelineStages.js';
 import { parseCsv, toCsv } from '../../src/utils/csv.js';
@@ -108,6 +109,9 @@ export async function createOpportunityRoute(req, res) {
     try { await logSource(supabase, { businessId: req.params.businessId, type: 'employer', id: data.id, to: data, reason: 'create', byUser: req.auth.user.id }); }
     catch (e) { return res.status(500).json({ error: e.message }); }
   }
+  // visitor-people-follow-record-v1 V5: parked visitors of this company join the new employer.
+  try { await relinkParked(supabase, { businessId: req.params.businessId, userId: req.auth.user.id, type: 'employer', id: data.id, name: data.organization }); }
+  catch (e) { console.error('[opportunities] parked re-link failed:', e.message); }
   res.status(201).json({ opportunity: data });
 }
 

@@ -8,6 +8,7 @@ import { laDateString } from './laDate.js';
 import { normName } from './intakeMatch.js';
 import { findDupes, loadDupeContext } from './partnerDupeCheck.js';
 import { findOpportunity } from './opportunityMatch.js';
+import { relinkParked } from './visitorPeopleMove.js';
 import { applyPartnerSignal, SignalError } from './partnerSignals.js';
 import { listRuns, runsToday, RERUN_CAP_PER_DAY } from './partnerResearch.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
@@ -460,7 +461,7 @@ const RANK = { partner: 0, opportunity: 1, target: 2 };
 // one keeps its own (first touch).
 // dupeCtx: a caller filing many companies in one pass (visitorRoutes.fileVisitedPeople) hands in the context it already
 // loaded and keeps current, instead of a full reload per insert.
-export async function insertCompanyRecord(supabase, { businessId, userId, name, domain = null, to, kind = null, channel, evidence, apolloAccountId = null, noteMeta = {}, source = null, owner = null, employees = null, employeesSource = 'manual', dupeCtx = null, now = new Date() }) {
+export async function insertCompanyRecord(supabase, { businessId, userId, name, domain = null, to, kind = null, channel, evidence, apolloAccountId = null, noteMeta = {}, source = null, owner = null, employees = null, employeesSource = 'manual', dupeCtx = null, now = new Date() , relink = true}) {
   const src = source ? sourceColumns(source, { now }) : {};
   // company-workflow-v1 W3/W4: owner = { user_id, name } (a partner's goes through Assign); employees = a typed count
   // ('manual') or, from the visitor paths, Apollo's headcount ('apollo' - never written over a manual value later).
@@ -470,7 +471,9 @@ export async function insertCompanyRecord(supabase, { businessId, userId, name, 
     // FIX headcount-auto-v1 REV2 H5 (2): first sight - the free headcount paths in the background, never a lookup inside a create.
     const { scheduleFirstSight } = await import('./headcountRun.js');
     scheduleFirstSight(supabase, { businessId, type, id });
-    return { created: { type, id, name } };
+    // visitor-people-follow-record-v1 V5: parked visitors of this company join the new record (skip-listed ones wait).
+    const people_moved = relink ? await relinkParked(supabase, { businessId, userId, type, id, name, now }) : 0;
+    return { created: { type, id, name }, people_moved };
   };
   const hit = findDupes({ name, domain }, dupeCtx || await loadDupeContext(supabase, businessId)).exact.filter(h => h.type in RANK).sort((a, b) => a.archived - b.archived || RANK[a.type] - RANK[b.type])[0];
   if (hit) return { already: { type: hit.type === 'opportunity' ? 'employer' : hit.type, id: hit.id, name: hit.name } };

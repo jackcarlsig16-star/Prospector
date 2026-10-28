@@ -65,7 +65,7 @@ export default function TargetsList({ businessId, targets, canEdit, onChanged, o
     setPanel(null);
     if (r.already) { setAlready({ targetId: t.id, ...r.already }); return; }
     setAlready(null);
-    setToast({ text: `${r.created.name} → ${r.created.type === 'partner' ? 'Partners (Not started)' : 'Pipeline (Target)'}${r.relinked ? ` · ${r.relinked} to-do${r.relinked === 1 ? '' : 's'} moved` : ''}` });
+    setToast({ text: `${r.created.name} → ${r.created.type === 'partner' ? 'Partners (Not started)' : 'Pipeline (Target)'}${r.relinked ? ` · ${r.relinked} to-do${r.relinked === 1 ? '' : 's'} moved` : ''}${r.people_moved ? ` · ${r.people_moved} ${r.people_moved === 1 ? 'person' : 'people'} moved` : ''}` });
     onChanged();
   })();
   const reject = t => run(async () => {

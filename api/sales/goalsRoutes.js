@@ -1,4 +1,5 @@
 import { kickResearch } from './partnerResearch.js';
+import { relinkParked } from './visitorPeopleMove.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import {
   getSupabase, validate, fail, findRow, weekIsFinal, FINAL_ERROR, OWN_DELETE_WINDOW_MS,
@@ -178,6 +179,9 @@ export async function createLandGoalRoute(req, res) {
   if (data.goal_type === 'partnership') {
     kickResearch(supabase, { businessId: req.params.businessId, entityId: data.id, trigger: 'create', userId: req.auth.user.id })
       .catch(e => console.warn('[goals/land] research on create skipped:', e.message));
+    // visitor-people-follow-record-v1 V5: parked visitors of this company join the new partner.
+    try { await relinkParked(supabase, { businessId: req.params.businessId, userId: req.auth.user.id, type: 'partner', id: data.id, name: data.name }); }
+    catch (e) { console.error('[goals/land] parked re-link failed:', e.message); }
   }
   res.status(201).json({ goal: data });
 }

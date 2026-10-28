@@ -7,6 +7,7 @@ import { laDateString } from './laDate.js';
 import { resolveCompany } from './intakeMatch.js';
 import { findOpportunity } from './opportunityMatch.js';
 import { applyPartnerSignal } from './partnerSignals.js';
+import { moveTargetPeople, relinkParked } from './visitorPeopleMove.js';
 import { OWNER_TEAMS, TEAM_LABEL } from '../../src/constants/ownership.js';
 import { PIPELINE_STATUSES } from '../../src/constants/partnerPipeline.js';
 
@@ -107,14 +108,17 @@ export function validatePromote(body, target) {
 // overrides key on the company name, so they follow on their own; to-dos
 // are relinked by the partner path only (an employer has no link type yet).
 const VISIT_TYPE = { partner: 'partner', employer: 'opportunity' };
-async function moveTargetData(supabase, { businessId, target, to, id, undo }) {
+// visitor-people-follow-record-v1 V1 / V5: the target's people move too, and parked people of the same name join.
+async function moveTargetData(supabase, { businessId, userId, target, to, id, undo }) {
   const runs = must(await supabase.from('research_runs').update({ entity_type: to, entity_id: id })
     .eq('business_id', businessId).eq('entity_type', 'target').eq('entity_id', target.id).select('id'));
   if (runs.length) undo.push(() => supabase.from('research_runs').update({ entity_type: 'target', entity_id: target.id }).in('id', runs.map(r => r.id)));
   const visits = must(await supabase.from('web_visits').update({ matched_type: VISIT_TYPE[to], matched_id: id })
     .eq('business_id', businessId).eq('matched_type', 'target').eq('matched_id', target.id).select('id'));
   if (visits.length) undo.push(() => supabase.from('web_visits').update({ matched_type: 'target', matched_id: target.id }).in('id', visits.map(v => v.id)));
-  return { research_moved: runs.length, visits_moved: visits.length };
+  const people = await moveTargetPeople(supabase, { businessId, userId, targetId: target.id, to, id, undo });
+  const parked = await relinkParked(supabase, { businessId, userId, type: to, id, name: target.name, undo });
+  return { research_moved: runs.length, visits_moved: visits.length, people_moved: people + parked };
 }
 
 // lead-source-v1: a promoted target hands its source on unchanged (a person's pick stays theirs).
@@ -161,7 +165,7 @@ async function promoteToPartner(supabase, { businessId, userId, target, payload,
     const relinked = must(await supabase.from('sales_week_goals').update({ link_type: 'partner', link_id: goal.id, updated_at: now })
       .eq('business_id', businessId).eq('link_type', 'target').eq('link_id', target.id).select('id'));
     if (relinked.length) undo.push(() => supabase.from('sales_week_goals').update({ link_type: 'target', link_id: target.id }).in('id', relinked.map(r => r.id)));
-    const moved = await moveTargetData(supabase, { businessId, target, to: 'partner', id: goal.id, undo });
+    const moved = await moveTargetData(supabase, { businessId, userId, target, to: 'partner', id: goal.id, undo });
     const updated = await acceptTarget(supabase, target, { promoted_goal_id: goal.id }, now);
     return { created: { type: 'partner', id: goal.id, name: goal.name }, goal, target: updated, relinked: relinked.length, ...moved };
   } catch (e) {
@@ -188,7 +192,7 @@ async function promoteToEmployer(supabase, { businessId, userId, target, payload
   try {
     await logInherited(supabase, { businessId, target, type: 'employer', id: opportunity.id, userId });
     undo.push(() => supabase.from('sales_source_events').delete().eq('record_type', 'employer').eq('record_id', opportunity.id));
-    const moved = await moveTargetData(supabase, { businessId, target, to: 'employer', id: opportunity.id, undo });
+    const moved = await moveTargetData(supabase, { businessId, userId, target, to: 'employer', id: opportunity.id, undo });
     const updated = await acceptTarget(supabase, target, {}, now);
     return { created: { type: 'opportunity', id: opportunity.id, name: opportunity.organization }, opportunity, target: updated, relinked: 0, ...moved };
   } catch (e) {
