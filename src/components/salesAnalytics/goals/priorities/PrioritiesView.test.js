@@ -315,3 +315,98 @@ test('select vs open: a second click deselects (card gone); Esc deselects; the n
   fireEvent.click(within(table).getByRole('button', { name: 'Open Hilton Example' }));
   await waitFor(() => expect(screen.getByText(/not on the Pipeline board any more/)).toBeInTheDocument());
 });
+
+// FIX priorities-click-outside-v1 - a press anywhere else in the view deselects (pointerdown + pointerup on the view
+// root, never a document listener); the card / menu / marks / Y / Names keep it; an open Assign dropdown closes first.
+const press = el => { fireEvent.pointerDown(el); fireEvent.pointerUp(el); };
+const chartSvg = () => document.querySelector('[data-dots-chart] svg');
+const selectedCard = () => screen.queryByRole('group', { name: /selected$/ });
+
+test('click outside: a press on empty chart space deselects (card gone, aria-pressed false); a press on another dot swaps the selection; inside the card keeps it; a cancelled press (touch scroll) keeps it', async () => {
+  render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+  await waitFor(() => expect(dots()).toHaveLength(3));
+  fireEvent.click(dot('Quarry Labs'));
+  expect(selectedCard()).toHaveAttribute('data-pinned-card', 'target-t1');
+  press(within(selectedCard()).getByText(/Intent 72/));
+  expect(selectedCard()).toHaveAttribute('data-pinned-card', 'target-t1');
+  fireEvent.pointerDown(chartSvg()); fireEvent.pointerCancel(chartSvg());
+  expect(selectedCard()).toHaveAttribute('data-pinned-card', 'target-t1');
+  press(chartSvg());
+  expect(selectedCard()).toBeNull();
+  expect(dot('Quarry Labs').getAttribute('aria-pressed')).toBe('false');
+  expect(dot('Quarry Labs').getAttribute('data-selected')).toBeNull();
+  fireEvent.click(dot('Quarry Labs'));
+  fireEvent.pointerDown(dot('Harbor Lane')); fireEvent.pointerUp(dot('Harbor Lane')); fireEvent.click(dot('Harbor Lane'));
+  expect(selectedCard()).toHaveAttribute('data-pinned-card', 'partner-p1');
+  expect(dot('Quarry Labs').getAttribute('data-selected')).toBeNull();
+  expect(dot('Harbor Lane').getAttribute('data-selected')).toBe('true');
+});
+
+test('click outside: an open Assign dropdown closes on the first outside press and the selection stays; the Y switch and Names keep it; a legend pill, a filter and the View switch deselect; the Brief card and the toast keep it', async () => {
+  goalsApi.createWeekGoal.mockResolvedValue({ id: 'g1' });
+  render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+  await waitFor(() => expect(dots()).toHaveLength(3));
+  fireEvent.click(dot('Quarry Labs'));
+  fireEvent.click(screen.getByRole('button', { name: /^Assign to/ }));
+  expect(screen.getByRole('menu', { name: 'Assign to' })).toBeInTheDocument();
+  press(chartSvg());
+  expect(screen.queryByRole('menu', { name: 'Assign to' })).toBeNull();
+  expect(selectedCard()).toHaveAttribute('data-pinned-card', 'target-t1');
+  press(screen.getByRole('button', { name: 'Size' })); fireEvent.click(screen.getByRole('button', { name: 'Size' }));
+  expect(selectedCard()).toHaveAttribute('data-pinned-card', 'target-t1');
+  const names = screen.getByRole('group', { name: 'Names' });
+  press(within(names).getByRole('button', { name: 'All' })); fireEvent.click(within(names).getByRole('button', { name: 'All' }));
+  expect(selectedCard()).toHaveAttribute('data-pinned-card', 'target-t1');
+  fireEvent.click(within(selectedCard()).getByRole('button', { name: 'Brief' }));
+  const brief = await screen.findByRole('region', { name: 'Brief' });
+  press(within(brief).getByText(/Suggested next step/));
+  expect(selectedCard()).toHaveAttribute('data-pinned-card', 'target-t1');
+  fireEvent.click(within(selectedCard()).getByRole('button', { name: 'Add task' }));
+  const undo = await screen.findByRole('button', { name: 'Undo' });
+  press(undo);
+  expect(selectedCard()).toHaveAttribute('data-pinned-card', 'target-t1');
+  press(screen.getByRole('button', { name: /^Brad \/ Upside/ }));
+  expect(selectedCard()).toBeNull();
+  fireEvent.click(dot('Quarry Labs'));
+  press(screen.getByRole('button', { name: 'Partners' }));
+  expect(selectedCard()).toBeNull();
+  fireEvent.click(dot('Quarry Labs'));
+  press(screen.getByRole('button', { name: 'Bars' }));
+  expect(selectedCard()).toBeNull();
+});
+
+test('click outside: the table - a press on a cell deselects, the name of another row selects it; no document or window pointerdown listener exists, before or after unmount', async () => {
+  const docSpy = jest.spyOn(document, 'addEventListener'), winSpy = jest.spyOn(window, 'addEventListener');
+  const { unmount } = render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+  await waitFor(() => expect(dots()).toHaveLength(3));
+  fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+  const table = await screen.findByRole('table');
+  fireEvent.click(within(table).getByRole('button', { name: 'Quarry Labs' }));
+  expect(screen.getByRole('toolbar', { name: 'Actions for Quarry Labs' })).toBeInTheDocument();
+  press(within(table).getByText('Hilton Example')); fireEvent.click(within(table).getByRole('button', { name: 'Hilton Example' }));
+  expect(screen.getByRole('toolbar', { name: 'Actions for Hilton Example' })).toBeInTheDocument();
+  press(within(table).getByRole('columnheader', { name: 'Score' }));
+  expect(screen.queryByRole('toolbar')).toBeNull();
+  expect(within(table).getByRole('button', { name: 'Hilton Example' }).getAttribute('aria-pressed')).toBe('false');
+  unmount();
+  expect([...docSpy.mock.calls, ...winSpy.mock.calls].map(c => c[0])).not.toContain('pointerdown');
+  docSpy.mockRestore(); winSpy.mockRestore();
+});
+
+test('click outside on a phone: a tap outside the pinned card closes it; a tap on the card keeps it', async () => {
+  const desktop = window.matchMedia;
+  window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+  try {
+    render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+    await waitFor(() => expect(screen.getByRole('group', { name: 'Chart view' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Dots' }));
+    await waitFor(() => expect(dots()).toHaveLength(3));
+    fireEvent.click(dot('Harbor Lane'));
+    expect(selectedCard()).toHaveAttribute('data-pinned-card', 'partner-p1');
+    press(within(selectedCard()).getByText('Not researched yet'));
+    expect(selectedCard()).toHaveAttribute('data-pinned-card', 'partner-p1');
+    press(chartSvg());
+    expect(selectedCard()).toBeNull();
+    expect(dot('Harbor Lane').getAttribute('aria-pressed')).toBe('false');
+  } finally { window.matchMedia = desktop; }
+});

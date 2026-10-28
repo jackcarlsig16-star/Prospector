@@ -25,7 +25,10 @@ import { Y_METRICS, VIEWS, SEGMENTS, WINDOWS, BANDS, NAME_MODES, EMPTY_FILTERS, 
 // TABLE; filters in one row above; the legend IS the source toggle (dims, never removes; colors follow the entity);
 // a click SELECTS (FIX priorities-select-vs-open-v1): the breakdown card pins beside the mark with the quick menu inside,
 // a second click or Esc deselects; the company window opens only on purpose - the menu's Open, the name in the card or
-// the table's Open, a double-click, Enter on a selected mark or "o";
+// the table's Open, a double-click, Enter on a selected mark or "o". FIX priorities-click-outside-v1: a press anywhere
+// else in the view deselects (pointerdown + pointerup on the section root, no document listener; a touch scroll cancels
+// the press); the card, the menu, the marks, the Brief, the toast, the Y / Names switches keep it; an open Assign
+// dropdown closes first; an open window or Write email panel owns the press;
 // Share saves the filter state as a named view and exports a PNG (html2canvas, lazy from the CDN) + the CSV.
 // Phone: the table by default, the chart in a sideways-scrolling card. Dark module -> .ui-theme-dark.
 const HTML2CANVAS = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
@@ -33,6 +36,7 @@ const rowBar = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap'
 const rowKey = r => `${r.type}-${r.id}`;
 const opts = (all, list) => [{ value: '', label: all }, ...list];
 const TOP_N = [['40', 'Top 40'], ['20', 'Top 20'], ['10', 'Top 10'], ['all', 'Everything']];
+const KEEPS_SELECTION = '[data-pinned-card], [data-quick-menu], [data-dot], [data-bar], [data-row-name], [data-brief-card], [data-keeps-selection], [role="status"]';
 
 function loadHtml2canvas() {
   if (window.html2canvas) return Promise.resolve(window.html2canvas);
@@ -72,6 +76,8 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
   const legendRef = useRef(null);
   const shotRef = useRef(null);
   const undoTimer = useRef(null);
+  const subClose = useRef(null); // the quick menu's open dropdown, closed by an outside press before the selection would be
+  const press = useRef(false);
   const effectiveView = view || (phone ? 'table' : 'dots');
 
   useEffect(() => { setToolsSlot(document.getElementById(FRAME_TOOLS_ID)); }, []);
@@ -127,6 +133,17 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [selectedKey, windowOpen, composeFor]);
+  const onPointerDown = e => {
+    press.current = false;
+    if (!selectedKey || windowOpen || composeFor || (e.button != null && e.button !== 0)) return;
+    const t = e.target;
+    if (t.closest?.(KEEPS_SELECTION) || t.hasAttribute?.('data-chart-box')) return; // a scrollbar press lands on the box itself
+    if (subClose.current) { subClose.current(); return; }
+    press.current = true;
+  };
+  const onPointerUp = () => { if (press.current) { press.current = false; setSelectedKey(null); setPanelKey(null); setBrief(null); } };
+  const onPointerCancel = () => { press.current = false; };
+  const setSubClose = useCallback(fn => { subClose.current = fn; }, []);
   const set = (k, v) => setFilters(f => ({ ...f, [k]: v }));
   const nFilters = activeFilterCount(filters);
 
@@ -174,7 +191,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
 
   const menu = selected ? (
     <QuickMenu businessId={businessId} row={selected} members={members} meId={meId} canEdit={canEdit} compose={compose} nextStep={brief?.key === selected.key ? brief.brief?.next_step : null}
-      onBrief={() => openBrief(selected)} onCompose={() => setComposeFor(selected)} onOpen={() => open(selected)} onChanged={reloadAll} onToast={setToast} />
+      onBrief={() => openBrief(selected)} onCompose={() => setComposeFor(selected)} onOpen={() => open(selected)} onChanged={reloadAll} onToast={setToast} onSubClose={setSubClose} />
   ) : null;
   const chartProps = { rows: paged.rows, lit, y, thresholds: data?.thresholds, caps: data?.caps, counts: data?.counts || {}, selectedKey, onSelect: select, onOpen: open, menu, showTrend, width: phone ? Math.max(width, 720) : width, names, phone };
   const legend = (
@@ -214,7 +231,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
   const stale = data?.stale;
 
   return (
-    <section aria-label="Priorities" data-priorities style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+    <section aria-label="Priorities" data-priorities onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
       <style>{SOURCE_THEME_CSS}</style>
       {toolsSlot && createPortal(tools, toolsSlot)}
       <div role="group" aria-label="Filters" data-filter-row style={rowBar}>{filterControls}</div>
@@ -223,11 +240,11 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
         <Segmented label="Chart view" items={VIEWS.map(([id, label]) => ({ id, label }))} value={effectiveView} onChange={setView} />
         {effectiveView !== 'table' && <>
           <span className="ui-group-label" aria-hidden="true">Y</span>
-          <Segmented label="Y axis" items={Y_METRICS.map(([id, label]) => ({ id, label }))} value={y} onChange={setY} />
+          <span data-keeps-selection style={{ display: 'contents' }}><Segmented label="Y axis" items={Y_METRICS.map(([id, label]) => ({ id, label }))} value={y} onChange={setY} /></span>
           <span style={{ fontSize: 12, color: SA.muted }}>Rank by Intent</span>
           <FilterSelect label="Show" value={topN} options={TOP_N.map(([value, label]) => ({ value, label }))} onChange={setTopN} />
           <span className="ui-group-label" aria-hidden="true">Names</span>
-          <Segmented label="Names" items={NAME_MODES.map(([id, label]) => ({ id, label }))} value={names} onChange={setNames} />
+          <span data-keeps-selection style={{ display: 'contents' }}><Segmented label="Names" items={NAME_MODES.map(([id, label]) => ({ id, label }))} value={names} onChange={setNames} /></span>
         </>}
         <span style={{ flex: 1 }} />
         {data && <span style={{ ...numStyle, fontSize: 12, color: SA.muted }} data-counts>{data.counts.shown} of {data.counts.ranked} ranked · P1 {data.counts.P1} · P2 {data.counts.P2} · P3 {data.counts.P3} · P4 {data.counts.P4}{data.counts.live ? ` · ${data.counts.live} live` : ''}{stale ? ' · scores older than a day' : ''}</span>}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { SA } from '../../theme';
 import { goalsApi } from '../goalsApi';
 import { updateOpportunity } from '../../pipelineApi';
@@ -15,9 +15,14 @@ const LOCK_REASON = 'Upside-owned with no double touch - coordinate with Brad be
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 const btn = 'ui-btn ui-btn--secondary ui-btn--sm';
 
-export default function QuickMenu({ businessId, row, members, meId, canEdit, compose, onBrief, onCompose, onChanged, onToast, onOpen, nextStep }) {
+export default function QuickMenu({ businessId, row, members, meId, canEdit, compose, onBrief, onCompose, onChanged, onToast, onOpen, nextStep, onSubClose }) {
   const [busy, setBusy] = useState(null);
   const [assignOpen, setAssignOpen] = useState(false);
+  useEffect(() => {
+    if (!onSubClose) return undefined;
+    onSubClose(assignOpen ? () => setAssignOpen(false) : null);
+    return () => onSubClose(null);
+  }, [assignOpen, onSubClose]);
   const locked = !!row.touch_locked;
   const run = async (key, fn, text) => {
     setBusy(key);
