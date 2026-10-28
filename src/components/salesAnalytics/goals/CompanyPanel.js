@@ -28,7 +28,7 @@ import { priorityColor } from '../palette';
 const POLL_MS = 3000;
 const btn = 'ui-btn ui-btn--secondary';
 
-export default function CompanyPanel({ businessId, row, canEdit, members, meId, onStar, onPatch, onChanged, onToast, onConvert, onClose, onOpenFull, onOpenPeople }) {
+export default function CompanyPanel({ businessId, row, canEdit, members, meId, onStar, onPatch, onChanged, onToast, onConvert, onClose, onOpenFull, onOpenPeople, initialSection = null }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState('');
   const [version, setVersion] = useState(0);
@@ -118,7 +118,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
             {detail.research && <IntelCard {...cardProps} />}
-            {!needsRecord(row.type) || detail.people.length > 0 ? <PeopleCard {...cardProps} /> : null}
+            {!needsRecord(row.type) || detail.people.length > 0 ? <div data-section="people" ref={el => { if (el && initialSection === 'people' && !el.dataset.shown) { el.dataset.shown = '1'; el.scrollIntoView({ block: 'start' }); } }}><PeopleCard {...cardProps} /></div> : null}
             {row.type === 'partner' && <ReferredByCard businessId={businessId} row={row} version={version} />}
             {sourced && <SourceHistoryCard data={source} />}
             <ExtraCards row={row} detail={detail} />

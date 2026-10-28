@@ -11,7 +11,7 @@ import { fakeSupabase } from './testing/fakeSupabase.mjs';
 import { installApolloFixture, apolloFixtureCalls } from './testing/apolloFixture.mjs';
 import { apolloRequest } from './apolloClient.js';
 import { runVisitPull } from './visitPull.js';
-import { autoCreateSignal, uploadVisitedPeople, peopleSearch, addRecordFromPerson } from './visitorRoutes.js';
+import { autoCreateSignal, uploadVisitedPeople, peopleSearch, addRecordFromPerson, addPerson } from './visitorRoutes.js';
 import { runVisitorPeoplePull, schedulePeoplePull, MAX_PAGES } from './visitorPeoplePull.js';
 import { VISITOR_LIST_NAME } from './peopleFind.js';
 import { undoSignal, listSignals } from './signalsRoutes.js';
@@ -370,5 +370,36 @@ test('injected visit: 0 visitor searches, no run or credit row, the company stor
     assert.equal(sb.db.sales_signals[0].auto, true);
     const src = await import('node:fs').then(fs => fs.readFileSync(new URL('./visitPull.js', import.meta.url), 'utf8'));
     assert.match(src, /const \{ force = false, trigger = 'manual', backfill_days: backfillDays = null \} = req\.body \|\| \{\};/, 'the route reads three fields and nothing else');
+  } finally { restore(); }
+});
+
+// FIX pipeline-quick-fixes-v1 A - POST goals/people: one person by hand.
+test('addPerson: a partner -> partner_contacts, a target -> sales_people, a new company -> parked, a name that matches a live record lands on it; dupes 409; an email / phone in any field or an extra field -> 400', async () => {
+  const { sb, restore } = setup();
+  try {
+    const r1 = await addPerson(sb, { businessId: B, userId: U, body: { name: 'Pat Partner', title: 'Broker', linkedin_url: 'https://www.linkedin.com/in/pat', company: { type: 'partner', id: P.harbor } } });
+    assert.equal(r1.status, 201, JSON.stringify(r1.body));
+    assert.deepEqual([r1.body.company, sb.db.partner_contacts.map(c => [c.goal_id, c.name, c.title, c.linkedin_url, c.source])], [{ type: 'partner', id: P.harbor, name: 'Harbor Lane' }, [[P.harbor, 'Pat Partner', 'Broker', 'https://www.linkedin.com/in/pat', 'manual']]]);
+    const r2 = await addPerson(sb, { businessId: B, userId: U, body: { name: 'Ana Target', company: { type: 'target', id: T.quarry } } });
+    assert.equal(r2.status, 201);
+    assert.deepEqual(sb.db.sales_people.map(p => [p.company_type, p.target_id, p.name, p.source_note]), [['target', T.quarry, 'Ana Target', 'Added from Pipeline']]);
+    assert.equal((await addPerson(sb, { businessId: B, userId: U, body: { name: 'ana target', company: { type: 'target', id: T.quarry } } })).status, 409, 'same name again');
+    const r3 = await addPerson(sb, { businessId: B, userId: U, body: { name: 'New Person', title: 'Owner', company: { name: 'Zz Brand New', domain: 'zzbrandnew.example' } } });
+    assert.equal(r3.status, 201, JSON.stringify(r3.body));
+    assert.deepEqual(r3.body.company, { type: 'parked', id: null, name: 'Zz Brand New' });
+    assert.deepEqual(sb.db.sales_people.filter(p => p.company_type === 'parked').map(p => [p.company_name, p.company_domain, p.name, p.title]), [['Zz Brand New', 'zzbrandnew.example', 'New Person', 'Owner']]);
+    assert.equal((await addPerson(sb, { businessId: B, userId: U, body: { name: 'New Person', company: { name: 'zz brand new' } } })).status, 409, 'parked twice');
+    const r4 = await addPerson(sb, { businessId: B, userId: U, body: { name: 'Lee Match', company: { name: 'Quarry Labs' } } });
+    assert.deepEqual([r4.status, r4.body.company], [201, { type: 'target', id: T.quarry, name: 'Quarry Labs' }], 'a typed name that matches a live record lands on it');
+    for (const body of [
+      { name: 'Jo', email: 'jo@zz.example', company: { type: 'target', id: T.quarry } },
+      { name: 'Jo', phone: '312 555 0100', company: { type: 'target', id: T.quarry } },
+      { name: 'Jo (jo@zz.example)', company: { type: 'target', id: T.quarry } },
+      { name: 'Jo', title: 'call 312-555-0100', company: { type: 'target', id: T.quarry } },
+      { name: 'Jo', linkedin_url: 'https://example.com/jo', company: { type: 'target', id: T.quarry } },
+      { name: 'Jo' }, { company: { type: 'target', id: T.quarry } },
+    ]) assert.equal((await addPerson(sb, { businessId: B, userId: U, body })).status, 400, JSON.stringify(body));
+    assert.equal((await addPerson(sb, { businessId: B, userId: U, body: { name: 'Jo', company: { type: 'target', id: randomUUID() } } })).status, 404);
+    noAddress(sb);
   } finally { restore(); }
 });

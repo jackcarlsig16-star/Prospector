@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
-import { companyDetail, addToPipeline, addNote, addContact, updateTarget, bookMeeting, markContacted, notNow, notNowPatch } from './companyPanel.js';
+import { companyDetail, addToPipeline, addNote, addContact, updateTarget, bookMeeting, markContacted, notNow, notNowPatch, createTarget } from './companyPanel.js';
 
 const NOW = new Date('2026-10-20T20:00:00Z'); // Tue Oct 20, 1pm LA
 
@@ -311,4 +311,18 @@ test('add to pipeline with owner_user_id: an employer gets the person (and the o
   assert.equal(r.status, 201, JSON.stringify(r.body));
   const o = sb.db.sales_opportunities.find(x => x.id === r.body.created.id);
   assert.deepEqual([o.owner_user_id, o.owner], [U2, 'Cyrus']);
+});
+
+// FIX pipeline-quick-fixes-v1 A - POST goals/targets: a target by name with its kind, channel manual; a live match is "already".
+test('createTarget: name + kind -> a researching target (channel manual, evidence dated); the same name again answers already; bad kind / no name / an address in the name -> 400', async () => {
+  const sb = seed();
+  const r = await createTarget(sb, { businessId: B, userId: U, body: { name: 'Zz Fresh Target', kind: 'partner', domain: 'zzfresh.example' }, now: new Date('2026-10-27T18:00:00Z') });
+  assert.equal(r.status, 201, JSON.stringify(r.body));
+  const t = sb.db.sales_targets.find(x => x.name === 'Zz Fresh Target');
+  assert.deepEqual([r.body.created.type, t.kind, t.status, t.channel, t.evidence, t.created_by], ['target', 'partner', 'researching', 'manual', 'Added from Pipeline 2026-10-27', U]);
+  const again = await createTarget(sb, { businessId: B, userId: U, body: { name: 'zz fresh target', kind: 'employer' } });
+  assert.deepEqual([again.status, again.body.already.id], [200, t.id]);
+  assert.equal((await createTarget(sb, { businessId: B, userId: U, body: { name: 'X', kind: 'visitor' } })).status, 400);
+  assert.equal((await createTarget(sb, { businessId: B, userId: U, body: { kind: 'employer' } })).status, 400);
+  assert.equal((await createTarget(sb, { businessId: B, userId: U, body: { name: 'mail me at x@zz.example', kind: 'employer' } })).status, 400);
 });

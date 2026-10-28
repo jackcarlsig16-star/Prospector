@@ -7,7 +7,7 @@ import { loadDupeContext, findDupes } from './partnerDupeCheck.js';
 import { insertCompanyRecord } from './companyPanel.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
 import { normName } from './intakeMatch.js';
-import { cleanText } from './scrubText.js';
+import { cleanText, hasPii } from './scrubText.js';
 import { autoCreatePlan, autoSignalPatch, recordDecision } from './visitorRecords.js';
 import { peopleSearchRequest, mapPeople, parseVisitedPeopleCsv, capLeft } from './peopleFind.js';
 import { unionRows, searchPeople, TIES } from './peopleUnion.js';
@@ -253,6 +253,62 @@ export async function addRecordFromPerson(supabase, { businessId, userId, id, no
     return reply(r.already ? 200 : 201, { record: { type, id: rec.id, name: rec.name || p.company_name }, people_moved: moved, already: !!r.already });
   } catch (e) { return reply(e.status || 500, { error: e.message }); }
 }
+// FIX pipeline-quick-fixes-v1 A - POST /goals/people (Member): one person by hand from "+ Add ▾ › Person".
+// body { name, title?, linkedin_url?, company: { type: partner | employer | target, id } | { name, domain? } }
+// A partner gets a partner_contacts row, an employer / target a sales_people row, a company Prospector has no record
+// for a PARKED sales_people row (company name only - Add in People search files it later). Never an email or a
+// phone: any other field, or one hiding in the text, is 400. -> 201 { person: { id, name }, company: { type, id, name } }
+const LINKEDIN_RE = /^https?:\/\/(www\.)?linkedin\.com\//i;
+const PERSON_TYPES = ['partner', 'employer', 'target'];
+export async function addPerson(supabase, { businessId, userId, body, now = new Date() }) {
+  const extra = Object.keys(body || {}).find(k => !['name', 'title', 'linkedin_url', 'company'].includes(k));
+  if (extra) return reply(400, { error: 'Add person takes name, title, LinkedIn URL and the company only' });
+  const text = (v, max, label) => {
+    if (v == null || v === '') return { value: null };
+    if (typeof v !== 'string') return { error: `${label} must be text` };
+    const t = v.trim().replace(/\s+/g, ' ');
+    if (t.length > max) return { error: `${label} must be at most ${max} characters` };
+    if (hasPii(t)) return { error: `${label} can't hold an email address or phone number` };
+    return { value: t || null };
+  };
+  const name = text(body?.name, 120, 'name'), title = text(body?.title, 160, 'title'), linkedin = text(body?.linkedin_url, 300, 'linkedin_url');
+  const c = body?.company || {};
+  const cName = text(c.name, 160, 'company name'), cDomain = text(c.domain, 120, 'company domain');
+  const bad = [name, title, linkedin, cName, cDomain].find(x => x.error);
+  if (bad) return reply(400, { error: bad.error });
+  if (!name.value) return reply(400, { error: 'name is required' });
+  if (linkedin.value && !LINKEDIN_RE.test(linkedin.value)) return reply(400, { error: 'linkedin_url must be a linkedin.com link' });
+  const onRecord = PERSON_TYPES.includes(c.type) && typeof c.id === 'string' && c.id;
+  if (!onRecord && !cName.value) return reply(400, { error: 'company is required: a record (type + id) or a new company name' });
+  const person = { name: name.value, title: title.value, linkedin_url: linkedin.value, note: null, apollo_person_id: null, visit_id: null, source_note: 'Added from Pipeline' };
+  try {
+    if (onRecord) {
+      const ctx = await loadDupeContext(supabase, businessId);
+      const rec = (c.type === 'partner' ? ctx.partners : c.type === 'employer' ? ctx.opportunities : ctx.targets).find(r => r.id === c.id && !r.archived_at) || null;
+      if (!rec) return reply(404, { error: `${c.type} not found` });
+      const keys = await peopleKeys(supabase, businessId, c.type, c.id);
+      if (known(keys, person)) return reply(409, { error: `${person.name} is already listed on ${rec.name || rec.organization}` });
+      await filePerson(supabase, { businessId, userId, type: c.type, id: c.id, person, existingKeys: keys });
+      const row = c.type === 'partner'
+        ? must(await supabase.from('partner_contacts').select('id, name').eq('business_id', businessId).eq('goal_id', c.id).order('created_at', { ascending: false }).limit(1))[0]
+        : must(await supabase.from('sales_people').select('id, name').eq('business_id', businessId).eq(c.type === 'employer' ? 'opportunity_id' : 'target_id', c.id).order('created_at', { ascending: false }).limit(1))[0];
+      return reply(201, { person: { id: row?.id || null, name: person.name }, company: { type: c.type, id: c.id, name: rec.name || rec.organization } });
+    }
+    const ctx = await loadDupeContext(supabase, businessId);
+    const m = exactRecord(cName.value, cDomain.value, ctx);
+    if (m) return addPerson(supabase, { businessId, userId, body: { name: name.value, title: title.value, linkedin_url: linkedin.value, company: { type: m.type === 'opportunity' ? 'employer' : m.type, id: m.id } }, now });
+    const parked = (await parkedKeys(supabase, businessId)).get(normName(cName.value)) || { names: new Set(), ids: new Set() };
+    if (known(parked, person)) return reply(409, { error: `${person.name} is already parked under ${cName.value}` });
+    const ins = await supabase.from('sales_people').insert({ business_id: businessId, company_type: 'parked', company_name: cName.value, company_domain: cDomain.value, name: person.name, title: person.title, linkedin_url: person.linkedin_url, source_kind: null, source_note: 'Added from Pipeline', created_by: userId }).select('id, name').single();
+    if (ins.error && MIGRATION_PENDING(ins.error)) return reply(409, { error: PARKED_MIGRATION });
+    const row = must(ins);
+    return reply(201, { person: { id: row.id, name: row.name }, company: { type: 'parked', id: null, name: cName.value } });
+  } catch (e) { return reply(e.status || 500, { error: e.message }); }
+}
+export async function addPersonRoute(req, res) {
+  send(res, await addPerson(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, body: req.body }));
+}
+
 export async function addRecordFromPersonRoute(req, res) {
   send(res, await addRecordFromPerson(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, id: req.params.id }));
 }

@@ -38,7 +38,7 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
     if (res.status === 500 && MIGRATION_PATTERN.test(data.error || '')) throw new NeedsMigrationError();
     throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   }
-  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/leads$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/(partners|company\/[a-z]+)\/.+\/apollo-check$|^\/company\/add-to-pipeline$|^\/suggestions\/.+\/(accept|dismiss|snooze|undo)$|^\/signals\/(scout-import|.+\/(accept|dismiss|undo|auto-create))$|^\/visits\/(pull|people-csv|people-pull)$|^\/people\/.+\/add-record$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
+  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/leads$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/(partners|company\/[a-z]+)\/.+\/apollo-check$|^\/company\/add-to-pipeline$|^\/suggestions\/.+\/(accept|dismiss|snooze|undo)$|^\/signals\/(scout-import|.+\/(accept|dismiss|undo|auto-create))$|^\/visits\/(pull|people-csv|people-pull)$|^\/people(\/.+\/add-record)?$|^\/targets$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
 }
 
@@ -129,6 +129,9 @@ export const goalsApi = {
   people: (id, params = {}) => call(id, `/people?${q(params)}`),
   // V2a follow-up - a parked visitor (no record yet) gets their company filed as an employer target (Members).
   addPersonRecord: (id, personId) => call(id, `/people/${personId}/add-record`, { method: 'POST', body: {} }),
+  // FIX pipeline-quick-fixes-v1 A - "+ Add ▾": a person on a record (or parked under a new company name), a target by name.
+  addPerson: (id, body) => call(id, '/people', { method: 'POST', body }),
+  createTarget: (id, body) => call(id, '/targets', { method: 'POST', body }),
   // sales-ia-v2 P4 - the company side panel for any Pipeline row (type = partner | employer | target | apollo | visitor).
   // detail = { record, todos, waiting, visits, signals, recent, people, research, decisions, terms }; 0 AI, 0 Apollo.
   companyDetail: (id, type, recordId) => call(id, `/company?${q({ type, id: recordId })}`),

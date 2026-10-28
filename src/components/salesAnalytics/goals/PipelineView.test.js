@@ -9,7 +9,8 @@ import { OPEN_TASKS } from './goalsApi';
 window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
 Element.prototype.scrollIntoView = Element.prototype.scrollIntoView || jest.fn();
 jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, pipelineBoard: jest.fn(), partnerSignal: jest.fn(), partnerUndo: jest.fn(), updatePartner: jest.fn(), setVisitPriority: jest.fn(),
-  members: jest.fn(), companyDetail: jest.fn(), addCompanyNote: jest.fn(), addToPipeline: jest.fn(), runCompanyResearch: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), updateTarget: jest.fn(), copyBundle: jest.fn(), checkCompanyApollo: jest.fn(), addCompanyContact: jest.fn(), rejectTarget: jest.fn(), promoteTarget: jest.fn(), bookMeeting: jest.fn(), markContacted: jest.fn(), notNow: jest.fn(), updateWeekGoal: jest.fn() } }));
+  members: jest.fn(), companyDetail: jest.fn(), addCompanyNote: jest.fn(), addToPipeline: jest.fn(), runCompanyResearch: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), updateTarget: jest.fn(), copyBundle: jest.fn(), checkCompanyApollo: jest.fn(), addCompanyContact: jest.fn(), rejectTarget: jest.fn(), promoteTarget: jest.fn(), bookMeeting: jest.fn(), markContacted: jest.fn(), notNow: jest.fn(), updateWeekGoal: jest.fn(),
+  addPerson: jest.fn(), createTarget: jest.fn(), createPartner: jest.fn(), partnerDupeCheck: jest.fn(), people: jest.fn() } }));
 jest.mock('../pipelineApi', () => ({ fetchOpportunities: jest.fn(), createOpportunity: jest.fn(), updateOpportunity: jest.fn(), archiveOpportunity: jest.fn() }));
 
 const CHANNELS = { partner: ['all', 'partners'], employer: ['all'], target: ['all', 'targets'], apollo: ['apollo'], visitor: ['website'] };
@@ -225,11 +226,13 @@ test('click-through: every row but a signal opens the company panel; Open full c
   expect(props.onOpenCompanies).toHaveBeenCalledWith('2026-10-05');
 });
 
-test('+ Add employer opens a blank panel; save creates through the route and reloads; a reuse says so', async () => {
+// FIX pipeline-quick-fixes-v1 A - the one primary "+ Add ▾" opens a menu; Employer = the existing panel.
+const openAdd = item => { fireEvent.click(screen.getByRole('button', { name: '+ Add ▾' })); fireEvent.click(within(screen.getByRole('menu', { name: 'Add' })).getByRole('menuitem', { name: item })); };
+test('+ Add ▾ › Employer opens a blank panel; save creates through the route and reloads; a reuse says so', async () => {
   setup();
   await screen.findByText('Solidcore');
   createOpportunity.mockResolvedValueOnce({ opportunity: { id: 'n1', organization: 'Zeta Labs' } });
-  fireEvent.click(screen.getByRole('button', { name: '+ Add employer' }));
+  openAdd('Employer');
   expect(screen.getByText('Add opportunity')).toBeTruthy();
   fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: 'Zeta Labs' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -239,7 +242,7 @@ test('+ Add employer opens a blank panel; save creates through the route and rel
   expect(screen.queryByRole('status')).toBeNull();
 
   createOpportunity.mockResolvedValueOnce({ opportunity: { id: 'Solidcore', organization: 'Solidcore' }, reused: true });
-  fireEvent.click(screen.getByRole('button', { name: '+ Add employer' }));
+  openAdd('Employer');
   fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: 'solidcore inc' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   expect((await screen.findByRole('status')).textContent).toBe('Solidcore is already in the pipeline - no new row added.');
@@ -250,7 +253,7 @@ test('Viewer: stars are read-only; employer and partner open the read-only panel
   await screen.findByText('Solidcore');
   expect(screen.queryByRole('button', { name: /^(Un)?[Ss]tar / })).toBeNull();
   expect(screen.getByLabelText('Top')).toBeTruthy();
-  expect(screen.queryByRole('button', { name: '+ Add employer' })).toBeNull();
+  expect(screen.queryByRole('button', { name: '+ Add ▾' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Export joint sheet' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Update from sheet' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Solidcore' }));
@@ -680,4 +683,81 @@ test('visitor: facts are Priority · Source · Last visit; no Edit row but Prior
   expect(panel.queryByTitle('Owner')).toBeNull();
   expect(within(panel.getByRole('group', { name: 'Edit' })).getByLabelText('Priority')).toBeTruthy();
   expect(within(panel.getByRole('group', { name: 'Edit' })).queryByLabelText('Stage')).toBeNull();
+});
+
+// FIX pipeline-quick-fixes-v1 A - the menu's four items by role, keyboard, and the Person / Target / Partner forms.
+test('+ Add ▾: four menu items (Employer · Partner · Target · Person), the only primary on the row; Esc closes; Arrow keys move', async () => {
+  setup();
+  await screen.findByText('Solidcore');
+  const btn = screen.getByRole('button', { name: '+ Add ▾' });
+  expect(btn.className).toMatch(/ui-btn--primary/);
+  expect(document.querySelectorAll('#sales-frame-tools .ui-btn--primary')).toHaveLength(1);
+  fireEvent.click(btn);
+  const menu = screen.getByRole('menu', { name: 'Add' });
+  expect(within(menu).getAllByRole('menuitem').map(b => b.textContent)).toEqual(['Employer', 'Partner', 'Target', 'Person']);
+  expect(btn.getAttribute('aria-expanded')).toBe('true');
+  fireEvent.keyDown(menu, { key: 'ArrowDown' });
+  await waitFor(() => expect(document.activeElement.textContent).toBe('Partner'));
+  fireEvent.keyDown(menu, { key: 'Escape' });
+  expect(screen.queryByRole('menu', { name: 'Add' })).toBeNull();
+  expect(btn.getAttribute('aria-expanded')).toBe('false');
+});
+
+test('Person: name, title, company typeahead (board records + parked names), LinkedIn - no email or phone field; a picked record posts { type, id }; the window opens on its People card; a new company posts the name and toasts People search', async () => {
+  setup();
+  await screen.findByText('Solidcore');
+  goalsApi.people.mockResolvedValue({ people: [{ person_id: 'x', name: 'Pat Parked', company: { type: 'parked', id: null, name: 'Solid Parked Co' }, no_record: true, ties: [] }], n: 1, total: 1 });
+  goalsApi.addPerson.mockResolvedValueOnce({ person: { id: 'sp1', name: 'Jean Horton' }, company: { type: 'employer', id: 'Solidcore', name: 'Solidcore' } });
+  openAdd('Person');
+  const form = document.querySelector('[data-add-person]');
+  expect(form).toBeTruthy();
+  expect(form.querySelectorAll('input[type="email"], input[type="tel"]')).toHaveLength(0);
+  expect(within(form).queryByLabelText(/email|phone/i)).toBeNull();
+  fireEvent.change(within(form).getByLabelText('Name'), { target: { value: 'Jean Horton' } });
+  fireEvent.change(within(form).getByLabelText('Title'), { target: { value: 'VP People' } });
+  fireEvent.change(within(form).getByLabelText('Company'), { target: { value: 'solid' } });
+  const list = await within(form).findByRole('listbox', { name: 'Company suggestions' });
+  await waitFor(() => expect(within(list).getAllByRole('option').map(o => o.textContent)).toEqual(['SolidcoreEmployer', 'Solid Parked CoNo record yet']));
+  fireEvent.click(within(list).getByRole('button', { name: /^Solidcore/ }));
+  expect(form.querySelector('[data-company-choice]')).toHaveTextContent('Employer: Solidcore');
+  fireEvent.click(within(form).getByRole('button', { name: 'Add person' }));
+  await waitFor(() => expect(goalsApi.addPerson).toHaveBeenCalledWith('b1', { name: 'Jean Horton', title: 'VP People', company: { type: 'employer', id: 'Solidcore' } }));
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Jean Horton added to Solidcore'));
+  await waitFor(() => expect(document.querySelector('[data-section="people"]')).toBeTruthy());
+  expect(document.querySelector('[data-row][data-key="employer-Solidcore"]')).toBeTruthy();
+
+  goalsApi.addPerson.mockResolvedValueOnce({ person: { id: 'sp2', name: 'New Person' }, company: { type: 'parked', id: null, name: 'Brand New Co' } });
+  fireEvent.keyDown(document, { key: 'Escape' });
+  openAdd('Person');
+  const f2 = document.querySelector('[data-add-person]');
+  fireEvent.change(within(f2).getByLabelText('Name'), { target: { value: 'New Person' } });
+  fireEvent.change(within(f2).getByLabelText('Company'), { target: { value: 'Brand New Co' } });
+  expect(f2.querySelector('[data-company-choice]')).toHaveTextContent('New company "Brand New Co"');
+  fireEvent.click(within(f2).getByRole('button', { name: 'Add person' }));
+  await waitFor(() => expect(goalsApi.addPerson).toHaveBeenLastCalledWith('b1', { name: 'New Person', company: { name: 'Brand New Co' } }));
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('New Person filed under "Brand New Co" with no record yet - find them in People search'));
+});
+
+test('Target: name + kind picker + website posts createTarget; the new row is highlighted and its window opens; Partner: the existing Add partner form (dupe check) from the menu', async () => {
+  setup();
+  await screen.findByText('Solidcore');
+  goalsApi.pipelineBoard.mockImplementation(() => Promise.resolve([...ROWS, APOLLO, row('Zeta Target', 'target', 'light')]));
+  goalsApi.createTarget.mockResolvedValueOnce({ created: { type: 'target', id: 'Zeta Target', name: 'Zeta Target' } });
+  openAdd('Target');
+  const form = document.querySelector('[data-add-target]');
+  fireEvent.change(within(form).getByLabelText('Company name'), { target: { value: 'Zeta Target' } });
+  fireEvent.change(within(form).getByLabelText('Kind'), { target: { value: 'partner' } });
+  fireEvent.click(within(form).getByRole('button', { name: 'Add target' }));
+  await waitFor(() => expect(goalsApi.createTarget).toHaveBeenCalledWith('b1', { name: 'Zeta Target', kind: 'partner' }));
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Zeta Target added as a target'));
+  await waitFor(() => expect(document.querySelector('[data-row][data-key="target-Zeta Target"]').style.getPropertyValue('--ui-row-tint')).toMatch(/--sa-accent/));
+  fireEvent.keyDown(document, { key: 'Escape' });
+  goalsApi.partnerDupeCheck.mockResolvedValue({ exact: [], partial: [] });
+  goalsApi.createPartner.mockResolvedValueOnce({ id: 'g9', name: 'Zeta Partner' });
+  openAdd('Partner');
+  const name = await screen.findByLabelText('Partner name');
+  fireEvent.change(name, { target: { value: 'Zeta Partner' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Add' }));
+  await waitFor(() => expect(goalsApi.createPartner).toHaveBeenCalledWith('b1', expect.objectContaining({ name: 'Zeta Partner' })));
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Zeta Partner added as a partner'));
 });

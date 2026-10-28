@@ -491,6 +491,25 @@ export async function insertCompanyRecord(supabase, { businessId, userId, name, 
   return created('employer', must(r).id);
 }
 
+// FIX pipeline-quick-fixes-v1 A - POST /goals/targets { name, kind: employer | partner, domain? } (Member): a target by
+// name from "+ Add ▾ › Target", channel manual. -> 201 { created } | 200 { already } (an exact live match, never a second row).
+export async function createTarget(supabase, { businessId, userId, body, now = new Date() }) {
+  const raw = String(body?.name || ''), rawDomain = body?.domain ? String(body.domain) : '';
+  if (hasPii(raw) || hasPii(rawDomain)) return reply(400, { error: "a company name can't hold an email address or phone number" });
+  const name = cleanText(raw, 160).trim().replace(/\s+/g, ' ');
+  const kind = body?.kind || 'employer';
+  const domain = rawDomain ? cleanText(rawDomain, 120).trim() : null;
+  if (!name) return reply(400, { error: 'name is required' });
+  if (!['employer', 'partner'].includes(kind)) return reply(400, { error: 'kind must be employer or partner' });
+  try {
+    const r = await insertCompanyRecord(supabase, { businessId, userId, name, domain, to: 'target', kind, channel: 'manual', evidence: `Added from Pipeline ${laDateString(now)}`, now });
+    return r.already ? reply(200, r) : reply(201, r);
+  } catch (e) { return reply(e.status || 500, { error: e.message }); }
+}
+export async function createTargetRoute(req, res) {
+  send(res, await createTarget(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, body: req.body }));
+}
+
 export async function addToPipeline(supabase, { businessId, userId, body, now = new Date() }) {
   const { type, id, to = 'target', kind = null, owner_user_id: pickedOwner = null } = body || {};
   if (!ADD_FROM.includes(type)) return reply(400, { error: `type must be one of ${ADD_FROM.join('|')}` });
