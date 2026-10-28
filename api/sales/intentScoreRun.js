@@ -44,8 +44,8 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
   const all = (t, cols, build = x => x) => selectAllPages(() => build(supabase.from(t).select(cols).eq('business_id', businessId)).order('id'));
   const [partners, opps, targets, visits, skip, research, people, settings, prospects, messages, events, partnerEvents, oppEvents, doneTodos, overrides, members, marks, acceptedSignals, partnerVisitors] = await Promise.all([
     all('sales_goals', 'id, name, pipeline_status, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, category, last_touch_at, priority, priority_set_at, archived_at, updated_at, created_at', x => x.eq('goal_type', 'partnership')),
-    all('sales_opportunities', 'id, organization, stage, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, priority, priority_set_at, archived_at, updated_at, created_at'),
-    all('sales_targets', 'id, name, kind, status, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, updated_at, created_at, decided_at'),
+    all('sales_opportunities', 'id, organization, stage, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, priority, priority_set_at, archived_at, updated_at, created_at, notes'),
+    all('sales_targets', 'id, name, kind, status, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, updated_at, created_at, decided_at, promoted_goal_id'),
     all('web_visits', 'id, company_key, company_name, matched_type, matched_id, priority, visits_7d, unique_visitors_7d, apollo_intent, intent_score, top_paths, maybe_user, us_500, last_visit, pulled_on, seen_from'),
     all('sales_visit_skip', 'company_key'),
     all('research_runs', 'entity_type, entity_id, status, result, created_at', x => x.eq('status', 'done')),
@@ -147,13 +147,18 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
       },
     };
   });
+  // visitor-people-follow-record-v1 (Stage 2 ruling): an accepted target whose promoted record exists counts once, as that
+  // record - a partner by promoted_goal_id, an employer by the "from target <id>" its notes carry (no link column).
+  const fromTarget = new Set(opps.map(o => /from target ([0-9a-f-]{36})/i.exec(o.notes || '')?.[1]).filter(Boolean));
+  const partnerIds = new Set(partners.map(p => p.id));
+  const promotedOn = t => t.status === 'accepted' && ((t.promoted_goal_id && partnerIds.has(t.promoted_goal_id)) || fromTarget.has(t.id));
   // brad-attribution-v1 F2: the dated rows the funnel reads - the same single pass, nothing fetched twice.
   const src = r => ({ source_kind: r.source_kind || null, source_partner_id: r.source_partner_id || null, source_person: r.source_person || null, source_set_by: r.source_set_by || null, source_set_at: r.source_set_at || null, owner_team: r.owner_team || null, co_owner_name: r.co_owner_name || null, created_at: r.created_at || null });
   const dated = {
     companies: [
       ...partners.filter(p => !p.archived_at).map(p => ({ type: 'partner', id: p.id, name: p.name, stage: p.pipeline_status || 'not_started', ...src(p) })),
       ...opps.filter(o => !o.archived_at).map(o => ({ type: 'employer', id: o.id, name: o.organization, stage: o.stage || 'target', ...src(o) })),
-      ...targets.filter(t => t.status !== 'rejected').map(t => ({ type: 'target', id: t.id, name: t.name, stage: t.status || 'proposed', ...src(t) })),
+      ...targets.filter(t => t.status !== 'rejected' && !promotedOn(t)).map(t => ({ type: 'target', id: t.id, name: t.name, stage: t.status || 'proposed', ...src(t) })),
     ],
     visits, prospects, messages, partnerEvents, oppEvents, doneTodos, marks, signals: acceptedSignals, targets: targets.map(t => ({ id: t.id, status: t.status, decided_at: t.decided_at || null })), partnerNames: partnerName,
   };

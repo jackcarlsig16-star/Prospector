@@ -99,3 +99,23 @@ test('V2 an accepted target is not scored; V3 a partner\'s identified visitor co
   const p = inputs.find(i => i.type === 'partner' && i.id === gid);
   assert.deepEqual(p.people.map(x => [x.title, x.is_buyer]), [['VP Human Resources', true]], 'only the marked visitor counts, as a buyer');
 });
+
+test('Stage 2 ruling: the Sources funnel counts a promoted company once - an accepted target whose employer (notes "from target <id>") or partner (promoted_goal_id) exists is skipped; one with no record stays', async () => {
+  const { sourcesFunnel } = await import('./sourceRoutes.js');
+  const UP = randomUUID(), tEmp = randomUUID(), tPar = randomUUID(), tLone = randomUUID(), opp = randomUUID(), gid = randomUUID();
+  const ref = { source_kind: 'partner_referral', source_partner_id: UP, source_person: 'Brad', source_set_by: null, created_at: '2026-10-15T17:00:00Z' };
+  const s = fakeSupabase({
+    sales_goals: [{ id: UP, business_id: B, goal_type: 'partnership', name: 'Upside', archived_at: null, created_at: '2026-10-01T00:00:00Z' }, { id: gid, business_id: B, goal_type: 'partnership', name: 'Zz Promoted Partner', archived_at: null, ...ref }],
+    sales_opportunities: [{ id: opp, business_id: B, organization: 'Zz Promoted Employer', stage: 'target', archived_at: null, notes: `(10/28) from target ${tEmp}: visited`, ...ref }],
+    sales_targets: [
+      { id: tEmp, business_id: B, name: 'Zz Promoted Employer', status: 'accepted', decided_at: '2026-10-28T16:39:00Z', ...ref },
+      { id: tPar, business_id: B, name: 'Zz Promoted Partner', status: 'accepted', promoted_goal_id: gid, decided_at: '2026-10-28T16:39:00Z', ...ref },
+      { id: tLone, business_id: B, name: 'Zz Accepted Alone', status: 'accepted', decided_at: '2026-10-28T16:39:00Z', ...ref },
+    ],
+    business_members: [{ business_id: B, user_id: U, name: 'Jack Zz' }],
+  });
+  const r = await sourcesFunnel(s, { businessId: B, query: {} });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.companies.map(c => `${c.type}:${c.name}`).sort(), ['employer:Zz Promoted Employer', 'partner:Upside', 'partner:Zz Promoted Partner', 'target:Zz Accepted Alone']);
+  assert.equal(r.body.by_rep.find(g => g.label.startsWith('Brad')).referred, 3, 'each referred company once');
+});
