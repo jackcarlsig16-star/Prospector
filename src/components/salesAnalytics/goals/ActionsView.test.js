@@ -113,6 +113,8 @@ test('Member: band sections with counts (Housekeeping folded, remembered), the f
   fireEvent.click(fold);
   expect(acts('Ship the deck').getByRole('button', { name: 'Reopen' })).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'signal' } });
+  // FIX pipeline-quick-fixes-v1 B3: the search is the first control in the filter row.
+  expect(screen.getByRole('group', { name: 'Filters' }).querySelector('input, select, button').getAttribute('aria-label')).toBe('Search actions');
   fireEvent.change(screen.getByLabelText('Search actions'), { target: { value: 'hot' } });
   expect(rows()).toEqual(['signal-s2']);
   fireEvent.click(screen.getByRole('button', { name: /^Clear/ }));

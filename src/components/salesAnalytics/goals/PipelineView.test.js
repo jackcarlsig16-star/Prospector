@@ -761,3 +761,21 @@ test('Target: name + kind picker + website posts createTarget; the new row is hi
   await waitFor(() => expect(goalsApi.createPartner).toHaveBeenCalledWith('b1', expect.objectContaining({ name: 'Zeta Partner' })));
   await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Zeta Partner added as a partner'));
 });
+
+// FIX pipeline-quick-fixes-v1 B - the search is the first control in the filter row; "/" focuses it when nothing else is being typed into.
+test('search first: the first control after the Filter label is the search box (width 220, "Search companies"); "/" focuses it, but not while typing in another field', async () => {
+  setup();
+  await screen.findByText('Solidcore');
+  const group = screen.getByRole('group', { name: 'Filters' });
+  const first = group.querySelector('input, select, button');
+  expect(first.getAttribute('aria-label')).toBe('Search companies');
+  expect(first.getAttribute('placeholder')).toBe('Search companies');
+  expect(first.style.width).toBe('220px');
+  fireEvent.keyDown(document.body, { key: '/' });
+  expect(document.activeElement).toBe(first);
+  first.blur();
+  const owner = within(group).getByLabelText('Owner');
+  owner.focus();
+  fireEvent.keyDown(owner, { key: '/' });
+  expect(document.activeElement).toBe(owner);
+});

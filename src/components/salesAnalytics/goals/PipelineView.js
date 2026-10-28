@@ -100,7 +100,21 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
   const [updating, setUpdating] = useState(false);
   const [toolsSlot, setToolsSlot] = useState(null);
   const undoTimer = useRef(null);
+  const searchRef = useRef(null);
   const phone = useMediaQuery('(max-width: 760px)');
+  // FIX pipeline-quick-fixes-v1 B2: "/" focuses the search when nothing is being typed into (desktop; the phone sheet has no shortcut).
+  useEffect(() => {
+    if (phone) return undefined;
+    const onKey = e => {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+      e.preventDefault();
+      searchRef.current?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [phone]);
   useEffect(() => { setToolsSlot(document.getElementById(FRAME_TOOLS_ID)); }, []);
   useEffect(() => { goalsApi.members(businessId).then(setMembers).catch(() => setMembers([])); }, [businessId]);
   useEffect(() => {
@@ -335,10 +349,11 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
   const rowStyle = r => ({ '--ui-row-tint': highlight === rowKey(r) || panelKey === rowKey(r) ? highlightTint : tint(r.color), '--ui-row-bar': BOARD_TOKENS[r.color] });
 
   // R4: labelled dropdowns that show their value, toggle chips for the yes/no filters, Clear as a text button
-  // (only while a filter is on); R7: the row carries its label.
+  // (only while a filter is on); R7: the row carries its label. FIX pipeline-quick-fixes-v1 B1: the search comes first.
   const filterControls = (
     <>
       <span className="ui-group-label" aria-hidden="true">Filter</span>
+      <input ref={searchRef} type="search" className="ui-input ui-input--sm" aria-label="Search companies" placeholder="Search companies" value={filters.q} onChange={e => set('q', e.target.value)} style={{ width: phone ? 160 : 220, flex: 'none' }} />
       <FilterSelect label="Owner" value={filters.owner} options={opts('All owners', owners.map(o => ({ value: o, label: o })))} onChange={v => set('owner', v)} />
       <FilterSelect label="Team" value={filters.ownerTeam} options={[...opts('All teams', OWNER_TEAMS.map(t => ({ value: t, label: TEAM_LABEL[t] }))), { value: 'unset', label: 'No team set' }]} onChange={v => set('ownerTeam', v)} />
       <FilterSelect label="Type" value={filters.type} options={opts('All types', TYPE_OPTIONS.map(([value, label]) => ({ value, label })))} onChange={v => set('type', v)} />
@@ -348,7 +363,6 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
       <ToggleChip pressed={filters.visited} onClick={() => set('visited', !filters.visited)}>Visited 7 d</ToggleChip>
       <ToggleChip pressed={filters.hasTodo} onClick={() => set('hasTodo', !filters.hasTodo)}>Has open to-do</ToggleChip>
       <ToggleChip pressed={filters.overdue} onClick={() => set('overdue', !filters.overdue)}>Overdue</ToggleChip>
-      <input type="search" className="ui-input ui-input--sm" aria-label="Search companies" placeholder="Search" value={filters.q} onChange={e => set('q', e.target.value)} style={{ width: 160 }} />
       {nFilters > 0 && <Button variant="tertiary" onClick={() => setFilters(EMPTY_FILTERS)}>Clear ({nFilters})</Button>}
     </>
   );

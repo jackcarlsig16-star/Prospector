@@ -259,10 +259,11 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
 
   // A1/A5: whose list is the frame's Who control (Plan this week sits there too); this row keeps Kind (R4 labelled
   // dropdown), Search and the Unassigned (n) chip (a pressed toggle). Clear is a text button, only while a filter is on (R7: labels on the row).
+  // FIX pipeline-quick-fixes-v1 B3: the search comes first here too.
   const filterControls = (
     <>
+      <input type="search" className="ui-input ui-input--sm" aria-label="Search actions" placeholder="Search actions" value={filters.q} onChange={e => set('q', e.target.value)} style={{ width: phone ? 160 : 220, flex: 'none' }} />
       <FilterSelect label="Kind" value={filters.kind} options={[{ value: '', label: 'All kinds' }, ...KIND_OPTIONS.filter(([id]) => canEdit || ['todo', 'focus', 'flag'].includes(id)).map(([value, label]) => ({ value, label }))]} onChange={v => set('kind', v)} />
-      <input type="search" className="ui-input ui-input--sm" aria-label="Search actions" placeholder="Search" value={filters.q} onChange={e => set('q', e.target.value)} style={{ width: 160 }} />
       <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm" aria-pressed={filters.unassigned} data-unassigned-chip onClick={() => set('unassigned', !filters.unassigned)}
         title="Rows nobody owns yet" style={{ height: 28, flex: 'none' }}>Unassigned <span style={numStyle}>({view.unassigned})</span></button>
       {nFilters > 0 && <Button variant="tertiary" onClick={() => setFilters(EMPTY_FILTERS)}>Clear ({nFilters})</Button>}
