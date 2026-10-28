@@ -7,7 +7,7 @@
 // ./api/sales/testing/apolloFixture.mjs server.js with APOLLO_FIXTURE='<json>'.
 export const apolloFixtureCalls = [];
 
-// signals-v1 Stage 4: `visitors` = { all, us, balances } also answers
+// signals-v1 Stage 4: `visitors` = { all, us, balances, byName?, enrich? } also answers
 // GET /users/api_profile (balances in order, the last one repeats) and the
 // website-visitor POST /mixed_companies/search (`us` when the US/500+
 // filters are on, else `all`; each { organizations, accounts }).
@@ -36,9 +36,19 @@ export function installApolloFixture(accounts, visitors = null, email = null, pe
       const n = visitors.balances.length > 1 ? visitors.balances.shift() : visitors.balances[0];
       return answer({ num_credits_remaining: n, total_unified_credits_used: 0 });
     }
+    if (visitors && init.method === 'GET' && path === '/organizations/enrich') {
+      const domain = new URL(u).searchParams.get('domain');
+      const org = (visitors.enrich || {})[domain] || null;
+      return answer({ organization: org });
+    }
     if (visitors && init.method === 'POST' && path === '/mixed_companies/search') {
       const body = JSON.parse(init.body);
       if (visitors.fail) return new Response(JSON.stringify({ error: 'fixture failure' }), { status: 422, headers: { 'Content-Type': 'application/json' } });
+      // FIX headcount-auto-v1 REV2 H3a: the name finder - `byName` = { <exact name>: [{ name, primary_domain }] }.
+      if (body.q_organization_name && !body.website_visitors_from_domains) {
+        const hits = (visitors.byName || {})[body.q_organization_name] || [];
+        return answer({ organizations: hits.slice(0, body.per_page || 3), accounts: [], pagination: { page: 1, per_page: body.per_page, total_entries: hits.length, total_pages: 1 } });
+      }
       const set = (body.organization_locations ? visitors.us : visitors.all) || {};
       const total = (set.organizations || []).length + (set.accounts || []).length;
       return answer({ organizations: set.organizations || [], accounts: set.accounts || [], pagination: { page: body.page || 1, per_page: body.per_page, total_entries: total, total_pages: 1 } });

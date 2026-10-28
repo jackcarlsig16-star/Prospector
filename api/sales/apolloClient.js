@@ -31,13 +31,22 @@ const ALLOWED_CALLS = [
   // (docs.apollo.io/reference/get-a-list-of-all-lists; needs a key scoped to api/v1/labels/index or a master key).
   // Only ever used to resolve ONE list id by its exact name; the id is cached in sales_settings after the first call.
   { method: 'GET', path: '/labels' },
+  // FIX headcount-auto-v1 REV2 H4 - Organization Enrichment: ONE domain in the query, never a name (domainOnly below).
+  // Measured 0 credits on Oct 27 (the pricing page says 1): the fill stops on the first call whose delta is not 0.
+  { method: 'GET', path: '/organizations/enrich' },
 ];
 
 // A mixed_companies call without the visitor filter would be a general
 // company search - refused before any request. Same for mixed_people/api_search
-// without a company domain or the visitor filter.
+// without a company domain or the visitor filter. FIX headcount-auto-v1 REV2 H3a:
+// the second guarded mode on mixed_companies - nameOnly = ONE exact company name,
+// no visitor filter, per_page <= 3 (the domain finder; 0 credits measured).
+// A body with neither filter is still refused.
 const hasList = v => Array.isArray(v) && v.length > 0;
-const visitorOnly = (path, body) => path !== '/mixed_companies/search' || hasList(body?.website_visitors_from_domains);
+export const nameOnly = body => typeof body?.q_organization_name === 'string' && body.q_organization_name.trim().length > 0 && !hasList(body?.website_visitors_from_domains) && (body.per_page ?? 100) <= 3;
+const visitorOnly = (path, body) => path !== '/mixed_companies/search' || hasList(body?.website_visitors_from_domains) || nameOnly(body);
+const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+export const domainOnly = query => { const q = new URLSearchParams(String(query || '')); const keys = [...q.keys()]; return keys.length === 1 && keys[0] === 'domain' && DOMAIN_RE.test(q.get('domain') || ''); };
 const peopleScoped = (path, body) => path !== '/mixed_people/api_search' || hasList(body?.q_organization_domains) || hasList(body?.website_visitors_from_domains);
 
 // Returns the matched entry's canonical path, so per-message paths are
@@ -71,10 +80,13 @@ export async function apolloRequest({ method, path, query, body, ctx }) {
     throw new Error(`apolloClient: ${method} ${path} is not on the allowlist - refusing before any request`);
   }
   if (!visitorOnly(countKey, body)) {
-    throw new Error('apolloClient: mixed_companies/search needs website_visitors_from_domains - refusing before any request');
+    throw new Error('apolloClient: mixed_companies/search needs website_visitors_from_domains, or one q_organization_name with per_page <= 3 - refusing before any request');
   }
   if (!peopleScoped(countKey, body)) {
     throw new Error('apolloClient: mixed_people/api_search needs q_organization_domains (one company) - refusing before any request');
+  }
+  if (countKey === '/organizations/enrich' && !domainOnly(query)) {
+    throw new Error('apolloClient: organizations/enrich takes exactly one domain= (never a name) - refusing before any request');
   }
 
   let lastErr;
