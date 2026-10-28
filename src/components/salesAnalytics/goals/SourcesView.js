@@ -182,7 +182,7 @@ export default function SourcesView({ businessId, partners, isAdmin }) {
       {error && <ErrorNote message={error} />}
       {!data && !error && <span style={{ fontSize: 13, color: SA.muted }}>Loading…</span>}
       {data && <>
-        <h3 style={{ ...h3Style, marginTop: 8 }}>Pipeline bands today{rep || source ? <span style={{ fontWeight: 400, fontSize: 12, color: SA.muted }}> · Rep / Source filter the funnel only</span> : null}</h3>
+        <h2 style={{ ...h3Style, marginTop: 8 }}>Pipeline bands today{rep || source ? <span style={{ fontWeight: 400, fontSize: 12, color: SA.muted }}> · Rep / Source filter the funnel only</span> : null}</h2>
         <p data-sources-totals style={{ margin: 0, fontSize: 14, color: SA.text, ...numStyle }}>
           <b>{fmt(t.companies)}</b> companies · <b>{fmt(t.meetings)}</b> at meeting · <b>{fmt(t.pilot_live)}</b> pilot / live{t.covered_lives ? <> · <b>{fmt(t.covered_lives)}</b> covered lives</> : null}
         </p>

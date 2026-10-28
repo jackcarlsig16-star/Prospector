@@ -98,7 +98,7 @@ export default function SourceFunnel({ data, narrow }) {
   return (
     <section aria-label="Funnel" data-source-funnel style={{ ...cardStyle, padding: narrow ? 16 : 20, display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <h3 style={{ ...h3Style, marginRight: 'auto' }}>Funnel</h3>
+        <h2 style={{ ...h3Style, marginRight: 'auto' }}>Funnel</h2>
         <Segmented label="Group the funnel" items={GROUPINGS.map(x => ({ id: x.id, label: x.label }))} value={groupBy} onChange={switchTo} />
       </div>
       <p data-funnel-totals style={{ margin: 0, fontSize: 13, color: SA.soft, ...numStyle }}>
