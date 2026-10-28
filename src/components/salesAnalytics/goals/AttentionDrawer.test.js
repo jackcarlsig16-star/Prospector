@@ -144,6 +144,8 @@ test('visitor people: the line reads the last pull, Pull visitor people now post
   expect(peoplePullText({ last_on: null, error: 'Apollo has no contacts list named "x"' })).toBe('Visitor people: Apollo has no contacts list named "x"');
   const pp = { last_on: '2026-10-21', counts: { contacts: 66, people_added: 12, created: 3 }, list: 'Prospector · Website visitors (export)', error: null };
   expect(peoplePullText(pp)).toBe('Visitor people pulled Oct 21 · 66 contacts · 12 new · 3 companies created');
+  expect(peoplePullText({ ...pp, parked: 7 })).toBe('Visitor people pulled Oct 21 · 66 contacts · 12 new · 3 companies created · 7 parked');
+  expect(peoplePullText({ last_on: null, error: null, parked: 2 })).toBe('Visitor people: not pulled yet · 2 parked');
   goalsApi.attention.mockResolvedValue({ ...DATA, sources: SOURCES.map(s => (s.id === 'visitors' ? { ...s, people_pull: pp } : s)) });
   goalsApi.visitPeoplePull.mockResolvedValue({ ran: true, counts: { contacts: 66, people_added: 12, already_in: 54, matched: 40, created: 3 } });
   const { unmount } = render(<AttentionDrawer businessId="b1" canEdit compact={false} pageLoadFailures={{}} onNav={jest.fn()} />);

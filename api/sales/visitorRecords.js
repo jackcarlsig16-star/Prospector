@@ -95,3 +95,21 @@ export function matchLabel(v, { createdKeys = new Set() } = {}) {
   return 'None';
 }
 export const priorityWord = p => PRIORITY_LABEL[p] || p;
+
+// V2a follow-up (Oct 27 ruling, choice 1): a visitor's company becomes an employer target only when it is US and 500+
+// (or its headcount is unknown), or one of its identified people carries a buyer title (sales_settings.buyer_titles);
+// otherwise its people wait as 'parked' rows (company name only, no record) until Add in People search. REVISABLE.
+export const RECORD_MIN_EMPLOYEES = 500;
+export const UNKNOWN_COUNTRY_IS_US = true; // contacts/search carries no country on most rows; the CSV does
+const US = /^(us|usa|u\.s\.a?\.?|united states( of america)?)$/i;
+export const isUS = country => (country == null || String(country).trim() === '' ? UNKNOWN_COUNTRY_IS_US : US.test(String(country).trim()));
+export const hasBuyerTitle = (people = [], titles = []) => {
+  const wanted = titles.map(t => String(t).toLowerCase().trim()).filter(Boolean);
+  return people.some(p => { const title = String(p.title || '').toLowerCase(); return wanted.some(w => title.includes(w)); });
+};
+export function recordDecision(company, people, { buyerTitles = [] } = {}) {
+  if (hasBuyerTitle(people, buyerTitles)) return { action: 'create', reason: 'buyer_title' };
+  if (!isUS(company.country)) return { action: 'park', reason: 'not_us' };
+  if (company.employees != null && company.employees < RECORD_MIN_EMPLOYEES) return { action: 'park', reason: 'under_500' };
+  return { action: 'create', reason: company.employees == null ? 'us_size_unknown' : 'us_500' };
+}

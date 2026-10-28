@@ -11,8 +11,8 @@ import { fakeSupabase } from './testing/fakeSupabase.mjs';
 import { installApolloFixture, apolloFixtureCalls } from './testing/apolloFixture.mjs';
 import { apolloRequest } from './apolloClient.js';
 import { runVisitPull } from './visitPull.js';
-import { autoCreateSignal, uploadVisitedPeople, peopleSearch } from './visitorRoutes.js';
-import { runVisitorPeoplePull, MAX_PAGES } from './visitorPeoplePull.js';
+import { autoCreateSignal, uploadVisitedPeople, peopleSearch, addRecordFromPerson } from './visitorRoutes.js';
+import { runVisitorPeoplePull, schedulePeoplePull, MAX_PAGES } from './visitorPeoplePull.js';
 import { VISITOR_LIST_NAME } from './peopleFind.js';
 import { undoSignal, listSignals } from './signalsRoutes.js';
 
@@ -164,7 +164,7 @@ test('V2a Visited People export (real columns): preview counts without a write; 
     assert.equal(pv.status, 200, JSON.stringify(pv.body));
     assert.equal(pv.body.preview, true);
     assert.deepEqual(pv.body.companies.map(c => [c.name, c.action, c.type, c.people_added, c.already_in]), [['Zz ADP', 'would_create', 'target', 2, 0], ['Harbor Lane', 'matched', 'partner', 1, 0], ['Quarry Labs', 'matched', 'target', 1, 0]]);
-    assert.deepEqual(pv.body.counts, { companies: 3, matched: 2, created: 1, skipped_companies: 0, people_added: 4, already_in: 0, employees_filled: 0 });
+    assert.deepEqual(pv.body.counts, { companies: 3, matched: 2, created: 1, parked: 0, skipped_companies: 0, people_added: 4, people_parked: 0, already_in: 0, employees_filled: 0, parked_unfiled: 0 });
     assert.deepEqual(pv.body.sample.map(x => [x.name, x.company, x.action]), [['Jean Horton', 'Zz ADP', 'new'], ['Sam Rivera', 'Zz ADP', 'new'], ['Margo R.', 'Harbor Lane', 'new']]);
     assert.deepEqual([sb.db.sales_people.length, sb.db.partner_contacts.length, targets(sb).length], [0, 0, 0], 'a preview writes nothing');
     assert.equal(sb.db.sales_targets.find(t => t.id === T.quarry).employees, undefined);
@@ -216,7 +216,8 @@ test('V2a list pull: balance, ONE GET /labels (exact name, contacts modality) ca
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.deepEqual(apolloFixtureCalls.slice(start), ['GET /users/api_profile', 'GET /labels', 'POST /contacts/search', 'GET /users/api_profile']);
     assert.deepEqual([r.body.ran, r.body.calls, r.body.credits, r.body.list], [true, 4, 0, { name: VISITOR_LIST_NAME, count: 3, cached: false }]);
-    assert.deepEqual(r.body.counts, { contacts: 5, pages: 1, capped: false, with_email: 2, skipped: 1, companies: 4, matched: 2, created: 1, skipped_companies: 1, people_added: 3, already_in: 0, employees_filled: 1 });
+    assert.deepEqual(r.body.counts, { contacts: 5, pages: 1, capped: false, with_email: 2, skipped: 1, companies: 4, matched: 2, created: 1, parked: 0, skipped_companies: 1, people_added: 3, people_parked: 0, already_in: 0, employees_filled: 1, parked_unfiled: 0 });
+    assert.deepEqual(sb.db.visit_pull_runs.filter(x => x.kind === 'people').map(x => [x.la_date, x.status, x.calls, x.credits]), [['2026-10-20', 'ok', 4, 0]], 'its own run row');
     assert.deepEqual(r.body.companies.map(c => [c.name, c.action, c.type, c.people_added]), [['Zz ADP', 'created', 'target', 1], ['Harbor Lane', 'matched', 'partner', 1], ['Quarry Labs', 'matched', 'target', 1], ['Cloudflare', 'skipped', null, 0]]);
     assert.ok(!sb.db.sales_targets.some(t => t.name === 'Cloudflare') && !sb.db.sales_people.some(p => p.name === 'Cal Skipped'), 'a skip-list company gets no record and its people wait');
     assert.deepEqual(r.body.sample.map(x => `${x.name[0]}. ${x.name.split(' ').slice(1).join(' ')} · ${x.company}`), ['J. Horton · Zz ADP', 'M. R. · Harbor Lane', 'A. Example · Quarry Labs']);
@@ -235,6 +236,10 @@ test('V2a list pull: balance, ONE GET /labels (exact name, contacts modality) ca
 
     const same = await runVisitorPeoplePull(sb, { businessId: B, userId: U, now: NOW + 3600e3 });
     assert.deepEqual([same.body.ran, same.body.reason, apolloFixtureCalls.length - start], [false, 'Visitor people already pulled today', 4]);
+    sb.db.visit_pull_runs.find(x => x.kind === 'people').status = 'running'; sb.db.visit_pull_runs.find(x => x.kind === 'people').updated_at = new Date(NOW + 3600e3).toISOString();
+    assert.equal((await runVisitorPeoplePull(sb, { businessId: B, userId: U, force: true, now: NOW + 3700e3 })).status, 409, 'a fresh running row = busy');
+    sb.db.visit_pull_runs.find(x => x.kind === 'people').status = 'ok';
+    assert.equal(schedulePeoplePull(sb, { businessId: B, userId: U }), null, 'the in-memory Supabase never gets a background run');
     const forced = await runVisitorPeoplePull(sb, { businessId: B, userId: U, force: true, now: NOW + 7200e3 });
     assert.deepEqual(apolloFixtureCalls.slice(start + 4), ['GET /users/api_profile', 'POST /contacts/search', 'GET /users/api_profile'], 'the cached id skips GET /labels');
     assert.deepEqual([forced.body.ran, forced.body.list.cached, forced.body.counts.people_added, forced.body.counts.already_in, forced.body.counts.created], [true, true, 0, 3, 0]);
@@ -254,9 +259,9 @@ test('V2a list pull: no list of that name -> 404 kept for the day (a page-load t
     assert.deepEqual(apolloFixtureCalls.slice(start), ['GET /users/api_profile', 'GET /labels', 'GET /users/api_profile']);
     assert.equal(sb.db.apollo_credit_spend.length, 1, 'the balance delta is still recorded');
     assert.match(sb.db.sales_settings[0].visitor_filters.visitor_people.last_error, /no contacts list/);
+    assert.deepEqual(sb.db.visit_pull_runs.filter(x => x.kind === 'people').map(x => [x.status, x.error]), [['error', 'Apollo has no contacts list named "Prospector · Website visitors (export)" - create it in Apollo (Lists) and add the visitors to it']]);
     const again = await runVisitorPeoplePull(sb, { businessId: B, userId: U, now: NOW + 3600e3 });
-    assert.deepEqual([again.body.ran, apolloFixtureCalls.length - start], [false, 3]);
-    assert.match(again.body.reason, /failed earlier today/);
+    assert.deepEqual([again.status, apolloFixtureCalls.length - start], [404, 6], 'an errored run row is retried on the next load, like the visit pull');
     assert.equal((await runVisitorPeoplePull(sb, { businessId: B, userId: U, force: true, now: NOW + 3600e3 })).status, 404);
   } finally { restore(); }
   const many = Array.from({ length: MAX_PAGES * 100 + 1 }, (_, i) => ({ id: `m-${i}`, first_name: 'Person', last_name: `N${i}`, organization_name: `Zz Many ${i % 7}`, organization: { name: `Zz Many ${i % 7}` } }));
@@ -266,6 +271,49 @@ test('V2a list pull: no list of that name -> 404 kept for the day (a page-load t
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.deepEqual([r.body.counts.pages, r.body.counts.contacts, r.body.counts.capped, r.body.calls], [MAX_PAGES, MAX_PAGES * 100, true, 3 + MAX_PAGES]);
   } finally { big.restore(); }
+});
+
+// V2a follow-up (choice 1): the record rule parks people whose company is not US / under 500 without a buyer title.
+const PARK_CONTACTS = [
+  { id: 'p-1', first_name: 'Pat', last_name: 'Parked', title: 'Owner', organization_name: 'Zz Small Shop', email: 'pat@zzsmall.example', organization: { name: 'Zz Small Shop', primary_domain: 'zzsmall.example', estimated_num_employees: 40, country: 'United States' } },
+  { id: 'p-2', first_name: 'Sam', last_name: 'Parked', title: 'Clerk', organization_name: 'Zz Small Shop', organization: { name: 'Zz Small Shop', estimated_num_employees: 40, country: 'United States' } },
+  { id: 'p-3', first_name: 'Ada', last_name: 'Abroad', title: 'CHRO', organization_name: 'Zz Abroad Ltd', organization: { name: 'Zz Abroad Ltd', estimated_num_employees: 9000, country: 'Canada' } },
+  { id: 'p-4', first_name: 'Bea', last_name: 'Buyer', title: 'VP People', organization_name: 'Zz Boutique', organization: { name: 'Zz Boutique', estimated_num_employees: 30, country: 'United States' } },
+  { id: 'p-5', first_name: 'Una', last_name: 'Unknown', title: 'Analyst', organization_name: 'Zz Mystery Corp', organization: { name: 'Zz Mystery Corp' } },
+];
+test('V2a follow-up: parked people (company name only, no record) for a US company under 500 and a non-US one; a buyer title or a US 500+ / unknown-size company still creates; parking is idempotent by name and Apollo contact id; preview says would_park; Add from People search files the company and moves every parked person; the attention count', async () => {
+  const { sb, restore } = setupList(lists({ contacts: { [LIST_ID]: PARK_CONTACTS } }));
+  try {
+    const r = await runVisitorPeoplePull(sb, { businessId: B, userId: U, now: NOW });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual(r.body.companies.map(c => [c.name, c.action, c.reason, c.people_added, c.people_parked]), [['Zz Small Shop', 'parked', 'under_500', 0, 2], ['Zz Abroad Ltd', 'parked', 'not_us', 0, 1], ['Zz Boutique', 'created', 'buyer_title', 1, 0], ['Zz Mystery Corp', 'created', 'us_size_unknown', 1, 0]]);
+    assert.deepEqual([r.body.counts.parked, r.body.counts.people_parked, r.body.counts.created, r.body.counts.people_added, r.body.migration_pending], [2, 3, 2, 2, null]);
+    const parked = sb.db.sales_people.filter(p => p.company_type === 'parked');
+    assert.deepEqual(parked.map(p => [p.name, p.company_name, p.company_domain, p.opportunity_id, p.target_id, p.apollo_person_id, p.source_kind]), [['Pat Parked', 'Zz Small Shop', 'zzsmall.example', undefined, undefined, 'p-1', 'web_visit'], ['Sam Parked', 'Zz Small Shop', 'zzsmall.example', undefined, undefined, 'p-2', 'web_visit'], ['Ada Abroad', 'Zz Abroad Ltd', null, undefined, undefined, 'p-3', 'web_visit']]);
+    assert.ok(!sb.db.sales_targets.some(t => t.name === 'Zz Small Shop' || t.name === 'Zz Abroad Ltd'), 'no record for a parked company');
+    assert.ok(sb.db.sales_targets.some(t => t.name === 'Zz Boutique') && sb.db.sales_targets.some(t => t.name === 'Zz Mystery Corp'));
+    noAddress(sb);
+    const again = await runVisitorPeoplePull(sb, { businessId: B, userId: U, force: true, now: NOW + 3600e3 });
+    assert.deepEqual([again.body.counts.people_parked, again.body.counts.people_added, again.body.counts.already_in, sb.db.sales_people.length], [0, 0, 5, 5], 'idempotent');
+    sb.db.sales_people.find(p => p.name === 'Pat Parked').name = 'Patricia Parked';
+    const byId = await runVisitorPeoplePull(sb, { businessId: B, userId: U, force: true, now: NOW + 7200e3 });
+    assert.deepEqual([byId.body.counts.people_parked, sb.db.sales_people.length], [0, 5], 'a renamed person is still known by Apollo contact id');
+    const pv = await uploadVisitedPeople(sb, { businessId: B, userId: U, body: { text: 'First Name,Last Name,Title,Company Name,# Employees,Company Country\nNew,Person,Clerk,Zz Tiny Co,12,United States\n', preview: true }, now: new Date(NOW) });
+    assert.deepEqual(pv.body.companies.map(c => [c.name, c.action, c.reason, c.people_parked]), [['Zz Tiny Co', 'would_park', 'under_500', 1]]);
+    const people = await peopleSearch(sb, { businessId: B, query: { company: 'Small Shop' } });
+    assert.deepEqual(people.body.people.map(p => [p.name, p.company, p.no_record, p.ties.map(t => t.label)]).sort(), [['Patricia Parked', { type: 'parked', id: null, name: 'Zz Small Shop' }, true, ['Zz Small Shop', 'Identified visitor']], ['Sam Parked', { type: 'parked', id: null, name: 'Zz Small Shop' }, true, ['Zz Small Shop', 'Identified visitor']]]);
+    const pat = sb.db.sales_people.find(p => p.name === 'Patricia Parked');
+    const add = await addRecordFromPerson(sb, { businessId: B, userId: U, id: pat.id, now: new Date(NOW) });
+    assert.equal(add.status, 201, JSON.stringify(add.body));
+    const shop = sb.db.sales_targets.find(t => t.name === 'Zz Small Shop');
+    assert.deepEqual([add.body.record, add.body.people_moved, shop.source, shop.kind], [{ type: 'target', id: shop.id, name: 'Zz Small Shop' }, 2, 'web_visit', 'employer']);
+    assert.match(shop.evidence, /^Identified visitors: 2 · added from People search 2026-10-20$/);
+    assert.deepEqual(sb.db.sales_people.filter(p => p.target_id === shop.id).map(p => [p.name, p.company_type, p.company_name]).sort(), [['Patricia Parked', 'target', 'Zz Small Shop'], ['Sam Parked', 'target', 'Zz Small Shop']]);
+    assert.equal((await addRecordFromPerson(sb, { businessId: B, userId: U, id: pat.id })).status, 409, 'already has a record');
+    assert.equal((await addRecordFromPerson(sb, { businessId: B, userId: U, id: randomUUID() })).status, 404);
+    assert.deepEqual((await peopleSearch(sb, { businessId: B, query: { company: 'Small Shop' } })).body.people.map(p => [p.no_record, p.company.type]), [[false, 'target'], [false, 'target']]);
+    assert.equal(sb.db.sales_people.filter(p => p.company_type === 'parked' && !p.archived_at).length, 1, 'Ada stays parked');
+  } finally { restore(); }
 });
 
 test('V3 People search: one list over the three tables with ties, has_email as a boolean only, name_partial for obfuscated finds; q / company / tie filters; a bad tie 400', async () => {

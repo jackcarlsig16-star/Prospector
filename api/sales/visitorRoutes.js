@@ -8,7 +8,7 @@ import { insertCompanyRecord } from './companyPanel.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
 import { normName } from './intakeMatch.js';
 import { cleanText } from './scrubText.js';
-import { autoCreatePlan, autoSignalPatch } from './visitorRecords.js';
+import { autoCreatePlan, autoSignalPatch, recordDecision } from './visitorRecords.js';
 import { peopleSearchRequest, mapPeople, parseVisitedPeopleCsv, capLeft } from './peopleFind.js';
 import { unionRows, searchPeople, TIES } from './peopleUnion.js';
 
@@ -45,9 +45,11 @@ async function createdToday(supabase, businessId, today) {
   return rows.filter(r => laDateString(new Date(r.created_at)) === today).length;
 }
 
+// existing = { names, ids } on the record: a person is already there by name or by Apollo contact id.
+const known = (existing, person) => { const key = normName(person.name); return !key || existing.names.has(key) || (!!person.apollo_person_id && existing.ids.has(person.apollo_person_id)); };
 async function filePerson(supabase, { businessId, userId, type, id, person, existingKeys }) {
   const key = normName(person.name);
-  if (!key || existingKeys.has(key)) return false;
+  if (known(existingKeys, person)) return false;
   if (type === 'partner') {
     must(await supabase.from('partner_contacts').insert({ business_id: businessId, goal_id: id, name: person.name, title: person.title || null, linkedin_url: person.linkedin_url || null, source: 'manual', created_by: userId }).select('id').single());
   } else {
@@ -57,15 +59,34 @@ async function filePerson(supabase, { businessId, userId, type, id, person, exis
       source_kind: 'web_visit', source_note: person.source_note || null, apollo_person_id: person.apollo_person_id || null, visit_id: person.visit_id || null, created_by: userId,
     }).select('id').single());
   }
-  existingKeys.add(key);
+  existingKeys.names.add(key);
+  if (person.apollo_person_id) existingKeys.ids.add(person.apollo_person_id);
   return true;
 }
 
 async function peopleKeys(supabase, businessId, type, id) {
   const rows = type === 'partner'
     ? must(await supabase.from('partner_contacts').select('name').eq('business_id', businessId).eq('goal_id', id))
-    : must(await supabase.from('sales_people').select('name').eq('business_id', businessId).eq(type === 'employer' ? 'opportunity_id' : 'target_id', id).is('archived_at', null));
-  return new Set(rows.map(r => normName(r.name)).filter(Boolean));
+    : must(await supabase.from('sales_people').select('name, apollo_person_id').eq('business_id', businessId).eq(type === 'employer' ? 'opportunity_id' : 'target_id', id).is('archived_at', null));
+  return { names: new Set(rows.map(r => normName(r.name)).filter(Boolean)), ids: new Set(rows.map(r => r.apollo_person_id).filter(Boolean)) };
+}
+// The errors Postgres answers with before the V2a follow-up migration ran (no 'parked' company_type / no company_name).
+const MIGRATION_PENDING = e => ['23514', '42703', '22P02'].includes(e?.code) || /company_type|company_name|check constraint|does not exist/i.test(String(e?.message || ''));
+export const PARKED_MIGRATION = 'parked people need the migration 20261027_visitor_to_record_v1_v2a.sql';
+// Every parked person of the workspace, keyed by their company (normName) -> { names, ids } (idempotent parking).
+async function parkedKeys(supabase, businessId) {
+  let rows;
+  try { rows = await selectAllPages(() => supabase.from('sales_people').select('id, name, company_name, apollo_person_id').eq('business_id', businessId).eq('company_type', 'parked').is('archived_at', null).order('id')); }
+  catch (e) { if (MIGRATION_PENDING(e)) return new Map(); throw e; }
+  const by = new Map();
+  for (const r of rows) {
+    const k = normName(r.company_name);
+    const e = by.get(k) || { names: new Set(), ids: new Set() };
+    const n = normName(r.name); if (n) e.names.add(n);
+    if (r.apollo_person_id) e.ids.add(r.apollo_person_id);
+    by.set(k, e);
+  }
+  return by;
 }
 
 // V1 (+ V2b) over scored visit rows that already have their web_visits id. A company is created only when its
@@ -140,50 +161,100 @@ async function fillEmployees(supabase, { type, id, employees, now }) {
   return true;
 }
 
-// V2a - the one filer behind the CSV upload and the list pull: each company -> its matched record (V0) or a new
-// employer target (a company on the visit skip list - Cloudflare, Lovable, ... - gets no record and its people wait);
-// each person -> sales_people (partner_contacts on a partner), names as given, never an email. preview: the same
-// decisions with no write. -> { companies: [{ name, action: matched | created | would_create | skipped, type, id,
-// people_added, already_in }], people: n, counts, sample }
+// V2a - the one filer behind the CSV upload and the list pull: each company -> its matched record (V0) or, when the
+// record rule says so (recordDecision: US and 500+ / unknown, or a buyer title), a new employer target - else its people
+// are PARKED (sales_people company_type 'parked', company name only, no record; Add in People search files them later).
+// A company on the visit skip list (Cloudflare, Lovable, ...) gets no record and its people wait. Each person ->
+// sales_people (partner_contacts on a partner), names as given, never an email; idempotent by name and by Apollo contact
+// id. preview: the same decisions with no write. -> { companies: [{ name, action: matched | created | parked |
+// would_create | would_park | skipped, type, id, people_added, already_in, reason }], people: n, counts, sample }
 export async function fileVisitedPeople(supabase, { businessId, userId, parsed, sourceNote, now = new Date(), preview = false }) {
   const today = laDateString(now), stamp = slash(today);
-  const [ctx, skipRows] = await Promise.all([loadDupeContext(supabase, businessId), selectAllPages(() => supabase.from('sales_visit_skip').select('id, company_key').eq('business_id', businessId).order('id'))]);
+  const [ctx, skipRows, settings, parked] = await Promise.all([loadDupeContext(supabase, businessId), selectAllPages(() => supabase.from('sales_visit_skip').select('id, company_key').eq('business_id', businessId).order('id')), salesSettings(supabase, businessId), parkedKeys(supabase, businessId)]);
   const skip = new Set(skipRows.map(r => r.company_key));
   const companies = [], sample = [];
-  const counts = { companies: parsed.companies.length, matched: 0, created: 0, skipped_companies: 0, people_added: 0, already_in: 0, employees_filled: 0 };
+  const counts = { companies: parsed.companies.length, matched: 0, created: 0, parked: 0, skipped_companies: 0, people_added: 0, people_parked: 0, already_in: 0, employees_filled: 0, parked_unfiled: 0 };
+  let parkedStore = true;
   for (const c of parsed.companies) {
     const people = parsed.people.filter(p => (normName(p.company) || p.domain) === c.company_key);
     const m = exactRecord(c.name, c.domain, ctx);
-    let type, id = null, action;
+    let type = null, id = null, action, reason = null;
     if (m) { type = m.type === 'opportunity' ? 'employer' : m.type; id = m.id; action = 'matched'; }
     else if (skip.has(normName(c.name))) { counts.skipped_companies++; companies.push({ name: c.name, action: 'skipped', type: null, id: null, people_added: 0, already_in: 0, waiting: people.length, employees: c.employees }); continue; }
-    else if (preview) { type = 'target'; action = 'would_create'; }
     else {
-      const evidence = cleanText(`Identified visitor${people.length === 1 ? '' : 's'}: ${people.length} (${sourceNote})${c.last_visit ? ` · seen ${c.last_visit}` : ''}`, 400);
-      const r = await insertCompanyRecord(supabase, { businessId, userId, name: c.name, domain: c.domain, to: 'target', kind: 'employer', channel: 'website_visit', evidence, source: { source_kind: 'website', source_note: sourceNote }, owner: null, employees: c.employees, employeesSource: 'apollo', dupeCtx: ctx, now });
-      if (r.already) { type = r.already.type; id = r.already.id; action = 'matched'; }
+      const d = recordDecision(c, people, { buyerTitles: settings.buyer_titles });
+      reason = d.reason;
+      if (d.action === 'park') action = preview ? 'would_park' : 'parked';
+      else if (preview) { type = 'target'; action = 'would_create'; }
       else {
-        type = 'target'; id = r.created.id; action = 'created';
-        must(await supabase.from('sales_targets').update({ source: 'web_visit', research_notes: `(${stamp}) ${evidence}`, updated_at: now.toISOString() }).eq('id', id));
-        ctx.targets.push({ id, name: c.name, status: 'researching' });
+        const evidence = cleanText(`Identified visitor${people.length === 1 ? '' : 's'}: ${people.length} (${sourceNote})${c.last_visit ? ` · seen ${c.last_visit}` : ''}`, 400);
+        const r = await insertCompanyRecord(supabase, { businessId, userId, name: c.name, domain: c.domain, to: 'target', kind: 'employer', channel: 'website_visit', evidence, source: { source_kind: 'website', source_note: sourceNote }, owner: null, employees: c.employees, employeesSource: 'apollo', dupeCtx: ctx, now });
+        if (r.already) { type = r.already.type; id = r.already.id; action = 'matched'; }
+        else {
+          type = 'target'; id = r.created.id; action = 'created';
+          must(await supabase.from('sales_targets').update({ source: 'web_visit', research_notes: `(${stamp}) ${evidence}`, updated_at: now.toISOString() }).eq('id', id));
+          ctx.targets.push({ id, name: c.name, status: 'researching' });
+        }
       }
     }
-    counts[action === 'matched' ? 'matched' : 'created']++;
+    const parking = action === 'parked' || action === 'would_park';
+    counts[action === 'matched' ? 'matched' : parking ? 'parked' : 'created']++;
     if (action === 'matched' && !preview && await fillEmployees(supabase, { type, id, employees: c.employees, now })) counts.employees_filled++;
-    const keys = id ? await peopleKeys(supabase, businessId, type, id) : new Set();
+    const keys = parking ? (parked.get(normName(c.name)) || { names: new Set(), ids: new Set() }) : id ? await peopleKeys(supabase, businessId, type, id) : { names: new Set(), ids: new Set() };
+    if (parking && !parked.has(normName(c.name))) parked.set(normName(c.name), keys);
     let added = 0, already = 0;
     for (const p of people) {
-      const key = normName(p.name);
-      const fresh = !!key && !keys.has(key);
-      if (fresh && !preview) await filePerson(supabase, { businessId, userId, type, id, person: { ...p, source_note: cleanText([sourceNote, p.lists].filter(Boolean).join(' · '), 300) }, existingKeys: keys });
-      else if (fresh) keys.add(key);
+      const fresh = !known(keys, p);
+      if (fresh && !preview && parking) {
+        if (parkedStore) {
+          const ins = await supabase.from('sales_people').insert({ business_id: businessId, company_type: 'parked', company_name: c.name, company_domain: c.domain, name: p.name, title: p.title || null, note: p.note || null, source_kind: 'web_visit', source_note: cleanText([sourceNote, p.lists].filter(Boolean).join(' · '), 300), apollo_person_id: p.apollo_person_id || null, created_by: userId }).select('id').single();
+          if (ins.error && MIGRATION_PENDING(ins.error)) parkedStore = false; else must(ins);
+        }
+        if (!parkedStore) counts.parked_unfiled++;
+        const key = normName(p.name); if (key) keys.names.add(key); if (p.apollo_person_id) keys.ids.add(p.apollo_person_id);
+      } else if (fresh && !preview) await filePerson(supabase, { businessId, userId, type, id, person: { ...p, source_note: cleanText([sourceNote, p.lists].filter(Boolean).join(' · '), 300) }, existingKeys: keys });
+      else if (fresh) { const key = normName(p.name); if (key) keys.names.add(key); if (p.apollo_person_id) keys.ids.add(p.apollo_person_id); }
       if (fresh) added++; else already++;
-      if (sample.length < 3) sample.push({ name: p.name, company: c.name, action: fresh ? 'new' : 'already' });
+      if (sample.length < 3) sample.push({ name: p.name, company: c.name, action: fresh ? (parking ? 'parked' : 'new') : 'already' });
     }
-    counts.people_added += added; counts.already_in += already;
-    companies.push({ name: c.name, action, type, id, people_added: added, already_in: already, employees: c.employees });
+    if (parking) counts.people_parked += added; else counts.people_added += added;
+    counts.already_in += already;
+    companies.push({ name: c.name, action, type, id, people_added: parking ? 0 : added, people_parked: parking ? added : 0, already_in: already, employees: c.employees, reason });
   }
-  return { companies, people: parsed.people.length, counts, sample };
+  return { companies, people: parsed.people.length, counts, sample, migration_pending: !parkedStore ? PARKED_MIGRATION : null };
+}
+
+// V2a follow-up - POST /goals/people/:id/add-record (Member): a parked person's company becomes an employer target (or
+// joins the record that now matches) and every parked person of that company moves onto it.
+export async function addRecordFromPerson(supabase, { businessId, userId, id, now = new Date() }) {
+  const { data: p, error } = await findRow(supabase, 'sales_people', businessId, id);
+  if (error) return reply(500, { error: error.message });
+  if (!p) return reply(404, { error: 'person not found' });
+  if (p.company_type !== 'parked' || !p.company_name) return reply(409, { error: `${p.name} already has a record` });
+  const key = normName(p.company_name);
+  const siblings = (await selectAllPages(() => supabase.from('sales_people').select('id, name, title, company_name, apollo_person_id').eq('business_id', businessId).eq('company_type', 'parked').is('archived_at', null).order('id'))).filter(r => normName(r.company_name) === key);
+  const today = laDateString(now);
+  try {
+    const evidence = cleanText(`Identified visitor${siblings.length === 1 ? '' : 's'}: ${siblings.length} · added from People search ${today}`, 400);
+    const r = await insertCompanyRecord(supabase, { businessId, userId, name: p.company_name, domain: p.company_domain || null, to: 'target', kind: 'employer', channel: 'website_visit', evidence, source: { source_kind: 'website', source_note: 'Added from People search' }, owner: null, now });
+    const rec = r.already || r.created;
+    const type = r.already ? r.already.type : 'target';
+    if (!r.already) must(await supabase.from('sales_targets').update({ source: 'web_visit', research_notes: `(${slash(today)}) ${evidence}`, updated_at: now.toISOString() }).eq('id', rec.id));
+    let moved = 0;
+    if (type === 'partner') {
+      const keys = await peopleKeys(supabase, businessId, 'partner', rec.id);
+      for (const s of siblings) if (await filePerson(supabase, { businessId, userId, type: 'partner', id: rec.id, person: s, existingKeys: keys })) moved++;
+      must(await supabase.from('sales_people').update({ archived_at: now.toISOString(), updated_at: now.toISOString() }).in('id', siblings.map(s => s.id)));
+    } else {
+      must(await supabase.from('sales_people').update({ company_type: type, ...(type === 'employer' ? { opportunity_id: rec.id } : { target_id: rec.id }), updated_at: now.toISOString() }).in('id', siblings.map(s => s.id)));
+      moved = siblings.length;
+    }
+    scheduleRecompute(supabase, businessId, 'signal');
+    return reply(r.already ? 200 : 201, { record: { type, id: rec.id, name: rec.name || p.company_name }, people_moved: moved, already: !!r.already });
+  } catch (e) { return reply(e.status || 500, { error: e.message }); }
+}
+export async function addRecordFromPersonRoute(req, res) {
+  send(res, await addRecordFromPerson(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, id: req.params.id }));
 }
 
 // V2a - POST /goals/visits/people-csv { text, preview? } (Member): Apollo's contacts export (Visited People), the real
@@ -214,8 +285,9 @@ export async function peopleSearch(supabase, { businessId, query = {} }) {
   const q = cleanText(String(query.q || ''), 120), company = cleanText(String(query.company || ''), 160), title = cleanText(String(query.title || ''), 120), tie = String(query.tie || '');
   if (tie && !TIES.includes(tie)) return reply(400, { error: `tie must be one of ${TIES.join('|')}` });
   const all = (table, cols, build = x => x) => selectAllPages(() => build(supabase.from(table).select(cols).eq('business_id', businessId)).order('id'));
-  const [salesPeople, partnerContacts, prospects, opportunities, targets, partners, campaigns] = await Promise.all([
-    all('sales_people', 'id, company_type, opportunity_id, target_id, name, title, note, source_kind, source_partner_id, visit_id, archived_at, created_at, updated_at'),
+  const PEOPLE_COLS = 'id, company_type, opportunity_id, target_id, name, title, note, source_kind, source_partner_id, visit_id, archived_at, created_at, updated_at';
+  const salesPeople = await all('sales_people', `${PEOPLE_COLS}, company_name`).catch(e => { if (MIGRATION_PENDING(e)) return all('sales_people', PEOPLE_COLS); throw e; });
+  const [partnerContacts, prospects, opportunities, targets, partners, campaigns] = await Promise.all([
     all('partner_contacts', 'id, goal_id, name, title, email, source, first_seen, last_activity_at'),
     selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id, name, title, company, opportunity_id, updated_at').eq('business_id', businessId).order('contact_id')),
     all('sales_opportunities', 'id, organization, owner_team, co_owner_name'),

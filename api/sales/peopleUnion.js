@@ -6,12 +6,14 @@ import { isPartialName } from './peopleFind.js';
 // has_email (boolean) and never the address; phones never exist on the output. <= MAX rows.
 export const MAX_ROWS = 50;
 export const TIES = ['company', 'partner_referral', 'campaign', 'sequence', 'visit', 'upside'];
-const OUT_KEYS = ['person_id', 'source_table', 'name', 'title', 'company', 'ties', 'last_activity', 'has_email', 'name_partial'];
+const OUT_KEYS = ['person_id', 'source_table', 'name', 'title', 'company', 'ties', 'last_activity', 'has_email', 'name_partial', 'no_record'];
 const ADDRESS = /[^\s@<>()"',;=&#]+@[^\s@<>()"',;=&#]+\.[a-z]{2,}/i;
 const lower = s => String(s || '').toLowerCase();
 const upsideTie = row => (row && ['upside', 'both'].includes(row.owner_team) ? { kind: 'upside', label: `Upside${row.co_owner_name ? ` (${row.co_owner_name})` : ''}`, who: row.co_owner_name || null } : null);
 
 function companyOf(p, { opportunities = [], targets = [], partners = [] }) {
+  // V2a follow-up: a parked visitor carries the company name only - no record yet (Add in People search files it).
+  if (p.company_type === 'parked') return p.company_name ? { type: 'parked', id: null, name: p.company_name, row: null } : null;
   if (p.company_type === 'employer' && p.opportunity_id) { const o = opportunities.find(x => x.id === p.opportunity_id); return o ? { type: 'employer', id: o.id, name: o.organization, row: o } : null; }
   if (p.target_id) { const t = targets.find(x => x.id === p.target_id); return t ? { type: 'target', id: t.id, name: t.name, row: t } : null; }
   if (p.goal_id) { const g = partners.find(x => x.id === p.goal_id); return g ? { type: 'partner', id: g.id, name: g.name, row: g } : null; }
@@ -30,9 +32,9 @@ export function unionRows({ salesPeople = [], partnerContacts = [], prospects = 
     if (c) ties.push({ kind: 'company', label: c.name });
     if (p.source_kind === 'partner_referral' && p.source_partner_id) { const g = partners.find(x => x.id === p.source_partner_id); ties.push({ kind: 'partner_referral', label: `Referred by ${g?.name || 'a partner'}` }); }
     if (p.source_kind === 'campaign') ties.push({ kind: 'campaign', label: campaignNames[p.source_campaign_id] ? `Campaign ${campaignNames[p.source_campaign_id]}` : 'Campaign' });
-    if (p.source_kind === 'web_visit' || p.visit_id) { const v = visits.find(x => x.id === p.visit_id); ties.push({ kind: 'visit', label: `Visited ${v?.last_visit || v?.pulled_on || ''}`.trim(), date: v?.last_visit || v?.pulled_on || null }); }
+    if (p.source_kind === 'web_visit' || p.visit_id) { const v = visits.find(x => x.id === p.visit_id); ties.push({ kind: 'visit', label: v ? `Visited ${v.last_visit || v.pulled_on || ''}`.trim() : 'Identified visitor', date: v?.last_visit || v?.pulled_on || null }); }
     const up = upsideTie(c?.row); if (up) ties.push(up);
-    out.push({ person_id: p.id, source_table: 'sales_people', name: p.name, title: p.title || null, company: pub(c), ties, last_activity: p.updated_at || p.created_at || null, has_email: false, name_partial: isPartialName(p.note) });
+    out.push({ person_id: p.id, source_table: 'sales_people', name: p.name, title: p.title || null, company: pub(c), ties, last_activity: p.updated_at || p.created_at || null, has_email: false, name_partial: isPartialName(p.note), no_record: p.company_type === 'parked' });
   }
   for (const p of partnerContacts) {
     const c = companyOf(p, ctx);
@@ -40,7 +42,7 @@ export function unionRows({ salesPeople = [], partnerContacts = [], prospects = 
     if (c) ties.push({ kind: 'company', label: c.name });
     if (p.source === 'apollo') ties.push({ kind: 'sequence', label: 'Apollo sequence' });
     const up = upsideTie(c?.row); if (up) ties.push(up);
-    out.push({ person_id: p.id, source_table: 'partner_contacts', name: p.name, title: p.title || null, company: pub(c), ties, last_activity: p.last_activity_at || p.first_seen || null, has_email: !!p.email, name_partial: false });
+    out.push({ person_id: p.id, source_table: 'partner_contacts', name: p.name, title: p.title || null, company: pub(c), ties, last_activity: p.last_activity_at || p.first_seen || null, has_email: !!p.email, name_partial: false, no_record: false });
   }
   for (const p of prospects) {
     const o = p.opportunity_id ? opportunities.find(x => x.id === p.opportunity_id) : null;
@@ -49,7 +51,7 @@ export function unionRows({ salesPeople = [], partnerContacts = [], prospects = 
     if (c) ties.push({ kind: 'company', label: c.name });
     ties.push({ kind: 'sequence', label: 'Apollo sequence' });
     const up = upsideTie(o); if (up) ties.push(up);
-    out.push({ person_id: p.contact_id, source_table: 'sales_prospect_state', name: p.name || null, title: p.title || null, company: pub(c), ties, last_activity: p.updated_at || null, has_email: false, name_partial: false });
+    out.push({ person_id: p.contact_id, source_table: 'sales_prospect_state', name: p.name || null, title: p.title || null, company: pub(c), ties, last_activity: p.updated_at || null, has_email: false, name_partial: false, no_record: false });
   }
   return out.filter(r => r.name);
 }

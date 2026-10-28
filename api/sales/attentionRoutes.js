@@ -104,9 +104,11 @@ export function researchLine(runs, now) {
 
 // visitor-to-record-v1 V2a - the visitor PEOPLE pull's state (sales_settings.visitor_filters.visitor_people): what the
 // Needs attention visitors line reads under the window. Counts and the list name only.
-export function peoplePullLine(settings) {
+export function peoplePullLine(settings, peopleRuns = [], parked = 0) {
   const s = settings?.visitor_filters?.visitor_people || {};
-  return { last_on: s.last_pull_on || null, last_at: s.last_at || null, counts: s.last_counts || null, list: s.list_name || null, list_count: s.list_count ?? null, error: s.last_error || null };
+  const latest = [...peopleRuns].sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))[0] || null;
+  const status = latest ? latest.status : s.last_pull_on ? 'ok' : null;
+  return { last_on: s.last_pull_on || latest?.la_date || null, last_at: s.last_at || latest?.updated_at || null, status, counts: s.last_counts || null, list: s.list_name || null, list_count: s.list_count ?? null, error: latest?.status === 'error' ? latest.error : s.last_error || null, parked };
 }
 
 const DRY_RUNS = { apollo: apolloDryRun, outlook: outlookDryRun };
@@ -126,7 +128,7 @@ export async function attention(supabase, { businessId, userId, fresh = false, n
   const at = new Date(now);
   const today = laDateString(at);
   const since = new Date(now - 7 * DAY_MS).toISOString();
-  const [syncRuns, grant, msRuns, visitRuns, tidyRuns, researchRuns, overdue, waiting, held, campaign, settings] = await Promise.all([
+  const [syncRuns, grant, msRuns, allVisitRuns, tidyRuns, researchRuns, overdue, waiting, held, campaign, settings, parked] = await Promise.all([
     supabase.from('sales_sync_runs').select('status, started_at, finished_at, error_text, counts').eq('business_id', businessId).neq('trigger', 'test').order('started_at', { ascending: false }).limit(20).then(must),
     supabase.from('microsoft_grants').select('user_id, error').eq('user_id', userId).maybeSingle().then(must),
     supabase.from('microsoft_sync_runs').select('folder, started_at, finished_at, error').eq('user_id', userId).eq('dry_run', false).order('started_at', { ascending: false }).limit(6).then(must),
@@ -138,13 +140,16 @@ export async function attention(supabase, { businessId, userId, fresh = false, n
     heldCounts(supabase, businessId, { fresh, now, dry }),
     campaignActionRows(supabase, businessId, today),
     supabase.from('sales_settings').select('visitor_filters').eq('business_id', businessId).maybeSingle().then(must),
+    supabase.from('sales_people').select('id', { count: 'exact', head: true }).eq('business_id', businessId).eq('company_type', 'parked').is('archived_at', null).then(r => (r.error ? 0 : r.count || 0)),
   ]);
+  const peopleRuns = allVisitRuns.filter(r => r.kind === 'people');
+  const visitRuns = allVisitRuns.filter(r => r.kind !== 'people');
   const lastOkPull = visitRuns.filter(r => r.status === 'ok' && r.window_end).sort((a, b) => b.window_end.localeCompare(a.window_end))[0];
   const pulled = lastOkPull ? await supabase.from('web_visits').select('id', { count: 'exact', head: true }).eq('business_id', businessId).eq('pulled_on', lastOkPull.la_date).then(r => { if (r.error) throw Object.assign(new Error(r.error.message), { status: 500 }); return r.count || 0; }) : 0;
   const sources = [
     apolloLine(syncRuns, now),
     outlookLine(grant, msRuns, now),
-    { ...dailyLine('visitors', visitRuns, { now, dateOf: r => r.la_date, startedOf: r => r.updated_at || r.created_at, deadMs: VISITS_DEAD_MS, errorOf: r => r.error }), window: visitWindow(visitRuns, pulled, now), people_pull: peoplePullLine(settings) },
+    { ...dailyLine('visitors', visitRuns, { now, dateOf: r => r.la_date, startedOf: r => r.updated_at || r.created_at, deadMs: VISITS_DEAD_MS, errorOf: r => r.error }), window: visitWindow(visitRuns, pulled, now), people_pull: peoplePullLine(settings, peopleRuns, parked) },
     dailyLine('tidy', tidyRuns, { now, dateOf: r => laDateString(new Date(r.started_at)), startedOf: r => r.started_at, deadMs: TIDY_STALE_MS, errorOf: r => r.counts?.error }),
     researchLine(researchRuns, now),
   ];

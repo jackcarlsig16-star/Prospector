@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { autoCreateDecision, autoCreatePlan, visitEvidence, recordPayload, autoSignalPatch, attachNote, undoPlan, matchLabel, AUTO_CREATE_DAILY_CAP } from './visitorRecords.js';
+import { autoCreateDecision, autoCreatePlan, visitEvidence, recordPayload, autoSignalPatch, attachNote, undoPlan, matchLabel, recordDecision, isUS, hasBuyerTitle, AUTO_CREATE_DAILY_CAP, RECORD_MIN_EMPLOYEES, UNKNOWN_COUNTRY_IS_US } from './visitorRecords.js';
 
 const B = 'biz-1', NOW = new Date('2026-10-27T17:00:00Z');
 const visit = (name, over = {}) => ({ id: `v-${name.toLowerCase().replace(/\W/g, '')}`, company_name: name, company_key: name.toLowerCase(), domain: `${name.toLowerCase().replace(/\W/g, '')}.example`, priority: 'P1', priority_rule: 'US 500+ with 5+ visits in 7 days or 3+ unique visitors (Apollo)', noise_reason: null, maybe_user: false, us_500: true, visits_7d: 6, unique_visitors_7d: 3, top_paths: [{ path: '/pricing', visits: 3 }, { path: '/employer-partners', visits: 2 }, { path: '/', visits: 1 }, { path: '/blog', visits: 1 }], apollo_intent: 'high', last_visit: '2026-10-26', pulled_on: '2026-10-27', matched_type: null, matched_id: null, employees: 1200, ...over });
@@ -103,4 +103,18 @@ test('migration text: sales_signals.auto, sales_people apollo_person_id / visit_
   assert.doesNotMatch(sql, /DELETE FROM|DROP TABLE|DROP COLUMN|UPDATE public\./);
   assert.ok(sql.includes('-- Proof - expect 6 rows'));
   assert.ok(!sql.includes('@') || !/[a-z0-9._-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(sql), 'no address in the migration');
+});
+
+// V2a follow-up (choice 1): a record only for a US company of 500+ (or unknown size), or when a buyer title shows up.
+test('recordDecision: buyer title wins; not US -> park; US under 500 -> park; US 500+ or unknown size -> create; an unknown country counts as US (REVISABLE)', () => {
+  const titles = ['Chief People Officer', 'VP People'];
+  assert.deepEqual(recordDecision({ country: 'Canada', employees: 20 }, [{ title: 'VP People Operations' }], { buyerTitles: titles }), { action: 'create', reason: 'buyer_title' });
+  assert.deepEqual(recordDecision({ country: 'Canada', employees: 9000 }, [{ title: 'Engineer' }], { buyerTitles: titles }), { action: 'park', reason: 'not_us' });
+  assert.deepEqual(recordDecision({ country: 'United States', employees: RECORD_MIN_EMPLOYEES - 1 }, [{ title: 'Owner' }], { buyerTitles: titles }), { action: 'park', reason: 'under_500' });
+  assert.deepEqual(recordDecision({ country: 'US', employees: RECORD_MIN_EMPLOYEES }, [], { buyerTitles: titles }), { action: 'create', reason: 'us_500' });
+  assert.deepEqual(recordDecision({ country: null, employees: null }, [], { buyerTitles: titles }), { action: UNKNOWN_COUNTRY_IS_US ? 'create' : 'park', reason: UNKNOWN_COUNTRY_IS_US ? 'us_size_unknown' : 'not_us' });
+  assert.deepEqual([isUS('United States of America'), isUS('usa'), isUS(' U.S. '), isUS('Mexico'), isUS('')], [true, true, true, false, UNKNOWN_COUNTRY_IS_US]);
+  assert.equal(hasBuyerTitle([{ title: 'Director of Benefits' }], ['benefits manager', 'Director of Benefits']), true);
+  assert.equal(hasBuyerTitle([{ title: null }], ['CHRO']), false);
+  assert.equal(hasBuyerTitle([{ title: 'CHRO' }], []), false);
 });

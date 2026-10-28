@@ -25,10 +25,11 @@ const md = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 
 // visitor-to-record-v1 V2a: "Visitor people pulled Oct 27 · 66 contacts · 12 new · 3 companies created", not yet, or the error.
 export const peoplePullText = p => {
   if (!p) return null;
-  if (p.error && !p.last_on) return `Visitor people: ${p.error}`;
-  if (!p.last_on) return 'Visitor people: not pulled yet';
+  const parked = p.parked > 0 ? ` · ${p.parked} parked` : '';
+  if (p.error && !p.last_on) return `Visitor people: ${p.error}${parked}`;
+  if (!p.last_on) return `Visitor people: not pulled yet${parked}`;
   const c = p.counts || {};
-  return `Visitor people pulled ${md(p.last_on)} · ${c.contacts ?? 0} contact${c.contacts === 1 ? '' : 's'} · ${c.people_added ?? 0} new · ${c.created ?? 0} compan${c.created === 1 ? 'y' : 'ies'} created${p.error ? ` · last try failed: ${p.error}` : ''}`;
+  return `Visitor people pulled ${md(p.last_on)} · ${c.contacts ?? 0} contact${c.contacts === 1 ? '' : 's'} · ${c.people_added ?? 0} new · ${c.created ?? 0} compan${c.created === 1 ? 'y' : 'ies'} created${parked}${p.error ? ` · last try failed: ${p.error}` : ''}`;
 };
 // FIX visit-window-v1 W6: "Window Oct 13–Oct 27 · 138 companies · last ok 2 h ago", or the gap.
 export const windowText = w => (!w || !w.window_end ? 'No completed pull yet' : `Window ${md(w.window_start)}–${md(w.window_end)} · ${w.companies} compan${w.companies === 1 ? 'y' : 'ies'}${w.last_ok_at ? ` · last ok ${timeAgo(w.last_ok_at)}` : ''}`);
@@ -134,7 +135,7 @@ export default function AttentionDrawer({ businessId, canEdit, isAdmin = false, 
       else if (id === 'people') {
         const r = await goalsApi.visitPeoplePull(businessId, { force: true });
         const c = r.counts || {};
-        return setNote(r.ran ? `Visitor people: ${c.contacts} contact${c.contacts === 1 ? '' : 's'} on the list · ${c.people_added} new · ${c.already_in} already on file · ${c.matched} compan${c.matched === 1 ? 'y' : 'ies'} matched · ${c.created} created` : `Visitor people: ${r.reason}`);
+        return setNote(r.ran ? `Visitor people: ${c.contacts} contact${c.contacts === 1 ? '' : 's'} on the list · ${c.people_added} new · ${c.already_in} already on file · ${c.matched} compan${c.matched === 1 ? 'y' : 'ies'} matched · ${c.created} created${c.parked ? ` · ${c.parked} parked (${c.people_parked} people)` : ''}${r.migration_pending ? ` · ${r.migration_pending}` : ''}` : `Visitor people: ${r.reason}`);
       }
       else if (id === 'tidy') await goalsApi.runTidy(businessId, { force: true });
       setNote(`${data.sources.find(s => s.id === id).label}: done`);

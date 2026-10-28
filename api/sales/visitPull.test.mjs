@@ -62,9 +62,8 @@ const seed = (extra = {}) => ({
   sales_targets: [{ id: T.quarry, business_id: B, name: 'Quarry Labs', kind: 'employer', status: 'researching', owner_team: 'both' }],
   partner_domains: [], sales_signals: [], sales_visit_skip: [], web_visits: [], visit_pull_runs: [], apollo_credit_spend: [],
   // visitor-to-record-v1: the pull's auto-create is off here (its own suite covers it) so these rules stay about the pull.
-  // visitor-to-record-v1 V2a: the page-load people pull already ran today (its own suite covers it); tomorrow it finds
-  // no list in the fixture (2 calls, a 404 it keeps for the day).
-  sales_settings: [{ business_id: B, buyer_titles: [], auto_create_daily_cap: 0, people_search_daily_cap: 0, people_per_company: 3, visitor_filters: { visitor_people: { last_pull_on: '2026-10-20' } } }],
+  // visitor-to-record-v1 V2a: the people pull is a background job after the reply (its own suite covers it).
+  sales_settings: [{ business_id: B, buyer_titles: [], auto_create_daily_cap: 0, people_search_daily_cap: 0, people_per_company: 3 }],
   ...extra,
 });
 const unique = {
@@ -161,9 +160,8 @@ test('a P1 re-pulled tomorrow does not create a second signal that week; a dismi
     const next = await runVisitPull(sb, { businessId: B, userId: U, trigger: 'pageload', now: TOMORROW });
     assert.equal(next.body.ran, true);
     assert.equal(next.body.counts.signals, 0);
-    assert.deepEqual(apolloFixtureCalls.slice(start).slice(4), ['GET /users/api_profile', 'GET /labels', 'GET /users/api_profile'], 'the page-load people pull: balance, the list lookup (not found -> 404, kept for the day), the closing balance for the spend row');
-    assert.match(next.body.people_pull.error, /no contacts list named/);
-    assert.equal(sb.db.sales_settings[0].visitor_filters.visitor_people.last_error_at.slice(0, 10), '2026-10-21');
+    assert.deepEqual(apolloFixtureCalls.slice(start).slice(4), [], 'the people pull is scheduled in the background after the reply, never inside it (and never on the in-memory Supabase)');
+    assert.ok(!('people_pull' in next.body), 'the reply carries no people pull');
     assert.equal(sb.db.sales_signals.length, 6);
     assert.equal(sb.db.web_visits.filter(v => v.pulled_on === '2026-10-21').length, ORGS.length, 'a new day keeps its own rows');
   } finally { restore(); }

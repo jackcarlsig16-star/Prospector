@@ -46,11 +46,22 @@ test('search: by name or company, the company / tie / title filters, newest acti
   assert.deepEqual(searchPeople(r, { tie: 'visit' }).map(x => x.name), ['Jean Horton']);
   assert.deepEqual(searchPeople(r, { tie: 'upside' }).map(x => x.name), ['Jean Horton', 'Dev Patel']);
   assert.deepEqual(searchPeople(r, { title: 'benefits' }).map(x => x.name), ['Eve Solo', 'Margo R.']);
-  assert.deepEqual(Object.keys(searchPeople(r, { q: 'horton' })[0]), ['person_id', 'source_table', 'name', 'title', 'company', 'ties', 'last_activity', 'has_email', 'name_partial']);
+  assert.deepEqual(Object.keys(searchPeople(r, { q: 'horton' })[0]), ['person_id', 'source_table', 'name', 'title', 'company', 'ties', 'last_activity', 'has_email', 'name_partial', 'no_record']);
   assert.throws(() => searchPeople(r, { tie: 'friend' }), /tie must be one of/);
   assert.deepEqual(TIES, ['company', 'partner_referral', 'campaign', 'sequence', 'visit', 'upside']);
   const many = Array.from({ length: 80 }, (_, i) => ({ person_id: `x${i}`, source_table: 'sales_people', name: `Zz Person ${i}`, title: null, company: null, ties: [], last_activity: null, has_email: false }));
   assert.equal(searchPeople(many).length, MAX_ROWS);
   assert.equal(searchPeople(many, { limit: 5 }).length, 5);
   assert.throws(() => searchPeople([{ person_id: 'bad', source_table: 'sales_people', name: 'ana@zz.example', title: null, company: null, ties: [], last_activity: null, has_email: false }]), /address reached/);
+});
+
+// V2a follow-up - a parked visitor (company name only) is in the list with no_record and the Identified visitor tie.
+test('parked: a sales_people row with company_type parked reads company { type parked, id null }, no_record true, tie Identified visitor; found by its company name', () => {
+  const r = unionRows({ salesPeople: [{ id: 'sp9', company_type: 'parked', company_name: 'Zz Small Shop', company_domain: 'zzsmall.example', name: 'Pat Parked', title: 'Owner', source_kind: 'web_visit', created_at: '2026-10-27T10:00:00Z' }, { id: 'sp10', company_type: 'parked', company_name: null, name: 'No Company' }] });
+  assert.equal(r.length, 2);
+  assert.deepEqual(r[0].company, { type: 'parked', id: null, name: 'Zz Small Shop' });
+  assert.deepEqual([r[0].no_record, r[0].ties.map(t => [t.kind, t.label])], [true, [['company', 'Zz Small Shop'], ['visit', 'Identified visitor']]]);
+  assert.deepEqual([r[1].company, r[1].no_record], [null, true]);
+  assert.equal(searchPeople(r, { company: 'small shop' }).length, 1);
+  assert.equal(searchPeople(r, { tie: 'visit' })[0].no_record, true);
 });

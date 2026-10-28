@@ -75,8 +75,8 @@ test('the real export: header row under a title row; only the keep-set is read (
   assert.deepEqual(out.people.map(p => p.note), ['Identified visitor · 2026-10-27 · VP · Human Resources', 'Identified visitor · 2026-10-27 · Manager', 'Identified visitor · 2026-10-27']);
   assert.ok(out.people.every(p => p.source_kind === 'web_visit'));
   assert.deepEqual(out.companies, [
-    { name: 'Zz ADP', domain: 'zzadp.example', company_key: 'zz adp', people: 2, last_visit: '2026-10-27', employees: 58000, industry: 'human resources', location: 'New Jersey, United States', apollo_account_id: 'a-1', account_owner: 'Jack Carlson' },
-    { name: 'Zz Calpine', domain: null, company_key: 'zz calpine', people: 1, last_visit: '2026-10-27', employees: null, industry: null, location: 'Texas, United States', apollo_account_id: 'a-2', account_owner: null },
+    { name: 'Zz ADP', domain: 'zzadp.example', company_key: 'zz adp', people: 2, last_visit: '2026-10-27', employees: 58000, industry: 'human resources', location: 'New Jersey, United States', country: 'United States', apollo_account_id: 'a-1', account_owner: 'Jack Carlson' },
+    { name: 'Zz Calpine', domain: null, company_key: 'zz calpine', people: 1, last_visit: '2026-10-27', employees: null, industry: null, location: 'Texas, United States', country: 'United States', apollo_account_id: 'a-2', account_owner: null },
   ]);
   const text = JSON.stringify(out);
   for (const marker of ['@', '555', 'Main St', 'Corp Way', 'Chicago', 'Houston', 'Roseland', 'linkedin.com', 'payroll', 'Workday', '1000000', '7374', '541214', 'Benefits\"', 'Cold', 'Verified']) assert.ok(!text.includes(marker), `${marker} must not land`);

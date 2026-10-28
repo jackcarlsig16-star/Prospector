@@ -745,6 +745,7 @@ app.post('/api/sales/:businessId/goals/signals/:id/auto-create', salesModuleRout
 app.post('/api/sales/:businessId/goals/visits/people-csv', salesModuleRoute('./api/sales/visitorRoutes.js', 'uploadVisitedPeopleRoute', 'goals/visits/people-csv POST'));
 app.post('/api/sales/:businessId/goals/visits/people-pull', salesModuleRoute('./api/sales/visitorPeoplePull.js', 'runVisitorPeoplePullRoute', 'goals/visits/people-pull POST'));
 app.get('/api/sales/:businessId/goals/people', salesModuleRoute('./api/sales/visitorRoutes.js', 'peopleSearchRoute', 'goals/people'));
+app.post('/api/sales/:businessId/goals/people/:id/add-record', salesModuleRoute('./api/sales/visitorRoutes.js', 'addRecordFromPersonRoute', 'goals/people/:id/add-record POST'));
 // intent-score-v1 Stage 2 - the ranked scores (filters), Recompute now (owner / admin; one company for a Member), the CSV, the Brief.
 app.get('/api/sales/:businessId/goals/scores', salesModuleRoute('./api/sales/scoresRoutes.js', 'listScoresRoute', 'goals/scores'));
 app.post('/api/sales/:businessId/goals/scores/recompute', salesModuleRoute('./api/sales/scoresRoutes.js', 'recomputeRoute', 'goals/scores/recompute POST'));

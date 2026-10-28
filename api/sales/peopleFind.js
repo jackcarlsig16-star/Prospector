@@ -117,12 +117,13 @@ function filePair(out, { full, company, title, seniority, departments, lists, ap
   });
   out.people.push(p);
   const key = normName(company) || p.domain;
-  const c = out.byCompany.get(key) || { name: company, domain: p.domain, company_key: key, people: 0, last_visit: seenOn || null, employees: null, industry: null, location: null, apollo_account_id: null, account_owner: null };
+  const c = out.byCompany.get(key) || { name: company, domain: p.domain, company_key: key, people: 0, last_visit: seenOn || null, employees: null, industry: null, location: null, country: null, apollo_account_id: null, account_owner: null };
   c.people++;
   if (!c.domain && p.domain) c.domain = p.domain;
   if (c.employees == null && employees) c.employees = employees;
   if (!c.industry && industry) c.industry = industry;
   if (!c.location) c.location = [state, country].filter(Boolean).join(', ') || null;
+  if (!c.country && country) c.country = country;
   if (!c.apollo_account_id && apollo_account_id) c.apollo_account_id = apollo_account_id;
   if (!c.account_owner && account_owner) c.account_owner = account_owner;
   out.byCompany.set(key, c);
@@ -130,8 +131,8 @@ function filePair(out, { full, company, title, seniority, departments, lists, ap
 const finish = (out, extra) => ({ people: out.people, companies: [...out.byCompany.values()], ...extra });
 
 // -> { people: [{ name, title, company, domain, seniority, departments, lists, apollo_person_id, apollo_account_id, account_owner,
-//      seen_on, source_kind, note }], companies: [{ name, domain, company_key, people, employees, industry, location, apollo_account_id,
-//      account_owner }], skipped, header_row, columns_dropped }. Throws if no header row. Email / phone / address columns are not indexed.
+//      seen_on, source_kind, note }], companies: [{ name, domain, company_key, people, employees, industry, location, country,
+//      apollo_account_id, account_owner }], skipped, header_row, columns_dropped }. Throws if no header row. Email / phone / address columns are not indexed.
 export function parseVisitedPeopleCsv(text, { max = 500, seenOn = null } = {}) {
   const rows = parseCsv(text);
   const h = findHeader(rows);

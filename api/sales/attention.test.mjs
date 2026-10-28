@@ -67,7 +67,9 @@ test('attention: the caller\'s counts (their overdue to-dos, campaign sends + re
     sales_sync_runs: [{ business_id: B, trigger: 'manual', status: 'success', started_at: '2026-10-15T18:00:00Z', finished_at: '2026-10-15T18:05:00Z' }],
     microsoft_grants: [{ user_id: JACK, account_email: 'jack@homelover.example', error: null }],
     microsoft_sync_runs: [{ user_id: JACK, business_id: B, folder: 'inbox', dry_run: false, started_at: ago(2), finished_at: ago(2), error: null }],
-    visit_pull_runs: [{ business_id: B, la_date: today, kind: 'daily', window_start: '2026-10-21', window_end: today, lookback_days: 1, status: 'ok', error: null, created_at: ago(5), updated_at: ago(5) }],
+    visit_pull_runs: [{ business_id: B, la_date: today, kind: 'daily', window_start: '2026-10-21', window_end: today, lookback_days: 1, status: 'ok', error: null, created_at: ago(5), updated_at: ago(5) }, { business_id: B, la_date: today, kind: 'people', status: 'error', error: 'Apollo has no contacts list named "x"', created_at: ago(3), updated_at: ago(3) }],
+    sales_people: [{ business_id: B, company_type: 'parked', company_name: 'Zz Small Shop', name: 'Pat Parked', archived_at: null }, { business_id: B, company_type: 'parked', company_name: 'Zz Small Shop', name: 'Old Parked', archived_at: ago(1) }, { business_id: B, company_type: 'target', target_id: randomUUID(), name: 'On Record', archived_at: null }],
+    sales_settings: [{ business_id: B, visitor_filters: { visitor_people: { list_name: 'Prospector · Website visitors (export)', last_pull_on: '2026-10-21', last_counts: { contacts: 66, people_added: 12, created: 3 } } } }],
     web_visits: [{ business_id: B, company_key: 'alder', pulled_on: today }, { business_id: B, company_key: 'birch', pulled_on: today }, { business_id: B, company_key: 'cedar', pulled_on: '2026-10-21' }],
     sales_tidy_runs: [{ business_id: B, status: 'error', started_at: ago(4), finished_at: ago(4), counts: { error: 'boom' } }],
     research_runs: [],
@@ -94,6 +96,8 @@ test('attention: the caller\'s counts (their overdue to-dos, campaign sends + re
   assert.deepEqual(r.sources.map(x => [x.id, x.status]), [['apollo', 'stale'], ['outlook', 'ok'], ['visitors', 'ok'], ['tidy', 'failed'], ['research', 'ok']]);
   assert.equal(r.sources.find(x => x.id === 'tidy').error, 'boom');
   assert.deepEqual(r.sources.find(x => x.id === 'visitors').window, { window_start: '2026-10-21', window_end: today, lookback_days: 1, kind: 'daily', companies: 2, last_ok_at: ago(5), gap: false });
+  // V2a follow-up: the people run row never colors the visitors line (still ok above); it feeds people_pull with the parked count.
+  assert.deepEqual(r.sources.find(x => x.id === 'visitors').people_pull, { last_on: '2026-10-21', last_at: ago(3), status: 'error', counts: { contacts: 66, people_added: 12, created: 3 }, list: 'Prospector · Website visitors (export)', list_count: null, error: 'Apollo has no contacts list named "x"', parked: 1 });
   assert.deepEqual(r.counts, { overdue_todos: 1, overdue_waiting: 1, held_apollo: 0, held_outlook: 0, campaign_sends: 1, campaign_replies: 1 });
   assert.equal(r.n, 2 + 4);
   const cy = await attention(s, { businessId: B, userId: CY, now: NOW, dry });

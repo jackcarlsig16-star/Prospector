@@ -403,7 +403,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
       )}
       {peopleOpen && (
         <SidePanel label="People" width={760} onClose={() => setPeopleOpen(false)}>
-          <PeopleSearch businessId={businessId} onOpenCompany={c => { setPeopleOpen(false); setPanelKey(`${c.type}-${c.id}`); }} />
+          <PeopleSearch businessId={businessId} canEdit={canEdit} onOpenCompany={c => { setPeopleOpen(false); setPanelKey(`${c.type}-${c.id}`); }} />
         </SidePanel>
       )}
       {canEdit && updating && (
