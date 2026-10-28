@@ -220,12 +220,12 @@ test('names: P1, P2 and the top 10 carry their name beside the dot by default; O
   expect(nameLabels()).toEqual([]);
   fireEvent.click(dot('Hilton Example'));
   await waitFor(() => expect(nameLabels()).toEqual(['Hilton Example']));
-  expect(localStorage.getItem('prospector_sales_priorities_names')).toBe('off');
+  expect(JSON.parse(localStorage.getItem('prospector_priorities_view')).names).toBe('off');
   fireEvent.click(within(names).getByRole('button', { name: 'All' }));
   expect(nameLabels().sort()).toEqual(['Harbor Lane', 'Hilton Example', 'Quarry Labs']);
   expect(document.querySelector('[data-names-count]').textContent).toBe('3 of 3 named - see Table for all');
   expect(nameLabels()[0]).toBe('Hilton Example'); // the selected row is placed first
-  expect(localStorage.getItem('prospector_sales_priorities_names')).toBe('all');
+  expect(JSON.parse(localStorage.getItem('prospector_priorities_view')).names).toBe('all');
 });
 
 test('bars: the same name rule replaces the top-5 score labels (above the thin bars; inside only when the name fits)', async () => {

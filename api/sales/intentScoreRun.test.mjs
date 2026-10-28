@@ -213,6 +213,11 @@ test('GET goals/scores: ranked rows (live + duplicates out, longest-untouched fi
   assert.ok(!ADDRESS.test(JSON.stringify(b)));
   const f = async q => (await listScores(db, B, q, { now: NOW })).body.rows.map(r => r.name);
   assert.deepEqual(await f({ segment: 'partners' }), ['Harbor Lane']);
+  // priorities-v2 D1: counts.segments = each chip's count over the unfiltered ranked set; a filter never changes them.
+  const seg = b.counts.segments;
+  assert.deepEqual(seg, { all: 5, visitors: (await f({ segment: 'visitors' })).length, partners: 1, employers: (await f({ segment: 'employers' })).length, targets: (await f({ segment: 'targets' })).length });
+  assert.equal(seg.partners + seg.employers + seg.targets, seg.all);
+  assert.deepEqual((await listScores(db, B, { segment: 'partners', band: 'P1' }, { now: NOW })).body.counts.segments, seg);
   assert.deepEqual(await f({ segment: 'visitors' }), ['Quarry Labs', 'Hilton Example']);
   assert.deepEqual(await f({ owner: 'unassigned' }), ['Hilton Example']);
   assert.deepEqual(await f({ owner: CYRUS }), ['Quarry Labs', 'Harbor Lane']);

@@ -6,17 +6,21 @@ export const VIEWS = [['dots', 'Dots'], ['bars', 'Bars'], ['table', 'Table']];
 export const SEGMENTS = [['all', 'All'], ['visitors', 'Web visitors'], ['partners', 'Partners'], ['employers', 'Employers'], ['targets', 'Targets']];
 export const WINDOWS = [['', 'Any time'], ['7', 'Visited 7 d'], ['30', 'Visited 30 d'], ['90', 'Visited 90 d']];
 export const BANDS = ['P1', 'P2', 'P3', 'P4'];
+// priorities-v2 D6 - the word inside each band zone, display only (never stored).
+export const BAND_WORDS = { P1: 'Act now', P2: 'Warm', P3: 'Watch', P4: 'Backlog' };
+// priorities-v2 C - the chart's height presets (only CHART_H changes).
+export const HEIGHTS = [['compact', 'Compact', 360], ['standard', 'Standard', 560], ['tall', 'Tall', 800]];
+export const heightPx = id => (HEIGHTS.find(([k]) => k === id) || HEIGHTS[1])[2];
 // Rings around the core, in this fixed order (named in the chart's key); radius grows with the points.
 export const RING_ORDER = ['visits', 'people', 'fit', 'research', 'engagement'];
 export const DEFAULT_CAPS = { visits: 25, pages: 10, apollo_intent: 5, people: 15, fit: 15, research: 10, source: 12, engagement: 10, stage: 10, recency: 10 };
 export const PAGE_SIZE = 40;
-export const TOP_LABELS = 5;
+export const TOP_LABELS = 10;
 export const HALO = { bright: 7, faint: 30 }; // days since the last touch (REVISABLE, = the server's TOUCH_WINDOWS)
 export const ACTIVITY_MAX_DAYS = 90;
 export const EMPTY_FILTERS = { segment: 'all', owner: '', source: [], band: '', needs_touch: false, min: 0, window: '', q: '' };
-export const LS_KEY = 'prospector_priorities_view'; // { view, y } - per-viewer convenience
+export const LS_KEY = 'prospector_priorities_view'; // { view, y, height, rings, names } - per-viewer convenience
 export const NAME_MODES = [['on', 'On'], ['all', 'All'], ['off', 'Off']];
-export const NAMES_LS_KEY = 'prospector_sales_priorities_names'; // 'on' | 'all' | 'off' - per-viewer convenience
 export const LABEL_TOP = 10;
 export const LABEL_MIN_CHARS = 14;
 
@@ -71,15 +75,19 @@ export function pageOf(rows, page, size = PAGE_SIZE) {
 export const rowLabel = (row, sourceLabels) => `${row.name} · ${row.score} · ${row.band} · ${sourceLabels[row.source_label] || row.source_label}`;
 export const touchText = row => (row.days_since_touch == null ? 'Never touched' : `Last touch: ${row.days_since_touch === 0 ? 'today' : `${row.days_since_touch} day${row.days_since_touch === 1 ? '' : 's'} ago`}${row.last_touch_who || row.last_touch_channel ? ` (${[row.last_touch_who, row.last_touch_channel].filter(Boolean).join(', ')})` : ''}`);
 
-export function readViewPrefs() {
-  try { const v = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); return v && typeof v === 'object' ? v : {}; } catch { return {}; }
+// The viewer's chart prefs, normalized: view null = dots (table on a phone), height 'standard', rings off, names 'on'.
+export function readPrefs() {
+  let v = {};
+  try { const x = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); if (x && typeof x === 'object') v = x; } catch { /* malformed: defaults */ }
+  return {
+    view: VIEWS.some(([id]) => id === v.view) ? v.view : null,
+    y: Y_METRICS.some(([id]) => id === v.y) ? v.y : 'intent',
+    height: HEIGHTS.some(([id]) => id === v.height) ? v.height : 'standard',
+    rings: v.rings === true,
+    names: NAME_MODES.some(([id]) => id === v.names) ? v.names : 'on',
+  };
 }
-export function writeViewPrefs(prefs) { try { localStorage.setItem(LS_KEY, JSON.stringify(prefs)); } catch { /* private mode */ } }
-
-export function readNamesMode() {
-  try { const v = localStorage.getItem(NAMES_LS_KEY); return NAME_MODES.some(([id]) => id === v) ? v : 'on'; } catch { return 'on'; }
-}
-export function writeNamesMode(mode) { try { localStorage.setItem(NAMES_LS_KEY, mode); } catch { /* private mode */ } }
+export function writePrefs(prefs) { try { localStorage.setItem(LS_KEY, JSON.stringify(prefs)); } catch { /* private mode */ } }
 
 export const labelText = (name, max = LABEL_MIN_CHARS) => { const n = String(name || ''); const m = Math.max(LABEL_MIN_CHARS, max); return n.length <= m ? n : `${n.slice(0, m - 1).trimEnd()}…`; };
 

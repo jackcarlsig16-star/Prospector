@@ -1,4 +1,4 @@
-import { yValue, yScale, ringSpecs, haloLevel, hollowness, isDimmed, toggleLit, pageOf, filterParams, filtersFromView, activeFilterCount, labelCandidates, labelText, placeLabels, readNamesMode, writeNamesMode, EMPTY_FILTERS, RING_ORDER, NAMES_LS_KEY } from './prioritiesModel';
+import { yValue, yScale, ringSpecs, haloLevel, hollowness, isDimmed, toggleLit, pageOf, filterParams, filtersFromView, activeFilterCount, labelCandidates, labelText, placeLabels, readPrefs, writePrefs, LS_KEY, HEIGHTS, heightPx, BAND_WORDS, BANDS, TOP_LABELS, EMPTY_FILTERS, RING_ORDER } from './prioritiesModel';
 
 // intent-score-v1 S3 - the pure half of the Priorities view.
 const row = (over = {}) => ({ key: 'employer-1', name: 'Acme', score: 55, band: 'P2', source_label: 'upside', employees: 5000, days_since_touch: 3, researched: 'fresh', components: { visits: { points: 17 }, people: { points: 6 }, fit: { points: 15 }, research: { points: 10 }, engagement: { points: 0 } }, ...over });
@@ -114,12 +114,21 @@ test('placeLabels: same spot -> right then left, then shift up, down in 12 px st
   expect(placeLabels([{ key: 'top', text: 'Acme', x: 10, y: 5, pad: 8 }], { minY: 0 })[0].shifted).toBe(12);
 });
 
-test('names mode: on by default, a stored value round-trips, junk falls back to on', () => {
+test('prefs (priorities-v2): one key holds view / y / height / rings / names; defaults standard, rings off, names on; junk falls back per field', () => {
   localStorage.clear();
-  expect(readNamesMode()).toBe('on');
-  writeNamesMode('all');
-  expect(localStorage.getItem(NAMES_LS_KEY)).toBe('all');
-  expect(readNamesMode()).toBe('all');
-  localStorage.setItem(NAMES_LS_KEY, 'everything');
-  expect(readNamesMode()).toBe('on');
+  expect(readPrefs()).toEqual({ view: null, y: 'intent', height: 'standard', rings: false, names: 'on' });
+  writePrefs({ view: 'bars', y: 'size', height: 'tall', rings: true, names: 'all' });
+  expect(JSON.parse(localStorage.getItem(LS_KEY))).toEqual({ view: 'bars', y: 'size', height: 'tall', rings: true, names: 'all' });
+  expect(readPrefs()).toEqual({ view: 'bars', y: 'size', height: 'tall', rings: true, names: 'all' });
+  localStorage.setItem(LS_KEY, JSON.stringify({ view: 'pie', y: 'mood', height: 'huge', rings: 'yes', names: 'everything' }));
+  expect(readPrefs()).toEqual({ view: null, y: 'intent', height: 'standard', rings: false, names: 'on' });
+  localStorage.setItem(LS_KEY, '{not json');
+  expect(readPrefs().height).toBe('standard');
+});
+
+test('heights, band words, top labels (priorities-v2)', () => {
+  expect(HEIGHTS.map(([id, , px]) => [id, px])).toEqual([['compact', 360], ['standard', 560], ['tall', 800]]);
+  expect([heightPx('compact'), heightPx('tall'), heightPx('nope')]).toEqual([360, 800, 560]);
+  expect(BANDS.map(b => BAND_WORDS[b])).toEqual(['Act now', 'Warm', 'Watch', 'Backlog']);
+  expect(TOP_LABELS).toBe(10);
 });

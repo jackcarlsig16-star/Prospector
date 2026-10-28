@@ -19,7 +19,7 @@ import PrioritiesTable from './PrioritiesTable';
 import QuickMenu from './QuickMenu';
 import BriefCard from './BriefCard';
 import ComposePanel from './ComposePanel';
-import { Y_METRICS, VIEWS, SEGMENTS, WINDOWS, BANDS, NAME_MODES, EMPTY_FILTERS, PAGE_SIZE, filterParams, filtersFromView, activeFilterCount, toggleLit, pageOf, readViewPrefs, writeViewPrefs, readNamesMode, writeNamesMode } from './prioritiesModel';
+import { Y_METRICS, VIEWS, SEGMENTS, WINDOWS, BANDS, NAME_MODES, EMPTY_FILTERS, PAGE_SIZE, filterParams, filtersFromView, activeFilterCount, toggleLit, pageOf, readPrefs, writePrefs } from './prioritiesModel';
 
 // intent-score-v1 S3 / S5 - Sales > Pipeline > Priorities: the book ranked by intent as DOTS (default), BARS or a
 // TABLE; filters in one row above; the legend IS the source toggle (dims, never removes; colors follow the entity);
@@ -44,13 +44,13 @@ function loadHtml2canvas() {
 }
 
 export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onOpenPeople }) {
-  const prefs = useMemo(readViewPrefs, []);
+  const prefs = useMemo(readPrefs, []);
   const phone = useMediaQuery('(max-width: 760px)');
   const [filters, setFilters] = useState(EMPTY_FILTERS);
-  const [y, setY] = useState(() => (Y_METRICS.some(([id]) => id === prefs.y) ? prefs.y : 'intent'));
-  const [view, setView] = useState(() => (VIEWS.some(([id]) => id === prefs.view) ? prefs.view : null)); // null = dots (table on a phone)
+  const [y, setY] = useState(prefs.y);
+  const [view, setView] = useState(prefs.view); // null = dots (table on a phone)
   const [lit, setLit] = useState(() => new Set());
-  const [names, setNames] = useState(readNamesMode);
+  const [names, setNames] = useState(prefs.names);
   const [page, setPage] = useState(0);
   const [topN, setTopN] = useState('40');
   const [showTrend, setShowTrend] = useState(false);
@@ -87,8 +87,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
   useEffect(() => { goalsApi.members(businessId).then(setMembers).catch(() => setMembers([])); }, [businessId]);
   useEffect(() => { goalsApi.composeStatus(businessId).then(setCompose).catch(() => setCompose(null)); }, [businessId]);
   useEffect(() => { goalsApi.scoreViews(businessId).then(setViews).catch(() => setViews([])); }, [businessId]);
-  useEffect(() => { writeViewPrefs({ y, view: view || undefined }); }, [y, view]);
-  useEffect(() => { writeNamesMode(names); }, [names]);
+  useEffect(() => { writePrefs({ ...readPrefs(), y, view: view || undefined, names }); }, [y, view, names]);
 
   useEffect(() => {
     if (!toast) return undefined;

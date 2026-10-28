@@ -102,6 +102,8 @@ export async function listScores(supabase, businessId, query = {}, { now = Date.
   const live = filterScoreRows(all.filter(r => r.live && !r.duplicate_of), f, now).sort(rankSort);
   const counts = { companies: all.length, ranked: ranked.length, shown: rows.length, live: live.length, duplicates: all.filter(r => r.duplicate_of).length, closed: ranked.filter(r => r.closed).length, needs_touch: ranked.filter(r => needsTouch(r, now)).length, band_changed: ranked.filter(r => r.band_changed).length };
   for (const b of ['P1', 'P2', 'P3', 'P4']) counts[b] = rows.filter(r => r.band === b).length;
+  // priorities-v2 D1: the type chips' counts over the UNFILTERED ranked set (same pass, no second query).
+  counts.segments = { all: ranked.length, visitors: ranked.filter(r => r.last_visit).length, partners: ranked.filter(r => r.type === 'partner').length, employers: ranked.filter(r => r.type === 'employer').length, targets: ranked.filter(r => r.type === 'target').length };
   const sources = Object.fromEntries(SOURCE_ORDER.map(k => [k, ranked.filter(r => r.source_label === k).length]));
   const owners = [...new Map(ranked.filter(r => r.owner_user_id).map(r => [r.owner_user_id, r.owner])).entries()].map(([id, name]) => ({ user_id: id, name }));
   return reply(200, { rows: rows.map(r => ({ ...r, rank: ranked.indexOf(r) + 1 })), live, counts, sources, owners, filters: f, computed_at: computedAt, stale: isStale(computedAt, now), today, has_previous: hasPrev, thresholds: weights.thresholds, caps: weights.caps, needs_touch_rule: { min: NEEDS_TOUCH_MIN, days: TOUCH_WINDOWS.needs }, source_order: SOURCE_ORDER });
