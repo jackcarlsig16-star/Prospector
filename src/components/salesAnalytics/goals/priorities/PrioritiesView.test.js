@@ -78,16 +78,35 @@ test('hollow when unresearched (no rings), rings + halo on a touched researched 
   expect(quarry.querySelector('[data-trend="up"]')).toBeInTheDocument();
 });
 
-test('click selects (ring + quick menu + the company window loads by key); the Y switch keeps the selection and the lit set', async () => {
+// FIX priorities-select-vs-open-v1: a click SELECTS (card pinned beside the dot with the quick menu inside, window closed);
+// Open in the menu / the name in the card / a double-click / Enter on a selected mark / "o" open the window.
+const BOARD = [{ type: 'target', id: 't1', name: 'Quarry Labs', stage: 'proposed', channel: 'website_visit', color: 'light', owner_team: null, owner: null, work: null, visited: null, channels: ['all'] }];
+const NO_INTEREST = { items: [], strongest: null, newest_id: null, dismissed: false, show: false };
+const DETAIL = { record: { type: 'target', id: 't1', name: 'Quarry Labs', stage: 'proposed' }, todos: [], waiting: [], visits: [], signals: [], recent: [], people: [], research: { runs: [], today: 0, cap: 5 }, decisions: [], terms: [], interest: NO_INTEREST, timeline: [], decision_makers: [] };
+const windowMocks = () => { goalsApi.pipelineBoard.mockResolvedValue(BOARD); goalsApi.companyDetail.mockResolvedValue(DETAIL); goalsApi.source.mockResolvedValue(null); goalsApi.scoreOf.mockResolvedValue({ score: 72, band: 'P1', components: {}, source_label: 'website' }); };
+test('click selects (ring + the card pinned beside the dot with the quick menu inside; the window stays closed); Open in the menu opens it; the Y switch keeps the selection and the lit set', async () => {
+  windowMocks();
   render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
   await waitFor(() => expect(dots()).toHaveLength(3));
   fireEvent.click(screen.getByRole('button', { name: /^Brad \/ Upside/ }));
   fireEvent.click(dot('Quarry Labs'));
   expect(dot('Quarry Labs').getAttribute('data-selected')).toBe('true');
+  expect(dot('Quarry Labs').getAttribute('aria-pressed')).toBe('true');
   expect(dot('Quarry Labs').querySelector('[data-selection-ring]')).toBeInTheDocument();
-  const menu = await screen.findByRole('toolbar', { name: 'Actions for Quarry Labs' });
+  const card = screen.getByRole('group', { name: 'Quarry Labs - selected' });
+  expect(card.getAttribute('data-pinned-card')).toBe('target-t1');
+  expect(card.getAttribute('data-html2canvas-ignore')).toBe('true');
+  const menu = within(card).getByRole('toolbar', { name: 'Actions for Quarry Labs' });
   expect(within(menu).getAllByRole('button').map(b => b.textContent.replace(/\s+/g, ' ').trim())).toEqual(['Brief', 'Write email · ~$0.03 · 2/30 today', 'Research · ~$0.08 per run', 'Assign to · Jack ▾', 'Add task', 'Not a fit', 'Open']);
   expect(goalsApi.pipelineBoard).toHaveBeenCalledWith('b1', true);
+  expect(screen.queryByRole('tooltip')).toBeNull();
+  await waitFor(() => expect(goalsApi.pipelineBoard).toHaveBeenCalled());
+  expect(document.querySelector('[data-company-panel]')).toBeNull();
+  fireEvent.click(within(menu).getByRole('button', { name: 'Open' }));
+  await waitFor(() => expect(document.querySelector('[data-company-panel]')).toBeTruthy());
+  fireEvent.keyDown(document.body, { key: 'Escape' });
+  await waitFor(() => expect(document.querySelector('[data-company-panel]')).toBeNull());
+  expect(dot('Quarry Labs').getAttribute('data-selected')).toBe('true');
   fireEvent.click(screen.getByRole('button', { name: 'Size' }));
   expect(dot('Quarry Labs').getAttribute('data-selected')).toBe('true');
   expect(dot('Quarry Labs').getAttribute('data-dimmed')).toBe('true');
@@ -150,7 +169,7 @@ test('table mirrors the filters and the legend: the Segment filter re-queries, a
   const table = await screen.findByRole('table');
   expect(within(table).getByRole('columnheader', { name: 'Source' })).toBeInTheDocument();
   expect(within(table).getByText('Live · closed-won or pilot (1)')).toBeInTheDocument();
-  expect(within(table).getAllByRole('button', { name: /Quarry Labs|Hilton Example|Harbor Lane|Live Partner/ })).toHaveLength(4);
+  expect(within(table).getAllByRole('button', { name: /^(Quarry Labs|Hilton Example|Harbor Lane|Live Partner)$/ })).toHaveLength(4);
   fireEvent.click(screen.getByRole('button', { name: /^Brad \/ Upside/ }));
   await waitFor(() => expect(within(screen.getByRole('table')).queryByText('Quarry Labs')).not.toBeInTheDocument());
   expect(within(screen.getByRole('table')).getByText('Hilton Example')).toBeInTheDocument();
@@ -236,7 +255,63 @@ test('phone: the table lands first; Dots names only P1 + the selected; a tap sel
     expect(screen.queryByRole('tooltip')).toBeNull();
     fireEvent.click(dot('Harbor Lane'));
     await waitFor(() => expect(nameLabels()).toEqual(['Harbor Lane', 'Quarry Labs']));
-    expect(screen.getByRole('tooltip')).toHaveTextContent('Harbor Lane');
-    expect(screen.getByRole('tooltip')).toHaveTextContent('Not researched yet');
+    const card = screen.getByRole('group', { name: 'Harbor Lane - selected' });
+    expect(card).toHaveTextContent('Not researched yet');
+    expect(within(card).getByRole('toolbar', { name: 'Actions for Harbor Lane' })).toBeInTheDocument();
+    expect(document.querySelector('[data-company-panel]')).toBeNull();
   } finally { window.matchMedia = desktop; }
+});
+
+test('select vs open: a second click deselects (card gone); Esc deselects; the name in the card, a double-click, Enter on a selected dot and "o" open the window; the hover tooltip is suppressed while a card is pinned; a dot near the right edge gets its card on the left; the bar card sits above', async () => {
+  windowMocks();
+  render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+  await waitFor(() => expect(dots()).toHaveLength(3));
+  fireEvent.click(dot('Quarry Labs'));
+  expect(screen.getByRole('group', { name: 'Quarry Labs - selected' }).getAttribute('data-card-side')).toBe('right');
+  fireEvent.click(dot('Quarry Labs'));
+  expect(screen.queryByRole('group', { name: /selected$/ })).toBeNull();
+  expect(dot('Quarry Labs').getAttribute('data-selected')).toBeNull();
+  fireEvent.click(dot('Harbor Lane'));
+  expect(screen.getByRole('group', { name: 'Harbor Lane - selected' }).getAttribute('data-card-side')).toBe('left');
+  fireEvent.mouseEnter(dot('Quarry Labs'));
+  expect(screen.queryByRole('tooltip')).toBeNull();
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(screen.queryByRole('group', { name: /selected$/ })).toBeNull();
+  fireEvent.mouseEnter(dot('Quarry Labs'));
+  expect(screen.getByRole('tooltip')).toHaveTextContent('Quarry Labs');
+  fireEvent.mouseLeave(dot('Quarry Labs'));
+  fireEvent.click(dot('Quarry Labs'));
+  fireEvent.click(within(screen.getByRole('group', { name: 'Quarry Labs - selected' })).getByRole('button', { name: 'Quarry Labs' }));
+  await waitFor(() => expect(document.querySelector('[data-company-panel]')).toBeTruthy());
+  fireEvent.keyDown(document.body, { key: 'Escape' });
+  await waitFor(() => expect(document.querySelector('[data-company-panel]')).toBeNull());
+  fireEvent.keyDown(window, { key: 'Escape' });
+  expect(screen.queryByRole('group', { name: /selected$/ })).toBeNull();
+  fireEvent.doubleClick(dot('Quarry Labs'));
+  await waitFor(() => expect(document.querySelector('[data-company-panel]')).toBeTruthy());
+  fireEvent.keyDown(document.body, { key: 'Escape' });
+  await waitFor(() => expect(document.querySelector('[data-company-panel]')).toBeNull());
+  fireEvent.keyDown(dot('Quarry Labs'), { key: 'Enter' });
+  expect(dot('Quarry Labs').getAttribute('data-selected')).toBe('true');
+  expect(document.querySelector('[data-company-panel]')).toBeNull();
+  fireEvent.keyDown(dot('Quarry Labs'), { key: 'Enter' });
+  await waitFor(() => expect(document.querySelector('[data-company-panel]')).toBeTruthy());
+  fireEvent.keyDown(document.body, { key: 'Escape' });
+  await waitFor(() => expect(document.querySelector('[data-company-panel]')).toBeNull());
+  fireEvent.keyDown(dot('Harbor Lane'), { key: 'o' });
+  await waitFor(() => expect(document.querySelector('[data-company-panel]')).toBeNull()); // Harbor Lane is not on the board fixture - the note shows instead
+  expect(screen.getByText(/not on the Pipeline board any more/)).toBeInTheDocument();
+  fireEvent.keyDown(window, { key: 'Escape' }); // Quarry Labs was still selected from the Enter sequence - a bar click would toggle it off
+  expect(screen.queryByRole('group', { name: /selected$/ })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Bars' }));
+  await waitFor(() => expect(document.querySelectorAll('[data-bar]')).toHaveLength(3));
+  fireEvent.click(document.querySelector('[data-bar="target-t1"]'));
+  const bcard = screen.getByRole('group', { name: 'Quarry Labs - selected' });
+  expect(bcard.getAttribute('data-card-side')).toBe('above');
+  expect(bcard.style.transform).toBe('translateY(-100%)');
+  expect(within(bcard).getByRole('toolbar', { name: 'Actions for Quarry Labs' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+  const table = await screen.findByRole('table');
+  fireEvent.click(within(table).getByRole('button', { name: 'Open Hilton Example' }));
+  await waitFor(() => expect(screen.getByText(/not on the Pipeline board any more/)).toBeInTheDocument());
 });

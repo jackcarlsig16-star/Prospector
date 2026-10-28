@@ -17,13 +17,27 @@ const M = { l: 44, r: 64, t: 30, b: 28 };
 const ringKey = RING_ORDER.map(k => k[0].toUpperCase() + k.slice(1)).join(' · ');
 const COMPONENT_LABEL = { visits: 'Visits', pages: 'Pages', apollo_intent: 'Apollo intent', people: 'People', fit: 'Fit', research: 'Research', source: 'Source', engagement: 'Engagement', stage: 'Stage', recency: 'Recency' };
 
-export function Tooltip({ row, x, y, metric }) {
+// The breakdown card. Hover = a transient tooltip under the mark. FIX priorities-select-vs-open-v1: pinned = the
+// selected mark's card, placed beside the dot on the side with room (above a bar), never over the mark; the name is a
+// link that OPENS the company window and the quick menu renders inside (children). One card at a time; the PNG export
+// skips it (data-html2canvas-ignore).
+export const CARD_W = 300;
+export function cardPlace({ x, y, W, kind = 'dot', pad = 16 }) {
+  if (kind === 'bar') return { left: Math.max(0, Math.min(W - CARD_W, x - CARD_W / 2)), top: y - 12, transform: 'translateY(-100%)', side: 'above' };
+  const right = x + pad + CARD_W <= W;
+  return right ? { left: x + pad, top: Math.max(0, y - 24), side: 'right' } : { right: W - x + pad, top: Math.max(0, y - 24), side: 'left' };
+}
+export function Tooltip({ row, x, y, metric, pinned = false, place = null, onOpenName, children }) {
   const comps = Object.entries(row.components || {}).filter(([, c]) => c && c.points !== 0).sort((a, b) => Math.abs(b[1].points) - Math.abs(a[1].points));
+  const pos = pinned && place ? { left: place.left, right: place.right, top: place.top, transform: place.transform, width: CARD_W } : { left: Math.max(0, x - 120), top: y + 14, width: 240 };
+  const a11y = pinned ? { role: 'group', 'aria-label': `${row.name} - selected`, 'data-pinned-card': row.key, 'data-card-side': place?.side, 'data-html2canvas-ignore': 'true' } : { role: 'tooltip', 'data-dot-tooltip': true };
   return (
-    <div role="tooltip" data-dot-tooltip style={{ position: 'absolute', left: Math.max(0, x - 120), top: y + 14, width: 240, zIndex: 5, pointerEvents: 'none', background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: 10, padding: '10px 12px', fontSize: 12, color: SA.text, boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
+    <div {...a11y} style={{ position: 'absolute', ...pos, zIndex: pinned ? 7 : 5, pointerEvents: pinned ? 'auto' : 'none', background: SA.surface2, border: `1px solid ${pinned ? SA.accent : SA.border}`, borderRadius: 10, padding: '10px 12px', fontSize: 12, color: SA.text, boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, fontSize: 13 }}>
         <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: sourceColor(row.source_label), flex: 'none' }} />
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</span>
+        {pinned && onOpenName
+          ? <button type="button" className="ui-link" data-card-name title="Open the company window" onClick={onOpenName} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 600, fontSize: 13 }}>{row.name}</button>
+          : <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</span>}
       </div>
       <div style={{ ...numStyle, color: SA.muted, marginTop: 2 }}>Intent {row.score} · {row.band} · {SOURCE_LABELS[row.source_label] || row.source_label}{row.live ? ' · Live' : row.closed ? ' · Closed' : ''}</div>
       <div style={{ ...numStyle, color: SA.muted }}>{row.employees != null ? `${Number(row.employees).toLocaleString('en-US')} employees` : 'size unknown'} · {touchText(row)}</div>
@@ -38,11 +52,22 @@ export function Tooltip({ row, x, y, metric }) {
         </tbody>
       </table>
       {hollowness(row) !== 'solid' && <div style={{ marginTop: 4, color: SA.muted }}>{hollowness(row) === 'hollow' ? 'Not researched yet' : 'Research older than 60 days'}</div>}
+      {pinned && children && <div style={{ marginTop: 8 }}>{children}</div>}
     </div>
   );
 }
+// Click = select (a double-click's second click never toggles), double-click = open; Enter / Space select, then open
+// when already selected; "o" opens.
+export const markHandlers = (r, selected, onSelect, onOpen) => ({
+  onClick: e => { if (e.detail > 1) return; onSelect && onSelect(r); },
+  onDoubleClick: () => onOpen && onOpen(r),
+  onKeyDown: e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (selected && onOpen) onOpen(r); else if (onSelect) onSelect(r); }
+    else if (e.key === 'o' || e.key === 'O') { e.preventDefault(); onOpen && onOpen(r); }
+  },
+});
 
-export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, counts = {}, selectedKey, onSelect, showTrend = false, width = 960, anchors = {}, names = 'on', phone = false }) {
+export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, counts = {}, selectedKey, onSelect, onOpen, menu = null, showTrend = false, width = 960, anchors = {}, names = 'on', phone = false }) {
   const [hover, setHover] = useState(null);
   const n = rows.length;
   const W = Math.max(320, width), plotW = W - M.l - M.r, plotH = CHART_H - M.t - M.b;
@@ -62,7 +87,7 @@ export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, c
     labelCandidates(rows, { mode: names, selectedKey, phone, y }).map(r => { const p = byKey.get(r.key); return { key: r.key, text: labelText(r.name, maxChars), x: p.x, y: p.y, pad: base + 7 }; }),
     { minX: M.l, maxX: W - M.r, minY: M.t - 12, maxY: CHART_H - M.b + 12, obstacles },
   );
-  const pinned = phone && !hover ? pts.find(p => p.r.key === selectedKey) : null;
+  const pinned = pts.find(p => p.r.key === selectedKey) || null;
   return (
     <div data-dots-chart style={{ position: 'relative', width: '100%' }}>
       <svg width="100%" height={CHART_H} viewBox={`0 0 ${W} ${CHART_H}`} role="group" aria-label={`Companies ranked by intent, Y axis ${scale.label}`} style={{ display: 'block', overflow: 'visible', fontFamily: 'inherit' }}>
@@ -91,7 +116,7 @@ export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, c
           return (
             <g key={r.key} data-dot={r.key} data-source={r.source_label} data-dimmed={dim ? 'true' : undefined} data-hollow={hollow} data-halo={halo || undefined} data-selected={selected ? 'true' : undefined}
               role="button" tabIndex={0} aria-label={rowLabel(r, SOURCE_LABELS)} aria-pressed={selected}
-              onClick={() => onSelect && onSelect(r)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect && onSelect(r); } }}
+              {...markHandlers(r, selected, onSelect, onOpen)}
               onMouseEnter={() => setHover({ row: r, x: p.x, y: p.y })} onMouseLeave={() => setHover(null)} onFocus={() => setHover({ row: r, x: p.x, y: p.y })} onBlur={() => setHover(null)}
               style={{ transform: `translate(${p.x}px, ${p.y}px)`, transition: 'transform 400ms ease, opacity 200ms', opacity: dim ? 0.4 : 1, cursor: 'pointer', outline: 'none' }}>
               {halo && <circle r={base + 16} fill="none" stroke={SA.text} strokeWidth={halo === 'bright' ? 2 : 1} opacity={halo === 'bright' ? 0.85 : 0.3} data-halo-ring />}
@@ -117,8 +142,8 @@ export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, c
         <span>Rank 1 → {n}</span>
         <span>Rings: {ringKey} · outer ring = touched (bright ≤ 7 d, faint ≤ 30 d) · hollow = not researched</span>
       </div>
-      {hover && <Tooltip row={hover.row} x={hover.x} y={hover.y} metric={y} />}
-      {pinned && <Tooltip row={pinned.r} x={pinned.x} y={pinned.y} metric={y} />}
+      {hover && !pinned && <Tooltip row={hover.row} x={hover.x} y={hover.y} metric={y} />}
+      {pinned && <Tooltip row={pinned.r} x={pinned.x} y={pinned.y} metric={y} pinned place={cardPlace({ x: pinned.x, y: pinned.y, W, pad: base + 14 })} onOpenName={() => onOpen && onOpen(pinned.r)}>{menu}</Tooltip>}
     </div>
   );
 }

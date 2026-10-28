@@ -23,7 +23,9 @@ import { Y_METRICS, VIEWS, SEGMENTS, WINDOWS, BANDS, NAME_MODES, EMPTY_FILTERS, 
 
 // intent-score-v1 S3 / S5 - Sales > Pipeline > Priorities: the book ranked by intent as DOTS (default), BARS or a
 // TABLE; filters in one row above; the legend IS the source toggle (dims, never removes; colors follow the entity);
-// a click selects -> the company window opens by key (the Pipeline row) and the quick menu appears under the chart;
+// a click SELECTS (FIX priorities-select-vs-open-v1): the breakdown card pins beside the mark with the quick menu inside,
+// a second click or Esc deselects; the company window opens only on purpose - the menu's Open, the name in the card or
+// the table's Open, a double-click, Enter on a selected mark or "o";
 // Share saves the filter state as a named view and exports a PNG (html2canvas, lazy from the CDN) + the CSV.
 // Phone: the table by default, the chart in a sideways-scrolling card. Dark module -> .ui-theme-dark.
 const HTML2CANVAS = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
@@ -78,6 +80,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
   useEffect(() => { goalsApi.scoreViews(businessId).then(setViews).catch(() => setViews([])); }, [businessId]);
   useEffect(() => { writeViewPrefs({ y, view: view || undefined }); }, [y, view]);
   useEffect(() => { writeNamesMode(names); }, [names]);
+
   useEffect(() => {
     if (!toast) return undefined;
     undoTimer.current = setTimeout(() => setToast(null), toast.undo ? 8000 : 4000);
@@ -116,14 +119,23 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
   const litCounts = data?.sources || {};
   const selected = useMemo(() => [...(data?.rows || []), ...(data?.live || [])].find(r => r.key === selectedKey) || null, [data, selectedKey]);
   const panelRow = panelKey && board ? board.find(r => rowKey(r) === panelKey) || null : null;
+  const windowOpen = !!panelRow;
+  // Esc clears the selection (and a stale window key) when no window / compose panel is open - those close themselves first.
+  useEffect(() => {
+    if (!selectedKey || windowOpen || composeFor) return undefined;
+    const onKey = e => { if (e.key === 'Escape') { setSelectedKey(null); setPanelKey(null); setBrief(null); } };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedKey, windowOpen, composeFor]);
   const set = (k, v) => setFilters(f => ({ ...f, [k]: v }));
   const nFilters = activeFilterCount(filters);
 
   const select = r => {
-    setSelectedKey(r.key);
-    setPanelKey(r.key);
+    setSelectedKey(k => (k === r.key ? null : r.key));
+    if (selectedKey === r.key) setBrief(null);
     if (!board) loadBoard();
   };
+  const open = r => { setPanelKey(r.key); if (!board) loadBoard(); };
   const openBrief = async r => {
     setBrief({ key: r.key });
     try { setBrief({ key: r.key, brief: await goalsApi.brief(businessId, r.type, r.id) }); } catch (e) { setBrief({ key: r.key, error: e.message }); }
@@ -160,7 +172,11 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
   };
   const patchRow = (r, patch) => setBoard(bs => bs.map(x => (rowKey(x) === rowKey(r) ? { ...x, ...patch } : x)));
 
-  const chartProps = { rows: paged.rows, lit, y, thresholds: data?.thresholds, caps: data?.caps, counts: data?.counts || {}, selectedKey, onSelect: select, showTrend, width: phone ? Math.max(width, 720) : width, names, phone };
+  const menu = selected ? (
+    <QuickMenu businessId={businessId} row={selected} members={members} meId={meId} canEdit={canEdit} compose={compose} nextStep={brief?.key === selected.key ? brief.brief?.next_step : null}
+      onBrief={() => openBrief(selected)} onCompose={() => setComposeFor(selected)} onOpen={() => open(selected)} onChanged={reloadAll} onToast={setToast} />
+  ) : null;
+  const chartProps = { rows: paged.rows, lit, y, thresholds: data?.thresholds, caps: data?.caps, counts: data?.counts || {}, selectedKey, onSelect: select, onOpen: open, menu, showTrend, width: phone ? Math.max(width, 720) : width, names, phone };
   const legend = (
     <div ref={legendRef} role="group" aria-label="Source" data-legend style={rowBar}>
       <span className="ui-group-label" aria-hidden="true">Source</span>
@@ -231,7 +247,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
           {legend}
           {nFilters > 0 && <div data-filter-line style={{ fontSize: 12, color: SA.muted }}>Filters: {filters.segment !== 'all' ? `${SEGMENTS.find(([id]) => id === filters.segment)?.[1]} · ` : ''}{filters.owner ? `${filters.owner === 'unassigned' ? 'Unassigned' : members.find(m => m.user_id === filters.owner)?.name || 'owner'} · ` : ''}{filters.band ? `${filters.band} · ` : ''}{filters.window ? `visited ${filters.window} d · ` : ''}{filters.needs_touch ? 'needs a touch · ' : ''}{filters.min ? `min ${filters.min} · ` : ''}{filters.q ? `"${filters.q}" · ` : ''}{data.today}</div>}
           {effectiveView === 'table'
-            ? <PrioritiesTable rows={rows} live={data.live} lit={lit} selectedKey={selectedKey} onSelect={select} showTrend={showTrend} phone={phone} />
+            ? <PrioritiesTable rows={rows} live={data.live} lit={lit} selectedKey={selectedKey} onSelect={select} onOpen={open} showTrend={showTrend} phone={phone} />
             : (
               <div ref={chartRef} data-chart-box style={{ overflowX: phone ? 'auto' : 'visible', minWidth: 0 }}>
                 <div style={{ minWidth: phone ? 720 : 0 }}>
@@ -249,10 +265,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
           {data.counts.live > 0 && effectiveView !== 'table' && <div style={{ fontSize: 12, color: SA.muted }}>{data.counts.live} live (closed-won or pilot) and {data.counts.duplicates} duplicate{data.counts.duplicates === 1 ? '' : 's'} are out of the ranking - see the Table and the CSV.</div>}
         </div>
       )}
-      {selected && (
-        <QuickMenu businessId={businessId} row={selected} members={members} meId={meId} canEdit={canEdit} compose={compose} nextStep={brief?.key === selected.key ? brief.brief?.next_step : null}
-          onBrief={() => openBrief(selected)} onCompose={() => setComposeFor(selected)} onOpen={() => { setPanelKey(selected.key); if (!board) loadBoard(); }} onChanged={reloadAll} onToast={setToast} />
-      )}
+      {effectiveView === 'table' && menu}
       {brief && selected && brief.key === selected.key && <BriefCard brief={brief.brief} error={brief.error} onClose={() => setBrief(null)} />}
       {composeFor && <ComposePanel businessId={businessId} row={composeFor} onClose={() => { setComposeFor(null); goalsApi.composeStatus(businessId).then(setCompose).catch(() => {}); }} onToast={setToast} />}
       {panelRow && (

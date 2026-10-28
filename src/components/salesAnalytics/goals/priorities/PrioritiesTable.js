@@ -12,13 +12,15 @@ const TYPE_WORD = { partner: 'Partner', employer: 'Employer', target: 'Target' }
 const RESEARCHED = { fresh: 'Yes', decayed: '> 60 d', none: 'No' };
 const n = v => (v == null ? '—' : Number(v).toLocaleString('en-US'));
 
-export default function PrioritiesTable({ rows, live = [], lit, selectedKey, onSelect, showTrend = false, phone = false }) {
+// FIX priorities-select-vs-open-v1: the name click selects (double-click opens); "Open" is the deliberate opener.
+export default function PrioritiesTable({ rows, live = [], lit, selectedKey, onSelect, onOpen, showTrend = false, phone = false }) {
   const visible = rows.filter(r => !isDimmed(r, lit));
   const liveVisible = live.filter(r => !isDimmed(r, lit));
   const columns = [
     { id: 'name', label: 'Company', sticky: true, width: 220, sortValue: r => r.name, render: r => (
-      <button type="button" className="ui-link ui-link--cell" data-row-name aria-pressed={r.key === selectedKey} onClick={() => onSelect && onSelect(r)} style={{ fontWeight: r.key === selectedKey ? 600 : 500 }}>{r.name}</button>
+      <button type="button" className="ui-link ui-link--cell" data-row-name aria-pressed={r.key === selectedKey} onClick={e => { if (e.detail > 1) return; onSelect && onSelect(r); }} onDoubleClick={() => onOpen && onOpen(r)} style={{ fontWeight: r.key === selectedKey ? 600 : 500 }}>{r.name}</button>
     ), title: r => `${r.name} · ${TYPE_WORD[r.type] || r.type}` },
+    { id: 'open', label: '', width: 56, render: r => <button type="button" className="ui-link" data-row-open aria-label={`Open ${r.name}`} onClick={() => onOpen && onOpen(r)}>Open</button> },
     { id: 'score', label: 'Score', width: 70, sortValue: r => r.score, render: r => <span style={{ ...numStyle, fontWeight: 600 }}>{r.score}</span> },
     { id: 'band', label: 'Band', width: 60, sortValue: r => r.band, render: r => <span style={numStyle}>{r.band}</span> },
     { id: 'source', label: 'Source', width: 140, sortValue: r => r.source_label, render: r => (
@@ -40,8 +42,9 @@ export default function PrioritiesTable({ rows, live = [], lit, selectedKey, onS
   const compactRow = r => (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
       <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: sourceColor(r.source_label), flex: 'none' }} />
-      <button type="button" className="ui-link ui-link--cell" data-row-name onClick={() => onSelect && onSelect(r)} style={{ flex: 1, textAlign: 'left' }}>{r.name}</button>
+      <button type="button" className="ui-link ui-link--cell" data-row-name aria-pressed={r.key === selectedKey} onClick={() => onSelect && onSelect(r)} style={{ flex: 1, textAlign: 'left', fontWeight: r.key === selectedKey ? 600 : 500 }}>{r.name}</button>
       <span style={{ ...numStyle, fontWeight: 600 }}>{r.score}</span><span style={{ ...numStyle, color: SA.muted }}>{r.band}</span>
+      <button type="button" className="ui-link" data-row-open aria-label={`Open ${r.name}`} onClick={() => onOpen && onOpen(r)}>Open</button>
     </div>
   );
   return (

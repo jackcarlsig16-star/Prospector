@@ -3,7 +3,7 @@ import { SA } from '../../theme';
 import { sourceColor, SOURCE_LABELS } from '../../palette';
 import { numStyle } from '../goalsUi';
 import { yValue, yScale, isDimmed, rowLabel, hollowness, labelCandidates, labelText, placeLabels, LABEL_MIN_CHARS } from './prioritiesModel';
-import { Tooltip, CHART_H } from './DotsChart';
+import { Tooltip, CHART_H, cardPlace, markHandlers } from './DotsChart';
 
 // intent-score-v1 S3 ALTERNATE - the same rows as thin bars (4 px rounded tops anchored to the baseline, 2 px gaps),
 // the same legend / selection / hover / filters; the bar color is the source, never the rank. Names follow the dots'
@@ -11,7 +11,7 @@ import { Tooltip, CHART_H } from './DotsChart';
 const M = { l: 44, r: 64, t: 30, b: 28 };
 const topPath = (x, y0, y1, w, rad) => { const r = Math.min(rad, w / 2, Math.max(0, y0 - y1)); return `M${x},${y0} V${y1 + r} Q${x},${y1} ${x + r},${y1} H${x + w - r} Q${x + w},${y1} ${x + w},${y1 + r} V${y0} Z`; };
 
-export default function BarsChart({ rows, lit, y = 'intent', thresholds, caps, counts = {}, selectedKey, onSelect, showTrend = false, width = 960, names = 'on', phone = false }) {
+export default function BarsChart({ rows, lit, y = 'intent', thresholds, caps, counts = {}, selectedKey, onSelect, onOpen, menu = null, showTrend = false, width = 960, names = 'on', phone = false }) {
   const [hover, setHover] = useState(null);
   const n = rows.length;
   const W = Math.max(320, width), plotW = W - M.l - M.r, plotH = CHART_H - M.t - M.b;
@@ -32,7 +32,7 @@ export default function BarsChart({ rows, lit, y = 'intent', thresholds, caps, c
     else above.push({ key: r.key, text, x: g.x + bw / 2, y: g.top - 8, pad: 0, anchor: 'middle' });
   }
   const labels = placeLabels(above, { minX: M.l, maxX: W - M.r, minY: M.t - 12, maxY: base, obstacles: geom.map(g => ({ x0: g.x, x1: g.x + bw, y0: g.top, y1: base })) });
-  const pinned = phone && !hover ? byKey.get(selectedKey) : null;
+  const pinned = byKey.get(selectedKey) || null;
   return (
     <div data-bars-chart style={{ position: 'relative', width: '100%' }}>
       <svg width="100%" height={CHART_H} viewBox={`0 0 ${W} ${CHART_H}`} role="group" aria-label={`Companies ranked by intent as bars, Y axis ${scale.label}`} style={{ display: 'block', overflow: 'visible', fontFamily: 'inherit' }}>
@@ -55,7 +55,7 @@ export default function BarsChart({ rows, lit, y = 'intent', thresholds, caps, c
           return (
             <g key={r.key} data-bar={r.key} data-source={r.source_label} data-dimmed={dim ? 'true' : undefined} data-selected={selected ? 'true' : undefined}
               role="button" tabIndex={0} aria-label={rowLabel(r, SOURCE_LABELS)} aria-pressed={selected}
-              onClick={() => onSelect && onSelect(r)} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect && onSelect(r); } }}
+              {...markHandlers(r, selected, onSelect, onOpen)}
               onMouseEnter={() => setHover({ row: r, x: x + bw / 2, y: top })} onMouseLeave={() => setHover(null)} onFocus={() => setHover({ row: r, x: x + bw / 2, y: top })} onBlur={() => setHover(null)}
               style={{ opacity: dim ? 0.4 : 1, cursor: 'pointer', outline: 'none' }}>
               <path d={topPath(x, base, top, bw, 4)} fill={color} opacity={hollowness(r) === 'hollow' ? 0.55 : 1} style={{ transition: 'd 400ms' }} />
@@ -73,8 +73,8 @@ export default function BarsChart({ rows, lit, y = 'intent', thresholds, caps, c
         {!n && <text x={W / 2} y={CHART_H / 2} textAnchor="middle" fontSize={13} fill={SA.muted}>No companies under these filters</text>}
       </svg>
       {names === 'all' && n > 0 && <div data-names-count style={{ fontSize: 11, color: SA.muted, padding: '0 0 0 44px' }}>{inside.length + labels.length} of {n} named - see Table for all</div>}
-      {hover && <Tooltip row={hover.row} x={hover.x} y={hover.y} metric={y} />}
-      {pinned && <Tooltip row={pinned.r} x={pinned.x + bw / 2} y={pinned.top} metric={y} />}
+      {hover && !pinned && <Tooltip row={hover.row} x={hover.x} y={hover.y} metric={y} />}
+      {pinned && <Tooltip row={pinned.r} x={pinned.x + bw / 2} y={pinned.top} metric={y} pinned place={cardPlace({ x: pinned.x + bw / 2, y: pinned.top, W, kind: 'bar' })} onOpenName={() => onOpen && onOpen(pinned.r)}>{menu}</Tooltip>}
     </div>
   );
 }
