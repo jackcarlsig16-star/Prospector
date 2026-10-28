@@ -74,7 +74,7 @@ export function homeOf(target) {
 
 // initialTarget: a link from the Huddle or Analytics ({ target }, new object
 // per click) - same targets as go() below.
-export default function GoalsTab({ businessId, section, view, onNav, onOpenOverview, onOpenHuddle, initialTarget, analytics, pageLoadFailures }) {
+export default function GoalsTab({ businessId, section, view, onNav, onOpenOverview, onOpenHuddle, initialTarget, pipelineTarget = null, analytics, pageLoadFailures }) {
   const compact = useMediaQuery('(max-width: 1099px)');
   const [weekStart, setWeekStart] = useState(() => laWeekStart());
   // null until the first choice: actions-v2 REV2 A1 defaults it to the signed-in Member (Team for a Viewer).
@@ -468,7 +468,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
           <PrioritiesView businessId={businessId} canEdit={canEdit} isAdmin={isAdmin} meId={meId} onOpenPeople={company => { writePeopleCompany(company); onNav('pipeline', 'people'); }} />
         )}
         {section === 'pipeline' && view === 'companies' && (
-          <PipelineView businessId={businessId} canEdit={canEdit} meId={meId}
+          <PipelineView businessId={businessId} canEdit={canEdit} meId={meId} focusTarget={pipelineTarget}
             onOpenPartner={(id, name) => go({ partners: { ids: [id], open: id, label: name } })} onOpenCompanies={w => { setOwnerSlug('team'); go({ companies: w }); }}
             onOpenPeople={company => { writePeopleCompany(company); onNav('pipeline', 'people'); }} />
         )}

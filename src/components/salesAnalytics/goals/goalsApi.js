@@ -25,6 +25,8 @@ export const OPEN_GOALS_TARGET = 'prospector:open-goals-target';
 // actions-home-attention-v1 - the Needs attention drawer opening (the Tasks drawer closes: one at a time), and a
 // link to the app's Connections page from inside Sales & Marketing.
 export const OPEN_ATTENTION = 'prospector:open-attention';
+// one-plus-button-v1 - the header "+" added a record: Pipeline › Companies opens with that row highlighted and its window open.
+export const OPEN_PIPELINE_RECORD = 'prospector:open-pipeline-record'; // detail { key: '<type>-<id>', section? }
 export const OPEN_CONNECTIONS = 'prospector:open-connections';
 
 async function call(businessId, path, { method = 'GET', body } = {}) {

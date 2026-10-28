@@ -4,7 +4,9 @@ import { laWeekStart } from '../periods';
 import { roleAtLeast } from '../../../constants/roles';
 import { fetchMe } from '../../../utils/authSession';
 import { createNugget } from '../../../utils/nuggets';
-import { goalsApi, OPEN_TASKS } from '../goals/goalsApi';
+import { goalsApi, OPEN_TASKS, OPEN_PIPELINE_RECORD } from '../goals/goalsApi';
+import AddMenu, { ADD_GROUP } from '../goals/AddMenu';
+import AddFlows from '../goals/AddFlows';
 import { memberLookup, labelStyle, inputStyle, Btn, ErrorNote } from '../goals/goalsUi';
 import { useLinkOptions } from '../tasks/linkTargets';
 import QuickAdd from '../tasks/QuickAdd';
@@ -14,8 +16,12 @@ import Segmented from '../../../ui/Segmented';
 // sales-ia-v1 Stage 3 - the "+" in the workspace header. One panel, three
 // modes: Task mounts QuickAdd, Note mounts CallNotesPanel (Intake), Idea
 // appends to the browser-only Ideas store through the setter App.js owns.
-// Company arrives with pipeline-wide-table-v1 REV3 Stage 3.
+// one-plus-button-v1 P1: the "+" opens ONE menu - Capture: Task · Note · Idea (this panel, in that mode; C / T / N / I
+// unchanged) | Add: Employer · Partner · Target · Person (AddFlows, the same forms Pipeline's "+ Add ▾" opens). After an
+// add, Pipeline › Companies opens with the row highlighted and its window open (OPEN_PIPELINE_RECORD).
 const MODES = [{ id: 'task', label: 'Task', meta: 'T' }, { id: 'note', label: 'Note', meta: 'N' }, { id: 'idea', label: 'Idea', meta: 'I' }];
+const CAPTURE_GROUP = { id: 'capture', label: 'Capture', items: MODES.map(m => ({ id: `capture:${m.id}`, label: m.label, meta: m.meta })) };
+const HEADER_GROUPS = [CAPTURE_GROUP, ADD_GROUP];
 const MODE_KEYS = { t: 'task', n: 'note', i: 'idea' };
 const WIDTH = 560;
 const Z = 4001; // the Tasks drawer's tier, so the panel sits above the sticky header and the drawer tab
@@ -32,12 +38,14 @@ export default function QuickCapture({ businessId, features, activeUser, onSaveN
   const [error, setError] = useState('');
   const [idea, setIdea] = useState('');
   const [savingIdea, setSavingIdea] = useState(false);
+  const [adding, setAdding] = useState(null);
+  const [addNote, setAddNote] = useState('');
   const noteDirty = useRef(false);
   const panelRef = useRef(null);
   const enabled = !!features?.goals_sales;
 
   useEffect(() => { if (enabled) fetchMe().then(setMe).catch(() => setMe(null)); }, [enabled]);
-  useEffect(() => { if (open && !members.length) goalsApi.members(businessId).then(setMembers).catch(e => setError(e.message)); }, [open, members.length, businessId]);
+  useEffect(() => { if ((open || adding) && !members.length) goalsApi.members(businessId).then(setMembers).catch(e => setError(e.message)); }, [open, adding, members.length, businessId]);
   const links = useLinkOptions(businessId, week);
 
   const close = useCallback(() => { setOpen(false); setStatus(''); setError(''); noteDirty.current = false; }, []);
@@ -67,6 +75,7 @@ export default function QuickCapture({ businessId, features, activeUser, onSaveN
     (panel?.querySelector('textarea') || panel?.querySelector('input:not([type="date"])'))?.focus();
   }, [open, mode]);
   useEffect(() => { if (mode !== 'note') noteDirty.current = false; }, [mode]);
+  useEffect(() => { if (!addNote) return undefined; const t = setTimeout(() => setAddNote(''), 5000); return () => clearTimeout(t); }, [addNote]);
 
   if (!show) return null;
 
@@ -82,6 +91,16 @@ export default function QuickCapture({ businessId, features, activeUser, onSaveN
     } catch (e) { setError(e.message); return false; }
   };
   const noteCreated = () => { close(); openTasks('team'); };
+  const pick = id => {
+    setAddNote('');
+    if (id.startsWith('capture:')) { setMode(id.slice('capture:'.length)); setStatus(''); setOpen(true); return; }
+    setAdding(id);
+  };
+  const added = (record, { section = null, text = null } = {}) => {
+    setAdding(null);
+    if (text) setAddNote(text);
+    if (record?.id) window.dispatchEvent(new CustomEvent(OPEN_PIPELINE_RECORD, { detail: { key: `${record.type}-${record.id}`, section } }));
+  };
   const saveIdea = async () => {
     if (!idea.trim() || savingIdea) return;
     setSavingIdea(true); setError('');
@@ -97,8 +116,10 @@ export default function QuickCapture({ businessId, features, activeUser, onSaveN
   return (
     <>
       <style>{SA_THEME_CSS}</style>
-      <button type="button" className="ui-btn ui-btn--primary no-print" onClick={() => setOpen(true)} aria-label="Quick capture" title="Quick capture (C)" data-capture-button
-        style={{ width: 32, padding: 0, fontSize: 20, lineHeight: 1, flexShrink: 0 }}>+</button>
+      <AddMenu phone={!!compact} groups={HEADER_GROUPS} label="Capture or add" onPick={pick} buttonLabel="+"
+        buttonProps={{ 'aria-label': 'Quick capture', title: 'Capture (C) or add a company / person', 'data-capture-button': true, style: { width: 32, padding: 0, fontSize: 20, lineHeight: 1, flexShrink: 0 } }} />
+      {adding && <span className={`${SA_THEME_CLASS} ui-theme-dark no-print`}><AddFlows businessId={businessId} members={members} adding={adding} onClose={() => setAdding(null)} onAdded={added} /></span>}
+      {addNote && <span role="status" data-add-note style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: Z + 2, padding: '10px 16px', borderRadius: 10, background: SA.surface2, border: `1px solid ${SA.border}`, color: SA.text, fontSize: 14 }}>{addNote}</span>}
       {open && (
         <span className={`${SA_THEME_CLASS} ui-theme-dark no-print`}>
           <div onClick={close} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: Z }} />

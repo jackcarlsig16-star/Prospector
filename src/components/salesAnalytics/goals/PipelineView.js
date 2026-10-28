@@ -11,9 +11,7 @@ import SidePanel from '../SidePanel';
 import VisitorReport from './VisitorReport';
 import PeopleSearch from './PeopleSearch';
 import AddMenu from './AddMenu';
-import AddPersonForm from './AddPersonForm';
-import AddTargetForm from './AddTargetForm';
-import AddPartnerForm from './partners/AddPartnerForm';
+import AddFlows from './AddFlows';
 import TypeChip, { typeSortValue } from './TypeChip';
 import DataTable from '../../../ui/DataTable';
 import EditableCell from '../../../ui/EditableCell';
@@ -72,7 +70,7 @@ const SIZE_TAG = { research: 'Research', manual: 'Typed' };
 const Swatch = ({ color }) => <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, flex: 'none', background: BOARD_TOKENS[color] }} />;
 const workCell = (n, late, what) => (n ? <span style={{ ...numStyle, color: late ? SA.bad : SA.text }} title={`${n} open ${what}${late ? ` · ${late} overdue` : ''}`}>{n}{late ? ' !' : ''}</span> : <Dim />);
 
-export default function PipelineView({ businessId, canEdit, meId, onOpenPartner, onOpenCompanies, onOpenPeople }) {
+export default function PipelineView({ businessId, canEdit, meId, onOpenPartner, onOpenCompanies, onOpenPeople, focusTarget = null }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState('');
   const [channel, setChannel] = useState(() => channelFromParam(new URLSearchParams(window.location.search).get('channel')));
@@ -225,6 +223,12 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
     if (id === 'employer') { setPanel(null); setPanelError(''); return; }
     setAdding(id);
   };
+  // one-plus-button-v1: a record added from the header "+" (OPEN_PIPELINE_RECORD) - same landing as `added`.
+  useEffect(() => {
+    if (!focusTarget?.key) return;
+    added({ type: focusTarget.key.split('-')[0], id: focusTarget.key.slice(focusTarget.key.indexOf('-') + 1) }, { section: focusTarget.section || null });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusTarget]);
   const exportSheet = async () => {
     setExporting(true);
     try {
@@ -444,25 +448,8 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
           <PeopleSearch businessId={businessId} canEdit={canEdit} onOpenCompany={c => { setPeopleOpen(false); setPanelKey(`${c.type}-${c.id}`); }} />
         </SidePanel>
       )}
-      {canEdit && adding === 'partner' && (
-        <SidePanel label="Add partner" width={620} onClose={() => setAdding(null)}>
-          <AddPartnerForm members={members} onCreate={async body => { const goal = await goalsApi.createPartner(businessId, body); await added({ type: 'partner', id: goal.id }, { text: `${goal.name} added as a partner` }); }}
-            onDupeCheck={params => goalsApi.partnerDupeCheck(businessId, params)} onDone={() => setAdding(null)} onCancel={() => setAdding(null)}
-            onOpenPartner={id => added({ type: 'partner', id })} />
-        </SidePanel>
-      )}
-      {canEdit && adding === 'target' && (
-        <SidePanel label="Add target" width={520} onClose={() => setAdding(null)}>
-          <AddTargetForm businessId={businessId} onCancel={() => setAdding(null)}
-            onAdded={r => added(r.created || r.already, { text: r.already ? `${r.already.name} is already in Prospector - opened it` : `${r.created.name} added as a target` })} />
-        </SidePanel>
-      )}
-      {canEdit && adding === 'person' && (
-        <SidePanel label="Add person" width={520} onClose={() => setAdding(null)}>
-          <AddPersonForm businessId={businessId} companies={all.filter(r => ['partner', 'employer', 'target'].includes(r.type)).map(r => ({ type: r.type, id: r.id, name: r.name }))} onCancel={() => setAdding(null)}
-            onAdded={r => added(r.company, { section: 'people', text: r.company.id ? `${r.person.name} added to ${r.company.name}` : `${r.person.name} filed under "${r.company.name}" with no record yet - find them in People search` })} />
-        </SidePanel>
-      )}
+      {canEdit && <AddFlows businessId={businessId} members={members} adding={adding} onClose={() => setAdding(null)} companies={all.filter(r => ['partner', 'employer', 'target'].includes(r.type)).map(r => ({ type: r.type, id: r.id, name: r.name }))}
+        onAdded={(record, opts) => added(record, opts)} />}
       {canEdit && updating && (
         <SheetUpdateDrawer businessId={businessId} onClose={() => setUpdating(false)}
           onApplied={r => { setToast({ text: `Updated ${r.applied}${r.failed.length ? ` · ${r.failed.length} not applied` : ''}` }); load(); }} />

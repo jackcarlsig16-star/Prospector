@@ -7,7 +7,7 @@ import Tag from '../../ui/Tag';
 import AnalyticsView from './AnalyticsView';
 import DailyHuddle from './DailyHuddle';
 import GoalsTab, { homeOf } from './goals/GoalsTab';
-import { goalsApi, OPEN_GOALS_WEEK, OPEN_GOALS_TARGET } from './goals/goalsApi';
+import { goalsApi, OPEN_GOALS_WEEK, OPEN_GOALS_TARGET, OPEN_PIPELINE_RECORD } from './goals/goalsApi';
 import { laDateString } from './periods';
 import { roleAtLeast } from '../../constants/roles';
 import { fetchFlags, FLAGS_CHANGED } from './huddleApi';
@@ -96,6 +96,7 @@ export default function SalesAnalyticsTab({ businessId, features }) {
   const [huddleTarget, setHuddleTarget] = useState(null); // { feed } | { flags } from a Goals number
   const [overviewFocus, setOverviewFocus] = useState(null); // widget id a Goals number opens
   const [goalsTarget, setGoalsTarget] = useState(null); // { target } a Huddle / Analytics number opens in Goals
+  const [pipelineTarget, setPipelineTarget] = useState(null); // { key, section, n } a record the header "+" added (one-plus-button-v1)
   const [me, setMe] = useState(null);
   const [myFlagCount, setMyFlagCount] = useState(0);
 
@@ -123,6 +124,11 @@ export default function SalesAnalyticsTab({ businessId, features }) {
     return () => window.removeEventListener(OPEN_GOALS_WEEK, open);
   }, [nav]);
 
+  useEffect(() => {
+    const open = e => { setPipelineTarget({ key: e.detail?.key, section: e.detail?.section || null, n: Date.now() }); nav('pipeline', 'companies'); };
+    window.addEventListener(OPEN_PIPELINE_RECORD, open);
+    return () => window.removeEventListener(OPEN_PIPELINE_RECORD, open);
+  }, [nav]);
   const openGoals = useCallback(target => { const home = homeOf(target); setGoalsTarget({ target }); nav(home ? home.tab : 'dashboard', home?.view); }, [nav]);
   useEffect(() => {
     const open = e => openGoals(e.detail.target);
@@ -205,7 +211,7 @@ export default function SalesAnalyticsTab({ businessId, features }) {
 
       {people
         ? <DailyHuddle businessId={businessId} focusContactId={huddleFocus} onFocused={() => setHuddleFocus(null)} focusTarget={huddleTarget} onOpenGoals={openGoals} />
-        : <GoalsTab businessId={businessId} section={tab} view={view} onNav={nav} initialTarget={goalsTarget} pageLoadFailures={pageLoadFailures}
+        : <GoalsTab businessId={businessId} section={tab} view={view} onNav={nav} initialTarget={goalsTarget} pipelineTarget={pipelineTarget} pageLoadFailures={pageLoadFailures}
             onOpenOverview={widget => { setOverviewFocus(widget || null); nav('dashboard', 'analytics'); }}
             onOpenHuddle={(contactId, target) => { setHuddleFocus(contactId); setHuddleTarget(target ? { ...target } : null); nav('pipeline', 'people'); }}
             analytics={<AnalyticsView businessId={businessId} features={features} canEdit={canEdit} onOpenGoals={openGoals} onOpenHuddle={openHuddle} focusWidget={overviewFocus} onFocused={clearFocus} />} />}
