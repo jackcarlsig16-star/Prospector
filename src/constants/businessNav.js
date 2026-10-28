@@ -14,7 +14,8 @@ export const BUSINESS_NAV = [
   { id: "command-center",  ic: "⌂", lb: "Command Center", hiddenWith: ["goals_sales", "hk_sales"] },
   { id: "sales-analytics", ic: "📈", lb: "Sales & Marketing", feature: "goals_sales" },
   { id: "hk-sales",        ic: "✿", lb: "Grow", feature: "hk_sales" },
-  { id: "accounts",        ic: "◈", lb: "Accounts", hiddenWith: "hk_sales" },
+  // visual-nav-cleanup-v1 C5: the legacy lists (Accounts) stay for workspaces on the accounts model only.
+  { id: "accounts",        ic: "◈", lb: "Accounts", hiddenWith: ["goals_sales", "hk_sales"] },
   { id: "projects",        ic: "▣", lb: "Projects", hiddenWith: "hk_sales" },
   { id: "overview",        ic: "◉", lb: "Business Intel & Strategy", hiddenWith: "hk_sales" },
   { id: "ideas",           ic: "◆", lb: "Ideas", hiddenWith: "hk_sales" },

@@ -408,6 +408,7 @@ function OutreachIntelligenceTab({ currentUser }) {
 
 function AdminPage({ isPlatformOwner=false, businesses=[], onBusinessFeaturesChanged, teamUsers=[], onSaveUsers, currentUser, onUpdateCurrentUser, rolePerms={}, onSaveRolePerms, onSave, onSaveToPool, onSaveBatch, accounts=[] }) {
   const [tab, setTab] = useState("users");
+  const [showNotSetUp, setShowNotSetUp] = useState(false); // visual-nav-cleanup-v1 C4
   const [users, setUsers] = useState(teamUsers);
   useEffect(() => { setUsers(teamUsers); }, [teamUsers]);
 
@@ -543,19 +544,28 @@ function AdminPage({ isPlatformOwner=false, businesses=[], onBusinessFeaturesCha
           ]},
           { label:"PLATFORM", tabs:[
             ["apikeys",    "🔌 Integrations"],
-            ["pricing",    "💰 Pricing"],
             ...(isPlatformOwner ? [
               ["doctrine",   "✉ Outreach Intelligence"],
               ["accesslog",  "📋 Access Log"],
-              ["zoomevents", "☎ Zoom Events"],
-              ["sfdc",       "☁ Salesforce Tools"],
             ] : []),
           ]},
           { label:"DATA", tabs:[
             ["settings", "⚙️ Settings"],
           ]},
         ];
+        // visual-nav-cleanup-v1 C4 - systems with nothing behind them yet (Stage 0, Oct 28: 0 Zoom webhook rows and no
+        // Zoom key; 0 sfdc_tokens; pricing lives only in this browser) sit in one collapsed group with what each needs.
+        // No tab is deleted; an open one keeps its group expanded.
+        const NOT_SET_UP = [
+          ["pricing", "💰 Pricing", "Pricing files live only in this browser - no shared pricing source yet"],
+          ...(isPlatformOwner ? [
+            ["zoomevents", "☎ Zoom Events", "Needs the Zoom app keys on Render and its webhook pointed at /api/zoom/webhook - no events yet"],
+            ["sfdc",       "☁ Salesforce Tools", "Needs a Salesforce connection (OAuth) - no workspace has one"],
+          ] : []),
+        ];
+        const notSetUpOpen = showNotSetUp || NOT_SET_UP.some(([id]) => id === tab);
         return (
+          <>
           <div data-testid="admin-tabs" style={{ display:"flex", alignItems:"stretch", overflowX:"auto", marginBottom:KIT_SPACE[5], borderBottom:`1px solid ${ui.border}` }}>
             {TAB_GROUPS.map((grp, gi) => (
               <div key={grp.label} style={{ display:"flex", alignItems:"center", flexShrink:0 }}>
@@ -566,7 +576,18 @@ function AdminPage({ isPlatformOwner=false, businesses=[], onBusinessFeaturesCha
                 ))}
               </div>
             ))}
+            <div data-not-set-up style={{ display:"flex", alignItems:"center", flexShrink:0 }}>
+              <div style={{ width:1, height:20, background:ui.border, margin:`0 ${KIT_SPACE[2]}px` }}/>
+              <button type="button" aria-expanded={notSetUpOpen} onClick={()=>setShowNotSetUp(o=>!o)} style={{ ...KIT_TYPE.label, height:40, background:"transparent", border:"none", color:ui.faint, cursor:"pointer", padding:`0 ${KIT_SPACE[1]}px`, whiteSpace:"nowrap" }}>NOT SET UP ({NOT_SET_UP.length}) {notSetUpOpen ? "▾" : "▸"}</button>
+              {notSetUpOpen && NOT_SET_UP.map(([id,lb,needs])=>(
+                <button key={id} onClick={()=>setTab(id)} title={needs} style={{ ...KIT_TYPE.small, height:40, padding:`0 ${KIT_SPACE[2]}px`, background:"transparent", border:"none", borderBottom:`2px solid ${tab===id?ui.accent:"transparent"}`, color:tab===id?ui.text:ui.muted, cursor:"pointer", whiteSpace:"nowrap" }}>{lb}</button>
+              ))}
+            </div>
           </div>
+          {notSetUpOpen && <ul data-not-set-up-needs style={{ margin:`0 0 ${KIT_SPACE[4]}px`, padding:0, listStyle:"none", display:"flex", flexDirection:"column", gap:2, ...KIT_TYPE.small, color:ui.muted }}>
+            {NOT_SET_UP.map(([id,lb,needs])=><li key={id}><b style={{ color:ui.text, fontWeight:500 }}>{lb.replace(/^\S+\s/,"")}</b> - {needs}</li>)}
+          </ul>}
+          </>
         );
       })()}
 

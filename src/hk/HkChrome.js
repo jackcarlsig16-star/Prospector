@@ -137,7 +137,7 @@ export function WordPill({ me, members, now = new Date() }) {
         {seen !== w.day && <span className="hk-pill__dot" aria-hidden="true" />}{w.word}
       </button>
       {open && (
-        <div role="dialog" aria-label={`${w.word} - word of the day`} className="hk-card" style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 30, width: 280, padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div role="dialog" aria-label={`${w.word} - word of the day`} className="hk-menu hk-menu--right" style={{ width: 'min(280px, calc(100vw - 32px))', padding: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
           <b>{w.word}</b>
           <span>{w.definition}</span>
           <i className="hk-meta">“{w.example}”</i>

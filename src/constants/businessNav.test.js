@@ -25,12 +25,20 @@ test('side panel: hk_sales -> exactly [hk-sales]; hk_sales off or absent -> the 
   expect(workspaceNav({ id: 'h1', features: { hk_sales: true } }).map(n => n.id)).toEqual(['hk-sales']);
   expect(workspaceNav({ id: 'h2', features: { goals_sales: true, hk_sales: true } }).map(n => n.id)).toEqual(['sales-analytics', 'hk-sales']);
   expect(workspaceNav({ id: 'h3', features: { hk_sales: false } }).map(n => n.id)).toEqual(['command-center', 'accounts', 'projects', 'overview', 'ideas', 'tools']);
-  expect(workspaceNav(sales).map(n => n.id)).toEqual(['sales-analytics', 'accounts', 'projects', 'overview', 'ideas', 'tools']);
+  expect(workspaceNav(sales).map(n => n.id)).toEqual(['sales-analytics', 'projects', 'overview', 'ideas', 'tools']); // C5: no Accounts with goals_sales
   expect(workspaceNav(plain).map(n => n.id)).toEqual(['command-center', 'accounts', 'projects', 'overview', 'ideas', 'tools']);
 });
 
 test('side panel: Command Center off and Sales & Marketing first for goals_sales; unchanged without it; empty with no workspace', () => {
-  expect(workspaceNav(sales).map(n => n.id)).toEqual(['sales-analytics', 'accounts', 'projects', 'overview', 'ideas', 'tools']);
+  expect(workspaceNav(sales).map(n => n.id)).toEqual(['sales-analytics', 'projects', 'overview', 'ideas', 'tools']); // C5: no Accounts with goals_sales
   expect(workspaceNav(plain).map(n => n.id)).toEqual(['command-center', 'accounts', 'projects', 'overview', 'ideas', 'tools']);
   expect(workspaceNav(null)).toEqual([]);
+});
+
+test('visual-nav-cleanup-v1 C5: Accounts (the legacy lists) shows only on the accounts model - hidden with goals_sales or hk_sales', () => {
+  const ids = f => workspaceNav({ id: 'x', features: f }).map(n => n.id);
+  expect(ids({})).toContain('accounts');
+  expect(ids({ goals_sales: true })).not.toContain('accounts');
+  expect(ids({ hk_sales: true })).not.toContain('accounts');
+  expect(ids({ goals_sales: true })).toEqual(['sales-analytics', 'projects', 'overview', 'ideas', 'tools']);
 });
