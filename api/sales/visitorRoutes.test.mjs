@@ -12,6 +12,8 @@ import { installApolloFixture, apolloFixtureCalls } from './testing/apolloFixtur
 import { apolloRequest } from './apolloClient.js';
 import { runVisitPull } from './visitPull.js';
 import { autoCreateSignal, uploadVisitedPeople, peopleSearch } from './visitorRoutes.js';
+import { runVisitorPeoplePull, MAX_PAGES } from './visitorPeoplePull.js';
+import { VISITOR_LIST_NAME } from './peopleFind.js';
 import { undoSignal, listSignals } from './signalsRoutes.js';
 
 const NOW = Date.parse('2026-10-20T17:00:00Z'); // Tue Oct 20, 10:00 LA
@@ -148,33 +150,122 @@ test('on demand from Signals: a new web_visit signal whose latest row qualifies 
 });
 
 const CSV = [
-  'First Name,Last Name,Title,Company,Email,Company Domain,Person Linkedin Url,City,State,Last Visit,Page Views,Pages Visited,Phone',
-  'Jean,Horton,VP Human Resources,Zz ADP,jean@zzadp.example,zzadp.example,https://www.linkedin.com/in/jean-h,Chicago,IL,2026-10-17,4,"/pricing, /employer-partners",312-555-0100',
-  'Sam,Rivera,Head of People,Zz ADP,,zzadp.example,,,,2026-10-19,1,/benefits,',
-  'Margo,R.,Benefits Manager,Harbor Lane,,,,Houston,TX,10/18/2026,2,/,',
-  'Ana,Example,Director,Quarry Labs,,,,,,2026-10-19,1,/,',
+  'First Name,Last Name,Title,Company Name,Email,Seniority,Departments,Mobile Phone,Lists,Account Owner,# Employees,Industry,Person Linkedin Url,Website,City,State,Company State,Company Country,Apollo Contact Id,Apollo Account Id',
+  'Jean,Horton,VP Human Resources,Zz ADP,jean@zzadp.example,VP,Human Resources,312-555-0100,Prospector · Website visitors (export),Jack Carlson,58000,human resources,https://www.linkedin.com/in/jean-h,http://www.zzadp.example,Chicago,Illinois,New Jersey,United States,c-1,a-1',
+  'Sam,Rivera,Head of People,Zz ADP,,,,,,,58000,,,zzadp.example,,,,,c-3,a-1',
+  'Margo,R.,Benefits Manager,Harbor Lane,,Manager,,,Prospector · Website visitors (export),,120,,,,Houston,Texas,,,c-2,a-2',
+  'Ana,Example,Director,Quarry Labs,,,,,,,900,,,,,,,,c-4,a-4',
 ].join('\n');
 
-test('V2a Visited People export: unknown company -> new employer target (source web_visit) with its people; a partner match -> partner_contacts; a target match -> sales_people; obfuscated names kept; the email and phone columns never land; re-upload adds nobody twice; the reply carries names only', async () => {
+test('V2a Visited People export (real columns): preview counts without a write; then unknown company -> new employer target (source web_visit, employees from Apollo) with its people; a partner match -> partner_contacts; a target match -> sales_people (+ its empty headcount filled, source apollo); email / phone / address / LinkedIn columns never land; re-upload adds nobody twice; the reply carries names only', async () => {
   const { sb, restore } = setup();
   try {
+    const pv = await uploadVisitedPeople(sb, { businessId: B, userId: U, body: { text: CSV, preview: true }, now: new Date(NOW) });
+    assert.equal(pv.status, 200, JSON.stringify(pv.body));
+    assert.equal(pv.body.preview, true);
+    assert.deepEqual(pv.body.companies.map(c => [c.name, c.action, c.type, c.people_added, c.already_in]), [['Zz ADP', 'would_create', 'target', 2, 0], ['Harbor Lane', 'matched', 'partner', 1, 0], ['Quarry Labs', 'matched', 'target', 1, 0]]);
+    assert.deepEqual(pv.body.counts, { companies: 3, matched: 2, created: 1, skipped_companies: 0, people_added: 4, already_in: 0, employees_filled: 0 });
+    assert.deepEqual(pv.body.sample.map(x => [x.name, x.company, x.action]), [['Jean Horton', 'Zz ADP', 'new'], ['Sam Rivera', 'Zz ADP', 'new'], ['Margo R.', 'Harbor Lane', 'new']]);
+    assert.deepEqual([sb.db.sales_people.length, sb.db.partner_contacts.length, targets(sb).length], [0, 0, 0], 'a preview writes nothing');
+    assert.equal(sb.db.sales_targets.find(t => t.id === T.quarry).employees, undefined);
+
     const r = await uploadVisitedPeople(sb, { businessId: B, userId: U, body: { text: CSV }, now: new Date(NOW) });
     assert.equal(r.status, 200, JSON.stringify(r.body));
     assert.deepEqual(r.body.companies.map(c => [c.name, c.action, c.type, c.people_added, c.already_in]), [['Zz ADP', 'created', 'target', 2, 0], ['Harbor Lane', 'matched', 'partner', 1, 0], ['Quarry Labs', 'matched', 'target', 1, 0]]);
+    assert.equal(r.body.counts.employees_filled, 2, 'Harbor Lane and Quarry Labs had no headcount');
     const adp = sb.db.sales_targets.find(t => t.name === 'Zz ADP');
-    assert.deepEqual([adp.kind, adp.source, adp.channel, adp.source_kind], ['employer', 'web_visit', 'website_visit', 'website']);
-    assert.match(adp.evidence, /^Identified visitors: 2 \(Apollo Visited People\) · last visit 2026-10-19$/);
+    assert.deepEqual([adp.kind, adp.source, adp.channel, adp.source_kind, adp.employees, adp.employees_source], ['employer', 'web_visit', 'website_visit', 'website', 58000, 'apollo']);
+    assert.match(adp.evidence, /^Identified visitors: 2 \(Apollo Visited People export\) · seen 2026-10-20$/);
     const adpPeople = sb.db.sales_people.filter(p => p.target_id === adp.id);
-    assert.deepEqual(adpPeople.map(p => [p.name, p.title, p.location, p.linkedin_url, p.source_kind]), [['Jean Horton', 'VP Human Resources', 'Chicago, IL', 'https://www.linkedin.com/in/jean-h', 'web_visit'], ['Sam Rivera', 'Head of People', null, null, 'web_visit']]);
-    assert.match(adpPeople[0].note, /^Identified visitor · 2026-10-17 · pages \/pricing, \/employer-partners$/);
+    assert.deepEqual(adpPeople.map(p => [p.name, p.title, p.location, p.linkedin_url, p.source_kind, p.apollo_person_id, p.source_note]), [['Jean Horton', 'VP Human Resources', null, null, 'web_visit', 'c-1', 'Apollo Visited People export · Prospector · Website visitors (export)'], ['Sam Rivera', 'Head of People', null, null, 'web_visit', 'c-3', 'Apollo Visited People export']]);
+    assert.equal(adpPeople[0].note, 'Identified visitor · 2026-10-20 · VP · Human Resources');
     assert.deepEqual(sb.db.partner_contacts.map(c => [c.goal_id, c.name, c.title, c.source]), [[P.harbor, 'Margo R.', 'Benefits Manager', 'manual']]);
+    assert.deepEqual(sb.db.sales_goals.find(g => g.id === P.harbor).employees, 120, 'the partner had no headcount: filled from Apollo');
+    assert.equal(sb.db.sales_goals.find(g => g.id === P.harbor).employees_source, 'apollo');
     assert.deepEqual(sb.db.sales_people.filter(p => p.target_id === T.quarry).map(p => p.name), ['Ana Example']);
-    assert.ok(!ADDRESS.test(JSON.stringify(sb.db)) && !/555/.test(humanText(sb.db.sales_people)) && !ADDRESS.test(JSON.stringify(r.body)), humanText(sb.db.sales_people));
+    assert.deepEqual([sb.db.sales_targets.find(t => t.id === T.quarry).employees, sb.db.sales_targets.find(t => t.id === T.quarry).employees_source], [900, 'apollo']);
+    assert.ok(!ADDRESS.test(JSON.stringify(sb.db)) && !/555|Chicago|Houston|linkedin/.test(humanText(sb.db.sales_people)) && !ADDRESS.test(JSON.stringify(r.body)), humanText(sb.db.sales_people));
+
+    sb.db.sales_targets.find(t => t.id === T.quarry).employees = 1200; sb.db.sales_targets.find(t => t.id === T.quarry).employees_source = 'manual';
     const again = await uploadVisitedPeople(sb, { businessId: B, userId: U, body: { text: CSV }, now: new Date(NOW) });
     assert.deepEqual(again.body.companies.map(c => [c.action, c.people_added, c.already_in]), [['matched', 0, 2], ['matched', 0, 1], ['matched', 0, 1]]);
+    assert.deepEqual([sb.db.sales_targets.find(t => t.id === T.quarry).employees, sb.db.sales_targets.find(t => t.id === T.quarry).employees_source], [1200, 'manual'], 'never over a manual headcount');
     assert.equal((await uploadVisitedPeople(sb, { businessId: B, userId: U, body: { text: 'a,b\n1,2' } })).status, 400);
     assert.equal((await uploadVisitedPeople(sb, { businessId: B, userId: U, body: {} })).status, 400);
   } finally { restore(); }
+});
+
+// visitor-to-record-v1 V2a (Oct 27 ruling) - the Apollo contacts list pulled daily. Fixture contacts carry email / phone
+// keys ON PURPOSE.
+const LIST_ID = 'l-visitors';
+const CONTACTS = [
+  { id: 'c-1', first_name: 'Jean', last_name: 'Horton', title: 'VP Human Resources', organization_name: 'Zz ADP', account_id: 'a-1', seniority: 'vp', departments: ['human_resources'], email: 'jean@zzadp.example', phone_numbers: [{ raw_number: '+1 312 555 0100' }], organization: { name: 'Zz ADP', primary_domain: 'zzadp.example', estimated_num_employees: 58000, industry: 'human resources', country: 'United States', state: 'New Jersey', phone: '+1 973 555 0199' }, label_ids: [LIST_ID] },
+  { id: 'c-2', first_name: 'Margo', last_name: 'R.', title: 'Benefits Manager', organization_name: 'Harbor Lane', account_id: 'a-2', email: 'margo@harbor.example', organization: { name: 'Harbor Lane', estimated_num_employees: 120 } },
+  { id: 'c-4', first_name: 'Ana', last_name: 'Example', title: 'Director', organization_name: 'Quarry Labs', organization: { name: 'Quarry Labs' } },
+  { id: 'c-5', first_name: 'Lone', last_name: 'Row' },
+  { id: 'c-6', first_name: 'Cal', last_name: 'Skipped', title: 'Engineer', organization_name: 'Cloudflare', organization: { name: 'Cloudflare', primary_domain: 'cloudflare.example' } },
+];
+const lists = (over = {}) => ({ labels: [{ id: 'l-acc', name: VISITOR_LIST_NAME, modality: 'accounts' }, { id: LIST_ID, name: VISITOR_LIST_NAME, modality: 'contacts', cached_count: 3 }], contacts: { [LIST_ID]: CONTACTS }, ...over });
+const setupList = (l = lists(), extra) => { const restore = installApolloFixture({}, visitors(), null, PEOPLE, l); const sb = fakeSupabase(seed({ sales_visit_skip: [{ id: randomUUID(), business_id: B, company_key: 'cloudflare', reason: 'Seed (D10)' }], ...extra }), { unique }); return { sb, restore }; };
+
+test('V2a list pull: balance, ONE GET /labels (exact name, contacts modality) cached in sales_settings.visitor_filters.visitor_people, the list paged, balance; 0 credits recorded; people filed to their records / a new target with Apollo headcounts; once a day unless forced; the cached id skips the lookup; no address anywhere', async () => {
+  const { sb, restore } = setupList();
+  try {
+    const start = apolloFixtureCalls.length;
+    const r = await runVisitorPeoplePull(sb, { businessId: B, userId: U, now: NOW });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual(apolloFixtureCalls.slice(start), ['GET /users/api_profile', 'GET /labels', 'POST /contacts/search', 'GET /users/api_profile']);
+    assert.deepEqual([r.body.ran, r.body.calls, r.body.credits, r.body.list], [true, 4, 0, { name: VISITOR_LIST_NAME, count: 3, cached: false }]);
+    assert.deepEqual(r.body.counts, { contacts: 5, pages: 1, capped: false, with_email: 2, skipped: 1, companies: 4, matched: 2, created: 1, skipped_companies: 1, people_added: 3, already_in: 0, employees_filled: 1 });
+    assert.deepEqual(r.body.companies.map(c => [c.name, c.action, c.type, c.people_added]), [['Zz ADP', 'created', 'target', 1], ['Harbor Lane', 'matched', 'partner', 1], ['Quarry Labs', 'matched', 'target', 1], ['Cloudflare', 'skipped', null, 0]]);
+    assert.ok(!sb.db.sales_targets.some(t => t.name === 'Cloudflare') && !sb.db.sales_people.some(p => p.name === 'Cal Skipped'), 'a skip-list company gets no record and its people wait');
+    assert.deepEqual(r.body.sample.map(x => `${x.name[0]}. ${x.name.split(' ').slice(1).join(' ')} · ${x.company}`), ['J. Horton · Zz ADP', 'M. R. · Harbor Lane', 'A. Example · Quarry Labs']);
+    const state = sb.db.sales_settings[0].visitor_filters.visitor_people;
+    assert.deepEqual([state.list_id, state.list_name, state.list_count, state.last_pull_on, state.last_error], [LIST_ID, VISITOR_LIST_NAME, 3, '2026-10-20', null]);
+    assert.equal(state.last_counts.people_added, 3);
+    assert.deepEqual(sb.db.apollo_credit_spend.map(s => [s.endpoint, s.ref, s.credits, s.balance_before, s.balance_after]), [['/contacts/search', 'people_pull:2026-10-20', 0, 9910, 9910]]);
+    const adp = sb.db.sales_targets.find(t => t.name === 'Zz ADP');
+    assert.deepEqual([adp.source, adp.employees, adp.employees_source], ['web_visit', 58000, 'apollo']);
+    assert.match(adp.evidence, /^Identified visitor: 1 \(Apollo list Prospector · Website visitors \(export\)\) · seen 2026-10-20$/);
+    const jean = sb.db.sales_people.find(p => p.name === 'Jean Horton');
+    assert.deepEqual([jean.target_id, jean.title, jean.source_kind, jean.apollo_person_id, jean.note, jean.source_note], [adp.id, 'VP Human Resources', 'web_visit', 'c-1', 'Identified visitor · 2026-10-20 · vp · human_resources', `Apollo list ${VISITOR_LIST_NAME}`]);
+    assert.deepEqual(sb.db.partner_contacts.map(c => [c.goal_id, c.name]), [[P.harbor, 'Margo R.']]);
+    assert.deepEqual([sb.db.sales_goals.find(g => g.id === P.harbor).employees, sb.db.sales_goals.find(g => g.id === P.harbor).employees_source], [120, 'apollo']);
+    assert.ok(!ADDRESS.test(JSON.stringify(sb.db)) && !ADDRESS.test(JSON.stringify(r.body)) && !/555/.test(humanText(sb.db.sales_people)), 'no address');
+
+    const same = await runVisitorPeoplePull(sb, { businessId: B, userId: U, now: NOW + 3600e3 });
+    assert.deepEqual([same.body.ran, same.body.reason, apolloFixtureCalls.length - start], [false, 'Visitor people already pulled today', 4]);
+    const forced = await runVisitorPeoplePull(sb, { businessId: B, userId: U, force: true, now: NOW + 7200e3 });
+    assert.deepEqual(apolloFixtureCalls.slice(start + 4), ['GET /users/api_profile', 'POST /contacts/search', 'GET /users/api_profile'], 'the cached id skips GET /labels');
+    assert.deepEqual([forced.body.ran, forced.body.list.cached, forced.body.counts.people_added, forced.body.counts.already_in, forced.body.counts.created], [true, true, 0, 3, 0]);
+    assert.equal(sb.db.sales_people.length, 2);
+    assert.equal(sb.db.apollo_credit_spend.length, 2);
+    noAddress(sb);
+  } finally { restore(); }
+});
+
+test('V2a list pull: no list of that name -> 404 kept for the day (a page-load try is not repeated, force is); more contacts than the page cap -> capped true', async () => {
+  const { sb, restore } = setupList(lists({ labels: [{ id: 'l-other', name: 'Other', modality: 'contacts' }] }));
+  try {
+    const start = apolloFixtureCalls.length;
+    const r = await runVisitorPeoplePull(sb, { businessId: B, userId: U, now: NOW });
+    assert.equal(r.status, 404);
+    assert.match(r.body.error, /no contacts list named "Prospector · Website visitors \(export\)"/);
+    assert.deepEqual(apolloFixtureCalls.slice(start), ['GET /users/api_profile', 'GET /labels', 'GET /users/api_profile']);
+    assert.equal(sb.db.apollo_credit_spend.length, 1, 'the balance delta is still recorded');
+    assert.match(sb.db.sales_settings[0].visitor_filters.visitor_people.last_error, /no contacts list/);
+    const again = await runVisitorPeoplePull(sb, { businessId: B, userId: U, now: NOW + 3600e3 });
+    assert.deepEqual([again.body.ran, apolloFixtureCalls.length - start], [false, 3]);
+    assert.match(again.body.reason, /failed earlier today/);
+    assert.equal((await runVisitorPeoplePull(sb, { businessId: B, userId: U, force: true, now: NOW + 3600e3 })).status, 404);
+  } finally { restore(); }
+  const many = Array.from({ length: MAX_PAGES * 100 + 1 }, (_, i) => ({ id: `m-${i}`, first_name: 'Person', last_name: `N${i}`, organization_name: `Zz Many ${i % 7}`, organization: { name: `Zz Many ${i % 7}` } }));
+  const big = setupList(lists({ contacts: { [LIST_ID]: many } }));
+  try {
+    const r = await runVisitorPeoplePull(big.sb, { businessId: B, userId: U, now: NOW });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual([r.body.counts.pages, r.body.counts.contacts, r.body.counts.capped, r.body.calls], [MAX_PAGES, MAX_PAGES * 100, true, 3 + MAX_PAGES]);
+  } finally { big.restore(); }
 });
 
 test('V3 People search: one list over the three tables with ties, has_email as a boolean only, name_partial for obfuscated finds; q / company / tie filters; a bad tie 400', async () => {

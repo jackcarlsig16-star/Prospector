@@ -1,4 +1,4 @@
-import { apolloRequest } from './apolloClient.js';
+import { apolloRequest, apolloBalance as balance } from './apolloClient.js';
 import { getSupabase } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
@@ -12,6 +12,7 @@ import { windowFor, LOOKBACK_CAP } from './visitWindow.js';
 import { autoCreateFromVisits, salesSettings } from './visitorRoutes.js';
 import { hasRole } from '../lib/requireAuth.js';
 import { scheduleRecompute } from './intentScoreRun.js';
+import { runVisitorPeoplePull } from './visitorPeoplePull.js';
 
 // signals-v1 REV4 Stage 4 (D9) - Prospector's own daily website-visitor
 // pull. Kicked by a Member's first Goals & Sales load of the LA day or by
@@ -40,13 +41,6 @@ const RUN_COLS = 'id, la_date, kind, window_start, window_end, lookback_days, st
 export async function monthSpend(supabase, laMonth) {
   const rows = await selectAllPages(() => supabase.from('apollo_credit_spend').select('id, credits').eq('la_month', laMonth).order('id'));
   return rows.reduce((n, r) => n + (r.credits || 0), 0);
-}
-
-async function balance(ctx) {
-  const json = await apolloRequest({ method: 'GET', path: '/users/api_profile', query: 'include_credit_usage=true', ctx });
-  const n = json?.num_credits_remaining;
-  if (typeof n !== 'number') throw new Error('Apollo credit balance unreadable');
-  return n;
 }
 
 async function search(ctx, filters, lookbackDays) {
@@ -174,7 +168,8 @@ export async function runVisitPull(supabase, { businessId, userId, trigger = 'ma
   } catch (e) {
     return reply(e.status || 500, { error: e.message });
   }
-  if (claim.done) return reply(200, { ran: false, reason: win.kind === 'backfill' ? 'Already backfilled today' : 'Visitors already pulled today', last_run: claim.done });
+  const people = async () => (trigger === 'pageload' ? (await runVisitorPeoplePull(supabase, { businessId, userId, now })).body : null);
+  if (claim.done) return reply(200, { ran: false, reason: win.kind === 'backfill' ? 'Already backfilled today' : 'Visitors already pulled today', last_run: claim.done, people_pull: await people() });
   if (claim.busy) return reply(409, { error: 'A visitor pull is running - try again in a minute' });
   const ctx = { callCounter: { count: 0, max: 2 + 2 * MAX_PAGES }, endpointCounts: {} };
   let before = null, after = null, credits = 0;
@@ -192,7 +187,7 @@ export async function runVisitPull(supabase, { businessId, userId, trigger = 'ma
     const counts = await store(supabase, { businessId, userId, today, win, all, usIds: new Set(us.map(r => r._org_id)), first: claim.first, now, apollo: ctx });
     const run = must(await finish({ status: 'ok', error: null }))[0];
     scheduleRecompute(supabase, businessId, 'visit_pull');
-    return reply(200, { ran: true, run, counts, credits, window: win });
+    return reply(200, { ran: true, run, counts, credits, window: win, people_pull: await people() });
   } catch (e) {
     // A search that spent before failing still gets its delta recorded.
     if (before != null && after == null) {

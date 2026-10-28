@@ -102,6 +102,13 @@ export function researchLine(runs, now) {
   return line('research', 'ok', latest.created_at);
 }
 
+// visitor-to-record-v1 V2a - the visitor PEOPLE pull's state (sales_settings.visitor_filters.visitor_people): what the
+// Needs attention visitors line reads under the window. Counts and the list name only.
+export function peoplePullLine(settings) {
+  const s = settings?.visitor_filters?.visitor_people || {};
+  return { last_on: s.last_pull_on || null, last_at: s.last_at || null, counts: s.last_counts || null, list: s.list_name || null, list_count: s.list_count ?? null, error: s.last_error || null };
+}
+
 const DRY_RUNS = { apollo: apolloDryRun, outlook: outlookDryRun };
 export async function heldCounts(supabase, businessId, { fresh = false, now = Date.now(), dry = DRY_RUNS } = {}) {
   const hit = heldCache.get(businessId);
@@ -119,7 +126,7 @@ export async function attention(supabase, { businessId, userId, fresh = false, n
   const at = new Date(now);
   const today = laDateString(at);
   const since = new Date(now - 7 * DAY_MS).toISOString();
-  const [syncRuns, grant, msRuns, visitRuns, tidyRuns, researchRuns, overdue, waiting, held, campaign] = await Promise.all([
+  const [syncRuns, grant, msRuns, visitRuns, tidyRuns, researchRuns, overdue, waiting, held, campaign, settings] = await Promise.all([
     supabase.from('sales_sync_runs').select('status, started_at, finished_at, error_text, counts').eq('business_id', businessId).neq('trigger', 'test').order('started_at', { ascending: false }).limit(20).then(must),
     supabase.from('microsoft_grants').select('user_id, error').eq('user_id', userId).maybeSingle().then(must),
     supabase.from('microsoft_sync_runs').select('folder, started_at, finished_at, error').eq('user_id', userId).eq('dry_run', false).order('started_at', { ascending: false }).limit(6).then(must),
@@ -130,13 +137,14 @@ export async function attention(supabase, { businessId, userId, fresh = false, n
     selectAllPages(() => supabase.from('sales_week_goals').select('id').eq('business_id', businessId).eq('kind', 'waiting').eq('status', 'open').lt('due_date', today).order('id')),
     heldCounts(supabase, businessId, { fresh, now, dry }),
     campaignActionRows(supabase, businessId, today),
+    supabase.from('sales_settings').select('visitor_filters').eq('business_id', businessId).maybeSingle().then(must),
   ]);
   const lastOkPull = visitRuns.filter(r => r.status === 'ok' && r.window_end).sort((a, b) => b.window_end.localeCompare(a.window_end))[0];
   const pulled = lastOkPull ? await supabase.from('web_visits').select('id', { count: 'exact', head: true }).eq('business_id', businessId).eq('pulled_on', lastOkPull.la_date).then(r => { if (r.error) throw Object.assign(new Error(r.error.message), { status: 500 }); return r.count || 0; }) : 0;
   const sources = [
     apolloLine(syncRuns, now),
     outlookLine(grant, msRuns, now),
-    { ...dailyLine('visitors', visitRuns, { now, dateOf: r => r.la_date, startedOf: r => r.updated_at || r.created_at, deadMs: VISITS_DEAD_MS, errorOf: r => r.error }), window: visitWindow(visitRuns, pulled, now) },
+    { ...dailyLine('visitors', visitRuns, { now, dateOf: r => r.la_date, startedOf: r => r.updated_at || r.created_at, deadMs: VISITS_DEAD_MS, errorOf: r => r.error }), window: visitWindow(visitRuns, pulled, now), people_pull: peoplePullLine(settings) },
     dailyLine('tidy', tidyRuns, { now, dateOf: r => laDateString(new Date(r.started_at)), startedOf: r => r.started_at, deadMs: TIDY_STALE_MS, errorOf: r => r.counts?.error }),
     researchLine(researchRuns, now),
   ];

@@ -19,7 +19,10 @@ export const apolloFixtureCalls = [];
 // POST /mixed_people/api_search by q_organization_domains[0] (a request without a domain never gets here: the
 // allowlist guard throws first). Made-up rows; a row may carry email / phone keys ON PURPOSE so tests prove they are
 // never mapped.
-export function installApolloFixture(accounts, visitors = null, email = null, people = null) {
+// visitor-to-record-v1 V2a: `lists` = { labels: [{ id, name, modality, cached_count }], contacts: { <label id>: [contact] } }
+// answers GET /labels and POST /contacts/search with contact_label_ids (paged). Contacts may carry email / phone keys
+// ON PURPOSE so tests prove they are never mapped.
+export function installApolloFixture(accounts, visitors = null, email = null, people = null, lists = null) {
   const realFetch = globalThis.fetch;
   process.env.APOLLO_API_KEY ||= 'fixture-key-not-real';
   globalThis.fetch = async (url, init = {}) => {
@@ -53,6 +56,13 @@ export function installApolloFixture(accounts, visitors = null, email = null, pe
     }
     const act = path.match(/^\/emailer_messages\/([^/]+)\/activities$/);
     if (email && init.method === 'GET' && act) return answer({ emailer_message: (email.activities || {})[act[1]] || { emailer_message_events: [] } });
+    if (lists && init.method === 'GET' && path === '/labels') return answer(lists.labels || []);
+    if (lists && init.method === 'POST' && path === '/contacts/search' && JSON.parse(init.body).contact_label_ids) {
+      const body = JSON.parse(init.body);
+      const all = lists.contacts?.[body.contact_label_ids[0]] || [];
+      const per = body.per_page || 100, page = body.page || 1;
+      return answer({ contacts: all.slice((page - 1) * per, page * per), pagination: { page, per_page: per, total_entries: all.length, total_pages: Math.max(1, Math.ceil(all.length / per)) } });
+    }
     if (email?.empty && !(init.method === 'POST' && path === '/contacts/search')) return answer({ emailer_campaigns: [], accounts: [], contacts: [], email_accounts: [], emailer_messages: [], pagination: { page: 1, per_page: 100, total_entries: 0, total_pages: 1 } });
     if (init.method !== 'POST' || path !== '/contacts/search') throw new Error(`fixture Apollo: ${init.method} ${path} is not faked`);
     const body = JSON.parse(init.body);

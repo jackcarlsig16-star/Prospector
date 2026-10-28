@@ -1,12 +1,12 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import AttentionDrawer, { withPageLoad, attentionN, windowText } from './AttentionDrawer';
+import AttentionDrawer, { withPageLoad, attentionN, windowText, peoplePullText } from './AttentionDrawer';
 import { goalsApi, OPEN_TASKS, OPEN_ATTENTION, OPEN_CONNECTIONS } from './goalsApi';
 import { triggerSync } from '../salesApi';
 
 // actions-home-attention-v1 Stage 2 - the Needs attention button + drawer. Made-up data; no emails or phones.
 jest.mock('./goalsApi', () => ({
   ...jest.requireActual('./goalsApi'),
-  goalsApi: { attention: jest.fn(), visitPull: jest.fn(), runTidy: jest.fn() },
+  goalsApi: { attention: jest.fn(), visitPull: jest.fn(), visitPeoplePull: jest.fn(), runTidy: jest.fn() },
 }));
 jest.mock('../salesApi', () => ({ triggerSync: jest.fn() }));
 
@@ -135,4 +135,29 @@ test('visitors window: "Window Oct 13–Oct 27 · 138 companies", a gap warning,
   expect(mrow.querySelector('[data-visit-window]')).toHaveTextContent('138 companies');
   expect(within(mrow).queryByRole('button', { name: 'Backfill 14 days' })).toBeNull();
   expect(within(mrow).getByRole('button', { name: 'Pull now' })).toBeInTheDocument();
+});
+
+// visitor-to-record-v1 V2a - the visitor PEOPLE pull line under the window + "Pull visitor people now" (Members).
+test('visitor people: the line reads the last pull, Pull visitor people now posts force and reports counts; Viewers see the line without the button', async () => {
+  expect(peoplePullText(null)).toBeNull();
+  expect(peoplePullText({ last_on: null, error: null })).toBe('Visitor people: not pulled yet');
+  expect(peoplePullText({ last_on: null, error: 'Apollo has no contacts list named "x"' })).toBe('Visitor people: Apollo has no contacts list named "x"');
+  const pp = { last_on: '2026-10-21', counts: { contacts: 66, people_added: 12, created: 3 }, list: 'Prospector · Website visitors (export)', error: null };
+  expect(peoplePullText(pp)).toBe('Visitor people pulled Oct 21 · 66 contacts · 12 new · 3 companies created');
+  goalsApi.attention.mockResolvedValue({ ...DATA, sources: SOURCES.map(s => (s.id === 'visitors' ? { ...s, people_pull: pp } : s)) });
+  goalsApi.visitPeoplePull.mockResolvedValue({ ran: true, counts: { contacts: 66, people_added: 12, already_in: 54, matched: 40, created: 3 } });
+  const { unmount } = render(<AttentionDrawer businessId="b1" canEdit compact={false} pageLoadFailures={{}} onNav={jest.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Needs attention/ }));
+  const row = screen.getByRole('dialog').querySelector('[data-source="visitors"]');
+  expect(row.querySelector('[data-people-pull]')).toHaveTextContent('Visitor people pulled Oct 21 · 66 contacts · 12 new · 3 companies created');
+  expect(within(row).getByRole('button', { name: 'Pull now' })).toBeInTheDocument();
+  fireEvent.click(within(row).getByRole('button', { name: 'Pull visitor people now' }));
+  await waitFor(() => expect(goalsApi.visitPeoplePull).toHaveBeenCalledWith('b1', { force: true }));
+  expect(await screen.findByRole('status')).toHaveTextContent('Visitor people: 66 contacts on the list · 12 new · 54 already on file · 40 companies matched · 3 created');
+  unmount();
+  render(<AttentionDrawer businessId="b1" canEdit={false} compact={false} pageLoadFailures={{}} onNav={jest.fn()} />);
+  fireEvent.click(await screen.findByRole('button', { name: /^Needs attention/ }));
+  const vrow = screen.getByRole('dialog').querySelector('[data-source="visitors"]');
+  expect(vrow.querySelector('[data-people-pull]')).toHaveTextContent('66 contacts');
+  expect(within(vrow).queryByRole('button', { name: 'Pull visitor people now' })).toBeNull();
 });

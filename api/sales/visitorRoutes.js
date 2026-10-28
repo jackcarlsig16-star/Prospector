@@ -13,7 +13,8 @@ import { peopleSearchRequest, mapPeople, parseVisitedPeopleCsv, capLeft } from '
 import { unionRows, searchPeople, TIES } from './peopleUnion.js';
 
 // visitor-to-record-v1 REV2 Stage 2 - the runner behind the pure modules: V1 inside the visitor pull (and on demand
-// from Signals), V2a the Visited People export, V2b the domain-scoped people search, V3 the People search. Reads and
+// from Signals), V2a the Visited People export + the list pull's filer (visitorPeoplePull.js calls fileVisitedPeople),
+// V2b the domain-scoped people search, V3 the People search. Reads and
 // writes go through the service client; nothing here returns an address (sales_people never holds one; partner_contacts'
 // email is read only to answer has_email).
 const err = (status, error) => Object.assign(new Error(error), { status });
@@ -129,47 +130,77 @@ export async function autoCreateSignalRoute(req, res) {
   send(res, await autoCreateSignal(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, id: req.params.id }));
 }
 
-// V2a - POST /goals/visits/people-csv { text } (Member): Apollo's Visited People export. Each company -> its matched
-// record (V0) or a new employer target; each person -> sales_people (partner_contacts on a partner), names as given
-// (obfuscated too), never an email. -> { companies: [{ name, action, type, id, people_added, already_in }], skipped }
+// The record's own headcount: Apollo's count fills an empty one ('apollo'), never a typed ('manual') or researched one.
+const EMP_TABLE = { partner: 'sales_goals', employer: 'sales_opportunities', target: 'sales_targets' };
+async function fillEmployees(supabase, { type, id, employees, now }) {
+  if (!employees || !EMP_TABLE[type]) return false;
+  const row = must(await supabase.from(EMP_TABLE[type]).select('id, employees').eq('id', id).maybeSingle());
+  if (!row || row.employees != null) return false;
+  must(await supabase.from(EMP_TABLE[type]).update({ employees, employees_source: 'apollo', employees_at: now.toISOString(), updated_at: now.toISOString() }).eq('id', id));
+  return true;
+}
+
+// V2a - the one filer behind the CSV upload and the list pull: each company -> its matched record (V0) or a new
+// employer target (a company on the visit skip list - Cloudflare, Lovable, ... - gets no record and its people wait);
+// each person -> sales_people (partner_contacts on a partner), names as given, never an email. preview: the same
+// decisions with no write. -> { companies: [{ name, action: matched | created | would_create | skipped, type, id,
+// people_added, already_in }], people: n, counts, sample }
+export async function fileVisitedPeople(supabase, { businessId, userId, parsed, sourceNote, now = new Date(), preview = false }) {
+  const today = laDateString(now), stamp = slash(today);
+  const [ctx, skipRows] = await Promise.all([loadDupeContext(supabase, businessId), selectAllPages(() => supabase.from('sales_visit_skip').select('id, company_key').eq('business_id', businessId).order('id'))]);
+  const skip = new Set(skipRows.map(r => r.company_key));
+  const companies = [], sample = [];
+  const counts = { companies: parsed.companies.length, matched: 0, created: 0, skipped_companies: 0, people_added: 0, already_in: 0, employees_filled: 0 };
+  for (const c of parsed.companies) {
+    const people = parsed.people.filter(p => (normName(p.company) || p.domain) === c.company_key);
+    const m = exactRecord(c.name, c.domain, ctx);
+    let type, id = null, action;
+    if (m) { type = m.type === 'opportunity' ? 'employer' : m.type; id = m.id; action = 'matched'; }
+    else if (skip.has(normName(c.name))) { counts.skipped_companies++; companies.push({ name: c.name, action: 'skipped', type: null, id: null, people_added: 0, already_in: 0, waiting: people.length, employees: c.employees }); continue; }
+    else if (preview) { type = 'target'; action = 'would_create'; }
+    else {
+      const evidence = cleanText(`Identified visitor${people.length === 1 ? '' : 's'}: ${people.length} (${sourceNote})${c.last_visit ? ` · seen ${c.last_visit}` : ''}`, 400);
+      const r = await insertCompanyRecord(supabase, { businessId, userId, name: c.name, domain: c.domain, to: 'target', kind: 'employer', channel: 'website_visit', evidence, source: { source_kind: 'website', source_note: sourceNote }, owner: null, employees: c.employees, employeesSource: 'apollo', dupeCtx: ctx, now });
+      if (r.already) { type = r.already.type; id = r.already.id; action = 'matched'; }
+      else {
+        type = 'target'; id = r.created.id; action = 'created';
+        must(await supabase.from('sales_targets').update({ source: 'web_visit', research_notes: `(${stamp}) ${evidence}`, updated_at: now.toISOString() }).eq('id', id));
+        ctx.targets.push({ id, name: c.name, status: 'researching' });
+      }
+    }
+    counts[action === 'matched' ? 'matched' : 'created']++;
+    if (action === 'matched' && !preview && await fillEmployees(supabase, { type, id, employees: c.employees, now })) counts.employees_filled++;
+    const keys = id ? await peopleKeys(supabase, businessId, type, id) : new Set();
+    let added = 0, already = 0;
+    for (const p of people) {
+      const key = normName(p.name);
+      const fresh = !!key && !keys.has(key);
+      if (fresh && !preview) await filePerson(supabase, { businessId, userId, type, id, person: { ...p, source_note: cleanText([sourceNote, p.lists].filter(Boolean).join(' · '), 300) }, existingKeys: keys });
+      else if (fresh) keys.add(key);
+      if (fresh) added++; else already++;
+      if (sample.length < 3) sample.push({ name: p.name, company: c.name, action: fresh ? 'new' : 'already' });
+    }
+    counts.people_added += added; counts.already_in += already;
+    companies.push({ name: c.name, action, type, id, people_added: added, already_in: already, employees: c.employees });
+  }
+  return { companies, people: parsed.people.length, counts, sample };
+}
+
+// V2a - POST /goals/visits/people-csv { text, preview? } (Member): Apollo's contacts export (Visited People), the real
+// header map (peopleFind.js). preview true = counts only, no write. -> { companies, skipped, header_row, people, counts, preview }
 export async function uploadVisitedPeople(supabase, { businessId, userId, body, now = new Date() }) {
-  const text = body?.text;
+  const text = body?.text, preview = body?.preview === true;
   if (typeof text !== 'string' || !text.trim()) return reply(400, { error: 'text (the CSV) is required' });
   if (text.length > CSV_MAX_CHARS) return reply(413, { error: 'That file is too large - split it' });
   let parsed;
-  try { parsed = parseVisitedPeopleCsv(text, { max: CSV_MAX_PEOPLE }); } catch (e) { return reply(e.status || 400, { error: e.message }); }
-  const today = laDateString(now), stamp = slash(today);
-  const ctx = await loadDupeContext(supabase, businessId);
-  const companies = [];
-  try {
-    for (const c of parsed.companies) {
-      const people = parsed.people.filter(p => (normName(p.company) || p.domain) === c.company_key);
-      const m = exactRecord(c.name, c.domain, ctx);
-      let type, id, action;
-      if (m) { type = m.type === 'opportunity' ? 'employer' : m.type; id = m.id; action = 'matched'; }
-      else {
-        const evidence = cleanText(`Identified visitor${people.length === 1 ? '' : 's'}: ${people.length} (Apollo Visited People)${c.last_visit ? ` · last visit ${c.last_visit}` : ''}`, 400);
-        const r = await insertCompanyRecord(supabase, { businessId, userId, name: c.name, domain: c.domain, to: 'target', kind: 'employer', channel: 'website_visit', evidence, source: { source_kind: 'website', source_note: 'Apollo Visited People export' }, owner: null, employees: null, now });
-        if (r.already) { type = r.already.type; id = r.already.id; action = 'matched'; }
-        else {
-          type = 'target'; id = r.created.id; action = 'created';
-          must(await supabase.from('sales_targets').update({ source: 'web_visit', research_notes: `(${stamp}) ${evidence}`, updated_at: now.toISOString() }).eq('id', id));
-          ctx.targets.push({ id, name: c.name, status: 'researching' });
-        }
-      }
-      const keys = await peopleKeys(supabase, businessId, type, id);
-      let added = 0, already = 0;
-      for (const p of people) {
-        const ok = await filePerson(supabase, { businessId, userId, type, id, person: { ...p, source_note: 'Apollo Visited People export' }, existingKeys: keys });
-        if (ok) added++; else already++;
-      }
-      companies.push({ name: c.name, action, type, id, people_added: added, already_in: already, last_visit: c.last_visit });
-    }
-  } catch (e) {
+  try { parsed = parseVisitedPeopleCsv(text, { max: CSV_MAX_PEOPLE, seenOn: laDateString(now) }); } catch (e) { return reply(e.status || 400, { error: e.message }); }
+  let filed;
+  try { filed = await fileVisitedPeople(supabase, { businessId, userId, parsed, sourceNote: 'Apollo Visited People export', now, preview }); }
+  catch (e) {
     if (!e.status || e.status >= 500) console.error('[visits/people-csv]', e.message);
-    return reply(e.status || 500, { error: e.message, companies });
+    return reply(e.status || 500, { error: e.message });
   }
-  const out = { companies, skipped: parsed.skipped, header_row: parsed.header_row, people: parsed.people.length };
+  const out = { ...filed, skipped: parsed.skipped, header_row: parsed.header_row, columns_dropped: parsed.columns_dropped, preview };
   if (ADDRESS.test(JSON.stringify(out))) return reply(500, { error: 'refused: an address reached the reply' });
   return reply(200, out);
 }

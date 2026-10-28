@@ -22,6 +22,14 @@ const PAGE_LOAD = { apollo: 'apollo', visitors: 'visits', tidy: 'tidy' };
 const ERR_SHOWN = 90;
 export const BACKFILL_DAYS = 14; // REVISABLE (FIX visit-window-v1 W2)
 const md = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+// visitor-to-record-v1 V2a: "Visitor people pulled Oct 27 · 66 contacts · 12 new · 3 companies created", not yet, or the error.
+export const peoplePullText = p => {
+  if (!p) return null;
+  if (p.error && !p.last_on) return `Visitor people: ${p.error}`;
+  if (!p.last_on) return 'Visitor people: not pulled yet';
+  const c = p.counts || {};
+  return `Visitor people pulled ${md(p.last_on)} · ${c.contacts ?? 0} contact${c.contacts === 1 ? '' : 's'} · ${c.people_added ?? 0} new · ${c.created ?? 0} compan${c.created === 1 ? 'y' : 'ies'} created${p.error ? ` · last try failed: ${p.error}` : ''}`;
+};
 // FIX visit-window-v1 W6: "Window Oct 13–Oct 27 · 138 companies · last ok 2 h ago", or the gap.
 export const windowText = w => (!w || !w.window_end ? 'No completed pull yet' : `Window ${md(w.window_start)}–${md(w.window_end)} · ${w.companies} compan${w.companies === 1 ? 'y' : 'ies'}${w.last_ok_at ? ` · last ok ${timeAgo(w.last_ok_at)}` : ''}`);
 
@@ -63,6 +71,12 @@ function SourceLine({ s, canEdit, isAdmin, busy, onRun }) {
           <span>{windowText(s.window)}</span>
           {s.window.gap && <span data-visit-gap style={{ color: SA.warn }}>{s.window.window_end ? `Gap: nothing pulled since ${md(s.window.window_end)}` : 'Gap: no pull on record'}</span>}
           {isAdmin && s.status !== 'running' && <Button size="sm" variant="tertiary" disabled={busy} disabledReason="Working…" onClick={() => onRun('backfill')}>{busy ? 'Working…' : `Backfill ${BACKFILL_DAYS} days`}</Button>}
+        </span>
+      )}
+      {s.id === 'visitors' && s.people_pull && (
+        <span data-people-pull style={{ fontSize: 12, color: s.people_pull.error ? SA.bad : SA.soft, ...numStyle, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span>{peoplePullText(s.people_pull)}</span>
+          {canEdit && s.status !== 'running' && <Button size="sm" variant="tertiary" disabled={busy} disabledReason="Working…" title={`Pull the people on the Apollo list "${s.people_pull.list || 'Prospector · Website visitors (export)'}" into their companies (0 credits)`} onClick={() => onRun('people')}>{busy ? 'Working…' : 'Pull visitor people now'}</Button>}
         </span>
       )}
       {s.error && (
@@ -107,7 +121,7 @@ export default function AttentionDrawer({ businessId, canEdit, isAdmin = false, 
 
   const show = () => { window.dispatchEvent(new Event(OPEN_ATTENTION)); setOpen(true); setNote(''); load(true); };
   const run = async id => {
-    const source = id === 'backfill' ? 'visitors' : id;
+    const source = id === 'backfill' || id === 'people' ? 'visitors' : id;
     setBusy(source); setNote('');
     try {
       if (id === 'apollo') await triggerSync(businessId);
@@ -116,6 +130,11 @@ export default function AttentionDrawer({ businessId, canEdit, isAdmin = false, 
       else if (id === 'backfill') {
         const r = await goalsApi.visitPull(businessId, { backfillDays: BACKFILL_DAYS });
         return setNote(r.ran ? `Backfilled ${md(r.window.window_start)}–${md(r.window.window_end)}: ${r.counts.companies} compan${r.counts.companies === 1 ? 'y' : 'ies'} · ${r.counts.signals} new signal${r.counts.signals === 1 ? '' : 's'}` : `Website visitors: ${r.reason}`);
+      }
+      else if (id === 'people') {
+        const r = await goalsApi.visitPeoplePull(businessId, { force: true });
+        const c = r.counts || {};
+        return setNote(r.ran ? `Visitor people: ${c.contacts} contact${c.contacts === 1 ? '' : 's'} on the list · ${c.people_added} new · ${c.already_in} already on file · ${c.matched} compan${c.matched === 1 ? 'y' : 'ies'} matched · ${c.created} created` : `Visitor people: ${r.reason}`);
       }
       else if (id === 'tidy') await goalsApi.runTidy(businessId, { force: true });
       setNote(`${data.sources.find(s => s.id === id).label}: done`);

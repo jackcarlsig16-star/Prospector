@@ -27,6 +27,10 @@ const ALLOWED_CALLS = [
   // visitor-to-record-v1 V2b - a people SEARCH (0 credits, Stage 0 call 2), only ever scoped to one company's domain
   // or the website-visitor filter (see peopleScoped). Never a reveal, never a general people search.
   { method: 'POST', path: '/mixed_people/api_search' },
+  // visitor-to-record-v1 V2a (Oct 27 ruling) - "Get a List of All Lists": GET, no parameters, 0 credits, read-only
+  // (docs.apollo.io/reference/get-a-list-of-all-lists; needs a key scoped to api/v1/labels/index or a master key).
+  // Only ever used to resolve ONE list id by its exact name; the id is cached in sales_settings after the first call.
+  { method: 'GET', path: '/labels' },
 ];
 
 // A mixed_companies call without the visitor filter would be a general
@@ -146,4 +150,12 @@ export async function apolloPaginate({ method, path, body, ctx, extractRecords, 
     page += 1;
   }
   return all;
+}
+
+// The credit balance (0 credits): one GET per read, counted on ctx like every other call.
+export async function apolloBalance(ctx) {
+  const json = await apolloRequest({ method: 'GET', path: '/users/api_profile', query: 'include_credit_usage=true', ctx });
+  const n = json?.num_credits_remaining;
+  if (typeof n !== 'number') throw new Error('Apollo credit balance unreadable');
+  return n;
 }

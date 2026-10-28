@@ -458,15 +458,18 @@ const RANK = { partner: 0, opportunity: 1, target: 2 };
 // a note event (never a stage); also used by seif-campaign Promote. source
 // (lead-source-v1) lands on a new record with its create event; an existing
 // one keeps its own (first touch).
-export async function insertCompanyRecord(supabase, { businessId, userId, name, domain = null, to, kind = null, channel, evidence, apolloAccountId = null, noteMeta = {}, source = null, owner = null, employees = null, now = new Date() }) {
+// dupeCtx: a caller filing many companies in one pass (visitorRoutes.fileVisitedPeople) hands in the context it already
+// loaded and keeps current, instead of a full reload per insert.
+export async function insertCompanyRecord(supabase, { businessId, userId, name, domain = null, to, kind = null, channel, evidence, apolloAccountId = null, noteMeta = {}, source = null, owner = null, employees = null, employeesSource = 'manual', dupeCtx = null, now = new Date() }) {
   const src = source ? sourceColumns(source, { now }) : {};
-  // company-workflow-v1 W3/W4: owner = { user_id, name } (a partner's goes through Assign); employees = a typed count.
-  const emp = employees != null ? { employees, employees_source: 'manual', employees_at: now.toISOString() } : {};
+  // company-workflow-v1 W3/W4: owner = { user_id, name } (a partner's goes through Assign); employees = a typed count
+  // ('manual') or, from the visitor paths, Apollo's headcount ('apollo' - never written over a manual value later).
+  const emp = employees != null ? { employees, employees_source: employeesSource, employees_at: now.toISOString() } : {};
   const created = async (type, id) => {
     if (source) await logSource(supabase, { businessId, type, id, to: src, reason: 'create', byUser: userId, at: now });
     return { created: { type, id, name } };
   };
-  const hit = findDupes({ name, domain }, await loadDupeContext(supabase, businessId)).exact.filter(h => h.type in RANK).sort((a, b) => a.archived - b.archived || RANK[a.type] - RANK[b.type])[0];
+  const hit = findDupes({ name, domain }, dupeCtx || await loadDupeContext(supabase, businessId)).exact.filter(h => h.type in RANK).sort((a, b) => a.archived - b.archived || RANK[a.type] - RANK[b.type])[0];
   if (hit) return { already: { type: hit.type === 'opportunity' ? 'employer' : hit.type, id: hit.id, name: hit.name } };
   if (to === 'target') {
     const r = await supabase.from('sales_targets').insert({ business_id: businessId, name, kind: kind || 'employer', status: 'researching', channel, evidence: cleanText(evidence, 400), created_by: userId, ...src, ...emp, ...(owner ? { owner_user_id: owner.user_id } : {}) }).select('id, name').single();
