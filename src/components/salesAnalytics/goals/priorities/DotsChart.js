@@ -2,19 +2,39 @@ import { useState } from 'react';
 import { SA } from '../../theme';
 import { sourceColor, SOURCE_LABELS } from '../../palette';
 import { numStyle } from '../goalsUi';
-import { yValue, yScale, ringSpecs, haloLevel, hollowness, isDimmed, rowLabel, touchText, labelCandidates, labelText, placeLabels, shortChain, RING_ORDER, TOP_LABELS, LABEL_MIN_CHARS } from './prioritiesModel';
+import { yValue, yScale, ringSpecs, haloLevel, hollowness, isDimmed, rowLabel, touchText, labelCandidates, labelText, placeLabels, shortChain, RING_ORDER, TOP_LABELS, LABEL_MIN_CHARS, BAND_WORDS } from './prioritiesModel';
 
 // intent-score-v1 S3 DOTS - companies on X in rank order, Y = the selected metric. Each dot: a core in the source
 // hue, one translucent ring per component (RING_ORDER) in the same hue with radius ∝ points, a grey rank line
-// threading the dots, dashed band guides at the thresholds with the band counts at the right edge, an activity halo
+// threading the dots, band zones from the thresholds (priorities-v2: tint, dashed edge, letter + count left, the band word inside; rings only when Rings is on), an activity halo
 // (bright <= 7 d, faint <= 30 d), hollow when unresearched. Switching Y moves each dot (CSS transform transition);
 // colors, selection and the lit set never change with it. Hand-built SVG on kit tokens, no chart library.
 // Names (FIX priorities-labels-v1): the selected dot, every P1 / P2 and the top 10 by the current Y carry their name
 // beside the mark in the text color (mode 'all' = everyone the collision pass can fit); a phone has no hover, so the
 // selected dot keeps its breakdown card open.
 export const CHART_H = 360;
-const M = { l: 44, r: 64, t: 30, b: 28 };
+const M = { l: 56, r: 40, t: 20, b: 40 };
+// priorities-v2 G - the band zones' colors (status tokens, letter always shown beside them) and their tint.
+export const BAND_COLOR = { P1: SA.good, P2: SA.warn, P3: SA.link, P4: SA.muted };
+export const ZONE_TINT = 10; // percent of the band color over the chart surface; 10 keeps every source hue >= 3:1 on every zone (P3 worst, Inbound 3.03:1) - 11 drops P3 to 2.95
+export const rankTicks = n => [1, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].filter(t => t <= n);
 const ringKey = RING_ORDER.map(k => k[0].toUpperCase() + k.slice(1)).join(' · ');
+const Glyph = ({ children }) => <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">{children}</svg>;
+// The key row under the chart: glyphs, then one sentence (priorities-v2 G).
+export function ChartKey({ ringsOn = false }) {
+  const item = (glyph, text) => <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>{glyph}{text}</span>;
+  return (
+    <div data-chart-key style={{ display: 'flex', alignItems: 'center', gap: '6px 14px', flexWrap: 'wrap', fontSize: 12, color: SA.muted, padding: '4px 0 0 0' }}>
+      <span className="ui-group-label" aria-hidden="true">Key</span>
+      {item(<Glyph><circle cx="9" cy="9" r="4" fill="currentColor" /></Glyph>, 'researched')}
+      {item(<Glyph><circle cx="9" cy="9" r="4" fill="none" stroke="currentColor" strokeWidth="1.6" /></Glyph>, 'not researched')}
+      {item(<Glyph><circle cx="9" cy="9" r="8" fill="none" stroke="currentColor" strokeWidth="1.5" /><circle cx="9" cy="9" r="3" fill="currentColor" /></Glyph>, 'touched ≤ 7 d')}
+      {item(<Glyph><circle cx="9" cy="9" r="8" fill="none" stroke="currentColor" strokeOpacity=".4" strokeWidth="1.5" /><circle cx="9" cy="9" r="3" fill="currentColor" /></Glyph>, 'touched ≤ 30 d')}
+      {item(<Glyph><circle cx="9" cy="9" r="8" fill="none" stroke={SA.text} strokeWidth="1.5" /><circle cx="9" cy="9" r="3" fill="currentColor" /></Glyph>, 'selected · row below')}
+      <span style={{ flex: '1 1 200px' }}>Color = source · dot = researched · ring = touched.{ringsOn ? ` Rings: ${ringKey}.` : ' Visits, people, fit, engagement are columns below, not rings.'}</span>
+    </div>
+  );
+}
 const COMPONENT_LABEL = { visits: 'Visits', pages: 'Pages', apollo_intent: 'Apollo intent', people: 'People', fit: 'Fit', research: 'Research', source: 'Source', engagement: 'Engagement', stage: 'Stage', recency: 'Recency' };
 
 // The breakdown card. Hover = a transient tooltip under the mark. FIX priorities-select-vs-open-v1: pinned = the
@@ -68,17 +88,19 @@ export const markHandlers = (r, selected, onSelect, onOpen) => ({
   },
 });
 
-export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, counts = {}, selectedKey, onSelect, onOpen, menu = null, showTrend = false, width = 960, anchors = {}, names = 'on', phone = false }) {
+export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, counts = {}, selectedKey, onSelect, onOpen, menu = null, showTrend = false, width = 960, anchors = {}, names = 'on', phone = false, height = CHART_H, rings: ringsOn = false }) {
   const [hover, setHover] = useState(null);
   const n = rows.length;
-  const W = Math.max(320, width), plotW = W - M.l - M.r, plotH = CHART_H - M.t - M.b;
+  const H = height;
+  const W = Math.max(320, width), plotW = W - M.l - M.r, plotH = H - M.t - M.b;
   const scale = yScale(y, rows);
   const slot = n ? plotW / n : plotW;
   const base = Math.max(4, Math.min(9, slot * 0.3));
   const cx = i => M.l + slot * (i + 0.5);
   const cy = v => M.t + plotH * (1 - scale.to(v));
   const pts = rows.map((r, i) => ({ r, x: cx(i), y: cy(yValue(r, y)), unknown: yValue(r, y) == null }));
-  const guides = y === 'intent' && thresholds ? [['P1', thresholds.P1], ['P2', thresholds.P2], ['P3', thresholds.P3]] : [];
+  // Band zones (Y = intent): [band, from, to] in score points, from the route's thresholds.
+  const zones = y === 'intent' && thresholds ? [['P1', thresholds.P1, 100], ['P2', thresholds.P2, thresholds.P1], ['P3', thresholds.P3, thresholds.P2], ['P4', 0, thresholds.P3]] : [];
   const litList = [...lit];
   const byKey = new Map(pts.map(p => [p.r.key, p]));
   const maxChars = Math.max(LABEL_MIN_CHARS, Math.min(24, Math.floor((slot * 3) / 6.3)));
@@ -86,26 +108,30 @@ export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, c
   const obstacles = pts.flatMap((p, i) => [{ x0: p.x - base - 2, x1: p.x + base + 2, y0: p.y - base - 2, y1: p.y + base + 2 }, ...(i < TOP_LABELS ? [{ x0: p.x - 8, x1: p.x + 8, y0: scoreY(p) - 10, y1: scoreY(p) + 2 }] : [])]);
   const labels = placeLabels(
     labelCandidates(rows, { mode: names, selectedKey, phone, y }).map(r => { const p = byKey.get(r.key); return { key: r.key, text: labelText(r.name, maxChars), x: p.x, y: p.y, pad: base + 7 }; }),
-    { minX: M.l, maxX: W - M.r, minY: M.t - 12, maxY: CHART_H - M.b + 12, obstacles },
+    { minX: M.l, maxX: W - M.r, minY: M.t - 12, maxY: H - M.b + 12, obstacles },
   );
   const pinned = pts.find(p => p.r.key === selectedKey) || null;
   return (
     <div data-dots-chart style={{ position: 'relative', width: '100%' }}>
-      <svg width="100%" height={CHART_H} viewBox={`0 0 ${W} ${CHART_H}`} role="group" aria-label={`Companies ranked by intent, Y axis ${scale.label}`} style={{ display: 'block', overflow: 'visible', fontFamily: 'inherit' }}>
+      <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} role="group" aria-label={`Companies ranked by intent, Y axis ${scale.label}${zones.length ? ', grouped into P1 to P4 bands' : ''}`} style={{ display: 'block', overflow: 'visible', fontFamily: 'inherit' }}>
+        {zones.map(([band, lo, hi]) => (
+          <g key={band} data-band-zone={band}>
+            <rect x={M.l} y={cy(hi)} width={plotW} height={Math.max(0, cy(lo) - cy(hi))} fill={`color-mix(in srgb, ${BAND_COLOR[band]} ${ZONE_TINT}%, transparent)`} />
+            {lo > 0 && <line x1={M.l} x2={W - M.r} y1={cy(lo)} y2={cy(lo)} stroke={SA.borderStrong} strokeWidth={1} strokeDasharray="3 4" data-band-guide={band} />}
+            <text x={M.l - 10} y={(cy(lo) + cy(hi)) / 2 - 6} textAnchor="end" dominantBaseline="middle" fontSize={10.5} fontFamily="'Geist Mono', ui-monospace, monospace" letterSpacing=".06em" fill={BAND_COLOR[band]}>{band}</text>
+            <text x={M.l - 10} y={(cy(lo) + cy(hi)) / 2 + 7} textAnchor="end" dominantBaseline="middle" fontSize={11} fill={SA.muted} style={numStyle} data-band-count={band}>{counts[band] ?? 0}</text>
+            <text x={M.l + 8} y={cy(hi) + 12} dominantBaseline="middle" fontSize={11} fill={BAND_COLOR[band]} fillOpacity={0.8} data-band-word={band}>{BAND_WORDS[band]}</text>
+          </g>
+        ))}
         {scale.ticks.map(t => (
           <g key={t.v}>
             <line x1={M.l} x2={W - M.r} y1={cy(t.v)} y2={cy(t.v)} stroke={SA.track} strokeWidth={1} />
-            <text x={M.l - 8} y={cy(t.v) + 4} textAnchor="end" fontSize={11} fill={SA.muted} style={numStyle}>{t.label}</text>
+            <text x={W - M.r + 6} y={cy(t.v)} dominantBaseline="middle" fontSize={10} fill={SA.muted} style={numStyle} data-y-tick>{t.label}</text>
           </g>
         ))}
-        <text x={M.l - 8} y={M.t - 12} textAnchor="end" fontSize={11} fill={SA.muted}>{scale.label}</text>
-        {guides.map(([band, v]) => (
-          <g key={band} data-band-guide={band}>
-            <line x1={M.l} x2={W - M.r} y1={cy(v)} y2={cy(v)} stroke={SA.borderStrong} strokeWidth={1} strokeDasharray="4 4" />
-            <text x={W - M.r + 8} y={cy(v) + 4} fontSize={11} fill={SA.muted} style={numStyle}>{band} · {counts[band] ?? 0}</text>
-          </g>
-        ))}
-        {y === 'intent' && <text x={W - M.r + 8} y={cy(0) + 4} fontSize={11} fill={SA.muted} style={numStyle}>P4 · {counts.P4 ?? 0}</text>}
+        {!zones.length && <text x={W - M.r} y={M.t - 8} textAnchor="end" fontSize={11} fill={SA.muted}>{scale.label}</text>}
+        {rankTicks(n).map(t => <text key={t} x={cx(t - 1)} y={H - M.b + 18} textAnchor="middle" fontSize={11} fill={SA.muted} style={numStyle} data-x-tick>{t}</text>)}
+        <text x={M.l} y={H - 6} fontSize={10.5} fontFamily="'Geist Mono', ui-monospace, monospace" letterSpacing=".08em" fill={SA.muted}>RANK →</text>
         <line x1={M.l} x2={W - M.r} y1={M.t + plotH} y2={M.t + plotH} stroke={SA.borderStrong} strokeWidth={1} />
         {litList.map(s => pts.filter(p => p.r.source_label === s).map(p => (
           <line key={`${s}-${p.r.key}`} data-thread={s} x1={anchors[s] ?? M.l} y1={0} x2={p.x} y2={p.y} stroke={sourceColor(s)} strokeWidth={1} opacity={0.18} style={{ transition: 'x2 400ms, y2 400ms' }} />
@@ -113,7 +139,7 @@ export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, c
         {n > 1 && <polyline data-rank-line points={pts.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')} fill="none" stroke={SA.track} strokeWidth={1} />}
         {pts.map((p, i) => {
           const r = p.r, color = sourceColor(r.source_label), dim = isDimmed(r, lit), hollow = hollowness(r), halo = haloLevel(r), selected = r.key === selectedKey;
-          const rings = hollow === 'hollow' ? [] : ringSpecs(r.components, caps, { base });
+          const rings = !ringsOn || hollow === 'hollow' ? [] : ringSpecs(r.components, caps, { base });
           return (
             <g key={r.key} data-dot={r.key} data-source={r.source_label} data-dimmed={dim ? 'true' : undefined} data-hollow={hollow} data-halo={halo || undefined} data-selected={selected ? 'true' : undefined}
               role="button" tabIndex={0} aria-label={rowLabel(r, SOURCE_LABELS)} aria-pressed={selected}
@@ -126,7 +152,7 @@ export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, c
               {hollow === 'hollow'
                 ? <circle data-core r={base} fill="none" stroke={color} strokeWidth={1.5} strokeDasharray={p.unknown ? '2 2' : undefined} />
                 : <circle data-core r={base} fill={color} opacity={hollow === 'decayed' ? 0.5 : 1} stroke={p.unknown ? color : 'none'} strokeDasharray={p.unknown ? '2 2' : undefined} />}
-              {selected && <circle r={base + 5} fill="none" stroke={SA.accent} strokeWidth={2} data-selection-ring />}
+              {selected && <circle r={base + 5} fill="none" stroke={SA.text} strokeWidth={2} data-selection-ring />}
               {i < TOP_LABELS && <text y={-(base + (halo ? 20 : 8))} textAnchor="middle" fontSize={11} fontWeight={600} fill={SA.text} style={numStyle} data-direct-label>{r.score}</text>}
               {showTrend && r.band_changed && r.trend && r.trend !== 'flat' && <text y={base + 14} textAnchor="middle" fontSize={10} fill={r.trend === 'up' ? SA.good : SA.bad} data-trend={r.trend}>{r.trend === 'up' ? '▲' : '▼'}</text>}
               <circle r={Math.max(12, base + 6)} fill="transparent" />
@@ -136,13 +162,10 @@ export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, c
         <g data-name-labels aria-hidden="true" style={{ pointerEvents: 'none' }}>
           {labels.map(l => <text key={l.key} data-name-label={l.key} x={0} y={0} textAnchor={l.anchor} dominantBaseline="central" fontSize={11} fontWeight={500} fill={SA.text} style={{ transform: `translate(${l.x}px, ${l.y}px)`, transition: 'transform 400ms ease', paintOrder: 'stroke', stroke: SA.inset, strokeWidth: 3, strokeLinejoin: 'round' }}>{l.text}</text>)}
         </g>
-        {!n && <text x={W / 2} y={CHART_H / 2} textAnchor="middle" fontSize={13} fill={SA.muted}>No companies under these filters</text>}
+        {!n && <text x={W / 2} y={H / 2} textAnchor="middle" fontSize={13} fill={SA.muted}>No companies under these filters</text>}
       </svg>
-      {names === 'all' && n > 0 && <div data-names-count style={{ fontSize: 11, color: SA.muted, padding: '0 0 0 44px' }}>{labels.length} of {n} named - see Table for all</div>}
-      <div aria-hidden="true" style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: SA.muted, padding: '0 0 0 44px' }}>
-        <span>Rank 1 → {n}</span>
-        <span>Rings: {ringKey} · outer ring = touched (bright ≤ 7 d, faint ≤ 30 d) · hollow = not researched</span>
-      </div>
+      {names === 'all' && n > 0 && <div data-names-count style={{ fontSize: 11, color: SA.muted, padding: '0 0 0 56px' }}>{labels.length} of {n} named - see Table for all</div>}
+      <ChartKey ringsOn={ringsOn} />
       {hover && !pinned && <Tooltip row={hover.row} x={hover.x} y={hover.y} metric={y} />}
       {pinned && <Tooltip row={pinned.r} x={pinned.x} y={pinned.y} metric={y} pinned place={cardPlace({ x: pinned.x, y: pinned.y, W, pad: base + 14 })} onOpenName={() => onOpen && onOpen(pinned.r)}>{menu}</Tooltip>}
     </div>

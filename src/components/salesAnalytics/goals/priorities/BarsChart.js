@@ -11,10 +11,10 @@ import { Tooltip, CHART_H, cardPlace, markHandlers } from './DotsChart';
 const M = { l: 44, r: 64, t: 30, b: 28 };
 const topPath = (x, y0, y1, w, rad) => { const r = Math.min(rad, w / 2, Math.max(0, y0 - y1)); return `M${x},${y0} V${y1 + r} Q${x},${y1} ${x + r},${y1} H${x + w - r} Q${x + w},${y1} ${x + w},${y1 + r} V${y0} Z`; };
 
-export default function BarsChart({ rows, lit, y = 'intent', thresholds, caps, counts = {}, selectedKey, onSelect, onOpen, menu = null, showTrend = false, width = 960, names = 'on', phone = false }) {
+export default function BarsChart({ rows, lit, y = 'intent', thresholds, caps, counts = {}, selectedKey, onSelect, onOpen, menu = null, showTrend = false, width = 960, names = 'on', phone = false, height = CHART_H }) {
   const [hover, setHover] = useState(null);
   const n = rows.length;
-  const W = Math.max(320, width), plotW = W - M.l - M.r, plotH = CHART_H - M.t - M.b;
+  const W = Math.max(320, width), plotW = W - M.l - M.r, plotH = height - M.t - M.b;
   const scale = yScale(y, rows);
   const slot = n ? plotW / n : plotW;
   const bw = Math.max(2, slot - 2);
@@ -35,7 +35,7 @@ export default function BarsChart({ rows, lit, y = 'intent', thresholds, caps, c
   const pinned = byKey.get(selectedKey) || null;
   return (
     <div data-bars-chart style={{ position: 'relative', width: '100%' }}>
-      <svg width="100%" height={CHART_H} viewBox={`0 0 ${W} ${CHART_H}`} role="group" aria-label={`Companies ranked by intent as bars, Y axis ${scale.label}`} style={{ display: 'block', overflow: 'visible', fontFamily: 'inherit' }}>
+      <svg width="100%" height={height} viewBox={`0 0 ${W} ${height}`} role="group" aria-label={`Companies ranked by intent as bars, Y axis ${scale.label}`} style={{ display: 'block', overflow: 'visible', fontFamily: 'inherit' }}>
         {scale.ticks.map(t => (
           <g key={t.v}>
             <line x1={M.l} x2={W - M.r} y1={cy(t.v)} y2={cy(t.v)} stroke={SA.track} strokeWidth={1} />
@@ -70,7 +70,7 @@ export default function BarsChart({ rows, lit, y = 'intent', thresholds, caps, c
           {inside.map(l => <text key={l.key} data-name-label={l.key} data-label-inside x={l.x} y={l.y} textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={600} fill={SA.inset}>{l.text}</text>)}
           {labels.map(l => <text key={l.key} data-name-label={l.key} x={l.x} y={l.y} textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight={500} fill={SA.text} style={{ paintOrder: 'stroke', stroke: SA.inset, strokeWidth: 3, strokeLinejoin: 'round' }}>{l.text}</text>)}
         </g>
-        {!n && <text x={W / 2} y={CHART_H / 2} textAnchor="middle" fontSize={13} fill={SA.muted}>No companies under these filters</text>}
+        {!n && <text x={W / 2} y={height / 2} textAnchor="middle" fontSize={13} fill={SA.muted}>No companies under these filters</text>}
       </svg>
       {names === 'all' && n > 0 && <div data-names-count style={{ fontSize: 11, color: SA.muted, padding: '0 0 0 44px' }}>{inside.length + labels.length} of {n} named - see Table for all</div>}
       {hover && !pinned && <Tooltip row={hover.row} x={hover.x} y={hover.y} metric={y} />}

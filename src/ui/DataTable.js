@@ -23,6 +23,7 @@ import { KIT_TABLE } from './tokens';
 //   fills the window under the header. A wheel down over the box scrolls the
 //   page first (until pinned), then the rows - without it the page would
 //   never move while the pointer is over the table.
+//   onRowClick(row): a press on the row outside its controls (priorities-v2: a row selects its chart dot).
 //   renderDetail(row) + a column with detail: true: that cell starts with a
 //   ▸ / ▾ button, and the button or a click on the cell opens the detail panel
 //   in a full-width row under it (phone list: under the item). One open at a
@@ -48,7 +49,7 @@ function GroupHeading({ group }) {
     : <span className="ui-table__gh">{group.icon}{h}</span>;
 }
 
-export default function DataTable({ columns, groups, rowStyle, rowKey, compact = false, renderCompact, renderDetail, emptyText, label, sort: sortProp, onSort, dense = false, pinUnder = null }) {
+export default function DataTable({ columns, groups, rowStyle, rowKey, compact = false, renderCompact, renderDetail, emptyText, label, sort: sortProp, onSort, dense = false, pinUnder = null, onRowClick }) {
   const [sortState, setSortState] = useState(null);
   const [openKey, setOpenKey] = useState(null);
   const idBase = useId();
@@ -57,6 +58,7 @@ export default function DataTable({ columns, groups, rowStyle, rowKey, compact =
   const boxRef = useRef(null);
   const [height, setHeight] = useState(null);
   const sortCol = useMemo(() => columns.find(c => c.id === sort?.id) || null, [columns, sort]);
+  const rowClick = r => (onRowClick ? e => { if (!e.target.closest?.(INTERACTIVE)) onRowClick(r); } : undefined);
 
   useEffect(() => {
     if (compact) return undefined;
@@ -118,7 +120,7 @@ export default function DataTable({ columns, groups, rowStyle, rowKey, compact =
             {!g.collapsed && !g.rows.length && g.emptyText && <li className="ui-table__empty">{g.emptyText}</li>}
             {!g.collapsed && g.rows.map(r => (
               <React.Fragment key={rowKey(r)}>
-                <li className={hasDetail ? 'ui-list__row ui-list__row--detail' : 'ui-list__row'} data-row data-key={rowKey(r)} style={rowStyle?.(r)} onClick={hasDetail ? onAreaClick(rowKey(r)) : undefined}>{hasDetail && disclose(r)}{renderCompact(r)}</li>
+                <li className={hasDetail ? 'ui-list__row ui-list__row--detail' : 'ui-list__row'} data-row data-key={rowKey(r)} style={rowStyle?.(r)} onClick={hasDetail ? onAreaClick(rowKey(r)) : rowClick(r)}>{hasDetail && disclose(r)}{renderCompact(r)}</li>
                 {hasDetail && openKey === rowKey(r) && <li id={panelId(rowKey(r))} className="ui-list__detail" data-detail={rowKey(r)}><div className="ui-detail">{renderDetail(r)}</div></li>}
               </React.Fragment>
             ))}
@@ -152,7 +154,7 @@ export default function DataTable({ columns, groups, rowStyle, rowKey, compact =
               {!g.collapsed && !g.rows.length && g.emptyText && <tr><td colSpan={columns.length} className="ui-table__empty">{g.emptyText}</td></tr>}
               {!g.collapsed && sortRows(g.rows, sortCol, sort?.dir).map(r => (
                 <React.Fragment key={rowKey(r)}>
-                  <tr data-row data-key={rowKey(r)} style={rowStyle?.(r)}>
+                  <tr data-row data-key={rowKey(r)} style={rowStyle?.(r)} onClick={rowClick(r)}>
                     {columns.map(c => (hasDetail && c === detailCol
                       ? <td key={c.id} className={cellClass(c)} title={c.title?.(r) || undefined} onClick={onAreaClick(rowKey(r))}><span className="ui-table__detail-wrap">{disclose(r)}{c.render(r)}</span></td>
                       : <td key={c.id} className={cellClass(c)} title={c.title?.(r) || undefined}>{c.render(r)}</td>))}

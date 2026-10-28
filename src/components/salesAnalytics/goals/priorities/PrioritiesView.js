@@ -6,7 +6,6 @@ import { updateOpportunity } from '../../pipelineApi';
 import { SOURCE_THEME_CSS, SOURCE_LABELS, SOURCE_ORDER, sourceColor } from '../../palette';
 import useMediaQuery from '../../../../utils/useMediaQuery';
 import { FRAME_TOOLS_ID } from '../../salesFrame';
-import Segmented from '../../../../ui/Segmented';
 import FilterSelect from '../../../../ui/FilterSelect';
 import Button from '../../../../ui/Button';
 import { ToggleChip } from '../../../../ui/Chip';
@@ -14,12 +13,15 @@ import CompanyPanel from '../CompanyPanel';
 import { numStyle, ErrorNote } from '../goalsUi';
 import { TOP_CAP } from '../../../../constants/pipelineBoard';
 import DotsChart from './DotsChart';
+import FilterBar from './FilterBar';
+import ChartToolbar from './ChartToolbar';
+import { IconRefresh } from '../../../../ui/icons';
 import BarsChart from './BarsChart';
 import PrioritiesTable from './PrioritiesTable';
 import QuickMenu from './QuickMenu';
 import BriefCard from './BriefCard';
 import ComposePanel from './ComposePanel';
-import { Y_METRICS, VIEWS, SEGMENTS, WINDOWS, BANDS, NAME_MODES, EMPTY_FILTERS, PAGE_SIZE, filterParams, filtersFromView, activeFilterCount, toggleLit, pageOf, readPrefs, writePrefs } from './prioritiesModel';
+import { Y_METRICS, VIEWS, EMPTY_FILTERS, PAGE_SIZE, filterParams, filtersFromView, activeFilterCount, toggleLit, pageOf, readPrefs, writePrefs, heightPx } from './prioritiesModel';
 
 // intent-score-v1 S3 / S5 - Sales > Pipeline > Priorities: the book ranked by intent as DOTS (default), BARS or a
 // TABLE; filters in one row above; the legend IS the source toggle (dims, never removes; colors follow the entity);
@@ -35,7 +37,8 @@ const HTML2CANVAS = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/ht
 const rowBar = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minHeight: 36 };
 const rowKey = r => `${r.type}-${r.id}`;
 const opts = (all, list) => [{ value: '', label: all }, ...list];
-const TOP_N = [['40', 'Top 40'], ['20', 'Top 20'], ['10', 'Top 10'], ['all', 'Everything']];
+const card = { display: 'flex', flexDirection: 'column', gap: 10, background: SA.inset, border: `1px solid ${SA.border}`, borderRadius: 12, padding: 12 };
+export const agoText = (iso, now = Date.now()) => { if (!iso) return 'never'; const m = Math.max(0, Math.round((now - Date.parse(iso)) / 6e4)); return m < 60 ? `${m} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} d ago`; };
 const KEEPS_SELECTION = '[data-pinned-card], [data-quick-menu], [data-dot], [data-bar], [data-row-name], [data-brief-card], [data-keeps-selection], [role="status"]';
 
 function loadHtml2canvas() {
@@ -51,6 +54,9 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
   const [view, setView] = useState(prefs.view); // null = dots (table on a phone)
   const [lit, setLit] = useState(() => new Set());
   const [names, setNames] = useState(prefs.names);
+  const [height, setHeight] = useState(prefs.height);
+  const [rings, setRings] = useState(prefs.rings);
+  const [zerosOpen, setZerosOpen] = useState(false);
   const [page, setPage] = useState(0);
   const [topN, setTopN] = useState('40');
   const [showTrend, setShowTrend] = useState(false);
@@ -87,7 +93,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
   useEffect(() => { goalsApi.members(businessId).then(setMembers).catch(() => setMembers([])); }, [businessId]);
   useEffect(() => { goalsApi.composeStatus(businessId).then(setCompose).catch(() => setCompose(null)); }, [businessId]);
   useEffect(() => { goalsApi.scoreViews(businessId).then(setViews).catch(() => setViews([])); }, [businessId]);
-  useEffect(() => { writePrefs({ ...readPrefs(), y, view: view || undefined, names }); }, [y, view, names]);
+  useEffect(() => { writePrefs({ y, view: view || undefined, names, height, rings }); }, [y, view, names, height, rings]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -153,6 +159,8 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
   const setSubClose = useCallback(fn => { subClose.current = fn; }, []);
   const set = (k, v) => setFilters(f => ({ ...f, [k]: v }));
   const nFilters = activeFilterCount(filters);
+  const stale = data?.stale;
+  const overlayRoot = document.getElementById('sales-analytics-root') || document.body;
 
   const select = r => {
     setSelectedKey(k => (k === r.key ? null : r.key));
@@ -172,7 +180,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
   };
   const applyView = v => { setFilters(filtersFromView(v.filters)); if (Y_METRICS.some(([id]) => id === v.y)) setY(v.y); if (VIEWS.some(([id]) => id === v.view)) setView(v.view); setLit(new Set()); };
   const share = async () => {
-    const name = shareName.trim() || `Priorities ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+    const name = shareName.trim() || `Map ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
     setSharing(true);
     try {
       const r = await goalsApi.saveScoreView(businessId, { name, filters: { ...filters, source: lit.size ? [...lit] : filters.source }, y, view: effectiveView });
@@ -200,62 +208,34 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
     <QuickMenu businessId={businessId} row={selected} members={members} meId={meId} canEdit={canEdit} compose={compose} nextStep={brief?.key === selected.key ? brief.brief?.next_step : null}
       onBrief={() => openBrief(selected)} onCompose={() => setComposeFor(selected)} onOpen={() => open(selected)} onChanged={reloadAll} onToast={setToast} onSubClose={setSubClose} />
   ) : null;
-  const chartProps = { rows: paged.rows, lit, y, thresholds: data?.thresholds, caps: data?.caps, counts: data?.counts || {}, selectedKey, onSelect: select, onOpen: open, menu, showTrend, width: phone ? Math.max(width, 720) : width, names, phone };
+  const chartProps = { rows: paged.rows, lit, y, thresholds: data?.thresholds, caps: data?.caps, counts: data?.counts || {}, selectedKey, onSelect: select, onOpen: open, menu, showTrend, width: phone ? Math.max(width, 720) : width, names, phone, height: heightPx(height), rings };
+  const zeroSources = SOURCE_ORDER.filter(s => !(litCounts[s] > 0) && !lit.has(s));
   const legend = (
     <div ref={legendRef} role="group" aria-label="Source" data-legend style={rowBar}>
       <span className="ui-group-label" aria-hidden="true">Source</span>
-      {SOURCE_ORDER.map(s => (
+      {SOURCE_ORDER.filter(s => zerosOpen || !zeroSources.includes(s)).map(s => (
         <ToggleChip key={s} pressed={lit.has(s)} data-legend-source={s} count={litCounts[s] ?? 0} title={`${SOURCE_LABELS[s]} - click to light only this source (others dim); click more to compare`} onClick={() => setLit(l => toggleLit(l, s))}>
           <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: sourceColor(s), flex: 'none' }} />{SOURCE_LABELS[s]}
         </ToggleChip>
       ))}
+      {zeroSources.length > 0 && <button type="button" className="ui-chip" data-zero-sources aria-expanded={zerosOpen} onClick={() => setZerosOpen(o => !o)} style={{ borderStyle: 'dashed', color: SA.muted }}>{zerosOpen ? 'Hide sources with 0' : `+ ${zeroSources.length} source${zeroSources.length === 1 ? '' : 's'} with 0`}</button>}
       {lit.size > 0 && <Button variant="tertiary" onClick={() => setLit(new Set())}>All sources</Button>}
     </div>
   );
-  const filterControls = (
-    <>
-      <Segmented label="Segment" items={SEGMENTS.map(([id, label]) => ({ id, label }))} value={filters.segment} onChange={v => set('segment', v)} />
-      <FilterSelect label="Owner" value={filters.owner} options={[...opts('All owners', members.filter(m => m.role !== 'viewer').map(m => ({ value: m.user_id, label: m.name }))), { value: 'unassigned', label: 'Unassigned' }]} onChange={v => set('owner', v)} />
-      <FilterSelect label="Band" value={filters.band} options={opts('All bands', BANDS.map(b => ({ value: b, label: b })))} onChange={v => set('band', v)} />
-      <FilterSelect label="Window" value={filters.window} options={WINDOWS.map(([value, label]) => ({ value, label }))} onChange={v => set('window', v)} />
-      <ToggleChip pressed={filters.needs_touch} count={data?.counts?.needs_touch ?? ''} title={data ? `Score ≥ ${data.needs_touch_rule.min} and no touch in ${data.needs_touch_rule.days} days` : undefined} onClick={() => set('needs_touch', !filters.needs_touch)}>Needs a touch</ToggleChip>
-      <ToggleChip pressed={showTrend} count={data?.counts?.band_changed ?? ''} title="Mark companies whose band changed since the last snapshot" onClick={() => setShowTrend(t => !t)}>Since yesterday</ToggleChip>
-      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: SA.muted }}>
-        Min score <input type="range" min={0} max={100} step={5} value={filters.min} aria-label="Minimum score" onChange={e => set('min', Number(e.target.value))} style={{ width: 90 }} /><span style={{ ...numStyle, minWidth: 22, color: SA.text }}>{filters.min}</span>
-      </label>
-      <input type="search" className="ui-input ui-input--sm" aria-label="Search companies" placeholder="Search" value={filters.q} onChange={e => set('q', e.target.value)} style={{ width: 140 }} />
-      {nFilters > 0 && <Button variant="tertiary" onClick={() => setFilters(EMPTY_FILTERS)}>Clear ({nFilters})</Button>}
-    </>
-  );
   const tools = (
     <>
+      {data && <span data-counts style={{ ...numStyle, fontSize: 12, color: SA.muted, whiteSpace: 'nowrap', marginRight: 'auto' }}>{data.counts.ranked} ranked · {data.counts.live} live · recomputed {agoText(data.computed_at)}{stale ? ' · scores older than a day' : ''}</span>}
       {views.length > 0 && <FilterSelect label="Saved view" value="" options={opts('Saved views', views.map(v => ({ value: v.id, label: v.name })))} onChange={id => { const v = views.find(x => x.id === id); if (v) applyView(v); }} />}
       {canEdit && <button type="button" className="ui-btn ui-btn--secondary no-print" onClick={() => setShareOpen(o => !o)} title="Save this view by name, download a PNG of the chart and the CSV of the table">Share</button>}
-      {isAdmin && <button type="button" className="ui-btn ui-btn--secondary no-print" disabled={recomputing} onClick={recompute} title="Recompute every company's score now (also runs after pulls, signals, research, source edits, syncs and once a day)">{recomputing ? 'Recomputing…' : 'Recompute now'}</button>}
+      {isAdmin && <button type="button" className="ui-btn ui-btn--secondary no-print" disabled={recomputing} onClick={recompute} title="Recompute every company's score now (also runs after pulls, signals, research, source edits, syncs and once a day)"><IconRefresh size={13} />{recomputing ? 'Recomputing…' : 'Recompute'}</button>}
     </>
   );
-  const overlayRoot = document.getElementById('sales-analytics-root') || document.body;
-  const stale = data?.stale;
 
   return (
-    <section aria-label="Priorities" data-priorities onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+    <section aria-label="Map" data-priorities onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={onPointerCancel} style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
       <style>{SOURCE_THEME_CSS}</style>
       {toolsSlot && createPortal(tools, toolsSlot)}
-      <div role="group" aria-label="Filters" data-filter-row style={rowBar}>{filterControls}</div>
-      <div role="group" aria-label="View" data-view-row style={rowBar}>
-        <span className="ui-group-label" aria-hidden="true">View</span>
-        <Segmented label="Chart view" items={VIEWS.map(([id, label]) => ({ id, label }))} value={effectiveView} onChange={setView} />
-        {effectiveView !== 'table' && <>
-          <span className="ui-group-label" aria-hidden="true">Y</span>
-          <span data-keeps-selection style={{ display: 'contents' }}><Segmented label="Y axis" items={Y_METRICS.map(([id, label]) => ({ id, label }))} value={y} onChange={setY} /></span>
-          <span style={{ fontSize: 12, color: SA.muted }}>Rank by Intent</span>
-          <FilterSelect label="Show" value={topN} options={TOP_N.map(([value, label]) => ({ value, label }))} onChange={setTopN} />
-          <span className="ui-group-label" aria-hidden="true">Names</span>
-          <span data-keeps-selection style={{ display: 'contents' }}><Segmented label="Names" items={NAME_MODES.map(([id, label]) => ({ id, label }))} value={names} onChange={setNames} /></span>
-        </>}
-        <span style={{ flex: 1 }} />
-        {data && <span style={{ ...numStyle, fontSize: 12, color: SA.muted }} data-counts>{data.counts.shown} of {data.counts.ranked} ranked · P1 {data.counts.P1} · P2 {data.counts.P2} · P3 {data.counts.P3} · P4 {data.counts.P4}{data.counts.live ? ` · ${data.counts.live} live` : ''}{stale ? ' · scores older than a day' : ''}</span>}
-      </div>
+      <FilterBar filters={filters} set={set} onClear={() => setFilters(EMPTY_FILTERS)} data={data} members={members} />
       {shareOpen && (
         <form data-share-form onSubmit={e => { e.preventDefault(); share(); }} style={{ ...rowBar, padding: '8px 10px', background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: 10 }}>
           <input className="ui-input ui-input--sm" aria-label="View name" placeholder="Name this view (e.g. Brad's companies)" value={shareName} onChange={e => setShareName(e.target.value)} style={{ width: 260 }} />
@@ -267,11 +247,13 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
       )}
       {error && <ErrorNote message={error} />}
       {data && (
-        <div ref={shotRef} data-share-shot style={{ display: 'flex', flexDirection: 'column', gap: 8, background: SA.inset, border: `1px solid ${SA.border}`, borderRadius: 12, padding: 12 }}>
+        <div ref={shotRef} data-share-shot role="group" aria-label="Chart" style={card}>
+          <ChartToolbar view={effectiveView} setView={setView} y={y} setY={setY} topN={topN} setTopN={setTopN} height={height} setHeight={setHeight} rings={rings} setRings={setRings}
+            showTrend={showTrend} setShowTrend={setShowTrend} names={names} setNames={setNames} counts={data.counts} band={filters.band} onBand={b => set('band', b)} />
           {legend}
-          {nFilters > 0 && <div data-filter-line style={{ fontSize: 12, color: SA.muted }}>Filters: {filters.segment !== 'all' ? `${SEGMENTS.find(([id]) => id === filters.segment)?.[1]} · ` : ''}{filters.owner ? `${filters.owner === 'unassigned' ? 'Unassigned' : members.find(m => m.user_id === filters.owner)?.name || 'owner'} · ` : ''}{filters.band ? `${filters.band} · ` : ''}{filters.window ? `visited ${filters.window} d · ` : ''}{filters.needs_touch ? 'needs a touch · ' : ''}{filters.min ? `min ${filters.min} · ` : ''}{filters.q ? `"${filters.q}" · ` : ''}{data.today}</div>}
+          {nFilters > 0 && <div data-filter-line style={{ fontSize: 12, color: SA.muted }}>{data.counts.shown} of {data.counts.ranked} shown · {data.today}</div>}
           {effectiveView === 'table'
-            ? <PrioritiesTable rows={rows} live={data.live} lit={lit} selectedKey={selectedKey} onSelect={select} onOpen={open} showTrend={showTrend} phone={phone} />
+            ? <PrioritiesTable rows={rows} live={data.live} lit={lit} selectedKey={selectedKey} onSelect={select} onOpen={open} showTrend={showTrend} phone={phone} caps={data.caps} collapsible={false} />
             : (
               <div ref={chartRef} data-chart-box onPointerEnter={needChains} onFocus={needChains} style={{ overflowX: phone ? 'auto' : 'visible', minWidth: 0 }}>
                 <div style={{ minWidth: phone ? 720 : 0 }}>
@@ -288,6 +270,17 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
           )}
           {data.counts.live > 0 && effectiveView !== 'table' && <div style={{ fontSize: 12, color: SA.muted }}>{data.counts.live} live (closed-won or pilot) and {data.counts.duplicates} duplicate{data.counts.duplicates === 1 ? '' : 's'} are out of the ranking - see the Table and the CSV.</div>}
         </div>
+      )}
+      {data && effectiveView !== 'table' && (
+        <section aria-label="Detail" data-detail-card style={card}>
+          <div style={{ ...rowBar, minHeight: 0 }}>
+            <span className="ui-group-label">{topN === 'all' ? 'Everything' : `Top ${topN}`} · detail</span>
+            <span style={{ fontSize: 12, color: SA.muted }}>Click a dot or a row — they select together</span>
+            <span style={{ flex: 1 }} />
+            <a className="ui-btn ui-btn--secondary ui-btn--sm" href={goalsApi.scoresCsvUrl(businessId, filterParams(filters))} target="_blank" rel="noreferrer">Export CSV</a>
+          </div>
+          <PrioritiesTable key={`${paged.page}-${topN}`} rows={paged.rows} live={data.live} lit={lit} selectedKey={selectedKey} onSelect={select} onOpen={open} showTrend={showTrend} phone={phone} caps={data.caps} from={paged.from} />
+        </section>
       )}
       {effectiveView === 'table' && menu}
       {brief && selected && brief.key === selected.key && <BriefCard brief={brief.brief} error={brief.error} onClose={() => setBrief(null)} />}

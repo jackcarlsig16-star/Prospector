@@ -1,4 +1,4 @@
-import { navFrom, normalizeNav } from './salesNav';
+import { navFrom, normalizeNav, SUB_VIEWS } from './salesNav';
 import { readPeopleCompany, writePeopleCompany } from './salesNav';
 
 test('?tab= wins and an unknown sub-view falls back to the tab default', () => {
@@ -56,4 +56,8 @@ test('readPeopleCompany / writePeopleCompany round-trip; a bad type or a missing
   expect(readPeopleCompany()).toEqual({ type: 'partner', id: 'g1', name: 'Gallagher' });
   writePeopleCompany(null);
   expect(window.location.search).toBe('?tab=pipeline&view=people');
+});
+
+test('priorities-v2 D9: the Priorities sub-view is labelled Map; its id stays priorities', () => {
+  expect(SUB_VIEWS.pipeline.find(([id]) => id === 'priorities')).toEqual(['priorities', 'Map']);
 });

@@ -192,7 +192,6 @@ export default function SalesAnalyticsTab({ businessId, features }) {
   const frameRow = (
     <div className="no-print" data-sales-frame style={{ height: FRAME_ROW_HEIGHT, display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, minWidth: 0 }}>
       <div data-sales-subviews style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8, minHeight: 36 }}>
-        {subViews && <span className="ui-group-label" aria-hidden="true">View</span>}
         {subViews && <Segmented label={`${TABS.find(([id]) => id === tab)[1]} views`} items={subViews.map(([id, label]) => ({ id, label }))} value={view} onChange={v => { nav(tab, v); setHuddleTarget(null); }} />}
       </div>
       <div id={FRAME_TOOLS_ID} style={{ flex: '1 1 auto', minWidth: 0, height: FRAME_ROW_HEIGHT, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, overflowX: 'auto', overflowY: 'hidden' }} />

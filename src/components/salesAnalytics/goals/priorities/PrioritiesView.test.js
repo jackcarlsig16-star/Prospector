@@ -19,7 +19,7 @@ const ROWS = [
   row('employer', 'e1', 'Hilton Example', 49, 'P2', 'upside', { owner_user_id: null, owner: null, owner_team: 'upside', no_double_touch: true, upside_owned: true, touch_locked: true, rank: 2, band_changed: false, trend: 'flat' }),
   row('partner', 'p1', 'Harbor Lane', 37, 'P3', 'upside', { researched: 'none', components: comp(0, 0, 10, -3, 10), employees: null, rank: 3, days_since_touch: null, last_touch_at: null, band_changed: false }),
 ];
-const DATA = { rows: ROWS, live: [row('partner', 'p2', 'Live Partner', 60, 'P1', 'inbound', { live: true, rank: 0 })], counts: { companies: 4, ranked: 3, shown: 3, live: 1, duplicates: 0, closed: 0, needs_touch: 1, band_changed: 1, P1: 1, P2: 1, P3: 1, P4: 0 },
+const DATA = { rows: ROWS, live: [row('partner', 'p2', 'Live Partner', 60, 'P1', 'inbound', { live: true, rank: 0 })], counts: { companies: 4, ranked: 3, shown: 3, live: 1, duplicates: 0, closed: 0, needs_touch: 1, band_changed: 1, segments: { all: 3, visitors: 2, partners: 1, employers: 1, targets: 1 }, P1: 1, P2: 1, P3: 1, P4: 0 },
   sources: { upside: 2, partner_referral: 0, person_referral: 0, campaign: 0, website: 1, inbound: 0, homelover_outreach: 0, scout: 0, other: 0 }, owners: [{ user_id: 'u1', name: 'Jack Carlson' }],
   filters: {}, computed_at: '2026-10-27T18:00:00Z', stale: false, today: '2026-10-27', has_previous: true, thresholds: { P1: 60, P2: 40, P3: 15 }, caps: { visits: 25, pages: 10, apollo_intent: 5, people: 15, fit: 15, research: 10, source: 12, engagement: 10, stage: 10, recency: 10 }, needs_touch_rule: { min: 40, days: 14 }, source_order: ['upside', 'partner_referral', 'person_referral', 'campaign', 'website', 'inbound', 'homelover_outreach', 'scout', 'other'] };
 const MEMBERS = [{ user_id: 'u1', name: 'Jack Carlson', role: 'owner' }, { user_id: 'u2', name: 'Cyrus Test', role: 'member' }];
@@ -57,10 +57,14 @@ test('dots: every ranked company as a dot in its source color; legend toggle dim
   fireEvent.click(screen.getByRole('button', { name: 'All sources' }));
   await waitFor(() => expect(dot('Quarry Labs').getAttribute('data-dimmed')).toBeNull());
   expect(document.querySelector('[data-rank-line]')).toBeInTheDocument();
-  expect(document.querySelector('[data-band-guide="P1"]').textContent).toBe('P1 · 1');
+  // priorities-v2 G: four band zones from the thresholds - the letter + count on the left, the band word inside.
+  expect([...document.querySelectorAll('[data-band-zone]')].map(z => z.getAttribute('data-band-zone'))).toEqual(['P1', 'P2', 'P3', 'P4']);
+  expect(document.querySelector('[data-band-count="P1"]').textContent).toBe('1');
+  expect([...document.querySelectorAll('[data-band-word]')].map(w => w.textContent)).toEqual(['Act now', 'Warm', 'Watch', 'Backlog']);
+  expect(document.querySelectorAll('[data-band-guide]')).toHaveLength(3);
 });
 
-test('hollow when unresearched (no rings), rings + halo on a touched researched dot; the top-5 direct labels; a since-yesterday marker', async () => {
+test('hollow when unresearched; rings off by default, Rings draws them on a researched dot; a halo on a touched one; the top direct labels; a since-yesterday marker', async () => {
   render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
   await waitFor(() => expect(dots()).toHaveLength(3));
   const harbor = dot('Harbor Lane');
@@ -70,12 +74,15 @@ test('hollow when unresearched (no rings), rings + halo on a touched researched 
   expect(harbor.getAttribute('data-halo')).toBeNull();
   const quarry = dot('Quarry Labs');
   expect(quarry.getAttribute('data-hollow')).toBe('solid');
-  expect([...quarry.querySelectorAll('[data-ring]')].map(r => r.getAttribute('data-ring'))).toEqual(['visits', 'people', 'fit', 'research']);
+  expect(quarry.querySelectorAll('[data-ring]')).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button', { name: /^Rings/ }));
+  expect([...dot('Quarry Labs').querySelectorAll('[data-ring]')].map(r => r.getAttribute('data-ring'))).toEqual(['visits', 'people', 'fit', 'research']);
+  expect(JSON.parse(localStorage.getItem('prospector_priorities_view')).rings).toBe(true);
   expect(quarry.getAttribute('data-halo')).toBe('bright');
-  expect(quarry.querySelector('[data-direct-label]').textContent).toBe('72');
-  expect(quarry.querySelector('[data-trend]')).toBeNull();
+  expect(dot('Quarry Labs').querySelector('[data-direct-label]').textContent).toBe('72');
+  expect(dot('Quarry Labs').querySelector('[data-trend]')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /Since yesterday/ }));
-  expect(quarry.querySelector('[data-trend="up"]')).toBeInTheDocument();
+  expect(dot('Quarry Labs').querySelector('[data-trend="up"]')).toBeInTheDocument();
 });
 
 // FIX priorities-select-vs-open-v1: a click SELECTS (card pinned beside the dot with the quick menu inside, window closed);
@@ -174,7 +181,7 @@ test('table mirrors the filters and the legend: the Segment filter re-queries, a
   await waitFor(() => expect(within(screen.getByRole('table')).queryByText('Quarry Labs')).not.toBeInTheDocument());
   expect(within(screen.getByRole('table')).getByText('Hilton Example')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'All sources' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Partners' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Partners/ }));
   await waitFor(() => expect(goalsApi.scores).toHaveBeenLastCalledWith('b1', expect.objectContaining({ segment: 'partners' })));
   await waitFor(() => expect(within(screen.getByRole('table')).queryByText('Quarry Labs')).not.toBeInTheDocument());
   expect(within(screen.getByRole('table')).getByText('Harbor Lane')).toBeInTheDocument();
@@ -245,10 +252,10 @@ test('phone: the table lands first; Dots names only P1 + the selected; a tap sel
   window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   try {
     render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
-    await waitFor(() => expect(screen.getByRole('group', { name: 'Chart view' })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('group', { name: 'View' })).toBeInTheDocument());
     await waitFor(() => expect(screen.getByText('Hilton Example')).toBeInTheDocument());
     expect(dots()).toHaveLength(0);
-    expect(within(screen.getByRole('group', { name: 'Chart view' })).getByRole('button', { name: 'Table' }).getAttribute('aria-pressed')).toBe('true');
+    expect(within(screen.getByRole('group', { name: 'View' })).getByRole('button', { name: 'Table' }).getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(screen.getByRole('button', { name: 'Dots' }));
     await waitFor(() => expect(dots()).toHaveLength(3));
     expect(nameLabels()).toEqual(['Quarry Labs']);
@@ -312,7 +319,7 @@ test('select vs open: a second click deselects (card gone); Esc deselects; the n
   expect(within(bcard).getByRole('toolbar', { name: 'Actions for Quarry Labs' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Table' }));
   const table = await screen.findByRole('table');
-  fireEvent.click(within(table).getByRole('button', { name: 'Open Hilton Example' }));
+  fireEvent.click(within(table).getByRole('button', { name: 'Hilton Example' })); // priorities-v2 T: the Company name opens
   await waitFor(() => expect(screen.getByText(/not on the Pipeline board any more/)).toBeInTheDocument());
 });
 
@@ -368,26 +375,28 @@ test('click outside: an open Assign dropdown closes on the first outside press a
   press(screen.getByRole('button', { name: /^Brad \/ Upside/ }));
   expect(selectedCard()).toBeNull();
   fireEvent.click(dot('Quarry Labs'));
-  press(screen.getByRole('button', { name: 'Partners' }));
+  press(screen.getByRole('button', { name: /^Partners/ }));
   expect(selectedCard()).toBeNull();
   fireEvent.click(dot('Quarry Labs'));
   press(screen.getByRole('button', { name: 'Bars' }));
   expect(selectedCard()).toBeNull();
 });
 
-test('click outside: the table - a press on a cell deselects, the name of another row selects it; no document or window pointerdown listener exists, before or after unmount', async () => {
+test('the table (priorities-v2 T): a press on a row selects it, another row swaps; the Company name opens the window; no document or window pointerdown listener exists, before or after unmount', async () => {
+  windowMocks();
   const docSpy = jest.spyOn(document, 'addEventListener'), winSpy = jest.spyOn(window, 'addEventListener');
   const { unmount } = render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
   await waitFor(() => expect(dots()).toHaveLength(3));
   fireEvent.click(screen.getByRole('button', { name: 'Table' }));
   const table = await screen.findByRole('table');
-  fireEvent.click(within(table).getByRole('button', { name: 'Quarry Labs' }));
+  const rowOf = name => within(table).getByRole('button', { name }).closest('tr');
+  press(rowOf('Quarry Labs').querySelector('td:last-child')); fireEvent.click(rowOf('Quarry Labs').querySelector('td:last-child'));
   expect(screen.getByRole('toolbar', { name: 'Actions for Quarry Labs' })).toBeInTheDocument();
-  press(within(table).getByText('Hilton Example')); fireEvent.click(within(table).getByRole('button', { name: 'Hilton Example' }));
+  fireEvent.click(rowOf('Hilton Example').querySelector('td:first-child'));
   expect(screen.getByRole('toolbar', { name: 'Actions for Hilton Example' })).toBeInTheDocument();
-  press(within(table).getByRole('columnheader', { name: 'Score' }));
-  expect(screen.queryByRole('toolbar')).toBeNull();
-  expect(within(table).getByRole('button', { name: 'Hilton Example' }).getAttribute('aria-pressed')).toBe('false');
+  expect(document.querySelector('[data-company-panel]')).toBeNull();
+  fireEvent.click(within(table).getByRole('button', { name: 'Quarry Labs' }));
+  await waitFor(() => expect(document.querySelector('[data-company-panel]')).toBeTruthy());
   unmount();
   expect([...docSpy.mock.calls, ...winSpy.mock.calls].map(c => c[0])).not.toContain('pointerdown');
   docSpy.mockRestore(); winSpy.mockRestore();
@@ -398,7 +407,7 @@ test('click outside on a phone: a tap outside the pinned card closes it; a tap o
   window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   try {
     render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
-    await waitFor(() => expect(screen.getByRole('group', { name: 'Chart view' })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('group', { name: 'View' })).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: 'Dots' }));
     await waitFor(() => expect(dots()).toHaveLength(3));
     fireEvent.click(dot('Harbor Lane'));
@@ -427,4 +436,118 @@ test('brad-attribution-v1 F5: the funnel is read once, when a pointer first reac
   expect(chain.getAttribute('title')).toMatch(/^Referred by Brad \(Upside\) Oct 22 → Visited Oct 24/);
   fireEvent.click(dot('Hilton Example'));
   expect(screen.getByRole('group', { name: 'Hilton Example - selected' }).querySelector('[data-card-chain]')).toBeNull();
+});
+
+// priorities-v2 Stage 2 - the three control families, the chart heights, the detail table under the chart.
+test('filter card: type chips carry counts.segments and filter; labeled selects; the active-filter line removes one filter or clears all', async () => {
+  render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+  await waitFor(() => expect(dots()).toHaveLength(3));
+  const type = screen.getByRole('group', { name: 'Type' });
+  expect(within(type).getAllByRole('button').map(b => b.textContent)).toEqual(['All3', 'Web visitors2', 'Partners1', 'Employers1', 'Targets1']);
+  expect(document.querySelector('[data-active-filters]')).toBeNull();
+  fireEvent.click(within(type).getByRole('button', { name: /^Partners/ }));
+  await waitFor(() => expect(goalsApi.scores).toHaveBeenLastCalledWith('b1', expect.objectContaining({ segment: 'partners' })));
+  fireEvent.change(screen.getByLabelText('Band'), { target: { value: 'P3' } });
+  const line = await waitFor(() => { const l = document.querySelector('[data-active-filters]'); expect(l).toBeTruthy(); return l; });
+  expect(line).toHaveTextContent(/Showing 1 of 3 ·/);
+  expect(within(line).getAllByRole('button').map(b => b.getAttribute('aria-label') || b.textContent)).toEqual(['Remove filter Type: Partners', 'Remove filter Band: P3', 'Clear all']);
+  fireEvent.click(within(line).getByRole('button', { name: 'Remove filter Band: P3' }));
+  await waitFor(() => expect(goalsApi.scores).toHaveBeenLastCalledWith('b1', { segment: 'partners', owner: null, source: null, band: null, needs_touch: null, min: null, window: null, q: null }));
+  fireEvent.click(within(document.querySelector('[data-active-filters]')).getByRole('button', { name: 'Clear all' }));
+  await waitFor(() => expect(document.querySelector('[data-active-filters]')).toBeNull());
+  expect(within(type).getByRole('button', { name: /^All/ }).getAttribute('aria-pressed')).toBe('true');
+});
+
+test('chart toolbar: View + Y as icon and word, "Ranked by intent", the Top stepper, height presets (persisted, the chart grows), band chips filter', async () => {
+  render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+  await waitFor(() => expect(dots()).toHaveLength(3));
+  const bar = screen.getByRole('group', { name: 'Chart controls' });
+  expect(within(within(bar).getByRole('group', { name: 'View' })).getByRole('button', { name: 'Dots' }).querySelector('svg')).toBeTruthy();
+  expect(within(bar).getByText('Ranked by intent')).toBeInTheDocument();
+  expect(chartSvg().getAttribute('height')).toBe('560');
+  fireEvent.click(within(bar).getByRole('button', { name: 'Tall, 800px' }));
+  expect(chartSvg().getAttribute('height')).toBe('800');
+  expect(JSON.parse(localStorage.getItem('prospector_priorities_view')).height).toBe('tall');
+  fireEvent.click(within(bar).getByRole('button', { name: 'Compact, 360px' }));
+  expect(chartSvg().getAttribute('height')).toBe('360');
+  expect(document.querySelector('[data-top-n]').textContent).toBe('40');
+  fireEvent.click(within(bar).getByRole('button', { name: 'Fewer' }));
+  expect(document.querySelector('[data-top-n]').textContent).toBe('20');
+  fireEvent.click(within(bar).getByRole('button', { name: 'More' })); fireEvent.click(within(bar).getByRole('button', { name: 'More' }));
+  expect(document.querySelector('[data-top-n]').textContent).toBe('All');
+  expect(within(bar).getByRole('button', { name: 'More' })).toBeDisabled();
+  fireEvent.click(document.querySelector('[data-band-chip="P2"]'));
+  await waitFor(() => expect(goalsApi.scores).toHaveBeenLastCalledWith('b1', expect.objectContaining({ band: 'P2' })));
+  expect(document.querySelector('[data-band-chip="P2"]').getAttribute('aria-pressed')).toBe('true');
+});
+
+test('legend: sources with 0 fold into one dashed chip that expands', async () => {
+  render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+  await waitFor(() => expect(dots()).toHaveLength(3));
+  expect([...document.querySelectorAll('[data-legend-source]')].map(b => b.getAttribute('data-legend-source'))).toEqual(['upside', 'website']);
+  const more = document.querySelector('[data-zero-sources]');
+  expect(more).toHaveTextContent('+ 7 sources with 0');
+  fireEvent.click(more);
+  expect(document.querySelectorAll('[data-legend-source]')).toHaveLength(9);
+});
+
+test('detail table under the chart: # · Company · Source · Intent · Visits · People · Fit · Research · Engagement · Touched · Band; sort by a header; a row selects the dot and a dot highlights its row; the name opens; Show 11-40', async () => {
+  windowMocks();
+  const many = Array.from({ length: 14 }, (_, i) => row('employer', `x${i}`, `Zz Co ${String(i).padStart(2, '0')}`, 30 - i, 'P3', 'website', { rank: 4 + i }));
+  goalsApi.scores.mockResolvedValue({ ...DATA, rows: [...ROWS, ...many], counts: { ...DATA.counts, ranked: 17, shown: 17 } });
+  render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+  await waitFor(() => expect(dots()).toHaveLength(17));
+  const card = screen.getByRole('region', { name: 'Detail' });
+  expect(card).toHaveTextContent('Top 40 · detail');
+  expect(card).toHaveTextContent('Click a dot or a row — they select together');
+  const table = within(card).getByRole('table');
+  expect(within(table).getAllByRole('columnheader').map(h => h.textContent.replace(/[▲▼↕\s]+$/, '').trim())).toEqual(['#', 'Company', 'Source', 'Intent', 'Visits', 'People', 'Fit', 'Research', 'Engagement', 'Touched', 'Band']);
+  const names = () => [...table.querySelectorAll('[data-row-name]')].map(b => b.textContent);
+  expect(names()).toHaveLength(10 + 1); // the first 10 ranked + the Live row
+  expect(names().slice(0, 3)).toEqual(['Quarry Labs', 'Hilton Example', 'Harbor Lane']);
+  const quarry = within(table).getByRole('button', { name: 'Quarry Labs' }).closest('tr');
+  expect(quarry.textContent).toContain('15/15');
+  expect(quarry.querySelector('[data-band-pill="P1"]')).toBeTruthy();
+  fireEvent.click(within(card).getByRole('button', { name: 'Show 11–17 ▾' }));
+  expect(names()).toHaveLength(17 + 1);
+  fireEvent.click(within(table).getByRole('button', { name: /^Company/ }));
+  expect(names()[0]).toBe('Harbor Lane');
+  fireEvent.click(quarry.querySelector('td:last-child'));
+  expect(dot('Quarry Labs').getAttribute('data-selected')).toBe('true');
+  expect(screen.getByRole('group', { name: 'Quarry Labs - selected' })).toBeInTheDocument();
+  fireEvent.click(dot('Hilton Example'));
+  const hilton = within(table).getByRole('button', { name: 'Hilton Example' }).closest('tr');
+  expect(hilton.getAttribute('style')).toMatch(/--ui-row-bar/);
+  expect(quarry.getAttribute('style')).not.toMatch(/--ui-row-bar/);
+  fireEvent.click(within(table).getByRole('button', { name: 'Quarry Labs' }));
+  await waitFor(() => expect(document.querySelector('[data-company-panel]')).toBeTruthy());
+});
+
+test('a dot selected below the first 10 opens the rest of the detail table', async () => {
+  const many = Array.from({ length: 14 }, (_, i) => row('employer', `x${i}`, `Zz Co ${String(i).padStart(2, '0')}`, 30 - i, 'P3', 'website', { rank: 4 + i }));
+  goalsApi.scores.mockResolvedValue({ ...DATA, rows: [...ROWS, ...many], counts: { ...DATA.counts, ranked: 17, shown: 17 } });
+  render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+  await waitFor(() => expect(dots()).toHaveLength(17));
+  const table = within(screen.getByRole('region', { name: 'Detail' })).getByRole('table');
+  expect(within(table).queryByRole('button', { name: 'Zz Co 13' })).toBeNull();
+  fireEvent.click(dot('Zz Co 13'));
+  await waitFor(() => expect(within(table).getByRole('button', { name: 'Zz Co 13' })).toBeInTheDocument());
+});
+
+test('the frame line: "recomputed n ago" in minutes, hours, then days', () => {
+  const { agoText } = require('./PrioritiesView');
+  const now = Date.parse('2026-10-28T12:00:00Z');
+  expect([agoText('2026-10-28T11:55:00Z', now), agoText('2026-10-28T10:00:00Z', now), agoText('2026-10-25T12:00:00Z', now), agoText(null, now)]).toEqual(['5 min ago', '2 h ago', '3 d ago', 'never']);
+});
+
+test('axe (jsdom, contrast checked by the dataviz validator): the filter card, chart card and detail table have 0 violations; so does Table view', async () => {
+  const axe = require('axe-core');
+  const { container } = render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+  await waitFor(() => expect(dots()).toHaveLength(3));
+  fireEvent.click(dot('Quarry Labs'));
+  const run = async () => (await axe.run(container, { rules: { 'color-contrast': { enabled: false } }, resultTypes: ['violations'] })).violations.map(v => `${v.id}: ${v.nodes.map(n => n.target.join(' ')).slice(0, 2).join(' | ')}`);
+  expect(await run()).toEqual([]);
+  fireEvent.click(screen.getByRole('button', { name: 'Table' }));
+  await screen.findByRole('table');
+  expect(await run()).toEqual([]);
 });

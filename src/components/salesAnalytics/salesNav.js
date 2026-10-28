@@ -8,7 +8,7 @@
 // Sources (lead-source-v1 B4) = who brought each lead, by partner / rep / office.
 export const TABS = [['dashboard', 'Dashboard'], ['pipeline', 'Pipeline'], ['actions', 'Actions']];
 export const SUB_VIEWS = {
-  pipeline: [['companies', 'Companies'], ['priorities', 'Priorities'], ['people', 'People'], ['partners', 'Partner workflow'], ['campaigns', 'Campaigns']],
+  pipeline: [['companies', 'Companies'], ['priorities', 'Map'], ['people', 'People'], ['partners', 'Partner workflow'], ['campaigns', 'Campaigns']],
   dashboard: [['overview', 'Overview'], ['sources', 'Sources'], ['analytics', 'Analytics'], ['sequenced', 'Sequenced']],
 };
 export const DEFAULT_TAB = 'actions';
