@@ -792,6 +792,7 @@ app.get('/api/sales/:businessId/goals/actions', salesModuleRoute('./api/sales/ac
 app.get('/api/sales/:businessId/goals/attention', salesModuleRoute('./api/sales/attentionRoutes.js', 'attentionRoute', 'goals/attention'));
 // lead-source-v1 Stage 2 - source edit / history, referred-by, Sources report + partner export, backfill (export / backfill before :id-style routes).
 app.get('/api/sales/:businessId/goals/sources', salesModuleRoute('./api/sales/sourceRoutes.js', 'sourcesReportRoute', 'goals/sources'));
+app.get('/api/sales/:businessId/goals/sources/funnel', salesModuleRoute('./api/sales/sourceRoutes.js', 'sourcesFunnelRoute', 'goals/sources/funnel'));
 app.get('/api/sales/:businessId/goals/sources/export', salesModuleRoute('./api/sales/sourceRoutes.js', 'sourcesExportRoute', 'goals/sources/export'));
 app.get('/api/sales/:businessId/goals/sources/backfill', salesModuleRoute('./api/sales/sourceRoutes.js', 'backfillPreviewRoute', 'goals/sources/backfill'));
 app.post('/api/sales/:businessId/goals/sources/backfill/apply', salesModuleRoute('./api/sales/sourceRoutes.js', 'backfillApplyRoute', 'goals/sources/backfill/apply POST'));

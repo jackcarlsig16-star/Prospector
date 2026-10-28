@@ -154,6 +154,7 @@ export const goalsApi = {
   referredBy: (id, partnerId) => call(id, `/partners/${partnerId}/referred`),
   // days / team / partner; { totals, by_kind, by_partner, by_person, by_office }.
   sources: (id, { days, team, partner } = {}) => call(id, `/sources?${q({ days, team, partner })}`),
+  sourcesFunnel: (id, { days, team, partner, rep, source } = {}) => call(id, `/sources/funnel?${q({ days, team, partner, rep, source })}`),
   // Structured fields only (company, type, stage, owner, covered lives, rep, office) - never route_in or notes.
   sourcesExport: (id, partner) => call(id, `/sources/export?${q({ partner })}`),
   sourcesExportCsvUrl: (id, partner) => `/api/sales/${id}/goals/sources/export?${q({ partner, format: 'csv' })}`,

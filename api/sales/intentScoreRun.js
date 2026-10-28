@@ -38,23 +38,27 @@ export const latestTouch = touches => touches.reduce((best, t) => (t?.at && (!be
 
 export async function gatherInputs(supabase, businessId, { now = Date.now() } = {}) {
   const all = (t, cols, build = x => x) => selectAllPages(() => build(supabase.from(t).select(cols).eq('business_id', businessId)).order('id'));
-  const [partners, opps, targets, visits, skip, research, people, settings, prospects, messages, events, partnerEvents, oppEvents, doneTodos, overrides, members] = await Promise.all([
-    all('sales_goals', 'id, name, pipeline_status, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, employees, category, last_touch_at, priority, priority_set_at, archived_at, updated_at', x => x.eq('goal_type', 'partnership')),
-    all('sales_opportunities', 'id, organization, stage, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, employees, priority, priority_set_at, archived_at, updated_at, created_at'),
-    all('sales_targets', 'id, name, kind, status, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, employees, updated_at, created_at'),
-    all('web_visits', 'id, company_key, company_name, matched_type, matched_id, priority, visits_7d, unique_visitors_7d, apollo_intent, intent_score, top_paths, maybe_user, us_500, last_visit, pulled_on'),
+  const [partners, opps, targets, visits, skip, research, people, settings, prospects, messages, events, partnerEvents, oppEvents, doneTodos, overrides, members, marks, acceptedSignals] = await Promise.all([
+    all('sales_goals', 'id, name, pipeline_status, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, category, last_touch_at, priority, priority_set_at, archived_at, updated_at, created_at', x => x.eq('goal_type', 'partnership')),
+    all('sales_opportunities', 'id, organization, stage, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, priority, priority_set_at, archived_at, updated_at, created_at'),
+    all('sales_targets', 'id, name, kind, status, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, updated_at, created_at, decided_at'),
+    all('web_visits', 'id, company_key, company_name, matched_type, matched_id, priority, visits_7d, unique_visitors_7d, apollo_intent, intent_score, top_paths, maybe_user, us_500, last_visit, pulled_on, seen_from'),
     all('sales_visit_skip', 'company_key'),
     all('research_runs', 'entity_type, entity_id, status, result, created_at', x => x.eq('status', 'done')),
     all('sales_people', 'title, source_kind, opportunity_id, target_id, archived_at', x => x.eq('source_kind', 'web_visit').is('archived_at', null)),
     supabase.from('sales_settings').select('*').eq('business_id', businessId).maybeSingle().then(must),
     selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id, company, opportunity_id, goal_id').eq('business_id', businessId).order('contact_id')),
-    selectAllPages(() => supabase.from('sales_email_messages').select('contact_id, apollo_message_id, delivered_at, replied, reply_class, num_opens, num_clicks, last_opened_at, last_clicked_at').eq('business_id', businessId).order('apollo_message_id')),
+    selectAllPages(() => supabase.from('sales_email_messages').select('contact_id, apollo_message_id, delivered_at, replied, replied_at, reply_class, num_opens, num_clicks, last_opened_at, last_clicked_at').eq('business_id', businessId).order('apollo_message_id')),
     selectAllPages(() => supabase.from('sales_email_activity').select('contact_id, apollo_message_id, event, occurred_at, user_agent, tracking_service').eq('business_id', businessId).order('id')),
-    selectAllPages(() => supabase.from('sales_partner_events').select('goal_id, event, at, touch_type, source, by_user').eq('business_id', businessId).in('event', ['touch', 'note', 'status']).order('id')),
-    selectAllPages(() => supabase.from('sales_opportunity_events').select('opportunity_id, event_type, changed_at').eq('business_id', businessId).eq('event_type', 'stage_change').order('id')),
-    selectAllPages(() => supabase.from('sales_week_goals').select('link_type, link_id, completed_at, owner_user_id').eq('business_id', businessId).eq('kind', 'todo').eq('status', 'done').order('id')),
+    selectAllPages(() => supabase.from('sales_partner_events').select('goal_id, event, at, touch_type, source, by_user, to_status').eq('business_id', businessId).in('event', ['touch', 'note', 'status']).order('id')),
+    // brad-attribution-v1: the created event carries to_stage (an imported employer's stage date); touches use stage_change only.
+    selectAllPages(() => supabase.from('sales_opportunity_events').select('opportunity_id, event_type, from_stage, to_stage, changed_at').eq('business_id', businessId).in('event_type', ['created', 'stage_change']).order('id')),
+    selectAllPages(() => supabase.from('sales_week_goals').select('link_type, link_id, completed_at, owner_user_id, text').eq('business_id', businessId).eq('kind', 'todo').eq('status', 'done').order('id')),
     selectAllPages(() => supabase.from('visit_priority_override').select('company_key, priority, not_a_fit, set_at').eq('business_id', businessId).order('company_key')),
     supabase.from('business_members').select('user_id, name, profile:profiles!business_members_user_id_fkey(display_name)').eq('business_id', businessId).not('user_id', 'is', null).then(r => r.data || []),
+    // brad-attribution-v1 F3: hand-set stage dates (sales_stage_marks) - an empty list until that migration ran.
+    selectAllPages(() => supabase.from('sales_stage_marks').select('record_type, record_id, stage, at, reason').eq('business_id', businessId).order('id')).catch(() => []),
+    selectAllPages(() => supabase.from('sales_signals').select('source, status, decided_at, target_id, company_key').eq('business_id', businessId).eq('status', 'accepted').order('id')).catch(() => []),
   ]);
   const names = new Map(members.map(m => [m.user_id, m.profile?.display_name || m.name || null]));
   const weights = mergeWeights(settings?.score_weights);
@@ -101,7 +105,7 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
     }
   }
   for (const e of partnerEvents) addTouch(`partner:${e.goal_id}`, { at: e.at, who: names.get(e.by_user) || null, channel: e.event === 'touch' ? (e.touch_type || 'touch') : e.event === 'note' ? 'note' : 'stage' });
-  for (const e of oppEvents) addTouch(`employer:${e.opportunity_id}`, { at: e.changed_at, who: null, channel: 'stage' });
+  for (const e of oppEvents) if (e.event_type === 'stage_change') addTouch(`employer:${e.opportunity_id}`, { at: e.changed_at, who: null, channel: 'stage' });
   for (const t of doneTodos) { const type = Object.keys(LINK_TYPE).find(k => LINK_TYPE[k] === t.link_type); if (type && t.completed_at) addTouch(`${type}:${t.link_id}`, { at: t.completed_at, who: names.get(t.owner_user_id) || null, channel: 'to-do done' }); }
 
   const companies = [
@@ -132,7 +136,17 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
       },
     };
   });
-  return { inputs, weights, names, settings: settings || null };
+  // brad-attribution-v1 F2: the dated rows the funnel reads - the same single pass, nothing fetched twice.
+  const src = r => ({ source_kind: r.source_kind || null, source_partner_id: r.source_partner_id || null, source_person: r.source_person || null, source_set_by: r.source_set_by || null, source_set_at: r.source_set_at || null, owner_team: r.owner_team || null, co_owner_name: r.co_owner_name || null, created_at: r.created_at || null });
+  const dated = {
+    companies: [
+      ...partners.filter(p => !p.archived_at).map(p => ({ type: 'partner', id: p.id, name: p.name, stage: p.pipeline_status || 'not_started', ...src(p) })),
+      ...opps.filter(o => !o.archived_at).map(o => ({ type: 'employer', id: o.id, name: o.organization, stage: o.stage || 'target', ...src(o) })),
+      ...targets.filter(t => t.status !== 'rejected').map(t => ({ type: 'target', id: t.id, name: t.name, stage: t.status || 'proposed', ...src(t) })),
+    ],
+    visits, prospects, messages, partnerEvents, oppEvents, doneTodos, marks, signals: acceptedSignals, targets: targets.map(t => ({ id: t.id, status: t.status, decided_at: t.decided_at || null })), partnerNames: partnerName,
+  };
+  return { inputs, weights, names, settings: settings || null, dated };
 }
 
 // One company's score row as the table stores it.

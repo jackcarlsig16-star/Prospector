@@ -10,7 +10,8 @@ import {
   SOURCE_COLS, RECORD_TYPES, RECORD_TABLE, validateSource, sourceColumns, sourceOf, isOpen, logSource,
   sourceDirectory, mapSheetSource, mapChannel, sheetLines,
 } from './leadSource.js';
-import { SOURCE_LABEL } from '../../src/constants/leadSources.js';
+import { SOURCE_LABEL, SOURCE_KINDS } from '../../src/constants/leadSources.js';
+import { laDateString } from './laDate.js';
 
 // lead-source-v1 Stage 2 - edit + history (B2/D4), a partner's referred
 // companies (B3), the Sources report + Export for <partner> (B4) and the
@@ -279,6 +280,36 @@ export async function getSourceRoute(req, res) { send(res, await getSource(getSu
 export async function editSourceRoute(req, res) { send(res, await editSource(getSupabase(), ctx(req))); }
 export async function referredByRoute(req, res) { send(res, await referredBy(getSupabase(), ctx(req))); }
 export async function sourcesReportRoute(req, res) { send(res, await sourcesReport(getSupabase(), ctx(req))); }
+
+// brad-attribution-v1 F2 - GET /goals/sources/funnel?days=&team=&partner=&rep=&source= -> { today, totals, since_yesterday,
+// by_rep, by_partner, by_source_kind, companies: [{ type, id, name, band, source_label, source_person, partner, dates…, src }] }.
+// One pass (intentScoreRun.gatherInputs), the funnel computed per company, never stored; names and dates only.
+export async function sourcesFunnel(supabase, { businessId, query = {}, now = Date.now() }) {
+  try {
+    const days = query.days ? Number(query.days) : null;
+    if (days != null && !(Number.isInteger(days) && days > 0 && days <= 3650)) return reply(400, { error: 'days must be a whole number of days' });
+    if (query.team && !['homelover', 'upside', 'both', 'unset'].includes(query.team)) return reply(400, { error: 'team must be homelover|upside|both|unset' });
+    if (query.partner && !UUID.test(query.partner)) return reply(400, { error: 'partner must be a partner id' });
+    if (query.source && !SOURCE_KINDS.includes(query.source)) return reply(400, { error: `source must be one of ${SOURCE_KINDS.join('|')}` });
+    const rep = query.rep ? cleanText(String(query.rep), 120).toLowerCase() : null;
+    const { gatherInputs } = await import('./intentScoreRun.js');
+    const { funnelOf, indexDated, funnelGroups, funnelTotals, sinceYesterday, journeyLine } = await import('./sourceFunnel.js');
+    const { dated } = await gatherInputs(supabase, businessId, { now });
+    const idx = indexDated(dated);
+    const today = laDateString(new Date(now));
+    const since = days ? new Date(now - days * 864e5).toISOString() : null;
+    const rows = dated.companies
+      .filter(c => (!since || (c.created_at || '') >= since) && (!query.team || (query.team === 'unset' ? !c.owner_team : c.owner_team === query.team)) && (!query.partner || c.source_partner_id === query.partner) && (!query.source || c.source_kind === query.source) && (!rep || String(c.source_person || '').toLowerCase() === rep))
+      .map(c => { const st = boardStage(c.type, c.type === 'partner' ? { pipeline_status: c.stage } : c.type === 'employer' ? { stage: c.stage } : { status: c.stage }); return { ...c, band: st?.color || null, funnel: funnelOf(c, idx) }; });
+    const partnerNames = dated.partnerNames || new Map();
+    const companies = rows.map(r => ({ type: r.type, id: r.id, name: r.name, band: r.band, source_kind: r.source_kind, source_label: r.source_kind ? SOURCE_LABEL[r.source_kind] : null, source_person: r.source_person, partner: partnerNames.get(r.source_partner_id) || null, upside: ['upside', 'both'].includes(r.owner_team || ''),
+      referred: r.funnel.referred, visited: r.funnel.visited, replied: r.funnel.replied, meeting: r.funnel.meeting, pilot: r.funnel.pilot, lost: r.funnel.lost, src: r.funnel.src, journey: journeyLine(r.funnel, { referredBy: r.source_person ? `${r.source_person}${partnerNames.get(r.source_partner_id) ? ` (${partnerNames.get(r.source_partner_id)})` : ''}` : partnerNames.get(r.source_partner_id) || null }) }));
+    const out = { today, totals: funnelTotals(rows), since_yesterday: sinceYesterday(rows, today), by_rep: funnelGroups(rows, 'rep', { partnerNames }), by_partner: funnelGroups(rows, 'partner', { partnerNames }), by_source_kind: funnelGroups(rows, 'source', { partnerNames }), companies };
+    if (/[^\s@<>()"',;=&#]+@[^\s@<>()"',;=&#]+\.[a-z]{2,}/i.test(JSON.stringify(out))) return reply(500, { error: 'refused: an address reached the reply' });
+    return reply(200, out);
+  } catch (e) { return caught('funnel', e); }
+}
+export async function sourcesFunnelRoute(req, res) { send(res, await sourcesFunnel(getSupabase(), ctx(req))); }
 export async function sourcesExportRoute(req, res) {
   const r = await sourcesExport(getSupabase(), ctx(req));
   if (r.status === 200 && r.body.csv != null) {
