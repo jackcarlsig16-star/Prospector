@@ -12,6 +12,14 @@ const FRIENDLY = {
   'Invalid login credentials': 'Wrong email or password.',
   'Email not confirmed': 'Confirm your email first — check your inbox for the link.',
 };
+// FIX pipeline-quick-fixes-v1 C1: the reset request never leaves the button on "Working…" - after RESET_TIMEOUT_MS the
+// notice says so and the button comes back (REVISABLE).
+export const RESET_TIMEOUT_MS = 15000;
+export const RESET_SLOW_NOTICE = 'Still working — if no email arrives in a few minutes, try again or ask Jack for a new invite link.';
+export const withTimeout = (promise, ms = RESET_TIMEOUT_MS) => new Promise(resolve => {
+  const t = setTimeout(() => resolve({ timedOut: true }), ms);
+  promise.then(r => { clearTimeout(t); resolve(r); }, err => { clearTimeout(t); resolve({ error: err }); });
+});
 
 export default function LoginPage({ next = '/', initialError = '' }) {
   const [mode, setMode] = useState('signin'); // 'signin' | 'forgot'
@@ -34,9 +42,10 @@ export default function LoginPage({ next = '/', initialError = '' }) {
     setNotice('');
     setBusy(true);
     if (mode === 'forgot') {
-      const { error: err } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/reset-password` });
+      const r = await withTimeout(supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: `${window.location.origin}/reset-password` }));
       setBusy(false);
-      if (err) setError(err.message);
+      if (r.timedOut) setNotice(RESET_SLOW_NOTICE);
+      else if (r.error) setError(r.error.message || String(r.error));
       else setNotice('If that email has an account, a reset link is on its way. It can take a few minutes.');
       return;
     }
