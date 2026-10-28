@@ -199,15 +199,15 @@ test('soft cap: starring a 26th asks to unstar one first and writes nothing', as
 test('click-through: every row but a signal opens the company panel; Open full card goes to the record (partner card, Tasks, Companies week, employer panel)', async () => {
   const props = setup();
   fireEvent.click(await screen.findByRole('button', { name: 'OneDigital' }));
-  const panel = screen.getByRole('complementary', { name: 'OneDigital' });
+  const panel = screen.getByRole('dialog', { name: 'OneDigital' });
   expect(panel.querySelector('[data-company-panel="partner"]')).toBeTruthy();
   expect(props.onOpenPartner).not.toHaveBeenCalled();
   expect(goalsApi.companyDetail).toHaveBeenCalledWith('b1', 'partner', 'OneDigital');
   fireEvent.click(screen.getByRole('button', { name: 'Open full card →' }));
   expect(props.onOpenPartner).toHaveBeenCalledWith('OneDigital', 'OneDigital');
-  expect(screen.queryByRole('complementary')).toBeNull();
+  expect(screen.queryByRole('dialog')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'New Target' }));
-  expect(screen.getByRole('complementary', { name: 'New Target' }).querySelector('[data-company-panel="target"]')).toBeTruthy();
+  expect(screen.getByRole('dialog', { name: 'New Target' }).querySelector('[data-company-panel="target"]')).toBeTruthy();
   const seen = [];
   const listen = e => seen.push(e.detail);
   window.addEventListener(OPEN_TASKS, listen);
@@ -215,13 +215,13 @@ test('click-through: every row but a signal opens the company panel; Open full c
   window.removeEventListener(OPEN_TASKS, listen);
   expect(seen).toEqual([{ link: { type: 'target', id: 'New Target' }, filter: 'team' }]);
   fireEvent.click(screen.getByRole('button', { name: 'Solidcore' }));
-  expect(screen.getByRole('complementary', { name: 'Solidcore' }).querySelector('[data-company-panel="employer"]')).toBeTruthy();
+  expect(screen.getByRole('dialog', { name: 'Solidcore' }).querySelector('[data-company-panel="employer"]')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Open full card →' }));
   expect(await screen.findByText('Edit opportunity')).toBeTruthy();
   fireEvent.keyDown(document, { key: 'Escape' });
   fireEvent.click(channelBtn('Apollo outbound'));
   fireEvent.click(await screen.findByRole('button', { name: 'Fresh Co' }));
-  expect(screen.getByRole('complementary', { name: 'Fresh Co' }).querySelector('[data-company-panel="apollo"]')).toBeTruthy();
+  expect(screen.getByRole('dialog', { name: 'Fresh Co' }).querySelector('[data-company-panel="apollo"]')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Open in Companies →' }));
   expect(props.onOpenCompanies).toHaveBeenCalledWith('2026-10-05');
 });
@@ -257,14 +257,14 @@ test('Viewer: stars are read-only; employer and partner open the read-only panel
   expect(screen.queryByRole('button', { name: 'Export joint sheet' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Update from sheet' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Solidcore' }));
-  const opp = within(await screen.findByRole('complementary', { name: 'Solidcore' }));
+  const opp = within(await screen.findByRole('dialog', { name: 'Solidcore' }));
   expect(opp.queryByRole('region', { name: 'Actions' })).toBeNull();
   expect(opp.queryByRole('textbox')).toBeNull();
   expect(opp.getByText('You have view access, so this is read-only.')).toBeTruthy();
   fireEvent.keyDown(document, { key: 'Escape' });
-  expect(screen.queryByRole('complementary')).toBeNull();
+  expect(screen.queryByRole('dialog')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Gallagher' }));
-  const panel = within(screen.getByRole('complementary', { name: 'Gallagher' }));
+  const panel = within(screen.getByRole('dialog', { name: 'Gallagher' }));
   expect(await panel.findByText('Send the one-pager')).toBeTruthy();
   expect(panel.queryByRole('textbox')).toBeNull();
   expect(panel.queryByRole('button', { name: /Top|Add note|^Next:|Research|Check Apollo/ })).toBeNull();
@@ -273,13 +273,13 @@ test('Viewer: stars are read-only; employer and partner open the read-only panel
 });
 
 // company-panel-v3 - a fact's shown value; the ⋯ menu.
-const factText = (name, label) => screen.getByRole('complementary', { name }).querySelector(`[data-fact="${label}"] b`)?.textContent ?? null;
+const factText = (name, label) => screen.getByRole('dialog', { name }).querySelector(`[data-fact="${label}"] b`)?.textContent ?? null;
 const openMore = (panel, item) => { fireEvent.click(panel.getByRole('button', { name: 'More' })); fireEvent.click(panel.getByRole('menuitem', { name: item })); };
 
 test('panel: header chips; body from GET goals/company; Add note goes through the company note route; ★ through the hot signal; Add to-do links the record with owner + due and offers Undo', async () => {
   setup();
   fireEvent.click(await screen.findByRole('button', { name: 'Gallagher' }));
-  const panel = within(screen.getByRole('complementary', { name: 'Gallagher' }));
+  const panel = within(screen.getByRole('dialog', { name: 'Gallagher' }));
   expect(panel.getByText('Brokers & PEOs')).toHaveAttribute('data-type-chip', 'brokers');
   expect(factText('Gallagher', 'Stage')).toBe('Replied');
   expect(factText('Gallagher', 'Owner')).toBe('Jack');
@@ -313,7 +313,7 @@ test('visitor row: Research first asks to add the company as a target, adds it, 
   await screen.findByText('Solidcore');
   fireEvent.click(channelBtn('Website visitors'));
   fireEvent.click(await screen.findByRole('button', { name: 'Acme Visit' }));
-  const panel = within(screen.getByRole('complementary', { name: 'Acme Visit' }));
+  const panel = within(screen.getByRole('dialog', { name: 'Acme Visit' }));
   expect(panel.getByRole('button', { name: 'Add to pipeline ▾' })).toBeTruthy();
   window.confirm.mockReturnValueOnce(false);
   fireEvent.click(panel.getByRole('button', { name: 'Research' }));
@@ -330,7 +330,7 @@ test('stage: Next sends the status signal with expect and moves the row (Undo = 
   goalsApi.pipelineBoard.mockResolvedValueOnce([...ROWS, APOLLO]).mockResolvedValue([...ROWS.map(r => (r.id === 'OneDigital' ? { ...r, stage: 'researching', stage_label: 'Researching' } : r)), APOLLO]);
   setup();
   fireEvent.click(await screen.findByRole('button', { name: 'OneDigital' }));
-  const panel = within(screen.getByRole('complementary', { name: 'OneDigital' }));
+  const panel = within(screen.getByRole('dialog', { name: 'OneDigital' }));
   fireEvent.click(panel.getByRole('button', { name: 'Next: Start research' }));
   await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'OneDigital', { type: 'status', to: 'researching', expect: 'not_started' }));
   await waitFor(() => expect(panel.getByRole('button', { name: 'Next: Mark drafted' })).toBeTruthy());
@@ -349,18 +349,18 @@ test('stage: Next sends the status signal with expect and moves the row (Undo = 
   fireEvent.click(jump.getByRole('button', { name: '↩ Not started' }));
   await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'OneDigital', { type: 'status', to: 'not_started', expect: 'researching', allow_backward: true }));
   fireEvent.keyDown(document, { key: 'Escape' });
-  expect(screen.queryByRole('complementary')).toBeNull();
+  expect(screen.queryByRole('dialog')).toBeNull();
   expect(tr.style.getPropertyValue('--ui-row-tint')).toContain('--sa-accent');
   fireEvent.click(screen.getByRole('button', { name: 'OneDigital' }));
   fireEvent.click(screen.getByTestId('side-panel-backdrop'));
-  expect(screen.queryByRole('complementary')).toBeNull();
+  expect(screen.queryByRole('dialog')).toBeNull();
 });
 
 test('employer: Next moves the stage through PATCH; Jump back confirms and sends allow_backward; Priority ▾ Not a fit writes P4 + a note and Undo restores', async () => {
   goalsApi.pipelineBoard.mockResolvedValueOnce([...ROWS, APOLLO]).mockResolvedValue([...ROWS.map(r => (r.id === 'Solidcore' ? { ...r, stage: 'contacted', stage_label: 'Contacted' } : r)), APOLLO]);
   setup();
   fireEvent.click(await screen.findByRole('button', { name: 'Solidcore' }));
-  const panel = within(screen.getByRole('complementary', { name: 'Solidcore' }));
+  const panel = within(screen.getByRole('dialog', { name: 'Solidcore' }));
   fireEvent.click(panel.getByRole('button', { name: 'Next: Contacted' }));
   await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', { stage: 'contacted' }));
   openMore(panel, 'Jump to stage…');
@@ -402,7 +402,7 @@ test('Next step cell on a partner row: click -> input prefilled; Enter saves thr
   setup();
   await screen.findByText('Solidcore');
   fireEvent.click(within(td('Gallagher', NEXT)).getByRole('button'));
-  expect(screen.queryByRole('complementary')).toBeNull();
+  expect(screen.queryByRole('dialog')).toBeNull();
   const input = screen.getByRole('textbox', { name: 'Next step for Gallagher' });
   expect(input.value).toBe('Send the one-pager');
   expect(document.activeElement).toBe(input);
@@ -636,7 +636,7 @@ test('interest band: the strongest signal in bold with its date; Mark contacted 
   goalsApi.bookMeeting.mockResolvedValue({ todo: { id: 'wg7' }, next_step: 'Book meeting with Pat Lee', before: { next_step: 'Send the one-pager' } });
   setup();
   fireEvent.click(await screen.findByRole('button', { name: 'Gallagher' }));
-  const panel = within(screen.getByRole('complementary', { name: 'Gallagher' }));
+  const panel = within(screen.getByRole('dialog', { name: 'Gallagher' }));
   const band = within(await panel.findByRole('region', { name: 'Interest' }));
   expect(band.getByText('Pat Lee clicked Step 1')).toBeTruthy();
   expect(band.getByText('Oct 19')).toBeTruthy();
@@ -661,7 +661,7 @@ test('Viewer: the band shows the signal but no buttons; the facts row and the ca
   goalsApi.companyDetail.mockImplementation((b, type, id) => Promise.resolve({ ...INTEREST_DETAIL, record: { type, id, name: id, stage: 'replied', next_step: null } }));
   setup({ canEdit: false });
   fireEvent.click(await screen.findByRole('button', { name: 'Gallagher' }));
-  const panel = within(screen.getByRole('complementary', { name: 'Gallagher' }));
+  const panel = within(screen.getByRole('dialog', { name: 'Gallagher' }));
   const band = within(await panel.findByRole('region', { name: 'Interest' }));
   expect(band.getByText('Pat Lee clicked Step 1')).toBeTruthy();
   expect(band.queryByRole('button')).toBeNull();
@@ -669,7 +669,7 @@ test('Viewer: the band shows the signal but no buttons; the facts row and the ca
   expect(factText('Gallagher', 'Stage')).toBe('Replied');
   expect(factText('Gallagher', 'Last touch')).toBe('No touch yet');
   expect(panel.queryByRole('button', { name: /^(Stage|Owner|Team|Priority|Source|Next step)/ })).toBeNull(); // company-panel-v3: viewers get plain facts
-  expect(panel.queryByRole('button', { name: 'More' })).toBeTruthy(); // Copy link only
+  expect(panel.queryByRole('button', { name: 'More' })).toBeNull(); // spec Z: no ⋯ for Viewers
   expect(panel.queryByRole('button', { name: /Not this company|\+ Add|\+ Note|Follow up|Find who/ })).toBeNull();
 });
 
@@ -680,7 +680,7 @@ test('visitor: facts are Priority · Source · Last visit; no Edit row but Prior
   setup();
   fireEvent.click(await screen.findByRole('button', { name: /^Website visitors/ }));
   fireEvent.click(await screen.findByRole('button', { name: 'Acme Visit' }));
-  const panel = within(screen.getByRole('complementary', { name: 'Acme Visit' }));
+  const panel = within(screen.getByRole('dialog', { name: 'Acme Visit' }));
   const band = within(await panel.findByRole('region', { name: 'Interest' }));
   expect(band.getByText('6 site visits this week · /pricing')).toBeTruthy();
   expect(band.queryByRole('button', { name: 'Not now' })).toBeNull();

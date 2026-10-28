@@ -27,7 +27,7 @@ export default function IntentFact({ businessId, row, canEdit, version = 0, comp
     <details data-intent-fact style={{ fontSize: 13, color: SA.text, ...(compact ? { position: 'relative' } : {}) }}>
       <summary style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
         <span className="ui-group-label">Intent</span>
-        {r ? <b style={{ ...numStyle, fontWeight: 600 }}>{r.score} · {r.band}{r.closed ? ' · closed' : r.live ? ' · live' : ''}</b> : <span style={{ color: SA.muted }}>No score yet</span>}
+        {r ? <b style={{ ...numStyle, fontWeight: 600, textDecoration: 'underline dotted', textDecorationColor: 'var(--sa-muted)', textUnderlineOffset: 4 }}>{r.score} · {r.band}{r.closed ? ' · closed' : r.live ? ' · live' : ''}</b> : <span style={{ color: SA.muted }}>No score yet</span>}
         {r && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: SA.muted }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: sourceColor(r.source_label) }} />{SOURCE_LABELS[r.source_label] || r.source_label}</span>}
         {r?.trend && r.band_changed && <span data-trend={r.trend} style={{ fontSize: 12, color: r.trend === 'up' ? SA.good : SA.bad }}>{r.trend === 'up' ? '▲' : '▼'} since {r.prev_band}</span>}
       </summary>

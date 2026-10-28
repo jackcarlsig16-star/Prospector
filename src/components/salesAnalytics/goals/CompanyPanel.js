@@ -85,7 +85,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
         {site?.domain && <Link href={`https://${site.domain}`} target="_blank" rel="noreferrer" style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 4 }}>{site.domain}<IconExternal size={12} /></Link>}
         {!needsRecord(row.type) && <IntentFact businessId={businessId} row={row} canEdit={canEdit} version={version} compact />}
         <span style={{ flex: 1 }} />
-        {!needsRecord(row.type) && <MoreMenu row={row} canEdit={canEdit} onPick={pickMore} />}
+        {canEdit && !needsRecord(row.type) && <MoreMenu row={row} canEdit onPick={pickMore} />}
         <button type="button" aria-label="Close panel" onClick={onClose} className="ui-btn ui-btn--tertiary" style={{ width: 32, padding: 0 }}><IconClose /></button>
       </div>
       <CompanyFacts businessId={businessId} row={row} record={detail?.record} facts={facts} canEdit={canEdit} members={members} source={sourced && source ? source.source : null}

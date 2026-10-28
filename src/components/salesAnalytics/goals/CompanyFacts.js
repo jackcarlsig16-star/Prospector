@@ -30,7 +30,7 @@ function FactValue({ label, value, muted, sub, editable }) {
     <>
       <span className="ui-group-label">{label}</span>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-        <b title={typeof value === 'string' ? value : undefined} style={{ fontWeight: 500, fontSize: 13, color: muted ? SA.muted : SA.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: label === 'Source' || label === 'Next step' ? 360 : 220 }}>{value}</b>
+        <b title={typeof value === 'string' ? value : undefined} style={{ fontWeight: 500, fontSize: 13, color: muted ? SA.muted : SA.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: `min(${label === 'Source' || label === 'Next step' ? 360 : 220}px, calc(100vw - 96px))`, ...(editable ? { textDecoration: 'underline dotted', textDecorationColor: 'var(--sa-muted)', textUnderlineOffset: 4 } : {}) }}>{value}</b>
         {editable && caret}
         {sub && <span data-fact-sub style={{ fontSize: 11, color: SA.muted, whiteSpace: 'nowrap' }}>{sub}</span>}
       </span>

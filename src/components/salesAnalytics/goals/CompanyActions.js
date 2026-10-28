@@ -21,9 +21,9 @@ const SHORTCUT_KEYS = { n: 'note', t: 'todo', c: 'contact', e: 'draft', r: 'rese
 const kbd = k => <kbd aria-hidden="true" style={{ font: "10.5px 'Geist Mono', ui-monospace, monospace", color: SA.muted, border: `1px solid ${SA.border}`, borderRadius: 4, padding: '0 4px', marginLeft: 2 }}>{k}</kbd>;
 function Group({ id, label, icon, children }) {
   return (
-    <div role="group" aria-label={label} data-action-group={id} style={{ display: 'inline-flex', flexDirection: 'column', gap: 5 }}>
+    <div role="group" aria-label={label} data-action-group={id} style={{ display: 'inline-flex', flexDirection: 'column', gap: 5, maxWidth: '100%' }}>
       <span className="ui-group-label" aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10 }}>{icon}{label}</span>
-      <div style={{ display: 'inline-flex', gap: 6, flexWrap: 'nowrap' }}>{children}</div>
+      <div style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>{children}</div>
     </div>
   );
 }
@@ -199,7 +199,7 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
       {form === 'note' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <label htmlFor="cp-note" style={labelStyle}>Note</label>
-          <textarea id="cp-note" rows={2} value={draft.note || ''} onChange={e => set('note', e.target.value)} placeholder="e.g. Called, left voicemail" className="ui-input" style={{ ...field, height: 'auto', padding: 8, resize: 'vertical', fontFamily: 'inherit' }}
+          <textarea id="cp-note" autoFocus rows={2} value={draft.note || ''} onChange={e => set('note', e.target.value)} placeholder="e.g. Called, left voicemail" className="ui-input" style={{ ...field, height: 'auto', padding: 8, resize: 'vertical', fontFamily: 'inherit' }}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (draft.note?.trim()) addNote(); } }} />
           <button type="button" className="ui-btn ui-btn--primary" style={{ alignSelf: 'flex-start' }} disabled={!draft.note?.trim() || b('note')} onClick={addNote}>{b('note') ? 'Saving…' : 'Save note'}</button>
         </div>
@@ -207,7 +207,7 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
       {form === 'todo' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <label htmlFor="cp-todo" style={labelStyle}>To-do</label>
-          <input id="cp-todo" value={draft.text || ''} onChange={e => set('text', e.target.value)} placeholder="What needs doing" className="ui-input" style={field}
+          <input id="cp-todo" autoFocus value={draft.text || ''} onChange={e => set('text', e.target.value)} placeholder="What needs doing" className="ui-input" style={field}
             onKeyDown={e => { if (e.key === 'Enter' && draft.text?.trim()) addTodo(); }} />
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <select aria-label="To-do owner" value={draft.owner ?? meId ?? ''} onChange={e => set('owner', e.target.value || null)} className="ui-input" style={{ ...field, width: 'auto' }}>
@@ -223,7 +223,7 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <span style={labelStyle}>Contact - name, title and LinkedIn only (no email or phone)</span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <input aria-label="Contact name" value={draft.name || ''} onChange={e => set('name', e.target.value)} placeholder="Name" className="ui-input" style={{ ...field, flex: '1 1 140px', width: 'auto' }} />
+            <input aria-label="Contact name" autoFocus value={draft.name || ''} onChange={e => set('name', e.target.value)} placeholder="Name" className="ui-input" style={{ ...field, flex: '1 1 140px', width: 'auto' }} />
             <input aria-label="Contact title" value={draft.title || ''} onChange={e => set('title', e.target.value)} placeholder="Title" className="ui-input" style={{ ...field, flex: '1 1 140px', width: 'auto' }} />
             <input aria-label="Contact LinkedIn URL" value={draft.linkedin || ''} onChange={e => set('linkedin', e.target.value)} placeholder="https://linkedin.com/in/…" className="ui-input" style={{ ...field, flex: '1 1 200px', width: 'auto' }} />
             <button type="button" className="ui-btn ui-btn--primary" disabled={!draft.name?.trim() || b('contact')} onClick={addContact}>{b('contact') ? 'Saving…' : 'Save contact'}</button>

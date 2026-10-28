@@ -111,7 +111,7 @@ test('Source opens the existing form under the facts (the same one the ⋯ menu 
   expect(screen.queryByRole('dialog', { name: 'Owner' })).toBeNull();
 });
 
-test('⋯ menu (D2): Jump to stage · Source · Website · Copy link for Members; Copy link only for Viewers; no Check Apollo', () => {
+test('⋯ menu (D2): Jump to stage · Source · Website · Copy link; no Check Apollo (the window hides ⋯ from Viewers)', () => {
   const onPick = jest.fn();
   const { unmount } = render(<MoreMenu row={{ ...EMPLOYER, domain: 'elm.example' }} canEdit onPick={onPick} />);
   fireEvent.click(screen.getByRole('button', { name: 'More' }));
@@ -120,7 +120,4 @@ test('⋯ menu (D2): Jump to stage · Source · Website · Copy link for Members
   expect(onPick).toHaveBeenCalledWith('jump');
   expect(screen.queryByRole('menu')).toBeNull();
   unmount();
-  render(<MoreMenu row={EMPLOYER} canEdit={false} onPick={onPick} />);
-  fireEvent.click(screen.getByRole('button', { name: 'More' }));
-  expect(screen.getAllByRole('menuitem').map(m => m.textContent)).toEqual(['Copy link']);
 });
