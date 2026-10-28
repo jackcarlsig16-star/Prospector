@@ -4,13 +4,23 @@ import { loadAssayProgress } from '../utils/bulkAssay';
 
 const NEON = '#39FF14';
 const SESSION_DISMISS_KEY = 'prospector_assay_banner_dismissed';
+// FIX auto-assay-on-click-v1 - the offer: more than OFFER_MIN unscored Territory accounts and no run going -> one quiet
+// line with "Score <n>" (one AI call per account - bulkAssay.js scores them one at a time). "Not now" hides it for 24 h
+// (prospector_auto_assay_last, the old auto-run stamp); prospector_auto_assay_disabled = '1' hides it for good.
+export const OFFER_MIN = 10;
+const LAST_KEY = 'prospector_auto_assay_last', OFF_KEY = 'prospector_auto_assay_disabled', COOLDOWN = 24 * 60 * 60 * 1000;
+const offerHidden = () => {
+  try { return localStorage.getItem(OFF_KEY) === '1' || Date.now() - (parseInt(localStorage.getItem(LAST_KEY) || '0', 10) || 0) < COOLDOWN; } catch { return false; }
+};
+const stamp = () => { try { localStorage.setItem(LAST_KEY, String(Date.now())); } catch { /* private mode */ } };
 
-export default function AssayBanner() {
+export default function AssayBanner({ unscored = 0, onScore, canScore = false }) {
   const [progress, setProgress] = useState(loadAssayProgress);
   const [dismissed, setDismissed] = useState(() => {
     try { return sessionStorage.getItem(SESSION_DISMISS_KEY) === '1'; } catch { return false; }
   });
   const [flashUntil, setFlashUntil] = useState(0);
+  const [offerOff, setOfferOff] = useState(offerHidden);
 
   useEffect(() => {
     const onUpdate = (e) => {
@@ -24,6 +34,17 @@ export default function AssayBanner() {
     return () => { window.removeEventListener('prospector_assay_updated', onUpdate); clearInterval(t); };
   }, []);
 
+  const running = progress && !progress.done && progress.total > 0 && progress.completed < progress.total;
+  if (!running && !(progress?.done && Date.now() < flashUntil) && canScore && onScore && unscored > OFFER_MIN && !offerOff) {
+    return (
+      <div data-assay-offer style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 14px', background: '#050f05', borderBottom: `1px solid ${NEON}33`, flexWrap: 'wrap', ...mono }}>
+        <span style={{ fontSize: 12, color: NEON }} aria-hidden="true">⛏</span>
+        <span style={{ fontSize: 11, color: '#c8d8c8' }}>{unscored} accounts haven't been scored · Score them <span style={{ color: '#8a9a8a' }}>(one AI call each)</span></span>
+        <button type="button" onClick={() => { stamp(); setOfferOff(true); onScore(); }} style={{ ...mono, fontSize: 11, padding: '3px 10px', background: 'transparent', border: `1px solid ${NEON}88`, borderRadius: 4, color: NEON, cursor: 'pointer' }}>Score {unscored}</button>
+        <button type="button" onClick={() => { stamp(); setOfferOff(true); }} style={{ ...mono, fontSize: 11, padding: '3px 8px', background: 'transparent', border: 'none', color: '#8a9a8a', cursor: 'pointer' }}>Not now</button>
+      </div>
+    );
+  }
   if (dismissed) return null;
   if (!progress) return null;
 

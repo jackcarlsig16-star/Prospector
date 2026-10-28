@@ -6,7 +6,7 @@ import ToolsPage from './components/ToolsPage';
 import PersistentScout from './components/PersistentScout';
 import { getManagerScopedAccounts, getAeMap } from './utils/managerScope';
 import AssayBanner from './components/AssayBanner';
-import { startBulkAssay, isBulkAssayRunning } from './utils/bulkAssay';
+import { startBulkAssay } from './utils/bulkAssay';
 import StaleSfdcBanner from './components/StaleSfdcBanner';
 import ProfilePanel, { BadgeToast, BADGES, getQuarterKey, calcTerritoryBreakdown, calcTerritoryScore } from './components/BadgesProfile';
 import { TaskModal } from './components/TaskPanel';
@@ -1037,22 +1037,10 @@ export default function App({ me }) {
     indexAccountThreads(activeAccounts);
   }, [accsLoaded, accounts]);
 
-  // ── Auto bulk assay — fires when >10 unscored accounts load, gated by a
-  // 24h localStorage cooldown so it can't refire on every page refresh.
-  const autoAssayRan = useRef(false);
-  useEffect(() => {
-    if (autoAssayRan.current) return;
-    if (!accsLoaded) return;
-    if (localStorage.getItem('prospector_auto_assay_disabled') === '1') return;
-    const lastRun = parseInt(localStorage.getItem('prospector_auto_assay_last') || '0', 10);
-    if (Date.now() - lastRun < 24 * 60 * 60 * 1000) return;
-    const unscored = accounts.filter(a => !a.score && !a.assay_failed && a.web).length;
-    if (unscored <= 10) return;
-    if (isBulkAssayRunning()) return;
-    autoAssayRan.current = true;
-    try { localStorage.setItem('prospector_auto_assay_last', String(Date.now())); } catch {}
-    startBulkAssay({ accounts, onSaveAccounts: setAccounts });
-  }, [accsLoaded, accounts]);
+  // FIX auto-assay-on-click-v1: the bulk assay never starts on its own (no Claude call without a click) - AssayBanner offers
+  // it when more than 10 Territory accounts are unscored; the click starts it with the same arguments as before.
+  const unscoredCount = accounts.filter(a => !a.score && !a.assay_failed && a.web).length;
+  const scoreUnscored = () => startBulkAssay({ accounts, onSaveAccounts: setAccounts });
 
   // ── Ideas (Golden Nuggets) unread badge ───────────────────────────────────
   const [ideasLastViewed, setIdeasLastViewed] = useState(() => parseInt(localStorage.getItem('prospector_ideas_last_viewed') || '0', 10));
@@ -1270,7 +1258,8 @@ export default function App({ me }) {
       <Sidebar compact={compact} page={page} setPage={p=>{setPage(p);if(p==="admin"){dismissJoinNotifs();}}} showAdmin={showAdmin} showUiKit={showUiKit} toolsActiveTool={toolsActiveTool} setToolsActiveTool={setToolsActiveTool} viewAs={viewAs} setViewAs={setViewAs} activeInitials={activeInitials} hasUnviewedBadges={hasUnviewedBadges} onOpenProfile={()=>{dismissJoinNotifs();openProfile();}} diamonds={diamonds} activeUser={activeUser} teamUsers={teamUsers} newJoinCount={newJoinCount} newNuggetCount={newNuggetCount} businesses={myBusinesses} onSelectBusiness={selectBusiness} onGoToBusinesses={()=>navTo('businesses-home')} activeBusiness={activeBusiness} businessPage={businessPage} setBusinessPage={setBusinessPage} onOpenDigest={()=>setDigestOpen(true)} onOpenBugReport={()=>setBugOpen(true)} tasksButton={showTasks} />
       <div id="main-content" style={{ flex:1, padding:compact?"12px 12px":"18px 20px", overflowX:"clip", minWidth:0 }}>
         {!scoutInHeader&&scoutEl}
-        <AssayBanner/>
+        <AssayBanner unscored={accsLoaded ? unscoredCount : 0} onScore={scoreUnscored}
+          canScore={!(activeBusiness && (activeBusiness.features?.goals_sales || activeBusiness.features?.hk_sales)) && !(activeBusiness && me.memberships.find(m => m.business_id === activeBusiness.id)?.role === "viewer")}/>
         {showStaleBanner && !staleDismissed && <StaleSfdcBanner onDismiss={()=>setStaleDismissed(true)} />}
         {viewAs&&(
           <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:activeRole==='Manager'&&managerTeamAEs.length>0?8:14, padding:"8px 14px", background:`${C.purple}14`, border:`1px solid ${C.purple}44`, borderRadius:7 }}>
