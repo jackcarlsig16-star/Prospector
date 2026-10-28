@@ -15,6 +15,7 @@ import { needsRecord } from './companyPanelModel';
 import { SourceHistoryCard, ReferredByCard } from './LeadSource';
 import CompanyStepsStrip from './CompanyStepsStrip';
 import IntentFact from './IntentFact';
+import JourneyLine from './JourneyLine';
 import { Link } from '../../../ui/Button';
 import { priorityColor } from '../palette';
 
@@ -34,7 +35,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
   const [version, setVersion] = useState(0);
   const [form, setForm] = useState(null); // 'note' | 'todo' | 'contact' | 'promote' | 'add' | 'draft-kind'
   const [starBusy, setStarBusy] = useState(false);
-  const [source, setSource] = useState(null); // lead-source-v1: GET goals/source -> { source, history }
+  const [source, setSource] = useState(null); // lead-source-v1: GET goals/source -> { source, history, journey (brad-attribution-v1) }
   // L6 (REVISABLE 980): two columns only when the window gets its full 1040 px, so a 1000 px viewport stacks.
   const wide = useMediaQuery('(min-width: 1040px)');
   const running = detail?.research?.runs?.[0]?.status === 'running';
@@ -92,6 +93,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
           </div>
         ))}
       </div>
+      {sourced && source?.journey && <JourneyLine businessId={businessId} row={row} journey={source.journey} source={source.source} canEdit={canEdit} onMarked={() => setVersion(v => v + 1)} onToast={onToast} />}
       {!needsRecord(row.type) && <IntentFact businessId={businessId} row={row} canEdit={canEdit} version={version} />}
       {detail?.steps && <CompanyStepsStrip businessId={businessId} row={row} detail={detail} canEdit={canEdit} members={members} onChanged={changed} onConvert={onConvert} onToast={onToast} setForm={setForm} />}
       {bandShown && <InterestBand businessId={businessId} row={row} interest={detail.interest} canEdit={canEdit} onChanged={changed} onToast={onToast} />}

@@ -160,10 +160,12 @@ test('referred-by + report + Export for <partner>: only that partner\'s companie
   const ex = await sourcesExport(s, { businessId: B, query: { partner: P.upside, format: 'csv' } });
   assert.equal(ex.status, 200, JSON.stringify(ex.body));
   assert.deepEqual(ex.body.rows.map(r => r.name), ['Brightmill Foods', 'Cove Logistics', 'Dale Schools']);
-  assert.deepEqual(Object.keys(ex.body.rows[0]), ['name', 'type_label', 'stage_label', 'owner', 'covered_lives', 'source_person', 'source_office']);
+  assert.deepEqual(Object.keys(ex.body.rows[0]), ['name', 'type_label', 'stage_label', 'owner', 'covered_lives', 'source_person', 'source_office', 'referred', 'visited', 'replied', 'meeting', 'pilot', 'lost', 'score_band']);
+  assert.match(ex.body.rows[0].referred, /^\d{4}-\d{2}-\d{2}$/, 'a backfilled partner referral is dated at created_at');
+  assert.deepEqual([ex.body.rows[0].visited, ex.body.rows[0].pilot, ex.body.rows[0].score_band], [null, null, null]);
   const all = JSON.stringify(ex.body);
   for (const bad of ['@', 'Route in', 'Brad already emailed', 'Via broker', 'Older note', 'master sheet']) assert.ok(!all.includes(bad), `export carried "${bad}"`);
-  assert.match(ex.body.csv, /^Company,Type,Stage,Owner,Covered lives,Referred by,Office\r\nBrightmill Foods,Employer,/);
+  assert.match(ex.body.csv, /^Company,Type,Stage,Owner,Covered lives,Referred by,Office,Referred on,Visited,Replied,Meeting,Pilot,Lost,Score band\r\nBrightmill Foods,Employer,/);
   assert.equal((await sourcesExport(s, { businessId: B, query: { partner: P.hub } })).body.rows.length, 0);
   assert.equal((await sourcesExport(s, { businessId: B, query: { partner: 'x' } })).status, 400);
 });

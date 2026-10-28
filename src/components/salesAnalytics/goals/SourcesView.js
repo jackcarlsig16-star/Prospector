@@ -7,6 +7,8 @@ import { BOARD_COLORS } from '../../../constants/pipelineBoard';
 import useMediaQuery from '../../../utils/useMediaQuery';
 import FilterSelect from '../../../ui/FilterSelect';
 import SourcesBackfill from './SourcesBackfill';
+import SourceFunnel from './SourceFunnel';
+import { SOURCE_KINDS, SOURCE_LABEL } from '../../../constants/leadSources';
 
 // lead-source-v1 B4 - Dashboard > Sources: companies by source kind, by
 // referring partner, and down to the partner's rep and office, with each
@@ -48,7 +50,7 @@ function GroupTable({ title, groups, empty, narrow, onExport }) {
                 <th scope="col" style={{ ...labelStyle, textAlign: 'right', padding: '8px 10px' }}>Companies</th>
                 {BANDS.map(b => <th key={b.id} scope="col" style={{ ...labelStyle, textAlign: 'right', padding: '8px 10px', whiteSpace: 'nowrap' }}>{b.label}</th>)}
                 <th scope="col" style={{ ...labelStyle, textAlign: 'right', padding: '8px 10px', whiteSpace: 'nowrap' }}>Covered lives</th>
-                {onExport && <th aria-label="Export" />}
+                {onExport && <th scope="col" style={{ ...labelStyle, textAlign: 'left', padding: '8px 10px' }}>Export</th>}
               </tr>
             </thead>
             <tbody>
@@ -139,12 +141,27 @@ export default function SourcesView({ businessId, partners, isAdmin }) {
   const [error, setError] = useState('');
   const [exportFor, setExportFor] = useState(null);
   const [version, setVersion] = useState(0);
+  // brad-attribution-v1 F4: the dated funnel (Rep / Source filter it; the band tally below keeps Range / Team / Partner).
+  const [rep, setRep] = useState('');
+  const [source, setSource] = useState('');
+  const [funnel, setFunnel] = useState(null);
+  const [funnelError, setFunnelError] = useState('');
+  const [reps, setReps] = useState([]);
   const narrow = useMediaQuery('(max-width: 720px)');
   useEffect(() => {
     let live = true;
     goalsApi.sources(businessId, { days, team, partner }).then(d => { if (live) { setData(d); setError(''); } }).catch(e => live && setError(e.message));
     return () => { live = false; };
   }, [businessId, days, team, partner, version]);
+  useEffect(() => {
+    let live = true;
+    goalsApi.sourcesFunnel(businessId, { days, team, partner, rep, source }).then(d => {
+      if (!live) return;
+      setFunnel(d); setFunnelError('');
+      if (!rep) setReps([...new Set(d.companies.map(c => c.source_person).filter(Boolean))].sort((a, b) => a.localeCompare(b)));
+    }).catch(e => live && setFunnelError(e.message));
+    return () => { live = false; };
+  }, [businessId, days, team, partner, rep, source, version]);
   const partnerOptions = [{ value: '', label: 'All partners' }, ...[...partners].filter(p => !p.archived_at).sort((a, b) => a.name.localeCompare(b.name)).map(p => ({ value: p.id, label: p.name }))];
   const t = data?.totals;
   return (
@@ -153,13 +170,19 @@ export default function SourcesView({ businessId, partners, isAdmin }) {
         <FilterSelect label="Range" value={days} options={RANGES.map(([value, label]) => ({ value, label }))} onChange={setDays} />
         <FilterSelect label="Team" value={team} options={TEAM_OPTIONS.map(([value, label]) => ({ value, label }))} onChange={setTeam} />
         <FilterSelect label="Partner" value={partner} options={partnerOptions} onChange={setPartner} />
+        <FilterSelect label="Rep" value={rep} options={[{ value: '', label: 'All reps' }, ...reps.map(r => ({ value: r, label: r }))]} onChange={setRep} />
+        <FilterSelect label="Source" value={source} options={[{ value: '', label: 'All sources' }, ...SOURCE_KINDS.map(k => ({ value: k, label: SOURCE_LABEL[k] }))]} onChange={setSource} />
         {partner && <Btn onClick={() => setExportFor(partner)}>Export for {partners.find(p => p.id === partner)?.name || 'partner'}</Btn>}
         <span style={{ fontSize: 12, color: SA.muted }}>Range = companies added in that window · source = who brought the lead, not how it entered Prospector</span>
       </div>
       {exportFor && <PartnerExport businessId={businessId} partnerId={exportFor} onClose={() => setExportFor(null)} />}
+      {funnelError && <ErrorNote message={funnelError} />}
+      {!funnel && !funnelError && <span style={{ fontSize: 13, color: SA.muted }}>Loading the funnel…</span>}
+      {funnel && <SourceFunnel data={funnel} narrow={narrow} />}
       {error && <ErrorNote message={error} />}
       {!data && !error && <span style={{ fontSize: 13, color: SA.muted }}>Loading…</span>}
       {data && <>
+        <h3 style={{ ...h3Style, marginTop: 8 }}>Pipeline bands today{rep || source ? <span style={{ fontWeight: 400, fontSize: 12, color: SA.muted }}> · Rep / Source filter the funnel only</span> : null}</h3>
         <p data-sources-totals style={{ margin: 0, fontSize: 14, color: SA.text, ...numStyle }}>
           <b>{fmt(t.companies)}</b> companies · <b>{fmt(t.meetings)}</b> at meeting · <b>{fmt(t.pilot_live)}</b> pilot / live{t.covered_lives ? <> · <b>{fmt(t.covered_lives)}</b> covered lives</> : null}
         </p>

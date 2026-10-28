@@ -131,3 +131,8 @@ export function placeLabels(items, { charW = 6.3, lineH = 12, step = 12, maxStep
   }
   return placed;
 }
+
+// brad-attribution-v1 F5 - the hover's chain: the reached funnel stages as icon + date ("↪ Oct 22 · ◎ Oct 24 · ✉ Oct 26").
+export const CHAIN_ICONS = [['referred', '↪', 'Referred'], ['visited', '◎', 'Visited'], ['replied', '✉', 'Replied'], ['meeting', '◆', 'Meeting'], ['pilot', '★', 'Pilot'], ['lost', '✕', 'Lost']];
+const chainDay = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+export const shortChain = c => (!c ? '' : CHAIN_ICONS.filter(([s]) => c[s]).map(([s, icon]) => `${icon} ${chainDay(c[s])}`).join(' · '));

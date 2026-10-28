@@ -88,8 +88,10 @@ const counts = rows => Object.fromEntries(ALL_STAGES.map(s => [s, rows.filter(r 
 const conversion = c => Object.fromEntries(RATES.map(([k, a, b]) => [k, rate(c[a], c[b])]));
 
 // A grouped funnel table: rows = companies with their funnel; groupBy 'rep' (source_person · partner), 'partner', 'source'.
+// A company's key in each grouping (null = not in that table) - the screen filters its drawer by the same key.
+export const groupKeyOf = (r, groupBy) => (groupBy === 'rep' ? (r.source_person ? `${r.source_partner_id || ''}|${r.source_person}` : null) : groupBy === 'partner' ? r.source_partner_id || null : r.source_kind || 'not_set');
 export function funnelGroups(rows, groupBy, { partnerNames = new Map() } = {}) {
-  const keyOf = r => (groupBy === 'rep' ? (r.source_person ? `${r.source_partner_id || ''}|${r.source_person}` : null) : groupBy === 'partner' ? r.source_partner_id || null : r.source_kind || 'not_set');
+  const keyOf = r => groupKeyOf(r, groupBy);
   const labelOf = (k, r) => (groupBy === 'rep' ? `${r.source_person}${r.source_partner_id ? ` · ${partnerNames.get(r.source_partner_id) || ''}` : ''}`.trim() : groupBy === 'partner' ? partnerNames.get(k) || 'A removed partner' : k === 'not_set' ? 'Not set yet' : k);
   const m = new Map();
   for (const r of rows) { const k = keyOf(r); if (k == null) continue; if (!m.has(k)) m.set(k, []); m.get(k).push(r); }

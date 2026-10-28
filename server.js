@@ -798,6 +798,9 @@ app.get('/api/sales/:businessId/goals/sources/backfill', salesModuleRoute('./api
 app.post('/api/sales/:businessId/goals/sources/backfill/apply', salesModuleRoute('./api/sales/sourceRoutes.js', 'backfillApplyRoute', 'goals/sources/backfill/apply POST'));
 app.get('/api/sales/:businessId/goals/source/:type/:id', salesModuleRoute('./api/sales/sourceRoutes.js', 'getSourceRoute', 'goals/source/:type/:id'));
 app.patch('/api/sales/:businessId/goals/source/:type/:id', salesModuleRoute('./api/sales/sourceRoutes.js', 'editSourceRoute', 'goals/source/:type/:id PATCH'));
+// brad-attribution-v1 Stage 2 (F3) - a hand-set funnel stage date per record + stage (Members; salesGate).
+app.put('/api/sales/:businessId/goals/stage-marks/:type/:id', salesModuleRoute('./api/sales/stageMarks.js', 'putMarkRoute', 'goals/stage-marks PUT'));
+app.delete('/api/sales/:businessId/goals/stage-marks/:type/:id/:stage', salesModuleRoute('./api/sales/stageMarks.js', 'deleteMarkRoute', 'goals/stage-marks DELETE'));
 app.get('/api/sales/:businessId/goals/partners/:id/referred', salesModuleRoute('./api/sales/sourceRoutes.js', 'referredByRoute', 'goals/partners/:id/referred'));
 // seif-campaign-v1 Stage 2 - outreach campaigns (summary before :id; import before :action).
 app.get('/api/sales/:businessId/goals/campaigns', salesModuleRoute('./api/sales/outreachRoutes.js', 'listCampaignsRoute', 'goals/campaigns'));

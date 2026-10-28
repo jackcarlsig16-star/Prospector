@@ -78,6 +78,9 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
   const undoTimer = useRef(null);
   const subClose = useRef(null); // the quick menu's open dropdown, closed by an outside press before the selection would be
   const press = useRef(false);
+  // brad-attribution-v1 F5: each card's funnel chain, read once (GET goals/sources/funnel) the first time a pointer or focus reaches the chart.
+  const [chains, setChains] = useState(null);
+  const chainsAsked = useRef(false);
   const effectiveView = view || (phone ? 'table' : 'dots');
 
   useEffect(() => { setToolsSlot(document.getElementById(FRAME_TOOLS_ID)); }, []);
@@ -117,10 +120,15 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
     setAnchors(next);
   }, [lit, width, effectiveView]);
 
+  const needChains = useCallback(() => {
+    if (chainsAsked.current) return;
+    chainsAsked.current = true;
+    goalsApi.sourcesFunnel(businessId).then(d => setChains(new Map(d.companies.map(c => [`${c.type}-${c.id}`, c])))).catch(() => { chainsAsked.current = false; });
+  }, [businessId]);
   const rows = useMemo(() => {
-    const all = data?.rows || [];
+    const all = (data?.rows || []).map(r => (chains?.has(r.key) ? { ...r, chain: chains.get(r.key) } : r));
     return topN === 'all' ? all : all.slice(0, Number(topN));
-  }, [data, topN]);
+  }, [data, topN, chains]);
   const paged = useMemo(() => pageOf(rows, page, PAGE_SIZE), [rows, page]);
   const litCounts = data?.sources || {};
   const selected = useMemo(() => [...(data?.rows || []), ...(data?.live || [])].find(r => r.key === selectedKey) || null, [data, selectedKey]);
@@ -266,7 +274,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
           {effectiveView === 'table'
             ? <PrioritiesTable rows={rows} live={data.live} lit={lit} selectedKey={selectedKey} onSelect={select} onOpen={open} showTrend={showTrend} phone={phone} />
             : (
-              <div ref={chartRef} data-chart-box style={{ overflowX: phone ? 'auto' : 'visible', minWidth: 0 }}>
+              <div ref={chartRef} data-chart-box onPointerEnter={needChains} onFocus={needChains} style={{ overflowX: phone ? 'auto' : 'visible', minWidth: 0 }}>
                 <div style={{ minWidth: phone ? 720 : 0 }}>
                   {effectiveView === 'bars' ? <BarsChart {...chartProps} /> : <DotsChart {...chartProps} anchors={anchors} />}
                 </div>

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { SA } from '../../theme';
 import { sourceColor, SOURCE_LABELS } from '../../palette';
 import { numStyle } from '../goalsUi';
-import { yValue, yScale, ringSpecs, haloLevel, hollowness, isDimmed, rowLabel, touchText, labelCandidates, labelText, placeLabels, RING_ORDER, TOP_LABELS, LABEL_MIN_CHARS } from './prioritiesModel';
+import { yValue, yScale, ringSpecs, haloLevel, hollowness, isDimmed, rowLabel, touchText, labelCandidates, labelText, placeLabels, shortChain, RING_ORDER, TOP_LABELS, LABEL_MIN_CHARS } from './prioritiesModel';
 
 // intent-score-v1 S3 DOTS - companies on X in rank order, Y = the selected metric. Each dot: a core in the source
 // hue, one translucent ring per component (RING_ORDER) in the same hue with radius ∝ points, a grey rank line
@@ -40,6 +40,7 @@ export function Tooltip({ row, x, y, metric, pinned = false, place = null, onOpe
           : <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{row.name}</span>}
       </div>
       <div style={{ ...numStyle, color: SA.muted, marginTop: 2 }}>Intent {row.score} · {row.band} · {SOURCE_LABELS[row.source_label] || row.source_label}{row.live ? ' · Live' : row.closed ? ' · Closed' : ''}</div>
+      {shortChain(row.chain) && <div data-card-chain title={row.chain.journey} style={{ ...numStyle, color: SA.muted }}>{shortChain(row.chain)}</div>}
       <div style={{ ...numStyle, color: SA.muted }}>{row.employees != null ? `${Number(row.employees).toLocaleString('en-US')} employees` : 'size unknown'} · {touchText(row)}</div>
       {metric !== 'intent' && <div style={{ color: SA.muted }}>{metric === 'size' ? 'Y = employees (log)' : 'Y = days since last touch'}</div>}
       {row.trend && row.band_changed && <div style={{ color: SA.muted }}>Since yesterday: {row.prev_band} → {row.band}</div>}

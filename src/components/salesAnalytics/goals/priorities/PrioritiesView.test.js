@@ -8,7 +8,7 @@ import { goalsApi } from '../goalsApi';
 window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
 jest.mock('../goalsApi', () => ({ ...jest.requireActual('../goalsApi'), goalsApi: { ...jest.requireActual('../goalsApi').goalsApi,
   scores: jest.fn(), recomputeScores: jest.fn(), brief: jest.fn(), scoreViews: jest.fn(), saveScoreView: jest.fn(), deleteScoreView: jest.fn(), composeStatus: jest.fn(), compose: jest.fn(), composeLint: jest.fn(),
-  members: jest.fn(), pipelineBoard: jest.fn(), partnerSignal: jest.fn(), editCompanyFields: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), setVisitPriority: jest.fn(), runCompanyResearch: jest.fn(), companyDetail: jest.fn(), source: jest.fn(), scoreOf: jest.fn(),
+  members: jest.fn(), pipelineBoard: jest.fn(), partnerSignal: jest.fn(), editCompanyFields: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), setVisitPriority: jest.fn(), runCompanyResearch: jest.fn(), companyDetail: jest.fn(), source: jest.fn(), scoreOf: jest.fn(), sourcesFunnel: jest.fn(),
   scoresCsvUrl: (id, p) => `/api/sales/${id}/goals/scores/export.csv?${new URLSearchParams(Object.entries(p).filter(([, v]) => v != null)).toString()}` } }));
 jest.mock('../../pipelineApi', () => ({ fetchOpportunities: jest.fn(), createOpportunity: jest.fn(), updateOpportunity: jest.fn(), archiveOpportunity: jest.fn() }));
 
@@ -409,4 +409,22 @@ test('click outside on a phone: a tap outside the pinned card closes it; a tap o
     expect(selectedCard()).toBeNull();
     expect(dot('Harbor Lane').getAttribute('aria-pressed')).toBe('false');
   } finally { window.matchMedia = desktop; }
+});
+
+test('brad-attribution-v1 F5: the funnel is read once, when a pointer first reaches the chart; the selected card shows the chain as stage icons + dates, the full journey on hover', async () => {
+  windowMocks();
+  goalsApi.sourcesFunnel.mockResolvedValue({ companies: [{ type: 'target', id: 't1', referred: '2026-10-22', visited: '2026-10-24', replied: null, meeting: null, pilot: null, lost: null, journey: 'Referred by Brad (Upside) Oct 22 → Visited Oct 24 → Replied — → Meeting — → Pilot —' }] });
+  render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+  await waitFor(() => expect(dots()).toHaveLength(3));
+  expect(goalsApi.sourcesFunnel).not.toHaveBeenCalled();
+  const box = document.querySelector('[data-chart-box]');
+  fireEvent.pointerEnter(box);
+  fireEvent.pointerEnter(box);
+  await waitFor(() => expect(goalsApi.sourcesFunnel).toHaveBeenCalledTimes(1));
+  fireEvent.click(dot('Quarry Labs'));
+  const chain = await waitFor(() => { const c = screen.getByRole('group', { name: 'Quarry Labs - selected' }).querySelector('[data-card-chain]'); expect(c).toBeTruthy(); return c; });
+  expect(chain).toHaveTextContent('↪ Oct 22 · ◎ Oct 24');
+  expect(chain.getAttribute('title')).toMatch(/^Referred by Brad \(Upside\) Oct 22 → Visited Oct 24/);
+  fireEvent.click(dot('Hilton Example'));
+  expect(screen.getByRole('group', { name: 'Hilton Example - selected' }).querySelector('[data-card-chain]')).toBeNull();
 });

@@ -84,6 +84,8 @@ test('GET goals/sources/funnel: one gather, companies with dates + journey + ban
   assert.equal(adp.journey, 'Referred by Brad (Upside) Oct 15 → Visited Oct 13 → Replied Oct 27 → Meeting Oct 24 → Pilot —');
   assert.deepEqual(r.body.by_rep.map(g => [g.label, g.referred, g.meeting]).sort(), [['Ann', 1, 1], ['Brad · Upside', 1, 1]]);
   assert.deepEqual(r.body.since_yesterday.replied, 1);
+  assert.deepEqual(r.body.by_source_kind.map(g => g.label).sort(), ['Not set yet', 'Partner referral', 'Person referral', 'Website'], 'the Upside partner itself has no source');
+  assert.deepEqual([adp.keys, adp.score_band, adp.score], [{ rep: `${UPSIDE}|Brad`, partner: UPSIDE, source: 'partner_referral' }, null, null]);
   assert.deepEqual((await sourcesFunnel(sb, { businessId: B, query: { rep: 'brad' } })).body.companies.map(c => c.name), ['Zz ADP']);
   assert.deepEqual((await sourcesFunnel(sb, { businessId: B, query: { source: 'website' } })).body.companies.map(c => c.name), ['Zz Web Co']);
   assert.deepEqual((await sourcesFunnel(sb, { businessId: B, query: { partner: UPSIDE } })).body.companies.map(c => c.name), ['Zz ADP']);

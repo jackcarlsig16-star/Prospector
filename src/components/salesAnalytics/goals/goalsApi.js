@@ -151,6 +151,9 @@ export const goalsApi = {
   // expect_set_at (409 when it moved); source_kind: null with every field empty clears it (Undo of a first pick).
   source: (id, type, recordId) => call(id, `/source/${type}/${recordId}`),
   editSource: (id, type, recordId, body) => call(id, `/source/${type}/${recordId}`, { method: 'PATCH', body }).then(d => d.source),
+  // brad-attribution-v1 F3: a hand-set funnel stage date - { stage, at: 'YYYY-MM-DD', note? } -> { previous, funnel, journey, marks, locked }.
+  markStage: (id, type, recordId, body) => call(id, `/stage-marks/${type}/${recordId}`, { method: 'PUT', body }),
+  unmarkStage: (id, type, recordId, stage) => call(id, `/stage-marks/${type}/${recordId}/${stage}`, { method: 'DELETE' }),
   referredBy: (id, partnerId) => call(id, `/partners/${partnerId}/referred`),
   // days / team / partner; { totals, by_kind, by_partner, by_person, by_office }.
   sources: (id, { days, team, partner } = {}) => call(id, `/sources?${q({ days, team, partner })}`),

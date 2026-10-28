@@ -3,6 +3,8 @@ import { cleanText } from './scrubText.js';
 import { companyDetail } from './companyPanel.js';
 import { breakdownLines, SOURCE_ORDER } from './intentScore.js';
 import { recomputeScores } from './intentScoreRun.js';
+import { recordFunnel } from './stageMarks.js';
+import { ALL_STAGES } from './sourceFunnel.js';
 import { SOURCE_LABEL } from '../../src/constants/leadSources.js';
 
 // intent-score-v1 S3 Brief - ONE server-built block per company: score + breakdown, source + referrer, visits + pages,
@@ -22,7 +24,7 @@ const md = d => (d ? new Date(`${String(d).slice(0, 10)}T12:00:00Z`).toLocaleDat
 export const sourceLabelOf = label => SOURCE_WORD[label] || SOURCE_LABEL[label] || label;
 
 // Pure: the lines from the pieces the route loaded. Exported for the compose lint's tests.
-export function briefLines({ type, name, score, meta = {}, sourceRow = {}, sourcePartner = null, detail = {}, now = Date.now() }) {
+export function briefLines({ type, name, score, meta = {}, sourceRow = {}, sourcePartner = null, journey = null, detail = {}, now = Date.now() }) {
   const lines = [];
   const push = (kind, text) => { const t = cleanText(String(text || ''), 400); if (t) lines.push({ ref: `B${lines.length + 1}`, kind, text: t }); return lines[lines.length - 1]; };
   push('company', `${name} · ${type}${meta.stage ? ` · stage ${String(meta.stage).replace(/_/g, ' ')}` : ''}${meta.owner ? ` · owner ${meta.owner}` : ' · unassigned'}${meta.employees != null ? ` · ${Number(meta.employees).toLocaleString('en-US')} employees` : ''}`);
@@ -34,6 +36,7 @@ export function briefLines({ type, name, score, meta = {}, sourceRow = {}, sourc
   const who = [sourcePartner, sourceRow.source_person, sourceRow.source_office].filter(Boolean).join(' · ');
   push('source', `Source: ${sourceLabelOf(srcLabel)}${who ? ` · ${who}` : ''}${sourceRow.source_note ? ` · ${sourceRow.source_note}` : ''}`);
   if (meta.owner_team === 'upside' || meta.owner_team === 'both' || sourceRow.no_double_touch) push('source', `Upside-owned${sourceRow.co_owner_name ? ` with ${sourceRow.co_owner_name}` : ''}${sourceRow.no_double_touch ? ' · no double touch (coordinate before any outreach)' : ''}`);
+  if (journey) push('source', `Journey: ${journey}`);
   if (meta.visits_7d != null) {
     const v = detail.visits?.[0] || {};
     const pages = (v.top_paths || []).slice(0, 3).map(p => p.path || p).filter(Boolean);
@@ -73,9 +76,12 @@ export async function companyBrief(supabase, { businessId, type, id, now = Date.
   }
   const sourceRow = must(await supabase.from(TABLE[type]).select('source_kind, source_partner_id, source_person, source_office, source_note, co_owner_name, no_double_touch').eq('business_id', businessId).eq('id', id).maybeSingle()) || {};
   const sourcePartner = sourceRow.source_partner_id ? (must(await supabase.from('sales_goals').select('name').eq('id', sourceRow.source_partner_id).maybeSingle())?.name || null) : null;
+  // brad-attribution-v1 F5: the chain as one ref line, only once some stage has a date.
+  const { journey: chain, funnel } = await recordFunnel(supabase, { businessId, type, id });
+  const journey = ALL_STAGES.some(s => funnel[s]) ? chain : null;
   const meta = score?.components?.meta || {};
   const name = detail.record?.name || meta.name || type;
-  const lines = briefLines({ type, name, score, meta, sourceRow, sourcePartner, detail, now });
+  const lines = briefLines({ type, name, score, meta, sourceRow, sourcePartner, journey, detail, now });
   return reply(200, {
     company: { type, id, name }, score: score ? { score: score.score, band: score.band, closed: score.closed, flagged_out: score.flagged_out, source_label: score.source_label, computed_at: score.computed_at } : null,
     upside_owned: meta.owner_team === 'upside' || meta.owner_team === 'both', no_double_touch: !!sourceRow.no_double_touch,
