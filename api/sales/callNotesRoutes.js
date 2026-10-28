@@ -10,6 +10,7 @@ import { cleanText as clean } from './scrubText.js';
 import { toIntake, enrichIntake, matchOwner, MAX_ITEMS } from './intakeMatch.js';
 import { acceptIntake, parseIntake } from './intakeAccept.js';
 import { scrubExtract, signExtract, extractIfSigned, recentAccepts } from './intakeDeal.js';
+import { INSIGHT_RULES, INSIGHT_JSON, toInsights, enrichInsights, linkPeople, parseInsights } from './intakeInsights.js';
 
 // call-notes-to-tasks-v1 - pasted internal call notes -> proposed Goals
 // to-dos -> the ones the person kept, created this week with a back-link to
@@ -59,9 +60,10 @@ next_meeting - the next meeting the notes set with a company: {company, date (YY
 - Product or integration ideas stay facts (angle).
 - Every company / people / touches / facts / decisions / waiting_on / terms / next_meeting item carries evidence: the shortest phrase from the notes that shows it (max 20 words).
 - Never include an email address or phone number in any field.
+${INSIGHT_RULES}
 
 Reply with JSON only, no prose:
-{"summary":["","",""],"tasks":[{"text":"","owner":null,"due_date":null,"link":null,"company_name":null,"steps":[],"evidence":""}],"companies":[{"name":"","kind":"","category":null,"ownership":null,"referred_by":null,"evidence":""}],"people":[{"name":"","company":"","title":null,"role":"","moved_from":null,"evidence":""}],"touches":[{"company":"","touch_type":"","people":[],"date":null,"direction":"","stage":null,"evidence":""}],"facts":[{"company":"","field":"","text":"","due_date":null,"evidence":""}],"decisions":[{"company":"","text":"","evidence":""}],"waiting_on":[{"company":"","who":"","text":"","due_date":null,"evidence":""}],"terms":[{"company":"","text":"","evidence":""}],"next_meeting":null}`;
+{"summary":["","",""],"tasks":[{"text":"","owner":null,"due_date":null,"link":null,"company_name":null,"steps":[],"evidence":""}],"companies":[{"name":"","kind":"","category":null,"ownership":null,"referred_by":null,"evidence":""}],"people":[{"name":"","company":"","title":null,"role":"","moved_from":null,"evidence":""}],"touches":[{"company":"","touch_type":"","people":[],"date":null,"direction":"","stage":null,"evidence":""}],"facts":[{"company":"","field":"","text":"","due_date":null,"evidence":""}],"decisions":[{"company":"","text":"","evidence":""}],"waiting_on":[{"company":"","who":"","text":"","due_date":null,"evidence":""}],"terms":[{"company":"","text":"","evidence":""}],"next_meeting":null,${INSIGHT_JSON}}`;
 
 const weekOf = day => addDays(day, -((new Date(`${day}T12:00:00Z`).getUTCDay() + 6) % 7));
 const md = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -74,15 +76,15 @@ async function context(supabase, businessId, today) {
     supabase.from('businesses').select('name').eq('id', businessId).maybeSingle(),
     supabase.from('business_members').select('user_id, name, profile:profiles!business_members_user_id_fkey(display_name)')
       .eq('business_id', businessId).not('user_id', 'is', null),
-    supabase.from('sales_goals').select('id, name, category, pipeline_status, owner_team, co_owner_name, no_double_touch, champion, angle, watch_outs, next_step, do_not_say, target_titles, notes, next_meeting_at')
+    supabase.from('sales_goals').select('id, name, category, pipeline_status, owner_team, co_owner_name, no_double_touch, source_partner_id, source_person, source_office, champion, angle, watch_outs, next_step, do_not_say, target_titles, notes, next_meeting_at')
       .eq('business_id', businessId).eq('goal_type', 'partnership').is('archived_at', null),
     supabase.from('sales_week_goals').select('id, text').eq('business_id', businessId).eq('kind', 'commitment').eq('week_start', week).neq('status', 'dropped'),
     supabase.from('sales_week_goals').select('id, text').eq('business_id', businessId).eq('kind', 'todo').not('source_note_id', 'is', null)
       .gte('week_start', addDays(week, -7 * SIMILAR_WEEKS)).neq('status', 'dropped').limit(500),
     page('sales_sequenced_accounts', 'account_id, name', 'account_id'),
-    supabase.from('sales_opportunities').select('id, organization, owner, owner_team, co_owner_name, no_double_touch, champion, decision_makers, objections, next_action, next_action_date, notes')
+    supabase.from('sales_opportunities').select('id, organization, owner, owner_team, co_owner_name, no_double_touch, source_partner_id, source_person, source_office, champion, decision_makers, objections, next_action, next_action_date, notes')
       .eq('business_id', businessId).is('archived_at', null),
-    page('sales_targets', 'id, name, kind, status, owner_team, co_owner_name, no_double_touch, research_notes', 'id'),
+    page('sales_targets', 'id, name, kind, status, owner_team, co_owner_name, no_double_touch, source_partner_id, source_person, source_office, research_notes', 'id'),
   ]);
   for (const r of [business, members, partners, commitments, recent, opportunities]) if (r.error) throw new Error(r.error.message);
   return {
@@ -181,8 +183,10 @@ export async function extractCallNotesRoute(req, res) {
     const intake = await enrichIntake(supabase, businessId, toIntake(raw, ctx, callDate));
     const partnerIds = new Set(Object.values(intake).flat().map(x => x?.match?.type === 'partner' && x.match.id).filter(Boolean));
     const extract = scrubExtract(raw);
+    // intake-insights-v1 I1 / I2: the same reply's track / optimize / channel links, checked without a model.
+    const insights = enrichInsights(toInsights(raw, { noteDate: callDate }), ctx, await linkPeople(supabase, businessId));
     res.json({
-      call_date: callDate, hash, ...toProposals(raw, ctx), ...intake, categories: ctx.categories,
+      call_date: callDate, hash, ...toProposals(raw, ctx), ...intake, insights, categories: ctx.categories,
       recent_accepts: await recentAccepts(supabase, businessId, ctx.partners.filter(p => partnerIds.has(p.id))),
       extract, extract_sig: signExtract(extract, hash),
       usage: { model, input_tokens: data.usage?.input_tokens ?? null, output_tokens: data.usage?.output_tokens ?? null, cost_usd: estimateCostUsd(model, data.usage) },
@@ -239,9 +243,9 @@ export async function createFromCallNotesRoute(req, res) {
       rows.push({ payload: v.payload, steps: steps.map(s => s.trim()) });
     }
     const ctx = await context(supabase, businessId, laDateString());
-    let intake;
-    try { intake = parseIntake(req.body, ctx); } catch (e) { return res.status(e.status || 400).json({ error: e.message }); }
-    const picked = rows.length + Object.values(intake).reduce((n, l) => n + l.length, 0);
+    let intake, insights;
+    try { intake = parseIntake(req.body, ctx); insights = parseInsights(req.body); } catch (e) { return res.status(e.status || 400).json({ error: e.message }); }
+    const picked = rows.length + Object.values(intake).reduce((n, l) => n + l.length, 0) + Object.values(insights).reduce((n, l) => n + l.length, 0);
     if (!picked) return res.status(400).json({ error: 'nothing is ticked - tick at least one row' });
     const week = weekOf(laDateString());
     if (await weekIsFinal(supabase, businessId, week)) return res.status(409).json({ error: FINAL_ERROR });
@@ -254,7 +258,7 @@ export async function createFromCallNotesRoute(req, res) {
     if (noteErr) throw new Error(noteErr.message);
     let result;
     try {
-      result = await acceptIntake(supabase, { businessId, userId, note, ctx, intake, taskRows: rows, week, category: callCategory(call_date, note.title) });
+      result = await acceptIntake(supabase, { businessId, userId, note, ctx, intake, insights, taskRows: rows, week, category: callCategory(call_date, note.title) });
     } catch (e) {
       // Everything acceptIntake wrote is already undone; the note goes too,
       // so pasting the same notes again works.

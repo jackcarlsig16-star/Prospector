@@ -1,4 +1,5 @@
 import { addDays, isDate } from './goalsShared.js';
+import { writeInsights } from './intakeInsights.js';
 import { laDateString } from './laDate.js';
 import { applyPartnerSignal, SignalError } from './partnerSignals.js';
 import { cleanText } from './scrubText.js';
@@ -120,7 +121,7 @@ export function parseIntake(body, ctx) {
   return { companies, ownership, people, facts, touches, ...parseDeal(body, ctx) };
 }
 
-export async function acceptIntake(supabase, { businessId, userId, note, ctx, intake, taskRows, week, category }) {
+export async function acceptIntake(supabase, { businessId, userId, note, ctx, intake, insights = null, taskRows, week, category }) {
   const undo = [];
   const now = new Date();
   const today = laDateString(now);
@@ -319,6 +320,9 @@ export async function acceptIntake(supabase, { businessId, userId, note, ctx, in
 
     // 7. Decisions (partner note events) and what they owe us (waiting rows).
     await writeDeal(supabase, intake, { businessId, userId, note, week, category, signal, undo, must, out });
+
+    // 7b. intake-insights-v1 I3 / I4: the kept track / optimize items and channel links, inside the same undo.
+    if (insights) Object.assign(out, await writeInsights(supabase, { businessId, userId, noteId: note.id, insights, undo }));
   } catch (e) {
     for (const f of undo.reverse()) { try { await f(); } catch (u) { console.error('[call-notes/accept] undo failed:', u.message); } }
     throw e;

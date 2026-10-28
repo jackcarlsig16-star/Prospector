@@ -793,6 +793,10 @@ app.get('/api/sales/:businessId/goals/attention', salesModuleRoute('./api/sales/
 // lead-source-v1 Stage 2 - source edit / history, referred-by, Sources report + partner export, backfill (export / backfill before :id-style routes).
 app.get('/api/sales/:businessId/goals/sources', salesModuleRoute('./api/sales/sourceRoutes.js', 'sourcesReportRoute', 'goals/sources'));
 app.get('/api/sales/:businessId/goals/sources/funnel', salesModuleRoute('./api/sales/sourceRoutes.js', 'sourcesFunnelRoute', 'goals/sources/funnel'));
+// intake-insights-v1 Stage 2 - Track & improve (GET: Viewer; PATCH status: Member - salesGate) and the channel links table.
+app.get('/api/sales/:businessId/goals/insights', salesModuleRoute('./api/sales/intakeInsights.js', 'listInsightsRoute', 'goals/insights'));
+app.patch('/api/sales/:businessId/goals/insights/:id', salesModuleRoute('./api/sales/intakeInsights.js', 'setInsightStatusRoute', 'goals/insights/:id PATCH'));
+app.get('/api/sales/:businessId/goals/channel-links', salesModuleRoute('./api/sales/intakeInsights.js', 'listChannelLinksRoute', 'goals/channel-links'));
 app.get('/api/sales/:businessId/goals/sources/export', salesModuleRoute('./api/sales/sourceRoutes.js', 'sourcesExportRoute', 'goals/sources/export'));
 app.get('/api/sales/:businessId/goals/sources/backfill', salesModuleRoute('./api/sales/sourceRoutes.js', 'backfillPreviewRoute', 'goals/sources/backfill'));
 app.post('/api/sales/:businessId/goals/sources/backfill/apply', salesModuleRoute('./api/sales/sourceRoutes.js', 'backfillApplyRoute', 'goals/sources/backfill/apply POST'));
