@@ -410,7 +410,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
           </GoalsSection>
         </>}
 
-        {section === 'dashboard' && view === 'sources' && <SourcesView businessId={businessId} partners={partners} isAdmin={isAdmin} />}
+        {section === 'dashboard' && view === 'sources' && <SourcesView businessId={businessId} partners={partners} isAdmin={isAdmin} canEdit={canEdit} members={members} meId={meId} onToast={setToast} />}
         {section === 'dashboard' && view === 'analytics' && analytics}
 
         {section === 'pipeline' && view === 'partners' && (

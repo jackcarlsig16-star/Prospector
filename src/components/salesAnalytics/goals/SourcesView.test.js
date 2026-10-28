@@ -1,6 +1,15 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import SourcesView from './SourcesView';
 import { goalsApi } from './goalsApi';
+import userEvent from '@testing-library/user-event';
+
+// The shared company window (PeopleCompanyPanel) - stubbed to what it was opened with + its close.
+const mockPanel = jest.fn();
+jest.mock('../PeopleCompanyPanel', () => props => {
+  mockPanel(props);
+  const { createElement: h } = require('react');
+  return h('div', { role: 'dialog', 'aria-label': `${props.person.company} window` }, h('button', { type: 'button', onClick: props.onClose }, 'Close window'));
+});
 
 jest.mock('./goalsApi', () => ({ goalsApi: { sources: jest.fn(), sourcesFunnel: jest.fn(), channelLinks: jest.fn(() => Promise.resolve([])), sourcesExport: jest.fn(), sourcesExportCsvUrl: jest.fn(), sourcesBackfill: jest.fn(), applySourcesBackfill: jest.fn(), partners: jest.fn() } }));
 
@@ -141,4 +150,28 @@ test('axe: the funnel (table, open drawer, bars) has 0 violations (color contras
   fireEvent.click(within(f).getByTitle('List the 3 visited for Brad Cillian · Upside'));
   const r = await axe.run(container, { rules: { 'color-contrast': { enabled: false } }, resultTypes: ['violations'] });
   expect(r.violations.map(v => `${v.id}: ${v.nodes.map(n => n.target.join(' ')).slice(0, 2).join(' | ')}`)).toEqual([]);
+});
+
+test('A funnel company name opens the shared company window with { type, id } - mouse and Enter; the list stays open behind it; focus returns to the name on close', async () => {
+  render(<SourcesView businessId="b1" partners={partners} isAdmin={false} canEdit={false} members={[]} meId="me" onToast={() => {}} />);
+  const f = await screen.findByRole('region', { name: 'Funnel' });
+  await within(f).findByRole('figure', { name: 'Brad Cillian · Upside funnel' });
+  fireEvent.click(within(f).getByTitle('List the 3 visited for Brad Cillian · Upside'));
+  const drawer = within(f).getByRole('region', { name: 'Brad Cillian · Upside - Visited' });
+  const birch = within(drawer).getByRole('button', { name: 'Zz Birch Co' });
+  fireEvent.click(birch);
+  expect(mockPanel).toHaveBeenLastCalledWith(expect.objectContaining({ businessId: 'b1', canEdit: false, person: { company: 'Zz Birch Co', link: { type: 'employer', id: 'Zz Birch Co' } } }));
+  expect(screen.getByRole('dialog', { name: 'Zz Birch Co window' })).toBeInTheDocument();
+  expect(within(f).getByRole('region', { name: 'Brad Cillian · Upside - Visited' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Close window' }));
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(birch).toHaveFocus();
+
+  const elm = within(drawer).getByRole('button', { name: 'Zz Elm Health' });
+  elm.focus();
+  userEvent.keyboard('{Enter}');
+  expect(screen.getByRole('dialog', { name: 'Zz Elm Health window' })).toBeInTheDocument();
+  expect(mockPanel).toHaveBeenLastCalledWith(expect.objectContaining({ person: { company: 'Zz Elm Health', link: { type: 'employer', id: 'Zz Elm Health' } } }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close window' }));
+  expect(elm).toHaveFocus();
 });

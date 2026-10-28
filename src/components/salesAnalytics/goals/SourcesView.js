@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { SA, SA_TYPE } from '../theme';
 import { goalsApi } from './goalsApi';
 import { cardStyle, labelStyle, numStyle, fmt, h3Style, ErrorNote, Btn } from './goalsUi';
@@ -9,6 +9,7 @@ import FilterSelect from '../../../ui/FilterSelect';
 import SourcesBackfill from './SourcesBackfill';
 import SourceFunnel from './SourceFunnel';
 import ChannelLinks from './ChannelLinks';
+import PeopleCompanyPanel from '../PeopleCompanyPanel';
 import { SOURCE_KINDS, SOURCE_LABEL } from '../../../constants/leadSources';
 
 // lead-source-v1 B4 - Dashboard > Sources: companies by source kind, by
@@ -134,7 +135,7 @@ function PartnerExport({ businessId, partnerId, onClose }) {
   );
 }
 
-export default function SourcesView({ businessId, partners, isAdmin }) {
+export default function SourcesView({ businessId, partners, isAdmin, canEdit, members, meId, onToast }) {
   const [days, setDays] = useState('');
   const [team, setTeam] = useState('');
   const [partner, setPartner] = useState('');
@@ -148,6 +149,8 @@ export default function SourcesView({ businessId, partners, isAdmin }) {
   const [funnel, setFunnel] = useState(null);
   const [funnelError, setFunnelError] = useState('');
   const [reps, setReps] = useState([]);
+  const [company, setCompany] = useState(null); // { company, link } for the company window
+  const opener = useRef(null);
   const narrow = useMediaQuery('(max-width: 720px)');
   useEffect(() => {
     let live = true;
@@ -163,6 +166,11 @@ export default function SourcesView({ businessId, partners, isAdmin }) {
     }).catch(e => live && setFunnelError(e.message));
     return () => { live = false; };
   }, [businessId, days, team, partner, rep, source, version]);
+  const openCompany = useCallback((c, el) => { opener.current = el; setCompany({ company: c.name, link: { type: c.type, id: c.id } }); }, []);
+  const closeCompany = useCallback(() => setCompany(null), []);
+  const panelToast = useCallback(t => onToast(t.text), [onToast]);
+  // Focus goes back to the name that opened the window once it's gone.
+  useEffect(() => { if (!company && opener.current) { opener.current.focus(); opener.current = null; } }, [company]);
   const partnerOptions = [{ value: '', label: 'All partners' }, ...[...partners].filter(p => !p.archived_at).sort((a, b) => a.name.localeCompare(b.name)).map(p => ({ value: p.id, label: p.name }))];
   const t = data?.totals;
   return (
@@ -179,7 +187,7 @@ export default function SourcesView({ businessId, partners, isAdmin }) {
       {exportFor && <PartnerExport businessId={businessId} partnerId={exportFor} onClose={() => setExportFor(null)} />}
       {funnelError && <ErrorNote message={funnelError} />}
       {!funnel && !funnelError && <span style={{ fontSize: 13, color: SA.muted }}>Loading the funnel…</span>}
-      {funnel && <SourceFunnel data={funnel} narrow={narrow} />}
+      {funnel && <SourceFunnel data={funnel} narrow={narrow} onOpenCompany={openCompany} />}
       {error && <ErrorNote message={error} />}
       {!data && !error && <span style={{ fontSize: 13, color: SA.muted }}>Loading…</span>}
       {data && <>
@@ -193,6 +201,7 @@ export default function SourcesView({ businessId, partners, isAdmin }) {
         <GroupTable title="By office" groups={data.by_office} empty="No partner office named yet." narrow={narrow} />
       </>}
       <ChannelLinks businessId={businessId} partner={partner} narrow={narrow} />
+      {company && <PeopleCompanyPanel businessId={businessId} person={company} canEdit={canEdit} members={members} meId={meId} onToast={panelToast} onClose={closeCompany} onOpenFull={closeCompany} />}
       {isAdmin && <SourcesBackfill businessId={businessId} onApplied={() => setVersion(v => v + 1)} />}
     </div>
   );

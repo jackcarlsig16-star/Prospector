@@ -59,8 +59,9 @@ export function FunnelBars({ g, hue }) {
   );
 }
 
-// The list behind one count: those companies, the stage date (newest first), the intent band, the journey.
-export function FunnelDrawer({ g, stage, groupBy, companies, onClose }) {
+// The list behind one count: those companies, the stage date (newest first), the intent band, the journey. A name opens
+// that company's window (the shared PeopleCompanyPanel); the list stays open behind it.
+export function FunnelDrawer({ g, stage, groupBy, companies, onClose, onOpenCompany }) {
   const label = FUNNEL_STAGES.find(([s]) => s === stage)[1];
   const rows = membersOf(companies, groupBy, g.key).filter(c => c[stage]).sort((a, b) => b[stage].localeCompare(a[stage]) || a.name.localeCompare(b.name));
   return (
@@ -73,7 +74,9 @@ export function FunnelDrawer({ g, stage, groupBy, companies, onClose }) {
         {rows.map(c => (
           <li key={`${c.type}-${c.id}`} data-funnel-company={c.name} style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: '8px 0', borderTop: `1px solid ${SA.track}`, fontSize: 13 }}>
             <span style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-              <b style={{ fontWeight: 500, color: SA.text }}>{c.name}</b>
+              {onOpenCompany
+                ? <button type="button" className="ui-link" title={`Open ${c.name}`} onClick={e => onOpenCompany(c, e.currentTarget)} style={{ fontWeight: 500, textAlign: 'left' }}>{c.name}</button>
+                : <b style={{ fontWeight: 500, color: SA.text }}>{c.name}</b>}
               <span style={{ color: SA.muted }}>{TYPE_LABEL[c.type]} · {label} {md(c[stage])}{c.score_band ? ` · ${c.score_band}${c.score != null ? ` (${c.score})` : ''}` : ''}{c.upside ? ' · Upside' : ''}</span>
             </span>
             <span style={{ fontSize: 12, color: SA.muted, overflowWrap: 'anywhere' }}>{c.journey}</span>
@@ -84,7 +87,7 @@ export function FunnelDrawer({ g, stage, groupBy, companies, onClose }) {
   );
 }
 
-export default function SourceFunnel({ data, narrow }) {
+export default function SourceFunnel({ data, narrow, onOpenCompany }) {
   const [groupBy, setGroupBy] = useState('rep');
   const [selected, setSelected] = useState(null);
   const [open, setOpen] = useState(null); // { key, stage }
@@ -142,7 +145,7 @@ export default function SourceFunnel({ data, narrow }) {
           </table>
         </div>
       ))}
-      {openG && <FunnelDrawer g={openG} stage={open.stage} groupBy={groupBy} companies={data.companies} onClose={() => setOpen(null)} />}
+      {openG && <FunnelDrawer g={openG} stage={open.stage} groupBy={groupBy} companies={data.companies} onClose={() => setOpen(null)} onOpenCompany={onOpenCompany} />}
       {sel && <FunnelBars g={sel} hue={rowHue(membersOf(data.companies, groupBy, sel.key), groupBy, sel.key)} />}
     </section>
   );
