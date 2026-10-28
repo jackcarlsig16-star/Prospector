@@ -26,6 +26,7 @@ import CampaignsView from './campaigns/CampaignsView';
 import SourcesView from './SourcesView';
 import GoalHero from './GoalHero';
 import DashboardCharts from './DashboardCharts';
+import TrackImprove from './TrackImprove';
 import GoalsSection from './GoalsSection';
 import { RANGE_OPTIONS, DEFAULT_RANGE, TEAM_OPTIONS } from './dashboardModel';
 import { dayTitle } from './todayModel';
@@ -379,6 +380,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
 
         {overview && <>
           <DashboardCharts businessId={businessId} days={range} owner={owner === 'team' ? null : owner} team={team || null} lookup={lookup} />
+          <TrackImprove businessId={businessId} canEdit={canEdit} />
           <GoalsSection businessId={businessId} weekStart={weekStart} thisWeek={thisWeek} onWeek={setWeekStart} members={ownerMember ? [ownerMember] : members} lookup={lookup}
             commitments={myCommitments} report={reportData?.report} partners={partners}
             hero={<GoalHero businessId={businessId} weekStart={weekStart} owner={owner} ownerName={owner === 'team' ? null : whoLabel} commitments={myCommitments} missingHeadcount={missingHeadcount} canEdit={canEdit}

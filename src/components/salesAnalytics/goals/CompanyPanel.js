@@ -38,6 +38,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
   const [starBusy, setStarBusy] = useState(false);
   const [source, setSource] = useState(null); // lead-source-v1: GET goals/source -> { source, history, journey (brad-attribution-v1) }
   const [editPanel, setEditPanel] = useState(null); // company-panel-v3 D2: 'jump' | 'source' | 'domain' under the facts
+  const [links, setLinks] = useState([]); // intake-insights-v1: channel links naming this company
   // L6 (REVISABLE 980): two columns only when the window gets its full 1040 px, so a 1000 px viewport stacks.
   const wide = useMediaQuery('(min-width: 1040px)');
   const running = detail?.research?.runs?.[0]?.status === 'running';
@@ -51,6 +52,12 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
     if (!sourced) return undefined;
     let live = true;
     goalsApi.source(businessId, row.type, row.id).then(d => live && setSource(d)).catch(() => live && setSource(null));
+    return () => { live = false; };
+  }, [businessId, row.type, row.id, version, sourced]);
+  useEffect(() => {
+    if (!sourced) return undefined;
+    let live = true;
+    goalsApi.channelLinks(businessId, { record: `${row.type}:${row.id}` }).then(l => live && setLinks(l)).catch(() => live && setLinks([]));
     return () => { live = false; };
   }, [businessId, row.type, row.id, version, sourced]);
   useEffect(() => {
@@ -115,7 +122,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
             {detail.research && <IntelCard {...cardProps} />}
             {!needsRecord(row.type) || detail.people.length > 0 ? <div data-section="people" ref={el => { if (el && initialSection === 'people' && !el.dataset.shown) { el.dataset.shown = '1'; el.scrollIntoView({ block: 'start' }); } }}><PeopleCard {...cardProps} /></div> : null}
             {row.type === 'partner' && <ReferredByCard businessId={businessId} row={row} version={version} />}
-            {sourced && <SourceHistoryCard data={source} />}
+            {sourced && <SourceHistoryCard data={source} links={links} />}
             <ExtraCards row={row} detail={detail} />
           </div>
         </div>

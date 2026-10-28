@@ -28,15 +28,15 @@ export function Section({ title, count, children }) {
   );
 }
 
-function Row({ on, disabled, label, onToggle, children }) {
+export function Row({ on, disabled, label, onToggle, fade = true, children }) {
   return (
-    <li style={{ borderTop: `1px solid ${SA.track}`, padding: '10px 0', display: 'flex', gap: 10, alignItems: 'flex-start', opacity: on && !disabled ? 1 : 0.55 }}>
+    <li style={{ borderTop: `1px solid ${SA.track}`, padding: '10px 0', display: 'flex', gap: 10, alignItems: 'flex-start', opacity: (on && !disabled) || !fade ? 1 : 0.55 }}>
       <div style={{ paddingTop: 1 }}><Box checked={on && !disabled} disabled={disabled} label={label} onClick={onToggle} /></div>
       <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>{children}</div>
     </li>
   );
 }
-const Evidence = ({ text }) => (text ? <span style={{ ...small(), fontStyle: 'italic' }}>“{text}”</span> : null);
+export const Evidence = ({ text }) => (text ? <span style={{ ...small(), fontStyle: 'italic' }}>“{text}”</span> : null);
 
 const companyActions = c => (c.match
   ? c.match.type === 'account' ? [['pipeline', `Add ${c.match.name} to pipeline`], ['none', 'Leave as is']] : [['note', `Add this note to ${c.match.name}`], ['skip', 'Skip']]

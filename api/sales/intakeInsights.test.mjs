@@ -120,6 +120,8 @@ test('Dashboard: live insights by kind with their note, the status PATCH (open -
   assert.deepEqual(links.body.links.map(l => l.relation).sort(), ['other', 'referred'], 'both links with Upside on an end');
   assert.equal((await listChannelLinks(sb, { businessId: B, query: {} })).body.links.length, 4);
   assert.equal((await listChannelLinks(sb, { businessId: B, query: { partner: 'x' } })).status, 400);
+  assert.deepEqual((await listChannelLinks(sb, { businessId: B, query: { record: `employer:${ACME}` } })).body.links.map(l => l.relation).sort(), ['owns', 'referred'], 'the company window: links with Acme on either end');
+  assert.equal((await listChannelLinks(sb, { businessId: B, query: { record: 'visitor:x' } })).status, 400);
 });
 
 test('a Viewer passes the gate for the reads and is refused (403) on the status PATCH', () => {

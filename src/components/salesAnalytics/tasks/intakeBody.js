@@ -29,6 +29,16 @@ export function acceptBody({ companies, ownership, people, touches, facts, decis
 
 export const acceptCount = body => Object.values(body).reduce((n, l) => n + l.length, 0);
 
+// intake-insights-v1 - the kept "From these notes" items, as the server re-checks them (parseInsights).
+export const NO_INSIGHTS = { track: [], optimize: [], channel_links: [] };
+export function insightsBody({ track = [], optimize = [], channel_links = [] } = NO_INSIGHTS) {
+  return {
+    track: track.filter(t => t.keep).map(({ what, why, where, example, evidence, already_field }) => ({ what, why, where, example, evidence, already_field })),
+    optimize: optimize.filter(o => o.keep).map(({ text, why, evidence }) => ({ text, why, evidence })),
+    channel_links: channel_links.filter(l => l.keep).map(({ from, to, relation, date, evidence }) => ({ from, to, relation, date, evidence })),
+  };
+}
+
 // Rows whose company is a new name the person has since skipped can't be
 // written anywhere - the review greys them out.
 export function orphaned(x, companies) {

@@ -171,12 +171,15 @@ export async function setInsightStatus(supabase, { businessId, userId, id, body 
   return reply(200, { insight: rows[0], before: row.status });
 }
 
-// GET /goals/channel-links?partner=<id> -> { links } (live rows; a partner filter keeps links with that partner on
-// either end).
+// GET /goals/channel-links?partner=<id>|record=<type>:<id> -> { links } (live rows; a partner / record filter keeps links
+// with it on either end - the Sources table and the company window's "Linked in notes").
 export async function listChannelLinks(supabase, { businessId, query = {} }) {
   if (query.partner && !/^[0-9a-f-]{36}$/i.test(query.partner)) return reply(400, { error: 'partner must be a partner id' });
+  const rec = query.record ? /^(partner|employer|target):([0-9a-f-]{36})$/i.exec(query.record) : null;
+  if (query.record && !rec) return reply(400, { error: 'record must be partner|employer|target:<id>' });
   const rows = await selectAllPages(() => supabase.from('sales_channel_links').select('id, from_kind, from_name, from_record_type, from_record_id, to_kind, to_name, to_record_type, to_record_id, relation, link_date, evidence, note_id, seen_count, last_seen_at, created_at').eq('business_id', businessId).is('archived_at', null).order('id'));
-  const links = query.partner ? rows.filter(r => (r.from_record_type === 'partner' && r.from_record_id === query.partner) || (r.to_record_type === 'partner' && r.to_record_id === query.partner)) : rows;
+  const on = (type, id) => r => (r.from_record_type === type && r.from_record_id === id) || (r.to_record_type === type && r.to_record_id === id);
+  const links = query.partner ? rows.filter(on('partner', query.partner)) : rec ? rows.filter(on(rec[1], rec[2])) : rows;
   return reply(200, { links: links.sort((a, b) => String(b.last_seen_at).localeCompare(String(a.last_seen_at))) });
 }
 

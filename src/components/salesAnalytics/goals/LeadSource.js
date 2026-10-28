@@ -75,10 +75,14 @@ export function SourceForm({ businessId, row, source, onSaved, onToast, onCancel
   );
 }
 
-export function SourceHistoryCard({ data }) {
+// intake-insights-v1 I5: links = the channel links that name this company ("Linked in notes: Upside → referred → Acme").
+const RELATION = { referred: 'referred', introduced: 'introduced', owns: 'owns', co_sells: 'co-sells with', reports_to: 'reports to', works_with: 'works with', other: '·' };
+export const linkText = l => `${l.from_name} → ${RELATION[l.relation] || l.relation} → ${l.to_name}${l.link_date ? ` (${md(l.link_date)})` : ''}${l.seen_count > 1 ? ` · seen ${l.seen_count}×` : ''}`;
+export function SourceHistoryCard({ data, links = [] }) {
   const history = data?.history || [];
   return (
-    <Card label="Source history" count={history.length} testId="source-history">
+    <Card label="Source history" count={history.length + links.length} testId="source-history">
+      {links.map(l => <div key={l.id} data-linked-in-notes style={{ ...text, color: SA.soft }}>Linked in notes: {linkText(l)}</div>)}
       {data?.source?.source_note && <div style={{ ...text, color: SA.soft }}>Note: {data.source.source_note}</div>}
       {data?.source?.route_in && <div style={{ ...text, color: SA.soft }}>Route in: {data.source.route_in}</div>}
       {!history.length && <span style={dim}>No changes logged yet.</span>}

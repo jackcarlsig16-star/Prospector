@@ -2,7 +2,7 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import SourcesView from './SourcesView';
 import { goalsApi } from './goalsApi';
 
-jest.mock('./goalsApi', () => ({ goalsApi: { sources: jest.fn(), sourcesFunnel: jest.fn(), sourcesExport: jest.fn(), sourcesExportCsvUrl: jest.fn(), sourcesBackfill: jest.fn(), applySourcesBackfill: jest.fn(), partners: jest.fn() } }));
+jest.mock('./goalsApi', () => ({ goalsApi: { sources: jest.fn(), sourcesFunnel: jest.fn(), channelLinks: jest.fn(() => Promise.resolve([])), sourcesExport: jest.fn(), sourcesExportCsvUrl: jest.fn(), sourcesBackfill: jest.fn(), applySourcesBackfill: jest.fn(), partners: jest.fn() } }));
 
 // jsdom has no matchMedia; the view reads it for its phone list.
 window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
@@ -42,6 +42,7 @@ const funnel = {
 beforeEach(() => {
   goalsApi.sources.mockResolvedValue(report);
   goalsApi.sourcesFunnel.mockResolvedValue(funnel);
+  goalsApi.channelLinks.mockResolvedValue([]);
   goalsApi.partners.mockResolvedValue(partners);
 });
 afterEach(() => jest.clearAllMocks());

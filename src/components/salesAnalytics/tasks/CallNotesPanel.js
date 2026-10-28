@@ -7,7 +7,8 @@ import { docxText } from '../../../utils/docxText';
 import LinkPicker, { chipStyle } from './LinkPicker';
 import { Box, md, linkBtn } from './TaskRow';
 import { Section, CompanyRows, PeopleRows, TouchRows, IntelRows, DecisionRows, WaitingRows, TermsRows, MeetingRows } from './IntakeSections';
-import { acceptBody, acceptCount } from './intakeBody';
+import { acceptBody, acceptCount, insightsBody, NO_INSIGHTS } from './intakeBody';
+import IntakeInsights from './IntakeInsights';
 import LeadListPanel from './LeadListPanel';
 import Segmented from '../../../ui/Segmented';
 
@@ -85,6 +86,7 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
   const [sourceType, setSourceType] = useState('call');
   const [sourceLabel, setSourceLabel] = useState('');
   const [intake, setIntake] = useState(NO_INTAKE);
+  const [insights, setInsights] = useState(NO_INSIGHTS); // intake-insights-v1: track / optimize / channel links
   const [callDate, setCallDate] = useState(laDateString);
   const [text, setText] = useState('');
   const [result, setResult] = useState(null); // { summary, tasks, call_date } | { duplicate }
@@ -95,7 +97,8 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
   const fileRef = useRef(null);
   const chosen = picks.filter(p => p.on && p.text.trim());
   const body = acceptBody(intake);
-  const total = chosen.length + acceptCount(body);
+  const kept = insightsBody(insights);
+  const total = chosen.length + acceptCount(body) + acceptCount(kept);
 
   const upload = async e => {
     const file = e.target.files[0];
@@ -117,6 +120,7 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
       setReportState('');
       setPicks((r.tasks || []).map(toPick));
       setIntake(Object.fromEntries(Object.keys(NO_INTAKE).map(k => [k, r[k] || []])));
+      setInsights({ ...NO_INSIGHTS, ...(r.insights || {}) });
       if (r.tasks?.some(t => t.link_type && t.link_type !== 'metric')) links.load();
     } catch (err) { setError(err.message); }
     setBusy('');
@@ -127,7 +131,7 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
       const out = await goalsApi.createFromCallNotes(businessId, {
         text, title: title.trim() || null, call_date: result.call_date, source_type: sourceType, source_label: sourceLabel.trim() || null,
         tasks: chosen.map(p => ({ text: p.text.trim(), owner_user_id: p.owner_user_id, due_date: p.due_date, link_type: p.link_type, link_id: p.link_id, steps: p.steps })),
-        ...body, extract: result.extract ?? null, extract_sig: result.extract_sig ?? null,
+        ...body, insights: kept, extract: result.extract ?? null, extract_sig: result.extract_sig ?? null,
       });
       onCreated(out.goals.length, out.note, out);
     } catch (err) { setError(err.message); setBusy(''); }
@@ -143,6 +147,7 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
   };
   const setPick = i => patch => setPicks(prev => prev.map((p, k) => (k === i ? { ...p, ...patch } : p)));
   const setRow = list => i => patch => setIntake(prev => ({ ...prev, [list]: prev[list].map((r, k) => (k === i ? { ...r, ...patch } : r)) }));
+  const setInsight = list => i => patch => setInsights(prev => ({ ...prev, [list]: prev[list].map((r, k) => (k === i ? { ...r, ...patch } : r)) }));
 
   const reviewing = result && !result.duplicate;
   const switcher = <Segmented label="What to read" items={MODES} value={mode} onChange={m => { setMode(m); setResult(null); }} />;
@@ -242,6 +247,7 @@ export default function CallNotesPanel({ businessId, members, lookup, links, onC
             <Section title="Ownership & intel" count={intake.ownership.length + intake.facts.length}>
               <IntelRows ownership={intake.ownership} facts={intake.facts} companies={intake.companies} setOwnership={setRow('ownership')} setFact={setRow('facts')} />
             </Section>
+            <IntakeInsights insights={insights} set={setInsight} />
             {result.rejected?.length > 0 && <span style={{ fontSize: 12, color: SA.muted }}>Not proposed again (you said never): {result.rejected.join(', ')}</span>}
           </>
         )}

@@ -8,6 +8,7 @@ import useMediaQuery from '../../../utils/useMediaQuery';
 import FilterSelect from '../../../ui/FilterSelect';
 import SourcesBackfill from './SourcesBackfill';
 import SourceFunnel from './SourceFunnel';
+import ChannelLinks from './ChannelLinks';
 import { SOURCE_KINDS, SOURCE_LABEL } from '../../../constants/leadSources';
 
 // lead-source-v1 B4 - Dashboard > Sources: companies by source kind, by
@@ -191,6 +192,7 @@ export default function SourcesView({ businessId, partners, isAdmin }) {
         <GroupTable title="By rep" groups={data.by_person} empty="No partner rep named yet." narrow={narrow} />
         <GroupTable title="By office" groups={data.by_office} empty="No partner office named yet." narrow={narrow} />
       </>}
+      <ChannelLinks businessId={businessId} partner={partner} narrow={narrow} />
       {isAdmin && <SourcesBackfill businessId={businessId} onApplied={() => setVersion(v => v + 1)} />}
     </div>
   );

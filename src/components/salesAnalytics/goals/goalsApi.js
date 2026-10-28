@@ -158,6 +158,10 @@ export const goalsApi = {
   // days / team / partner; { totals, by_kind, by_partner, by_person, by_office }.
   sources: (id, { days, team, partner } = {}) => call(id, `/sources?${q({ days, team, partner })}`),
   sourcesFunnel: (id, { days, team, partner, rep, source } = {}) => call(id, `/sources/funnel?${q({ days, team, partner, rep, source })}`),
+  // intake-insights-v1: Track & improve + channel links (status PATCH: Members, expect = the status the screen showed).
+  insights: (id, status) => call(id, `/insights?${q({ status })}`),
+  setInsightStatus: (id, insightId, body) => call(id, `/insights/${insightId}`, { method: 'PATCH', body }),
+  channelLinks: (id, { partner, record } = {}) => call(id, `/channel-links?${q({ partner, record })}`).then(d => d.links),
   // Structured fields only (company, type, stage, owner, covered lives, rep, office) - never route_in or notes.
   sourcesExport: (id, partner) => call(id, `/sources/export?${q({ partner })}`),
   sourcesExportCsvUrl: (id, partner) => `/api/sales/${id}/goals/sources/export?${q({ partner, format: 'csv' })}`,
