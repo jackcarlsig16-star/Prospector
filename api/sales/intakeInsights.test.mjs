@@ -7,7 +7,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
-import { toInsights, enrichInsights, parseInsights, writeInsights, listInsights, setInsightStatus, listChannelLinks, INSIGHT_RULES, INSIGHT_JSON, MAX_TRACK, MAX_LINKS } from './intakeInsights.js';
+import { wordCut, toInsights, enrichInsights, parseInsights, writeInsights, listInsights, setInsightStatus, listChannelLinks, INSIGHT_RULES, INSIGHT_JSON, MAX_TRACK, MAX_LINKS } from './intakeInsights.js';
 import { trackedMatch, TRACKED_FIELDS } from './trackedFields.js';
 import { salesGate } from '../lib/requireAuth.js';
 
@@ -134,4 +134,21 @@ test('a Viewer passes the gate for the reads and is refused (403) on the status 
   };
   assert.deepEqual(run('GET'), { code: 200, next: true });
   assert.deepEqual(run('PATCH'), { code: 403, next: false });
+});
+
+test('wordCut: <= the cap unchanged; over it, cut at a word with "…" (cap + 1 at most); track what 120, optimize text / link evidence whole to 200 and never over their 200-char columns', () => {
+  const w = n => Array.from({ length: 40 }, (_, i) => `word${i}`).join(' ').slice(0, n).trim();
+  const s80 = w(80), s95 = w(95), s140 = w(140);
+  assert.equal(wordCut(s80, 120), s80);
+  assert.equal(wordCut(s95, 120), s95, 'a 95-char what is kept whole');
+  const c = wordCut(s140, 120);
+  assert.ok(c.endsWith('…') && c.length <= 121, c);
+  assert.ok(s140.startsWith(c.slice(0, -1)) && s140[c.length - 1] === ' ', 'ends at a word boundary');
+  assert.equal(wordCut('alpha beta → gamma delta', 12), 'alpha beta…', 'no dangling arrow');
+  assert.equal(wordCut('y'.repeat(200), 200, 200), 'y'.repeat(200), 'exactly 200 fits a 200 column whole');
+  const long = 'x '.repeat(150);
+  const out = toInsights({ track: [{ what: s140, evidence: 'e' }], optimize: [{ text: long, evidence: 'e' }], channel_links: [{ from: { kind: 'person', name: 'A' }, to: { kind: 'company', name: 'B' }, relation: 'works_with', evidence: long }] });
+  assert.ok(out.track[0].what.length <= 121 && out.track[0].what.endsWith('…'));
+  assert.ok(out.optimize[0].text.length <= 200 && out.optimize[0].text.endsWith('…'));
+  assert.ok(out.channel_links[0].evidence.length <= 200 && out.channel_links[0].evidence.endsWith('…'));
 });

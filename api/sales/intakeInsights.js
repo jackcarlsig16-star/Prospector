@@ -23,6 +23,15 @@ const reply = (status, body) => ({ status, body });
 const send = (res, r) => res.status(r.status).json(r.body);
 const list = (raw, k, max) => (Array.isArray(raw?.[k]) ? raw[k] : []).filter(x => x && typeof x === 'object').slice(0, max);
 const text = (v, max) => (typeof v === 'string' && !hasPii(v) ? cleanText(v, max) : '');
+// Up to `keep` chars stay whole; longer is cut at the last word that fits and ends in "…", `limit` chars at most. The
+// prompt still asks for 80 on a track item - 120 is slack for a model that runs a little over. Where the column allows
+// 200, keep = limit = 200.
+export const wordCut = (v, keep, limit = keep + 1) => {
+  const s = text(v, Infinity);
+  if (s.length <= keep) return s;
+  const head = s.slice(0, limit - 1), sp = head.lastIndexOf(' ');
+  return `${(sp > head.length / 2 ? head.slice(0, sp) : head).replace(/[\s,;:(→-]+$/, '')}…`;
+};
 
 // I1 - appended to the extract SYSTEM prompt; the reply JSON gains "track", "optimize" and "channel_links".
 export const INSIGHT_RULES = `track - up to ${MAX_TRACK} data points the notes show matter that we may not record yet. Only from what the notes actually say; never generic CRM advice ("track deal size" with nothing in the notes behind it is NOT allowed): what (max 80 chars, e.g. "Referring office on every Upside referral"), why (max 200), where ("company" | "partner" | "person" | "referral" | "deal" | "activity"), example (the shortest phrase from the notes, max 20 words), evidence.
@@ -33,12 +42,12 @@ export const INSIGHT_JSON = `"track":[{"what":"","why":"","where":"","example":"
 
 // The model's lists -> clean items (no evidence = dropped: an idea with nothing in the notes behind it is not a finding).
 export function toInsights(raw, { noteDate = null } = {}) {
-  const track = list(raw, 'track', MAX_TRACK).map(t => ({ what: text(t.what, 80), why: text(t.why, 200) || null, where: WHERE.includes(t.where) ? t.where : null, example: text(t.example, 200) || null, evidence: text(t.evidence, 200) }))
+  const track = list(raw, 'track', MAX_TRACK).map(t => ({ what: wordCut(t.what, 120), why: text(t.why, 200) || null, where: WHERE.includes(t.where) ? t.where : null, example: text(t.example, 200) || null, evidence: text(t.evidence, 200) }))
     .filter(t => t.what && t.evidence);
-  const optimize = list(raw, 'optimize', MAX_OPTIMIZE).map(o => ({ text: text(o.text, 200), why: text(o.why, 200) || null, evidence: text(o.evidence, 200) }))
+  const optimize = list(raw, 'optimize', MAX_OPTIMIZE).map(o => ({ text: wordCut(o.text, 200, 200), why: text(o.why, 200) || null, evidence: text(o.evidence, 200) }))
     .filter(o => o.text && o.evidence);
   const end = e => (e && END_KINDS.includes(e.kind) && text(e.name, 120) ? { kind: e.kind, name: text(e.name, 120) } : null);
-  const channel_links = list(raw, 'channel_links', MAX_LINKS).map(l => ({ from: end(l.from), to: end(l.to), relation: RELATIONS.includes(l.relation) ? l.relation : 'other', date: isDate(l.date) && (!noteDate || l.date <= noteDate) ? l.date : null, evidence: text(l.evidence, 200) }))
+  const channel_links = list(raw, 'channel_links', MAX_LINKS).map(l => ({ from: end(l.from), to: end(l.to), relation: RELATIONS.includes(l.relation) ? l.relation : 'other', date: isDate(l.date) && (!noteDate || l.date <= noteDate) ? l.date : null, evidence: wordCut(l.evidence, 200, 200) }))
     .filter(l => l.from && l.to && l.evidence && !(l.from.kind === l.to.kind && normName(l.from.name) === normName(l.to.name)));
   return { track, optimize, channel_links };
 }
