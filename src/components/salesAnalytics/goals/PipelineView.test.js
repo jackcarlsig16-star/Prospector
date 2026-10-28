@@ -286,7 +286,7 @@ test('panel: header chips; body from GET goals/company; Add note goes through th
   expect(await panel.findByText('Send the deck')).toBeTruthy();
   expect(panel.getByText('Note: Newest note')).toBeTruthy();
   expect(panel.getByText('Send the one-pager')).toBeTruthy();
-  fireEvent.click(panel.getByRole('button', { name: 'Add note' }));
+  fireEvent.click(panel.getByRole('button', { name: 'Note' }));
   fireEvent.change(panel.getByLabelText('Note'), { target: { value: 'Called, left voicemail' } });
   fireEvent.click(panel.getByRole('button', { name: 'Save note' }));
   await waitFor(() => expect(goalsApi.addCompanyNote).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', 'Called, left voicemail'));
@@ -296,7 +296,7 @@ test('panel: header chips; body from GET goals/company; Add note goes through th
   fireEvent.click(panel.getByRole('button', { name: 'Top' }));
   await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'Gallagher', { type: 'hot', hot: false }));
   await waitFor(() => expect(panel.getByRole('button', { name: 'Top' })).toHaveAttribute('aria-pressed', 'false'));
-  fireEvent.click(panel.getByRole('button', { name: 'Add to-do' }));
+  fireEvent.click(panel.getByRole('button', { name: 'To-do' }));
   fireEvent.change(panel.getByLabelText('To-do'), { target: { value: 'Call Pat about the pilot' } });
   fireEvent.change(panel.getByLabelText('To-do owner'), { target: { value: 'u2' } });
   fireEvent.change(panel.getByLabelText('To-do due date'), { target: { value: '2026-10-23' } });

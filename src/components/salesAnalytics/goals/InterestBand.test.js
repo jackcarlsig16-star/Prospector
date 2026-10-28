@@ -36,7 +36,7 @@ test('Draft email on an Apollo-only row asks employer or partner, then makes the
   const Wrap = () => { const [form, setForm] = require('react').useState(null); return <CompanyActions businessId="b1" row={{ type: 'apollo', id: 'acc-1', name: 'ZZ Acme', stage: 'sequenced' }} members={[]} meId="u1" form={form} setForm={setForm} bandShown onPatch={jest.fn()} onChanged={jest.fn()} onToast={jest.fn()} onConvert={jest.fn()} onClose={jest.fn()} />; };
   render(<Wrap />);
   expect(screen.getByRole('button', { name: 'Add to pipeline ▾' })).toHaveClass('ui-btn--secondary'); // the band holds the primary
-  fireEvent.click(screen.getByRole('button', { name: 'Draft email in Claude' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Draft email' }));
   expect(goalsApi.addToPipeline).not.toHaveBeenCalled();
   expect(screen.getByRole('group', { name: 'Add ZZ Acme as a target first' })).toHaveTextContent('employer or partner?');
   fireEvent.click(screen.getByRole('button', { name: 'Partner' }));

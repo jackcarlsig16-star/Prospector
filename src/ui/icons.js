@@ -26,3 +26,11 @@ export const IconExternal = p => <Svg {...p}><path d="M9 3h4v4M13 3l-6 6M11 9.5V
 export const IconMore = p => <Svg fill="currentColor" {...p}><circle cx="3.5" cy="8" r="1.3" /><circle cx="8" cy="8" r="1.3" /><circle cx="12.5" cy="8" r="1.3" /></Svg>;
 export const IconClose = p => <Svg {...p}><path d="M4 4l8 8M12 4l-8 8" /></Svg>;
 export const IconPlus = p => <Svg {...p}><path d="M8 3v10M3 8h10" /></Svg>;
+// company-panel-v3 - the Actions groups (Capture · Reach · Learn · Advance) and the Interest band.
+export const IconPencil = p => <Svg {...p}><path d="M10.5 3l2.5 2.5L6 12.5H3.5V10z" /><path d="M9 4.5L11.5 7" /></Svg>;
+export const IconMail = p => <Svg {...p}><rect x="2" y="3.5" width="12" height="9" rx="1.5" /><path d="M2.5 4.5L8 9l5.5-4.5" /></Svg>;
+export const IconCalendar = p => <Svg {...p}><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" /><path d="M2.5 7h11M5.5 2v3M10.5 2v3" /></Svg>;
+export const IconCheck = p => <Svg {...p}><path d="M3 8.5l3 3 7-7" /></Svg>;
+export const IconPause = p => <Svg {...p}><path d="M5.5 3.5v9M10.5 3.5v9" /></Svg>;
+export const IconArrowRight = p => <Svg {...p}><path d="M3 8h10M9 4l4 4-4 4" /></Svg>;
+export const IconPeople = p => <Svg {...p}><circle cx="6" cy="6" r="2.5" /><path d="M1.5 13.5c.5-2.5 2.3-3.5 4.5-3.5s4 1 4.5 3.5" /><path d="M10.5 3.6a2.4 2.4 0 0 1 0 4.8M12 10.3c1.4.4 2.2 1.5 2.5 3.2" /></Svg>;

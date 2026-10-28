@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { SA } from '../theme';
 import { ui } from '../../../ui/kitTheme';
 import { goalsApi } from './goalsApi';
@@ -9,7 +9,25 @@ import { boardStage } from '../../../constants/pipelineBoard';
 import { TOUCH_STATUSES } from '../../../constants/partnerPipeline';
 import { updateOpportunity } from '../pipelineApi';
 import OwnerPicker from './OwnerPicker';
+import { bookMeeting, markContacted } from './companyReach';
+import { IconPencil, IconMail, IconCalendar, IconCheck, IconSearch, IconPeople, IconArrowRight } from '../../../ui/icons';
 
+// company-panel-v3 A / D3 / D4 - the same handlers in four labelled verb groups that never split when they wrap:
+// CAPTURE Note (N) · To-do (T) · Contact (C) | REACH Draft email (E) · Book meeting · Mark contacted (records only; the
+// Interest band keeps its shortcut copies) | LEARN Research (R) · Check Apollo | ADVANCE Next / Promote · Not a fit /
+// Add to pipeline. The single-key shortcuts listen on the window element only (no global handler), never while focus is
+// in a field or a popover / menu is open, never with a modifier.
+const SHORTCUT_KEYS = { n: 'note', t: 'todo', c: 'contact', e: 'draft', r: 'research' };
+const kbd = k => <kbd aria-hidden="true" style={{ font: "10.5px 'Geist Mono', ui-monospace, monospace", color: SA.muted, border: `1px solid ${SA.border}`, borderRadius: 4, padding: '0 4px', marginLeft: 2 }}>{k}</kbd>;
+function Group({ id, label, icon, children }) {
+  return (
+    <div role="group" aria-label={label} data-action-group={id} style={{ display: 'inline-flex', flexDirection: 'column', gap: 5 }}>
+      <span className="ui-group-label" aria-hidden="true" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 10 }}>{icon}{label}</span>
+      <div style={{ display: 'inline-flex', gap: 6, flexWrap: 'nowrap' }}>{children}</div>
+    </div>
+  );
+}
+const divider = <span aria-hidden="true" style={{ width: 1, height: 46, background: SA.border, alignSelf: 'flex-end', margin: '0 4px' }} />;
 // company-panel-v2 L4 - the labelled Actions row (ombre: it is generated from
 // the stage and the signals): Add note · Add to-do · Add contact · Draft email
 // in Claude · Research · Check Apollo · | · Next: <verb>. Targets add Promote ▾
@@ -25,11 +43,27 @@ const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/
 
 export default function CompanyActions({ businessId, row, members, meId, form, setForm, bandShown, onPatch, onChanged, onToast, onConvert, onClose }) {
   const [busy, setBusy] = useState('');
+  const rootRef = useRef(null);
+  const keysRef = useRef(null); // the latest shortcut handler, set below once the actions exist
   const [error, setError] = useState('');
   const [draft, setDraft] = useState({});
   // company-workflow-v1 W3: the owner person for Add to pipeline / Promote (defaults to me; a target keeps its own).
   const [owner, setOwner] = useState(undefined);
   const ownerPick = owner === undefined ? row.owner_user_id || meId || null : owner;
+  useEffect(() => {
+    const win = rootRef.current?.closest('[data-center-window]');
+    if (!win) return undefined;
+    const onKey = e => {
+      if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+      const what = SHORTCUT_KEYS[e.key.toLowerCase()];
+      if (!what || e.target.closest?.('input, textarea, select, [contenteditable="true"], [contenteditable=""]')) return;
+      if (win.querySelector('[role="menu"], [data-fact-pop], [data-intent-fact][open]')) return;
+      e.preventDefault();
+      keysRef.current?.(what);
+    };
+    win.addEventListener('keydown', onKey);
+    return () => win.removeEventListener('keydown', onKey);
+  }, []);
   const set = (k, v) => setDraft(d => ({ ...d, [k]: v }));
   const open = f => { setForm(form === f ? null : f); setDraft({}); setError(''); };
 
@@ -118,25 +152,45 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
     onToast({ text: r.already ? `${rec.name} is already in the pipeline as a ${rec.type}` : `${rec.name} added as a ${rec.type}` });
   });
 
+  const reach = (what, fn) => act(what, () => fn({ businessId, row, onChanged, onToast }));
   const next = nextStage(row);
   const b = what => busy === what;
   const nextClass = bandShown ? btn : 'ui-btn ui-btn--primary';
+  const draftClick = () => (needsRecord(row.type) ? open('draft-kind') : draftEmail());
+  keysRef.current = what => (what === 'draft' ? draftClick() : what === 'research' ? research() : open(what));
+  const advance = next || needsRecord(row.type) || row.type === 'target';
   return (
-    <section aria-label="Actions" data-actions-row style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6, margin: '0 -8px', padding: 8, borderRadius: 10, background: `linear-gradient(90deg, color-mix(in srgb, ${ui.generatedFrom} 12%, ${SA.surface}) 0%, color-mix(in srgb, ${ui.generatedTo} 12%, ${SA.surface}) 100%)`, boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${ui.generatedTo} 35%, ${SA.surface})` }}>
-        <span className="ui-group-label" style={{ width: 72, flex: 'none' }}>Actions</span>
-        <button type="button" className={btn} aria-expanded={form === 'note'} onClick={() => open('note')}>Add note</button>
-        <button type="button" className={btn} aria-expanded={form === 'todo'} onClick={() => open('todo')}>Add to-do</button>
-        <button type="button" className={btn} aria-expanded={form === 'contact'} onClick={() => open('contact')}>Add contact</button>
-        <button type="button" className={btn} disabled={b('draft')} aria-expanded={needsRecord(row.type) ? form === 'draft-kind' : undefined} onClick={() => (needsRecord(row.type) ? open('draft-kind') : draftEmail())} title="Copies the record + a short playbook prompt for Claude. Never sends.">{b('draft') ? 'Copying…' : 'Draft email in Claude'}</button>
-        <button type="button" className={btn} disabled={b('research')} onClick={research} title="One Claude call with up to 3 web searches; 5 per company per day">{b('research') ? 'Starting…' : 'Research'}</button>
-        <button type="button" className={btn} disabled={b('apollo')} onClick={checkApollo} title="Reads Apollo's people at this company (no credits, at most 2 calls)">{b('apollo') ? 'Checking…' : 'Check Apollo'}</button>
-        {(next || needsRecord(row.type) || row.type === 'target') && <span aria-hidden="true" style={{ width: 1, height: 20, background: SA.border, margin: '0 4px' }} />}
-        {next && <button type="button" className={nextClass} disabled={b('stage')} onClick={() => nextStep(next.to)}>{b('stage') ? 'Saving…' : `Next: ${next.label}`}</button>}
-        {needsRecord(row.type) && <button type="button" className={nextClass} aria-expanded={form === 'add'} onClick={() => open('add')}>Add to pipeline ▾</button>}
-        {row.type === 'target' && <>
-          <button type="button" className={btn} aria-expanded={form === 'promote'} disabled={b('promote')} onClick={() => open('promote')}>Promote ▾</button>
-          <button type="button" className="ui-btn ui-btn--danger" disabled={b('reject')} onClick={notAFit}>Not a fit</button>
+    <section ref={rootRef} aria-label="Actions" data-actions-row style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: '10px 6px', margin: '0 -8px', padding: 8, borderRadius: 10, background: `linear-gradient(90deg, color-mix(in srgb, ${ui.generatedFrom} 12%, ${SA.surface}) 0%, color-mix(in srgb, ${ui.generatedTo} 12%, ${SA.surface}) 100%)`, boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${ui.generatedTo} 35%, ${SA.surface})` }}>
+        <span className="ui-group-label" style={{ width: 72, flex: 'none', alignSelf: 'center' }}>Actions</span>
+        <Group id="capture" label="Capture" icon={<IconPencil size={12} />}>
+          <button type="button" className={btn} aria-expanded={form === 'note'} aria-keyshortcuts="N" onClick={() => open('note')}>Note{kbd('N')}</button>
+          <button type="button" className={btn} aria-expanded={form === 'todo'} aria-keyshortcuts="T" onClick={() => open('todo')}>To-do{kbd('T')}</button>
+          <button type="button" className={btn} aria-expanded={form === 'contact'} aria-keyshortcuts="C" onClick={() => open('contact')}>Contact{kbd('C')}</button>
+        </Group>
+        {divider}
+        <Group id="reach" label="Reach" icon={<IconMail size={12} />}>
+          <button type="button" className={btn} disabled={b('draft')} aria-keyshortcuts="E" aria-expanded={needsRecord(row.type) ? form === 'draft-kind' : undefined} onClick={draftClick} title="Copies the record + a short playbook prompt for Claude. Never sends."><IconMail size={13} />{b('draft') ? 'Copying…' : 'Draft email'}{kbd('E')}</button>
+          {!needsRecord(row.type) && <>
+            <button type="button" className={btn} disabled={b('book')} onClick={() => reach('book', bookMeeting)} title="Sets the next step and adds a to-do due today. No calendar write."><IconCalendar size={13} />{b('book') ? 'Saving…' : 'Book meeting'}</button>
+            <button type="button" className={btn} disabled={b('contacted')} onClick={() => reach('contacted', markContacted)} title={row.type === 'partner' ? 'Logs an email touch. The stage does not move.' : 'Logs a done to-do (what Last touch reads).'}><IconCheck size={13} />{b('contacted') ? 'Saving…' : 'Mark contacted'}</button>
+          </>}
+        </Group>
+        {divider}
+        <Group id="learn" label="Learn" icon={<IconSearch size={12} />}>
+          <button type="button" className={btn} disabled={b('research')} aria-keyshortcuts="R" onClick={research} title="One Claude call with up to 3 web searches; 5 per company per day"><IconSearch size={13} />{b('research') ? 'Starting…' : 'Research'}{kbd('R')}</button>
+          <button type="button" className={btn} disabled={b('apollo')} onClick={checkApollo} title="Reads Apollo's people at this company (no credits, at most 2 calls)"><IconPeople size={13} />{b('apollo') ? 'Checking…' : 'Check Apollo'}</button>
+        </Group>
+        {advance && <>
+          {divider}
+          <Group id="advance" label="Advance" icon={<IconArrowRight size={12} />}>
+            {next && <button type="button" className={nextClass} disabled={b('stage')} onClick={() => nextStep(next.to)} style={bandShown ? { borderColor: SA.borderStrong } : undefined}><IconArrowRight size={13} />{b('stage') ? 'Saving…' : `Next: ${next.label}`}</button>}
+            {needsRecord(row.type) && <button type="button" className={nextClass} aria-expanded={form === 'add'} onClick={() => open('add')}>Add to pipeline ▾</button>}
+            {row.type === 'target' && <>
+              <button type="button" className={btn} aria-expanded={form === 'promote'} disabled={b('promote')} onClick={() => open('promote')}>Promote ▾</button>
+              <button type="button" className="ui-btn ui-btn--danger" disabled={b('reject')} onClick={notAFit}>Not a fit</button>
+            </>}
+          </Group>
         </>}
         <span style={{ flex: 1 }} />
         <span style={{ fontFamily: "'Geist Mono', ui-monospace, monospace", fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: ui.generatedTo, whiteSpace: 'nowrap' }}>✦ generated · updates with stage + signals</span>

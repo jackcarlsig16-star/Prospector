@@ -45,7 +45,7 @@ export function MoreMenu({ row, canEdit, onPick }) {
     if (!open) return undefined;
     const close = e => { if (!ref.current?.contains(e.target)) setOpen(false); };
     const esc = e => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); } };
-    const root = ref.current?.closest('[role="dialog"]') || ref.current?.parentElement;
+    const root = ref.current?.closest('[data-center-window]') || ref.current?.parentElement;
     root?.addEventListener('pointerdown', close); ref.current?.addEventListener('keydown', esc);
     const el = ref.current;
     return () => { root?.removeEventListener('pointerdown', close); el?.removeEventListener('keydown', esc); };
@@ -79,7 +79,7 @@ export default function CompanyFacts({ businessId, row, record, facts, canEdit, 
     const close = e => { if (!e.target.closest?.('[data-fact-pop], [data-fact-button]')) setOpenFact(null); };
     const esc = e => { if (e.key === 'Escape') { e.stopPropagation(); setOpenFact(null); } };
     const root = rowRef.current;
-    const dialog = root?.closest('[role="dialog"]') || document.body;
+    const dialog = root?.closest('[data-center-window]') || document.body;
     dialog.addEventListener('pointerdown', close); root?.addEventListener('keydown', esc);
     return () => { dialog.removeEventListener('pointerdown', close); root?.removeEventListener('keydown', esc); };
   }, [openFact]);

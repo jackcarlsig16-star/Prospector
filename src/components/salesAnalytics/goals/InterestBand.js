@@ -2,13 +2,15 @@ import { useState } from 'react';
 import { SA } from '../theme';
 import { ui } from '../../../ui/kitTheme';
 import { goalsApi } from './goalsApi';
-import { updateOpportunity } from '../pipelineApi';
 import { updateProspect } from '../huddleApi';
 import { playbookPrompt } from './companyPanelModel';
 import { md, showsNotNow } from './companyPanelFacts';
 import { needsRecord } from './companyPanelModel';
+import { bookMeeting as bookMeetingWrite, markContacted as markContactedWrite } from './companyReach';
+import { IconMail, IconCalendar, IconCheck, IconPause } from '../../../ui/icons';
 
-// company-panel-v2 L3 - the Interest band: shown only while GET goals/company
+// company-panel-v2 L3 / v3 I - the Interest band (v3: an icon on each button; Book meeting / Mark contacted are
+// companyReach.js, shared with the Actions row's REACH group): shown only while GET goals/company
 // says interest.show (a signal in the last 14 days nobody parked). Strongest
 // signal first in bold, dated, then the rest. Members get four buttons; each
 // write hands back a 10 s Undo. Viewers see the text alone. Not now is hidden
@@ -38,26 +40,8 @@ export default function InterestBand({ businessId, row, interest, canEdit, onCha
     try { await fn(); } catch (e) { onToast({ text: e.message }); } finally { setBusy(''); }
   };
   const draftReply = () => act('draft', () => copyFollowUp({ businessId, row, person, signal: strongest, onToast }));
-  const bookMeeting = () => act('book', async () => {
-    const r = await goalsApi.bookMeeting(businessId, row.type, row.id, person ? { person: person.name } : {});
-    onChanged();
-    onToast({ text: `Next step: ${r.next_step} · to-do due today`, undo: async () => {
-      if (row.type === 'partner') await goalsApi.updatePartner(businessId, row.id, { next_step: r.before?.next_step ?? null });
-      else if (row.type === 'employer') await updateOpportunity(businessId, row.id, { next_action: r.before?.next_action ?? null, next_action_date: r.before?.next_action_date ?? null });
-      await goalsApi.updateWeekGoal(businessId, r.todo.id, { status: 'dropped' });
-      onChanged();
-    } });
-  });
-  const markContacted = () => act('contacted', async () => {
-    const r = await goalsApi.markContacted(businessId, row.type, row.id, { ...(person ? { contact_id: person.contact_id, person: person.name } : {}), touch_type: 'email' });
-    onChanged();
-    onToast({ text: `${person ? person.name : row.name} marked contacted`, undo: async () => {
-      if (r.event) await goalsApi.partnerUndo(businessId, row.id, r.event.id);
-      if (r.todo) await goalsApi.updateWeekGoal(businessId, r.todo.id, { status: 'dropped' });
-      if (r.person) await updateProspect(businessId, r.person.contact_id, { status: r.person.before.status });
-      onChanged();
-    } });
-  });
+  const bookMeeting = () => act('book', () => bookMeetingWrite({ businessId, row, person, onChanged, onToast }));
+  const markContacted = () => act('contacted', () => markContactedWrite({ businessId, row, person, onChanged, onToast }));
   const notNow = () => act('notnow', async () => {
     const r = await goalsApi.notNow(businessId, row.type, row.id, person ? { contact_id: person.contact_id } : {});
     onChanged();
@@ -74,10 +58,10 @@ export default function InterestBand({ businessId, row, interest, canEdit, onCha
       </span>
       {canEdit && !needsRecord(row.type) && (
         <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-          <button type="button" className="ui-btn ui-btn--primary" disabled={b('draft')} onClick={draftReply} title="Copies the record + the signal for Claude. Never sends.">{b('draft') ? 'Copying…' : 'Follow up: draft reply'}</button>
-          <button type="button" className={btn} style={onBand} disabled={b('book')} onClick={bookMeeting} title="Sets the next step and adds a to-do due today. No calendar write.">{b('book') ? 'Saving…' : 'Book meeting'}</button>
-          <button type="button" className={btn} style={onBand} disabled={b('contacted')} onClick={markContacted} title={row.type === 'partner' ? 'Logs an email touch. The stage does not move.' : 'Logs a done to-do (what Last touch reads).'}>{b('contacted') ? 'Saving…' : 'Mark contacted'}</button>
-          {showsNotNow(row) && <button type="button" className="ui-btn ui-btn--tertiary" disabled={b('notnow')} onClick={notNow} title={person ? 'Snoozes this person a week' : 'Hides the band until a newer signal arrives'}>{b('notnow') ? 'Saving…' : 'Not now'}</button>}
+          <button type="button" className="ui-btn ui-btn--primary" disabled={b('draft')} onClick={draftReply} title="Copies the record + the signal for Claude. Never sends."><IconMail size={13} />{b('draft') ? 'Copying…' : 'Follow up: draft reply'}</button>
+          <button type="button" className={btn} style={onBand} disabled={b('book')} onClick={bookMeeting} title="Sets the next step and adds a to-do due today. No calendar write."><IconCalendar size={13} />{b('book') ? 'Saving…' : 'Book meeting'}</button>
+          <button type="button" className={btn} style={onBand} disabled={b('contacted')} onClick={markContacted} title={row.type === 'partner' ? 'Logs an email touch. The stage does not move.' : 'Logs a done to-do (what Last touch reads).'}><IconCheck size={13} />{b('contacted') ? 'Saving…' : 'Mark contacted'}</button>
+          {showsNotNow(row) && <button type="button" className="ui-btn ui-btn--tertiary" disabled={b('notnow')} onClick={notNow} title={person ? 'Snoozes this person a week' : 'Hides the band until a newer signal arrives'}><IconPause size={13} />{b('notnow') ? 'Saving…' : 'Not now'}</button>}
         </span>
       )}
     </div>

@@ -35,7 +35,11 @@ test('done steps show ✓ + value; Size & type offers the research number with U
   const steps = { next: 'size', ready: false, steps: [step('research', 'Research', 'done', 'Researched 2026-10-22'), step('site', 'Confirm site', 'skip'), step('size', 'Size & type', 'next', null, { reach: true }), step('owner', 'Owner', 'todo'), step('add', 'Add to pipeline', 'skip'), step('touch', 'First touch', 'todo')] };
   const detail = { record: { employees: null, reach_employees: null, reach_clients: null }, research: { runs: [{ status: 'done', result: { employees_count: 300, reach_employees: 45000, reach_clients: 410 } }] }, steps };
   const p = setup({ type: 'partner', id: 'g1', name: 'ZZ Payroll Co' }, detail);
-  expect(screen.getByText('✓ 1 Research · Researched 2026-10-22')).toBeInTheDocument();
+  // company-panel-v3 S: SETUP done/shown (the skip step is not counted); a done chip carries no number.
+  expect(document.querySelector('[data-setup-count]').textContent).toBe('Setup 1/4');
+  expect(screen.getByRole('region', { name: 'Setup' })).toBeInTheDocument();
+  expect(screen.getByText('✓ Research · Researched 2026-10-22')).toBeInTheDocument();
+  expect(document.querySelectorAll('.ui-btn--primary')).toHaveLength(1);
   fireEvent.click(screen.getByRole('button', { name: '2 Size & type' }));
   const group = screen.getByRole('group', { name: 'Size & type' });
   fireEvent.click(within(group).getByRole('button', { name: 'Use 300' }));

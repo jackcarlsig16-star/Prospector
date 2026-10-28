@@ -4,7 +4,9 @@ import { goalsApi } from './goalsApi';
 import { inputStyle, ErrorNote } from './goalsUi';
 import { needsRecord } from './companyPanelModel';
 
-// company-workflow-v1 W1 - the "Next step" strip under the facts row: the server's steps (api/sales/companySteps.js)
+// company-panel-v3 S - "SETUP n/m" (done over the steps shown; skip steps excluded): done = an outlined green chip
+// "✓ Research · Oct 23" (no number), the one primary = a filled accent pill "2 Size & type", later = an outlined chip.
+// company-workflow-v1 W1 - the steps strip under the facts row: the server's steps (api/sales/companySteps.js)
 // as one row, exactly ONE glowing (the primary), done steps ✓ with their value, later steps plain and still
 // clickable; "✓ Ready · last touch <date>" once nothing is left. A step's control opens under the row:
 // Research (a visitor / Apollo-only row is added as a target first - the button says so), Confirm site, Size & type
@@ -86,25 +88,29 @@ export default function CompanyStepsStrip({ businessId, row, detail, canEdit, me
     return <div data-steps-ready style={{ fontSize: 13, color: SA.good }}>✓ Ready{s.last_touch_at ? <span style={{ color: SA.soft }}> · last touch {md(s.last_touch_at)}</span> : null}</div>;
   }
   const found = researchNumbers(detail);
+  const shown = s.steps.filter(x => x.status !== 'skip');
+  const doneCount = shown.filter(x => x.status === 'done').length;
+  const chip = { display: 'inline-flex', alignItems: 'center', gap: 4, height: 28, padding: '0 10px', borderRadius: 999, fontSize: 12, whiteSpace: 'nowrap', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis' };
+  const doneChip = { ...chip, color: SA.good, border: `1px solid color-mix(in srgb, ${SA.good} 40%, transparent)` };
   return (
-    <section aria-label="Next step" data-steps style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <section aria-label="Setup" data-steps style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-        <span className="ui-group-label" style={{ width: 72, flex: 'none' }}>Next step</span>
-        {s.steps.filter(x => x.status !== 'skip').map((step, i) => {
+        <span className="ui-group-label" data-setup-count style={{ width: 72, flex: 'none' }}>Setup <span style={{ fontVariantNumeric: 'tabular-nums' }}>{doneCount}/{shown.length}</span></span>
+        {shown.map((step, i) => {
           const done = step.status === 'done', next = step.status === 'next', running = step.status === 'running';
-          const text = `${i + 1} ${label(step)}${done && step.value ? ` · ${step.value}` : running ? ' · running…' : ''}`;
+          const text = done ? `${label(step)}${step.value ? ` · ${step.value}` : ''}` : `${i + 1} ${label(step)}${running ? ' · running…' : ''}`;
           const blocked = visitorLike && ['size', 'owner'].includes(step.id);
           // A done Size / Owner step stays clickable to change it (an owner defaults to whoever added the company).
           if (!canEdit || running || blocked || (done && !['size', 'owner'].includes(step.id))) {
             return <span key={step.id} data-step={step.id} data-status={step.status} title={blocked ? 'Research or add it to the pipeline first' : step.value || undefined}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 4, height: 28, padding: '0 10px', borderRadius: 999, fontSize: 12, border: `1px solid ${SA.border}`, color: done ? SA.good : SA.soft, whiteSpace: 'nowrap', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              style={done ? doneChip : { ...chip, border: `1px solid ${SA.border}`, color: SA.soft }}>
               {done ? '✓ ' : ''}{text}
             </span>;
           }
           return (
             <button key={step.id} type="button" data-step={step.id} data-status={step.status} title={done ? 'Done - click to change' : undefined} aria-expanded={['size', 'owner', 'site'].includes(step.id) ? openStep === step.id : undefined}
-              className={next ? 'ui-btn ui-btn--primary' : 'ui-btn ui-btn--secondary'} disabled={!!busy}
-              style={{ height: 28, fontSize: 12, borderRadius: 999, ...(next ? { boxShadow: `0 0 0 3px color-mix(in srgb, ${SA.accent} 35%, transparent)` } : {}) }}
+              className={next ? 'ui-btn ui-btn--primary' : 'ui-btn ui-btn--tertiary'} disabled={!!busy}
+              style={{ height: 28, fontSize: 12, borderRadius: 999, ...(next ? {} : done ? { ...doneChip, height: 28 } : { border: `1px solid ${SA.border}`, color: SA.soft }) }}
               onClick={() => go(step)}>{busy === step.id ? 'Working…' : `${done ? '✓ ' : ''}${text}`}</button>
           );
         })}
