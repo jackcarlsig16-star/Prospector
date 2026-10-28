@@ -82,6 +82,11 @@ export function writeNav(tab, view) {
   window.history.replaceState(window.history.state, '', url);
 }
 
+// company-panel-v3 D2 "Copy link": Pipeline > Companies with that company's window open (?open=<type>-<id>).
+export const companyWindowUrl = (row, href = window.location.href) => { const u = new URL(href); u.search = ''; u.searchParams.set('tab', 'pipeline'); u.searchParams.set('view', 'companies'); u.searchParams.set('open', `${row.type}-${row.id}`); return u.toString(); };
+export const readOpenParam = (search = window.location.search) => { const v = new URLSearchParams(search).get('open') || ''; return /^(partner|employer|target)-[0-9a-f-]{36}$/i.test(v) ? v : null; };
+export function clearOpenParam() { const u = new URL(window.location.href); if (!u.searchParams.has('open')) return; u.searchParams.delete('open'); window.history.replaceState(window.history.state, '', u); }
+
 // company-panel-v2 - Pipeline > People filtered to one company: ?company=<partner|employer>:<id>&cname=<name>.
 export function readPeopleCompany(search = window.location.search) {
   const p = new URLSearchParams(search);

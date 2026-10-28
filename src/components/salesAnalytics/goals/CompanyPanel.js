@@ -5,7 +5,9 @@ import useMediaQuery from '../../../utils/useMediaQuery';
 import CenterWindow from '../CenterWindow';
 import TypeChip from './TypeChip';
 import CompanyActions from './CompanyActions';
-import CompanyEditRow from './CompanyEditRow';
+import CompanyFacts, { MoreMenu } from './CompanyFacts';
+import { companyWindowUrl } from '../salesNav';
+import { IconStar, IconExternal, IconClose } from '../../../ui/icons';
 import InterestBand from './InterestBand';
 import { SignalsCard, TodosCard, WaitingCard, NotesCard, IntelCard, PeopleCard, ExtraCards } from './CompanyPanelSections';
 import { ErrorNote, memberLookup } from './goalsUi';
@@ -17,7 +19,6 @@ import CompanyStepsStrip from './CompanyStepsStrip';
 import IntentFact from './IntentFact';
 import JourneyLine from './JourneyLine';
 import { Link } from '../../../ui/Button';
-import { priorityColor } from '../palette';
 
 // company-panel-v2 - the one company window for every Pipeline row (partner,
 // employer, target, Apollo-only, visitor). Pinned head: L1 title row (name ·
@@ -36,6 +37,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
   const [form, setForm] = useState(null); // 'note' | 'todo' | 'contact' | 'promote' | 'add' | 'draft-kind'
   const [starBusy, setStarBusy] = useState(false);
   const [source, setSource] = useState(null); // lead-source-v1: GET goals/source -> { source, history, journey (brad-attribution-v1) }
+  const [editPanel, setEditPanel] = useState(null); // company-panel-v3 D2: 'jump' | 'source' | 'domain' under the facts
   // L6 (REVISABLE 980): two columns only when the window gets its full 1040 px, so a 1000 px viewport stacks.
   const wide = useMediaQuery('(min-width: 1040px)');
   const running = detail?.research?.runs?.[0]?.status === 'running';
@@ -67,41 +69,32 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
   const site = detail?.record?.site || null;
   const bandShown = !!detail?.interest?.show;
   const fullLabel = row.type === 'visitor' ? 'Open visitor report →' : row.type === 'apollo' ? 'Open in Companies →' : row.type === 'target' ? 'Open in Tasks →' : 'Open full card →';
+  const pickMore = async id => {
+    if (id !== 'link') { setEditPanel(p => (p === id ? null : id)); return; }
+    try { await navigator.clipboard.writeText(companyWindowUrl(row)); onToast({ text: `Link to ${row.name} copied` }); } catch { onToast({ text: 'Could not copy the link' }); }
+  };
   const head = (
     <>
-      <div data-company-panel={row.type} style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+      <div data-company-panel={row.type} style={{ display: 'flex', alignItems: 'center', gap: '8px 12px', flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: SA.text, overflowWrap: 'anywhere', minWidth: 0 }}>{row.name}</h2>
         <TypeChip row={row} style={{ height: 24 }} />
         {canEdit && (row.type === 'partner' || row.type === 'employer') && (
-          <button type="button" className={btn} aria-pressed={row.top} disabled={starBusy} onClick={star} style={{ height: 26, padding: '0 10px', fontSize: 12, color: row.top ? SA.warn : undefined }}>{row.top ? '★ Top' : '☆ Top'}</button>
+          <button type="button" className="ui-btn ui-btn--tertiary" aria-pressed={row.top} disabled={starBusy} onClick={star} style={{ height: 28, padding: '0 8px', fontSize: 12, color: row.top ? SA.warn : undefined }}><IconStar size={13} fill={row.top ? 'currentColor' : 'none'} />Top</button>
         )}
         {!canEdit && row.top && <span aria-label="Top" style={{ color: SA.warn, fontSize: 13 }}>★ Top</span>}
-        {site?.domain && <Link href={`https://${site.domain}`} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>{site.domain} ↗</Link>}
+        {site?.domain && <Link href={`https://${site.domain}`} target="_blank" rel="noreferrer" style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 4 }}>{site.domain}<IconExternal size={12} /></Link>}
+        {!needsRecord(row.type) && <IntentFact businessId={businessId} row={row} canEdit={canEdit} version={version} compact />}
         <span style={{ flex: 1 }} />
-        <button type="button" aria-label="Close panel" onClick={onClose} className={btn} style={{ width: 32, padding: 0, fontSize: 16, lineHeight: 1 }}>✕</button>
+        {!needsRecord(row.type) && <MoreMenu row={row} canEdit={canEdit} onPick={pickMore} />}
+        <button type="button" aria-label="Close panel" onClick={onClose} className="ui-btn ui-btn--tertiary" style={{ width: 32, padding: 0 }}><IconClose /></button>
       </div>
-      <div data-facts-row style={{ display: 'flex', gap: '12px 28px', flexWrap: 'wrap' }}>
-        {facts.map(([label, value, muted, sub]) => (
-          <div key={label} data-fact={label} style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-            <span className="ui-group-label">{label}</span>
-            <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: 8, minWidth: 0 }}>
-              <b title={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 500, fontSize: 13, color: muted ? SA.muted : SA.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: label === 'Source' ? 420 : 260 }}>
-                {label === 'Priority' && !muted && !row.not_a_fit && priorityColor(row.priority) && <span className="ui-tag__dot" data-priority-dot aria-hidden="true" style={{ '--tag-color': priorityColor(row.priority) }} />}{label === 'Source' ? <span title={value} style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{value}</span> : value}
-              </b>
-              {sub && <span data-fact-sub style={{ fontSize: 11, color: SA.muted, whiteSpace: 'nowrap' }}>{sub}</span>}
-            </span>
-          </div>
-        ))}
-      </div>
+      <CompanyFacts businessId={businessId} row={row} record={detail?.record} facts={facts} canEdit={canEdit} members={members} source={sourced && source ? source.source : null}
+        panel={editPanel} setPanel={setEditPanel} onPatch={onPatch} onChanged={changed} onToast={onToast} />
       {sourced && source?.journey && <JourneyLine businessId={businessId} row={row} journey={source.journey} source={source.source} canEdit={canEdit} onMarked={() => setVersion(v => v + 1)} onToast={onToast} />}
-      {!needsRecord(row.type) && <IntentFact businessId={businessId} row={row} canEdit={canEdit} version={version} />}
       {detail?.steps && <CompanyStepsStrip businessId={businessId} row={row} detail={detail} canEdit={canEdit} members={members} onChanged={changed} onConvert={onConvert} onToast={onToast} setForm={setForm} />}
       {bandShown && <InterestBand businessId={businessId} row={row} interest={detail.interest} canEdit={canEdit} onChanged={changed} onToast={onToast} />}
       {canEdit
-        ? <>
-          <CompanyActions businessId={businessId} row={row} members={members} meId={meId} form={form} setForm={setForm} bandShown={bandShown || !!detail?.steps?.next} onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} onClose={onClose} />
-          <CompanyEditRow businessId={businessId} row={row} members={members} source={sourced && source ? source.source : null} onPatch={onPatch} onChanged={changed} onToast={onToast} />
-        </>
+        ? <CompanyActions businessId={businessId} row={row} members={members} meId={meId} form={form} setForm={setForm} bandShown={bandShown || !!detail?.steps?.next} onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} onClose={onClose} />
         : <p style={{ ...SA_TYPE.body, fontSize: 12, color: SA.muted, margin: 0 }}>You have view access, so this is read-only.</p>}
     </>
   );

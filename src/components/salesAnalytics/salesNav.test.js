@@ -1,4 +1,4 @@
-import { navFrom, normalizeNav, SUB_VIEWS } from './salesNav';
+import { navFrom, normalizeNav, SUB_VIEWS, companyWindowUrl, readOpenParam } from './salesNav';
 import { readPeopleCompany, writePeopleCompany } from './salesNav';
 
 test('?tab= wins and an unknown sub-view falls back to the tab default', () => {
@@ -60,4 +60,12 @@ test('readPeopleCompany / writePeopleCompany round-trip; a bad type or a missing
 
 test('priorities-v2 D9: the Priorities sub-view is labelled Map; its id stays priorities', () => {
   expect(SUB_VIEWS.pipeline.find(([id]) => id === 'priorities')).toEqual(['priorities', 'Map']);
+});
+
+test('company-panel-v3 Copy link: Pipeline > Companies with ?open=<type>-<id>; only a real record key opens', () => {
+  const id = '4639934a-34a0-4b2f-8903-9627ddeab6e9';
+  expect(companyWindowUrl({ type: 'employer', id }, 'https://app.example/sales?tab=dashboard&view=sources&x=1')).toBe(`https://app.example/sales?tab=pipeline&view=companies&open=employer-${id}`);
+  expect(readOpenParam(`?open=employer-${id}`)).toBe(`employer-${id}`);
+  expect(readOpenParam('?open=visitor-acme')).toBeNull();
+  expect(readOpenParam('')).toBeNull();
 });

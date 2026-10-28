@@ -272,13 +272,17 @@ test('Viewer: stars are read-only; employer and partner open the read-only panel
   expect(props.onOpenPartner).not.toHaveBeenCalled();
 });
 
+// company-panel-v3 - a fact's shown value; the ⋯ menu.
+const factText = (name, label) => screen.getByRole('complementary', { name }).querySelector(`[data-fact="${label}"] b`)?.textContent ?? null;
+const openMore = (panel, item) => { fireEvent.click(panel.getByRole('button', { name: 'More' })); fireEvent.click(panel.getByRole('menuitem', { name: item })); };
+
 test('panel: header chips; body from GET goals/company; Add note goes through the company note route; ★ through the hot signal; Add to-do links the record with owner + due and offers Undo', async () => {
   setup();
   fireEvent.click(await screen.findByRole('button', { name: 'Gallagher' }));
   const panel = within(screen.getByRole('complementary', { name: 'Gallagher' }));
   expect(panel.getByText('Brokers & PEOs')).toHaveAttribute('data-type-chip', 'brokers');
-  expect(panel.getByTitle('Stage').textContent).toBe('Replied');
-  expect(panel.getByTitle('Owner').textContent).toBe('Jack');
+  expect(factText('Gallagher', 'Stage')).toBe('Replied');
+  expect(factText('Gallagher', 'Owner')).toBe('Jack');
   expect(await panel.findByText('Send the deck')).toBeTruthy();
   expect(panel.getByText('Note: Newest note')).toBeTruthy();
   expect(panel.getByText('Send the one-pager')).toBeTruthy();
@@ -288,9 +292,10 @@ test('panel: header chips; body from GET goals/company; Add note goes through th
   await waitFor(() => expect(goalsApi.addCompanyNote).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', 'Called, left voicemail'));
   await waitFor(() => expect(panel.queryByLabelText('Note')).toBeNull());
   expect(goalsApi.companyDetail).toHaveBeenCalledTimes(2);
-  fireEvent.click(panel.getByRole('button', { name: '★ Top' }));
+  expect(panel.getByRole('button', { name: 'Top' })).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(panel.getByRole('button', { name: 'Top' }));
   await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'Gallagher', { type: 'hot', hot: false }));
-  await waitFor(() => expect(panel.getByRole('button', { name: '☆ Top' })).toBeTruthy());
+  await waitFor(() => expect(panel.getByRole('button', { name: 'Top' })).toHaveAttribute('aria-pressed', 'false'));
   fireEvent.click(panel.getByRole('button', { name: 'Add to-do' }));
   fireEvent.change(panel.getByLabelText('To-do'), { target: { value: 'Call Pat about the pilot' } });
   fireEvent.change(panel.getByLabelText('To-do owner'), { target: { value: 'u2' } });
@@ -334,7 +339,7 @@ test('stage: Next sends the status signal with expect and moves the row (Undo = 
   const status = (await screen.findAllByRole('status')).find(el => el.textContent.includes('OneDigital: Researching'));
   fireEvent.click(within(status).getByRole('button', { name: 'Undo' }));
   await waitFor(() => expect(goalsApi.partnerUndo).toHaveBeenCalledWith('b1', 'OneDigital', 'ev1'));
-  fireEvent.click(panel.getByRole('button', { name: 'Jump to stage ▾' }));
+  openMore(panel, 'Jump to stage…');
   const jump = within(panel.getByRole('group', { name: 'Jump to stage' }));
   expect(jump.getByRole('button', { name: 'Researching · now' })).toBeDisabled();
   window.confirm.mockReturnValueOnce(false);
@@ -358,10 +363,11 @@ test('employer: Next moves the stage through PATCH; Jump back confirms and sends
   const panel = within(screen.getByRole('complementary', { name: 'Solidcore' }));
   fireEvent.click(panel.getByRole('button', { name: 'Next: Contacted' }));
   await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', { stage: 'contacted' }));
-  fireEvent.click(panel.getByRole('button', { name: 'Jump to stage ▾' }));
+  openMore(panel, 'Jump to stage…');
   fireEvent.click(within(panel.getByRole('group', { name: 'Jump to stage' })).getByRole('button', { name: '↩ Target' }));
   await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', { stage: 'target', allow_backward: true }));
-  fireEvent.change(panel.getByLabelText('Priority'), { target: { value: 'not_a_fit' } });
+  fireEvent.click(panel.getByRole('button', { name: /^Priority/ }));
+  fireEvent.change(panel.getByRole('combobox', { name: 'Priority' }), { target: { value: 'not_a_fit' } });
   await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', expect.objectContaining({ priority: 4, notes: expect.stringMatching(/Not a fit \(set to P4 from Pipeline\)/) })));
   const status = (await screen.findAllByRole('status')).find(el => el.textContent.includes('Solidcore: Not a fit'));
   fireEvent.click(within(status).getByRole('button', { name: 'Undo' }));
@@ -634,7 +640,7 @@ test('interest band: the strongest signal in bold with its date; Mark contacted 
   const band = within(await panel.findByRole('region', { name: 'Interest' }));
   expect(band.getByText('Pat Lee clicked Step 1')).toBeTruthy();
   expect(band.getByText('Oct 19')).toBeTruthy();
-  expect(panel.getAllByRole('link', { name: 'gallagher.example ↗' }).map(a => a.getAttribute('href'))).toEqual(['https://gallagher.example', 'https://gallagher.example']);
+  expect(panel.getAllByRole('link', { name: /^gallagher\.example/ }).map(a => a.getAttribute('href'))).toEqual(['https://gallagher.example', 'https://gallagher.example']);
   expect(panel.getByText('✓ confirmed')).toBeTruthy();
   expect(within(panel.getByRole('region', { name: 'People' })).getByText('clicked Step 1')).toBeTruthy();
   expect(within(panel.getByRole('region', { name: 'Signals & visits' })).getByText('Pat Lee clicked Step 1')).toBeTruthy();
@@ -647,7 +653,7 @@ test('interest band: the strongest signal in bold with its date; Mark contacted 
   await waitFor(() => expect(goalsApi.notNow).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', { contact_id: 'c-pat' }));
   fireEvent.click(band.getByRole('button', { name: 'Book meeting' }));
   await waitFor(() => expect(goalsApi.bookMeeting).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', { person: 'Pat Lee' }));
-  expect(panel.getByText('Stage only moves forward · saves at once, Undo for 10 s')).toBeTruthy();
+  expect(panel.getByRole('button', { name: /^Stage/ })).toHaveAttribute('title', 'Stage only moves forward · saves at once · Undo 10 s');
   expect(panel.getByRole('region', { name: 'Actions' })).toBeTruthy();
 });
 
@@ -660,8 +666,10 @@ test('Viewer: the band shows the signal but no buttons; the facts row and the ca
   expect(band.getByText('Pat Lee clicked Step 1')).toBeTruthy();
   expect(band.queryByRole('button')).toBeNull();
   expect(panel.queryByRole('group', { name: 'Edit' })).toBeNull();
-  expect(panel.getByTitle('Stage').textContent).toBe('Replied');
-  expect(panel.getByTitle('Last touch').textContent).toBe('No touch yet');
+  expect(factText('Gallagher', 'Stage')).toBe('Replied');
+  expect(factText('Gallagher', 'Last touch')).toBe('No touch yet');
+  expect(panel.queryByRole('button', { name: /^(Stage|Owner|Team|Priority|Source|Next step)/ })).toBeNull(); // company-panel-v3: viewers get plain facts
+  expect(panel.queryByRole('button', { name: 'More' })).toBeTruthy(); // Copy link only
   expect(panel.queryByRole('button', { name: /Not this company|\+ Add|\+ Note|Follow up|Find who/ })).toBeNull();
 });
 
@@ -678,11 +686,12 @@ test('visitor: facts are Priority · Source · Last visit; no Edit row but Prior
   expect(band.queryByRole('button', { name: 'Not now' })).toBeNull();
   expect(band.queryAllByRole('button')).toEqual([]);
   expect(panel.getAllByRole('button', { name: 'Add to pipeline ▾' })).toHaveLength(1);
-  expect(panel.getByTitle('Source').textContent).toBe('Website');
-  expect(panel.getByTitle('Last visit').textContent).toBe('Oct 20');
-  expect(panel.queryByTitle('Owner')).toBeNull();
-  expect(within(panel.getByRole('group', { name: 'Edit' })).getByLabelText('Priority')).toBeTruthy();
-  expect(within(panel.getByRole('group', { name: 'Edit' })).queryByLabelText('Stage')).toBeNull();
+  expect(factText('Acme Visit', 'Source')).toBe('Website');
+  expect(factText('Acme Visit', 'Last visit')).toBe('Oct 20');
+  expect(factText('Acme Visit', 'Owner')).toBeNull();
+  fireEvent.click(panel.getByRole('button', { name: /^Priority/ })); // company-panel-v3: the one editable fact on a visitor
+  expect(panel.getByRole('combobox', { name: 'Priority' })).toBeTruthy();
+  expect(panel.queryByRole('button', { name: /^Stage/ })).toBeNull();
 });
 
 // FIX pipeline-quick-fixes-v1 A - the menu's four items by role, keyboard, and the Person / Target / Partner forms.

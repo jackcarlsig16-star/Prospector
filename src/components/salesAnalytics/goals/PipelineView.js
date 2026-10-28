@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { readOpenParam, clearOpenParam } from '../salesNav';
 import { createPortal } from 'react-dom';
 import { SA, SA_THEME_ROOT_ID } from '../theme';
 import { goalsApi } from './goalsApi';
@@ -85,7 +86,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
   const [toast, setToast] = useState(null); // { text, undo? }
   const [busyId, setBusyId] = useState(null);
   const [panel, setPanel] = useState(undefined); // undefined = closed, null = new employer, object = edit
-  const [panelKey, setPanelKey] = useState(null); // row key open in the company panel
+  const [panelKey, setPanelKey] = useState(readOpenParam); // row key open in the company panel (a copied link opens it)
   const [panelSection, setPanelSection] = useState(null); // 'people' = the window opens on its People card (FIX pipeline-quick-fixes-v1 A3)
   const [adding, setAdding] = useState(null); // 'partner' | 'target' | 'person' - the "+ Add ▾" side forms (Employer = the panel)
   const [members, setMembers] = useState([]);
@@ -181,6 +182,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
 
   const panelRow = panelKey === null ? null : all.find(r => rowKey(r) === panelKey) || null;
   const closePanel = useCallback(() => {
+    clearOpenParam();
     setPanelKey(null);
     setPanelSection(null);
     setHighlight(panelKey);
