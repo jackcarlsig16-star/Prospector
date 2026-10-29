@@ -12,6 +12,10 @@ export const HK_FONTS_HREF = 'https://fonts.googleapis.com/css2?family=Fredoka:w
 
 const PINNED = ['', ' .ui-theme-dark', ' .ui-theme-light', ' .sa-theme', ' #sales-analytics-root'].map(s => `.hk-theme${s}`).join(', ');
 
+// hkos-inbox-list-width W1-W3 - the Inbox list column (share of the panes, px bounds, keyboard step), the reader's
+// minimum, the column width from which a row shows the sender's domain, and the row count a lane fills to.
+export const HK_INBOX = { listShare: 0.42, listMin: 360, listMax: 620, readerMin: 480, divider: 14, step: 20, domainAt: 440, fillRows: 15 };
+
 const HK_CSS = `
 .hk-theme {
   --hk-cream:#F6EFE0; --hk-surface:#FFFCF5; --hk-sand:#EFE6D3; --hk-line:#E4D9C3; --hk-green:#2D8F4E;
@@ -243,7 +247,12 @@ ${PINNED} {
 /* hkos-inbox-v2 L2 - lanes on top; from 1100 px the list and the reader each scroll inside the window-high panes (the
    page does not), 760-1099 the reader is a drawer over the list, under 760 one pane at a time. */
 .hk-theme .hk-inbox { display:flex; flex-direction:column; gap:12px; min-width:0; }
-.hk-theme .hk-inbox__panes { display:grid; grid-template-columns:minmax(300px, 380px) minmax(0, 1fr); gap:18px; min-height:0; }
+.hk-theme .hk-inbox__panes { display:grid; grid-template-columns:minmax(0, 1fr); gap:18px; min-height:0; }
+.hk-theme .hk-inbox--split .hk-inbox__panes { grid-template-columns:var(--hk-list-w, minmax(${HK_INBOX.listMin}px, ${HK_INBOX.listShare * 100}%)) ${HK_INBOX.divider}px minmax(0, 1fr); gap:0; }
+.hk-theme .hk-inbox__divider { position:relative; cursor:col-resize; touch-action:none; }
+.hk-theme .hk-inbox__divider::before { content:''; position:absolute; top:0; bottom:0; left:50%; width:2px; margin-left:-1px; border-radius:2px; background:var(--hk-line); }
+.hk-theme .hk-inbox__divider:hover::before, .hk-theme .hk-inbox__divider:focus-visible::before { background:var(--hk-green); }
+.hk-theme .hk-inbox__divider:focus-visible { outline:2px solid var(--hk-green); outline-offset:-2px; border-radius:4px; }
 .hk-theme .hk-inbox--split .hk-inbox__list, .hk-theme .hk-inbox--split .hk-inbox__thread { overflow-y:auto; min-height:0; overscroll-behavior:contain; padding-right:4px; }
 .hk-theme .hk-inbox--drawer .hk-inbox__panes { grid-template-columns:minmax(0, 1fr); position:relative; }
 .hk-theme .hk-inbox--drawer .hk-inbox__list { overflow-y:auto; min-height:0; overscroll-behavior:contain; }
@@ -303,7 +312,10 @@ ${PINNED} {
 .hk-theme .hk-inbox__subject { font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .hk-theme .hk-inbox__snippet { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .hk-theme .hk-inbox__chips { display:flex; gap:6px; align-items:center; flex-wrap:nowrap; flex:none; margin-left:auto; }
-.hk-theme .hk-inbox__chips + .hk-inbox__date { margin-left:0; }
+.hk-theme .hk-inbox__row-top .hk-inbox__from { min-width:16ch; flex:0 1 auto; }
+.hk-theme .hk-inbox__row-top .hk-inbox__hint { flex:0 1000 auto; min-width:0; max-width:none; }
+.hk-theme .hk-inbox__row-bottom { display:flex; align-items:center; gap:8px; min-width:0; }
+.hk-theme .hk-inbox__row-bottom .hk-inbox__line { flex:1 1 auto; }
 .hk-theme .hk-inbox__foot { margin:8px 4px 0; }
 .hk-theme .hk-inbox__thread { min-width:0; display:flex; flex-direction:column; gap:8px; }
 .hk-theme .hk-inbox__thread--empty { padding:24px 0; }

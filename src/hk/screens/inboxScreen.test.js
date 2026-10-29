@@ -46,12 +46,12 @@ test('list: one row per thread with the chip for its kind, dimmed not-tracked ro
   const { container } = setup({ onUnread });
   await screen.findByText('Subject th-tracked');
   expect(container.querySelector('[data-hk-thread="th-tracked"]').textContent).toMatch(/Tracked · Sent/);
-  expect(container.querySelector('[data-hk-thread="th-tracked"]').textContent).toMatch(/Interested/);
+  expect(container.querySelector('[data-hk-thread="th-tracked"]').getAttribute('title')).toMatch(/Interested/);
   expect(container.querySelector('[data-hk-thread="th-match"]').textContent).toMatch(/Matches Bluefin Run Club/);
   expect(container.querySelector('[data-hk-thread="th-team"]').textContent).toMatch(/Team/);
   expect(container.querySelector('[data-hk-thread="th-bulk"]')).toBeNull();
   expect(container.querySelector('[data-hk-thread="th-new"]').textContent).toMatch(/New sender/);
-  expect(container.querySelector('[data-hk-thread="th-new"]').textContent).toMatch(/Attachment/);
+  expect(container.querySelector('[data-hk-thread="th-new"]').getAttribute('title')).toMatch(/Attachment/);
   expect(container.querySelectorAll('.hk-inbox__dot')).toHaveLength(2);
   expect(onUnread).toHaveBeenCalledWith(2);
   expect(screen.getByText(ONLY_YOU)).toBeInTheDocument();
@@ -80,12 +80,16 @@ test('tabs and search hit the route with tab / q; Refresh sends refresh=1; Load 
   await waitFor(() => expect(calls.some(c => c.endsWith('&refresh=1'))).toBe(true));
   fireEvent.click(screen.getByRole('tab', { name: /^Needs you/ }));
   await waitFor(() => expect(container.querySelector('[data-hk-inbox-refresh]').disabled).toBe(false));
-  routes[`GET /api/hk/${HK}/inbox/threads`] = (body, u) => (u.searchParams.get('pageToken') === 'p2' ? { ...LIST, threads: [row('th-6', { kind: 'untracked' }), LIST.threads[0]], next_page_token: null } : { ...LIST, next_page_token: 'p2' });
+  // hkos-inbox-list-width W3: a short first page fetches ONE more page by itself; Load more takes it from there.
+  routes[`GET /api/hk/${HK}/inbox/threads`] = (body, u) => { const p = u.searchParams.get('pageToken'); return p === 'p2' ? { ...LIST, threads: [row('th-6', { kind: 'untracked' }), LIST.threads[0]], next_page_token: 'p3' } : p === 'p3' ? { ...LIST, threads: [row('th-7', { kind: 'untracked' })], next_page_token: null } : { ...LIST, next_page_token: 'p2' }; };
   fireEvent.click(container.querySelector('[data-hk-inbox-refresh]'));
-  const more = await screen.findByRole('button', { name: 'Load more' });
-  fireEvent.click(more);
   await screen.findByText('Subject th-6');
+  expect(calls.filter(c => c.includes('pageToken=p2'))).toHaveLength(1);
+  expect(calls.filter(c => c.includes('pageToken=p3'))).toHaveLength(0);
+  fireEvent.click(await screen.findByRole('button', { name: 'Load more' }));
+  await screen.findByText('Subject th-7');
   expect(screen.getAllByText('Subject th-tracked')).toHaveLength(1);
+  expect(calls.filter(c => c.includes('pageToken=p2'))).toHaveLength(1);
 });
 
 test('open: the html renders only in <iframe sandbox=""> from sanitized srcdoc, images blocked until Show images, Reply in Gmail, Track as brand / Ignore for a new sender', async () => {
@@ -332,7 +336,7 @@ test('v2 L4 / L5: Analyze posts the click flag once, the card shows company / ki
   fireEvent.click(container.querySelector('[data-hk-intel]'));
   expect(container.querySelector('[data-hk-intel-full]').textContent).toMatch(/In Chicago/);
   expect(screen.getByRole('button', { name: 'Analyze again · $0.03' })).toBeInTheDocument();
-  expect(container.querySelector('[data-hk-thread="th-new"] [data-hk-row-intel]').textContent).toBe('Analyzed · Strong fit');
+  expect(container.querySelector('[data-hk-thread="th-new"]').getAttribute('title')).toMatch(/Analyzed · Strong fit/);
   fireEvent.click(await fromMenu('Track as brand'));
   const modal = container.querySelector('[data-hk-add-brand]');
   expect(modal.querySelector('#hk-brand-name').value).toBe('Newbrand Studio');
@@ -395,7 +399,7 @@ test('polish P1 / P2: the strip is at most two rows; the chevron folds it to one
   expect(again.container.querySelectorAll('[data-hk-intel-strip] .hk-istrip__row')).toHaveLength(1);
 });
 
-test('polish P4 / P5: rows are two lines with at most two chips (the rest in the title); "You" and "Calendar" rows sit under Other', async () => {
+test('polish P4 / list-width W2 / P5: rows are two lines; ONE chip on line 2 by priority (the rest in the title); "You" and "Calendar" rows sit under Other', async () => {
   routes[`GET /api/hk/${HK}/inbox/threads`] = { ...V2LIST, threads: [...V2LIST.threads,
     row('th-me', { kind: 'self' }, { from_name: 'Jack Carlson', from_domain: 'gmail.invalid', lane: 'other' }),
     row('th-cal', { kind: 'calendar' }, { from_name: 'Jack Carlson', from_domain: 'gmail.invalid', lane: 'other', subject: 'Updated invitation: sync' }),
@@ -404,10 +408,39 @@ test('polish P4 / P5: rows are two lines with at most two chips (the rest in the
   await screen.findByText('Subject th-tracked');
   const many = container.querySelector('[data-hk-thread="th-many"]');
   expect(many.children).toHaveLength(2);
-  expect(many.querySelectorAll('.hk-inbox__chips > *')).toHaveLength(2);
-  expect(many.getAttribute('title')).toBe('Analyzed · Strong fit · Attachment');
+  expect(many.querySelectorAll('.hk-inbox__chips > *')).toHaveLength(1);
+  expect(many.querySelector('.hk-inbox__row-bottom [data-hk-row-chip]').textContent).toBe('Tracked · Sent');
+  expect(many.querySelector('.hk-inbox__row-top [data-hk-row-chip]')).toBeNull();
+  expect(many.getAttribute('title')).toBe('Interested · Analyzed · Strong fit · Attachment');
   expect(container.querySelector('[data-hk-thread="th-me"]')).toBeNull();
   fireEvent.click(screen.getByRole('tab', { name: /^Other/ }));
   expect(container.querySelector('[data-hk-thread="th-me"]')).toBeTruthy();
   expect(container.querySelector('[data-hk-thread="th-cal"]')).toBeTruthy();
+});
+
+test('list-width W1: the list column is 42% of the panes, held to 360-620 px and to a 480 px reader; ← / → on the divider move it by 20 px and the width is remembered', async () => {
+  routes[`GET /api/hk/${HK}/inbox/threads`] = V2LIST;
+  const rect = { width: 1100, left: 240, top: 220, right: 1340, bottom: 900, height: 680, x: 240, y: 220 };
+  const spy = jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () { return this.hasAttribute('data-hk-inbox-panes') ? rect : { width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0 }; });
+  try {
+    const { container, unmount } = render2();
+    await screen.findByText('Subject th-tracked');
+    const panes = container.querySelector('[data-hk-inbox-panes]');
+    await waitFor(() => expect(panes.style.getPropertyValue('--hk-list-w')).toBe('462px'));
+    const sep = screen.getByRole('separator', { name: 'Resize the list' });
+    expect(sep).toHaveAttribute('aria-valuemin', '360'); expect(sep).toHaveAttribute('aria-valuemax', '620');
+    fireEvent.keyDown(sep, { key: 'ArrowRight' });
+    expect(panes.style.getPropertyValue('--hk-list-w')).toBe('482px');
+    expect(localStorage.getItem('prospector_hk_inbox_list_w')).toBe('482');
+    for (let i = 0; i < 20; i++) fireEvent.keyDown(sep, { key: 'ArrowRight' });
+    expect(panes.style.getPropertyValue('--hk-list-w')).toBe('606px', 'held so the reader keeps 480 px (1100 - 480 - 14)');
+    for (let i = 0; i < 30; i++) fireEvent.keyDown(sep, { key: 'ArrowLeft' });
+    expect(panes.style.getPropertyValue('--hk-list-w')).toBe('360px');
+    unmount();
+    const again = render2();
+    await screen.findByText('Subject th-tracked');
+    await waitFor(() => expect(again.container.querySelector('[data-hk-inbox-panes]').style.getPropertyValue('--hk-list-w')).toBe('360px'));
+    expect(again.container.querySelector('[data-hk-thread="th-tracked"] .hk-inbox__hint')).toBeNull();
+    expect(again.container.querySelector('[data-hk-thread="th-tracked"]').getAttribute('title')).toMatch(/^Owner/);
+  } finally { spy.mockRestore(); }
 });

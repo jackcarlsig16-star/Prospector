@@ -10,6 +10,7 @@ import IntelStrip from '../inbox/IntelCard';
 import { ThreadRow, OtherGroups, groupOther } from '../inbox/InboxRows';
 import { imagesDefault, gmailThreadUrl } from '../inbox/inboxPrefs';
 import useMediaQuery from '../../utils/useMediaQuery';
+import { HK_INBOX } from '../hkTheme';
 
 // hkos-inbox-v1 (I3) / hkos-inbox-v2 - the signed-in founder's own HumanKind Gmail, read live through /inbox/*.
 // v2: lanes (Needs you · Brands · Other · Sent · Drafts; Needs you and Other share one INBOX page), the intel card +
@@ -24,6 +25,10 @@ const FIT_GAP = 16;
 const MIN_PANES = 420;
 const dedupe = rows => { const seen = new Set(); return rows.filter(r => (seen.has(r.thread_id) ? false : seen.add(r.thread_id))); };
 const typing = t => !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+// hkos-inbox-list-width W1: the list column width the user dragged to, per browser (px; absent = HK_INBOX.listShare).
+const LIST_W_KEY = 'prospector_hk_inbox_list_w';
+const readListW = () => { try { const v = Number(localStorage.getItem(LIST_W_KEY)); return Number.isFinite(v) && v > 0 ? v : null; } catch { return null; } };
+const writeListW = v => { try { localStorage.setItem(LIST_W_KEY, String(v)); } catch { /* private mode */ } };
 
 export default function InboxScreen({ businessId, shell, gmail, compact, canEdit, onOpenBrand, onOpenConnections, onUnread }) {
   const [lane, setLane] = useState('needs_you');
@@ -45,6 +50,11 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
   const [copied, setCopied] = useState(false);
   const [note, setNote] = useState('');
   const [height, setHeight] = useState(null);
+  const [panesW, setPanesW] = useState(0);
+  const [listW, setListW] = useState(readListW);
+  const laneRef = useRef(lane);
+  laneRef.current = lane;
+  const filled = useRef(new Set());
   const latest = useRef(0);
   const openRef = useRef(null);
   const orderRef = useRef([]);
@@ -71,7 +81,7 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
   const load = useCallback(async ({ pageToken = null, refresh = false, append = false } = {}) => {
     const n = ++latest.current;
     const key = `list:${source}:${q}`;
-    if (refresh) retried.current.delete(key);
+    if (refresh) { retried.current.delete(key); filled.current.delete(key); }
     setLoading(true); setError('');
     try {
       const data = await hkGet(businessId, '/inbox/threads', { tab: source, q, pageToken, refresh: refresh ? '1' : '' });
@@ -80,6 +90,12 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
       setLists(prev => ({ ...prev, [source]: append && prev[source] ? { ...data, threads: dedupe([...prev[source].threads, ...data.threads]) } : data }));
       setNotice(data.busy ? data.notice : '');
       if (data.busy) retryOnce(key, data.retry_after_ms, () => loadRef.current());
+      // W3: a first page that leaves the lane short fetches ONE more page, then stops (Load more stays for the rest).
+      const shown = source === 'inbox' ? data.threads.filter(t => t.lane === laneRef.current).length : data.threads.length;
+      if (!pageToken && source !== 'brands' && data.next_page_token && shown < HK_INBOX.fillRows && !filled.current.has(key)) {
+        filled.current.add(key);
+        loadRef.current({ pageToken: data.next_page_token, append: true });
+      }
       if (source === 'inbox' && !pageToken && typeof data.unread === 'number') onUnread?.(data.unread);
     } catch (e) {
       if (n !== latest.current) return;
@@ -132,6 +148,7 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
     // Fill to the window first, then give back whatever the shell keeps under the panes (its padding) if the page overflows.
     const fit = () => {
       const el = panesRef.current; if (!el) return;
+      setPanesW(Math.round(el.getBoundingClientRect().width));
       const want = Math.floor(window.innerHeight - (el.getBoundingClientRect().top + window.scrollY) - FIT_GAP);
       el.style.height = `${want}px`;
       const over = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
@@ -141,6 +158,27 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
     window.addEventListener('resize', fit);
     return () => window.removeEventListener('resize', fit);
   }, [mode, state]);
+
+  // W1: the list takes listShare of the panes (or the dragged width), held to listMin..listMax and to what leaves the
+  // reader readerMin. The divider drags it; ← / → move it by step; the choice is remembered.
+  const clampW = w => Math.round(Math.max(HK_INBOX.listMin, Math.min(HK_INBOX.listMax, w, panesW - HK_INBOX.readerMin - HK_INBOX.divider)));
+  const width = mode === 'split' && panesW ? clampW(listW ?? panesW * HK_INBOX.listShare) : null;
+  const dragTo = (w, save) => { const c = clampW(w); setListW(c); if (save) writeListW(c); };
+  const startDrag = e => {
+    e.preventDefault();
+    // Move by the pointer's travel, so the column does not jump to where the divider was grabbed.
+    const x0 = e.clientX, w0 = width;
+    let last = width;
+    const move = ev => { last = w0 + ev.clientX - x0; dragTo(last, false); };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); dragTo(last, true); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  const onDividerKey = e => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    dragTo(width + (e.key === 'ArrowRight' ? HK_INBOX.step : -HK_INBOX.step), true);
+  };
 
   // Keep a row in view inside the list pane without moving the page.
   const reveal = id => {
@@ -208,7 +246,7 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
       <ul className="hk-inbox__rows">
         {groups
           ? <OtherGroups groups={groups} openId={openId} onOpen={open} canEdit={canEdit} busy={busy} onIgnore={ignoreDomain} />
-          : rows.map(t => <ThreadRow key={t.thread_id} t={t} on={t.thread_id === openId} onOpen={open} />)}
+          : rows.map(t => <ThreadRow key={t.thread_id} t={t} on={t.thread_id === openId} onOpen={open} showDomain={mode !== 'split' || width == null || width >= HK_INBOX.domainAt} />)}
       </ul>
       {lists.brands?.more && lane === 'brands' && <p className="hk-meta" data-hk-brands-more>Showing the newest 25 brand threads. Search to find older ones.</p>}
       {list?.next_page_token && lane !== 'brands' && <Button size="sm" disabled={loading} onClick={() => load({ pageToken: list.next_page_token, append: true })} data-hk-load-more>Load more</Button>}
@@ -245,8 +283,13 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
   return (
     <div className={`hk-inbox hk-inbox--${mode}${compact ? ' hk-inbox--phone' : ''}`} data-hk-inbox data-hk-inbox-mode={mode}>
       {!(mode === 'phone' && openId) && tools}
-      <div className="hk-inbox__panes" ref={panesRef} style={height ? { height } : undefined} data-hk-inbox-panes>
-        {mode === 'phone' ? (openId ? reader : paneList) : <>{paneList}{reader}</>}
+      <div className="hk-inbox__panes" ref={panesRef} style={{ ...(height ? { height } : {}), ...(width ? { '--hk-list-w': `${width}px` } : {}) }} data-hk-inbox-panes>
+        {mode === 'phone' ? (openId ? reader : paneList) : mode === 'split' ? <>
+          {paneList}
+          <div role="separator" aria-orientation="vertical" aria-label="Resize the list" aria-valuenow={width || undefined} aria-valuemin={HK_INBOX.listMin} aria-valuemax={HK_INBOX.listMax}
+            tabIndex={0} className="hk-inbox__divider" onPointerDown={startDrag} onKeyDown={onDividerKey} data-hk-divider />
+          {reader}
+        </> : <>{paneList}{reader}</>}
       </div>
       {tracking && thread && <AddBrandModal businessId={businessId} members={members} title="Track as brand" initial={thread.intel?.prefill || { name: thread.sender.name === thread.sender.domain ? '' : thread.sender.name, domain: thread.sender.domain || '' }}
         onSave={track} onSaved={tracked} onClose={() => setTracking(false)} onOpenMatch={id => { setTracking(false); onOpenBrand(id); }} />}
