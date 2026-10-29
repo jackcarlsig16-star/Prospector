@@ -139,10 +139,10 @@ export default function DataTable({ columns, groups, rowStyle, rowKey, compact =
         <thead>
           <tr>
             {columns.map(c => (
-              <th key={c.id} scope="col" className={cellClass(c)} aria-sort={ariaSort(c)} aria-label={c.sortValue ? undefined : c.label}>
+              <th key={c.id} scope="col" className={cellClass(c)} aria-sort={ariaSort(c)}>
                 {c.sortValue
                   ? <button type="button" className="ui-table__sort" onClick={() => cycle(c)}>{c.label} <span aria-hidden="true">{glyph(c)}</span></button>
-                  : <span className="ui-table__label" aria-hidden="true">{c.headerGlyph ?? ''}</span>}
+                  : <><span className="ui-table__label" aria-hidden="true">{c.headerGlyph ?? ''}</span><span className="ui-sr-only">{c.label}</span></>}
               </th>
             ))}
           </tr>

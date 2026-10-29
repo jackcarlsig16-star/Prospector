@@ -155,6 +155,8 @@ try {
     await page.addInitScript(([k, v, b, d]) => {
       if (sessionStorage.getItem('__s')) return; sessionStorage.setItem('__s', '1'); localStorage.clear(); localStorage.setItem(k, v);
       localStorage.setItem(`prospector_visits_ran_${b}`, d); localStorage.setItem(`prospector_tidy_ran_${b}`, d);
+      // companies-v2 C4: Companies folds P3 / P4 / No priority by default; these checks count every row, so open them all.
+      localStorage.setItem('prospector_pipeline_groups', '[]');
     }, [`sb-${REF}-auth-token`, JSON.stringify(u.session), B, today]);
     await page.addInitScript(() => { window.__prints = 0; window.print = () => { window.__prints++; }; });
     await page.route(/\/api\/sales\/[^/]+\/(sync|apollo)|\/goals\/visits\/pull/, route => route.abort());
@@ -211,19 +213,22 @@ try {
     ok('1440: rows stay 34 px and no sideways page scroll', d.rowH === 34 && d.docW <= d.winW, JSON.stringify(d));
     await shot(page, 'ia2-companies-1440');
 
-    // N2: 3 filters + a notice never move the rows above the table.
+    // N2: 3 filters + a notice never move the rows above the table. companies-v2 C3: the active-filter line (inside the
+    // filter card, under the filter row) is meant to push the table down while filters are on, so the table top is
+    // compared with no filter on (before / after the notice) and the filter-on move is the line's own height.
     const b0 = await boxes(page), t0 = await tableTop(page);
     await page.getByRole('button', { name: 'Visited 7 d' }).click(); await page.waitForTimeout(300);
     await page.getByRole('button', { name: 'Has open to-do' }).click(); await page.waitForTimeout(300);
     await page.getByLabel('Priority', { exact: true }).selectOption('1'); await page.waitForTimeout(300);
     const b1 = await boxes(page), t1 = await tableTop(page);
-    await page.getByRole('button', { name: /^Clear/ }).click(); await page.waitForTimeout(400);
+    const lineH = await page.evaluate(() => { const l = document.querySelector('[data-active-filters]'); return l ? Math.round(l.getBoundingClientRect().height + parseFloat(getComputedStyle(l.parentElement).rowGap || '0')) : 0; });
+    await page.getByRole('button', { name: 'Clear all' }).click(); await page.waitForTimeout(400);
     // A notice: the Undo toast after a priority change (temp row).
     await page.getByLabel('Priority for ZZ Partner 05').selectOption('3'); await page.locator('[role="status"]').waitFor(); await page.waitForTimeout(300);
     const b2 = await boxes(page), t2 = await tableTop(page);
     const moveF = maxMove(b0, b1), moveN = maxMove(b0, b2);
-    results.n2['1440 filters/notice'] = { before: b0, afterFilters: b1, afterNotice: b2, tableTop: [t0, t1, t2], maxMoveFilters: moveF, maxMoveNotice: moveN };
-    ok(`N2 1440: 3 filters + a notice move nothing above the table (max ${Math.max(moveF, moveN)} px; table top ${t0}/${t1}/${t2})`, moveF <= 1 && moveN <= 1 && Math.abs(t0 - t1) <= 1 && Math.abs(t0 - t2) <= 1);
+    results.n2['1440 filters/notice'] = { before: b0, afterFilters: b1, afterNotice: b2, tableTop: [t0, t1, t2], activeLine: lineH, maxMoveFilters: moveF, maxMoveNotice: moveN };
+    ok(`N2 1440: 3 filters + a notice move nothing above the table (max ${Math.max(moveF, moveN)} px; table top ${t0}/${t1}/${t2}, the filter-on move = the active-filter line ${lineH} px)`, moveF <= 1 && moveN <= 1 && Math.abs(t1 - t0 - lineH) <= 1 && Math.abs(t0 - t2) <= 1);
     const p05 = ins(await svc.from('sales_goals').select('priority, priority_set_by').eq('business_id', B).eq('name', 'ZZ Partner 05').single());
     ok('partner priority from the dropdown lands in the DB with who set it', p05.priority === 3 && p05.priority_set_by === owner.id);
     await page.getByRole('button', { name: 'Undo' }).click(); await page.waitForTimeout(1500);
@@ -251,8 +256,10 @@ try {
     await page.keyboard.press('Escape'); await page.waitForTimeout(600);
     await page.getByRole('group', { name: 'Channel' }).getByRole('button', { name: /^All/ }).click(); await page.waitForTimeout(500);
     await page.getByRole('button', { name: /^Last touch/ }).click(); await page.waitForTimeout(400);
-    const touches = await page.$$eval('tr[data-row] td:nth-child(12)', tds => tds.map(td => td.title).filter(Boolean));
-    ok('sort by Last touch: one sorted list, ascending', touches.length > 5 && touches.every((v, i) => i === 0 || touches[i - 1] <= v) && await page.getByRole('heading', { name: /^Sorted by Last touch/ }).isVisible(), touches.slice(0, 3).join(','));
+    // companies-v2 C4: a header sort sorts inside each priority group (the groups stay).
+    const byGroup = await page.$$eval('tbody tr', trs => { const g = {}; let cur = null; for (const tr of trs) { if (tr.classList.contains('ui-table__group')) { cur = tr.dataset.group; g[cur] = []; } else if (tr.hasAttribute('data-row')) { const t = tr.querySelector('td:nth-child(12)')?.title; if (t) g[cur].push(t); } } return g; });
+    const touches = Object.values(byGroup).flat();
+    ok(`sort by Last touch: ascending inside each priority group (${Object.keys(byGroup).join(' · ')})`, touches.length > 5 && Object.values(byGroup).every(ts => ts.every((v, i) => i === 0 || ts[i - 1] <= v)), JSON.stringify(byGroup).slice(0, 200));
     await page.getByLabel('Owner', { exact: true }).selectOption('Owner Test'); await page.getByRole('button', { name: 'Has open to-do' }).click(); await page.waitForTimeout(500);
     const shown = (await page.$$eval('tr[data-row] td.ui-table__sticky', tds => tds.map(td => td.textContent))).sort();
     const open = ins(await svc.from('sales_week_goals').select('link_type, link_id').eq('business_id', B).eq('status', 'open').in('kind', ['todo']).not('link_type', 'is', null));

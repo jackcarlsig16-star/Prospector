@@ -1,4 +1,4 @@
-// FIX priority-colors-v1 - shots + a colour check: Actions rows P1-P4 + an overdue one, the Pipeline Priority column,
+// FIX priority-colors-v1 - shots + a colour check: Actions rows P1-P4 + an overdue one, the Pipeline Priority column (outline pills since companies-v2),
 // the Dashboard "Visitors by priority" stack with its legend, and /kit Priority - at 1440 + 390. Reads the computed
 // colour of every priority dot / stack fill and checks they are the four KIT_PRIORITY hues (plus the danger red for
 // Overdue), i.e. five different colours on Actions.
@@ -100,6 +100,8 @@ try {
       if (sessionStorage.getItem('__s')) return; sessionStorage.setItem('__s', '1'); localStorage.clear(); localStorage.setItem(k, v);
       // actions-v2 REV2: Actions opens on the signed-in person with Housekeeping folded; these checks read the whole team, unfolded.
       localStorage.setItem('prospector_goals_owner', 'team'); localStorage.setItem('prospector_actions_folded', '[]');
+      // companies-v2 C4: Pipeline > Companies folds P3 / P4 / No priority by default; open every group to read all four hues.
+      localStorage.setItem('prospector_pipeline_groups', '[]');
       localStorage.setItem(`prospector_visits_ran_${b}`, dd); localStorage.setItem(`prospector_tidy_ran_${b}`, dd);
     }, [`sb-${REF}-auth-token`, JSON.stringify(owner.session), B, today]);
     await page.route(/\/api\/sales\/[^/]+\/(sync|apollo)|\/goals\/visits\/pull|\/goals\/tidy\/run|\/research\/run|\/research$|\/proxy\/anthropic/, route => { blocked.push(route.request().url()); route.abort(); });
@@ -135,10 +137,11 @@ try {
     if (width === 1440) {
       await tab(page, 'Pipeline'); await sub(page, 'Companies'); await page.locator('[data-pipeline-companies] [data-row]').first().waitFor({ timeout: 20000 }); await page.waitForTimeout(800);
       await shot(page, 'fixpc-pipeline-1440', false);
-      const dots = await page.evaluate(() => [...document.querySelectorAll('[data-pipeline-companies] [data-priority-dot]')].map(d => [d.getAttribute('data-priority-dot'), getComputedStyle(d).backgroundColor]));
-      const dotLevels = Object.fromEntries(dots.map(([k, c]) => [k, toHex(c)]));
-      results.colors.pipeline = dotLevels;
-      ok('Pipeline Priority column: a dot beside each P1-P4 dropdown in the same four colours', ['P1', 'P2', 'P3', 'P4'].every(k => dotLevels[k] === expect[k]), JSON.stringify(dotLevels));
+      // companies-v2 C4: the dropdown is an outline pill in the level's hue (border = the hue).
+      const pills = await page.evaluate(() => [...document.querySelectorAll('[data-pipeline-companies] select[data-priority-level]')].map(d => [d.getAttribute('data-priority-level'), getComputedStyle(d).borderTopColor]));
+      const pillLevels = Object.fromEntries(pills.map(([k, c]) => [k, toHex(c)]));
+      results.colors.pipeline = pillLevels;
+      ok('Pipeline Priority column: each P1-P4 dropdown is an outline pill in the same four colours', ['P1', 'P2', 'P3', 'P4'].every(k => pillLevels[k] === expect[k]), JSON.stringify(pillLevels));
       await tab(page, 'Dashboard'); await sub(page, 'Overview'); await page.locator('[data-chart="chart-visitors-priority"] svg').waitFor({ timeout: 20000 }).catch(() => {}); await page.waitForTimeout(1200);
       await page.locator('[data-chart="chart-visitors-priority"]').scrollIntoViewIfNeeded(); await page.waitForTimeout(300);
       await shot(page, 'fixpc-dashboard-1440', true);

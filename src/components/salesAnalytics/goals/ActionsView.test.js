@@ -104,7 +104,7 @@ test('Member: band sections with counts (Housekeeping folded, remembered), the f
   expect(rows()).toEqual(['waiting-w1', 'flag-f1', 'todo-t1', 'tidy-g1', 'focus-c1', 'signal-s1', 'todo-t2', 'signal-s2', 'tidy-h1']);
   const table = screen.getByRole('table', { name: 'Actions' });
   const heads = within(table).getAllByRole('columnheader');
-  expect(heads.map(h => h.textContent.replace(/ [↕▲▼]$/, ''))).toEqual(['Priority', 'What to do', 'Company', 'Why', 'Kind', 'Due', 'Owner', '']);
+  expect(heads.map(h => h.textContent.replace(/ [↕▲▼]$/, ''))).toEqual(['Priority', 'What to do', 'Company', 'Why', 'Kind', 'Due', 'Owner', 'Actions']);
   fireEvent.click(within(table).getByRole('button', { name: /^Due/ }));
   expect(JSON.parse(localStorage.getItem('prospector_actions_sort'))).toEqual({ id: 'due', dir: 'asc' });
   expect(screen.getAllByText(/sorted by Due/).length).toBeGreaterThan(0);

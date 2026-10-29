@@ -3,7 +3,8 @@
 // and reports text < 4.5:1 (3:1 for >= 24 px or >= 18.5 px bold) and control boundaries < 3:1. A control's boundary is
 // the best of fill / any-side border / non-inset box-shadow / outline against what is outside it. A control with no
 // edge at all passes only as a tertiary link: it (or a descendant carrying its label) is underlined ("via underline").
-// Form controls draw their value / placeholder themselves: measured against the control's own fill.
+// Form controls draw their value / placeholder themselves: measured against the control's own fill. A select inside a
+// .ui-filter--pill is measured by the pill's edge (the pill is the control the eye sees).
 //
 //   measureScript({ scope: '[data-ui-gallery]', exclude: '[data-before]' })  -> string for page.evaluate
 //   summarize(result)                                                        -> counts + dedupedworst lists
@@ -79,7 +80,9 @@ module.exports.measureScript = function measureScript({ scope = '#sales-analytic
   for (const el of scope.querySelectorAll('button, input, select, textarea, a[href], [role=button], [role=tab], [role=switch], [role=checkbox], [role=menuitem], summary')) {
     if (!visible(el) || excluded(el) || seen.has(el)) continue; seen.add(el);
     if (el.tagName === 'INPUT' && ['checkbox', 'radio'].includes(el.type)) continue; // drawn by the browser, no CSS edge to read
-    const cs = getComputedStyle(el); const chain = chainOf(el);
+    // A select drawn inside a one-piece pill (FilterSelect variant="pill") has no edge of its own: the pill's is its edge.
+    const box = (el.tagName === 'SELECT' && el.closest('.ui-filter--pill')) || el;
+    const cs = getComputedStyle(box); const chain = chainOf(box);
     const outside = chain.length > 1 ? paint(chain.slice(0, -1), 0, CANVAS, null) : CANVAS;
     const own = chain[chain.length - 1];
     const cands = [];

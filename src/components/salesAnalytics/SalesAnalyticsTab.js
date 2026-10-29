@@ -15,7 +15,7 @@ import { fetchFlags, FLAGS_CHANGED } from './huddleApi';
 import { pageloadSync } from './salesApi';
 import { fetchMe } from '../../utils/authSession';
 import { TABS, SUB_VIEWS, DEFAULT_VIEW, readNav, writeNav, normalizeNav } from './salesNav';
-import { FRAME_ROW_HEIGHT, FRAME_TOOLS_ID } from './salesFrame';
+import { FRAME_ROW_HEIGHT, FRAME_TOOLS_ID, FRAME_CSS } from './salesFrame';
 
 // dashboard-v2 Stage 5 - the "print only this area" trick: hide
 // everything on the page, then re-show only #sales-analytics-print-area
@@ -196,7 +196,7 @@ export default function SalesAnalyticsTab({ businessId, features }) {
   // tabs sit on it (-1 px) so the two rules are one line.
   const frameRow = (
     <div className="no-print" data-sales-frame style={{ height: FRAME_ROW_HEIGHT, display: 'flex', alignItems: subViews ? 'flex-end' : 'center', gap: 12, marginBottom: 16, minWidth: 0, borderBottom: subViews ? `1px solid ${ui.subTabRule}` : undefined }}>
-      <div data-sales-subviews style={{ flex: '0 1 auto', display: 'flex', alignItems: 'flex-end', minWidth: 0, minHeight: 36, marginBottom: subViews ? -1 : 0 }}>
+      <div data-sales-subviews style={{ display: 'flex', alignItems: 'flex-end', minWidth: 0, minHeight: 36, marginBottom: subViews ? -1 : 0 }}>
         {subViews && <Tabs level="sub" label={`${TABS.find(([id]) => id === tab)[1]} views`} items={subViews.map(([id, label]) => ({ id, label, icon: SUB_VIEW_ICON[id] }))} value={view} onChange={v => { nav(tab, v); setHuddleTarget(null); }} />}
       </div>
       <div id={FRAME_TOOLS_ID} style={{ flex: '1 1 auto', minWidth: 0, height: FRAME_ROW_HEIGHT, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, overflowX: 'auto', overflowY: 'hidden' }} />
@@ -208,6 +208,7 @@ export default function SalesAnalyticsTab({ businessId, features }) {
     <div id={SA_THEME_ROOT_ID} style={{ ...saSans, background: SA.ground, color: SA.text, minHeight: '100%', padding: '0 0 32px' }}>
       <style>{SA_THEME_CSS}</style>
       <style>{PRINT_STYLES}</style>
+      <style>{FRAME_CSS}</style>
       <div data-sales-tab={tab} style={{ maxWidth: 'none', margin: '0 auto' }}>
 
       {tabsSlot ? createPortal(tabRow, tabsSlot) : tabRow}

@@ -44,7 +44,7 @@ export default function CompaniesFilters({ channel, onChannel, counts, filters, 
   return (
     <div data-filter-card style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '10px 14px', background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: 10, minWidth: 0 }}>
       <div role="group" aria-label="Channel" data-channel-row style={line}>
-        <span className="ui-group-label" aria-hidden="true" style={{ width: LABEL_WIDTH, flex: 'none' }}>Channel</span>
+        <h2 className="ui-group-label" style={{ width: LABEL_WIDTH, flex: 'none', margin: 0 }}>Channel</h2>
         {orderedChannelButtons(counts).map(([id, label]) => {
           const Icon = Icons[CHANNEL_BUTTON_ICON[id]];
           return (
@@ -61,7 +61,7 @@ export default function CompaniesFilters({ channel, onChannel, counts, filters, 
         </div>
       ) : (
         <div role="group" aria-label="Filters" data-filter-row style={line}>
-          <span className="ui-group-label" aria-hidden="true" style={{ width: LABEL_WIDTH, flex: 'none' }}>Filter</span>
+          <h2 className="ui-group-label" style={{ width: LABEL_WIDTH, flex: 'none', margin: 0 }}>Filter</h2>
           <FilterControls filters={filters} set={set} owners={owners} stages={stages} searchRef={searchRef} />
         </div>
       )}
