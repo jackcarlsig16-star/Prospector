@@ -45,7 +45,13 @@ export function threadsOf(touches, replies) {
 // The intel row for a brand: its domain's, else its suggested domain's.
 export const intelFor = (brand, intelByDomain) => (brand.domain && intelByDomain[brand.domain]) || (brand.domain_suggested && intelByDomain[brand.domain_suggested]) || null;
 
-// ctx: { meId, touchesBy, repliesBy, contactsBy (brand_id -> [{ has_email }]), intelByDomain, sponsorsNiches, settings, now }
+const mineUntouched = (brand, touches, ctx) => {
+  const at = ctx.claimedAt?.[brand.id];
+  if (brand.owner_user_id !== ctx.meId || brand.status !== 'claimed' || !at || ctx.now.getTime() - Date.parse(at) <= 7 * DAY) return false;
+  return !sentEmails(touches).some(t => String(t.sent_at || '') >= String(at));
+};
+
+// ctx: { meId, claimedAt (brand id -> latest brand.claimed time), touchesBy, repliesBy, contactsBy (brand_id -> [{ has_email }]), intelByDomain, sponsorsNiches, settings, now }
 // -> null when not eligible, else { brand, score, parts: [[key, points]], why: [words], verdict }
 export function reachOf(brand, ctx) {
   const { meId, settings } = ctx, W = settings.weights;
@@ -62,8 +68,9 @@ export function reachOf(brand, ctx) {
     draftable: contacts.some(c => c.has_email), idea: !!(brand.challenge_idea && String(brand.challenge_idea).trim()), website: !!brand.domain, researched: !!intel,
     local: isLocal(brand), category: inTargetCategory(brand, settings.target_categories), fit_strong: fit === 'strong', fit_possible: fit === 'possible',
     heat_hot: brand.heat_band === 'hot', heat_warm: brand.heat_band === 'warm', targeted: !!brand.targeted_at,
-    // "untouched > 7 days" since the brand last changed (the claim is the last change on an untouched brand).
-    mine_untouched: brand.owner_user_id === meId && brand.status === 'claimed' && !sentEmails(touches).length && ctx.now.getTime() - Date.parse(brand.updated_at || brand.created_at) > 7 * DAY,
+    // Claimed by you > 7 days ago (the latest brand.claimed event - never updated_at, which any edit moves) and no
+    // email sent since that claim.
+    mine_untouched: mineUntouched(brand, touches, ctx),
     niche_overlap: verdict.warnings.some(w => w.code === 'niche_overlap'), size_large: /large|enterprise/i.test(brand.size_band || ''),
   };
   const parts = Object.keys(hit).filter(k => hit[k]).map(k => [k, W[k] || 0]);
@@ -89,7 +96,7 @@ export function importanceOf(row, ctx) {
   const parts = [];
   const add = (k, p, on) => { if (on && p) parts.push([k, p]); };
   add('hot_label', W.b2_hot_label, HOT_LABELS.has(chip.label));
-  add('question', W.b2_question, /\?/.test(row.snippet || ''));
+  add('question', W.b2_question, !row.latest_from_us && /\?/.test(row.snippet || ''));
   add('decline', W.b2_decline, chip.label === 'decline');
   add('status', W.b2_status, ['replied', 'meeting'].includes(brand?.status));
   add('sponsor', W.b2_sponsor, ['sponsor', 'founding_partner'].includes(brand?.relationship));
@@ -100,7 +107,7 @@ export function importanceOf(row, ctx) {
   add('warm', W.b2_warm, !!brand && ctx.warmBrands.has(brand.id));
   add('unread', W.b2_unread, !!row.unread);
   const days = row.date ? Math.floor((ctx.now.getTime() - Date.parse(row.date)) / DAY) : 0;
-  add('waiting', Math.min(W.b2_wait_cap, Math.max(0, days) * W.b2_wait_per_day), row.lane === 'needs_you' && days > 0);
+  add('waiting', Math.min(W.b2_wait_cap, Math.max(0, days) * W.b2_wait_per_day), row.lane === 'needs_you' && !row.latest_from_us && days > 0);
   add('new_person', W.b2_new_person, chip.kind === 'untracked');
   add('teammate', W.b2_teammate, chip.kind === 'team');
   const score = parts.reduce((n, [, p]) => n + p, 0);

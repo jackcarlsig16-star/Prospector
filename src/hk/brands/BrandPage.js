@@ -10,6 +10,7 @@ import { fromDetail, STATUS_LABELS, RELATIONSHIP_LABELS, STATUS_TONE, RELATIONSH
 import { hkGet, hkPatch, hkPost } from '../hkApi';
 import ComposerModal from './ComposerModal';
 import { HeatChip, ListButtons } from '../signals/Heat';
+import ReachLine from './ReachLine';
 
 // hkos-data-foundation-v1 D6 - the Brand page: header + chips + touch counter, the Verdict banner, the primary action
 // by state, More, and four tabs. Contact emails show here only (D5), as mailto links.
@@ -70,6 +71,7 @@ export default function BrandPage({ businessId, brandId, shell, gmail, onBack, c
       <header className="hk-brand__head">
         <div>
           <h1 className="hk-head__title">{brand.name}</h1>
+          <ReachLine key={brand.updated_at} businessId={businessId} brandId={brand.id} canEdit={canEdit} onChanged={load} />
           {brand.domain && <a className="hk-link" href={`https://${brand.domain}`} target="_blank" rel="noopener noreferrer">{brand.domain}</a>}
           <div className="hk-brand__chips">
             {brand.relationship === 'prospect' && <HeatChip band={brand.heat_band || 'cold'} showCold />}

@@ -178,6 +178,9 @@ export function threadRow(thread, ctx) {
     chip,
     relayed,
     lane: laneOf({ chip, labelIds: latest.labelIds || [], relayed, teamNotice }),
+    // grow-inbox-intel B2: the newest message is ours (the caller, an alias, or the team writing directly) - its
+    // preview is never read as their question and it ends any "waiting on our reply".
+    latest_from_us: isSelf(sender, ctx.ownerEmail, ctx.selfEmails) || (!relayed && !!sender.domain && (ctx.teamDomains || []).includes(sender.domain)),
   };
 }
 

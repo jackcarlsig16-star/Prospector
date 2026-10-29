@@ -134,6 +134,28 @@ async function settingsRow(supabase, businessId) { const { data, error } = await
 export async function getSettingsRoute(req, res, { supabase = getSupabase() } = {}) {
   try { const row = await settingsRow(supabase, req.params.businessId); res.json({ settings: { ...SETTINGS_DEFAULTS, business_id: req.params.businessId, ...(row || {}) }, seeded: !!row, locked_rules: LOCKED_RULES }); } catch (e) { fail(res, e, 'settings/get'); }
 }
+// grow-inbox-intel B3a / M2 - { target_categories?, sweep?: { on, n, cap_usd, time } } merged into hk_settings.intel.
+// Weights are read-only in v1 (refused here).
+export function intelPatch(v, current) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) throw new HkError(400, 'intel must be an object');
+  if ('weights' in v) throw new HkError(400, 'weights are read-only for now');
+  const out = { ...current };
+  if ('target_categories' in v) {
+    if (!Array.isArray(v.target_categories) || v.target_categories.length > 20) throw new HkError(400, 'target categories must be a list of up to 20');
+    out.target_categories = [...new Set(v.target_categories.map(c => text(c, 60, 'target category')).filter(Boolean))];
+  }
+  if ('sweep' in v) {
+    const s = v.sweep || {}, next = { ...(current.sweep || {}) };
+    if ('on' in s) next.on = bool(s.on, 'auto-research on') ?? true;
+    if ('n' in s) { if (!Number.isInteger(s.n) || s.n < 0 || s.n > 25) throw new HkError(400, 'research per day must be a whole number from 0 to 25'); next.n = s.n; }
+    if ('cap_usd' in s) { if (typeof s.cap_usd !== 'number' || !(s.cap_usd >= 0 && s.cap_usd <= 5)) throw new HkError(400, 'the daily dollar cap must be between 0 and 5'); next.cap_usd = Math.round(s.cap_usd * 100) / 100; }
+    if ('time' in s) { if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(s.time))) throw new HkError(400, 'time must look like 06:30'); next.time = s.time; }
+    out.sweep = next;
+  }
+  if (hasPii(JSON.stringify(out))) throw new HkError(400, "intel can't hold an email address or phone number");
+  return out;
+}
+
 // PATCH /settings (owner role); max_email_touches is read-only
 export async function patchSettingsRoute(req, res, { supabase = getSupabase(), now = () => new Date() } = {}) {
   const businessId = req.params.businessId, body = req.body || {};
@@ -146,6 +168,7 @@ export async function patchSettingsRoute(req, res, { supabase = getSupabase(), n
     if ('quiet_weekends' in body) patch.quiet_weekends = bool(body.quiet_weekends, 'quiet_weekends') ?? true;
     if ('banned_phrases' in body) { if (!Array.isArray(body.banned_phrases)) throw new HkError(400, 'banned_phrases must be a list'); patch.banned_phrases = [...new Set(body.banned_phrases.map(p => text(p, 60, 'banned phrase')).filter(Boolean).map(p => p.toLowerCase()))]; }
     for (const k of ['modules', 'theme']) if (k in body) { if (!body[k] || typeof body[k] !== 'object' || Array.isArray(body[k])) throw new HkError(400, `${k} must be an object`); if (hasPii(JSON.stringify(body[k]))) throw new HkError(400, `${k} can't hold an email address or phone number`); patch[k] = body[k]; }
+    if ('intel' in body) patch.intel = intelPatch(body.intel, (await settingsRow(supabase, businessId))?.intel || {});
     if (!Object.keys(patch).length) throw new HkError(400, 'nothing to change');
     const { data, error } = await supabase.from('hk_settings').upsert({ business_id: businessId, ...patch, updated_at: now().toISOString() }, { onConflict: 'business_id' }).select().single();
     if (error) throw error;

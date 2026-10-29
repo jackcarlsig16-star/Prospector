@@ -72,3 +72,11 @@ export default function SignalsPanel({ businessId, shell, canEdit, onOpenBrand, 
     </section>
   );
 }
+
+// grow-inbox-intel B1: the panel lives on the Inbox's Briefing; Today keeps one line pointing there.
+export function SignalsLine({ businessId, onGo }) {
+  const [n, setN] = useState(null);
+  useEffect(() => { hkGet(businessId, '/signals').then(r => setN(r.prospects.filter(s => !s.seen_at).length)).catch(() => setN(null)); }, [businessId]);
+  if (!n) return null;
+  return <p className="hk-meta" data-hk-signals-line>{n} new signal{n === 1 ? '' : 's'} · <button type="button" className="hk-btn hk-link" onClick={() => onGo('inbox')}>Open Inbox</button></p>;
+}

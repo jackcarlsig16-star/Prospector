@@ -70,8 +70,14 @@ test('B3 components: contact with an email, idea, website, researched, Chicago a
   assert.equal(inTargetCategory({ category: 'Founder' }, ctx.settings.target_categories), false, 'Founder is not a category target');
   assert.equal(inTargetCategory({ category: 'Chicago' }, ctx.settings.target_categories), false, 'Chicago counts as local, not a category');
   assert.ok(reachOf(brand(ids.cat, 'Zz Cat', { category: 'National CPG', heat_band: 'warm' }), ctx).parts.some(([k]) => k === 'category'));
-  const mine = brand(ids.mine, 'Zz Mine', { owner_user_id: ME, status: 'claimed', updated_at: '2026-10-10T00:00:00Z' });
-  assert.ok(reachOf(mine, ctx).parts.some(([k]) => k === 'mine_untouched'));
+  // Claimed 15 days ago (the brand.claimed event), then an unrelated edit yesterday (updated_at moves): still untouched.
+  const mine = brand(ids.mine, 'Zz Mine', { owner_user_id: ME, status: 'claimed', updated_at: '2026-10-28T00:00:00Z' });
+  const claimed = { ...ctx, claimedAt: { [ids.mine]: '2026-10-14T00:00:00Z' } };
+  assert.ok(reachOf(mine, claimed).parts.some(([k]) => k === 'mine_untouched'), 'an edit after the claim does not reset it');
+  assert.ok(!reachOf(mine, { ...ctx, claimedAt: { [ids.mine]: '2026-10-25T00:00:00Z' } }).parts.some(([k]) => k === 'mine_untouched'), 'claimed 4 days ago');
+  assert.ok(!reachOf(mine, { ...ctx, claimedAt: {} }).parts.some(([k]) => k === 'mine_untouched'), 'no claim event, no credit (updated_at is never used)');
+  const emailed = { ...claimed, touchesBy: { [ids.mine]: [{ id: 'tx', channel: 'email', state: 'sent', sent_at: '2026-10-20T00:00:00Z' }] } };
+  assert.ok(!(reachOf(mine, emailed)?.parts || []).some(([k]) => k === 'mine_untouched'), 'an email sent since the claim (can_contact then holds it as warm)');
   ctx.intelByDomain['nofit.invalid'] = { intel: { fit: { sponsor_fit: 'not_a_fit' } }, researched_at: '2026-10-28T00:00:00Z' };
   assert.equal(reachOf(brand(ids.nofit, 'Zz No Fit', { domain: 'nofit.invalid' }), ctx), null, 'not a fit -> excluded');
   const custom = intelSettings({ weights: { idea: 50 }, target_categories: ['Founder'] });
@@ -100,6 +106,8 @@ test('B2 importance: label, question, decline, status, sponsor, fit, heat, warm,
   const person = importanceOf({ lane: 'needs_you', snippet: 'hi', date: '2026-10-01T00:00:00Z', intel_fit: 'strong', chip: { kind: 'untracked' } }, c);
   assert.deepEqual([person.score, person.why], [20 + 15 + 5, 'Strong fit'], 'waiting caps at +15');
   assert.equal(importanceOf({ lane: 'needs_you', date: NOW.toISOString(), chip: { kind: 'team' } }, c).score, 5);
+  const ours = importanceOf({ lane: 'needs_you', latest_from_us: true, snippet: 'Does Tuesday work?', date: '2026-10-20T00:00:00Z', chip: { kind: 'tracked', brand_id: 'b2' } }, c);
+  assert.ok(!ours.parts.includes('question') && !ours.parts.includes('waiting'), 'our own question is never theirs, and our message ends the wait');
 });
 
 test('B6 activity: last inbound / outbound, threads, touches used, waiting days, open reply', () => {
@@ -196,4 +204,12 @@ test('Briefing: tiles, Send these 10 (eligible only, with why and the Claude com
   assert.deepEqual([reach.body.eligible, reach.body.score, reach.body.why], [true, 25, ['has a contact to email', 'has a challenge idea']]);
   const not = await call(reachRoute, reqOf({ params: { id: ids.sp } }), { supabase: sb, now: () => NOW });
   assert.deepEqual([not.body.eligible, not.body.score], [false, null]);
+});
+
+test('Settings intel patch: target categories + auto-research controls merge; weights stay read-only; bad values refused', async () => {
+  const { intelPatch } = await import('./opsRoutes.js');
+  const cur = { sweep: { on: true, n: 10 }, extra: 1 };
+  assert.deepEqual(intelPatch({ target_categories: ['National CPG', ' Wellness ', 'National CPG'], sweep: { n: 1, cap_usd: 0.5, time: '05:15', on: false } }, cur),
+    { extra: 1, target_categories: ['National CPG', 'Wellness'], sweep: { on: false, n: 1, cap_usd: 0.5, time: '05:15' } });
+  for (const bad of [{ weights: { idea: 5 } }, { sweep: { n: 40 } }, { sweep: { cap_usd: 9 } }, { sweep: { time: '6:30pm' } }, { target_categories: 'gym' }]) assert.throws(() => intelPatch(bad, cur), /read-only|whole number|dollar cap|look like|list/);
 });

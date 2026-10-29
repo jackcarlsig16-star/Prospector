@@ -12,6 +12,8 @@ const CHIP_RANK = { tracked: 0, matches: 0, untracked: 2, team: 3, self: 4, cale
 export function rowChips(t) {
   const dim = t.chip.kind === 'not_tracked';
   return [
+    // grow-inbox-intel B2: a Needs-you row's top reason leads.
+    t.lane === 'needs_you' && t.importance?.why && { rank: -1, text: t.importance.why, el: <Chip tone="blue"><span data-hk-row-why>{t.importance.why}</span></Chip> },
     { rank: CHIP_RANK[t.chip.kind] ?? 5, text: dim ? 'Not tracked' : chipLabel(t.chip), el: dim ? <span className="hk-meta">Not tracked</span> : <Chip tone={chipTone(t.chip)}>{chipLabel(t.chip)}</Chip> },
     t.chip.kind === 'tracked' && t.chip.label && { rank: 1, text: REPLY_LABEL[t.chip.label] || t.chip.label, el: <Chip tone="lilac">{REPLY_LABEL[t.chip.label] || t.chip.label}</Chip> },
     t.intel_fit && { rank: 6, text: `Analyzed · ${FIT_LABEL[t.intel_fit] || t.intel_fit}`, el: <Chip tone={FIT_TONE[t.intel_fit] || 'grey'}><span data-hk-row-intel>Analyzed · {FIT_LABEL[t.intel_fit] || t.intel_fit}</span></Chip> },

@@ -11,6 +11,7 @@ import { ThreadRow, OtherGroups, groupOther } from '../inbox/InboxRows';
 import { imagesDefault, gmailThreadUrl } from '../inbox/inboxPrefs';
 import useMediaQuery from '../../utils/useMediaQuery';
 import { HK_INBOX } from '../hkTheme';
+import Briefing from '../inbox/Briefing';
 
 // hkos-inbox-v1 (I3) / hkos-inbox-v2 - the signed-in founder's own HumanKind Gmail, read live through /inbox/*.
 // v2: lanes (Needs you · Brands · Other · Sent · Drafts; Needs you and Other share one INBOX page), the intel card +
@@ -18,8 +19,9 @@ import { HK_INBOX } from '../hkTheme';
 // their own inside the window (opening a thread never scrolls the page; J / K move), 760-1099 the reader is a drawer
 // over the list, under 760 one pane at a time. Gmail busy: the last list with a plain line and ONE retry after the
 // server's retry_after_ms. Reading writes nothing; no compose, no Send.
-const LANES = [['needs_you', 'Needs you'], ['brands', 'Brands'], ['other', 'Other'], ['sent', 'Sent'], ['drafts', 'Drafts']];
-const SOURCE = { needs_you: 'inbox', other: 'inbox', brands: 'brands', sent: 'sent', drafts: 'drafts' };
+// grow-inbox-intel B1: Briefing comes first and is where the Inbox opens; it reads the same INBOX page as Needs you.
+const LANES = [['briefing', 'Briefing'], ['needs_you', 'Needs you'], ['brands', 'Brands'], ['other', 'Other'], ['sent', 'Sent'], ['drafts', 'Drafts']];
+const SOURCE = { briefing: 'inbox', needs_you: 'inbox', other: 'inbox', brands: 'brands', sent: 'sent', drafts: 'drafts' };
 export const ONLY_YOU = 'Only you see your inbox.';
 const FIT_GAP = 16;
 const MIN_PANES = 420;
@@ -30,8 +32,9 @@ const LIST_W_KEY = 'prospector_hk_inbox_list_w';
 const readListW = () => { try { const v = Number(localStorage.getItem(LIST_W_KEY)); return Number.isFinite(v) && v > 0 ? v : null; } catch { return null; } };
 const writeListW = v => { try { localStorage.setItem(LIST_W_KEY, String(v)); } catch { /* private mode */ } };
 
-export default function InboxScreen({ businessId, shell, gmail, compact, canEdit, onOpenBrand, onOpenConnections, onUnread }) {
-  const [lane, setLane] = useState('needs_you');
+export default function InboxScreen({ businessId, shell, gmail, compact, canEdit, owner, onOpenBrand, onOpenConnections, onUnread, onGo, onSignalsSeen, initialLane = 'briefing' }) {
+  const [lane, setLane] = useState(initialLane);
+  const [sortBy, setSortBy] = useState('importance');
   const [input, setInput] = useState('');
   const [q, setQ] = useState('');
   const [lists, setLists] = useState({});
@@ -91,7 +94,7 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
       setNotice(data.busy ? data.notice : '');
       if (data.busy) retryOnce(key, data.retry_after_ms, () => loadRef.current());
       // W3: a first page that leaves the lane short fetches ONE more page, then stops (Load more stays for the rest).
-      const shown = source === 'inbox' ? data.threads.filter(t => t.lane === laneRef.current).length : data.threads.length;
+      const shown = source === 'inbox' ? data.threads.filter(t => t.lane === (laneRef.current === 'briefing' ? 'needs_you' : laneRef.current)).length : data.threads.length;
       if (!pageToken && source !== 'brands' && data.next_page_token && shown < HK_INBOX.fillRows && !filled.current.has(key)) {
         filled.current.add(key);
         loadRef.current({ pageToken: data.next_page_token, append: true });
@@ -132,7 +135,9 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
 
   const list = lists[source] || null;
   const all = list?.threads || [];
-  const rows = lane === 'needs_you' || lane === 'other' ? all.filter(t => t.lane === lane) : all;
+  // B2: Needs you sorts by importance (default) or newest; the list order from Gmail is newest first.
+  const laneRows = lane === 'needs_you' || lane === 'other' ? all.filter(t => t.lane === lane) : lane === 'briefing' ? [] : all;
+  const rows = lane === 'needs_you' && sortBy === 'importance' ? [...laneRows].sort((a, b) => (b.importance?.score || 0) - (a.importance?.score || 0)) : laneRows;
   const groups = lane === 'other' ? groupOther(rows) : null;
   orderRef.current = groups ? groups.flatMap(g => g.rows.map(t => t.thread_id)) : rows.map(t => t.thread_id);
   const inboxRows = lists.inbox?.threads || [];
@@ -157,7 +162,7 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
     fit();
     window.addEventListener('resize', fit);
     return () => window.removeEventListener('resize', fit);
-  }, [mode, state]);
+  }, [mode, state, lane === 'briefing']); // eslint-disable-line react-hooks/exhaustive-deps
 
   // W1: the list takes listShare of the panes (or the dragged width), held to listMin..listMax and to what leaves the
   // reader readerMin. The divider drags it; ← / → move it by step; the choice is remembered.
@@ -229,6 +234,11 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
   const tools = (
     <div className="hk-inbox__tools" data-hk-inbox-tools>
       <Tabs label="Inbox lanes" items={LANES.map(([id, label]) => ({ id, label: counts[id] != null ? `${label} ${counts[id]}` : label }))} value={lane} onChange={pickLane} />
+      {lane === 'needs_you' && (
+        <div className="ui-seg" role="group" aria-label="Sort Needs you" data-hk-sort>
+          {[['importance', 'Importance'], ['newest', 'Newest']].map(([id, label]) => <button key={id} type="button" className="ui-seg__btn" aria-pressed={sortBy === id} onClick={() => setSortBy(id)} data-hk-sort-by={id}>{label}</button>)}
+        </div>
+      )}
       <form className="hk-inbox__search" onSubmit={e => { e.preventDefault(); setQ(input.trim()); }}>
         <input className="ui-input ui-input--sm hk-search-input" type="search" aria-label="Search Gmail" placeholder="Search Gmail, e.g. from:rumpl.com" value={input} onChange={e => setInput(e.target.value)} data-hk-inbox-search />
         <Button size="sm" variant="tertiary" disabled={loading} onClick={() => load({ refresh: true })} data-hk-inbox-refresh>Refresh</Button>
@@ -283,6 +293,10 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
   return (
     <div className={`hk-inbox hk-inbox--${mode}${compact ? ' hk-inbox--phone' : ''}`} data-hk-inbox data-hk-inbox-mode={mode}>
       {!(mode === 'phone' && openId) && tools}
+      {lane === 'briefing' ? (
+        <Briefing businessId={businessId} shell={shell} owner={owner} canEdit={canEdit} rows={inboxRows} listReady={!!lists.inbox} onOpenBrand={onOpenBrand} onGo={onGo || (() => {})} onLane={pickLane}
+          onSignalsSeen={onSignalsSeen} onOpenThread={id => { setLane('needs_you'); setSortBy('importance'); open(id); }} />
+      ) : (
       <div className="hk-inbox__panes" ref={panesRef} style={{ ...(height ? { height } : {}), ...(width ? { '--hk-list-w': `${width}px` } : {}) }} data-hk-inbox-panes>
         {mode === 'phone' ? (openId ? reader : paneList) : mode === 'split' ? <>
           {paneList}
@@ -291,6 +305,7 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
           {reader}
         </> : <>{paneList}{reader}</>}
       </div>
+      )}
       {tracking && thread && <AddBrandModal businessId={businessId} members={members} title={tracking === 'target' ? 'Track as brand + Target' : 'Track as brand'} initial={thread.intel?.prefill || { name: thread.sender.name === thread.sender.domain ? '' : thread.sender.name, domain: thread.sender.domain || '' }}
         onSave={track} onSaved={tracked} onClose={() => setTracking(false)} onOpenMatch={id => { setTracking(false); onOpenBrand(id); }} />}
     </div>

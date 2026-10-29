@@ -358,6 +358,25 @@ ${PINNED} {
 .hk-theme .hk-signals__sponsors { margin-top:12px; }
 .hk-theme .hk-signals__sponsors > summary { cursor:pointer; font:600 15px var(--hk-font-display); color:var(--hk-cocoa); }
 .hk-theme .hk-nav__badge--green { background:var(--hk-green-fill); }
+.hk-theme .hk-briefing { display:flex; flex-direction:column; gap:14px; }
+.hk-theme .hk-tiles { display:grid; grid-template-columns:repeat(auto-fill, minmax(132px, 1fr)); gap:10px; }
+.hk-theme .hk-tile { display:flex; flex-direction:column; align-items:flex-start; gap:2px; padding:12px 14px; border-radius:var(--hk-radius-block); background:var(--hk-surface); box-shadow:var(--hk-shadow-card); text-align:left; }
+.hk-theme .hk-tile:disabled { cursor:default; }
+.hk-theme .hk-tile__n { font:600 22px var(--hk-font-display); color:var(--hk-cocoa); }
+.hk-theme .hk-tile__label { font-size:13px; color:var(--hk-muted); }
+.hk-theme .hk-send { list-style:none; margin:10px 0 0; padding:0; display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:10px; }
+.hk-theme .hk-send__card { display:flex; flex-direction:column; gap:4px; padding:12px 14px; border-radius:var(--hk-radius-block); background:var(--hk-sand); min-width:0; }
+.hk-theme .hk-send__top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.hk-theme .hk-send__rank { font:600 13px var(--hk-font-display); color:var(--hk-forest); min-width:16px; }
+.hk-theme .hk-send__line { margin:0; font-size:13px; overflow-wrap:anywhere; }
+.hk-theme .hk-send__actions { display:flex; gap:6px; flex-wrap:wrap; margin-top:6px; }
+.hk-theme .hk-important__row { width:100%; text-align:left; }
+.hk-theme .hk-reach { display:flex; flex-direction:column; gap:2px; margin-top:4px; align-items:flex-start; }
+.hk-theme .hk-reach p { margin:0; }
+.hk-theme .hk-weights { border-collapse:collapse; font-size:13px; }
+.hk-theme .hk-weights th { text-align:left; font-weight:400; color:var(--hk-cocoa); padding:3px 16px 3px 0; }
+.hk-theme .hk-weights td { color:var(--hk-forest); font-weight:600; }
+.hk-theme.hk-shell--phone .hk-send { grid-template-columns:minmax(0, 1fr); }
 `;
 
 export function ensureHkTheme() {

@@ -39,7 +39,7 @@ const HTML = '<p>Saw the app. Reach me at sam@bluefin.invalid</p><img src="https
 const thread = (id, over = {}) => ({ thread_id: id, subject: `Subject ${id}`, fetched_at: '2026-10-26T20:00:00Z', unhandled_reply_id: null, sender: { name: 'Sam Lee', domain: 'bluefin.invalid' }, chip: { kind: 'untracked' }, brand: null,
   messages: [{ id: 'm1', from_name: 'Sam Lee', from_domain: 'bluefin.invalid', is_mine: false, to_names: ['you'], cc_names: [], date: '2026-10-26T15:00:00Z', subject: `Subject ${id}`, unread: true, text: 'Saw the app', html: HTML, attachments: [{ name: 'Deck.pdf', size: 48213 }] }], ...over });
 const BRAND = { id: 'b-run', name: 'Bluefin Run Club', domain: 'bluefin.invalid', status: 'candidate', relationship: 'prospect', owner_user_id: null, challenge_idea: 'A 5k streak', touch_count: 0, last_reply_label: null, verdict: { ok: true, reason: null, warnings: [] } };
-const setup = (over = {}) => { routes[`GET /api/hk/${HK}/inbox/threads`] = LIST; return render(<InboxScreen businessId={HK} shell={shell} gmail={gmail} compact={false} canEdit onOpenBrand={jest.fn()} onOpenConnections={jest.fn()} onUnread={over.onUnread || jest.fn()} />); };
+const setup = (over = {}) => { routes[`GET /api/hk/${HK}/inbox/threads`] = LIST; return render(<InboxScreen initialLane="needs_you" businessId={HK} shell={shell} gmail={gmail} compact={false} canEdit onOpenBrand={jest.fn()} onOpenConnections={jest.fn()} onUnread={over.onUnread || jest.fn()} />); };
 
 test('list: one row per thread with the chip for its kind, dimmed not-tracked rows, unread dots, badge callback, no compose or Send anywhere', async () => {
   const onUnread = jest.fn();
@@ -183,17 +183,17 @@ test('Track as brand opens the Add brand modal prefilled with the sender and sav
 test('states: no tether shows the Link your Gmail prompt (no list fetch repeats), reconnect banner, a Gmail error keeps the last list with Try again', async () => {
   routes[`GET /api/hk/${HK}/inbox/threads`] = { __status: 409, body: { error: 'Link a Google mailbox to this workspace for inbox first', needs_mailbox: 'inbox' } };
   const onOpenConnections = jest.fn();
-  const r1 = render(<InboxScreen businessId={HK} shell={shell} gmail={{ mailbox: { linked: false } }} compact={false} canEdit onOpenBrand={jest.fn()} onOpenConnections={onOpenConnections} onUnread={jest.fn()} />);
+  const r1 = render(<InboxScreen initialLane="needs_you" businessId={HK} shell={shell} gmail={{ mailbox: { linked: false } }} compact={false} canEdit onOpenBrand={jest.fn()} onOpenConnections={onOpenConnections} onUnread={jest.fn()} />);
   await screen.findByText('Link your HumanKind Gmail');
   fireEvent.click(screen.getByRole('button', { name: 'Open Connections' }));
   expect(onOpenConnections).toHaveBeenCalled();
   r1.unmount();
   routes[`GET /api/hk/${HK}/inbox/threads`] = { __status: 409, body: { error: 'Reconnect this Google account', needs_reconnect: 'g1' } };
-  const r2 = render(<InboxScreen businessId={HK} shell={shell} gmail={gmail} compact={false} canEdit onOpenBrand={jest.fn()} onOpenConnections={jest.fn()} onUnread={jest.fn()} />);
+  const r2 = render(<InboxScreen initialLane="needs_you" businessId={HK} shell={shell} gmail={gmail} compact={false} canEdit onOpenBrand={jest.fn()} onOpenConnections={jest.fn()} onUnread={jest.fn()} />);
   await waitFor(() => expect(r2.container.querySelector('[data-hk-inbox-state="reconnect"]')).toBeTruthy());
   r2.unmount();
   routes[`GET /api/hk/${HK}/inbox/threads`] = LIST;
-  const { container } = render(<InboxScreen businessId={HK} shell={shell} gmail={gmail} compact={false} canEdit onOpenBrand={jest.fn()} onOpenConnections={jest.fn()} onUnread={jest.fn()} />);
+  const { container } = render(<InboxScreen initialLane="needs_you" businessId={HK} shell={shell} gmail={gmail} compact={false} canEdit onOpenBrand={jest.fn()} onOpenConnections={jest.fn()} onUnread={jest.fn()} />);
   await screen.findByText('Subject th-tracked');
   routes[`GET /api/hk/${HK}/inbox/threads`] = { __status: 503, body: { error: 'Gmail: backend error' } };
   fireEvent.click(container.querySelector('[data-hk-inbox-refresh]'));
@@ -205,7 +205,7 @@ test('states: no tether shows the Link your Gmail prompt (no list fetch repeats)
 test('phone: one pane at a time, the brand panel folds under the messages, Back returns to the list', async () => {
   routes[`GET /api/hk/${HK}/inbox/threads/th-new`] = thread('th-new', { sender: { name: 'Ana Ortiz', domain: 'newbrand.invalid' } });
   routes[`GET /api/hk/${HK}/inbox/threads`] = LIST;
-  const { container } = render(<InboxScreen businessId={HK} shell={shell} gmail={gmail} compact canEdit onOpenBrand={jest.fn()} onOpenConnections={jest.fn()} onUnread={jest.fn()} />);
+  const { container } = render(<InboxScreen initialLane="needs_you" businessId={HK} shell={shell} gmail={gmail} compact canEdit onOpenBrand={jest.fn()} onOpenConnections={jest.fn()} onUnread={jest.fn()} />);
   await screen.findByText('Subject th-new');
   expect(container.querySelector('[data-hk-inbox-thread]')).toBeNull();
   fireEvent.click(screen.getByText('Subject th-new'));
@@ -242,14 +242,14 @@ const INTEL = { intel: { company: { name: 'Newbrand Studio', website: 'newbrand.
   email: { kind: 'partnership', summary: 'Wants to co-host a challenge', urgency: 'high' }, fit: { sponsor_fit: 'strong', why: 'Local community studio', challenge_idea: 'Core week' }, next_step: 'track_as_brand', reason: 'Warm local lead' },
   cost_usd: 0.031, researched_at: '2026-10-26T20:00:00Z',
   prefill: { name: 'Newbrand Studio', domain: 'newbrand.invalid', category: 'gym/studio', challenge_idea: 'Core week', city: 'Chicago', is_local: true, size_band: '1-10', notes: 'Analyzed 2026-10-26: Pilates studio' } };
-const render2 = (props = {}) => { routes[`GET /api/hk/${HK}/inbox/threads`] = routes[`GET /api/hk/${HK}/inbox/threads`] || V2LIST; return render(<InboxScreen businessId={HK} shell={shell} gmail={gmail} compact={false} canEdit onOpenBrand={jest.fn()} onOpenConnections={jest.fn()} onUnread={jest.fn()} {...props} />); };
+const render2 = (props = {}) => { routes[`GET /api/hk/${HK}/inbox/threads`] = routes[`GET /api/hk/${HK}/inbox/threads`] || V2LIST; return render(<InboxScreen initialLane="needs_you" businessId={HK} shell={shell} gmail={gmail} compact={false} canEdit onOpenBrand={jest.fn()} onOpenConnections={jest.fn()} onUnread={jest.fn()} {...props} />); };
 
 test('v2 L1: lane tabs carry counts from the page (Needs you · Brands · Other), Other groups by sender with a count and Ignore sender on the group', async () => {
   routes[`GET /api/hk/${HK}/inbox/threads`] = V2LIST;
   routes[`POST /api/hk/${HK}/inbox/ignore`] = { domain: 'lilbucks.invalid', ignored: true };
   const { container } = render2();
   await screen.findByText('Subject th-tracked');
-  expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual(['Needs you 4', 'Brands 2', 'Other 3', 'Sent', 'Drafts']);
+  expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual(['Briefing', 'Needs you 4', 'Brands 2', 'Other 3', 'Sent', 'Drafts']);
   expect(screen.getByRole('tab', { name: /^Needs you/ })).toHaveAttribute('aria-selected', 'true');
   fireEvent.click(screen.getByRole('tab', { name: /^Other/ }));
   const lil = container.querySelector('[data-hk-group="lilbucks.invalid"]');

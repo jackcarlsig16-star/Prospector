@@ -16,9 +16,12 @@ export async function loadIntel(supabase, businessId, now = new Date()) {
   ]);
   const { data: settingsRow, error } = await supabase.from('hk_settings').select('*').eq('business_id', businessId).maybeSingle();
   if (error) throw new Error(error.message);
+  const claims = await selectAllPages(() => supabase.from('hk_events').select('id, entity_id, created_at').eq('business_id', businessId).eq('action', 'brand.claimed').order('id'));
+  const claimedAt = {};
+  for (const e of claims) if (e.entity_id && (!claimedAt[e.entity_id] || e.created_at > claimedAt[e.entity_id])) claimedAt[e.entity_id] = e.created_at;
   const { data: members } = await supabase.from('business_members').select('user_id, name, role, created_at').eq('business_id', businessId).order('created_at');
   return {
-    now, brands, touches, replies,
+    now, brands, touches, replies, claimedAt,
     touchesBy: group(touches, 'brand_id'), repliesBy: group(replies, 'brand_id'),
     contactsBy: group(contacts.map(c => ({ brand_id: c.brand_id, has_email: !!c.email })), 'brand_id'),
     intelByDomain: Object.fromEntries(intel.map(i => [i.domain, i])),
