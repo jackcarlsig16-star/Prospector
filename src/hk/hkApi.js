@@ -7,7 +7,7 @@ export async function hkFetch(businessId, path, { method = 'GET', body, query } 
   const text = await res.text();
   let data = null;
   try { data = text ? JSON.parse(text) : null; } catch { data = null; }
-  if (!res.ok) { const err = new Error(data?.error || `Request failed (${res.status})`); err.status = res.status; err.verdict = data?.verdict || null; err.problems = data?.problems || null; throw err; }
+  if (!res.ok) { const err = new Error(data?.error || `Request failed (${res.status})`); err.status = res.status; err.verdict = data?.verdict || null; err.problems = data?.problems || null; err.body = data; throw err; }
   return data;
 }
 export const hkGet = (b, path, query) => hkFetch(b, path, { query });

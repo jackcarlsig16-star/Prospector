@@ -10,10 +10,12 @@ import { IMAGES_KEY } from '../inbox/inboxPrefs';
 const HK = 'biz-hk';
 const shell = { me: { user_id: 'u-jack', first_name: 'Jack', role: 'owner' }, members: [{ user_id: 'u-jack', first_name: 'Jack', palette_index: 1 }, { user_id: 'u-pete', first_name: 'Pete', palette_index: 2 }] };
 const gmail = { mailbox: { linked: true, state: 'ok', email: 'jack.work@humankind.invalid' }, badges: { drafts: 0, replies: 0, tracked: 1 } };
-let calls, routes;
+let calls, routes, width = 1440;
+// jsdom has no matchMedia: (max-width: N px) answers from `width` (1440 = the two-pane desktop).
+window.matchMedia = q => { const m = /max-width:\s*(\d+)px/.exec(q); return { matches: m ? width <= Number(m[1]) : false, addEventListener() {}, removeEventListener() {} }; };
 const json = (status, body) => Promise.resolve({ ok: status < 400, status, text: () => Promise.resolve(JSON.stringify(body)) });
 beforeEach(() => {
-  calls = []; routes = {}; localStorage.clear();
+  calls = []; routes = {}; width = 1440; localStorage.clear();
   global.fetch = jest.fn((url, init = {}) => {
     const method = init.method || 'GET'; const u = new URL(url, 'http://x'); calls.push(`${method} ${u.pathname}${u.search}`);
     const hit = routes[`${method} ${u.pathname}`]; if (!hit) return json(404, { error: `no route ${method} ${u.pathname}` });
@@ -22,7 +24,7 @@ beforeEach(() => {
   Object.assign(navigator, { clipboard: { writeText: jest.fn(() => Promise.resolve()) } });
 });
 
-const row = (id, chip, over = {}) => ({ thread_id: id, unread: false, from_name: 'Sam Lee', from_domain: 'bluefin.invalid', from_hint: 'bluefin.invalid', date: '2026-10-26T15:00:00Z', subject: `Subject ${id}`, snippet: 'Saw the app, would love to chat', message_count: 1, has_attachments: false, chip, ...over });
+const row = (id, chip, over = {}) => ({ lane: chip.kind === 'not_tracked' ? 'other' : 'needs_you', thread_id: id, unread: false, from_name: 'Sam Lee', from_domain: 'bluefin.invalid', from_hint: 'bluefin.invalid', date: '2026-10-26T15:00:00Z', subject: `Subject ${id}`, snippet: 'Saw the app, would love to chat', message_count: 1, has_attachments: false, chip, ...over });
 const LIST = { tab: 'inbox', unread: 2, next_page_token: null, fetched_at: '2026-10-26T20:00:00Z', threads: [
   row('th-tracked', { kind: 'tracked', brand_id: 'b-yoga', brand_name: 'Harbor Yoga', status: 'sent', label: 'interested' }, { from_name: 'Ana', from_domain: 'harboryoga.invalid', from_hint: 'Owner', unread: true }),
   row('th-match', { kind: 'matches', brand_id: 'b-run', brand_name: 'Bluefin Run Club', status: 'candidate' }, { unread: true, from_hint: 'Co-founder' }),
@@ -44,8 +46,7 @@ test('list: one row per thread with the chip for its kind, dimmed not-tracked ro
   expect(container.querySelector('[data-hk-thread="th-tracked"]').textContent).toMatch(/Interested/);
   expect(container.querySelector('[data-hk-thread="th-match"]').textContent).toMatch(/Matches Bluefin Run Club/);
   expect(container.querySelector('[data-hk-thread="th-team"]').textContent).toMatch(/Team/);
-  expect(container.querySelector('[data-hk-thread="th-bulk"]').className).toMatch(/hk-inbox__row--dim/);
-  expect(container.querySelector('[data-hk-thread="th-bulk"]').textContent).toMatch(/Not tracked/);
+  expect(container.querySelector('[data-hk-thread="th-bulk"]')).toBeNull();
   expect(container.querySelector('[data-hk-thread="th-new"]').textContent).toMatch(/New sender/);
   expect(container.querySelector('[data-hk-thread="th-new"]').textContent).toMatch(/Attachment/);
   expect(container.querySelectorAll('.hk-inbox__dot')).toHaveLength(2);
@@ -57,24 +58,31 @@ test('list: one row per thread with the chip for its kind, dimmed not-tracked ro
   expect(container.textContent).not.toMatch(/[–—]/);
   expect(container.textContent).not.toMatch(/@/);
   expect(calls[0]).toBe(`GET /api/hk/${HK}/inbox/threads?tab=inbox`);
+  // hkos-inbox-v2 L1: bulk mail sits under Other, grouped by sender.
+  fireEvent.click(screen.getByRole('tab', { name: /^Other/ }));
+  expect(container.querySelector('[data-hk-group="shop.invalid"]').textContent).toMatch(/shop\.invalid· 1/);
+  expect(container.querySelector('[data-hk-thread="th-bulk"]')).toBeTruthy();
+  expect(calls.filter(c => c.startsWith(`GET /api/hk/${HK}/inbox/threads?`))).toHaveLength(1);
 });
 
 test('tabs and search hit the route with tab / q; Refresh sends refresh=1; Load more appends with the page token', async () => {
   const { container } = setup();
   await screen.findByText('Subject th-tracked');
-  fireEvent.click(screen.getByRole('button', { name: 'Brands only' }));
+  fireEvent.click(screen.getByRole('tab', { name: /^Brands/ }));
   await waitFor(() => expect(calls).toContain(`GET /api/hk/${HK}/inbox/threads?tab=brands`));
   fireEvent.change(container.querySelector('[data-hk-inbox-search]'), { target: { value: 'from:bluefin.invalid' } });
   fireEvent.submit(container.querySelector('[data-hk-inbox-search]').closest('form'));
   await waitFor(() => expect(calls).toContain(`GET /api/hk/${HK}/inbox/threads?tab=brands&q=from%3Abluefin.invalid`));
   fireEvent.click(container.querySelector('[data-hk-inbox-refresh]'));
   await waitFor(() => expect(calls.some(c => c.endsWith('&refresh=1'))).toBe(true));
-  routes[`GET /api/hk/${HK}/inbox/threads`] = (body, u) => (u.searchParams.get('pageToken') === 'p2' ? { ...LIST, threads: [row('th-6', { kind: 'untracked' })], next_page_token: null } : { ...LIST, next_page_token: 'p2' });
+  fireEvent.click(screen.getByRole('tab', { name: /^Needs you/ }));
+  await waitFor(() => expect(container.querySelector('[data-hk-inbox-refresh]').disabled).toBe(false));
+  routes[`GET /api/hk/${HK}/inbox/threads`] = (body, u) => (u.searchParams.get('pageToken') === 'p2' ? { ...LIST, threads: [row('th-6', { kind: 'untracked' }), LIST.threads[0]], next_page_token: null } : { ...LIST, next_page_token: 'p2' });
   fireEvent.click(container.querySelector('[data-hk-inbox-refresh]'));
   const more = await screen.findByRole('button', { name: 'Load more' });
   fireEvent.click(more);
   await screen.findByText('Subject th-6');
-  expect(screen.getByText('Subject th-tracked')).toBeInTheDocument();
+  expect(screen.getAllByText('Subject th-tracked')).toHaveLength(1);
 });
 
 test('open: the html renders only in <iframe sandbox=""> from sanitized srcdoc, images blocked until Show images, Reply in Gmail, Track as brand / Ignore for a new sender', async () => {
@@ -101,9 +109,10 @@ test('open: the html renders only in <iframe sandbox=""> from sanitized srcdoc, 
   expect(container.querySelector('[data-hk-mark-handled]')).toBeNull();
   expect(screen.getByText('Deck.pdf · 47 KB')).toBeInTheDocument();
   const panel = container.querySelector('[data-hk-brand-panel="untracked"]');
-  expect(panel.textContent).toMatch(/Not a brand yet/);
+  expect(panel.textContent).toMatch(/Ana Ortiz/); expect(panel.textContent).toMatch(/Unknown company/);
+  expect(within(panel).getByRole('button', { name: 'Analyze' })).toBeInTheDocument();
   expect(within(panel).getByRole('button', { name: 'Track as brand' })).toBeInTheDocument();
-  expect(within(panel).getByRole('button', { name: 'Ignore this sender' })).toBeInTheDocument();
+  expect(within(panel).getByRole('button', { name: 'Ignore sender' })).toBeInTheDocument();
   expect(container.querySelector('[data-hk-messages] textarea')).toBeNull();
   expect(container.textContent).not.toMatch(/\bSend\b/);
   expect(container.querySelector('.hk-inbox__thread').textContent).not.toMatch(/@/);
@@ -121,7 +130,7 @@ test('Show images by default (localStorage) skips the strip; a tracked thread of
   fireEvent.click(container.querySelector('[data-hk-copy-command]'));
   await waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledWith('hk reply Harbor Yoga'));
   const panel = container.querySelector('[data-hk-brand-panel="tracked"]');
-  expect(panel.textContent).toMatch(/Harbor Yoga/); expect(panel.textContent).toMatch(/Pete/); expect(panel.textContent).toMatch(/2 touches/); expect(panel.textContent).toMatch(/Blocked: owned by/);
+  expect(panel.textContent).toMatch(/Harbor Yoga/); expect(panel.textContent).toMatch(/Pete/); expect(panel.textContent).toMatch(/2 of 3 touches/); expect(panel.textContent).toMatch(/Blocked: owned by/);
   fireEvent.click(container.querySelector('[data-hk-mark-handled]'));
   await waitFor(() => expect(calls).toContain(`PATCH /api/hk/${HK}/replies/r1`));
   await waitFor(() => expect(calls).toContain(`GET /api/hk/${HK}/inbox/threads/th-tracked?refresh=1`));
@@ -214,4 +223,145 @@ test('Settings > Connections: Show images by default writes prospector_hk_inbox_
   fireEvent.click(container.querySelector('[data-hk-unignore="news.invalid"]'));
   await waitFor(() => expect(calls).toContain(`DELETE /api/hk/${HK}/inbox/ignore/news.invalid`));
   expect(container.textContent).not.toMatch(/[–—]/);
+});
+
+// ---- hkos-inbox-v2 Stage 3 - lanes, Other groups, busy + one retry, J/K, drawer, intel card + Analyze, Viewer ----
+const V2LIST = { ...LIST, lane_counts: { needs_you: 4, brands: 2, other: 3 }, threads: [...LIST.threads,
+  row('th-lil1', { kind: 'not_tracked', reason: 'bulk' }, { from_name: 'Emily at Lil Bucks', from_domain: 'lilbucks.invalid' }),
+  row('th-lil2', { kind: 'not_tracked', reason: 'bulk' }, { from_name: 'Emily at Lil Bucks', from_domain: 'lilbucks.invalid' })] };
+const INTEL = { intel: { company: { name: 'Newbrand Studio', website: 'newbrand.invalid', what_they_do: 'Pilates studio', hq_city: 'Chicago', chicago_presence: 'yes', size_hint: '1-10', category: 'gym/studio' },
+  email: { kind: 'partnership', summary: 'Wants to co-host a challenge', urgency: 'high' }, fit: { sponsor_fit: 'strong', why: 'Local community studio', challenge_idea: 'Core week' }, next_step: 'track_as_brand', reason: 'Warm local lead' },
+  cost_usd: 0.031, researched_at: '2026-10-26T20:00:00Z',
+  prefill: { name: 'Newbrand Studio', domain: 'newbrand.invalid', category: 'gym/studio', challenge_idea: 'Core week', city: 'Chicago', is_local: true, size_band: '1-10', notes: 'Analyzed 2026-10-26: Pilates studio' } };
+const render2 = (props = {}) => { routes[`GET /api/hk/${HK}/inbox/threads`] = routes[`GET /api/hk/${HK}/inbox/threads`] || V2LIST; return render(<InboxScreen businessId={HK} shell={shell} gmail={gmail} compact={false} canEdit onOpenBrand={jest.fn()} onOpenConnections={jest.fn()} onUnread={jest.fn()} {...props} />); };
+
+test('v2 L1: lane tabs carry counts from the page (Needs you · Brands · Other), Other groups by sender with a count and Ignore sender on the group', async () => {
+  routes[`GET /api/hk/${HK}/inbox/threads`] = V2LIST;
+  routes[`POST /api/hk/${HK}/inbox/ignore`] = { domain: 'lilbucks.invalid', ignored: true };
+  const { container } = render2();
+  await screen.findByText('Subject th-tracked');
+  expect(screen.getAllByRole('tab').map(t => t.textContent)).toEqual(['Needs you 4', 'Brands 2', 'Other 3', 'Sent', 'Drafts']);
+  expect(screen.getByRole('tab', { name: /^Needs you/ })).toHaveAttribute('aria-selected', 'true');
+  fireEvent.click(screen.getByRole('tab', { name: /^Other/ }));
+  const lil = container.querySelector('[data-hk-group="lilbucks.invalid"]');
+  expect(lil.textContent).toMatch(/Emily at Lil Bucks· 2lilbucks\.invalid/);
+  expect(container.querySelectorAll('[data-hk-group]')).toHaveLength(2);
+  fireEvent.click(within(lil).getByRole('button', { name: 'Ignore sender' }));
+  await waitFor(() => expect(calls).toContain(`POST /api/hk/${HK}/inbox/ignore`));
+  await waitFor(() => expect(calls).toContain(`GET /api/hk/${HK}/inbox/threads?tab=inbox&refresh=1`));
+});
+
+test('v2 busy: the last list shows with the plain line and retries ONCE after retry_after_ms; a 503 busy retries once too; Google\'s text never shows', async () => {
+  jest.useFakeTimers();
+  try {
+    let n = 0;
+    routes[`GET /api/hk/${HK}/inbox/threads`] = () => { n += 1; return n === 1 ? { ...V2LIST, busy: true, notice: 'Gmail is busy, showing your last list. Retrying in a moment.', retry_after_ms: 60000 } : { ...V2LIST, busy: true, notice: 'Gmail is busy, showing your last list. Retrying in a moment.', retry_after_ms: 60000 }; };
+    const { container, unmount } = render2();
+    await screen.findByText('Subject th-tracked');
+    expect(container.querySelector('[data-hk-inbox-busy]').textContent).toBe('Gmail is busy, showing your last list. Retrying in a moment.');
+    expect(n).toBe(1);
+    await React.act(async () => { jest.advanceTimersByTime(60000); });
+    await waitFor(() => expect(n).toBe(2));
+    await React.act(async () => { jest.advanceTimersByTime(180000); });
+    expect(n).toBe(2);
+    unmount();
+    let m = 0;
+    routes[`GET /api/hk/${HK}/inbox/threads`] = () => { m += 1; return m === 1 ? { __status: 503, body: { error: 'Gmail is busy. Retrying in a moment.', busy: true, retry_after_ms: 60000 } } : V2LIST; };
+    const r = render2();
+    await waitFor(() => expect(r.container.querySelector('[data-hk-inbox-busy]')).toBeTruthy());
+    expect(r.container.textContent).not.toMatch(/Quota exceeded|googleapis/);
+    await React.act(async () => { jest.advanceTimersByTime(60000); });
+    await waitFor(() => expect(r.container.querySelector('[data-hk-thread="th-tracked"]')).toBeTruthy());
+    expect(r.container.querySelector('[data-hk-inbox-busy]')).toBeNull();
+    expect(m).toBe(2);
+  } finally { jest.useRealTimers(); }
+});
+
+test('v2 L2: from 1100 px two panes; J / K open the next / previous row in lane order and never fire while typing; 760-1099 the reader is a drawer with Close', async () => {
+  for (const id of ['th-tracked', 'th-match', 'th-team']) routes[`GET /api/hk/${HK}/inbox/threads/${id}`] = thread(id);
+  routes[`GET /api/hk/${HK}/inbox/threads`] = V2LIST;
+  const { container, unmount } = render2();
+  await screen.findByText('Subject th-tracked');
+  expect(container.querySelector('[data-hk-inbox]').dataset.hkInboxMode).toBe('split');
+  expect(container.querySelector('[data-hk-inbox-thread]').textContent).toMatch(/J and K move/);
+  fireEvent.keyDown(document.body, { key: 'j' });
+  await waitFor(() => expect(container.querySelector('[data-hk-thread="th-tracked"]')).toHaveAttribute('aria-current', 'true'));
+  fireEvent.keyDown(document.body, { key: 'j' });
+  await waitFor(() => expect(container.querySelector('[data-hk-thread="th-match"]')).toHaveAttribute('aria-current', 'true'));
+  fireEvent.keyDown(document.body, { key: 'k' });
+  await waitFor(() => expect(container.querySelector('[data-hk-thread="th-tracked"]')).toHaveAttribute('aria-current', 'true'));
+  fireEvent.keyDown(container.querySelector('[data-hk-inbox-search]'), { key: 'j' });
+  expect(container.querySelector('[data-hk-thread="th-tracked"]')).toHaveAttribute('aria-current', 'true');
+  expect(container.querySelector('[data-hk-inbox-back]')).toBeNull();
+  unmount();
+  width = 1000;
+  const d = render2();
+  await screen.findByText('Subject th-match');
+  expect(d.container.querySelector('[data-hk-inbox]').dataset.hkInboxMode).toBe('drawer');
+  expect(d.container.querySelector('[data-hk-inbox-thread]')).toBeNull();
+  fireEvent.click(screen.getByText('Subject th-match'));
+  await waitFor(() => expect(d.container.querySelector('.hk-inbox__drawer')).toBeTruthy());
+  expect(d.container.querySelector('[data-hk-inbox-list]')).toBeTruthy();
+  fireEvent.click(d.container.querySelector('[data-hk-inbox-back]'));
+  expect(d.container.querySelector('[data-hk-inbox-thread]')).toBeNull();
+});
+
+test('v2 L4 / L5: Analyze posts the click flag once, the card shows company / kind / fit / next step, the button carries the observed cost, the row gets "Analyzed · Strong fit", Track as brand comes prefilled', async () => {
+  routes[`GET /api/hk/${HK}/inbox/threads`] = V2LIST;
+  routes[`GET /api/hk/${HK}/inbox/threads/th-new`] = thread('th-new', { sender: { name: 'Ana Ortiz', domain: 'newbrand.invalid' }, intel: null });
+  const posts = [];
+  routes[`POST /api/hk/${HK}/inbox/threads/th-new/analyze`] = body => { posts.push(body); return { ...INTEL, domain: 'newbrand.invalid', cached: false }; };
+  routes[`POST /api/hk/${HK}/brands/check`] = { results: [{ name: 'Newbrand Studio', domain: 'newbrand.invalid', verdict: 'clear', match: null, matches: [], legacy: [], warnings: [] }] };
+  let trackBody = null;
+  routes[`POST /api/hk/${HK}/inbox/track`] = body => { trackBody = body; return { brand: { id: 'b-new', name: body.name } }; };
+  const { container } = render2();
+  fireEvent.click(await screen.findByText('Subject th-new'));
+  fireEvent.click(await screen.findByRole('button', { name: 'Analyze' }));
+  await waitFor(() => expect(container.querySelector('[data-hk-intel]')).toBeTruthy());
+  expect(posts).toEqual([{ click: true }]);
+  expect(container.querySelector('[data-hk-intel-company]').textContent).toBe('Newbrand Studio');
+  expect(container.querySelector('[data-hk-intel-kind]').textContent).toMatch(/^Partnership · urgent: Wants to co-host/);
+  expect(container.querySelector('[data-hk-intel-fit]').textContent).toBe('Strong fit');
+  expect(container.querySelector('[data-hk-intel-next]').textContent).toBe('Track as brand');
+  expect(container.querySelector('[data-hk-intel]').textContent).toMatch(/In Chicago/);
+  expect(screen.getByRole('button', { name: 'Analyze again · $0.03' })).toBeInTheDocument();
+  expect(container.querySelector('[data-hk-thread="th-new"] [data-hk-row-intel]').textContent).toBe('Analyzed · Strong fit');
+  fireEvent.click(screen.getByRole('button', { name: 'Track as brand' }));
+  const modal = container.querySelector('[data-hk-add-brand]');
+  expect(modal.querySelector('#hk-brand-name').value).toBe('Newbrand Studio');
+  fireEvent.blur(modal.querySelector('#hk-brand-name'));
+  fireEvent.click(await within(modal).findByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(trackBody).toBeTruthy());
+  expect(trackBody).toMatchObject({ name: 'Newbrand Studio', domain: 'newbrand.invalid', category: 'gym/studio', challenge_idea: 'Core week', city: 'Chicago', is_local: true, size_band: '1-10', thread_id: 'th-new' });
+  expect(trackBody.notes).toMatch(/^Analyzed 2026-10-26/);
+  expect(container.textContent).not.toMatch(/@/);
+});
+
+test('v2 L5 cache: a domain researched in the last 30 days answers needs_confirm - the saved card plus a prompt; Analyze again posts confirm; a 429 cap shows as a plain line', async () => {
+  routes[`GET /api/hk/${HK}/inbox/threads`] = V2LIST;
+  routes[`GET /api/hk/${HK}/inbox/threads/th-new`] = thread('th-new', { sender: { name: 'Ana Ortiz', domain: 'newbrand.invalid' }, intel: INTEL });
+  const posts = [];
+  routes[`POST /api/hk/${HK}/inbox/threads/th-new/analyze`] = body => { posts.push(body); return body.confirm ? { __status: 429, body: { error: 'Daily Analyze limit reached (25). It resets at midnight Chicago time.' } } : { ...INTEL, cached: true, needs_confirm: true }; };
+  const { container } = render2();
+  fireEvent.click(await screen.findByText('Subject th-new'));
+  await waitFor(() => expect(container.querySelector('[data-hk-intel-when]')).toBeTruthy());
+  expect(container.querySelector('[data-hk-intel-when]').textContent).toMatch(/Researched .* · \$0\.03/);
+  fireEvent.click(screen.getByRole('button', { name: 'Analyze again · $0.03' }));
+  await waitFor(() => expect(container.querySelector('[data-hk-analyze-confirm]')).toBeTruthy());
+  expect(container.querySelector('[data-hk-analyze-confirm]').textContent).toMatch(/This is the saved card\..*Analyze again for about \$0\.03\?/);
+  fireEvent.click(container.querySelector('[data-hk-analyze-again]'));
+  await waitFor(() => expect(container.querySelector('[data-hk-analyze-error]')).toBeTruthy());
+  expect(posts).toEqual([{ click: true }, { click: true, confirm: true }]);
+  expect(container.querySelector('[data-hk-analyze-error]').textContent).toMatch(/Daily Analyze limit reached/);
+});
+
+test('v2 Viewer (canEdit false): the intel card reads, but no Analyze, Track, Ignore or group Ignore', async () => {
+  routes[`GET /api/hk/${HK}/inbox/threads`] = V2LIST;
+  routes[`GET /api/hk/${HK}/inbox/threads/th-new`] = thread('th-new', { sender: { name: 'Ana Ortiz', domain: 'newbrand.invalid' }, intel: INTEL });
+  const { container } = render2({ canEdit: false });
+  fireEvent.click(await screen.findByText('Subject th-new'));
+  await waitFor(() => expect(container.querySelector('[data-hk-intel]')).toBeTruthy());
+  expect(container.querySelector('[data-hk-analyze], [data-hk-track-brand], [data-hk-ignore-sender]')).toBeNull();
+  fireEvent.click(screen.getByRole('tab', { name: /^Other/ }));
+  expect(container.querySelector('[data-hk-ignore-group]')).toBeNull();
 });

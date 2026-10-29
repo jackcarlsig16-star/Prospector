@@ -116,9 +116,18 @@ export function brandQueries(domains, { search = '', maxLen = BRANDS_QUERY_MAX }
   if (cur.length) out.push(q(cur));
   return out;
 }
-// Gmail message ids are hex and grow with time; merging chunks newest-first uses that order (no extra call for a date).
-const HEX = /^[0-9a-f]+$/i;
-export const newestFirst = (a, b) => { if (!HEX.test(a.id) || !HEX.test(b.id)) return 0; const x = BigInt(`0x${a.id}`), y = BigInt(`0x${b.id}`); return x > y ? -1 : x < y ? 1 : 0; };
+// Merging the chunks: each chunk's list is newest first, so taking them in turns (one from each, again and again) puts
+// every chunk's newest messages in before anyone's older ones; the metadata of the picked messages then orders them by
+// internalDate (message ids are not time-ordered - Jack, Oct 28). max bounds the metadata gets (units) per Brands load.
+export const BRANDS_META_MAX = 75; // REVISABLE: 3 chunks x 25
+export function inTurns(lists, max) {
+  const out = [], seen = new Set();
+  for (let i = 0; out.length < max && lists.some(l => i < l.length); i++) {
+    for (const l of lists) { const m = l[i]; if (m && !seen.has(m.threadId) && out.length < max) { seen.add(m.threadId); out.push(m); } }
+  }
+  return out;
+}
+export const byInternalDate = (a, b) => Number(b.internalDate || 0) - Number(a.internalDate || 0);
 
 // hkos-inbox-v2 Q1 - Gmail quota units for one list page load.
 export const unitsOf = (counts, units) => Object.entries(counts).reduce((n, [k, c]) => n + (units[k] || 0) * c, 0);

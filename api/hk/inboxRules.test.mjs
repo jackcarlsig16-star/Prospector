@@ -166,3 +166,12 @@ test('v2 Track as brand prefill from an Analyze result: name, domain, category, 
   assert.ok(p.notes.startsWith('Analyzed 2026-10-28: App store optimization agency · Email: vendor pitch · Sponsor fit: weak - A vendor, not a sponsor · Next: ignore sender - Sales pitch'));
   assert.equal(V2.prefillFromIntel({ company: { chicago_presence: 'unknown' } }, { senderName: 'Ana', domain: 'x.invalid', date: '2026-10-28' }).is_local, false);
 });
+
+test('v2 Q2 merge (Jack ruling 3): chunks are taken in turns up to the cap, one thread once; the order comes from internalDate, never the message id', () => {
+  const m = (id, threadId, at) => ({ id, threadId, internalDate: String(at) });
+  const a = [m('f0', 'ta', 300), m('e0', 'tb', 100)], b = [m('01', 'tc', 400), m('02', 'ta', 50), m('03', 'td', 200)];
+  assert.deepEqual(V2.inTurns([a, b], 10).map(x => x.id), ['f0', '01', 'e0', '03'], 'turns; ta once (its first, newest, entry)');
+  assert.deepEqual(V2.inTurns([a, b], 3).map(x => x.id), ['f0', '01', 'e0']);
+  const sorted = [...V2.inTurns([a, b], 10)].sort(V2.byInternalDate).map(x => x.id);
+  assert.deepEqual(sorted, ['01', 'f0', '03', 'e0'], 'internalDate order: "01" is the newest though its id is the smallest');
+});

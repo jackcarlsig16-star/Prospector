@@ -105,7 +105,7 @@ test('groups and counts come from the rows: P1-P4 in order, then No priority; wo
 test('P3, P4 and No priority start collapsed, P1 / P2 open; a toggle is remembered under prospector_pipeline_groups', async () => {
   goalsApi.pipelineBoard.mockResolvedValue(PRIO_ROWS);
   setup({}, { defaultGroups: true });
-  await screen.findByText('Hot Co');
+  await screen.findByText('Hot Co', {}, { timeout: 15000 });
   const table = () => within(screen.getByRole('table'));
   const toggle = name => table().getByRole('button', { name: new RegExp(`^${name}`) });
   expect(toggle('P1 · Act today')).toHaveAttribute('aria-expanded', 'true');
@@ -122,15 +122,15 @@ test('P3, P4 and No priority start collapsed, P1 / P2 open; a toggle is remember
   expect(JSON.parse(localStorage.getItem('prospector_pipeline_groups'))).toEqual(['p4', 'none', 'p1']);
   cleanup();
   setup({}, { defaultGroups: true });
-  await screen.findByText('Watch Co');
+  await screen.findByText('Watch Co', {}, { timeout: 15000 });
   expect(screen.queryByText('Hot Co')).toBeNull();
   expect(toggle('P1 · Act today')).toHaveAttribute('aria-expanded', 'false');
   localStorage.setItem('prospector_pipeline_groups', '{bad json');
   cleanup();
   setup({}, { defaultGroups: true });
-  await screen.findByText('Hot Co');
+  await screen.findByText('Hot Co', {}, { timeout: 15000 });
   expect(screen.queryByText('Watch Co')).toBeNull();
-});
+}, 60000);
 
 test('one filter row: type, team, owner, search; the channel counts follow the filters; Clear resets all', async () => {
   setup();

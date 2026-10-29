@@ -426,3 +426,15 @@ test('v2 L5 Analyze: 25 per user per Chicago day from the usage log (429, 0 call
   const viewer = await call(R.analyzeRoute, reqOf({ method: 'POST', user: VIEWER, role: 'viewer', params: { id: 'th-new' }, body: { click: true } }), analyzeDeps(seen));
   assert.equal(viewer.code, 403);
 });
+
+test('v2 Q2 Brands order (Jack ruling 3): rows sort by internalDate from the metadata already fetched, not by message id', async () => {
+  fresh();
+  const at = (id, threadId, from, when) => ({ ...msg(id, threadId, { from, subject: `Hi from ${threadId}`, labels: ['INBOX'] }), internalDate: String(when) });
+  const extra = [thread('th-old', [at('ffff01', 'th-old', 'Sam <sam@bluefinrun.example>', 1000)]), thread('th-mid', [at('00aa02', 'th-mid', 'Ana <ana@harboryoga.example>', 5000)]), thread('th-new2', [at('0001', 'th-new2', 'Ana <ana@harboryoga.example>', 9000)])];
+  mailboxes['tok-jack'] = [...extra, ...JACK_MAIL().filter(t => !['th-match', 'th-yoga2', 'th-tracked'].includes(t.id))];
+  const r = await call(R.listThreadsRoute, reqOf({ query: { tab: 'brands' } }));
+  assert.equal(r.code, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.threads.map(t => t.thread_id), ['th-new2', 'th-mid', 'th-old'], 'newest internalDate first although its id sorts last');
+  assert.equal(r.body.gmail_units, 5 + 3 * 20);
+  mailboxes['tok-jack'] = JACK_MAIL();
+});

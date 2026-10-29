@@ -48,7 +48,7 @@ export default function AddBrandModal({ businessId, members, onClose, onSaved, o
     if (!form.name.trim()) { setError('Name is required.'); return; }
     setBusy(true); setError('');
     try {
-      const body = { name: form.name.trim(), domain: form.domain.trim() || undefined, category: form.category.trim() || undefined, is_local: form.is_local, neighborhood: form.neighborhood.trim() || undefined, notes: form.notes.trim() || undefined, challenge_idea: form.challenge_idea.trim() || undefined, claim, force_duplicate: force || undefined };
+      const body = { name: form.name.trim(), domain: form.domain.trim() || undefined, category: form.category.trim() || undefined, is_local: form.is_local, neighborhood: form.neighborhood.trim() || undefined, notes: form.notes.trim() || undefined, challenge_idea: form.challenge_idea.trim() || undefined, city: form.city?.trim() || undefined, size_band: form.size_band?.trim() || undefined, claim, force_duplicate: force || undefined };
       const { brand } = onSave ? await onSave(body) : await hkPost(businessId, '/brands', body);
       onSaved(brand);
     } catch (e) {

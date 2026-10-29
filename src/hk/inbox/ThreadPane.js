@@ -51,33 +51,37 @@ const QUICK = [['meeting', 'Meeting'], ['signed', 'Signed'], ['passed', 'Passed'
 export function BrandPanel({ thread, members, canEdit, busy, onOpenBrand, onStatus, onLink, onTrack, onIgnore, onUnignore }) {
   const { chip, brand, sender } = thread;
   const owner = brand ? members.find(m => m.user_id === brand.owner_user_id) : null;
-  if (chip.kind === 'team') return <aside className="hk-inbox__panel" data-hk-brand-panel="team"><p className="hk-meta">Team mail. Nothing to track here.</p></aside>;
+  // hkos-inbox-v2 L4: a teammate writing directly reads "Your team"; an automated team notice is marketing / automated mail.
+  if (chip.kind === 'team') return thread.team_notice
+    ? <div className="hk-inbox__panel hk-inbox__panel--muted" data-hk-brand-panel="notice"><p className="hk-meta">Marketing / automated mail.</p></div>
+    : <div className="hk-inbox__panel" data-hk-brand-panel="team"><p className="hk-meta">Your team.</p></div>;
   if (brand) {
     const v = brand.verdict;
     return (
-      <aside className="hk-inbox__panel" data-hk-brand-panel={chip.kind} aria-label={`Brand ${brand.name}`}>
-        <h3 className="hk-inbox__panel-title">{brand.name}</h3>
-        <p className="hk-meta">{brand.domain || 'no domain'} · {owner ? owner.first_name : 'Unclaimed'} · {brand.touch_count} touch{brand.touch_count === 1 ? '' : 'es'}</p>
+      <div className="hk-inbox__panel" data-hk-brand-panel={chip.kind} aria-label={`Brand ${brand.name}`}>
+        <h2 className="hk-inbox__panel-title">{brand.name}</h2>
+        <p className="hk-meta">{brand.domain || 'no domain'} · {owner ? owner.first_name : 'Unclaimed'} · {brand.touch_count} of {brand.max_email_touches || 3} touches{brand.last_touch_at ? ` · last ${fmtDate(brand.last_touch_at)}` : ''}</p>
         <div className="hk-brand__chips">
           <Chip tone={chip.kind === 'tracked' ? 'green' : 'blue'}>{STATUS_LABEL[brand.status] || brand.status}</Chip>
           {brand.last_reply_label && <Chip tone="lilac">{REPLY_LABEL[brand.last_reply_label] || brand.last_reply_label}</Chip>}
         </div>
         {v && <p className={`hk-banner ${v.ok ? 'hk-banner--green' : 'hk-banner--block'}`} data-hk-verdict={v.ok ? 'clear' : v.reason}><span className="hk-banner__title">{v.ok ? 'Clear to draft' : `Blocked: ${String(v.reason || '').replace(/_/g, ' ')}`}</span></p>}
+        {brand.last_reply_summary && <p className="hk-note" data-hk-reply-summary>{brand.last_reply_summary}</p>}
         {brand.challenge_idea && <p className="hk-note">Idea: {brand.challenge_idea}</p>}
         <div className="hk-inbox__panel-actions">
           <Button size="sm" variant="primary" onClick={() => onOpenBrand(brand.id)} data-hk-open-brand>Open brand page</Button>
           {chip.kind === 'matches' && canEdit && <Button size="sm" disabled={busy} onClick={onLink} data-hk-link-brand>Link this thread to {brand.name}</Button>}
         </div>
         {canEdit && <div className="hk-inbox__panel-actions" aria-label="Quick status">{QUICK.map(([s, l]) => <Button key={s} size="sm" variant="tertiary" disabled={busy || brand.status === s} onClick={() => onStatus(brand.id, s)}>{l}</Button>)}</div>}
-      </aside>
+      </div>
     );
   }
   if (chip.kind === 'not_tracked' && chip.reason === 'ignored') {
-    return <aside className="hk-inbox__panel" data-hk-brand-panel="ignored"><p className="hk-meta">You ignore mail from {sender.domain}.</p>{canEdit && <Button size="sm" disabled={busy} onClick={onUnignore} data-hk-unignore>Stop ignoring</Button>}</aside>;
+    return <div className="hk-inbox__panel" data-hk-brand-panel="ignored"><p className="hk-meta">You ignore mail from {sender.domain}.</p>{canEdit && <Button size="sm" disabled={busy} onClick={onUnignore} data-hk-unignore>Stop ignoring</Button>}</div>;
   }
   return (
-    <aside className="hk-inbox__panel" data-hk-brand-panel="untracked">
-      <h3 className="hk-inbox__panel-title">Not a brand yet</h3>
+    <div className="hk-inbox__panel" data-hk-brand-panel="untracked">
+      <h2 className="hk-inbox__panel-title">Not a brand yet</h2>
       <p className="hk-meta">{sender.name}{sender.domain ? ` · ${sender.domain}` : ''}{chip.reason === 'bulk' ? ' · looks like bulk mail' : ''}</p>
       {canEdit && (
         <div className="hk-inbox__panel-actions">
@@ -85,7 +89,7 @@ export function BrandPanel({ thread, members, canEdit, busy, onOpenBrand, onStat
           {sender.domain && <Button size="sm" variant="tertiary" disabled={busy} onClick={onIgnore} data-hk-ignore-sender>Ignore this sender</Button>}
         </div>
       )}
-    </aside>
+    </div>
   );
 }
 

@@ -1,119 +1,231 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import Segmented from '../../ui/Segmented';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import Tabs from '../../ui/Tabs';
 import Button from '../../ui/Button';
 import { Sprout } from '../HkMarks';
-import { Chip } from '../brands/BrandsScreen';
 import AddBrandModal from '../brands/AddBrandModal';
 import { hkGet, hkPost, hkPatch, hkDelete } from '../hkApi';
 import { relative } from '../hkSync';
-import { Messages, BrandPanel, chipLabel, chipTone } from '../inbox/ThreadPane';
-import { imagesDefault, gmailThreadUrl, fmtDate, REPLY_LABEL } from '../inbox/inboxPrefs';
+import { Messages } from '../inbox/ThreadPane';
+import IntelCard from '../inbox/IntelCard';
+import { ThreadRow, OtherGroups, groupOther } from '../inbox/InboxRows';
+import { imagesDefault, gmailThreadUrl } from '../inbox/inboxPrefs';
+import useMediaQuery from '../../utils/useMediaQuery';
 
-// hkos-inbox-v1 (I3) - the signed-in founder's own HumanKind Gmail, read live through /inbox/*. Desktop: list, thread,
-// brand panel; phone: list or thread, the panel folded under the messages. Reading writes nothing; the only actions
-// are link / track / ignore / Mark handled (an existing reply row) and quick brand status. No compose, no Send.
-const TABS = [{ id: 'inbox', label: 'Inbox' }, { id: 'brands', label: 'Brands only' }, { id: 'sent', label: 'Sent' }, { id: 'drafts', label: 'Drafts' }];
+// hkos-inbox-v1 (I3) / hkos-inbox-v2 - the signed-in founder's own HumanKind Gmail, read live through /inbox/*.
+// v2: lanes (Needs you · Brands · Other · Sent · Drafts; Needs you and Other share one INBOX page), the intel card +
+// Analyze at the top of the reader, and a layout that stays with you: from 1100 px the list and the reader scroll on
+// their own inside the window (opening a thread never scrolls the page; J / K move), 760-1099 the reader is a drawer
+// over the list, under 760 one pane at a time. Gmail busy: the last list with a plain line and ONE retry after the
+// server's retry_after_ms. Reading writes nothing; no compose, no Send.
+const LANES = [['needs_you', 'Needs you'], ['brands', 'Brands'], ['other', 'Other'], ['sent', 'Sent'], ['drafts', 'Drafts']];
+const SOURCE = { needs_you: 'inbox', other: 'inbox', brands: 'brands', sent: 'sent', drafts: 'drafts' };
 export const ONLY_YOU = 'Only you see your inbox.';
+const FIT_GAP = 16;
+const MIN_PANES = 420;
+const dedupe = rows => { const seen = new Set(); return rows.filter(r => (seen.has(r.thread_id) ? false : seen.add(r.thread_id))); };
+const typing = t => !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
 
 export default function InboxScreen({ businessId, shell, gmail, compact, canEdit, onOpenBrand, onOpenConnections, onUnread }) {
-  const [tab, setTab] = useState('inbox');
+  const [lane, setLane] = useState('needs_you');
   const [input, setInput] = useState('');
   const [q, setQ] = useState('');
-  const [list, setList] = useState(null);
+  const [lists, setLists] = useState({});
   const [loading, setLoading] = useState(false);
   const [state, setState] = useState('ok');
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [openId, setOpenId] = useState(null);
   const [thread, setThread] = useState(null);
   const [threadError, setThreadError] = useState('');
+  const [threadNotice, setThreadNotice] = useState('');
   const [showImages, setShowImages] = useState(() => new Set());
   const [imagesByDefault] = useState(imagesDefault);
   const [busy, setBusy] = useState(false);
   const [tracking, setTracking] = useState(false);
   const [copied, setCopied] = useState(false);
   const [note, setNote] = useState('');
+  const [height, setHeight] = useState(null);
   const latest = useRef(0);
+  const openRef = useRef(null);
+  const orderRef = useRef([]);
+  const retried = useRef(new Set());
+  const timers = useRef([]);
+  const panesRef = useRef(null);
+  const listRef = useRef(null);
+  const readerRef = useRef(null);
+  const small = useMediaQuery('(max-width: 759px)');
+  const narrow = useMediaQuery('(max-width: 1099px)');
+  const mode = compact || small ? 'phone' : narrow ? 'drawer' : 'split';
+  const source = SOURCE[lane];
   const members = shell?.members || [];
   const mailboxEmail = gmail?.mailbox?.linked ? gmail.mailbox.email : null;
 
+  // One automatic retry per list / thread while Gmail is busy, after the server's retry_after_ms.
+  const retryOnce = useCallback((key, ms, fn) => {
+    if (retried.current.has(key)) return;
+    retried.current.add(key);
+    timers.current.push(setTimeout(fn, ms || 60_000));
+  }, []);
+  useEffect(() => () => timers.current.forEach(clearTimeout), []);
+
   const load = useCallback(async ({ pageToken = null, refresh = false, append = false } = {}) => {
     const n = ++latest.current;
+    const key = `list:${source}:${q}`;
+    if (refresh) retried.current.delete(key);
     setLoading(true); setError('');
     try {
-      const data = await hkGet(businessId, '/inbox/threads', { tab, q, pageToken, refresh: refresh ? '1' : '' });
+      const data = await hkGet(businessId, '/inbox/threads', { tab: source, q, pageToken, refresh: refresh ? '1' : '' });
       if (n !== latest.current) return;
       setState('ok');
-      setList(prev => (append && prev ? { ...data, threads: [...prev.threads, ...data.threads] } : data));
-      if (tab === 'inbox' && !pageToken && typeof data.unread === 'number') onUnread?.(data.unread);
+      setLists(prev => ({ ...prev, [source]: append && prev[source] ? { ...data, threads: dedupe([...prev[source].threads, ...data.threads]) } : data }));
+      setNotice(data.busy ? data.notice : '');
+      if (data.busy) retryOnce(key, data.retry_after_ms, () => loadRef.current());
+      if (source === 'inbox' && !pageToken && typeof data.unread === 'number') onUnread?.(data.unread);
     } catch (e) {
       if (n !== latest.current) return;
       if (e.status === 409 && /mailbox/.test(e.message) && !/Reconnect/.test(e.message)) setState('no_mailbox');
       else if (e.status === 409) setState('reconnect');
       else if (e.status === 403) { setState('forbidden'); setError(e.message); }
+      else if (e.body?.busy) { setNotice(e.message); retryOnce(key, e.body.retry_after_ms, () => loadRef.current()); }
       else setError(e.message);
     } finally { if (n === latest.current) setLoading(false); }
-  }, [businessId, tab, q, onUnread]);
+  }, [businessId, source, q, onUnread, retryOnce]);
+  const loadRef = useRef(load);
+  loadRef.current = load;
   useEffect(() => { load(); }, [load]);
 
-  const open = useCallback(async (id, { refresh = false } = {}) => {
-    setOpenId(id); setThread(null); setThreadError(''); setCopied(false);
-    try { setThread(await hkGet(businessId, `/inbox/threads/${id}`, { refresh: refresh ? '1' : '' })); } catch (e) { setThreadError(e.message); }
-  }, [businessId]);
+  const open = useCallback(async (id, { refresh = false, again = false } = {}) => {
+    const other = openRef.current !== id;
+    openRef.current = id;
+    setOpenId(id);
+    if (other) setNote('');
+    if (!again) { setThread(null); setThreadError(''); setThreadNotice(''); setCopied(false); }
+    if (readerRef.current) readerRef.current.scrollTop = 0;
+    try {
+      const t = await hkGet(businessId, `/inbox/threads/${id}`, { refresh: refresh ? '1' : '' });
+      if (openRef.current !== id) return;
+      setThread(t); setThreadNotice(t.busy ? t.notice : '');
+      if (t.busy) retryOnce(`thread:${id}`, t.retry_after_ms, () => { if (openRef.current === id) openAgain.current(id); });
+    } catch (e) {
+      if (openRef.current !== id) return;
+      if (e.body?.busy) { setThreadNotice(e.message); retryOnce(`thread:${id}`, e.body.retry_after_ms, () => { if (openRef.current === id) openAgain.current(id); }); } else setThreadError(e.message);
+    }
+  }, [businessId, retryOnce]);
+  const openAgain = useRef(null);
+  openAgain.current = id => open(id, { again: true });
+
+  const list = lists[source] || null;
+  const all = list?.threads || [];
+  const rows = lane === 'needs_you' || lane === 'other' ? all.filter(t => t.lane === lane) : all;
+  const groups = lane === 'other' ? groupOther(rows) : null;
+  orderRef.current = groups ? groups.flatMap(g => g.rows.map(t => t.thread_id)) : rows.map(t => t.thread_id);
+  const inboxRows = lists.inbox?.threads || [];
+  const counts = {
+    needs_you: lists.inbox ? inboxRows.filter(t => t.lane === 'needs_you').length : null,
+    other: lists.inbox ? inboxRows.filter(t => t.lane === 'other').length : null,
+    brands: lists.brands ? `${lists.brands.threads.length}${lists.brands.more ? '+' : ''}` : lists.inbox ? inboxRows.filter(t => t.chip.kind === 'tracked' || t.chip.kind === 'matches').length : null,
+  };
+
+  // The panes fill the window under the page header so each scrolls on its own and the page itself does not.
+  useLayoutEffect(() => {
+    if (mode === 'phone') { setHeight(null); return undefined; }
+    // Fill to the window first, then give back whatever the shell keeps under the panes (its padding) if the page overflows.
+    const fit = () => {
+      const el = panesRef.current; if (!el) return;
+      const want = Math.floor(window.innerHeight - (el.getBoundingClientRect().top + window.scrollY) - FIT_GAP);
+      el.style.height = `${want}px`;
+      const over = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+      setHeight(Math.max(MIN_PANES, want - over));
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [mode, state]);
+
+  // Keep a row in view inside the list pane without moving the page.
+  const reveal = id => {
+    const pane = listRef.current; const row = pane?.querySelector(`[data-hk-thread="${id}"]`);
+    if (!pane || !row) return;
+    const p = pane.getBoundingClientRect(), r = row.getBoundingClientRect();
+    if (r.top < p.top) pane.scrollTop -= p.top - r.top; else if (r.bottom > p.bottom) pane.scrollTop += r.bottom - p.bottom;
+    row.focus({ preventScroll: true });
+  };
+  useEffect(() => {
+    if (mode === 'phone') return undefined;
+    const onKey = e => {
+      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target)) return;
+      const k = e.key.toLowerCase(); if (k !== 'j' && k !== 'k') return;
+      const ids = orderRef.current; if (!ids.length) return;
+      e.preventDefault();
+      const i = ids.indexOf(openRef.current);
+      const next = k === 'j' ? ids[i < 0 ? 0 : Math.min(ids.length - 1, i + 1)] : ids[i < 0 ? 0 : Math.max(0, i - 1)];
+      if (next !== openRef.current) { open(next); reveal(next); }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [mode, open]);
 
   const act = async fn => { setBusy(true); setNote(''); setError(''); try { await fn(); } catch (e) { setNote(e.message); } finally { setBusy(false); } };
   const link = () => act(async () => { await hkPost(businessId, `/inbox/threads/${openId}/link`, { brand_id: thread.brand.id }); setNote(`Linked to ${thread.brand.name}.`); await load({ refresh: true }); await open(openId, { refresh: true }); });
-  const ignore = () => act(async () => { await hkPost(businessId, '/inbox/ignore', { domain: thread.sender.domain }); setNote(`Ignoring ${thread.sender.domain}.`); await load({ refresh: true }); await open(openId, { refresh: true }); });
+  const ignoreDomain = domain => act(async () => { await hkPost(businessId, '/inbox/ignore', { domain }); setNote(`Ignoring ${domain}.`); await load({ refresh: true }); if (openId) await open(openId, { refresh: true }); });
+  const ignore = () => ignoreDomain(thread.sender.domain);
   const unignore = () => act(async () => { await hkDelete(businessId, `/inbox/ignore/${encodeURIComponent(thread.sender.domain)}`); await load({ refresh: true }); await open(openId, { refresh: true }); });
   const status = (brandId, s) => act(async () => { await hkPatch(businessId, `/brands/${brandId}`, { status: s }); await open(openId, { refresh: true }); });
   const handled = () => act(async () => { await hkPatch(businessId, `/replies/${thread.unhandled_reply_id}`, { handled: true }); setNote('Marked handled.'); await open(openId, { refresh: true }); });
   const track = async body => { const r = await hkPost(businessId, '/inbox/track', { ...body, thread_id: openId }); return { brand: r.brand }; };
   const tracked = async brand => { setTracking(false); setNote(`Tracking ${brand.name}.`); await load({ refresh: true }); await open(openId, { refresh: true }); };
+  const analyzed = intel => {
+    setThread(t => (t ? { ...t, intel } : t));
+    const fit = intel.intel?.fit?.sponsor_fit || null, domain = thread?.sender?.domain;
+    setLists(prev => Object.fromEntries(Object.entries(prev).map(([k, v]) => [k, { ...v, threads: v.threads.map(t => (domain && t.from_domain === domain ? { ...t, intel_fit: fit } : t)) }])));
+  };
   const copyCmd = async () => { const cmd = `hk reply ${thread.brand.name}`; try { await navigator.clipboard.writeText(cmd); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { setNote(`Copy failed. The command is: ${cmd}`); } };
   const showThreadImages = () => setShowImages(s => new Set([...s, openId]));
   const imagesOn = openId ? imagesByDefault || showImages.has(openId) : false;
-  const back = () => { setOpenId(null); setThread(null); };
+  const close = () => { openRef.current = null; setOpenId(null); setThread(null); };
+  const pickLane = id => { setLane(id); close(); };
 
   if (state === 'no_mailbox') return <div className="hk-empty" data-hk-empty data-hk-inbox-state="no_mailbox"><Sprout size={40} /><p className="hk-empty__title">Link your HumanKind Gmail</p><p className="hk-empty__line">Your inbox reads live from the mailbox tethered to this workspace. Link it on Connections.</p><Button variant="primary" onClick={onOpenConnections}>Open Connections</Button></div>;
   if (state === 'forbidden') return <div className="hk-empty" data-hk-empty data-hk-inbox-state="forbidden"><Sprout size={40} /><p className="hk-empty__title">Members only</p><p className="hk-empty__line">A viewer has no mailbox here.</p></div>;
 
-  const rows = list?.threads || [];
-  const paneList = (
-    <section className="hk-inbox__list" aria-label="Threads" data-hk-inbox-list>
-      <div className="hk-inbox__tools">
-        <Segmented label="Inbox tabs" items={TABS} value={tab} onChange={t => { setTab(t); setOpenId(null); setThread(null); }} />
-        <form className="hk-inbox__search" onSubmit={e => { e.preventDefault(); setQ(input.trim()); }}>
-          <input className="ui-input ui-input--sm hk-search-input" type="search" aria-label="Search Gmail" placeholder="Search Gmail, e.g. from:rumpl.com" value={input} onChange={e => setInput(e.target.value)} data-hk-inbox-search />
-          <Button size="sm" variant="tertiary" disabled={loading} onClick={() => load({ refresh: true })} data-hk-inbox-refresh>Refresh</Button>
-        </form>
-      </div>
+  const tools = (
+    <div className="hk-inbox__tools" data-hk-inbox-tools>
+      <Tabs label="Inbox lanes" items={LANES.map(([id, label]) => ({ id, label: counts[id] != null ? `${label} ${counts[id]}` : label }))} value={lane} onChange={pickLane} />
+      <form className="hk-inbox__search" onSubmit={e => { e.preventDefault(); setQ(input.trim()); }}>
+        <input className="ui-input ui-input--sm hk-search-input" type="search" aria-label="Search Gmail" placeholder="Search Gmail, e.g. from:rumpl.com" value={input} onChange={e => setInput(e.target.value)} data-hk-inbox-search />
+        <Button size="sm" variant="tertiary" disabled={loading} onClick={() => load({ refresh: true })} data-hk-inbox-refresh>Refresh</Button>
+      </form>
+      {notice && <p className="hk-banner hk-banner--mustard" role="status" data-hk-inbox-busy><span className="hk-banner__title">{notice}</span></p>}
       {state === 'reconnect' && <p className="hk-banner hk-banner--mustard" data-hk-inbox-state="reconnect"><span className="hk-banner__title">Gmail needs reconnect.</span> <button type="button" className="hk-btn hk-link" onClick={onOpenConnections}>Open Connections</button></p>}
-      {error && <p className="hk-banner hk-banner--mustard" role="alert" data-hk-inbox-error><span className="hk-banner__title">{list ? `Showing the list from ${relative(list.fetched_at)}.` : 'Gmail did not answer.'}</span> <span className="hk-banner__line">{error}</span> <button type="button" className="hk-btn hk-link" onClick={() => load({ refresh: true })}>Try again</button></p>}
-      {list === null && !error && state === 'ok' && <p className="hk-meta" style={{ padding: '12px 4px' }}>Reading your Gmail…</p>}
-      {list && !rows.length && <div className="hk-empty" data-hk-empty><Sprout size={32} /><p className="hk-empty__title">{q ? 'Nothing matches that search.' : tab === 'brands' ? 'No brand mail on this page.' : 'Your inbox is empty.'}</p><p className="hk-empty__line">{tab === 'brands' ? 'Threads from tracked or matching brands show here.' : 'Mail in your HumanKind Gmail shows here as it arrives.'}</p></div>}
+      {error && <p className="hk-banner hk-banner--mustard" role="alert" data-hk-inbox-error><span className="hk-banner__title">{list ? `Showing the list from ${relative(list.fetched_at)}.` : 'Gmail did not answer.'}</span> {error} <button type="button" className="hk-btn hk-link" onClick={() => load({ refresh: true })}>Try again</button></p>}
+    </div>
+  );
+
+  const paneList = (
+    <section className="hk-inbox__list" aria-label="Threads" data-hk-inbox-list ref={listRef}>
+      {list === null && !error && !notice && state === 'ok' && <p className="hk-meta" style={{ padding: '12px 4px' }}>Reading your Gmail…</p>}
+      {list && !rows.length && <div className="hk-empty" data-hk-empty><Sprout size={32} /><p className="hk-empty__title">{q ? 'Nothing matches that search.' : lane === 'needs_you' ? 'Nobody is waiting on you on this page.' : lane === 'brands' ? 'No brand mail yet.' : lane === 'other' ? 'No marketing or automated mail on this page.' : 'Nothing here yet.'}</p></div>}
       <ul className="hk-inbox__rows">
-        {rows.map(t => (
-          <li key={t.thread_id}>
-            <button type="button" className={`hk-btn hk-inbox__row${t.thread_id === openId ? ' hk-inbox__row--on' : ''}${t.chip.kind === 'not_tracked' ? ' hk-inbox__row--dim' : ''}${t.unread ? ' hk-inbox__row--unread' : ''}`} onClick={() => open(t.thread_id)} aria-current={t.thread_id === openId ? 'true' : undefined} data-hk-thread={t.thread_id} data-hk-chip={t.chip.kind}>
-              <span className="hk-inbox__row-top">{t.unread && <span className="hk-inbox__dot" aria-label="Unread" />}<span className="hk-inbox__from">{t.from_name}</span>{t.from_hint && t.from_hint !== t.from_name && <span className="hk-meta hk-inbox__hint">{t.from_hint}</span>}<span className="hk-spacer" /><span className="hk-meta">{fmtDate(t.date)}</span></span>
-              <span className="hk-inbox__subject">{t.subject}</span>
-              <span className="hk-meta hk-inbox__snippet">{t.snippet}</span>
-              <span className="hk-inbox__chips">{t.chip.kind === 'not_tracked' ? <span className="hk-meta">Not tracked</span> : <Chip tone={chipTone(t.chip)}>{chipLabel(t.chip)}</Chip>}{t.chip.kind === 'tracked' && t.chip.label && <Chip tone="lilac">{REPLY_LABEL[t.chip.label] || t.chip.label}</Chip>}{t.has_attachments && <span className="hk-meta">Attachment</span>}</span>
-            </button>
-          </li>
-        ))}
+        {groups
+          ? <OtherGroups groups={groups} openId={openId} onOpen={open} canEdit={canEdit} busy={busy} onIgnore={ignoreDomain} />
+          : rows.map(t => <ThreadRow key={t.thread_id} t={t} on={t.thread_id === openId} onOpen={open} />)}
       </ul>
-      {list?.next_page_token && <Button size="sm" disabled={loading} onClick={() => load({ pageToken: list.next_page_token, append: true })} data-hk-load-more>Load more</Button>}
+      {lists.brands?.more && lane === 'brands' && <p className="hk-meta" data-hk-brands-more>Showing the newest 25 brand threads. Search to find older ones.</p>}
+      {list?.next_page_token && lane !== 'brands' && <Button size="sm" disabled={loading} onClick={() => load({ pageToken: list.next_page_token, append: true })} data-hk-load-more>Load more</Button>}
       <p className="hk-meta hk-inbox__foot">{ONLY_YOU}</p>
     </section>
   );
 
-  const paneThread = openId ? (
-    <section className="hk-inbox__thread" aria-label="Thread" data-hk-inbox-thread>
-      {compact && <button type="button" className="hk-btn hk-link" onClick={back} data-hk-inbox-back>Back to the list</button>}
+  const reader = openId ? (
+    <section className={`hk-inbox__thread${mode === 'drawer' ? ' hk-inbox__drawer' : ''}`} aria-label="Thread" data-hk-inbox-thread ref={readerRef}>
+      {mode !== 'split' && <button type="button" className="hk-btn hk-link" onClick={close} data-hk-inbox-back>{mode === 'phone' ? 'Back to the list' : 'Close'}</button>}
+      {threadNotice && <p className="hk-banner hk-banner--mustard" role="status" data-hk-thread-busy><span className="hk-banner__title">{threadNotice}</span></p>}
       {threadError && <p className="hk-error" role="alert">{threadError}</p>}
-      {!thread && !threadError && <p className="hk-meta">Opening…</p>}
+      {!thread && !threadError && !threadNotice && <p className="hk-meta">Opening…</p>}
       {thread && (
         <>
+          <IntelCard key={thread.thread_id} businessId={businessId} thread={thread} members={members} canEdit={canEdit} busy={busy} onOpenBrand={onOpenBrand} onStatus={status} onLink={link}
+            onTrack={() => setTracking(true)} onIgnore={ignore} onUnignore={unignore} onAnalyzed={analyzed} />
           <header className="hk-inbox__thread-head">
             <h2 className="hk-inbox__subject-title">{thread.subject || '(no subject)'}</h2>
             <div className="hk-inbox__actions">
@@ -124,22 +236,19 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
             {note && <p className="hk-meta" role="status" data-hk-inbox-note>{note}</p>}
           </header>
           <Messages thread={thread} showImages={imagesOn} onShowImages={showThreadImages} gmailEmail={mailboxEmail} />
-          {compact && <BrandPanel thread={thread} members={members} canEdit={canEdit} busy={busy} onOpenBrand={onOpenBrand} onStatus={status} onLink={link} onTrack={() => setTracking(true)} onIgnore={ignore} onUnignore={unignore} />}
         </>
       )}
     </section>
-  ) : <section className="hk-inbox__thread hk-inbox__thread--empty" aria-label="Thread" data-hk-inbox-thread><p className="hk-meta">Pick a thread to read it here.</p></section>;
+  ) : mode === 'split' ? <section className="hk-inbox__thread hk-inbox__thread--empty" aria-label="Thread" data-hk-inbox-thread ref={readerRef}><p className="hk-meta">Pick a thread to read it here. J and K move through the list.</p></section> : null;
 
   return (
-    <div className={`hk-inbox${compact ? ' hk-inbox--phone' : ''}`} data-hk-inbox>
-      {compact ? (openId ? paneThread : paneList) : (
-        <>
-          {paneList}
-          {paneThread}
-          {thread ? <BrandPanel thread={thread} members={members} canEdit={canEdit} busy={busy} onOpenBrand={onOpenBrand} onStatus={status} onLink={link} onTrack={() => setTracking(true)} onIgnore={ignore} onUnignore={unignore} /> : <aside className="hk-inbox__panel hk-inbox__panel--empty" aria-hidden="true" />}
-        </>
-      )}
-      {tracking && thread && <AddBrandModal businessId={businessId} members={members} title="Track as brand" initial={{ name: thread.sender.name === thread.sender.domain ? '' : thread.sender.name, domain: thread.sender.domain || '' }} onSave={track} onSaved={tracked} onClose={() => setTracking(false)} onOpenMatch={id => { setTracking(false); onOpenBrand(id); }} />}
+    <div className={`hk-inbox hk-inbox--${mode}${compact ? ' hk-inbox--phone' : ''}`} data-hk-inbox data-hk-inbox-mode={mode}>
+      {!(mode === 'phone' && openId) && tools}
+      <div className="hk-inbox__panes" ref={panesRef} style={height ? { height } : undefined} data-hk-inbox-panes>
+        {mode === 'phone' ? (openId ? reader : paneList) : <>{paneList}{reader}</>}
+      </div>
+      {tracking && thread && <AddBrandModal businessId={businessId} members={members} title="Track as brand" initial={thread.intel?.prefill || { name: thread.sender.name === thread.sender.domain ? '' : thread.sender.name, domain: thread.sender.domain || '' }}
+        onSave={track} onSaved={tracked} onClose={() => setTracking(false)} onOpenMatch={id => { setTracking(false); onOpenBrand(id); }} />}
     </div>
   );
 }

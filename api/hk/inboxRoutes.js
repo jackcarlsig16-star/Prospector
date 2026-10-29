@@ -6,7 +6,7 @@
 import { getSupabase, HkError, fail, me, domainOf, logEvent, replyRow, brandDetail, brandSummary, liveBrands, brandById, sponsorsNichesOf, canContact, TEAM_DOMAINS } from './hkShared.js';
 import { roleAtLeast } from '../../src/constants/roles.js';
 import { gmailClient, GmailError, GMAIL_UNITS } from './gmailClient.js';
-import { threadRow, messageView, latestInbound, chipFor, originOf, partsOf, isBrandChip, brandQueries, newestFirst, unitsOf, prefillFromIntel, LANES } from './inboxRules.js';
+import { threadRow, messageView, latestInbound, chipFor, originOf, partsOf, isBrandChip, brandQueries, inTurns, byInternalDate, BRANDS_META_MAX, unitsOf, prefillFromIntel, LANES } from './inboxRules.js';
 import { noteInboxList } from './gmailActivity.js';
 import { analyzeSender, cachedIntel } from './inboxAnalyze.js';
 import { header } from './gmailMime.js';
@@ -115,10 +115,8 @@ async function messageMeta(D, businessId, uid, token, id, counts) {
 // messages.list returns newest first, one entry per message: the first entry per thread is that thread's newest message.
 const newestPerThread = msgs => { const seen = new Set(); return msgs.filter(m => (seen.has(m.threadId) ? false : seen.add(m.threadId))); };
 
-async function rowsFor(D, { businessId, uid, token, ctx, msgs, counts }) {
-  const metas = await inGroups(msgs.map(m => m.id), META_BATCH, id => messageMeta(D, businessId, uid, token, id, counts));
-  return metas.filter(Boolean).map(m => ({ ...threadRow({ id: m.threadId, messages: [m] }, ctx), message_count: null }));
-}
+const metasFor = (D, { businessId, uid, token, msgs, counts }) => inGroups(msgs.map(m => m.id), META_BATCH, id => messageMeta(D, businessId, uid, token, id, counts)).then(ms => ms.filter(Boolean));
+const rowOf = (m, ctx) => ({ ...threadRow({ id: m.threadId, messages: [m] }, ctx), message_count: null });
 
 // "Analyzed · Strong fit" on a row whose sender domain has intel (one DB read per page, no Gmail).
 async function withIntel(supabase, businessId, rows) {
@@ -154,13 +152,15 @@ export async function listThreadsRoute(req, res, d = {}) {
       const queries = brandQueries([...Object.keys(ctx.brandsByDomain), ...ctx.replyDomains].filter(dm => !TEAM_DOMAINS.includes(dm)), { search });
       const pages = [];
       for (const qq of queries) { counts['messages.list'] += 1; pages.push(await gcall(D, () => D.gmail.listMessages(token, { labelIds: LABELS.brands, q: qq, maxResults: limit }))); }
-      const all = newestPerThread(pages.flatMap(p => p?.messages || []).sort(newestFirst));
-      more = all.length > limit || pages.some(p => p?.nextPageToken);
-      rows = (await rowsFor(D, { businessId, uid, token, ctx, msgs: all.slice(0, limit), counts })).filter(r => isBrandChip(r.chip));
+      const picked = inTurns(pages.map(p => newestPerThread(p?.messages || [])), BRANDS_META_MAX);
+      const metas = (await metasFor(D, { businessId, uid, token, msgs: picked, counts })).sort(byInternalDate);
+      rows = metas.map(m => rowOf(m, ctx)).filter(r => isBrandChip(r.chip));
+      more = rows.length > limit || pages.some(p => p?.nextPageToken);
+      rows = rows.slice(0, limit);
     } else {
       counts['messages.list'] += 1;
       const page = await gcall(D, () => D.gmail.listMessages(token, { labelIds: LABELS[tab], q: search || null, pageToken, maxResults: limit }));
-      rows = await rowsFor(D, { businessId, uid, token, ctx, msgs: newestPerThread(page?.messages || []), counts });
+      rows = (await metasFor(D, { businessId, uid, token, msgs: newestPerThread(page?.messages || []), counts })).map(m => rowOf(m, ctx));
       next = page?.nextPageToken || null;
     }
     rows = await withIntel(supabase, businessId, rows);
@@ -177,10 +177,12 @@ export async function listThreadsRoute(req, res, d = {}) {
 async function brandPanel(supabase, businessId, uid, brand, ctx) {
   const { data: touches } = await supabase.from('hk_touches').select('*').eq('business_id', businessId).eq('brand_id', brand.id);
   const live = (touches || []).filter(t => t.state !== 'discarded');
-  const { data: replies } = await supabase.from('hk_replies').select('id, label, handled, received_at').eq('business_id', businessId).eq('brand_id', brand.id).order('received_at', { ascending: false }).limit(1);
+  const { data: replies } = await supabase.from('hk_replies').select('id, label, summary, handled, received_at').eq('business_id', businessId).eq('brand_id', brand.id).order('received_at', { ascending: false }).limit(1);
   const { data: settings } = await supabase.from('hk_settings').select('max_email_touches').eq('business_id', businessId).maybeSingle();
   const verdict = canContact({ brand, touches: live, threadsByFounder: await trackedThreads(supabase, businessId, brand.id), senderUserId: uid, kind: 'cold', sponsorsNiches: sponsorsNichesOf(ctx.brands), maxEmailTouches: settings?.max_email_touches || 3 });
-  return { ...brandSummary(brand), challenge_idea: brand.challenge_idea || null, touch_count: live.length, last_reply_label: replies?.[0]?.label || null, verdict };
+  const lastTouch = live.map(t => t.sent_at).filter(Boolean).sort().pop() || null;
+  return { ...brandSummary(brand), challenge_idea: brand.challenge_idea || null, touch_count: live.length, max_email_touches: settings?.max_email_touches || 3, last_touch_at: lastTouch,
+    last_reply_label: replies?.[0]?.label || null, last_reply_summary: replies?.[0]?.summary || null, verdict };
 }
 
 // The sender a thread is about: the newest inbound message's original sender (group relays resolved).

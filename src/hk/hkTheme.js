@@ -240,9 +240,27 @@ ${PINNED} {
 .hk-theme .hk-palette__item { display:flex; align-items:center; gap:10px; width:100%; padding:9px 12px; border-radius:10px; font:500 14px var(--hk-font-body); color:var(--hk-cocoa); }
 .hk-theme .hk-palette__item[data-selected="true"] { background:var(--hk-sand); }
 .hk-theme .hk-palette__none { padding:10px 12px; color:var(--hk-muted); }
-/* hkos-inbox-v1 I3 - three panes on desktop, one at a time on the phone. */
-.hk-theme .hk-inbox { display:grid; grid-template-columns:minmax(300px, 380px) minmax(0, 1fr) 280px; gap:18px; align-items:start; }
+/* hkos-inbox-v2 L2 - lanes on top; from 1100 px the list and the reader each scroll inside the window-high panes (the
+   page does not), 760-1099 the reader is a drawer over the list, under 760 one pane at a time. */
+.hk-theme .hk-inbox { display:flex; flex-direction:column; gap:12px; min-width:0; }
+.hk-theme .hk-inbox__panes { display:grid; grid-template-columns:minmax(300px, 380px) minmax(0, 1fr); gap:18px; min-height:0; }
+.hk-theme .hk-inbox--split .hk-inbox__list, .hk-theme .hk-inbox--split .hk-inbox__thread { overflow-y:auto; min-height:0; overscroll-behavior:contain; padding-right:4px; }
+.hk-theme .hk-inbox--drawer .hk-inbox__panes { grid-template-columns:minmax(0, 1fr); position:relative; }
+.hk-theme .hk-inbox--drawer .hk-inbox__list { overflow-y:auto; min-height:0; overscroll-behavior:contain; }
+.hk-theme .hk-inbox__drawer { position:absolute; top:0; right:0; bottom:0; width:min(640px, 90%); overflow-y:auto; overscroll-behavior:contain; padding:14px 16px; background:var(--hk-surface); border-radius:var(--hk-radius-card) 0 0 var(--hk-radius-card); box-shadow:-8px 0 24px rgba(43,29,20,.14); z-index:5; }
+.hk-theme .hk-inbox--phone .hk-inbox__panes { grid-template-columns:minmax(0, 1fr); }
 .hk-theme .hk-inbox__list { display:flex; flex-direction:column; gap:10px; min-width:0; }
+.hk-theme .hk-inbox__date { margin-left:auto; flex:none; white-space:nowrap; }
+.hk-theme .hk-inbox__line { display:block; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:14px; }
+.hk-theme .hk-inbox__line .hk-inbox__snippet { display:inline; }
+.hk-theme .hk-inbox__row--compact { flex-direction:row; align-items:center; gap:10px; padding:6px 12px 6px 14px; }
+.hk-theme .hk-inbox__row--compact .hk-inbox__subject { flex:1 1 auto; min-width:0; }
+.hk-theme .hk-inbox__group { display:flex; flex-direction:column; gap:2px; padding:8px 0 4px; border-top:1px solid var(--hk-line); }
+.hk-theme .hk-inbox__group-head { display:flex; align-items:center; gap:8px; padding:0 4px; min-width:0; }
+.hk-theme .hk-inbox__group-head .ui-btn { margin-left:auto; }
+.hk-theme .hk-inbox__panel--muted { box-shadow:none; background:var(--hk-cream); }
+.hk-theme .hk-intel { display:flex; flex-direction:column; gap:6px; }
+.hk-theme .hk-intel p { margin:0; }
 .hk-theme .hk-inbox__tools { display:flex; flex-direction:column; gap:8px; }
 .hk-theme .hk-inbox__search { display:flex; gap:8px; align-items:center; }
 .hk-theme .hk-inbox__search .hk-search-input { flex:1 1 auto; min-width:0; }
@@ -281,7 +299,7 @@ ${PINNED} {
 .hk-theme .hk-inbox__panel-title { margin:0; font:600 18px var(--hk-font-display); color:var(--hk-cocoa); }
 .hk-theme .hk-inbox__panel-actions { display:flex; gap:8px; flex-wrap:wrap; }
 .hk-theme .hk-inbox__panel .hk-banner { margin:0; }
-.hk-theme .hk-inbox--phone, .hk-theme.hk-shell--phone .hk-inbox { grid-template-columns:minmax(0, 1fr); }
+.hk-theme.hk-shell--phone .hk-inbox__panes { grid-template-columns:minmax(0, 1fr); }
 .hk-theme.hk-shell--phone .hk-inbox__frame { height:min(420px, 55vh); }
 .hk-theme .hk-ignored { list-style:none; margin:8px 0 0; padding:0; display:flex; flex-direction:column; gap:6px; }
 .hk-theme .hk-ignored li { display:flex; gap:10px; align-items:center; }
