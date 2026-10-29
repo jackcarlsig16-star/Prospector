@@ -1,7 +1,7 @@
 import { useId } from 'react';
 import { SA } from '../../theme';
 import { numStyle } from '../goalsUi';
-import { ToggleChip, ActiveFilterChip } from '../../../../ui/Chip';
+import { ToggleChip, ActiveFilterLine } from '../../../../ui/Chip';
 import { IconSearch } from '../../../../ui/icons';
 import { SEGMENTS, WINDOWS, BANDS, EMPTY_FILTERS } from './prioritiesModel';
 
@@ -66,13 +66,7 @@ export default function FilterBar({ filters, set, onClear, data, members }) {
           <input type="search" className="ui-input ui-input--sm" aria-label="Search companies" placeholder="Search companies" value={filters.q} onChange={e => set('q', e.target.value)} style={{ width: '100%', height: 30, paddingLeft: 28 }} />
         </span>
       </div>
-      {active.length > 0 && (
-        <div data-active-filters style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 12, color: SA.muted }}>
-          <span style={numStyle}>Showing {data?.counts?.shown ?? '…'} of {data?.counts?.ranked ?? '…'} ·</span>
-          {active.map(a => <ActiveFilterChip key={a.key} onRemove={() => set(a.key, EMPTY_FILTERS[a.key])}>{a.text}</ActiveFilterChip>)}
-          <button type="button" className="ui-link" onClick={onClear}>Clear all</button>
-        </div>
-      )}
+      <ActiveFilterLine summary={`Showing ${data?.counts?.shown ?? '…'} of ${data?.counts?.ranked ?? '…'} ·`} active={active} onRemove={k => set(k, EMPTY_FILTERS[k])} onClear={onClear} />
     </div>
   );
 }

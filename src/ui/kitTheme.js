@@ -1,4 +1,4 @@
-import { KIT_DARK, KIT_LIGHT, KIT_RADIUS, KIT_SEGMENTED, KIT_SUBTAB, KIT_FILTER_PILL, KIT_TABLE, KIT_EDITABLE, KIT_DRAWER } from './tokens';
+import { KIT_DARK, KIT_LIGHT, KIT_RADIUS, KIT_SEGMENTED, KIT_SUBTAB, KIT_FILTER_PILL, KIT_PAGE_ACTIONS, KIT_PILL_SELECT, KIT_TABLE, KIT_EDITABLE, KIT_DRAWER } from './tokens';
 
 // Every kit component reads var(--ui-*) so dark/light is pure CSS: :root holds
 // dark, the app's light mode (body.mode-straight-shooter) swaps to light, and
@@ -88,6 +88,13 @@ body.mode-straight-shooter, .ui-theme-light { ${vars(KIT_LIGHT)} }
 .ui-chip--active { border-color:var(--ui-accent); color:var(--ui-text); }
 .ui-chip--active .ui-chip__x { color:var(--ui-accent); font-size:14px; line-height:1; }
 .ui-chip:disabled { border-style:dashed; color:var(--ui-muted); cursor:not-allowed; }
+.ui-chip--empty { border-style:dashed; color:var(--ui-muted); }
+.ui-actions { display:flex; align-items:center; gap:${KIT_PAGE_ACTIONS.gap}px; flex:none; }
+.ui-actions--wrap { flex-wrap:wrap; flex:1 1 auto; }
+.ui-actions__group { display:inline-flex; align-items:center; gap:${KIT_PAGE_ACTIONS.gap}px; flex:none; }
+.ui-actions__group + .ui-actions__group::before { content:''; width:1px; height:${KIT_PAGE_ACTIONS.divider}px; margin-right:${KIT_PAGE_ACTIONS.gap}px; background:var(--ui-border); }
+.ui-actions__word { font:500 10.5px ${MONO}; letter-spacing:.08em; text-transform:uppercase; color:var(--ui-subTabIcon); margin-right:2px; }
+.ui-actions .ui-btn { height:${KIT_PAGE_ACTIONS.height}px; }
 .ui-filter { display:inline-flex; align-items:stretch; flex:none; height:32px; max-width:100%; }
 .ui-filter__label { display:inline-flex; align-items:center; padding:0 8px; border:1px solid var(--ui-control); border-right:0; border-radius:${KIT_RADIUS.control}px 0 0 ${KIT_RADIUS.control}px; background:var(--ui-surface2); font:500 11px ${MONO}; letter-spacing:.08em; text-transform:uppercase; color:var(--ui-muted); white-space:nowrap; }
 .ui-filter__select { box-sizing:border-box; height:32px; min-width:0; padding:0 8px; border:1px solid var(--ui-control); border-radius:0 ${KIT_RADIUS.control}px ${KIT_RADIUS.control}px 0; background:var(--ui-inset); color:var(--ui-text); font:500 13px ${SANS}; cursor:pointer; }
@@ -132,6 +139,13 @@ body.mode-straight-shooter, .ui-theme-light { ${vars(KIT_LIGHT)} }
 .ui-table__toggle[aria-expanded="false"]::before { content:'▸'; }
 .ui-table__toggle:focus-visible { outline:2px solid var(--ui-accent); outline-offset:2px; }
 .ui-table__count { color:var(--ui-muted); font-weight:400; font-variant-numeric:tabular-nums; }
+.ui-table__gword { font:500 11px ${MONO}; letter-spacing:.06em; text-transform:uppercase; color:var(--gword-color, var(--ui-muted)); }
+.ui-pill-field { display:inline-flex; align-items:center; gap:6px; max-width:100%; min-width:0; }
+.ui-pill-select { appearance:none; -webkit-appearance:none; flex:none; box-sizing:border-box; height:${KIT_PILL_SELECT.height}px; padding:0 ${KIT_PILL_SELECT.padX * 2 + KIT_PILL_SELECT.caret}px 0 ${KIT_PILL_SELECT.padX}px; border:1px solid var(--pill-color, var(--ui-border)); border-radius:${KIT_PILL_SELECT.radius}px; background:transparent; color:var(--pill-color, var(--ui-muted)); font:500 12px ${SANS}; cursor:pointer; }
+.ui-pill-select:focus-visible { outline:2px solid var(--ui-accent); outline-offset:2px; }
+.ui-pill-select:disabled { opacity:.6; cursor:progress; }
+.ui-pill-select option { color:var(--ui-text); background:var(--ui-surface); }
+.ui-pill-select__caret { flex:none; margin-left:-${KIT_PILL_SELECT.padX + KIT_PILL_SELECT.caret + 6}px; color:var(--ui-muted); pointer-events:none; }
 .ui-table__dim { color:var(--ui-faint); }
 .ui-table__empty { padding:12px 10px; color:var(--ui-muted); }
 .ui-table__detail-cell { cursor:pointer; }

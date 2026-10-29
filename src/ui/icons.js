@@ -47,3 +47,10 @@ export const IconPhone = p => <Svg {...p}><path d="M3 2.5h3l1.2 3-1.6 1a8 8 0 0 
 export const IconTarget = p => <Svg {...p}><circle cx="8" cy="8" r="6" /><circle cx="8" cy="8" r="3" /><circle cx="8" cy="8" r=".8" fill="currentColor" /></Svg>;
 export const IconRadar = p => <Svg {...p}><circle cx="8" cy="8" r="6" /><circle cx="8" cy="8" r="2.5" /><path d="M8 8l4-4" /></Svg>;
 export const IconUpload = p => <Svg {...p}><path d="M8 11V3M4.5 6.5 8 3l3.5 3.5M3 13h10" /></Svg>;
+// companies-v2 C2 / C3 - page actions (Columns · Export), the All channel chip, the to-do / overdue toggles, the caret.
+export const IconGrid = p => <Svg fill="currentColor" {...p}><circle cx="4" cy="4" r="1.6" /><circle cx="12" cy="4" r="1.6" /><circle cx="4" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /></Svg>;
+export const IconColumns = p => <Svg {...p}><rect x="2" y="3" width="12" height="10" rx="1" /><path d="M6 3v10M10 3v10" /></Svg>;
+export const IconDownload = p => <Svg {...p}><path d="M8 3v8M4.5 7.5 8 11l3.5-3.5M3 13h10" /></Svg>;
+export const IconTodo = p => <Svg {...p}><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M5 8.2l2 2 4-4.4" /></Svg>;
+export const IconClock = p => <Svg {...p}><circle cx="8" cy="8" r="6" /><path d="M8 4.5V8l2.5 1.5" /></Svg>;
+export const IconCaret = p => <Svg {...p}><path d="M4.5 6.5 8 10l3.5-3.5" /></Svg>;

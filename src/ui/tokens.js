@@ -285,6 +285,10 @@ export const KIT_SEGMENTED = { height: 28, padding: '0 12px', radius: 7, gap: 2,
 export const KIT_SUBTAB = { height: 38, fontSize: 13, icon: 14, underline: 2, gap: 6, padX: 10 };
 // companies-v2 C3 - FilterSelect variant="pill": label + value + caret in one pill; accent edge when not the default.
 export const KIT_FILTER_PILL = { height: 30, padX: 12, caret: 12 };
+// companies-v2 C2 - a screen's page actions in the frame row: 30 px buttons in groups (tiny mono group word + 1 px divider).
+export const KIT_PAGE_ACTIONS = { height: 30, gap: 6, icon: 14, divider: 18 };
+// companies-v2 C4 - the in-row Priority control: the select drawn as an outline pill in the level's hue, with a caret.
+export const KIT_PILL_SELECT = { height: 22, radius: 6, padX: 8, caret: 10 };
 
 // pipeline-wide-table-v1 - DataTable: one line per row, 13px text. The box
 // fits the viewport (minus bottomGap) so the sticky header holds while the

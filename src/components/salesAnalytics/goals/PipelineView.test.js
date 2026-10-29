@@ -60,7 +60,9 @@ beforeEach(() => {
   fetchOpportunities.mockResolvedValue([{ id: 'Solidcore', organization: 'Solidcore', org_type: 'employer', stage: 'meeting' }]);
 });
 // sales-ia-v2: the screen's buttons portal into the frame row's tools slot.
-const setup = (extra = {}) => {
+// companies-v2 C4: most fixtures have no priority, so every group starts open unless a test asks for the defaults.
+const setup = (extra = {}, { defaultGroups = false } = {}) => {
+  if (!defaultGroups && localStorage.getItem('prospector_pipeline_groups') == null) localStorage.setItem('prospector_pipeline_groups', '[]');
   const props = { businessId: 'b1', canEdit: true, onOpenPartner: jest.fn(), onOpenCompanies: jest.fn(), ...extra };
   if (!document.getElementById('sales-frame-tools')) { const slot = document.createElement('div'); slot.id = 'sales-frame-tools'; document.body.appendChild(slot); }
   render(<PipelineView {...props} />);
@@ -75,25 +77,59 @@ const section = name => {
   return box;
 };
 
-test('Top pinned first, then color sections in order; Parked collapsed; counts per color', async () => {
+// companies-v2 C4 - grouped by priority: "P1 · Act today n" headers in the pill hue, then No priority; empty groups drop out.
+const PRIO_ROWS = [
+  row('Hot Co', 'employer', 'green', { priority: 1 }), row('Warm Co', 'partner', 'yellow', { priority: 2 }), row('Warm Two', 'employer', 'blue', { priority: 2 }),
+  row('Watch Co', 'employer', 'gray', { priority: 3 }), row('Noise Co', 'partner', 'faded', { priority: 4 }), row('Blank Co', 'employer', 'light'),
+];
+test('groups and counts come from the rows: P1-P4 in order, then No priority; words from PRIORITY_WORD in the pill hue; the row bar stays the stage band', async () => {
+  goalsApi.pipelineBoard.mockResolvedValue(PRIO_ROWS);
   setup();
-  expect(await screen.findByRole('heading', { name: /^Top 1 of 25/ })).toBeTruthy();
-  expect(within(section('Top 1 of 25')).getByText('Gallagher')).toBeTruthy();
+  await screen.findByText('Hot Co');
   const heads = screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent.trim());
-  expect(heads).toEqual(['Top 1 of 25', 'Meeting 1', 'Talking 1', 'Not started 1', 'Parked 1']);
-  expect(screen.queryByText('Old Union')).toBeNull();
-  const table = within(screen.getByRole('table'));
-  const parked = table.getByRole('button', { name: /^Parked 1/ });
-  expect(parked).toHaveAttribute('aria-expanded', 'false');
-  fireEvent.click(parked);
-  expect(screen.getByText('Old Union')).toBeTruthy();
-  fireEvent.click(table.getByRole('button', { name: /^Meeting 1/ }));
-  expect(screen.queryByText('Solidcore')).toBeNull();
-  fireEvent.click(table.getByRole('button', { name: /^Meeting 1/ }));
-  expect(screen.getByText('Solidcore')).toBeTruthy();
-  expect(channelBtn('All').textContent).toBe('All5');
-  expect(channelBtn('Apollo outbound').textContent).toBe('Apollo outbound1');
-  expect(channelBtn('Partners & referrals').textContent).toBe('Partners & referrals2');
+  expect(heads).toEqual(['P1 · Act today 1', 'P2 · This week 2', 'P3 · Watch 1', 'P4 · Noise 1', 'No priority 1']);
+  expect(within(section('P2 · This week')).getByText('Warm Two')).toBeTruthy();
+  expect(within(section('No priority')).getByText('Blank Co')).toBeTruthy();
+  const word = screen.getByText('P1 · Act today', { selector: '.ui-table__gword' });
+  expect(word).toHaveClass('ui-table__gword');
+  expect(word.style.getPropertyValue('--gword-color')).toBe('var(--sa-prio-p1)');
+  expect(screen.getByText('Hot Co').closest('tr').style.getPropertyValue('--ui-row-bar')).toBe('var(--sa-good)');
+  expect(channelBtn('All').textContent).toBe('All6');
+  cleanup();
+  goalsApi.pipelineBoard.mockResolvedValue(PRIO_ROWS.slice(0, 3));
+  setup();
+  await screen.findByText('Hot Co');
+  expect(screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent.trim())).toEqual(['P1 · Act today 1', 'P2 · This week 2']);
+});
+
+test('P3, P4 and No priority start collapsed, P1 / P2 open; a toggle is remembered under prospector_pipeline_groups', async () => {
+  goalsApi.pipelineBoard.mockResolvedValue(PRIO_ROWS);
+  setup({}, { defaultGroups: true });
+  await screen.findByText('Hot Co');
+  const table = () => within(screen.getByRole('table'));
+  const toggle = name => table().getByRole('button', { name: new RegExp(`^${name}`) });
+  expect(toggle('P1 · Act today')).toHaveAttribute('aria-expanded', 'true');
+  expect(toggle('P2 · This week')).toHaveAttribute('aria-expanded', 'true');
+  expect(toggle('P3 · Watch')).toHaveAttribute('aria-expanded', 'false');
+  expect(toggle('P4 · Noise')).toHaveAttribute('aria-expanded', 'false');
+  expect(toggle('No priority')).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.queryByText('Watch Co')).toBeNull();
+  expect(screen.queryByText('Blank Co')).toBeNull();
+  fireEvent.click(toggle('P3 · Watch'));
+  expect(screen.getByText('Watch Co')).toBeTruthy();
+  fireEvent.click(toggle('P1 · Act today'));
+  expect(screen.queryByText('Hot Co')).toBeNull();
+  expect(JSON.parse(localStorage.getItem('prospector_pipeline_groups'))).toEqual(['p4', 'none', 'p1']);
+  cleanup();
+  setup({}, { defaultGroups: true });
+  await screen.findByText('Watch Co');
+  expect(screen.queryByText('Hot Co')).toBeNull();
+  expect(toggle('P1 · Act today')).toHaveAttribute('aria-expanded', 'false');
+  localStorage.setItem('prospector_pipeline_groups', '{bad json');
+  cleanup();
+  setup({}, { defaultGroups: true });
+  await screen.findByText('Hot Co');
+  expect(screen.queryByText('Watch Co')).toBeNull();
 });
 
 test('one filter row: type, team, owner, search; the channel counts follow the filters; Clear resets all', async () => {
@@ -116,14 +152,54 @@ test('one filter row: type, team, owner, search; the channel counts follow the f
   expect(screen.queryByText('Solidcore')).toBeNull();
   fireEvent.change(screen.getByLabelText('Stage'), { target: { value: 'Not started' } });
   expect(screen.getByText('OneDigital')).toBeTruthy();
-  // ui-clarity-v1 R4: Clear is a text button that counts the filters and leaves when none is on.
-  const clear = screen.getByRole('button', { name: /^Clear/ });
-  expect(clear.textContent).toBe('Clear (2)');
-  expect(clear).toHaveClass('ui-btn--tertiary');
-  fireEvent.click(clear);
+  // companies-v2 C3: the active-filter line's Clear all resets every filter and the line leaves.
+  fireEvent.click(screen.getByRole('button', { name: 'Clear all' }));
   expect(screen.getByText('Solidcore')).toBeTruthy();
   expect(screen.getByLabelText('Search companies').value).toBe('');
-  expect(screen.queryByRole('button', { name: /^Clear/ })).toBeNull();
+  expect(document.querySelector('[data-active-filters]')).toBeNull();
+});
+
+test('active-filter line: only while something narrows the set; "Showing n of N · sorted by …"; each chip removes its one filter; Clear all', async () => {
+  setup();
+  await screen.findByText('Solidcore');
+  expect(document.querySelector('[data-active-filters]')).toBeNull();
+  fireEvent.change(screen.getByLabelText('Owner'), { target: { value: 'Jack' } });
+  fireEvent.change(screen.getByLabelText('Team'), { target: { value: 'homelover' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Visited 7 d' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Visited 7 d' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Has open to-do' }));
+  const line = () => within(document.querySelector('[data-active-filters]'));
+  expect(document.querySelector('[data-active-filters]').textContent).toMatch(/^Showing 0 of 5 · sorted by priority ·/);
+  expect(screen.getByLabelText('Owner').closest('.ui-filter--pill')).toHaveAttribute('data-active');
+  expect(screen.getByLabelText('Stage').closest('.ui-filter--pill')).not.toHaveAttribute('data-active');
+  fireEvent.click(line().getByRole('button', { name: 'Remove filter Has open to-do' }));
+  expect(screen.getByRole('button', { name: 'Has open to-do' })).toHaveAttribute('aria-pressed', 'false');
+  expect(document.querySelector('[data-active-filters]').textContent).toMatch(/^Showing 1 of 5 ·/);
+  fireEvent.click(line().getByRole('button', { name: 'Remove filter Owner: Jack' }));
+  expect(screen.getByLabelText('Owner').value).toBe('');
+  expect(screen.getByLabelText('Team').value).toBe('homelover');
+  expect(line().getAllByRole('button').map(b => b.textContent)).toEqual(['Team: HomeLover×', 'Clear all']);
+  fireEvent.click(screen.getByRole('button', { name: /^Last touch/ }));
+  expect(document.querySelector('[data-active-filters]').textContent).toMatch(/sorted by Last touch ·/);
+  fireEvent.click(line().getByRole('button', { name: 'Clear all' }));
+  expect(document.querySelector('[data-active-filters]')).toBeNull();
+  expect(screen.getByLabelText('Team').value).toBe('');
+  expect(screen.getByText('OneDigital')).toBeTruthy();
+});
+
+test('CHANNEL_ICON: a glyph on every channel chip and in the Channel cell (glyph + word); a channel with 0 is dashed and last', async () => {
+  goalsApi.pipelineBoard.mockResolvedValue([...ROWS.slice(0, 2).map(r => ({ ...r, channel: 'website_visit' })), APOLLO]);
+  setup();
+  await screen.findByText('Solidcore');
+  const chips = within(screen.getByRole('group', { name: 'Channel' })).getAllByRole('button');
+  expect(chips.every(b => b.querySelector('svg'))).toBe(true);
+  expect(chips.map(b => b.dataset.channel)).toEqual(['all', 'apollo', 'partners', 'website', 'scout', 'call_notes', 'targets']);
+  expect(chips.filter(b => b.classList.contains('ui-chip--empty')).map(b => b.dataset.channel)).toEqual(['website', 'scout', 'call_notes', 'targets']);
+  expect(within(screen.getByRole('group', { name: 'Filters' })).getAllByRole('button').map(b => [b.textContent, !!b.querySelector('svg')])).toEqual([['Visited 7 d', true], ['Has open to-do', true], ['Overdue', true]]);
+  const cell = screen.getByText('Solidcore').closest('tr').querySelector('[data-channel-cell]');
+  expect(cell.dataset.channelCell).toBe('website_visit');
+  expect(cell.querySelector('svg')).toBeTruthy();
+  expect(cell.textContent).toBe('Website visit');
 });
 
 test('channel buttons: All = records; Apollo outbound shows the Apollo-only company; ?channel= opens on that channel', async () => {
@@ -175,14 +251,14 @@ test('one line per company: aligned cells, record id on hover, sort by Due insid
   expect(screen.getByText('Beta Co').closest('tr').style.getPropertyValue('--ui-row-bar')).toBe('var(--sa-warn)');
 });
 
-test('★ a partner goes through the hot signal, an employer through is_top; it moves into Top', async () => {
+test('★ a partner goes through the hot signal, an employer through is_top; the star fills', async () => {
   setup();
   await screen.findByText('Solidcore');
   fireEvent.click(screen.getByRole('button', { name: 'Star OneDigital' }));
   await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'OneDigital', { type: 'hot', hot: true }));
   fireEvent.click(screen.getByRole('button', { name: 'Star Solidcore' }));
   await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', { is_top: true }));
-  await waitFor(() => expect(within(section('Top 3 of 25')).getByText('Solidcore')).toBeTruthy());
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Unstar Solidcore' })).toHaveAttribute('aria-pressed', 'true'));
   fireEvent.click(screen.getByRole('button', { name: 'Unstar Gallagher' }));
   await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'Gallagher', { type: 'hot', hot: false }));
 });
@@ -246,6 +322,40 @@ test('+ Add ▾ › Employer opens a blank panel; save creates through the route
   fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: 'solidcore inc' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   expect((await screen.findByRole('status')).textContent).toBe('Solidcore is already in the pipeline - no new row added.');
+});
+
+test('page actions: TABLE (Columns · People search) · SHEET (Export · Update, full old text as name + title) · + Add; a Viewer gets no SHEET and no + Add', async () => {
+  setup();
+  await screen.findByText('Solidcore');
+  const bar = document.querySelector('#sales-frame-tools [data-page-actions]');
+  expect([...bar.querySelectorAll('[data-action-group]')].map(g => g.dataset.actionGroup)).toEqual(['table', 'sheet', 'add']);
+  const table = within(screen.getByRole('group', { name: 'Table' }));
+  expect(table.getAllByRole('button').map(b => b.textContent)).toEqual(['Columns', 'People search']);
+  const sheet = within(screen.getByRole('group', { name: 'Sheet' }));
+  expect(sheet.getAllByRole('button').map(b => b.textContent)).toEqual(['Export', 'Update']);
+  expect(sheet.getByRole('button', { name: 'Export joint sheet' }).title).toMatch(/^Export joint sheet/);
+  expect(sheet.getByRole('button', { name: 'Update from sheet' }).title).toMatch(/^Update from sheet/);
+  expect(bar.querySelectorAll('.ui-actions__word').length).toBe(2);
+  expect(within(bar).getByRole('button', { name: '+ Add ▾' })).toBeTruthy();
+  cleanup();
+  document.body.innerHTML = '';
+  setup({ canEdit: false });
+  await screen.findByText('Solidcore');
+  expect([...document.querySelectorAll('[data-action-group]')].map(g => g.dataset.actionGroup)).toEqual(['table']);
+  expect(screen.queryByRole('button', { name: '+ Add ▾' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Update from sheet' })).toBeNull();
+  expect(screen.queryByLabelText('Priority for Solidcore')).toBeNull();
+});
+
+test('priority cell: the same select drawn as an outline pill in the level\'s hue, with a caret', async () => {
+  goalsApi.pipelineBoard.mockResolvedValue([row('Hot Co', 'employer', 'green', { priority: 1 }), row('Blank Co', 'employer', 'light')]);
+  setup();
+  const hot = await screen.findByLabelText('Priority for Hot Co');
+  expect(hot).toHaveClass('ui-pill-select');
+  expect(hot.style.getPropertyValue('--pill-color')).toBe('var(--sa-prio-p1)');
+  expect(hot.nextElementSibling).toHaveClass('ui-pill-select__caret');
+  expect(hot.selectedOptions[0].textContent).toBe('P1 · Act today');
+  expect(screen.getByLabelText('Priority for Blank Co').style.getPropertyValue('--pill-color')).toBe('');
 });
 
 test('Viewer: stars are read-only; employer and partner open the read-only panel (no action bar, no ★ / note / Next)', async () => {
@@ -601,7 +711,7 @@ test('columns: the chooser hides a column and the choice and the last sort are r
   expect(screen.queryByRole('columnheader', { name: /^Channel/ })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: /^Last touch/ }));
   fireEvent.click(screen.getByRole('button', { name: /^Last touch/ }));
-  expect(screen.getByRole('heading', { name: /^Sorted by Last touch/ })).toBeTruthy();
+  expect(screen.getByRole('columnheader', { name: /^Last touch/ })).toHaveAttribute('aria-sort', 'descending');
   expect(JSON.parse(localStorage.getItem('prospector_pipeline_columns'))).toEqual(['record', 'channel']);
   expect(JSON.parse(localStorage.getItem('prospector_pipeline_sort'))).toEqual({ id: 'touch', dir: 'desc' });
   cleanup();

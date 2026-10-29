@@ -16,43 +16,42 @@ import AddFlows from './AddFlows';
 import TypeChip, { typeSortValue } from './TypeChip';
 import DataTable from '../../../ui/DataTable';
 import EditableCell from '../../../ui/EditableCell';
-import FilterSelect from '../../../ui/FilterSelect';
 import Button from '../../../ui/Button';
 import Tag from '../../../ui/Tag';
 import { priorityColor } from '../palette';
-import { ToggleChip } from '../../../ui/Chip';
+import * as Icons from '../../../ui/icons';
+import CompaniesFilters, { FilterControls } from './CompaniesFilters';
 import { KIT_EDITABLE } from '../../../ui/tokens';
 import useMediaQuery from '../../../utils/useMediaQuery';
 import { openTasks } from '../tasks/LinkedTasks';
 import { laWeekStart } from '../periods';
 import { FRAME_TOOLS_ID } from '../salesFrame';
-import { numStyle, inputStyle, ErrorNote } from './goalsUi';
-import { BOARD_COLORS, TOP_CAP } from '../../../constants/pipelineBoard';
-import { OWNER_TEAMS, TEAM_LABEL } from '../../../constants/ownership';
-import { TIERS } from '../../../constants/partnerPipeline';
-import { CHANNEL_LABEL, PRIORITIES, PRIORITY_WORD } from '../../../constants/salesChannels';
+import { numStyle, ErrorNote } from './goalsUi';
+import { TOP_CAP } from '../../../constants/pipelineBoard';
+import { TEAM_LABEL } from '../../../constants/ownership';
+import { CHANNEL_LABEL, CHANNEL_ICON, PRIORITIES, PRIORITY_WORD } from '../../../constants/salesChannels';
 import { NOT_A_FIT, priorityValue, priorityText, writePriority, undoValue } from './priorityActions';
 import { PRIORITY_TYPES } from './companyPanelModel';
 import {
-  CHANNEL_BUTTONS, TYPE_OPTIONS, EMPTY_FILTERS, activeFilterCount, channelFromParam, companiesView, ownersOf, stagesOf,
-  readHidden, writeHidden, readSort, writeSort, prioritySetLabel,
+  EMPTY_FILTERS, activeFilterCount, channelFromParam, companiesView, inChannel, ownersOf, stagesOf,
+  readHidden, writeHidden, readSort, writeSort, readCollapsed, writeCollapsed, prioritySetLabel, PRIORITY_GROUPS, priorityGroup,
 } from './companiesModel';
 
 // sales-ia-v2 P1-P3 - Pipeline > Companies: every partner, employer and
 // target (plus Apollo-only companies, website visitors and Scout signals
 // under their channel buttons) on one table. Rows come from GET
 // goals/pipeline-board; the UI filters, sorts and maps a color key to a token.
-// N2: the channel row and the filter row have fixed heights and scroll
-// sideways instead of wrapping; notices and the column chooser float over
-// the page; the screen's buttons sit in the frame row (#sales-frame-tools).
-// Unsorted, rows keep the color bands (Top first); a header sort shows one
-// sorted list. Any row but a Scout signal opens CompanyPanel (P4: the same
+// companies-v2: the page actions sit in the frame row (#sales-frame-tools) in
+// TABLE / SHEET / + Add groups (on a phone they wrap above the filter card);
+// the filter card is CompaniesFilters; the table is grouped by priority
+// (P3 / P4 / No priority folded by default, remembered), a header sort sorts
+// inside each group, and the row bar + tint stay the stage band.
+// Any row but a Scout signal opens CompanyPanel (P4: the same
 // side panel + action bar for partner / employer / target / Apollo-only /
 // visitor); "Open full card" from there goes to the record's own screen.
 // Priority is a dropdown with "Not a fit" and a 10 s Undo (every priority
 // and stage change, hide and remove gets one).
 export const BOARD_TOKENS = { green: SA.good, yellow: SA.warn, blue: SA.link, gray: SA.muted, light: SA.faint, faded: SA.track };
-export const ROW_BAR_HEIGHT = 36;
 const TIER_RANK = { active: 0, 1: 1, 2: 2, 3: 3, 4: 4 };
 const UNDO_MS = 10000; // REVISABLE (spec)
 const md = d => new Date(`${d.slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -61,14 +60,10 @@ const visitedLabel = r => (r.visited ? `${md(r.visited.last_visit)}${r.visited.v
 const tint = color => `color-mix(in srgb, ${BOARD_TOKENS[color]} 6%, transparent)`;
 const HIGHLIGHT_MS = 1500;
 const highlightTint = `color-mix(in srgb, ${SA.accent} 22%, transparent)`;
-const selectStyle = { ...inputStyle, height: 30, fontSize: 13, padding: '0 8px', flex: 'none' };
-const opts = (first, list) => [{ value: '', label: first }, ...list];
-const rowBar = { height: ROW_BAR_HEIGHT, display: 'flex', alignItems: 'center', gap: 8, overflowX: 'auto', overflowY: 'hidden', flexWrap: 'nowrap', minWidth: 0 };
 const Dim = () => <span className="ui-table__dim">—</span>;
 const rowKey = r => `${r.type}-${r.id}`;
 const CELL_FIELD = { next: 'next_step', due: 'next_step_due' };
 const SIZE_TAG = { research: 'Research', manual: 'Typed', apollo: 'Apollo' };
-const Swatch = ({ color }) => <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, flex: 'none', background: BOARD_TOKENS[color] }} />;
 const workCell = (n, late, what) => (n ? <span style={{ ...numStyle, color: late ? SA.bad : SA.text }} title={`${n} open ${what}${late ? ` · ${late} overdue` : ''}`}>{n}{late ? ' !' : ''}</span> : <Dim />);
 
 export default function PipelineView({ businessId, canEdit, meId, onOpenPartner, onOpenCompanies, onOpenPeople, focusTarget = null }) {
@@ -82,7 +77,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
   const [sheetOpen, setSheetOpen] = useState(false); // phone filter sheet
   const [visitorsOpen, setVisitorsOpen] = useState(false);
   const [peopleOpen, setPeopleOpen] = useState(false); // visitor-to-record-v1 V3
-  const [collapsed, setCollapsed] = useState(() => new Set(['faded']));
+  const [collapsed, setCollapsed] = useState(readCollapsed);
   const [toast, setToast] = useState(null); // { text, undo? }
   const [busyId, setBusyId] = useState(null);
   const [panel, setPanel] = useState(undefined); // undefined = closed, null = new employer, object = edit
@@ -153,7 +148,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
   const topAll = all.filter(r => r.top).length;
   const set = (k, v) => setFilters(f => ({ ...f, [k]: v }));
   const nFilters = activeFilterCount(filters);
-  const toggleBand = id => setCollapsed(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const toggleGroup = id => setCollapsed(c => { const n = c.includes(id) ? c.filter(x => x !== id) : [...c, id]; writeCollapsed(n); return n; });
   const onSort = s => { setSort(s); writeSort(s); };
   const patchRow = (r, patch) => setRows(rs => rs.map(x => (rowKey(x) === rowKey(r) ? { ...x, ...patch } : x)));
 
@@ -281,28 +276,34 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
     if (!PRIORITY_TYPES.includes(r.type)) return <Dim />;
     const label = prioritySetLabel(r);
     const value = priorityValue(r);
-    // FIX priority-colors-v1: the level's hue on the chip (Viewers) and as a dot beside the dropdown (Members).
+    // FIX priority-colors-v1: the level's hue on the chip (Viewers); companies-v2 C4: Members get the same select drawn as
+    // an outline pill in that hue, with a caret.
     if (!canEdit) return value ? <Tag color={value === NOT_A_FIT ? SA.borderStrong : priorityColor(value)} title={label}><span style={numStyle}>{value === NOT_A_FIT ? 'Not a fit' : `P${value}`}</span></Tag> : <Dim />;
     return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: '100%' }} title={label || undefined}>
-        {value && value !== NOT_A_FIT && <span className="ui-tag__dot" data-priority-dot={`P${value}`} aria-hidden="true" style={{ '--tag-color': priorityColor(value) }} />}
-        <select aria-label={`Priority for ${r.name}`} data-priority={r.type} value={value} disabled={busyId === rowKey(r)} onChange={e => changePriority(r, e.target.value)}
-          style={{ ...selectStyle, height: 26, fontSize: 12, padding: '0 4px', color: value ? SA.text : SA.muted }}>
+      <span className="ui-pill-field" title={label || undefined}>
+        <select className="ui-pill-select" aria-label={`Priority for ${r.name}`} data-priority={r.type} data-priority-level={value && value !== NOT_A_FIT ? `P${value}` : undefined} value={value} disabled={busyId === rowKey(r)}
+          onChange={e => changePriority(r, e.target.value)} style={value && value !== NOT_A_FIT ? { '--pill-color': priorityColor(value) } : undefined}>
           <option value="">—</option>
           {PRIORITIES.map(p => <option key={p} value={String(p)}>P{p} · {PRIORITY_WORD[p]}</option>)}
           <option value={NOT_A_FIT}>Not a fit</option>
         </select>
+        <Icons.IconCaret size={10} className="ui-pill-select__caret" />
         {label.includes(' · set by ') && <span style={{ fontSize: 11, color: SA.muted, overflow: 'hidden', textOverflow: 'ellipsis' }}>{label.split(' · set by ')[1]}</span>}
       </span>
     );
   };
   const nameCell = r => <button type="button" data-row-name className="ui-link ui-link--cell" onClick={() => open(r)}>{r.name}</button>;
   const typeCell = r => <TypeChip row={r} />;
+  const channelCell = r => {
+    if (!r.channel || r.channel === 'unknown') return <Dim />;
+    const Icon = Icons[CHANNEL_ICON[r.channel]];
+    return <span data-channel-cell={r.channel} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: SA.soft }}>{Icon && <Icon size={14} />}{CHANNEL_LABEL[r.channel]}</span>;
+  };
   const allColumns = [
     { id: 'top', label: `Top ${TOP_CAP}`, width: 38, fixed: true, render: r => <span style={{ display: 'block', textAlign: 'center' }}>{starCell(r)}</span> },
     { id: 'name', label: 'Company', width: 220, sticky: true, fixed: true, sortValue: r => r.name, render: nameCell, title: r => `${r.name}${r.record_id ? ` · ${r.record_id}` : ''}` },
     { id: 'type', label: 'Type', width: 116, sortValue: typeSortValue, render: typeCell },
-    { id: 'channel', label: 'Channel', width: 112, sortValue: r => CHANNEL_LABEL[r.channel] || null, render: r => (r.channel && r.channel !== 'unknown' ? CHANNEL_LABEL[r.channel] : <Dim />), title: r => CHANNEL_LABEL[r.channel] },
+    { id: 'channel', label: 'Channel', width: 112, sortValue: r => CHANNEL_LABEL[r.channel] || null, render: channelCell, title: r => CHANNEL_LABEL[r.channel] },
     { id: 'stage', label: 'Stage', width: 120, sortValue: r => r.stage_label, render: r => r.stage_label || <Dim />, title: r => r.stage_label },
     { id: 'priority', label: 'Priority', width: 150, sortValue: r => (r.not_a_fit ? 5 : r.priority), render: priorityCell },
     { id: 'tier', label: 'Tier', width: 56, sortValue: r => TIER_RANK[r.tier] ?? null, render: r => tierLabel(r.tier) || <Dim /> },
@@ -343,69 +344,47 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
 
   const visible = view.rows;
   const sortLabel = sort && allColumns.find(c => c.id === sort.id)?.label;
-  const groups = sort ? [
-    { id: 'sorted', header: <>Sorted by {sortLabel} <span className="ui-table__count">{visible.length}</span></>, rows: visible, emptyText: 'No companies match these filters.' },
-  ] : [
-    { id: 'top', header: <>Top <span className="ui-table__count">{topAll} of {TOP_CAP}</span></>, icon: <span aria-hidden="true" style={{ color: SA.warn }}>★</span>, rows: visible.filter(r => r.top) },
-    ...BOARD_COLORS.map(c => ({ id: c.id, rows: visible.filter(r => !r.top && r.color === c.id) })).filter(g => g.rows.length).map(g => ({
-      ...g, icon: <Swatch color={g.id} />, header: <>{BOARD_COLORS.find(c => c.id === g.id).label} <span className="ui-table__count">{g.rows.length}</span></>,
-      collapsed: collapsed.has(g.id), onToggle: () => toggleBand(g.id),
-    })),
-  ];
+  // "P1 · ACT TODAY 12": PRIORITY_WORD uppercased by CSS, in the level's pill hue; empty groups drop out.
+  const groups = PRIORITY_GROUPS.map(id => {
+    const p = id === 'none' ? null : Number(id.slice(1));
+    const groupRows = visible.filter(r => priorityGroup(r) === id);
+    return {
+      id, rows: groupRows, collapsed: collapsed.includes(id), onToggle: () => toggleGroup(id),
+      header: <><span className="ui-table__gword" style={p ? { '--gword-color': priorityColor(p) } : undefined}>{p ? `P${p} · ${PRIORITY_WORD[p]}` : 'No priority'}</span> <span className="ui-table__count">{groupRows.length}</span></>,
+    };
+  });
+  const channelTotal = all.filter(r => inChannel(r, channel)).length;
   const rowStyle = r => ({ '--ui-row-tint': highlight === rowKey(r) || panelKey === rowKey(r) ? highlightTint : tint(r.color), '--ui-row-bar': BOARD_TOKENS[r.color] });
 
-  // R4: labelled dropdowns that show their value, toggle chips for the yes/no filters, Clear as a text button
-  // (only while a filter is on); R7: the row carries its label. FIX pipeline-quick-fixes-v1 B1: the search comes first.
-  const filterControls = (
-    <>
-      <span className="ui-group-label" aria-hidden="true">Filter</span>
-      <input ref={searchRef} type="search" className="ui-input ui-input--sm" aria-label="Search companies" placeholder="Search companies" value={filters.q} onChange={e => set('q', e.target.value)} style={{ width: phone ? 160 : 220, flex: 'none' }} />
-      <FilterSelect label="Owner" value={filters.owner} options={opts('All owners', owners.map(o => ({ value: o, label: o })))} onChange={v => set('owner', v)} />
-      <FilterSelect label="Team" value={filters.ownerTeam} options={[...opts('All teams', OWNER_TEAMS.map(t => ({ value: t, label: TEAM_LABEL[t] }))), { value: 'unset', label: 'No team set' }]} onChange={v => set('ownerTeam', v)} />
-      <FilterSelect label="Type" value={filters.type} options={opts('All types', TYPE_OPTIONS.map(([value, label]) => ({ value, label })))} onChange={v => set('type', v)} />
-      <FilterSelect label="Stage" value={filters.stage} options={opts('All stages', stages.map(s => ({ value: s, label: s })))} onChange={v => set('stage', v)} />
-      <FilterSelect label="Priority" value={filters.priority} options={[...opts('All priorities', PRIORITIES.map(p => ({ value: String(p), label: `P${p}` }))), { value: 'none', label: 'No priority' }]} onChange={v => set('priority', v)} />
-      <FilterSelect label="Tier" value={filters.tier} options={opts('All tiers', TIERS.map(t => ({ value: t, label: t === 'active' ? 'Active' : `T${t}` })))} onChange={v => set('tier', v)} />
-      <ToggleChip pressed={filters.visited} onClick={() => set('visited', !filters.visited)}>Visited 7 d</ToggleChip>
-      <ToggleChip pressed={filters.hasTodo} onClick={() => set('hasTodo', !filters.hasTodo)}>Has open to-do</ToggleChip>
-      <ToggleChip pressed={filters.overdue} onClick={() => set('overdue', !filters.overdue)}>Overdue</ToggleChip>
-      {nFilters > 0 && <Button variant="tertiary" onClick={() => setFilters(EMPTY_FILTERS)}>Clear ({nFilters})</Button>}
-    </>
-  );
-
-  const tools = (
-    <>
-      {channel === 'website' && <button type="button" className="ui-btn ui-btn--secondary no-print" onClick={() => setVisitorsOpen(true)} title="The 7-day visitor report, Export for Brad and the skip list">Visitor report</button>}
-      <button type="button" className="ui-btn ui-btn--secondary no-print" onClick={() => setPeopleOpen(true)} title="Everyone Prospector knows, with their company and ties">People search</button>
-      {!phone && <button type="button" data-column-chooser className="ui-btn ui-btn--secondary no-print" aria-expanded={!!chooser} onClick={e => { const rect = e.currentTarget.getBoundingClientRect(); setChooser(c => (c ? null : rect)); }}>Columns</button>}
+  // companies-v2 C2: TABLE · SHEET · + Add, each group with its tiny word; the short labels keep the old text as name + title.
+  const actions = (
+    <div data-page-actions className={phone ? 'ui-actions ui-actions--wrap no-print' : 'ui-actions no-print'}>
+      <div role="group" aria-label="Table" data-action-group="table" className="ui-actions__group">
+        <span className="ui-actions__word" aria-hidden="true">Table</span>
+        {channel === 'website' && <button type="button" className="ui-btn ui-btn--secondary" onClick={() => setVisitorsOpen(true)} title="The 7-day visitor report, Export for Brad and the skip list"><Icons.IconGlobe size={14} />Visitor report</button>}
+        {!phone && <button type="button" data-column-chooser className="ui-btn ui-btn--secondary" aria-expanded={!!chooser} onClick={e => { const rect = e.currentTarget.getBoundingClientRect(); setChooser(c => (c ? null : rect)); }}><Icons.IconColumns size={14} />Columns</button>}
+        <button type="button" className="ui-btn ui-btn--secondary" onClick={() => setPeopleOpen(true)} title="Everyone Prospector knows, with their company and ties"><Icons.IconPeople size={14} />People search</button>
+      </div>
       {canEdit && <>
-        <button type="button" className="ui-btn ui-btn--secondary no-print" disabled={exporting} onClick={exportSheet}
-          title="Excel file of the partners, employers and targets under these filters (Apollo-only, visitors and signals left out), colored like the board">{exporting ? 'Exporting…' : 'Export joint sheet'}</button>
-        <button type="button" className="ui-btn ui-btn--secondary no-print" onClick={() => setUpdating(true)}
-          title="Upload the joint sheet (.csv or .xlsx): preview what would change, tick, apply">Update from sheet</button>
-        <AddMenu phone={phone} onPick={pickAdd} />
+        <div role="group" aria-label="Sheet" data-action-group="sheet" className="ui-actions__group">
+          <span className="ui-actions__word" aria-hidden="true">Sheet</span>
+          <button type="button" className="ui-btn ui-btn--secondary" disabled={exporting} onClick={exportSheet} aria-label="Export joint sheet"
+            title="Export joint sheet - Excel file of the partners, employers and targets under these filters (Apollo-only, visitors and signals left out), colored like the board"><Icons.IconDownload size={14} />{exporting ? 'Exporting…' : 'Export'}</button>
+          <button type="button" className="ui-btn ui-btn--secondary" onClick={() => setUpdating(true)} aria-label="Update from sheet"
+            title="Update from sheet - upload the joint sheet (.csv or .xlsx): preview what would change, tick, apply"><Icons.IconUpload size={14} />Update</button>
+        </div>
+        <div data-action-group="add" className="ui-actions__group"><AddMenu phone={phone} onPick={pickAdd} /></div>
       </>}
-    </>
+    </div>
   );
   const overlayRoot = document.getElementById(SA_THEME_ROOT_ID) || document.body;
 
   return (
     <section aria-label="Pipeline companies" data-pipeline-companies style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
-      {toolsSlot && createPortal(tools, toolsSlot)}
-      <div role="group" aria-label="Channel" data-channel-row style={rowBar}>
-        <span className="ui-group-label" aria-hidden="true">Channel</span>
-        {CHANNEL_BUTTONS.map(([id, label]) => (
-          <ToggleChip key={id} pressed={channel === id} data-channel={id} count={rows ? view.counts[id] : ''} onClick={() => setChannel(id)}>{label}</ToggleChip>
-        ))}
-      </div>
-      {phone ? (
-        <div data-filter-row style={rowBar}>
-          <Button aria-expanded={sheetOpen} onClick={() => setSheetOpen(true)}>Filters{nFilters ? ` (${nFilters})` : ''}</Button>
-          <span style={{ fontSize: 13, color: SA.muted, ...numStyle }}>{rows ? `${visible.length} shown` : ''}</span>
-        </div>
-      ) : (
-        <div role="group" aria-label="Filters" data-filter-row style={rowBar}>{filterControls}</div>
-      )}
+      {phone ? actions : toolsSlot && createPortal(actions, toolsSlot)}
+      <CompaniesFilters channel={channel} onChannel={setChannel} counts={rows ? view.counts : null} filters={filters} set={set} onClear={() => setFilters(EMPTY_FILTERS)}
+        owners={owners} stages={stages} phone={phone} searchRef={searchRef} shown={visible.length} total={channelTotal} sortLabel={sortLabel || 'priority'}
+        sheetOpen={sheetOpen} onOpenSheet={() => setSheetOpen(true)} />
       {error && <ErrorNote message={error} />}
 
       {rows && (
@@ -429,7 +408,8 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
         <div className="no-print" style={{ position: 'fixed', inset: 0, zIndex: 4003 }}>
           <div onClick={() => setSheetOpen(false)} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)' }} />
           <div role="dialog" aria-label="Filters" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, maxHeight: '80vh', overflowY: 'auto', background: SA.surface, borderTop: `1px solid ${SA.border}`, borderRadius: '14px 14px 0 0', padding: 16, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-            {filterControls}
+            <FilterControls filters={filters} set={set} owners={owners} stages={stages} phone />
+            {nFilters > 0 && <Button variant="tertiary" onClick={() => setFilters(EMPTY_FILTERS)}>Clear all</Button>}
             <button type="button" className="ui-btn ui-btn--secondary" style={{ width: '100%' }} onClick={() => setSheetOpen(false)}>Show {visible.length}</button>
           </div>
         </div>, overlayRoot)}
