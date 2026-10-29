@@ -36,6 +36,22 @@ app.use('/api/hk/:businessId', authMw('hkGate'));
 app.use('/api/projects/:id', authMw('parentGate', 'projects'));
 app.use('/api/campaigns/:id', authMw('parentGate', 'campaigns'));
 
+// hkos-mcp-connector-v1 - the HumanKind Claude connector: OAuth metadata + endpoints and /mcp live OUTSIDE /api (no
+// session cookie from Claude; /mcp checks its own bearer token). The consent page's two calls are /api (signed in).
+const mcpRoute = (file, name) => async (req, res) => {
+  try { const mod = await import(file); return await mod[name](req, res); }
+  catch (err) { console.error(`[mcp/${name}] handler error:`, err.message); if (!res.headersSent) res.status(500).json({ error: 'server_error' }); }
+};
+const MCP_OAUTH = './api/mcp/oauth.js';
+app.get(['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp'], mcpRoute(MCP_OAUTH, 'protectedResourceRoute'));
+app.get('/.well-known/oauth-authorization-server', mcpRoute(MCP_OAUTH, 'authServerMetadataRoute'));
+app.post('/oauth/register',                mcpRoute(MCP_OAUTH, 'registerRoute'));
+app.get('/oauth/authorize',                mcpRoute(MCP_OAUTH, 'authorizeRoute'));
+app.post('/oauth/token', express.urlencoded({ extended: false, limit: '16kb' }), mcpRoute(MCP_OAUTH, 'tokenRoute'));
+app.get('/api/oauth/consent/:id',          mcpRoute(MCP_OAUTH, 'consentGetRoute'));
+app.post('/api/oauth/consent/:id',         mcpRoute(MCP_OAUTH, 'consentPostRoute'));
+app.all('/mcp',                            mcpRoute('./api/mcp/mcpRoute.js', 'mcpRoute'));
+
 import('./api/lib/checkCredentials.js').then(({ checkCredentials }) => checkCredentials());
 
 // Routes that call Anthropic server-side share the proxy's per-user hourly

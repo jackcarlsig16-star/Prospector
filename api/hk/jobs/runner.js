@@ -27,7 +27,7 @@ const must = r => { if (r.error) throw new Error(r.error.message); return r.data
 
 async function settingsOf(supabase, businessId) { const { data } = await supabase.from('hk_settings').select('*').eq('business_id', businessId).maybeSingle(); return { ...SETTINGS_DEFAULTS, ...(data || {}) }; }
 // Members with a profile, each with the mailbox the workspace tethers for them (or null). Never the default account.
-async function founders(D, businessId) {
+export async function founders(D, businessId) {
   const rows = must(await D.supabase.from('business_members').select('user_id,name,role,profile:profiles!business_members_user_id_fkey(display_name)').eq('business_id', businessId));
   const out = [];
   for (const r of rows) { if (!r.user_id) continue; const m = await D.mailbox(businessId, r.user_id, 'drafts').catch(() => null); out.push({ user_id: r.user_id, first_name: firstWord(r.profile?.display_name) || firstWord(r.name) || 'Founder', m }); }

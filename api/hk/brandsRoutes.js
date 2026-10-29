@@ -10,7 +10,7 @@ const SEGMENTS = new Set(['sponsor_brand', 'creator', 'nonprofit', 'press', 'pod
 const SOURCES = new Set(['sourced', 'user_supplied', 'apollo_list', 'places', 'import']);
 const EMAIL_SOURCES = new Set(['apollo_verified', 'site_published', 'user_supplied', 'import']);
 const VIEWS = new Set(['my_open', 'unclaimed', 'overdue', 'local', 'all']);
-const CLOSED = new Set(['passed', 'skipped', 'sponsor']);
+export const CLOSED = new Set(['passed', 'skipped', 'sponsor']);
 const SHORT = { name: [160, 'name'], category: [80, 'category'], niche: [80, 'niche'], size_band: [40, 'size band'], city: [80, 'city'], neighborhood: [80, 'neighborhood'] };
 const LONG = { notes: [4000, 'notes'], challenge_idea: [1000, 'challenge idea'], origin_hook: [1000, 'origin hook'], reward_idea: [1000, 'reward idea'] };
 

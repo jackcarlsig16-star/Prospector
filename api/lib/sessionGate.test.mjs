@@ -19,6 +19,7 @@ const lineOf = needle => lines.findIndex(l => l.includes(needle)) + 1;
 // The Stage 0 set, verbatim. Adding an exemption fails this test until it is listed here on purpose.
 const EXEMPT = ["{ method: 'POST', path: /^\\/api\\/zoom\\/webhook$/ }", "{ method: 'GET', path: /^\\/api\\/invites\\/[^/]+$/ }"];
 const NO_WORKSPACE_OK = ["{ method: 'GET', path: /^\\/api\\/me$/ }", "{ method: 'POST', path: /^\\/api\\/me\\/welcome$/ }", "{ method: 'POST', path: /^\\/api\\/invites\\/[^/]+\\/accept$/ }"];
+const CONNECTOR_PATHS = ['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp', '/.well-known/oauth-authorization-server', '/oauth/register', '/oauth/authorize', '/oauth/token', '/mcp'];
 const block = name => { const m = gate.match(new RegExp(`const ${name} = \\[([\\s\\S]*?)\\n\\];`)); assert.ok(m, name); return [...m[1].matchAll(/\{ method: '[A-Z]+', path: \/[^\n]*?\/ \}/g)].map(x => x[0]); };
 
 test('sessionAuth is mounted on /api and /proxy before any route, and its exempt lists are exactly the Stage 0 set', () => {
@@ -35,7 +36,9 @@ test('sessionAuth is mounted on /api and /proxy before any route, and its exempt
 test('every route path is under /api or /proxy; the only other mounts are the static bundle, the SPA fallback and the error handler', () => {
   const paths = [...server.matchAll(/^app\.(get|post|put|patch|delete|all)\(\s*(?:\[([^\]]+)\]|'([^']+)')/gm)].flatMap(m => (m[2] ? [...m[2].matchAll(/'([^']+)'/g)].map(x => x[1]) : [m[3]]));
   const outside = paths.filter(p => !/^\/(api|proxy)\//.test(p) && p !== '*');
-  assert.deepEqual(outside, []);
+  // hkos-mcp-connector-v1 M1: the Claude connector's OAuth metadata + endpoints and /mcp sit outside /api on purpose
+  // (Claude carries no session cookie; /mcp checks its own bearer token). This exact list, nothing else.
+  assert.deepEqual(outside, CONNECTOR_PATHS);
   assert.equal(paths.filter(p => p === '*').length, 1, 'one SPA fallback');
   const uses = [...server.matchAll(/^app\.use\((.*)$/gm)].map(m => m[1]);
   const known = [/^require\('\.\/api\/basicAuth\.js'\)\.basicAuth\)/, /^express\.json\(/, /^\['\/api', '\/proxy'\], authMw\('sessionAuth'\)\)/, /^\['\/api\/sfdc', '\/api\/hunter', '\/api\/databricks'\], authMw\('platformOwnerOnly'\)\)/, /^'\/api\/businesses\/:id', authMw\('businessGate'\)\)/, /^'\/api\/sales\/:businessId', authMw\('salesGate'\)\)/, /^'\/api\/hk\/:businessId', authMw\('hkGate'\)\)/, /^'\/api\/projects\/:id', authMw\('parentGate', 'projects'\)\)/, /^'\/api\/campaigns\/:id', authMw\('parentGate', 'campaigns'\)\)/, /^express\.static\(/, /^\(err, req, res, _next\) =>/];

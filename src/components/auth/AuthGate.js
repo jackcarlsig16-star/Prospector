@@ -6,6 +6,7 @@ import LoginPage, { safeNextPath } from './LoginPage';
 import InvitePage from './InvitePage';
 import ResetPasswordPage from './ResetPasswordPage';
 import WelcomePage from './WelcomePage';
+import OAuthConsentPage from './OAuthConsentPage';
 
 // prospector-auth-v1 Stage 2 - sits in front of the whole app (index.js).
 // Owns the Supabase session and the three public auth routes; everything
@@ -72,5 +73,6 @@ export default function AuthGate({ children }) {
   if (!me.profile.welcomed_at) {
     return <WelcomePage me={me} onDone={name => setMe({ ...me, profile: { ...me.profile, display_name: name || me.profile.display_name, welcomed_at: new Date().toISOString() } })} />;
   }
+  if (path === '/oauth/consent') return <OAuthConsentPage />;
   return children(me);
 }

@@ -27,7 +27,7 @@ const NO_WORKSPACE_OK = [
 const TOKEN_TRUST_MS = 60_000;
 const verifiedTokens = new Map();
 
-async function userForToken(supabase, token) {
+export async function userForToken(supabase, token) {
   const hit = verifiedTokens.get(token);
   if (hit && Date.now() - hit.at < TOKEN_TRUST_MS) return hit.user;
   const { data, error } = await supabase.auth.getUser(token);
@@ -35,6 +35,21 @@ async function userForToken(supabase, token) {
   if (verifiedTokens.size > 500) verifiedTokens.clear();
   verifiedTokens.set(token, { user: data.user, at: Date.now() });
   return data.user;
+}
+
+// The req.auth shape every route reads - also built by the MCP bearer check (api/mcp/bearer.js) for a token's user.
+export async function authForUser(supabase, user) {
+  const [{ data: profile, error: pErr }, { data: memberships, error: mErr }] = await Promise.all([
+    supabase.from('profiles').select('display_name,is_platform_owner').eq('id', user.id).maybeSingle(),
+    supabase.from('business_members').select('business_id,role').eq('user_id', user.id),
+  ]);
+  if (pErr || mErr) return { status: 500, error: (pErr || mErr).message };
+  if (!profile) return { status: 403, error: 'Confirm your email address to finish setting up your account' };
+  return { auth: {
+    user: { id: user.id, email: (user.email || '').toLowerCase(), name: profile.display_name },
+    isPlatformOwner: profile.is_platform_owner,
+    roles: new Map(memberships.map(m => [m.business_id, m.role])),
+  } };
 }
 
 export async function sessionAuth(req, res, next) {
@@ -47,19 +62,10 @@ export async function sessionAuth(req, res, next) {
   const user = await userForToken(supabase, token);
   if (!user) return res.status(401).json({ error: 'Your session expired - sign in again' });
 
-  const [{ data: profile, error: pErr }, { data: memberships, error: mErr }] = await Promise.all([
-    supabase.from('profiles').select('display_name,is_platform_owner').eq('id', user.id).maybeSingle(),
-    supabase.from('business_members').select('business_id,role').eq('user_id', user.id),
-  ]);
-  if (pErr || mErr) return res.status(500).json({ error: (pErr || mErr).message });
-  if (!profile) return res.status(403).json({ error: 'Confirm your email address to finish setting up your account' });
-
-  req.auth = {
-    user: { id: user.id, email: (user.email || '').toLowerCase(), name: profile.display_name },
-    isPlatformOwner: profile.is_platform_owner,
-    roles: new Map(memberships.map(m => [m.business_id, m.role])),
-  };
-  if (!profile.is_platform_owner && !memberships.length && !NO_WORKSPACE_OK.some(e => e.method === req.method && e.path.test(path))) {
+  const a = await authForUser(supabase, user);
+  if (a.status) return res.status(a.status).json({ error: a.error });
+  req.auth = a.auth;
+  if (!req.auth.isPlatformOwner && !req.auth.roles.size && !NO_WORKSPACE_OK.some(e => e.method === req.method && e.path.test(path))) {
     return res.status(403).json({ error: "You're not in a workspace yet - ask a workspace admin for an invite" });
   }
   next();
