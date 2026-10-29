@@ -6,11 +6,12 @@ import { Avatar, Sprout } from '../HkMarks';
 import AddBrandModal from './AddBrandModal';
 import BrandPicker from '../screens/BrandPicker';
 import { STATUS_LABELS, RELATIONSHIP_LABELS, STATUS_TONE, RELATIONSHIP_TONE, SOURCE_LABELS } from './verdict';
-import { hkGet, hkPatch } from '../hkApi';
+import { hkGet, hkPatch, hkPost } from '../hkApi';
+import { HeatChip, ListButtons, heatBarStyle } from '../signals/Heat';
 
 // hkos-data-foundation-v1 D6 - Brands: saved views, search (name / domain / alias, never a contact email), the table
 // (kit DataTable on the hk tokens), bulk Claim / Release / Set status / Mark do-not-contact, [+ Add brand].
-export const VIEWS = [['my_open', 'My open'], ['unclaimed', 'Unclaimed candidates'], ['overdue', 'Overdue'], ['local', 'Local Chicago'], ['all', 'All']];
+export const VIEWS = [['my_open', 'My open'], ['hot', 'Hot leads'], ['targets', 'Targets'], ['unclaimed', 'Unclaimed candidates'], ['overdue', 'Overdue'], ['local', 'Local Chicago'], ['all', 'All']];
 const MANUAL = [['meeting', 'Meeting'], ['signed', 'Signed'], ['passed', 'Passed'], ['skipped', 'Skipped']];
 const fmt = iso => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '');
 export const Chip = ({ tone, children }) => <span className={`hk-chip hk-chip--${tone || 'grey'}`}>{children}</span>;
@@ -35,6 +36,7 @@ export default function BrandsScreen({ businessId, shell, owner, compact, onOpen
     if (intent.kind === 'add_brand' || intent.kind === 'add_contact') onIntentDone?.();
   }, [intent, pipeline, canEdit, onIntentDone]);
   const member = id => members.find(m => m.user_id === id);
+  const meId = shell?.me?.user_id;
 
   const load = useCallback(async () => {
     setError('');
@@ -51,15 +53,25 @@ export default function BrandsScreen({ businessId, shell, owner, compact, onOpen
     catch (e) { setError(e.message); }
     finally { setBusy(''); }
   };
+  // grow-signals G7 bulk: + Target / + Pipeline one brand at a time; a refused brand is named, the rest still go.
+  const bulkList = async (label, path, body) => {
+    setBusy(label); setError('');
+    const refused = [];
+    for (const id of selected) { try { await hkPost(businessId, `/brands/${id}/${path}`, body); } catch (e) { refused.push(e.message); } }
+    setSelected(new Set()); await load(); setBusy('');
+    if (refused.length) setError(`Not added: ${refused.join('; ')}`);
+  };
   const markDnc = () => { const reason = window.prompt('Why should these brands never be contacted?'); if (reason && reason.trim()) bulk('dnc', { relationship: 'do_not_contact', dnc_reason: reason.trim() }); };
 
   const columns = useMemo(() => [
-    ...(canEdit ? [{ id: 'pick', label: '', width: 36, render: r => <input type="checkbox" aria-label={`Select ${r.name}`} checked={selected.has(r.id)} onChange={() => toggle(r.id)} /> }] : []),
+    ...(canEdit ? [{ id: 'pick', label: 'Select', width: 36, render: r => <input type="checkbox" aria-label={`Select ${r.name}`} checked={selected.has(r.id)} onChange={() => toggle(r.id)} /> }] : []),
     { id: 'name', label: 'Name', sticky: true, minWidth: 220, sortValue: r => r.name, render: r => (
       <button type="button" className="hk-btn hk-table__name" onClick={() => onOpenBrand(r.id)} data-hk-brand={r.id}>
         <span className="hk-table__title">{r.name}</span>
         {r.domain && <span className="hk-meta">{r.domain}</span>}
       </button>) },
+    { id: 'heat', label: 'Heat', width: 80, sortValue: r => r.heat || 0, render: r => (r.heat_band && r.heat_band !== 'cold' ? <HeatChip band={r.heat_band} /> : <span className="hk-meta">·</span>) },
+    ...(canEdit ? [{ id: 'lists', label: 'Lists', width: 250, render: r => <ListButtons businessId={businessId} brand={r} meId={meId} members={members} canEdit compact /> }] : []),
     { id: 'category', label: 'Category', width: 130, sortValue: r => r.category || '', render: r => r.category || <span className="hk-meta">·</span> },
     { id: 'local', label: 'Local / National', width: 130, sortValue: r => (r.is_local ? 0 : 1), render: r => <Chip tone={r.is_local ? 'green' : 'grey'}>{r.is_local ? 'Local Chicago' : 'National'}</Chip> },
     { id: 'owner', label: 'Owner', width: 90, sortValue: r => member(r.owner_user_id)?.first_name || '', render: r => { const m = member(r.owner_user_id); return m ? <span className="hk-owner"><Avatar name={m.first_name} index={m.palette_index} size={24} />{m.first_name}</span> : <span className="hk-meta">Unclaimed</span>; } },
@@ -70,7 +82,7 @@ export default function BrandsScreen({ businessId, shell, owner, compact, onOpen
     { id: 'contact', label: 'Primary contact', width: 150, sortValue: r => r.primary_contact_name || '', render: r => r.primary_contact_name || <span className="hk-meta">·</span> },
     { id: 'source', label: 'Source', width: 120, sortValue: r => r.source, render: r => (r.source === 'import' ? <Chip tone="lilac">Import</Chip> : SOURCE_LABELS[r.source] || r.source) },
     { id: 'created', label: 'Created', width: 100, sortValue: r => r.created_at, render: r => fmt(r.created_at) },
-  ], [canEdit, selected, members, onOpenBrand]);
+  ], [canEdit, selected, members, onOpenBrand, businessId, meId]);
 
   return (
     <div className="hk-brands" data-hk-brands={pipeline ? 'pipeline' : 'brands'}>
@@ -85,6 +97,8 @@ export default function BrandsScreen({ businessId, shell, owner, compact, onOpen
           <span>{selected.size} selected</span>
           <Button size="sm" disabled={!!busy} onClick={() => bulk('claim', { claim: true })}>Claim</Button>
           <Button size="sm" disabled={!!busy} onClick={() => bulk('release', { claim: false })}>Release</Button>
+          <Button size="sm" disabled={!!busy} onClick={() => bulkList('target', 'target', { on: true })} data-hk-bulk-target>+ Target</Button>
+          <Button size="sm" disabled={!!busy} onClick={() => bulkList('pipeline', 'pipeline', {})} data-hk-bulk-pipeline>+ Pipeline</Button>
           <label className="hk-meta">Set status
             <select className="ui-input ui-input--sm" aria-label="Set status" disabled={!!busy} defaultValue="" onChange={e => { if (e.target.value) bulk('status', { status: e.target.value }); e.target.value = ''; }}>
               <option value="">…</option>{MANUAL.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -97,16 +111,19 @@ export default function BrandsScreen({ businessId, shell, owner, compact, onOpen
       {rows === null ? <p className="hk-meta">Loading brands…</p> : rows.length === 0 ? (
         <div className="hk-empty" data-hk-empty>
           <Sprout size={40} />
-          <p className="hk-empty__title">{q ? 'No brand matches.' : pipeline ? 'No brands in motion yet.' : view === 'all' ? 'No brands yet.' : 'Nothing in this view.'}</p>
+          <p className="hk-empty__title">{q ? 'No brand matches.' : pipeline ? 'No brands in motion yet.' : view === 'all' ? 'No brands yet.' : view === 'hot' ? 'No Hot or Warm brands right now.' : view === 'targets' ? 'No Targets yet.' : 'Nothing in this view.'}</p>
           <p className="hk-empty__line">{q ? 'Try the domain or an alias.' : pipeline ? 'Claim a brand under Brands and it shows here.' : 'Add a brand, or wait for the Sheet import.'}</p>
         </div>
       ) : (
-        <DataTable label="Brands" columns={columns} rowKey={r => r.id} compact={compact} groups={[{ id: 'all', header: `${rows.length} brand${rows.length === 1 ? '' : 's'}`, rows }]}
-          renderCompact={r => (
+        <><h2 className="ui-sr-only">Brand list</h2>
+        <DataTable label="Brands" columns={columns} rowKey={r => r.id} compact={compact} rowStyle={r => heatBarStyle(r.heat_band)} groups={[{ id: 'all', header: `${rows.length} brand${rows.length === 1 ? '' : 's'}`, rows }]}
+          renderCompact={r => (<>
             <button type="button" className="hk-btn hk-card-row" onClick={() => onOpenBrand(r.id)} data-hk-brand={r.id}>
               <span className="hk-table__title">{r.name}</span>
-              <span className="hk-card-row__chips"><Chip tone={STATUS_TONE[r.status]}>{STATUS_LABELS[r.status]}</Chip><Chip tone={r.is_local ? 'green' : 'grey'}>{r.is_local ? 'Local' : 'National'}</Chip>{r.source === 'import' && <Chip tone="lilac">Import</Chip>}</span>
-            </button>)} />
+              <span className="hk-card-row__chips"><HeatChip band={r.heat_band} /><Chip tone={STATUS_TONE[r.status]}>{STATUS_LABELS[r.status]}</Chip><Chip tone={r.is_local ? 'green' : 'grey'}>{r.is_local ? 'Local' : 'National'}</Chip>{r.source === 'import' && <Chip tone="lilac">Import</Chip>}</span>
+            </button>
+            <ListButtons businessId={businessId} brand={r} meId={meId} members={members} canEdit={canEdit} compact />
+          </>)} /></>
       )}
       {contactPick && <BrandPicker businessId={businessId} title="Which brand gets the contact?" line="Pick the brand, then add the contact on its Contacts tab." confirmLabel="Open brand" any onClose={() => setContactPick(false)} onPick={b => { setContactPick(false); onOpenBrand(b.id); }} />}
       {adding && <AddBrandModal businessId={businessId} members={members} onClose={() => setAdding(false)} onOpenMatch={id => { setAdding(false); onOpenBrand(id); }} onSaved={b => { setAdding(false); onOpenBrand(b.id); }} />}

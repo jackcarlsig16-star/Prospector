@@ -29,6 +29,7 @@ const HK_CSS = `
   --hk-radius-card:18px; --hk-radius-block:14px; --hk-radius-control:12px; --hk-radius-chip:999px;
   --hk-shadow-card:0 2px 10px rgba(43,29,20,.06);
   --hk-member-1:var(--hk-green-fill); --hk-member-2:var(--hk-orange-text); --hk-member-3:#1F4E6B; --hk-member-4:#5A3D72;
+  --hk-heat-hot-bar:#278245; --hk-heat-warm-bar:#8FC283; --hk-heat-cool-bar:#D2C19C;
 }
 ${PINNED} {
   --ui-ground:#F6EFE0; --ui-surface:#FFFCF5; --ui-surface2:#FFFCF5; --ui-inset:#EFE6D3; --ui-border:#E4D9C3;
@@ -344,6 +345,19 @@ ${PINNED} {
 .hk-theme .hk-ignored { list-style:none; margin:8px 0 0; padding:0; display:flex; flex-direction:column; gap:6px; }
 .hk-theme .hk-ignored li { display:flex; gap:10px; align-items:center; }
 
+.hk-theme .hk-heat { display:inline-flex; align-items:center; padding:2px 10px; border-radius:var(--hk-radius-chip); font:600 12px var(--hk-font-body); white-space:nowrap; }
+.hk-theme .hk-heat--hot { background:var(--hk-green-fill); color:#FFFFFF; }
+.hk-theme .hk-heat--warm { background:var(--hk-tint-green); color:var(--hk-forest); }
+.hk-theme .hk-heat--cool { background:var(--hk-sand); color:var(--hk-cocoa); box-shadow:inset 0 0 0 1px var(--hk-line); }
+.hk-theme .hk-heat--cold { background:var(--hk-tint-grey); color:var(--hk-muted); }
+.hk-theme .hk-lists { display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.hk-theme td .hk-lists { flex-wrap:nowrap; }
+.hk-theme .hk-lists__undo { font-size:13px; color:var(--hk-cocoa); }
+.hk-theme .hk-signals__row--unseen .hk-signals__words { font-weight:600; color:var(--hk-cocoa); }
+.hk-theme .hk-signals__words { flex:1 1 220px; min-width:0; font-size:14px; color:var(--hk-muted); }
+.hk-theme .hk-signals__sponsors { margin-top:12px; }
+.hk-theme .hk-signals__sponsors > summary { cursor:pointer; font:600 15px var(--hk-font-display); color:var(--hk-cocoa); }
+.hk-theme .hk-nav__badge--green { background:var(--hk-green-fill); }
 `;
 
 export function ensureHkTheme() {

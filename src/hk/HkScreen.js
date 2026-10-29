@@ -75,11 +75,11 @@ function Modules({ shell }) {
   );
 }
 
-export default function HkScreen({ screen, section, brandId, businessId, owner, compact, shell, gmail, syncing, onSync, onGmailChanged, onOpenConnections, onInboxUnread, onSection, onOpenAdmin, onOpenBrand, onGo, onTodayCounts, intent, onIntentDone, now }) {
+export default function HkScreen({ screen, section, brandId, businessId, owner, compact, shell, gmail, syncing, onSync, onGmailChanged, onOpenConnections, onInboxUnread, onSection, onOpenAdmin, onOpenBrand, onGo, onTodayCounts, onSignalsSeen, intent, onIntentDone, now }) {
   const canEdit = roleAtLeast(shell.me.role, 'member');
-  if (screen.id === 'today') { const g = chicagoGreeting(now, shell.me.first_name); return <><Header title={g.title} line={g.date} /><TodayScreen businessId={businessId} shell={shell} owner={owner} compact={compact} gmail={gmail} onOpenBrand={onOpenBrand} onGo={onGo} onOpenConnections={onOpenConnections} onCounts={onTodayCounts} /></>; }
+  if (screen.id === 'today') { const g = chicagoGreeting(now, shell.me.first_name); return <><Header title={g.title} line={g.date} /><TodayScreen businessId={businessId} shell={shell} owner={owner} compact={compact} gmail={gmail} canEdit={canEdit} onSignalsSeen={onSignalsSeen} onOpenBrand={onOpenBrand} onGo={onGo} onOpenConnections={onOpenConnections} onCounts={onTodayCounts} /></>; }
   if (screen.id === 'inbox') return <><Header title="Inbox" line={SCREEN_LINES.inbox} /><InboxScreen businessId={businessId} shell={shell} gmail={gmail} compact={compact} canEdit={canEdit} onOpenBrand={onOpenBrand} onOpenConnections={onOpenConnections} onUnread={onInboxUnread} /></>;
-  if (screen.id === 'brands' && brandId) return <BrandPage businessId={businessId} brandId={brandId} shell={shell} gmail={gmail} canEdit={canEdit} onBack={() => onOpenBrand(null)} onGmailChanged={onGmailChanged} />;
+  if (screen.id === 'brands' && brandId) return <BrandPage businessId={businessId} brandId={brandId} shell={shell} gmail={gmail} canEdit={canEdit} onSignalsChanged={onSignalsSeen} onBack={() => onOpenBrand(null)} onGmailChanged={onGmailChanged} />;
   if (screen.id === 'drafts') return <><Header title="Drafts" line={SCREEN_LINES.drafts} /><DraftsScreen businessId={businessId} shell={shell} compact={compact} onOpenBrand={onOpenBrand} /></>;
   if (screen.id === 'replies') return <><Header title="Replies" line={SCREEN_LINES.replies} /><RepliesScreen businessId={businessId} shell={shell} owner={owner} compact={compact} onOpenBrand={onOpenBrand} /></>;
   if (screen.id === 'brands') {

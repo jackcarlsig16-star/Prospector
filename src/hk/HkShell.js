@@ -29,6 +29,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
   const [inboxUnread, setInboxUnread] = useState(null);
   const [intent, setIntent] = useState(null);
   const [todayCounts, setTodayCounts] = useState(null);
+  const [hotUnseen, setHotUnseen] = useState(0);
 
   ensureHkTheme();
 
@@ -48,6 +49,9 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
   // The Today badge: urgent + replies + drafts + due, from one read at load (the screen refreshes it as it acts).
   const loadToday = useCallback(() => hkGet(business.id, '/jobs/today').then(t => setTodayCounts(t.digest?.counts || null)).catch(() => {}), [business.id]);
   useEffect(() => { loadToday(); }, [loadToday]);
+  // grow-signals-v1 G6 - the Inbox item's green badge: unseen signals on Hot / Warm brands (Today marks them seen).
+  const loadHot = useCallback(() => hkGet(business.id, '/signals').then(r => setHotUnseen(r.unseen_hot_warm || 0)).catch(() => {}), [business.id]);
+  useEffect(() => { loadHot(); }, [loadHot]);
   useEffect(() => { loadGmail(); }, [loadGmail]);
   const runSync = useCallback(async (trigger = 'manual') => {
     setSyncing(true);
@@ -98,7 +102,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
 
   // hkos-inbox-v1 - the Inbox badge is the unread count from the last Inbox page 1 this session read (0 Gmail cost
   // until the screen is opened).
-  const screens = useMemo(() => visibleScreens(shell?.modules || HK_MODULES).map(s => (s.id === 'drafts' ? { ...s, count: gmail?.badges?.drafts || 0 } : s.id === 'replies' ? { ...s, count: gmail?.badges?.replies || 0 } : s.id === 'inbox' ? { ...s, count: inboxUnread || 0 } : s.id === 'today' ? { ...s, count: todayBadge(todayCounts) } : s)), [shell, gmail, inboxUnread, todayCounts]);
+  const screens = useMemo(() => visibleScreens(shell?.modules || HK_MODULES).map(s => (s.id === 'drafts' ? { ...s, count: gmail?.badges?.drafts || 0 } : s.id === 'replies' ? { ...s, count: gmail?.badges?.replies || 0 } : s.id === 'inbox' ? { ...s, count: inboxUnread || 0, hot: hotUnseen } : s.id === 'today' ? { ...s, count: todayBadge(todayCounts) } : s)), [shell, gmail, inboxUnread, todayCounts, hotUnseen]);
   const options = useMemo(() => ownerOptions(shell?.me, shell?.members), [shell]);
   const ownerValue = options.some(o => o.id === owner) ? owner : 'me';
   const pickOwner = id => {
@@ -128,7 +132,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
     ? <p className="hk-meta" role="alert">{loadError}</p>
     : !shell
       ? <p className="hk-meta">Loading Grow…</p>
-      : <HkScreen screen={current} section={nav.section} brandId={nav.brandId || null} businessId={business.id} owner={ownerValue} compact={compact} shell={shell} now={now} gmail={gmail} syncing={syncing} onSync={() => runSync('manual')} onGmailChanged={loadGmail} onOpenConnections={onOpenConnections} onInboxUnread={setInboxUnread} onSection={s => go('settings', s)} onOpenAdmin={onOpenAdmin} onOpenBrand={id => go('brands', null, id)} onGo={go} onTodayCounts={setTodayCounts} intent={intent} onIntentDone={clearIntent} />;
+      : <HkScreen screen={current} section={nav.section} brandId={nav.brandId || null} businessId={business.id} owner={ownerValue} compact={compact} shell={shell} now={now} gmail={gmail} syncing={syncing} onSync={() => runSync('manual')} onGmailChanged={loadGmail} onOpenConnections={onOpenConnections} onInboxUnread={setInboxUnread} onSection={s => go('settings', s)} onOpenAdmin={onOpenAdmin} onOpenBrand={id => go('brands', null, id)} onGo={go} onTodayCounts={setTodayCounts} onSignalsSeen={loadHot} intent={intent} onIntentDone={clearIntent} />;
 
   const avatar = shell && <AvatarMenu me={shell.me} paletteIndex={mine?.palette_index || 1} size={compact ? 30 : 34} onBack={onAllWorkspaces} onSignOut={signOut} />;
   const newMenu = shell && roleAtLeast(shell.me.role, 'member') && <NewMenu compact={compact} onPick={pickNew} />;

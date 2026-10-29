@@ -42,7 +42,8 @@ export function SideNav({ screens, current, onGo, owner }) {
             <button type="button" className="hk-btn hk-nav__item" aria-current={current === s.id ? 'page' : undefined} onClick={() => onGo(s.id)} data-hk-nav={s.id}>
               <Icon name={s.icon} size={18} />
               {s.label}
-              {s.count > 0 && <span className="hk-nav__badge">{s.count}</span>}
+              {s.hot > 0 && <span className="hk-nav__badge hk-nav__badge--green" title="Unseen signals on Hot or Warm brands" data-hk-hot-badge>{s.hot}<span className="ui-sr-only"> unseen Hot or Warm signals</span></span>}
+              {s.count > 0 && <span className="hk-nav__badge" style={s.hot > 0 ? { marginLeft: 4 } : undefined}>{s.count}</span>}
             </button>
           </React.Fragment>
         ))}

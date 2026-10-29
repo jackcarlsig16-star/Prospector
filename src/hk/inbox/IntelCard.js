@@ -3,6 +3,7 @@ import Button from '../../ui/Button';
 import { Chip } from '../brands/BrandsScreen';
 import { Avatar } from '../HkMarks';
 import { hkPost } from '../hkApi';
+import { HeatChip, ListButtons } from '../signals/Heat';
 import { fmtDate, KIND_LABEL, FIT_LABEL, FIT_TONE, NEXT_LABEL, CHICAGO_LABEL, STATUS_LABEL, REPLY_LABEL, usd } from './inboxPrefs';
 
 // hkos-inbox-v2 L4 / L5, reshaped by hkos-inbox-v2-polish P1 - the intel STRIP over the email: at most two rows, so the
@@ -61,7 +62,7 @@ const verdictPill = v => (v.ok
   ? <span className="hk-pill hk-pill--green" data-hk-verdict="clear">Clear to draft</span>
   : <span className="hk-pill hk-pill--block" data-hk-verdict={v.reason}>Blocked: {String(v.reason || '').replace(/_/g, ' ')}</span>);
 
-export default function IntelStrip({ businessId, thread, members, canEdit, busy, onOpenBrand, onStatus, onLink, onTrack, onIgnore, onUnignore, onAnalyzed }) {
+export default function IntelStrip({ businessId, thread, members, meId, canEdit, busy, onOpenBrand, onStatus, onLink, onTrack, onTrackTarget, onIgnore, onUnignore, onAnalyzed }) {
   const [folded, setFolded] = useState(readFolded);
   const [open, setOpen] = useState(false);
   const [run, setRun] = useState({ state: 'idle' });
@@ -90,6 +91,7 @@ export default function IntelStrip({ businessId, thread, members, canEdit, busy,
         <span className="hk-meta">{brand.domain || 'no domain'}</span>
         {owner ? <span className="hk-istrip__owner"><Avatar name={owner.first_name} index={owner.palette_index || 1} size={20} />{owner.first_name}</span> : <span className="hk-meta">Unclaimed</span>}
         <span className="hk-meta">{brand.touch_count} of {brand.max_email_touches || 3} touches{brand.last_touch_at ? ` · last ${fmtDate(brand.last_touch_at)}` : ''}</span>
+        <HeatChip band={brand.heat_band} />
         <Chip tone={chip.kind === 'tracked' ? 'green' : 'blue'}>{STATUS_LABEL[brand.status] || brand.status}</Chip>
         {brand.last_reply_label && <Chip tone="lilac">{REPLY_LABEL[brand.last_reply_label] || brand.last_reply_label}</Chip>}
         {v && verdictPill(v)}
@@ -103,6 +105,7 @@ export default function IntelStrip({ businessId, thread, members, canEdit, busy,
             {QUICK.map(([s, l]) => <option key={s} value={s} disabled={brand.status === s}>{l}</option>)}
           </select>
         )}
+        {brand.relationship === 'prospect' && <ListButtons businessId={businessId} brand={brand} meId={meId} members={members} canEdit={canEdit} compact />}
         <MoreMenu items={menu} />
       </span>
     </>);
@@ -132,6 +135,7 @@ export default function IntelStrip({ businessId, thread, members, canEdit, busy,
   const i = saved?.intel;
   const menu = canEdit ? [
     { key: 'track', label: 'Track as brand', onClick: onTrack, disabled: busy, attrs: { 'data-hk-track-brand': '' } },
+    { key: 'track_target', label: 'Track as brand + Target', onClick: onTrackTarget, disabled: busy, attrs: { 'data-hk-track-target': '' } },
     ...(sender.domain ? [{ key: 'ignore', label: 'Ignore sender', onClick: onIgnore, disabled: busy, attrs: { 'data-hk-ignore-sender': '' } }] : []),
   ] : [];
   const row2 = run.state === 'confirm'

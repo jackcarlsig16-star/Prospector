@@ -4,6 +4,7 @@ import { Avatar, Sprout } from '../HkMarks';
 import { Chip } from '../brands/BrandsScreen';
 import { hkGet, hkPost, hkPatch, hkFetch } from '../hkApi';
 import { AGING_DAYS } from './DraftsScreen';
+import SignalsPanel from '../signals/SignalsPanel';
 
 // hkos-daily-check-v1 J5 - Today, phone-first: the stats strip, the founders' mailbox state, the run buttons (owner
 // role), then the morning's sections as cards that hide when empty - Urgent, Replies waiting, Drafts to review,
@@ -24,7 +25,7 @@ export const todayBadge = counts => (counts ? (counts.urgent || 0) + (counts.rep
 export const ownerMatch = (ownerUserId, owner, meId) => owner === 'all' || !ownerUserId || ownerUserId === (owner === 'me' ? meId : owner);
 export const runLine = (run, ranToday) => (!run ? 'The daily check has not run yet.' : ranToday ? `Daily check ran today at ${fmtTime(run.finished_at || run.started_at)} (${run.trigger})${run.status === 'partial' ? ', with some items' : ''}.` : `Last daily check ${fmtDate(run.started_at)} (${run.trigger}). Not run yet today.`);
 
-export default function TodayScreen({ businessId, shell, owner, compact, gmail, onOpenBrand, onGo, onOpenConnections, onCounts }) {
+export default function TodayScreen({ businessId, shell, owner, compact, gmail, canEdit, onOpenBrand, onGo, onOpenConnections, onCounts, onSignalsSeen }) {
   const [today, setToday] = useState(null);
   const [replies, setReplies] = useState([]);
   const [drafts, setDrafts] = useState([]);
@@ -87,6 +88,7 @@ export default function TodayScreen({ businessId, shell, owner, compact, gmail, 
       </div>
       {note && <p className="hk-note" role="status" data-hk-run-note>{note}</p>}
       {error && <p className="hk-error" role="alert">{error}</p>}
+      <SignalsPanel businessId={businessId} shell={shell} canEdit={canEdit} onOpenBrand={onOpenBrand} onGo={onGo} onSeen={onSignalsSeen} />
       {urgent.length > 0 && (
         <section className="hk-today__card hk-today__card--urgent" aria-label="Urgent" data-hk-section="urgent">
           <h2 className="hk-section-title">Urgent ({urgent.length})</h2>

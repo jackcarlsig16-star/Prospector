@@ -9,6 +9,7 @@ import { Chip } from './BrandsScreen';
 import { fromDetail, STATUS_LABELS, RELATIONSHIP_LABELS, STATUS_TONE, RELATIONSHIP_TONE, SOURCE_LABELS } from './verdict';
 import { hkGet, hkPatch, hkPost } from '../hkApi';
 import ComposerModal from './ComposerModal';
+import { HeatChip, ListButtons } from '../signals/Heat';
 
 // hkos-data-foundation-v1 D6 - the Brand page: header + chips + touch counter, the Verdict banner, the primary action
 // by state, More, and four tabs. Contact emails show here only (D5), as mailto links.
@@ -16,7 +17,7 @@ const TABS = [['timeline', 'Timeline'], ['contacts', 'Contacts'], ['notes', 'Not
 const fmt = iso => (iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
 const ACTION_WORDS = { 'brand.created': 'added the brand', 'brand.claimed': 'claimed it', 'brand.released': 'released it', 'brand.status': 'set the status', 'brand.relationship': 'changed the relationship', 'brand.updated': 'edited', 'brand.merged': 'merged a duplicate into it', 'contact.added': 'added a contact', 'contact.updated': 'edited a contact', 'sponsor.period_added': 'added a sponsor period', 'sponsor.period_removed': 'removed a sponsor period' };
 
-export default function BrandPage({ businessId, brandId, shell, gmail, onBack, canEdit, onGmailChanged }) {
+export default function BrandPage({ businessId, brandId, shell, gmail, onBack, canEdit, onGmailChanged, onSignalsChanged }) {
   const [composer, setComposer] = useState(false);
   const [savedNote, setSavedNote] = useState('');
   const [data, setData] = useState(null);
@@ -71,6 +72,7 @@ export default function BrandPage({ businessId, brandId, shell, gmail, onBack, c
           <h1 className="hk-head__title">{brand.name}</h1>
           {brand.domain && <a className="hk-link" href={`https://${brand.domain}`} target="_blank" rel="noopener noreferrer">{brand.domain}</a>}
           <div className="hk-brand__chips">
+            {brand.relationship === 'prospect' && <HeatChip band={brand.heat_band || 'cold'} showCold />}
             <Chip tone={STATUS_TONE[brand.status]}>{STATUS_LABELS[brand.status]}</Chip>
             <span className="hk-chip hk-chip--grey">{owner ? <><Avatar name={owner.first_name} index={owner.palette_index} size={18} /> {owner.first_name}</> : 'Unclaimed'}</span>
             <Chip tone={RELATIONSHIP_TONE[brand.relationship]}>{RELATIONSHIP_LABELS[brand.relationship]}</Chip>
@@ -79,6 +81,7 @@ export default function BrandPage({ businessId, brandId, shell, gmail, onBack, c
             {brand.source === 'import' && <Chip tone="lilac">Import</Chip>}
             <span className="hk-meta" data-hk-touches>{email_touches_sent} of {max_email_touches} email touches</span>
           </div>
+          {brand.relationship === 'prospect' && <div className="hk-brand__chips"><ListButtons businessId={businessId} brand={brand} meId={me?.user_id} members={members} canEdit={canEdit} onChanged={() => { load(); onSignalsChanged?.(); }} /></div>}
         </div>
         <div className="hk-brand__actions">{primary}{more}</div>
       </header>

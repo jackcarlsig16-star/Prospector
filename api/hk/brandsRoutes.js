@@ -1,7 +1,7 @@
 // hkos-data-foundation-v1 D4 - brands + contacts routes (mounted under /api/hk/:businessId behind hkGate; viewer = GET,
 // member = writes, owner-role = relationship upgrades + releasing another's claim). List rows never carry an address;
 // the brand detail and the contacts routes do (hk_contacts.email - the scoped HumanKind exception, D5).
-import { getSupabase, HkError, fail, isOwner, me, text, bool, oneOf, domainOf, emailOf, logEvent, brandRow, brandDetail, contactRow, touchRow, replyRow, liveBrands, brandById, legacyNames, verdictFor, sponsorsNichesOf, canContact, normName, SPONSOR_RELATIONSHIPS, MANUAL_STATUSES, selectAllPages } from './hkShared.js';
+import { getSupabase, HkError, fail, isOwner, me, text, bool, oneOf, domainOf, emailOf, logEvent, brandRow, brandDetail, contactRow, touchRow, replyRow, liveBrands, brandById, legacyNames, verdictFor, sponsorsNichesOf, canContact, normName, SPONSOR_RELATIONSHIPS, MANUAL_STATUSES, selectAllPages, selectIn } from './hkShared.js';
 import { signalNow, signalWords, moveDomainSignals, recomputeHeat } from './signals.js';
 import { trackedThreads, liveThread } from './warm.js';
 import { mailboxFor, accessTokenForGrant } from '../lib/googleGrants.js';
@@ -10,7 +10,8 @@ import { gmailClient } from './gmailClient.js';
 const SEGMENTS = new Set(['sponsor_brand', 'creator', 'nonprofit', 'press', 'podcast', 'university']);
 const SOURCES = new Set(['sourced', 'user_supplied', 'apollo_list', 'places', 'import']);
 const EMAIL_SOURCES = new Set(['apollo_verified', 'site_published', 'user_supplied', 'import']);
-const VIEWS = new Set(['my_open', 'unclaimed', 'overdue', 'local', 'all']);
+const VIEWS = new Set(['my_open', 'unclaimed', 'overdue', 'local', 'hot', 'targets', 'all']);
+const HOT_BANDS = new Set(['hot', 'warm']);
 export const CLOSED = new Set(['passed', 'skipped', 'sponsor']);
 const SHORT = { name: [160, 'name'], category: [80, 'category'], niche: [80, 'niche'], size_band: [40, 'size band'], city: [80, 'city'], neighborhood: [80, 'neighborhood'] };
 const LONG = { notes: [4000, 'notes'], challenge_idea: [1000, 'challenge idea'], origin_hook: [1000, 'origin hook'], reward_idea: [1000, 'reward idea'] };
@@ -40,9 +41,18 @@ export async function listBrandsRoute(req, res, { supabase = getSupabase(), now 
     if (view === 'unclaimed') rows = rows.filter(b => !b.owner_user_id && b.status === 'candidate' && b.relationship === 'prospect');
     if (view === 'overdue') rows = rows.filter(b => b.next_due_at && new Date(b.next_due_at) < now() && !CLOSED.has(b.status));
     if (view === 'local') rows = rows.filter(b => b.is_local);
+    // grow-signals G6/G7: Hot leads = Hot + Warm, newest signal first; Targets = + Target'd brands, hottest first.
+    if (view === 'targets') rows = rows.filter(b => b.targeted_at).sort((a, b) => (b.heat || 0) - (a.heat || 0) || String(b.targeted_at).localeCompare(String(a.targeted_at)));
+    let lastSignal = {};
+    if (view === 'hot') {
+      rows = rows.filter(b => HOT_BANDS.has(b.heat_band));
+      const sigs = await selectIn(() => supabase.from('hk_signals').select('brand_id, occurred_at').eq('business_id', businessId).is('dismissed_at', null).order('id'), 'brand_id', rows.map(b => b.id));
+      for (const s of sigs) if (!lastSignal[s.brand_id] || s.occurred_at > lastSignal[s.brand_id]) lastSignal[s.brand_id] = s.occurred_at;
+      rows.sort((a, b) => String(lastSignal[b.id] || '').localeCompare(String(lastSignal[a.id] || '')) || (b.heat || 0) - (a.heat || 0));
+    }
     if (q.q) { const n = normName(q.q), raw = String(q.q).trim().toLowerCase(); rows = rows.filter(b => normName(b.name).includes(n) || (b.domain || '').includes(raw) || (b.aliases || []).some(a => normName(a).includes(n))); }
     const primary = await primaryNames(supabase, businessId, rows.map(b => b.id));
-    res.json({ view, brands: rows.map(b => brandRow(b, { primary_contact_name: primary[b.id] || null })) });
+    res.json({ view, brands: rows.map(b => brandRow(b, { primary_contact_name: primary[b.id] || null, ...(view === 'hot' ? { last_signal_at: lastSignal[b.id] || null } : {}) })) });
   } catch (e) { fail(res, e, 'brands/list'); }
 }
 

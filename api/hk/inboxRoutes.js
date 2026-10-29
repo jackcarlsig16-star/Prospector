@@ -185,7 +185,7 @@ async function brandPanel(supabase, businessId, uid, brand, ctx) {
   const { data: settings } = await supabase.from('hk_settings').select('max_email_touches').eq('business_id', businessId).maybeSingle();
   const verdict = canContact({ brand, touches: live, threadsByFounder: await trackedThreads(supabase, businessId, brand.id), senderUserId: uid, kind: 'cold', sponsorsNiches: sponsorsNichesOf(ctx.brands), maxEmailTouches: settings?.max_email_touches || 3 });
   const lastTouch = live.map(t => t.sent_at).filter(Boolean).sort().pop() || null;
-  return { ...brandSummary(brand), challenge_idea: brand.challenge_idea ? decodeEntities(brand.challenge_idea) : null, touch_count: live.length, max_email_touches: settings?.max_email_touches || 3, last_touch_at: lastTouch,
+  return { ...brandSummary(brand), owner_unclear: !!brand.owner_unclear, heat_band: brand.heat_band || 'cold', targeted_at: brand.targeted_at || null, challenge_idea: brand.challenge_idea ? decodeEntities(brand.challenge_idea) : null, touch_count: live.length, max_email_touches: settings?.max_email_touches || 3, last_touch_at: lastTouch,
     last_reply_label: replies?.[0]?.label || null, last_reply_summary: replies?.[0]?.summary ? decodeEntities(replies[0].summary) : null, verdict };
 }
 

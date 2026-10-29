@@ -210,8 +210,8 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
   const unignore = () => act(async () => { await hkDelete(businessId, `/inbox/ignore/${encodeURIComponent(thread.sender.domain)}`); await load({ refresh: true }); await open(openId, { refresh: true }); });
   const status = (brandId, s) => act(async () => { await hkPatch(businessId, `/brands/${brandId}`, { status: s }); await open(openId, { refresh: true }); });
   const handled = () => act(async () => { await hkPatch(businessId, `/replies/${thread.unhandled_reply_id}`, { handled: true }); setNote('Marked handled.'); await open(openId, { refresh: true }); });
-  const track = async body => { const r = await hkPost(businessId, '/inbox/track', { ...body, thread_id: openId }); return { brand: r.brand }; };
-  const tracked = async brand => { setTracking(false); setNote(`Tracking ${brand.name}.`); await load({ refresh: true }); await open(openId, { refresh: true }); };
+  const track = async body => { const r = await hkPost(businessId, '/inbox/track', { ...body, thread_id: openId }); if (tracking === 'target') await hkPost(businessId, `/brands/${r.brand.id}/target`, { on: true }); return { brand: r.brand }; };
+  const tracked = async brand => { setNote(tracking === 'target' ? `Tracking ${brand.name} and added it to Targets.` : `Tracking ${brand.name}.`); setTracking(false); await load({ refresh: true }); await open(openId, { refresh: true }); };
   const analyzed = intel => {
     setThread(t => (t ? { ...t, intel } : t));
     const fit = intel.intel?.fit?.sponsor_fit || null, domain = thread?.sender?.domain;
@@ -263,7 +263,7 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
       {thread && (
         <>
           <IntelStrip key={thread.thread_id} businessId={businessId} thread={thread} members={members} canEdit={canEdit} busy={busy} onOpenBrand={onOpenBrand} onStatus={status} onLink={link}
-            onTrack={() => setTracking(true)} onIgnore={ignore} onUnignore={unignore} onAnalyzed={analyzed} />
+            onTrack={() => setTracking(true)} onTrackTarget={() => setTracking('target')} meId={shell?.me?.user_id} onIgnore={ignore} onUnignore={unignore} onAnalyzed={analyzed} />
           {/* polish P2: one row - subject left, actions right - so the email starts right under it. */}
           <header className="hk-inbox__thread-head hk-inbox__thread-head--row">
             <h2 className="hk-inbox__subject-title" title={thread.subject || undefined}>{thread.subject || '(no subject)'}</h2>
@@ -291,7 +291,7 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
           {reader}
         </> : <>{paneList}{reader}</>}
       </div>
-      {tracking && thread && <AddBrandModal businessId={businessId} members={members} title="Track as brand" initial={thread.intel?.prefill || { name: thread.sender.name === thread.sender.domain ? '' : thread.sender.name, domain: thread.sender.domain || '' }}
+      {tracking && thread && <AddBrandModal businessId={businessId} members={members} title={tracking === 'target' ? 'Track as brand + Target' : 'Track as brand'} initial={thread.intel?.prefill || { name: thread.sender.name === thread.sender.domain ? '' : thread.sender.name, domain: thread.sender.domain || '' }}
         onSave={track} onSaved={tracked} onClose={() => setTracking(false)} onOpenMatch={id => { setTracking(false); onOpenBrand(id); }} />}
     </div>
   );

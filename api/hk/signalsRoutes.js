@@ -17,7 +17,7 @@ export async function listSignalsRoute(req, res, { supabase = getSupabase() } = 
     const { data, error } = await q;
     if (error) throw new Error(error.message);
     const ids = [...new Set((data || []).map(s => s.brand_id).filter(Boolean))];
-    const brands = Object.fromEntries((await selectIn(() => supabase.from('hk_brands').select('id, name, domain, status, relationship, owner_user_id, heat, heat_band, targeted_at').eq('business_id', businessId).order('id'), 'id', ids)).map(b => [b.id, b]));
+    const brands = Object.fromEntries((await selectIn(() => supabase.from('hk_brands').select('id, name, domain, status, relationship, owner_user_id, owner_unclear, updated_at, heat, heat_band, targeted_at').eq('business_id', businessId).order('id'), 'id', ids)).map(b => [b.id, b]));
     const row = s => ({ id: s.id, kind: s.kind, words: signalWords(s.kind), points: SPONSOR_KINDS.has(s.kind) ? 0 : s.points, occurred_at: s.occurred_at, source: s.source, detail: s.detail, brand: s.brand_id && brands[s.brand_id] ? brands[s.brand_id] : null, domain: s.domain, seen_at: s.seen_at, acted_at: s.acted_at, dismissed_at: s.dismissed_at, ref_type: s.ref_type, ref_id: s.ref_type === 'domain' || s.ref_type === 'thread' || s.ref_type === 'reply' ? s.ref_id : null });
     const all = (data || []).map(row);
     res.json({ prospects: all.filter(s => !SPONSOR_KINDS.has(s.kind)), sponsors: all.filter(s => SPONSOR_KINDS.has(s.kind)), unseen_hot_warm: all.filter(s => !s.seen_at && !SPONSOR_KINDS.has(s.kind) && ['hot', 'warm'].includes(s.brand?.heat_band)).length });

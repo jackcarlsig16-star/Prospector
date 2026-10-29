@@ -7,7 +7,7 @@ import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from '../sales/testing/fakeSupabase.mjs';
 import * as S from './signals.js';
 import { listSignalsRoute, seenSignalsRoute, dismissSignalRoute, targetRoute, pipelineRoute, pipelineRefusal } from './signalsRoutes.js';
-import { patchBrandRoute, createBrand } from './brandsRoutes.js';
+import { patchBrandRoute, createBrand, listBrandsRoute } from './brandsRoutes.js';
 
 const HK = 'biz-hk', JACK = 'u-jack', PETE = 'u-pete';
 const NOW = new Date('2026-10-29T15:00:00Z');
@@ -58,8 +58,8 @@ test('auto-replies write no signal; an unlabeled reply is reply_other; labels ma
 
 test('each signal is written once per ref: a re-run (live writer or backfill) writes nothing new', async () => {
   const sb = fresh();
-  const set = [sig('reply_interest', B.run), sig('waiting_overdue', B.mine), sig('new_person_sender', null, { domain: 'newco.invalid', refType: 'domain', refId: 'newco.invalid' })];
-  assert.deepEqual(await S.writeAll(sb, set), { written: 3, skipped: 0, perKind: { reply_interest: 1, waiting_overdue: 1, new_person_sender: 1 } });
+  const set = [sig('reply_interest', B.run), sig('waiting_overdue', B.mine), sig('research_possible', null, { domain: 'newco.invalid', refType: 'domain_intel', refId: 'newco.invalid:0' })];
+  assert.deepEqual(await S.writeAll(sb, set), { written: 3, skipped: 0, perKind: { reply_interest: 1, waiting_overdue: 1, research_possible: 1 } });
   assert.deepEqual(await S.writeAll(sb, set), { written: 0, skipped: 3, perKind: {} });
   assert.equal(sb.db.hk_signals.length, 3);
   await assert.rejects(S.writeSignal(sb, sig('not_a_kind', B.run)), /unknown signal kind/);
@@ -82,27 +82,26 @@ test('daily signals: overdue wait (once), sponsor lapsed per month, renewal dorm
   assert.ok(!answered.some(s => s.kind === 'waiting_overdue'), 'a reply after the send ends the wait');
 });
 
-test('inbox list: candidate sender once per thread, new person once per domain, re-run writes nothing', async () => {
+test('new_person_sender and sender_is_candidate are not written in v1 (viewing the inbox list writes nothing)', async () => {
   const sb = fresh();
-  const rows = [{ thread_id: 'th1', date: NOW.toISOString(), from_domain: 'bluefinrun.invalid', chip: { kind: 'matches', brand_id: B.run, brand_name: 'Bluefin Run Club', status: 'candidate' } },
-    { thread_id: 'th2', date: NOW.toISOString(), from_domain: 'newco.invalid', chip: { kind: 'untracked' } }, { thread_id: 'th3', date: NOW.toISOString(), from_domain: 'newco.invalid', chip: { kind: 'untracked' } },
-    { thread_id: 'th4', date: NOW.toISOString(), from_domain: 'news.invalid', chip: { kind: 'not_tracked', reason: 'bulk' } }];
-  assert.equal(await S.inboxListSignals(sb, { businessId: HK, rows, now: NOW }), 2);
-  assert.equal(await S.inboxListSignals(sb, { businessId: HK, rows, now: NOW }), 0);
-  assert.deepEqual(sb.db.hk_signals.map(s => [s.kind, s.brand_id, s.domain]), [['sender_is_candidate', B.run, null], ['new_person_sender', null, 'newco.invalid']]);
-  assert.equal(brandRow(sb, B.run).heat_band, 'warm');
+  for (const kind of ['new_person_sender', 'sender_is_candidate']) {
+    assert.equal(S.POINTS[kind], undefined);
+    await assert.rejects(S.writeSignal(sb, sig(kind, B.run, { domain: 'newco.invalid', refType: 'domain', refId: 'newco.invalid' })), /unknown signal kind/);
+  }
+  assert.equal(S.inboxListSignals, undefined, 'no inbox-list writer exists');
+  assert.equal(sb.db.hk_signals.length, 0);
 });
 
 test('domain -> brand: tracking a sender as a brand moves its domain signals onto it and heats it', async () => {
   const sb = fresh();
-  await S.writeSignal(sb, sig('new_person_sender', null, { domain: 'newco.invalid', refType: 'domain', refId: 'newco.invalid' }));
+  await S.writeSignal(sb, sig('research_possible', null, { domain: 'newco.invalid', refType: 'domain_intel', refId: 'newco.invalid:0' }));
   await S.writeSignal(sb, sig('research_strong_fit', null, { domain: 'newco.invalid', refType: 'domain_intel', refId: 'newco.invalid:1' }));
   const { data } = await createBrand(sb, { businessId: HK, userId: JACK, body: { name: 'Newco Fitness', domain: 'newco.invalid' }, now: () => NOW });
   assert.ok(sb.db.hk_signals.every(s => s.brand_id === data.id));
   // The in-memory DB applies no column defaults; Postgres gives a new brand relationship 'prospect'.
   brandRow(sb, data.id).relationship = 'prospect';
   await S.recomputeHeat(sb, HK, { brandIds: [data.id], now: NOW });
-  assert.deepEqual([brandRow(sb, data.id).heat, brandRow(sb, data.id).heat_band], [30, 'warm']);
+  assert.deepEqual([brandRow(sb, data.id).heat, brandRow(sb, data.id).heat_band], [28, 'warm']);
 });
 
 test('meeting status writes meeting_set through the status writer', async () => {
@@ -160,4 +159,18 @@ test('+ Pipeline refuses sponsor, founding partner, do-not-contact, the other fo
   assert.deepEqual([undo.code, brandRow(sb, B.run).owner_user_id, brandRow(sb, B.run).status], [200, null, 'candidate']);
   assert.deepEqual(sb.db.hk_events.map(e => e.action), ['brand.claimed', 'brand.released']);
   assert.equal(pipelineRefusal(brand(B.run, 'X', { status: 'passed' }), JACK), 'X was passed on');
+});
+
+test('Brands views: Hot leads = Hot + Warm, newest signal first; Targets = targeted brands, hottest first; rows carry heat', async () => {
+  const sb = fresh();
+  Object.assign(brandRow(sb, B.run), { heat: 45, heat_band: 'hot' });
+  Object.assign(brandRow(sb, B.mine), { heat: 22, heat_band: 'warm', targeted_at: '2026-10-28T00:00:00Z', targeted_by: JACK });
+  Object.assign(brandRow(sb, B.unclear), { heat: 6, heat_band: 'cool', targeted_at: '2026-10-29T00:00:00Z', targeted_by: JACK });
+  await S.writeSignal(sb, sig('reply_interest', B.run, { occurredAt: '2026-10-27T00:00:00Z' }));
+  await S.writeSignal(sb, sig('reply_pricing', B.mine, { occurredAt: '2026-10-29T00:00:00Z' }));
+  const hot = await call(listBrandsRoute, reqOf({ method: 'GET', query: { view: 'hot' } }), deps(sb));
+  assert.equal(hot.code, 200, JSON.stringify(hot.body));
+  assert.deepEqual(hot.body.brands.map(b => [b.name, b.heat_band, b.last_signal_at.slice(0, 10)]), [['Ember Coffee', 'warm', '2026-10-29'], ['Bluefin Run Club', 'hot', '2026-10-27']]);
+  const targets = await call(listBrandsRoute, reqOf({ method: 'GET', query: { view: 'targets' } }), deps(sb));
+  assert.deepEqual(targets.body.brands.map(b => [b.name, b.heat, b.targeted_by]), [['Ember Coffee', 22, JACK], ['Prairie Climb', 6, JACK]]);
 });

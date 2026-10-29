@@ -2,12 +2,13 @@
 // (unique business_id + kind + ref_type + ref_id; a re-run is a no-op). Heat = the sum of a brand's live signals'
 // points decayed with a 7-day half-life, floored at 0 - PROSPECT brands only; sponsor-kind signals are logged and shown
 // under Sponsors but add 0 (Stage 0 ruling 1). Auto-replies write no signal at all (Stage 2 ruling). No Claude and no
-// Gmail call anywhere in here: writers only read what other jobs already produced.
+// Gmail call anywhere in here: writers only read what other jobs already produced. new_person_sender and
+// sender_is_candidate are out of v1 (Stage 2 ruling: viewing the inbox list writes nothing) - writeSignal refuses them.
 import { detailHasPii, selectAllPages, selectIn, chunks } from './hkShared.js';
 
 export const POINTS = {
   reply_interest: 40, reply_pricing: 35, reply_referral: 30, reply_other: 15, reply_decline: -30,
-  new_person_sender: 10, sender_is_candidate: 25, research_strong_fit: 20, research_possible: 8, warm_thread_found: 10,
+  research_strong_fit: 20, research_possible: 8, warm_thread_found: 10,
   follow_up_due: 12, waiting_overdue: 6, meeting_set: 30, sponsor_renewal_due: 25, sponsor_lapsed: 15, targeted_by_user: 10,
 };
 export const SPONSOR_KINDS = new Set(['sponsor_renewal_due', 'sponsor_lapsed']);
@@ -32,7 +33,7 @@ export function heatOf(brand, signals, now = new Date()) {
   return Math.max(0, Math.round(h));
 }
 
-const LABEL = { reply_interest: 'replied: interested', reply_pricing: 'replied: pricing question', reply_referral: 'replied: referral', reply_other: 'replied', reply_decline: 'replied: not interested', new_person_sender: 'new person wrote in', sender_is_candidate: 'wrote in (a candidate brand)', research_strong_fit: 'research: strong fit', research_possible: 'research: possible fit', warm_thread_found: 'warm thread found', follow_up_due: 'follow-up due', waiting_overdue: 'no reply for over a week', meeting_set: 'meeting set', sponsor_renewal_due: 'sponsor renewal due', sponsor_lapsed: 'sponsor: no period this month', targeted_by_user: 'added to Targets' };
+const LABEL = { reply_interest: 'replied: interested', reply_pricing: 'replied: pricing question', reply_referral: 'replied: referral', reply_other: 'replied', reply_decline: 'replied: not interested', research_strong_fit: 'research: strong fit', research_possible: 'research: possible fit', warm_thread_found: 'warm thread found', follow_up_due: 'follow-up due', waiting_overdue: 'no reply for over a week', meeting_set: 'meeting set', sponsor_renewal_due: 'sponsor renewal due', sponsor_lapsed: 'sponsor: no period this month', targeted_by_user: 'added to Targets' };
 export const signalWords = kind => LABEL[kind] || kind;
 
 // Insert-or-skip. Returns the row written, or null when that (kind, ref) already exists.
@@ -136,24 +137,4 @@ export async function signalNow(supabase, s, now = new Date()) {
     if (row && s.brandId) await recomputeHeat(supabase, s.businessId, { brandIds: [s.brandId], now });
     return row;
   } catch (e) { console.error(`[hk/signals] ${s.kind}:`, e.message); return null; }
-}
-
-// Inbox list (G5): an inbound from a candidate brand's domain, once per thread; a new person sender (untracked, not
-// bulk - chipFor already filtered bulk / team / self / ignored), once per domain. One read for what exists, then inserts.
-export async function inboxListSignals(supabase, { businessId, rows, now = new Date() }) {
-  try {
-    const want = [];
-    for (const r of rows) {
-      if (r.chip?.kind === 'matches' && r.chip.status === 'candidate' && r.chip.brand_id) want.push({ businessId, kind: 'sender_is_candidate', brandId: r.chip.brand_id, occurredAt: r.date || now.toISOString(), source: 'inbox_open', refType: 'thread', refId: r.thread_id, detail: `${r.chip.brand_name || 'A candidate brand'} ${signalWords('sender_is_candidate')}` });
-      else if (r.chip?.kind === 'untracked' && r.from_domain) want.push({ businessId, kind: 'new_person_sender', domain: r.from_domain, occurredAt: r.date || now.toISOString(), source: 'inbox_open', refType: 'domain', refId: r.from_domain, detail: `${r.from_domain}: ${signalWords('new_person_sender')}` });
-    }
-    const uniq = [...new Map(want.map(s => [`${s.kind}:${s.refId}`, s])).values()];
-    if (!uniq.length) return 0;
-    const have = new Set((await selectIn(() => supabase.from('hk_signals').select('kind, ref_id').eq('business_id', businessId).in('kind', ['sender_is_candidate', 'new_person_sender']).order('id'), 'ref_id', uniq.map(s => s.refId))).map(s => `${s.kind}:${s.ref_id}`));
-    const fresh = uniq.filter(s => !have.has(`${s.kind}:${s.refId}`));
-    for (const s of fresh) await writeSignal(supabase, s);
-    const brandIds = fresh.map(s => s.brandId).filter(Boolean);
-    if (brandIds.length) await recomputeHeat(supabase, businessId, { brandIds, now });
-    return fresh.length;
-  } catch (e) { console.error('[hk/signals] inbox list:', e.message); return 0; }
 }
