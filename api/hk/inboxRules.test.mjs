@@ -95,3 +95,74 @@ test('latestInbound skips the owner, SENT and DRAFT messages', () => {
   assert.equal(latestInbound(th, OWNER).id, 'm1');
   assert.equal(latestInbound({ messages: [msg('m2', { from: `HumanKind <${OWNER}>`, labels: ['SENT'] })] }, OWNER), null);
 });
+
+// ---- hkos-inbox-v2 (L1 lanes, L3 entities, ruling 2 group relays, Q1 units, Q2 Brands query, L5 prefill) ----
+const V2 = await import('./inboxRules.js');
+const TEAM = 'humankindcollective.app';
+const row = (m, over = {}) => threadRow({ id: m.threadId, messages: [m] }, ctx(over));
+
+test('v2 L1 lanes: a person in Needs you; Gmail Promotions / Updates / Social / Forums -> Other; Personal stays; bulk and ignored -> Other; brand mail -> Needs you', () => {
+  assert.equal(row(msg('a', { from: 'Ana Ortiz <ana@newbrand.invalid>' })).lane, 'needs_you');
+  for (const cat of V2.MARKETING_CATEGORIES) assert.equal(row(msg('b', { from: 'Ana <ana@newbrand.invalid>', labels: ['INBOX', cat] })).lane, 'other', cat);
+  assert.equal(row(msg('c', { from: 'Ana <ana@newbrand.invalid>', labels: ['INBOX', 'CATEGORY_PERSONAL'] })).lane, 'needs_you', 'Personal is not marketing');
+  assert.equal(row(msg('d', { from: 'Shop <noreply@shop.invalid>' })).lane, 'other');
+  assert.equal(row(msg('e', { from: 'News <hello@news.invalid>' }), { ignored: new Set(['news.invalid']) }).lane, 'other');
+  assert.equal(row(msg('f', { from: 'Sam <sam@bluefin.invalid>', labels: ['INBOX', 'CATEGORY_PROMOTIONS'] }), { brandsByDomain: { 'bluefin.invalid': { id: 'b1', name: 'Bluefin' } } }).lane, 'needs_you', 'a brand outranks Gmail\'s category');
+});
+
+test('v2 ruling 2a: group-relayed mail ("X via Support Group", X-Original-Sender / Reply-To outside) is the original sender - chip, lane, Forums ignored, the group\'s List-Unsubscribe not bulk', () => {
+  const relay = (extra, name = "'Grace Miller' via Support Group") => msg('g', { from: `${name} <support@${TEAM}>`, labels: ['INBOX', 'CATEGORY_FORUMS'], extraHeaders: [{ name: 'List-Unsubscribe', value: '<https://groups.invalid/u>' }, ...extra] });
+  const a = V2.originOf(relay([{ name: 'X-Original-Sender', value: 'grace@studio.invalid' }]), { teamDomains: [TEAM] });
+  assert.deepEqual({ ...a.sender, email: undefined }, { name: 'Grace Miller', domain: 'studio.invalid', local: 'grace', email: undefined }); assert.equal(a.relayed, true);
+  const r = row(relay([{ name: 'X-Original-Sender', value: 'grace@studio.invalid' }]));
+  assert.deepEqual(r.chip, { kind: 'untracked' }); assert.equal(r.lane, 'needs_you'); assert.equal(r.from_domain, 'studio.invalid'); assert.equal(r.from_name, 'Grace Miller'); assert.equal(r.relayed, true);
+  assert.equal(row(relay([{ name: 'Reply-To', value: 'Grace <grace@studio.invalid>' }], 'Support Group')).from_domain, 'studio.invalid', 'Reply-To from an outside domain, no "via" in the name');
+  assert.equal(row(relay([{ name: 'X-Original-Sender', value: 'grace@studio.invalid' }]), { brandsByDomain: { 'studio.invalid': { id: 'b9', name: 'Studio' } } }).chip.kind, 'matches', 'the original sender matches a brand');
+  const nameOnly = row(relay([]));
+  assert.equal(nameOnly.from_name, 'Grace Miller'); assert.equal(nameOnly.from_domain, null); assert.equal(nameOnly.lane, 'needs_you');
+  assert.equal(row(relay([{ name: 'X-Original-Sender', value: 'noreply@tool.invalid' }])).lane, 'other', 'a relayed no-reply sender is still bulk');
+  assert.equal(row(msg('h', { from: `Pete <pete@${TEAM}>`, extraHeaders: [{ name: 'Reply-To', value: `pete@${TEAM}` }] })).relayed, false, 'a Reply-To inside the team is no relay');
+  assert.ok(!JSON.stringify(r).includes('@'));
+});
+
+test('v2 ruling 2b/2c: a teammate writing directly -> Needs you; automated team notices (no-reply, +tagged group address, digests with List-Unsubscribe) -> Other', () => {
+  assert.equal(row(msg('p', { from: `Pete <pete@${TEAM}>` })).lane, 'needs_you');
+  assert.deepEqual(row(msg('p', { from: `Pete <pete@${TEAM}>` })).chip, { kind: 'team' });
+  assert.equal(row(msg('o', { from: `HumanKind <${OWNER}>` })).lane, 'needs_you', 'the owner\'s own address');
+  assert.equal(row(msg('n', { from: `HumanKind <noreply@${TEAM}>` })).lane, 'other');
+  assert.equal(row(msg('m', { from: `Support Group <support+msgappr@${TEAM}>`, subject: 'Message pending moderation' })).lane, 'other');
+  assert.equal(row(msg('s', { from: `Support Group <support@${TEAM}>`, subject: 'Spam digest', extraHeaders: [{ name: 'List-Unsubscribe', value: '<https://x.invalid>' }] })).lane, 'other');
+});
+
+test('v2 L3 entities: subject, snippet and from name decoded (named + numeric) before the scrub; no "@" back', () => {
+  const r = row(msg('x', { from: '"Lil Bucks &amp; Co" <emily@lilbucks.invalid>', subject: 'you&#39;re invited &quot;now&quot; &#x2014; R&amp;D', snippet: 'Tom &amp; Jerry&#39;s &lt;b&gt;' }));
+  assert.equal(r.from_name, 'Lil Bucks & Co'); assert.equal(r.subject, 'you\'re invited "now" — R&D'); assert.equal(r.snippet, 'Tom & Jerry\'s <b>');
+  assert.ok(!/&#39;|&amp;|&quot;/.test(JSON.stringify(r)));
+});
+
+test('v2 Q2 Brands query: one from:(a OR b) per chunk, every chunk under the cap, sorted + de-duplicated, junk dropped, search kept', () => {
+  assert.deepEqual(V2.brandQueries(['b.com', 'a.com', 'A.com', '', 'not a domain', 'c.org']), ['from:(a.com OR b.com OR c.org)']);
+  const many = Array.from({ length: 300 }, (_, i) => `brand${String(i).padStart(3, '0')}.example`);
+  const qs = V2.brandQueries(many, { maxLen: 400 });
+  assert.ok(qs.length > 1 && qs.every(q => q.length <= 400), `chunks ${qs.length}`);
+  assert.deepEqual(qs.flatMap(q => /from:\(([^)]*)\)/.exec(q)[1].split(' OR ')), many, 'every domain once, in order');
+  assert.deepEqual(V2.brandQueries(['a.com'], { search: 'pricing' }), ['(pricing) from:(a.com)']);
+  assert.deepEqual(V2.brandQueries([]), []);
+});
+
+test('v2 Q1 units per load: v1 inbox 50 threads.get = 2,010; v2 25 messages.get = 505; v1 Brands scan 200 = 8,040; v2 Brands 3 chunks + 25 gets = 515', () => {
+  const U = { 'threads.list': 10, 'threads.get': 40, 'messages.list': 5, 'messages.get': 20 };
+  assert.equal(V2.unitsOf({ 'threads.list': 1, 'threads.get': 50 }, U), 2010);
+  assert.equal(V2.unitsOf({ 'messages.list': 1, 'messages.get': 25 }, U), 505);
+  assert.equal(V2.unitsOf({ 'threads.list': 4, 'threads.get': 200 }, U), 8040);
+  assert.equal(V2.unitsOf({ 'messages.list': 3, 'messages.get': 25 }, U), 515);
+});
+
+test('v2 Track as brand prefill from an Analyze result: name, domain, category, challenge idea, HQ city, is_local (Chicago yes), size band, one dated note', () => {
+  const intel = { company: { name: 'ASO Scout', website: 'asoscout.invalid', what_they_do: 'App store optimization agency', hq_city: 'Chicago', chicago_presence: 'yes', size_hint: '11-50', category: 'agency/vendor' },
+    email: { kind: 'vendor_pitch', summary: 'Pitches ASO services', urgency: 'low' }, fit: { sponsor_fit: 'weak', why: 'A vendor, not a sponsor', challenge_idea: null }, next_step: 'ignore_sender', reason: 'Sales pitch' };
+  const p = V2.prefillFromIntel(intel, { senderName: 'Sam', domain: 'asoscout.invalid', date: '2026-10-28' });
+  assert.deepEqual({ ...p, notes: undefined }, { name: 'ASO Scout', domain: 'asoscout.invalid', category: 'agency/vendor', challenge_idea: '', city: 'Chicago', is_local: true, size_band: '11-50', notes: undefined });
+  assert.ok(p.notes.startsWith('Analyzed 2026-10-28: App store optimization agency · Email: vendor pitch · Sponsor fit: weak - A vendor, not a sponsor · Next: ignore sender - Sales pitch'));
+  assert.equal(V2.prefillFromIntel({ company: { chicago_presence: 'unknown' } }, { senderName: 'Ana', domain: 'x.invalid', date: '2026-10-28' }).is_local, false);
+});

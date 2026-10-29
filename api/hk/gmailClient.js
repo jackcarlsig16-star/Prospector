@@ -6,7 +6,13 @@ import { header, parseAddress, decodeEntities } from './gmailMime.js';
 
 export const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const META = 'format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Date&metadataHeaders=Message-ID&metadataHeaders=Subject';
-export class GmailError extends Error { constructor(status, message) { super(message); this.status = status; } }
+// reason = Google's error reason / status (rateLimitExceeded, quotaExceeded, RESOURCE_EXHAUSTED ...) for the quota check.
+export class GmailError extends Error { constructor(status, message, reason = null) { super(message); this.status = status; this.reason = reason; } }
+
+// hkos-inbox-v2 Q1 - quota units per call (the planner's table, Oct 28; Google's limit is 6,000 per user per minute).
+export const GMAIL_UNITS = { 'threads.list': 10, 'threads.get': 40, 'threads.get.full': 120, 'messages.list': 5, 'messages.get': 20, 'history.list': 2 };
+// The inbox list row needs only these, from the newest message: lane, chip, relay, date, subject.
+const LIST_HEADERS = ['From', 'Subject', 'Date', 'List-Unsubscribe', 'Reply-To', 'X-Original-Sender'].map(h => `&metadataHeaders=${h}`).join('');
 
 export function gmailClient(fetchFn = (...a) => fetch(...a)) {
   const call = async (token, method, path, body) => {
@@ -14,7 +20,7 @@ export function gmailClient(fetchFn = (...a) => fetch(...a)) {
     if (r.status === 204) return null;
     const text = await r.text();
     let data = null; try { data = text ? JSON.parse(text) : null; } catch { data = null; }
-    if (!r.ok) throw new GmailError(r.status, String(data?.error?.message || text || r.status).slice(0, 200));
+    if (!r.ok) throw new GmailError(r.status, String(data?.error?.message || text || r.status).slice(0, 200), data?.error?.errors?.[0]?.reason || data?.error?.status || null);
     return data;
   };
   return {
@@ -25,7 +31,9 @@ export function gmailClient(fetchFn = (...a) => fetch(...a)) {
     getMessage: (token, id) => call(token, 'GET', `/messages/${encodeURIComponent(id)}?${META}`),
     getThread: (token, id) => call(token, 'GET', `/threads/${encodeURIComponent(id)}?${META}`),
     listThreads: (token, { labelIds = [], q = null, pageToken = null, maxResults = 50 } = {}) => call(token, 'GET', `/threads?maxResults=${maxResults}${labelIds.map(l => `&labelIds=${encodeURIComponent(l)}`).join('')}${q ? `&q=${encodeURIComponent(q)}` : ''}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`),
-    getThreadMeta: (token, id) => call(token, 'GET', `/threads/${encodeURIComponent(id)}?${META}&metadataHeaders=List-Unsubscribe`),
+    getThreadMeta: (token, id) => call(token, 'GET', `/threads/${encodeURIComponent(id)}?${META}&metadataHeaders=List-Unsubscribe&metadataHeaders=Reply-To&metadataHeaders=X-Original-Sender`),
+    listMessages: (token, { labelIds = [], q = null, pageToken = null, maxResults = 25 } = {}) => call(token, 'GET', `/messages?maxResults=${maxResults}${labelIds.map(l => `&labelIds=${encodeURIComponent(l)}`).join('')}${q ? `&q=${encodeURIComponent(q)}` : ''}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`),
+    getMessageMeta: (token, id) => call(token, 'GET', `/messages/${encodeURIComponent(id)}?format=metadata${LIST_HEADERS}`),
     getThreadFull: (token, id) => call(token, 'GET', `/threads/${encodeURIComponent(id)}?format=full`),
     listHistory: async (token, startHistoryId) => { const history = []; let pageToken = null, historyId = null; do { const d = await call(token, 'GET', `/history?startHistoryId=${encodeURIComponent(startHistoryId)}&historyTypes=messageAdded&maxResults=500${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`); history.push(...(d?.history || [])); historyId = d?.historyId || historyId; pageToken = d?.nextPageToken || null; } while (pageToken && history.length < 2000); return { history, historyId }; },
     getProfile: token => call(token, 'GET', '/profile'),

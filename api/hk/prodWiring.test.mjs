@@ -37,7 +37,9 @@ const fakeFetch = async (url, init = {}) => {
   const p = u.pathname.replace('/gmail/v1/users/me', '');
   if (method === 'GET' && p === '/threads') return json(200, { threads: Object.keys(THREADS).map(id => ({ id })) });
   if (method === 'GET' && p.startsWith('/threads/')) { const th = THREADS[decodeURIComponent(p.slice(9))]; return th ? json(200, th) : json(404, { error: { message: 'Requested entity was not found.' } }); }
-  if (method === 'GET' && p === '/messages') return json(200, { messages: [] });
+  // hkos-inbox-v2 Q1: the INBOX list is message-level (newest message per thread); a q search (the sync) finds nothing.
+  if (method === 'GET' && p === '/messages') return json(200, { messages: u.searchParams.getAll('labelIds').includes('INBOX') && !u.searchParams.get('q') ? Object.values(THREADS).map(t => ({ id: t.messages.at(-1).id, threadId: t.id })) : [] });
+  if (method === 'GET' && p.startsWith('/messages/')) { const id = decodeURIComponent(p.slice(10)); const m = Object.values(THREADS).flatMap(t => t.messages).find(x => x.id === id); return m ? json(200, m) : json(404, { error: { message: 'Requested entity was not found.' } }); }
   if (method === 'GET' && p === '/drafts') return json(200, { drafts: [] });
   if (method === 'DELETE' && p.startsWith('/drafts/')) return json(204, null);
   if (method === 'GET' && p === '/profile') return json(200, { emailAddress: OWNER, historyId: '10' });
@@ -123,6 +125,7 @@ const TABLE = [
   ['inboxRoutes', 'listIgnoredRoute', member(), [200]],
   ['inboxRoutes', 'ignoreRoute', member({ method: 'POST', body: { domain: 'shop.invalid' } }), [200]],
   ['inboxRoutes', 'unignoreRoute', member({ method: 'DELETE', params: { domain: 'news.invalid' } }), [200]],
+  ['inboxRoutes', 'analyzeRoute', member({ method: 'POST', params: { id: 'th-new' }, body: {} }), [400]],
 ];
 const TYPE_ERROR = /is not a function|Cannot read propert|is not defined|is not iterable|Cannot destructure/;
 
@@ -149,13 +152,14 @@ for (const [mod, name, req, expect] of TABLE) {
   });
 }
 
-test('inbox list through the default path reads the caller\'s mailbox with the default Gmail client: chips per thread, 1 list + 1 metadata get each', async () => {
+test('inbox list through the default path reads the caller\'s mailbox with the default Gmail client: chips per thread, 1 messages.list + 1 message metadata get each (v2 Q1)', async () => {
   fresh();
   const res = resOf();
   await MODULES.inboxRoutes.listThreadsRoute(member({ query: { tab: 'inbox' } }), res);
   assert.equal(res.code, 200, JSON.stringify(res.body));
   const by = Object.fromEntries(res.body.threads.map(t => [t.thread_id, t.chip.kind]));
   assert.deepEqual(by, { 'th-run': 'matches', 'th-new': 'untracked' });
-  assert.deepEqual(gmailCalls, ['GET /gmail/v1/users/me/threads', 'GET /gmail/v1/users/me/threads/th-run', 'GET /gmail/v1/users/me/threads/th-new']);
+  const ids = Object.values(THREADS).map(t => t.messages.at(-1).id);
+  assert.deepEqual(gmailCalls, ['GET /gmail/v1/users/me/messages', ...ids.map(id => `GET /gmail/v1/users/me/messages/${id}`)]);
   assert.ok(!JSON.stringify(res.body).includes('@'));
 });

@@ -4,7 +4,8 @@
 // the best of fill / any-side border / non-inset box-shadow / outline against what is outside it. A control with no
 // edge at all passes only as a tertiary link: it (or a descendant carrying its label) is underlined ("via underline").
 // Form controls draw their value / placeholder themselves: measured against the control's own fill. A select inside a
-// .ui-filter--pill is measured by the pill's edge (the pill is the control the eye sees).
+// .ui-filter--pill is measured by the pill's edge (the pill is the control the eye sees). A role=tab inside a tablist
+// with a bottom rule passes on its label contrast ("via tablist").
 //
 //   measureScript({ scope: '[data-ui-gallery]', exclude: '[data-before]' })  -> string for page.evaluate
 //   summarize(result)                                                        -> counts + dedupedworst lists
@@ -95,6 +96,9 @@ module.exports.measureScript = function measureScript({ scope = '#sales-analytic
     let best = ['none', 1];
     for (const [k, c] of cands) { const r = ratio(c, outside); if (r > best[1]) best = [k, r]; }
     if (best[1] < 3 && underlined(el)) { const fg = paint(chain, 0, CANVAS, parse(cs.color)); best = ['underline', ratio(fg, paint(chain, 0, CANVAS, null))]; }
+    // Jack 2026-10-28 (companies-v2 ruling 1b): an underline tab inside a RULED tablist (a bottom rule under the row) has
+    // the row's rule + the active underline as its edge; it passes on its label's contrast, like an underlined link.
+    if (best[1] < 3 && el.getAttribute('role') === 'tab') { const tl = el.closest('[role=tablist]'); const tcs = tl && getComputedStyle(tl); if (tcs && px(tcs.borderBottomWidth) > 0 && tcs.borderBottomStyle !== 'none') { const fg = paint(chain, 0, CANVAS, parse(cs.color)); best = ['tablist', ratio(fg, paint(chain, 0, CANVAS, null))]; } }
     const label = (el.getAttribute('aria-label') || el.textContent || el.value || el.placeholder || '').replace(/\\s+/g, ' ').trim().slice(0, 26);
     controls.push({ sel: sel(el), panel: panelOf(el), text: label, via: best[0], ratio: Math.round(best[1] * 100) / 100, bg: hex(outside), disabled: isDisabled(el), kind: 'control', textOnly: best[0] === 'none' });
   }

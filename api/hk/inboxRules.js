@@ -2,7 +2,7 @@
 // DB, no network. Nothing here keeps an address: a sender is a display name plus a domain, recipients are names (or
 // "you"), and the only body fields that pass through untouched are a message's own text and html, which go to the
 // mailbox owner alone. Bulk-sender and role-word heuristics are REVISABLE.
-import { header, parseAddress } from './gmailMime.js';
+import { header, parseAddress, decodeEntities } from './gmailMime.js';
 import { cleanText } from '../sales/scrubText.js';
 
 export const SNIPPET_MAX = 140;
@@ -12,7 +12,8 @@ const ROLE_WORDS = ['co-founder', 'founder', 'ceo', 'owner', 'marketing', 'partn
 
 // The inbox's "@" rule is literal: after the address scrub, a bare @ ("Jane @ Acme", "@handle") reads as "at".
 export const noAt = s => String(s == null ? '' : s).replace(/\s*@\s*/g, ' at ').replace(/\s{2,}/g, ' ').trim();
-const clean = (v, max) => noAt(cleanText(v, max));
+// hkos-inbox-v2 L3: Gmail hands subjects, snippets and names over HTML-escaped ("you&#39;re"); decoded before the scrub.
+const clean = (v, max) => noAt(cleanText(decodeEntities(v), max));
 
 const lastOf = arr => (arr && arr.length ? arr[arr.length - 1] : null);
 const dateOf = msg => { const d = header(msg, 'Date'); const t = d ? Date.parse(d) : NaN; return !Number.isNaN(t) ? new Date(t).toISOString() : msg?.internalDate ? new Date(Number(msg.internalDate)).toISOString() : null; };
@@ -61,12 +62,91 @@ export function chipFor({ threadId, sender, listUnsubscribe = null, tracked, bra
   return { kind: 'untracked' };
 }
 
+// hkos-inbox-v2 ruling 2 - who a message is really from. A team-domain From is RELAYED when the group rewrote it
+// ("'Grace Miller' via Support Group" <support@team>) or carries an outside X-Original-Sender / Reply-To: the outside
+// address is the sender for the lane, the chip and the intel, and the group's own List-Unsubscribe is not a bulk sign.
+// A team-domain From that is not relayed is a NOTICE when automated (no-reply local part, a +tagged group address, or
+// List-Unsubscribe - digests, moderation); otherwise it is a teammate writing directly.
+const VIA = /\s+via\s+[^<>]+$/i;
+export function originOf(msg, { teamDomains = [] } = {}) {
+  const raw = parseAddress(header(msg, 'From'));
+  const fromTeam = !!raw.domain && teamDomains.includes(raw.domain);
+  const outside = name => { const a = parseAddress(header(msg, name) || ''); return a.email && a.domain && !teamDomains.includes(a.domain) ? a : null; };
+  const orig = fromTeam ? outside('X-Original-Sender') || outside('Reply-To') : null;
+  const viaName = fromTeam && raw.name && VIA.test(raw.name) ? raw.name.replace(VIA, '').replace(/^['"\s]+|['"\s]+$/g, '') : null;
+  if (orig || viaName) {
+    const a = orig || {};
+    const local = a.email ? a.email.slice(0, a.email.lastIndexOf('@')) : null;
+    const name = viaName || a.name || a.domain || 'Unknown';
+    return { sender: { name: clean(name, 120), domain: a.domain || null, local, email: a.email || null }, relayed: true, teamNotice: false, listUnsubscribe: null };
+  }
+  const sender = senderOf(header(msg, 'From'));
+  const listUnsubscribe = header(msg, 'List-Unsubscribe');
+  const teamNotice = fromTeam && (isBulk(sender.local, listUnsubscribe) || (!!sender.local && sender.local.includes('+')));
+  return { sender, relayed: false, teamNotice, listUnsubscribe };
+}
+
+// hkos-inbox-v2 L1 - the lane of an INBOX row. Needs you: brand mail, a teammate writing directly, and a person (not
+// bulk, not ignored) whose newest message Gmail did not file under Promotions / Updates / Social / Forums - relayed group
+// mail is a person even though Gmail files it under Forums. Everything else is Other. Brands is its own query (tracked
+// + matches); a brand row on the Inbox page also sits in Needs you.
+export const MARKETING_CATEGORIES = ['CATEGORY_PROMOTIONS', 'CATEGORY_UPDATES', 'CATEGORY_SOCIAL', 'CATEGORY_FORUMS'];
+export const LANES = ['needs_you', 'brands', 'other'];
+export function laneOf({ chip, labelIds = [], relayed = false, teamNotice = false }) {
+  if (chip.kind === 'tracked' || chip.kind === 'matches') return 'needs_you';
+  if (chip.kind === 'team') return teamNotice ? 'other' : 'needs_you';
+  if (chip.kind === 'not_tracked') return 'other';
+  return !relayed && labelIds.some(l => MARKETING_CATEGORIES.includes(l)) ? 'other' : 'needs_you';
+}
+export const isBrandChip = chip => chip.kind === 'tracked' || chip.kind === 'matches';
+
+// hkos-inbox-v2 Q2 - the Brands lane's Gmail searches: "from:(a.com OR b.com ...)" over every brand domain plus the
+// domains tracked replies came from, chunked so no query passes maxLen characters (Gmail has no published cap;
+// REVISABLE). One messages.list per chunk instead of scanning the inbox.
+export const BRANDS_QUERY_MAX = 1200; // REVISABLE
+export function brandQueries(domains, { search = '', maxLen = BRANDS_QUERY_MAX } = {}) {
+  const prefix = search ? `(${search}) ` : '';
+  const list = [...new Set((domains || []).map(d => String(d || '').trim().toLowerCase()).filter(d => /^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)))].sort();
+  const out = []; let cur = [];
+  const q = ds => `${prefix}from:(${ds.join(' OR ')})`;
+  for (const d of list) {
+    if (cur.length && q([...cur, d]).length > maxLen) { out.push(q(cur)); cur = []; }
+    cur.push(d);
+  }
+  if (cur.length) out.push(q(cur));
+  return out;
+}
+// Gmail message ids are hex and grow with time; merging chunks newest-first uses that order (no extra call for a date).
+const HEX = /^[0-9a-f]+$/i;
+export const newestFirst = (a, b) => { if (!HEX.test(a.id) || !HEX.test(b.id)) return 0; const x = BigInt(`0x${a.id}`), y = BigInt(`0x${b.id}`); return x > y ? -1 : x < y ? 1 : 0; };
+
+// hkos-inbox-v2 Q1 - Gmail quota units for one list page load.
+export const unitsOf = (counts, units) => Object.entries(counts).reduce((n, [k, c]) => n + (units[k] || 0) * c, 0);
+
+// hkos-inbox-v2 L5 / Track as brand - the brand form from an Analyze result: name, domain, category, challenge idea, the
+// HQ city, is_local when Chicago presence is yes, the size hint, and one dated research note.
+export function prefillFromIntel(intel, { senderName = '', domain = null, date }) {
+  const c = intel?.company || {}, e = intel?.email || {}, f = intel?.fit || {};
+  const bits = [c.what_they_do, e.kind && `Email: ${e.kind.replace(/_/g, ' ')}`, f.sponsor_fit && `Sponsor fit: ${f.sponsor_fit.replace(/_/g, ' ')}${f.why ? ` - ${f.why}` : ''}`, intel?.next_step && `Next: ${intel.next_step.replace(/_/g, ' ')}${intel.reason ? ` - ${intel.reason}` : ''}`].filter(Boolean);
+  return {
+    name: c.name || (senderName && senderName !== domain ? senderName : ''),
+    domain: domain || '',
+    category: c.category || '',
+    challenge_idea: f.challenge_idea || '',
+    city: c.hq_city || '',
+    is_local: c.chicago_presence === 'yes',
+    size_band: c.size_hint || '',
+    notes: `Analyzed ${date}: ${bits.join(' · ')}`.slice(0, 4000),
+  };
+}
+
 // A threads.get (metadata) resource -> one list row. The newest message gives sender, date and snippet; the subject
 // comes from the first message so "Re:" chains read as one.
 export function threadRow(thread, ctx) {
   const msgs = thread?.messages || [];
   const latest = lastOf(msgs) || {};
-  const sender = senderOf(header(latest, 'From'));
+  const { sender, relayed, teamNotice, listUnsubscribe } = originOf(latest, ctx);
+  const chip = chipFor({ threadId: thread.id, sender, listUnsubscribe, ...ctx });
   return {
     thread_id: thread.id,
     unread: msgs.some(m => (m.labelIds || []).includes('UNREAD')),
@@ -78,7 +158,9 @@ export function threadRow(thread, ctx) {
     snippet: clean(latest.snippet || '', SNIPPET_MAX),
     message_count: msgs.length,
     has_attachments: msgs.some(m => /^multipart\/mixed/i.test(m.payload?.mimeType || '')),
-    chip: chipFor({ threadId: thread.id, sender, listUnsubscribe: header(latest, 'List-Unsubscribe'), ...ctx }),
+    chip,
+    relayed,
+    lane: laneOf({ chip, labelIds: latest.labelIds || [], relayed, teamNotice }),
   };
 }
 
@@ -113,7 +195,7 @@ export function messageView(msg, { ownerEmail = null } = {}) {
     date: dateOf(msg),
     subject: clean(header(msg, 'Subject') || '', 200),
     unread: (msg.labelIds || []).includes('UNREAD'),
-    text: parts.text,
+    text: parts.text == null ? null : decodeEntities(parts.text),
     html: parts.html,
     attachments: parts.attachments,
   };

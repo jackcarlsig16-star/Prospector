@@ -449,6 +449,7 @@ app.get('/api/hk/:businessId/inbox/threads',                  hkRoute(HK_INBOX, 
 app.get('/api/hk/:businessId/inbox/threads/:id',              hkRoute(HK_INBOX, 'openThreadRoute'));
 app.post('/api/hk/:businessId/inbox/threads/:id/link',        hkRoute(HK_INBOX, 'linkThreadRoute'));
 app.post('/api/hk/:businessId/inbox/track',                   hkRoute(HK_INBOX, 'trackRoute'));
+app.post('/api/hk/:businessId/inbox/threads/:id/analyze',     hkRoute(HK_INBOX, 'analyzeRoute'));
 app.get('/api/hk/:businessId/inbox/ignore',                   hkRoute(HK_INBOX, 'listIgnoredRoute'));
 app.post('/api/hk/:businessId/inbox/ignore',                  hkRoute(HK_INBOX, 'ignoreRoute'));
 app.delete('/api/hk/:businessId/inbox/ignore/:domain',        hkRoute(HK_INBOX, 'unignoreRoute'));

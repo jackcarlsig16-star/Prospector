@@ -248,3 +248,26 @@ test('omitRecipientFor (the Stage 4 live check only): that brand\'s bump draft c
   for (const c of calls.filter(c => c[0] === 'createDraft')) assert.match(decode(c[2].raw), /^To: ana@[ab]\.invalid$/m, 'a route body cannot omit the recipient');
   noSend();
 });
+
+// hkos-inbox-v2 Q4 - the page-load sync never shares a minute with an Inbox list for the same user: it waits out the
+// minute (deferred, then re-checks the 60-min guard), and runs at once when the last list is older than a minute.
+test('page load: an Inbox list in the last 60 s defers the sync by the rest of the minute; the deferred run re-checks the guard; an older list does not', async () => {
+  fresh(due()); now = EARLY;
+  const deferred = [];
+  const d = deps({ inboxListedAt: (b, u) => (u === JACK ? EARLY.getTime() - 15_000 : null), defer: (fn, ms) => deferred.push({ fn, ms }) });
+  let out = await pageloadJob({ businessId: HK, userId: JACK, d });
+  assert.deepEqual(out.sync, { deferred: true, in_ms: 45_000 });
+  assert.equal(sb.db.hk_sync_runs.length, 0, 'nothing ran in the same minute');
+  assert.equal(deferred.length, 1); assert.equal(deferred[0].ms, 45_000);
+  now = new Date(EARLY.getTime() + 45_000);
+  await deferred[0].fn();
+  assert.deepEqual(sb.db.hk_sync_runs.map(r => [r.user_id, r.trigger, r.status]), [[JACK, 'pageload', 'ok']]);
+  await deferred[0].fn();
+  assert.equal(sb.db.hk_sync_runs.length, 1, 'a second fire finds the fresh run and skips');
+  fresh(due()); now = EARLY;
+  out = await pageloadJob({ businessId: HK, userId: JACK, d: deps({ inboxListedAt: () => EARLY.getTime() - 61_000, defer: () => assert.fail('no defer') }) });
+  assert.equal(out.sync.ran, true);
+  out = await pageloadJob({ businessId: HK, userId: PETE, d: deps({ inboxListedAt: () => null, defer: () => assert.fail('no defer') }) });
+  assert.equal(out.sync.ran, true, 'another user is not held back');
+  noSend();
+});

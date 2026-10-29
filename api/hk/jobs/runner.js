@@ -9,6 +9,7 @@ import { HkError, liveBrands, selectAllPages, logEvent } from '../hkShared.js';
 import { SETTINGS_DEFAULTS, dataWarnings } from '../opsRoutes.js';
 import { RECONNECT, NeedsGoogle } from '../../lib/googleGrants.js';
 import { GmailError } from '../gmailClient.js';
+import { inboxListedAt, INBOX_QUIET_MS } from '../gmailActivity.js';
 import { dueFollowups, dueDms, planCounts, dayIn, isPastDigestTime, isDigestDay, ranToday, statsStale } from './plan.js';
 import { bumpText, finalText, dmText, followupSubject } from '../followupText.js';
 import { buildDigest, renderSlack } from './digest.js';
@@ -17,7 +18,8 @@ import { scrubAddresses } from '../../sales/scrubText.js';
 export const DRAFTS_PER_RUN = 25; // REVISABLE
 export const SLACK_ENV = 'HK_SLACK_WEBHOOK_URL';
 export const slackConfigured = () => !!process.env[SLACK_ENV];
-export const jobDeps = (d = {}) => ({ ...deps0(d), fetch: d.fetch || ((...a) => fetch(...a)), slackUrl: 'slackUrl' in d ? d.slackUrl : process.env[SLACK_ENV] || null });
+export const jobDeps = (d = {}) => ({ ...deps0(d), fetch: d.fetch || ((...a) => fetch(...a)), slackUrl: 'slackUrl' in d ? d.slackUrl : process.env[SLACK_ENV] || null,
+  inboxListedAt: d.inboxListedAt || inboxListedAt, defer: d.defer || ((fn, ms) => setTimeout(fn, ms).unref?.()) });
 const RUN_FIELDS = ['id', 'job', 'trigger', 'chicago_day', 'started_at', 'finished_at', 'status', 'counts', 'error', 'started_by'];
 export const runRow = r => (r ? Object.fromEntries(RUN_FIELDS.map(k => [k, r[k] ?? null])) : null);
 const firstWord = s => (s && !String(s).includes('@') ? String(s).trim().split(/\s+/)[0] || null : null);
@@ -154,8 +156,19 @@ export async function pageloadJob({ businessId, userId, d = {} }) {
   else {
     const { data: runs } = await D.supabase.from('hk_sync_runs').select('trigger, status, started_at, finished_at').eq('business_id', businessId).eq('user_id', userId).order('started_at', { ascending: false }).limit(20);
     const skip = pageloadSkip(runs || [], now.getTime());
+    // hkos-inbox-v2 Q4: an Inbox list in the last minute spent this user's Gmail quota; the sync waits out the minute.
+    const listed = D.inboxListedAt(businessId, userId);
+    const wait = listed != null ? INBOX_QUIET_MS - (now.getTime() - listed) : 0;
     if (skip) sync = { skipped: skip };
-    else { try { const out = await runMailboxSync({ D, businessId, userId, m, trigger: 'pageload' }); sync = out.status === 'ok' ? { ran: true, run_id: out.run.id, counts: out.run.counts } : { skipped: out.status }; } catch (e) { sync = { error: errText(e) }; } }
+    else if (wait > 0) {
+      D.defer(async () => {
+        try {
+          const { data: again } = await D.supabase.from('hk_sync_runs').select('trigger, status, started_at, finished_at').eq('business_id', businessId).eq('user_id', userId).order('started_at', { ascending: false }).limit(20);
+          if (!pageloadSkip(again || [], D.now().getTime())) await runMailboxSync({ D, businessId, userId, m, trigger: 'pageload' });
+        } catch (e) { console.error('[hk/pageload] deferred sync:', errText(e)); }
+      }, wait);
+      sync = { deferred: true, in_ms: wait };
+    } else { try { const out = await runMailboxSync({ D, businessId, userId, m, trigger: 'pageload' }); sync = out.status === 'ok' ? { ran: true, run_id: out.run.id, counts: out.run.counts } : { skipped: out.status }; } catch (e) { sync = { error: errText(e) }; } }
   }
   let daily;
   if (!isDigestDay(now, settings)) daily = { skipped: 'not a digest day' };
