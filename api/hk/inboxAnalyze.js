@@ -59,10 +59,10 @@ export function parseIntel(text) {
   };
 }
 
-const textOf = data => (data?.content || []).filter(x => x.type === 'text').map(x => x.text).join('\n');
+export const textOf = data => (data?.content || []).filter(x => x.type === 'text').map(x => x.text).join('\n');
 
 // Today's Analyze calls by this user (Chicago day), from the usage log.
-async function usedToday(supabase, businessId, uid, now) {
+export async function usedToday(supabase, businessId, uid, now) {
   const { data, error } = await supabase.from('business_anthropic_usage').select('created_at').eq('business_id', businessId).eq('user_id', uid).eq('call_type', ANALYZE_CALL_TYPE).gte('created_at', new Date(now.getTime() - 2 * DAY_MS).toISOString());
   if (error) throw new Error(error.message);
   const today = dayIn(now);

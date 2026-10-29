@@ -13,7 +13,7 @@ delete process.env.HK_SLACK_WEBHOOK_URL;
 const { seed, reqOf, resOf, HK, JACK, ID } = await import('./testing.mjs');
 const shared = await import('./hkShared.js');
 const grants = await import('../lib/googleGrants.js');
-const MODULES = { brandsRoutes: await import('./brandsRoutes.js'), opsRoutes: await import('./opsRoutes.js'), gmailRoutes: await import('./gmailRoutes.js'), inboxRoutes: await import('./inboxRoutes.js'), importRoutes: await import('./importRoutes.js'), jobsRoutes: await import('./jobsRoutes.js'), signalsRoutes: await import('./signalsRoutes.js') };
+const MODULES = { brandsRoutes: await import('./brandsRoutes.js'), opsRoutes: await import('./opsRoutes.js'), gmailRoutes: await import('./gmailRoutes.js'), inboxRoutes: await import('./inboxRoutes.js'), importRoutes: await import('./importRoutes.js'), jobsRoutes: await import('./jobsRoutes.js'), signalsRoutes: await import('./signalsRoutes.js'), briefingRoutes: await import('./briefingRoutes.js'), brandResearch: await import('./brandResearch.js'), researchSweep: await import('./researchSweep.js') };
 
 const OWNER = 'jack.work@humankind.invalid', TOKEN = 'tok-jack-wiring';
 const b64 = s => Buffer.from(s, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -132,6 +132,11 @@ const TABLE = [
   ['signalsRoutes', 'dismissSignalRoute', member({ method: 'POST', params: { id: 'nope' } }), [404]],
   ['signalsRoutes', 'targetRoute', member({ method: 'POST', params: { id: ID.run }, body: { on: true } }), [200]],
   ['signalsRoutes', 'pipelineRoute', member({ method: 'POST', params: { id: ID.juice } }), [409]],
+  ['briefingRoutes', 'briefingRoute', member(), [200]],
+  ['briefingRoutes', 'reachRoute', member({ params: { id: ID.run } }), [200]],
+  ['brandResearch', 'researchBrandRoute', member({ method: 'POST', params: { id: ID.run }, body: {} }), [400]],
+  ['brandResearch', 'useDomainRoute', member({ method: 'POST', params: { id: ID.run } }), [409]],
+  ['researchSweep', 'runSweepRoute', member({ method: 'POST', body: {} }), [200]],
 ];
 const TYPE_ERROR = /is not a function|Cannot read propert|is not defined|is not iterable|Cannot destructure/;
 
@@ -165,6 +170,9 @@ test('inbox list through the default path reads the caller\'s mailbox with the d
   assert.equal(res.code, 200, JSON.stringify(res.body));
   const by = Object.fromEntries(res.body.threads.map(t => [t.thread_id, t.chip.kind]));
   assert.deepEqual(by, { 'th-run': 'matches', 'th-new': 'untracked' });
+  // grow-inbox-intel B2: Needs-you rows carry their importance, from this same load (no extra Gmail call below).
+  const imp = res.body.threads.find(t => t.thread_id === 'th-new').importance;
+  assert.ok(imp && imp.score > 0 && imp.parts.includes('unread') && imp.parts.includes('new_person'), JSON.stringify(imp));
   const ids = Object.values(THREADS).map(t => t.messages.at(-1).id);
   assert.deepEqual(gmailCalls, ['GET /gmail/v1/users/me/messages', ...ids.map(id => `GET /gmail/v1/users/me/messages/${id}`)]);
   assert.ok(!JSON.stringify(res.body).includes('@'));

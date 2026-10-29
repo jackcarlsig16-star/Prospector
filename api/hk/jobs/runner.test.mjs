@@ -193,16 +193,17 @@ test('Today\'s read: a fresh digest from the current rows plus today\'s no-draft
   assert.equal(td.digest.test, true); assert.equal(td.slack, 'skipped');
 });
 
-test('cron registration: two schedules per hk_sales workspace, timezone + noOverlap, the digest expression from settings; a tick runs the job with trigger cron', async () => {
+test('cron registration: three schedules per hk_sales workspace (sync, daily check, research sweep), timezone + noOverlap, the digest and sweep expressions from settings; a tick runs the job with trigger cron', async () => {
   const scheduled = [];
   const cron = { schedule: (expr, fn, opts) => scheduled.push({ expr, fn, opts }) };
   const ran = [];
-  const jobs = { gmailSyncAll: async a => { ran.push(['sync', a]); return { run: { status: 'ok' }, counts: {} }; }, dailyCheck: async a => { ran.push(['daily', a]); return { skipped: 'already ran today' }; } };
+  const jobs = { gmailSyncAll: async a => { ran.push(['sync', a]); return { run: { status: 'ok' }, counts: {} }; }, dailyCheck: async a => { ran.push(['daily', a]); return { skipped: 'already ran today' }; }, researchSweep: async a => { ran.push(['sweep', a]); return { skipped: 'off' }; } };
   const out = registerHkCron(cron, [{ businessId: HK, settings: { digest_time: '06:45', digest_days: 'weekdays', timezone: 'America/Chicago' } }], { log: () => {}, jobs });
-  assert.deepEqual(out, [{ businessId: HK, job: 'gmail-sync-all', expr: SYNC_EXPR, timezone: 'America/Chicago' }, { businessId: HK, job: 'daily-check', expr: '45 6 * * 1-5', timezone: 'America/Chicago' }]);
+  assert.deepEqual(out, [{ businessId: HK, job: 'gmail-sync-all', expr: SYNC_EXPR, timezone: 'America/Chicago' }, { businessId: HK, job: 'daily-check', expr: '45 6 * * 1-5', timezone: 'America/Chicago' }, { businessId: HK, job: 'research-sweep', expr: '30 6 * * *', timezone: 'America/Chicago' }]);
+  assert.equal(registerHkCron({ schedule: () => {} }, [{ businessId: HK, settings: { intel: { sweep: { time: '05:15' } } } }], { log: () => {}, jobs })[2].expr, '15 5 * * *');
   assert.ok(scheduled.every(s => s.opts.noOverlap === true && s.opts.timezone === 'America/Chicago'));
-  await scheduled[0].fn(); await scheduled[1].fn();
-  assert.deepEqual(ran, [['sync', { businessId: HK, trigger: 'cron' }], ['daily', { businessId: HK, trigger: 'cron' }]]);
+  await scheduled[0].fn(); await scheduled[1].fn(); await scheduled[2].fn();
+  assert.deepEqual(ran, [['sync', { businessId: HK, trigger: 'cron' }], ['daily', { businessId: HK, trigger: 'cron' }], ['sweep', { businessId: HK, trigger: 'cron' }]]);
   assert.equal(DRAFTS_PER_RUN, 25);
 });
 

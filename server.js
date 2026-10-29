@@ -439,6 +439,15 @@ app.post('/api/hk/:businessId/signals/:id/act',               hkRoute(HK_SIGNALS
 app.post('/api/hk/:businessId/signals/:id/dismiss',           hkRoute(HK_SIGNALS, 'dismissSignalRoute'));
 app.post('/api/hk/:businessId/brands/:id/target',             hkRoute(HK_SIGNALS, 'targetRoute'));
 app.post('/api/hk/:businessId/brands/:id/pipeline',           hkRoute(HK_SIGNALS, 'pipelineRoute'));
+// grow-inbox-intel-v1 REV3 - Briefing (B1 / B3 / B6), the brand reach line (B5), research by name + Use (R1), Run research now (M2).
+const HK_BRIEFING = './api/hk/briefingRoutes.js';
+const HK_RESEARCH = './api/hk/brandResearch.js';
+const HK_SWEEP = './api/hk/researchSweep.js';
+app.get('/api/hk/:businessId/briefing',                       hkRoute(HK_BRIEFING, 'briefingRoute'));
+app.get('/api/hk/:businessId/brands/:id/reach',               hkRoute(HK_BRIEFING, 'reachRoute'));
+app.post('/api/hk/:businessId/brands/:id/research',           hkRoute(HK_RESEARCH, 'researchBrandRoute'));
+app.post('/api/hk/:businessId/brands/:id/use-domain',         hkRoute(HK_RESEARCH, 'useDomainRoute'));
+app.post('/api/hk/:businessId/jobs/research-sweep',           hkRoute(HK_SWEEP, 'runSweepRoute'));
 // hkos-gmail-connect-v1 (G3-G7) - drafts into the tethered mailbox, sync, replies, status. No send path anywhere.
 const HK_GMAIL = './api/hk/gmailRoutes.js';
 app.get('/api/hk/:businessId/drafts',                         hkRoute(HK_GMAIL, 'listDraftsRoute'));

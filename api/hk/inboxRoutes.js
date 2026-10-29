@@ -10,6 +10,7 @@ import { threadRow, messageView, latestInbound, chipFor, originOf, partsOf, isBr
 import { replyKind, signalWords, signalNow } from './signals.js';
 import { noteInboxList } from './gmailActivity.js';
 import { analyzeSender, cachedIntel } from './inboxAnalyze.js';
+import { importanceOf, intelSettings } from './intelScore.js';
 import { header, decodeEntities } from './gmailMime.js';
 import { trackedThreads } from './warm.js';
 import { labelReply, snippetOf } from './replyLabel.js';
@@ -34,6 +35,16 @@ export const inboxCache = {
   size: () => cache.size,
 };
 
+// grow-inbox-intel M2 - the Needs-you senders some member's Inbox page 1 loaded in the last 120 s (0 Gmail calls): a
+// person (untracked, not bulk / team / self) with a domain. The sweep's second source; usually empty on a cron tick.
+export function cachedNeedsYouSenders(businessId, nowMs) {
+  const out = new Map();
+  for (const [k, hit] of cache) {
+    if (!k.startsWith(`${businessId}:`) || !k.includes(':list:inbox:') || nowMs - hit.at > CACHE_MS) continue;
+    for (const r of hit.value.threads || []) if (r.lane === 'needs_you' && r.chip?.kind === 'untracked' && r.from_domain && !out.has(r.from_domain)) out.set(r.from_domain, { name: r.from_name || r.from_domain, domain: r.from_domain });
+  }
+  return [...out.values()];
+}
 
 const deps0 = d => ({ supabase: d.supabase || getSupabase(), gmail: d.gmail || gmailClient(), mailbox: d.mailbox || mailboxFor, tokenFor: d.tokenFor || tokenForMailbox, call: d.call || callAnthropic, now: d.now || (() => new Date()), sleep: d.sleep || (ms => new Promise(r => setTimeout(r, ms))) });
 // hkGate lets a viewer GET; an inbox needs a mailbox, so every route here is member+.
@@ -131,6 +142,14 @@ async function withIntel(supabase, businessId, rows) {
   return rows.map(r => (r.from_domain && r.from_domain in fit ? { ...r, intel_fit: fit[r.from_domain] } : r));
 }
 
+// grow-inbox-intel B2 - every Needs-you row gets { importance: { score, why, parts } } from rules over what this load
+// already has (chip, intel fit, the brand row with heat) plus one settings read. The client sorts; 0 extra Gmail calls.
+async function withImportance(supabase, businessId, rows, ctx, now) {
+  const { data } = await supabase.from('hk_settings').select('intel').eq('business_id', businessId).maybeSingle();
+  const c = { byId: ctx.byId, warmBrands: new Set([...ctx.tracked.values()].map(t => t.brand_id)), settings: intelSettings(data?.intel), now };
+  return rows.map(r => (r.lane === 'needs_you' ? { ...r, importance: importanceOf(r, c) } : r));
+}
+
 // GET /inbox/threads?tab=inbox|brands|sent|drafts&q=&pageToken=&refresh=1
 // inbox = one page of the newest INBOX messages, each row carrying its lane (Needs you / Other) + lane counts for the
 // page; brands = Q2's chunked from:(...) searches, newest 25, no scan; sent / drafts by label. gmail_units = this load.
@@ -168,6 +187,7 @@ export async function listThreadsRoute(req, res, d = {}) {
       next = page?.nextPageToken || null;
     }
     rows = await withIntel(supabase, businessId, rows);
+    if (tab === 'inbox') rows = await withImportance(supabase, businessId, rows, ctx, now());
     const laneCounts = tab === 'inbox' ? Object.fromEntries(LANES.map(l => [l, l === 'brands' ? rows.filter(r => isBrandChip(r.chip)).length : rows.filter(r => r.lane === l).length])) : null;
     const value = { tab, threads: rows, next_page_token: next, more, lane_counts: laneCounts, unread: tab === 'inbox' && !pageToken ? rows.filter(r => r.unread).length : null,
       gmail_calls: counts['messages.list'] + counts['messages.get'], gmail_units: unitsOf(counts, GMAIL_UNITS), fetched_at: now().toISOString() };
