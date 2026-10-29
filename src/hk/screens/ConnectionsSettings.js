@@ -5,10 +5,11 @@ import ToggleRow from '../../ui/ToggleRow';
 import { hkPatch, hkGet, hkDelete } from '../hkApi';
 import { relative } from '../hkSync';
 import { imagesDefault, setImagesDefault } from '../inbox/inboxPrefs';
+import ClaudeConnector from './ClaudeConnector';
 
 // hkos-gmail-connect-v1 G8 - Settings > Connections in the HK theme: one row per founder, the caller's own mailbox
 // state and Sync now, and the plain-text signature the server appends to drafts.
-export default function ConnectionsSettings({ businessId, shell, gmail, syncing, onSync, onOpenConnections, onGmailChanged }) {
+export default function ConnectionsSettings({ businessId, shell, gmail, syncing, onSync, onOpenConnections, onGmailChanged, canEdit = true }) {
   const [sig, setSig] = useState(gmail?.signature_text || '');
   const [state, setState] = useState('');
   const [images, setImages] = useState(imagesDefault);
@@ -43,6 +44,7 @@ export default function ConnectionsSettings({ businessId, shell, gmail, syncing,
           </div>); })}
       </div>
       <p className="hk-meta" style={{ marginTop: 10 }}>Teammates link their own mailbox from their login. A workspace never falls back to anyone's default Gmail.</p>
+      <ClaudeConnector businessId={businessId} canEdit={canEdit} />
       <div className="hk-form" style={{ marginTop: 18, maxWidth: 520 }}>
         <Field label="Signature" htmlFor="hk-sig" hint="Plain text, first-name style. Gmail does not add your signature to drafts made here, so this is appended.">
           <textarea id="hk-sig" className="ui-input" rows={3} maxLength={400} value={sig} onChange={e => setSig(e.target.value)} data-hk-signature />

@@ -26,7 +26,7 @@ export const TOOLS = [
   { name: 'hk_draft_save', readOnly: false, description: 'Save an email as a Gmail DRAFT in your own HumanKind mailbox (never sent). Runs the contact rules and the outreach lint first; if the lint fails nothing is saved and the problems come back. Marks the brand Drafted and claims it if unclaimed.',
     inputSchema: obj({ brand: BRAND_REF, contact: str(254, 'Contact name or email on that brand (default: the primary contact)'), kind: { type: 'string', enum: ['cold', 'bump', 'final', 'reply'] }, subject: str(200, 'Subject line'), body_markdown: str(6000, 'Email body (markdown, no signature - your saved sign-off is added)'), challenge: str(500, 'The challenge concept pitched') }, ['brand', 'kind', 'subject', 'body_markdown']) },
   { name: 'hk_due', readOnly: true, description: 'What is waiting on you today: urgent and other replies, follow-ups due, drafts to review, follow-ups that could not be drafted, Instagram DMs ready - for brands you own.', inputSchema: obj({}) },
-  { name: 'hk_update', readOnly: false, description: 'Set a brand\'s status to one you set by hand (meeting, signed, passed, skipped), with an optional short note. Never a status the system sets.', inputSchema: obj({ brand: BRAND_REF, status: { type: 'string', enum: [...MANUAL_STATUSES] }, note: str(200, 'Why (optional, no addresses or phone numbers)') }, ['brand', 'status']) },
+  { name: 'hk_update', readOnly: false, description: 'Set the status of a brand YOU own to one you set by hand (meeting, signed, passed, skipped), with an optional short note. Unclaimed brands: hk_claim first. Never a status the system sets.', inputSchema: obj({ brand: BRAND_REF, status: { type: 'string', enum: [...MANUAL_STATUSES] }, note: str(200, 'Why (optional, no addresses or phone numbers)') }, ['brand', 'status']) },
 ];
 const BY_NAME = Object.fromEntries(TOOLS.map(t => [t.name, t]));
 export const toolList = () => TOOLS.map(t => ({ name: t.name, description: t.description, inputSchema: t.inputSchema, annotations: { readOnlyHint: t.readOnly, destructiveHint: false, openWorldHint: false } }));
@@ -150,6 +150,8 @@ const HANDLERS = {
 
   async hk_update(ctx, a) {
     const b = await resolveBrand(ctx, a.brand); ctx.brandId = b.id;
+    if (!b.owner_user_id) throw new HkError(409, `${b.name} isn't claimed yet - claim it first (hk_claim), then set its status`);
+    if (b.owner_user_id !== ctx.auth.user.id) throw new HkError(409, `${b.name} is owned by ${(await firstNames(ctx))[b.owner_user_id]?.first_name || 'another founder'} - only the owner sets its status`);
     const status = oneOf(a.status, MANUAL_STATUSES, 'status');
     const out = await asCaller(ctx, patchBrandRoute, { method: 'PATCH', params: { id: b.id }, body: { status, ...(a.note ? { reason: text(a.note, 200, 'note') } : {}) } }, { supabase: ctx.D.supabase, now: ctx.D.now });
     return { brand: brandSummary(out.brand), changed: out.changed, brand_url: brandUrl(ctx, b.id) };

@@ -213,3 +213,27 @@ test('CIMD: a claude.ai client_id is fetched and stored; other https client_ids 
   const lying = await run(O.authorizeRoute, reqOf({ query: authQuery('https://claude.ai/other-client', O.CLAUDE_CALLBACK) }), deps(sb, { fetch: async () => ({ ok: true, text: async () => JSON.stringify(doc) }) }));
   assert.equal(lying.code, 400, 'document must describe its own client_id');
 });
+
+test('a platform owner\'s connector token is scoped: isPlatformOwner false, roles = the token\'s workspace only -> refused on an owner-only action and on another workspace', async () => {
+  const { patchBrandRoute } = await import('../hk/brandsRoutes.js');
+  const { hasRole, makeHkGate, authForUser } = await import('../lib/requireAuth.js');
+  const BRAND = '33333333-3333-4333-8333-333333333333';
+  const sb = fresh({ hk_brands: [{ id: BRAND, business_id: HK, name: 'Bluefin Run Club', normalized_name: 'bluefin run club', aliases: [], status: 'candidate', relationship: 'prospect', owner_user_id: null, owner_unclear: false, archived_at: null }], hk_events: [] });
+  sb.db.profiles[0].is_platform_owner = true;
+  sb.db.business_members[0].role = 'member';
+  const session = (await authForUser(sb, { id: JACK, email: '' })).auth;
+  assert.ok(session.isPlatformOwner && hasRole({ auth: session }, HL, 'owner'), 'the session view passes everywhere - which is why the token view must not');
+  const cid = await register(sb);
+  const code = (await codeFor(sb, cid)).url.searchParams.get('code');
+  const t = (await token(sb, { grant_type: 'authorization_code', client_id: cid, code, redirect_uri: O.CLAUDE_CALLBACK, code_verifier: verifier })).body;
+  const b = await bearerAuth(reqOf({ headers: { authorization: `Bearer ${t.access_token}` } }), resOf(), { supabase: sb, now: () => now });
+  assert.deepEqual([b.auth.isPlatformOwner, [...b.auth.roles.entries()]], [false, [[HK, 'member']]]);
+  const asToken = (businessId, method = 'PATCH') => ({ method, params: { businessId, id: BRAND }, query: {}, body: { relationship: 'sponsor' }, auth: b.auth });
+  const owner = resOf(); await patchBrandRoute(asToken(HK), owner, { supabase: sb, now: () => now });
+  assert.equal(owner.code, 403, 'marking a sponsor is owner-only');
+  assert.equal(sb.db.hk_brands[0].relationship, 'prospect');
+  assert.equal(hasRole({ auth: b.auth }, HL, 'viewer'), false);
+  const gate = makeHkGate(async () => ({ hk_sales: true }));
+  const g = resOf(); let passed = false; await gate(asToken(HL, 'GET'), g, () => { passed = true; });
+  assert.deepEqual([passed, g.code], [false, 403], 'another workspace\'s businessId is refused');
+});

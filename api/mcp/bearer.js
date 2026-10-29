@@ -21,9 +21,13 @@ export async function bearerAuth(req, res, d = {}) {
   if (!t || t.revoked_at || new Date(t.expires_at) <= now) return deny('The access token is invalid, expired or revoked');
   const a = await authForUser(supabase, { id: t.user_id, email: '' });
   if (a.status) return deny(a.error);
-  if (!roleAtLeast(a.auth.roles.get(t.business_id), 'member')) return deny('You are no longer a member of this workspace');
+  const role = a.auth.roles.get(t.business_id);
+  if (!roleAtLeast(role, 'member')) return deny('You are no longer a member of this workspace');
   const { data: biz } = await supabase.from('businesses').select('features').eq('id', t.business_id).maybeSingle();
   if (!biz?.features?.hk_sales) return deny('HumanKind Grow is not enabled for this workspace');
   await supabase.from('hk_oauth_tokens').update({ last_used_at: now.toISOString() }).eq('id', t.id);
-  return { auth: a.auth, businessId: t.business_id, tokenId: t.id, familyId: t.family_id, clientId: t.client_id };
+  // Narrowed on purpose: hasRole / isOwner let a platform owner pass every check, and a connector token is scoped to one
+  // workspace at the caller's real role there - never platform-wide.
+  const auth = { user: a.auth.user, isPlatformOwner: false, roles: new Map([[t.business_id, role]]) };
+  return { auth, businessId: t.business_id, tokenId: t.id, familyId: t.family_id, clientId: t.client_id };
 }

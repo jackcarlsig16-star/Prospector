@@ -165,6 +165,7 @@ ${PINNED} {
 .hk-theme.hk-shell--phone .hk-details { grid-template-columns:minmax(0, 1fr); }
 
 /* hkos-data-foundation-v1 Stage 4 - Sponsors, Review, Activity, Settings > Pitch */
+.hk-theme .hk-code { padding:6px 10px; border-radius:var(--hk-radius-chip); background:var(--hk-surface); box-shadow:inset 0 0 0 1px var(--hk-line); font:500 13px ui-monospace, SFMono-Regular, Menlo, monospace; color:var(--hk-cocoa); word-break:break-all; }
 .hk-theme .hk-note { margin:12px 0 4px; padding:10px 14px; border-radius:var(--hk-radius-block); background:var(--hk-tint-mustard); color:var(--hk-tint-mustard-text); font-size:13px; }
 .hk-theme .hk-section { margin-top:18px; }
 .hk-theme .hk-section__head { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }

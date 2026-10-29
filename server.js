@@ -51,6 +51,8 @@ app.post('/oauth/token', express.urlencoded({ extended: false, limit: '16kb' }),
 app.get('/api/oauth/consent/:id',          mcpRoute(MCP_OAUTH, 'consentGetRoute'));
 app.post('/api/oauth/consent/:id',         mcpRoute(MCP_OAUTH, 'consentPostRoute'));
 app.all('/mcp',                            mcpRoute('./api/mcp/mcpRoute.js', 'mcpRoute'));
+app.get('/api/hk/:businessId/connector',                    mcpRoute('./api/mcp/connectorRoutes.js', 'connectorRoute'));
+app.post('/api/hk/:businessId/connector/:familyId/revoke',  mcpRoute('./api/mcp/connectorRoutes.js', 'revokeConnectorRoute'));
 
 import('./api/lib/checkCredentials.js').then(({ checkCredentials }) => checkCredentials());
 

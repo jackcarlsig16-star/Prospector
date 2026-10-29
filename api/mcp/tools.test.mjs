@@ -151,6 +151,38 @@ test('hk_settings, hk_due, hk_update; every call writes one Activity row as Clau
   assert.equal(sb.db.hk_events.find(e => e.action === 'brand.status').detail.reason, 'call booked Thursday');
 });
 
+test('hk_update refuses a brand the caller does not own (unclaimed -> claim first; the other founder\'s -> owner only); nothing changes', async () => {
+  fresh();
+  const un = await call('hk_update', { brand: 'Bluefin Run Club', status: 'meeting' });
+  assert.ok(un.isError); assert.match(un.body.error, /isn't claimed yet - claim it first \(hk_claim\)/);
+  const other = await call('hk_update', { brand: 'Harbor Yoga', status: 'passed' });
+  assert.ok(other.isError); assert.match(other.body.error, /owned by Pete - only the owner sets its status/);
+  assert.deepEqual([sb.db.hk_brands.find(b => b.id === B.run).status, sb.db.hk_brands.find(b => b.id === B.yoga).status], ['candidate', 'claimed']);
+  assert.equal(sb.db.hk_events.filter(e => e.action === 'brand.status').length, 0);
+});
+
+test('Settings connector routes: lists only the caller\'s active connections; revoke is the caller\'s own family only; a viewer is refused', async () => {
+  fresh();
+  const { connectorRoute, revokeConnectorRoute } = await import('./connectorRoutes.js');
+  const tok = (id, fam, kind, user, over = {}) => ({ id, family_id: fam, token_hash: id.padEnd(64, '0'), kind, client_id: 'hkc_a', user_id: user, business_id: HK, scope: 'hk', expires_at: '2026-11-20T00:00:00Z', revoked_at: null, last_used_at: null, created_at: '2026-10-28T18:00:00Z', ...over });
+  sb.db.hk_oauth_tokens.push(tok('a1', 'fam-a', 'access', JACK, { last_used_at: '2026-10-28T19:30:00Z' }), tok('r1', 'fam-a', 'refresh', JACK), tok('r2', 'fam-old', 'refresh', JACK, { revoked_at: '2026-10-27T00:00:00Z' }), tok('r3', 'fam-pete', 'refresh', PETE));
+  sb.db.hk_oauth_clients = [{ client_id: 'hkc_a', name: 'Claude' }];
+  const req = (user, role = 'owner', params = {}) => ({ method: 'GET', params: { businessId: HK, ...params }, query: {}, body: {}, protocol: 'https', get: () => 'prospector.example', auth: { user: { id: user }, isPlatformOwner: false, roles: new Map([[HK, role]]) } });
+  const res = () => { const r = { code: 200, body: null }; r.status = c => { r.code = c; return r; }; r.json = b => { r.body = b; return r; }; return r; };
+  const l = res(); await connectorRoute(req(JACK), l, { supabase: sb, now: () => NOW });
+  assert.deepEqual(l.body, { mcp_url: 'https://prospector.example/mcp', connections: [{ family_id: 'fam-a', client_name: 'Claude', created_at: '2026-10-28T18:00:00Z', last_used_at: '2026-10-28T19:30:00Z' }], last_call_at: '2026-10-28T19:30:00Z' });
+  assert.ok(!JSON.stringify(l.body).includes('token_hash'));
+  const v = res(); await connectorRoute(req(JACK, 'viewer'), v, { supabase: sb }); assert.equal(v.code, 403);
+  const theirs = res(); await revokeConnectorRoute(req(JACK, 'owner', { familyId: 'fam-pete' }), theirs, { supabase: sb, now: () => NOW });
+  assert.equal(theirs.code, 404); assert.equal(sb.db.hk_oauth_tokens.find(t => t.id === 'r3').revoked_at, null);
+  const mine = res(); await revokeConnectorRoute(req(JACK, 'owner', { familyId: 'fam-a' }), mine, { supabase: sb, now: () => NOW });
+  assert.deepEqual(mine.body, { revoked: 2 });
+  assert.ok(sb.db.hk_oauth_tokens.filter(t => t.family_id === 'fam-a').every(t => t.revoked_at));
+  assert.equal(sb.db.hk_events.at(-1).action, 'connector.revoked');
+  const after = res(); await connectorRoute(req(JACK), after, { supabase: sb, now: () => NOW });
+  assert.deepEqual(after.body.connections, []);
+});
+
 test(`limit: ${CALLS_PER_WINDOW} tool calls per user per 10 minutes`, async () => {
   fresh();
   for (let i = 0; i < CALLS_PER_WINDOW; i++) await runTool(ctx(), 'hk_settings', {});
