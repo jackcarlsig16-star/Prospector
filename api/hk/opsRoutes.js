@@ -1,7 +1,7 @@
 // hkos-data-foundation-v1 D4 - sponsors, review, activity, settings and member prefs (under /api/hk/:businessId behind
 // hkGate). Nothing here returns an address: replies go through replyRow, events were PII-guarded when written.
 import { createRequire } from 'module';
-import { getSupabase, HkError, fail, isOwner, me, text, bool, oneOf, logEvent, brandRow, brandSummary, liveBrands, allBrands, brandById, nameMatches, selectAllPages, hasPii, SPONSOR_RELATIONSHIPS } from './hkShared.js';
+import { getSupabase, HkError, fail, isOwner, me, text, bool, oneOf, logEvent, brandRow, brandSummary, liveBrands, allBrands, brandById, nameMatches, selectAllPages, selectIn, hasPii, SPONSOR_RELATIONSHIPS } from './hkShared.js';
 const seed = createRequire(import.meta.url)('./lintSeed.json');
 // Settings > Pitch shows the rules nobody can edit here: the lint seed's patterns plus the email-touch cap.
 const LOCKED_RULES = [...seed.banned_patterns.map(p => ({ id: p.id, rule: p.rule })), { id: 'max_email_touches', rule: 'At most 3 email touches per brand: cold, bump, final.' }, { id: 'no_send', rule: 'Nothing is ever sent from Prospector. Drafts land in Gmail for you to send.' }];
@@ -18,9 +18,11 @@ export async function sponsorsRoute(req, res, { supabase = getSupabase() } = {})
     const brands = await liveBrands(supabase, businessId);
     const sponsors = brands.filter(b => SPONSOR_RELATIONSHIPS.has(b.relationship)), dnc = brands.filter(b => b.relationship === 'do_not_contact');
     const ids = sponsors.map(b => b.id);
-    const periods = ids.length ? (await supabase.from('hk_sponsor_periods').select('*').eq('business_id', businessId).in('brand_id', ids).order('period')).data || [] : [];
+    const periods = (await selectIn(() => supabase.from('hk_sponsor_periods').select('*').eq('business_id', businessId).order('period').order('id'), 'brand_id', ids))
+      .sort((a, b) => (a.period < b.period ? -1 : a.period > b.period ? 1 : 0));
     const dncIds = dnc.map(b => b.id);
-    const marks = dncIds.length ? (await supabase.from('hk_events').select('entity_id, actor_user_id, created_at, action').eq('business_id', businessId).eq('action', 'brand.relationship').in('entity_id', dncIds).order('created_at', { ascending: false })).data || [] : [];
+    const marks = (await selectIn(() => supabase.from('hk_events').select('id, entity_id, actor_user_id, created_at, action').eq('business_id', businessId).eq('action', 'brand.relationship').order('created_at', { ascending: false }).order('id'), 'entity_id', dncIds))
+      .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
     res.json({
       sponsors: sponsors.map(b => brandRow(b, { notes: b.notes, periods: periods.filter(p => p.brand_id === b.id).map(p => ({ id: p.id, period: p.period, kind: p.kind, note: p.note })) })),
       dnc: dnc.map(b => { const m = marks.find(x => x.entity_id === b.id); return brandRow(b, { dnc_reason: b.dnc_reason, marked_by: m?.actor_user_id || null, marked_at: m?.created_at || b.updated_at }); }),

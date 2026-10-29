@@ -65,6 +65,18 @@ const decodedSummary = row => (row.summary ? { ...row, summary: decodeEntities(r
 export const replyRow = r => decodedSummary(pick(r, ['id', 'brand_id', 'touch_id', 'gmail_message_id', 'gmail_thread_id', 'from_name', 'from_domain', 'received_at', 'label', 'label_overridden_by', 'summary', 'urgent', 'handled', 'handled_by', 'handled_at', 'snoozed_until', 'created_at']));
 export const brandSummary = b => pick(b, ['id', 'name', 'domain', 'status', 'relationship', 'owner_user_id', 'niche', 'is_local', 'source', 'created_at']);
 
+// hkos-brands-list-500 F2 - an id list never goes into ONE PostgREST in() filter: a long URL is answered 400 (952 brand
+// ids took Grow › Brands down). selectIn runs buildQuery().in(column, part) per chunk of IN_CHUNK ids, pages each chunk
+// (buildQuery must end its ORDER BY on a unique column - see selectAllPages) and throws on any error, never an empty
+// list. The chunks come back concatenated: a caller that needs one order sorts after.
+export const IN_CHUNK = 100; // REVISABLE (spec)
+export const chunks = (arr, n = IN_CHUNK) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
+export async function selectIn(buildQuery, column, ids, { size = IN_CHUNK } = {}) {
+  const out = [];
+  for (const part of chunks([...new Set(ids)], size)) out.push(...await selectAllPages(() => buildQuery().in(column, part)));
+  return out;
+}
+
 export const liveBrands = (supabase, businessId) => selectAllPages(() => supabase.from('hk_brands').select('*').eq('business_id', businessId).is('archived_at', null).order('created_at').order('id'));
 export const allBrands = (supabase, businessId) => selectAllPages(() => supabase.from('hk_brands').select('*').eq('business_id', businessId).order('created_at').order('id'));
 export async function brandById(supabase, businessId, id) {
@@ -82,10 +94,8 @@ export async function legacyNames(supabase, businessId) {
   for (const a of accounts || []) { const name = a.data?.name; if (name) out.push({ id: a.id, name, kind: a.account_kind || 'account', table: 'accounts' }); }
   const { data: projects } = await supabase.from('projects').select('id').eq('business_id', businessId);
   const pids = (projects || []).map(p => p.id);
-  if (pids.length) {
-    const { data: prospects } = await supabase.from('prospects').select('id, name').in('project_id', pids);
-    for (const p of prospects || []) if (p.name) out.push({ id: p.id, name: p.name, kind: 'prospect', table: 'prospects' });
-  }
+  const prospects = await selectIn(() => supabase.from('prospects').select('id, name').order('id'), 'project_id', pids);
+  for (const p of prospects) if (p.name) out.push({ id: p.id, name: p.name, kind: 'prospect', table: 'prospects' });
   return out;
 }
 

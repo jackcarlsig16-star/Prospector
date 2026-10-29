@@ -1,7 +1,7 @@
 // hkos-data-foundation-v1 D4 - brands + contacts routes (mounted under /api/hk/:businessId behind hkGate; viewer = GET,
 // member = writes, owner-role = relationship upgrades + releasing another's claim). List rows never carry an address;
 // the brand detail and the contacts routes do (hk_contacts.email - the scoped HumanKind exception, D5).
-import { getSupabase, HkError, fail, isOwner, me, text, bool, oneOf, domainOf, emailOf, logEvent, brandRow, brandDetail, contactRow, touchRow, replyRow, liveBrands, brandById, legacyNames, verdictFor, sponsorsNichesOf, canContact, normName, SPONSOR_RELATIONSHIPS, MANUAL_STATUSES } from './hkShared.js';
+import { getSupabase, HkError, fail, isOwner, me, text, bool, oneOf, domainOf, emailOf, logEvent, brandRow, brandDetail, contactRow, touchRow, replyRow, liveBrands, brandById, legacyNames, verdictFor, sponsorsNichesOf, canContact, normName, SPONSOR_RELATIONSHIPS, MANUAL_STATUSES, selectAllPages } from './hkShared.js';
 import { trackedThreads, liveThread } from './warm.js';
 import { mailboxFor, accessTokenForGrant } from '../lib/googleGrants.js';
 import { gmailClient } from './gmailClient.js';
@@ -16,11 +16,13 @@ const LONG = { notes: [4000, 'notes'], challenge_idea: [1000, 'challenge idea'],
 
 const ctx = async (supabase, businessId, senderUserId) => { const brands = await liveBrands(supabase, businessId); return { brands, legacy: await legacyNames(supabase, businessId), senderUserId, sponsorsNiches: sponsorsNichesOf(brands) }; };
 const aliasesOf = v => { if (v == null) return null; if (!Array.isArray(v)) throw new HkError(400, 'aliases must be a list'); return [...new Set(v.map(a => text(a, 160, 'alias')).filter(Boolean))]; };
+// hkos-brands-list-500 F1: the workspace's primary contacts, paged, joined in JS - no id list in the URL, one path for
+// 29 rows or 952. Name only (list rows never carry an address).
 async function primaryNames(supabase, businessId, ids) {
   if (!ids.length) return {};
-  const { data, error } = await supabase.from('hk_contacts').select('brand_id, name, is_primary').eq('business_id', businessId).in('brand_id', ids);
-  if (error) throw new Error(error.message);
-  return Object.fromEntries((data || []).filter(c => c.is_primary).map(c => [c.brand_id, c.name]));
+  const want = new Set(ids);
+  const rows = await selectAllPages(() => supabase.from('hk_contacts').select('brand_id, name').eq('business_id', businessId).eq('is_primary', true).order('brand_id').order('id'));
+  return Object.fromEntries(rows.filter(c => want.has(c.brand_id)).map(c => [c.brand_id, c.name]));
 }
 
 // GET /brands?view=&q=&owner=&status=&segment=

@@ -4,7 +4,7 @@
 // only Gmail writes are a draft create and a draft delete. Addresses: the contact's To is read from hk_contacts on the
 // server; hk_replies.from_email is stored and never returned; the only address a response carries is the caller's own
 // mailbox inside the Gmail URLs they open.
-import { getSupabase, HkError, fail, isOwner, me, text, oneOf, logEvent, touchRow, replyRow, liveBrands, brandById, sponsorsNichesOf, canContact, TEAM_DOMAINS } from './hkShared.js';
+import { getSupabase, HkError, fail, isOwner, me, text, oneOf, logEvent, touchRow, replyRow, liveBrands, brandById, sponsorsNichesOf, canContact, TEAM_DOMAINS, selectIn } from './hkShared.js';
 import { lintDraft, lintRejects } from './lint.js';
 import { buildDraftMime, draftUrl, replySubject, header } from './gmailMime.js';
 import { gmailClient, toMeta, GmailError } from './gmailClient.js';
@@ -109,7 +109,7 @@ export async function listDraftsRoute(req, res, d = {}) {
     if (error) throw new Error(error.message);
     const brands = Object.fromEntries((await liveBrands(supabase, businessId)).map(b => [b.id, b]));
     const cids = [...new Set((touches || []).map(t => t.contact_id).filter(Boolean))];
-    const contacts = cids.length ? Object.fromEntries(((await supabase.from('hk_contacts').select('id, name').in('id', cids)).data || []).map(c => [c.id, c.name])) : {};
+    const contacts = Object.fromEntries((await selectIn(() => supabase.from('hk_contacts').select('id, name').order('id'), 'id', cids)).map(c => [c.id, c.name]));
     const m = await mailbox(businessId, uid, 'drafts').catch(() => null);
     const own = m?.grant?.google_email || null;
     const nowMs = now().getTime();
@@ -289,7 +289,7 @@ export async function listRepliesRoute(req, res, d = {}) {
     const brands = Object.fromEntries((await liveBrands(supabase, businessId)).map(b => [b.id, b]));
     if (q.owner === 'me') rows = rows.filter(r => brands[r.brand_id]?.owner_user_id === uid); else if (q.owner && q.owner !== 'all') rows = rows.filter(r => brands[r.brand_id]?.owner_user_id === q.owner);
     const tids = [...new Set(rows.map(r => r.touch_id).filter(Boolean))];
-    const touches = tids.length ? Object.fromEntries(((await supabase.from('hk_touches').select('id, sender_user_id, kind, subject').in('id', tids)).data || []).map(t => [t.id, t])) : {};
+    const touches = Object.fromEntries((await selectIn(() => supabase.from('hk_touches').select('id, sender_user_id, kind, subject').order('id'), 'id', tids)).map(t => [t.id, t]));
     const m = await mailbox(businessId, uid, 'drafts').catch(() => null);
     const own = m?.grant?.google_email || null;
     res.json({ replies: rows.map(r => { const t = touches[r.touch_id]; const mine = t ? t.sender_user_id === uid : false; return { ...replyRow(r), urgent: !!r.urgent, brand_name: brands[r.brand_id]?.name || null, brand_owner_user_id: brands[r.brand_id]?.owner_user_id || null, brand_status: brands[r.brand_id]?.status || null, sender_user_id: t?.sender_user_id || null, touch_kind: t?.kind || null, mine, open_url: mine && own && r.gmail_message_id ? okUrl(own, `all/${encodeURIComponent(r.gmail_message_id)}`) : null }; }) });

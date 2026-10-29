@@ -5,7 +5,7 @@
 // id on the run (undo_set); undo deletes exactly those ids and refuses when any brand changed since. Nothing here
 // returns an address: previewRow shows contact presence, runRow never carries the plan.
 import { Readable } from 'node:stream';
-import { getSupabase, HkError, fail, isOwner, me, logEvent, detailHasPii, liveBrands, legacyNames, normName } from './hkShared.js';
+import { getSupabase, HkError, fail, isOwner, me, logEvent, detailHasPii, liveBrands, legacyNames, normName, chunks } from './hkShared.js';
 import { openUpload } from '../sales/sheetUpdate.js';
 import { parseWorkbook } from './importParse.js';
 import { buildPlan, previewRow } from './importPlan.js';
@@ -13,12 +13,10 @@ import { buildPlan, previewRow } from './importPlan.js';
 export const IMPORT_MAX_BYTES = 1024 * 1024; // REVISABLE
 export const PLAN_MAX_BYTES = 2 * 1024 * 1024;
 export const PREVIEW_TTL_MS = 24 * 3600e3;
-const CHUNK = 100; // ids per PostgREST in() filter (URL length)
 const RUN_FIELDS = ['id', 'source', 'status', 'rows_read', 'created_count', 'matched_count', 'flagged_count', 'started_by', 'created_at', 'finished_at', 'undone_at', 'summary'];
 export const runRow = r => ({ ...Object.fromEntries(RUN_FIELDS.map(k => [k, r[k] ?? null])), can_undo: r.status === 'committed' && !!r.undo_set });
 const previewOf = plan => ({ tabs: plan.tabs, brands: plan.brands.map(previewRow), duplicates: plan.duplicates, warnings: plan.warnings, totals: plan.totals });
 const chicagoToday = now => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Chicago' }).format(now);
-const chunks = (arr, n = CHUNK) => { const out = []; for (let i = 0; i < arr.length; i += n) out.push(arr.slice(i, i + n)); return out; };
 const must = r => { if (r.error) throw new Error(r.error.message); return r.data || []; };
 // A plan date is a day; it lands at noon Chicago so it reads as that day on either side of midnight UTC.
 const dayTs = d => (d ? `${d}T17:00:00.000Z` : null);
