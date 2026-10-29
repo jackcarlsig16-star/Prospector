@@ -141,7 +141,8 @@ test('I1 limit + metadata cache (v2): a small page; Brands reuses the message me
   await call(R.listThreadsRoute, reqOf({ query: { tab: 'inbox', limit: '5', refresh: '1' } }));
   assert.equal(gmailCallsFor('getMessageMeta'), 11, 'Refresh re-reads everything');
   assert.equal((await call(R.listThreadsRoute, reqOf({ query: { tab: 'inbox', limit: '2' } }))).body.threads.length, 5, 'limit floors at 5');
-  assert.deepEqual(writes.map(w => w[1]), ['hk_replies', 'hk_events']);
+  // grow-signals-v1 G5: the link records a reply, so it also writes that reply's signal and the brand's heat; the list writes nothing.
+  assert.deepEqual(writes.map(w => w[1]), ['hk_replies', 'hk_events', 'hk_signals', 'hk_brands']);
 });
 
 test('I1 tabs (v2): brands = the from:(brand domains) search filtered to tracked + matches; sent and drafts by label; a message gone from Gmail is skipped', async () => {

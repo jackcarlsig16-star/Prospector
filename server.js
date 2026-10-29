@@ -431,6 +431,14 @@ app.patch('/api/hk/:businessId/settings',                     hkRoute(HK_OPS, 'p
 app.post('/api/hk/:businessId/settings/confirm-stats',        hkRoute(HK_OPS, 'confirmStatsRoute'));
 app.get('/api/hk/:businessId/me/prefs',                       hkRoute(HK_OPS, 'getPrefsRoute'));
 app.patch('/api/hk/:businessId/me/prefs',                     hkRoute(HK_OPS, 'patchPrefsRoute'));
+// grow-signals-v1 G6 + G7 - the Signals panel and the one-click lists (+ Target / + Pipeline, both with Undo).
+const HK_SIGNALS = './api/hk/signalsRoutes.js';
+app.get('/api/hk/:businessId/signals',                        hkRoute(HK_SIGNALS, 'listSignalsRoute'));
+app.post('/api/hk/:businessId/signals/seen',                  hkRoute(HK_SIGNALS, 'seenSignalsRoute'));
+app.post('/api/hk/:businessId/signals/:id/act',               hkRoute(HK_SIGNALS, 'actSignalRoute'));
+app.post('/api/hk/:businessId/signals/:id/dismiss',           hkRoute(HK_SIGNALS, 'dismissSignalRoute'));
+app.post('/api/hk/:businessId/brands/:id/target',             hkRoute(HK_SIGNALS, 'targetRoute'));
+app.post('/api/hk/:businessId/brands/:id/pipeline',           hkRoute(HK_SIGNALS, 'pipelineRoute'));
 // hkos-gmail-connect-v1 (G3-G7) - drafts into the tethered mailbox, sync, replies, status. No send path anywhere.
 const HK_GMAIL = './api/hk/gmailRoutes.js';
 app.get('/api/hk/:businessId/drafts',                         hkRoute(HK_GMAIL, 'listDraftsRoute'));

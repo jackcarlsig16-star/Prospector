@@ -7,6 +7,7 @@
 import { getSupabase, HkError, fail, isOwner, me, text, oneOf, logEvent, touchRow, replyRow, liveBrands, brandById, sponsorsNichesOf, canContact, TEAM_DOMAINS, selectIn } from './hkShared.js';
 import { lintDraft, lintRejects } from './lint.js';
 import { buildDraftMime, draftUrl, replySubject, header } from './gmailMime.js';
+import { replyKind, signalWords, signalNow } from './signals.js';
 import { gmailClient, toMeta, GmailError } from './gmailClient.js';
 import { classify, nextDueAt, counts as runCounts } from './syncRules.js';
 import { labelReply, snippetOf } from './replyLabel.js';
@@ -234,6 +235,8 @@ export async function runMailboxSync({ D, businessId, userId: uid, m, trigger })
         const { data: row, error } = await supabase.from('hk_replies').insert({ business_id: businessId, brand_id, touch_id: touch?.id || null, gmail_message_id: message.id, gmail_thread_id: message.threadId, from_name: message.from?.name || null, from_domain: message.from?.domain || null, from_email: message.from?.email || null, received_at: message.date, label, summary: summary || snippetOf(message.snippet), urgent, handled: false }).select().single();
         if (error) { if (error.code === '23505') return null; throw error; }
         await logEvent(supabase, { businessId, actorUserId: uid, actorKind: 'system', entityType: 'brand', entityId: brand_id, action: 'reply_logged', detail: { reply_id: row.id, label, urgent, labeled, touch_id: touch?.id || null } });
+        const kind = replyKind(label);
+        if (kind) await signalNow(supabase, { businessId, kind, brandId: brand_id, ownerUserId: byId[brand_id]?.owner_user_id, occurredAt: message.date, source: 'sync', refType: 'reply', refId: row.id, detail: `${byId[brand_id]?.name || 'A brand'} ${signalWords(kind)}` }, new Date(nowIso()));
         return row;
       };
       for (const r of c.replies) {

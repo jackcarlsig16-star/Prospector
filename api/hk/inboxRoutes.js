@@ -7,6 +7,7 @@ import { getSupabase, HkError, fail, me, domainOf, logEvent, replyRow, brandDeta
 import { roleAtLeast } from '../../src/constants/roles.js';
 import { gmailClient, GmailError, GMAIL_UNITS } from './gmailClient.js';
 import { threadRow, messageView, latestInbound, chipFor, originOf, partsOf, isBrandChip, brandQueries, inTurns, byInternalDate, BRANDS_META_MAX, unitsOf, prefillFromIntel, LANES } from './inboxRules.js';
+import { replyKind, signalWords, signalNow } from './signals.js';
 import { noteInboxList } from './gmailActivity.js';
 import { analyzeSender, cachedIntel } from './inboxAnalyze.js';
 import { header, decodeEntities } from './gmailMime.js';
@@ -274,6 +275,8 @@ async function linkThread(D, { businessId, uid, brand, threadId, token, owner })
   const { data: row, error } = await supabase.from('hk_replies').insert({ business_id: businessId, brand_id: brand.id, touch_id: touch?.id || null, gmail_message_id: msg.id, gmail_thread_id: threadId, from_name: sender.name, from_domain: sender.domain, from_email: sender.email, received_at: receivedAt, label: lab.label, summary: lab.summary || snippetOf(msg.snippet || ''), urgent: !!lab.urgent, handled: false }).select().single();
   if (error) { if (error.code === '23505') throw new HkError(409, 'that message is already tracked', { already_tracked: brand.id }); throw error; }
   await logEvent(supabase, { businessId, actorUserId: uid, entityType: 'brand', entityId: brand.id, action: 'inbox_linked', detail: { thread_id: threadId, reply_id: row.id, label: lab.label, labeled: !!lab.labeled, touch_id: touch?.id || null } });
+  const kind = replyKind(lab.label);
+  if (kind) await signalNow(supabase, { businessId, kind, brandId: brand.id, ownerUserId: brand.owner_user_id, occurredAt: receivedAt, source: 'user', refType: 'reply', refId: row.id, detail: `${brand.name} ${signalWords(kind)}` }, now());
   inboxCache.dropUser(businessId, uid);
   return row;
 }

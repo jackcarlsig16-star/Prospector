@@ -13,7 +13,7 @@ delete process.env.HK_SLACK_WEBHOOK_URL;
 const { seed, reqOf, resOf, HK, JACK, ID } = await import('./testing.mjs');
 const shared = await import('./hkShared.js');
 const grants = await import('../lib/googleGrants.js');
-const MODULES = { brandsRoutes: await import('./brandsRoutes.js'), opsRoutes: await import('./opsRoutes.js'), gmailRoutes: await import('./gmailRoutes.js'), inboxRoutes: await import('./inboxRoutes.js'), importRoutes: await import('./importRoutes.js'), jobsRoutes: await import('./jobsRoutes.js') };
+const MODULES = { brandsRoutes: await import('./brandsRoutes.js'), opsRoutes: await import('./opsRoutes.js'), gmailRoutes: await import('./gmailRoutes.js'), inboxRoutes: await import('./inboxRoutes.js'), importRoutes: await import('./importRoutes.js'), jobsRoutes: await import('./jobsRoutes.js'), signalsRoutes: await import('./signalsRoutes.js') };
 
 const OWNER = 'jack.work@humankind.invalid', TOKEN = 'tok-jack-wiring';
 const b64 = s => Buffer.from(s, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -59,7 +59,7 @@ const fresh = () => {
     hk_sync_runs: [], hk_gmail_sync_state: [],
     google_grants: [{ id: 'g-jack', user_id: JACK, google_email: OWNER, features: ['gmail'], refresh_token_enc: grants.encryptToken('refresh-wiring'), is_default: true, error: null, error_at: null, last_used_at: null, created_at: '2026-10-01T00:00:00Z', updated_at: '2026-10-01T00:00:00Z' }],
     workspace_mailboxes: [{ business_id: HK, user_id: JACK, provider: 'google', google_grant_id: 'g-jack', purposes: ['drafts', 'inbox'] }],
-    business_members: [{ user_id: JACK, business_id: HK, name: 'Jack Carlson', role: 'owner', created_at: '2026-09-01T00:00:00Z' }], hk_import_runs: [], hk_job_runs: [],
+    business_members: [{ user_id: JACK, business_id: HK, name: 'Jack Carlson', role: 'owner', created_at: '2026-09-01T00:00:00Z' }], hk_import_runs: [], hk_job_runs: [], hk_signals: [],
   });
   shared.seams.supabase = () => sb;
   grants.deps.supabase = () => sb;
@@ -126,6 +126,12 @@ const TABLE = [
   ['inboxRoutes', 'ignoreRoute', member({ method: 'POST', body: { domain: 'shop.invalid' } }), [200]],
   ['inboxRoutes', 'unignoreRoute', member({ method: 'DELETE', params: { domain: 'news.invalid' } }), [200]],
   ['inboxRoutes', 'analyzeRoute', member({ method: 'POST', params: { id: 'th-new' }, body: {} }), [400]],
+  ['signalsRoutes', 'listSignalsRoute', member(), [200]],
+  ['signalsRoutes', 'seenSignalsRoute', member({ method: 'POST', body: { ids: [] } }), [400]],
+  ['signalsRoutes', 'actSignalRoute', member({ method: 'POST', params: { id: 'nope' } }), [404]],
+  ['signalsRoutes', 'dismissSignalRoute', member({ method: 'POST', params: { id: 'nope' } }), [404]],
+  ['signalsRoutes', 'targetRoute', member({ method: 'POST', params: { id: ID.run }, body: { on: true } }), [200]],
+  ['signalsRoutes', 'pipelineRoute', member({ method: 'POST', params: { id: ID.juice } }), [409]],
 ];
 const TYPE_ERROR = /is not a function|Cannot read propert|is not defined|is not iterable|Cannot destructure/;
 

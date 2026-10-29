@@ -10,6 +10,7 @@ import { SETTINGS_DEFAULTS, dataWarnings } from '../opsRoutes.js';
 import { RECONNECT, NeedsGoogle } from '../../lib/googleGrants.js';
 import { GmailError } from '../gmailClient.js';
 import { inboxListedAt, INBOX_QUIET_MS } from '../gmailActivity.js';
+import { dailySignals } from '../signals.js';
 import { dueFollowups, dueDms, planCounts, dayIn, isPastDigestTime, isDigestDay, ranToday, statsStale } from './plan.js';
 import { bumpText, finalText, dmText, followupSubject } from '../followupText.js';
 import { buildDigest, renderSlack } from './digest.js';
@@ -126,9 +127,10 @@ export async function dailyCheck({ businessId, trigger = 'manual', startedBy = n
       await logEvent(D.supabase, { businessId, actorUserId: item.owner_user_id, actorKind: 'system', entityType: 'brand', entityId: item.brand_id, action: 'draft_created', detail: { touch_id: t.id, kind: 'dm_text', channel: 'ig_dm' } });
     }
     const all = [...touches, ...newTouches];
+    const signals = await dailySignals(D.supabase, { businessId, brands, touches: all, replies, followups: follow.items, now }).catch(e => ({ error: errText(e) }));
     const digest = buildDigest({ replies, touches: all, brands, members: members(fs), noDraft, dmReady: all.filter(t => t.channel === 'ig_dm' && t.state === 'drafted').map(t => ({ brand_id: t.brand_id, touch_id: t.id })), warningsCount: dataWarnings(brands, now).length, settings, events: await recentEvents(D, businessId, now), now });
     const slack = await postSlack(D, digest);
-    const counts = { ...planCounts(follow, dms), drafted: made, capped, dm_texts: dms.items.length, no_draft: noDraft.length, errors, slack, digest: digest.counts };
+    const counts = { ...planCounts(follow, dms), drafted: made, capped, dm_texts: dms.items.length, no_draft: noDraft.length, errors, slack, digest: digest.counts, signals };
     const done = await finishRun(D, run, { status: errors ? 'partial' : 'ok', counts, digest });
     return { run: runRow(done), counts, digest, skipped: null };
   } catch (e) { await finishRun(D, run, { status: 'error', error: errText(e) }).catch(() => {}); throw e; }

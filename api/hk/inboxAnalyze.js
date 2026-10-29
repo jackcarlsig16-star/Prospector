@@ -4,6 +4,7 @@
 // the saved card and asks before spending again; 25 calls per user per Chicago day; usage lands in
 // business_anthropic_usage (callAnthropic, call_type hk_inbox_analyze), which is also what the cap counts.
 import { MODELS, estimateCostUsd } from '../../src/config/models.js';
+import { signalNow, signalWords } from './signals.js';
 import { scrubAddresses, cleanText } from '../sales/scrubText.js';
 import { SEARCH_USD } from '../sales/partnerResearch.js';
 import { HkError } from './hkShared.js';
@@ -97,5 +98,10 @@ export async function analyzeSender({ D, businessId, uid, domain, senderName, su
   const row = { business_id: businessId, domain, intel, model, cost_usd: cost, researched_by: uid, researched_at: now.toISOString() };
   const { error } = await D.supabase.from('hk_domain_intel').upsert(row, { onConflict: 'business_id,domain' });
   if (error) throw new Error(error.message);
+  const kind = intel.fit?.sponsor_fit === 'strong' ? 'research_strong_fit' : intel.fit?.sponsor_fit === 'possible' ? 'research_possible' : null;
+  if (kind) {
+    const { data: b } = await D.supabase.from('hk_brands').select('id, name, owner_user_id').eq('business_id', businessId).eq('domain', domain).is('archived_at', null).limit(1).maybeSingle();
+    await signalNow(D.supabase, { businessId, kind, brandId: b?.id || null, domain: b ? null : domain, ownerUserId: b?.owner_user_id, occurredAt: row.researched_at, source: 'research', refType: 'domain_intel', refId: `${domain}:${row.researched_at}`, detail: `${b?.name || domain} ${signalWords(kind)}` }, now);
+  }
   return { domain, intel, model, cost_usd: cost, researched_at: row.researched_at, cached: false, web_searches: searches };
 }

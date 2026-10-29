@@ -2,6 +2,7 @@
 // member = writes, owner-role = relationship upgrades + releasing another's claim). List rows never carry an address;
 // the brand detail and the contacts routes do (hk_contacts.email - the scoped HumanKind exception, D5).
 import { getSupabase, HkError, fail, isOwner, me, text, bool, oneOf, domainOf, emailOf, logEvent, brandRow, brandDetail, contactRow, touchRow, replyRow, liveBrands, brandById, legacyNames, verdictFor, sponsorsNichesOf, canContact, normName, SPONSOR_RELATIONSHIPS, MANUAL_STATUSES, selectAllPages } from './hkShared.js';
+import { signalNow, signalWords, moveDomainSignals, recomputeHeat } from './signals.js';
 import { trackedThreads, liveThread } from './warm.js';
 import { mailboxFor, accessTokenForGrant } from '../lib/googleGrants.js';
 import { gmailClient } from './gmailClient.js';
@@ -105,6 +106,7 @@ export async function createBrand(supabase, { businessId, userId, body, now = ()
   if (error) throw error;
   await logEvent(supabase, { businessId, actorUserId: userId, entityType: 'brand', entityId: data.id, action: 'brand.created', detail: { name: data.name, domain: data.domain, verdict: verdict.verdict, forced: body.force_duplicate === true } });
   if (claim) await logEvent(supabase, { businessId, actorUserId: userId, entityType: 'brand', entityId: data.id, action: 'brand.claimed', detail: { name: data.name } });
+  if (data.domain && await moveDomainSignals(supabase, businessId, data.domain, data.id).catch(e => { console.error('[hk/signals] domain move:', e.message); return 0; })) await recomputeHeat(supabase, businessId, { brandIds: [data.id], now: now() }).catch(e => console.error('[hk/signals] heat:', e.message));
   return { data, verdict };
 }
 
@@ -158,6 +160,7 @@ export async function patchBrandRoute(req, res, { supabase = getSupabase(), now 
     const { data, error } = await supabase.from('hk_brands').update(patch).eq('id', brand.id).eq('business_id', businessId).select().single();
     if (error) throw error;
     await logEvent(supabase, { businessId, actorUserId: uid, entityType: 'brand', entityId: brand.id, action, detail: { changed, prev, ...(reason ? { reason } : {}) } });
+    if (action === 'brand.status' && patch.status === 'meeting') await signalNow(supabase, { businessId, kind: 'meeting_set', brandId: brand.id, ownerUserId: data.owner_user_id, occurredAt: patch.updated_at, source: 'user', refType: 'brand_status', refId: `${brand.id}:${patch.updated_at}`, detail: `${brand.name}: ${signalWords('meeting_set')}` }, now());
     res.json({ brand: brandDetail(data), changed });
   } catch (e) { fail(res, e, 'brands/patch'); }
 }
