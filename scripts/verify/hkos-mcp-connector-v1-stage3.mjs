@@ -27,7 +27,7 @@ const require = createRequire(ROOT + '/package.json');
 require('dotenv').config({ path: ROOT + '/.env' });
 const { createClient } = require('@supabase/supabase-js');
 const { chromium } = require('playwright');
-const { measureScript, summarize } = require('./lib/contrastMeasure.cjs');
+const { measureScript, summarize } = require(ROOT + '/scripts/verify/lib/contrastMeasure.cjs');
 const { SESSION_COOKIE } = await import('../../api/lib/authUser.js');
 const OUT = path.join(ROOT, '.screenshots', 'hkos-mcp-connector-v1');
 const PROD = 'https://prospector-chtj.onrender.com', PORT = 4011, LOCAL = `http://localhost:${PORT}`;
@@ -166,7 +166,7 @@ try {
   for (let i = 0; i < 40; i++) { try { await fetch(`${LOCAL}/`); break; } catch { await new Promise(r => setTimeout(r, 250)); } }
   browser = await chromium.launch();
   const shoot = async ({ width, height, viewer = false, tag }) => {
-    const ctx = await browser.newContext({ viewport: { width, height } });
+    const ctx = await browser.newContext({ viewport: { width, height }, hasTouch: width < 760 });
     await ctx.addInitScript(([k, v]) => { try { if (sessionStorage.getItem('__s')) return; sessionStorage.setItem('__s', '1'); localStorage.clear(); localStorage.setItem(k, v); localStorage.setItem('prospector_auto_assay_disabled', '1'); } catch { /* frame */ } }, [`sb-${REF}-auth-token`, JSON.stringify(owner.session)]);
     const seen = [];
     await ctx.route('**/*', async route => {
@@ -180,6 +180,7 @@ try {
     const page = await ctx.newPage(); page.setDefaultTimeout(30000);
     const errors = []; page.on('pageerror', e => errors.push(e.message.slice(0, 160)));
     await page.goto(`${LOCAL}/`);
+    if (width < 900) { await page.getByRole('button', { name: 'Open menu' }).click().catch(() => {}); await page.waitForTimeout(400); }
     await page.getByLabel('Workspace').waitFor({ timeout: 20000 }); await page.getByLabel('Workspace').selectOption({ label: 'HumanKind' });
     await page.locator('[data-hk-shell]').waitFor({ timeout: 20000 });
     await page.evaluate(() => { window.history.pushState(null, '', '#hk/settings/connections'); window.dispatchEvent(new PopStateEvent('popstate')); });
@@ -209,7 +210,7 @@ try {
     const s = await shoot({ width: w, height: h, tag });
     results.numbers[`ui_${tag}`] = { rows: s.rows, contrast: { textFails: s.contrast.textFails, controlFails: s.contrast.controlFails }, scrollW: s.scrollW };
     ok(`Settings › Claude connector at ${tag}: URL ${s.url}, ${s.rows} connection row ("${s.rowText.replace(/\s+/g, ' ').slice(0, 80)}"), contrast fails text ${s.contrast.textFails} / controls ${s.contrast.controlFails}, no horizontal scroll, 0 page errors`, s.url === `${LOCAL}/mcp` && s.rows === 1 && /Verify script/.test(s.rowText) && s.contrast.textFails === 0 && s.contrast.controlFails === 0 && s.scrollW <= w && !s.errors.length, s.errors.join(' | '));
-    if (tag === '1440') ok(`Activity › Claude connector filter: ${s.activityRows} rows read "${s.activityText.replace(/\s+/g, ' ')}"`, s.activityRows >= 5 && /^C?Claude via connector \(Jack\)$/.test(s.activityText.replace(/\s+/g, ' ').trim()));
+    if (tag === '1440') ok(`Activity › Claude connector filter: ${s.activityRows} rows read "${s.activityText.replace(/\s+/g, ' ')}"`, s.activityRows >= 5 && /^C?\s*Claude via connector \(Jack\)$/.test(s.activityText.replace(/\s+/g, ' ').trim()));
   }
   const v = await shoot({ width: 1440, height: 900, viewer: true, tag: 'viewer-1440' });
   ok('Viewer (intercept): the note, no URL, no /connector call', v.viewerNote === 1 && v.url === null && !v.seen.some(s => s.endsWith('/connector')) && !v.errors.length);
