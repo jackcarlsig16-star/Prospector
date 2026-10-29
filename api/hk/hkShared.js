@@ -9,6 +9,7 @@ import { normName, nameMatches } from '../sales/intakeMatch.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { canContact } from './rules.js';
+import { decodeEntities } from './gmailMime.js';
 
 export { normName, nameMatches, normalizeDomain, selectAllPages, canContact, hasPii };
 // Test seam (prodWiring.test.mjs): the client a route resolves when it is called with (req, res) only, as server.js calls it.
@@ -59,7 +60,9 @@ export const brandRow = (b, extra = {}) => ({ ...pick(b, LIST_FIELDS), ...extra 
 export const brandDetail = b => ({ ...b });
 export const contactRow = c => pick(c, ['id', 'brand_id', 'name', 'title', 'email', 'email_source', 'apollo_person_id', 'is_primary', 'role_checked_at', 'left_company', 'created_by', 'created_at']);
 export const touchRow = t => pick(t, ['id', 'brand_id', 'contact_id', 'sender_user_id', 'channel', 'kind', 'subject', 'challenge_concept', 'state', 'drafted_at', 'sent_at', 'lint_passed', 'created_by', 'gmail_thread_id', 'created_at']);
-export const replyRow = r => pick(r, ['id', 'brand_id', 'touch_id', 'gmail_message_id', 'gmail_thread_id', 'from_name', 'from_domain', 'received_at', 'label', 'label_overridden_by', 'summary', 'urgent', 'handled', 'handled_by', 'handled_at', 'snoozed_until', 'created_at']);
+// hkos-inbox-v2-polish P3: summaries stored before the Stage 2 decode still carry entities ("What&#39;s"); decoded on read.
+const decodedSummary = row => (row.summary ? { ...row, summary: decodeEntities(row.summary) } : row);
+export const replyRow = r => decodedSummary(pick(r, ['id', 'brand_id', 'touch_id', 'gmail_message_id', 'gmail_thread_id', 'from_name', 'from_domain', 'received_at', 'label', 'label_overridden_by', 'summary', 'urgent', 'handled', 'handled_by', 'handled_at', 'snoozed_until', 'created_at']));
 export const brandSummary = b => pick(b, ['id', 'name', 'domain', 'status', 'relationship', 'owner_user_id', 'niche', 'is_local', 'source', 'created_at']);
 
 export const liveBrands = (supabase, businessId) => selectAllPages(() => supabase.from('hk_brands').select('*').eq('business_id', businessId).is('archived_at', null).order('created_at').order('id'));

@@ -152,7 +152,7 @@ test('I1 tabs (v2): brands = the from:(brand domains) search filtered to tracked
   const sent = await call(R.listThreadsRoute, reqOf({ query: { tab: 'sent' } }));
   assert.deepEqual(sent.body.threads.map(t => t.thread_id), ['th-tracked']); assert.equal(calls.find(c => c[0] === 'listMessages' && c[2] === 'SENT')[2], 'SENT');
   const drafts = await call(R.listThreadsRoute, reqOf({ query: { tab: 'drafts' } }));
-  assert.deepEqual(drafts.body.threads.map(t => t.thread_id), ['th-draft']); assert.deepEqual(drafts.body.threads[0].chip, { kind: 'team' });
+  assert.deepEqual(drafts.body.threads.map(t => t.thread_id), ['th-draft']); assert.deepEqual(drafts.body.threads[0].chip, { kind: 'self' });
   mailboxes['tok-jack'].push(thread('th-ghost', [msg('m-ghost', 'th-ghost', { from: 'Gone <g@gone.invalid>', labels: ['INBOX'] })]));
   const g = gmail.getMessageMeta; gmail.getMessageMeta = async (t, id) => { if (id === 'm-ghost') throw new GmailError(404, 'gone'); return g(t, id); };
   const inbox = await call(R.listThreadsRoute, reqOf({ query: { tab: 'inbox', refresh: '1' } }));
@@ -437,4 +437,31 @@ test('v2 Q2 Brands order (Jack ruling 3): rows sort by internalDate from the met
   assert.deepEqual(r.body.threads.map(t => t.thread_id), ['th-new2', 'th-mid', 'th-old'], 'newest internalDate first although its id sorts last');
   assert.equal(r.body.gmail_units, 5 + 3 * 20);
   mailboxes['tok-jack'] = JACK_MAIL();
+});
+
+test('polish P5 route: the caller\'s connected Google accounts (google_grants) make their mail "You" in Other, with no extra Gmail call; another user\'s grant does not', async () => {
+  fresh({ google_grants: [{ id: 'g-j2', user_id: JACK, google_email: 'jack.personal@gmail.invalid' }, { id: 'g-p2', user_id: PETE, google_email: 'ana@newbrand.invalid' }] });
+  mailboxes['tok-jack'] = [...JACK_MAIL(), thread('th-self', [msg('m-s1', 'th-self', { from: 'Jack Carlson <jack.personal@gmail.invalid>', subject: 'tteset', labels: ['INBOX'] })]),
+    thread('th-cal', [msg('m-c1', 'th-cal', { from: 'Jack Carlson <jack.personal@gmail.invalid>', subject: 'Updated invitation: placeholder - HumanKind x Timmy', labels: ['INBOX'] })])];
+  const r = await call(R.listThreadsRoute, reqOf({ query: { tab: 'inbox' } }));
+  const by = Object.fromEntries(r.body.threads.map(t => [t.thread_id, t]));
+  assert.deepEqual([by['th-self'].chip, by['th-self'].lane], [{ kind: 'self' }, 'other']);
+  assert.deepEqual([by['th-cal'].chip, by['th-cal'].lane], [{ kind: 'calendar' }, 'other']);
+  assert.deepEqual([by['th-new'].chip.kind, by['th-new'].lane], ['untracked', 'needs_you'], 'Pete\'s grant is not Jack\'s self');
+  assert.equal(r.body.gmail_calls, 1 + r.body.threads.length, 'one list + one metadata get per row, nothing more');
+  assert.ok(!JSON.stringify(r.body).includes('@'));
+  mailboxes['tok-jack'] = JACK_MAIL();
+});
+
+test('polish P3: a summary stored with entities before Stage 2 reads decoded - on the brand card and through replyRow (the Replies screen)', async () => {
+  fresh();
+  const r1 = sb.db.hk_replies.find(r => r.id === 'r1');
+  r1.summary = 'What&#39;s your favorite fall physique destroyer? Tom &amp; Jerry';
+  sb.db.hk_brands.find(b => b.id === ID.yoga).challenge_idea = 'Mat &amp; mind week';
+  const open = await call(R.openThreadRoute, reqOf({ params: { id: 'th-tracked' } }));
+  assert.equal(open.body.brand.last_reply_summary, 'What\'s your favorite fall physique destroyer? Tom & Jerry');
+  assert.equal(open.body.brand.challenge_idea, 'Mat & mind week');
+  const { replyRow } = await import('./hkShared.js');
+  assert.equal(replyRow(r1).summary, 'What\'s your favorite fall physique destroyer? Tom & Jerry');
+  assert.equal(r1.summary.includes('&#39;'), true, 'the stored row is untouched by reading (the backfill rewrites it)');
 });

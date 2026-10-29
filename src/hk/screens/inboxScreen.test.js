@@ -4,6 +4,9 @@ import InboxScreen, { ONLY_YOU } from './InboxScreen';
 import ConnectionsSettings from './ConnectionsSettings';
 import { IMAGES_KEY } from '../inbox/inboxPrefs';
 
+// polish P1: Track as brand / Ignore sender / Link live in the strip's ⋯ menu.
+const fromMenu = async (name, scope = document.body) => { fireEvent.click(within(scope).getAllByRole('button', { name: 'More actions' })[0]); return within(scope).findByRole('menuitem', { name }); };
+
 // hkos-inbox-v1 Stage 2 - the Inbox screen against a recorded fetch: chips per kind, the sandboxed frame, images blocked
 // until Show images, the actions, no compose or Send, the phone pane switch, the Connections Inbox options. Invented
 // senders on .invalid; the one address in the fixtures lives inside an html body (the owner's own, by ruling).
@@ -111,8 +114,8 @@ test('open: the html renders only in <iframe sandbox=""> from sanitized srcdoc, 
   const panel = container.querySelector('[data-hk-brand-panel="untracked"]');
   expect(panel.textContent).toMatch(/Ana Ortiz/); expect(panel.textContent).toMatch(/Unknown company/);
   expect(within(panel).getByRole('button', { name: 'Analyze' })).toBeInTheDocument();
-  expect(within(panel).getByRole('button', { name: 'Track as brand' })).toBeInTheDocument();
-  expect(within(panel).getByRole('button', { name: 'Ignore sender' })).toBeInTheDocument();
+  expect(await fromMenu('Track as brand', panel)).toBeInTheDocument();
+  expect(within(panel).getByRole('menuitem', { name: 'Ignore sender' })).toBeInTheDocument();
   expect(container.querySelector('[data-hk-messages] textarea')).toBeNull();
   expect(container.textContent).not.toMatch(/\bSend\b/);
   expect(container.querySelector('.hk-inbox__thread').textContent).not.toMatch(/@/);
@@ -144,7 +147,8 @@ test('Track as brand opens the Add brand modal prefilled with the sender and sav
   routes[`POST /api/hk/${HK}/inbox/ignore`] = { domain: 'newbrand.invalid', ignored: true };
   const { container } = setup();
   fireEvent.click(await screen.findByText('Subject th-new'));
-  fireEvent.click(await screen.findByRole('button', { name: 'Track as brand' }));
+  await screen.findByRole('button', { name: 'Analyze' });
+  fireEvent.click(await fromMenu('Track as brand'));
   let modal = container.querySelector('[data-hk-add-brand]');
   expect(modal.textContent).toMatch(/Track as brand/);
   expect(modal.querySelector('#hk-brand-name').value).toBe('Ana Ortiz');
@@ -152,7 +156,7 @@ test('Track as brand opens the Add brand modal prefilled with the sender and sav
   fireEvent.blur(modal.querySelector('#hk-brand-name'));
   fireEvent.click(within(modal).getByRole('button', { name: 'Cancel' }));
   await waitFor(() => expect(container.querySelector('[data-hk-add-brand]')).toBeNull());
-  fireEvent.click(screen.getByRole('button', { name: 'Track as brand' }));
+  fireEvent.click(await fromMenu('Track as brand'));
   modal = container.querySelector('[data-hk-add-brand]');
   fireEvent.blur(modal.querySelector('#hk-brand-name'));
   await waitFor(() => expect(calls).toContain(`POST /api/hk/${HK}/brands/check`));
@@ -161,12 +165,13 @@ test('Track as brand opens the Add brand modal prefilled with the sender and sav
   expect(trackBody.thread_id).toBe('th-new'); expect(trackBody.name).toBe('Ana Ortiz'); expect(trackBody.claim).toBe(false);
   expect(calls.filter(c => c === `POST /api/hk/${HK}/brands`)).toHaveLength(0);
   await screen.findByText('Tracking Ana Ortiz.');
-  fireEvent.click(container.querySelector('[data-hk-ignore-sender]'));
+  fireEvent.click(await fromMenu('Ignore sender'));
   await waitFor(() => expect(calls).toContain(`POST /api/hk/${HK}/inbox/ignore`));
   routes[`GET /api/hk/${HK}/inbox/threads/th-match`] = thread('th-match', { chip: { kind: 'matches', brand_id: 'b-run', brand_name: 'Bluefin Run Club', status: 'candidate' }, brand: BRAND });
   routes[`POST /api/hk/${HK}/inbox/threads/th-match/link`] = { reply: { id: 'r2' }, brand_id: 'b-run' };
   fireEvent.click(screen.getByText('Subject th-match'));
-  fireEvent.click(await screen.findByRole('button', { name: 'Link this thread to Bluefin Run Club' }));
+  await waitFor(() => expect(container.querySelector('[data-hk-brand-panel="matches"]')).toBeTruthy());
+  fireEvent.click(await fromMenu('Link this thread to Bluefin Run Club'));
   await waitFor(() => expect(calls).toContain(`POST /api/hk/${HK}/inbox/threads/th-match/link`));
   expect(container.querySelector('[data-hk-verdict="clear"]').textContent).toBe('Clear to draft');
 });
@@ -320,13 +325,15 @@ test('v2 L4 / L5: Analyze posts the click flag once, the card shows company / ki
   await waitFor(() => expect(container.querySelector('[data-hk-intel]')).toBeTruthy());
   expect(posts).toEqual([{ click: true }]);
   expect(container.querySelector('[data-hk-intel-company]').textContent).toBe('Newbrand Studio');
-  expect(container.querySelector('[data-hk-intel-kind]').textContent).toMatch(/^Partnership · urgent: Wants to co-host/);
+  expect(container.querySelector('[data-hk-intel-kind]').textContent).toBe('Partnership (urgent)');
   expect(container.querySelector('[data-hk-intel-fit]').textContent).toBe('Strong fit');
   expect(container.querySelector('[data-hk-intel-next]').textContent).toBe('Track as brand');
-  expect(container.querySelector('[data-hk-intel]').textContent).toMatch(/In Chicago/);
+  expect(container.querySelector('[data-hk-intel-full]')).toBeNull();
+  fireEvent.click(container.querySelector('[data-hk-intel]'));
+  expect(container.querySelector('[data-hk-intel-full]').textContent).toMatch(/In Chicago/);
   expect(screen.getByRole('button', { name: 'Analyze again · $0.03' })).toBeInTheDocument();
   expect(container.querySelector('[data-hk-thread="th-new"] [data-hk-row-intel]').textContent).toBe('Analyzed · Strong fit');
-  fireEvent.click(screen.getByRole('button', { name: 'Track as brand' }));
+  fireEvent.click(await fromMenu('Track as brand'));
   const modal = container.querySelector('[data-hk-add-brand]');
   expect(modal.querySelector('#hk-brand-name').value).toBe('Newbrand Studio');
   fireEvent.blur(modal.querySelector('#hk-brand-name'));
@@ -345,7 +352,7 @@ test('v2 L5 cache: a domain researched in the last 30 days answers needs_confirm
   const { container } = render2();
   fireEvent.click(await screen.findByText('Subject th-new'));
   await waitFor(() => expect(container.querySelector('[data-hk-intel-when]')).toBeTruthy());
-  expect(container.querySelector('[data-hk-intel-when]').textContent).toMatch(/Researched .* · \$0\.03/);
+  expect(container.querySelector('[data-hk-intel-when]').textContent).toMatch(/researched .* · \$0\.03/);
   fireEvent.click(screen.getByRole('button', { name: 'Analyze again · $0.03' }));
   await waitFor(() => expect(container.querySelector('[data-hk-analyze-confirm]')).toBeTruthy());
   expect(container.querySelector('[data-hk-analyze-confirm]').textContent).toMatch(/This is the saved card\..*Analyze again for about \$0\.03\?/);
@@ -364,4 +371,43 @@ test('v2 Viewer (canEdit false): the intel card reads, but no Analyze, Track, Ig
   expect(container.querySelector('[data-hk-analyze], [data-hk-track-brand], [data-hk-ignore-sender]')).toBeNull();
   fireEvent.click(screen.getByRole('tab', { name: /^Other/ }));
   expect(container.querySelector('[data-hk-ignore-group]')).toBeNull();
+});
+
+test('polish P1 / P2: the strip is at most two rows; the chevron folds it to one and the choice is remembered (prospector_hk_inbox_strip); the reader header is one row; the images notice sits inside the message', async () => {
+  routes[`GET /api/hk/${HK}/inbox/threads`] = V2LIST;
+  routes[`GET /api/hk/${HK}/inbox/threads/th-tracked`] = thread('th-tracked', { chip: { kind: 'tracked', brand_id: 'b-yoga', brand_name: 'Harbor Yoga', status: 'sent', label: 'interested' }, brand: { ...BRAND, id: 'b-yoga', name: 'Harbor Yoga', status: 'sent', touch_count: 2, max_email_touches: 3, last_reply_label: 'interested', last_reply_summary: "What's your favorite fall physique destroyer?" } });
+  const { container, unmount } = render2();
+  fireEvent.click(await screen.findByText('Subject th-tracked'));
+  const strip = await waitFor(() => { const el = container.querySelector('[data-hk-intel-strip]'); if (!el) throw new Error('no strip'); return el; });
+  expect(strip.querySelectorAll('.hk-istrip__row')).toHaveLength(2);
+  expect(strip.querySelector('[data-hk-reply-summary]').textContent).toBe("What's your favorite fall physique destroyer?");
+  expect(strip.querySelector('[data-hk-verdict="clear"]').textContent).toBe('Clear to draft');
+  expect(container.querySelector('.hk-inbox__thread-head--row .hk-inbox__subject-title')).toBeTruthy();
+  expect(container.querySelector('[data-hk-messages] > [data-hk-images-hidden]')).toBeNull();
+  expect(container.querySelector('[data-hk-message] [data-hk-images-hidden]')).toBeTruthy();
+  fireEvent.click(strip.querySelector('[data-hk-strip-toggle]'));
+  expect(container.querySelectorAll('[data-hk-intel-strip] .hk-istrip__row')).toHaveLength(1);
+  expect(localStorage.getItem('prospector_hk_inbox_strip')).toBe('1');
+  unmount();
+  const again = render2();
+  fireEvent.click(await screen.findByText('Subject th-tracked'));
+  await waitFor(() => expect(again.container.querySelector('[data-hk-intel-strip]')).toBeTruthy());
+  expect(again.container.querySelectorAll('[data-hk-intel-strip] .hk-istrip__row')).toHaveLength(1);
+});
+
+test('polish P4 / P5: rows are two lines with at most two chips (the rest in the title); "You" and "Calendar" rows sit under Other', async () => {
+  routes[`GET /api/hk/${HK}/inbox/threads`] = { ...V2LIST, threads: [...V2LIST.threads,
+    row('th-me', { kind: 'self' }, { from_name: 'Jack Carlson', from_domain: 'gmail.invalid', lane: 'other' }),
+    row('th-cal', { kind: 'calendar' }, { from_name: 'Jack Carlson', from_domain: 'gmail.invalid', lane: 'other', subject: 'Updated invitation: sync' }),
+    row('th-many', { kind: 'tracked', brand_id: 'b', brand_name: 'X', status: 'sent', label: 'interested' }, { intel_fit: 'strong', has_attachments: true })] };
+  const { container } = render2();
+  await screen.findByText('Subject th-tracked');
+  const many = container.querySelector('[data-hk-thread="th-many"]');
+  expect(many.children).toHaveLength(2);
+  expect(many.querySelectorAll('.hk-inbox__chips > *')).toHaveLength(2);
+  expect(many.getAttribute('title')).toBe('Analyzed · Strong fit · Attachment');
+  expect(container.querySelector('[data-hk-thread="th-me"]')).toBeNull();
+  fireEvent.click(screen.getByRole('tab', { name: /^Other/ }));
+  expect(container.querySelector('[data-hk-thread="th-me"]')).toBeTruthy();
+  expect(container.querySelector('[data-hk-thread="th-cal"]')).toBeTruthy();
 });

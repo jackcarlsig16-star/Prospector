@@ -6,7 +6,7 @@ import AddBrandModal from '../brands/AddBrandModal';
 import { hkGet, hkPost, hkPatch, hkDelete } from '../hkApi';
 import { relative } from '../hkSync';
 import { Messages } from '../inbox/ThreadPane';
-import IntelCard from '../inbox/IntelCard';
+import IntelStrip from '../inbox/IntelCard';
 import { ThreadRow, OtherGroups, groupOther } from '../inbox/InboxRows';
 import { imagesDefault, gmailThreadUrl } from '../inbox/inboxPrefs';
 import useMediaQuery from '../../utils/useMediaQuery';
@@ -224,17 +224,18 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
       {!thread && !threadError && !threadNotice && <p className="hk-meta">Opening…</p>}
       {thread && (
         <>
-          <IntelCard key={thread.thread_id} businessId={businessId} thread={thread} members={members} canEdit={canEdit} busy={busy} onOpenBrand={onOpenBrand} onStatus={status} onLink={link}
+          <IntelStrip key={thread.thread_id} businessId={businessId} thread={thread} members={members} canEdit={canEdit} busy={busy} onOpenBrand={onOpenBrand} onStatus={status} onLink={link}
             onTrack={() => setTracking(true)} onIgnore={ignore} onUnignore={unignore} onAnalyzed={analyzed} />
-          <header className="hk-inbox__thread-head">
-            <h2 className="hk-inbox__subject-title">{thread.subject || '(no subject)'}</h2>
+          {/* polish P2: one row - subject left, actions right - so the email starts right under it. */}
+          <header className="hk-inbox__thread-head hk-inbox__thread-head--row">
+            <h2 className="hk-inbox__subject-title" title={thread.subject || undefined}>{thread.subject || '(no subject)'}</h2>
             <div className="hk-inbox__actions">
               {mailboxEmail && <a className="ui-btn ui-btn--primary ui-btn--sm" href={gmailThreadUrl(mailboxEmail, thread.thread_id)} target="_blank" rel="noopener noreferrer" data-hk-reply-gmail>Reply in Gmail</a>}
               {thread.brand && <Button size="sm" onClick={copyCmd} data-hk-copy-command>{copied ? 'Copied' : 'Copy Claude command'}</Button>}
               {thread.unhandled_reply_id && canEdit && <Button size="sm" disabled={busy} onClick={handled} data-hk-mark-handled>Mark handled</Button>}
             </div>
-            {note && <p className="hk-meta" role="status" data-hk-inbox-note>{note}</p>}
           </header>
+          {note && <p className="hk-meta" role="status" data-hk-inbox-note>{note}</p>}
           <Messages thread={thread} showImages={imagesOn} onShowImages={showThreadImages} gmailEmail={mailboxEmail} />
         </>
       )}

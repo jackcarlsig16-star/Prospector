@@ -6,7 +6,11 @@ import { header, parseAddress, decodeEntities } from './gmailMime.js';
 import { cleanText } from '../sales/scrubText.js';
 
 export const SNIPPET_MAX = 140;
-export const CHIP_KINDS = ['tracked', 'matches', 'untracked', 'team', 'not_tracked'];
+export const CHIP_KINDS = ['tracked', 'matches', 'calendar', 'self', 'untracked', 'team', 'not_tracked'];
+// hkos-inbox-v2-polish P5 - Google Calendar notifications: the subject Calendar writes, or its notification sender.
+export const CALENDAR_SUBJECT = /^(?:invitation|updated invitation|accepted|declined|tentatively accepted|cancell?ed event|invitation from google calendar)\b/i;
+const CALENDAR_SENDER = /^calendar-notification@google\.com$/i;
+export const isCalendar = (subject, sender) => CALENDAR_SUBJECT.test(String(subject || '').trim()) || (!!sender?.email && CALENDAR_SENDER.test(sender.email));
 export const BULK_LOCAL_PARTS = /^(?:no-?reply|do-?not-?reply|notifications?|newsletters?)(?:[-+._].*)?$/i;
 const ROLE_WORDS = ['co-founder', 'founder', 'ceo', 'owner', 'marketing', 'partnerships', 'team', 'support', 'sales', 'press', 'events', 'community', 'brand', 'studio', 'hello', 'info'];
 
@@ -49,14 +53,18 @@ export const recipientNames = (value, ownerEmail) => splitAddresses(value).map(p
 export const isBulk = (local, listUnsubscribe) => !!listUnsubscribe || (!!local && BULK_LOCAL_PARTS.test(local));
 
 // One chip per thread: tracked (a touch or logged reply lives on this thread) > matches (sender domain is a live
-// brand's) > team (our own domains, or the mailbox owner) > not_tracked (the caller ignored the domain, or a bulk
-// sender) > untracked.
-export function chipFor({ threadId, sender, listUnsubscribe = null, tracked, brandsByDomain, teamDomains, ownerEmail = null, ignored }) {
+// brand's) > calendar (a Google Calendar notification) > self (the caller's own HumanKind address or any of the caller's
+// connected Google accounts - polish P5) > team (our own domains) > not_tracked (the caller ignored the domain, or a
+// bulk sender) > untracked.
+const isSelf = (sender, ownerEmail, selfEmails) => !!sender.email && ((ownerEmail && sender.email === String(ownerEmail).toLowerCase()) || !!selfEmails?.has(sender.email));
+export function chipFor({ threadId, sender, subject = '', listUnsubscribe = null, tracked, brandsByDomain, teamDomains, ownerEmail = null, selfEmails = null, ignored }) {
   const t = tracked.get(threadId);
   if (t) return { kind: 'tracked', brand_id: t.brand_id, brand_name: t.brand_name || null, status: t.status || null, label: t.label || null };
   const b = sender.domain ? brandsByDomain[sender.domain] : null;
   if (b) return { kind: 'matches', brand_id: b.id, brand_name: b.name, status: b.status || null };
-  if ((sender.domain && teamDomains.includes(sender.domain)) || (ownerEmail && sender.email === String(ownerEmail).toLowerCase())) return { kind: 'team' };
+  if (isCalendar(subject, sender)) return { kind: 'calendar' };
+  if (isSelf(sender, ownerEmail, selfEmails)) return { kind: 'self' };
+  if (sender.domain && teamDomains.includes(sender.domain)) return { kind: 'team' };
   if (sender.domain && ignored.has(sender.domain)) return { kind: 'not_tracked', reason: 'ignored' };
   if (isBulk(sender.local, listUnsubscribe)) return { kind: 'not_tracked', reason: 'bulk' };
   return { kind: 'untracked' };
@@ -95,7 +103,7 @@ export const LANES = ['needs_you', 'brands', 'other'];
 export function laneOf({ chip, labelIds = [], relayed = false, teamNotice = false }) {
   if (chip.kind === 'tracked' || chip.kind === 'matches') return 'needs_you';
   if (chip.kind === 'team') return teamNotice ? 'other' : 'needs_you';
-  if (chip.kind === 'not_tracked') return 'other';
+  if (chip.kind === 'not_tracked' || chip.kind === 'self' || chip.kind === 'calendar') return 'other';
   return !relayed && labelIds.some(l => MARKETING_CATEGORIES.includes(l)) ? 'other' : 'needs_you';
 }
 export const isBrandChip = chip => chip.kind === 'tracked' || chip.kind === 'matches';
@@ -155,7 +163,7 @@ export function threadRow(thread, ctx) {
   const msgs = thread?.messages || [];
   const latest = lastOf(msgs) || {};
   const { sender, relayed, teamNotice, listUnsubscribe } = originOf(latest, ctx);
-  const chip = chipFor({ threadId: thread.id, sender, listUnsubscribe, ...ctx });
+  const chip = chipFor({ threadId: thread.id, sender, subject: header(latest, 'Subject'), listUnsubscribe, ...ctx });
   return {
     thread_id: thread.id,
     unread: msgs.some(m => (m.labelIds || []).includes('UNREAD')),
@@ -211,9 +219,11 @@ export function messageView(msg, { ownerEmail = null } = {}) {
 }
 
 // The latest message not sent by the mailbox owner - what a link records as the reply.
-export function latestInbound(thread, ownerEmail) {
+// selfEmails (polish P5): the caller's other connected accounts count as "mine" too, so a thread where an outside sender
+// wrote keeps that sender even when the caller's own gmail.com wrote last.
+export function latestInbound(thread, ownerEmail, selfEmails = null) {
   const msgs = [...(thread?.messages || [])].reverse();
-  return msgs.find(m => { const s = senderOf(header(m, 'From')); return !(ownerEmail && s.email === String(ownerEmail).toLowerCase()) && !(m.labelIds || []).includes('SENT') && !(m.labelIds || []).includes('DRAFT'); }) || null;
+  return msgs.find(m => { const s = senderOf(header(m, 'From')); return !isSelf(s, ownerEmail, selfEmails) && !(m.labelIds || []).includes('SENT') && !(m.labelIds || []).includes('DRAFT'); }) || null;
 }
 
 // The "@" rule for inbox responses: nothing but a message's own text / html body may carry one.

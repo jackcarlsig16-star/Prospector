@@ -9,7 +9,7 @@ import { gmailClient, GmailError, GMAIL_UNITS } from './gmailClient.js';
 import { threadRow, messageView, latestInbound, chipFor, originOf, partsOf, isBrandChip, brandQueries, inTurns, byInternalDate, BRANDS_META_MAX, unitsOf, prefillFromIntel, LANES } from './inboxRules.js';
 import { noteInboxList } from './gmailActivity.js';
 import { analyzeSender, cachedIntel } from './inboxAnalyze.js';
-import { header } from './gmailMime.js';
+import { header, decodeEntities } from './gmailMime.js';
 import { trackedThreads } from './warm.js';
 import { labelReply, snippetOf } from './replyLabel.js';
 import { createBrand } from './brandsRoutes.js';
@@ -53,8 +53,11 @@ async function matchContext(supabase, businessId, uid, ownerAddress) {
   const { data: replies } = await supabase.from('hk_replies').select('id, brand_id, gmail_thread_id, from_domain, label, handled, received_at').eq('business_id', businessId).not('gmail_thread_id', 'is', null).order('received_at');
   for (const r of replies || []) if (r.gmail_thread_id && byId[r.brand_id]) { const prev = tracked.get(r.gmail_thread_id); tracked.set(r.gmail_thread_id, { brand_id: r.brand_id, brand_name: byId[r.brand_id].name, status: byId[r.brand_id].status, label: r.label || null, unhandled_reply_id: r.handled ? prev?.unhandled_reply_id || null : r.id }); }
   const { data: ign } = await supabase.from('hk_ignored_senders').select('domain').eq('business_id', businessId).eq('user_id', uid);
+  // polish P5: every Google account the caller connected (the lookup mailbox-connections uses) is "you"; 0 Gmail calls.
+  const { data: grants } = await supabase.from('google_grants').select('google_email').eq('user_id', uid);
+  const selfEmails = new Set((grants || []).map(g => String(g.google_email || '').toLowerCase()).filter(Boolean));
   const replyDomains = [...new Set((replies || []).filter(r => byId[r.brand_id] && r.from_domain).map(r => r.from_domain))];
-  return { brands, byId, tracked, replyDomains, brandsByDomain: Object.fromEntries(brands.filter(b => b.domain).map(b => [b.domain, b])), teamDomains: TEAM_DOMAINS, ownerEmail: ownerAddress, ignored: new Set((ign || []).map(r => r.domain)) };
+  return { brands, byId, tracked, replyDomains, brandsByDomain: Object.fromEntries(brands.filter(b => b.domain).map(b => [b.domain, b])), teamDomains: TEAM_DOMAINS, ownerEmail: ownerAddress, selfEmails, ignored: new Set((ign || []).map(r => r.domain)) };
 }
 
 async function inGroups(ids, size, fn) { const out = []; for (let i = 0; i < ids.length; i += size) out.push(...(await Promise.all(ids.slice(i, i + size).map(fn)))); return out; }
@@ -181,13 +184,13 @@ async function brandPanel(supabase, businessId, uid, brand, ctx) {
   const { data: settings } = await supabase.from('hk_settings').select('max_email_touches').eq('business_id', businessId).maybeSingle();
   const verdict = canContact({ brand, touches: live, threadsByFounder: await trackedThreads(supabase, businessId, brand.id), senderUserId: uid, kind: 'cold', sponsorsNiches: sponsorsNichesOf(ctx.brands), maxEmailTouches: settings?.max_email_touches || 3 });
   const lastTouch = live.map(t => t.sent_at).filter(Boolean).sort().pop() || null;
-  return { ...brandSummary(brand), challenge_idea: brand.challenge_idea || null, touch_count: live.length, max_email_touches: settings?.max_email_touches || 3, last_touch_at: lastTouch,
-    last_reply_label: replies?.[0]?.label || null, last_reply_summary: replies?.[0]?.summary || null, verdict };
+  return { ...brandSummary(brand), challenge_idea: brand.challenge_idea ? decodeEntities(brand.challenge_idea) : null, touch_count: live.length, max_email_touches: settings?.max_email_touches || 3, last_touch_at: lastTouch,
+    last_reply_label: replies?.[0]?.label || null, last_reply_summary: replies?.[0]?.summary ? decodeEntities(replies[0].summary) : null, verdict };
 }
 
 // The sender a thread is about: the newest inbound message's original sender (group relays resolved).
-const threadSender = (thread, owner) => {
-  const inbound = latestInbound(thread, owner);
+const threadSender = (thread, owner, selfEmails = null) => {
+  const inbound = latestInbound(thread, owner, selfEmails);
   return { inbound, ...originOf(inbound || thread?.messages?.[thread.messages.length - 1] || {}, { teamDomains: TEAM_DOMAINS }) };
 };
 const intelView = (row, sender, now) => (row ? { intel: row.intel, cost_usd: row.cost_usd, researched_at: row.researched_at, prefill: prefillFromIntel(row.intel, { senderName: sender.name, domain: sender.domain, date: now.toISOString().slice(0, 10) }) } : null);
@@ -207,8 +210,8 @@ export async function openThreadRoute(req, res, d = {}) {
     try { thread = await gcall(D, () => D.gmail.getThreadFull(token, id)); } catch (e) { if (e instanceof GmailError && (e.status === 404 || e.status === 400)) throw new HkError(404, 'that thread is not in your mailbox'); throw e; }
     const ctx = await matchContext(supabase, businessId, uid, owner);
     const messages = (thread?.messages || []).map(m => messageView(m, { ownerEmail: owner }));
-    const { inbound, sender, relayed, teamNotice, listUnsubscribe } = threadSender(thread, owner);
-    const chip = chipFor({ threadId: id, sender, listUnsubscribe, ...ctx });
+    const { inbound, sender, relayed, teamNotice, listUnsubscribe } = threadSender(thread, owner, ctx.selfEmails);
+    const chip = chipFor({ threadId: id, sender, subject: header(inbound || thread?.messages?.[thread.messages.length - 1] || {}, 'Subject'), listUnsubscribe, ...ctx });
     const brand = chip.brand_id ? ctx.byId[chip.brand_id] : null;
     const t = ctx.tracked.get(id);
     const value = { thread_id: id, subject: messages[0]?.subject || '', messages, chip, relayed, team_notice: teamNotice, has_inbound: !!inbound,

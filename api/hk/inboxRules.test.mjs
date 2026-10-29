@@ -54,7 +54,7 @@ test('chipFor: tracked > matches > team > ignored > bulk > untracked', () => {
   assert.deepEqual(chipFor({ threadId: 'th-1', sender: senderOf('x <noreply@news.invalid>'), ...c }), { kind: 'tracked', brand_id: 'b1', brand_name: 'Rumpl', status: 'sent', label: 'interested' });
   assert.deepEqual(chipFor({ threadId: 'th-2', sender: senderOf('Sam <sam@bluefin.invalid>'), ...c }), { kind: 'matches', brand_id: 'b2', brand_name: 'Bluefin', status: 'candidate' });
   assert.deepEqual(chipFor({ threadId: 'th-3', sender: senderOf('Pete <pete@humankindcollective.app>'), ...c }), { kind: 'team' });
-  assert.deepEqual(chipFor({ threadId: 'th-3b', sender: senderOf(`Me <${OWNER}>`), ...c }), { kind: 'team' });
+  assert.deepEqual(chipFor({ threadId: 'th-3b', sender: senderOf(`Me <${OWNER}>`), ...c }), { kind: 'self' }, 'polish P5: the owner\'s own address is "You"');
   assert.deepEqual(chipFor({ threadId: 'th-4', sender: senderOf('News <hello@news.invalid>'), ...c }), { kind: 'not_tracked', reason: 'ignored' });
   assert.deepEqual(chipFor({ threadId: 'th-5', sender: senderOf('Shop <noreply@shop.invalid>'), ...c }), { kind: 'not_tracked', reason: 'bulk' });
   assert.deepEqual(chipFor({ threadId: 'th-6', sender: senderOf('Ana <ana@yoga.invalid>'), listUnsubscribe: '<https://yoga.invalid/u>', ...c }), { kind: 'not_tracked', reason: 'bulk' });
@@ -128,7 +128,7 @@ test('v2 ruling 2a: group-relayed mail ("X via Support Group", X-Original-Sender
 test('v2 ruling 2b/2c: a teammate writing directly -> Needs you; automated team notices (no-reply, +tagged group address, digests with List-Unsubscribe) -> Other', () => {
   assert.equal(row(msg('p', { from: `Pete <pete@${TEAM}>` })).lane, 'needs_you');
   assert.deepEqual(row(msg('p', { from: `Pete <pete@${TEAM}>` })).chip, { kind: 'team' });
-  assert.equal(row(msg('o', { from: `HumanKind <${OWNER}>` })).lane, 'needs_you', 'the owner\'s own address');
+  assert.equal(row(msg('o', { from: `HumanKind <${OWNER}>` })).lane, 'other', 'the owner\'s own address is "You" (polish P5)');
   assert.equal(row(msg('n', { from: `HumanKind <noreply@${TEAM}>` })).lane, 'other');
   assert.equal(row(msg('m', { from: `Support Group <support+msgappr@${TEAM}>`, subject: 'Message pending moderation' })).lane, 'other');
   assert.equal(row(msg('s', { from: `Support Group <support@${TEAM}>`, subject: 'Spam digest', extraHeaders: [{ name: 'List-Unsubscribe', value: '<https://x.invalid>' }] })).lane, 'other');
@@ -175,3 +175,33 @@ test('v2 Q2 merge (Jack ruling 3): chunks are taken in turns up to the cap, one 
   const sorted = [...V2.inTurns([a, b], 10)].sort(V2.byInternalDate).map(x => x.id);
   assert.deepEqual(sorted, ['01', 'f0', '03', 'e0'], 'internalDate order: "01" is the newest though its id is the smallest');
 });
+
+// ---- hkos-inbox-v2-polish P5 - your own mail and calendar out of Needs you ----
+test('polish P5: the caller\'s own connected accounts and HumanKind address -> "You" in Other; a teammate stays in Needs you; brands outrank both', () => {
+  const selfEmails = new Set(['jack.personal@gmail.invalid']);
+  const me = row(msg('s1', { from: 'Jack Carlson <jack.personal@gmail.invalid>', subject: 'tteset' }), { selfEmails });
+  assert.deepEqual(me.chip, { kind: 'self' }); assert.equal(me.lane, 'other'); assert.equal(me.from_domain, 'gmail.invalid'); assert.ok(!JSON.stringify(me).includes('@'));
+  assert.equal(row(msg('s2', { from: `HumanKind <${OWNER}>` }), { selfEmails }).chip.kind, 'self');
+  const pete = row(msg('s3', { from: `Pete <pete@${TEAM}>` }), { selfEmails });
+  assert.deepEqual(pete.chip, { kind: 'team' }); assert.equal(pete.lane, 'needs_you');
+  assert.equal(row(msg('s4', { from: 'Someone Else <x@gmail.invalid>' }), { selfEmails }).chip.kind, 'untracked', 'same domain, another person');
+  assert.equal(row(msg('s5', { from: 'Jack Carlson <jack.personal@gmail.invalid>' }), { selfEmails, tracked: new Map([['th-1', { brand_id: 'b1', brand_name: 'Ghost' }]]) }).chip.kind, 'tracked');
+});
+
+test('polish P5: Google Calendar notifications (Invitation / Updated invitation / Accepted / Declined / Tentatively accepted / Canceled event, or the notification sender) -> "Calendar" in Other', () => {
+  for (const subject of ['Invitation: HumanKind x Timmy @ Fri', 'Updated invitation: placeholder - HumanKind x Timmy', 'Accepted: Sync', 'Declined: Sync', 'Tentatively accepted: Sync', 'Canceled event: Sync', 'Cancelled event: Sync']) {
+    const r = row(msg('c', { from: 'Ana <ana@newbrand.invalid>', subject }));
+    assert.deepEqual(r.chip, { kind: 'calendar' }, subject); assert.equal(r.lane, 'other', subject);
+  }
+  assert.equal(row(msg('c2', { from: 'Google Calendar <calendar-notification@google.com>', subject: 'Reminder' })).chip.kind, 'calendar');
+  assert.equal(row(msg('c3', { from: 'Ana <ana@newbrand.invalid>', subject: 'Re: Invitation to partner' })).chip.kind, 'untracked', 'only the start of the subject counts');
+  assert.equal(row(msg('c4', { from: 'Sam <sam@bluefin.invalid>', subject: 'Accepted: kickoff' }), { brandsByDomain: { 'bluefin.invalid': { id: 'b2', name: 'Bluefin' } } }).chip.kind, 'matches', 'brand mail stays brand mail');
+});
+
+test('polish P5: an outside sender in the thread keeps it under that sender even when the caller\'s own gmail wrote last (reader)', () => {
+  const selfEmails = new Set(['jack.personal@gmail.invalid']);
+  const th = { id: 'th-x', messages: [msg('o1', { from: 'Ana <ana@newbrand.invalid>' }), msg('o2', { from: 'Jack Carlson <jack.personal@gmail.invalid>' })] };
+  assert.equal(senderOf(header_(latestInbound(th, OWNER, selfEmails))).domain, 'newbrand.invalid');
+  assert.equal(latestInbound({ id: 'th-y', messages: [msg('o3', { from: 'Jack Carlson <jack.personal@gmail.invalid>' })] }, OWNER, selfEmails), null);
+});
+const header_ = m => m.payload.headers.find(h => h.name === 'From').value;

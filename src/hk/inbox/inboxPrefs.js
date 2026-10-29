@@ -11,7 +11,7 @@ export function setImagesDefault(on) {
 
 export const gmailThreadUrl = (email, threadId) => `https://mail.google.com/mail/?authuser=${encodeURIComponent(email)}#all/${encodeURIComponent(threadId)}`;
 
-export const CHIP_TONE = { tracked: 'green', matches: 'blue', team: 'lilac', untracked: 'mustard', not_tracked: 'grey' };
+export const CHIP_TONE = { tracked: 'green', matches: 'blue', team: 'lilac', untracked: 'mustard', not_tracked: 'grey', self: 'grey', calendar: 'blue' };
 export const STATUS_LABEL = { candidate: 'Candidate', claimed: 'Claimed', drafted: 'Drafted', sent: 'Sent', bumped: 'Bumped', final_sent: 'Final sent', replied: 'Replied', meeting: 'Meeting', signed: 'Signed', passed: 'Passed', skipped: 'Skipped', sponsor: 'Sponsor' };
 export const REPLY_LABEL = { interested: 'Interested', pricing: 'Pricing', referral: 'Referral', decline: 'Decline', auto_reply: 'Auto reply', prefers_email: 'Prefers email', new_thread: 'New thread', other: 'Other' };
 
