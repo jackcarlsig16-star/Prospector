@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Button from '../../ui/Button';
-import { Avatar, Sprout } from '../HkMarks';
+import { Sprout } from '../HkMarks';
+import OwnerChip from '../brands/OwnerChip';
 import { Chip } from '../brands/BrandsScreen';
 import { hkGet, hkPost, hkPatch, hkFetch } from '../hkApi';
 import { AGING_DAYS } from './DraftsScreen';
@@ -62,7 +63,7 @@ export default function TodayScreen({ businessId, shell, owner, compact, gmail, 
   const reconnect = (today?.mailboxes || []).filter(m => m.state === 'needs_reconnect');
   const empty = !urgent.length && !waiting.length && !draftRows.length && !noDraft.length && !dmReady.length;
   const done = digest?.done_yesterday || { sent: 0, replies_handled: 0, meetings: 0 };
-  const Owner = ({ id }) => { const m = member(id); return m ? <span className="hk-owner"><Avatar name={m.first_name} index={m.palette_index} size={20} />{m.first_name}</span> : <span className="hk-meta">Unclaimed</span>; };
+  const Owner = ({ id, hint }) => <OwnerChip owner={member(id)} hint={hint} size={20} />;
 
   if (!today) return error ? <p className="hk-error" role="alert">{error}</p> : <p className="hk-meta">Loading today…</p>;
   return (
@@ -96,7 +97,7 @@ export default function TodayScreen({ businessId, shell, owner, compact, gmail, 
             <div key={r.id} className="hk-row hk-row--wrap" data-hk-urgent={r.id}>
               <button type="button" className="hk-btn hk-table__title" onClick={() => onOpenBrand(r.brand_id)}>{r.brand_name}</button>
               <Chip tone={r.label === 'pricing' ? 'block' : 'green'}>{LABEL[r.label] || 'Reply'}</Chip>
-              <Owner id={r.brand_owner_user_id} />
+              <Owner id={r.brand_owner_user_id} hint={r.brand_owner_hint} />
               <span className="hk-meta hk-today__summary">{r.summary}</span>
               {r.label === 'pricing' && <span className="hk-strip hk-today__strip" data-hk-pricing-strip>Do not quote pricing in the reply.</span>}
               <span className="hk-today__actions">
@@ -114,7 +115,7 @@ export default function TodayScreen({ businessId, shell, owner, compact, gmail, 
             <div key={r.id} className="hk-row hk-row--wrap" data-hk-waiting={r.id}>
               <button type="button" className="hk-btn hk-table__title" onClick={() => onOpenBrand(r.brand_id)}>{r.brand_name}</button>
               <Chip tone="grey">{LABEL[r.label] || 'Reply'}</Chip>
-              <Owner id={r.brand_owner_user_id} />
+              <Owner id={r.brand_owner_user_id} hint={r.brand_owner_hint} />
               <span className="hk-meta hk-today__summary">{r.summary}</span>
               <span className="hk-today__actions">
                 {r.open_url && <a className="ui-btn ui-btn--secondary ui-btn--sm" href={r.open_url} target="_blank" rel="noopener noreferrer">Open in Gmail</a>}
@@ -166,7 +167,7 @@ export default function TodayScreen({ businessId, shell, owner, compact, gmail, 
             <div key={d.id} className="hk-row hk-row--wrap" data-hk-dm={d.id}>
               <button type="button" className="hk-btn hk-table__title" onClick={() => onOpenBrand(d.brand_id)}>{d.brand_name}</button>
               <Chip tone="lilac">Instagram DM</Chip>
-              <Owner id={d.brand_owner_user_id} />
+              <Owner id={d.brand_owner_user_id} hint={d.brand_owner_hint} />
               <span className="hk-today__actions">
                 <Button size="sm" variant="primary" onClick={async () => { try { const { touch } = await hkGet(businessId, `/drafts/${d.id}`); await copy(`dm-${d.id}`, touch.body_text || ''); } catch (e) { setError(e.message); } }} data-hk-copy-dm>{copied === `dm-${d.id}` ? 'Copied' : 'Copy DM'}</Button>
                 <Button size="sm" disabled={!!busy} onClick={() => act('dm-sent', () => hkPost(businessId, `/drafts/${d.id}/dm-sent`, {}))} data-hk-dm-sent>Mark DM sent</Button>

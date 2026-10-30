@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import DataTable from '../../ui/DataTable';
 import Button from '../../ui/Button';
-import { Avatar, Sprout } from '../HkMarks';
+import { Sprout } from '../HkMarks';
+import OwnerChip from '../brands/OwnerChip';
 import { Chip } from '../brands/BrandsScreen';
 import { hkGet, hkPatch } from '../hkApi';
 
@@ -38,7 +39,7 @@ export default function RepliesScreen({ businessId, shell, owner, compact, onOpe
     { id: 'label', label: 'Label', width: 120, sortValue: r => r.label || '', render: r => <Chip tone={TONE[r.label] || 'grey'}>{LABELS.find(([v]) => v === r.label)?.[1] || 'Unlabeled'}</Chip> },
     { id: 'summary', label: 'Summary', minWidth: 260, render: r => <span className="hk-meta">{r.summary}</span> },
     { id: 'received', label: 'Received', width: 140, sortValue: r => r.received_at, render: r => fmt(r.received_at) },
-    { id: 'owner', label: 'Owner', width: 100, render: r => { const m = member(r.brand_owner_user_id); return m ? <span className="hk-owner"><Avatar name={m.first_name} index={m.palette_index} size={22} />{m.first_name}</span> : <span className="hk-meta">Unclaimed</span>; } },
+    { id: 'owner', label: 'Owner', width: 150, render: r => <OwnerChip owner={member(r.brand_owner_user_id)} hint={r.brand_owner_hint} /> },
     { id: 'handled', label: 'Handled', width: 100, render: r => <Chip tone={r.handled ? 'green' : 'mustard'}>{r.handled ? 'Handled' : 'Open'}</Chip> },
   ], [selected, members]);
   return (

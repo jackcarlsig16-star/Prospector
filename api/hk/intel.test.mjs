@@ -7,7 +7,8 @@ import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from '../sales/testing/fakeSupabase.mjs';
 import { INTEL_DEFAULTS, intelSettings, reachOf, rankReach, importanceOf, activityOf, inTargetCategory, isLocal } from './intelScore.js';
-import { researchBrand, researchPrompt, parseWebsite, useDomainRoute, SWEEP_CALL_TYPE } from './brandResearch.js';
+import { researchBrand, researchPrompt, parseWebsite, useDomainRoute, wrongSiteRoute, SWEEP_CALL_TYPE } from './brandResearch.js';
+import { makeHkGate } from '../lib/requireAuth.js';
 import { researchSweep, sweepQueue } from './researchSweep.js';
 import { loadIntel } from './intelData.js';
 import { briefingRoute, reachRoute } from './briefingRoutes.js';
@@ -149,6 +150,35 @@ test('R1: low confidence stays a suggestion; a marketplace is never a website; n
   const none = await researchBrand({ D, businessId: HK, uid: ME, brand: brandRow(sb, ids.a) });
   assert.deepEqual([none.status, brandRow(sb, ids.a).research_attempted_at, brandRow(sb, ids.a).domain_suggested ?? null], ['not_found', NOW.toISOString(), null]);
   assert.equal(sb.db.hk_domain_intel.length, 1, 'nothing stored for not found');
+});
+
+test('Wrong site: clears the 3 suggestion fields, research_attempted_at = now, Activity row; domain untouched; Undo restores exactly (and refuses late or stale); viewer refused at the gate', async () => {
+  const sb = fresh();
+  Object.assign(brandRow(sb, ids.b), { domain_suggested: 'birch.invalid', domain_suggested_at: '2026-10-28T10:00:00Z', domain_confidence: 'low', research_attempted_at: '2026-09-01T00:00:00Z' });
+  const before = { ...brandRow(sb, ids.b) };
+  let t = NOW.getTime(); const D = { supabase: sb, now: () => new Date(t) };
+  const r = await call(wrongSiteRoute, reqOf({ method: 'POST', params: { id: ids.b } }), D);
+  assert.equal(r.code, 200, JSON.stringify(r.body));
+  const b = brandRow(sb, ids.b);
+  assert.deepEqual([b.domain_suggested, b.domain_suggested_at, b.domain_confidence, b.research_attempted_at, b.domain], [null, null, null, NOW.toISOString(), null]);
+  assert.deepEqual(sb.db.hk_events.map(e => [e.action, e.detail.domain, e.actor_user_id]), [['brand.domain_rejected', 'birch.invalid', ME]]);
+  assert.equal((await call(wrongSiteRoute, reqOf({ method: 'POST', params: { id: ids.b } }), D)).code, 409, 'nothing left to reject');
+  b.research_attempted_at = NOW.toISOString().replace('Z', '+00:00'); // Postgres hands timestamptz back as +00:00
+  t += 5000;
+  const u = await call(wrongSiteRoute, reqOf({ method: 'POST', params: { id: ids.b }, body: { undo: true } }), D);
+  assert.equal(u.code, 200, JSON.stringify(u.body));
+  const back = brandRow(sb, ids.b);
+  for (const k of ['domain', 'domain_suggested', 'domain_suggested_at', 'domain_confidence', 'research_attempted_at']) assert.equal(back[k], before[k], k);
+  assert.deepEqual(sb.db.hk_events.map(e => e.action), ['brand.domain_rejected', 'brand.domain_restored'], 'Activity rows kept');
+  assert.equal((await call(wrongSiteRoute, reqOf({ method: 'POST', params: { id: ids.b }, body: { undo: true } }), D)).code, 409, 'a second Undo finds the brand changed');
+  await call(wrongSiteRoute, reqOf({ method: 'POST', params: { id: ids.b } }), D);
+  t += 61000;
+  assert.equal((await call(wrongSiteRoute, reqOf({ method: 'POST', params: { id: ids.b }, body: { undo: true } }), D)).code, 409, 'too late');
+  assert.equal(brandRow(sb, ids.b).domain_suggested, null);
+  const gate = makeHkGate(async () => ({ hk_sales: true }));
+  const out = { code: 0, next: false }; const res = { status(c) { out.code = c; return this; }, json() { return this; } };
+  await gate(reqOf({ method: 'POST', params: { id: ids.b }, role: 'viewer' }), res, () => { out.next = true; });
+  assert.deepEqual([out.code, out.next], [403, false]);
 });
 
 const sweepD = (sb, s, extra = {}) => ({ supabase: sb, call: s.call, now: () => NOW, senders: () => [], ...extra });

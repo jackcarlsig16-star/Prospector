@@ -114,7 +114,7 @@ export async function listDraftsRoute(req, res, d = {}) {
     const m = await mailbox(businessId, uid, 'drafts').catch(() => null);
     const own = m?.grant?.google_email || null;
     const nowMs = now().getTime();
-    res.json({ drafts: (touches || []).map(t => ({ ...touchRow(t), brand_name: brands[t.brand_id]?.name || null, brand_owner_user_id: brands[t.brand_id]?.owner_user_id || null, contact_name: contacts[t.contact_id] || null, age_days: Math.floor((nowMs - Date.parse(t.drafted_at || t.created_at)) / 86400e3), mine: t.sender_user_id === uid, gmail_draft_url: t.sender_user_id === uid && own && t.gmail_message_id ? draftUrl(own, t.gmail_message_id) : null })) });
+    res.json({ drafts: (touches || []).map(t => ({ ...touchRow(t), brand_name: brands[t.brand_id]?.name || null, brand_owner_user_id: brands[t.brand_id]?.owner_user_id || null, brand_owner_hint: brands[t.brand_id]?.owner_hint || null, contact_name: contacts[t.contact_id] || null, age_days: Math.floor((nowMs - Date.parse(t.drafted_at || t.created_at)) / 86400e3), mine: t.sender_user_id === uid, gmail_draft_url: t.sender_user_id === uid && own && t.gmail_message_id ? draftUrl(own, t.gmail_message_id) : null })) });
   } catch (e) { fail(res, e, 'drafts/list'); }
 }
 
@@ -295,7 +295,7 @@ export async function listRepliesRoute(req, res, d = {}) {
     const touches = Object.fromEntries((await selectIn(() => supabase.from('hk_touches').select('id, sender_user_id, kind, subject').order('id'), 'id', tids)).map(t => [t.id, t]));
     const m = await mailbox(businessId, uid, 'drafts').catch(() => null);
     const own = m?.grant?.google_email || null;
-    res.json({ replies: rows.map(r => { const t = touches[r.touch_id]; const mine = t ? t.sender_user_id === uid : false; return { ...replyRow(r), urgent: !!r.urgent, brand_name: brands[r.brand_id]?.name || null, brand_owner_user_id: brands[r.brand_id]?.owner_user_id || null, brand_status: brands[r.brand_id]?.status || null, sender_user_id: t?.sender_user_id || null, touch_kind: t?.kind || null, mine, open_url: mine && own && r.gmail_message_id ? okUrl(own, `all/${encodeURIComponent(r.gmail_message_id)}`) : null }; }) });
+    res.json({ replies: rows.map(r => { const t = touches[r.touch_id]; const mine = t ? t.sender_user_id === uid : false; return { ...replyRow(r), urgent: !!r.urgent, brand_name: brands[r.brand_id]?.name || null, brand_owner_user_id: brands[r.brand_id]?.owner_user_id || null, brand_owner_hint: brands[r.brand_id]?.owner_hint || null, brand_status: brands[r.brand_id]?.status || null, sender_user_id: t?.sender_user_id || null, touch_kind: t?.kind || null, mine, open_url: mine && own && r.gmail_message_id ? okUrl(own, `all/${encodeURIComponent(r.gmail_message_id)}`) : null }; }) });
   } catch (e) { fail(res, e, 'replies/list'); }
 }
 

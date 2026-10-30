@@ -125,3 +125,38 @@ export async function useDomainRoute(req, res, d = {}) {
     res.json({ brand: brandDetail(data) });
   } catch (e) { fail(res, e, 'brands/use-domain'); }
 }
+
+// POST /brands/:id/wrong-site { undo? } - a member says the suggested website is wrong: the suggestion is cleared and
+// research_attempted_at = now keeps the sweep off the brand for 30 days. hk_brands.domain is never touched. The Activity
+// row's detail holds the cleared values; { undo: true } puts them back from the latest row, only while the brand is
+// exactly as the rejection left it and within WRONG_SITE_UNDO_MS (the client offers Undo for 10 s).
+export const WRONG_SITE_UNDO_MS = 60000;
+export async function wrongSiteRoute(req, res, d = {}) {
+  const D = deps(d), businessId = req.params.businessId;
+  try {
+    const brand = await brandById(D.supabase, businessId, req.params.id);
+    const at = D.now().toISOString();
+    const write = async patch => {
+      const { data, error } = await D.supabase.from('hk_brands').update({ ...patch, updated_at: at }).eq('id', brand.id).eq('business_id', businessId).select().single();
+      if (error) throw new Error(error.message);
+      return data;
+    };
+    if (req.body?.undo === true) {
+      const { data: rows, error } = await D.supabase.from('hk_events').select('detail, created_at').eq('business_id', businessId).eq('entity_id', brand.id).eq('action', 'brand.domain_rejected').order('created_at', { ascending: false }).limit(1);
+      if (error) throw new Error(error.message);
+      const last = rows?.[0];
+      if (!last || D.now().getTime() - Date.parse(last.created_at) > WRONG_SITE_UNDO_MS) throw new HkError(409, 'Too late to undo; research the brand again instead');
+      if (brand.domain || brand.domain_suggested || Date.parse(brand.research_attempted_at) !== Date.parse(last.detail.rejected_at)) throw new HkError(409, `${brand.name} changed since; nothing undone`);
+      const x = last.detail, name = brand.name;
+      const data = await write({ domain_suggested: x.domain, domain_suggested_at: x.suggested_at, domain_confidence: x.confidence, research_attempted_at: x.attempted_before });
+      await logEvent(D.supabase, { businessId, actorUserId: me(req), entityType: 'brand', entityId: brand.id, action: 'brand.domain_restored', detail: { name, domain: x.domain } });
+      return res.json({ brand: brandDetail(data) });
+    }
+    if (!brand.domain_suggested) throw new HkError(409, 'no suggested website on this brand');
+    if (brand.domain) throw new HkError(409, `${brand.name} already has a website (${brand.domain})`);
+    const detail = { name: brand.name, domain: brand.domain_suggested, suggested_at: brand.domain_suggested_at || null, confidence: brand.domain_confidence || null, attempted_before: brand.research_attempted_at || null, rejected_at: at };
+    const data = await write({ domain_suggested: null, domain_suggested_at: null, domain_confidence: null, research_attempted_at: at });
+    await logEvent(D.supabase, { businessId, actorUserId: me(req), entityType: 'brand', entityId: brand.id, action: 'brand.domain_rejected', detail });
+    res.json({ brand: brandDetail(data) });
+  } catch (e) { fail(res, e, 'brands/wrong-site'); }
+}

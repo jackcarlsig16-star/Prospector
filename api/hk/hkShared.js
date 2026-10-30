@@ -55,7 +55,7 @@ export async function logEvent(supabase, { businessId, actorUserId = null, actor
 }
 
 const pick = (o, keys) => Object.fromEntries(keys.filter(k => k in o).map(k => [k, o[k]]));
-const LIST_FIELDS = ['id', 'name', 'domain', 'aliases', 'segment', 'category', 'niche', 'size_band', 'is_local', 'city', 'neighborhood', 'status', 'relationship', 'owner_user_id', 'owner_unclear', 'source', 'last_touch_at', 'next_due_at', 'created_at', 'updated_at', 'archived_at', 'heat', 'heat_band', 'heat_at', 'targeted_at', 'targeted_by'];
+const LIST_FIELDS = ['id', 'name', 'domain', 'aliases', 'segment', 'category', 'niche', 'size_band', 'is_local', 'city', 'neighborhood', 'status', 'relationship', 'owner_user_id', 'owner_hint', 'owner_unclear', 'source', 'last_touch_at', 'next_due_at', 'created_at', 'updated_at', 'archived_at', 'heat', 'heat_band', 'heat_at', 'targeted_at', 'targeted_by'];
 export const brandRow = (b, extra = {}) => ({ ...pick(b, LIST_FIELDS), ...extra });
 export const brandDetail = b => ({ ...b });
 export const contactRow = c => pick(c, ['id', 'brand_id', 'name', 'title', 'email', 'email_source', 'apollo_person_id', 'is_primary', 'role_checked_at', 'left_company', 'created_by', 'created_at']);
@@ -63,7 +63,7 @@ export const touchRow = t => pick(t, ['id', 'brand_id', 'contact_id', 'sender_us
 // hkos-inbox-v2-polish P3: summaries stored before the Stage 2 decode still carry entities ("What&#39;s"); decoded on read.
 const decodedSummary = row => (row.summary ? { ...row, summary: decodeEntities(row.summary) } : row);
 export const replyRow = r => decodedSummary(pick(r, ['id', 'brand_id', 'touch_id', 'gmail_message_id', 'gmail_thread_id', 'from_name', 'from_domain', 'received_at', 'label', 'label_overridden_by', 'summary', 'urgent', 'handled', 'handled_by', 'handled_at', 'snoozed_until', 'created_at']));
-export const brandSummary = b => pick(b, ['id', 'name', 'domain', 'status', 'relationship', 'owner_user_id', 'niche', 'is_local', 'source', 'created_at']);
+export const brandSummary = b => pick(b, ['id', 'name', 'domain', 'status', 'relationship', 'owner_user_id', 'owner_hint', 'niche', 'is_local', 'source', 'created_at']);
 
 // hkos-brands-list-500 F2 - an id list never goes into ONE PostgREST in() filter: a long URL is answered 400 (952 brand
 // ids took Grow › Brands down). selectIn runs buildQuery().in(column, part) per chunk of IN_CHUNK ids, pages each chunk

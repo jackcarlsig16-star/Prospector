@@ -2,12 +2,13 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import DataTable from '../../ui/DataTable';
 import Tabs from '../../ui/Tabs';
 import Button from '../../ui/Button';
-import { Avatar, Sprout } from '../HkMarks';
+import { Sprout } from '../HkMarks';
 import AddBrandModal from './AddBrandModal';
 import BrandPicker from '../screens/BrandPicker';
 import { STATUS_LABELS, RELATIONSHIP_LABELS, STATUS_TONE, RELATIONSHIP_TONE, SOURCE_LABELS } from './verdict';
 import { hkGet, hkPatch, hkPost } from '../hkApi';
 import { HeatChip, ListButtons, heatBarStyle } from '../signals/Heat';
+import OwnerChip, { sheetOwnerLabel } from './OwnerChip';
 
 // hkos-data-foundation-v1 D6 - Brands: saved views, search (name / domain / alias, never a contact email), the table
 // (kit DataTable on the hk tokens), bulk Claim / Release / Set status / Mark do-not-contact, [+ Add brand].
@@ -74,7 +75,7 @@ export default function BrandsScreen({ businessId, shell, owner, compact, onOpen
     ...(canEdit ? [{ id: 'lists', label: 'Lists', width: 250, render: r => <ListButtons businessId={businessId} brand={r} meId={meId} members={members} canEdit compact /> }] : []),
     { id: 'category', label: 'Category', width: 130, sortValue: r => r.category || '', render: r => r.category || <span className="hk-meta">·</span> },
     { id: 'local', label: 'Local / National', width: 130, sortValue: r => (r.is_local ? 0 : 1), render: r => <Chip tone={r.is_local ? 'green' : 'grey'}>{r.is_local ? 'Local Chicago' : 'National'}</Chip> },
-    { id: 'owner', label: 'Owner', width: 90, sortValue: r => member(r.owner_user_id)?.first_name || '', render: r => { const m = member(r.owner_user_id); return m ? <span className="hk-owner"><Avatar name={m.first_name} index={m.palette_index} size={24} />{m.first_name}</span> : <span className="hk-meta">Unclaimed</span>; } },
+    { id: 'owner', label: 'Owner', width: 150, sortValue: r => member(r.owner_user_id)?.first_name || (r.owner_hint ? sheetOwnerLabel(r.owner_hint) : ''), render: r => <OwnerChip owner={member(r.owner_user_id)} hint={r.owner_hint} size={24} /> },
     { id: 'status', label: 'Status', width: 120, sortValue: r => r.status, render: r => <Chip tone={STATUS_TONE[r.status]}>{STATUS_LABELS[r.status] || r.status}</Chip> },
     { id: 'relationship', label: 'Relationship', width: 140, sortValue: r => r.relationship, render: r => <Chip tone={RELATIONSHIP_TONE[r.relationship]}>{RELATIONSHIP_LABELS[r.relationship] || r.relationship}</Chip> },
     { id: 'last_touch', label: 'Last touch', width: 100, sortValue: r => r.last_touch_at || '', render: r => fmt(r.last_touch_at) || <span className="hk-meta">None</span> },
@@ -120,7 +121,7 @@ export default function BrandsScreen({ businessId, shell, owner, compact, onOpen
           renderCompact={r => (<>
             <button type="button" className="hk-btn hk-card-row" onClick={() => onOpenBrand(r.id)} data-hk-brand={r.id}>
               <span className="hk-table__title">{r.name}</span>
-              <span className="hk-card-row__chips"><HeatChip band={r.heat_band} /><Chip tone={STATUS_TONE[r.status]}>{STATUS_LABELS[r.status]}</Chip><Chip tone={r.is_local ? 'green' : 'grey'}>{r.is_local ? 'Local' : 'National'}</Chip>{r.source === 'import' && <Chip tone="lilac">Import</Chip>}</span>
+              <span className="hk-card-row__chips"><HeatChip band={r.heat_band} /><Chip tone={STATUS_TONE[r.status]}>{STATUS_LABELS[r.status]}</Chip><OwnerChip owner={member(r.owner_user_id)} hint={r.owner_hint} size={18} chip /><Chip tone={r.is_local ? 'green' : 'grey'}>{r.is_local ? 'Local' : 'National'}</Chip>{r.source === 'import' && <Chip tone="lilac">Import</Chip>}</span>
             </button>
             <ListButtons businessId={businessId} brand={r} meId={meId} members={members} canEdit={canEdit} compact />
           </>)} /></>

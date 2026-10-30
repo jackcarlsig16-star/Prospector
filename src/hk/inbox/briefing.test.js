@@ -42,7 +42,7 @@ test('Important now = the top 7 Needs-you rows by importance (Other never counts
   expect(importantNow([...many, ROWS[4]]).map(r => r.thread_id)).toEqual(['n8', 'n7', 'n6', 'n5', 'n4', 'n3', 'n2']);
 });
 
-test('Briefing: tiles link to their lists, Send these cards (why, research, website + Use, low confidence asks), Important now opens the thread, Waiting on them', async () => {
+test('Briefing: tiles link to their lists, Send these cards (why, research, website + Save as website, low confidence asks), Important now opens the thread, Waiting on them', async () => {
   routesFor();
   routes[`POST /api/hk/${HK}/brands/b2/use-domain`] = { brand: { id: 'b2' } };
   routes[`PATCH /api/hk/${HK}/brands/b1`] = { brand: { id: 'b1' } };
@@ -59,10 +59,10 @@ test('Briefing: tiles link to their lists, Send these cards (why, research, webs
   expect(within(c1).getByRole('button', { name: 'Research' })).toBeInTheDocument();
   const c2 = within(send).getByText('Zz Birch Bars').closest('[data-hk-send-card]');
   expect(within(c2).getByText('Oat bars · strong fit · idea: 30-day oat run')).toBeInTheDocument();
-  expect(within(c2).getByText(/Website: birchbars.invalid/)).toBeInTheDocument();
+  expect(within(c2).getByText(/Website \(suggested\): birchbars.invalid/)).toBeInTheDocument();
   expect(within(c2).queryByRole('button', { name: 'Research' })).toBeNull();
   expect(within(send).getByText(/Possible website: cedar.invalid\?/)).toBeInTheDocument();
-  fireEvent.click(within(c2).getByRole('button', { name: 'Use' }));
+  fireEvent.click(within(c2).getByRole('button', { name: 'Save as website' }));
   await waitFor(() => expect(bodies[`POST /api/hk/${HK}/brands/b2/use-domain`]).toEqual([{}]));
   fireEvent.click(within(c1).getByRole('button', { name: 'Copy Claude command' }));
   expect(navigator.clipboard.writeText).toHaveBeenCalledWith('hk pitch Zz Alder Oats');
@@ -90,11 +90,11 @@ test('Research on a card posts the click flag and says what it found; Run resear
   expect(await screen.findByText('Researched 1 brand ($0.04), stopped at the daily count.')).toBeInTheDocument();
 });
 
-test('Viewer: the Briefing reads; no Claim, Research, Use or Run research now', async () => {
+test('Viewer: the Briefing reads; no Claim, Research, Save as website, Wrong site or Run research now', async () => {
   routesFor();
   render(<Briefing businessId={HK} shell={shell('viewer')} owner="me" canEdit={false} rows={ROWS} listReady onOpenThread={jest.fn()} onOpenBrand={jest.fn()} onGo={jest.fn()} onLane={jest.fn()} />);
   await screen.findByRole('region', { name: 'Send these 10' });
-  for (const name of ['Claim', 'Research', 'Use', 'Run research now']) expect(screen.queryByRole('button', { name })).toBeNull();
+  for (const name of ['Claim', 'Research', 'Save as website', 'Wrong site', 'Run research now']) expect(screen.queryByRole('button', { name })).toBeNull();
   expect(screen.getAllByRole('button', { name: 'Copy Claude command' }).length).toBe(3);
   expect(calls.filter(c => !c.startsWith('GET'))).toEqual([]);
 });
@@ -118,18 +118,18 @@ test('Inbox opens on Briefing from ONE list load; Important now jumps to Needs y
   expect(calls.filter(c => c.startsWith('GET /api/hk/biz-hk/inbox/threads?')).length).toBe(1);
 });
 
-test('Brand page reach line: the score and why, a found website with Use, Research when there is none; Viewer reads only', async () => {
+test('Brand page reach line: the score and why, a found website with Save as website, Research when there is none; Viewer reads only', async () => {
   routes[`GET /api/hk/${HK}/brands/b1/reach`] = { eligible: true, score: 25, why: ['has a contact to email', 'has a challenge idea'], parts: [], activity: {}, research: null, suggestion: { domain: 'alderoats.invalid', confidence: 'high' }, research_attempted_at: null };
   routes[`POST /api/hk/${HK}/brands/b1/use-domain`] = { brand: { id: 'b1' } };
   const onChanged = jest.fn();
   const { unmount } = render(<ReachLine businessId={HK} brandId="b1" canEdit onChanged={onChanged} />);
   expect(await screen.findByText('Reach-out score 25 · has a contact to email · has a challenge idea')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Research' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Use' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save as website' }));
   await waitFor(() => expect(onChanged).toHaveBeenCalled());
   unmount();
   render(<ReachLine businessId={HK} brandId="b1" canEdit={false} />);
-  expect(await screen.findByText(/Website: alderoats.invalid/)).toBeInTheDocument();
+  expect(await screen.findByText(/Website \(suggested\): alderoats.invalid/)).toBeInTheDocument();
   expect(screen.queryByRole('button')).toBeNull();
 });
 

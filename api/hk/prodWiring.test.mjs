@@ -136,6 +136,7 @@ const TABLE = [
   ['briefingRoutes', 'reachRoute', member({ params: { id: ID.run } }), [200]],
   ['brandResearch', 'researchBrandRoute', member({ method: 'POST', params: { id: ID.run }, body: {} }), [400]],
   ['brandResearch', 'useDomainRoute', member({ method: 'POST', params: { id: ID.run } }), [409]],
+  ['brandResearch', 'wrongSiteRoute', member({ method: 'POST', params: { id: ID.run } }), [409]],
   ['researchSweep', 'runSweepRoute', member({ method: 'POST', body: {} }), [200]],
 ];
 const TYPE_ERROR = /is not a function|Cannot read propert|is not defined|is not iterable|Cannot destructure/;

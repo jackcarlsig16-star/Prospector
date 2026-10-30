@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import Button from '../../ui/Button';
 import { Chip } from '../brands/BrandsScreen';
 import { Avatar } from '../HkMarks';
+import OwnerChip from '../brands/OwnerChip';
 import { hkPost } from '../hkApi';
 import { HeatChip, ListButtons } from '../signals/Heat';
 import { fmtDate, KIND_LABEL, FIT_LABEL, FIT_TONE, NEXT_LABEL, CHICAGO_LABEL, STATUS_LABEL, REPLY_LABEL, usd } from './inboxPrefs';
@@ -89,7 +90,7 @@ export default function IntelStrip({ businessId, thread, members, meId, canEdit,
       <span className="hk-istrip__facts">
         <button type="button" className="hk-btn hk-link hk-istrip__name" onClick={() => onOpenBrand(brand.id)} data-hk-open-brand>{brand.name}</button>
         <span className="hk-meta">{brand.domain || 'no domain'}</span>
-        {owner ? <span className="hk-istrip__owner"><Avatar name={owner.first_name} index={owner.palette_index || 1} size={20} />{owner.first_name}</span> : <span className="hk-meta">Unclaimed</span>}
+        {owner ? <span className="hk-istrip__owner"><Avatar name={owner.first_name} index={owner.palette_index || 1} size={20} />{owner.first_name}</span> : <OwnerChip hint={brand.owner_hint} />}
         <span className="hk-meta">{brand.touch_count} of {brand.max_email_touches || 3} touches{brand.last_touch_at ? ` · last ${fmtDate(brand.last_touch_at)}` : ''}</span>
         <HeatChip band={brand.heat_band} />
         <Chip tone={chip.kind === 'tracked' ? 'green' : 'blue'}>{STATUS_LABEL[brand.status] || brand.status}</Chip>

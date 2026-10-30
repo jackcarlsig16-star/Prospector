@@ -5,9 +5,11 @@ import { HeatChip } from '../signals/Heat';
 import SignalsPanel from '../signals/SignalsPanel';
 import { hkGet, hkPost, hkPatch } from '../hkApi';
 import { fmtDate } from './inboxPrefs';
+import SiteSuggestion from '../brands/SiteSuggestion';
+import OwnerChip from '../brands/OwnerChip';
 
 // grow-inbox-intel-v1 REV3 B1 - the Inbox's first lane. Tiles (today's numbers, each linking to its list), Send these
-// 10 (B3 cards with the why, research, a found website + Use, Claim / Copy Claude command / Open brand / Research),
+// 10 (B3 cards with the why, research, a found website (Save as website / Wrong site), Claim / Copy Claude command / Open brand / Research),
 // Important now (the top 7 Needs-you rows of the list the Inbox already loaded, by B2), Waiting on them (B6), and the
 // Signals panel (moved here from Today). One read (GET briefing); 0 Gmail calls of its own.
 export const IMPORTANT_N = 7;
@@ -22,7 +24,7 @@ function Tile({ n, label, onClick, id }) {
   );
 }
 
-function Card({ c, i, businessId, canEdit, meId, onOpenBrand, onChanged, setNote }) {
+function Card({ c, i, businessId, canEdit, meId, members, onOpenBrand, onChanged, setNote }) {
   const [busy, setBusy] = useState('');
   const [copied, setCopied] = useState(false);
   const run = async (what, fn) => { setBusy(what); try { await fn(); await onChanged(); } catch (e) { setNote(e.message); } finally { setBusy(''); } };
@@ -30,7 +32,6 @@ function Card({ c, i, businessId, canEdit, meId, onOpenBrand, onChanged, setNote
     const r = await hkPost(businessId, `/brands/${c.id}/research`, { click: true });
     setNote(r.status === 'not_found' ? `No website found for ${c.name}. It is not retried for 30 days.` : r.status === 'cached' ? `${c.name} was researched recently; the saved research is shown.` : `${c.name}: ${r.suggested ? `website ${r.domain} (${r.confidence} confidence)` : r.domain} · ${String(r.intel?.fit?.sponsor_fit || 'unknown').replace(/_/g, ' ')} fit.`);
   });
-  const use = () => run('use', async () => { await hkPost(businessId, `/brands/${c.id}/use-domain`, {}); setNote(`${c.name} now uses ${c.suggestion.domain}.`); });
   const claim = () => run('claim', async () => { await hkPatch(businessId, `/brands/${c.id}`, { claim: true }); setNote(`${c.name} is yours.`); });
   const copy = async () => { try { await navigator.clipboard.writeText(c.command); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { setNote(`Copy failed. The command is: ${c.command}`); } };
   const facts = [c.category, c.city].filter(Boolean).join(' · ');
@@ -45,16 +46,11 @@ function Card({ c, i, businessId, canEdit, meId, onOpenBrand, onChanged, setNote
       {facts && <p className="hk-meta hk-send__line">{facts}</p>}
       <p className="hk-send__line" data-hk-send-why>{c.why.length ? c.why.join(' · ') : 'Nothing stands out yet'}</p>
       {c.research?.line && <p className="hk-meta hk-send__line" data-hk-send-research>{c.research.line}</p>}
-      {c.suggestion && (
-        <p className="hk-send__line" data-hk-send-site={c.suggestion.confidence}>
-          {c.suggestion.confidence === 'high' ? `Website: ${c.suggestion.domain}` : `Possible website: ${c.suggestion.domain}?`}
-          {canEdit && <> · <button type="button" className="hk-btn hk-link" disabled={!!busy} onClick={use} data-hk-use-site>Use</button></>}
-        </p>
-      )}
+      <SiteSuggestion businessId={businessId} brandId={c.id} brandName={c.name} suggestion={c.suggestion} canEdit={canEdit} className="hk-send__line" onChanged={onChanged} setNote={setNote} data-hk-send-site={c.suggestion?.confidence} />
       {!c.research && c.research_attempted_at && <p className="hk-meta hk-send__line">No website found {fmtDate(c.research_attempted_at)}.</p>}
       <div className="hk-send__actions">
         {canEdit && !c.owner_user_id && <Button size="sm" variant="primary" disabled={!!busy} onClick={claim} data-hk-send-claim>Claim</Button>}
-        {c.owner_user_id === meId && <Chip tone="green">Yours</Chip>}
+        {c.owner_user_id === meId ? <Chip tone="green">Yours</Chip> : (c.owner_user_id || c.owner_hint) && <OwnerChip owner={members.find(m => m.user_id === c.owner_user_id)} hint={c.owner_hint} size={18} chip />}
         <Button size="sm" onClick={copy} data-hk-send-copy>{copied ? 'Copied' : 'Copy Claude command'}</Button>
         <Button size="sm" variant="tertiary" onClick={() => onOpenBrand(c.id)}>Open brand</Button>
         {canEdit && !c.research && !c.research_attempted_at && <Button size="sm" disabled={!!busy} onClick={research} data-hk-send-research-btn>{busy === 'research' ? 'Researching…' : 'Research'}</Button>}
@@ -105,7 +101,7 @@ export default function Briefing({ businessId, shell, owner, canEdit, rows, list
           {canEdit && <Button size="sm" disabled={sweeping || !R.on} disabledReason="Auto-research is off in Settings, Pitch" onClick={sweep} data-hk-run-research>{sweeping ? 'Researching…' : 'Run research now'}</Button>}
         </div>
         <p className="hk-meta" data-hk-research-line>Auto-research {R.on ? `on: up to ${R.n} a day by ${R.time}, $${Number(R.cap_usd).toFixed(2)} cap` : 'off'} · today {R.today_calls} of {R.n} (${Number(R.today_spend).toFixed(2)})</p>
-        {data.send.length ? <ol className="hk-send">{data.send.map((c, i) => <Card key={c.id} c={c} i={i} businessId={businessId} canEdit={canEdit} meId={meId} onOpenBrand={onOpenBrand} onChanged={load} setNote={setNote} />)}</ol>
+        {data.send.length ? <ol className="hk-send">{data.send.map((c, i) => <Card key={c.id} c={c} i={i} businessId={businessId} canEdit={canEdit} meId={meId} members={shell?.members || []} onOpenBrand={onOpenBrand} onChanged={load} setNote={setNote} />)}</ol>
           : <p className="hk-meta">No brand you can pitch right now.</p>}
       </section>
       <section className="hk-today__card" aria-label="Important now" data-hk-section="important">

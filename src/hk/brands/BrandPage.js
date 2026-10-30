@@ -11,12 +11,13 @@ import { hkGet, hkPatch, hkPost } from '../hkApi';
 import ComposerModal from './ComposerModal';
 import { HeatChip, ListButtons } from '../signals/Heat';
 import ReachLine from './ReachLine';
+import OwnerChip from './OwnerChip';
 
 // hkos-data-foundation-v1 D6 - the Brand page: header + chips + touch counter, the Verdict banner, the primary action
 // by state, More, and four tabs. Contact emails show here only (D5), as mailto links.
 const TABS = [['timeline', 'Timeline'], ['contacts', 'Contacts'], ['notes', 'Notes & ideas'], ['details', 'Details']];
 const fmt = iso => (iso ? new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '');
-const ACTION_WORDS = { 'brand.created': 'added the brand', 'brand.claimed': 'claimed it', 'brand.released': 'released it', 'brand.status': 'set the status', 'brand.relationship': 'changed the relationship', 'brand.updated': 'edited', 'brand.merged': 'merged a duplicate into it', 'contact.added': 'added a contact', 'contact.updated': 'edited a contact', 'sponsor.period_added': 'added a sponsor period', 'sponsor.period_removed': 'removed a sponsor period' };
+const ACTION_WORDS = { 'brand.created': 'added the brand', 'brand.domain_used': 'saved the suggested website', 'brand.domain_rejected': 'marked the suggested website wrong', 'brand.domain_restored': 'undid Wrong site', 'brand.claimed': 'claimed it', 'brand.released': 'released it', 'brand.status': 'set the status', 'brand.relationship': 'changed the relationship', 'brand.updated': 'edited', 'brand.merged': 'merged a duplicate into it', 'contact.added': 'added a contact', 'contact.updated': 'edited a contact', 'sponsor.period_added': 'added a sponsor period', 'sponsor.period_removed': 'removed a sponsor period' };
 
 export default function BrandPage({ businessId, brandId, shell, gmail, onBack, canEdit, onGmailChanged, onSignalsChanged }) {
   const [composer, setComposer] = useState(false);
@@ -76,7 +77,7 @@ export default function BrandPage({ businessId, brandId, shell, gmail, onBack, c
           <div className="hk-brand__chips">
             {brand.relationship === 'prospect' && <HeatChip band={brand.heat_band || 'cold'} showCold />}
             <Chip tone={STATUS_TONE[brand.status]}>{STATUS_LABELS[brand.status]}</Chip>
-            <span className="hk-chip hk-chip--grey">{owner ? <><Avatar name={owner.first_name} index={owner.palette_index} size={18} /> {owner.first_name}</> : 'Unclaimed'}</span>
+            <OwnerChip owner={owner} hint={brand.owner_hint} size={18} chip />
             <Chip tone={RELATIONSHIP_TONE[brand.relationship]}>{RELATIONSHIP_LABELS[brand.relationship]}</Chip>
             <Chip tone={brand.is_local ? 'green' : 'grey'}>{brand.is_local ? 'Local Chicago' : 'National'}</Chip>
             {brand.category && <Chip tone="grey">{brand.category}</Chip>}

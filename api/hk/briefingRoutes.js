@@ -24,7 +24,7 @@ export function researchLine(intel) {
 const suggestionOf = b => (b.domain_suggested && !b.domain ? { domain: b.domain_suggested, confidence: b.domain_confidence || 'low', at: b.domain_suggested_at } : null);
 export const cardOf = (r, data) => {
   const intel = intelFor(r.brand, data.intelByDomain), b = r.brand;
-  return { id: b.id, name: b.name, domain: b.domain || null, category: b.category || null, city: b.city || null, status: b.status, owner_user_id: b.owner_user_id || null, heat_band: b.heat_band || 'cold', targeted_at: b.targeted_at || null,
+  return { id: b.id, name: b.name, domain: b.domain || null, category: b.category || null, city: b.city || null, status: b.status, owner_user_id: b.owner_user_id || null, owner_hint: b.owner_hint || null, heat_band: b.heat_band || 'cold', targeted_at: b.targeted_at || null,
     score: r.score, why: r.why, parts: r.parts.map(([k]) => k), research: intel ? { line: researchLine(intel), fit: intel.intel?.fit?.sponsor_fit || null, researched_at: intel.researched_at } : null,
     suggestion: suggestionOf(b), research_attempted_at: b.research_attempted_at || null, command: `hk pitch ${b.domain || b.name}` };
 };

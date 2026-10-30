@@ -447,6 +447,7 @@ app.get('/api/hk/:businessId/briefing',                       hkRoute(HK_BRIEFIN
 app.get('/api/hk/:businessId/brands/:id/reach',               hkRoute(HK_BRIEFING, 'reachRoute'));
 app.post('/api/hk/:businessId/brands/:id/research',           hkRoute(HK_RESEARCH, 'researchBrandRoute'));
 app.post('/api/hk/:businessId/brands/:id/use-domain',         hkRoute(HK_RESEARCH, 'useDomainRoute'));
+app.post('/api/hk/:businessId/brands/:id/wrong-site',         hkRoute(HK_RESEARCH, 'wrongSiteRoute'));
 app.post('/api/hk/:businessId/jobs/research-sweep',           hkRoute(HK_SWEEP, 'runSweepRoute'));
 // hkos-gmail-connect-v1 (G3-G7) - drafts into the tethered mailbox, sync, replies, status. No send path anywhere.
 const HK_GMAIL = './api/hk/gmailRoutes.js';
