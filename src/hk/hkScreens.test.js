@@ -4,9 +4,10 @@ import { HK_MODULES } from '../constants/hkModules';
 // hkos-project-shell-v1 Stage 2 - the screen config, the #hk/ address, the owner toggle and Today's greeting.
 const screens = visibleScreens(HK_MODULES);
 
-test('ten screens in nav order, Settings last after the divider; reserved slots hidden while their module is off', () => {
-  expect(screens.map(s => s.label)).toEqual(['Today', 'Inbox', 'Replies', 'Drafts', 'Pipeline', 'Brands', 'Sponsors', 'Review', 'Activity', 'Settings']);
-  expect(screens.filter(s => s.divider).map(s => s.id)).toEqual(['settings']);
+test('grow-nav-filters N1: three spaces then the Workspace group; reserved slots hidden while their module is off', () => {
+  expect(screens.map(s => s.label)).toEqual(['Today', 'Inbox', 'Brands', 'Review', 'Activity', 'Settings']);
+  expect(screens.filter(s => s.group === 'space').map(s => s.id)).toEqual(['today', 'inbox', 'brands']);
+  expect(screens.filter(s => s.group === 'workspace').map(s => s.id)).toEqual(['review', 'activity', 'settings']);
   expect(HK_SCREENS.filter(s => s.reserved).map(s => s.id)).toEqual(['creators', 'dms', 'segments', 'campaigns', 'sourcing', 'reports']);
   expect(screens.some(s => s.reserved)).toBe(false);
   const withCreators = visibleScreens(HK_MODULES.map(m => (m.key === 'creators' ? { ...m, on: true } : m)));
@@ -14,9 +15,20 @@ test('ten screens in nav order, Settings last after the divider; reserved slots 
   expect(withCreators.map(s => s.id)).toContain('dms');
 });
 
-test('phone: four tabs + More; the More sheet lists the rest', () => {
-  expect(phoneTabs(screens).map(s => s.label)).toEqual(['Today', 'Replies', 'Drafts', 'Brands']);
-  expect(moreScreens(screens).map(s => s.label)).toEqual(['Inbox', 'Pipeline', 'Sponsors', 'Review', 'Activity', 'Settings']);
+test('phone (N12): the three spaces are tabs (+ Search + More); More lists the Workspace group', () => {
+  expect(phoneTabs(screens).map(s => s.label)).toEqual(['Today', 'Inbox', 'Brands']);
+  expect(moreScreens(screens).map(s => s.label)).toEqual(['Review', 'Activity', 'Settings']);
+});
+
+test('N9: filters ride in the address; old screen links land on their new views (redirected once)', () => {
+  expect(parseHkHash('#hk/brands?view=pipeline&stage=sent,bumped&owner=me&layout=stage')).toEqual({ screen: 'brands', section: null, brandId: null, query: 'view=pipeline&stage=sent,bumped&owner=me&layout=stage' });
+  expect(hkHash('brands', null, null, 'view=sponsors')).toBe('#hk/brands?view=sponsors');
+  expect(parseHkHash('#hk/inbox?lane=needs_you')).toEqual({ screen: 'inbox', section: null, query: 'lane=needs_you' });
+  expect(parseHkHash('#hk/replies')).toEqual({ screen: 'inbox', section: null, query: 'replies=open', redirected: true });
+  expect(parseHkHash('#hk/drafts')).toEqual({ screen: 'inbox', section: null, query: 'drafts=all', redirected: true });
+  expect(parseHkHash('#hk/pipeline')).toEqual({ screen: 'brands', section: null, brandId: null, query: 'view=pipeline', redirected: true });
+  expect(parseHkHash('#hk/sponsors')).toEqual({ screen: 'brands', section: null, brandId: null, query: 'view=sponsors', redirected: true });
+  expect(parseHkHash('#hk/pipeline/x')).toBeNull();
 });
 
 test('every screen has copy without em or en dashes', () => {

@@ -193,7 +193,7 @@ test('Today\'s read: a fresh digest from the current rows plus today\'s no-draft
   const all = await todayPayload({ businessId: HK, owner: 'all', meId: JACK, d: deps() });
   assert.deepEqual(all.owner_counts, Object.fromEntries(KEYS.map(k => [k, t.digest.counts[k]])));
   const mine = await todayPayload({ businessId: HK, owner: 'me', meId: JACK, d: deps() }), pete = await todayPayload({ businessId: HK, owner: PETE, meId: JACK, d: deps() });
-  const owned = (who, k) => t.digest.sections[k].filter(x => x.owner === who).length;
+  const owned = (who, k) => t.digest.sections[k].filter(x => (k === 'drafts' ? x.sender : x.owner) === who).length; // drafts: whose Gmail (ruling 1)
   for (const k of KEYS) { assert.equal(mine.owner_counts[k], owned('Jack', k), k); assert.equal(pete.owner_counts[k], owned('Pete', k), k); }
   assert.ok(mine.owner_counts.drafts + pete.owner_counts.drafts <= t.digest.counts.drafts);
   assert.equal(t.stats_stale, true);

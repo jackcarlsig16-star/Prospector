@@ -59,15 +59,15 @@ const ROWS = [brand(), brand({ id: 'b2', name: 'Zz Birch Bars', owner_hint: 'pet
 const rowOf = name => screen.getByText(name).closest('tr');
 
 test('Brands rows and phone cards: member / sheet owner / Unclaimed, never Claimed + Unclaimed when a hint exists', async () => {
-  routes[`GET /api/hk/${HK}/brands`] = { view: 'all', brands: ROWS };
-  const { unmount } = render(<BrandsScreen businessId={HK} shell={shell('owner')} owner="all" compact={false} canEdit={false} onOpenBrand={() => {}} />);
+  const list = { rows: ROWS, total: ROWS.length, facets: null, next: null, loading: false, error: '', loadMore: () => {}, reload: async () => {} };
+  const { unmount } = render(<BrandsScreen businessId={HK} shell={shell('owner')} compact={false} canEdit={false} onOpenBrand={() => {}} list={list} />);
   await screen.findByText('Zz Birch Bars');
   expect(within(rowOf('Zz Birch Bars')).getByText('Sheet: Pete · not in Grow yet')).toBeInTheDocument();
   expect(within(rowOf('Zz Birch Bars')).queryByText('Unclaimed')).toBeNull();
   expect(within(rowOf('Zz Cedar Cola')).getByText('Sky')).toBeInTheDocument();
   expect(within(rowOf('Zz Alder Oats')).getByText('Unclaimed')).toBeInTheDocument();
   unmount();
-  render(<BrandsScreen businessId={HK} shell={shell('owner')} owner="all" compact canEdit={false} onOpenBrand={() => {}} />);
+  render(<BrandsScreen businessId={HK} shell={shell('owner')} compact canEdit={false} onOpenBrand={() => {}} list={list} />);
   const card = (await screen.findByText('Zz Birch Bars')).closest('[data-hk-brand]');
   expect(within(card).getByText('Sheet: Pete · not in Grow yet')).toBeInTheDocument();
   expect(within(card).queryByText('Unclaimed')).toBeNull();

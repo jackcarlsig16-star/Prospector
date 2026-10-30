@@ -26,7 +26,7 @@ export const todayBadge = counts => (counts ? (counts.urgent || 0) + (counts.rep
 export const ownerMatch = (ownerUserId, owner, meId) => owner === 'all' || !ownerUserId || ownerUserId === (owner === 'me' ? meId : owner);
 export const runLine = (run, ranToday) => (!run ? 'The daily check has not run yet.' : ranToday ? `Daily check ran today at ${fmtTime(run.finished_at || run.started_at)} (${run.trigger})${run.status === 'partial' ? ', with some items' : ''}.` : `Last daily check ${fmtDate(run.started_at)} (${run.trigger}). Not run yet today.`);
 
-export default function TodayScreen({ businessId, shell, owner, compact, gmail, onOpenBrand, onGo, onOpenConnections, onCounts }) {
+export default function TodayScreen({ businessId, shell, owner, compact, gmail, canEdit = true, onOpenBrand, onGo, onOpenConnections, onCounts }) {
   const [today, setToday] = useState(null);
   const [replies, setReplies] = useState([]);
   const [drafts, setDrafts] = useState([]);
@@ -43,10 +43,10 @@ export default function TodayScreen({ businessId, shell, owner, compact, gmail, 
   const load = useCallback(async () => {
     setError('');
     try {
-      const [t, r, d] = await Promise.all([hkGet(businessId, '/jobs/today'), hkGet(businessId, '/replies', { handled: 'false', owner: 'all' }), hkGet(businessId, '/drafts')]);
-      setToday(t); setReplies(r.replies); setDrafts(d.drafts); onCounts?.(t.digest?.counts || null);
+      const [t, r, d] = await Promise.all([hkGet(businessId, '/jobs/today', { owner: owner || 'me' }), hkGet(businessId, '/replies', { handled: 'false', owner: 'all' }), hkGet(businessId, '/drafts')]);
+      setToday(t); setReplies(r.replies); setDrafts(d.drafts); onCounts?.(t.owner_counts || t.digest?.counts || null);
     } catch (e) { setError(e.message); setToday(t0 => t0 || { digest: null }); }
-  }, [businessId, onCounts]);
+  }, [businessId, owner, onCounts]);
   useEffect(() => { load(); }, [load]);
   const act = async (label, fn) => { setBusy(label); setError(''); try { await fn(); await load(); } catch (e) { setError(e.message); } finally { setBusy(''); } };
   const copy = async (key, text) => { try { await navigator.clipboard.writeText(text); setCopied(key); setTimeout(() => setCopied(''), 1500); } catch { setError(`Copy failed. The text is: ${text}`); } };
@@ -57,7 +57,7 @@ export default function TodayScreen({ businessId, shell, owner, compact, gmail, 
   const now = Date.now();
   const openReplies = useMemo(() => replies.filter(r => !r.handled && !(r.snoozed_until && Date.parse(r.snoozed_until) > now) && ownerMatch(r.brand_owner_user_id, owner, me?.user_id)), [replies, owner, me, now]);
   const urgent = openReplies.filter(r => r.urgent), waiting = openReplies.filter(r => !r.urgent);
-  const draftRows = useMemo(() => drafts.filter(d => d.channel !== 'ig_dm' && ownerMatch(d.brand_owner_user_id, owner, me?.user_id)), [drafts, owner, me]);
+  const draftRows = useMemo(() => drafts.filter(d => d.channel !== 'ig_dm' && ownerMatch(d.sender_user_id, owner, me?.user_id)), [drafts, owner, me]);
   const noDraft = useMemo(() => (digest?.sections?.no_draft || []).filter(e => ownerMatch(byName(e.owner), owner, me?.user_id)), [digest, owner, me]); // eslint-disable-line react-hooks/exhaustive-deps
   const dmReady = useMemo(() => drafts.filter(d => d.channel === 'ig_dm' && ownerMatch(d.brand_owner_user_id, owner, me?.user_id)), [drafts, owner, me]);
   const reconnect = (today?.mailboxes || []).filter(m => m.state === 'needs_reconnect');
@@ -103,7 +103,7 @@ export default function TodayScreen({ businessId, shell, owner, compact, gmail, 
               <span className="hk-today__actions">
                 {r.open_url ? <a className="ui-btn ui-btn--primary ui-btn--sm" href={r.open_url} target="_blank" rel="noopener noreferrer" data-hk-open-reply>Open in Gmail</a> : <span className="hk-meta">In {member(r.sender_user_id)?.first_name || 'a teammate'}'s inbox</span>}
                 <Button size="sm" onClick={() => copy(`cmd-${r.id}`, `hk reply ${r.brand_name}`)}>{copied === `cmd-${r.id}` ? 'Copied' : 'Copy Claude command'}</Button>
-                <Button size="sm" disabled={!!busy} onClick={() => act('handled', () => hkPatch(businessId, `/replies/${r.id}`, { handled: true }))} data-hk-mark-handled>Mark handled</Button>
+                {canEdit && <Button size="sm" disabled={!!busy} onClick={() => act('handled', () => hkPatch(businessId, `/replies/${r.id}`, { handled: true }))} data-hk-mark-handled>Mark handled</Button>}
               </span>
             </div>))}</div>
         </section>
@@ -121,7 +121,7 @@ export default function TodayScreen({ businessId, shell, owner, compact, gmail, 
                 {r.open_url && <a className="ui-btn ui-btn--secondary ui-btn--sm" href={r.open_url} target="_blank" rel="noopener noreferrer">Open in Gmail</a>}
                 <select className="ui-input ui-input--sm" aria-label={`Set status for ${r.brand_name}`} defaultValue="" disabled={!!busy} onChange={e => { const v = e.target.value; e.target.value = ''; if (v) act('status', () => hkPatch(businessId, `/brands/${r.brand_id}`, { status: v })); }}><option value="">Set status</option><option value="meeting">Meeting</option><option value="signed">Signed</option><option value="passed">Passed</option></select>
                 <select className="ui-input ui-input--sm" aria-label={`Snooze ${r.brand_name}`} defaultValue="" disabled={!!busy} onChange={e => { const v = e.target.value; e.target.value = ''; if (v) act('snooze', () => hkPatch(businessId, `/replies/${r.id}`, { snoozed_until: new Date(Date.now() + Number(v) * 86400e3).toISOString() })); }}><option value="">Snooze</option>{SNOOZE.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-                <Button size="sm" disabled={!!busy} onClick={() => act('handled', () => hkPatch(businessId, `/replies/${r.id}`, { handled: true }))}>Mark handled</Button>
+                {canEdit && <Button size="sm" disabled={!!busy} onClick={() => act('handled', () => hkPatch(businessId, `/replies/${r.id}`, { handled: true }))}>Mark handled</Button>}
               </span>
             </div>))}</div>
         </section>
@@ -138,7 +138,7 @@ export default function TodayScreen({ businessId, shell, owner, compact, gmail, 
               <span className="hk-today__actions">
                 {d.gmail_draft_url ? <a className="ui-btn ui-btn--primary ui-btn--sm" href={d.gmail_draft_url} target="_blank" rel="noopener noreferrer" data-hk-open-draft>Open in Gmail</a> : <Button size="sm" variant="primary" disabled disabledReason={d.mine ? 'No Gmail draft id yet' : "In another founder's mailbox"}>Open in Gmail</Button>}
                 <Button size="sm" onClick={async () => { try { const { touch } = await hkGet(businessId, `/drafts/${d.id}`); setPreview(touch); } catch (e) { setError(e.message); } }}>Preview</Button>
-                <Button size="sm" variant="danger" disabled={(!d.mine && !isOwnerRole) || !!busy} disabledReason="Only the sender or an owner-role member" onClick={() => setConfirm({ id: d.id, what: 'draft' })}>Discard</Button>
+                {canEdit && <Button size="sm" variant="danger" disabled={(!d.mine && !isOwnerRole) || !!busy} disabledReason="Only the sender or an owner-role member" onClick={() => setConfirm({ id: d.id, what: 'draft' })}>Discard</Button>}
               </span>
             </div>))}</div>
         </section>
@@ -153,9 +153,9 @@ export default function TodayScreen({ businessId, shell, owner, compact, gmail, 
               {e.owner && <Chip tone="grey">{e.owner}</Chip>}
               <span className="hk-meta hk-today__summary">{REASON[e.reason] || e.reason_text || e.reason}{e.detail ? `: ${e.detail}` : ''}</span>
               <span className="hk-today__actions">
-                <Button size="sm" variant="primary" disabled={!!busy} onClick={() => act('retry', async () => { const r = await hkPost(businessId, '/jobs/retry-draft', { brand_id: e.brand_id }); setNote(r.drafted ? `Draft written for ${e.brand_name}.` : `Still no draft for ${e.brand_name}: ${REASON[r.reason] || r.reason}${r.detail ? ` (${r.detail})` : ''}.`); })} data-hk-retry-draft>Retry draft</Button>
+                {canEdit && <Button size="sm" variant="primary" disabled={!!busy} onClick={() => act('retry', async () => { const r = await hkPost(businessId, '/jobs/retry-draft', { brand_id: e.brand_id }); setNote(r.drafted ? `Draft written for ${e.brand_name}.` : `Still no draft for ${e.brand_name}: ${REASON[r.reason] || r.reason}${r.detail ? ` (${r.detail})` : ''}.`); })} data-hk-retry-draft>Retry draft</Button>}
                 <Button size="sm" onClick={() => copy(`nd-${e.brand_id}`, `hk ${e.kind} ${e.brand_name}`)}>{copied === `nd-${e.brand_id}` ? 'Copied' : 'Copy Claude command'}</Button>
-                <Button size="sm" variant="tertiary" disabled={!!busy} onClick={() => act('skip', () => hkPost(businessId, '/jobs/skip-touch', { brand_id: e.brand_id }))} data-hk-skip-touch>Skip this touch</Button>
+                {canEdit && <Button size="sm" variant="tertiary" disabled={!!busy} onClick={() => act('skip', () => hkPost(businessId, '/jobs/skip-touch', { brand_id: e.brand_id }))} data-hk-skip-touch>Skip this touch</Button>}
               </span>
             </div>))}</div>
         </section>
@@ -170,8 +170,8 @@ export default function TodayScreen({ businessId, shell, owner, compact, gmail, 
               <Owner id={d.brand_owner_user_id} hint={d.brand_owner_hint} />
               <span className="hk-today__actions">
                 <Button size="sm" variant="primary" onClick={async () => { try { const { touch } = await hkGet(businessId, `/drafts/${d.id}`); await copy(`dm-${d.id}`, touch.body_text || ''); } catch (e) { setError(e.message); } }} data-hk-copy-dm>{copied === `dm-${d.id}` ? 'Copied' : 'Copy DM'}</Button>
-                <Button size="sm" disabled={!!busy} onClick={() => act('dm-sent', () => hkPost(businessId, `/drafts/${d.id}/dm-sent`, {}))} data-hk-dm-sent>Mark DM sent</Button>
-                <Button size="sm" variant="tertiary" disabled={!!busy} onClick={() => setConfirm({ id: d.id, what: 'dm' })}>Skip</Button>
+                {canEdit && <Button size="sm" disabled={!!busy} onClick={() => act('dm-sent', () => hkPost(businessId, `/drafts/${d.id}/dm-sent`, {}))} data-hk-dm-sent>Mark DM sent</Button>}
+                {canEdit && <Button size="sm" variant="tertiary" disabled={!!busy} onClick={() => setConfirm({ id: d.id, what: 'dm' })}>Skip</Button>}
               </span>
             </div>))}</div>
         </section>

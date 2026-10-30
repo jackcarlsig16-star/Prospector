@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Segmented from '../ui/Segmented';
-import { Icon, Sprout, Avatar } from './HkMarks';
+import { Icon, Avatar } from './HkMarks';
 import { ROLE_LABELS } from '../constants/roles';
 import { wordFor, checkInWith, NUDGE_DAYS } from './wordOfDay';
 
@@ -22,35 +22,6 @@ function useDismiss(open, close) {
 
 export function OwnerToggle({ options, value, onChange }) {
   return <Segmented label="Whose work" items={options} value={value} onChange={onChange} />;
-}
-
-export function SideNav({ screens, current, onGo, owner }) {
-  return (
-    <nav className="hk-nav" aria-label="Grow">
-      <div className="hk-logo">
-        <Sprout size={28} />
-        <div>
-          <div className="hk-logo__name">HumanKind</div>
-          <div className="hk-logo__sub">Grow</div>
-        </div>
-      </div>
-      {owner}
-      <div className="hk-nav__list">
-        {screens.map(s => (
-          <React.Fragment key={s.id}>
-            {s.divider && <div className="hk-nav__divider" role="separator" />}
-            <button type="button" className="hk-btn hk-nav__item" aria-current={current === s.id ? 'page' : undefined} onClick={() => onGo(s.id)} data-hk-nav={s.id}>
-              <Icon name={s.icon} size={18} />
-              {s.label}
-              {s.hot > 0 && <span className="hk-nav__badge hk-nav__badge--green" title="Unseen signals on Hot or Warm brands" data-hk-hot-badge>{s.hot}<span className="ui-sr-only"> unseen Hot or Warm signals</span></span>}
-              {s.count > 0 && <span className="hk-nav__badge" style={s.hot > 0 ? { marginLeft: 4 } : undefined}>{s.count}</span>}
-            </button>
-          </React.Fragment>
-        ))}
-      </div>
-      <div className="hk-nav__foot">A Project in Prospector</div>
-    </nav>
-  );
 }
 
 export function WorkspaceMenu({ business, businesses, onSelectBusiness, onAllWorkspaces }) {
@@ -153,12 +124,13 @@ export function SearchPill({ onOpen }) {
   return (
     <button type="button" className="hk-btn hk-search" onClick={onOpen} data-hk-search>
       <Icon name="search" size={16} />
-      Jump to a screen<span className="hk-kbd" aria-hidden="true">⌘K</span>
+      Search brands, people, replies, filters<span className="hk-kbd" aria-hidden="true">⌘K</span>
     </button>
   );
 }
 
-export function TabBar({ tabs, current, moreOpen, onGo, onMore }) {
+// grow-nav-filters N12: Today · Inbox · Brands · Search · More.
+export function TabBar({ tabs, current, moreOpen, onGo, onSearch, onMore }) {
   const inMore = !tabs.some(t => t.id === current);
   return (
     <nav className="hk-tabbar" aria-label="Grow">
@@ -167,6 +139,9 @@ export function TabBar({ tabs, current, moreOpen, onGo, onMore }) {
           <Icon name={t.icon} size={22} />{t.label}
         </button>
       ))}
+      <button type="button" className="hk-btn hk-tab" onClick={onSearch} data-hk-tab="search">
+        <Icon name="search" size={22} />Search
+      </button>
       <button type="button" className="hk-btn hk-tab" aria-current={inMore ? 'page' : undefined} aria-expanded={moreOpen} onClick={onMore} data-hk-tab="more">
         <Icon name="more" size={22} />More
       </button>
@@ -190,38 +165,6 @@ export function MoreSheet({ screens, onGo, onBack, onSignOut, onClose }) {
         <div className="hk-menu__rule" role="separator" />
         <button type="button" className="hk-btn hk-sheet__item" onClick={onBack}>Back to Prospector</button>
         <button type="button" className="hk-btn hk-sheet__item" onClick={onSignOut}>Sign out</button>
-      </div>
-    </>
-  );
-}
-
-// S9 - type to filter the screens, arrows move, Enter or click jumps, Esc closes.
-export function Palette({ screens, onGo, onClose }) {
-  const [q, setQ] = useState('');
-  const [sel, setSel] = useState(0);
-  const hits = screens.filter(s => s.label.toLowerCase().includes(q.trim().toLowerCase()));
-  const onKey = e => {
-    if (e.key === 'Escape') { e.preventDefault(); onClose(); }
-    else if (e.key === 'ArrowDown') { e.preventDefault(); setSel(i => Math.min(i + 1, hits.length - 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(i => Math.max(i - 1, 0)); }
-    else if (e.key === 'Enter' && hits[sel]) { e.preventDefault(); onGo(hits[sel].id); }
-  };
-  return (
-    <>
-      <div className="hk-backdrop" onClick={onClose} aria-hidden="true" />
-      <div className="hk-palette" role="dialog" aria-modal="true" aria-label="Jump to a screen" data-hk-palette>
-        <input className="hk-palette__input" autoFocus placeholder="Jump to a screen" aria-label="Jump to a screen" value={q}
-          onChange={e => { setQ(e.target.value); setSel(0); }} onKeyDown={onKey} />
-        <ul className="hk-palette__list" role="listbox" aria-label="Screens">
-          {hits.map((s, i) => (
-            <li key={s.id} role="option" aria-selected={i === sel}>
-              <button type="button" className="hk-btn hk-palette__item" data-selected={i === sel} onMouseEnter={() => setSel(i)} onClick={() => onGo(s.id)}>
-                <Icon name={s.icon} size={18} />{s.label}
-              </button>
-            </li>
-          ))}
-          {!hits.length && <li className="hk-palette__none">No screen matches.</li>}
-        </ul>
       </div>
     </>
   );

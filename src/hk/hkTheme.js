@@ -57,6 +57,58 @@ ${PINNED} {
 .hk-theme .hk-nav__badge { margin-left:auto; min-width:20px; padding:1px 7px; border-radius:var(--hk-radius-chip); background:var(--hk-orange-text); color:#FFFFFF; font:600 11px var(--hk-font-body); text-align:center; }
 .hk-theme .hk-nav__divider { height:1px; background:var(--hk-line); margin:6px 4px; }
 .hk-theme .hk-nav__foot { margin-top:auto; padding:0 6px; font-size:10px; color:var(--hk-muted); }
+/* grow-nav-filters-v1 N1/N2 - the rail: spaces, buckets with dots + counts, the Workspace group, the 56 px icon rail. */
+/* The sticky rail is its own stacking context; z-index lifts it (and the narrow rail's fixed flyout) over the list's
+   sticky header, below menus and dialogs (60+). */
+.hk-theme .hk-rail { width:248px; gap:12px; padding:16px 12px 14px; z-index:40; }
+.hk-theme .hk-rail--narrow { width:56px; padding:14px 6px; align-items:center; }
+.hk-theme .hk-rail__top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.hk-theme .hk-rail__search { display:flex; align-items:center; gap:8px; padding:7px 10px; border-radius:var(--hk-radius-control); background:var(--hk-surface); box-shadow:inset 0 0 0 1px var(--hk-line); color:var(--hk-muted); }
+.hk-theme .hk-rail__search input { all:unset; flex:1; min-width:0; font:400 13px var(--hk-font-body); color:var(--hk-cocoa); }
+.hk-theme .hk-rail__search input::placeholder { color:var(--hk-muted); }
+.hk-theme .hk-rail__foot { margin-top:auto; display:flex; flex-direction:column; gap:2px; padding-top:8px; border-top:1px solid var(--hk-line); }
+.hk-theme .hk-rail--narrow .hk-rail__foot, .hk-theme .hk-rail--narrow .hk-nav__list, .hk-theme .hk-rail__icons { align-items:center; }
+.hk-theme .hk-rail__icons { position:relative; display:flex; flex-direction:column; gap:4px; padding-top:8px; border-top:1px solid var(--hk-line); }
+.hk-theme .hk-rail--narrow .hk-nav__item { justify-content:center; width:40px; padding:9px 0; position:relative; }
+.hk-theme .hk-icon-btn { position:relative; display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; border-radius:10px; color:var(--hk-cocoa); }
+.hk-theme .hk-icon-btn:hover, .hk-theme .hk-icon-btn[aria-expanded="true"] { background:rgba(43,29,20,.08); }
+.hk-theme .hk-nav__dot { position:absolute; top:4px; right:4px; width:8px; height:8px; border-radius:50%; background:var(--hk-green-fill); }
+.hk-theme .hk-flyout { position:fixed; left:62px; z-index:60; width:240px; max-height:70vh; overflow-y:auto; padding:6px; border-radius:var(--hk-radius-block); background:var(--hk-sand); border:1px solid var(--hk-line); box-shadow:var(--hk-shadow-card); }
+.hk-theme .hk-buckets { display:flex; flex-direction:column; gap:6px; }
+.hk-theme .hk-bucket__head { display:flex; align-items:center; gap:8px; width:100%; padding:6px 8px; border-radius:10px; font:600 12px var(--hk-font-body); letter-spacing:.04em; text-transform:uppercase; color:var(--hk-muted); }
+.hk-theme .hk-bucket__head:hover { background:rgba(43,29,20,.06); }
+.hk-theme .hk-bucket__name { flex:1; text-align:left; }
+.hk-theme .hk-bucket__on { font:600 11px var(--hk-font-body); text-transform:none; letter-spacing:0; color:var(--hk-forest); }
+.hk-theme .hk-bucket__chev { display:inline-flex; transition:transform .15s; }
+.hk-theme .hk-bucket__chev--shut { transform:rotate(-90deg); }
+.hk-theme .hk-bucket__items { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:1px; }
+.hk-theme .hk-bucket__li { display:flex; align-items:center; }
+.hk-theme .hk-bucket__item { flex:1; min-width:0; display:flex; align-items:center; gap:8px; padding:6px 8px 6px 12px; border-radius:10px; font:500 13px var(--hk-font-body); color:var(--hk-cocoa); text-align:left; }
+.hk-theme .hk-bucket__item:hover { background:rgba(43,29,20,.06); }
+.hk-theme .hk-bucket__item[aria-pressed="true"] { background:var(--hk-surface); box-shadow:inset 3px 0 0 var(--hk-green-fill), 0 1px 3px rgba(43,29,20,.08); font-weight:600; }
+.hk-theme .hk-bucket__label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hk-theme .hk-bucket__n { font:500 12px var(--hk-font-body); font-variant-numeric:tabular-nums; color:var(--hk-muted); }
+.hk-theme .hk-bucket__tools { display:inline-flex; }
+.hk-theme .hk-bucket__tools .hk-icon-btn { width:26px; height:26px; color:var(--hk-muted); }
+.hk-theme .hk-dot { flex:none; width:8px; height:8px; border-radius:50%; background:var(--hk-muted); }
+.hk-theme .hk-dot--grey { background:var(--hk-muted); } .hk-theme .hk-dot--blue { background:var(--hk-tint-blue-text); }
+.hk-theme .hk-dot--lilac { background:var(--hk-tint-lilac-text); } .hk-theme .hk-dot--mustard { background:var(--hk-tint-mustard-text); }
+.hk-theme .hk-dot--green { background:var(--hk-green-fill); } .hk-theme .hk-dot--block { background:var(--hk-tint-block-text); }
+.hk-theme .hk-dot--heat-hot { background:var(--hk-heat-hot-bar); } .hk-theme .hk-dot--heat-warm { background:var(--hk-heat-warm-bar); }
+.hk-theme .hk-dot--heat-cool { background:var(--hk-heat-cool-bar); } .hk-theme .hk-dot--heat-cold { background:var(--hk-faint); }
+/* N10 / N11 - the active-filter line and the dimmed list while a new filter loads. */
+.hk-theme .hk-space__head { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; }
+.hk-theme .hk-active { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:14px 0 10px; min-height:28px; }
+.hk-theme .hk-active__count { font:600 14px var(--hk-font-body); color:var(--hk-cocoa); font-variant-numeric:tabular-nums; }
+.hk-theme .hk-active__chips { list-style:none; margin:0; padding:0; display:flex; gap:6px; flex-wrap:wrap; }
+.hk-theme .hk-active__save { display:inline-flex; align-items:center; gap:6px; }
+.hk-theme .hk-list--stale { opacity:.55; transition:opacity .12s; }
+.hk-theme.hk-shell--phone .hk-active__chips { flex-wrap:nowrap; overflow-x:auto; max-width:100%; }
+.hk-theme .hk-sheet--full { top:6vh; display:flex; flex-direction:column; }
+.hk-theme .hk-sheet__head { padding:4px 4px 10px; }
+.hk-theme .hk-sheet__body { flex:1; overflow-y:auto; padding:0 4px; }
+.hk-theme .hk-sheet__foot { display:flex; padding:10px 4px 0; }
+.hk-theme .hk-sheet__foot .ui-btn { flex:1; }
 
 .hk-theme .hk-main { flex:1; min-width:0; display:flex; flex-direction:column; }
 .hk-theme .hk-top { display:flex; align-items:center; gap:12px; padding:14px 28px; border-bottom:1px solid var(--hk-line); background:var(--hk-cream); }

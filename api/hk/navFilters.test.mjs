@@ -45,6 +45,7 @@ const fixture = (extra = {}) => fakeSupabase({
     { id: id(12), business_id: HK, brand_id: B(2), sender_user_id: JACK, channel: 'email', kind: 'cold', state: 'sent', sent_at: day(-2), created_at: day(-2) },
     { id: id(13), business_id: HK, brand_id: B(3), sender_user_id: JACK, channel: 'email', kind: 'bump', state: 'drafted', drafted_at: day(-5), created_at: day(-5), lint_passed: true },
     { id: id(14), business_id: HK, brand_id: B(5), sender_user_id: PETE, channel: 'ig_dm', kind: 'dm_text', state: 'drafted', drafted_at: day(-1), created_at: day(-1), lint_passed: false },
+    { id: id(15), business_id: HK, brand_id: B(2), sender_user_id: JACK, channel: 'email', kind: 'bump', state: 'drafted', drafted_at: day(-4), created_at: day(-4), lint_passed: true },
   ],
   hk_replies: [
     { id: id(21), business_id: HK, brand_id: B(2), received_at: day(-1), label: 'pricing', handled: false, snoozed_until: null },
@@ -220,13 +221,13 @@ test('S3 saved views + rail: validated, stored per member, GET returns them; PUT
   assert.deepEqual([out.code, out.next], [403, false], 'a viewer\'s PUT is refused at the gate');
 });
 
-test('S4 /gmail/status: owner=me counts my brands\' queued drafts and OPEN (unsnoozed) replies; no owner = workspace-wide as before', async () => {
+test('S4 /gmail/status: owner=me counts MY queued drafts (sender - ruling 1) and OPEN replies on my brands; no owner = workspace-wide', async () => {
   const sb = fixture();
   const st = query => call(gmailStatusRoute, req({ query }), deps(sb));
-  assert.deepEqual((await st({})).body.badges, { drafts: 2, replies: 2, tracked: 0 });
-  assert.deepEqual((await st({ owner: 'me' })).body.badges, { drafts: 1, replies: 0, tracked: 0, owner: 'me' }, 'Cedar\'s draft; its reply is snoozed');
+  assert.deepEqual((await st({})).body.badges, { drafts: 3, replies: 2, tracked: 0 });
+  assert.deepEqual((await st({ owner: 'me' })).body.badges, { drafts: 2, replies: 0, tracked: 0, owner: 'me' }, 'Cedar\'s draft + my draft on unclaimed Birch; Cedar\'s reply is snoozed');
   assert.deepEqual((await st({ owner: PETE })).body.badges, { drafts: 1, replies: 0, tracked: 0, owner: PETE });
-  assert.deepEqual((await st({ owner: 'all' })).body.badges, { drafts: 2, replies: 1, tracked: 0, owner: 'all' });
+  assert.deepEqual((await st({ owner: 'all' })).body.badges, { drafts: 3, replies: 1, tracked: 0, owner: 'all' });
   assert.equal((await st({ owner: 'pete' })).code, 400);
 });
 
@@ -238,11 +239,12 @@ test('S5 /replies snoozed=hide|only; /drafts owner + kind + lint + older_than; n
   assert.deepEqual((await rep({ snoozed: 'only' })).body.replies.map(r => r.brand_name), ['Cedar Cola']);
   assert.equal((await rep({ snoozed: 'later' })).code, 400);
   const dr = query => call(listDraftsRoute, req({ query }), deps(sb));
-  assert.deepEqual((await dr({})).body.drafts.map(d => d.brand_name), ['Elm Press', 'Cedar Cola']);
-  assert.deepEqual((await dr({ owner: 'me' })).body.drafts.map(d => d.brand_name), ['Cedar Cola']);
+  assert.deepEqual((await dr({})).body.drafts.map(d => d.brand_name), ['Elm Press', 'Birch Bars', 'Cedar Cola']);
+  assert.deepEqual((await dr({ owner: 'me' })).body.drafts.map(d => d.brand_name), ['Birch Bars', 'Cedar Cola'], 'a draft by Jack on an UNCLAIMED brand is Jack\'s (ruling 1), not All-only');
+  assert.deepEqual((await dr({ owner: PETE })).body.drafts.map(d => d.brand_name), ['Elm Press']);
   assert.deepEqual((await dr({ kind: 'ig_dm' })).body.drafts.map(d => d.brand_name), ['Elm Press']);
   assert.deepEqual((await dr({ lint: 'failed' })).body.drafts.map(d => d.brand_name), ['Elm Press']);
-  assert.deepEqual((await dr({ older_than: '3' })).body.drafts.map(d => d.brand_name), ['Cedar Cola']);
+  assert.deepEqual((await dr({ older_than: '3' })).body.drafts.map(d => d.brand_name), ['Birch Bars', 'Cedar Cola']);
   assert.equal((await dr({ older_than: 'x' })).code, 400);
   assert.equal((await dr({ kind: 'sms' })).code, 400);
 });

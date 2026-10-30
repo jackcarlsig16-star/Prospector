@@ -32,8 +32,12 @@ const LIST_W_KEY = 'prospector_hk_inbox_list_w';
 const readListW = () => { try { const v = Number(localStorage.getItem(LIST_W_KEY)); return Number.isFinite(v) && v > 0 ? v : null; } catch { return null; } };
 const writeListW = v => { try { localStorage.setItem(LIST_W_KEY, String(v)); } catch { /* private mode */ } };
 
-export default function InboxScreen({ businessId, shell, gmail, compact, canEdit, owner, onOpenBrand, onOpenConnections, onUnread, onGo, onSignalsSeen, initialLane = 'briefing' }) {
-  const [lane, setLane] = useState(initialLane);
+// grow-nav-filters-v1 N4: with `lane` + `onLane` the rail picks the lane (the lane tabs go); onLaneCounts reports the
+// counts the loaded list already knows (0 Gmail calls of its own).
+export default function InboxScreen({ businessId, shell, gmail, compact, canEdit, owner, onOpenBrand, onOpenConnections, onUnread, onGo, onSignalsSeen, initialLane = 'briefing', lane: laneProp = null, onLane = null, onLaneCounts }) {
+  const [ownLane, setOwnLane] = useState(initialLane);
+  const lane = laneProp || ownLane;
+  const setLane = id => (onLane ? onLane(id) : setOwnLane(id));
   const [sortBy, setSortBy] = useState('importance');
   const [input, setInput] = useState('');
   const [q, setQ] = useState('');
@@ -146,6 +150,8 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
     other: lists.inbox ? inboxRows.filter(t => t.lane === 'other').length : null,
     brands: lists.brands ? `${lists.brands.threads.length}${lists.brands.more ? '+' : ''}` : lists.inbox ? inboxRows.filter(t => t.chip.kind === 'tracked' || t.chip.kind === 'matches').length : null,
   };
+  const countsKey = JSON.stringify(counts);
+  useEffect(() => { onLaneCounts?.(JSON.parse(countsKey)); }, [countsKey, onLaneCounts]);
 
   // The panes fill the window under the page header so each scrolls on its own and the page itself does not.
   useLayoutEffect(() => {
@@ -233,7 +239,7 @@ export default function InboxScreen({ businessId, shell, gmail, compact, canEdit
 
   const tools = (
     <div className="hk-inbox__tools" data-hk-inbox-tools>
-      <Tabs label="Inbox lanes" items={LANES.map(([id, label]) => ({ id, label: counts[id] != null ? `${label} ${counts[id]}` : label }))} value={lane} onChange={pickLane} />
+      {!laneProp && <Tabs label="Inbox lanes" items={LANES.map(([id, label]) => ({ id, label: counts[id] != null ? `${label} ${counts[id]}` : label }))} value={lane} onChange={pickLane} />}
       {lane === 'needs_you' && (
         <div className="ui-seg" role="group" aria-label="Sort Needs you" data-hk-sort>
           {[['importance', 'Importance'], ['newest', 'Newest']].map(([id, label]) => <button key={id} type="button" className="ui-seg__btn" aria-pressed={sortBy === id} onClick={() => setSortBy(id)} data-hk-sort-by={id}>{label}</button>)}

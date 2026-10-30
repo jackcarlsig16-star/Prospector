@@ -194,9 +194,12 @@ export async function todayPayload({ businessId, owner = null, meId = null, d = 
   const today = dayIn(now, settings.timezone);
   const noDraft = last && last.chicago_day === today && last.status !== 'error' ? (last.digest?.sections?.no_draft || []).map(x => ({ brand_id: x.brand_id, kind: x.kind, reason: x.reason, detail: x.detail })) : [];
   const digest = buildDigest({ replies, touches, brands, members: members(fs), noDraft, dmReady: touches.filter(t => t.channel === 'ig_dm' && t.state === 'drafted').map(t => ({ brand_id: t.brand_id, touch_id: t.id })), warningsCount: dataWarnings(brands, now).length, settings, events: await recentEvents(D, businessId, now), now });
-  // grow-nav-filters N8: with an owner (me | <id> | all) the same sections counted on that owner's brands, for the badge.
+  // grow-nav-filters N8: with an owner (me | <id> | all) the same sections counted for that person, for the badge -
+  // replies and follow-ups by the brand's owner, drafts and DM text by the sender (whose Gmail / account holds them).
   const ownerOf = Object.fromEntries(brands.map(b => [b.id, b.owner_user_id]));
-  const ownerCounts = owner ? Object.fromEntries(['urgent', 'replies', 'drafts', 'no_draft', 'dm_ready'].map(k => [k, digest.sections[k].filter(x => ownedBy(owner, ownerOf[x.brand_id], meId)).length])) : null;
+  const senderOf = Object.fromEntries(touches.map(t => [t.id, t.sender_user_id]));
+  const whose = (k, x) => (k === 'drafts' || k === 'dm_ready' ? senderOf[x.touch_id] : ownerOf[x.brand_id]);
+  const ownerCounts = owner ? Object.fromEntries(['urgent', 'replies', 'drafts', 'no_draft', 'dm_ready'].map(k => [k, digest.sections[k].filter(x => ownedBy(owner, whose(k, x), meId)).length])) : null;
   return { ...(ownerCounts ? { owner, owner_counts: ownerCounts } : {}), run: runRow(last), ran_today: !!last && last.chicago_day === today && last.status !== 'error', digest, stats_stale: statsStale(settings, now), slack: { configured: !!D.slackUrl, env: SLACK_ENV }, mailboxes: fs.map(f => ({ user_id: f.user_id, first_name: f.first_name, state: f.m ? f.m.state : 'none' })), settings: { digest_time: settings.digest_time, digest_days: settings.digest_days, timezone: settings.timezone, quiet_weekends: settings.quiet_weekends } };
 }
 

@@ -106,7 +106,8 @@ export async function listDraftsRoute(req, res, d = {}) {
   const { supabase, mailbox, now } = deps0(d);
   const businessId = req.params.businessId, uid = me(req), q = req.query || {};
   try {
-    // grow-nav-filters S5: owner (the brand's owner) · kind (channel) · lint · older_than days - all optional.
+    // grow-nav-filters S5: owner = whose Gmail the draft sits in (sender_user_id, the discard rule above) · kind (channel) ·
+    // lint · older_than days - all optional.
     const owner = ownerParam(q.owner), kind = oneOf(q.kind || null, new Set(['email', 'ig_dm']), 'kind'), lint = oneOf(q.lint || null, new Set(['failed', 'passed']), 'lint');
     const older = q.older_than == null || q.older_than === '' ? null : Number(q.older_than);
     if (older != null && (!Number.isInteger(older) || older < 0 || older > 365)) throw new HkError(400, 'older_than must be 0 to 365 days');
@@ -114,7 +115,7 @@ export async function listDraftsRoute(req, res, d = {}) {
     if (error) throw new Error(error.message);
     const brands = Object.fromEntries((await liveBrands(supabase, businessId)).map(b => [b.id, b]));
     const nowMs = now().getTime();
-    const touches = (all || []).filter(t => ownedBy(owner, brands[t.brand_id]?.owner_user_id, uid) && (!kind || t.channel === kind) && (!lint || (lint === 'failed' ? t.lint_passed === false : t.lint_passed !== false))
+    const touches = (all || []).filter(t => ownedBy(owner, t.sender_user_id, uid) && (!kind || t.channel === kind) && (!lint || (lint === 'failed' ? t.lint_passed === false : t.lint_passed !== false))
       && (older == null || nowMs - Date.parse(t.drafted_at || t.created_at) > older * 86400e3));
     const cids = [...new Set((touches || []).map(t => t.contact_id).filter(Boolean))];
     const contacts = Object.fromEntries((await selectIn(() => supabase.from('hk_contacts').select('id, name').order('id'), 'id', cids)).map(c => [c.id, c.name]));
@@ -335,15 +336,15 @@ export async function gmailStatusRoute(req, res, d = {}) {
     const m = await mailbox(businessId, uid, 'drafts').catch(() => null);
     const { data: runs } = await supabase.from('hk_sync_runs').select('id, trigger, status, started_at, finished_at, counts, error').eq('business_id', businessId).eq('user_id', uid).order('started_at', { ascending: false }).limit(1);
     const { data: state } = await supabase.from('hk_gmail_sync_state').select('status, last_synced_at, history_id').eq('business_id', businessId).eq('user_id', uid).maybeSingle();
-    // grow-nav-filters S4: ?owner=me|all|<id> counts queued drafts and OPEN (unsnoozed) replies on that owner's brands;
-    // without it the badges are workspace-wide, as before.
+    // grow-nav-filters S4: ?owner=me|all|<id> counts that person's queued drafts (sender_user_id - whose Gmail holds them)
+    // and OPEN (unsnoozed) replies on their brands; without it the badges are workspace-wide, as before.
     const owner = ownerParam(req.query?.owner);
-    let { data: drafts } = await supabase.from('hk_touches').select(owner ? 'id, brand_id' : 'id').eq('business_id', businessId).eq('state', 'drafted');
+    let { data: drafts } = await supabase.from('hk_touches').select(owner ? 'id, sender_user_id' : 'id').eq('business_id', businessId).eq('state', 'drafted');
     let { data: unhandled } = await supabase.from('hk_replies').select(owner ? 'id, brand_id, snoozed_until' : 'id').eq('business_id', businessId).eq('handled', false);
     if (owner) {
       const ownerOf = Object.fromEntries((await liveBrands(supabase, businessId)).map(b => [b.id, b.owner_user_id]));
       const nowIso = now().toISOString();
-      drafts = (drafts || []).filter(t => ownedBy(owner, ownerOf[t.brand_id], uid));
+      drafts = (drafts || []).filter(t => ownedBy(owner, t.sender_user_id, uid));
       unhandled = (unhandled || []).filter(r => ownedBy(owner, ownerOf[r.brand_id], uid) && !(r.snoozed_until && String(r.snoozed_until) > nowIso));
     }
     const { data: trackedTouches } = await supabase.from('hk_touches').select('gmail_thread_id').eq('business_id', businessId).neq('state', 'discarded').not('gmail_thread_id', 'is', null);

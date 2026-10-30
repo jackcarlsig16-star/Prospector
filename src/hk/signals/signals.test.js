@@ -112,22 +112,17 @@ test('Viewer: the panel reads, marks nothing seen, has no Dismiss and no list bu
   expect(calls.filter(c => c.startsWith('POST'))).toEqual([]);
 });
 
-test('Brands: Hot leads and Targets views, a Heat column with the word, + Target on the row; Viewer sees chips only', async () => {
+test('Brands: a Heat column with the word, + Target on the row; Hot leads + Targets are rail views (nav tests); Viewer sees chips only', async () => {
   const BrandsScreen = require('../brands/BrandsScreen').default;
-  routes[`GET /api/hk/${HK}/brands`] = { view: 'all', brands: [brand(), brand({ id: 'b3', name: 'Zz Cedar Coffee', heat: 0, heat_band: 'cold' })] };
-  const { unmount } = render(<BrandsScreen businessId={HK} shell={shell('owner')} owner="all" compact={false} canEdit onOpenBrand={() => {}} />);
+  const rows = [brand(), brand({ id: 'b3', name: 'Zz Cedar Coffee', heat: 0, heat_band: 'cold' })];
+  const list = { rows, total: 2, facets: null, next: null, loading: false, error: '', loadMore: () => {}, reload: async () => {} };
+  const { unmount } = render(<BrandsScreen businessId={HK} shell={shell('owner')} compact={false} canEdit onOpenBrand={() => {}} list={list} />);
   expect(await screen.findByText('Zz Cedar Coffee')).toBeInTheDocument();
   expect(screen.getByText('Hot')).toHaveClass('hk-heat--hot');
   expect(screen.getByRole('columnheader', { name: /Heat/ })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Add Zz Bluefin Run to Targets' })).toBeInTheDocument();
-  const before = calls.length;
-  fireEvent.click(screen.getByRole('tab', { name: 'Hot leads' }));
-  await waitFor(() => expect(calls.length).toBeGreaterThan(before));
-  expect(fetch.mock.calls.at(-1)[0]).toMatch(/view=hot/);
-  fireEvent.click(screen.getByRole('tab', { name: 'Targets' }));
-  await waitFor(() => expect(fetch.mock.calls.at(-1)[0]).toMatch(/view=targets/));
   unmount();
-  render(<BrandsScreen businessId={HK} shell={shell('viewer')} owner="all" compact={false} canEdit={false} onOpenBrand={() => {}} />);
+  render(<BrandsScreen businessId={HK} shell={shell('viewer')} compact={false} canEdit={false} onOpenBrand={() => {}} list={list} />);
   expect(await screen.findByText('Zz Cedar Coffee')).toBeInTheDocument();
   expect(screen.getByText('Hot')).toBeInTheDocument();
   expect(screen.queryByText('+ Target')).toBeNull(); expect(screen.queryByText('+ Pipeline')).toBeNull();

@@ -2,16 +2,13 @@ import React from 'react';
 import { Icon, Sprout, Avatar } from './HkMarks';
 import { SETTINGS_SECTIONS, chicagoGreeting } from './hkScreens';
 import { ROLE_LABELS, roleAtLeast } from '../constants/roles';
-import BrandsScreen from './brands/BrandsScreen';
+import BrandsSpace from './brands/BrandsSpace';
 import BrandPage from './brands/BrandPage';
-import SponsorsScreen from './screens/SponsorsScreen';
 import ReviewScreen from './screens/ReviewScreen';
 import ActivityScreen from './screens/ActivityScreen';
 import PitchSettings from './screens/PitchSettings';
-import DraftsScreen from './screens/DraftsScreen';
-import RepliesScreen from './screens/RepliesScreen';
 import ConnectionsSettings from './screens/ConnectionsSettings';
-import InboxScreen from './screens/InboxScreen';
+import InboxSpace from './inbox/InboxSpace';
 import TodayScreen from './screens/TodayScreen';
 import FollowupSettings from './screens/FollowupSettings';
 import DigestSettings from './screens/DigestSettings';
@@ -76,23 +73,14 @@ function Modules({ shell }) {
   );
 }
 
-export default function HkScreen({ screen, section, brandId, businessId, owner, compact, shell, gmail, syncing, onSync, onGmailChanged, onOpenConnections, onInboxUnread, onSection, onOpenAdmin, onOpenBrand, onGo, onTodayCounts, onSignalsSeen, intent, onIntentDone, now }) {
+// grow-nav-filters-v1: Brands and Inbox are spaces whose state (view, filters, selection) the shell owns - `brands` and
+// `inboxSpace` carry it in. Replies, Drafts, Pipeline and Sponsors live inside them.
+export default function HkScreen({ screen, section, brandId, businessId, owner, compact, shell, gmail, syncing, onSync, onGmailChanged, onOpenConnections, onInboxUnread, onSection, onOpenAdmin, onOpenBrand, onGo, onTodayCounts, onSignalsSeen, intent, onIntentDone, now, brands, inboxSpace }) {
   const canEdit = roleAtLeast(shell.me.role, 'member');
-  if (screen.id === 'today') { const g = chicagoGreeting(now, shell.me.first_name); return <><Header title={g.title} line={g.date} /><TodayScreen businessId={businessId} shell={shell} owner={owner} compact={compact} gmail={gmail} onOpenBrand={onOpenBrand} onGo={onGo} onOpenConnections={onOpenConnections} onCounts={onTodayCounts} /></>; }
-  if (screen.id === 'inbox') return <><Header title="Inbox" line={SCREEN_LINES.inbox} /><InboxScreen businessId={businessId} shell={shell} gmail={gmail} compact={compact} canEdit={canEdit} owner={owner} onGo={onGo} onSignalsSeen={onSignalsSeen} onOpenBrand={onOpenBrand} onOpenConnections={onOpenConnections} onUnread={onInboxUnread} /></>;
+  if (screen.id === 'today') { const g = chicagoGreeting(now, shell.me.first_name); return <><Header title={g.title} line={g.date} /><TodayScreen businessId={businessId} shell={shell} owner={owner} compact={compact} gmail={gmail} canEdit={canEdit} onOpenBrand={onOpenBrand} onGo={onGo} onOpenConnections={onOpenConnections} onCounts={onTodayCounts} /></>; }
+  if (screen.id === 'inbox') return <InboxSpace {...inboxSpace} businessId={businessId} shell={shell} gmail={gmail} compact={compact} canEdit={canEdit} owner={owner} onGo={onGo} onSignalsSeen={onSignalsSeen} onOpenBrand={onOpenBrand} onOpenConnections={onOpenConnections} onUnread={onInboxUnread} />;
   if (screen.id === 'brands' && brandId) return <BrandPage businessId={businessId} brandId={brandId} shell={shell} gmail={gmail} canEdit={canEdit} onSignalsChanged={onSignalsSeen} onBack={() => onOpenBrand(null)} onGmailChanged={onGmailChanged} />;
-  if (screen.id === 'drafts') return <><Header title="Drafts" line={SCREEN_LINES.drafts} /><DraftsScreen businessId={businessId} shell={shell} compact={compact} onOpenBrand={onOpenBrand} /></>;
-  if (screen.id === 'replies') return <><Header title="Replies" line={SCREEN_LINES.replies} /><RepliesScreen businessId={businessId} shell={shell} owner={owner} compact={compact} onOpenBrand={onOpenBrand} /></>;
-  if (screen.id === 'brands') {
-    return (
-      <>
-        <Header title="Brands" line={SCREEN_LINES.brands} />
-        <BrandsScreen businessId={businessId} shell={shell} owner={owner} compact={compact} canEdit={canEdit} onOpenBrand={onOpenBrand} intent={intent} onIntentDone={onIntentDone} />
-      </>
-    );
-  }
-  if (screen.id === 'pipeline') return <><Header title="Pipeline" line={SCREEN_LINES.pipeline} /><BrandsScreen pipeline businessId={businessId} shell={shell} owner={owner} compact={compact} canEdit={canEdit} onOpenBrand={onOpenBrand} /></>;
-  if (screen.id === 'sponsors') return <><Header title="Sponsors" line={SCREEN_LINES.sponsors} /><SponsorsScreen businessId={businessId} shell={shell} canEdit={canEdit} onOpenBrand={onOpenBrand} /></>;
+  if (screen.id === 'brands') return <BrandsSpace {...brands} businessId={businessId} shell={shell} compact={compact} canEdit={canEdit} onOpenBrand={onOpenBrand} intent={intent} onIntentDone={onIntentDone} />;
   if (screen.id === 'review') return <><Header title="Review" line={SCREEN_LINES.review} /><ReviewScreen businessId={businessId} shell={shell} canEdit={canEdit} compact={compact} onOpenBrand={onOpenBrand} onGo={onGo} intent={intent} onIntentDone={onIntentDone} /></>;
   if (screen.id === 'activity') return <><Header title="Activity" line={SCREEN_LINES.activity} /><ActivityScreen businessId={businessId} shell={shell} owner={owner} compact={compact} onOpenBrand={onOpenBrand} /></>;
   if (screen.id === 'settings') {
@@ -120,12 +108,6 @@ export default function HkScreen({ screen, section, brandId, businessId, owner, 
 }
 
 const SCREEN_LINES = {
-  inbox: 'Your own HumanKind Gmail, read live. Only you see it.',
-  replies: 'Brands that wrote back.',
-  drafts: 'Drafts waiting in Gmail for you to send.',
-  pipeline: 'Every brand by stage.',
-  brands: 'Every brand and who owns it.',
-  sponsors: 'Current sponsors, founding partners and do-not-contact.',
   review: 'Things to check before they go anywhere.',
   activity: 'Everything that changed, and who changed it.',
 };
