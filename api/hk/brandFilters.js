@@ -51,8 +51,8 @@ export async function loadFilterData(supabase, businessId, brands) {
   const all = (table, cols, extra = q => q) => selectAllPages(() => extra(supabase.from(table).select(cols).eq('business_id', businessId)).order('id'));
   const [withEmail, touches, replies, intel, periods] = await Promise.all([
     all('hk_contacts', 'id, brand_id', q => q.not('email', 'is', null)),
-    all('hk_touches', 'id, brand_id, channel, kind, state, sent_at, gmail_thread_id'),
-    all('hk_replies', 'id, brand_id, received_at, label, handled, gmail_thread_id'),
+    all('hk_touches', 'id, brand_id, sender_user_id, channel, kind, state, sent_at, drafted_at, gmail_thread_id'),
+    all('hk_replies', 'id, brand_id, touch_id, received_at, label, handled, gmail_thread_id'),
     all('hk_domain_intel', 'id, domain'),
     all('hk_sponsor_periods', 'id, brand_id'),
   ]);

@@ -50,7 +50,7 @@ export function parseIntel(text) {
   let j; try { j = JSON.parse(raw.slice(a, b + 1)); } catch { throw new HkError(502, 'Analyze came back without a result. Try again.'); }
   const c = j.company || {}, e = j.email || {}, f = j.fit || {};
   return {
-    company: { name: str(c.name, 160), website: str(c.website, 200), what_they_do: str(c.what_they_do, 200), hq_city: str(c.hq_city, 80),
+    company: { name: str(c.name, 160), website: str(c.website, 200), what_they_do: str(c.what_they_do, 200), industry: str(c.industry, 40), hq_city: str(c.hq_city, 80),
       chicago_presence: pick(c.chicago_presence, ['yes', 'no', 'unknown'], 'unknown'), size_hint: str(c.size_hint, 40), category: pick(c.category, CATEGORIES, 'other') },
     email: { kind: pick(e.kind, KINDS, 'other'), summary: str(e.summary, 160), urgency: pick(e.urgency, ['high', 'normal', 'low'], 'normal') },
     fit: { sponsor_fit: pick(f.sponsor_fit, FITS, 'weak'), why: str(f.why, 240), challenge_idea: str(f.challenge_idea, 160) },

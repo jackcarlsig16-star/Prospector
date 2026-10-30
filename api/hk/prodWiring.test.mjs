@@ -13,7 +13,7 @@ delete process.env.HK_SLACK_WEBHOOK_URL;
 const { seed, reqOf, resOf, HK, JACK, ID } = await import('./testing.mjs');
 const shared = await import('./hkShared.js');
 const grants = await import('../lib/googleGrants.js');
-const MODULES = { brandsRoutes: await import('./brandsRoutes.js'), opsRoutes: await import('./opsRoutes.js'), gmailRoutes: await import('./gmailRoutes.js'), inboxRoutes: await import('./inboxRoutes.js'), importRoutes: await import('./importRoutes.js'), jobsRoutes: await import('./jobsRoutes.js'), signalsRoutes: await import('./signalsRoutes.js'), briefingRoutes: await import('./briefingRoutes.js'), brandResearch: await import('./brandResearch.js'), researchSweep: await import('./researchSweep.js'), searchRoutes: await import('./searchRoutes.js') };
+const MODULES = { brandsRoutes: await import('./brandsRoutes.js'), opsRoutes: await import('./opsRoutes.js'), gmailRoutes: await import('./gmailRoutes.js'), inboxRoutes: await import('./inboxRoutes.js'), importRoutes: await import('./importRoutes.js'), jobsRoutes: await import('./jobsRoutes.js'), signalsRoutes: await import('./signalsRoutes.js'), briefingRoutes: await import('./briefingRoutes.js'), brandResearch: await import('./brandResearch.js'), researchSweep: await import('./researchSweep.js'), searchRoutes: await import('./searchRoutes.js'), brandActions: await import('./brandActions.js') };
 
 const OWNER = 'jack.work@humankind.invalid', TOKEN = 'tok-jack-wiring';
 const b64 = s => Buffer.from(s, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -140,6 +140,12 @@ const TABLE = [
   ['brandResearch', 'wrongSiteRoute', member({ method: 'POST', params: { id: ID.run } }), [409]],
   ['researchSweep', 'runSweepRoute', member({ method: 'POST', body: {} }), [200]],
   ['searchRoutes', 'searchRoute', member({ query: { q: 'juice' } }), [200]],
+  ['brandResearch', 'researchInputRoute', member({ params: { id: ID.run } }), [200]],
+  ['brandActions', 'pitchRoute', member({ method: 'POST', params: { id: ID.juice } }), [409]],
+  ['brandActions', 'snoozeRoute', member({ method: 'POST', params: { id: ID.run }, body: { on: true } }), [200]],
+  ['brandActions', 'notAFitRoute', member({ method: 'POST', params: { id: ID.juice } }), [409]],
+  ['brandActions', 'logActivityRoute', member({ method: 'POST', params: { id: ID.run }, body: { what: 'called', date: '2026-10-20' } }), [201]],
+  ['brandActions', 'researchBatchRoute', member({ method: 'POST', body: { brand_ids: [ID.run] } }), [200]],
 ];
 const TYPE_ERROR = /is not a function|Cannot read propert|is not defined|is not iterable|Cannot destructure/;
 

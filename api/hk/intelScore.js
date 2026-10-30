@@ -59,6 +59,7 @@ export function reachOf(brand, ctx) {
   if (brand.archived_at || brand.relationship !== 'prospect' || !['candidate', 'claimed'].includes(brand.status)) return null;
   if (brand.owner_user_id && brand.owner_user_id !== meId) return null;
   if (sheetOwnerOf(brand, myFirstName(ctx))) return null;
+  if (brand.snoozed_until && Date.parse(brand.snoozed_until) > ctx.now.getTime()) return null;
   const touches = ctx.touchesBy[brand.id] || [], replies = ctx.repliesBy[brand.id] || [];
   if (sentEmails(touches).length >= 3) return null;
   const verdict = canContact({ brand, touches, threadsByFounder: threadsOf(touches, replies), senderUserId: meId, kind: 'cold', sponsorsNiches: ctx.sponsorsNiches });

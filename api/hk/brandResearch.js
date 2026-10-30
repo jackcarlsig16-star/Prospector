@@ -34,12 +34,13 @@ export function researchPrompt({ brand, pitch = {} }) {
     `Use web_search at most ${ANALYZE_MAX_SEARCHES} times. ${find} Do not guess; use null or "unknown" when you cannot tell.`,
     facts.length ? `HumanKind facts: ${facts.join(' · ')}` : '',
     'Answer with ONE JSON object and nothing else, exactly this shape:',
-    '{"website_domain":"brand.com or null","website_confidence":"high|low","company":{"name":"","website":"","what_they_do":"(<=200 chars)","hq_city":null,"chicago_presence":"yes|no|unknown","size_hint":null,',
+    '{"website_domain":"brand.com or null","website_confidence":"high|low","company":{"name":"","website":"","what_they_do":"(<=200 chars)","industry":"(<=40 chars, e.g. Outdoor apparel)","hq_city":null,"chicago_presence":"yes|no|unknown","size_hint":null,',
     '"category":"gym/studio|cafe/restaurant|consumer brand|agency/vendor|media/press|nonprofit|university|other"},',
     '"fit":{"sponsor_fit":"strong|possible|weak|not_a_fit","why":"(<=240 chars)","challenge_idea":null},"next_step":"track_as_brand|no_action","reason":"(<=160 chars)"}',
     'Never include an email address or a phone number in the answer.',
   ].filter(Boolean).join('\n');
-  const user = [`Brand name: ${scrubAddresses(brand.name || '')}`, brand.category ? `Category: ${scrubAddresses(brand.category)}` : '', brand.city ? `City: ${scrubAddresses(brand.city)}` : '', brand.segment ? `Segment: ${brand.segment}` : '', brand.domain ? `Website: ${brand.domain}` : ''].filter(Boolean).join('\n');
+  const user = [`Brand name: ${scrubAddresses(brand.name || '')}`, brand.category ? `Category: ${scrubAddresses(brand.category)}` : '', brand.city ? `City: ${scrubAddresses(brand.city)}` : '', brand.segment ? `Segment: ${brand.segment}` : '', brand.domain ? `Website: ${brand.domain}` : '',
+    brand.research_context ? `Context from the team: ${scrubAddresses(brand.research_context)}` : ''].filter(Boolean).join('\n');
   return { system, user };
 }
 
@@ -56,8 +57,11 @@ export const attemptedRecently = (brand, now, retryDays = 30) => !!brand.researc
 
 // -> { status: 'cached' | 'researched' | 'not_found', domain, intel?, confidence?, cost_usd, web_searches }
 // callType ANALYZE_CALL_TYPE (a click, under the shared 25/day per-user cap) or SWEEP_CALL_TYPE (M2, capped by the sweep).
-export async function researchBrand({ D, businessId, uid = null, brand, callType = ANALYZE_CALL_TYPE, confirm = false }) {
+// website (U8 "Use a different website"): research that site instead; the result becomes the brand's SUGGESTION, never
+// hk_brands.domain.
+export async function researchBrand({ D, businessId, uid = null, brand: saved0, callType = ANALYZE_CALL_TYPE, confirm = false, website = null }) {
   const now = D.now();
+  const brand = website ? { ...saved0, domain: website } : saved0;
   const known = brand.domain || brand.domain_suggested || null;
   const saved = await cachedIntel(D.supabase, businessId, known);
   if (freshIntel(saved, now) && !confirm) return { status: 'cached', domain: known, intel: saved.intel, cost_usd: 0, web_searches: 0, researched_at: saved.researched_at, needs_confirm: true };
@@ -86,26 +90,40 @@ export async function researchBrand({ D, businessId, uid = null, brand, callType
   const at = now.toISOString();
   const { error } = await D.supabase.from('hk_domain_intel').upsert({ business_id: businessId, domain: site.domain, intel, model, cost_usd: cost, researched_by: uid, researched_at: at }, { onConflict: 'business_id,domain' });
   if (error) throw new Error(error.message);
-  if (brand.id && !brand.domain) {
+  const suggest = brand.id && (website ? website !== saved0.domain : !brand.domain);
+  if (suggest) {
     const { error: e2 } = await D.supabase.from('hk_brands').update({ domain_suggested: site.domain, domain_suggested_at: at, domain_confidence: site.confidence }).eq('id', brand.id).eq('business_id', businessId);
     if (e2) throw new Error(e2.message);
   }
   const kind = intel.fit?.sponsor_fit === 'strong' ? 'research_strong_fit' : intel.fit?.sponsor_fit === 'possible' ? 'research_possible' : null;
   if (kind) await signalNow(D.supabase, { businessId, kind, brandId: brand.id || null, domain: brand.id ? null : site.domain, ownerUserId: brand.owner_user_id, occurredAt: at, source: 'research', refType: 'domain_intel', refId: `${site.domain}:${at}`, detail: `${brand.name} ${signalWords(kind)}` }, now);
-  return { status: 'researched', domain: site.domain, confidence: site.confidence, suggested: !!brand.id && !brand.domain, intel, cost_usd: cost, web_searches: searches, researched_at: at };
+  return { status: 'researched', domain: site.domain, confidence: site.confidence, suggested: !!suggest, intel, cost_usd: cost, web_searches: searches, researched_at: at };
 }
 
 const deps = d => ({ supabase: d.supabase || getSupabase(), call: d.call || callAnthropic, now: d.now || (() => new Date()) });
 
-// POST /brands/:id/research { click: true, confirm? } - Research on a card or the brand page (member; hkGate).
+// POST /brands/:id/research { click: true, confirm?, website? } - Research on a card or the brand page (member; hkGate).
+// website = "Use a different website": that site is researched and offered as a suggestion.
 export async function researchBrandRoute(req, res, d = {}) {
   const D = deps(d), businessId = req.params.businessId;
   try {
     if (req.body?.click !== true) throw new HkError(400, 'Research runs only from a click');
     const brand = await brandById(D.supabase, businessId, req.params.id);
     if (brand.archived_at) throw new HkError(409, 'that brand is archived');
-    res.json(await researchBrand({ D, businessId, uid: me(req), brand, confirm: req.body.confirm === true }));
+    let website = null;
+    if (req.body.website != null) { website = websiteOf(String(req.body.website)); if (!website) throw new HkError(400, "That isn't a brand's own website"); }
+    res.json(await researchBrand({ D, businessId, uid: me(req), brand, confirm: req.body.confirm === true, website }));
   } catch (e) { fail(res, e, 'brands/research'); }
+}
+
+// GET /brands/:id/research-input - "View last research input": what the next research sends about this brand (the
+// user part of the prompt: name, category, city, website, the team's context). No address, no call.
+export async function researchInputRoute(req, res, d = {}) {
+  const D = deps(d);
+  try {
+    const brand = await brandById(D.supabase, req.params.businessId, req.params.id);
+    res.json({ input: researchPrompt({ brand }).user, context: brand.research_context || null });
+  } catch (e) { fail(res, e, 'brands/research-input'); }
 }
 
 // POST /brands/:id/use-domain - copy the suggested website to hk_brands.domain (member click, Activity row). Refused when

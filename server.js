@@ -452,6 +452,14 @@ app.post('/api/hk/:businessId/brands/:id/use-domain',         hkRoute(HK_RESEARC
 app.post('/api/hk/:businessId/brands/:id/wrong-site',         hkRoute(HK_RESEARCH, 'wrongSiteRoute'));
 app.post('/api/hk/:businessId/jobs/research-sweep',           hkRoute(HK_SWEEP, 'runSweepRoute'));
 app.get('/api/hk/:businessId/search',                         hkRoute(HK_SEARCH, 'searchRoute'));
+app.get('/api/hk/:businessId/brands/:id/research-input',     hkRoute(HK_RESEARCH, 'researchInputRoute'));
+// grow-ui-refresh-v1 REV2 - Pitch (claim + command), Snooze, Not a fit, Log activity, the research batch. All with Undo; none sends.
+const HK_ACTIONS = './api/hk/brandActions.js';
+app.post('/api/hk/:businessId/brands/:id/pitch',              hkRoute(HK_ACTIONS, 'pitchRoute'));
+app.post('/api/hk/:businessId/brands/:id/snooze',             hkRoute(HK_ACTIONS, 'snoozeRoute'));
+app.post('/api/hk/:businessId/brands/:id/not-a-fit',          hkRoute(HK_ACTIONS, 'notAFitRoute'));
+app.post('/api/hk/:businessId/brands/:id/activity',           hkRoute(HK_ACTIONS, 'logActivityRoute'));
+app.post('/api/hk/:businessId/research/batch',                hkRoute(HK_ACTIONS, 'researchBatchRoute'));
 // hkos-gmail-connect-v1 (G3-G7) - drafts into the tethered mailbox, sync, replies, status. No send path anywhere.
 const HK_GMAIL = './api/hk/gmailRoutes.js';
 app.get('/api/hk/:businessId/drafts',                         hkRoute(HK_GMAIL, 'listDraftsRoute'));

@@ -3,7 +3,9 @@
 // Signals panel (moved here from Today), and the research sweep's day. "Important now" (B2) is scored on the Needs-you
 // rows the Inbox list already loads (inboxRoutes importance), never a second list call.
 import { getSupabase, HkError, fail, me, brandById } from './hkShared.js';
-import { rankReach, reachOf, activityOf, intelFor, sheetSkipped } from './intelScore.js';
+import { primaryOf } from './rules.js';
+import { researchEstimate } from './brandActions.js';
+import { rankReach, reachOf, activityOf, intelFor, sheetSkipped, REACH_WORDS } from './intelScore.js';
 import { loadIntel, firstNameOf } from './intelData.js';
 import { sweepToday } from './researchSweep.js';
 import { listSignalsRoute } from './signalsRoutes.js';
@@ -21,11 +23,15 @@ export function researchLine(intel) {
   const i = intel.intel, fit = i.fit?.sponsor_fit;
   return [i.company?.what_they_do || i.company?.category || null, fit ? `${fit.replace(/_/g, ' ')} fit` : null, i.fit?.challenge_idea ? `idea: ${i.fit.challenge_idea}` : null].filter(Boolean).join(' · ') || null;
 }
+// U4's expand: what they do, the idea, why it fits, industry (J6) and what the research cost.
+const researchOf = intel => { const i = intel.intel || {}; return { line: researchLine(intel), fit: i.fit?.sponsor_fit || null, researched_at: intel.researched_at, what_they_do: i.company?.what_they_do || null, why: i.fit?.why || null, challenge_idea: i.fit?.challenge_idea || null, industry: i.company?.industry || null, hq_city: i.company?.hq_city || null, chicago_presence: i.company?.chicago_presence || null, cost_usd: intel.cost_usd ?? null }; };
 const suggestionOf = b => (b.domain_suggested && !b.domain ? { domain: b.domain_suggested, confidence: b.domain_confidence || 'low', at: b.domain_suggested_at } : null);
-export const cardOf = (r, data) => {
+// Send-these-10 rows are reachOf-eligible, so can_contact is already clear (verdictOk) and the brand is yours or nobody's.
+export const cardOf = (r, data, meId) => {
   const intel = intelFor(r.brand, data.intelByDomain), b = r.brand;
+  const primary = primaryOf({ brand: b, meId, replies: data.repliesBy[b.id] || [], touches: data.touchesBy[b.id] || [], researched: !!intel, hasEmail: (data.contactsBy[b.id] || []).some(c => c.has_email), verdictOk: true });
   return { id: b.id, name: b.name, domain: b.domain || null, category: b.category || null, city: b.city || null, status: b.status, owner_user_id: b.owner_user_id || null, owner_hint: b.owner_hint || null, heat_band: b.heat_band || 'cold', targeted_at: b.targeted_at || null,
-    score: r.score, why: r.why, parts: r.parts.map(([k]) => k), research: intel ? { line: researchLine(intel), fit: intel.intel?.fit?.sponsor_fit || null, researched_at: intel.researched_at } : null,
+    score: r.score, why: r.why, parts: r.parts.map(([k]) => k), score_parts: r.parts.map(([key, points]) => ({ key, words: REACH_WORDS[key], points })), primary, snoozed_until: b.snoozed_until || null, research: intel ? researchOf(intel) : null,
     suggestion: suggestionOf(b), research_attempted_at: b.research_attempted_at || null, command: `hk pitch ${b.domain || b.name}` };
 };
 
@@ -39,7 +45,7 @@ export async function briefingRoute(req, res, { supabase = getSupabase(), now = 
   try {
     const at = now(), data = await loadIntel(supabase, businessId, at), owner = req.query?.owner || 'me';
     const meId = ownerIdOf(req, data);
-    const send = rankReach(data.brands, { ...data, meId, now: at }, { meFirstName: firstNameOf(data, meId), limit: SEND_N }).map(r => cardOf(r, data));
+    const send = rankReach(data.brands, { ...data, meId, now: at }, { meFirstName: firstNameOf(data, meId), limit: SEND_N }).map(r => cardOf(r, data, meId));
     const max = data.settingsRow.max_email_touches || 3;
     const waiting = data.brands.filter(b => ownerMatch(owner, b, me(req)) && !CLOSED.has(b.status))
       .map(b => ({ b, a: activityOf(data.touchesBy[b.id] || [], data.repliesBy[b.id] || [], { now: at, maxEmailTouches: max }) }))
@@ -65,7 +71,7 @@ export async function briefingRoute(req, res, { supabase = getSupabase(), now = 
     const [r, out] = asRes();
     await listSignalsRoute(req, r, { supabase });
     res.json({ owner, tiles, send, waiting, signals: out.code === 200 ? out.body : null, eligible: rankReach(data.brands, { ...data, meId, now: at }, { meFirstName: firstNameOf(data, meId), limit: null }).length,
-      sheet_skipped: sheetSkipped(data.brands, { ...data, meId }),
+      sheet_skipped: sheetSkipped(data.brands, { ...data, meId }), research_estimate: await researchEstimate(supabase, businessId),
       research: { on: data.settings.sweep.on, n: data.settings.sweep.n, cap_usd: data.settings.sweep.cap_usd, time: data.settings.sweep.time, today_calls: sweep.calls, today_spend: sweep.spend, last_run: sweep.last }, weights: data.settings.weights, target_categories: data.settings.target_categories });
   } catch (e) { fail(res, e, 'briefing'); }
 }

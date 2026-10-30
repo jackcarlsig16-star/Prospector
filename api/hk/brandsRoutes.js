@@ -5,7 +5,10 @@ import { getSupabase, HkError, fail, isOwner, me, text, bool, oneOf, domainOf, e
 import { CLOSED, VIEWS as FILTER_VIEWS, SORTS, PAGE_DEFAULT, PAGE_MAX, parseFilters, loadFilterData, applyFilters } from './brandFilters.js';
 import { signalNow, signalWords, moveDomainSignals, recomputeHeat } from './signals.js';
 import { trackedThreads, liveThread } from './warm.js';
-import { sheetOwnerOf, sheetQuestion, hintName } from './rules.js';
+import { sheetOwnerOf, sheetQuestion, hintName, primaryOf } from './rules.js';
+import { threadsOf } from './intelScore.js';
+import { cachedIntel } from './inboxAnalyze.js';
+import { scrubAddresses } from '../sales/scrubText.js';
 import { mailboxFor, accessTokenForGrant } from '../lib/googleGrants.js';
 import { gmailClient } from './gmailClient.js';
 
@@ -73,7 +76,10 @@ async function pagedBrands(req, res, { supabase, now }) {
     const data = await loadFilterData(supabase, businessId, await liveBrands(supabase, businessId));
     const out = applyFilters(data, { view, filters, q: search, sort, dir, page, limit, facets: q.facets === '1', meId: me(req), now: now() });
     const primary = Object.fromEntries((await selectIn(() => supabase.from('hk_contacts').select('brand_id, name').eq('business_id', businessId).eq('is_primary', true).order('id'), 'brand_id', out.rows.map(b => b.id))).map(c => [c.brand_id, c.name]));
-    res.json({ view, total: out.total, page, limit, next_page: out.next_page, rows: out.rows.map(b => brandRow(b, { primary_contact_name: primary[b.id] || null })), ...(out.facets ? { facets: out.facets } : {}) });
+    // U2 per row from the same load: can_contact on the in-memory touches + replies (no live mailbox search here).
+    const uid = me(req), firstName = await memberFirstNames(supabase, businessId);
+    const primaryFor = b => { const ts = data.touches[b.id] || [], rs = data.replies[b.id] || []; return primaryOf({ brand: b, meId: uid, firstName, replies: rs, touches: ts, researched: data.intel.has(b.domain) || data.intel.has(b.domain_suggested), hasEmail: data.hasEmail.has(b.id), verdictOk: canContact({ brand: b, touches: ts, threadsByFounder: threadsOf(ts, rs), senderUserId: uid, kind: 'cold' }).ok }); };
+    res.json({ view, total: out.total, page, limit, next_page: out.next_page, rows: out.rows.map(b => brandRow(b, { primary_contact_name: primary[b.id] || null, primary: primaryFor(b) })), ...(out.facets ? { facets: out.facets } : {}) });
   } catch (e) { fail(res, e, 'brands/list-paged'); }
 }
 
@@ -119,6 +125,8 @@ function brandFields(body, { partial = false } = {}) {
   if ('domain' in body) patch.domain = domainOf(body.domain);
   if ('is_local' in body) patch.is_local = bool(body.is_local, 'is_local') ?? false;
   if ('aliases' in body) patch.aliases = aliasesOf(body.aliases) || [];
+  // grow-ui-refresh U8 - "Add context for this brand": sent with the next research, so addresses / phones are scrubbed.
+  if ('research_context' in body) { const t = text(body.research_context, 300, 'context', { multiline: true }); patch.research_context = t ? scrubAddresses(t) : null; }
   if (!partial) { patch.segment = oneOf(body.segment, SEGMENTS, 'segment') || 'sponsor_brand'; patch.source = oneOf(body.source, SOURCES, 'source') || 'user_supplied'; if (!patch.name) throw new HkError(400, 'name is required'); }
   if (patch.name) patch.normalized_name = normName(patch.name);
   return patch;
@@ -159,7 +167,9 @@ export async function getBrandRoute(req, res, { supabase = getSupabase() } = {})
     const sponsorsNiches = sponsorsNichesOf(await liveBrands(supabase, businessId));
     const max_email_touches = await maxTouches(supabase, businessId);
     const verdict = canContact({ brand, touches, threadsByFounder: await trackedThreads(supabase, businessId, brand.id), senderUserId: me(req), kind: 'cold', sponsorsNiches, maxEmailTouches: max_email_touches });
-    res.json({ brand: brandDetail(brand), contacts: contacts.map(contactRow), touches: touches.map(touchRow), replies: replies.map(replyRow), sponsor_periods: periods, events, verdict, email_touches_sent: touches.filter(t => t.channel === 'email' && t.state === 'sent').length, max_email_touches });
+    const intel = await cachedIntel(supabase, businessId, brand.domain) || await cachedIntel(supabase, businessId, brand.domain_suggested);
+    const primary = primaryOf({ brand, meId: me(req), firstName: await memberFirstNames(supabase, businessId), replies, touches, researched: !!intel, hasEmail: contacts.some(c => c.email), verdictOk: verdict.ok });
+    res.json({ brand: brandDetail(brand), primary, contacts: contacts.map(contactRow), touches: touches.map(touchRow), replies: replies.map(replyRow), sponsor_periods: periods, events, verdict, email_touches_sent: touches.filter(t => t.channel === 'email' && t.state === 'sent').length, max_email_touches });
   } catch (e) { fail(res, e, 'brands/get'); }
 }
 async function maxTouches(supabase, businessId) { const { data } = await supabase.from('hk_settings').select('max_email_touches').eq('business_id', businessId).maybeSingle(); return data?.max_email_touches || 3; }

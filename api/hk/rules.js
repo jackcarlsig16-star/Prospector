@@ -41,3 +41,18 @@ export function canContact({ brand, touches = [], threadsByFounder = [], senderU
   }
   return { ok: true, reason: null, warnings };
 }
+
+// grow-ui-refresh-v1 U2 - the one primary action a brand shows, by state, in this order. Replies and drafts first (on a
+// brand that is the caller's or nobody's), then another member's brand (no button), then Pitch (researched + an email
+// contact + can_contact clear), Research (not researched), Add email (researched, no address). A blocked brand
+// (sponsor, do not contact, passed, Unclear, warm, max touches) gets no primary.
+// replies: [{ handled }] · touches: [{ state, sender_user_id }] · verdictOk: canContact(... kind 'cold').ok
+export function primaryOf({ brand, meId, firstName = () => null, replies = [], touches = [], researched, hasEmail, verdictOk }) {
+  const mineOrFree = !brand.owner_user_id || brand.owner_user_id === meId;
+  if (mineOrFree && replies.some(r => r.handled === false)) return { kind: 'open_reply', label: 'Open reply' };
+  if (touches.some(t => t.state === 'drafted' && t.sender_user_id === meId)) return { kind: 'open_draft', label: 'Open draft in Gmail' };
+  if (!mineOrFree) return { kind: 'owned', label: `Owned by ${firstName(brand.owner_user_id) || 'another founder'}` };
+  if (!verdictOk) return null;
+  if (!researched) return { kind: 'research', label: 'Research' };
+  return hasEmail ? { kind: 'pitch', label: 'Pitch' } : { kind: 'add_email', label: 'Add email' };
+}

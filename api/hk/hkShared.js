@@ -61,7 +61,7 @@ export async function logEvent(supabase, { businessId, actorUserId = null, actor
 }
 
 const pick = (o, keys) => Object.fromEntries(keys.filter(k => k in o).map(k => [k, o[k]]));
-const LIST_FIELDS = ['id', 'name', 'domain', 'aliases', 'segment', 'category', 'niche', 'size_band', 'is_local', 'city', 'neighborhood', 'status', 'relationship', 'owner_user_id', 'owner_hint', 'owner_unclear', 'source', 'last_touch_at', 'next_due_at', 'created_at', 'updated_at', 'archived_at', 'heat', 'heat_band', 'heat_at', 'targeted_at', 'targeted_by'];
+const LIST_FIELDS = ['id', 'name', 'domain', 'aliases', 'segment', 'category', 'niche', 'size_band', 'is_local', 'city', 'neighborhood', 'status', 'relationship', 'owner_user_id', 'owner_hint', 'owner_unclear', 'source', 'last_touch_at', 'next_due_at', 'created_at', 'updated_at', 'archived_at', 'heat', 'heat_band', 'heat_at', 'targeted_at', 'targeted_by', 'snoozed_until', 'pass_reason', 'domain_suggested'];
 export const brandRow = (b, extra = {}) => ({ ...pick(b, LIST_FIELDS), ...extra });
 export const brandDetail = b => ({ ...b });
 export const contactRow = c => pick(c, ['id', 'brand_id', 'name', 'title', 'email', 'email_source', 'apollo_person_id', 'is_primary', 'role_checked_at', 'left_company', 'created_by', 'created_at']);
