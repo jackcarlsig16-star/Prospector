@@ -8,6 +8,8 @@ import { trackedThreads, liveThread } from './warm.js';
 import { sheetOwnerOf, sheetQuestion, hintName, primaryOf } from './rules.js';
 import { threadsOf } from './intelScore.js';
 import { cachedIntel } from './inboxAnalyze.js';
+import { pitchCommand, researchEstimate, spentToday } from './brandActions.js';
+import { intelSettings } from './intelScore.js';
 import { scrubAddresses } from '../sales/scrubText.js';
 import { mailboxFor, accessTokenForGrant } from '../lib/googleGrants.js';
 import { gmailClient } from './gmailClient.js';
@@ -168,8 +170,14 @@ export async function getBrandRoute(req, res, { supabase = getSupabase() } = {})
     const max_email_touches = await maxTouches(supabase, businessId);
     const verdict = canContact({ brand, touches, threadsByFounder: await trackedThreads(supabase, businessId, brand.id), senderUserId: me(req), kind: 'cold', sponsorsNiches, maxEmailTouches: max_email_touches });
     const intel = await cachedIntel(supabase, businessId, brand.domain) || await cachedIntel(supabase, businessId, brand.domain_suggested);
+    // grow-ui-refresh U7/U8 - the Research card (no address: research is scrubbed on parse), the Pitch command, and what
+    // a Re-run would cost against today's research cap.
+    const i = intel?.intel || {};
+    const research = intel ? { domain: intel.domain, fit: i.fit?.sponsor_fit || null, what_they_do: i.company?.what_they_do || null, why: i.fit?.why || null, challenge_idea: i.fit?.challenge_idea || null, industry: i.company?.industry || null, hq_city: i.company?.hq_city || null, chicago_presence: i.company?.chicago_presence || null, size_hint: i.company?.size_hint || null, researched_at: intel.researched_at, researched_by: intel.researched_by || null, cost_usd: intel.cost_usd ?? null } : null;
+    const { data: srow } = await supabase.from('hk_settings').select('intel').eq('business_id', businessId).maybeSingle();
+    const research_budget = { ...(await researchEstimate(supabase, businessId)), spent_today: Math.round((await spentToday(supabase, businessId, new Date())) * 1e4) / 1e4, cap_usd: intelSettings(srow?.intel).sweep.cap_usd };
     const primary = primaryOf({ brand, meId: me(req), firstName: await memberFirstNames(supabase, businessId), replies, touches, researched: !!intel, hasEmail: contacts.some(c => c.email), verdictOk: verdict.ok });
-    res.json({ brand: brandDetail(brand), primary, contacts: contacts.map(contactRow), touches: touches.map(touchRow), replies: replies.map(replyRow), sponsor_periods: periods, events, verdict, email_touches_sent: touches.filter(t => t.channel === 'email' && t.state === 'sent').length, max_email_touches });
+    res.json({ brand: brandDetail(brand), primary, research, research_budget, command: pitchCommand(brand), contacts: contacts.map(contactRow), touches: touches.map(touchRow), replies: replies.map(replyRow), sponsor_periods: periods, events, verdict, email_touches_sent: touches.filter(t => t.channel === 'email' && t.state === 'sent').length, max_email_touches });
   } catch (e) { fail(res, e, 'brands/get'); }
 }
 async function maxTouches(supabase, businessId) { const { data } = await supabase.from('hk_settings').select('max_email_touches').eq('business_id', businessId).maybeSingle(); return data?.max_email_touches || 3; }

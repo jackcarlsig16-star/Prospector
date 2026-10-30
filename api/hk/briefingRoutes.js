@@ -1,11 +1,11 @@
-// grow-inbox-intel-v1 REV3 B1 / B5 - the Briefing lane's one read and the brand page's reach line. 0 Claude calls,
+// grow-inbox-intel-v1 REV3 B1 - the Briefing lane's one read. 0 Claude calls,
 // 0 Gmail calls: tiles from todayPayload + hk_touches / hk_replies, "Send these 10" (B3), "Waiting on them" (B6), the
 // Signals panel (moved here from Today), and the research sweep's day. "Important now" (B2) is scored on the Needs-you
 // rows the Inbox list already loads (inboxRoutes importance), never a second list call.
 import { getSupabase, HkError, fail, me, brandById } from './hkShared.js';
 import { primaryOf } from './rules.js';
 import { researchEstimate, pitchCommand } from './brandActions.js';
-import { rankReach, reachOf, activityOf, intelFor, sheetSkipped, REACH_WORDS } from './intelScore.js';
+import { rankReach, activityOf, intelFor, sheetSkipped, REACH_WORDS } from './intelScore.js';
 import { loadIntel, firstNameOf } from './intelData.js';
 import { sweepToday } from './researchSweep.js';
 import { listSignalsRoute } from './signalsRoutes.js';
@@ -87,21 +87,4 @@ export async function briefingRoute(req, res, { supabase = getSupabase(), now = 
       sheet_skipped: sheetSkipped(data.brands, { ...data, meId }), research_estimate: await researchEstimate(supabase, businessId),
       research: { on: data.settings.sweep.on, n: data.settings.sweep.n, cap_usd: data.settings.sweep.cap_usd, time: data.settings.sweep.time, today_calls: sweep.calls, today_spend: sweep.spend, last_run: sweep.last }, weights: data.settings.weights, target_categories: data.settings.target_categories });
   } catch (e) { fail(res, e, 'briefing'); }
-}
-
-// GET /brands/:id/reach - B5's "Reach-out score n · why", the brand's activity (B6), research + website suggestion.
-export async function reachRoute(req, res, { supabase = getSupabase(), now = () => new Date() } = {}) {
-  const businessId = req.params.businessId;
-  try {
-    const at = now();
-    const brand = await brandById(supabase, businessId, req.params.id);
-    const data = await loadIntel(supabase, businessId, at);
-    const live = data.brands.find(b => b.id === brand.id) || brand;
-    const r = reachOf(live, { ...data, meId: me(req), now: at });
-    const intel = intelFor(live, data.intelByDomain);
-    res.json({ eligible: !!r, score: r ? r.score : null, why: r ? r.why : [], parts: r ? r.parts.map(([k]) => k) : [],
-      activity: activityOf(data.touchesBy[brand.id] || [], data.repliesBy[brand.id] || [], { now: at, maxEmailTouches: data.settingsRow.max_email_touches || 3 }),
-      research: intel ? { line: researchLine(intel), fit: intel.intel?.fit?.sponsor_fit || null, researched_at: intel.researched_at, domain: intel.domain } : null,
-      suggestion: suggestionOf(live), research_attempted_at: live.research_attempted_at || null });
-  } catch (e) { fail(res, e, 'brands/reach'); }
 }

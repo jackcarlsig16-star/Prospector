@@ -154,7 +154,7 @@ export async function researchEstimate(supabase, businessId) {
   return { per_call: costs.length >= ESTIMATE_MIN_ROWS ? Math.round((costs.reduce((a, b) => a + b, 0) / costs.length) * 1e4) / 1e4 : null, rows: costs.length };
 }
 // Today's research spend (Chicago day), every research-type call.
-async function spentToday(supabase, businessId, now) {
+export async function spentToday(supabase, businessId, now) {
   const { data, error } = await supabase.from('business_anthropic_usage').select('cost_usd, created_at').eq('business_id', businessId).in('call_type', RESEARCH_CALL_TYPES).gte('created_at', new Date(now.getTime() - 2 * DAY).toISOString());
   if (error) throw new Error(error.message);
   const today = dayIn(now);

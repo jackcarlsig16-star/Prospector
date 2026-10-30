@@ -9,6 +9,7 @@ import { useSheetConfirm, claimAsking } from './sheetConfirm';
 // Every one-click action answers in one toast with Undo (10 s); Not a fit's reason is editable in the toast. Keys never
 // fire while typing. Nothing here sends: Pitch claims and copies the Claude command.
 export const KEYS = { p: 'pitch', t: 'target', r: 'research', s: 'snooze', x: 'notfit' };
+export const isOpenDialog = () => !!document.querySelector('[role="dialog"], [role="alertdialog"]');
 export const isTyping = e => { const t = e.target; return !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)); };
 const copyText = async text => { try { await navigator.clipboard.writeText(text); return true; } catch { return false; } };
 
@@ -25,7 +26,7 @@ export function useBrandCommands({ businessId, onChanged, setError }) {
     setBusy(key); setError?.('');
     try { const out = await fn(); await onChanged?.(); return out; } catch (e) { setError?.(e.message); return null; } finally { setBusy(''); }
   }, [onChanged, setError]);
-  const act = useCallback((action, b) => run(`${action}:${b.id}`, async () => {
+  const act = useCallback((action, b, extra = {}) => run(`${action}:${b.id}`, async () => {
     if (action === 'pitch') {
       const r = await claimAsking(sheet.confirm, x => hkPost(businessId, path(b, 'pitch'), x));
       if (!r) return;
@@ -49,6 +50,9 @@ export function useBrandCommands({ businessId, onChanged, setError }) {
       const r = await hkPost(businessId, path(b, 'not-a-fit'), {});
       latest.current = r.brand.updated_at; setReason(r.brand.pass_reason || 'Not a fit');
       setToast({ line: `${b.name}: not a fit.`, reasonFor: b, undo: () => hkPost(businessId, path(b, 'not-a-fit'), { undo: true, expect_updated_at: latest.current }) });
+    } else if (action === 'log') {
+      const r = await hkPost(businessId, path(b, 'activity'), extra);
+      setToast({ line: `Logged: ${r.what} on ${r.date}.`, undo: () => hkPost(businessId, path(b, 'activity'), { undo: r.touch_id }) });
     } else if (action === 'copy') {
       const command = b.command;
       setToast({ line: (await copyText(command)) ? `Copied ${command}. Paste into Claude.` : `Copy failed - the command is ${command}`, undo: null });

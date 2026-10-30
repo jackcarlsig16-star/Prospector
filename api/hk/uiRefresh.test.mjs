@@ -268,3 +268,14 @@ test('U5 Waiting on them follows the owner toggle by the touch\'s sender; a 270-
   assert.deepEqual([old.waiting_days, old.due], [270, false], '270 days old: Open, never Bump');
   assert.deepEqual((await brief(PETE)).map(w => w.name).sort(), ['Old Sheet Send', 'Warm Kettle'], "Pete's toggle = Pete's sends (Harbor Yoga replied)");
 });
+
+test('U7/U8 brand detail: the research card (who / when / cost, industry), the Pitch command and the Re-run budget; no address', async () => {
+  fresh({ business_anthropic_usage: usage(3, 0.05) });
+  sb.db.hk_domain_intel.push({ id: 'i-run', business_id: HK, domain: 'bluefinrun.example', intel: { company: { what_they_do: 'Run club', industry: 'Running', hq_city: 'Chicago' }, fit: { sponsor_fit: 'strong', why: 'Runners', challenge_idea: 'Miles' } }, cost_usd: 0.05, researched_by: null, researched_at: '2026-10-25T00:00:00Z' });
+  const r = await call(getBrandRoute, reqOf({ params: { id: ID.run } }), { supabase: sb });
+  assert.equal(r.code, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.research.fit, r.body.research.industry, r.body.research.hq_city, r.body.research.researched_by, r.body.research.cost_usd], ['strong', 'Running', 'Chicago', null, 0.05]);
+  assert.equal(r.body.command, 'hk pitch bluefinrun.example');
+  assert.deepEqual([r.body.research_budget.per_call, r.body.research_budget.cap_usd], [0.05, 1]);
+  assert.ok(!hasAt(r.body.research));
+});

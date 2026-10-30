@@ -2,7 +2,6 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import Briefing, { importantNow } from './Briefing';
 import InboxScreen from '../screens/InboxScreen';
-import ReachLine from '../brands/ReachLine';
 import IntelSettings from '../screens/IntelSettings';
 
 // grow-inbox-intel-v1 REV3 Stage 3 - the Briefing lane, Needs you by importance, the brand reach line and the research
@@ -244,21 +243,6 @@ test('Inbox opens on Briefing from ONE list load; Important now jumps to Needs y
   fireEvent.click(screen.getByRole('button', { name: 'Newest' }));
   expect(order()).toEqual(['t1', 't2', 't3', 't4']);
   expect(calls.filter(c => c.startsWith('GET /api/hk/biz-hk/inbox/threads?')).length).toBe(1);
-});
-
-test('Brand page reach line: the score and why, a found website with Save as website, Research when there is none; Viewer reads only', async () => {
-  routes[`GET /api/hk/${HK}/brands/b1/reach`] = { eligible: true, score: 25, why: ['has a contact to email', 'has a challenge idea'], parts: [], activity: {}, research: null, suggestion: { domain: 'alderoats.invalid', confidence: 'high' }, research_attempted_at: null };
-  routes[`POST /api/hk/${HK}/brands/b1/use-domain`] = { brand: { id: 'b1' } };
-  const onChanged = jest.fn();
-  const { unmount } = render(<ReachLine businessId={HK} brandId="b1" canEdit onChanged={onChanged} />);
-  expect(await screen.findByText('Reach-out score 25 · has a contact to email · has a challenge idea')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Research' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Save as website' }));
-  await waitFor(() => expect(onChanged).toHaveBeenCalled());
-  unmount();
-  render(<ReachLine businessId={HK} brandId="b1" canEdit={false} />);
-  expect(await screen.findByText(/Website \(suggested\): alderoats.invalid/)).toBeInTheDocument();
-  expect(screen.queryByRole('button')).toBeNull();
 });
 
 test('Settings research: target categories edit, auto-research controls save as one intel patch, weights read-only; non-owners cannot change them', async () => {

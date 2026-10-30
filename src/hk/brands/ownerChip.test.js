@@ -3,7 +3,6 @@ import { render, screen, fireEvent, waitFor, within } from '@testing-library/rea
 import OwnerChip from './OwnerChip';
 import BrandPage from './BrandPage';
 import BrandsScreen from './BrandsScreen';
-import ReachLine from './ReachLine';
 import Briefing from '../inbox/Briefing';
 
 // grow-owner-chip-and-site-label - the owner chip (member / sheet owner / none) on the brand page, Brands rows, phone
@@ -52,7 +51,8 @@ test('Brand page: Claimed with a sheet owner never shows Unclaimed; a member own
   expect(screen.queryByText(/Sheet:/)).toBeNull();
   b.unmount();
   await openPage(brand({ status: 'candidate' }));
-  expect(screen.getByText('Unclaimed')).toBeInTheDocument();
+  expect(document.querySelector('[data-hk-owner="none"]')).toHaveTextContent('Unclaimed');
+  expect(document.querySelector('[data-hk-detail="Owner"]')).toHaveTextContent('Unclaimed');
 });
 
 const ROWS = [brand(), brand({ id: 'b2', name: 'Zz Birch Bars', owner_hint: 'pete' }), brand({ id: 'b3', name: 'Zz Cedar Cola', owner_user_id: 'u-sky' })];
@@ -93,22 +93,4 @@ test('Briefing rows (grow-ui-refresh U4): a suggested website shows beside the n
   fireEvent.click(within(r1).getByRole('button', { name: 'Undo' }));
   expect(await within(r1).findByText(/Website \(suggested\): alderoats.invalid/)).toBeInTheDocument();
   expect(bodies[`POST /api/hk/${HK}/brands/b1/wrong-site`]).toEqual([{}, { undo: true }]);
-});
-
-test('Brand page reach line: low confidence keeps "Possible website" with both buttons; Wrong site keeps the Undo across the reload; Viewer sees no buttons', async () => {
-  let suggestion = { domain: 'cedar.invalid', confidence: 'low' };
-  routes[`GET /api/hk/${HK}/brands/b1/reach`] = () => ({ eligible: true, score: 5, why: [], research: null, suggestion, research_attempted_at: suggestion ? null : '2026-10-29T15:00:00Z' });
-  routes[`POST /api/hk/${HK}/brands/b1/wrong-site`] = b => { suggestion = b.undo ? { domain: 'cedar.invalid', confidence: 'low' } : null; return { brand: { id: 'b1' } }; };
-  const onChanged = jest.fn();
-  const { unmount } = render(<ReachLine businessId={HK} brandId="b1" canEdit onChanged={onChanged} />);
-  expect(await screen.findByText(/Possible website: cedar.invalid\?/)).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Wrong site' }));
-  expect(await screen.findByText(/cedar.invalid marked wrong. Not researched again for 30 days./)).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-  expect(await screen.findByText(/Possible website: cedar.invalid\?/)).toBeInTheDocument();
-  expect(onChanged).not.toHaveBeenCalled();
-  unmount();
-  render(<ReachLine businessId={HK} brandId="b1" canEdit={false} />);
-  await screen.findByText(/Possible website: cedar.invalid\?/);
-  expect(screen.queryByRole('button')).toBeNull();
 });

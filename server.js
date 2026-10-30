@@ -446,7 +446,6 @@ const HK_RESEARCH = './api/hk/brandResearch.js';
 const HK_SWEEP = './api/hk/researchSweep.js';
 const HK_SEARCH = './api/hk/searchRoutes.js';
 app.get('/api/hk/:businessId/briefing',                       hkRoute(HK_BRIEFING, 'briefingRoute'));
-app.get('/api/hk/:businessId/brands/:id/reach',               hkRoute(HK_BRIEFING, 'reachRoute'));
 app.post('/api/hk/:businessId/brands/:id/research',           hkRoute(HK_RESEARCH, 'researchBrandRoute'));
 app.post('/api/hk/:businessId/brands/:id/use-domain',         hkRoute(HK_RESEARCH, 'useDomainRoute'));
 app.post('/api/hk/:businessId/brands/:id/wrong-site',         hkRoute(HK_RESEARCH, 'wrongSiteRoute'));

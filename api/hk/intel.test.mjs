@@ -11,7 +11,7 @@ import { researchBrand, researchPrompt, parseWebsite, useDomainRoute, wrongSiteR
 import { makeHkGate } from '../lib/requireAuth.js';
 import { researchSweep, sweepQueue } from './researchSweep.js';
 import { loadIntel } from './intelData.js';
-import { briefingRoute, reachRoute } from './briefingRoutes.js';
+import { briefingRoute } from './briefingRoutes.js';
 
 const HK = 'biz-hk', ME = 'u-me', OTHER = 'u-other';
 const NOW = new Date('2026-10-29T15:00:00Z');
@@ -112,8 +112,6 @@ test('grow-sheet-owner-respect F2: another person\'s sheet brand is not eligible
   const r = await call(briefingRoute, reqOf(), { supabase: sb, now: () => NOW, today: async () => ({ digest: { counts: {} } }) });
   assert.equal(r.code, 200, JSON.stringify(r.body));
   assert.deepEqual([names(r.body.send.map(c => ({ brand: c }))), r.body.eligible, r.body.sheet_skipped], [['Zz Delta', 'Zz Echo', 'Zz Mine Co'], 3, [{ hint: 'Pete', n: 2 }, { hint: 'Sky', n: 1 }]]);
-  const reach = await call(reachRoute, reqOf({ params: { id: ids.g } }), { supabase: sb, now: () => NOW });
-  assert.equal(reach.body.eligible, false);
 });
 
 test('B2 importance: label, question, decline, status, sponsor, fit, heat, warm, unread, waiting (capped), new person, teammate; the top reason in words', () => {
@@ -249,10 +247,6 @@ test('Briefing: tiles, Send these 10 (eligible only, with why and the Claude com
   assert.ok(r.body.signals && Array.isArray(r.body.signals.prospects));
   assert.equal(r.body.eligible, 3);
   assert.ok(!JSON.stringify(r.body).includes('@'), 'no address in the Briefing');
-  const reach = await call(reachRoute, reqOf({ params: { id: ids.a } }), { supabase: sb, now: () => NOW });
-  assert.deepEqual([reach.body.eligible, reach.body.score, reach.body.why], [true, 25, ['has a contact to email', 'has a challenge idea']]);
-  const not = await call(reachRoute, reqOf({ params: { id: ids.sp } }), { supabase: sb, now: () => NOW });
-  assert.deepEqual([not.body.eligible, not.body.score], [false, null]);
 });
 
 test('Settings intel patch: target categories + auto-research controls merge; weights stay read-only; bad values refused', async () => {

@@ -71,7 +71,7 @@ export async function usedToday(supabase, businessId, uid, now) {
 
 export async function cachedIntel(supabase, businessId, domain) {
   if (!domain) return null;
-  const { data, error } = await supabase.from('hk_domain_intel').select('domain, intel, model, cost_usd, researched_at').eq('business_id', businessId).eq('domain', domain).maybeSingle();
+  const { data, error } = await supabase.from('hk_domain_intel').select('domain, intel, model, cost_usd, researched_at, researched_by').eq('business_id', businessId).eq('domain', domain).maybeSingle();
   if (error) throw new Error(error.message);
   return data || null;
 }

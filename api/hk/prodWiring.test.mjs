@@ -134,7 +134,6 @@ const TABLE = [
   ['signalsRoutes', 'targetRoute', member({ method: 'POST', params: { id: ID.run }, body: { on: true } }), [200]],
   ['signalsRoutes', 'pipelineRoute', member({ method: 'POST', params: { id: ID.juice } }), [409]],
   ['briefingRoutes', 'briefingRoute', member(), [200]],
-  ['briefingRoutes', 'reachRoute', member({ params: { id: ID.run } }), [200]],
   ['brandResearch', 'researchBrandRoute', member({ method: 'POST', params: { id: ID.run }, body: {} }), [400]],
   ['brandResearch', 'useDomainRoute', member({ method: 'POST', params: { id: ID.run } }), [409]],
   ['brandResearch', 'wrongSiteRoute', member({ method: 'POST', params: { id: ID.run } }), [409]],
