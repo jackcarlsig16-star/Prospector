@@ -143,7 +143,10 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
     if (!inInbox) setBrandState({ ...brandState, saved: id });
   }, [inInbox, inboxSel, brandState, savedViews, putPrefs, setBrandState]);
   const removeView = useCallback(v => { putPrefs({ saved_views: savedViews.filter(x => x.id !== v.id) }).catch(() => {}); if (brandState.saved === v.id) setBrandState({ ...brandState, saved: null }); }, [savedViews, putPrefs, brandState, setBrandState]);
-  const renameView = useCallback(v => { const name = window.prompt('Rename this view', v.name); if (name && name.trim()) putPrefs({ saved_views: savedViews.map(x => (x.id === v.id ? { ...x, name: name.trim() } : x)) }).catch(e => window.alert(e.message)); }, [savedViews, putPrefs]);
+  const [renaming, setRenaming] = useState(null);
+  const renameView = useCallback(v => setRenaming(v.id), []);
+  const saveRename = useCallback(async (v, name) => { await putPrefs({ saved_views: savedViews.map(x => (x.id === v.id ? { ...x, name } : x)) }); setRenaming(null); }, [savedViews, putPrefs]);
+  const cancelRename = useCallback(() => setRenaming(null), []);
   const applySaved = useCallback(v => {
     if (v.space === 'inbox') { const [k, vals] = Object.entries(v.filters)[0] || ['lane', ['briefing']]; setInboxSel({ kind: k, value: vals[0] }); return; }
     setBrandState({ view: v.view || 'all', filters: v.filters || {}, sort: v.sort?.by || null, dir: v.sort?.dir || null, layout: v.layout || null, q: '', saved: v.id });
@@ -162,14 +165,14 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
   const meId = shell?.me?.user_id;
   const members = useMemo(() => shell?.members || [], [shell]);
   const buckets = useMemo(() => {
-    if (inBrands) return brandBuckets({ facets: list.facets, state: brandState, meId, members, savedViews, onRename: renameView, onRemove: removeView });
+    if (inBrands) return brandBuckets({ facets: list.facets, state: brandState, meId, members, savedViews, onRename: renameView, onRemove: removeView, renaming, onRenameSave: saveRename, onRenameCancel: cancelRename });
     if (inInbox) {
       const b = inboxBuckets({ sel: inboxSel, laneCounts, counts: inboxLists ? inboxCounts(inboxLists.replies, inboxLists.drafts) : null });
       const mine = savedViews.filter(v => v.space === 'inbox');
       return mine.length ? [{ key: 'saved', label: 'Saved views', icon: 'star', items: mine.map(v => ({ id: `saved:${v.id}`, label: v.name, active: false })) }, ...b] : b;
     }
     return [];
-  }, [inBrands, inInbox, list.facets, brandState, meId, members, savedViews, renameView, removeView, inboxSel, laneCounts, inboxLists]);
+  }, [inBrands, inInbox, list.facets, brandState, meId, members, savedViews, renameView, removeView, renaming, saveRename, cancelRename, inboxSel, laneCounts, inboxLists]);
   const onPick = useCallback((key, id) => {
     if (id.startsWith('saved:')) { const v = savedViews.find(x => `saved:${x.id}` === id); if (v) applySaved(v); return; }
     if (inInbox) { setInboxSel({ kind: key === 'my_mail' ? 'lane' : key === 'tracked_replies' ? 'replies' : 'drafts', value: id }); return; }

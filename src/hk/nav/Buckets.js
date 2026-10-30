@@ -4,7 +4,7 @@ import { Icon } from '../HkMarks';
 // grow-nav-filters-v1 N2 - a bucket = a header (icon · name · chevron, collapsible) and its items (dot · label · count).
 // Shared by the desktop rail and the phone Filters sheet. Keyboard: ↑ / ↓ move through headers and items, Space or
 // Enter toggles (native buttons), ← collapses a bucket (from an item: back to its header), → expands it.
-//   buckets: [{ key, label, icon, items: [{ id, label, count?, active, tone?, extra? }] }]
+//   buckets: [{ key, label, icon, items: [{ id, label, count?, active, tone?, extra?, edit? }] }] - edit replaces the row
 export default function Buckets({ buckets, collapsed, onCollapse, onPick, label = 'Filters' }) {
   const onKeyDown = e => {
     const root = e.currentTarget, el = document.activeElement;
@@ -36,12 +36,14 @@ export default function Buckets({ buckets, collapsed, onCollapse, onPick, label 
               <ul className="hk-bucket__items">
                 {b.items.map(it => (
                   <li key={it.id} className="hk-bucket__li">
+                    {it.edit || <>
                     <button type="button" className="hk-btn hk-bucket__item" aria-pressed={!!it.active} onClick={() => onPick(b.key, it.id)} data-rail-item data-hk-filter={`${b.key}:${it.id}`}>
                       {it.tone && <span className={`hk-dot hk-dot--${it.tone}`} aria-hidden="true" />}
                       <span className="hk-bucket__label">{it.label}</span>
                       {it.count != null && <span className="hk-bucket__n">{it.count.toLocaleString('en-US')}</span>}
                     </button>
                     {it.extra}
+                    </>}
                   </li>
                 ))}
               </ul>

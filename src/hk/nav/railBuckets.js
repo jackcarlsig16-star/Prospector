@@ -1,15 +1,40 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Icon } from '../HkMarks';
+import { VIEW_NAME_MAX } from './ActiveFilters';
 import { VIEW_LABELS, BRAND_BUCKETS, valueLabel, valueTone, ownerValueOf, MAIL_LANES, REPLY_ITEMS, DRAFT_ITEMS } from './filterState';
 
 // grow-nav-filters-v1 N3 / N4 - the rail's buckets for the active space, built from what the server counted.
 // Brands: Views (the nine built-ins always, even at 0 - ruling 2 - then your saved views), then every filter bucket
 // with its values; a value with 0 rows is left out unless it is on, and a bucket with no values hides itself.
 
-export function brandBuckets({ facets, state, meId, members, savedViews = [], onRename, onRemove }) {
+// Rename a saved view in place: Enter saves, Esc cancels. Same rules as PUT /me/prefs (spaces collapsed, 1-40
+// characters); anything else the server refuses (an email or phone in the name) shows under the field.
+export function ViewNameField({ view, onSave, onCancel }) {
+  const [name, setName] = useState(view.name);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const clean = name.replace(/\s+/g, ' ').trim();
+  const submit = async e => {
+    e.preventDefault();
+    if (!clean || busy) return;
+    if (clean === view.name) { onCancel(); return; }
+    setBusy(true); setError('');
+    try { await onSave(view, clean); } catch (err) { setError(err.message); setBusy(false); }
+  };
+  return (
+    <form className="hk-bucket__rename" onSubmit={submit} data-hk-rename-form={view.id}>
+      <input className="ui-input ui-input--sm" aria-label={`New name for ${view.name}`} maxLength={VIEW_NAME_MAX} autoFocus value={name} disabled={busy}
+        onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onCancel(); } }} data-hk-rename-input />
+      {error && <p className="hk-error" role="alert">{error}</p>}
+    </form>
+  );
+}
+
+export function brandBuckets({ facets, state, meId, members, savedViews = [], onRename, onRemove, renaming = null, onRenameSave, onRenameCancel }) {
   const views = (facets?.view || Object.keys(VIEW_LABELS).map(v => [v, null])).map(([v, n]) => ({ id: v, label: VIEW_LABELS[v] || v, count: n, active: !state.saved && state.view === v }));
   const saved = savedViews.filter(v => v.space === 'brands').map(v => ({
     id: `saved:${v.id}`, label: v.name, active: state.saved === v.id,
+    edit: renaming === v.id && <ViewNameField view={v} onSave={onRenameSave} onCancel={onRenameCancel} />,
     extra: (onRename || onRemove) && (
       <span className="hk-bucket__tools">
         {onRename && <button type="button" className="hk-btn hk-icon-btn" aria-label={`Rename ${v.name}`} onClick={() => onRename(v)} data-hk-rename-view={v.id}><Icon name="pencil" size={14} /></button>}

@@ -4,6 +4,7 @@ import HkShell from '../HkShell';
 import Buckets from './Buckets';
 import { parseBrandQuery, brandQuery, brandRequest, toggleValue, layoutOf, parseInboxQuery, inboxQuery } from './filterState';
 import { brandBuckets, inboxBuckets, inboxCounts } from './railBuckets';
+import { ensureHkTheme } from '../hkTheme';
 
 // grow-nav-filters-v1 Stage 3 - the rail, the spaces, the address, saved views and the one search, against a recorded
 // fetch. Invented brands; no address in any fixture; 0 Gmail (no Inbox lane is opened here).
@@ -126,6 +127,65 @@ test('N7 save -> listed under Views -> remove: stored with PUT /me/prefs, filter
   fireEvent.click(within(rail).getByRole('button', { name: 'Remove Sent, unclaimed from your views' }));
   await waitFor(() => expect(prefs.saved_views).toEqual([]));
   expect(bodies.filter(b => b.p === '/me/prefs').every(b => !JSON.stringify(b.body).includes('@'))).toBe(true);
+});
+
+test('saved view rename is an inline rail field: Esc cancels with no write, Enter saves (spaces collapsed, <= 40), a refused name stays open with the reason', async () => {
+  const prompt = jest.spyOn(window, 'prompt');
+  setup();
+  const seeded = { saved_views: [{ id: 'sent-unclaimed', name: 'Sent, unclaimed', space: 'brands', view: 'all', filters: { stage: ['sent'] } }], rail: {} };
+  prefs = seeded;
+  const base = global.fetch;
+  global.fetch = jest.fn((url, init = {}) => {
+    if (String(url).endsWith('/me/prefs') && init.method === 'PUT' && init.body.includes('@')) return json(400, { error: "saved view name can't hold an email address or phone number" });
+    return base(url, init);
+  });
+  window.history.replaceState(null, '', '/#hk/brands');
+  render(<HkShell business={{ id: HK, name: 'HumanKind' }} businesses={[]} userId={ME} compact={false} onSelectBusiness={() => {}} onAllWorkspaces={() => {}} onOpenAdmin={() => {}} onOpenConnections={() => {}} />);
+  const rail = await screen.findByRole('navigation', { name: 'Grow' });
+  const puts = () => bodies.filter(b => b.p === '/me/prefs' && b.body.saved_views).length;
+
+  fireEvent.click(await within(rail).findByRole('button', { name: 'Rename Sent, unclaimed' }));
+  let field = within(rail).getByLabelText('New name for Sent, unclaimed');
+  expect(field).toHaveValue('Sent, unclaimed');
+  expect(field).toHaveAttribute('maxLength', '40');
+  fireEvent.change(field, { target: { value: 'Something else' } });
+  fireEvent.keyDown(field, { key: 'Escape' });
+  expect(within(rail).queryByLabelText('New name for Sent, unclaimed')).toBeNull();
+  expect(within(rail).getByRole('button', { name: 'Sent, unclaimed' })).toBeInTheDocument();
+  expect(puts()).toBe(0);
+
+  fireEvent.click(within(rail).getByRole('button', { name: 'Rename Sent, unclaimed' }));
+  field = within(rail).getByLabelText('New name for Sent, unclaimed');
+  fireEvent.change(field, { target: { value: 'ask me@x.co' } });
+  fireEvent.submit(field.closest('form'));
+  expect(await within(rail).findByRole('alert')).toHaveTextContent("can't hold an email address");
+  expect(within(rail).getByLabelText('New name for Sent, unclaimed')).toBeInTheDocument();
+  expect(prefs.saved_views[0].name).toBe('Sent, unclaimed');
+
+  fireEvent.change(within(rail).getByLabelText('New name for Sent, unclaimed'), { target: { value: '  Sent   to   Pete  ' } });
+  fireEvent.submit(within(rail).getByLabelText('New name for Sent, unclaimed').closest('form'));
+  await waitFor(() => expect(prefs.saved_views[0]).toMatchObject({ id: 'sent-unclaimed', name: 'Sent to Pete', filters: { stage: ['sent'] } }));
+  expect(await within(rail).findByRole('button', { name: 'Sent to Pete' })).toBeInTheDocument();
+  expect(within(rail).queryByRole('textbox', { name: /New name/ })).toBeNull();
+  expect(prompt).not.toHaveBeenCalled();
+  prompt.mockRestore();
+});
+
+test('rail heat dots: Cool and Cold are >= 3:1 against the rail (sand), Hot unchanged, the heat-bar tokens unchanged', () => {
+  ensureHkTheme();
+  const css = document.getElementById('hk-theme-css').textContent;
+  const token = n => new RegExp(`--hk-${n}:(#[0-9A-F]{6})`, 'i').exec(css)[1];
+  const lum = h => { const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  const rail = token('sand');
+  expect(css).toMatch(/\.hk-dot--heat-cool \{ background:var\(--hk-heat-cool-dot\); \}/);
+  expect(css).toMatch(/\.hk-dot--heat-cold \{ background:var\(--hk-heat-cold-dot\); \}/);
+  const table = { cool: ratio(token('heat-cool-dot'), rail), cold: ratio(token('heat-cold-dot'), rail), hot: ratio(token('heat-hot-bar'), rail) };
+  expect(table.cool).toBeGreaterThanOrEqual(3);
+  expect(table.cold).toBeGreaterThanOrEqual(3);
+  expect(table.hot).toBeGreaterThanOrEqual(3);
+  expect([token('heat-hot-bar'), token('heat-warm-bar'), token('heat-cool-bar')]).toEqual(['#278245', '#8FC283', '#D2C19C']);
+  expect(css).toMatch(/\.hk-heat--cool \{ background:var\(--hk-sand\)/);
 });
 
 test('N9 old links: #hk/pipeline lands on Views › Pipeline grouped by stage; #hk/sponsors hosts the Sponsors screen; #hk/replies opens Tracked replies › Open', async () => {

@@ -30,6 +30,8 @@ const HK_CSS = `
   --hk-shadow-card:0 2px 10px rgba(43,29,20,.06);
   --hk-member-1:var(--hk-green-fill); --hk-member-2:var(--hk-orange-text); --hk-member-3:#1F4E6B; --hk-member-4:#5A3D72;
   --hk-heat-hot-bar:#278245; --hk-heat-warm-bar:#8FC283; --hk-heat-cool-bar:#D2C19C;
+  /* Rail dots only, >= 3:1 against the sand rail (cool 3.41, cold 3.49; 3.04 / 3.12 under the hover tint). */
+  --hk-heat-cool-dot:#94773F; --hk-heat-cold-dot:#837868;
 }
 ${PINNED} {
   --ui-ground:#F6EFE0; --ui-surface:#FFFCF5; --ui-surface2:#FFFCF5; --ui-inset:#EFE6D3; --ui-border:#E4D9C3;
@@ -89,13 +91,14 @@ ${PINNED} {
 .hk-theme .hk-bucket__label { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .hk-theme .hk-bucket__n { font:500 12px var(--hk-font-body); font-variant-numeric:tabular-nums; color:var(--hk-muted); }
 .hk-theme .hk-bucket__tools { display:inline-flex; }
+.hk-theme .hk-bucket__rename { flex:1; min-width:0; padding:2px 0 2px 4px; } .hk-theme .hk-bucket__rename .ui-input { width:100%; box-sizing:border-box; }
 .hk-theme .hk-bucket__tools .hk-icon-btn { width:26px; height:26px; color:var(--hk-muted); }
 .hk-theme .hk-dot { flex:none; width:8px; height:8px; border-radius:50%; background:var(--hk-muted); }
 .hk-theme .hk-dot--grey { background:var(--hk-muted); } .hk-theme .hk-dot--blue { background:var(--hk-tint-blue-text); }
 .hk-theme .hk-dot--lilac { background:var(--hk-tint-lilac-text); } .hk-theme .hk-dot--mustard { background:var(--hk-tint-mustard-text); }
 .hk-theme .hk-dot--green { background:var(--hk-green-fill); } .hk-theme .hk-dot--block { background:var(--hk-tint-block-text); }
 .hk-theme .hk-dot--heat-hot { background:var(--hk-heat-hot-bar); } .hk-theme .hk-dot--heat-warm { background:var(--hk-heat-warm-bar); }
-.hk-theme .hk-dot--heat-cool { background:var(--hk-heat-cool-bar); } .hk-theme .hk-dot--heat-cold { background:var(--hk-faint); }
+.hk-theme .hk-dot--heat-cool { background:var(--hk-heat-cool-dot); } .hk-theme .hk-dot--heat-cold { background:var(--hk-heat-cold-dot); }
 /* N10 / N11 - the active-filter line and the dimmed list while a new filter loads. */
 .hk-theme .hk-space__head { display:flex; align-items:flex-end; gap:12px; flex-wrap:wrap; }
 .hk-theme .hk-active { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:14px 0 10px; min-height:28px; }
