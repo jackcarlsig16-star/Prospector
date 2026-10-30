@@ -18,8 +18,9 @@ export const importantNow = rows => rows.filter(t => t.lane === 'needs_you' && t
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 const money = n => `$${Number(n || 0).toFixed(2)}`;
 export const FILTERS = [['pitch', 'Ready to pitch'], ['research', 'Needs research'], ['add_email', 'Needs email']];
-// One Claude command for every ready brand: their domains (else names), as Pitch copies them one at a time.
-export const batchCommand = rows => `hk batch ${rows.map(c => c.command.replace(/^hk pitch /, '')).join(', ')}`;
+// One Claude command for every ready brand: "hk pitch" with their domains (else names), as Pitch copies them one at a
+// time ("hk batch n" keeps its own meaning: find n new brands).
+export const batchCommand = rows => `hk pitch ${rows.map(c => c.command.replace(/^hk pitch /, '')).join(', ')}`;
 
 function StatusStrip({ t, R, onGo, onLane }) {
   const items = [['replies', 'Replies', t.replies_waiting, () => onGo('replies')], ['hot', 'Hot', t.hot, () => onGo('replies')], ['drafts', 'Drafts', t.drafts, () => onGo('drafts')], ['followups', 'Follow-ups', t.followups_due, () => onGo('today')], ['dms', 'DMs', t.dms_due, () => onGo('today')]];

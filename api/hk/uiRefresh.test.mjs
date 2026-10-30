@@ -253,3 +253,18 @@ test('U4/U5 Briefing rows carry the best contact in words (no address, no Apollo
   const w = r.body.waiting.find(x => x.id === MINE);
   assert.equal(w.due, true);
 });
+
+test('U5 Waiting on them follows the owner toggle by the touch\'s sender; a 270-day-old sheet send shows Open (due false), a recent one due a bump shows Bump', async () => {
+  fresh();
+  const OLD = randomUUID(); sb.db.hk_brands.push(extraBrand(OLD, 'Old Sheet Send', { owner_user_id: PETE, status: 'sent', next_due_at: '2026-02-01T00:00:00Z' }));
+  sb.db.hk_touches.push({ id: 't-old', business_id: HK, brand_id: OLD, sender_user_id: PETE, channel: 'email', kind: 'cold', subject: 'x', state: 'sent', sent_at: new Date(NOW.getTime() - 270 * 864e5).toISOString(), created_by: 'system', created_at: '2026-10-30T00:00:00Z' });
+  brandOf(MINE).next_due_at = '2026-10-25T00:00:00Z'; brandOf(MINE).status = 'sent';
+  sb.db.hk_touches.push({ id: 't-mine', business_id: HK, brand_id: MINE, sender_user_id: JACK, channel: 'email', kind: 'cold', subject: 'x', state: 'sent', sent_at: '2026-10-18T00:00:00Z', created_by: 'user', created_at: '2026-10-18T00:00:00Z' });
+  const brief = async owner => (await call(briefingRoute, reqOf({ query: { owner } }), { supabase: sb, now, today: async () => ({ counts: {} }) })).body.waiting;
+  const mine = await brief('me');
+  assert.deepEqual(mine.map(w => [w.name, w.due]), [['Mine Mills', true]], 'Jack sees only what Jack sent');
+  const all = await brief('all');
+  const old = all.find(w => w.id === OLD);
+  assert.deepEqual([old.waiting_days, old.due], [270, false], '270 days old: Open, never Bump');
+  assert.deepEqual((await brief(PETE)).map(w => w.name).sort(), ['Old Sheet Send', 'Warm Kettle'], "Pete's toggle = Pete's sends (Harbor Yoga replied)");
+});

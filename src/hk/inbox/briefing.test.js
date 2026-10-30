@@ -172,7 +172,7 @@ test('Research the n: the estimate first ("no estimate yet" under 3 rows), then 
   expect(await screen.findByText('Researched 1 brand ($0.04).')).toBeInTheDocument();
   expect(bodies[`POST /api/hk/${HK}/research/batch`]).toEqual([{ brand_ids: ['b1'] }, { brand_ids: ['b1'], confirm: true }]);
   fireEvent.click(screen.getByRole('button', { name: 'Copy batch command (1)' }));
-  expect(navigator.clipboard.writeText).toHaveBeenCalledWith('hk batch birchbars.invalid');
+  expect(navigator.clipboard.writeText).toHaveBeenCalledWith('hk pitch birchbars.invalid');
 });
 
 test('Research the n runs one brand per request and stops at the first stop (the daily cap)', async () => {

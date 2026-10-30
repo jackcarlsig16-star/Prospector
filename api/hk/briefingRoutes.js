@@ -13,7 +13,7 @@ import { todayPayload } from './jobs/runner.js';
 import { dayIn } from './jobs/plan.js';
 
 const DAY = 864e5;
-const SEND_N = 10, WAITING_N = 10;
+const SEND_N = 10, WAITING_N = 10, BUMP_MAX_DAYS = 60;
 const HOT_LABELS = new Set(['interested', 'pricing', 'referral']);
 const CLOSED = new Set(['passed', 'skipped', 'sponsor', 'signed']);
 
@@ -57,10 +57,13 @@ export async function briefingRoute(req, res, { supabase = getSupabase(), now = 
     const meId = ownerIdOf(req, data);
     const send = rankReach(data.brands, { ...data, meId, now: at }, { meFirstName: firstNameOf(data, meId), limit: SEND_N }).map(r => cardOf(r, data, meId));
     const max = data.settingsRow.max_email_touches || 3;
-    const waiting = data.brands.filter(b => ownerMatch(owner, b, me(req)) && !CLOSED.has(b.status))
-      .map(b => ({ b, a: activityOf(data.touchesBy[b.id] || [], data.repliesBy[b.id] || [], { now: at, maxEmailTouches: max }) }))
+    // Waiting on them follows the owner toggle by WHO SENT (the touch's sender), not by who owns the brand; a send older
+    // than BUMP_MAX_DAYS shows Open, never Bump.
+    const sentBy = owner === 'all' ? null : owner === 'me' || !owner ? me(req) : String(owner);
+    const waiting = data.brands.filter(b => !CLOSED.has(b.status))
+      .map(b => ({ b, a: activityOf((data.touchesBy[b.id] || []).filter(t => !sentBy || t.sender_user_id === sentBy), data.repliesBy[b.id] || [], { now: at, maxEmailTouches: max }) }))
       .filter(x => x.a.waiting_days != null).sort((x, y) => y.a.waiting_days - x.a.waiting_days).slice(0, WAITING_N)
-      .map(({ b, a }) => ({ id: b.id, name: b.name, owner_user_id: b.owner_user_id || null, waiting_days: a.waiting_days, last_outbound: a.last_outbound, touches_used: a.touches_used, max_email_touches: max, next_due_at: b.next_due_at || null, due: !!b.next_due_at && Date.parse(b.next_due_at) <= at.getTime(), heat_band: b.heat_band || 'cold' }));
+      .map(({ b, a }) => ({ id: b.id, name: b.name, owner_user_id: b.owner_user_id || null, waiting_days: a.waiting_days, last_outbound: a.last_outbound, touches_used: a.touches_used, max_email_touches: max, next_due_at: b.next_due_at || null, due: !!b.next_due_at && Date.parse(b.next_due_at) <= at.getTime() && a.waiting_days <= BUMP_MAX_DAYS, heat_band: b.heat_band || 'cold' }));
     const t = await today({ businessId, d: { supabase, now } });
     const counts = t.digest?.counts || {};
     const ownedHere = new Set(data.brands.filter(b => ownerMatch(owner, b, me(req)) || !b.owner_user_id).map(b => b.id));
