@@ -113,10 +113,10 @@ export async function notAFitRoute(req, res, { supabase = getSupabase(), now = (
   } catch (e) { fail(res, e, 'brands/not-a-fit'); }
 }
 
-// POST /brands/:id/activity { what, date 'YYYY-MM-DD', note? } | { undo: <touch id> } - Log activity (L): an outside
+// POST /brands/:id/activity { what, date 'YYYY-MM-DD', note? } (the note covers anything the five kinds don't) | { undo: <touch id> } - Log activity (L): an outside
 // touch (kind 'outside', state sent) for contact made away from Grow. The note is scrubbed and stays off the Activity
 // row. Undo discards that touch (never deleted).
-export const ACTIVITY = { emailed: ['email', 'Emailed'], called: ['phone', 'Called'], met: ['in_person', 'Met'], dm: ['ig_dm', 'DM'], other: ['contact_form', 'Other'] };
+export const ACTIVITY = { emailed: ['email', 'Emailed'], called: ['phone', 'Called'], met: ['in_person', 'Met'], dm: ['ig_dm', 'DM'], linkedin: ['linkedin', 'LinkedIn'] };
 export async function logActivityRoute(req, res, { supabase = getSupabase(), now = () => new Date() } = {}) {
   const businessId = req.params.businessId, uid = me(req), body = req.body || {};
   try {
@@ -130,7 +130,7 @@ export async function logActivityRoute(req, res, { supabase = getSupabase(), now
     }
     if (brand.archived_at) throw new HkError(409, 'that brand is archived');
     const what = oneOf(body.what, new Set(Object.keys(ACTIVITY)), 'what');
-    if (!what) throw new HkError(400, 'say what happened: emailed, called, met, dm or other');
+    if (!what) throw new HkError(400, 'say what happened: emailed, called, met, dm or linkedin');
     const date = String(body.date || '');
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(`${date}T17:00:00Z`))) throw new HkError(400, 'date must be YYYY-MM-DD');
     const sentAt = `${date}T17:00:00.000Z`;

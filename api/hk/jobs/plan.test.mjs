@@ -23,6 +23,12 @@ test('a cold sent 6 days ago with next_due_at in the past is due a bump, carryin
   assert.ok(!hasAt(r));
 });
 
+test('a logged outside Emailed (Log activity) after the cold does not move the sequence: the bump is still drafted on the cold', () => {
+  const r = run({ brands: [brand('a')], touches: [touch('a', 'cold', 'sent', 6), touch('a', 'outside', 'sent', 1, { gmail_thread_id: null, subject: 'Emailed' })], contacts: [contact('a')] });
+  assert.deepEqual(r.items.map(i => [i.kind, i.prior_touch_id, i.prior_thread_id]), [['bump', 't-a-cold', 'th-a']]);
+  assert.deepEqual(r.skipped, []);
+});
+
 test('not due yet: next_due_at in the future, or the days not elapsed even when next_due_at says so', () => {
   assert.deepEqual(reasons(run({ brands: [brand('a', { next_due_at: new Date(NOW.getTime() + 2 * 86400e3).toISOString() })], touches: [touch('a', 'cold', 'sent', 3)] })), ['not_due']);
   assert.deepEqual(reasons(run({ brands: [brand('a')], touches: [touch('a', 'cold', 'sent', 3)] })), ['days_not_elapsed']);

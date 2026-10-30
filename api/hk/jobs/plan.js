@@ -48,7 +48,8 @@ export function dueFollowups({ brands = [], touches = [], replies = [], contacts
     if (!ACTIVE.has(b.status)) { if (b.status === 'drafted' || b.status === 'claimed' || b.status === 'final_sent') skip(b, b.status === 'final_sent' ? 'final_done' : 'not_active'); continue; }
     if (b.relationship !== 'prospect') { skip(b, 'not_prospect'); continue; }
     if (!b.owner_user_id) { skip(b, b.owner_hint ? 'owner_missing' : 'unowned'); continue; }
-    const mine = tBy.get(b.id) || [];
+    // A logged outside touch (Log activity) never moves the sequence: only Grow's own cold / bump / final do.
+    const mine = (tBy.get(b.id) || []).filter(t => t.kind !== 'outside');
     const last = lastSentEmail(mine);
     if (!last) { skip(b, 'no_sent_touch'); continue; }
     const kind = FOLLOW[last.kind] ?? null;

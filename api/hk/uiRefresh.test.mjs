@@ -176,7 +176,9 @@ test('Log activity: an outside touch (channel by kind, date, scrubbed note off t
   assert.equal(brandOf(ID.run).last_touch_at, '2026-10-21T17:00:00.000Z');
   const ev = sb.db.hk_events.at(-1);
   assert.deepEqual([ev.action, ev.detail.what, ev.detail.date, 'note' in ev.detail], ['touch.logged', 'Called', '2026-10-21', false]);
-  for (const body of [{ what: 'faxed', date: '2026-10-21' }, { what: 'met', date: '2026-12-01' }, { what: 'met', date: '10/21' }, { what: 'met' }]) assert.equal((await as(A.logActivityRoute, { params: { id: ID.run }, body })).code, 400, JSON.stringify(body));
+  for (const body of [{ what: 'faxed', date: '2026-10-21' }, { what: 'other', date: '2026-10-21' }, { what: 'met', date: '2026-12-01' }, { what: 'met', date: '10/21' }, { what: 'met' }]) assert.equal((await as(A.logActivityRoute, { params: { id: ID.run }, body })).code, 400, JSON.stringify(body));
+  const li = await as(A.logActivityRoute, { params: { id: ID.run }, body: { what: 'linkedin', date: '2026-10-22' } });
+  assert.deepEqual([li.code, sb.db.hk_touches.find(x => x.id === li.body.touch_id).channel, li.body.what], [201, 'linkedin', 'LinkedIn']);
   const u = await as(A.logActivityRoute, { params: { id: ID.run }, body: { undo: r.body.touch_id } });
   assert.equal(u.code, 200);
   assert.equal(t.state, 'discarded');
