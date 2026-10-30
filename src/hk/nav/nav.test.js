@@ -171,16 +171,18 @@ test('saved view rename is an inline rail field: Esc cancels with no write, Ente
   prompt.mockRestore();
 });
 
-test('rail heat dots: Cool and Cold are >= 3:1 against the rail (sand), Hot unchanged, the heat-bar tokens unchanged', () => {
+test('rail heat dots: Warm, Cool and Cold are >= 3:1 against the rail (sand), Hot unchanged, the heat-bar tokens unchanged', () => {
   ensureHkTheme();
   const css = document.getElementById('hk-theme-css').textContent;
   const token = n => new RegExp(`--hk-${n}:(#[0-9A-F]{6})`, 'i').exec(css)[1];
   const lum = h => { const c = [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255).map(v => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
   const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
   const rail = token('sand');
+  expect(css).toMatch(/\.hk-dot--heat-warm \{ background:var\(--hk-heat-warm-dot\); \}/);
   expect(css).toMatch(/\.hk-dot--heat-cool \{ background:var\(--hk-heat-cool-dot\); \}/);
   expect(css).toMatch(/\.hk-dot--heat-cold \{ background:var\(--hk-heat-cold-dot\); \}/);
-  const table = { cool: ratio(token('heat-cool-dot'), rail), cold: ratio(token('heat-cold-dot'), rail), hot: ratio(token('heat-hot-bar'), rail) };
+  const table = { warm: ratio(token('heat-warm-dot'), rail), cool: ratio(token('heat-cool-dot'), rail), cold: ratio(token('heat-cold-dot'), rail), hot: ratio(token('heat-hot-bar'), rail) };
+  expect(table.warm).toBeGreaterThanOrEqual(3);
   expect(table.cool).toBeGreaterThanOrEqual(3);
   expect(table.cold).toBeGreaterThanOrEqual(3);
   expect(table.hot).toBeGreaterThanOrEqual(3);
