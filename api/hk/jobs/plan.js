@@ -87,7 +87,8 @@ export function dueDms({ brands = [], touches = [], replies = [], settings = {},
     const mine = tBy.get(b.id) || [];
     const cold = mine.find(t => t.channel === 'email' && t.kind === 'cold' && t.state === 'sent' && t.sent_at);
     if (!cold) continue;
-    if (mine.some(t => t.channel === 'ig_dm' && t.state !== 'discarded')) { skipped.push({ brand_id: b.id, brand_name: b.name, reason: 'dm_exists' }); continue; }
+    // An imported DM text (the sheet said one was ready) is hidden from the DM step, so it must not block a fresh one.
+    if (mine.some(t => t.channel === 'ig_dm' && t.state !== 'discarded' && t.state !== 'imported')) { skipped.push({ brand_id: b.id, brand_name: b.name, reason: 'dm_exists' }); continue; }
     if (repliedSince(rBy.get(b.id) || [], cold.sent_at)) { skipped.push({ brand_id: b.id, brand_name: b.name, reason: 'replied' }); continue; }
     if (now.getTime() < Date.parse(cold.sent_at) + after * DAY) continue;
     const verdict = canContact({ brand: b, touches: mine, senderUserId: b.owner_user_id, kind: 'dm_text' });

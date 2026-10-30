@@ -122,6 +122,9 @@ const finish = b => {
   b.periods = uniqBy(b.periods, p => `${p.period}|${p.kind}`);
   b.tabs = [...new Set(b.tabs)];
   if (b.relationship !== 'prospect') { b.last_touch_at = b.last_touch_at || null; b.next_due_at = null; }
+  // hk-imported-drafts-noise: a sheet "Email drafted" leaves no Gmail draft (its touch is 'imported'), so the brand reads
+  // claimed when a founder holds it (a member or the sheet's owner column), else candidate - the F3 rule.
+  if (b.status === 'drafted') b.status = b.owner_user_id || b.owner_hint ? 'claimed' : 'candidate';
   b.contact_count = b.contacts.length; b.has_email = b.contacts.some(c => c.email);
   return b;
 };

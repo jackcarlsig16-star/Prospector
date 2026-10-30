@@ -59,8 +59,8 @@ test("Jack's row: Website -> domain, Contact + Email -> one named contact, Type 
   assert.equal(b.next_due_at, '2026-10-15T00:00:00.000Z'); assert.equal(b.result, 'new');
 });
 
-test('statuses: drafted (warning), "In" (unmapped, kept in notes), no status no date -> candidate still hinted to Pete, future date flagged', () => {
-  assert.equal(brand('Zz Bluefin Run Club').status, 'drafted'); assert.deepEqual(codes(brand('Zz Bluefin Run Club')), ['draft_not_linked']); assert.equal(brand('Zz Bluefin Run Club').result, 'warning');
+test('statuses: "Email drafted" -> claimed with a warning, "In" (unmapped, kept in notes), no status no date -> candidate still hinted to Pete, future date flagged', () => {
+  assert.equal(brand('Zz Bluefin Run Club').status, 'claimed', 'a sheet "Email drafted" on a founder\'s tab reads claimed (no Gmail draft behind it)'); assert.deepEqual(codes(brand('Zz Bluefin Run Club')), ['draft_not_linked']); assert.equal(brand('Zz Bluefin Run Club').result, 'warning');
   assert.equal(brand('Zz Copperleaf Cafe').status, 'candidate'); assert.deepEqual(codes(brand('Zz Copperleaf Cafe')), ['unmapped_status']); assert.equal(brand('Zz Copperleaf Cafe').notes, 'Status: In');
   assert.equal(brand('Zz Granite Gym').status, 'candidate'); assert.equal(brand('Zz Granite Gym').owner_hint, 'pete'); assert.deepEqual(codes(brand('Zz Granite Gym')), []); assert.equal(brand('Zz Granite Gym').result, 'new');
   assert.equal(brand('Zz Granite Gym').notes, 'IG at granitegym, ask for Jo', 'a bare @ (an Instagram handle) reads as "at" - the inbox rule; no saved text trips hasPii');
@@ -129,4 +129,12 @@ test('privacy: the preview row carries contact presence, never an address; no ad
 
 test('tightKey: "Perk Spot" = "PerkSpot" = "The Perk Spot, Inc."', () => {
   assert.equal(tightKey('Perk Spot'), tightKey('PerkSpot')); assert.equal(tightKey('The Perk Spot, Inc.'), 'perkspot');
+});
+
+test('hk-imported-drafts-noise: a sheet "Email drafted" brand reads claimed when a founder holds it, candidate when nobody does (the F3 rule); its touch is imported', () => {
+  const tab = (name, kind, rows) => ({ name, kind, rows_read: rows.length, rows: rows.map((r, i) => ({ ref: `${name}!${i + 2}`, ...r })) });
+  const p = buildPlan({ parsed: { tabs: [tab('Podcasts', 'podcast', [{ name: 'Zz Quiet Pod', status: 'Email drafted 10/7' }]), tab('Pete Outreach', 'pete_outreach', [{ name: 'Zz Loud Pod', status: 'Email drafted 10/7' }])] }, members: { jack: JACK, pete: null }, today: TODAY });
+  const by = n => p.brands.find(b => b.name === n);
+  assert.deepEqual([by('Zz Quiet Pod').status, by('Zz Loud Pod').status], ['candidate', 'claimed']);
+  assert.deepEqual(by('Zz Quiet Pod').touches.map(t => t.state), ['imported']);
 });

@@ -121,3 +121,9 @@ test('planCounts: numbers only, reasons tallied', () => {
   assert.deepEqual(planCounts(follow, dms), { due_bump: 1, due_final: 0, due_dm: 1, without_contact: 0, quiet: false, skipped: { owner_missing: 1 } });
   assert.ok(!hasAt(planCounts(follow, dms)));
 });
+
+test('hk-imported-drafts-noise: an imported Instagram DM text (hidden from the DM step) does not block a fresh DM; a drafted or sent one still does', () => {
+  const b = brand('a'), dm = state => ({ id: 'dm', brand_id: 'a', channel: 'ig_dm', kind: 'dm_text', state });
+  assert.equal(dueDms({ brands: [b], touches: [touch('a', 'cold', 'sent', 10), dm('imported')], settings: SETTINGS, now: NOW }).items.length, 1);
+  for (const st of ['drafted', 'sent']) assert.deepEqual(dueDms({ brands: [b], touches: [touch('a', 'cold', 'sent', 10), dm(st)], settings: SETTINGS, now: NOW }).skipped.map(s => s.reason), ['dm_exists'], st);
+});
