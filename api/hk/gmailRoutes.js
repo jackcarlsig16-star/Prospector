@@ -4,7 +4,8 @@
 // only Gmail writes are a draft create and a draft delete. Addresses: the contact's To is read from hk_contacts on the
 // server; hk_replies.from_email is stored and never returned; the only address a response carries is the caller's own
 // mailbox inside the Gmail URLs they open.
-import { getSupabase, HkError, fail, isOwner, me, text, oneOf, logEvent, touchRow, replyRow, liveBrands, brandById, sponsorsNichesOf, canContact, TEAM_DOMAINS, selectIn, ownerParam, ownedBy } from './hkShared.js';
+import { getSupabase, HkError, fail, isOwner, me, text, oneOf, logEvent, touchRow, replyRow, liveBrands, brandById, sponsorsNichesOf, canContact, TEAM_DOMAINS, selectIn, ownerParam, ownedBy, memberFirstNames } from './hkShared.js';
+import { sheetOwnerOf, sheetQuestion, hintName } from './rules.js';
 import { lintDraft, lintRejects } from './lint.js';
 import { buildDraftMime, draftUrl, replySubject, header } from './gmailMime.js';
 import { replyKind, signalWords, signalNow } from './signals.js';
@@ -35,7 +36,7 @@ export const deps0 = d => ({ supabase: d.supabase || getSupabase(), gmail: d.gma
 // verdict + lint, reads To from hk_contacts, threads a follow-up, saves the draft on the mailbox D.mailbox resolves for
 // this user, writes the touch, patches the brand, logs the event. tokenFor() returns the token or null (the caller has
 // already answered). createdBy 'user' | 'claude' | 'system'. -> { touch, draft, verdict, mailboxEmail } | null
-export async function createDraftFor({ D, businessId, userId: uid, body, tokenFor, createdBy = 'user' }) {
+export async function createDraftFor({ D, businessId, userId: uid, body, tokenFor, createdBy = 'user', claimNote = null }) {
   const { supabase, gmail, mailbox, now } = D;
     const channel = oneOf(body.channel || 'email', new Set(['email', 'ig_dm']), 'channel');
     const kind = oneOf(body.kind || 'cold', KINDS, 'kind');
@@ -85,16 +86,19 @@ export async function createDraftFor({ D, businessId, userId: uid, body, tokenFo
     if (DRAFTABLE_STATUS.has(brand.status)) patch.status = 'drafted';
     await supabase.from('hk_brands').update(patch).eq('id', brand.id);
     // 6 the event - no address, no body
-    await logEvent(supabase, { businessId, actorUserId: uid, actorKind: createdBy === 'user' ? 'user' : createdBy, entityType: 'brand', entityId: brand.id, action: 'draft_created', detail: { touch_id: touch.id, kind, channel, subject: subject || null, claimed: !brand.owner_user_id, no_recipient: channel === 'email' && !contact?.email } });
+    await logEvent(supabase, { businessId, actorUserId: uid, actorKind: createdBy === 'user' ? 'user' : createdBy, entityType: 'brand', entityId: brand.id, action: 'draft_created', detail: { touch_id: touch.id, kind, channel, subject: subject || null, claimed: !brand.owner_user_id, no_recipient: channel === 'email' && !contact?.email, ...(claimNote ? { note: claimNote } : {}) } });
     return { touch, draft, verdict, mailboxEmail };
 }
 
-// POST /drafts  { brand_id, contact_id?, channel 'email'|'ig_dm', kind, subject, body_markdown, challenge_concept?, reply_to_touch_id?, omit_recipient? }
+// POST /drafts  { brand_id, contact_id?, channel 'email'|'ig_dm', kind, subject, body_markdown, challenge_concept?, reply_to_touch_id?, omit_recipient?, confirm_sheet_owner? }
 export async function createDraftRoute(req, res, d = {}) {
   const D = deps0(d);
   const businessId = req.params.businessId, uid = me(req), body = req.body || {};
   try {
-    const out = await createDraftFor({ D, businessId, userId: uid, body, tokenFor: () => D.tokenFor(req, res, businessId, 'drafts'), createdBy: body.created_by === 'claude' ? 'claude' : 'user' });
+    // grow-sheet-owner-respect: a draft claims an unclaimed brand, so one the sheet lists as someone else's asks first.
+    const hint = sheetOwnerOf(await brandById(D.supabase, businessId, body.brand_id), (await memberFirstNames(D.supabase, businessId))(uid));
+    if (hint && body.confirm_sheet_owner !== true) throw new HkError(409, sheetQuestion(hint), { sheet_owner: hintName(hint), confirm_sheet_owner: true });
+    const out = await createDraftFor({ D, businessId, userId: uid, body, tokenFor: () => D.tokenFor(req, res, businessId, 'drafts'), createdBy: body.created_by === 'claude' ? 'claude' : 'user', claimNote: hint ? `taken from ${hintName(hint)}'s sheet list` : null });
     if (!out) return;
     const { touch, draft, verdict, mailboxEmail } = out;
     res.status(201).json({ touch_id: touch.id, touch: touchRow(touch), gmail_draft_url: draft?.message?.id && mailboxEmail ? draftUrl(mailboxEmail, draft.message.id) : null, warnings: verdict.warnings });

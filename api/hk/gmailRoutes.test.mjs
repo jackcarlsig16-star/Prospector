@@ -77,6 +77,27 @@ test('G3 cold draft: verdict + lint pass, To from hk_contacts server-side, signa
   assert.ok(!calls.some(c => /send/i.test(c[0])), 'no send call');
 });
 
+test('grow-sheet-owner-respect: a draft on a brand the sheet lists as Pete\'s asks first (409, no Gmail call, nothing saved); with confirm_sheet_owner it drafts, claims and notes it; Pete\'s own hint drafts without asking', async () => {
+  const members = [{ business_id: HK, user_id: JACK, name: 'Jack Example' }, { business_id: HK, user_id: PETE, name: 'Pete Example' }];
+  fresh({ business_members: members }); flagged = [];
+  sb.db.hk_brands.find(x => x.id === B.yoga).owner_hint = 'pete';
+  const body = { brand_id: B.yoga, channel: 'email', kind: 'cold', subject: SUBJECT, body_markdown: GOOD_BODY };
+  let r = await call(R.createDraftRoute, reqOf({ body }));
+  assert.equal(r.code, 409);
+  assert.equal(r.body.error, "The sheet lists this as Pete's. Take it anyway?");
+  assert.deepEqual([r.body.sheet_owner, r.body.confirm_sheet_owner], ['Pete', true]);
+  assert.deepEqual([calls.length, sb.db.hk_touches.length, sb.db.hk_events.length], [0, 0, 0]);
+  assert.equal(sb.db.hk_brands.find(x => x.id === B.yoga).owner_user_id, null);
+  r = await call(R.createDraftRoute, reqOf({ body: { ...body, confirm_sheet_owner: true } }));
+  assert.equal(r.code, 201, JSON.stringify(r.body));
+  assert.deepEqual([sb.db.hk_brands.find(x => x.id === B.yoga).owner_user_id, sb.db.hk_events.at(-1).detail.note], [JACK, "taken from Pete's sheet list"]);
+  fresh({ business_members: members });
+  sb.db.hk_brands.find(x => x.id === B.yoga).owner_hint = 'Pete';
+  r = await call(R.createDraftRoute, reqOf({ body, user: PETE }));
+  assert.equal(r.code, 201, JSON.stringify(r.body));
+  assert.equal(sb.db.hk_events.at(-1).detail.note, undefined);
+});
+
 test('G3 refusals: sponsor -> 409 verdict; owned by the other founder -> 409; em dash / missing ask -> 422 problems and nothing saved; no contact email -> 409 needs_contact; omit_recipient drafts without To', async () => {
   fresh();
   let r = await call(R.createDraftRoute, reqOf({ body: { brand_id: B.juice, kind: 'cold', subject: SUBJECT, body_markdown: GOOD_BODY } }));

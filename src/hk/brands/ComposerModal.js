@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import Field from '../../ui/Field';
 import Button, { ButtonRow } from '../../ui/Button';
 import { hkGet, hkPost } from '../hkApi';
+import { useSheetConfirm, claimAsking } from './sheetConfirm';
 import { canSave, kindsAvailable, subjectFor, contactWithEmail, KIND_OPTIONS } from './composerRules';
 
 // hkos-gmail-connect-v1 G8 (PROPOSED) - the minimal composer so the loop can run before the Claude connector exists.
@@ -17,6 +18,7 @@ export default function ComposerModal({ businessId, brand, contacts, touches, gm
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const contact = contactWithEmail(contacts);
+  const sheet = useSheetConfirm();
   useEffect(() => { hkGet(businessId, '/settings').then(d => { setSettings(d); setSubject(s => s || subjectFor(d.settings?.subject_format, brand.name)); }).catch(e => setError(e.message)); }, [businessId, brand.name]);
   useEffect(() => { const onKey = e => { if (e.key === 'Escape') onClose(); }; document.addEventListener('keydown', onKey); return () => document.removeEventListener('keydown', onKey); }, [onClose]);
   const text = `${kind}\n${subject}\n${body}`;
@@ -24,7 +26,7 @@ export default function ComposerModal({ businessId, brand, contacts, touches, gm
   const runLint = async () => { setBusy('lint'); setError(''); try { const r = await hkPost(businessId, '/drafts/lint', { subject, body_markdown: body, kind, channel: 'email' }); setLint({ ...r, text }); } catch (e) { setError(e.message); } finally { setBusy(''); } };
   const save = async () => {
     setBusy('save'); setError('');
-    try { const r = await hkPost(businessId, '/drafts', { brand_id: brand.id, contact_id: contact?.id, channel: 'email', kind, subject, body_markdown: body }); onSaved(r); }
+    try { const r = await claimAsking(sheet.confirm, extra => hkPost(businessId, '/drafts', { brand_id: brand.id, contact_id: contact?.id, channel: 'email', kind, subject, body_markdown: body, ...extra })); if (r) onSaved(r); }
     catch (e) { if (e.status === 422 && e.problems) setLint({ problems: e.problems, lint_passed: false, text }); setError(e.message); }
     finally { setBusy(''); }
   };
@@ -53,6 +55,7 @@ export default function ComposerModal({ businessId, brand, contacts, touches, gm
             </div>
           )}
           {error && <p className="hk-error" role="alert">{error}</p>}
+          {sheet.node}
           <ButtonRow align="between">
             <Button variant="tertiary" onClick={onClose}>Cancel</Button>
             <span style={{ display: 'inline-flex', gap: 8 }}>

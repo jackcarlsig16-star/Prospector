@@ -55,3 +55,30 @@ test('bulk: brands needing the question are asked about once, together; Take it 
   await act(async () => { await bulkAsking(no, ['sheet1'], run); });
   expect(sent).toEqual([['sheet1', {}]]);
 });
+
+test('Draft: Save on a brand the sheet lists as Pete\'s asks first; Leave it saves nothing; Take it retries the draft with the flag', async () => {
+  const ComposerModal = require('./ComposerModal').default;
+  const sent = [], saved = [];
+  global.fetch = jest.fn((url, init = {}) => {
+    if (url.includes('/settings')) return json(200, { settings: {} });
+    if (url.includes('/drafts/lint')) return json(200, { lint_passed: true, problems: [] });
+    const body = JSON.parse(init.body); sent.push(body.confirm_sheet_owner === true);
+    return body.confirm_sheet_owner ? json(201, { touch_id: 't1' }) : json(409, { error: QUESTION, sheet_owner: 'Pete', confirm_sheet_owner: true });
+  });
+  render(<ComposerModal businessId={HK} brand={brand} contacts={[{ id: 'c1', name: 'Ana', email: 'x', is_primary: true }]} touches={[]} gmail={{ mailbox: { linked: true, state: 'ok' } }} onClose={() => {}} onSaved={r => saved.push(r)} />);
+  await waitFor(() => expect(screen.getByLabelText('Subject')).toHaveValue('HumanKind x Zz Sable Socks - '));
+  fireEvent.change(screen.getByLabelText('Body'), { target: { value: 'Hi Ana' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Run lint' }));
+  const save = await screen.findByRole('button', { name: 'Save to Gmail Drafts' });
+  await waitFor(() => expect(save).not.toBeDisabled());
+  fireEvent.click(save);
+  expect(await screen.findByRole('alertdialog', { name: 'Take it anyway?' })).toHaveTextContent(QUESTION);
+  fireEvent.click(screen.getByRole('button', { name: 'Leave it' }));
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  expect([sent, saved]).toEqual([[false], []]);
+  await waitFor(() => expect(save).not.toBeDisabled());
+  fireEvent.click(save);
+  fireEvent.click(await screen.findByRole('button', { name: 'Take it' }));
+  await waitFor(() => expect(saved).toEqual([{ touch_id: 't1' }]));
+  expect(sent).toEqual([false, false, true]);
+});
