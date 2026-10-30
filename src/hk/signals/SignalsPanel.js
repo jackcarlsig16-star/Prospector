@@ -11,7 +11,8 @@ const SHOW = 8;
 const fmt = iso => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '');
 const lineOf = s => s.detail || `${s.brand?.name || s.domain || 'A sender'} ${s.words}`;
 
-export default function SignalsPanel({ businessId, shell, canEdit, onOpenBrand, onGo, onSeen }) {
+// compact (grow-ui-refresh U5): the Briefing's 340 px rail - one line per signal (opens it) with its time and Dismiss.
+export default function SignalsPanel({ businessId, shell, canEdit, onOpenBrand, onGo, onSeen, compact = false }) {
   const [data, setData] = useState(null);
   const [unseen, setUnseen] = useState(() => new Set());
   const [all, setAll] = useState(false);
@@ -56,6 +57,24 @@ export default function SignalsPanel({ businessId, shell, canEdit, onOpenBrand, 
       </span>
     </div>
   );
+  const line = s => (
+    <div key={s.id} className={`hk-rcard__sig${(!s.seen_at || unseen.has(s.id)) ? ' hk-rcard__sig--unseen' : ''}`} data-hk-signal={s.kind}>
+      <button type="button" className="hk-btn hk-rcard__sigword" onClick={() => act(s)} data-hk-signal-act>{lineOf(s)}</button>
+      <span className="hk-meta">{fmt(s.occurred_at)}</span>
+      {canEdit && <button type="button" className="hk-btn hk-link hk-rcard__dismiss" aria-label={`Dismiss: ${lineOf(s)}`} onClick={() => dismiss(s)} data-hk-signal-dismiss>Dismiss</button>}
+    </div>
+  );
+  if (compact) {
+    return (
+      <section className="hk-rcard" aria-label="Signals" data-hk-section="signals">
+        <h2 className="hk-rcard__title">Signals <span className="hk-meta">{prospects.length}</span></h2>
+        {undo && <p className="hk-meta" role="status" data-hk-signal-undo-line>Dismissed. <button type="button" className="hk-btn hk-link" onClick={() => dismiss(undo, true)} data-hk-signal-undo>Undo</button></p>}
+        {error && <p className="hk-error" role="alert">{error}</p>}
+        {prospects.length ? <div className="hk-rcard__rows">{shown.map(line)}</div> : <p className="hk-meta">No prospect signals right now.</p>}
+        {prospects.length > SHOW && <p><button type="button" className="hk-btn hk-link" onClick={() => setAll(a => !a)} data-hk-signals-more>{all ? 'Show fewer' : `Show all ${prospects.length}`}</button></p>}
+      </section>
+    );
+  }
   return (
     <section className="hk-today__card" aria-label="Signals" data-hk-section="signals">
       <h2 className="hk-section-title">Signals ({prospects.length})</h2>

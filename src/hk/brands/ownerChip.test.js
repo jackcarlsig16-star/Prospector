@@ -7,7 +7,7 @@ import ReachLine from './ReachLine';
 import Briefing from '../inbox/Briefing';
 
 // grow-owner-chip-and-site-label - the owner chip (member / sheet owner / none) on the brand page, Brands rows, phone
-// cards and Briefing cards; Save as website / Wrong site + Undo. Invented brands; no address in any fixture.
+// cards; Save as website / Wrong site + Undo (on Briefing rows: Yes, save / Wrong site in the expand). Invented brands; no address in any fixture.
 const HK = 'biz-hk';
 window.matchMedia = () => ({ matches: false, addEventListener() {}, removeEventListener() {} });
 const members = [{ user_id: 'u-me', first_name: 'Rowan', palette_index: 1 }, { user_id: 'u-sky', first_name: 'Sky', palette_index: 2 }];
@@ -73,26 +73,25 @@ test('Brands rows and phone cards: member / sheet owner / Unclaimed, never Claim
   expect(within(card).queryByText('Unclaimed')).toBeNull();
 });
 
-const card = over => ({ id: 'b1', name: 'Zz Alder Oats', domain: null, category: null, city: null, status: 'claimed', owner_user_id: null, owner_hint: null, heat_band: 'cold', score: 10, why: [], parts: [], research: null, suggestion: null, research_attempted_at: null, command: 'hk pitch Zz Alder Oats', ...over });
+const card = over => ({ id: 'b1', name: 'Zz Alder Oats', domain: null, category: null, city: null, status: 'claimed', owner_user_id: null, owner_hint: null, heat_band: 'cold', score: 10, why: [], parts: [], score_parts: [{ key: 'website', words: 'has a website', points: 10 }], primary: { kind: 'research', label: 'Research' }, research: null, suggestion: null, research_attempted_at: null, command: 'hk pitch Zz Alder Oats', contact: null, ...over });
 const BRIEF = sends => ({ owner: 'me', tiles: { replies_waiting: 0, hot: 0, drafts: 0, followups_due: 0, dms_due: 0, sent_week: 0, reply_rate_week: null, researched_today: { n: 0, cap: 10 } }, send: sends, waiting: [], eligible: 3, research: { on: true, n: 10, cap_usd: 1, time: '06:30', today_calls: 0, today_spend: 0 } });
 
-test('Briefing cards: sheet owner chip, member chip, Yours; suggested website reads "Website (suggested)" with Save as website + Wrong site, Undo restores', async () => {
+test('Briefing rows (grow-ui-refresh U4): a suggested website shows beside the name and in the expand as "Website (suggested)" with Yes, save + Wrong site, Undo restores', async () => {
   let suggestion = { domain: 'alderoats.invalid', confidence: 'high' };
-  routes[`GET /api/hk/${HK}/briefing`] = () => BRIEF([card({ owner_hint: 'pete', suggestion }), card({ id: 'b2', name: 'Zz Birch Bars', owner_user_id: 'u-sky' }), card({ id: 'b3', name: 'Zz Cedar Cola', owner_user_id: 'u-me' })]);
+  routes[`GET /api/hk/${HK}/briefing`] = () => BRIEF([card({ suggestion })]);
   routes[`GET /api/hk/${HK}/signals`] = { prospects: [], sponsors: [], unseen_hot_warm: 0 };
   routes[`POST /api/hk/${HK}/brands/b1/wrong-site`] = b => { suggestion = b.undo ? { domain: 'alderoats.invalid', confidence: 'high' } : null; return { brand: { id: 'b1' } }; };
   render(<Briefing businessId={HK} shell={shell('owner')} owner="me" canEdit rows={[]} listReady onOpenThread={() => {}} onOpenBrand={() => {}} onGo={() => {}} onLane={() => {}} />);
-  const c1 = (await screen.findByText('Zz Alder Oats')).closest('[data-hk-send-card]');
-  expect(within(c1).getByText('Sheet: Pete · not in Grow yet')).toBeInTheDocument();
-  expect(within(screen.getByText('Zz Birch Bars').closest('[data-hk-send-card]')).getByText('Sky')).toBeInTheDocument();
-  expect(within(screen.getByText('Zz Cedar Cola').closest('[data-hk-send-card]')).getByText('Yours')).toBeInTheDocument();
-  expect(within(c1).getByText(/Website \(suggested\): alderoats.invalid/)).toBeInTheDocument();
-  expect(within(c1).getByRole('button', { name: 'Save as website' })).toBeInTheDocument();
-  fireEvent.click(within(c1).getByRole('button', { name: 'Wrong site' }));
-  expect(await within(c1).findByText(/alderoats.invalid marked wrong/)).toBeInTheDocument();
-  expect(within(c1).queryByRole('button', { name: 'Save as website' })).toBeNull();
-  fireEvent.click(within(c1).getByRole('button', { name: 'Undo' }));
-  expect(await within(c1).findByText(/Website \(suggested\): alderoats.invalid/)).toBeInTheDocument();
+  const r1 = (await screen.findByText('Zz Alder Oats')).closest('[data-hk-send-row]');
+  expect(within(r1).getByText('alderoats.invalid · suggested')).toBeInTheDocument();
+  fireEvent.click(within(r1).getByRole('button', { name: 'Expand Zz Alder Oats' }));
+  const ex = r1.querySelector('[data-hk-expand]');
+  expect(within(ex).getByText(/Website \(suggested\): alderoats.invalid/)).toBeInTheDocument();
+  expect(within(ex).getByRole('button', { name: 'Yes, save' })).toBeInTheDocument();
+  fireEvent.click(within(ex).getByRole('button', { name: 'Wrong site' }));
+  expect(await within(r1).findByText(/alderoats.invalid marked wrong/)).toBeInTheDocument();
+  fireEvent.click(within(r1).getByRole('button', { name: 'Undo' }));
+  expect(await within(r1).findByText(/Website \(suggested\): alderoats.invalid/)).toBeInTheDocument();
   expect(bodies[`POST /api/hk/${HK}/brands/b1/wrong-site`]).toEqual([{}, { undo: true }]);
 });
 

@@ -36,6 +36,16 @@ const PATHS = {
   filter: <path d="M4 5h16l-6 8v5l-4 2v-7z" />,
   close: <path d="M6 6l12 12M18 6L6 18" />,
   pencil: <><path d="M4 20h4L19 9l-4-4L4 16z" /></>,
+  // grow-ui-refresh-v1 - quick commands and the expanded row.
+  target: <><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.5" /></>,
+  ban: <><circle cx="12" cy="12" r="9" /><path d="M5.6 5.6l12.8 12.8" /></>,
+  bolt: <path d="M13 2L4 14h7l-1 8 9-12h-7z" />,
+  copy: <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V5a1 1 0 00-1-1H5a1 1 0 00-1 1v10a1 1 0 001 1h3" /></>,
+  globe: <><circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18" /></>,
+  person: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0116 0" /></>,
+  check: <path d="M5 12l5 5L20 7" />,
+  note: <><path d="M6 3h9l4 4v14H6z" /><path d="M9 12h7M9 16h5" /></>,
+  flame: <path d="M12 3c1 4 5 5 5 10a5 5 0 01-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-3-1-5 1-9z" />,
 };
 
 export function Icon({ name, size = 18, label }) {

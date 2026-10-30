@@ -11,7 +11,7 @@ export async function loadIntel(supabase, businessId, now = new Date()) {
     liveBrands(supabase, businessId),
     all('hk_touches', 'id, brand_id, sender_user_id, channel, kind, state, sent_at, drafted_at, gmail_thread_id'),
     all('hk_replies', 'id, brand_id, touch_id, label, handled, received_at, gmail_thread_id'),
-    all('hk_contacts', 'id, brand_id, email'),
+    all('hk_contacts', 'id, brand_id, name, title, email, email_source, is_primary, left_company, created_by'),
     all('hk_domain_intel', 'id, domain, intel, cost_usd, researched_at'),
   ]);
   const { data: settingsRow, error } = await supabase.from('hk_settings').select('*').eq('business_id', businessId).maybeSingle();
@@ -23,7 +23,8 @@ export async function loadIntel(supabase, businessId, now = new Date()) {
   return {
     now, brands, touches, replies, claimedAt,
     touchesBy: group(touches, 'brand_id'), repliesBy: group(replies, 'brand_id'),
-    contactsBy: group(contacts.map(c => ({ brand_id: c.brand_id, has_email: !!c.email })), 'brand_id'),
+    // The address is dropped here: name, role and where the email came from only.
+    contactsBy: group(contacts.map(c => ({ brand_id: c.brand_id, has_email: !!c.email, name: c.name || null, title: c.title || null, email_source: c.email_source || null, is_primary: !!c.is_primary, left_company: !!c.left_company, created_by: c.created_by || null })), 'brand_id'),
     intelByDomain: Object.fromEntries(intel.map(i => [i.domain, i])),
     sponsorsNiches: sponsorsNichesOf(brands),
     settingsRow: settingsRow || {}, settings: intelSettings(settingsRow?.intel),

@@ -187,7 +187,9 @@ test('rail heat dots: Warm, Cool and Cold are >= 3:1 against the rail (sand), Ho
   expect(table.cold).toBeGreaterThanOrEqual(3);
   expect(table.hot).toBeGreaterThanOrEqual(3);
   expect([token('heat-hot-bar'), token('heat-warm-bar'), token('heat-cool-bar')]).toEqual(['#278245', '#8FC283', '#D2C19C']);
-  expect(css).toMatch(/\.hk-heat--cool \{ background:var\(--hk-sand\)/);
+  // grow-ui-refresh J2: chips read the --hk-heat-<band>-bg/fg tokens; the shipped (green) values are unchanged.
+  expect(css).toMatch(/\.hk-heat--cool \{ background:var\(--hk-heat-cool-bg\)/);
+  expect(css).toMatch(/--hk-heat-cool-bg:var\(--hk-sand\); --hk-heat-cool-fg:var\(--hk-cocoa\)/);
 });
 
 test('N9 old links: #hk/pipeline lands on Views › Pipeline grouped by stage; #hk/sponsors hosts the Sponsors screen; #hk/replies opens Tracked replies › Open', async () => {

@@ -6,7 +6,7 @@ import { UNDO_MS } from '../signals/Heat';
 // use-domain route (duplicate-domain check, Activity row); "Wrong site" clears the suggestion and keeps the sweep off
 // the brand for 30 days, with a 10 s Undo. Viewers see the line only. onSaved runs only after a save, so a parent that
 // remounts on a brand change doesn't drop the Undo.
-export default function SiteSuggestion({ businessId, brandId, brandName, suggestion, canEdit, className = 'hk-meta', onChanged, onSaved, setNote, ...attrs }) {
+export default function SiteSuggestion({ businessId, brandId, brandName, suggestion, canEdit, className = 'hk-meta', saveLabel = 'Save as website', onChanged, onSaved, setNote, ...attrs }) {
   const [busy, setBusy] = useState(false);
   const [undo, setUndo] = useState(null);
   useEffect(() => { if (!undo) return undefined; const t = setTimeout(() => setUndo(null), UNDO_MS); return () => clearTimeout(t); }, [undo]);
@@ -25,7 +25,7 @@ export default function SiteSuggestion({ businessId, brandId, brandName, suggest
   return (
     <p className={className} {...attrs}>
       {suggestion.confidence === 'high' ? `Website (suggested): ${suggestion.domain}` : `Possible website: ${suggestion.domain}?`}
-      {canEdit && <> · <button type="button" className="hk-btn hk-link" disabled={busy} onClick={save} data-hk-use-site>Save as website</button>
+      {canEdit && <> · <button type="button" className="hk-btn hk-link" disabled={busy} onClick={save} data-hk-use-site>{saveLabel}</button>
         {' · '}<button type="button" className="hk-btn hk-link" disabled={busy} onClick={wrong} data-hk-wrong-site>Wrong site</button></>}
     </p>
   );

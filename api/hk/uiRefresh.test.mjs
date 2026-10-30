@@ -238,3 +238,18 @@ test('U8 research: industry (<= 40), the team\'s context (scrubbed) in the promp
   assert.deepEqual([brandOf(ID.run).domain, brandOf(ID.run).domain_suggested, r.body.suggested], ['bluefinrun.example', 'bluefin-runners.example', true]);
   assert.equal((await call(R.researchBrandRoute, reqOf({ method: 'POST', params: { id: ID.run }, body: { click: true, website: 'amazon.com' } }), { supabase: sb, now, call: stubCall(calls) })).code, 400);
 });
+
+test('U4/U5 Briefing rows carry the best contact in words (no address, no Apollo wording), is_local, the brand idea; Waiting rows say when a bump is due', async () => {
+  fresh();
+  sb.db.hk_contacts.push({ id: 'c-run', business_id: HK, brand_id: ID.run, name: 'Rae Runner', title: 'Marketing lead', email: 'rae@bluefinrun.example', email_source: 'import', is_primary: true, created_at: '2026-10-02T00:00:00Z' });
+  brandOf(ID.run).challenge_idea = 'Miles month';
+  brandOf(MINE).next_due_at = '2026-10-25T00:00:00Z';
+  sb.db.hk_touches.push({ id: 't-mine', business_id: HK, brand_id: MINE, sender_user_id: JACK, channel: 'email', kind: 'cold', subject: 'x', state: 'sent', sent_at: '2026-10-18T00:00:00Z', created_by: 'user', created_at: '2026-10-18T00:00:00Z' });
+  const r = await call(briefingRoute, reqOf({ query: { owner: 'me' } }), { supabase: sb, now, today: async () => ({ counts: {} }) });
+  const run = r.body.send.find(c => c.id === ID.run);
+  assert.deepEqual(run.contact, { name: 'Rae Runner', title: 'Marketing lead', has_email: true, source: 'Email on file · from the sheet' });
+  assert.deepEqual([run.is_local, run.challenge_idea, run.command], [false, 'Miles month', 'hk pitch bluefinrun.example']);
+  assert.ok(!hasAt(r.body.send) && !/apollo/i.test(JSON.stringify(r.body.send)));
+  const w = r.body.waiting.find(x => x.id === MINE);
+  assert.equal(w.due, true);
+});

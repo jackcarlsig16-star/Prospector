@@ -4,7 +4,7 @@
 // rows the Inbox list already loads (inboxRoutes importance), never a second list call.
 import { getSupabase, HkError, fail, me, brandById } from './hkShared.js';
 import { primaryOf } from './rules.js';
-import { researchEstimate } from './brandActions.js';
+import { researchEstimate, pitchCommand } from './brandActions.js';
 import { rankReach, reachOf, activityOf, intelFor, sheetSkipped, REACH_WORDS } from './intelScore.js';
 import { loadIntel, firstNameOf } from './intelData.js';
 import { sweepToday } from './researchSweep.js';
@@ -25,6 +25,15 @@ export function researchLine(intel) {
 }
 // U4's expand: what they do, the idea, why it fits, industry (J6) and what the research cost.
 const researchOf = intel => { const i = intel.intel || {}; return { line: researchLine(intel), fit: i.fit?.sponsor_fit || null, researched_at: intel.researched_at, what_they_do: i.company?.what_they_do || null, why: i.fit?.why || null, challenge_idea: i.fit?.challenge_idea || null, industry: i.company?.industry || null, hq_city: i.company?.hq_city || null, chicago_presence: i.company?.chicago_presence || null, cost_usd: intel.cost_usd ?? null }; };
+// J5 - the best contact in plain words: name, role and where the email came from (no address, no Apollo wording).
+const SOURCE_WORDS = { import: 'from the sheet', site_published: 'from their website', apollo_verified: 'on file', user_supplied: 'added by a member' };
+export function bestContact(contacts = [], data) {
+  const live = contacts.filter(c => !c.left_company);
+  const c = live.find(x => x.is_primary && x.has_email) || live.find(x => x.has_email) || live.find(x => x.is_primary) || live[0];
+  if (!c) return null;
+  const by = c.email_source === 'user_supplied' && c.created_by ? data.members.find(m => m.user_id === c.created_by)?.first_name : null;
+  return { name: c.name, title: c.title, has_email: c.has_email, source: c.has_email ? `Email on file · ${by ? `added by ${by}` : SOURCE_WORDS[c.email_source] || 'on file'}` : 'No email yet' };
+}
 const suggestionOf = b => (b.domain_suggested && !b.domain ? { domain: b.domain_suggested, confidence: b.domain_confidence || 'low', at: b.domain_suggested_at } : null);
 // Send-these-10 rows are reachOf-eligible, so can_contact is already clear (verdictOk) and the brand is yours or nobody's.
 export const cardOf = (r, data, meId) => {
@@ -32,7 +41,8 @@ export const cardOf = (r, data, meId) => {
   const primary = primaryOf({ brand: b, meId, replies: data.repliesBy[b.id] || [], touches: data.touchesBy[b.id] || [], researched: !!intel, hasEmail: (data.contactsBy[b.id] || []).some(c => c.has_email), verdictOk: true });
   return { id: b.id, name: b.name, domain: b.domain || null, category: b.category || null, city: b.city || null, status: b.status, owner_user_id: b.owner_user_id || null, owner_hint: b.owner_hint || null, heat_band: b.heat_band || 'cold', targeted_at: b.targeted_at || null,
     score: r.score, why: r.why, parts: r.parts.map(([k]) => k), score_parts: r.parts.map(([key, points]) => ({ key, words: REACH_WORDS[key], points })), primary, snoozed_until: b.snoozed_until || null, research: intel ? researchOf(intel) : null,
-    suggestion: suggestionOf(b), research_attempted_at: b.research_attempted_at || null, command: `hk pitch ${b.domain || b.name}` };
+    suggestion: suggestionOf(b), research_attempted_at: b.research_attempted_at || null, command: pitchCommand(b),
+    is_local: !!b.is_local, challenge_idea: b.challenge_idea || null, contact: bestContact(data.contactsBy[b.id], data) };
 };
 
 const ownerIdOf = (req, data) => { const o = req.query?.owner; if (!o || o === 'me' || o === 'all') return me(req); if (!data.members.some(m => m.user_id === o)) throw new HkError(400, 'unknown owner'); return String(o); };
@@ -50,7 +60,7 @@ export async function briefingRoute(req, res, { supabase = getSupabase(), now = 
     const waiting = data.brands.filter(b => ownerMatch(owner, b, me(req)) && !CLOSED.has(b.status))
       .map(b => ({ b, a: activityOf(data.touchesBy[b.id] || [], data.repliesBy[b.id] || [], { now: at, maxEmailTouches: max }) }))
       .filter(x => x.a.waiting_days != null).sort((x, y) => y.a.waiting_days - x.a.waiting_days).slice(0, WAITING_N)
-      .map(({ b, a }) => ({ id: b.id, name: b.name, owner_user_id: b.owner_user_id || null, waiting_days: a.waiting_days, last_outbound: a.last_outbound, touches_used: a.touches_used, max_email_touches: max, next_due_at: b.next_due_at || null, heat_band: b.heat_band || 'cold' }));
+      .map(({ b, a }) => ({ id: b.id, name: b.name, owner_user_id: b.owner_user_id || null, waiting_days: a.waiting_days, last_outbound: a.last_outbound, touches_used: a.touches_used, max_email_touches: max, next_due_at: b.next_due_at || null, due: !!b.next_due_at && Date.parse(b.next_due_at) <= at.getTime(), heat_band: b.heat_band || 'cold' }));
     const t = await today({ businessId, d: { supabase, now } });
     const counts = t.digest?.counts || {};
     const ownedHere = new Set(data.brands.filter(b => ownerMatch(owner, b, me(req)) || !b.owner_user_id).map(b => b.id));
