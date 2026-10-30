@@ -3,6 +3,7 @@ import { isBotOpen } from './heatScore.js';
 import { laDateString } from './laDate.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { matchApolloAccounts, confirmedDomains } from '../../src/constants/partnerDomains.js';
+import { normalizeLinkedinUrl } from '../lib/linkedinUrl.js';
 
 // partner-360-v1 Stage 3 - the people Apollo knows at a partner, read-only.
 // One POST /contacts/search per partner whose CONFIRMED domain is an Apollo
@@ -32,7 +33,7 @@ export function sequenceFields(c) {
 export function contactRow(businessId, goalId, c) {
   const name = (c.name || [c.first_name, c.last_name].filter(Boolean).join(' ')).trim().replace(/\s+/g, ' ').slice(0, 120);
   const email = typeof c.email === 'string' && c.email.includes('@') ? c.email.trim().toLowerCase().slice(0, 254) : null;
-  const linkedin = typeof c.linkedin_url === 'string' && /^https?:\/\/([a-z0-9-]+\.)*linkedin\.com\//i.test(c.linkedin_url) ? c.linkedin_url : null;
+  const linkedin = normalizeLinkedinUrl(c.linkedin_url);
   if (!name) return null;
   return {
     business_id: businessId, goal_id: goalId, apollo_contact_id: c.id, name,

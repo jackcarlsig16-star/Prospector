@@ -68,7 +68,7 @@ export default function AddPersonForm({ businessId, companies = [], onAdded, onC
         )}
       </div>
       {company && <span data-company-choice style={{ fontSize: 12, color: SA.muted, ...numStyle }}>{company.type === 'new' ? `New company "${company.name}" - filed as a person with no record yet (Add the record later from People search)` : `${TYPE_LABEL[company.type]}: ${company.name}`}</span>}
-      <input aria-label="LinkedIn URL" placeholder="LinkedIn URL (optional)" value={linkedin} maxLength={300} onChange={e => setLinkedin(e.target.value)} style={inputStyle} />
+      <input aria-label="LinkedIn URL" placeholder="linkedin.com/in/name (optional)" value={linkedin} maxLength={300} onChange={e => setLinkedin(e.target.value)} style={inputStyle} />
       {error && <ErrorNote message={error} />}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
         <button type="button" className="ui-btn ui-btn--secondary" onClick={onCancel}>Cancel</button>

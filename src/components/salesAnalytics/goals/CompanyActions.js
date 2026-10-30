@@ -225,7 +225,7 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <input aria-label="Contact name" autoFocus value={draft.name || ''} onChange={e => set('name', e.target.value)} placeholder="Name" className="ui-input" style={{ ...field, flex: '1 1 140px', width: 'auto' }} />
             <input aria-label="Contact title" value={draft.title || ''} onChange={e => set('title', e.target.value)} placeholder="Title" className="ui-input" style={{ ...field, flex: '1 1 140px', width: 'auto' }} />
-            <input aria-label="Contact LinkedIn URL" value={draft.linkedin || ''} onChange={e => set('linkedin', e.target.value)} placeholder="https://linkedin.com/in/…" className="ui-input" style={{ ...field, flex: '1 1 200px', width: 'auto' }} />
+            <input aria-label="Contact LinkedIn URL" value={draft.linkedin || ''} onChange={e => set('linkedin', e.target.value)} placeholder="linkedin.com/in/name" className="ui-input" style={{ ...field, flex: '1 1 200px', width: 'auto' }} />
             <button type="button" className="ui-btn ui-btn--primary" disabled={!draft.name?.trim() || b('contact')} onClick={addContact}>{b('contact') ? 'Saving…' : 'Save contact'}</button>
           </div>
         </div>

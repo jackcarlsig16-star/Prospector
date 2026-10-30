@@ -15,6 +15,7 @@ import { loadOverrides, effectiveVisit } from './visitPriority.js';
 import { OWNER_TEAMS } from '../../src/constants/ownership.js';
 import { TOUCH_TYPE_IDS } from '../../src/constants/partnerPipeline.js';
 import { personSignals, byStrength, signalText, INTEREST_DAYS, TIMELINE_DAYS } from './interestSignals.js';
+import { normalizeLinkedinUrl, LINKEDIN_ERROR } from '../lib/linkedinUrl.js';
 
 // sales-ia-v2 P4 - one side panel for every Pipeline row type. GET
 // goals/company?type=&id= returns the body sections (to-dos, waiting on them,
@@ -40,7 +41,6 @@ const LINK_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target
 const VISIT_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target' };
 const TARGET_STATUSES = ['proposed', 'researching'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const LINKEDIN_RE = /^https?:\/\/([a-z0-9-]+\.)*linkedin\.com\//i;
 const TERMS_LINE = /^\(\d{1,2}\/\d{1,2}\) Terms: /;
 const NOTE_MAX = 2000;
 const RECENT = 5;
@@ -607,8 +607,9 @@ export async function addContact(supabase, { businessId, userId, type, id, body,
   const bad = [name, title, linkedin].find(x => x.error);
   if (bad) return reply(400, { error: bad.error });
   if (!name.value) return reply(400, { error: 'name is required' });
-  if (linkedin.value && !LINKEDIN_RE.test(linkedin.value)) return reply(400, { error: 'linkedin_url must be a linkedin.com link' });
-  const person = { name: name.value, title: title.value, linkedin_url: linkedin.value };
+  const linkedinUrl = linkedin.value ? normalizeLinkedinUrl(linkedin.value) : null;
+  if (linkedin.value && !linkedinUrl) return reply(400, { error: LINKEDIN_ERROR });
+  const person = { name: name.value, title: title.value, linkedin_url: linkedinUrl };
   try {
     if (type === 'partner') {
       const exists = must(await supabase.from('sales_goals').select('id').eq('business_id', businessId).eq('id', id).eq('goal_type', 'partnership').maybeSingle());

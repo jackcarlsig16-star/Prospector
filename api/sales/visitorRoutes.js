@@ -12,6 +12,7 @@ import { autoCreatePlan, autoSignalPatch, recordDecision } from './visitorRecord
 import { peopleSearchRequest, mapPeople, parseVisitedPeopleCsv, capLeft } from './peopleFind.js';
 import { unionRows, searchPeople, TIES } from './peopleUnion.js';
 import { VISITOR_ROLE, SKIP_NOTE, relinkParked } from './visitorPeopleMove.js';
+import { normalizeLinkedinUrl, LINKEDIN_ERROR } from '../lib/linkedinUrl.js';
 
 // visitor-to-record-v1 REV2 Stage 2 - the runner behind the pure modules: V1 inside the visitor pull (and on demand
 // from Signals), V2a the Visited People export + the list pull's filer (visitorPeoplePull.js calls fileVisitedPeople),
@@ -253,7 +254,6 @@ export async function addRecordFromPerson(supabase, { businessId, userId, id, no
 // A partner gets a partner_contacts row, an employer / target a sales_people row, a company Prospector has no record
 // for a PARKED sales_people row (company name only - Add in People search files it later). Never an email or a
 // phone: any other field, or one hiding in the text, is 400. -> 201 { person: { id, name }, company: { type, id, name } }
-const LINKEDIN_RE = /^https?:\/\/(www\.)?linkedin\.com\//i;
 const PERSON_TYPES = ['partner', 'employer', 'target'];
 export async function addPerson(supabase, { businessId, userId, body, now = new Date() }) {
   const extra = Object.keys(body || {}).find(k => !['name', 'title', 'linkedin_url', 'company'].includes(k));
@@ -272,10 +272,11 @@ export async function addPerson(supabase, { businessId, userId, body, now = new 
   const bad = [name, title, linkedin, cName, cDomain].find(x => x.error);
   if (bad) return reply(400, { error: bad.error });
   if (!name.value) return reply(400, { error: 'name is required' });
-  if (linkedin.value && !LINKEDIN_RE.test(linkedin.value)) return reply(400, { error: 'linkedin_url must be a linkedin.com link' });
+  const linkedinUrl = linkedin.value ? normalizeLinkedinUrl(linkedin.value) : null;
+  if (linkedin.value && !linkedinUrl) return reply(400, { error: LINKEDIN_ERROR });
   const onRecord = PERSON_TYPES.includes(c.type) && typeof c.id === 'string' && c.id;
   if (!onRecord && !cName.value) return reply(400, { error: 'company is required: a record (type + id) or a new company name' });
-  const person = { name: name.value, title: title.value, linkedin_url: linkedin.value, note: null, apollo_person_id: null, visit_id: null, source_note: 'Added from Pipeline' };
+  const person = { name: name.value, title: title.value, linkedin_url: linkedinUrl, note: null, apollo_person_id: null, visit_id: null, source_note: 'Added from Pipeline' };
   try {
     if (onRecord) {
       const ctx = await loadDupeContext(supabase, businessId);
@@ -291,7 +292,7 @@ export async function addPerson(supabase, { businessId, userId, body, now = new 
     }
     const ctx = await loadDupeContext(supabase, businessId);
     const m = exactRecord(cName.value, cDomain.value, ctx);
-    if (m) return addPerson(supabase, { businessId, userId, body: { name: name.value, title: title.value, linkedin_url: linkedin.value, company: { type: m.type === 'opportunity' ? 'employer' : m.type, id: m.id } }, now });
+    if (m) return addPerson(supabase, { businessId, userId, body: { name: name.value, title: title.value, linkedin_url: linkedinUrl, company: { type: m.type === 'opportunity' ? 'employer' : m.type, id: m.id } }, now });
     const parked = (await parkedKeys(supabase, businessId)).get(normName(cName.value)) || { names: new Set(), ids: new Set() };
     if (known(parked, person)) return reply(409, { error: `${person.name} is already parked under ${cName.value}` });
     const ins = await supabase.from('sales_people').insert({ business_id: businessId, company_type: 'parked', company_name: cName.value, company_domain: cDomain.value, name: person.name, title: person.title, linkedin_url: person.linkedin_url, source_kind: null, source_note: 'Added from Pipeline', created_by: userId }).select('id, name').single();

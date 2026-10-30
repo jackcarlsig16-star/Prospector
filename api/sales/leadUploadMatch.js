@@ -5,6 +5,7 @@ import { selectAllPages } from '../lib/selectAllPages.js';
 import { ownershipChip } from '../../src/constants/ownership.js';
 import { SOURCE_KINDS, SOURCE_LABEL } from '../../src/constants/leadSources.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
+import { normalizeLinkedinUrl } from '../lib/linkedinUrl.js';
 
 // lead-upload-v1 S2/S3 - a lead list the model read (companies + people) checked against this workspace. The model
 // only names things; every match, owner chip, existing source and "Already in" is worked out here from stored rows.
@@ -15,7 +16,6 @@ export const KINDS = ['employer', 'partner', 'target'];
 export const ACTIONS = ['create', 'add_people', 'skip'];
 // The picker -> source_kind. "Other" is unknown.
 export const PICKS = { apollo: 'apollo', partner_referral: 'partner_referral', person_referral: 'person_referral', event: 'event', campaign: 'campaign', website: 'website', inbound: 'inbound', other: 'unknown' };
-const LINKEDIN_RE = /^https:\/\/(www\.)?linkedin\.com\//i;
 const int = v => (Number.isInteger(v) && v > 0 && v < 1e8 ? v : typeof v === 'string' && /^\d[\d,]*$/.test(v.trim()) ? Number(v.replace(/,/g, '')) : null);
 
 export class LeadError extends Error { constructor(status, message) { super(message); this.status = status; } }
@@ -48,10 +48,9 @@ export function toLeads(raw, categories = []) {
     const company = companyFor(p.company);
     if (!name || !company) continue;
     if (company.people.some(x => x.name.toLowerCase() === name.toLowerCase())) continue;
-    const url = cleanText(p.linkedin_url, 300);
     company.people.push({
       name, title: cleanText(p.title, 160) || null, location: cleanText(p.location, 120) || null,
-      linkedin_url: LINKEDIN_RE.test(url) ? url : null, why: cleanText(p.why, 300) || null,
+      linkedin_url: normalizeLinkedinUrl(p.linkedin_url), why: cleanText(p.why, 300) || null,
     });
     count++;
   }

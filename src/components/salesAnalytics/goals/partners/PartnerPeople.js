@@ -65,7 +65,7 @@ export default function PartnerPeople({ people, canEdit, onAdd, onDelete }) {
           <input autoFocus required aria-label="Name" placeholder="Name" value={form.name} onChange={set('name')} style={{ ...inputStyle, height: 36 }} />
           <input aria-label="Title" placeholder="Title (optional)" value={form.title} onChange={set('title')} style={{ ...inputStyle, height: 36 }} />
           <input type="email" aria-label="Email" placeholder="Email (optional)" value={form.email} onChange={set('email')} style={{ ...inputStyle, height: 36 }} />
-          <input type="url" aria-label="LinkedIn URL" placeholder="LinkedIn URL (optional)" value={form.linkedin_url} onChange={set('linkedin_url')} style={{ ...inputStyle, height: 36 }} />
+          <input aria-label="LinkedIn URL" placeholder="linkedin.com/in/name (optional)" value={form.linkedin_url} onChange={set('linkedin_url')} style={{ ...inputStyle, height: 36 }} />
           <div style={{ display: 'flex', gap: 6, gridColumn: '1 / -1' }}>
             <Btn primary type="submit" style={{ height: 36 }} disabled={busy || !form.name.trim()}>{busy ? 'Saving…' : 'Add'}</Btn>
             <Btn style={{ height: 36 }} onClick={() => { setAdding(false); setForm(EMPTY); setError(''); }}>Cancel</Btn>

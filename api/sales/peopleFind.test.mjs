@@ -28,7 +28,7 @@ test('mapPeople: name from first + obfuscated last, title, apollo id, the visit 
   ] };
   const rows = mapPeople(json, { visitId: 'v-1', day: '2026-10-27' });
   assert.equal(rows.length, PEOPLE_PER_COMPANY);
-  assert.deepEqual(rows[0], { name: 'Larry F.', title: 'Chief People Officer', location: null, linkedin_url: 'http://www.linkedin.com/in/larry-f', note: 'Found via visit · Apollo search · 2026-10-27 · reveal to see full name', apollo_person_id: 'p1', source_kind: 'web_visit', visit_id: 'v-1' });
+  assert.deepEqual(rows[0], { name: 'Larry F.', title: 'Chief People Officer', location: null, linkedin_url: 'https://www.linkedin.com/in/larry-f', note: 'Found via visit · Apollo search · 2026-10-27 · reveal to see full name', apollo_person_id: 'p1', source_kind: 'web_visit', visit_id: 'v-1' });
   assert.ok(!rows[1].note.includes('reveal'), 'a full last name carries no reveal flag');
   assert.deepEqual([rows[1].name, rows[1].linkedin_url, rows[2].name], ['Mona Quill', null, 'Ravi S.']);
   const text = JSON.stringify(rows);

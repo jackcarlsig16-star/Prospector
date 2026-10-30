@@ -406,3 +406,14 @@ test('addPerson: a partner -> partner_contacts, a target -> sales_people, a new 
     noAddress(sb);
   } finally { restore(); }
 });
+
+test('FIX linkedin-url-normalize: addPerson stores "www.linkedin.com/in/x?trk=…" as https://www.linkedin.com/in/x; a non-LinkedIn link is 400', async () => {
+  const { sb, restore } = setup();
+  try {
+    const r = await addPerson(sb, { businessId: B, userId: U, body: { name: 'Zz Pat Link', linkedin_url: 'www.linkedin.com/in/zz-pat?trk=x', company: { type: 'partner', id: P.harbor } } });
+    assert.equal(r.status, 201, JSON.stringify(r.body));
+    assert.equal(sb.db.partner_contacts.find(c => c.name === 'Zz Pat Link').linkedin_url, 'https://www.linkedin.com/in/zz-pat');
+    const bad = await addPerson(sb, { businessId: B, userId: U, body: { name: 'Zz Bad', linkedin_url: 'notlinkedin.com/in/x', company: { type: 'partner', id: P.harbor } } });
+    assert.equal(bad.status, 400);
+  } finally { restore(); }
+});

@@ -2,6 +2,7 @@ import { selectAllPages } from '../lib/selectAllPages.js';
 import { getSupabase } from './goalsShared.js';
 import { mergePeople } from '../../src/constants/partnerPeople.js';
 import { runSync } from './sync.js';
+import { normalizeLinkedinUrl, LINKEDIN_ERROR } from '../lib/linkedinUrl.js';
 
 // partner-360-v1 Stage 1 - people at a partner. Mounted under
 // /api/sales/:businessId (salesGate: GET = Viewer, writes = Member). The
@@ -10,7 +11,6 @@ import { runSync } from './sync.js';
 
 const NAME_MAX = 120, TITLE_MAX = 160, EMAIL_MAX = 254;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const LINKEDIN_RE = /^https?:\/\/([a-z0-9-]+\.)*linkedin\.com\//i;
 
 async function partnerOr404(supabase, businessId, goalId, res) {
   const { data, error } = await supabase.from('sales_goals').select('id')
@@ -39,8 +39,7 @@ const text = (v, max, label) => {
 };
 
 // POST /goals/partners/:id/people  body { name, title?, email?, linkedin_url? }
-export async function addPersonRoute(req, res) {
-  const supabase = getSupabase();
+export async function addPersonRoute(req, res, { supabase = getSupabase() } = {}) {
   if (!(await partnerOr404(supabase, req.params.businessId, req.params.id, res))) return;
   const b = req.body || {};
   const name = text(b.name, NAME_MAX, 'name'), title = text(b.title, TITLE_MAX, 'title'), email = text(b.email, EMAIL_MAX, 'email'), linkedin = text(b.linkedin_url, 500, 'linkedin_url');
@@ -48,10 +47,11 @@ export async function addPersonRoute(req, res) {
   if (bad) return res.status(400).json({ error: bad.error });
   if (!name.value) return res.status(400).json({ error: 'name is required' });
   if (email.value && !EMAIL_RE.test(email.value)) return res.status(400).json({ error: 'email must look like name@company.com' });
-  if (linkedin.value && !LINKEDIN_RE.test(linkedin.value)) return res.status(400).json({ error: 'linkedin_url must be a linkedin.com link' });
+  const linkedinUrl = linkedin.value ? normalizeLinkedinUrl(linkedin.value) : null;
+  if (linkedin.value && !linkedinUrl) return res.status(400).json({ error: LINKEDIN_ERROR });
   const { data, error } = await supabase.from('partner_contacts').insert({
     business_id: req.params.businessId, goal_id: req.params.id, name: name.value, title: title.value,
-    email: email.value ? email.value.toLowerCase() : null, linkedin_url: linkedin.value, source: 'manual', created_by: req.auth.user.id,
+    email: email.value ? email.value.toLowerCase() : null, linkedin_url: linkedinUrl, source: 'manual', created_by: req.auth.user.id,
   }).select().single();
   if (error) {
     if (error.code === '23505') return res.status(409).json({ error: 'someone with that email is already listed on this partner' });

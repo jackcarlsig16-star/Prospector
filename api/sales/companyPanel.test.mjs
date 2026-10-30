@@ -194,7 +194,7 @@ test('add contact (L1): name, title, LinkedIn only - an email or phone field, or
   const e = await addContact(sb, { businessId: B, userId: U, type: 'employer', id: ID.employer, body: { name: 'Dana Q', title: 'CHRO' }, now: new Date('2026-10-20T20:00:00Z') });
   assert.equal(e.status, 201); assert.equal(sb.db.sales_opportunities[0].decision_makers, 'Pat Lee · VP People\nDana Q · CHRO');
   const t = await addContact(sb, { businessId: B, userId: U, type: 'target', id: ID.target, body: { name: 'Lee', linkedin_url: 'https://linkedin.com/in/lee' } });
-  assert.equal(t.status, 201); assert.equal(sb.db.sales_targets[0].research_notes, 'People: Lee · https://linkedin.com/in/lee');
+  assert.equal(t.status, 201); assert.equal(sb.db.sales_targets[0].research_notes, 'People: Lee · https://www.linkedin.com/in/lee');
 });
 
 test('target step: proposed -> researching; back to proposed is 409 without allow_backward and 200 with it; owner_team changes; bad values 400; a stale status 409', async () => {
@@ -325,4 +325,13 @@ test('createTarget: name + kind -> a researching target (channel manual, evidenc
   assert.equal((await createTarget(sb, { businessId: B, userId: U, body: { name: 'X', kind: 'visitor' } })).status, 400);
   assert.equal((await createTarget(sb, { businessId: B, userId: U, body: { kind: 'employer' } })).status, 400);
   assert.equal((await createTarget(sb, { businessId: B, userId: U, body: { name: 'mail me at x@zz.example', kind: 'employer' } })).status, 400);
+});
+
+test('FIX linkedin-url-normalize: the company window saves a link typed without https as one clean link; a non-LinkedIn link is 400 in plain words', async () => {
+  const sb = seed();
+  const p = await addContact(sb, { businessId: B, userId: U, type: 'partner', id: ID.partner, body: { name: 'Zz Test Person', title: 'VP', linkedin_url: 'linkedin.com/in/zz-test-handle/' } });
+  assert.equal(p.status, 201, JSON.stringify(p.body));
+  assert.equal(sb.db.partner_contacts.find(c => c.name === 'Zz Test Person').linkedin_url, 'https://www.linkedin.com/in/zz-test-handle');
+  const bad = await addContact(sb, { businessId: B, userId: U, type: 'partner', id: ID.partner, body: { name: 'Zz Other', linkedin_url: 'linkedin.com.evil.com/in/x' } });
+  assert.deepEqual([bad.status, bad.body.error], [400, "That doesn't look like a LinkedIn link — paste it like linkedin.com/in/name."]);
 });

@@ -1,6 +1,7 @@
 import { cleanText, hasPii } from './scrubText.js';
 import { normName } from './intakeMatch.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
+import { normalizeLinkedinUrl } from '../lib/linkedinUrl.js';
 
 // visitor-to-record-v1 REV2 V2 - the people at a visiting company, two sources, both pure here:
 //   (a) Apollo's contacts export (the Visited People CSV; Oct 27 2026: 66 rows x 80 columns pinned the header map)
@@ -22,7 +23,6 @@ const PERSON_KEYS = ['name', 'title', 'location', 'linkedin_url', 'note', 'apoll
 const ADDRESS = /[^\s@<>()"',;=&#]+@[^\s@<>()"',;=&#]+\.[a-z]{2,}/i;
 // A phone is 10+ digits in one run (a date like 2026-10-27 has 8 and must pass).
 const looksPhone = s => (String(s).match(/\+?\d[\d\s().-]{7,}\d/g) || []).some(x => x.replace(/\D/g, '').length >= 10);
-const LINKEDIN = /^https?:\/\/(www\.)?linkedin\.com\//i;
 
 // Free-text keys get the phone test too; ids (visit_id, apollo_person_id) and links are digit-heavy by nature.
 const TEXT_KEYS = new Set(['name', 'title', 'location', 'note', 'company', 'pages', 'domain', 'seniority', 'departments', 'lists', 'account_owner']);
@@ -57,7 +57,7 @@ export function mapPeople(json, { visitId = null, max = PEOPLE_PER_COMPANY, day 
     const full = [first, last].filter(Boolean).join(' ');
     if (!full) continue;
     const partial = !p.last_name && !!p.last_name_obfuscated;
-    out.push(pick({ name: full, title: str(p.title, 160), location: null, linkedin_url: LINKEDIN.test(String(p.linkedin_url || '')) ? String(p.linkedin_url).slice(0, 300) : null, note: `Found via visit · Apollo search${day ? ` · ${day}` : ''}${partial ? ` · ${REVEAL_NOTE}` : ''}`, apollo_person_id: str(p.id, 80), source_kind: 'web_visit', visit_id: visitId }));
+    out.push(pick({ name: full, title: str(p.title, 160), location: null, linkedin_url: normalizeLinkedinUrl(p.linkedin_url), note: `Found via visit · Apollo search${day ? ` · ${day}` : ''}${partial ? ` · ${REVEAL_NOTE}` : ''}`, apollo_person_id: str(p.id, 80), source_kind: 'web_visit', visit_id: visitId }));
   }
   return out;
 }
