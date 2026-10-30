@@ -1,7 +1,8 @@
 // hkos-daily-check-v1 J2 - the in-process cron runner. OFF unless process.env.HK_SCHEDULER === 'cron' (server.js checks
 // before importing this file). One registration per workspace per job, { timezone, noOverlap: true } like the Sales
 // Analytics block; every tick is a job run with trigger 'cron' and its own hk_job_runs row, so a tick that overlaps a
-// page-load run loses to the DB guard, never doubles it.
+// page-load run loses to the DB guard, never doubles it. noOverlap is per process only: the row's cron_slot (unique)
+// is what stops the same tick fired in two server processes from running twice.
 import { getSupabase } from '../hkShared.js';
 import { SETTINGS_DEFAULTS } from '../opsRoutes.js';
 import { cronExprFor } from './plan.js';
@@ -20,7 +21,7 @@ export function registerHkCron(cron, workspaces, { log = console.log, jobs = { g
     const s = { ...SETTINGS_DEFAULTS, ...settings }, timezone = s.timezone || 'America/Chicago';
     const tick = (job, fn) => async () => {
       log(`[CRON] HumanKind ${job} ${businessId}`);
-      try { const r = await fn({ businessId, trigger: 'cron' }); log(`[CRON] HumanKind ${job} ${businessId}:`, r.skipped ? `skipped: ${r.skipped}` : `${r.run?.status} ${JSON.stringify(r.counts || {})}`); }
+      try { const r = await fn({ businessId, trigger: 'cron' }); log(`[CRON] HumanKind ${job} ${businessId}:`, r.skipped ? `skipped (${r.skipped})` : `${r.run?.status} ${JSON.stringify(r.counts || {})}`); }
       catch (err) { log(`[CRON] HumanKind ${job} ${businessId} failed:`, err.message); }
     };
     for (const [job, expr, fn] of [['gmail-sync-all', SYNC_EXPR, jobs.gmailSyncAll], ['daily-check', cronExprFor(s), jobs.dailyCheck], ['research-sweep', sweepExpr(settings.intel), jobs.researchSweep]]) {

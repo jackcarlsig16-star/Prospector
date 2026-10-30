@@ -2,10 +2,11 @@
 // (Oct 28 10:29 PM). Cron once per Chicago day (cron.js) or "Run research now"; NEVER the page-load runner. Up to N
 // researches per Chicago day, (1) the B3 top candidates without intel, by domain else by name, then (2) Needs-you
 // senders without intel from the in-process inbox cache. Skips the 30-day cache and the research_attempted_at window;
-// stops on the day's count, on any error, and once the day's sweep spend reaches the dollar cap. Every run is an
-// hk_job_runs row (job research-sweep); every call logs business_anthropic_usage (call_type hk_research_sweep).
+// stops on the day's count, on any error, and once the day's sweep spend reaches the dollar cap (re-read before each
+// call). Every run is an hk_job_runs row (job research-sweep; a cron run claims its day's cron_slot); every call logs
+// business_anthropic_usage (call_type hk_research_sweep).
 import { getSupabase, HkError, fail, me, TEAM_DOMAINS } from './hkShared.js';
-import { dayIn } from './jobs/plan.js';
+import { dayIn, cronSlot, slotTaken, SLOT_TAKEN } from './jobs/plan.js';
 import { rankReach, intelFor } from './intelScore.js';
 import { loadIntel, firstNameOf } from './intelData.js';
 import { researchBrand, freshIntel, attemptedRecently, SWEEP_CALL_TYPE } from './brandResearch.js';
@@ -40,7 +41,7 @@ export async function researchSweep({ businessId, trigger, startedBy = null, d =
   if (trigger === 'pageload') throw new HkError(400, 'the research sweep never runs from a page load');
   const D = deps(d), now = D.now();
   const data = await loadIntel(D.supabase, businessId, now);
-  const S = data.settings.sweep, day = dayIn(now, data.settingsRow.timezone || 'America/Chicago');
+  const tz = data.settingsRow.timezone || 'America/Chicago', S = data.settings.sweep, day = dayIn(now, tz);
   if (!S.on) return { skipped: 'off' };
   const so = await sweepToday(D.supabase, businessId, day);
   if (trigger === 'cron' && so.runs.some(r => r.trigger === 'cron' && r.status !== 'error')) return { skipped: 'already ran today' };
@@ -48,18 +49,23 @@ export async function researchSweep({ businessId, trigger, startedBy = null, d =
   if (so.spend >= S.cap_usd) return { skipped: 'dollar cap reached', spend: so.spend, cap_usd: S.cap_usd };
   const meIds = startedBy ? [startedBy] : data.members.map(m => m.user_id).filter(Boolean);
   const queue = sweepQueue(data, { meIds, senders: D.senders(businessId, now.getTime()), now });
-  const { data: run, error } = await D.supabase.from('hk_job_runs').insert({ business_id: businessId, job: SWEEP_JOB, trigger, chicago_day: day, started_at: now.toISOString(), status: 'running', started_by: startedBy }).select().single();
-  if (error) throw new Error(error.message);
+  const { data: run, error } = await D.supabase.from('hk_job_runs').insert({ business_id: businessId, job: SWEEP_JOB, trigger, chicago_day: day, started_at: now.toISOString(), status: 'running', started_by: startedBy, ...(trigger === 'cron' ? { cron_slot: cronSlot(SWEEP_JOB, now, tz) } : {}) }).select().single();
+  if (error) { if (slotTaken(error)) return { skipped: SLOT_TAKEN }; throw new Error(error.message); }
   const counts = { calls: 0, researched: 0, not_found: 0, cached: 0, cost_usd: 0, queued: queue.length, stopped: null };
   let status = 'ok', err = null;
   for (const item of queue) {
-    if (so.calls + counts.calls >= S.n) { counts.stopped = 'daily count'; break; }
-    if (so.spend + counts.cost_usd >= S.cap_usd) { counts.stopped = 'dollar cap'; break; }
     try {
+      // Re-read before every call, counting this run's own row (its counts are written after each call), so a sweep
+      // racing another one (a manual run beside the cron) can pass the count or the cap by one call at most.
+      const cur = await sweepToday(D.supabase, businessId, day);
+      if (cur.calls >= S.n) { counts.stopped = 'daily count'; break; }
+      if (cur.spend >= S.cap_usd) { counts.stopped = 'dollar cap'; break; }
       const r = await researchBrand({ D, businessId, uid: startedBy, brand: item.brand, callType: SWEEP_CALL_TYPE });
       if (r.status === 'cached') { counts.cached += 1; continue; }
       counts.calls += 1; counts.cost_usd = Math.round((counts.cost_usd + (r.cost_usd || 0)) * 1e6) / 1e6;
       counts[r.status === 'researched' ? 'researched' : 'not_found'] += 1;
+      const { error: e1 } = await D.supabase.from('hk_job_runs').update({ counts }).eq('id', run.id);
+      if (e1) throw new Error(e1.message);
     } catch (e) { status = counts.calls ? 'partial' : 'error'; err = String(e.message || e).slice(0, 200); counts.stopped = 'error'; break; }
   }
   const { data: done, error: e2 } = await D.supabase.from('hk_job_runs').update({ finished_at: D.now().toISOString(), status, counts, error: err }).eq('id', run.id).select().single();

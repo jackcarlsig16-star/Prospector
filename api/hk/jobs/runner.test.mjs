@@ -12,6 +12,7 @@ const { fakeSupabase } = await import('../../sales/testing/fakeSupabase.mjs');
 const { NeedsGoogle } = await import('../../lib/googleGrants.js');
 const { gmailSyncAll, dailyCheck, pageloadJob, todayPayload, testDigest, retryDraft, skipTouch, markDmSent, DRAFTS_PER_RUN } = await import('./runner.js');
 const { registerHkCron, SYNC_EXPR } = await import('./cron.js');
+const { SLOT_TAKEN, cronSlot } = await import('./plan.js');
 
 const HK = 'biz-hk', JACK = 'u-jack', PETE = 'u-pete';
 const NOW = new Date('2026-10-27T15:00:00Z'); // Tuesday 10:00 Chicago, past the 07:30 digest time
@@ -25,6 +26,11 @@ const cold = (brandId, sender, sentDaysAgo, over = {}) => ({ id: `cold-${brandId
 const contact = (brandId, email = `ana@${brandId}.invalid`) => ({ id: `c-${brandId}`, business_id: HK, brand_id: brandId, name: 'Ana Example', email, is_primary: true, created_at: '2026-10-02T00:00:00Z' });
 
 let sb, calls, tokens, flagged, mail, posts, now;
+// The two partial unique indexes on hk_job_runs, by name (the code tells them apart by the name in the 23505 message).
+const RUN_INDEXES = [
+  { name: 'hk_job_runs_daily_check_once', key: r => (r.job === 'daily-check' && r.status !== 'error' ? `${r.business_id}:${r.chicago_day}` : null) },
+  { name: 'hk_job_runs_cron_slot_once', key: r => (r.cron_slot != null && r.status !== 'error' ? `${r.business_id}:${r.job}:${r.cron_slot}` : null) },
+];
 const fakeGmail = () => {
   const rec = (name, ret) => async (...a) => { calls.push([name, a[0], ...a.slice(1)]); return typeof ret === 'function' ? ret(...a) : ret; };
   return {
@@ -43,7 +49,7 @@ const fresh = (seed = {}, { petePending = false } = {}) => {
     hk_settings: [{ business_id: HK, members_stat: 1500, completions_stat: 6000, subject_format: 'HumanKind x [Brand] - [descriptor]', banned_phrases: ['synergies'], bump_after_days: 5, dm_after_days: 9, final_after_days: 14, max_email_touches: 3, digest_time: '07:30', digest_days: 'weekdays', timezone: 'America/Chicago', quiet_weekends: true, stats_confirmed_at: null }],
     hk_member_prefs: [{ business_id: HK, user_id: JACK, avatar_slot: 1, signature_text: 'Jack' }, { business_id: HK, user_id: PETE, avatar_slot: 2, signature_text: 'Pete' }],
     ...seed,
-  }, { now: () => now.getTime(), unique: { hk_job_runs: r => (r.job === 'daily-check' && r.status !== 'error' ? `${r.business_id}:${r.chicago_day}` : null), hk_replies: r => `${r.business_id}:${r.gmail_message_id}` } });
+  }, { now: () => now.getTime(), unique: { hk_job_runs: RUN_INDEXES, hk_replies: r => `${r.business_id}:${r.gmail_message_id}` } });
   mail = { [JACK]: { grant: { id: 'g-jack', google_email: 'jack.work@humankind.invalid', features: ['gmail'], error: null }, tether: { purposes: ['drafts', 'inbox'] }, state: 'ok' }, [PETE]: { grant: { id: 'g-pete', google_email: 'pete.work@humankind.invalid', features: ['gmail'], error: null }, tether: { purposes: ['drafts', 'inbox'] }, state: 'ok' } };
 };
 const deps = (over = {}) => ({ supabase: sb, gmail: fakeGmail(), now: () => now, mailbox: async (b, u) => mail[u] || null, tokenForGrant: async grant => { tokens.push(grant.id); if (grant.error) throw new NeedsGoogle('gmail', grant); return `tok-${grant.id}`; }, flag: async id => { flagged.push(id); }, call: async () => ({ content: [] }), fetch: async (url, init) => { posts.push({ url, body: JSON.parse(init.body) }); return { ok: true }; }, slackUrl: null, ...over });
@@ -280,4 +286,49 @@ test('page load: an Inbox list in the last 60 s defers the sync by the rest of t
   out = await pageloadJob({ businessId: HK, userId: PETE, d: deps({ inboxListedAt: () => null, defer: () => assert.fail('no defer') }) });
   assert.equal(out.sync.ran, true, 'another user is not held back');
   noSend();
+});
+
+test('hk-cron-single-run C2: two processes firing the same sync tick -> one run (slot "YYYY-MM-DD HH" Chicago), the other skipped with 0 Gmail calls; the next hour\'s slot runs; manual / page-load rows carry no slot and never collide', async () => {
+  fresh(due());
+  now = new Date('2026-10-27T12:00:00Z'); // 07:00 Chicago
+  const gmailCalls = () => calls.length + tokens.length;
+  const [a, b] = await Promise.all([gmailSyncAll({ businessId: HK, trigger: 'cron', d: deps() }), gmailSyncAll({ businessId: HK, trigger: 'cron', d: deps() })]);
+  const lost = [a, b].find(r => r.skipped), won = [a, b].find(r => !r.skipped);
+  assert.deepEqual(lost, { skipped: SLOT_TAKEN });
+  assert.equal(won.counts.synced, 2);
+  assert.deepEqual(sb.db.hk_job_runs.map(r => [r.job, r.trigger, r.cron_slot, r.status]), [['gmail-sync-all', 'cron', '2026-10-27 07', 'ok']]);
+  assert.deepEqual(tokens, ['g-jack', 'g-pete'], 'one token per mailbox: the losing process made no Gmail call');
+  const before = gmailCalls();
+  assert.deepEqual(await gmailSyncAll({ businessId: HK, trigger: 'cron', d: deps() }), { skipped: SLOT_TAKEN }, 'a third tick in the 07 slot');
+  assert.equal(gmailCalls(), before);
+  now = new Date('2026-10-27T13:00:00Z'); // 08:00 Chicago
+  const eight = await gmailSyncAll({ businessId: HK, trigger: 'cron', d: deps() });
+  assert.equal(eight.skipped, undefined); assert.equal(eight.run.status, 'ok');
+  for (const trigger of ['manual', 'manual', 'test']) assert.equal((await gmailSyncAll({ businessId: HK, trigger, d: deps() })).run.status, 'ok', trigger);
+  assert.deepEqual(sb.db.hk_job_runs.map(r => r.cron_slot ?? null), ['2026-10-27 07', '2026-10-27 08', null, null, null]);
+  sb.db.hk_job_runs[0].status = 'error';
+  now = new Date('2026-10-27T12:30:00Z');
+  assert.equal((await gmailSyncAll({ businessId: HK, trigger: 'cron', d: deps() })).run.status, 'ok', 'an errored slot may retry');
+  assert.equal(cronSlot('gmail-sync-all', new Date('2026-10-28T04:30:00Z')), '2026-10-27 23', 'Chicago hour, not UTC');
+  assert.equal(cronSlot('research-sweep', new Date('2026-10-31T11:30:00Z')), '2026-10-31');
+  noSend();
+});
+
+test('hk-cron-single-run C2: two processes firing the same daily-check tick -> one run (day slot), the other skipped with 0 Gmail calls; a page-load run the same day still holds the day', async () => {
+  fresh(due());
+  const [a, b] = await Promise.all([dailyCheck({ businessId: HK, trigger: 'cron', d: deps() }), dailyCheck({ businessId: HK, trigger: 'cron', d: deps() })]);
+  assert.equal([a, b].filter(r => r.skipped).length, 1);
+  assert.equal(calls.filter(c => c[0] === 'createDraft').length, 2, 'two due bumps drafted once, not four');
+  assert.deepEqual(sb.db.hk_job_runs.map(r => [r.trigger, r.cron_slot]), [['cron', '2026-10-27']]);
+  fresh(due());
+  await dailyCheck({ businessId: HK, trigger: 'pageload', d: deps() });
+  assert.deepEqual(await dailyCheck({ businessId: HK, trigger: 'cron', d: deps() }), { skipped: 'already ran today' });
+  noSend();
+});
+
+test('hk-cron-single-run C2: a tick that loses its slot logs "skipped (another process has this slot)"', async () => {
+  const scheduled = [], lines = [];
+  registerHkCron({ schedule: (expr, fn) => scheduled.push(fn) }, [{ businessId: HK, settings: {} }], { log: (...a) => lines.push(a.join(' ')), jobs: { gmailSyncAll: async () => ({ skipped: SLOT_TAKEN }), dailyCheck: async () => ({}), researchSweep: async () => ({}) } });
+  await scheduled[0]();
+  assert.equal(lines.at(-1), `[CRON] HumanKind gmail-sync-all ${HK}: skipped (another process has this slot)`);
 });

@@ -993,7 +993,7 @@ if (process.env.HK_SCHEDULER === 'cron' && !hkCronRegistered) {
   hkCronRegistered = true;
   import('./api/hk/jobs/cron.js')
     .then(m => m.registerHkCronFromDb(cron))
-    .then(list => console.log('[CRON] HumanKind jobs scheduled:', JSON.stringify(list)))
+    .then(list => console.log(`[CRON] HumanKind jobs scheduled (pid ${process.pid}, instance ${process.env.RENDER_INSTANCE_ID || 'unset'}):`, JSON.stringify(list)))
     .catch(err => console.error('[CRON] HumanKind jobs failed to register:', err.message));
 } else {
   console.log('[CRON] HumanKind daily check: cron runner off (HK_SCHEDULER is not "cron"); page-load runner only');

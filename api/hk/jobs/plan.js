@@ -12,6 +12,12 @@ const ACTIVE = new Set(['sent', 'bumped']);
 
 export const dayIn = (date, tz = 'America/Chicago') => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
 export const chicagoDay = date => dayIn(date, 'America/Chicago');
+// FIX hk-cron-single-run: the slot a cron tick claims on its hk_job_runs row (unique per workspace + job, index
+// hk_job_runs_cron_slot_once), so a tick fired in two server processes runs once: hourly for the sync, daily otherwise.
+const hourIn = (date, tz) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', hourCycle: 'h23' }).format(date);
+export const cronSlot = (job, date, tz = 'America/Chicago') => (job === 'gmail-sync-all' ? `${dayIn(date, tz)} ${hourIn(date, tz)}` : dayIn(date, tz));
+export const SLOT_TAKEN = 'another process has this slot';
+export const slotTaken = e => e?.code === '23505' && String(e.message || '').includes('hk_job_runs_cron_slot_once');
 const partsIn = (date, tz) => { const p = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(date); const get = k => p.find(x => x.type === k)?.value; return { weekday: get('weekday'), minutes: Number(get('hour')) * 60 + Number(get('minute')) }; };
 export const isWeekend = (date, tz = 'America/Chicago') => ['Sat', 'Sun'].includes(partsIn(date, tz).weekday);
 // settings.quiet_weekends (default true): no follow-ups drafted on a Saturday or Sunday in the workspace timezone.

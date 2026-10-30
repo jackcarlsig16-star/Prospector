@@ -10,6 +10,7 @@ import { INTEL_DEFAULTS, intelSettings, reachOf, rankReach, importanceOf, activi
 import { researchBrand, researchPrompt, parseWebsite, useDomainRoute, wrongSiteRoute, SWEEP_CALL_TYPE } from './brandResearch.js';
 import { makeHkGate } from '../lib/requireAuth.js';
 import { researchSweep, sweepQueue } from './researchSweep.js';
+import { SLOT_TAKEN } from './jobs/plan.js';
 import { loadIntel } from './intelData.js';
 import { briefingRoute } from './briefingRoutes.js';
 
@@ -37,7 +38,7 @@ const members = [{ business_id: HK, user_id: ME, name: 'Rowan Example', role: 'o
 const fresh = (extra = {}) => fakeSupabase({
   hk_brands: BRANDS(), hk_contacts: contacts, hk_touches: touches, hk_replies: [], hk_domain_intel: [], hk_settings: [{ business_id: HK, timezone: 'America/Chicago', max_email_touches: 3, intel: {} }],
   business_members: members, hk_job_runs: [], hk_events: [], hk_signals: [], business_anthropic_usage: [], ...extra,
-}, { now: () => NOW.getTime() });
+}, { now: () => NOW.getTime(), unique: { hk_job_runs: [{ name: 'hk_job_runs_cron_slot_once', key: r => (r.cron_slot != null && r.status !== 'error' ? `${r.business_id}:${r.job}:${r.cron_slot}` : null) }] } });
 const ctxOf = async (sb, meId = ME) => ({ ...(await loadIntel(sb, HK, NOW)), meId, now: NOW });
 const reqOf = ({ method = 'GET', params = {}, query = {}, body = {}, user = ME, role = 'owner' } = {}) => ({ method, params: { businessId: HK, ...params }, query, body, auth: { user: { id: user, name: 'T' }, isPlatformOwner: false, roles: new Map([[HK, role]]) } });
 const call = async (route, req, deps) => { const r = { code: 200, body: null }; r.status = c => { r.code = c; return r; }; r.json = b => { r.body = b; return r; }; await route(req, r, deps); return r; };
@@ -233,6 +234,21 @@ test('M2 caps: N per Chicago day, the dollar cap, stop on error, never from page
   assert.deepEqual([s.calls.length, sb.db.hk_job_runs.length], [0, 0]);
   const runner = fs.readFileSync(new URL('./jobs/runner.js', import.meta.url), 'utf8');
   assert.ok(!/researchSweep|research-sweep/.test(runner), 'the page-load runner never references the sweep');
+});
+
+test('hk-cron-single-run C2/C3: two processes firing the 6:30 sweep -> one sweep (10 calls, not 20), the other skipped; a manual run racing another sweep re-reads the spend before each call and stops at the cap', async () => {
+  const many = Array.from({ length: 12 }, (_, i) => brand(randomUUID(), `Zz Sweep ${String(i).padStart(2, '0')}`));
+  let sb = fresh({ hk_brands: many, hk_touches: [], hk_contacts: [] }); let s = stub();
+  const both = await Promise.all([researchSweep({ businessId: HK, trigger: 'cron', d: sweepD(sb, s) }), researchSweep({ businessId: HK, trigger: 'cron', d: sweepD(sb, s) })]);
+  assert.deepEqual(both.filter(r => r.skipped).map(r => r.skipped), [SLOT_TAKEN]);
+  assert.equal(s.calls.length, 10);
+  assert.deepEqual(sb.db.hk_job_runs.map(r => [r.trigger, r.cron_slot, r.status, r.counts.calls]), [['cron', '2026-10-29', 'ok', 10]]);
+  // The race: another sweep (running) logs $1.20 while this manual run's first call is out; the cap is $1.
+  sb = fresh({ hk_brands: many, hk_touches: [], hk_contacts: [], hk_job_runs: [{ id: 'other', business_id: HK, job: 'research-sweep', trigger: 'cron', chicago_day: '2026-10-29', cron_slot: '2026-10-29', status: 'running', counts: { calls: 0, cost_usd: 0 }, started_at: NOW.toISOString() }] }); s = stub();
+  const racing = { ...s, call: async o => { const r = await s.call(o); sb.db.hk_job_runs[0].counts = { calls: 3, cost_usd: 1.2 }; return r; } };
+  const r = await researchSweep({ businessId: HK, trigger: 'manual', startedBy: ME, d: sweepD(sb, racing) });
+  assert.deepEqual([r.counts.calls, r.counts.stopped, s.calls.length], [1, 'dollar cap', 1], 'stopped one call past the other run\'s spend, not ten');
+  assert.equal(sb.db.hk_job_runs[1].cron_slot, undefined, 'a manual run claims no slot');
 });
 
 test('Briefing: tiles, Send these 10 (eligible only, with why and the Claude command), Waiting on them, signals, the research day; reach line; no address anywhere', async () => {

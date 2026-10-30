@@ -11,7 +11,7 @@ import { RECONNECT, NeedsGoogle } from '../../lib/googleGrants.js';
 import { GmailError } from '../gmailClient.js';
 import { inboxListedAt, INBOX_QUIET_MS } from '../gmailActivity.js';
 import { dailySignals } from '../signals.js';
-import { dueFollowups, dueDms, planCounts, dayIn, isPastDigestTime, isDigestDay, ranToday, statsStale } from './plan.js';
+import { dueFollowups, dueDms, planCounts, dayIn, isPastDigestTime, isDigestDay, ranToday, statsStale, cronSlot, slotTaken, SLOT_TAKEN } from './plan.js';
 import { bumpText, finalText, dmText, followupSubject } from '../followupText.js';
 import { buildDigest, renderSlack } from './digest.js';
 import { scrubAddresses } from '../../sales/scrubText.js';
@@ -42,10 +42,13 @@ async function workspaceRows(D, businessId) {
   return { brands, touches, replies, contacts };
 }
 async function recentEvents(D, businessId, now) { const since = new Date(now.getTime() - 3 * 86400e3).toISOString(); return must(await D.supabase.from('hk_events').select('action, detail, created_at').eq('business_id', businessId).gte('created_at', since)); }
-async function startRun(D, { businessId, job, trigger, day, startedBy = null }) {
-  const { data, error } = await D.supabase.from('hk_job_runs').insert({ business_id: businessId, job, trigger, chicago_day: day, started_at: D.now().toISOString(), status: 'running', started_by: startedBy }).select().single();
-  if (error) { if (error.code === '23505') return null; throw new Error(error.message); }
-  return data;
+// -> { run } | { skipped }. A cron run claims its slot here, before any Gmail call; losing it means another process has
+// this tick.
+async function startRun(D, { businessId, job, trigger, day, tz, startedBy = null }) {
+  const now = D.now();
+  const { data, error } = await D.supabase.from('hk_job_runs').insert({ business_id: businessId, job, trigger, chicago_day: day, started_at: now.toISOString(), status: 'running', started_by: startedBy, ...(trigger === 'cron' ? { cron_slot: cronSlot(job, now, tz) } : {}) }).select().single();
+  if (error) { if (error.code === '23505') return { skipped: slotTaken(error) ? SLOT_TAKEN : 'already ran today' }; throw new Error(error.message); }
+  return { run: data };
 }
 async function finishRun(D, run, patch) { const { data, error } = await D.supabase.from('hk_job_runs').update({ finished_at: D.now().toISOString(), ...patch }).eq('id', run.id).select().single(); if (error) throw new Error(error.message); return data; }
 const errText = e => scrubAddresses(String(e?.message || e)).slice(0, 200);
@@ -54,7 +57,8 @@ const syncTrigger = t => (t === 'pageload' || t === 'test' || t === 'cron' ? t :
 // J1 gmail-sync-all: one runMailboxSync per tethered founder in state ok. -> { run, counts }
 export async function gmailSyncAll({ businessId, trigger = 'manual', startedBy = null, d = {} }) {
   const D = jobDeps(d), now = D.now(), settings = await settingsOf(D.supabase, businessId);
-  const run = await startRun(D, { businessId, job: 'gmail-sync-all', trigger, day: dayIn(now, settings.timezone), startedBy });
+  const { run, skipped } = await startRun(D, { businessId, job: 'gmail-sync-all', trigger, day: dayIn(now, settings.timezone), tz: settings.timezone, startedBy });
+  if (skipped) return { skipped };
   const counts = { mailboxes: 0, synced: 0, reconnect: 0, running: 0, errors: 0, sent_detected: 0, replies: 0 };
   try {
     for (const f of await founders(D, businessId)) {
@@ -102,8 +106,8 @@ async function draftOne(D, { businessId, item, founder: f, contacts, omit = fals
 // omitRecipientFor: brand ids whose draft gets no To header - the live verify script only, never a route or a runner.
 export async function dailyCheck({ businessId, trigger = 'manual', startedBy = null, d = {}, omitRecipientFor = [] }) {
   const D = jobDeps(d), now = D.now(), settings = await settingsOf(D.supabase, businessId);
-  const run = await startRun(D, { businessId, job: 'daily-check', trigger, day: dayIn(now, settings.timezone), startedBy });
-  if (!run) return { skipped: 'already ran today' };
+  const { run, skipped } = await startRun(D, { businessId, job: 'daily-check', trigger, day: dayIn(now, settings.timezone), tz: settings.timezone, startedBy });
+  if (skipped) return { skipped };
   try {
     const fs = await founders(D, businessId), byUser = Object.fromEntries(fs.map(f => [f.user_id, f]));
     const { brands, touches, replies, contacts } = await workspaceRows(D, businessId);

@@ -1,8 +1,9 @@
 // In-memory stand-in for the slice of supabase-js the sales routes use:
 // filters, order, range, limit, single/maybeSingle, insert/upsert/update/delete
 // with .select(), the one embed the targets list uses (note:sales_call_notes(...)),
-// and optional unique keys ({ unique: { table: row => key | null } }) that
-// answer a colliding insert with code 23505 like Postgres does. now: a clock
+// and optional unique keys ({ unique: { table: row => key | null } }, or a list
+// of { name, key } per table for several named indexes) that answer a colliding
+// insert with code 23505 like Postgres does, naming the index when given. now: a clock
 // (() => ms) for the created_at / recorded_at an insert stamps, so a test that
 // pins its own `now` stamps rows on that day, not the real one. Each inserted
 // row gets a strictly later stamp than the last (Postgres's microsecond now()
@@ -27,8 +28,9 @@ export function fakeSupabase(seed, { unique = {}, now = Date.now } = {}) {
     let rows;
     if (q.op === 'insert') {
       rows = (Array.isArray(q.payload) ? q.payload : [q.payload]).map(stamped);
-      const key = unique[table];
-      if (key && rows.some(r => key(r) != null && db[table].some(x => key(x) === key(r)))) return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } };
+      const u = unique[table], keys = Array.isArray(u) ? u : u ? [{ name: null, key: u }] : [];
+      const hit = keys.find(({ key }) => rows.some(r => key(r) != null && db[table].some(x => key(x) === key(r))));
+      if (hit) return { data: null, error: { code: '23505', message: `duplicate key value violates unique constraint${hit.name ? ` "${hit.name}"` : ''}` } };
       db[table].push(...rows);
     } else if (q.op === 'upsert') {
       const cols = q.onConflict.split(',');
