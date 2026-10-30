@@ -1,7 +1,7 @@
 // grow-signals-v1 G6 + G7 - the Signals panel's reads and actions, and the one-click lists. Mounted under
 // /api/hk/:businessId (hkGate ran: GET viewer+, the rest member+). Dismiss / seen / acted are timestamps; nothing is
 // deleted. + Pipeline runs the same can_contact refusals the connector's hk_claim does and claims through the same writer.
-import { getSupabase, HkError, fail, me, logEvent, brandById, brandSummary, SPONSOR_RELATIONSHIPS, selectIn } from './hkShared.js';
+import { getSupabase, HkError, fail, me, logEvent, brandById, brandSummary, SPONSOR_RELATIONSHIPS, selectIn, memberFirstNames } from './hkShared.js';
 import { patchBrandRoute } from './brandsRoutes.js';
 import { SPONSOR_KINDS, writeSignal, recomputeHeat, signalWords } from './signals.js';
 
@@ -102,12 +102,6 @@ export function pipelineRefusal(brand, uid, firstName = () => null) {
   return null;
 }
 
-async function firstNameOf(supabase, businessId) {
-  const { data } = await supabase.from('business_members').select('user_id, name').eq('business_id', businessId);
-  const m = Object.fromEntries((data || []).map(r => [r.user_id, String(r.name || '').trim().split(/\s+/)[0] || null]));
-  return id => m[id] || null;
-}
-
 const asRes = () => { const out = { code: 200, body: null }; const r = { status(c) { out.code = c; return r; }, json(b) { out.body = b; return r; } }; return [r, out]; };
 
 // POST /brands/:id/pipeline { undo?, expect_updated_at? } - claim for the caller (candidate -> claimed) so it shows on
@@ -122,12 +116,12 @@ export async function pipelineRoute(req, res, { supabase = getSupabase(), now = 
     if (undo) {
       if (brand.owner_user_id !== uid || brand.updated_at !== req.body?.expect_updated_at) throw new HkError(409, `${brand.name} changed since - nothing to undo`);
     } else {
-      const why = pipelineRefusal(brand, uid, await firstNameOf(supabase, businessId));
+      const why = pipelineRefusal(brand, uid, await memberFirstNames(supabase, businessId));
       if (why) throw new HkError(409, why);
       if (brand.owner_user_id === uid && brand.status !== 'candidate') return res.json({ brand: brandSummary(brand), already: true });
     }
     const [r, out] = asRes();
-    await patchBrandRoute({ ...req, params: { businessId, id: brand.id }, body: { claim: !undo, reason: undo ? 'undo + Pipeline' : '+ Pipeline' } }, r, { supabase, now });
+    await patchBrandRoute({ ...req, params: { businessId, id: brand.id }, body: { claim: !undo, reason: undo ? 'undo + Pipeline' : '+ Pipeline', ...(!undo && req.body?.confirm_sheet_owner === true ? { confirm_sheet_owner: true } : {}) } }, r, { supabase, now });
     if (out.code >= 400) throw new HkError(out.code, out.body?.error || 'that did not work', out.body);
     res.json({ brand: { ...brandSummary(out.body.brand), updated_at: out.body.brand.updated_at }, undone: undo });
   } catch (e) { fail(res, e, 'brands/pipeline'); }

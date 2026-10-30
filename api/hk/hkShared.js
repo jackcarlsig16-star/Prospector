@@ -8,7 +8,7 @@ import { hasPii } from '../sales/scrubText.js';
 import { normName, nameMatches } from '../sales/intakeMatch.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
-import { canContact } from './rules.js';
+import { canContact, hintName } from './rules.js';
 import { decodeEntities } from './gmailMime.js';
 
 export { normName, nameMatches, normalizeDomain, selectAllPages, canContact, hasPii };
@@ -105,15 +105,30 @@ export async function legacyNames(supabase, businessId) {
   return out;
 }
 
+// Member first names for a workspace -> lookup by user id.
+export async function memberFirstNames(supabase, businessId) {
+  const { data } = await supabase.from('business_members').select('user_id, name').eq('business_id', businessId);
+  const m = Object.fromEntries((data || []).map(r => [r.user_id, String(r.name || '').trim().split(/\s+/)[0] || null]));
+  return id => m[id] || null;
+}
+
+// grow-sheet-owner-respect F4 - an exact match is the same brand, already in Grow: its status and owner in OwnerChip words.
+const statusWord = s => String(s || '').replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
+function alreadyInGrow(b, firstName) {
+  const owner = b.owner_user_id ? firstName(b.owner_user_id) || 'another founder' : b.owner_hint && String(b.owner_hint).trim() ? `Sheet: ${hintName(b.owner_hint)}` : 'Unclaimed';
+  const status = statusWord(b.status);
+  return { label: 'Already in Grow', status_words: status, owner_words: owner, headline: `Already in Grow · ${status} · ${owner}` };
+}
+
 // One verdict per { name, domain, niche? }: clear | warm | sponsor | do_not_contact | owned_by | possible_duplicate | niche_warning.
-export function verdictFor(item, { brands, legacy, senderUserId, sponsorsNiches, threadsByBrand = {}, threadsByDomain = {} }) {
+export function verdictFor(item, { brands, legacy, senderUserId, sponsorsNiches, threadsByBrand = {}, threadsByDomain = {}, firstName = () => null }) {
   const name = String(item.name || '').trim();
   const domain = item.domain ? normalizeDomain(String(item.domain)) : null;
   const n = normName(name);
   const exact = brands.find(b => (domain && b.domain === domain) || (n && normName(b.name) === n) || (n && (b.aliases || []).some(a => normName(a) === n))) || null;
   const partial = exact ? [] : nameMatches(name, brands, 'name', true);
   const legacyHits = exact ? [] : [...nameMatches(name, legacy, 'name', false), ...nameMatches(name, legacy, 'name', true)].filter((h, i, arr) => arr.indexOf(h) === i);
-  const base = { name, domain, match: exact ? brandSummary(exact) : null, matches: partial.map(brandSummary), legacy: legacyHits.map(h => ({ id: h.id, name: h.name, kind: h.kind, table: h.table })), warnings: [] };
+  const base = { name, domain, match: exact ? brandSummary(exact) : null, matches: partial.map(brandSummary), legacy: legacyHits.map(h => ({ id: h.id, name: h.name, kind: h.kind, table: h.table })), warnings: [], ...(exact ? alreadyInGrow(exact, firstName) : {}) };
   if (exact) {
     const v = canContact({ brand: exact, senderUserId, kind: 'cold', sponsorsNiches, threadsByFounder: threadsByBrand[exact.id] || [] });
     base.warnings = v.warnings;

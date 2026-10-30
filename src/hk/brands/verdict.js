@@ -19,7 +19,7 @@ export function verdictView(v, { members = [], brandName = '' } = {}) {
     case 'owned_by': return { ...base, needsForce: true, tone: 'orange', title: `Owned by ${who(v.owner_user_id)}`, line: `${matchName} is already in Brands and claimed. Ask them before touching it.` };
     case 'possible_duplicate': {
       const names = [...(v.match ? [v.match.name] : []), ...(v.matches || []).map(m => m.name), ...(v.legacy || []).map(l => `${l.name} (legacy ${l.kind})`)];
-      return { ...base, needsForce: true, tone: 'mustard', title: v.exact ? 'Already in Brands' : 'Possible duplicate', line: names.length ? `Looks like ${names.slice(0, 3).join(', ')}${names.length > 3 ? ` and ${names.length - 3} more` : ''}.` : 'A similar brand exists.' };
+      return { ...base, needsForce: true, tone: 'mustard', title: v.exact ? v.headline || 'Already in Grow' : 'Possible duplicate', line: names.length ? `Looks like ${names.slice(0, 3).join(', ')}${names.length > 3 ? ` and ${names.length - 3} more` : ''}.` : 'A similar brand exists.' };
     }
     case 'niche_warning': return { ...base, tone: 'mustard', title: `Niche overlap with ${overlap?.sponsor || 'a sponsor'}`, line: 'Not blocked. Mention the overlap before pitching.', note: null };
     case 'max_touches': return { ...base, blocks: true, tone: 'block', title: `Email touches used up (${v.sent} of ${v.max})`, line: 'No more cold, bump or final emails to this brand.' };

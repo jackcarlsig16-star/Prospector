@@ -3,6 +3,7 @@ import DataTable from '../../ui/DataTable';
 import Button from '../../ui/Button';
 import { Sprout } from '../HkMarks';
 import OwnerChip from '../brands/OwnerChip';
+import { useSheetConfirm, claimAsking } from '../brands/sheetConfirm';
 import { Chip } from '../brands/BrandsScreen';
 import { hkGet, hkPatch } from '../hkApi';
 
@@ -33,7 +34,8 @@ export default function RepliesScreen({ businessId, shell, owner, compact, onOpe
   const current = useMemo(() => (rows || []).find(r => r.id === open) || null, [rows, open]);
   const patch = async (id, body) => { setError(''); try { await hkPatch(businessId, `/replies/${id}`, body); await load(); onChanged?.(); } catch (e) { setError(e.message); } };
   const setStatus = async (brandId, status) => { setError(''); try { await hkPatch(businessId, `/brands/${brandId}`, { status }); await load(); } catch (e) { setError(e.message); } };
-  const claim = async brandId => { setError(''); try { await hkPatch(businessId, `/brands/${brandId}`, { claim: true }); await load(); } catch (e) { setError(e.message); } };
+  const sheet = useSheetConfirm();
+  const claim = async brandId => { setError(''); try { if (await claimAsking(sheet.confirm, x => hkPatch(businessId, `/brands/${brandId}`, { claim: true, ...x }))) await load(); } catch (e) { setError(e.message); } };
   const bulk = async body => { for (const id of selected) await hkPatch(businessId, `/replies/${id}`, body); setSelected(new Set()); await load(); onChanged?.(); };
   const toggle = id => setSelected(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const copyCmd = async name => { try { await navigator.clipboard.writeText(`hk reply ${name}`); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { setError(`Copy failed. The command is: hk reply ${name}`); } };
@@ -58,6 +60,7 @@ export default function RepliesScreen({ businessId, shell, owner, compact, onOpe
         {canEdit && selected.size > 0 && <Button size="sm" onClick={() => bulk({ handled: true })}>Mark handled ({selected.size})</Button>}
       </div>}
       {filter && canEdit && selected.size > 0 && <div className="hk-bulk" role="toolbar" aria-label="Bulk actions"><Button size="sm" onClick={() => bulk({ handled: true })}>Mark handled ({selected.size})</Button></div>}
+      {sheet.node}
       {error && <p className="hk-error" role="alert">{error}</p>}
       {rows === null ? <p className="hk-meta">Loading replies…</p> : !rows.length ? (
         <div className="hk-empty" data-hk-empty><Sprout size={40} /><p className="hk-empty__title">No replies waiting.</p><p className="hk-empty__line">Replies land here after each Gmail sync, labeled and summarized.</p></div>

@@ -8,6 +8,7 @@ import { STATUS_LABELS, RELATIONSHIP_LABELS, STATUS_TONE, RELATIONSHIP_TONE, SOU
 import { hkPatch, hkPost } from '../hkApi';
 import { HeatChip, ListButtons, heatBarStyle } from '../signals/Heat';
 import OwnerChip from './OwnerChip';
+import { useSheetConfirm, bulkAsking } from './sheetConfirm';
 
 // hkos-data-foundation-v1 D6 + grow-nav-filters-v1 N3/N11 - the Brands list: the kit DataTable on the hk tokens, fed by
 // the Brands space (one paged, server-sorted read: useBrandList). Sorting and paging happen on the server; the next page
@@ -40,6 +41,14 @@ export default function BrandsScreen({ businessId, shell, compact, onOpenBrand, 
   useEffect(() => { setSelected(s => (s.size ? new Set([...s].filter(id => rowsKey.includes(id))) : s)); }, [rowsKey]);
 
   const toggle = id => setSelected(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const sheet = useSheetConfirm();
+  // Claim asks once about brands the sheet lists as someone else's (grow-sheet-owner-respect F3).
+  const bulkClaim = async () => {
+    setBusy('claim'); setError('');
+    const refused = await bulkAsking(sheet.confirm, [...selected], (id, x) => hkPatch(businessId, `/brands/${id}`, { claim: true, ...x }));
+    setSelected(new Set()); await list.reload(); setBusy('');
+    if (refused.length) setError(`Not claimed: ${refused.join('; ')}`);
+  };
   const bulk = async (label, body) => {
     setBusy(label); setError('');
     try { for (const id of selected) await hkPatch(businessId, `/brands/${id}`, body); setSelected(new Set()); await list.reload(); }
@@ -50,7 +59,8 @@ export default function BrandsScreen({ businessId, shell, compact, onOpenBrand, 
   const bulkList = async (label, path, body) => {
     setBusy(label); setError('');
     const refused = [];
-    for (const id of selected) { try { await hkPost(businessId, `/brands/${id}/${path}`, body); } catch (e) { refused.push(e.message); } }
+    if (path === 'pipeline') refused.push(...await bulkAsking(sheet.confirm, [...selected], (id, x) => hkPost(businessId, `/brands/${id}/pipeline`, { ...body, ...x })));
+    else for (const id of selected) { try { await hkPost(businessId, `/brands/${id}/${path}`, body); } catch (e) { refused.push(e.message); } }
     setSelected(new Set()); await list.reload(); setBusy('');
     if (refused.length) setError(`Not added: ${refused.join('; ')}`);
   };
@@ -91,7 +101,7 @@ export default function BrandsScreen({ businessId, shell, compact, onOpenBrand, 
       {canEdit && selected.size > 0 && (
         <div className="hk-bulk" role="toolbar" aria-label="Bulk actions">
           <span>{selected.size} selected</span>
-          <Button size="sm" disabled={!!busy} onClick={() => bulk('claim', { claim: true })}>Claim</Button>
+          <Button size="sm" disabled={!!busy} onClick={bulkClaim}>Claim</Button>
           <Button size="sm" disabled={!!busy} onClick={() => bulk('release', { claim: false })}>Release</Button>
           <Button size="sm" disabled={!!busy} onClick={() => bulkList('target', 'target', { on: true })} data-hk-bulk-target>+ Target</Button>
           <Button size="sm" disabled={!!busy} onClick={() => bulkList('pipeline', 'pipeline', {})} data-hk-bulk-pipeline>+ Pipeline</Button>
@@ -103,6 +113,7 @@ export default function BrandsScreen({ businessId, shell, compact, onOpenBrand, 
           <Button size="sm" variant="danger" disabled={!!busy} onClick={markDnc}>Mark do-not-contact</Button>
         </div>
       )}
+      {sheet.node}
       {(error || list.error) && <p className="hk-error" role="alert">{error || list.error}</p>}
       {rows === null ? <p className="hk-meta">Loading brands…</p> : rows.length === 0 ? (
         <div className="hk-empty" data-hk-empty>

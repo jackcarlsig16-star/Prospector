@@ -2,7 +2,7 @@
 // components, tie-breaks), B3a target categories, B2 importance for Needs-you rows, B6 per-brand email activity. No
 // Claude, no Gmail, no writes. Weights / categories / sweep controls default here and are overridden by
 // hk_settings.intel (merged, never replaced).
-import { canContact } from './rules.js';
+import { canContact, sheetOwnerOf, hintName } from './rules.js';
 
 const DAY = 864e5;
 export const INTEL_DEFAULTS = {
@@ -51,12 +51,14 @@ const mineUntouched = (brand, touches, ctx) => {
   return !sentEmails(touches).some(t => String(t.sent_at || '') >= String(at));
 };
 
-// ctx: { meId, claimedAt (brand id -> latest brand.claimed time), touchesBy, repliesBy, contactsBy (brand_id -> [{ has_email }]), intelByDomain, sponsorsNiches, settings, now }
+// meFirstName: the caller's first name (rankReach passes it; else read from ctx.members).
+// ctx: { meId, meFirstName?, members?, claimedAt (brand id -> latest brand.claimed time), touchesBy, repliesBy, contactsBy (brand_id -> [{ has_email }]), intelByDomain, sponsorsNiches, settings, now }
 // -> null when not eligible, else { brand, score, parts: [[key, points]], why: [words], verdict }
 export function reachOf(brand, ctx) {
   const { meId, settings } = ctx, W = settings.weights;
   if (brand.archived_at || brand.relationship !== 'prospect' || !['candidate', 'claimed'].includes(brand.status)) return null;
   if (brand.owner_user_id && brand.owner_user_id !== meId) return null;
+  if (sheetOwnerOf(brand, myFirstName(ctx))) return null;
   const touches = ctx.touchesBy[brand.id] || [], replies = ctx.repliesBy[brand.id] || [];
   if (sentEmails(touches).length >= 3) return null;
   const verdict = canContact({ brand, touches, threadsByFounder: threadsOf(touches, replies), senderUserId: meId, kind: 'cold', sponsorsNiches: ctx.sponsorsNiches });
@@ -78,13 +80,21 @@ export function reachOf(brand, ctx) {
   const why = parts.filter(([, p]) => p > 0).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([k]) => REACH_WORDS[k]);
   return { brand, score, parts, why, has_contact: contacts.length > 0, intel };
 }
+export const myFirstName = ctx => (ctx.meFirstName !== undefined ? ctx.meFirstName : ctx.members?.find(m => m.user_id === ctx.meId)?.first_name || null);
+// grow-sheet-owner-respect F2 - brands left out of your list because the sheet lists them as someone else's, per name.
+export const sheetSkipped = (brands, ctx) => {
+  const by = {};
+  for (const b of brands) { const h = !b.archived_at && b.relationship === 'prospect' ? sheetOwnerOf(b, myFirstName(ctx)) : null; if (h) by[h.toLowerCase()] = (by[h.toLowerCase()] || 0) + 1; }
+  return Object.entries(by).map(([hint, n]) => ({ hint: hintName(hint), n })).sort((a, b) => b.n - a.n);
+};
 export const REACH_WORDS = { draftable: 'has a contact to email', idea: 'has a challenge idea', website: 'has a website', researched: 'researched', local: 'Chicago local', category: 'a target category', fit_strong: 'strong fit', fit_possible: 'possible fit', heat_hot: 'Hot right now', heat_warm: 'Warm right now', targeted: 'on your Targets', mine_untouched: 'claimed by you, untouched 7+ days', niche_overlap: 'niche overlaps a sponsor', size_large: 'large company' };
 
 // B3 ties: the sheet owner hint is the caller's first name (from business_members) -> challenge idea -> any contact -> A-Z.
 export function rankReach(brands, ctx, { meFirstName = null, limit = 10 } = {}) {
   const me = String(meFirstName || '').trim().toLowerCase();
   const hint = r => (me && String(r.brand.owner_hint || '').trim().toLowerCase() === me ? 1 : 0);
-  return brands.map(b => reachOf(b, ctx)).filter(Boolean)
+  const withName = meFirstName != null ? { ...ctx, meFirstName } : ctx;
+  return brands.map(b => reachOf(b, withName)).filter(Boolean)
     .sort((a, b) => b.score - a.score || hint(b) - hint(a) || Number(!!b.brand.challenge_idea) - Number(!!a.brand.challenge_idea) || Number(b.has_contact) - Number(a.has_contact) || String(a.brand.name).localeCompare(String(b.brand.name)))
     .slice(0, limit ?? undefined);
 }

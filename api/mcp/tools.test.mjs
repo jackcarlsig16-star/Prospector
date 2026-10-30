@@ -13,7 +13,7 @@ const { mcpRoute } = await import('./mcpRoute.js');
 const { sha256 } = await import('./oauth.js');
 
 const HK = 'biz-hk', JACK = 'u-jack', PETE = 'u-pete';
-const B = { yoga: randomUUID(), juice: randomUUID(), cafe: randomUUID(), run: randomUUID(), fp: randomUUID(), unclear: randomUUID(), granite: randomUUID(), granite2: randomUUID(), mine: randomUUID(), willow: randomUUID() };
+const B = { yoga: randomUUID(), juice: randomUUID(), cafe: randomUUID(), run: randomUUID(), fp: randomUUID(), unclear: randomUUID(), granite: randomUUID(), granite2: randomUUID(), mine: randomUUID(), willow: randomUUID(), sheet: randomUUID() };
 const NOW = new Date('2026-10-28T20:00:00Z');
 const MAILBOX = 'jack.work@humankind.invalid', CONTACT = 'ana@harboryoga.invalid';
 const SUBJECT = 'HumanKind x Bluefin Run Club - a 5k streak challenge';
@@ -33,6 +33,7 @@ const fresh = () => {
       brand(B.granite, 'Granite Gym', { domain: 'granitegym.invalid' }),
       brand(B.granite2, 'Granite Gym Loop', { aliases: ['Granite Gym'] }),
       brand(B.willow, 'Willow Pilates', { domain: 'willowpilates.invalid' }),
+      brand(B.sheet, 'Sable Socks', { domain: 'sablesocks.invalid', owner_hint: 'pete', status: 'drafted' }),
       brand(B.mine, 'Ember Coffee', { owner_user_id: JACK, status: 'replied', next_due_at: '2026-10-27T00:00:00Z' }),
     ],
     hk_contacts: [{ id: 'c-ana', business_id: HK, brand_id: B.run, name: 'Ana Example', title: 'Founder', email: CONTACT, is_primary: true, created_at: '2026-10-02T00:00:00Z' }],
@@ -62,7 +63,8 @@ test('tools list: 7 tools, read-only hints, every schema closed, and no tool tak
   const keys = [];
   const walk = s => { if (s.type === 'object') { assert.equal(s.additionalProperties, false); for (const [k, v] of Object.entries(s.properties)) { keys.push(k); walk(v); } } if (s.type === 'array') walk(s.items); };
   tools.forEach(t => walk(t.inputSchema));
-  assert.deepEqual(keys.filter(k => /user|owner|mailbox|sender|inbox|founder|email/i.test(k)), []);
+  // confirm_sheet_owner is a yes / no to a question the server asked, not an owner to act as.
+  assert.deepEqual(keys.filter(k => k !== 'confirm_sheet_owner' && /user|owner|mailbox|sender|inbox|founder|email/i.test(k)), []);
 });
 
 test('server-side input checks: unknown fields, wrong types and caps are refused before any work (hk_check max 25)', async () => {
@@ -96,6 +98,27 @@ test('hk_claim refuses sponsor, founding partner, do-not-contact, the other foun
   const ok = await call('hk_claim', { brand: 'bluefinrun.invalid' });
   assert.deepEqual([ok.isError, ok.body.claimed, ok.body.brand.owner_user_id, ok.body.brand.status], [false, true, JACK, 'claimed']);
   assert.equal((await call('hk_claim', { brand: 'Bluefin Run Club' })).body.already_yours, true);
+});
+
+test('grow-sheet-owner-respect F3 + F4: hk_claim on a brand the sheet lists as Pete\'s asks first (confirm_sheet_owner), then claims with an Activity note; hk_draft_save refuses it; hk_check calls an exact match "Already in Grow"', async () => {
+  fresh();
+  const ask = await call('hk_claim', { brand: 'sablesocks.invalid' });
+  assert.deepEqual([ask.isError, ask.body.error, ask.body.confirm_sheet_owner, ask.body.sheet_owner], [true, "The sheet lists this as Pete's. Take it anyway?", true, 'Pete']);
+  const draft = await call('hk_draft_save', { brand: 'Sable Socks', kind: 'cold', subject: SUBJECT, body_markdown: GOOD_BODY });
+  assert.ok(draft.isError); assert.match(draft.body.error, /^The sheet lists this as Pete's\. Take it anyway\? If the user says yes, call hk_claim with confirm_sheet_owner true/);
+  assert.deepEqual(gcalls, [], 'no Gmail call'); assert.equal(sb.db.hk_brands.find(b => b.id === B.sheet).owner_user_id, null, 'nothing claimed yet');
+  assert.ok((await call('hk_claim', { brand: 'Sable Socks', confirm_sheet_owner: 'yes' })).isError, 'the flag is a real boolean');
+  const ok = await call('hk_claim', { brand: 'Sable Socks', confirm_sheet_owner: true });
+  assert.deepEqual([ok.isError, ok.body.claimed, ok.body.brand.owner_user_id], [false, true, JACK]);
+  const ev = sb.db.hk_events.find(e => e.entity_id === B.sheet && e.action === 'brand.claimed');
+  assert.equal(ev.detail.note, "taken from Pete's sheet list");
+  fresh();
+  const { body } = await call('hk_check', { brands: [{ name: 'rumpl', domain: 'sablesocks.invalid' }, { name: 'Ember Coffee' }, { name: 'Bluefin' }, { name: 'Harbor Yoga' }] });
+  const [sheet, mine, partial, theirs] = body.results;
+  assert.deepEqual([sheet.verdict, sheet.exact, sheet.headline], ['possible_duplicate', true, 'Already in Grow · Drafted · Sheet: Pete']);
+  assert.equal(mine.headline, 'Already in Grow · Replied · Jack');
+  assert.deepEqual([partial.verdict, partial.exact, partial.headline], ['possible_duplicate', false, undefined], 'partial stays a possible duplicate');
+  assert.deepEqual([theirs.verdict, theirs.headline], ['owned_by', 'Already in Grow · Claimed · Pete'], 'verdict keys unchanged');
 });
 
 test('hk_brand: exact name, alias or domain; partial or ambiguous -> candidates, nothing picked', async () => {

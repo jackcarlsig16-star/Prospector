@@ -3,7 +3,7 @@
 // Signals panel (moved here from Today), and the research sweep's day. "Important now" (B2) is scored on the Needs-you
 // rows the Inbox list already loads (inboxRoutes importance), never a second list call.
 import { getSupabase, HkError, fail, me, brandById } from './hkShared.js';
-import { rankReach, reachOf, activityOf, intelFor } from './intelScore.js';
+import { rankReach, reachOf, activityOf, intelFor, sheetSkipped } from './intelScore.js';
 import { loadIntel, firstNameOf } from './intelData.js';
 import { sweepToday } from './researchSweep.js';
 import { listSignalsRoute } from './signalsRoutes.js';
@@ -64,7 +64,8 @@ export async function briefingRoute(req, res, { supabase = getSupabase(), now = 
     };
     const [r, out] = asRes();
     await listSignalsRoute(req, r, { supabase });
-    res.json({ owner, tiles, send, waiting, signals: out.code === 200 ? out.body : null, eligible: rankReach(data.brands, { ...data, meId, now: at }, { limit: null }).length,
+    res.json({ owner, tiles, send, waiting, signals: out.code === 200 ? out.body : null, eligible: rankReach(data.brands, { ...data, meId, now: at }, { meFirstName: firstNameOf(data, meId), limit: null }).length,
+      sheet_skipped: sheetSkipped(data.brands, { ...data, meId }),
       research: { on: data.settings.sweep.on, n: data.settings.sweep.n, cap_usd: data.settings.sweep.cap_usd, time: data.settings.sweep.time, today_calls: sweep.calls, today_spend: sweep.spend, last_run: sweep.last }, weights: data.settings.weights, target_categories: data.settings.target_categories });
   } catch (e) { fail(res, e, 'briefing'); }
 }

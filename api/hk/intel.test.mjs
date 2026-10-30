@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from '../sales/testing/fakeSupabase.mjs';
-import { INTEL_DEFAULTS, intelSettings, reachOf, rankReach, importanceOf, activityOf, inTargetCategory, isLocal } from './intelScore.js';
+import { INTEL_DEFAULTS, intelSettings, reachOf, rankReach, importanceOf, activityOf, inTargetCategory, isLocal, sheetSkipped } from './intelScore.js';
 import { researchBrand, researchPrompt, parseWebsite, useDomainRoute, wrongSiteRoute, SWEEP_CALL_TYPE } from './brandResearch.js';
 import { makeHkGate } from '../lib/requireAuth.js';
 import { researchSweep, sweepQueue } from './researchSweep.js';
@@ -91,10 +91,29 @@ test('B3 ties: owner hint = my first name (from business_members) -> idea -> any
     brand(ids.g, 'Zz Golf'), brand(ids.h, 'Zz Hotel', { owner_hint: 'sky' }),
   ], hk_contacts: [{ id: 'k9', business_id: HK, brand_id: ids.g, name: 'G', email: null }], hk_touches: [] });
   const ctx = await ctxOf(sb);
-  // idea adds 10, so Foxtrot leads on score; the rest tie at 0.
-  assert.deepEqual(rankReach(ctx.brands, ctx, { meFirstName: 'Rowan' }).map(r => r.brand.name), ['Zz Foxtrot', 'Zz Echo', 'Zz Golf', 'Zz Delta', 'Zz Hotel']);
+  // idea adds 10, so Foxtrot leads on score; the rest tie at 0. Hotel is on Sky's sheet list, so not Rowan's to pitch.
+  assert.deepEqual(rankReach(ctx.brands, ctx, { meFirstName: 'Rowan' }).map(r => r.brand.name), ['Zz Foxtrot', 'Zz Echo', 'Zz Golf', 'Zz Delta']);
   const src = fs.readFileSync(new URL('./intelScore.js', import.meta.url), 'utf8') + fs.readFileSync(new URL('./researchSweep.js', import.meta.url), 'utf8');
   assert.ok(!/\b(jack|pete|cyrus)\b/i.test(src), 'no hard-coded founder names');
+});
+
+test('grow-sheet-owner-respect F2: another person\'s sheet brand is not eligible (Send these 10, eligible count, reach line, sweep source); yours and unhinted stay; the skipped count per name', async () => {
+  const sb = fresh({ hk_brands: [
+    brand(ids.d, 'Zz Delta'), brand(ids.e, 'Zz Echo', { owner_hint: 'ROWAN' }), brand(ids.g, 'Zz Golf', { owner_hint: 'pete' }), brand(ids.h, 'Zz Hotel', { owner_hint: 'pete', challenge_idea: 'x' }),
+    brand(ids.f, 'Zz Foxtrot', { owner_hint: 'sky' }), brand(ids.mine, 'Zz Mine Co', { owner_hint: 'pete', owner_user_id: ME, status: 'claimed' }),
+  ], hk_touches: [] });
+  const ctx = await ctxOf(sb);
+  const names = rs => rs.map(r => r.brand.name).sort();
+  assert.deepEqual(names(rankReach(ctx.brands, ctx, { limit: null })), ['Zz Delta', 'Zz Echo', 'Zz Mine Co'], 'first name read from members when not passed');
+  assert.equal(reachOf(ctx.brands.find(b => b.id === ids.h), ctx), null, 'a high score does not let it back in');
+  assert.ok(reachOf(ctx.brands.find(b => b.id === ids.h), { ...ctx, meId: OTHER, meFirstName: 'Pete' }), 'Pete himself would see it');
+  assert.deepEqual(sheetSkipped(ctx.brands, ctx), [{ hint: 'Pete', n: 2 }, { hint: 'Sky', n: 1 }]);
+  assert.deepEqual(sweepQueue(ctx, { meIds: [ME], now: NOW }).map(q => q.brand.name).sort(), ['Zz Delta', 'Zz Echo', 'Zz Mine Co'], 'the sweep source skips them too');
+  const r = await call(briefingRoute, reqOf(), { supabase: sb, now: () => NOW, today: async () => ({ digest: { counts: {} } }) });
+  assert.equal(r.code, 200, JSON.stringify(r.body));
+  assert.deepEqual([names(r.body.send.map(c => ({ brand: c }))), r.body.eligible, r.body.sheet_skipped], [['Zz Delta', 'Zz Echo', 'Zz Mine Co'], 3, [{ hint: 'Pete', n: 2 }, { hint: 'Sky', n: 1 }]]);
+  const reach = await call(reachRoute, reqOf({ params: { id: ids.g } }), { supabase: sb, now: () => NOW });
+  assert.equal(reach.body.eligible, false);
 });
 
 test('B2 importance: label, question, decline, status, sponsor, fit, heat, warm, unread, waiting (capped), new person, teammate; the top reason in words', () => {

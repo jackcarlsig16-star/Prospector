@@ -12,6 +12,7 @@ import ComposerModal from './ComposerModal';
 import { HeatChip, ListButtons } from '../signals/Heat';
 import ReachLine from './ReachLine';
 import OwnerChip from './OwnerChip';
+import { useSheetConfirm, claimAsking } from './sheetConfirm';
 
 // hkos-data-foundation-v1 D6 - the Brand page: header + chips + touch counter, the Verdict banner, the primary action
 // by state, More, and four tabs. Contact emails show here only (D5), as mailto links.
@@ -38,6 +39,8 @@ export default function BrandPage({ businessId, brandId, shell, gmail, onBack, c
   useEffect(() => { setData(null); load(); }, [load]);
 
   const patch = async body => { try { await hkPatch(businessId, `/brands/${brandId}`, body); await load(); } catch (e) { setError(e.message); } };
+  const sheet = useSheetConfirm();
+  const claim = async () => { setError(''); try { if (await claimAsking(sheet.confirm, x => hkPatch(businessId, `/brands/${brandId}`, { claim: true, ...x }))) await load(); } catch (e) { setError(e.message); } };
   if (error && !data) return <p className="hk-error" role="alert">{error}</p>;
   if (!data) return <p className="hk-meta">Loading brand…</p>;
   const { brand, contacts, touches, replies, events, verdict, email_touches_sent, max_email_touches } = data;
@@ -45,7 +48,7 @@ export default function BrandPage({ businessId, brandId, shell, gmail, onBack, c
   const mine = brand.owner_user_id && brand.owner_user_id === me?.user_id;
   const hasDraft = touches.some(t => t.state === 'drafted');
   const primary = !canEdit ? null
-    : !brand.owner_user_id && brand.relationship === 'prospect' ? <Button variant="primary" onClick={() => patch({ claim: true })} data-hk-claim>Claim</Button>
+    : !brand.owner_user_id && brand.relationship === 'prospect' ? <Button variant="primary" onClick={claim} data-hk-claim>Claim</Button>
     : mine && !hasDraft ? <Button variant="primary" onClick={() => setComposer(true)} data-hk-draft-email-primary>Draft email</Button>
     : <Button variant="primary" disabled disabledReason={mine ? 'A draft is already waiting in Gmail' : owner ? `Owned by ${owner.first_name}` : 'Not a prospect'}>Draft</Button>;
 
@@ -96,6 +99,7 @@ export default function BrandPage({ businessId, brandId, shell, gmail, onBack, c
           <span style={{ display: 'inline-flex', gap: 8 }}><Button type="submit" variant="danger" disabled={!dncReason.trim()}>Mark do-not-contact</Button><Button variant="tertiary" onClick={() => setDncReason(null)}>Cancel</Button></span>
         </form>
       )}
+      {sheet.node}
       {error && <p className="hk-error" role="alert">{error}</p>}
       <Tabs label="Brand sections" items={TABS.map(([id, label]) => ({ id, label }))} value={tab} onChange={setTab} />
       <div className="hk-brand__body">

@@ -1,10 +1,11 @@
 // hkos-data-foundation-v1 D4 - brands + contacts routes (mounted under /api/hk/:businessId behind hkGate; viewer = GET,
 // member = writes, owner-role = relationship upgrades + releasing another's claim). List rows never carry an address;
 // the brand detail and the contacts routes do (hk_contacts.email - the scoped HumanKind exception, D5).
-import { getSupabase, HkError, fail, isOwner, me, text, bool, oneOf, domainOf, emailOf, logEvent, brandRow, brandDetail, contactRow, touchRow, replyRow, liveBrands, brandById, legacyNames, verdictFor, sponsorsNichesOf, canContact, normName, SPONSOR_RELATIONSHIPS, MANUAL_STATUSES, selectAllPages, selectIn } from './hkShared.js';
+import { getSupabase, HkError, fail, isOwner, me, text, bool, oneOf, domainOf, emailOf, logEvent, brandRow, brandDetail, contactRow, touchRow, replyRow, liveBrands, brandById, legacyNames, verdictFor, sponsorsNichesOf, canContact, normName, SPONSOR_RELATIONSHIPS, MANUAL_STATUSES, selectAllPages, selectIn, memberFirstNames } from './hkShared.js';
 import { CLOSED, VIEWS as FILTER_VIEWS, SORTS, PAGE_DEFAULT, PAGE_MAX, parseFilters, loadFilterData, applyFilters } from './brandFilters.js';
 import { signalNow, signalWords, moveDomainSignals, recomputeHeat } from './signals.js';
 import { trackedThreads, liveThread } from './warm.js';
+import { sheetOwnerOf, sheetQuestion, hintName } from './rules.js';
 import { mailboxFor, accessTokenForGrant } from '../lib/googleGrants.js';
 import { gmailClient } from './gmailClient.js';
 
@@ -16,7 +17,7 @@ const HOT_BANDS = new Set(['hot', 'warm']);
 const SHORT = { name: [160, 'name'], category: [80, 'category'], niche: [80, 'niche'], size_band: [40, 'size band'], city: [80, 'city'], neighborhood: [80, 'neighborhood'] };
 const LONG = { notes: [4000, 'notes'], challenge_idea: [1000, 'challenge idea'], origin_hook: [1000, 'origin hook'], reward_idea: [1000, 'reward idea'] };
 
-const ctx = async (supabase, businessId, senderUserId) => { const brands = await liveBrands(supabase, businessId); return { brands, legacy: await legacyNames(supabase, businessId), senderUserId, sponsorsNiches: sponsorsNichesOf(brands) }; };
+const ctx = async (supabase, businessId, senderUserId) => { const brands = await liveBrands(supabase, businessId); return { brands, legacy: await legacyNames(supabase, businessId), senderUserId, sponsorsNiches: sponsorsNichesOf(brands), firstName: await memberFirstNames(supabase, businessId) }; };
 const aliasesOf = v => { if (v == null) return null; if (!Array.isArray(v)) throw new HkError(400, 'aliases must be a list'); return [...new Set(v.map(a => text(a, 160, 'alias')).filter(Boolean))]; };
 // hkos-brands-list-500 F1: the workspace's primary contacts, paged, joined in JS - no id list in the URL, one path for
 // 29 rows or 952. Name only (list rows never carry an address).
@@ -170,7 +171,13 @@ export async function patchBrandRoute(req, res, { supabase = getSupabase(), now 
     const brand = await brandById(supabase, businessId, req.params.id);
     if (brand.archived_at) throw new HkError(409, 'that brand is archived');
     const patch = brandFields(body, { partial: true });
-    let action = 'brand.updated';
+    let action = 'brand.updated', sheetNote = null;
+    // grow-sheet-owner-respect F3 - claiming a brand the sheet lists as someone else's asks first (409 + the question).
+    if ('claim' in body && body.claim === true && !brand.owner_user_id && brand.owner_hint) {
+      const hint = sheetOwnerOf(brand, (await memberFirstNames(supabase, businessId))(uid));
+      if (hint && body.confirm_sheet_owner !== true) throw new HkError(409, sheetQuestion(hint), { sheet_owner: hintName(hint), confirm_sheet_owner: true });
+      if (hint) sheetNote = `taken from ${hintName(hint)}'s sheet list`;
+    }
     if ('status' in body) { patch.status = oneOf(body.status, MANUAL_STATUSES, 'status'); action = 'brand.status'; }
     if ('claim' in body) {
       if (bool(body.claim, 'claim')) { if (brand.owner_user_id && brand.owner_user_id !== uid && !isOwner(req)) throw new HkError(409, 'another founder owns this brand'); patch.owner_user_id = uid; patch.owner_unclear = false; if (brand.status === 'candidate') patch.status = 'claimed'; action = 'brand.claimed'; }
@@ -189,7 +196,7 @@ export async function patchBrandRoute(req, res, { supabase = getSupabase(), now 
     patch.updated_at = now().toISOString();
     const { data, error } = await supabase.from('hk_brands').update(patch).eq('id', brand.id).eq('business_id', businessId).select().single();
     if (error) throw error;
-    await logEvent(supabase, { businessId, actorUserId: uid, entityType: 'brand', entityId: brand.id, action, detail: { changed, prev, ...(reason ? { reason } : {}) } });
+    await logEvent(supabase, { businessId, actorUserId: uid, entityType: 'brand', entityId: brand.id, action, detail: { changed, prev, ...(reason ? { reason } : {}), ...(sheetNote ? { note: sheetNote } : {}) } });
     if (action === 'brand.status' && patch.status === 'meeting') await signalNow(supabase, { businessId, kind: 'meeting_set', brandId: brand.id, ownerUserId: data.owner_user_id, occurredAt: patch.updated_at, source: 'user', refType: 'brand_status', refId: `${brand.id}:${patch.updated_at}`, detail: `${brand.name}: ${signalWords('meeting_set')}` }, now());
     res.json({ brand: brandDetail(data), changed });
   } catch (e) { fail(res, e, 'brands/patch'); }

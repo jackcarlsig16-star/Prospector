@@ -77,6 +77,20 @@ test('Briefing: tiles link to their lists, Send these cards (why, research, webs
   expect(screen.getByText(/Auto-research on: up to 10 a day by 06:30, \$1.00 cap/)).toBeInTheDocument();
 });
 
+test('grow-sheet-owner-respect F2: one muted line per sheet name skipped from Send these 10; none when nothing was skipped', async () => {
+  routesFor();
+  routes[`GET /api/hk/${HK}/briefing`] = { ...BRIEF, sheet_skipped: [{ hint: 'Pete', n: 673 }, { hint: 'Sky', n: 1 }] };
+  const { unmount } = render(<Briefing businessId={HK} shell={shell('owner')} owner="me" canEdit rows={ROWS} listReady onOpenThread={jest.fn()} onOpenBrand={jest.fn()} onGo={jest.fn()} onLane={jest.fn()} />);
+  const send = await screen.findByRole('region', { name: 'Send these 10' }).catch(() => screen.findByLabelText('Send these 10'));
+  expect(within(send).getByText("673 brands are on Pete's sheet list. They stay out of your 10 until Pete claims them or you take one.")).toBeInTheDocument();
+  expect(within(send).getByText("1 brand is on Sky's sheet list. It stays out of your 10 until Sky claims it or you take one.")).toBeInTheDocument();
+  unmount();
+  routes[`GET /api/hk/${HK}/briefing`] = { ...BRIEF, sheet_skipped: [] };
+  render(<Briefing businessId={HK} shell={shell('owner')} owner="me" canEdit rows={ROWS} listReady onOpenThread={jest.fn()} onOpenBrand={jest.fn()} onGo={jest.fn()} onLane={jest.fn()} />);
+  await screen.findByText('Zz Alder Oats');
+  expect(document.querySelector('[data-hk-sheet-skipped]')).toBeNull();
+});
+
 test('Research on a card posts the click flag and says what it found; Run research now posts the sweep and reports it', async () => {
   routesFor();
   routes[`POST /api/hk/${HK}/brands/b1/research`] = { status: 'researched', domain: 'alderoats.invalid', confidence: 'high', suggested: true, intel: { fit: { sponsor_fit: 'strong' } }, cost_usd: 0.04 };

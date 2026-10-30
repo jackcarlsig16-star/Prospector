@@ -103,6 +103,7 @@ export default function Briefing({ businessId, shell, owner, canEdit, rows, list
         <p className="hk-meta" data-hk-research-line>Auto-research {R.on ? `on: up to ${R.n} a day by ${R.time}, $${Number(R.cap_usd).toFixed(2)} cap` : 'off'} · today {R.today_calls} of {R.n} (${Number(R.today_spend).toFixed(2)})</p>
         {data.send.length ? <ol className="hk-send">{data.send.map((c, i) => <Card key={c.id} c={c} i={i} businessId={businessId} canEdit={canEdit} meId={meId} members={shell?.members || []} onOpenBrand={onOpenBrand} onChanged={load} setNote={setNote} />)}</ol>
           : <p className="hk-meta">No brand you can pitch right now.</p>}
+        {(data.sheet_skipped || []).map(s => <p key={s.hint} className="hk-meta" data-hk-sheet-skipped={s.hint}>{s.n === 1 ? `1 brand is on ${s.hint}'s sheet list. It stays` : `${s.n.toLocaleString('en-US')} brands are on ${s.hint}'s sheet list. They stay`} out of your 10 until {s.hint} claims {s.n === 1 ? 'it' : 'them'} or you take one.</p>)}
       </section>
       <section className="hk-today__card" aria-label="Important now" data-hk-section="important">
         <h2 className="hk-section-title">Important now</h2>

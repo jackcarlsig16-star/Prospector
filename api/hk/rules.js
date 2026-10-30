@@ -5,6 +5,13 @@ export const BLOCKING_RELATIONSHIPS = { sponsor: 'sponsor', founding_partner: 's
 export const EMAIL_KINDS = new Set(['cold', 'bump', 'final']);
 export const DEFAULT_MAX_EMAIL_TOUCHES = 3;
 
+// grow-sheet-owner-respect F1 - a sheet owner: no member owner and an owner_hint (the import's founder name, stored
+// text) that is not the caller's first name. The brand stays theirs until they claim it or the caller takes it.
+const hintKey = v => String(v || '').trim().toLowerCase();
+export const sheetOwnerOf = (brand, meFirstName) => (!brand.owner_user_id && hintKey(brand.owner_hint) && hintKey(brand.owner_hint) !== hintKey(meFirstName) ? String(brand.owner_hint).trim() : null);
+export const hintName = hint => { const h = String(hint).trim(); return h[0].toUpperCase() + h.slice(1); };
+export const sheetQuestion = hint => `The sheet lists this as ${hintName(hint)}'s. Take it anyway?`;
+
 const lastOf = threads => threads.reduce((best, t) => (!best || String(t.last_at) > String(best.last_at) ? t : best), null);
 
 // brand: { status, relationship, owner_user_id, owner_unclear, niche }

@@ -30,7 +30,8 @@ test('copy names people and matches from the inputs', () => {
   const dup = view({ verdict: 'possible_duplicate', exact: false, matches: [{ id: 'b9', name: 'Bluefin Run Club' }], legacy: [{ name: 'Dunmore Mills', kind: 'business' }] });
   expect([dup.title, dup.line, dup.matchId]).toEqual(['Possible duplicate', 'Looks like Bluefin Run Club, Dunmore Mills (legacy business).', 'b9']);
   expect(view({ verdict: 'possible_duplicate', exact: false, matches: [], legacy: [{ name: 'Dunmore Mills', kind: 'business' }] }).matchId).toBeNull();
-  expect(view({ verdict: 'possible_duplicate', exact: true, match: { id: 'b3', name: 'Bluefin Run Club' } }).title).toBe('Already in Brands');
+  expect(view({ verdict: 'possible_duplicate', exact: true, match: { id: 'b3', name: 'Bluefin Run Club' }, headline: 'Already in Grow · Drafted · Sheet: Pete' }).title).toBe('Already in Grow · Drafted · Sheet: Pete');
+  expect(view({ verdict: 'possible_duplicate', exact: false, matches: [{ id: 'b3', name: 'Bluefin Run Club' }] }).title).toBe('Possible duplicate');
   expect(view({ verdict: 'niche_warning', warnings: [{ code: 'niche_overlap', sponsor: 'Northwind Juice' }] }).title).toBe('Niche overlap with Northwind Juice');
   expect(view({ verdict: 'clear', warnings: [{ code: 'niche_overlap', sponsor: 'Northwind Juice' }] }).note).toBe('Niche overlaps with sponsor Northwind Juice.');
 });

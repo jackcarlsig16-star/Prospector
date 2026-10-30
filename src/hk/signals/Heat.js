@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import Button from '../../ui/Button';
 import { hkPost } from '../hkApi';
+import { useSheetConfirm, claimAsking } from '../brands/sheetConfirm';
 
 // grow-signals-v1 G4 + G7 - the heat chip (the word always beside the color), the 4 px row bar, and the one-click
 // + Target / + Pipeline buttons with a 10 s Undo. Viewers get the chip only.
@@ -35,12 +36,13 @@ export function ListButtons({ businessId, brand, meId, members = [], canEdit, on
   const [error, setError] = useState('');
   useEffect(() => { setTargeted(!!brand.targeted_at); setInPipe(brand.owner_user_id === meId && brand.status !== 'candidate'); }, [brand.targeted_at, brand.owner_user_id, brand.status, meId]);
   useEffect(() => { if (!undo) return undefined; const t = setTimeout(() => setUndo(null), UNDO_MS); return () => clearTimeout(t); }, [undo]);
+  const sheet = useSheetConfirm();
   if (!canEdit) return null;
   const firstName = id => members.find(m => m.user_id === id)?.first_name || null;
   const blocked = inPipe ? null : pipelineBlock(brand, meId, firstName);
   const run = async fn => { setBusy(true); setError(''); try { await fn(); onChanged?.(); } catch (e) { setError(e.message); } finally { setBusy(false); } };
   const target = on => run(async () => { await hkPost(businessId, `/brands/${brand.id}/target`, { on }); setTargeted(on); setUndo(on ? { kind: 'target', line: `${brand.name} added to Targets.` } : null); });
-  const pipe = () => run(async () => { const r = await hkPost(businessId, `/brands/${brand.id}/pipeline`, {}); setInPipe(true); if (!r.already) setUndo({ kind: 'pipeline', line: `${brand.name} is on your Pipeline.`, expect: r.brand.updated_at }); });
+  const pipe = () => run(async () => { const r = await claimAsking(sheet.confirm, x => hkPost(businessId, `/brands/${brand.id}/pipeline`, x)); if (!r) return; setInPipe(true); if (!r.already) setUndo({ kind: 'pipeline', line: `${brand.name} is on your Pipeline.`, expect: r.brand.updated_at }); });
   const undoIt = () => run(async () => {
     if (undo.kind === 'target') { await hkPost(businessId, `/brands/${brand.id}/target`, { on: false }); setTargeted(false); }
     else { await hkPost(businessId, `/brands/${brand.id}/pipeline`, { undo: true, expect_updated_at: undo.expect }); setInPipe(false); }
@@ -55,6 +57,7 @@ export function ListButtons({ businessId, brand, meId, members = [], canEdit, on
       {blocked && !compact && <span className="hk-meta" data-hk-pipeline-why>{blocked}</span>}
       {/* In a table row (compact) the line stays screen-reader only, so the row keeps its height (N2). */}
       {undo && <span className="hk-lists__undo" role="status" data-hk-undo-line><span className={compact ? 'ui-sr-only' : undefined}>{undo.line} </span><button type="button" className="hk-btn hk-link" disabled={busy} onClick={undoIt} data-hk-undo>Undo</button></span>}
+      {sheet.node}
       {error && <span className="hk-error" role="alert">{error}</span>}
     </span>
   );

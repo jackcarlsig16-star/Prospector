@@ -161,6 +161,20 @@ test('+ Pipeline refuses sponsor, founding partner, do-not-contact, the other fo
   assert.equal(pipelineRefusal(brand(B.run, 'X', { status: 'passed' }), JACK), 'X was passed on');
 });
 
+test('grow-sheet-owner-respect F3: + Pipeline on a brand the sheet lists as Pete\'s asks first; confirmed = claimed with the note; Undo releases it; Pete himself is not asked', async () => {
+  const sb = fresh();
+  Object.assign(brandRow(sb, B.run), { owner_hint: 'pete' });
+  const ask = await call(pipelineRoute, reqOf({ params: { id: B.run } }), deps(sb));
+  assert.deepEqual([ask.code, ask.body.error, ask.body.confirm_sheet_owner, ask.body.sheet_owner, brandRow(sb, B.run).owner_user_id], [409, "The sheet lists this as Pete's. Take it anyway?", true, 'Pete', null]);
+  const ok = await call(pipelineRoute, reqOf({ params: { id: B.run }, body: { confirm_sheet_owner: true } }), deps(sb));
+  assert.deepEqual([ok.code, ok.body.brand.owner_user_id, ok.body.brand.status], [200, JACK, 'claimed']);
+  assert.deepEqual(sb.db.hk_events.at(-1).detail, { changed: ['owner_user_id', 'status'], prev: { owner_user_id: null, status: 'candidate' }, reason: '+ Pipeline', note: "taken from Pete's sheet list" });
+  const undo = await call(pipelineRoute, reqOf({ params: { id: B.run }, body: { undo: true, expect_updated_at: ok.body.brand.updated_at } }), deps(sb));
+  assert.deepEqual([undo.code, brandRow(sb, B.run).owner_user_id, brandRow(sb, B.run).status, brandRow(sb, B.run).owner_hint], [200, null, 'candidate', 'pete']);
+  const pete = await call(pipelineRoute, reqOf({ params: { id: B.run }, user: PETE }), deps(sb));
+  assert.deepEqual([pete.code, brandRow(sb, B.run).owner_user_id], [200, PETE]);
+});
+
 test('Brands views: Hot leads = Hot + Warm, newest signal first; Targets = targeted brands, hottest first; rows carry heat', async () => {
   const sb = fresh();
   Object.assign(brandRow(sb, B.run), { heat: 45, heat_band: 'hot' });

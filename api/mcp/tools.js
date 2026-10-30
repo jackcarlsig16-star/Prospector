@@ -10,6 +10,7 @@ import { todayPayload, founders } from '../hk/jobs/runner.js';
 import { dayIn } from '../hk/jobs/plan.js';
 import { draftUrl } from '../hk/gmailMime.js';
 import { HkError, text, domainOf, oneOf, liveBrands, normName, nameMatches, brandSummary, logEvent, MANUAL_STATUSES, SPONSOR_RELATIONSHIPS } from '../hk/hkShared.js';
+import { sheetOwnerOf, sheetQuestion } from '../hk/rules.js';
 
 export const CALLS_PER_WINDOW = 60, WINDOW_MS = 10 * 60_000; // REVISABLE (spec M6)
 export const CHECK_MAX = 25, DRAFTS_PER_DAY = 20;             // REVISABLE (spec M6)
@@ -20,9 +21,9 @@ const obj = (properties, required = []) => ({ type: 'object', properties, requir
 
 export const TOOLS = [
   { name: 'hk_settings', readOnly: true, description: 'HumanKind pitch facts and rules: member / completion stats and when they were confirmed, market lines, subject format, banned phrases, follow-up timing and touch caps, who is calling, and which founder mailboxes are connected (status only).', inputSchema: obj({}) },
-  { name: 'hk_check', readOnly: true, description: `Check up to ${CHECK_MAX} brands before pitching. Per brand: clear, warm (another founder already has a thread - founder and date only), sponsor, do_not_contact, owned_by, possible_duplicate or niche_warning, with matches.`,
+  { name: 'hk_check', readOnly: true, description: `Check up to ${CHECK_MAX} brands before pitching. Per brand: clear, warm (another founder already has a thread - founder and date only), sponsor, do_not_contact, owned_by, possible_duplicate or niche_warning, with matches. A brand already in Grow carries headline "Already in Grow · <status> · <owner>" - say that, not "possible duplicate".`,
     inputSchema: obj({ brands: { type: 'array', minItems: 1, maxItems: CHECK_MAX, items: obj({ name: str(160, 'Brand name'), domain: str(253, 'Website domain, e.g. rumpl.com'), niche: str(80, 'What they sell, e.g. cold-pressed juice') }, ['name']) } }, ['brands']) },
-  { name: 'hk_claim', readOnly: false, description: 'Claim an unclaimed brand for yourself. Refuses sponsors, founding partners, do-not-contact brands, brands another founder owns, and brands whose owner is Unclear.', inputSchema: obj({ brand: BRAND_REF }, ['brand']) },
+  { name: 'hk_claim', readOnly: false, description: 'Claim an unclaimed brand for yourself. Refuses sponsors, founding partners, do-not-contact brands, brands another founder owns, and brands whose owner is Unclear. A brand the sheet lists as another person\'s comes back as a question (confirm_sheet_owner: true); ask the user, and only if they say take it, call again with confirm_sheet_owner true.', inputSchema: obj({ brand: BRAND_REF, confirm_sheet_owner: { type: 'boolean', description: 'Only after the user said to take a brand the sheet lists as someone else\'s' } }, ['brand']) },
   { name: 'hk_brand', readOnly: true, description: 'One brand\'s page: status, owner, contacts (names, titles, emails), touches, replies, notes, challenge ideas and recent activity. Needs an exact name, alias or domain; an ambiguous one returns the candidates.', inputSchema: obj({ brand: BRAND_REF }, ['brand']) },
   { name: 'hk_draft_save', readOnly: false, description: 'Save an email as a Gmail DRAFT in your own HumanKind mailbox (never sent). Runs the contact rules and the outreach lint first; if the lint fails nothing is saved and the problems come back. Marks the brand Drafted and claims it if unclaimed.',
     inputSchema: obj({ brand: BRAND_REF, contact: str(254, 'Contact name or email on that brand (default: the primary contact)'), kind: { type: 'string', enum: ['cold', 'bump', 'final', 'reply'] }, subject: str(200, 'Subject line'), body_markdown: str(6000, 'Email body (markdown, no signature - your saved sign-off is added)'), challenge: str(500, 'The challenge concept pitched') }, ['brand', 'kind', 'subject', 'body_markdown']) },
@@ -43,6 +44,8 @@ export function checkArgs(schema, v, at = 'arguments') {
     if (!Array.isArray(v)) throw new HkError(400, `${at} must be a list`);
     if (v.length < (schema.minItems || 0) || v.length > schema.maxItems) throw new HkError(400, `${at} takes ${schema.minItems || 0} to ${schema.maxItems} items`);
     v.forEach((x, i) => checkArgs(schema.items, x, `${at}[${i}]`));
+  } else if (schema.type === 'boolean') {
+    if (typeof v !== 'boolean') throw new HkError(400, `${at} must be true or false`);
   } else if (schema.type === 'string') {
     if (typeof v !== 'string') throw new HkError(400, `${at} must be text`);
     if (v.length > schema.maxLength && !schema.enum) throw new HkError(400, `${at} is too long (max ${schema.maxLength})`);
@@ -104,7 +107,7 @@ const HANDLERS = {
     if (b.owner_unclear) throw new HkError(409, `${b.name}'s owner is Unclear - sort it out in Grow first`);
     if (b.owner_user_id && b.owner_user_id !== uid) throw new HkError(409, `${b.name} is owned by ${(await firstNames(ctx))[b.owner_user_id]?.first_name || 'another founder'}`);
     if (b.owner_user_id === uid) return { brand: brandSummary(b), already_yours: true, brand_url: brandUrl(ctx, b.id) };
-    const out = await asCaller(ctx, patchBrandRoute, { method: 'PATCH', params: { id: b.id }, body: { claim: true } }, { supabase: ctx.D.supabase, now: ctx.D.now });
+    const out = await asCaller(ctx, patchBrandRoute, { method: 'PATCH', params: { id: b.id }, body: { claim: true, ...(a.confirm_sheet_owner === true ? { confirm_sheet_owner: true } : {}) } }, { supabase: ctx.D.supabase, now: ctx.D.now });
     return { brand: brandSummary(out.brand), claimed: true, brand_url: brandUrl(ctx, b.id) };
   },
 
@@ -117,6 +120,9 @@ const HANDLERS = {
   async hk_draft_save(ctx, a) {
     const b = await resolveBrand(ctx, a.brand); ctx.brandId = b.id;
     const uid = ctx.auth.user.id, now = ctx.D.now();
+    // A draft claims an unclaimed brand, so one the sheet lists as someone else's needs hk_claim's confirm first.
+    const sheet = b.owner_hint ? sheetOwnerOf(b, (await firstNames(ctx))[uid]?.first_name) : null;
+    if (sheet) throw new HkError(409, `${sheetQuestion(sheet)} If the user says yes, call hk_claim with confirm_sheet_owner true, then save the draft.`, { sheet_owner: sheet });
     const { data: recent, error } = await ctx.D.supabase.from('hk_touches').select('drafted_at').eq('business_id', ctx.businessId).eq('sender_user_id', uid).eq('created_by', 'claude').gte('drafted_at', new Date(now.getTime() - 36 * 60 * 60_000).toISOString());
     if (error) throw new Error(error.message);
     if ((recent || []).filter(t => dayIn(new Date(t.drafted_at)) === dayIn(now)).length >= DRAFTS_PER_DAY) throw new HkError(429, `That's ${DRAFTS_PER_DAY} drafts through Claude today - the cap resets at midnight Chicago time`);
@@ -184,7 +190,7 @@ export async function runTool(ctx0, name, args) {
   } catch (e) {
     code = e instanceof HkError ? e.status : 500;
     if (!(e instanceof HkError)) console.error(`[mcp/${name}]`, e.message);
-    const extra = e instanceof HkError && e.extra ? Object.fromEntries(Object.entries(e.extra).filter(([k]) => ['problems', 'candidates', 'contacts', 'verdict', 'needs_mailbox', 'needs_reconnect', 'needs_contact', 'needs_prior_touch'].includes(k))) : {};
+    const extra = e instanceof HkError && e.extra ? Object.fromEntries(Object.entries(e.extra).filter(([k]) => ['problems', 'candidates', 'contacts', 'verdict', 'needs_mailbox', 'needs_reconnect', 'needs_contact', 'needs_prior_touch', 'sheet_owner', 'confirm_sheet_owner'].includes(k))) : {};
     payload = result({ error: e instanceof HkError ? e.message : 'Something went wrong on the Prospector side - try again', ...extra }, true);
   }
   await logEvent(ctx.D.supabase, { businessId: ctx.businessId, actorUserId: ctx.auth.user.id, actorKind: 'claude', entityType: ctx.brandId ? 'brand' : 'connector', entityId: ctx.brandId, action: `connector.${name}`, detail: { via: 'connector', tool: name, ok, ...(code ? { code } : {}) } }).catch(e => console.error('[mcp] activity row:', e.message));
