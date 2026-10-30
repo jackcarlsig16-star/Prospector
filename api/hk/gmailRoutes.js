@@ -5,7 +5,7 @@
 // server; hk_replies.from_email is stored and never returned; the only address a response carries is the caller's own
 // mailbox inside the Gmail URLs they open.
 import { getSupabase, HkError, fail, isOwner, me, text, oneOf, logEvent, touchRow, replyRow, liveBrands, brandById, sponsorsNichesOf, canContact, TEAM_DOMAINS, selectIn, ownerParam, ownedBy, memberFirstNames } from './hkShared.js';
-import { sheetOwnerOf, sheetQuestion, hintName } from './rules.js';
+import { sheetOwnerOf, sheetQuestion, hintName, isOpenDraft } from './rules.js';
 import { lintDraft, lintRejects } from './lint.js';
 import { buildDraftMime, draftUrl, replySubject, header } from './gmailMime.js';
 import { replyKind, signalWords, signalNow } from './signals.js';
@@ -105,7 +105,7 @@ export async function createDraftRoute(req, res, d = {}) {
   } catch (e) { fail(res, e, 'drafts/create'); }
 }
 
-// GET /drafts - every drafted touch; Open in Gmail only for the caller's own (their mailbox address lives in that URL).
+// GET /drafts - every open draft (isOpenDraft: an email needs its Gmail draft); Open in Gmail only for the caller's own (their mailbox address lives in that URL).
 export async function listDraftsRoute(req, res, d = {}) {
   const { supabase, mailbox, now } = deps0(d);
   const businessId = req.params.businessId, uid = me(req), q = req.query || {};
@@ -119,7 +119,7 @@ export async function listDraftsRoute(req, res, d = {}) {
     if (error) throw new Error(error.message);
     const brands = Object.fromEntries((await liveBrands(supabase, businessId)).map(b => [b.id, b]));
     const nowMs = now().getTime();
-    const touches = (all || []).filter(t => ownedBy(owner, t.sender_user_id, uid) && (!kind || t.channel === kind) && (!lint || (lint === 'failed' ? t.lint_passed === false : t.lint_passed !== false))
+    const touches = (all || []).filter(t => isOpenDraft(t) && ownedBy(owner, t.sender_user_id, uid) && (!kind || t.channel === kind) && (!lint || (lint === 'failed' ? t.lint_passed === false : t.lint_passed !== false))
       && (older == null || nowMs - Date.parse(t.drafted_at || t.created_at) > older * 86400e3));
     const cids = [...new Set((touches || []).map(t => t.contact_id).filter(Boolean))];
     const contacts = Object.fromEntries((await selectIn(() => supabase.from('hk_contacts').select('id, name').order('id'), 'id', cids)).map(c => [c.id, c.name]));
@@ -343,7 +343,8 @@ export async function gmailStatusRoute(req, res, d = {}) {
     // grow-nav-filters S4: ?owner=me|all|<id> counts that person's queued drafts (sender_user_id - whose Gmail holds them)
     // and OPEN (unsnoozed) replies on their brands; without it the badges are workspace-wide, as before.
     const owner = ownerParam(req.query?.owner);
-    let { data: drafts } = await supabase.from('hk_touches').select(owner ? 'id, sender_user_id' : 'id').eq('business_id', businessId).eq('state', 'drafted');
+    let { data: drafts } = await supabase.from('hk_touches').select('id, sender_user_id, state, channel, gmail_draft_id').eq('business_id', businessId).eq('state', 'drafted');
+    drafts = (drafts || []).filter(isOpenDraft);
     let { data: unhandled } = await supabase.from('hk_replies').select(owner ? 'id, brand_id, snoozed_until' : 'id').eq('business_id', businessId).eq('handled', false);
     if (owner) {
       const ownerOf = Object.fromEntries((await liveBrands(supabase, businessId)).map(b => [b.id, b.owner_user_id]));

@@ -240,11 +240,11 @@ test('collapse: the rail button and "[" make it a 56 px icon rail, remembered pe
   expect(localStorage.getItem('prospector_hk_rail')).toBe('wide');
 });
 
-test('N8 + N13: badges ask for the owner toggle; a Viewer in Tracked replies sees no checkbox, no Mark handled, no drawer controls', async () => {
+test('hk-imported-drafts-noise F4 + N13: badges ask for the signed-in member (me) even with the toggle on All; a Viewer in Tracked replies sees no checkbox, no Mark handled, no drawer controls', async () => {
   await mount('#hk/inbox?replies=open', 'viewer');
   await screen.findByText('Zz Brand 1');
-  await waitFor(() => expect(calls.filter(c => c.p === '/gmail/status').map(c => c.q.owner)).toEqual(['all']));
-  expect(calls.filter(c => c.p === '/jobs/today').map(c => c.q.owner)).toEqual(['all']);
+  await waitFor(() => expect(calls.filter(c => c.p === '/gmail/status').map(c => c.q.owner)).toEqual(['me']));
+  expect(calls.filter(c => c.p === '/jobs/today').map(c => c.q.owner)).toEqual(['me']);
   expect(screen.queryByRole('checkbox')).toBeNull();
   fireEvent.click(screen.getByText('Zz Brand 1'));
   expect(await screen.findByRole('dialog', { name: /Reply from/ })).toBeInTheDocument();

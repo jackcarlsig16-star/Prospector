@@ -6,6 +6,7 @@
 // counts it and never sends.
 import { detailHasPii } from '../hkShared.js';
 import { dayIn, statsStale } from './plan.js';
+import { isOpenDraft } from '../rules.js';
 
 const DAY = 86400e3;
 const SECTION_TITLES = { urgent: 'Urgent', replies: 'Replies waiting', drafts: 'Drafts to review', no_draft: 'Follow-ups with no draft', dm_ready: 'DM text ready' };
@@ -29,7 +30,7 @@ export function buildDigest({ replies = [], touches = [], brands = [], members =
   const open = replies.filter(r => !r.handled && !(r.snoozed_until && String(r.snoozed_until) > now.toISOString()));
   const urgent = open.filter(r => r.urgent).map(r => ({ ...brandOf(r.brand_id), reply_id: r.id, label: r.label || 'other', label_text: LABEL_WORD[r.label] || LABEL_WORD.other, summary: r.summary || null, received_at: r.received_at, pricing: r.label === 'pricing' }));
   const waiting = open.filter(r => !r.urgent).map(r => ({ ...brandOf(r.brand_id), reply_id: r.id, label: r.label || 'other', label_text: LABEL_WORD[r.label] || LABEL_WORD.other, summary: r.summary || null, received_at: r.received_at }));
-  const drafts = touches.filter(t => t.state === 'drafted' && t.channel === 'email').map(t => ({ ...brandOf(t.brand_id), touch_id: t.id, kind: t.kind, kind_text: KIND_WORD[t.kind] || t.kind, subject: t.subject || null, created_by: t.created_by, sender: first(t.sender_user_id), age_days: ageDays(t.drafted_at || t.created_at, now) }));
+  const drafts = touches.filter(t => t.channel === 'email' && isOpenDraft(t)).map(t => ({ ...brandOf(t.brand_id), touch_id: t.id, kind: t.kind, kind_text: KIND_WORD[t.kind] || t.kind, subject: t.subject || null, created_by: t.created_by, sender: first(t.sender_user_id), age_days: ageDays(t.drafted_at || t.created_at, now) }));
   const no_draft = noDraft.map(x => ({ ...brandOf(x.brand_id), kind: x.kind, kind_text: KIND_WORD[x.kind] || x.kind, reason: x.reason, reason_text: REASON_TEXT[x.reason] || x.reason, detail: x.detail ? String(x.detail).slice(0, 120) : null }));
   const dm_ready = dmReady.map(x => ({ ...brandOf(x.brand_id), touch_id: x.touch_id || null }));
   const sortBy = (arr, k, desc = true) => [...arr].sort((a, b) => String(desc ? b[k] : a[k]).localeCompare(String(desc ? a[k] : b[k])));

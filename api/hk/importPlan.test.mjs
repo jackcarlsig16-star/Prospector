@@ -31,7 +31,7 @@ test('one brand per name across tabs: Harbor Yoga appears on 5 tabs and is one f
   assert.equal(b.domain, 'harbor.invalid', "Jack's Website column fills the domain");
   assert.deepEqual(b.periods, [{ period: 'launch', kind: 'launch', note: 'Mat Time' }, { period: '2026-06', kind: 'monthly', note: 'Done - Mat Time June' }]);
   assert.deepEqual(b.contacts, [{ name: 'Pete Yogi', email: 'pete@harbor.invalid', email_source: 'import' }, { name: 'Zz Harbor Yoga contact', email: 'hello@harbor.invalid', email_source: 'import' }]);
-  assert.deepEqual(b.touches, [{ kind: 'dm_text', channel: 'ig_dm', state: 'drafted', at: null, sender: 'owner' }, { kind: 'outside', channel: 'email', state: 'sent', at: '2026-10-01', sender: 'jack' }]);
+  assert.deepEqual(b.touches, [{ kind: 'dm_text', channel: 'ig_dm', state: 'imported', at: null, sender: 'owner' }, { kind: 'outside', channel: 'email', state: 'sent', at: '2026-10-01', sender: 'jack' }]);
   assert.equal(b.owner_hint, 'pete', "Pete's tab named it first"); assert.equal(b.owner_user_id, null);
   assert.deepEqual(codes(b), ['two_founders']);
   assert.match(b.notes, /^Route: Sponsored Reward\/Raffle\nLaunch: Type: Reward\|Challenge\nLaunch: Challenge name: Mat Time\n/);

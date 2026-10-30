@@ -68,10 +68,10 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
     hkPatch(business.id, '/me/prefs', { owner_filter: id }).catch(() => {});
   };
 
-  // N8 - every badge follows the owner toggle: Inbox = open tracked replies + queued drafts, Today = its sections.
-  const loadGmail = useCallback(() => hkGet(business.id, '/gmail/status', { owner: ownerValue }).then(setGmail).catch(() => setGmail(null)), [business.id, ownerValue]);
-  const loadToday = useCallback(() => hkGet(business.id, '/jobs/today', { owner: ownerValue }).then(t => setTodayCounts(t.owner_counts || t.digest?.counts || null)).catch(() => {}), [business.id, ownerValue]);
-  // Wait for the shell: it carries the member's saved owner toggle, so the badges are read once, for the right owner.
+  // hk-imported-drafts-noise F4 - the badges are always the signed-in member's own items (Inbox = open tracked replies +
+  // queued drafts, Today = its sections), whatever the owner toggle shows; never the workspace total.
+  const loadGmail = useCallback(() => hkGet(business.id, '/gmail/status', { owner: 'me' }).then(setGmail).catch(() => setGmail(null)), [business.id]);
+  const loadToday = useCallback(() => hkGet(business.id, '/jobs/today', { owner: 'me' }).then(t => setTodayCounts(t.owner_counts || t.digest?.counts || null)).catch(() => {}), [business.id]);
   useEffect(() => { if (shell) loadToday(); }, [shell, loadToday]);
   // grow-signals-v1 G6 - the Inbox item's green badge: unseen signals on Hot / Warm brands (Today marks them seen).
   const loadHot = useCallback(() => hkGet(business.id, '/signals').then(r => setHotUnseen(r.unseen_hot_warm || 0)).catch(() => {}), [business.id]);

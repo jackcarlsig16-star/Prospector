@@ -23,8 +23,8 @@ const replies = [
   { id: 'r5', brand_id: 'b4', handled: false, urgent: true, label: 'interested', summary: 'Back and keen', received_at: ago(0, 1), from_email: 'y@granite.invalid', snoozed_until: null },
 ];
 const touches = [
-  { id: 't1', brand_id: 'b2', channel: 'email', kind: 'bump', state: 'drafted', subject: 'Re: HumanKind x Zz Harbor Yoga - mat time', created_by: 'system', sender_user_id: 'u-pete', drafted_at: ago(2) },
-  { id: 't2', brand_id: 'b4', channel: 'email', kind: 'cold', state: 'drafted', subject: 'HumanKind x Zz Granite Gym - step streak', created_by: 'user', sender_user_id: 'u-jack', drafted_at: ago(0, 2) },
+  { id: 't1', brand_id: 'b2', channel: 'email', kind: 'bump', state: 'drafted', gmail_draft_id: 'd1', subject: 'Re: HumanKind x Zz Harbor Yoga - mat time', created_by: 'system', sender_user_id: 'u-pete', drafted_at: ago(2) },
+  { id: 't2', brand_id: 'b4', channel: 'email', kind: 'cold', state: 'drafted', gmail_draft_id: 'd2', subject: 'HumanKind x Zz Granite Gym - step streak', created_by: 'user', sender_user_id: 'u-jack', drafted_at: ago(0, 2) },
   { id: 't3', brand_id: 'b1', channel: 'email', kind: 'cold', state: 'sent', subject: 'x', created_by: 'user', sender_user_id: 'u-jack', drafted_at: ago(9), sent_at: ago(8) },
   { id: 't4', brand_id: 'b4', channel: 'ig_dm', kind: 'dm_text', state: 'drafted', created_by: 'system', sender_user_id: 'u-jack', drafted_at: ago(0, 1) },
 ];

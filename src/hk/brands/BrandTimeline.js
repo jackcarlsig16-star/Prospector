@@ -20,7 +20,7 @@ function Actor({ kind, userId, member }) {
   return <span className="hk-owner"><span className="hk-avatar hk-avatar--system" style={{ width: 22, height: 22, fontSize: 11 }}>{kind === 'claude' ? 'C' : 'S'}</span><strong>{kind === 'claude' ? 'Claude' : 'System'}</strong></span>;
 }
 
-const touchWords = t => (t.kind === 'outside' ? `logged: ${t.subject || 'activity'}` : `${t.state} ${t.kind === 'final' ? 'final nudge' : t.kind} ${t.channel === 'ig_dm' ? 'DM' : 'email'}`);
+const touchWords = t => (t.kind === 'outside' ? `logged: ${t.subject || 'activity'}` : `${t.state === 'imported' ? 'sheet said drafted:' : t.state} ${t.kind === 'final' ? 'final nudge' : t.kind} ${t.channel === 'ig_dm' ? 'DM' : 'email'}`);
 
 export default function BrandTimeline({ businessId, brand, events, touches, replies, member, mailbox, me, canEdit, onChanged }) {
   const [tab, setTab] = useState('timeline');

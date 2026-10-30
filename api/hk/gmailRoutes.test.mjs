@@ -228,7 +228,7 @@ test('G7 cap: at 60 labels today a reply is stored as other with the snippet and
 
 test('status route: mailbox state, last run, badges (drafts awaiting, replies unhandled), signature; reply patch logs an override and handled', async () => {
   fresh();
-  sb.db.hk_touches.push({ id: 't1', business_id: HK, brand_id: B.yoga, sender_user_id: JACK, channel: 'email', kind: 'cold', state: 'drafted', created_by: 'user', created_at: '2026-10-25T00:00:00Z' });
+  sb.db.hk_touches.push({ id: 't1', business_id: HK, brand_id: B.yoga, sender_user_id: JACK, channel: 'email', kind: 'cold', state: 'drafted', gmail_draft_id: 'draft-1', created_by: 'user', created_at: '2026-10-25T00:00:00Z' });
   sb.db.hk_replies.push({ id: 'r1', business_id: HK, brand_id: B.yoga, touch_id: 't1', gmail_message_id: 'x', from_name: 'Ana', from_domain: 'harboryoga.invalid', from_email: REPLY_ADDRESS, received_at: '2026-10-26T00:00:00Z', label: 'other', handled: false, gmail_thread_id: 'th-x', created_at: '2026-10-26T00:00:00Z' });
   const s = await call(R.gmailStatusRoute, reqOf({ method: 'GET' }));
   assert.deepEqual([s.body.mailbox.linked, s.body.mailbox.state, s.body.mailbox.email, s.body.badges, s.body.signature_text], [true, 'ok', MAILBOX, { drafts: 1, replies: 1, tracked: 1 }, 'Jack\nCo-founder, HumanKind']);
@@ -252,4 +252,18 @@ test('composer lint preview: rules only, nothing saved, no Gmail call; em dash r
   assert.equal(sb.db.hk_touches.length, 0); assert.equal(sb.db.hk_events.length, 0); assert.equal(calls.length, 0);
   const badKind = await call(R.lintPreviewRoute, reqOf({ body: { subject: 's', body_markdown: 'b', kind: 'nope' } }));
   assert.equal(badKind.code, 400);
+});
+
+test('hk-imported-drafts-noise F1: a draft is an email WITH its Gmail draft, or an Instagram DM text; an id-less email draft and an imported row are never listed or counted; badges per member', async () => {
+  fresh();
+  const t = (id, sender, over) => ({ id, business_id: HK, brand_id: B.yoga, sender_user_id: sender, channel: 'email', kind: 'cold', state: 'drafted', created_by: 'system', drafted_at: '2026-10-20T00:00:00Z', created_at: '2026-10-20T00:00:00Z', ...over });
+  sb.db.hk_touches.push(
+    t('real', JACK, { gmail_draft_id: 'draft-1', gmail_message_id: 'dmsg-1' }), t('noid', JACK, {}), t('dm', JACK, { channel: 'ig_dm', kind: 'dm_text' }),
+    t('imp', JACK, { state: 'imported' }), t('impdm', JACK, { channel: 'ig_dm', kind: 'dm_text', state: 'imported' }), t('pete', PETE, { gmail_draft_id: 'draft-9' }), t('petenoid', PETE, {}));
+  const list = async owner => { const r = await call(R.listDraftsRoute, reqOf({ method: 'GET', query: { owner } })); assert.equal(r.code, 200, JSON.stringify(r.body)); return r.body.drafts.map(d => d.id).sort(); };
+  assert.deepEqual(await list('me'), ['dm', 'real']);
+  assert.deepEqual(await list('all'), ['dm', 'pete', 'real']);
+  const badges = async (owner, user = JACK) => { const r = await call(R.gmailStatusRoute, reqOf({ method: 'GET', user, query: owner ? { owner } : {} })); assert.equal(r.code, 200, JSON.stringify(r.body)); return r.body.badges.drafts; };
+  assert.deepEqual([await badges('me'), await badges('all'), await badges('me', PETE)], [2, 3, 1]);
+  assert.equal(sb.db.hk_touches.length, 7, 'nothing deleted');
 });

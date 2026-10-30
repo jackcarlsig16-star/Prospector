@@ -34,17 +34,17 @@ test('"Email sent" with no date anywhere -> sent + a touch without a date + miss
   assert.equal(r.status, 'sent'); assert.equal(r.touches[0].at, null); assert.deepEqual(codes(r), ['missing_date']);
 });
 
-test('"Email drafted 10/3" -> drafted, a drafted cold touch, draft_not_linked warning', () => {
+test('"Email drafted 10/3" -> drafted, an imported cold touch (no Gmail draft, never listed as one), draft_not_linked warning', () => {
   const r = run({ status: 'Email drafted 10/3' });
   assert.equal(r.status, 'drafted');
-  assert.deepEqual(r.touches, [{ kind: 'cold', channel: 'email', state: 'drafted', at: '2026-10-03', sender: 'owner' }]);
+  assert.deepEqual(r.touches, [{ kind: 'cold', channel: 'email', state: 'imported', at: '2026-10-03', sender: 'owner' }]);
   assert.deepEqual(codes(r), ['draft_not_linked']);
 });
 
-test('"IG DM ready" -> claimed with a drafted Instagram DM touch', () => {
+test('"IG DM ready" -> claimed with an imported Instagram DM touch', () => {
   const r = run({ status: 'IG DM ready' });
   assert.equal(r.status, 'claimed');
-  assert.deepEqual(r.touches, [{ kind: 'dm_text', channel: 'ig_dm', state: 'drafted', at: null, sender: 'owner' }]);
+  assert.deepEqual(r.touches, [{ kind: 'dm_text', channel: 'ig_dm', state: 'imported', at: null, sender: 'owner' }]);
   assert.deepEqual(codes(r), []);
 });
 
@@ -57,7 +57,7 @@ test('"Responded with questions on 10/2" and "Replied on IG; email drafted 10/4"
   const a = run({ status: 'Responded with questions on 10/2', outreachDate: '9/25' });
   assert.equal(a.status, 'replied'); assert.deepEqual(a.touches.map(t => [t.kind, t.at]), [['cold', '2026-09-25']]);
   const b = run({ status: 'Replied on IG; email drafted 10/4' });
-  assert.equal(b.status, 'replied'); assert.deepEqual(b.touches.map(t => [t.kind, t.state, t.at]), [['cold', 'drafted', '2026-10-04']], 'the date belongs to the draft, not a send');
+  assert.equal(b.status, 'replied'); assert.deepEqual(b.touches.map(t => [t.kind, t.state, t.at]), [['cold', 'imported', '2026-10-04']], 'the date belongs to the draft, not a send');
   assert.deepEqual(codes(b), ['draft_not_linked']);
 });
 

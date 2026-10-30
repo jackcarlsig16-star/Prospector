@@ -54,10 +54,10 @@ export function normalizeStatus({ status = '', outreachDate = '', jackOutreach =
   }
   if (mapped === 'sent' && !series.length) { touches.push({ kind: 'cold', channel: 'email', state: 'sent', at: null, sender: 'owner' }); warnings.push({ code: 'missing_date', detail: text }); }
   if (draftish) {
-    touches.push({ kind: 'cold', channel: 'email', state: 'drafted', at: statusDates[0] || null, sender: 'owner' });
+    touches.push({ kind: 'cold', channel: 'email', state: 'imported', at: statusDates[0] || null, sender: 'owner' });
     warnings.push({ code: 'draft_not_linked', detail: 'imported draft has no Gmail draft; the sync cannot follow it' });
   }
-  if (mapped === 'claimed') touches.push({ kind: 'dm_text', channel: 'ig_dm', state: 'drafted', at: dates[0] || null, sender: 'owner' });
+  if (mapped === 'claimed') touches.push({ kind: 'dm_text', channel: 'ig_dm', state: 'imported', at: dates[0] || null, sender: 'owner' });
   if (mapped) out = mostAdvanced(out, mapped);
   else if (text) { warnings.push({ code: 'unmapped_status', detail: text }); note = text; }
   for (const at of parseDates(jackOutreach, { year })) touches.push({ kind: 'outside', channel: 'email', state: 'sent', at, sender: 'jack' });

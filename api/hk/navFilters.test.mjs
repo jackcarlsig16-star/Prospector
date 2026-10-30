@@ -43,9 +43,9 @@ const fixture = (extra = {}) => fakeSupabase({
   hk_touches: [
     { id: id(11), business_id: HK, brand_id: B(1), sender_user_id: JACK, channel: 'email', kind: 'cold', state: 'sent', sent_at: day(-9), created_at: day(-9) },
     { id: id(12), business_id: HK, brand_id: B(2), sender_user_id: JACK, channel: 'email', kind: 'cold', state: 'sent', sent_at: day(-2), created_at: day(-2) },
-    { id: id(13), business_id: HK, brand_id: B(3), sender_user_id: JACK, channel: 'email', kind: 'bump', state: 'drafted', drafted_at: day(-5), created_at: day(-5), lint_passed: true },
+    { id: id(13), business_id: HK, brand_id: B(3), sender_user_id: JACK, channel: 'email', kind: 'bump', state: 'drafted', gmail_draft_id: 'd-13', drafted_at: day(-5), created_at: day(-5), lint_passed: true },
     { id: id(14), business_id: HK, brand_id: B(5), sender_user_id: PETE, channel: 'ig_dm', kind: 'dm_text', state: 'drafted', drafted_at: day(-1), created_at: day(-1), lint_passed: false },
-    { id: id(15), business_id: HK, brand_id: B(2), sender_user_id: JACK, channel: 'email', kind: 'bump', state: 'drafted', drafted_at: day(-4), created_at: day(-4), lint_passed: true },
+    { id: id(15), business_id: HK, brand_id: B(2), sender_user_id: JACK, channel: 'email', kind: 'bump', state: 'drafted', gmail_draft_id: 'd-15', drafted_at: day(-4), created_at: day(-4), lint_passed: true },
   ],
   hk_replies: [
     { id: id(21), business_id: HK, brand_id: B(2), received_at: day(-1), label: 'pricing', handled: false, snoozed_until: null },

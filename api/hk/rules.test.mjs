@@ -2,7 +2,7 @@
 // hkos-data-foundation-v1 D2 - canContact against invented fixtures. 0 network, 0 DB.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { canContact } from './rules.js';
+import { canContact, isOpenDraft, primaryOf } from './rules.js';
 
 const JACK = 'u-jack', PETE = 'u-pete';
 const brand = (over = {}) => ({ status: 'candidate', relationship: 'prospect', owner_user_id: null, owner_unclear: false, niche: null, ...over });
@@ -67,4 +67,14 @@ test('precedence: relationship beats owner beats warm beats max_touches', () => 
   assert.equal(canContact({ ...everything, brand: brand({ owner_user_id: PETE, status: 'passed' }) }).reason, 'passed');
   assert.equal(canContact({ ...everything, brand: brand({ owner_user_id: PETE }) }).reason, 'owned_by');
   assert.equal(canContact({ ...everything, brand: brand() }).reason, 'warm');
+});
+
+test('hk-imported-drafts-noise F1: isOpenDraft - an email needs its Gmail draft, a DM text stands alone, imported is never a draft; Open draft only for a real one', () => {
+  assert.deepEqual([
+    { state: 'drafted', channel: 'email', gmail_draft_id: 'd1' }, { state: 'drafted', channel: 'email', gmail_draft_id: null }, { state: 'drafted', channel: 'ig_dm' },
+    { state: 'imported', channel: 'email', gmail_draft_id: 'd1' }, { state: 'imported', channel: 'ig_dm' }, { state: 'sent', channel: 'email', gmail_draft_id: 'd1' },
+  ].map(isOpenDraft), [true, false, true, false, false, false]);
+  const base = { brand: { owner_user_id: 'u-me' }, meId: 'u-me', researched: true, hasEmail: true, verdictOk: true };
+  assert.equal(primaryOf({ ...base, touches: [{ state: 'drafted', channel: 'email', gmail_draft_id: null, sender_user_id: 'u-me' }] }).kind, 'pitch');
+  assert.equal(primaryOf({ ...base, touches: [{ state: 'drafted', channel: 'email', gmail_draft_id: 'd1', sender_user_id: 'u-me' }] }).kind, 'open_draft');
 });

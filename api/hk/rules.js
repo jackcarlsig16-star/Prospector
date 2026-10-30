@@ -4,6 +4,9 @@
 export const BLOCKING_RELATIONSHIPS = { sponsor: 'sponsor', founding_partner: 'sponsor', do_not_contact: 'do_not_contact' };
 export const EMAIL_KINDS = new Set(['cold', 'bump', 'final']);
 export const DEFAULT_MAX_EMAIL_TOUCHES = 3;
+// hk-imported-drafts-noise F1 - a draft anyone can act on: an email draft only with its Gmail draft behind it; an
+// Instagram DM text is its own thing. 'imported' (the sheet said a draft existed) is never one.
+export const isOpenDraft = t => t.state === 'drafted' && (t.channel !== 'email' || !!t.gmail_draft_id);
 
 // grow-sheet-owner-respect F1 - a sheet owner: no member owner and an owner_hint (the import's founder name, stored
 // text) that is not the caller's first name. The brand stays theirs until they claim it or the caller takes it.
@@ -46,11 +49,11 @@ export function canContact({ brand, touches = [], threadsByFounder = [], senderU
 // brand that is the caller's or nobody's), then another member's brand (no button), then Pitch (researched + an email
 // contact + can_contact clear), Research (not researched), Add email (researched, no address). A blocked brand
 // (sponsor, do not contact, passed, Unclear, warm, max touches) gets no primary.
-// replies: [{ handled }] · touches: [{ state, sender_user_id }] · verdictOk: canContact(... kind 'cold').ok
+// replies: [{ handled }] · touches: [{ state, channel, gmail_draft_id, sender_user_id }] · verdictOk: canContact(... kind 'cold').ok
 export function primaryOf({ brand, meId, firstName = () => null, replies = [], touches = [], researched, hasEmail, verdictOk }) {
   const mineOrFree = !brand.owner_user_id || brand.owner_user_id === meId;
   if (mineOrFree && replies.some(r => r.handled === false)) return { kind: 'open_reply', label: 'Open reply' };
-  if (touches.some(t => t.state === 'drafted' && t.sender_user_id === meId)) return { kind: 'open_draft', label: 'Open draft in Gmail' };
+  if (touches.some(t => isOpenDraft(t) && t.sender_user_id === meId)) return { kind: 'open_draft', label: 'Open draft in Gmail' };
   if (!mineOrFree) return { kind: 'owned', label: `Owned by ${firstName(brand.owner_user_id) || 'another founder'}` };
   if (!verdictOk) return null;
   if (!researched) return { kind: 'research', label: 'Research' };

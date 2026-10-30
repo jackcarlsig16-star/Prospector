@@ -55,7 +55,7 @@ test('a reply since the last sent touch stops the sequence', () => {
 });
 
 test('a drafted touch of that kind already waiting in Gmail -> skip (never a duplicate draft)', () => {
-  const r = run({ brands: [brand('a')], touches: [touch('a', 'cold', 'sent', 6), touch('a', 'bump', 'drafted', 1)] });
+  const r = run({ brands: [brand('a')], touches: [touch('a', 'cold', 'sent', 6), touch('a', 'bump', 'drafted', 1, { gmail_draft_id: 'd-a' })] });
   assert.deepEqual(r.items, []); assert.deepEqual(reasons(r), ['draft_exists']);
   assert.equal(run({ brands: [brand('a')], touches: [touch('a', 'cold', 'sent', 6), touch('a', 'bump', 'discarded', 1)] }).items.length, 1, 'a discarded one does not block');
 });

@@ -92,7 +92,7 @@ test('F2: /sponsors with 150 sponsor brands reads periods and DNC marks in chunk
 test('F2: /drafts contacts and /replies touches go in chunks, and a failed chunk is a 500 with the error logged', async () => {
   const brands = Array.from({ length: 5 }, (_, i) => brand(i));
   const contacts = Array.from({ length: 130 }, (_, i) => ({ id: `c-${String(i).padStart(4, '0')}`, business_id: HK, brand_id: brands[i % 5].id, name: `Contact ${i}`, is_primary: false }));
-  const drafted = contacts.map((c, i) => ({ id: `t-${String(i).padStart(4, '0')}`, business_id: HK, brand_id: c.brand_id, contact_id: c.id, sender_user_id: JACK, channel: 'email', kind: 'cold', state: 'drafted', drafted_at: '2026-10-26T00:00:00Z', created_by: 'system' }));
+  const drafted = contacts.map((c, i) => ({ id: `t-${String(i).padStart(4, '0')}`, business_id: HK, brand_id: c.brand_id, contact_id: c.id, sender_user_id: JACK, channel: 'email', kind: 'cold', state: 'drafted', gmail_draft_id: `d-${i}`, drafted_at: '2026-10-26T00:00:00Z', created_by: 'system' }));
   const sent = Array.from({ length: 130 }, (_, i) => ({ id: `s-${String(i).padStart(4, '0')}`, business_id: HK, brand_id: brands[i % 5].id, sender_user_id: JACK, channel: 'email', kind: 'cold', state: 'sent', subject: `Hi ${i}`, created_by: 'system' }));
   const replies = sent.map((t, i) => ({ id: `r-${String(i).padStart(4, '0')}`, business_id: HK, brand_id: t.brand_id, touch_id: t.id, label: 'interested', handled: false, received_at: `2026-10-26T00:${String(i % 60).padStart(2, '0')}:00Z` }));
   const fresh = (failTable = null) => { const sb = seed({ hk_brands: brands, hk_contacts: contacts, hk_touches: [...drafted, ...sent], hk_replies: replies }); return { sb, ins: strict(sb, { failTable }) }; };

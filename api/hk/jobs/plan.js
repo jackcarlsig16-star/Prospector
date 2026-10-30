@@ -2,7 +2,7 @@
 // which are skipped and why, whether today is quiet, whether the stats are stale, and whether a run already happened
 // today. Rules only: no Claude, no Gmail, no DB. The runner (Stage 2) feeds it rows and acts on the items; nothing here
 // ever carries an address.
-import { canContact } from '../rules.js';
+import { canContact, isOpenDraft } from '../rules.js';
 import { normalizeDomain } from '../../../src/constants/partnerDomains.js';
 
 const DAY = 86400e3;
@@ -65,7 +65,7 @@ export function dueFollowups({ brands = [], touches = [], replies = [], contacts
     if (String(b.next_due_at) > now.toISOString()) { skip(b, 'not_due', kind); continue; }
     const waitDays = kind === 'bump' ? bump : Math.max(1, fin - bump);
     if (now.getTime() < Date.parse(last.sent_at) + waitDays * DAY) { skip(b, 'days_not_elapsed', kind); continue; }
-    if (mine.some(t => t.channel === 'email' && t.state === 'drafted' && t.kind === kind)) { skip(b, 'draft_exists', kind); continue; }
+    if (mine.some(t => t.channel === 'email' && isOpenDraft(t) && t.kind === kind)) { skip(b, 'draft_exists', kind); continue; }
     const verdict = canContact({ brand: b, touches: mine, senderUserId: b.owner_user_id, kind, maxEmailTouches: maxEmailTouches ?? settings.max_email_touches ?? 3 });
     if (!verdict.ok) { skip(b, `blocked:${verdict.reason}`, kind); continue; }
     const cs = cBy.get(b.id) || [];
