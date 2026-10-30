@@ -187,6 +187,15 @@ test('Today\'s read: a fresh digest from the current rows plus today\'s no-draft
   assert.deepEqual(t.digest.sections.no_draft.map(x => [x.brand_name, x.reason]), [['Zz Harbor Yoga', 'reconnect']]);
   assert.deepEqual(t.mailboxes.map(m => [m.first_name, m.state]), [['Jack', 'ok'], ['Pete', 'needs_reconnect']]);
   assert.deepEqual(t.slack, { configured: false, env: 'HK_SLACK_WEBHOOK_URL' });
+  // grow-nav-filters N8: the badge counts follow the owner toggle; without one the payload is unchanged.
+  assert.ok(!('owner_counts' in t));
+  const KEYS = ['urgent', 'replies', 'drafts', 'no_draft', 'dm_ready'];
+  const all = await todayPayload({ businessId: HK, owner: 'all', meId: JACK, d: deps() });
+  assert.deepEqual(all.owner_counts, Object.fromEntries(KEYS.map(k => [k, t.digest.counts[k]])));
+  const mine = await todayPayload({ businessId: HK, owner: 'me', meId: JACK, d: deps() }), pete = await todayPayload({ businessId: HK, owner: PETE, meId: JACK, d: deps() });
+  const owned = (who, k) => t.digest.sections[k].filter(x => x.owner === who).length;
+  for (const k of KEYS) { assert.equal(mine.owner_counts[k], owned('Jack', k), k); assert.equal(pete.owner_counts[k], owned('Pete', k), k); }
+  assert.ok(mine.owner_counts.drafts + pete.owner_counts.drafts <= t.digest.counts.drafts);
   assert.equal(t.stats_stale, true);
   assert.ok(!hasAt(t));
   const td = await testDigest({ businessId: HK, d: deps() });

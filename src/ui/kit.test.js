@@ -481,3 +481,46 @@ test('DataTable renderDetail: the phone list opens the same panel under the item
   render(<DataTable columns={D_COLS} groups={D_GROUPS(D_ROWS())} rowKey={r => r.name} />);
   expect(document.querySelector('.ui-table__disclose')).toBeNull();
 });
+
+// grow-nav-filters-v1 ruling 6 - serverSort + onReachEnd are opt-in; every existing (HomeLover) table passes neither.
+const watchIO = () => { const made = []; global.IntersectionObserver = class { constructor(cb, opts) { this.cb = cb; this.opts = opts; this.els = []; made.push(this); } observe(el) { this.els.push(el); } disconnect() { this.off = true; } }; return made; };
+afterEach(() => { delete global.IntersectionObserver; });
+
+test('DataTable defaults (every HomeLover table): no end sentinel, no observer, the header still sorts the rows itself', () => {
+  const made = watchIO();
+  const { container, unmount } = render(<DataTable columns={T_COLS} groups={T_GROUPS()} rowKey={r => r.name} />);
+  expect(container.querySelector('[data-reach-end]')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /^Due/ }));
+  expect(names()).toEqual(['Kiwi', 'Mango', 'Apple', 'Zed', 'Bob']);
+  unmount();
+  const phone = render(<DataTable columns={T_COLS} groups={T_GROUPS()} rowKey={r => r.name} compact renderCompact={r => r.name} />);
+  expect(phone.container.querySelector('[data-reach-end]')).toBeNull();
+  expect(made).toHaveLength(0);
+});
+
+test('DataTable serverSort: the header cycles the owned sort, the loaded rows stay in the order given', () => {
+  const onSort = jest.fn();
+  render(<DataTable columns={T_COLS} groups={T_GROUPS()} rowKey={r => r.name} serverSort sort={{ id: 'due', dir: 'asc' }} onSort={onSort} />);
+  expect(names()).toEqual(['Mango', 'Apple', 'Kiwi', 'Zed', 'Bob']);
+  expect(screen.getByRole('columnheader', { name: /^Due/ })).toHaveAttribute('aria-sort', 'ascending');
+  fireEvent.click(screen.getByRole('button', { name: /^Due/ }));
+  expect(onSort).toHaveBeenCalledWith({ id: 'due', dir: 'desc' });
+  expect(names()).toEqual(['Mango', 'Apple', 'Kiwi', 'Zed', 'Bob']);
+});
+
+test('DataTable onReachEnd: a sentinel after the last row (table and phone list); seeing it calls onReachEnd; unmount disconnects', () => {
+  const made = watchIO();
+  const onReachEnd = jest.fn();
+  const { container, unmount } = render(<DataTable columns={T_COLS} groups={T_GROUPS()} rowKey={r => r.name} onReachEnd={onReachEnd} />);
+  const end = container.querySelector('[data-reach-end]');
+  expect(end).not.toBeNull();
+  expect(made).toHaveLength(1);
+  expect(made[0].els).toEqual([end]);
+  made[0].cb([{ isIntersecting: false }]); expect(onReachEnd).not.toHaveBeenCalled();
+  made[0].cb([{ isIntersecting: true }]); expect(onReachEnd).toHaveBeenCalledTimes(1);
+  unmount();
+  expect(made[0].off).toBe(true);
+  const phone = render(<DataTable columns={T_COLS} groups={T_GROUPS()} rowKey={r => r.name} compact renderCompact={r => r.name} onReachEnd={onReachEnd} />);
+  expect(phone.container.querySelector('li[data-reach-end]')).not.toBeNull();
+  expect(made[1].opts.root).toBeNull();
+});

@@ -104,7 +104,7 @@ test('settings: defaults before a row exists, owner-only PATCH, read-only cap, b
 
 test('prefs: defaults, upsert, validation, slot conflict -> 409', async () => {
   const sb = seed();
-  assert.deepEqual((await call(getPrefsRoute, reqOf(), deps(sb))).body.prefs, { business_id: HK, user_id: JACK, avatar_slot: null, owner_filter: 'me' });
+  assert.deepEqual((await call(getPrefsRoute, reqOf(), deps(sb))).body.prefs, { business_id: HK, user_id: JACK, avatar_slot: null, owner_filter: 'me', saved_views: [], rail: {} });
   let r = await call(patchPrefsRoute, reqOf({ method: 'PATCH', body: { avatar_slot: 2, owner_filter: 'all' } }), deps(sb));
   assert.deepEqual([r.code, r.body.prefs.avatar_slot, r.body.prefs.owner_filter], [200, 2, 'all']);
   assert.deepEqual((await call(getPrefsRoute, reqOf(), deps(sb))).body.prefs.avatar_slot, 2);

@@ -2,6 +2,7 @@
 // member = writes, owner-role = relationship upgrades + releasing another's claim). List rows never carry an address;
 // the brand detail and the contacts routes do (hk_contacts.email - the scoped HumanKind exception, D5).
 import { getSupabase, HkError, fail, isOwner, me, text, bool, oneOf, domainOf, emailOf, logEvent, brandRow, brandDetail, contactRow, touchRow, replyRow, liveBrands, brandById, legacyNames, verdictFor, sponsorsNichesOf, canContact, normName, SPONSOR_RELATIONSHIPS, MANUAL_STATUSES, selectAllPages, selectIn } from './hkShared.js';
+import { CLOSED, VIEWS as FILTER_VIEWS, SORTS, PAGE_DEFAULT, PAGE_MAX, parseFilters, loadFilterData, applyFilters } from './brandFilters.js';
 import { signalNow, signalWords, moveDomainSignals, recomputeHeat } from './signals.js';
 import { trackedThreads, liveThread } from './warm.js';
 import { mailboxFor, accessTokenForGrant } from '../lib/googleGrants.js';
@@ -12,7 +13,6 @@ const SOURCES = new Set(['sourced', 'user_supplied', 'apollo_list', 'places', 'i
 const EMAIL_SOURCES = new Set(['apollo_verified', 'site_published', 'user_supplied', 'import']);
 const VIEWS = new Set(['my_open', 'unclaimed', 'overdue', 'local', 'hot', 'targets', 'all']);
 const HOT_BANDS = new Set(['hot', 'warm']);
-export const CLOSED = new Set(['passed', 'skipped', 'sponsor']);
 const SHORT = { name: [160, 'name'], category: [80, 'category'], niche: [80, 'niche'], size_band: [40, 'size band'], city: [80, 'city'], neighborhood: [80, 'neighborhood'] };
 const LONG = { notes: [4000, 'notes'], challenge_idea: [1000, 'challenge idea'], origin_hook: [1000, 'origin hook'], reward_idea: [1000, 'reward idea'] };
 
@@ -27,9 +27,11 @@ async function primaryNames(supabase, businessId, ids) {
   return Object.fromEntries(rows.filter(c => want.has(c.brand_id)).map(c => [c.brand_id, c.name]));
 }
 
-// GET /brands?view=&q=&owner=&status=&segment=
+// GET /brands?view=&q=&owner=&status=&segment=   (no `page`: this exact response, for BrandPicker and older callers)
+// GET /brands?page=&limit=&view=&<bucket>=a,b&q=&sort=&dir=&facets=1  -> grow-nav-filters S1, see pagedBrands.
 export async function listBrandsRoute(req, res, { supabase = getSupabase(), now = () => new Date() } = {}) {
   const businessId = req.params.businessId, q = req.query || {};
+  if (q.page != null) return pagedBrands(req, res, { supabase, now });
   try {
     const view = oneOf(q.view || null, VIEWS, 'view') || 'all';
     let rows = await liveBrands(supabase, businessId);
@@ -54,6 +56,24 @@ export async function listBrandsRoute(req, res, { supabase = getSupabase(), now 
     const primary = await primaryNames(supabase, businessId, rows.map(b => b.id));
     res.json({ view, brands: rows.map(b => brandRow(b, { primary_contact_name: primary[b.id] || null, ...(view === 'hot' ? { last_signal_at: lastSignal[b.id] || null } : {}) })) });
   } catch (e) { fail(res, e, 'brands/list'); }
+}
+
+const intIn = (v, lo, hi, name, dflt) => { if (v == null || v === '') return dflt; const n = Number(v); if (!Number.isInteger(n) || n < lo || n > hi) throw new HkError(400, `${name} must be ${lo} to ${hi}`); return n; };
+async function pagedBrands(req, res, { supabase, now }) {
+  const businessId = req.params.businessId, q = req.query || {};
+  try {
+    const view = oneOf(q.view || null, new Set(FILTER_VIEWS), 'view') || 'all';
+    const { owner, ...rest } = q;
+    const filters = parseFilters({ ...rest, owner: owner === 'all' ? null : owner });
+    const sort = oneOf(q.sort || null, new Set(SORTS), 'sort') || 'name';
+    const dir = oneOf(q.dir || null, new Set(['asc', 'desc']), 'dir') || undefined;
+    const page = intIn(q.page, 1, 10000, 'page', 1), limit = intIn(q.limit, 1, PAGE_MAX, 'limit', PAGE_DEFAULT);
+    const search = q.q ? text(q.q, 120, 'q') : '';
+    const data = await loadFilterData(supabase, businessId, await liveBrands(supabase, businessId));
+    const out = applyFilters(data, { view, filters, q: search, sort, dir, page, limit, facets: q.facets === '1', meId: me(req), now: now() });
+    const primary = Object.fromEntries((await selectIn(() => supabase.from('hk_contacts').select('brand_id, name').eq('business_id', businessId).eq('is_primary', true).order('id'), 'brand_id', out.rows.map(b => b.id))).map(c => [c.brand_id, c.name]));
+    res.json({ view, total: out.total, page, limit, next_page: out.next_page, rows: out.rows.map(b => brandRow(b, { primary_contact_name: primary[b.id] || null })), ...(out.facets ? { facets: out.facets } : {}) });
+  } catch (e) { fail(res, e, 'brands/list-paged'); }
 }
 
 // POST /brands/check  [{ name, domain, niche? }]. Warm (G6): tracked threads for every exact match, plus - for up to

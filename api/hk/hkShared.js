@@ -17,6 +17,9 @@ export const seams = { supabase: getServiceSupabase };
 export const getSupabase = () => seams.supabase();
 export const SPONSOR_RELATIONSHIPS = new Set(['sponsor', 'founding_partner']);
 export const MANUAL_STATUSES = new Set(['meeting', 'signed', 'passed', 'skipped']);
+// All 12 brand statuses in the schema CHECK's order (20261026_hkos_data_foundation_v1.sql:28): the Stage bucket, the
+// By-stage layout and the status sort.
+export const STATUS_ORDER = ['candidate', 'claimed', 'drafted', 'sent', 'bumped', 'final_sent', 'replied', 'meeting', 'signed', 'passed', 'skipped', 'sponsor'];
 export const EMAIL_RE = /^[^\s@<>()]+@[^\s@<>()]+\.[a-z]{2,}$/i;
 export const TEAM_DOMAINS = ['humankindcollective.app'];
 
@@ -41,6 +44,9 @@ export function text(v, max, label, { required = false, multiline = false } = {}
   return s;
 }
 export const bool = (v, label) => { if (v == null) return null; if (typeof v !== 'boolean') throw new HkError(400, `${label} must be true or false`); return v; };
+// grow-nav-filters N8 - the owner toggle as a query param: me | all | a member id. ownedBy() = does a brand owner match it.
+export const ownerParam = v => { if (v == null || v === '') return null; if (v === 'me' || v === 'all' || /^[0-9a-f-]{36}$/i.test(String(v))) return String(v); throw new HkError(400, "owner must be 'me', 'all' or a member id"); };
+export const ownedBy = (owner, ownerUserId, meId) => !owner || owner === 'all' || ownerUserId === (owner === 'me' ? meId : owner);
 export const oneOf = (v, set, label) => { if (v == null) return null; if (!set.has(v)) throw new HkError(400, `${label} must be one of ${[...set].join(', ')}`); return v; };
 export const domainOf = v => { if (v == null || v === '') return null; const d = normalizeDomain(String(v)); if (!d) throw new HkError(400, 'domain must look like brand.com'); return d; };
 export const emailOf = v => { if (v == null || v === '') return null; const s = String(v).trim().toLowerCase(); if (s.length > 254 || !EMAIL_RE.test(s)) throw new HkError(400, 'email must look like name@brand.com'); return s; };

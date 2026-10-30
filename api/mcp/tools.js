@@ -2,7 +2,8 @@
 // same functions the Grow routes use (a caller context + a captured response, never a second copy of the logic). No
 // tool takes a user, owner or mailbox argument; drafts only ever go to the caller's own tethered mailbox. No Claude
 // call anywhere (Claude is the caller). Every call writes one Activity row (actor_kind 'claude', detail.via 'connector').
-import { checkBrandsRoute, getBrandRoute, patchBrandRoute, CLOSED } from '../hk/brandsRoutes.js';
+import { checkBrandsRoute, getBrandRoute, patchBrandRoute } from '../hk/brandsRoutes.js';
+import { CLOSED } from '../hk/brandFilters.js';
 import { getSettingsRoute } from '../hk/opsRoutes.js';
 import { createDraftFor, gmailStatusRoute, deps0 } from '../hk/gmailRoutes.js';
 import { todayPayload, founders } from '../hk/jobs/runner.js';

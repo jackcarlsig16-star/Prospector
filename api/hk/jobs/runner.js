@@ -5,7 +5,7 @@
 // once-per-day guard (a second daily-check the same Chicago day fails its insert and reads "already ran today").
 // NO SEND PATH: the only Gmail writes are the shared builder's draft create. Nothing here returns an address.
 import { deps0, createDraftFor, runMailboxSync, pageloadSkip } from '../gmailRoutes.js';
-import { HkError, liveBrands, selectAllPages, logEvent } from '../hkShared.js';
+import { HkError, liveBrands, selectAllPages, logEvent, ownedBy } from '../hkShared.js';
 import { SETTINGS_DEFAULTS, dataWarnings } from '../opsRoutes.js';
 import { RECONNECT, NeedsGoogle } from '../../lib/googleGrants.js';
 import { GmailError } from '../gmailClient.js';
@@ -185,7 +185,7 @@ export async function pageloadJob({ businessId, userId, d = {} }) {
 
 // Today's one read: a fresh payload from the current rows (the morning's no-draft items ride along from today's run),
 // the last daily-check run, the founders' mailbox states. No Gmail.
-export async function todayPayload({ businessId, d = {} }) {
+export async function todayPayload({ businessId, owner = null, meId = null, d = {} }) {
   const D = jobDeps(d), now = D.now(), settings = await settingsOf(D.supabase, businessId);
   const fs = await founders(D, businessId);
   const { brands, touches, replies } = await workspaceRows(D, businessId);
@@ -194,7 +194,10 @@ export async function todayPayload({ businessId, d = {} }) {
   const today = dayIn(now, settings.timezone);
   const noDraft = last && last.chicago_day === today && last.status !== 'error' ? (last.digest?.sections?.no_draft || []).map(x => ({ brand_id: x.brand_id, kind: x.kind, reason: x.reason, detail: x.detail })) : [];
   const digest = buildDigest({ replies, touches, brands, members: members(fs), noDraft, dmReady: touches.filter(t => t.channel === 'ig_dm' && t.state === 'drafted').map(t => ({ brand_id: t.brand_id, touch_id: t.id })), warningsCount: dataWarnings(brands, now).length, settings, events: await recentEvents(D, businessId, now), now });
-  return { run: runRow(last), ran_today: !!last && last.chicago_day === today && last.status !== 'error', digest, stats_stale: statsStale(settings, now), slack: { configured: !!D.slackUrl, env: SLACK_ENV }, mailboxes: fs.map(f => ({ user_id: f.user_id, first_name: f.first_name, state: f.m ? f.m.state : 'none' })), settings: { digest_time: settings.digest_time, digest_days: settings.digest_days, timezone: settings.timezone, quiet_weekends: settings.quiet_weekends } };
+  // grow-nav-filters N8: with an owner (me | <id> | all) the same sections counted on that owner's brands, for the badge.
+  const ownerOf = Object.fromEntries(brands.map(b => [b.id, b.owner_user_id]));
+  const ownerCounts = owner ? Object.fromEntries(['urgent', 'replies', 'drafts', 'no_draft', 'dm_ready'].map(k => [k, digest.sections[k].filter(x => ownedBy(owner, ownerOf[x.brand_id], meId)).length])) : null;
+  return { ...(ownerCounts ? { owner, owner_counts: ownerCounts } : {}), run: runRow(last), ran_today: !!last && last.chicago_day === today && last.status !== 'error', digest, stats_stale: statsStale(settings, now), slack: { configured: !!D.slackUrl, env: SLACK_ENV }, mailboxes: fs.map(f => ({ user_id: f.user_id, first_name: f.first_name, state: f.m ? f.m.state : 'none' })), settings: { digest_time: settings.digest_time, digest_days: settings.digest_days, timezone: settings.timezone, quiet_weekends: settings.quiet_weekends } };
 }
 
 // J6 Send test digest: the current payload marked TEST, posted when Slack is configured. -> { digest, slack }

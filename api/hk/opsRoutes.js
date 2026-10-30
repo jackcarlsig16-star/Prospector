@@ -2,6 +2,8 @@
 // hkGate). Nothing here returns an address: replies go through replyRow, events were PII-guarded when written.
 import { createRequire } from 'module';
 import { getSupabase, HkError, fail, isOwner, me, text, bool, oneOf, logEvent, brandRow, brandSummary, liveBrands, allBrands, brandById, nameMatches, selectAllPages, selectIn, hasPii, SPONSOR_RELATIONSHIPS } from './hkShared.js';
+import { BUCKETS, VIEWS as BRAND_VIEWS, SORTS, parseFilters } from './brandFilters.js';
+import { LABELS } from './replyLabel.js';
 const seed = createRequire(import.meta.url)('./lintSeed.json');
 // Settings > Pitch shows the rules nobody can edit here: the lint seed's patterns plus the email-touch cap.
 const LOCKED_RULES = [...seed.banned_patterns.map(p => ({ id: p.id, rule: p.rule })), { id: 'max_email_touches', rule: 'At most 3 email touches per brand: cold, bump, final.' }, { id: 'no_send', rule: 'Nothing is ever sent from Prospector. Drafts land in Gmail for you to send.' }];
@@ -189,8 +191,73 @@ export async function confirmStatsRoute(req, res, { supabase = getSupabase(), no
   } catch (e) { fail(res, e, 'settings/confirm'); }
 }
 // GET / PATCH /me/prefs { avatar_slot 1..4 | null, owner_filter 'me' | 'all' | <user id> }
+// grow-nav-filters-v1 S3 - saved views (N7) and rail state (N2). A saved view = { id, name, space, view?, filters,
+// sort?, layout? }; filters only hold known keys and values (the same parser as GET /brands). Deleting one is a
+// preference change, never a record change.
+export const SAVED_VIEWS_MAX = 30, VIEW_NAME_MAX = 40; // REVISABLE
+const INBOX_FILTERS = { lane: ['briefing', 'needs_you', 'brands', 'other', 'sent', 'drafts'], replies: ['open', ...LABELS, 'snoozed', 'handled'], drafts: ['all', 'email', 'ig_dm', 'lint_failed', 'older'] };
+const SPACES = new Set(['brands', 'inbox', 'today']);
+const plainObject = v => v != null && typeof v === 'object' && !Array.isArray(v);
+function savedViewOf(v) {
+  if (!plainObject(v)) throw new HkError(400, 'each saved view must be an object');
+  const extra = Object.keys(v).filter(k => !['id', 'name', 'space', 'view', 'filters', 'sort', 'layout'].includes(k));
+  if (extra.length) throw new HkError(400, `unknown saved view field ${extra[0]}`);
+  if (typeof v.id !== 'string' || !/^[a-z0-9-]{1,40}$/i.test(v.id)) throw new HkError(400, 'saved view id must be 1 to 40 letters, digits or dashes');
+  const name = text(v.name, VIEW_NAME_MAX, 'saved view name', { required: true });
+  const space = oneOf(v.space ?? '', SPACES, 'space');
+  if (v.filters != null && !plainObject(v.filters)) throw new HkError(400, 'filters must be an object');
+  const out = { id: v.id, name, space, filters: {} };
+  if (space === 'brands') {
+    if (v.view != null) out.view = oneOf(v.view, new Set(BRAND_VIEWS), 'view');
+    const unknown = Object.keys(v.filters || {}).filter(k => !BUCKETS.includes(k));
+    if (unknown.length) throw new HkError(400, `unknown filter ${unknown[0]}`);
+    out.filters = parseFilters(v.filters || {});
+    if (v.sort != null) {
+      if (!plainObject(v.sort)) throw new HkError(400, 'sort must be { by, dir }');
+      out.sort = { by: oneOf(v.sort.by, new Set(SORTS), 'sort'), dir: oneOf(v.sort.dir || 'asc', new Set(['asc', 'desc']), 'dir') };
+    }
+    if (v.layout != null) out.layout = oneOf(v.layout, new Set(['table', 'stage']), 'layout');
+  } else {
+    if (space === 'today' && Object.keys(v.filters || {}).length) throw new HkError(400, 'Today has no filters');
+    for (const [k, vals] of Object.entries(v.filters || {})) {
+      if (!INBOX_FILTERS[k]) throw new HkError(400, `unknown filter ${k}`);
+      const list = Array.isArray(vals) ? vals : [vals];
+      if (!list.length || list.some(x => !INBOX_FILTERS[k].includes(x))) throw new HkError(400, `unknown ${k} value`);
+      out.filters[k] = [...new Set(list)];
+    }
+    if (v.view != null || v.sort != null || v.layout != null) throw new HkError(400, 'view, sort and layout are Brands-only');
+  }
+  return out;
+}
+export function savedViewsOf(list) {
+  if (!Array.isArray(list)) throw new HkError(400, 'saved_views must be a list');
+  if (list.length > SAVED_VIEWS_MAX) throw new HkError(400, `at most ${SAVED_VIEWS_MAX} saved views`);
+  const out = list.map(savedViewOf);
+  if (new Set(out.map(v => v.id)).size !== out.length) throw new HkError(400, 'saved view ids must be unique');
+  return out;
+}
+// rail: { narrow?: bool, collapsed?: { <space>: [bucket keys] } }
+export function railOf(v) {
+  if (!plainObject(v)) throw new HkError(400, 'rail must be an object');
+  const extra = Object.keys(v).filter(k => k !== 'narrow' && k !== 'collapsed');
+  if (extra.length) throw new HkError(400, `unknown rail field ${extra[0]}`);
+  const out = {};
+  if (v.narrow != null) out.narrow = bool(v.narrow, 'narrow');
+  if (v.collapsed != null) {
+    if (!plainObject(v.collapsed)) throw new HkError(400, 'collapsed must be an object');
+    out.collapsed = {};
+    for (const [space, keys] of Object.entries(v.collapsed)) {
+      if (!SPACES.has(space)) throw new HkError(400, 'unknown space');
+      const known = new Set(space === 'brands' ? ['views', ...BUCKETS] : ['my_mail', 'tracked_replies', 'queued_drafts']);
+      if (!Array.isArray(keys) || keys.some(k => !known.has(k))) throw new HkError(400, 'unknown rail bucket');
+      out.collapsed[space] = [...new Set(keys)];
+    }
+  }
+  return out;
+}
+
 export async function getPrefsRoute(req, res, { supabase = getSupabase() } = {}) {
-  try { const { data, error } = await supabase.from('hk_member_prefs').select('*').eq('business_id', req.params.businessId).eq('user_id', me(req)).maybeSingle(); if (error) throw new Error(error.message); res.json({ prefs: data || { business_id: req.params.businessId, user_id: me(req), avatar_slot: null, owner_filter: 'me' } }); } catch (e) { fail(res, e, 'prefs/get'); }
+  try { const { data, error } = await supabase.from('hk_member_prefs').select('*').eq('business_id', req.params.businessId).eq('user_id', me(req)).maybeSingle(); if (error) throw new Error(error.message); res.json({ prefs: data || { business_id: req.params.businessId, user_id: me(req), avatar_slot: null, owner_filter: 'me', saved_views: [], rail: {} } }); } catch (e) { fail(res, e, 'prefs/get'); }
 }
 export async function patchPrefsRoute(req, res, { supabase = getSupabase(), now = () => new Date() } = {}) {
   const body = req.body || {};
@@ -198,6 +265,8 @@ export async function patchPrefsRoute(req, res, { supabase = getSupabase(), now 
     const patch = {};
     if ('avatar_slot' in body) { if (body.avatar_slot !== null && ![1, 2, 3, 4].includes(body.avatar_slot)) throw new HkError(400, 'avatar_slot must be 1 to 4'); patch.avatar_slot = body.avatar_slot; }
     if ('owner_filter' in body) { const v = body.owner_filter; if (!(v === 'me' || v === 'all' || /^[0-9a-f-]{36}$/.test(String(v)))) throw new HkError(400, "owner_filter must be 'me', 'all' or a member id"); patch.owner_filter = v; }
+    if ('saved_views' in body) patch.saved_views = savedViewsOf(body.saved_views);
+    if ('rail' in body) patch.rail = railOf(body.rail);
     if (!Object.keys(patch).length) throw new HkError(400, 'nothing to change');
     const { data, error } = await supabase.from('hk_member_prefs').upsert({ business_id: req.params.businessId, user_id: me(req), ...patch, updated_at: now().toISOString() }, { onConflict: 'business_id,user_id' }).select().single();
     if (error) { if (error.code === '23505') throw new HkError(409, 'that color slot is taken'); throw error; }

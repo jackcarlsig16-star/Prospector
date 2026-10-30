@@ -1,7 +1,7 @@
 // hkos-daily-check-v1 J2 / J5 / J6 - the routes under /api/hk/:businessId/jobs (hkGate ran). Page load = any member
 // (their own mailbox + the workspace daily-check); Run daily check now, Sync Gmail now and Send test digest = owner role;
 // Today's read and the runs list = any member. No address in any response.
-import { getSupabase, HkError, fail, isOwner, me } from './hkShared.js';
+import { getSupabase, HkError, fail, isOwner, me, ownerParam } from './hkShared.js';
 import { gmailSyncAll, dailyCheck, pageloadJob, todayPayload, testDigest, retryDraft, skipTouch, markDmSent, runRow } from './jobs/runner.js';
 
 const JOBS = new Set(['gmail-sync-all', 'daily-check']);
@@ -36,7 +36,7 @@ export async function syncAllRoute(req, res, d = {}) {
 
 // GET /jobs/today
 export async function todayRoute(req, res, d = {}) {
-  try { res.json(await todayPayload({ businessId: req.params.businessId, d })); } catch (e) { fail(res, e, 'jobs/today'); }
+  try { res.json(await todayPayload({ businessId: req.params.businessId, owner: ownerParam(req.query?.owner), meId: me(req), d })); } catch (e) { fail(res, e, 'jobs/today'); }
 }
 
 // GET /jobs/runs?job=

@@ -431,6 +431,7 @@ app.patch('/api/hk/:businessId/settings',                     hkRoute(HK_OPS, 'p
 app.post('/api/hk/:businessId/settings/confirm-stats',        hkRoute(HK_OPS, 'confirmStatsRoute'));
 app.get('/api/hk/:businessId/me/prefs',                       hkRoute(HK_OPS, 'getPrefsRoute'));
 app.patch('/api/hk/:businessId/me/prefs',                     hkRoute(HK_OPS, 'patchPrefsRoute'));
+app.put('/api/hk/:businessId/me/prefs',                       hkRoute(HK_OPS, 'patchPrefsRoute'));
 // grow-signals-v1 G6 + G7 - the Signals panel and the one-click lists (+ Target / + Pipeline, both with Undo).
 const HK_SIGNALS = './api/hk/signalsRoutes.js';
 app.get('/api/hk/:businessId/signals',                        hkRoute(HK_SIGNALS, 'listSignalsRoute'));
@@ -443,12 +444,14 @@ app.post('/api/hk/:businessId/brands/:id/pipeline',           hkRoute(HK_SIGNALS
 const HK_BRIEFING = './api/hk/briefingRoutes.js';
 const HK_RESEARCH = './api/hk/brandResearch.js';
 const HK_SWEEP = './api/hk/researchSweep.js';
+const HK_SEARCH = './api/hk/searchRoutes.js';
 app.get('/api/hk/:businessId/briefing',                       hkRoute(HK_BRIEFING, 'briefingRoute'));
 app.get('/api/hk/:businessId/brands/:id/reach',               hkRoute(HK_BRIEFING, 'reachRoute'));
 app.post('/api/hk/:businessId/brands/:id/research',           hkRoute(HK_RESEARCH, 'researchBrandRoute'));
 app.post('/api/hk/:businessId/brands/:id/use-domain',         hkRoute(HK_RESEARCH, 'useDomainRoute'));
 app.post('/api/hk/:businessId/brands/:id/wrong-site',         hkRoute(HK_RESEARCH, 'wrongSiteRoute'));
 app.post('/api/hk/:businessId/jobs/research-sweep',           hkRoute(HK_SWEEP, 'runSweepRoute'));
+app.get('/api/hk/:businessId/search',                         hkRoute(HK_SEARCH, 'searchRoute'));
 // hkos-gmail-connect-v1 (G3-G7) - drafts into the tethered mailbox, sync, replies, status. No send path anywhere.
 const HK_GMAIL = './api/hk/gmailRoutes.js';
 app.get('/api/hk/:businessId/drafts',                         hkRoute(HK_GMAIL, 'listDraftsRoute'));

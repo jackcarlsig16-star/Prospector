@@ -4,8 +4,10 @@
 // several in one cell are read in order: first = cold sent, second = bump sent, third = final sent (REVISABLE), the
 // status follows the last. Output dates are YYYY-MM-DD.
 export const DEFAULT_YEAR = 2026; // REVISABLE
-export const STATUS_ORDER = ['candidate', 'claimed', 'drafted', 'sent', 'bumped', 'final_sent', 'replied', 'meeting', 'signed', 'sponsor'];
-export const rank = s => STATUS_ORDER.indexOf(s);
+// How far along a tracker row is, for merging two rows of one brand; passed / skipped are never produced here and never
+// outrank. The display order of all 12 statuses is hkShared STATUS_ORDER.
+export const ADVANCE_ORDER = ['candidate', 'claimed', 'drafted', 'sent', 'bumped', 'final_sent', 'replied', 'meeting', 'signed', 'sponsor'];
+export const rank = s => ADVANCE_ORDER.indexOf(s);
 export const mostAdvanced = (a, b) => (rank(b) > rank(a) ? b : a);
 const SERIES = ['cold', 'bump', 'final'];
 export const AFTER_SEND = { cold: 'sent', bump: 'bumped', final: 'final_sent' };

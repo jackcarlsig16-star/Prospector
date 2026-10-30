@@ -4,7 +4,7 @@
 // only Gmail writes are a draft create and a draft delete. Addresses: the contact's To is read from hk_contacts on the
 // server; hk_replies.from_email is stored and never returned; the only address a response carries is the caller's own
 // mailbox inside the Gmail URLs they open.
-import { getSupabase, HkError, fail, isOwner, me, text, oneOf, logEvent, touchRow, replyRow, liveBrands, brandById, sponsorsNichesOf, canContact, TEAM_DOMAINS, selectIn } from './hkShared.js';
+import { getSupabase, HkError, fail, isOwner, me, text, oneOf, logEvent, touchRow, replyRow, liveBrands, brandById, sponsorsNichesOf, canContact, TEAM_DOMAINS, selectIn, ownerParam, ownedBy } from './hkShared.js';
 import { lintDraft, lintRejects } from './lint.js';
 import { buildDraftMime, draftUrl, replySubject, header } from './gmailMime.js';
 import { replyKind, signalWords, signalNow } from './signals.js';
@@ -104,16 +104,22 @@ export async function createDraftRoute(req, res, d = {}) {
 // GET /drafts - every drafted touch; Open in Gmail only for the caller's own (their mailbox address lives in that URL).
 export async function listDraftsRoute(req, res, d = {}) {
   const { supabase, mailbox, now } = deps0(d);
-  const businessId = req.params.businessId, uid = me(req);
+  const businessId = req.params.businessId, uid = me(req), q = req.query || {};
   try {
-    const { data: touches, error } = await supabase.from('hk_touches').select('*').eq('business_id', businessId).eq('state', 'drafted').order('drafted_at', { ascending: false });
+    // grow-nav-filters S5: owner (the brand's owner) · kind (channel) · lint · older_than days - all optional.
+    const owner = ownerParam(q.owner), kind = oneOf(q.kind || null, new Set(['email', 'ig_dm']), 'kind'), lint = oneOf(q.lint || null, new Set(['failed', 'passed']), 'lint');
+    const older = q.older_than == null || q.older_than === '' ? null : Number(q.older_than);
+    if (older != null && (!Number.isInteger(older) || older < 0 || older > 365)) throw new HkError(400, 'older_than must be 0 to 365 days');
+    const { data: all, error } = await supabase.from('hk_touches').select('*').eq('business_id', businessId).eq('state', 'drafted').order('drafted_at', { ascending: false });
     if (error) throw new Error(error.message);
     const brands = Object.fromEntries((await liveBrands(supabase, businessId)).map(b => [b.id, b]));
+    const nowMs = now().getTime();
+    const touches = (all || []).filter(t => ownedBy(owner, brands[t.brand_id]?.owner_user_id, uid) && (!kind || t.channel === kind) && (!lint || (lint === 'failed' ? t.lint_passed === false : t.lint_passed !== false))
+      && (older == null || nowMs - Date.parse(t.drafted_at || t.created_at) > older * 86400e3));
     const cids = [...new Set((touches || []).map(t => t.contact_id).filter(Boolean))];
     const contacts = Object.fromEntries((await selectIn(() => supabase.from('hk_contacts').select('id, name').order('id'), 'id', cids)).map(c => [c.id, c.name]));
     const m = await mailbox(businessId, uid, 'drafts').catch(() => null);
     const own = m?.grant?.google_email || null;
-    const nowMs = now().getTime();
     res.json({ drafts: (touches || []).map(t => ({ ...touchRow(t), brand_name: brands[t.brand_id]?.name || null, brand_owner_user_id: brands[t.brand_id]?.owner_user_id || null, brand_owner_hint: brands[t.brand_id]?.owner_hint || null, contact_name: contacts[t.contact_id] || null, age_days: Math.floor((nowMs - Date.parse(t.drafted_at || t.created_at)) / 86400e3), mine: t.sender_user_id === uid, gmail_draft_url: t.sender_user_id === uid && own && t.gmail_message_id ? draftUrl(own, t.gmail_message_id) : null })) });
   } catch (e) { fail(res, e, 'drafts/list'); }
 }
@@ -278,7 +284,7 @@ export async function syncRoute(req, res, d = {}) {
 
 // GET /replies?handled=&label=&owner=&from=&to= - replyRow strips from_email; Open in Gmail only for the caller's own mailbox.
 export async function listRepliesRoute(req, res, d = {}) {
-  const { supabase, mailbox } = deps0(d);
+  const { supabase, mailbox, now } = deps0(d);
   const businessId = req.params.businessId, uid = me(req), q = req.query || {};
   try {
     const { data, error } = await supabase.from('hk_replies').select('*').eq('business_id', businessId).order('received_at', { ascending: false });
@@ -289,6 +295,9 @@ export async function listRepliesRoute(req, res, d = {}) {
     if (q.label) rows = rows.filter(r => r.label === q.label);
     if (q.from) rows = rows.filter(r => r.received_at >= String(q.from));
     if (q.to) rows = rows.filter(r => r.received_at <= String(q.to));
+    // grow-nav-filters S5: snoozed=hide (Open) | only (Snoozed); absent = as before.
+    const snoozed = oneOf(q.snoozed || null, new Set(['hide', 'only']), 'snoozed'), nowIso = now().toISOString();
+    if (snoozed) rows = rows.filter(r => (!!r.snoozed_until && String(r.snoozed_until) > nowIso) === (snoozed === 'only'));
     const brands = Object.fromEntries((await liveBrands(supabase, businessId)).map(b => [b.id, b]));
     if (q.owner === 'me') rows = rows.filter(r => brands[r.brand_id]?.owner_user_id === uid); else if (q.owner && q.owner !== 'all') rows = rows.filter(r => brands[r.brand_id]?.owner_user_id === q.owner);
     const tids = [...new Set(rows.map(r => r.touch_id).filter(Boolean))];
@@ -320,19 +329,28 @@ export async function patchReplyRoute(req, res, d = {}) {
 
 // GET /gmail/status - the caller's mailbox state, their last run, and the nav badges.
 export async function gmailStatusRoute(req, res, d = {}) {
-  const { supabase, mailbox } = deps0(d);
+  const { supabase, mailbox, now } = deps0(d);
   const businessId = req.params.businessId, uid = me(req);
   try {
     const m = await mailbox(businessId, uid, 'drafts').catch(() => null);
     const { data: runs } = await supabase.from('hk_sync_runs').select('id, trigger, status, started_at, finished_at, counts, error').eq('business_id', businessId).eq('user_id', uid).order('started_at', { ascending: false }).limit(1);
     const { data: state } = await supabase.from('hk_gmail_sync_state').select('status, last_synced_at, history_id').eq('business_id', businessId).eq('user_id', uid).maybeSingle();
-    const { data: drafts } = await supabase.from('hk_touches').select('id').eq('business_id', businessId).eq('state', 'drafted');
-    const { data: unhandled } = await supabase.from('hk_replies').select('id').eq('business_id', businessId).eq('handled', false);
+    // grow-nav-filters S4: ?owner=me|all|<id> counts queued drafts and OPEN (unsnoozed) replies on that owner's brands;
+    // without it the badges are workspace-wide, as before.
+    const owner = ownerParam(req.query?.owner);
+    let { data: drafts } = await supabase.from('hk_touches').select(owner ? 'id, brand_id' : 'id').eq('business_id', businessId).eq('state', 'drafted');
+    let { data: unhandled } = await supabase.from('hk_replies').select(owner ? 'id, brand_id, snoozed_until' : 'id').eq('business_id', businessId).eq('handled', false);
+    if (owner) {
+      const ownerOf = Object.fromEntries((await liveBrands(supabase, businessId)).map(b => [b.id, b.owner_user_id]));
+      const nowIso = now().toISOString();
+      drafts = (drafts || []).filter(t => ownedBy(owner, ownerOf[t.brand_id], uid));
+      unhandled = (unhandled || []).filter(r => ownedBy(owner, ownerOf[r.brand_id], uid) && !(r.snoozed_until && String(r.snoozed_until) > nowIso));
+    }
     const { data: trackedTouches } = await supabase.from('hk_touches').select('gmail_thread_id').eq('business_id', businessId).neq('state', 'discarded').not('gmail_thread_id', 'is', null);
     const { data: trackedReplies } = await supabase.from('hk_replies').select('gmail_thread_id').eq('business_id', businessId);
     const tracked = new Set([...(trackedTouches || []), ...(trackedReplies || [])].map(r => r.gmail_thread_id).filter(Boolean)).size;
     const { data: prefs } = await supabase.from('hk_member_prefs').select('signature_text').eq('business_id', businessId).eq('user_id', uid).maybeSingle();
-    res.json({ mailbox: m ? { linked: true, state: m.state, email: m.grant.google_email, purposes: m.tether.purposes } : { linked: false, state: null, email: null, purposes: [] }, last_run: runs?.[0] || null, sync_state: state || null, badges: { drafts: (drafts || []).length, replies: (unhandled || []).length, tracked }, signature_text: prefs?.signature_text || null });
+    res.json({ mailbox: m ? { linked: true, state: m.state, email: m.grant.google_email, purposes: m.tether.purposes } : { linked: false, state: null, email: null, purposes: [] }, last_run: runs?.[0] || null, sync_state: state || null, badges: { drafts: (drafts || []).length, replies: (unhandled || []).length, tracked, ...(owner ? { owner } : {}) }, signature_text: prefs?.signature_text || null });
   } catch (e) { fail(res, e, 'gmail/status'); }
 }
 

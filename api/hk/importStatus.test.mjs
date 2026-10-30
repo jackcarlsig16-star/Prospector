@@ -2,7 +2,7 @@
 // hkos-sheet-import-v1 Stage 1 - S3 status normalization on invented cells. 0 network, 0 DB.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeStatus, parseDates, mostAdvanced, STATUS_ORDER } from './importStatus.js';
+import { normalizeStatus, parseDates, mostAdvanced, ADVANCE_ORDER } from './importStatus.js';
 
 const TODAY = '2026-10-27';
 const codes = r => r.warnings.map(w => w.code);
@@ -113,7 +113,7 @@ test('"sent" (Jack tab) reads as sent; whitespace and case do not matter', () =>
 });
 
 test('status order: mostAdvanced follows candidate < claimed < drafted < sent < bumped < final_sent < replied < meeting < signed < sponsor', () => {
-  assert.equal(STATUS_ORDER.join(','), 'candidate,claimed,drafted,sent,bumped,final_sent,replied,meeting,signed,sponsor');
+  assert.equal(ADVANCE_ORDER.join(','), 'candidate,claimed,drafted,sent,bumped,final_sent,replied,meeting,signed,sponsor');
   assert.equal(mostAdvanced('drafted', 'sent'), 'sent'); assert.equal(mostAdvanced('meeting', 'sent'), 'meeting'); assert.equal(mostAdvanced('sponsor', 'replied'), 'sponsor');
 });
 

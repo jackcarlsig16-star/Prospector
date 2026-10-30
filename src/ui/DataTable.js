@@ -28,6 +28,10 @@ import { KIT_TABLE } from './tokens';
 //   ▸ / ▾ button, and the button or a click on the cell opens the detail panel
 //   in a full-width row under it (phone list: under the item). One open at a
 //   time; Esc or the button closes it. Controls inside a row never toggle it.
+//   serverSort (opt-in): the rows arrive sorted by the server for `sort` - the header still cycles it through onSort,
+//   but the loaded rows are never re-sorted here.
+//   onReachEnd() (opt-in): called when the end of the rows scrolls into view (load the next page); a sentinel after
+//   the last row, watched by IntersectionObserver where the browser has one.
 
 const compare = (a, b) => (typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }));
 
@@ -49,7 +53,7 @@ function GroupHeading({ group }) {
     : <span className="ui-table__gh">{group.icon}{h}</span>;
 }
 
-export default function DataTable({ columns, groups, rowStyle, rowKey, compact = false, renderCompact, renderDetail, emptyText, label, sort: sortProp, onSort, dense = false, pinUnder = null, onRowClick }) {
+export default function DataTable({ columns, groups, rowStyle, rowKey, compact = false, renderCompact, renderDetail, emptyText, label, sort: sortProp, onSort, dense = false, pinUnder = null, onRowClick, serverSort = false, onReachEnd = null }) {
   const [sortState, setSortState] = useState(null);
   const [openKey, setOpenKey] = useState(null);
   const idBase = useId();
@@ -59,6 +63,18 @@ export default function DataTable({ columns, groups, rowStyle, rowKey, compact =
   const [height, setHeight] = useState(null);
   const sortCol = useMemo(() => columns.find(c => c.id === sort?.id) || null, [columns, sort]);
   const rowClick = r => (onRowClick ? e => { if (!e.target.closest?.(INTERACTIVE)) onRowClick(r); } : undefined);
+  const endRef = useRef(null);
+  const reachEnd = useRef(onReachEnd);
+  reachEnd.current = onReachEnd;
+  const watchEnd = !!onReachEnd;
+  useEffect(() => {
+    const el = endRef.current;
+    if (!watchEnd || !el || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) reachEnd.current?.(); }, { root: compact ? null : boxRef.current, rootMargin: '200px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [watchEnd, compact]);
+  const ordered = rows => (serverSort ? rows : sortRows(rows, sortCol, sort?.dir));
 
   useEffect(() => {
     if (compact) return undefined;
@@ -127,6 +143,7 @@ export default function DataTable({ columns, groups, rowStyle, rowKey, compact =
           </React.Fragment>
         ))}
         {!visible.length && emptyText && <li className="ui-table__empty">{emptyText}</li>}
+        {watchEnd && <li ref={endRef} aria-hidden="true" data-reach-end />}
       </ul>
     );
   }
@@ -152,7 +169,7 @@ export default function DataTable({ columns, groups, rowStyle, rowKey, compact =
             <React.Fragment key={g.id}>
               <tr className="ui-table__group" data-group={g.id}><td colSpan={columns.length}><GroupHeading group={g} /></td></tr>
               {!g.collapsed && !g.rows.length && g.emptyText && <tr><td colSpan={columns.length} className="ui-table__empty">{g.emptyText}</td></tr>}
-              {!g.collapsed && sortRows(g.rows, sortCol, sort?.dir).map(r => (
+              {!g.collapsed && ordered(g.rows).map(r => (
                 <React.Fragment key={rowKey(r)}>
                   <tr data-row data-key={rowKey(r)} style={rowStyle?.(r)} onClick={rowClick(r)}>
                     {columns.map(c => (hasDetail && c === detailCol
@@ -167,6 +184,7 @@ export default function DataTable({ columns, groups, rowStyle, rowKey, compact =
           {!visible.length && emptyText && <tr><td colSpan={columns.length} className="ui-table__empty">{emptyText}</td></tr>}
         </tbody>
       </table>
+      {watchEnd && <div ref={endRef} aria-hidden="true" data-reach-end />}
     </div>
   );
 }

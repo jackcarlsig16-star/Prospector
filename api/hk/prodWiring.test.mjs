@@ -13,7 +13,7 @@ delete process.env.HK_SLACK_WEBHOOK_URL;
 const { seed, reqOf, resOf, HK, JACK, ID } = await import('./testing.mjs');
 const shared = await import('./hkShared.js');
 const grants = await import('../lib/googleGrants.js');
-const MODULES = { brandsRoutes: await import('./brandsRoutes.js'), opsRoutes: await import('./opsRoutes.js'), gmailRoutes: await import('./gmailRoutes.js'), inboxRoutes: await import('./inboxRoutes.js'), importRoutes: await import('./importRoutes.js'), jobsRoutes: await import('./jobsRoutes.js'), signalsRoutes: await import('./signalsRoutes.js'), briefingRoutes: await import('./briefingRoutes.js'), brandResearch: await import('./brandResearch.js'), researchSweep: await import('./researchSweep.js') };
+const MODULES = { brandsRoutes: await import('./brandsRoutes.js'), opsRoutes: await import('./opsRoutes.js'), gmailRoutes: await import('./gmailRoutes.js'), inboxRoutes: await import('./inboxRoutes.js'), importRoutes: await import('./importRoutes.js'), jobsRoutes: await import('./jobsRoutes.js'), signalsRoutes: await import('./signalsRoutes.js'), briefingRoutes: await import('./briefingRoutes.js'), brandResearch: await import('./brandResearch.js'), researchSweep: await import('./researchSweep.js'), searchRoutes: await import('./searchRoutes.js') };
 
 const OWNER = 'jack.work@humankind.invalid', TOKEN = 'tok-jack-wiring';
 const b64 = s => Buffer.from(s, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -94,6 +94,7 @@ const TABLE = [
   ['opsRoutes', 'confirmStatsRoute', member({ method: 'POST', body: { members_stat: 1200 } }), [200]],
   ['opsRoutes', 'getPrefsRoute', member(), [200]],
   ['opsRoutes', 'patchPrefsRoute', member({ method: 'PATCH', body: { avatar_slot: 2 } }), [200]],
+  ['opsRoutes', 'patchPrefsRoute', member({ method: 'PUT', body: { saved_views: [], rail: {} } }), [200]],
   ['gmailRoutes', 'listDraftsRoute', member(), [200]],
   ['gmailRoutes', 'createDraftRoute', member({ method: 'POST', body: { brand_id: ID.run, channel: 'email', kind: 'cold', subject: 'HumanKind x Bluefin Run Club', body_markdown: 'Hi - a quick idea for your runners.' } }), [201, 409, 422]],
   ['gmailRoutes', 'lintPreviewRoute', member({ method: 'POST', body: { subject: 'Hello', body_markdown: 'Hi there' } }), [200]],
@@ -138,6 +139,7 @@ const TABLE = [
   ['brandResearch', 'useDomainRoute', member({ method: 'POST', params: { id: ID.run } }), [409]],
   ['brandResearch', 'wrongSiteRoute', member({ method: 'POST', params: { id: ID.run } }), [409]],
   ['researchSweep', 'runSweepRoute', member({ method: 'POST', body: {} }), [200]],
+  ['searchRoutes', 'searchRoute', member({ query: { q: 'juice' } }), [200]],
 ];
 const TYPE_ERROR = /is not a function|Cannot read propert|is not defined|is not iterable|Cannot destructure/;
 
