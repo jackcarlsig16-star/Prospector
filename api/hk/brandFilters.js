@@ -4,6 +4,7 @@
 // exists: the address itself never leaves the database.
 import { HkError, STATUS_ORDER, selectAllPages, normName } from './hkShared.js';
 import { activityOf } from './intelScore.js';
+import { loadIntel } from './intelData.js';
 
 const DAY = 864e5;
 export const CLOSED = new Set(['passed', 'skipped', 'sponsor']);
@@ -20,7 +21,7 @@ export const DUE = ['overdue', 'week', 'later', 'none'];
 // Buckets in rail order (N3). `fixed` = values listed in this order; otherwise most rows first.
 export const BUCKETS = ['stage', 'heat', 'owner', 'relationship', 'segment', 'category', 'email', 'due', 'research', 'sponsor_months', 'place'];
 const FIXED = { stage: STATUS_ORDER, heat: HEAT, relationship: RELATIONSHIPS, email: EMAIL, due: DUE, research: ['yes', 'no'], sponsor_months: ['yes'] };
-export const SORTS = ['name', 'status', 'last_touch', 'next_due', 'created', 'heat'];
+export const SORTS = ['name', 'status', 'last_touch', 'next_due', 'created', 'heat', 'score'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FREE = /^[^@\n]{1,80}$/;
 
@@ -47,17 +48,11 @@ export function parseFilters(src = {}) {
   return out;
 }
 
-export async function loadFilterData(supabase, businessId, brands) {
-  const all = (table, cols, extra = q => q) => selectAllPages(() => extra(supabase.from(table).select(cols).eq('business_id', businessId)).order('id'));
-  const [withEmail, touches, replies, intel, periods] = await Promise.all([
-    all('hk_contacts', 'id, brand_id', q => q.not('email', 'is', null)),
-    all('hk_touches', 'id, brand_id, sender_user_id, channel, kind, state, sent_at, drafted_at, gmail_thread_id'),
-    all('hk_replies', 'id, brand_id, touch_id, received_at, label, handled, gmail_thread_id'),
-    all('hk_domain_intel', 'id, domain'),
-    all('hk_sponsor_periods', 'id, brand_id'),
-  ]);
-  const group = rows => rows.reduce((m, r) => ((m[r.brand_id] ||= []).push(r), m), {});
-  return { brands, hasEmail: new Set(withEmail.map(c => c.brand_id)), touches: group(touches), replies: group(replies), intel: new Set(intel.map(i => i.domain)), months: new Set(periods.map(p => p.brand_id)) };
+// grow-ui-refresh U6 - one read for the list: the Briefing's loadIntel (brands, touches, replies, contacts with the address
+// dropped, domain intel, members, settings) plus the sponsor months. `intelData` carries it on for the row score.
+export async function loadFilterData(supabase, businessId, now = new Date()) {
+  const [d, periods] = await Promise.all([loadIntel(supabase, businessId, now), selectAllPages(() => supabase.from('hk_sponsor_periods').select('id, brand_id').eq('business_id', businessId).order('id'))]);
+  return { brands: d.brands, hasEmail: new Set(Object.entries(d.contactsBy).filter(([, cs]) => cs.some(c => c.has_email)).map(([id]) => id)), touches: d.touchesBy, replies: d.repliesBy, intel: new Set(Object.keys(d.intelByDomain)), months: new Set(periods.map(p => p.brand_id)), intelData: d };
 }
 
 // Every bucket value one brand carries, plus the built-in views it belongs to.
@@ -90,8 +85,8 @@ export function valuesOf(b, data, { meId, now }) {
 }
 
 const matchesQ = (b, q) => { const n = normName(q), raw = String(q).trim().toLowerCase(); return normName(b.name).includes(n) || (b.domain || '').includes(raw) || (b.aliases || []).some(a => normName(a).includes(n)); };
-const SORT_KEY = { name: b => b.name.toLowerCase(), status: b => STATUS_ORDER.indexOf(b.status), last_touch: b => b.last_touch_at || null, next_due: b => b.next_due_at || null, created: b => b.created_at, heat: b => b.heat ?? 0 };
-const DEFAULT_DIR = { name: 'asc', status: 'asc', last_touch: 'desc', next_due: 'asc', created: 'desc', heat: 'desc' };
+const SORT_KEY = { name: b => b.name.toLowerCase(), status: b => STATUS_ORDER.indexOf(b.status), last_touch: b => b.last_touch_at || null, next_due: b => b.next_due_at || null, created: b => b.created_at, heat: b => b.heat ?? 0, score: b => b.reach_score ?? null };
+const DEFAULT_DIR = { name: 'asc', status: 'asc', last_touch: 'desc', next_due: 'asc', created: 'desc', heat: 'desc', score: 'desc' };
 
 // { view, filters, q, sort, dir, page, limit, facets } -> { total, rows (brands), facets?, next_page }
 // Within a bucket values OR, across buckets AND; a value's facet count = rows matching every OTHER active bucket (and

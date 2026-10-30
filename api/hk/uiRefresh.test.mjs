@@ -279,3 +279,18 @@ test('U7/U8 brand detail: the research card (who / when / cost, industry), the P
   assert.deepEqual([r.body.research_budget.per_call, r.body.research_budget.cap_usd], [0.05, 1]);
   assert.ok(!hasAt(r.body.research));
 });
+
+test('U6 Brands list rows: the caller\'s reach score (null when not pitchable), research industry / fit, contact role (no address), the command; sort=score puts the highest first, nulls last', async () => {
+  fresh();
+  sb.db.hk_contacts.push({ id: 'c-run', business_id: HK, brand_id: ID.run, name: 'Rae', title: 'Marketing lead', email: 'rae@bluefinrun.example', is_primary: true, created_at: '2026-10-02T00:00:00Z' });
+  sb.db.hk_domain_intel.push({ id: 'i-run', business_id: HK, domain: 'bluefinrun.example', intel: { company: { industry: 'Running', chicago_presence: 'yes' }, fit: { sponsor_fit: 'strong' } }, cost_usd: 0.05, researched_at: '2026-10-25T00:00:00Z' });
+  const r = await call(listBrandsRoute, reqOf({ query: { page: '1', limit: '50', sort: 'score' } }), { supabase: sb, now });
+  assert.equal(r.code, 200, JSON.stringify(r.body));
+  const run = r.body.rows.find(x => x.id === ID.run), juice = r.body.rows.find(x => x.id === ID.juice);
+  assert.ok(run.score > 0); assert.equal(juice.score, null, 'a sponsor has no reach score');
+  assert.deepEqual([run.research, run.contact, run.command], [{ industry: 'Running', fit: 'strong', chicago_presence: 'yes' }, { has_email: true, title: 'Marketing lead' }, 'hk pitch bluefinrun.example']);
+  assert.equal(r.body.rows[0].id, ID.run, 'highest score first');
+  const scores = r.body.rows.map(x => x.score);
+  assert.ok(scores.indexOf(null) === -1 || scores.slice(scores.indexOf(null)).every(x => x === null), 'nulls last');
+  assert.ok(!hasAt(r.body.rows.map(({ primary_contact_name, ...x }) => x)));
+});

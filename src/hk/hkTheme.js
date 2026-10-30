@@ -405,8 +405,6 @@ ${PINNED} {
 .hk-theme .hk-lists { display:inline-flex; align-items:center; gap:6px; flex-wrap:wrap; }
 .hk-theme td .hk-lists { flex-wrap:nowrap; }
 .hk-theme .hk-lists__undo { font-size:13px; color:var(--hk-cocoa); }
-.hk-theme .hk-signals__row--unseen .hk-signals__words { font-weight:600; color:var(--hk-cocoa); }
-.hk-theme .hk-signals__words { flex:1 1 220px; min-width:0; font-size:14px; color:var(--hk-muted); }
 .hk-theme .hk-signals__sponsors { margin-top:12px; }
 .hk-theme .hk-signals__sponsors > summary { cursor:pointer; font:600 15px var(--hk-font-display); color:var(--hk-cocoa); }
 .hk-theme .hk-nav__badge--green { background:var(--hk-green-fill); }
@@ -618,6 +616,34 @@ ${PINNED} {
 .hk-theme .hk-logact { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px; border-radius:var(--hk-radius-block); background:var(--hk-sand); }
 .hk-theme .hk-logact__field { display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--hk-cocoa); }
 .hk-theme .hk-logact__note { flex:1 1 220px; } .hk-theme .hk-logact__note .ui-input { flex:1; }
+/* grow-ui-refresh-v1 U6 - the Brands list to mockup 3: tile + name + domain, the actions cell (primary + quick commands on
+   row hover / keyboard focus, otherwise the chevron only; same height either way, so rows never jump), selected tint,
+   the forest bulk bar, and the Sort control. */
+.hk-theme .hk-brandcell { display:inline-flex; flex-direction:row; align-items:center; gap:10px; text-align:left; }
+.hk-theme .hk-brandcell__text { display:flex; flex-direction:column; min-width:0; }
+.hk-theme .hk-target-yes { display:inline-flex; color:var(--hk-forest); }
+.hk-theme .hk-score { font:600 16px var(--hk-font-display); color:var(--hk-forest); }
+.hk-theme .hk-rowacts { display:flex; align-items:center; justify-content:flex-end; gap:8px; min-height:36px; }
+.hk-theme .hk-rowacts__full { display:inline-flex; align-items:center; gap:8px; }
+/* In the table the actions sit over the row's right end, left of the chevron (mockup 3), so no column is given up to
+   them; the sticky actions cell is their containing block. */
+.hk-theme td .hk-rowacts__full { position:absolute; right:100%; top:50%; transform:translateY(-50%); padding:6px 8px 6px 14px; border-radius:var(--hk-radius-control); background:linear-gradient(to right, transparent, var(--hk-surface) 14px); white-space:nowrap; }
+.hk-theme .hk-rowacts__full .hk-primary { padding:6px 12px; font-size:13px; }
+.hk-theme [data-hk-brand-list] tr:not(:hover):not(:focus-within) .hk-rowacts__full { display:none; }
+/* The kit's td clips and ellipsizes; the actions cell must let its overlay out, and the checkbox cell has no text. */
+.hk-theme [data-hk-brand-list] td.ui-table__sticky-end { overflow:visible; z-index:2; }
+.hk-theme [data-hk-brand-list] td .hk-srow__check { margin:0; vertical-align:middle; }
+.hk-theme [data-hk-brand-list] td:first-child { text-overflow:clip; }
+.hk-theme .hk-rowacts__full--card { display:flex; flex-wrap:wrap; padding:0 12px 10px; }
+.hk-theme .hk-fbulk { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:10px 14px; margin-bottom:10px; border-radius:var(--hk-radius-block); background:var(--hk-forest); color:#FFFFFF; font-size:14px; }
+.hk-theme .hk-fbulk__n { font-weight:600; }
+.hk-theme .hk-fbulk__btn { display:inline-flex; align-items:center; gap:6px; padding:7px 12px; border-radius:var(--hk-radius-control); background:rgba(255,255,255,.14); color:#FFFFFF; font:600 13px var(--hk-font-body); white-space:nowrap; }
+.hk-theme .hk-fbulk__btn:hover:not(:disabled) { background:rgba(255,255,255,.24); }
+.hk-theme .hk-fbulk__btn--amber { background:var(--hk-mustard); color:var(--hk-cocoa); }
+.hk-theme .hk-fbulk__btn--amber:hover:not(:disabled) { background:#D9A22A; }
+.hk-theme .hk-fbulk__btn:disabled { background:rgba(255,255,255,.08); color:#D7E6DA; cursor:default; }
+.hk-theme .hk-sortpick { display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--hk-muted); }
+.hk-theme .hk-sortpick .ui-input { width:auto; }
 .hk-theme .hk-weights { border-collapse:collapse; font-size:13px; }
 .hk-theme .hk-weights th { text-align:left; font-weight:400; color:var(--hk-cocoa); padding:3px 16px 3px 0; }
 .hk-theme .hk-weights td { color:var(--hk-forest); font-weight:600; }

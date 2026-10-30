@@ -6,6 +6,7 @@ import { hkGet, hkPost } from '../hkApi';
 import { fmtDate } from './inboxPrefs';
 import SendRow from './SendRow';
 import { useBrandCommands } from '../brands/QuickCommands';
+import { batchCommand } from '../brands/labelRules';
 
 // grow-inbox-intel-v1 REV3 B1 + grow-ui-refresh-v1 U5 - the Inbox's first lane, built to mockup 1: one status strip
 // (zero counts small and grey, non-zero ones as chips that jump to their list; sent / reply rate / research spend on the
@@ -18,9 +19,6 @@ export const importantNow = rows => rows.filter(t => t.lane === 'needs_you' && t
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 const money = n => `$${Number(n || 0).toFixed(2)}`;
 export const FILTERS = [['pitch', 'Ready to pitch'], ['research', 'Needs research'], ['add_email', 'Needs email']];
-// One Claude command for every ready brand: "hk pitch" with their domains (else names), as Pitch copies them one at a
-// time ("hk batch n" keeps its own meaning: find n new brands).
-export const batchCommand = rows => `hk pitch ${rows.map(c => c.command.replace(/^hk pitch /, '')).join(', ')}`;
 
 function StatusStrip({ t, R, onGo, onLane }) {
   const items = [['replies', 'Replies', t.replies_waiting, () => onGo('replies')], ['hot', 'Hot', t.hot, () => onGo('replies')], ['drafts', 'Drafts', t.drafts, () => onGo('drafts')], ['followups', 'Follow-ups', t.followups_due, () => onGo('today')], ['dms', 'DMs', t.dms_due, () => onGo('today')]];
@@ -151,7 +149,7 @@ export default function Briefing({ businessId, shell, owner, canEdit, rows, list
                 </div>))}</div>
             ) : <p className="hk-meta">No sent email is waiting on a reply.</p>}
           </section>
-          <SignalsPanel businessId={businessId} shell={shell} canEdit={canEdit} onOpenBrand={onOpenBrand} onGo={onGo} onSeen={onSignalsSeen} compact />
+          <SignalsPanel businessId={businessId} canEdit={canEdit} onOpenBrand={onOpenBrand} onGo={onGo} onSeen={onSignalsSeen} />
         </aside>
       </div>
       {cmd.node}

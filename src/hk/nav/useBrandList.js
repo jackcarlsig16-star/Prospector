@@ -8,7 +8,7 @@ export const PAGE = 100; // REVISABLE (spec N11)
 // pages on scroll. The latest request wins (a stale answer is dropped); the old rows stay up, dimmed, until the new
 // ones arrive, so the list never flashes empty. `enabled` false = no reads (another space is open).
 export default function useBrandList(businessId, state, owner, enabled) {
-  const [data, setData] = useState({ rows: null, total: 0, facets: null, next: null });
+  const [data, setData] = useState({ rows: null, total: 0, facets: null, next: null, estimate: null });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const seq = useRef(0);
@@ -21,7 +21,7 @@ export default function useBrandList(businessId, state, owner, enabled) {
     try {
       const r = await hkGet(businessId, '/brands', brandRequest(state, owner, { limit: PAGE, facets: true }));
       if (n !== seq.current) return;
-      setData({ rows: r.rows, total: r.total, facets: r.facets, next: r.next_page });
+      setData({ rows: r.rows, total: r.total, facets: r.facets, next: r.next_page, estimate: r.research_estimate || null });
     } catch (e) { if (n === seq.current) { setError(e.message); setData(d => ({ ...d, rows: d.rows || [] })); } }
     finally { if (n === seq.current) setLoading(false); }
   }, [businessId, key]); // eslint-disable-line react-hooks/exhaustive-deps

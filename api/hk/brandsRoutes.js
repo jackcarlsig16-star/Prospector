@@ -6,10 +6,9 @@ import { CLOSED, VIEWS as FILTER_VIEWS, SORTS, PAGE_DEFAULT, PAGE_MAX, parseFilt
 import { signalNow, signalWords, moveDomainSignals, recomputeHeat } from './signals.js';
 import { trackedThreads, liveThread } from './warm.js';
 import { sheetOwnerOf, sheetQuestion, hintName, primaryOf } from './rules.js';
-import { threadsOf } from './intelScore.js';
+import { threadsOf, reachOf, intelFor, intelSettings } from './intelScore.js';
 import { cachedIntel } from './inboxAnalyze.js';
 import { pitchCommand, researchEstimate, spentToday } from './brandActions.js';
-import { intelSettings } from './intelScore.js';
 import { scrubAddresses } from '../sales/scrubText.js';
 import { mailboxFor, accessTokenForGrant } from '../lib/googleGrants.js';
 import { gmailClient } from './gmailClient.js';
@@ -75,13 +74,23 @@ async function pagedBrands(req, res, { supabase, now }) {
     const dir = oneOf(q.dir || null, new Set(['asc', 'desc']), 'dir') || undefined;
     const page = intIn(q.page, 1, 10000, 'page', 1), limit = intIn(q.limit, 1, PAGE_MAX, 'limit', PAGE_DEFAULT);
     const search = q.q ? text(q.q, 120, 'q') : '';
-    const data = await loadFilterData(supabase, businessId, await liveBrands(supabase, businessId));
-    const out = applyFilters(data, { view, filters, q: search, sort, dir, page, limit, facets: q.facets === '1', meId: me(req), now: now() });
+    const at = now(), data = await loadFilterData(supabase, businessId, at), d = data.intelData;
+    // U6 Score = the caller's reach-out score (reachOf, the same as Send these 10); null when the brand can't be pitched
+    // by the caller (sponsor, someone else's, snoozed, blocked). Set on every brand so Score can sort the whole list.
+    const ctxR = { ...d, meId: me(req), now: at };
+    for (const b of data.brands) b.reach_score = reachOf(b, ctxR)?.score ?? null;
+    const out = applyFilters(data, { view, filters, q: search, sort, dir, page, limit, facets: q.facets === '1', meId: me(req), now: at });
     const primary = Object.fromEntries((await selectIn(() => supabase.from('hk_contacts').select('brand_id, name').eq('business_id', businessId).eq('is_primary', true).order('id'), 'brand_id', out.rows.map(b => b.id))).map(c => [c.brand_id, c.name]));
     // U2 per row from the same load: can_contact on the in-memory touches + replies (no live mailbox search here).
     const uid = me(req), firstName = await memberFirstNames(supabase, businessId);
     const primaryFor = b => { const ts = data.touches[b.id] || [], rs = data.replies[b.id] || []; return primaryOf({ brand: b, meId: uid, firstName, replies: rs, touches: ts, researched: data.intel.has(b.domain) || data.intel.has(b.domain_suggested), hasEmail: data.hasEmail.has(b.id), verdictOk: canContact({ brand: b, touches: ts, threadsByFounder: threadsOf(ts, rs), senderUserId: uid, kind: 'cold' }).ok }); };
-    res.json({ view, total: out.total, page, limit, next_page: out.next_page, rows: out.rows.map(b => brandRow(b, { primary_contact_name: primary[b.id] || null, primary: primaryFor(b) })), ...(out.facets ? { facets: out.facets } : {}) });
+    // U6 columns: Industry (research, J6), Market (research Chicago presence), Contact (role or "on file", no address).
+    const extraFor = b => {
+      const i = intelFor(b, d.intelByDomain)?.intel, cs = (d.contactsBy[b.id] || []).filter(c => !c.left_company);
+      const c = cs.find(x => x.is_primary && x.has_email) || cs.find(x => x.has_email) || null;
+      return { score: b.reach_score, research: i ? { industry: i.company?.industry || null, fit: i.fit?.sponsor_fit || null, chicago_presence: i.company?.chicago_presence || null } : null, contact: c ? { has_email: true, title: c.title || null } : { has_email: false, title: null }, command: pitchCommand(b) };
+    };
+    res.json({ view, total: out.total, page, limit, next_page: out.next_page, rows: out.rows.map(b => brandRow(b, { primary_contact_name: primary[b.id] || null, primary: primaryFor(b), ...extraFor(b) })), research_estimate: await researchEstimate(supabase, businessId), ...(out.facets ? { facets: out.facets } : {}) });
   } catch (e) { fail(res, e, 'brands/list-paged'); }
 }
 

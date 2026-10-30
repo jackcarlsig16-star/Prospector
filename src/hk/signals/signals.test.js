@@ -83,32 +83,31 @@ test('Signals panel: prospects with heat, unseen bold then marked seen, Sponsors
   routes[`POST /api/hk/${HK}/signals/s1/act`] = { acted: true };
   routes[`POST /api/hk/${HK}/signals/s1/dismiss`] = b => { open = b.undo ? [signal({ seen_at: 'x' })] : []; return { dismissed: !b.undo }; };
   const onOpenBrand = jest.fn(), onSeen = jest.fn();
-  render(<SignalsPanel businessId={HK} shell={shell('owner')} canEdit onOpenBrand={onOpenBrand} onGo={() => {}} onSeen={onSeen} />);
+  render(<SignalsPanel businessId={HK} canEdit onOpenBrand={onOpenBrand} onGo={() => {}} onSeen={onSeen} />);
   const panel = await screen.findByRole('region', { name: 'Signals' });
   const row = within(panel).getByText('Zz Bluefin Run replied: pricing question').closest('[data-hk-signal]');
-  expect(row).toHaveClass('hk-signals__row--unseen');
+  expect(row).toHaveClass('hk-rcard__sig--unseen');
   expect(within(row).getByText('Hot')).toBeInTheDocument();
   await waitFor(() => expect(bodies[`POST /api/hk/${HK}/signals/seen`]).toEqual([{ ids: ['s1'] }]));
   await waitFor(() => expect(onSeen).toHaveBeenCalled());
   expect(within(panel).getByText(/Sponsors \(1\) · 0 points, not counted in heat/)).toBeInTheDocument();
   expect(within(panel).queryByText(/Snooze/)).toBeNull();
-  fireEvent.click(within(row).getByRole('button', { name: 'Open brand' }));
+  fireEvent.click(within(row).getByRole('button', { name: 'Zz Bluefin Run replied: pricing question' }));
   expect(onOpenBrand).toHaveBeenCalledWith('b1');
-  fireEvent.click(within(row).getByRole('button', { name: 'Dismiss' }));
+  fireEvent.click(within(row).getByRole('button', { name: /^Dismiss/ }));
   expect(await within(panel).findByText('No prospect signals right now.')).toBeInTheDocument();
   fireEvent.click(within(panel).getByRole('button', { name: 'Undo' }));
   expect(await within(panel).findByText('Zz Bluefin Run replied: pricing question')).toBeInTheDocument();
   expect(bodies[`POST /api/hk/${HK}/signals/s1/dismiss`]).toEqual([{}, { undo: true }]);
 });
 
-test('Viewer: the panel reads, marks nothing seen, has no Dismiss and no list buttons', async () => {
+test('Viewer: the panel reads, marks nothing seen, has no Dismiss', async () => {
   routes[`GET /api/hk/${HK}/signals`] = { prospects: [signal()], sponsors: [], unseen_hot_warm: 1 };
-  render(<SignalsPanel businessId={HK} shell={shell('viewer')} canEdit={false} onOpenBrand={() => {}} onGo={() => {}} />);
+  render(<SignalsPanel businessId={HK} canEdit={false} onOpenBrand={() => {}} onGo={() => {}} />);
   const panel = await screen.findByRole('region', { name: 'Signals' });
-  expect(within(panel).getByRole('button', { name: 'Open brand' })).toBeInTheDocument();
-  expect(within(panel).queryByRole('button', { name: 'Dismiss' })).toBeNull();
-  expect(within(panel).queryByText('+ Target')).toBeNull();
-  fireEvent.click(within(panel).getByRole('button', { name: 'Open brand' }));
+  const words = within(panel).getByRole('button', { name: 'Zz Bluefin Run replied: pricing question' });
+  expect(within(panel).queryByRole('button', { name: /^Dismiss/ })).toBeNull();
+  fireEvent.click(words);
   expect(calls.filter(c => c.startsWith('POST'))).toEqual([]);
 });
 
@@ -120,10 +119,12 @@ test('Brands: a Heat column with the word, + Target on the row; Hot leads + Targ
   expect(await screen.findByText('Zz Cedar Coffee')).toBeInTheDocument();
   expect(screen.getByText('Hot')).toHaveClass('hk-heat--hot');
   expect(screen.getByRole('columnheader', { name: /Heat/ })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Add Zz Bluefin Run to Targets' })).toBeInTheDocument();
+  // grow-ui-refresh U6: Target is the row's quick command (shown on hover / focus), pressed when targeted.
+  const row = screen.getByText('Zz Bluefin Run').closest('tr');
+  expect(within(row).getByRole('button', { name: 'Toggle Target' })).toHaveAttribute('data-tip', 'Toggle Target (T)');
   unmount();
   render(<BrandsScreen businessId={HK} shell={shell('viewer')} compact={false} canEdit={false} onOpenBrand={() => {}} list={list} />);
   expect(await screen.findByText('Zz Cedar Coffee')).toBeInTheDocument();
   expect(screen.getByText('Hot')).toBeInTheDocument();
-  expect(screen.queryByText('+ Target')).toBeNull(); expect(screen.queryByText('+ Pipeline')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Toggle Target' })).toBeNull(); expect(screen.queryByRole('button', { name: 'Add to your Pipeline' })).toBeNull();
 });

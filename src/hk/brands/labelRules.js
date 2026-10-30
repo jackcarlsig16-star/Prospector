@@ -20,3 +20,7 @@ export const siteOf = b => (b.domain ? { domain: b.domain, state: 'saved' } : b.
 
 // The "Why now" line: the scorer's top reasons, then why research says it fits.
 export const whyNowOf = b => [...(b.why || []), b.research?.why].filter(Boolean).join(' · ') || 'Nothing stands out yet';
+
+// One Claude command for every ready brand: "hk pitch" with their domains (else names), as Pitch copies them one at a
+// time ("hk batch n" keeps its own meaning: find n new brands).
+export const batchCommand = rows => `hk pitch ${rows.map(c => c.command.replace(/^hk pitch /, '')).join(', ')}`;

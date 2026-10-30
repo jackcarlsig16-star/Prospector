@@ -232,7 +232,8 @@ test('collapse: the rail button and "[" make it a 56 px icon rail, remembered pe
   fireEvent.click(screen.getByRole('button', { name: /Collapse the rail/ }));
   expect(document.querySelector('[data-hk-rail="narrow"]')).not.toBeNull();
   expect(localStorage.getItem('prospector_hk_rail')).toBe('narrow');
-  fireEvent.click(await screen.findByRole('button', { name: 'Stage' }));
+  // The rail's bucket icon (the Stage column header is a sort button with the same name).
+  fireEvent.click(await within(document.querySelector('[data-hk-rail="narrow"]')).findByRole('button', { name: 'Stage' }));
   expect(screen.getByRole('dialog', { name: 'Stage' })).toBeInTheDocument();
   fireEvent.keyDown(document.body, { key: '[' });
   await waitFor(() => expect(document.querySelector('[data-hk-rail="wide"]')).not.toBeNull());
