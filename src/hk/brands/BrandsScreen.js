@@ -17,7 +17,7 @@ import { marketOf, contactOf, batchCommand } from './labelRules';
 // name, domain) · Target · Industry (Category until research has one, J6) · Market · Heat · Stage · Owner · Contact ·
 // Last touch · Score. Hovering or focusing a row shows its primary + quick commands in the actions cell; otherwise only
 // the chevron. Selected rows are tinted; the forest bulk bar: Pitch n ready · Research n ~$ · Claim · + Target ·
-// + Pipeline · Set status · Copy batch command. Columns / Export CSV arrive with the brands sheet.
+// + Pipeline · Set status · Copy batch command · More (Release, Mark do-not-contact with a reason). Columns / Export CSV arrive with the brands sheet.
 //   layout 'stage': grouped by status, groups in the server's status order (facets.stage), each with its count.
 const MANUAL = [['meeting', 'Meeting'], ['signed', 'Signed'], ['passed', 'Passed'], ['skipped', 'Skipped']];
 const fmt = iso => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '');
@@ -33,6 +33,8 @@ export default function BrandsScreen({ businessId, shell, compact, onOpenBrand, 
   const [error, setError] = useState('');
   const [note, setNote] = useState('');
   const [statusOpen, setStatusOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [dncReason, setDncReason] = useState(null);
   const [researchAsk, setResearchAsk] = useState(false);
   const [contactPick, setContactPick] = useState(false);
   const members = shell?.members || [];
@@ -59,6 +61,12 @@ export default function BrandsScreen({ businessId, shell, compact, onOpenBrand, 
   const done = async refused => { setSelected(new Set()); await list.reload(); setBusy(''); if (refused?.length) setError(`Not done: ${refused.join('; ')}`); };
   // Claim / + Pipeline / Pitch ask once about brands the sheet lists as someone else's (grow-sheet-owner-respect F3).
   const bulkClaim = async () => { setBusy('claim'); setError(''); await done(await bulkAsking(sheet.confirm, [...selected], (id, x) => hkPatch(businessId, `/brands/${id}`, { claim: true, ...x }))); };
+  // More ▾: Release, and Mark do-not-contact with a reason (one PATCH per brand; a refused brand is named, the rest go).
+  const bulkPatch = async (label, body) => {
+    setMoreOpen(false); setDncReason(null); setBusy(label); setError('');
+    const refused = []; for (const id of selected) { try { await hkPatch(businessId, `/brands/${id}`, body); } catch (e) { refused.push(e.message); } }
+    await done(refused);
+  };
   const bulkStatus = async status => {
     setStatusOpen(false); setBusy('status'); setError('');
     const refused = []; for (const id of selected) { try { await hkPatch(businessId, `/brands/${id}`, { status }); } catch (e) { refused.push(e.message); } }
@@ -142,7 +150,23 @@ export default function BrandsScreen({ businessId, shell, compact, onOpenBrand, 
             {statusOpen && <span className="hk-menu hk-menu--right" role="menu" onMouseLeave={() => setStatusOpen(false)}>{MANUAL.map(([v, l]) => <button key={v} type="button" role="menuitem" className="hk-btn hk-menu__item" onClick={() => bulkStatus(v)}>{l}</button>)}</span>}
           </span>
           <button type="button" className="hk-btn hk-fbulk__btn" disabled={!!busy || !ready.length} onClick={copyBatch} data-hk-bulk-copy>Copy batch command</button>
+          <span className="hk-anchor">
+            <button type="button" className="hk-btn hk-fbulk__btn" aria-haspopup="menu" aria-expanded={moreOpen} disabled={!!busy} onClick={() => setMoreOpen(o => !o)} data-hk-bulk-more>More ▾</button>
+            {moreOpen && (
+              <span className="hk-menu hk-menu--right" role="menu" onMouseLeave={() => setMoreOpen(false)}>
+                <button type="button" role="menuitem" className="hk-btn hk-menu__item" onClick={() => bulkPatch('release', { claim: false })}>Release</button>
+                <button type="button" role="menuitem" className="hk-btn hk-menu__item" onClick={() => { setMoreOpen(false); setDncReason(''); }}>Mark do-not-contact…</button>
+              </span>
+            )}
+          </span>
         </div>
+      )}
+      {canEdit && selected.size > 0 && dncReason !== null && (
+        <form className="hk-bulk" aria-label="Mark do-not-contact" onSubmit={e => { e.preventDefault(); if (dncReason.trim()) bulkPatch('dnc', { relationship: 'do_not_contact', dnc_reason: dncReason.trim() }); }} data-hk-bulk-dnc>
+          <label className="hk-logact__field hk-logact__note">Why should {plural(selected.size, 'brand')} never be contacted? <input className="ui-input" value={dncReason} maxLength={200} autoFocus onChange={e => setDncReason(e.target.value)} /></label>
+          <button type="submit" className="hk-btn hk-primary" disabled={!!busy || !dncReason.trim()}>Mark do-not-contact</button>
+          <button type="button" className="hk-btn hk-link" onClick={() => setDncReason(null)}>Cancel</button>
+        </form>
       )}
       {researchAsk && (
         <div className="hk-bulk" role="alertdialog" aria-label="Research these brands?" data-hk-bulk-research-confirm>

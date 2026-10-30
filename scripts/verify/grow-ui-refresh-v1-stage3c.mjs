@@ -151,7 +151,7 @@ try {
     const barBtns = await bar.locator('button').evaluateAll(es => es.map(e => e.textContent.trim()));
     const tinted = await page.locator(`${SPACE} [data-row]`).evaluateAll(es => es.slice(0, 3).every(e => /--ui-row-tint/.test(e.getAttribute('style') || '')));
     results.numbers.bulk = { buttons: barBtns, text: await bar.textContent() };
-    ok(`3 selected -> forest bulk bar: ${barBtns.join(' · ')}; rows tinted ${tinted}; no action run`, barBtns.length === 7 && /^Pitch \d+ ready$/.test(barBtns[0]) && /^Research \d+/.test(barBtns[1]) && barBtns.slice(2).join('|') === 'Claim|+ Target|+ Pipeline|Set status ▾|Copy batch command' && tinted);
+    ok(`3 selected -> forest bulk bar: ${barBtns.join(' · ')}; rows tinted ${tinted}; no action run`, barBtns.length === 8 && /^Pitch \d+ ready$/.test(barBtns[0]) && /^Research \d+/.test(barBtns[1]) && barBtns.slice(2).join('|') === 'Claim|+ Target|+ Pipeline|Set status ▾|Copy batch command|More ▾' && tinted);
     await shot(page, 'brands-1440');
     await sideBySide('brands-1440', 1440);
     await measure(page, 'brands@1440', SPACE);

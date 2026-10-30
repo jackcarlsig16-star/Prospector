@@ -49,7 +49,7 @@ test('U6 forest bulk bar on 3 selected rows: Pitch n ready (amber, ready rows on
   for (const n of ['Zz Alder Apparel', 'Zz Birch Bars', 'Zz Cedar Cola']) fireEvent.click(screen.getByRole('checkbox', { name: `Select ${n}` }));
   const bar = screen.getByRole('toolbar', { name: 'Bulk actions' });
   expect(bar).toHaveClass('hk-fbulk');
-  expect(within(bar).getAllByRole('button').map(b => b.textContent.trim())).toEqual(['Pitch 1 ready', 'Research 1 · ~$0.05', 'Claim', '+ Target', '+ Pipeline', 'Set status ▾', 'Copy batch command']);
+  expect(within(bar).getAllByRole('button').map(b => b.textContent.trim())).toEqual(['Pitch 1 ready', 'Research 1 · ~$0.05', 'Claim', '+ Target', '+ Pipeline', 'Set status ▾', 'Copy batch command', 'More ▾']);
   expect(within(bar).getByRole('button', { name: 'Pitch 1 ready' })).toHaveClass('hk-fbulk__btn--amber');
   expect(screen.getByText('Zz Alder Apparel').closest('tr').getAttribute('style')).toMatch(/--ui-row-tint/);
   fireEvent.click(within(bar).getByRole('button', { name: 'Copy batch command' }));
@@ -91,4 +91,25 @@ test('Viewer: rows and labels read; no checkboxes, primary, quick commands or bu
   expect(document.querySelectorAll('input[type="checkbox"], [data-hk-primary], .hk-qcs, [data-hk-bulk]').length).toBe(0);
   fireEvent.click(screen.getByRole('button', { name: 'Open Zz Alder Apparel' }));
   expect(onOpenBrand).toHaveBeenCalledWith('b1');
+});
+
+test('Bulk More ▾: Release releases each selected brand; Mark do-not-contact asks for a reason first, then sends it with each', async () => {
+  routes[`PATCH /api/hk/${HK}/brands/b1`] = { brand: { id: 'b1' } }; routes[`PATCH /api/hk/${HK}/brands/b2`] = { brand: { id: 'b2' } };
+  const list = listOf();
+  render(<BrandsScreen businessId={HK} shell={shell('owner')} compact={false} canEdit onOpenBrand={() => {}} list={list} />);
+  const pick = () => { fireEvent.click(screen.getByRole('checkbox', { name: 'Select Zz Alder Apparel' })); fireEvent.click(screen.getByRole('checkbox', { name: 'Select Zz Birch Bars' })); };
+  pick();
+  fireEvent.click(screen.getByRole('button', { name: 'More ▾' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Release' }));
+  await waitFor(() => expect([bodies[`PATCH /api/hk/${HK}/brands/b1`], bodies[`PATCH /api/hk/${HK}/brands/b2`]]).toEqual([[{ claim: false }], [{ claim: false }]]));
+  await waitFor(() => expect(list.reload).toHaveBeenCalled());
+  pick();
+  fireEvent.click(screen.getByRole('button', { name: 'More ▾' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Mark do-not-contact…' }));
+  const form = screen.getByRole('form', { name: 'Mark do-not-contact' });
+  expect(within(form).getByRole('button', { name: 'Mark do-not-contact' })).toBeDisabled();
+  fireEvent.change(within(form).getByRole('textbox'), { target: { value: 'Asked us to stop' } });
+  fireEvent.click(within(form).getByRole('button', { name: 'Mark do-not-contact' }));
+  await waitFor(() => expect(bodies[`PATCH /api/hk/${HK}/brands/b2`][1]).toEqual({ relationship: 'do_not_contact', dnc_reason: 'Asked us to stop' }));
+  expect(bodies[`PATCH /api/hk/${HK}/brands/b1`][1]).toEqual({ relationship: 'do_not_contact', dnc_reason: 'Asked us to stop' });
 });
