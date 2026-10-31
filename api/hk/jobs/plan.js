@@ -76,24 +76,43 @@ export function dueFollowups({ brands = [], touches = [], replies = [], contacts
 }
 
 // J1d - a cold email went out dm_after_days ago, no reply, no Instagram DM yet -> a DM text to copy. Same owner / prospect
-// / quiet rules; never for a brand with a drafted or sent DM already.
+// / quiet rules; never for a brand with a drafted or sent DM already. A fresh DM follows only a cold Grow sent itself (it
+// carries a Gmail id); a sheet-imported send joins the catch-up instead: at most CATCH_UP_PER_DAY per owner per Chicago
+// day (DM texts the catch-up already wrote today count), freshest send first, never for a brand whose sheet row showed a
+// DM status (an imported IG DM touch, or an unmapped "Status:" note naming a DM) - the founder may have DM'd it by hand.
+export const CATCH_UP_PER_DAY = 10;
+const fromGrow = t => !!(t.gmail_message_id || t.gmail_thread_id);
+const SHEET_DM = /^Status:.*\b(dm|dms|dm'd|instagram|ig)\b/im;
 export function dueDms({ brands = [], touches = [], replies = [], settings = {}, now = new Date() } = {}) {
-  const items = [], skipped = [];
+  const items = [], skipped = [], catchUp = [];
   if (isQuietDay(now, settings)) return { quiet: true, items, skipped };
-  const tBy = byBrand(touches), rBy = byBrand(replies), after = settings.dm_after_days ?? 9;
+  const tBy = byBrand(touches), rBy = byBrand(replies), after = settings.dm_after_days ?? 9, tz = settings.timezone || 'America/Chicago';
+  const skip = (b, reason) => skipped.push({ brand_id: b.id, brand_name: b.name, reason });
+  const today = dayIn(now, tz), writtenToday = {};
   for (const b of brands) {
     if (b.archived_at || b.relationship !== 'prospect' || !b.owner_user_id) continue;
     if (!['sent', 'bumped', 'final_sent'].includes(b.status)) continue;
     const mine = tBy.get(b.id) || [];
-    const cold = mine.find(t => t.channel === 'email' && t.kind === 'cold' && t.state === 'sent' && t.sent_at);
+    const colds = mine.filter(t => t.channel === 'email' && t.kind === 'cold' && t.state === 'sent' && t.sent_at);
+    const cold = colds.find(fromGrow) || colds[0];
     if (!cold) continue;
+    const imported = !fromGrow(cold);
+    if (imported) for (const t of mine) if (t.channel === 'ig_dm' && t.state !== 'imported' && t.drafted_at && dayIn(new Date(t.drafted_at), tz) === today) writtenToday[b.owner_user_id] = (writtenToday[b.owner_user_id] || 0) + 1;
     // An imported DM text (the sheet said one was ready) is hidden from the DM step, so it must not block a fresh one.
-    if (mine.some(t => t.channel === 'ig_dm' && t.state !== 'discarded' && t.state !== 'imported')) { skipped.push({ brand_id: b.id, brand_name: b.name, reason: 'dm_exists' }); continue; }
-    if (repliedSince(rBy.get(b.id) || [], cold.sent_at)) { skipped.push({ brand_id: b.id, brand_name: b.name, reason: 'replied' }); continue; }
+    if (mine.some(t => t.channel === 'ig_dm' && t.state !== 'discarded' && t.state !== 'imported')) { skip(b, 'dm_exists'); continue; }
+    if (imported && (mine.some(t => t.channel === 'ig_dm' && t.state === 'imported') || SHEET_DM.test(b.notes || ''))) { skip(b, 'sheet_dm'); continue; }
+    if (repliedSince(rBy.get(b.id) || [], cold.sent_at)) { skip(b, 'replied'); continue; }
     if (now.getTime() < Date.parse(cold.sent_at) + after * DAY) continue;
     const verdict = canContact({ brand: b, touches: mine, senderUserId: b.owner_user_id, kind: 'dm_text' });
-    if (!verdict.ok) { skipped.push({ brand_id: b.id, brand_name: b.name, reason: `blocked:${verdict.reason}` }); continue; }
-    items.push({ brand_id: b.id, brand_name: b.name, owner_user_id: b.owner_user_id, kind: 'dm_text', domain: b.domain ? normalizeDomain(b.domain) : null });
+    if (!verdict.ok) { skip(b, `blocked:${verdict.reason}`); continue; }
+    const item = { brand_id: b.id, brand_name: b.name, owner_user_id: b.owner_user_id, kind: 'dm_text', domain: b.domain ? normalizeDomain(b.domain) : null };
+    if (imported) catchUp.push({ item, b, at: String(cold.sent_at) }); else items.push(item);
+  }
+  catchUp.sort((x, y) => y.at.localeCompare(x.at) || String(x.b.id).localeCompare(String(y.b.id)));
+  for (const { item, b } of catchUp) {
+    if ((writtenToday[item.owner_user_id] || 0) >= CATCH_UP_PER_DAY) { skip(b, 'catch_up_cap'); continue; }
+    writtenToday[item.owner_user_id] = (writtenToday[item.owner_user_id] || 0) + 1;
+    items.push({ ...item, catch_up: true });
   }
   return { quiet: false, items, skipped };
 }
@@ -102,5 +121,5 @@ export function dueDms({ brands = [], touches = [], replies = [], settings = {},
 export const planCounts = (follow, dms) => {
   const reasons = {};
   for (const s of [...follow.skipped, ...dms.skipped]) reasons[s.reason] = (reasons[s.reason] || 0) + 1;
-  return { due_bump: follow.items.filter(i => i.kind === 'bump').length, due_final: follow.items.filter(i => i.kind === 'final').length, due_dm: dms.items.length, without_contact: follow.items.filter(i => !i.has_email).length, quiet: !!follow.quiet, skipped: reasons };
+  return { due_bump: follow.items.filter(i => i.kind === 'bump').length, due_final: follow.items.filter(i => i.kind === 'final').length, due_dm: dms.items.length, due_dm_catch_up: dms.items.filter(i => i.catch_up).length, without_contact: follow.items.filter(i => !i.has_email).length, quiet: !!follow.quiet, skipped: reasons };
 };

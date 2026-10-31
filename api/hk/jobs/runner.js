@@ -128,7 +128,7 @@ export async function dailyCheck({ businessId, trigger = 'manual', startedBy = n
       const { data: t, error } = await D.supabase.from('hk_touches').insert({ business_id: businessId, brand_id: item.brand_id, sender_user_id: item.owner_user_id, channel: 'ig_dm', kind: 'dm_text', state: 'drafted', body_text: body, drafted_at: now.toISOString(), lint_passed: true, created_by: 'system' }).select().single();
       if (error) throw new Error(error.message);
       newTouches.push(t);
-      await logEvent(D.supabase, { businessId, actorUserId: item.owner_user_id, actorKind: 'system', entityType: 'brand', entityId: item.brand_id, action: 'draft_created', detail: { touch_id: t.id, kind: 'dm_text', channel: 'ig_dm' } });
+      await logEvent(D.supabase, { businessId, actorUserId: item.owner_user_id, actorKind: 'system', entityType: 'brand', entityId: item.brand_id, action: 'draft_created', detail: { touch_id: t.id, kind: 'dm_text', channel: 'ig_dm', ...(item.catch_up ? { catch_up: true } : {}) } });
     }
     const all = [...touches, ...newTouches];
     const signals = await dailySignals(D.supabase, { businessId, brands, touches: all, replies, followups: follow.items, now }).catch(e => ({ error: errText(e) }));

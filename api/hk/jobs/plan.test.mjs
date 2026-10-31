@@ -3,7 +3,7 @@
 // contact fixtures and never in an item or a skip.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dueFollowups, dueDms, planCounts, isQuietDay, isPastDigestTime, isDigestDay, ranToday, statsStale, cronExprFor, chicagoDay, dayIn } from './plan.js';
+import { dueFollowups, dueDms, planCounts, CATCH_UP_PER_DAY, isQuietDay, isPastDigestTime, isDigestDay, ranToday, statsStale, cronExprFor, chicagoDay, dayIn } from './plan.js';
 
 const NOW = new Date('2026-10-27T15:00:00Z'); // Tuesday 10:00 Chicago
 const SAT = new Date('2026-10-31T15:00:00Z');
@@ -118,7 +118,7 @@ test('clock helpers: Chicago day, past digest time, digest days, ran today (an e
 test('planCounts: numbers only, reasons tallied', () => {
   const follow = run({ brands: [brand('a'), brand('b', { owner_user_id: null, owner_hint: 'pete' })], touches: [touch('a', 'cold', 'sent', 6), touch('b', 'cold', 'sent', 6)], contacts: [contact('a')] });
   const dms = dueDms({ brands: [brand('a')], touches: [touch('a', 'cold', 'sent', 10)], settings: SETTINGS, now: NOW });
-  assert.deepEqual(planCounts(follow, dms), { due_bump: 1, due_final: 0, due_dm: 1, without_contact: 0, quiet: false, skipped: { owner_missing: 1 } });
+  assert.deepEqual(planCounts(follow, dms), { due_bump: 1, due_final: 0, due_dm: 1, due_dm_catch_up: 0, without_contact: 0, quiet: false, skipped: { owner_missing: 1 } });
   assert.ok(!hasAt(planCounts(follow, dms)));
 });
 
@@ -126,4 +126,21 @@ test('hk-imported-drafts-noise: an imported Instagram DM text (hidden from the D
   const b = brand('a'), dm = state => ({ id: 'dm', brand_id: 'a', channel: 'ig_dm', kind: 'dm_text', state });
   assert.equal(dueDms({ brands: [b], touches: [touch('a', 'cold', 'sent', 10), dm('imported')], settings: SETTINGS, now: NOW }).items.length, 1);
   for (const st of ['drafted', 'sent']) assert.deepEqual(dueDms({ brands: [b], touches: [touch('a', 'cold', 'sent', 10), dm(st)], settings: SETTINGS, now: NOW }).skipped.map(s => s.reason), ['dm_exists'], st);
+});
+
+test('hk-imported-drafts-noise (104 DMs): a fresh DM follows only a cold Grow sent; sheet-imported sends join a catch-up of 10 per owner per day, freshest first, today\'s catch-up DMs counted, a brand whose sheet showed a DM skipped', () => {
+  const imp = (id, days) => touch(id, 'cold', 'sent', 10 + days, { gmail_thread_id: null, gmail_message_id: null, created_by: 'system' });
+  const ids = Array.from({ length: 13 }, (_, i) => `i${String(i).padStart(2, '0')}`);
+  const brands = [brand('g'), ...ids.map(id => brand(id)), brand('pea', { owner_user_id: 'u-pea' }), brand('sheetdm'), brand('note', { notes: 'Status: DM sent on insta 9/30' })];
+  const touches = [touch('g', 'cold', 'sent', 10), ...ids.map((id, i) => imp(id, i)), imp('pea', 0), imp('sheetdm', 0), { id: 'dm-x', brand_id: 'sheetdm', channel: 'ig_dm', kind: 'dm_text', state: 'imported' }, imp('note', 0)];
+  const out = dueDms({ brands, touches, settings: SETTINGS, now: NOW });
+  assert.equal(CATCH_UP_PER_DAY, 10);
+  assert.deepEqual(out.items.filter(i => !i.catch_up).map(i => i.brand_id), ['g'], 'Grow-sent cold: a fresh DM, outside the cap');
+  assert.deepEqual(out.items.filter(i => i.catch_up && i.owner_user_id === 'u-jack').map(i => i.brand_id), ids.slice(0, 10), 'freshest 10 of 13');
+  assert.deepEqual(out.items.filter(i => i.owner_user_id === 'u-pea').map(i => i.brand_id), ['pea'], 'the cap is per owner');
+  assert.deepEqual(out.skipped.map(s => [s.brand_id, s.reason]).sort(), [['i10', 'catch_up_cap'], ['i11', 'catch_up_cap'], ['i12', 'catch_up_cap'], ['note', 'sheet_dm'], ['sheetdm', 'sheet_dm']]);
+  const wrote = ids.slice(0, 4).map(id => ({ id: `dm-${id}`, brand_id: id, channel: 'ig_dm', kind: 'dm_text', state: 'drafted', drafted_at: NOW.toISOString() }));
+  const again = dueDms({ brands, touches: [...touches, ...wrote], settings: SETTINGS, now: NOW });
+  assert.deepEqual(again.items.filter(i => i.catch_up && i.owner_user_id === 'u-jack').map(i => i.brand_id), ids.slice(4, 10), "a second run the same day tops up to 10, no more");
+  assert.equal(planCounts({ items: [], skipped: [] }, out).due_dm_catch_up, 11);
 });
