@@ -11,7 +11,7 @@ process.env.GOOGLE_TOKEN_KEY ||= 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
 const { fakeSupabase } = await import('../../sales/testing/fakeSupabase.mjs');
 const { NeedsGoogle } = await import('../../lib/googleGrants.js');
 const { gmailSyncAll, dailyCheck, pageloadJob, todayPayload, testDigest, retryDraft, skipTouch, markDmSent, DRAFTS_PER_RUN } = await import('./runner.js');
-const { registerHkCron, SYNC_EXPR } = await import('./cron.js');
+const { hkRegistrations, runTick, SYNC_EXPR } = await import('./cron.js');
 const { SLOT_TAKEN, cronSlot } = await import('./plan.js');
 
 const HK = 'biz-hk', JACK = 'u-jack', PETE = 'u-pete';
@@ -210,16 +210,13 @@ test('Today\'s read: a fresh digest from the current rows plus today\'s no-draft
   assert.equal(td.digest.test, true); assert.equal(td.slack, 'skipped');
 });
 
-test('cron registration: three schedules per hk_sales workspace (sync, daily check, research sweep), timezone + noOverlap, the digest and sweep expressions from settings; a tick runs the job with trigger cron', async () => {
-  const scheduled = [];
-  const cron = { schedule: (expr, fn, opts) => scheduled.push({ expr, fn, opts }) };
+test('cron registration: three jobs per hk_sales workspace (sync, daily check, research sweep), the workspace timezone, the digest and sweep patterns from settings; a tick runs the job with trigger cron', async () => {
   const ran = [];
   const jobs = { gmailSyncAll: async a => { ran.push(['sync', a]); return { run: { status: 'ok' }, counts: {} }; }, dailyCheck: async a => { ran.push(['daily', a]); return { skipped: 'already ran today' }; }, researchSweep: async a => { ran.push(['sweep', a]); return { skipped: 'off' }; } };
-  const out = registerHkCron(cron, [{ businessId: HK, settings: { digest_time: '06:45', digest_days: 'weekdays', timezone: 'America/Chicago' } }], { log: () => {}, jobs });
-  assert.deepEqual(out, [{ businessId: HK, job: 'gmail-sync-all', expr: SYNC_EXPR, timezone: 'America/Chicago' }, { businessId: HK, job: 'daily-check', expr: '45 6 * * 1-5', timezone: 'America/Chicago' }, { businessId: HK, job: 'research-sweep', expr: '30 6 * * *', timezone: 'America/Chicago' }]);
-  assert.equal(registerHkCron({ schedule: () => {} }, [{ businessId: HK, settings: { intel: { sweep: { time: '05:15' } } } }], { log: () => {}, jobs })[2].expr, '15 5 * * *');
-  assert.ok(scheduled.every(s => s.opts.noOverlap === true && s.opts.timezone === 'America/Chicago'));
-  await scheduled[0].fn(); await scheduled[1].fn(); await scheduled[2].fn();
+  const regs = hkRegistrations([{ businessId: HK, settings: { digest_time: '06:45', digest_days: 'weekdays', timezone: 'America/Chicago' } }], { jobs });
+  assert.deepEqual(regs.map(({ fn, ...r }) => r), [{ businessId: HK, job: 'gmail-sync-all', expr: SYNC_EXPR, timezone: 'America/Chicago' }, { businessId: HK, job: 'daily-check', expr: '45 6 * * 1-5', timezone: 'America/Chicago' }, { businessId: HK, job: 'research-sweep', expr: '30 6 * * *', timezone: 'America/Chicago' }]);
+  assert.equal(hkRegistrations([{ businessId: HK, settings: { intel: { sweep: { time: '05:15' } } } }], { jobs })[2].expr, '15 5 * * *');
+  for (const r of regs) await runTick(r, () => {});
   assert.deepEqual(ran, [['sync', { businessId: HK, trigger: 'cron' }], ['daily', { businessId: HK, trigger: 'cron' }], ['sweep', { businessId: HK, trigger: 'cron' }]]);
   assert.equal(DRAFTS_PER_RUN, 25);
 });
@@ -329,8 +326,8 @@ test('hk-cron-single-run C2: two processes firing the same daily-check tick -> o
 });
 
 test('hk-cron-single-run C2: a tick that loses its slot logs "skipped (another process has this slot)"', async () => {
-  const scheduled = [], lines = [];
-  registerHkCron({ schedule: (expr, fn) => scheduled.push(fn) }, [{ businessId: HK, settings: {} }], { log: (...a) => lines.push(a.join(' ')), jobs: { gmailSyncAll: async () => ({ skipped: SLOT_TAKEN }), dailyCheck: async () => ({}), researchSweep: async () => ({}) } });
-  await scheduled[0]();
+  const lines = [];
+  const regs = hkRegistrations([{ businessId: HK, settings: {} }], { jobs: { gmailSyncAll: async () => ({ skipped: SLOT_TAKEN }), dailyCheck: async () => ({}), researchSweep: async () => ({}) } });
+  await runTick(regs[0], (...a) => lines.push(a.join(' ')));
   assert.equal(lines.at(-1), `[CRON] HumanKind gmail-sync-all ${HK}: skipped (another process has this slot)`);
 });
