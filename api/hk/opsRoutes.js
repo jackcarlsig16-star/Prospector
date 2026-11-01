@@ -101,13 +101,13 @@ export async function decideDuplicateRoute(req, res, { supabase = getSupabase(),
     res.json({ ok: true, verdict, winner: brandSummary(w), archived: loser.id, moved });
   } catch (e) { fail(res, e, 'review/decide'); }
 }
-// Review > Data warnings, pure (the daily check counts them for the digest).
+// Review > Data warnings, pure. low = shown in its own list and left out of the digest count (Jack, Oct 31).
 export function dataWarnings(brands, now = new Date()) {
   const t = now.getTime(), warnings = [];
   for (const b of brands) {
     if (b.last_touch_at && new Date(b.last_touch_at).getTime() > t) warnings.push({ brand_id: b.id, name: b.name, kind: 'future_last_touch', detail: b.last_touch_at });
     if (b.next_due_at && new Date(b.next_due_at).getTime() > t + 365 * 86400e3) warnings.push({ brand_id: b.id, name: b.name, kind: 'far_next_due', detail: b.next_due_at });
-    if (!b.domain && b.status !== 'candidate') warnings.push({ brand_id: b.id, name: b.name, kind: 'missing_domain', detail: b.status });
+    if (!b.domain && b.status !== 'candidate') warnings.push({ brand_id: b.id, name: b.name, kind: 'missing_domain', detail: b.status, low: true, sponsor: SPONSOR_RELATIONSHIPS.has(b.relationship) || b.status === 'sponsor' });
     if (b.owner_user_id && b.owner_unclear) warnings.push({ brand_id: b.id, name: b.name, kind: 'owner_conflict', detail: b.owner_user_id });
   }
   return warnings;

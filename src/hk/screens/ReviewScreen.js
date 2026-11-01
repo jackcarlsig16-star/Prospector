@@ -24,6 +24,21 @@ function BrandCard({ b, member }) {
   );
 }
 
+function WarningRows({ list, tone, onOpenBrand }) {
+  return (
+    <div className="hk-rows" style={{ marginTop: 14 }}>
+      {list.map((w, i) => (
+        <div key={`${w.brand_id}-${w.kind}-${i}`} className="hk-row" data-hk-warning={w.kind}>
+          <button type="button" className="hk-btn hk-table__title" onClick={() => onOpenBrand(w.brand_id)}>{w.name}</button>
+          <Chip tone={tone}>{WARN[w.kind] || w.kind}</Chip>
+          {w.sponsor && <Chip tone="green">Sponsor</Chip>}
+          <span className="hk-row__end hk-meta">{String(w.detail || '').slice(0, 40)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ReviewScreen({ businessId, shell, canEdit, compact, onOpenBrand, onGo, intent, onIntentDone }) {
   const [tab, setTab] = useState(() => (intent?.kind === 'import' ? 'imports' : 'duplicates'));
   const [importCount, setImportCount] = useState(0);
@@ -43,7 +58,9 @@ export default function ReviewScreen({ businessId, shell, canEdit, compact, onOp
   }, [businessId]);
   useEffect(() => { load(); }, [load]);
   const decide = async body => { setError(''); try { await hkPost(businessId, '/review/duplicates/decide', body); setConfirm(null); await load(); } catch (e) { setError(e.message); } };
-  const counts = { duplicates: pairs?.length || 0, imports: importCount, warnings: warnings?.length || 0 };
+  const action = (warnings || []).filter(w => !w.low);
+  const low = (warnings || []).filter(w => w.low).sort((a, b) => Number(!!b.sponsor) - Number(!!a.sponsor) || a.name.localeCompare(b.name));
+  const counts = { duplicates: pairs?.length || 0, imports: importCount, warnings: action.length };
   return (
     <div data-hk-review>
       <Tabs label="Review sections" items={TABS.map(([id, label]) => ({ id, label: counts[id] ? `${label} (${counts[id]})` : label }))} value={tab} onChange={setTab} />
@@ -75,15 +92,13 @@ export default function ReviewScreen({ businessId, shell, canEdit, compact, onOp
       {tab === 'warnings' && (warnings === null ? <p className="hk-meta">Checking…</p> : !warnings.length ? (
         <div className="hk-empty" data-hk-empty><Sprout size={40} /><p className="hk-empty__title">No data warnings.</p><p className="hk-empty__line">Future dates, missing domains and owner conflicts show here.</p></div>
       ) : (
-        <div className="hk-rows" style={{ marginTop: 14 }}>
-          {warnings.map((w, i) => (
-            <div key={`${w.brand_id}-${w.kind}-${i}`} className="hk-row" data-hk-warning={w.kind}>
-              <button type="button" className="hk-btn hk-table__title" onClick={() => onOpenBrand(w.brand_id)}>{w.name}</button>
-              <Chip tone="mustard">{WARN[w.kind] || w.kind}</Chip>
-              <span className="hk-row__end hk-meta">{String(w.detail || '').slice(0, 40)}</span>
-            </div>
-          ))}
-        </div>
+        <>
+          {action.length ? <WarningRows list={action} tone="mustard" onOpenBrand={onOpenBrand} /> : <p className="hk-meta" style={{ marginTop: 14 }}>Nothing needs fixing.</p>}
+          {low.length > 0 && <div data-hk-warnings-low style={{ marginTop: 24 }}>
+            <p className="hk-meta">Missing domain · low priority · {low.length} (sponsors first)</p>
+            <WarningRows list={low} tone="grey" onOpenBrand={onOpenBrand} />
+          </div>}
+        </>
       ))}
     </div>
   );

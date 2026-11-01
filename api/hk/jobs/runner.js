@@ -132,7 +132,7 @@ export async function dailyCheck({ businessId, trigger = 'manual', startedBy = n
     }
     const all = [...touches, ...newTouches];
     const signals = await dailySignals(D.supabase, { businessId, brands, touches: all, replies, followups: follow.items, now }).catch(e => ({ error: errText(e) }));
-    const digest = buildDigest({ replies, touches: all, brands, members: members(fs), noDraft, dmReady: all.filter(t => t.channel === 'ig_dm' && t.state === 'drafted').map(t => ({ brand_id: t.brand_id, touch_id: t.id })), warningsCount: dataWarnings(brands, now).length, settings, events: await recentEvents(D, businessId, now), now });
+    const digest = buildDigest({ replies, touches: all, brands, members: members(fs), noDraft, dmReady: all.filter(t => t.channel === 'ig_dm' && t.state === 'drafted').map(t => ({ brand_id: t.brand_id, touch_id: t.id })), warningsCount: dataWarnings(brands, now).filter(w => !w.low).length, settings, events: await recentEvents(D, businessId, now), now });
     const slack = await postSlack(D, digest);
     const counts = { ...planCounts(follow, dms), drafted: made, capped, dm_texts: dms.items.length, no_draft: noDraft.length, errors, slack, digest: digest.counts, signals };
     const done = await finishRun(D, run, { status: errors ? 'partial' : 'ok', counts, digest });
@@ -197,7 +197,7 @@ export async function todayPayload({ businessId, owner = null, meId = null, d = 
   const last = runs?.[0] || null;
   const today = dayIn(now, settings.timezone);
   const noDraft = last && last.chicago_day === today && last.status !== 'error' ? (last.digest?.sections?.no_draft || []).map(x => ({ brand_id: x.brand_id, kind: x.kind, reason: x.reason, detail: x.detail })) : [];
-  const digest = buildDigest({ replies, touches, brands, members: members(fs), noDraft, dmReady: touches.filter(t => t.channel === 'ig_dm' && t.state === 'drafted').map(t => ({ brand_id: t.brand_id, touch_id: t.id })), warningsCount: dataWarnings(brands, now).length, settings, events: await recentEvents(D, businessId, now), now });
+  const digest = buildDigest({ replies, touches, brands, members: members(fs), noDraft, dmReady: touches.filter(t => t.channel === 'ig_dm' && t.state === 'drafted').map(t => ({ brand_id: t.brand_id, touch_id: t.id })), warningsCount: dataWarnings(brands, now).filter(w => !w.low).length, settings, events: await recentEvents(D, businessId, now), now });
   // grow-nav-filters N8: with an owner (me | <id> | all) the same sections counted for that person, for the badge -
   // replies and follow-ups by the brand's owner, drafts and DM text by the sender (whose Gmail / account holds them).
   const ownerOf = Object.fromEntries(brands.map(b => [b.id, b.owner_user_id]));
@@ -212,7 +212,7 @@ export async function testDigest({ businessId, d = {} }) {
   const D = jobDeps(d), now = D.now(), settings = await settingsOf(D.supabase, businessId);
   const fs = await founders(D, businessId);
   const { brands, touches, replies } = await workspaceRows(D, businessId);
-  const digest = buildDigest({ replies, touches, brands, members: members(fs), dmReady: touches.filter(t => t.channel === 'ig_dm' && t.state === 'drafted').map(t => ({ brand_id: t.brand_id, touch_id: t.id })), warningsCount: dataWarnings(brands, now).length, settings, events: await recentEvents(D, businessId, now), now, test: true });
+  const digest = buildDigest({ replies, touches, brands, members: members(fs), dmReady: touches.filter(t => t.channel === 'ig_dm' && t.state === 'drafted').map(t => ({ brand_id: t.brand_id, touch_id: t.id })), warningsCount: dataWarnings(brands, now).filter(w => !w.low).length, settings, events: await recentEvents(D, businessId, now), now, test: true });
   return { digest, slack: await postSlack(D, digest), slack_configured: !!D.slackUrl };
 }
 

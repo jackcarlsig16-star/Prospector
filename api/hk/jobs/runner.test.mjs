@@ -187,7 +187,9 @@ test('Today\'s read: a fresh digest from the current rows plus today\'s no-draft
   fresh(due());
   mail[PETE].state = 'needs_reconnect'; mail[PETE].grant.error = 'needs_reconnect';
   await dailyCheck({ businessId: HK, d: deps() });
+  sb.db.hk_brands.push({ id: 'b-nodomain', business_id: HK, name: 'Zz No Domain', status: 'claimed', domain: null }, { id: 'b-future', business_id: HK, name: 'Zz Future', status: 'sent', domain: 'zzfuture.com', last_touch_at: '2027-08-01T00:00:00Z' });
   const t = await todayPayload({ businessId: HK, d: deps() });
+  assert.equal(t.digest.data_warnings, 1, 'a future date counts, a missing domain does not');
   assert.equal(t.run.job, 'daily-check'); assert.equal(t.ran_today, true);
   assert.equal(t.digest.sections.drafts.length, 1, 'Jack\'s bump is waiting');
   assert.deepEqual(t.digest.sections.no_draft.map(x => [x.brand_name, x.reason]), [['Zz Harbor Yoga', 'reconnect']]);

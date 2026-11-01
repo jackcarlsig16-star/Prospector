@@ -3,7 +3,7 @@
 // in-memory Supabase (api/hk/testing.mjs fixtures).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sponsorsRoute, addPeriodRoute, deletePeriodRoute, duplicatesRoute, decideDuplicateRoute, warningsRoute, activityRoute, getSettingsRoute, patchSettingsRoute, confirmStatsRoute, getPrefsRoute, patchPrefsRoute, duplicatePairs } from './opsRoutes.js';
+import { sponsorsRoute, addPeriodRoute, deletePeriodRoute, duplicatesRoute, decideDuplicateRoute, warningsRoute, activityRoute, getSettingsRoute, patchSettingsRoute, confirmStatsRoute, getPrefsRoute, patchPrefsRoute, duplicatePairs, dataWarnings } from './opsRoutes.js';
 import { patchBrandRoute } from './brandsRoutes.js';
 import { shellPayload, memberPrefs } from './shell.js';
 import { seed, reqOf, call, hasAt, HK, JACK, PETE, ID, NOW } from './testing.mjs';
@@ -65,6 +65,9 @@ test('review warnings: future last touch, far next due, missing domain past cand
   const w = (await call(warningsRoute, reqOf(), deps(sb))).body.warnings;
   assert.deepEqual(w.filter(x => x.brand_id === ID.run).map(x => x.kind), ['future_last_touch', 'far_next_due', 'missing_domain', 'owner_conflict']);
   assert.deepEqual(w.filter(x => x.brand_id === ID.cafe).map(x => x.kind), [], 'a candidate without a domain is not a warning');
+  assert.deepEqual(w.filter(x => x.brand_id === ID.run).map(x => !!x.low), [false, false, true, false], 'only missing domain is low priority');
+  assert.equal(dataWarnings([{ id: 's', name: 'S', status: 'claimed', relationship: 'sponsor', domain: null }])[0].sponsor, true);
+  assert.equal(dataWarnings([{ id: 'p', name: 'P', status: 'claimed', relationship: 'prospect', domain: null }])[0].sponsor, false);
 });
 
 test('activity: newest first, filters by action prefix / brand / actor / dates, brand names attached, nothing with "@"', async () => {
