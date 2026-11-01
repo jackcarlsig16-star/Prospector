@@ -56,7 +56,8 @@ if (!APPLY) process.exit(0);
 const snap = path.join(ROOT, 'audits', `hk-thread-cleanup-apply-${now.toISOString().replace(/[:.]/g, '-')}.json`);
 fs.writeFileSync(snap, JSON.stringify({ at: now.toISOString(), rows }, null, 2));
 console.log('snapshot:', path.relative(ROOT, snap));
-for (const p of plan.filter(x => x.patch)) must(await svc.from('hk_brand_threads').update({ ...p.patch, updated_at: new Date().toISOString() }).eq('id', p.r.id).select('id'));
+// bulk rows first: without migration v1c the first 'ignored' write fails on the CHECK before any other row changes
+for (const p of plan.filter(x => x.patch).sort((a, b) => (b.why === 'bulk') - (a.why === 'bulk'))) must(await svc.from('hk_brand_threads').update({ ...p.patch, updated_at: new Date().toISOString() }).eq('id', p.r.id).select('id'));
 for (const [brandId, n] of Object.entries(ignoredBy)) await logEvent(svc, { businessId: B, actorKind: 'system', entityType: 'brand', entityId: brandId, action: 'thread.ignored_bulk', detail: { threads: n, reason: 'bulk mail (newsletter / promotion) never links - grow-mailbox-link ruling, Nov 1' } });
 console.log(`applied: ${plan.filter(x => x.patch).length} rows updated, ${Object.values(ignoredBy).reduce((a, b) => a + b, 0)} ignored, ${Object.keys(ignoredBy).length} Activity rows`);
 process.exit(0);
