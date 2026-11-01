@@ -15,6 +15,8 @@ import { dueFollowups, dueDms, planCounts, dayIn, isPastDigestTime, isDigestDay,
 import { bumpText, finalText, dmText, followupSubject } from '../followupText.js';
 import { buildDigest, renderSlack } from './digest.js';
 import { scrubAddresses } from '../../sales/scrubText.js';
+import { linkingStarted } from '../threadLinks.js';
+import { backfillMailbox } from '../threadBackfill.js';
 
 export const DRAFTS_PER_RUN = 25; // REVISABLE
 export const SLACK_ENV = 'HK_SLACK_WEBHOOK_URL';
@@ -60,6 +62,7 @@ export async function gmailSyncAll({ businessId, trigger = 'manual', startedBy =
   const { run, skipped } = await startRun(D, { businessId, job: 'gmail-sync-all', trigger, day: dayIn(now, settings.timezone), tz: settings.timezone, startedBy });
   if (skipped) return { skipped };
   const counts = { mailboxes: 0, synced: 0, reconnect: 0, running: 0, errors: 0, sent_detected: 0, replies: 0 };
+  const backfillLater = [];
   try {
     for (const f of await founders(D, businessId)) {
       if (!f.m) continue;
@@ -67,11 +70,14 @@ export async function gmailSyncAll({ businessId, trigger = 'manual', startedBy =
       if (f.m.state === RECONNECT) { counts.reconnect++; continue; }
       try {
         const out = await runMailboxSync({ D, businessId, userId: f.user_id, m: f.m, trigger: syncTrigger(trigger) });
-        if (out.status === 'ok') { counts.synced++; counts.sent_detected += out.run.counts?.sent_detected || 0; counts.replies += out.run.counts?.replies || 0; }
+        if (out.status === 'ok') { counts.synced++; counts.sent_detected += out.run.counts?.sent_detected || 0; counts.replies += out.run.counts?.replies || 0; if (trigger === 'cron') backfillLater.push(f.user_id); }
         else if (out.status === 'running') counts.running++;
         else counts.reconnect++;
       } catch (e) { counts.errors++; }
     }
+    // grow-mailbox-link-v1 ruling 4: once the workspace has started linking (its first backfill, Stage 3), a member whose
+    // mailbox just synced and has no finished backfill gets one, in the background (it skips itself when done / running).
+    if (backfillLater.length && await linkingStarted(D.supabase, businessId)) for (const memberId of backfillLater) D.defer(() => backfillMailbox({ businessId, memberId, trigger: 'cron', d }).catch(() => {}), 0);
     return { run: runRow(await finishRun(D, run, { status: counts.errors ? 'partial' : 'ok', counts })), counts };
   } catch (e) { await finishRun(D, run, { status: 'error', counts, error: errText(e) }); throw e; }
 }

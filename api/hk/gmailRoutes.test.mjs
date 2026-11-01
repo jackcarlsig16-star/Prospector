@@ -176,7 +176,7 @@ test('G5 sync (incremental): a sent draft becomes sent with next due, a reply is
   sb.db.hk_brands.find(b => b.id === B.yoga).status = 'drafted';
   const r = await call(R.syncRoute, reqOf({ query: { trigger: 'manual' } }));
   assert.equal(r.code, 200, JSON.stringify(r.body));
-  assert.deepEqual(r.body.run.counts, { history_events: 3, sent_detected: 1, replies: 1, new_threads: 0, skipped: 1, labels_called: 1, messages_scanned: 3, full_scan: false });
+  assert.deepEqual(r.body.run.counts, { history_events: 3, sent_detected: 1, replies: 1, new_threads: 0, skipped: 1, labels_called: 1, messages_scanned: 3, full_scan: false, threads_linked: 0, threads_updated: 0, threads_review: 0 });
   const t = sb.db.hk_touches[0]; assert.deepEqual([t.state, t.gmail_message_id, t.sent_at], ['sent', 'sent-1', '2026-10-26T14:00:00.000Z']);
   const b = sb.db.hk_brands.find(x => x.id === B.yoga); assert.deepEqual([b.status, b.next_due_at, b.last_touch_at], ['replied', null, '2026-10-26T14:00:00.000Z']);
   const rep = sb.db.hk_replies[0];

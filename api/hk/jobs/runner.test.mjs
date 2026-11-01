@@ -147,6 +147,21 @@ test('Slack: posted with one JSON POST of Block Kit when the webhook is set; a n
   assert.equal(bad.counts.slack, 'error'); assert.equal(bad.run.status, 'ok', 'a Slack miss never fails the run');
 });
 
+test('grow-mailbox-link-v1 ruling 4: after a CRON sync, a synced member gets the backfill in the background - only once the workspace started linking (its first backfill run exists); a manual / page-load sync never starts one', async () => {
+  fresh(due());
+  const deferred = [];
+  await gmailSyncAll({ businessId: HK, trigger: 'cron', d: deps({ defer: fn => deferred.push(fn) }) });
+  assert.equal(deferred.length, 0, 'not started yet');
+  sb.db.hk_job_runs.push({ id: 'bf1', business_id: HK, job: 'thread-backfill', trigger: 'manual', status: 'ok', chicago_day: '2026-10-26', started_at: daysAgo(1), counts: { member: JACK, done: true } });
+  await gmailSyncAll({ businessId: HK, trigger: 'manual', d: deps({ defer: fn => deferred.push(fn) }) });
+  assert.equal(deferred.length, 0, 'manual sync');
+  now = new Date(NOW.getTime() + 3600e3);
+  await gmailSyncAll({ businessId: HK, trigger: 'cron', d: deps({ defer: fn => deferred.push(fn) }) });
+  assert.equal(deferred.length, 2, 'one per synced mailbox');
+  await deferred[0]();
+  assert.ok(!sb.db.hk_job_runs.some(r => r.job === 'thread-backfill' && r.id !== 'bf1' && r.counts?.member === JACK), 'Jack is done - no new run');
+});
+
 test('gmail-sync-all: one sync per tethered founder in state ok, a flagged one counted as reconnect; per-mailbox rows read cron for a cron tick (Stage 4 migration), the job row too', async () => {
   fresh(due());
   mail[PETE].state = 'needs_reconnect'; mail[PETE].grant.error = 'needs_reconnect';
@@ -212,12 +227,12 @@ test('Today\'s read: a fresh digest from the current rows plus today\'s no-draft
 
 test('cron registration: three jobs per hk_sales workspace (sync, daily check, research sweep), the workspace timezone, the digest and sweep patterns from settings; a tick runs the job with trigger cron', async () => {
   const ran = [];
-  const jobs = { gmailSyncAll: async a => { ran.push(['sync', a]); return { run: { status: 'ok' }, counts: {} }; }, dailyCheck: async a => { ran.push(['daily', a]); return { skipped: 'already ran today' }; }, researchSweep: async a => { ran.push(['sweep', a]); return { skipped: 'off' }; } };
+  const jobs = { gmailSyncAll: async a => { ran.push(['sync', a]); return { run: { status: 'ok' }, counts: {} }; }, dailyCheck: async a => { ran.push(['daily', a]); return { skipped: 'already ran today' }; }, researchSweep: async a => { ran.push(['sweep', a]); return { skipped: 'off' }; }, readThreads: async a => { ran.push(['read', a]); return { skipped: 'not started' }; } };
   const regs = hkRegistrations([{ businessId: HK, settings: { digest_time: '06:45', digest_days: 'weekdays', timezone: 'America/Chicago' } }], { jobs });
-  assert.deepEqual(regs.map(({ fn, ...r }) => r), [{ businessId: HK, job: 'gmail-sync-all', expr: SYNC_EXPR, timezone: 'America/Chicago' }, { businessId: HK, job: 'daily-check', expr: '45 6 * * 1-5', timezone: 'America/Chicago' }, { businessId: HK, job: 'research-sweep', expr: '30 6 * * *', timezone: 'America/Chicago' }]);
+  assert.deepEqual(regs.map(({ fn, ...r }) => r), [{ businessId: HK, job: 'gmail-sync-all', expr: SYNC_EXPR, timezone: 'America/Chicago' }, { businessId: HK, job: 'daily-check', expr: '45 6 * * 1-5', timezone: 'America/Chicago' }, { businessId: HK, job: 'research-sweep', expr: '30 6 * * *', timezone: 'America/Chicago' }, { businessId: HK, job: 'thread-read', expr: '30 7-22 * * *', timezone: 'America/Chicago' }]);
   assert.equal(hkRegistrations([{ businessId: HK, settings: { intel: { sweep: { time: '05:15' } } } }], { jobs })[2].expr, '15 5 * * *');
   for (const r of regs) await runTick(r, () => {});
-  assert.deepEqual(ran, [['sync', { businessId: HK, trigger: 'cron' }], ['daily', { businessId: HK, trigger: 'cron' }], ['sweep', { businessId: HK, trigger: 'cron' }]]);
+  assert.deepEqual(ran, [['sync', { businessId: HK, trigger: 'cron' }], ['daily', { businessId: HK, trigger: 'cron' }], ['sweep', { businessId: HK, trigger: 'cron' }], ['read', { businessId: HK, trigger: 'cron' }]]);
   assert.equal(DRAFTS_PER_RUN, 25);
 });
 

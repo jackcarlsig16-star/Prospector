@@ -13,7 +13,7 @@ async function walk(fromIso, toIso, { stallAt = null } = {}) {
   let t = Date.parse(fromIso), pending = null;
   const fired = {};
   const rec = job => async () => { (fired[job] ||= []).push(wallKey(new Date(t))); return { skipped: 'test' }; };
-  const regs = hkRegistrations([{ businessId: 'hk', settings: { digest_time: '07:30', digest_days: 'weekdays', timezone: TZ } }], { jobs: { gmailSyncAll: rec('sync'), dailyCheck: rec('daily'), researchSweep: rec('sweep') } });
+  const regs = hkRegistrations([{ businessId: 'hk', settings: { digest_time: '07:30', digest_days: 'weekdays', timezone: TZ } }], { jobs: { gmailSyncAll: rec('sync'), dailyCheck: rec('daily'), researchSweep: rec('sweep'), readThreads: rec('read') } });
   const tick = startMinuteTick(regs, { log: () => {}, now: () => new Date(t), setTimer: (fn, ms) => { pending = { fn, at: t + ms }; return 1; }, clearTimer: () => {} });
   while (pending && pending.at < Date.parse(toIso)) {
     const p = pending; pending = null;
@@ -29,6 +29,7 @@ const expected = (dayList, weekdays) => ({
   sync: dayList.flatMap(d => Array.from({ length: 16 }, (_, i) => `${d} ${String(7 + i).padStart(2, '0')}:00`)),
   daily: dayList.filter(d => weekdays.includes(d)).map(d => `${d} 07:30`),
   sweep: dayList.map(d => `${d} 06:30`),
+  read: dayList.flatMap(d => Array.from({ length: 16 }, (_, i) => `${d} ${String(7 + i).padStart(2, '0')}:30`)),
 });
 
 test('matcher: numbers, ranges, lists, * against the wall clock (weekday 0 = Sunday)', () => {
@@ -42,14 +43,14 @@ test('Nov 1 2026 (DST ends): Sat Oct 31 -> Tue Nov 3, every sync hour 07-22, the
   const fired = await walk('2026-10-31T05:00:00Z', '2026-11-04T06:00:00Z'); // Sat 00:00 CDT -> Wed 00:00 CST
   const dayList = ['2026-10-31', '2026-11-01', '2026-11-02', '2026-11-03'];
   const exp = expected(dayList, ['2026-11-02', '2026-11-03']);
-  for (const job of ['sync', 'daily', 'sweep']) assert.deepEqual(fired[job], exp[job], job);
+  for (const job of ['sync', 'daily', 'sweep', 'read']) assert.deepEqual(fired[job], exp[job], job);
   assert.ok(fired.sweep.includes('2026-11-01 06:30'), 'the Sunday sweep node-cron 4.2.1 lost');
 });
 
 test('Mar 14 2027 (DST starts): Sat Mar 13 -> Tue Mar 16, same: every slot once, none skipped, none doubled', async () => {
   const fired = await walk('2027-03-13T06:00:00Z', '2027-03-17T05:00:00Z');
   const exp = expected(days('2027-03-13T06:00:00Z', 4), ['2027-03-15', '2027-03-16']);
-  for (const job of ['sync', 'daily', 'sweep']) assert.deepEqual(fired[job], exp[job], job);
+  for (const job of ['sync', 'daily', 'sweep', 'read']) assert.deepEqual(fired[job], exp[job], job);
 });
 
 test('a stalled event loop catches up the slot it slept through (once), never twice', async () => {

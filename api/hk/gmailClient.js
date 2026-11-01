@@ -35,6 +35,8 @@ export function gmailClient(fetchFn = (...a) => fetch(...a)) {
     listMessages: (token, { labelIds = [], q = null, pageToken = null, maxResults = 25 } = {}) => call(token, 'GET', `/messages?maxResults=${maxResults}${labelIds.map(l => `&labelIds=${encodeURIComponent(l)}`).join('')}${q ? `&q=${encodeURIComponent(q)}` : ''}${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`),
     getMessageMeta: (token, id) => call(token, 'GET', `/messages/${encodeURIComponent(id)}?format=metadata${LIST_HEADERS}`),
     getThreadFull: (token, id) => call(token, 'GET', `/threads/${encodeURIComponent(id)}?format=full`),
+    // grow-mailbox-link-v1 L2 - who wrote to whom and when (threads.get metadata, 40 units); nothing of the body.
+    getThreadPeople: (token, id) => call(token, 'GET', `/threads/${encodeURIComponent(id)}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Date`),
     listHistory: async (token, startHistoryId) => { const history = []; let pageToken = null, historyId = null; do { const d = await call(token, 'GET', `/history?startHistoryId=${encodeURIComponent(startHistoryId)}&historyTypes=messageAdded&maxResults=500${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''}`); history.push(...(d?.history || [])); historyId = d?.historyId || historyId; pageToken = d?.nextPageToken || null; } while (pageToken && history.length < 2000); return { history, historyId }; },
     getProfile: token => call(token, 'GET', '/profile'),
     searchMessages: (token, q, maxResults = 1) => call(token, 'GET', `/messages?q=${encodeURIComponent(q)}&maxResults=${maxResults}`),
@@ -47,5 +49,5 @@ export function toMeta(msg) {
   const dateHeader = header(msg, 'Date');
   const parsed = dateHeader ? Date.parse(dateHeader) : NaN;
   const date = !Number.isNaN(parsed) ? new Date(parsed).toISOString() : msg.internalDate ? new Date(Number(msg.internalDate)).toISOString() : new Date().toISOString();
-  return { id: msg.id, threadId: msg.threadId, labelIds: msg.labelIds || [], messageIdHeader: header(msg, 'Message-ID'), from: parseAddress(header(msg, 'From')), subject: header(msg, 'Subject'), date, snippet: cleanText(decodeEntities(msg.snippet || ''), 200) };
+  return { id: msg.id, threadId: msg.threadId, labelIds: msg.labelIds || [], messageIdHeader: header(msg, 'Message-ID'), from: parseAddress(header(msg, 'From')), to: header(msg, 'To'), subject: header(msg, 'Subject'), date, snippet: cleanText(decodeEntities(msg.snippet || ''), 200) };
 }

@@ -13,7 +13,7 @@ delete process.env.HK_SLACK_WEBHOOK_URL;
 const { seed, reqOf, resOf, HK, JACK, ID } = await import('./testing.mjs');
 const shared = await import('./hkShared.js');
 const grants = await import('../lib/googleGrants.js');
-const MODULES = { brandsRoutes: await import('./brandsRoutes.js'), opsRoutes: await import('./opsRoutes.js'), gmailRoutes: await import('./gmailRoutes.js'), inboxRoutes: await import('./inboxRoutes.js'), importRoutes: await import('./importRoutes.js'), jobsRoutes: await import('./jobsRoutes.js'), signalsRoutes: await import('./signalsRoutes.js'), briefingRoutes: await import('./briefingRoutes.js'), brandResearch: await import('./brandResearch.js'), researchSweep: await import('./researchSweep.js'), searchRoutes: await import('./searchRoutes.js'), brandActions: await import('./brandActions.js') };
+const MODULES = { brandsRoutes: await import('./brandsRoutes.js'), opsRoutes: await import('./opsRoutes.js'), gmailRoutes: await import('./gmailRoutes.js'), inboxRoutes: await import('./inboxRoutes.js'), importRoutes: await import('./importRoutes.js'), jobsRoutes: await import('./jobsRoutes.js'), signalsRoutes: await import('./signalsRoutes.js'), briefingRoutes: await import('./briefingRoutes.js'), brandResearch: await import('./brandResearch.js'), researchSweep: await import('./researchSweep.js'), searchRoutes: await import('./searchRoutes.js'), brandActions: await import('./brandActions.js'), threadRoutes: await import('./threadRoutes.js') };
 
 const OWNER = 'jack.work@humankind.invalid', TOKEN = 'tok-jack-wiring';
 const b64 = s => Buffer.from(s, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -145,6 +145,13 @@ const TABLE = [
   ['brandActions', 'notAFitRoute', member({ method: 'POST', params: { id: ID.juice } }), [409]],
   ['brandActions', 'logActivityRoute', member({ method: 'POST', params: { id: ID.run }, body: { what: 'called', date: '2026-10-20' } }), [201]],
   ['brandActions', 'researchBatchRoute', member({ method: 'POST', body: { brand_ids: [ID.run] } }), [200]],
+  // grow-mailbox-link-v1 Stage 2. The read job runs before the backfill so its background run finds linking not started.
+  ['threadRoutes', 'brandThreadsRoute', member({ params: { id: ID.run } }), [200]],
+  ['threadRoutes', 'emailLinksRoute', member(), [200]],
+  ['threadRoutes', 'decideEmailLinkRoute', member({ method: 'POST', params: { id: 'nope' }, body: { decision: 'link' } }), [404]],
+  ['threadRoutes', 'linkThreadRoute', member({ method: 'POST', body: {} }), [400]],
+  ['threadRoutes', 'startReadRoute', member({ method: 'POST', body: {} }), [202]],
+  ['threadRoutes', 'startBackfillRoute', member({ method: 'POST', body: {} }), [202]],
 ];
 const TYPE_ERROR = /is not a function|Cannot read propert|is not defined|is not iterable|Cannot destructure/;
 

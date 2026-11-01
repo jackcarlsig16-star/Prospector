@@ -19,8 +19,12 @@ export const RELATIONSHIPS = ['prospect', 'sponsor', 'founding_partner', 'do_not
 export const EMAIL = ['has_contact', 'no_contact', 'never', 'emailed', 'replied', 'waiting'];
 export const DUE = ['overdue', 'week', 'later', 'none'];
 // Buckets in rail order (N3). `fixed` = values listed in this order; otherwise most rows first.
-export const BUCKETS = ['stage', 'heat', 'owner', 'relationship', 'segment', 'category', 'email', 'due', 'research', 'sponsor_months', 'place'];
-const FIXED = { stage: STATUS_ORDER, heat: HEAT, relationship: RELATIONSHIPS, email: EMAIL, due: DUE, research: ['yes', 'no'], sponsor_months: ['yes'] };
+// grow-mailbox-link-v1 L6 - Conversation (from linked Gmail threads) and Deal stage (from the thread reads).
+export const CONVERSATION = ['waiting_us', 'waiting_them', 'discussing', 'any', 'none'];
+export const DEAL = ['interested', 'discussing', 'scheduling', 'confirmed', 'declined', 'other'];
+export const THEM_WAIT_DAYS = 3; // REVISABLE ("Waiting on them > 3 d")
+export const BUCKETS = ['stage', 'heat', 'owner', 'relationship', 'segment', 'category', 'email', 'due', 'research', 'sponsor_months', 'place', 'conversation', 'deal'];
+const FIXED = { stage: STATUS_ORDER, heat: HEAT, relationship: RELATIONSHIPS, email: EMAIL, due: DUE, research: ['yes', 'no'], sponsor_months: ['yes'], conversation: CONVERSATION, deal: DEAL };
 export const SORTS = ['name', 'status', 'last_touch', 'next_due', 'created', 'heat', 'score'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FREE = /^[^@\n]{1,80}$/;
@@ -31,6 +35,7 @@ const VALID = {
   owner: v => v === 'me' || v === 'unclaimed' || v === 'unclear' || UUID.test(v) || /^sheet:[^@\n]{1,40}$/.test(v),
   segment: v => /^[a-z_]{1,40}$/.test(v), category: v => FREE.test(v), email: v => EMAIL.includes(v), due: v => DUE.includes(v),
   research: v => v === 'yes' || v === 'no', sponsor_months: v => v === 'yes', place: v => FREE.test(v),
+  conversation: v => CONVERSATION.includes(v), deal: v => DEAL.includes(v),
 };
 export const isFilterValue = (key, v) => typeof v === 'string' && !!VALID[key]?.(v);
 
@@ -51,8 +56,12 @@ export function parseFilters(src = {}) {
 // grow-ui-refresh U6 - one read for the list: the Briefing's loadIntel (brands, touches, replies, contacts with the address
 // dropped, domain intel, members, settings) plus the sponsor months. `intelData` carries it on for the row score.
 export async function loadFilterData(supabase, businessId, now = new Date()) {
-  const [d, periods] = await Promise.all([loadIntel(supabase, businessId, now), selectAllPages(() => supabase.from('hk_sponsor_periods').select('id, brand_id').eq('business_id', businessId).order('id'))]);
-  return { brands: d.brands, hasEmail: new Set(Object.entries(d.contactsBy).filter(([, cs]) => cs.some(c => c.has_email)).map(([id]) => id)), touches: d.touchesBy, replies: d.repliesBy, intel: new Set(Object.keys(d.intelByDomain)), months: new Set(periods.map(p => p.brand_id)), intelData: d };
+  const [d, periods, threads, prefs] = await Promise.all([loadIntel(supabase, businessId, now), selectAllPages(() => supabase.from('hk_sponsor_periods').select('id, brand_id').eq('business_id', businessId).order('id')),
+    selectAllPages(() => supabase.from('hk_brand_threads').select('id, brand_id, member_user_id, waiting_on, deal_stage, last_ours_at').eq('business_id', businessId).eq('link_state', 'linked').order('id')),
+    supabase.from('hk_member_prefs').select('user_id, share_deal_status').eq('business_id', businessId)]);
+  const threadsBy = {}; for (const t of threads) (threadsBy[t.brand_id] ||= []).push(t);
+  const sharing = new Map((prefs.data || []).map(r => [r.user_id, r.share_deal_status !== false]));
+  return { brands: d.brands, hasEmail: new Set(Object.entries(d.contactsBy).filter(([, cs]) => cs.some(c => c.has_email)).map(([id]) => id)), touches: d.touchesBy, replies: d.repliesBy, intel: new Set(Object.keys(d.intelByDomain)), months: new Set(periods.map(p => p.brand_id)), threads: threadsBy, sharing, intelData: d };
 }
 
 // Every bucket value one brand carries, plus the built-in views it belongs to.
@@ -81,7 +90,20 @@ export function valuesOf(b, data, { meId, now }) {
     research: [(b.domain && data.intel.has(b.domain)) || (b.domain_suggested && data.intel.has(b.domain_suggested)) ? 'yes' : 'no'],
     sponsor_months: data.months.has(b.id) ? ['yes'] : [],
     place: [...(b.is_local ? ['local'] : []), ...(b.city ? [b.city] : [])],
+    ...conversationOf(data.threads?.[b.id] || [], data.sharing, { meId, now }),
   };
+}
+
+// Existence counts every linked thread; who is waiting and the deal stage only from threads the caller may see in full
+// (their own, or a member who shares their deal status).
+function conversationOf(ts, sharing = new Map(), { meId, now }) {
+  if (!ts.length) return { conversation: ['none'], deal: [] };
+  const vis = ts.filter(r => r.member_user_id === meId || sharing.get(r.member_user_id) !== false), t = now.getTime();
+  const c = [];
+  if (vis.some(r => r.waiting_on === 'us')) c.push('waiting_us');
+  if (vis.some(r => r.waiting_on === 'them' && r.last_ours_at && t - Date.parse(r.last_ours_at) > THEM_WAIT_DAYS * DAY)) c.push('waiting_them');
+  if (vis.some(r => r.deal_stage === 'discussing')) c.push('discussing');
+  return { conversation: [...c, 'any'], deal: [...new Set(vis.map(r => r.deal_stage).filter(Boolean))] };
 }
 
 const matchesQ = (b, q) => { const n = normName(q), raw = String(q).trim().toLowerCase(); return normName(b.name).includes(n) || (b.domain || '').includes(raw) || (b.aliases || []).some(a => normName(a).includes(n)); };

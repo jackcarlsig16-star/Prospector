@@ -450,6 +450,14 @@ app.post('/api/hk/:businessId/brands/:id/research',           hkRoute(HK_RESEARC
 app.post('/api/hk/:businessId/brands/:id/use-domain',         hkRoute(HK_RESEARCH, 'useDomainRoute'));
 app.post('/api/hk/:businessId/brands/:id/wrong-site',         hkRoute(HK_RESEARCH, 'wrongSiteRoute'));
 app.post('/api/hk/:businessId/jobs/research-sweep',           hkRoute(HK_SWEEP, 'runSweepRoute'));
+// grow-mailbox-link-v1 Stage 2 - linked Gmail threads: Timeline, Review > Email links, manual link, backfill / read jobs.
+const HK_THREADS = './api/hk/threadRoutes.js';
+app.get('/api/hk/:businessId/brands/:id/threads',             hkRoute(HK_THREADS, 'brandThreadsRoute'));
+app.get('/api/hk/:businessId/review/email-links',             hkRoute(HK_THREADS, 'emailLinksRoute'));
+app.post('/api/hk/:businessId/review/email-links/:id',        hkRoute(HK_THREADS, 'decideEmailLinkRoute'));
+app.post('/api/hk/:businessId/threads/link',                  hkRoute(HK_THREADS, 'linkThreadRoute'));
+app.post('/api/hk/:businessId/jobs/thread-backfill',          hkRoute(HK_THREADS, 'startBackfillRoute'));
+app.post('/api/hk/:businessId/jobs/thread-read',              hkRoute(HK_THREADS, 'startReadRoute'));
 app.get('/api/hk/:businessId/search',                         hkRoute(HK_SEARCH, 'searchRoute'));
 app.get('/api/hk/:businessId/brands/:id/research-input',     hkRoute(HK_RESEARCH, 'researchInputRoute'));
 // grow-ui-refresh-v1 REV2 - Pitch (claim + command), Snooze, Not a fit, Log activity, the research batch. All with Undo; none sends.

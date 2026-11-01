@@ -9,9 +9,11 @@ import { SETTINGS_DEFAULTS } from '../opsRoutes.js';
 import { cronExprFor } from './plan.js';
 import { gmailSyncAll, dailyCheck } from './runner.js';
 import { researchSweep } from '../researchSweep.js';
+import { readThreads } from '../threadRead.js';
 import { intelSettings } from '../intelScore.js';
 
 export const SYNC_EXPR = '0 7-22 * * *'; // hourly 07:00-22:00 in the workspace timezone
+export const READ_EXPR = '30 7-22 * * *'; // grow-mailbox-link-v1 L5: half past, between the syncs
 // grow-inbox-intel M2: once a day at hk_settings.intel.sweep.time (default 06:30), workspace timezone.
 export const sweepExpr = intel => { const [h, m] = String(intelSettings(intel).sweep.time || '06:30').split(':').map(Number); return `${Number.isFinite(m) ? m : 30} ${Number.isFinite(h) ? h : 6} * * *`; };
 const MINUTE = 60e3, CATCH_UP_MINUTES = 10;
@@ -30,11 +32,11 @@ export function matchesMinute(expr, w) {
 }
 
 // workspaces: [{ businessId, settings }] -> [{ businessId, job, expr, timezone, fn }]. jobs is injectable for tests.
-export function hkRegistrations(workspaces, { jobs = { gmailSyncAll, dailyCheck, researchSweep } } = {}) {
+export function hkRegistrations(workspaces, { jobs = { gmailSyncAll, dailyCheck, researchSweep, readThreads } } = {}) {
   const out = [];
   for (const { businessId, settings = {} } of workspaces) {
     const s = { ...SETTINGS_DEFAULTS, ...settings }, timezone = s.timezone || 'America/Chicago';
-    for (const [job, expr, fn] of [['gmail-sync-all', SYNC_EXPR, jobs.gmailSyncAll], ['daily-check', cronExprFor(s), jobs.dailyCheck], ['research-sweep', sweepExpr(settings.intel), jobs.researchSweep]]) out.push({ businessId, job, expr, timezone, fn });
+    for (const [job, expr, fn] of [['gmail-sync-all', SYNC_EXPR, jobs.gmailSyncAll], ['daily-check', cronExprFor(s), jobs.dailyCheck], ['research-sweep', sweepExpr(settings.intel), jobs.researchSweep], ['thread-read', READ_EXPR, jobs.readThreads]]) out.push({ businessId, job, expr, timezone, fn });
   }
   return out;
 }
