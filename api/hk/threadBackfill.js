@@ -82,8 +82,9 @@ export async function backfillMailbox({ businessId, memberId, trigger = 'manual'
           seen.add(t.id);
           if (!th) continue;
           counts.fetched++;
-          const msgs = messagesOf(th);
-          const hit = matcher.match(msgs.flatMap(x => x.people));
+          let msgs, hit;
+          // A header Gmail hands back in a shape the parser can't read skips that one thread, never the run.
+          try { msgs = messagesOf(th); hit = matcher.match(msgs.flatMap(x => x.people)); } catch { counts.unreadable = (counts.unreadable || 0) + 1; continue; }
           if (!hit || hit.matched_by === 'name') { counts.unmatched++; continue; }
           const row = { business_id: businessId, brand_id: hit.brand_id, member_user_id: memberId, gmail_thread_id: t.id, matched_by: hit.matched_by, link_state: 'linked', ...threadFacts(msgs, { ownEmails, ownDomains: [...ownDomains, ...TEAM_DOMAINS] }), updated_at: D.now().toISOString() };
           const { error: e } = await D.supabase.from('hk_brand_threads').upsert(row, { onConflict: 'business_id,member_user_id,gmail_thread_id' });

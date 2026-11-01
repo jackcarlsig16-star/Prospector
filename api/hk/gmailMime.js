@@ -60,7 +60,7 @@ export function parseAddress(v) {
   const s = String(v || '').trim();
   const m = /^(?:"?([^"<]*)"?\s*)?<([^>]+)>$/.exec(s);
   const email = (m ? m[2] : s).trim().toLowerCase();
-  const name = m ? m[1].trim() : '';
+  const name = m ? (m[1] || '').trim() : '';
   const at = email.lastIndexOf('@');
   return { name: name || null, email: at > 0 ? email : null, domain: at > 0 ? email.slice(at + 1) : null };
 }

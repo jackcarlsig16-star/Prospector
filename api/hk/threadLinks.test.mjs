@@ -107,6 +107,9 @@ test('backfill: own grant only, links domain / contact / suggested threads with 
   const capped = await backfillMailbox({ businessId: HK, memberId: JACK, d: { ...d, supabase: sb2, gmail: fakeGmail(THREADS) } });
   assert.deepEqual([capped.counts.stopped, capped.counts.done, sb2.db.hk_brand_threads.length], ['unit cap', true, 0]);
   assert.deepEqual(await backfillMailbox({ businessId: HK, memberId: PETE, d: { ...d, mailbox: async () => null } }), { skipped: 'no_mailbox' });
+  const sb3 = seed(), odd = { ...THREADS, t7: { messages: [{ payload: { headers: [{ name: 'From', value: '<lee@zzoat.invalid>' }, { name: 'Date', value: new Date(daysAgo(1)).toUTCString() }] } }, { payload: null }] } };
+  const r3 = await backfillMailbox({ businessId: HK, memberId: JACK, d: { ...d, supabase: sb3, gmail: fakeGmail(odd) } });
+  assert.equal(r3.counts.done, true, 'an odd thread never stops the run'); assert.ok(sb3.db.hk_brand_threads.some(x => x.gmail_thread_id === 't7'), 'a bare <address> From links');
 });
 
 test('hourly upkeep (L4): nothing until the workspace started linking; then a linked thread moves forward and a new matching thread links (name-only -> review)', async () => {

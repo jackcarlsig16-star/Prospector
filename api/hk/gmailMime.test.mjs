@@ -63,3 +63,10 @@ test('decodeEntities: Gmail snippet entities (numeric, hex, named) decode once a
   const meta = toMeta({ id: 'm1', threadId: 't1', snippet: 'Thanks, we&#39;re in &amp; ready', payload: { headers: [{ name: 'From', value: 'Ana <ana@brand.invalid>' }, { name: 'Date', value: 'Mon, 26 Oct 2026 10:00:00 -0500' }] } });
   assert.equal(meta.snippet, "Thanks, we're in & ready");
 });
+
+test('parseAddress: a bare <address> with no display name (grow-mailbox-link Stage 3 backfill crash) parses, never throws', async () => {
+  const { parseAddress } = await import('./gmailMime.js');
+  assert.deepEqual(parseAddress('<ana@zzoat.invalid>'), { name: null, email: 'ana@zzoat.invalid', domain: 'zzoat.invalid' });
+  assert.deepEqual(parseAddress('"Ana" <ana@zzoat.invalid>'), { name: 'Ana', email: 'ana@zzoat.invalid', domain: 'zzoat.invalid' });
+  assert.deepEqual(parseAddress(null), { name: null, email: null, domain: null });
+});
