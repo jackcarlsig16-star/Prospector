@@ -7,7 +7,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
-import { companyDetail, addToPipeline, addNote, addContact, updateTarget, bookMeeting, markContacted, notNow, notNowPatch, createTarget } from './companyPanel.js';
+import { companyDetail, addToPipeline, addNote, addContact, updateTarget, bookMeeting, markContacted, advanceStage, nextStage, notNow, notNowPatch, createTarget } from './companyPanel.js';
+import { undoPartnerSignal } from './partnerSignals.js';
 
 const NOW = new Date('2026-10-20T20:00:00Z'); // Tue Oct 20, 1pm LA
 
@@ -253,7 +254,7 @@ test('book meeting: partner next_step set, next_meeting_at untouched, one open t
   assert.equal((await bookMeeting(sb, { businessId: B, userId: U, type: 'visitor', id: 'acme widgets', body: {}, now: NOW })).status, 400);
 });
 
-test('mark contacted: partner = a touch with move_to none (stage stays, last touch moves, event names the person); the person goes to contacted; employer / target = ONE done to-do that becomes Last touch - never an opportunity event row', async () => {
+test('mark contacted: partner = a touch (past contacted: stage stays, last touch moves, event names the person); the person goes to contacted; employer / target = ONE done to-do that becomes Last touch - never an opportunity event row', async () => {
   const sb = seed();
   const r = await markContacted(sb, { businessId: B, userId: U, byUser: 'tester', type: 'partner', id: ID.partner, body: { contact_id: 'c-pat' }, now: NOW });
   assert.equal(r.status, 200, JSON.stringify(r.body));
@@ -263,15 +264,14 @@ test('mark contacted: partner = a touch with move_to none (stage stays, last tou
   assert.deepEqual([ev.event, ev.touch_type, ev.to_status, ev.contact_names], ['touch', 'email', null, ['Pat Lee']]);
   assert.deepEqual(sb.db.sales_prospect_state.find(x => x.contact_id === 'c-pat').status, 'contacted');
   assert.deepEqual(r.body.person, { contact_id: 'c-pat', before: { status: 'new' } });
-  // A not-started partner: 'auto' would move it to first_email_sent; the panel's touch does not.
-  const fresh = sb.db.sales_goals.find(x => x.id === ID.partner); fresh.pipeline_status = 'not_started';
-  const r2 = await markContacted(sb, { businessId: B, userId: U, type: 'partner', id: ID.partner, body: { touch_type: 'call' }, now: NOW });
-  assert.equal(r2.status, 200); assert.equal(fresh.pipeline_status, 'not_started');
+  assert.deepEqual(r.body.stage, { before: 'replied', after: 'replied' });
   const eventsBefore = sb.db.sales_opportunity_events.length;
   const e = await markContacted(sb, { businessId: B, userId: U, type: 'employer', id: ID.employer, body: { person: 'Dana Q' }, now: NOW });
   assert.equal(e.status, 200, JSON.stringify(e.body));
   assert.deepEqual([e.body.todo.text, e.body.todo.status, e.body.todo.completed_at, e.body.todo.link_type, e.body.todo.link_id], ['Contacted Dana Q', 'done', NOW.toISOString(), 'opportunity', ID.employer]);
   assert.equal(sb.db.sales_opportunity_events.length, eventsBefore);
+  assert.deepEqual(e.body.stage, { before: 'contacted', after: 'contacted' });
+  assert.equal(sb.db.sales_opportunities.find(x => x.id === ID.employer).stage, 'contacted');
   const d = (await companyDetail(sb, { businessId: B, type: 'employer', id: ID.employer, now: NOW })).body;
   assert.deepEqual(d.record.last_touch, { at: NOW.toISOString(), touch_type: 'done' }); assert.equal(d.record.last_touch_at, NOW.toISOString());
   assert.equal(d.recent[0].text, 'Done: Contacted Dana Q');
@@ -334,4 +334,60 @@ test('FIX linkedin-url-normalize: the company window saves a link typed without 
   assert.equal(sb.db.partner_contacts.find(c => c.name === 'Zz Test Person').linkedin_url, 'https://www.linkedin.com/in/zz-test-handle');
   const bad = await addContact(sb, { businessId: B, userId: U, type: 'partner', id: ID.partner, body: { name: 'Zz Other', linkedin_url: 'linkedin.com.evil.com/in/x' } });
   assert.deepEqual([bad.status, bad.body.error], [400, "That doesn't look like a LinkedIn link — paste it like linkedin.com/in/name."]);
+});
+
+// Undo takes the latest-recorded event: the seed rows carry no recorded_at and the fake stamps the real clock (same-ms ties).
+const latest = (sb, id) => { for (const e of sb.db.sales_partner_events) e.recorded_at = e.id === id ? new Date(Date.now() + 1000).toISOString() : e.recorded_at || '2026-01-01T00:00:00Z'; };
+
+test('company-progress-bar-v1 D3: mark contacted moves a record that is behind contacted forward, never back; Undo puts the stage back', async () => {
+  const sb = seed();
+  const g = sb.db.sales_goals.find(x => x.id === ID.partner), o = sb.db.sales_opportunities.find(x => x.id === ID.employer);
+  for (const from of ['not_started', 'researching', 'first_email_drafted']) {
+    g.pipeline_status = from;
+    const r = await markContacted(sb, { businessId: B, userId: U, type: 'partner', id: ID.partner, body: {}, now: NOW });
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual([g.pipeline_status, r.body.stage], ['first_email_sent', { before: from, after: 'first_email_sent' }], from);
+  }
+  g.pipeline_status = 'researching';
+  const u = await markContacted(sb, { businessId: B, userId: U, type: 'partner', id: ID.partner, body: {}, now: NOW });
+  latest(sb, u.body.event.id);
+  await undoPartnerSignal(sb, { businessId: B, goalId: ID.partner, eventId: u.body.event.id, now: NOW });
+  assert.equal(g.pipeline_status, 'researching', 'partner Undo restores the stage');
+  for (const at of ['meeting_set', 'paused', 'live']) {
+    g.pipeline_status = at;
+    const r = await markContacted(sb, { businessId: B, userId: U, type: 'partner', id: ID.partner, body: {}, now: NOW });
+    assert.deepEqual([g.pipeline_status, r.body.stage.after], [at, at], `at/past or off-path ${at}: touch only`);
+  }
+  o.stage = 'target';
+  const e = await markContacted(sb, { businessId: B, userId: U, type: 'employer', id: ID.employer, body: {}, now: NOW });
+  assert.deepEqual([o.stage, e.body.stage, e.body.todo.status], ['contacted', { before: 'target', after: 'contacted' }, 'done']);
+  for (const at of ['meeting', 'lost', 'nurture']) {
+    o.stage = at;
+    const r = await markContacted(sb, { businessId: B, userId: U, type: 'employer', id: ID.employer, body: {}, now: NOW });
+    assert.deepEqual([o.stage, r.body.stage.after], [at, at], `employer at ${at}: to-do only`);
+  }
+  const t = await markContacted(sb, { businessId: B, userId: U, type: 'target', id: ID.target, body: {}, now: NOW });
+  assert.equal(sb.db.sales_targets.find(x => x.id === ID.target).status, 'proposed'); assert.deepEqual(t.body.stage, { before: 'proposed', after: 'proposed' });
+});
+
+test('company-progress-bar-v1 D2: advance = the next stage on the record\'s own path; expect guards a stale screen (409); nothing past the last step or off-path; targets refused', async () => {
+  assert.deepEqual([nextStage('partner', 'not_started'), nextStage('partner', 'in_sequence'), nextStage('partner', 'live'), nextStage('partner', 'paused')], ['researching', 'replied', null, null]);
+  assert.deepEqual([nextStage('employer', 'target'), nextStage('employer', 'contract'), nextStage('employer', 'launched'), nextStage('employer', 'lost'), nextStage('target', 'proposed')], ['contacted', 'launched', null, null, null]);
+  const sb = seed();
+  const g = sb.db.sales_goals.find(x => x.id === ID.partner), o = sb.db.sales_opportunities.find(x => x.id === ID.employer);
+  const p = await advanceStage(sb, { businessId: B, userId: U, type: 'partner', id: ID.partner, body: { expect: 'replied' }, now: NOW });
+  assert.equal(p.status, 200, JSON.stringify(p.body)); assert.deepEqual([p.body.before, p.body.after, g.pipeline_status], ['replied', 'meeting_set', 'meeting_set']);
+  const stale = await advanceStage(sb, { businessId: B, userId: U, type: 'partner', id: ID.partner, body: { expect: 'replied' }, now: NOW });
+  assert.deepEqual([stale.status, stale.body.code, g.pipeline_status], [409, 'stale_stage', 'meeting_set']);
+  latest(sb, p.body.event.id);
+  await undoPartnerSignal(sb, { businessId: B, goalId: ID.partner, eventId: p.body.event.id, now: NOW });
+  assert.equal(g.pipeline_status, 'replied', 'partner Undo of an advance');
+  const e = await advanceStage(sb, { businessId: B, userId: U, type: 'employer', id: ID.employer, body: { expect: 'contacted' }, now: NOW });
+  assert.deepEqual([e.status, e.body.after, o.stage], [200, 'responded', 'responded']);
+  assert.equal((await advanceStage(sb, { businessId: B, userId: U, type: 'employer', id: ID.employer, body: { expect: 'contacted' }, now: NOW })).status, 409);
+  o.stage = 'launched';
+  const end = await advanceStage(sb, { businessId: B, userId: U, type: 'employer', id: ID.employer, body: { expect: 'launched' }, now: NOW });
+  assert.deepEqual([end.status, end.body.code], [409, 'no_next_stage']);
+  assert.equal((await advanceStage(sb, { businessId: B, userId: U, type: 'target', id: ID.target, body: { expect: 'proposed' }, now: NOW })).status, 400);
+  assert.equal((await advanceStage(sb, { businessId: B, userId: U, type: 'employer', id: ID.employer, body: {}, now: NOW })).status, 400);
 });

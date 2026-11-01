@@ -822,6 +822,7 @@ app.patch('/api/sales/:businessId/goals/company/target/:id', salesModuleRoute('.
 // company-panel-v2 Stage 2 - the Interest band's buttons.
 app.post('/api/sales/:businessId/goals/company/:type/:id/book-meeting', salesModuleRoute('./api/sales/companyPanel.js', 'bookMeetingRoute', 'goals/company/:type/:id/book-meeting POST'));
 app.post('/api/sales/:businessId/goals/company/:type/:id/contacted', salesModuleRoute('./api/sales/companyPanel.js', 'markContactedRoute', 'goals/company/:type/:id/contacted POST'));
+app.post('/api/sales/:businessId/goals/company/:type/:id/advance', salesModuleRoute('./api/sales/companyPanel.js', 'advanceStageRoute', 'goals/company/:type/:id/advance POST'));
 app.post('/api/sales/:businessId/goals/company/:type/:id/not-now', salesModuleRoute('./api/sales/companyPanel.js', 'notNowRoute', 'goals/company/:type/:id/not-now POST'));
 app.get('/api/sales/:businessId/goals/company/:type/:id/research', salesModuleRoute('./api/sales/partnerResearch.js', 'listCompanyResearchRoute', 'goals/company/:type/:id/research'));
 app.post('/api/sales/:businessId/goals/company/:type/:id/research', aiLimit, salesModuleRoute('./api/sales/partnerResearch.js', 'runCompanyResearchRoute', 'goals/company/:type/:id/research POST'));

@@ -85,6 +85,19 @@ test('Reach (D4): Book meeting and Mark contacted are the same writes as the ban
   expect(goalsApi.partnerUndo).toHaveBeenCalledWith('b1', 'p1', 'ev1');
 });
 
+test('company-progress-bar-v1 D3: an employer at Target moves to Contacted - the toast says so and Undo puts Target back', async () => {
+  const { updateOpportunity } = require('../pipelineApi');
+  goalsApi.markContacted.mockResolvedValue({ todo: { id: 'wg2' }, stage: { before: 'target', after: 'contacted' } });
+  const onToast = jest.fn();
+  render(<Harness row={{ type: 'employer', id: 'o1', name: 'Zz Acme', stage: 'target' }} onToast={onToast} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Mark contacted' }));
+  await waitFor(() => expect(onToast).toHaveBeenCalled());
+  expect(onToast.mock.calls[0][0].text).toBe('Zz Acme marked contacted · moved to Contacted');
+  await onToast.mock.calls[0][0].undo();
+  expect(updateOpportunity).toHaveBeenCalledWith('b1', 'o1', { stage: 'target', allow_backward: true });
+  expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 'wg2', { status: 'dropped' });
+});
+
 test('axe: the grouped Actions row has 0 violations', async () => {
   const axe = require('axe-core');
   const { container } = render(<Harness row={PARTNER} />);

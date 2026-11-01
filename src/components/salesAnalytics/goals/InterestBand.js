@@ -60,7 +60,7 @@ export default function InterestBand({ businessId, row, interest, canEdit, onCha
         <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button type="button" className="ui-btn ui-btn--primary" disabled={b('draft')} onClick={draftReply} title="Copies the record + the signal for Claude. Never sends."><IconMail size={13} />{b('draft') ? 'Copying…' : 'Follow up: draft reply'}</button>
           <button type="button" className={btn} style={onBand} disabled={b('book')} onClick={bookMeeting} title="Sets the next step and adds a to-do due today. No calendar write."><IconCalendar size={13} />{b('book') ? 'Saving…' : 'Book meeting'}</button>
-          <button type="button" className={btn} style={onBand} disabled={b('contacted')} onClick={markContacted} title={row.type === 'partner' ? 'Logs an email touch. The stage does not move.' : 'Logs a done to-do (what Last touch reads).'}><IconCheck size={13} />{b('contacted') ? 'Saving…' : 'Mark contacted'}</button>
+          <button type="button" className={btn} style={onBand} disabled={b('contacted')} onClick={markContacted} title={row.type === 'partner' ? 'Logs an email touch. Not contacted yet = moves to Sent.' : row.type === 'employer' ? 'Logs a done to-do. At Target = moves to Contacted.' : 'Logs a done to-do (what Last touch reads).'}><IconCheck size={13} />{b('contacted') ? 'Saving…' : 'Mark contacted'}</button>
           {showsNotNow(row) && <button type="button" className="ui-btn ui-btn--tertiary" disabled={b('notnow')} onClick={notNow} title={person ? 'Snoozes this person a week' : 'Hides the band until a newer signal arrives'}><IconPause size={13} />{b('notnow') ? 'Saving…' : 'Not now'}</button>}
         </span>
       )}

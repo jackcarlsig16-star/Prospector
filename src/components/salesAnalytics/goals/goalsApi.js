@@ -146,6 +146,7 @@ export const goalsApi = {
   // company-panel-v2 Stage 2 - the Interest band's buttons; every write returns what Undo needs.
   bookMeeting: (id, type, recordId, body = {}) => call(id, `/company/${type}/${recordId}/book-meeting`, { method: 'POST', body }),
   markContacted: (id, type, recordId, body = {}) => call(id, `/company/${type}/${recordId}/contacted`, { method: 'POST', body }),
+  advanceStage: (id, type, recordId, expect) => call(id, `/company/${type}/${recordId}/advance`, { method: 'POST', body: { expect } }),
   notNow: (id, type, recordId, body = {}) => call(id, `/company/${type}/${recordId}/not-now`, { method: 'POST', body }),
   // lead-source-v1 - type = partner | employer | target. source = { source, history }; edit body = the source fields +
   // expect_set_at (409 when it moved); source_kind: null with every field empty clears it (Undo of a first pick).

@@ -13,7 +13,8 @@ import { applyPartnerSignal, SignalError } from './partnerSignals.js';
 import { listRuns, runsToday, RERUN_CAP_PER_DAY } from './partnerResearch.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
 import { OWNER_TEAMS } from '../../src/constants/ownership.js';
-import { TOUCH_TYPE_IDS } from '../../src/constants/partnerPipeline.js';
+import { TOUCH_TYPE_IDS, WORKFLOW_STEPS, stepOf } from '../../src/constants/partnerPipeline.js';
+import { STAGE_ORDER } from './pipelineStages.js';
 import { personSignals, byStrength, signalText, INTEREST_DAYS, TIMELINE_DAYS } from './interestSignals.js';
 import { normalizeLinkedinUrl, LINKEDIN_ERROR } from '../lib/linkedinUrl.js';
 
@@ -370,11 +371,14 @@ export async function bookMeetingRoute(req, res) {
   send(res, await bookMeeting(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, type: req.params.type, id: req.params.id, body: req.body }));
 }
 
-// POST /goals/company/:type/:id/contacted { contact_id?, person?, touch_type? } -> 200 { event?, todo?, person? }.
-// Person: Huddle's status path (contacted). Partner: a touch that never moves
-// the stage (move_to 'none', expect = the stage the screen showed). Employer /
-// target: ONE done to-do on the record (what Last touch reads) - never a
-// sales_opportunity_events row.
+// POST /goals/company/:type/:id/contacted { contact_id?, person?, touch_type? } -> 200 { event?, todo?, person?, stage }.
+// company-progress-bar-v1 D3: the record moves forward when it is behind
+// "contacted", never back. Person: Huddle's status path (contacted). Partner: a
+// touch with move_to 'auto' (not started / researching / drafted -> sent).
+// Employer: target -> contacted (the DB trigger logs the stage_change). Both
+// also get ONE done to-do (employer / target) - what Last touch reads. Target
+// rows have no pipeline stage, so they only get the to-do.
+// stage = { before, after } for Undo.
 export async function markContacted(supabase, { businessId, userId, byUser, type, id, body, now = new Date() }) {
   if (!RECORD_TYPES.includes(type)) return reply(400, { error: `type must be one of ${RECORD_TYPES.join('|')}` });
   if (!validId(type, id)) return reply(400, { error: 'id is required' });
@@ -394,9 +398,15 @@ export async function markContacted(supabase, { businessId, userId, byUser, type
       out.person = { contact_id: prospect.contact_id, before: { status: prospect.status } };
     }
     if (type === 'partner') {
-      const { event } = await applyPartnerSignal(supabase, { businessId, goalId: id, signal: { type: 'touch', touch_type: touchType, date: today, move_to: 'none', expect: record.stage, contacts: who ? [who] : [] }, byUser: userId, now });
+      const { event } = await applyPartnerSignal(supabase, { businessId, goalId: id, signal: { type: 'touch', touch_type: touchType, date: today, move_to: 'auto', expect: record.stage, contacts: who ? [who] : [] }, byUser: userId, now });
       out.event = { id: event.id, touch_type: event.touch_type, at: event.at, to_status: event.to_status };
+      out.stage = { before: record.stage, after: event.to_status || record.stage };
     } else {
+      out.stage = { before: record.stage, after: record.stage };
+      if (type === 'employer' && record.stage === 'target') {
+        const moved = must(await supabase.from('sales_opportunities').update({ stage: 'contacted', updated_at: now.toISOString() }).eq('business_id', businessId).eq('id', id).eq('stage', 'target').select('id'));
+        if (moved.length) out.stage.after = 'contacted';
+      }
       out.todo = await todoOn(supabase, { businessId, userId, type, id, text: `Contacted ${who || record.name}`, today, done: true, now });
     }
     return reply(200, out);
@@ -410,6 +420,47 @@ export async function markContactedRoute(req, res) {
 }
 
 // Not now on a person: Huddle's not_now with a week's snooze (the server has no default).
+// company-progress-bar-v1 D2 - the bar's one primary action: the next stage on
+// the record's own path (partner WORKFLOW_STEPS, employer STAGE_ORDER), never a
+// side lane. null = nothing ahead (last step, paused, lost / parked).
+export function nextStage(type, stage) {
+  if (type === 'partner') { const i = stepOf(stage); return i === null ? null : WORKFLOW_STEPS[i + 1]?.id || null; }
+  if (type === 'employer') { const i = STAGE_ORDER.indexOf(stage); return i < 0 ? null : STAGE_ORDER[i + 1] || null; }
+  return null;
+}
+const STALE = { error: 'This changed elsewhere - refresh', code: 'stale_stage' };
+
+// POST /goals/company/:type/:id/advance { expect } -> 200 { before, after, event? }.
+// expect = the stage the screen showed; anything else is 409 (stale screen).
+// Undo: partner = the partner undo of event.id; employer = PATCH the
+// opportunity back with allow_backward.
+export async function advanceStage(supabase, { businessId, userId, type, id, body, now = new Date() }) {
+  if (type !== 'partner' && type !== 'employer') return reply(400, { error: 'only partners and employers have stages - add it to the pipeline first' });
+  if (!validId(type, id)) return reply(400, { error: 'id is required' });
+  const expect = body?.expect;
+  if (typeof expect !== 'string' || !expect) return reply(400, { error: 'expect (the stage on screen) is required' });
+  try {
+    const record = await loadRecord(supabase, businessId, type, id);
+    if (!record) return reply(404, { error: `${type} not found` });
+    if (record.stage !== expect) return reply(409, STALE);
+    const to = nextStage(type, record.stage);
+    if (!to) return reply(409, { error: `${record.stage} has no next stage`, code: 'no_next_stage' });
+    if (type === 'partner') {
+      const { event } = await applyPartnerSignal(supabase, { businessId, goalId: id, signal: { type: 'status', to, expect }, byUser: userId, now });
+      return reply(200, { before: expect, after: to, event: { id: event.id } });
+    }
+    const moved = must(await supabase.from('sales_opportunities').update({ stage: to, updated_at: now.toISOString() }).eq('business_id', businessId).eq('id', id).eq('stage', expect).select('id'));
+    if (!moved.length) return reply(409, STALE);
+    return reply(200, { before: expect, after: to });
+  } catch (e) {
+    if (e instanceof SignalError) return reply(e.status || 400, e.status === 409 ? STALE : { error: e.message });
+    return reply(e.status || 500, { error: e.message });
+  }
+}
+export async function advanceStageRoute(req, res) {
+  send(res, await advanceStage(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, type: req.params.type, id: req.params.id, body: req.body }));
+}
+
 export const notNowPatch = today => ({ status: 'not_now', snooze_until: addDays(today, NOT_NOW_DAYS) });
 
 // POST /goals/company/:type/:id/not-now { contact_id? } -> 200 { person } or { dismissed: { signal_id, until } }.
