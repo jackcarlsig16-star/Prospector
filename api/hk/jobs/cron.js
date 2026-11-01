@@ -87,4 +87,36 @@ export async function hkWorkspaces(supabase = getSupabase()) {
   return out;
 }
 
-export const startHkCronFromDb = async () => startMinuteTick(hkRegistrations(await hkWorkspaces()));
+// FIX grow-mailbox-link ruling (3): a process that starts after a once-a-day slot already passed (a deploy or a restart
+// across 06:30) runs that job once - only when today's slot has passed in the workspace's wall clock, the job's days
+// include today, and no run row exists for the job today. The job's own guards and its cron_slot claim keep it single.
+export const CATCH_UP_JOBS = new Set(['research-sweep', 'daily-check']);
+export function dueOnStart(regs, now = new Date()) {
+  return regs.filter(r => {
+    if (!CATCH_UP_JOBS.has(r.job)) return false;
+    const [mi, h, dom, mon, dow] = r.expr.trim().split(/\s+/);
+    if (!/^\d+$/.test(mi) || !/^\d+$/.test(h)) return false;
+    const w = wallMinute(now, r.timezone);
+    return matchesMinute(`* * ${dom} ${mon} ${dow}`, w) && w.hour * 60 + w.minute > Number(h) * 60 + Number(mi);
+  });
+}
+export async function catchUpOnStart(regs, { supabase = getSupabase(), now = new Date(), log = console.log } = {}) {
+  const ran = [];
+  for (const reg of dueOnStart(regs, now)) {
+    const day = new Intl.DateTimeFormat('en-CA', { timeZone: reg.timezone }).format(now);
+    const { data, error } = await supabase.from('hk_job_runs').select('id').eq('business_id', reg.businessId).eq('job', reg.job).eq('chicago_day', day).limit(1);
+    if (error) { log(`[CRON] HumanKind catch-up ${reg.job} ${reg.businessId}: could not read runs - ${error.message}`); continue; }
+    if ((data || []).length) continue;
+    log(`[CRON] HumanKind catch-up on start: ${reg.job} ${reg.businessId} (slot ${reg.expr} passed, no run today)`);
+    ran.push(reg.job);
+    await runTick(reg, log);
+  }
+  return ran;
+}
+
+export const startHkCronFromDb = async () => {
+  const regs = hkRegistrations(await hkWorkspaces());
+  const tick = startMinuteTick(regs);
+  catchUpOnStart(regs).catch(e => console.error('[CRON] HumanKind catch-up failed:', e.message));
+  return tick;
+};

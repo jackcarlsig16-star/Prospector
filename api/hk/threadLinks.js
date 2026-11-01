@@ -12,6 +12,9 @@ import { GENERIC_WORDS } from '../sales/intakeMatch.js';
 export const GENERIC_DOMAINS = new Set(['gmail.com', 'googlemail.com', 'yahoo.com', 'outlook.com', 'icloud.com', 'hotmail.com', 'aol.com', 'me.com', 'live.com', 'msn.com']); // REVISABLE
 export const BACKFILL_DAYS = 180, READ_DAYS = 60; // REVISABLE (L2, L5)
 export const AUTO_MATCHES = new Set(['domain', 'contact', 'manual']);
+// grow-mailbox-link ruling (1): bulk mail never links - a List-Unsubscribe header or Gmail's Promotions / Updates tab.
+export const BULK_LABELS = new Set(['CATEGORY_PROMOTIONS', 'CATEGORY_UPDATES']);
+export const isBulk = m => !!m.listUnsubscribe || (m.labelIds || []).some(l => BULK_LABELS.has(l));
 // A link the automatic paths (thread reads, nudges, signals) may act on.
 export const autoOk = row => row.link_state === 'linked' && AUTO_MATCHES.has(row.matched_by);
 
@@ -53,7 +56,8 @@ export function buildMatcher({ brands = [], contacts = [], ignored = [], ownDoma
 export const peopleOf = (...headers) => headers.flatMap(h => splitAddresses(h)).map(parseAddress).filter(a => a.email).map(a => ({ email: a.email, domain: a.domain }));
 
 // One thread's messages ([{ date ISO, from: { email, domain }, people }]) -> the L3 facts. ours = the mailbox owner's
-// addresses / domains (own + team). waiting_on: the newest message is ours -> them, theirs -> us.
+// addresses / domains (own + team). waiting_on: the newest message is ours -> them, theirs -> us; a thread where only
+// they wrote is 'none' until a read says otherwise (ruling 1: an unanswered one-way mail is not a reply we owe).
 export function threadFacts(messages, { ownEmails = [], ownDomains = [] } = {}) {
   const own = new Set(ownEmails.map(e => e.toLowerCase())), ownD = new Set([...TEAM_DOMAINS, ...ownDomains].map(d => d.toLowerCase()));
   const isOurs = m => !!m.from?.email && (own.has(m.from.email) || ownD.has(m.from.domain));
@@ -63,7 +67,7 @@ export function threadFacts(messages, { ownEmails = [], ownDomains = [] } = {}) 
   return {
     message_count: ms.length, first_at: ms[0].date, last_at: last.date,
     last_ours_at: ours.length ? ours[ours.length - 1].date : null, last_theirs_at: theirs.length ? theirs[theirs.length - 1].date : null,
-    waiting_on: !theirs.length ? 'them' : isOurs(last) ? 'them' : 'us',
+    waiting_on: !ours.length ? 'none' : !theirs.length ? 'them' : isOurs(last) ? 'them' : 'us',
   };
 }
 
@@ -74,7 +78,8 @@ export function messagesOf(thread) {
     const d = Date.parse(h(m, 'Date') || '');
     const date = !Number.isNaN(d) ? new Date(d).toISOString() : m.internalDate ? new Date(Number(m.internalDate)).toISOString() : null;
     const from = peopleOf(h(m, 'From'))[0] || null;
-    return { date, from, people: peopleOf(h(m, 'From'), h(m, 'To'), h(m, 'Cc')), subject: h(m, 'Subject') };
+    const row = { date, from, people: peopleOf(h(m, 'From'), h(m, 'To'), h(m, 'Cc')), subject: h(m, 'Subject'), labelIds: m.labelIds || [], listUnsubscribe: !!h(m, 'List-Unsubscribe') };
+    return { ...row, bulk: isBulk(row) };
   });
 }
 
@@ -102,7 +107,7 @@ export async function matcherFor(supabase, businessId, ownDomains) {
 // match is linked (a name-only match lands in Review). -> { updated, linked, review }
 export async function linkSyncedMessages({ supabase, businessId, uid, messages, ownEmails = [], ownDomains = [], now = new Date() }) {
   const out = { updated: 0, linked: 0, review: 0 };
-  const ms = (messages || []).filter(m => m.threadId && m.date);
+  const ms = (messages || []).filter(m => m.threadId && m.date && !isBulk(m));
   if (!ms.length || !(await linkingStarted(supabase, businessId))) return out;
   const matcher = await matcherFor(supabase, businessId, ownDomains);
   const { data: rows, error } = await supabase.from('hk_brand_threads').select('*').eq('business_id', businessId).eq('member_user_id', uid).in('gmail_thread_id', [...new Set(ms.map(m => m.threadId))]);
@@ -114,7 +119,7 @@ export async function linkSyncedMessages({ supabase, businessId, uid, messages, 
     const row = byThread.get(m.threadId);
     if (row) {
       if (row.last_at && m.date <= row.last_at) continue;
-      const patch = { message_count: row.message_count + 1, last_at: m.date, waiting_on: ours ? 'them' : 'us', updated_at: now.toISOString(), ...(ours ? { last_ours_at: m.date } : { last_theirs_at: m.date }) };
+      const patch = { message_count: row.message_count + 1, last_at: m.date, waiting_on: ours ? 'them' : row.last_ours_at ? 'us' : 'none', updated_at: now.toISOString(), ...(ours ? { last_ours_at: m.date } : { last_theirs_at: m.date }) };
       const { error: e } = await supabase.from('hk_brand_threads').update(patch).eq('id', row.id);
       if (e) throw new Error(e.message);
       Object.assign(row, patch); out.updated++;
@@ -122,7 +127,7 @@ export async function linkSyncedMessages({ supabase, businessId, uid, messages, 
     }
     const hit = matcher.match(m.people || [m.from], m.subject);
     if (!hit) continue;
-    const ins = { business_id: businessId, brand_id: hit.brand_id, member_user_id: uid, gmail_thread_id: m.threadId, matched_by: hit.matched_by, link_state: hit.link_state, message_count: 1, first_at: m.date, last_at: m.date, last_ours_at: ours ? m.date : null, last_theirs_at: ours ? null : m.date, waiting_on: ours ? 'them' : 'us' };
+    const ins = { business_id: businessId, brand_id: hit.brand_id, member_user_id: uid, gmail_thread_id: m.threadId, matched_by: hit.matched_by, link_state: hit.link_state, message_count: 1, first_at: m.date, last_at: m.date, last_ours_at: ours ? m.date : null, last_theirs_at: ours ? null : m.date, waiting_on: ours ? 'them' : 'none' };
     const { data: created, error: e } = await supabase.from('hk_brand_threads').upsert(ins, { onConflict: 'business_id,member_user_id,gmail_thread_id' }).select().single();
     if (e) throw new Error(e.message);
     byThread.set(m.threadId, created);

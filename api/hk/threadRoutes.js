@@ -89,7 +89,9 @@ export async function linkThreadRoute(req, res, d = {}) {
     if (!token) return;
     const m = await D.mailbox(businessId, uid, 'inbox');
     const ownEmails = [m?.grant?.google_email].filter(Boolean);
-    const facts = threadFacts(messagesOf(await D.gmail.getThreadPeople(token, threadId)), { ownEmails, ownDomains: ownEmails.map(e => e.split('@')[1]) });
+    const msgs = messagesOf(await D.gmail.getThreadPeople(token, threadId)).filter(x => !x.bulk);
+    if (!msgs.length) throw new HkError(409, 'This thread is bulk mail (a newsletter or promotion) - bulk mail never links to a brand');
+    const facts = threadFacts(msgs, { ownEmails, ownDomains: ownEmails.map(e => e.split('@')[1]) });
     const row = { business_id: businessId, brand_id: brand.id, member_user_id: uid, gmail_thread_id: threadId, matched_by: 'manual', link_state: 'linked', ...facts, updated_at: D.now().toISOString() };
     const { data, error } = await D.supabase.from('hk_brand_threads').upsert(row, { onConflict: 'business_id,member_user_id,gmail_thread_id' }).select().single();
     if (error) throw new Error(error.message);

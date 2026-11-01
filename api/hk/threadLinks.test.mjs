@@ -87,6 +87,8 @@ const THREADS = {
   t2: { messages: [msg('Mo <mo@gmail.com>', 'jack@humankindcollective.app', daysAgo(20))] },
   t3: { messages: [msg('Pat <pat@else.invalid>', 'jack@humankindcollective.app', daysAgo(4), { Subject: 'Zz Moss Studio question' })] },
   t4: { messages: [msg('Fi <fi@zzfizz.invalid>', 'jack@humankindcollective.app', daysAgo(1))] },
+  t5: { messages: [msg('GHOST <news@zzoat.invalid>', 'jack@humankindcollective.app', daysAgo(3), { 'List-Unsubscribe': '<https://zzoat.invalid/u>' })] },
+  t6: { messages: [{ ...msg('Deals <deals@zzoat.invalid>', 'jack@humankindcollective.app', daysAgo(2)), labelIds: ['INBOX', 'CATEGORY_UPDATES'] }] },
 };
 
 test('backfill: own grant only, links domain / contact / suggested threads with derived facts, never a name-only one; resumable after a Gmail 429 from the saved page; done once; unit cap stops it', async () => {
@@ -101,6 +103,9 @@ test('backfill: own grant only, links domain / contact / suggested threads with 
   const rows = sb.db.hk_brand_threads;
   assert.deepEqual(rows.map(r => [r.gmail_thread_id, r.brand_id, r.matched_by]).sort(), [['t1', 'b-oat', 'domain'], ['t2', 'b-moss', 'contact'], ['t4', 'b-fizz', 'suggested_domain']]);
   assert.deepEqual(rows.find(r => r.gmail_thread_id === 't1').waiting_on, 'us');
+  assert.equal(rows.find(r => r.gmail_thread_id === 't2').waiting_on, 'none', 'only they wrote');
+  assert.ok(!rows.some(r => r.gmail_thread_id === 't5' || r.gmail_thread_id === 't6'), 'bulk threads (List-Unsubscribe, Updates) never link');
+  assert.equal(r2.counts.bulk + (r1.counts.bulk || 0), 2);
   noStoredText(rows);
   assert.deepEqual(await backfillMailbox({ businessId: HK, memberId: JACK, d }), { skipped: 'done' });
   const sb2 = seed({ hk_job_runs: [{ id: 'r0', business_id: HK, job: 'thread-backfill', status: 'ok', chicago_day: '2026-11-01', started_at: daysAgo(1), counts: { member: JACK, units: BACKFILL_UNITS_MAX - 15 } }] });
@@ -113,7 +118,7 @@ test('backfill: own grant only, links domain / contact / suggested threads with 
 });
 
 test('hourly upkeep (L4): nothing until the workspace started linking; then a linked thread moves forward and a new matching thread links (name-only -> review)', async () => {
-  const sb = seed({ hk_brand_threads: [{ id: 'x1', business_id: HK, brand_id: 'b-oat', member_user_id: JACK, gmail_thread_id: 't1', matched_by: 'domain', link_state: 'linked', message_count: 2, last_at: daysAgo(5), waiting_on: 'them' }] });
+  const sb = seed({ hk_brand_threads: [{ id: 'x1', business_id: HK, brand_id: 'b-oat', member_user_id: JACK, gmail_thread_id: 't1', matched_by: 'domain', link_state: 'linked', message_count: 2, last_at: daysAgo(5), last_ours_at: daysAgo(5), waiting_on: 'them' }] });
   const msgs = [
     { threadId: 't1', date: daysAgo(1), from: { email: 'ana@zzoat.invalid', domain: 'zzoat.invalid' }, people: [{ email: 'ana@zzoat.invalid', domain: 'zzoat.invalid' }] },
     { threadId: 't9', date: daysAgo(1), from: { email: 'pat@else.invalid', domain: 'else.invalid' }, people: [{ email: 'pat@else.invalid', domain: 'else.invalid' }], subject: 'Zz Moss Studio sponsorship' },
@@ -127,6 +132,13 @@ test('hourly upkeep (L4): nothing until the workspace started linking; then a li
   assert.deepEqual([t1.message_count, t1.waiting_on], [3, 'us']);
   assert.deepEqual(sb.db.hk_brand_threads.find(r => r.gmail_thread_id === 't9').link_state, 'review');
   assert.deepEqual(sb.db.hk_brand_threads.find(r => r.gmail_thread_id === 't8').waiting_on, 'them');
+  const bulkMsgs = [
+    { threadId: 'tb1', date: daysAgo(1), from: { email: 'news@zzoat.invalid', domain: 'zzoat.invalid' }, people: [{ email: 'news@zzoat.invalid', domain: 'zzoat.invalid' }], listUnsubscribe: true },
+    { threadId: 'tb2', date: daysAgo(1), from: { email: 'deals@zzoat.invalid', domain: 'zzoat.invalid' }, people: [{ email: 'deals@zzoat.invalid', domain: 'zzoat.invalid' }], labelIds: ['INBOX', 'CATEGORY_PROMOTIONS'] },
+    { threadId: 'tb3', date: daysAgo(1), from: { email: 'bo@zzoat.invalid', domain: 'zzoat.invalid' }, people: [{ email: 'bo@zzoat.invalid', domain: 'zzoat.invalid' }], labelIds: ['INBOX'] },
+  ];
+  assert.deepEqual(await linkSyncedMessages({ ...args, messages: bulkMsgs }), { updated: 0, linked: 1, review: 0 }, 'bulk mail (List-Unsubscribe / Promotions) never links');
+  assert.equal(sb.db.hk_brand_threads.find(r => r.gmail_thread_id === 'tb3').waiting_on, 'none', 'only they wrote -> none until read');
   noStoredText(sb.db.hk_brand_threads);
 });
 
@@ -159,6 +171,12 @@ test('thread reads (L5): off switch and "not started" skip; only auto-ok linked 
   const full = base(); full.db.hk_job_runs.push(capRun('2026-11-02', 0.5, 60));
   assert.deepEqual(await readThreads({ businessId: HK, d: d(full) }), { skipped: 'daily count reached' });
   assert.ok(FIRST_PASS_USD === 3 && DAILY_USD === 2);
+  assert.match(claude[0].system, /"interested" ONLY when Them wrote/);
+  // Our outreach only (no Them turn): a model answer of "interested" is stored as other / "No reply yet." (ruling 2).
+  const ours = base(); const ourThread = { t1: { messages: [{ payload: { headers: hdrs({ From: 'Jack <jack@humankindcollective.app>', Date: new Date(daysAgo(3)).toUTCString() }), mimeType: 'text/plain', body: { data: Buffer.from('Would you like to sponsor a challenge?').toString('base64url') } } }] } };
+  await readThreads({ businessId: HK, d: { ...d(ours), gmail: fakeGmail(ourThread), call: async () => ({ content: [{ type: 'text', text: '{"deal_stage":"interested","waiting_on":"them","summary":"Pitched a challenge"}' }], usage: { input_tokens: 500, output_tokens: 40 } }) } });
+  const o1 = ours.db.hk_brand_threads.find(x => x.id === 't1');
+  assert.deepEqual([o1.deal_stage, o1.summary], ['other', 'No reply yet.']);
 });
 
 test('parse + own words: unknown values dropped, the summary address / phone is scrubbed, quoted history / signature cut', () => {
@@ -199,5 +217,7 @@ test('views: the mailbox owner sees everything + Open in Gmail; teammates see it
   assert.equal(o.code, 200, JSON.stringify(o.body)); assert.deepEqual(tokens, [[JACK, 'inbox']]); assert.deepEqual(gm.calls, [['get', 'tok-own', 'dd44ee55']]);
   assert.deepEqual([o.body.thread.matched_by, o.body.thread.message_count, o.body.thread.gmail_thread_id], ['manual', 2, 'dd44ee55']);
   noStoredText(sb.db.hk_brand_threads);
+  [r, o] = res(); await linkThreadRoute(req(JACK, { body: { gmail_thread_id: 'ee55ff66', brand_id: 'b-oat' } }), r, { supabase: sb, gmail: fakeGmail({ ee55ff66: THREADS.t5 }), mailbox, tokenFor: async () => 'tok-own', now: () => NOW });
+  assert.equal(o.code, 409, 'a manual link of bulk mail is refused');
   assert.deepEqual(threadView({ member_user_id: PETE, matched_by: 'domain', link_state: 'linked' }, { meId: JACK, sharing: new Map([[PETE, false]]) }).shared, false);
 });

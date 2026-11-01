@@ -261,7 +261,7 @@ export async function runMailboxSync({ D, businessId, userId: uid, m, trigger })
       for (const n of c.newThreads) await storeReply({ brand_id: n.brand_id, touch: null, message: n.message }, { label: 'new_thread', summary: snippetOf(n.message.snippet), urgent: false, labeled: false });
       // grow-mailbox-link-v1 L4 - the same new messages move linked threads forward / link new ones (no extra Gmail call).
       let links = { updated: 0, linked: 0, review: 0 };
-      try { links = await linkSyncedMessages({ supabase, businessId, uid, messages: messages.map(x => ({ threadId: x.threadId, date: x.date, from: x.from, subject: x.subject, people: [x.from, ...peopleOf(x.to)].filter(p => p?.email) })), ownEmails: [m.grant.google_email, profile?.emailAddress].filter(Boolean), ownDomains, now: now() }); }
+      try { links = await linkSyncedMessages({ supabase, businessId, uid, messages: messages.map(x => ({ threadId: x.threadId, date: x.date, from: x.from, subject: x.subject, labelIds: x.labelIds, listUnsubscribe: x.listUnsubscribe, people: [x.from, ...peopleOf(x.to)].filter(p => p?.email) })), ownEmails: [m.grant.google_email, profile?.emailAddress].filter(Boolean), ownDomains, now: now() }); }
       catch (e) { links.error = true; }
       const countsObj = runCounts(c, { labels_called: labelsCalled, messages_scanned: scanned, full_scan: full, threads_linked: links.linked, threads_updated: links.updated, threads_review: links.review, ...(links.error ? { thread_link_error: true } : {}) });
       await finish('ok', countsObj, null, { fields: { history_id: profile?.historyId ? String(profile.historyId) : state0?.history_id || null, last_synced_at: nowIso(), ...(full ? { last_full_scan_at: nowIso() } : {}) } });

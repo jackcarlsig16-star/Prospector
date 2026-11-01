@@ -50,6 +50,7 @@ export function readPrompt({ brandName, turns, today }) {
     'You read one email thread between HumanKind (a Chicago wellness app whose sponsors fund community challenges; "Us") and a brand ("Them").',
     'Return ONLY a JSON object: {"deal_stage": one of interested|discussing|confirmed|declined|scheduling|other|null, "deal_month": "YYYY-MM" or null,',
     '"deal_amount_usd": number or null, "our_question_open": true|false, "waiting_on": "them"|"us"|"none", "summary": string up to 160 characters}.',
+    'deal_stage "interested" ONLY when Them wrote words showing interest; when only Us wrote (our outreach, no reply) use "other" and a summary that starts "No reply yet".',
     'deal_month = the sponsorship month being discussed or agreed; deal_amount_usd = the dollar amount discussed or agreed. our_question_open = we asked',
     'something they have not answered. waiting_on = who owes the next reply. summary = plain words, no names of people, no email addresses or phone numbers.',
     `Today is ${today}. Use null when the thread does not say.`,
@@ -119,12 +120,14 @@ export async function readThreads({ businessId, trigger = 'manual', startedBy = 
       const thread = await D.gmail.getThreadFull(t.token, row.gmail_thread_id).catch(e => { if (e instanceof GmailError && e.status === 404) return null; throw e; });
       if (!thread) { counts.gone++; continue; }
       const ownEmails = [t.m.grant.google_email].filter(Boolean);
-      const { system, user } = readPrompt({ brandName: nameOf[row.brand_id] || 'the brand', turns: threadTurns(thread, { ownEmails, ownDomains: ownEmails.map(e => e.split('@')[1]) }), today: day });
+      const turns = threadTurns(thread, { ownEmails, ownDomains: ownEmails.map(e => e.split('@')[1]) });
+      const { system, user } = readPrompt({ brandName: nameOf[row.brand_id] || 'the brand', turns, today: day });
       const model = MODELS.STANDARD;
       const data = await D.call({ system, messages: [{ role: 'user', content: user }], max_tokens: MAX_TOKENS, thinking: false, model, timeoutMs: 60000, supabase: D.supabase, businessId, userId: row.member_user_id, callType: READ_CALL_TYPE });
       const cost = Math.round((estimateCostUsd(model, data?.usage) ?? 0) * 1e6) / 1e6;
       counts.calls++; counts.cost_usd = Math.round((counts.cost_usd + cost) * 1e6) / 1e6;
       const facts = parseFacts((data?.content || []).filter(x => x.type === 'text').map(x => x.text).join('\n'));
+      if (facts.deal_stage === 'interested' && !turns.some(t => t.who === 'Them')) { facts.deal_stage = 'other'; if (!facts.summary || !/^No reply yet/i.test(facts.summary)) facts.summary = 'No reply yet.'; }
       const { error: e1 } = await D.supabase.from('hk_brand_threads').update({ ...facts, waiting_on: facts.waiting_on || row.waiting_on, read_at: D.now().toISOString(), read_message_count: row.message_count, updated_at: D.now().toISOString() }).eq('id', row.id);
       if (e1) throw new Error(e1.message);
       counts.read++;

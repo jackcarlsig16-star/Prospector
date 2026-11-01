@@ -3,7 +3,8 @@
 // none doubled. 0 network.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { wallMinute, matchesMinute, hkRegistrations, startMinuteTick } from './cron.js';
+import { wallMinute, matchesMinute, hkRegistrations, startMinuteTick, dueOnStart, catchUpOnStart } from './cron.js';
+const { fakeSupabase } = await import('../../sales/testing/fakeSupabase.mjs');
 
 const TZ = 'America/Chicago';
 const wallKey = d => { const w = wallMinute(d, TZ), day = new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(d); return `${day} ${String(w.hour).padStart(2, '0')}:${String(w.minute).padStart(2, '0')}`; };
@@ -57,4 +58,16 @@ test('a stalled event loop catches up the slot it slept through (once), never tw
   const fired = await walk('2026-11-02T12:00:00Z', '2026-11-02T15:00:00Z', { stallAt: '2026-11-02T13:28:30Z' }); // Mon 06:00-09:00 CST, stall over 07:30
   assert.deepEqual(fired.daily, ['2026-11-02 07:33']);
   assert.deepEqual(fired.sync, ['2026-11-02 07:00', '2026-11-02 08:00']);
+});
+
+test('startup catch-up (ruling 3): after 06:30 with no run today the sweep runs once; daily-check only on its days after its time; a run row today, or before the slot, never', async () => {
+  const fired = [];
+  const rec = job => async () => { fired.push(job); return { skipped: 'test' }; };
+  const regs = hkRegistrations([{ businessId: 'hk', settings: { digest_time: '07:30', digest_days: 'weekdays', timezone: TZ } }], { jobs: { gmailSyncAll: rec('sync'), dailyCheck: rec('daily'), researchSweep: rec('sweep'), readThreads: rec('read') } });
+  assert.deepEqual(dueOnStart(regs, new Date('2026-11-01T12:20:00Z')).map(r => r.job), [], 'Sun 06:20 CST: the sweep slot has not passed');
+  assert.deepEqual(dueOnStart(regs, new Date('2026-11-01T18:00:00Z')).map(r => r.job), ['research-sweep'], 'Sunday noon: sweep yes, daily-check no (weekdays)');
+  assert.deepEqual(dueOnStart(regs, new Date('2026-11-02T15:00:00Z')).map(r => r.job), ['daily-check', 'research-sweep'], 'Monday 9 AM: both');
+  const sb = fakeSupabase({ hk_job_runs: [{ id: 'r1', business_id: 'hk', job: 'daily-check', chicago_day: '2026-11-02' }] });
+  assert.deepEqual(await catchUpOnStart(regs, { supabase: sb, now: new Date('2026-11-02T15:00:00Z'), log: () => {} }), ['research-sweep']);
+  assert.deepEqual(fired, ['sweep'], 'daily-check already has a row today');
 });
