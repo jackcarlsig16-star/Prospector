@@ -28,7 +28,7 @@ const listOf = (over = {}) => ({ rows: ROWS, total: 3, facets: null, next: null,
 
 test('U6 columns in mockup order; Industry from research else Category (J6); Market; Contact role or "No email"; Score or —; each row carries its primary + quick commands and the chevron', () => {
   render(<BrandsScreen businessId={HK} shell={shell('owner')} compact={false} canEdit onOpenBrand={() => {}} list={listOf()} />);
-  expect(screen.getAllByRole('columnheader').map(h => (h.querySelector('.ui-sr-only')?.textContent || h.textContent).replace(/[↑↓↕▲▼]/g, '').trim())).toEqual(['Select', 'Brand', 'Target', 'Industry', 'Market', 'Heat', 'Stage', 'Owner', 'Contact', 'Last touch', 'Score', 'Actions']);
+  expect(screen.getAllByRole('columnheader').map(h => (h.querySelector('.ui-sr-only')?.textContent || h.textContent).replace(/[↑↓↕▲▼]/g, '').trim())).toEqual(['Select', 'Brand', 'Target', 'Industry', 'Market', 'Heat', 'Stage', 'Owner', 'Contact', 'Last touch', 'Conversation', 'Score', 'Actions']);
   const r1 = screen.getByText('Zz Alder Apparel').closest('tr'), r2 = screen.getByText('Zz Birch Bars').closest('tr'), r3 = screen.getByText('Zz Cedar Cola').closest('tr');
   expect(r1).toHaveTextContent('Outdoor apparel'); expect(r2).toHaveTextContent('National CPG');
   expect(r1).toHaveTextContent('National'); expect(r2).toHaveTextContent('Chicago');

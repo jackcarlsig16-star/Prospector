@@ -20,11 +20,16 @@ export const BRAND_BUCKETS = [
   { key: 'research', label: 'Research', icon: 'radar' },
   { key: 'sponsor_months', label: 'Sponsor months', icon: 'calendar' },
   { key: 'place', label: 'Place', icon: 'map' },
+  // grow-mailbox-link-v1 L6 - from the linked Gmail threads and their reads.
+  { key: 'conversation', label: 'Conversation', icon: 'mail' },
+  { key: 'deal', label: 'Deal stage', icon: 'trend' },
 ];
 const BUCKET_KEYS = BRAND_BUCKETS.map(b => b.key);
 const SEGMENTS = { sponsor_brand: 'Sponsor brand', press: 'Press', podcast: 'Podcast', nonprofit: 'Nonprofit', creator: 'Creator', university: 'University' };
 const EMAIL = { has_contact: 'Has an email contact', no_contact: 'No email contact', never: 'Never emailed', emailed: 'Emailed', replied: 'Has a reply', waiting: 'Waiting on them over 7 days' };
 const DUE = { overdue: 'Overdue', week: 'Due in 7 days', later: 'Due later', none: 'No due date' };
+const CONVERSATION = { waiting_us: 'Waiting on us', waiting_them: 'Waiting on them over 3 days', discussing: 'Discussing a month', any: 'Has an email thread', none: 'No conversation' };
+const DEAL = { interested: 'Interested', discussing: 'Discussing', scheduling: 'Scheduling', confirmed: 'Confirmed', declined: 'Declined', other: 'Other' };
 const words = v => String(v).replace(/_/g, ' ').replace(/^./, c => c.toUpperCase());
 
 // A bucket value as the rail and the chips say it. owner: the caller's own id reads "Me"; others by first name.
@@ -41,6 +46,8 @@ export function valueLabel(key, v, { meId, members = [] } = {}) {
     case 'research': return v === 'yes' ? 'Researched' : 'Not researched';
     case 'sponsor_months': return 'Has sponsor months';
     case 'place': return v === 'local' ? 'Local' : v;
+    case 'conversation': return CONVERSATION[v] || words(v);
+    case 'deal': return DEAL[v] || words(v);
     default: return v;
   }
 }

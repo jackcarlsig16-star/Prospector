@@ -593,6 +593,7 @@ ${PINNED} {
 .hk-theme .hk-tl__item { display:flex; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--hk-line); font-size:14px; }
 .hk-theme .hk-tl__text { flex:1; min-width:0; overflow-wrap:anywhere; }
 .hk-theme .hk-tl__item--note { display:block; }
+.hk-theme .hk-tl__chips { display:block; margin-top:6px; }
 .hk-theme .hk-addnote { display:flex; align-items:center; gap:8px; margin-top:12px; padding:9px 12px; border-radius:var(--hk-radius-control); background:#FBF5E9; color:var(--hk-muted); }
 .hk-theme .hk-addnote__input { all:unset; flex:1; min-width:0; font:400 14px var(--hk-font-body); color:var(--hk-cocoa); }
 .hk-theme .hk-addnote__input::placeholder { color:var(--hk-muted); }

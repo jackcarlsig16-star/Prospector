@@ -10,6 +10,7 @@ import BrandLabels from './BrandLabels';
 import SiteSuggestion from './SiteSuggestion';
 import BrandResearch from './BrandResearch';
 import BrandTimeline from './BrandTimeline';
+import ConversationChips, { convOfThreads } from './ConversationChips';
 import LogActivity from './LogActivity';
 import { NextStep, Contacts, Deal, Details } from './BrandRail';
 import { useBrandCommands, PrimaryAction, QuickIcons, KEYS, isTyping, isOpenDialog } from './QuickCommands';
@@ -57,7 +58,10 @@ export default function BrandPage({ businessId, brandId, shell, gmail, onBack, o
 
   const load = useCallback(async () => {
     setError('');
-    try { setData(await hkGet(businessId, `/brands/${brandId}`)); } catch (e) { setError(e.message); }
+    try {
+      const [d, t] = await Promise.all([hkGet(businessId, `/brands/${brandId}`), hkGet(businessId, `/brands/${brandId}/threads`).catch(() => ({ threads: [] }))]);
+      setData({ ...d, threads: t.threads || [] });
+    } catch (e) { setError(e.message); }
   }, [businessId, brandId]);
   useEffect(() => { setData(null); load(); }, [load]);
   const changed = useCallback(async () => { await load(); onSignalsChanged?.(); }, [load, onSignalsChanged]);
@@ -67,7 +71,7 @@ export default function BrandPage({ businessId, brandId, shell, gmail, onBack, o
   const patch = async body => { try { await hkPatch(businessId, `/brands/${brandId}`, body); await load(); } catch (e) { setError(e.message); } };
   if (error && !data) return <p className="hk-error" role="alert">{error}</p>;
   if (!data) return <p className="hk-meta">Loading brand…</p>;
-  const { brand, contacts, touches, replies, events, verdict, email_touches_sent, max_email_touches, research, research_budget, primary, command } = data;
+  const { brand, contacts, touches, replies, events, threads, verdict, email_touches_sent, max_email_touches, research, research_budget, primary, command } = data;
   const owner = member(brand.owner_user_id);
   const mine = brand.owner_user_id && brand.owner_user_id === me?.user_id;
   const b = { ...brand, research, contact: bestContact(contacts), command, primary };
@@ -111,6 +115,7 @@ export default function BrandPage({ businessId, brandId, shell, gmail, onBack, o
                   : <span className="hk-meta" data-hk-site-pill="none">no website yet</span>}
             </div>
             <BrandLabels brand={b} owner={owner} withCategory withOwner />
+            <ConversationChips conv={convOfThreads(threads)} />
           </div>
           <div className="hk-bhead__acts">
             {canEdit && <span className="hk-srow__acts">
@@ -138,7 +143,7 @@ export default function BrandPage({ businessId, brandId, shell, gmail, onBack, o
       <div className="hk-bgrid">
         <div className="hk-bgrid__main">
           <BrandResearch businessId={businessId} brand={brand} research={research} budget={research_budget} member={member} canEdit={canEdit} onChanged={changed} setNote={setNote} />
-          <BrandTimeline businessId={businessId} brand={brand} events={events} touches={touches} replies={replies} member={member} mailbox={gmail?.mailbox} me={me} canEdit={canEdit} onChanged={load} />
+          <BrandTimeline businessId={businessId} brand={brand} events={events} touches={touches} replies={replies} threads={threads} member={member} mailbox={gmail?.mailbox} me={me} canEdit={canEdit} onChanged={load} />
         </div>
         <aside className="hk-bgrid__rail" aria-label="About this brand">
           <NextStep brand={b} primary={primary} onAct={cmd.act} onGo={onGo || (() => {})} busy={cmd.busy} canEdit={canEdit} />

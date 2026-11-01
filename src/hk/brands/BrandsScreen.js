@@ -8,6 +8,7 @@ import { hkPatch, hkPost } from '../hkApi';
 import { HeatChip, heatBarStyle } from '../signals/Heat';
 import OwnerChip from './OwnerChip';
 import BrandLabels from './BrandLabels';
+import ConversationChips from './ConversationChips';
 import { useSheetConfirm, bulkAsking } from './sheetConfirm';
 import { useBrandCommands, PrimaryAction, QuickIcons } from './QuickCommands';
 import { marketOf, contactOf, batchCommand } from './labelRules';
@@ -48,6 +49,7 @@ export default function BrandsScreen({ businessId, shell, compact, onOpenBrand, 
   const member = id => members.find(m => m.user_id === id);
   const firstName = id => member(id)?.first_name || null;
   const meId = shell?.me?.user_id;
+  const convOfRow = r => (r.conversation ? { ...r.conversation, who: r.conversation.member_user_id === meId ? 'You' : member(r.conversation.member_user_id)?.first_name || 'A teammate' } : null);
   const rows = list.rows;
   const rowsKey = rows ? rows.map(r => r.id).join() : '';
   useEffect(() => { setSelected(s => (s.size ? new Set([...s].filter(id => rowsKey.includes(id))) : s)); }, [rowsKey]);
@@ -118,6 +120,7 @@ export default function BrandsScreen({ businessId, shell, compact, onOpenBrand, 
     { id: 'owner', label: 'Owner', headerGlyph: 'Owner', width: 112, render: r => <OwnerChip owner={member(r.owner_user_id)} hint={r.owner_hint} size={22} /> },
     { id: 'contact', label: 'Contact', headerGlyph: 'Contact', width: 116, render: r => { const c = contactOf(r); return c.ok ? c.words : <span className="hk-label hk-label--block">No email</span>; } },
     { id: 'last_touch', label: 'Last touch', width: 94, sortValue: r => r.last_touch_at || '', render: r => fmt(r.last_touch_at) || <span className="hk-meta">Never</span> },
+    { id: 'conversation', label: 'Conversation', width: 200, render: r => (r.conversation ? <ConversationChips conv={convOfRow(r)} /> : <span className="hk-meta">No email thread</span>) },
     { id: 'score', label: 'Score', width: 64, sortValue: r => r.score ?? -1, render: r => (r.score == null ? <span className="hk-meta" title="Not one you can pitch now">—</span> : <span className="hk-score">{r.score}</span>) },
     { id: 'actions', label: 'Actions', stickyEnd: true, width: 56, render: r => (
       <span className="hk-rowacts">
@@ -192,7 +195,7 @@ export default function BrandsScreen({ businessId, shell, compact, onOpenBrand, 
             renderCompact={r => (<>
               <button type="button" className="hk-btn hk-card-row" onClick={() => onOpenBrand(r.id)} data-hk-brand={r.id}>
                 <span className="hk-table__title">{r.name}</span>
-                <span className="hk-card-row__chips"><BrandLabels brand={r} owner={member(r.owner_user_id)} withOwner /><Chip tone={STATUS_TONE[r.status]}>{STATUS_LABELS[r.status]}</Chip></span>
+                <span className="hk-card-row__chips"><BrandLabels brand={r} owner={member(r.owner_user_id)} withOwner /><Chip tone={STATUS_TONE[r.status]}>{STATUS_LABELS[r.status]}</Chip><ConversationChips conv={convOfRow(r)} /></span>
               </button>
               {canEdit && <span className="hk-rowacts__full hk-rowacts__full--card"><PrimaryAction brand={r} onAct={cmd.act} onGo={onGo || (() => {})} onOpenBrand={onOpenBrand} busy={cmd.busy} /><QuickIcons brand={r} meId={meId} firstName={firstName} onAct={cmd.act} busy={cmd.busy} /></span>}
             </>)} />

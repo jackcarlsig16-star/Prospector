@@ -57,7 +57,7 @@ export function parseFilters(src = {}) {
 // dropped, domain intel, members, settings) plus the sponsor months. `intelData` carries it on for the row score.
 export async function loadFilterData(supabase, businessId, now = new Date()) {
   const [d, periods, threads, prefs] = await Promise.all([loadIntel(supabase, businessId, now), selectAllPages(() => supabase.from('hk_sponsor_periods').select('id, brand_id').eq('business_id', businessId).order('id')),
-    selectAllPages(() => supabase.from('hk_brand_threads').select('id, brand_id, member_user_id, waiting_on, deal_stage, last_ours_at').eq('business_id', businessId).eq('link_state', 'linked').order('id')),
+    selectAllPages(() => supabase.from('hk_brand_threads').select('id, brand_id, member_user_id, waiting_on, deal_stage, last_at, last_ours_at, last_theirs_at').eq('business_id', businessId).eq('link_state', 'linked').order('id')),
     supabase.from('hk_member_prefs').select('user_id, share_deal_status').eq('business_id', businessId)]);
   const threadsBy = {}; for (const t of threads) (threadsBy[t.brand_id] ||= []).push(t);
   const sharing = new Map((prefs.data || []).map(r => [r.user_id, r.share_deal_status !== false]));
@@ -104,6 +104,17 @@ function conversationOf(ts, sharing = new Map(), { meId, now }) {
   if (vis.some(r => r.waiting_on === 'them' && r.last_ours_at && t - Date.parse(r.last_ours_at) > THEM_WAIT_DAYS * DAY)) c.push('waiting_them');
   if (vis.some(r => r.deal_stage === 'discussing')) c.push('discussing');
   return { conversation: [...c, 'any'], deal: [...new Set(vis.map(r => r.deal_stage).filter(Boolean))] };
+}
+
+// The list row's "Last contact <n> ago · <who>" + "Waiting on us / them <n> d" (L6): the newest linked thread; who is
+// waiting only from a thread the caller may see in full. null = no linked conversation.
+export function conversationSummary(ts, sharing = new Map(), { meId, now }) {
+  if (!ts.length) return null;
+  const newest = [...ts].sort((a, b) => String(b.last_at || '').localeCompare(String(a.last_at || '')))[0];
+  const vis = ts.filter(r => r.member_user_id === meId || sharing.get(r.member_user_id) !== false).sort((a, b) => String(b.last_at || '').localeCompare(String(a.last_at || '')))[0];
+  const since = iso => (iso ? Math.max(0, Math.floor((now.getTime() - Date.parse(iso)) / DAY)) : null);
+  const w = vis && vis.waiting_on !== 'none' ? vis.waiting_on : null;
+  return { last_at: newest.last_at, member_user_id: newest.member_user_id, waiting_on: w, waiting_days: w === 'us' ? since(vis.last_theirs_at) : w === 'them' ? since(vis.last_ours_at) : null };
 }
 
 const matchesQ = (b, q) => { const n = normName(q), raw = String(q).trim().toLowerCase(); return normName(b.name).includes(n) || (b.domain || '').includes(raw) || (b.aliases || []).some(a => normName(a).includes(n)); };

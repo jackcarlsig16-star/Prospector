@@ -2,7 +2,7 @@
 // member = writes, owner-role = relationship upgrades + releasing another's claim). List rows never carry an address;
 // the brand detail and the contacts routes do (hk_contacts.email - the scoped HumanKind exception, D5).
 import { getSupabase, HkError, fail, isOwner, me, text, bool, oneOf, domainOf, emailOf, logEvent, brandRow, brandDetail, contactRow, touchRow, replyRow, liveBrands, brandById, legacyNames, verdictFor, sponsorsNichesOf, canContact, normName, SPONSOR_RELATIONSHIPS, MANUAL_STATUSES, selectAllPages, selectIn, memberFirstNames } from './hkShared.js';
-import { CLOSED, VIEWS as FILTER_VIEWS, SORTS, PAGE_DEFAULT, PAGE_MAX, parseFilters, loadFilterData, applyFilters } from './brandFilters.js';
+import { CLOSED, VIEWS as FILTER_VIEWS, SORTS, PAGE_DEFAULT, PAGE_MAX, parseFilters, loadFilterData, applyFilters, conversationSummary } from './brandFilters.js';
 import { signalNow, signalWords, moveDomainSignals, recomputeHeat } from './signals.js';
 import { trackedThreads, liveThread } from './warm.js';
 import { sheetOwnerOf, sheetQuestion, hintName, primaryOf } from './rules.js';
@@ -90,7 +90,7 @@ async function pagedBrands(req, res, { supabase, now }) {
       const c = cs.find(x => x.is_primary && x.has_email) || cs.find(x => x.has_email) || null;
       return { score: b.reach_score, research: i ? { industry: i.company?.industry || null, fit: i.fit?.sponsor_fit || null, chicago_presence: i.company?.chicago_presence || null } : null, contact: c ? { has_email: true, title: c.title || null } : { has_email: false, title: null }, command: pitchCommand(b) };
     };
-    res.json({ view, total: out.total, page, limit, next_page: out.next_page, rows: out.rows.map(b => brandRow(b, { primary_contact_name: primary[b.id] || null, primary: primaryFor(b), ...extraFor(b) })), research_estimate: await researchEstimate(supabase, businessId), ...(out.facets ? { facets: out.facets } : {}) });
+    res.json({ view, total: out.total, page, limit, next_page: out.next_page, rows: out.rows.map(b => brandRow(b, { primary_contact_name: primary[b.id] || null, primary: primaryFor(b), ...extraFor(b), conversation: conversationSummary(data.threads?.[b.id] || [], data.sharing, { meId: uid, now: at }) })), research_estimate: await researchEstimate(supabase, businessId), ...(out.facets ? { facets: out.facets } : {}) });
   } catch (e) { fail(res, e, 'brands/list-paged'); }
 }
 
