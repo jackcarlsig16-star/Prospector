@@ -236,10 +236,11 @@ export function savedViewsOf(list) {
   if (new Set(out.map(v => v.id)).size !== out.length) throw new HkError(400, 'saved view ids must be unique');
   return out;
 }
-// rail: { narrow?: bool, collapsed?: { <space>: [bucket keys] } }
+// rail: { narrow?: bool, collapsed?: { <space>: [bucket keys] } }. today_hidden (Your day's Not today) is written only by
+// POST /today/not-today; a rail save may echo it back and it is dropped here (patchPrefsRoute keeps the stored one).
 export function railOf(v) {
   if (!plainObject(v)) throw new HkError(400, 'rail must be an object');
-  const extra = Object.keys(v).filter(k => k !== 'narrow' && k !== 'collapsed');
+  const extra = Object.keys(v).filter(k => k !== 'narrow' && k !== 'collapsed' && k !== 'today_hidden');
   if (extra.length) throw new HkError(400, `unknown rail field ${extra[0]}`);
   const out = {};
   if (v.narrow != null) out.narrow = bool(v.narrow, 'narrow');
@@ -266,7 +267,12 @@ export async function patchPrefsRoute(req, res, { supabase = getSupabase(), now 
     if ('avatar_slot' in body) { if (body.avatar_slot !== null && ![1, 2, 3, 4].includes(body.avatar_slot)) throw new HkError(400, 'avatar_slot must be 1 to 4'); patch.avatar_slot = body.avatar_slot; }
     if ('owner_filter' in body) { const v = body.owner_filter; if (!(v === 'me' || v === 'all' || /^[0-9a-f-]{36}$/.test(String(v)))) throw new HkError(400, "owner_filter must be 'me', 'all' or a member id"); patch.owner_filter = v; }
     if ('saved_views' in body) patch.saved_views = savedViewsOf(body.saved_views);
-    if ('rail' in body) patch.rail = railOf(body.rail);
+    if ('rail' in body) {
+      patch.rail = railOf(body.rail);
+      const { data: cur, error: e0 } = await supabase.from('hk_member_prefs').select('rail').eq('business_id', req.params.businessId).eq('user_id', me(req)).maybeSingle();
+      if (e0) throw new Error(e0.message);
+      if (cur?.rail?.today_hidden) patch.rail.today_hidden = cur.rail.today_hidden;
+    }
     if (!Object.keys(patch).length) throw new HkError(400, 'nothing to change');
     const { data, error } = await supabase.from('hk_member_prefs').upsert({ business_id: req.params.businessId, user_id: me(req), ...patch, updated_at: now().toISOString() }, { onConflict: 'business_id,user_id' }).select().single();
     if (error) { if (error.code === '23505') throw new HkError(409, 'that color slot is taken'); throw error; }

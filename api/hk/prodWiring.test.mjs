@@ -13,7 +13,7 @@ delete process.env.HK_SLACK_WEBHOOK_URL;
 const { seed, reqOf, resOf, HK, JACK, ID } = await import('./testing.mjs');
 const shared = await import('./hkShared.js');
 const grants = await import('../lib/googleGrants.js');
-const MODULES = { brandsRoutes: await import('./brandsRoutes.js'), opsRoutes: await import('./opsRoutes.js'), gmailRoutes: await import('./gmailRoutes.js'), inboxRoutes: await import('./inboxRoutes.js'), importRoutes: await import('./importRoutes.js'), jobsRoutes: await import('./jobsRoutes.js'), signalsRoutes: await import('./signalsRoutes.js'), briefingRoutes: await import('./briefingRoutes.js'), brandResearch: await import('./brandResearch.js'), researchSweep: await import('./researchSweep.js'), searchRoutes: await import('./searchRoutes.js'), brandActions: await import('./brandActions.js'), threadRoutes: await import('./threadRoutes.js') };
+const MODULES = { brandsRoutes: await import('./brandsRoutes.js'), opsRoutes: await import('./opsRoutes.js'), gmailRoutes: await import('./gmailRoutes.js'), inboxRoutes: await import('./inboxRoutes.js'), importRoutes: await import('./importRoutes.js'), jobsRoutes: await import('./jobsRoutes.js'), signalsRoutes: await import('./signalsRoutes.js'), briefingRoutes: await import('./briefingRoutes.js'), brandResearch: await import('./brandResearch.js'), researchSweep: await import('./researchSweep.js'), searchRoutes: await import('./searchRoutes.js'), brandActions: await import('./brandActions.js'), threadRoutes: await import('./threadRoutes.js'), todayDay: await import('./todayDay.js') };
 
 const OWNER = 'jack.work@humankind.invalid', TOKEN = 'tok-jack-wiring';
 const b64 = s => Buffer.from(s, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -152,6 +152,9 @@ const TABLE = [
   ['threadRoutes', 'linkThreadRoute', member({ method: 'POST', body: {} }), [400]],
   ['threadRoutes', 'startReadRoute', member({ method: 'POST', body: {} }), [202]],
   ['threadRoutes', 'startBackfillRoute', member({ method: 'POST', body: {} }), [202]],
+  ['todayDay', 'dayRoute', member(), [200]],
+  ['todayDay', 'notTodayRoute', member({ method: 'POST', body: { brand_id: ID.run, on: true } }), [200]],
+  ['todayDay', 'pitchAllRoute', member({ method: 'POST', body: { brand_ids: [ID.run] } }), [200]],
 ];
 const TYPE_ERROR = /is not a function|Cannot read propert|is not defined|is not iterable|Cannot destructure/;
 

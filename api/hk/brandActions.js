@@ -34,21 +34,30 @@ const latestEvent = async (supabase, businessId, brandId, action) => {
 export const pitchCommand = b => `hk pitch ${b.domain || scrubAddresses(b.name).replace(/@/g, '')}`;
 const VERDICT_WORDS = { sponsor: 'is a sponsor or founding partner', do_not_contact: 'is marked do not contact', passed: 'was passed on', owner_unclear: "owner is Unclear - sort it out first", warm: 'already has a thread with another founder', max_touches: 'has had every email touch already', owned_by: 'is owned by another founder' };
 
-// POST /brands/:id/pitch { confirm_sheet_owner? } | { undo: true, expect_updated_at } - J1: claims the brand for the
-// caller when it is nobody's (through the claim writer, so the sheet-owner question and the Activity row are the same
+// POST /brands/:id/pitch { confirm_sheet_owner? } | { undo: true, expect_updated_at } | { undo: true, claimed: false } -
+// J1: claims the brand for the caller when it is nobody's (through the claim writer, so the sheet-owner question and the Activity row are the same
 // as Claim) and returns "hk pitch <domain or name>" for the clipboard. Refused for every can_contact block. Undo releases
 // only a claim this Pitch made (the latest brand.claimed row is the caller's, reason Pitch) and only while the brand is
-// as Pitch left it.
+// as Pitch left it. Every Pitch writes brand.pitched (Your day ticks it off) and every Undo brand.pitch_undone; a Pitch on
+// your own brand claims nothing, so its Undo ({ claimed: false }) only writes that row.
 export async function pitchRoute(req, res, { supabase = getSupabase(), now = () => new Date() } = {}) {
   const businessId = req.params.businessId, uid = me(req), body = req.body || {};
   try {
     const brand = await brandById(supabase, businessId, req.params.id);
     if (brand.archived_at) throw new HkError(409, 'that brand is archived');
     const deps = { supabase, now }, params = { businessId, id: brand.id };
+    const pitchedRow = (action, extra = {}) => logEvent(supabase, { businessId, actorUserId: uid, entityType: 'brand', entityId: brand.id, action, detail: { name: scrubAddresses(brand.name).replace(/@/g, ''), ...extra } });
+    if (body.undo === true && body.claimed === false) {
+      const last = await latestEvent(supabase, businessId, brand.id, 'brand.pitched');
+      if (!last || last.actor_user_id !== uid) throw new HkError(409, `${brand.name} has no Pitch of yours to undo`);
+      await pitchedRow('brand.pitch_undone');
+      return res.json({ brand: { ...brandSummary(brand), updated_at: brand.updated_at }, undone: true });
+    }
     if (body.undo === true) {
       const last = await latestEvent(supabase, businessId, brand.id, 'brand.claimed');
       if (brand.owner_user_id !== uid || brand.updated_at !== body.expect_updated_at || !last || last.actor_user_id !== uid || last.detail?.reason !== 'Pitch') throw new HkError(409, `${brand.name} changed since - nothing to undo`);
       const out = await claimThrough({ ...req, params }, { claim: false, reason: 'undo Pitch' }, deps);
+      await pitchedRow('brand.pitch_undone');
       return res.json({ brand: { ...brandSummary(out), updated_at: out.updated_at }, undone: true });
     }
     const why = pipelineRefusal(brand, uid, await memberFirstNames(supabase, businessId));
@@ -59,8 +68,9 @@ export async function pitchRoute(req, res, { supabase = getSupabase(), now = () 
     const verdict = canContact({ brand, touches: touches || [], threadsByFounder: await trackedThreads(supabase, businessId, brand.id), senderUserId: uid, kind: 'cold', maxEmailTouches: s?.max_email_touches || 3 });
     if (!verdict.ok) throw new HkError(409, `${brand.name} ${VERDICT_WORDS[verdict.reason] || 'is blocked'}`, { verdict });
     const command = pitchCommand(brand);
-    if (brand.owner_user_id === uid) return res.json({ brand: { ...brandSummary(brand), updated_at: brand.updated_at }, claimed: false, command, words: `Copied ${command}. Paste into Claude.` });
+    if (brand.owner_user_id === uid) { await pitchedRow('brand.pitched', { claimed: false }); return res.json({ brand: { ...brandSummary(brand), updated_at: brand.updated_at }, claimed: false, command, words: `Copied ${command}. Paste into Claude.` }); }
     const out = await claimThrough({ ...req, params }, { claim: true, reason: 'Pitch', ...(body.confirm_sheet_owner === true ? { confirm_sheet_owner: true } : {}) }, deps);
+    await pitchedRow('brand.pitched', { claimed: true });
     res.json({ brand: { ...brandSummary(out), updated_at: out.updated_at }, claimed: true, command, words: `Claimed. Copied ${command}. Paste into Claude.` });
   } catch (e) { fail(res, e, 'brands/pitch'); }
 }

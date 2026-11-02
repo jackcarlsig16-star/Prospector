@@ -458,6 +458,11 @@ app.post('/api/hk/:businessId/review/email-links/:id',        hkRoute(HK_THREADS
 app.post('/api/hk/:businessId/threads/link',                  hkRoute(HK_THREADS, 'linkThreadRoute'));
 app.post('/api/hk/:businessId/jobs/thread-backfill',          hkRoute(HK_THREADS, 'startBackfillRoute'));
 app.post('/api/hk/:businessId/jobs/thread-read',              hkRoute(HK_THREADS, 'startReadRoute'));
+// grow-today-workflow-v1 Stage 1 - Your day (always the signed-in member's), Not today, Pitch all ready.
+const HK_TODAY = './api/hk/todayDay.js';
+app.get('/api/hk/:businessId/today/day',                      hkRoute(HK_TODAY, 'dayRoute'));
+app.post('/api/hk/:businessId/today/not-today',               hkRoute(HK_TODAY, 'notTodayRoute'));
+app.post('/api/hk/:businessId/today/pitch-all',               hkRoute(HK_TODAY, 'pitchAllRoute'));
 app.get('/api/hk/:businessId/search',                         hkRoute(HK_SEARCH, 'searchRoute'));
 app.get('/api/hk/:businessId/brands/:id/research-input',     hkRoute(HK_RESEARCH, 'researchInputRoute'));
 // grow-ui-refresh-v1 REV2 - Pitch (claim + command), Snooze, Not a fit, Log activity, the research batch. All with Undo; none sends.
