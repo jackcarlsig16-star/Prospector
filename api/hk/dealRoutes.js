@@ -9,7 +9,7 @@ import { intelSettings } from './intelScore.js';
 const PERIOD = /^([0-9]{4}-(0[1-9]|1[0-2])|launch)$/;
 const MONTH = /^[0-9]{4}-(0[1-9]|1[0-2])$/;
 export const MONEY_BACK = 3, MONEY_AHEAD = 3; // REVISABLE - the last 3 months + this month + next 3
-const EDITABLE = ['state', 'amount_usd', 'paid', 'deal_type', 'details', 'note'];
+const EDITABLE = ['period', 'state', 'amount_usd', 'paid', 'deal_type', 'details', 'note'];
 
 const amountOf = v => { if (v === null || v === '') return null; if (typeof v !== 'number' || !Number.isFinite(v) || v < 0 || v > 99999999) throw new HkError(400, 'amount must be blank or a dollar amount'); return Math.round(v * 100) / 100; };
 export function detailsOf(v) {
@@ -27,8 +27,9 @@ export function detailsOf(v) {
   return out;
 }
 // The fields a body sets (only the ones it names). paid writes paid_at; a state change writes who and when.
-function fieldsOf(body, uid, at) {
+function fieldsOf(body, uid, at, { move = false } = {}) {
   const p = {};
+  if (move && 'period' in body) { p.period = String(body.period || '').trim(); if (!MONTH.test(p.period)) throw new HkError(400, 'period must be a month like 2026-11'); }
   if ('state' in body) { p.state = oneOf(body.state, new Set(STATES), 'state'); p.state_changed_at = at; p.state_changed_by = uid; }
   if ('amount_usd' in body) p.amount_usd = amountOf(body.amount_usd);
   if ('paid' in body) { p.paid = bool(body.paid, 'paid') ?? false; p.paid_at = p.paid ? at : null; }
@@ -114,16 +115,24 @@ export async function patchPeriodRoute(req, res, { supabase = getSupabase(), now
       for (const [k, v] of Object.entries(body.expect)) if (EDITABLE.includes(k) && !same(cur[k], v)) throw new HkError(409, `${brand.name}'s month changed since - nothing to undo`, { current: cur });
     }
     const at = now().toISOString();
-    const fields = fieldsOf(body, uid, at);
+    const fields = fieldsOf(body, uid, at, { move: true });
     const changed = EDITABLE.filter(k => k in fields && !same(cur[k], k === 'amount_usd' && fields[k] != null ? Number(fields[k]) : fields[k]));
     if (!changed.length) return res.json({ period: cur, prev: {}, changed: [], relationship: null });
+    // Moving a month (the "Needs update" fix and its Undo): monthly rows only, and never onto a month the brand already has
+    // (UNIQUE brand + period + kind counts archived rows too).
+    if (changed.includes('period')) {
+      if (row.kind !== 'monthly') throw new HkError(400, 'only a monthly month can move');
+      const { data: taken, error: te } = await supabase.from('hk_sponsor_periods').select('id, archived_at').eq('business_id', businessId).eq('brand_id', brand.id).eq('period', fields.period).eq('kind', 'monthly');
+      if (te) throw new Error(te.message);
+      if (taken?.length) throw new HkError(409, `${brand.name} already has ${fields.period}${taken[0].archived_at ? ' (removed - restore it instead)' : ''}`);
+    }
     const patch = Object.fromEntries(Object.entries(fields).filter(([k]) => changed.includes(k) || (k === 'paid_at' && changed.includes('paid')) || (k.startsWith('state_changed') && changed.includes('state'))));
     // An Undo (expect set) puts the row's source back too, so a sheet row undone is a sheet row again.
     const source = body.expect != null && ['sheet', 'user', 'email'].includes(body.source) ? body.source : 'user';
     const { data, error } = await supabase.from('hk_sponsor_periods').update({ ...patch, source }).eq('id', row.id).select().single();
     if (error) throw error;
     const prev = { ...Object.fromEntries(changed.map(k => [k, cur[k]])), source: cur.source };
-    await logEvent(supabase, { businessId, actorUserId: uid, entityType: 'brand', entityId: brand.id, action: body.expect ? 'sponsor.period_undone' : 'sponsor.period_changed', detail: { period: row.period, changed, prev: words(Object.fromEntries(changed.map(k => [k, prev[k]]))), next: words(Object.fromEntries(changed.map(k => [k, data[k] ?? null]))) } });
+    await logEvent(supabase, { businessId, actorUserId: uid, entityType: 'brand', entityId: brand.id, action: body.expect ? 'sponsor.period_undone' : 'sponsor.period_changed', detail: { period: row.period, ...(changed.includes('period') ? { moved_to: data.period } : {}), changed, prev: words(Object.fromEntries(changed.map(k => [k, prev[k]]))), next: words(Object.fromEntries(changed.map(k => [k, data[k] ?? null]))) } });
     const relationship = await syncRelationship(supabase, { businessId, brand, actorUserId: uid, now: new Date(at) });
     res.json({ period: view(data), prev, changed, relationship });
   } catch (e) { fail(res, e, 'sponsors/period-patch'); }

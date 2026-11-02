@@ -53,6 +53,10 @@ export function relationshipPatch(brand, periods) {
   return { relationship: rel, ...(rel === 'sponsor' ? { status: 'sponsor' } : brand.status === 'sponsor' ? { status: 'replied' } : {}) };
 }
 export const hasDiscussing = periods => periods.some(p => stateOf(p) === 'discussing');
+// Ruling (Stage 4 review) - a monthly month still In discussion after it ended: nobody closed it. The Deal card asks to move
+// it to the next open month or mark it Declined; the Deal stage filter lists it as "Needs update" (alongside its stage).
+export const needsUpdate = (p, thisMonth) => p.kind === 'monthly' && stateOf(p) === 'discussing' && p.period < thisMonth;
+export const moveTarget = (p, thisMonth) => { const n = addMonths(p.period, 1); return n < thisMonth ? thisMonth : n; };
 
 // S4 - per month (monthly rows of live brands only): Confirmed $ · Paid $ · Unpaid confirmed $ · In discussion $ and the
 // three counts. A month with no amount on any row shows null dollars ("—"), never 0. No probabilities: confirmed and

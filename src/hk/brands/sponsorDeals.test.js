@@ -7,6 +7,7 @@ import { StatusLine } from '../inbox/IntelCard';
 import { rowChips } from '../inbox/InboxRows';
 import { brandBuckets } from '../nav/railBuckets';
 import { valueLabel, brandRequest } from '../nav/filterState';
+import { chicagoMonth, addMonths, monthWords } from './dealWords';
 
 // grow-sponsor-deals-v1 Stage 4 - synthetic: the Sponsor money table + cell filters, the rail's Deal group, the Deal card
 // (state chips with words, edit + Undo with expect, copy to next + Undo, remove = archive + restore, suggestions, Viewer),
@@ -147,4 +148,23 @@ test('S7 status line: a saved brand reads brand · deal stage · owner · open m
   const chips = rowChips({ chip: { kind: 'matches', brand_id: B, brand_name: 'Zz Fig Bakery' }, status_line: s });
   expect(chips[0].text).toBe('Zz Fig Bakery · In discussion · Yours · Nov: in discussion · Sky emailed them Oct 28');
   expect(rowChips({ chip: { kind: 'untracked' }, status_line: { kind: 'new' } })[0].text).toBe('New · not in Grow');
+});
+
+test('ruling: a past month still in discussion reads "Needs update" with Move to the next open month and Mark declined, one click each with Undo; the filter says Needs update', async () => {
+  const now = chicagoMonth(), old = addMonths(now, -2), to = now; // two months back moves to this month, not the ended one after it
+  const P = `/api/hk/${HK}/sponsors/${B}/periods/p0`;
+  routes[`PATCH ${P}`] = b => (b.expect ? { period: month({ id: 'p0', period: old, state: 'discussing' }), prev: {}, changed: ['period'] }
+    : 'period' in b ? { period: month({ id: 'p0', period: b.period, state: 'discussing', source: 'user' }), prev: { period: old, source: 'sheet' }, changed: ['period'] }
+      : { period: month({ id: 'p0', period: old, state: 'declined', source: 'user' }), prev: { state: 'discussing', source: 'sheet' }, changed: ['state'] });
+  card({ deal: deal({ stage: 'prospect', months: [month({ id: 'p0', period: old, state: 'discussing', amount_usd: null, paid: false, details: {}, deal_type: null })] }) });
+  const stale = document.querySelector('[data-hk-month-stale]');
+  expect(stale).toHaveTextContent(`Needs update · ${monthWords(old)} ended and is still in discussion.`);
+  fireEvent.click(within(stale).getByRole('button', { name: `Move to ${monthWords(to)}` }));
+  await waitFor(() => expect(bodies[`PATCH ${P}`]).toEqual([{ period: to }]));
+  fireEvent.click(within(await screen.findByText(new RegExp(`moved to ${monthWords(to)}`))).getByRole('button', { name: 'Undo' }));
+  await waitFor(() => expect(bodies[`PATCH ${P}`][1]).toEqual({ period: old, source: 'sheet', expect: { period: to } }));
+  await waitFor(() => expect(document.querySelector('[data-hk-deal-undo]')).toBeNull());
+  fireEvent.click(within(document.querySelector('[data-hk-month-stale]')).getByRole('button', { name: 'Mark declined' }));
+  await waitFor(() => expect(bodies[`PATCH ${P}`][2]).toEqual({ state: 'declined' }));
+  expect(valueLabel('deal_stage', 'needs_update')).toBe('Needs update');
 });

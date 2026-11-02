@@ -5,7 +5,8 @@
 import { HkError, STATUS_ORDER, selectAllPages, normName } from './hkShared.js';
 import { activityOf, PARTNERSHIP_SEGMENTS } from './intelScore.js';
 import { loadIntel } from './intelData.js';
-import { DEAL_STAGES, dealStageOf, stateOf, chicagoMonth } from './deals.js';
+import { DEAL_STAGES, dealStageOf, stateOf, chicagoMonth, needsUpdate } from './deals.js';
+const DEAL_STAGE_VALUES = [...DEAL_STAGES, 'needs_update'];
 
 const DAY = 864e5;
 export const CLOSED = new Set(['passed', 'skipped', 'sponsor']);
@@ -29,7 +30,7 @@ export const THEM_WAIT_DAYS = 3; // REVISABLE ("Waiting on them > 3 d")
 // paid (a confirmed month paid / unpaid), amount (a month with / without an amount; declined months don't count).
 export const PAID = ['paid', 'unpaid'], AMOUNT = ['set', 'not_set'];
 export const BUCKETS = ['stage', 'heat', 'owner', 'relationship', 'segment', 'category', 'email', 'due', 'research', 'sponsor_months', 'place', 'conversation', 'deal', 'deal_stage', 'month', 'paid', 'amount'];
-const FIXED = { stage: STATUS_ORDER, heat: HEAT, relationship: RELATIONSHIPS, email: EMAIL, due: DUE, research: ['yes', 'no'], sponsor_months: ['yes'], conversation: CONVERSATION, deal: DEAL, deal_stage: DEAL_STAGES, paid: PAID, amount: AMOUNT };
+const FIXED = { stage: STATUS_ORDER, heat: HEAT, relationship: RELATIONSHIPS, email: EMAIL, due: DUE, research: ['yes', 'no'], sponsor_months: ['yes'], conversation: CONVERSATION, deal: DEAL, deal_stage: DEAL_STAGE_VALUES, paid: PAID, amount: AMOUNT };
 export const SORTS = ['name', 'status', 'last_touch', 'next_due', 'created', 'heat', 'score'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FREE = /^[^@\n]{1,80}$/;
@@ -41,7 +42,7 @@ const VALID = {
   segment: v => /^[a-z_]{1,40}$/.test(v), category: v => FREE.test(v), email: v => EMAIL.includes(v), due: v => DUE.includes(v),
   research: v => v === 'yes' || v === 'no', sponsor_months: v => v === 'yes', place: v => FREE.test(v),
   conversation: v => CONVERSATION.includes(v), deal: v => DEAL.includes(v),
-  deal_stage: v => DEAL_STAGES.includes(v), month: v => /^[0-9]{4}-(0[1-9]|1[0-2])(:(confirmed|discussing|declined))?$/.test(v), paid: v => PAID.includes(v), amount: v => AMOUNT.includes(v),
+  deal_stage: v => DEAL_STAGE_VALUES.includes(v), month: v => /^[0-9]{4}-(0[1-9]|1[0-2])(:(confirmed|discussing|declined))?$/.test(v), paid: v => PAID.includes(v), amount: v => AMOUNT.includes(v),
 };
 export const isFilterValue = (key, v) => typeof v === 'string' && !!VALID[key]?.(v);
 
@@ -106,7 +107,7 @@ export function valuesOf(b, data, { meId, now }) {
 function dealOf(b, ps, now) {
   const ms = ps.filter(p => p.kind === 'monthly'), conf = ms.filter(p => stateOf(p) === 'confirmed'), open = ms.filter(p => stateOf(p) !== 'declined');
   return {
-    deal_stage: [dealStageOf(b, ps, chicagoMonth(now))],
+    deal_stage: [dealStageOf(b, ps, chicagoMonth(now)), ...(ms.some(p => needsUpdate(p, chicagoMonth(now))) ? ['needs_update'] : [])],
     month: [...new Set(ms.flatMap(p => [p.period, `${p.period}:${stateOf(p)}`]))],
     paid: [...(conf.some(p => p.paid) ? ['paid'] : []), ...(conf.some(p => !p.paid) ? ['unpaid'] : [])],
     amount: [...(open.some(p => p.amount_usd != null) ? ['set'] : []), ...(open.some(p => p.amount_usd == null) ? ['not_set'] : [])],

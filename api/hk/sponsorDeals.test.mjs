@@ -275,3 +275,20 @@ test('Stage 4: the Sponsor money view lists brands with months; the member who j
   const un = await call(deletePeriodRoute, reqOf({ method: 'DELETE', params: { brandId: T, pid: add.body.undo.archive } }), deps(sb));
   assert.deepEqual([un.code, !!sb.db.hk_sponsor_periods[0].archived_at, sb.db.hk_sponsor_periods.length], [200, true, 1]);
 });
+
+test('Needs update: a past month still in discussion is listed under Deal stage > Needs update; Move to the next open month + Undo; never onto a month the brand has', async () => {
+  const a = brandRow('a', 'Zz Stale'), c = brandRow('c', 'Zz Fresh');
+  const data = { brands: [a, c], touches: {}, replies: {}, hasEmail: new Set(), intel: new Set(), months: new Set(['a', 'c']), threads: {}, periodsBy: { a: [per('a', '2026-09', 'discussing')], c: [per('c', '2026-11', 'discussing')] } };
+  const r = applyFilters(data, { filters: parseFilters({ deal_stage: 'needs_update' }), facets: true, meId: JACK, now: NOW });
+  assert.deepEqual([r.rows.map(x => x.id), r.facets.deal_stage], [['a'], [['prospect', 1], ['discussing', 1], ['needs_update', 1]]]);
+  const T = randomUUID(), sep = per(T, '2026-09', 'discussing', { source: 'sheet' }), dec = per(T, '2026-12', 'confirmed', { archived_at: '2026-10-01T00:00:00Z' });
+  const sb = seed({ hk_brands: [brandRow(T, 'Zz Move Co')], hk_sponsor_periods: [sep, dec], hk_brand_threads: [] });
+  const mv = await call(patchPeriodRoute, reqOf({ method: 'PATCH', params: { brandId: T, pid: sep.id }, body: { period: '2026-10' } }), deps(sb));
+  assert.equal(mv.code, 200, JSON.stringify(mv.body));
+  assert.deepEqual([mv.body.changed, mv.body.prev.period, mv.body.period.period, sb.db.hk_events.at(-1).detail.moved_to], [['period'], '2026-09', '2026-10', '2026-10']);
+  const undo = await call(patchPeriodRoute, reqOf({ method: 'PATCH', params: { brandId: T, pid: sep.id }, body: { period: '2026-09', source: 'sheet', expect: { period: '2026-10' } } }), deps(sb));
+  assert.deepEqual([undo.code, sb.db.hk_sponsor_periods.find(p => p.id === sep.id).period, sb.db.hk_sponsor_periods.find(p => p.id === sep.id).source], [200, '2026-09', 'sheet']);
+  const taken = await call(patchPeriodRoute, reqOf({ method: 'PATCH', params: { brandId: T, pid: sep.id }, body: { period: '2026-12' } }), deps(sb));
+  assert.deepEqual([taken.code, /restore it instead/.test(taken.body.error)], [409, true], 'archived rows hold the month too');
+  assert.equal((await call(patchPeriodRoute, reqOf({ method: 'PATCH', params: { brandId: T, pid: sep.id }, body: { period: '2026-13' } }), deps(sb))).code, 400);
+});

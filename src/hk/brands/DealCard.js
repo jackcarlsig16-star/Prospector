@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import Button from '../../ui/Button';
 import { hkPatch, hkPost, hkDelete } from '../hkApi';
-import { DEAL_STAGE_WORDS, DEAL_STAGE_TONE, STATE_WORDS, STATE_TONE, monthWords, usd, addMonths, chicagoMonth } from './dealWords';
+import { DEAL_STAGE_WORDS, DEAL_STAGE_TONE, STATE_WORDS, STATE_TONE, monthWords, usd, addMonths, chicagoMonth, needsUpdate, moveTarget } from './dealWords';
 
 // grow-sponsor-deals-v1 S6 - the Brand page Deal card: the deal stage, the months newest first (state chip with its word,
 // amount, Paid, Details), Add month, edits in place with Undo, Copy to next month on a confirmed month (the renewal ask),
@@ -10,7 +10,7 @@ import { DEAL_STAGE_WORDS, DEAL_STAGE_TONE, STATE_WORDS, STATE_TONE, monthWords,
 const STATES = ['confirmed', 'discussing', 'declined'];
 const toAmount = s => (String(s).trim() === '' ? null : Number(String(s).replace(/[$,\s]/g, '')));
 
-function Month({ p, canEdit, isOwnerRole, busy, run }) {
+function Month({ p, canEdit, isOwnerRole, busy, run, thisMonth }) {
   const [amount, setAmount] = useState(p.amount_usd == null ? '' : String(Number(p.amount_usd)));
   const label = p.kind === 'launch' ? 'Launch' : monthWords(p.period);
   const cur = p.amount_usd == null ? null : Number(p.amount_usd);
@@ -25,6 +25,15 @@ function Month({ p, canEdit, isOwnerRole, busy, run }) {
         {(p.state || 'confirmed') === 'confirmed' && <span className={`hk-chip hk-chip--${p.paid ? 'green' : 'grey'}`} data-hk-month-paid={p.paid ? 'yes' : 'no'}>{p.paid ? 'Paid' : 'Not paid yet'}</span>}
         {p.source === 'email' && <span className="hk-meta">from email</span>}
       </div>
+      {needsUpdate(p, thisMonth) && (
+        <p className="hk-banner hk-banner--mustard hk-month__stale" data-hk-month-stale>
+          <span className="hk-banner__title">Needs update · {label} ended and is still in discussion.</span>
+          {canEdit && <span className="hk-banner__actions">
+            <button type="button" className="hk-btn hk-link" disabled={busy} onClick={() => run('patch', p, { period: moveTarget(p, thisMonth) }, `${label} moved to ${monthWords(moveTarget(p, thisMonth))}`)} data-hk-month-move>Move to {monthWords(moveTarget(p, thisMonth))}</button>
+            <button type="button" className="hk-btn hk-link" disabled={busy} onClick={() => run('patch', p, { state: 'declined' }, `${label} → Declined`)} data-hk-month-decline>Mark declined</button>
+          </span>}
+        </p>
+      )}
       {canEdit && (
         <div className="hk-month__acts">
           <select className="ui-input ui-input--sm" aria-label={`${label} state`} value={p.state || 'confirmed'} disabled={busy} onChange={e => run('patch', p, { state: e.target.value }, `${label} → ${STATE_WORDS[e.target.value]}`)} data-hk-month-state-pick>
@@ -95,7 +104,7 @@ export default function DealCard({ businessId, brand, deal, canEdit, isOwnerRole
       })}
       {sugg.notes.map(n => <p key={`${n.thread_id}:${n.month}`} className="hk-meta" data-hk-deal-note>{n.words}</p>)}
       {!months.length && <p className="hk-meta">No sponsor months yet.</p>}
-      <ul className="hk-plain">{months.map(p => <Month key={`${p.id}:${p.state}:${p.amount_usd}:${p.paid}`} p={p} canEdit={canEdit} isOwnerRole={isOwnerRole} busy={busy} run={run} />)}</ul>
+      <ul className="hk-plain">{months.map(p => <Month key={`${p.id}:${p.period}:${p.state}:${p.amount_usd}:${p.paid}`} p={p} canEdit={canEdit} isOwnerRole={isOwnerRole} busy={busy} run={run} thisMonth={thisMonth} />)}</ul>
       {undo && (
         <p className="hk-note" role="status" data-hk-deal-undo>{undo.words}. <button type="button" className="hk-btn hk-link" disabled={busy} onClick={() => go(undo.fn, () => setUndo(null))}>Undo</button></p>
       )}
