@@ -10,6 +10,7 @@ import PitchSettings from './screens/PitchSettings';
 import ConnectionsSettings from './screens/ConnectionsSettings';
 import InboxSpace from './inbox/InboxSpace';
 import TodayScreen from './screens/TodayScreen';
+import { parseBrandQuery, toggleValue } from './nav/filterState';
 import DaySettings from './screens/DaySettings';
 import FollowupSettings from './screens/FollowupSettings';
 import DigestSettings from './screens/DigestSettings';
@@ -78,7 +79,7 @@ function Modules({ shell }) {
 // `inboxSpace` carry it in. Replies, Drafts, Pipeline and Sponsors live inside them.
 export default function HkScreen({ screen, section, brandId, businessId, owner, compact, shell, gmail, syncing, onSync, onGmailChanged, onOpenConnections, onInboxUnread, onSection, onOpenAdmin, onOpenBrand, onOpenReply, onGo, onTodayCounts, onSignalsSeen, intent, onIntentDone, now, brands, inboxSpace }) {
   const canEdit = roleAtLeast(shell.me.role, 'member');
-  if (screen.id === 'today') return <TodayScreen businessId={businessId} shell={shell} compact={compact} gmail={gmail} canEdit={canEdit} greeting={chicagoGreeting(now, shell.me.first_name)} syncing={syncing} onSync={onSync} onOpenBrand={onOpenBrand} onOpenReply={onOpenReply} onGo={onGo} onOpenConnections={onOpenConnections} onCounts={onTodayCounts} />;
+  if (screen.id === 'today') return <TodayScreen businessId={businessId} shell={shell} compact={compact} gmail={gmail} canEdit={canEdit} greeting={chicagoGreeting(now, shell.me.first_name)} syncing={syncing} onSync={onSync} onOpenBrand={onOpenBrand} onOpenReply={onOpenReply} onGo={onGo} onFilterBrands={owner => brands.setState(toggleValue(parseBrandQuery(''), 'owner', owner))} onOpenConnections={onOpenConnections} onCounts={onTodayCounts} />;
   if (screen.id === 'inbox') return <InboxSpace {...inboxSpace} businessId={businessId} shell={shell} gmail={gmail} compact={compact} canEdit={canEdit} owner={owner} onGo={onGo} onSignalsSeen={onSignalsSeen} onOpenBrand={onOpenBrand} onOpenConnections={onOpenConnections} onUnread={onInboxUnread} />;
   if (screen.id === 'brands' && brandId) return <BrandPage businessId={businessId} brandId={brandId} shell={shell} gmail={gmail} canEdit={canEdit} onGo={onGo} onSignalsChanged={onSignalsSeen} onBack={() => onOpenBrand(null)} onGmailChanged={onGmailChanged} />;
   if (screen.id === 'brands') return <BrandsSpace {...brands} businessId={businessId} shell={shell} compact={compact} canEdit={canEdit} onOpenBrand={onOpenBrand} onGo={onGo} intent={intent} onIntentDone={onIntentDone} />;

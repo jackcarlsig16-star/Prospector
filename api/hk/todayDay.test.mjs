@@ -166,6 +166,24 @@ test('Pitch on your own brand writes brand.pitched; its Undo ({ claimed: false }
   assert.equal(pete.code, 409, "Pete cannot undo Jack's Pitch");
 });
 
+test('follow-up: Skip on a drafted bump keeps the Gmail draft (touch stays drafted) and drops it from Your day; Undo brings it back', async () => {
+  const { skipTouchRoute } = await import('./jobsRoutes.js');
+  fresh();
+  const JB = randomUUID(), due = '2026-10-26T12:00:00Z';
+  sb.db.hk_brands.push(brand(JB, 'Jack Bakery', { owner_user_id: JACK, status: 'sent', next_due_at: due, domain: 'jackbakery.example' }));
+  sb.db.hk_touches.push(touch({ id: 't-real', brand_id: JB, sender_user_id: JACK, gmail_draft_id: 'r-123' }));
+  assert.deepEqual(stepOf(await day(JACK), 'followups').items.map(i => i.touch_id), ['t-real']);
+  const sk = await call(skipTouchRoute, reqOf({ method: 'POST', body: { brand_id: JB } }), { supabase: sb, now });
+  assert.equal(sk.code, 200);
+  const t = sb.db.hk_touches.find(x => x.id === 't-real');
+  assert.deepEqual([t.state, t.gmail_draft_id], ['drafted', 'r-123'], 'the draft is never deleted');
+  let d = await day(JACK);
+  assert.deepEqual([stepOf(d, 'followups').left, stepOf(d, 'followups').done.line], [0, '1 skipped']);
+  await call(skipTouchRoute, reqOf({ method: 'POST', body: { brand_id: JB, undo: true, was_due: sk.body.was_due } }), { supabase: sb, now });
+  d = await day(JACK);
+  assert.deepEqual(stepOf(d, 'followups').items.map(i => i.touch_id), ['t-real']);
+});
+
 test('referralName: a capitalised name after to / contact / ask for; none otherwise', () => {
   assert.equal(T.referralName('Referred us to Sam Lee, their marketing lead'), 'Sam Lee');
   assert.equal(T.referralName('Said to ask for Jo at the front desk'), 'Jo');

@@ -51,9 +51,9 @@ const setup = (d = day(), shell = owner, canEdit = true) => {
   routes[`GET /api/hk/${HK}/today/day`] = d;
   routes[`GET /api/hk/${HK}/jobs/today`] = jobs;
   routes[`GET /api/hk/${HK}/signals`] = { prospects: [], sponsors: [], unseen_hot_warm: 0 };
-  const onGo = jest.fn(), onOpenBrand = jest.fn(), onOpenReply = jest.fn(), onCounts = jest.fn();
-  const r = render(<TodayScreen businessId={HK} shell={shell} compact={false} gmail={gmail} canEdit={canEdit} greeting={greeting} syncing={false} onSync={jest.fn()} onOpenBrand={onOpenBrand} onOpenReply={onOpenReply} onGo={onGo} onOpenConnections={() => {}} onCounts={onCounts} />);
-  return { ...r, onGo, onOpenBrand, onOpenReply, onCounts };
+  const onGo = jest.fn(), onFilterBrands = jest.fn(), onOpenBrand = jest.fn(), onOpenReply = jest.fn(), onCounts = jest.fn();
+  const r = render(<TodayScreen businessId={HK} shell={shell} compact={false} gmail={gmail} canEdit={canEdit} greeting={greeting} syncing={false} onSync={jest.fn()} onOpenBrand={onOpenBrand} onOpenReply={onOpenReply} onGo={onGo} onFilterBrands={onFilterBrands} onOpenConnections={() => {}} onCounts={onCounts} />);
+  return { ...r, onGo, onFilterBrands, onOpenBrand, onOpenReply, onCounts };
 };
 const step = key => document.querySelector(`[data-hk-step="${key}"]`);
 
@@ -102,7 +102,7 @@ test('one-click actions each Undo: Mark handled, Not today, Mark sent, Skip this
   routes[`POST /api/hk/${HK}/drafts/t9/dm-sent`] = b => (b.undo ? { ok: true, undone: true } : { ok: true, touch_id: 't9', prev_last_touch_at: '2026-10-20T00:00:00Z' });
   routes[`POST /api/hk/${HK}/jobs/skip-touch`] = b => (b.undo ? { ok: true, undone: true } : { ok: true, brand_id: 'b3', was_due: '2026-11-02T12:00:00Z' });
   const d = day();
-  d.steps[1] = { ...d.steps[1], left: 1, collapsed: false, items: [{ kind: 'draft_it', brand_id: 'b3', brand_name: 'Zz Granite Gym', touch_kind: 'bump', reason: 'no_contact' }] };
+  d.steps[1] = { ...d.steps[1], left: 1, collapsed: false, items: [{ kind: 'draft', brand_id: 'b4', brand_name: 'Zz Quarry Club', touch_id: 't4', touch_kind: 'final', subject: 'Last one', gmail_draft_id: 'g4', gmail_message_id: 'm4', age_days: 1 }, { kind: 'draft_it', brand_id: 'b3', brand_name: 'Zz Granite Gym', touch_kind: 'bump', reason: 'no_contact' }] };
   const { container } = setup(d);
   await screen.findByText('Zz Dark Matter');
   const undo = async () => { fireEvent.click(await screen.findByRole('button', { name: 'Undo' })); await waitFor(() => expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull()); await waitFor(() => expect(container.querySelector('[data-hk-not-today]')).not.toBeDisabled()); };
@@ -119,6 +119,11 @@ test('one-click actions each Undo: Mark handled, Not today, Mark sent, Skip this
   fireEvent.click(container.querySelector('[data-hk-skip-touch]'));
   await undo();
   expect(bodies[`POST /api/hk/${HK}/jobs/skip-touch`]).toEqual([{ brand_id: 'b3' }, { brand_id: 'b3', undo: true, was_due: '2026-11-02T12:00:00Z' }]);
+  fireEvent.click(container.querySelector('[data-hk-skip-draft]'));
+  expect(await screen.findByText('Zz Quarry Club: follow-up skipped. The draft stays in your Gmail.')).toBeInTheDocument();
+  await undo();
+  expect(bodies[`POST /api/hk/${HK}/jobs/skip-touch`].slice(2)).toEqual([{ brand_id: 'b4' }, { brand_id: 'b4', undo: true, was_due: '2026-11-02T12:00:00Z' }]);
+  expect(calls.some(c => c.startsWith('DELETE'))).toBe(false);
 });
 
 test('Pitch claims + copies with Undo; Pitch both asks the sheet question once, copies one command, Undo sends every item back', async () => {
@@ -148,14 +153,15 @@ test('never blank: all done shows what got done + Want more lines with counts (e
   const done = day({ total: 3, done: 3, left: 0, minutes_left: 0, badge: 0, all_done: true, coming_up: [],
     steps: [{ key: 'followups', n: 3, title: 'Send follow-ups that are due', why: '', minutes_each: 1, left: 0, minutes: 0, collapsed: true, done: { n: 3, line: '3 sent' }, items: [] }],
     want_more: [{ key: 'research', n: 7, usd: 0.38, to: 'briefing:research' }, { key: 'sheet_emails', hint: 'Pete', n: 4, to: 'brands:sheet' }] });
-  const { container, onGo, onCounts, unmount } = setup(done);
+  const { container, onGo, onFilterBrands, onCounts, unmount } = setup(done);
   expect(await screen.findByText("You're done for today")).toBeInTheDocument();
   expect(onCounts).toHaveBeenCalledWith(0);
   expect(container.querySelector('[data-hk-all-done]').textContent).toMatch(/Send follow-ups that are due: 3 sent/);
   fireEvent.click(screen.getByText('Research 7 brands (≈ $0.38)'));
   expect(onGo).toHaveBeenLastCalledWith('inbox');
   fireEvent.click(screen.getByText("4 brands on Pete's sheet list have emails. Take one"));
-  expect(onGo).toHaveBeenLastCalledWith('brands');
+  expect(onFilterBrands).toHaveBeenCalledWith('sheet:Pete');
+  expect(onGo).toHaveBeenCalledTimes(1);
   expect(container.querySelector('[data-hk-want="needs_email"]')).toBeNull();
   expect(container.querySelector('[data-hk-coming-up]')).toBeNull();
   unmount();

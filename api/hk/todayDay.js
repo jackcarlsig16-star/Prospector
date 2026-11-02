@@ -79,9 +79,10 @@ export function buildDay({ meId, data, replies = [], drafts = [], threads = [], 
   const repliesDone = answered.length + threadsAnswered.length;
 
   // 3 Send follow-ups: your bump / final drafts with a real Gmail draft; today's no-draft rows on your brands as "Draft it".
+  // A skipped follow-up keeps its Gmail draft (only Discard deletes one), so the skip itself hides the row.
   const skipped = netToday(events, { meId, on, add: 'followup_skipped', drop: 'followup_unskipped' });
   const followItems = [
-    ...drafts.filter(t => t.sender_user_id === meId && t.channel === 'email' && (t.kind === 'bump' || t.kind === 'final') && isOpenDraft(t) && byId[t.brand_id])
+    ...drafts.filter(t => t.sender_user_id === meId && t.channel === 'email' && (t.kind === 'bump' || t.kind === 'final') && isOpenDraft(t) && byId[t.brand_id] && !skipped.includes(t.brand_id))
       .map(t => ({ kind: 'draft', ...brandOf(t.brand_id), touch_id: t.id, touch_kind: t.kind, subject: t.subject || null, gmail_draft_id: t.gmail_draft_id, gmail_message_id: t.gmail_message_id || null, age_days: ageDays(t.drafted_at, now) })),
     ...noDraft.filter(x => mineBrand(x.brand_id) && !skipped.includes(x.brand_id)).map(x => ({ kind: 'draft_it', ...brandOf(x.brand_id), touch_kind: x.kind, reason: x.reason })),
   ];

@@ -57,6 +57,7 @@ test('filter state: the address round-trips; the owner toggle is the default own
   expect(brandQuery(st)).toBe('view=pipeline&stage=sent,bumped&owner=me&sort=next_due&dir=desc');
   expect(brandRequest(parseBrandQuery(''), 'me')).toMatchObject({ owner: 'me', view: 'all' });
   expect(brandRequest(parseBrandQuery('owner=sheet:pete'), 'me').owner).toBe('sheet:pete');
+  expect(brandQuery(toggleValue(parseBrandQuery(''), 'owner', 'sheet:pete'))).toBe('owner=sheet:pete');
   expect(brandRequest(parseBrandQuery(''), 'all').owner).toBeUndefined();
   expect(layoutOf(parseBrandQuery('view=pipeline'))).toBe('stage');
   expect(brandRequest(parseBrandQuery('view=pipeline'), 'all').sort).toBe('status');

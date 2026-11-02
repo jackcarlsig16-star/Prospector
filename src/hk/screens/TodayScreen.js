@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../HkMarks';
-import { hkGet, hkPost, hkPatch, hkFetch } from '../hkApi';
+import { hkGet, hkPost, hkPatch } from '../hkApi';
 import { useBrandCommands } from '../brands/QuickCommands';
 import { useSheetConfirm } from '../brands/sheetConfirm';
 import { Expand } from '../inbox/SendRow';
@@ -32,7 +32,7 @@ const COMING = { followup_due: c => `Follow-up due · ${c.brand_name}`, sponsor_
 const Tile = ({ name, icon }) => <span className="hk-tile-sm hk-day__tile" aria-hidden="true">{icon ? <Icon name={icon} size={15} /> : name.trim()[0].toUpperCase()}</span>;
 const Label = ({ tone, children }) => <span className={`hk-label hk-label--${tone}`}>{children}</span>;
 
-export default function TodayScreen({ businessId, shell, compact, gmail, canEdit = true, greeting, syncing, onSync, onOpenBrand, onOpenReply, onGo, onOpenConnections, onCounts }) {
+export default function TodayScreen({ businessId, shell, compact, gmail, canEdit = true, greeting, syncing, onSync, onOpenBrand, onOpenReply, onGo, onFilterBrands, onOpenConnections, onCounts }) {
   const [day, setDay] = useState(null);
   const [jobs, setJobs] = useState(null);
   const [error, setError] = useState('');
@@ -107,7 +107,7 @@ export default function TodayScreen({ businessId, shell, compact, gmail, canEdit
       </div>
       <span className="hk-day__acts">
         {ownEmail && f.gmail_message_id ? <a className="hk-btn hk-primary" href={`https://mail.google.com/mail/?authuser=${encodeURIComponent(ownEmail)}#drafts/${encodeURIComponent(f.gmail_message_id)}`} target="_blank" rel="noopener noreferrer" data-hk-open-draft><Icon name="mail" size={15} /> Open in Gmail</a> : <span className="hk-meta">In your Gmail drafts</span>}
-        {canEdit && <button type="button" className="hk-btn hk-link hk-day__quiet" disabled={!!busy} onClick={() => setToast({ line: `Skip ${f.brand_name}'s ${KIND[f.touch_kind].toLowerCase()}? The draft is deleted from your Gmail. This can't be undone.`, confirm: () => act(`s:${f.touch_id}`, async () => { await hkFetch(businessId, `/drafts/${f.touch_id}`, { method: 'DELETE' }); await hkPost(businessId, '/jobs/skip-touch', { brand_id: f.brand_id }); }) })} data-hk-skip-draft>Skip this touch</button>}
+        {canEdit && <button type="button" className="hk-btn hk-link hk-day__quiet" disabled={!!busy} onClick={() => undoable(`s:${f.touch_id}`, `${f.brand_name}: follow-up skipped. The draft stays in your Gmail.`, () => hkPost(businessId, '/jobs/skip-touch', { brand_id: f.brand_id }), r => hkPost(businessId, '/jobs/skip-touch', { brand_id: f.brand_id, undo: true, was_due: r.was_due }))} data-hk-skip-draft>Skip this touch</button>}
       </span>
     </div>
   ) : (
@@ -219,7 +219,7 @@ export default function TodayScreen({ businessId, shell, compact, gmail, canEdit
         <>
           <h3 className="hk-kicker">Want more?</h3>
           <ul className="hk-day__want">{day.want_more.map(w => (
-            <li key={`${w.key}:${w.hint || ''}`}><button type="button" className="hk-btn hk-link" onClick={() => onGo(w.to.startsWith('brands') ? 'brands' : 'inbox')} data-hk-want={w.key}>{wantLine(w)}</button></li>))}</ul>
+            <li key={`${w.key}:${w.hint || ''}`}><button type="button" className="hk-btn hk-link" onClick={() => (w.key === 'sheet_emails' ? onFilterBrands(`sheet:${w.hint}`) : onGo('inbox'))} data-hk-want={w.key}>{wantLine(w)}</button></li>))}</ul>
         </>
       ) : <p className="hk-day__meta">Briefing has nothing ready to research or email. <button type="button" className="hk-btn hk-link" onClick={() => copy('hk batch 15', 'Copied hk batch 15. Paste into Claude to find new brands.')} data-hk-find-brands>Find new brands</button></p>}
     </section>
