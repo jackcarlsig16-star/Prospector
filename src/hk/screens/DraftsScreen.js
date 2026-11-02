@@ -4,6 +4,7 @@ import Button from '../../ui/Button';
 import { Sprout } from '../HkMarks';
 import { Chip } from '../brands/BrandsScreen';
 import { hkGet, hkPost, hkFetch } from '../hkApi';
+import { igDmUrl } from '../brands/BrandRail';
 
 // hkos-gmail-connect-v1 G8 - Drafts: every touch waiting in Gmail. No Send button exists here; sending happens in Gmail.
 // grow-nav-filters-v1 N4: inside Inbox the rail drives it - `filter` (all · email · ig_dm · lint_failed · older) and the
@@ -44,7 +45,8 @@ export default function DraftsScreen({ businessId, shell, compact, onOpenBrand, 
     { id: 'sender', label: 'Sender mailbox', width: 120, render: r => members.find(m => m.user_id === r.sender_user_id)?.first_name || '' },
     { id: 'actions', label: '', width: 300, stickyEnd: true, render: r => (
       <span style={{ display: 'inline-flex', gap: 6 }}>
-        {r.gmail_draft_url ? <a className="ui-btn ui-btn--primary ui-btn--sm" href={r.gmail_draft_url} target="_blank" rel="noopener noreferrer" data-hk-open-gmail>Open in Gmail</a> : <Button size="sm" variant="primary" disabled disabledReason={r.channel === 'ig_dm' ? 'Instagram DMs are copied, not opened' : r.mine ? 'No Gmail draft id yet' : "In another founder's mailbox"}>Open in Gmail</Button>}
+        {r.channel === 'ig_dm' && r.instagram_handle ? <a className="ui-btn ui-btn--primary ui-btn--sm" href={igDmUrl(r.instagram_handle)} target="_blank" rel="noopener noreferrer" data-hk-open-dm>Open DM</a>
+          : r.gmail_draft_url ? <a className="ui-btn ui-btn--primary ui-btn--sm" href={r.gmail_draft_url} target="_blank" rel="noopener noreferrer" data-hk-open-gmail>Open in Gmail</a> : <Button size="sm" variant="primary" disabled disabledReason={r.channel === 'ig_dm' ? 'No Instagram handle yet - add it on the Brand page' : r.mine ? 'No Gmail draft id yet' : "In another founder's mailbox"}>Open in Gmail</Button>}
         <Button size="sm" onClick={() => open(r.id)}>Preview</Button>
         {canEdit && <Button size="sm" disabled={busy === 'lint'} onClick={() => relint(r.id)}>Re-lint</Button>}
         {canEdit && <Button size="sm" variant="danger" disabled={!r.mine && shell?.me?.role !== 'owner'} disabledReason="Only the sender or an owner-role member" onClick={() => setConfirm([r.id])}>Discard</Button>}

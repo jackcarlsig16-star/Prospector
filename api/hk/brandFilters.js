@@ -13,7 +13,7 @@ export const WAITING_DAYS = 7; // REVISABLE (spec N3 Email > Waiting on them > n
 export const PAGE_DEFAULT = 100, PAGE_MAX = 200;
 // Built-in views (N3 Views): always listed, even at 0 (planner ruling 2). Pipeline = claimed onward, the old screen.
 // grow-pitch-icp I4 - Partnerships: press, podcasts, nonprofits, universities, creators, looked at on their own.
-export const VIEWS = ['all', 'pipeline', 'my_open', 'unclaimed', 'overdue', 'sponsors', 'dnc', 'hot', 'targets', 'partnerships'];
+export const VIEWS = ['all', 'pipeline', 'my_open', 'unclaimed', 'overdue', 'sponsors', 'dnc', 'hot', 'targets', 'partnerships', 'money'];
 const PIPELINE_HIDDEN = new Set(['candidate', 'passed', 'skipped', 'sponsor']);
 const SPONSORS = new Set(['sponsor', 'founding_partner']);
 export const HEAT = ['hot', 'warm', 'cool', 'cold'];
@@ -88,6 +88,7 @@ export function valuesOf(b, data, { meId, now }) {
   if (b.heat_band === 'hot' || b.heat_band === 'warm') view.push('hot');
   if (b.targeted_at) view.push('targets');
   if (PARTNERSHIP_SEGMENTS.includes(b.segment)) view.push('partnerships');
+  if (data.months.has(b.id)) view.push('money');
   return {
     view, stage: [b.status], heat: [b.heat_band || 'cold'], owner, relationship: [b.relationship], segment: [b.segment],
     category: [b.category || 'none'],

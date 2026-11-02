@@ -3,6 +3,7 @@ import { Icon } from '../HkMarks';
 import { HeatChip } from '../signals/Heat';
 import OwnerChip from './OwnerChip';
 import { marketOf, industryOf, fitOf, contactOf } from './labelRules';
+import { DealStageChip } from './dealWords';
 
 // grow-ui-refresh-v1 U1 - one label set, one component, in the mockup's order: Target · Industry (or Category, J6) ·
 // [Category on the brand page / expanded row] · Market · Heat · Fit · Contact · [Owner]. Each chip reads "Label value";
@@ -17,6 +18,7 @@ export default function BrandLabels({ brand: b, owner, withCategory = false, wit
   const ind = industryOf(b), fit = fitOf(b), contact = contactOf(b);
   return (
     <span className="hk-labels" data-hk-labels={b.id}>
+      <DealStageChip stage={b.deal_stage} />
       <IcpChip icp={b.icp} />
       {b.targeted_at
         ? <span className="hk-label hk-label--target" data-hk-label="target"><Icon name="target" size={13} /> Target</span>

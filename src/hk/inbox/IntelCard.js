@@ -5,6 +5,8 @@ import { Avatar } from '../HkMarks';
 import OwnerChip from '../brands/OwnerChip';
 import { hkPost } from '../hkApi';
 import { HeatChip, ListButtons } from '../signals/Heat';
+import { DEAL_STAGE_WORDS, DEAL_STAGE_TONE } from '../brands/dealWords';
+import { InstagramLinks } from '../brands/BrandRail';
 import { fmtDate, KIND_LABEL, FIT_LABEL, FIT_TONE, NEXT_LABEL, CHICAGO_LABEL, STATUS_LABEL, REPLY_LABEL, usd } from './inboxPrefs';
 
 // hkos-inbox-v2 L4 / L5, reshaped by hkos-inbox-v2-polish P1 - the intel STRIP over the email: at most two rows, so the
@@ -63,6 +65,23 @@ const verdictPill = v => (v.ok
   ? <span className="hk-pill hk-pill--green" data-hk-verdict="clear">Clear to draft</span>
   : <span className="hk-pill hk-pill--block" data-hk-verdict={v.reason}>Blocked: {String(v.reason || '').replace(/_/g, ' ')}</span>);
 
+// grow-sponsor-deals S7 - who this sender is to us, one line on top of the strip (built server-side; another member's
+// outreach is who + date only): "New · not in Grow", or "<Brand> · <deal stage> · <owner> · <open month>" + who reached
+// out last + Open DM when the brand has an Instagram handle.
+export function StatusLine({ s, onOpenBrand }) {
+  if (s.kind === 'new') return <p className="hk-statusline" data-hk-status-line="new"><strong>New</strong> · not in Grow</p>;
+  return (
+    <p className="hk-statusline" data-hk-status-line="saved">
+      <button type="button" className="hk-btn hk-link" onClick={() => onOpenBrand(s.brand_id)} data-hk-status-brand>{s.brand_name}</button>
+      <span className={`hk-chip hk-chip--${DEAL_STAGE_TONE[s.deal_stage] || 'grey'}`} data-hk-status-stage={s.deal_stage}>{DEAL_STAGE_WORDS[s.deal_stage] || s.deal_stage}</span>
+      <span>{s.owner_words}</span>
+      {s.open_month && <span data-hk-status-month>{s.open_month.words}</span>}
+      {s.reached && <span className="hk-meta" data-hk-status-reached>{s.reached.line}</span>}
+      {s.instagram_handle && <InstagramLinks handle={s.instagram_handle} withHandle={false} />}
+    </p>
+  );
+}
+
 export default function IntelStrip({ businessId, thread, members, meId, canEdit, busy, onOpenBrand, onStatus, onLink, onTrack, onTrackTarget, onIgnore, onUnignore, onAnalyzed }) {
   const [folded, setFolded] = useState(readFolded);
   const [open, setOpen] = useState(false);
@@ -72,6 +91,7 @@ export default function IntelStrip({ businessId, thread, members, meId, canEdit,
   const chevron = <button type="button" className="hk-btn hk-istrip__chev" aria-expanded={!folded} aria-label={folded ? 'Show the second line' : 'Hide the second line'} onClick={fold} data-hk-strip-toggle>{folded ? '▸' : '▾'}</button>;
   const strip = (kind, row1, row2, muted = false) => (
     <div className={`hk-istrip${muted ? ' hk-istrip--muted' : ''}`} data-hk-intel-strip data-hk-brand-panel={kind} aria-label={`About ${brand?.name || sender.name}`}>
+      {thread.status_line && <StatusLine s={thread.status_line} onOpenBrand={onOpenBrand} />}
       <div className="hk-istrip__row">{row1}</div>
       {row2 && !folded && <div className="hk-istrip__row">{row2}</div>}
     </div>

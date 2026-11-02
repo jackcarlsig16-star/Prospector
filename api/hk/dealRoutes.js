@@ -129,13 +129,16 @@ export async function patchPeriodRoute(req, res, { supabase = getSupabase(), now
   } catch (e) { fail(res, e, 'sponsors/period-patch'); }
 }
 
-// DELETE /sponsors/:brandId/periods/:pid (owner role) - ruling 2: archives, never deletes. -> { period, undo: { restore } }
+// DELETE /sponsors/:brandId/periods/:pid (owner role, or the member who just added it - the Add's Undo, 2 min) - ruling 2:
+// archives, never deletes. -> { period, undo: { restore } }
+export const UNDO_ADD_MS = 2 * 60 * 1000;
 export async function deletePeriodRoute(req, res, { supabase = getSupabase(), now = () => new Date() } = {}) {
   const businessId = req.params.businessId, uid = me(req);
   try {
-    if (!isOwner(req)) throw new HkError(403, 'only an owner-role member can remove a sponsor month');
     const brand = await brandById(supabase, businessId, req.params.brandId);
     const row = await periodOf(supabase, businessId, brand.id, req.params.pid);
+    const justAdded = row.source === 'user' && row.state_changed_by === uid && row.state_changed_at && now().getTime() - Date.parse(row.state_changed_at) <= UNDO_ADD_MS;
+    if (!isOwner(req) && !justAdded) throw new HkError(403, 'only an owner-role member can remove a sponsor month');
     if (row.archived_at) throw new HkError(409, 'that month is already removed');
     const at = now().toISOString();
     const { data, error } = await supabase.from('hk_sponsor_periods').update({ archived_at: at, archived_by: uid }).eq('id', row.id).is('archived_at', null).select().single();

@@ -131,7 +131,8 @@ test('S6 month writes: add (Settings default amount) moves the relationship; edi
   assert.equal((await call(patchPeriodRoute, reqOf({ method: 'PATCH', params: { brandId: T, pid }, body: { details: { Contact: 'ana@x.example' } } }), deps(sb))).code, 400);
   assert.equal((await call(patchPeriodRoute, reqOf({ method: 'PATCH', params: { brandId: T, pid }, body: { amount_usd: -5 } }), deps(sb))).code, 400);
   // remove = archive (owner role), Undo = restore
-  assert.equal((await call(deletePeriodRoute, reqOf({ method: 'DELETE', params: { brandId: T, pid } }), deps(sb))).code, 403);
+  assert.equal((await call(deletePeriodRoute, reqOf({ method: 'DELETE', params: { brandId: T, pid }, user: PETE }), deps(sb))).code, 403, 'another member');
+  assert.equal((await call(deletePeriodRoute, reqOf({ method: 'DELETE', params: { brandId: T, pid } }), { supabase: sb, now: () => new Date(NOW.getTime() + 3 * 60e3) })).code, 403, 'the adder after 2 min');
   const del = await call(deletePeriodRoute, reqOf({ method: 'DELETE', params: { brandId: T, pid }, role: 'owner' }), deps(sb));
   assert.deepEqual([del.code, del.body.undo, sb.db.hk_sponsor_periods.length, !!sb.db.hk_sponsor_periods[0].archived_at, sb.db.hk_sponsor_periods[0].archived_by], [200, { restore: pid }, 1, true, JACK]);
   assert.equal((await call(patchPeriodRoute, reqOf({ method: 'PATCH', params: { brandId: T, pid }, body: { state: 'confirmed' } }), deps(sb))).code, 409);
@@ -260,4 +261,17 @@ test('S3 plan: add / change / unchanged / leave (DB-only, archived, edited in Gr
   assert.equal(planReimport({ tabs, brands, periods: [...periods.slice(0, 2).map(x => ({ ...x, state: x.brand_id === Y ? 'discussing' : 'confirmed', amount_usd: 150, paid: x.brand_id === G })), ...periods.slice(2)] }).tabs[0].unchanged, 2, 're-runnable: a second run changes nothing it already wrote');
   const fam = planReimport({ tabs: [{ name: 'T', kind: 'monthly', period: '2026-11', shifted: false, skipped: [], rows: [row('LSQP', 'confirmed'), row('Logan Square Pilates', 'confirmed'), row('PBK', 'confirmed'), row('Protein Bar and Kitchen', 'confirmed'), row('CBA', 'confirmed'), row('The Crib / Mahogany Tours', 'confirmed')] }], brands: [], periods: [] }).families;
   assert.deepEqual(fam.map(f => f.join(' / ')).sort(), ['LSQP / Logan Square Pilates', 'PBK / Protein Bar and Kitchen']);
+});
+
+test('Stage 4: the Sponsor money view lists brands with months; the member who just added a month can undo it (2 min)', async () => {
+  const a = brandRow('a', 'Zz A', { relationship: 'sponsor' }), b = brandRow('b', 'Zz B');
+  const data = { brands: [a, b], touches: {}, replies: {}, hasEmail: new Set(), intel: new Set(), months: new Set(['a']), threads: {}, periodsBy: { a: [per('a', '2026-11')] } };
+  const r = applyFilters(data, { view: 'money', facets: true, meId: JACK, now: NOW });
+  assert.deepEqual([r.rows.map(x => x.id), r.facets.view.find(([v]) => v === 'money')], [['a'], ['money', 1]]);
+  const T = randomUUID();
+  const sb = seed({ hk_brands: [brandRow(T, 'Zz Undo Co')], hk_brand_threads: [] });
+  const add = await call(addPeriodRoute, reqOf({ method: 'POST', params: { brandId: T }, body: { period: '2026-12', state: 'discussing' } }), deps(sb));
+  assert.equal((await call(deletePeriodRoute, reqOf({ method: 'DELETE', params: { brandId: T, pid: add.body.undo.archive }, user: PETE }), deps(sb))).code, 403);
+  const un = await call(deletePeriodRoute, reqOf({ method: 'DELETE', params: { brandId: T, pid: add.body.undo.archive } }), deps(sb));
+  assert.deepEqual([un.code, !!sb.db.hk_sponsor_periods[0].archived_at, sb.db.hk_sponsor_periods.length], [200, true, 1]);
 });

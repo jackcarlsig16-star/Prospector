@@ -714,6 +714,27 @@ ${PINNED} {
 .hk-theme .hk-weights { border-collapse:collapse; font-size:13px; }
 .hk-theme .hk-weights th { text-align:left; font-weight:400; color:var(--hk-cocoa); padding:3px 16px 3px 0; }
 .hk-theme .hk-weights td { color:var(--hk-forest); font-weight:600; }
+/* grow-sponsor-deals-v1 - Sponsor money table, Deal card months, Inbox status line. Tint text tokens only. */
+.hk-theme .hk-money { display:flex; flex-direction:column; gap:10px; margin-bottom:14px; }
+.hk-theme .hk-money__table { width:100%; border-collapse:collapse; font-size:14px; }
+.hk-theme .hk-money__table th, .hk-theme .hk-money__table td { padding:8px 10px; border-bottom:1px solid var(--hk-line); text-align:left; white-space:nowrap; color:var(--hk-cocoa); }
+.hk-theme .hk-money__table thead th { font-size:12px; font-weight:600; color:var(--hk-muted); }
+.hk-theme .hk-money__num { text-align:right !important; font-variant-numeric:tabular-nums; }
+.hk-theme .hk-money__now th, .hk-theme .hk-money__now td { background:var(--hk-tint-green); }
+.hk-theme .hk-money__now .hk-meta { color:var(--hk-tint-green-text); }
+.hk-theme .hk-money__line { margin:0; color:var(--hk-cocoa); }
+.hk-theme .hk-tablescroll { overflow-x:auto; }
+.hk-theme .hk-month { display:flex; flex-direction:column; gap:6px; padding:10px 0; border-bottom:1px solid var(--hk-line); }
+.hk-theme .hk-month:last-of-type { border-bottom:0; }
+.hk-theme .hk-month__top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.hk-theme .hk-month__name { font-weight:600; color:var(--hk-cocoa); }
+.hk-theme .hk-month__acts { display:flex; align-items:center; gap:10px; flex-wrap:wrap; font-size:13px; }
+.hk-theme .hk-month__acts .ui-input { width:auto; }
+.hk-theme .hk-month__amount { width:96px !important; }
+.hk-theme .hk-month dl { margin:0; }
+.hk-theme .hk-inline { display:inline-flex; align-items:center; gap:6px; font-size:13px; color:var(--hk-cocoa); }
+.hk-theme .hk-plain { list-style:none; margin:0; padding:0; }
+.hk-theme .hk-statusline { display:flex; align-items:center; gap:8px; flex-wrap:wrap; font-size:13px; color:var(--hk-cocoa); }
 `;
 
 export function ensureHkTheme() {

@@ -3,6 +3,7 @@ import Button from '../../ui/Button';
 import { Icon } from '../HkMarks';
 import BrandsScreen from './BrandsScreen';
 import SponsorsScreen from '../screens/SponsorsScreen';
+import SponsorMoney from './SponsorMoney';
 import ActiveFilters from '../nav/ActiveFilters';
 import { VIEW_LABELS, BRAND_BUCKETS, valueLabel, toggleValue, activeCount, layoutOf } from '../nav/filterState';
 
@@ -32,7 +33,7 @@ export default function BrandsSpace({ businessId, shell, compact, canEdit, state
       <header className="hk-space__head">
         <div>
           <h1 className="hk-head__title">{savedName || (state.view === 'all' ? 'Brands' : VIEW_LABELS[state.view])}</h1>
-          <p className="hk-head__line">{sponsors ? 'Current sponsors, founding partners and do-not-contact.' : 'Every brand and who owns it. Filter from the rail; the address keeps the view.'}</p>
+          <p className="hk-head__line">{sponsors ? 'Current sponsors, founding partners and do-not-contact.' : state.view === 'money' && !state.saved ? 'Confirmed and in discussion per month, from the sheet and the Deal cards. Click a number to see those brands.' : 'Every brand and who owns it. Filter from the rail; the address keeps the view.'}</p>
         </div>
         <span className="hk-spacer" />
         {compact && <Button size="sm" onClick={onOpenFilters} data-hk-open-filters><Icon name="filter" size={16} /> Filters{n ? ` (${n})` : ''}</Button>}
@@ -50,6 +51,7 @@ export default function BrandsSpace({ businessId, shell, compact, canEdit, state
         )}
       </header>
       <ActiveFilters chips={chips} count={count} savedAs={savedName} onClear={() => setState({ view: 'all', filters: {}, q: '', sort: null, dir: null, layout: null, saved: null })} onSave={onSaveView} />
+      {state.view === 'money' && !state.saved && <SponsorMoney businessId={businessId} onPick={filters => setState({ ...state, saved: null, filters })} />}
       {sponsors
         ? <SponsorsScreen businessId={businessId} shell={shell} canEdit={canEdit} onOpenBrand={onOpenBrand} />
         : <BrandsScreen businessId={businessId} shell={shell} compact={compact} canEdit={canEdit} onOpenBrand={onOpenBrand} onGo={onGo} list={list} layout={layout} intent={intent} onIntentDone={onIntentDone}

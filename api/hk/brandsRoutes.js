@@ -12,7 +12,7 @@ import { pitchCommand, researchEstimate, spentToday } from './brandActions.js';
 import { scrubAddresses } from '../sales/scrubText.js';
 import { mailboxFor, accessTokenForGrant } from '../lib/googleGrants.js';
 import { gmailClient } from './gmailClient.js';
-import { brandDeal } from './deals.js';
+import { brandDeal, dealStageOf, chicagoMonth } from './deals.js';
 
 const SEGMENTS = new Set(['sponsor_brand', 'creator', 'nonprofit', 'press', 'podcast', 'university']);
 const SOURCES = new Set(['sourced', 'user_supplied', 'apollo_list', 'places', 'import']);
@@ -89,7 +89,7 @@ async function pagedBrands(req, res, { supabase, now }) {
     const extraFor = b => {
       const i = intelFor(b, d.intelByDomain)?.intel, cs = (d.contactsBy[b.id] || []).filter(c => !c.left_company);
       const c = cs.find(x => x.is_primary && x.has_email) || cs.find(x => x.has_email) || null;
-      return { score: b.reach_score, research: i ? { industry: i.company?.industry || null, fit: i.fit?.sponsor_fit || null, chicago_presence: i.company?.chicago_presence || null } : null, contact: c ? { has_email: true, title: c.title || null } : { has_email: false, title: null }, command: pitchCommand(b) };
+      return { score: b.reach_score, research: i ? { industry: i.company?.industry || null, fit: i.fit?.sponsor_fit || null, chicago_presence: i.company?.chicago_presence || null } : null, contact: c ? { has_email: true, title: c.title || null } : { has_email: false, title: null }, command: pitchCommand(b), deal_stage: dealStageOf(b, data.periodsBy?.[b.id] || [], chicagoMonth(at)) };
     };
     res.json({ view, total: out.total, page, limit, next_page: out.next_page, rows: out.rows.map(b => brandRow(b, { primary_contact_name: primary[b.id] || null, primary: primaryFor(b), ...extraFor(b), conversation: conversationSummary(data.threads?.[b.id] || [], data.sharing, { meId: uid, now: at }) })), research_estimate: await researchEstimate(supabase, businessId), ...(out.facets ? { facets: out.facets } : {}) });
   } catch (e) { fail(res, e, 'brands/list-paged'); }
@@ -197,7 +197,7 @@ export async function getBrandRoute(req, res, { supabase = getSupabase() } = {})
     const { data: srow } = await supabase.from('hk_settings').select('intel').eq('business_id', businessId).maybeSingle();
     const research_budget = { ...(await researchEstimate(supabase, businessId)), spent_today: Math.round((await spentToday(supabase, businessId, new Date())) * 1e4) / 1e4, cap_usd: intelSettings(srow?.intel).sweep.cap_usd };
     const primary = primaryOf({ brand, meId: me(req), firstName: await memberFirstNames(supabase, businessId), replies, touches, researched: !!intel, hasEmail: contacts.some(c => c.email), verdictOk: verdict.ok });
-    res.json({ brand: brandDetail(brand), primary, icp: icpOf(brand, intel, intelSettings(srow?.intel).icp), research, research_budget, command: pitchCommand(brand), contacts: contacts.map(contactRow), touches: touches.map(touchRow), replies: replies.map(replyRow), sponsor_periods: periods.filter(p => !p.archived_at), deal: await brandDeal(supabase, { businessId, brand, meId: me(req) }), events, verdict, email_touches_sent: touches.filter(t => t.channel === 'email' && t.state === 'sent').length, max_email_touches });
+    res.json({ brand: brandDetail(brand), primary, icp: icpOf(brand, intel, intelSettings(srow?.intel).icp), research, research_budget, command: pitchCommand(brand), contacts: contacts.map(contactRow), touches: touches.map(touchRow), replies: replies.map(replyRow), sponsor_periods: periods.filter(p => !p.archived_at), deal: { ...(await brandDeal(supabase, { businessId, brand, meId: me(req) })), default_monthly_usd: intelSettings(srow?.intel).default_monthly_usd }, events, verdict, email_touches_sent: touches.filter(t => t.channel === 'email' && t.state === 'sent').length, max_email_touches });
   } catch (e) { fail(res, e, 'brands/get'); }
 }
 async function maxTouches(supabase, businessId) { const { data } = await supabase.from('hk_settings').select('max_email_touches').eq('business_id', businessId).maybeSingle(); return data?.max_email_touches || 3; }

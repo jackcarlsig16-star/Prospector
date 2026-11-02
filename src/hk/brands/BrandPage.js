@@ -13,7 +13,8 @@ import BrandResearch from './BrandResearch';
 import BrandTimeline from './BrandTimeline';
 import ConversationChips, { convOfThreads } from './ConversationChips';
 import LogActivity from './LogActivity';
-import { NextStep, Contacts, Deal, Details } from './BrandRail';
+import { NextStep, Contacts, Details } from './BrandRail';
+import DealCard from './DealCard';
 import { useBrandCommands, PrimaryAction, QuickIcons, KEYS, isTyping, isOpenDialog } from './QuickCommands';
 
 // hkos-data-foundation-v1 D6 + grow-ui-refresh-v1 U7 - the Brand page, built to mockup 2: a header card (initial tile,
@@ -75,7 +76,7 @@ export default function BrandPage({ businessId, brandId, shell, gmail, onBack, o
   const { brand, contacts, touches, replies, events, threads, verdict, email_touches_sent, max_email_touches, research, research_budget, primary, command, icp } = data;
   const owner = member(brand.owner_user_id);
   const mine = brand.owner_user_id && brand.owner_user_id === me?.user_id;
-  const b = { ...brand, research, contact: bestContact(contacts), command, primary, icp };
+  const b = { ...brand, research, contact: bestContact(contacts), command, primary, icp, deal_stage: data.deal?.stage };
   keyRef.current = e => {
     if (!canEdit || isTyping(e) || e.metaKey || e.ctrlKey || e.altKey || isOpenDialog() || composer) return;
     const k = e.key.toLowerCase();
@@ -150,7 +151,7 @@ export default function BrandPage({ businessId, brandId, shell, gmail, onBack, o
         <aside className="hk-bgrid__rail" aria-label="About this brand">
           <NextStep brand={b} primary={primary} onAct={cmd.act} onGo={onGo || (() => {})} busy={cmd.busy} canEdit={canEdit} />
           <Contacts businessId={businessId} brandId={brand.id} contacts={contacts} canEdit={canEdit} member={member} onChanged={load} />
-          <Deal />
+          <DealCard businessId={businessId} brand={brand} deal={data.deal} canEdit={canEdit} isOwnerRole={isOwnerRole} onChanged={changed} />
           <Details businessId={businessId} brand={brand} research={research} owner={owner} canEdit={canEdit} onChanged={load} />
         </aside>
       </div>

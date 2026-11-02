@@ -2,12 +2,13 @@ import { STATUS_LABELS, STATUS_TONE, RELATIONSHIP_LABELS } from '../brands/verdi
 import { HEAT_WORDS } from '../signals/Heat';
 import { sheetOwnerLabel } from '../brands/OwnerChip';
 import { LABELS as REPLY_LABELS } from '../screens/RepliesScreen';
+import { DEAL_STAGE_WORDS, DEAL_STAGE_TONE, STATE_WORDS, STATE_TONE, monthWords } from '../brands/dealWords';
 
 // grow-nav-filters-v1 N2-N4 + N9 - what the rail shows and how it rides in the address. The Brands space's state is
 // view + bucket filters + sort + layout; the Inbox space's is one selection (a Gmail lane, a tracked-replies item or a
 // queued-drafts item). Values and counts come from the server (GET /brands facets); nothing here lists data values.
 
-export const VIEW_LABELS = { all: 'All', pipeline: 'Pipeline', my_open: 'My open', unclaimed: 'Unclaimed', overdue: 'Overdue', sponsors: 'Sponsors', dnc: 'Do not contact', hot: 'Hot leads', targets: 'Targets', partnerships: 'Partnerships' };
+export const VIEW_LABELS = { all: 'All', pipeline: 'Pipeline', my_open: 'My open', unclaimed: 'Unclaimed', overdue: 'Overdue', sponsors: 'Sponsors', dnc: 'Do not contact', hot: 'Hot leads', targets: 'Targets', partnerships: 'Partnerships', money: 'Sponsor money' };
 export const BRAND_BUCKETS = [
   { key: 'stage', label: 'Stage', icon: 'flow' },
   { key: 'heat', label: 'Heat', icon: 'trend' },
@@ -22,7 +23,12 @@ export const BRAND_BUCKETS = [
   { key: 'place', label: 'Place', icon: 'map' },
   // grow-mailbox-link-v1 L6 - from the linked Gmail threads and their reads.
   { key: 'conversation', label: 'Conversation', icon: 'mail' },
-  { key: 'deal', label: 'Deal stage', icon: 'trend' },
+  { key: 'deal', label: 'Email deal stage', icon: 'mail' },
+  // grow-sponsor-deals-v1 S5 - the Deal group, from the sponsor months.
+  { key: 'deal_stage', label: 'Deal stage', icon: 'trend' },
+  { key: 'month', label: 'Sponsor month', icon: 'calendar' },
+  { key: 'paid', label: 'Paid', icon: 'check' },
+  { key: 'amount', label: 'Amount', icon: 'label' },
 ];
 const BUCKET_KEYS = BRAND_BUCKETS.map(b => b.key);
 const SEGMENTS = { sponsor_brand: 'Sponsor brand', press: 'Press', podcast: 'Podcast', nonprofit: 'Nonprofit', creator: 'Creator', university: 'University' };
@@ -48,11 +54,15 @@ export function valueLabel(key, v, { meId, members = [] } = {}) {
     case 'place': return v === 'local' ? 'Local' : v;
     case 'conversation': return CONVERSATION[v] || words(v);
     case 'deal': return DEAL[v] || words(v);
+    case 'deal_stage': return DEAL_STAGE_WORDS[v] || words(v);
+    case 'month': { const [m, st] = v.split(':'); return st ? `${monthWords(m)} · ${STATE_WORDS[st].toLowerCase()}` : monthWords(m); }
+    case 'paid': return v === 'paid' ? 'Paid' : 'Unpaid (confirmed)';
+    case 'amount': return v === 'set' ? 'Amount set' : 'No amount';
     default: return v;
   }
 }
 // The colored dot beside a value - a chip tone class, never the only signal (the label is always there).
-export const valueTone = (key, v) => (key === 'stage' ? STATUS_TONE[v] || 'grey' : key === 'heat' ? `heat-${v}` : null);
+export const valueTone = (key, v) => (key === 'stage' ? STATUS_TONE[v] || 'grey' : key === 'heat' ? `heat-${v}` : key === 'deal_stage' ? DEAL_STAGE_TONE[v] : key === 'month' && v.includes(':') ? STATE_TONE[v.split(':')[1]] : null);
 // The caller's own id is kept in the address as "me", so a shared link opens the viewer's own brands.
 export const ownerValueOf = (v, meId) => (v === meId ? 'me' : v);
 
@@ -86,10 +96,11 @@ export const activeCount = state => Object.values(state.filters).reduce((n, vs) 
 export const layoutOf = state => state.layout || (state.view === 'pipeline' ? 'stage' : 'table');
 
 // The /brands?page= request for this state. The owner toggle is the default owner filter; an Owner bucket choice wins.
+// Sponsor money is the team's money, so its list (the brands behind a cell) ignores the toggle.
 export function brandRequest(state, owner, { page = 1, limit = 100, facets = false } = {}) {
   const req = { page, limit, view: state.view };
   for (const [k, vs] of Object.entries(state.filters)) req[k] = vs.join(',');
-  if (!state.filters.owner && owner && owner !== 'all') req.owner = owner;
+  if (!state.filters.owner && owner && owner !== 'all' && state.view !== 'money') req.owner = owner;
   if (state.q) req.q = state.q;
   const sort = state.sort || (layoutOf(state) === 'stage' ? 'status' : null);
   if (sort) req.sort = sort;

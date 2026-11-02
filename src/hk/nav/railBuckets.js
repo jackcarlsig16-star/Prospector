@@ -30,6 +30,17 @@ export function ViewNameField({ view, onSave, onCancel }) {
   );
 }
 
+// grow-sponsor-deals S5 - Sponsor month lists each month once, "Nov 2026 · confirmed n · discussing n" (brand counts);
+// a month + state value (from a Sponsor money cell) shows as its own line only while it is on.
+function monthValues(entries, on) {
+  const n = new Map(entries);
+  const plain = entries.filter(([v]) => !v.includes(':')).map(([v, c]) => {
+    const parts = ['confirmed', 'discussing', 'declined'].filter(st => n.get(`${v}:${st}`)).map(st => `${st} ${n.get(`${v}:${st}`)}`);
+    return [v, c, [valueLabel('month', v), ...parts].join(' · ')];
+  });
+  return [...plain, ...entries.filter(([v]) => v.includes(':') && on.includes(v))];
+}
+
 export function brandBuckets({ facets, state, meId, members, savedViews = [], onRename, onRemove, renaming = null, onRenameSave, onRenameCancel }) {
   const views = (facets?.view || Object.keys(VIEW_LABELS).map(v => [v, null])).map(([v, n]) => ({ id: v, label: VIEW_LABELS[v] || v, count: n, active: !state.saved && state.view === v }));
   const saved = savedViews.filter(v => v.space === 'brands').map(v => ({
@@ -44,9 +55,10 @@ export function brandBuckets({ facets, state, meId, members, savedViews = [], on
   }));
   const out = [{ key: 'views', label: 'Views', icon: 'star', items: [...views, ...saved] }];
   for (const b of BRAND_BUCKETS) {
-    const items = (facets?.[b.key] || []).map(([v, n]) => {
+    const vals = b.key === 'month' ? monthValues(facets?.month || [], state.filters.month || []) : facets?.[b.key] || [];
+    const items = vals.map(([v, n, said]) => {
       const id = b.key === 'owner' ? ownerValueOf(v, meId) : v;
-      return { id, label: valueLabel(b.key, v, { meId, members }), count: n, tone: valueTone(b.key, v), active: !!state.filters[b.key]?.includes(id) };
+      return { id, label: said || valueLabel(b.key, v, { meId, members }), count: n, tone: valueTone(b.key, v), active: !!state.filters[b.key]?.includes(id) };
     });
     if (items.length) out.push({ ...b, items });
   }

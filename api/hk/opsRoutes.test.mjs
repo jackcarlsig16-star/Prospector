@@ -24,7 +24,7 @@ test('sponsors: current sponsors with periods, the DNC list with reason + who ma
   assert.deepEqual(s.dnc.map(x => [x.name, x.dnc_reason, x.marked_by]).sort(), [['Bluefin Run Club', 'declined twice', PETE], ['Copperleaf Cafe', 'asked us to stop', null]]);
   assert.ok(!hasAt(s));
   const pid = sb.db.hk_sponsor_periods[0].id;
-  assert.equal((await call(deletePeriodRoute, reqOf({ method: 'DELETE', params: { brandId: ID.juice, pid } }), deps(sb))).code, 403);
+  assert.equal((await call(deletePeriodRoute, reqOf({ method: 'DELETE', params: { brandId: ID.juice, pid }, user: PETE }), deps(sb))).code, 403);
   assert.equal((await call(deletePeriodRoute, reqOf({ method: 'DELETE', params: { brandId: ID.juice, pid }, role: 'owner' }), deps(sb))).code, 200);
   assert.deepEqual([sb.db.hk_sponsor_periods.length, !!sb.db.hk_sponsor_periods[0].archived_at], [2, true], 'archived, never deleted');
   assert.deepEqual((await call(sponsorsRoute, reqOf(), deps(sb))).body.sponsors[0].periods.map(p => p.period), ['2026-09'], 'archived months hidden');

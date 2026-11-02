@@ -9,8 +9,7 @@ import { SOURCE_LABELS, RELATIONSHIP_LABELS } from './verdict';
 import { marketOf } from './labelRules';
 
 // grow-ui-refresh-v1 U7 - the Brand page's right rail (mockup 2): Next step (three numbered steps + the primary
-// repeated), Contacts (primary starred, + Add; members see addresses as today, D5), Deal (empty until
-// grow-brands-sheet: "fills in when they sign"), Details (label / value rows; Category, Market and Size edit in place
+// repeated), Contacts (primary starred, + Add; members see addresses as today, D5), Details (label / value rows; Category, Market and Size edit in place
 // through PATCH; "Edit all details" opens the full form; "+ Custom field" arrives with the sheet).
 const STEPS = {
   pitch: name => [`Pitch ${name}`, ['Pitch claims it as yours and copies the Claude command.', 'Paste in Claude. It writes the email and saves a Gmail draft.', 'Review and send from Gmail. Grow logs it.']],
@@ -73,16 +72,18 @@ export function Contacts({ businessId, brandId, contacts, canEdit, member, onCha
   );
 }
 
-export function Deal() {
-  return (
-    <section className="hk-bcard" aria-label="Deal" data-hk-deal>
-      <div className="hk-bcard__head"><h3 className="hk-kicker">Deal</h3><span className="hk-spacer" /><span className="hk-meta">fills in when they sign</span></div>
-      <dl className="hk-kv">{['Plan', 'List price', 'Per month', 'Lifetime'].map(k => <div key={k} className="hk-kv__row"><dt>{k}</dt><dd className="hk-meta">—</dd></div>)}</dl>
-    </section>
-  );
-}
-
-const EDITABLE = { Category: ['category', 80], Size: ['size_band', 40] };
+const EDITABLE = { Category: ['category', 80], Size: ['size_band', 40], Instagram: ['instagram_handle', 80] };
+// grow-sponsor-deals S8 - "@handle" with Open DM (the Instagram DM thread with that account) and Open profile. No
+// Instagram API: these are plain links that open in a new tab.
+export const igDmUrl = h => `https://ig.me/m/${encodeURIComponent(h)}`;
+export const igProfileUrl = h => `https://instagram.com/${encodeURIComponent(h)}`;
+export const InstagramLinks = ({ handle, withHandle = true }) => (handle ? (
+  <span className="hk-inline" data-hk-ig={handle}>
+    {withHandle && <span>@{handle}</span>}
+    <a className="hk-link" href={igDmUrl(handle)} target="_blank" rel="noopener noreferrer" data-hk-open-dm>Open DM</a>
+    <a className="hk-link" href={igProfileUrl(handle)} target="_blank" rel="noopener noreferrer" data-hk-open-profile>Open profile</a>
+  </span>
+) : null);
 
 export function Details({ businessId, brand, research, owner, canEdit, onChanged }) {
   const [editing, setEditing] = useState(null);
@@ -101,6 +102,7 @@ export function Details({ businessId, brand, research, owner, canEdit, onChanged
     ['Sheet owner', hint ? hint[0].toUpperCase() + hint.slice(1) : null],
     ['Source', SOURCE_LABELS[brand.source] || brand.source],
     ['Relationship', RELATIONSHIP_LABELS[brand.relationship]],
+    ['Instagram', brand.instagram_handle ? <InstagramLinks handle={brand.instagram_handle} /> : null, 'no handle yet'],
   ];
   const start = k => { setEditing(k); setValue(k === 'Market' ? (brand.is_local ? 'Chicago' : 'National') : brand[EDITABLE[k][0]] || ''); };
   const save = () => (editing === 'Market' ? patch({ is_local: value === 'Chicago' }) : patch({ [EDITABLE[editing][0]]: value.trim() || null }));
@@ -116,7 +118,7 @@ export function Details({ businessId, brand, research, owner, canEdit, onChanged
               <dd className="hk-kv__edit">
                 {k === 'Market'
                   ? <select className="ui-input" aria-label="Market" value={value} onChange={e => setValue(e.target.value)}><option>Chicago</option><option>National</option></select>
-                  : <input className="ui-input" aria-label={k} value={value} maxLength={EDITABLE[k][1]} onChange={e => setValue(e.target.value)} autoFocus />}
+                  : <input className="ui-input" aria-label={k === 'Instagram' ? 'Instagram handle' : k} placeholder={k === 'Instagram' ? '@handle' : undefined} value={value} maxLength={EDITABLE[k][1]} onChange={e => setValue(e.target.value)} autoFocus />}
                 <button type="button" className="hk-btn hk-link" onClick={save}>Save</button><button type="button" className="hk-btn hk-link" onClick={() => setEditing(null)}>Cancel</button>
               </dd>
             ) : (

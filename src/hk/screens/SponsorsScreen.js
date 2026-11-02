@@ -5,6 +5,7 @@ import { Chip } from '../brands/BrandsScreen';
 import { RELATIONSHIP_LABELS, RELATIONSHIP_TONE } from '../brands/verdict';
 import { hkGet, hkPatch, hkPost, hkFetch } from '../hkApi';
 import BrandPicker from './BrandPicker';
+import { STATE_TONE, STATE_WORDS } from '../brands/dealWords';
 
 // hkos-data-foundation-v1 D6 - Sponsors: A) current / past sponsors with their periods, B) the do-not-contact block.
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -17,6 +18,7 @@ export default function SponsorsScreen({ businessId, shell, canEdit, onOpenBrand
   const [picker, setPicker] = useState(null);
   const [periodFor, setPeriodFor] = useState(null);
   const [period, setPeriod] = useState({ period: '', note: '' });
+  const [undo, setUndo] = useState(null);
   const members = shell?.members || [];
   const isOwnerRole = shell?.me?.role === 'owner';
   const member = id => members.find(m => m.user_id === id);
@@ -46,7 +48,7 @@ export default function SponsorsScreen({ businessId, shell, canEdit, onOpenBrand
               <Chip tone={RELATIONSHIP_TONE[b.relationship]}>{RELATIONSHIP_LABELS[b.relationship]}</Chip>
               {b.source === 'import' && <Chip tone="lilac">Import</Chip>}
               {b.niche && <span className="hk-meta">{b.niche}</span>}
-              <span className="hk-period-chips">{b.periods.map(p => <span key={p.id} className="hk-chip hk-chip--green" title={p.note || ''}>{periodLabel(p.period)}{canEdit && isOwnerRole && <button type="button" className="hk-btn hk-chip__x" aria-label={`Remove ${periodLabel(p.period)}`} onClick={() => act(() => hkFetch(businessId, `/sponsors/${b.id}/periods/${p.id}`, { method: 'DELETE' }))}>×</button>}</span>)}</span>
+              <span className="hk-period-chips">{b.periods.map(p => <span key={p.id} className={`hk-chip hk-chip--${STATE_TONE[p.state || 'confirmed']}`} title={p.note || ''} data-hk-period-state={p.state || 'confirmed'}>{periodLabel(p.period)}{(p.state || 'confirmed') !== 'confirmed' ? ` · ${STATE_WORDS[p.state].toLowerCase()}` : ''}{canEdit && isOwnerRole && <button type="button" className="hk-btn hk-chip__x" aria-label={`Remove ${periodLabel(p.period)}`} onClick={() => act(async () => { const r = await hkFetch(businessId, `/sponsors/${b.id}/periods/${p.id}`, { method: 'DELETE' }); setUndo({ words: `${b.name}: ${periodLabel(p.period)} removed`, path: `/sponsors/${b.id}/periods/${r.undo.restore}/restore` }); })}>×</button>}</span>)}</span>
               {o && <span className="hk-owner"><Avatar name={o.first_name} index={o.palette_index} size={22} />{o.first_name}</span>}
               {b.notes && <span className="hk-meta hk-truncate">{b.notes}</span>}
               {canEdit && <span className="hk-row__end"><Button size="sm" onClick={() => { setPeriodFor(b.id); setPeriod({ period: '', note: '' }); }}>Add period</Button></span>}
@@ -78,6 +80,13 @@ export default function SponsorsScreen({ businessId, shell, canEdit, onOpenBrand
             </div>); })}
         </div>
       </section>
+      {undo && (
+        <div className="hk-toast" role="status" data-hk-toast>
+          <span>{undo.words}.</span>
+          <button type="button" className="hk-btn hk-link" onClick={() => act(() => hkPost(businessId, undo.path, {})).then(() => setUndo(null), () => {})}>Undo</button>
+          <button type="button" className="hk-btn hk-link" aria-label="Dismiss" onClick={() => setUndo(null)}>×</button>
+        </div>
+      )}
       {picker === 'sponsor' && <BrandPicker businessId={businessId} title="Which brand is a sponsor?" line="Only prospect brands are listed. Add a new brand under Brands first." confirmLabel="Mark as sponsor" onClose={() => setPicker(null)} onPick={async b => { await act(() => hkPatch(businessId, `/brands/${b.id}`, { relationship: 'sponsor' })); setPicker(null); }} />}
       {picker === 'dnc' && <BrandPicker businessId={businessId} title="Which brand should never be contacted?" confirmLabel="Block" withReason="Why?" onClose={() => setPicker(null)} onPick={async (b, reason) => { await act(() => hkPatch(businessId, `/brands/${b.id}`, { relationship: 'do_not_contact', dnc_reason: reason })); setPicker(null); }} />}
     </div>

@@ -3,6 +3,7 @@ import Button from '../../ui/Button';
 import { Chip } from '../brands/BrandsScreen';
 import { chipLabel, chipTone } from './ThreadPane';
 import { fmtDate, REPLY_LABEL, FIT_LABEL, FIT_TONE } from './inboxPrefs';
+import { DEAL_STAGE_WORDS, DEAL_STAGE_TONE } from '../brands/dealWords';
 
 // hkos-inbox-v2 L6 / hkos-inbox-list-width W2 - a Needs you / Brands / Sent / Drafts row in two lines that protect the
 // name: line 1 = unread dot · sender (never under 16ch) · domain (only when the column is wide enough) · date; line 2 =
@@ -14,7 +15,10 @@ export function rowChips(t) {
   return [
     // grow-inbox-intel B2: a Needs-you row's top reason leads.
     t.lane === 'needs_you' && t.importance?.why && { rank: -1, text: t.importance.why, el: <Chip tone="blue"><span data-hk-row-why>{t.importance.why}</span></Chip> },
-    { rank: CHIP_RANK[t.chip.kind] ?? 5, text: dim ? 'Not tracked' : chipLabel(t.chip), el: dim ? <span className="hk-meta">Not tracked</span> : <Chip tone={chipTone(t.chip)}>{chipLabel(t.chip)}</Chip> },
+    // grow-sponsor-deals S7 - the status line replaces the bare tracked / matches / new-sender chip; the full line is the title.
+    t.status_line?.kind === 'saved' ? { rank: 0, status: true, text: [t.status_line.line, t.status_line.reached?.line].filter(Boolean).join(' · '), el: <Chip tone={DEAL_STAGE_TONE[t.status_line.deal_stage] || 'grey'}><span data-hk-row-status>{t.status_line.brand_name} · {DEAL_STAGE_WORDS[t.status_line.deal_stage]}</span></Chip> }
+      : t.status_line?.kind === 'new' ? { rank: 2, text: 'New · not in Grow', el: <Chip tone={chipTone(t.chip)}><span data-hk-row-status>New · not in Grow</span></Chip> }
+        : { rank: CHIP_RANK[t.chip.kind] ?? 5, text: dim ? 'Not tracked' : chipLabel(t.chip), el: dim ? <span className="hk-meta">Not tracked</span> : <Chip tone={chipTone(t.chip)}>{chipLabel(t.chip)}</Chip> },
     t.chip.kind === 'tracked' && t.chip.label && { rank: 1, text: REPLY_LABEL[t.chip.label] || t.chip.label, el: <Chip tone="lilac">{REPLY_LABEL[t.chip.label] || t.chip.label}</Chip> },
     t.intel_fit && { rank: 6, text: `Analyzed · ${FIT_LABEL[t.intel_fit] || t.intel_fit}`, el: <Chip tone={FIT_TONE[t.intel_fit] || 'grey'}><span data-hk-row-intel>Analyzed · {FIT_LABEL[t.intel_fit] || t.intel_fit}</span></Chip> },
     t.has_attachments && { rank: 7, text: 'Attachment', el: <span className="hk-meta">Attachment</span> },
@@ -25,7 +29,7 @@ export function ThreadRow({ t, on, onOpen, showDomain = true }) {
   const dim = t.chip.kind === 'not_tracked';
   const chips = rowChips(t);
   const domain = t.from_hint && t.from_hint !== t.from_name ? t.from_hint : null;
-  const title = [!showDomain && domain, ...chips.slice(1).map(c => c.text)].filter(Boolean).join(' · ');
+  const title = [!showDomain && domain, chips[0]?.status && chips[0].text, ...chips.slice(1).map(c => c.text)].filter(Boolean).join(' · ');
   return (
     <li>
       <button type="button" className={`hk-btn hk-inbox__row${on ? ' hk-inbox__row--on' : ''}${dim ? ' hk-inbox__row--dim' : ''}${t.unread ? ' hk-inbox__row--unread' : ''}`}

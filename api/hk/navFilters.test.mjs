@@ -117,7 +117,7 @@ test('S1 views equal the old views\' rows; Pipeline = the old Pipeline set; ever
   assert.deepEqual(names(await page({ view: 'dnc' }, { sb })), ['Gale Gym']);
   const f = await page({ facets: '1', stage: 'meeting' }, { sb });
   assert.deepEqual(f.body.facets.view.map(([v]) => v), VIEWS);
-  assert.deepEqual(facet(f, 'view'), { all: 1, pipeline: 1, my_open: 1, unclaimed: 0, overdue: 0, sponsors: 1, dnc: 0, hot: 0, targets: 0, partnerships: 0 });
+  assert.deepEqual(facet(f, 'view'), { all: 1, pipeline: 1, my_open: 1, unclaimed: 0, overdue: 0, sponsors: 1, dnc: 0, hot: 0, targets: 0, partnerships: 0, money: 0 });
 });
 
 test('S1 facets: faceted (other buckets + this value), zero values left out unless active, stage in schema order', async () => {

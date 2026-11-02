@@ -102,7 +102,7 @@ test('U7 Timeline card: Timeline · Emails · Notes with counts; a logged call r
   await waitFor(() => expect(bodies[`PATCH /api/hk/${HK}/brands/${B}`][0].notes).toMatch(/^[A-Z][a-z]{2} \d{1,2}: Asked about Q1 budget\nOct 20: met at the expo$/));
 });
 
-test('U7 rail: Next step (3 steps + the primary), Contacts (starred, source words, + Add), Deal empty state, Details with Category / Market edited in place', async () => {
+test('U7 rail: Next step (3 steps + the primary), Contacts (starred, source words, + Add), Deal card empty state, Details with Category / Market edited in place', async () => {
   routes[`PATCH /api/hk/${HK}/brands/${B}`] = { brand: { id: B } };
   await open();
   const next = screen.getByRole('region', { name: 'Next step' });
@@ -112,9 +112,9 @@ test('U7 rail: Next step (3 steps + the primary), Contacts (starred, source word
   expect(contacts).toHaveTextContent('Marketing lead ★'); expect(contacts).toHaveTextContent('Email on file · from the sheet');
   expect(within(contacts).getByRole('button', { name: '+ Add' })).toBeInTheDocument();
   const deal = screen.getByRole('region', { name: 'Deal' });
-  expect(deal).toHaveTextContent('fills in when they sign'); expect(deal.querySelectorAll('dd').length).toBe(4);
+  expect(deal).toHaveTextContent('Prospect'); expect(deal).toHaveTextContent('No sponsor months yet.'); expect(within(deal).getByRole('button', { name: '+ Add month' })).toBeInTheDocument();
   const det = screen.getByRole('region', { name: 'Details' });
-  expect([...det.querySelectorAll('dt')].map(d => d.textContent)).toEqual(['Industry', 'Category', 'Market', 'Size', 'Based in', 'Owner', 'Sheet owner', 'Source', 'Relationship']);
+  expect([...det.querySelectorAll('dt')].map(d => d.textContent)).toEqual(['Industry', 'Category', 'Market', 'Size', 'Based in', 'Owner', 'Sheet owner', 'Source', 'Relationship', 'Instagram']);
   expect(det.querySelector('[data-hk-detail="Based in"]')).toHaveTextContent('Colorado');
   fireEvent.click(within(det).getByRole('button', { name: 'Edit Category' }));
   fireEvent.change(within(det).getByLabelText('Category'), { target: { value: 'Outdoor brand' } });
