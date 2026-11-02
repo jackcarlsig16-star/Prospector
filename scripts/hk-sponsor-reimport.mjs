@@ -38,7 +38,7 @@ console.log(`${APPLY ? 'APPLY' : 'DRY RUN'} - ${tabs.length} tabs, ${brands.leng
 for (const t of plan.tabs) {
   const src = tabs.find(x => x.name === t.tab);
   console.log(`\n## ${t.tab} (${t.period}${t.shifted ? ', Paid / Amount read two columns over' : ''}) - ${src.rows.length} rows`);
-  list('would-confirm', t.would_confirm); list('would-mark-discussing', t.would_mark_discussing); list('would-fill (same state; gains type / details / amount / paid)', t.would_fill); list('would-add', t.would_add);
+  list('would-confirm', t.would_confirm); list('would-mark-discussing', t.would_mark_discussing); list('would-fill (same state; gains type / details / amount / paid)', t.would_fill); list('would-add', t.would_add); list('yellow but paid -> confirmed (ruling 1)', t.paid_override || []);
   if (t.unchanged) console.log(`   unchanged ${t.unchanged}`);
   list('would-leave', t.would_leave); list('unmatched (offered as Add brand)', t.unmatched); list('skipped rows', t.skipped); list('warnings', t.warnings);
 }

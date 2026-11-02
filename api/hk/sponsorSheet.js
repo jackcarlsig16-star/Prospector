@@ -67,7 +67,10 @@ export function parseSponsorTabs(wb) {
       else if (x.fill === 'yellow') state = 'discussing';
       else if (content) { state = 'discussing'; if (x.fill === 'other') warnings.push('an unknown fill color - read as in discussion'); }
       else { skipped.push({ ref, name, why: 'no fill and nothing but the name' }); continue; }
-      rows.push({ ref, name, fill: x.fill, state, paid: yes(byKey.paid), amount_usd: money(byKey.amount), deal_type: byKey.type ? byKey.type.slice(0, 80) : null, details, warnings });
+      // Ruling 1 (Nov 2): paid means a deal - a row marked Paid = Y imports as confirmed whatever its color.
+      const paid = yes(byKey.paid), paidOverride = paid && state === 'discussing';
+      if (paidOverride) state = 'confirmed';
+      rows.push({ ref, name, fill: x.fill, state, paid, paid_override: paidOverride, amount_usd: money(byKey.amount), deal_type: byKey.type ? byKey.type.slice(0, 80) : null, details, warnings });
     }
     tabs.push({ name: ws.name, kind: t.kind, period: t.kind === 'launch' ? 'launch' : t.period, shifted, rows, skipped });
   }
@@ -85,6 +88,8 @@ const abbreviates = (short, long) => {
   return i === s.length;
 };
 const SAME = ['state', 'amount_usd', 'paid', 'deal_type', 'details'];
+// jsonb stores object keys in its own order: details compare with sorted keys, so a re-run after --apply is a no-op.
+const sortedJson = v => JSON.stringify(v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b))) : v);
 const norm = p => ({ state: stateOf(p), amount_usd: p.amount_usd == null ? null : Number(p.amount_usd), paid: !!p.paid, deal_type: p.deal_type || null, details: p.details || {} });
 
 // { tabs } + live brands + every period of the workspace (archived too) -> the dry-run report and the writes --apply makes.
@@ -107,9 +112,10 @@ export function planReimport({ tabs, brands, periods }) {
       const cur = periods.find(p => p.brand_id === b.id && p.period === tab.period && p.kind === kind);
       if (cur?.archived_at) { r.would_leave.push(`${b.name} (removed in Grow)`); continue; }
       if (cur && cur.source && cur.source !== 'sheet') { r.would_leave.push(`${b.name} (edited in Grow - ${cur.source})`); continue; }
-      const entry = { brand_id: b.id, brand: b.name, period: tab.period, kind, ref: row.ref, next, period_id: cur?.id || null, prev: cur ? norm(cur) : null };
+      const entry = { brand_id: b.id, brand: b.name, period: tab.period, kind, ref: row.ref, next, period_id: cur?.id || null, prev: cur ? norm(cur) : null, paid_override: !!row.paid_override };
+      if (row.paid_override) r.paid_override = [...(r.paid_override || []), b.name];
       if (!cur) { r.would_add.push(`${b.name} (${STATE_WORDS[row.state].toLowerCase()})`); writes.push(entry); continue; }
-      if (SAME.every(k => JSON.stringify(entry.prev[k]) === JSON.stringify(next[k]))) { r.unchanged++; continue; }
+      if (SAME.every(k => sortedJson(entry.prev[k]) === sortedJson(next[k]))) { r.unchanged++; continue; }
       (entry.prev.state === row.state ? r.would_fill : row.state === 'discussing' ? r.would_mark_discussing : r.would_confirm).push(b.name);
       writes.push(entry);
     }
@@ -150,4 +156,4 @@ export function planReimport({ tabs, brands, periods }) {
 }
 
 // One Activity line per brand changed by --apply: "Sheet re-import: Nov 2026 → in discussion".
-export const changeWords = w => `${w.period === 'launch' ? 'Launch' : monthWords(w.period)} → ${STATE_WORDS[w.next.state].toLowerCase()}${w.next.amount_usd != null ? ` $${w.next.amount_usd}` : ''}${w.next.paid ? ', paid' : ''}`;
+export const changeWords = w => `${w.period === 'launch' ? 'Launch' : monthWords(w.period)} → ${STATE_WORDS[w.next.state].toLowerCase()}${w.next.amount_usd != null ? ` $${w.next.amount_usd}` : ''}${w.next.paid ? ', paid' : ''}${w.paid_override ? ' (sheet yellow but paid → confirmed)' : ''}`;

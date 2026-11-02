@@ -16,7 +16,7 @@ import { pipelineRefusal } from './signalsRoutes.js';
 import { sponsorsRoute } from './opsRoutes.js';
 import { patchBrandRoute, getBrandRoute, handleOf } from './brandsRoutes.js';
 import { chipFor } from './inboxRules.js';
-import { parseSponsorTabs, planReimport, fillOf } from './sponsorSheet.js';
+import { parseSponsorTabs, planReimport, fillOf, changeWords } from './sponsorSheet.js';
 
 const M = '2026-10'; // NOW = 2026-10-26 (Chicago)
 const per = (brand_id, period, state = 'confirmed', over = {}) => ({ id: randomUUID(), business_id: HK, brand_id, period, kind: period === 'launch' ? 'launch' : 'monthly', state, amount_usd: null, paid: false, source: 'sheet', archived_at: null, ...over });
@@ -230,7 +230,8 @@ test('S3 sheet: fills -> states (green argb + theme 7, yellow, none with content
   assert.equal(fillOf(wb2.getWorksheet('November Confirmed Sponsors').getRow(3).getCell(1)), 'green');
   const { tabs } = parseSponsorTabs(wb2);
   const n = tabs.find(t => t.period === '2026-11'), d = tabs.find(t => t.period === '2026-12'), l = tabs.find(t => t.kind === 'launch');
-  assert.deepEqual(n.rows.map(r => [r.name, r.state, r.paid, r.amount_usd]), [['Zz Green', 'confirmed', true, 150], ['Zz Theme', 'confirmed', false, 150], ['Zz Yellow', 'discussing', true, 150], ['Zz Plain', 'discussing', false, null]]);
+  assert.deepEqual(n.rows.map(r => [r.name, r.state, r.paid, r.amount_usd]), [['Zz Green', 'confirmed', true, 150], ['Zz Theme', 'confirmed', false, 150], ['Zz Yellow', 'confirmed', true, 150], ['Zz Plain', 'discussing', false, null]]);
+  assert.deepEqual(n.rows.map(r => r.paid_override), [false, false, true, false], 'ruling 1: yellow but paid -> confirmed');
   assert.deepEqual(n.skipped.map(s => s.name), ['Zz Bare']);
   assert.deepEqual(n.rows[0].details, { Status: 'Done', 'Challenge Sponsor?': 'Yes', 'Challenge Name': 'Green Week', 'Challange Schedule': '11/01/2026 - 11/30/2026' });
   assert.equal(n.rows[0].deal_type, 'Reward');
@@ -249,10 +250,13 @@ test('S3 plan: add / change / unchanged / leave (DB-only, archived, edited in Gr
     { name: 'December', kind: 'monthly', period: '2026-12', shifted: true, skipped: [], rows: [row('ZZ GREEN', 'discussing')] }];
   const p = planReimport({ tabs, brands, periods });
   const nov = p.tabs[0];
+  assert.match(changeWords({ period: '2026-11', next: { state: 'confirmed', amount_usd: 150, paid: true }, paid_override: true }), /Nov 2026 → confirmed \$150, paid \(sheet yellow but paid → confirmed\)/);
   assert.deepEqual([nov.would_fill, nov.would_mark_discussing, nov.would_leave.sort(), nov.unmatched], [['Zz Green'], ['Zz Yellow'], ['Zz Just (in Grow, not on the sheet)', 'Zz Kept (removed in Grow)', 'Zz User (edited in Grow - user)'], ['Zz New Place']]);
   assert.deepEqual(p.tabs[1].would_add, ['Zz Green (in discussion)']);
   assert.deepEqual(p.writes.map(w => [w.brand, w.period, w.next.state, !!w.period_id]), [['Zz Green', '2026-11', 'confirmed', true], ['Zz Yellow', '2026-11', 'discussing', true], ['Zz Green', '2026-12', 'discussing', false]]);
   assert.deepEqual(p.relationships.map(r => [r.brand, r.from, r.to, r.status_to]), [['Zz Yellow', 'sponsor', 'prospect', 'replied']]);
+  const reordered = { ...tabs[0], rows: [row('Zz Green', 'confirmed', { details: { B: '2', A: '1' } })] };
+  assert.equal(planReimport({ tabs: [reordered], brands, periods: [per(G, '2026-11', 'confirmed', { amount_usd: 150, details: { A: '1', B: '2' } })] }).tabs[0].unchanged, 1, 'jsonb key order is not a change');
   assert.equal(planReimport({ tabs, brands, periods: [...periods.slice(0, 2).map(x => ({ ...x, state: x.brand_id === Y ? 'discussing' : 'confirmed', amount_usd: 150, paid: x.brand_id === G })), ...periods.slice(2)] }).tabs[0].unchanged, 2, 're-runnable: a second run changes nothing it already wrote');
   const fam = planReimport({ tabs: [{ name: 'T', kind: 'monthly', period: '2026-11', shifted: false, skipped: [], rows: [row('LSQP', 'confirmed'), row('Logan Square Pilates', 'confirmed'), row('PBK', 'confirmed'), row('Protein Bar and Kitchen', 'confirmed'), row('CBA', 'confirmed'), row('The Crib / Mahogany Tours', 'confirmed')] }], brands: [], periods: [] }).families;
   assert.deepEqual(fam.map(f => f.join(' / ')).sort(), ['LSQP / Logan Square Pilates', 'PBK / Protein Bar and Kitchen']);
