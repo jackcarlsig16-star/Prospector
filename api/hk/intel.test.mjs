@@ -56,17 +56,19 @@ test('B3 eligibility runs through can_contact: sponsor, founding partner, DNC, t
 test('B3 components: contact with an email, idea, website, researched, Chicago as local (category or flag), target category (case-insensitive), fit, heat, targeted, mine untouched, niche overlap, size', async () => {
   const sb = fresh({ hk_domain_intel: [{ id: 'i1', business_id: HK, domain: 'cedarcola.invalid', intel: { fit: { sponsor_fit: 'possible' } }, cost_usd: 0.04, researched_at: '2026-10-28T00:00:00Z' }] });
   const ctx = await ctxOf(sb);
-  const parts = b => reachOf(b, ctx)?.parts.map(([k]) => k) || null;
+  // The ICP part (grow-pitch-icp, icp.test.mjs) leads every brand's parts; this test is about the B3 components after it.
+  const parts = b => reachOf(b, ctx)?.parts.map(([k]) => k).filter(k => k !== 'icp') || null;
+  assert.deepEqual(reachOf(ctx.brands.find(b => b.id === ids.a), ctx).parts[0], ['icp', 20], 'not researched yet');
   assert.deepEqual(parts(ctx.brands.find(b => b.id === ids.a)), ['draftable', 'idea']);
   assert.deepEqual(parts(ctx.brands.find(b => b.id === ids.b)), [], 'a contact without an email is not draftable');
   assert.deepEqual(parts(ctx.brands.find(b => b.id === ids.c)), ['website', 'researched', 'fit_possible']);
-  assert.equal(reachOf(ctx.brands.find(b => b.id === ids.c), ctx).score, 10 + 5 + 10);
+  assert.equal(reachOf(ctx.brands.find(b => b.id === ids.c), ctx).score, 40 + 10 + 5 + 10, 'researched, not media: ICP retail +40');
   const W = INTEL_DEFAULTS.weights;
   const extra = brand(ids.chi, 'Zz Chicago Co', { category: 'chicago', heat_band: 'hot', targeted_at: '2026-10-28T00:00:00Z', size_band: 'Large', niche: 'Oats' });
   const r = reachOf(extra, ctx);
-  assert.deepEqual(r.parts.map(([k]) => k), ['local', 'heat_hot', 'targeted', 'niche_overlap', 'size_large']);
-  assert.equal(r.score, W.local + W.heat_hot + W.targeted + W.niche_overlap + W.size_large);
-  assert.deepEqual(r.why, ['Chicago local', 'Hot right now']);
+  assert.deepEqual(r.parts.map(([k]) => k), ['icp', 'local', 'heat_hot', 'targeted', 'niche_overlap', 'size_large']);
+  assert.equal(r.score, INTEL_DEFAULTS.icp.unknown + W.local + W.heat_hot + W.targeted + W.niche_overlap + W.size_large);
+  assert.deepEqual(r.why, ['ICP: not researched yet', 'Chicago local'], 'ICP first on a tie');
   assert.equal(isLocal(brand(ids.e, 'x', { is_local: true })), true);
   for (const c of ['national cpg', 'Wellness', 'GYM/STUDIO']) assert.ok(inTargetCategory({ category: c }, ctx.settings.target_categories), c);
   assert.equal(inTargetCategory({ category: 'Founder' }, ctx.settings.target_categories), false, 'Founder is not a category target');
@@ -256,7 +258,7 @@ test('Briefing: tiles, Send these 10 (eligible only, with why and the Claude com
   const today = async () => ({ digest: { counts: { urgent: 1, replies: 2, drafts: 3, dm_ready: 1 } } });
   const r = await call(briefingRoute, reqOf(), { supabase: sb, now: () => NOW, today });
   assert.equal(r.code, 200, JSON.stringify(r.body));
-  assert.deepEqual(r.body.send.map(c => [c.name, c.score, c.why]), [['Zz Alder Oats', 25, ['has a contact to email', 'has a challenge idea']], ['Zz Cedar Cola', 10, ['has a website']], ['Zz Birch Bars', 0, []]]);
+  assert.deepEqual(r.body.send.map(c => [c.name, c.score, c.why]), [['Zz Alder Oats', 45, ['ICP: not researched yet', 'has a contact to email']], ['Zz Cedar Cola', 30, ['ICP: not researched yet', 'has a website']], ['Zz Birch Bars', 20, ['ICP: not researched yet']]]);
   assert.equal(r.body.send[1].command, 'hk pitch cedarcola.invalid'); assert.equal(r.body.send[0].command, 'hk pitch Zz Alder Oats');
   assert.deepEqual([r.body.tiles.replies_waiting, r.body.tiles.drafts, r.body.tiles.dms_due, r.body.tiles.reply_rate_week, r.body.tiles.researched_today], [3, 3, 1, null, { n: 0, cap: 10 }]);
   assert.deepEqual(r.body.waiting.map(w => [w.name, w.waiting_days]), [['Zz Maxed Co', 26]]);

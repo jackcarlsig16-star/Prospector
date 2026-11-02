@@ -12,6 +12,7 @@ import InboxSpace from './inbox/InboxSpace';
 import TodayScreen from './screens/TodayScreen';
 import { parseBrandQuery, toggleValue } from './nav/filterState';
 import DaySettings from './screens/DaySettings';
+import IcpSettings from './screens/IcpSettings';
 import FollowupSettings from './screens/FollowupSettings';
 import DigestSettings from './screens/DigestSettings';
 import IntelSettings from './screens/IntelSettings';
@@ -95,7 +96,7 @@ export default function HkScreen({ screen, section, brandId, businessId, owner, 
               <button key={id} type="button" className="hk-btn hk-subnav__item" aria-current={section === id ? 'page' : undefined} onClick={() => onSection(id)}>{label}</button>
             ))}
           </nav>
-          <div>{section === 'modules' ? <Modules shell={shell} /> : section === 'followups' ? <FollowupSettings businessId={businessId} shell={shell} canEdit={canEdit} /> : section === 'digest' ? <DigestSettings businessId={businessId} shell={shell} canEdit={canEdit} /> : section === 'pitch' ? <><PitchSettings businessId={businessId} shell={shell} canEdit={canEdit} /><DaySettings businessId={businessId} shell={shell} canEdit={canEdit} /><IntelSettings businessId={businessId} shell={shell} canEdit={canEdit} /></> : section === 'connections' ? <ConnectionsSettings businessId={businessId} shell={shell} gmail={gmail} syncing={syncing} onSync={onSync} onOpenConnections={onOpenConnections} onGmailChanged={onGmailChanged} canEdit={canEdit} /> : <Members shell={shell} onOpenAdmin={onOpenAdmin} />}</div>
+          <div>{section === 'modules' ? <Modules shell={shell} /> : section === 'followups' ? <FollowupSettings businessId={businessId} shell={shell} canEdit={canEdit} /> : section === 'digest' ? <DigestSettings businessId={businessId} shell={shell} canEdit={canEdit} /> : section === 'pitch' ? <><PitchSettings businessId={businessId} shell={shell} canEdit={canEdit} /><DaySettings businessId={businessId} shell={shell} canEdit={canEdit} /><IcpSettings businessId={businessId} shell={shell} canEdit={canEdit} /><IntelSettings businessId={businessId} shell={shell} canEdit={canEdit} /></> : section === 'connections' ? <ConnectionsSettings businessId={businessId} shell={shell} gmail={gmail} syncing={syncing} onSync={onSync} onOpenConnections={onOpenConnections} onGmailChanged={onGmailChanged} canEdit={canEdit} /> : <Members shell={shell} onOpenAdmin={onOpenAdmin} />}</div>
         </div>
       </>
     );

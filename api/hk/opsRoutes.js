@@ -4,6 +4,7 @@ import { createRequire } from 'module';
 import { getSupabase, HkError, fail, isOwner, me, text, bool, oneOf, logEvent, brandRow, brandSummary, liveBrands, allBrands, brandById, nameMatches, selectAllPages, selectIn, hasPii, SPONSOR_RELATIONSHIPS } from './hkShared.js';
 import { BUCKETS, VIEWS as BRAND_VIEWS, SORTS, parseFilters } from './brandFilters.js';
 import { LABELS } from './replyLabel.js';
+import { intelSettings, ICP_WORDS } from './intelScore.js';
 const seed = createRequire(import.meta.url)('./lintSeed.json');
 // Settings > Pitch shows the rules nobody can edit here: the lint seed's patterns plus the email-touch cap.
 const LOCKED_RULES = [...seed.banned_patterns.map(p => ({ id: p.id, rule: p.rule })), { id: 'max_email_touches', rule: 'At most 3 email touches per brand: cold, bump, final.' }, { id: 'no_send', rule: 'Nothing is ever sent from Prospector. Drafts land in Gmail for you to send.' }];
@@ -107,7 +108,7 @@ export async function activityRoute(req, res, { supabase = getSupabase() } = {})
 
 async function settingsRow(supabase, businessId) { const { data, error } = await supabase.from('hk_settings').select('*').eq('business_id', businessId).maybeSingle(); if (error) throw new Error(error.message); return data; }
 export async function getSettingsRoute(req, res, { supabase = getSupabase() } = {}) {
-  try { const row = await settingsRow(supabase, req.params.businessId); res.json({ settings: { ...SETTINGS_DEFAULTS, business_id: req.params.businessId, ...(row || {}) }, seeded: !!row, locked_rules: LOCKED_RULES }); } catch (e) { fail(res, e, 'settings/get'); }
+  try { const row = await settingsRow(supabase, req.params.businessId); res.json({ settings: { ...SETTINGS_DEFAULTS, business_id: req.params.businessId, ...(row || {}) }, seeded: !!row, locked_rules: LOCKED_RULES, icp: { weights: intelSettings(row?.intel).icp, words: ICP_WORDS } }); } catch (e) { fail(res, e, 'settings/get'); }
 }
 // grow-inbox-intel B3a / M2 - { target_categories?, sweep?: { on, n, cap_usd, time }, pitch_goal? } merged into hk_settings.intel.
 // Weights are read-only in v1 (refused here).
@@ -126,6 +127,12 @@ export function intelPatch(v, current) {
     if ('cap_usd' in s) { if (typeof s.cap_usd !== 'number' || !(s.cap_usd >= 0 && s.cap_usd <= 5)) throw new HkError(400, 'the daily dollar cap must be between 0 and 5'); next.cap_usd = Math.round(s.cap_usd * 100) / 100; }
     if ('time' in s) { if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(s.time))) throw new HkError(400, 'time must look like 06:30'); next.time = s.time; }
     out.sweep = next;
+  }
+  if ('icp' in v) {
+    const i = v.icp, next = { ...(current.icp || {}) };
+    if (!i || typeof i !== 'object' || Array.isArray(i)) throw new HkError(400, 'icp must be an object');
+    for (const k of ['retail', 'media', 'unknown']) if (k in i) { if (!Number.isInteger(i[k]) || i[k] < -100 || i[k] > 100) throw new HkError(400, `the ICP ${k} weight must be a whole number from -100 to 100`); next[k] = i[k]; }
+    out.icp = next;
   }
   if ('default_monthly_usd' in v) { const d = v.default_monthly_usd; if (d !== null && (typeof d !== 'number' || !(d >= 0 && d <= 100000))) throw new HkError(400, 'the default monthly amount must be blank or a dollar amount up to 100,000'); out.default_monthly_usd = d === null ? null : Math.round(d * 100) / 100; }
   if ('pitch_goal' in v) { if (!Number.isInteger(v.pitch_goal) || v.pitch_goal < 1 || v.pitch_goal > 10) throw new HkError(400, 'pitches per day must be a whole number from 1 to 10'); out.pitch_goal = v.pitch_goal; }

@@ -102,7 +102,7 @@ export function buildDay({ meId, data, replies = [], drafts = [], threads = [], 
   const ready = send10.filter(c => c.primary?.kind === 'pitch' && !pitched[c.id] && !hidden.has(c.id));
   const goal = intelSettings(data.settingsRow.intel).pitch_goal;
   const pitchedN = Object.keys(pitched).length, room = Math.max(0, goal - pitchedN);
-  const pitchItems = ready.slice(0, room).map(c => ({ kind: 'pitch', ...brandOf(c.id), targeted: !!c.targeted_at, fit: c.research?.fit || null, industry: c.research?.industry || null, market: c.is_local ? 'Chicago' : c.research?.hq_city || c.city || null, contact_role: c.contact?.title || null, idea: c.challenge_idea || c.research?.challenge_idea || null, command: c.command, owner_hint: sheetOwnerOf(byId[c.id], meFirstName) ? byId[c.id].owner_hint : null, card: c }));
+  const pitchItems = ready.slice(0, room).map(c => ({ kind: 'pitch', ...brandOf(c.id), icp: c.icp, targeted: !!c.targeted_at, fit: c.research?.fit || null, industry: c.research?.industry || null, market: c.is_local ? 'Chicago' : c.research?.hq_city || c.city || null, contact_role: c.contact?.title || null, idea: c.challenge_idea || c.research?.challenge_idea || null, command: c.command, owner_hint: sheetOwnerOf(byId[c.id], meFirstName) ? byId[c.id].owner_hint : null, card: c }));
   const morePitch = cards.filter(c => c.primary?.kind === 'pitch' && !pitched[c.id] && !hidden.has(c.id)).length - pitchItems.length;
 
   const fmtTime = iso => new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz }).toLowerCase();

@@ -6,7 +6,7 @@ import { CLOSED, VIEWS as FILTER_VIEWS, SORTS, PAGE_DEFAULT, PAGE_MAX, parseFilt
 import { signalNow, signalWords, moveDomainSignals, recomputeHeat } from './signals.js';
 import { trackedThreads, liveThread } from './warm.js';
 import { sheetOwnerOf, sheetQuestion, hintName, primaryOf } from './rules.js';
-import { threadsOf, reachOf, intelFor, intelSettings } from './intelScore.js';
+import { threadsOf, reachOf, intelFor, intelSettings, icpOf } from './intelScore.js';
 import { cachedIntel } from './inboxAnalyze.js';
 import { pitchCommand, researchEstimate, spentToday } from './brandActions.js';
 import { scrubAddresses } from '../sales/scrubText.js';
@@ -145,6 +145,8 @@ function brandFields(body, { partial = false } = {}) {
   if ('is_local' in body) patch.is_local = bool(body.is_local, 'is_local') ?? false;
   if ('aliases' in body) patch.aliases = aliasesOf(body.aliases) || [];
   if ('instagram_handle' in body) patch.instagram_handle = handleOf(body.instagram_handle);
+  // grow-pitch-icp I2 - Move to Partnerships (and its Undo) is a segment edit.
+  if (partial && 'segment' in body) patch.segment = oneOf(body.segment, SEGMENTS, 'segment');
   // grow-ui-refresh U8 - "Add context for this brand": sent with the next research, so addresses / phones are scrubbed.
   if ('research_context' in body) { const t = text(body.research_context, 300, 'context', { multiline: true }); patch.research_context = t ? scrubAddresses(t) : null; }
   if (!partial) { patch.segment = oneOf(body.segment, SEGMENTS, 'segment') || 'sponsor_brand'; patch.source = oneOf(body.source, SOURCES, 'source') || 'user_supplied'; if (!patch.name) throw new HkError(400, 'name is required'); }
@@ -195,7 +197,7 @@ export async function getBrandRoute(req, res, { supabase = getSupabase() } = {})
     const { data: srow } = await supabase.from('hk_settings').select('intel').eq('business_id', businessId).maybeSingle();
     const research_budget = { ...(await researchEstimate(supabase, businessId)), spent_today: Math.round((await spentToday(supabase, businessId, new Date())) * 1e4) / 1e4, cap_usd: intelSettings(srow?.intel).sweep.cap_usd };
     const primary = primaryOf({ brand, meId: me(req), firstName: await memberFirstNames(supabase, businessId), replies, touches, researched: !!intel, hasEmail: contacts.some(c => c.email), verdictOk: verdict.ok });
-    res.json({ brand: brandDetail(brand), primary, research, research_budget, command: pitchCommand(brand), contacts: contacts.map(contactRow), touches: touches.map(touchRow), replies: replies.map(replyRow), sponsor_periods: periods.filter(p => !p.archived_at), deal: await brandDeal(supabase, { businessId, brand, meId: me(req) }), events, verdict, email_touches_sent: touches.filter(t => t.channel === 'email' && t.state === 'sent').length, max_email_touches });
+    res.json({ brand: brandDetail(brand), primary, icp: icpOf(brand, intel, intelSettings(srow?.intel).icp), research, research_budget, command: pitchCommand(brand), contacts: contacts.map(contactRow), touches: touches.map(touchRow), replies: replies.map(replyRow), sponsor_periods: periods.filter(p => !p.archived_at), deal: await brandDeal(supabase, { businessId, brand, meId: me(req) }), events, verdict, email_touches_sent: touches.filter(t => t.channel === 'email' && t.state === 'sent').length, max_email_touches });
   } catch (e) { fail(res, e, 'brands/get'); }
 }
 async function maxTouches(supabase, businessId) { const { data } = await supabase.from('hk_settings').select('max_email_touches').eq('business_id', businessId).maybeSingle(); return data?.max_email_touches || 3; }
@@ -207,7 +209,7 @@ export async function patchBrandRoute(req, res, { supabase = getSupabase(), now 
     const brand = await brandById(supabase, businessId, req.params.id);
     if (brand.archived_at) throw new HkError(409, 'that brand is archived');
     const patch = brandFields(body, { partial: true });
-    let action = 'brand.updated', sheetNote = null;
+    let action = 'segment' in patch && Object.keys(patch).length === 1 ? 'brand.segment' : 'brand.updated', sheetNote = null;
     // grow-sheet-owner-respect F3 - claiming a brand the sheet lists as someone else's asks first (409 + the question).
     if ('claim' in body && body.claim === true && !brand.owner_user_id && brand.owner_hint) {
       const hint = sheetOwnerOf(brand, (await memberFirstNames(supabase, businessId))(uid));

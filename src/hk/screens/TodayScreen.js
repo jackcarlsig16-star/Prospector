@@ -6,6 +6,7 @@ import { useSheetConfirm } from '../brands/sheetConfirm';
 import { Expand } from '../inbox/SendRow';
 import { gmailThreadUrl } from '../inbox/inboxPrefs';
 import { SignalsLine } from '../signals/SignalsPanel';
+import { IcpChip } from '../brands/BrandLabels';
 
 // grow-today-workflow-v1 Stage 2 - "Your day" to the mockup: the signed-in member's ordered checklist from GET today/day
 // (the owner toggle never applies). Header line, progress card, then the steps in order (1 Answer replies · 3 Send
@@ -145,7 +146,7 @@ export default function TodayScreen({ businessId, shell, compact, gmail, canEdit
         <div className="hk-day__item">
           <Tile name={c.brand_name} />
           <div className="hk-day__body">
-            <div className="hk-day__name"><button type="button" className="hk-btn hk-day__brand" onClick={() => onOpenBrand(c.brand_id)}>{c.brand_name}</button>{c.targeted && <span className="hk-label hk-label--target"><Icon name="target" size={12} /> Target</span>}{fit && <Label tone={fit[1]}>{fit[0]}</Label>}</div>
+            <div className="hk-day__name"><button type="button" className="hk-btn hk-day__brand" onClick={() => onOpenBrand(c.brand_id)}>{c.brand_name}</button><IcpChip icp={c.icp} />{c.targeted && <span className="hk-label hk-label--target"><Icon name="target" size={12} /> Target</span>}{fit && <Label tone={fit[1]}>{fit[0]}</Label>}</div>
             {meta && <p className="hk-day__meta">{meta}</p>}
           </div>
           <span className="hk-day__acts">

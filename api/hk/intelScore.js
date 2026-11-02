@@ -18,6 +18,9 @@ export const INTEL_DEFAULTS = {
   sweep: { on: true, n: 10, cap_usd: 1.0, time: '06:30' },
   retry_days: 30,
   pitch_goal: 5, // grow-today-workflow T2 - Your day's pitches per day (REVISABLE, Settings › Pitch)
+  // grow-pitch-icp I1 - the Ideal Customer Profile part of the B3 score: retail / consumer brands are the top signal; media,
+  // podcasts, press, nonprofits and universities stay eligible but rank low (REVISABLE, Settings › Pitch).
+  icp: { retail: 40, media: -30, unknown: 20 },
   default_monthly_usd: 150, // grow-sponsor-deals S4 - a new month's amount, the sheet's observed value (REVISABLE, Settings › Pitch; null = blank)
 };
 
@@ -29,11 +32,29 @@ export function intelSettings(intel) {
     sweep: { ...INTEL_DEFAULTS.sweep, ...(v.sweep || {}) },
     retry_days: Number(v.retry_days) || INTEL_DEFAULTS.retry_days,
     pitch_goal: Number.isInteger(v.pitch_goal) ? v.pitch_goal : INTEL_DEFAULTS.pitch_goal,
+    icp: { ...INTEL_DEFAULTS.icp, ...(v.icp && typeof v.icp === 'object' ? v.icp : {}) },
     default_monthly_usd: 'default_monthly_usd' in v ? v.default_monthly_usd : INTEL_DEFAULTS.default_monthly_usd,
   };
 }
 
 // B3a - case-insensitive against hk_brands.category. "Chicago" is local, not a category (B3).
+// grow-pitch-icp I1 / I2 - one ICP verdict per brand from its segment and saved research (industry + what they do).
+export const ICP_WORDS = ['media', 'podcast', 'press', 'publishing', 'magazine', 'radio', 'newsletter', 'nonprofit', 'charity', 'university']; // REVISABLE
+export const MEDIA_SEGMENTS = { press: 'Press', podcast: 'Podcast', nonprofit: 'Nonprofit', university: 'University' };
+export const PARTNERSHIP_SEGMENTS = ['press', 'podcast', 'nonprofit', 'university', 'creator'];
+// Whole words (plural allowed): "Pressed juice" is retail, "Podcasts" is media.
+const ICP_RE = new RegExp(`\\b(${ICP_WORDS.join('|')})s?\\b`, 'i');
+// -> { key: retail | media | unknown | other, label, points, looks_like? (the segment a media-reading sponsor_brand would move to) }
+export function icpOf(brand, intel, w = INTEL_DEFAULTS.icp) {
+  if (brand.segment !== 'sponsor_brand') return MEDIA_SEGMENTS[brand.segment] ? { key: 'media', label: MEDIA_SEGMENTS[brand.segment], points: w.media } : { key: 'other', label: 'Creator', points: 0 };
+  if (!intel) return { key: 'unknown', label: 'Not researched yet', points: w.unknown };
+  const c = intel.intel?.company || {}, hit = `${c.industry || ''} ${c.what_they_do || ''}`.match(ICP_RE);
+  if (!hit) return { key: 'retail', label: 'Retail brand', points: w.retail };
+  const word = hit[1].toLowerCase();
+  return { key: 'media', label: /nonprofit|charity/.test(word) ? 'Looks like a nonprofit' : word === 'university' ? 'Looks like a university' : 'Looks like media', points: w.media,
+    looks_like: word === 'podcast' ? 'podcast' : /nonprofit|charity/.test(word) ? 'nonprofit' : word === 'university' ? 'university' : 'press' };
+}
+
 export const inTargetCategory = (brand, cats) => !!brand.category && cats.some(c => String(c).trim().toLowerCase() === String(brand.category).trim().toLowerCase());
 export const isLocal = brand => brand.is_local === true || String(brand.category || '').trim().toLowerCase() === 'chicago';
 
@@ -82,10 +103,12 @@ export function reachOf(brand, ctx) {
     mine_untouched: mineUntouched(brand, touches, ctx),
     niche_overlap: verdict.warnings.some(w => w.code === 'niche_overlap'), size_large: /large|enterprise/i.test(brand.size_band || ''),
   };
-  const parts = Object.keys(hit).filter(k => hit[k]).map(k => [k, W[k] || 0]);
+  // grow-pitch-icp I1 - the ICP part leads the parts ("Why score" lists it first).
+  const icp = icpOf(brand, intel, settings.icp);
+  const parts = [['icp', icp.points], ...Object.keys(hit).filter(k => hit[k]).map(k => [k, W[k] || 0])];
   const score = parts.reduce((n, [, p]) => n + p, 0);
-  const why = parts.filter(([, p]) => p > 0).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([k]) => REACH_WORDS[k]);
-  return { brand, score, parts, why, has_contact: contacts.length > 0, intel };
+  const why = parts.filter(([, p]) => p > 0).sort((a, b) => b[1] - a[1]).slice(0, 2).map(([k]) => (k === 'icp' ? `ICP: ${icp.label.toLowerCase()}` : REACH_WORDS[k]));
+  return { brand, score, parts, why, icp, has_contact: contacts.length > 0, intel };
 }
 export const myFirstName = ctx => (ctx.meFirstName !== undefined ? ctx.meFirstName : ctx.members?.find(m => m.user_id === ctx.meId)?.first_name || null);
 // grow-sheet-owner-respect F2 - brands left out of your list because the sheet lists them as someone else's, per name.

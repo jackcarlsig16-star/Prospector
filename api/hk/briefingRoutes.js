@@ -40,7 +40,7 @@ export const cardOf = (r, data, meId) => {
   const intel = intelFor(r.brand, data.intelByDomain), b = r.brand;
   const primary = primaryOf({ brand: b, meId, replies: data.repliesBy[b.id] || [], touches: data.touchesBy[b.id] || [], researched: !!intel, hasEmail: (data.contactsBy[b.id] || []).some(c => c.has_email), verdictOk: true });
   return { id: b.id, name: b.name, domain: b.domain || null, category: b.category || null, city: b.city || null, status: b.status, owner_user_id: b.owner_user_id || null, owner_hint: b.owner_hint || null, heat_band: b.heat_band || 'cold', targeted_at: b.targeted_at || null,
-    score: r.score, why: r.why, parts: r.parts.map(([k]) => k), score_parts: r.parts.map(([key, points]) => ({ key, words: REACH_WORDS[key], points })), primary, snoozed_until: b.snoozed_until || null, research: intel ? researchOf(intel) : null,
+    score: r.score, why: r.why, parts: r.parts.map(([k]) => k), score_parts: r.parts.map(([key, points]) => ({ key, words: key === 'icp' ? `ICP: ${r.icp.label}` : REACH_WORDS[key], points })), icp: r.icp, primary, snoozed_until: b.snoozed_until || null, research: intel ? researchOf(intel) : null,
     suggestion: suggestionOf(b), research_attempted_at: b.research_attempted_at || null, command: pitchCommand(b),
     is_local: !!b.is_local, challenge_idea: b.challenge_idea || null, contact: bestContact(data.contactsBy[b.id], data) };
 };

@@ -3,7 +3,7 @@
 // whole and paged on a unique column - never an id list in a URL). Contacts are read as brand_id where an address
 // exists: the address itself never leaves the database.
 import { HkError, STATUS_ORDER, selectAllPages, normName } from './hkShared.js';
-import { activityOf } from './intelScore.js';
+import { activityOf, PARTNERSHIP_SEGMENTS } from './intelScore.js';
 import { loadIntel } from './intelData.js';
 import { DEAL_STAGES, dealStageOf, stateOf, chicagoMonth } from './deals.js';
 
@@ -12,7 +12,8 @@ export const CLOSED = new Set(['passed', 'skipped', 'sponsor']);
 export const WAITING_DAYS = 7; // REVISABLE (spec N3 Email > Waiting on them > n days)
 export const PAGE_DEFAULT = 100, PAGE_MAX = 200;
 // Built-in views (N3 Views): always listed, even at 0 (planner ruling 2). Pipeline = claimed onward, the old screen.
-export const VIEWS = ['all', 'pipeline', 'my_open', 'unclaimed', 'overdue', 'sponsors', 'dnc', 'hot', 'targets'];
+// grow-pitch-icp I4 - Partnerships: press, podcasts, nonprofits, universities, creators, looked at on their own.
+export const VIEWS = ['all', 'pipeline', 'my_open', 'unclaimed', 'overdue', 'sponsors', 'dnc', 'hot', 'targets', 'partnerships'];
 const PIPELINE_HIDDEN = new Set(['candidate', 'passed', 'skipped', 'sponsor']);
 const SPONSORS = new Set(['sponsor', 'founding_partner']);
 export const HEAT = ['hot', 'warm', 'cool', 'cold'];
@@ -86,6 +87,7 @@ export function valuesOf(b, data, { meId, now }) {
   if (b.relationship === 'do_not_contact') view.push('dnc');
   if (b.heat_band === 'hot' || b.heat_band === 'warm') view.push('hot');
   if (b.targeted_at) view.push('targets');
+  if (PARTNERSHIP_SEGMENTS.includes(b.segment)) view.push('partnerships');
   return {
     view, stage: [b.status], heat: [b.heat_band || 'cold'], owner, relationship: [b.relationship], segment: [b.segment],
     category: [b.category || 'none'],

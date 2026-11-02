@@ -9,10 +9,15 @@ import { marketOf, industryOf, fitOf, contactOf } from './labelRules';
 // every color carries its word.
 const Kv = ({ k, v, tone = 'line', ...attrs }) => <span className={`hk-label hk-label--${tone}`} {...attrs}><span className="hk-label__k">{k}</span> {v}</span>;
 
+// grow-pitch-icp I1 - "ICP: Retail brand" / "ICP: Podcast" / "ICP: Not researched yet"; the word is always shown.
+const ICP_TONE = { retail: 'green', unknown: 'line', media: 'grey', other: 'line' };
+export const IcpChip = ({ icp }) => (icp ? <span className={`hk-label hk-label--${ICP_TONE[icp.key] || 'line'}`} data-hk-label="icp" data-hk-icp={icp.key}><span className="hk-label__k">ICP</span> {icp.label}</span> : null);
+
 export default function BrandLabels({ brand: b, owner, withCategory = false, withOwner = false }) {
   const ind = industryOf(b), fit = fitOf(b), contact = contactOf(b);
   return (
     <span className="hk-labels" data-hk-labels={b.id}>
+      <IcpChip icp={b.icp} />
       {b.targeted_at
         ? <span className="hk-label hk-label--target" data-hk-label="target"><Icon name="target" size={13} /> Target</span>
         : <span className="hk-label hk-label--grey" data-hk-label="target"><Icon name="target" size={13} /> Not a target</span>}

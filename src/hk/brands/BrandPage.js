@@ -7,6 +7,7 @@ import { fromDetail, STATUS_LABELS } from './verdict';
 import { hkGet, hkPatch } from '../hkApi';
 import ComposerModal from './ComposerModal';
 import BrandLabels from './BrandLabels';
+import MoveToPartnerships from './MoveToPartnerships';
 import SiteSuggestion from './SiteSuggestion';
 import BrandResearch from './BrandResearch';
 import BrandTimeline from './BrandTimeline';
@@ -71,10 +72,10 @@ export default function BrandPage({ businessId, brandId, shell, gmail, onBack, o
   const patch = async body => { try { await hkPatch(businessId, `/brands/${brandId}`, body); await load(); } catch (e) { setError(e.message); } };
   if (error && !data) return <p className="hk-error" role="alert">{error}</p>;
   if (!data) return <p className="hk-meta">Loading brand…</p>;
-  const { brand, contacts, touches, replies, events, threads, verdict, email_touches_sent, max_email_touches, research, research_budget, primary, command } = data;
+  const { brand, contacts, touches, replies, events, threads, verdict, email_touches_sent, max_email_touches, research, research_budget, primary, command, icp } = data;
   const owner = member(brand.owner_user_id);
   const mine = brand.owner_user_id && brand.owner_user_id === me?.user_id;
-  const b = { ...brand, research, contact: bestContact(contacts), command, primary };
+  const b = { ...brand, research, contact: bestContact(contacts), command, primary, icp };
   keyRef.current = e => {
     if (!canEdit || isTyping(e) || e.metaKey || e.ctrlKey || e.altKey || isOpenDialog() || composer) return;
     const k = e.key.toLowerCase();
@@ -130,6 +131,7 @@ export default function BrandPage({ businessId, brandId, shell, gmail, onBack, o
         {logOpen && <LogActivity brand={brand} busy={cmd.busy} onLog={body => cmd.act('log', b, body)} onClose={() => setLogOpen(false)} />}
         <Stepper status={brand.status} sent={email_touches_sent} max={max_email_touches} snoozedUntil={brand.snoozed_until} passReason={brand.pass_reason} />
         <VerdictBanner verdict={fromDetail(verdict)} members={members} brandName={brand.name} />
+        <MoveToPartnerships businessId={businessId} brand={brand} icp={icp} canEdit={canEdit} onChanged={changed} />
       </section>
       {savedNote && <p className="hk-banner hk-banner--green" role="status" data-hk-draft-saved><span className="hk-banner__title">{savedNote}</span></p>}
       {note && <p className="hk-note" role="status" data-hk-brand-note>{note}</p>}

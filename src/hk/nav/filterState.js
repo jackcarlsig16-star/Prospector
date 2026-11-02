@@ -7,7 +7,7 @@ import { LABELS as REPLY_LABELS } from '../screens/RepliesScreen';
 // view + bucket filters + sort + layout; the Inbox space's is one selection (a Gmail lane, a tracked-replies item or a
 // queued-drafts item). Values and counts come from the server (GET /brands facets); nothing here lists data values.
 
-export const VIEW_LABELS = { all: 'All', pipeline: 'Pipeline', my_open: 'My open', unclaimed: 'Unclaimed', overdue: 'Overdue', sponsors: 'Sponsors', dnc: 'Do not contact', hot: 'Hot leads', targets: 'Targets' };
+export const VIEW_LABELS = { all: 'All', pipeline: 'Pipeline', my_open: 'My open', unclaimed: 'Unclaimed', overdue: 'Overdue', sponsors: 'Sponsors', dnc: 'Do not contact', hot: 'Hot leads', targets: 'Targets', partnerships: 'Partnerships' };
 export const BRAND_BUCKETS = [
   { key: 'stage', label: 'Stage', icon: 'flow' },
   { key: 'heat', label: 'Heat', icon: 'trend' },
