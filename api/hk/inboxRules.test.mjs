@@ -52,7 +52,7 @@ test('chipFor: tracked > matches > team > ignored > bulk > untracked', () => {
   const brandsByDomain = { 'rumpl.invalid': { id: 'b1', name: 'Rumpl', status: 'sent' }, 'bluefin.invalid': { id: 'b2', name: 'Bluefin', status: 'candidate' } };
   const c = ctx({ tracked, brandsByDomain, ignored: new Set(['news.invalid']) });
   assert.deepEqual(chipFor({ threadId: 'th-1', sender: senderOf('x <noreply@news.invalid>'), ...c }), { kind: 'tracked', brand_id: 'b1', brand_name: 'Rumpl', status: 'sent', label: 'interested' });
-  assert.deepEqual(chipFor({ threadId: 'th-2', sender: senderOf('Sam <sam@bluefin.invalid>'), ...c }), { kind: 'matches', brand_id: 'b2', brand_name: 'Bluefin', status: 'candidate' });
+  assert.deepEqual(chipFor({ threadId: 'th-2', sender: senderOf('Sam <sam@bluefin.invalid>'), ...c }), { kind: 'matches', brand_id: 'b2', brand_name: 'Bluefin', status: 'candidate', matched_by: 'domain' });
   assert.deepEqual(chipFor({ threadId: 'th-3', sender: senderOf('Pete <pete@humankindcollective.app>'), ...c }), { kind: 'team' });
   assert.deepEqual(chipFor({ threadId: 'th-3b', sender: senderOf(`Me <${OWNER}>`), ...c }), { kind: 'self' }, 'polish P5: the owner\'s own address is "You"');
   assert.deepEqual(chipFor({ threadId: 'th-4', sender: senderOf('News <hello@news.invalid>'), ...c }), { kind: 'not_tracked', reason: 'ignored' });

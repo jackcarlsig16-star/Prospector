@@ -18,6 +18,7 @@ export const INTEL_DEFAULTS = {
   sweep: { on: true, n: 10, cap_usd: 1.0, time: '06:30' },
   retry_days: 30,
   pitch_goal: 5, // grow-today-workflow T2 - Your day's pitches per day (REVISABLE, Settings › Pitch)
+  default_monthly_usd: 150, // grow-sponsor-deals S4 - a new month's amount, the sheet's observed value (REVISABLE, Settings › Pitch; null = blank)
 };
 
 export function intelSettings(intel) {
@@ -28,6 +29,7 @@ export function intelSettings(intel) {
     sweep: { ...INTEL_DEFAULTS.sweep, ...(v.sweep || {}) },
     retry_days: Number(v.retry_days) || INTEL_DEFAULTS.retry_days,
     pitch_goal: Number.isInteger(v.pitch_goal) ? v.pitch_goal : INTEL_DEFAULTS.pitch_goal,
+    default_monthly_usd: 'default_monthly_usd' in v ? v.default_monthly_usd : INTEL_DEFAULTS.default_monthly_usd,
   };
 }
 
@@ -59,6 +61,8 @@ const mineUntouched = (brand, touches, ctx) => {
 export function reachOf(brand, ctx) {
   const { meId, settings } = ctx, W = settings.weights;
   if (brand.archived_at || brand.relationship !== 'prospect' || !['candidate', 'claimed'].includes(brand.status)) return null;
+  // grow-sponsor-deals S2 - a brand with a month in discussion is already in talks: never in Send these 10.
+  if (ctx.discussing?.has(brand.id)) return null;
   if (brand.owner_user_id && brand.owner_user_id !== meId) return null;
   if (sheetOwnerOf(brand, myFirstName(ctx))) return null;
   if (brand.snoozed_until && Date.parse(brand.snoozed_until) > ctx.now.getTime()) return null;

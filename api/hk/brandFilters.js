@@ -5,6 +5,7 @@
 import { HkError, STATUS_ORDER, selectAllPages, normName } from './hkShared.js';
 import { activityOf } from './intelScore.js';
 import { loadIntel } from './intelData.js';
+import { DEAL_STAGES, dealStageOf, stateOf, chicagoMonth } from './deals.js';
 
 const DAY = 864e5;
 export const CLOSED = new Set(['passed', 'skipped', 'sponsor']);
@@ -23,8 +24,11 @@ export const DUE = ['overdue', 'week', 'later', 'none'];
 export const CONVERSATION = ['waiting_us', 'waiting_them', 'discussing', 'any', 'none'];
 export const DEAL = ['interested', 'discussing', 'scheduling', 'confirmed', 'declined', 'other'];
 export const THEM_WAIT_DAYS = 3; // REVISABLE ("Waiting on them > 3 d")
-export const BUCKETS = ['stage', 'heat', 'owner', 'relationship', 'segment', 'category', 'email', 'due', 'research', 'sponsor_months', 'place', 'conversation', 'deal'];
-const FIXED = { stage: STATUS_ORDER, heat: HEAT, relationship: RELATIONSHIPS, email: EMAIL, due: DUE, research: ['yes', 'no'], sponsor_months: ['yes'], conversation: CONVERSATION, deal: DEAL };
+// grow-sponsor-deals-v1 S5 - Deal group: deal stage (S2), month (YYYY-MM, and YYYY-MM:<state> for a money-view cell),
+// paid (a confirmed month paid / unpaid), amount (a month with / without an amount; declined months don't count).
+export const PAID = ['paid', 'unpaid'], AMOUNT = ['set', 'not_set'];
+export const BUCKETS = ['stage', 'heat', 'owner', 'relationship', 'segment', 'category', 'email', 'due', 'research', 'sponsor_months', 'place', 'conversation', 'deal', 'deal_stage', 'month', 'paid', 'amount'];
+const FIXED = { stage: STATUS_ORDER, heat: HEAT, relationship: RELATIONSHIPS, email: EMAIL, due: DUE, research: ['yes', 'no'], sponsor_months: ['yes'], conversation: CONVERSATION, deal: DEAL, deal_stage: DEAL_STAGES, paid: PAID, amount: AMOUNT };
 export const SORTS = ['name', 'status', 'last_touch', 'next_due', 'created', 'heat', 'score'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const FREE = /^[^@\n]{1,80}$/;
@@ -36,6 +40,7 @@ const VALID = {
   segment: v => /^[a-z_]{1,40}$/.test(v), category: v => FREE.test(v), email: v => EMAIL.includes(v), due: v => DUE.includes(v),
   research: v => v === 'yes' || v === 'no', sponsor_months: v => v === 'yes', place: v => FREE.test(v),
   conversation: v => CONVERSATION.includes(v), deal: v => DEAL.includes(v),
+  deal_stage: v => DEAL_STAGES.includes(v), month: v => /^[0-9]{4}-(0[1-9]|1[0-2])(:(confirmed|discussing|declined))?$/.test(v), paid: v => PAID.includes(v), amount: v => AMOUNT.includes(v),
 };
 export const isFilterValue = (key, v) => typeof v === 'string' && !!VALID[key]?.(v);
 
@@ -56,12 +61,12 @@ export function parseFilters(src = {}) {
 // grow-ui-refresh U6 - one read for the list: the Briefing's loadIntel (brands, touches, replies, contacts with the address
 // dropped, domain intel, members, settings) plus the sponsor months. `intelData` carries it on for the row score.
 export async function loadFilterData(supabase, businessId, now = new Date()) {
-  const [d, periods, threads, prefs] = await Promise.all([loadIntel(supabase, businessId, now), selectAllPages(() => supabase.from('hk_sponsor_periods').select('id, brand_id').eq('business_id', businessId).order('id')),
+  const [d, threads, prefs] = await Promise.all([loadIntel(supabase, businessId, now),
     selectAllPages(() => supabase.from('hk_brand_threads').select('id, brand_id, member_user_id, waiting_on, deal_stage, last_at, last_ours_at, last_theirs_at').eq('business_id', businessId).eq('link_state', 'linked').order('id')),
     supabase.from('hk_member_prefs').select('user_id, share_deal_status').eq('business_id', businessId)]);
   const threadsBy = {}; for (const t of threads) (threadsBy[t.brand_id] ||= []).push(t);
   const sharing = new Map((prefs.data || []).map(r => [r.user_id, r.share_deal_status !== false]));
-  return { brands: d.brands, hasEmail: new Set(Object.entries(d.contactsBy).filter(([, cs]) => cs.some(c => c.has_email)).map(([id]) => id)), touches: d.touchesBy, replies: d.repliesBy, intel: new Set(Object.keys(d.intelByDomain)), months: new Set(periods.map(p => p.brand_id)), threads: threadsBy, sharing, intelData: d };
+  return { brands: d.brands, hasEmail: new Set(Object.entries(d.contactsBy).filter(([, cs]) => cs.some(c => c.has_email)).map(([id]) => id)), touches: d.touchesBy, replies: d.repliesBy, intel: new Set(Object.keys(d.intelByDomain)), months: new Set(d.periods.map(p => p.brand_id)), periodsBy: d.periodsBy, threads: threadsBy, sharing, intelData: d };
 }
 
 // Every bucket value one brand carries, plus the built-in views it belongs to.
@@ -91,6 +96,17 @@ export function valuesOf(b, data, { meId, now }) {
     sponsor_months: data.months.has(b.id) ? ['yes'] : [],
     place: [...(b.is_local ? ['local'] : []), ...(b.city ? [b.city] : [])],
     ...conversationOf(data.threads?.[b.id] || [], data.sharing, { meId, now }),
+    ...dealOf(b, data.periodsBy?.[b.id] || [], now),
+  };
+}
+
+function dealOf(b, ps, now) {
+  const ms = ps.filter(p => p.kind === 'monthly'), conf = ms.filter(p => stateOf(p) === 'confirmed'), open = ms.filter(p => stateOf(p) !== 'declined');
+  return {
+    deal_stage: [dealStageOf(b, ps, chicagoMonth(now))],
+    month: [...new Set(ms.flatMap(p => [p.period, `${p.period}:${stateOf(p)}`]))],
+    paid: [...(conf.some(p => p.paid) ? ['paid'] : []), ...(conf.some(p => !p.paid) ? ['unpaid'] : [])],
+    amount: [...(open.some(p => p.amount_usd != null) ? ['set'] : []), ...(open.some(p => p.amount_usd == null) ? ['not_set'] : [])],
   };
 }
 
@@ -146,7 +162,7 @@ export function applyFilters(data, { view = 'all', filters = {}, q = '', sort = 
       for (const r of rows) if (inView(r) && passes(r, k)) for (const x of r.v[k]) c.set(x, (c.get(x) || 0) + 1);
       for (const x of active[k] || []) if (!c.has(x)) c.set(x, 0);
       const order = FIXED[k];
-      f[k] = [...c.entries()].filter(([x, n]) => n > 0 || active[k]?.has(x)).sort((a, z) => (order ? order.indexOf(a[0]) - order.indexOf(z[0]) : z[1] - a[1] || String(a[0]).localeCompare(String(z[0]))));
+      f[k] = [...c.entries()].filter(([x, n]) => n > 0 || active[k]?.has(x)).sort((a, z) => (order ? order.indexOf(a[0]) - order.indexOf(z[0]) : k === 'month' ? String(z[0]).localeCompare(String(a[0])) : z[1] - a[1] || String(a[0]).localeCompare(String(z[0]))));
     }
     out.facets = f;
   }

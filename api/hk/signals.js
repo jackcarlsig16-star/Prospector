@@ -107,7 +107,7 @@ export function signalsFromRows({ businessId, brands = [], touches = [], replies
   const month = now.toISOString().slice(0, 7);
   for (const s of live.filter(b => b.relationship === 'sponsor' || b.relationship === 'founding_partner')) {
     if ('deal_end' in s && s.deal_end && Date.parse(s.deal_end) - now.getTime() <= RENEWAL_DAYS * DAY && Date.parse(s.deal_end) >= now.getTime() - DAY) push('sponsor_renewal_due', s, { occurredAt: now.toISOString(), source: 'daily_check', refType: 'deal_end', refId: `${s.id}:${s.deal_end}`, detail: `${s.name}: ${signalWords('sponsor_renewal_due')}` });
-    if (!periods.some(p => p.brand_id === s.id && p.kind === 'monthly' && p.period === month)) push('sponsor_lapsed', s, { occurredAt: now.toISOString(), source: 'daily_check', refType: 'sponsor_month', refId: `${s.id}:${month}`, detail: `${s.name}: ${signalWords('sponsor_lapsed')}` });
+    if (!periods.some(p => p.brand_id === s.id && p.kind === 'monthly' && (p.state || 'confirmed') === 'confirmed' && p.period === month)) push('sponsor_lapsed', s, { occurredAt: now.toISOString(), source: 'daily_check', refType: 'sponsor_month', refId: `${s.id}:${month}`, detail: `${s.name}: ${signalWords('sponsor_lapsed')}` });
   }
   return out;
 }
@@ -123,7 +123,7 @@ export async function writeAll(supabase, sigs) {
 // by Analyze), then heat for every live brand so decay applies once a day.
 const DAILY_KINDS = new Set(['follow_up_due', 'waiting_overdue', 'sponsor_renewal_due', 'sponsor_lapsed']);
 export async function dailySignals(supabase, { businessId, brands, touches, replies, followups, now }) {
-  const periods = await selectAllPages(() => supabase.from('hk_sponsor_periods').select('brand_id, period, kind').eq('business_id', businessId).order('id'));
+  const periods = await selectAllPages(() => supabase.from('hk_sponsor_periods').select('brand_id, period, kind, state').eq('business_id', businessId).is('archived_at', null).order('id'));
   const sigs = signalsFromRows({ businessId, brands, touches, replies, periods, followups, now }).filter(s => DAILY_KINDS.has(s.kind));
   const out = await writeAll(supabase, sigs);
   const heat = await recomputeHeat(supabase, businessId, { now });

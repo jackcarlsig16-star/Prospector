@@ -13,7 +13,7 @@ delete process.env.HK_SLACK_WEBHOOK_URL;
 const { seed, reqOf, resOf, HK, JACK, ID } = await import('./testing.mjs');
 const shared = await import('./hkShared.js');
 const grants = await import('../lib/googleGrants.js');
-const MODULES = { brandsRoutes: await import('./brandsRoutes.js'), opsRoutes: await import('./opsRoutes.js'), gmailRoutes: await import('./gmailRoutes.js'), inboxRoutes: await import('./inboxRoutes.js'), importRoutes: await import('./importRoutes.js'), jobsRoutes: await import('./jobsRoutes.js'), signalsRoutes: await import('./signalsRoutes.js'), briefingRoutes: await import('./briefingRoutes.js'), brandResearch: await import('./brandResearch.js'), researchSweep: await import('./researchSweep.js'), searchRoutes: await import('./searchRoutes.js'), brandActions: await import('./brandActions.js'), threadRoutes: await import('./threadRoutes.js'), todayDay: await import('./todayDay.js') };
+const MODULES = { brandsRoutes: await import('./brandsRoutes.js'), opsRoutes: await import('./opsRoutes.js'), dealRoutes: await import('./dealRoutes.js'), gmailRoutes: await import('./gmailRoutes.js'), inboxRoutes: await import('./inboxRoutes.js'), importRoutes: await import('./importRoutes.js'), jobsRoutes: await import('./jobsRoutes.js'), signalsRoutes: await import('./signalsRoutes.js'), briefingRoutes: await import('./briefingRoutes.js'), brandResearch: await import('./brandResearch.js'), researchSweep: await import('./researchSweep.js'), searchRoutes: await import('./searchRoutes.js'), brandActions: await import('./brandActions.js'), threadRoutes: await import('./threadRoutes.js'), todayDay: await import('./todayDay.js') };
 
 const OWNER = 'jack.work@humankind.invalid', TOKEN = 'tok-jack-wiring';
 const b64 = s => Buffer.from(s, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -83,8 +83,12 @@ const TABLE = [
   ['brandsRoutes', 'createContactRoute', member({ method: 'POST', params: { id: ID.yoga }, body: { name: 'Wiring Contact' } }), [201]],
   ['brandsRoutes', 'patchContactRoute', member({ method: 'PATCH', params: { id: ID.yoga, cid: 'c-ana' }, body: { title: 'Founder' } }), [200]],
   ['opsRoutes', 'sponsorsRoute', member(), [200]],
-  ['opsRoutes', 'addPeriodRoute', member({ method: 'POST', params: { brandId: ID.juice }, body: { period: '2026-10' } }), [201]],
-  ['opsRoutes', 'deletePeriodRoute', owner({ method: 'DELETE', params: { brandId: ID.juice, pid: 'no-such-period' } }), [404]],
+  ['dealRoutes', 'moneyRoute', member(), [200]],
+  ['dealRoutes', 'addPeriodRoute', member({ method: 'POST', params: { brandId: ID.juice }, body: { period: '2026-10' } }), [201]],
+  ['dealRoutes', 'patchPeriodRoute', member({ method: 'PATCH', params: { brandId: ID.juice, pid: 'no-such-period' }, body: { paid: true } }), [404]],
+  ['dealRoutes', 'deletePeriodRoute', owner({ method: 'DELETE', params: { brandId: ID.juice, pid: 'no-such-period' } }), [404]],
+  ['dealRoutes', 'restorePeriodRoute', owner({ method: 'POST', params: { brandId: ID.juice, pid: 'no-such-period' } }), [404]],
+  ['dealRoutes', 'copyNextRoute', member({ method: 'POST', params: { brandId: ID.juice, pid: 'no-such-period' } }), [404]],
   ['opsRoutes', 'duplicatesRoute', member(), [200]],
   ['opsRoutes', 'decideDuplicateRoute', member({ method: 'POST', body: { brand_a: ID.run, brand_b: ID.yoga, verdict: 'not_duplicate' } }), [200]],
   ['opsRoutes', 'warningsRoute', member(), [200]],

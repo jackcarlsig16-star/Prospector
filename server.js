@@ -420,8 +420,14 @@ app.get('/api/hk/:businessId/brands/:id/contacts',            hkRoute(HK_BRANDS,
 app.post('/api/hk/:businessId/brands/:id/contacts',           hkRoute(HK_BRANDS, 'createContactRoute'));
 app.patch('/api/hk/:businessId/brands/:id/contacts/:cid',     hkRoute(HK_BRANDS, 'patchContactRoute'));
 app.get('/api/hk/:businessId/sponsors',                       hkRoute(HK_OPS, 'sponsorsRoute'));
-app.post('/api/hk/:businessId/sponsors/:brandId/periods',     hkRoute(HK_OPS, 'addPeriodRoute'));
-app.delete('/api/hk/:businessId/sponsors/:brandId/periods/:pid', hkRoute(HK_OPS, 'deletePeriodRoute'));
+// grow-sponsor-deals-v1 S4 / S6 - money view + month writes (a remove archives; Undo restores).
+const HK_DEALS = './api/hk/dealRoutes.js';
+app.get('/api/hk/:businessId/deals/money',                     hkRoute(HK_DEALS, 'moneyRoute'));
+app.post('/api/hk/:businessId/sponsors/:brandId/periods',     hkRoute(HK_DEALS, 'addPeriodRoute'));
+app.patch('/api/hk/:businessId/sponsors/:brandId/periods/:pid', hkRoute(HK_DEALS, 'patchPeriodRoute'));
+app.delete('/api/hk/:businessId/sponsors/:brandId/periods/:pid', hkRoute(HK_DEALS, 'deletePeriodRoute'));
+app.post('/api/hk/:businessId/sponsors/:brandId/periods/:pid/restore', hkRoute(HK_DEALS, 'restorePeriodRoute'));
+app.post('/api/hk/:businessId/sponsors/:brandId/periods/:pid/copy-next', hkRoute(HK_DEALS, 'copyNextRoute'));
 app.get('/api/hk/:businessId/review/duplicates',              hkRoute(HK_OPS, 'duplicatesRoute'));
 app.post('/api/hk/:businessId/review/duplicates/decide',      hkRoute(HK_OPS, 'decideDuplicateRoute'));
 app.get('/api/hk/:businessId/review/warnings',                hkRoute(HK_OPS, 'warningsRoute'));

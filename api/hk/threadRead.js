@@ -7,6 +7,7 @@
 // first pass (no thread-read run before today) which may spend FIRST_PASS_USD. Re-read before every call. Switch:
 // hk_settings.read_deal_emails. Every run is an hk_job_runs row (job thread-read; a cron run claims its hour's slot);
 // every call logs business_anthropic_usage (call_type hk_thread_read).
+import { applyThreadFacts } from './deals.js';
 import { MODELS, estimateCostUsd } from '../../src/config/models.js';
 import { GmailError, GMAIL_UNITS } from './gmailClient.js';
 import { deps0 } from './gmailRoutes.js';
@@ -131,6 +132,9 @@ export async function readThreads({ businessId, trigger = 'manual', startedBy = 
       const { error: e1 } = await D.supabase.from('hk_brand_threads').update({ ...facts, waiting_on: facts.waiting_on || row.waiting_on, read_at: D.now().toISOString(), read_message_count: row.message_count, updated_at: D.now().toISOString() }).eq('id', row.id);
       if (e1) throw new Error(e1.message);
       counts.read++;
+      // grow-sponsor-deals ruling 3 - the facts may add a missing month (In discussion) or fill an email row's amount; a
+      // failure here is logged and never stops the reads.
+      try { const w = await applyThreadFacts(D.supabase, { businessId, brandId: row.brand_id, now: D.now() }); counts.months_by_email = (counts.months_by_email || 0) + w.created; } catch (e) { console.error('[hk/thread-read] months from email:', e.message); }
       const { error: e2 } = await D.supabase.from('hk_job_runs').update({ counts }).eq('id', run.id);
       if (e2) throw new Error(e2.message);
     } catch (e) { status = counts.calls ? 'partial' : 'error'; err = scrubAddresses(String(e.message || e)).slice(0, 200); counts.stopped = 'error'; break; }

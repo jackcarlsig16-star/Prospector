@@ -89,12 +89,12 @@ test('I1 list inbox (v2 Q1): one row per thread from its newest INBOX message, c
   const by = Object.fromEntries(r.body.threads.map(t => [t.thread_id, t]));
   assert.deepEqual(Object.keys(by).sort(), ['th-bulk', 'th-ign', 'th-match', 'th-new', 'th-team', 'th-tracked', 'th-yoga2']);
   assert.deepEqual(by['th-tracked'].chip, { kind: 'tracked', brand_id: ID.yoga, brand_name: 'Harbor Yoga', status: 'claimed', label: 'interested' });
-  assert.deepEqual(by['th-match'].chip, { kind: 'matches', brand_id: ID.run, brand_name: 'Bluefin Run Club', status: 'candidate' });
+  assert.deepEqual(by['th-match'].chip, { kind: 'matches', brand_id: ID.run, brand_name: 'Bluefin Run Club', status: 'candidate', matched_by: 'domain' });
   assert.deepEqual(by['th-team'].chip, { kind: 'team' });
   assert.deepEqual(by['th-bulk'].chip, { kind: 'not_tracked', reason: 'bulk' });
   assert.deepEqual(by['th-ign'].chip, { kind: 'not_tracked', reason: 'ignored' });
   assert.deepEqual(by['th-new'].chip, { kind: 'untracked' });
-  assert.deepEqual(by['th-yoga2'].chip, { kind: 'matches', brand_id: ID.yoga, brand_name: 'Harbor Yoga', status: 'claimed' });
+  assert.deepEqual(by['th-yoga2'].chip, { kind: 'matches', brand_id: ID.yoga, brand_name: 'Harbor Yoga', status: 'claimed', matched_by: 'domain' });
   assert.deepEqual(Object.fromEntries(Object.entries(by).map(([k, t]) => [k, t.lane])), { 'th-tracked': 'needs_you', 'th-match': 'needs_you', 'th-team': 'needs_you', 'th-bulk': 'other', 'th-ign': 'other', 'th-new': 'needs_you', 'th-yoga2': 'needs_you' });
   assert.deepEqual(r.body.lane_counts, { needs_you: 5, brands: 3, other: 2 });
   assert.equal(by['th-match'].from_name, 'Sam Lee, Co-founder'); assert.equal(by['th-match'].from_hint, 'Co-founder'); assert.equal(by['th-match'].unread, true);
@@ -185,7 +185,7 @@ test('I1 open: messages with raw html and text for the owner, names only elsewhe
   assert.ok(m.text.includes('sam@bluefinrun.example'));
   assert.equal(m.from_name, 'Sam Lee, Co-founder'); assert.equal(m.from_domain, 'bluefinrun.example'); assert.deepEqual(m.to_names, ['you']); assert.equal(m.is_mine, false); assert.equal(m.unread, true);
   assert.ok(noAt(r.body), 'no address outside the body fields');
-  assert.deepEqual(r.body.chip, { kind: 'matches', brand_id: ID.run, brand_name: 'Bluefin Run Club', status: 'candidate' });
+  assert.deepEqual(r.body.chip, { kind: 'matches', brand_id: ID.run, brand_name: 'Bluefin Run Club', status: 'candidate', matched_by: 'domain' });
   assert.equal(r.body.brand.name, 'Bluefin Run Club'); assert.equal(r.body.brand.touch_count, 0); assert.equal(r.body.brand.verdict.ok, true); assert.equal(r.body.brand.last_reply_label, null); assert.equal(r.body.unhandled_reply_id, null);
   assert.deepEqual(r.body.sender, { name: 'Sam Lee, Co-founder', domain: 'bluefinrun.example' });
   assert.deepEqual(writes, []); assert.equal(sb.db.hk_events.length, 0);

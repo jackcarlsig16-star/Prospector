@@ -3,7 +3,7 @@
 // no fallback). Reading writes nothing: no table, no event, no log. The only writes are link / track /
 // ignore. Addresses never leave the server except inside a message's own text / html body, which the browser gets only
 // from the owner's own mailbox and sanitizes before rendering. No send path, no mark-read, no label writes.
-import { getSupabase, HkError, fail, me, domainOf, logEvent, replyRow, brandDetail, brandSummary, liveBrands, brandById, sponsorsNichesOf, canContact, TEAM_DOMAINS } from './hkShared.js';
+import { getSupabase, HkError, fail, me, domainOf, logEvent, replyRow, brandDetail, brandSummary, liveBrands, brandById, sponsorsNichesOf, canContact, TEAM_DOMAINS, selectAllPages, memberFirstNames } from './hkShared.js';
 import { roleAtLeast } from '../../src/constants/roles.js';
 import { gmailClient, GmailError, GMAIL_UNITS } from './gmailClient.js';
 import { threadRow, messageView, latestInbound, chipFor, originOf, partsOf, isBrandChip, brandQueries, inTurns, byInternalDate, BRANDS_META_MAX, unitsOf, prefillFromIntel, LANES } from './inboxRules.js';
@@ -18,6 +18,7 @@ import { createBrand } from './brandsRoutes.js';
 import { mailboxFor, tokenForMailbox } from '../lib/googleGrants.js';
 import { callAnthropic } from '../businesses/shared.js';
 import { laDateString } from '../sales/laDate.js';
+import { livePeriods, groupByBrand, reachedByBrand, statusLine } from './deals.js';
 
 export const PAGE_SIZE = 25; // REVISABLE (spec Q1; v1 was 50 threads)
 export const META_BATCH = 10;
@@ -69,7 +70,17 @@ async function matchContext(supabase, businessId, uid, ownerAddress) {
   const { data: grants } = await supabase.from('google_grants').select('google_email').eq('user_id', uid);
   const selfEmails = new Set((grants || []).map(g => String(g.google_email || '').toLowerCase()).filter(Boolean));
   const replyDomains = [...new Set((replies || []).filter(r => byId[r.brand_id] && r.from_domain).map(r => r.from_domain))];
-  return { brands, byId, tracked, replyDomains, brandsByDomain: Object.fromEntries(brands.filter(b => b.domain).map(b => [b.domain, b])), teamDomains: TEAM_DOMAINS, ownerEmail: ownerAddress, selfEmails, ignored: new Set((ign || []).map(r => r.domain)) };
+  // grow-sponsor-deals S7 - contact addresses (matching only, never serialized), live months, and who reached out last.
+  const [contacts, periods, sent, threads, firstName] = await Promise.all([
+    selectAllPages(() => supabase.from('hk_contacts').select('id, brand_id, email').eq('business_id', businessId).not('email', 'is', null).order('id')),
+    livePeriods(supabase, businessId, 'id, brand_id, period, kind, state'),
+    selectAllPages(() => supabase.from('hk_touches').select('id, brand_id, sender_user_id, state, sent_at').eq('business_id', businessId).eq('state', 'sent').order('id')),
+    selectAllPages(() => supabase.from('hk_brand_threads').select('id, brand_id, member_user_id, last_ours_at').eq('business_id', businessId).eq('link_state', 'linked').order('id')),
+    memberFirstNames(supabase, businessId)]);
+  const brandsByEmail = {};
+  for (const c of contacts) if (c.email && byId[c.brand_id]) brandsByEmail[String(c.email).toLowerCase()] ||= byId[c.brand_id];
+  return { brands, byId, tracked, replyDomains, brandsByDomain: Object.fromEntries(brands.filter(b => b.domain).map(b => [b.domain, b])), teamDomains: TEAM_DOMAINS, ownerEmail: ownerAddress, selfEmails, ignored: new Set((ign || []).map(r => r.domain)),
+    brandsByEmail, periodsBy: groupByBrand(periods), reachedBy: reachedByBrand(sent, threads), firstName, meId: uid };
 }
 
 async function inGroups(ids, size, fn) { const out = []; for (let i = 0; i < ids.length; i += size) out.push(...(await Promise.all(ids.slice(i, i + size).map(fn)))); return out; }
@@ -186,7 +197,7 @@ export async function listThreadsRoute(req, res, d = {}) {
       rows = (await metasFor(D, { businessId, uid, token, msgs: newestPerThread(page?.messages || []), counts })).map(m => rowOf(m, ctx));
       next = page?.nextPageToken || null;
     }
-    rows = await withIntel(supabase, businessId, rows);
+    rows = (await withIntel(supabase, businessId, rows)).map(r => ({ ...r, status_line: statusLine(r.chip, { ...ctx, now: now() }) }));
     if (tab === 'inbox') rows = await withImportance(supabase, businessId, rows, ctx, now());
     const laneCounts = tab === 'inbox' ? Object.fromEntries(LANES.map(l => [l, l === 'brands' ? rows.filter(r => isBrandChip(r.chip)).length : rows.filter(r => r.lane === l).length])) : null;
     const value = { tab, threads: rows, next_page_token: next, more, lane_counts: laneCounts, unread: tab === 'inbox' && !pageToken ? rows.filter(r => r.unread).length : null,
@@ -235,7 +246,7 @@ export async function openThreadRoute(req, res, d = {}) {
     const chip = chipFor({ threadId: id, sender, subject: header(inbound || thread?.messages?.[thread.messages.length - 1] || {}, 'Subject'), listUnsubscribe, ...ctx });
     const brand = chip.brand_id ? ctx.byId[chip.brand_id] : null;
     const t = ctx.tracked.get(id);
-    const value = { thread_id: id, subject: messages[0]?.subject || '', messages, chip, relayed, team_notice: teamNotice, has_inbound: !!inbound,
+    const value = { thread_id: id, subject: messages[0]?.subject || '', messages, chip, status_line: statusLine(chip, { ...ctx, now: now() }), relayed, team_notice: teamNotice, has_inbound: !!inbound,
       brand: brand ? await brandPanel(supabase, businessId, uid, brand, ctx) : null, unhandled_reply_id: t?.unhandled_reply_id || null,
       sender: { name: sender.name, domain: sender.domain }, intel: intelView(await cachedIntel(supabase, businessId, sender.domain), sender, now()), fetched_at: now().toISOString() };
     inboxCache.set(key, value, now().getTime());

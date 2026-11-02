@@ -57,11 +57,12 @@ export const isBulk = (local, listUnsubscribe) => !!listUnsubscribe || (!!local 
 // connected Google accounts - polish P5) > team (our own domains) > not_tracked (the caller ignored the domain, or a
 // bulk sender) > untracked.
 const isSelf = (sender, ownerEmail, selfEmails) => !!sender.email && ((ownerEmail && sender.email === String(ownerEmail).toLowerCase()) || !!selfEmails?.has(sender.email));
-export function chipFor({ threadId, sender, subject = '', listUnsubscribe = null, tracked, brandsByDomain, teamDomains, ownerEmail = null, selfEmails = null, ignored }) {
+export function chipFor({ threadId, sender, subject = '', listUnsubscribe = null, tracked, brandsByDomain, brandsByEmail = {}, teamDomains, ownerEmail = null, selfEmails = null, ignored }) {
   const t = tracked.get(threadId);
   if (t) return { kind: 'tracked', brand_id: t.brand_id, brand_name: t.brand_name || null, status: t.status || null, label: t.label || null };
-  const b = sender.domain ? brandsByDomain[sender.domain] : null;
-  if (b) return { kind: 'matches', brand_id: b.id, brand_name: b.name, status: b.status || null };
+  // grow-sponsor-deals S7 - or the sender's address is one of a brand's contacts (matched on the server only).
+  const byDomain = sender.domain ? brandsByDomain[sender.domain] : null, b = byDomain || (sender.email ? brandsByEmail[String(sender.email).toLowerCase()] : null);
+  if (b) return { kind: 'matches', brand_id: b.id, brand_name: b.name, status: b.status || null, matched_by: byDomain ? 'domain' : 'contact' };
   if (isCalendar(subject, sender)) return { kind: 'calendar' };
   if (isSelf(sender, ownerEmail, selfEmails)) return { kind: 'self' };
   if (sender.domain && teamDomains.includes(sender.domain)) return { kind: 'team' };

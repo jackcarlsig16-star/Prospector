@@ -12,6 +12,7 @@ import { pitchCommand, researchEstimate, spentToday } from './brandActions.js';
 import { scrubAddresses } from '../sales/scrubText.js';
 import { mailboxFor, accessTokenForGrant } from '../lib/googleGrants.js';
 import { gmailClient } from './gmailClient.js';
+import { brandDeal } from './deals.js';
 
 const SEGMENTS = new Set(['sponsor_brand', 'creator', 'nonprofit', 'press', 'podcast', 'university']);
 const SOURCES = new Set(['sourced', 'user_supplied', 'apollo_list', 'places', 'import']);
@@ -129,6 +130,13 @@ export async function checkBrandsRoute(req, res, { supabase = getSupabase(), gma
   } catch (e) { fail(res, e, 'brands/check'); }
 }
 
+// grow-sponsor-deals S8 - a handle only: "@Name", "instagram.com/name/" or "name" -> "name" (lower-case); blank clears it.
+export function handleOf(v) {
+  if (v == null || String(v).trim() === '') return null;
+  const h = String(v).trim().replace(/^https?:\/\//i, '').replace(/^(www\.)?instagram\.com\//i, '').replace(/^@/, '').replace(/[/?#].*$/, '').toLowerCase();
+  if (!/^[a-z0-9._]{1,30}$/.test(h)) throw new HkError(400, 'Instagram handle must look like @brandname (letters, numbers, . and _, up to 30)');
+  return h;
+}
 function brandFields(body, { partial = false } = {}) {
   const patch = {};
   for (const [k, [max, label]] of Object.entries(SHORT)) if (k in body) patch[k] = text(body[k], max, label, { required: k === 'name' });
@@ -136,6 +144,7 @@ function brandFields(body, { partial = false } = {}) {
   if ('domain' in body) patch.domain = domainOf(body.domain);
   if ('is_local' in body) patch.is_local = bool(body.is_local, 'is_local') ?? false;
   if ('aliases' in body) patch.aliases = aliasesOf(body.aliases) || [];
+  if ('instagram_handle' in body) patch.instagram_handle = handleOf(body.instagram_handle);
   // grow-ui-refresh U8 - "Add context for this brand": sent with the next research, so addresses / phones are scrubbed.
   if ('research_context' in body) { const t = text(body.research_context, 300, 'context', { multiline: true }); patch.research_context = t ? scrubAddresses(t) : null; }
   if (!partial) { patch.segment = oneOf(body.segment, SEGMENTS, 'segment') || 'sponsor_brand'; patch.source = oneOf(body.source, SOURCES, 'source') || 'user_supplied'; if (!patch.name) throw new HkError(400, 'name is required'); }
@@ -186,7 +195,7 @@ export async function getBrandRoute(req, res, { supabase = getSupabase() } = {})
     const { data: srow } = await supabase.from('hk_settings').select('intel').eq('business_id', businessId).maybeSingle();
     const research_budget = { ...(await researchEstimate(supabase, businessId)), spent_today: Math.round((await spentToday(supabase, businessId, new Date())) * 1e4) / 1e4, cap_usd: intelSettings(srow?.intel).sweep.cap_usd };
     const primary = primaryOf({ brand, meId: me(req), firstName: await memberFirstNames(supabase, businessId), replies, touches, researched: !!intel, hasEmail: contacts.some(c => c.email), verdictOk: verdict.ok });
-    res.json({ brand: brandDetail(brand), primary, research, research_budget, command: pitchCommand(brand), contacts: contacts.map(contactRow), touches: touches.map(touchRow), replies: replies.map(replyRow), sponsor_periods: periods, events, verdict, email_touches_sent: touches.filter(t => t.channel === 'email' && t.state === 'sent').length, max_email_touches });
+    res.json({ brand: brandDetail(brand), primary, research, research_budget, command: pitchCommand(brand), contacts: contacts.map(contactRow), touches: touches.map(touchRow), replies: replies.map(replyRow), sponsor_periods: periods.filter(p => !p.archived_at), deal: await brandDeal(supabase, { businessId, brand, meId: me(req) }), events, verdict, email_touches_sent: touches.filter(t => t.channel === 'email' && t.state === 'sent').length, max_email_touches });
   } catch (e) { fail(res, e, 'brands/get'); }
 }
 async function maxTouches(supabase, businessId) { const { data } = await supabase.from('hk_settings').select('max_email_touches').eq('business_id', businessId).maybeSingle(); return data?.max_email_touches || 3; }

@@ -133,7 +133,7 @@ export function buildDay({ meId, data, replies = [], drafts = [], threads = [], 
   const thisMonth = today.slice(0, 7);
   const coming = [
     ...data.brands.filter(b => b.owner_user_id === meId && b.next_due_at && Date.parse(b.next_due_at) > now.getTime() && !CLOSED.has(b.status)).map(b => ({ kind: 'followup_due', ...brandOf(b.id), date: dayIn(new Date(b.next_due_at), tz) })),
-    ...periods.filter(p => p.kind === 'monthly' && p.period > thisMonth && mineBrand(p.brand_id)).map(p => ({ kind: 'sponsor_month', ...brandOf(p.brand_id), date: monthStart(p.period) })),
+    ...periods.filter(p => p.kind === 'monthly' && (p.state || 'confirmed') === 'confirmed' && p.period > thisMonth && mineBrand(p.brand_id)).map(p => ({ kind: 'sponsor_month', ...brandOf(p.brand_id), date: monthStart(p.period) })),
     ...mineThreads.filter(t => t.deal_month && t.deal_month > thisMonth && (t.deal_stage === 'scheduling' || t.deal_stage === 'confirmed' || t.deal_stage === 'discussing')).map(t => ({ kind: 'deal_month', ...brandOf(t.brand_id), deal_stage: t.deal_stage, date: monthStart(t.deal_month) })),
   ].sort((a, b) => a.date.localeCompare(b.date)).filter((c, i, arr) => arr.findIndex(x => x.kind === c.kind && x.brand_id === c.brand_id && x.date === c.date) === i).slice(0, COMING_UP_N);
 
@@ -163,7 +163,7 @@ export async function dayRoute(req, res, { supabase = getSupabase(), now = () =>
       supabase.from('hk_brand_threads').select('id, brand_id, member_user_id, gmail_thread_id, matched_by, link_state, last_ours_at, last_theirs_at, waiting_on, deal_stage, deal_month, summary').eq('business_id', businessId).eq('member_user_id', meId).eq('link_state', 'linked'),
       supabase.from('hk_events').select('action, actor_user_id, entity_id, created_at').eq('business_id', businessId).in('action', ['brand.pitched', 'brand.pitch_undone', 'followup_skipped', 'followup_unskipped']).gte('created_at', since),
       supabase.from('hk_job_runs').select('chicago_day, status, started_at, finished_at, digest').eq('business_id', businessId).eq('job', 'daily-check').order('started_at', { ascending: false }).limit(1),
-      supabase.from('hk_sponsor_periods').select('brand_id, period, kind').eq('business_id', businessId),
+      supabase.from('hk_sponsor_periods').select('brand_id, period, kind, state').eq('business_id', businessId).is('archived_at', null),
       supabase.from('hk_member_prefs').select('rail').eq('business_id', businessId).eq('user_id', meId).maybeSingle(),
     ]);
     const lastRun = must(runs)[0] || null;

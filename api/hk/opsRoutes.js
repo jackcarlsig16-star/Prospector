@@ -8,7 +8,6 @@ const seed = createRequire(import.meta.url)('./lintSeed.json');
 // Settings > Pitch shows the rules nobody can edit here: the lint seed's patterns plus the email-touch cap.
 const LOCKED_RULES = [...seed.banned_patterns.map(p => ({ id: p.id, rule: p.rule })), { id: 'max_email_touches', rule: 'At most 3 email touches per brand: cold, bump, final.' }, { id: 'no_send', rule: 'Nothing is ever sent from Prospector. Drafts land in Gmail for you to send.' }];
 
-const PERIOD = /^([0-9]{4}-(0[1-9]|1[0-2])|launch)$/;
 export const SETTINGS_DEFAULTS = { members_stat: null, completions_stat: null, stats_confirmed_at: null, market_line_local: null, market_line_national: null, subject_format: null, banned_phrases: [], bump_after_days: 5, dm_after_days: 9, final_after_days: 14, max_email_touches: 3, apollo_batch_cap: 25, digest_time: '07:30', digest_days: 'weekdays', timezone: 'America/Chicago', quiet_weekends: true, modules: {}, theme: {} };
 const INT_SETTINGS = { members_stat: [0, 10000000], completions_stat: [0, 100000000], bump_after_days: [1, 60], dm_after_days: [1, 90], final_after_days: [1, 120], apollo_batch_cap: [1, 500] };
 const TEXT_SETTINGS = { market_line_local: 200, market_line_national: 200, subject_format: 120, digest_time: 5, digest_days: 20, timezone: 60 };
@@ -20,42 +19,16 @@ export async function sponsorsRoute(req, res, { supabase = getSupabase() } = {})
     const brands = await liveBrands(supabase, businessId);
     const sponsors = brands.filter(b => SPONSOR_RELATIONSHIPS.has(b.relationship)), dnc = brands.filter(b => b.relationship === 'do_not_contact');
     const ids = sponsors.map(b => b.id);
-    const periods = (await selectIn(() => supabase.from('hk_sponsor_periods').select('*').eq('business_id', businessId).order('period').order('id'), 'brand_id', ids))
+    const periods = (await selectIn(() => supabase.from('hk_sponsor_periods').select('*').eq('business_id', businessId).is('archived_at', null).order('period').order('id'), 'brand_id', ids))
       .sort((a, b) => (a.period < b.period ? -1 : a.period > b.period ? 1 : 0));
     const dncIds = dnc.map(b => b.id);
     const marks = (await selectIn(() => supabase.from('hk_events').select('id, entity_id, actor_user_id, created_at, action').eq('business_id', businessId).eq('action', 'brand.relationship').order('created_at', { ascending: false }).order('id'), 'entity_id', dncIds))
       .sort((a, b) => (a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0));
     res.json({
-      sponsors: sponsors.map(b => brandRow(b, { notes: b.notes, periods: periods.filter(p => p.brand_id === b.id).map(p => ({ id: p.id, period: p.period, kind: p.kind, note: p.note })) })),
+      sponsors: sponsors.map(b => brandRow(b, { notes: b.notes, periods: periods.filter(p => p.brand_id === b.id).map(p => ({ id: p.id, period: p.period, kind: p.kind, note: p.note, state: p.state || 'confirmed', amount_usd: p.amount_usd == null ? null : Number(p.amount_usd), paid: !!p.paid })) })),
       dnc: dnc.map(b => { const m = marks.find(x => x.entity_id === b.id); return brandRow(b, { dnc_reason: b.dnc_reason, marked_by: m?.actor_user_id || null, marked_at: m?.created_at || b.updated_at }); }),
     });
   } catch (e) { fail(res, e, 'sponsors'); }
-}
-// POST /sponsors/:brandId/periods { period, kind, note }
-export async function addPeriodRoute(req, res, { supabase = getSupabase() } = {}) {
-  const businessId = req.params.businessId, body = req.body || {};
-  try {
-    const brand = await brandById(supabase, businessId, req.params.brandId);
-    if (!SPONSOR_RELATIONSHIPS.has(brand.relationship)) throw new HkError(400, 'periods belong to sponsors and founding partners - set the relationship first');
-    const period = String(body.period || '').trim(); if (!PERIOD.test(period)) throw new HkError(400, "period must be YYYY-MM or 'launch'");
-    const kind = oneOf(body.kind || (period === 'launch' ? 'launch' : 'monthly'), new Set(['launch', 'monthly']), 'kind');
-    const { data, error } = await supabase.from('hk_sponsor_periods').insert({ business_id: businessId, brand_id: brand.id, period, kind, note: text(body.note, 300, 'note') }).select().single();
-    if (error) throw error;
-    await logEvent(supabase, { businessId, actorUserId: me(req), entityType: 'brand', entityId: brand.id, action: 'sponsor.period_added', detail: { period, kind } });
-    res.status(201).json({ period: data });
-  } catch (e) { fail(res, e, 'sponsors/period'); }
-}
-// DELETE /sponsors/:brandId/periods/:pid (owner role)
-export async function deletePeriodRoute(req, res, { supabase = getSupabase() } = {}) {
-  const businessId = req.params.businessId;
-  try {
-    if (!isOwner(req)) throw new HkError(403, 'only an owner-role member can remove a sponsor period');
-    const { data: rows, error } = await supabase.from('hk_sponsor_periods').delete().eq('business_id', businessId).eq('brand_id', req.params.brandId).eq('id', req.params.pid).select();
-    if (error) throw new Error(error.message);
-    if (!rows?.length) throw new HkError(404, 'period not found');
-    await logEvent(supabase, { businessId, actorUserId: me(req), entityType: 'brand', entityId: req.params.brandId, action: 'sponsor.period_removed', detail: { period: rows[0].period, kind: rows[0].kind } });
-    res.json({ ok: true });
-  } catch (e) { fail(res, e, 'sponsors/period-delete'); }
 }
 
 const pairKey = (a, b) => [a, b].sort().join('|');
@@ -154,6 +127,7 @@ export function intelPatch(v, current) {
     if ('time' in s) { if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(s.time))) throw new HkError(400, 'time must look like 06:30'); next.time = s.time; }
     out.sweep = next;
   }
+  if ('default_monthly_usd' in v) { const d = v.default_monthly_usd; if (d !== null && (typeof d !== 'number' || !(d >= 0 && d <= 100000))) throw new HkError(400, 'the default monthly amount must be blank or a dollar amount up to 100,000'); out.default_monthly_usd = d === null ? null : Math.round(d * 100) / 100; }
   if ('pitch_goal' in v) { if (!Number.isInteger(v.pitch_goal) || v.pitch_goal < 1 || v.pitch_goal > 10) throw new HkError(400, 'pitches per day must be a whole number from 1 to 10'); out.pitch_goal = v.pitch_goal; }
   if (hasPii(JSON.stringify(out))) throw new HkError(400, "intel can't hold an email address or phone number");
   return out;

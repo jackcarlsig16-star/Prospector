@@ -3,20 +3,21 @@
 // in-memory Supabase (api/hk/testing.mjs fixtures).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { sponsorsRoute, addPeriodRoute, deletePeriodRoute, duplicatesRoute, decideDuplicateRoute, warningsRoute, activityRoute, getSettingsRoute, patchSettingsRoute, confirmStatsRoute, getPrefsRoute, patchPrefsRoute, duplicatePairs, dataWarnings } from './opsRoutes.js';
+import { addPeriodRoute, deletePeriodRoute } from './dealRoutes.js';
+import { sponsorsRoute, duplicatesRoute, decideDuplicateRoute, warningsRoute, activityRoute, getSettingsRoute, patchSettingsRoute, confirmStatsRoute, getPrefsRoute, patchPrefsRoute, duplicatePairs, dataWarnings } from './opsRoutes.js';
 import { patchBrandRoute } from './brandsRoutes.js';
 import { shellPayload, memberPrefs } from './shell.js';
 import { seed, reqOf, call, hasAt, HK, JACK, PETE, ID, NOW } from './testing.mjs';
 
 const deps = sb => ({ supabase: sb, now: () => NOW });
 
-test('sponsors: current sponsors with periods, the DNC list with reason + who marked it; period rules; delete is owner-only', async () => {
+test('sponsors: current sponsors with periods, the DNC list with reason + who marked it; period rules; remove is owner-only and archives (grow-sponsor-deals ruling 2)', async () => {
   const sb = seed();
   let r = await call(addPeriodRoute, reqOf({ method: 'POST', params: { brandId: ID.juice }, body: { period: 'launch' } }), deps(sb));
   assert.deepEqual([r.code, r.body.period.kind], [201, 'launch']);
   assert.equal((await call(addPeriodRoute, reqOf({ method: 'POST', params: { brandId: ID.juice }, body: { period: '2026-09', note: 'first monthly' } }), deps(sb))).code, 201);
   assert.equal((await call(addPeriodRoute, reqOf({ method: 'POST', params: { brandId: ID.juice }, body: { period: '2026-13' } }), deps(sb))).code, 400);
-  assert.equal((await call(addPeriodRoute, reqOf({ method: 'POST', params: { brandId: ID.run }, body: { period: '2026-09' } }), deps(sb))).code, 400, 'periods belong to sponsors');
+  assert.equal((await call(addPeriodRoute, reqOf({ method: 'POST', params: { brandId: ID.cafe }, body: { period: '2026-09' } }), deps(sb))).code, 400, 'no months for a do-not-contact brand');
   await call(patchBrandRoute, reqOf({ method: 'PATCH', params: { id: ID.run }, body: { relationship: 'do_not_contact', dnc_reason: 'declined twice' }, user: PETE }), deps(sb));
   const s = (await call(sponsorsRoute, reqOf(), deps(sb))).body;
   assert.deepEqual(s.sponsors.map(x => [x.name, x.periods.map(p => p.period)]), [['Northwind Juice', ['2026-09', 'launch']]]);
@@ -25,9 +26,10 @@ test('sponsors: current sponsors with periods, the DNC list with reason + who ma
   const pid = sb.db.hk_sponsor_periods[0].id;
   assert.equal((await call(deletePeriodRoute, reqOf({ method: 'DELETE', params: { brandId: ID.juice, pid } }), deps(sb))).code, 403);
   assert.equal((await call(deletePeriodRoute, reqOf({ method: 'DELETE', params: { brandId: ID.juice, pid }, role: 'owner' }), deps(sb))).code, 200);
-  assert.equal(sb.db.hk_sponsor_periods.length, 1);
-  assert.equal(sb.db.hk_events.at(-1).action, 'sponsor.period_removed');
-  assert.equal((await call(deletePeriodRoute, reqOf({ method: 'DELETE', params: { brandId: ID.juice, pid }, platformOwner: true, role: 'viewer' }), deps(sb))).code, 404);
+  assert.deepEqual([sb.db.hk_sponsor_periods.length, !!sb.db.hk_sponsor_periods[0].archived_at], [2, true], 'archived, never deleted');
+  assert.deepEqual((await call(sponsorsRoute, reqOf(), deps(sb))).body.sponsors[0].periods.map(p => p.period), ['2026-09'], 'archived months hidden');
+  assert.equal(sb.db.hk_events.filter(e => e.action.startsWith('sponsor.')).at(-1).action, 'sponsor.period_removed');
+  assert.equal((await call(deletePeriodRoute, reqOf({ method: 'DELETE', params: { brandId: ID.juice, pid }, platformOwner: true, role: 'viewer' }), deps(sb))).code, 409, 'already removed');
 });
 
 test('review: duplicate pairs by domain and name, a not_duplicate decision hides the pair, merge moves children and archives the loser', async () => {
