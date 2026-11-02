@@ -31,7 +31,7 @@ export function useBrandCommands({ businessId, onChanged, setError }) {
       const r = await claimAsking(sheet.confirm, x => hkPost(businessId, path(b, 'pitch'), x));
       if (!r) return;
       const copied = await copyText(r.command);
-      setToast({ line: copied ? r.words : `${r.claimed ? 'Claimed. ' : ''}Copy failed - the command is ${r.command}`, undo: r.claimed ? () => hkPost(businessId, path(b, 'pitch'), { undo: true, expect_updated_at: r.brand.updated_at }) : null });
+      setToast({ line: copied ? r.words : `${r.claimed ? 'Claimed. ' : ''}Copy failed - the command is ${r.command}`, undo: () => hkPost(businessId, path(b, 'pitch'), r.claimed ? { undo: true, expect_updated_at: r.brand.updated_at } : { undo: true, claimed: false }) });
     } else if (action === 'target') {
       const on = !b.targeted_at;
       await hkPost(businessId, path(b, 'target'), { on });

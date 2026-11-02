@@ -31,6 +31,7 @@ const setup = (role = 'owner') => {
     if (p === '/me/prefs') { if (method === 'PUT') prefs = { ...prefs, ...JSON.parse(init.body) }; return json(200, { prefs }); }
     if (p === '/brands') { const q = Object.fromEntries(u.searchParams); return json(200, { view: q.view, total: q.stage ? 101 : 953, page: 1, limit: 100, next_page: null, rows: [brand(1), brand(2, { status: 'claimed' })], facets: q.facets ? FACETS : undefined }); }
     if (p === '/gmail/status') return json(200, { mailbox: { linked: false }, badges: { drafts: 1, replies: 2, tracked: 0, owner: u.searchParams.get('owner') } });
+    if (p === '/today/day') return json(200, { day: '2026-10-28', total: 1, done: 0, left: 1, minutes_left: 3, badge: 1, progress: { sent_today: 0, pitched: 0, pitch_goal: 5, replies_answered: 0, replies_total: 1 }, daily_check: null, steps: [], all_done: false, want_more: [], coming_up: [], money: null });
     if (p === '/jobs/today') return json(200, { owner_counts: { urgent: 0, replies: 1, drafts: 0, no_draft: 0, dm_ready: 0 }, digest: { counts: {}, sections: {} } });
     if (p === '/signals') return json(200, { prospects: [], sponsors: [], unseen_hot_warm: 0 });
     if (p === '/replies') return json(200, { replies: [{ id: 'r1', brand_id: 'b1', brand_name: 'Zz Brand 1', label: 'pricing', handled: false, received_at: '2026-10-28T00:00:00Z' }] });
@@ -244,7 +245,9 @@ test('hk-imported-drafts-noise F4 + N13: badges ask for the signed-in member (me
   await mount('#hk/inbox?replies=open', 'viewer');
   await screen.findByText('Zz Brand 1');
   await waitFor(() => expect(calls.filter(c => c.p === '/gmail/status').map(c => c.q.owner)).toEqual(['me']));
-  expect(calls.filter(c => c.p === '/jobs/today').map(c => c.q.owner)).toEqual(['me']);
+  // grow-today-workflow T7: the Today badge = items left in Your day, always the signed-in member's (no owner param).
+  expect(calls.filter(c => c.p === '/today/day').map(c => c.q.owner)).toEqual([undefined]);
+  expect(calls.some(c => c.p === '/jobs/today')).toBe(false);
   expect(screen.queryByRole('checkbox')).toBeNull();
   fireEvent.click(screen.getByText('Zz Brand 1'));
   expect(await screen.findByRole('dialog', { name: /Reply from/ })).toBeInTheDocument();

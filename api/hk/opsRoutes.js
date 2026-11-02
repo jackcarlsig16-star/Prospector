@@ -136,7 +136,7 @@ async function settingsRow(supabase, businessId) { const { data, error } = await
 export async function getSettingsRoute(req, res, { supabase = getSupabase() } = {}) {
   try { const row = await settingsRow(supabase, req.params.businessId); res.json({ settings: { ...SETTINGS_DEFAULTS, business_id: req.params.businessId, ...(row || {}) }, seeded: !!row, locked_rules: LOCKED_RULES }); } catch (e) { fail(res, e, 'settings/get'); }
 }
-// grow-inbox-intel B3a / M2 - { target_categories?, sweep?: { on, n, cap_usd, time } } merged into hk_settings.intel.
+// grow-inbox-intel B3a / M2 - { target_categories?, sweep?: { on, n, cap_usd, time }, pitch_goal? } merged into hk_settings.intel.
 // Weights are read-only in v1 (refused here).
 export function intelPatch(v, current) {
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw new HkError(400, 'intel must be an object');
@@ -154,6 +154,7 @@ export function intelPatch(v, current) {
     if ('time' in s) { if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(String(s.time))) throw new HkError(400, 'time must look like 06:30'); next.time = s.time; }
     out.sweep = next;
   }
+  if ('pitch_goal' in v) { if (!Number.isInteger(v.pitch_goal) || v.pitch_goal < 1 || v.pitch_goal > 10) throw new HkError(400, 'pitches per day must be a whole number from 1 to 10'); out.pitch_goal = v.pitch_goal; }
   if (hasPii(JSON.stringify(out))) throw new HkError(400, "intel can't hold an email address or phone number");
   return out;
 }

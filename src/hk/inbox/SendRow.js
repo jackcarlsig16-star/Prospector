@@ -13,7 +13,7 @@ import { fmtDate } from './inboxPrefs';
 // A focused row answers P T R S X, Enter (expand), J / K (move); never while typing.
 const money = n => (n == null ? null : `$${Number(n).toFixed(2)}`);
 
-function Expand({ c, canEdit, businessId, onAct, onOpenBrand, onChanged, setNote }) {
+export function Expand({ c, canEdit, businessId, onAct, onOpenBrand, onChanged, setNote }) {
   const [editing, setEditing] = useState(false);
   const [idea, setIdea] = useState(c.challenge_idea || c.research?.challenge_idea || '');
   const [dnc, setDnc] = useState(null);

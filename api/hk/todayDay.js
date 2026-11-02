@@ -13,7 +13,6 @@ import { dayIn } from './jobs/plan.js';
 
 const DAY = 864e5;
 export const MINUTES = { replies: 3, deals: 2, followups: 1, dms: 2, pitches: 2 }; // REVISABLE (design input)
-export const PITCH_GOAL = 5; // REVISABLE - Settings › Pitch "Pitches per day" lands with Stage 2
 export const COMING_UP_N = 3, PITCH_ALL_MAX = 10;
 const STEPS = {
   replies: { n: 1, title: 'Answer replies', why: 'Someone wrote back - a person is waiting on you.' },
@@ -35,16 +34,19 @@ export function referralName(summary) {
 // Not today: per member, per day, in hk_member_prefs.rail.today_hidden = { day, brand_ids } (a stale day reads empty).
 export const hiddenToday = (prefs, day) => (prefs?.rail?.today_hidden?.day === day ? prefs.rail.today_hidden.brand_ids || [] : []);
 
-// Pitched today = the member's brand.pitched rows today, less any brand whose later row is brand.pitch_undone.
-export function pitchedToday(events, { meId, on }) {
+// The member's `add` rows today, less any brand whose later row is `drop` (its Undo) -> { brand_id: at }.
+function netByBrand(events, { meId, on, add, drop }) {
   const last = {};
   for (const e of [...events].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)))) {
     if (e.actor_user_id !== meId || !on(e.created_at)) continue;
-    if (e.action === 'brand.pitched') last[e.entity_id] = e.created_at;
-    if (e.action === 'brand.pitch_undone') delete last[e.entity_id];
+    if (e.action === add) last[e.entity_id] = e.created_at;
+    if (e.action === drop) delete last[e.entity_id];
   }
   return last;
 }
+const netToday = (events, o) => Object.keys(netByBrand(events, o));
+// Pitched today = the member's brand.pitched rows today, less any brand whose later row is brand.pitch_undone.
+export const pitchedToday = (events, { meId, on }) => netByBrand(events, { meId, on, add: 'brand.pitched', drop: 'brand.pitch_undone' });
 
 // Pure. data = loadIntel(...) plus: replies (full rows, open + handled lately), drafts (the member's drafted touches with
 // gmail_draft_id / subject / body_text), threads (the member's linked hk_brand_threads), events (since yesterday), noDraft
@@ -77,14 +79,14 @@ export function buildDay({ meId, data, replies = [], drafts = [], threads = [], 
   const repliesDone = answered.length + threadsAnswered.length;
 
   // 3 Send follow-ups: your bump / final drafts with a real Gmail draft; today's no-draft rows on your brands as "Draft it".
+  const skipped = netToday(events, { meId, on, add: 'followup_skipped', drop: 'followup_unskipped' });
   const followItems = [
     ...drafts.filter(t => t.sender_user_id === meId && t.channel === 'email' && (t.kind === 'bump' || t.kind === 'final') && isOpenDraft(t) && byId[t.brand_id])
-      .map(t => ({ kind: 'draft', ...brandOf(t.brand_id), touch_id: t.id, touch_kind: t.kind, subject: t.subject || null, gmail_draft_id: t.gmail_draft_id, age_days: ageDays(t.drafted_at, now) })),
-    ...noDraft.filter(x => mineBrand(x.brand_id)).map(x => ({ kind: 'draft_it', ...brandOf(x.brand_id), touch_kind: x.kind, reason: x.reason })),
+      .map(t => ({ kind: 'draft', ...brandOf(t.brand_id), touch_id: t.id, touch_kind: t.kind, subject: t.subject || null, gmail_draft_id: t.gmail_draft_id, gmail_message_id: t.gmail_message_id || null, age_days: ageDays(t.drafted_at, now) })),
+    ...noDraft.filter(x => mineBrand(x.brand_id) && !skipped.includes(x.brand_id)).map(x => ({ kind: 'draft_it', ...brandOf(x.brand_id), touch_kind: x.kind, reason: x.reason })),
   ];
   const sentToday = data.touches.filter(t => t.sender_user_id === meId && t.state === 'sent' && on(t.sent_at));
   const followSent = sentToday.filter(t => t.channel === 'email' && (t.kind === 'bump' || t.kind === 'final'));
-  const skipped = events.filter(e => e.action === 'followup_skipped' && e.actor_user_id === meId && on(e.created_at));
 
   // 4 Send Instagram DMs: your DM texts.
   const dmItems = drafts.filter(t => t.sender_user_id === meId && t.channel === 'ig_dm' && t.state === 'drafted' && byId[t.brand_id])
@@ -97,7 +99,8 @@ export function buildDay({ meId, data, replies = [], drafts = [], threads = [], 
   const send10 = cards.slice(0, 10);
   const pitched = pitchedToday(events, { meId, on }), hidden = new Set(hiddenToday(prefs, today));
   const ready = send10.filter(c => c.primary?.kind === 'pitch' && !pitched[c.id] && !hidden.has(c.id));
-  const pitchedN = Object.keys(pitched).length, room = Math.max(0, PITCH_GOAL - pitchedN);
+  const goal = intelSettings(data.settingsRow.intel).pitch_goal;
+  const pitchedN = Object.keys(pitched).length, room = Math.max(0, goal - pitchedN);
   const pitchItems = ready.slice(0, room).map(c => ({ kind: 'pitch', ...brandOf(c.id), targeted: !!c.targeted_at, fit: c.research?.fit || null, industry: c.research?.industry || null, market: c.is_local ? 'Chicago' : c.research?.hq_city || c.city || null, contact_role: c.contact?.title || null, idea: c.challenge_idea || c.research?.challenge_idea || null, command: c.command, owner_hint: sheetOwnerOf(byId[c.id], meFirstName) ? byId[c.id].owner_hint : null, card: c }));
   const morePitch = cards.filter(c => c.primary?.kind === 'pitch' && !pitched[c.id] && !hidden.has(c.id)).length - pitchItems.length;
 
@@ -108,7 +111,7 @@ export function buildDay({ meId, data, replies = [], drafts = [], threads = [], 
     step('replies', [...replyItems, ...threadItems], { n: repliesDone, line: doneLine(repliesDone, 'answered', latest(threadsAnswered.map(t => t.last_ours_at))) }),
     step('followups', followItems, { n: followSent.length + skipped.length, line: [doneLine(followSent.length, 'sent', latest(followSent.map(t => t.sent_at))), skipped.length ? `${skipped.length} skipped` : null].filter(Boolean).join(' · ') || null }),
     step('dms', dmItems, { n: dmSent.length, line: dmSent.length ? `${dmSent.length} sent` : null }),
-    { ...step('pitches', pitchItems, { n: pitchedN, line: pitchedN ? `${pitchedN} pitched` : null }), goal: PITCH_GOAL, ready: ready.length, more_in_briefing: Math.max(0, morePitch), pitch_all: pitchItems.length > 1 ? { brand_ids: pitchItems.map(p => p.brand_id), command: `hk pitch ${pitchItems.map(p => target(p.command)).join(', ')}` } : null },
+    { ...step('pitches', pitchItems, { n: pitchedN, line: pitchedN ? `${pitchedN} pitched` : null }), goal, ready: ready.length, more_in_briefing: Math.max(0, morePitch), pitch_all: pitchItems.length > 1 ? { brand_ids: pitchItems.map(p => p.brand_id), command: `hk pitch ${pitchItems.map(p => target(p.command)).join(', ')}` } : null },
   ];
   const steps = all.filter(s => s.left || s.done.n);
   const left = steps.reduce((n, s) => n + s.left, 0), done = steps.reduce((n, s) => n + s.done.n, 0);
@@ -136,7 +139,7 @@ export function buildDay({ meId, data, replies = [], drafts = [], threads = [], 
   const out = {
     day: today, me: meId, first_name: meFirstName,
     total: left + done, done, left, minutes_left: steps.reduce((n, s) => n + s.minutes, 0), badge: left,
-    progress: { sent_today: sentToday.length, pitched: pitchedN, pitch_goal: PITCH_GOAL, replies_answered: repliesDone, replies_total: repliesDone + replyItems.length + threadItems.length },
+    progress: { sent_today: sentToday.length, pitched: pitchedN, pitch_goal: goal, replies_answered: repliesDone, replies_total: repliesDone + replyItems.length + threadItems.length },
     daily_check: lastRun ? { at: lastRun.finished_at || lastRun.started_at, status: lastRun.status, today: lastRun.chicago_day === today } : null,
     steps, all_done: left === 0, want_more: left === 0 ? want_more : [], coming_up: coming, money: null,
   };
@@ -155,9 +158,9 @@ export async function dayRoute(req, res, { supabase = getSupabase(), now = () =>
     const [openR, doneR, drafts, threads, events, runs, periods, prefs] = await Promise.all([
       supabase.from('hk_replies').select(RCOLS).eq('business_id', businessId).eq('handled', false),
       supabase.from('hk_replies').select(RCOLS).eq('business_id', businessId).eq('handled', true).gte('handled_at', since),
-      supabase.from('hk_touches').select('id, brand_id, sender_user_id, channel, kind, state, gmail_draft_id, subject, body_text, drafted_at').eq('business_id', businessId).eq('sender_user_id', meId).eq('state', 'drafted'),
+      supabase.from('hk_touches').select('id, brand_id, sender_user_id, channel, kind, state, gmail_draft_id, gmail_message_id, subject, body_text, drafted_at').eq('business_id', businessId).eq('sender_user_id', meId).eq('state', 'drafted'),
       supabase.from('hk_brand_threads').select('id, brand_id, member_user_id, gmail_thread_id, matched_by, link_state, last_ours_at, last_theirs_at, waiting_on, deal_stage, deal_month, summary').eq('business_id', businessId).eq('member_user_id', meId).eq('link_state', 'linked'),
-      supabase.from('hk_events').select('action, actor_user_id, entity_id, created_at').eq('business_id', businessId).in('action', ['brand.pitched', 'brand.pitch_undone', 'followup_skipped']).gte('created_at', since),
+      supabase.from('hk_events').select('action, actor_user_id, entity_id, created_at').eq('business_id', businessId).in('action', ['brand.pitched', 'brand.pitch_undone', 'followup_skipped', 'followup_unskipped']).gte('created_at', since),
       supabase.from('hk_job_runs').select('chicago_day, status, started_at, finished_at, digest').eq('business_id', businessId).eq('job', 'daily-check').order('started_at', { ascending: false }).limit(1),
       supabase.from('hk_sponsor_periods').select('brand_id, period, kind').eq('business_id', businessId),
       supabase.from('hk_member_prefs').select('rail').eq('business_id', businessId).eq('user_id', meId).maybeSingle(),

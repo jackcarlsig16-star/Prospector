@@ -237,26 +237,43 @@ export async function retryDraft({ businessId, brandId, d = {} }) {
 }
 
 // J5 [Skip this touch]: the due date is cleared (the sync sets the next one after the next send); logged.
-export async function skipTouch({ businessId, brandId, userId, d = {} }) {
+export async function skipTouch({ businessId, brandId, userId, undo = null, d = {} }) {
   const D = jobDeps(d);
   const { data: b, error } = await D.supabase.from('hk_brands').select('id, name, next_due_at').eq('business_id', businessId).eq('id', brandId).maybeSingle();
   if (error) throw new Error(error.message);
   if (!b) throw new HkError(404, 'brand not found');
+  // Undo { was_due }: puts the due date back only while nothing set a new one since.
+  if (undo) {
+    if (b.next_due_at) throw new HkError(409, `${b.name} has a new due date since - nothing to undo`);
+    await D.supabase.from('hk_brands').update({ next_due_at: undo.was_due || null, updated_at: D.now().toISOString() }).eq('id', b.id);
+    await logEvent(D.supabase, { businessId, actorUserId: userId, entityType: 'brand', entityId: b.id, action: 'followup_unskipped', detail: { was_due: undo.was_due || null } });
+    return { ok: true, brand_id: b.id, undone: true };
+  }
   await D.supabase.from('hk_brands').update({ next_due_at: null, updated_at: D.now().toISOString() }).eq('id', b.id);
   await logEvent(D.supabase, { businessId, actorUserId: userId, entityType: 'brand', entityId: b.id, action: 'followup_skipped', detail: { was_due: b.next_due_at } });
-  return { ok: true, brand_id: b.id };
+  return { ok: true, brand_id: b.id, was_due: b.next_due_at };
 }
 
 // J5 [Mark DM sent]: an Instagram DM text copied and sent by hand -> the touch reads sent (no Gmail, nothing posted).
-export async function markDmSent({ businessId, touchId, userId, d = {} }) {
+export async function markDmSent({ businessId, touchId, userId, undo = null, d = {} }) {
   const D = jobDeps(d), at = D.now().toISOString();
   const { data: t, error } = await D.supabase.from('hk_touches').select('*').eq('business_id', businessId).eq('id', touchId).maybeSingle();
   if (error) throw new Error(error.message);
   if (!t) throw new HkError(404, 'draft not found');
   if (t.channel !== 'ig_dm') throw new HkError(400, 'only an Instagram DM is marked sent by hand; email goes out from Gmail');
+  // Undo { prev_last_touch_at }: the DM reads drafted again; the brand's last touch goes back only if this DM set it.
+  if (undo) {
+    if (t.state !== 'sent') throw new HkError(409, `that DM is ${t.state}`);
+    const sentAt = t.sent_at, { data: b } = await D.supabase.from('hk_brands').select('id, last_touch_at').eq('id', t.brand_id).maybeSingle();
+    await D.supabase.from('hk_touches').update({ state: 'drafted', sent_at: null }).eq('id', t.id);
+    if (b && sentAt && Date.parse(b.last_touch_at) === Date.parse(sentAt)) await D.supabase.from('hk_brands').update({ last_touch_at: undo.prev_last_touch_at || null, updated_at: at }).eq('id', b.id);
+    await logEvent(D.supabase, { businessId, actorUserId: userId, entityType: 'brand', entityId: t.brand_id, action: 'touch_unsent', detail: { touch_id: t.id, kind: 'dm_text', channel: 'ig_dm', by_hand: true } });
+    return { ok: true, touch_id: t.id, undone: true };
+  }
   if (t.state !== 'drafted') throw new HkError(409, `that DM is ${t.state}`);
+  const { data: b0 } = await D.supabase.from('hk_brands').select('last_touch_at').eq('id', t.brand_id).maybeSingle();
   await D.supabase.from('hk_touches').update({ state: 'sent', sent_at: at }).eq('id', t.id);
   await D.supabase.from('hk_brands').update({ last_touch_at: at, updated_at: at }).eq('id', t.brand_id);
   await logEvent(D.supabase, { businessId, actorUserId: userId, entityType: 'brand', entityId: t.brand_id, action: 'touch_sent', detail: { touch_id: t.id, kind: 'dm_text', channel: 'ig_dm', by_hand: true } });
-  return { ok: true, touch_id: t.id };
+  return { ok: true, touch_id: t.id, prev_last_touch_at: b0?.last_touch_at || null };
 }

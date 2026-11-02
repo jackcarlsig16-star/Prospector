@@ -17,6 +17,7 @@ export const INTEL_DEFAULTS = {
   target_categories: ['National CPG', 'Wellness', 'gym/studio', 'cafe/restaurant', 'consumer brand'],
   sweep: { on: true, n: 10, cap_usd: 1.0, time: '06:30' },
   retry_days: 30,
+  pitch_goal: 5, // grow-today-workflow T2 - Your day's pitches per day (REVISABLE, Settings › Pitch)
 };
 
 export function intelSettings(intel) {
@@ -26,6 +27,7 @@ export function intelSettings(intel) {
     target_categories: Array.isArray(v.target_categories) ? v.target_categories : INTEL_DEFAULTS.target_categories,
     sweep: { ...INTEL_DEFAULTS.sweep, ...(v.sweep || {}) },
     retry_days: Number(v.retry_days) || INTEL_DEFAULTS.retry_days,
+    pitch_goal: Number.isInteger(v.pitch_goal) ? v.pitch_goal : INTEL_DEFAULTS.pitch_goal,
   };
 }
 

@@ -64,12 +64,12 @@ export async function retryDraftRoute(req, res, d = {}) {
   try { if (!req.body?.brand_id) throw new HkError(400, 'brand_id is required'); res.json(await retryDraft({ businessId: req.params.businessId, brandId: String(req.body.brand_id), d })); } catch (e) { fail(res, e, 'jobs/retry-draft'); }
 }
 
-// POST /jobs/skip-touch { brand_id } (member)
+// POST /jobs/skip-touch { brand_id } | { brand_id, undo: true, was_due } (member)
 export async function skipTouchRoute(req, res, d = {}) {
-  try { if (!req.body?.brand_id) throw new HkError(400, 'brand_id is required'); res.json(await skipTouch({ businessId: req.params.businessId, brandId: String(req.body.brand_id), userId: me(req), d })); } catch (e) { fail(res, e, 'jobs/skip-touch'); }
+  try { if (!req.body?.brand_id) throw new HkError(400, 'brand_id is required'); res.json(await skipTouch({ businessId: req.params.businessId, brandId: String(req.body.brand_id), userId: me(req), undo: req.body.undo === true ? { was_due: typeof req.body.was_due === 'string' ? req.body.was_due : null } : null, d })); } catch (e) { fail(res, e, 'jobs/skip-touch'); }
 }
 
-// POST /drafts/:touchId/dm-sent (member)
+// POST /drafts/:touchId/dm-sent {} | { undo: true, prev_last_touch_at } (member)
 export async function dmSentRoute(req, res, d = {}) {
-  try { res.json(await markDmSent({ businessId: req.params.businessId, touchId: req.params.touchId, userId: me(req), d })); } catch (e) { fail(res, e, 'jobs/dm-sent'); }
+  try { res.json(await markDmSent({ businessId: req.params.businessId, touchId: req.params.touchId, userId: me(req), undo: req.body?.undo === true ? { prev_last_touch_at: typeof req.body.prev_last_touch_at === 'string' ? req.body.prev_last_touch_at : null } : null, d })); } catch (e) { fail(res, e, 'jobs/dm-sent'); }
 }

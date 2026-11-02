@@ -17,7 +17,6 @@ import { roleAtLeast } from '../constants/roles';
 import { signOut } from '../utils/authSession';
 import { hkPatch, hkGet, hkPost, hkFetch } from './hkApi';
 import { syncPillState, pageloadDue, syncKey } from './hkSync';
-import { todayBadge } from './screens/TodayScreen';
 
 // hkos-project-shell-v1 - the HumanKind Sales OS: a full-screen shell App.js renders INSTEAD of the Prospector shell
 // for an hk_sales workspace. The owner filter is hk_member_prefs.owner_filter (data-foundation D7), no localStorage.
@@ -68,10 +67,10 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
     hkPatch(business.id, '/me/prefs', { owner_filter: id }).catch(() => {});
   };
 
-  // hk-imported-drafts-noise F4 - the badges are always the signed-in member's own items (Inbox = open tracked replies +
-  // queued drafts, Today = its sections), whatever the owner toggle shows; never the workspace total.
+  // hk-imported-drafts-noise F4 / grow-today-workflow T7 - the badges are always the signed-in member's own items (Inbox =
+  // open tracked replies + queued drafts, Today = items left in Your day), whatever the owner toggle shows.
   const loadGmail = useCallback(() => hkGet(business.id, '/gmail/status', { owner: 'me' }).then(setGmail).catch(() => setGmail(null)), [business.id]);
-  const loadToday = useCallback(() => hkGet(business.id, '/jobs/today', { owner: 'me' }).then(t => setTodayCounts(t.owner_counts || t.digest?.counts || null)).catch(() => {}), [business.id]);
+  const loadToday = useCallback(() => hkGet(business.id, '/today/day').then(d => setTodayCounts(d.badge)).catch(() => {}), [business.id]);
   useEffect(() => { if (shell) loadToday(); }, [shell, loadToday]);
   // grow-signals-v1 G6 - the Inbox item's green badge: unseen signals on Hot / Warm brands (Today marks them seen).
   const loadHot = useCallback(() => hkGet(business.id, '/signals').then(r => setHotUnseen(r.unseen_hot_warm || 0)).catch(() => {}), [business.id]);
@@ -220,7 +219,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
 
   const screens = useMemo(() => visibleScreens(shell?.modules || HK_MODULES).map(s => (
     s.id === 'inbox' ? { ...s, count: (gmail?.badges?.replies || 0) + (gmail?.badges?.drafts || 0), hot: hotUnseen }
-      : s.id === 'today' ? { ...s, count: todayBadge(todayCounts) } : s)), [shell, gmail, todayCounts, hotUnseen]);
+      : s.id === 'today' ? { ...s, count: todayCounts || 0 } : s)), [shell, gmail, todayCounts, hotUnseen]);
   const spaces = screens.filter(s => s.group === 'space'), workspace = screens.filter(s => s.group === 'workspace' || (!s.group && !s.reserved));
 
   const pickNew = useCallback(kind => {
@@ -233,10 +232,12 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
   const closeSearch = useCallback(() => setSearch(null), []);
   const closeFilters = useCallback(() => setFiltersOpen(false), []);
   const openBrand = useCallback(id => go('brands', null, id), [go]);
+  const openReply = useCallback(id => setInboxSel({ kind: 'replies', value: 'open', reply: id }), [setInboxSel]);
 
   const current = HK_SCREENS.find(s => s.id === nav.screen) || HK_SCREENS[0];
   const mine = shell?.members.find(m => m.user_id === shell.me.user_id);
-  const ownerToggle = shell && <div style={{ padding: '0 4px' }}><OwnerToggle options={options} value={ownerValue} onChange={pickOwner} /></div>;
+  // T1: Today is always your day, so the toggle is hidden there.
+  const ownerToggle = shell && current.id !== 'today' && <div style={{ padding: '0 4px' }}><OwnerToggle options={options} value={ownerValue} onChange={pickOwner} /></div>;
   const savedName = inBrands && brandState.saved ? savedViews.find(v => v.id === brandState.saved)?.name || null : null;
   const resultLabel = inBrands ? (list.rows === null ? 'Show results' : `Show ${list.total.toLocaleString('en-US')} result${list.total === 1 ? '' : 's'}`) : 'Done';
 
@@ -244,7 +245,7 @@ export default function HkShell({ business, businesses, userId, compact, onSelec
     ? <p className="hk-meta" role="alert">{loadError}</p>
     : !shell
       ? <p className="hk-meta">Loading Grow…</p>
-      : <HkScreen screen={current} section={nav.section} brandId={nav.brandId || null} businessId={business.id} owner={ownerValue} compact={compact} shell={shell} now={now} gmail={gmail} syncing={syncing} onSync={() => runSync('manual')} onGmailChanged={loadGmail} onOpenConnections={onOpenConnections} onSection={s => go('settings', s)} onOpenAdmin={onOpenAdmin} onOpenBrand={openBrand} onGo={go} onTodayCounts={setTodayCounts} onSignalsSeen={loadHot} intent={intent} onIntentDone={clearIntent}
+      : <HkScreen screen={current} section={nav.section} brandId={nav.brandId || null} businessId={business.id} owner={ownerValue} compact={compact} shell={shell} now={now} gmail={gmail} syncing={syncing} onSync={() => runSync('manual')} onGmailChanged={loadGmail} onOpenConnections={onOpenConnections} onSection={s => go('settings', s)} onOpenAdmin={onOpenAdmin} onOpenBrand={openBrand} onOpenReply={openReply} onGo={go} onTodayCounts={setTodayCounts} onSignalsSeen={loadHot} intent={intent} onIntentDone={clearIntent}
           brands={{ state: brandState, setState: setBrandState, list, savedName, onSaveView: saveView, onOpenFilters: () => setFiltersOpen(true) }}
           inboxSpace={{ sel: inboxSel, setSel: setInboxSel, onSaveView: saveView, onOpenFilters: () => setFiltersOpen(true), onCountsChanged: inboxChanged, onLaneCounts: setLaneCounts }} />;
 

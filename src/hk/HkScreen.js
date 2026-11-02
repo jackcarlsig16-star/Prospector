@@ -10,6 +10,7 @@ import PitchSettings from './screens/PitchSettings';
 import ConnectionsSettings from './screens/ConnectionsSettings';
 import InboxSpace from './inbox/InboxSpace';
 import TodayScreen from './screens/TodayScreen';
+import DaySettings from './screens/DaySettings';
 import FollowupSettings from './screens/FollowupSettings';
 import DigestSettings from './screens/DigestSettings';
 import IntelSettings from './screens/IntelSettings';
@@ -75,9 +76,9 @@ function Modules({ shell }) {
 
 // grow-nav-filters-v1: Brands and Inbox are spaces whose state (view, filters, selection) the shell owns - `brands` and
 // `inboxSpace` carry it in. Replies, Drafts, Pipeline and Sponsors live inside them.
-export default function HkScreen({ screen, section, brandId, businessId, owner, compact, shell, gmail, syncing, onSync, onGmailChanged, onOpenConnections, onInboxUnread, onSection, onOpenAdmin, onOpenBrand, onGo, onTodayCounts, onSignalsSeen, intent, onIntentDone, now, brands, inboxSpace }) {
+export default function HkScreen({ screen, section, brandId, businessId, owner, compact, shell, gmail, syncing, onSync, onGmailChanged, onOpenConnections, onInboxUnread, onSection, onOpenAdmin, onOpenBrand, onOpenReply, onGo, onTodayCounts, onSignalsSeen, intent, onIntentDone, now, brands, inboxSpace }) {
   const canEdit = roleAtLeast(shell.me.role, 'member');
-  if (screen.id === 'today') { const g = chicagoGreeting(now, shell.me.first_name); return <><Header title={g.title} line={g.date} /><TodayScreen businessId={businessId} shell={shell} owner={owner} compact={compact} gmail={gmail} canEdit={canEdit} onOpenBrand={onOpenBrand} onGo={onGo} onOpenConnections={onOpenConnections} onCounts={onTodayCounts} /></>; }
+  if (screen.id === 'today') return <TodayScreen businessId={businessId} shell={shell} compact={compact} gmail={gmail} canEdit={canEdit} greeting={chicagoGreeting(now, shell.me.first_name)} syncing={syncing} onSync={onSync} onOpenBrand={onOpenBrand} onOpenReply={onOpenReply} onGo={onGo} onOpenConnections={onOpenConnections} onCounts={onTodayCounts} />;
   if (screen.id === 'inbox') return <InboxSpace {...inboxSpace} businessId={businessId} shell={shell} gmail={gmail} compact={compact} canEdit={canEdit} owner={owner} onGo={onGo} onSignalsSeen={onSignalsSeen} onOpenBrand={onOpenBrand} onOpenConnections={onOpenConnections} onUnread={onInboxUnread} />;
   if (screen.id === 'brands' && brandId) return <BrandPage businessId={businessId} brandId={brandId} shell={shell} gmail={gmail} canEdit={canEdit} onGo={onGo} onSignalsChanged={onSignalsSeen} onBack={() => onOpenBrand(null)} onGmailChanged={onGmailChanged} />;
   if (screen.id === 'brands') return <BrandsSpace {...brands} businessId={businessId} shell={shell} compact={compact} canEdit={canEdit} onOpenBrand={onOpenBrand} onGo={onGo} intent={intent} onIntentDone={onIntentDone} />;
@@ -93,7 +94,7 @@ export default function HkScreen({ screen, section, brandId, businessId, owner, 
               <button key={id} type="button" className="hk-btn hk-subnav__item" aria-current={section === id ? 'page' : undefined} onClick={() => onSection(id)}>{label}</button>
             ))}
           </nav>
-          <div>{section === 'modules' ? <Modules shell={shell} /> : section === 'followups' ? <FollowupSettings businessId={businessId} shell={shell} canEdit={canEdit} /> : section === 'digest' ? <DigestSettings businessId={businessId} shell={shell} canEdit={canEdit} /> : section === 'pitch' ? <><PitchSettings businessId={businessId} shell={shell} canEdit={canEdit} /><IntelSettings businessId={businessId} shell={shell} canEdit={canEdit} /></> : section === 'connections' ? <ConnectionsSettings businessId={businessId} shell={shell} gmail={gmail} syncing={syncing} onSync={onSync} onOpenConnections={onOpenConnections} onGmailChanged={onGmailChanged} canEdit={canEdit} /> : <Members shell={shell} onOpenAdmin={onOpenAdmin} />}</div>
+          <div>{section === 'modules' ? <Modules shell={shell} /> : section === 'followups' ? <FollowupSettings businessId={businessId} shell={shell} canEdit={canEdit} /> : section === 'digest' ? <DigestSettings businessId={businessId} shell={shell} canEdit={canEdit} /> : section === 'pitch' ? <><PitchSettings businessId={businessId} shell={shell} canEdit={canEdit} /><DaySettings businessId={businessId} shell={shell} canEdit={canEdit} /><IntelSettings businessId={businessId} shell={shell} canEdit={canEdit} /></> : section === 'connections' ? <ConnectionsSettings businessId={businessId} shell={shell} gmail={gmail} syncing={syncing} onSync={onSync} onOpenConnections={onOpenConnections} onGmailChanged={onGmailChanged} canEdit={canEdit} /> : <Members shell={shell} onOpenAdmin={onOpenAdmin} />}</div>
         </div>
       </>
     );
