@@ -38,11 +38,9 @@ const GAP_LABEL = {
 };
 
 // ── Context builder ───────────────────────────────────────────────────────────
-function buildActionContext(acc, allTasks) {
+export function buildActionContext(acc, allTasks) {
   let compliance = null;
-  let pricing = null;
   try { compliance = (JSON.parse(localStorage.getItem('prospector_compliance') || '{}'))[acc.id] || null; } catch {}
-  try { pricing = (JSON.parse(localStorage.getItem('prospector_pricing_files') || '{}'))[acc.id] || null; } catch {}
 
   const openTasks = (allTasks || []).filter(t => t.accId === acc.id && t.status === 'Open');
   const calls = [...(acc.calls || [])].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
@@ -54,10 +52,6 @@ function buildActionContext(acc, allTasks) {
   Production Request: ${compliance.steps?.find(s => s.id === 'prod_request')?.status || 'Not Started'}
   Security Questionnaire: ${compliance.steps?.find(s => s.id === 'security_q')?.status || 'Not Started'}`
     : 'No compliance record — treat all steps as Not Started';
-
-  const pricingSection = pricing
-    ? `Quote exists: yes | Products: ${pricing.products?.map(p => p.name).join(', ') || 'none'}`
-    : 'No quote created yet';
 
   return `DEAL STATE:
   Stage: ${acc.stage || 'unknown'}
@@ -80,9 +74,6 @@ DISCOVERY EVIDENCE (from call history):
 
 COMPLIANCE TRACK:
   ${complianceSection}
-
-PRICING / QUOTE:
-  ${pricingSection}
 
 OPEN TASKS ALREADY ASSIGNED:
   ${openTasks.map(t => `- ${t.title} (${t.category || 'general'})`).join('\n  ') || 'none'}`;

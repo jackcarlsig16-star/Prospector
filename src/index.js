@@ -4,6 +4,9 @@ import './index.css';
 import App from './App';
 import AuthGate from './components/auth/AuthGate';
 import reportWebVitals from './reportWebVitals';
+import { clearLegacyPricingKeys } from './utils/storage';
+
+clearLegacyPricingKeys();
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(

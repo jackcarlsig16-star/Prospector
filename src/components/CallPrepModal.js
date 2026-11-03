@@ -14,7 +14,7 @@
 // DATA_SOURCES as new rows with their own provenance tag. Prompt assembly
 // loops the registry — no other changes needed.
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { C, mono } from '../constants/colors';
 import { MODELS } from '../config/models';
 import { MEDPICC_FIELDS } from '../utils/dealIntel';
@@ -24,26 +24,6 @@ import { inferCloseProbability } from '../utils/scoringEngine';
 import { getStagedAccount, setStagedAccount } from '../utils/storage';
 import { hasGoogle } from '../utils/google';
 import { buildAccountEmailQuery } from '../utils/accountEmailQuery';
-
-// ─── Deterministic helpers (numbers from JS, never AI) ─────────────────────
-const getPricingForPrompt = (id) => {
-  if (!id) return {};
-  let intel = null, session = null;
-  try { intel   = JSON.parse(localStorage.getItem('prospector_pricing_intel') || '{}')[id] || null; } catch {}
-  try { session = JSON.parse(localStorage.getItem('prospector_pricing_files')  || '{}')[id] || null; } catch {}
-  const out = {};
-  const m1  = intel?.m1  || (session?.monthlyUsers?.[0]  > 0 ? session.monthlyUsers[0]  : null);
-  const m12 = intel?.m12 || (session?.monthlyUsers?.[11] > 0 ? session.monthlyUsers[11] : null);
-  if (m1)  out['Volume Mo. 1']  = `${Number(m1).toLocaleString()} users`;
-  if (m12) out['Volume Mo. 12'] = `${Number(m12).toLocaleString()} users`;
-  if (session?.startUsers > 0) out['Current users'] = Number(session.startUsers).toLocaleString();
-  if (intel?.convRate > 0)           out['Conv. rate']     = `${intel.convRate}%`;
-  if (intel?.annualValuePerUser > 0) out['Rev / user']     = `$${Number(intel.annualValuePerUser).toLocaleString()} / yr`;
-  if (session?.commitFee > 0)        out['Commit fee']     = `$${Number(session.commitFee).toLocaleString()}`;
-  if (session?.pfTier && session.pfTier !== 'none') out['Platform fee tier'] = session.pfTier;
-  if (session?.isPartner)            out['Deal type']      = 'Partner / Reseller';
-  return out;
-};
 
 // ─── Component ──────────────────────────────────────────────────────────────
 export default function CallPrepModal({ acc, ev, tasks = [], onUpdate, onClose }) {
@@ -135,19 +115,6 @@ export default function CallPrepModal({ acc, ev, tasks = [], onUpdate, onClose }
           .map(f => `${f.label} (${(acc.medpicc[f.key] || '').trim() ? 'partial' : 'missing'})${f.hint ? ` — Ask: ${f.hint}` : ''}`)
           .join('\n');
         return `KNOWN:\n${known || '(none yet)'}\n\nGAPS:\n${gaps}`;
-      },
-    },
-    {
-      id: 'pricing',
-      label: 'Pricing intel',
-      sublabel: 'deal model: volume, fees, tier',
-      provenance: 'PROSPECTOR (deal model)',
-      defaultOn: true,
-      available: acc && Object.keys(getPricingForPrompt(acc.id)).length > 0,
-      build: () => {
-        if (!acc) return null;
-        const fields = getPricingForPrompt(acc.id);
-        return Object.entries(fields).map(([k, v]) => `${k} | ${v}`).join('\n');
       },
     },
     {
@@ -400,11 +367,6 @@ Return ONLY a JSON object — no markdown wrapper, no preamble. Bullet lines ins
 
   // ── Render: terminal-style gold/dim ────────────────────────────────────
   const risks = inferRisks(acc, tasks, { red: C.red, orange: C.orange, gold: C.gold });
-  const pricingRows = useMemo(() => {
-    if (!acc) return [];
-    const f = getPricingForPrompt(acc.id);
-    return Object.entries(f);
-  }, [acc]);
 
   const HDR = { ...mono, fontSize: 9, color: C.dim, textTransform: 'uppercase', letterSpacing: '0.1em' };
   const KEY = { ...mono, fontSize: 12, color: C.gold, fontWeight: 600 };
@@ -656,22 +618,6 @@ Return ONLY a JSON object — no markdown wrapper, no preamble. Bullet lines ins
                       </div>
                     );
                   })}
-                </Section>
-              )}
-
-              {/* Deal Snapshot — deterministic from pricing files */}
-              {pricingRows.length > 0 && (
-                <Section id="snapshot" title="Deal Snapshot" accent={C.mut}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <tbody>
-                      {pricingRows.map(([k, v], i) => (
-                        <tr key={k} style={{ background: i % 2 === 0 ? `${C.brd}0A` : 'transparent' }}>
-                          <td style={{ padding: '5px 8px', ...mono, fontSize: 10, color: C.mut, width: '45%' }}>{k}</td>
-                          <td style={{ padding: '5px 8px', ...mono, fontSize: 10, color: C.green, fontWeight: 600, textAlign: 'right' }}>{v}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
                 </Section>
               )}
 

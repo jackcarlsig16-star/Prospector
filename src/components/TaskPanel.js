@@ -734,13 +734,6 @@ function TaskModal({ task={}, accounts=[], onSave, onClose }) {
   const upd = patch => setForm(f=>({...f,...patch}));
   const [accSearch, setAccSearch] = useState(task.accName||"");
   const [showAccDrop, setShowAccDrop] = useState(false);
-  const [pricingSnaps, setPricingSnaps] = useState([]);
-
-  useEffect(()=>{
-    if(form.type==="Send pricing"&&form.accId){
-      try{ setPricingSnaps((JSON.parse(localStorage.getItem("prospector_pricing_snapshots")||"{}")[form.accId])||[]); }catch{ setPricingSnaps([]); }
-    } else setPricingSnaps([]);
-  },[form.type,form.accId]);
 
   const accSuggestions = accSearch.trim()
     ? accounts.filter(a=>a.name.toLowerCase().includes(accSearch.toLowerCase())).slice(0,8)
@@ -809,24 +802,6 @@ function TaskModal({ task={}, accounts=[], onSave, onClose }) {
             )}
           </div>
         </div>
-
-        {/* Pricing file — only if type=Send pricing and account set */}
-        {form.type==="Send pricing" && form.accId && (
-          <div style={{ marginBottom:14 }}>
-            <div style={{ ...mono, fontSize:9, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:5 }}>Pricing file</div>
-            {pricingSnaps.length===0
-              ? <span style={{ ...mono, fontSize:11, color:C.dim }}>No saved pricing files for this account — save one from the Pricing Calculator</span>
-              : <div style={{ display:"flex", gap:5, flexWrap:"wrap" }}>
-                  {pricingSnaps.map(s=>(
-                    <button key={s.id} onClick={()=>upd({pricingFileId:s.id,pricingFileName:s.name})}
-                      style={{ ...mono, fontSize:11, padding:"4px 10px", borderRadius:5, border:`1px solid ${form.pricingFileId===s.id?C.gold:C.brd}`, background:form.pricingFileId===s.id?`${C.gold}18`:"transparent", color:form.pricingFileId===s.id?C.gold:C.mut, cursor:"pointer" }}>
-                      {s.name} <span style={{ color:C.dim }}>· {s.savedAt}</span>
-                    </button>
-                  ))}
-                </div>
-            }
-          </div>
-        )}
 
         {/* Due date + Priority row */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>

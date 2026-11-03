@@ -38,3 +38,10 @@ export const saveCompliance = (accId, data) => {
 export const getAllCompliance = () => {
   try { return JSON.parse(localStorage.getItem(COMPLIANCE_KEY)||"{}"); } catch { return {}; }
 };
+
+// Written only by the pricing tools removed in remove-legacy-pricing-v1; nothing reads them now. Cleared on every
+// load so old browsers drop them (a no-op once gone).
+export const LEGACY_PRICING_KEYS = ["prospector_pricing_files", "prospector_pricing_intel", "prospector_pricing_snapshots"];
+export const clearLegacyPricingKeys = () => {
+  for (const k of LEGACY_PRICING_KEYS) { try { localStorage.removeItem(k); } catch {} }
+};

@@ -77,7 +77,7 @@ function closeConfColor(v) {
 }
 
 // ── buildContext ──────────────────────────────────────────────────────────────
-function buildContext(acc) {
+export function buildContext(acc) {
   const calls = [...(acc.calls || [])].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   const recentCalls = calls.slice(-3);
   const daysInStage = acc.activeDealAt
@@ -123,31 +123,6 @@ Committed: ${committed.length ? committed.join('; ') : 'none'}`;
   Security Questionnaire: ${compliance.steps?.find(s => s.id === 'security_q')?.status || 'Not Started'}`
     : 'No compliance record on file — treat as Not Started across all steps.';
 
-  // Pricing
-  let pricing = null;
-  let pricingIntel = null;
-  try {
-    const pRaw = localStorage.getItem('prospector_pricing_files');
-    if (pRaw) pricing = (JSON.parse(pRaw) || {})[acc.id] || null;
-  } catch {}
-  try {
-    const iRaw = localStorage.getItem('prospector_pricing_intel');
-    if (iRaw) pricingIntel = (JSON.parse(iRaw) || {})[acc.id] || null;
-  } catch {}
-
-  const pricingSection = pricing
-    ? `Products quoted: ${pricing.products?.filter(p => p.included).map(p => p.name).join(', ') || pricing.products?.map(p => p.name).join(', ') || 'none'}
-  Commit ramp: ${pricing.commitRamp ? 'yes' : 'no'}
-  Partner deal: ${pricing.isPartner ? 'yes' : 'no'}
-  Billing start: ${pricing.billingStart || 'not set'}
-  Quote exists: yes`
-    : 'No pricing session on file — quote not yet created.';
-
-  const pricingIntelSection = pricingIntel ? [
-    pricingIntel.convRate != null && `Conv rate: ${pricingIntel.convRate}%`,
-    pricingIntel.annualValuePerUser != null && `Value/user: $${pricingIntel.annualValuePerUser}/yr`,
-  ].filter(Boolean).join(', ') || 'no data points confirmed' : null;
-
   const totalCallChars = recentCalls.reduce((sum, c) => sum + (c.summary?.length || 0) + (c.transcript?.length || 0), 0);
 
   let aeContext = '';
@@ -172,9 +147,6 @@ NOTES: ${(acc.notes || '').slice(0, 400) || '—'}
 
 COMPLIANCE TRACK:
   ${complianceSection}
-
-PRICING & QUOTE STATE:
-  ${pricingSection}${pricingIntelSection ? `\n  Pricing intelligence: ${pricingIntelSection}` : ''}
 
 ACCOUNT SIGNAL SCORE:
   Tier: ${acc.tier || 'unknown'} (score: ${acc.signalBreakdown?.signalScore ?? acc.score ?? 'unknown'})
