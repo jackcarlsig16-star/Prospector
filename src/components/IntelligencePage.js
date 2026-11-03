@@ -2,8 +2,6 @@ import { useState, useEffect } from 'react';
 import { C, mono } from '../constants/colors';
 import { BASELINE_VOICE, voiceProfileKey, voiceDocsKey, getVoiceProfile } from '../constants/voice';
 import { detectIntelCategory } from '../utils/assay';
-import { SEED_INTEL_DOCS, UCS_DATA, PRODUCTS_DATA } from '../constants/products';
-import { PRODUCT_IMPORT_SOURCES } from './AccountCard';
 import { MODELS } from '../config/models';
 import { saveVoiceProfile } from '../utils/db';
 import { connectGoogle, useGoogleStatus } from '../utils/google';
@@ -12,7 +10,7 @@ import { connectGoogle, useGoogleStatus } from '../utils/google';
 function IntelligencePage({ user, activeUser, only, outlookVoice=false }) {
   const voiceUserName = activeUser?.name || user?.name || "";
   const voiceUserEmail = activeUser?.email || user?.email || "";
-  const [tab,setTab]=useState(only||"Use Cases");
+  const [tab,setTab]=useState(only||"Intel Library");
   const [voiceProfile,setVoiceProfileState]=useState(()=>getVoiceProfile(voiceUserName));
   const [vpLoading,setVpLoading]=useState(false);
   const [vpError,setVpError]=useState(null);
@@ -24,8 +22,6 @@ function IntelligencePage({ user, activeUser, only, outlookVoice=false }) {
     fetch("/api/microsoft/status").then(r=>r.json()).then(d=>setMicrosoftEmail(d.email||null)).catch(()=>setMicrosoftEmail(null));
   },[outlookVoice]);
   const outlookConnected=outlookVoice&&!!microsoftEmail;
-  const [ucExp,setUcExp]=useState("onboarding");
-  const [prodExp,setProdExp]=useState(null);
 
   // Intel Library
   const [docs,setDocs]=useState(()=>{
@@ -34,48 +30,13 @@ function IntelligencePage({ user, activeUser, only, outlookVoice=false }) {
       const existing=saved?JSON.parse(saved):[];
       const legacy=localStorage.getItem("prospector_intel");
       const legacyEntry=(!saved&&legacy)?[{id:"legacy",name:"My Intel",content:legacy,active:true,createdAt:new Date().toISOString()}]:[];
-      const existingIds=new Set(existing.map(d=>d.id));
-      const seedToAdd=SEED_INTEL_DOCS.filter(d=>!existingIds.has(d.id));
-      return[...existing,...legacyEntry,...seedToAdd];
-    }catch{return SEED_INTEL_DOCS;}
+      return[...existing,...legacyEntry];
+    }catch{return [];}
   });
   const [adding,setAdding]=useState(false);
   const [draft,setDraft]=useState("");
   const [draftName,setDraftName]=useState("");
   const [expandedDoc,setExpandedDoc]=useState(null);
-  const [importing,setImporting]=useState(false);
-  const [importProgress,setImportProgress]=useState(0);
-  const [importDone,setImportDone]=useState(()=>!!localStorage.getItem("prospector_import_done"));
-  const [importError,setImportError]=useState(null);
-
-  const importProductDocs=async()=>{
-    setImporting(true);
-    setImportProgress(0);
-    setImportError(null);
-    const newDocs=[];
-    for(let i=0;i<PRODUCT_IMPORT_SOURCES.length;i++){
-      const src=PRODUCT_IMPORT_SOURCES[i];
-      try{
-        const res=await fetch(`https://r.jina.ai/${src.url}`);
-        const text=await res.text();
-        // trim to first 4000 chars of meaningful content, strip markdown noise
-        const content=text.replace(/!\[.*?\]\(.*?\)/g,"").replace(/\[([^\]]+)\]\([^)]+\)/g,"$1").trim().slice(0,4000);
-        newDocs.push({id:src.id,name:src.name,content,active:true,createdAt:new Date().toISOString(),source:"docs.example.com"});
-      }catch(e){
-        newDocs.push({id:src.id,name:src.name,content:`(Failed to fetch — ${e.message})`,active:false,createdAt:new Date().toISOString(),source:"docs.example.com"});
-      }
-      setImportProgress(i+1);
-    }
-    // Upsert: replace existing docs with same id, append new
-    setDocs(prev=>{
-      const importIds=new Set(newDocs.map(d=>d.id));
-      return[...prev.filter(d=>!importIds.has(d.id)),...newDocs];
-    });
-    localStorage.setItem("prospector_import_done","1");
-    setImportDone(true);
-    setImporting(false);
-  };
-
   useEffect(()=>{try{localStorage.setItem("prospector_intel_docs",JSON.stringify(docs));}catch{}},[docs]);
 
   const saveDoc=()=>{
@@ -233,180 +194,15 @@ Return ONLY a valid JSON object — no explanation, no markdown, just the JSON:
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  const TABS=["Use Cases","Products","Intel Library","Example Accounts","Voice Profile","Voice Library","Integrations","Territory Trends"];
+  const TABS=["Intel Library","Example Accounts","Voice Profile","Voice Library","Integrations","Territory Trends"];
   return(
     <div>
       {!only&&<div style={{ display:"flex", gap:4, marginBottom:16, borderBottom:`1px solid ${C.brd}`, paddingBottom:10, flexWrap:"wrap" }}>
         {TABS.map(t=><button key={t} onClick={()=>setTab(t)} style={{ fontSize:13, padding:"5px 12px", borderRadius:5, border:`1px solid ${tab===t?C.goldBdr:C.brd}`, background:tab===t?C.goldBg:"transparent", color:tab===t?C.gold:C.mut, cursor:"pointer" }}>{t}</button>)}
       </div>}
 
-      {tab==="Use Cases"&&(
-        <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-          {UCS_DATA.map(uc=>{
-            const exp=ucExp===uc.id;
-            return(
-              <div key={uc.id} style={{ border:`1px solid ${exp?uc.b:C.brd}`, borderRadius:8, background:exp?uc.bg:C.card, overflow:"hidden" }}>
-                <div onClick={()=>setUcExp(exp?null:uc.id)} style={{ padding:"12px 16px", cursor:"pointer", display:"flex", alignItems:"center", gap:12 }}>
-                  <span style={{ width:10, height:10, borderRadius:"50%", background:uc.c, flexShrink:0 }}/>
-                  <div style={{ flex:1 }}>
-                    <p style={{ margin:"0 0 2px", fontWeight:600, fontSize:15, color:uc.c }}>{uc.lb}</p>
-                    <p style={{ margin:0, fontSize:13, color:C.mut }}>{uc.outcome}</p>
-                  </div>
-                  <span style={{ fontSize:11, color:C.dim }}>{exp?"▲":"▼"}</span>
-                </div>
-                {exp&&(
-                  <div style={{ borderTop:`1px solid ${uc.b}`, padding:"14px 16px" }}>
-                    {uc.notes&&<p style={{ margin:"0 0 14px", fontSize:13, color:C.mut, lineHeight:1.7, background:C.bg, borderRadius:6, padding:"10px 12px", border:`1px solid ${C.brd}` }}>{uc.notes}</p>}
-                    <div style={{ marginBottom:12 }}>
-                      <p style={{ ...mono, margin:"0 0 8px", fontSize:11, fontWeight:500, color:C.mut, textTransform:"uppercase", letterSpacing:"0.08em" }}>Core products</p>
-                      <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                        {uc.prods.map(p=>{
-                          const pd=PRODUCTS_DATA.flatMap(c=>c.items).find(i=>i.name===p);
-                          return(
-                            <div key={p} style={{ background:C.bg, border:`1px solid ${uc.b}`, borderRadius:6, padding:"6px 12px", maxWidth:280 }}>
-                              <p style={{ ...mono, margin:"0 0 3px", fontSize:13, fontWeight:500, color:uc.c }}>{p}</p>
-                              {pd&&<p style={{ margin:0, fontSize:12, color:C.mut, lineHeight:1.5 }}>{pd.desc}</p>}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    {uc.optional&&uc.optional.length>0&&(
-                      <div>
-                        <p style={{ ...mono, margin:"0 0 8px", fontSize:11, fontWeight:500, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em" }}>Also relevant</p>
-                        <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
-                          {uc.optional.map(p=><span key={p} style={{ ...mono, fontSize:12, color:C.dim, background:C.bg, border:`1px solid ${C.brd}`, borderRadius:5, padding:"4px 10px" }}>{p}</span>)}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {tab==="Products"&&(
-        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-          {PRODUCTS_DATA.map(cat=>(
-            <div key={cat.cat}>
-              <p style={{ ...mono, margin:"0 0 8px", fontSize:11, fontWeight:600, color:cat.c, textTransform:"uppercase", letterSpacing:"0.09em" }}>{cat.cat}</p>
-              <div style={{ display:"flex", flexDirection:"column", gap:3 }}>
-                {cat.items.map(p=>{
-                  const exp=prodExp===p.name;
-                  return(
-                    <div key={p.name} style={{ border:`1px solid ${exp?cat.c+"66":C.brd}`, borderRadius:8, background:exp?C.card:C.sur, overflow:"hidden" }}>
-                      <div onClick={()=>setProdExp(exp?null:p.name)} style={{ padding:"10px 14px", cursor:"pointer", display:"flex", alignItems:"center", gap:10 }}>
-                        <span style={{ width:8, height:8, borderRadius:"50%", background:cat.c, flexShrink:0 }}/>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <span style={{ fontWeight:600, fontSize:14, color:cat.c }}>{p.name}</span>
-                          {!exp&&<span style={{ fontSize:12, color:C.dim, marginLeft:10 }}>{p.desc.slice(0,80)}{p.desc.length>80?"…":""}</span>}
-                        </div>
-                        <span style={{ fontSize:11, color:C.dim, flexShrink:0 }}>{exp?"▲":"▼"}</span>
-                      </div>
-                      {exp&&(
-                        <div style={{ padding:"0 14px 16px", borderTop:`1px solid ${cat.c}22` }}>
-                          {/* What it does */}
-                          <p style={{ margin:"12px 0 10px", fontSize:13, color:C.txt, lineHeight:1.75 }}>{p.desc}</p>
-
-                          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
-                            {/* ICP */}
-                            {p.icp&&(
-                              <div style={{ padding:"10px 12px", background:`${cat.c}0C`, border:`1px solid ${cat.c}22`, borderRadius:6 }}>
-                                <p style={{ ...mono, margin:"0 0 5px", fontSize:10, color:cat.c, textTransform:"uppercase", letterSpacing:"0.08em" }}>Ideal Customer</p>
-                                <p style={{ margin:0, fontSize:12, color:C.mut, lineHeight:1.6 }}>{p.icp}</p>
-                              </div>
-                            )}
-                            {/* Verticals */}
-                            {p.verticals&&(
-                              <div style={{ padding:"10px 12px", background:"rgba(255,255,255,0.03)", border:`1px solid ${C.brd}`, borderRadius:6 }}>
-                                <p style={{ ...mono, margin:"0 0 6px", fontSize:10, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em" }}>Verticals</p>
-                                <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
-                                  {p.verticals.map(v=>(
-                                    <span key={v} style={{ ...mono, fontSize:10, padding:"2px 7px", background:`${cat.c}18`, border:`1px solid ${cat.c}33`, color:cat.c, borderRadius:3 }}>{v}</span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Signals */}
-                          {p.signals&&(
-                            <div style={{ padding:"10px 12px", background:"rgba(255,255,255,0.02)", border:`1px solid ${C.brd}`, borderRadius:6, marginBottom:10 }}>
-                              <p style={{ ...mono, margin:"0 0 7px", fontSize:10, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em" }}>🔍 Signals to look for on their site</p>
-                              <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
-                                {p.signals.map((s,i)=>(
-                                  <div key={i} style={{ display:"flex", gap:7, alignItems:"flex-start" }}>
-                                    <span style={{ color:cat.c, fontSize:11, flexShrink:0, marginTop:1 }}>›</span>
-                                    <span style={{ fontSize:12, color:C.mut, lineHeight:1.55 }}>{s}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Combinations */}
-                          {p.combos&&(
-                            <div style={{ padding:"10px 12px", background:"rgba(255,255,255,0.02)", border:`1px solid ${C.brd}`, borderRadius:6 }}>
-                              <p style={{ ...mono, margin:"0 0 7px", fontSize:10, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em" }}>⚙ Common combinations</p>
-                              <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
-                                {p.combos.map((c,i)=>{
-                                  const [prod,...rest]=c.split(" — ");
-                                  return(
-                                    <div key={i} style={{ display:"flex", gap:7, alignItems:"flex-start" }}>
-                                      <span style={{ ...mono, fontSize:11, color:cat.c, flexShrink:0, background:`${cat.c}18`, border:`1px solid ${cat.c}33`, borderRadius:3, padding:"1px 6px", whiteSpace:"nowrap" }}>{prod}</span>
-                                      {rest.length>0&&<span style={{ fontSize:12, color:C.dim, lineHeight:1.55 }}>{rest.join(" — ")}</span>}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {tab==="Intel Library"&&(
         <div>
-          {/* Product Docs Import */}
-          <div style={{ marginBottom:14, padding:"12px 14px", background:`${C.blue}0A`, border:`1px solid ${C.blue}28`, borderRadius:8, display:"flex", alignItems:"center", gap:12 }}>
-            <div style={{ flex:1, minWidth:0 }}>
-              <p style={{ margin:"0 0 2px", fontSize:13, fontWeight:500, color:C.txt }}>
-                {importing
-                  ? `Importing ${importProgress} / ${PRODUCT_IMPORT_SOURCES.length}…`
-                  : importDone
-                    ? <span>Docs imported <span style={{ color:C.green }}>✓</span> — {PRODUCT_IMPORT_SOURCES.length} pages live in library</span>
-                    : "Import your own product pages as intel docs"}
-              </p>
-              <p style={{ ...mono, margin:0, fontSize:11, color:C.dim }}>
-                {importing
-                  ? <span style={{ color:C.blue }}>Fetching via r.jina.ai — {PRODUCT_IMPORT_SOURCES[importProgress-1]?.name||"…"}</span>
-                  : importDone
-                    ? "Re-import replaces existing docs with the latest content from your product pages"
-                    : `Fetches ${PRODUCT_IMPORT_SOURCES.length} product + use case pages and saves as active intel docs`}
-              </p>
-              {importing&&(
-                <div style={{ marginTop:7, height:3, background:C.brd, borderRadius:2, overflow:"hidden" }}>
-                  <div style={{ height:"100%", width:`${(importProgress/PRODUCT_IMPORT_SOURCES.length)*100}%`, background:C.blue, transition:"width 0.3s", borderRadius:2 }}/>
-                </div>
-              )}
-            </div>
-            <button
-              onClick={importProductDocs}
-              disabled={importing}
-              style={{ ...mono, fontSize:12, padding:"7px 14px", borderRadius:6, border:`1px solid ${importing?C.brd:C.blue}`, background:importing?"transparent":`${C.blue}18`, color:importing?C.dim:C.blue, cursor:importing?"not-allowed":"pointer", fontWeight:500, whiteSpace:"nowrap", flexShrink:0 }}>
-              {importing?`${importProgress}/${PRODUCT_IMPORT_SOURCES.length}…`:importDone?"↺ Re-import":"⬇ Import docs"}
-            </button>
-          </div>
-
           <div style={{ display:"flex",alignItems:"center",gap:10,marginBottom:12 }}>
             <div style={{ flex:1 }}>
               <p style={{ margin:"0 0 1px",fontSize:15,fontWeight:500,color:C.txt }}>Intel Library</p>

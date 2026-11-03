@@ -8,8 +8,6 @@ import Field from '../ui/Field';
 import Button, { ButtonRow } from '../ui/Button';
 import StatusPill from '../ui/StatusPill';
 import AdminOrgChart from './admin/AdminOrgChart';
-import { PRODUCTS_OVERRIDE_KEY, loadProductOverrides } from './PricingPage';
-import { PRICING_PRODUCTS_DEFAULT } from '../constants/products';
 import { getAccountsForBusiness, getOutreachDoctrine, createOutreachDoctrineRule, updateOutreachDoctrineRule } from '../utils/db';
 import { mapSfdcStage } from '../utils/stageMap';
 import SalesforceTools from './admin/SalesforceTools';
@@ -525,9 +523,6 @@ function AdminPage({ isPlatformOwner=false, businesses=[], onBusinessFeaturesCha
 
   const LOCKED_ROLES = new Set(["Admin","Owner"]); // Admin/Owner always full-access, no edits
 
-  // Pricing tab state (must live at component level — can't be inside a conditional)
-  const [pricingOverrides, setPricingOverrides] = useState(()=>loadProductOverrides());
-  const [pricingSearch, setPricingSearch] = useState("");
   const [diamondsOn, setDiamondsOn] = useState(()=>localStorage.getItem("prospector_diamonds_enabled")!=="false");
   const [openCards, setOpenCards] = useState({});
 
@@ -554,10 +549,9 @@ function AdminPage({ isPlatformOwner=false, businesses=[], onBusinessFeaturesCha
           ]},
         ];
         // visual-nav-cleanup-v1 C4 - systems with nothing behind them yet (Stage 0, Oct 28: 0 Zoom webhook rows and no
-        // Zoom key; 0 sfdc_tokens; pricing lives only in this browser) sit in one collapsed group with what each needs.
+        // Zoom key; 0 sfdc_tokens) sit in one collapsed group with what each needs.
         // No tab is deleted; an open one keeps its group expanded.
         const NOT_SET_UP = [
-          ["pricing", "💰 Pricing", "Pricing files live only in this browser - no shared pricing source yet"],
           ...(isPlatformOwner ? [
             ["zoomevents", "☎ Zoom Events", "Needs the Zoom app keys on Render and its webhook pointed at /api/zoom/webhook - no events yet"],
             ["sfdc",       "☁ Salesforce Tools", "Needs a Salesforce connection (OAuth) - no workspace has one"],
@@ -763,82 +757,6 @@ function AdminPage({ isPlatformOwner=false, businesses=[], onBusinessFeaturesCha
           </div>
         );
       })()}
-
-      {/* ── PRICING TAB ── */}
-      {tab==="pricing"&&(()=>{
-        const TYPE_OPTS = [
-          { value:"S", label:"S — Per new user (single/onboarding)" },
-          { value:"R", label:"R — Per active user (recurring)" },
-          { value:"T", label:"T — On-demand (per call)" },
-        ];
-        const GROUP_OPTS = ["Standard","Moderate","Flexible","Limited"];
-        const overrides = pricingOverrides;
-        const save = (id, patch) => {
-          const next = { ...overrides, [id]: { ...(overrides[id]||{}), ...patch } };
-          setPricingOverrides(next);
-          localStorage.setItem(PRODUCTS_OVERRIDE_KEY, JSON.stringify(next));
-        };
-        const reset = (id) => {
-          const next = { ...overrides };
-          delete next[id];
-          setPricingOverrides(next);
-          localStorage.setItem(PRODUCTS_OVERRIDE_KEY, JSON.stringify(next));
-        };
-        const filteredProducts = PRICING_PRODUCTS_DEFAULT.filter(p =>
-          !pricingSearch.trim() || p.name.toLowerCase().includes(pricingSearch.toLowerCase())
-        );
-        const overrideCount = Object.keys(overrides).length;
-        return (
-          <div>
-            <div style={{ display:"flex", alignItems:"flex-start", gap:12, marginBottom:16 }}>
-              <div style={{ flex:1 }}>
-                <p style={{ ...mono, margin:"0 0 4px", fontSize:13, color:C.txt, fontWeight:600 }}>Product Defaults</p>
-                <p style={{ ...mono, margin:0, fontSize:11, color:C.dim }}>Override rack rates, billing type, and discount groups. Changes apply to all new and existing pricing sessions. Custom rates on saved deals are preserved.</p>
-              </div>
-              {overrideCount > 0 && <span style={{ ...mono, fontSize:11, color:C.gold, background:`${C.gold}14`, border:`1px solid ${C.gold}44`, borderRadius:4, padding:"3px 10px", flexShrink:0 }}>{overrideCount} override{overrideCount!==1?"s":""}</span>}
-            </div>
-            <input value={pricingSearch} onChange={e=>setPricingSearch(e.target.value)} placeholder="Filter products…"
-              style={{ ...mono, fontSize:12, padding:"7px 11px", background:C.bg, border:`1px solid ${C.brd}`, borderRadius:6, color:C.txt, outline:"none", width:"100%", boxSizing:"border-box", marginBottom:10 }}/>
-            <div style={{ border:`1px solid ${C.brd}`, borderRadius:8, overflow:"hidden" }}>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 90px 220px 130px 60px", padding:"6px 12px", background:C.card, borderBottom:`1px solid ${C.brd}` }}>
-                {["Product","Rack ($)","Type","Discount Group",""].map((h,i)=>(
-                  <span key={i} style={{ ...mono, fontSize:9, color:C.dim, textAlign:i===1?"right":"left", textTransform:"uppercase", letterSpacing:"0.07em" }}>{h}</span>
-                ))}
-              </div>
-              <div style={{ maxHeight:520, overflowY:"auto" }}>
-                {filteredProducts.map((p, i) => {
-                  const ov = overrides[p.id] || {};
-                  const changed = !!overrides[p.id];
-                  const rack = ov.rack ?? p.rack;
-                  const type = ov.type ?? p.type;
-                  const dg   = ov.discountGroup ?? p.discountGroup;
-                  return (
-                    <div key={p.id} style={{ display:"grid", gridTemplateColumns:"1fr 90px 220px 130px 60px", alignItems:"center", padding:"5px 12px", borderBottom:i<filteredProducts.length-1?`1px solid ${C.brd}22`:"none", background:changed?`${C.gold}07`:"transparent" }}>
-                      <span style={{ ...mono, fontSize:11, color:changed?C.gold:C.txt, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap", paddingRight:8 }} title={p.name}>{p.name}</span>
-                      <input type="number" step="0.001" min="0" value={rack ?? ""}
-                        onChange={e => { const v = parseFloat(e.target.value); save(p.id, { rack: isNaN(v) ? null : v }); }}
-                        style={{ ...mono, fontSize:11, padding:"3px 6px", background:C.bg, border:`1px solid ${(ov.rack!=null)?C.gold+"66":C.brd}`, borderRadius:4, color:C.txt, textAlign:"right", width:"100%", boxSizing:"border-box" }}
-                      />
-                      <select value={type} onChange={e=>save(p.id,{type:e.target.value})}
-                        style={{ ...mono, fontSize:11, padding:"3px 6px", background:C.bg, border:`1px solid ${ov.type?C.gold+"66":C.brd}`, borderRadius:4, color:ov.type?C.gold:C.txt, cursor:"pointer" }}>
-                        {TYPE_OPTS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-                      </select>
-                      <select value={dg} onChange={e=>save(p.id,{discountGroup:e.target.value})}
-                        style={{ ...mono, fontSize:11, padding:"3px 6px", background:C.bg, border:`1px solid ${ov.discountGroup?C.gold+"66":C.brd}`, borderRadius:4, color:ov.discountGroup?C.gold:C.txt, cursor:"pointer" }}>
-                        {GROUP_OPTS.map(o=><option key={o} value={o}>{o}</option>)}
-                      </select>
-                      <div style={{ textAlign:"center" }}>
-                        {changed && <button onClick={()=>reset(p.id)} style={{ ...mono, fontSize:10, padding:"2px 7px", background:"transparent", border:`1px solid ${C.brd}`, borderRadius:4, color:C.dim, cursor:"pointer" }} title="Reset to default">↺</button>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
-
 
       {/* ── ACCESS LOG TAB ── */}
       {tab==="accesslog"&&isPlatformOwner&&<AccessLogTab/>}

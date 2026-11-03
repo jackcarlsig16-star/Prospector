@@ -1,6 +1,5 @@
 import { useState, useRef } from 'react';
 import { C, mono, TIER_COLOR } from '../constants/colors';
-import { productMonthlyCost, monthUsersAt } from '../utils/pricingMath';
 import { CARD, kindTokens, ROLE } from './accountCard/tokens';
 import AccountBadge from './accountCard/AccountBadge';
 import AccountCardShell from './accountCard/AccountCardShell';
@@ -43,7 +42,7 @@ import { setBdrList, URGENCY_OPTIONS } from '../utils/assignHelper';
 export default function AccountCard({
   acc, business = null, expanded, onToggle, onReassay, reassaying, onUpdate,
   isFav, onToggleFav, onRemove, assignedEntry, onAssign, onUnassign, onFlagRemoval,
-  onOpenPricing, onOpenRoi, onCreateTask, onUpdateTask,
+  onCreateTask, onUpdateTask,
   tasks = [], activeUser = {}, parentName = null, onRequestLinkParent, onUnlinkParent,
   userEmail, canEdit, onUpdated, projects = [], campaigns = [], accountListIds = [], onAccountLinkedToProject,
   onRelationshipTypeChange,
@@ -54,7 +53,6 @@ export default function AccountCard({
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [adminOpen, setAdminOpen] = useState(null); // null | 'competition' | 'rawedit'
   const [intelFlash, setIntelFlash] = useState(null);
-  const [newlyDetectedProds, setNewlyDetectedProds] = useState(new Set());
   const [outreachOpen, setOutreachOpen] = useState(false);
   const [callPrepOpen, setCallPrepOpen] = useState(false);
   const [debriefOpen, setDebriefOpen] = useState(false);
@@ -101,8 +99,6 @@ export default function AccountCard({
     // (not deleted - DealTimeline.js is still live in LedgerPage.js). This is
     // a deliberate hold: Jack likes it as a generative feature and wants to
     // revisit it later, not a rejection of the feature.
-    onOpenPricing ? { tier: 3, key: 'pricing', icon: '$', label: 'Pricing', onClick: () => onOpenPricing(acc.id) } : null,
-    onOpenRoi ? { tier: 3, key: 'roi', icon: '📈', label: 'ROI', onClick: () => onOpenRoi(acc.id) } : null,
     // account-card-cleanup-v1 Stage 5 - Re-assay moved to AccountHeader's
     // icon row (near star/overflow), no longer a Tier-3 action.
   ].filter(Boolean) : [];
@@ -249,7 +245,6 @@ export default function AccountCard({
               <IntelWorkspace
                 acc={acc} business={business} projects={projects} campaigns={campaigns} onUpdate={onUpdate} tasks={tasks} activeUser={activeUser}
                 open={intelOpen} onClose={() => setIntelOpen(false)}
-                newlyDetectedProds={newlyDetectedProds}
                 debriefHandle={debriefRef.current}
               />
 
@@ -327,7 +322,7 @@ export default function AccountCard({
         <DebriefWorkspace
           ref={debriefRef}
           acc={acc} business={business} onUpdate={onUpdate} tasks={tasks} activeUser={activeUser} onCreateTask={onCreateTask}
-          setIntelFlash={setIntelFlash} onNewlyDetectedProds={setNewlyDetectedProds}
+          setIntelFlash={setIntelFlash}
           open={debriefOpen} onClose={() => setDebriefOpen(false)}
         />
       )}
@@ -348,40 +343,9 @@ export default function AccountCard({
 }
 
 // ── Legacy re-exports ──────────────────────────────────────────────────────
-// Pricing/Uploads/Intelligence/Analytics/Home pages import these directly
+// Uploads/Intelligence/Analytics/Home pages import these directly
 // from this file; kept stable across the redesign so nothing else needs to
 // change import paths. Not part of the account-card system itself.
-export const PRODUCT_IMPORT_SOURCES = [
-  { url: "https://docs.example.com/products/core-verify/", name: "Core Verify", id: "live_core_verify" },
-  { url: "https://docs.example.com/products/core-verify-plus/", name: "Core Verify Plus", id: "live_core_verify_plus" },
-  { url: "https://docs.example.com/products/balance-insights/", name: "Balance Insights", id: "live_balance_insights" },
-];
-
-export const calcPricingAnnual = (f) => {
-  if (!f?.products || !f?.monthlyUsers) return null;
-  try {
-    const prods = f.products.filter(p => p.included);
-    let total = 0;
-    const pfAmt = (() => {
-      const TIERS = { base: 2000, plus: 5000, premium: 15000 };
-      const t = TIERS[f.pfTier] || 0;
-      if (!f.pfDiscount?.enabled) return t;
-      return f.pfDiscount.type === "pct" ? t * (1 - f.pfDiscount.amount / 100) : Math.max(0, t - f.pfDiscount.amount);
-    })();
-    const sessionCtx = { avgAccounts: f.avgAccounts || 2.5, onDemand: f.onDemand || 0, tierMult: 1 };
-    for (let i = 0; i < 12; i++) {
-      const monthCtx = monthUsersAt(f.monthlyUsers, i);
-      let apiSpend = 0;
-      prods.forEach(p => { apiSpend += productMonthlyCost(p, monthCtx, sessionCtx); });
-      const floorThisMo = f.commitRamp ? (f.commitRampSched?.[i] || 0) : (f.commitFee || 0);
-      total += floorThisMo > 0 ? Math.max(apiSpend, floorThisMo) : apiSpend;
-      total += f.pfRamp ? (f.pfRampSched?.[i] || 0) : pfAmt;
-      if (f.isPartner) total += (f.partnerFee || 0);
-    }
-    return Math.round(total);
-  } catch { return null; }
-};
-
 export function Badge({ label, color, bg, border, size = 11 }) {
   return <span style={{ display: "inline-flex", alignItems: "center", background: bg, border: `1px solid ${border}`, borderRadius: 4, padding: "2px 7px", fontSize: size, fontWeight: 500, color, whiteSpace: "nowrap" }}>{label}</span>;
 }

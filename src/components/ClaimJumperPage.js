@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { C, TS, mono } from '../constants/colors';
 import { clientAssay, getActiveIntel, getActiveExamples } from '../utils/assay';
-import { UCS_DATA, PROD_COLOR } from '../constants/products';
 import { getVoiceProfile } from '../constants/voice';
 import { INDUSTRY_COLOR as VERT_C } from '../constants/industries';
 
@@ -87,7 +86,6 @@ function ClaimJumperPage({ pool=[], accounts=[], onClaim, onClaimMultiple, onRem
   const [segF,setSegF]=useState("All");
   const [geoF,setGeoF]=useState("All");
   const [vertF,setVertF]=useState("All");
-  const [ucF,setUcF]=useState(null);
   const [activeF,setActiveF]=useState("active"); // "all" | "active" | "inactive"
   const [sortBy,setSortBy]=useState("score"); // "score" | "date_desc" | "date_asc"
   const [dateFilter,setDateFilter]=useState(""); // ISO date string e.g. "2025-04-01"
@@ -187,7 +185,6 @@ function ClaimJumperPage({ pool=[], accounts=[], onClaim, onClaimMultiple, onRem
     if(segF!=="All")r=r.filter(a=>(a.segment||inferSegment(a.vert)||"Unknown")===segF);
     if(geoF!=="All")r=r.filter(a=>inferGeo(a.state)===geoF);
     if(vertF!=="All")r=r.filter(a=>a.vert===vertF);
-    if(ucF)r=r.filter(a=>a.ucs&&a.ucs.includes(ucF));
     if(activeF==="active")r=r.filter(a=>!a.siteInactive);
     if(activeF==="inactive")r=r.filter(a=>!!a.siteInactive);
     if(dateFilter){
@@ -202,7 +199,7 @@ function ClaimJumperPage({ pool=[], accounts=[], onClaim, onClaimMultiple, onRem
     else if(sortBy==="date_asc")r=r.sort((a,b)=>{const da=a.poolAddedAt||a.uploadedAt||"";const db=b.poolAddedAt||b.uploadedAt||"";return da.localeCompare(db);});
     else r=r.sort((a,b)=>(a.score||9)-(b.score||9));
     return r;
-  },[pool,tierF,segF,geoF,vertF,ucF,activeF,search,sortBy,dateFilter,dateMode]);
+  },[pool,tierF,segF,geoF,vertF,activeF,search,sortBy,dateFilter,dateMode]);
 
   const dupeIds = useMemo(() => findDupeIds(pool), [pool]);
 
@@ -367,17 +364,13 @@ function ClaimJumperPage({ pool=[], accounts=[], onClaim, onClaimMultiple, onRem
         </div>
       </div>
 
-      {/* Search + UC filter */}
+      {/* Search + filters */}
       <div style={{ display:"flex", gap:6, marginBottom:10, flexWrap:"wrap", alignItems:"center" }}>
         <input placeholder="Search accounts..." value={search} onChange={e=>setSearch(e.target.value)} style={{ fontSize:13, padding:"5px 10px", background:C.sur, border:`1px solid ${C.brd}`, borderRadius:5, color:C.txt, width:160, outline:"none" }}/>
         {[["all","All"],["active","Active"],["inactive","Inactive"]].map(([val,lb])=>(
           <button key={val} onClick={()=>setActiveF(val)} style={{ ...mono, fontSize:12, padding:"3px 10px", borderRadius:4, border:`1px solid ${activeF===val?C.green:C.brd}`, background:activeF===val?`${C.green}14`:"transparent", color:activeF===val?C.green:C.dim, cursor:"pointer" }}>{lb}</button>
         ))}
-        <span style={{ ...mono, fontSize:10, color:C.dim, padding:"0 2px" }}>·</span>
-        {UCS_DATA.map(uc=>(
-          <button key={uc.id} onClick={()=>setUcF(ucF===uc.id?null:uc.id)} style={{ fontSize:12, padding:"3px 9px", borderRadius:4, border:`1px solid ${ucF===uc.id?uc.b:C.brd}`, background:ucF===uc.id?uc.bg:"transparent", color:ucF===uc.id?uc.c:C.dim, cursor:"pointer" }}>{uc.lb}</button>
-        ))}
-        {(ucF||search)&&<button onClick={()=>{setUcF(null);setSearch("");}} style={{ fontSize:12, padding:"3px 8px", borderRadius:4, border:`1px solid ${C.brd}`, background:"transparent", color:C.mut, cursor:"pointer" }}>✕ clear</button>}
+        {search&&<button onClick={()=>setSearch("")} style={{ fontSize:12, padding:"3px 8px", borderRadius:4, border:`1px solid ${C.brd}`, background:"transparent", color:C.mut, cursor:"pointer" }}>✕ clear</button>}
         <div style={{ display:"flex", gap:5, marginLeft:"auto", alignItems:"center" }}>
           {dupeIds.size>0&&(
             <button onClick={()=>{
@@ -411,8 +404,8 @@ function ClaimJumperPage({ pool=[], accounts=[], onClaim, onClaimMultiple, onRem
       </div>
 
       {/* Column headers */}
-      <div style={{ display:"grid", gridTemplateColumns:canClaim?"28px 2.2fr 1fr 1.6fr 2fr 80px 44px 28px":"2.2fr 1fr 1.6fr 2fr 28px", gap:8, padding:"4px 10px", marginBottom:4 }}>
-        {(canClaim?["","Account","Vertical","Products","Why Us","",""]:[" Account","Vertical","Products","Why Us"]).map((h,i)=>(
+      <div style={{ display:"grid", gridTemplateColumns:canClaim?"28px 2.2fr 1fr 2fr 80px 44px 28px":"2.2fr 1fr 2fr 28px", gap:8, padding:"4px 10px", marginBottom:4 }}>
+        {(canClaim?["","Account","Vertical","Why Us","",""]:[" Account","Vertical","Why Us"]).map((h,i)=>(
           <span key={i} style={{ ...mono, fontSize:10, fontWeight:500, color:C.dim, textTransform:"uppercase", letterSpacing:"0.08em" }}>{h}</span>
         ))}
       </div>
@@ -442,7 +435,7 @@ function ClaimJumperPage({ pool=[], accounts=[], onClaim, onClaimMultiple, onRem
         return(
           <div key={a.id} style={{ marginBottom:3, border:`1px solid ${cardBdr}`, borderRadius:7, overflow:"hidden", boxShadow:cardGlow }}>
             {/* Collapsed row */}
-            <div onClick={()=>setExpanded(isExp?null:a.id)} style={{ display:"grid", gridTemplateColumns:canClaim?"28px 2.2fr 1fr 1.6fr 2fr 80px 44px 28px":"2.2fr 1fr 1.6fr 2fr 28px", gap:8, padding:"6px 10px", background:cardBg, alignItems:"center", cursor:"pointer", transition:"background 0.1s" }}>
+            <div onClick={()=>setExpanded(isExp?null:a.id)} style={{ display:"grid", gridTemplateColumns:canClaim?"28px 2.2fr 1fr 2fr 80px 44px 28px":"2.2fr 1fr 2fr 28px", gap:8, padding:"6px 10px", background:cardBg, alignItems:"center", cursor:"pointer", transition:"background 0.1s" }}>
               {canClaim&&<input type="checkbox" checked={isSel} onChange={e=>{e.stopPropagation();toggleSelect(a.id);}} onClick={e=>e.stopPropagation()} style={{ width:14, height:14, cursor:"pointer", accentColor:C.gold }}/>}
               <div style={{ minWidth:0 }}>
                 <div style={{ display:"flex", alignItems:"center", gap:6, marginBottom:2 }}>
@@ -458,9 +451,6 @@ function ClaimJumperPage({ pool=[], accounts=[], onClaim, onClaimMultiple, onRem
                 <p style={{ ...mono, margin:0, fontSize:11, color:C.dim }}>{a.bm?.slice(0,80)}{a.bm?.length>80?"…":""}</p>
               </div>
               <span style={{ fontSize:13, color:VERT_C[a.vert]||C.mut, fontWeight:500 }}>{a.vert||"—"}</span>
-              <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-                {(a.prods||[]).slice(0,3).map(p=><span key={p} style={{ ...mono, fontSize:10, color:PROD_COLOR[p]||C.mut, border:`1px solid ${C.brd}`, borderRadius:3, padding:"1px 5px", background:C.bg }}>{p}</span>)}
-              </div>
               <span style={{ fontSize:12, color:C.mut, overflow:"hidden", display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical" }}>{a.pf||"—"}</span>
               {canClaim&&(
                 <button onClick={e=>{e.stopPropagation();handleClaim(a.id);}} style={{ ...mono, fontSize:11, padding:"4px 8px", background:isGold?C.goldBg:C.sur, border:`1px solid ${isGold?C.goldBdr:C.brd}`, color:isGold?C.gold:C.mut, borderRadius:4, cursor:"pointer", fontWeight:isGold?600:400, whiteSpace:"nowrap" }}>{isGold?"⚡ Claim":"Claim"}</button>

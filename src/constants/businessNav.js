@@ -23,8 +23,6 @@ export const BUSINESS_NAV = [
 ];
 
 export const TOOLS_NAV = [
-  { id: "deal",       ic: "$",  lb: "Deal Workspace" },
-  { id: "blueprints", ic: "📊", lb: "Deck Blueprints" },
   { id: "lookalike",  ic: "◈",  lb: "Account Lookalike" },
 ];
 

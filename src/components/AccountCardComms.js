@@ -4,20 +4,8 @@ import { T } from '../constants/tokens';
 import { MODELS } from '../config/models';
 import { clientDebrief } from '../utils/dealIntel';
 import { extractIntelligenceFromCall } from '../utils/intelligenceEngine';
-import { FILES_KEY } from '../utils/storageKeys';
 import EmailModal from './EmailModal';
 import { ROLE } from './accountCard/tokens';
-
-const PRODUCT_DOCS = {
-  "Core Verify":      { label: "Core Verify",      url: "https://docs.example.com/core-verify/",      desc: "Instantly retrieve bank verified account and routing numbers" },
-  "Core Verify Plus": { label: "Core Verify Plus", url: "https://docs.example.com/core-verify-plus/", desc: "Confirm account ownership through name, email, phone number, and physical address" },
-  "Balance Insights": { label: "Balance Insights", url: "https://docs.example.com/balance-insights/", desc: "Real time available and current bank account balances" },
-};
-
-const PRODUCT_CATEGORIES = [
-  { label: "Account Authentication", products: ["Core Verify", "Core Verify Plus"] },
-  { label: "Financial Management",   products: ["Balance Insights"] },
-];
 
 const BILLING_FIELDS = [
   { key: "billToName",    label: "Bill To Name" },
@@ -59,19 +47,6 @@ export default function AccountCardComms({ acc, tasks, activeUser, onUpdate, bus
   const [editingDraftIdx,setEditingDraftIdx]=useState(null);
   const [draftEdit,      setDraftEdit]      =useState({ subject:'', body:'' });
 
-  const pFile = (() => {
-    try { return JSON.parse(localStorage.getItem(FILES_KEY) || "{}")[acc.id] || null; }
-    catch { return null; }
-  })();
-
-  const confirmedProds  = acc.prods || [];
-  const pFileProds      = (pFile?.products || []).filter(p => p.included).map(p => p.name);
-  const allProds        = [...new Set([...confirmedProds, ...pFileProds])];
-  const relevantDocs    = allProds.map(p => PRODUCT_DOCS[p]).filter(Boolean);
-  const activeCategories = PRODUCT_CATEGORIES
-    .map(cat => ({ ...cat, matches: cat.products.filter(p => allProds.includes(p) && PRODUCT_DOCS[p]) }))
-    .filter(cat => cat.matches.length > 0);
-
   const calls     = acc.calls || [];
   const callCount = calls.length;
 
@@ -92,10 +67,7 @@ export default function AccountCardComms({ acc, tasks, activeUser, onUpdate, bus
 
   const copyAllLinks = () => {
     const always = `- [API Docs](https://docs.example.com/)\n- [SDK and Libraries](https://docs.example.com/libraries/)`;
-    const catLinks = activeCategories
-      .map(cat => `**${cat.label}**\n${cat.matches.map(p => `- [${PRODUCT_DOCS[p].label}](${PRODUCT_DOCS[p].url}) — ${PRODUCT_DOCS[p].desc}`).join("\n")}`)
-      .join("\n\n");
-    navigator.clipboard.writeText([always, catLinks].filter(Boolean).join("\n\n"));
+    navigator.clipboard.writeText(always);
     setLinksCopied(true);
     setTimeout(() => setLinksCopied(false), 1500);
   };
@@ -270,7 +242,7 @@ export default function AccountCardComms({ acc, tasks, activeUser, onUpdate, bus
       <div style={SECTION_STYLE}>
         <span style={{ ...SEC_LBL, color: '#00b4d888' }}>API Docs for this account</span>
         {/* Always-present links */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: activeCategories.length ? 12 : 0 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
           {[
             { label: 'API Docs',           url: 'https://docs.example.com/',              desc: 'Full API reference and quickstart guides' },
             { label: 'SDK and Libraries',  url: 'https://docs.example.com/libraries/',    desc: 'Official client libraries for all languages' },
@@ -286,36 +258,6 @@ export default function AccountCardComms({ acc, tasks, activeUser, onUpdate, bus
             </div>
           ))}
         </div>
-        {/* Product-specific links by category */}
-        {activeCategories.length > 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {activeCategories.map(cat => (
-              <div key={cat.label}>
-                <span style={{ ...mono, fontSize: 9, color: '#444', textTransform: 'uppercase', letterSpacing: '0.08em', display: 'block', marginBottom: 5 }}>{cat.label}</span>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {cat.matches.map(p => {
-                    const doc = PRODUCT_DOCS[p];
-                    return (
-                      <div key={p} style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-                        <a href={doc.url} target="_blank" rel="noopener noreferrer"
-                          style={{ ...mono, fontSize: 12, color: '#f59e0b', textDecoration: 'none', flexShrink: 0 }}
-                          onMouseEnter={e => e.target.style.textDecoration = 'underline'}
-                          onMouseLeave={e => e.target.style.textDecoration = 'none'}>
-                          {doc.label}
-                        </a>
-                        <span style={{ ...mono, fontSize: 11, color: C.dim }}>{doc.desc}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <span style={{ ...mono, fontSize: 11, color: '#444', marginTop: 4, display: 'block' }}>
-            Add confirmed products in Settings to see filtered docs.
-          </span>
-        )}
         <button
           onClick={copyAllLinks}
           style={{ ...mono, fontSize: 11, padding: '4px 12px', background: linksCopied ? '#4ade8018' : 'transparent', border: `1px solid ${linksCopied ? '#4ade8044' : C.brd}`, borderRadius: 4, color: linksCopied ? '#4ade80' : C.dim, cursor: 'pointer', marginTop: 12 }}>

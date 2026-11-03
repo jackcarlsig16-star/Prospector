@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { C, TS, mono } from '../constants/colors';
 import { staleDays, isStale, isWarn } from '../utils/staleness';
-import { UCS_DATA, PROD_COLOR, ALL_PRODUCTS } from '../constants/products';
 import { INDUSTRY_COLOR as VERT_C } from '../constants/industries';
 import { DEAL_STAGES } from './AccountCard';
 import { getAllCompliance, STANDARD_STEPS, PARTNER_STEPS } from '../utils/storage';
@@ -176,8 +175,6 @@ function HomePage({ accounts, onNav, activeBatch, firstName="there", snapshots=[
     setDebriefAlerts(upd.filter(a=>!a.dismissed));
   };
 
-  const ucCounts  = UCS_DATA.map(uc=>({...uc,n:accounts.filter(a=>a.ucs&&a.ucs.some(u=>u===uc.id||u.toLowerCase()===uc.lb.toLowerCase())).length})).filter(u=>u.n>0).sort((a,b)=>b.n-a.n);
-  const prodCounts= ALL_PRODUCTS.map(p=>({name:p,n:accounts.filter(a=>a.prods&&a.prods.includes(p)).length,c:PROD_COLOR[p]||C.mut})).filter(p=>p.n>0).sort((a,b)=>b.n-a.n).slice(0,8);
   const vertMap   = {}; accounts.forEach(a=>{ if(a.vert){vertMap[a.vert]=(vertMap[a.vert]||0)+1;} });
   const vertCounts= Object.entries(vertMap).sort((a,b)=>b[1]-a[1]).slice(0,6);
 
@@ -680,41 +677,6 @@ function HomePage({ accounts, onNav, activeBatch, firstName="there", snapshots=[
               </div>
             );
           })()}
-
-          {/* E — Use Cases + Products */}
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
-            <div style={{ ...CARD() }}>
-              <p style={{ ...SH() }}>Use Cases</p>
-              {ucCounts.length===0
-                ? <span style={{ ...mono, fontSize:11, color:"#6b7280" }}>No data yet</span>
-                : ucCounts.map(uc=>(
-                    <div key={uc.id} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6 }}>
-                      <span style={{ width:7, height:7, borderRadius:"50%", background:uc.c||TEAL, flexShrink:0 }}/>
-                      <span style={{ fontSize:12, color:"#f1f5f9", flex:1 }}>{uc.lb}</span>
-                      <span style={{ ...mono, fontSize:12, color:uc.c||TEAL, fontWeight:600 }}>{uc.n}</span>
-                    </div>
-                  ))
-              }
-            </div>
-            {prodCounts.length>0&&(
-              <div style={{ ...CARD() }}>
-                <p style={{ ...SH() }}>Top Products</p>
-                {prodCounts.map((p,i)=>{
-                  const pct=Math.min((p.n/(analyzed.length||1))*100,100);
-                  return(
-                    <div key={p.name} style={{ display:"flex", alignItems:"center", gap:8, marginBottom:5 }}>
-                      <span style={{ ...mono, fontSize:10, color:"#374151", width:14, textAlign:"right", flexShrink:0 }}>{i+1}</span>
-                      <span style={{ fontSize:11, color:"#f1f5f9", width:80, flexShrink:0, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{p.name}</span>
-                      <div style={{ flex:1, height:5, borderRadius:3, background:"#1e293b", overflow:"hidden" }}>
-                        <div style={{ height:"100%", width:`${pct}%`, background:p.c, borderRadius:3, transition:"width 0.3s" }}/>
-                      </div>
-                      <span style={{ ...mono, fontSize:11, color:p.c, width:26, textAlign:"right", flexShrink:0 }}>{p.n}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
 
           {/* Stealth funnel */}
           {stealthList.length>0&&(()=>{

@@ -43,7 +43,7 @@ Each object:
   "web": "website.com",
   "vert": "vertical (e.g. Payments, Lending, PFM, Fraud)",
   "why": "One sentence: why they're similar to ${account.name} and what use case fits",
-  "products": ["Core Verify", "Balance Insights"],
+  "products": ["product or offering that fits"],
   "tier": "Gold|Silver|Tin",
   "hq": "City, ST or Remote"
 }

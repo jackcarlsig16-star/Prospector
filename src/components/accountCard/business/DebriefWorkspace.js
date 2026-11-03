@@ -22,7 +22,7 @@ const isTranscript = (text) => {
 // Owns Debrief + Quick Update + the auto-generated follow-up email that
 // fires after either — relocated verbatim from the old AccountCardActionBar.js
 // (account-card-unification-and-outreach-v1 / -full-redesign-v2). Business-only.
-const DebriefWorkspace = forwardRef(function DebriefWorkspace({ acc, business, onUpdate, tasks, activeUser, onCreateTask, setIntelFlash, onNewlyDetectedProds, open, onClose }, ref) {
+const DebriefWorkspace = forwardRef(function DebriefWorkspace({ acc, business, onUpdate, tasks, activeUser, onCreateTask, setIntelFlash, open, onClose }, ref) {
   const [debriefMode, setDebriefMode] = useState(null); // null | 'call' | 'quick'
   const [debriefText, setDebriefText] = useState("");
   const [debriefLoading, setDebriefLoading] = useState(false);
@@ -162,7 +162,6 @@ const DebriefWorkspace = forwardRef(function DebriefWorkspace({ acc, business, o
           if (ptc?.pathToClose) onUpdate({ ...update, pathToClose: ptc.pathToClose, pathToCloseAt: ptc.pathToCloseAt });
         }, true);
       }
-      if (intel.newlyDetectedProds.length) onNewlyDetectedProds && onNewlyDetectedProds(new Set(intel.newlyDetectedProds));
       const committed = result.committedActions || [];
       setPendingActions(committed); setEditedActions(committed.map(a => a.suggestedAction || a.action));
       setSelectedActionIdxs(new Set(committed.map((_, i) => i))); setActionsPushed(false);

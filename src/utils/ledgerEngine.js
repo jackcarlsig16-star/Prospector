@@ -1,4 +1,3 @@
-import { computePricing } from './pricing';
 import { inferDealStage } from './scoringEngine';
 
 const QUARTER_MONTHS = { Q1:[0,1,2], Q2:[3,4,5], Q3:[6,7,8], Q4:[9,10,11] };
@@ -8,17 +7,7 @@ export const getCurrentQuarter = () => {
   return Object.entries(QUARTER_MONTHS).find(([, months]) => months.includes(month))[0];
 };
 
-export const getACV = (acc) => {
-  if (acc.acvOverride != null) return acc.acvOverride;
-  try {
-    const pFile = JSON.parse(localStorage.getItem("prospector_pricing_files") || "{}")[acc.id];
-    if (pFile) {
-      const pricing = computePricing(pFile);
-      return pricing?.annualTotal ?? null;
-    }
-  } catch {}
-  return null;
-};
+export const getACV = (acc) => acc.acvOverride ?? null;
 
 export const getForecastSummary = (accounts, winsLog, prefs) => {
   const currentQ = getCurrentQuarter();
@@ -30,17 +19,7 @@ export const getForecastSummary = (accounts, winsLog, prefs) => {
     return QUARTER_MONTHS[currentQ].includes(month);
   });
 
-  const closedWonQTD = qtdWins.reduce((s, w) => {
-    if (w.acv != null) return s + w.acv;
-    try {
-      const pFile = JSON.parse(localStorage.getItem("prospector_pricing_files") || "{}")[w.accountId];
-      if (pFile) {
-        const pricing = computePricing(pFile);
-        return s + (pricing?.annualTotal || 0);
-      }
-    } catch {}
-    return s;
-  }, 0);
+  const closedWonQTD = qtdWins.reduce((s, w) => s + (w.acv ?? 0), 0);
 
   // account-taxonomy-and-creation-upgrade-v1 Stage 4 - forward pipeline
   // forecast, not historical revenue (closedWonQTD above reads winsLog, not

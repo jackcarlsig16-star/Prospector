@@ -473,14 +473,11 @@ ${campaignGuidance.doctrine ? `Doctrine: ${campaignGuidance.doctrine}` : ""}`.tr
     products?.length  ? `Relevant products: ${products.join(", ")}` : null,
     signals?.length   ? `Account signals: ${signals.join(", ")}` : null,
     // outreach-intelligence-v1 Section 0b follow-up — customIntel is
-    // getActiveIntel()'s raw output: global, not business-scoped, still
-    // holding the original fintech product docs (Core Verify etc). Gated on
+    // getActiveIntel()'s raw output: global, not business-scoped. Gated on
     // !assayCriteria at first, but assayCriteria is never fetched at all for
     // influencer accounts (isInfluencer skips that query entirely) - so a
     // real businessId on an influencer account still let customIntel through
-    // unconditionally. Live-tested against HumanKind's real influencer
-    // accounts (bulk generation across a real project list): got "Core
-    // Verify"/"ACH flow" pitches sent to Chicago wellness creators. Gate on
+    // unconditionally, and unrelated product pitches reached creators. Gate on
     // !businessId instead - any real businessId means a real, non-fintech
     // business context exists, regardless of whether assay_criteria has been
     // generated yet or the account is an influencer. Only Claim Jumper's

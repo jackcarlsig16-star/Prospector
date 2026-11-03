@@ -1,4 +1,4 @@
-import { useState, forwardRef, useImperativeHandle } from 'react';
+import { useState } from 'react';
 import { MEDPICC_FIELDS, clientDealReview } from '../../../utils/dealIntel';
 import { MODELS } from '../../../config/models';
 import IntelPanel from '../../intel/IntelPanel';
@@ -8,12 +8,11 @@ import IntelPanel from '../../intel/IntelPanel';
 // the old AccountCardActionBar.js. Business-only. `onRelaunchFollowUp`
 // comes from DebriefWorkspace's ref so the two stay wired without either
 // one owning the other's state.
-const IntelWorkspace = forwardRef(function IntelWorkspace({ acc, business, projects, campaigns, onUpdate, tasks, activeUser, open, onClose, newlyDetectedProds, debriefHandle }, ref) {
+export default function IntelWorkspace({ acc, business, projects, campaigns, onUpdate, tasks, activeUser, open, onClose, debriefHandle }) {
   const [callHistoryOpen, setCallHistoryOpen] = useState(false);
   const [callScoreOpen, setCallScoreOpen] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
   const [personasTabOpen, setPersonasTabOpen] = useState(false);
-  const [settingsTabOpen, setSettingsTabOpen] = useState(false);
   const [medpiccOpen, setMedpiccOpen] = useState(false);
   const [dealReviewOpen, setDealReviewOpen] = useState(false);
   const [gongCalls, setGongCalls] = useState(null);
@@ -96,10 +95,6 @@ const IntelWorkspace = forwardRef(function IntelWorkspace({ acc, business, proje
     setIntelLoading(false);
   };
 
-  useImperativeHandle(ref, () => ({
-    openSettings() { setSettingsTabOpen(true); },
-  }));
-
   if (!open) return null;
 
   return (
@@ -110,7 +105,6 @@ const IntelWorkspace = forwardRef(function IntelWorkspace({ acc, business, proje
       callScoreOpen={callScoreOpen} setCallScoreOpen={setCallScoreOpen}
       askOpen={askOpen} setAskOpen={setAskOpen}
       personasTabOpen={personasTabOpen} setPersonasTabOpen={setPersonasTabOpen}
-      settingsTabOpen={settingsTabOpen} setSettingsTabOpen={setSettingsTabOpen}
       medpiccOpen={medpiccOpen} setMedpiccOpen={setMedpiccOpen}
       dealReviewOpen={dealReviewOpen} setDealReviewOpen={setDealReviewOpen}
       gongCalls={gongCalls} gongCallsError={gongCallsError}
@@ -136,9 +130,6 @@ const IntelWorkspace = forwardRef(function IntelWorkspace({ acc, business, proje
       linksAddOpen={linksAddOpen} setLinksAddOpen={setLinksAddOpen}
       linkLabelDraft={linkLabelDraft} setLinkLabelDraft={setLinkLabelDraft}
       linkUrlDraft={linkUrlDraft} setLinkUrlDraft={setLinkUrlDraft}
-      newlyDetectedProds={newlyDetectedProds}
     />
   );
-});
-
-export default IntelWorkspace;
+}

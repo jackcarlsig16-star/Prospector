@@ -1,9 +1,6 @@
 import { useState } from "react";
 import { C, mono } from '../constants/colors';
 import { getActiveIntel, getActiveExamples } from '../utils/assay';
-import { PROD_COLOR } from '../constants/products';
-import DealWorkspace from './DealWorkspace';
-import BlueprintTool from './pricing/BlueprintTool';
 import { TOOLS_NAV } from '../constants/businessNav';
 
 // ─── Lookalike Finder ────────────────────────────────────────────────────────
@@ -91,7 +88,7 @@ function LookalikeTool({ accounts=[], pool=[] }) {
         {s.why&&<p style={{ margin:0, fontSize:13, color:C.mut, lineHeight:1.5 }}>{s.why}</p>}
         {s.products?.length>0&&(
           <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-            {s.products.map(p=><span key={p} style={{ ...mono, fontSize:10, color:PROD_COLOR[p]||C.dim, background:C.bg, border:`1px solid ${C.brd}`, borderRadius:3, padding:"1px 5px" }}>{p}</span>)}
+            {s.products.map(p=><span key={p} style={{ ...mono, fontSize:10, color:C.dim, background:C.bg, border:`1px solid ${C.brd}`, borderRadius:3, padding:"1px 5px" }}>{p}</span>)}
           </div>
         )}
         {isNew&&s.web&&(
@@ -206,11 +203,8 @@ function LookalikeTool({ accounts=[], pool=[] }) {
 }
 
 // ─── Tools ────────────────────────────────────────────────────────────────────
-function ToolsPage({ accounts=[], pool=[], launchAccountId=null, onLaunched, activeTool="deal", onToolSelect, onCreateTask }) {
-  // generation-engine-consolidation-v1 Stage 2 - "Email System" tab removed
-  // (EmailGenerator.js retired - static fintech-hardcoded templates, not AI).
-  // Map legacy "pricing"/"roi" tool IDs to the new "deal" entry point
-  const active = (activeTool==="pricing"||activeTool==="roi") ? "deal" : (activeTool || "deal");
+function ToolsPage({ accounts=[], pool=[], activeTool="lookalike", onToolSelect }) {
+  const active = TOOLS_NAV.some(t => t.id === activeTool) ? activeTool : "lookalike";
   const setActive = t => { if(onToolSelect) onToolSelect(t); };
   return (
     <div style={{ padding:24, maxWidth:1440, margin:"0 auto" }}>
@@ -223,9 +217,7 @@ function ToolsPage({ accounts=[], pool=[], launchAccountId=null, onLaunched, act
           </button>
         ))}
       </div>
-      {active === "deal"       && <DealWorkspace accounts={accounts} onCreateTask={onCreateTask} launchAccountId={launchAccountId} onLaunched={onLaunched}/>}
       {active === "lookalike"  && <LookalikeTool accounts={accounts} pool={pool}/>}
-      {active === "blueprints" && <BlueprintTool accounts={accounts}/>}
     </div>
   );
 }

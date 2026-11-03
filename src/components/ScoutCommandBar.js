@@ -26,8 +26,6 @@ const SUGGESTED = [
 const PAGES = [
   { lb: 'Accounts',  pg: 'accounts',  ic: '◈', c: '#60A8F0' },
   { lb: 'Ideas',     pg: 'ideas',     ic: '◉', c: T.amber },
-  { lb: 'Pricing',   pg: 'tools',     ic: '$', c: '#FFD700' },
-  { lb: 'ROI',       pg: 'tools',     tab: 'roi', ic: '↗', c: '#42E890' },
 ];
 
 const VERBS_RE = /^(rank|list|show|give|find|write|draft|summarize|tell|forecast|brief|build|create|what|who|where|why|when|how|which)\b/i;
@@ -274,7 +272,7 @@ export default function ScoutCommandBar({ accounts = [], onNav, onCreateTask, ac
   const handlePageNav = (p) => {
     setFocused(false);
     setQuery('');
-    onNav?.(p.pg, p.tab || null);
+    onNav?.(p.pg);
   };
 
   const handleAccountNav = (a) => {

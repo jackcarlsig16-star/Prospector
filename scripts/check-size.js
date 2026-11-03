@@ -8,11 +8,8 @@ const BLOCK_LINES = 3000;
 
 // Pure data/constants files — size is expected, exempt from line-limit checks
 const EXEMPT_FILES = [
-  'approvalMatrix.js',  // large data constants file — size is expected
-  'products.js',        // product definitions — size is expected
   'colors.js',          // color constants
   'seedData.js',        // seed/fixture data — size is expected
-  'pricingProducts.js', // pricing product definitions
   'voiceConfig.js',     // voice/tone configuration
 ];
 

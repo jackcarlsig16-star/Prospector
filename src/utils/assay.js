@@ -1,4 +1,3 @@
-import { SEED_INTEL_DOCS } from '../constants/products';
 import { MODELS } from '../config/models';
 import { stripCitationMarkup } from './textSanitize';
 
@@ -38,10 +37,7 @@ export const getActiveIntel = () => {
   try {
     const saved = localStorage.getItem("prospector_intel_docs");
     const userDocs = saved ? JSON.parse(saved) : [];
-    // Always include seed docs that aren't already in localStorage (by id)
-    const userIds = new Set(userDocs.map(d => d.id));
-    const merged = [...userDocs, ...SEED_INTEL_DOCS.filter(d => !userIds.has(d.id))];
-    const combined = merged.filter(d => d.active).map(d => `[${d.name}]\n${d.content}`).join("\n\n---\n\n");
+    const combined = userDocs.filter(d => d.active).map(d => `[${d.name}]\n${d.content}`).join("\n\n---\n\n");
     if (combined) return combined;
     return localStorage.getItem("prospector_intel") || "";
   } catch { return localStorage.getItem("prospector_intel") || ""; }
@@ -120,30 +116,22 @@ const WEB_SEARCH_GUIDANCE = `WEB SEARCH — use it to find recent news, competit
 // expectation.
 const CITATION_FORMAT_INSTRUCTION = `OUTPUT FORMAT — businessModel and productFit must be plain prose only. Do not include citation tags, source markers, or any XML-like annotations such as <cite>, </cite>, <cite index="...">, or similar - write the content itself, never the citation wrapper around it.`;
 
-// assay-engine-generalization-v1, narrowed by account-taxonomy-and-
-// creation-upgrade-v1 Stage 2 — the original hardcoded fintech scoring
-// prompt. As of Stage 2 this is ONLY reachable via Claim Jumper's
-// not-yet-assigned pool scoring (no business object at all) — a real
-// business with no Assay Criteria yet now gets buildGeneralizedPrompt({})
-// instead (see clientAssay()'s comment). Do NOT "fix" this away for the
-// pool path without a separate decision about ClaimJumperPage.js itself
-// (already a flagged legacy-removal candidate) — this is intentionally
-// scoped narrower now, not a bug.
-function buildLegacyFintechPrompt(customIntel, exampleAccts) {
-  return `You are a product fit scoring engine for an SMB AE. Respond with ONLY a JSON object, no other text.
+// Scoring for accounts with no business object (the unassigned pool, bulk
+// "score unscored", Uploads). No business criteria exist here, so the rules
+// are deliberately generic: company health, scale and reach, plus whatever
+// context the AE added.
+function buildPoolPrompt(customIntel, exampleAccts) {
+  return `You score a company as a sales prospect for an AE. Respond with ONLY a JSON object, no other text.
 
-SCORING: 1=Gold(strong direct product fit), 2=Silver(solid indirect fit), 3=Tin(weak/speculative fit), 4=Slag(defunct OR zero fintech angle).
-Be generous: payments, lending, banking, crypto, insurance, wealth, PFM, payroll, EWA, rent, HR with payments = Gold or Silver.
-If site unreachable but vertical suggests fintech, score based on vertical — do NOT score 4 just because the site failed to load.
+SCORING: 1=Gold (active, established, clear buyer for the AE's offering), 2=Silver (active, plausible buyer), 3=Tin (weak or speculative fit), 4=Slag (defunct, or no plausible fit).
+Use the AE's added context below, when present, to judge fit. Without it, judge on company health, scale and reach only.
 
-DISTRIBUTION MULTIPLIER — CRITICAL OVERRIDE:
-If the company is a PLATFORM or B2B2C play that serves other businesses as customers, score them Gold (1) regardless of company size. Look for: "SMB customers", "small business platform", "marketplace", "white-label", "embedded", "powered by", serving 1000+ downstream businesses.
-Set distributionMultiplier=true and note downstream reach in estimatedDownstreamUsers.
+DISTRIBUTION MULTIPLIER: if the company is a platform or B2B2C business serving many other businesses ("marketplace", "white-label", "embedded", "powered by", 1000+ downstream businesses), set distributionMultiplier=true and note the reach in estimatedDownstreamUsers.
 
-DEFUNCT / ACQUIRED: Score 4=Slag and set isActive=false if site mentions "acquired by", "now part of", "no longer operating", "sunset", or is a holding page.
-Set disqualifier as: "reason_code — one sentence explanation." Reason codes: dead_site | wrong_vertical | no_fiat_rail | acquired | crypto_no_bank | b2c_only | no_fintech | coming_soon | suspended | stale. Example: "acquired — absorbed by Stripe in 2022, no longer an independent prospect." If active, disqualifier must be null.
+DEFUNCT / ACQUIRED: score 4=Slag and set isActive=false if the site says "acquired by", "now part of", "no longer operating", "sunset", or is a holding page.
+Set disqualifier as "reason_code — one sentence explanation." Reason codes: dead_site | acquired | coming_soon | suspended | stale | no_fit. If active, disqualifier must be null.
 
-SITE UNREACHABLE POLICY: Score based on company name + vertical + industry knowledge. Set confidence="Low". Do NOT set disqualifier to "site unreachable".
+SITE UNREACHABLE POLICY: score from the company name, vertical and general knowledge. Set confidence="Low". Do NOT set disqualifier to "site unreachable".
 
 ${WEB_SEARCH_GUIDANCE}
 
@@ -151,56 +139,23 @@ ${CITATION_FORMAT_INSTRUCTION}
 
 ${GROUNDING_DISCIPLINE}
 
-VERTICAL-SPECIFIC SCORING RULES — apply these before finalizing score:
-
-LENDING — be specific:
-- Personal lending with bank statement underwriting = Balance Insights + Core Verify → Gold
-- Business lending = Balance Insights + Core Verify → Gold
-- RULE: any lending product that touches bank data = Gold
-
-PAYMENTS / MARKETPLACES:
-- ACH collection or payout = Core Verify → Silver minimum
-- Multi-party settlement touching bank accounts = Core Verify + Core Verify Plus → Silver minimum
-- RULE: any payment platform moving money via bank transfer = Silver minimum
-
-INSURANCE / PROPTECH:
-- Premium or rent collection = Core Verify + Core Verify Plus → Silver minimum
-- Tenant or policyholder screening with income verification = Balance Insights → Gold
-- RULE: any recurring bank-collection product = Silver minimum
-
-GENERAL SIGNAL BOOSTS — apply these regardless of vertical:
-- KYC/AML/compliance language exists → add Core Verify Plus, boost score up
-- "Bank account" + "verify" together → Core Verify fit → boost score
-- Platform (B2B2C) serving financial businesses → Silver minimum regardless of tech stack
-
-USE CASES (return exact strings): "onboarding" | "credit" | "fraud" | "payments" | "pfm" | "openfinance"
-PRODUCTS (exact names): Core Verify, Core Verify Plus, Balance Insights
-BUNDLE RULE: "Core Verify Plus" is a bundle that includes Core Verify. Never list both — if Core Verify Plus fits, use only "Core Verify Plus" and omit "Core Verify".
-
-PRODUCT CONFIDENCE TIERS:
-HIGH CONFIDENCE — use freely as primary fit indicators and scoring signals:
-Core Verify, Core Verify Plus
-LOWER CONFIDENCE — include as secondary/possible fit only, never sole reason for Gold:
-Balance Insights
-RULE: A Gold score requires at least one HIGH CONFIDENCE product with clear evidence. Lower confidence products can appear in recommendations but cannot be the primary justification for tier.
+useCases and products: list only items named in the AE's added context that this company clearly needs; otherwise return empty arrays.
 
 ${customIntel ? `ADDITIONAL CONTEXT FROM AE:\n${customIntel.slice(0,2000)}\n` : ""}${exampleAccts ? `\nCALIBRATION EXAMPLES:\n${exampleAccts.slice(0,1500)}\n` : ""}
 Return ONLY this JSON:
-{"score":1,"tier":"Gold","businessModel":"2 sentences","productFit":"2 sentences","useCases":["payments"],"products":["Core Verify","Balance Insights"],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"bankConnectSignal":false,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"ungroundedClaims":[],"signalBreakdown":{"paymentSignals":[],"onboardingSignals":[],"scaleSignals":[],"platformSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
+{"score":2,"tier":"Silver","businessModel":"2 sentences","productFit":"2 sentences","useCases":[],"products":[],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"bankConnectSignal":false,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"ungroundedClaims":[],"signalBreakdown":{"paymentSignals":[],"onboardingSignals":[],"scaleSignals":[],"platformSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
 }
 
 // assay-engine-generalization-v1 — business-criteria-driven prompt, used
 // whenever a business has generated Assay Criteria (src/components/AssayCriteriaCard.js).
-// Same output JSON shape as the legacy prompt (downstream UI reads these exact
+// Same output JSON shape as buildPoolPrompt (downstream UI reads these exact
 // field names) but the fit/disqualifier/tier reasoning comes from that business's
-// own criteria instead of hardcoded fintech verticals and a fixed product catalog —
-// this business may not sell verification products at all.
+// own criteria.
 //
-// Deliberately does not take customIntel/exampleAccts (unlike the legacy prompt):
-// those are global AE-level state (prospector_intel_docs / SEED_INTEL_DOCS,
-// prospector_example_accts), not scoped per business, and still hold the
-// original fintech product docs (Core Verify etc). Injecting them here bled
-// fintech language into every other business's scoring regardless of that
+// Deliberately does not take customIntel/exampleAccts (unlike buildPoolPrompt):
+// those are global AE-level state (prospector_intel_docs,
+// prospector_example_accts), not scoped per business. Injecting them here bled
+// unrelated language into every other business's scoring regardless of that
 // business's own criteria (confirmed live against HumanKind/The Coconut Cult).
 // assay_criteria is the intended full substitute for business-specific
 // context in this path — don't re-add these params without giving AEs a
@@ -277,30 +232,11 @@ Return ONLY this JSON:
 {"score":1,"tier":"Gold","businessModel":"2 sentences describing only the company itself, no fit language","productFit":"2-3 sentences — opens by stating what the company is/does, then the alignment read","useCases":["tag1"],"products":[],"keySignals":["signal1"],"disqualifier":null,"confidence":"High","isActive":true,"employeeCount":null,"businessModelPattern":"platform","estimatedDownstreamUsers":"","isEstablished":true,"tractionSignals":[],"distributionMultiplier":false,"ungroundedClaims":[],"signalBreakdown":{"fitSignals":[],"adoptionSignals":[],"scaleSignals":[],"slagSignals":[],"signalScore":50,"topSignal":""}}`;
 }
 
-// businessId is optional (Claim Jumper's not-yet-assigned pool scoring has
-// none — deliberate, see below). When present, fetches that business's
-// cached Assay Criteria (cheap read, not a fresh generation — see
-// AssayCriteriaCard.js/generateAssayCriteria() for the generation side) and
-// scores against it instead of the hardcoded fintech prompt.
-//
-// account-taxonomy-and-creation-upgrade-v1 Stage 2 — real-data check found
-// the legacy fintech prompt (buildLegacyFintechPrompt) is NOT hypothetical
-// dead code: 3 of 4 real businesses already have Assay Criteria, but Kopi
-// Kita does not yet, and any brand-new business (which this same SPEC makes
-// easier to create) always transits through "no criteria yet" before its
-// first generation. That prompt's vertical-keyed rules and fixed product
-// catalog (Core Verify/Balance Insights) are fintech-specific by
-// construction, not just its vertical NAMES — patching the names in place
-// would still leave Kopi Kita-shaped businesses being scored against
-// bank-verification product fit. So: a businessId with no criteria yet now
-// falls through to buildGeneralizedPrompt() with empty criteria (honest
-// "no fit signals defined yet" scoring, same function already proven not to
-// leak global fintech customIntel/exampleAccts into per-business scoring)
-// instead of the fintech prompt. The fintech prompt itself is UNCHANGED and
-// still used for the one remaining businessId-less case — Claim Jumper's
-// pool, which isn't tied to any live business object and is itself a
-// separately-flagged legacy-removal candidate, not something to redesign
-// here.
+// businessId is optional: pool, bulk "score unscored" and Uploads have none
+// and use buildPoolPrompt. When present, fetches that business's cached Assay
+// Criteria (cheap read, not a fresh generation - see AssayCriteriaCard.js /
+// generateAssayCriteria()) and scores against it; a business with no criteria
+// yet gets buildGeneralizedPrompt({}) (honest "no fit signals defined yet").
 export async function clientAssay({ name, web, vert, customIntel, exampleAccts, stage, businessId, relationshipType }) {
   let siteContent = "", linkedin = null, signalBreakdown = null, fetchMethod = "none";
   if (web) {
@@ -334,7 +270,7 @@ export async function clientAssay({ name, web, vert, customIntel, exampleAccts, 
     ? buildGeneralizedPrompt(assayCriteria, relationshipType)
     : businessId
       ? buildGeneralizedPrompt({}, relationshipType) // real business, no criteria generated yet - honest empty-criteria scoring, not fintech rules
-      : buildLegacyFintechPrompt(customIntel, exampleAccts); // Claim Jumper pool only - no business object at all
+      : buildPoolPrompt(customIntel, exampleAccts); // no business object (pool, bulk score, Uploads)
 
   const response = await fetch("/proxy/anthropic/messages", {
     method: "POST",
@@ -359,8 +295,8 @@ export async function clientAssay({ name, web, vert, customIntel, exampleAccts, 
       // nothing (still zero). tool_choice is an API-level constraint the
       // prompt cannot substitute for. Costs ~3.4x input tokens (8,650 ->
       // 28,915) because results enter the context; accepted deliberately.
-      // Generalized path only - the legacy fintech prompt (Claim Jumper's
-      // pool, no businessId) has no headcount criterion to satisfy.
+      // Generalized path only - buildPoolPrompt (no businessId) has no
+      // headcount criterion to satisfy.
       ...(businessId ? { tool_choice: { type: "any" } } : {}),
       messages: [{ role:"user", content:`Score product fit:\nCompany: ${name}\nWebsite: ${web||"none"}\nVertical: ${vert||"unknown"}\nPipeline stage: ${stage||"Prospecting"}\nWebsite content (fetch method: ${fetchMethod}): ${siteContent||"not available"}\n${signalSummary}\nReturn ONLY the JSON.` }],
     }),
@@ -500,12 +436,6 @@ export async function clientAssay({ name, web, vert, customIntel, exampleAccts, 
     !parsed.signalBreakdown?.fitSignals?.length
   ) {
     parsed.disqualifier = null;
-  }
-  // Bundle normalization: Core Verify Plus supersedes Core Verify; remove Core
-  // Verify if both present. Gated on !businessId - these are buildLegacyFintechPrompt's
-  // product names, so only Claim Jumper's pool can legitimately return them.
-  if (!businessId && Array.isArray(parsed.products) && parsed.products.includes("Core Verify Plus")) {
-    parsed.products = parsed.products.filter(p => p !== "Core Verify");
   }
 
   // Fix 1 (belt-and-suspenders) - CITATION_FORMAT_INSTRUCTION above should

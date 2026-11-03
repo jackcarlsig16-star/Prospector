@@ -1,6 +1,5 @@
 import React from 'react';
 import { C, mono } from '../../constants/colors';
-import { UCS_DATA, ALL_PRODUCTS, PROD_COLOR } from '../../constants/products';
 import { GONG_RUBRIC, GONG_MAX, MEDPICC_FIELDS } from '../../utils/dealIntel';
 import AccountCardCallHistory from '../AccountCardCallHistory';
 import AccountCardDealDashboard from '../AccountCardDealDashboard';
@@ -15,7 +14,6 @@ export default function IntelPanel({
   callScoreOpen, setCallScoreOpen,
   askOpen, setAskOpen,
   personasTabOpen, setPersonasTabOpen,
-  settingsTabOpen, setSettingsTabOpen,
   medpiccOpen, setMedpiccOpen,
   dealReviewOpen, setDealReviewOpen,
   // Gong
@@ -39,7 +37,6 @@ export default function IntelPanel({
   // Relevant Links
   linksAddOpen, setLinksAddOpen, linkLabelDraft, setLinkLabelDraft, linkUrlDraft, setLinkUrlDraft,
   // Settings tab
-  newlyDetectedProds,
 }) {
   const gongLabel = gongCalls === 'loading' ? '⟳ Gong' : Array.isArray(gongCalls) ? `⬡ Gong (${gongCalls.length})` : '⬡ Gong';
   const gongActive = Array.isArray(gongCalls) && gongCalls.length > 0;
@@ -49,7 +46,6 @@ export default function IntelPanel({
     { id:"gong",     lbl:gongLabel,                                                  active:gongActive,      onClick:()=>{ if(!gongCalls||gongCalls==='loading') fetchGongCalls(); }, color:"#00B4D8" },
     { id:"ask",      lbl:"Ask Anything",                                             active:askOpen,         set:setAskOpen,         color:C.blue },
     { id:"personas", lbl:"Personas",                                                 active:personasTabOpen, set:setPersonasTabOpen, color:C.purple },
-    { id:"settings", lbl:"Settings",                                                 active:settingsTabOpen, set:setSettingsTabOpen, color:"#555" },
   ];
 
   return (
@@ -261,18 +257,6 @@ export default function IntelPanel({
         </div>
       )}
 
-      {settingsTabOpen && onUpdate && (
-        <div style={{ marginTop:8 }}>
-          <p style={{ ...mono, margin:"0 0 8px", fontSize:11, fontWeight:500, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em" }}>Use Cases</p>
-          <div style={{ display:"flex", gap:4, flexWrap:"wrap", marginBottom:12 }}>
-            {UCS_DATA.map(uc => { const on = (acc.ucs||[]).includes(uc.id); return <button key={uc.id} onClick={e=>{e.stopPropagation();const ucs=on?(acc.ucs||[]).filter(u=>u!==uc.id):[...(acc.ucs||[]),uc.id];onUpdate({...acc,ucs});}} style={{ fontSize:11, padding:"2px 8px", borderRadius:4, border:`0.5px solid ${on?uc.b:"#2a2a2a"}`, background:on?uc.bg:"transparent", color:on?uc.c:C.dim, cursor:"pointer" }}>{uc.lb}</button>; })}
-          </div>
-          <p style={{ ...mono, margin:"0 0 8px", fontSize:11, fontWeight:500, color:C.dim, textTransform:"uppercase", letterSpacing:"0.06em" }}>Products</p>
-          <div style={{ display:"flex", gap:4, flexWrap:"wrap" }}>
-            {ALL_PRODUCTS.map(p => { const on = (acc.prods||[]).includes(p); const pc = PROD_COLOR[p]||C.mut; const isNew = newlyDetectedProds.has(p); return <button key={p} onClick={e=>{e.stopPropagation();const prods=on?(acc.prods||[]).filter(x=>x!==p):[...new Set([...(acc.prods||[]),p])];onUpdate({...acc,prods});}} style={{ ...mono, fontSize:10, padding:"2px 7px", borderRadius:4, border:`0.5px solid ${on?pc:"#2a2a2a"}`, background:on?C.card:"transparent", color:on?pc:C.dim, cursor:"pointer", position:"relative" }}>{p}{isNew&&<span style={{ marginLeft:4, fontSize:9, color:"#f59e0b", fontWeight:700 }}>✦ new</span>}</button>; })}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
