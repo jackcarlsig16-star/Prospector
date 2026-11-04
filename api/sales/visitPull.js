@@ -13,6 +13,7 @@ import { autoCreateFromVisits, salesSettings } from './visitorRoutes.js';
 import { hasRole } from '../lib/requireAuth.js';
 import { scheduleRecompute } from './intentScoreRun.js';
 import { schedulePeoplePull } from './visitorPeoplePull.js';
+import { laInstant } from './teamEmails/visitorEmail.js';
 
 // signals-v1 REV4 Stage 4 (D9) - Prospector's own daily website-visitor
 // pull. Kicked by a Member's first Goals & Sales load of the LA day or by
@@ -28,6 +29,9 @@ import { schedulePeoplePull } from './visitorPeoplePull.js';
 export const MONTHLY_CREDIT_CAP = 500;
 export const PAUSED = 'Visitor pull paused: 500 Apollo credits used this month';
 export const TRIGGERS = ['pageload', 'manual', 'test', 'cron'];
+// Team-emails ruling, Nov 4: the scheduler's pull runs unless a pull already finished after 05:00 LA that day, so a
+// page load just after midnight doesn't leave the 07:00 email on night-old numbers. The page-load guard is unchanged.
+export const CRON_FRESH_AFTER = '05:00';
 export const KINDS = ['daily', 'backfill'];
 export const MAX_PAGES = 5;
 const STALE_RUNNING_MS = 10 * 60e3;
@@ -70,13 +74,14 @@ async function lastOkWindowEnd(supabase, businessId) {
 // blocks another backfill that day, force or not; an 'error' or stale
 // 'running' row is retried; a fresh 'running' row means someone else is
 // pulling right now. The window the run covers is written on the row.
-async function claimRun(supabase, businessId, today, win, force, now) {
+async function claimRun(supabase, businessId, today, win, force, now, freshAfter = null) {
   const stamp = new Date(now).toISOString();
   const windowCols = { window_start: win.window_start, window_end: win.window_end, lookback_days: win.lookback_days };
   const prior = must(await supabase.from('visit_pull_runs').select(RUN_COLS).eq('business_id', businessId).eq('la_date', today).eq('kind', win.kind).maybeSingle());
   if (prior) {
     if (prior.status === 'running' && now - Date.parse(prior.updated_at) < STALE_RUNNING_MS) return { busy: true };
-    if (prior.status === 'ok' && (!force || win.kind === 'backfill')) return { done: prior };
+    const stale = freshAfter != null && win.kind === 'daily' && Date.parse(prior.updated_at) < freshAfter;
+    if (prior.status === 'ok' && (!force || win.kind === 'backfill') && !stale) return { done: prior };
     const rows = must(await supabase.from('visit_pull_runs').update({ status: 'running', calls: 0, credits: 0, error: null, updated_at: stamp, ...windowCols })
       .eq('id', prior.id).eq('status', prior.status).select(RUN_COLS));
     return rows.length ? { run: rows[0], first: false } : { busy: true };
@@ -169,7 +174,7 @@ export async function runVisitPull(supabase, { businessId, userId, trigger = 'ma
     const spent = await monthSpend(supabase, laMonth);
     if (spent >= MONTHLY_CREDIT_CAP) return reply(200, { ran: false, paused: true, reason: PAUSED, spent });
     win = windowFor(await lastOkWindowEnd(supabase, businessId), today, { backfillDays });
-    claim = await claimRun(supabase, businessId, today, win, force, now);
+    claim = await claimRun(supabase, businessId, today, win, force, now, trigger === 'cron' ? laInstant(today, CRON_FRESH_AFTER) : null);
   } catch (e) {
     return reply(e.status || 500, { error: e.message });
   }

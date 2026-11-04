@@ -346,3 +346,23 @@ test('route: backfill_days needs admin (403 before any read); a member\'s plain 
   await runVisitPullRoute(req('member', { backfill_days: 14 }), r1);
   assert.deepEqual([r1.code, r1.body.error], [403, 'Only an owner or admin can backfill visitors']);
 });
+
+test('team-emails ruling Nov 4: the cron pull re-runs over a pull that finished before 05:00 LA; one after 05:00 counts; page loads unchanged', async () => {
+  const { sb, restore } = setup(visitors({ balances: [9910] }));
+  const at = iso => Date.parse(iso);
+  try {
+    await runVisitPull(sb, { businessId: B, userId: U, trigger: 'pageload', now: at('2026-10-20T07:20:00Z') }); // 00:20 PDT
+    const run = sb.db.visit_pull_runs.find(r => r.kind === 'daily');
+    run.updated_at = '2026-10-20T07:20:30Z';
+    const start = calls();
+    const page = await runVisitPull(sb, { businessId: B, userId: U, trigger: 'pageload', now: at('2026-10-20T13:30:00Z') });
+    assert.deepEqual([page.body.ran, page.body.reason, calls() - start], [false, 'Visitors already pulled today', 0], 'the page-load guard is as it was');
+    const cron = await runVisitPull(sb, { businessId: B, userId: U, trigger: 'cron', now: at('2026-10-20T13:30:00Z') }); // 06:30 PDT
+    assert.equal(cron.body.ran, true, 'the 00:20 pull is too early for the 07:00 email');
+    assert.equal(calls() - start, 4);
+    assert.equal(sb.db.visit_pull_runs.filter(r => r.kind === 'daily').length, 1, 'same row, re-run in place');
+    run.updated_at = '2026-10-20T12:10:00Z'; // finished 05:10 PDT
+    const again = await runVisitPull(sb, { businessId: B, userId: U, trigger: 'cron', now: at('2026-10-20T13:35:00Z') });
+    assert.deepEqual([again.body.ran, again.body.reason, calls() - start], [false, 'Visitors already pulled today', 4]);
+  } finally { restore(); }
+});
