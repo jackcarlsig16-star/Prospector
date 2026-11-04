@@ -19,7 +19,10 @@ const lineOf = needle => lines.findIndex(l => l.includes(needle)) + 1;
 // The Stage 0 set, verbatim. Adding an exemption fails this test until it is listed here on purpose.
 const EXEMPT = ["{ method: 'POST', path: /^\\/api\\/zoom\\/webhook$/ }", "{ method: 'GET', path: /^\\/api\\/invites\\/[^/]+$/ }"];
 const NO_WORKSPACE_OK = ["{ method: 'GET', path: /^\\/api\\/me$/ }", "{ method: 'POST', path: /^\\/api\\/me\\/welcome$/ }", "{ method: 'POST', path: /^\\/api\\/invites\\/[^/]+\\/accept$/ }"];
-const CONNECTOR_PATHS = ['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp', '/.well-known/oauth-authorization-server', '/oauth/register', '/oauth/authorize', '/oauth/token', '/mcp'];
+const CONNECTOR_PATHS = ['/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp', '/.well-known/oauth-authorization-server', '/oauth/register', '/oauth/authorize', '/oauth/token', '/mcp',
+  // homelover-clients-v1 C11: the HomeLover connector's own OAuth server (issuer <origin>/hl) + /hl/mcp, same reason.
+  '/.well-known/oauth-protected-resource/hl/mcp', '/hl/.well-known/oauth-protected-resource', '/.well-known/oauth-authorization-server/hl', '/hl/.well-known/oauth-authorization-server',
+  '/.well-known/openid-configuration/hl', '/hl/oauth/register', '/hl/oauth/authorize', '/hl/oauth/token', '/hl/mcp'];
 const block = name => { const m = gate.match(new RegExp(`const ${name} = \\[([\\s\\S]*?)\\n\\];`)); assert.ok(m, name); return [...m[1].matchAll(/\{ method: '[A-Z]+', path: \/[^\n]*?\/ \}/g)].map(x => x[0]); };
 
 test('sessionAuth is mounted on /api and /proxy before any route, and its exempt lists are exactly the Stage 0 set', () => {

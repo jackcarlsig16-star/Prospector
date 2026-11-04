@@ -66,7 +66,8 @@ test('validateClient: no email or phone in any text field, ids and numbers check
   assert.match(validateClient({ ...momentumBody(), apollo_deal_id: 'a b' }).error, /Apollo id/);
   assert.match(validateClient({ ...momentumBody(), status: 'won' }).error, /status must be/);
   assert.match(validateClient({ ...momentumBody(), phone: '1' }).error, /unknown field: phone/);
-  assert.match(validateClient({ status: 'verbal_yes', organization: 'X' }).error, /organization \+ domain/);
+  assert.match(validateClient({ status: 'verbal_yes' }).error, /give organization/);
+  assert.equal(validateClient({ status: 'verbal_yes', organization: 'X' }).error, undefined, 'a known company can be named without its domain');
 });
 
 test('Make client: client fields set, stage via the PATCH path (stage_change written), campaign contacts stopped, Apollo warning, Send agreement once', async () => {
@@ -91,7 +92,11 @@ test('Make client: client fields set, stage via the PATCH path (stage_change wri
   assert.equal(again.body.todo_id, null);
   assert.equal(sb.db.sales_week_goals.filter(t => t.text === SEND_AGREEMENT).length, 1);
   assert.equal(again.body.contacts_stopped, 0);
-  assert.equal(sb.db.sales_client_events[1].kind, 'status');
+  assert.equal(again.body.unchanged, true, 'the same call again changes nothing');
+  assert.equal(again.body.event_id, null);
+  assert.equal(sb.db.sales_client_events.length, 1);
+  const changed = await makeClient(sb, { businessId: B, userId: U, body: momentumBody({ status: 'agreement_sent' }), now: later(2000) });
+  assert.equal(sb.db.sales_client_events.at(-1).kind, 'status'); assert.ok(changed.body.event_id);
 });
 
 test('C2 mapping: each status lands on its stage, never backward; a side lane moves; a hand stage move keeps client fields', async () => {
@@ -164,10 +169,13 @@ test('Add › Client: idempotent on domain (then name); a new employer Undo dele
   const nova = sb.db.sales_opportunities.find(o => o.organization === 'Nova Health');
   assert.equal(nova.stage, 'contract'); assert.equal(nova.domain, 'nova.example'); assert.equal(nova.owner, 'Jack');
   const r3 = await makeClient(sb, { businessId: B, userId: U, body: fresh, now: later(1000) });
-  assert.equal(r3.status, 200); assert.equal(r3.body.updated, true);
+  assert.equal(r3.status, 200); assert.equal(r3.body.updated, true); assert.equal(r3.body.unchanged, true);
   assert.equal(sb.db.sales_opportunities.filter(o => o.organization === 'Nova Health').length, 1);
-  const u = await undoClient(sb, { businessId: B, userId: U, body: { event_id: r2.body.event_id }, now: later(2000) });
-  assert.equal(u.status, 409, 'r3 changed the row since');
+  const byName = await makeClient(sb, { businessId: B, userId: U, body: { ...fresh, domain: undefined }, now: later(1500) });
+  assert.equal(byName.status, 200); assert.equal(byName.body.client.id, r2.body.client.id, 'a known name without its domain finds the same employer');
+  assert.match((await makeClient(sb, { businessId: B, userId: U, body: { status: 'verbal_yes', organization: 'Zz Unknown Co', source: { source_kind: 'inbound' } }, now: NOW })).body.error, /give its website domain/);
+  const filled = await makeClient(sb, { businessId: B, userId: U, body: { ...momentumBody(), opportunity_id: undefined, organization: 'Momentum', domain: 'momentum-new.example' }, now: later(1600) });
+  assert.equal(filled.status, 200); assert.equal(row(sb).domain, 'momentum.example', 'a domain is filled only when empty');
   const sb2 = seed();
   const n = await makeClient(sb2, { businessId: B, userId: U, body: fresh, now: NOW });
   const un = await undoClient(sb2, { businessId: B, userId: U, body: { event_id: n.body.event_id }, now: later(2000) });

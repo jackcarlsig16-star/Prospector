@@ -36,8 +36,8 @@ export const UNDO_WINDOW_MS = 2 * 60e3;
 import { CLIENT_COLS } from './clientCols.js';
 export { CLIENT_COLS };
 // Every column a client change may write - the Undo snapshot.
-const TOUCHED = [...CLIENT_COLS, 'stage', 'covered_lives', 'expected_launch', 'apollo_account_id', 'champion', 'notes', ...SOURCE_FIELDS, 'source_set_by', 'source_set_at', 'updated_at'];
-const ROW_COLS = `id, business_id, organization, domain, owner, owner_team, co_owner_name, archived_at, created_at, ${TOUCHED.join(', ')}`;
+const TOUCHED = [...CLIENT_COLS, 'stage', 'covered_lives', 'expected_launch', 'apollo_account_id', 'champion', 'notes', 'domain', 'domain_source', 'domain_at', ...SOURCE_FIELDS, 'source_set_by', 'source_set_at', 'updated_at'];
+const ROW_COLS = `id, business_id, organization, owner, owner_team, co_owner_name, archived_at, created_at, ${TOUCHED.join(', ')}`;
 const pick = (row, keys) => Object.fromEntries(keys.map(k => [k, row?.[k] ?? null]));
 export const SEND_AGREEMENT = 'Send agreement';
 
@@ -88,9 +88,10 @@ export function validateClient(body) {
   if (body.source != null) {
     const s = validateSource(body.source);
     if (s.error) return { error: `source: ${s.error}` };
-    v.source = s.source;
+    // Only the fields sent change: an absent office / route in / note keeps the record's own.
+    v.source = Object.fromEntries(Object.keys(body.source).filter(k => SOURCE_FIELDS.includes(k)).map(k => [k, s.source[k] ?? null]));
   }
-  if (!v.opportunity_id && !(v.organization && v.domain)) return { error: 'name the employer (opportunity_id) or give organization + domain' };
+  if (!v.opportunity_id && !v.organization) return { error: 'name the employer (opportunity_id) or give organization (+ domain)' };
   return { v };
 }
 
@@ -101,14 +102,16 @@ async function rowOr404(supabase, businessId, id) {
   return row;
 }
 
-// Add › Client: the employer this domain (else this name) already is, or a new one. Idempotent on domain.
+// Add › Client: the employer this domain (else this exact name) already is, or a new one - idempotent on domain. A new
+// employer needs its domain (so the next call finds it); the connector may name a known one without it.
 async function resolveEmployer(supabase, { businessId, userId, v, now }) {
   if (v.opportunity_id) return { row: await rowOr404(supabase, businessId, v.opportunity_id), created: false };
-  const byDomain = must(await supabase.from('sales_opportunities').select('id').eq('business_id', businessId).eq('domain', v.domain).is('archived_at', null).limit(3));
+  const byDomain = v.domain ? must(await supabase.from('sales_opportunities').select('id').eq('business_id', businessId).eq('domain', v.domain).is('archived_at', null).limit(3)) : [];
   if (byDomain.length > 1) throw err(409, `${v.domain} matches ${byDomain.length} employers - open the right one and use Make client there`, { code: 'ambiguous_domain' });
   if (byDomain.length === 1) return { row: await rowOr404(supabase, businessId, byDomain[0].id), created: false };
   const byName = await findOpportunity(supabase, businessId, { name: v.organization });
   if (byName) return { row: await rowOr404(supabase, businessId, byName.id), created: false };
+  if (!v.domain) throw err(400, `${v.organization} isn't in the pipeline yet - give its website domain to add it`);
   const who = await ownerOrCaller(supabase, businessId, null, userId);
   if (who.error) throw err(400, who.error);
   const ins = must(await supabase.from('sales_opportunities').insert({
@@ -166,19 +169,21 @@ const publicClient = row => ({
 
 // POST /goals/clients { opportunity_id | organization + domain, status, ... , source? } -> { client, created, updated, stage,
 // contacts_stopped, todo_id, warnings, event_id }. via = 'panel' | 'connector' (the connector passes its own).
-export async function makeClient(supabase, { businessId, userId, body = {}, via = 'panel', now = new Date() }) {
+// partnerless: the connector may record a partner referral whose partner isn't in Prospector yet (the source note names
+// it). A call that changes nothing writes nothing (unchanged: true, event_id null).
+export async function makeClient(supabase, { businessId, userId, body = {}, via = 'panel', partnerless = false, now = new Date() }) {
   try {
     const { v, error } = validateClient(body);
     if (error) return reply(400, { error });
     const today = laDateString(now);
     const { row: found, created } = await resolveEmployer(supabase, { businessId, userId, v, now });
     const prior = pick(found, TOUCHED);
-    const src = v.source || sourceOf(found);
+    const src = { ...sourceOf(found), ...(v.source || {}) };
     if (!src.source_kind) return reply(400, { error: 'pick a source - who brought this client in' });
-    if (src.source_kind === 'partner_referral' && !src.source_partner_id) return reply(400, { error: 'Partner referral needs the partner picked' });
-    const sourceChanged = !!v.source && SOURCE_FIELDS.some(k => (v.source[k] ?? null) !== (found[k] ?? null));
+    if (src.source_kind === 'partner_referral' && !src.source_partner_id && !partnerless) return reply(400, { error: 'Partner referral needs the partner picked' });
+    const sourceChanged = !!v.source && SOURCE_FIELDS.some(k => (src[k] ?? null) !== (found[k] ?? null));
     if (sourceChanged) {
-      const r = await editSource(supabase, { businessId, type: 'employer', id: found.id, userId, body: v.source, now });
+      const r = await editSource(supabase, { businessId, type: 'employer', id: found.id, userId, body: src, now });
       if (r.status !== 200) throw err(r.status, r.body.error);
     }
     const row = sourceChanged ? await rowOr404(supabase, businessId, found.id) : found;
@@ -199,9 +204,13 @@ export async function makeClient(supabase, { businessId, userId, body = {}, via 
     if (v.hq_city || v.hq_state) notes = withLine(notes, 'HQ', [v.hq_city, v.hq_state].filter(Boolean).join(', '));
     if (v.notes) notes = withLine(notes, 'Client note', cleanText(v.notes, 500));
     if (notes !== row.notes) patch.notes = notes;
-    const moved = must(await supabase.from('sales_opportunities').update({ ...patch, updated_at: now.toISOString() })
-      .eq('business_id', businessId).eq('id', row.id).eq('updated_at', row.updated_at).select('id'));
-    if (!moved.length) throw err(409, `${row.organization} changed while saving - reload`);
+    if (v.domain && !row.domain) Object.assign(patch, { domain: v.domain, domain_source: 'manual', domain_at: now.toISOString() });
+    const changed = Object.keys(patch).some(k => (row[k] ?? null) !== (patch[k] ?? null));
+    if (changed) {
+      const moved = must(await supabase.from('sales_opportunities').update({ ...patch, updated_at: now.toISOString() })
+        .eq('business_id', businessId).eq('id', row.id).eq('updated_at', row.updated_at).select('id'));
+      if (!moved.length) throw err(409, `${row.organization} changed while saving - reload`);
+    }
     const stage = await stageFor(supabase, { businessId, userId, row, status: v.status, now });
     const stopped = await stopOutreach(supabase, { businessId, userId, id: row.id, now });
     const sequenced = await inApolloSequences(supabase, { businessId, id: row.id });
@@ -213,6 +222,9 @@ export async function makeClient(supabase, { businessId, userId, body = {}, via 
       if (!open.length) todoId = (await todoOn(supabase, { businessId, userId, type: 'employer', id: row.id, text: SEND_AGREEMENT, today, now })).id;
     }
     const after = await rowOr404(supabase, businessId, row.id);
+    if (!changed && !sourceChanged && !stopped.length && !todoId && stage.after === stage.before) {
+      return reply(200, { client: publicClient(after), created: false, updated: true, unchanged: true, stage, contacts_stopped: 0, todo_id: null, warnings, event_id: null });
+    }
     const ev = await logClient(supabase, {
       businessId, id: row.id, kind: prior.client_status ? 'status' : 'made_client', from: prior.client_status, to: v.status, userId, via, now,
       meta: { undo: { prior, set: pick(after, TOUCHED), created, source_changed: sourceChanged, contacts: stopped, todo_id: todoId } },

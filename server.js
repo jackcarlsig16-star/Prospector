@@ -54,6 +54,22 @@ app.all('/mcp',                            mcpRoute('./api/mcp/mcpRoute.js', 'mc
 app.get('/api/hk/:businessId/connector',                    mcpRoute('./api/mcp/connectorRoutes.js', 'connectorRoute'));
 app.post('/api/hk/:businessId/connector/:familyId/revoke',  mcpRoute('./api/mcp/connectorRoutes.js', 'revokeConnectorRoute'));
 
+// homelover-clients-v1 C11 - the HomeLover Claude connector: its own OAuth server (issuer <origin>/hl), its own /hl/mcp
+// and tables. Nothing is shared with the HumanKind connector above. The consent page's two calls are /api (signed in).
+const hlRoute = (file, name) => async (req, res) => {
+  try { const mod = await import(file); return await mod[name](req, res); }
+  catch (err) { console.error(`[hlconnect/${name}] handler error:`, err.message); if (!res.headersSent) res.status(500).json({ error: 'server_error' }); }
+};
+const HL_OAUTH = './api/hlconnect/oauth.js';
+app.get(['/.well-known/oauth-protected-resource/hl/mcp', '/hl/.well-known/oauth-protected-resource'], hlRoute(HL_OAUTH, 'protectedResourceRoute'));
+app.get(['/.well-known/oauth-authorization-server/hl', '/hl/.well-known/oauth-authorization-server', '/.well-known/openid-configuration/hl'], hlRoute(HL_OAUTH, 'authServerMetadataRoute'));
+app.post('/hl/oauth/register',              hlRoute(HL_OAUTH, 'registerRoute'));
+app.get('/hl/oauth/authorize',              hlRoute(HL_OAUTH, 'authorizeRoute'));
+app.post('/hl/oauth/token', express.urlencoded({ extended: false, limit: '16kb' }), hlRoute(HL_OAUTH, 'tokenRoute'));
+app.get('/api/hl-oauth/consent/:id',        hlRoute(HL_OAUTH, 'consentGetRoute'));
+app.post('/api/hl-oauth/consent/:id',       hlRoute(HL_OAUTH, 'consentPostRoute'));
+app.all('/hl/mcp',                          hlRoute('./api/hlconnect/mcpRoute.js', 'mcpRoute'));
+
 import('./api/lib/checkCredentials.js').then(({ checkCredentials }) => checkCredentials());
 
 // Routes that call Anthropic server-side share the proxy's per-user hourly
