@@ -15,6 +15,7 @@ import { loadOverrides, effectiveVisit } from './visitPriority.js';
 import { OWNER_TEAMS } from '../../src/constants/ownership.js';
 import { TOUCH_TYPE_IDS, WORKFLOW_STEPS, stepOf } from '../../src/constants/partnerPipeline.js';
 import { STAGE_ORDER } from './pipelineStages.js';
+import { contactTarget } from './targetsRoutes.js';
 import { personSignals, byStrength, signalText, INTEREST_DAYS, TIMELINE_DAYS } from './interestSignals.js';
 import { normalizeLinkedinUrl, LINKEDIN_ERROR } from '../lib/linkedinUrl.js';
 
@@ -236,17 +237,18 @@ async function interestFor(supabase, businessId, record, { people, signals, time
 async function lastTouchFor(supabase, businessId, record) {
   if (record.type === 'partner') {
     if (!record.last_touch_at) return null;
-    const ev = must(await supabase.from('sales_partner_events').select('touch_type, at').eq('business_id', businessId).eq('goal_id', record.id).eq('event', 'touch').order('at', { ascending: false }).limit(1));
-    return { at: record.last_touch_at, touch_type: ev[0]?.touch_type || null };
+    const ev = must(await supabase.from('sales_partner_events').select('touch_type, at, by_user').eq('business_id', businessId).eq('goal_id', record.id).eq('event', 'touch').order('at', { ascending: false }).limit(1));
+    return { at: record.last_touch_at, touch_type: ev[0]?.touch_type || null, by: ev[0]?.by_user || null };
   }
   if (record.type === 'employer') {
     const [ev, done] = await Promise.all([
       supabase.from('sales_opportunity_events').select('changed_at').eq('business_id', businessId).eq('opportunity_id', record.id).eq('event_type', 'stage_change').order('changed_at', { ascending: false }).limit(1).then(must),
-      supabase.from('sales_week_goals').select('completed_at').eq('business_id', businessId).eq('kind', 'todo').eq('link_type', 'opportunity').eq('link_id', record.id).eq('status', 'done').order('completed_at', { ascending: false }).limit(1).then(must),
+      supabase.from('sales_week_goals').select('completed_at, text, owner_user_id').eq('business_id', businessId).eq('kind', 'todo').eq('link_type', 'opportunity').eq('link_id', record.id).eq('status', 'done').order('completed_at', { ascending: false }).limit(1).then(must),
     ]);
     const stage = ev[0]?.changed_at || null, todo = done[0]?.completed_at || null;
     if (!stage && !todo) return null;
-    return todo && (!stage || todo > stage) ? { at: todo, touch_type: 'done' } : { at: stage, touch_type: 'stage' };
+    // A to-do written in the same request as the stage move is the touch (its JS clock can trail the trigger's now()).
+    return todo && (!stage || Date.parse(todo) >= Date.parse(stage) - 5000) ? { at: todo, touch_type: 'done', what: cleanText(done[0].text, 120), by: done[0].owner_user_id || null } : { at: stage, touch_type: 'stage' };
   }
   return null;
 }
@@ -272,6 +274,20 @@ async function decisionsFor(supabase, businessId, record) {
 
 // GET /goals/company?type=&id= -> { record (+ last_touch, site), interest, timeline, todos, waiting, visits, signals,
 // recent, people, decision_makers, research, decisions, terms }
+// company-progress-bar-v1 D1 - when the record reached each stage, oldest first: employer = the trigger's created /
+// stage_change events, partner = its status-moving events (an undo moves it too). [] for other types.
+async function stageHistory(supabase, businessId, type, id) {
+  if (type === 'employer') {
+    const rows = must(await supabase.from('sales_opportunity_events').select('event_type, to_stage, changed_at').eq('business_id', businessId).eq('opportunity_id', id).in('event_type', ['created', 'stage_change']).order('changed_at', { ascending: true }).limit(200));
+    return rows.filter(r => r.to_stage).map(r => ({ stage: r.to_stage, at: r.changed_at }));
+  }
+  if (type === 'partner') {
+    const rows = must(await supabase.from('sales_partner_events').select('to_status, at').eq('business_id', businessId).eq('goal_id', id).not('to_status', 'is', null).order('at', { ascending: true }).limit(200));
+    return rows.map(r => ({ stage: r.to_status, at: r.at }));
+  }
+  return [];
+}
+
 export async function companyDetail(supabase, { businessId, type, id, now = new Date() }) {
   if (!PANEL_TYPES.includes(type)) return reply(400, { error: `type must be one of ${PANEL_TYPES.join('|')}` });
   if (!validId(type, id)) return reply(400, { error: 'id is required' });
@@ -280,7 +296,7 @@ export async function companyDetail(supabase, { businessId, type, id, now = new 
     if (!record) return reply(404, { error: `${type} not found` });
     const key = type === 'visitor' ? id : normName(record.name);
     const prospects = await prospectsFor(supabase, businessId, record);
-    const [todos, waiting, visits, signals, recent, research, decisions, overrides, email, lastTouch] = await Promise.all([
+    const [todos, waiting, visits, signals, recent, research, decisions, overrides, email, lastTouch, stages] = await Promise.all([
       linkedWork(supabase, businessId, type, id, 'todo', names),
       linkedWork(supabase, businessId, type, id, 'waiting', names),
       visitsFor(supabase, businessId, type, id, key),
@@ -291,6 +307,7 @@ export async function companyDetail(supabase, { businessId, type, id, now = new 
       loadOverrides(supabase, businessId),
       emailFor(supabase, businessId, prospects.map(p => p.contact_id), now),
       lastTouchFor(supabase, businessId, record),
+      stageHistory(supabase, businessId, type, id),
     ]);
     const personSig = personSignals({ messages: email.messages, events: email.events, now: now.getTime() });
     const timelineSig = personSignals({ messages: email.messages, events: email.events, now: now.getTime(), days: TIMELINE_DAYS });
@@ -308,12 +325,12 @@ export async function companyDetail(supabase, { businessId, type, id, now = new 
       ...(type === 'partner' || type === 'employer' ? { next_step: record.next_step ? cleanText(record.next_step, 400) : null } : {}),
       ...(type === 'target' ? { evidence: t(record.evidence), research_notes: t(record.research_notes, 4000) } : {}),
       ...(type === 'employer' ? { notes: t(notes, 4000), last_touch_at: lastTouch?.at || null } : {}),
-      last_touch: lastTouch, site,
+      last_touch: lastTouch && 'by' in lastTouch ? { ...lastTouch, by: lastTouch.by ? names.get(lastTouch.by) || null : null } : lastTouch, site,
     };
     return reply(200, {
       record: out, interest, timeline, todos, waiting, visits: visitRows, signals: scoutSignals,
       recent, people, decision_makers: type === 'employer' ? (decision_makers || '').split('\n').map(l => cleanText(l, 200)).filter(Boolean) : [],
-      research, decisions, terms,
+      research, decisions, terms, stage_history: stages,
       // company-workflow-v1 W1: the guided steps (one "next").
       steps: companySteps({ record: { ...record, last_touch: lastTouch }, research, site, ownerName, now: now.getTime() }),
     });
@@ -324,6 +341,11 @@ export async function companyDetailRoute(req, res) {
 }
 
 // A to-do on the record, open or already done (a "Contacted" touch).
+async function targetRow(supabase, businessId, id) {
+  const row = must(await supabase.from('sales_targets').select('*').eq('business_id', businessId).eq('id', id).maybeSingle());
+  if (!row) throw err(404, 'target not found');
+  return row;
+}
 async function todoOn(supabase, { businessId, userId, type, id, text, today, done = false, now }) {
   const week = laMonday(today);
   if (await weekIsFinal(supabase, businessId, week)) throw err(409, FINAL_ERROR);
@@ -375,9 +397,10 @@ export async function bookMeetingRoute(req, res) {
 // company-progress-bar-v1 D3: the record moves forward when it is behind
 // "contacted", never back. Person: Huddle's status path (contacted). Partner: a
 // touch with move_to 'auto' (not started / researching / drafted -> sent).
-// Employer: target -> contacted (the DB trigger logs the stage_change). Both
-// also get ONE done to-do (employer / target) - what Last touch reads. Target
-// rows have no pipeline stage, so they only get the to-do.
+// Employer: target -> contacted (the DB trigger logs the stage_change). Target
+// (Stage 2 ruling 1): added to the pipeline as an employer at Contacted -
+// added = the new employer, undo = what contacted-undo needs. Each gets ONE
+// done to-do on the record it ends on - what Last touch reads.
 // stage = { before, after } for Undo.
 export async function markContacted(supabase, { businessId, userId, byUser, type, id, body, now = new Date() }) {
   if (!RECORD_TYPES.includes(type)) return reply(400, { error: `type must be one of ${RECORD_TYPES.join('|')}` });
@@ -401,6 +424,18 @@ export async function markContacted(supabase, { businessId, userId, byUser, type
       const { event } = await applyPartnerSignal(supabase, { businessId, goalId: id, signal: { type: 'touch', touch_type: touchType, date: today, move_to: 'auto', expect: record.stage, contacts: who ? [who] : [] }, byUser: userId, now });
       out.event = { id: event.id, touch_type: event.touch_type, at: event.at, to_status: event.to_status };
       out.stage = { before: record.stage, after: event.to_status || record.stage };
+    } else if (type === 'target') {
+      const c = await contactTarget(supabase, { businessId, userId, target: await targetRow(supabase, businessId, id), now });
+      if (c.already) {
+        out.already = c.already;
+        out.stage = { before: record.stage, after: record.stage };
+        out.todo = await todoOn(supabase, { businessId, userId, type, id, text: `Contacted ${who || record.name}`, today, done: true, now });
+      } else {
+        out.added = c.created;
+        out.stage = c.stage;
+        out.todo = await todoOn(supabase, { businessId, userId, type: 'employer', id: c.created.id, text: `Contacted ${who || record.name}`, today, done: true, now });
+        out.undo = { ...c.undo, todo_id: out.todo.id };
+      }
     } else {
       out.stage = { before: record.stage, after: record.stage };
       if (type === 'employer' && record.stage === 'target') {

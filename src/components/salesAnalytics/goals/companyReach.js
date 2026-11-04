@@ -21,9 +21,20 @@ export async function bookMeeting({ businessId, row, person = null, onChanged, o
   } });
 }
 
-export async function markContacted({ businessId, row, person = null, onChanged, onToast }) {
+// A target is added to the pipeline as an employer at Contacted (Stage 2 ruling 1); its Undo removes that employer.
+export async function markContacted({ businessId, row, person = null, onChanged, onToast, onConvert }) {
   const r = await goalsApi.markContacted(businessId, row.type, row.id, { ...(person ? { contact_id: person.contact_id, person: person.name } : {}), touch_type: 'email' });
   onChanged();
+  if (r.added) {
+    onConvert?.(r.added);
+    onToast({ text: `${r.added.name} added to pipeline · Contacted`, undo: async () => {
+      await goalsApi.undoContactTarget(businessId, row.id, r.undo);
+      if (r.person) await updateProspect(businessId, r.person.contact_id, { status: r.person.before.status });
+      onConvert?.({ type: 'target', id: row.id, name: row.name });
+      onChanged();
+    } });
+    return;
+  }
   const moved = r.stage && r.stage.after !== r.stage.before;
   onToast({ text: `${person ? person.name : row.name} marked contacted${moved ? ` · moved to ${stageLabel(row.type, r.stage.after)}` : ''}`, undo: async () => {
     if (r.event) await goalsApi.partnerUndo(businessId, row.id, r.event.id);

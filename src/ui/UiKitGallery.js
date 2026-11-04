@@ -15,6 +15,7 @@ import Tabs from './Tabs';
 import Tag from './Tag';
 import FilterSelect from './FilterSelect';
 import { ToggleChip, ActiveFilterChip, Group } from './Chip';
+import ProgressBar from './ProgressBar';
 
 // Invented companies, no contacts.
 const TABLE_ROWS = [
@@ -200,6 +201,7 @@ function ThemePanel({ theme }) {
             <StatusPill status="off">Not connected</StatusPill>
           </ButtonRow>
           <Group label="Priority">{Object.keys(KIT_PRIORITY).map(k => <Tag key={k} color={ui[`prio${k}`]}>{k}</Tag>)}<Tag color={ui.good}>Meeting set</Tag><Tag color={ui.off}>Not started</Tag></Group>
+          <ProgressBar label={`${p} deal progress`} steps={[{ id: 'target', label: 'Target', at: 'Oct 1' }, { id: 'contacted', label: 'Contacted', at: 'Oct 5' }, { id: 'responded', label: 'Responded' }, { id: 'meeting', label: 'Meeting' }]} current={1} />
         </div>
       </Card>
       <Card title="Fields" subtitle="label · control · hint or error">

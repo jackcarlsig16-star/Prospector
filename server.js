@@ -790,6 +790,7 @@ app.get('/api/sales/:businessId/goals/call-notes/:id', salesModuleRoute('./api/s
 app.get('/api/sales/:businessId/goals/prospect-targets', salesModuleRoute('./api/sales/targetsRoutes.js', 'listProspectTargetsRoute', 'goals/prospect-targets'));
 app.post('/api/sales/:businessId/goals/prospect-targets/:id/promote', salesModuleRoute('./api/sales/targetsRoutes.js', 'promoteTargetRoute', 'goals/prospect-targets/:id/promote POST'));
 app.post('/api/sales/:businessId/goals/prospect-targets/:id/reject', salesModuleRoute('./api/sales/targetsRoutes.js', 'rejectTargetRoute', 'goals/prospect-targets/:id/reject POST'));
+app.post('/api/sales/:businessId/goals/prospect-targets/:id/contacted-undo', salesModuleRoute('./api/sales/targetsRoutes.js', 'undoContactTargetRoute', 'goals/prospect-targets/:id/contacted-undo POST'));
 // signals-v1 Stage 2 - Signal Scout import + the Signals review queue.
 app.get('/api/sales/:businessId/goals/signals', salesModuleRoute('./api/sales/signalsRoutes.js', 'listSignalsRoute', 'goals/signals'));
 app.post('/api/sales/:businessId/goals/signals/scout-import', salesModuleRoute('./api/sales/signalsRoutes.js', 'scoutImportRoute', 'goals/signals/scout-import POST'));

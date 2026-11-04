@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
 import { companyDetail, addToPipeline, addNote, addContact, updateTarget, bookMeeting, markContacted, advanceStage, nextStage, notNow, notNowPatch, createTarget } from './companyPanel.js';
 import { undoPartnerSignal } from './partnerSignals.js';
+import { undoContactTarget } from './targetsRoutes.js';
 
 const NOW = new Date('2026-10-20T20:00:00Z'); // Tue Oct 20, 1pm LA
 
@@ -273,10 +274,10 @@ test('mark contacted: partner = a touch (past contacted: stage stays, last touch
   assert.deepEqual(e.body.stage, { before: 'contacted', after: 'contacted' });
   assert.equal(sb.db.sales_opportunities.find(x => x.id === ID.employer).stage, 'contacted');
   const d = (await companyDetail(sb, { businessId: B, type: 'employer', id: ID.employer, now: NOW })).body;
-  assert.deepEqual(d.record.last_touch, { at: NOW.toISOString(), touch_type: 'done' }); assert.equal(d.record.last_touch_at, NOW.toISOString());
+  assert.deepEqual(d.record.last_touch, { at: NOW.toISOString(), touch_type: 'done', what: 'Contacted Dana Q', by: 'Jack Carlson' }); assert.equal(d.record.last_touch_at, NOW.toISOString());
   assert.equal(d.recent[0].text, 'Done: Contacted Dana Q');
   const t = await markContacted(sb, { businessId: B, userId: U, type: 'target', id: ID.target, body: {}, now: NOW });
-  assert.equal(t.status, 200); assert.equal(t.body.todo.text, 'Contacted Zeta Labs'); assert.equal(t.body.todo.link_type, 'target');
+  assert.equal(t.status, 200); assert.equal(t.body.todo.text, 'Contacted Zeta Labs'); assert.equal(t.body.todo.link_type, 'opportunity'); assert.equal(t.body.todo.link_id, t.body.added.id);
   assert.equal((await markContacted(sb, { businessId: B, userId: U, type: 'partner', id: ID.partner, body: { touch_type: 'fax' }, now: NOW })).status, 400);
   assert.equal((await markContacted(sb, { businessId: B, userId: U, type: 'partner', id: ID.partner, body: { contact_id: 'nobody' }, now: NOW })).status, 404);
 });
@@ -366,8 +367,56 @@ test('company-progress-bar-v1 D3: mark contacted moves a record that is behind c
     const r = await markContacted(sb, { businessId: B, userId: U, type: 'employer', id: ID.employer, body: {}, now: NOW });
     assert.deepEqual([o.stage, r.body.stage.after], [at, at], `employer at ${at}: to-do only`);
   }
+});
+
+test('company-progress-bar-v1 Stage 2 ruling 1: Mark contacted on a target adds it to the pipeline as an employer at Contacted (its people and visits follow); Undo removes the employer and puts everything back', async () => {
+  const sb = seed();
+  const visit = sb.db.web_visits[0]; visit.matched_type = 'target'; visit.matched_id = ID.target;
   const t = await markContacted(sb, { businessId: B, userId: U, type: 'target', id: ID.target, body: {}, now: NOW });
-  assert.equal(sb.db.sales_targets.find(x => x.id === ID.target).status, 'proposed'); assert.deepEqual(t.body.stage, { before: 'proposed', after: 'proposed' });
+  assert.equal(t.status, 200);
+  const opp = sb.db.sales_opportunities.find(o => o.id === t.body.added.id);
+  assert.deepEqual([t.body.added.type, t.body.added.name, opp.stage, opp.org_type], ['employer', 'Zeta Labs', 'contacted', 'employer']);
+  assert.deepEqual(t.body.stage, { before: 'proposed', after: 'contacted' });
+  assert.match(opp.notes, new RegExp(`from target ${ID.target}`));
+  assert.equal(sb.db.sales_targets.find(x => x.id === ID.target).status, 'accepted');
+  const mo = sb.db.sales_people.find(p => p.name === 'Mo Reyes');
+  assert.deepEqual([mo.company_type, mo.opportunity_id, mo.target_id], ['employer', opp.id, null]);
+  assert.deepEqual([visit.matched_type, visit.matched_id], ['opportunity', opp.id]);
+  assert.deepEqual([t.body.undo.opportunity_id, t.body.undo.target_status, t.body.undo.todo_id, t.body.undo.visits], [opp.id, 'proposed', t.body.todo.id, [visit.id]]);
+  // Guards: another target's id, a person sent elsewhere, too late.
+  assert.equal((await undoContactTarget(sb, { businessId: B, targetId: randomUUID(), body: t.body.undo, now: NOW })).status, 400, 'people that belong to another target');
+  assert.equal((await undoContactTarget(sb, { businessId: B, targetId: randomUUID(), body: { ...t.body.undo, people: [] }, now: NOW })).status, 404);
+  assert.equal((await undoContactTarget(sb, { businessId: B, targetId: ID.target, body: { ...t.body.undo, people: [{ id: mo.id, company_type: 'employer', target_id: null }] }, now: NOW })).status, 400);
+  opp.created_at = NOW.toISOString();
+  assert.equal((await undoContactTarget(sb, { businessId: B, targetId: ID.target, body: t.body.undo, now: new Date(NOW.getTime() + 3 * 60 * 1000) })).status, 409);
+  const u = await undoContactTarget(sb, { businessId: B, targetId: ID.target, body: t.body.undo, now: new Date(NOW.getTime() + 10 * 1000) });
+  assert.equal(u.status, 200);
+  assert.equal(sb.db.sales_opportunities.some(o => o.id === opp.id), false);
+  assert.deepEqual([u.body.target.status, sb.db.sales_targets.find(x => x.id === ID.target).decided_at], ['proposed', null]);
+  assert.deepEqual([mo.company_type, mo.target_id, mo.opportunity_id], ['target', ID.target, null]);
+  assert.deepEqual([visit.matched_type, visit.matched_id], ['target', ID.target]);
+  assert.equal(sb.db.sales_week_goals.find(g => g.id === t.body.todo.id).status, 'dropped');
+  assert.equal((await undoContactTarget(sb, { businessId: B, targetId: ID.target, body: t.body.undo, now: NOW })).status, 409, 'a second Undo finds the target no longer promoted');
+});
+
+test('company-progress-bar-v1 Stage 2 ruling 1: a target whose name is already in the pipeline is not duplicated - the to-do lands on the target and the reply names the existing record', async () => {
+  const sb = seed();
+  sb.db.sales_opportunities.push({ id: randomUUID(), business_id: B, organization: 'Zeta Labs', stage: 'meeting', org_type: 'employer', archived_at: null });
+  const t = await markContacted(sb, { businessId: B, userId: U, type: 'target', id: ID.target, body: {}, now: NOW });
+  assert.equal(t.status, 200);
+  assert.deepEqual([t.body.already.type, t.body.already.name, t.body.added, t.body.todo.link_type], ['employer', 'Zeta Labs', undefined, 'target']);
+  assert.equal(sb.db.sales_targets.find(x => x.id === ID.target).status, 'proposed');
+  assert.equal(sb.db.sales_opportunities.filter(o => o.organization === 'Zeta Labs').length, 1);
+});
+
+test('company-progress-bar-v1 D1: the detail carries stage_history oldest first (employer = stage events, partner = status events)', async () => {
+  const sb = seed();
+  sb.db.sales_partner_events.push({ id: randomUUID(), business_id: B, goal_id: ID.partner, event: 'status', from_status: 'first_email_sent', to_status: 'replied', at: '2026-10-18T12:00:00Z', meta: {} });
+  const e = (await companyDetail(sb, { businessId: B, type: 'employer', id: ID.employer, now: NOW })).body;
+  assert.deepEqual(e.stage_history, [{ stage: 'contacted', at: '2026-10-19T10:00:00Z' }]);
+  const p = (await companyDetail(sb, { businessId: B, type: 'partner', id: ID.partner, now: NOW })).body;
+  assert.deepEqual(p.stage_history, [{ stage: 'replied', at: '2026-10-18T12:00:00Z' }]);
+  assert.deepEqual((await companyDetail(sb, { businessId: B, type: 'target', id: ID.target, now: NOW })).body.stage_history, []);
 });
 
 test('company-progress-bar-v1 D2: advance = the next stage on the record\'s own path; expect guards a stale screen (409); nothing past the last step or off-path; targets refused', async () => {

@@ -69,7 +69,7 @@ test('Add to pipeline / Promote open the Actions row\'s one control; Ready colla
   expect(p.setForm).toHaveBeenCalledWith('promote');
   document.body.innerHTML = '';
   setup({ type: 'employer', id: 'o1', name: 'ZZ Elm' }, { record: {}, steps: { next: null, ready: true, last_touch_at: '2026-10-20T10:00:00Z', steps: [] } });
-  expect(document.querySelector('[data-steps-ready]')).toHaveTextContent('✓ Ready · last touch Oct 20');
+  expect(document.querySelector('[data-steps-ready]')).toHaveTextContent('Setup ✓ done · last touch Oct 20');
   document.body.innerHTML = '';
   setup({ type: 'visitor', id: 'v', name: 'ZZ V' }, { record: {}, steps: visitorSteps }, { canEdit: false });
   expect(document.querySelectorAll('[data-steps] button')).toHaveLength(0);

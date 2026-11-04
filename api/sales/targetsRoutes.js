@@ -109,15 +109,17 @@ export function validatePromote(body, target) {
 // are relinked by the partner path only (an employer has no link type yet).
 const VISIT_TYPE = { partner: 'partner', employer: 'opportunity' };
 // visitor-people-follow-record-v1 V1 / V5: the target's people move too, and parked people of the same name join.
-async function moveTargetData(supabase, { businessId, userId, target, to, id, undo }) {
+async function moveTargetData(supabase, { businessId, userId, target, to, id, undo, manifest }) {
   const runs = must(await supabase.from('research_runs').update({ entity_type: to, entity_id: id })
     .eq('business_id', businessId).eq('entity_type', 'target').eq('entity_id', target.id).select('id'));
   if (runs.length) undo.push(() => supabase.from('research_runs').update({ entity_type: 'target', entity_id: target.id }).in('id', runs.map(r => r.id)));
+  if (manifest) manifest.runs = runs.map(r => r.id);
   const visits = must(await supabase.from('web_visits').update({ matched_type: VISIT_TYPE[to], matched_id: id })
     .eq('business_id', businessId).eq('matched_type', 'target').eq('matched_id', target.id).select('id'));
   if (visits.length) undo.push(() => supabase.from('web_visits').update({ matched_type: 'target', matched_id: target.id }).in('id', visits.map(v => v.id)));
-  const people = await moveTargetPeople(supabase, { businessId, userId, targetId: target.id, to, id, undo });
-  const parked = await relinkParked(supabase, { businessId, userId, type: to, id, name: target.name, undo });
+  if (manifest) { manifest.visits = visits.map(v => v.id); manifest.people = []; }
+  const people = await moveTargetPeople(supabase, { businessId, userId, targetId: target.id, to, id, undo, collect: manifest?.people });
+  const parked = await relinkParked(supabase, { businessId, userId, type: to, id, name: target.name, undo, collect: manifest?.people });
   return { research_moved: runs.length, visits_moved: visits.length, people_moved: people + parked };
 }
 
@@ -174,7 +176,8 @@ async function promoteToPartner(supabase, { businessId, userId, target, payload,
   }
 }
 
-async function promoteToEmployer(supabase, { businessId, userId, target, payload, apolloAccountId }) {
+async function promoteToEmployer(supabase, { businessId, userId, target, payload, apolloAccountId, manifest }) {
+  const prev = { target_status: target.status, target_decided_at: target.decided_at ?? null };
   const found = await findOpportunity(supabase, businessId, { name: payload.name, apolloAccountId });
   if (found) return { already: { type: 'opportunity', id: found.id, name: found.organization } };
   const now = new Date().toISOString();
@@ -192,8 +195,9 @@ async function promoteToEmployer(supabase, { businessId, userId, target, payload
   try {
     await logInherited(supabase, { businessId, target, type: 'employer', id: opportunity.id, userId });
     undo.push(() => supabase.from('sales_source_events').delete().eq('record_type', 'employer').eq('record_id', opportunity.id));
-    const moved = await moveTargetData(supabase, { businessId, userId, target, to: 'employer', id: opportunity.id, undo });
+    const moved = await moveTargetData(supabase, { businessId, userId, target, to: 'employer', id: opportunity.id, undo, manifest });
     const updated = await acceptTarget(supabase, target, {}, now);
+    if (manifest) Object.assign(manifest, prev);
     return { created: { type: 'opportunity', id: opportunity.id, name: opportunity.organization }, opportunity, target: updated, relinked: 0, ...moved };
   } catch (e) {
     await rollback(undo);
@@ -234,6 +238,71 @@ export async function promoteTarget(supabase, { businessId, userId, targetId, bo
 }
 export async function promoteTargetRoute(req, res) {
   send(res, await promoteTarget(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, targetId: req.params.id, body: req.body }));
+}
+
+// company-progress-bar-v1 Stage 2 ruling 1 - Mark contacted on a target (any target, a website-visitor one too) adds it to
+// the pipeline as an employer and moves it to Contacted (the DB trigger logs the stage_change). Same promotion as Promote
+// to employer, plus the stage. Already a partner / employer by name = { already } and nothing is created.
+// -> { created, stage: { before: target status, after: 'contacted' }, undo: manifest } | { already }.
+export async function contactTarget(supabase, { businessId, userId, target, now = new Date() }) {
+  const before = target.status;
+  if (target.status === 'accepted' || target.status === 'rejected') throw err(409, `${target.name} is ${target.status === 'accepted' ? 'already promoted' : 'marked not a fit'} - reload`);
+  const v = validatePromote({ to: 'employer' }, target);
+  if (v.error) throw err(400, v.error);
+  const who = await ownerOrCaller(supabase, businessId, target.owner_user_id || null, userId);
+  if (who.error) throw err(400, who.error);
+  v.payload.owner = who.person;
+  const hit = resolveCompany(v.payload.name, await companyContext(supabase, businessId, target.id));
+  if (hit && (hit.type === 'partner' || hit.type === 'opportunity')) return { already: { type: hit.type === 'opportunity' ? 'employer' : 'partner', id: hit.id, name: hit.name } };
+  const manifest = {};
+  const out = await promoteToEmployer(supabase, { businessId, userId, target, payload: v.payload, apolloAccountId: hit?.type === 'account' ? hit.id : null, manifest });
+  if (out.already) return { already: { type: 'employer', id: out.already.id, name: out.already.name } };
+  const id = out.created.id;
+  must(await supabase.from('sales_opportunities').update({ stage: 'contacted', updated_at: now.toISOString() }).eq('business_id', businessId).eq('id', id).eq('stage', 'target').select('id'));
+  return { created: { type: 'employer', id, name: out.created.name }, stage: { before, after: 'contacted' }, undo: { opportunity_id: id, ...manifest } };
+}
+
+// POST /goals/prospect-targets/:id/contacted-undo { opportunity_id, target_status, target_decided_at, runs, visits, people,
+// todo_id? } - the Undo of contactTarget: the target's rows go back, then the new employer is deleted (its stage events
+// cascade). Only an employer made from THIS target in the last UNDO_WINDOW_MS, and only rows still linked to it, move.
+const UNDO_WINDOW_MS = 2 * 60 * 1000;
+const RESTORABLE = ['proposed', 'researching'];
+const idList = v => (Array.isArray(v) && v.length <= 500 && v.every(x => typeof x === 'string' || Number.isInteger(x)) ? v : null);
+export async function undoContactTarget(supabase, { businessId, targetId, body, now = new Date() }) {
+  const b = body || {};
+  if (!UUID.test(b.opportunity_id || '')) return reply(400, { error: 'opportunity_id is required' });
+  if (!RESTORABLE.includes(b.target_status)) return reply(400, { error: `target_status must be one of ${RESTORABLE.join('|')}` });
+  const runs = idList(b.runs ?? []), visits = idList(b.visits ?? []);
+  const people = Array.isArray(b.people) && b.people.length <= 500 ? b.people : null;
+  if (!runs || !visits || !people) return reply(400, { error: 'runs, visits and people must be lists' });
+  if (people.some(p => !p || !['target', 'parked'].includes(p.company_type) || (p.target_id != null && p.target_id !== targetId))) return reply(400, { error: 'people must go back to this target or parked' });
+  try {
+    const target = await targetOrNull(supabase, businessId, targetId);
+    if (!target) return reply(404, { error: 'target not found' });
+    if (target.status !== 'accepted') return reply(409, { error: `${target.name} changed since - reload` });
+    const opp = must(await supabase.from('sales_opportunities').select('id, notes, created_at, archived_at').eq('business_id', businessId).eq('id', b.opportunity_id).maybeSingle());
+    if (!opp || !String(opp.notes || '').includes(`from target ${targetId}`)) return reply(404, { error: 'that employer was not made from this target' });
+    if (now - new Date(opp.created_at) > UNDO_WINDOW_MS) return reply(409, { error: 'too late to undo - archive the employer instead' });
+    const stamp = now.toISOString();
+    if (runs.length) must(await supabase.from('research_runs').update({ entity_type: 'target', entity_id: targetId }).eq('business_id', businessId).eq('entity_type', 'employer').eq('entity_id', opp.id).in('id', runs).select('id'));
+    if (visits.length) must(await supabase.from('web_visits').update({ matched_type: 'target', matched_id: targetId }).eq('business_id', businessId).eq('matched_type', 'opportunity').eq('matched_id', opp.id).in('id', visits).select('id'));
+    for (const p of people) {
+      must(await supabase.from('sales_people').update({ company_type: p.company_type, target_id: p.company_type === 'target' ? targetId : null, opportunity_id: null, updated_at: stamp })
+        .eq('business_id', businessId).eq('id', p.id).eq('opportunity_id', opp.id).select('id'));
+    }
+    if (b.todo_id != null) must(await supabase.from('sales_week_goals').update({ status: 'dropped', updated_at: stamp }).eq('business_id', businessId).eq('id', b.todo_id).eq('link_type', 'opportunity').eq('link_id', opp.id).select('id'));
+    must(await supabase.from('sales_source_events').delete().eq('business_id', businessId).eq('record_type', 'employer').eq('record_id', opp.id));
+    must(await supabase.from('sales_opportunities').delete().eq('business_id', businessId).eq('id', opp.id).select('id'));
+    const back = must(await supabase.from('sales_targets').update({ status: b.target_status, decided_at: b.target_decided_at ?? null, updated_at: stamp })
+      .eq('business_id', businessId).eq('id', targetId).eq('status', 'accepted').select(TARGET_COLS));
+    return reply(200, { target: back[0] || null, removed: { type: 'employer', id: opp.id } });
+  } catch (e) {
+    if (!e.status || e.status >= 500) console.error('[prospect-targets/contacted-undo]', e.message);
+    return reply(e.status || 500, { error: e.message });
+  }
+}
+export async function undoContactTargetRoute(req, res) {
+  send(res, await undoContactTarget(getSupabase(), { businessId: req.params.businessId, targetId: req.params.id, body: req.body }));
 }
 
 // POST /goals/prospect-targets/:id/reject -> { target, dropped: [to-do ids] }

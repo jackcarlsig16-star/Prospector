@@ -16,13 +16,14 @@ const mdShort = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { mo
 import { needsRecord } from './companyPanelModel';
 import { SourceHistoryCard, ReferredByCard } from './LeadSource';
 import CompanyStepsStrip from './CompanyStepsStrip';
+import CompanyProgress from './CompanyProgress';
 import IntentFact from './IntentFact';
 import JourneyLine from './JourneyLine';
 import { Link } from '../../../ui/Button';
 
 // company-panel-v2 - the one company window for every Pipeline row (partner,
 // employer, target, Apollo-only, visitor). Pinned head: L1 title row (name ·
-// type · ★ Top · site · ✕), L2 the seven labelled facts, L3 the Interest band
+// type · ★ Top · site · ✕), L2 the seven labelled facts, the Progress bar (company-progress-bar-v1), L3 the Interest band
 // while a signal is fresh, L4 the labelled Actions row, L5 the Edit row.
 // Scrolling body (L6): two columns from 980 px, one below. L7 footer. Viewers
 // (L8) see facts and body only. Every write reloads the board (onChanged) and
@@ -98,8 +99,9 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
       <CompanyFacts businessId={businessId} row={row} record={detail?.record} facts={facts} canEdit={canEdit} members={members} source={sourced && source ? source.source : null}
         panel={editPanel} setPanel={setEditPanel} onPatch={onPatch} onChanged={changed} onToast={onToast} />
       {sourced && source?.journey && <JourneyLine businessId={businessId} row={row} journey={source.journey} source={source.source} canEdit={canEdit} onMarked={() => setVersion(v => v + 1)} onToast={onToast} />}
+      {detail && !needsRecord(row.type) && <CompanyProgress businessId={businessId} row={row} detail={detail} canEdit={canEdit} onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} />}
       {detail?.steps && <CompanyStepsStrip businessId={businessId} row={row} detail={detail} canEdit={canEdit} members={members} onChanged={changed} onConvert={onConvert} onToast={onToast} setForm={setForm} />}
-      {bandShown && <InterestBand businessId={businessId} row={row} interest={detail.interest} canEdit={canEdit} onChanged={changed} onToast={onToast} />}
+      {bandShown && <InterestBand businessId={businessId} row={row} interest={detail.interest} canEdit={canEdit} onChanged={changed} onToast={onToast} onConvert={onConvert} />}
       {canEdit
         ? <CompanyActions businessId={businessId} row={row} members={members} meId={meId} form={form} setForm={setForm} bandShown={bandShown || !!detail?.steps?.next} onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} onClose={onClose} />
         : <p style={{ ...SA_TYPE.body, fontSize: 12, color: SA.muted, margin: 0 }}>You have view access, so this is read-only.</p>}

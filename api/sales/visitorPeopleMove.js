@@ -11,8 +11,10 @@ export const SKIP_NOTE = 'Company is on the visit skip list';
 const must = r => { if (r.error) throw Object.assign(new Error(r.error.message), { status: 500 }); return r.data; };
 
 // rows -> the record. type: employer | target | partner. Returns how many landed (a partner duplicate by name is archived, not counted).
-async function moveRows(supabase, { businessId, userId, rows, type, id, undo, now }) {
+// collect (optional) gets each moved row's previous link, for an Undo that runs after this request.
+async function moveRows(supabase, { businessId, userId, rows, type, id, undo, now, collect }) {
   if (!rows.length) return 0;
+  collect?.push(...rows.map(r => ({ id: r.id, company_type: r.company_type, target_id: r.target_id ?? null })));
   const stamp = now.toISOString();
   if (type !== 'partner') {
     const patch = { company_type: type, opportunity_id: type === 'employer' ? id : null, target_id: type === 'target' ? id : null, updated_at: stamp };
@@ -39,17 +41,17 @@ async function moveRows(supabase, { businessId, userId, rows, type, id, undo, no
 const PEOPLE_COLS = 'id, name, title, linkedin_url, company_type, company_name, opportunity_id, target_id, source_kind, note';
 
 // V1 - a target's live people onto the record it was promoted to.
-export async function moveTargetPeople(supabase, { businessId, userId, targetId, to, id, undo, now = new Date() }) {
+export async function moveTargetPeople(supabase, { businessId, userId, targetId, to, id, undo, now = new Date(), collect }) {
   const rows = await selectAllPages(() => supabase.from('sales_people').select(PEOPLE_COLS).eq('business_id', businessId).eq('target_id', targetId).is('archived_at', null).order('id'));
-  return moveRows(supabase, { businessId, userId, rows, type: to, id, undo, now });
+  return moveRows(supabase, { businessId, userId, rows, type: to, id, undo, now, collect });
 }
 
 // V5 - parked people whose company name matches `name` onto the record. includeSkipped: the explicit "Add" also takes
 // the skip-list ones.
-export async function relinkParked(supabase, { businessId, userId, type, id, name, undo, now = new Date(), includeSkipped = false }) {
+export async function relinkParked(supabase, { businessId, userId, type, id, name, undo, now = new Date(), includeSkipped = false, collect }) {
   const key = normName(name);
   if (!key) return 0;
   const parked = await selectAllPages(() => supabase.from('sales_people').select(PEOPLE_COLS).eq('business_id', businessId).eq('company_type', 'parked').is('archived_at', null).order('id'));
   const rows = parked.filter(p => normName(p.company_name) === key && (includeSkipped || p.note !== SKIP_NOTE));
-  return moveRows(supabase, { businessId, userId, rows, type, id, undo, now });
+  return moveRows(supabase, { businessId, userId, rows, type, id, undo, now, collect });
 }

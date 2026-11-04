@@ -40,7 +40,7 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
     if (res.status === 500 && MIGRATION_PATTERN.test(data.error || '')) throw new NeedsMigrationError();
     throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   }
-  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/leads$|^\/prospect-targets\/.+\/(promote|reject)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/(partners|company\/[a-z]+)\/.+\/apollo-check$|^\/company\/add-to-pipeline$|^\/suggestions\/.+\/(accept|dismiss|snooze|undo)$|^\/signals\/(scout-import|.+\/(accept|dismiss|undo|auto-create))$|^\/visits\/(pull|people-csv|people-pull)$|^\/people(\/.+\/add-record)?$|^\/targets$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
+  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/leads$|^\/prospect-targets\/.+\/(promote|reject|contacted-undo)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/(partners|company\/[a-z]+)\/.+\/apollo-check$|^\/company\/add-to-pipeline$|^\/suggestions\/.+\/(accept|dismiss|snooze|undo)$|^\/signals\/(scout-import|.+\/(accept|dismiss|undo|auto-create))$|^\/visits\/(pull|people-csv|people-pull)$|^\/people(\/.+\/add-record)?$|^\/targets$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
 }
 
@@ -146,6 +146,8 @@ export const goalsApi = {
   // company-panel-v2 Stage 2 - the Interest band's buttons; every write returns what Undo needs.
   bookMeeting: (id, type, recordId, body = {}) => call(id, `/company/${type}/${recordId}/book-meeting`, { method: 'POST', body }),
   markContacted: (id, type, recordId, body = {}) => call(id, `/company/${type}/${recordId}/contacted`, { method: 'POST', body }),
+  // company-progress-bar-v1 Stage 2 - the Undo of Mark contacted on a target (body = the reply's undo).
+  undoContactTarget: (id, targetId, undo) => call(id, `/prospect-targets/${targetId}/contacted-undo`, { method: 'POST', body: undo }),
   advanceStage: (id, type, recordId, expect) => call(id, `/company/${type}/${recordId}/advance`, { method: 'POST', body: { expect } }),
   notNow: (id, type, recordId, body = {}) => call(id, `/company/${type}/${recordId}/not-now`, { method: 'POST', body }),
   // lead-source-v1 - type = partner | employer | target. source = { source, history }; edit body = the source fields +

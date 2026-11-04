@@ -31,7 +31,7 @@ export async function copyFollowUp({ businessId, row, person, signal, onToast })
   } catch (e) { onToast({ text: e.message }); }
 }
 
-export default function InterestBand({ businessId, row, interest, canEdit, onChanged, onToast }) {
+export default function InterestBand({ businessId, row, interest, canEdit, onChanged, onToast, onConvert }) {
   const [busy, setBusy] = useState('');
   const strongest = interest.strongest;
   const person = strongest?.person || null;
@@ -41,7 +41,7 @@ export default function InterestBand({ businessId, row, interest, canEdit, onCha
   };
   const draftReply = () => act('draft', () => copyFollowUp({ businessId, row, person, signal: strongest, onToast }));
   const bookMeeting = () => act('book', () => bookMeetingWrite({ businessId, row, person, onChanged, onToast }));
-  const markContacted = () => act('contacted', () => markContactedWrite({ businessId, row, person, onChanged, onToast }));
+  const markContacted = () => act('contacted', () => markContactedWrite({ businessId, row, person, onChanged, onToast, onConvert }));
   const notNow = () => act('notnow', async () => {
     const r = await goalsApi.notNow(businessId, row.type, row.id, person ? { contact_id: person.contact_id } : {});
     onChanged();
@@ -60,7 +60,7 @@ export default function InterestBand({ businessId, row, interest, canEdit, onCha
         <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button type="button" className="ui-btn ui-btn--primary" disabled={b('draft')} onClick={draftReply} title="Copies the record + the signal for Claude. Never sends."><IconMail size={13} />{b('draft') ? 'Copying…' : 'Follow up: draft reply'}</button>
           <button type="button" className={btn} style={onBand} disabled={b('book')} onClick={bookMeeting} title="Sets the next step and adds a to-do due today. No calendar write."><IconCalendar size={13} />{b('book') ? 'Saving…' : 'Book meeting'}</button>
-          <button type="button" className={btn} style={onBand} disabled={b('contacted')} onClick={markContacted} title={row.type === 'partner' ? 'Logs an email touch. Not contacted yet = moves to Sent.' : row.type === 'employer' ? 'Logs a done to-do. At Target = moves to Contacted.' : 'Logs a done to-do (what Last touch reads).'}><IconCheck size={13} />{b('contacted') ? 'Saving…' : 'Mark contacted'}</button>
+          <button type="button" className={btn} style={onBand} disabled={b('contacted')} onClick={markContacted} title={row.type === 'partner' ? 'Logs an email touch. Not contacted yet = moves to Sent.' : row.type === 'employer' ? 'Logs a done to-do. At Target = moves to Contacted.' : 'Adds it to the pipeline as an employer at Contacted (Undo removes it).'}><IconCheck size={13} />{b('contacted') ? 'Saving…' : 'Mark contacted'}</button>
           {showsNotNow(row) && <button type="button" className="ui-btn ui-btn--tertiary" disabled={b('notnow')} onClick={notNow} title={person ? 'Snoozes this person a week' : 'Hides the band until a newer signal arrives'}><IconPause size={13} />{b('notnow') ? 'Saving…' : 'Not now'}</button>}
         </span>
       )}

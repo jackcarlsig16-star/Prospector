@@ -3,6 +3,7 @@ import { SA } from '../theme';
 import { goalsApi } from './goalsApi';
 import { inputStyle, ErrorNote } from './goalsUi';
 import { needsRecord } from './companyPanelModel';
+import { markContacted } from './companyReach';
 
 // company-panel-v3 S - "SETUP n/m" (done over the steps shown; skip steps excluded): done = an outlined green chip
 // "✓ Research · Oct 23" (no number), the one primary = a filled accent pill "2 Size & type", later = an outlined chip.
@@ -71,10 +72,7 @@ export default function CompanyStepsStrip({ businessId, row, detail, canEdit, me
     const who = members.find(m => m.user_id === userId);
     onToast({ text: `${row.name}: owner ${who ? who.name.split(' ')[0] : 'nobody'}`, undo: async () => { await write(before); onChanged(); } });
   });
-  const firstTouch = () => act('touch', async () => {
-    await goalsApi.markContacted(businessId, row.type, row.id, {});
-    onChanged(); onToast({ text: `${row.name}: marked contacted` });
-  });
+  const firstTouch = () => act('touch', () => markContacted({ businessId, row, onChanged, onToast, onConvert }));
   const go = step => {
     setError('');
     if (step.id === 'research') return runResearch();
@@ -85,7 +83,7 @@ export default function CompanyStepsStrip({ businessId, row, detail, canEdit, me
   };
 
   if (s.ready && !openStep) {
-    return <div data-steps-ready style={{ fontSize: 13, color: SA.good }}>✓ Ready{s.last_touch_at ? <span style={{ color: SA.soft }}> · last touch {md(s.last_touch_at)}</span> : null}</div>;
+    return <div data-steps-ready style={{ fontSize: 13, color: SA.good }}>Setup ✓ done{s.last_touch_at ? <span style={{ color: SA.soft }}> · last touch {md(s.last_touch_at)}</span> : null}</div>;
   }
   const found = researchNumbers(detail);
   const shown = s.steps.filter(x => x.status !== 'skip');

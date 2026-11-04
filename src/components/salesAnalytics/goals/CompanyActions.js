@@ -152,7 +152,7 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
     onToast({ text: r.already ? `${rec.name} is already in the pipeline as a ${rec.type}` : `${rec.name} added as a ${rec.type}` });
   });
 
-  const reach = (what, fn) => act(what, () => fn({ businessId, row, onChanged, onToast }));
+  const reach = (what, fn) => act(what, () => fn({ businessId, row, onChanged, onToast, onConvert }));
   const next = nextStage(row);
   const b = what => busy === what;
   const nextClass = bandShown ? btn : 'ui-btn ui-btn--primary';
@@ -173,7 +173,7 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
           <button type="button" className={btn} disabled={b('draft')} aria-keyshortcuts="E" aria-expanded={needsRecord(row.type) ? form === 'draft-kind' : undefined} onClick={draftClick} title="Copies the record + a short playbook prompt for Claude. Never sends."><IconMail size={13} />{b('draft') ? 'Copying…' : 'Draft email'}{kbd('E')}</button>
           {!needsRecord(row.type) && <>
             <button type="button" className={btn} disabled={b('book')} onClick={() => reach('book', bookMeeting)} title="Sets the next step and adds a to-do due today. No calendar write."><IconCalendar size={13} />{b('book') ? 'Saving…' : 'Book meeting'}</button>
-            <button type="button" className={btn} disabled={b('contacted')} onClick={() => reach('contacted', markContacted)} title={row.type === 'partner' ? 'Logs an email touch. Not contacted yet = moves to Sent.' : row.type === 'employer' ? 'Logs a done to-do. At Target = moves to Contacted.' : 'Logs a done to-do (what Last touch reads).'}><IconCheck size={13} />{b('contacted') ? 'Saving…' : 'Mark contacted'}</button>
+            <button type="button" className={btn} disabled={b('contacted')} onClick={() => reach('contacted', markContacted)} title={row.type === 'partner' ? 'Logs an email touch. Not contacted yet = moves to Sent.' : row.type === 'employer' ? 'Logs a done to-do. At Target = moves to Contacted.' : 'Adds it to the pipeline as an employer at Contacted (Undo removes it).'}><IconCheck size={13} />{b('contacted') ? 'Saving…' : 'Mark contacted'}</button>
           </>}
         </Group>
         {divider}
