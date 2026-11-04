@@ -117,7 +117,8 @@ export function clientEventText(e) {
     : e.kind === 'status' ? `Client status ${clientWord(e.from_status)} → ${clientWord(e.to_status)}`
       : e.kind === 'signed' ? 'Marked signed' : e.kind === 'launched' ? 'Marked launched'
         : e.kind === 'undo' ? (e.meta?.archived ? 'Undid Make client · archived' : 'Undid a client change')
-          : e.kind === 'file_added' ? `File added · ${e.meta?.kind || 'file'}` : e.kind === 'file_archived' ? 'File archived' : e.kind;
+          : e.kind === 'file_added' ? `File added · ${e.meta?.kind || 'file'}` : e.kind === 'file_archived' ? 'File archived'
+            : e.kind === 'alert_sent' ? `New-client alert emailed to the team (${e.meta?.recipients ?? 0})` : e.kind;
   return e.via === 'connector' ? `${t} (via connector)` : t;
 }
 

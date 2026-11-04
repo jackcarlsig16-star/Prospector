@@ -8,9 +8,11 @@ import { idTokenClaims } from './oauth.js';
 process.env.TEST_KEY_A = crypto.randomBytes(32).toString('base64');
 process.env.TEST_KEY_B = crypto.randomBytes(32).toString('base64');
 
-test('only read scopes are ever requested', () => {
-  assert.deepEqual(MICROSOFT_SCOPES, ['openid', 'offline_access', 'User.Read', 'Mail.Read', 'Calendars.Read']);
-  assert.ok(!MICROSOFT_SCOPES.some(s => /write|send|readwrite/i.test(s)));
+// homelover-team-emails-v1 replaced "never asks for send": Mail.Send is asked for, and api/sales/teamEmails/
+// teamEmails.test.mjs proves the team-email send is the only Graph write and sendTeamEmail (no recipient argument) its only caller.
+test('reads + Mail.Send requested, never a write scope', () => {
+  assert.deepEqual(MICROSOFT_SCOPES, ['openid', 'offline_access', 'User.Read', 'Mail.Read', 'Calendars.Read', 'Mail.Send']);
+  assert.ok(!MICROSOFT_SCOPES.some(s => /write/i.test(s)));
 });
 
 test('granted scopes: prefix stripped, extras dropped, missing named', () => {

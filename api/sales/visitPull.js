@@ -27,7 +27,7 @@ import { schedulePeoplePull } from './visitorPeoplePull.js';
 // proposed and nothing is written to Apollo.
 export const MONTHLY_CREDIT_CAP = 500;
 export const PAUSED = 'Visitor pull paused: 500 Apollo credits used this month';
-export const TRIGGERS = ['pageload', 'manual', 'test'];
+export const TRIGGERS = ['pageload', 'manual', 'test', 'cron'];
 export const KINDS = ['daily', 'backfill'];
 export const MAX_PAGES = 5;
 const STALE_RUNNING_MS = 10 * 60e3;
@@ -43,9 +43,14 @@ export async function monthSpend(supabase, laMonth) {
   return rows.reduce((n, r) => n + (r.credits || 0), 0);
 }
 
+// deadline (ms epoch, the scheduler's pull only): checked before every Apollo call, so a slow pull stops and closes its
+// run row as an error instead of running on.
+const inTime = ctx => { if (ctx.deadline && Date.now() > ctx.deadline) throw new Error('timed out'); };
+
 async function search(ctx, filters, lookbackDays) {
   const rows = { organizations: [], accounts: [] };
   for (let page = 1; page <= MAX_PAGES; page++) {
+    inTime(ctx);
     const json = await apolloRequest({ method: 'POST', path: SEARCH_PATH, ctx, body: { website_visitors_from_domains: VISITOR_DOMAINS, website_visitors_from_past: lookbackDays, per_page: 100, page, ...filters } });
     rows.organizations.push(...(json?.organizations || []));
     rows.accounts.push(...(json?.accounts || []));
@@ -146,7 +151,7 @@ async function store(supabase, { businessId, userId, today, win, all, usIds, fir
 // accounts?, us_ids? } stands in for Apollo's two visitor searches, so the rows go through the same scoring, storage,
 // signals and auto-create as a real pull with 0 visitor calls, no run row and no credit row; only V2b's people search
 // may call Apollo.
-export async function runVisitPull(supabase, { businessId, userId, trigger = 'manual', force = false, backfillDays = null, now = Date.now(), injected = null }) {
+export async function runVisitPull(supabase, { businessId, userId, trigger = 'manual', force = false, backfillDays = null, now = Date.now(), injected = null, deadline = null }) {
   if (injected) {
     const today = laDateString(new Date(now)), win = windowFor(null, today);
     const ctx = { callCounter: { count: 0, max: 0 }, endpointCounts: {} };
@@ -171,7 +176,7 @@ export async function runVisitPull(supabase, { businessId, userId, trigger = 'ma
   const people = () => { if (trigger === 'pageload') schedulePeoplePull(supabase, { businessId, userId }); };
   if (claim.done) { people(); return reply(200, { ran: false, reason: win.kind === 'backfill' ? 'Already backfilled today' : 'Visitors already pulled today', last_run: claim.done }); }
   if (claim.busy) return reply(409, { error: 'A visitor pull is running - try again in a minute' });
-  const ctx = { callCounter: { count: 0, max: 2 + 2 * MAX_PAGES }, endpointCounts: {} };
+  const ctx = { callCounter: { count: 0, max: 2 + 2 * MAX_PAGES }, endpointCounts: {}, deadline };
   let before = null, after = null, credits = 0;
   const finish = patch => supabase.from('visit_pull_runs').update({ ...patch, calls: ctx.callCounter.count, credits, updated_at: new Date().toISOString() }).eq('id', claim.run.id).select(RUN_COLS);
   const recordSpend = () => supabase.from('apollo_credit_spend').insert({
@@ -181,6 +186,7 @@ export async function runVisitPull(supabase, { businessId, userId, trigger = 'ma
     before = await balance(ctx);
     const all = await search(ctx, {}, win.lookback_days);
     const us = await search(ctx, US_500_FILTERS, win.lookback_days);
+    inTime(ctx);
     after = await balance(ctx);
     credits = before - after;
     must(await recordSpend());
@@ -192,7 +198,7 @@ export async function runVisitPull(supabase, { businessId, userId, trigger = 'ma
   } catch (e) {
     // A search that spent before failing still gets its delta recorded.
     if (before != null && after == null) {
-      try { after = await balance(ctx); credits = before - after; must(await recordSpend()); } catch (spendErr) { console.error('[visits/pull] spend not recorded', cleanText(String(spendErr.message || ''), 200)); }
+      try { ctx.deadline = null; after = await balance(ctx); credits = before - after; must(await recordSpend()); } catch (spendErr) { console.error('[visits/pull] spend not recorded', cleanText(String(spendErr.message || ''), 200)); }
     }
     const message = cleanText(String(e.message || 'failed'), 200);
     const closed = await finish({ status: 'error', error: message });

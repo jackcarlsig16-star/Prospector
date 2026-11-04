@@ -1,10 +1,16 @@
 import { tokenSealer } from './tokenCrypto.js';
 import { getServiceSupabase } from './authUser.js';
 
-// microsoft-connect-v1 - one Microsoft 365 grant per user, read-only scopes,
-// one consent screen. openid is sign-in only (the id token carries the tenant).
-export const MICROSOFT_SCOPES = ['openid', 'offline_access', 'User.Read', 'Mail.Read', 'Calendars.Read'];
+// microsoft-connect-v1 - one Microsoft 365 grant per user, one consent screen. openid is sign-in only (the id token
+// carries the tenant). Mail.Send is for the internal team emails only (homelover-team-emails-v1): optional, so a
+// mailbox whose tenant blocks it still connects for mail + calendar reads.
+export const TEAM_EMAIL_SCOPE = 'Mail.Send';
+export const MICROSOFT_SCOPES = ['openid', 'offline_access', 'User.Read', 'Mail.Read', 'Calendars.Read', TEAM_EMAIL_SCOPE];
 const REQUIRED = ['User.Read', 'Mail.Read', 'Calendars.Read'];
+export const canSendTeamEmail = grant => !!grant && !grant.error && (grant.scopes || []).some(s => s.toLowerCase() === TEAM_EMAIL_SCOPE.toLowerCase());
+// A refresh asks for exactly what the grant already holds: asking for a scope the person never consented to fails
+// with interaction_required, which would mark a working grant "reconnect" the day a scope is added.
+export const refreshScopes = grant => [...new Set(['offline_access', ...(grant.scopes || [])])];
 const RECONNECT = 'Microsoft access expired or was revoked - reconnect';
 
 export const microsoftConfigured = () =>
@@ -50,21 +56,23 @@ export async function deleteGrant(userId) {
   if (error) throw new Error(error.message);
 }
 
-class NeedsMicrosoft extends Error {
+export class NeedsMicrosoft extends Error {
   constructor(message = 'Connect Microsoft to use this') { super(message); }
 }
+
+export const refreshBody = (grant, refreshToken) => new URLSearchParams({
+  client_id: process.env.MICROSOFT_CLIENT_ID,
+  client_secret: process.env.MICROSOFT_CLIENT_SECRET,
+  refresh_token: refreshToken,
+  grant_type: 'refresh_token',
+  scope: refreshScopes(grant).join(' '),
+});
 
 async function refresh(userId, grant) {
   const r = await fetch(`${authority()}/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: process.env.MICROSOFT_CLIENT_ID,
-      client_secret: process.env.MICROSOFT_CLIENT_SECRET,
-      refresh_token: sealer.decrypt(grant.refresh_token_enc),
-      grant_type: 'refresh_token',
-      scope: MICROSOFT_SCOPES.join(' '),
-    }),
+    body: refreshBody(grant, sealer.decrypt(grant.refresh_token_enc)),
   });
   const data = await r.json();
   const now = new Date().toISOString();

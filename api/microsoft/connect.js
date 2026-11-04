@@ -4,7 +4,7 @@ import { returnPath, withParam } from '../google/oauth.js';
 import { redirectUri, STATE_COOKIE } from './oauth.js';
 
 // GET /api/microsoft/connect?return=/path - sends the signed-in user to
-// Microsoft's consent screen (read-only mail + calendar).
+// Microsoft's consent screen (read mail + calendar, and send - the internal team emails only).
 export default async function handler(req, res) {
   const back = returnPath(req.query.return);
   if (!microsoftConfigured()) return res.redirect(withParam(back, 'microsoft_error', 'Microsoft is not configured on the server'));

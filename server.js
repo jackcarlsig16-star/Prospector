@@ -895,6 +895,12 @@ app.get('/api/sales/:businessId/goals/sources/network', salesModuleRoute('./api/
 app.get('/api/sales/:businessId/goals/clients', salesModuleRoute('./api/sales/clients.js', 'listClientsRoute', 'goals/clients'));
 app.post('/api/sales/:businessId/goals/clients', salesModuleRoute('./api/sales/clients.js', 'makeClientRoute', 'goals/clients POST'));
 app.post('/api/sales/:businessId/goals/clients/undo', salesModuleRoute('./api/sales/clients.js', 'undoClientRoute', 'goals/clients/undo POST'));
+// homelover-team-emails-v1 T2 - Settings › Team emails (reads: Viewer; writes checked inside: on / off owner or admin, sender owner).
+const TEAM_EMAILS = './api/sales/teamEmails/settings.js';
+app.get('/api/sales/:businessId/goals/team-emails', salesModuleRoute(TEAM_EMAILS, 'teamEmailStateRoute', 'goals/team-emails'));
+app.patch('/api/sales/:businessId/goals/team-emails', salesModuleRoute(TEAM_EMAILS, 'updateTeamEmailsRoute', 'goals/team-emails PATCH'));
+app.put('/api/sales/:businessId/goals/team-emails/me', salesModuleRoute(TEAM_EMAILS, 'setMineRoute', 'goals/team-emails/me PUT'));
+app.post('/api/sales/:businessId/goals/team-emails/test', salesModuleRoute(TEAM_EMAILS, 'sendTestRoute', 'goals/team-emails/test POST'));
 app.post('/api/sales/:businessId/goals/clients/:id/signed', salesModuleRoute('./api/sales/clients.js', 'markSignedRoute', 'goals/clients/:id/signed POST'));
 app.post('/api/sales/:businessId/goals/clients/:id/launched', salesModuleRoute('./api/sales/clients.js', 'markLaunchedRoute', 'goals/clients/:id/launched POST'));
 app.post('/api/sales/:businessId/goals/clients/:id/files/upload-url', salesModuleRoute('./api/sales/clientFiles.js', 'uploadUrlRoute', 'goals/clients/:id/files/upload-url POST'));
@@ -1001,37 +1007,39 @@ cron.schedule('0 */6 * * *', async () => {
 });
 console.log('[CRON] SFDC compliance sync scheduled every 6 hours');
 
-// ── Sales Analytics Apollo sync — daily, 06:00 America/Los_Angeles ─────────
-// Guardrail 7: exactly one registration. The module-level flag is real
-// insurance against this block ever running twice in one process (e.g. a
-// future refactor that moves this into a function called more than once) -
-// cron.schedule itself doesn't dedupe by expression or name.
-let salesAnalyticsCronRegistered = false;
-if (!salesAnalyticsCronRegistered) {
-  salesAnalyticsCronRegistered = true;
-  cron.schedule(
-    '0 6 * * *',
-    async () => {
-      console.log('[CRON] Running Sales Analytics Apollo sync...');
-      try {
-        const { runSync, cleanupOldSnapshots } = await import('./api/sales/sync.js');
-        const { getAllowlistedBusinessIds } = await import('./api/sales/allowlist.js');
-        for (const businessId of getAllowlistedBusinessIds()) {
-          const result = await runSync({ businessId, trigger: 'cron' });
-          console.log(
-            '[CRON] sales sync', businessId,
-            result.refused ? `refused: ${result.reason}` : `status: ${result.run && result.run.status}`
-          );
-        }
-        const cleanup = await cleanupOldSnapshots();
-        console.log('[CRON] sales snapshot retention cleanup:', cleanup);
-      } catch (err) {
-        console.error('[CRON] Sales Analytics sync failed:', err.message);
+// ── HomeLover scheduler — one LA-clock tick a minute (api/sales/teamEmails/scheduler.js) ───────────────────
+// homelover-team-emails-v1 T3: the 06:00 Apollo sync (moved off node-cron, whose next run drifted an hour across a DST
+// change), the 06:30 weekday visitor pull, the 07:00 weekday team visitor email and the new-client alerts. Each timed
+// slot is claimed by a sales_job_slots row, so a restart or a second instance never runs it twice.
+// Render sets RENDER=true; a local server.js (dev, live-verify scripts on the real DB) must never run these jobs or send.
+let hlSchedulerStarted = false;
+if (!hlSchedulerStarted && process.env.RENDER === 'true') {
+  hlSchedulerStarted = true;
+  Promise.all([
+    import('./api/sales/teamEmails/scheduler.js'), import('./api/sales/teamEmails/jobs.js'), import('./api/sales/allowlist.js'),
+    import('./api/sales/visitPull.js'), import('./api/sales/intentScoreRun.js'), import('./api/sales/goalsShared.js'),
+  ]).then(([sched, jobs, allow, pull, scores, shared]) => {
+    const supabase = shared.getSupabase();
+    const runApolloSync = async () => {
+      const { runSync, cleanupOldSnapshots } = await import('./api/sales/sync.js');
+      const out = {};
+      for (const businessId of allow.getAllowlistedBusinessIds()) {
+        const result = await runSync({ businessId, trigger: 'cron' });
+        out[businessId] = result.refused ? `refused: ${result.reason}` : `status: ${result.run && result.run.status}`;
       }
-    },
-    { timezone: 'America/Los_Angeles', noOverlap: true }
-  );
-  console.log('[CRON] Sales Analytics Apollo sync scheduled daily at 06:00 America/Los_Angeles');
+      out.cleanup = await cleanupOldSnapshots();
+      return out;
+    };
+    const list = jobs.hlJobs({
+      runApolloSync, pull: pull.runVisitPull,
+      recompute: (sb, businessId) => scores.scheduleRecompute(sb, businessId, 'visit_pull'),
+    });
+    sched.startScheduler(supabase, {
+      jobs: list,
+      scopes: job => (job.scope === 'all' ? ['all'] : jobs.teamScopes(supabase, allow.getAllowlistedBusinessIds)),
+    });
+    console.log('[SCHEDULER] HomeLover jobs: apollo-sync 06:00 daily, visitor-pull 06:30 + team-visitor-email 07:00 Mon-Fri, client-alerts each minute (America/Los_Angeles)');
+  }).catch(err => console.error('[SCHEDULER] did not start:', err.message));
 }
 
 // ── HumanKind daily check — in-process runner, ON only when HK_SCHEDULER=cron ──

@@ -15,9 +15,13 @@ const files = dir => fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {
   return SOURCE.test(e.name) ? [p] : [];
 });
 
-test('no send path in api/, src/ or server.js', () => {
+// Jack's one exception (Nov 3, homelover-team-emails-v1): internal team emails to that workspace's own members, from
+// one module, guarded by its own test (recipients resolved inside, no address argument). Exact paths, nothing else.
+const TEAM_EMAIL_FILES = new Set(['api/sales/teamEmails/send.js', 'api/sales/teamEmails/teamEmails.test.mjs']);
+
+test('no send path in api/, src/ or server.js (outside the one team-email module)', () => {
   const hits = [];
-  for (const f of [...files(path.join(ROOT, 'api')), ...files(path.join(ROOT, 'src')), path.join(ROOT, 'server.js')]) {
+  for (const f of [...files(path.join(ROOT, 'api')), ...files(path.join(ROOT, 'src')), path.join(ROOT, 'server.js')].filter(f => !TEAM_EMAIL_FILES.has(path.relative(ROOT, f)))) {
     fs.readFileSync(f, 'utf8').split('\n').forEach((line, i) => {
       for (const n of NEEDLES) if (line.includes(n)) hits.push(`${path.relative(ROOT, f)}:${i + 1} ${n}`);
     });
