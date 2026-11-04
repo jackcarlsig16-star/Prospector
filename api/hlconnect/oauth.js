@@ -1,9 +1,9 @@
 // homelover-clients-v1 C11 - the OAuth 2.1 authorization server behind the HomeLover Claude connector (/hl/mcp). Its own
-// module, client registry, tables (hl_oauth_*) and route prefix: nothing here imports, extends or routes through the
-// HumanKind connector (api/mcp). Same shape as that one on purpose (public clients, PKCE S256, Claude's Client ID Metadata
-// Document or Dynamic Client Registration; codes + tokens stored only as SHA-256 hashes; the browser carries only a
-// request id + allow / deny). Issuer = <origin>/hl, so its metadata sits at /.well-known/oauth-authorization-server/hl.
-// Only a member (or above) of exactly one HomeLover sales workspace (SALES_ANALYTICS_BUSINESS_IDS) can connect.
+// module, client registry, tables (hl_oauth_*) and route prefix; it imports only shared libs and the sales module. Public
+// clients, PKCE S256, Claude's Client ID Metadata Document or Dynamic Client Registration; codes + tokens stored only as
+// SHA-256 hashes; the browser carries only a request id + allow / deny. Issuer = <origin>/hl, so its metadata sits at
+// /.well-known/oauth-authorization-server/hl. Only a member (or above) of exactly one HomeLover sales workspace
+// (SALES_ANALYTICS_BUSINESS_IDS) can connect.
 import crypto from 'node:crypto';
 import { getServiceSupabase, getAccessToken } from '../lib/authUser.js';
 import { userForToken } from '../lib/requireAuth.js';

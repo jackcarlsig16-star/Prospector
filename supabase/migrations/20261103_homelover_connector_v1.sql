@@ -1,8 +1,8 @@
--- homelover-clients-v1 REV2 Stage 3 (C11) - storage for the HomeLover Claude connector's own OAuth server (/hl/mcp), kept
--- apart from the HumanKind connector's hk_oauth_* tables. Run in: Supabase Dashboard -> SQL Editor -> New query -> paste
--- -> Run. Idempotent. No existing row value changes.
+-- homelover-clients-v1 REV2 Stage 3 (C11) - storage for the HomeLover Claude connector's own OAuth server (/hl/mcp), in
+-- its own tables. Run in: Supabase Dashboard -> SQL Editor -> New query -> paste -> Run. Idempotent. No existing row value
+-- changes.
 --
--- hl_oauth_clients / _requests / _codes / _tokens  same shape as hk_oauth_* (20261028_hkos_mcp_connector_v1.sql): RLS on,
+-- hl_oauth_clients / _requests / _codes / _tokens  RLS on,
 --   no policies, anon + authenticated revoked - server only. Codes and tokens are stored only as SHA-256 hashes. No email
 --   column anywhere. Revoke = revoked_at (a refresh-token reuse revokes its whole family_id).
 -- sales_source_events.reason  gains 'undo' (Make client's Undo when it changed the source - Stage 1 wrote it, the check

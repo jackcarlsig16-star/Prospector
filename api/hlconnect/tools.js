@@ -137,12 +137,15 @@ const HANDLERS = {
   async add_lookalikes(ctx, a) {
     const client = await employerBy(ctx, { domain: domainArg(a.client_domain, 'client_domain') });
     if (!client) throw new ToolError('no HomeLover company has that client_domain - add_client first');
-    const { known, upside } = await domainIndex(ctx);
+    const { known, upside, names } = await domainIndex(ctx);
     const added = [], skipped_existing = [], upside_owned = [];
     for (const [i, co] of a.companies.entries()) {
       const domain = co.domain ? domainArg(co.domain, `companies[${i}].domain`) : null;
       const hit = domain ? known.get(domain) : null;
-      if (hit) { (upside.has(domain) ? upside_owned : skipped_existing).push({ name: co.name, domain, type: hit.type, record: hit.name }); continue; }
+      if (hit) { (upside.has(domain) ? upside_owned : skipped_existing).push({ name: co.name, domain, type: hit.type, record: hit.name, matched_by: 'domain' }); continue; }
+      // No domain match: an exact normalized name is the same company - never a second record.
+      const same = names.get(normName(co.name));
+      if (same) { (same.team === 'upside' ? upside_owned : skipped_existing).push({ name: co.name, domain, type: same.type, record: same.name, matched_by: 'name' }); continue; }
       const evidence = [`Lookalike of ${client.organization} (via connector)`, co.why, co.industries, [co.hq_city, co.hq_state].filter(Boolean).join(', ')].filter(Boolean).join(' · ');
       const r = await insertCompanyRecord(ctx.supabase, {
         businessId: ctx.businessId, userId: ctx.auth.user.id, name: co.name.trim(), domain, to: 'target', kind: 'employer', channel: 'manual', evidence,
@@ -151,6 +154,7 @@ const HANDLERS = {
       if (r.already) { skipped_existing.push({ name: co.name, domain, type: r.already.type, record: r.already.name }); continue; }
       if (domain) must(await ctx.supabase.from('sales_targets').update({ domain, domain_source: 'manual', domain_at: ctx.now().toISOString() }).eq('business_id', ctx.businessId).eq('id', r.created.id).select('id'));
       if (domain) known.set(domain, { type: 'target', name: co.name });
+      names.set(normName(co.name), { type: 'target', name: co.name, team: null });
       added.push({ company_id: r.created.id, name: r.created.name, url: urlOf(ctx, 'target', r.created.id) });
     }
     return { client: client.organization, added, skipped_existing, upside_owned };
@@ -164,22 +168,32 @@ const HANDLERS = {
   },
 };
 
-// Every domain this workspace knows (employers, targets, partners' confirmed domains) with whose team owns it.
+// Every domain this workspace knows, from every kind's domain field - employers' and targets' domain, partners'
+// company_domain and every partner_domains row (confirmed or not: an Apollo-found domain is still that partner's) -
+// normalized (lowercase, no scheme / www / path), with whose team owns it; and every live company's normalized name.
 async function domainIndex(ctx) {
   const sb = ctx.supabase, b = ctx.businessId;
   const [opps, tgts, partners, pdoms] = await Promise.all([
-    selectAllPages(() => sb.from('sales_opportunities').select('id, organization, domain, owner_team').eq('business_id', b).is('archived_at', null).not('domain', 'is', null).order('id')),
-    selectAllPages(() => sb.from('sales_targets').select('id, name, domain, owner_team').eq('business_id', b).not('domain', 'is', null).order('id')),
-    selectAllPages(() => sb.from('sales_goals').select('id, name, owner_team').eq('business_id', b).eq('goal_type', 'partnership').is('archived_at', null).order('id')),
-    selectAllPages(() => sb.from('partner_domains').select('goal_id, domain').eq('business_id', b).eq('confirmed', true).order('goal_id').order('domain')),
+    selectAllPages(() => sb.from('sales_opportunities').select('id, organization, domain, owner_team').eq('business_id', b).is('archived_at', null).order('id')),
+    selectAllPages(() => sb.from('sales_targets').select('id, name, domain, owner_team').eq('business_id', b).order('id')),
+    selectAllPages(() => sb.from('sales_goals').select('id, name, company_domain, owner_team').eq('business_id', b).eq('goal_type', 'partnership').is('archived_at', null).order('id')),
+    selectAllPages(() => sb.from('partner_domains').select('goal_id, domain').eq('business_id', b).order('goal_id').order('domain')),
   ]);
-  const known = new Map(), upside = new Set(), joint = new Set();
-  const add = (domain, type, name, team) => { if (!domain) return; if (!known.has(domain)) known.set(domain, { type, name }); if (team === 'upside') upside.add(domain); if (team === 'both') joint.add(domain); };
-  for (const o of opps) add(o.domain, 'employer', o.organization, o.owner_team);
-  for (const t of tgts) add(t.domain, 'target', t.name, t.owner_team);
+  const known = new Map(), upside = new Set(), joint = new Set(), names = new Map();
+  const add = (raw, type, name, team) => {
+    const domain = raw ? normalizeDomain(String(raw)) : null;
+    if (!domain) return;
+    if (!known.has(domain)) known.set(domain, { type, name });
+    if (team === 'upside') upside.add(domain);
+    if (team === 'both') joint.add(domain);
+  };
+  const named = (name, type, team) => { const k = normName(name || ''); if (k && !names.has(k)) names.set(k, { type, name, team }); };
+  for (const o of opps) { add(o.domain, 'employer', o.organization, o.owner_team); named(o.organization, 'employer', o.owner_team); }
+  for (const t of tgts) { add(t.domain, 'target', t.name, t.owner_team); named(t.name, 'target', t.owner_team); }
   const pById = new Map(partners.map(p => [p.id, p]));
+  for (const p of partners) { add(p.company_domain, 'partner', p.name, p.owner_team); named(p.name, 'partner', p.owner_team); }
   for (const d of pdoms) { const p = pById.get(d.goal_id); if (p) add(d.domain, 'partner', p.name, p.owner_team); }
-  return { known, upside, joint };
+  return { known, upside, joint, names };
 }
 
 const result = (data, isError = false) => ({ content: [{ type: 'text', text: typeof data === 'string' ? data : JSON.stringify(data) }], ...(isError ? { isError: true } : {}) });

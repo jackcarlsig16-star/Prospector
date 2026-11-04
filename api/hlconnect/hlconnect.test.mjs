@@ -12,7 +12,7 @@ import * as O from './oauth.js';
 import { bearerAuth } from './bearer.js';
 import { toolList, runTool, sourceFor, checkArgs } from './tools.js';
 
-const HL = '22222222-2222-4222-8222-222222222222', HK = '11111111-1111-4111-8111-111111111111', OTHER = '33333333-3333-4333-8333-333333333333';
+const HL = '22222222-2222-4222-8222-222222222222', NOGOALS = '11111111-1111-4111-8111-111111111111', OTHER = '33333333-3333-4333-8333-333333333333';
 const JACK = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', PETE = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const ID = { mom: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', hub: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', up: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', upEmp: 'ffffffff-ffff-4fff-8fff-ffffffffffff', foreign: '99999999-9999-4999-8999-999999999999' };
 const NOW = new Date('2026-11-03T22:00:00Z');
@@ -21,8 +21,8 @@ let now = NOW;
 const seed = () => fakeSupabase({
   hl_oauth_clients: [], hl_oauth_requests: [], hl_oauth_codes: [], hl_oauth_tokens: [],
   profiles: [{ id: JACK, display_name: 'Jack Example', is_platform_owner: false }, { id: PETE, display_name: 'Pete Example', is_platform_owner: false }],
-  business_members: [{ business_id: HL, user_id: JACK, role: 'owner', name: 'Jack Example' }, { business_id: HK, user_id: JACK, role: 'owner' }, { business_id: HL, user_id: PETE, role: 'viewer', name: 'Pete Example' }, { business_id: OTHER, user_id: PETE, role: 'owner' }],
-  businesses: [{ id: HL, name: 'HomeLover', features: { goals_sales: true } }, { id: HK, name: 'HumanKind', features: { hk_sales: true } }, { id: OTHER, name: 'Other Co', features: { goals_sales: true } }],
+  business_members: [{ business_id: HL, user_id: JACK, role: 'owner', name: 'Jack Example' }, { business_id: NOGOALS, user_id: JACK, role: 'owner' }, { business_id: HL, user_id: PETE, role: 'viewer', name: 'Pete Example' }, { business_id: OTHER, user_id: PETE, role: 'owner' }],
+  businesses: [{ id: HL, name: 'HomeLover', features: { goals_sales: true } }, { id: NOGOALS, name: 'Other workspace', features: {} }, { id: OTHER, name: 'Second workspace', features: { goals_sales: true } }],
   sales_goals: [
     { id: ID.hub, business_id: HL, goal_type: 'partnership', name: 'HUB International', pipeline_status: 'live', owner_team: 'homelover', source_kind: 'partner_referral', source_partner_id: null, archived_at: null },
     { id: ID.up, business_id: HL, goal_type: 'partnership', name: 'Upside', pipeline_status: 'live', owner_team: 'both', archived_at: null },
@@ -34,7 +34,7 @@ const seed = () => fakeSupabase({
     { id: ID.foreign, business_id: OTHER, organization: 'Foreign Co', domain: 'foreign.example', stage: 'meeting', owner_team: 'upside', archived_at: null, updated_at: STAMP },
   ],
   sales_targets: [{ id: randomId(), business_id: HL, name: 'Known Target', domain: 'knowntarget.example', status: 'proposed', owner_team: 'both' }],
-  partner_domains: [{ id: randomId(), business_id: HL, goal_id: ID.hub, domain: 'hub.example', confirmed: true }],
+  partner_domains: [{ id: randomId(), business_id: HL, goal_id: ID.hub, domain: 'hub.example', confirmed: true }, { id: randomId(), business_id: HL, goal_id: ID.hub, domain: 'hubinternational.example', confirmed: false, source: 'apollo' }],
   sales_week_goals: [{ id: randomId(), business_id: HL, kind: 'todo', status: 'open', text: 'Send agreement', link_type: 'opportunity', link_id: ID.mom }],
   sales_week_report: [], sales_source_events: [], sales_client_events: [], sales_opportunity_events: [], sales_outreach_contacts: [], sales_prospect_state: [], sales_people: [], web_visits: [], research_runs: [],
 }, { triggers: { sales_opportunities: opportunityEventsTrigger }, now: () => now.getTime() });
@@ -62,12 +62,16 @@ async function connect(sb, d) {
   return { cid, auth, consent, tok };
 }
 
-test('module separation: nothing in api/hlconnect imports the HumanKind connector (api/mcp) or names hk_oauth tables', () => {
+// Imports only from this folder, the shared libs, the sales module, src/constants and packages; tables only hl_oauth_*,
+// sales_* and the shared core (workspaces, memberships, profiles, partner domains).
+const OK_IMPORT = /^(\.\/|\.\.\/lib\/|\.\.\/sales\/|\.\.\/\.\.\/src\/constants\/|node:|@modelcontextprotocol\/sdk\/)/;
+const OK_TABLE = /^(hl_oauth_[a-z]+|sales_[a-z_]+|businesses|business_members|profiles|partner_domains)$/;
+test('module separation: imports only shared libs + the sales module, tables only hl_oauth_* / sales_* / shared core', () => {
   const dir = path.dirname(new URL(import.meta.url).pathname);
   for (const f of fs.readdirSync(dir).filter(x => x.endsWith('.js'))) {
     const src = fs.readFileSync(path.join(dir, f), 'utf8');
-    assert.doesNotMatch(src, /from ['"]\.\.\/mcp\//, `${f} imports api/mcp`);
-    assert.doesNotMatch(src, /hk_oauth_/, `${f} names an hk_oauth table`);
+    for (const [, from] of src.matchAll(/from ['"]([^'"]+)['"]/g)) assert.match(from, OK_IMPORT, `${f} imports ${from}`);
+    for (const [, t] of src.matchAll(/\.from\('([a-z_]+)'\)/g)) assert.match(t, OK_TABLE, `${f} reads ${t}`);
   }
 });
 
@@ -105,8 +109,8 @@ test('authorize: not signed in -> the /hl consent page resumes; no HomeLover mem
   const q = { client_id: reg.body.client_id, redirect_uri: CB, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256' };
   const anon = await run(O.authorizeRoute, reqOf({ path: '/hl/oauth/authorize', query: q }), deps(sb, { sessionUser: async () => null }));
   assert.match(anon.location, /^\/hl\/oauth\/consent\?resume=%2Fhl%2Foauth%2Fauthorize/);
-  const two = await run(O.authorizeRoute, reqOf({ query: q }), deps(sb, { workspaceIds: () => [HL, HK] }));
-  assert.match(two.location, /^\/hl\/oauth\/consent\?id=/, 'HumanKind has no Goals, so Jack has exactly one HomeLover workspace');
+  const two = await run(O.authorizeRoute, reqOf({ query: q }), deps(sb, { workspaceIds: () => [HL, NOGOALS] }));
+  assert.match(two.location, /^\/hl\/oauth\/consent\?id=/, 'the other workspace has no Goals, so Jack has exactly one HomeLover workspace');
   const pete = await run(O.authorizeRoute, reqOf({ query: q }), deps(sb, { workspaceIds: () => [HL], sessionUser: async () => ({ id: PETE }) }));
   assert.equal(pete.location, '/hl/oauth/consent?error=no_workspace', 'a viewer is not a member');
   const none = await run(O.authorizeRoute, reqOf({ query: q }), deps(sb, { workspaceIds: () => [], sessionUser: async () => ({ id: JACK }) }));
@@ -115,7 +119,7 @@ test('authorize: not signed in -> the /hl consent page resumes; no HomeLover mem
   const many = await run(O.authorizeRoute, reqOf({ query: q }), deps(sb, { workspaceIds: () => [HL, OTHER] }));
   assert.equal(many.location, '/hl/oauth/consent?error=many_workspaces');
   const bad = await run(O.authorizeRoute, reqOf({ query: { ...q, resource: 'https://prospector.example/mcp' } }), deps(sb));
-  assert.match(bad.location, /error=invalid_target/, 'the HumanKind /mcp resource is refused here');
+  assert.match(bad.location, /error=invalid_target/, 'a resource outside /hl is refused');
 });
 
 test('bearer: a valid token is the caller in its one workspace at its real role; expired, non-allowlisted or removed member -> 401 with the /hl resource metadata', async () => {
@@ -238,4 +242,28 @@ test('check_upside_owned: read-only, upside / joint / unknown, only this workspa
   assert.equal(JSON.stringify(sb.db), before, 'nothing written');
   assert.ok(!JSON.stringify(r.data).includes('Foreign Co'), 'nothing names another workspace');
   assert.throws(() => checkArgs(toolList()[3].inputSchema, { domains: [] }), /1 to 50 items/);
+});
+
+test('domain matching (planner add-on): every kind\'s domain field, normalized - an unconfirmed Apollo partner domain, a partner\'s company_domain, stored mixed case / www', async () => {
+  const sb = seed();
+  sb.db.sales_goals.find(g => g.id === ID.up).company_domain = 'WWW.UpsidePartner.example/about';
+  sb.db.sales_targets[0].domain = 'knowntarget.example';
+  const r = await call(sb, 'check_upside_owned', { domains: ['hubinternational.example', 'https://upsidepartner.example', 'KnownTarget.example'] });
+  assert.deepEqual(r.data.results.map(x => [x.domain, x.in_prospector, x.record?.type, x.joint]), [
+    ['hubinternational.example', true, 'partner', false], ['upsidepartner.example', true, 'partner', true], ['knowntarget.example', true, 'target', true],
+  ]);
+});
+
+test('add_lookalikes: no domain match -> an exact normalized-name match is skipped too (never a second record)', async () => {
+  const sb = seed();
+  sb.db.sales_opportunities.find(o => o.id === ID.mom).domain = 'momentum.example';
+  const before = sb.db.sales_targets.length;
+  const r = await call(sb, 'add_lookalikes', { client_domain: 'momentum.example', companies: [
+    { name: 'known target', domain: 'brand-new-domain.example' }, { name: 'HUB  International' }, { name: 'Upside Owned Co.', domain: 'other.example' }, { name: 'Fresh Lookalike', domain: 'fresh.example' }, { name: 'fresh lookalike' },
+  ] });
+  assert.equal(r.isError, undefined, JSON.stringify(r.data));
+  assert.deepEqual(r.data.skipped_existing.map(x => [x.name, x.matched_by, x.type]), [['known target', 'name', 'target'], ['HUB  International', 'name', 'partner'], ['fresh lookalike', 'name', 'target']]);
+  assert.deepEqual(r.data.upside_owned.map(x => [x.name, x.matched_by]), [['Upside Owned Co.', 'name']]);
+  assert.deepEqual(r.data.added.map(x => x.name), ['Fresh Lookalike']);
+  assert.equal(sb.db.sales_targets.length, before + 1);
 });

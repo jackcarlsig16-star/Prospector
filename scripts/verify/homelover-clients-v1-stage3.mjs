@@ -5,7 +5,7 @@
 // redirect, never opened), authorize + consent GET + consent POST (allow), 3 token POSTs (wrong verifier, code, refresh),
 // MCP: initialize, tools/list, check_upside_owned (3 domains picked from the DB: one Upside-owned employer, one HomeLover
 // employer, one not in Prospector), add_client on Momentum (same facts it already holds, no domain -> matched by name,
-// must answer "updated" and change nothing). The HumanKind /mcp is probed once to show it refuses an /hl token.
+// must answer "updated" and change nothing). The workspace's other connector (/mcp) is probed once to show it refuses an /hl token.
 // CAPS: Claude 0 · Apollo 0 · sends 0. WRITES (all removed at the end): 1 hl_oauth_clients row (cascade: its request,
 // code, tokens); profiles.last_seen_at (ownerSession restores; sign-in rows kept by rule). restored = every watched sales
 // count identical, Momentum's row identical (values + updated_at), hl_oauth_* back to baseline; a mismatch THROWS.
@@ -54,7 +54,7 @@ try {
   const as = await (await fetch(`${BASE}/.well-known/oauth-authorization-server/hl`)).json();
   ok('authorization-server metadata (RFC 8414 path form): every endpoint under /hl, S256, public clients', as.issuer === `${BASE}/hl` && as.token_endpoint === `${BASE}/hl/oauth/token` && as.code_challenge_methods_supported.join() === 'S256', JSON.stringify(as).slice(0, 200));
   const hkMeta = await (await fetch(`${BASE}/.well-known/oauth-authorization-server`)).json();
-  ok('the HumanKind connector\'s metadata is untouched (issuer = origin, /oauth/*)', hkMeta.issuer === BASE && hkMeta.token_endpoint === `${BASE}/oauth/token`);
+  ok('the other connector\'s metadata is untouched (issuer = origin, /oauth/*)', hkMeta.issuer === BASE && hkMeta.token_endpoint === `${BASE}/oauth/token`);
   const anon = await mcp('tools/list', {}, null);
   ok('/hl/mcp without a token: 401 + resource_metadata on /hl', anon.status === 401 && anon.www === `Bearer resource_metadata="${BASE}/.well-known/oauth-protected-resource/hl/mcp"`, anon.www);
 
@@ -82,7 +82,7 @@ try {
   const stored = must(await svc.from('hl_oauth_tokens').select('token_hash, business_id').eq('client_id', clientId)).data;
   ok('tokens stored hashed only, scoped to HomeLover', stored.length === 4 && stored.every(t => /^[0-9a-f]{64}$/.test(t.token_hash) && t.business_id === HL) && !JSON.stringify(stored).includes(access));
   const hkProbe = await mcp('tools/list', {}, access, `${BASE}/mcp`);
-  ok('the HumanKind /mcp refuses an /hl token (401)', hkProbe.status === 401);
+  ok('the other connector (/mcp) refuses an /hl token (401)', hkProbe.status === 401);
 
   const init = await mcp('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'verify', version: '0' } });
   ok(`initialize: ${init.body?.result?.serverInfo?.name}`, init.status === 200 && init.body.result.serverInfo.name === 'homelover-prospector');
