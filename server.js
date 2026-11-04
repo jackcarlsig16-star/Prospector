@@ -874,6 +874,19 @@ app.patch('/api/sales/:businessId/goals/source/:type/:id', salesModuleRoute('./a
 app.put('/api/sales/:businessId/goals/stage-marks/:type/:id', salesModuleRoute('./api/sales/stageMarks.js', 'putMarkRoute', 'goals/stage-marks PUT'));
 app.delete('/api/sales/:businessId/goals/stage-marks/:type/:id/:stage', salesModuleRoute('./api/sales/stageMarks.js', 'deleteMarkRoute', 'goals/stage-marks DELETE'));
 app.get('/api/sales/:businessId/goals/partners/:id/referred', salesModuleRoute('./api/sales/sourceRoutes.js', 'referredByRoute', 'goals/partners/:id/referred'));
+// homelover-clients-v1 Stage 1 - clients (C1-C5), their files (C6) and the Sources network tree (C9). Members write; Viewers read.
+app.get('/api/sales/:businessId/goals/sources/network', salesModuleRoute('./api/sales/sourceRoutes.js', 'sourcesNetworkRoute', 'goals/sources/network'));
+app.get('/api/sales/:businessId/goals/clients', salesModuleRoute('./api/sales/clients.js', 'listClientsRoute', 'goals/clients'));
+app.post('/api/sales/:businessId/goals/clients', salesModuleRoute('./api/sales/clients.js', 'makeClientRoute', 'goals/clients POST'));
+app.post('/api/sales/:businessId/goals/clients/undo', salesModuleRoute('./api/sales/clients.js', 'undoClientRoute', 'goals/clients/undo POST'));
+app.post('/api/sales/:businessId/goals/clients/:id/signed', salesModuleRoute('./api/sales/clients.js', 'markSignedRoute', 'goals/clients/:id/signed POST'));
+app.post('/api/sales/:businessId/goals/clients/:id/launched', salesModuleRoute('./api/sales/clients.js', 'markLaunchedRoute', 'goals/clients/:id/launched POST'));
+app.post('/api/sales/:businessId/goals/clients/:id/files/upload-url', salesModuleRoute('./api/sales/clientFiles.js', 'uploadUrlRoute', 'goals/clients/:id/files/upload-url POST'));
+app.post('/api/sales/:businessId/goals/clients/:id/files', salesModuleRoute('./api/sales/clientFiles.js', 'recordFileRoute', 'goals/clients/:id/files POST'));
+app.get('/api/sales/:businessId/goals/clients/:id/files', salesModuleRoute('./api/sales/clientFiles.js', 'listFilesRoute', 'goals/clients/:id/files'));
+app.get('/api/sales/:businessId/goals/client-files/:id/url', salesModuleRoute('./api/sales/clientFiles.js', 'openFileRoute', 'goals/client-files/:id/url'));
+app.post('/api/sales/:businessId/goals/client-files/:id/archive', salesModuleRoute('./api/sales/clientFiles.js', 'archiveFileRoute', 'goals/client-files/:id/archive POST'));
+app.post('/api/sales/:businessId/goals/client-files/:id/restore', salesModuleRoute('./api/sales/clientFiles.js', 'restoreFileRoute', 'goals/client-files/:id/restore POST'));
 // seif-campaign-v1 Stage 2 - outreach campaigns (summary before :id; import before :action).
 app.get('/api/sales/:businessId/goals/campaigns', salesModuleRoute('./api/sales/outreachRoutes.js', 'listCampaignsRoute', 'goals/campaigns'));
 app.get('/api/sales/:businessId/goals/campaigns/summary', salesModuleRoute('./api/sales/outreachRoutes.js', 'campaignSummaryRoute', 'goals/campaigns/summary'));

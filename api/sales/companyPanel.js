@@ -346,7 +346,7 @@ async function targetRow(supabase, businessId, id) {
   if (!row) throw err(404, 'target not found');
   return row;
 }
-async function todoOn(supabase, { businessId, userId, type, id, text, today, done = false, now }) {
+export async function todoOn(supabase, { businessId, userId, type, id, text, today, done = false, now }) {
   const week = laMonday(today);
   if (await weekIsFinal(supabase, businessId, week)) throw err(409, FINAL_ERROR);
   return must(await supabase.from('sales_week_goals').insert({

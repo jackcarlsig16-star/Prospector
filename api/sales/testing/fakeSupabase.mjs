@@ -8,13 +8,17 @@
 // pins its own `now` stamps rows on that day, not the real one. Each inserted
 // row gets a strictly later stamp than the last (Postgres's microsecond now()
 // never ties across separate requests; a millisecond clock did, and "latest"
-// then fell to a random uuid - the flaky partner Undo test).
+// then fell to a random uuid - the flaky partner Undo test). triggers: { table:
+// ({ op, old, row, insert }) } runs after each inserted / updated row, like an
+// AFTER ROW trigger (insert(table, row) writes another row). storage: a tiny
+// in-memory bucket store (createSignedUploadUrl / list / createSignedUrl);
+// put(bucket, path, { size, mimetype }) stands in for the browser's upload.
 import { randomUUID } from 'node:crypto';
 
 // Enough of supabase-js for these routes: filters, order, range, limit,
 // single/maybeSingle, insert/update/delete with .select(), and the one
 // embed the targets list uses (note:sales_call_notes(...)).
-export function fakeSupabase(seed, { unique = {}, now = Date.now } = {}) {
+export function fakeSupabase(seed, { unique = {}, now = Date.now, triggers = {} } = {}) {
   let last = -Infinity;
   const stamp = () => { last = Math.max(now(), last + 1); return new Date(last).toISOString(); };
   const stamped = r => { const at = stamp(); return { id: randomUUID(), created_at: at, recorded_at: at, ...r }; };
@@ -23,6 +27,7 @@ export function fakeSupabase(seed, { unique = {}, now = Date.now } = {}) {
     eq: () => row[f.k] === f.v, neq: () => row[f.k] !== f.v, in: () => f.v.includes(row[f.k]), gte: () => row[f.k] >= f.v, lt: () => row[f.k] != null && row[f.k] < f.v,
     is: () => (f.v === null ? row[f.k] == null : row[f.k] === f.v), not_is: () => row[f.k] != null,
   })[f.op]();
+  const addRow = (table, r) => { (db[table] ||= []).push(stamped(r)); };
   const exec = (table, q) => {
     db[table] ||= [];
     let rows;
@@ -32,6 +37,7 @@ export function fakeSupabase(seed, { unique = {}, now = Date.now } = {}) {
       const hit = keys.find(({ key }) => rows.some(r => key(r) != null && db[table].some(x => key(x) === key(r))));
       if (hit) return { data: null, error: { code: '23505', message: `duplicate key value violates unique constraint${hit.name ? ` "${hit.name}"` : ''}` } };
       db[table].push(...rows);
+      if (triggers[table]) rows.forEach(r => triggers[table]({ op: 'insert', old: null, row: r, insert: addRow }));
     } else if (q.op === 'upsert') {
       const cols = q.onConflict.split(',');
       rows = (Array.isArray(q.payload) ? q.payload : [q.payload]).map(r => {
@@ -43,7 +49,7 @@ export function fakeSupabase(seed, { unique = {}, now = Date.now } = {}) {
       });
     } else {
       const sel = db[table].filter(r => q.filters.every(f => matches(r, f)));
-      if (q.op === 'update') sel.forEach(r => Object.assign(r, q.payload));
+      if (q.op === 'update') sel.forEach(r => { const old = { ...r }; Object.assign(r, q.payload); if (triggers[table]) triggers[table]({ op: 'update', old, row: r, insert: addRow }); });
       if (q.op === 'delete') db[table] = db[table].filter(r => !sel.includes(r));
       rows = sel;
     }
@@ -75,5 +81,24 @@ export function fakeSupabase(seed, { unique = {}, now = Date.now } = {}) {
     };
     return b;
   };
-  return { from, db };
+  const objects = new Map();
+  const storage = {
+    from: bucket => ({
+      async createSignedUploadUrl(path) { return { data: { signedUrl: `https://storage.test/upload/${bucket}/${path}?token=t`, token: 't', path }, error: null }; },
+      async list(folder, { search = '' } = {}) {
+        const out = [...objects].filter(([k]) => k.startsWith(`${bucket}/${folder}/`)).map(([k, meta]) => ({ name: k.slice(bucket.length + folder.length + 2), metadata: meta }));
+        return { data: out.filter(o => !o.name.includes('/') && o.name.includes(search)), error: null };
+      },
+      async createSignedUrl(path, expiresIn) { return objects.has(`${bucket}/${path}`) ? { data: { signedUrl: `https://storage.test/sign/${bucket}/${path}?expires=${expiresIn}` }, error: null } : { data: null, error: { message: 'Object not found' } }; },
+    }),
+  };
+  const put = (bucket, path, meta) => objects.set(`${bucket}/${path}`, meta);
+  return { from, db, storage, put, objects };
 }
+
+// The sales_opportunities_log_event trigger (20261001_sales_pipeline_v1.sql) for tests that need its event rows.
+export const opportunityEventsTrigger = ({ op, old, row, insert }) => {
+  if (op === 'insert') insert('sales_opportunity_events', { business_id: row.business_id, opportunity_id: row.id, event_type: 'created', from_stage: null, to_stage: row.stage, changed_at: new Date().toISOString() });
+  else if (row.archived_at && !old.archived_at) insert('sales_opportunity_events', { business_id: row.business_id, opportunity_id: row.id, event_type: 'archived', from_stage: old.stage, to_stage: row.stage, changed_at: new Date().toISOString() });
+  else if (row.stage !== old.stage) insert('sales_opportunity_events', { business_id: row.business_id, opportunity_id: row.id, event_type: 'stage_change', from_stage: old.stage, to_stage: row.stage, changed_at: new Date().toISOString() });
+};

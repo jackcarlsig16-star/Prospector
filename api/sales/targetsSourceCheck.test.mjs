@@ -11,8 +11,8 @@ const DIR = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..
 const read = f => fs.readFileSync(path.join(DIR, f), 'utf8');
 const VALUES = ['note', 'scout', 'web_visit', 'manual'];
 // The two migrations that (re)create sales_targets_source_check as the source_kind shape: the loop that dropped the
-// signals-v1 value list, and lead-upload-v1 widening it with 'apollo'.
-const KNOWN = ['20261022_lead_source_v1.sql', '20261026_lead_upload_v1.sql'];
+// signals-v1 value list, lead-upload-v1 widening it with 'apollo', homelover-clients-v1 widening it with 'lookalike'.
+const KNOWN = ['20261022_lead_source_v1.sql', '20261026_lead_upload_v1.sql', '20261103_homelover_clients_v1.sql'];
 
 test('20261026_targets_source_value_check.sql: guard, distinct constraint name, the four signals-v1 values, nothing else dropped', () => {
   const sql = read('20261026_targets_source_value_check.sql');
@@ -24,7 +24,7 @@ test('20261026_targets_source_value_check.sql: guard, distinct constraint name, 
   assert.match(sql, /Never reuse it/, 'the naming rule is in the file header');
 });
 
-test('no migration after 20261022 adds a constraint named sales_targets_source_check except the two known ones', () => {
+test('no migration after 20261022 adds a constraint named sales_targets_source_check except the known source_kind widenings', () => {
   const files = fs.readdirSync(DIR).filter(f => f.endsWith('.sql') && f >= '20261022').sort();
   assert.ok(files.length >= 3, 'the lead-source / lead-upload migrations are present');
   const offenders = files.filter(f => {
@@ -35,6 +35,6 @@ test('no migration after 20261022 adds a constraint named sales_targets_source_c
     return (literal || loop) && !KNOWN.includes(f);
   });
   assert.deepEqual(offenders, []);
-  // The two known ones are still the source_kind shape, which is what the rule protects.
+  // The known ones are still the source_kind shape, which is what the rule protects.
   for (const f of KNOWN) assert.match(read(f), /source_kind IS NULL OR source_kind IN/);
 });

@@ -12,6 +12,7 @@ import {
 } from './leadSource.js';
 import { SOURCE_LABEL, SOURCE_KINDS } from '../../src/constants/leadSources.js';
 import { laDateString } from './laDate.js';
+import { networkOf, networkTree, clientAttribution } from './sourceNetwork.js';
 
 // lead-source-v1 Stage 2 - edit + history (B2/D4), a partner's referred
 // companies (B3), the Sources report + Export for <partner> (B4) and the
@@ -34,7 +35,7 @@ const NAME_COL = { partner: 'name', employer: 'organization', target: 'name' };
 const NOTES_COL = { partner: 'notes', employer: 'notes', target: 'research_notes' };
 const COLS = {
   partner: `id, name, notes, pipeline_status, category, owner_user_id, owner_team, co_owner_name, last_touch_at, channel, created_at, ${SOURCE_COLS}`,
-  employer: `id, organization, notes, stage, owner, owner_team, co_owner_name, covered_lives, channel, created_at, ${SOURCE_COLS}`,
+  employer: `id, organization, notes, stage, owner, owner_team, co_owner_name, covered_lives, client_status, eligible_now, eligible_added, channel, created_at, ${SOURCE_COLS}`,
   target: `id, name, research_notes, status, owner_team, co_owner_name, channel, created_at, ${SOURCE_COLS}`,
 };
 const BACKFILL_CHUNK = 10;
@@ -132,25 +133,41 @@ const publicRow = (r, team) => {
     type: r.type, id: r.id, name: nameOf(r), stage: st?.stage || null, stage_label: st?.stage_label || null, band: st?.color || null,
     owner: ownerOf(r, team), covered_lives: r.type === 'employer' ? r.covered_lives ?? null : null,
     source_person: r.source_person || null, source_office: r.source_office || null, last_touch_at: r.type === 'partner' ? r.last_touch_at || null : null,
+    client_status: r.client_status || null, eligible_now: r.type === 'employer' ? r.eligible_now ?? null : null,
   };
 };
 
-// GET /goals/partners/:id/referred -> { partner, total, groups: [{ person, office, rows }] } (B3)
+// GET /goals/partners/:id/referred -> { partner, total, groups: [{ person, office, rows }] (B3 - the "by rep" toggle),
+// network: { header, groups, came_from, ownership } (homelover-clients-v1 C8) }
 export async function referredBy(supabase, { businessId, id }) {
   try {
     if (!UUID.test(id || '')) return reply(404, { error: 'partner not found' });
-    const partner = must(await supabase.from('sales_goals').select('id, name').eq('business_id', businessId).eq('id', id).eq('goal_type', 'partnership').maybeSingle());
+    const partner = must(await supabase.from('sales_goals').select(`id, name, owner_user_id, owner_team, co_owner_name, ${SOURCE_COLS}`).eq('business_id', businessId).eq('id', id).eq('goal_type', 'partnership').maybeSingle());
     if (!partner) return reply(404, { error: 'partner not found' });
-    const [rows, team] = await Promise.all([companies(supabase, businessId, { partnerId: id }), members(supabase, businessId)]);
+    const [rows, team, names] = await Promise.all([companies(supabase, businessId, { partnerId: id }), members(supabase, businessId), namesFor(supabase, businessId, partner)]);
+    const pub = rows.map(x => publicRow(x, team));
     const groups = new Map();
-    for (const r of rows.map(x => publicRow(x, team))) {
+    for (const r of pub) {
       const k = `${r.source_person || ''}|${r.source_office || ''}`;
       if (!groups.has(k)) groups.set(k, { person: r.source_person, office: r.source_office, rows: [] });
       groups.get(k).rows.push(r);
     }
-    return reply(200, { partner, total: rows.length, groups: [...groups.values()].sort((a, b) => b.rows.length - a.rows.length || String(a.person || '~').localeCompare(String(b.person || '~'))) });
+    return reply(200, {
+      partner: { id: partner.id, name: partner.name }, total: rows.length,
+      groups: [...groups.values()].sort((a, b) => b.rows.length - a.rows.length || String(a.person || '~').localeCompare(String(b.person || '~'))),
+      network: networkOf(pub, { partner, partnerName: names.partner_name, owner: ownerOf({ ...partner, type: 'partner' }, team) }),
+    });
   } catch (e) { return caught('referred', e); }
 }
+
+// GET /goals/sources/network -> { roots: [tree nodes], hidden_partners } (C9) - every live company, computed per request.
+export async function sourcesNetwork(supabase, { businessId }) {
+  try {
+    const [all, team] = await Promise.all([companies(supabase, businessId), members(supabase, businessId)]);
+    return reply(200, networkTree(all.map(r => ({ ...publicRow(r, team), source_kind: r.source_kind || null, source_partner_id: r.source_partner_id || null }))));
+  } catch (e) { return caught('network', e); }
+}
+export async function sourcesNetworkRoute(req, res) { send(res, await sourcesNetwork(getSupabase(), ctx(req))); }
 
 // The report's numbers for one group of companies.
 export function tally(rows) {
@@ -309,9 +326,11 @@ export async function sourcesFunnel(supabase, { businessId, query = {}, now = Da
     const rep = query.rep ? cleanText(String(query.rep), 120).toLowerCase() : null;
     const { gatherInputs } = await import('./intentScoreRun.js');
     const { funnelOf, indexDated, funnelGroups, funnelTotals, sinceYesterday, journeyLine, groupKeyOf } = await import('./sourceFunnel.js');
-    const [{ dated }, scores] = await Promise.all([
+    const [{ dated }, scores, clients] = await Promise.all([
       gatherInputs(supabase, businessId, { now }),
       selectAllPages(() => supabase.from('sales_company_scores').select('company_type, company_id, score, band, source_label').eq('business_id', businessId).order('company_id')),
+      // homelover-clients-v1 C10 - every live client, whatever the funnel's filters (the labels say direct / via).
+      selectAllPages(() => supabase.from('sales_opportunities').select('id, client_status, eligible_now, covered_lives, source_kind, source_partner_id').eq('business_id', businessId).is('archived_at', null).not('client_status', 'is', null).order('id')),
     ]);
     const scoreOf = new Map(scores.map(x => [`${x.company_type}:${x.company_id}`, x]));
     const idx = indexDated(dated);
@@ -324,7 +343,9 @@ export async function sourcesFunnel(supabase, { businessId, query = {}, now = Da
     const companies = rows.map(r => ({ type: r.type, id: r.id, name: r.name, band: r.band, score: scoreOf.get(`${r.type}:${r.id}`)?.score ?? null, score_band: scoreOf.get(`${r.type}:${r.id}`)?.band || null, score_source: scoreOf.get(`${r.type}:${r.id}`)?.source_label || null,
       keys: { rep: groupKeyOf(r, 'rep'), partner: groupKeyOf(r, 'partner'), source: groupKeyOf(r, 'source') }, source_kind: r.source_kind, source_label: r.source_kind ? SOURCE_LABEL[r.source_kind] : null, source_person: r.source_person, partner: partnerNames.get(r.source_partner_id) || null, upside: ['upside', 'both'].includes(r.owner_team || ''),
       referred: r.funnel.referred, visited: r.funnel.visited, replied: r.funnel.replied, meeting: r.funnel.meeting, pilot: r.funnel.pilot, lost: r.funnel.lost, src: r.funnel.src, journey: journeyLine(r.funnel, { referredBy: r.source_person ? `${r.source_person}${partnerNames.get(r.source_partner_id) ? ` (${partnerNames.get(r.source_partner_id)})` : ''}` : partnerNames.get(r.source_partner_id) || null }) }));
-    const out = { today, totals: funnelTotals(rows), since_yesterday: sinceYesterday(rows, today), by_rep: funnelGroups(rows, 'rep', { partnerNames }), by_partner: funnelGroups(rows, 'partner', { partnerNames }), by_source_kind: funnelGroups(rows, 'source', { partnerNames }).map(g => ({ ...g, label: SOURCE_LABEL[g.key] || g.label })), companies };
+    const attribution = clientAttribution(clients, new Map(dated.companies.filter(c => c.type === 'partner').map(c => [c.id, c.source_partner_id || null])));
+    const byPartner = funnelGroups(rows, 'partner', { partnerNames }).map(g => ({ ...g, ...(attribution.get(g.key) || { clients_direct: 0, lives_direct: 0, clients_via: 0, lives_via: 0 }) }));
+    const out = { today, totals: funnelTotals(rows), since_yesterday: sinceYesterday(rows, today), by_rep: funnelGroups(rows, 'rep', { partnerNames }), by_partner: byPartner, by_source_kind: funnelGroups(rows, 'source', { partnerNames }).map(g => ({ ...g, label: SOURCE_LABEL[g.key] || g.label })), companies };
     if (/[^\s@<>()"',;=&#]+@[^\s@<>()"',;=&#]+\.[a-z]{2,}/i.test(JSON.stringify(out))) return reply(500, { error: 'refused: an address reached the reply' });
     return reply(200, out);
   } catch (e) { return caught('funnel', e); }
