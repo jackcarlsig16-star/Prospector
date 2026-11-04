@@ -105,16 +105,6 @@ export const PRIORITY_COLORS = Object.fromEntries(Object.keys(KIT_PRIORITY).map(
 // A row's priority (1-4, '1'-'4' or 'P1'-'P4') -> its var; null for none / Not a fit.
 export const priorityColor = p => PRIORITY_COLORS[typeof p === 'string' && p.startsWith('P') ? p : `P${p}`] || null;
 
-// sales-goals-v1 REV4 - member colors, assigned in workspace join order so
-// a person keeps theirs and no two members share one. The first two are the
-// mockup's (validated CVD-safe on the dark ground); the rest keep the same
-// lightness and stay clear of the status and cohort hues.
-export const MEMBER_COLORS = ['#6F8CF0', '#C97626', '#4FB0C6', '#B07CC6', '#8FB35A', '#D6788F'];
-export const UNASSIGNED_COLOR = '#4A5462';
-export function memberColor(index) {
-  return index >= 0 ? MEMBER_COLORS[index % MEMBER_COLORS.length] : UNASSIGNED_COLOR;
-}
-
 // sales-partners-workflow-v1 - partner TYPE markers (6 families of the 14
 // categories, partners/partnerTypes.js). Validated with the dataviz
 // validator 2026-10-06 on the dark surface and the white print surface:

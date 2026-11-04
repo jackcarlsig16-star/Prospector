@@ -69,3 +69,9 @@ test('company-panel-v3 Copy link: Pipeline > Companies with ?open=<type>-<id>; o
   expect(readOpenParam('?open=visitor-acme')).toBeNull();
   expect(readOpenParam('')).toBeNull();
 });
+
+test('homelover-team-emails-v1: Sales › Settings opens on Team emails', () => {
+  expect(normalizeNav('settings')).toEqual({ tab: 'settings', view: 'team-emails' });
+  expect(normalizeNav('settings', 'bogus')).toEqual({ tab: 'settings', view: 'team-emails' });
+  expect(SUB_VIEWS.settings).toEqual([['team-emails', 'Team emails']]);
+});

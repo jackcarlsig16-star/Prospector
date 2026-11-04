@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { SA, SA_TYPE, SA_SHAPE, saSans, saMono } from '../theme';
 import '../../../ui/kitTheme';
-import { SEMANTIC, memberColor, UNASSIGNED_COLOR } from '../palette';
+import { SEMANTIC } from '../palette';
+import { memberColor, UNASSIGNED_COLOR } from '../../../constants/memberColors';
 
 // ── Dates (YYYY-MM-DD, America/Los_Angeles weeks from periods.js) ───────────
 export const addDays = (d, n) => new Date(Date.parse(`${d}T12:00:00Z`) + n * 864e5).toISOString().slice(0, 10);

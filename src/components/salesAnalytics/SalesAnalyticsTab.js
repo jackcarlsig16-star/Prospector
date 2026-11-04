@@ -87,7 +87,7 @@ const PRINT_STYLES = `
 // Pipeline / Dashboard; Pipeline > People is DailyHuddle (the People table
 // on its Live tab, Priorities and Done beside it).
 
-const SUB_VIEW_ICON = { companies: IconTable, clients: IconCheck, priorities: IconMap, people: IconPeople, partners: IconFlow, campaigns: IconMegaphone, overview: IconBars, sources: IconSource, analytics: IconTrend, sequenced: IconMail };
+const SUB_VIEW_ICON = { companies: IconTable, clients: IconCheck, priorities: IconMap, people: IconPeople, partners: IconFlow, campaigns: IconMegaphone, overview: IconBars, sources: IconSource, analytics: IconTrend, sequenced: IconMail, 'team-emails': IconMail };
 
 export default function SalesAnalyticsTab({ businessId, features }) {
   const [tab, setTab] = useState(() => readNav().tab);
@@ -186,8 +186,9 @@ export default function SalesAnalyticsTab({ businessId, features }) {
     <div className="no-print" data-sales-tabrow style={{ display: 'inline-flex', alignItems: 'center', gap: 10, height: 38, marginBottom: tabsSlot ? 0 : 20 }}>
       <span className="ui-group-label" aria-hidden="true">Sales</span>
       <div role="navigation" aria-label="Sales" className="ui-tabs" style={{ height: 38, alignItems: 'center', overflow: 'visible' }}>
-        {TABS.map(([id, label]) => tabBtn(id, label, id === 'actions' ? flagBadge : null))}
+        {TABS.filter(([id]) => id !== 'settings').map(([id, label]) => tabBtn(id, label, id === 'actions' ? flagBadge : null))}
         {tabBtn('marketing', 'Marketing', <Tag color={ui.off}>Coming soon</Tag>, { disabled: true, 'aria-disabled': 'true', title: 'Marketing is coming soon', 'data-sales-marketing': true })}
+        {tabBtn('settings', 'Settings')}
       </div>
     </div>
   );

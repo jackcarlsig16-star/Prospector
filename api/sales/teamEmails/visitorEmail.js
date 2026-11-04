@@ -1,15 +1,19 @@
 import { selectAllPages } from '../../lib/selectAllPages.js';
-import { PRIORITY_WORD } from '../../../src/constants/salesChannels.js';
+import { memberColor } from '../../../src/constants/memberColors.js';
 import { laClock } from './scheduler.js';
-import { esc, page, link, recordUrl, MAP_URL, withFooter } from './format.js';
+import { esc, shell, tiles, table, pill, dot, link, recordUrl, MAP_URL, VISITORS_URL, ACCENT, MUTED, withFooter } from './format.js';
 
-// homelover-team-emails-v1 T4 - the weekday visitor email. Pure builder over rows the loader reads; no person names,
-// emails or phones ever reach it (people = a count + job titles).
+// homelover-team-emails-v1 T4 (REV2) - the weekday visitor email, redesigned: header, 4 stat tiles, Hot / Warm / Cool /
+// Cold counts, a 5-column table. Pure builder over rows the loader reads; no person names, emails or phones ever reach
+// it (people = a count + job titles). Band words carry no time words (P1..P4 keep their thresholds).
 export const TOP_N = 10;
 export const BANDS = ['P1', 'P2', 'P3', 'P4'];
-const bandWord = b => `${b} · ${PRIORITY_WORD[Number(String(b).slice(1))] || ''}`.trim();
+export const BAND_WORD = { P1: 'Hot', P2: 'Warm', P3: 'Cool', P4: 'Cold' };
+const BAND_COLORS = { P1: ['#9F1D1D', '#FDE2E1'], P2: ['#8A4B08', '#FDEBD3'], P3: ['#1E4E8C', '#DCE8F8'], P4: ['#4B5563', '#ECEEF1'] };
 const TYPE = { opportunity: 'employer', target: 'target', partner: 'partner' };
 const KIND_LABEL = { employer: 'Employer', target: 'Target', partner: 'Partner' };
+const titleCase = s => String(s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+const plural = (n, one, many) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
 const must = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const dayLabel = date => new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).replace(',', '');
 const timeLabel = ms => new Date(ms).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', weekday: 'short', hour: 'numeric', minute: '2-digit' });
@@ -57,50 +61,70 @@ export async function loadVisitorData(supabase, businessId, { since, until, memb
   ]);
   const score = new Map(scores.map(s => [`${s.company_type}:${s.company_id}`, s]));
   const nameOf = new Map(members.map(m => [m.userId, m.firstName]));
+  const colorOf = new Map(members.map((m, i) => [m.userId, memberColor(i)]));
   return visits.map(v => {
     const type = TYPE[v.matched_type] || null;
     const s = type ? score.get(`${type}:${v.matched_id}`) : null;
     const r = type ? rec.get(v.matched_id) : null;
     const ppl = people.filter(p => p.visit_id === v.id);
     return {
-      company: v.company_name, type, id: v.matched_id || null,
+      company: v.company_name, type, id: v.matched_id || null, visit_id: v.id,
       score: s ? s.score : v.intent_score != null ? Math.round(Number(v.intent_score)) : null, band: s ? s.band : v.priority,
       visits: v.visits_7d || 0, visitors: v.unique_visitors_7d || 0, people: ppl.length, titles: [...new Set(ppl.map(p => p.title).filter(Boolean))].slice(0, 3),
       top_page: Array.isArray(v.top_paths) && v.top_paths[0] ? String(v.top_paths[0].path || v.top_paths[0]) : null,
-      stage: r?.stage || null, owner: r?.owner ? nameOf.get(r.owner) || 'Unassigned' : 'Unassigned', is_new: !seenBefore.has(v.company_key),
+      stage: r?.stage || null, owner: r?.owner ? nameOf.get(r.owner) || 'Unassigned' : 'Unassigned', owner_color: r?.owner ? colorOf.get(r.owner) || null : null,
+      is_new: !seenBefore.has(v.company_key),
     };
   });
 }
 
-// -> { subject, html, text, rows }. date = the LA date it is sent on; pullNote = the "Visitor pull failed …" line or null.
+// -> { subject, html, text, rows, more }. date = the LA date it is sent on; pullNote = the "Visitor pull failed …" line.
 export function buildVisitorEmail(companies, { date, since, pullNote = null }) {
   const sorted = [...companies].sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || b.visits - a.visits || a.company.localeCompare(b.company));
   const bands = Object.fromEntries(BANDS.map(b => [b, sorted.filter(c => c.band === b).length]));
-  const subject = `Website visitors — ${dayLabel(date)}: ${sorted.length} ${sorted.length === 1 ? 'company' : 'companies'}, ${bands.P1} high intent`;
-  const top = sorted.slice(0, TOP_N), more = sorted.length - top.length;
+  const n = sorted.length, hot = bands.P1;
+  const head = `${dayLabel(date)} — ${plural(n, 'company', 'companies')}, ${hot} hot`;
+  const subject = `Website visitors — ${dayLabel(date)}: ${plural(n, 'company', 'companies')}, ${hot} hot`;
+  const sinceLine = `Since ${timeLabel(since)}`;
+  const top = sorted.slice(0, TOP_N), more = n - top.length;
   const matched = t => sorted.filter(c => c.type === t).length;
-  const stats = `${sorted.length} companies · ${sorted.filter(c => c.is_new).length} new · ${sorted.reduce((n, c) => n + c.visits, 0)} visits (7 d) · ${sorted.reduce((n, c) => n + c.visitors, 0)} distinct people where known`;
-  const matchLine = `Matched: ${matched('employer')} employers · ${matched('target')} targets · ${matched('partner')} partners · ${sorted.filter(c => !c.type).length} unmatched`;
-  const bandLine = BANDS.map(b => `${bandWord(b)}: ${bands[b]}`).join(' · ');
-  const rowText = c => [
-    `${c.company}${c.is_new ? ' [NEW]' : ''}`, `intent ${c.score ?? '—'} (${bandWord(c.band)})`, `${c.visits} visits`,
-    `${c.people} ${c.people === 1 ? 'person' : 'people'}${c.titles.length ? ` (${c.titles.join(', ')})` : ''}`,
-    c.top_page ? `top page ${c.top_page}` : null, c.type ? `${KIND_LABEL[c.type]}${c.stage ? ` · ${c.stage}` : ''}` : 'Not in Prospector', c.owner,
-  ].filter(Boolean).join(' · ');
-  const url = c => (c.type ? recordUrl(c.type, c.id) : MAP_URL);
+  const notIn = sorted.filter(c => !c.type).length;
+  const visits = sorted.reduce((s, c) => s + c.visits, 0);
+  const stat = [[n, n === 1 ? 'company' : 'companies'], [sorted.filter(c => c.is_new).length, 'new', ACCENT], [visits, `${visits === 1 ? 'visit' : 'visits'} (7 d)`], [notIn, 'not in Prospector']];
+  const matchLine = `matched ${plural(matched('employer'), 'employer', 'employers')} · ${plural(matched('target'), 'target', 'targets')} · ${plural(matched('partner'), 'partner', 'partners')}`;
+  const bandText = BANDS.map(b => `${BAND_WORD[b]} ${bands[b]}`).join(' · ');
+  const intent = c => (c.band in BAND_WORD ? `${BAND_WORD[c.band]}${c.score != null ? ` ${c.score}` : ''}` : c.score != null ? String(c.score) : '—');
+  const who = c => [plural(c.visits, 'visit', 'visits'), c.people ? plural(c.people, 'person', 'people') : null].filter(Boolean).join(' · ');
+  const detail = c => [c.titles.join(', ') || null, c.top_page].filter(Boolean).join(' · ');
+  const inProspector = c => (c.type ? `${KIND_LABEL[c.type]}${c.stage ? ` · ${titleCase(c.stage)}` : ''}` : 'Not yet');
+  const url = c => (c.type ? recordUrl(c.type, c.id) : VISITORS_URL);
   const empty = `No identified visitors since ${timeLabel(since)}`;
+
   const text = withFooter([
-    subject, '',
-    ...(sorted.length ? [stats, matchLine, `Intent: ${bandLine}`, '', ...top.map((c, i) => `${i + 1}. ${rowText(c)}\n   ${url(c)}`), ...(more > 0 ? [`and ${more} more → open the Map: ${MAP_URL}`] : [])] : [empty]),
+    'HomeLover · Website visitors', head, sinceLine, '',
+    ...(n ? [
+      stat.map(([v, l]) => `${v} ${l}`).join(' · '), bandText, matchLine, '',
+      ...top.map((c, i) => [`${i + 1}. ${c.company}${c.is_new ? ' [NEW]' : ''} — ${intent(c)}`, `   ${who(c)}${detail(c) ? ` · ${detail(c)}` : ''}`,
+        `   In Prospector: ${inProspector(c)}${c.type ? '' : ' · Add'} · Owner: ${c.owner}`, `   ${url(c)}`].join('\n')),
+      ...(more > 0 ? [`and ${more} more · open the Map → ${MAP_URL}`] : []),
+    ] : [empty]),
     ...(pullNote ? ['', pullNote] : []),
   ].join('\n'));
-  const html = page(subject, [
-    ...(sorted.length ? [
-      `<p>${esc(stats)}<br>${esc(matchLine)}</p>`, `<p><b>Intent</b> · ${esc(bandLine)}</p>`,
-      `<ol>${top.map(c => `<li>${link(url(c), c.company)}${c.is_new ? ' <b style="color:#C97626">NEW</b>' : ''} · ${esc(rowText(c).split(' · ').slice(1).join(' · '))}</li>`).join('')}</ol>`,
-      ...(more > 0 ? [`<p>and ${more} more → ${link(MAP_URL, 'open the Map')}</p>`] : []),
-    ] : [`<p>${esc(empty)}</p>`]),
-    ...(pullNote ? [`<p><i>${esc(pullNote)}</i></p>`] : []),
-  ]);
+
+  const cell = c => [
+    `${link(url(c), c.company, 'font-weight:600')}${c.is_new ? ` <span style="font-size:11px;font-weight:700;color:${ACCENT}">NEW</span>` : ''}`,
+    c.band in BAND_COLORS ? pill(intent(c), ...BAND_COLORS[c.band]) : esc(intent(c)),
+    `${esc(who(c))}${detail(c) ? `<div style="font-size:12px;color:${MUTED}">${esc(detail(c))}</div>` : ''}`,
+    c.type ? esc(inProspector(c)) : `Not yet · ${link(VISITORS_URL, 'Add')}`,
+    c.owner_color ? `${dot(c.owner_color)}${esc(c.owner)}` : `${dot(null, true)}<span style="color:${MUTED}">Unassigned</span>`,
+  ];
+  const body = n ? [
+    tiles(stat),
+    `<div style="margin:0 0 6px">${BANDS.map(b => pill(`${BAND_WORD[b]} ${bands[b]}`, ...BAND_COLORS[b])).join(' ')}</div>`,
+    `<div style="font-size:12px;color:${MUTED};margin:0 0 14px">${esc(matchLine)}</div>`,
+    table(['Company', 'Intent', 'Who visited', 'In Prospector', 'Owner'], top.map(cell)),
+    ...(more > 0 ? [`<p style="margin:12px 0 0">and ${more} more · ${link(MAP_URL, 'open the Map →')}</p>`] : []),
+  ].join('\n') : `<p>${esc(empty)}</p>`;
+  const html = shell({ eyebrow: 'HomeLover · Website visitors', title: head, sub: sinceLine, body: body + (pullNote ? `\n<p style="color:${MUTED}"><i>${esc(pullNote)}</i></p>` : '') });
   return { subject, html, text, rows: top.length, more: Math.max(0, more) };
 }

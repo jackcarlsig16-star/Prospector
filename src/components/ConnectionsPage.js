@@ -107,9 +107,15 @@ function MicrosoftCard({ result }) {
       )}>
       <div style={{ display: 'grid', gap: KIT_SPACE[1] }}>
         {result && statusLine(result.text, result.ok ? 'ok' : 'bad')}
-        <div style={fine}>READ-ONLY: YOUR MAIL AND CALENDAR. PROSPECTOR NEVER SENDS, DELETES OR CHANGES ANYTHING</div>
+        <div style={fine}>READS YOUR MAIL AND CALENDAR. NEVER DELETES OR CHANGES ANYTHING. SENDS ONLY THE HOMELOVER TEAM EMAILS, TO THE TEAM’S OWN LIST</div>
         {status?.configured === false && <p style={{ ...KIT_TYPE.small, color: ui.dangerInk, margin: 0 }}>Microsoft isn’t configured on the server yet.</p>}
         {status?.error && <p role="alert" style={{ ...KIT_TYPE.small, color: ui.dangerInk, margin: 0 }}>{status.error}</p>}
+        {/* homelover-team-emails-v1: a grant from before Mail.Send still reads; only team emails wait for a Reconnect. */}
+        {connected && !status.error && status.team_email && status.team_email !== 'ready' && (
+          <p role="status" data-team-email-reconnect style={{ ...KIT_TYPE.small, color: ui.text, margin: 0 }}>
+            <b>{status.team_email}.</b> Click Reconnect and approve “Send mail as you” - mail and calendar reads keep working either way.
+          </p>
+        )}
         {connected && (
           <div style={{ ...small, display: 'flex', gap: KIT_SPACE[2], flexWrap: 'wrap' }}>
             <span>Connected {when(status.connected_at)}</span>

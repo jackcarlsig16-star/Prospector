@@ -6,13 +6,15 @@
 // section (Weekly report + Scorecard) underneath; Analytics (email + Apollo
 // widgets) and Sequenced (Apollo companies by week) ride along as sub-views;
 // Sources (lead-source-v1 B4) = who brought each lead, by partner / rep / office.
-export const TABS = [['dashboard', 'Dashboard'], ['pipeline', 'Pipeline'], ['actions', 'Actions']];
+// homelover-team-emails-v1: Settings = workspace settings (owner edits, everyone else reads); Team emails first.
+export const TABS = [['dashboard', 'Dashboard'], ['pipeline', 'Pipeline'], ['actions', 'Actions'], ['settings', 'Settings']];
 export const SUB_VIEWS = {
   pipeline: [['companies', 'Companies'], ['clients', 'Clients'], ['priorities', 'Map'], ['people', 'People'], ['partners', 'Partner workflow'], ['campaigns', 'Campaigns']],
   dashboard: [['overview', 'Overview'], ['sources', 'Sources'], ['analytics', 'Analytics'], ['sequenced', 'Sequenced']],
+  settings: [['team-emails', 'Team emails']],
 };
 export const DEFAULT_TAB = 'actions';
-export const DEFAULT_VIEW = { pipeline: 'companies', dashboard: 'overview' };
+export const DEFAULT_VIEW = { pipeline: 'companies', dashboard: 'overview', settings: 'team-emails' };
 // The Website visitors report moved into Pipeline as a channel (?channel=).
 export const VISITOR_CHANNEL = 'website_visit';
 

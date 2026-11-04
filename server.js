@@ -895,11 +895,14 @@ app.get('/api/sales/:businessId/goals/sources/network', salesModuleRoute('./api/
 app.get('/api/sales/:businessId/goals/clients', salesModuleRoute('./api/sales/clients.js', 'listClientsRoute', 'goals/clients'));
 app.post('/api/sales/:businessId/goals/clients', salesModuleRoute('./api/sales/clients.js', 'makeClientRoute', 'goals/clients POST'));
 app.post('/api/sales/:businessId/goals/clients/undo', salesModuleRoute('./api/sales/clients.js', 'undoClientRoute', 'goals/clients/undo POST'));
-// homelover-team-emails-v1 T2 - Settings › Team emails (reads: Viewer; writes checked inside: on / off owner or admin, sender owner).
+// homelover-team-emails-v1 T2 - Sales › Settings › Team emails (reads: Viewer; every write: the owner, checked inside).
 const TEAM_EMAILS = './api/sales/teamEmails/settings.js';
 app.get('/api/sales/:businessId/goals/team-emails', salesModuleRoute(TEAM_EMAILS, 'teamEmailStateRoute', 'goals/team-emails'));
 app.patch('/api/sales/:businessId/goals/team-emails', salesModuleRoute(TEAM_EMAILS, 'updateTeamEmailsRoute', 'goals/team-emails PATCH'));
-app.put('/api/sales/:businessId/goals/team-emails/me', salesModuleRoute(TEAM_EMAILS, 'setMineRoute', 'goals/team-emails/me PUT'));
+app.post('/api/sales/:businessId/goals/team-emails/recipients', salesModuleRoute(TEAM_EMAILS, 'addRecipientRoute', 'goals/team-emails/recipients POST'));
+app.patch('/api/sales/:businessId/goals/team-emails/recipients/:id', salesModuleRoute(TEAM_EMAILS, 'editRecipientRoute', 'goals/team-emails/recipients/:id PATCH'));
+app.delete('/api/sales/:businessId/goals/team-emails/recipients/:id', salesModuleRoute(TEAM_EMAILS, 'removeRecipientRoute', 'goals/team-emails/recipients/:id DELETE'));
+app.post('/api/sales/:businessId/goals/team-emails/changes/:id/undo', salesModuleRoute(TEAM_EMAILS, 'undoChangeRoute', 'goals/team-emails/changes/:id/undo POST'));
 app.post('/api/sales/:businessId/goals/team-emails/test', salesModuleRoute(TEAM_EMAILS, 'sendTestRoute', 'goals/team-emails/test POST'));
 app.post('/api/sales/:businessId/goals/clients/:id/signed', salesModuleRoute('./api/sales/clients.js', 'markSignedRoute', 'goals/clients/:id/signed POST'));
 app.post('/api/sales/:businessId/goals/clients/:id/launched', salesModuleRoute('./api/sales/clients.js', 'markLaunchedRoute', 'goals/clients/:id/launched POST'));
@@ -1018,7 +1021,8 @@ if (!hlSchedulerStarted && process.env.RENDER === 'true') {
   Promise.all([
     import('./api/sales/teamEmails/scheduler.js'), import('./api/sales/teamEmails/jobs.js'), import('./api/sales/allowlist.js'),
     import('./api/sales/visitPull.js'), import('./api/sales/intentScoreRun.js'), import('./api/sales/goalsShared.js'),
-  ]).then(([sched, jobs, allow, pull, scores, shared]) => {
+    import('./api/sales/visitorPeoplePull.js'),
+  ]).then(([sched, jobs, allow, pull, scores, shared, people]) => {
     const supabase = shared.getSupabase();
     const runApolloSync = async () => {
       const { runSync, cleanupOldSnapshots } = await import('./api/sales/sync.js');
@@ -1031,14 +1035,14 @@ if (!hlSchedulerStarted && process.env.RENDER === 'true') {
       return out;
     };
     const list = jobs.hlJobs({
-      runApolloSync, pull: pull.runVisitPull,
+      runApolloSync, pull: pull.runVisitPull, people: people.runVisitorPeoplePull,
       recompute: (sb, businessId) => scores.scheduleRecompute(sb, businessId, 'visit_pull'),
     });
     sched.startScheduler(supabase, {
       jobs: list,
       scopes: job => (job.scope === 'all' ? ['all'] : jobs.teamScopes(supabase, allow.getAllowlistedBusinessIds)),
     });
-    console.log('[SCHEDULER] HomeLover jobs: apollo-sync 06:00 daily, visitor-pull 06:30 + team-visitor-email 07:00 Mon-Fri, client-alerts each minute (America/Los_Angeles)');
+    console.log(`HomeLover scheduler on: ${jobs.schedulerLine(list)}`);
   }).catch(err => console.error('[SCHEDULER] did not start:', err.message));
 }
 

@@ -160,6 +160,14 @@ export const goalsApi = {
   referredBy: (id, partnerId) => call(id, `/partners/${partnerId}/referred`),
   // homelover-clients-v1 - clients (C3-C5; every write answers event_id for Undo), their files (C6) and the network tree (C9).
   clients: id => call(id, '/clients'),
+  // homelover-team-emails-v1 T2 - Sales › Settings › Team emails (every write: the owner).
+  teamEmails: id => call(id, '/team-emails'),
+  updateTeamEmails: (id, body) => call(id, '/team-emails', { method: 'PATCH', body }),
+  addTeamRecipient: (id, body) => call(id, '/team-emails/recipients', { method: 'POST', body }),
+  editTeamRecipient: (id, rid, body) => call(id, `/team-emails/recipients/${rid}`, { method: 'PATCH', body }),
+  removeTeamRecipient: (id, rid) => call(id, `/team-emails/recipients/${rid}`, { method: 'DELETE' }),
+  undoTeamEmailChange: (id, cid) => call(id, `/team-emails/changes/${cid}/undo`, { method: 'POST', body: {} }),
+  teamEmailTest: (id, body) => call(id, '/team-emails/test', { method: 'POST', body }),
   makeClient: (id, body) => call(id, '/clients', { method: 'POST', body }),
   markClient: (id, oppId, to, body) => call(id, `/clients/${oppId}/${to}`, { method: 'POST', body }),
   undoClient: (id, eventId) => call(id, '/clients/undo', { method: 'POST', body: { event_id: eventId } }),

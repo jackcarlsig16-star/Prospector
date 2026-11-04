@@ -3,7 +3,7 @@ import { CLIENT_STATUS_LABEL } from '../../../src/constants/clients.js';
 import { referredBy } from '../sourceRoutes.js';
 import { claimSlot } from './scheduler.js';
 import { sendTeamEmail, loadMembers } from './send.js';
-import { esc, page, link, recordUrl, withFooter } from './format.js';
+import { esc, shell, table, link, recordUrl, withFooter, ACCENT, MUTED } from './format.js';
 
 // homelover-team-emails-v1 T5 - "New client: <Company>" once per company. A client made after the settings'
 // client_alert_since (and in the last day) alerts once its 2-minute Undo window has passed: right away when its
@@ -26,14 +26,18 @@ export async function lookalikesOf(supabase, businessId, org) {
   return must(await supabase.from('sales_targets').select('id, name, employees, apollo_firmographics, evidence, owner_team, created_at').eq('business_id', businessId).eq('source_kind', 'lookalike').eq('source_note', lookalikeTag(org)).order('created_at'));
 }
 
-// Clients due an alert now: [{ event, row, lookalikes }].
-export async function dueAlerts(supabase, businessId, settings, now = Date.now()) {
+// Rulings Nov 4 (3): an alert that hit a blocked sender keeps its claim (status error, detail needs_reconnect +
+// grant_at) and is not tried again until the sender's grant changes (a reconnect writes a new connected_at).
+const heldFor = (slot, grantAt) => slot.detail?.status === 'needs_reconnect' && (slot.detail.grant_at ?? null) !== (grantAt ?? null);
+
+// Clients due an alert now: [{ event, row, lookalikes }]. grantAt = the sender grant's connected_at now.
+export async function dueAlerts(supabase, businessId, settings, now = Date.now(), grantAt = null) {
   const from = Math.max(Date.parse(settings.client_alert_since), now - LOOKBACK_MS);
   const events = must(await supabase.from('sales_client_events').select('id, opportunity_id, to_status, at').eq('business_id', businessId).eq('kind', 'made_client').gte('at', new Date(from).toISOString()).order('at'))
     .filter(e => now - Date.parse(e.at) >= UNDO_MS);
   if (!events.length) return [];
   const ids = [...new Set(events.map(e => e.opportunity_id))];
-  const sent = new Set(must(await supabase.from('sales_job_slots').select('slot').eq('job', 'client-alert').eq('scope', businessId).in('slot', ids)).map(r => r.slot));
+  const sent = new Set(must(await supabase.from('sales_job_slots').select('slot, detail').eq('job', 'client-alert').eq('scope', businessId).in('slot', ids)).filter(s => !heldFor(s, grantAt)).map(r => r.slot));
   const rows = new Map(must(await supabase.from('sales_opportunities').select(ALERT_COLS).eq('business_id', businessId).in('id', ids)).map(r => [r.id, r]));
   const out = [];
   for (const id of ids.filter(i => !sent.has(i))) {
@@ -65,11 +69,21 @@ export function buildClientAlert(row, { lookalikes = [], partnerName = null, net
     subject, '', ...facts.map(([k, v]) => `${k}: ${v}`), recordUrl('employer', row.id), ...(net ? ['', net] : []), '',
     ...(shown.length ? [head, ...shown.map((t, i) => `${i + 1}. ${laText(t)}\n   ${recordUrl('target', t.id)}`)] : [none]),
   ].join('\n'));
-  const html = page(subject, [
-    `<p>${facts.map(([k, v]) => `<b>${esc(k)}:</b> ${esc(v)}`).join('<br>')}</p>`, `<p>${link(recordUrl('employer', row.id), `Open ${row.organization}`)}</p>`,
-    ...(net ? [`<p>${esc(net)}</p>`] : []),
-    shown.length ? `<h3 style="font-size:15px">${esc(head)}</h3><ol>${shown.map(t => `<li>${link(recordUrl('target', t.id), t.name)}${esc(laText(t).slice(t.name.length))}${t.owner_team === 'upside' ? ' <b style="color:#C97626">Upside-owned</b>' : ''}</li>`).join('')}</ol>` : `<p>${esc(none)}</p>`,
-  ]);
+  const factRows = facts.map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:${MUTED};font-size:13px;white-space:nowrap;vertical-align:top">${esc(k)}</td><td style="padding:4px 0;font-size:13px">${esc(v)}</td></tr>`).join('');
+  const html = shell({
+    eyebrow: 'HomeLover · New client', title: `${row.organization} — ${status}`, sub: null,
+    body: [
+      `<table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:0 0 10px">${factRows}</table>`,
+      `<p style="margin:0 0 16px">${link(recordUrl('employer', row.id), `Open ${row.organization} →`)}</p>`,
+      ...(net ? [`<p style="margin:0 0 16px">${esc(net)}</p>`] : []),
+      shown.length
+        ? `<div style="font-size:15px;font-weight:700;margin:8px 0">${esc(head)}</div>${table(['Company', 'Employees', 'Industry', 'Why'], shown.map(t2 => [
+          `${link(recordUrl('target', t2.id), t2.name, 'font-weight:600')}${t2.owner_team === 'upside' ? ` <span style="font-size:11px;font-weight:700;color:${ACCENT}">Upside-owned</span>` : ''}`,
+          t2.employees != null ? esc(t2.employees.toLocaleString('en-US')) : '—', esc(t2.apollo_firmographics?.industry || '—'), esc(why(t2) || '—'),
+        ]))}`
+        : `<p>${esc(none)}</p>`,
+    ].join('\n'),
+  });
   return { subject, html, text, lookalikes: shown.length };
 }
 
@@ -86,13 +100,21 @@ export async function composeAlert(supabase, businessId, row, lookalikes) {
 }
 
 // One alert: claim, build, send, mark the company's Activity. -> { status, recipients } or null when already claimed.
-export async function sendClientAlert(supabase, businessId, { event, row, lookalikes }, deps) {
-  if (!(await claimSlot(supabase, 'client-alert', businessId, row.id))) return null;
+async function claimAlert(supabase, businessId, id, grantAt) {
+  if (await claimSlot(supabase, 'client-alert', businessId, id)) return true;
+  const prior = must(await supabase.from('sales_job_slots').select('slot, detail').eq('job', 'client-alert').eq('scope', businessId).eq('slot', id).maybeSingle());
+  if (!prior || !heldFor(prior, grantAt)) return false;
+  must(await supabase.from('sales_job_slots').delete().eq('job', 'client-alert').eq('scope', businessId).eq('slot', id).eq('status', 'error').select('slot'));
+  return claimSlot(supabase, 'client-alert', businessId, id);
+}
+
+export async function sendClientAlert(supabase, businessId, { event, row, lookalikes }, deps, { grantAt = null } = {}) {
+  if (!(await claimAlert(supabase, businessId, row.id, grantAt))) return null;
   const mail = await composeAlert(supabase, businessId, row, lookalikes);
   const sent = await sendTeamEmail(supabase, businessId, { kind: 'client', subject: mail.subject, html: mail.html, text: mail.text, slot: row.id, refId: row.id }, deps);
   if (sent.status === 'sent') {
     must(await supabase.from('sales_client_events').insert({ business_id: businessId, opportunity_id: row.id, kind: 'alert_sent', via: 'scheduler', to_status: row.client_status, meta: { recipients: sent.recipients, lookalikes: mail.lookalikes, send_id: sent.send_id, event_id: event.id } }).select('id'));
   }
-  await supabase.from('sales_job_slots').update({ status: sent.status === 'sent' || sent.status === 'skipped' ? 'ok' : 'error', detail: { status: sent.status, recipients: sent.recipients }, finished_at: new Date().toISOString() }).eq('job', 'client-alert').eq('scope', businessId).eq('slot', row.id);
+  await supabase.from('sales_job_slots').update({ status: sent.status === 'sent' || sent.status === 'skipped' ? 'ok' : 'error', detail: { status: sent.status, recipients: sent.recipients, ...(sent.status === 'needs_reconnect' ? { grant_at: sent.grant_at ?? null } : {}) }, finished_at: new Date().toISOString() }).eq('job', 'client-alert').eq('scope', businessId).eq('slot', row.id);
   return sent;
 }

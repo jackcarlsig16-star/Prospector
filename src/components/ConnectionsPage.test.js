@@ -135,3 +135,15 @@ test('Apollo: only a leftover code across the workspace -> the card pill is Conn
   expect(screen.queryByText('Needs attention')).toBeNull();
   expect(screen.getByText('one@x.com').closest('[data-provider="apollo"]').querySelector('[data-status="bad"]')).toBeNull();
 });
+
+test('homelover-team-emails-v1: a grant without Mail.Send says "Reconnect to allow team emails"; a ready one says nothing', async () => {
+  global.fetch = url => (url === '/api/microsoft/status' ? json(200, { ...connected, team_email: 'Reconnect to allow team emails' }) : json(404, {}));
+  const { unmount } = page();
+  expect((await screen.findByText('Reconnect to allow team emails.')).closest('[data-team-email-reconnect]')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Reconnect / switch account →' })).toBeEnabled();
+  unmount();
+  global.fetch = url => (url === '/api/microsoft/status' ? json(200, { ...connected, scopes: [...connected.scopes, 'Mail.Send'], team_email: 'ready' }) : json(404, {}));
+  page();
+  await screen.findByRole('button', { name: 'Reconnect / switch account →' });
+  expect(document.querySelector('[data-team-email-reconnect]')).toBeNull();
+});
