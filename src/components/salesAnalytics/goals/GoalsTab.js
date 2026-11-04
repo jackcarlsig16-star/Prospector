@@ -24,6 +24,7 @@ import ActionsView from './ActionsView';
 import AttentionDrawer from './AttentionDrawer';
 import CampaignsView from './campaigns/CampaignsView';
 import SourcesView from './SourcesView';
+import ClientsView from './ClientsView';
 import GoalHero from './GoalHero';
 import DashboardCharts from './DashboardCharts';
 import TrackImprove from './TrackImprove';
@@ -463,6 +464,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
             onCreateCadence={async body => { const c = await goalsApi.createCadence(businessId, body); setCadences(cs => [...cs, c]); }}
             onDeleteCadence={async cadenceId => { await goalsApi.deleteCadence(businessId, cadenceId); setCadences(cs => cs.filter(c => c.id !== cadenceId)); }} />
         </>}
+        {section === 'pipeline' && view === 'clients' && <ClientsView businessId={businessId} />}
         {section === 'pipeline' && view === 'campaigns' && me && (
           <CampaignsView businessId={businessId} canEdit={canEdit} members={members} lookup={lookup} meId={meId} />
         )}

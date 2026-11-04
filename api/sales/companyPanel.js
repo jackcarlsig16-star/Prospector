@@ -1,3 +1,5 @@
+import { CLIENT_STATUS_LABEL } from '../../src/constants/clients.js';
+import { CLIENT_COLS } from './clientCols.js';
 import { getSupabase, addDays, laMonday, weekIsFinal, FINAL_ERROR } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { cleanText, hasPii } from './scrubText.js';
@@ -73,9 +75,11 @@ async function loadRecord(supabase, businessId, type, id) {
     return g && { type, id: g.id, name: g.name, stage: g.pipeline_status || 'not_started', category: g.category, tier: g.tier, top: !!g.hot, owner_user_id: g.owner_user_id, owner_team: g.owner_team, co_owner_name: g.co_owner_name, no_double_touch: !!g.no_double_touch, next_step: g.next_step, next_step_due: g.next_meeting_at, last_touch_at: g.last_touch_at, channel: g.channel, priority: g.priority, priority_set_by: g.priority_set_by, priority_set_at: g.priority_set_at, record_id: g.record_id, notes: g.notes, ...pick(g, SIZE_COLS), ...pick(g, REACH_COLS) };
   }
   if (type === 'employer') {
-    const o = must(await supabase.from('sales_opportunities').select(`id, organization, stage, org_type, owner, owner_user_id, owner_team, co_owner_name, tier, is_top, next_action, next_action_date, channel, priority, priority_set_by, priority_set_at, notes, decision_makers, champion, covered_lives, record_id, apollo_account_id, ${SIZE_COLS}`)
+    const o = must(await supabase.from('sales_opportunities').select(`id, organization, stage, org_type, owner, owner_user_id, owner_team, co_owner_name, tier, is_top, next_action, next_action_date, channel, priority, priority_set_by, priority_set_at, notes, decision_makers, champion, covered_lives, record_id, apollo_account_id, expected_close, expected_launch, ${CLIENT_COLS.join(', ')}, ${SIZE_COLS}`)
       .eq('business_id', businessId).eq('id', id).is('archived_at', null).maybeSingle());
-    return o && { type, id: o.id, name: o.organization, stage: o.stage, org_type: o.org_type, owner: o.owner, owner_team: o.owner_team, co_owner_name: o.co_owner_name, tier: o.tier, top: !!o.is_top, next_step: o.next_action, next_step_due: o.next_action_date, channel: o.channel, priority: o.priority, priority_set_by: o.priority_set_by, priority_set_at: o.priority_set_at, covered_lives: o.covered_lives, record_id: o.record_id, notes: o.notes, decision_makers: o.decision_makers, champion: o.champion, apollo_linked: !!o.apollo_account_id, owner_user_id: o.owner_user_id, ...pick(o, SIZE_COLS) };
+    return o && { type, id: o.id, name: o.organization, stage: o.stage, org_type: o.org_type, owner: o.owner, owner_team: o.owner_team, co_owner_name: o.co_owner_name, tier: o.tier, top: !!o.is_top, next_step: o.next_action, next_step_due: o.next_action_date, channel: o.channel, priority: o.priority, priority_set_by: o.priority_set_by, priority_set_at: o.priority_set_at, covered_lives: o.covered_lives, record_id: o.record_id, notes: o.notes, decision_makers: o.decision_makers, champion: o.champion, apollo_linked: !!o.apollo_account_id, owner_user_id: o.owner_user_id, ...pick(o, SIZE_COLS),
+      // homelover-clients-v1: the client card + Make client sheet read these.
+      client: { ...pick(o, CLIENT_COLS.join(', ')), expected_close: o.expected_close, launch_date: o.expected_launch, apollo_account_id: o.apollo_account_id } };
   }
   if (type === 'target') {
     const r = must(await supabase.from('sales_targets').select(`id, name, kind, status, suggested_category, owner_team, co_owner_name, owner_user_id, evidence, research_notes, channel, created_at, promoted_goal_id, ${SIZE_COLS}`)
@@ -107,6 +111,16 @@ async function linkedWork(supabase, businessId, type, id, kind, names) {
   return rows.map(r => ({ id: r.id, text: cleanText(r.text, 300), owner_user_id: r.owner_user_id, owner: names.get(r.owner_user_id) || null, due_date: r.due_date, week_start: r.week_start, waiting_on: kind === 'waiting' ? cleanText(r.waiting_on, 120) : undefined }));
 }
 
+const clientWord = s => CLIENT_STATUS_LABEL[s] || s;
+export function clientEventText(e) {
+  const t = e.kind === 'made_client' ? `Made a client · ${clientWord(e.to_status)}`
+    : e.kind === 'status' ? `Client status ${clientWord(e.from_status)} → ${clientWord(e.to_status)}`
+      : e.kind === 'signed' ? 'Marked signed' : e.kind === 'launched' ? 'Marked launched'
+        : e.kind === 'undo' ? (e.meta?.archived ? 'Undid Make client · archived' : 'Undid a client change')
+          : e.kind === 'file_added' ? `File added · ${e.meta?.kind || 'file'}` : e.kind === 'file_archived' ? 'File archived' : e.kind;
+  return e.via === 'connector' ? `${t} (via connector)` : t;
+}
+
 async function recentFor(supabase, businessId, record) {
   if (record.type === 'partner') {
     const ev = must(await supabase.from('sales_partner_events').select('id, event, at, note, touch_type, contact_names, from_status, to_status, source, meta')
@@ -114,11 +128,14 @@ async function recentFor(supabase, businessId, record) {
     return ev.map(e => ({ id: e.id, event: e.event, at: e.at, note: e.note ? cleanText(e.note, 600) : null, touch_type: e.touch_type, contact_names: (e.contact_names || []).map(n => cleanText(n, 80)), from_status: e.from_status, to_status: e.to_status, source: e.source, meta: { kind: e.meta?.kind, direction: e.meta?.direction } }));
   }
   if (record.type === 'employer') {
-    const [ev, done] = await Promise.all([
+    const [ev, done, client] = await Promise.all([
       supabase.from('sales_opportunity_events').select('id, event_type, from_stage, to_stage, changed_at').eq('business_id', businessId).eq('opportunity_id', record.id).neq('event_type', 'created').order('changed_at', { ascending: false }).limit(RECENT).then(must),
       supabase.from('sales_week_goals').select('id, text, completed_at').eq('business_id', businessId).eq('kind', 'todo').eq('link_type', 'opportunity').eq('link_id', record.id).eq('status', 'done').order('completed_at', { ascending: false }).limit(RECENT).then(must),
+      // homelover-clients-v1 ruling 1: client changes live in their own table (not stage moves) but read here.
+      supabase.from('sales_client_events').select('id, kind, from_status, to_status, via, meta, at').eq('business_id', businessId).eq('opportunity_id', record.id).order('at', { ascending: false }).limit(RECENT).then(must),
     ]);
     return [
+      ...client.map(e => ({ id: e.id, event: 'client', at: e.at, text: clientEventText(e) })),
       ...ev.map(e => ({ id: e.id, event: 'stage', at: e.changed_at, text: e.event_type === 'stage_change' ? `${e.from_stage} → ${e.to_stage}` : e.event_type })),
       ...done.filter(d => d.completed_at).map(d => ({ id: d.id, event: 'todo_done', at: d.completed_at, text: `Done: ${cleanText(d.text, 300)}` })),
     ].sort((a, b) => b.at.localeCompare(a.at)).slice(0, RECENT);

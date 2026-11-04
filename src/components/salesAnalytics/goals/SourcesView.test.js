@@ -11,7 +11,7 @@ jest.mock('../PeopleCompanyPanel', () => props => {
   return h('div', { role: 'dialog', 'aria-label': `${props.person.company} window` }, h('button', { type: 'button', onClick: props.onClose }, 'Close window'));
 });
 
-jest.mock('./goalsApi', () => ({ goalsApi: { sources: jest.fn(), sourcesFunnel: jest.fn(), channelLinks: jest.fn(() => Promise.resolve([])), sourcesExport: jest.fn(), sourcesExportCsvUrl: jest.fn(), sourcesBackfill: jest.fn(), applySourcesBackfill: jest.fn(), partners: jest.fn() } }));
+jest.mock('./goalsApi', () => ({ goalsApi: { sourcesNetwork: jest.fn(() => Promise.resolve({ roots: [{ type: 'partner', id: 'p1', name: 'Upside', depth: 1, rollup: { clients: 1, lives: 390, in_pipeline: 2 }, more: 0, children: [] }], partners_with_none: 0 })), sources: jest.fn(), sourcesFunnel: jest.fn(), channelLinks: jest.fn(() => Promise.resolve([])), sourcesExport: jest.fn(), sourcesExportCsvUrl: jest.fn(), sourcesBackfill: jest.fn(), applySourcesBackfill: jest.fn(), partners: jest.fn() } }));
 
 // jsdom has no matchMedia; the view reads it for its phone list.
 window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
@@ -174,4 +174,17 @@ test('A funnel company name opens the shared company window with { type, id } - 
   expect(mockPanel).toHaveBeenLastCalledWith(expect.objectContaining({ person: { company: 'Zz Elm Health', link: { type: 'employer', id: 'Zz Elm Health' } } }));
   fireEvent.click(screen.getByRole('button', { name: 'Close window' }));
   expect(elm).toHaveFocus();
+});
+
+test('homelover-clients-v1 C9: Funnel is the default; Network swaps in the tree and back', async () => {
+  goalsApi.sourcesNetwork.mockResolvedValue({ roots: [{ type: 'partner', id: 'p1', name: 'Upside', depth: 1, rollup: { clients: 1, lives: 390, in_pipeline: 2 }, more: 0, children: [] }], partners_with_none: 0 });
+  render(<SourcesView businessId="b1" partners={partners} isAdmin={false} />);
+  expect(screen.getByRole('button', { name: 'Funnel' })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.queryByRole('region', { name: 'Network' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Network' }));
+  const tree = await screen.findByRole('region', { name: 'Network' });
+  await waitFor(() => expect(tree.textContent).toContain('1 client · 390 lives · 2 in pipeline'));
+  expect(screen.queryByRole('button', { name: /Export for/ })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Funnel' }));
+  expect(screen.queryByRole('region', { name: 'Network' })).toBeNull();
 });

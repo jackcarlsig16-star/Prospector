@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { SA, SA_TYPE } from '../theme';
+import { createPortal } from 'react-dom';
+import { SA, SA_TYPE, SA_THEME_CLASS } from '../theme';
 import { goalsApi } from './goalsApi';
 import useMediaQuery from '../../../utils/useMediaQuery';
 import CenterWindow from '../CenterWindow';
@@ -14,7 +15,10 @@ import { ErrorNote, memberLookup } from './goalsUi';
 import { factsFor } from './companyPanelFacts';
 const mdShort = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 import { needsRecord } from './companyPanelModel';
-import { SourceHistoryCard, ReferredByCard } from './LeadSource';
+import { SourceHistoryCard } from './LeadSource';
+import NetworkCard from './NetworkCard';
+import { ClientCard, FilesCard, MakeClientForm } from './ClientParts';
+import SidePanel from '../SidePanel';
 import CompanyStepsStrip from './CompanyStepsStrip';
 import CompanyProgress from './CompanyProgress';
 import IntentFact from './IntentFact';
@@ -40,6 +44,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
   const [source, setSource] = useState(null); // lead-source-v1: GET goals/source -> { source, history, journey (brad-attribution-v1) }
   const [editPanel, setEditPanel] = useState(null); // company-panel-v3 D2: 'jump' | 'source' | 'domain' under the facts
   const [links, setLinks] = useState([]); // intake-insights-v1: channel links naming this company
+  const [clientSheet, setClientSheet] = useState(null); // homelover-clients-v1: { preset? } = the Make client sheet
   // L6 (REVISABLE 980): two columns only when the window gets its full 1040 px, so a 1000 px viewport stacks.
   const wide = useMediaQuery('(min-width: 1040px)');
   const running = detail?.research?.runs?.[0]?.status === 'running';
@@ -109,6 +114,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
   );
   const cardProps = { businessId, row, detail, canEdit, onForm: setForm, onChanged: changed, onToast };
   return (
+    <>
     <CenterWindow label={row.name} head={head} onClose={onClose}>
       {error && <ErrorNote message={error} />}
       {!detail && !error && <span style={{ fontSize: 13, color: SA.muted }}>Loading…</span>}
@@ -121,9 +127,12 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
             <NotesCard {...cardProps} lookup={lookup} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
+            {row.type === 'partner' && <NetworkCard businessId={businessId} row={row} version={version} canEdit={canEdit}
+              onSetSource={() => setEditPanel('source')} onAddClient={() => setClientSheet({ preset: { source_kind: 'partner_referral', source_partner_id: row.id } })} />}
+            {row.type === 'employer' && <ClientCard {...cardProps} onMake={() => setClientSheet({})} />}
+            {row.type === 'employer' && <FilesCard businessId={businessId} row={row} canEdit={canEdit} version={version} onToast={onToast} />}
             {detail.research && <IntelCard {...cardProps} />}
             {!needsRecord(row.type) || detail.people.length > 0 ? <div data-section="people" ref={el => { if (el && initialSection === 'people' && !el.dataset.shown) { el.dataset.shown = '1'; el.scrollIntoView({ block: 'start' }); } }}><PeopleCard {...cardProps} /></div> : null}
-            {row.type === 'partner' && <ReferredByCard businessId={businessId} row={row} version={version} />}
             {sourced && <SourceHistoryCard data={source} links={links} />}
             <ExtraCards row={row} detail={detail} />
           </div>
@@ -135,5 +144,14 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
         <button type="button" className={btn} onClick={onClose}>Close</button>
       </div>
     </CenterWindow>
+      {/* Portaled to <body> so the sheet's complementary landmark is top-level (axe), themed like QuickCapture's add flows. */}
+      {clientSheet && canEdit && createPortal(<span className={`${SA_THEME_CLASS} ui-theme-dark no-print`}>
+        <SidePanel label={row.type === 'employer' ? `Make ${row.name} a client` : `Add a client ${row.name} referred`} width={620} onClose={() => setClientSheet(null)}>
+          <MakeClientForm businessId={businessId} row={row.type === 'employer' ? row : null} record={row.type === 'employer' ? detail?.record : null}
+            source={row.type === 'employer' && source ? source.source : null} preset={clientSheet.preset || null} onToast={onToast}
+            onCancel={() => setClientSheet(null)} onDone={() => { setClientSheet(null); changed(); }} />
+        </SidePanel>
+      </span>, document.body)}
+    </>
   );
 }

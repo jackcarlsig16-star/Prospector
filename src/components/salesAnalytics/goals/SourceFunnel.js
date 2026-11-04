@@ -19,6 +19,10 @@ const cell = { padding: '8px 10px', borderTop: `1px solid ${SA.track}`, fontSize
 const head = { ...labelStyle, textAlign: 'right', padding: '8px 10px', whiteSpace: 'nowrap' };
 
 export const rateText = r => (!r || !r.m ? '' : `${r.pct != null ? `${r.pct}% · ` : ''}${fmt(r.n)} of ${fmt(r.m)}`);
+// homelover-clients-v1 C10: a partner's clients + eligible lives, direct (it referred them) and via (a partner it
+// referred did) - every live client, whatever the filters.
+export const clientsLine = g => `${fmt(g.clients_direct || 0)} · ${fmt(g.clients_via || 0)}`;
+export const livesLine = g => `${fmt(g.lives_direct || 0)} · ${fmt(g.lives_via || 0)}`;
 export const membersOf = (companies, groupBy, key) => companies.filter(c => c.keys?.[groupBy] === key);
 export const enteredToday = (companies, stage, today) => companies.filter(c => c[stage] === today).length;
 // The row's hue: the lead source most of its companies carry (intent-score's source label), else its kind.
@@ -116,6 +120,7 @@ export default function SourceFunnel({ data, narrow, onOpenCompany }) {
               <button type="button" className="ui-link" aria-pressed={sel?.key === g.key} onClick={() => setSelected(g.key)} style={{ textAlign: 'left', fontWeight: 600, overflowWrap: 'anywhere' }}>{g.label}</button>
               <span style={{ display: 'flex', gap: '4px 12px', flexWrap: 'wrap', color: SA.muted, ...numStyle }}>
                 {FUNNEL_STAGES.map(([s, label]) => <span key={s}>{label} <Count g={g} stage={s} label={label} members={membersOf(data.companies, groupBy, g.key)} today={data.today} onOpen={onOpen} /></span>)}
+                {groupBy === 'partner' && <span data-clients-direct-via>Clients {clientsLine(g)} · lives {livesLine(g)} (direct · via)</span>}
               </span>
             </li>
           ))}
@@ -127,6 +132,7 @@ export default function SourceFunnel({ data, narrow, onOpenCompany }) {
               <tr>
                 <th scope="col" style={{ ...head, textAlign: 'left' }}>{groupBy === 'rep' ? 'Rep · partner' : groupBy === 'partner' ? 'Partner' : 'Source'}</th>
                 {FUNNEL_STAGES.map(([s, label]) => <th key={s} scope="col" style={head}>{label}</th>)}
+                {groupBy === 'partner' && <><th scope="col" style={head} title="Clients this partner referred · clients its referred partners brought in">Clients direct · via</th><th scope="col" style={head}>Lives direct · via</th></>}
               </tr>
             </thead>
             <tbody>
@@ -138,6 +144,7 @@ export default function SourceFunnel({ data, narrow, onOpenCompany }) {
                       <button type="button" className="ui-link" aria-pressed={sel?.key === g.key} title="Show this row's funnel" onClick={() => setSelected(g.key)} style={{ textAlign: 'left', fontWeight: 500 }}>{g.label}</button>
                     </td>
                     {FUNNEL_STAGES.map(([s, label]) => <td key={s} style={cell}><Count g={g} stage={s} label={label} members={members} today={data.today} onOpen={onOpen} /></td>)}
+                    {groupBy === 'partner' && <><td data-clients-direct-via style={cell}>{clientsLine(g)}</td><td style={cell}>{livesLine(g)}</td></>}
                   </tr>
                 );
               })}

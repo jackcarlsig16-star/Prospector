@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
 import { SA, SA_TYPE } from '../theme';
 import { goalsApi } from './goalsApi';
-import { inputStyle, ErrorNote, numStyle, fmt } from './goalsUi';
+import { inputStyle, ErrorNote, numStyle } from './goalsUi';
 import { Card } from './CompanyPanelSections';
 import { md, sourceText } from './companyPanelFacts';
 import { SOURCE_KINDS, SOURCE_LABEL } from '../../../constants/leadSources';
 import FilterSelect from '../../../ui/FilterSelect';
 
 // lead-source-v1 Stage 3 - the company window's Source pieces: the Edit row's
-// Source form (B2, Members), the Source history card (D4) and a partner's
-// "Referred by" card (B3). The text fields hold names and short phrases; the
+// Source form (B2, Members) and the Source history card (D4); a partner's
+// "Referred by" card (B3) grew into NetworkCard.js. The text fields hold names and short phrases; the
 // server refuses an address or phone in any of them.
 const field = { ...inputStyle, height: 32, fontSize: 13, padding: '0 8px' };
 const dim = { fontSize: 13, color: SA.muted };
@@ -91,35 +91,6 @@ export function SourceHistoryCard({ data, links = [] }) {
           <span style={{ ...numStyle, color: SA.muted, width: 48, flex: '0 0 48px' }}>{md(e.at)}</span>
           <span style={{ fontSize: 10.5, fontFamily: "'Geist Mono', ui-monospace, monospace", letterSpacing: '.06em', textTransform: 'uppercase', color: SA.muted, width: 64, flex: '0 0 64px', paddingTop: 2 }}>{REASON[e.reason] || e.reason}</span>
           <span style={{ ...text, flex: 1 }}>{historyText(e)}<span style={{ color: SA.muted }}> · {e.by || 'automatic'}</span></span>
-        </div>
-      ))}
-    </Card>
-  );
-}
-
-// B3 - every company this partner brought, grouped by the rep / office that brought it.
-export function ReferredByCard({ businessId, row, version }) {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState('');
-  useEffect(() => {
-    let live = true;
-    goalsApi.referredBy(businessId, row.id).then(d => { if (live) { setData(d); setError(''); } }).catch(e => live && setError(e.message));
-    return () => { live = false; };
-  }, [businessId, row.id, version]);
-  return (
-    <Card label={`Referred by ${row.name}`} count={data ? data.total : null} testId="referred-by">
-      {error && <ErrorNote message={error} />}
-      {!data && !error && <span style={dim}>Loading…</span>}
-      {data && !data.total && <span style={dim}>Nothing is sourced to {row.name} yet.</span>}
-      {data?.groups.map(g => (
-        <div key={`${g.person || ''}|${g.office || ''}`} data-referred-group style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <span className="ui-group-label">{[g.person || 'No rep named', g.office].filter(Boolean).join(' · ')} ({g.rows.length})</span>
-          {g.rows.map(r => (
-            <div key={`${r.type}-${r.id}`} style={{ display: 'flex', alignItems: 'baseline', gap: 8, fontSize: 13, flexWrap: 'wrap' }}>
-              <b style={{ color: SA.text, fontWeight: 500 }}>{r.name}</b>
-              <span style={{ color: SA.muted }}>{r.type} · {r.stage_label || '—'} · {r.owner || 'Unassigned'}{r.covered_lives != null ? ` · ${fmt(r.covered_lives)} lives` : ''}{r.last_touch_at ? ` · touched ${md(r.last_touch_at)}` : ''}</span>
-            </div>
-          ))}
         </div>
       ))}
     </Card>

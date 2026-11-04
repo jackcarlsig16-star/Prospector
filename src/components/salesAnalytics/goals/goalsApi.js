@@ -40,7 +40,7 @@ async function call(businessId, path, { method = 'GET', body } = {}) {
     if (res.status === 500 && MIGRATION_PATTERN.test(data.error || '')) throw new NeedsMigrationError();
     throw Object.assign(new Error(data.error || `Request failed (${res.status})`), { status: res.status });
   }
-  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/leads$|^\/prospect-targets\/.+\/(promote|reject|contacted-undo)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/(partners|company\/[a-z]+)\/.+\/apollo-check$|^\/company\/add-to-pipeline$|^\/suggestions\/.+\/(accept|dismiss|snooze|undo)$|^\/signals\/(scout-import|.+\/(accept|dismiss|undo|auto-create))$|^\/visits\/(pull|people-csv|people-pull)$|^\/people(\/.+\/add-record)?$|^\/targets$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
+  if (method !== 'GET' && /^\/(week|steps)\b|^\/call-notes$|^\/leads$|^\/prospect-targets\/.+\/(promote|reject|contacted-undo)$|^\/tidy\/run$|^\/waiting\/.+\/nudge$|^\/(partners|company\/[a-z]+)\/.+\/apollo-check$|^\/company\/add-to-pipeline$|^\/suggestions\/.+\/(accept|dismiss|snooze|undo)$|^\/signals\/(scout-import|.+\/(accept|dismiss|undo|auto-create))$|^\/visits\/(pull|people-csv|people-pull)$|^\/people(\/.+\/add-record)?$|^\/targets$|^\/clients(\/undo)?$/.test(path)) window.dispatchEvent(new Event(TODOS_CHANGED));
   return data;
 }
 
@@ -158,6 +158,18 @@ export const goalsApi = {
   markStage: (id, type, recordId, body) => call(id, `/stage-marks/${type}/${recordId}`, { method: 'PUT', body }),
   unmarkStage: (id, type, recordId, stage) => call(id, `/stage-marks/${type}/${recordId}/${stage}`, { method: 'DELETE' }),
   referredBy: (id, partnerId) => call(id, `/partners/${partnerId}/referred`),
+  // homelover-clients-v1 - clients (C3-C5; every write answers event_id for Undo), their files (C6) and the network tree (C9).
+  clients: id => call(id, '/clients'),
+  makeClient: (id, body) => call(id, '/clients', { method: 'POST', body }),
+  markClient: (id, oppId, to, body) => call(id, `/clients/${oppId}/${to}`, { method: 'POST', body }),
+  undoClient: (id, eventId) => call(id, '/clients/undo', { method: 'POST', body: { event_id: eventId } }),
+  clientFiles: (id, oppId, archived = false) => call(id, `/clients/${oppId}/files${archived ? '?archived=1' : ''}`).then(d => d.files),
+  clientUploadUrl: (id, oppId, body) => call(id, `/clients/${oppId}/files/upload-url`, { method: 'POST', body }),
+  recordClientFile: (id, oppId, body) => call(id, `/clients/${oppId}/files`, { method: 'POST', body }).then(d => d.file),
+  clientFileUrl: (id, fileId) => call(id, `/client-files/${fileId}/url`),
+  archiveClientFile: (id, fileId) => call(id, `/client-files/${fileId}/archive`, { method: 'POST' }).then(d => d.file),
+  restoreClientFile: (id, fileId) => call(id, `/client-files/${fileId}/restore`, { method: 'POST' }).then(d => d.file),
+  sourcesNetwork: id => call(id, '/sources/network'),
   // days / team / partner; { totals, by_kind, by_partner, by_person, by_office }.
   sources: (id, { days, team, partner } = {}) => call(id, `/sources?${q({ days, team, partner })}`),
   sourcesFunnel: (id, { days, team, partner, rep, source } = {}) => call(id, `/sources/funnel?${q({ days, team, partner, rep, source })}`),

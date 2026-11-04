@@ -33,7 +33,8 @@ const caught = (label, e) => {
 };
 
 export const UNDO_WINDOW_MS = 2 * 60e3;
-export const CLIENT_COLS = ['client_status', 'client_since', 'signed_date', 'eligible_now', 'eligible_added', 'eligible_added_note', 'expected_signing_date', 'apollo_deal_id', 'apollo_org_id'];
+import { CLIENT_COLS } from './clientCols.js';
+export { CLIENT_COLS };
 // Every column a client change may write - the Undo snapshot.
 const TOUCHED = [...CLIENT_COLS, 'stage', 'covered_lives', 'expected_launch', 'apollo_account_id', 'champion', 'notes', ...SOURCE_FIELDS, 'source_set_by', 'source_set_at', 'updated_at'];
 const ROW_COLS = `id, business_id, organization, domain, owner, owner_team, co_owner_name, archived_at, created_at, ${TOUCHED.join(', ')}`;
@@ -249,9 +250,26 @@ export async function markClient(supabase, { businessId, userId, id, to, body = 
   } catch (e) { return caught(`mark/${to}`, e); }
 }
 
+// Anything tied to this employer besides Make client's own to-do: people, prospects, campaign contacts, files, visits,
+// research, to-dos, a partner's link.
+async function linkedSince(supabase, { businessId, id, ownTodoId }) {
+  const count = async q => must(await q).length;
+  const hits = await Promise.all([
+    count(supabase.from('sales_people').select('id').eq('business_id', businessId).eq('opportunity_id', id).limit(1)),
+    count(supabase.from('sales_prospect_state').select('contact_id').eq('business_id', businessId).eq('opportunity_id', id).limit(1)),
+    count(supabase.from('sales_outreach_contacts').select('id').eq('business_id', businessId).eq('opportunity_id', id).limit(1)),
+    count(supabase.from('sales_client_files').select('id').eq('business_id', businessId).eq('opportunity_id', id).limit(1)),
+    count(supabase.from('web_visits').select('id').eq('business_id', businessId).eq('matched_type', 'opportunity').eq('matched_id', id).limit(1)),
+    count(supabase.from('research_runs').select('id').eq('business_id', businessId).eq('entity_type', 'employer').eq('entity_id', id).limit(1)),
+    count(supabase.from('sales_goals').select('id').eq('business_id', businessId).eq('linked_opportunity_id', id).limit(1)),
+    supabase.from('sales_week_goals').select('id').eq('business_id', businessId).eq('link_type', 'opportunity').eq('link_id', id).limit(5).then(r => must(r).filter(t => t.id !== ownTodoId).length),
+  ]);
+  return hits.some(n => n > 0);
+}
+
 // POST /goals/clients/undo { event_id } - the caller's own change, within 2 minutes, only while the row still holds what
 // that change wrote. Puts back the exact prior row (values + updated_at), the stopped campaign contacts and drops the
-// to-do; an employer Make client created is deleted (its people / visits never linked to it yet).
+// to-do; an employer this Make client created is deleted, or archived once anything links to it (ruling 3).
 export async function undoClient(supabase, { businessId, userId, body = {}, via = 'panel', now = new Date() }) {
   try {
     if (!UUID.test(body.event_id || '')) return reply(400, { error: 'event_id is required' });
@@ -271,11 +289,21 @@ export async function undoClient(supabase, { businessId, userId, body = {}, via 
       must(await supabase.from('sales_outreach_events').insert({ contact_id: c.id, business_id: businessId, at: now.toISOString(), source: 'manual', kind: 'status', by_user: userId, meta: { undone: true, prev: { status: c.next_status }, next: c.prev } }));
     }
     if (u.todo_id) must(await supabase.from('sales_week_goals').update({ status: 'dropped', updated_at: now.toISOString() }).eq('business_id', businessId).eq('id', u.todo_id).eq('status', 'open'));
-    if (u.created) {
+    // Ruling 3 (Nov 3): delete only an employer THIS call created, inside the window, with nothing linked to it since
+    // (the contacted-undo guard); otherwise put the prior row back and archive it.
+    const fresh = u.created && now - Date.parse(row.created_at) <= UNDO_WINDOW_MS;
+    if (fresh && !(await linkedSince(supabase, { businessId, id: row.id, ownTodoId: u.todo_id }))) {
+      must(await supabase.from('sales_source_events').delete().eq('business_id', businessId).eq('record_type', 'employer').eq('record_id', row.id));
       must(await supabase.from('sales_opportunities').delete().eq('business_id', businessId).eq('id', row.id));
       return reply(200, { undone: ev.id, deleted: { type: 'employer', id: row.id } });
     }
-    const restored = must(await supabase.from('sales_opportunities').update(u.prior).eq('business_id', businessId).eq('id', row.id).eq('updated_at', row.updated_at).select(ROW_COLS));
+    const restored = must(await supabase.from('sales_opportunities').update(u.created ? { ...u.prior, archived_at: now.toISOString() } : u.prior)
+      .eq('business_id', businessId).eq('id', row.id).eq('updated_at', row.updated_at).select(ROW_COLS));
+    if (u.created) {
+      if (!restored.length) return reply(409, { error: `${row.organization} changed since - reload` });
+      await logClient(supabase, { businessId, id: row.id, kind: 'undo', from: row.client_status, to: null, userId, via, now, meta: { undoes: ev.id, archived: true } });
+      return reply(200, { undone: ev.id, archived: { type: 'employer', id: row.id } });
+    }
     if (!restored.length) return reply(409, { error: `${row.organization} changed since - reload` });
     if (u.source_changed) await logSource(supabase, { businessId, type: 'employer', id: row.id, from: row, to: restored[0], reason: 'undo', byUser: userId, at: now });
     await logClient(supabase, { businessId, id: row.id, kind: 'undo', from: row.client_status, to: u.prior.client_status, userId, via, now, meta: { undoes: ev.id } });

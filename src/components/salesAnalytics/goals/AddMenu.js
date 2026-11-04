@@ -8,7 +8,7 @@ import { SA, SA_THEME_ROOT_ID } from '../theme';
 // absolute menu inside the fixed-height frame tools row was clipped to its first item - the "Employer" box); on a phone
 // it is a full-width sheet. Enter / Space open (the button's own click), arrows / Home / End move across every item,
 // Esc and a click outside close.
-export const ADD_ITEMS = [['employer', 'Employer', 'A company in the pipeline (the employer panel)'], ['partner', 'Partner', 'A partner, with the dupe check'], ['target', 'Target', 'A company to research first (employer or partner kind)'], ['person', 'Person', 'Someone at a company - name, title, LinkedIn; never an email or phone']];
+export const ADD_ITEMS = [['employer', 'Employer', 'A company in the pipeline (the employer panel)'], ['partner', 'Partner', 'A partner, with the dupe check'], ['target', 'Target', 'A company to research first (employer or partner kind)'], ['person', 'Person', 'Someone at a company - name, title, LinkedIn; never an email or phone'], ['client', 'Client', 'A company that said yes: status, eligible lives, who referred it']];
 export const ADD_GROUP = { id: 'add', label: 'Add', items: ADD_ITEMS.map(([id, label, hint]) => ({ id, label, hint })) };
 const MENU_Z = 4010;
 

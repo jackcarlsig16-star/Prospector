@@ -88,7 +88,7 @@ export function WaitingCard({ detail }) {
   );
 }
 
-const RECENT_WORD = { touch: 'Touch', note: 'Note', status: 'Stage', undo: 'Undo', stage: 'Stage', todo_done: 'Done' };
+const RECENT_WORD = { touch: 'Touch', note: 'Note', status: 'Stage', undo: 'Undo', stage: 'Stage', todo_done: 'Done', client: 'Client' };
 export function NotesCard({ detail, canEdit, lookup, onForm }) {
   return (
     <Card label="Notes & touches" count={detail.recent.length} action={canEdit ? <Mini onClick={() => onForm('note')}>+ Note</Mini> : null} testId="recent">

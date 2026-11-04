@@ -44,8 +44,9 @@ const seed = () => fakeSupabase({
     { business_id: B, contact_id: 'ap-1', name: 'Dana Q', company: 'Momentum', status: 'contacted', owner: 'jack', opportunity_id: ID.mom },
     { business_id: B, contact_id: 'ap-2', name: 'Ray Z', company: 'Momentum', status: 'dead', owner: 'jack', opportunity_id: ID.mom },
   ],
+  sales_people: [], web_visits: [], research_runs: [],
   sales_week_goals: [], sales_week_report: [], sales_source_events: [], sales_opportunity_events: [], sales_client_events: [], sales_client_files: [],
-}, { triggers: { sales_opportunities: opportunityEventsTrigger } });
+}, { triggers: { sales_opportunities: opportunityEventsTrigger }, now: () => NOW.getTime() });
 
 const momentumBody = (over = {}) => ({
   opportunity_id: ID.mom, status: 'verbal_yes', eligible_now: 390, eligible_added: 250, eligible_added_note: 'acquisition, expected April 2027',
@@ -307,4 +308,65 @@ test("lookalike is a source kind everywhere one is checked (constants, validatio
   for (const c of checks) for (const k of SOURCE_KINDS) assert.ok(c.includes(`'${k}'`), `${k} missing from ${c.slice(0, 60)}`);
   assert.match(sql, /'web_visit', 'lookalike'/);
   assert.match(sql, /INSERT INTO storage\.buckets[\s\S]*'client-files', 'client-files', false, 20971520/);
+});
+
+test('ruling 2: re-running Make client never adds a second HQ line (a new HQ replaces it); champion kept once set', async () => {
+  const sb = seed();
+  const body = momentumBody({ primary_contact_name: 'Pat A', primary_contact_title: 'CHRO', hq_city: 'Chicago', hq_state: 'IL' });
+  await makeClient(sb, { businessId: B, userId: U, body, now: NOW });
+  await makeClient(sb, { businessId: B, userId: U, body, now: later(1000) });
+  assert.equal(row(sb).notes, 'old note\nHQ: Chicago, IL');
+  const moved = await makeClient(sb, { businessId: B, userId: U, body: { ...body, hq_city: 'Austin', hq_state: 'TX', primary_contact_name: 'Lee B' }, now: later(2000) });
+  assert.equal(row(sb).notes, 'old note\nHQ: Austin, TX');
+  assert.equal((row(sb).notes.match(/^HQ: /gm) || []).length, 1);
+  assert.equal(row(sb).champion, 'Pat A, CHRO');
+  assert.ok(moved.body.warnings.includes('a champion is already set - kept'));
+});
+
+test('ruling 3: Undo deletes the employer only when this call created it, inside the window, with nothing linked; otherwise archives it', async () => {
+  const fresh = { status: 'verbal_yes', organization: 'Nova Health', domain: 'nova.example', source: { source_kind: 'homelover_outreach' } };
+  // created + nothing linked -> deleted (its source events with it), the Send agreement to-do doesn't count as a link
+  let sb = seed();
+  let r = await makeClient(sb, { businessId: B, userId: U, body: fresh, now: NOW });
+  assert.ok(r.body.todo_id);
+  let u = await undoClient(sb, { businessId: B, userId: U, body: { event_id: r.body.event_id }, now: later(5000) });
+  assert.equal(u.status, 200); assert.equal(u.body.deleted.type, 'employer');
+  assert.equal(sb.db.sales_opportunities.some(o => o.organization === 'Nova Health'), false);
+  // created, then a person filed on it -> archived, client fields back to empty, the person kept
+  sb = seed();
+  r = await makeClient(sb, { businessId: B, userId: U, body: fresh, now: NOW });
+  const novaId = r.body.client.id;
+  sb.db.sales_people.push({ id: randomUUID(), business_id: B, company_type: 'employer', opportunity_id: novaId, name: 'Sam N' });
+  u = await undoClient(sb, { businessId: B, userId: U, body: { event_id: r.body.event_id }, now: later(5000) });
+  assert.equal(u.status, 200, JSON.stringify(u.body)); assert.equal(u.body.archived.id, novaId);
+  const nova = row(sb, novaId);
+  assert.ok(nova.archived_at); assert.equal(nova.client_status, null); assert.equal(nova.stage, 'target');
+  assert.equal(sb.db.sales_people.filter(p => p.opportunity_id === novaId).length, 1);
+  assert.deepEqual(sb.db.sales_client_events.filter(e => e.opportunity_id === novaId).map(e => e.kind), ['made_client', 'undo']);
+  assert.equal(sb.db.sales_opportunity_events.filter(e => e.opportunity_id === novaId).at(-1).event_type, 'archived');
+  // created, but an older employer (outside the window) -> archived, not deleted
+  sb = seed();
+  r = await makeClient(sb, { businessId: B, userId: U, body: fresh, now: NOW });
+  row(sb, r.body.client.id).created_at = new Date(NOW.getTime() - 10 * 60e3).toISOString();
+  u = await undoClient(sb, { businessId: B, userId: U, body: { event_id: r.body.event_id }, now: later(5000) });
+  assert.ok(u.body.archived); assert.ok(row(sb, r.body.client.id));
+  // an existing employer is never deleted or archived by Undo
+  sb = seed();
+  r = await makeClient(sb, { businessId: B, userId: U, body: momentumBody(), now: NOW });
+  u = await undoClient(sb, { businessId: B, userId: U, body: { event_id: r.body.event_id }, now: later(5000) });
+  assert.equal(u.body.deleted, undefined); assert.equal(u.body.archived, undefined); assert.equal(row(sb).archived_at, null);
+});
+
+test("ruling 1: client changes show in the employer's Notes & touches feed, never as stage moves", async () => {
+  const { companyDetail, clientEventText } = await import('./companyPanel.js');
+  const sb = seed();
+  const r = await makeClient(sb, { businessId: B, userId: U, body: momentumBody(), now: NOW });
+  await markClient(sb, { businessId: B, userId: U, id: ID.mom, to: 'signed', body: { expect_status: 'verbal_yes' }, now: later(1000) });
+  const d = await companyDetail(sb, { businessId: B, type: 'employer', id: ID.mom, now: later(2000) });
+  assert.equal(d.status, 200, JSON.stringify(d.body));
+  const client = d.body.recent.filter(e => e.event === 'client').map(e => e.text);
+  assert.deepEqual(client.sort(), ['Made a client · Verbal yes', 'Marked signed']);
+  assert.ok(d.body.recent.some(e => e.event === 'stage' && e.text === 'verbal → contract'));
+  assert.equal(clientEventText({ kind: 'made_client', to_status: 'verbal_yes', via: 'connector' }), 'Made a client · Verbal yes (via connector)');
+  assert.ok(r.body.event_id);
 });

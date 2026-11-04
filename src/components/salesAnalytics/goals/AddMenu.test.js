@@ -15,10 +15,10 @@ test('desktop: the menu renders outside the button\'s row (portal, position fixe
   expect(container.contains(menu)).toBe(false);
   expect(menu.style.position).toBe('fixed');
   expect(within(menu).getAllByRole('group').map(g => g.getAttribute('aria-label'))).toEqual(['Capture', 'Add']);
-  expect(within(menu).getAllByRole('menuitem').map(b => b.getAttribute('data-add-item'))).toEqual(['capture:task', 'capture:idea', 'employer', 'partner', 'target', 'person']);
+  expect(within(menu).getAllByRole('menuitem').map(b => b.getAttribute('data-add-item'))).toEqual(['capture:task', 'capture:idea', 'employer', 'partner', 'target', 'person', 'client']);
   expect(document.activeElement.getAttribute('data-add-item')).toBe('capture:task');
   fireEvent.keyDown(menu, { key: 'ArrowUp' });
-  expect(document.activeElement.getAttribute('data-add-item')).toBe('person');
+  expect(document.activeElement.getAttribute('data-add-item')).toBe('client');
   fireEvent.keyDown(menu, { key: 'ArrowDown' }); fireEvent.keyDown(menu, { key: 'ArrowDown' }); fireEvent.keyDown(menu, { key: 'ArrowDown' });
   expect(document.activeElement.getAttribute('data-add-item')).toBe('employer');
   fireEvent.click(document.activeElement);
@@ -39,7 +39,7 @@ test('phone: a full-width sheet (dialog) with the same items and a Cancel', () =
   render(<AddMenu phone groups={GROUPS} label="Capture or add" onPick={onPick} buttonLabel="+" />);
   fireEvent.click(screen.getByRole('button', { name: '+' }));
   const sheet = screen.getByRole('dialog', { name: 'Capture or add' });
-  expect(within(sheet).getAllByRole('menuitem')).toHaveLength(6);
+  expect(within(sheet).getAllByRole('menuitem')).toHaveLength(7);
   fireEvent.click(within(sheet).getByRole('menuitem', { name: 'Person' }));
   expect(onPick).toHaveBeenCalledWith('person');
   expect(screen.queryByRole('dialog')).toBeNull();

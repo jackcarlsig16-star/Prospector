@@ -431,7 +431,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
         </SidePanel>
       )}
       {canEdit && <AddFlows businessId={businessId} members={members} adding={adding} onClose={() => setAdding(null)} companies={all.filter(r => ['partner', 'employer', 'target'].includes(r.type)).map(r => ({ type: r.type, id: r.id, name: r.name }))}
-        onAdded={(record, opts) => added(record, opts)} />}
+        onToast={setToast} onAdded={(record, opts) => added(record, opts)} />}
       {canEdit && updating && (
         <SheetUpdateDrawer businessId={businessId} onClose={() => setUpdating(false)}
           onApplied={r => { setToast({ text: `Updated ${r.applied}${r.failed.length ? ` · ${r.failed.length} not applied` : ''}` }); load(); }} />

@@ -805,7 +805,7 @@ test('visitor: facts are Priority · Source · Last visit; no Edit row but Prior
 });
 
 // FIX pipeline-quick-fixes-v1 A - the menu's four items by role, keyboard, and the Person / Target / Partner forms.
-test('+ Add ▾: four menu items (Employer · Partner · Target · Person), the only primary on the row; Esc closes; Arrow keys move', async () => {
+test('+ Add ▾: five menu items (Employer · Partner · Target · Person · Client), the only primary on the row; Esc closes; Arrow keys move', async () => {
   setup();
   await screen.findByText('Solidcore');
   const btn = screen.getByRole('button', { name: '+ Add ▾' });
@@ -813,7 +813,7 @@ test('+ Add ▾: four menu items (Employer · Partner · Target · Person), the 
   expect(document.querySelectorAll('#sales-frame-tools .ui-btn--primary')).toHaveLength(1);
   fireEvent.click(btn);
   const menu = screen.getByRole('menu', { name: 'Add' });
-  expect(within(menu).getAllByRole('menuitem').map(b => b.textContent)).toEqual(['Employer', 'Partner', 'Target', 'Person']);
+  expect(within(menu).getAllByRole('menuitem').map(b => b.textContent)).toEqual(['Employer', 'Partner', 'Target', 'Person', 'Client']);
   expect(btn.getAttribute('aria-expanded')).toBe('true');
   fireEvent.keyDown(menu, { key: 'ArrowDown' });
   await waitFor(() => expect(document.activeElement.textContent).toBe('Partner'));

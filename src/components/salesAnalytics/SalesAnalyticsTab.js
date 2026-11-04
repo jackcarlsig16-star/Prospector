@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { SA, SA_THEME_CSS, SA_THEME_ROOT_ID, saSans } from './theme';
 import { ui } from '../../ui/kitTheme';
 import Tabs from '../../ui/Tabs';
-import { IconTable, IconMap, IconPeople, IconFlow, IconMegaphone, IconBars, IconSource, IconTrend, IconMail } from '../../ui/icons';
+import { IconTable, IconCheck, IconMap, IconPeople, IconFlow, IconMegaphone, IconBars, IconSource, IconTrend, IconMail } from '../../ui/icons';
 import Tag from '../../ui/Tag';
 import AnalyticsView from './AnalyticsView';
 import DailyHuddle from './DailyHuddle';
@@ -87,7 +87,7 @@ const PRINT_STYLES = `
 // Pipeline / Dashboard; Pipeline > People is DailyHuddle (the People table
 // on its Live tab, Priorities and Done beside it).
 
-const SUB_VIEW_ICON = { companies: IconTable, priorities: IconMap, people: IconPeople, partners: IconFlow, campaigns: IconMegaphone, overview: IconBars, sources: IconSource, analytics: IconTrend, sequenced: IconMail };
+const SUB_VIEW_ICON = { companies: IconTable, clients: IconCheck, priorities: IconMap, people: IconPeople, partners: IconFlow, campaigns: IconMegaphone, overview: IconBars, sources: IconSource, analytics: IconTrend, sequenced: IconMail };
 
 export default function SalesAnalyticsTab({ businessId, features }) {
   const [tab, setTab] = useState(() => readNav().tab);

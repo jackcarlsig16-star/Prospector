@@ -114,7 +114,7 @@ test('an Idea save appends exactly one item in the Ideas page shape', async () =
 });
 
 // one-plus-button-v1 - one "+": Capture (Task · Note · Idea) | Add (Employer · Partner · Target · Person).
-test('the header "+" opens one menu with seven items in two groups; Note / Idea open the panel in that mode; Employer opens the employer panel; Person opens the Add person form with no email / phone input and, once added, asks Pipeline to open the record on its People card', async () => {
+test('the header "+" opens one menu with eight items in two groups; Note / Idea open the panel in that mode; Employer opens the employer panel; Person opens the Add person form with no email / phone input and, once added, asks Pipeline to open the record on its People card', async () => {
   goalsApi.pipelineBoard.mockResolvedValue([{ type: 'employer', id: 'o1', name: 'Solidcore' }]);
   goalsApi.addPerson.mockResolvedValue({ person: { id: 'sp1', name: 'Jean Horton' }, company: { type: 'employer', id: 'o1', name: 'Solidcore' } });
   const opened = jest.fn();
@@ -122,7 +122,7 @@ test('the header "+" opens one menu with seven items in two groups; Note / Idea 
   setup();
   fireEvent.click(await plus());
   const menu = screen.getByRole('menu', { name: 'Capture or add' });
-  expect(within(menu).getAllByRole('menuitem').map(b => b.textContent.replace(/[TNI]$/, ''))).toEqual(['Task', 'Note', 'Idea', 'Employer', 'Partner', 'Target', 'Person']);
+  expect(within(menu).getAllByRole('menuitem').map(b => b.textContent.replace(/[TNI]$/, ''))).toEqual(['Task', 'Note', 'Idea', 'Employer', 'Partner', 'Target', 'Person', 'Client']);
   expect(within(menu).getByRole('group', { name: 'Capture' })).toBeInTheDocument();
   expect(within(menu).getByRole('group', { name: 'Add' })).toBeInTheDocument();
   fireEvent.click(within(menu).getByRole('menuitem', { name: /^Idea/ }));

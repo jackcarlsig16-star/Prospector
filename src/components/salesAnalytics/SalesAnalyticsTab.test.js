@@ -17,11 +17,11 @@ test('Pipeline and Dashboard sub-views render as Tabs level="sub" with icons; pi
   const pipe = screen.getByRole('tablist', { name: 'Pipeline views' });
   expect(pipe).toHaveClass('ui-tabs--sub');
   const tabs = within(pipe).getAllByRole('tab');
-  expect(tabs.map(t => t.textContent)).toEqual(['Companies', 'Map', 'People', 'Partner workflow', 'Campaigns']);
+  expect(tabs.map(t => t.textContent)).toEqual(['Companies', 'Clients', 'Map', 'People', 'Partner workflow', 'Campaigns']);
   expect(tabs.every(t => t.querySelector('svg'))).toBe(true);
   expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
   expect(document.querySelector('[data-sales-subviews] .ui-seg')).toBeNull();
-  fireEvent.click(tabs[1]);
+  fireEvent.click(tabs[2]);
   expect(new URLSearchParams(window.location.search).get('view')).toBe('priorities');
   fireEvent.keyDown(within(pipe).getByRole('tab', { name: 'Map' }), { key: 'ArrowRight' });
   expect(new URLSearchParams(window.location.search).get('view')).toBe('people');

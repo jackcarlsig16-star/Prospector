@@ -9,6 +9,8 @@ import FilterSelect from '../../../ui/FilterSelect';
 import SourcesBackfill from './SourcesBackfill';
 import SourceFunnel from './SourceFunnel';
 import ChannelLinks from './ChannelLinks';
+import NetworkTree from './NetworkTree';
+import Segmented from '../../../ui/Segmented';
 import PeopleCompanyPanel from '../PeopleCompanyPanel';
 import { SOURCE_KINDS, SOURCE_LABEL } from '../../../constants/leadSources';
 
@@ -150,6 +152,7 @@ export default function SourcesView({ businessId, partners, isAdmin, canEdit, me
   const [funnelError, setFunnelError] = useState('');
   const [reps, setReps] = useState([]);
   const [company, setCompany] = useState(null); // { company, link } for the company window
+  const [mode, setMode] = useState('funnel'); // homelover-clients-v1 C9: Funnel (default) | Network
   const opener = useRef(null);
   const narrow = useMediaQuery('(max-width: 720px)');
   useEffect(() => {
@@ -175,6 +178,8 @@ export default function SourcesView({ businessId, partners, isAdmin, canEdit, me
   const t = data?.totals;
   return (
     <div data-sources-view style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
+      <div className="no-print"><Segmented label="Sources view" items={[{ id: 'funnel', label: 'Funnel' }, { id: 'network', label: 'Network' }]} value={mode} onChange={setMode} /></div>
+      {mode === 'network' ? <NetworkTree businessId={businessId} /> : <>
       <div className="no-print" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <FilterSelect label="Range" value={days} options={RANGES.map(([value, label]) => ({ value, label }))} onChange={setDays} />
         <FilterSelect label="Team" value={team} options={TEAM_OPTIONS.map(([value, label]) => ({ value, label }))} onChange={setTeam} />
@@ -203,6 +208,7 @@ export default function SourcesView({ businessId, partners, isAdmin, canEdit, me
       <ChannelLinks businessId={businessId} partner={partner} narrow={narrow} />
       {company && <PeopleCompanyPanel businessId={businessId} person={company} canEdit={canEdit} members={members} meId={meId} onToast={panelToast} onClose={closeCompany} onOpenFull={closeCompany} />}
       {isAdmin && <SourcesBackfill businessId={businessId} onApplied={() => setVersion(v => v + 1)} />}
+      </>}
     </div>
   );
 }
