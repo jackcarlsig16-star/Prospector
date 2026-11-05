@@ -1,0 +1,192 @@
+AUDIT dashboard-design-package-v1 — report
+Spec: inbox/2026-11-05-1145-dashboard-design-package-audit.txt · against HEAD af207a4 (origin/main) · run 2026-11-05 ~11:50-12:30 PT
+Read-only. 0 writes, 0 Apollo, 0 Claude, 0 sends. Method: local server.js on this build as Jack (ownerSession cookie; ANTHROPIC /
+APOLLO / MICROSOFT / GMAIL secrets blanked), Playwright at 1440x1000 and 390x844 with every non-GET aborted at the network layer
+(0 attempted), 25 GET routes, 3 service-key column reads (call-note dates, the one client row, its lookalikes); the two team emails
+rendered IN-PROCESS by the job's own builders (buildVisitorEmail / composeAlert), never sent. Every text node that looked like an
+address was replaced by "<addr>" before each screenshot; the JSON was scrubbed the same way. Script: scripts/verify/dashboard-design-
+package-v1-audit.mjs (uncommitted, per the go). Screenshots: .screenshots/dashboard-design-package-v1/ — that folder is gitignored,
+so the 28 files stay LOCAL (not committed); the planner copies what the package needs. restored: yes (11 watched counts identical,
+owner session released, last_seen_at restored, 0 sign-in rows added).
+
+== P1 SCREENS AS THEY ARE (.screenshots/dashboard-design-package-v1/<screen>-<width>.png; full-page unless noted) ================
+Pixel height at 1440 / 390 is the page length the reader scrolls. "keep / merge / drop?" is left BLANK for Jack on every line.
+| screen | route | component (file:line) | what Jack / Seif use it for (inventory) | px tall 1440 / 390 | keep/merge/drop? |
+| overview | ?tab=dashboard&view=overview | GoalsTab.js:384-412 → DashboardCharts.js:24 (13 charts), TrackImprove.js:19, GoalsSection.js:47 (GoalHero.js:135 tiles, commitments, moves), ScorecardTable.js:46, ReportView.js:288 | the one page that holds charts + call-note insights + weekly targets + the Seif report; Export menu = PDF + 4 CSVs | 10,628 / 18,296 | |
+| overview-scorecard (element) | same | ScorecardTable.js:46 ("November targets, week by week") | Jack enters weekly targets; Seif's goal view | 1,051 / 1,158 | |
+| overview-weekly-report (element = header card only) + weekly-report-print (1440, print media) + weekly-report.pdf (Letter landscape, 255 KB) | same; PDF = window.print of #sales-analytics-print-area (SalesAnalyticsTab.js:34-78) | ReportView.js:288-420, KpiTable.js:23 | the "Seif & Jack weekly meeting" document; never finalized on prod (sales_week_report 0 rows) | 145 / 270; print 3,848 | |
+| sources-funnel | ?tab=dashboard&view=sources | SourcesView.js:140-195, SourceFunnel.js:94, ChannelLinks.js:19, SourcesBackfill.js:23 | who brought the lead in (Brad/Upside vs partners), funnel by rep/partner/source, partner export | 1,998 / 2,767 | |
+| sources-network | same, Segmented "Network" (SourcesView.js:181) | NetworkTree.js | "who brought in whom" (HUB → Momentum; Upside → 220 in pipeline) | 1,243 / 1,504 | |
+| analytics | ?tab=dashboard&view=analytics | AnalyticsView.js:34; OverviewGoals.js:88 strip, AlertsRow.js:10, WeekStrip.js:87, InsightsPanel.js:93, MailboxHealth.js:46, EmailTrendChart.js:67 + EmailHealthTable.js:27, SequenceLeaderboard.js:137 | Apollo email performance: week strip, rules insights R1-R10, mailbox health, trend, per-sequence leaderboard; Sync now | 5,324 / 9,268 | |
+| sequenced | ?tab=dashboard&view=sequenced | CompaniesView.js:166 (+ peopleSummary GoalsTab.js:458) | companies first-sequenced this week (52), missing headcount (140), planned cadences (none) | 1,568 / 1,990 | |
+| team-emails | ?tab=settings&view=team-emails | TeamEmailsSettings.js:17 | owner switches + recipients (shown as <addr>), last 10 sends, list changes; "Send to team now" | 1,240 / 1,803 | |
+| needs-attention (viewport, drawer open over Actions) | ?tab=actions → "Needs attention (3)" | AttentionDrawer.js:115 (+ ActionsView behind it) | sync status of 7 sources, overdue to-dos 36, held Apollo moves 3, Send now / Sync now buttons | 1,000 / 844 (viewport) | |
+| campaigns | ?tab=pipeline&view=campaigns | campaigns/CampaignsView.js:78-183 | Seif's Outlook campaigns - 0 campaigns ever; the empty state IS the screen | 1,036 / 920 | |
+| huddle | ?tab=pipeline&view=people | DailyHuddle.js:107 (Live / Priorities / Done), HuddleRow/HuddleCard, RightRail | 193 prospects, heat, "since last huddle Oct 16"; the phone list is one 27,529 px scroll | 1,223 / 27,529 | |
+| email-visitor | rendered HTML (visitorEmail.js:143) | — | the 07:00 weekday email: two lists (33 qualified of 64 since Wed · top 10 overall of 398), band pills, owner dots | 2,062 / 2,625 (email is 640 px wide; 390 renders at 562) | |
+| email-client | rendered HTML (clientAlert.js:52) | — | "New client: Momentum … — Verbal yes": facts table, network line, lookalikes (0 → "run /apollo-deals") | 1,000 / 844 | |
+Observed in the shots (not design): Overview at 390 is 18k px of stacked cards; Huddle at 390 is 27.5k px (every prospect card
+expanded); Analytics shows 11 insight cards before the first chart; Campaigns is an empty table; Sources › Network is one tree
+with "and 204 more". 0 page errors on every screen at both widths.
+
+== P2 WIDGET SHEET (values = this run 2026-11-05 ~12:00 PT via the GET routes unless marked inv = inventory 2026-11-04 23:03) ====
+Q2 ids = the inventory's overlap rows (audits/homelover-displays-inventory-v1-report.txt:112-127). Refresh per inventory :14-16.
+| widget | screen | component:file | number shown today | source table.column | refresh | duplicates-of (Q2) | stale? | Claude $ |
+| Pipeline by stage | overview | DashboardCharts.js | target 88 · contacted 74 · responded 1 · verbal 1 · nurture 38 · on_hold 36 (238) | sales_opportunities.stage | mount + Range/Owner/Team | employers-by-stage (:120) ≈ Map 237 | no | 0 |
+| Partners by status / owner | overview | DashboardCharts.js | Jack 38 · Cyrus 37 · Seif 1 · Unassigned 2 (78) | sales_goals.pipeline_status, owner_user_id | same | partners-by-status (:121) ≈ Map 74 | no | 0 |
+| Partners by category | overview | DashboardCharts.js | Rental Rewards 13 · Current 7 · Brokers 7 … | sales_goals.category | same | — | no | 0 |
+| Website visitors per day | overview | DashboardCharts.js | Nov 3 39 · Nov 4 22 · Nov 5 64 (null before Oct 20 = history_start) | web_visits (daily snapshot) | same | visitors (:125) - 5 different windows | partial history (16 d) | 0 |
+| Visitors by priority / day | overview | DashboardCharts.js | per-day P1-P4 (null before Oct 20) | web_visits.priority | same | P1-P4 (:118) vs Map band | same | 0 |
+| Outreach per week | overview | DashboardCharts.js | w/c Oct 5 291 · Oct 12 499 · Oct 19 494 · Oct 26 292 · Nov 2 229 sent; opened 12/22/11/19/6; replied 0/1/0/0/0 | sales_email_daily_counts | same | sent-per-week (:113) = Analytics | no | 0 |
+| Replies + meetings per week | overview | DashboardCharts.js | 0/1/0/0/0 replies · meetings all 0 | daily_counts.replied; meetings = none wired | same | meetings (:122) - 5 definitions | meetings always 0 | 0 |
+| Signals by channel | overview | DashboardCharts.js | Website new 54 · accepted 25 · dismissed 0; Scout 0 | sales_signals | same | signals (:124) agree | no | 0 |
+| Companies by channel × stage band | overview | DashboardCharts.js | website_visit gray 75 / light 9; partner_referral … | companies + scores band | same | — | no | 0 |
+| Open to-dos per owner | overview | DashboardCharts.js (FIX actions-all-weeks) | Jack 140 open (36 overdue, 6 due, 98 no date) · Cyrus 9 · Seif 37 · Unassigned 110 | sales_week_goals kind=todo, any week | same | open to-dos (:112) now = Needs attention 36 | no | 0 |
+| Waiting on them | overview | DashboardCharts.js | 12 open · 0 overdue | sales_week_goals kind=waiting | same | — | no | 0 |
+| Covered lives by stage | overview | DashboardCharts.js | verbal 390, every other stage 0 | sales_opportunities.covered_lives / clients eligible_now | same | covered lives (:123) agree | no | 0 |
+| Apollo credits | overview | DashboardCharts.js | 0 of 500 this month (all businesses) | apollo_credit_spend | same | — | no | 0 |
+| Track & Improve | overview | TrackImprove.js | 6 track · 17 optimize open (inv: 4 · 13) | sales_insights (from the call-notes Claude extract) | mount + PATCH | — | newest Nov 5 | $0.055/call, 39 calls $2.13 (inv :20) |
+| Goal hero tiles | overview | GoalHero.js | week of Nov 2: 8/100 people first-touched (carried goal 100) · 0 meetings set · 2,721 in sequence · 15 sequences running · partners first-touched 1 · tier-1 touched 11/24 · pilot/live 4 | hero route (scorecard tables + partner data + sales_metric_targets) | load/week/owner | meetings (:122); total_in_sequence vs KPI dm_contacted (same 2,721) | targets untouched since Oct 8 (inv :34) | 0 |
+| Scorecard (November targets, week by week) | overview | ScorecardTable.js | Nov 2: outbound_audience 0 (52 companies, 0 with employees) · total_in_sequence 2,721 · sequences_running 15 · meetings_set null (manual) · open_rate 0 · people_first_touched 8; Nov 9+ null; every goal "-" | sales_metric_targets, sales_metrics_daily, daily_counts, sequenced_accounts | load/month/owner | meetings (:122); target orgs (:126) | no goals set for Nov; meetings manual-null (bug B5) | 0 |
+| KPI table (inside the weekly report) | overview | KpiTable.js | Target orgs 77 → 454 (+377) · DM contacted 2,109 → 2,721 · positive responses 0 → 0 · meetings held/booked null (Outlook 0) · qualified opps 0 → 1 · covered lives 0 → 390 · verbal 0 → 1 · launches 90 d 0 → 1 | sales_metrics_daily companies_in_cadence / unique_* , pipeline | load/week | target orgs 77→454 (:126 bug B2, was 399 on Nov 4) | yes - B2 | 0 |
+| Weekly report body | overview | ReportView.js | status draft · 0 sections · 0 infra items this week | sales_week_report(_sections) | load/week; Save/Finalize write | — | last section edit Oct 19 | 0 |
+| Funnel | sources | SourceFunnel.js | referred 233 · visited 89 · replied 4 · meeting 9 · pilot 4 · lost 74 of 442; since yesterday all 0 | sources/funnel (companyFields RECORD_TABLE + events) | mount + filters | meetings (:122): funnel 9 vs totals 2; visitors (:125): 89 vs 192 | no | 0 |
+| Pipeline bands today / By source / By partner / By rep / By office | sources | SourcesView.js | 442 companies · 2 at meeting · 9 pilot/live · 390 lives; Partner referral 232 · Unknown 93 · Website 90 · Outreach 14 · Not set 12 | sources route | mount + filters | companies (:119) agree (442, was 435) | no | 0 |
+| Channel links | sources | ChannelLinks.js | 3 rows (Bon Secours→Alliant, Mehdi→ADP Marketplace, Alex→Plug and Play) | sales_channel_links | mount | — | no | from the call-notes extract |
+| Network tree | sources › Network | NetworkTree.js | HUB → Momentum (1 client · 390 lives); Upside → 220 in pipeline; 76 partners with nothing | network route | mount | — | no | 0 |
+| Partner pipeline strip + Goals line | analytics | OverviewGoals.js | 8/100 people first-touched · 0 meetings · 2,721 in sequence; 78 partners by step; P1 untouched 1; touches this week 4 | land goals, partner events, hero | mount | same numbers as the hero (duplicate surface) | no | 0 |
+| Alerts row | analytics | AlertsRow.js | R1 Fitness list quality · R5 sends stalled · R4 no replies 14 d | insights route | mount | = Insights panel top 3 | no | 0 |
+| Week strip | analytics | WeekStrip.js | Nov 2-5: sent 229 · delivered 98.7% · bounce 0.4% · spam 2 · open 2.7% · reply 0.0% · meetings 0; tracked opens 1/7/2/2 per day | daily_counts + week-strip (tracked) + partner events | mount | sent (:113), replied (:116), meetings (:122) | no | 0 |
+| Why performance looks like this | analytics | InsightsPanel.js | 11 live (R1, R5, R4, R6, R7×3, R8×3, R10) · 41 not enough data | insightRules.js, dismissals | every read | — | no | 0 (rules) |
+| Mailbox health | analytics | MailboxHealth.js | 2 mailboxes: 152 + 77 sent this week, 98.7%, 0 / 1.3% spam, last sync Nov 5 | daily_counts + entities | mount | — | no | 0 |
+| Email performance over time | analytics | EmailTrendChart.js + EmailHealthTable.js | 10 weeks Sep 7 → Nov 2 (partial): sent 422…229, hard bounce 3.8% → 0.4%, Apollo open 8.3% → 2.6%, reply ≤0.2% | daily_counts, backfill_weeks (11 complete) | mount | opened (:115) three definitions | sales_events 1 row (Oct 1) | 0 |
+| Sequence leaderboard | analytics | SequenceLeaderboard.js | 15 of 28 sequences · delivered 1,948 · open 10.4% · reply 0.3% · bounce 9.5%; per cohort rows | sales_metrics_daily dim sequence + entities | mount + filters | delivered (:114): 1,948 unique vs 3,836 messages | no | 0 |
+| Sequenced this week | sequenced | CompaniesView.js | 52 companies (Jack 52) · 0 employees reached · missing headcount 140 · planned cadences none | sales_sequenced_accounts, sales_cadence_plan | load/week | target orgs (:126) | cadence plan Oct 19 | 0 |
+| Team emails card | team-emails | TeamEmailsSettings.js | visitor on · client on · 4 recipients · 8 sends (6 tests, 1 sent 07:00 Nov 5, 1 needs_reconnect Nov 4) · scheduler line | sales_team_email_settings/recipients/sends | mount | — | no | 0 |
+| Needs attention | actions | AttentionDrawer.js | n 3: Apollo ok 3 h · Outlook ok · visitors ok (64 companies) · headcount ok · tidy ok · research ok · visitor email ok (sent Thu to 4); overdue to-dos 36, held Apollo 3, held Outlook 1 | attention route (7 sources + counts, 15-min cache) | on open | open to-dos (:112) | no | 0 |
+| Campaigns | campaigns | CampaignsView.js | 0 campaigns · due today 0 · overdue 0 · replies waiting 0 | sales_outreach_* | load | — | never used | 0 |
+| Huddle | huddle | DailyHuddle.js | 193 prospects · since last huddle (Oct 16): 0 replies · 4 real clicks · 72 real opens · 12 bot hidden · 1 done | huddle route (heatScore per request) | load | heat/huddle (:127) | last huddle 20 d | 0 |
+| Visitor email | email | visitorEmail.js | subject "Website visitors — Thu Nov 5: 33 qualified · 64 visited since Wed · top overall: Hilton"; 64 companies, 34 new, 120 visits, 44 not in Prospector; Hot 5 Warm 3 Cool 52 Cold 4; book 398 | web_visits latest per company, scores band, people, records | 07:00 Mon-Fri | visitors (:125): 64 vs report 192 vs Map 89 | no | 0 |
+| Client alert | email | clientAlert.js | Momentum — Verbal yes · 390 eligible now +250 (April 2027) · signing Nov 20 · launch Jan 1 2027 · source HUB · owner Jack · 0 lookalikes | sales_opportunities ALERT_COLS, sales_targets lookalikes | every minute, once per client | covered lives (:123) | no | 0 |
+Values that moved since the inventory (Nov 4 23:03 → Nov 5 12:00): companies 435 → 442, Map P3 70 → 75 / P4 339 → 341, visitors
+7 d 174 → 192, signals new 51 → 54, insights 17 → 23 open, KPI target orgs this week 399 → 454, todos per owner now all weeks
+(FIX actions-all-weeks 385e095), team-email sends 4 → 8. Everything else as the inventory lists it.
+
+== P3 CONSTRAINTS (file:line) =====================================================================================================
+Frame. SalesAnalyticsTab.js:190-209: the top tab row (.ui-tabs, 38 px: Dashboard · Pipeline · Actions · Marketing "Coming soon" ·
+Settings) then frameRow (data-sales-frame, FRAME_ROW_HEIGHT 44, salesFrame.js:4): sub-view Tabs level="sub" left (KIT_SUBTAB
+tokens.js:285: 38 px, 13 px, 2 px underline) + the screen's tools portaled into #sales-frame-tools right (salesFrame.js:12). Phone
+rule salesFrame.js:13 + SalesAnalyticsTab.js:203-209: at <= 760 px the frame stacks (tabs row scrolls, tools row under it, hidden
+while empty). The channel row (data-channel-row) sits directly under the frame. Sub-views are fixed in salesNav.js:11-15:
+dashboard = overview · sources · analytics · sequenced; pipeline = companies · clients · priorities (Map) · people · partners ·
+campaigns; settings = team-emails; default tab = actions (:16). Everything renders inside #sales-analytics-root (SA_THEME_ROOT_ID,
+dark only, SA_TYPE.body inherited; SalesAnalyticsTab.js:211).
+Tokens (src/ui/tokens.js). Dark values SA_DARK_VALUES :160-176: ground #0B0D10 · surface #1E242C · surface2 #2E3540 · inset
+#12161B · border #788290 · borderStrong #8792A2 · track #3C444F · text #E9ECF0 · soft #C9D0D9 · muted #A8B2C0 · faint/neutral
+#99A3B2 · accent #8FA8FF (the ONE accent) · link #AFC0FF · good #3DD68C · warn #F2B544 · bad #FF7878. Print :181-190 (white ground,
+same hues). Type SA_TYPE :207-213: Geist UI (pageTitle 34/600, cardTitle 15/600, kpiValue 38/600 tabular, body 14), Geist Mono
+labels 11 px uppercase .08em. Shape SA_SHAPE :215-220: radiusCard 14 · radiusInner 10 · pill 999 · space 4/8/12/16/24. Kit KIT_DARK
+:242-257: generatedFrom = accent → generatedTo = ROLE.generateAccent (the Generate orange ombre, company-panel-v2 L9) · subTab
+#8B95A3 / on = text / rule #232A33 · prio vars. Priority KIT_PRIORITY :239: P1 #FF9F57 · P2 #F2C94C · P3 #4FD1C5 · P4 #94A3B8 (light
+pair second). Controls: KIT_SEGMENTED :283 (28 px) · KIT_SUBTAB :285 · KIT_FILTER_PILL :287 (30 px) · KIT_PAGE_ACTIONS :289 (30 px
+groups + mono word + divider) · KIT_PILL_SELECT :291 (22 px) · KIT_TABLE :297 (34 px rows, dense 28) · KIT_EDITABLE :302 · KIT_DRAWER
+:306. Cards: goalsUi.js:47 cardStyle (surface, 1 px border, radiusCard 14, padding 24); GoalsSection.js:68 variant 18/20.
+Dataviz (salesAnalytics/palette.js). SOURCE_ORDER :138 fixed = upside · partner_referral · person_referral · campaign · website ·
+inbound · homelover_outreach · scout · other; hex SOURCE_VALUES :133-137 (dark, print): upside #3987e5 · partner_referral #d95926 ·
+person_referral #199e70 · campaign #c98500 · website #d55181 · inbound #008300 · homelover_outreach #9085e9 · scout #e66767 · other
+#898781 (validated 2026-10-27, adjacent CVD dE >= 8.4; "other" is the fold slot). Cohorts COHORT_COLORS :25-33 (Fitness #E07A5F ·
+Retail #6C9BD2 · Car Rental #B39DDB · SaaS #5FB3A8 · Wireless #D4B26A · Other #7A8390 · Hospitality #8C8FD1 GUESS) + PARTNER_COLOR
+#A8D04A :38. Semantic :48-52 healthy #3DD68C · warning #F2B544 · problem #FF6B6B. Partner types :119-125. Band words BAND_WORD
+fitLevels.js:29 (P1 Hot · P2 Warm · P3 Cool · P4 Cold); band zones on the Map DotsChart.js:21-23 (status tokens, ZONE_TINT 10 %).
+Member colors memberColors.js:5 by join order #6F8CF0 · #C97626 · #4FB0C6 · #B07CC6 · #8FB35A · #D6788F, unassigned #4A5462,
+overridden per member by business_members.member_color (flowModel.js:17-22). Color is never the only signal (every file above).
+Patterns to reuse (flow-v1 + v3, each with its renderer): head chips Chip / KindStageChip / OwnerChip / LiveChip FlowChips.js:10-30
+(text + dot, 26 px pill; the Fit / Due chips were removed by af207a4); editable facts row CompanyFacts.js:72-150 (fact = button,
+popover role=dialog, saves at once, 10 s Undo, Viewer = plain); stage strip ProgressBar.js:12 (28 px pills, name carries done/now
++ date) driven by CompanyProgress.js:40-62; SETUP steps CompanyStepsStrip.js:26; Interest band InterestBand.js:28; Actions groups
+CompanyActions.js:27 Group (REACH · DECIDE · CAPTURE · LEARN, kbd hints, "✦ generated" tag); the Map: QuickMenu.js (on the selected
+dot, PrioritiesView.js:226), owner legend pills with counts :231-245 (ToggleChip, lights/dims a source), ChartToolbar.js:23-48
+(Dots / Bars / Table, Y, Top stepper, height, Rings, Since yesterday ▲▼, Names), band zones DotsChart.js:112-115, Share = saved
+view + PNG (html2canvas CDN) + CSV :248-264, Table alternate PrioritiesTable.js. Kit controls: Tabs.js:13 (main / sub), Segmented.js:6,
+FilterSelect.js:9 (variant pill), goalsUi.js:59 Chip / :93 ShowingChip, Drawer.js, DataTable.js, StatusPill.js, Tag.js.
+Widths. No content max-width in the Sales module (the root is fluid; KIT_MAX_WIDTH 1100 is only the /kit gallery, UiKitGallery.js:267).
+Dashboard cards: repeat(auto-fit, minmax(min(100%, 340px), 1fr)) DashboardCharts.js:60; hero tiles minmax 140 GoalHero.js:224; the
+stats strip .sa-strip 7 columns >= 1200 px SalesAnalyticsTab.js:66-67. Company window min(1040px, 92vw) x 88vh, full-screen sheet
+<= 760 px CenterWindow.js:15-20. Phone = 390 (verify harness); the frame's phone rule fires at 760.
+Shared with other workspaces. Only HomeLover carries features.goals_sales (businesses.features, read live: HomeLover goals_sales;
+HumanKind hk_sales; no other workspace has either) - Master Magnetics / Kopi Kita are on the accounts model and never reach
+/sales. So nothing on these screens is shared BY DATA; what is shared BY CODE is the kit (src/ui/*, tokens, Tabs, Segmented,
+FilterSelect, DataTable, Drawer, StatusPill, Tag, ProgressBar - also used by /kit, PersistentScout.js, HumanKind's Grow shell),
+CenterWindow / SidePanel, widgets.registry.js + metrics.registry.js (the Analytics widgets; goalsSalesHidden :54-71 hides 5 of
+them for goals_sales), OverviewGoals.weekTouches (BusinessesHomePage.js:11), huddleView (AttentionDrawer + CampaignContacts). The
+goals_sales branches: businessNav.js:14-22 (nav), App.js:996/1222/1256, BusinessesHomePage.js:137/167, ConnectionsPage.js:143,
+QuickCapture.js:45, widgets.registry.js:86, api/mailboxes.js:27, api/hlconnect/bearer.js:29 + oauth.js:120.
+
+== P4 THE DATA SEIF ASKS FOR =======================================================================================================
+Jack's answers (placeholders, inserted by the planner): [ ] what Seif opens weekly: ________ · [ ] does the Weekly PDF stay (never
+finalized on prod; ReportView draft, 0 sections this week): ________ · [ ] are Brad's Upside sequences in scope (shared Apollo org:
+28 sequences in entities, 15 running; HomeLover's own = 15 in daily_counts): ________.
+Call notes in the repo (sales_call_notes, dates only - the table has no titles: title is null on all 12 latest rows; source
+'call'): Nov 5, Nov 3, Nov 2 (x2), Oct 27 (x2), Oct 26 (x2), Oct 23, Oct 22, Oct 21 (x2). There is NO note dated Nov 4. Reading note
+text was outside the go (titles/dates only), so explicit asks about numbers or views are not extracted here; the extract already
+stored from them is what Track & Improve shows (6 track · 17 optimize open, e.g. "ADP business lines contacted vs. remaining").
+
+== P5 CADENCE + EMAIL PERFORMANCE INPUTS (one real row each; mailboxes masked; sequence names from /entities) =====================
+Source rows: DC = sales_email_daily_counts (day x mailbox x sequence x step, Aug 24 →, 2 mailboxes, 15 sequences), Msgs =
+sales_email_messages (285, only messages with an open/click/reply in 30 d), MD = sales_metrics_daily (dim sequence, lifetime unique).
+| metric | status | real sample row (shape the mockup should carry) |
+| sent / delivered / bounced / spam, per day, mailbox, sequence, step | available now | DC 2026-11-04 · mailbox A · "V2 Fintech - HomeLover 5-Step" (Other) · step 1 · delivered 24 · hard_bounced 0 · spam 0 · opened 1 · clicked 1 · replied 0 |
+| per step with a denominator | available now (DC; the UI sums it away trendRoutes.js:37-43) | "HomeLover — 5-Step Car Rental & Dealerships (Cyrus)": step 1 delivered 224 · opened 1 · bounced 2 (21 days); step 2 delivered 154 · opened 0; step 3 delivered 96 · opened 5 |
+| per campaign / sequence, lifetime | available now | leaderboard row "HomeLover 5-Step - Fitness Employers / Gyms" · Fitness · 316 delivered · open 38.3% · reply 1.3% · bounce 28.2% · Underperforming |
+| opened / clicked / replied | available now (three "opened" definitions - pick one) | week of Nov 2: sent 229 · Apollo opens 6 · tracked human opens 1/7/2/2 by day · clicks 2 · replies 0 |
+| reply class mix | available now (5 replies ever, Apollo classes) | Fitness step 2 "Re: Supporting your fitness staff with homeowner benefits" · follow_up_question · delivered 2026-10-13 14:44Z · replied 14:49Z (5 min) · 3 opens |
+| time-to-first-reply | partial (replied_at exact on 3 of 5) | same row: 5 min; Car Rental step 2 "A homeownership benefit for Enterprise employees" · follow_up_question · replied_at null (sync-time ceiling only) |
+| meeting booked / held, per source | partial - 5 definitions (Q2 :122) | microsoft_events: next Nov 9 20:30Z with 1 external domain; sales_partner_events to_status meeting_set Oct 16 + Oct 15 (touch_type meeting); scorecard meetings_set null (manual); funnel meeting 9; totals.meetings 2 |
+| per subject line | partial (Msgs only, no denominator) | "Supporting your fitness staff with homeowner benefits" (step 1) · 2 replies of the 5 are on it; sends per subject not stored |
+| per template / step copy | not possible (Apollo; /emailer_campaigns/:id not allowlisted) | — |
+| by title / seniority | partial (title on 187 fetched contacts, no seniority) | sales_prospect_state.title e.g. "Human Resources Professional" (huddle row) |
+| by segment / industry / size | partial (cohort = sequence name; employees typed on 112 of 221) | Sequenced wk 1: 52 companies · 0 employees reached · 140 missing headcount |
+| by sender | available now | mailbox A 152 sent this week · 98.7% delivered · 0 spam; mailbox B 77 · 1.3% spam · at capacity (R6) |
+| by send hour | needs a daily job (per-message store from /emailer_messages/search, 0 credits) | DC has the LA day only |
+| decay over 8 weeks | available now | Sep 7 → Nov 2: sent 422 · 523 · 484 · 488 · 479 · 499 · 494 · 292 · 229; hard bounce 3.8% → 0.4%; Apollo open 8.3% → 2.6% |
+| replied then went quiet | needs a daily job (per-company last-reply vs last-touch join; inputs exist) | — |
+| Seif's own campaigns (Outlook) | not possible yet (0 campaigns / contacts / events ever) | the Campaigns empty state |
+| visitors (companies / 7 d / today) | available now - five windows (Q2 :125) | email list A 64 since Wed 07:00 · report 7 d 192 · Map visitors 89 · dashboard day 64 · all rows 427 |
+
+== P6 RULES LEARNED (verbatim) =====================================================================================================
+1. Replace, don't stack: a redesign spec names what it REMOVES before what it adds; the build deletes first.
+2. Every fact once, every action once; a block with nothing to say does not render.
+3. Each UI stage ships a side-by-side PNG (mockup | prod build) and a numbered deviation list; the planner compares before accepting - a report without the PNG is not accepted.
+4. Mockups carry real data shapes (real counts, real names) - placeholder values hide layout failures.
+5. The empty state is designed, not discovered.
+6. One control family per level (segmented nav · outlined chips + labeled selects · icon+word toolbar).
+7. Phone first for anything Seif reads on his phone (the visitor email, Needs attention, the Map's table).
+
+== P7 OPEN QUESTIONS FOR THE DESIGNER =============================================================================================
+1. Two definitions, one word (Q2 ids): "delivered" :114 (3,836 messages vs 1,948 unique contacts on the leaderboard) · "opened" :115
+   (Apollo opens, tracked human opens, messages with num_opens) · "meetings" :122 (funnel 9, totals 2, partner meeting_set 3, scorecard
+   null manual, Outlook events 18) · "visitors" :125 (64 / 192 / 89 / 64 / 427) · "P1-P4" :118 (score band vs visit priority) · "target
+   organizations" :126 (77 → 454 in a week). The package needs one chosen source per word before a tile is drawn.
+2. The same numbers on three screens: hero tiles (Overview), OverviewGoals strip (Analytics) and the scorecard all show people
+   first-touched 8/100, meetings 0, in sequence 2,721. Which surface owns them?
+3. Overview is one 10.6k px (18k px on a phone) scroll holding charts, call-note insights, goals, scorecard and the weekly report.
+   Is the weekly report a screen of its own again, a print view only, or gone (never finalized)?
+4. The Huddle at 390 is 27.5k px (193 expanded cards) - rule 7 says phone first; what does Seif actually read there?
+5. Campaigns is an empty table (0 ever) and Sequenced's "Planned cadences" is three "Nothing planned" boxes: design the empty states
+   (rule 5) or drop the screens.
+6. Legacy screens still reachable under goals_sales (businessNav.js:19-22, left nav in every shot): Projects (3 rows, Aug), Business
+   Intel & Strategy (17, Aug), Ideas, Tools; Analytics still fetches 5 hidden widgets' data (bug B3). Pipeline table / movement /
+   forecast / top opps / cohort widgets exist in code but have no nav path anywhere.
+7. Inputs the mockup must not assume: meetings are not wired to Outlook on any widget (always 0 / null); the visitor "history" starts
+   2026-10-20 (16 days); scorecard goals are all "-" for November; Track & Improve rows come from a Claude extract ($0.055 a call).
+8. Email widths: the visitor email is a fixed 640 px table that renders at 562 px on a 390 phone (the 390 shot); the client alert
+   has no lookalikes line beyond "run /apollo-deals" when the list is empty.
+Bugs seen (file:line; none fixed here):
+- B6 TeamEmailsSettings.js shows "Scheduler: not running in this server process" on a local build (true locally; on Render it reads
+  the boot line) - fine, but the sentence is 2 lines of settings copy on a phone.
+- B7 The weekly-report element (section aria-labelledby="h-rep", ReportView.js:311) is only the 145 px header card; the body
+  sections are siblings (:340-364), so an element screenshot of "the report" needs the print view.
+- B2 (inventory) persists and grew: KPI Target organizations 77 → 454 week over week (KpiTable; goalsReportRoutes.js buildKpi).
+- B3 / B4 / B5 (inventory) unchanged: hidden widgets still fetched (AnalyticsView.js:83-84); campaignSummaryRoute + optouts unread;
+  meetings manual-null while microsoft_events holds 18 external meetings.
+restored: yes (read-only; 11 watched counts identical; owner session released, last_seen_at restored, 0 sign-in rows added)
