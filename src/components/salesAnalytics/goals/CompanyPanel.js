@@ -31,9 +31,10 @@ import { primaryAction, liveSince, isLivePartner } from './flowModel';
 import useCompanyEdits from './companyEdits';
 
 // company-panel-v2 - the one company window for every Pipeline row (partner, employer, target, Apollo-only, visitor).
-// FIX company-window-subtract-v1: every fact once, every action once, a block with nothing to say does not render.
-// The head reads title row (name · type · Top · Intent · site · ⋯ · ✕) · facts row (editable) · stage strip · SETUP
-// (only while a step is incomplete) · Interest band (only while interest is live) · Actions row, then the body cards.
+// FIX company-window-subtract-v1 (REV2): every fact once, every action once, a block with nothing to say does not
+// render; doing sits above reading. The head reads title row (name · type · Top · Intent · site · ⋯ · ✕) · Interest band
+// (only while interest is live) · Actions row · facts row (editable) · stage strip (alone on its line) · SETUP (only
+// while a step is incomplete), then the body cards.
 // A live partner keeps its own layout: title row (Partner · category, Live since, owner, Intent, site), Next step
 // (+ Add a client they referred) + Came from, Network + the network tree, partner actions. Buttons that don't apply to
 // a state are hidden, not greyed. Every write reloads the board (onChanged) and this body (version). `row` is the
@@ -173,12 +174,12 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
     : (
       <>
         {titleRow}
+        {bandShown && <InterestBand businessId={businessId} row={row} interest={detail.interest} canEdit={canEdit} onChanged={changed} onToast={onToast} />}
+        {actions}
         {editPanels}
         {detail && !needsRecord(row.type) && <CompanyProgress businessId={businessId} row={row} detail={detail} canEdit={canEdit} flow={flowSteps} onPatch={onPatch} onChanged={changed} onToast={onToast}
           onResearch={() => actionsRef.current.research?.()} onOwner={openOwnerFact} onClient={() => setClientSheet({})} />}
         {detail?.steps && <CompanyStepsStrip businessId={businessId} row={row} detail={detail} canEdit={canEdit} members={members} onChanged={changed} onConvert={onConvert} onToast={onToast} setForm={setForm} />}
-        {bandShown && <InterestBand businessId={businessId} row={row} interest={detail.interest} canEdit={canEdit} onChanged={changed} onToast={onToast} />}
-        {actions}
       </>
     );
   const cardProps = { businessId, row, detail, canEdit, live, onForm: setForm, onChanged: changed, onToast };

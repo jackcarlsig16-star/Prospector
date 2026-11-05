@@ -7,9 +7,10 @@ jest.mock('../pipelineApi', () => ({ updateOpportunity: jest.fn() }));
 jest.mock('../huddleApi', () => ({ updateProspect: jest.fn(), unlinkProspect: jest.fn() }));
 jest.mock('../../../utils/useMediaQuery', () => () => true);
 
-// FIX company-window-subtract-v1 - the account card over an invented employer and an invented target: every fact
-// once, every action once, no empty block; the head = title · facts · stage strip · SETUP (while incomplete) ·
-// Interest (while live) · Actions. The invented live partner (homelover-flow-v1 mockup C) is unchanged.
+// FIX company-window-subtract-v1 (REV2) - the account card over an invented employer and an invented target: every
+// fact once, every action once, no empty block; doing above reading: the head = title · Interest (while live) ·
+// Actions · facts · stage strip (alone on its line) · SETUP (while incomplete). The invented live partner (homelover-
+// flow-v1 mockup C) is unchanged.
 const MEMBERS = [{ user_id: 'u-jack', name: 'Jack Zz', role: 'owner', color: '#3DBA8C' }, { user_id: 'u-cyrus', name: 'Cyrus Test', role: 'member', color: '#D9A441' }];
 const EMP = { type: 'employer', id: 'o1', name: 'Zz Acme Health', stage: 'contacted', owner_user_id: 'u-cyrus', owner: 'Cyrus', owner_team: 'homelover', due: 'week', due_date: '2026-11-07', category: null };
 const TGT = { type: 'target', id: 't1', name: 'Zz Fortem', stage: 'researching', owner_user_id: null, owner: null, owner_team: null, category: null };
@@ -37,14 +38,14 @@ const counts = head => Object.fromEntries(Object.entries(LABELS).map(([k, re]) =
 const headOf = dlg => dlg.querySelector('[data-window-head]');
 const blocks = head => [...head.children].map(el => el.matches('[data-company-panel]') ? 'title' : el.querySelector('[data-facts-row]') ? 'facts' : el.matches('[data-company-progress]') ? 'strip' : el.matches('[data-steps]') ? 'setup' : el.matches('[data-interest-band]') ? 'interest' : el.matches('[data-actions-row]') ? 'actions' : el.tagName.toLowerCase());
 
-test('an employer (Contacted, setup done, live interest): head = title · facts · strip · Interest · Actions; every label once; no Fit, Due or stage chip in the title; no empty card', async () => {
+test('an employer (Contacted, setup done, live interest): head = title · Interest · Actions · facts · strip; every label once; no Fit, Due or stage chip in the title; no empty card', async () => {
   goalsApi.companyDetail.mockResolvedValue(detail({ steps: { next: null, ready: true, last_touch_at: '2026-10-29T18:00:00Z', steps: [] }, interest: INTEREST }));
   render(<CompanyPanel {...props} row={EMP} />);
   const dlg = screen.getByRole('dialog', { name: 'Zz Acme Health' });
   await within(dlg).findByRole('region', { name: 'Interest' });
   await within(dlg).findByText('37 · warm', { exact: false });
   const head = headOf(dlg);
-  expect(blocks(head)).toEqual(['title', 'facts', 'strip', 'interest', 'actions']);
+  expect(blocks(head)).toEqual(['title', 'interest', 'actions', 'facts', 'strip']);
   expect(dlg.querySelector('[data-layout]').getAttribute('data-layout')).toBe('classic');
   // Title row: name · type pill · Top · Intent · site - no Owner / Fit / Due chip, no "Employer · Contacted".
   const title = head.querySelector('[data-company-panel]');
@@ -56,13 +57,15 @@ test('an employer (Contacted, setup done, live interest): head = title · facts 
   expect(within(head).queryByText(/^Fit/)).toBeNull();
   expect(within(head).queryByText(/no score yet|nobody known|nothing yet|^Reached$|^Overview$|^Fit at a glance$|^Next step$/i, { selector: 'section > span' })).toBeNull();
   expect(head.querySelector('[data-section]')).toBeNull();
-  // The stage strip is the one stage control: 28 px pills, no "Progress" label column, no primary that duplicates REACH; the sentence is its tooltip.
+  // The stage strip is the one stage control, alone on its line: 28 px pills that scroll sideways, no "Progress" label
+  // column, no button beside the bar (REV2: Log reply / More ▾ gone - REACH › They replied… and ⋯ › Jump to stage… hold them).
   const strip = head.querySelector('[data-company-progress]');
   expect(within(strip).queryByText('Progress')).toBeNull();
   expect(within(strip).queryByText(/click a stage to jump/)).toBeNull();
   expect(strip.getAttribute('title')).toBe('Click a stage to jump · Undo 10 s');
   expect(strip.querySelector('[data-last-touch]')).toBeNull();
-  expect(within(strip).getByRole('button', { name: 'Log reply' })).toBeInTheDocument();
+  expect([...strip.querySelectorAll('button')].filter(b => !b.closest('[data-progress-bar]'))).toHaveLength(0);
+  expect(strip.querySelector('[data-progress-bar]').getAttribute('data-nowrap')).toBe('true');
   expect(strip.querySelector('[data-step="contacted"] button').style.height).toBe('28px');
   // SETUP is gone once every step is done; the Interest band has Follow up + Not now only.
   expect(head.querySelector('[data-steps]')).toBeNull();
@@ -82,7 +85,7 @@ test('an employer (Contacted, setup done, live interest): head = title · facts 
   expect(screen.getByRole('group', { name: 'Deprioritize' })).toBeInTheDocument();
 });
 
-test('a target (no score, no people, setup incomplete): head = title · facts · strip · SETUP · Actions; every label once; SETUP done steps carry no value; nothing says "no score yet"', async () => {
+test('a target (no score, no people, setup incomplete, no interest): head = title · Actions · facts · strip · SETUP; every label once; SETUP done steps carry no value; nothing says "no score yet"', async () => {
   goalsApi.fitOf.mockResolvedValue(null);
   goalsApi.companyDetail.mockResolvedValue(detail({ record: { stage: 'researching', next_step: null, last_touch: null, site: null, employees: null, employees_source: null, owner_name: null }, research: { runs: [], today: 0, cap: 5 }, stage_history: [], visits: [],
     steps: { next: 'size', ready: false, steps: [{ id: 'research', label: 'Research', status: 'done', value: 'Researched 2026-11-05' }, { id: 'site', label: 'Confirm site', status: 'skip' }, { id: 'size', label: 'Size & type', status: 'next', reach: false }, { id: 'owner', label: 'Owner', status: 'todo' }, { id: 'add', label: 'Add to pipeline', status: 'todo' }, { id: 'touch', label: 'First touch', status: 'skip' }] } }));
@@ -91,7 +94,7 @@ test('a target (no score, no people, setup incomplete): head = title · facts ·
   await within(dlg).findByRole('region', { name: 'Setup' });
   await within(dlg).findByRole('region', { name: 'Actions' });
   const head = headOf(dlg);
-  expect(blocks(head)).toEqual(['title', 'facts', 'strip', 'setup', 'actions']);
+  expect(blocks(head)).toEqual(['title', 'actions', 'facts', 'strip', 'setup']);
   expect(head.querySelector('[data-company-panel] [data-chip]')).toBeNull();
   expect(within(head.querySelector('[data-company-panel]')).queryByText(/Target · Researching/)).toBeNull();
   expect(counts(head)).toEqual({ Stage: 1, 'Next step': 0, Owner: 1, Intent: 1, 'Mark contacted': 1, 'Book meeting': 1, 'Check Apollo': 1, Research: 1, 'Draft email': 1, Promote: 1, Deprioritize: 1, Note: 1, 'To-do': 1, Contact: 1, Employees: 1 });
@@ -102,9 +105,9 @@ test('a target (no score, no people, setup incomplete): head = title · facts ·
   expect(setup.querySelector('[data-step="research"]').textContent).toBe('✓ Research');
   expect(setup.querySelector('[data-step="research"]').getAttribute('title')).toBeNull();
   expect(setup.querySelector('[data-setup-count]').textContent).toBe('Setup 1/4');
-  // A target's strip has no primary and no More (Mark contacted is REACH's); its pills still read.
+  // A target's strip has nothing beside the bar (Mark contacted is REACH's); its pills still read.
   const strip = head.querySelector('[data-company-progress]');
-  expect(within(strip).queryByRole('button', { name: /Mark contacted|More ▾/ })).toBeNull();
+  expect([...strip.querySelectorAll('button')].filter(b => !b.closest('[data-progress-bar]'))).toHaveLength(0);
   expect(strip.querySelector('[data-step="target"][data-state="now"]')).toBeInTheDocument();
   expect(within(within(head).getByRole('group', { name: 'Reach' })).getByRole('button', { name: 'Mark contacted' })).toBeInTheDocument();
 });

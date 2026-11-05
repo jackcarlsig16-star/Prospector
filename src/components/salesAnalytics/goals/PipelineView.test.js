@@ -435,20 +435,22 @@ test('visitor row: Research first asks to add the company as a target, adds it, 
   expect(goalsApi.pipelineBoard.mock.calls.length).toBeGreaterThanOrEqual(2);
 });
 
-test('stage: the strip\'s one primary advances with expect and moves the row (Undo = partner undo); no Next: button in DECIDE; Jump back confirms and sends allow_backward; Esc / backdrop close and flash the row', async () => {
+test('stage: the strip\'s next pill sends the status signal with expect and moves the row (Undo = partner undo); nothing beside the bar, no Next: in DECIDE; Jump back confirms and sends allow_backward; Esc / backdrop close and flash the row', async () => {
   // The first load is the fixture; every reload after the move returns the moved row, as the server would.
   goalsApi.pipelineBoard.mockResolvedValueOnce([...ROWS, APOLLO]).mockResolvedValue([...ROWS.map(r => (r.id === 'OneDigital' ? { ...r, stage: 'researching', stage_label: 'Researching' } : r)), APOLLO]);
-  goalsApi.advanceStage.mockResolvedValue({ before: 'not_started', after: 'researching', event: { id: 'ev1' } });
+  goalsApi.partnerSignal.mockResolvedValueOnce({ event: { id: 'ev1' } });
   // The strip reads the record's stage: Not started on the first load, Researching on every reload after the move.
   let loads = 0;
   goalsApi.companyDetail.mockImplementation((b, type, id) => Promise.resolve({ ...DETAIL, record: { type, id, name: id, stage: loads++ === 0 ? 'not_started' : 'researching', next_step: null } }));
   setup();
   fireEvent.click(await screen.findByRole('button', { name: 'OneDigital' }));
   const panel = within(screen.getByRole('dialog', { name: 'OneDigital' }));
-  expect(panel.queryByRole('button', { name: /^Next:/ })).toBeNull();
-  fireEvent.click(await panel.findByRole('button', { name: 'Start research' }));
-  await waitFor(() => expect(goalsApi.advanceStage).toHaveBeenCalledWith('b1', 'partner', 'OneDigital', 'not_started'));
-  await waitFor(() => expect(panel.getByRole('button', { name: 'Mark drafted' })).toBeTruthy());
+  expect(panel.queryByRole('button', { name: /^Next:|^Start research$|^More ▾$/ })).toBeNull();
+  const strip = await panel.findByRole('region', { name: 'Progress' });
+  expect([...strip.querySelectorAll('button')].filter(b => !b.closest('[data-progress-bar]'))).toHaveLength(0);
+  fireEvent.click(within(strip).getByRole('button', { name: /^Researching, not yet/ }));
+  await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'OneDigital', { type: 'status', to: 'researching', expect: 'not_started' }));
+  await waitFor(() => expect(panel.getByRole('region', { name: 'Progress' }).querySelector('[data-step="researching"][data-state="now"]')).toBeTruthy());
   const tr = screen.getByText('OneDigital', { selector: 'td button' }).closest('tr');
   expect([...tr.querySelectorAll('td')].map(td => td.textContent)).toContain('Researching');
   const status = (await screen.findAllByRole('status')).find(el => el.textContent.includes('OneDigital: moved to Researching'));
@@ -460,7 +462,7 @@ test('stage: the strip\'s one primary advances with expect and moves the row (Un
   window.confirm.mockReturnValueOnce(false);
   fireEvent.click(jump.getByRole('button', { name: '↩ Not started' }));
   await waitFor(() => expect(window.confirm).toHaveBeenCalledWith('Move OneDigital back from Researching to Not started?'));
-  expect(goalsApi.partnerSignal).not.toHaveBeenCalled();
+  expect(goalsApi.partnerSignal).toHaveBeenCalledTimes(1);
   fireEvent.click(jump.getByRole('button', { name: '↩ Not started' }));
   await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'OneDigital', { type: 'status', to: 'not_started', expect: 'researching', allow_backward: true }));
   fireEvent.keyDown(document, { key: 'Escape' });

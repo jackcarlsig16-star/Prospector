@@ -1,6 +1,6 @@
 // FIX company-window-subtract-v1 live check - localhost against a build, as Jack (ownerSession) on the REAL HomeLover
 // workspace, READ-ONLY (0 Claude, 0 Apollo, no writes: every non-GET API call and Supabase write aborted and counted).
-// argv[2] = before | after (the screenshot set); --root <dir> = the checkout whose server.js + build/ to serve (the
+// argv[2] = before | after | rev2 (the screenshot set; rev2 = REV2 head order, adds 1000 px); --root <dir> = the checkout whose server.js + build/ to serve (the
 // "before" set runs a worktree of the pre-fix commit). Opens Fortem Media (target: no score, no people), Hilton
 // (employer with interest) and HUB International (live partner) at 1440, Fortem + Hilton at 390, Hilton as a Viewer
 // (intercepted /api/me). "after" asserts: head = title · facts · strip · SETUP (only while incomplete) · Interest (only
@@ -22,7 +22,9 @@ const { chromium } = require('playwright');
 const AXE = fs.readFileSync(path.join(ROOT, 'node_modules', 'axe-core', 'axe.min.js'), 'utf8');
 const { measureScript, summarize } = require(ROOT + '/scripts/verify/lib/contrastMeasure.cjs');
 const { SESSION_COOKIE } = await import('../../api/lib/authUser.js');
-const MODE = process.argv[2] === 'before' ? 'before' : 'after';
+// MODE: before (the pre-fix worktree, shots + counts only) · after (af207a4) · rev2 (REV2 order: title · band · actions · facts · strip alone · SETUP).
+const MODE = ['before', 'after', 'rev2'].includes(process.argv[2]) ? process.argv[2] : 'rev2';
+const REV2 = MODE === 'rev2';
 const rootArg = process.argv.indexOf('--root');
 const SERVE = rootArg > 0 ? path.resolve(process.argv[rootArg + 1]) : ROOT;
 const OUT = path.join(ROOT, '.screenshots', 'fix-company-window-subtract-v1');
@@ -94,6 +96,10 @@ const HEAD_PROBE = () => {
     pillHeight: pill ? Math.round(pill.getBoundingClientRect().height) : null,
     stripButtons: strip ? Array.from(strip.querySelectorAll('button')).filter(b => !b.closest('[data-progress-bar]')).map(b => b.textContent.trim()) : null,
     stripTitle: strip?.getAttribute('title') || null,
+    stripNowrap: strip?.querySelector('[data-progress-bar]')?.getAttribute('data-nowrap') === 'true',
+    stripAlone: strip ? strip.querySelectorAll(':scope > *').length === 1 && !!strip.querySelector(':scope > [data-progress-bar]') : null,
+    nowPillVisible: (() => { const bar = strip?.querySelector('[data-progress-bar]'); const now = bar?.querySelector('[data-state="now"]'); if (!bar || !now) return null; const b = bar.getBoundingClientRect(), n = now.getBoundingClientRect(); return n.left >= b.left - 1 && n.right <= b.right + 1 && n.width > 0; })(),
+    stripWidthPct: (() => { const bar = strip?.querySelector('[data-progress-bar]'); const h = dlg.querySelector('[data-window-head]'); if (!bar || !h) return null; return Math.round((bar.getBoundingClientRect().width / h.getBoundingClientRect().width) * 100); })(),
     bandButtons: band ? Array.from(band.querySelectorAll('button')).map(b => b.textContent.trim()) : null,
     groups: actions ? Array.from(actions.querySelectorAll('[data-action-group]')).map(g => g.getAttribute('aria-label')) : null,
     decide: decide ? Array.from(decide.querySelectorAll('button')).map(b => b.textContent.trim()) : null,
@@ -179,7 +185,7 @@ try {
   const ONCE = ['Stage', 'Owner', 'Intent', 'Check Apollo', 'Research', 'Draft email', 'Deprioritize', 'Note', 'To-do', 'Contact', 'Employees'];
   const once = (p, extra = []) => [...ONCE, ...extra].filter(k => p.counts[k] !== 1).map(k => `${k}=${p.counts[k]}`);
   const never = p => ['Fit', 'Reached', 'Overview', 'Fit at a glance', 'Progress', 'Owner:', 'Next:'].filter(k => p.counts[k] > 0).map(k => `${k}=${p.counts[k]}`);
-  const AFTER = MODE === 'after';
+  const AFTER = MODE !== 'before';
   const assert = (name, pass, detail) => (AFTER ? ok(name, pass, detail) : note(name, detail));
 
   // ---- 1440 Fortem Media (target, no score, no people).
@@ -188,11 +194,11 @@ try {
     const w = page.locator('[data-center-window]');
     const p = await probe(page, 'fortem@1440');
     await shot(page, `${MODE}-fortem-1440`);
-    const wantF = ['title', 'facts', 'strip', ...(steps(dF).ready ? [] : ['setup']), ...(dF.body?.interest?.show ? ['interest'] : []), 'actions'];
+    const wantF = REV2 ? ['title', ...(dF.body?.interest?.show ? ['interest'] : []), 'actions', 'facts', 'strip', ...(steps(dF).ready ? [] : ['setup'])] : ['title', 'facts', 'strip', ...(steps(dF).ready ? [] : ['setup']), ...(dF.body?.interest?.show ? ['interest'] : []), 'actions'];
     assert(`1440 Fortem: head blocks ${p.blocks.join(' · ')} = ${wantF.join(' · ')} (steps ${steps(dF).text}${steps(dF).ready ? ' ready' : ''}, interest ${!!dF.body?.interest?.show}; layout ${p.layout}); cards in head ${p.cardsInHead}; title chips ${p.chips}`, p.blocks.join('|') === wantF.join('|') && p.cardsInHead === 0 && p.chips === 0 && p.layout === 'classic');
     assert(`1440 Fortem: each label once (${once(p, ['Mark contacted', 'Book meeting', 'Promote']).join(', ') || 'all once'}); never ${never(p).join(', ') || 'none'}; duplicates: ${dupes(p)}`, once(p, ['Mark contacted', 'Book meeting', 'Promote']).length === 0 && never(p).length === 0);
     assert(`1440 Fortem: no "no score yet" / "nobody known" / "nothing yet" anywhere in the window (${p.emptyWords}); window cards ${p.cardsInWindow.join(', ')}`, !p.emptyWords && !p.cardsInWindow.includes('fit') && !p.cardsInWindow.includes('reached') && !p.cardsInWindow.includes('overview'));
-    assert(`1440 Fortem: strip pills ${p.pillHeight} px, strip buttons ${JSON.stringify(p.stripButtons)}, tooltip "${p.stripTitle}"`, p.pillHeight === 28 && p.stripButtons?.length === 0 && /Click a stage to jump/.test(p.stripTitle || ''));
+    assert(`1440 Fortem: strip pills ${p.pillHeight} px, strip buttons ${JSON.stringify(p.stripButtons)}, tooltip "${p.stripTitle}"; alone on its line ${p.stripAlone}, nowrap ${p.stripNowrap}, bar width ${p.stripWidthPct}% of the head, current pill visible ${p.nowPillVisible}`, p.pillHeight === 28 && p.stripButtons?.length === 0 && /Click a stage to jump/.test(p.stripTitle || '') && (!REV2 || (p.stripAlone && p.stripNowrap && p.stripWidthPct >= 90 && p.nowPillVisible)));
     assert(`1440 Fortem: SETUP done steps carry no value ${JSON.stringify(p.setupDone)}`, p.setupDone.every(t => !/·/.test(t)));
     assert(`1440 Fortem: Actions ${p.groups?.join(' · ')}; DECIDE ${JSON.stringify(p.decide)}; row ends with "${p.lastInRow}"`, p.groups?.join('|') === 'Reach|Decide|Capture|Learn' && p.decide?.join('|') === '↑ Promote ▾|Not a fit|↓ Deprioritize…' && p.lastInRow === '✦ generated' && p.tagOnOwnLine === false);
     if (AFTER) {
@@ -218,11 +224,11 @@ try {
     const { ctx, page, errors } = await open(1440, { openKey: `employer-${hilton.id}` });
     const p = await probe(page, 'hilton@1440');
     await shot(page, `${MODE}-hilton-1440`);
-    const want = ['title', 'facts', 'strip', ...(steps(dH).ready ? [] : ['setup']), ...(dH.body?.interest?.show ? ['interest'] : []), 'actions'];
+    const want = REV2 ? ['title', ...(dH.body?.interest?.show ? ['interest'] : []), 'actions', 'facts', 'strip', ...(steps(dH).ready ? [] : ['setup'])] : ['title', 'facts', 'strip', ...(steps(dH).ready ? [] : ['setup']), ...(dH.body?.interest?.show ? ['interest'] : []), 'actions'];
     assert(`1440 Hilton: head blocks ${p.blocks.join(' · ')} = ${want.join(' · ')} (steps ${steps(dH).text}${steps(dH).ready ? ' ready' : ''}, interest ${!!dH.body?.interest?.show}); cards in head ${p.cardsInHead}; title chips ${p.chips}`, p.blocks.join('|') === want.join('|') && p.cardsInHead === 0 && p.chips === 0);
     assert(`1440 Hilton: each label once (${once(p, ['Next step', 'Book meeting']).join(', ') || 'all once'}); Mark contacted ${p.counts['Mark contacted']} (${hilton.stage}); never ${never(p).join(', ') || 'none'}; duplicates: ${dupes(p)}`, once(p, ['Next step', 'Book meeting']).length === 0 && never(p).length === 0 && p.counts['Mark contacted'] === (hilton.stage === 'target' ? 1 : 0));
     assert(`1440 Hilton: Interest band buttons ${JSON.stringify(p.bandButtons)}`, !dH.body?.interest?.show || p.bandButtons?.join('|') === 'Follow up: draft reply|Not now');
-    assert(`1440 Hilton: strip pills ${p.pillHeight} px, strip buttons ${JSON.stringify(p.stripButtons)}; DECIDE ${JSON.stringify(p.decide)}; row ends with "${p.lastInRow}"`, p.pillHeight === 28 && !p.stripButtons?.includes('Mark contacted') && p.decide?.join('|') === '↓ Deprioritize…' && p.lastInRow === '✦ generated' && p.tagOnOwnLine === false);
+    assert(`1440 Hilton: strip pills ${p.pillHeight} px, strip buttons ${JSON.stringify(p.stripButtons)}; alone ${p.stripAlone}, nowrap ${p.stripNowrap}, bar ${p.stripWidthPct}% of the head, current pill visible ${p.nowPillVisible}; DECIDE ${JSON.stringify(p.decide)}; row ends with "${p.lastInRow}"`, p.pillHeight === 28 && !p.stripButtons?.includes('Mark contacted') && (!REV2 || (p.stripButtons?.length === 0 && p.stripAlone && p.stripNowrap && p.stripWidthPct >= 90 && p.nowPillVisible)) && p.decide?.join('|') === '↓ Deprioritize…' && p.lastInRow === '✦ generated' && p.tagOnOwnLine === false);
     if (AFTER) { await measure(page, 'hilton@1440'); await axeOn(page, 'hilton@1440'); }
     ok(`1440 Hilton: 0 page errors`, !errors.length, errors.join(' | '));
     await ctx.close();
@@ -238,16 +244,19 @@ try {
     ok(`1440 HUB: 0 page errors`, !errors.length, errors.join(' | '));
     await ctx.close();
   }
-  // ---- 390 Fortem + Hilton.
-  for (const [key, rec, openKey] of [['fortem', fortem, `target-${fortem.id}`], ['hilton', hilton, `employer-${hilton.id}`]]) {
-    const { ctx, page, errors } = await open(390, { openKey });
+  // ---- 1000 (REV2: the strip scrolls inside its own line, the current stage in view) + 390 Fortem + Hilton.
+  for (const width of (REV2 ? [1000, 390] : [390])) for (const [key, rec, openKey] of [['fortem', fortem, `target-${fortem.id}`], ['hilton', hilton, `employer-${hilton.id}`]]) {
+    const { ctx, page, errors } = await open(width, { openKey });
     const w = page.locator('[data-center-window]');
-    const p = await probe(page, `${key}@390`);
-    await shot(page, `${MODE}-${key}-390`);
+    const p = await probe(page, `${key}@${width}`);
+    await shot(page, `${MODE}-${key}-${width}`);
     const pageWide = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
-    assert(`390 ${key}: sheet (${await w.getAttribute('data-center-window')}); head sideways ${p.sideways} px; page sideways ${!pageWide}; blocks ${p.blocks.join(' · ')}; duplicates: ${dupes(p)}; generated tag on its own line: ${p.tagOnOwnLine}`, (await w.getAttribute('data-center-window')) === 'sheet' && p.sideways <= 1 && pageWide && p.cardsInHead === 0 && p.chips === 0 && p.tagOnOwnLine === false);
-    if (AFTER) { await measure(page, `${key}@390`); await axeOn(page, `${key}@390`); }
-    ok(`390 ${key}: 0 page errors`, !errors.length, errors.join(' | '));
+    const kind = await w.getAttribute('data-center-window');
+    const order = REV2 ? p.blocks.filter(b => ['title', 'interest', 'actions', 'facts', 'strip', 'setup'].includes(b)) : null;
+    const ordered = !REV2 || order.join('|') === ['title', 'interest', 'actions', 'facts', 'strip', 'setup'].filter(b => order.includes(b)).join('|');
+    assert(`${width} ${key}: ${kind}; head sideways ${p.sideways} px; page sideways ${!pageWide}; blocks ${p.blocks.join(' · ')} (ordered ${ordered}); strip alone ${p.stripAlone}, buttons beside it ${JSON.stringify(p.stripButtons)}, current pill visible ${p.nowPillVisible}; duplicates: ${dupes(p)}; generated tag on its own line: ${p.tagOnOwnLine}`, (width === 390 ? kind === 'sheet' : kind === 'window') && p.sideways <= 1 && pageWide && p.cardsInHead === 0 && p.chips === 0 && p.tagOnOwnLine === false && ordered && (!REV2 || (p.stripAlone && p.stripButtons?.length === 0 && p.nowPillVisible)));
+    if (AFTER) { await measure(page, `${key}@${width}`); await axeOn(page, `${key}@${width}`); }
+    ok(`${width} ${key}: 0 page errors`, !errors.length, errors.join(' | '));
     await ctx.close();
   }
   // ---- Viewer (intercepted /api/me) on Hilton.
@@ -255,7 +264,7 @@ try {
     const { ctx, page, errors } = await open(1440, { viewer: true, openKey: `employer-${hilton.id}` });
     const w = page.locator('[data-center-window]');
     const counts = { factButtons: await w.locator('[data-fact-button]').count(), chips: await w.locator('[data-company-panel] [data-chip]').count(), more: await w.locator('[data-more-menu]').count(), actions: await w.locator('[data-actions-row]').count(), stripButtons: await w.locator('[data-company-progress] button').count(), stepButtons: await w.locator('[data-steps] button').count(), bandButtons: await w.locator('[data-interest-band] button').count() };
-    await shot(page, 'after-hilton-viewer-1440');
+    await shot(page, `${MODE}-hilton-viewer-1440`);
     ok(`Viewer Hilton: plain facts, no chips, no ⋯, no Actions row, strip / SETUP / Interest without buttons ${JSON.stringify(counts)}; 0 page errors`, Object.values(counts).every(n => n === 0) && !errors.length, errors.join(' | '));
     await ctx.close();
   }
