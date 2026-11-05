@@ -25,7 +25,7 @@ ${rows.map(r => `<tr>${r.map(c => `<td valign="top" style="padding:8px;border-bo
 
 export const shell = ({ eyebrow, title, sub, body }) => `<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f6f7f9">
 <table role="presentation" cellpadding="0" cellspacing="0" width="100%" style="background:#f6f7f9"><tr><td align="center" style="padding:24px 12px">
-<table role="presentation" cellpadding="0" cellspacing="0" width="680" style="max-width:680px;background:#ffffff;border:1px solid ${RULE};border-radius:10px;${FONT};font-size:14px;line-height:1.5;color:${INK}"><tr><td style="padding:24px">
+<table role="presentation" cellpadding="0" cellspacing="0" width="680" style="width:100%;max-width:680px;background:#ffffff;border:1px solid ${RULE};border-radius:10px;${FONT};font-size:14px;line-height:1.5;color:${INK}"><tr><td style="padding:24px">
 <div style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:${ACCENT};font-weight:600">${esc(eyebrow)}</div>
 <div style="font-size:20px;font-weight:700;margin:4px 0 2px">${esc(title)}</div>
 ${sub ? `<div style="font-size:13px;color:${MUTED};margin-bottom:16px">${esc(sub)}</div>` : ''}

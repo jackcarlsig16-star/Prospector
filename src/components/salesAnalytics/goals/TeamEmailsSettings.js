@@ -104,7 +104,7 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
       {data.recipients.length ? (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 480 }}>
-            <thead><tr>{['Address', 'Visitor email', 'New-client alert', ''].map(h => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
+            <thead><tr>{['Address', 'Visitor email', 'New-client alert'].map(h => <th key={h} scope="col" style={th}>{h}</th>)}<th scope="col" style={{ ...th, position: 'relative' }}><span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>Actions</span></th></tr></thead>
             <tbody>
               {data.recipients.map(r => (
                 <tr key={r.id} data-recipient-row={r.id}>

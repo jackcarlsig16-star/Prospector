@@ -7,7 +7,8 @@ import { MICROSOFT_SCOPES, missingScopes, grantedScopes, refreshBody, canSendTea
 import * as sendModule from './send.js';
 import { sendTeamEmail, loadMembers, RECONNECT_NOTE, MAX_RECIPIENTS } from './send.js';
 import { laClock, dueSlots, tick, WEEKDAYS } from './scheduler.js';
-import { periodFor, laInstant, buildVisitorEmail, loadVisitorData, TOP_N, BAND_WORD } from './visitorEmail.js';
+import { periodFor, laInstant, buildVisitorEmail, loadVisitorData, TOP_N, BAND_WORD, LEGEND } from './visitorEmail.js';
+import { esc } from './format.js';
 import { dueAlerts, sendClientAlert, buildClientAlert, lookalikeTag, WAIT_MIN } from './clientAlert.js';
 import { cronPull, visitorEmailJob, clientAlertsJob, hlJobs, schedulerLine } from './jobs.js';
 import { teamEmailState, updateTeamEmails, addRecipient, editRecipient, removeRecipient, undoChange, sendTest, EXPIRED_NOTE, UNDO_MS } from './settings.js';
@@ -282,15 +283,15 @@ test('REV2 T4: the redesign - header, 4 tiles, Hot / Warm / Cool / Cold pills, 5
   const big = buildVisitorEmail(Array.from({ length: 14 }, (_, i) => co(i)), { date: '2026-11-04', since: NOW - 864e5 });
   assert.equal(big.subject, 'Website visitors — Wed Nov 4: 14 companies, 3 hot');
   assert.equal(big.rows, TOP_N);
-  assert.match(big.text, /^HomeLover · Website visitors\nWed Nov 4 — 14 companies, 3 hot\nSince Tue 7:00 AM/);
-  assert.match(big.text, /14 companies · 7 new · 28 visits \(7 d\) · 14 not in Prospector/);
+  assert.match(big.text, /^HomeLover · Website visitors\nWed Nov 4 — 14 companies, 3 hot\nCompanies Apollo identified on our site, updated since Tue 7:00 AM/);
+  assert.match(big.text, /14 companies · 7 new \(first time seen\) · 28 visits, last 7 days · 14 not in Prospector/);
   assert.match(big.text, /Hot 3 · Warm 0 · Cool 11 · Cold 0/);
   assert.match(big.text, /and 4 more · open the Map →/);
   assert.equal((big.text.match(/^\d+\. /gm) || []).length, 10);
   const h = big.html;
   assert.equal((h.match(/<td style="border:1px solid/g) || []).length, 4, 'four stat tiles');
   for (const w of Object.values(BAND_WORD)) assert.match(h, new RegExp(`>${w} \\d+</span>`));
-  assert.deepEqual([...h.matchAll(/<th [^>]*>([^<]+)<\/th>/g)].map(m => m[1]), ['Company', 'Intent', 'Who visited', 'In Prospector', 'Owner']);
+  assert.deepEqual([...h.matchAll(/<th [^>]*>([^<]+)<\/th>/g)].map(m => m[1]), ['Company', 'Intent', 'Who visited', 'In Prospector', 'Owner', 'Last touch']);
   assert.match(h, />NEW</);
   assert.match(h, /Not yet · <a href="[^"]*channel=website_visit"[^>]*>Add<\/a>/);
   assert.match(h, /border:1px dashed[^>]*><\/span><span[^>]*>Unassigned/);
@@ -307,13 +308,69 @@ test('REV2 T4: the redesign - header, 4 tiles, Hot / Warm / Cool / Cold pills, 5
 test('REV2 T4: singular / plural right, no "0 people", a matched row shows kind · stage title-cased and the owner dot', () => {
   const one = buildVisitorEmail([co(0, { visits: 1, people: 1, titles: ['VP People'], type: 'employer', id: 'e1', stage: 'proposal_pilot', owner: 'Casey', owner_color: '#C97626' })], { date: '2026-11-04', since: NOW - 864e5 });
   assert.equal(one.subject, 'Website visitors — Wed Nov 4: 1 company, 1 hot');
-  assert.match(one.text, /1 company · 1 new · 1 visit \(7 d\) · 0 not in Prospector/);
+  assert.match(one.text, /1 company · 1 new \(first time seen\) · 1 visit, last 7 days · 0 not in Prospector/);
   assert.match(one.text, /matched 1 employer · 0 targets · 0 partners/);
-  assert.match(one.text, /1 visit · 1 person · VP People/);
+  assert.match(one.text, /1 visit \(7 d\) · 1 visitor · 1 named · VP People/);
   assert.match(one.text, /In Prospector: Employer · Proposal Pilot · Owner: Casey/);
   assert.match(one.html, /background:#C97626[^>]*><\/span>Casey/);
   const zero = buildVisitorEmail([co(1, { people: 0 })], { date: '2026-11-04', since: NOW - 864e5 });
   assert.ok(!/0 people|0 person/.test(zero.text + zero.html));
+});
+
+test('visitor-email-clarity V1 / V2 / V4: honest labels + the legend in html and text; zero parts omitted except visits', () => {
+  const m = buildVisitorEmail([co(0, { visits: 0, visitors: 0, people: 0 }), co(1, { visits: 3, visitors: 2, people: 1 })], { date: '2026-11-04', since: NOW - 864e5 });
+  for (const body of [m.html, m.text]) {
+    assert.ok(body.includes('Companies Apollo identified on our site, updated since Tue 7:00 AM'));
+    assert.ok(body.includes(esc(LEGEND)) || body.includes(LEGEND));
+    for (const l of ['new (first time seen)', 'visits, last 7 days', 'not in Prospector']) assert.ok(body.includes(l), l);
+  }
+  assert.match(m.text, /3 visits \(7 d\) · 2 visitors · 1 named/);
+  assert.match(m.text, /0 visits \(7 d\) · \/\n/, 'visits always shown; 0 visitors / 0 named omitted');
+  assert.ok(!/0 visitors|0 named/.test(m.text + m.html));
+});
+
+test('visitor-email-clarity V3: Last touch = "<Mon d> · <first name> · <what>", "No touch yet", "—" for companies not in Prospector', () => {
+  const at = '2026-11-03T18:00:00Z';
+  const rows = [
+    co(0, { type: 'partner', id: 'g1', last_touch: { at, by: 'Casey', what: 'email' } }),
+    co(1, { type: 'partner', id: 'g2', last_touch: { at, by: 'Casey', what: 'call' } }),
+    co(2, { type: 'partner', id: 'g3', last_touch: { at, by: null, what: 'meeting' } }),
+    co(3, { type: 'partner', id: 'g4', last_touch: { at, by: 'Casey', what: 'note' } }),
+    co(4, { type: 'employer', id: 'e1', last_touch: null }),
+    co(5),
+  ];
+  const m = buildVisitorEmail(rows, { date: '2026-11-04', since: NOW - 864e5 });
+  for (const t of ['Nov 3 · Casey · email', 'Nov 3 · Casey · call', 'Nov 3 · meeting', 'Nov 3 · Casey · note', 'No touch yet']) {
+    assert.ok(m.text.includes(`Last touch: ${t}`), t);
+    assert.ok(m.html.includes(`>${t}<`), `html ${t}`);
+  }
+  assert.ok(m.text.includes('Company 05 — ') && /Owner: Unassigned · Last touch: —\n/.test(m.text));
+  const body = m.html.split('<tr>').filter(r => r.includes('<td valign'));
+  assert.equal(body.length, 6);
+  for (const r of body) assert.equal((r.match(/<td valign/g) || []).length, 6, 'six cells a row');
+});
+
+test('visitor-email-clarity V3 loader: last touch comes from the company panel source (partner touch event, employer to-do kind only, never its text)', async () => {
+  const mk = (n, type, id) => ({ id: `00000000-0000-4000-8000-00000000c00${n}`, business_id: B, company_key: `k${n}`, company_name: `Co ${n}`, visits_7d: 4, unique_visitors_7d: 1, top_paths: [], intent_score: 60 - n, priority: 'P2', matched_type: type, matched_id: id, pulled_on: '2026-11-04', created_at: '2026-11-04T14:00:00Z', updated_at: '2026-11-04T14:00:00Z' });
+  const G = '00000000-0000-4000-8000-00000000e001', O = '00000000-0000-4000-8000-00000000e002', O2 = '00000000-0000-4000-8000-00000000e003';
+  const s = sb({
+    web_visits: [mk(1, 'partner', G), mk(2, 'opportunity', O), mk(3, 'opportunity', O2), mk(4, null, null)],
+    sales_goals: [{ id: G, business_id: B, name: 'Co 1', pipeline_status: 'contacted', owner_user_id: U.m1, last_touch_at: '2026-11-03T17:00:00Z' }],
+    sales_partner_events: [{ id: 'ev1', business_id: B, goal_id: G, event: 'touch', touch_type: 'call', at: '2026-11-03T17:00:00Z', by_user: U.m1 }],
+    sales_opportunities: [{ id: O, business_id: B, organization: 'Co 2', stage: 'contacted', owner_user_id: U.m1, client_status: null }, { id: O2, business_id: B, organization: 'Co 3', stage: 'contacted', owner_user_id: null, client_status: null }],
+    sales_week_goals: [{ id: 'w1', business_id: B, kind: 'todo', link_type: 'opportunity', link_id: O, status: 'done', completed_at: '2026-11-02T20:00:00Z', text: 'Call Jordan Visitorperson back', owner_user_id: U.m1 }],
+  });
+  const members = await loadMembers(s, B);
+  const { since, until } = periodFor('2026-11-04');
+  const rows = await loadVisitorData(s, B, { since, until, members });
+  const by = Object.fromEntries(rows.map(r => [r.company, r.last_touch]));
+  assert.deepEqual(by['Co 1'], { at: '2026-11-03T17:00:00Z', by: 'Casey', what: 'call' });
+  assert.deepEqual(by['Co 2'], { at: '2026-11-02T20:00:00Z', by: 'Casey', what: 'to-do' });
+  assert.equal(by['Co 3'], null);
+  assert.equal(by['Co 4'], undefined);
+  const mail = buildVisitorEmail(rows, { date: '2026-11-04', since });
+  assert.ok(mail.text.includes('Last touch: Nov 3 · Casey · call') && mail.text.includes('Last touch: Nov 2 · Casey · to-do') && mail.text.includes('Last touch: No touch yet') && mail.text.includes('Last touch: —'));
+  assert.ok(!/Jordan|Visitorperson|@|\d{3}-\d{3}-\d{4}/.test(mail.html + mail.text), 'no names, emails or phones');
 });
 
 test('the visitor email body carries titles only - no person names, emails or phones', async () => {
@@ -497,7 +554,7 @@ test('rulings (4): on a cron day (no page load) the 06:30 job pulls visitors AND
   assert.deepEqual(seen.pull, ['cron', 'cron']);
   const body = Buffer.from(g.calls[0].mime.split('\r\n\r\n')[2].split('\r\n--')[0].replace(/\r\n/g, ''), 'base64').toString('utf8');
   assert.match(body, /Globex Benefits/);
-  assert.match(body, /3 visits · 1 person · Head of Total Rewards · \/employers/);
+  assert.match(body, /3 visits \(7 d\) · 2 visitors · 1 named · Head of Total Rewards · \/employers/);
   assert.ok(!/Lee|Personname/.test(body));
   const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   assert.match(server, /people: people\.runVisitorPeoplePull/);

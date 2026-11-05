@@ -252,7 +252,7 @@ async function interestFor(supabase, businessId, record, { people, signals, time
 }
 
 // L2: Last touch as the facts row shows it.
-async function lastTouchFor(supabase, businessId, record) {
+export async function lastTouchFor(supabase, businessId, record) {
   if (record.type === 'partner') {
     if (!record.last_touch_at) return null;
     const ev = must(await supabase.from('sales_partner_events').select('touch_type, at, by_user').eq('business_id', businessId).eq('goal_id', record.id).eq('event', 'touch').order('at', { ascending: false }).limit(1));
