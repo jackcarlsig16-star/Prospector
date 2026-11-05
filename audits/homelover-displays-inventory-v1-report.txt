@@ -1,0 +1,266 @@
+AUDIT homelover-displays-inventory-v1 — report
+Spec: inbox/2026-11-04-2300-homelover-displays-inventory-audit.txt · against HEAD d5a92be (origin/main) · run 2026-11-04 23:03 PT
+Read-only. 0 writes, 0 Apollo, 0 Claude. Method: repo reading (file:line below) + prod reads through the service key:
+(A) one head count + one newest-timestamp select per business-scoped table (76 tables), (B) column-only aggregates over the
+email / usage / insight / team-email / outreach tables, (C) the widget numbers through the real GET routes of a local
+server.js on this build as Jack (cookie session, ANTHROPIC/APOLLO/MICROSOFT/GMAIL secrets blanked so nothing could call
+out). 59 s + 31 s. Counts and company names only; no addresses, phones or bodies. Script: scripts/verify/homelover-displays-
+inventory-audit.mjs (left uncommitted on purpose: the go says report only). Dates below are LA unless marked Z.
+
+== Q1 INVENTORY ==================================================================================================
+Gates: the Sales & Marketing nav item needs features.goals_sales (src/constants/businessNav.js:15); every /api/sales/* route
+passes salesGate -> SALES_ANALYTICS_BUSINESS_IDS (api/lib/requireAuth.js:100-106, api/sales/allowlist.js:7-16).
+Refresh: page load runs sync/pageload + visit pull + tidy once per LA day per browser for editors (SalesAnalyticsTab.js:157-167);
+cron (RENDER=true only, server.js:1032-1060): apollo-sync 06:00 daily, visitor-pull 06:30 Mon-Fri, team-visitor-email
+07:00 Mon-Fri, client-alerts every minute (api/sales/teamEmails/jobs.js:83-93). Last cron sync on prod: 2026-11-04 14:00Z
+success, 64 Apollo calls (sales_sync_runs). Claude: only call-notes extract (callNotesRoutes.js:172-176), partner/company
+Research (partnerResearch.js:157-172) and the Plan drawer (weekPlanRoutes.js:130-131) call a model, all MODELS.STANDARD =
+claude-sonnet-4-6 (src/config/models.js:9); no Dashboard widget calls one on read. Observed cost (business_anthropic_usage,
+HomeLover, 129 rows since Aug 13, $5.91 total): call_tasks 39 calls $2.13 ($0.055/call, last Nov 4) · partner_research 38
+calls $3.57 ($0.094/call, last Nov 4) · week_plan 3 calls $0.14 · lead_upload 2 $0.06 · intent_compose 1 $0.0075; the
+Aug 13-21 rows (profile_light, intake_classify, assay_criteria, project_*) carry $0 cost (not metered then).
+
+Widget · component · route -> handler · tables · refresh · Claude · last data change (prod)
+-- Dashboard › Overview (GoalsTab.js:386-412)
+DashboardCharts · goals/DashboardCharts.js:24 · goals/dashboard (server.js:939 -> dashboardRoutes.js:187,159) · business_members,
+  sales_goals, sales_opportunities, sales_targets, web_visits, sales_signals, sales_email_daily_counts, sales_partner_events,
+  sales_opportunity_events, sales_week_goals(+steps), apollo_credit_spend · mount + Range/owner/team · no · opps 2026-11-04 19:45Z
+TrackImprove · goals/TrackImprove.js:19 · goals/insights (server.js:894 -> intakeInsights.js:196,155) · sales_insights, sales_call_notes ·
+  mount + status PATCH · rows come from the call-notes Claude call · 17 insights, newest 2026-11-03 23:49Z
+GoalsSection · goals/GoalsSection.js:47 · goals/report x3 weeks, partners/events (server.js:946), opportunities/movement (server.js:689 ->
+  pipelineRoutes.js:318) · sales_week_report(_sections), sales_partner_events, sales_opportunities(_events) · week change · no
+GoalHero · goals/GoalHero.js:135 · goals/hero (server.js:977 -> goalsReportRoutes.js:658) · scorecard tables + huddleWeek
+  (sales_email_messages/activity, sales_week_goals) + sales_metric_targets + partner data · load/week/owner · no · targets 2026-10-08 (27.6 d)
+ScorecardTable · goals/ScorecardTable.js:46 · goals/scorecard (server.js:969 -> goalsReportRoutes.js:319,181) · sales_metric_targets,
+  sales_metrics_daily, sales_email_daily_counts, sales_mailbox_owners, sales_sequenced_accounts, sales_opportunities(_events),
+  sales_email_messages · load/month/owner/target save · no · metrics_daily 2026-11-04 14:00Z
+ReportView (Weekly report) · goals/ReportView.js:288 · goals/report (server.js:979 -> :440) · sales_week_report, sales_week_report_sections,
+  sales_infra_items, sales_week_goals, partner data, huddleWeekCounts · load/week; writes on Save/Finalize/Reopen (server.js:980-983)
+  · no · sections last edited 2026-10-19 20:52Z (16.4 d); this week and last week are "draft" with 0 sections, 0 infra items
+KpiTable (inside ReportView:399) · goals/KpiTable.js:23 · goals/kpi (server.js:970 -> :333,282) · sales_week_goals, sales_metric_targets,
+  sales_metrics_daily, pipeline · frozen snapshot once final · no
+Export menu · GoalsTab.js:351-366 · PDF = window.print of #sales-analytics-print-area (SalesAnalyticsTab.js:34-78); CSVs :298-314
+-- Dashboard › Sources
+SourcesView · goals/SourcesView.js:140 · goals/sources (server.js:891 -> sourceRoutes.js:313,181) + goals/sources/funnel (:892 -> :319) ·
+  sales_goals/opportunities/targets (companyFields.js:12 RECORD_TABLE), business_members, sales_company_scores · mount + filters · no
+SourceFunnel · goals/SourceFunnel.js:94 · props from the funnel call
+PartnerExport · SourcesView.js:79 · goals/sources/export (server.js:897 -> :354) CSV + window.print
+SourcesBackfill · goals/SourcesBackfill.js:23 · admins only (SourcesView.js:210; server sourceRoutes.js:364) · sources/backfill(+apply)
+ChannelLinks · goals/ChannelLinks.js:19 (SourcesView.js:208) · goals/channel-links (server.js:896) · sales_channel_links · 2 rows
+-- Dashboard › Analytics (AnalyticsView.js:34; one Promise.all on mount/period :79-89; Sync now = POST sync server.js:592)
+OverviewGoals · goals/OverviewGoals.js:88 (top of Analytics, AnalyticsView.js:230) · goals/land?goal_type=partnership, partners/events,
+  hero(skipMonth) · sales_goals, sales_partner_events · no
+AlertsRow · AlertsRow.js:10 · runs + insights props
+WeekStrip · WeekStrip.js:87 · week-strip (server.js:767 -> weekStripRoutes.js:66) · sales_email_messages/activity, sales_partner_events,
+  sales_metric_targets · no
+InsightsPanel · InsightsPanel.js:93 · insights (server.js:766 -> trendRoutes.js:81 -> insightRules.js:313,59) · sales_email_daily_counts,
+  sales_email_activity, sales_email_messages, sales_raw_snapshots, sales_insight_dismissals · rules, no model · 11 insights live, 37 not-enough-data
+MailboxHealth · MailboxHealth.js:46 · email-counts (server.js:763 -> trendRoutes.js:19: sales_email_daily_counts, sales_email_backfill_weeks)
+  + entities (server.js:628 -> routes.js:97: sales_raw_snapshots, sales_sequence_tags) · no
+EmailTrendChart + EmailHealthTable · EmailTrendChart.js:67 / EmailHealthTable.js:27 · email-counts + events (server.js:764-765, sales_events: 1 row, 2026-10-01)
+SequenceLeaderboard · SequenceLeaderboard.js:137 · metrics (server.js:619 -> routes.js:67, sales_metrics_daily 9,617 rows) + entities; audience PUT sequence-tags
+Hidden for goals_sales (widgets.registry.js:54-71 goalsSalesHidden, filter :86): PipelineTable, PipelineMovement, PipelineForecast,
+  TopOpportunities, CompaniesByCohort — AnalyticsView.js:83-84 still fetches opportunities + cohort-breakdown on every load.
+Disabled everywhere (enabled:false, :76,:81): KpiTiles (KpiTiles.js:79), DeliveryMix (DeliveryMix.js:42).
+-- Dashboard › Sequenced (GoalsTab.js:458-466)
+CompaniesView · goals/CompaniesView.js:166 · goals/companies (server.js:971 -> goalsReportRoutes.js:344) + goals/cadences (server.js:796) ·
+  sales_sequenced_accounts (221 rows, 112 with employees), sales_raw_snapshots, sales_mailbox_owners, sales_cadence_plan (4 rows, 16.4 d) · no
+-- Settings › Team emails
+TeamEmailsSettings · goals/TeamEmailsSettings.js:17 (owner edits, GoalsTab.js:469) · goals/team-emails (server.js:913 -> teamEmails/settings.js:20) ·
+  sales_team_email_settings/recipients/sends/changes · 4 recipients; 4 sends (3 tests, 1 needs_reconnect on Nov 4 07:00 PT)
+-- Pipeline › Campaigns (campaigns/*, outreachRoutes.js; DB only, no Apollo call, no Claude)
+CampaignsView list/detail/tiles · CampaignsView.js:78-81,179-183 · goals/campaigns, /:id (server.js:929,932 -> outreachRoutes.js:100,132) ·
+  sales_outreach_campaigns/tracks/steps/contacts/events · load + after actions · PROD: 0 campaigns, 0 contacts, 0 events (never used)
+CampaignContacts/ContactActions/CampaignTemplates/CampaignImport · writes server.js:934-938; import dedupe reads stored Apollo rows (outreachImport.js:127-136)
+campaignSummaryRoute (server.js:930) has no frontend caller.
+-- Pipeline › People
+PeopleView · PeopleView.js:54-56 · huddle/live (server.js:748 -> huddleLive.js:161) · sales_prospect_state (187), sales_email_messages/activity,
+  sales_week_goals, sales_prospect_events, sales_opportunities, sales_raw_snapshots, sales_huddles, sales_sync_runs · load · rules ·
+  prod: 175 live rows, replied 0 / clicked 1 / opened 15 since the last huddle (Oct 16), stale=true
+PeopleSearch · goals/PeopleSearch.js:28 · goals/people (server.js:830 -> visitorRoutes.js:356, peopleUnion.js) · sales_people (64, 7.5 d),
+  partner_contacts (113), sales_prospect_state, opps/targets/goals, web_visits · typed query · no
+FirstTouchPeople · goals/FirstTouchPeople.js:10 (from GoalHero.js:228) · hero · partnerMetrics.js · no
+DailyHuddle family (Pipeline › People, SalesAnalyticsTab.js:206,218-219): DailyHuddle.js:107 tabs live/priorities/done; HuddleRow/HuddleCard,
+  FlaggedLane, HuddlePartners, HuddleFeed (huddle/feed server.js:747), FlagDialog, RightRail, CollateralLibrary (collateral: 0 rows),
+  HuddlePrintSheet (window.print) · huddle (server.js:746 -> huddleRoutes.js) · prod: 186 prospects, heat hot 4 / warm 43 / cold 139,
+  166 stale, last huddle 2026-10-16 (19.6 d), sales_huddles 6 rows
+-- Pipeline › Partner workflow (PartnersView.js:23 -> partners/WorkflowView.js:160,194)
+list goals/land (server.js:772, sales_goals 78) · rank (:944) · signal/undo (:942-943) · events (:946, sales_partner_events 196, newest Nov 4) ·
+  log touches (:945) · people (:947-949, partner_contacts) · Refresh people (:950 -> Apollo /contacts/search, on click) · Apollo moves
+  (:951-953, DB) · Outlook moves (:954-957, microsoft_messages 2,671 / events 18) · domains + export (:963-968) · Research card (:958-959,
+  Claude STANDARD max_tokens 4096 + web search, also auto on partner create goalsRoutes.js:183 and lead upload) · Check Apollo (:961)
+-- Needs attention drawer · goals/AttentionDrawer.js:115 · goals/attention (server.js:889 -> attentionRoutes.js:176,136) · sales_sync_runs,
+  microsoft_grants/sync_runs, visit_pull_runs, web_visits, sales_settings, research_runs, sales_tidy_runs, sales_week_goals, held moves (15-min
+  cache), outreach rows · computed on read, no cron · prod: all 6 sources ok; overdue_todos 36, held_apollo 3, held_outlook 1
+-- Team emails (api/sales/teamEmails/*, rules only)
+Website visitors email · visitorEmail.js:96-148, data :47-91 · web_visits (latest row per company_key updated since the previous weekday 07:00),
+  sales_company_scores.band|score (fallback web_visits.priority), sales_people, opps/targets/goals stage+owner, lastTouchFor · 07:00 Mon-Fri ·
+  built today from stored rows: "58 companies, 4 hot · 34 new · 105 visits (7 d) · 42 not in Prospector · Hot 4 Warm 3 Cool 46 Cold 5 ·
+  matched 6 employers 10 targets 0 partners"; top-10 table Company/Intent/Who visited/In Prospector/Owner/Last touch
+New client alert · clientAlert.js:52-88 · sales_client_events made_client (7 rows) + sales_opportunities ALERT_COLS + lookalike sales_targets ·
+  every minute, once per company · sends logged in sales_team_email_sends (send.js:111-117); sales_team_email_optouts exists, unread by code
+-- Weekly report PDF: see Q3. -- Legacy pages: see Q6.
+Last data change, other inputs: sales_company_scores 2026-11-04 15:00Z · web_visits 08:20Z · sales_email_messages/daily_counts 14:00Z ·
+  microsoft_messages 19:35Z · sales_week_goals 03:26Z · sales_people 2026-10-28 (7.5 d) · sales_metric_targets 2026-10-08 (27.6 d) ·
+  sales_cadence_plan / week_plans / week_report_sections 2026-10-19 (16.4 d) · sales_events 2026-10-01 (34 d) · accounts / projects /
+  business_intel_entries / campaigns (legacy tables) 2026-08-20..26 (70-77 d).
+
+== Q2 OVERLAP ====================================================================================================
+Same number, computed twice — both formulas and today's prod values (via the routes above, 2026-11-04 23:03 PT):
+| number | A (formula) | A value | B (formula) | B value | agree? |
+| open to-dos, Jack | Needs attention: sales_week_goals kind=todo owner=me status=open due<today, any week (attentionRoutes.js:147) | 36 overdue | Actions "my list": only week_start = this Monday (actionsRoutes.js:133) -> Today/This week/Later | 38 todos total (all owners), 8 overdue | NO — DB: Jack has 137 open to-dos (36 overdue, 96 undated) across 7 week_starts; Actions and Dashboard todos_per_owner (dashboardRoutes.js:130,176: Jack open 21) see this week only |
+| sent per week | Dashboard outreach_per_week from sales_email_daily_counts (dashboardRoutes.js) | w/c Nov 2: 137 sent | Analytics MailboxHealth/EmailTrend email-counts, same table (trendRoutes.js:27) | Nov 3-4 rows: 21+5+5 delivered … | yes (same table; trendRoutes sums away sequence+step) |
+| delivered, all time | sales_email_daily_counts Σ delivered (Aug 28 -> Nov 4) | 3,836 (+71 hard bounced, 175 spam blocked) | sales_metrics_daily unique_delivered, Apollo lifetime per-contact, dim=all, 2026-11-04 (Leaderboard/Scorecard) | 2,026 (unique_scheduled 2,082) | different definitions (messages vs unique contacts), both shown as "delivered" |
+| opened | daily_counts Σ opened | 280 | metrics_daily unique_opened 215 (unfiltered 795); sales_email_messages rows with num_opens>0 | 280 / 215 / 795 | three "opened" numbers; the 280 match by construction (same Apollo search) |
+| replied | daily_counts Σ replied | 5 | metrics_daily unique_replied 5; sales_email_messages replied=true 5; week_strip tracked_replies; huddle since-last-huddle replies 0; dashboard replies per week (Oct 5..Nov 2): 0,1,0,0,0 | 5 / 5 / 0 / … | yes on the total; the 5 replies date Sep 9 - Oct 14 |
+| positive replies | KPI positive_responses (goalsReportRoutes.js:43: willing_to_meet, follow_up_question, person_referral) this week | 0 (last week 0) | sales_email_messages reply_class over all time: willing_to_meet 1, follow_up_question 2, person_referral 1, already_left… 1; funnel "replied" (company level) 4 | 4 / 4 | yes (week vs all-time) |
+| P1-P4 counts | Map counts (sales_company_scores band, 430 ranked) | P1 8 · P2 13 · P3 70 · P4 339 | Visitors report, 7 d (web_visits.priority, visitReport.js) | P1 15 · P2 10 · P3 86 · P4 13 of 174 | NO — same labels, different populations and rules (score band vs visit priority rule); web_visits.priority over all 464 rows: P1 93 / P2 15 / P3 320 / P4 36; the visitor email mixes both (band when a score exists, else priority): Hot 4 of 58 |
+| companies | Map counts.companies (sales_company_scores rows) | 435 | Sources totals.companies / funnel companies | 435 / 435 | yes |
+| employers by stage | Dashboard pipeline_by_stage (sales_opportunities, 10 stages) | target 88 · contacted 74 · responded 1 · verbal 1 · nurture 38 · on_hold 36 = 238 | opportunities route 238; Map segment employers 236 (ranked only) | 238 / 236 | yes (Map drops 2 live/closed) |
+| partners by status | Dashboard partners_by_status_owner (sales_goals) | Jack 38 · Cyrus 37 · Seif 1 · Unassigned 2 = 78 | goals/land 78; Map segment partners 74 | 78 / 74 | yes (Map drops 4 live) |
+| meetings | Sources totals.meetings | 2 | funnel totals.meeting 9 · partners meeting_set 3 · dashboard replies_meetings_per_week all 0 · scorecard meetings_set null (manual) + outlook 0 · KPI meetings_set target 2 actual null · microsoft_events 18 (1 future) | 9 / 3 / 0 / null | NO — five "meetings" numbers, no shared definition |
+| covered lives | KPI covered_lives_pipeline | 390 | Sources totals.covered_lives 390 · clients eligible_now 390 · dashboard covered_lives_by_stage verbal 390 | 390 | yes (one employer at Verbal) |
+| signals | Dashboard signals_by_channel website new 51 / accepted 20 | 51 / 20 | sales_signals employer:new 50 + partner:new 1, accepted 18+2; goals/signals 51 | 51 / 20 | yes |
+| visitors (companies) | visits report 7 d | 174 | web_visits with visits_7d>0: 427 · Map segment visitors 83 · Sources website 84 · dashboard visitors_per_day Nov 2/3/4: 15/39/22 · visitor email period: 58 | 174 / 427 / 83 / 84 / 58 | NO — each is a different window or filter (7 d report vs all rows vs ranked records vs daily vs since-yesterday-07:00) |
+| target orgs / in sequence | KPI target_orgs (metrics_daily companies_in_cadence) this week 399, last week 77 | 399 | scorecard total_in_sequence 2,660 (prospects_in_cadence) / accounts_total 854 | 399 vs 77 | week-over-week jump 77 -> 399 looks like a definition change in the Nov 2 manual run, not sales activity (see Bugs seen) |
+| heat / huddle | huddle route heat bands hot 4 / warm 43 / cold 139 (heatScore.js, per request) | 186 prospects | huddle/live numbers replied 0 clicked 1 opened 15 (since Oct 16) | — | both from the same tables; the "since last huddle" window is 19.6 days old |
+Stale or empty for 14+ days (widget -> source): Weekly report sections (last edit 2026-10-19; this week + last week drafts empty) ·
+Scorecard/KPI targets (sales_metric_targets 2026-10-08; targets_week=[] for w/c Nov 2) · Sequenced cadence plan (sales_cadence_plan 2026-10-19,
+4 rows) · Plan drawer (sales_week_plans 2026-10-19, 2 rows) · EmailHealthTable events (sales_events 1 row, Oct 1) · Campaigns (0 rows ever) ·
+Collateral (0 rows) · Infra items (0 rows) · Week notes (0) · Month goals (0) · Huddle "since last huddle" (2026-10-16) · all legacy tables
+(accounts 66, projects 3, business_intel_entries 17, campaigns 3: Aug 20-26).
+
+== Q3 WHAT SEIF READS (repo only) ===============================================================================
+Weekly report PDF (ReportView.js:17-30; print CSS SalesAnalyticsTab.js:34-78, landscape letter, #sales-analytics-print-area only;
+window.print from Finalize :329, Open PDF :331, Export menu GoalsTab.js:357): header "Seif & Jack weekly meeting · <week>" · 15 Commitments
+(sales_week_goals kind=commitment) · s1 Executive summary · s2 Sales infrastructure (InfraList: component, status, note) · s3 Target market ·
+s4 Outreach · s5 Meetings · s6-9 Pipeline / movement / top opps / funnel · s10 Collateral · s11 Lead generation · s12 Forecast · s13 Problems
+& blockers · s14 CEO help needed · PartnerStatusTable · KpiTable (KPI / Last week / This week / Change / Target: Target organizations,
+Decision-makers contacted, Positive responses, Meetings held, New meetings booked, Qualified opportunities, Covered lives in pipeline,
+Proposals/pilots outstanding, Verbal commitments, Contracts signed, Expected 90-day launches). Auto chips per section (GoalsTab.js:243-261).
+Finalize snapshots scorecard/kpi/commitments/sections/infra/partners/huddle (goalsReportRoutes.js:543-547) into sales_week_report (0 rows on prod:
+no week has ever been finalized); sections in sales_week_report_sections (12 rows, all from Oct 19 or earlier).
+Visitor email: see Q1 (subject "Website visitors — <day>: n companies, n hot"; 4 tiles; band pills; match line; top-10 table; "and N more"
++ Map link; fixed legend + footer). Client alert: facts table (status, eligible lives, expected signing, launch, source, owner, primary contact
+title, HQ, next step), record link, referral-network line, up to 10 lookalikes, footer.
+Exports: "Share view" and "Export for Upside" do not exist as labels. Nearest: Map › Share (priorities/PrioritiesView.js:248) saves the filter
+state to sales_settings.saved_views, makes a PNG (html2canvas from a CDN, :38,:206-209) and a CSV (scoresRoutes.js:196: Company, Type, Score,
+Band, Status, Source, Owner, Visits 7d, People, Last touch, Employees, Stage, Researched, Change). "Export for Brad (.xlsx)" = VisitorReport.js:167
+-> visitReport.js:188-206: Priority, Company, Domain, Type, Size, Match, Record ID, Visits (7 d), Unique visitors, First/Last visit, Top pages,
+In sequence, Why, Next action; P1-P3 only, Upside-owned + joint first. Dashboard Export menu CSVs (GoalsTab.js:298-314): Scorecard (Week,
+Metric, Actual, Goal, Source), To-dos (Category, To-do, Owner, With, Status, Steps done, Steps), Partners (18 cols incl. Angle / Their words /
+Watch out / Do not say), Companies (Company, Employees, Cohort, Sequenced by, Mailbox, First email). Per-widget CSVs: WeekStrip, EmailTrend,
+SequenceLeaderboard, MailboxHealth, InsightsPanel, Huddle sheet (DailyHuddle.js:390); Sources partner CSV (sourceRoutes.js EXPORT_COLUMNS);
+Pipeline board export (server.js:973). What Seif actually opens: Q-open for Jack.
+
+== Q4 CADENCE + EMAIL PERFORMANCE ===============================================================================
+Tables (prod counts, HomeLover):
+sales_email_messages 285 rows (migration 20261001_sales_hot_prospects_v1.sql:17-36; +replied_seen_at, subject, replied_at later) — ONLY messages
+  with an open/click/reply inside the last 30 days of delivery (activitySync.js:8 WINDOW_DAYS=30, :18 STATS) — no denominator, never deleted.
+  delivered_at Sep 3 -> Nov 3; 280 opened, 35 clicked, 5 replied, 0 bounced; by step 1:144 2:26 3:66 4:42 5:2 (null 5); 11 sequences;
+  sender: Jack's mailbox 262, Cyrus's 23; subject on 258, 43 distinct; replied_at (exact, Outlook) on 3 of 5.
+sales_email_activity 363 rows (:43-59; activitySync.js:225, ≤30 messages/run :11-12): open 307, click 55, unsub 1; no reply events stored;
+  tracking_service null on all 363. Sep 3 -> Nov 3.
+sales_email_daily_counts 708 rows (20261001_sales_email_trend_v1.sql:19-33; emailCounts.js:102-111; refreshed every 6 h for the last 2 weeks
+  :27-28; backfill from 2026-08-24): day x mailbox x sequence x step, Aug 28 -> Nov 4, 2 mailboxes, 15 sequences, steps 0-5;
+  Σ delivered 3,836 · hard_bounced 71 · spam_blocked 175 · opened 280 · clicked 49 · replied 5. opened/clicked/replied count against the
+  SEND day (migration :13-15). trendRoutes.js:37-43 sums away sequence and step before the UI sees them.
+sales_sequenced_accounts 221 (first step-1 send per account, sequencedAccounts.js:12-25), 112 with typed-in employees.
+sales_metrics_daily 9,617 rows Sep 30 -> Nov 4 (sync.js:229; adapters sequences/mailboxes/accounts/prospects): lifetime unique_* per sequence,
+  cohort and mailbox snapshots; dim rows: sequence 6,883 · cohort 2,167 · all 399 · mailbox 168.
+sales_prospect_state 187 (title/company only for activity-fetched contacts, activitySync.js:189-203; owner guessed from sender :36-39; no seniority).
+sales_outreach_* (Seif campaigns via Outlook, 20261022_seif_campaign_v1.sql): 0 campaigns / 0 contacts / 0 events on prod.
+microsoft_messages 2,671 (90-day window, graphSync.js:14) / microsoft_events 18 (30 back / 60 forward). sales_raw_snapshots 181 (180-day delete).
+reply_class: copied from Apollo (activitySync.js:75,:179), never assigned by Prospector. Values on prod (replied rows): follow_up_question 2,
+  willing_to_meet 1, person_referral 1, already_left_company_or_not_right_person 1. Code also knows out_of_office, not_interested, unsubscribe,
+  none_of_the_above (heatScore.js:9-18), not_right_person, not_the_right_time (replyRules.js:31), wrong_person, bounce, no_longer_at_company
+  (sourceFunnel.js:17) — none seen on prod. Positive set = willing_to_meet, follow_up_question, person_referral (goalsReportRoutes.js:43).
+heat (heatScore.js:44-90): reply class points (100 / 20; not_interested + unsubscribe excluded) + 40 per click-day + 5/open (max 15, bot opens
+  = tracking service, generic linux UA, or open <60 s after delivery :33-39) x decay 0.5 after 3 d; Hot ≥40 or human click ≤7 d, Warm ≥10 or
+  real open ≤7 d, reply stays Hot 7 d (:102-135). Computed per request (huddleRoutes.js:79-111), not stored; company rollup in sales_company_scores.
+Apollo allowlist (apolloClient.js:14-37): POST /emailer_campaigns/search (sequences.js:22) · GET /email_accounts (mailboxes.js:29) ·
+  POST /accounts/search (accounts.js:8) · POST /contacts/search (prospects.js:23, senderLookup.js:47, partnerContactsSync.js:97) ·
+  GET /emailer_messages/search (activitySync.js:56, emailCounts.js:61) · GET /emailer_messages/:id/activities (activitySync.js:150) ·
+  GET /users/api_profile (:169) · POST /mixed_companies/search (visitPull.js:38, headcountFill.js:12) · POST /mixed_people/api_search
+  (peopleFind.js:16) · GET /labels (:75) · GET /organizations/enrich (headcountFill.js:13). The two emailer_messages calls are confirmed 0 credits
+  (apolloClient.js:19). At 0 credits from what is allowlisted: per-message sent/delivered/opened/clicked/replied/bounced, per campaign, per step
+  (campaign_position), per subject, per sender, per send hour/day (completed_at) — all via /emailer_messages/search. NOT allowlisted (would be
+  needed, not called): GET /emailer_campaigns/:id (Apollo's own per-step stat block, templates), /emailer_templates, and /contacts/search at full
+  page size for seniority + contact_campaign_statuses (today it is called with per_page 1 for totals, prospects.js:21-25).
+Matrix — what a surface could compute from stored rows today ("DC" = sales_email_daily_counts, "Msgs" = sales_email_messages, signaled subset only):
+| metric | today? | table.columns | per step? | retention | computes it now |
+| sent | yes | DC delivered+hard_bounced+spam_blocked | yes | Aug 24 ->, never deleted | emailTrendData.js:85, metrics.registry.js:34 |
+| delivered | yes | DC.delivered (Msgs.delivered_at subset) | yes | same | emailTrendData.js:68-70 |
+| opened | yes | DC.opened; Msgs.num_opens; activity 'open' + bot test | yes | DC same; Msgs 30 d | emailTrendData.js:88-93, insightRules R9 |
+| clicked | yes | DC.clicked; Msgs.num_clicks; activity 'click' | yes | same | emailTrendData.js:93 |
+| replied | yes | DC.replied; Msgs.replied | yes | same | weekStripRoutes.js:54-57 |
+| bounced | yes (counts) / partial (per message) | DC.hard_bounced, spam_blocked; Msgs.bounced (subset) | yes | same | insightRules R1 |
+| meeting booked | partial | microsoft_events (partner domains only); sales_partner_events to_status meeting_set; sales_prospect_state booked; scorecard manual entry | no | calendar 30/60 d | outlookMeetings.js:18-38, weekStripRoutes.js:23-31 |
+| per campaign | yes | DC.sequence_id; metrics_daily dim sequence (lifetime) | n/a | DC same | sequenceRows.js:21-63, R8 |
+| per step | yes (counts) | DC.step; Msgs.step | yes | DC same | insightRules R7 (opens only); UI drops it (trendRoutes.js:37-43) |
+| per subject line | partial | Msgs.subject (signaled only, no denominator) | Msgs | 30 d | none |
+| per template | no | — (Apollo); Seif: sales_outreach_steps subject/body | — | — | none |
+| time-to-first-reply | partial | Msgs.delivered_at vs replied_at (3 exact) / replied_seen_at (sync time) | Msgs.step | 30 d / 90 d Outlook | outlookReplyTimes.js fills it; nothing computes the lag |
+| reply class mix | yes | Msgs.reply_class where replied | Msgs.step | 30 d | goalsReportRoutes.js:242 (positive only) |
+| by title / seniority | partial | sales_prospect_state.title (187, fetched contacts only); no seniority | via Msgs join | — | none |
+| by segment / industry / size | partial | cohort from the sequence NAME (sequences.js:39); sequence_tags.audience; sequenced_accounts.employees (typed); no industry | no | — | sequenceRows.js:30 |
+| by sender | yes | DC.mailbox; Msgs.sender; sales_mailbox_owners (2) | yes | DC same | weekStripRoutes.js:36-46, R2/R6 |
+| by send hour / day | day yes / hour partial | DC.day (LA); Msgs.delivered_at (subset) | yes | same | emailTrendData.js:47-60 (day) |
+| decay over 8 weeks | yes | DC weekly; backfill_weeks.complete (11 rows, 0 incomplete) | yes | Aug 24 -> | emailTrendData.js:9, R3/R5 |
+| replied then went quiet | partial | Msgs.replied+replied_at; microsoft_messages by external_domains; sales_partner_events | no | 30 d / 90 d | none (closest: Hot -> Warm after 7 d, heatScore.js:117) |
+
+== Q5 INSIGHTS ===================================================================================================
+Model calls: (1) call-notes extract — callNotesRoutes.js:172-176, MODELS.STANDARD, max_tokens 8192, callType call_tasks; prompt = system text +
+INSIGHT_RULES/INSIGHT_JSON (intakeInsights.js:37,41) + note date, source, title, team members, partners (id + name), this week's commitments,
+linkable metrics, categories, the pasted notes (:164-174); on demand from CallNotesPanel.js:123; post-checks are rules: toInsights caps 5 track /
+5 optimize / 15 links and strips personal data (:44), enrichInsights marks "already recorded" fields + links people (:57,87), alreadyRecorded (:77).
+Stored on Accept (intakeAccept.js:325 -> writeInsights :113) in sales_insights (17 open: track 4, optimize 13; newest Nov 3) + sales_channel_links
+(2); repeats raise seen_count. Shown: TrackImprove (Overview) and ChannelLinks (Sources). Observed cost: 39 call_tasks calls, $2.13, $0.055/call.
+(2) Plan drawer — weekPlanRoutes.js:130-131, STANDARD; 3 calls, $0.14. (3) Research — see Q1 (38 calls, $3.57). No cron model calls anywhere.
+Email Insights R1-R10 (insightRules.js, thresholds :18-35; rules only, recomputed on every read, dismissals 7 d in sales_insight_dismissals):
+R1 list quality (hard bounce >5%, ≥50 sent) · R2 sender reputation (spam block >2% / 14 d) · R3 hidden spam (open rate -50% while bounces fell,
+≥200 sent each) · R4 engagement drought (0 replies / 14 d, ≥200 sent) · R5 sends stalled (-40% w/w or mailbox problem) · R6 at capacity
+(≥90% of 50/day) · R7 step drop-off (reply rate <50% of prior step, ≥30 delivered, ≥5 opens) · R8 underperforming sequence (≤50% of blended) ·
+R9 bot opens (≥40%) · R10 back in the green. Live today: R1 Fitness list quality · R5 sends may have stalled · R4 no replies 14 d · R6 Cyrus's
+mailbox at capacity · R7 Retail after step 1 and after step 4, Fitness after step 1 · R8 Hospitality, Wireless, Retail underperforming · R10
+hard bounce back in the green (11 insights; 37 rules/sequences short of data).
+Visitor email and Huddle text: rules only — heat "why" strings (heatScore.js:46-68), next-best-action labels (nextBestAction.js:13-45), feed
+text (huddleView.js:65-128), email tiles/legend/footer (visitorEmail.js:14, format.js:4,35). Attention drawer: rules only.
+
+== Q6 LEGACY ======================================================================================================
+Hidden for goals_sales by the nav (businessNav.js:14,18): Command Center (BusinessDetailPage.js:796) and Accounts (legacy accounts model).
+Still visible to HomeLover (hidden only for hk_sales, businessNav.js:19-22): Projects (BusinessDetailPage.js:802; 3 rows, Aug 21), Business
+Intel & Strategy (view 'overview', :765/:807; 17 entries, Aug 20), Ideas (App.js:1293), Tools (App.js:1295). Admin is role-gated (App.js:1183,1297).
+Unreachable today for HomeLover: PipelineTable, PipelineMovement, PipelineForecast, TopOpportunities, CompaniesByCohort (goalsSalesHidden; and
+since the Sales nav itself needs goals_sales there is no nav path to them in any workspace) — but AnalyticsView.js:83-84 still fetches their data.
+Disabled everywhere: KpiTiles, DeliveryMix. Never used on prod: Pipeline › Campaigns (0 rows), CollateralLibrary (0), InfraList (0), Week notes.
+Shared vs HomeLover-only: no business-kind branch exists in App.js / SalesAnalyticsTab.js; gating is feature flags (goals_sales, hk_sales) +
+SALES_ANALYTICS_BUSINESS_IDS. Whether Master Magnetics / Kopi Kita have goals_sales is a DB flag (business_profiles features), not in code; both
+names appear only in comments (api/businesses/shared.js:321, BusinessDetailPage.js:560). The Huddle family, panels (CenterWindow, SidePanel,
+OpportunityPanel) and widgets.registry/metrics.registry are shared code paths, not HomeLover-only. huddleView is also used by AttentionDrawer and
+CampaignContacts; OverviewGoals.weekTouches by BusinessesHomePage.js:11.
+
+== Q7 DATA GAPS (cheapest honest source) ==========================================================================
+- Per-step campaign stats with a denominator: DC already has day x sequence x step; read DC directly (not trendRoutes' summed rows).
+- Per-step reply timing / time-to-first-reply: Msgs.delivered_at + replied_at exists for 3 of 5 replies; use Outlook replied_at, treat replied_seen_at as a ceiling.
+- Send hour: not stored for unsignaled sends; /emailer_messages/search completed_at (0 credits, allowlisted) would need a per-message store — today only DC's day.
+- Recipient seniority: nothing stored; /contacts/search full records (allowlisted, but called at per_page 1 today) carry seniority — a new paged pull, credits unknown.
+- Meeting source (which email/step led to the meeting): no link exists; closest is sales_partner_events touch -> status change order and microsoft_events domain match.
+- Subject-line performance: Msgs.subject only on signaled messages (258 of 285); no sent-per-subject denominator without a per-message store.
+- Template / step copy for Apollo sequences: not stored; /emailer_campaigns/:id is not allowlisted.
+- Company industry/size per send: only cohort from the sequence name and typed-in employees (112 of 221); web_visits has naics/sic for visitors only.
+- "Replied then went quiet": needs a per-company last-reply vs last-touch join; raw inputs exist (Msgs, microsoft_messages, sales_partner_events), no computation.
+- Meetings: five unreconciled definitions (Q2); a dashboard needs one chosen source (microsoft_events + partner meeting_set is the only stored evidence).
+- To-dos across weeks: the Actions and Dashboard counts read one week_start; 252 of 290 open to-dos sit in earlier weeks.
+Bugs seen (for FIX lines):
+- B1 Actions "my list" and Dashboard todos_per_owner read week_start = this Monday only (actionsRoutes.js:133, dashboardRoutes.js:130,176); Needs
+  attention counts every week (attentionRoutes.js:147). Prod: attention overdue_todos 36 vs Actions overdue 8 (38 todos shown of 290 open; Jack
+  137 open, 36 overdue, 96 undated, week_starts Sep 28 .. Nov 9).
+- B2 KPI "Target organizations" jumped 77 -> 399 week over week (goalsReportRoutes.js buildKpi from sales_metrics_daily companies_in_cadence;
+  accounts_total 854); the Nov 2 manual sync is the likely boundary — worth a look before Seif reads it as growth.
+- B3 Analytics fetches opportunities + cohort-breakdown for widgets it never renders under goals_sales (AnalyticsView.js:83-84; 238-row payload).
+- B4 campaignSummaryRoute (server.js:930) and sales_team_email_optouts (migration 20261103:25-30) have no caller/reader.
+- B5 Scorecard/KPI "meetings" rows are Manual entry (null this week) while microsoft_events holds 18 external meetings — the stored evidence is not used.
+Open questions for Jack (design run, not here): which Dashboard numbers Seif opens weekly; whether the Weekly PDF stays (never finalized on prod);
+whether the cadence surface covers Brad's Upside sequences (the shared Apollo org: 27 sequences in entities, 13 running; HomeLover's own = 15 in DC).
+restored: yes (read-only; no watched count moved; owner session released, last_seen_at restored, 0 sign-in rows added)
