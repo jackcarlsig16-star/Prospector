@@ -11,19 +11,20 @@ export default function ProgressBar({ label, steps, current, side = null, onStep
   return (
     <ol aria-label={label} data-progress-bar style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexWrap: 'wrap', gap: 4, minWidth: 0 }}>
       {steps.map((s, i) => {
-        const state = side ? 'later' : i < current ? 'done' : i === current ? 'now' : 'later';
-        const word = state === 'done' ? `done${s.at ? ` ${s.at}` : ''}` : state === 'now' ? `now${s.at ? `, since ${s.at}` : ''}` : 'not yet';
+        // homelover-flow-v1 F8: s.state overrides the index rule (Researched / Assigned sit before Contacted but are their own facts).
+        const state = s.state || (side ? 'later' : i < current ? 'done' : i === current ? 'now' : 'later');
+        const word = state === 'done' ? `done${s.sub ? ` ${s.sub}` : ''}${s.at ? ` ${s.at}` : ''}` : state === 'now' ? `now${s.at ? `, since ${s.at}` : ''}` : 'not yet';
         const box = {
           display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'center', gap: 1, minWidth: 76, flex: '1 1 76px',
           height: 40, padding: '0 8px', borderRadius: 6, textAlign: 'left', font: 'inherit',
-          border: `1px solid ${state === 'now' ? ui.accent : state === 'done' ? 'transparent' : ui.border}`,
+          border: `1px solid ${state === 'now' ? ui.accent : state === 'done' ? `color-mix(in srgb, ${ui.accent} 70%, ${ui.surface})` : ui.border}`,
           background: state === 'done' ? `color-mix(in srgb, ${ui.accent} 26%, ${ui.surface})` : state === 'now' ? `color-mix(in srgb, ${ui.accent} 12%, ${ui.surface})` : 'transparent',
           color: state === 'later' ? ui.muted : ui.text, cursor: onStep ? 'pointer' : 'default',
         };
         const body = (
           <>
             <span style={{ ...KIT_TYPE.small, fontSize: 12, fontWeight: state === 'now' ? 600 : 500, whiteSpace: 'nowrap' }}>{state === 'done' ? '✓ ' : ''}{s.label}</span>
-            <span style={{ ...KIT_TYPE.small, fontSize: 10.5, color: state === 'later' ? ui.muted : ui.soft, whiteSpace: 'nowrap' }}>{state === 'later' ? '' : state === 'now' ? (s.at ? `since ${s.at}` : 'now') : s.at || 'done'}</span>
+            <span style={{ ...KIT_TYPE.small, fontSize: 10.5, color: state === 'later' ? ui.muted : ui.soft, whiteSpace: 'nowrap' }}>{state === 'later' ? '' : state === 'now' ? (s.at ? `since ${s.at}` : 'now') : [s.sub, s.at].filter(Boolean).join(' · ') || 'done'}</span>
           </>
         );
         return (

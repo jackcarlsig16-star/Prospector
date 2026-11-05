@@ -12,9 +12,9 @@ test('shows Intent 72 · P1 with the source and the since-yesterday marker; the 
   goalsApi.scoreOf.mockResolvedValue(SCORE);
   goalsApi.recomputeScores.mockResolvedValue({ ran: true, row: { score: 80, band: 'P1' } });
   render(<IntentFact businessId="b1" row={ROW} canEdit />);
-  expect(await screen.findByText('72 · P1')).toBeInTheDocument();
+  expect(await screen.findByText('72 · hot ▲')).toBeInTheDocument();
   expect(screen.getByText('Website')).toBeInTheDocument();
-  expect(screen.getByText('▲ since P2')).toBeInTheDocument();
+  expect(screen.getByText('since warm')).toBeInTheDocument();
   expect(screen.getByText('+17 visits (6 in 7 d, 3 people)')).toBeInTheDocument();
   expect(screen.getByText('-3 not researched')).toHaveStyle({ color: 'var(--sa-bad)' });
   fireEvent.click(screen.getByRole('button', { name: 'Recompute' }));

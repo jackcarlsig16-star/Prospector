@@ -199,7 +199,7 @@ test('Network tree: roots, rollup, ↻ see above, and n more', async () => {
     ] },
   ] });
   render(<NetworkTree businessId="b1" />);
-  const tree = await screen.findByRole('region', { name: 'Network' });
+  const tree = await screen.findByRole('region', { name: 'Network tree' });
   await waitFor(() => expect(tree.querySelector('[data-network-node="partner:p-up"]')).not.toBeNull());
   expect(tree.querySelector('[data-network-node="partner:p-up"]').textContent).toContain('1 client · 390 lives · 220 in pipeline');
   expect(tree.querySelector('[data-network-node="employer:e1"]').textContent).toContain('390 lives');

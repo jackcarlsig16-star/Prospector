@@ -88,12 +88,15 @@ export function WaitingCard({ detail }) {
   );
 }
 
-const RECENT_WORD = { touch: 'Touch', note: 'Note', status: 'Stage', undo: 'Undo', stage: 'Stage', todo_done: 'Done', client: 'Client' };
-export function NotesCard({ detail, canEdit, lookup, onForm }) {
+const RECENT_WORD = { touch: 'Touch', note: 'Note', status: 'Stage', undo: 'Undo', stage: 'Stage', todo_done: 'Done', client: 'Client', flow: 'Flow' };
+// homelover-flow-v1: the flow Activity (deprioritize, bring back, fit, assign, the automatic reply / meeting moves,
+// They replied…, undo) reads here beside the notes and touches, newest first; an undone row says so.
+export function NotesCard({ detail, canEdit, lookup, onForm, flow = [] }) {
+  const rows = [...detail.recent, ...flow.map(f => ({ id: f.id, event: 'flow', at: f.at, text: `${f.text}${f.by_user ? '' : f.kind === 'undo' ? '' : ' · automatic'}${f.undone_at ? ' · undone' : ''}` }))].sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 8);
   return (
-    <Card label="Notes & touches" count={detail.recent.length} action={canEdit ? <Mini onClick={() => onForm('note')}>+ Note</Mini> : null} testId="recent">
-      {!detail.recent.length && <Empty>Nothing yet.</Empty>}
-      {detail.recent.map(e => (
+    <Card label="Notes & touches" count={rows.length} action={canEdit ? <Mini onClick={() => onForm('note')}>+ Note</Mini> : null} testId="recent">
+      {!rows.length && <Empty>Nothing yet.</Empty>}
+      {rows.map(e => (
         <div key={e.id} style={row}>
           <span style={date}>{when(e.at)}</span>
           <span style={{ fontSize: 10.5, fontFamily: "'Geist Mono', ui-monospace, monospace", letterSpacing: '.06em', textTransform: 'uppercase', color: SA.muted, width: 44, flex: '0 0 44px', paddingTop: 2 }}>{RECENT_WORD[e.event] || e.event}</span>
@@ -107,7 +110,7 @@ export function NotesCard({ detail, canEdit, lookup, onForm }) {
 const KV = ({ label, children }) => <><span className="ui-group-label" style={{ paddingTop: 2 }}>{label}</span><div style={{ ...text, minWidth: 0 }}>{children}</div></>;
 const MORE_FIELDS = [['mission', 'Mission'], ['positioning', 'Positioning'], ['housing_perk', 'Housing perk'], ['first_angle', 'First angle'], ['watch_outs', 'Watch-outs'], ['titles', 'Titles to approach']];
 
-export function IntelCard({ businessId, row, detail, canEdit, onChanged, onToast }) {
+export function IntelCard({ businessId, row, detail, canEdit, live = false, onChanged, onToast }) {
   const [busy, setBusy] = useState('');
   const latest = detail.research?.runs?.[0] || null;
   const running = latest?.status === 'running';
@@ -128,7 +131,7 @@ export function IntelCard({ businessId, row, detail, canEdit, onChanged, onToast
             {result?.hq_city && <KV label="HQ">{result.hq_city}</KV>}
             {result?.size && <KV label="Size">{result.size}</KV>}
             {result?.sells_to && <KV label="Sells to">{result.sells_to}</KV>}
-            {site && <KV label="Site"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><Link href={`https://${site.domain}`} target="_blank" rel="noreferrer">{site.domain} ↗</Link>{site.confirmed ? <Tag color={SA.good}>✓ confirmed</Tag> : canEdit && row.type === 'partner' ? <Mini disabled={busy === 'site'} onClick={confirmSite}>Confirm site</Mini> : null}</span></KV>}
+            {site && <KV label="Site"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><Link href={`https://${site.domain}`} target="_blank" rel="noreferrer">{site.domain} ↗</Link>{site.confirmed ? <Tag color={SA.good}>✓ confirmed</Tag> : canEdit && row.type === 'partner' && !live ? <Mini disabled={busy === 'site'} onClick={confirmSite}>Confirm site</Mini> : null}</span></KV>}
             {result?.why_homelover && <KV label="Why fit">{result.why_homelover}</KV>}
           </div>
         )}

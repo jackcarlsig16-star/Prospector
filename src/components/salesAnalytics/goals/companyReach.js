@@ -22,8 +22,9 @@ export async function bookMeeting({ businessId, row, person = null, onChanged, o
 }
 
 // A target is added to the pipeline as an employer at Contacted (Stage 2 ruling 1); its Undo removes that employer.
-export async function markContacted({ businessId, row, person = null, onChanged, onToast, onConvert }) {
-  const r = await goalsApi.markContacted(businessId, row.type, row.id, { ...(person ? { contact_id: person.contact_id, person: person.name } : {}), touch_type: 'email' });
+// homelover-flow-v1: touchType 'call' = the Actions row's Log call (same write, a call touch / done to-do).
+export async function markContacted({ businessId, row, person = null, touchType = 'email', onChanged, onToast, onConvert }) {
+  const r = await goalsApi.markContacted(businessId, row.type, row.id, { ...(person ? { contact_id: person.contact_id, person: person.name } : {}), touch_type: touchType });
   onChanged();
   if (r.added) {
     onConvert?.(r.added);
@@ -36,7 +37,7 @@ export async function markContacted({ businessId, row, person = null, onChanged,
     return;
   }
   const moved = r.stage && r.stage.after !== r.stage.before;
-  onToast({ text: `${person ? person.name : row.name} marked contacted${moved ? ` · moved to ${stageLabel(row.type, r.stage.after)}` : ''}`, undo: async () => {
+  onToast({ text: `${person ? person.name : row.name} ${touchType === 'call' ? 'call logged' : 'marked contacted'}${moved ? ` · moved to ${stageLabel(row.type, r.stage.after)}` : ''}`, undo: async () => {
     if (r.event) await goalsApi.partnerUndo(businessId, row.id, r.event.id);
     if (moved && row.type === 'employer') await updateOpportunity(businessId, row.id, { stage: r.stage.before, allow_backward: true });
     if (r.todo) await goalsApi.updateWeekGoal(businessId, r.todo.id, { status: 'dropped' });

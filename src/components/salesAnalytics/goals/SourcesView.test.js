@@ -180,11 +180,11 @@ test('homelover-clients-v1 C9: Funnel is the default; Network swaps in the tree 
   goalsApi.sourcesNetwork.mockResolvedValue({ roots: [{ type: 'partner', id: 'p1', name: 'Upside', depth: 1, rollup: { clients: 1, lives: 390, in_pipeline: 2 }, more: 0, children: [] }], partners_with_none: 0 });
   render(<SourcesView businessId="b1" partners={partners} isAdmin={false} />);
   expect(screen.getByRole('button', { name: 'Funnel' })).toHaveAttribute('aria-pressed', 'true');
-  expect(screen.queryByRole('region', { name: 'Network' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Network tree' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Network' }));
-  const tree = await screen.findByRole('region', { name: 'Network' });
+  const tree = await screen.findByRole('region', { name: 'Network tree' });
   await waitFor(() => expect(tree.textContent).toContain('1 client · 390 lives · 2 in pipeline'));
   expect(screen.queryByRole('button', { name: /Export for/ })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Funnel' }));
-  expect(screen.queryByRole('region', { name: 'Network' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Network tree' })).toBeNull();
 });

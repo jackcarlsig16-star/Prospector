@@ -10,7 +10,9 @@ import { StatusChip } from './ClientParts';
 const TYPE_WORD = { partner: 'partner', employer: 'employer', target: 'target' };
 const open = n => window.dispatchEvent(new CustomEvent(OPEN_PIPELINE_RECORD, { detail: { key: `${n.type}-${n.id}` } }));
 
-function Node({ n }) {
+function Node({ n, limit = null }) {
+  const kids = limit ? (n.children || []).slice(0, limit) : (n.children || []);
+  const more = (n.more || 0) + ((n.children || []).length - kids.length);
   return (
     <li data-network-node={`${n.type}:${n.id}`} style={{ listStyle: 'none', margin: 0, padding: 0 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minHeight: 28, fontSize: 13 }}>
@@ -23,17 +25,18 @@ function Node({ n }) {
           {n.partner_not_set && <span style={{ color: SA.warn }}>its own referrer not set</span>}
         </>}
       </div>
-      {(n.children?.length > 0 || n.more > 0) && (
+      {(kids.length > 0 || more > 0) && (
         <ul style={{ margin: 0, padding: '0 0 0 22px' }}>
-          {n.children.map(c => <Node key={`${c.type}:${c.id}`} n={c} />)}
-          {n.more > 0 && <li style={{ listStyle: 'none', fontSize: 13, color: SA.muted, minHeight: 24 }}>└ and {fmt(n.more)} more</li>}
+          {kids.map(c => <Node key={`${c.type}:${c.id}`} n={c} limit={limit} />)}
+          {more > 0 && <li style={{ listStyle: 'none', fontSize: 13, color: SA.muted, minHeight: 24 }}>└ and {fmt(more)} more</li>}
         </ul>
       )}
     </li>
   );
 }
 
-export default function NetworkTree({ businessId }) {
+// homelover-flow-v1 F9: limit = at most n children per node (the partner card's compact preview; "and n more" counts the rest).
+export default function NetworkTree({ businessId, limit = null }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   useEffect(() => {
@@ -42,13 +45,13 @@ export default function NetworkTree({ businessId }) {
     return () => { live = false; };
   }, [businessId]);
   return (
-    <section aria-label="Network" data-network-tree style={{ ...cardStyle, padding: 20, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
+    <section aria-label="Network tree" data-network-tree style={{ ...cardStyle, padding: limit ? 0 : 20, border: limit ? 'none' : cardStyle.border, background: limit ? 'transparent' : cardStyle.background, display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
       <h2 style={{ ...SA_TYPE.label, color: SA.muted, margin: 0 }}>Who brought in whom</h2>
       <span style={{ fontSize: 12, color: SA.muted }}>From each partner whose own source names no partner. Set a partner's Source to another partner and it moves under it; its clients then count "via" that partner too.</span>
       {error && <ErrorNote message={error} />}
       {!data && !error && <span style={{ fontSize: 13, color: SA.muted }}>Loading…</span>}
       {data && !data.roots.length && <span style={{ fontSize: 13, color: SA.muted }}>No company is sourced to a partner yet.</span>}
-      {data && data.roots.length > 0 && <ul style={{ margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>{data.roots.map(n => <Node key={`${n.type}:${n.id}`} n={n} />)}</ul>}
+      {data && data.roots.length > 0 && <ul style={{ margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>{data.roots.map(n => <Node key={`${n.type}:${n.id}`} n={n} limit={limit} />)}</ul>}
       {data && data.partners_with_none > 0 && <span style={{ fontSize: 12, color: SA.muted }}>{fmt(data.partners_with_none)} partners haven't brought anything in yet.</span>}
     </section>
   );

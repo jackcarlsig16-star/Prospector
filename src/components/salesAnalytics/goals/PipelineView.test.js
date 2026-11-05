@@ -466,22 +466,20 @@ test('stage: Next sends the status signal with expect and moves the row (Undo = 
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 
-test('employer: Next moves the stage through PATCH; Jump back confirms and sends allow_backward; Priority ▾ Not a fit writes P4 + a note and Undo restores', async () => {
+test('employer: Next moves the stage through PATCH; Jump back confirms and sends allow_backward; the Fit chip menu offers Deprioritize… (homelover-flow-v1: Fit replaced Priority on the card)', async () => {
   goalsApi.pipelineBoard.mockResolvedValueOnce([...ROWS, APOLLO]).mockResolvedValue([...ROWS.map(r => (r.id === 'Solidcore' ? { ...r, stage: 'contacted', stage_label: 'Contacted' } : r)), APOLLO]);
   setup();
   fireEvent.click(await screen.findByRole('button', { name: 'Solidcore' }));
   const panel = within(screen.getByRole('dialog', { name: 'Solidcore' }));
-  fireEvent.click(panel.getByRole('button', { name: 'Next: Contacted' }));
+  fireEvent.click(await panel.findByRole('button', { name: 'Next: Contacted' }));
   await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', { stage: 'contacted' }));
   openMore(panel, 'Jump to stage…');
   fireEvent.click(within(panel.getByRole('group', { name: 'Jump to stage' })).getByRole('button', { name: '↩ Target' }));
   await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', { stage: 'target', allow_backward: true }));
-  fireEvent.click(panel.getByRole('button', { name: /^Priority/ }));
-  fireEvent.change(panel.getByRole('combobox', { name: 'Priority' }), { target: { value: 'not_a_fit' } });
-  await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', expect.objectContaining({ priority: 4, notes: expect.stringMatching(/Not a fit \(set to P4 from Pipeline\)/) })));
-  const status = (await screen.findAllByRole('status')).find(el => el.textContent.includes('Solidcore: Not a fit'));
-  fireEvent.click(within(status).getByRole('button', { name: 'Undo' }));
-  await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', { priority: null }));
+  expect(panel.queryByRole('button', { name: /^Priority/ })).toBeNull();
+  fireEvent.click(await panel.findByRole('button', { name: /^Fit/ }));
+  fireEvent.click(panel.getByRole('menuitem', { name: 'Deprioritize…' }));
+  expect(panel.getByRole('group', { name: 'Deprioritize' })).toBeInTheDocument();
 });
 
 test('Export joint sheet fetches the .xlsx for the current filters and saves it; a refusal shows', async () => {

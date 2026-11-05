@@ -33,7 +33,7 @@ function NameButton({ r }) {
   return <button type="button" className="ui-btn ui-btn--tertiary" onClick={() => openRow(r)} style={{ height: 24, padding: '0 2px', fontSize: 13, color: SA.text, fontWeight: 500, justifyContent: 'flex-start', minWidth: 0, overflowWrap: 'anywhere', textAlign: 'left' }}>{r.name}</button>;
 }
 
-export default function NetworkCard({ businessId, row, version, canEdit, onSetSource, onAddClient }) {
+export default function NetworkCard({ businessId, row, version, canEdit, onSetSource, onAddClient, hideCameFrom = false }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [by, setBy] = useState('type');
@@ -55,11 +55,11 @@ export default function NetworkCard({ businessId, row, version, canEdit, onSetSo
             <b style={{ fontWeight: 600 }}>{plural(n.header.clients, 'client')} · {fmt(n.header.lives)} lives</b>
             <span style={{ color: SA.muted }}> · {fmt(n.header.in_pipeline)} in pipeline · {plural(n.header.partners, 'partner')}</span>
           </div>
-          <div data-came-from style={{ ...text, color: SA.soft }}>
+          {!hideCameFrom && <div data-came-from style={{ ...text, color: SA.soft }}>
             Came from: <span style={{ color: cf.missing ? SA.warn : SA.text }}>{cf.text}</span>
             {cf.missing && canEdit && onSetSource && <> — <button type="button" className="ui-btn ui-btn--tertiary" onClick={onSetSource} style={{ height: 22, padding: '0 4px', fontSize: 13, color: SA.warn }}>Set it</button></>}
             {own && (own.team || own.owner) && <span style={{ display: 'block', color: SA.muted, fontSize: 12 }}>Ownership: {[own.team, own.owner, own.co_owner_name && 'co-owner set'].filter(Boolean).join(' · ')}</span>}
-          </div>
+          </div>}
           {canEdit && onAddClient && <button type="button" className="ui-btn ui-btn--primary" style={{ alignSelf: 'flex-start', height: 32 }} onClick={onAddClient}>+ Add a client they referred</button>}
           {by === 'type' ? n.groups.filter(g => g.total || g.key === 'clients' || g.key === 'employers').map(g => (
             <div key={g.key} data-network-group={g.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

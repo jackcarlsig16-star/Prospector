@@ -11,39 +11,62 @@ const MEMBERS = [{ user_id: 'u1', name: 'Jack Carlson', role: 'owner' }];
 const PARTNER = { type: 'partner', id: 'p1', name: 'Zz Harbor', stage: 'replied', category: '2. Brokers & PEOs' };
 const TARGET = { type: 'target', id: 't1', name: 'Zz Quarry', stage: 'proposed' };
 const VISITOR = { type: 'visitor', id: 'v1', name: 'Zz Visit' };
-function Harness({ row, form: initial = null, bandShown = false, onToast = jest.fn() }) {
+function Harness({ row, form: initial = null, bandShown = false, fit = null, onToast = jest.fn() }) {
   const React = require('react');
   const [form, setForm] = React.useState(initial);
   return (
     <aside data-center-window="window" tabIndex={-1} data-testid="win">
       <input aria-label="Some other field" />
-      <CompanyActions businessId="b1" row={row} members={MEMBERS} meId="u1" form={form} setForm={setForm} bandShown={bandShown} onPatch={jest.fn()} onChanged={jest.fn()} onToast={onToast} onConvert={jest.fn()} onClose={jest.fn()} />
+      <CompanyActions businessId="b1" row={row} members={MEMBERS} meId="u1" form={form} setForm={setForm} bandShown={bandShown} fit={fit} onPatch={jest.fn()} onChanged={jest.fn()} onToast={onToast} onConvert={jest.fn()} onClose={jest.fn()} onOwner={jest.fn()} onAddClient={jest.fn()} />
     </aside>
   );
 }
 const groups = () => screen.getAllByRole('group').filter(g => g.hasAttribute('data-action-group'));
 afterEach(() => jest.clearAllMocks());
 
-test('four labelled groups in order - Capture · Reach · Learn · Advance - with their buttons; Check Apollo once (Learn); kbd hints out of the names', () => {
-  render(<Harness row={PARTNER} />);
-  expect(groups().map(g => g.getAttribute('aria-label'))).toEqual(['Capture', 'Reach', 'Learn', 'Advance']);
+test('homelover-flow-v1 F8: four labelled groups in flow order - Reach · Decide · Capture · Learn; Mark contacted only while behind Contacted; Check Apollo once (Learn); kbd hints out of the names', () => {
+  const { unmount } = render(<Harness row={PARTNER} />);
+  expect(groups().map(g => g.getAttribute('aria-label'))).toEqual(['Reach', 'Decide', 'Capture', 'Learn']);
   const names = g => within(screen.getByRole('group', { name: g })).getAllByRole('button').map(b => b.getAttribute('aria-label') || b.textContent.replace(/[NTCER]$/, ''));
   expect(names('Capture')).toEqual(['Note', 'To-do', 'Contact']);
-  expect(names('Reach')).toEqual(['Draft email', 'Book meeting', 'Mark contacted']);
+  expect(names('Reach')).toEqual(['Draft email', 'Log call', 'Book meeting'], 'a Replied partner is past Contacted: no Mark contacted');
+  expect(names('Decide')).toEqual(['Owner: Unassigned ▾', 'Next: Meeting booked', '↓ Deprioritize…']);
   expect(names('Learn')).toEqual(['Research', 'Check Apollo']);
-  expect(within(screen.getByRole('group', { name: 'Advance' })).getByRole('button', { name: /^Next:/ })).toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Advance' })).toBeNull();
+  unmount();
+  render(<Harness row={{ ...PARTNER, stage: 'not_started' }} />);
+  expect(names('Reach')).toEqual(['Draft email', 'Log call', 'Book meeting', 'Mark contacted']);
   expect(screen.getAllByRole('button', { name: 'Check Apollo' })).toHaveLength(1);
   expect(screen.getByRole('button', { name: 'Note' })).toHaveAttribute('aria-keyshortcuts', 'N');
   expect(screen.getByText('✦ generated · updates with stage + signals')).toBeInTheDocument();
 });
 
-test('a target advances with Promote ▾ · Not a fit; a visitor with Add to pipeline ▾ and no Book meeting / Mark contacted (no record yet)', () => {
+test('a target decides with Promote ▾ · Not a fit; a visitor with Add to pipeline ▾ and no Book meeting / Mark contacted (no record yet); an employer past Target gets They replied…; deprioritized = Bring back', () => {
   const { unmount } = render(<Harness row={TARGET} />);
-  expect(within(screen.getByRole('group', { name: 'Advance' })).getAllByRole('button').map(b => b.textContent)).toEqual(expect.arrayContaining(['Promote ▾', 'Not a fit']));
+  expect(within(screen.getByRole('group', { name: 'Decide' })).getAllByRole('button').map(b => b.textContent)).toEqual(expect.arrayContaining(['↑ Promote ▾', 'Not a fit']));
   unmount();
-  render(<Harness row={VISITOR} />);
-  expect(within(screen.getByRole('group', { name: 'Advance' })).getByRole('button', { name: 'Add to pipeline ▾' })).toBeInTheDocument();
+  const r2 = render(<Harness row={VISITOR} />);
+  expect(within(screen.getByRole('group', { name: 'Decide' })).getByRole('button', { name: 'Add to pipeline ▾' })).toBeInTheDocument();
   expect(within(screen.getByRole('group', { name: 'Reach' })).queryByRole('button', { name: 'Book meeting' })).toBeNull();
+  r2.unmount();
+  const r3 = render(<Harness row={{ type: 'employer', id: 'o1', name: 'Zz Elm', stage: 'contacted' }} />);
+  expect(within(screen.getByRole('group', { name: 'Reach' })).getByRole('button', { name: '↩ They replied…' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Mark contacted' })).toBeNull();
+  r3.unmount();
+  render(<Harness row={{ type: 'employer', id: 'o1', name: 'Zz Elm', stage: 'contacted' }} fit={{ level: 'deprioritized', reason: 'too_small' }} />);
+  expect(screen.getByRole('button', { name: 'Bring back' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: '↓ Deprioritize…' })).toBeNull();
+});
+
+test('homelover-flow-v1 F9: a live partner has Partner · Capture · Decide - Add referred client, Log referral, Book check-in, Draft email; Owner ▾ · Pause…; no Mark contacted, no Research group', () => {
+  render(<Harness row={{ ...PARTNER, stage: 'live' }} />);
+  expect(groups().map(g => g.getAttribute('aria-label'))).toEqual(['Partner', 'Capture', 'Decide']);
+  const names = g => within(screen.getByRole('group', { name: g })).getAllByRole('button').map(b => b.textContent.replace(/[NTCER]$/, ''));
+  expect(names('Partner')).toEqual(['+ Add referred client', 'Log referral', 'Book check-in', 'Draft email']);
+  expect(names('Decide')).toEqual(['Owner: Unassigned ▾', 'Pause…']);
+  expect(screen.queryByRole('button', { name: 'Mark contacted' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Log referral' }));
+  expect(screen.getByRole('group', { name: 'Log referral' })).toBeInTheDocument();
 });
 
 test('shortcuts (D3): N / T / C open the forms, E drafts, R researches - only inside the window, never from a field, an open menu or with a modifier', async () => {
@@ -76,7 +99,7 @@ test('Reach (D4): Book meeting and Mark contacted are the same writes as the ban
   goalsApi.bookMeeting.mockResolvedValue({ next_step: 'Book meeting', todo: { id: 'wg1' }, before: { next_step: null } });
   goalsApi.markContacted.mockResolvedValue({ event: { id: 'ev1' } });
   const onToast = jest.fn();
-  render(<Harness row={PARTNER} bandShown onToast={onToast} />);
+  render(<Harness row={{ ...PARTNER, stage: 'researching' }} bandShown onToast={onToast} />);
   fireEvent.click(screen.getByRole('button', { name: 'Book meeting' }));
   await waitFor(() => expect(goalsApi.bookMeeting).toHaveBeenCalledWith('b1', 'partner', 'p1', {}));
   fireEvent.click(screen.getByRole('button', { name: 'Mark contacted' }));

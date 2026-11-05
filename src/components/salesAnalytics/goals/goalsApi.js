@@ -148,7 +148,19 @@ export const goalsApi = {
   markContacted: (id, type, recordId, body = {}) => call(id, `/company/${type}/${recordId}/contacted`, { method: 'POST', body }),
   // company-progress-bar-v1 Stage 2 - the Undo of Mark contacted on a target (body = the reply's undo).
   undoContactTarget: (id, targetId, undo) => call(id, `/prospect-targets/${targetId}/contacted-undo`, { method: 'POST', body: undo }),
-  advanceStage: (id, type, recordId, expect) => call(id, `/company/${type}/${recordId}/advance`, { method: 'POST', body: { expect } }),
+  // homelover-flow-v1 F7: to = an explicit forward stage (employers); default = the next one.
+  advanceStage: (id, type, recordId, expect, to = null) => call(id, `/company/${type}/${recordId}/advance`, { method: 'POST', body: { expect, ...(to ? { to } : {}) } }),
+  // homelover-flow-v1 Stage 1 routes - Fit (F2 / F3), Deprioritize (F4), Reached (F6), reply rules (F7), the flow Activity + Undo.
+  fitOf: (id, type, recordId) => call(id, `/fit/${type}/${recordId}`),
+  reach: (id, type, recordId) => call(id, `/reach/${type}/${recordId}`),
+  flowEvents: (id, type, recordId) => call(id, `/flow/${type}/${recordId}`).then(d => d.events),
+  undoFlow: (id, eventId) => call(id, `/flow/${eventId}/undo`, { method: 'POST' }),
+  deprioritize: (id, type, recordId, body) => call(id, `/company/${type}/${recordId}/deprioritize`, { method: 'POST', body }),
+  bringBack: (id, type, recordId) => call(id, `/company/${type}/${recordId}/bring-back`, { method: 'POST' }),
+  setFit: (id, type, recordId, level) => call(id, `/company/${type}/${recordId}/fit`, { method: 'PATCH', body: { level } }),
+  theyReplied: (id, recordId, body) => call(id, `/company/employer/${recordId}/they-replied`, { method: 'POST', body }),
+  replySuggestion: (id, recordId) => call(id, `/company/employer/${recordId}/reply-suggestion`),
+  setMemberColor: (id, userId, color) => call(id, `/members/${userId}/color`, { method: 'PATCH', body: { color } }),
   notNow: (id, type, recordId, body = {}) => call(id, `/company/${type}/${recordId}/not-now`, { method: 'POST', body }),
   // lead-source-v1 - type = partner | employer | target. source = { source, history }; edit body = the source fields +
   // expect_set_at (409 when it moved); source_kind: null with every field empty clears it (Undo of a first pick).

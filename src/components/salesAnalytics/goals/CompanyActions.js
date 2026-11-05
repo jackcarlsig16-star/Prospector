@@ -5,18 +5,22 @@ import { goalsApi } from './goalsApi';
 import { labelStyle, inputStyle, ErrorNote } from './goalsUi';
 import { apolloLine } from './partners/PartnerResearch';
 import { needsRecord, addAsk, nextStage, stageLabel, playbookPrompt, mondayOf } from './companyPanelModel';
-import { boardStage } from '../../../constants/pipelineBoard';
-import { TOUCH_STATUSES } from '../../../constants/partnerPipeline';
 import { updateOpportunity } from '../pipelineApi';
 import OwnerPicker from './OwnerPicker';
 import { bookMeeting, markContacted } from './companyReach';
-import { IconPencil, IconMail, IconCalendar, IconCheck, IconSearch, IconPeople, IconArrowRight } from '../../../ui/icons';
+import { DeprioritizeForm, TheyRepliedForm } from './FlowSheets';
+import { ownerChip, isLivePartner } from './flowModel';
+import { IconPencil, IconMail, IconCalendar, IconCheck, IconSearch, IconPeople, IconPhone, IconPause, IconLink, IconArrowRight } from '../../../ui/icons';
 
-// company-panel-v3 A / D3 / D4 - the same handlers in four labelled verb groups that never split when they wrap:
-// CAPTURE Note (N) · To-do (T) · Contact (C) | REACH Draft email (E) · Book meeting · Mark contacted (records only; the
-// Interest band keeps its shortcut copies) | LEARN Research (R) · Check Apollo | ADVANCE Next / Promote · Not a fit /
-// Add to pipeline. The single-key shortcuts listen on the window element only (no global handler), never while focus is
-// in a field or a popover / menu is open, never with a modifier.
+// homelover-flow-v1 F5 / F8 / F9 - the Actions row in four labelled verb groups that follow the flow (mockup A):
+// REACH Draft email (E) · Log call · Book meeting · Mark contacted (only while behind Contacted) · They replied…
+// (employers past Target) | DECIDE Owner ▾ · Promote ▾ / Not a fit (targets) · Add to pipeline ▾ (visitor / Apollo)
+// · Deprioritize… / Bring back | CAPTURE Note (N) · To-do (T) · Contact (C) | LEARN Research (R) · Check Apollo.
+// A live partner (mockup C): PARTNER Add referred client · Log referral · Book check-in · Draft email | CAPTURE |
+// DECIDE Owner ▾ · Pause…. Buttons that don't apply to the state are hidden, not greyed. The stage's own primary lives
+// on the Progress bar. The single-key shortcuts listen on the window element only (no global handler), never while
+// focus is in a field or a popover / menu is open, never with a modifier. Every write offers Undo where one exists.
+// Draft email never sends. Members only. The open form is owned by the panel so a card's "+ Add" link can open it.
 const SHORTCUT_KEYS = { n: 'note', t: 'todo', c: 'contact', e: 'draft', r: 'research' };
 const kbd = k => <kbd aria-hidden="true" style={{ font: "10.5px 'Geist Mono', ui-monospace, monospace", color: SA.muted, border: `1px solid ${SA.border}`, borderRadius: 4, padding: '0 4px', marginLeft: 2 }}>{k}</kbd>;
 function Group({ id, label, icon, children }) {
@@ -28,20 +32,14 @@ function Group({ id, label, icon, children }) {
   );
 }
 const divider = <span aria-hidden="true" style={{ width: 1, height: 46, background: SA.border, alignSelf: 'flex-end', margin: '0 4px' }} />;
-// company-panel-v2 L4 - the labelled Actions row (ombre: it is generated from
-// the stage and the signals): Add note · Add to-do · Add contact · Draft email
-// in Claude · Research · Check Apollo · | · Next: <verb>. Targets add Promote ▾
-// and Not a fit; visitor / Apollo-only rows get Add to pipeline ▾ (an action
-// that needs a record asks "Add <X> as a target?" first; Draft email asks
-// employer or partner instead, so the target gets the right kind). Every write offers
-// Undo where one exists. Draft email never sends. Members only. The open
-// form is owned by the panel so a card's "+ Add" link can open it.
 const LINK_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target' };
 const field = { ...inputStyle, height: 32, fontSize: 13, padding: '0 8px' };
 const btn = 'ui-btn ui-btn--secondary';
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
+// Stages behind Contacted: Mark contacted shows; at or past it, it is gone (F8).
+const behindContacted = (row, stage) => row.type === 'target' || (row.type === 'employer' && (stage || row.stage) === 'target') || (row.type === 'partner' && ['not_started', 'researching', 'first_email_drafted'].includes(stage || row.stage || 'not_started'));
 
-export default function CompanyActions({ businessId, row, members, meId, form, setForm, bandShown, onPatch, onChanged, onToast, onConvert, onClose }) {
+export default function CompanyActions({ businessId, row, members, meId, form, setForm, bandShown, fit = null, suggestion = null, stage = null, actionsRef = null, onPatch, onChanged, onToast, onConvert, onClose, onOwner, onAddClient }) {
   const [busy, setBusy] = useState('');
   const rootRef = useRef(null);
   const keysRef = useRef(null); // the latest shortcut handler, set below once the actions exist
@@ -66,6 +64,9 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
   }, []);
   const set = (k, v) => setDraft(d => ({ ...d, [k]: v }));
   const open = f => { setForm(form === f ? null : f); setDraft({}); setError(''); };
+  const current = stage || row.stage;
+  const live = isLivePartner(row);
+  const deprioritized = fit?.level === 'deprioritized';
 
   const act = async (what, fn) => {
     setBusy(what); setError('');
@@ -115,24 +116,6 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
     const a = await goalsApi.checkCompanyApollo(businessId, rec.type, rec.id);
     onChanged(); onToast({ text: apolloLine(a, rec.name) });
   });
-  const nextStep = to => act('stage', async () => {
-    const before = row.stage;
-    let undo;
-    if (row.type === 'partner') {
-      const { event } = await goalsApi.partnerSignal(businessId, row.id, { type: 'status', to, expect: before });
-      undo = () => goalsApi.partnerUndo(businessId, row.id, event.id);
-    } else if (row.type === 'employer') {
-      await updateOpportunity(businessId, row.id, { stage: to });
-      undo = () => updateOpportunity(businessId, row.id, { stage: before, allow_backward: true });
-    } else {
-      await goalsApi.updateTarget(businessId, row.id, { status: to });
-      undo = () => goalsApi.updateTarget(businessId, row.id, { status: before, allow_backward: true });
-    }
-    const patch = row.type === 'partner' ? boardStage('partner', { pipeline_status: to, category: row.category }) : row.type === 'employer' ? boardStage('employer', { stage: to }) : boardStage('target', { status: to });
-    if (row.type === 'partner' && TOUCH_STATUSES.includes(to)) patch.last_touch_at = new Date().toISOString();
-    onPatch(patch); onChanged();
-    onToast({ text: `${row.name}: ${stageLabel(row, to)}`, undo: async () => { await undo(); onChanged(); } });
-  });
   const notAFit = () => act('reject', async () => {
     const r = await goalsApi.rejectTarget(businessId, row.id);
     onChanged(); onClose();
@@ -151,47 +134,126 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
     onConvert(rec, !!r.already);
     onToast({ text: r.already ? `${rec.name} is already in the pipeline as a ${rec.type}` : `${rec.name} added as a ${rec.type}` });
   });
+  // F7: the "Mark lost?" suggestion - the Lost lane, Undo brings the stage back.
+  const markLost = () => act('lost', async () => {
+    const before = current;
+    await updateOpportunity(businessId, row.id, { stage: 'lost' });
+    onPatch({ stage: 'lost' }); onChanged();
+    onToast({ text: `${row.name}: Lost`, undo: async () => { await updateOpportunity(businessId, row.id, { stage: before, allow_backward: true }); onPatch({ stage: before }); onChanged(); } });
+  });
+  // DECIDE "Next: <stage>" (the mockup's Promote position): the record's one forward step, same writes as before.
+  const nextStep = to => act('stage', async () => {
+    const before = row.stage;
+    let undo;
+    if (row.type === 'partner') {
+      const { event } = await goalsApi.partnerSignal(businessId, row.id, { type: 'status', to, expect: before });
+      undo = () => goalsApi.partnerUndo(businessId, row.id, event.id);
+    } else if (row.type === 'employer') {
+      await updateOpportunity(businessId, row.id, { stage: to });
+      undo = () => updateOpportunity(businessId, row.id, { stage: before, allow_backward: true });
+    } else {
+      await goalsApi.updateTarget(businessId, row.id, { status: to });
+      undo = () => goalsApi.updateTarget(businessId, row.id, { status: before, allow_backward: true });
+    }
+    onPatch({ stage: to, stage_label: stageLabel(row, to) }); onChanged();
+    onToast({ text: `${row.name}: ${stageLabel(row, to)}`, undo: async () => { await undo(); onChanged(); } });
+  });
+  // Employers: the next stage through advanceStage with expect (the Progress bar's own primary; here for the card's button).
+  const next = () => act('stage', async () => {
+    const r = await goalsApi.advanceStage(businessId, row.type, row.id, current);
+    onPatch({ stage: r.after }); onChanged();
+    onToast({ text: `${row.name}: moved to ${r.after}`, undo: async () => { if (row.type === 'partner') await goalsApi.partnerUndo(businessId, row.id, r.event.id); else await updateOpportunity(businessId, row.id, { stage: r.before, allow_backward: true }); onPatch({ stage: r.before }); onChanged(); } });
+  });
+  const bringBack = () => act('bring_back', async () => {
+    const r = await goalsApi.bringBack(businessId, row.type, row.id);
+    onChanged();
+    onToast({ text: `${row.name}: brought back`, undo: async () => { await goalsApi.undoFlow(businessId, r.event.id); onChanged(); } });
+  });
+  // F9: Pause… = the partner's paused lane, through applyPartnerSignal with expect; Undo = the partner undo.
+  const pause = () => act('pause', async () => {
+    if (!window.confirm(`Pause ${row.name}? It leaves the live list until resumed.`)) return;
+    const { event } = await goalsApi.partnerSignal(businessId, row.id, { type: 'deprioritize', expect: current });
+    onPatch({ stage: 'paused' }); onChanged();
+    onToast({ text: `${row.name}: paused`, undo: async () => { await goalsApi.partnerUndo(businessId, row.id, event.id); onPatch({ stage: current }); onChanged(); } });
+  });
+  // F9: Log referral = a new target with this partner as its source.
+  const logReferral = () => act('referral', async () => {
+    const r = await goalsApi.createTarget(businessId, { name: draft.company.trim(), kind: draft.kind || 'employer' });
+    const rec = r.created || r.already;
+    if (r.created) await goalsApi.editSource(businessId, 'target', rec.id, { source_kind: 'partner_referral', source_partner_id: row.id, source_person: draft.person?.trim() || null });
+    setForm(null); onChanged();
+    onToast({ text: r.created ? `${rec.name} added as a target · referred by ${row.name}` : `${rec.name} is already in the pipeline - set its Source there` });
+  });
 
-  const reach = (what, fn) => act(what, () => fn({ businessId, row, onChanged, onToast, onConvert }));
-  const next = nextStage(row);
+  const reach = (what, fn, extra = {}) => act(what, () => fn({ businessId, row, onChanged, onToast, onConvert, ...extra }));
   const b = what => busy === what;
-  const nextClass = bandShown ? btn : 'ui-btn ui-btn--primary';
   const draftClick = () => (needsRecord(row.type) ? open('draft-kind') : draftEmail());
   keysRef.current = what => (what === 'draft' ? draftClick() : what === 'research' ? research() : open(what));
-  const advance = next || needsRecord(row.type) || row.type === 'target';
+  if (actionsRef) actionsRef.current = { draft: draftClick, research, apollo: checkApollo, book: () => reach('book', bookMeeting), markLost, next };
+  const nxt = needsRecord(row.type) || live ? null : nextStage(row);
+  const oc = ownerChip({ ownerUserId: row.owner_user_id, ownerTeam: row.owner_team, coOwnerName: row.co_owner_name, members, meId });
+  const ownerBtn = <button type="button" className={btn} aria-haspopup="menu" onClick={onOwner} title="Change the owner (partners through Assign, never a stage move)"><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: oc.dashed ? 'transparent' : oc.color, border: oc.dashed ? `1.5px dashed ${oc.color}` : 'none' }} />Owner: {oc.word} ▾</button>;
+  const deprioritizeBtn = deprioritized
+    ? <button type="button" className={btn} disabled={b('bring_back')} onClick={bringBack}>{b('bring_back') ? 'Saving…' : 'Bring back'}</button>
+    : <button type="button" className="ui-btn ui-btn--danger" aria-expanded={form === 'deprioritize'} onClick={() => open('deprioritize')} title="With a reason. The stage stays; it leaves the Map's default view and the Due lists.">↓ Deprioritize…</button>;
+  const capture = (
+    <Group id="capture" label="Capture" icon={<IconPencil size={12} />}>
+      <button type="button" className={btn} aria-expanded={form === 'note'} aria-keyshortcuts="N" onClick={() => open('note')}>Note{kbd('N')}</button>
+      <button type="button" className={btn} aria-expanded={form === 'todo'} aria-keyshortcuts="T" onClick={() => open('todo')}>To-do{kbd('T')}</button>
+      <button type="button" className={btn} aria-expanded={form === 'contact'} aria-keyshortcuts="C" onClick={() => open('contact')}>Contact{kbd('C')}</button>
+    </Group>
+  );
+  const learn = (
+    <Group id="learn" label="Learn" icon={<IconSearch size={12} />}>
+      <button type="button" className={btn} disabled={b('research')} aria-keyshortcuts="R" onClick={research} title="One Claude call with up to 3 web searches; 5 per company per day"><IconSearch size={13} />{b('research') ? 'Starting…' : 'Research'}{kbd('R')}</button>
+      <button type="button" className={btn} disabled={b('apollo')} onClick={checkApollo} title="Reads Apollo's people at this company (no credits, at most 2 calls)"><IconPeople size={13} />{b('apollo') ? 'Checking…' : 'Check Apollo'}</button>
+    </Group>
+  );
+  const draftBtn = <button type="button" className={btn} disabled={b('draft')} aria-keyshortcuts="E" aria-expanded={needsRecord(row.type) ? form === 'draft-kind' : undefined} onClick={draftClick} title="Copies the record + a short playbook prompt for Claude. Never sends."><IconMail size={13} />{b('draft') ? 'Copying…' : 'Draft email'}{kbd('E')}</button>;
+  const groups = live ? (
+    <>
+      <Group id="partner" label="Partner" icon={<IconLink size={12} />}>
+        <button type="button" className={btn} onClick={onAddClient}>+ Add referred client</button>
+        <button type="button" className={btn} aria-expanded={form === 'referral'} onClick={() => open('referral')}><IconLink size={13} />Log referral</button>
+        <button type="button" className={btn} disabled={b('book')} onClick={() => reach('book', bookMeeting)} title="Sets the next step and adds a to-do due today. No calendar write."><IconCalendar size={13} />{b('book') ? 'Saving…' : 'Book check-in'}</button>
+        {draftBtn}
+      </Group>
+      {divider}{capture}{divider}
+      <Group id="decide" label="Decide" icon={<IconCheck size={12} />}>
+        {ownerBtn}
+        <button type="button" className={btn} disabled={b('pause')} onClick={pause}><IconPause size={13} />{b('pause') ? 'Saving…' : 'Pause…'}</button>
+      </Group>
+    </>
+  ) : (
+    <>
+      <Group id="reach" label="Reach" icon={<IconMail size={12} />}>
+        {draftBtn}
+        {!needsRecord(row.type) && <>
+          <button type="button" className={btn} disabled={b('call')} onClick={() => reach('call', markContacted, { touchType: 'call' })} title="Logs a call as a touch / done to-do; moves a record that is behind Contacted"><IconPhone size={13} />{b('call') ? 'Saving…' : 'Log call'}</button>
+          <button type="button" className={btn} disabled={b('book')} onClick={() => reach('book', bookMeeting)} title="Sets the next step and adds a to-do due today. No calendar write."><IconCalendar size={13} />{b('book') ? 'Saving…' : 'Book meeting'}</button>
+          {behindContacted(row, current) && <button type="button" className={btn} disabled={b('contacted')} onClick={() => reach('contacted', markContacted)} title={row.type === 'partner' ? 'Logs an email touch. Not contacted yet = moves to Sent.' : row.type === 'employer' ? 'Logs a done to-do. At Target = moves to Contacted.' : 'Adds it to the pipeline as an employer at Contacted (Undo removes it).'}><IconCheck size={13} />{b('contacted') ? 'Saving…' : 'Mark contacted'}</button>}
+          {row.type === 'employer' && !['target', 'lost'].includes(current) && <button type="button" className={btn} aria-expanded={form === 'they-replied'} onClick={() => open('they-replied')} title="What did they say? Moves the stage by its context, never back.">↩ They replied…</button>}
+        </>}
+      </Group>
+      {divider}
+      <Group id="decide" label="Decide" icon={<IconCheck size={12} />}>
+        {!needsRecord(row.type) && ownerBtn}
+        {nxt && <button type="button" className={btn} disabled={b('stage')} onClick={() => nextStep(nxt.to)}><IconArrowRight size={13} />{b('stage') ? 'Saving…' : `Next: ${nxt.label}`}</button>}
+        {needsRecord(row.type) && <button type="button" className={bandShown ? btn : 'ui-btn ui-btn--primary'} aria-expanded={form === 'add'} onClick={() => open('add')}>Add to pipeline ▾</button>}
+        {row.type === 'target' && <>
+          <button type="button" className={btn} aria-expanded={form === 'promote'} disabled={b('promote')} onClick={() => open('promote')}>↑ Promote ▾</button>
+          <button type="button" className="ui-btn ui-btn--danger" disabled={b('reject')} onClick={notAFit}>Not a fit</button>
+        </>}
+        {row.type !== 'apollo' && deprioritizeBtn}
+      </Group>
+      {divider}{capture}{divider}{learn}
+    </>
+  );
   return (
     <section ref={rootRef} aria-label="Actions" data-actions-row style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: '10px 6px', margin: '0 -8px', padding: 8, borderRadius: 10, background: `linear-gradient(90deg, color-mix(in srgb, ${ui.generatedFrom} 12%, ${SA.surface}) 0%, color-mix(in srgb, ${ui.generatedTo} 12%, ${SA.surface}) 100%)`, boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${ui.generatedTo} 35%, ${SA.surface})` }}>
         <span className="ui-group-label" style={{ width: 72, flex: 'none', alignSelf: 'center' }}>Actions</span>
-        <Group id="capture" label="Capture" icon={<IconPencil size={12} />}>
-          <button type="button" className={btn} aria-expanded={form === 'note'} aria-keyshortcuts="N" onClick={() => open('note')}>Note{kbd('N')}</button>
-          <button type="button" className={btn} aria-expanded={form === 'todo'} aria-keyshortcuts="T" onClick={() => open('todo')}>To-do{kbd('T')}</button>
-          <button type="button" className={btn} aria-expanded={form === 'contact'} aria-keyshortcuts="C" onClick={() => open('contact')}>Contact{kbd('C')}</button>
-        </Group>
-        {divider}
-        <Group id="reach" label="Reach" icon={<IconMail size={12} />}>
-          <button type="button" className={btn} disabled={b('draft')} aria-keyshortcuts="E" aria-expanded={needsRecord(row.type) ? form === 'draft-kind' : undefined} onClick={draftClick} title="Copies the record + a short playbook prompt for Claude. Never sends."><IconMail size={13} />{b('draft') ? 'Copying…' : 'Draft email'}{kbd('E')}</button>
-          {!needsRecord(row.type) && <>
-            <button type="button" className={btn} disabled={b('book')} onClick={() => reach('book', bookMeeting)} title="Sets the next step and adds a to-do due today. No calendar write."><IconCalendar size={13} />{b('book') ? 'Saving…' : 'Book meeting'}</button>
-            <button type="button" className={btn} disabled={b('contacted')} onClick={() => reach('contacted', markContacted)} title={row.type === 'partner' ? 'Logs an email touch. Not contacted yet = moves to Sent.' : row.type === 'employer' ? 'Logs a done to-do. At Target = moves to Contacted.' : 'Adds it to the pipeline as an employer at Contacted (Undo removes it).'}><IconCheck size={13} />{b('contacted') ? 'Saving…' : 'Mark contacted'}</button>
-          </>}
-        </Group>
-        {divider}
-        <Group id="learn" label="Learn" icon={<IconSearch size={12} />}>
-          <button type="button" className={btn} disabled={b('research')} aria-keyshortcuts="R" onClick={research} title="One Claude call with up to 3 web searches; 5 per company per day"><IconSearch size={13} />{b('research') ? 'Starting…' : 'Research'}{kbd('R')}</button>
-          <button type="button" className={btn} disabled={b('apollo')} onClick={checkApollo} title="Reads Apollo's people at this company (no credits, at most 2 calls)"><IconPeople size={13} />{b('apollo') ? 'Checking…' : 'Check Apollo'}</button>
-        </Group>
-        {advance && <>
-          {divider}
-          <Group id="advance" label="Advance" icon={<IconArrowRight size={12} />}>
-            {next && <button type="button" className={nextClass} disabled={b('stage')} onClick={() => nextStep(next.to)} style={bandShown ? { borderColor: SA.borderStrong } : undefined}><IconArrowRight size={13} />{b('stage') ? 'Saving…' : `Next: ${next.label}`}</button>}
-            {needsRecord(row.type) && <button type="button" className={nextClass} aria-expanded={form === 'add'} onClick={() => open('add')}>Add to pipeline ▾</button>}
-            {row.type === 'target' && <>
-              <button type="button" className={btn} aria-expanded={form === 'promote'} disabled={b('promote')} onClick={() => open('promote')}>Promote ▾</button>
-              <button type="button" className="ui-btn ui-btn--danger" disabled={b('reject')} onClick={notAFit}>Not a fit</button>
-            </>}
-          </Group>
-        </>}
+        {groups}
         <span style={{ flex: 1 }} />
         <span style={{ fontFamily: "'Geist Mono', ui-monospace, monospace", fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: ui.generatedTo, whiteSpace: 'nowrap' }}>✦ generated · updates with stage + signals</span>
       </div>
@@ -252,6 +314,16 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
           ))}
         </div>
       )}
+      {form === 'referral' && (
+        <div role="group" aria-label="Log referral" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input aria-label="Referred company" autoFocus value={draft.company || ''} onChange={e => set('company', e.target.value)} placeholder="Company they referred" className="ui-input" style={{ ...field, flex: '1 1 200px', width: 'auto' }} onKeyDown={e => { if (e.key === 'Enter' && draft.company?.trim()) logReferral(); }} />
+          <select aria-label="Referred as" value={draft.kind || 'employer'} onChange={e => set('kind', e.target.value)} className="ui-input" style={{ ...field, width: 'auto' }}><option value="employer">Employer target</option><option value="partner">Partner target</option></select>
+          <input aria-label="Referred by (person)" value={draft.person || ''} onChange={e => set('person', e.target.value)} placeholder="Who at the partner (optional)" className="ui-input" style={{ ...field, flex: '1 1 160px', width: 'auto' }} />
+          <button type="button" className="ui-btn ui-btn--primary" disabled={!draft.company?.trim() || b('referral')} onClick={logReferral}>{b('referral') ? 'Saving…' : 'Add target'}</button>
+        </div>
+      )}
+      {form === 'deprioritize' && <DeprioritizeForm businessId={businessId} row={row} expect={needsRecord(row.type) ? null : current} onDone={() => setForm(null)} onCancel={() => setForm(null)} onToast={onToast} onChanged={onChanged} />}
+      {form === 'they-replied' && <TheyRepliedForm businessId={businessId} row={row} expect={current} onDone={() => setForm(null)} onCancel={() => setForm(null)} onToast={onToast} onChanged={onChanged} onPatch={onPatch} />}
       {error && <ErrorNote message={error} />}
     </section>
   );

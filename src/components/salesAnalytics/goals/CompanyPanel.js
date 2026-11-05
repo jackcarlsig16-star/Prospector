@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { SA, SA_TYPE, SA_THEME_CLASS } from '../theme';
 import { goalsApi } from './goalsApi';
@@ -17,6 +17,7 @@ const mdShort = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { mo
 import { needsRecord } from './companyPanelModel';
 import { SourceHistoryCard } from './LeadSource';
 import NetworkCard from './NetworkCard';
+import NetworkTree from './NetworkTree';
 import { ClientCard, FilesCard, MakeClientForm } from './ClientParts';
 import SidePanel from '../SidePanel';
 import CompanyStepsStrip from './CompanyStepsStrip';
@@ -24,30 +25,51 @@ import CompanyProgress from './CompanyProgress';
 import IntentFact from './IntentFact';
 import JourneyLine from './JourneyLine';
 import { Link } from '../../../ui/Button';
+import { KindStageChip, OwnerChip, FitChip, DueChip, LiveChip } from './FlowChips';
+import { FitMenu, OwnerMenu } from './FlowSheets';
+import FitCard from './FitRadar';
+import { NextStepCard, ReachedCard, OverviewCard, CameFromCard } from './FlowCards';
+import { primaryAction, liveSince, isLivePartner } from './flowModel';
+import useCompanyEdits from './companyEdits';
 
-// company-panel-v2 - the one company window for every Pipeline row (partner,
-// employer, target, Apollo-only, visitor). Pinned head: L1 title row (name ·
-// type · ★ Top · site · ✕), L2 the seven labelled facts, the Progress bar (company-progress-bar-v1), L3 the Interest band
-// while a signal is fresh, L4 the labelled Actions row, L5 the Edit row.
-// Scrolling body (L6): two columns from 980 px, one below. L7 footer. Viewers
-// (L8) see facts and body only. Every write reloads the board (onChanged) and
-// this body (version). `row` is the board row; the body is GET goals/company.
+// company-panel-v2 - the one company window for every Pipeline row (partner, employer, target, Apollo-only, visitor).
+// homelover-flow-v1 Stage 2 (mockups A + C): an employer / target card reads top to bottom - title row with the F1
+// chips (kind · stage, owner in the member's color, Fit, Intent, Due, site), Next step + Reached, Progress, Fit at a
+// glance + Overview, the Actions row (Reach · Decide · Capture · Learn), then the body cards. A live partner reads:
+// title row (Partner · category, Live since, owner, Intent, site), Next step (+ Add a client they referred) + Came
+// from, Network + the network tree, partner actions; no Setup strip, no Mark contacted, no prospecting bar. Other rows
+// keep the v3 layout (facts row, Progress, Setup strip). Buttons that don't apply to a state are hidden, not greyed.
+// Every write reloads the board (onChanged) and this body (version). `row` is the board row; the body is GET goals/company.
 const POLL_MS = 3000;
 const btn = 'ui-btn ui-btn--secondary';
+const RECORD = ['partner', 'employer', 'target'];
 
 export default function CompanyPanel({ businessId, row, canEdit, members, meId, onStar, onPatch, onChanged, onToast, onConvert, onClose, onOpenFull, onOpenPeople, initialSection = null }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState('');
   const [version, setVersion] = useState(0);
-  const [form, setForm] = useState(null); // 'note' | 'todo' | 'contact' | 'promote' | 'add' | 'draft-kind'
+  const [form, setForm] = useState(null); // 'note' | 'todo' | 'contact' | 'promote' | 'add' | 'draft-kind' | 'deprioritize' | 'they-replied' | 'referral'
   const [starBusy, setStarBusy] = useState(false);
   const [source, setSource] = useState(null); // lead-source-v1: GET goals/source -> { source, history, journey (brad-attribution-v1) }
   const [editPanel, setEditPanel] = useState(null); // company-panel-v3 D2: 'jump' | 'source' | 'domain' under the facts
   const [links, setLinks] = useState([]); // intake-insights-v1: channel links naming this company
   const [clientSheet, setClientSheet] = useState(null); // homelover-clients-v1: { preset? } = the Make client sheet
+  // homelover-flow-v1: the Stage 1 reads (GET goals/fit · goals/reach · goals/flow · reply-suggestion) and the chip menus.
+  const [fit, setFit] = useState(null);
+  const [reach, setReach] = useState(null);
+  const [flow, setFlow] = useState([]);
+  const [suggestion, setSuggestion] = useState(null);
+  const [network, setNetwork] = useState(null);
+  const [menu, setMenu] = useState(null); // 'owner' | 'fit'
+  const [busy, setBusy] = useState('');
+  const actionsRef = useRef({});
+  const edits = useCompanyEdits({ businessId, row, members, onPatch, onChanged: () => setVersion(v => v + 1), onToast });
   // L6 (REVISABLE 980): two columns only when the window gets its full 1040 px, so a 1000 px viewport stacks.
   const wide = useMediaQuery('(min-width: 1040px)');
   const running = detail?.research?.runs?.[0]?.status === 'running';
+  const isRecord = RECORD.includes(row.type);
+  const live = isLivePartner(row);
+  const flowLayout = row.type === 'employer' || row.type === 'target';
   useEffect(() => {
     let live = true;
     goalsApi.companyDetail(businessId, row.type, row.id).then(d => { if (live) { setDetail(d); setError(''); } }).catch(e => live && setError(e.message));
@@ -67,17 +89,35 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
     return () => { live = false; };
   }, [businessId, row.type, row.id, version, sourced]);
   useEffect(() => {
+    if (!isRecord) return undefined;
+    let alive = true;
+    goalsApi.fitOf(businessId, row.type, row.id).then(d => alive && setFit(d)).catch(() => alive && setFit(null));
+    goalsApi.reach(businessId, row.type, row.id).then(d => alive && setReach(d)).catch(() => alive && setReach({ known: 0, reached: 0, buyers: 0, buyers_reached: 0, buyers_not_yet: 0, replies: 0, people: [] }));
+    goalsApi.flowEvents(businessId, row.type, row.id).then(d => alive && setFlow(d)).catch(() => alive && setFlow([]));
+    if (row.type === 'employer' && row.stage && row.stage !== 'target') goalsApi.replySuggestion(businessId, row.id).then(d => alive && setSuggestion(d.suggestion || null)).catch(() => alive && setSuggestion(null));
+    else setSuggestion(null);
+    if (live) goalsApi.referredBy(businessId, row.id).then(d => alive && setNetwork(d.network || null)).catch(() => alive && setNetwork(null));
+    return () => { alive = false; };
+  }, [businessId, row.type, row.id, row.stage, version, isRecord, live]);
+  useEffect(() => {
     if (!running) return undefined;
     const t = setInterval(() => setVersion(v => v + 1), POLL_MS);
     return () => clearInterval(t);
   }, [running]);
+  useEffect(() => {
+    if (!menu) return undefined;
+    const close = e => { if (!e.target.closest?.('[data-chip-menu]')) setMenu(null); };
+    const esc = e => { if (e.key === 'Escape') { e.stopPropagation(); setMenu(null); } };
+    document.addEventListener('pointerdown', close); document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', esc); };
+  }, [menu]);
   const changed = useCallback(() => { setVersion(v => v + 1); onChanged(); }, [onChanged]);
   const star = async () => { setStarBusy(true); try { await onStar(); } catch (e) { onToast({ text: e.message }); } finally { setStarBusy(false); } };
 
   const lookup = memberLookup(members);
   const facts = factsFor(row, detail?.record, sourced && source ? source.source : undefined);
   // visitor-to-record-v1 V5: a record that visited the site says so in its facts (first visit · visits / 7 d · pages).
-  const web = (row.type === 'employer' || row.type === 'target' || row.type === 'partner') && detail?.visits?.length ? detail.visits[0] : null;
+  const web = isRecord && detail?.visits?.length ? detail.visits[0] : null;
   if (web) facts.push(['Website', `first visit ${web.first_visit ? mdShort(web.first_visit) : '—'} · ${web.visits_7d ?? 0} visit${web.visits_7d === 1 ? '' : 's'} / 7 d${(web.top_paths || []).length ? ` · ${web.top_paths.slice(0, 2).map(x => x.path || x).join(', ')}` : ''}`, false]);
   const site = detail?.record?.site || null;
   const bandShown = !!detail?.interest?.show;
@@ -86,48 +126,136 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
     if (id !== 'link') { setEditPanel(p => (p === id ? null : id)); return; }
     try { await navigator.clipboard.writeText(companyWindowUrl(row)); onToast({ text: `Link to ${row.name} copied` }); } catch { onToast({ text: 'Could not copy the link' }); }
   };
-  const head = (
+  const act = async (what, fn) => { setBusy(what); try { await fn(); } catch (e) { onToast({ text: e.message }); } finally { setBusy(''); } };
+  const setFitLevel = level => act('fit', async () => {
+    const r = await goalsApi.setFit(businessId, row.type, row.id, level);
+    setMenu(null); changed();
+    if (r.event) onToast({ text: `${row.name}: fit ${level || 'cleared'}`, undo: async () => { await goalsApi.undoFlow(businessId, r.event.id); changed(); } });
+  });
+  const bringBack = () => act('bring_back', async () => {
+    const r = await goalsApi.bringBack(businessId, row.type, row.id);
+    setMenu(null); changed();
+    onToast({ text: `${row.name}: brought back`, undo: async () => { await goalsApi.undoFlow(businessId, r.event.id); changed(); } });
+  });
+  const pickOwner = userId => act('owner', async () => {
+    if (await edits.changeOwner(userId)) { setMenu(null); onPatch({ owner_user_id: userId || null, owner: members.find(m => m.user_id === userId)?.name.split(' ')[0] || null }); onChanged(); }
+  });
+  const primary = primaryAction({ row, fit, suggestion });
+  const runPrimary = p => {
+    if (p.id === 'bring_back') return bringBack();
+    if (p.id === 'add_client') return setClientSheet({ preset: { source_kind: 'partner_referral', source_partner_id: row.id } });
+    if (p.id === 'make_client') return setClientSheet({});
+    if (p.id === 'they_replied') return setForm(f => (f === 'they-replied' ? null : 'they-replied'));
+    const fn = actionsRef.current[{ draft: 'draft', follow_up: 'draft', book: 'book', mark_lost: 'markLost', next: 'next', research: 'research' }[p.id]];
+    return fn ? fn() : undefined;
+  };
+  const research = detail?.research?.runs?.find(r => r.status === 'done')?.result || null;
+  const chipMenus = canEdit && isRecord && (
     <>
-      <div data-company-panel={row.type} style={{ display: 'flex', alignItems: 'center', gap: '8px 12px', flexWrap: 'wrap' }}>
-        <h2 style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: SA.text, overflowWrap: 'anywhere', minWidth: 0 }}>{row.name}</h2>
-        <TypeChip row={row} style={{ height: 24 }} />
-        {canEdit && (row.type === 'partner' || row.type === 'employer') && (
-          <button type="button" className="ui-btn ui-btn--tertiary" aria-pressed={row.top} disabled={starBusy} onClick={star} style={{ height: 28, padding: '0 8px', fontSize: 12, color: row.top ? SA.warn : undefined }}><IconStar size={13} fill={row.top ? 'currentColor' : 'none'} />Top</button>
-        )}
-        {!canEdit && row.top && <span aria-label="Top" style={{ color: SA.warn, fontSize: 13 }}>★ Top</span>}
-        {site?.domain && <Link href={`https://${site.domain}`} target="_blank" rel="noreferrer" style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 4 }}>{site.domain}<IconExternal size={12} /></Link>}
-        {!needsRecord(row.type) && <IntentFact businessId={businessId} row={row} canEdit={canEdit} version={version} compact />}
-        <span style={{ flex: 1 }} />
-        {canEdit && !needsRecord(row.type) && <MoreMenu row={row} canEdit onPick={pickMore} />}
-        <button type="button" aria-label="Close panel" onClick={onClose} className="ui-btn ui-btn--tertiary" style={{ width: 32, padding: 0 }}><IconClose /></button>
-      </div>
-      <CompanyFacts businessId={businessId} row={row} record={detail?.record} facts={facts} canEdit={canEdit} members={members} source={sourced && source ? source.source : null}
-        panel={editPanel} setPanel={setEditPanel} onPatch={onPatch} onChanged={changed} onToast={onToast} />
-      {sourced && source?.journey && <JourneyLine businessId={businessId} row={row} journey={source.journey} source={source.source} canEdit={canEdit} onMarked={() => setVersion(v => v + 1)} onToast={onToast} />}
-      {detail && !needsRecord(row.type) && <CompanyProgress businessId={businessId} row={row} detail={detail} canEdit={canEdit} onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} />}
-      {detail?.steps && <CompanyStepsStrip businessId={businessId} row={row} detail={detail} canEdit={canEdit} members={members} onChanged={changed} onConvert={onConvert} onToast={onToast} setForm={setForm} />}
-      {bandShown && <InterestBand businessId={businessId} row={row} interest={detail.interest} canEdit={canEdit} onChanged={changed} onToast={onToast} onConvert={onConvert} />}
-      {canEdit
-        ? <CompanyActions businessId={businessId} row={row} members={members} meId={meId} form={form} setForm={setForm} bandShown={bandShown || !!detail?.steps?.next} onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} onClose={onClose} />
-        : <p style={{ ...SA_TYPE.body, fontSize: 12, color: SA.muted, margin: 0 }}>You have view access, so this is read-only.</p>}
+      <span data-chip-menu style={{ position: 'relative' }}>
+        <OwnerChip row={row} members={members} meId={meId} onClick={() => setMenu(m => (m === 'owner' ? null : 'owner'))} expanded={menu === 'owner'} />
+        {menu === 'owner' && <OwnerMenu row={row} members={members} meId={meId} busy={busy === 'owner'} onPick={pickOwner} onClose={() => setMenu(null)} />}
+      </span>
+      {!live && <span data-chip-menu style={{ position: 'relative' }}>
+        <FitChip fit={fit} onClick={() => setMenu(m => (m === 'fit' ? null : 'fit'))} expanded={menu === 'fit'} />
+        {menu === 'fit' && <FitMenu fit={fit} busy={!!busy} onSet={setFitLevel} onDeprioritize={() => { setMenu(null); setForm('deprioritize'); }} onBringBack={bringBack} onClose={() => setMenu(null)} />}
+      </span>}
     </>
   );
-  const cardProps = { businessId, row, detail, canEdit, onForm: setForm, onChanged: changed, onToast };
+  const chipsRead = !canEdit && isRecord && <><OwnerChip row={row} members={members} meId={meId} />{!live && <FitChip fit={fit} />}</>;
+  const actions = canEdit
+    ? <CompanyActions businessId={businessId} row={row} members={members} meId={meId} form={form} setForm={setForm} bandShown={bandShown || !!detail?.steps?.next} fit={fit} suggestion={suggestion} stage={detail?.record?.stage ?? row.stage} actionsRef={actionsRef} onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} onClose={onClose} onOwner={() => setMenu('owner')} onAddClient={() => setClientSheet({ preset: { source_kind: 'partner_referral', source_partner_id: row.id } })} />
+    : <p style={{ ...SA_TYPE.body, fontSize: 12, color: SA.muted, margin: 0 }}>You have view access, so this is read-only.</p>;
+  const titleRow = (
+    <div data-company-panel={row.type} data-layout={live ? 'live-partner' : flowLayout ? 'flow' : 'classic'} style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px 10px', flexWrap: 'wrap', flex: '1 1 auto', minWidth: 0 }}>
+      <h2 style={{ margin: 0, fontSize: 22, fontWeight: 600, letterSpacing: '-0.02em', color: SA.text, overflowWrap: 'anywhere', minWidth: 0 }}>{row.name}</h2>
+      {flowLayout || live ? <KindStageChip row={row} /> : <TypeChip row={row} style={{ height: 24 }} />}
+      {live && <LiveChip since={liveSince(detail?.stage_history)} />}
+      {canEdit && (row.type === 'partner' || row.type === 'employer') && (
+        <button type="button" className="ui-btn ui-btn--tertiary" aria-pressed={row.top} disabled={starBusy} onClick={star} style={{ height: 28, padding: '0 8px', fontSize: 12, color: row.top ? SA.warn : undefined }}><IconStar size={13} fill={row.top ? 'currentColor' : 'none'} />Top</button>
+      )}
+      {!canEdit && row.top && <span aria-label="Top" style={{ color: SA.warn, fontSize: 13 }}>★ Top</span>}
+      {chipMenus}{chipsRead}
+      {!needsRecord(row.type) && <IntentFact businessId={businessId} row={row} canEdit={canEdit} version={version} compact />}
+      {isRecord && !live && <DueChip row={row} />}
+      {site?.domain && <Link href={`https://${site.domain}`} target="_blank" rel="noreferrer" style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 4 }}>{site.domain}<IconExternal size={12} /></Link>}
+    </div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
+      {canEdit && !needsRecord(row.type) && <MoreMenu row={row} canEdit onPick={pickMore} />}
+      <button type="button" aria-label="Close panel" onClick={onClose} className="ui-btn ui-btn--tertiary" style={{ width: 32, padding: 0 }}><IconClose /></button>
+    </div>
+    </div>
+  );
+  const editPanels = (
+    <CompanyFacts businessId={businessId} row={row} record={detail?.record} facts={flowLayout || live ? [] : facts} canEdit={canEdit} members={members} source={sourced && source ? source.source : null}
+      panel={editPanel} setPanel={setEditPanel} onPatch={onPatch} onChanged={changed} onToast={onToast} />
+  );
+  const setupStrip = detail?.steps && !live && (!flowLayout || row.type === 'target' || (detail?.record?.stage ?? row.stage) === 'target')
+    && <CompanyStepsStrip businessId={businessId} row={row} detail={detail} canEdit={canEdit} members={members} onChanged={changed} onConvert={onConvert} onToast={onToast} setForm={setForm} />;
+  const head = flowLayout || live
+    ? <>{titleRow}{(editPanel || (!flowLayout && !live)) && editPanels}</>
+    : (
+      <>
+        {titleRow}
+        {editPanels}
+        {sourced && source?.journey && <JourneyLine businessId={businessId} row={row} journey={source.journey} source={source.source} canEdit={canEdit} onMarked={() => setVersion(v => v + 1)} onToast={onToast} />}
+        {detail && !needsRecord(row.type) && <CompanyProgress businessId={businessId} row={row} detail={detail} canEdit={canEdit} onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} />}
+        {setupStrip}
+        {bandShown && <InterestBand businessId={businessId} row={row} interest={detail.interest} canEdit={canEdit} onChanged={changed} onToast={onToast} onConvert={onConvert} />}
+        {actions}
+      </>
+    );
+  const cardProps = { businessId, row, detail, canEdit, live, onForm: setForm, onChanged: changed, onToast };
+  const twoCol = { display: 'grid', gridTemplateColumns: wide ? '1fr 1fr' : '1fr', gap: 12, alignItems: 'start' };
+  const checkApollo = () => actionsRef.current.apollo?.();
   return (
     <>
     <CenterWindow label={row.name} head={head} onClose={onClose}>
       {error && <ErrorNote message={error} />}
       {!detail && !error && <span style={{ fontSize: 13, color: SA.muted }}>Loading…</span>}
+      {detail && flowLayout && (
+        <>
+          <div data-flow-top style={{ display: 'grid', gridTemplateColumns: wide ? '3fr 2fr' : '1fr', gap: 12, alignItems: 'stretch' }}>
+            <NextStepCard row={row} detail={detail} suggestion={suggestion} reach={reach} primary={primary} busy={busy} canEdit={canEdit} onPrimary={runPrimary} />
+            <ReachedCard reach={reach} canEdit={canEdit} busy={busy} onCheckApollo={checkApollo} />
+          </div>
+          {setupStrip}
+          <CompanyProgress businessId={businessId} row={row} detail={detail} canEdit={canEdit} flow={{ research: detail.research?.runs?.find(r => r.status === 'done') || null, owner: row.owner_user_id ? (members.find(m => m.user_id === row.owner_user_id)?.name || '').split(' ')[0] || 'owner' : null, client: detail.record?.client || null }}
+            onPatch={onPatch} onChanged={changed} onToast={onToast} onConvert={onConvert} onResearch={() => actionsRef.current.research?.()} onOwner={() => setMenu('owner')} onClient={() => setClientSheet({})} />
+          {sourced && source?.journey && <JourneyLine businessId={businessId} row={row} journey={source.journey} source={source.source} canEdit={canEdit} onMarked={() => setVersion(v => v + 1)} onToast={onToast} />}
+          <FitCard fit={fit} wide={wide} />
+          <OverviewCard row={row} record={detail.record} research={research} fit={fit} source={source?.source || null} visits={detail.visits} client={detail.record?.client || null} people={detail.people.length} canEdit={canEdit} onSetSource={() => setEditPanel(p => (p === 'source' ? null : 'source'))} />
+          {bandShown && <InterestBand businessId={businessId} row={row} interest={detail.interest} canEdit={canEdit} onChanged={changed} onToast={onToast} onConvert={onConvert} />}
+          {actions}
+        </>
+      )}
+      {detail && live && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: wide ? '3fr 2fr' : '1fr', gap: 12, alignItems: 'stretch' }}>
+            <NextStepCard row={row} detail={detail} suggestion={null} reach={reach} primary={primary} busy={busy} canEdit={canEdit} onPrimary={runPrimary} />
+            <CameFromCard network={network} canEdit={canEdit} onSetSource={() => setEditPanel(p => (p === 'source' ? null : 'source'))} />
+          </div>
+          <div style={twoCol}>
+            <NetworkCard businessId={businessId} row={row} version={version} canEdit={canEdit} onSetSource={() => setEditPanel('source')} onAddClient={null} hideCameFrom />
+            <section aria-label="Network view" data-section="network-tree" style={{ background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: 10, padding: '12px 14px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <span className="ui-group-label">Network view (sources › network)</span>
+              <NetworkTree businessId={businessId} limit={3} />
+            </section>
+          </div>
+          {actions}
+        </>
+      )}
       {detail && (
-        <div data-panel-body style={{ display: 'grid', gridTemplateColumns: wide ? '1fr 1fr' : '1fr', gap: 12, alignItems: 'start' }}>
+        <div data-panel-body style={twoCol}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
             <SignalsCard {...cardProps} onOpenPeople={onOpenPeople} />
             <TodosCard {...cardProps} />
             <WaitingCard {...cardProps} />
-            <NotesCard {...cardProps} lookup={lookup} />
+            <NotesCard {...cardProps} lookup={lookup} flow={flow} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-            {row.type === 'partner' && <NetworkCard businessId={businessId} row={row} version={version} canEdit={canEdit}
+            {row.type === 'partner' && !live && <NetworkCard businessId={businessId} row={row} version={version} canEdit={canEdit}
               onSetSource={() => setEditPanel('source')} onAddClient={() => setClientSheet({ preset: { source_kind: 'partner_referral', source_partner_id: row.id } })} />}
             {row.type === 'employer' && <ClientCard {...cardProps} onMake={() => setClientSheet({})} />}
             {row.type === 'employer' && <FilesCard businessId={businessId} row={row} canEdit={canEdit} version={version} onToast={onToast} />}

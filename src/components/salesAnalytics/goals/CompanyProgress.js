@@ -23,8 +23,28 @@ export const NEXT_VERB = {
 };
 const SIDE = { lost: 'Lost', nurture: 'Nurture', on_hold: 'On hold', paused: 'Paused' };
 
+const mdy = d => (d ? md(d) : null);
+// homelover-flow-v1 F8: the account card's bar reads target → researched → assigned → contacted → replied → meeting →
+// pilot → verbal → contract → client. Researched / Assigned / Client are facts (research run, owner, client status) with
+// their own done state; the stage steps keep the index rule. flow = { research: { created_at }, owner: 'Cyrus', client: { client_status, client_since } }.
+function flowSteps(steps, stage, flow) {
+  const first = steps.find(s => s.id === 'target');
+  const i = id => steps.findIndex(s => s.id === id);
+  const stageIdx = steps.findIndex(s => s.id === stage);
+  const cur = id => (stageIdx >= 0 && i(id) < stageIdx ? 'done' : stageIdx === i(id) ? 'now' : 'later');
+  const out = [
+    first,
+    { id: 'researched', label: 'Researched', at: mdy(flow.research?.created_at), state: flow.research ? 'done' : 'later' },
+    { id: 'assigned', label: 'Assigned', at: null, sub: flow.owner || null, state: flow.owner ? 'done' : 'later' },
+    ...steps.filter(s => ['contacted', 'responded', 'meeting', 'proposal_pilot', 'verbal', 'contract'].includes(s.id)).map(s => ({ ...s, label: s.id === 'responded' ? 'Replied' : s.id === 'proposal_pilot' ? 'Pilot' : s.label })),
+    { ...steps.find(s => s.id === 'launched'), label: 'Client', ...(flow.client?.client_status ? { state: 'done', at: mdy(flow.client.client_since) || steps.find(s => s.id === 'launched').at } : {}) },
+  ];
+  const current = out.findIndex(s => s.id === stage);
+  return { steps: out.map(s => (s.state ? s : { ...s, state: cur(s.id) })), current };
+}
+
 // -> { steps, current, side, stage, path } for the record, or null (visitor / Apollo-only rows have no deal yet).
-export function progressModel(type, stage, history = []) {
+export function progressModel(type, stage, history = [], flow = null) {
   const reached = {};
   for (const h of history) reached[h.stage === 'in_sequence' ? 'first_email_sent' : h.stage] = h.at;
   if (type === 'partner') {
@@ -35,6 +55,7 @@ export function progressModel(type, stage, history = []) {
   if (type === 'employer' || type === 'target') {
     const s = type === 'target' ? 'target' : stage || 'target';
     const steps = STAGE_ORDER.map(id => ({ id, label: STAGE_LABELS[id], at: reached[id] ? md(reached[id]) : null }));
+    if (flow) { const f = flowSteps(steps, s, flow); return { ...f, side: SIDE[s] || null, stage: s, path: 'employer', flow: true }; }
     return { steps, current: STAGE_ORDER.indexOf(s), side: SIDE[s] || null, stage: s, path: 'employer' };
   }
   return null;
@@ -47,11 +68,11 @@ export function lastTouchLine(lt, now = new Date()) {
   return ['Last touch: ' + when, lt.by, what].filter(Boolean).join(' · ');
 }
 
-export default function CompanyProgress({ businessId, row, detail, canEdit, onPatch, onChanged, onToast, onConvert }) {
+export default function CompanyProgress({ businessId, row, detail, canEdit, flow = null, onPatch, onChanged, onToast, onConvert, onResearch, onOwner, onClient }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [more, setMore] = useState(false);
-  const m = progressModel(row.type, detail?.record?.stage ?? row.stage, detail?.stage_history);
+  const m = progressModel(row.type, detail?.record?.stage ?? row.stage, detail?.stage_history, flow);
   if (!m) return null;
   const label = id => (m.path === 'partner' ? WORKFLOW_STEPS.find(w => w.id === id)?.label : STAGE_LABELS[id]) || SIDE[id] || id;
   const stale = e => (e.status === 409 && /changed elsewhere|stale/i.test(e.message) ? 'This changed elsewhere - refresh' : e.message);
@@ -82,18 +103,22 @@ export default function CompanyProgress({ businessId, row, detail, canEdit, onPa
   });
   const jump = i => {
     const to = m.steps[i].id;
+    if (to === 'researched') return onResearch?.();
+    if (to === 'assigned') return onOwner?.();
+    if (to === 'launched' && m.flow && m.stage !== 'contract') return onClient?.();
     if (to === m.stage || row.type === 'target') return;
     const backward = !m.side && i < m.current;
     if (backward && !window.confirm(`Move ${row.name} back to ${m.steps[i].label}?`)) return;
-    act('jump', () => moveTo(to, { backward }));
+    return act('jump', () => moveTo(to, { backward }));
   };
   const lanes = m.path === 'partner' ? ['paused'] : ['lost', 'nurture', 'on_hold'];
   const lt = lastTouchLine(detail?.record?.last_touch);
-  const editable = canEdit && row.type !== 'target';
+  const editable = canEdit && (row.type !== 'target' || !!m.flow);
   return (
     <section aria-label="Progress" data-company-progress={row.type} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <span className="ui-group-label" style={{ width: 72, flex: 'none' }}>Progress</span>
+        {m.flow && <span style={{ order: 9, flexBasis: '100%', fontSize: 11.5, color: SA.muted, textAlign: 'right' }}>click a stage to jump · Undo 10 s</span>}
         <div style={{ flex: '1 1 420px', minWidth: 0 }}>
           <ProgressBar label={`${row.name} progress`} steps={m.steps} current={m.current} side={m.side} onStep={editable && !busy ? jump : null} />
         </div>
