@@ -29,9 +29,10 @@ export function effectiveFit(record, score, thresholds = DEFAULT_FIT_THRESHOLDS)
   return { level, source: level ? 'computed' : null, reason: null, note: null };
 }
 
-// The default Map filter (F4 / F5): Strong + Good; Deprioritized never shows by default.
+// The default Map filter (F4 / F5): Strong + Good; Deprioritized never shows by default. A record with no fit level yet
+// (not scored since the flow shipped - the daily recompute fills it) sits with Good, so a fresh deploy never empties the Map.
 export const DEFAULT_FIT_FILTER = ['strong', 'good'];
-export const inFitFilter = (level, filter = []) => (filter.length ? filter.includes(level) : level !== 'deprioritized');
+export const inFitFilter = (level, filter = []) => (filter.length ? filter.includes(level || 'good') : level !== 'deprioritized');
 
 // dates: every open to-do due date on the record plus next_action_date; the earliest decides. -> { due, date } | null.
 // "This week" = up to the Sunday of today's LA week.

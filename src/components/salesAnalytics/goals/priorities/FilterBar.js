@@ -3,7 +3,8 @@ import { SA } from '../../theme';
 import { numStyle } from '../goalsUi';
 import { ToggleChip, ActiveFilterLine } from '../../../../ui/Chip';
 import { IconSearch } from '../../../../ui/icons';
-import { SEGMENTS, WINDOWS, BANDS, EMPTY_FILTERS } from './prioritiesModel';
+import { SEGMENTS, WINDOWS, BANDS, EMPTY_FILTERS, FIT_OPTIONS, DEFAULT_FIT, DUE_OPTIONS, toggleFit, sameFit } from './prioritiesModel';
+import { SOURCE_ORDER, SOURCE_LABELS } from '../../palette';
 
 // priorities-v2 F - the FILTER card: what's in the set. Type chips with their counts (counts.segments, over the
 // unfiltered ranked set) · labeled selects (mono label above, 30 px) · min score · Needs a touch · search. A second line
@@ -34,6 +35,8 @@ export function activeFilters(f, { members = [] } = {}) {
     f.needs_touch && { key: 'needs_touch', text: 'Needs a touch' },
     f.source.length > 0 && { key: 'source', text: `Source: ${f.source.length}` },
     f.q && { key: 'q', text: `"${f.q}"` },
+    !sameFit(f.fit || DEFAULT_FIT, DEFAULT_FIT) && { key: 'fit', text: `Fit: ${(f.fit || []).map(l => FIT_OPTIONS.find(([id]) => id === l)?.[1]).join(' + ')}` },
+    f.due && { key: 'due', text: `Due: ${DUE_OPTIONS.find(([id]) => id === f.due)?.[1]}` },
   ].filter(Boolean);
 }
 
@@ -49,7 +52,15 @@ export default function FilterBar({ filters, set, onClear, data, members }) {
           {SEGMENTS.map(([id, label]) => <ToggleChip key={id} data-segment={id} pressed={filters.segment === id} count={seg[id] ?? ''} onClick={() => set('segment', id)}>{label}</ToggleChip>)}
         </div>
         {divider}
+        <div role="group" aria-label="Fit" data-fit-chips style={{ display: 'inline-flex', flexDirection: 'column', gap: 3 }}>
+          <span className="ui-group-label" aria-hidden="true">Fit</span>
+          <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {FIT_OPTIONS.map(([id, label]) => <ToggleChip key={id} data-fit-chip={id} pressed={(filters.fit || DEFAULT_FIT).includes(id)} count={data?.counts?.fit?.[id] ?? ''} title={id === 'deprioritized' ? 'Deprioritized records (hidden by default)' : `Show ${label} fit`} onClick={() => set('fit', toggleFit(filters.fit || DEFAULT_FIT, id))}>{label}</ToggleChip>)}
+          </span>
+        </div>
+        <Labeled label="Due" value={filters.due || ''} options={DUE_OPTIONS.map(([value, label]) => ({ value, label: value ? `${label}${data?.counts?.due?.[value] != null ? ` (${data.counts.due[value]})` : ''}` : label }))} onChange={v => set('due', v)} />
         <Labeled label="Owner" value={filters.owner} options={ownerOpts} onChange={v => set('owner', v)} />
+        <Labeled label="Source" value={filters.source[0] || ''} options={[{ value: '', label: 'All sources' }, ...SOURCE_ORDER.map(s => ({ value: s, label: SOURCE_LABELS[s] }))]} onChange={v => set('source', v ? [v] : [])} />
         <Labeled label="Band" value={filters.band} options={[{ value: '', label: 'All bands' }, ...BANDS.map(b => ({ value: b, label: b }))]} onChange={v => set('band', v)} />
         <Labeled label="Window" value={filters.window} options={WINDOWS.map(([value, label]) => ({ value, label }))} onChange={v => set('window', v)} />
         <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 3 }}>

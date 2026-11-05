@@ -11,7 +11,9 @@ import { md } from './companyPanelFacts';
 
 // F1: a member's fixed color (business_members.member_color via goals/members), else MEMBER_COLORS by join order;
 // "Other" = owned by Upside (or a co-owner) with no member; "Unassigned" = a dashed grey outline.
-export const OTHER_COLOR = '#5B9BE6';
+// Upside-owned / co-owned: a neutral that every color-vision type tells apart from the member colors (validated
+// against #3DBA8C / #D9A441 / #9D7BE0 on the chart surface; the mockup's blue sat 2 dE from Seif's purple for deutans).
+export const OTHER_COLOR = '#B4BCC8';
 export function ownerChip({ ownerUserId, ownerTeam, coOwnerName, members = [], meId = null }) {
   if (ownerUserId) {
     const i = members.findIndex(m => m.user_id === ownerUserId);
@@ -103,3 +105,32 @@ export const kindStageWord = row => {
   if (row.type === 'visitor') return 'Visitor';
   return 'Apollo';
 };
+
+// F5 - the Map's flow menu for a score row ({ type, stage, owner_user_id, fit_level, deprioritized_reason }): the first
+// item is the next step for the record's state (same order as the card's primary). claim = the Claim it chips show
+// (an unowned target / employer at Target). -> { claim, items: [{ id, label }], deprioritize, bring_back, reason }
+export function flowMenu(row) {
+  const r = row || {};
+  const open = { id: 'open', label: 'Open account' };
+  if (r.fit_level === 'deprioritized') return { claim: false, items: [open], deprioritize: false, bring_back: true, reason: r.deprioritized_reason || 'other' };
+  const unowned = !r.owner_user_id;
+  if (r.type === 'target' || (r.type === 'employer' && (r.stage === 'target' || !r.stage))) {
+    const items = unowned
+      ? [{ id: 'research', label: 'Research (who visited, fit)' }, ...(r.type === 'target' ? [{ id: 'promote', label: 'Promote to employer target' }] : []), { id: 'draft', label: 'Draft first email' }, { id: 'todo', label: 'To-do' }, open]
+      : [{ id: 'draft', label: 'Draft first email' }, { id: 'contacted', label: 'Mark contacted' }, { id: 'research', label: 'Research' }, { id: 'todo', label: 'To-do' }, open];
+    return { claim: unowned, items, deprioritize: true, bring_back: false, reason: null };
+  }
+  if (r.type === 'employer') {
+    if (r.stage === 'contacted') return { claim: false, items: [{ id: 'they_replied', label: 'They replied…' }, { id: 'book', label: 'Book meeting' }, { id: 'call', label: 'Log call' }, { id: 'draft', label: 'Draft follow-up' }, open], deprioritize: true, bring_back: false, reason: null };
+    if (r.stage === 'responded') return { claim: false, items: [{ id: 'book', label: 'Book meeting' }, { id: 'next', label: `Next: ${STAGE_LABELS.meeting}` }, open], deprioritize: true, bring_back: false, reason: null };
+    if (['meeting', 'proposal_pilot'].includes(r.stage)) return { claim: false, items: [{ id: 'next', label: `Next: ${STAGE_LABELS[r.stage === 'meeting' ? 'proposal_pilot' : 'verbal']}` }, open], deprioritize: true, bring_back: false, reason: null };
+    if (['verbal', 'contract', 'launched'].includes(r.stage)) return { claim: false, items: [{ id: 'make_client', label: 'Make client' }, open], deprioritize: false, bring_back: false, reason: null };
+    return { claim: false, items: [open], deprioritize: true, bring_back: false, reason: null };
+  }
+  if (isLivePartner(r)) return { claim: false, items: [{ id: 'add_client', label: 'Add referred client' }, { id: 'log_referral', label: 'Log referral' }, { id: 'book', label: 'Book check-in' }, open], deprioritize: false, bring_back: false, reason: null };
+  if (r.type === 'partner') {
+    const behind = ['not_started', 'researching', 'first_email_drafted'].includes(r.stage || 'not_started');
+    return { claim: unowned, items: [{ id: 'draft', label: 'Draft first email' }, ...(behind ? [{ id: 'contacted', label: 'Mark contacted' }] : []), { id: 'research', label: 'Research' }, { id: 'todo', label: 'To-do' }, open], deprioritize: true, bring_back: false, reason: null };
+  }
+  return { claim: false, items: [open], deprioritize: false, bring_back: false, reason: null };
+}

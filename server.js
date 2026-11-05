@@ -867,6 +867,7 @@ app.patch('/api/sales/:businessId/goals/company/:type/:id/fit', salesModuleRoute
 app.post('/api/sales/:businessId/goals/company/employer/:id/they-replied', salesModuleRoute('./api/sales/replyRules.js', 'theyRepliedRoute', 'goals/company/employer/:id/they-replied POST'));
 app.get('/api/sales/:businessId/goals/company/employer/:id/reply-suggestion', salesModuleRoute('./api/sales/replyRules.js', 'replySuggestionRoute', 'goals/company/employer/:id/reply-suggestion'));
 app.get('/api/sales/:businessId/goals/fit/:type/:id', salesModuleRoute('./api/sales/fitRadar.js', 'fitOfRoute', 'goals/fit/:type/:id'));
+app.get('/api/sales/:businessId/goals/reach', salesModuleRoute('./api/sales/reachBulk.js', 'reachAllRoute', 'goals/reach'));
 app.get('/api/sales/:businessId/goals/reach/:type/:id', salesModuleRoute('./api/sales/reachCount.js', 'reachRoute', 'goals/reach/:type/:id'));
 app.get('/api/sales/:businessId/goals/flow/:type/:id', salesModuleRoute('./api/sales/flowEvents.js', 'listFlowRoute', 'goals/flow/:type/:id'));
 app.post('/api/sales/:businessId/goals/flow/:id/undo', salesModuleRoute('./api/sales/flowEvents.js', 'undoFlowRoute', 'goals/flow/:id/undo POST'));

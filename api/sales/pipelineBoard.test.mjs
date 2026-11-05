@@ -248,8 +248,8 @@ test('open to-dos and waiting per row: open only, newest carried copy, overdue =
     { id: 'g', kind: 'todo', status: 'dropped', link_type: 'target', link_id: 't1' },
   ];
   const rows = buildBoard(s);
-  assert.deepEqual(rows.find(r => r.id === 'p1').work, { todos: 2, todos_overdue: 1, waiting: 0, waiting_overdue: 0 });
-  assert.deepEqual(rows.find(r => r.id === 'o1').work, { todos: 1, todos_overdue: 1, waiting: 1, waiting_overdue: 1 });
+  assert.deepEqual(rows.find(r => r.id === 'p1').work, { todos: 2, todos_overdue: 1, todos_no_date: 0, waiting: 0, waiting_overdue: 0 });
+  assert.deepEqual(rows.find(r => r.id === 'o1').work, { todos: 1, todos_overdue: 1, todos_no_date: 0, waiting: 1, waiting_overdue: 1 });
   assert.equal(rows.find(r => r.id === 't1').work, null);
 });
 

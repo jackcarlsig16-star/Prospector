@@ -36,13 +36,15 @@ test('halo: bright within 7 days, faint within 30, none after or never; hollow: 
   expect([hollowness(row()), hollowness(row({ researched: 'decayed' })), hollowness(row({ researched: 'none' })), hollowness(row({ researched: undefined }))]).toEqual(['solid', 'decayed', 'hollow', 'hollow']);
 });
 
-test('legend: an empty lit set lights everything; a lit set dims the others, toggling adds and removes', () => {
-  const lit = toggleLit(new Set(), 'upside');
-  expect(isDimmed(row(), new Set())).toBe(false);
-  expect(isDimmed(row(), lit)).toBe(false);
-  expect(isDimmed(row({ source_label: 'website' }), lit)).toBe(true);
-  expect(toggleLit(lit, 'upside').size).toBe(0);
-  expect([...toggleLit(lit, 'website')]).toEqual(['upside', 'website']);
+test('legend (homelover-flow-v1 F1: by owner): an empty lit set lights everything; a lit owner key dims the others, toggling adds and removes', () => {
+  const lit = toggleLit(new Set(), 'me');
+  expect(isDimmed(row({ owner_user_id: 'u1' }), new Set(), 'u1')).toBe(false);
+  expect(isDimmed(row({ owner_user_id: 'u1' }), lit, 'u1')).toBe(false);
+  expect(isDimmed(row({ owner_user_id: 'u2' }), lit, 'u1')).toBe(true);
+  expect(isDimmed(row({ owner_user_id: null, owner_team: 'upside' }), toggleLit(new Set(), 'other'), 'u1')).toBe(false);
+  expect(isDimmed(row({ owner_user_id: null }), toggleLit(new Set(), 'unassigned'), 'u1')).toBe(false);
+  expect(toggleLit(lit, 'me').size).toBe(0);
+  expect([...toggleLit(lit, 'u2')]).toEqual(['me', 'u2']);
 });
 
 test('pageOf: 40 per page, clamped page, from/to/total', () => {
@@ -54,11 +56,15 @@ test('pageOf: 40 per page, clamped page, from/to/total', () => {
 });
 
 test('filters <-> query: only the set filters become params; a saved view round-trips; the active count', () => {
-  expect(filterParams(EMPTY_FILTERS)).toEqual({ segment: null, owner: null, source: null, band: null, needs_touch: null, min: null, window: null, q: null });
+  // homelover-flow-v1: fit always goes (Strong + Good by default, never counted as a filter); due only when set.
+  expect(filterParams(EMPTY_FILTERS)).toEqual({ segment: null, owner: null, source: null, band: null, needs_touch: null, min: null, window: null, q: null, fit: 'strong,good', due: null });
   const f = { ...EMPTY_FILTERS, segment: 'partners', source: ['upside', 'website'], needs_touch: true, min: 40, window: '7', q: 'ac' };
-  expect(filterParams(f)).toEqual({ segment: 'partners', owner: null, source: 'upside,website', band: null, needs_touch: '1', min: 40, window: '7', q: 'ac' });
+  expect(filterParams(f)).toEqual({ segment: 'partners', owner: null, source: 'upside,website', band: null, needs_touch: '1', min: 40, window: '7', q: 'ac', fit: 'strong,good', due: null });
   expect(activeFilterCount(f)).toBe(6);
+  expect(activeFilterCount({ ...EMPTY_FILTERS, fit: ['strong'], due: 'today' })).toBe(2);
+  expect(filterParams({ ...EMPTY_FILTERS, fit: ['low', 'deprioritized'], due: 'week' })).toMatchObject({ fit: 'low,deprioritized', due: 'week' });
   expect(filtersFromView({ source: 'upside,website', min: '40', needs_touch: '1', band: 'P1' })).toEqual({ ...EMPTY_FILTERS, source: ['upside', 'website'], min: 40, needs_touch: true, band: 'P1' });
+  expect(filtersFromView({ fit: 'low', due: 'later' })).toMatchObject({ fit: ['low'], due: 'later' });
   expect(filtersFromView(null)).toEqual(EMPTY_FILTERS);
 });
 

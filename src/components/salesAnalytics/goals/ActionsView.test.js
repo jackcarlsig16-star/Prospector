@@ -29,18 +29,18 @@ const item = (kind, id, extra) => ({ key: `${kind}-${id}`, kind, id, text: `${ki
 const items = [
   item('waiting', 'w1', { band: 'now', text: 'Waiting on Pat: the MSA', why: '6 d late', due_date: '2026-10-15', overdue: true, late_days: 6, company: { type: 'partner', id: 'p1', name: 'Northwind Benefits', priority: null } }),
   item('flag', 'f1', { band: 'now', text: 'Follow up the benefits lead', why: 'Flagged by Cyrus · “opened 3x”', priority: 1, owner_user_id: JACK, meta: { contact: 'Benefits lead' } }),
-  item('signal', 's1', { band: 'week', text: 'Reach out: Acme Widgets', why: 'P1 Act today: US 500+ with 5+ visits', priority: 1, company: { type: 'visitor', id: 'acme widgets', name: 'Acme Widgets', priority: null }, meta: { source: 'web_visit' } }),
   item('todo', 't1', { band: 'today', text: 'Call back', why: 'Signals', due_date: TODAY, owner_user_id: JACK, company: { type: 'employer', id: 'o1', name: 'Old Mill Union', priority: null } }),
   item('todo', 't2', { band: 'week', text: 'Draft the one-pager', due_date: '2026-10-23', owner_user_id: CY, priority: 3 }),
-  item('tidy', 'g1', { band: 'today', text: 'Follow up Lakeshore Mutual', why: 'Replied · no open to-do', priority: 3, company: { type: 'partner', id: 'p2', name: 'Lakeshore Mutual', priority: null }, meta: { kind: 'follow_up', ref_type: 'partner', makes_todo: true } }),
   item('focus', 'c1', { band: 'today', text: 'Book two meetings', why: 'Pipeline is thin', owner_user_id: JACK }),
   item('focus', 'c2', { band: 'today', text: 'Ship the deck', owner_user_id: JACK, status: 'done' }),
-  item('signal', 's2', { band: 'week', text: 'Reach out: Hot Co', priority: 2, company: { type: null, id: null, name: 'Hot Co', priority: null }, meta: { source: 'scout' } }),
 ];
+// homelover-flow-v1 F10: web-visit signals are no longer Actions rows; Tidy comes apart as one collapsed group.
+const tidyItems = [item('tidy', 'g1', { band: 'today', text: 'Follow up Lakeshore Mutual', why: 'Replied · no open to-do', priority: 3, company: { type: 'partner', id: 'p2', name: 'Lakeshore Mutual', priority: null }, meta: { kind: 'follow_up', ref_type: 'partner', makes_todo: true } })];
+const payload = (its = items, tidy = tidyItems) => ({ items: its, tidy: { count: tidy.length, items: tidy }, groups: {}, today: TODAY, week_start: '2026-10-19' });
 const rows = () => screen.getAllByRole('row').filter(r => r.hasAttribute('data-row')).map(r => r.getAttribute('data-key'));
 // CRA's Jest resets mock implementations before every test, so the stubs are set here.
 const setup = (props = {}) => {
-  goalsApi.actions.mockResolvedValue({ items, today: TODAY, week_start: '2026-10-19' });
+  goalsApi.actions.mockResolvedValue(payload());
   goalsApi.pipelineBoard.mockImplementation(() => new Promise(() => {}));
   goalsApi.companyDetail.mockImplementation(() => new Promise(() => {}));
   completeFlag.mockResolvedValue({});
@@ -55,53 +55,57 @@ const toastGone = () => waitFor(() => expect(screen.queryByRole('status')).toBeN
 
 test('model: Who = that person\'s rows, Team = all, Unassigned = nobody\'s; bands in order; Viewer kinds; folds + due choices', () => {
   const E = { kind: '', q: '', unassigned: false };
-  const jack = actionsView(items, E, { owner: JACK });
+  const jack = actionsView(items, E, { owner: JACK, tidy: tidyItems });
   expect(jack.open.map(i => i.key)).toEqual(['flag-f1', 'todo-t1', 'focus-c1']);
   expect(jack.done.map(i => i.key)).toEqual(['focus-c2']);
-  expect(jack.unassigned).toBe(4);
-  expect(actionsView(items, E, { owner: 'team' }).bands.map(b => [b.id, b.rows.length])).toEqual([['now', 2], ['today', 3], ['week', 3], ['housekeeping', 0]]);
-  expect(actionsView(items, { ...E, unassigned: true }, { owner: JACK }).open.map(i => i.key)).toEqual(['waiting-w1', 'signal-s1', 'tidy-g1', 'signal-s2']);
-  expect(actionsView(items, { ...E, kind: 'signal' }, { owner: 'team' }).open.map(i => i.kind)).toEqual(['signal', 'signal']);
-  expect(actionsView(items, { ...E, q: 'lakeshore' }, { owner: 'team' }).open.map(i => i.key)).toEqual(['tidy-g1']);
+  expect(jack.unassigned).toBe(1);
+  // homelover-flow-v1 F10: Due groups (an overdue / Now row is due today), Tidy apart.
+  expect(actionsView(items, E, { owner: 'team', tidy: tidyItems }).bands.map(b => [b.id, b.rows.length])).toEqual([['today', 4], ['week', 1], ['later', 0]]);
+  expect(actionsView(items, { ...E, unassigned: true }, { owner: JACK, tidy: tidyItems }).open.map(i => i.key)).toEqual(['waiting-w1']);
+  expect(actionsView(items, { ...E, kind: 'tidy' }, { owner: 'team', tidy: tidyItems }).tidy.map(i => i.key)).toEqual(['tidy-g1']);
+  expect(actionsView(items, { ...E, kind: 'tidy' }, { owner: 'team', tidy: tidyItems }).open).toEqual([]);
+  expect(actionsView([...items, item('signal', 's9', { band: 'week' })], E, { owner: 'team' }).open.map(i => i.kind)).not.toContain('signal');
+  expect(actionsView(items, { ...E, q: 'lakeshore' }, { owner: 'team', tidy: tidyItems }).tidy.map(i => i.key)).toEqual(['tidy-g1']);
   const viewer = actionsView(items, E, { owner: 'team', viewer: true });
   expect([...new Set(viewer.open.map(i => i.kind))].sort()).toEqual(['flag', 'focus', 'todo']);
   expect(actionsView([...items, { ...items[0], key: 'later-x', kind: 'later' }], E, { owner: 'team' }).open.map(i => i.key)).not.toContain('later-x');
   expect(matchesActionFilters(items[0], { ...E, q: 'MSA' }, 'team')).toBe(true);
   expect(priorityText(items[0])).toBe('Overdue · 6 d');
-  expect([dueText(items[3], TODAY), dueText(items[4], TODAY), dueText(items[5], TODAY)]).toEqual(['Today', 'Oct 23', '—']);
+  expect([dueText(items[2], TODAY), dueText(items[3], TODAY), dueText(items[4], TODAY)]).toEqual(['Today', 'Oct 23', '—']);
   expect(snoozeTo(TODAY, '7')).toBe('2026-10-28');
   // Wed Oct 21: Friday = Oct 23, next Monday = Oct 26.
   expect(dueChoices(TODAY).map(c => c[2])).toEqual([TODAY, '2026-10-22', '2026-10-23', '2026-10-26', null]);
   expect(dueChoices('2026-10-23')[2][2]).toBe('2026-10-30');
-  expect(readFolded()).toEqual(['housekeeping']);
+  expect(readFolded()).toEqual(['later', 'tidy']);
   expect(readSort()).toBeNull();
   writeSort({ id: 'due', dir: 'asc' });
   expect(readSort()).toEqual({ id: 'due', dir: 'asc' });
   writeSort(null);
 });
 
-test('Member: band sections with counts (Housekeeping folded, remembered), the frame owner decides the list, Unassigned chip, sort, done fold', async () => {
+test('Member: Due groups with counts (Later + Tidy folded, remembered), the frame owner decides the list, Unassigned chip, sort, done fold', async () => {
   const hk = item('tidy', 'h1', { band: 'housekeeping', text: 'Set a date or drop: Read the S-1', meta: { kind: 'set_a_date', makes_todo: false } });
-  goalsApi.actions.mockResolvedValue({ items: [...items, hk], today: TODAY, week_start: '2026-10-19' });
+  goalsApi.actions.mockResolvedValue(payload(items, [...tidyItems, hk]));
   goalsApi.pipelineBoard.mockImplementation(() => new Promise(() => {}));
   goalsApi.companyDetail.mockImplementation(() => new Promise(() => {}));
   const { rerender } = render(<ActionsView businessId="b1" canEdit meId={JACK} owner={JACK} members={members} lookup={lookup} onOpenFull={jest.fn()} />);
   await screen.findByText('Call back');
   expect(rows()).toEqual(['flag-f1', 'todo-t1', 'focus-c1']);
-  expect(screen.getByRole('button', { name: /^Now 1/ })).toHaveAttribute('aria-expanded', 'true');
-  expect(screen.getByRole('button', { name: /^Housekeeping 0/ })).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.getByRole('button', { name: /^Today 3/ })).toHaveAttribute('aria-expanded', 'true');
+  expect(screen.getByRole('button', { name: /^Later 0/ })).toHaveAttribute('aria-expanded', 'false');
+  expect(screen.getByRole('button', { name: /^Tidy 2/ })).toHaveAttribute('aria-expanded', 'false');
   expect(screen.queryByRole('group', { name: 'Who' })).toBeNull();
   // Unassigned (n): what nobody owns, whoever is picked.
-  const chip = screen.getByRole('button', { name: /^Unassigned \(5\)/ });
+  const chip = screen.getByRole('button', { name: /^Unassigned \(1\)/ });
   fireEvent.click(chip);
   expect(chip).toHaveAttribute('aria-pressed', 'true');
-  expect(rows()).toEqual(['waiting-w1', 'tidy-g1', 'signal-s1', 'signal-s2']);
-  fireEvent.click(screen.getByRole('button', { name: /^Housekeeping 1/ }));
+  expect(rows()).toEqual(['waiting-w1']);
+  fireEvent.click(screen.getByRole('button', { name: /^Tidy 2/ }));
   expect(rows()).toContain('tidy-h1');
-  expect(JSON.parse(localStorage.getItem('prospector_actions_folded'))).toEqual([]);
+  expect(JSON.parse(localStorage.getItem('prospector_actions_folded'))).toEqual(['later']);
   fireEvent.click(screen.getByRole('button', { name: /^Clear/ }));
   rerender(<ActionsView businessId="b1" canEdit meId={JACK} owner="team" members={members} lookup={lookup} onOpenFull={jest.fn()} />);
-  expect(rows()).toEqual(['waiting-w1', 'flag-f1', 'todo-t1', 'tidy-g1', 'focus-c1', 'signal-s1', 'todo-t2', 'signal-s2', 'tidy-h1']);
+  expect(rows()).toEqual(['waiting-w1', 'flag-f1', 'todo-t1', 'focus-c1', 'todo-t2', 'tidy-g1', 'tidy-h1']);
   const table = screen.getByRole('table', { name: 'Actions' });
   const heads = within(table).getAllByRole('columnheader');
   expect(heads.map(h => h.textContent.replace(/ [↕▲▼]$/, ''))).toEqual(['Priority', 'What to do', 'Company', 'Why', 'Kind', 'Due', 'Owner', 'Actions']);
@@ -112,25 +116,23 @@ test('Member: band sections with counts (Housekeeping folded, remembered), the f
   const fold = screen.getByRole('button', { name: '1 done ▸' });
   fireEvent.click(fold);
   expect(acts('Ship the deck').getByRole('button', { name: 'Reopen' })).toBeTruthy();
-  fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'signal' } });
+  fireEvent.change(screen.getByLabelText('Kind'), { target: { value: 'todo' } });
   // FIX pipeline-quick-fixes-v1 B3: the search is the first control in the filter row.
   expect(screen.getByRole('group', { name: 'Filters' }).querySelector('input, select, button').getAttribute('aria-label')).toBe('Search actions');
-  fireEvent.change(screen.getByLabelText('Search actions'), { target: { value: 'hot' } });
-  expect(rows()).toEqual(['signal-s2']);
+  fireEvent.change(screen.getByLabelText('Search actions'), { target: { value: 'one-pager' } });
+  expect(rows()).toEqual(['todo-t2']);
   fireEvent.click(screen.getByRole('button', { name: /^Clear/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Old Mill Union' }));
   expect(goalsApi.pipelineBoard).toHaveBeenCalledWith('b1', true);
-  expect(screen.getByTitle('Hot Co is not in the Pipeline yet')).toBeTruthy();
 });
 
 test('A3 slots: every row = Primary · Done/Due · More, same order per kind', async () => {
   const pair = item('tidy', 'g2', { band: 'housekeeping', text: 'Possible duplicate: Lockton / Lockton Inc', meta: { kind: 'duplicate', ref_type: 'pair', makes_todo: false } });
-  goalsApi.actions.mockResolvedValue({ items: [...items, pair], today: TODAY, week_start: '2026-10-19' });
+  goalsApi.actions.mockResolvedValue(payload(items, [...tidyItems, pair]));
   localStorage.setItem('prospector_actions_folded', '[]');
   render(<ActionsView businessId="b1" canEdit meId={JACK} owner="team" members={members} lookup={lookup} onOpenFull={jest.fn()} />);
   await screen.findByText('Call back');
   const shape = text => [...screen.getByRole('group', { name: `Actions for ${text}` }).children].map(el => (el.tagName === 'SELECT' ? `[${el.options[0].textContent}]` : el.tagName === 'BUTTON' ? el.textContent : '·'));
-  expect(shape('Reach out: Acme Widgets')).toEqual(['Accept', 'Done', '[More ▾]']);
   expect(shape('Follow up Lakeshore Mutual')).toEqual(['Accept', 'Done', '[More ▾]']);
   expect(shape('Possible duplicate: Lockton / Lockton Inc')).toEqual(['Accept', '·', '[More ▾]']);
   expect(shape('Waiting on Pat: the MSA')).toEqual(['Got it', '[Due ▾]', '[More ▾]']);
@@ -140,19 +142,11 @@ test('A3 slots: every row = Primary · Done/Due · More, same order per kind', a
   expect([...screen.getByLabelText('More for Follow up Lakeshore Mutual').options].map(o => o.textContent)).toEqual(['More ▾', 'Dismiss for 7 days', 'Snooze 7 days']);
 });
 
-test('Accept a signal: the row leaves at once, toast + Undo; Tidy Accept hands the to-do id to its undo', async () => {
-  goalsApi.acceptSignal.mockResolvedValue({ todo: { id: 'td', text: 'Reach out: Acme Widgets' }, via: 'new_target' });
-  goalsApi.undoSignal.mockResolvedValue({ signal: { status: 'new' } });
+test('Accept a Tidy row (the collapsed Tidy group): the row leaves at once, toast + Undo hands the to-do id to its undo', async () => {
+  localStorage.setItem('prospector_actions_folded', '[]');
   setup();
-  await screen.findByText('Reach out: Acme Widgets');
-  fireEvent.click(acts('Reach out: Acme Widgets').getByRole('button', { name: 'Accept' }));
-  expect(rows()).not.toContain('signal-s1');
-  await waitFor(() => expect(goalsApi.acceptSignal).toHaveBeenCalledWith('b1', 's1', { ownerUserId: undefined }));
-  expect((await screen.findByRole('status')).textContent).toContain('Accepted · to-do added: Reach out: Acme Widgets');
-  await undoToast();
-  await waitFor(() => expect(goalsApi.undoSignal).toHaveBeenCalledWith('b1', 's1', undefined));
-  await waitFor(() => expect(goalsApi.actions).toHaveBeenCalledTimes(2));
-  await toastGone();
+  await screen.findByText('Follow up Lakeshore Mutual');
+  expect(goalsApi.acceptSignal).not.toHaveBeenCalled();
   goalsApi.acceptSuggestion.mockResolvedValue({ suggestion: {}, todo: { id: 'td2', text: 'Follow up Lakeshore Mutual' } });
   fireEvent.click(acts('Follow up Lakeshore Mutual').getByRole('button', { name: 'Accept' }));
   await waitFor(() => expect(goalsApi.acceptSuggestion).toHaveBeenCalledWith('b1', 'g1', { ownerUserId: undefined }));
@@ -160,37 +154,28 @@ test('Accept a signal: the row leaves at once, toast + Undo; Tidy Accept hands t
   await waitFor(() => expect(goalsApi.undoSuggestion).toHaveBeenCalledWith('b1', 'g1', 'td2', undefined));
 });
 
-test('Done on a signal and a Tidy row: Accept with done, Undo hands the touch id back; Dismiss / Snooze from More', async () => {
-  goalsApi.acceptSignal.mockResolvedValue({ todo: { id: 'td', text: 'Reach out: Acme Widgets' }, via: 'partner', touch_event_id: 'ev1' });
-  goalsApi.undoSignal.mockResolvedValue({ signal: { status: 'new' } });
+test('Done on a Tidy row: Accept with done, Undo hands the touch id back; Dismiss from More', async () => {
   goalsApi.acceptSuggestion.mockResolvedValue({ suggestion: {}, todo: { id: 'td2', text: 'Follow up Lakeshore Mutual' }, touch_event_id: 'ev2' });
   goalsApi.undoSuggestion.mockResolvedValue({ suggestion: { status: 'proposed' } });
-  goalsApi.dismissSignal.mockResolvedValue({});
-  goalsApi.snoozeSuggestion.mockResolvedValue({});
+  goalsApi.dismissSuggestion.mockResolvedValue({});
+  localStorage.setItem('prospector_actions_folded', '[]');
   setup();
-  await screen.findByText('Reach out: Acme Widgets');
-  const doneBtn = acts('Reach out: Acme Widgets').getByRole('button', { name: 'Done' });
+  await screen.findByText('Follow up Lakeshore Mutual');
+  const doneBtn = acts('Follow up Lakeshore Mutual').getByRole('button', { name: 'Done' });
   expect(doneBtn).toHaveAttribute('title', 'Already did it — logs it as done (Undo for 10 s)');
   fireEvent.click(doneBtn);
-  await waitFor(() => expect(goalsApi.acceptSignal).toHaveBeenCalledWith('b1', 's1', { done: true }));
-  expect((await screen.findByRole('status')).textContent).toContain('Done: Reach out: Acme Widgets');
-  await undoToast();
-  await waitFor(() => expect(goalsApi.undoSignal).toHaveBeenCalledWith('b1', 's1', 'ev1'));
-  await toastGone();
-  fireEvent.click(acts('Follow up Lakeshore Mutual').getByRole('button', { name: 'Done' }));
   await waitFor(() => expect(goalsApi.acceptSuggestion).toHaveBeenCalledWith('b1', 'g1', { done: true }));
   await undoToast();
   await waitFor(() => expect(goalsApi.undoSuggestion).toHaveBeenCalledWith('b1', 'g1', 'td2', 'ev2'));
   await toastGone();
-  more('Reach out: Hot Co', 'dismiss');
-  await waitFor(() => expect(goalsApi.dismissSignal).toHaveBeenCalledWith('b1', 's2'));
+  await waitFor(() => expect(screen.queryByText('Follow up Lakeshore Mutual')).toBeTruthy());
+  more('Follow up Lakeshore Mutual', 'dismiss');
+  await waitFor(() => expect(goalsApi.dismissSuggestion).toHaveBeenCalledWith('b1', 'g1'));
   await toastGone().catch(() => {});
 });
 
-test('A4 owner select: a to-do is PATCHed (Undo back), a signal is accepted for that person, a flag is reassigned; waiting shows —; Viewers can\'t be picked', async () => {
+test('A4 owner select: a to-do is PATCHed (Undo back), a flag is reassigned; waiting shows —; Viewers can\'t be picked', async () => {
   goalsApi.updateWeekGoal.mockResolvedValue({});
-  goalsApi.acceptSignal.mockResolvedValue({ todo: { id: 'tdc', text: 'Reach out: Acme Widgets' } });
-  goalsApi.undoSignal.mockResolvedValue({});
   setup();
   await screen.findByText('Call back');
   const sel = screen.getByLabelText('Owner of Call back');
@@ -200,13 +185,6 @@ test('A4 owner select: a to-do is PATCHed (Undo back), a signal is accepted for 
   expect((await screen.findByRole('status')).textContent).toContain('Call back: owner Cyrus');
   await undoToast();
   await waitFor(() => expect(goalsApi.updateWeekGoal).toHaveBeenCalledWith('b1', 't1', { owner_user_id: JACK }));
-  await toastGone();
-  fireEvent.change(screen.getByLabelText('Owner of Reach out: Acme Widgets'), { target: { value: CY } });
-  await waitFor(() => expect(goalsApi.acceptSignal).toHaveBeenCalledWith('b1', 's1', { ownerUserId: CY }));
-  expect(rows()).not.toContain('signal-s1');
-  expect((await screen.findByRole('status')).textContent).toContain('Accepted for Cyrus');
-  await undoToast();
-  await waitFor(() => expect(goalsApi.undoSignal).toHaveBeenCalledWith('b1', 's1', undefined));
   await toastGone();
   fireEvent.change(screen.getByLabelText('Owner of Follow up the benefits lead'), { target: { value: CY } });
   await waitFor(() => expect(reassignFlag).toHaveBeenCalledWith('b1', 'f1', CY));
@@ -339,6 +317,7 @@ test('model: where each kind came from, the company line and the dates, in words
 });
 
 test('Member: the disclosure opens the full row under it; the text cell toggles too; row buttons do not; Open company opens the window', async () => {
+  localStorage.setItem('prospector_actions_folded', '[]');
   setup();
   await screen.findByText('Waiting on Pat: the MSA');
   const btn = screen.getByRole('button', { name: 'Show details for Waiting on Pat: the MSA' });
@@ -402,7 +381,7 @@ test('campaign rows: Copy email, Sent with Undo, Promote from More; no address o
 });
 
 test('Viewer: campaign rows are not on a Viewer list', async () => {
-  goalsApi.actions.mockResolvedValue({ items: [item('campaign', 'k1', { text: 'Send step 1 to Ana', meta: { action: 'send', name: 'Ana', step_no: 1 } }), items[3]], today: TODAY, week_start: '2026-10-19' });
+  goalsApi.actions.mockResolvedValue({ items: [item('campaign', 'k1', { text: 'Send step 1 to Ana', meta: { action: 'send', name: 'Ana', step_no: 1 } }), items[2]], today: TODAY, week_start: '2026-10-19' });
   render(<ActionsView businessId="b1" canEdit={false} meId="u-seif" owner="team" members={members} lookup={lookup} onOpenFull={jest.fn()} />);
   await screen.findByText('Call back');
   expect(screen.queryByText('Send step 1 to Ana')).toBeNull();

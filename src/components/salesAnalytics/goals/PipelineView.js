@@ -28,6 +28,7 @@ import { laWeekStart } from '../periods';
 import { FRAME_TOOLS_ID } from '../salesFrame';
 import { numStyle, ErrorNote } from './goalsUi';
 import { TOP_CAP } from '../../../constants/pipelineBoard';
+import { ownerChip } from './flowModel';
 import { TEAM_LABEL } from '../../../constants/ownership';
 import { CHANNEL_LABEL, CHANNEL_ICON, PRIORITIES, PRIORITY_WORD } from '../../../constants/salesChannels';
 import { NOT_A_FIT, priorityValue, priorityText, writePriority, undoValue } from './priorityActions';
@@ -85,6 +86,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
   const [panelSection, setPanelSection] = useState(null); // 'people' = the window opens on its People card (FIX pipeline-quick-fixes-v1 A3)
   const [adding, setAdding] = useState(null); // 'partner' | 'target' | 'person' - the "+ Add ▾" side forms (Employer = the panel)
   const [members, setMembers] = useState([]);
+  const [reach, setReach] = useState(null); // homelover-flow-v1 F6: '<type>:<id>' -> { known, reached } (GET goals/reach)
   const [highlight, setHighlight] = useState(null); // row key kept tinted after the company panel closes (tinted while open via panelKey)
   const [editing, setEditing] = useState(null); // { key, col } of the one open cell editor
   const [saving, setSaving] = useState({}); // `${key}:${col}` -> value in flight, shown dimmed
@@ -111,6 +113,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
   }, [phone]);
   useEffect(() => { setToolsSlot(document.getElementById(FRAME_TOOLS_ID)); }, []);
   useEffect(() => { goalsApi.members(businessId).then(setMembers).catch(() => setMembers([])); }, [businessId]);
+  useEffect(() => { goalsApi.reachAll(businessId).then(setReach).catch(() => setReach(null)); }, [businessId, rows]);
   useEffect(() => {
     if (!highlight) return;
     const t = setTimeout(() => setHighlight(null), HIGHLIGHT_MS);
@@ -292,7 +295,17 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
       </span>
     );
   };
-  const nameCell = r => <button type="button" data-row-name className="ui-link ui-link--cell" onClick={() => open(r)}>{r.name}</button>;
+  // homelover-flow-v1 F11: NEW (first seen on the site today) beside the name; F4: a deprioritized row says why; Tidy's "No date set" rides as a row hint.
+  const nameCell = r => (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+      <button type="button" data-row-name className="ui-link ui-link--cell" onClick={() => open(r)} style={r.deprioritized ? { color: SA.muted } : undefined}>{r.name}</button>
+      {r.new_today && <span data-new-badge style={{ fontSize: 10, color: SA.accent, border: `1px solid ${SA.accent}`, borderRadius: 999, padding: '0 5px', flex: 'none' }}>NEW</span>}
+      {r.deprioritized && <span data-deprioritized-hint title={r.deprioritized.note || undefined} style={{ fontSize: 11, color: SA.muted, whiteSpace: 'nowrap' }}>↓ deprioritized</span>}
+      {!r.deprioritized && r.work?.todos_no_date > 0 && <span data-no-date-hint style={{ fontSize: 11, color: SA.warn, whiteSpace: 'nowrap' }} title={`${r.work.todos_no_date} open to-do${r.work.todos_no_date === 1 ? '' : 's'} without a date`}>No date set</span>}
+    </span>
+  );
+  const ownerCell = r => { const o = ownerChip({ ownerUserId: r.owner_user_id, ownerTeam: r.owner_team, coOwnerName: r.co_owner_name, members, meId }); return r.owner || r.owner_user_id || o.kind === 'other' ? <span data-owner-cell={o.kind} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: o.dashed ? 'transparent' : o.color, border: o.dashed ? `1.5px dashed ${o.color}` : 'none', flex: 'none' }} />{r.owner || o.word}</span> : <Dim />; };
+  const reachedCell = r => { const x = reach?.[`${r.type}:${r.id}`]; return x && x.known ? <span data-reached-cell style={numStyle} title={`${x.reached} of ${x.known} people reached · ${x.replies} replies`}>{x.reached}/{x.known}</span> : <Dim />; };
   const typeCell = r => <TypeChip row={r} />;
   const channelCell = r => {
     if (!r.channel || r.channel === 'unknown') return <Dim />;
@@ -307,7 +320,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
     { id: 'stage', label: 'Stage', width: 120, sortValue: r => r.stage_label, render: r => r.stage_label || <Dim />, title: r => r.stage_label },
     { id: 'priority', label: 'Priority', width: 150, sortValue: r => (r.not_a_fit ? 5 : r.priority), render: priorityCell },
     { id: 'tier', label: 'Tier', width: 56, sortValue: r => TIER_RANK[r.tier] ?? null, render: r => tierLabel(r.tier) || <Dim /> },
-    { id: 'owner', label: 'Owner', width: 104, sortValue: r => r.owner, render: r => r.owner || <Dim />, title: r => r.owner },
+    { id: 'owner', label: 'Owner', width: 104, sortValue: r => r.owner, render: ownerCell, title: r => r.owner },
     { id: 'team', label: 'Team', width: 100, sortValue: r => TEAM_LABEL[r.owner_team] || null, render: r => (r.owner_team ? <OwnerPill row={r} /> : <Dim />) },
     { id: 'next', label: 'Next step', minWidth: 160, sortValue: r => r.next_step, render: r => cell(r, 'next', 'text', v => v || <Dim />), title: r => r.next_step },
     { id: 'due', label: 'Due', width: KIT_EDITABLE.dateWidth, sortValue: r => r.next_step_due, render: r => cell(r, 'due', 'date', v => (v ? <span style={numStyle}>{md(v)}</span> : <Dim />)),
@@ -325,6 +338,8 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
     { id: 'reach', label: 'Reach', width: 92, sortValue: r => r.reach_employees, render: r => (r.reach_employees != null ? <span style={numStyle}>{r.reach_employees.toLocaleString('en-US')}</span> : <Dim />), title: () => 'Employees it covers across its clients (PEO / HR / benefit platforms)' },
     { id: 'clients', label: 'Clients', width: 76, sortValue: r => r.reach_clients, render: r => (r.reach_clients != null ? <span style={numStyle}>{r.reach_clients.toLocaleString('en-US')}</span> : <Dim />), title: () => 'Client companies it serves' },
     { id: 'record', label: 'Record ID', width: 92, sortValue: r => r.record_id, render: r => r.record_id || <Dim /> },
+    // homelover-flow-v1 F6: reached n of m people (GET goals/reach, live).
+    { id: 'reached', label: 'Reached', width: 80, sortValue: r => reach?.[`${r.type}:${r.id}`]?.reached ?? null, render: reachedCell, title: () => 'People reached of people known (emails · campaigns · logged touches)' },
   ];
   const columns = allColumns.filter(c => c.fixed || !hidden.includes(c.id));
   const toggleColumn = id => setHidden(h => { const n = h.includes(id) ? h.filter(x => x !== id) : [...h, id]; writeHidden(n); return n; });

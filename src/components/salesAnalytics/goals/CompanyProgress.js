@@ -120,7 +120,7 @@ export default function CompanyProgress({ businessId, row, detail, canEdit, flow
         <span className="ui-group-label" style={{ width: 72, flex: 'none' }}>Progress</span>
         {m.flow && <span style={{ order: 9, flexBasis: '100%', fontSize: 11.5, color: SA.muted, textAlign: 'right' }}>click a stage to jump · Undo 10 s</span>}
         <div style={{ flex: '1 1 420px', minWidth: 0 }}>
-          <ProgressBar label={`${row.name} progress`} steps={m.steps} current={m.current} side={m.side} onStep={editable && !busy ? jump : null} />
+          <ProgressBar label={`${row.name} progress`} steps={m.steps} current={m.current} side={m.side} onStep={editable && !busy ? jump : null} nowrap={!!m.flow} />
         </div>
         {canEdit && (
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', position: 'relative' }}>

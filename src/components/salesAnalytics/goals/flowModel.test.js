@@ -161,3 +161,20 @@ test('Fit menu: Strong · Good · Low by hand (+ clear when set), Deprioritize�
   fireEvent.click(items[0]);
   expect(onPick).toHaveBeenCalledWith('u-jack');
 });
+
+test('F5 flow menu per state: unowned target = Claim + Research / Promote / Draft / To-do / Open; owned = Draft first; contacted = They replied… first; responded = Book meeting; verbal+ = Make client; live partner = Add referred client; deprioritized = reason + Bring back', () => {
+  const { flowMenu } = require('./flowModel');
+  const ids = p => p.items.map(i => i.id);
+  const unowned = flowMenu({ type: 'target', stage: 'researching', owner_user_id: null });
+  expect([unowned.claim, ids(unowned), unowned.deprioritize]).toEqual([true, ['research', 'promote', 'draft', 'todo', 'open'], true]);
+  expect(ids(flowMenu({ type: 'target', stage: 'researching', owner_user_id: 'u1' }))).toEqual(['draft', 'contacted', 'research', 'todo', 'open']);
+  expect(ids(flowMenu({ type: 'employer', stage: 'target', owner_user_id: null }))).toEqual(['research', 'draft', 'todo', 'open']);
+  expect(ids(flowMenu({ type: 'employer', stage: 'contacted', owner_user_id: 'u1' }))).toEqual(['they_replied', 'book', 'call', 'draft', 'open']);
+  expect(ids(flowMenu({ type: 'employer', stage: 'responded', owner_user_id: 'u1' }))).toEqual(['book', 'next', 'open']);
+  expect(flowMenu({ type: 'employer', stage: 'meeting' }).items[0].label).toBe('Next: Proposal/Pilot');
+  expect(ids(flowMenu({ type: 'employer', stage: 'verbal' }))).toEqual(['make_client', 'open']);
+  expect(ids(flowMenu({ type: 'partner', stage: 'live', owner_user_id: 'u2' }))).toEqual(['add_client', 'log_referral', 'book', 'open']);
+  expect(ids(flowMenu({ type: 'partner', stage: 'replied', owner_user_id: 'u2' }))).toEqual(['draft', 'research', 'todo', 'open']);
+  const dep = flowMenu({ type: 'employer', stage: 'contacted', fit_level: 'deprioritized', deprioritized_reason: 'mostly_outside_us' });
+  expect([dep.bring_back, dep.reason, ids(dep), dep.deprioritize, dep.claim]).toEqual([true, 'mostly_outside_us', ['open'], false, false]);
+});

@@ -153,6 +153,7 @@ export const goalsApi = {
   // homelover-flow-v1 Stage 1 routes - Fit (F2 / F3), Deprioritize (F4), Reached (F6), reply rules (F7), the flow Activity + Undo.
   fitOf: (id, type, recordId) => call(id, `/fit/${type}/${recordId}`),
   reach: (id, type, recordId) => call(id, `/reach/${type}/${recordId}`),
+  reachAll: id => call(id, '/reach').then(d => d.reach),
   flowEvents: (id, type, recordId) => call(id, `/flow/${type}/${recordId}`).then(d => d.events),
   undoFlow: (id, eventId) => call(id, `/flow/${eventId}/undo`, { method: 'POST' }),
   deprioritize: (id, type, recordId, body) => call(id, `/company/${type}/${recordId}/deprioritize`, { method: 'POST', body }),

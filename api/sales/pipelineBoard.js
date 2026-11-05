@@ -51,9 +51,9 @@ export function openWorkByRow(linked, today) {
     const type = LINK_ROW[t.link_type];
     if (!type) continue;
     const key = `${type}:${t.link_id}`;
-    const w = out.get(key) || { todos: 0, todos_overdue: 0, waiting: 0, waiting_overdue: 0 };
+    const w = out.get(key) || { todos: 0, todos_overdue: 0, todos_no_date: 0, waiting: 0, waiting_overdue: 0 };
     const late = !!t.due_date && t.due_date < today;
-    if (t.kind === 'waiting') { w.waiting++; if (late) w.waiting_overdue++; } else { w.todos++; if (late) w.todos_overdue++; }
+    if (t.kind === 'waiting') { w.waiting++; if (late) w.waiting_overdue++; } else { w.todos++; if (late) w.todos_overdue++; if (!t.due_date) w.todos_no_date++; }
     out.set(key, w);
   }
   return out;

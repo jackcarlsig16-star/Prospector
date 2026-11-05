@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ui } from './kitTheme';
 import { KIT_TYPE } from './tokens';
 
@@ -7,9 +7,16 @@ import { KIT_TYPE } from './tokens';
 // onStep(i): makes each segment a button (members); without it the bar only reads (viewers). Done = filled, current =
 // accent outline + tint, later = outlined; the word "done" / "now" is in each segment's name, so state is never color
 // alone. Wraps onto more rows when narrow - the page never scrolls sideways.
-export default function ProgressBar({ label, steps, current, side = null, onStep = null }) {
+// homelover-flow-v1 Stage 3 (Jack's carried fix): nowrap = one row that scrolls sideways when narrow, the current step kept in view.
+export default function ProgressBar({ label, steps, current, side = null, onStep = null, nowrap = false }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    if (!nowrap) return;
+    const el = ref.current?.querySelector('[data-state="now"]');
+    if (el?.scrollIntoView) el.scrollIntoView({ block: 'nearest', inline: 'center' });
+  }, [nowrap, current]);
   return (
-    <ol aria-label={label} data-progress-bar style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexWrap: 'wrap', gap: 4, minWidth: 0 }}>
+    <ol ref={ref} aria-label={label} data-progress-bar data-nowrap={nowrap || undefined} style={{ listStyle: 'none', margin: 0, padding: nowrap ? '0 0 4px' : 0, display: 'flex', flexWrap: nowrap ? 'nowrap' : 'wrap', overflowX: nowrap ? 'auto' : 'visible', gap: 4, minWidth: 0 }}>
       {steps.map((s, i) => {
         // homelover-flow-v1 F8: s.state overrides the index rule (Researched / Assigned sit before Contacted but are their own facts).
         const state = s.state || (side ? 'later' : i < current ? 'done' : i === current ? 'now' : 'later');
@@ -28,7 +35,7 @@ export default function ProgressBar({ label, steps, current, side = null, onStep
           </>
         );
         return (
-          <li key={s.id} data-step={s.id} data-state={state} aria-current={state === 'now' ? 'step' : undefined} style={{ display: 'flex', flex: '1 1 76px', minWidth: 76 }}>
+          <li key={s.id} data-step={s.id} data-state={state} aria-current={state === 'now' ? 'step' : undefined} style={{ display: 'flex', flex: nowrap ? '1 0 auto' : '1 1 76px', minWidth: 76 }}>
             {onStep
               ? <button type="button" aria-label={`${s.label}, ${word}`} onClick={() => onStep(i)} style={box}>{body}</button>
               : <span aria-label={`${s.label}, ${word}`} style={box}>{body}</span>}

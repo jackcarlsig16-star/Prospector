@@ -16,15 +16,26 @@ export const PAGE_SIZE = 40;
 export const TOP_LABELS = 10;
 export const HALO = { bright: 7, faint: 30 }; // days since the last touch (REVISABLE, = the server's TOUCH_WINDOWS)
 export const ACTIVITY_MAX_DAYS = 90;
-export const EMPTY_FILTERS = { segment: 'all', owner: '', source: [], band: '', needs_touch: false, min: 0, window: '', q: '' };
+// homelover-flow-v1 F4 / F5 / F11: fit = the levels shown (default Strong + Good; Deprioritized only when picked), due = today
+// | week | later, sort newest = first seen on the site, desc. The owner legend lights one owner key (dims the others).
+export const FIT_OPTIONS = [['strong', 'Strong'], ['good', 'Good'], ['low', 'Low'], ['deprioritized', 'Deprioritized']];
+export const DEFAULT_FIT = ['strong', 'good'];
+export const DUE_OPTIONS = [['', 'Any'], ['today', 'Today'], ['week', 'This week'], ['later', 'Later']];
+export const EMPTY_FILTERS = { segment: 'all', owner: '', source: [], band: '', needs_touch: false, min: 0, window: '', q: '', fit: DEFAULT_FIT, due: '' };
+export const sameFit = (a, b) => [...a].sort().join(',') === [...b].sort().join(',');
+export function toggleFit(fit, level) { const n = fit.includes(level) ? fit.filter(x => x !== level) : [...fit, level]; return n.length ? n : fit; }
+// Owner legend keys: 'me' (the viewer's own), a member's user id, 'other' (Upside / co-owner, no member), 'unassigned'.
+export const ownerKeyOf = (row, meId = null) => (row.owner_user_id ? (row.owner_user_id === meId ? 'me' : row.owner_user_id) : row.owner_team === 'upside' || row.owner_team === 'both' || row.co_owner_name ? 'other' : 'unassigned');
+// F5: size = intent - the core radius grows with the score (0.55x at 0, 1.45x at 100).
+export const dotRadius = (base, score) => base * (0.55 + 0.9 * Math.max(0, Math.min(100, Number(score) || 0)) / 100);
 export const LS_KEY = 'prospector_priorities_view'; // { view, y, height, rings, names } - per-viewer convenience
 export const NAME_MODES = [['on', 'On'], ['all', 'All'], ['off', 'Off']];
 export const LABEL_TOP = 10;
 export const LABEL_MIN_CHARS = 14;
 
-export const activeFilterCount = f => ['owner', 'band', 'window', 'q'].filter(k => f[k]).length + (f.segment !== 'all' ? 1 : 0) + (f.source.length ? 1 : 0) + (f.needs_touch ? 1 : 0) + (f.min > 0 ? 1 : 0);
-export const filterParams = f => ({ segment: f.segment !== 'all' ? f.segment : null, owner: f.owner || null, source: f.source.length ? f.source.join(',') : null, band: f.band || null, needs_touch: f.needs_touch ? '1' : null, min: f.min > 0 ? f.min : null, window: f.window || null, q: f.q || null });
-export const filtersFromView = v => ({ ...EMPTY_FILTERS, ...(v || {}), source: Array.isArray(v?.source) ? v.source : v?.source ? String(v.source).split(',') : [], min: Number(v?.min) || 0, needs_touch: v?.needs_touch === true || v?.needs_touch === '1' });
+export const activeFilterCount = f => ['owner', 'band', 'window', 'q', 'due'].filter(k => f[k]).length + (f.segment !== 'all' ? 1 : 0) + (f.source.length ? 1 : 0) + (f.needs_touch ? 1 : 0) + (f.min > 0 ? 1 : 0) + (sameFit(f.fit || DEFAULT_FIT, DEFAULT_FIT) ? 0 : 1);
+export const filterParams = f => ({ segment: f.segment !== 'all' ? f.segment : null, owner: f.owner || null, source: f.source.length ? f.source.join(',') : null, band: f.band || null, needs_touch: f.needs_touch ? '1' : null, min: f.min > 0 ? f.min : null, window: f.window || null, q: f.q || null, fit: (f.fit || DEFAULT_FIT).join(','), due: f.due || null });
+export const filtersFromView = v => ({ ...EMPTY_FILTERS, ...(v || {}), source: Array.isArray(v?.source) ? v.source : v?.source ? String(v.source).split(',') : [], min: Number(v?.min) || 0, needs_touch: v?.needs_touch === true || v?.needs_touch === '1', fit: Array.isArray(v?.fit) ? v.fit : v?.fit ? String(v.fit).split(',') : DEFAULT_FIT, due: DUE_OPTIONS.some(([id]) => id === v?.due) ? v.due : '' });
 
 // The value a row plots at for each Y metric; null = unknown (drawn on the baseline "unknown" row).
 export function yValue(row, metric) {
@@ -60,8 +71,9 @@ export function ringSpecs(components = {}, caps = DEFAULT_CAPS, { base = 5, extr
 export const haloLevel = row => (row.days_since_touch == null ? null : row.days_since_touch <= HALO.bright ? 'bright' : row.days_since_touch <= HALO.faint ? 'faint' : null);
 // 'solid' (fresh research), 'decayed' (older than 60 d: toward hollow), 'hollow' (never researched).
 export const hollowness = row => (row.researched === 'fresh' ? 'solid' : row.researched === 'decayed' ? 'decayed' : 'hollow');
-// Legend toggle: an empty lit set means every source is lit; a lit set dims the others (never removes them).
-export const isDimmed = (row, lit) => lit.size > 0 && !lit.has(row.source_label);
+// Legend toggle: an empty lit set means every owner is lit; a lit set dims the others (never removes them).
+// homelover-flow-v1 F1: the legend is the OWNER legend (me · each member · other · unassigned).
+export const isDimmed = (row, lit, meId = null) => lit.size > 0 && !lit.has(ownerKeyOf(row, meId));
 export function toggleLit(lit, source) { const n = new Set(lit); if (n.has(source)) n.delete(source); else n.add(source); return n; }
 
 export function pageOf(rows, page, size = PAGE_SIZE) {

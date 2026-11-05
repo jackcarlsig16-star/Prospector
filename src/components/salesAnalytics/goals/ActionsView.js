@@ -89,7 +89,7 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
   const panelToast = useCallback(t => showToast(t.text, t.undo), []); // eslint-disable-line react-hooks/exhaustive-deps
   const closeCompany = useCallback(() => setCompany(null), []);
 
-  const remove = it => setData(d => (d ? { ...d, items: d.items.filter(x => x.key !== it.key) } : d));
+  const remove = it => setData(d => (d ? { ...d, items: d.items.filter(x => x.key !== it.key), tidy: d.tidy ? { ...d.tidy, items: d.tidy.items.filter(x => x.key !== it.key), count: d.tidy.items.filter(x => x.key !== it.key).length } : d.tidy } : d));
   // The row leaves at once; the write runs; Undo reverses it (then reloads).
   const finish = async (it, write, label, undoWrite) => {
     remove(it);
@@ -176,7 +176,8 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
   const ownerEditable = it => canEdit && (it.kind === 'todo' || it.kind === 'flag' || it.kind === 'signal' || (it.kind === 'tidy' && it.meta.makes_todo));
 
   const items = useMemo(() => data?.items || [], [data]);
-  const view = useMemo(() => actionsView(items, filters, { owner, viewer: !canEdit }), [items, filters, owner, canEdit]);
+  const tidyItems = useMemo(() => data?.tidy?.items || [], [data]);
+  const view = useMemo(() => actionsView(items, filters, { owner, viewer: !canEdit, tidy: tidyItems }), [items, filters, owner, canEdit, tidyItems]);
   const set = (k, v) => setFilters(f => ({ ...f, [k]: v }));
   const nFilters = activeFilterCount(filters);
   const onSort = s => { setSort(s); writeSort(s); };
@@ -213,8 +214,10 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
     ...view.bands.map(b => ({
       id: b.id, rows: b.rows, collapsed: folded.includes(b.id), onToggle: () => toggleBand(b.id),
       header: <>{b.label} <span className="ui-table__count">{b.rows.length}</span>{sort ? <span style={{ fontWeight: 400, color: SA.muted }}> · sorted by {sortLabel}</span> : null}</>,
-      emptyText: b.id === 'now' ? 'Nothing urgent.' : 'Nothing here.',
+      emptyText: b.id === 'today' ? 'Nothing due today.' : 'Nothing here.',
     })),
+    // homelover-flow-v1 F10: Tidy suggestions as one collapsed group at the bottom - the same Accept / Done / Dismiss / Snooze slots.
+    ...(canEdit && view.tidy.length ? [{ id: 'tidy', rows: view.tidy, collapsed: folded.includes('tidy'), onToggle: () => toggleBand('tidy'), header: <>Tidy <span className="ui-table__count">{view.tidy.length}</span><span style={{ fontWeight: 400, color: SA.muted }}> · housekeeping suggestions</span></>, emptyText: 'Nothing to tidy.' }] : []),
     ...(view.done.length ? [{ id: 'done', header: <>{view.done.length} done {showDone ? '▾' : '▸'}</>, rows: view.done, collapsed: !showDone, onToggle: () => setShowDone(o => !o) }] : []),
   ];
   const rowStyle = it => (it.status === 'done' ? { '--ui-row-tint': `color-mix(in srgb, ${SA.track} 40%, transparent)` } : it.overdue ? { '--ui-row-bar': SA.bad } : it.priority === 1 ? { '--ui-row-bar': priorityColor(1) } : undefined);
@@ -279,7 +282,7 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
           <span style={{ fontSize: 13, color: SA.muted, ...numStyle }}>{data ? `${view.open.length} open` : ''}</span>
         </div>
       ) : (
-        <div role="group" aria-label="Filters" data-filter-row style={rowBar}>{filterControls}</div>
+        <div role="group" aria-label="Filters" data-filter-row style={rowBar}><h2 className="ui-group-label" style={{ margin: 0 }}>Filter</h2>{filterControls}</div>
       )}
       {error && <ErrorNote message={error} />}
       {!data && !error && <span style={{ fontSize: 13, color: SA.muted }}>Loading…</span>}

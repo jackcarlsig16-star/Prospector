@@ -141,7 +141,7 @@ test('F2 levels: thresholds (REVISABLE), a hand-set Fit wins, Deprioritized beat
   assert.match(sql, /WHEN 1 THEN 'strong' WHEN 2 THEN 'good' ELSE 'low'/);
   assert.match(sql, /fit_level IS DISTINCT FROM ''deprioritized'' OR deprioritized_reason IS NOT NULL/, 'the DB refuses Deprioritized without a reason');
   assert.ok(!/@[a-z0-9-]+\.[a-z]{2,}/i.test(sql.replace(/-- /g, '')), 'no address in the migration');
-  assert.deepEqual([inFitFilter('low'), inFitFilter('deprioritized'), inFitFilter('low', ['strong', 'good']), inFitFilter('good', ['strong', 'good'])], [true, false, false, true]);
+  assert.deepEqual([inFitFilter('low'), inFitFilter('deprioritized'), inFitFilter('low', ['strong', 'good']), inFitFilter('good', ['strong', 'good']), inFitFilter(null, ['strong', 'good']), inFitFilter(null, ['low'])], [true, false, false, true, true, false], 'no fit yet sits with Good');
 });
 
 test('F2 Due: earliest open to-do / next_action_date -> Today · This week · Later; never a priority word', async () => {
@@ -382,4 +382,15 @@ test('F1 Map Assign on an employer / target is Activity + Undo (the prior owner 
   const none = await editCompanyFields(s, { businessId: B, type: 'target', id: ID.river, body: { owner_user_id: JACK }, byUser: JACK, now: new Date(NOW) });
   const off = await editCompanyFields(s, { businessId: B, type: 'target', id: ID.river, body: { owner_user_id: null }, byUser: JACK, now: new Date(NOW) });
   assert.deepEqual([none.body.event != null, s.db.sales_flow_events.find(e => e.id === off.body.event.id).text], [true, 'Unassigned']);
+});
+
+test('F6 (Stage 3) reach for every record in one pass: the same counts as the per-record route; records with nobody known are absent', async () => {
+  const { reachAll } = await import('./reachBulk.js');
+  const s = seed();
+  const all = await reachAll(s, B);
+  const one = await reachFor(s, B, { type: 'employer', id: ID.acme });
+  assert.deepEqual(all[`employer:${ID.acme}`], { known: one.body.known, reached: one.body.reached, buyers_reached: one.body.buyers_reached, buyers_not_yet: one.body.buyers_not_yet, replies: one.body.replies });
+  assert.deepEqual(all[`partner:${ID.hub}`], { known: 1, reached: 1, buyers_reached: 0, buyers_not_yet: 0, replies: 0 });
+  assert.equal(all[`employer:${ID.gamma}`], undefined, 'nobody known = no entry');
+  assert.ok(!JSON.stringify(all).includes('@'));
 });

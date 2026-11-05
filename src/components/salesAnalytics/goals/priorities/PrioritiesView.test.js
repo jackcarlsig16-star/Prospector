@@ -8,21 +8,21 @@ import { goalsApi } from '../goalsApi';
 window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
 jest.mock('../goalsApi', () => ({ ...jest.requireActual('../goalsApi'), goalsApi: { ...jest.requireActual('../goalsApi').goalsApi,
   scores: jest.fn(), recomputeScores: jest.fn(), brief: jest.fn(), scoreViews: jest.fn(), saveScoreView: jest.fn(), deleteScoreView: jest.fn(), composeStatus: jest.fn(), compose: jest.fn(), composeLint: jest.fn(),
-  members: jest.fn(), pipelineBoard: jest.fn(), partnerSignal: jest.fn(), editCompanyFields: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), setVisitPriority: jest.fn(), runCompanyResearch: jest.fn(), companyDetail: jest.fn(), source: jest.fn(), scoreOf: jest.fn(), sourcesFunnel: jest.fn(),
+  members: jest.fn(), pipelineBoard: jest.fn(), partnerSignal: jest.fn(), editCompanyFields: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), setVisitPriority: jest.fn(), runCompanyResearch: jest.fn(), companyDetail: jest.fn(), source: jest.fn(), scoreOf: jest.fn(), sourcesFunnel: jest.fn(), reachAll: jest.fn(), deprioritize: jest.fn(), undoFlow: jest.fn(), bringBack: jest.fn(), fitOf: jest.fn(), reach: jest.fn(), flowEvents: jest.fn(), replySuggestion: jest.fn(), channelLinks: jest.fn(), referredBy: jest.fn(), clientFiles: jest.fn(),
   scoresCsvUrl: (id, p) => `/api/sales/${id}/goals/scores/export.csv?${new URLSearchParams(Object.entries(p).filter(([, v]) => v != null)).toString()}` } }));
 jest.mock('../../pipelineApi', () => ({ fetchOpportunities: jest.fn(), createOpportunity: jest.fn(), updateOpportunity: jest.fn(), archiveOpportunity: jest.fn() }));
 
 const comp = (visits, people, fit, research, engagement) => ({ visits: { points: visits, inputs: {} }, pages: { points: 0, inputs: {} }, apollo_intent: { points: 0, inputs: {} }, people: { points: people, inputs: {} }, fit: { points: fit, inputs: {} }, research: { points: research, inputs: {} }, source: { points: 12, inputs: {} }, engagement: { points: engagement, inputs: {} }, stage: { points: 0, inputs: {} }, recency: { points: 0, inputs: {} } });
 const row = (type, id, name, score, band, source, extra = {}) => ({ type, id, key: `${type}-${id}`, name, score, band, source_label: source, source_kind: source, components: comp(17, 6, 15, 10, 0), owner_user_id: 'u1', owner: 'Jack Carlson', owner_team: 'homelover', co_owner_name: null, no_double_touch: false, upside_owned: false, touch_locked: false, closed: false, live: false, duplicate_of: null, stage: 'contacted', employees: 5000, visits_7d: 6, unique_visitors_7d: 3, last_visit: '2026-10-26', people: 2, last_touch_at: '2026-10-25T00:00:00Z', last_touch_who: 'Jack Carlson', last_touch_channel: 'call', days_since_touch: 2, researched: 'fresh', research_at: '2026-10-25T00:00:00Z', prev_score: 50, prev_band: 'P2', trend: 'up', band_changed: true, rank: 1, ...extra });
 const ROWS = [
-  row('target', 't1', 'Quarry Labs', 72, 'P1', 'website'),
-  row('employer', 'e1', 'Hilton Example', 49, 'P2', 'upside', { owner_user_id: null, owner: null, owner_team: 'upside', no_double_touch: true, upside_owned: true, touch_locked: true, rank: 2, band_changed: false, trend: 'flat' }),
+  row('target', 't1', 'Quarry Labs', 72, 'P1', 'website', { fit_level: 'good', fit_score: 64, first_seen: '2026-10-27', new_today: true, stage: 'researching' }),
+  row('employer', 'e1', 'Hilton Example', 49, 'P2', 'upside', { owner_user_id: null, owner: null, owner_team: 'upside', no_double_touch: true, upside_owned: true, touch_locked: true, rank: 2, band_changed: false, trend: 'flat', fit_level: 'strong', fit_score: 78, stage: 'target' }),
   row('partner', 'p1', 'Harbor Lane', 37, 'P3', 'upside', { researched: 'none', components: comp(0, 0, 10, -3, 10), employees: null, rank: 3, days_since_touch: null, last_touch_at: null, band_changed: false }),
 ];
-const DATA = { rows: ROWS, live: [row('partner', 'p2', 'Live Partner', 60, 'P1', 'inbound', { live: true, rank: 0 })], counts: { companies: 4, ranked: 3, shown: 3, live: 1, duplicates: 0, closed: 0, needs_touch: 1, band_changed: 1, segments: { all: 3, visitors: 2, partners: 1, employers: 1, targets: 1 }, P1: 1, P2: 1, P3: 1, P4: 0 },
+const DATA = { rows: ROWS, live: [row('partner', 'p2', 'Live Partner', 60, 'P1', 'inbound', { live: true, rank: 0 })], counts: { companies: 4, ranked: 3, shown: 3, live: 1, duplicates: 0, closed: 0, needs_touch: 1, band_changed: 1, segments: { all: 3, visitors: 2, partners: 1, employers: 1, targets: 1 }, P1: 1, P2: 1, P3: 1, P4: 0, new_today: 1, fit: { strong: 1, good: 1, low: 0, deprioritized: 0 }, due: { today: 0, week: 0, later: 0 } },
   sources: { upside: 2, partner_referral: 0, person_referral: 0, campaign: 0, website: 1, inbound: 0, homelover_outreach: 0, scout: 0, other: 0 }, owners: [{ user_id: 'u1', name: 'Jack Carlson' }],
   filters: {}, computed_at: '2026-10-27T18:00:00Z', stale: false, today: '2026-10-27', has_previous: true, thresholds: { P1: 60, P2: 40, P3: 15 }, caps: { visits: 25, pages: 10, apollo_intent: 5, people: 15, fit: 15, research: 10, source: 12, engagement: 10, stage: 10, recency: 10 }, needs_touch_rule: { min: 40, days: 14 }, source_order: ['upside', 'partner_referral', 'person_referral', 'campaign', 'website', 'inbound', 'homelover_outreach', 'scout', 'other'] };
-const MEMBERS = [{ user_id: 'u1', name: 'Jack Carlson', role: 'owner' }, { user_id: 'u2', name: 'Cyrus Test', role: 'member' }];
+const MEMBERS = [{ user_id: 'u1', name: 'Jack Carlson', role: 'owner', color: '#3DBA8C' }, { user_id: 'u2', name: 'Cyrus Test', role: 'member', color: '#D9A441' }];
 
 beforeEach(() => {
   localStorage.clear();
@@ -31,6 +31,10 @@ beforeEach(() => {
     return { ...DATA, rows, counts: { ...DATA.counts, shown: rows.length } };
   });
   goalsApi.members.mockResolvedValue(MEMBERS);
+  goalsApi.reachAll.mockResolvedValue({ 'target:t1': { known: 11, reached: 3, buyers_reached: 2, buyers_not_yet: 4, replies: 0 } });
+  goalsApi.deprioritize.mockResolvedValue({ fit: { word: 'Too small' }, event: { id: 'ev-d' } });
+  goalsApi.undoFlow.mockResolvedValue({});
+  goalsApi.fitOf.mockResolvedValue(null); goalsApi.reach.mockResolvedValue(null); goalsApi.flowEvents.mockResolvedValue([]); goalsApi.replySuggestion.mockResolvedValue({ suggestion: null }); goalsApi.channelLinks.mockResolvedValue([]); goalsApi.clientFiles.mockResolvedValue([]);
   goalsApi.composeStatus.mockResolvedValue({ used: 2, max: 30, cost_estimate_usd: 0.03, research_cost_usd: 0.08, custom_prompt: false });
   goalsApi.scoreViews.mockResolvedValue([]);
   goalsApi.saveScoreView.mockResolvedValue({ view: { id: 'v1', name: 'Brad', filters: {}, y: 'intent', view: 'dots' }, views: [{ id: 'v1', name: 'Brad', filters: { source: ['upside'] }, y: 'intent', view: 'dots' }] });
@@ -42,19 +46,25 @@ afterEach(() => jest.clearAllMocks());
 const dots = () => document.querySelectorAll('[data-dot]');
 const dot = name => [...dots()].find(d => d.getAttribute('aria-label').startsWith(name));
 
-test('dots: every ranked company as a dot in its source color; legend toggle dims the others (never removes) and keeps colors; All sources lights them back', async () => {
+test('dots (homelover-flow-v1 F1 / F5): every ranked company as a dot in its OWNER color (Me, member, Other, dashed Unassigned), a NEW ring on a first-seen-today row, size = intent; the owner legend dims the others (never removes); All owners lights them back', async () => {
   render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
   await waitFor(() => expect(dots()).toHaveLength(3));
-  expect(dot('Quarry Labs').getAttribute('data-source')).toBe('website');
-  expect(dot('Quarry Labs').querySelector('[data-core]').getAttribute('fill')).toBe('var(--sa-src-website)');
-  expect(dot('Hilton Example').querySelector('[data-core]').getAttribute('fill')).toBe('var(--sa-src-upside)');
-  fireEvent.click(screen.getByRole('button', { name: /^Brad \/ Upside/ }));
+  expect(dot('Quarry Labs').getAttribute('data-owner')).toBe('me');
+  expect(dot('Quarry Labs').querySelector('[data-core]').getAttribute('fill')).toBe('#3DBA8C');
+  expect(dot('Quarry Labs').querySelector('[data-new-ring]')).toBeInTheDocument();
+  expect(dot('Hilton Example').getAttribute('data-owner')).toBe('other');
+  expect(dot('Hilton Example').querySelector('[data-new-ring]')).toBeNull();
+  expect(Number(dot('Quarry Labs').querySelector('[data-core]').getAttribute('r'))).toBeGreaterThan(Number(dot('Harbor Lane').querySelector('[data-core]').getAttribute('r')));
+  const legend = screen.getByRole('group', { name: 'Owner' });
+  expect(within(legend).getAllByRole('button').map(b => b.textContent)).toEqual(['Me2', 'Other1', '+ 2 with 0']);
+  expect(screen.getByText('1 NEW today')).toBeInTheDocument();
+  fireEvent.click(within(legend).getByRole('button', { name: /^Other/ }));
   await waitFor(() => expect(dot('Quarry Labs').getAttribute('data-dimmed')).toBe('true'));
   expect(dots()).toHaveLength(3);
   expect(dot('Hilton Example').getAttribute('data-dimmed')).toBeNull();
-  expect(dot('Quarry Labs').querySelector('[data-core]').getAttribute('fill')).toBe('var(--sa-src-website)');
-  expect(document.querySelectorAll('[data-thread="upside"]')).toHaveLength(2);
-  fireEvent.click(screen.getByRole('button', { name: 'All sources' }));
+  expect(dot('Quarry Labs').querySelector('[data-core]').getAttribute('fill')).toBe('#3DBA8C');
+  expect(document.querySelectorAll('[data-thread="other"]')).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'All owners' }));
   await waitFor(() => expect(dot('Quarry Labs').getAttribute('data-dimmed')).toBeNull());
   expect(document.querySelector('[data-rank-line]')).toBeInTheDocument();
   // priorities-v2 G: four band zones from the thresholds - the letter + count on the left, the band word inside
@@ -71,7 +81,7 @@ test('hollow when unresearched; rings off by default, Rings draws them on a rese
   const harbor = dot('Harbor Lane');
   expect(harbor.getAttribute('data-hollow')).toBe('hollow');
   expect(harbor.querySelectorAll('[data-ring]')).toHaveLength(0);
-  expect(harbor.querySelector('[data-core]').getAttribute('fill')).toBe('none');
+  expect(harbor.querySelector('[data-core]').getAttribute('fill')).toMatch(/color-mix/); // unresearched = a wash of the owner color, outlined
   expect(harbor.getAttribute('data-halo')).toBeNull();
   const quarry = dot('Quarry Labs');
   expect(quarry.getAttribute('data-hollow')).toBe('solid');
@@ -96,7 +106,7 @@ test('click selects (ring + the card pinned beside the dot with the quick menu i
   windowMocks();
   render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
   await waitFor(() => expect(dots()).toHaveLength(3));
-  fireEvent.click(screen.getByRole('button', { name: /^Brad \/ Upside/ }));
+  fireEvent.click(within(screen.getByRole('group', { name: 'Owner' })).getByRole('button', { name: /^Other/ }));
   fireEvent.click(dot('Quarry Labs'));
   expect(dot('Quarry Labs').getAttribute('data-selected')).toBe('true');
   expect(dot('Quarry Labs').getAttribute('aria-pressed')).toBe('true');
@@ -105,12 +115,15 @@ test('click selects (ring + the card pinned beside the dot with the quick menu i
   expect(card.getAttribute('data-pinned-card')).toBe('target-t1');
   expect(card.getAttribute('data-html2canvas-ignore')).toBe('true');
   const menu = within(card).getByRole('toolbar', { name: 'Actions for Quarry Labs' });
-  expect(within(menu).getAllByRole('button').map(b => b.textContent.replace(/\s+/g, ' ').trim())).toEqual(['Brief', 'Write email · ~$0.03 · 2/30 today', 'Research · ~$0.08 per run', 'Assign to · Jack ▾', 'Add task', 'Not a fit', 'Open']);
+  // homelover-flow-v1 F5: an owned target - Draft first email leads; Deprioritize…, then Brief / Write email at the end.
+  expect(within(menu).getAllByRole('button').map(b => b.textContent.replace(/\s+/g, ' ').trim())).toEqual(['Draft first email', 'Mark contacted', 'Research', 'To-do', 'Open account', '↓ Deprioritize…', 'Brief', 'Write email · ~$0.03 · 2/30 today']);
+  expect(menu.getAttribute('data-flow-state')).toBe('target:researching');
+  expect(menu.querySelector('[data-menu-summary]').textContent).toMatch(/visits? · \d+ people.*Fit Good 64 · reached 3 of 11$/);
   expect(goalsApi.pipelineBoard).toHaveBeenCalledWith('b1', true);
   expect(screen.queryByRole('tooltip')).toBeNull();
   await waitFor(() => expect(goalsApi.pipelineBoard).toHaveBeenCalled());
   expect(document.querySelector('[data-company-panel]')).toBeNull();
-  fireEvent.click(within(menu).getByRole('button', { name: 'Open' }));
+  fireEvent.click(within(menu).getByRole('button', { name: 'Open account' }));
   await waitFor(() => expect(document.querySelector('[data-company-panel]')).toBeTruthy());
   fireEvent.keyDown(document.body, { key: 'Escape' });
   await waitFor(() => expect(document.querySelector('[data-company-panel]')).toBeNull());
@@ -132,24 +145,25 @@ test('no observed costs yet: Write email shows a dash and Research reads cost: n
   fireEvent.click(dot('Quarry Labs'));
   const menu = await screen.findByRole('toolbar', { name: 'Actions for Quarry Labs' });
   expect(within(menu).getByRole('button', { name: 'Write email · — · 0/30 today' })).toBeInTheDocument();
-  expect(within(menu).getByRole('button', { name: 'Research · cost: n/a yet' })).toBeInTheDocument();
+  expect(within(menu).getByRole('button', { name: 'Research' })).toBeInTheDocument();
 });
 
-test('Upside-owned with no double touch: Assign, Write email and Add task are disabled with the reason; Brief, Research, Not a fit and Open stay', async () => {
+test('Upside-owned with no double touch: the touching items (Draft, To-do) and Write email are disabled with the reason, Claim it is hidden; Brief, Research and Open stay', async () => {
   render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
   await waitFor(() => expect(dots()).toHaveLength(3));
   fireEvent.click(dot('Hilton Example'));
   const menu = await screen.findByRole('toolbar', { name: 'Actions for Hilton Example' });
   expect(within(menu).getByText(/Upside · no double touch/)).toBeInTheDocument();
-  for (const name of [/Write email/, /Assign to/, 'Add task']) {
+  for (const name of [/Write email/, 'Draft first email', 'To-do']) {
     const b = within(menu).getByRole('button', { name });
     expect(b).toBeDisabled();
     expect(b.getAttribute('title')).toMatch(/no double touch - coordinate with Brad/);
   }
-  for (const name of ['Brief', /Research/, 'Not a fit', 'Open']) expect(within(menu).getByRole('button', { name })).toBeEnabled();
+  expect(within(menu).queryByRole('group', { name: 'Claim it' })).toBeNull();
+  for (const name of ['Brief', /^Research/, 'Open account']) expect(within(menu).getByRole('button', { name })).toBeEnabled();
 });
 
-test('quick actions: Brief shows the card with refs + Copy for Claude; Add task prefills the next step; Not a fit writes the record override + recompute with Undo', async () => {
+test('quick actions: Brief shows the card with refs + Copy for Claude; To-do prefills the next step; Deprioritize… opens the reason chips inline and writes with Undo (the flow undo)', async () => {
   goalsApi.createWeekGoal.mockResolvedValue({ id: 'g1' });
   goalsApi.setVisitPriority.mockResolvedValue({});
   goalsApi.recomputeScores.mockResolvedValue({ counts: {} });
@@ -161,13 +175,17 @@ test('quick actions: Brief shows the card with refs + Copy for Claude; Add task 
   await within(card).findByText('Quarry Labs · target');
   expect(within(card).getByText('B2')).toBeInTheDocument();
   expect(within(card).getByRole('button', { name: 'Copy for Claude' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Add task' }));
+  fireEvent.click(screen.getByRole('button', { name: 'To-do' }));
   await waitFor(() => expect(goalsApi.createWeekGoal).toHaveBeenCalled());
   expect(goalsApi.createWeekGoal.mock.calls[0][1]).toMatchObject({ kind: 'todo', text: 'Make the first touch: Quarry Labs', link_type: 'target', link_id: 't1', owner_user_id: 'u1' });
-  fireEvent.click(screen.getByRole('button', { name: 'Not a fit' }));
-  await waitFor(() => expect(goalsApi.setVisitPriority).toHaveBeenCalledWith('b1', { record: { type: 'target', id: 't1' }, not_a_fit: true }));
-  expect(goalsApi.recomputeScores).toHaveBeenCalledWith('b1', { type: 'target', id: 't1' });
-  expect(await screen.findByRole('button', { name: 'Undo' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '↓ Deprioritize…' }));
+  fireEvent.click(screen.getByRole('radio', { name: 'Too small' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Deprioritize', exact: true }));
+  await waitFor(() => expect(goalsApi.deprioritize).toHaveBeenCalledWith('b1', 'target', 't1', { reason: 'too_small', expect: 'researching' }));
+  expect(goalsApi.setVisitPriority).not.toHaveBeenCalled();
+  const undo = await screen.findByRole('button', { name: 'Undo' });
+  fireEvent.click(undo);
+  await waitFor(() => expect(goalsApi.undoFlow).toHaveBeenCalledWith('b1', 'ev-d'));
 });
 
 test('table mirrors the filters and the legend: the Segment filter re-queries, a lit source narrows the table, Live rows sit in their own group, Change column with Since yesterday', async () => {
@@ -178,10 +196,10 @@ test('table mirrors the filters and the legend: the Segment filter re-queries, a
   expect(within(table).getByRole('columnheader', { name: 'Source' })).toBeInTheDocument();
   expect(within(table).getByText('Live · closed-won or pilot (1)')).toBeInTheDocument();
   expect(within(table).getAllByRole('button', { name: /^(Quarry Labs|Hilton Example|Harbor Lane|Live Partner)$/ })).toHaveLength(4);
-  fireEvent.click(screen.getByRole('button', { name: /^Brad \/ Upside/ }));
+  fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'upside' } });
   await waitFor(() => expect(within(screen.getByRole('table')).queryByText('Quarry Labs')).not.toBeInTheDocument());
   expect(within(screen.getByRole('table')).getByText('Hilton Example')).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'All sources' }));
+  fireEvent.change(screen.getByLabelText('Source'), { target: { value: '' } });
   fireEvent.click(screen.getByRole('button', { name: /^Partners/ }));
   await waitFor(() => expect(goalsApi.scores).toHaveBeenLastCalledWith('b1', expect.objectContaining({ segment: 'partners' })));
   await waitFor(() => expect(within(screen.getByRole('table')).queryByText('Quarry Labs')).not.toBeInTheDocument());
@@ -210,7 +228,7 @@ test('Share saves the filter state as a named view and exposes the CSV link; a V
   expect(screen.queryByRole('button', { name: 'Recompute now' })).not.toBeInTheDocument();
   fireEvent.click(dot('Quarry Labs'));
   const menu = await screen.findByRole('toolbar', { name: 'Actions for Quarry Labs' });
-  expect(within(menu).getAllByRole('button').map(b => b.textContent)).toEqual(['Brief', 'Open']);
+  expect(within(menu).getAllByRole('button').map(b => b.textContent)).toEqual(['Open account', 'Brief']);
 });
 
 // FIX priorities-labels-v1 - names without hovering.
@@ -350,15 +368,15 @@ test('click outside: a press on empty chart space deselects (card gone, aria-pre
   expect(dot('Harbor Lane').getAttribute('data-selected')).toBe('true');
 });
 
-test('click outside: an open Assign dropdown closes on the first outside press and the selection stays; the Y switch and Names keep it; a legend pill, a filter and the View switch deselect; the Brief card and the toast keep it', async () => {
+test('click outside: an open Deprioritize sheet closes on the first outside press and the selection stays; the Y switch and Names keep it; a legend pill, a filter and the View switch deselect; the Brief card and the toast keep it', async () => {
   goalsApi.createWeekGoal.mockResolvedValue({ id: 'g1' });
   render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
   await waitFor(() => expect(dots()).toHaveLength(3));
   fireEvent.click(dot('Quarry Labs'));
-  fireEvent.click(screen.getByRole('button', { name: /^Assign to/ }));
-  expect(screen.getByRole('menu', { name: 'Assign to' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: '↓ Deprioritize…' }));
+  expect(screen.getByRole('group', { name: 'Deprioritize' })).toBeInTheDocument();
   press(chartSvg());
-  expect(screen.queryByRole('menu', { name: 'Assign to' })).toBeNull();
+  expect(screen.queryByRole('group', { name: 'Deprioritize' })).toBeNull();
   expect(selectedCard()).toHaveAttribute('data-pinned-card', 'target-t1');
   press(screen.getByRole('button', { name: 'Size' })); fireEvent.click(screen.getByRole('button', { name: 'Size' }));
   expect(selectedCard()).toHaveAttribute('data-pinned-card', 'target-t1');
@@ -369,11 +387,11 @@ test('click outside: an open Assign dropdown closes on the first outside press a
   const brief = await screen.findByRole('region', { name: 'Brief' });
   press(within(brief).getByText(/Suggested next step/));
   expect(selectedCard()).toHaveAttribute('data-pinned-card', 'target-t1');
-  fireEvent.click(within(selectedCard()).getByRole('button', { name: 'Add task' }));
+  fireEvent.click(within(selectedCard()).getByRole('button', { name: 'To-do' }));
   const undo = await screen.findByRole('button', { name: 'Undo' });
   press(undo);
   expect(selectedCard()).toHaveAttribute('data-pinned-card', 'target-t1');
-  press(screen.getByRole('button', { name: /^Brad \/ Upside/ }));
+  press(within(screen.getByRole('group', { name: 'Owner' })).getByRole('button', { name: /^Other/ }));
   expect(selectedCard()).toBeNull();
   fireEvent.click(dot('Quarry Labs'));
   press(screen.getByRole('button', { name: /^Partners/ }));
@@ -453,7 +471,15 @@ test('filter card: type chips carry counts.segments and filter; labeled selects;
   expect(line).toHaveTextContent(/Showing 1 of 3 ·/);
   expect(within(line).getAllByRole('button').map(b => b.getAttribute('aria-label') || b.textContent)).toEqual(['Remove filter Type: Partners', 'Remove filter Band: P3', 'Clear all']);
   fireEvent.click(within(line).getByRole('button', { name: 'Remove filter Band: P3' }));
-  await waitFor(() => expect(goalsApi.scores).toHaveBeenLastCalledWith('b1', { segment: 'partners', owner: null, source: null, band: null, needs_touch: null, min: null, window: null, q: null }));
+  await waitFor(() => expect(goalsApi.scores).toHaveBeenLastCalledWith('b1', { segment: 'partners', owner: null, source: null, band: null, needs_touch: null, min: null, window: null, q: null, fit: 'strong,good', due: null }));
+  // homelover-flow-v1 F4 / F5: Fit chips (Strong + Good pressed by default, Deprioritized off) and the Due select.
+  const fitChips = within(screen.getByRole('group', { name: 'Fit' })).getAllByRole('button');
+  expect(fitChips.map(b => [b.textContent.replace(/\d+$/, ''), b.getAttribute('aria-pressed')])).toEqual([['Strong', 'true'], ['Good', 'true'], ['Low', 'false'], ['Deprioritized', 'false']]);
+  fireEvent.click(fitChips[3]);
+  await waitFor(() => expect(goalsApi.scores).toHaveBeenLastCalledWith('b1', expect.objectContaining({ fit: 'strong,good,deprioritized' })));
+  expect(document.querySelector('[data-active-filters]')).toHaveTextContent(/Fit: Strong \+ Good \+ Deprioritized/);
+  fireEvent.change(screen.getByLabelText('Due'), { target: { value: 'today' } });
+  await waitFor(() => expect(goalsApi.scores).toHaveBeenLastCalledWith('b1', expect.objectContaining({ due: 'today' })));
   fireEvent.click(within(document.querySelector('[data-active-filters]')).getByRole('button', { name: 'Clear all' }));
   await waitFor(() => expect(document.querySelector('[data-active-filters]')).toBeNull());
   expect(within(type).getByRole('button', { name: /^All/ }).getAttribute('aria-pressed')).toBe('true');
@@ -482,17 +508,17 @@ test('chart toolbar: View + Y as icon and word, "Ranked by intent", the Top step
   expect(document.querySelector('[data-band-chip="P2"]').getAttribute('aria-pressed')).toBe('true');
 });
 
-test('legend: sources with 0 fold into one dashed chip that expands', async () => {
+test('legend: owners with 0 fold into one dashed chip that expands (Me · members · Other · Unassigned)', async () => {
   render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
   await waitFor(() => expect(dots()).toHaveLength(3));
-  expect([...document.querySelectorAll('[data-legend-source]')].map(b => b.getAttribute('data-legend-source'))).toEqual(['upside', 'website']);
+  expect([...document.querySelectorAll('[data-legend-source]')].map(b => b.getAttribute('data-legend-source'))).toEqual(['me', 'other']);
   const more = document.querySelector('[data-zero-sources]');
-  expect(more).toHaveTextContent('+ 7 sources with 0');
+  expect(more).toHaveTextContent('+ 2 with 0');
   fireEvent.click(more);
-  expect(document.querySelectorAll('[data-legend-source]')).toHaveLength(9);
+  expect([...document.querySelectorAll('[data-legend-source]')].map(b => b.getAttribute('data-legend-source'))).toEqual(['me', 'u2', 'other', 'unassigned']);
 });
 
-test('detail table under the chart: # · Company · Source · Intent · Visits · People · Fit · Research · Engagement · Touched · Band; sort by a header; a row selects the dot and a dot highlights its row; the name opens; Show 11-40', async () => {
+test('detail table under the chart: # · Company · Source · Seen · Owner · Fit · Reached · Intent · … · Band (newest first by default); sort by a header; a row selects the dot and a dot highlights its row; the name opens; Show 11-40', async () => {
   windowMocks();
   const many = Array.from({ length: 14 }, (_, i) => row('employer', `x${i}`, `Zz Co ${String(i).padStart(2, '0')}`, 30 - i, 'P3', 'website', { rank: 4 + i }));
   goalsApi.scores.mockResolvedValue({ ...DATA, rows: [...ROWS, ...many], counts: { ...DATA.counts, ranked: 17, shown: 17 } });
@@ -502,12 +528,16 @@ test('detail table under the chart: # · Company · Source · Intent · Visits �
   expect(card).toHaveTextContent('Top 40 · detail');
   expect(card).toHaveTextContent('Click a dot or a row — they select together');
   const table = within(card).getByRole('table');
-  expect(within(table).getAllByRole('columnheader').map(h => h.textContent.replace(/[▲▼↕\s]+$/, '').trim())).toEqual(['#', 'Company', 'Source', 'Intent', 'Visits', 'People', 'Fit', 'Research', 'Engagement', 'Touched', 'Band']);
+  expect(within(table).getAllByRole('columnheader').map(h => h.textContent.replace(/[▲▼↕\s]+$/, '').trim())).toEqual(['#', 'Company', 'Source', 'Seen', 'Owner', 'Fit', 'Reached', 'Intent', 'Visits', 'People', 'Size pts', 'Research', 'Engagement', 'Touched', 'Band']);
   const names = () => [...table.querySelectorAll('[data-row-name]')].map(b => b.textContent);
   expect(names()).toHaveLength(10 + 1); // the first 10 ranked + the Live row
   expect(names().slice(0, 3)).toEqual(['Quarry Labs', 'Hilton Example', 'Harbor Lane']);
   const quarry = within(table).getByRole('button', { name: 'Quarry Labs' }).closest('tr');
   expect(quarry.textContent).toContain('15/15');
+  expect(quarry.querySelector('[data-new-badge]')).toBeTruthy();
+  expect(quarry.querySelector('[data-fit-cell="good"]').textContent).toBe('Good 64');
+  expect(quarry.querySelector('[data-reached-cell]').textContent).toBe('3/11');
+  expect(quarry.querySelector('[data-owner-cell="member"]').textContent).toBe('Me');
   expect(quarry.querySelector('[data-band-pill="P1"]')).toBeTruthy();
   fireEvent.click(within(card).getByRole('button', { name: 'Show 11–17 ▾' }));
   expect(names()).toHaveLength(17 + 1);

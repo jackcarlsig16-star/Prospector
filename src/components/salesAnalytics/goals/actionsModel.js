@@ -6,7 +6,10 @@ import { laDay } from '../huddleView';
 // actions-v2 A1: whose list comes from the frame's one Who control (a member's
 // user id = rows they own; 'team' = everything); the Unassigned chip shows the
 // rows nobody owns. Kind and Search narrow it. The sort is remembered per browser.
-export const KIND_LABEL = { signal: 'Signal', tidy: 'Tidy', waiting: 'Waiting on', todo: 'To-do', flag: 'Flag', focus: 'Focus', campaign: 'Campaign' };
+// homelover-flow-v1 F10: Actions is "my list" - to-dos, waiting-on, flags, Focus, campaign steps - grouped by Due
+// (Today · This week · Later). Web-visit signals left the list (the Map's NEW ring); Tidy suggestions sit in one
+// collapsed "Tidy (n)" group at the bottom (GET goals/actions returns them apart as `tidy`).
+export const KIND_LABEL = { tidy: 'Tidy', waiting: 'Waiting on', todo: 'To-do', flag: 'Flag', focus: 'Focus', campaign: 'Campaign' };
 export const KIND_OPTIONS = Object.entries(KIND_LABEL);
 // What a Viewer's Team list holds (A1): to-dos, Focus 5 per member, flags.
 export const VIEWER_KINDS = ['todo', 'focus', 'flag'];
@@ -23,29 +26,34 @@ export function matchesActionFilters(it, f, owner) {
   return (owner === 'team' || it.owner_user_id === owner) && narrowed(it, f);
 }
 
-// actions-v2 A2 - the bands, in order, each with its open rows; Focus items already done fold under "n done ▸".
-// unassigned = how many rows (Kind / Search applied) nobody owns, for the chip.
-export const BANDS = [['now', 'Now'], ['today', 'Today'], ['week', 'This week'], ['housekeeping', 'Housekeeping']];
-export function actionsView(items, f, { owner = 'team', viewer = false } = {}) {
+// The Due groups, in order, each with its open rows; Focus items already done fold under "n done ▸". tidy = the
+// collapsed Tidy group (its own rows, same Who / Kind / Search narrowing). unassigned = how many rows (Kind / Search
+// applied) nobody owns, for the chip. A row without due_group (an older server) falls back from its band.
+export const BANDS = [['today', 'Today'], ['week', 'This week'], ['later', 'Later']];
+const DUE_FROM_BAND = { now: 'today', today: 'today', week: 'week', housekeeping: 'later' };
+export const dueGroupOf = it => it.due_group || DUE_FROM_BAND[it.band] || 'later';
+export function actionsView(items, f, { owner = 'team', viewer = false, tidy = [] } = {}) {
   // A kind this screen has no label and buttons for yet stays hidden.
-  const known = items.filter(it => it.kind in KIND_LABEL);
+  const known = items.filter(it => it.kind in KIND_LABEL && it.kind !== 'tidy');
   const base = viewer ? known.filter(it => VIEWER_KINDS.includes(it.kind)) : known;
   const shown = base.filter(it => matchesActionFilters(it, f, owner));
   const open = shown.filter(it => it.status !== 'done');
+  const tidyRows = viewer ? [] : tidy.filter(it => it.kind === 'tidy' && narrowed(it, f) && (!f.kind || f.kind === 'tidy') && (!f.unassigned || !it.owner_user_id));
   return {
-    bands: BANDS.map(([id, label]) => ({ id, label, rows: open.filter(it => (it.band || 'housekeeping') === id) })),
-    open, done: shown.filter(it => it.status === 'done'),
+    bands: BANDS.map(([id, label]) => ({ id, label, rows: open.filter(it => dueGroupOf(it) === id) })),
+    open, done: shown.filter(it => it.status === 'done'), tidy: tidyRows,
     unassigned: base.filter(it => !it.owner_user_id && it.status !== 'done' && narrowed(it, f)).length,
   };
 }
 
-// localStorage key (per browser): prospector_actions_folded - JSON list of folded band ids; absent = Housekeeping folded.
+// localStorage key (per browser): prospector_actions_folded - JSON list of folded group ids; absent = Later + Tidy folded.
 const FOLD_KEY = 'prospector_actions_folded';
-export const DEFAULT_FOLDED = ['housekeeping'];
+export const FOLDABLE = [...BANDS.map(([id]) => id), 'tidy'];
+export const DEFAULT_FOLDED = ['later', 'tidy'];
 export function readFolded() {
   try {
     const v = JSON.parse(localStorage.getItem(FOLD_KEY));
-    return Array.isArray(v) && v.every(x => BANDS.some(([id]) => id === x)) ? v : DEFAULT_FOLDED;
+    return Array.isArray(v) && v.every(x => FOLDABLE.includes(x)) ? v : DEFAULT_FOLDED;
   } catch { return DEFAULT_FOLDED; }
 }
 export const writeFolded = v => { try { localStorage.setItem(FOLD_KEY, JSON.stringify(v)); } catch { /* private mode */ } };

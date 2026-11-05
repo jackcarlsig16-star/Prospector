@@ -234,7 +234,7 @@ test('one line per company: aligned cells, record id on hover, sort by Due insid
   await screen.findByText('Beta Co');
   const cells = tr => [...tr.querySelectorAll('td')].map(td => td.textContent);
   const beta = screen.getByText('Beta Co').closest('tr');
-  expect(cells(beta).length).toBe(19); // company-workflow-v1: + Employees, Reach, Clients
+  expect(cells(beta).length).toBe(20); // company-workflow-v1: + Employees, Reach, Clients; homelover-flow-v1: + Reached
   expect([0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map(i => cells(beta)[i])).toEqual(['☆', 'Beta Co', 'Employer', '—', 'Stage', '—', '—', '—', 'Send deck', 'Oct 22', '—', '—', '—', '—', '—']);
   expect(within(beta).getByLabelText('Priority for Beta Co').value).toBe('');
   expect(beta.querySelector('td.ui-table__sticky').title).toBe('Beta Co · R-2');
