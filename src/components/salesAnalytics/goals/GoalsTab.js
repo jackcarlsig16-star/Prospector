@@ -10,14 +10,13 @@ import Segmented from '../../../ui/Segmented';
 import FilterSelect from '../../../ui/FilterSelect';
 import Ring, { RingLegend } from '../charts/Ring';
 import { goalsApi, TODOS_CHANGED } from './goalsApi';
-import ScorecardTable from './ScorecardTable';
+import ScorecardView from './ScorecardView';
 import { todoStatus } from './todoStatus';
 import PartnersView from './PartnersView';
 import CompaniesView from './CompaniesView';
 import PipelineView from './PipelineView';
 import PrioritiesView from './priorities/PrioritiesView';
 import { writePeopleCompany } from '../salesNav';
-import ReportView from './ReportView';
 import PlanWeekDrawer from './PlanWeekDrawer';
 import { PlanNudge } from './PlanNudge';
 import ActionsView from './ActionsView';
@@ -41,11 +40,11 @@ import {
 
 // sales-ia-v1 - the data hub behind Actions (sales-ia-v2 A1: ActionsView) /
 // Pipeline / Dashboard (sales-ia-v2 D1: the charts with the Goals section -
-// hero, commitments, report card, moves, Scorecard, Weekly report - under
-// them; Analytics and Sequenced ride along). `section` is the tab on screen
+// hero, commitments, moves - under them; dashboard-v3 Stage 1: the Scorecard is
+// its own sub-view, the Weekly report + KPI table are gone, Sequenced too). `section` is the tab on screen
 // and `view` its sub-view (SalesAnalyticsTab owns both, via salesNav.js, and
 // draws the sub-view switch); this renders only that section, with its tools
-// portaled into the frame row (sales-ia-v2 N2). Export = report PDF + 4 CSVs.
+// portaled into the frame row (sales-ia-v2 N2). Export = 4 CSVs.
 // localStorage key (per viewer convenience, never shared state):
 //   prospector_goals_owner - last person filter, as a first-name slug
 const OWNER_KEY = 'prospector_goals_owner';
@@ -60,16 +59,18 @@ const slugOf = name => name.split(' ')[0].toLowerCase();
 // Design E - the one table from a link target to its home tab + sub-view.
 // Commitment link_target values live in the database, so anything unknown
 // still lands somewhere: the Dashboard, with the target logged.
+// dashboard-v3 Stage 1: the weekly report's links (view:report, section:*) and score:* open the Scorecard sub-view;
+// Sequenced is gone, so companies / missing-headcount links open Email (its Sequences card from Stage 4).
 const HOME = {
-  'view:report': ['dashboard', 'overview'], 'view:week': ['actions'], 'view:this_week': ['actions'],
-  'view:partners': ['pipeline', 'partners'], 'view:companies': ['dashboard', 'sequenced'], 'view:pipeline': ['pipeline', 'companies'],
-  'week:prev': ['actions'], overview: ['dashboard', 'analytics'], section: ['dashboard', 'overview'], score: ['dashboard', 'overview'],
-  missing: ['dashboard', 'sequenced'], huddle: ['pipeline', 'people'], plan: ['actions'],
+  'view:report': ['dashboard', 'scorecard'], 'view:week': ['actions'], 'view:this_week': ['actions'],
+  'view:partners': ['pipeline', 'partners'], 'view:companies': ['dashboard', 'analytics'], 'view:pipeline': ['pipeline', 'companies'],
+  'week:prev': ['actions'], overview: ['dashboard', 'analytics'], section: ['dashboard', 'scorecard'], score: ['dashboard', 'scorecard'],
+  missing: ['dashboard', 'analytics'], huddle: ['pipeline', 'people'], plan: ['actions'],
 };
 export function homeOf(target) {
   if (!target) return null;
   if (target.partners) return { tab: 'pipeline', view: 'partners' };
-  if (target.companies) return { tab: 'dashboard', view: 'sequenced' };
+  if (target.companies) return { tab: 'dashboard', view: 'analytics' };
   if (typeof target !== 'string') return null;
   const row = HOME[target] || HOME[target.split(':')[0]];
   return row ? { tab: row[0], view: row[1] || null } : null;
@@ -90,9 +91,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const [cadences, setCadences] = useState([]);
   const [scorecard, setScorecard] = useState(null);
   const [commitments, setCommitments] = useState([]);
-  const [lastWeekTodos, setLastWeekTodos] = useState([]);
-  const [reportData, setReportData] = useState(null);
-  const [kpiRows, setKpiRows] = useState(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [companyOwnerFocus, setCompanyOwnerFocus] = useState(null);
   const [allCompanies, setAllCompanies] = useState(null);
@@ -103,7 +101,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const [toast, setToast] = useState('');
   const [range, setRange] = useState(DEFAULT_RANGE); // Dashboard: 7 | 30 | 90 days
   const [team, setTeam] = useState(''); // Dashboard: owner_team, '' = all
-  const [heroKey, setHeroKey] = useState(0);
   const [errors, setErrors] = useState({});
   const [toolsSlot, setToolsSlot] = useState(null);
   useEffect(() => { setToolsSlot(document.getElementById(FRAME_TOOLS_ID)); }, []);
@@ -117,6 +114,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const myRole = me?.memberships?.find(m => m.business_id === businessId)?.role;
   const canEdit = !!me && (me.profile?.is_platform_owner || roleAtLeast(myRole, 'member'));
   const isAdmin = !!me && (me.profile?.is_platform_owner || roleAtLeast(myRole, 'admin'));
+  const isOwner = !!me && (me.profile?.is_platform_owner || myRole === 'owner');
   // weekly-plan-v1: a plan is one person's; on Team it's the signed-in user's.
   const planOwner = owner === 'team' ? me?.profile?.id : owner;
 
@@ -135,22 +133,12 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
 
   const loadCommitments = useCallback(() => goalsApi.weekGoals(businessId, weekStart, weekStart, 'commitment')
     .then(g => { setCommitments(g); setError('commitments', null); }).catch(e => setError('commitments', e)), [businessId, weekStart, setError]);
-  const loadReport = useCallback(() => goalsApi.report(businessId, weekStart)
-    .then(d => { setReportData(d); setError('report', null); }).catch(e => { setReportData(null); setError('report', e); }), [businessId, weekStart, setError]);
-  const loadKpi = useCallback(() => goalsApi.kpi(businessId, weekStart)
-    .then(r => { setKpiRows(r); setError('kpi', null); }).catch(e => { setKpiRows(null); setError('kpi', e); }), [businessId, weekStart, setError]);
-
   useEffect(() => { loadTodos(); }, [loadTodos]);
   useEffect(() => {
     window.addEventListener(TODOS_CHANGED, loadTodos);
     return () => window.removeEventListener(TODOS_CHANGED, loadTodos);
   }, [loadTodos]);
   useEffect(() => { loadCommitments(); }, [loadCommitments]);
-  useEffect(() => { loadReport(); }, [loadReport]);
-  useEffect(() => { loadKpi(); }, [loadKpi]);
-  useEffect(() => {
-    goalsApi.weekGoals(businessId, addDays(weekStart, -7), addDays(weekStart, -7), 'todo').then(setLastWeekTodos).catch(() => setLastWeekTodos([]));
-  }, [businessId, weekStart]);
   useEffect(() => { loadScorecard(); }, [loadScorecard]);
   const loadPlans = useCallback(() => { if (planOwner) goalsApi.weekPlans(businessId, planOwner).then(setPlans).catch(() => setPlans(null)); }, [businessId, planOwner]);
   useEffect(() => { loadPlans(); }, [loadPlans]);
@@ -229,36 +217,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
       </div>
     </section>
   );
-  // Weekly report: live progress comes from the report endpoint (or the
-  // frozen snapshot once final), merged onto the commitment rows.
-  const final = reportData?.report?.status === 'final';
-  const progressById = new Map(((final ? reportData.report.snapshot?.commitments : reportData?.commitments) || []).map(c => [c.id, c.progress]));
-  const reportCommitments = myCommitments.map(c => ({ ...c, target_value: c.target_value == null ? null : Number(c.target_value), progress: progressById.get(c.id) ?? null }));
-  const kpi = Object.fromEntries((kpiRows || []).map(r => [r.key, r]));
-  const lastDone = lastWeekTodos.filter(t => todoStatus(t) === 'done').length;
-  const partnerBlock = final ? reportData.report.snapshot?.partners : reportData?.partners;
-  const pm = partnerBlock?.metrics || {};
-  const hw = (final ? reportData.report.snapshot?.huddle : reportData?.huddle) || {};
-  const chip = (k, v, src, to) => (v == null ? null : { k, v: typeof v === 'number' ? v.toLocaleString('en-US') : v, src, to });
-  const autoChips = {
-    s1: [chip('to-dos done last week', `${lastDone} of ${lastWeekTodos.filter(t => todoStatus(t) !== 'dropped').length}`, 'App', 'week:prev'), chip('companies sequenced', companies.length, 'Apollo', 'view:companies'), chip('positive replies', kpi.positive_responses?.this_week, 'Apollo', 'huddle:reply')],
-    s3: [chip('companies in cadence', kpi.target_orgs?.this_week, 'Apollo', 'view:companies'), chip('new companies sequenced', companies.length, 'Apollo', 'view:companies'),
-      chip('headcount known', `${companies.filter(c => c.employees != null).length} of ${companies.length} companies`, 'App', 'missing'), chip('partners tracked', `${partners.length} · ${partners.filter(x => x.priority === 1).length} P1`, 'App', 'view:partners')],
-    s4: [chip('people in sequence', kpi.dm_contacted?.this_week, 'Apollo', 'overview:week_strip'), chip('new companies sequenced', companies.length, 'Apollo', 'view:companies'),
-      // first-touch-people-v1: the row follows the goal's unit; a week frozen before people existed says "computed".
-      partnerBlock?.first_touched_unit === 'people'
-        ? chip(`people first-touched${pm.people_first_touched?.computed ? ' · computed' : ''}`, pm.people_first_touched?.value, 'App')
-        : chip('partners first-touched', pm.partners_first_touched?.value, 'App', { partners: { stage: 'first_email_sent' } }),
-      chip('partner meetings', pm.partner_meetings?.value, 'App', { partners: { stage: 'meeting_set' } }),
-      chip('real opens', hw.real_opens, 'Apollo', 'huddle:open'), chip('real clicks', hw.real_clicks, 'Apollo', 'huddle:click'), chip('replies', hw.replies, 'Apollo', 'huddle:reply'),
-      chip('flags handed off', hw.flags_handed_off, 'App', 'huddle:flags'), chip('flags completed', hw.flags_completed, 'App', 'huddle:flags')],
-    // Meetings are typed in - there's no list behind them, so no link.
-    s5: [chip('meetings set this week', kpi.meetings_set?.this_week, 'Manual'), chip('meetings held', kpi.meetings_held?.this_week, 'Manual')],
-    s6: [chip('qualified opportunities', kpi.qualified_opps?.this_week, 'Pipeline', 'view:pipeline'), chip('covered lives in pipeline', kpi.covered_lives_pipeline?.this_week, 'Pipeline', 'view:pipeline')],
-    s12: [chip('expected launches, 90 days', kpi.launches_90d?.this_week, 'Pipeline', 'view:pipeline')],
-    s13: [chip('positive replies this week', kpi.positive_responses?.this_week, 'Apollo', 'huddle:reply')],
-  };
-  for (const k of Object.keys(autoChips)) autoChips[k] = autoChips[k].filter(Boolean);
 
   // Every Goals link goes through here (goals-surface-v1 Stage 4). Targets:
   // 'overview[:<widget>]', 'view:<view>', 'section:<key>', 'missing',
@@ -279,13 +237,11 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
     if (target === 'plan') setPlanOpen(true);
     if (target === 'view:partners') setPartnerFocus({});
     if (target === 'week:prev') setWeekStart(w => addDays(w, -7));
-    if (target === 'view:report') setTimeout(() => flashTo('goals-sec-s15'), 50);
-    if (kind === 'section') setTimeout(() => flashTo(`goals-sec-${arg}`), 50);
+      if (kind === 'section') setTimeout(() => flashTo(`goals-sec-${arg}`), 50);
     if (kind === 'score') setTimeout(() => flashTo(`score-row-${arg}`), 120);
     if (kind === 'missing') { setMissingOpen(true); setTimeout(() => flashTo('goals-missing'), 80); }
     onNav(home.tab, home.view);
   };
-  const openMissing = () => go('missing');
   const drill = id => go({ audience: 'view:companies', missing: 'missing', in_sequence: 'overview:week_strip', partners: { partners: { stage: 'first_email_sent' } },
     meetings: 'score:meetings_set', engagement: 'huddle:feed' }[id]);
   useEffect(() => {
@@ -316,8 +272,8 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
 
   // Design C - what the frame row carries per screen (sales-ia-v2 N2: one
   // fixed-height row, portaled into SalesAnalyticsTab's #sales-frame-tools).
-  const showPeople = section === 'actions' || ['partners', 'sequenced', 'overview'].includes(view);
-  const showWeek = section === 'actions' || view === 'sequenced'; // Overview's week nav sits in its Goals section
+  const showPeople = section === 'actions' || ['partners', 'overview'].includes(view);
+  const showWeek = section === 'actions'; // Overview's week nav sits in its Goals section; the Scorecard has its own month switch
   const overview = section === 'dashboard' && view === 'overview';
   const title = liveWeek ? dayTitle(today, compact) : weekOf(weekStart);
   const exportRect = exportOpen && document.getElementById('sales-export-btn')?.getBoundingClientRect();
@@ -348,15 +304,13 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
       </>}
       {section === 'actions' && me && <AttentionDrawer businessId={businessId} canEdit={canEdit} isAdmin={isAdmin} compact={compact} pageLoadFailures={pageLoadFailures} onNav={onNav} />}
       {section === 'actions' && canEdit && planOwner && <Btn primary onClick={() => setPlanOpen(true)}>Plan this week</Btn>}
-      {section === 'dashboard' && <Btn primary id="sales-export-btn" aria-haspopup="menu" aria-expanded={exportOpen} onClick={() => setExportOpen(o => !o)}>Export</Btn>}
+      {section === 'dashboard' && view !== 'scorecard' && <Btn primary id="sales-export-btn" aria-haspopup="menu" aria-expanded={exportOpen} onClick={() => setExportOpen(o => !o)}>Export</Btn>}
     </>
   );
   // The tools row scrolls sideways when narrow, so the Export menu is drawn
   // over the page (fixed) instead of inside it, where it would be clipped.
   const exportMenu = exportOpen && exportRect && createPortal(
     <div role="menu" className="no-print" style={{ position: 'fixed', right: window.innerWidth - exportRect.right, top: exportRect.bottom + 4, zIndex: 4010, minWidth: 220, background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: 10, padding: 6, display: 'flex', flexDirection: 'column' }}>
-      <button role="menuitem" type="button" className="ui-btn ui-btn--secondary ui-btn--block" style={{ height: 36, border: 0 }}
-        onClick={() => { setExportOpen(false); onNav('dashboard', 'overview'); setTimeout(() => window.print(), 400); }}>Weekly report PDF</button>
       {exports.map(x => (
         <button key={x.id} role="menuitem" type="button" className="ui-btn ui-btn--secondary ui-btn--block" disabled={x.disabled} title={x.disabled ? 'Needs the Stage 4 database update' : undefined}
           style={{ height: 36, ...(x.disabled ? {} : { border: 0 }) }}
@@ -384,36 +338,15 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
           <DashboardCharts businessId={businessId} days={range} owner={owner === 'team' ? null : owner} team={team || null} lookup={lookup} />
           <TrackImprove businessId={businessId} canEdit={canEdit} />
           <GoalsSection businessId={businessId} weekStart={weekStart} thisWeek={thisWeek} onWeek={setWeekStart} members={ownerMember ? [ownerMember] : members} lookup={lookup}
-            commitments={myCommitments} report={reportData?.report} partners={partners}
+            commitments={myCommitments} partners={partners}
             hero={<GoalHero businessId={businessId} weekStart={weekStart} owner={owner} ownerName={owner === 'team' ? null : whoLabel} commitments={myCommitments} missingHeadcount={missingHeadcount} canEdit={canEdit}
-              scorecard={scorecard} scorecardError={errors.scorecard} reloadKey={heroKey} onGoalSaved={() => { loadScorecard(); loadKpi(); }} onDrill={drill}
-              openTasks={heroTasks} onOpenTasks={key => openTasks({ link: { type: 'metric', id: key }, filter: drawerFilter })} />}>
-          <ScorecardTable data={scorecard} error={errors.scorecard} weekStart={weekStart} ownerName={owner === 'team' ? null : whoLabel} canEdit={canEdit} onOpen={go}
-            missingHeadcount={missingHeadcount} onFillHeadcount={openMissing}
-            onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await loadScorecard(); setHeroKey(k => k + 1); }} />
-          <ReportView weekStart={weekStart} report={reportData?.report} reportError={errors.report} sections={reportData?.sections} infra={reportData?.infra}
-            commitments={reportCommitments} commitmentsError={errors.commitments} kpiRows={kpiRows} kpiError={errors.kpi} autoChips={autoChips} partnerBlock={partnerBlock}
-            canEdit={canEdit} lookup={lookup} members={members} defaultOwner={owner === 'team' ? me?.profile?.id : owner} onOpen={go} tasksFor={tasksFor} liveWeek={liveWeek}
-            onSaveSection={(key, notes) => goalsApi.saveSection(businessId, weekStart, key, notes)}
-            onSectionSaved={s => setReportData(d => (d ? { ...d, sections: [...d.sections.filter(x => x.section_key !== s.section_key), s] } : d))}
-            onFinalize={async () => { await goalsApi.finalize(businessId, weekStart); await loadReport(); return true; }}
-            onReopen={async () => { await goalsApi.reopen(businessId, weekStart); await loadReport(); }}
-            onAddCommitment={async body => { await goalsApi.createWeekGoal(businessId, { ...body, kind: 'commitment', week_start: weekStart }); await Promise.all([loadCommitments(), loadReport()]); return true; }}
-            onUpdateCommitment={async (goalId, body) => { await goalsApi.updateWeekGoal(businessId, goalId, body); await loadCommitments(); }}
-            onCarryCommitments={async () => { const r = await goalsApi.carryOver(businessId, weekStart, 'commitment'); await Promise.all([loadCommitments(), loadReport()]); return r; }}
-            onSaveTarget={async body => { await goalsApi.saveTarget(businessId, body); await Promise.all([loadKpi(), loadScorecard()]); setHeroKey(k => k + 1); }}
-            onPlanWeek={canEdit && planOwner ? () => setPlanOpen(true) : null}
-            infraHandlers={{
-              onAdd: async body => { await goalsApi.createInfra(businessId, { ...body, week_start: weekStart }); await loadReport(); return true; },
-              onUpdate: async (itemId, body) => { await goalsApi.updateInfra(businessId, itemId, body); await loadReport(); },
-              onDelete: async itemId => { await goalsApi.deleteInfra(businessId, itemId); await loadReport(); },
-              onCarry: async () => { const r = await goalsApi.carryInfra(businessId, weekStart); await loadReport(); return r; },
-            }} />
-          </GoalsSection>
+              scorecard={scorecard} scorecardError={errors.scorecard} onGoalSaved={() => { loadScorecard(); }} onDrill={drill}
+              openTasks={heroTasks} onOpenTasks={key => openTasks({ link: { type: 'metric', id: key }, filter: drawerFilter })} />} />
         </>}
 
         {section === 'dashboard' && view === 'sources' && <SourcesView businessId={businessId} partners={partners} isAdmin={isAdmin} canEdit={canEdit} members={members} meId={meId} onToast={setToast} />}
         {section === 'dashboard' && view === 'analytics' && analytics}
+        {section === 'dashboard' && view === 'scorecard' && me && <ScorecardView businessId={businessId} isOwner={isOwner} toolsSlot={toolsSlot} onOpen={go} />}
 
         {section === 'pipeline' && view === 'partners' && (
           <PartnersView businessId={businessId} partners={myPartners} lookup={lookup} members={members} canEdit={canEdit} error={errors.partners}
@@ -485,7 +418,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
         <PlanWeekDrawer businessId={businessId} weekStart={weekStart} ownerId={planOwner} ownerName={lookup(planOwner).first} teamDefault={owner === 'team'} compact={compact}
           hasPlanned={commitments.some(c => c.owner_user_id === planOwner && c.plan_id && c.status === 'open')}
           onClose={() => setPlanOpen(false)}
-          onSaved={() => { setPlanOpen(false); setToast('Focus 5 saved'); loadCommitments(); loadTodos(); loadReport(); loadPlans(); }} />
+          onSaved={() => { setPlanOpen(false); setToast('Focus 5 saved'); loadCommitments(); loadTodos(); loadPlans(); }} />
       )}
       {toast && (
         <div role="status" className="no-print" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 4005, padding: '10px 16px', borderRadius: 10, background: SA.surface2, border: `1px solid ${SA.border}`, color: SA.text, fontSize: 14 }}>{toast}</div>

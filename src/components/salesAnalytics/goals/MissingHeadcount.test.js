@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import CompaniesView from './CompaniesView';
-import ScorecardTable from './ScorecardTable';
 import { memberLookup } from './goalsUi';
 
 // goals-surface-v1 Stage 2: companies with no headcount (all weeks) behind a
@@ -60,14 +59,4 @@ test('viewers see the list without inputs', () => {
   render(<Harness canEdit={false} />);
   fireEvent.click(screen.getByRole('button', { name: /Missing headcount/ }));
   expect(screen.queryByLabelText(/Employees at/)).toBeNull();
-});
-
-test('scorecard audience row links to the list', () => {
-  const metric = { value: 10, goal: null, companies: 4, companies_with_employees: 1 };
-  const data = { month: '2026-09-01', weeks: [{ week_start: '2026-09-28', metrics: new Proxy({}, { get: () => metric }) }], month_total: new Proxy({}, { get: () => metric }), sources: {} };
-  const onFill = jest.fn();
-  render(<ScorecardTable data={data} weekStart="2026-09-28" canEdit={false} missingHeadcount={7} onFillHeadcount={onFill} />);
-  fireEvent.click(screen.getByRole('button', { name: '7 companies missing headcount → fill' }));
-  fireEvent.click(screen.getByRole('button', { name: '3 of 4 need headcount' }));
-  expect(onFill).toHaveBeenCalledTimes(2);
 });

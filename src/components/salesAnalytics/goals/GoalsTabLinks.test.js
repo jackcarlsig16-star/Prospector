@@ -6,13 +6,13 @@ jest.mock('../../../utils/useMediaQuery', () => () => false);
 
 // The Stage 0 link inventory: every go() target and its home (Design E;
 // sales-ia-v2 N1: Today -> Actions, Reports -> Dashboard, Huddle -> Pipeline >
-// People, Board -> Companies, Sequenced -> Dashboard; Stage 6: the Weekly
-// report and the Scorecard are the Goals section of Dashboard > Overview).
+// People, Board -> Companies; dashboard-v3 Stage 1: the report's and score links open
+// the Scorecard sub-view, companies / missing links open Email, Sequenced is gone).
 test.each([
-  ['view:report', 'dashboard', 'overview'], ['section:s4', 'dashboard', 'overview'],
-  ['view:week', 'actions', null], ['view:this_week', 'actions', null], ['score:meetings_set', 'dashboard', 'overview'],
+  ['view:report', 'dashboard', 'scorecard'], ['section:s4', 'dashboard', 'scorecard'],
+  ['view:week', 'actions', null], ['view:this_week', 'actions', null], ['score:meetings_set', 'dashboard', 'scorecard'],
   ['week:prev', 'actions', null], ['plan', 'actions', null],
-  ['view:partners', 'pipeline', 'partners'], ['view:companies', 'dashboard', 'sequenced'], ['missing', 'dashboard', 'sequenced'], ['view:pipeline', 'pipeline', 'companies'],
+  ['view:partners', 'pipeline', 'partners'], ['view:companies', 'dashboard', 'analytics'], ['missing', 'dashboard', 'analytics'], ['view:pipeline', 'pipeline', 'companies'],
   ['overview', 'dashboard', 'analytics'], ['overview:week_strip', 'dashboard', 'analytics'],
   ['huddle', 'pipeline', 'people'], ['huddle:reply', 'pipeline', 'people'], ['huddle:flags', 'pipeline', 'people'],
 ])('%s → %s / %s', (target, tab, view) => {
@@ -21,7 +21,7 @@ test.each([
 
 test('object targets: partners and companies', () => {
   expect(homeOf({ partners: { stage: 'meeting_set' } })).toEqual({ tab: 'pipeline', view: 'partners' });
-  expect(homeOf({ companies: '2026-10-05' })).toEqual({ tab: 'dashboard', view: 'sequenced' });
+  expect(homeOf({ companies: '2026-10-05' })).toEqual({ tab: 'dashboard', view: 'analytics' });
 });
 
 test('an unknown target (an old commitment link_target) has no home, so go() falls back to the Dashboard', () => {

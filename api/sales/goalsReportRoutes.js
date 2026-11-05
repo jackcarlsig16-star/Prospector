@@ -4,6 +4,8 @@ import { PARTNER_METRICS, PARTNER_FLOWS, PEOPLE_METRIC, loadPartnerData, partner
 import { huddleWeekCounts, weekEngagement } from './huddleWeek.js';
 import { businessFeatureOn } from '../lib/outlookFeatures.js';
 import { outlookMeetingsByWeek } from './outlookMeetings.js';
+import { humanShare, humanOpenRate, countExternalMeetings } from './scorecardMath.js';
+import { loadMembers } from './teamEmails/send.js';
 import {
   getSupabase, validate, fail, findRow, weekIsFinal, FINAL_ERROR,
   isMonday, isFirstOfMonth, addDays, laStartOfDayMs,
@@ -55,8 +57,9 @@ const KPI_ROWS = [
   ['contracts_signed', 'Contracts signed', 'Pipeline'],
   ['launches_90d', 'Expected 90-day launches', 'Pipeline'],
 ];
+// dashboard-v3 Stage 1 (A9): meetings_set reads the synced calendar (external-domain events), human_open_rate joins.
 const SCORECARD_SOURCES = {
-  outbound_audience: 'Apollo', total_in_sequence: 'Apollo', sequences_running: 'Apollo', meetings_set: 'Manual', open_rate: 'Apollo',
+  outbound_audience: 'Apollo', total_in_sequence: 'Apollo', sequences_running: 'Apollo', meetings_set: 'Outlook', open_rate: 'Apollo', human_open_rate: 'Apollo',
   ...Object.fromEntries(PARTNER_METRICS.map(k => [k, 'App'])),
   [PEOPLE_METRIC]: 'App',
 };
@@ -82,7 +85,7 @@ async function lastSyncedValue(supabase, businessId, metricKey, from, to) {
   return data.length ? Number(data[0].value) : null;
 }
 
-async function openRate(supabase, businessId, from, to, mailboxes) {
+async function openStats(supabase, businessId, from, to, mailboxes) {
   const rows = await selectAllPages(() => {
     let q = supabase.from('sales_email_daily_counts').select('delivered, opened, mailbox')
       .eq('business_id', businessId).gte('day', from).lte('day', to);
@@ -91,7 +94,53 @@ async function openRate(supabase, businessId, from, to, mailboxes) {
   });
   const delivered = rows.reduce((n, r) => n + (r.delivered || 0), 0);
   const opened = rows.reduce((n, r) => n + (r.opened || 0), 0);
-  return delivered ? opened / delivered : null;
+  return { delivered, opened, rate: delivered ? opened / delivered : null };
+}
+
+// dashboard-v3 Stage 1 (A4): the human share of the tracked opens in [from, to] (LA days), through the one bot rule.
+async function humanShareFor(supabase, businessId, from, to, mailboxes) {
+  const fromIso = new Date(laStartOfDayMs(from)).toISOString(), toIso = new Date(laStartOfDayMs(addDays(to, 1))).toISOString();
+  const opens = await selectAllPages(() => {
+    let q = supabase.from('sales_email_activity').select('id, apollo_message_id, sender, occurred_at, user_agent, tracking_service')
+      .eq('business_id', businessId).eq('event', 'open').gte('occurred_at', fromIso).lt('occurred_at', toIso);
+    if (mailboxes) q = q.in('sender', mailboxes.length ? mailboxes : ['-']);
+    return q.order('id');
+  });
+  const ids = [...new Set(opens.map(o => o.apollo_message_id))];
+  const msgs = ids.length ? await selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id, delivered_at')
+    .eq('business_id', businessId).in('apollo_message_id', ids).order('apollo_message_id')) : [];
+  return humanShare(opens, new Map(msgs.map(m => [m.apollo_message_id, m.delivered_at])));
+}
+
+async function humanOpenFor(supabase, businessId, from, to, mailboxes) {
+  const [stats, share] = await Promise.all([openStats(supabase, businessId, from, to, mailboxes), humanShareFor(supabase, businessId, from, to, mailboxes)]);
+  return { value: humanOpenRate({ ...stats, share }), open_rate: stats.rate, human_share: share, delivered: stats.delivered, opened: stats.opened };
+}
+
+// dashboard-v3 Stage 1 (A5): every synced calendar event the workspace holds, counted per week by scorecardMath.
+async function externalMeetings(supabase, businessId) {
+  return selectAllPages(() => supabase.from('microsoft_events').select('graph_id, ical_uid, external_domains, start_at, is_cancelled, created_at_graph')
+    .eq('business_id', businessId).order('start_at').order('id'));
+}
+const weekWindow = w => ({ weekStartMs: laStartOfDayMs(w), weekEndMs: laStartOfDayMs(addDays(w, 7)) });
+
+// A5: which members' calendars feed the meetings row (a Microsoft grant with Calendars.Read); the row says so when it
+// is only some of them, never silently partial.
+async function calendarCoverage(supabase, businessId) {
+  const members = (await loadMembers(supabase, businessId)).filter(m => m.role !== 'viewer');
+  const ids = members.map(m => m.userId);
+  const { data, error } = ids.length ? await supabase.from('microsoft_grants').select('user_id, scopes').in('user_id', ids) : { data: [] };
+  if (error) throw new Error(error.message);
+  const withCalendar = new Set((data || []).filter(g => (g.scopes || []).some(s => /^Calendars\./i.test(s))).map(g => g.user_id));
+  const names = members.filter(m => withCalendar.has(m.userId)).map(m => m.firstName || 'a member');
+  return { members: names, partial: names.length > 0 && names.length < members.length, none: !names.length };
+}
+
+async function lastSyncAt(supabase, businessId) {
+  const { data, error } = await supabase.from('sales_sync_runs').select('finished_at').eq('business_id', businessId).eq('status', 'success')
+    .not('finished_at', 'is', null).order('finished_at', { ascending: false }).limit(1);
+  if (error) throw new Error(error.message);
+  return data?.[0]?.finished_at || null;
 }
 
 async function mailboxesFor(supabase, businessId, ownerUserId) {
@@ -124,11 +173,11 @@ async function manualActuals(supabase, businessId, weeks) {
 // other metrics are team-wide only. boxes = mailboxesFor(ownerUserId).
 async function weekScorecard(supabase, businessId, weekStart, { all, forOwner }, manual) {
   const weekEnd = addDays(weekStart, 6);
-  const [allRows, inSequence, running, rate] = await Promise.all([
+  const [allRows, inSequence, running, human] = await Promise.all([
     sequencedRows(supabase, businessId, weekStart, weekStart),
     lastSyncedValue(supabase, businessId, 'prospects_in_cadence', weekStart, weekEnd),
     lastSyncedValue(supabase, businessId, 'sequences_active', weekStart, weekEnd),
-    openRate(supabase, businessId, weekStart, weekEnd, forOwner),
+    humanOpenFor(supabase, businessId, weekStart, weekEnd, forOwner),
   ]);
   const rows = forOwner ? allRows.filter(r => forOwner.includes(r.mailbox_email)) : allRows;
   const meetings = manual.get(`${weekStart}|meetings_set`);
@@ -136,8 +185,10 @@ async function weekScorecard(supabase, businessId, weekStart, { all, forOwner },
     outbound_audience: audience(rows),
     total_in_sequence: { value: inSequence },
     sequences_running: { value: running },
-    meetings_set: { value: meetings?.actual ?? null, entered_by: meetings?.actual_by || null, entered_at: meetings?.actual_at || null },
-    open_rate: { value: rate },
+    // The calendar count lands in scorecardWeeks; the typed number stays visible as `typed` (dashboard-v3: it is no longer the value).
+    meetings_set: { value: null, typed: meetings?.actual ?? null, entered_by: meetings?.actual_by || null, entered_at: meetings?.actual_at || null },
+    open_rate: { value: human.open_rate },
+    human_open_rate: { value: human.value, human_share: human.human_share, delivered: human.delivered, opened: human.opened },
     mailboxes: all.length,
   };
 }
@@ -153,24 +204,23 @@ async function targetsFor(supabase, businessId, period, starts) {
 // Scorecard rows (actual + week goal per metric) for any list of Mondays.
 async function scorecardWeeks(supabase, businessId, weeks, ownerUserId) {
   // Independent reads, so they run together (was ~2.5 s one after another).
-  const [manual, weekGoals, partnerData, boxes, units, outlookOn] = await Promise.all([
+  const [manual, weekGoals, partnerData, boxes, units, events] = await Promise.all([
     manualActuals(supabase, businessId, weeks),
     targetsFor(supabase, businessId, 'week', weeks),
     loadPartnerData(supabase, businessId),
     mailboxesFor(supabase, businessId, ownerUserId),
     firstTouchedGoals(supabase, businessId, weeks),
-    businessFeatureOn(supabase, businessId, 'outlook_meetings'),
+    externalMeetings(supabase, businessId),
   ]);
   const keys = [...SCORECARD_METRICS, ...PARTNER_METRICS, PEOPLE_METRIC];
-  const [weekActuals, outlook] = await Promise.all([
-    Promise.all(weeks.map(w => weekScorecard(supabase, businessId, w, boxes, manual))),
-    outlookOn ? outlookMeetingsByWeek(supabase, businessId, weeks) : null,
-  ]);
+  const weekActuals = await Promise.all(weeks.map(w => weekScorecard(supabase, businessId, w, boxes, manual)));
   return weeks.map((w, i) => {
     const actual = { ...weekActuals[i], ...partnerWeekMetrics(partnerData, w, ownerUserId) };
     const metrics = Object.fromEntries(keys.map(k => [k, { ...actual[k], goal: weekGoals.get(`${w}|${k}`) ?? null }]));
-    // Stage 4b: the calendar's count beside the typed one; typed stays the value.
-    if (outlook) metrics.meetings_set.outlook = outlook.get(w).meetings_set;
+    // dashboard-v3 (A5 / A9): meetings set = external-domain calendar events booked that week.
+    const ext = countExternalMeetings({ events, ...weekWindow(w) });
+    metrics.meetings_set.value = ext.booked;
+    metrics.meetings_set.next_at = ext.next_at;
     const ft = units.get(w);
     metrics[FIRST_TOUCHED].unit = ft.unit;
     if (ft.carried) metrics[FIRST_TOUCHED].carried_goal = ft.goal;
@@ -182,12 +232,14 @@ export async function buildScorecard(supabase, businessId, month, ownerUserId) {
   const weeks = weeksOfMonth(month);
   const monthEnd = weeks.length ? addDays(weeks[weeks.length - 1], 6) : month;
   const keys = [...SCORECARD_METRICS, ...PARTNER_METRICS, PEOPLE_METRIC];
-  const [perWeek, monthGoals, monthOpenRate] = await Promise.all([
+  const [perWeek, monthGoals, monthHuman, calendar, syncedAt] = await Promise.all([
     scorecardWeeks(supabase, businessId, weeks, ownerUserId),
     targetsFor(supabase, businessId, 'month', [month]),
-    weeks.length ? mailboxesFor(supabase, businessId, ownerUserId).then(b => openRate(supabase, businessId, weeks[0], monthEnd, b.forOwner)) : null,
+    weeks.length ? mailboxesFor(supabase, businessId, ownerUserId).then(b => humanOpenFor(supabase, businessId, weeks[0], monthEnd, b.forOwner)) : null,
+    calendarCoverage(supabase, businessId),
+    lastSyncAt(supabase, businessId),
   ]);
-  // Month column: sums for flows, the latest week's value for stock numbers.
+  // Month column: sums for flows, the latest week's value for stock numbers, rates over the whole month.
   const vals = k => perWeek.map(w => w.metrics[k].value).filter(v => v != null);
   const last = k => { const v = vals(k); return v.length ? v[v.length - 1] : null; };
   const sum = k => { const v = vals(k); return v.length ? v.reduce((a, b) => a + b, 0) : null; };
@@ -196,7 +248,8 @@ export async function buildScorecard(supabase, businessId, month, ownerUserId) {
     total_in_sequence: last('total_in_sequence'),
     sequences_running: last('sequences_running'),
     meetings_set: sum('meetings_set'),
-    open_rate: monthOpenRate,
+    open_rate: monthHuman?.open_rate ?? null,
+    human_open_rate: monthHuman?.value ?? null,
     ...Object.fromEntries(PARTNER_METRICS.map(k => [k, PARTNER_FLOWS.includes(k) ? sum(k) : last(k)])),
     [PEOPLE_METRIC]: sum(PEOPLE_METRIC),
   };
@@ -204,6 +257,8 @@ export async function buildScorecard(supabase, businessId, month, ownerUserId) {
     month, owner_user_id: ownerUserId || null, weeks: perWeek,
     month_total: Object.fromEntries(keys.map(k => [k, { value: monthActual[k], goal: monthGoals.get(`${month}|${k}`) ?? null, source: SCORECARD_SOURCES[k] }])),
     sources: SCORECARD_SOURCES,
+    // dashboard-v3 Stage 1: whose calendars the meetings row reads (A5) and when the last sync landed.
+    calendar, synced_at: syncedAt,
   };
 }
 

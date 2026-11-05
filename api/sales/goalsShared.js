@@ -9,7 +9,9 @@ export function getSupabase() {
   return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 }
 
-export const SCORECARD_METRICS = ['outbound_audience', 'total_in_sequence', 'sequences_running', 'meetings_set', 'open_rate'];
+// dashboard-v3 Stage 1: human_open_rate (Apollo opens × the human share of tracked opens) joins; a goal for it needs
+// supabase/migrations/20261105_dashboard_v3_stage1.sql (the metric_key CHECK).
+export const SCORECARD_METRICS = ['outbound_audience', 'total_in_sequence', 'sequences_running', 'meetings_set', 'open_rate', 'human_open_rate'];
 export const KPI_METRICS = ['target_orgs', 'dm_contacted', 'positive_responses', 'meetings_held', 'qualified_opps',
   'covered_lives_pipeline', 'proposals_outstanding', 'verbal_commitments', 'contracts_signed', 'launches_90d'];
 // goals-surface-v1 - goals the hero card sets that aren't scorecard rows:

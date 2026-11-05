@@ -28,6 +28,8 @@ export const IconClose = p => <Svg {...p}><path d="M4 4l8 8M12 4l-8 8" /></Svg>;
 export const IconPlus = p => <Svg {...p}><path d="M8 3v10M3 8h10" /></Svg>;
 // company-panel-v3 - the Actions groups (Capture · Reach · Learn · Advance) and the Interest band.
 export const IconPencil = p => <Svg {...p}><path d="M10.5 3l2.5 2.5L6 12.5H3.5V10z" /><path d="M9 4.5L11.5 7" /></Svg>;
+export const IconHome = p => <Svg {...p}><path d="M2.5 8 8 3l5.5 5M4 7v6h8V7" /></Svg>;
+export const IconScorecard = p => <Svg {...p}><rect x="2.5" y="2.5" width="11" height="11" rx="2" /><path d="M5 8.2l2 2 4-4.4" /></Svg>;
 export const IconMail = p => <Svg {...p}><rect x="2" y="3.5" width="12" height="9" rx="1.5" /><path d="M2.5 4.5L8 9l5.5-4.5" /></Svg>;
 export const IconCalendar = p => <Svg {...p}><rect x="2.5" y="3.5" width="11" height="10" rx="1.5" /><path d="M2.5 7h11M5.5 2v3M10.5 2v3" /></Svg>;
 export const IconCheck = p => <Svg {...p}><path d="M3 8.5l3 3 7-7" /></Svg>;

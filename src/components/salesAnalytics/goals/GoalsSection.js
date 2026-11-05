@@ -2,16 +2,15 @@ import { useState, useEffect } from 'react';
 import { SA } from '../theme';
 import { SEMANTIC } from '../palette';
 import { goalsApi } from './goalsApi';
-import { pickNewestFinal, pipelineMoves } from './todayModel';
+import { pipelineMoves } from './todayModel';
 import { fetchMovement } from '../pipelineApi';
-import { labelStyle, h2Style, h3Style, subStyle, numStyle, cardStyle, Chip, Dot, Btn, DrillNumber, addDays, weekLabel, weekOf, progressColor, flashTo } from './goalsUi';
+import { labelStyle, h2Style, h3Style, subStyle, numStyle, cardStyle, Chip, Dot, Btn, addDays, weekLabel, weekOf, progressColor } from './goalsUi';
 
 // sales-ia-v2 D1 - the Goals section under the Dashboard charts: this week's
-// goals (the hero cards) and commitments per person with Focus 5 progress,
-// the latest report card, this week's Pipeline moves, then the Scorecard and
-// Seif's Weekly report (children; the report is the print area). Viewers read
+// goals (the hero cards), commitments per person with Focus 5 progress and this
+// week's Pipeline moves (dashboard-v3 Stage 1: the report card, the Scorecard and
+// the Weekly report left - the Scorecard is its own sub-view now). Viewers read
 // all of it; the week nav is the section's own, so the frame row never moves.
-const WEEKS_BACK = 3;
 const timeOf = iso => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
 export function PersonCommitments({ person, commitments }) {
@@ -44,15 +43,8 @@ export function PersonCommitments({ person, commitments }) {
 }
 
 // members: the people shown (one filtered person, or everyone); commitments: this week's, already person-filtered.
-export default function GoalsSection({ businessId, weekStart, thisWeek, onWeek, members, lookup, commitments, report, partners, hero, children }) {
-  const [earlier, setEarlier] = useState([]);
+export default function GoalsSection({ businessId, weekStart, thisWeek, onWeek, members, lookup, commitments, partners, hero }) {
   const [moves, setMoves] = useState(null);
-  useEffect(() => {
-    let live = true;
-    Promise.all(Array.from({ length: WEEKS_BACK }, (_, i) => goalsApi.report(businessId, addDays(weekStart, -7 * (i + 1))).then(d => ({ week_start: addDays(weekStart, -7 * (i + 1)), report: d.report })).catch(() => null)))
-      .then(rs => { if (live) setEarlier(rs.filter(Boolean)); });
-    return () => { live = false; };
-  }, [businessId, weekStart]);
   useEffect(() => {
     let live = true;
     const end = addDays(weekStart, 6);
@@ -61,7 +53,6 @@ export default function GoalsSection({ businessId, weekStart, thisWeek, onWeek, 
     return () => { live = false; };
   }, [businessId, weekStart, partners]);
 
-  const latest = pickNewestFinal([{ week_start: weekStart, report }, ...earlier]);
   const people = members.map(m => ({ ...lookup(m.user_id), commitments: commitments.filter(c => c.owner_user_id === m.user_id) }));
   const unowned = commitments.filter(c => !members.some(m => m.user_id === c.owner_user_id));
   if (unowned.length) people.push({ ...lookup(null), commitments: unowned });
@@ -90,19 +81,6 @@ export default function GoalsSection({ businessId, weekStart, thisWeek, onWeek, 
           <h3 id="h-commit-people" style={h3Style}>Per person</h3>
           {people.map(p => <PersonCommitments key={p.user_id || 'unassigned'} person={p} commitments={p.commitments} />)}
         </section>
-        <section aria-labelledby="h-report-card" style={card}>
-          <span style={labelStyle}>Latest report card</span>
-          <h3 id="h-report-card" style={h3Style}>{latest ? weekOf(latest.week_start) : 'No finalized report yet'}</h3>
-          {latest ? (
-            <>
-              <Chip color={SEMANTIC.healthy}><Dot color={SEMANTIC.healthy} />Final · {timeOf(latest.report.finalized_at)} · {lookup(latest.report.finalized_by).first}</Chip>
-              <span style={{ ...subStyle, fontSize: 13 }}>
-                {(latest.report.snapshot?.commitments || []).length} commitments · {(latest.report.snapshot?.kpi || []).length} KPI rows frozen
-              </span>
-              <DrillNumber onClick={() => (latest.week_start === weekStart ? flashTo('goals-sec-s15') : onWeek(latest.week_start))} style={{ fontSize: 13, color: SA.link, alignSelf: 'flex-start' }}>Open the report ↓</DrillNumber>
-            </>
-          ) : <span style={{ ...subStyle, fontSize: 13 }}>Finalize a week's report below and it shows here for Seif.</span>}
-        </section>
         <section aria-labelledby="h-moves" style={card}>
           <span style={labelStyle}>Pipeline moves this week</span>
           <h3 id="h-moves" style={h3Style}>{moves ? `${moves.length} move${moves.length === 1 ? '' : 's'}` : 'Loading…'}</h3>
@@ -118,7 +96,6 @@ export default function GoalsSection({ businessId, weekStart, thisWeek, onWeek, 
           </ul>
         </section>
       </div>
-      {children}
     </section>
   );
 }

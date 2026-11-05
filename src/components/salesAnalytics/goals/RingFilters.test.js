@@ -1,5 +1,4 @@
-import { render, screen, fireEvent, within } from '@testing-library/react';
-import ReportView from './ReportView';
+import { render, screen, fireEvent } from '@testing-library/react';
 import PartnersView from './PartnersView';
 import { memberLookup } from './goalsUi';
 
@@ -30,26 +29,4 @@ test('partner owner and status donuts filter the cards (P1s also show in Top pri
   fireEvent.click(screen.getByTitle('Show only Not started'));
   expect(screen.getAllByText('Corestream').length).toBeGreaterThan(0);
   expect(screen.queryAllByText('PerkSpot')).toHaveLength(0);
-});
-
-test('report ring lists exactly the written sections, and each is a jump link', () => {
-  const sections = [
-    { section_key: 's1', notes: 'Big week' },
-    { section_key: 's3', notes: '  ' },
-    { section_key: 's13', notes: 'Pricing objection' },
-  ];
-  render(<ReportView weekStart="2026-10-05" report={{ status: 'draft' }} sections={sections} infra={[]} commitments={[]} kpiRows={[]} autoChips={{}}
-    canEdit={false} lookup={lookup} members={members} onOpen={jest.fn()} />);
-  const ring = screen.getByRole('button', { name: /Report sections written: Written 2, To write 10/ });
-  fireEvent.click(ring);
-  const dialog = screen.getByRole('dialog', { name: 'Report sections' });
-  const links = within(dialog).getAllByRole('button').map(b => b.textContent);
-  const writtenEnd = links.findIndex(t => t.includes('Commitments'));
-  expect(links.slice(0, writtenEnd)).toEqual(['§1Executive summary', '§13Problems & blockers']);
-  expect(links).toHaveLength(12);
-  const target = document.getElementById('goals-sec-s13');
-  target.scrollIntoView = jest.fn();
-  fireEvent.click(within(dialog).getByRole('button', { name: /Problems & blockers/ }));
-  expect(target.scrollIntoView).toHaveBeenCalled();
-  expect(screen.queryByRole('dialog')).toBeNull();
 });

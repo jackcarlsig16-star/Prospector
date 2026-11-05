@@ -6,11 +6,11 @@ import { fetchMovement } from '../pipelineApi';
 import { memberLookup } from './goalsUi';
 
 // CRA's Jest resets mock implementations before every test, so they are set inside each test.
-jest.mock('./goalsApi', () => ({ TODOS_CHANGED: 'todos', goalsApi: { dashboard: jest.fn(), report: jest.fn(), partnerEvents: jest.fn() } }));
+jest.mock('./goalsApi', () => ({ TODOS_CHANGED: 'todos', goalsApi: { dashboard: jest.fn(), partnerEvents: jest.fn() } }));
 jest.mock('../pipelineApi', () => ({ fetchMovement: jest.fn() }));
 
 // sales-ia-v2 Stage 6 - the 13 chart cards over one read; the Goals section's
-// per-person commitments, report card and moves.
+// per-person commitments and moves (dashboard-v3 Stage 1: the report card is gone with the Weekly report).
 const members = [{ user_id: 'u-jack', name: 'Jack Zz' }, { user_id: 'u-cy', name: 'Cyrus Yy' }];
 const lookup = memberLookup(members);
 const days = ['2026-10-19', '2026-10-20', '2026-10-21'];
@@ -50,8 +50,7 @@ test('13 chart cards, the history note on the visitor charts, team-wide captions
   expect(within(screen.getByRole('region', { name: 'Pipeline by stage' })).getByText('Employers · As of today · Jack · Upside')).toBeTruthy();
 });
 
-test('Goals section: commitments per person with Focus 5 progress, the latest final report, this week\'s moves, week nav', async () => {
-  goalsApi.report.mockImplementation((id, w) => Promise.resolve(w === '2026-10-12' ? { report: { status: 'final', finalized_at: '2026-10-16T20:00:00Z', finalized_by: 'u-jack', snapshot: { commitments: [{}, {}], kpi: [] } } } : { report: { status: 'draft' } }));
+test('Goals section: commitments per person with Focus 5 progress, this week\'s moves, week nav; no report card', async () => {
   goalsApi.partnerEvents.mockResolvedValue([{ id: 'e1', goal_id: 'p1', event: 'status', from_status: 'replied', to_status: 'meeting_set', at: '2026-10-20T16:00:00Z' }]);
   fetchMovement.mockResolvedValue({ moved_forward: [{ id: 'o1', organization: 'Old Mill Union', stage: 'meeting', updated_at: '2026-10-20T15:00:00Z' }], moved_back: [], lost: [] });
   const commitments = [
@@ -60,17 +59,13 @@ test('Goals section: commitments per person with Focus 5 progress, the latest fi
     { id: 'c3', text: 'Call the broker', status: 'open', owner_user_id: 'u-cy', plan_id: null },
   ];
   const onWeek = jest.fn();
-  render(<GoalsSection businessId="b1" weekStart="2026-10-19" thisWeek="2026-10-19" onWeek={onWeek} members={members} lookup={lookup} commitments={commitments} report={{ status: 'draft' }} partners={[{ id: 'p1', name: 'Lakeshore Mutual' }]} hero={<div>HERO</div>}>
-    <div>CHILD</div>
-  </GoalsSection>);
+  render(<GoalsSection businessId="b1" weekStart="2026-10-19" thisWeek="2026-10-19" onWeek={onWeek} members={members} lookup={lookup} commitments={commitments} partners={[{ id: 'p1', name: 'Lakeshore Mutual' }]} hero={<div>HERO</div>} />);
   expect(screen.getByText('HERO')).toBeTruthy();
-  expect(screen.getByText('CHILD')).toBeTruthy();
   const jack = within(document.querySelector('[data-person-goals="u-jack"]'));
   expect(jack.getByText('Focus 5 · 1 of 2 done')).toBeTruthy();
   expect(jack.getAllByLabelText('Planned')).toHaveLength(2);
   expect(within(document.querySelector('[data-person-goals="u-cy"]')).getByText('No Focus 5 planned')).toBeTruthy();
-  await screen.findByText('Week of Oct 12');
-  expect(screen.getByText(/2 commitments · 0 KPI rows frozen/)).toBeTruthy();
+  expect(screen.queryByText('Latest report card')).toBeNull();
   await screen.findByText('2 moves');
   expect(screen.getByText('Lakeshore Mutual')).toBeTruthy();
   expect(screen.getByText('Old Mill Union')).toBeTruthy();

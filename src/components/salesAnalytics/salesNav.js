@@ -2,15 +2,14 @@
 // Actions), their sub-views, and where the selection lives: ?tab= / ?view= in
 // the URL, mirrored to localStorage as a per-viewer convenience. Every older
 // home (sales-ia-v1 tabs, ?gview=, prospector_goals_view) maps to its new one.
-// Dashboard > Overview (sales-ia-v2 D1) holds the charts with the Goals
-// section (Weekly report + Scorecard) underneath; Analytics (email + Apollo
-// widgets) and Sequenced (Apollo companies by week) ride along as sub-views;
-// Sources (lead-source-v1 B4) = who brought each lead, by partner / rep / office.
+// dashboard-v3 (A2): the Dashboard sub-views keep their ids and change their words - overview = Home, analytics = Email,
+// scorecard (Seif's weekly view, its own sub-view again), sources; Sequenced is gone (an old link to it lands on Email,
+// a stored 'sequenced' falls back to Home). Sources (lead-source-v1 B4) = who brought each lead, by partner / rep / office.
 // homelover-team-emails-v1: Settings = workspace settings (owner edits, everyone else reads); Team emails first.
 export const TABS = [['dashboard', 'Dashboard'], ['pipeline', 'Pipeline'], ['actions', 'Actions'], ['settings', 'Settings']];
 export const SUB_VIEWS = {
   pipeline: [['companies', 'Companies'], ['clients', 'Clients'], ['priorities', 'Map'], ['people', 'People'], ['partners', 'Partner workflow'], ['campaigns', 'Campaigns']],
-  dashboard: [['overview', 'Overview'], ['sources', 'Sources'], ['analytics', 'Analytics'], ['sequenced', 'Sequenced']],
+  dashboard: [['overview', 'Home'], ['analytics', 'Email'], ['scorecard', 'Scorecard'], ['sources', 'Sources']],
   settings: [['team-emails', 'Team emails']],
 };
 export const DEFAULT_TAB = 'actions';
@@ -18,8 +17,8 @@ export const DEFAULT_VIEW = { pipeline: 'companies', dashboard: 'overview', sett
 // The Website visitors report moved into Pipeline as a channel (?channel=).
 export const VISITOR_CHANNEL = 'website_visit';
 
-// The v1 Dashboard sub-views Weekly report and Scorecard are the Goals section of Overview now.
-const dashView = v => (['weekly', 'scorecard'].includes(v) ? 'overview' : v);
+// The v1 Weekly report is gone (dashboard-v3): its links open the Scorecard, Seif's weekly page; Sequenced -> Email.
+const dashView = v => (v === 'weekly' ? 'scorecard' : v === 'sequenced' ? 'analytics' : v);
 // Old tab -> [tab, view (null = keep / default), channel?]
 const OLD_TABS = {
   today: () => ['actions'],
@@ -28,8 +27,8 @@ const OLD_TABS = {
   dashboard: v => ['dashboard', dashView(v)],
   pipeline: v => ['pipeline', v === 'board' ? 'companies' : v],
 };
-const OLD_VIEWS = { sequenced: ['dashboard', 'sequenced'] };
-const LEGACY = { report: ['dashboard', 'overview'], week: ['actions'], partners: ['pipeline', 'partners'], companies: ['dashboard', 'sequenced'], pipeline: ['pipeline', 'companies'] };
+const OLD_VIEWS = { sequenced: ['dashboard', 'analytics'] };
+const LEGACY = { report: ['dashboard', 'scorecard'], week: ['actions'], partners: ['pipeline', 'partners'], companies: ['dashboard', 'analytics'], pipeline: ['pipeline', 'companies'] };
 
 // localStorage keys: prospector_sales_tab + prospector_sales_view (written
 // here); prospector_goals_view is read once for the mapping, never written.
@@ -57,7 +56,8 @@ export function navFrom({ tab, view, gview, storedTab, storedView, storedLegacy 
   if (tab) return normalizeNav(tab, view);
   const legacy = LEGACY[gview] || (!storedTab && LEGACY[storedLegacy]);
   if (legacy) return normalizeNav(legacy[0], legacy[1]);
-  return normalizeNav(storedTab, storedView);
+  // A browser that last showed Sequenced opens on the tab's default (Home), not on Email (A2).
+  return normalizeNav(storedTab, storedView === 'sequenced' ? null : storedView);
 }
 
 export function readNav() {

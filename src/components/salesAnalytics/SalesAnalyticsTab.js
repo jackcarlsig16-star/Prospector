@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { SA, SA_THEME_CSS, SA_THEME_ROOT_ID, saSans } from './theme';
 import { ui } from '../../ui/kitTheme';
 import Tabs from '../../ui/Tabs';
-import { IconTable, IconCheck, IconMap, IconPeople, IconFlow, IconMegaphone, IconBars, IconSource, IconTrend, IconMail } from '../../ui/icons';
+import { IconTable, IconCheck, IconMap, IconPeople, IconFlow, IconMegaphone, IconSource, IconMail, IconHome, IconScorecard } from '../../ui/icons';
 import Tag from '../../ui/Tag';
 import AnalyticsView from './AnalyticsView';
 import DailyHuddle from './DailyHuddle';
@@ -88,7 +88,7 @@ const PRINT_STYLES = `
 // Pipeline / Dashboard; Pipeline > People is DailyHuddle (the People table
 // on its Live tab, Priorities and Done beside it).
 
-const SUB_VIEW_ICON = { companies: IconTable, clients: IconCheck, priorities: IconMap, people: IconPeople, partners: IconFlow, campaigns: IconMegaphone, overview: IconBars, sources: IconSource, analytics: IconTrend, sequenced: IconMail, 'team-emails': IconMail };
+const SUB_VIEW_ICON = { companies: IconTable, clients: IconCheck, priorities: IconMap, people: IconPeople, partners: IconFlow, campaigns: IconMegaphone, overview: IconHome, analytics: IconMail, scorecard: IconScorecard, sources: IconSource, 'team-emails': IconMail };
 
 export default function SalesAnalyticsTab({ businessId, features }) {
   const [tab, setTab] = useState(() => readNav().tab);
@@ -104,6 +104,15 @@ export default function SalesAnalyticsTab({ businessId, features }) {
   const [pipelineTarget, setPipelineTarget] = useState(null); // { key, section, n } a record the header "+" added (one-plus-button-v1)
   const [me, setMe] = useState(null);
   const [myFlagCount, setMyFlagCount] = useState(0);
+  // dashboard-v3 A7 (REVISABLE): Pipeline › Campaigns stays hidden until sales_outreach_* holds a row; when it first shows,
+  // a dot marks it until it is opened once. localStorage key (per browser): prospector_campaigns_seen_<businessId> = '1'.
+  const [campaignCount, setCampaignCount] = useState(null);
+  const [campaignsSeen, setCampaignsSeen] = useState(() => { try { return localStorage.getItem(`prospector_campaigns_seen_${businessId}`) === '1'; } catch { return true; } });
+  useEffect(() => {
+    let live = true;
+    Promise.resolve().then(() => goalsApi.campaigns(businessId)).then(l => { if (live) setCampaignCount(l.length); }).catch(() => { if (live) setCampaignCount(0); });
+    return () => { live = false; };
+  }, [businessId]);
 
   const nav = useCallback((t, v) => {
     const n = normalizeNav(t, v);
@@ -194,17 +203,19 @@ export default function SalesAnalyticsTab({ businessId, features }) {
       </div>
     </div>
   );
-  const subViews = SUB_VIEWS[tab];
+  const subViews = SUB_VIEWS[tab]?.filter(([id]) => id !== 'campaigns' || campaignCount > 0) || null;
+  const campaignsNew = campaignCount > 0 && !campaignsSeen;
+  const subLabel = (id, label) => (id === 'campaigns' && campaignsNew ? <>{label}<span aria-label="new" title="New: the first campaign is in" style={{ width: 7, height: 7, borderRadius: 999, background: ui.accent, display: 'inline-block', marginLeft: 6 }} /></> : label);
   // companies-v2 C1: the sub-views are second-level underline tabs; the row's own rule runs under the tools too, and the
   // tabs sit on it (-1 px) so the two rules are one line.
   // FIX pipeline-390-toolbar-v1 T1: on a phone the frame stacks - the tab strip (scrolling inside its row, the selected
   // tab kept in view by Tabs) above the tools row (FRAME_CSS hides it while empty) - so a screen's tools never sit on
   // the tabs. Wider than 760 px nothing changes (T2).
   const frameRow = (
-    <div className="no-print" data-sales-frame data-frame-rows={phone ? 2 : 1} style={{ display: 'flex', marginBottom: 16, minWidth: 0, borderBottom: subViews ? `1px solid ${ui.subTabRule}` : undefined,
+    <div className="no-print" data-sales-frame data-frame-rows={phone ? 2 : 1} data-campaigns={campaignCount ?? 'loading'} style={{ display: 'flex', marginBottom: 16, minWidth: 0, borderBottom: subViews ? `1px solid ${ui.subTabRule}` : undefined,
       ...(phone ? { flexDirection: 'column', alignItems: 'stretch', gap: 0, minHeight: FRAME_ROW_HEIGHT } : { height: FRAME_ROW_HEIGHT, alignItems: subViews ? 'flex-end' : 'center', gap: 12 }) }}>
       <div data-sales-subviews style={{ display: 'flex', alignItems: 'flex-end', minWidth: 0, minHeight: 36, marginBottom: subViews && !phone ? -1 : 0 }}>
-        {subViews && <Tabs level="sub" label={`${TABS.find(([id]) => id === tab)[1]} views`} items={subViews.map(([id, label]) => ({ id, label, icon: SUB_VIEW_ICON[id] }))} value={view} onChange={v => { nav(tab, v); setHuddleTarget(null); }} />}
+        {subViews && <Tabs level="sub" label={`${TABS.find(([id]) => id === tab)[1]} views`} items={subViews.map(([id, label]) => ({ id, label: subLabel(id, label), icon: SUB_VIEW_ICON[id] }))} value={view} onChange={v => { if (v === 'campaigns' && !campaignsSeen) { setCampaignsSeen(true); try { localStorage.setItem(`prospector_campaigns_seen_${businessId}`, '1'); } catch { /* private mode */ } } nav(tab, v); setHuddleTarget(null); }} />}
       </div>
       <div id={FRAME_TOOLS_ID} />
     </div>
