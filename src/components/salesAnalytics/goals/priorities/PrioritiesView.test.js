@@ -58,10 +58,10 @@ test('dots: every ranked company as a dot in its source color; legend toggle dim
   await waitFor(() => expect(dot('Quarry Labs').getAttribute('data-dimmed')).toBeNull());
   expect(document.querySelector('[data-rank-line]')).toBeInTheDocument();
   // priorities-v2 G: four band zones from the thresholds - the letter + count on the left, the band word inside
-  // (companies-v2 C5: PRIORITY_WORD, the same words as Companies).
+  // (homelover-flow-v1 F2: BAND_WORD - Hot · Warm · Cool · Cold, never time words).
   expect([...document.querySelectorAll('[data-band-zone]')].map(z => z.getAttribute('data-band-zone'))).toEqual(['P1', 'P2', 'P3', 'P4']);
   expect(document.querySelector('[data-band-count="P1"]').textContent).toBe('1');
-  expect([...document.querySelectorAll('[data-band-word]')].map(w => w.textContent)).toEqual(['Act today', 'This week', 'Watch', 'Noise']);
+  expect([...document.querySelectorAll('[data-band-word]')].map(w => w.textContent)).toEqual(['Hot', 'Warm', 'Cool', 'Cold']);
   expect(document.querySelectorAll('[data-band-guide]')).toHaveLength(3);
 });
 

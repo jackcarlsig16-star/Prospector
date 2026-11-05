@@ -1,4 +1,4 @@
-import { applyResearchNumbers, wholeNumber } from './companyFields.js';
+import { applyResearchNumbers, applyResearchFootprint, wholeNumber } from './companyFields.js';
 import { callAnthropic } from '../businesses/shared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { MODELS, estimateCostUsd } from '../../src/config/models.js';
@@ -7,6 +7,7 @@ import { scheduleRecompute } from './intentScoreRun.js';
 import { cleanText } from './scrubText.js';
 import { laDateString } from './laDate.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
+import { US_FOOTPRINTS } from '../../src/constants/fitLevels.js';
 
 // partner-add-research-v1 REV3 Stage 2 - one Claude call with web_search per
 // run, stored as a research_runs row. The run writes no text to the partner
@@ -37,6 +38,8 @@ export const RECENT_MAX = 3;
 export const RECENT_TEXT_MAX = 140;
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 export const NUMBER_FIELDS = ['employees_count', 'reach_employees', 'reach_clients'];
+// homelover-flow-v1 F3 axis 4: where the company's staff mostly are, from the same single call (no extra cost).
+export const US_FOOTPRINT_FIELD = 'us_footprint';
 const err = (status, message) => Object.assign(new Error(message), { status });
 
 // 'partner' (default) = a channel partner; 'employer' = a company that would
@@ -49,7 +52,7 @@ export function researchSystem(business, categories, framing = 'partner') {
       : `You research one company as a possible channel partner for ${who}: a company that could offer ${business.name} to the employers, members or clients it already reaches.`,
     `Use web_search at most ${MAX_SEARCHES} times: first the company's own site (About, Careers, Partners pages), then one recent news or press source. Read what you find; do not guess.`,
     'Reply with ONE JSON object and nothing else - no prose before or after, no markdown fence:',
-    '{"website": "https://...", "domain": "company.com", "website_confidence": "high|medium|low", "source_urls": ["https://..."], "summary": "", "mission": "", "positioning": "", "size": "", "hq_city": "", "sells_to": "", "recent_news": "", "recent": [{"month": "YYYY-MM", "text": "", "url": "https://..."}], "housing_perk": "", "suggested_category": null, "why_homelover": "", "first_angle": "", "watch_outs": "", "titles": "", "employees_count": null, "reach_employees": null, "reach_clients": null}',
+    '{"website": "https://...", "domain": "company.com", "website_confidence": "high|medium|low", "source_urls": ["https://..."], "summary": "", "mission": "", "positioning": "", "size": "", "hq_city": "", "sells_to": "", "recent_news": "", "recent": [{"month": "YYYY-MM", "text": "", "url": "https://..."}], "housing_perk": "", "suggested_category": null, "why_homelover": "", "first_angle": "", "watch_outs": "", "titles": "", "employees_count": null, "reach_employees": null, "reach_clients": null, "us_footprint": "mostly_us|mixed|mostly_outside_us|unknown"}',
     'Field rules:',
     '- website / domain: the official site. website_confidence high only when the site itself names the company; low when you could not find it (then website and domain are null).',
     '- source_urls: up to 3 real pages you opened.',
@@ -69,6 +72,7 @@ export function researchSystem(business, categories, framing = 'partner') {
     '- first_angle: at most 25 words - the idea for an opening line that ties their words to a housing benefit.',
     '- watch_outs: at most 25 words - what makes this a poor or slow fit (competing perk, acquisition in progress, sells to the wrong audience).',
     '- titles: 2 to 4 job titles to approach first, comma separated.',
+    '- us_footprint: where their employees mostly are: "mostly_us" (about 80% or more in the United States), "mixed", "mostly_outside_us" (most staff outside the US), or "unknown" when no source says.',
     'Never include any person\'s name, email address or phone number anywhere in the reply. Write in plain English, no bullet characters.',
     `CATEGORIES: ${JSON.stringify(categories)}`,
   ].join('\n');
@@ -99,6 +103,7 @@ export function parseResearch(text, categories) {
   for (const [k, max] of Object.entries(TEXT_FIELDS)) out[k] = cleanText(raw[k], max) || null;
   // company-workflow-v1 W4/W5: whole numbers only (a numeric string is read; anything else is null).
   for (const k of NUMBER_FIELDS) out[k] = wholeNumber(raw[k]);
+  out[US_FOOTPRINT_FIELD] = US_FOOTPRINTS.includes(raw[US_FOOTPRINT_FIELD]) ? raw[US_FOOTPRINT_FIELD] : null;
   out.recent = (Array.isArray(raw.recent) ? raw.recent : [])
     .map(r => (r && typeof r === 'object' ? { month: MONTH_RE.test(r.month) ? r.month : null, text: cleanText(r.text, RECENT_TEXT_MAX) || null, url: url(r.url) } : null))
     .filter(r => r && r.text).slice(0, RECENT_MAX);
@@ -178,6 +183,7 @@ export async function completeRun(supabase, { run, partner, business, categories
   if (error) throw new Error(error.message);
   if (data.status === 'done') {
     await applyResearchNumbers(supabase, { businessId: run.business_id, type: run.entity_type, id: run.entity_id, result: data.result });
+    await applyResearchFootprint(supabase, { businessId: run.business_id, type: run.entity_type, id: run.entity_id, result: data.result });
     // FIX headcount-auto-v1 REV2 H2 / H5: a high-confidence domain fills an empty employer / target domain (source 'research'),
     // then the free headcount paths run for this company in the background.
     if (['employer', 'target'].includes(run.entity_type) && data.result?.website_confidence === 'high' && data.result?.domain) {

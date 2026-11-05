@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { SA } from '../theme';
 import { PRIORITY_COLORS } from '../palette';
-import { PRIORITY_WORD } from '../../../constants/salesChannels';
+import { BAND_WORD } from '../../../constants/fitLevels';
 import useMediaQuery from '../../../utils/useMediaQuery';
 import VisitPullBar from '../tasks/VisitPullBar';
 import { linkBtn } from '../tasks/TaskRow';
@@ -52,7 +52,7 @@ const RowChips = ({ r }) => (
   </>
 );
 
-const PriorityChip = ({ p }) => (p ? <Chip color={PRIORITY_COLOR[p]} title={PRIORITY_WORD[p.slice(1)]} style={{ height: 22, fontWeight: 600 }}>{p}</Chip> : <Chip title="No company-level visit in this window" style={{ height: 22 }}>—</Chip>);
+const PriorityChip = ({ p }) => (p ? <Chip color={PRIORITY_COLOR[p]} title={BAND_WORD[p]} style={{ height: 22, fontWeight: 600 }}>{p}</Chip> : <Chip title="No company-level visit in this window" style={{ height: 22 }}>—</Chip>);
 
 function Stat({ label, value, color }) {
   return (
@@ -144,7 +144,7 @@ export default function VisitorReport({ businessId, canEdit }) {
   if (error) return <ErrorNote message={error} />;
   if (!report) return <span style={subStyle}>Loading website visitors…</span>;
   const c = report.counts;
-  const actToday = report.rows.filter(r => r.priority === 'P1');
+  const hot = report.rows.filter(r => r.priority === 'P1');
   const rows = applyFilters(report.rows.filter(r => showNoise || r.priority !== 'P4'), filters);
 
   return (
@@ -169,14 +169,14 @@ export default function VisitorReport({ businessId, canEdit }) {
         </div>
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
           <Stat label="Companies (7 d)" value={c.companies} />
-          {['P1', 'P2', 'P3', 'P4'].map(p => <Stat key={p} label={`${p} · ${PRIORITY_WORD[p.slice(1)]}`} value={c[p]} color={PRIORITY_COLOR[p]} />)}
+          {['P1', 'P2', 'P3', 'P4'].map(p => <Stat key={p} label={`${p} · ${BAND_WORD[p]}`} value={c[p]} color={PRIORITY_COLOR[p]} />)}
           <Stat label="On Brad's list" value={c.on_brads_list} />
           <Stat label="People identified" value={c.people_identified ?? 0} />
           <Stat label="Created" value={c.created ?? 0} />
         </div>
         <div role="group" aria-label="Filters" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }} className="no-print">
           <select aria-label="Priority filter" value={filters.prio} onChange={e => setFilters(f => ({ ...f, prio: e.target.value }))} style={{ ...inputStyle, height: 32, width: 'auto', fontSize: 13 }}>
-            <option value="all">All priorities</option>{['P1', 'P2', 'P3'].map(p => <option key={p} value={p}>{p} · {PRIORITY_WORD[p.slice(1)]}</option>)}
+            <option value="all">All priorities</option>{['P1', 'P2', 'P3'].map(p => <option key={p} value={p}>{p} · {BAND_WORD[p]}</option>)}
           </select>
           {[['people', 'Has people'], ['created', 'Created'], ['unmatched', 'Unmatched']].map(([k, label]) => (
             <Btn key={k} aria-pressed={filters[k]} onClick={() => toggle(k)} style={filters[k] ? { borderColor: SA.accent, color: SA.text } : undefined}>{label}</Btn>
@@ -189,10 +189,10 @@ export default function VisitorReport({ businessId, canEdit }) {
 
       {skipOpen && <SkipList businessId={businessId} canEdit={canEdit} onChanged={load} />}
 
-      <section aria-label="Act today" style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <h3 style={h3Style}>Act today ({actToday.length})</h3>
-        {!actToday.length && <span style={subStyle}>No P1 visitors in the last 7 days.</span>}
-        {actToday.map(r => (
+      <section aria-label="Hot" style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <h3 style={h3Style}>Hot ({hot.length})</h3>
+        {!hot.length && <span style={subStyle}>No P1 visitors in the last 7 days.</span>}
+        {hot.map(r => (
           <div key={r.company_key} style={{ display: 'flex', gap: 12, alignItems: 'baseline', flexWrap: 'wrap', padding: '8px 0', borderTop: `1px solid ${SA.track}`, fontSize: 13 }}>
             <span style={{ fontWeight: 600, color: SA.text }}>{r.company_name}</span>
             <span style={{ color: SA.muted }}>{r.type} · {r.size}{r.match ? ` · ${matchText(r.match)}` : ''}</span>

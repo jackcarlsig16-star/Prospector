@@ -88,6 +88,8 @@ test('board rows: partners + employer/membership opportunities + open targets, s
     category: '3. Brokers', co_owner_name: null, no_double_touch: false, visited: null, work: null, channels: ['all', 'partners'],
     // company-workflow-v1: the size columns + the owner person.
     employees: null, employees_source: null, reach_employees: null, reach_clients: null, owner_user_id: g.owner_user_id,
+    // homelover-flow-v1 F2 / F4 / F11: Fit from the stored score (none here), Due, first seen + NEW.
+    fit_level: null, fit_score: null, fit_source: null, deprioritized: null, due: null, due_date: null, first_seen: null, new_today: false,
   });
   assert.equal(rows.find(r => r.id === 'o1').top, true);
   assert.equal(rows.find(r => r.id === 'o1').next_step_due, '2026-10-20');
@@ -119,7 +121,8 @@ test('no email, phone or Apollo id anywhere in the payload', () => {
   assert.ok(!/\d{3}[-. ]\d{3}[-. ]\d{4}/.test(json), 'no phone');
   assert.ok(!JSON.stringify(buildBoard(s)).includes('"A1"'), 'an opportunity\'s apollo_account_id never leaks');
   const base = ['channel', 'channels', 'color', 'covered_lives', 'employees', 'employees_source', 'id', 'last_touch_at', 'name', 'next_step', 'next_step_due', 'owner', 'owner_team', 'owner_user_id', 'priority', 'priority_set_at', 'priority_set_by',
-    'reach_clients', 'reach_employees', 'record_id', 'stage', 'stage_label', 'tier', 'top', 'type', 'visited', 'work'];
+    'reach_clients', 'reach_employees', 'record_id', 'stage', 'stage_label', 'tier', 'top', 'type', 'visited', 'work',
+    'fit_level', 'fit_score', 'fit_source', 'deprioritized', 'due', 'due_date', 'first_seen', 'new_today'].sort();
   // FIX headcount-auto-v1 REV2 H7: employers and targets carry domain / domain_source for the Set domain control.
   for (const r of buildBoard(s, { includeApollo: true })) {
     assert.deepEqual(Object.keys(r).sort(), r.type === 'partner' ? [...base, 'category', 'co_owner_name', 'no_double_touch'].sort() : r.type === 'apollo' ? base : [...base, 'domain', 'domain_source'].sort());

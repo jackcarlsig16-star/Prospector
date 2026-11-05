@@ -1,5 +1,7 @@
 import { getSupabase } from './goalsShared.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
+import { US_FOOTPRINTS } from '../../src/constants/fitLevels.js';
+import { logFlow } from './flowEvents.js';
 
 // company-workflow-v1 W3/W4/W5 - the numbers and the owner person on a company record (20261023_company_workflow_v1.sql):
 //   employees (+ _source research | manual, _at) on partners, employers and targets;
@@ -66,9 +68,23 @@ export async function applyResearchNumbers(supabase, { businessId, type, id, res
   return { written };
 }
 
+// homelover-flow-v1 F3 axis 4: research fills us_footprint unless a person said (manual) or a deprioritize set it.
+// Before 20261104_homelover_flow_v1.sql ran the column is missing and this is a no-op.
+export async function applyResearchFootprint(supabase, { businessId, type, id, result, now = new Date() }) {
+  const value = result?.us_footprint;
+  if (!RECORD_TABLE[type] || !US_FOOTPRINTS.includes(value)) return { written: false };
+  try {
+    const row = must(await supabase.from(RECORD_TABLE[type]).select('id, us_footprint, us_footprint_source').eq('business_id', businessId).eq('id', id).maybeSingle());
+    if (!row || (row.us_footprint && row.us_footprint_source !== 'research') || row.us_footprint === value) return { written: false };
+    const q = supabase.from(RECORD_TABLE[type]).update({ us_footprint: value, us_footprint_source: 'research', us_footprint_at: now.toISOString() }).eq('id', id);
+    const rows = must(await (row.us_footprint_source == null ? q.is('us_footprint_source', null) : q.eq('us_footprint_source', 'research')).select('id'));
+    return { written: rows.length > 0 };
+  } catch { return { written: false }; }
+}
+
 // PATCH /goals/company/:type/:id/fields { employees?, reach_employees?, reach_clients?, owner_user_id? } (Members):
 // a typed number is source 'manual' (null clears it); owner_user_id is employers / targets only.
-export async function editCompanyFields(supabase, { businessId, type, id, body = {}, now = new Date() }) {
+export async function editCompanyFields(supabase, { businessId, type, id, body = {}, byUser = null, now = new Date() }) {
   try {
     if (!RECORD_TABLE[type]) return reply(400, { error: `type must be one of ${Object.keys(RECORD_TABLE).join('|')}` });
     if (!UUID.test(id || '')) return reply(404, { error: `${type} not found` });
@@ -95,13 +111,24 @@ export async function editCompanyFields(supabase, { businessId, type, id, body =
       Object.assign(patch, type === 'employer' ? employerOwner(person) : { owner_user_id: person?.user_id ?? null });
     }
     const select = `id, ${cols(type)}${type === 'partner' ? '' : ', owner_user_id, domain, domain_source'}${type === 'employer' ? ', owner' : ''}`;
+    // homelover-flow-v1 F1: a Map / panel Assign on an employer or target is Activity + Undo (flow event with the prior owner).
+    const before = 'owner_user_id' in body ? must(await supabase.from(RECORD_TABLE[type]).select(`id, owner_user_id${type === 'employer' ? ', owner, organization' : ', name'}`).eq('business_id', businessId).eq('id', id).maybeSingle()) : null;
+    if ('owner_user_id' in body && !before) return reply(404, { error: `${type} not found` });
     const rows = must(await supabase.from(RECORD_TABLE[type]).update({ ...patch, updated_at: now.toISOString() }).eq('business_id', businessId).eq('id', id).select(select));
     if (!rows.length) return reply(404, { error: `${type} not found` });
     if (patch.domain) { const { scheduleFirstSight } = await import('./headcountRun.js'); scheduleFirstSight(supabase, { businessId, type, id }); }
-    return reply(200, { fields: rows[0] });
+    let event = null;
+    if (before && (before.owner_user_id || null) !== (patch.owner_user_id || null)) {
+      const set = type === 'employer' ? { owner_user_id: patch.owner_user_id ?? null, owner: patch.owner ?? null } : { owner_user_id: patch.owner_user_id ?? null };
+      const prev = Object.fromEntries(Object.keys(set).map(k => [k, before[k] ?? null]));
+      const who = patch.owner_user_id ? (await ownerPerson(supabase, businessId, patch.owner_user_id))?.name?.split(' ')[0] || 'a member' : null;
+      try { event = await logFlow(supabase, { businessId, recordType: type, recordId: id, kind: 'assign', text: who ? `Assigned to ${who}` : 'Unassigned', prev, set, meta: { name: before.organization || before.name || null, to_owner: patch.owner_user_id ?? null }, byUser, now }); }
+      catch (e) { console.error('[company/fields] assign activity:', e.message); }
+    }
+    return reply(200, { fields: rows[0], event: event ? { id: event.id } : null, before: before ? { owner_user_id: before.owner_user_id || null } : undefined });
   } catch (e) { return reply(e.status || 500, { error: e.message }); }
 }
 export async function editCompanyFieldsRoute(req, res) {
-  const r = await editCompanyFields(getSupabase(), { businessId: req.params.businessId, type: req.params.type, id: req.params.id, body: req.body || {} });
+  const r = await editCompanyFields(getSupabase(), { businessId: req.params.businessId, type: req.params.type, id: req.params.id, body: req.body || {}, byUser: req.auth.user.id });
   res.status(r.status).json(r.body);
 }

@@ -6,6 +6,7 @@ import { laDateString } from './laDate.js';
 import { cleanText } from './scrubText.js';
 import { DEFAULT_WEIGHTS, UPSIDE_TEAMS, scoreCompany, dedupeCompanies } from './intentScore.js';
 import { VISITOR_ROLE } from './visitorPeopleMove.js';
+import { fitBlock } from './fitRadar.js';
 
 // intent-score-v1 S2 - the inputs gatherer (ONE pass over the workspace with selectAllPages, no model, no Apollo), the
 // recompute runner that writes sales_company_scores + today's sales_company_score_days row, and the trigger hook the
@@ -40,13 +41,23 @@ export const isNamedReferral = r => NAMED_FIELDS.some(k => (k === 'no_double_tou
 // touches: [{ at, who, channel }] -> the latest, or null.
 export const latestTouch = touches => touches.reduce((best, t) => (t?.at && (!best || t.at > best.at) ? t : best), null);
 
+// homelover-flow-v1 F2-F4: the fit columns (20261104_homelover_flow_v1.sql) per record key; null until that migration
+// ran, so scoring never fails on a column that isn't there yet.
+const FIT_COLS = 'id, fit_level, deprioritized_reason, deprioritized_note, us_footprint';
+async function fitRows(supabase, businessId) {
+  try {
+    const [g, o, t] = await Promise.all(['sales_goals', 'sales_opportunities', 'sales_targets'].map(table => selectAllPages(() => supabase.from(table).select(FIT_COLS).eq('business_id', businessId).order('id'))));
+    return new Map([...g.map(r => [`partner:${r.id}`, r]), ...o.map(r => [`employer:${r.id}`, r]), ...t.map(r => [`target:${r.id}`, r])]);
+  } catch { return null; }
+}
+
 export async function gatherInputs(supabase, businessId, { now = Date.now() } = {}) {
   const all = (t, cols, build = x => x) => selectAllPages(() => build(supabase.from(t).select(cols).eq('business_id', businessId)).order('id'));
-  const [partners, opps, targets, visits, skip, research, people, settings, prospects, messages, events, partnerEvents, oppEvents, doneTodos, overrides, members, marks, acceptedSignals, partnerVisitors] = await Promise.all([
+  const [partners, opps, targets, visits, skip, research, people, settings, prospects, messages, events, partnerEvents, oppEvents, doneTodos, overrides, members, marks, acceptedSignals, partnerVisitors, fitByKey] = await Promise.all([
     all('sales_goals', 'id, name, pipeline_status, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, category, last_touch_at, priority, priority_set_at, archived_at, updated_at, created_at', x => x.eq('goal_type', 'partnership')),
     all('sales_opportunities', 'id, organization, stage, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, priority, priority_set_at, archived_at, updated_at, created_at, notes'),
     all('sales_targets', 'id, name, kind, status, owner_user_id, owner_team, co_owner_name, no_double_touch, source_kind, source_partner_id, source_person, source_set_by, source_set_at, employees, updated_at, created_at, decided_at, promoted_goal_id'),
-    all('web_visits', 'id, company_key, company_name, matched_type, matched_id, priority, visits_7d, unique_visitors_7d, apollo_intent, intent_score, top_paths, maybe_user, us_500, last_visit, pulled_on, seen_from'),
+    all('web_visits', 'id, company_key, company_name, matched_type, matched_id, priority, visits_7d, unique_visitors_7d, apollo_intent, intent_score, top_paths, maybe_user, us_500, first_visit, last_visit, pulled_on, seen_from'),
     all('sales_visit_skip', 'company_key'),
     all('research_runs', 'entity_type, entity_id, status, result, created_at', x => x.eq('status', 'done')),
     all('sales_people', 'title, source_kind, opportunity_id, target_id, archived_at', x => x.eq('source_kind', 'web_visit').is('archived_at', null)),
@@ -64,6 +75,7 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
     selectAllPages(() => supabase.from('sales_stage_marks').select('record_type, record_id, stage, at, reason').eq('business_id', businessId).order('id')).catch(() => []),
     selectAllPages(() => supabase.from('sales_signals').select('source, status, decided_at, target_id, company_key').eq('business_id', businessId).eq('status', 'accepted').order('id')).catch(() => []),
     COUNT_PARTNER_VISITORS ? all('partner_contacts', 'goal_id, title', x => x.eq('role_in_notes', VISITOR_ROLE)) : [],
+    fitRows(supabase, businessId),
   ]);
   const names = new Map(members.map(m => [m.user_id, m.profile?.display_name || m.name || null]));
   const weights = mergeWeights(settings?.score_weights);
@@ -75,6 +87,9 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
   // The latest visit row per company_key; a record's visit = the row matched to it, else the row keyed by its name.
   const latest = new Map();
   for (const v of [...visits].sort((a, b) => String(a.pulled_on).localeCompare(String(b.pulled_on)))) latest.set(v.company_key, v);
+  // homelover-flow-v1 F11: when a company was first seen on the site (earliest first visit across pulls).
+  const firstSeen = new Map();
+  for (const v of visits) { const d = String(v.first_visit || v.seen_from || v.pulled_on || '').slice(0, 10); if (d && (!firstSeen.has(v.company_key) || d < firstSeen.get(v.company_key))) firstSeen.set(v.company_key, d); }
   const visitByRecord = new Map();
   // web_visits says 'opportunity' for an employer match (visitRules liveMatch); the score keys employers as 'employer'.
   for (const v of latest.values()) if (v.matched_type && v.matched_id) visitByRecord.set(`${v.matched_type === 'opportunity' ? 'employer' : v.matched_type}:${v.matched_id}`, v);
@@ -132,11 +147,13 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
     const touch = latestTouch([...(touchesBy.get(key) || []), ...(touchesBy.get(`name:${nameKey}`) || []), r.last_touch_at ? { at: r.last_touch_at, who: null, channel: 'touch' } : null]);
     const override = overrideByKey.get(nameKey) || (r.priority != null && r.priority_set_at ? { priority: Number(r.priority), not_a_fit: false, set_at: r.priority_set_at } : null);
     const research = researchBy.get(key) || null;
+    const fitRow = fitByKey?.get(key) || null;
     return {
       type: c.type, id: c.id, name: c.name, stage: c.stage, owner_team: r.owner_team || null, employees: r.employees ?? null, category: r.category || null,
       last_touch_at: touch?.at || null, on_skip_list: skipKeys.has(nameKey), duplicate_of: c.duplicate_of || null,
       source: { kind: r.source_kind || 'unknown', via_upside: viaUpside, named: viaUpside && isNamedReferral(r), campaign_replied: !!heat?.replied, partner_id: r.source_partner_id || null, partner_name: partnerName.get(r.source_partner_id) || null },
       visit, people: peopleBy.get(key) || [], research, heat, override,
+      fit_record: fitRow, us_footprint: fitRow?.us_footprint || research?.result?.us_footprint || null,
       meta: {
         name: c.name, owner_user_id: r.owner_user_id || null, owner: names.get(r.owner_user_id) || null, owner_team: r.owner_team || null,
         co_owner_name: r.co_owner_name || null, no_double_touch: r.no_double_touch === true, stage: c.stage, employees: r.employees ?? null, kind: r.kind || null,
@@ -144,6 +161,7 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
         people: (peopleBy.get(key) || []).length, last_touch_at: touch?.at || null, last_touch_who: touch?.who || null, last_touch_channel: touch?.channel || null,
         researched: !research ? 'none' : (now - Date.parse(research.created_at)) / DAY > weights.research.fresh_days ? 'decayed' : 'fresh', research_at: research?.created_at || null,
         created_at: c.created_at || null,
+        first_seen: visit ? firstSeen.get(visit.company_key) || null : null,
       },
     };
   });
@@ -165,12 +183,14 @@ export async function gatherInputs(supabase, businessId, { now = Date.now() } = 
   return { inputs, weights, names, settings: settings || null, dated };
 }
 
-// One company's score row as the table stores it.
-export function scoreRow(inp, weights, { businessId, now }) {
+// One company's score row as the table stores it. homelover-flow-v1 F3: components.axes (the six fit axes) and
+// meta.fit (level, source, score, reason) ride along so the Map / Pipeline / panel never join the record tables.
+export function scoreRow(inp, weights, { businessId, now, fitSettings = null }) {
   const s = scoreCompany(inp, weights, { now });
+  const { axes, fit } = fitBlock({ components: s.components, caps: weights.caps, usFootprint: inp.us_footprint || null, record: inp.fit_record, settings: fitSettings });
   return {
     business_id: businessId, company_type: inp.type, company_id: inp.id, score: s.score, band: s.band,
-    components: { ...s.components, meta: inp.meta },
+    components: { ...s.components, axes, meta: { ...inp.meta, fit } },
     source_kind: s.source_kind, source_label: s.source_label, source_partner_id: inp.source?.partner_id || null,
     closed: s.closed, flagged_out: s.flagged_out, duplicate_of: s.duplicate_of, override: s.override, computed_at: new Date(now).toISOString(),
   };
@@ -181,10 +201,10 @@ const inFlight = new Map();
 // sales_company_score_days (older than SNAPSHOT_KEEP_DAYS dropped), only = { type, id } limits the write to one company.
 export async function recomputeScores(supabase, { businessId, trigger = 'manual', now = Date.now(), only = null } = {}) {
   if (!TRIGGERS.includes(trigger)) throw Object.assign(new Error(`trigger must be one of ${TRIGGERS.join('|')}`), { status: 400 });
-  const { inputs, weights } = await gatherInputs(supabase, businessId, { now });
+  const { inputs, weights, settings } = await gatherInputs(supabase, businessId, { now });
   const chosen = only ? inputs.filter(i => i.type === only.type && i.id === only.id) : inputs;
   if (only && !chosen.length) throw Object.assign(new Error(`${only.type} not found`), { status: 404 });
-  const rows = chosen.map(i => scoreRow(i, weights, { businessId, now }));
+  const rows = chosen.map(i => scoreRow(i, weights, { businessId, now, fitSettings: settings?.fit_settings || null }));
   const today = laDateString(new Date(now));
   for (let i = 0; i < rows.length; i += 200) must(await supabase.from('sales_company_scores').upsert(rows.slice(i, i + 200), { onConflict: 'business_id,company_type,company_id' }).select('company_id'));
   const days = rows.map(r => ({ business_id: businessId, company_type: r.company_type, company_id: r.company_id, day: today, score: r.score, band: r.band }));

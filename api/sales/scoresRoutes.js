@@ -7,6 +7,8 @@ import { DEFAULT_WEIGHTS, SOURCE_ORDER, trendOf, COMPONENTS } from './intentScor
 import { recomputeScores, mergeWeights, isStale, NEEDS_TOUCH_MIN, TOUCH_WINDOWS } from './intentScoreRun.js';
 import { sourceLabelOf } from './companyBrief.js';
 import { breakdownLines } from './intentScore.js';
+import { dueMap, inFitFilter } from './fitLevel.js';
+import { FIT_LEVELS, DUE_LEVELS } from '../../src/constants/fitLevels.js';
 
 // intent-score-v1 Stage 2 - GET goals/scores (the ranked rows + components under the S3 filters, with yesterday's band
 // for the ▲ / ▼ markers), POST goals/scores/recompute (owner / admin, optional one company), GET goals/scores/export.csv.
@@ -30,6 +32,11 @@ export function parseFilters(q = {}) {
     min: Number.isFinite(Number(q.min)) ? Math.max(0, Math.min(100, Math.round(Number(q.min)))) : 0,
     window: WINDOWS.includes(Number(q.window)) ? Number(q.window) : null,
     q: typeof q.q === 'string' ? q.q.trim().toLowerCase().slice(0, 80) : '',
+    // homelover-flow-v1 F2 / F4 / F11: fit = levels to show (absent = everything but Deprioritized; the Map chips send
+    // strong,good by default), due = today | week | later, sort = rank (default) | newest (first seen on the site, desc).
+    fit: typeof q.fit === 'string' && q.fit ? q.fit.split(',').filter(l => FIT_LEVELS.includes(l)) : [],
+    due: DUE_LEVELS.includes(q.due) ? q.due : '',
+    sort: q.sort === 'newest' ? 'newest' : 'rank',
   };
   return f;
 }
@@ -49,13 +56,16 @@ export function filterScoreRows(rows, f, now = Date.now()) {
     if (f.min && r.score < f.min) return false;
     if (f.window && !(r.last_visit && now - Date.parse(`${String(r.last_visit).slice(0, 10)}T12:00:00Z`) <= f.window * DAY)) return false;
     if (f.q && !String(r.name || '').toLowerCase().includes(f.q)) return false;
+    if (!inFitFilter(r.fit_level, f.fit || [])) return false;
+    if (f.due && r.due !== f.due) return false;
     return true;
   });
 }
 
 // One API row from a stored score row (+ the earlier snapshot for the trend).
 export function publicRow(s, prev, now = Date.now()) {
-  const { meta = {}, ...components } = s.components || {};
+  const { meta = {}, axes = null, ...components } = s.components || {};
+  const fit = meta.fit || {};
   const comp = Object.fromEntries(COMPONENTS.map(k => [k, components[k] || { points: 0, inputs: {} }]));
   const upside = meta.owner_team === 'upside' || meta.owner_team === 'both';
   return {
@@ -68,6 +78,9 @@ export function publicRow(s, prev, now = Date.now()) {
     visits_7d: meta.visits_7d ?? null, unique_visitors_7d: meta.unique_visitors_7d ?? null, last_visit: meta.last_visit || null, people: meta.people ?? 0,
     last_touch_at: meta.last_touch_at || null, last_touch_who: meta.last_touch_who || null, last_touch_channel: meta.last_touch_channel || null, days_since_touch: daysSince(meta.last_touch_at, now),
     researched: meta.researched || 'none', research_at: meta.research_at || null, computed_at: s.computed_at,
+    fit_level: fit.level || null, fit_source: fit.source || null, fit_score: fit.score ?? null, fit_used: fit.used ?? 0, deprioritized_reason: fit.reason || null, deprioritized_note: fit.note || null,
+    us_footprint: fit.us_footprint || null, axes,
+    first_seen: meta.first_seen || null, new_today: !!meta.first_seen && meta.first_seen === laDateString(new Date(now)), due: null, due_date: null,
     prev_score: prev?.score ?? null, prev_band: prev?.band ?? null, trend: trendOf(s.score, prev?.score ?? null), band_changed: !!prev && prev.band !== s.band,
   };
 }
@@ -93,15 +106,23 @@ export async function loadScoreRows(supabase, businessId, { now = Date.now() } =
 
 // Rank order inside a band: longest untouched first (S3), then score.
 export const rankSort = (a, b) => b.score - a.score || (b.days_since_touch ?? 1e9) - (a.days_since_touch ?? 1e9) || String(a.name).localeCompare(String(b.name));
+// homelover-flow-v1 F11: newest visitors first (first seen on the site, desc; never-seen last), then the rank order.
+export const newestSort = (a, b) => String(b.first_seen || '').localeCompare(String(a.first_seen || '')) || rankSort(a, b);
 
 export async function listScores(supabase, businessId, query = {}, { now = Date.now() } = {}) {
   const f = parseFilters(query);
   const { rows: all, computedAt, weights, hasPrev, today } = await loadScoreRows(supabase, businessId, { now });
+  // homelover-flow-v1 F2 (ruling F-c): Due is live - open to-dos + an employer's next_action_date - never stored.
+  const due = await dueMap(supabase, businessId, { today });
+  for (const r of all) { const d = r.fit_level === 'deprioritized' ? null : due.get(`${r.type}:${r.id}`) || null; r.due = d?.due || null; r.due_date = d?.date || null; }
   const ranked = all.filter(r => !r.live && !r.duplicate_of).sort(rankSort);
-  const rows = filterScoreRows(ranked, f, now);
+  const rows = filterScoreRows(ranked, f, now).sort(f.sort === 'newest' ? newestSort : rankSort);
   const live = filterScoreRows(all.filter(r => r.live && !r.duplicate_of), f, now).sort(rankSort);
   const counts = { companies: all.length, ranked: ranked.length, shown: rows.length, live: live.length, duplicates: all.filter(r => r.duplicate_of).length, closed: ranked.filter(r => r.closed).length, needs_touch: ranked.filter(r => needsTouch(r, now)).length, band_changed: ranked.filter(r => r.band_changed).length };
   for (const b of ['P1', 'P2', 'P3', 'P4']) counts[b] = rows.filter(r => r.band === b).length;
+  counts.fit = Object.fromEntries(FIT_LEVELS.map(l => [l, ranked.filter(r => r.fit_level === l).length]));
+  counts.due = Object.fromEntries(DUE_LEVELS.map(l => [l, ranked.filter(r => r.due === l).length]));
+  counts.new_today = ranked.filter(r => r.new_today).length;
   // priorities-v2 D1: the type chips' counts over the UNFILTERED ranked set (same pass, no second query).
   counts.segments = { all: ranked.length, visitors: ranked.filter(r => r.last_visit).length, partners: ranked.filter(r => r.type === 'partner').length, employers: ranked.filter(r => r.type === 'employer').length, targets: ranked.filter(r => r.type === 'target').length };
   const sources = Object.fromEntries(SOURCE_ORDER.map(k => [k, ranked.filter(r => r.source_label === k).length]));

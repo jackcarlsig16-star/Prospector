@@ -63,7 +63,7 @@ test('report: one row per company over 7 LA days, latest priority, merged visit 
   assert.equal(byName(r, 'Quarry Labs').type, 'Target (employer)');
   assert.equal(byName(r, 'Quarry Labs').match.upside, true, 'joint counts as on Brad\'s list');
   assert.equal(byName(r, 'Nimbus Freight').size, 'US 500+');
-  assert.equal(byName(r, 'Nimbus Freight').next_action, 'Review in Signals (this week)');
+  assert.equal(byName(r, 'Nimbus Freight').next_action, 'Review in Signals (warm)');
   assert.equal(byName(r, 'Sizeless Co').size, 'size unknown');
   assert.equal(byName(r, 'Sizeless Co').priority, 'P3', 'unmatched size-unknown with 6 visits stays P3');
   const vendor = byName(r, 'Vendor Co');

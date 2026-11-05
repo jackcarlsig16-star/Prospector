@@ -9,23 +9,27 @@ import { scheduleRecompute } from './intentScoreRun.js';
 // web_visits and never touches this table; every reader shows
 // override ?? computed via effectiveVisit(). Not a fit also puts the company
 // on the skip list; picking any P value takes it off again.
-const COLS = 'company_key, priority, not_a_fit, set_by, set_at';
+// '*' so the homelover-flow-v1 F4 columns (deprioritized_reason / _note, 20261104_homelover_flow_v1.sql) ride along
+// once that migration ran and nothing breaks before it.
+const COLS = '*';
 const NOT_A_FIT = 'Not a fit';
 const reply = (status, body) => ({ status, body });
 const must = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 
 export async function loadOverrides(supabase, businessId) {
   const rows = await selectAllPages(() => supabase.from('visit_priority_override').select(COLS).eq('business_id', businessId).order('company_key'));
-  return new Map(rows.filter(o => o.not_a_fit || o.priority).map(o => [o.company_key, o]));
+  return new Map(rows.filter(o => o.not_a_fit || o.priority || o.deprioritized_reason).map(o => [o.company_key, o]));
 }
 
 // v: a web_visits-shaped row ({ priority 'P1'..'P4', priority_rule, noise_reason }).
+// homelover-flow-v1 F4: a deprioritized visitor keeps its computed priority and carries deprioritized { reason, note }.
 export function effectiveVisit(v, override) {
   if (!override) return v;
-  if (override.not_a_fit) return { ...v, priority: 'P4', priority_rule: NOT_A_FIT, noise_reason: NOT_A_FIT, computed_priority: v.priority, override };
-  if (!override.priority) return v;
+  const dep = override.deprioritized_reason ? { deprioritized: { reason: override.deprioritized_reason, note: override.deprioritized_note || null } } : {};
+  if (override.not_a_fit) return { ...v, ...dep, priority: 'P4', priority_rule: NOT_A_FIT, noise_reason: NOT_A_FIT, computed_priority: v.priority, override };
+  if (!override.priority) return override.deprioritized_reason ? { ...v, ...dep, override } : v;
   const p = `P${override.priority}`;
-  return { ...v, priority: p, priority_rule: `Set by hand (scored ${v.priority})`, noise_reason: p === 'P4' ? 'Set to P4 by hand' : null, computed_priority: v.priority, override };
+  return { ...v, ...dep, priority: p, priority_rule: `Set by hand (scored ${v.priority})`, noise_reason: p === 'P4' ? 'Set to P4 by hand' : null, computed_priority: v.priority, override };
 }
 
 // POST goals/visits/priority { company_key, priority: 1-4 | null, not_a_fit?: true }
@@ -68,7 +72,10 @@ export async function setVisitPriority(supabase, { businessId, userId, body }) {
       must(await skip.delete().eq('business_id', businessId).eq('company_key', key).eq('reason', NOT_A_FIT));
     }
     if (!notAFit && priority === null) {
-      must(await supabase.from('visit_priority_override').delete().eq('business_id', businessId).eq('company_key', key));
+      // A row that also carries a deprioritization (F4) keeps it; only the priority part comes off.
+      const cur = must(await supabase.from('visit_priority_override').select(COLS).eq('business_id', businessId).eq('company_key', key).limit(1));
+      if (cur[0]?.deprioritized_reason) must(await supabase.from('visit_priority_override').update({ priority: null, not_a_fit: false, set_by: userId, set_at: new Date().toISOString() }).eq('business_id', businessId).eq('company_key', key).select('company_key'));
+      else must(await supabase.from('visit_priority_override').delete().eq('business_id', businessId).eq('company_key', key));
       scheduleRecompute(supabase, businessId, 'signal');
       return reply(200, { company_key: key, override: null });
     }

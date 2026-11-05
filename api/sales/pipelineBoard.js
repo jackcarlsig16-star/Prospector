@@ -9,6 +9,7 @@ import { laDateString } from './laDate.js';
 import { normName } from './intakeMatch.js';
 import { openFlagRows } from './huddleFlags.js';
 import { loadOverrides, effectiveVisit } from './visitPriority.js';
+import { dueFor } from './fitLevel.js';
 import { BOARD_COLORS, BOARD_COLOR_IDS, BOARD_TYPES, SHEET_FILLS, boardStage, compareBoardRows, matchesBoardFilters } from '../../src/constants/pipelineBoard.js';
 
 // pipeline-board-v1 - GET goals/pipeline-board: one row per company across
@@ -95,7 +96,7 @@ const NO_SIZE = { employees: null, employees_source: null, reach_employees: null
 
 export function buildBoard({
   partners, opportunities, targets, sequenced, memberNames, visits = [], linked = [], oppEvents = [], noteEvents = [],
-  overrides = new Map(), scout = [], allVisits = [], now = Date.now(),
+  overrides = new Map(), scout = [], allVisits = [], scores = new Map(), now = Date.now(),
 }, filters = {}) {
   const today = laDateString(new Date(now));
   const since = new Date(now - CALL_NOTE_DAYS * DAY).toISOString();
@@ -157,6 +158,23 @@ export function buildBoard({
   }
   const visited = visitedByRow(visits, overrides);
   for (const r of rows) r.visited = visited.get(`${r.type}:${r.id}`) || null;
+  // homelover-flow-v1 F2 / F4 / F11: Fit (from the stored score row - never a join), Due (open to-dos + an employer's
+  // next_action_date, live), first seen on the site + NEW today. A deprioritized row has no Due.
+  const firstSeen = new Map();
+  for (const v of allVisits) { const d = String(v.first_visit || v.pulled_on || '').slice(0, 10); if (d && (!firstSeen.has(v.company_key) || d < firstSeen.get(v.company_key))) firstSeen.set(v.company_key, d); }
+  const firstSeenByRow = new Map();
+  for (const v of visits) { const key = `${LINK_ROW[v.matched_type === 'opportunity' ? 'opportunity' : v.matched_type]}:${v.matched_id}`; const d = firstSeen.get(v.company_key); if (d && (!firstSeenByRow.has(key) || d < firstSeenByRow.get(key))) firstSeenByRow.set(key, d); }
+  const dueDates = new Map();
+  for (const l of linked) if (l.kind === 'todo' && l.status === 'open' && l.due_date && LINK_ROW[l.link_type]) { const k = `${LINK_ROW[l.link_type]}:${l.link_id}`; if (!dueDates.has(k)) dueDates.set(k, []); dueDates.get(k).push(l.due_date); }
+  for (const r of rows) {
+    const key = `${r.type}:${r.id}`;
+    const fit = scores.get(key)?.fit || null;
+    r.fit_level = fit?.level || null; r.fit_score = fit?.score ?? null; r.fit_source = fit?.source || null;
+    r.deprioritized = fit?.level === 'deprioritized' ? { reason: fit.reason || null, note: fit.note || null } : null;
+    const d = r.deprioritized ? null : dueFor([...(dueDates.get(key) || []), r.type === 'employer' ? r.next_step_due : null], today);
+    r.due = d?.due || null; r.due_date = d?.date || null;
+    r.first_seen = firstSeenByRow.get(key) || null; r.new_today = r.first_seen === today;
+  }
 
   // sales-ia-v2 P1: unmatched website visitors (last 7 days) and Scout
   // signals no record carries yet are rows of their own.
@@ -172,6 +190,8 @@ export function buildBoard({
       channel: 'website_visit', priority: pInt(v.priority), priority_set_by: o ? memberNames.get(o.set_by) || null : null, priority_set_at: o?.set_at || null,
       not_a_fit: !!o?.not_a_fit, priority_rule: v.priority_rule || null, covered_lives: null, ...NO_SIZE,
       visited: { last_visit: v.last_visit || v.pulled_on, visits_7d: v.visits_7d ?? null, pulled_on: v.pulled_on, priority: pInt(v.priority) },
+      fit_level: v.deprioritized ? 'deprioritized' : null, fit_score: null, fit_source: v.deprioritized ? 'deprioritized' : null, deprioritized: v.deprioritized || null,
+      due: null, due_date: null, first_seen: firstSeen.get(raw.company_key) || null, new_today: firstSeen.get(raw.company_key) === today,
     });
     names.add(raw.company_key);
   }
@@ -212,7 +232,7 @@ async function loadBoard(businessId, filters) {
   const now = Date.now();
   const weekAgo = addDays(laDateString(new Date(now)), -7);
   const all = (table, cols, narrow = x => x) => selectAllPages(() => narrow(supabase.from(table).select(cols).eq('business_id', businessId)));
-  const [partners, opportunities, targets, sequenced, members, allVisits, linked, oppEvents, noteEvents, overrides, scout] = await Promise.all([
+  const [partners, opportunities, targets, sequenced, members, allVisits, linked, oppEvents, noteEvents, overrides, scout, scoreRows] = await Promise.all([
     all('sales_goals', 'id, name, category, tier, pipeline_status, hot, next_step, next_meeting_at, last_touch_at, owner_user_id, owner_team, co_owner_name, no_double_touch, record_id, channel, priority, priority_set_by, priority_set_at, created_at, employees, employees_source, reach_employees, reach_clients',
       x => x.eq('goal_type', 'partnership').is('archived_at', null).order('id')),
     all('sales_opportunities', 'id, organization, org_type, stage, owner, owner_user_id, owner_team, tier, next_action, next_action_date, is_top, record_id, apollo_account_id, channel, priority, priority_set_by, priority_set_at, covered_lives, created_at, domain, domain_source, employees, employees_source',
@@ -221,18 +241,20 @@ async function loadBoard(businessId, filters) {
     filters.includeApollo ? all('sales_sequenced_accounts', 'account_id, name, first_sequenced_at, employees', x => x.order('account_id')) : [],
     supabase.from('business_members').select('user_id, name, profile:profiles!business_members_user_id_fkey(display_name)')
       .eq('business_id', businessId).not('user_id', 'is', null),
-    all('web_visits', 'id, company_key, company_name, matched_type, matched_id, last_visit, visits_7d, priority, priority_rule, noise_reason, pulled_on', x => x.gte('pulled_on', weekAgo).order('id')),
+    all('web_visits', 'id, company_key, company_name, matched_type, matched_id, first_visit, last_visit, visits_7d, priority, priority_rule, noise_reason, pulled_on', x => x.gte('pulled_on', weekAgo).order('id')),
     all('sales_week_goals', 'id, kind, status, due_date, link_type, link_id, carried_from_id, completed_at, source_note_id, created_at',
       x => x.in('kind', ['todo', 'waiting']).in('link_type', Object.keys(LINK_ROW)).order('id')),
     all('sales_opportunity_events', 'opportunity_id, event_type, changed_at', x => x.eq('event_type', 'stage_change').order('id')),
     all('sales_partner_events', 'id, goal_id', x => x.not('meta->>from_note_id', 'is', null).gte('at', new Date(now - CALL_NOTE_DAYS * DAY).toISOString()).order('id')),
     loadOverrides(supabase, businessId),
     all('sales_signals', 'id, company_key, company_name, status, upside_joint, created_at', x => x.eq('source', 'scout').order('id')),
+    all('sales_company_scores', 'company_type, company_id, components', x => x.order('company_id')).catch(() => []),
   ]);
   if (members.error) throw new Error(members.error.message);
   const memberNames = new Map(members.data.map(m => [m.user_id, m.profile?.display_name || m.name]));
   const visits = allVisits.filter(v => v.matched_id);
-  return buildBoard({ partners, opportunities, targets, sequenced, memberNames, visits, allVisits, linked, oppEvents, noteEvents, overrides, scout, now }, filters);
+  const scores = new Map(scoreRows.map(s => [`${s.company_type}:${s.company_id}`, s.components?.meta || {}]));
+  return buildBoard({ partners, opportunities, targets, sequenced, memberNames, visits, allVisits, linked, oppEvents, noteEvents, overrides, scout, scores, now }, filters);
 }
 
 // GET /goals/pipeline-board?type=&owner_team=&owner=&tier=&color=&q=&include_apollo=true

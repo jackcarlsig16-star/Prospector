@@ -211,10 +211,13 @@ export async function runOutlookSync({ userId, businessId, trigger = 'manual', d
   }
   // Stage 3: the daily step rides on every real sync. Its own failure lands
   // on its run row and in the response, never on the folder syncs.
-  let moves = null, replyTimes = null, campaigns = null;
+  let moves = null, replyTimes = null, campaigns = null, replyRules = null;
   if (!dryRun) {
     try { moves = await runDailyOutlookMoves(supabase, target.businessId, { userId, trigger, now }); }
     catch (err) { moves = { error: String(err.message || err).slice(0, 500) }; console.error('[outlook/moves]', moves.error); }
+    // homelover-flow-v1 F7: a reply or a calendar meeting from an employer's domain moves the employer (forward only).
+    try { const { runEmployerReplyRules } = await import('../sales/replyRules.js'); replyRules = await runEmployerReplyRules(supabase, target.businessId, { now }); }
+    catch (err) { replyRules = { error: String(err.message || err).slice(0, 500) }; console.error('[outlook/reply-rules]', replyRules.error); }
     // Stage 4a: exact reply times for sequenced prospects, only where the
     // workspace switched it on; its failure stays here too.
     try { if (await businessFeatureOn(supabase, target.businessId, 'outlook_reply_times')) replyTimes = await runOutlookReplyTimes(supabase, target.businessId); }
@@ -223,5 +226,5 @@ export async function runOutlookSync({ userId, businessId, trigger = 'manual', d
     try { campaigns = await runCampaignOutlookMatch(supabase, { businessId: target.businessId, userId, now }); }
     catch (err) { campaigns = { error: String(err.message || err).slice(0, 500) }; console.error('[outlook/campaigns]', campaigns.error); }
   }
-  return { businessId: target.businessId, mailbox: target.mailbox, dry_run: dryRun, folders, moves, reply_times: replyTimes, campaigns };
+  return { businessId: target.businessId, mailbox: target.mailbox, dry_run: dryRun, folders, moves, reply_times: replyTimes, campaigns, reply_rules: replyRules };
 }

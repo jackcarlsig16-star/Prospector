@@ -121,7 +121,10 @@ export async function listGoalMembersRoute(req, res) {
     .select('user_id, role, name, profile:profiles!business_members_user_id_fkey(display_name)')
     .eq('business_id', req.params.businessId).not('user_id', 'is', null).order('created_at');
   if (error) return res.status(500).json({ error: error.message });
-  res.json({ members: data.map(m => ({ user_id: m.user_id, role: m.role, name: m.profile?.display_name || m.name })) });
+  // homelover-flow-v1 F1: each member's fixed color rides along (memberColors.js).
+  let colors = new Map();
+  try { const { memberColors } = await import('./memberColors.js'); colors = await memberColors(supabase, req.params.businessId); } catch (e) { console.error('[goals/members] colors:', e.message); }
+  res.json({ members: data.map(m => ({ user_id: m.user_id, role: m.role, name: m.profile?.display_name || m.name, color: colors.get(m.user_id) || null })) });
 }
 
 // ── Companies / Partnerships to Land (sales_goals) ──────────────────────────

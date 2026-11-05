@@ -1,4 +1,5 @@
 import { CHANNEL_LABEL, PRIORITY_WORD } from '../../../constants/salesChannels';
+import { BAND_WORD } from '../../../constants/fitLevels';
 import { TEAM_LABEL } from '../../../constants/ownership';
 import { SOURCE_LABEL } from '../../../constants/leadSources';
 import { stageLabel, stageOptions, needsRecord } from './companyPanelModel';
@@ -55,6 +56,8 @@ export function sizeFacts(row, record) {
 }
 
 export const priorityText = row => (row.not_a_fit ? 'Not a fit' : row.priority != null ? `P${row.priority} · ${PRIORITY_WORD[row.priority] || ''}`.trim() : '—');
+// homelover-flow-v1 F2: a visitor's P is its intent band - Hot · Warm · Cool · Cold, never a time word.
+const visitBandText = row => (row.not_a_fit ? 'Not a fit' : row.priority != null ? `P${row.priority} · ${BAND_WORD[`P${row.priority}`] || ''}`.trim() : '—');
 
 // The seven facts (fewer for the record-less rows), [label, value, muted?, sub?]. source = GET goals/source's
 // source (partner / employer / target only).
@@ -63,7 +66,7 @@ export function factsFor(row, record, source) {
   const next = record?.next_step ?? row.next_step;
   const nextText = next ? `${next}${record?.next_step_due || row.next_step_due ? ` · due ${md(record?.next_step_due || row.next_step_due)}` : ''}` : '—';
   if (row.type === 'visitor') {
-    return [['Priority', priorityText(row), row.priority == null], ['Source', 'Website', false], ['Last visit', row.visited?.last_visit ? md(row.visited.last_visit) : '—', !row.visited?.last_visit]];
+    return [['Priority', visitBandText(row), row.priority == null], ['Source', 'Website', false], ['Last visit', row.visited?.last_visit ? md(row.visited.last_visit) : '—', !row.visited?.last_visit]];
   }
   if (row.type === 'apollo') {
     return [['Stage', 'In sequence', false], ['Source', 'Apollo', false], ['Last touch', touch.text, touch.empty]];

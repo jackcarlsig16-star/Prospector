@@ -14,4 +14,5 @@ export const CHANNEL_ICON = { website_visit: 'IconGlobe', scout: 'IconRadar', ap
 export const SIGNAL_CHANNEL = { scout: 'scout', web_visit: 'website_visit' };
 
 export const PRIORITIES = [1, 2, 3, 4];
-export const PRIORITY_WORD = { 1: 'Act today', 2: 'This week', 3: 'Watch', 4: 'Noise' };
+// homelover-flow-v1 F2: the record priority column stays; its words are the Fit levels it migrated onto (4 = Low too).
+export const PRIORITY_WORD = { 1: 'Strong', 2: 'Good', 3: 'Low', 4: 'Low' };

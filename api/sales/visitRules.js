@@ -14,7 +14,8 @@ export const US_500_FILTERS = {
 };
 export const PHONE_FIELDS = ['phone', 'primary_phone', 'sanitized_phone'];
 export const SEED_SKIP = ['SimpliBorrow', 'Embrace Home Loans', 'Lovable', 'Apollo'];
-export const PRIORITY_LABEL = { P1: 'act today', P2: 'this week', P3: 'watch', P4: 'noise' };
+// homelover-flow-v1 F2: intent words, never time words (time appears only as Due).
+export const PRIORITY_LABEL = { P1: 'hot', P2: 'warm', P3: 'cool', P4: 'cold' };
 const OWN = /(^|\.)homelover\.(ai|com)$/;
 const HOSTING = /\b(amazon web services|google cloud|microsoft azure|digitalocean|cloudflare|akamai|linode|ovh|hetzner|comcast|verizon|charter communications|cox communications|t mobile)\b/;
 const HOSTING_NAICS = /^518/;

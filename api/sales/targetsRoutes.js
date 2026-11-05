@@ -10,6 +10,7 @@ import { applyPartnerSignal } from './partnerSignals.js';
 import { moveTargetPeople, relinkParked } from './visitorPeopleMove.js';
 import { OWNER_TEAMS, TEAM_LABEL } from '../../src/constants/ownership.js';
 import { PIPELINE_STATUSES } from '../../src/constants/partnerPipeline.js';
+import { rematchVisits } from './visitMatch.js';
 
 // call-notes-targets-v1 - companies named in notes that aren't a partner or
 // an employer yet. Written by Intake's Accept (Stage 1); Stage 2 promotes a
@@ -120,7 +121,9 @@ async function moveTargetData(supabase, { businessId, userId, target, to, id, un
   if (manifest) { manifest.visits = visits.map(v => v.id); manifest.people = []; }
   const people = await moveTargetPeople(supabase, { businessId, userId, targetId: target.id, to, id, undo, collect: manifest?.people });
   const parked = await relinkParked(supabase, { businessId, userId, type: to, id, name: target.name, undo, collect: manifest?.people });
-  return { research_moved: runs.length, visits_moved: visits.length, people_moved: people + parked };
+  // homelover-flow-v1 ruling F-d: still-unmatched visit rows of the same name / domain follow the promoted record.
+  const matched = await rematchVisits(supabase, { businessId, type: to, id, name: target.name, domain: target.domain || null });
+  return { research_moved: runs.length, visits_moved: visits.length + matched, people_moved: people + parked };
 }
 
 // lead-source-v1: a promoted target hands its source on unchanged (a person's pick stays theirs).

@@ -253,6 +253,9 @@ export async function runSync({ businessId, trigger, maxCalls, partnerPeople }) 
     missingAll.push(...result.missing);
     activityCounts = result.counts;
     scheduleRecompute(supabase, businessId, 'heat');
+    // homelover-flow-v1 F7: an Apollo reply at an employer at Contacted moves it to Responded (never a partner).
+    try { const { runEmployerReplyRules } = await import('./replyRules.js'); activityCounts.reply_rules = (await runEmployerReplyRules(supabase, businessId)).counts; }
+    catch (err) { adapterErrors.reply_rules = String(err.message || err).slice(0, 300); }
   } catch (err) {
     adapterErrors.activity = err instanceof CallCapError ? 'call_cap' : err.message;
   }

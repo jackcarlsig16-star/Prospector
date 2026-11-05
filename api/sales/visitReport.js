@@ -38,7 +38,7 @@ function nextAction(v, signal) {
   if (signal?.status === 'accepted') return 'To-do created from Signals';
   if (signal?.status === 'dismissed') return 'Dismissed in Signals';
   if (signal?.status === 'new') return `Review in Signals (${PRIORITY_LABEL[v.priority]})`;
-  return v.priority === 'P1' ? 'Reach out today' : 'Reach out this week';
+  return `Reach out (${PRIORITY_LABEL[v.priority]})`;
 }
 
 // Member names (whole words, 3+ letters) come out of sequence names, which

@@ -55,32 +55,33 @@ test('buildActions: six kinds, company + priority resolved, ranked band -> compa
     row('commitment', { id: 'typed', text: 'Not planned', plan_id: null }),
   ];
   const refTodos = [{ id: 'todo-nodate', link_type: null, link_id: null }];
-  const items = buildActions({ todos, flags, waiting, signals, suggestions, commitments, refTodos, companies, members, today: TODAY });
-  const keys = items.map(i => i.key);
+  // homelover-flow-v1 F10: signals are not Actions rows any more (the Map's NEW ring); Tidy rows leave the ranked list
+  // for their own group (items.tidy). The list is "my list": flags, waiting, to-dos, Focus, campaign steps.
+  const list = buildActions({ todos, flags, waiting, signals, suggestions, commitments, refTodos, companies, members, today: TODAY });
+  const keys = list.map(i => i.key);
   // actions-v2 REV2: band (now -> today -> week -> housekeeping), then company P (none last), then due, then age.
   assert.deepEqual(keys, [
     'flag-flag-1', 'waiting-wait-late', 'todo-todo-late', // now: a 2-day flag on a P1 partner, then the overdue rows by due date
-    'tidy-sug-follow', 'todo-todo-today', 'focus-focus-a', 'focus-focus-done', 'tidy-sug-visited', // today: P1, P3, then no P by age
-    'signal-sig-web', 'todo-todo-later', 'signal-sig-scout', 'signal-sig-hot', // week: the visitor's own P1, then a dated to-do, then age
-    'todo-todo-nodate', 'tidy-sug-date', // housekeeping
+    'todo-todo-today', 'focus-focus-a', 'focus-focus-done', // today: P3, then no P by age
+    'todo-todo-later', // week: a dated to-do
+    'todo-todo-nodate', // housekeeping
   ]);
-  assert.deepEqual(items.map(i => i.band), ['now', 'now', 'now', 'today', 'today', 'today', 'today', 'today', 'week', 'week', 'week', 'week', 'housekeeping', 'housekeeping']);
+  assert.deepEqual(list.map(i => i.band), ['now', 'now', 'now', 'today', 'today', 'today', 'week', 'housekeeping']);
+  assert.deepEqual(list.map(i => i.due_group), ['today', 'today', 'today', 'today', 'today', 'today', 'week', 'later']);
+  assert.ok(list.every(i => i.kind !== 'signal' && i.kind !== 'tidy'));
+  assert.deepEqual(list.tidy.map(i => i.key), ['tidy-sug-follow', 'tidy-sug-visited', 'tidy-sug-date'], 'Tidy keeps its own ranked group');
+  const items = [...list, ...list.tidy];
   const by = Object.fromEntries(items.map(i => [i.key, i]));
   assert.equal(by['todo-todo-today'].priority, 3, "a to-do on an employer with its own P3 takes the employer's priority");
   assert.equal(by['todo-todo-later'].priority, 3, 'a to-do due later this week is P3');
   assert.equal(by['todo-todo-nodate'].priority, 3);
-  assert.equal(by['signal-sig-scout'].priority, 2);
   assert.equal(by['tidy-sug-visited'].priority, 2);
   assert.equal(by['tidy-sug-follow'].priority, 1, "Tidy on Lakeshore takes the partner's P1");
   assert.equal(by['focus-focus-a'].priority, 2);
   assert.equal(by['focus-focus-done'].status, 'done', 'done Focus items come through for the fold');
   assert.equal(by['tidy-sug-nudge-dup'], undefined, 'a Tidy nudge for a waiting row already on the list is dropped');
   assert.equal(by['waiting-wait-fine'], undefined, 'a waiting row that is not overdue is not an action yet');
-  for (const k of ['todo-todo-done', 'todo-todo-steps-done', 'todo-todo-dropped', 'signal-sig-old', 'focus-typed']) assert.equal(by[k], undefined, `${k} is out`);
-  assert.deepEqual(by['signal-sig-web'].company, { type: 'visitor', id: 'acme widgets', name: 'Acme Widgets', priority: null, stage_label: 'Website visit' });
-  assert.deepEqual(by['signal-sig-hot'].company, { type: null, id: null, name: 'Hot Co', priority: null });
-  assert.deepEqual(by['signal-sig-scout'].company, { type: 'target', id: T.zeta, name: 'Zeta Labs', priority: null, stage_label: null, owner: null, last_touch_at: null });
-  assert.equal(by['signal-sig-scout'].text, 'Reach out: Zeta Labs — Head of People');
+  for (const k of ['todo-todo-done', 'todo-todo-steps-done', 'todo-todo-dropped', 'signal-sig-old', 'signal-sig-web', 'signal-sig-scout', 'signal-sig-hot', 'focus-typed']) assert.equal(by[k], undefined, `${k} is out`);
   assert.deepEqual(by['todo-todo-today'].company, { type: 'employer', id: O.mill, name: 'Old Mill Union', priority: 3, stage_label: null, owner: null, last_touch_at: null });
   assert.equal(by['flag-flag-1'].why, 'Flagged by Cyrus · “opened 3x”');
   assert.deepEqual([by['waiting-wait-late'].late_days, by['waiting-wait-late'].why, by['waiting-wait-late'].text], [6, '6 d late', 'Waiting on Pat: the signed MSA']);
@@ -135,10 +136,12 @@ const seed = () => fakeSupabase({
 
 test('listActions reads every source once and resolves companies from the referenced records', async () => {
   const s = seed();
-  const { items, today, week_start } = await listActions(s, B, new Date(`${TODAY}T18:00:00Z`));
+  const { items, tidy, groups, today, week_start } = await listActions(s, B, new Date(`${TODAY}T18:00:00Z`));
   assert.equal(today, TODAY); assert.equal(week_start, WEEK);
   const kinds = items.map(i => i.kind);
-  assert.deepEqual([...new Set(kinds)].sort(), ['flag', 'focus', 'signal', 'tidy', 'todo', 'waiting']);
+  assert.deepEqual([...new Set(kinds)].sort(), ['flag', 'focus', 'todo', 'waiting'], 'homelover-flow-v1 F10: no signal rows, Tidy in its own group');
+  assert.deepEqual([tidy.count, tidy.items.map(i => i.kind)], [1, ['tidy']]);
+  assert.equal(groups.today + groups.week + groups.later, items.length);
   assert.equal(items[0].key, 'waiting-wait-late', 'the overdue waiting row (from an older week) leads');
   assert.equal(items.find(i => i.key === 'todo-todo-today').company.name, 'Lakeshore Mutual');
   assert.equal(items.find(i => i.key === 'waiting-wait-late').company.name, 'Old Mill Union');
@@ -228,9 +231,10 @@ test('bands: reply_task and a campaign reply are Now; a P1 set-a-date stays Hous
     sends: [{ id: 'cs1', campaign_id: 'k1', track_id: 't1', name: 'Ana Alder', current_step: 1, next_due_date: TODAY, created_at: '2026-10-20T00:00:00Z' }],
     replies: [{ id: 'cr1', campaign_id: 'k1', track_id: 't1', name: 'Ben Birch', current_step: 1, created_at: '2026-10-20T00:00:00Z' }],
   };
-  const items = buildActions({ suggestions, campaign, companies, members, today: TODAY });
-  assert.deepEqual(items.map(i => [i.key, i.band]), [['campaign-cr1', 'now'], ['tidy-sug-reply', 'now'], ['campaign-cs1', 'today'], ['tidy-sug-date-p1', 'housekeeping']]);
-  assert.equal(items.find(i => i.key === 'tidy-sug-date-p1').priority, 1, 'the chip still shows the company P');
+  const list = buildActions({ suggestions, campaign, companies, members, today: TODAY });
+  assert.deepEqual(list.map(i => [i.key, i.band]), [['campaign-cr1', 'now'], ['campaign-cs1', 'today']]);
+  assert.deepEqual(list.tidy.map(i => [i.key, i.band]), [['tidy-sug-reply', 'now'], ['tidy-sug-date-p1', 'housekeeping']], 'homelover-flow-v1 F10: Tidy in its own group');
+  assert.equal(list.tidy.find(i => i.key === 'tidy-sug-date-p1').priority, 1, 'the chip still shows the company P');
 });
 
 // actions-v2 REV2 A4 - Accept on a Member's behalf: the to-do is theirs, the caller decided it; Undo and the

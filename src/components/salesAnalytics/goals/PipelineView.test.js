@@ -77,7 +77,7 @@ const section = name => {
   return box;
 };
 
-// companies-v2 C4 - grouped by priority: "P1 · Act today n" headers in the pill hue, then No priority; empty groups drop out.
+// companies-v2 C4 - grouped by priority: "P1 · Strong n" headers in the pill hue, then No priority; empty groups drop out.
 const PRIO_ROWS = [
   row('Hot Co', 'employer', 'green', { priority: 1 }), row('Warm Co', 'partner', 'yellow', { priority: 2 }), row('Warm Two', 'employer', 'blue', { priority: 2 }),
   row('Watch Co', 'employer', 'gray', { priority: 3 }), row('Noise Co', 'partner', 'faded', { priority: 4 }), row('Blank Co', 'employer', 'light'),
@@ -87,10 +87,10 @@ test('groups and counts come from the rows: P1-P4 in order, then No priority; wo
   setup();
   await screen.findByText('Hot Co');
   const heads = screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent.trim());
-  expect(heads).toEqual(['P1 · Act today 1', 'P2 · This week 2', 'P3 · Watch 1', 'P4 · Noise 1', 'No priority 1']);
-  expect(within(section('P2 · This week')).getByText('Warm Two')).toBeTruthy();
+  expect(heads).toEqual(['P1 · Strong 1', 'P2 · Good 2', 'P3 · Low 1', 'P4 · Low 1', 'No priority 1']);
+  expect(within(section('P2 · Good')).getByText('Warm Two')).toBeTruthy();
   expect(within(section('No priority')).getByText('Blank Co')).toBeTruthy();
-  const word = screen.getByText('P1 · Act today', { selector: '.ui-table__gword' });
+  const word = screen.getByText('P1 · Strong', { selector: '.ui-table__gword' });
   expect(word).toHaveClass('ui-table__gword');
   expect(word.style.getPropertyValue('--gword-color')).toBe('var(--sa-prio-p1)');
   expect(screen.getByText('Hot Co').closest('tr').style.getPropertyValue('--ui-row-bar')).toBe('var(--sa-good)');
@@ -99,7 +99,7 @@ test('groups and counts come from the rows: P1-P4 in order, then No priority; wo
   goalsApi.pipelineBoard.mockResolvedValue(PRIO_ROWS.slice(0, 3));
   setup();
   await screen.findByText('Hot Co');
-  expect(screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent.trim())).toEqual(['P1 · Act today 1', 'P2 · This week 2']);
+  expect(screen.getAllByRole('heading', { level: 3 }).map(h => h.textContent.trim())).toEqual(['P1 · Strong 1', 'P2 · Good 2']);
 });
 
 test('P3, P4 and No priority start collapsed, P1 / P2 open; a toggle is remembered under prospector_pipeline_groups', async () => {
@@ -108,23 +108,23 @@ test('P3, P4 and No priority start collapsed, P1 / P2 open; a toggle is remember
   await screen.findByText('Hot Co', {}, { timeout: 15000 });
   const table = () => within(screen.getByRole('table'));
   const toggle = name => table().getByRole('button', { name: new RegExp(`^${name}`) });
-  expect(toggle('P1 · Act today')).toHaveAttribute('aria-expanded', 'true');
-  expect(toggle('P2 · This week')).toHaveAttribute('aria-expanded', 'true');
-  expect(toggle('P3 · Watch')).toHaveAttribute('aria-expanded', 'false');
-  expect(toggle('P4 · Noise')).toHaveAttribute('aria-expanded', 'false');
+  expect(toggle('P1 · Strong')).toHaveAttribute('aria-expanded', 'true');
+  expect(toggle('P2 · Good')).toHaveAttribute('aria-expanded', 'true');
+  expect(toggle('P3 · Low')).toHaveAttribute('aria-expanded', 'false');
+  expect(toggle('P4 · Low')).toHaveAttribute('aria-expanded', 'false');
   expect(toggle('No priority')).toHaveAttribute('aria-expanded', 'false');
   expect(screen.queryByText('Watch Co')).toBeNull();
   expect(screen.queryByText('Blank Co')).toBeNull();
-  fireEvent.click(toggle('P3 · Watch'));
+  fireEvent.click(toggle('P3 · Low'));
   expect(screen.getByText('Watch Co')).toBeTruthy();
-  fireEvent.click(toggle('P1 · Act today'));
+  fireEvent.click(toggle('P1 · Strong'));
   expect(screen.queryByText('Hot Co')).toBeNull();
   expect(JSON.parse(localStorage.getItem('prospector_pipeline_groups'))).toEqual(['p4', 'none', 'p1']);
   cleanup();
   setup({}, { defaultGroups: true });
   await screen.findByText('Watch Co', {}, { timeout: 15000 });
   expect(screen.queryByText('Hot Co')).toBeNull();
-  expect(toggle('P1 · Act today')).toHaveAttribute('aria-expanded', 'false');
+  expect(toggle('P1 · Strong')).toHaveAttribute('aria-expanded', 'false');
   localStorage.setItem('prospector_pipeline_groups', '{bad json');
   cleanup();
   setup({}, { defaultGroups: true });
@@ -354,7 +354,7 @@ test('priority cell: the same select drawn as an outline pill in the level\'s hu
   expect(hot).toHaveClass('ui-pill-select');
   expect(hot.style.getPropertyValue('--pill-color')).toBe('var(--sa-prio-p1)');
   expect(hot.nextElementSibling).toHaveClass('ui-pill-select__caret');
-  expect(hot.selectedOptions[0].textContent).toBe('P1 · Act today');
+  expect(hot.selectedOptions[0].textContent).toBe('P1 · Strong');
   expect(screen.getByLabelText('Priority for Blank Co').style.getPropertyValue('--pill-color')).toBe('');
 });
 

@@ -129,7 +129,7 @@ test('one pull: 4 calls, measured delta 1 recorded, merged rows, P1-P4 rules, ph
   const harbor = sig.find(s => s.company_name === 'Harbor Lane');
   assert.deepEqual([harbor.kind, harbor.kind_guessed, harbor.upside_joint], ['partner', false, true]);
   assert.equal(harbor.signal, '1 visit in 7 days / 1 unique visitor (Apollo); top pages /');
-  assert.equal(harbor.why_now, 'P1 act today: Matched partner visited');
+  assert.equal(harbor.why_now, 'P1 hot: Matched partner visited');
   assert.equal(r.body.counts.signals, 6);
 });
 

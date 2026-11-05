@@ -20,6 +20,7 @@ import { STAGE_ORDER } from './pipelineStages.js';
 import { contactTarget } from './targetsRoutes.js';
 import { personSignals, byStrength, signalText, INTEREST_DAYS, TIMELINE_DAYS } from './interestSignals.js';
 import { normalizeLinkedinUrl, LINKEDIN_ERROR } from '../lib/linkedinUrl.js';
+import { rematchVisits } from './visitMatch.js';
 
 // sales-ia-v2 P4 - one side panel for every Pipeline row type. GET
 // goals/company?type=&id= returns the body sections (to-dos, waiting on them,
@@ -483,8 +484,10 @@ export function nextStage(type, stage) {
 }
 const STALE = { error: 'This changed elsewhere - refresh', code: 'stale_stage' };
 
-// POST /goals/company/:type/:id/advance { expect } -> 200 { before, after, event? }.
+// POST /goals/company/:type/:id/advance { expect, to? } -> 200 { before, after, event? }.
 // expect = the stage the screen showed; anything else is 409 (stale screen).
+// homelover-flow-v1 F7: to = an explicit stage AHEAD on the employer path (the reply / meeting rules and They
+// replied… jump contacted -> meeting through this one guarded write); default = the next stage.
 // Undo: partner = the partner undo of event.id; employer = PATCH the
 // opportunity back with allow_backward.
 export async function advanceStage(supabase, { businessId, userId, type, id, body, now = new Date() }) {
@@ -492,12 +495,14 @@ export async function advanceStage(supabase, { businessId, userId, type, id, bod
   if (!validId(type, id)) return reply(400, { error: 'id is required' });
   const expect = body?.expect;
   if (typeof expect !== 'string' || !expect) return reply(400, { error: 'expect (the stage on screen) is required' });
+  if (body?.to != null && (type !== 'employer' || !STAGE_ORDER.includes(body.to))) return reply(400, { error: 'to must be a stage on the employer path' });
   try {
     const record = await loadRecord(supabase, businessId, type, id);
     if (!record) return reply(404, { error: `${type} not found` });
     if (record.stage !== expect) return reply(409, STALE);
-    const to = nextStage(type, record.stage);
+    const to = body?.to ?? nextStage(type, record.stage);
     if (!to) return reply(409, { error: `${record.stage} has no next stage`, code: 'no_next_stage' });
+    if (body?.to != null && !(STAGE_ORDER.indexOf(record.stage) >= 0 && STAGE_ORDER.indexOf(to) > STAGE_ORDER.indexOf(record.stage))) return reply(409, { error: `${to} is not ahead of ${record.stage}`, code: 'not_forward' });
     if (type === 'partner') {
       const { event } = await applyPartnerSignal(supabase, { businessId, goalId: id, signal: { type: 'status', to, expect }, byUser: userId, now });
       return reply(200, { before: expect, after: to, event: { id: event.id } });
@@ -577,7 +582,9 @@ export async function insertCompanyRecord(supabase, { businessId, userId, name, 
     scheduleFirstSight(supabase, { businessId, type, id });
     // visitor-people-follow-record-v1 V5: parked visitors of this company join the new record (skip-listed ones wait).
     const people_moved = relink ? await relinkParked(supabase, { businessId, userId, type, id, name, now }) : 0;
-    return { created: { type, id, name }, people_moved };
+    // homelover-flow-v1 ruling F-d: visit rows that matched nothing at pull time follow the new record (name or domain).
+    const visits_matched = await rematchVisits(supabase, { businessId, type, id, name, domain });
+    return { created: { type, id, name }, people_moved, visits_matched };
   };
   const hit = findDupes({ name, domain }, dupeCtx || await loadDupeContext(supabase, businessId)).exact.filter(h => h.type in RANK).sort((a, b) => a.archived - b.archived || RANK[a.type] - RANK[b.type])[0];
   if (hit) return { already: { type: hit.type === 'opportunity' ? 'employer' : hit.type, id: hit.id, name: hit.name } };

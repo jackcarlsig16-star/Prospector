@@ -8,7 +8,7 @@ test('partner / employer: the seven facts in order; Last touch says the kind whe
   const facts = factsFor({ ...base, type: 'partner' }, { last_touch: { at: '2026-10-17T10:00:00Z', touch_type: 'email' }, next_step: 'Send deck', next_step_due: '2026-10-22' });
   // company-workflow-v1: + Employees (number + source tag).
   expect(facts.map(f => f[0])).toEqual(['Stage', 'Priority', 'Owner', 'Team', 'Source', 'Last touch', 'Next step', 'Employees']);
-  expect(facts.map(f => f[1])).toEqual(['Replied', 'P1 · Act today', 'Jack', 'HomeLover', 'Import', 'Oct 17 · Email sent', 'Send deck · due Oct 22', '—']);
+  expect(facts.map(f => f[1])).toEqual(['Replied', 'P1 · Strong', 'Jack', 'HomeLover', 'Import', 'Oct 17 · Email sent', 'Send deck · due Oct 22', '—']);
   expect(facts.slice(0, 7).every(f => f[2] === false)).toBe(true);
   const employer = factsFor({ ...base, type: 'employer', stage: 'contacted', owner: null, owner_team: null, priority: null, next_step: null, next_step_due: null, last_touch_at: null }, { last_touch: { at: '2026-10-19T10:00:00Z', touch_type: 'done' } });
   expect(employer.map(f => f[1])).toEqual(['Contacted', '—', 'Unassigned', '—', 'Import', 'Oct 19 · To-do done', '—', '—']);
@@ -19,7 +19,7 @@ test('target: Stage = status, Owner (a person, company-workflow-v1), Team, Sourc
   expect(factsFor({ type: 'target', stage: 'researching', owner_team: 'upside', channel: 'scout' }, null).map(f => [f[0], f[1]])).toEqual([['Stage', 'Researching'], ['Owner', 'Unassigned'], ['Team', 'Upside'], ['Source', 'Scout signal'], ['Last touch', 'No touch yet']]);
   expect(factsFor({ type: 'apollo', stage: 'sequenced' }, null).map(f => [f[0], f[1]])).toEqual([['Stage', 'In sequence'], ['Source', 'Apollo'], ['Last touch', 'No touch yet']]);
   const v = factsFor({ type: 'visitor', priority: 2, visited: { last_visit: '2026-10-20' } }, null);
-  expect(v.map(f => [f[0], f[1]])).toEqual([['Priority', 'P2 · This week'], ['Source', 'Website'], ['Last visit', 'Oct 20']]);
+  expect(v.map(f => [f[0], f[1]])).toEqual([['Priority', 'P2 · Warm'], ['Source', 'Website'], ['Last visit', 'Oct 20']]);
   expect(factsFor({ type: 'visitor', priority: null, not_a_fit: true, visited: null }, null)[0][1]).toBe('Not a fit');
   expect(sourceLabel({ type: 'partner', channel: 'unknown' })).toBe('—');
 });

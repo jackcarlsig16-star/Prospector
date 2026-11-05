@@ -29,13 +29,13 @@ beforeEach(() => {
 });
 afterEach(() => jest.clearAllMocks());
 
-test('headline, Act today, Apollo-labeled uniques, P4 hidden until asked', async () => {
+test('headline, Hot, Apollo-labeled uniques, P4 hidden until asked', async () => {
   render(<VisitorReport businessId="b1" canEdit />);
   const table = await screen.findByRole('table');
   expect(within(table).getByRole('columnheader', { name: 'Unique visitors (Apollo)' })).toBeInTheDocument();
   expect(within(table).getByRole('columnheader', { name: 'Visits (7 d)' })).toBeInTheDocument();
   expect(screen.getByText("On Brad's list")).toBeInTheDocument();
-  expect(within(screen.getByRole('region', { name: 'Act today' })).getByText('Harbor Lane')).toBeInTheDocument();
+  expect(within(screen.getByRole('region', { name: 'Hot' })).getByText('Harbor Lane')).toBeInTheDocument();
   expect(within(table).queryByText('Portal User Inc')).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Show P4 noise (1)' }));
   expect(within(table).getByText('Portal User Inc')).toBeInTheDocument();
@@ -123,8 +123,8 @@ test('Viewer: no CSV upload control', async () => {
   expect(screen.queryByLabelText('Upload Visited People CSV')).not.toBeInTheDocument();
 });
 
-test('companies-v2 C5: the priority words come from PRIORITY_WORD (no local copy)', () => {
+test('companies-v2 C5 / homelover-flow-v1 F2: the band words come from BAND_WORD (no local copy)', () => {
   const src = require('fs').readFileSync(require('path').join(__dirname, 'VisitorReport.js'), 'utf8');
-  expect(src).toMatch(/import \{ PRIORITY_WORD \} from '..\/..\/..\/constants\/salesChannels'/);
-  expect(src).not.toMatch(/const PRIORITY_WORD\s*=/);
+  expect(src).toMatch(/import \{ BAND_WORD \} from '..\/..\/..\/constants\/fitLevels'/);
+  expect(src).not.toMatch(/const (PRIORITY|BAND)_WORD\s*=/);
 });

@@ -60,9 +60,11 @@ export function matchesBoardFilters(r, filters = {}) {
 
 const TIER_RANK ={ 1: 1, 2: 2, 3: 3, 4: 4, active: 0 };
 // Color order, then tier (blank last), then next-step due (soonest, blank last), then name.
+// homelover-flow-v1 F11: inside a color / tier / due, the newest visitor (first seen on the site) comes first.
 export function compareBoardRows(a, b) {
   return BOARD_COLOR_IDS.indexOf(a.color) - BOARD_COLOR_IDS.indexOf(b.color)
     || (TIER_RANK[a.tier] ?? 9) - (TIER_RANK[b.tier] ?? 9)
     || (a.next_step_due || '9999').localeCompare(b.next_step_due || '9999')
+    || String(b.first_seen || '').localeCompare(String(a.first_seen || ''))
     || a.name.localeCompare(b.name);
 }

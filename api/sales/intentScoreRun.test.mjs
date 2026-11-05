@@ -236,7 +236,7 @@ test('needs a touch = score >= 40, not closed, no touch in 14 d; parseFilters dr
   assert.equal(needsTouch({ score: 50, closed: false, last_touch_at: ago(13) }, NOW), false);
   assert.equal(needsTouch({ score: 39, closed: false, last_touch_at: null }, NOW), false);
   assert.equal(needsTouch({ score: 90, closed: true, last_touch_at: null }, NOW), false);
-  assert.deepEqual(parseFilters({ segment: 'nope', owner: 'u1', source: 'upside,bogus', band: 'P9', min: '250', window: '14', needs_touch: 'true', q: ' Hi ' }), { segment: 'all', owner: 'u1', source: ['upside'], band: '', needs_touch: true, min: 100, window: null, q: 'hi' });
+  assert.deepEqual(parseFilters({ segment: 'nope', owner: 'u1', source: 'upside,bogus', band: 'P9', min: '250', window: '14', needs_touch: 'true', q: ' Hi ' }), { segment: 'all', owner: 'u1', source: ['upside'], band: '', needs_touch: true, min: 100, window: null, q: 'hi', fit: [], due: '', sort: 'rank' });
   assert.deepEqual(filterScoreRows([{ score: 10, name: 'a', type: 'partner' }], parseFilters({ min: 5 })).length, 1);
 });
 
