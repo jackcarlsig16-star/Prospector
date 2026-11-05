@@ -1,10 +1,9 @@
 import { SA } from '../theme';
-import { numStyle } from './goalsUi';
-import { ownerChip, fitChip, dueChip, kindStageWord } from './flowModel';
+import { ownerChip, kindStageWord } from './flowModel';
 
-// homelover-flow-v1 F1 / F2 - the account card's head chips (mockups A + C): kind + stage, owner (member color; "Me"
-// for the viewer's own; dashed = unassigned), Fit (one level, separate from Due), Due, Live since. Each chip is text +
-// a dot, so color never carries the meaning alone. A chip with onClick is a button (menu opener), else a plain span.
+// homelover-flow-v1 F1 / F9 - the live partner's head chips (mockup C): kind + category, owner (member color; "Me" for
+// the viewer's own; dashed = unassigned), Live since. Each chip is text + a dot, so color never carries the meaning
+// alone. A chip with onClick is a button (menu opener), else a plain span.
 const TONE = { good: SA.good, accent: SA.accent, muted: SA.muted, bad: SA.bad, warn: SA.warn };
 const base = { display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 10px', borderRadius: 999, fontSize: 12.5, fontWeight: 500, whiteSpace: 'nowrap', border: `1px solid ${SA.border}`, color: SA.text, background: 'transparent', font: 'inherit', boxSizing: 'border-box', maxWidth: '100%' };
 
@@ -24,17 +23,4 @@ export function OwnerChip({ row, members, meId, onClick, expanded }) {
   return <Chip testId="owner" color={o.color} dashed={o.dashed} title={o.title} onClick={onClick} expanded={expanded} style={{ '--owner-color': o.color }}>{o.word}</Chip>;
 }
 
-export function FitChip({ fit, onClick, expanded }) {
-  const c = fitChip(fit);
-  return <Chip testId="fit" tone={c.tone} title={c.title} onClick={onClick} expanded={expanded}>{c.word}</Chip>;
-}
-
-export function DueChip({ row }) {
-  const d = dueChip(row);
-  return d ? <Chip testId="due" tone="warn" title={d.date ? `Earliest open to-do / next step: ${d.date}` : undefined}>{d.word}</Chip> : null;
-}
-
 export const LiveChip = ({ since }) => <Chip testId="live" tone="good" title="Live partner">{since ? `Live since ${since}` : 'Live'}</Chip>;
-
-// A small number word in tabular figures (the Reached card's "3 of 11").
-export const Num = ({ children, style }) => <span style={{ ...numStyle, ...style }}>{children}</span>;

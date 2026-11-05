@@ -4,23 +4,24 @@ import { ui } from '../../../ui/kitTheme';
 import { goalsApi } from './goalsApi';
 import { labelStyle, inputStyle, ErrorNote } from './goalsUi';
 import { apolloLine } from './partners/PartnerResearch';
-import { needsRecord, addAsk, nextStage, stageLabel, playbookPrompt, mondayOf } from './companyPanelModel';
+import { needsRecord, addAsk, playbookPrompt, mondayOf } from './companyPanelModel';
 import { updateOpportunity } from '../pipelineApi';
 import OwnerPicker from './OwnerPicker';
 import { bookMeeting, markContacted } from './companyReach';
 import { DeprioritizeForm, TheyRepliedForm } from './FlowSheets';
 import { ownerChip, isLivePartner } from './flowModel';
-import { IconPencil, IconMail, IconCalendar, IconCheck, IconSearch, IconPeople, IconPhone, IconPause, IconLink, IconArrowRight } from '../../../ui/icons';
+import { IconPencil, IconMail, IconCalendar, IconCheck, IconSearch, IconPeople, IconPhone, IconPause, IconLink } from '../../../ui/icons';
 
-// homelover-flow-v1 F5 / F8 / F9 - the Actions row in four labelled verb groups that follow the flow (mockup A):
+// homelover-flow-v1 F5 / F8 / F9 - the Actions row in four labelled verb groups that follow the flow, one row:
 // REACH Draft email (E) · Log call · Book meeting · Mark contacted (only while behind Contacted) · They replied…
-// (employers past Target) | DECIDE Owner ▾ · Promote ▾ / Not a fit (targets) · Add to pipeline ▾ (visitor / Apollo)
-// · Deprioritize… / Bring back | CAPTURE Note (N) · To-do (T) · Contact (C) | LEARN Research (R) · Check Apollo.
+// (employers past Target) | DECIDE Promote ▾ / Not a fit (targets) · Add to pipeline ▾ (visitor / Apollo) ·
+// Deprioritize… / Bring back | CAPTURE Note (N) · To-do (T) · Contact (C) | LEARN Research (R) · Check Apollo.
+// Owner is an editable fact and every stage move is the Progress bar's, so neither has a button here.
 // A live partner (mockup C): PARTNER Add referred client · Log referral · Book check-in · Draft email | CAPTURE |
-// DECIDE Owner ▾ · Pause…. Buttons that don't apply to the state are hidden, not greyed. The stage's own primary lives
-// on the Progress bar. The single-key shortcuts listen on the window element only (no global handler), never while
-// focus is in a field or a popover / menu is open, never with a modifier. Every write offers Undo where one exists.
-// Draft email never sends. Members only. The open form is owned by the panel so a card's "+ Add" link can open it.
+// DECIDE Owner ▾ · Pause…. Buttons that don't apply to the state are hidden, not greyed. The single-key shortcuts
+// listen on the window element only (no global handler), never while focus is in a field or a popover / menu is open,
+// never with a modifier. Every write offers Undo where one exists. Draft email never sends. Members only. The open
+// form is owned by the panel so a card's "+ Add" link can open it.
 const SHORTCUT_KEYS = { n: 'note', t: 'todo', c: 'contact', e: 'draft', r: 'research' };
 const kbd = k => <kbd aria-hidden="true" style={{ font: "10.5px 'Geist Mono', ui-monospace, monospace", color: SA.muted, border: `1px solid ${SA.border}`, borderRadius: 4, padding: '0 4px', marginLeft: 2 }}>{k}</kbd>;
 function Group({ id, label, icon, children }) {
@@ -39,7 +40,7 @@ const today = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/
 // Stages behind Contacted: Mark contacted shows; at or past it, it is gone (F8).
 const behindContacted = (row, stage) => row.type === 'target' || (row.type === 'employer' && (stage || row.stage) === 'target') || (row.type === 'partner' && ['not_started', 'researching', 'first_email_drafted'].includes(stage || row.stage || 'not_started'));
 
-export default function CompanyActions({ businessId, row, members, meId, form, setForm, bandShown, fit = null, suggestion = null, stage = null, actionsRef = null, onPatch, onChanged, onToast, onConvert, onClose, onOwner, onAddClient }) {
+export default function CompanyActions({ businessId, row, members, meId, form, setForm, bandShown, fit = null, stage = null, actionsRef = null, onPatch, onChanged, onToast, onConvert, onClose, onOwner, onAddClient }) {
   const [busy, setBusy] = useState('');
   const rootRef = useRef(null);
   const keysRef = useRef(null); // the latest shortcut handler, set below once the actions exist
@@ -141,29 +142,6 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
     onPatch({ stage: 'lost' }); onChanged();
     onToast({ text: `${row.name}: Lost`, undo: async () => { await updateOpportunity(businessId, row.id, { stage: before, allow_backward: true }); onPatch({ stage: before }); onChanged(); } });
   });
-  // DECIDE "Next: <stage>" (the mockup's Promote position): the record's one forward step, same writes as before.
-  const nextStep = to => act('stage', async () => {
-    const before = row.stage;
-    let undo;
-    if (row.type === 'partner') {
-      const { event } = await goalsApi.partnerSignal(businessId, row.id, { type: 'status', to, expect: before });
-      undo = () => goalsApi.partnerUndo(businessId, row.id, event.id);
-    } else if (row.type === 'employer') {
-      await updateOpportunity(businessId, row.id, { stage: to });
-      undo = () => updateOpportunity(businessId, row.id, { stage: before, allow_backward: true });
-    } else {
-      await goalsApi.updateTarget(businessId, row.id, { status: to });
-      undo = () => goalsApi.updateTarget(businessId, row.id, { status: before, allow_backward: true });
-    }
-    onPatch({ stage: to, stage_label: stageLabel(row, to) }); onChanged();
-    onToast({ text: `${row.name}: ${stageLabel(row, to)}`, undo: async () => { await undo(); onChanged(); } });
-  });
-  // Employers: the next stage through advanceStage with expect (the Progress bar's own primary; here for the card's button).
-  const next = () => act('stage', async () => {
-    const r = await goalsApi.advanceStage(businessId, row.type, row.id, current);
-    onPatch({ stage: r.after }); onChanged();
-    onToast({ text: `${row.name}: moved to ${r.after}`, undo: async () => { if (row.type === 'partner') await goalsApi.partnerUndo(businessId, row.id, r.event.id); else await updateOpportunity(businessId, row.id, { stage: r.before, allow_backward: true }); onPatch({ stage: r.before }); onChanged(); } });
-  });
   const bringBack = () => act('bring_back', async () => {
     const r = await goalsApi.bringBack(businessId, row.type, row.id);
     onChanged();
@@ -189,8 +167,7 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
   const b = what => busy === what;
   const draftClick = () => (needsRecord(row.type) ? open('draft-kind') : draftEmail());
   keysRef.current = what => (what === 'draft' ? draftClick() : what === 'research' ? research() : open(what));
-  if (actionsRef) actionsRef.current = { draft: draftClick, research, apollo: checkApollo, book: () => reach('book', bookMeeting), markLost, next };
-  const nxt = needsRecord(row.type) || live ? null : nextStage(row);
+  if (actionsRef) actionsRef.current = { draft: draftClick, research, apollo: checkApollo, book: () => reach('book', bookMeeting), markLost };
   const oc = ownerChip({ ownerUserId: row.owner_user_id, ownerTeam: row.owner_team, coOwnerName: row.co_owner_name, members, meId });
   const ownerBtn = <button type="button" className={btn} aria-haspopup="menu" onClick={onOwner} title="Change the owner (partners through Assign, never a stage move)"><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: oc.dashed ? 'transparent' : oc.color, border: oc.dashed ? `1.5px dashed ${oc.color}` : 'none' }} />Owner: {oc.word} ▾</button>;
   const deprioritizeBtn = deprioritized
@@ -237,8 +214,6 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
       </Group>
       {divider}
       <Group id="decide" label="Decide" icon={<IconCheck size={12} />}>
-        {!needsRecord(row.type) && ownerBtn}
-        {nxt && <button type="button" className={btn} disabled={b('stage')} onClick={() => nextStep(nxt.to)}><IconArrowRight size={13} />{b('stage') ? 'Saving…' : `Next: ${nxt.label}`}</button>}
         {needsRecord(row.type) && <button type="button" className={bandShown ? btn : 'ui-btn ui-btn--primary'} aria-expanded={form === 'add'} onClick={() => open('add')}>Add to pipeline ▾</button>}
         {row.type === 'target' && <>
           <button type="button" className={btn} aria-expanded={form === 'promote'} disabled={b('promote')} onClick={() => open('promote')}>↑ Promote ▾</button>
@@ -254,8 +229,7 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
       <div style={{ display: 'flex', alignItems: 'flex-end', flexWrap: 'wrap', gap: '10px 6px', margin: '0 -8px', padding: 8, borderRadius: 10, background: `linear-gradient(90deg, color-mix(in srgb, ${ui.generatedFrom} 12%, ${SA.surface}) 0%, color-mix(in srgb, ${ui.generatedTo} 12%, ${SA.surface}) 100%)`, boxShadow: `inset 0 0 0 1px color-mix(in srgb, ${ui.generatedTo} 35%, ${SA.surface})` }}>
         <span className="ui-group-label" style={{ width: 72, flex: 'none', alignSelf: 'center' }}>Actions</span>
         {groups}
-        <span style={{ flex: 1 }} />
-        <span style={{ fontFamily: "'Geist Mono', ui-monospace, monospace", fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: ui.generatedTo, whiteSpace: 'nowrap' }}>✦ generated · updates with stage + signals</span>
+        <span style={{ fontFamily: "'Geist Mono', ui-monospace, monospace", fontSize: 10.5, letterSpacing: '.06em', textTransform: 'uppercase', color: ui.generatedTo, whiteSpace: 'nowrap', alignSelf: 'flex-end', paddingBottom: 8 }}>✦ generated</span>
       </div>
 
       {form === 'note' && (

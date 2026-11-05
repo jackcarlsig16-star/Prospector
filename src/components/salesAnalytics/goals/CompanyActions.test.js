@@ -30,15 +30,19 @@ test('homelover-flow-v1 F8: four labelled groups in flow order - Reach · Decide
   const names = g => within(screen.getByRole('group', { name: g })).getAllByRole('button').map(b => b.getAttribute('aria-label') || b.textContent.replace(/[NTCER]$/, ''));
   expect(names('Capture')).toEqual(['Note', 'To-do', 'Contact']);
   expect(names('Reach')).toEqual(['Draft email', 'Log call', 'Book meeting'], 'a Replied partner is past Contacted: no Mark contacted');
-  expect(names('Decide')).toEqual(['Owner: Unassigned ▾', 'Next: Meeting booked', '↓ Deprioritize…']);
+  // FIX company-window-subtract-v1 C9: Owner is an editable fact and stage moves are the strip's - neither has a button here.
+  expect(names('Decide')).toEqual(['↓ Deprioritize…']);
   expect(names('Learn')).toEqual(['Research', 'Check Apollo']);
   expect(screen.queryByRole('group', { name: 'Advance' })).toBeNull();
+  expect(screen.queryByText(/^Owner:/)).toBeNull();
+  expect(screen.queryByText(/^Next:/)).toBeNull();
   unmount();
   render(<Harness row={{ ...PARTNER, stage: 'not_started' }} />);
   expect(names('Reach')).toEqual(['Draft email', 'Log call', 'Book meeting', 'Mark contacted']);
   expect(screen.getAllByRole('button', { name: 'Check Apollo' })).toHaveLength(1);
   expect(screen.getByRole('button', { name: 'Note' })).toHaveAttribute('aria-keyshortcuts', 'N');
-  expect(screen.getByText('✦ generated · updates with stage + signals')).toBeInTheDocument();
+  const row = screen.getByRole('region', { name: 'Actions' }).firstElementChild;
+  expect(row.lastElementChild.textContent).toBe('✦ generated');
 });
 
 test('a target decides with Promote ▾ · Not a fit; a visitor with Add to pipeline ▾ and no Book meeting / Mark contacted (no record yet); an employer past Target gets They replied…; deprioritized = Bring back', () => {

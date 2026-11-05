@@ -3,23 +3,21 @@ import { SA } from '../theme';
 import ProgressBar from '../../../ui/ProgressBar';
 import { goalsApi } from './goalsApi';
 import { updateOpportunity } from '../pipelineApi';
-import { markContacted } from './companyReach';
 import { ErrorNote } from './goalsUi';
 import { STAGE_ORDER, STAGE_LABELS } from '../pipelineStages';
 import { WORKFLOW_STEPS, stepOf } from '../../../constants/partnerPipeline';
 import { boardStage } from '../../../constants/pipelineBoard';
 
-// company-progress-bar-v1 Stage 2 - where this deal is. D1 the bar (partner = the workflow steps, employer and target =
-// the pipeline stages; a target sits on Target), done steps carry the date reached. D2 one primary = the next stage;
-// More = side lanes. D3/ruling 1 Mark contacted moves a record that is behind (a target is added as an employer at
-// Contacted). D4 every move: the bar moves, "Last touch" updates, toast with Undo. D5 a segment = jump there (confirm
-// when backward). Ruling 2: only the bar's own Book meeting advances; the to-do Book meeting stays a to-do. Viewers:
-// the bar, no buttons.
+// company-progress-bar-v1 Stage 2 - where this deal is, the window's ONE stage control. D1 the bar (partner = the
+// workflow steps, employer and target = the pipeline stages; a target sits on Target), done steps carry the date
+// reached in their name. D2 one primary = the next stage; More = side lanes. D4 every move: the bar moves, toast with
+// Undo. D5 a pill = jump there (confirm when backward). Mark contacted and Book meeting live in the Actions row's REACH
+// group, not here: at Target / Responded (Replied) the bar has no primary and the next pill is the stage move (ruling
+// 2: the REACH Book meeting stays a to-do; only the bar moves the stage). Viewers: the bar, no buttons.
 const md = d => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' });
-const laDay = d => new Date(d).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 export const NEXT_VERB = {
-  employer: { target: 'Mark contacted', contacted: 'Log reply', responded: 'Book meeting', meeting: 'Send proposal / pilot', proposal_pilot: 'Verbal yes', verbal: 'Contract signed', contract: 'Mark launched' },
-  partner: { not_started: 'Start research', researching: 'Mark drafted', first_email_drafted: 'Mark sent', first_email_sent: 'Log reply', in_sequence: 'Log reply', replied: 'Book meeting', meeting_set: 'Start pilot', proposal_pilot: 'Mark live' },
+  employer: { contacted: 'Log reply', meeting: 'Send proposal / pilot', proposal_pilot: 'Verbal yes', verbal: 'Contract signed', contract: 'Mark launched' },
+  partner: { not_started: 'Start research', researching: 'Mark drafted', first_email_drafted: 'Mark sent', first_email_sent: 'Log reply', in_sequence: 'Log reply', meeting_set: 'Start pilot', proposal_pilot: 'Mark live' },
 };
 const SIDE = { lost: 'Lost', nurture: 'Nurture', on_hold: 'On hold', paused: 'Paused' };
 
@@ -61,14 +59,7 @@ export function progressModel(type, stage, history = [], flow = null) {
   return null;
 }
 
-export function lastTouchLine(lt, now = new Date()) {
-  if (!lt?.at) return null;
-  const when = laDay(lt.at) === laDay(now) ? 'today' : md(lt.at);
-  const what = lt.what || (lt.touch_type === 'stage' ? 'stage moved' : lt.touch_type === 'done' ? 'to-do done' : lt.touch_type ? `${lt.touch_type} touch` : null);
-  return ['Last touch: ' + when, lt.by, what].filter(Boolean).join(' · ');
-}
-
-export default function CompanyProgress({ businessId, row, detail, canEdit, flow = null, onPatch, onChanged, onToast, onConvert, onResearch, onOwner, onClient }) {
+export default function CompanyProgress({ businessId, row, detail, canEdit, flow = null, onPatch, onChanged, onToast, onResearch, onOwner, onClient }) {
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [more, setMore] = useState(false);
@@ -92,12 +83,8 @@ export default function CompanyProgress({ businessId, row, detail, canEdit, flow
     await updateOpportunity(businessId, row.id, { stage: to, ...(backward ? { allow_backward: true } : {}) });
     moved(to, () => updateOpportunity(businessId, row.id, { stage: m.stage, allow_backward: true }));
   };
-  const nextVerb = row.type === 'target' ? 'Mark contacted' : NEXT_VERB[m.path][m.stage];
+  const nextVerb = row.type === 'target' ? null : NEXT_VERB[m.path][m.stage];
   const primary = () => act('next', async () => {
-    if (row.type === 'target' || (row.type === 'employer' && m.stage === 'target')) {
-      await markContacted({ businessId, row, onChanged, onToast, onConvert });
-      return;
-    }
     const r = await goalsApi.advanceStage(businessId, row.type, row.id, m.stage);
     moved(r.after, () => (row.type === 'partner' ? goalsApi.partnerUndo(businessId, row.id, r.event.id) : updateOpportunity(businessId, row.id, { stage: r.before, allow_backward: true })));
   });
@@ -112,13 +99,10 @@ export default function CompanyProgress({ businessId, row, detail, canEdit, flow
     return act('jump', () => moveTo(to, { backward }));
   };
   const lanes = m.path === 'partner' ? ['paused'] : ['lost', 'nurture', 'on_hold'];
-  const lt = lastTouchLine(detail?.record?.last_touch);
   const editable = canEdit && (row.type !== 'target' || !!m.flow);
   return (
-    <section aria-label="Progress" data-company-progress={row.type} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <section aria-label="Progress" data-company-progress={row.type} title={editable ? 'Click a stage to jump · Undo 10 s' : undefined} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-        <span className="ui-group-label" style={{ width: 72, flex: 'none' }}>Progress</span>
-        {m.flow && <span style={{ order: 9, flexBasis: '100%', fontSize: 11.5, color: SA.muted, textAlign: 'right' }}>click a stage to jump · Undo 10 s</span>}
         <div style={{ flex: '1 1 420px', minWidth: 0 }}>
           <ProgressBar label={`${row.name} progress`} steps={m.steps} current={m.current} side={m.side} onStep={editable && !busy ? jump : null} nowrap={!!m.flow} />
         </div>
@@ -138,7 +122,6 @@ export default function CompanyProgress({ businessId, row, detail, canEdit, flow
           </div>
         )}
       </div>
-      {lt && <div data-last-touch style={{ fontSize: 12.5, color: SA.soft, paddingLeft: 80 }}>{lt}</div>}
       {error && <ErrorNote message={error} />}
     </section>
   );

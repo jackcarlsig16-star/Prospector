@@ -8,7 +8,7 @@ import { OPEN_TASKS } from './goalsApi';
 // jsdom has no matchMedia; PipelineView reads it for its phone list.
 window.matchMedia = window.matchMedia || (() => ({ matches: false, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} }));
 Element.prototype.scrollIntoView = Element.prototype.scrollIntoView || jest.fn();
-jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, pipelineBoard: jest.fn(), partnerSignal: jest.fn(), partnerUndo: jest.fn(), updatePartner: jest.fn(), setVisitPriority: jest.fn(),
+jest.mock('./goalsApi', () => ({ ...jest.requireActual('./goalsApi'), goalsApi: { ...jest.requireActual('./goalsApi').goalsApi, pipelineBoard: jest.fn(), partnerSignal: jest.fn(), partnerUndo: jest.fn(), advanceStage: jest.fn(), updatePartner: jest.fn(), setVisitPriority: jest.fn(),
   members: jest.fn(), companyDetail: jest.fn(), addCompanyNote: jest.fn(), addToPipeline: jest.fn(), runCompanyResearch: jest.fn(), createWeekGoal: jest.fn(), deleteWeekGoal: jest.fn(), updateTarget: jest.fn(), copyBundle: jest.fn(), checkCompanyApollo: jest.fn(), addCompanyContact: jest.fn(), rejectTarget: jest.fn(), promoteTarget: jest.fn(), bookMeeting: jest.fn(), markContacted: jest.fn(), notNow: jest.fn(), updateWeekGoal: jest.fn(),
   addPerson: jest.fn(), createTarget: jest.fn(), createPartner: jest.fn(), partnerDupeCheck: jest.fn(), people: jest.fn() } }));
 jest.mock('../pipelineApi', () => ({ fetchOpportunities: jest.fn(), createOpportunity: jest.fn(), updateOpportunity: jest.fn(), archiveOpportunity: jest.fn() }));
@@ -435,18 +435,23 @@ test('visitor row: Research first asks to add the company as a target, adds it, 
   expect(goalsApi.pipelineBoard.mock.calls.length).toBeGreaterThanOrEqual(2);
 });
 
-test('stage: Next sends the status signal with expect and moves the row (Undo = partner undo); Jump back confirms and sends allow_backward; Esc / backdrop close and flash the row', async () => {
+test('stage: the strip\'s one primary advances with expect and moves the row (Undo = partner undo); no Next: button in DECIDE; Jump back confirms and sends allow_backward; Esc / backdrop close and flash the row', async () => {
   // The first load is the fixture; every reload after the move returns the moved row, as the server would.
   goalsApi.pipelineBoard.mockResolvedValueOnce([...ROWS, APOLLO]).mockResolvedValue([...ROWS.map(r => (r.id === 'OneDigital' ? { ...r, stage: 'researching', stage_label: 'Researching' } : r)), APOLLO]);
+  goalsApi.advanceStage.mockResolvedValue({ before: 'not_started', after: 'researching', event: { id: 'ev1' } });
+  // The strip reads the record's stage: Not started on the first load, Researching on every reload after the move.
+  let loads = 0;
+  goalsApi.companyDetail.mockImplementation((b, type, id) => Promise.resolve({ ...DETAIL, record: { type, id, name: id, stage: loads++ === 0 ? 'not_started' : 'researching', next_step: null } }));
   setup();
   fireEvent.click(await screen.findByRole('button', { name: 'OneDigital' }));
   const panel = within(screen.getByRole('dialog', { name: 'OneDigital' }));
-  fireEvent.click(panel.getByRole('button', { name: 'Next: Start research' }));
-  await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'OneDigital', { type: 'status', to: 'researching', expect: 'not_started' }));
-  await waitFor(() => expect(panel.getByRole('button', { name: 'Next: Mark drafted' })).toBeTruthy());
+  expect(panel.queryByRole('button', { name: /^Next:/ })).toBeNull();
+  fireEvent.click(await panel.findByRole('button', { name: 'Start research' }));
+  await waitFor(() => expect(goalsApi.advanceStage).toHaveBeenCalledWith('b1', 'partner', 'OneDigital', 'not_started'));
+  await waitFor(() => expect(panel.getByRole('button', { name: 'Mark drafted' })).toBeTruthy());
   const tr = screen.getByText('OneDigital', { selector: 'td button' }).closest('tr');
   expect([...tr.querySelectorAll('td')].map(td => td.textContent)).toContain('Researching');
-  const status = (await screen.findAllByRole('status')).find(el => el.textContent.includes('OneDigital: Researching'));
+  const status = (await screen.findAllByRole('status')).find(el => el.textContent.includes('OneDigital: moved to Researching'));
   fireEvent.click(within(status).getByRole('button', { name: 'Undo' }));
   await waitFor(() => expect(goalsApi.partnerUndo).toHaveBeenCalledWith('b1', 'OneDigital', 'ev1'));
   openMore(panel, 'Jump to stage…');
@@ -455,7 +460,7 @@ test('stage: Next sends the status signal with expect and moves the row (Undo = 
   window.confirm.mockReturnValueOnce(false);
   fireEvent.click(jump.getByRole('button', { name: '↩ Not started' }));
   await waitFor(() => expect(window.confirm).toHaveBeenCalledWith('Move OneDigital back from Researching to Not started?'));
-  expect(goalsApi.partnerSignal).toHaveBeenCalledTimes(1);
+  expect(goalsApi.partnerSignal).not.toHaveBeenCalled();
   fireEvent.click(jump.getByRole('button', { name: '↩ Not started' }));
   await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'OneDigital', { type: 'status', to: 'not_started', expect: 'researching', allow_backward: true }));
   fireEvent.keyDown(document, { key: 'Escape' });
@@ -466,19 +471,22 @@ test('stage: Next sends the status signal with expect and moves the row (Undo = 
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 
-test('employer: Next moves the stage through PATCH; Jump back confirms and sends allow_backward; the Fit chip menu offers Deprioritize… (homelover-flow-v1: Fit replaced Priority on the card)', async () => {
+test('employer at Target: the strip has no primary (Mark contacted is REACH\'s); a later pill moves the stage through PATCH; Jump back confirms and sends allow_backward; DECIDE › Deprioritize… opens the reason sheet; no Fit chip', async () => {
   goalsApi.pipelineBoard.mockResolvedValueOnce([...ROWS, APOLLO]).mockResolvedValue([...ROWS.map(r => (r.id === 'Solidcore' ? { ...r, stage: 'contacted', stage_label: 'Contacted' } : r)), APOLLO]);
+  goalsApi.companyDetail.mockImplementation((b, type, id) => Promise.resolve({ ...DETAIL, record: { type, id, name: id, stage: 'target', next_step: 'Call' } }));
   setup();
   fireEvent.click(await screen.findByRole('button', { name: 'Solidcore' }));
   const panel = within(screen.getByRole('dialog', { name: 'Solidcore' }));
-  fireEvent.click(await panel.findByRole('button', { name: 'Next: Contacted' }));
+  const strip = within(await panel.findByRole('region', { name: 'Progress' }));
+  expect(strip.queryByRole('button', { name: /^Next:|Mark contacted/ })).toBeNull();
+  expect(within(panel.getByRole('group', { name: 'Reach' })).getByRole('button', { name: 'Mark contacted' })).toBeInTheDocument();
+  fireEvent.click(strip.getByRole('button', { name: /^Contacted, not yet/ }));
   await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', { stage: 'contacted' }));
   openMore(panel, 'Jump to stage…');
   fireEvent.click(within(panel.getByRole('group', { name: 'Jump to stage' })).getByRole('button', { name: '↩ Target' }));
   await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', { stage: 'target', allow_backward: true }));
-  expect(panel.queryByRole('button', { name: /^Priority/ })).toBeNull();
-  fireEvent.click(await panel.findByRole('button', { name: /^Fit/ }));
-  fireEvent.click(panel.getByRole('menuitem', { name: 'Deprioritize…' }));
+  expect(panel.queryByRole('button', { name: /^Fit/ })).toBeNull();
+  fireEvent.click(within(panel.getByRole('group', { name: 'Decide' })).getByRole('button', { name: '↓ Deprioritize…' }));
   expect(panel.getByRole('group', { name: 'Deprioritize' })).toBeInTheDocument();
 });
 
@@ -737,30 +745,27 @@ test('Has open to-do and Overdue filter on the row counts; the cells show them, 
 });
 
 // company-panel-v2 Stage 3 - the Interest band and its buttons; Viewers see the text alone; Not now is hidden on a visitor.
-test('interest band: the strongest signal in bold with its date; Mark contacted names the person and offers Undo; Not now snoozes the person; Book meeting sets the next step; the People row carries the pill', async () => {
+test('interest band: the strongest signal in bold with its date; Follow up + Not now only (Not now snoozes the person); Book meeting is REACH\'s and sets the next step; the People row carries the pill', async () => {
   goalsApi.companyDetail.mockImplementation((b, type, id) => Promise.resolve({ ...INTEREST_DETAIL, record: { type, id, name: id, stage: 'replied', next_step: 'Send the one-pager', last_touch: null, site: { domain: 'gallagher.example', confirmed: true } } }));
-  goalsApi.markContacted.mockResolvedValue({ event: { id: 'ev9', touch_type: 'email', to_status: null }, person: { contact_id: 'c-pat', before: { status: 'new' } } });
   goalsApi.notNow.mockResolvedValue({ person: { contact_id: 'c-pat', status: 'not_now', snooze_until: '2026-10-27', before: { status: 'new', snooze_until: null } } });
-  goalsApi.bookMeeting.mockResolvedValue({ todo: { id: 'wg7' }, next_step: 'Book meeting with Pat Lee', before: { next_step: 'Send the one-pager' } });
+  goalsApi.bookMeeting.mockResolvedValue({ todo: { id: 'wg7' }, next_step: 'Book meeting', before: { next_step: 'Send the one-pager' } });
   setup();
   fireEvent.click(await screen.findByRole('button', { name: 'Gallagher' }));
   const panel = within(screen.getByRole('dialog', { name: 'Gallagher' }));
   const band = within(await panel.findByRole('region', { name: 'Interest' }));
   expect(band.getByText('Pat Lee clicked Step 1')).toBeTruthy();
   expect(band.getByText('Oct 19')).toBeTruthy();
+  expect(band.getAllByRole('button').map(b => b.textContent)).toEqual(['Follow up: draft reply', 'Not now']);
   expect(panel.getAllByRole('link', { name: /^gallagher\.example/ }).map(a => a.getAttribute('href'))).toEqual(['https://gallagher.example', 'https://gallagher.example']);
   expect(panel.getByText('✓ confirmed')).toBeTruthy();
   expect(within(panel.getByRole('region', { name: 'People' })).getByText('clicked Step 1')).toBeTruthy();
   expect(within(panel.getByRole('region', { name: 'Signals & visits' })).getByText('Pat Lee clicked Step 1')).toBeTruthy();
-  fireEvent.click(band.getByRole('button', { name: 'Mark contacted' }));
-  await waitFor(() => expect(goalsApi.markContacted).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', { contact_id: 'c-pat', person: 'Pat Lee', touch_type: 'email' }));
-  const status = (await screen.findByText(/Pat Lee marked contacted/)).closest('[role="status"]');
-  fireEvent.click(within(status).getByRole('button', { name: 'Undo' }));
-  await waitFor(() => expect(goalsApi.partnerUndo).toHaveBeenCalledWith('b1', 'Gallagher', 'ev9'));
+  expect(panel.getAllByRole('button', { name: 'Book meeting' })).toHaveLength(1);
+  expect(panel.queryByRole('button', { name: 'Mark contacted' })).toBeNull();
   fireEvent.click(band.getByRole('button', { name: 'Not now' }));
   await waitFor(() => expect(goalsApi.notNow).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', { contact_id: 'c-pat' }));
-  fireEvent.click(band.getByRole('button', { name: 'Book meeting' }));
-  await waitFor(() => expect(goalsApi.bookMeeting).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', { person: 'Pat Lee' }));
+  fireEvent.click(within(panel.getByRole('group', { name: 'Reach' })).getByRole('button', { name: 'Book meeting' }));
+  await waitFor(() => expect(goalsApi.bookMeeting).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', {}));
   expect(panel.getByRole('button', { name: /^Stage/ })).toHaveAttribute('title', 'Stage only moves forward · saves at once · Undo 10 s');
   expect(panel.getByRole('region', { name: 'Actions' })).toBeTruthy();
 });

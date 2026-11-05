@@ -21,10 +21,11 @@ test.each([['apollo'], ['visitor']])('band on a %s row: the signal only, no Add 
   expect(bandButtons()).toEqual([]);
 });
 
-test.each([['partner', 4], ['employer', 4], ['target', 4]])('band on a %s row keeps its buttons', (type, n) => {
+// FIX company-window-subtract-v1 C8: Follow up (primary) + Not now; Book meeting / Mark contacted are REACH's.
+test.each([['partner'], ['employer'], ['target']])('band on a %s row: Follow up + Not now only', type => {
   band({ type, id: 'r1', name: 'ZZ Lakeshore' });
-  expect(bandButtons()).toHaveLength(n);
-  expect(bandButtons()).not.toContain('Add to pipeline ▾');
+  expect(bandButtons()).toEqual(['Follow up: draft reply', 'Not now']);
+  expect(document.querySelector('[data-interest-band] .ui-btn--primary').textContent).toBe('Follow up: draft reply');
 });
 
 test('Draft email on an Apollo-only row asks employer or partner, then makes the target with that kind and copies', async () => {

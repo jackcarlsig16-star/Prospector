@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { SA } from '../theme';
 import { goalsApi } from './goalsApi';
 import { inputStyle, ErrorNote } from './goalsUi';
-import { DEPRIORITIZE_REASONS, DEPRIORITIZE_NOTE_MAX, HAND_FIT_LEVELS, FIT_WORD } from '../../../constants/fitLevels';
+import { DEPRIORITIZE_REASONS, DEPRIORITIZE_NOTE_MAX } from '../../../constants/fitLevels';
 import { ownerChip } from './flowModel';
 
-// homelover-flow-v1 F4 / F7 / F1 - the inline sheets under the Actions row and the two head-chip menus: Deprioritize…
-// (preset reason chips + a note for Other; Activity + Undo 10 s), They replied… (six outcomes -> stage / suggestion;
-// Undo puts the stage back), the Fit menu (Strong · Good · Low by hand, clear, Deprioritize…) and the Owner menu
-// (each member in their color; Me first; picking the current owner just closes). Every write is one Stage 1 route.
+// homelover-flow-v1 F4 / F7 / F1 - the inline sheets under the Actions row and the live partner's Owner chip menu:
+// Deprioritize… (preset reason chips + a note for Other; Activity + Undo 10 s), They replied… (six outcomes -> stage /
+// suggestion; Undo puts the stage back), the Owner menu (each member in their color; Me first; picking the current
+// owner just closes). Every write is one Stage 1 route.
 export const OUTCOMES = [['meeting_set', 'Meeting set'], ['interested', 'Interested'], ['question', 'Question'], ['not_now', 'Not now'], ['not_right_person', 'Not the right person'], ['no', 'No']];
 const field = { ...inputStyle, height: 32, fontSize: 13, padding: '0 8px' };
 const chip = active => ({ height: 28, fontSize: 12.5, borderRadius: 999, ...(active ? { borderColor: SA.bad, color: SA.bad } : {}) });
@@ -72,21 +72,6 @@ export function TheyRepliedForm({ businessId, row, expect, onDone, onCancel, onT
 
 const menu = { position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 20, minWidth: 200, padding: 4, display: 'flex', flexDirection: 'column', gap: 2, background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.35)' };
 const item = 'ui-btn ui-btn--tertiary ui-btn--sm';
-
-// The Fit chip's menu: a hand-set level wins until cleared; Deprioritize… opens the reason sheet.
-export function FitMenu({ fit, busy, onSet, onDeprioritize, onBringBack, onClose }) {
-  const level = fit?.hand_level || null;
-  const dep = fit?.level === 'deprioritized';
-  return (
-    <div role="menu" aria-label="Fit" data-fit-menu style={menu}>
-      {!dep && HAND_FIT_LEVELS.map(l => <button key={l} type="button" role="menuitemradio" aria-checked={level === l} className={item} style={{ justifyContent: 'flex-start' }} disabled={busy} onClick={() => onSet(level === l ? null : l)}>{FIT_WORD[l]}{level === l ? ' · set by hand' : ''}</button>)}
-      {!dep && level && <button type="button" role="menuitem" className={item} style={{ justifyContent: 'flex-start', color: SA.muted }} disabled={busy} onClick={() => onSet(null)}>Clear (score decides)</button>}
-      {!dep && <button type="button" role="menuitem" className={item} style={{ justifyContent: 'flex-start', color: SA.bad }} disabled={busy} onClick={onDeprioritize}>Deprioritize…</button>}
-      {dep && <button type="button" role="menuitem" className={item} style={{ justifyContent: 'flex-start' }} disabled={busy} onClick={onBringBack}>Bring back</button>}
-      <button type="button" role="menuitem" className={item} style={{ justifyContent: 'flex-start', color: SA.muted }} onClick={onClose}>Close</button>
-    </div>
-  );
-}
 
 // The Owner chip's menu: Me first, then each member in their color, then Unassigned. The current owner is marked and
 // picking it just closes (no "already assigned" error).

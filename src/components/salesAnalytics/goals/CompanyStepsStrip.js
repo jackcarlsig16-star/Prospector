@@ -6,16 +6,15 @@ import { needsRecord } from './companyPanelModel';
 import { markContacted } from './companyReach';
 
 // company-panel-v3 S - "SETUP n/m" (done over the steps shown; skip steps excluded): done = an outlined green chip
-// "✓ Research · Oct 23" (no number), the one primary = a filled accent pill "2 Size & type", later = an outlined chip.
+// "✓ Research" (no number, no value - the value is in Intel / the facts), the one primary = a filled accent pill
+// "2 Size & type", later = an outlined chip. Renders only while a step is incomplete; all done = nothing.
 // company-workflow-v1 W1 - the steps strip under the facts row: the server's steps (api/sales/companySteps.js)
-// as one row, exactly ONE glowing (the primary), done steps ✓ with their value, later steps plain and still
-// clickable; "✓ Ready · last touch <date>" once nothing is left. A step's control opens under the row:
-// Research (a visitor / Apollo-only row is added as a target first - the button says so), Confirm site, Size & type
-// (employees, and for PEO / HR / platform partners the reach - research values offered with "Use"), Owner (a person),
-// Add to pipeline / Promote (opens the Actions row's one control), First touch (Mark contacted). Every write offers
-// Undo where one exists. Viewers read the strip, no buttons.
+// as one row, exactly ONE glowing (the primary), later steps plain and still clickable. A step's control opens under
+// the row: Research (a visitor / Apollo-only row is added as a target first - the button says so), Confirm site, Size
+// & type (employees, and for PEO / HR / platform partners the reach - research values offered with "Use"), Owner (a
+// person), Add to pipeline / Promote (opens the Actions row's one control), First touch (Mark contacted). Every write
+// offers Undo where one exists. Viewers read the strip, no buttons.
 const field = { ...inputStyle, height: 30, fontSize: 13, padding: '0 8px', width: 110 };
-const md = d => (d ? new Date(`${String(d).slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '');
 const num = v => (v == null || v === '' ? null : Number(String(v).replace(/[,\s]/g, '')));
 const fmt = n => Number(n).toLocaleString('en-US');
 
@@ -30,7 +29,7 @@ export default function CompanyStepsStrip({ businessId, row, detail, canEdit, me
   const [error, setError] = useState('');
   const [draft, setDraft] = useState({});
   const s = detail.steps;
-  if (!s) return null;
+  if (!s || s.ready) return null;
   const rec = detail.record;
   const act = async (what, fn) => { setBusy(what); setError(''); try { await fn(); } catch (e) { setError(e.message); } finally { setBusy(''); } };
   const visitorLike = needsRecord(row.type);
@@ -82,9 +81,6 @@ export default function CompanyStepsStrip({ businessId, row, detail, canEdit, me
     return undefined;
   };
 
-  if (s.ready && !openStep) {
-    return <div data-steps-ready style={{ fontSize: 13, color: SA.good }}>Setup ✓ done{s.last_touch_at ? <span style={{ color: SA.soft }}> · last touch {md(s.last_touch_at)}</span> : null}</div>;
-  }
   const found = researchNumbers(detail);
   const shown = s.steps.filter(x => x.status !== 'skip');
   const doneCount = shown.filter(x => x.status === 'done').length;
@@ -96,11 +92,11 @@ export default function CompanyStepsStrip({ businessId, row, detail, canEdit, me
         <span className="ui-group-label" data-setup-count style={{ width: 72, flex: 'none' }}>Setup <span style={{ fontVariantNumeric: 'tabular-nums' }}>{doneCount}/{shown.length}</span></span>
         {shown.map((step, i) => {
           const done = step.status === 'done', next = step.status === 'next', running = step.status === 'running';
-          const text = done ? `${label(step)}${step.value ? ` · ${step.value}` : ''}` : `${i + 1} ${label(step)}${running ? ' · running…' : ''}`;
+          const text = done ? label(step) : `${i + 1} ${label(step)}${running ? ' · running…' : ''}`;
           const blocked = visitorLike && ['size', 'owner'].includes(step.id);
           // A done Size / Owner step stays clickable to change it (an owner defaults to whoever added the company).
           if (!canEdit || running || blocked || (done && !['size', 'owner'].includes(step.id))) {
-            return <span key={step.id} data-step={step.id} data-status={step.status} title={blocked ? 'Research or add it to the pipeline first' : step.value || undefined}
+            return <span key={step.id} data-step={step.id} data-status={step.status} title={blocked ? 'Research or add it to the pipeline first' : undefined}
               style={done ? doneChip : { ...chip, border: `1px solid ${SA.border}`, color: SA.soft }}>
               {done ? '✓ ' : ''}{text}
             </span>;

@@ -152,24 +152,18 @@ export const goalsApi = {
   advanceStage: (id, type, recordId, expect, to = null) => call(id, `/company/${type}/${recordId}/advance`, { method: 'POST', body: { expect, ...(to ? { to } : {}) } }),
   // homelover-flow-v1 Stage 1 routes - Fit (F2 / F3), Deprioritize (F4), Reached (F6), reply rules (F7), the flow Activity + Undo.
   fitOf: (id, type, recordId) => call(id, `/fit/${type}/${recordId}`),
-  reach: (id, type, recordId) => call(id, `/reach/${type}/${recordId}`),
   reachAll: id => call(id, '/reach').then(d => d.reach),
   flowEvents: (id, type, recordId) => call(id, `/flow/${type}/${recordId}`).then(d => d.events),
   undoFlow: (id, eventId) => call(id, `/flow/${eventId}/undo`, { method: 'POST' }),
   deprioritize: (id, type, recordId, body) => call(id, `/company/${type}/${recordId}/deprioritize`, { method: 'POST', body }),
   bringBack: (id, type, recordId) => call(id, `/company/${type}/${recordId}/bring-back`, { method: 'POST' }),
-  setFit: (id, type, recordId, level) => call(id, `/company/${type}/${recordId}/fit`, { method: 'PATCH', body: { level } }),
   theyReplied: (id, recordId, body) => call(id, `/company/employer/${recordId}/they-replied`, { method: 'POST', body }),
-  replySuggestion: (id, recordId) => call(id, `/company/employer/${recordId}/reply-suggestion`),
   setMemberColor: (id, userId, color) => call(id, `/members/${userId}/color`, { method: 'PATCH', body: { color } }),
   notNow: (id, type, recordId, body = {}) => call(id, `/company/${type}/${recordId}/not-now`, { method: 'POST', body }),
   // lead-source-v1 - type = partner | employer | target. source = { source, history }; edit body = the source fields +
   // expect_set_at (409 when it moved); source_kind: null with every field empty clears it (Undo of a first pick).
   source: (id, type, recordId) => call(id, `/source/${type}/${recordId}`),
   editSource: (id, type, recordId, body) => call(id, `/source/${type}/${recordId}`, { method: 'PATCH', body }).then(d => d.source),
-  // brad-attribution-v1 F3: a hand-set funnel stage date - { stage, at: 'YYYY-MM-DD', note? } -> { previous, funnel, journey, marks, locked }.
-  markStage: (id, type, recordId, body) => call(id, `/stage-marks/${type}/${recordId}`, { method: 'PUT', body }),
-  unmarkStage: (id, type, recordId, stage) => call(id, `/stage-marks/${type}/${recordId}/${stage}`, { method: 'DELETE' }),
   referredBy: (id, partnerId) => call(id, `/partners/${partnerId}/referred`),
   // homelover-clients-v1 - clients (C3-C5; every write answers event_id for Undo), their files (C6) and the network tree (C9).
   clients: id => call(id, '/clients'),
