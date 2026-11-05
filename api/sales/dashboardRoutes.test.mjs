@@ -56,7 +56,12 @@ const weekRows = [
 const waiting = [
   { id: 'w1', kind: 'waiting', status: 'open', due_date: '2026-10-15' }, { id: 'w2', kind: 'waiting', status: 'open', due_date: '2026-10-30' }, { id: 'w3', kind: 'waiting', status: 'open', due_date: null },
 ];
-const input = { today: TODAY, days: 30, members, partners, opportunities, targets, visits, signals, emails, partnerEvents, oppEvents, weekRows, waiting, creditsUsed: 134, firstPull: '2026-10-20' };
+// FIX actions-all-weeks-v1 A2: the builder gets the open to-dos openTodosFor already filtered (any week); it splits them by due date.
+const todos = [
+  { id: 't1', owner_user_id: JACK, due_date: '2026-10-15', created_at: '2026-10-01T00:00:00Z' }, { id: 't7', owner_user_id: JACK, due_date: '2026-10-23', created_at: '2026-10-20T00:00:00Z' },
+  { id: 't4', owner_user_id: CY, due_date: null, created_at: '2026-10-20T00:00:00Z' },
+];
+const input = { today: TODAY, days: 30, members, partners, opportunities, targets, visits, signals, emails, partnerEvents, oppEvents, todos, waiting, creditsUsed: 134, firstPull: '2026-10-20' };
 
 test('buildDashboard: the 13 series over 30 days, team-wide', () => {
   const d = buildDashboard(input);
@@ -81,7 +86,7 @@ test('buildDashboard: the 13 series over 30 days, team-wide', () => {
   assert.deepEqual(d.signals_by_channel, [{ source: 'scout', label: 'Scout', new: 1, accepted: 1, dismissed: 0 }, { source: 'web_visit', label: 'Website', new: 0, accepted: 0, dismissed: 1 }], 'the September signal is outside the range');
   const ch = Object.fromEntries(d.companies_by_channel_stage.map(r => [r.channel, r.bands]));
   assert.equal(ch.scout.gray, 2, 'Riverbend (contacted) + the researching target'); assert.equal(ch.manual.yellow, 1); assert.equal(ch.partner_referral.green, 1); assert.equal(ch.call_note.yellow, 1);
-  assert.deepEqual(d.todos_per_owner.map(r => [r.name, r.done, r.open]), [['Jack Zz', 2, 1], ['Cyrus Yy', 0, 1]], 'all-steps-done counts as done; dropped and flags are out');
+  assert.deepEqual(d.todos_per_owner.map(r => [r.name, r.open, r.overdue, r.due, r.nodate]), [['Jack Zz', 2, 1, 1, 0], ['Cyrus Yy', 1, 0, 0, 1]], 'FIX actions-all-weeks-v1: open any week, split by due date');
   assert.deepEqual(d.waiting, { open: 3, overdue: 1 });
   assert.deepEqual(d.credits, { used: 134, cap: 500, month: '2026-10', all_businesses: true });
 });
@@ -100,7 +105,7 @@ test('owner filter: partners by owner id, employers by the typed owner name, to-
   assert.deepEqual(d.pipeline_by_stage.find(s => s.id === 'contacted').count, 0, "Riverbend is Cyrus's");
   assert.deepEqual(d.partners_by_status_owner.map(r => r.name), ['Jack Zz']);
   assert.deepEqual(d.partners_by_category, [{ category: '3. Brokers', count: 1 }]);
-  assert.deepEqual(d.todos_per_owner, [{ owner_user_id: JACK, name: 'Jack Zz', done: 2, open: 1 }]);
+  assert.deepEqual(d.todos_per_owner, [{ owner_user_id: JACK, name: 'Jack Zz', open: 2, overdue: 1, due: 1, nodate: 0 }]);
   const rm = Object.fromEntries(d.replies_meetings_per_week.map(w => [w.week_start, w.meetings]));
   assert.equal(rm['2026-10-12'], 1, "Jack's employer meeting"); assert.equal(rm['2026-10-19'], 1, "Jack's partner meeting");
   assert.equal(d.visitors_per_day.at(-1).companies, 3, 'visitors stay team-wide');
@@ -139,7 +144,8 @@ test('loadDashboard: reads only this workspace (credits across all), archived ro
     sales_email_daily_counts: emails.map(e => ({ business_id: B, mailbox: 'm', sequence_id: '', step: 0, ...e })), // no id column on this table
     sales_partner_events: partnerEvents.map(e => ({ business_id: B, ...e })),
     sales_opportunity_events: oppEvents.map(e => ({ business_id: B, ...e })),
-    sales_week_goals: [...weekRows, ...waiting].map(r => ({ business_id: B, ...r })),
+    // t8: planned six weeks ago, still open and overdue - on the chart now (FIX actions-all-weeks-v1).
+    sales_week_goals: [...weekRows, { id: 't8', kind: 'todo', status: 'open', owner_user_id: JACK, week_start: '2026-09-07', due_date: '2026-09-11' }, ...waiting].map(r => ({ business_id: B, ...r })),
     sales_week_goal_steps: [{ id: 's1', business_id: B, goal_id: 't3', done: true }],
     apollo_credit_spend: [{ business_id: B, la_month: '2026-10', credits: 100 }, { business_id: OTHER, la_month: '2026-10', credits: 34 }, { business_id: B, la_month: '2026-09', credits: 400 }],
   });
@@ -147,6 +153,6 @@ test('loadDashboard: reads only this workspace (credits across all), archived ro
   assert.equal(d.today, TODAY);
   assert.equal(d.partners_by_category.reduce((n, c) => n + c.count, 0), 3, 'the archived and the other workspace\'s partners are out');
   assert.deepEqual(d.credits, { used: 134, cap: 500, month: '2026-10', all_businesses: true }, 'credits sum every workspace for this LA month');
-  assert.deepEqual(d.todos_per_owner.map(r => [r.name, r.done, r.open]), [['Jack Zz', 2, 1], ['Cyrus Yy', 0, 1]], 'steps came from their own table');
+  assert.deepEqual(d.todos_per_owner.map(r => [r.name, r.open, r.overdue, r.nodate]), [['Jack Zz', 2, 1, 1], ['Cyrus Yy', 1, 0, 1]], 'any week; all-steps-done (own table), done, dropped and flags are out');
   assert.equal(d.history_start, '2026-10-20');
 });

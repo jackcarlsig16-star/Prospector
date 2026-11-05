@@ -67,7 +67,8 @@ test('buildActions: six kinds, company + priority resolved, ranked band -> compa
     'todo-todo-nodate', // housekeeping
   ]);
   assert.deepEqual(list.map(i => i.band), ['now', 'now', 'now', 'today', 'today', 'today', 'week', 'housekeeping']);
-  assert.deepEqual(list.map(i => i.due_group), ['today', 'today', 'today', 'today', 'today', 'today', 'week', 'later']);
+  // FIX actions-all-weeks-v1: a to-do's group goes by its due date (Oct 23 is this week; undated = nodate); other kinds keep their band's.
+  assert.deepEqual(list.map(i => i.due_group), ['today', 'today', 'today', 'today', 'today', 'today', 'week', 'nodate']);
   assert.ok(list.every(i => i.kind !== 'signal' && i.kind !== 'tidy'));
   assert.deepEqual(list.tidy.map(i => i.key), ['tidy-sug-follow', 'tidy-sug-visited', 'tidy-sug-date'], 'Tidy keeps its own ranked group');
   const items = [...list, ...list.tidy];
@@ -120,11 +121,15 @@ const seed = () => fakeSupabase({
   sales_targets: [],
   sales_week_goals: [
     row('todo', { id: 'todo-today', text: 'Call back', due_date: TODAY, link_type: 'partner', link_id: P.lake }),
+    // FIX actions-all-weeks-v1: planned weeks ago, still open; one undated; one of another week whose steps are all ticked (out).
+    row('todo', { id: 'todo-old-week', text: 'Send the deck', due_date: '2026-10-02', week_start: '2026-09-28' }),
+    row('todo', { id: 'todo-old-nodate', text: 'Read the S-1', due_date: null, week_start: '2026-10-05', created_at: '2026-10-06T10:00:00Z' }),
+    row('todo', { id: 'todo-old-ticked', text: 'Ticked', due_date: null, week_start: '2026-10-05' }),
     row('todo', { id: 'flag-1', text: 'Follow up the lead', prospect_contact_id: 'pc1', flagged_by: CY, contacts: ['Lead'] }),
     row('waiting', { id: 'wait-late', text: 'the MSA', waiting_on: 'Pat', due_date: '2026-10-10', week_start: '2026-10-05', link_type: 'opportunity', link_id: O.mill, owner_user_id: null }),
     row('commitment', { id: 'focus-a', text: 'Book two meetings', plan_id: 'pl', plan_rank: 1 }),
   ],
-  sales_week_goal_steps: [],
+  sales_week_goal_steps: [{ id: randomUUID(), business_id: B, goal_id: 'todo-old-ticked', done: true }],
   sales_signals: [
     { id: randomUUID(), business_id: B, status: 'new', source: 'scout', signal_week: WEEK, company_name: 'Brand New Co', company_key: 'brand new co', kind: 'employer', who: null, signal: 'Hiring', why_now: 'Fast', score: 50, match: null, created_at: '2026-10-20T09:00:00Z' },
     { id: randomUUID(), business_id: B, status: 'new', source: 'scout', signal_week: WEEK, company_name: 'Lakeshore Mutual', company_key: 'lakeshore mutual', kind: 'partner', who: null, signal: 'New CEO', why_now: 'Change', score: 70, match: { type: 'partner', id: P.lake, name: 'Lakeshore Mutual' }, created_at: '2026-10-20T09:00:00Z' },
@@ -136,13 +141,18 @@ const seed = () => fakeSupabase({
 
 test('listActions reads every source once and resolves companies from the referenced records', async () => {
   const s = seed();
-  const { items, tidy, groups, today, week_start } = await listActions(s, B, new Date(`${TODAY}T18:00:00Z`));
+  const { items, tidy, groups, todos, today, week_start } = await listActions(s, B, new Date(`${TODAY}T18:00:00Z`));
   assert.equal(today, TODAY); assert.equal(week_start, WEEK);
   const kinds = items.map(i => i.kind);
   assert.deepEqual([...new Set(kinds)].sort(), ['flag', 'focus', 'todo', 'waiting'], 'homelover-flow-v1 F10: no signal rows, Tidy in its own group');
   assert.deepEqual([tidy.count, tidy.items.map(i => i.kind)], [1, ['tidy']]);
-  assert.equal(groups.today + groups.week + groups.later, items.length);
-  assert.equal(items[0].key, 'waiting-wait-late', 'the overdue waiting row (from an older week) leads');
+  assert.equal(groups.today + groups.week + groups.later + groups.nodate, items.length);
+  // FIX actions-all-weeks-v1: to-dos from every week_start, grouped by due date; the ticked one is out; the cap did not bite.
+  const grp = Object.fromEntries(items.filter(i => i.kind === 'todo').map(i => [i.id, i.due_group]));
+  assert.deepEqual(grp, { 'todo-today': 'today', 'todo-old-week': 'today', 'todo-old-nodate': 'nodate' }, 'overdue sits in Today, undated in No date');
+  assert.deepEqual(todos, { total: 3, shown: 3 });
+  assert.equal(groups.nodate, 1);
+  assert.deepEqual(items.slice(0, 2).map(i => i.key), ['todo-todo-old-week', 'waiting-wait-late'], 'the overdue rows from older weeks lead, by due date (Oct 2 before Oct 10)');
   assert.equal(items.find(i => i.key === 'todo-todo-today').company.name, 'Lakeshore Mutual');
   assert.equal(items.find(i => i.key === 'waiting-wait-late').company.name, 'Old Mill Union');
   assert.equal(items.find(i => i.kind === 'flag').why, 'Flagged by Cyrus');

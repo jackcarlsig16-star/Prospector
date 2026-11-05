@@ -19,7 +19,8 @@ import { scopeLabel, captionFor, dayPoints, weekPoints, statusGroups, ownerSerie
 // owner say "team-wide" while a filter is on. Inline SVG from the chart kit -
 // no chart library. Pie only for the one part-of-a-whole (partners by category).
 const STATUS = { new: SA.accent, accepted: SA.good, dismissed: 'var(--ui-control)' };
-const TODO = { done: SA.good, open: 'var(--ui-control)' };
+// FIX actions-all-weeks-v1 A2: open to-dos per owner, any week, split the way the Actions header counts them.
+const TODO = { overdue: SA.bad, due: 'var(--ui-control)', nodate: SA.borderStrong };
 
 export default function DashboardCharts({ businessId, days, owner, team, lookup }) {
   const [data, setData] = useState(null);
@@ -51,7 +52,7 @@ export default function DashboardCharts({ businessId, days, owner, team, lookup 
   const outreach = weekPoints(data.outreach_per_week, ['sent', 'opened', 'clicked', 'replied']);
   const repliesMeetings = weekPoints(data.replies_meetings_per_week, ['replies', 'meetings']);
   const anySignals = data.signals_by_channel.some(r => r.new + r.accepted + r.dismissed > 0);
-  const todoRows = data.todos_per_owner.map(r => ({ id: r.owner_user_id || 'unassigned', label: lookup(r.owner_user_id).first, values: { done: r.done, open: r.open } }));
+  const todoRows = data.todos_per_owner.map(r => ({ id: r.owner_user_id || 'unassigned', label: lookup(r.owner_user_id).first, values: { overdue: r.overdue, due: r.due, nodate: r.nodate } }));
   const empty = (rows, what) => (rows.some(r => (r.value ?? 0) > 0 || Object.values(r.values || {}).some(Boolean)) ? null : `No ${what} yet`);
   const month = monthName(data.month);
 
@@ -89,8 +90,8 @@ export default function DashboardCharts({ businessId, days, owner, team, lookup 
       <ChartCard id="chart-companies-channel" title="Companies by channel and stage" caption={captionFor(`Partners, employers and targets · ${asOf}`, scope)} empty={data.companies_by_channel_stage.length ? null : 'No companies yet'}>
         <ColumnChart label="Companies by channel and stage" mode="stacked" points={channelPoints(data.companies_by_channel_stage)} series={bandSeries(BOARD_TOKENS)} />
       </ChartCard>
-      <ChartCard id="chart-todos" title="To-dos done vs open this week" caption={captionFor(`Week of ${new Date(`${data.week_start}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })}`, scope)} empty={todoRows.length ? null : 'No to-dos this week'}>
-        <BarChart label="To-dos done vs open this week" rows={todoRows} series={[{ id: 'done', label: 'Done', color: TODO.done }, { id: 'open', label: 'Open', color: TODO.open }]} barHeight={10} />
+      <ChartCard id="chart-todos" title="Open to-dos per owner" caption={captionFor(`Any week · ${asOf}`, scope)} empty={todoRows.length ? null : 'No open to-dos'}>
+        <BarChart label="Open to-dos per owner" rows={todoRows} series={[{ id: 'overdue', label: 'Overdue', color: TODO.overdue }, { id: 'due', label: 'Due', color: TODO.due }, { id: 'nodate', label: 'No date', color: TODO.nodate }]} barHeight={10} />
       </ChartCard>
       <ChartCard id="chart-waiting" title="Waiting on them" caption="Open rows · overdue past their date · team-wide">
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>

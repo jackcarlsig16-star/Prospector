@@ -7,6 +7,7 @@ import { boardStage, BOARD_COLOR_IDS } from '../../src/constants/pipelineBoard.j
 import { PIPELINE_STATUSES } from '../../src/constants/partnerPipeline.js';
 import { CHANNEL_IDS, CHANNEL_LABEL } from '../../src/constants/salesChannels.js';
 import { OWNER_TEAMS } from '../../src/constants/ownership.js';
+import { openTodosFor } from './openTodos.js';
 
 // sales-ia-v2 D1 - the Dashboard's 13 charts, aggregated here so the page
 // makes one read. Nothing is written. Range = the last `days` LA days
@@ -18,6 +19,8 @@ import { OWNER_TEAMS } from '../../src/constants/ownership.js';
 // page labels them. Meetings = stage moves counted from history (partner
 // events to Meeting set, employer events to Meeting), never a typed number.
 // Replies = every Apollo reply; there is no "positive" class yet.
+// FIX actions-all-weeks-v1 A2: to-dos per owner = every OPEN to-do (openTodosFor: any week_start, the same rows Actions
+// and Needs attention count), split overdue / due / no date. The Weekly scorecard's "planned this week" still reads week_start.
 
 export const RANGES = [7, 30, 90];
 export const VISITOR_HISTORY_DAYS = 30;
@@ -50,7 +53,7 @@ export function ownerMatcher(members, ownerId) {
 // 'both' rows belong to each team, so a HomeLover or Upside filter keeps them.
 const inTeam = (team, rowTeam) => !team || rowTeam === team || (team !== 'both' && rowTeam === 'both');
 
-export function buildDashboard({ today, days, owner = null, team = null, members = [], partners = [], opportunities = [], targets = [], visits = [], signals = [], emails = [], partnerEvents = [], oppEvents = [], weekRows = [], waiting = [], creditsUsed = 0, firstPull = null }) {
+export function buildDashboard({ today, days, owner = null, team = null, members = [], partners = [], opportunities = [], targets = [], visits = [], signals = [], emails = [], partnerEvents = [], oppEvents = [], todos = [], waiting = [], creditsUsed = 0, firstPull = null }) {
   const from = addDays(today, -(days - 1));
   const week = laMonday(today);
   const isOwnerName = ownerMatcher(members, owner);
@@ -126,12 +129,11 @@ export function buildDashboard({ today, days, owner = null, team = null, members
     channel, label: CHANNEL_LABEL[channel], bands: Object.fromEntries(BOARD_COLOR_IDS.map(b => [b, companies.filter(c => c.channel === channel && c.band === b).length])),
   })).filter(r => Object.values(r.bands).some(Boolean));
 
-  const todoDone = t => t.status === 'done' || (t.steps?.length > 0 && t.steps.every(s => s.done));
-  const todos = weekRows.filter(t => t.kind === 'todo' && t.week_start === week && t.status !== 'dropped' && !t.prospect_contact_id);
   const todos_per_owner = ownerRows.map(r => {
     const mine = todos.filter(t => (t.owner_user_id || null) === r.owner_user_id);
-    return { ...r, done: mine.filter(todoDone).length, open: mine.filter(t => !todoDone(t)).length };
-  }).filter(r => r.owner_user_id !== null || r.done + r.open > 0);
+    const overdue = mine.filter(t => t.due_date && t.due_date < today).length, nodate = mine.filter(t => !t.due_date).length;
+    return { ...r, open: mine.length, overdue, due: mine.length - overdue - nodate, nodate };
+  }).filter(r => r.owner_user_id !== null || r.open > 0);
 
   const openWaiting = waiting.filter(w => w.kind === 'waiting' && w.status === 'open');
   const waitingOn = { open: openWaiting.length, overdue: openWaiting.filter(w => w.due_date && w.due_date < today).length };
@@ -160,10 +162,9 @@ export async function loadDashboard(supabase, businessId, { days, owner, team },
   const today = laDateString(now);
   const from = addDays(today, -(days - 1));
   const fromIso = `${from}T00:00:00-08:00`; // the LA day starts no earlier than 00:00 PST; the builder trims to LA dates exactly
-  const week = laMonday(today);
   // Every table but the email counts has an id; that one's primary key is (day, mailbox, sequence_id, step).
   const all = (table, cols, narrow = q => q, order = ['id']) => selectAllPages(() => order.reduce((q, k) => q.order(k), narrow(supabase.from(table).select(cols).eq('business_id', businessId))));
-  const [members, partners, opportunities, targets, visits, signals, emails, partnerEvents, oppEvents, weekRows, waiting, firstPullRows, creditsUsed] = await Promise.all([
+  const [members, partners, opportunities, targets, visits, signals, emails, partnerEvents, oppEvents, openTodos, waiting, firstPullRows, creditsUsed] = await Promise.all([
     supabase.from('business_members').select('user_id, name').eq('business_id', businessId).not('user_id', 'is', null).order('created_at').then(must),
     all('sales_goals', 'id, name, category, pipeline_status, owner_user_id, owner_team, channel', q => q.eq('goal_type', 'partnership').is('archived_at', null)),
     all('sales_opportunities', 'id, organization, stage, owner, owner_team, channel, covered_lives', q => q.is('archived_at', null)),
@@ -173,15 +174,12 @@ export async function loadDashboard(supabase, businessId, { days, owner, team },
     all('sales_email_daily_counts', 'day, mailbox, sequence_id, step, delivered, hard_bounced, spam_blocked, opened, clicked, replied', q => q.gte('day', from), ['day', 'mailbox', 'sequence_id', 'step']),
     all('sales_partner_events', 'id, goal_id, event, to_status, at, meta', q => q.gte('at', fromIso)),
     all('sales_opportunity_events', 'id, opportunity_id, event_type, to_stage, changed_at', q => q.gte('changed_at', fromIso)),
-    all('sales_week_goals', 'id, kind, status, owner_user_id, week_start, prospect_contact_id', q => q.eq('week_start', week).eq('kind', 'todo')),
+    openTodosFor(supabase, businessId, null, { cols: 'id, status, owner_user_id, due_date, created_at' }),
     all('sales_week_goals', 'id, kind, status, due_date', q => q.eq('kind', 'waiting').eq('status', 'open')),
     supabase.from('web_visits').select('pulled_on').eq('business_id', businessId).order('pulled_on').limit(1).then(must),
     monthSpend(supabase, today.slice(0, 7)),
   ]);
-  const todoIds = weekRows.map(r => r.id);
-  const steps = todoIds.length ? await all('sales_week_goal_steps', 'id, goal_id, done', q => q.in('goal_id', todoIds)) : [];
-  for (const r of weekRows) r.steps = steps.filter(st => st.goal_id === r.id);
-  return buildDashboard({ today, days, owner, team, members, partners, opportunities, targets, visits, signals, emails, partnerEvents, oppEvents, weekRows, waiting, creditsUsed, firstPull: firstPullRows[0]?.pulled_on || null });
+  return buildDashboard({ today, days, owner, team, members, partners, opportunities, targets, visits, signals, emails, partnerEvents, oppEvents, todos: openTodos.rows, waiting, creditsUsed, firstPull: firstPullRows[0]?.pulled_on || null });
 }
 
 export async function dashboardRoute(req, res) {

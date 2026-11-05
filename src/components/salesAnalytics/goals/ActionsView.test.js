@@ -60,7 +60,8 @@ test('model: Who = that person\'s rows, Team = all, Unassigned = nobody\'s; band
   expect(jack.done.map(i => i.key)).toEqual(['focus-c2']);
   expect(jack.unassigned).toBe(1);
   // homelover-flow-v1 F10: Due groups (an overdue / Now row is due today), Tidy apart.
-  expect(actionsView(items, E, { owner: 'team', tidy: tidyItems }).bands.map(b => [b.id, b.rows.length])).toEqual([['today', 4], ['week', 1], ['later', 0]]);
+  expect(actionsView(items, E, { owner: 'team', tidy: tidyItems }).bands.map(b => [b.id, b.rows.length])).toEqual([['today', 4], ['week', 1], ['later', 0], ['nodate', 0]]);
+  expect(jack.todos).toEqual({ open: 1, overdue: 0, nodate: 0 });
   expect(actionsView(items, { ...E, unassigned: true }, { owner: JACK, tidy: tidyItems }).open.map(i => i.key)).toEqual(['waiting-w1']);
   expect(actionsView(items, { ...E, kind: 'tidy' }, { owner: 'team', tidy: tidyItems }).tidy.map(i => i.key)).toEqual(['tidy-g1']);
   expect(actionsView(items, { ...E, kind: 'tidy' }, { owner: 'team', tidy: tidyItems }).open).toEqual([]);
@@ -76,7 +77,7 @@ test('model: Who = that person\'s rows, Team = all, Unassigned = nobody\'s; band
   // Wed Oct 21: Friday = Oct 23, next Monday = Oct 26.
   expect(dueChoices(TODAY).map(c => c[2])).toEqual([TODAY, '2026-10-22', '2026-10-23', '2026-10-26', null]);
   expect(dueChoices('2026-10-23')[2][2]).toBe('2026-10-30');
-  expect(readFolded()).toEqual(['later', 'tidy']);
+  expect(readFolded()).toEqual(['later', 'nodate', 'tidy']);
   expect(readSort()).toBeNull();
   writeSort({ id: 'due', dir: 'asc' });
   expect(readSort()).toEqual({ id: 'due', dir: 'asc' });
@@ -102,7 +103,7 @@ test('Member: Due groups with counts (Later + Tidy folded, remembered), the fram
   expect(rows()).toEqual(['waiting-w1']);
   fireEvent.click(screen.getByRole('button', { name: /^Tidy 2/ }));
   expect(rows()).toContain('tidy-h1');
-  expect(JSON.parse(localStorage.getItem('prospector_actions_folded'))).toEqual(['later']);
+  expect(JSON.parse(localStorage.getItem('prospector_actions_folded'))).toEqual(['later', 'nodate']);
   fireEvent.click(screen.getByRole('button', { name: /^Clear/ }));
   rerender(<ActionsView businessId="b1" canEdit meId={JACK} owner="team" members={members} lookup={lookup} onOpenFull={jest.fn()} />);
   expect(rows()).toEqual(['waiting-w1', 'flag-f1', 'todo-t1', 'focus-c1', 'todo-t2', 'tidy-g1', 'tidy-h1']);
@@ -124,6 +125,29 @@ test('Member: Due groups with counts (Later + Tidy folded, remembered), the fram
   fireEvent.click(screen.getByRole('button', { name: /^Clear/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Old Mill Union' }));
   expect(goalsApi.pipelineBoard).toHaveBeenCalledWith('b1', true);
+});
+
+// FIX actions-all-weeks-v1: to-dos from earlier weeks are on the list; undated ones sit in No date (newest first, folded);
+// the header counts the to-dos on the list as narrowed, with the server's cap line when it bit.
+test('No date group (folded, newest first) + the to-do counts header + the cap line', async () => {
+  const old = [
+    item('todo', 't3', { band: 'housekeeping', due_group: 'nodate', text: 'Read the S-1', owner_user_id: JACK, created_at: '2026-10-05T10:00:00Z' }),
+    item('todo', 't4', { band: 'housekeeping', due_group: 'nodate', text: 'Call the broker back', owner_user_id: JACK, created_at: '2026-10-12T10:00:00Z' }),
+    item('todo', 't5', { band: 'now', due_group: 'today', text: 'Send the deck', due_date: '2026-10-02', overdue: true, late_days: 19, owner_user_id: JACK }),
+  ];
+  goalsApi.actions.mockResolvedValue({ ...payload([...items, ...old]), todos: { total: 612, shown: 500 } });
+  goalsApi.pipelineBoard.mockImplementation(() => new Promise(() => {}));
+  goalsApi.companyDetail.mockImplementation(() => new Promise(() => {}));
+  render(<ActionsView businessId="b1" canEdit meId={JACK} owner={JACK} members={members} lookup={lookup} onOpenFull={jest.fn()} />);
+  await screen.findByText('Call back');
+  expect(document.querySelector('[data-todo-counts]').textContent).toBe('To-dos: 4 open · 1 overdue · 2 no date · showing 500 of 612');
+  const noDate = screen.getByRole('button', { name: /^No date 2/ });
+  expect(noDate).toHaveAttribute('aria-expanded', 'false');
+  expect(noDate.textContent).toMatch(/newest first/);
+  fireEvent.click(noDate);
+  expect(rows()).toEqual(['flag-f1', 'todo-t1', 'focus-c1', 'todo-t5', 'todo-t4', 'todo-t3']);
+  fireEvent.change(screen.getByLabelText('Search actions'), { target: { value: 'deck' } });
+  expect(document.querySelector('[data-todo-counts]').textContent).toBe('To-dos: 1 open · 1 overdue · 0 no date · showing 500 of 612');
 });
 
 test('A3 slots: every row = Primary · Done/Due · More, same order per kind', async () => {

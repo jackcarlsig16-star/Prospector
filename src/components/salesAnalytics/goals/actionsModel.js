@@ -9,6 +9,9 @@ import { laDay } from '../huddleView';
 // homelover-flow-v1 F10: Actions is "my list" - to-dos, waiting-on, flags, Focus, campaign steps - grouped by Due
 // (Today · This week · Later). Web-visit signals left the list (the Map's NEW ring); Tidy suggestions sit in one
 // collapsed "Tidy (n)" group at the bottom (GET goals/actions returns them apart as `tidy`).
+// FIX actions-all-weeks-v1: every open to-do is on the list whatever week it was planned in; the groups go by due date
+// and an undated to-do sits in a fourth group, No date (newest first). todos = the counts the header shows for the
+// to-dos on the list as narrowed (Who / Kind / Search), so "overdue" reads the same as Needs attention for the same person.
 export const KIND_LABEL = { tidy: 'Tidy', waiting: 'Waiting on', todo: 'To-do', flag: 'Flag', focus: 'Focus', campaign: 'Campaign' };
 export const KIND_OPTIONS = Object.entries(KIND_LABEL);
 // What a Viewer's Team list holds (A1): to-dos, Focus 5 per member, flags.
@@ -29,9 +32,13 @@ export function matchesActionFilters(it, f, owner) {
 // The Due groups, in order, each with its open rows; Focus items already done fold under "n done ▸". tidy = the
 // collapsed Tidy group (its own rows, same Who / Kind / Search narrowing). unassigned = how many rows (Kind / Search
 // applied) nobody owns, for the chip. A row without due_group (an older server) falls back from its band.
-export const BANDS = [['today', 'Today'], ['week', 'This week'], ['later', 'Later']];
+export const BANDS = [['today', 'Today'], ['week', 'This week'], ['later', 'Later'], ['nodate', 'No date']];
 const DUE_FROM_BAND = { now: 'today', today: 'today', week: 'week', housekeeping: 'later' };
-export const dueGroupOf = it => it.due_group || DUE_FROM_BAND[it.band] || 'later';
+export const dueGroupOf = it => it.due_group || (it.kind === 'todo' && !it.due_date ? 'nodate' : DUE_FROM_BAND[it.band]) || 'later';
+const newestFirst = (a, b) => String(b.created_at || '').localeCompare(String(a.created_at || ''));
+export const todoCounts = rows => ({ open: rows.length, overdue: rows.filter(it => it.overdue).length, nodate: rows.filter(it => !it.due_date).length });
+// The header line; cap = GET goals/actions' todos { total, shown } when the server cut the list at its cap.
+export const todoCountsText = (t, cap = null) => `To-dos: ${t.open} open · ${t.overdue} overdue · ${t.nodate} no date${cap && cap.shown < cap.total ? ` · showing ${cap.shown} of ${cap.total}` : ''}`;
 export function actionsView(items, f, { owner = 'team', viewer = false, tidy = [] } = {}) {
   // A kind this screen has no label and buttons for yet stays hidden.
   const known = items.filter(it => it.kind in KIND_LABEL && it.kind !== 'tidy');
@@ -40,16 +47,17 @@ export function actionsView(items, f, { owner = 'team', viewer = false, tidy = [
   const open = shown.filter(it => it.status !== 'done');
   const tidyRows = viewer ? [] : tidy.filter(it => it.kind === 'tidy' && narrowed(it, f) && (!f.kind || f.kind === 'tidy') && (!f.unassigned || !it.owner_user_id));
   return {
-    bands: BANDS.map(([id, label]) => ({ id, label, rows: open.filter(it => dueGroupOf(it) === id) })),
+    bands: BANDS.map(([id, label]) => { const rows = open.filter(it => dueGroupOf(it) === id); return { id, label, rows: id === 'nodate' ? [...rows].sort(newestFirst) : rows }; }),
     open, done: shown.filter(it => it.status === 'done'), tidy: tidyRows,
     unassigned: base.filter(it => !it.owner_user_id && it.status !== 'done' && narrowed(it, f)).length,
+    todos: todoCounts(open.filter(it => it.kind === 'todo')),
   };
 }
 
-// localStorage key (per browser): prospector_actions_folded - JSON list of folded group ids; absent = Later + Tidy folded.
+// localStorage key (per browser): prospector_actions_folded - JSON list of folded group ids; absent = Later + No date + Tidy folded.
 const FOLD_KEY = 'prospector_actions_folded';
 export const FOLDABLE = [...BANDS.map(([id]) => id), 'tidy'];
-export const DEFAULT_FOLDED = ['later', 'tidy'];
+export const DEFAULT_FOLDED = ['later', 'nodate', 'tidy'];
 export function readFolded() {
   try {
     const v = JSON.parse(localStorage.getItem(FOLD_KEY));

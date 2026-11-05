@@ -8,6 +8,7 @@ import { boardStage } from '../../src/constants/pipelineBoard.js';
 import { TEAM_LABEL } from '../../src/constants/ownership.js';
 import { campaignActionRows } from './outreachRoutes.js';
 import { itemUrgency, BAND_ORDER } from './priority.js';
+import { openTodosFor, weekEndOf, todoGroup, todoDone } from './openTodos.js';
 
 // sales-ia-v2 A1 - Actions: one ranked list of everything that wants a click
 // today, each from the table that already holds it (nothing is written here):
@@ -17,7 +18,10 @@ import { itemUrgency, BAND_ORDER } from './priority.js';
 // (seif-campaign-v1 B4/B5; a reply is always P1).
 // homelover-flow-v1 F10 - Actions is "my list": web_visit signals are gone from it (they are the Map's NEW ring and the
 // Pipeline's NEW badge; Accept / Not a fit live on the panel and the Map) and Tidy suggestions leave the ranked list for
-// one collapsed "Tidy (n)" group (tidy below). Every item carries due_group: today | week | later.
+// one collapsed "Tidy (n)" group (tidy below). Every item carries due_group: today | week | later | nodate.
+// FIX actions-all-weeks-v1 A1: to-dos come from openTodosFor (every open one, any week_start, TODO_CAP rows); due_group
+// goes by the DUE DATE for a to-do (today = due today or overdue, week = through this LA Sunday, later, nodate); every
+// other kind keeps its band's group. Focus 5 commitments still read this week's week_start.
 // actions-v2 REV2 A2: every row carries a band (priority.js itemUrgency: now / today / week / housekeeping) and
 // the list is ordered band -> company P (company_p; none last) -> due date -> age. priority = the chip: the
 // company's own P1-P4 when the item points at a partner or employer that has one, else the kind's default below
@@ -35,12 +39,12 @@ const err = (status, error) => Object.assign(new Error(error), { status });
 const must = r => { if (r.error) throw err(500, r.error.message); return r.data; };
 const lateDays = (due, today) => Math.round((Date.parse(today) - Date.parse(due)) / DAY);
 const laMonday = today => addDays(today, -((new Date(`${today}T12:00:00Z`).getUTCDay() + 6) % 7));
-const todoDone = t => t.status === 'done' || (t.steps?.length > 0 && t.steps.every(s => s.done));
 
 // link_type / match.type -> the company panel's row type.
 const PANEL_TYPE = { partner: 'partner', opportunity: 'employer', target: 'target', company: 'apollo' };
 
 export function buildActions({ todos = [], flags = [], waiting = [], suggestions = [], commitments = [], refTodos = [], campaign = null, notes = new Map(), companies, members = new Map(), today }) {
+  const weekEnd = weekEndOf(today);
   const company = (type, id) => {
     const t = PANEL_TYPE[type];
     const c = t && companies[t]?.get(id);
@@ -61,7 +65,8 @@ export function buildActions({ todos = [], flags = [], waiting = [], suggestions
       company_p: fields.company_p !== undefined ? fields.company_p : c?.priority ?? null,
       band: itemUrgency(kind, { overdue, due_date: due, today, ...fields.urgency }),
     });
-    items[items.length - 1].due_group = DUE_GROUP[items[items.length - 1].band] || 'later';
+    const it = items[items.length - 1];
+    it.due_group = kind === 'todo' ? todoGroup(due, today, weekEnd) : DUE_GROUP[it.band] || 'later';
   };
 
   const lateWaiting = waiting.filter(w => w.status === 'open' && w.due_date && w.due_date < today);
@@ -86,7 +91,7 @@ export function buildActions({ todos = [], flags = [], waiting = [], suggestions
   }
 
   for (const t of todos) {
-    if (t.kind !== 'todo' || flagIds.has(t.id) || t.prospect_contact_id || t.status === 'dropped' || todoDone(t)) continue;
+    if (t.kind !== 'todo' || flagIds.has(t.id) || t.prospect_contact_id || t.status !== 'open' || todoDone(t)) continue;
     const soon = t.due_date && t.due_date <= today;
     push('todo', t, { text: t.text, why: t.category || (t.source_note_id ? 'From call notes' : null), priority: soon ? 2 : 3, meta: { category: t.category, link_type: t.link_type, link_id: t.link_id, from_note: !!t.source_note_id, note_date: notes.get(t.source_note_id) || null } });
   }
@@ -123,13 +128,14 @@ export function rankActions(items) {
     || String(a.created_at || '').localeCompare(String(b.created_at || '')));
 }
 
-// GET /goals/actions -> { items, tidy: { count, items }, groups: { today, week, later }, today, week_start }
+// GET /goals/actions -> { items, tidy: { count, items }, groups: { today, week, later, nodate }, todos: { total, shown }, today, week_start }
 export async function listActions(supabase, businessId, now = new Date()) {
   const today = laDateString(now);
   const week = laMonday(today);
   const all = (table, cols, narrow) => selectAllPages(() => narrow(supabase.from(table).select(cols).eq('business_id', businessId)).order('id'));
-  const [weekRows, flagRows, waiting, suggestions, memberRows, campaign] = await Promise.all([
-    all('sales_week_goals', '*', q => q.eq('week_start', week).in('kind', ['todo', 'commitment'])),
+  const [openTodos, commitments, flagRows, waiting, suggestions, memberRows, campaign] = await Promise.all([
+    openTodosFor(supabase, businessId),
+    all('sales_week_goals', '*', q => q.eq('week_start', week).eq('kind', 'commitment')),
     all('sales_week_goals', '*', q => q.not('prospect_contact_id', 'is', null).neq('status', 'dropped').neq('status', 'done')),
     all('sales_week_goals', '*', q => q.eq('kind', 'waiting').eq('status', 'open')),
     all('sales_suggestions', '*', q => q.eq('status', 'proposed')),
@@ -137,9 +143,7 @@ export async function listActions(supabase, businessId, now = new Date()) {
     campaignActionRows(supabase, businessId, today),
   ]);
   const flags = openFlagRows(flagRows);
-  const todoIds = weekRows.filter(r => r.kind === 'todo').map(r => r.id);
-  const steps = todoIds.length ? await all('sales_week_goal_steps', 'goal_id, done', q => q.in('goal_id', todoIds)) : [];
-  for (const r of weekRows) r.steps = steps.filter(st => st.goal_id === r.id);
+  const weekRows = [...openTodos.rows, ...commitments];
   const refIds = suggestions.filter(s => ['todo', 'flag'].includes(s.ref_type)).map(s => s.ref_id);
   const refTodos = refIds.length ? must(await supabase.from('sales_week_goals').select('id, link_type, link_id').eq('business_id', businessId).in('id', refIds)) : [];
   const ids = { partner: new Set(), opportunity: new Set(), target: new Set(), company: new Set() };
@@ -170,11 +174,11 @@ export async function listActions(supabase, businessId, now = new Date()) {
   for (const [id, c] of opportunities) c.last_touch_at = oppTouch.get(id) || null;
   const companies = { partner: new Map(partners), employer: new Map(opportunities), target: new Map(targets), apollo: new Map(apollo) };
   const items = buildActions({
-    todos: weekRows.filter(r => r.kind === 'todo'), commitments: weekRows.filter(r => r.kind === 'commitment'), flags, waiting, suggestions, refTodos, campaign,
+    todos: openTodos.rows, commitments, flags, waiting, suggestions, refTodos, campaign,
     notes: new Map(noteRows.map(n => [n.id, n.call_date])), companies, members: memberName, today,
   });
-  const groups = { today: items.filter(i => i.due_group === 'today').length, week: items.filter(i => i.due_group === 'week').length, later: items.filter(i => i.due_group === 'later').length };
-  return { items: [...items], tidy: { count: items.tidy.length, items: items.tidy }, groups, today, week_start: week };
+  const groups = Object.fromEntries(['today', 'week', 'later', 'nodate'].map(g => [g, items.filter(i => i.due_group === g).length]));
+  return { items: [...items], tidy: { count: items.tidy.length, items: items.tidy }, groups, todos: { total: openTodos.total, shown: openTodos.rows.length }, today, week_start: week };
 }
 export async function listActionsRoute(req, res) {
   try { res.json(await listActions(getSupabase(), req.params.businessId)); }

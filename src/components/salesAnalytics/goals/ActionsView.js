@@ -12,7 +12,7 @@ import PeopleCompanyPanel from '../PeopleCompanyPanel';
 import { goalsApi, TODOS_CHANGED } from './goalsApi';
 import { completeFlag, announceFlagsChanged, reassignFlag, FLAGS_CHANGED } from '../huddleApi';
 import { numStyle, ErrorNote } from './goalsUi';
-import { KIND_LABEL, KIND_OPTIONS, EMPTY_FILTERS, activeFilterCount, actionsView, priorityText, dueText, readSort, writeSort, readFolded, writeFolded, actionSource, companyLine, datesLine, campaignLine } from './actionsModel';
+import { KIND_LABEL, KIND_OPTIONS, EMPTY_FILTERS, activeFilterCount, actionsView, priorityText, dueText, readSort, writeSort, readFolded, writeFolded, actionSource, companyLine, datesLine, campaignLine, todoCountsText } from './actionsModel';
 import { contactSlots, PromoteDialog } from './campaigns/ContactActions';
 import { Slots, OwnerSelect, SLOT_W } from './ActionSlots';
 import { clipboardText, LINK_LABEL } from './campaigns/campaignModel';
@@ -181,6 +181,8 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
   const set = (k, v) => setFilters(f => ({ ...f, [k]: v }));
   const nFilters = activeFilterCount(filters);
   const onSort = s => { setSort(s); writeSort(s); };
+  // FIX actions-all-weeks-v1 A3/A4: the to-do counts for the list as narrowed, and the server's cap when it bit.
+  const countsLine = data ? <span data-todo-counts title="Open to-dos on this list, any week" style={{ fontSize: 13, color: SA.muted, whiteSpace: 'nowrap', ...numStyle }}>{todoCountsText(view.todos, data.todos)}</span> : null;
 
   // R5: priority is a status chip - overdue red, P1-P4 each their own hue (FIX priority-colors-v1); the word is always on it.
   const priorityCell = it => <Tag color={it.overdue ? SA.bad : priorityColor(it.priority) || SA.borderStrong}><span style={numStyle}>{priorityText(it)}</span></Tag>;
@@ -213,8 +215,8 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
   const groups = [
     ...view.bands.map(b => ({
       id: b.id, rows: b.rows, collapsed: folded.includes(b.id), onToggle: () => toggleBand(b.id),
-      header: <>{b.label} <span className="ui-table__count">{b.rows.length}</span>{sort ? <span style={{ fontWeight: 400, color: SA.muted }}> · sorted by {sortLabel}</span> : null}</>,
-      emptyText: b.id === 'today' ? 'Nothing due today.' : 'Nothing here.',
+      header: <>{b.label} <span className="ui-table__count">{b.rows.length}</span>{sort ? <span style={{ fontWeight: 400, color: SA.muted }}> · sorted by {sortLabel}</span> : b.id === 'nodate' ? <span style={{ fontWeight: 400, color: SA.muted }}> · newest first</span> : null}</>,
+      emptyText: b.id === 'today' ? 'Nothing due today.' : b.id === 'nodate' ? 'Every to-do has a date.' : 'Nothing here.',
     })),
     // homelover-flow-v1 F10: Tidy suggestions as one collapsed group at the bottom - the same Accept / Done / Dismiss / Snooze slots.
     ...(canEdit && view.tidy.length ? [{ id: 'tidy', rows: view.tidy, collapsed: folded.includes('tidy'), onToggle: () => toggleBand('tidy'), header: <>Tidy <span className="ui-table__count">{view.tidy.length}</span><span style={{ fontWeight: 400, color: SA.muted }}> · housekeeping suggestions</span></>, emptyText: 'Nothing to tidy.' }] : []),
@@ -278,11 +280,12 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
     <section aria-label="Actions" data-actions style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
       {phone ? (
         <div data-filter-row style={rowBar}>
+          <h2 className="ui-sr-only">Filter</h2>
           <Button aria-expanded={sheetOpen} onClick={() => setSheetOpen(true)}>Filters{nFilters ? ` (${nFilters})` : ''}</Button>
-          <span style={{ fontSize: 13, color: SA.muted, ...numStyle }}>{data ? `${view.open.length} open` : ''}</span>
+          {countsLine}
         </div>
       ) : (
-        <div role="group" aria-label="Filters" data-filter-row style={rowBar}><h2 className="ui-group-label" style={{ margin: 0 }}>Filter</h2>{filterControls}</div>
+        <div role="group" aria-label="Filters" data-filter-row style={rowBar}><h2 className="ui-group-label" style={{ margin: 0 }}>Filter</h2>{filterControls}<span style={{ marginLeft: 'auto' }}>{countsLine}</span></div>
       )}
       {error && <ErrorNote message={error} />}
       {!data && !error && <span style={{ fontSize: 13, color: SA.muted }}>Loading…</span>}

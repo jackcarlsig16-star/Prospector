@@ -8,6 +8,7 @@ import { STALE_RUNNING_MS as RESEARCH_STALE_MS } from './partnerResearch.js';
 import { dryRun as apolloDryRun } from './partnerApolloTouches.js';
 import { dryRun as outlookDryRun } from './partnerOutlookTouches.js';
 import { campaignActionRows } from './outreachRoutes.js';
+import { openTodosFor } from './openTodos.js';
 
 // actions-home-attention-v1 D3/D4 - GET goals/attention: one read for the
 // "Needs attention" drawer. Five sync sources, each { id, label, status, last_at,
@@ -144,7 +145,7 @@ export async function attention(supabase, { businessId, userId, fresh = false, n
     supabase.from('visit_pull_runs').select('la_date, kind, window_start, window_end, lookback_days, status, error, created_at, updated_at').eq('business_id', businessId).gte('la_date', addDays(today, -7)).order('la_date', { ascending: false }).limit(20).then(must),
     supabase.from('sales_tidy_runs').select('status, started_at, finished_at, counts').eq('business_id', businessId).gte('started_at', since).order('started_at', { ascending: false }).limit(20).then(must),
     supabase.from('research_runs').select('status, error, created_at').eq('business_id', businessId).order('created_at', { ascending: false }).limit(1).then(must),
-    selectAllPages(() => supabase.from('sales_week_goals').select('id').eq('business_id', businessId).eq('kind', 'todo').eq('owner_user_id', userId).eq('status', 'open').lt('due_date', today).order('id')),
+    openTodosFor(supabase, businessId, userId, { cols: 'id, status, due_date, created_at' }).then(t => t.rows.filter(r => r.due_date && r.due_date < today)),
     selectAllPages(() => supabase.from('sales_week_goals').select('id').eq('business_id', businessId).eq('kind', 'waiting').eq('status', 'open').lt('due_date', today).order('id')),
     heldCounts(supabase, businessId, { fresh, now, dry }),
     campaignActionRows(supabase, businessId, today),

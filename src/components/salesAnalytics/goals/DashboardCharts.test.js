@@ -25,7 +25,7 @@ const payload = {
   replies_meetings_per_week: [{ week_start: '2026-10-12', replies: 4, meetings: 1 }, { week_start: '2026-10-19', replies: 4, meetings: 1 }],
   signals_by_channel: [{ source: 'scout', label: 'Scout', new: 1, accepted: 1, dismissed: 0 }, { source: 'web_visit', label: 'Website', new: 0, accepted: 0, dismissed: 1 }],
   companies_by_channel_stage: [{ channel: 'scout', label: 'Scout signal', bands: { green: 0, yellow: 0, blue: 0, gray: 2, light: 0, faded: 0 } }],
-  todos_per_owner: [{ owner_user_id: 'u-jack', name: 'Jack Zz', done: 2, open: 1 }],
+  todos_per_owner: [{ owner_user_id: 'u-jack', name: 'Jack Zz', open: 3, overdue: 1, due: 1, nodate: 1 }],
   waiting: { open: 3, overdue: 1 },
   covered_lives_by_stage: [{ id: 'meeting', label: 'Meeting', lives: 1200 }],
   credits: { used: 134, cap: 500, month: '2026-10', all_businesses: true },
