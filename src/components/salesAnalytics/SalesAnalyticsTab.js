@@ -16,6 +16,7 @@ import { pageloadSync } from './salesApi';
 import { fetchMe } from '../../utils/authSession';
 import { TABS, SUB_VIEWS, DEFAULT_VIEW, readNav, writeNav, normalizeNav } from './salesNav';
 import { FRAME_ROW_HEIGHT, FRAME_TOOLS_ID, FRAME_CSS } from './salesFrame';
+import useMediaQuery from '../../utils/useMediaQuery';
 
 // dashboard-v2 Stage 5 - the "print only this area" trick: hide
 // everything on the page, then re-show only #sales-analytics-print-area
@@ -91,6 +92,7 @@ const SUB_VIEW_ICON = { companies: IconTable, clients: IconCheck, priorities: Ic
 
 export default function SalesAnalyticsTab({ businessId, features }) {
   const [tab, setTab] = useState(() => readNav().tab);
+  const phone = useMediaQuery('(max-width: 760px)');
   const [views, setViews] = useState(() => { const n = readNav(); return { ...DEFAULT_VIEW, ...(n.view ? { [n.tab]: n.view } : {}) }; });
   const view = views[tab] || null;
   const [tabsSlot, setTabsSlot] = useState(null);
@@ -195,12 +197,16 @@ export default function SalesAnalyticsTab({ businessId, features }) {
   const subViews = SUB_VIEWS[tab];
   // companies-v2 C1: the sub-views are second-level underline tabs; the row's own rule runs under the tools too, and the
   // tabs sit on it (-1 px) so the two rules are one line.
+  // FIX pipeline-390-toolbar-v1 T1: on a phone the frame stacks - the tab strip (scrolling inside its row, the selected
+  // tab kept in view by Tabs) above the tools row (FRAME_CSS hides it while empty) - so a screen's tools never sit on
+  // the tabs. Wider than 760 px nothing changes (T2).
   const frameRow = (
-    <div className="no-print" data-sales-frame style={{ height: FRAME_ROW_HEIGHT, display: 'flex', alignItems: subViews ? 'flex-end' : 'center', gap: 12, marginBottom: 16, minWidth: 0, borderBottom: subViews ? `1px solid ${ui.subTabRule}` : undefined }}>
-      <div data-sales-subviews style={{ display: 'flex', alignItems: 'flex-end', minWidth: 0, minHeight: 36, marginBottom: subViews ? -1 : 0 }}>
+    <div className="no-print" data-sales-frame data-frame-rows={phone ? 2 : 1} style={{ display: 'flex', marginBottom: 16, minWidth: 0, borderBottom: subViews ? `1px solid ${ui.subTabRule}` : undefined,
+      ...(phone ? { flexDirection: 'column', alignItems: 'stretch', gap: 0, minHeight: FRAME_ROW_HEIGHT } : { height: FRAME_ROW_HEIGHT, alignItems: subViews ? 'flex-end' : 'center', gap: 12 }) }}>
+      <div data-sales-subviews style={{ display: 'flex', alignItems: 'flex-end', minWidth: 0, minHeight: 36, marginBottom: subViews && !phone ? -1 : 0 }}>
         {subViews && <Tabs level="sub" label={`${TABS.find(([id]) => id === tab)[1]} views`} items={subViews.map(([id, label]) => ({ id, label, icon: SUB_VIEW_ICON[id] }))} value={view} onChange={v => { nav(tab, v); setHuddleTarget(null); }} />}
       </div>
-      <div id={FRAME_TOOLS_ID} style={{ flex: '1 1 auto', minWidth: 0, height: FRAME_ROW_HEIGHT, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, overflowX: 'auto', overflowY: 'hidden' }} />
+      <div id={FRAME_TOOLS_ID} />
     </div>
   );
   const people = tab === 'pipeline' && view === 'people';

@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { ui } from './kitTheme';
 import { KIT_SUBTAB } from './tokens';
 import Tag from './Tag';
@@ -9,9 +9,11 @@ import Tag from './Tag';
 // companies-v2 C1 - level="sub": the second-level row (a page's sub-views) - icon + word, 2 px accent underline on the
 // selected tab only, one rule under the row, no box. items may carry `icon` (a src/ui/icons.js component). One tab stop
 // (the selected tab); Left / Right / Home / End move and select, as the tab pattern expects.
+// FIX pipeline-390-toolbar-v1 T1: a sub row that scrolls (a phone) keeps the selected tab in view whenever it changes.
 export default function Tabs({ label, items, value, onChange, level = 'main' }) {
   const refs = useRef({});
   const sub = level === 'sub';
+  useEffect(() => { if (sub) refs.current[value]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); }, [sub, value]);
   const live = items.filter(it => !it.disabled);
   const onKeyDown = e => {
     const i = live.findIndex(it => it.id === value);

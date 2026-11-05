@@ -9,8 +9,33 @@ jest.mock('./goals/goalsApi', () => ({ goalsApi: { visitPull: jest.fn(), runTidy
 jest.mock('./huddleApi', () => ({ fetchFlags: jest.fn(() => Promise.resolve([])), FLAGS_CHANGED: 'f' }));
 jest.mock('./salesApi', () => ({ pageloadSync: jest.fn() }));
 jest.mock('../../utils/authSession', () => ({ fetchMe: jest.fn(() => Promise.resolve(null)) }));
+const mockMq = { phone: false };
+jest.mock('../../utils/useMediaQuery', () => () => mockMq.phone);
 
-beforeEach(() => { localStorage.clear(); window.history.replaceState(null, '', '/?tab=pipeline&view=companies'); });
+beforeEach(() => { localStorage.clear(); mockMq.phone = false; window.history.replaceState(null, '', '/?tab=pipeline&view=companies'); });
+
+// FIX pipeline-390-toolbar-v1 T1: on a phone the frame is two rows - tabs above, the tools slot under them - and the
+// selected tab is scrolled into view; wider than 760 px the one-row frame is unchanged (T2).
+test('phone: the frame stacks the sub-view strip over the tools slot, the selected tab scrolls into view; desktop keeps one row', () => {
+  const into = jest.fn(); Element.prototype.scrollIntoView = into;
+  mockMq.phone = true;
+  const { unmount } = render(<SalesAnalyticsTab businessId="b1" features={{}} />);
+  const frame = document.querySelector('[data-sales-frame]');
+  expect(frame.getAttribute('data-frame-rows')).toBe('2');
+  expect(frame.style.flexDirection).toBe('column');
+  const [strip, tools] = frame.children;
+  expect([strip.hasAttribute('data-sales-subviews'), tools.id, tools.getAttribute('style')]).toEqual([true, 'sales-frame-tools', null]); // the slot's layout is FRAME_CSS (so :empty can hide it)
+  expect(into).toHaveBeenCalledWith({ block: 'nearest', inline: 'nearest' });
+  into.mockClear();
+  fireEvent.click(within(screen.getByRole('tablist', { name: 'Pipeline views' })).getByRole('tab', { name: 'Campaigns' }));
+  expect(into).toHaveBeenCalledTimes(1);
+  unmount();
+  mockMq.phone = false;
+  render(<SalesAnalyticsTab businessId="b1" features={{}} />);
+  const wide = document.querySelector('[data-sales-frame]');
+  expect([wide.getAttribute('data-frame-rows'), wide.style.flexDirection, wide.style.height]).toEqual(['1', '', '44px']);
+  expect([...document.querySelectorAll('style')].map(s => s.textContent).join('')).toMatch(/#sales-frame-tools:empty \{ display: none; \}/);
+});
 
 test('Pipeline and Dashboard sub-views render as Tabs level="sub" with icons; picking one sets ?view= (nav unchanged)', async () => {
   render(<SalesAnalyticsTab businessId="b1" features={{}} />);

@@ -211,6 +211,19 @@ test('table mirrors the filters and the legend: the Segment filter re-queries, a
   expect(within(screen.getByRole('table')).getByRole('columnheader', { name: 'Change' })).toBeInTheDocument();
 });
 
+// FIX pipeline-390-toolbar-v1 T1: on a phone Share and Recompute are icon buttons that keep their names.
+test('phone: Share and Recompute in the frame slot are named icon buttons', async () => {
+  const desktop = window.matchMedia;
+  window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+  try {
+    render(<><div id="sales-frame-tools" /><PrioritiesView businessId="b1" canEdit isAdmin meId="u1" /></>);
+    const share = await screen.findByRole('button', { name: 'Share' });
+    const recompute = screen.getByRole('button', { name: 'Recompute' });
+    expect([share.textContent, share.className.includes('ui-btn--icon'), share.closest('#sales-frame-tools') !== null]).toEqual(['↗', true, true]);
+    expect([recompute.textContent, recompute.querySelector('svg') !== null, recompute.className.includes('ui-btn--icon')]).toEqual(['', true, true]);
+  } finally { window.matchMedia = desktop; }
+});
+
 test('Share saves the filter state as a named view and exposes the CSV link; a Viewer sees no Share and no touching buttons', async () => {
   window.open = jest.fn();
   window.html2canvas = jest.fn(async () => ({ toDataURL: () => 'data:image/png;base64,' }));

@@ -245,8 +245,8 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
     <>
       {data && <span data-counts style={{ ...numStyle, fontSize: 12, color: SA.muted, whiteSpace: 'nowrap', marginRight: 'auto' }}>{data.counts.ranked} ranked · {data.counts.live} live · recomputed {agoText(data.computed_at)}{stale ? ' · scores older than a day' : ''}</span>}
       {views.length > 0 && <FilterSelect label="Saved view" value="" options={opts('Saved views', views.map(v => ({ value: v.id, label: v.name })))} onChange={id => { const v = views.find(x => x.id === id); if (v) applyView(v); }} />}
-      {canEdit && <button type="button" className="ui-btn ui-btn--secondary no-print" onClick={() => setShareOpen(o => !o)} title="Save this view by name, download a PNG of the chart and the CSV of the table">Share</button>}
-      {isAdmin && <button type="button" className="ui-btn ui-btn--secondary no-print" disabled={recomputing} onClick={recompute} title="Recompute every company's score now (also runs after pulls, signals, research, source edits, syncs and once a day)"><IconRefresh size={13} />{recomputing ? 'Recomputing…' : 'Recompute'}</button>}
+      {canEdit && <button type="button" className={`ui-btn ui-btn--secondary no-print${phone ? ' ui-btn--sm ui-btn--icon' : ''}`} aria-label={phone ? 'Share' : undefined} onClick={() => setShareOpen(o => !o)} title="Save this view by name, download a PNG of the chart and the CSV of the table">{phone ? '↗' : 'Share'}</button>}
+      {isAdmin && <button type="button" className={`ui-btn ui-btn--secondary no-print${phone ? ' ui-btn--sm ui-btn--icon' : ''}`} aria-label={phone ? (recomputing ? 'Recomputing…' : 'Recompute') : undefined} disabled={recomputing} onClick={recompute} title="Recompute every company's score now (also runs after pulls, signals, research, source edits, syncs and once a day)"><IconRefresh size={13} />{phone ? null : recomputing ? 'Recomputing…' : 'Recompute'}</button>}
     </>
   );
 
