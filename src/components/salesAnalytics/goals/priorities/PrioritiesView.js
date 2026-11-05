@@ -58,6 +58,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
   const [names, setNames] = useState(prefs.names);
   const [height, setHeight] = useState(prefs.height);
   const [rings, setRings] = useState(prefs.rings);
+  const [yfit, setYfit] = useState(prefs.yfit);
   const [zerosOpen, setZerosOpen] = useState(false);
   const [page, setPage] = useState(0);
   const [topN, setTopN] = useState('40');
@@ -82,6 +83,8 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
   const [width, setWidth] = useState(960);
   const [anchors, setAnchors] = useState({});
   const chartRef = useRef(null);
+  const [chartEl, setChartEl] = useState(null); // the chart box mounts after the data, so the observer waits for it
+  const chartBoxRef = useCallback(el => { chartRef.current = el; setChartEl(el); }, []);
   const legendRef = useRef(null);
   const shotRef = useRef(null);
   const undoTimer = useRef(null);
@@ -96,7 +99,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
   useEffect(() => { goalsApi.members(businessId).then(setMembers).catch(() => setMembers([])); }, [businessId]);
   useEffect(() => { goalsApi.composeStatus(businessId).then(setCompose).catch(() => setCompose(null)); }, [businessId]);
   useEffect(() => { goalsApi.scoreViews(businessId).then(setViews).catch(() => setViews([])); }, [businessId]);
-  useEffect(() => { writePrefs({ y, view: view || undefined, names, height, rings }); }, [y, view, names, height, rings]);
+  useEffect(() => { writePrefs({ y, view: view || undefined, names, height, rings, yfit }); }, [y, view, names, height, rings, yfit]);
 
   useEffect(() => {
     if (!toast) return undefined;
@@ -104,12 +107,11 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
     return () => clearTimeout(undoTimer.current);
   }, [toast]);
   useEffect(() => {
-    const el = chartRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return undefined;
+    if (!chartEl || typeof ResizeObserver === 'undefined') return undefined;
     const ro = new ResizeObserver(entries => { const w = entries[0]?.contentRect?.width; if (w) setWidth(Math.round(w)); });
-    ro.observe(el);
+    ro.observe(chartEl);
     return () => ro.disconnect();
-  }, [effectiveView]);
+  }, [chartEl]);
   const load = useCallback(() => goalsApi.scores(businessId, filterParams(filters)).then(d => { setData(d); setError(''); }).catch(e => setError(e.message)), [businessId, filters]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { goalsApi.reachAll(businessId).then(setReach).catch(() => setReach(null)); }, [businessId, data?.computed_at]);
@@ -224,7 +226,7 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
     <QuickMenu businessId={businessId} row={selected} members={members} meId={meId} canEdit={canEdit} compose={compose} reach={reach?.[`${selected.type}:${selected.id}`] || null} nextStep={brief?.key === selected.key ? brief.brief?.next_step : null}
       onBrief={() => openBrief(selected)} onCompose={() => setComposeFor(selected)} onOpen={() => open(selected)} onChanged={reloadAll} onToast={setToast} onSubClose={setSubClose} />
   ) : null;
-  const chartProps = { rows: paged.rows, lit, y, thresholds: data?.thresholds, caps: data?.caps, counts: data?.counts || {}, selectedKey, onSelect: select, onOpen: open, menu, showTrend, width: phone ? Math.max(width, 720) : width, names, phone, height: heightPx(height), rings, members, meId };
+  const chartProps = { rows: paged.rows, lit, y, thresholds: data?.thresholds, caps: data?.caps, counts: data?.counts || {}, selectedKey, onSelect: select, onOpen: open, menu, showTrend, width: phone ? Math.max(width, 720) : width, names, phone, height: heightPx(height), rings, members, meId, yfit };
   const zeroOwners = ownerKeys.filter(o => !(o.count > 0) && !lit.has(o.key)).map(o => o.key);
   const legend = (
     <div ref={legendRef} role="group" aria-label="Owner" data-legend style={rowBar}>
@@ -265,14 +267,14 @@ export default function PrioritiesView({ businessId, canEdit, isAdmin, meId, onO
       {error && <ErrorNote message={error} />}
       {data && (
         <div ref={shotRef} data-share-shot role="group" aria-label="Chart" style={card}>
-          <ChartToolbar view={effectiveView} setView={setView} y={y} setY={setY} topN={topN} setTopN={setTopN} height={height} setHeight={setHeight} rings={rings} setRings={setRings}
+          <ChartToolbar view={effectiveView} setView={setView} y={y} setY={setY} topN={topN} setTopN={setTopN} height={height} setHeight={setHeight} rings={rings} setRings={setRings} yfit={yfit} setYfit={setYfit}
             showTrend={showTrend} setShowTrend={setShowTrend} names={names} setNames={setNames} counts={data.counts} band={filters.band} onBand={b => set('band', b)} />
           {legend}
           {nFilters > 0 && <div data-filter-line style={{ fontSize: 12, color: SA.muted }}>{data.counts.shown} of {data.counts.ranked} shown · {data.today}</div>}
           {effectiveView === 'table'
             ? <PrioritiesTable rows={rows} live={data.live} lit={lit} selectedKey={selectedKey} onSelect={select} onOpen={open} showTrend={showTrend} phone={phone} caps={data.caps} collapsible={false} members={members} meId={meId} reach={reach} />
             : (
-              <div ref={chartRef} data-chart-box onPointerEnter={needChains} onFocus={needChains} style={{ overflowX: phone ? 'auto' : 'visible', minWidth: 0 }}>
+              <div ref={chartBoxRef} data-chart-box onPointerEnter={needChains} onFocus={needChains} style={{ overflowX: phone ? 'auto' : 'visible', minWidth: 0 }}>
                 <div style={{ minWidth: phone ? 720 : 0 }}>
                   {effectiveView === 'bars' ? <BarsChart {...chartProps} /> : <DotsChart {...chartProps} anchors={anchors} />}
                 </div>

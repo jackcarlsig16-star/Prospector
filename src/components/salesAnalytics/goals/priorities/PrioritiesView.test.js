@@ -71,8 +71,10 @@ test('dots (homelover-flow-v1 F1 / F5): every ranked company as a dot in its OWN
   // (homelover-flow-v1 F2: BAND_WORD - Hot · Warm · Cool · Cold, never time words).
   expect([...document.querySelectorAll('[data-band-zone]')].map(z => z.getAttribute('data-band-zone'))).toEqual(['P1', 'P2', 'P3', 'P4']);
   expect(document.querySelector('[data-band-count="P1"]').textContent).toBe('1');
-  expect([...document.querySelectorAll('[data-band-word]')].map(w => w.textContent)).toEqual(['Hot', 'Warm', 'Cool', 'Cold']);
-  expect(document.querySelectorAll('[data-band-guide]')).toHaveLength(3);
+  // FIX map-fill-space-v1: the Y range fits 37-72 (25-80), so P4 (0-15) sits under the range as an edge label and its guide is gone.
+  expect([...document.querySelectorAll('[data-band-word]')].map(w => w.textContent)).toEqual(['Hot', 'Warm', 'Cool']);
+  expect(document.querySelector('[data-band-edge="P4"]').textContent).toBe('Cold ↓ <15');
+  expect(document.querySelectorAll('[data-band-guide]')).toHaveLength(2);
 });
 
 test('hollow when unresearched; rings off by default, Rings draws them on a researched dot; a halo on a touched one; the top direct labels; a since-yesterday marker', async () => {
@@ -483,6 +485,36 @@ test('filter card: type chips carry counts.segments and filter; labeled selects;
   fireEvent.click(within(document.querySelector('[data-active-filters]')).getByRole('button', { name: 'Clear all' }));
   await waitFor(() => expect(document.querySelector('[data-active-filters]')).toBeNull());
   expect(within(type).getByRole('button', { name: /^All/ }).getAttribute('aria-pressed')).toBe('true');
+});
+
+test('FIX map-fill-space-v1: the width observer attaches to the chart box once it mounts (after the data), the SVG viewBox follows the measured width with the 56 / 36 px gutters; the Y range toggle swaps fitted ticks for 0-100, the edge label for a band outside the range, and persists per viewer', async () => {
+  const observed = [];
+  const RO = jest.fn(cb => ({ observe: el => { observed.push(el); cb([{ contentRect: { width: 1200 } }]); }, disconnect: jest.fn() }));
+  window.ResizeObserver = RO;
+  try {
+    render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+    await waitFor(() => expect(dots()).toHaveLength(3));
+    expect(observed).toHaveLength(1);
+    expect(observed[0].hasAttribute('data-chart-box')).toBe(true);
+    await waitFor(() => expect(chartSvg().getAttribute('viewBox')).toBe('0 0 1200 560'));
+    const zone = document.querySelector('[data-band-zone="P2"] rect');
+    expect([zone.getAttribute('x'), zone.getAttribute('width')]).toEqual(['56', String(1200 - 56 - 36)]);
+    const ticks = () => [...document.querySelectorAll('[data-y-tick]')].map(t => t.textContent);
+    expect(ticks()).toEqual(['25', '30', '40', '50', '60', '70', '80']); // scores 37-72 -> 25-80
+    expect(chartSvg().getAttribute('aria-label')).toContain('Intent (25-80 of 0-100, fitted to the data)');
+    expect(document.querySelector('[data-band-edge]').textContent).toBe('Cold ↓ <15'); // P4 = 0-15 sits under the range
+    const range = within(screen.getByRole('group', { name: 'Chart controls' })).getByRole('group', { name: 'Y range' });
+    expect(within(range).getByRole('button', { name: 'Fit to data' }).getAttribute('aria-pressed')).toBe('true');
+    fireEvent.click(within(range).getByRole('button', { name: '0–100' }));
+    expect(ticks()).toEqual(['0', '25', '50', '75', '100']);
+    expect(document.querySelector('[data-band-edge]')).toBeNull();
+    expect(JSON.parse(localStorage.getItem('prospector_priorities_view')).yfit).toBe(false);
+    fireEvent.click(within(range).getByRole('button', { name: 'Fit to data' }));
+    expect(ticks()[0]).toBe('25');
+    expect(JSON.parse(localStorage.getItem('prospector_priorities_view')).yfit).toBe(true);
+    fireEvent.click(within(screen.getByRole('group', { name: 'Y axis' })).getByRole('button', { name: 'Size' }));
+    expect(screen.queryByRole('group', { name: 'Y range' })).toBeNull();
+  } finally { delete window.ResizeObserver; }
 });
 
 test('chart toolbar: View + Y as icon and word, "Ranked by intent", the Top stepper, height presets (persisted, the chart grows), band chips filter', async () => {

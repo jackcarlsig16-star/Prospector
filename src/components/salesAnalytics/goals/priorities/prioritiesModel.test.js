@@ -1,4 +1,4 @@
-import { yValue, yScale, ringSpecs, haloLevel, hollowness, isDimmed, toggleLit, pageOf, filterParams, filtersFromView, activeFilterCount, labelCandidates, labelText, placeLabels, readPrefs, writePrefs, LS_KEY, HEIGHTS, heightPx, TOP_LABELS, EMPTY_FILTERS, RING_ORDER } from './prioritiesModel';
+import { yValue, yScale, fitDomain, ringSpecs, haloLevel, hollowness, isDimmed, toggleLit, pageOf, filterParams, filtersFromView, activeFilterCount, labelCandidates, labelText, placeLabels, readPrefs, writePrefs, LS_KEY, HEIGHTS, heightPx, TOP_LABELS, EMPTY_FILTERS, RING_ORDER } from './prioritiesModel';
 import * as model from './prioritiesModel';
 
 // intent-score-v1 S3 - the pure half of the Priorities view.
@@ -121,14 +121,35 @@ test('placeLabels: same spot -> right then left, then shift up, down in 12 px st
   expect(placeLabels([{ key: 'top', text: 'Acme', x: 10, y: 5, pad: 8 }], { minY: 0 })[0].shifted).toBe(12);
 });
 
+test('Y range (FIX map-fill-space-v1 M2): fitDomain pads by 8 and rounds out to 5s, clamps to 0-100, one band of near-equal scores still gets room; the fitted intent scale maps lo->0 and hi->1 with ticks inside the range; the plain scale is unchanged', () => {
+  const rows = vs => vs.map(score => row({ score }));
+  expect(fitDomain(rows([42, 58, 73]))).toEqual([30, 85]);
+  expect(fitDomain(rows([2, 50, 97]))).toEqual([0, 100]);
+  expect(fitDomain(rows([60, 61, 62]))).toEqual([50, 70]);
+  expect(fitDomain(rows([100]))).toEqual([90, 100]);
+  expect(fitDomain([])).toEqual([0, 100]);
+  const fit = yScale('intent', rows([42, 58, 73]), { yfit: true });
+  expect(fit.domain).toEqual([30, 85]);
+  expect([fit.to(30), fit.to(85), fit.to(57.5), fit.to(0), fit.to(100)]).toEqual([0, 1, 0.5, 0, 1]);
+  expect(fit.ticks.map(t => t.v)).toEqual([30, 40, 50, 60, 70, 80, 85]);
+  expect(fit.label).toBe('Intent (30-85 of 0-100, fitted to the data)');
+  const tight = yScale('intent', rows([60, 61]), { yfit: true });
+  expect(tight.ticks.map(t => t.v)).toEqual([50, 55, 60, 65, 70]);
+  const full = yScale('intent', rows([42, 73]));
+  expect(full.domain).toEqual([0, 100]);
+  expect(full.ticks.map(t => t.v)).toEqual([0, 25, 50, 75, 100]);
+  expect(full.label).toBe('Intent (0-100)');
+  expect(yScale('intent', rows([2, 97]), { yfit: true }).label).toBe('Intent (0-100)');
+});
+
 test('prefs (priorities-v2): one key holds view / y / height / rings / names; defaults standard, rings off, names on; junk falls back per field', () => {
   localStorage.clear();
-  expect(readPrefs()).toEqual({ view: null, y: 'intent', height: 'standard', rings: false, names: 'on' });
-  writePrefs({ view: 'bars', y: 'size', height: 'tall', rings: true, names: 'all' });
-  expect(JSON.parse(localStorage.getItem(LS_KEY))).toEqual({ view: 'bars', y: 'size', height: 'tall', rings: true, names: 'all' });
-  expect(readPrefs()).toEqual({ view: 'bars', y: 'size', height: 'tall', rings: true, names: 'all' });
-  localStorage.setItem(LS_KEY, JSON.stringify({ view: 'pie', y: 'mood', height: 'huge', rings: 'yes', names: 'everything' }));
-  expect(readPrefs()).toEqual({ view: null, y: 'intent', height: 'standard', rings: false, names: 'on' });
+  expect(readPrefs()).toEqual({ view: null, y: 'intent', height: 'standard', rings: false, names: 'on', yfit: true });
+  writePrefs({ view: 'bars', y: 'size', height: 'tall', rings: true, names: 'all', yfit: false });
+  expect(JSON.parse(localStorage.getItem(LS_KEY))).toEqual({ view: 'bars', y: 'size', height: 'tall', rings: true, names: 'all', yfit: false });
+  expect(readPrefs()).toEqual({ view: 'bars', y: 'size', height: 'tall', rings: true, names: 'all', yfit: false });
+  localStorage.setItem(LS_KEY, JSON.stringify({ view: 'pie', y: 'mood', height: 'huge', rings: 'yes', names: 'everything', yfit: 'no' }));
+  expect(readPrefs()).toEqual({ view: null, y: 'intent', height: 'standard', rings: false, names: 'on', yfit: true });
   localStorage.setItem(LS_KEY, '{not json');
   expect(readPrefs().height).toBe('standard');
 });

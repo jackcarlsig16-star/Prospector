@@ -15,7 +15,9 @@ import { ownerChip } from '../flowModel';
 // beside the mark in the text color (mode 'all' = everyone the collision pass can fit); a phone has no hover, so the
 // selected dot keeps its breakdown card open.
 export const CHART_H = 360;
-const M = { l: 56, r: 40, t: 20, b: 40 };
+// FIX map-fill-space-v1 M1: the gutters are the band column (letter + count) and the Y tick labels; W is the card's
+// measured width, so the plot spans the card.
+const M = { l: 56, r: 36, t: 20, b: 40 };
 // priorities-v2 G - the band zones' colors (status tokens, letter always shown beside them) and their tint.
 export const BAND_COLOR = { P1: SA.good, P2: SA.warn, P3: SA.link, P4: SA.muted };
 export const ZONE_TINT = 10; // percent of the band color over the chart surface; 10 keeps every source hue >= 3:1 on every zone (P3 worst, Inbound 3.03:1) - 11 drops P3 to 2.95
@@ -94,20 +96,28 @@ export const markHandlers = (r, selected, onSelect, onOpen) => ({
   },
 });
 
-export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, counts = {}, selectedKey, onSelect, onOpen, menu = null, showTrend = false, width = 960, anchors = {}, names = 'on', phone = false, height = CHART_H, rings: ringsOn = false, members = [], meId = null }) {
+export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, counts = {}, selectedKey, onSelect, onOpen, menu = null, showTrend = false, width = 960, anchors = {}, names = 'on', phone = false, height = CHART_H, rings: ringsOn = false, members = [], meId = null, yfit = false }) {
   const owner = r => ownerChip({ ownerUserId: r.owner_user_id, ownerTeam: r.owner_team, coOwnerName: r.co_owner_name, members, meId });
   const [hover, setHover] = useState(null);
   const n = rows.length;
   const H = height;
   const W = Math.max(320, width), plotW = W - M.l - M.r, plotH = H - M.t - M.b;
-  const scale = yScale(y, rows);
+  const scale = yScale(y, rows, { yfit });
+  const [d0, d1] = scale.domain || [0, 100];
   const slot = n ? plotW / n : plotW;
   const base = Math.max(4, Math.min(9, slot * 0.3));
   const cx = i => M.l + slot * (i + 0.5);
   const cy = v => M.t + plotH * (1 - scale.to(v));
   const pts = rows.map((r, i) => ({ r, x: cx(i), y: cy(yValue(r, y)), unknown: yValue(r, y) == null }));
   // Band zones (Y = intent): [band, from, to] in score points, from the route's thresholds.
-  const zones = y === 'intent' && thresholds ? [['P1', thresholds.P1, 100], ['P2', thresholds.P2, thresholds.P1], ['P3', thresholds.P3, thresholds.P2], ['P4', 0, thresholds.P3]] : [];
+  // M2: a zone draws only its part inside the Y range; a band wholly outside keeps its letter + count in the gutter and
+  // a "Hot ↑ 75+" / "Cold ↓ <25" label at that edge (stacked when two bands sit past the same edge).
+  const zones = (y === 'intent' && thresholds ? [['P1', thresholds.P1, 100], ['P2', thresholds.P2, thresholds.P1], ['P3', thresholds.P3, thresholds.P2], ['P4', 0, thresholds.P3]] : []).map(([band, lo, hi]) => {
+    const vLo = Math.max(lo, d0), vHi = Math.min(hi, d1);
+    return { band, lo, hi, vLo, vHi, out: vHi <= vLo ? (lo >= d1 ? 'top' : 'bottom') : null };
+  });
+  const EDGE_STEP = 28;
+  zones.filter(z => z.out).forEach((z, i, arr) => { z.edgeY = z.out === 'top' ? M.t + 10 + EDGE_STEP * arr.slice(0, i).filter(o => o.out === 'top').length : M.t + plotH - 10 - EDGE_STEP * arr.slice(0, i).filter(o => o.out === 'bottom').length; });
   const litList = [...lit];
   const byKey = new Map(pts.map(p => [p.r.key, p]));
   const maxChars = Math.max(LABEL_MIN_CHARS, Math.min(24, Math.floor((slot * 3) / 6.3)));
@@ -120,16 +130,20 @@ export default function DotsChart({ rows, lit, y = 'intent', thresholds, caps, c
   const pinned = pts.find(p => p.r.key === selectedKey) || null;
   return (
     <div data-dots-chart style={{ position: 'relative', width: '100%' }}>
-      <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} role="group" aria-label={`Companies ranked by intent, Y axis ${scale.label}${zones.length ? ', grouped into P1 to P4 bands' : ''}`} style={{ display: 'block', overflow: 'visible', fontFamily: 'inherit' }}>
-        {zones.map(([band, lo, hi]) => (
-          <g key={band} data-band-zone={band}>
-            <rect x={M.l} y={cy(hi)} width={plotW} height={Math.max(0, cy(lo) - cy(hi))} fill={`color-mix(in srgb, ${BAND_COLOR[band]} ${ZONE_TINT}%, transparent)`} />
-            {lo > 0 && <line x1={M.l} x2={W - M.r} y1={cy(lo)} y2={cy(lo)} stroke={SA.borderStrong} strokeWidth={1} strokeDasharray="3 4" data-band-guide={band} />}
-            <text x={M.l - 10} y={(cy(lo) + cy(hi)) / 2 - 6} textAnchor="end" dominantBaseline="middle" fontSize={10.5} fontFamily="'Geist Mono', ui-monospace, monospace" letterSpacing=".06em" fill={BAND_COLOR[band]}>{band}</text>
-            <text x={M.l - 10} y={(cy(lo) + cy(hi)) / 2 + 7} textAnchor="end" dominantBaseline="middle" fontSize={11} fill={SA.muted} style={numStyle} data-band-count={band}>{counts[band] ?? 0}</text>
-            <text x={M.l + 8} y={cy(hi) + 12} dominantBaseline="middle" fontSize={11} fill={BAND_COLOR[band]} fillOpacity={0.8} data-band-word={band}>{BAND_WORD[band]}</text>
-          </g>
-        ))}
+      <svg width={phone ? W : '100%'} height={H} viewBox={`0 0 ${W} ${H}`} role="group" aria-label={`Companies ranked by intent, Y axis ${scale.label}${zones.length ? ', grouped into P1 to P4 bands' : ''}`} style={{ display: 'block', overflow: 'visible', fontFamily: 'inherit' }}>
+        {zones.map(({ band, lo, hi, vLo, vHi, out, edgeY }) => {
+          const mid = out ? edgeY : (cy(vLo) + cy(vHi)) / 2;
+          return (
+            <g key={band} data-band-zone={band} data-band-out={out || undefined}>
+              {!out && <rect x={M.l} y={cy(vHi)} width={plotW} height={Math.max(0, cy(vLo) - cy(vHi))} fill={`color-mix(in srgb, ${BAND_COLOR[band]} ${ZONE_TINT}%, transparent)`} />}
+              {!out && lo > d0 && <line x1={M.l} x2={W - M.r} y1={cy(lo)} y2={cy(lo)} stroke={SA.borderStrong} strokeWidth={1} strokeDasharray="3 4" data-band-guide={band} />}
+              <text x={M.l - 10} y={mid - 6} textAnchor="end" dominantBaseline="middle" fontSize={10.5} fontFamily="'Geist Mono', ui-monospace, monospace" letterSpacing=".06em" fill={BAND_COLOR[band]}>{band}</text>
+              <text x={M.l - 10} y={mid + 7} textAnchor="end" dominantBaseline="middle" fontSize={11} fill={SA.muted} style={numStyle} data-band-count={band}>{counts[band] ?? 0}</text>
+              {!out && <text x={M.l + 8} y={cy(vHi) + 12} dominantBaseline="middle" fontSize={11} fill={BAND_COLOR[band]} fillOpacity={0.8} data-band-word={band}>{BAND_WORD[band]}</text>}
+              {out && <text x={M.l + 8} y={mid} dominantBaseline="middle" fontSize={11} fill={BAND_COLOR[band]} fillOpacity={0.8} data-band-edge={band}>{out === 'top' ? `${BAND_WORD[band]} ↑ ${lo}+` : `${BAND_WORD[band]} ↓ <${hi}`}</text>}
+            </g>
+          );
+        })}
         {scale.ticks.map(t => (
           <g key={t.v}>
             <line x1={M.l} x2={W - M.r} y1={cy(t.v)} y2={cy(t.v)} stroke={SA.track} strokeWidth={1} />

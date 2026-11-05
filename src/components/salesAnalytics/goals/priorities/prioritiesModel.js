@@ -28,7 +28,7 @@ export function toggleFit(fit, level) { const n = fit.includes(level) ? fit.filt
 export const ownerKeyOf = (row, meId = null) => (row.owner_user_id ? (row.owner_user_id === meId ? 'me' : row.owner_user_id) : row.owner_team === 'upside' || row.owner_team === 'both' || row.co_owner_name ? 'other' : 'unassigned');
 // F5: size = intent - the core radius grows with the score (0.55x at 0, 1.45x at 100).
 export const dotRadius = (base, score) => base * (0.55 + 0.9 * Math.max(0, Math.min(100, Number(score) || 0)) / 100);
-export const LS_KEY = 'prospector_priorities_view'; // { view, y, height, rings, names } - per-viewer convenience
+export const LS_KEY = 'prospector_priorities_view'; // { view, y, height, rings, names, yfit } - per-viewer convenience
 export const NAME_MODES = [['on', 'On'], ['all', 'All'], ['off', 'Off']];
 export const LABEL_TOP = 10;
 export const LABEL_MIN_CHARS = 14;
@@ -44,8 +44,23 @@ export function yValue(row, metric) {
   return row.score;
 }
 
+// FIX map-fill-space-v1 M2: the Intent axis fits the ranked dots in view - [max(0, min - pad), min(100, max + pad)]
+// rounded out to 5s - unless the viewer picks 0-100. Size and Activity keep their own scales.
+export const Y_FIT_PAD = 8;
+export function fitDomain(rows = [], pad = Y_FIT_PAD) {
+  const vs = rows.map(r => yValue(r, 'intent')).filter(v => v != null);
+  if (!vs.length) return [0, 100];
+  return [Math.max(0, Math.floor((Math.min(...vs) - pad) / 5) * 5), Math.min(100, Math.ceil((Math.max(...vs) + pad) / 5) * 5)];
+}
+const intentTicks = (lo, hi) => {
+  const span = hi - lo, step = span >= 100 ? 25 : span > 60 ? 20 : span > 30 ? 10 : 5;
+  const vs = new Set([lo, hi]);
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) vs.add(v);
+  return [...vs].sort((a, b) => a - b).map(v => ({ v, label: String(v) }));
+};
+
 // to(v): a 0..1 height fraction (1 = top); ticks for the axis; unknown rows sit at 0 and are drawn hollow.
-export function yScale(metric, rows = []) {
+export function yScale(metric, rows = [], { yfit = false } = {}) {
   if (metric === 'size') {
     const max = Math.max(4, ...rows.map(r => (yValue(r, 'size') ? Math.log10(yValue(r, 'size')) : 0)));
     const ticks = [1, 2, 3, 4, 5].filter(e => e <= Math.ceil(max)).map(e => ({ v: 10 ** e, label: e >= 3 ? `${10 ** (e - 3)}k` : String(10 ** e) }));
@@ -55,8 +70,9 @@ export function yScale(metric, rows = []) {
     const ticks = [[0, 'today'], [7, '7 d'], [30, '30 d'], [ACTIVITY_MAX_DAYS, '90 d+']].map(([v, label]) => ({ v, label }));
     return { metric, to: v => (v == null ? 0 : 1 - Math.min(ACTIVITY_MAX_DAYS, v) / ACTIVITY_MAX_DAYS), ticks, format: v => (v == null ? 'never touched' : v === 0 ? 'today' : `${v} d ago`), label: 'Days since last touch' };
   }
-  const ticks = [0, 25, 50, 75, 100].map(v => ({ v, label: String(v) }));
-  return { metric: 'intent', to: v => Math.max(0, Math.min(1, (v || 0) / 100)), ticks, format: v => String(v ?? 0), label: 'Intent (0-100)' };
+  const [lo, hi] = yfit ? fitDomain(rows) : [0, 100];
+  const fitted = lo > 0 || hi < 100;
+  return { metric: 'intent', domain: [lo, hi], to: v => Math.max(0, Math.min(1, ((v || 0) - lo) / (hi - lo))), ticks: intentTicks(lo, hi), format: v => String(v ?? 0), label: fitted ? `Intent (${lo}-${hi} of 0-100, fitted to the data)` : 'Intent (0-100)' };
 }
 
 // [{ key, points, r }] for the rings a dot draws: core radius + up to `extra` px at the component's cap.
@@ -95,6 +111,7 @@ export function readPrefs() {
     height: HEIGHTS.some(([id]) => id === v.height) ? v.height : 'standard',
     rings: v.rings === true,
     names: NAME_MODES.some(([id]) => id === v.names) ? v.names : 'on',
+    yfit: v.yfit !== false,
   };
 }
 export function writePrefs(prefs) { try { localStorage.setItem(LS_KEY, JSON.stringify(prefs)); } catch { /* private mode */ } }

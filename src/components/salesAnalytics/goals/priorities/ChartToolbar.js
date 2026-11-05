@@ -18,7 +18,9 @@ const lbl = text => <span className="ui-group-label" aria-hidden="true">{text}</
 const field = { display: 'inline-flex', alignItems: 'center', gap: 6 };
 const keep = { 'data-keeps-selection': true, style: { ...field } };
 
-export default function ChartToolbar({ view, setView, y, setY, topN, setTopN, height, setHeight, rings, setRings, showTrend, setShowTrend, names, setNames, counts = {}, band, onBand }) {
+const Y_RANGES = [{ id: 'fit', label: 'Fit to data', title: 'The Intent axis spans the ranked dots in view, padded' }, { id: 'full', label: '0–100', title: 'The full Intent scale' }];
+
+export default function ChartToolbar({ view, setView, y, setY, topN, setTopN, height, setHeight, rings, setRings, showTrend, setShowTrend, names, setNames, counts = {}, band, onBand, yfit = true, setYfit }) {
   const chart = view !== 'table';
   const i = TOP_STEPS.indexOf(topN);
   return (
@@ -27,6 +29,7 @@ export default function ChartToolbar({ view, setView, y, setY, topN, setTopN, he
       <Segmented label="View" items={VIEWS.map(([id, label]) => ({ id, label, icon: VIEW_ICON[id] }))} value={view} onChange={setView} />
       {chart && <>
         <span {...keep}>{lbl('Y axis')}<Segmented label="Y axis" items={Y_METRICS.map(([id, label]) => ({ id, label, icon: Y_ICON[id] }))} value={y} onChange={setY} /></span>
+        {y === 'intent' && <span {...keep}>{lbl('Y range')}<Segmented label="Y range" items={Y_RANGES} value={yfit ? 'fit' : 'full'} onChange={id => setYfit && setYfit(id === 'fit')} /></span>}
         <span style={{ fontSize: 12, color: SA.muted }} data-ranked-by>Ranked by intent</span>
         <span style={field}>
           {lbl('Top')}
