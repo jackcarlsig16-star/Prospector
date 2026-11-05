@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { SA, SA_TYPE, SA_SHAPE, SA_BAD_BG, SA_BAD_BORDER } from './theme';
-import AlertsRow from './AlertsRow';
 import { flashTo } from './goals/goalsUi';
 import OverviewGoals from './goals/OverviewGoals';
 import { visibleWidgets } from './widgets.registry';
@@ -109,7 +108,7 @@ export default function AnalyticsView({ businessId, features, canEdit, onOpenGoa
     return () => clearTimeout(t);
   }, [loading, focusWidget, onFocused]);
 
-  // Shared by the alerts row and the insights panel - refreshed on its own
+  // The insights panel's rows - refreshed on their own
   // after a dismiss, without reloading every widget.
   const reloadInsights = useCallback(async () => {
     setInsights(await fetchInsights(businessId));
@@ -228,7 +227,6 @@ export default function AnalyticsView({ businessId, features, canEdit, onOpenGoa
         </div>
 
         <OverviewGoals businessId={businessId} onOpenGoals={onOpenGoals} onFocusWidget={id => flashTo(`sa-widget-${id}`)} />
-        {!loading && <AlertsRow runs={runs} insights={insights} />}
 
         {loading ? (
           <p style={{ ...SA_TYPE.body, fontSize: 13, color: SA.muted }}>Loading…</p>

@@ -28,13 +28,10 @@ const me = role => ({ profile: { id: 'u-jack' }, memberships: [{ business_id: 'b
 
 beforeEach(() => { try { localStorage.clear(); } catch { /* none */ } });
 
-test('member gets "Plan this week" on Actions; on the Dashboard the planned commitment shows ✦ with the reason', async () => {
+test('member gets "Plan this week" on Actions, where the planned commitment shows ✦ with the reason (dashboard-v3 Stage 2: the Goals section sits under Actions)', async () => {
   fetchMe.mockResolvedValue(me('member'));
-  const { unmount } = render(<GoalsTab businessId="b1" section="actions" view={null} onNav={jest.fn()} />);
+  render(<GoalsTab businessId="b1" section="actions" view={null} onNav={jest.fn()} />);
   await waitFor(() => expect(screen.getAllByRole('button', { name: 'Plan this week' }).length).toBeGreaterThan(0));
-  unmount();
-  render(<GoalsTab businessId="b1" section="dashboard" view="overview" onNav={jest.fn()} />);
-  // ✦ shows in the Goals section's per-person list (dashboard-v3 Stage 1: the Weekly report's commitment row is gone).
   await waitFor(() => expect(screen.getAllByLabelText('Planned')).toHaveLength(1));
   expect(screen.getByTitle('Replied Oct 9')).toBeInTheDocument();
   expect(screen.getByText('Book Solidcore')).toBeInTheDocument();
@@ -42,9 +39,9 @@ test('member gets "Plan this week" on Actions; on the Dashboard the planned comm
 
 test('viewer sees ✦ but never the button or the nudge', async () => {
   fetchMe.mockResolvedValue(me('viewer'));
-  render(<GoalsTab businessId="b1" section="dashboard" view="overview" onNav={jest.fn()} />);
+  render(<GoalsTab businessId="b1" section="actions" view={null} onNav={jest.fn()} />);
   await screen.findByText('View only');
-  expect(screen.getAllByLabelText('Planned')).toHaveLength(1);
+  await waitFor(() => expect(screen.getAllByLabelText('Planned')).toHaveLength(1));
   expect(screen.queryByRole('button', { name: 'Plan this week' })).toBeNull();
   expect(screen.queryByRole('dialog')).toBeNull();
 });

@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { SA, SA_TYPE } from '../theme';
 import { goalsApi } from './goalsApi';
 import { cardStyle, labelStyle, numStyle, fmt, h3Style, ErrorNote, Btn } from './goalsUi';
-import { TEAM_OPTIONS } from './dashboardModel';
 import { BOARD_COLORS } from '../../../constants/pipelineBoard';
+import { OWNER_TEAMS, TEAM_LABEL } from '../../../constants/ownership';
 import useMediaQuery from '../../../utils/useMediaQuery';
 import FilterSelect from '../../../ui/FilterSelect';
 import SourcesBackfill from './SourcesBackfill';
@@ -11,6 +11,8 @@ import SourceFunnel from './SourceFunnel';
 import ChannelLinks from './ChannelLinks';
 import NetworkTree from './NetworkTree';
 import Segmented from '../../../ui/Segmented';
+
+const TEAM_OPTIONS = [['', 'All teams'], ...OWNER_TEAMS.map(t => [t, TEAM_LABEL[t]])];
 import PeopleCompanyPanel from '../PeopleCompanyPanel';
 import { SOURCE_KINDS, SOURCE_LABEL } from '../../../constants/leadSources';
 

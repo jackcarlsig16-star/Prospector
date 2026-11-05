@@ -109,8 +109,9 @@ export const goalsApi = {
   // sent | skip | stop | replied | status | pause | resume | promote | undo -> { contact, event? , record? }
   contactAction: (id, contactId, action, body = {}) => call(id, `/campaign-contacts/${contactId}/${action}`, { method: 'POST', body }),
   contactDraft: (id, contactId) => call(id, `/campaign-contacts/${contactId}/draft`),
-  // sales-ia-v2 D1 - the Dashboard's 13 chart series in one read; days 7 | 30 | 90, owner = a member's user id, team = owner_team. 0 AI, 0 Apollo.
-  dashboard: (id, { days, owner, team }) => call(id, `/dashboard?${q({ days, owner, team })}`),
+  // dashboard-v3 Stage 2 - Home's Pulse (one read per period / person) and the Explorer stub (Stage 3 fills it).
+  pulse: (id, { period, owner }) => call(id, `/pulse?${q({ period, owner })}`),
+  explorer: id => call(id, '/explorer'),
   // signals-v1 Stage 4 - the daily website-visitor pull (Members) and its status (Viewers too).
   // FIX visit-window-v1 W2: backfillDays (owner/admin) asks Apollo for that many days regardless of history, once per LA day.
   visitPull: (id, { force = false, trigger = 'manual', backfillDays = null } = {}) => call(id, '/visits/pull', { method: 'POST', body: { force, trigger, ...(backfillDays != null ? { backfill_days: backfillDays } : {}) } }),

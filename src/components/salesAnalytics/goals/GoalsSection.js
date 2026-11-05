@@ -4,13 +4,11 @@ import { SEMANTIC } from '../palette';
 import { goalsApi } from './goalsApi';
 import { pipelineMoves } from './todayModel';
 import { fetchMovement } from '../pipelineApi';
-import { labelStyle, h2Style, h3Style, subStyle, numStyle, cardStyle, Chip, Dot, Btn, addDays, weekLabel, weekOf, progressColor } from './goalsUi';
+import { labelStyle, h2Style, h3Style, subStyle, numStyle, cardStyle, Chip, Dot, addDays, weekOf, progressColor } from './goalsUi';
 
-// sales-ia-v2 D1 - the Goals section under the Dashboard charts: this week's
-// goals (the hero cards), commitments per person with Focus 5 progress and this
-// week's Pipeline moves (dashboard-v3 Stage 1: the report card, the Scorecard and
-// the Weekly report left - the Scorecard is its own sub-view now). Viewers read
-// all of it; the week nav is the section's own, so the frame row never moves.
+// sales-ia-v2 D1, moved under Actions by dashboard-v3 Stage 2: this week's commitments per person with Focus 5 progress
+// and this week's Pipeline moves, for the week the frame row shows (the week nav is the frame's; the hero cards, the
+// report card, the Scorecard and the Weekly report are gone). Viewers read all of it.
 const timeOf = iso => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
 export function PersonCommitments({ person, commitments }) {
@@ -43,7 +41,7 @@ export function PersonCommitments({ person, commitments }) {
 }
 
 // members: the people shown (one filtered person, or everyone); commitments: this week's, already person-filtered.
-export default function GoalsSection({ businessId, weekStart, thisWeek, onWeek, members, lookup, commitments, partners, hero }) {
+export default function GoalsSection({ businessId, weekStart, members, lookup, commitments, partners }) {
   const [moves, setMoves] = useState(null);
   useEffect(() => {
     let live = true;
@@ -60,21 +58,10 @@ export default function GoalsSection({ businessId, weekStart, thisWeek, onWeek, 
 
   return (
     <section id="goals-section" aria-labelledby="h-goals" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginRight: 'auto' }}>
-          <span style={labelStyle}>Goals</span>
-          <h2 id="h-goals" style={h2Style}>{weekOf(weekStart)}</h2>
-        </div>
-        <Btn aria-label="Previous week" style={{ height: 36 }} onClick={() => onWeek(addDays(weekStart, -7))}>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg>
-        </Btn>
-        <span style={{ fontWeight: 600, whiteSpace: 'nowrap', ...numStyle }}>{weekLabel(weekStart)}</span>
-        <Btn aria-label="Next week" style={{ height: 36 }} onClick={() => onWeek(addDays(weekStart, 7))}>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
-        </Btn>
-        {weekStart !== thisWeek && <Btn style={{ height: 36 }} onClick={() => onWeek(thisWeek)}>This week</Btn>}
+      <div className="no-print" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <span style={labelStyle}>Goals</span>
+        <h2 id="h-goals" style={h2Style}>{weekOf(weekStart)}</h2>
       </div>
-      {hero}
       <div className="no-print" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))', gap: 12 }}>
         <section aria-labelledby="h-commit-people" style={card}>
           <span style={labelStyle}>This week · commitments and Focus 5</span>

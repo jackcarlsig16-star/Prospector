@@ -7,7 +7,6 @@ import { roleAtLeast } from '../../../constants/roles';
 import { fetchMe } from '../../../utils/authSession';
 import useMediaQuery from '../../../utils/useMediaQuery';
 import Segmented from '../../../ui/Segmented';
-import FilterSelect from '../../../ui/FilterSelect';
 import Ring, { RingLegend } from '../charts/Ring';
 import { goalsApi, TODOS_CHANGED } from './goalsApi';
 import ScorecardView from './ScorecardView';
@@ -25,22 +24,20 @@ import CampaignsView from './campaigns/CampaignsView';
 import SourcesView from './SourcesView';
 import ClientsView from './ClientsView';
 import TeamEmailsSettings from './TeamEmailsSettings';
-import GoalHero from './GoalHero';
-import DashboardCharts from './DashboardCharts';
+import HomeView, { PERIODS, DEFAULT_PERIOD } from './HomeView';
 import TrackImprove from './TrackImprove';
 import GoalsSection from './GoalsSection';
-import { RANGE_OPTIONS, DEFAULT_RANGE, TEAM_OPTIONS } from './dashboardModel';
 import { dayTitle } from './todayModel';
-import { linkedTo, openTasks, isOpenTask } from '../tasks/LinkedTasks';
+import { linkedTo } from '../tasks/LinkedTasks';
 import { exportWidgetCsv } from '../exportCsv';
 import {
   subStyle, numStyle, Chip, Btn, ErrorNote,
   addDays, monthOf, monthName, weekLabel, weekOf, memberLookup, ownedBy, flashTo,
 } from './goalsUi';
 
-// sales-ia-v1 - the data hub behind Actions (sales-ia-v2 A1: ActionsView) /
-// Pipeline / Dashboard (sales-ia-v2 D1: the charts with the Goals section -
-// hero, commitments, moves - under them; dashboard-v3 Stage 1: the Scorecard is
+// sales-ia-v1 - the data hub behind Actions (sales-ia-v2 A1: ActionsView; dashboard-v3 Stage 2: the week's commitments +
+// Pipeline moves and Track & improve sit under it) / Pipeline / Dashboard (dashboard-v3: Home = HomeView's Pulse + Insights
+// over GET goals/pulse, the 13 charts and the hero tiles are gone; Stage 1: the Scorecard is
 // its own sub-view, the Weekly report + KPI table are gone, Sequenced too). `section` is the tab on screen
 // and `view` its sub-view (SalesAnalyticsTab owns both, via salesNav.js, and
 // draws the sub-view switch); this renders only that section, with its tools
@@ -99,8 +96,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const [planOpen, setPlanOpen] = useState(false);
   const [plans, setPlans] = useState(null);
   const [toast, setToast] = useState('');
-  const [range, setRange] = useState(DEFAULT_RANGE); // Dashboard: 7 | 30 | 90 days
-  const [team, setTeam] = useState(''); // Dashboard: owner_team, '' = all
+  const [period, setPeriod] = useState(DEFAULT_PERIOD); // Home: the Pulse window
   const [errors, setErrors] = useState({});
   const [toolsSlot, setToolsSlot] = useState(null);
   useEffect(() => { setToolsSlot(document.getElementById(FRAME_TOOLS_ID)); }, []);
@@ -177,9 +173,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   ];
 
   const myTodos = todos.filter(t => ownedBy(owner, t.owner_user_id));
-  const heroTasks = weekStart === thisWeek ? Object.fromEntries(['outbound_audience', 'total_in_sequence', 'partners_first_touched', 'meetings_set', 'real_replies_clicks']
-    .map(k => [k, linkedTo(myTodos, 'metric', k).filter(isOpenTask).length])) : null;
-  const drawerFilter = owner === 'team' ? 'team' : owner === me?.profile?.id ? 'me' : owner;
   // task-drawer-v1 Stage 4 - to-dos linked to a commitment, goal, partner or
   // company, from the week on screen. The drawer only holds the current week,
   // so links into it (and partner/company/goal counts) show for that week only.
@@ -188,7 +181,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const myPartners = partners.filter(p => ownedBy(owner, p.owner_user_id));
   const myCompanies = companies.filter(c => ownedBy(owner, c.sequenced_by));
   const myAllCompanies = allCompanies && allCompanies.filter(c => ownedBy(owner, c.sequenced_by));
-  const missingHeadcount = myAllCompanies ? myAllCompanies.filter(c => c.employees == null).length : null;
   const saveEmployees = async (accountId, employees) => {
     const c = await goalsApi.updateCompany(businessId, accountId, { employees });
     const patch = list => list && list.map(x => (x.account_id === c.account_id ? { ...x, employees: c.employees } : x));
@@ -242,8 +234,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
     if (kind === 'missing') { setMissingOpen(true); setTimeout(() => flashTo('goals-missing'), 80); }
     onNav(home.tab, home.view);
   };
-  const drill = id => go({ audience: 'view:companies', missing: 'missing', in_sequence: 'overview:week_strip', partners: { partners: { stage: 'first_email_sent' } },
-    meetings: 'score:meetings_set', engagement: 'huddle:feed' }[id]);
   useEffect(() => {
     if (initialTarget) go(initialTarget.target);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -273,7 +263,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   // Design C - what the frame row carries per screen (sales-ia-v2 N2: one
   // fixed-height row, portaled into SalesAnalyticsTab's #sales-frame-tools).
   const showPeople = section === 'actions' || ['partners', 'overview'].includes(view);
-  const showWeek = section === 'actions'; // Overview's week nav sits in its Goals section; the Scorecard has its own month switch
+  const showWeek = section === 'actions'; // the Goals section under Actions follows this week; the Scorecard has its own month switch
   const overview = section === 'dashboard' && view === 'overview';
   const title = liveWeek ? dayTitle(today, compact) : weekOf(weekStart);
   const exportRect = exportOpen && document.getElementById('sales-export-btn')?.getBoundingClientRect();
@@ -286,9 +276,8 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
           View only
         </Chip>
       )}
-      {overview && <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><span className="ui-group-label" aria-hidden="true">Range</span><Segmented label="Date range" items={RANGE_OPTIONS.map(([id, label]) => ({ id, label }))} value={range} onChange={setRange} /></div>}
-      {showPeople && <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}><span className="ui-group-label" aria-hidden="true">Who</span><Segmented label="Filter by person" items={people} value={ownerSlug} onChange={slug => { setOwnerSlug(slug); setCompanyOwnerFocus(null); }} /></div>}
-      {overview && <FilterSelect label="Team" value={team} options={TEAM_OPTIONS.map(([value, label]) => ({ value, label }))} onChange={setTeam} />}
+      {overview && <Segmented label="Period" items={PERIODS.map(([id, label]) => ({ id, label }))} value={period} onChange={setPeriod} />}
+      {showPeople && <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>{!overview && <span className="ui-group-label" aria-hidden="true">Who</span>}<Segmented label="Filter by person" items={people} value={ownerSlug} onChange={slug => { setOwnerSlug(slug); setCompanyOwnerFocus(null); }} /></div>}
       {showWeek && <>
         <Btn aria-label="Previous week" onClick={() => setWeekStart(w => addDays(w, -7))}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg>
@@ -332,17 +321,11 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
           {canEdit && <PlanNudge week={weekStart} ownerId={planOwner} ownerName={lookup(planOwner).first} plans={plans} onPlan={() => setPlanOpen(true)} />}
           <ActionsView businessId={businessId} canEdit={canEdit} meId={meId} owner={owner} members={members} lookup={lookup}
             onOpenFull={row => go(row.type === 'partner' ? { partners: { ids: [row.id], open: row.id, label: row.name } } : 'view:pipeline')} />
+          <GoalsSection businessId={businessId} weekStart={weekStart} members={ownerMember ? [ownerMember] : members} lookup={lookup} commitments={myCommitments} partners={partners} />
+          <TrackImprove businessId={businessId} canEdit={canEdit} />
         </>}
 
-        {overview && <>
-          <DashboardCharts businessId={businessId} days={range} owner={owner === 'team' ? null : owner} team={team || null} lookup={lookup} />
-          <TrackImprove businessId={businessId} canEdit={canEdit} />
-          <GoalsSection businessId={businessId} weekStart={weekStart} thisWeek={thisWeek} onWeek={setWeekStart} members={ownerMember ? [ownerMember] : members} lookup={lookup}
-            commitments={myCommitments} partners={partners}
-            hero={<GoalHero businessId={businessId} weekStart={weekStart} owner={owner} ownerName={owner === 'team' ? null : whoLabel} commitments={myCommitments} missingHeadcount={missingHeadcount} canEdit={canEdit}
-              scorecard={scorecard} scorecardError={errors.scorecard} onGoalSaved={() => { loadScorecard(); }} onDrill={drill}
-              openTasks={heroTasks} onOpenTasks={key => openTasks({ link: { type: 'metric', id: key }, filter: drawerFilter })} />} />
-        </>}
+        {overview && <HomeView businessId={businessId} period={period} owner={owner === 'team' ? null : owner} onOpenEmail={() => onNav('dashboard', 'analytics')} />}
 
         {section === 'dashboard' && view === 'sources' && <SourcesView businessId={businessId} partners={partners} isAdmin={isAdmin} canEdit={canEdit} members={members} meId={meId} onToast={setToast} />}
         {section === 'dashboard' && view === 'analytics' && analytics}
