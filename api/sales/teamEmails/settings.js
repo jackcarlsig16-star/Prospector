@@ -2,7 +2,8 @@ import { getSupabase } from '../goalsShared.js';
 import { hasRole } from '../../lib/requireAuth.js';
 import { getGrant, canSendTeamEmail } from '../../lib/microsoftGrants.js';
 import { KINDS, RECONNECT_NOTE, MAX_RECIPIENTS, EMAIL_RE, loadSettings, loadMembers, senderOf, sendTeamEmail, liveRecipients, recipientCounts, allowedDomains, domainOf } from './send.js';
-import { visitorEmailJob } from './jobs.js';
+import { visitorEmailJob, hlJobs, schedulerLine, VISITOR_EMAIL_JOB } from './jobs.js';
+import { schedulerState, laClock } from './scheduler.js';
 import { composeAlert, lookalikesOf, ALERT_COLS } from './clientAlert.js';
 
 // homelover-team-emails-v1 T2 (REV2) - Sales › Settings › Team emails. Reads: any member; every write: the owner.
@@ -40,6 +41,8 @@ export async function teamEmailState(supabase, businessId, userId, { isOwner = f
     domains, max: MAX_RECIPIENTS, counts: await recipientCounts(supabase, businessId, settings, grant), total: live.length,
     sends: sends.map(s => ({ id: s.id, at: s.created_at, kind: s.kind, test: s.test, recipients: s.recipients, status: s.status, error: s.error })),
     changes: changes.map(c => ({ ...c, undoable: !c.undone_at && c.action !== 'undo' && now - Date.parse(c.at) < UNDO_MS })),
+    // FIX visitor-email-top10-v1 V3c: this server process's scheduler (Render runs it; a local server.js never does).
+    scheduler: { on: !!schedulerState.boot_at, boot_at: schedulerState.boot_at, last_tick_at: schedulerState.last_tick_at, line: schedulerLine(hlJobs({})) },
   };
   if (isOwner) {
     const onList = new Set(live.map(r => lower(r.address)));
@@ -188,6 +191,20 @@ export async function sendTest(supabase, { businessId, body = {}, isOwner, deps 
   return reply(400, { error: `kind must be ${KINDS.join(' or ')}` });
 }
 
+// FIX visitor-email-top10-v1 V3b - "Send now" from Needs attention (owner / admin): today's visitor email to the list from
+// the stored data (no pull), through the same job; refused once today's slot says sent, so there is never a second copy.
+// The day's slot row records it (via: send_now).
+export async function sendNow(supabase, { businessId, isAdmin, deps, now = Date.now(), job = visitorEmailJob }) {
+  if (!isAdmin) return reply(403, { error: 'Only an owner or admin can send the visitor email now' });
+  const slot = `${laClock(now).date} 07:00`;
+  const row = must(await supabase.from('sales_job_slots').select('status, detail').eq('job', VISITOR_EMAIL_JOB).eq('scope', businessId).eq('slot', slot).maybeSingle());
+  if (row?.status === 'ok' && row.detail?.status === 'sent') return reply(409, { error: `Today's visitor email already went out to ${row.detail.recipients} recipient${row.detail.recipients === 1 ? '' : 's'}` });
+  const r = await job(supabase, businessId, { now, pull: null, deps });
+  const detail = { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, overall: r.overall ?? 0, via: 'send_now', ...(r.error ? { error: r.error } : {}), ...(r.reason ? { error: r.reason } : {}) };
+  must(await supabase.from('sales_job_slots').upsert({ job: VISITOR_EMAIL_JOB, scope: businessId, slot, status: r.status === 'sent' ? 'ok' : 'error', detail, finished_at: new Date(now).toISOString() }, { onConflict: 'job,scope,slot' }).select('job'));
+  return reply(200, { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, overall: r.overall ?? 0, ...(detail.error ? { error: detail.error } : {}) });
+}
+
 const run = fn => async (req, res) => {
   try { send(res, await fn(req)); }
   catch (e) { console.error('[team-emails]', e.message); res.status(500).json({ error: e.message }); }
@@ -200,3 +217,4 @@ export const editRecipientRoute = run(req => editRecipient(ctx(req).supabase, { 
 export const removeRecipientRoute = run(req => removeRecipient(ctx(req).supabase, { ...ctx(req), id: req.params.id }));
 export const undoChangeRoute = run(req => undoChange(ctx(req).supabase, { ...ctx(req), id: req.params.id }));
 export const sendTestRoute = run(req => sendTest(ctx(req).supabase, { ...ctx(req), body: req.body || {} }));
+export const sendNowRoute = run(req => sendNow(ctx(req).supabase, { ...ctx(req), isAdmin: hasRole(req, req.params.businessId, 'admin') }));

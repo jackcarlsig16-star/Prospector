@@ -181,6 +181,8 @@ export const goalsApi = {
   removeTeamRecipient: (id, rid) => call(id, `/team-emails/recipients/${rid}`, { method: 'DELETE' }),
   undoTeamEmailChange: (id, cid) => call(id, `/team-emails/changes/${cid}/undo`, { method: 'POST', body: {} }),
   teamEmailTest: (id, body) => call(id, '/team-emails/test', { method: 'POST', body }),
+  // FIX visitor-email-top10-v1 V3b: today's visitor email to the list, now (owner / admin; refused once it went out).
+  teamEmailSendNow: id => call(id, '/team-emails/send-now', { method: 'POST', body: {} }),
   makeClient: (id, body) => call(id, '/clients', { method: 'POST', body }),
   markClient: (id, oppId, to, body) => call(id, `/clients/${oppId}/${to}`, { method: 'POST', body }),
   undoClient: (id, eventId) => call(id, '/clients/undo', { method: 'POST', body: { event_id: eventId } }),

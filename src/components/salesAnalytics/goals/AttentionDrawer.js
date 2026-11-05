@@ -52,7 +52,8 @@ async function syncOutlook() {
 function SourceLine({ s, canEdit, isAdmin, busy, onRun }) {
   const [label, tone] = STATUS[s.status] || STATUS.ok;
   const [more, setMore] = useState(false);
-  const control = { apollo: 'Sync now', outlook: 'Sync Outlook', visitors: 'Pull now', tidy: 'Tidy now', headcount: isAdmin ? 'Fill headcounts' : null }[s.id];
+  // FIX visitor-email-top10-v1 V3b: Send now only on a missed / failed day (never a second copy of a sent one).
+  const control = { apollo: 'Sync now', outlook: 'Sync Outlook', visitors: 'Pull now', tidy: 'Tidy now', headcount: isAdmin ? 'Fill headcounts' : null, visitor_email: isAdmin && s.status === 'failed' ? 'Send now' : null }[s.id];
   const long = s.error && s.error.length > ERR_SHOWN;
   return (
     <li data-source={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 0', borderTop: `1px solid ${SA.track}` }}>
@@ -74,6 +75,7 @@ function SourceLine({ s, canEdit, isAdmin, busy, onRun }) {
           {isAdmin && s.status !== 'running' && <Button size="sm" variant="tertiary" disabled={busy} disabledReason="Working…" onClick={() => onRun('backfill')}>{busy ? 'Working…' : `Backfill ${BACKFILL_DAYS} days`}</Button>}
         </span>
       )}
+      {s.id === 'visitor_email' && s.line && <span data-visitor-email-line style={{ fontSize: 12, color: SA.soft }}>{s.line}</span>}
       {s.id === 'headcount' && (
         <span data-headcount-line style={{ fontSize: 12, color: SA.soft, ...numStyle, display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span>{s.line || 'No fill yet - the free paths run on first sight and on page load; Fill headcounts runs them all'}</span>
@@ -148,6 +150,10 @@ export default function AttentionDrawer({ businessId, canEdit, isAdmin = false, 
         return setNote(r.ran ? `Headcounts: ${r.line}${r.credits ? ` · ${r.credits} credits` : ' · 0 credits'}` : `Headcounts: ${r.reason}`);
       }
       else if (id === 'tidy') await goalsApi.runTidy(businessId, { force: true });
+      else if (id === 'visitor_email') {
+        const r = await goalsApi.teamEmailSendNow(businessId);
+        return setNote(`Visitor email: ${r.status === 'sent' ? `sent to ${r.recipients} recipient${r.recipients === 1 ? '' : 's'}` : `${r.status}${r.error ? ` — ${r.error}` : ''}`}`);
+      }
       setNote(`${data.sources.find(s => s.id === id).label}: done`);
     } catch (e) { setNote(`${data.sources.find(s => s.id === source).label}: ${e.message}`); }
     finally { setBusy(null); await load(true); }

@@ -1,12 +1,14 @@
 import { WEEKDAYS, EVERY_DAY, laClock } from './scheduler.js';
 import { getGrant } from '../../lib/microsoftGrants.js';
 import { sendTeamEmail, loadSettings, loadMembers, senderOf } from './send.js';
-import { loadVisitorData, buildVisitorEmail, periodFor } from './visitorEmail.js';
+import { loadVisitorData, loadRankedBook, buildVisitorEmail, last24 } from './visitorEmail.js';
 import { dueAlerts, sendClientAlert } from './clientAlert.js';
 
 // homelover-team-emails-v1 T3 - HomeLover's jobs. Times are LA wall clock (REVISABLE). apollo-sync is the 06:00 Apollo
 // sync moved off node-cron (its next-run drifted by an hour when the process stayed up across a DST change).
 export const PULL_TIMEOUT_MS = 5 * 60e3;
+export const EMAIL_CATCHUP_MIN = 300; // 07:00 -> 12:00 LA (REVISABLE, FIX visitor-email-top10-v1 V3a)
+export const VISITOR_EMAIL_JOB = 'team-visitor-email';
 const must = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const timeLabel = iso => new Date(iso).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 
@@ -51,12 +53,13 @@ export async function visitorEmailJob(supabase, businessId, { now = Date.now(), 
     const last = await lastGoodPull(supabase, businessId);
     pullNote = `Visitor pull failed at ${timeLabel(new Date(now).toISOString())} — numbers are from ${last ? timeLabel(last) : 'no earlier pull'}`;
   } else if (recompute) await recompute(supabase, businessId);
-  const date = laClock(now).date, { since, until } = periodFor(date);
+  // FIX visitor-email-top10-v1 V1: list A = the 24 hours before this send; list B = the ranked book right now.
+  const date = laClock(now).date, { since, until } = last24(now);
   const members = await loadMembers(supabase, businessId);
-  const companies = await loadVisitorData(supabase, businessId, { since, until: Math.max(until, now), members });
-  const mail = buildVisitorEmail(companies, { date, since, pullNote });
+  const [companies, overall] = await Promise.all([loadVisitorData(supabase, businessId, { since, until, members }), loadRankedBook(supabase, businessId, { now, members })]);
+  const mail = buildVisitorEmail(companies, { date, since, pullNote, overall });
   const sent = await sendTeamEmail(supabase, businessId, { kind: 'visitor', subject: mail.subject, html: mail.html, text: mail.text, slot: date, test }, deps);
-  return { ...sent, rows: mail.rows, more: mail.more, pull: p };
+  return { ...sent, rows: mail.rows, more: mail.more, overall: mail.overall, pull: p };
 }
 
 export async function clientAlertsJob(supabase, businessId, { now = Date.now(), deps } = {}) {
@@ -84,9 +87,11 @@ export function hlJobs(d) {
   return [
     { name: 'apollo-sync', at: '06:00', days: EVERY_DAY, scope: 'all', run: () => d.runApolloSync() },
     { name: 'visitor-pull', at: '06:30', days: WEEKDAYS, scope: 'team', run: ({ supabase, scope, now }) => cronPull(supabase, scope, { pull: d.pull, people: d.people, now }) },
-    { name: 'team-visitor-email', at: '07:00', days: WEEKDAYS, scope: 'team', run: async ({ supabase, scope, now }) => {
+    // FIX visitor-email-top10-v1 V3a: the email's catch-up runs until 12:00 LA (EMAIL_CATCHUP_MIN); past that the tick
+    // writes a 'missed' slot instead, so a late email never lands at 6 PM.
+    { name: 'team-visitor-email', at: '07:00', days: WEEKDAYS, scope: 'team', catchup_min: EMAIL_CATCHUP_MIN, run: async ({ supabase, scope, now }) => {
       const r = await visitorEmailJob(supabase, scope, { now, pull: d.pull, people: d.people, recompute: d.recompute, deps: d.deps });
-      return { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, pull_calls: r.pull?.calls ?? 0, pull_credits: r.pull?.credits ?? 0, people_credits: r.pull?.people?.credits ?? 0 };
+      return { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, overall: r.overall ?? 0, pull_calls: r.pull?.calls ?? 0, pull_credits: r.pull?.credits ?? 0, people_credits: r.pull?.people?.credits ?? 0 };
     } },
     { name: 'client-alerts', scope: 'team', run: ({ supabase, scope, now }) => clientAlertsJob(supabase, scope, { now, deps: d.deps }) },
   ];

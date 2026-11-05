@@ -9,6 +9,8 @@ import { dryRun as apolloDryRun } from './partnerApolloTouches.js';
 import { dryRun as outlookDryRun } from './partnerOutlookTouches.js';
 import { campaignActionRows } from './outreachRoutes.js';
 import { openTodosFor } from './openTodos.js';
+import { laClock } from './teamEmails/scheduler.js';
+import { EMAIL_CATCHUP_MIN, VISITOR_EMAIL_JOB } from './teamEmails/jobs.js';
 
 // actions-home-attention-v1 D3/D4 - GET goals/attention: one read for the
 // "Needs attention" drawer. Five sync sources, each { id, label, status, last_at,
@@ -25,7 +27,8 @@ import { openTodosFor } from './openTodos.js';
 // The two held-moves counts scan every stored Outlook message, so they are
 // kept per workspace for HELD_CACHE_MS; ?fresh=1 (the drawer opening) reads anew.
 
-export const SOURCES = [['apollo', 'Apollo (sequences, opens, replies)'], ['outlook', 'Outlook (mail + calendar)'], ['visitors', 'Website visitors'], ['headcount', 'Headcounts (Apollo)'], ['tidy', 'Tidy'], ['research', 'Research']];
+export const SOURCES = [['apollo', 'Apollo (sequences, opens, replies)'], ['outlook', 'Outlook (mail + calendar)'], ['visitors', 'Website visitors'], ['headcount', 'Headcounts (Apollo)'], ['tidy', 'Tidy'], ['research', 'Research'], ['visitor_email', 'Visitor email (weekdays 7:00 AM)']];
+const EMAIL_AT_MIN = 7 * 60;
 export const DAY_MS = 864e5;
 export const MORNING_HOUR = 10; // LA hour after which today's pull / Tidy should have run (REVISABLE)
 export const OUTLOOK_DEAD_MS = 30 * 60e3;
@@ -94,6 +97,29 @@ export function visitWindow(runs, companies, now) {
   };
 }
 
+// FIX visitor-email-top10-v1 V3b - the team visitor email: today's sales_job_slots row decides (sent = ok; a failed send
+// or a 'missed' row = failed, with the reason and Send now); no row after the catch-up window = missed; otherwise ok with
+// when it is due. Off in Settings = ok, said in words. slots = the job's rows, newest first.
+export function visitorEmailLine(settings, slots, now) {
+  const c = laClock(now);
+  const dayWord = new Date(now).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'America/Los_Angeles' });
+  if (!settings) return line('visitor_email', 'ok', null, null, { line: 'Not set up' });
+  if (!settings.visitor_on) return line('visitor_email', 'ok', null, null, { line: 'Off in Settings › Team emails' });
+  const sent = s => s.status === 'ok' && s.detail?.status === 'sent';
+  const lastOk = slots.find(sent);
+  const today = slots.find(s => s.slot === `${c.date} 07:00`);
+  if (today) {
+    if (sent(today)) return line('visitor_email', 'ok', today.finished_at, null, { line: `Sent ${dayWord} to ${today.detail.recipients} recipient${today.detail.recipients === 1 ? '' : 's'}` });
+    if (today.status === 'running') return line('visitor_email', 'running', today.claimed_at);
+    const why = today.detail?.missed ? `missed ${dayWord} — ${today.detail.reason}` : `${today.detail?.status || 'failed'} ${dayWord}${today.detail?.error ? ` — ${today.detail.error}` : ''}`;
+    return line('visitor_email', 'failed', today.finished_at || today.claimed_at, `Visitor email: ${why}`, { send_now: true });
+  }
+  const weekday = [1, 2, 3, 4, 5].includes(c.dow);
+  if (weekday && c.minutes >= EMAIL_AT_MIN + EMAIL_CATCHUP_MIN) return line('visitor_email', 'failed', lastOk?.finished_at || null, `Visitor email: missed ${dayWord} — no scheduler slot by 12:00`, { send_now: true });
+  const due = !weekday ? 'Next on a weekday at 7:00 AM' : c.minutes < EMAIL_AT_MIN ? 'Due at 7:00 AM' : 'Due — the scheduler catches up until noon';
+  return line('visitor_email', 'ok', lastOk?.finished_at || null, null, { line: due });
+}
+
 export function researchLine(runs, now) {
   const latest = runs[0];
   if (!latest) return line('research', 'ok');
@@ -138,7 +164,7 @@ export async function attention(supabase, { businessId, userId, fresh = false, n
   const at = new Date(now);
   const today = laDateString(at);
   const since = new Date(now - 7 * DAY_MS).toISOString();
-  const [syncRuns, grant, msRuns, allVisitRuns, tidyRuns, researchRuns, overdue, waiting, held, campaign, settings, parked, monthSpent] = await Promise.all([
+  const [syncRuns, grant, msRuns, allVisitRuns, tidyRuns, researchRuns, overdue, waiting, held, campaign, settings, parked, monthSpent, emailSettings, emailSlots] = await Promise.all([
     supabase.from('sales_sync_runs').select('status, started_at, finished_at, error_text, counts').eq('business_id', businessId).neq('trigger', 'test').order('started_at', { ascending: false }).limit(20).then(must),
     supabase.from('microsoft_grants').select('user_id, error').eq('user_id', userId).maybeSingle().then(must),
     supabase.from('microsoft_sync_runs').select('folder, started_at, finished_at, error').eq('user_id', userId).eq('dry_run', false).order('started_at', { ascending: false }).limit(6).then(must),
@@ -152,6 +178,8 @@ export async function attention(supabase, { businessId, userId, fresh = false, n
     supabase.from('sales_settings').select('visitor_filters, headcount_daily_credits').eq('business_id', businessId).maybeSingle().then(must),
     supabase.from('sales_people').select('id', { count: 'exact', head: true }).eq('business_id', businessId).eq('company_type', 'parked').is('archived_at', null).then(r => (r.error ? 0 : r.count || 0)),
     monthSpend(supabase, today.slice(0, 7)).catch(() => 0),
+    supabase.from('sales_team_email_settings').select('visitor_on').eq('business_id', businessId).maybeSingle().then(must),
+    supabase.from('sales_job_slots').select('slot, status, detail, claimed_at, finished_at').eq('job', VISITOR_EMAIL_JOB).eq('scope', businessId).order('slot', { ascending: false }).limit(10).then(must),
   ]);
   const peopleRuns = allVisitRuns.filter(r => r.kind === 'people');
   const visitRuns = allVisitRuns.filter(r => r.kind !== 'people');
@@ -164,6 +192,7 @@ export async function attention(supabase, { businessId, userId, fresh = false, n
     headcountLine(settings, monthSpent, MONTHLY_CREDIT_CAP),
     dailyLine('tidy', tidyRuns, { now, dateOf: r => laDateString(new Date(r.started_at)), startedOf: r => r.started_at, deadMs: TIDY_STALE_MS, errorOf: r => r.counts?.error }),
     researchLine(researchRuns, now),
+    visitorEmailLine(emailSettings, emailSlots, now),
   ];
   const counts = {
     overdue_todos: overdue.length, overdue_waiting: waiting.length, held_apollo: held.apollo, held_outlook: held.outlook,

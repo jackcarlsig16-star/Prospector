@@ -159,6 +159,12 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
       </div>
       {banner}
       {sender}
+      {data.scheduler && (
+        <span data-scheduler-line style={small}>
+          {data.scheduler.on ? `Scheduler: on since ${when(data.scheduler.boot_at)} · last tick ${data.scheduler.last_tick_at ? when(data.scheduler.last_tick_at) : 'not yet'} · ${data.scheduler.line}`
+            : `Scheduler: not running in this server process (Render runs it; its startup log line reads "HomeLover scheduler on: ${data.scheduler.line}")`}
+        </span>
+      )}
       <div>{['visitor', 'client'].map(emailRow)}</div>
       {!isOwner && <span style={small}>{n(data.total, 'address is', 'addresses are')} on the list.</span>}
       {recipients}

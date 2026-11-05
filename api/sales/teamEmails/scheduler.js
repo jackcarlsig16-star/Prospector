@@ -5,7 +5,15 @@ import { cleanText } from '../scrubText.js';
 // slot is "<LA date> <HH:MM>"; it is due from that minute until CATCHUP_MIN later (a restart or a sleep catches up), and
 // it runs only after its sales_job_slots row is inserted - the primary key turns a second instance or a second tick
 // into a 23505, so a slot never runs twice. Poll jobs (no at:) run every tick and claim their own work.
+// FIX visitor-email-top10-v1 V3a / V3c: a job may set its own catchup_min; once a timed slot's window has closed with no
+// row, the tick writes one 'error' row { missed, reason } (the primary key keeps it to one; a per-client set keeps the
+// insert from repeating every minute) so Needs attention can say "missed". schedulerState = this process's boot time
+// and last tick, for Settings › Team emails.
 export const CATCHUP_MIN = 120;
+export const MISSED_REASON = 'no scheduler tick between the slot time and the end of its catch-up window (the process was down or asleep)';
+export const schedulerState = { boot_at: null, last_tick_at: null, last_tick_ran: 0 };
+const catchupOf = j => j.catchup_min ?? CATCHUP_MIN;
+const marked = new WeakMap(); // supabase client -> Set of job|scope|slot already written as missed
 export const WEEKDAYS = [1, 2, 3, 4, 5];
 export const EVERY_DAY = [0, 1, 2, 3, 4, 5, 6];
 const DOW = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
@@ -20,8 +28,26 @@ const minutesOf = hm => { const [h, m] = hm.split(':').map(Number); return h * 6
 // The timed jobs due at this instant: [{ job, slot }].
 export function dueSlots(jobs, now = Date.now()) {
   const c = laClock(now);
-  return jobs.filter(j => j.at && j.days.includes(c.dow) && c.minutes >= minutesOf(j.at) && c.minutes - minutesOf(j.at) < CATCHUP_MIN)
+  return jobs.filter(j => j.at && j.days.includes(c.dow) && c.minutes >= minutesOf(j.at) && c.minutes - minutesOf(j.at) < catchupOf(j))
     .map(j => ({ job: j, slot: `${c.date} ${j.at}` }));
+}
+// The timed jobs whose window closed earlier today: [{ job, slot }].
+export function missedSlots(jobs, now = Date.now()) {
+  const c = laClock(now);
+  return jobs.filter(j => j.at && j.days.includes(c.dow) && c.minutes - minutesOf(j.at) >= catchupOf(j)).map(j => ({ job: j, slot: `${c.date} ${j.at}` }));
+}
+async function markMissed(supabase, jobs, scopes, now, log) {
+  const done = marked.get(supabase) || marked.set(supabase, new Set()).get(supabase);
+  for (const { job, slot } of missedSlots(jobs, now)) {
+    for (const scope of await scopes(job)) {
+      const key = `${job.name}|${scope}|${slot}`;
+      if (done.has(key)) continue;
+      done.add(key);
+      const r = await supabase.from('sales_job_slots').insert({ job: job.name, scope, slot, status: 'error', detail: { missed: true, reason: MISSED_REASON }, finished_at: new Date(now).toISOString() }).select('job');
+      if (r.error && r.error.code !== '23505') throw new Error(r.error.message);
+      if (!r.error) log(`[scheduler] ${job.name} ${slot} missed`);
+    }
+  }
 }
 
 // true = this caller owns the slot; false = someone already does.
@@ -53,17 +79,21 @@ export async function tick(supabase, { jobs, scopes, now = Date.now(), log = con
       }
     }
   }
+  await markMissed(supabase, jobs, scopes, now, log);
   for (const job of jobs.filter(j => !j.at)) {
     for (const scope of await scopes(job)) {
       try { await job.run({ supabase, scope, now }); }
       catch (e) { log(`[scheduler] ${job.name} failed: ${cleanText(String(e.message || e), 200)}`); }
     }
   }
+  schedulerState.last_tick_at = new Date(now).toISOString();
+  schedulerState.last_tick_ran = ran.length;
   return ran;
 }
 
 // Ticks at startup (the catch-up) and then on every LA minute boundary. Overlapping ticks are skipped, not queued.
 export function startScheduler(supabase, { jobs, scopes, log = console.log }) {
+  schedulerState.boot_at = new Date().toISOString();
   let busy = false;
   const run = async () => {
     if (busy) return;

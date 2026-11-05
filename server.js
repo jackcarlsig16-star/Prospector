@@ -917,6 +917,7 @@ app.patch('/api/sales/:businessId/goals/team-emails/recipients/:id', salesModule
 app.delete('/api/sales/:businessId/goals/team-emails/recipients/:id', salesModuleRoute(TEAM_EMAILS, 'removeRecipientRoute', 'goals/team-emails/recipients/:id DELETE'));
 app.post('/api/sales/:businessId/goals/team-emails/changes/:id/undo', salesModuleRoute(TEAM_EMAILS, 'undoChangeRoute', 'goals/team-emails/changes/:id/undo POST'));
 app.post('/api/sales/:businessId/goals/team-emails/test', salesModuleRoute(TEAM_EMAILS, 'sendTestRoute', 'goals/team-emails/test POST'));
+app.post('/api/sales/:businessId/goals/team-emails/send-now', salesModuleRoute(TEAM_EMAILS, 'sendNowRoute', 'goals/team-emails/send-now POST'));
 app.post('/api/sales/:businessId/goals/clients/:id/signed', salesModuleRoute('./api/sales/clients.js', 'markSignedRoute', 'goals/clients/:id/signed POST'));
 app.post('/api/sales/:businessId/goals/clients/:id/launched', salesModuleRoute('./api/sales/clients.js', 'markLaunchedRoute', 'goals/clients/:id/launched POST'));
 app.post('/api/sales/:businessId/goals/clients/:id/files/upload-url', salesModuleRoute('./api/sales/clientFiles.js', 'uploadUrlRoute', 'goals/clients/:id/files/upload-url POST'));
