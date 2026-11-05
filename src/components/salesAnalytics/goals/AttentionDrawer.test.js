@@ -184,3 +184,34 @@ test('headcounts: the line shows the last fill and the month-to-date spend; Fill
   expect(mrow.querySelector('[data-headcount-line]')).toHaveTextContent('5 headcounts filled');
   expect(within(mrow).queryByRole('button', { name: 'Fill headcounts' })).toBeNull();
 });
+
+// FIX visitor-email-top10-v1 V3b (+ follow-up): the Visitor email line - sent = the words, no button; missed OR failed =
+// Send now for an admin (the server's send_now flag), which posts and reports; a Member never gets the button.
+test('visitor email line: sent shows the words; missed and failed both offer Send now to an admin; a Member sees no button', async () => {
+  goalsApi.teamEmailSendNow = jest.fn().mockResolvedValue({ status: 'sent', recipients: 4, rows: 10 });
+  const ve = extra => src('visitor_email', 'Visitor email (weekdays 7:00 AM)', 'ok', extra);
+  const sent = ve({ line: 'Sent Thu to 4 recipients' });
+  const missed = ve({ status: 'failed', error: 'Visitor email: missed Thu — no scheduler tick', send_now: true });
+  const failed = ve({ status: 'failed', error: 'Visitor email: needs_reconnect Thu', send_now: true });
+  const open = async (line, props = {}) => {
+    goalsApi.attention.mockResolvedValue({ ...DATA, sources: [...SOURCES, line] });
+    const r = render(<AttentionDrawer businessId="b1" canEdit isAdmin compact={false} pageLoadFailures={{}} onNav={jest.fn()} {...props} />);
+    fireEvent.click(await screen.findByRole('button', { name: /^Needs attention/ }));
+    return { ...r, row: screen.getByRole('dialog').querySelector('[data-source="visitor_email"]') };
+  };
+  let o = await open(sent);
+  expect(o.row.querySelector('[data-visitor-email-line]')).toHaveTextContent('Sent Thu to 4 recipients');
+  expect(within(o.row).queryByRole('button', { name: 'Send now' })).toBeNull();
+  o.unmount();
+  o = await open(missed);
+  expect(o.row).toHaveTextContent('Visitor email: missed Thu');
+  fireEvent.click(within(o.row).getByRole('button', { name: 'Send now' }));
+  await waitFor(() => expect(goalsApi.teamEmailSendNow).toHaveBeenCalledWith('b1'));
+  expect(await screen.findByRole('status')).toHaveTextContent('Visitor email: sent to 4 recipients');
+  o.unmount();
+  o = await open(failed);
+  expect(within(o.row).getByRole('button', { name: 'Send now' })).toBeTruthy();
+  o.unmount();
+  o = await open(missed, { isAdmin: false });
+  expect(within(o.row).queryByRole('button', { name: 'Send now' })).toBeNull();
+});

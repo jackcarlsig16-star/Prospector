@@ -1,7 +1,7 @@
 import { WEEKDAYS, EVERY_DAY, laClock } from './scheduler.js';
 import { getGrant } from '../../lib/microsoftGrants.js';
 import { sendTeamEmail, loadSettings, loadMembers, senderOf } from './send.js';
-import { loadVisitorData, loadRankedBook, buildVisitorEmail, last24 } from './visitorEmail.js';
+import { loadVisitorData, loadRankedBook, buildVisitorEmail, periodFor } from './visitorEmail.js';
 import { dueAlerts, sendClientAlert } from './clientAlert.js';
 
 // homelover-team-emails-v1 T3 - HomeLover's jobs. Times are LA wall clock (REVISABLE). apollo-sync is the 06:00 Apollo
@@ -53,10 +53,10 @@ export async function visitorEmailJob(supabase, businessId, { now = Date.now(), 
     const last = await lastGoodPull(supabase, businessId);
     pullNote = `Visitor pull failed at ${timeLabel(new Date(now).toISOString())} — numbers are from ${last ? timeLabel(last) : 'no earlier pull'}`;
   } else if (recompute) await recompute(supabase, businessId);
-  // FIX visitor-email-top10-v1 V1: list A = the 24 hours before this send; list B = the ranked book right now.
-  const date = laClock(now).date, { since, until } = last24(now);
+  // FIX visitor-email-top10-v1 V1: list A = since the previous weekday's send; list B = the ranked book right now.
+  const date = laClock(now).date, { since, until } = periodFor(date);
   const members = await loadMembers(supabase, businessId);
-  const [companies, overall] = await Promise.all([loadVisitorData(supabase, businessId, { since, until, members }), loadRankedBook(supabase, businessId, { now, members })]);
+  const [companies, overall] = await Promise.all([loadVisitorData(supabase, businessId, { since, until: Math.max(until, now), members }), loadRankedBook(supabase, businessId, { now, members })]);
   const mail = buildVisitorEmail(companies, { date, since, pullNote, overall });
   const sent = await sendTeamEmail(supabase, businessId, { kind: 'visitor', subject: mail.subject, html: mail.html, text: mail.text, slot: date, test }, deps);
   return { ...sent, rows: mail.rows, more: mail.more, overall: mail.overall, pull: p };

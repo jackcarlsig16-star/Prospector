@@ -9,13 +9,14 @@ import { esc, shell, tiles, table, pill, dot, link, recordUrl, MAP_URL, VISITORS
 // it (people = a count + job titles). Band words carry no time words (P1..P4 keep their thresholds).
 // visitor-email-clarity: visits / visitors are Apollo's rolling 7-day counts and every label says so; Last touch is the
 // company panel's own (companyPanel.js lastTouchFor), read for the top 10 rows only.
-// FIX visitor-email-top10-v1 V1 - two ranked lists: A = the companies whose web_visits row changed in the 24 hours before
-// the send (last24; the loader below), B = the top TOP_N of the whole ranked book (loadRankedBook: the Map's order with
-// live / closed / duplicates / Deprioritized out) with ▲ ▼ against the last sales_company_score_days snapshot. A company
-// in both lists appears in both - that is the signal. The subject names the #1 overall.
+// FIX visitor-email-top10-v1 V1 - two ranked lists: A = the companies whose web_visits row changed since the previous
+// weekday send (periodFor: Monday reaches back to Friday 07:00, so weekend visitors appear - Jack's ruling on the
+// follow-up), B = the top TOP_N of the whole ranked book (loadRankedBook: the Map's order with live / closed /
+// duplicates / Deprioritized out) with ▲ ▼ against the last sales_company_score_days snapshot. A company in both lists
+// appears in both - that is the signal. The subject names the #1 overall.
 export const TOP_N = 10;
-export const DAY_MS = 864e5;
-export const last24 = (now = Date.now()) => ({ since: now - DAY_MS, until: now });
+const DAY_MS = 864e5;
+const weekdayOf = ms => new Date(ms).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'America/Los_Angeles' });
 const TREND = { up: '▲', down: '▼', flat: '–', new: 'new' };
 export const BANDS = ['P1', 'P2', 'P3', 'P4'];
 export const LEGEND = "Companies = organisations Apollo matched to site traffic. Visits / visitors = Apollo's rolling 7-day counts. Named = people Apollo identified by name — most visitors stay anonymous. New = first time this company appears.";
@@ -41,6 +42,13 @@ export function laInstant(date, hm) {
     if (c.date === date && c.hm === hm) return t;
   }
   throw new Error(`no LA instant for ${date} ${hm}`);
+}
+
+// The period an email at <LA date> 07:00 covers: since the previous weekday's 07:00 (Monday -> Friday's).
+export function periodFor(date, at = '07:00') {
+  let t = laInstant(date, at) - DAY_MS;
+  while (![1, 2, 3, 4, 5].includes(laClock(t).dow)) t -= DAY_MS;
+  return { since: laInstant(laClock(t).date, at), until: laInstant(date, at) };
 }
 
 // List B: the whole ranked book, the Map's order, top `top` rows with their trend since the last daily snapshot.
@@ -116,18 +124,18 @@ export async function loadVisitorData(supabase, businessId, { since, until, memb
 
 export const rankVisitors = companies => [...companies].sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || b.visits - a.visits || a.company.localeCompare(b.company));
 
-// -> { subject, html, text, rows, more, overall }. date = the LA date it is sent on; since = the start of the 24 h window;
+// -> { subject, html, text, rows, more, overall }. date = the LA date it is sent on; since = the previous weekday send (periodFor);
 // overall = loadRankedBook's result (list B); pullNote = the "Visitor pull failed …" line.
 export function buildVisitorEmail(companies, { date, since, pullNote = null, overall = null }) {
   const sorted = rankVisitors(companies);
   const bands = Object.fromEntries(BANDS.map(b => [b, sorted.filter(c => c.band === b).length]));
   const n = sorted.length, hot = bands.P1;
   const book = overall?.rows || [];
-  const head = `${dayLabel(date)} — ${plural(n, 'company', 'companies')} in the last 24 h, ${hot} hot`;
-  const subject = `Website visitors — ${dayLabel(date)}: ${n} in 24 h${book[0] ? ` · top overall: ${book[0].company}` : ''}`;
-  const sinceLine = `Companies Apollo identified on our site since ${timeLabel(since)} - the 24 hours before this email`;
+  const head = `${dayLabel(date)} — ${plural(n, 'company', 'companies')} since ${weekdayOf(since)}, ${hot} hot`;
+  const subject = `Website visitors — ${dayLabel(date)}: ${n} since ${weekdayOf(since)}${book[0] ? ` · top overall: ${book[0].company}` : ''}`;
+  const sinceLine = `Companies Apollo identified on our site since ${timeLabel(since)} (the previous weekday send)`;
   const top = sorted.slice(0, TOP_N), more = n - top.length;
-  const listA = `Top ${TOP_N} — last 24 hours`, listB = `Top ${TOP_N} — overall right now`;
+  const listA = `Top ${TOP_N} — since ${timeLabel(since)}`, listB = `Top ${TOP_N} — overall right now`;
   const bookLine = overall ? `The whole ranked book (${plural(overall.total, 'company', 'companies')}), the Map's order · ▲ ▼ since ${overall.prev_day ? dayLabel(overall.prev_day) : 'the last snapshot'}` : null;
   const trendText = c => (c.trend === 'new' ? 'new' : `${TREND[c.trend]}${c.prev_score != null && c.trend !== 'flat' ? ` ${c.prev_score}→${c.score}` : ''}`);
   const matched = t => sorted.filter(c => c.type === t).length;
@@ -142,7 +150,7 @@ export function buildVisitorEmail(companies, { date, since, pullNote = null, ove
   const detail = c => [c.titles.join(', ') || null, c.top_page].filter(Boolean).join(' · ');
   const inProspector = c => (c.type ? `${KIND_LABEL[c.type]}${c.stage ? ` · ${titleCase(c.stage)}` : ''}` : 'Not yet');
   const url = c => (c.type ? recordUrl(c.type, c.id) : VISITORS_URL);
-  const empty = `No identified visitors in the last 24 hours (since ${timeLabel(since)})`;
+  const empty = `No identified visitors since ${timeLabel(since)}`;
 
   const text = withFooter([
     'HomeLover · Website visitors', head, sinceLine, '',

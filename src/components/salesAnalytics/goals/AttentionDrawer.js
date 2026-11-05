@@ -52,8 +52,9 @@ async function syncOutlook() {
 function SourceLine({ s, canEdit, isAdmin, busy, onRun }) {
   const [label, tone] = STATUS[s.status] || STATUS.ok;
   const [more, setMore] = useState(false);
-  // FIX visitor-email-top10-v1 V3b: Send now only on a missed / failed day (never a second copy of a sent one).
-  const control = { apollo: 'Sync now', outlook: 'Sync Outlook', visitors: 'Pull now', tidy: 'Tidy now', headcount: isAdmin ? 'Fill headcounts' : null, visitor_email: isAdmin && s.status === 'failed' ? 'Send now' : null }[s.id];
+  // FIX visitor-email-top10-v1 V3b: Send now whenever the server says the day is missed or failed (s.send_now); the
+  // route still refuses once the day's email went out.
+  const control = { apollo: 'Sync now', outlook: 'Sync Outlook', visitors: 'Pull now', tidy: 'Tidy now', headcount: isAdmin ? 'Fill headcounts' : null, visitor_email: isAdmin && s.send_now ? 'Send now' : null }[s.id];
   const long = s.error && s.error.length > ERR_SHOWN;
   return (
     <li data-source={s.id} style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '10px 0', borderTop: `1px solid ${SA.track}` }}>
