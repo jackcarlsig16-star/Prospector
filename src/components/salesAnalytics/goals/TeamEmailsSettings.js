@@ -22,6 +22,7 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
   const [note, setNote] = useState(null); // { text, changeId? }
   const [clients, setClients] = useState([]);
   const [testClient, setTestClient] = useState('');
+  const [sendNow, setSendNow] = useState(null); // FIX visitor-email-top10-v1 follow-up: { step: 'ask' | 'again' | 'again2', sent_at?, recipients? }
   const undoTimer = useRef(null);
 
   const load = useCallback(() => goalsApi.teamEmails(businessId).then(d => { setData(d); setError(''); }).catch(e => setError(e.message)), [businessId]);
@@ -46,6 +47,9 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
     finally { setBusy(''); }
   };
   const undo = id => act('undo', () => goalsApi.undoTeamEmailChange(businessId, id), r => flash(`Undone · ${n(r.count, 'address', 'addresses')} on the list`));
+  // "Send to team now" (owner): ask the server whether today's went out, then one confirm - or, if it did, two.
+  const openSendNow = () => act('send-now-check', () => goalsApi.teamEmailSendNow(businessId, { check: true }), r => setSendNow(r.sent_today ? { step: 'again', sent_at: r.sent_at, recipients: r.recipients } : { step: 'ask' }));
+  const doSendNow = again => { setSendNow(null); act('send-now', () => goalsApi.teamEmailSendNow(businessId, again ? { again: true } : {}), r => flash(r.status === 'sent' ? `Sent to the team (${n(r.recipients, 'recipient', 'recipients')})${again ? ' - a second copy' : ''}` : `Not sent: ${STATUS_LABEL[r.status] || r.status}${r.error ? ` · ${r.error}` : ''}`)); };
 
   if (!data) return error ? <ErrorNote message={error} /> : <span style={small}>Loading…</span>;
   const isSender = data.sender?.user_id === meId;
@@ -90,11 +94,31 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
                 r => flash(r.status === 'sent' ? `Test sent to your mailbox (${n(r.recipients, 'recipient', 'recipients')})` : `Test not sent: ${STATUS_LABEL[r.status] || r.status}`))}>
               {busy === `test-${kind}` ? 'Sending…' : 'Send a test to me only'}
             </Btn>
+            {kind === 'visitor' && (
+              <Btn disabled={!!busy || !data.ready || !on} title="Today's visitor email to the whole recipient list, now" style={{ height: 36 }} onClick={openSendNow}>
+                {busy === 'send-now-check' || busy === 'send-now' ? 'Sending…' : 'Send to team now'}
+              </Btn>
+            )}
           </>
         ) : <span style={small}>{on ? 'On' : 'Off'}</span>}
       </div>
     );
   };
+  const sendNowDialog = sendNow && (
+    <div role="dialog" aria-label="Send to team now" data-send-now-dialog style={{ display: 'grid', gap: 10, padding: '12px 14px', borderRadius: 8, border: `1px solid ${SA.border}`, background: SA.inset }}>
+      <span style={{ fontSize: 14, color: SA.text }}>
+        {sendNow.step === 'ask' && `Send today's visitor email to ${n(data.counts.visitor.count, 'recipient', 'recipients')}?`}
+        {sendNow.step === 'again' && `Today's visitor email already went out at ${when(sendNow.sent_at)} to ${n(sendNow.recipients, 'recipient', 'recipients')}. Send again?`}
+        {sendNow.step === 'again2' && `This sends a second copy to ${n(data.counts.visitor.count, 'recipient', 'recipients')}. Are you sure?`}
+      </span>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {sendNow.step === 'ask' && <Btn primary style={{ height: 32 }} onClick={() => doSendNow(false)}>Send now</Btn>}
+        {sendNow.step === 'again' && <Btn style={{ height: 32 }} onClick={() => setSendNow({ ...sendNow, step: 'again2' })}>Send again</Btn>}
+        {sendNow.step === 'again2' && <Btn primary style={{ height: 32 }} onClick={() => doSendNow(true)}>Yes, send a second copy</Btn>}
+        <Btn style={{ height: 32 }} onClick={() => setSendNow(null)}>Cancel</Btn>
+      </div>
+    </div>
+  );
 
   const add = body => act('add', () => goalsApi.addTeamRecipient(businessId, body), r => { setAddress(''); flash(`Added · ${n(r.count, 'address', 'addresses')} on the list`, r.change_id); });
   const recipients = isOwner && (
@@ -166,6 +190,7 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
         </span>
       )}
       <div>{['visitor', 'client'].map(emailRow)}</div>
+      {sendNowDialog}
       {!isOwner && <span style={small}>{n(data.total, 'address is', 'addresses are')} on the list.</span>}
       {recipients}
       {note && (

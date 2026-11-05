@@ -3,7 +3,7 @@ import TeamEmailsSettings from './TeamEmailsSettings';
 import { goalsApi } from './goalsApi';
 import { connectMicrosoft } from '../../ConnectionsPage';
 
-jest.mock('./goalsApi', () => ({ goalsApi: { teamEmails: jest.fn(), clients: jest.fn(), updateTeamEmails: jest.fn(), addTeamRecipient: jest.fn(), editTeamRecipient: jest.fn(), removeTeamRecipient: jest.fn(), undoTeamEmailChange: jest.fn(), teamEmailTest: jest.fn() } }));
+jest.mock('./goalsApi', () => ({ goalsApi: { teamEmails: jest.fn(), clients: jest.fn(), updateTeamEmails: jest.fn(), addTeamRecipient: jest.fn(), editTeamRecipient: jest.fn(), removeTeamRecipient: jest.fn(), undoTeamEmailChange: jest.fn(), teamEmailTest: jest.fn(), teamEmailSendNow: jest.fn() } }));
 jest.mock('../../ConnectionsPage', () => ({ connectMicrosoft: jest.fn() }));
 
 // homelover-team-emails-v1 Stage 2 - the panel: owner edits, everyone else reads counts; Reconnect banner; Undo.
@@ -77,4 +77,49 @@ test('Reconnect banner: the sender gets the button; anyone else is told who must
   render(<TeamEmailsSettings businessId="b1" isOwner={false} meId="u-m" />);
   expect(await screen.findByRole('alert')).toHaveTextContent('Alex needs to reconnect Microsoft');
   expect(screen.queryByRole('button', { name: /Reconnect/ })).toBeNull();
+});
+
+// FIX visitor-email-top10-v1 follow-up: "Send to team now" (owner only) - one confirm; if today's went out, "Send again"
+// then an explicit second confirm; a Member never sees the button.
+test('Send to team now: owner only; confirm then send; already sent -> Send again -> second confirm -> again: true', async () => {
+  goalsApi.teamEmails.mockResolvedValue(owner);
+  goalsApi.teamEmailSendNow.mockImplementation(async (_id, body = {}) => (body.check ? { sent_today: false } : { status: 'sent', recipients: 2, rows: 3 }));
+  const { unmount } = render(<TeamEmailsSettings businessId="b1" isOwner meId="u-owner" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Send to team now' }));
+  expect(await screen.findByRole('dialog', { name: 'Send to team now' })).toHaveTextContent("Send today's visitor email to 2 recipients?");
+  fireEvent.click(screen.getByRole('button', { name: 'Send now' }));
+  await waitFor(() => expect(goalsApi.teamEmailSendNow).toHaveBeenCalledWith('b1', {}));
+  expect(await screen.findByText(/Sent to the team \(2 recipients\)/)).toBeInTheDocument();
+  expect(screen.queryByRole('dialog', { name: 'Send to team now' })).toBeNull();
+  unmount();
+  goalsApi.teamEmailSendNow.mockClear();
+  goalsApi.teamEmailSendNow.mockImplementation(async (_id, body = {}) => (body.check ? { sent_today: true, sent_at: '2026-11-05T15:00:06Z', recipients: 4 } : { status: 'sent', recipients: 4, rows: 10, again: true }));
+  render(<TeamEmailsSettings businessId="b1" isOwner meId="u-owner" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Send to team now' }));
+  const dlg = await screen.findByRole('dialog', { name: 'Send to team now' });
+  expect(dlg).toHaveTextContent(/already went out at .* to 4 recipients\. Send again\?/);
+  expect(screen.queryByRole('button', { name: 'Send now' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Send again' }));
+  expect(screen.getByRole('dialog', { name: 'Send to team now' })).toHaveTextContent('This sends a second copy to 2 recipients. Are you sure?');
+  expect(goalsApi.teamEmailSendNow).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Yes, send a second copy' }));
+  await waitFor(() => expect(goalsApi.teamEmailSendNow).toHaveBeenCalledWith('b1', { again: true }));
+  expect(await screen.findByText(/Sent to the team \(4 recipients\) - a second copy/)).toBeInTheDocument();
+});
+
+test('Send to team now: a Member never sees the button; Cancel closes the dialog without a send', async () => {
+  goalsApi.teamEmails.mockResolvedValue(base);
+  const { unmount } = render(<TeamEmailsSettings businessId="b1" isOwner={false} meId="u-m" />);
+  await screen.findByText('Team emails');
+  expect(screen.queryByRole('button', { name: 'Send to team now' })).toBeNull();
+  unmount();
+  goalsApi.teamEmails.mockResolvedValue(owner);
+  goalsApi.teamEmailSendNow.mockResolvedValue({ sent_today: false });
+  render(<TeamEmailsSettings businessId="b1" isOwner meId="u-owner" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Send to team now' }));
+  await screen.findByRole('dialog', { name: 'Send to team now' });
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.queryByRole('dialog', { name: 'Send to team now' })).toBeNull();
+  expect(goalsApi.teamEmailSendNow).toHaveBeenCalledTimes(1);
+  expect(goalsApi.teamEmailSendNow).toHaveBeenCalledWith('b1', { check: true });
 });

@@ -14,8 +14,13 @@ import { esc, shell, tiles, table, pill, dot, link, recordUrl, MAP_URL, VISITORS
 // follow-up), B = the top TOP_N of the whole ranked book (loadRankedBook: the Map's order with live / closed /
 // duplicates / Deprioritized out) with ▲ ▼ against the last sales_company_score_days snapshot. A company in both lists
 // appears in both - that is the signal. The subject names the #1 overall.
+// Follow-up addition (Jack): list A takes only companies that visited AND show real intent - a named person, 2+ pages,
+// 2+ unique visitors, or Warm or hotter - ranked buyer-title people first, then unique visitors, pages, intent score;
+// each row says why. Never padded: "4 qualified of 64 visited"; the rest sit in the "+n more visited" count only.
 export const TOP_N = 10;
 const DAY_MS = 864e5;
+export const qualifies = c => c.people >= 1 || c.pages >= 2 || c.visitors >= 2 || c.band === 'P1' || c.band === 'P2';
+export const GATE_WORDS = 'a named person, 2+ pages, 2+ visitors, or Warm or hotter';
 const weekdayOf = ms => new Date(ms).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'America/Los_Angeles' });
 const TREND = { up: '▲', down: '▼', flat: '–', new: 'new' };
 export const BANDS = ['P1', 'P2', 'P3', 'P4'];
@@ -86,6 +91,8 @@ export async function loadVisitorData(supabase, businessId, { since, until, memb
   const keys = visits.map(v => v.company_key);
   const seenBefore = keys.length ? new Set((await selectAllPages(() => supabase.from('web_visits').select('id, company_key').eq('business_id', businessId).in('company_key', keys).lt('created_at', sinceIso).order('id'))).map(r => r.company_key)) : new Set();
   const ids = t => [...new Set(visits.filter(v => v.matched_type === t && v.matched_id).map(v => v.matched_id))];
+  const buyerTitles = ((await supabase.from('sales_settings').select('buyer_titles').eq('business_id', businessId).maybeSingle()).data?.buyer_titles || []).map(b => String(b).toLowerCase());
+  const isBuyer = t => { const x = String(t || '').toLowerCase(); return !!x && buyerTitles.some(b => x.includes(b) || b.includes(x)); };
   const [opps, targets, partners, scores, people] = await Promise.all([
     ids('opportunity').length ? must(await supabase.from('sales_opportunities').select('id, organization, stage, owner_user_id, client_status').eq('business_id', businessId).in('id', ids('opportunity'))) : [],
     ids('target').length ? must(await supabase.from('sales_targets').select('id, name, status, owner_user_id').eq('business_id', businessId).in('id', ids('target'))) : [],
@@ -106,23 +113,30 @@ export async function loadVisitorData(supabase, businessId, { since, until, memb
     const s = type ? score.get(`${type}:${v.matched_id}`) : null;
     const r = type ? rec.get(v.matched_id) : null;
     const ppl = people.filter(p => p.visit_id === v.id);
+    const titles = [...new Set([...ppl.filter(p => isBuyer(p.title)), ...ppl].map(p => p.title).filter(Boolean))].slice(0, 3);
     return {
       company: v.company_name, type, id: v.matched_id || null, visit_id: v.id,
       score: s ? s.score : v.intent_score != null ? Math.round(Number(v.intent_score)) : null, band: s ? s.band : v.priority,
-      visits: v.visits_7d || 0, visitors: v.unique_visitors_7d || 0, people: ppl.length, titles: [...new Set(ppl.map(p => p.title).filter(Boolean))].slice(0, 3),
+      visits: v.visits_7d || 0, visitors: v.unique_visitors_7d || 0, people: ppl.length, buyers: ppl.filter(p => isBuyer(p.title)).length, titles,
+      pages: Array.isArray(v.top_paths) ? v.top_paths.length : 0,
       top_page: Array.isArray(v.top_paths) && v.top_paths[0] ? String(v.top_paths[0].path || v.top_paths[0]) : null,
       stage: r?.stage || null, owner: r?.owner ? nameOf.get(r.owner) || 'Unassigned' : 'Unassigned', owner_color: r?.owner ? colorOf.get(r.owner) || null : null,
       is_new: !seenBefore.has(v.company_key), last_touch_at: r?.last_touch_at || null,
     };
   });
-  await Promise.all(rankVisitors(out).slice(0, TOP_N).filter(c => c.type).map(async c => {
+  await Promise.all(rankVisitors(out.filter(qualifies)).slice(0, TOP_N).filter(c => c.type).map(async c => {
     const lt = await lastTouchFor(supabase, businessId, { type: c.type, id: c.id, last_touch_at: c.last_touch_at });
     c.last_touch = lt ? { at: lt.at, by: lt.by ? nameOf.get(lt.by) || null : null, what: TOUCH_WORD[lt.touch_type] || null } : null;
   }));
   return out.map(({ last_touch_at, ...c }) => c);
 }
 
-export const rankVisitors = companies => [...companies].sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || b.visits - a.visits || a.company.localeCompare(b.company));
+export const rankVisitors = companies => [...companies].sort((a, b) => (b.buyers || 0) - (a.buyers || 0) || (b.visitors || 0) - (a.visitors || 0) || (b.pages || 0) - (a.pages || 0) || (b.score ?? -1) - (a.score ?? -1) || a.company.localeCompare(b.company));
+// The row's why: "2 people (1 buyer) · VP HR · 4 pages · /pricing".
+export const whyOf = c => [
+  c.people ? `${plural(c.people, 'person', 'people')}${c.buyers ? ` (${plural(c.buyers, 'buyer', 'buyers')})` : ''}` : null,
+  ...(c.titles || []).slice(0, 2), c.pages >= 2 ? plural(c.pages, 'page', 'pages') : null, c.top_page,
+].filter(Boolean).join(' · ');
 
 // -> { subject, html, text, rows, more, overall }. date = the LA date it is sent on; since = the previous weekday send (periodFor);
 // overall = loadRankedBook's result (list B); pullNote = the "Visitor pull failed …" line.
@@ -130,12 +144,14 @@ export function buildVisitorEmail(companies, { date, since, pullNote = null, ove
   const sorted = rankVisitors(companies);
   const bands = Object.fromEntries(BANDS.map(b => [b, sorted.filter(c => c.band === b).length]));
   const n = sorted.length, hot = bands.P1;
+  const qualified = sorted.filter(qualifies), q = qualified.length;
   const book = overall?.rows || [];
-  const head = `${dayLabel(date)} — ${plural(n, 'company', 'companies')} since ${weekdayOf(since)}, ${hot} hot`;
-  const subject = `Website visitors — ${dayLabel(date)}: ${n} since ${weekdayOf(since)}${book[0] ? ` · top overall: ${book[0].company}` : ''}`;
+  const head = `${dayLabel(date)} — ${q} qualified of ${plural(n, 'company', 'companies')} since ${weekdayOf(since)}, ${hot} hot`;
+  const subject = `Website visitors — ${dayLabel(date)}: ${q} qualified · ${n} visited since ${weekdayOf(since)}${book[0] ? ` · top overall: ${book[0].company}` : ''}`;
   const sinceLine = `Companies Apollo identified on our site since ${timeLabel(since)} (the previous weekday send)`;
-  const top = sorted.slice(0, TOP_N), more = n - top.length;
-  const listA = `Top ${TOP_N} — since ${timeLabel(since)}`, listB = `Top ${TOP_N} — overall right now`;
+  const top = qualified.slice(0, TOP_N), more = n - top.length;
+  const listA = `Top ${TOP_N} — since ${timeLabel(since)} · ${q} qualified of ${n} visited`, listB = `Top ${TOP_N} — overall right now`;
+  const noneQualified = `No company cleared the bar (${GATE_WORDS}) - ${plural(n, 'company', 'companies')} visited`;
   const bookLine = overall ? `The whole ranked book (${plural(overall.total, 'company', 'companies')}), the Map's order · ▲ ▼ since ${overall.prev_day ? dayLabel(overall.prev_day) : 'the last snapshot'}` : null;
   const trendText = c => (c.trend === 'new' ? 'new' : `${TREND[c.trend]}${c.prev_score != null && c.trend !== 'flat' ? ` ${c.prev_score}→${c.score}` : ''}`);
   const matched = t => sorted.filter(c => c.type === t).length;
@@ -145,9 +161,10 @@ export function buildVisitorEmail(companies, { date, since, pullNote = null, ove
   const matchLine = `matched ${plural(matched('employer'), 'employer', 'employers')} · ${plural(matched('target'), 'target', 'targets')} · ${plural(matched('partner'), 'partner', 'partners')}`;
   const bandText = BANDS.map(b => `${BAND_WORD[b]} ${bands[b]}`).join(' · ');
   const intent = c => (c.band in BAND_WORD ? `${BAND_WORD[c.band]}${c.score != null ? ` ${c.score}` : ''}` : c.score != null ? String(c.score) : '—');
-  const who = c => [`${plural(c.visits, 'visit', 'visits')} (7 d)`, c.visitors ? plural(c.visitors, 'visitor', 'visitors') : null, c.people ? `${c.people.toLocaleString('en-US')} named` : null].filter(Boolean).join(' · ');
+  // The people count moved into the why (whyOf), so a row never says "1 named · 1 person".
+  const who = c => [`${plural(c.visits, 'visit', 'visits')} (7 d)`, c.visitors ? plural(c.visitors, 'visitor', 'visitors') : null].filter(Boolean).join(' · ');
   const touch = c => (!c.type ? '—' : c.last_touch?.at ? [shortDay(c.last_touch.at), c.last_touch.by, c.last_touch.what].filter(Boolean).join(' · ') : 'No touch yet');
-  const detail = c => [c.titles.join(', ') || null, c.top_page].filter(Boolean).join(' · ');
+  const detail = whyOf;
   const inProspector = c => (c.type ? `${KIND_LABEL[c.type]}${c.stage ? ` · ${titleCase(c.stage)}` : ''}` : 'Not yet');
   const url = c => (c.type ? recordUrl(c.type, c.id) : VISITORS_URL);
   const empty = `No identified visitors since ${timeLabel(since)}`;
@@ -156,9 +173,9 @@ export function buildVisitorEmail(companies, { date, since, pullNote = null, ove
     'HomeLover · Website visitors', head, sinceLine, '',
     ...(n ? [
       stat.map(([v, l]) => `${v} ${l}`).join(' · '), bandText, matchLine, '', listA,
-      ...top.map((c, i) => [`${i + 1}. ${c.company}${c.is_new ? ' [NEW]' : ''} — ${intent(c)}`, `   ${who(c)}${detail(c) ? ` · ${detail(c)}` : ''}`,
-        `   In Prospector: ${inProspector(c)}${c.type ? '' : ' · Add'} · Owner: ${c.owner} · Last touch: ${touch(c)}`, `   ${url(c)}`].join('\n')),
-      ...(more > 0 ? [`and ${more} more · open the Map → ${MAP_URL}`] : []),
+      ...(top.length ? top.map((c, i) => [`${i + 1}. ${c.company}${c.is_new ? ' [NEW]' : ''} — ${intent(c)}`, `   ${who(c)}${detail(c) ? ` · ${detail(c)}` : ''}`,
+        `   In Prospector: ${inProspector(c)}${c.type ? '' : ' · Add'} · Owner: ${c.owner} · Last touch: ${touch(c)}`, `   ${url(c)}`].join('\n')) : [noneQualified]),
+      ...(more > 0 ? [`and ${more} more visited · open the Map → ${MAP_URL}`] : []),
     ] : [empty]),
     ...(overall ? ['', listB, bookLine, ...(book.length ? book.map(c => [`${c.rank}. ${c.company} — ${intent(c)} · ${trendText(c)}`,
       `   In Prospector: ${inProspector(c)} · Owner: ${c.owner} · Last touch: ${touch(c)}`, `   ${url(c)}`].join('\n')) : ['No ranked companies yet'])] : []),
@@ -189,12 +206,12 @@ export function buildVisitorEmail(companies, { date, since, pullNote = null, ove
       `<div style="margin:0 0 6px">${BANDS.map(b => pill(`${BAND_WORD[b]} ${bands[b]}`, ...BAND_COLORS[b])).join(' ')}</div>`,
       `<div style="font-size:12px;color:${MUTED};margin:0 0 14px">${esc(matchLine)}</div>`,
       h3(listA),
-      table(['Company', 'Intent', 'Who visited', 'In Prospector', 'Owner', 'Last touch'], top.map(cell)),
-      ...(more > 0 ? [`<p style="margin:12px 0 0">and ${more} more · ${link(MAP_URL, 'open the Map →')}</p>`] : []),
+      top.length ? table(['Company', 'Intent', 'Who visited · why', 'In Prospector', 'Owner', 'Last touch'], top.map(cell)) : `<p style="color:${MUTED}">${esc(noneQualified)}</p>`,
+      ...(more > 0 ? [`<p style="margin:12px 0 0">and ${more} more visited · ${link(MAP_URL, 'open the Map →')}</p>`] : []),
     ] : [`<p>${esc(empty)}</p>`]),
     ...(overall ? [h3(listB, bookLine), book.length ? table(['Company', 'Intent', 'Trend', 'In Prospector', 'Owner', 'Last touch'], book.map(bookCell)) : `<p style="color:${MUTED}">No ranked companies yet</p>`] : []),
     ...(n || overall ? [`<p style="font-size:12px;color:${MUTED};margin:12px 0 0">${esc(LEGEND)}</p>`] : []),
   ].join('\n');
   const html = shell({ eyebrow: 'HomeLover · Website visitors', title: head, sub: sinceLine, body: body + (pullNote ? `\n<p style="color:${MUTED}"><i>${esc(pullNote)}</i></p>` : '') });
-  return { subject, html, text, rows: top.length, more: Math.max(0, more), overall: book.length };
+  return { subject, html, text, rows: top.length, qualified: q, visited: n, more: Math.max(0, more), overall: book.length };
 }

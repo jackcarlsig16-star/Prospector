@@ -191,18 +191,29 @@ export async function sendTest(supabase, { businessId, body = {}, isOwner, deps 
   return reply(400, { error: `kind must be ${KINDS.join(' or ')}` });
 }
 
-// FIX visitor-email-top10-v1 V3b - "Send now" from Needs attention (owner / admin): today's visitor email to the list from
-// the stored data (no pull), through the same job; refused once today's slot says sent, so there is never a second copy.
-// The day's slot row records it (via: send_now).
-export async function sendNow(supabase, { businessId, isAdmin, deps, now = Date.now(), job = visitorEmailJob }) {
+// FIX visitor-email-top10-v1 V3b - "Send now" (Needs attention, owner / admin) and "Send to team now" (Settings, owner):
+// today's visitor email to the list from the stored data (no pull), through the same job. { check: true } only answers
+// whether today's went out. Once it has, a plain call is refused (409); { again: true } (owner only - the explicit second
+// confirm) sends a second copy. The day's slot row records it: detail.manual = { by, name, at, status, recipients, again }
+// beside the scheduled fields, so the Needs attention line can say "Sent Thu 10:30 (manual, Jack)".
+export async function sendNow(supabase, { businessId, userId = null, isAdmin, isOwner = false, check = false, again = false, deps, now = Date.now(), job = visitorEmailJob }) {
   if (!isAdmin) return reply(403, { error: 'Only an owner or admin can send the visitor email now' });
+  if (again && !isOwner) return reply(403, { error: 'Only the owner can send a second copy' });
   const slot = `${laClock(now).date} 07:00`;
-  const row = must(await supabase.from('sales_job_slots').select('status, detail').eq('job', VISITOR_EMAIL_JOB).eq('scope', businessId).eq('slot', slot).maybeSingle());
-  if (row?.status === 'ok' && row.detail?.status === 'sent') return reply(409, { error: `Today's visitor email already went out to ${row.detail.recipients} recipient${row.detail.recipients === 1 ? '' : 's'}` });
+  const row = must(await supabase.from('sales_job_slots').select('status, detail, finished_at').eq('job', VISITOR_EMAIL_JOB).eq('scope', businessId).eq('slot', slot).maybeSingle());
+  const sentAlready = row?.status === 'ok' && row.detail?.status === 'sent';
+  const already = sentAlready ? { sent_at: row.detail.manual?.status === 'sent' ? row.detail.manual.at : row.finished_at, recipients: row.detail.manual?.status === 'sent' ? row.detail.manual.recipients : row.detail.recipients, manual: row.detail.manual || null } : null;
+  if (check) return reply(200, { sent_today: sentAlready, ...(already || {}) });
+  if (sentAlready && !again) return reply(409, { error: `Today's visitor email already went out to ${already.recipients} recipient${already.recipients === 1 ? '' : 's'}`, ...already });
+  const name = userId ? (await loadMembers(supabase, businessId)).find(m => m.userId === userId)?.firstName || null : null;
   const r = await job(supabase, businessId, { now, pull: null, deps });
-  const detail = { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, overall: r.overall ?? 0, via: 'send_now', ...(r.error ? { error: r.error } : {}), ...(r.reason ? { error: r.reason } : {}) };
-  must(await supabase.from('sales_job_slots').upsert({ job: VISITOR_EMAIL_JOB, scope: businessId, slot, status: r.status === 'sent' ? 'ok' : 'error', detail, finished_at: new Date(now).toISOString() }, { onConflict: 'job,scope,slot' }).select('job'));
-  return reply(200, { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, overall: r.overall ?? 0, ...(detail.error ? { error: detail.error } : {}) });
+  const error = r.error || r.reason || null;
+  const manual = { by: userId, name, at: new Date(now).toISOString(), status: r.status, recipients: r.recipients ?? 0, again: !!again, ...(error ? { error } : {}) };
+  const detail = sentAlready
+    ? { ...row.detail, manual }
+    : { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, overall: r.overall ?? 0, via: 'send_now', manual, ...(error ? { error } : {}) };
+  must(await supabase.from('sales_job_slots').upsert({ job: VISITOR_EMAIL_JOB, scope: businessId, slot, status: sentAlready || r.status === 'sent' ? 'ok' : 'error', detail, finished_at: new Date(now).toISOString() }, { onConflict: 'job,scope,slot' }).select('job'));
+  return reply(200, { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, overall: r.overall ?? 0, again: !!again, ...(error ? { error } : {}) });
 }
 
 const run = fn => async (req, res) => {
@@ -217,4 +228,4 @@ export const editRecipientRoute = run(req => editRecipient(ctx(req).supabase, { 
 export const removeRecipientRoute = run(req => removeRecipient(ctx(req).supabase, { ...ctx(req), id: req.params.id }));
 export const undoChangeRoute = run(req => undoChange(ctx(req).supabase, { ...ctx(req), id: req.params.id }));
 export const sendTestRoute = run(req => sendTest(ctx(req).supabase, { ...ctx(req), body: req.body || {} }));
-export const sendNowRoute = run(req => sendNow(ctx(req).supabase, { ...ctx(req), isAdmin: hasRole(req, req.params.businessId, 'admin') }));
+export const sendNowRoute = run(req => sendNow(ctx(req).supabase, { ...ctx(req), isAdmin: hasRole(req, req.params.businessId, 'admin'), check: req.body?.check === true, again: req.body?.again === true }));

@@ -109,6 +109,8 @@ export function visitorEmailLine(settings, slots, now) {
   const lastOk = slots.find(sent);
   const today = slots.find(s => s.slot === `${c.date} 07:00`);
   if (today) {
+    const m = today.detail?.manual;
+    if (m?.status === 'sent') return line('visitor_email', 'ok', m.at, null, { line: `Sent ${dayWord} ${new Date(m.at).toLocaleTimeString('en-US', { timeZone: 'America/Los_Angeles', hour: 'numeric', minute: '2-digit' })} (manual, ${m.name || 'a teammate'}) to ${m.recipients} recipient${m.recipients === 1 ? '' : 's'}` });
     if (sent(today)) return line('visitor_email', 'ok', today.finished_at, null, { line: `Sent ${dayWord} to ${today.detail.recipients} recipient${today.detail.recipients === 1 ? '' : 's'}` });
     if (today.status === 'running') return line('visitor_email', 'running', today.claimed_at);
     const why = today.detail?.missed ? `missed ${dayWord} — ${today.detail.reason}` : `${today.detail?.status || 'failed'} ${dayWord}${today.detail?.error ? ` — ${today.detail.error}` : ''}`;
