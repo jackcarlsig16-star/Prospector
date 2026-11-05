@@ -1,4 +1,4 @@
-import { getSupabase, addDays, laStartOfDayMs, validate, fail } from './goalsShared.js';
+import { getSupabase, laStartOfDayMs, validate, fail } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
 import { MONTHLY_CREDIT_CAP, monthSpend } from './visitPull.js';
@@ -66,23 +66,5 @@ export async function pulseRoute(req, res) {
       if (v.error) return fail(res, v);
     }
     res.json(await loadPulse(supabase, req.params.businessId, { period, owner: owner || null }));
-  } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
-}
-
-// GET goals/explorer - the Stage 3 Explorer's one read, stubbed to today's series: this week's days from the stored
-// daily counts (sent / delivered / replied by send date). Stage 3 fills in the layers, splits and 8-week range.
-export async function explorerRoute(req, res) {
-  const supabase = getSupabase();
-  try {
-    const today = laDateString();
-    const [{ from }] = windows('this_week', today).slice(-1);
-    const rows = await selectAllPages(() => supabase.from('sales_email_daily_counts').select('day, delivered, hard_bounced, spam_blocked, replied')
-      .eq('business_id', req.params.businessId).gte('day', from).lte('day', today).order('day').order('mailbox').order('sequence_id').order('step'));
-    const days = [];
-    for (let d = from; d <= today; d = addDays(d, 1)) {
-      const r = rows.filter(x => x.day === d);
-      days.push({ day: d, sent: r.reduce((n, x) => n + (x.delivered || 0) + (x.hard_bounced || 0) + (x.spam_blocked || 0), 0), delivered: r.reduce((n, x) => n + (x.delivered || 0), 0), replied: r.reduce((n, x) => n + (x.replied || 0), 0) });
-    }
-    res.json({ stub: 'Stage 3', today, from, by: 'day', series: days });
   } catch (e) { res.status(e.status || 500).json({ error: e.message }); }
 }

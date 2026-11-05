@@ -5,12 +5,14 @@ import { goalsApi } from './goalsApi';
 import { fetchInsights } from '../salesApi';
 import { RULE_IDS, APOLLO_MAILBOXES_URL, apolloSequenceUrl } from '../InsightsPanel';
 import { cardStyle, labelStyle, numStyle, ErrorNote, Chip, fmt } from './goalsUi';
+import ExplorerView from './ExplorerView';
 
 // dashboard-v3 Stage 2 - Dashboard › Home (specs/design/dashboard-v3/Dash.dc.html; the app's sidebar leaves the tiles
 // ~150 px, so the sparkline gets its own line under the delta instead of sitting beside it): the title line, PULSE (seven tiles
 // over GET goals/pulse - every digit is the route's, the delta and its direction too; this file only formats), INSIGHTS
-// (the top three of GET /insights by severity, one action each) and the Explorer's place, marked Stage 3 (its GET is
-// stubbed to today's series). Period and Who live in the frame row (GoalsTab); nothing here writes.
+// (the top three of GET /insights by severity, one action each) and the Explorer (ExplorerView over GET goals/explorer,
+// Stage 3: Sent · Human opens % · Visitors · Replies %, 8 weeks + this week, split Team). Period and Who live in the
+// frame row (GoalsTab); the Explorer's Save view is the only write here (Members).
 export const PERIODS = [['this_week', 'This week'], ['last_week', 'Last week'], ['4_weeks', '4 weeks'], ['month', 'Month'], ['90_days', '90 days']];
 export const DEFAULT_PERIOD = 'this_week';
 const VS = { this_week: 'vs last wk', last_week: 'vs wk before', '4_weeks': 'vs prior 4 wks', month: 'vs last month', '90_days': 'vs prior 90 d' };
@@ -150,12 +152,11 @@ function Insights({ data, error, syncedAgo, onOpenEmail }) {
   );
 }
 
-export default function HomeView({ businessId, period, owner, onOpenEmail }) {
+export default function HomeView({ businessId, period, owner, canEdit, onOpenEmail }) {
   const [pulse, setPulse] = useState(null);
   const [error, setError] = useState('');
   const [insights, setInsights] = useState(null);
   const [insightsError, setInsightsError] = useState('');
-  const [explorer, setExplorer] = useState(null);
   useEffect(() => {
     let live = true;
     setPulse(null); setError('');
@@ -165,7 +166,6 @@ export default function HomeView({ businessId, period, owner, onOpenEmail }) {
   useEffect(() => {
     let live = true;
     fetchInsights(businessId).then(d => { if (live) setInsights(d); }).catch(e => { if (live) setInsightsError(e.message); });
-    goalsApi.explorer(businessId).then(d => { if (live) setExplorer(d); }).catch(() => {});
     return () => { live = false; };
   }, [businessId]);
 
@@ -185,16 +185,7 @@ export default function HomeView({ businessId, period, owner, onOpenEmail }) {
         </div>
       )}
       <Insights data={insights} error={insightsError} syncedAgo={synced} onOpenEmail={onOpenEmail} />
-      <section aria-labelledby="h-explorer" data-explorer="stage-3" style={{ ...cardStyle, padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-          <h2 id="h-explorer" style={{ margin: 0, fontSize: 15, fontWeight: 600, color: SA.text }}>Explorer</h2>
-          <span style={{ fontSize: 12, color: SA.muted }}>one chart, your layers · 8 weeks + this week</span>
-        </div>
-        <div style={{ minHeight: 180, border: `1px dashed ${SA.borderStrong}`, borderRadius: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6, color: SA.muted, textAlign: 'center', padding: 16 }}>
-          <span style={{ ...labelStyle, color: SA.text }}>Stage 3</span>
-          <span style={{ fontSize: 12.5 }}>The Explorer lands in Stage 3. Its read, GET goals/explorer, is stubbed to today's series{explorer ? ` (${explorer.series.length} day${explorer.series.length === 1 ? '' : 's'} since ${md(explorer.from)})` : ''}.</span>
-        </div>
-      </section>
+      <ExplorerView businessId={businessId} canEdit={canEdit} context="home" />
     </div>
   );
 }

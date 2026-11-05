@@ -325,7 +325,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
           <TrackImprove businessId={businessId} canEdit={canEdit} />
         </>}
 
-        {overview && <HomeView businessId={businessId} period={period} owner={owner === 'team' ? null : owner} onOpenEmail={() => onNav('dashboard', 'analytics')} />}
+        {overview && <HomeView businessId={businessId} period={period} owner={owner === 'team' ? null : owner} canEdit={canEdit} onOpenEmail={() => onNav('dashboard', 'analytics')} />}
 
         {section === 'dashboard' && view === 'sources' && <SourcesView businessId={businessId} partners={partners} isAdmin={isAdmin} canEdit={canEdit} members={members} meId={meId} onToast={setToast} />}
         {section === 'dashboard' && view === 'analytics' && analytics}

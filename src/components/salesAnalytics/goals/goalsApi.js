@@ -109,9 +109,13 @@ export const goalsApi = {
   // sent | skip | stop | replied | status | pause | resume | promote | undo -> { contact, event? , record? }
   contactAction: (id, contactId, action, body = {}) => call(id, `/campaign-contacts/${contactId}/${action}`, { method: 'POST', body }),
   contactDraft: (id, contactId) => call(id, `/campaign-contacts/${contactId}/draft`),
-  // dashboard-v3 Stage 2 - Home's Pulse (one read per period / person) and the Explorer stub (Stage 3 fills it).
+  // dashboard-v3 Stage 2 - Home's Pulse (one read per period / person); Stage 3 - the Explorer's one read (layers,
+  // by, split; from / to default to 8 weeks + this week) and its saved views (kind 'explorer'; save / delete = Members).
   pulse: (id, { period, owner }) => call(id, `/pulse?${q({ period, owner })}`),
-  explorer: id => call(id, '/explorer'),
+  explorer: (id, { layers, by, split, from, to } = {}) => call(id, `/explorer?${q({ layers, by, split, from, to })}`),
+  explorerViews: id => call(id, '/explorer/views').then(d => d.views),
+  saveExplorerView: (id, body) => call(id, '/explorer/views', { method: 'POST', body }),
+  deleteExplorerView: (id, viewId) => call(id, `/explorer/views/${viewId}`, { method: 'DELETE' }).then(d => d.views),
   // signals-v1 Stage 4 - the daily website-visitor pull (Members) and its status (Viewers too).
   // FIX visit-window-v1 W2: backfillDays (owner/admin) asks Apollo for that many days regardless of history, once per LA day.
   visitPull: (id, { force = false, trigger = 'manual', backfillDays = null } = {}) => call(id, '/visits/pull', { method: 'POST', body: { force, trigger, ...(backfillDays != null ? { backfill_days: backfillDays } : {}) } }),

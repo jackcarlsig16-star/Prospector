@@ -1,5 +1,6 @@
 import { SA } from './theme';
 import { KIT_PRIORITY } from '../../ui/tokens';
+import { COHORT_COLORS } from '../../constants/cohortColors';
 // dashboard-v2 Stage 3 - single source of truth for every color this
 // feature uses. The same cohort is the same color in every widget, chart,
 // legend, and the PDF - nothing else computes its own color. Color is
@@ -22,15 +23,7 @@ import { KIT_PRIORITY } from '../../ui/tokens';
 // today, so it wasn't shown) - this is a GUESS in the same muted,
 // cool-leaning family as the rest, flagged for Jack to correct rather
 // than silently treated as final.
-export const COHORT_COLORS = {
-  Fitness: '#E07A5F',
-  Retail: '#6C9BD2',
-  'Car Rental': '#B39DDB',
-  SaaS: '#5FB3A8',
-  Wireless: '#D4B26A',
-  Other: '#7A8390',
-  Hospitality: '#8C8FD1', // GUESS - not in the mockup, flag back if wrong
-};
+export { COHORT_COLORS };
 
 // Base hex unchanged; the mockup applies this at 70% opacity wherever it
 // fills a shape (stacked-bar segments, chips) - that's a per-usage-site

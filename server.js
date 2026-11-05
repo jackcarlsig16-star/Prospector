@@ -938,9 +938,12 @@ app.post('/api/sales/:businessId/goals/campaigns/:id/:action', salesModuleRoute(
 app.get('/api/sales/:businessId/goals/campaign-contacts/:id/draft', salesModuleRoute('./api/sales/outreachRoutes.js', 'contactDraftRoute', 'goals/campaign-contacts/:id/draft'));
 app.post('/api/sales/:businessId/goals/campaign-contacts/:id/:action', salesModuleRoute('./api/sales/outreachRoutes.js', 'contactActionRoute', 'goals/campaign-contacts/:id/:action POST'));
 app.get('/api/sales/:businessId/goals/dashboard', salesModuleRoute('./api/sales/dashboardRoutes.js', 'dashboardRoute', 'goals/dashboard'));
-// dashboard-v3 Stage 2 - Home's Pulse (stored rows only) and the Explorer stub (Stage 3).
+// dashboard-v3 Stage 2 - Home's Pulse (stored rows only); Stage 3 - the Explorer's one read (5-min cache) + its saved views.
 app.get('/api/sales/:businessId/goals/pulse', salesModuleRoute('./api/sales/pulseRoutes.js', 'pulseRoute', 'goals/pulse'));
-app.get('/api/sales/:businessId/goals/explorer', salesModuleRoute('./api/sales/pulseRoutes.js', 'explorerRoute', 'goals/explorer'));
+app.get('/api/sales/:businessId/goals/explorer', salesModuleRoute('./api/sales/explorerRoutes.js', 'explorerRoute', 'goals/explorer'));
+app.get('/api/sales/:businessId/goals/explorer/views', salesModuleRoute('./api/sales/explorerRoutes.js', 'listExplorerViewsRoute', 'goals/explorer/views'));
+app.post('/api/sales/:businessId/goals/explorer/views', salesModuleRoute('./api/sales/explorerRoutes.js', 'saveExplorerViewRoute', 'goals/explorer/views POST'));
+app.delete('/api/sales/:businessId/goals/explorer/views/:id', salesModuleRoute('./api/sales/explorerRoutes.js', 'deleteExplorerViewRoute', 'goals/explorer/views/:id DELETE'));
 // call-notes-targets-v1 REV5 - Nudge a waiting-on item into our own to-do.
 app.post('/api/sales/:businessId/goals/waiting/:id/nudge', salesModuleRoute('./api/sales/waitingRoutes.js', 'nudgeWaitingRoute', 'goals/waiting/:id/nudge POST'));
 app.post('/api/sales/:businessId/goals/partners/:id/signal', salesModuleRoute('./api/sales/partnersRoutes.js', 'partnerSignalRoute', 'goals/partners/:id/signal POST'));

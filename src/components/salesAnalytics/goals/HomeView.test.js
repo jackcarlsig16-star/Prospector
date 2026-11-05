@@ -3,11 +3,13 @@ import HomeView, { tileValue, deltaOf, actionFor, topInsights, TILES } from './H
 import { goalsApi } from './goalsApi';
 import { fetchInsights } from '../salesApi';
 
-jest.mock('./goalsApi', () => ({ goalsApi: { pulse: jest.fn(), explorer: jest.fn() } }));
+jest.mock('./goalsApi', () => ({ goalsApi: { pulse: jest.fn() } }));
 jest.mock('../salesApi', () => ({ fetchInsights: jest.fn() }));
+// The Explorer has its own suite (ExplorerView.test.js); here it is a stand-in that reports what Home hands it.
+jest.mock('./ExplorerView', () => ({ __esModule: true, default: ({ canEdit, context }) => <section aria-label="Explorer" data-explorer={context} data-can-edit={String(!!canEdit)} /> }));
 
 // dashboard-v3 Stage 2 - Home over an invented pulse: every tile = the route's digit, deltas by direction, the top three
-// insights by severity with one action each, "Nothing to flag", the Explorer marked Stage 3, a Viewer sees no write control.
+// insights by severity with one action each, "Nothing to flag", the Explorer mounted with Home's context, a Viewer sees no write control.
 const m = (value, prev, series, extra = {}) => ({ value, prev, delta: value == null || prev == null ? null : value - prev, delta_pct: extra.kind === 'rate' || prev == null || prev === 0 || value == null ? null : (value - prev) / prev, series, kind: 'count', better: 'up', source: 'src', ...extra });
 const PULSE = {
   period: 'this_week', label: 'This week', today: '2026-11-05', owner: null, from: '2026-11-02', to: '2026-11-05', prev: { from: '2026-10-26', to: '2026-11-01' },
@@ -34,7 +36,6 @@ const INS = {
 };
 beforeEach(() => {
   goalsApi.pulse.mockResolvedValue(PULSE);
-  goalsApi.explorer.mockResolvedValue({ stub: 'Stage 3', from: '2026-11-02', series: [{ day: '2026-11-02' }, { day: '2026-11-03' }, { day: '2026-11-04' }, { day: '2026-11-05' }] });
   fetchInsights.mockResolvedValue(INS);
 });
 afterEach(() => jest.clearAllMocks());
@@ -66,9 +67,9 @@ test('top three by the route\'s order (severity); one action per rule: R1 pauses
   expect(actionFor(INS.insights[4], jest.fn())).toBeNull();
 });
 
-test('Home: the title line, seven tiles = the route\'s digits with their direction, the insights card (3 of 5, "All 5 in Email"), the Explorer marked Stage 3', async () => {
+test('Home: the title line, seven tiles = the route\'s digits with their direction, the insights card (3 of 5, "All 5 in Email"), the Explorer mounted for Home', async () => {
   const onOpenEmail = jest.fn();
-  render(<HomeView businessId="b1" period="this_week" owner={null} onOpenEmail={onOpenEmail} />);
+  render(<HomeView businessId="b1" period="this_week" owner={null} canEdit onOpenEmail={onOpenEmail} />);
   await screen.findByText('229');
   expect(goalsApi.pulse).toHaveBeenCalledWith('b1', { period: 'this_week', owner: null });
   expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('This week');
@@ -98,25 +99,25 @@ test('Home: the title line, seven tiles = the route\'s digits with their directi
   fireEvent.click(within(card).getByRole('button', { name: 'All 5 in Email →' }));
   expect(onOpenEmail).toHaveBeenCalledTimes(2);
   const explorer = screen.getByRole('region', { name: 'Explorer' });
-  expect(explorer).toHaveAttribute('data-explorer', 'stage-3');
-  await waitFor(() => expect(explorer).toHaveTextContent('Stage 3'));
-  expect(explorer).toHaveTextContent('stubbed to today\'s series (4 days since Nov 2)');
+  expect(explorer).toHaveAttribute('data-explorer', 'home');
+  expect(explorer).toHaveAttribute('data-can-edit', 'true');
   expect(screen.queryByRole('button', { name: /Dismiss/ })).toBeNull();
 });
 
 test('a period change re-reads the pulse with that period and the person; "Nothing to flag" when no rule fired; no write controls (a Viewer sees the same)', async () => {
   fetchInsights.mockResolvedValue({ insights: [], dismissed: [], not_enough_data: ['R1 x', 'R2 y'], computed_at: '2026-11-05T17:00:00Z' });
-  const { rerender } = render(<HomeView businessId="b1" period="this_week" owner={null} onOpenEmail={jest.fn()} />);
+  const { rerender } = render(<HomeView businessId="b1" period="this_week" owner={null} canEdit={false} onOpenEmail={jest.fn()} />);
   await screen.findByText('229');
   expect(await screen.findByText('Nothing to flag')).toBeInTheDocument();
   expect(screen.getByText('10 rules ran on the synced data · 2 waiting for more data')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /in Email/ })).toBeNull();
   goalsApi.pulse.mockResolvedValue({ ...PULSE, period: 'month', label: 'This month', from: '2026-11-01' });
-  rerender(<HomeView businessId="b1" period="month" owner="u-jack" onOpenEmail={jest.fn()} />);
+  rerender(<HomeView businessId="b1" period="month" owner="u-jack" canEdit={false} onOpenEmail={jest.fn()} />);
   await waitFor(() => expect(goalsApi.pulse).toHaveBeenLastCalledWith('b1', { period: 'month', owner: 'u-jack' }));
   await screen.findByText('Nov 1 – Nov 5', { exact: false });
   expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('This month');
   // Every control on Home reads: the only buttons are the two Email links (none here) - nothing posts.
   expect(screen.queryAllByRole('button')).toHaveLength(0);
   expect(screen.queryByRole('textbox')).toBeNull();
+  expect(screen.getByRole('region', { name: 'Explorer' })).toHaveAttribute('data-can-edit', 'false');
 });

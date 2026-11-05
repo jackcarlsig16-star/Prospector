@@ -162,12 +162,20 @@ export async function scoreOfRoute(req, res) {
   catch (e) { res.status(500).json({ error: e.message }); }
 }
 
-// S5 saved views: sales_settings.saved_views = [{ id, name, filters, y, view, created_by, created_at }] (<= 30).
+// S5 saved views: sales_settings.saved_views = [{ id, name, filters, y, view, created_by, created_at }] (<= 30 in all).
+// dashboard-v3 Stage 3: the Explorer keeps its views in the same array with kind: 'explorer' (explorerRoutes.js); the
+// Map's are the entries without a kind. readAllViews / writeAllViews carry every kind so neither screen drops the other's.
 export const SAVED_VIEWS_MAX = 30;
 const VIEW_KEYS = ['segment', 'owner', 'source', 'band', 'needs_touch', 'min', 'window', 'q'];
-export async function listViews(supabase, businessId) {
+export async function readAllViews(supabase, businessId) {
   const s = must(await supabase.from('sales_settings').select('saved_views').eq('business_id', businessId).maybeSingle());
-  return reply(200, { views: Array.isArray(s?.saved_views) ? s.saved_views : [] });
+  return Array.isArray(s?.saved_views) ? s.saved_views : [];
+}
+export async function writeAllViews(supabase, businessId, views, now = Date.now()) {
+  must(await supabase.from('sales_settings').upsert({ business_id: businessId, saved_views: views, updated_at: new Date(now).toISOString() }, { onConflict: 'business_id' }).select('business_id'));
+}
+export async function listViews(supabase, businessId) {
+  return reply(200, { views: (await readAllViews(supabase, businessId)).filter(v => !v.kind) });
 }
 export async function saveView(supabase, { businessId, userId, body = {}, now = Date.now() }) {
   const name = cleanText(String(body.name || ''), 60);
@@ -175,19 +183,20 @@ export async function saveView(supabase, { businessId, userId, body = {}, now = 
   const filters = Object.fromEntries(VIEW_KEYS.filter(k => body.filters && body.filters[k] != null && body.filters[k] !== '').map(k => [k, Array.isArray(body.filters[k]) ? body.filters[k].map(String).slice(0, 9) : typeof body.filters[k] === 'boolean' ? body.filters[k] : cleanText(String(body.filters[k]), 80)]));
   const y = ['intent', 'size', 'activity'].includes(body.y) ? body.y : 'intent';
   const view = ['dots', 'bars', 'table'].includes(body.view) ? body.view : 'dots';
-  const cur = (await listViews(supabase, businessId)).body.views;
-  if (cur.length >= SAVED_VIEWS_MAX && !cur.some(v => v.name === name)) return reply(409, { error: `At most ${SAVED_VIEWS_MAX} saved views - delete one first` });
+  const all = await readAllViews(supabase, businessId);
+  const cur = all.filter(v => !v.kind);
+  if (all.length >= SAVED_VIEWS_MAX && !cur.some(v => v.name === name)) return reply(409, { error: `At most ${SAVED_VIEWS_MAX} saved views - delete one first` });
   const entry = { id: cur.find(v => v.name === name)?.id || `v_${Math.random().toString(36).slice(2, 10)}`, name, filters, y, view, created_by: userId, created_at: new Date(now).toISOString() };
-  const views = [...cur.filter(v => v.name !== name), entry];
-  must(await supabase.from('sales_settings').upsert({ business_id: businessId, saved_views: views, updated_at: new Date(now).toISOString() }, { onConflict: 'business_id' }).select('business_id'));
-  return reply(201, { view: entry, views });
+  const views = [...all.filter(v => v.kind || v.name !== name), entry];
+  await writeAllViews(supabase, businessId, views, now);
+  return reply(201, { view: entry, views: views.filter(v => !v.kind) });
 }
 export async function deleteView(supabase, { businessId, id, now = Date.now() }) {
-  const cur = (await listViews(supabase, businessId)).body.views;
-  if (!cur.some(v => v.id === id)) return reply(404, { error: 'view not found' });
-  const views = cur.filter(v => v.id !== id);
-  must(await supabase.from('sales_settings').update({ saved_views: views, updated_at: new Date(now).toISOString() }).eq('business_id', businessId).select('business_id'));
-  return reply(200, { views });
+  const all = await readAllViews(supabase, businessId);
+  if (!all.some(v => !v.kind && v.id === id)) return reply(404, { error: 'view not found' });
+  const views = all.filter(v => v.id !== id);
+  await writeAllViews(supabase, businessId, views, now);
+  return reply(200, { views: views.filter(v => !v.kind) });
 }
 export async function listViewsRoute(req, res) { try { send(res, await listViews(getSupabase(), req.params.businessId)); } catch (e) { res.status(500).json({ error: e.message }); } }
 export async function saveViewRoute(req, res) { try { send(res, await saveView(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, body: req.body })); } catch (e) { res.status(500).json({ error: e.message }); } }
