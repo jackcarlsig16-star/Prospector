@@ -1,4 +1,4 @@
-import { getSupabase, laStartOfDayMs, validate, fail } from './goalsShared.js';
+import { getSupabase, laStartOfDayMs, laMonday, validate, fail } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
 import { MONTHLY_CREDIT_CAP, monthSpend } from './visitPull.js';
@@ -15,13 +15,18 @@ import { mailboxConnectionProblem } from '../../src/utils/mailboxStatus.js';
 const must = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const monthStart = d => `${d.slice(0, 7)}-01`;
 
-async function monthGoal(supabase, businessId, today) {
-  const { data, error } = await supabase.from('sales_metric_targets').select('period_start, goal, unit')
-    .eq('business_id', businessId).eq('period', 'month').eq('metric_key', 'partners_first_touched').lte('period_start', monthStart(today)).not('goal', 'is', null)
-    .order('period_start', { ascending: false }).limit(1);
-  if (error) throw new Error(error.message);
-  const row = data[0];
-  return row ? { goal: Number(row.goal), unit: row.unit || 'people', carried: row.period_start !== monthStart(today) } : null;
+// The month goal, or - Stage 5 - the latest week goal on or before this Monday carried forward, the Scorecard's rule
+// (goalsReportRoutes firstTouchedGoals): the goal Jack typed in October is a week row, and Home read "8" without its
+// "/100" until this fallback.
+export async function monthGoal(supabase, businessId, today) {
+  const latest = async (period, start) => {
+    const { data, error } = await supabase.from('sales_metric_targets').select('period_start, goal, unit')
+      .eq('business_id', businessId).eq('period', period).eq('metric_key', 'partners_first_touched').lte('period_start', start).not('goal', 'is', null)
+      .order('period_start', { ascending: false }).limit(1);
+    if (error) throw new Error(error.message);
+    return data[0] ? { goal: Number(data[0].goal), unit: data[0].unit || 'people', carried: data[0].period_start !== start } : null;
+  };
+  return (await latest('month', monthStart(today))) || latest('week', laMonday(today));
 }
 
 async function lastSync(supabase, businessId) {

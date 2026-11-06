@@ -18,9 +18,11 @@ import { DEFAULTS, cleanState, readPrefs, writePrefs, fmtValue, heightPx, chipGl
 // this period shaded; last value labelled at the line end; hover = a card with every ON series' value; click = pin.
 // Save view (name -> sales_settings.saved_views, kind 'explorer') and Share (PNG of the card via html2canvas from the
 // CDN + the CSV) are Members'; a Viewer sees neither. Threshold band behind a delivery layer: good < 2 %, concerning ≥ 5 %.
+// Stage 5: the layer chips are the kit's dense chips and the controls the dense Segmented, so each row is ONE line
+// at 1440 (the sidebar leaves the card 1,100 px); a phone wraps the chips and scrolls the controls.
 const HTML2CANVAS = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
 const HEIGHT_ICON = { compact: <IconHeightCompact />, standard: <IconHeightStandard />, tall: <IconHeightTall /> };
-const lbl = text => <span className="ui-group-label" aria-hidden="true" style={{ width: 56, flex: 'none' }}>{text}</span>;
+const lbl = text => <span className="ui-group-label" aria-hidden="true" style={{ width: 44, flex: 'none' }}>{text}</span>;
 const row = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 };
 const GRID = 'rgba(120,130,144,.16)', SHADE = 'rgba(120,130,144,.08)';
 function loadHtml2canvas() {
@@ -161,28 +163,31 @@ export default function ExplorerView({ businessId, canEdit, context = 'home', de
         <h2 id="h-explorer" style={{ margin: 0, fontSize: 15, fontWeight: 600, color: SA.text }}>Explorer</h2>
         <span style={{ fontSize: 12, color: SA.muted }}>{sub}{data?.cached_at ? ' · cached' : ''}</span>
       </div>
-      <div role="group" aria-label="Layers" style={{ ...row, gap: 6 }}>
+      <div role="group" aria-label="Layers" style={{ ...row, gap: 5 }}>
         {lbl('Layers')}
         {LAYER_IDS.map(id => {
           const L = LAYERS[id];
           const note = data?.notes?.[id] || L.sub;
           return (
-            <ToggleChip key={id} data-layer-chip={id} pressed={layers.includes(id)} title={`${layers.includes(id) ? 'Hide' : 'Show'} ${L.label}`} onClick={() => toggleLayer(id)}>
+            <ToggleChip key={id} className="ui-chip--dense" data-layer-chip={id} pressed={layers.includes(id)} title={`${layers.includes(id) ? 'Hide' : 'Show'} ${L.label}`} onClick={() => toggleLayer(id)}>
               <i aria-hidden="true" style={{ display: 'inline-block', borderRadius: 2, background: L.color, boxShadow: '0 0 0 1px rgba(11,13,16,.45)', ...(chipGlyph(id) === 'square' ? { width: 10, height: 10 } : { width: 12, height: 2 }) }} />
-              {L.label}{note && <span style={{ fontWeight: 400, opacity: 0.85 }}>{note}</span>}
+              {L.label}{note && <span style={{ fontWeight: 400, opacity: 0.85, fontSize: 11.5 }}>{note}</span>}
             </ToggleChip>
           );
         })}
       </div>
-      <div className="no-print" data-html2canvas-ignore="true" data-explorer-controls style={{ ...row, gap: 10, ...(phone ? { flexWrap: 'nowrap', overflowX: 'auto', paddingBottom: 4 } : {}) }}>
-        {lbl('Show')}<Segmented label="Show" items={SHOWS.map(([id, label]) => ({ id, label }))} value={show} onChange={v => set({ show: v })} />
-        <span className="ui-group-label" aria-hidden="true">By</span><Segmented label="By" items={BY.map(([id, label]) => ({ id, label }))} value={by} onChange={v => set({ by: v })} />
-        <span className="ui-group-label" aria-hidden="true">Split</span><Segmented label="Split" items={SPLITS.map(([id, label]) => ({ id, label }))} value={split} onChange={v => set({ split: v })} />
-        <span className="ui-group-label" aria-hidden="true">Height</span><Segmented label="Chart height" items={HEIGHTS.map(([id, label, px]) => ({ id, label: '', icon: HEIGHT_ICON[id], ariaLabel: `${label}, ${px}px`, title: `${label} · ${px} px` }))} value={height} onChange={v => set({ height: v })} />
-        <span style={{ flex: 1 }} />
-        {views.length > 0 && <FilterSelect label="Saved view" value="" options={[{ value: '', label: 'Saved views' }, ...views.map(v => ({ value: v.id, label: v.name }))]} onChange={id => { const v = views.find(x => x.id === id); if (v) applyView(v); }} />}
-        {canEdit && <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm" aria-expanded={saveOpen} onClick={() => setSaveOpen(o => !o)}>Save view</button>}
-        {canEdit && <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm" disabled={busy === 'share' || !data} onClick={share} title="Download this chart as a PNG and its numbers as a CSV">{busy === 'share' ? 'Sharing…' : 'Share'}</button>}
+      <div className="no-print" data-html2canvas-ignore="true" data-explorer-controls style={{ ...row, gap: 8, ...(phone ? { flexWrap: 'nowrap', overflowX: 'auto', paddingBottom: 4 } : {}) }}>
+        {lbl('Show')}<Segmented dense label="Show" items={SHOWS.map(([id, label]) => ({ id, label }))} value={show} onChange={v => set({ show: v })} />
+        <span className="ui-group-label" aria-hidden="true">By</span><Segmented dense label="By" items={BY.map(([id, label]) => ({ id, label }))} value={by} onChange={v => set({ by: v })} />
+        <span className="ui-group-label" aria-hidden="true">Split</span><Segmented dense label="Split" items={SPLITS.map(([id, label]) => ({ id, label }))} value={split} onChange={v => set({ split: v })} />
+        <span className="ui-group-label" aria-hidden="true">Height</span><Segmented dense label="Chart height" items={HEIGHTS.map(([id, label, px]) => ({ id, label: '', icon: HEIGHT_ICON[id], ariaLabel: `${label}, ${px}px`, title: `${label} · ${px} px` }))} value={height} onChange={v => set({ height: v })} />
+        {(views.length > 0 || canEdit) && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: phone ? 0 : 'auto' }}>
+            {views.length > 0 && <FilterSelect label="Saved view" value="" options={[{ value: '', label: 'Saved views' }, ...views.map(v => ({ value: v.id, label: v.name }))]} onChange={id => { const v = views.find(x => x.id === id); if (v) applyView(v); }} />}
+            {canEdit && <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm" aria-expanded={saveOpen} onClick={() => setSaveOpen(o => !o)}>Save view</button>}
+            {canEdit && <button type="button" className="ui-btn ui-btn--secondary ui-btn--sm" disabled={busy === 'share' || !data} onClick={share} title="Download this chart as a PNG and its numbers as a CSV">{busy === 'share' ? 'Sharing…' : 'Share'}</button>}
+          </div>
+        )}
       </div>
       {saveOpen && canEdit && (
         <form data-save-form onSubmit={saveView} className="no-print" data-html2canvas-ignore="true" style={{ ...row, padding: '8px 10px', background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: 10 }}>

@@ -10,7 +10,7 @@ import { KIT_DARK, KIT_LIGHT, KIT_RADIUS, KIT_SEGMENTED, KIT_SUBTAB, KIT_FILTER_
 //      .ui-tabs--sub second level (companies-v2 C1): icon + word, 2 px accent underline on the active tab only, one rule
 //                    under the row, no box; scrolls inside itself when narrow
 //   R2 .ui-seg__btn  pressed = solid text-colour fill + ground text; unpressed = border edge
-//   R3 .ui-chip      toggle chip: border edge off, accent fill on; counts in tabular numbers
+//   R3 .ui-chip      toggle chip: border edge off, accent fill on; counts in tabular numbers; --dense = 26 px (dashboard-v3 Explorer)
 //   R4 .ui-filter    labelled select that shows its value; .ui-chip--active = accent-outlined chip with x
 //      .ui-filter--pill  one piece (companies-v2 C3): muted label, value, caret; accent edge when not the default
 //   R5 .ui-tag       status chip: filled wash + dot + label, no border, no hover, no pointer
@@ -78,9 +78,11 @@ body.mode-straight-shooter, .ui-theme-light { ${vars(KIT_LIGHT)} }
 .ui-seg__btn:hover:not([aria-pressed="true"]) { color:var(--ui-text); border-color:var(--ui-control); }
 .ui-seg__btn[aria-pressed="true"] { background:var(--ui-text); border-color:var(--ui-text); color:var(--ui-ground); }
 .ui-seg__btn:focus-visible { outline:2px solid var(--ui-accent); outline-offset:2px; }
+.ui-seg--dense .ui-seg__btn { padding:0 8px; }
 .ui-seg__meta { color:var(--ui-muted); font-variant-numeric:tabular-nums; }
 .ui-seg__btn[aria-pressed="true"] .ui-seg__meta { color:inherit; }
 .ui-chip { display:inline-flex; align-items:center; gap:6px; flex:none; box-sizing:border-box; height:28px; padding:0 10px; border-radius:${KIT_RADIUS.pill}px; border:1px solid var(--ui-border); background:transparent; color:var(--ui-text); font:500 13px ${SANS}; cursor:pointer; white-space:nowrap; transition:background .12s, color .12s, border-color .12s; }
+.ui-chip--dense { height:26px; padding:0 6px; gap:4px; font-size:12.5px; }
 .ui-chip:hover:not(:disabled) { border-color:var(--ui-control); }
 .ui-chip[aria-pressed="true"] { background:var(--ui-accent); border-color:var(--ui-accent); color:var(--ui-onAccent); }
 .ui-chip__count { color:var(--ui-muted); font-variant-numeric:tabular-nums; min-width:2ch; text-align:right; }

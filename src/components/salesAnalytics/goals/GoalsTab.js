@@ -69,7 +69,7 @@ export function homeOf(target) {
 
 // initialTarget: a link from the Huddle or Analytics ({ target }, new object
 // per click) - same targets as go() below.
-export default function GoalsTab({ businessId, section, view, onNav, onOpenOverview, onOpenHuddle, initialTarget, pipelineTarget = null, analytics, pageLoadFailures }) {
+export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddle, initialTarget, pipelineTarget = null, analytics, pageLoadFailures }) {
   const compact = useMediaQuery('(max-width: 1099px)');
   const [weekStart, setWeekStart] = useState(() => laWeekStart());
   // null until the first choice: actions-v2 REV2 A1 defaults it to the signed-in Member (Team for a Viewer).
@@ -176,7 +176,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
     if (target.companies) { setWeekStart(target.companies); return onNav(home.tab, home.view); }
     const [kind, arg] = target.split(/:(.*)/);
     if (kind === 'huddle') return onOpenHuddle && onOpenHuddle(null, !arg ? null : arg === 'flags' ? { flags: true } : { feed: arg === 'feed' ? null : arg });
-    if (kind === 'overview') return onOpenOverview && onOpenOverview(arg);
     if (target === 'plan') setPlanOpen(true);
     if (target === 'view:partners') setPartnerFocus({});
     if (target === 'week:prev') setWeekStart(w => addDays(w, -7));
@@ -272,7 +271,8 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
           <TrackImprove businessId={businessId} canEdit={canEdit} />
         </>}
 
-        {overview && <HomeView businessId={businessId} period={period} owner={owner === 'team' ? null : owner} canEdit={canEdit} onOpenEmail={() => onNav('dashboard', 'analytics')} />}
+        {overview && <HomeView businessId={businessId} period={period} owner={owner === 'team' ? null : owner} canEdit={canEdit} lookup={lookup}
+          onOpenEmail={() => onNav('dashboard', 'analytics')} onOpenMap={() => onNav('pipeline', 'priorities')} onOpenActions={() => onNav('actions', null)} />}
 
         {section === 'dashboard' && view === 'sources' && <SourcesView businessId={businessId} partners={partners} isAdmin={isAdmin} canEdit={canEdit} members={members} meId={meId} onToast={setToast} />}
         {section === 'dashboard' && view === 'analytics' && analytics}

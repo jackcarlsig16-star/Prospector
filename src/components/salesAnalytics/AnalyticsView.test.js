@@ -3,8 +3,7 @@ import AnalyticsView, { EMAIL_TILES } from './AnalyticsView';
 import { goalsApi } from './goals/goalsApi';
 import { fetchInsights, fetchEntities, fetchMetrics, fetchSequenceSteps, fetchRuns, triggerSync } from './salesApi';
 
-jest.mock('./salesApi', () => ({ fetchInsights: jest.fn(), fetchEntities: jest.fn(), fetchMetrics: jest.fn(), fetchSequenceSteps: jest.fn(), fetchRuns: jest.fn(), fetchCohortBreakdown: jest.fn(), triggerSync: jest.fn(), dismissInsight: jest.fn(), setSequenceAudience: jest.fn() }));
-jest.mock('./pipelineApi', () => ({ fetchOpportunities: jest.fn(() => Promise.resolve([])) }));
+jest.mock('./salesApi', () => ({ fetchInsights: jest.fn(), fetchEntities: jest.fn(), fetchMetrics: jest.fn(), fetchSequenceSteps: jest.fn(), fetchRuns: jest.fn(), triggerSync: jest.fn(), dismissInsight: jest.fn(), setSequenceAudience: jest.fn() }));
 jest.mock('./goals/goalsApi', () => ({ goalsApi: { pulse: jest.fn() } }));
 jest.mock('./goals/ExplorerView', () => ({ __esModule: true, default: ({ context, defaults }) => <section aria-label="Explorer" data-explorer={context} data-defaults={JSON.stringify(defaults)} /> }));
 jest.mock('../../utils/useMediaQuery', () => () => false);
@@ -39,7 +38,7 @@ beforeEach(() => {
 afterEach(() => jest.clearAllMocks());
 
 test('Member: tools, title line, seven tiles = the route\'s digits with bounce down = good, Explorer email defaults, WHY + Mailboxes + Sequences; Period re-reads; Sync now runs the existing sync', async () => {
-  render(<AnalyticsView businessId="b1" features={{ goals_sales: true }} canEdit />);
+  render(<AnalyticsView businessId="b1" canEdit />);
   await screen.findByText('229');
   expect(goalsApi.pulse).toHaveBeenCalledWith('b1', { period: 'this_week', scope: 'email' });
   const slot = document.getElementById('sales-frame-tools');
@@ -71,7 +70,7 @@ test('Member: tools, title line, seven tiles = the route\'s digits with bounce d
 });
 
 test('a Viewer gets Period and Export but no Sync now', async () => {
-  render(<AnalyticsView businessId="b1" features={{ goals_sales: true }} canEdit={false} />);
+  render(<AnalyticsView businessId="b1" canEdit={false} />);
   await screen.findByText('229');
   const slot = document.getElementById('sales-frame-tools');
   expect(within(slot).queryByRole('button', { name: 'Sync now' })).toBeNull();

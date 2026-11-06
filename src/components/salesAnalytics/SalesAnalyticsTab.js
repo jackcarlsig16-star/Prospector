@@ -60,22 +60,6 @@ const PRINT_STYLES = `
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     @page { size: landscape letter; margin: 0.4in; }
   }
-  /* overview-home-v1 - the week strip: 7 tiles in one row wherever the
-     card is wide enough (the sidebar leaves ~1100px at 1440), 2 columns at
-     phone width, 7 across on the landscape print page. */
-  .sa-strip { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
-  @media (min-width: 1200px), print { .sa-strip { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
-  @media print {
-    /* overview-home-v1 - bands print in printOrder (widgets.registry.js):
-       the widget list becomes a flex column only under print so CSS order
-       applies (on screen it is block flow, where order does nothing); a
-       widget flagged printPage starts a new page, so each band gets its
-       own. Deltas print in text ink: the arrow carries the direction, and
-       the status green/red sit under 3:1 on white. */
-    .sa-widget-list { display: flex; flex-direction: column; }
-    .sa-band-start { break-before: page; page-break-before: always; }
-    .sa-delta { color: var(--sa-text) !important; }
-  }
 `;
 
 // sales-ia-v2 N1/N2 - Sales & Marketing: Sales = Dashboard · Pipeline ·
@@ -90,7 +74,7 @@ const PRINT_STYLES = `
 
 const SUB_VIEW_ICON = { companies: IconTable, clients: IconCheck, priorities: IconMap, people: IconPeople, partners: IconFlow, campaigns: IconMegaphone, overview: IconHome, analytics: IconMail, scorecard: IconScorecard, sources: IconSource, 'team-emails': IconMail };
 
-export default function SalesAnalyticsTab({ businessId, features }) {
+export default function SalesAnalyticsTab({ businessId }) {
   const [tab, setTab] = useState(() => readNav().tab);
   const phone = useMediaQuery('(max-width: 760px)');
   const [views, setViews] = useState(() => { const n = readNav(); return { ...DEFAULT_VIEW, ...(n.view ? { [n.tab]: n.view } : {}) }; });
@@ -99,7 +83,6 @@ export default function SalesAnalyticsTab({ businessId, features }) {
   useEffect(() => { setTabsSlot(document.getElementById('workspace-header-tabs')); }, []);
   const [huddleFocus, setHuddleFocus] = useState(null);
   const [huddleTarget, setHuddleTarget] = useState(null); // { feed } | { flags } from a Goals number
-  const [overviewFocus, setOverviewFocus] = useState(null); // widget id a Goals number opens
   const [goalsTarget, setGoalsTarget] = useState(null); // { target } a Huddle / Analytics number opens in Goals
   const [pipelineTarget, setPipelineTarget] = useState(null); // { key, section, n } a record the header "+" added (one-plus-button-v1)
   const [me, setMe] = useState(null);
@@ -150,7 +133,6 @@ export default function SalesAnalyticsTab({ businessId, features }) {
     return () => window.removeEventListener(OPEN_GOALS_TARGET, open);
   }, [openGoals]);
   const openHuddle = target => { setHuddleFocus(null); setHuddleTarget(target ? { ...target } : null); nav('pipeline', 'people'); };
-  const clearFocus = useCallback(() => setOverviewFocus(null), []);
   const canEdit = !!me && (me.profile?.is_platform_owner || roleAtLeast(me.memberships?.find(m => m.business_id === businessId)?.role, 'member'));
 
   // call-notes-targets-v1 Stage 3 - Tidy runs once per LA day on a Member's
@@ -235,9 +217,8 @@ export default function SalesAnalyticsTab({ businessId, features }) {
       {people
         ? <DailyHuddle businessId={businessId} focusContactId={huddleFocus} onFocused={() => setHuddleFocus(null)} focusTarget={huddleTarget} onOpenGoals={openGoals} />
         : <GoalsTab businessId={businessId} section={tab} view={view} onNav={nav} initialTarget={goalsTarget} pipelineTarget={pipelineTarget} pageLoadFailures={pageLoadFailures}
-            onOpenOverview={widget => { setOverviewFocus(widget || null); nav('dashboard', 'analytics'); }}
             onOpenHuddle={(contactId, target) => { setHuddleFocus(contactId); setHuddleTarget(target ? { ...target } : null); nav('pipeline', 'people'); }}
-            analytics={<AnalyticsView businessId={businessId} features={features} canEdit={canEdit} onOpenGoals={openGoals} onOpenHuddle={openHuddle} focusWidget={overviewFocus} onFocused={clearFocus} />} />}
+            analytics={<AnalyticsView businessId={businessId} canEdit={canEdit} />} />}
       </div>
     </div>
   );

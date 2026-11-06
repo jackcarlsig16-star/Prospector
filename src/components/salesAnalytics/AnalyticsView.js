@@ -3,9 +3,7 @@ import useMediaQuery from '../../utils/useMediaQuery';
 import { createPortal } from 'react-dom';
 import { SA, SA_SHAPE, SA_THEME_ROOT_ID } from './theme';
 import { FRAME_TOOLS_ID } from './salesFrame';
-import { visibleWidgets } from './widgets.registry';
-import { fetchMetrics, fetchRuns, fetchEntities, fetchCohortBreakdown, fetchInsights, fetchSequenceSteps, triggerSync } from './salesApi';
-import { fetchOpportunities } from './pipelineApi';
+import { fetchMetrics, fetchRuns, fetchEntities, fetchInsights, fetchSequenceSteps, triggerSync } from './salesApi';
 import { laDateString } from './periods';
 import { goalsApi } from './goals/goalsApi';
 import Segmented from '../../ui/Segmented';
@@ -23,7 +21,7 @@ import { flashTo, ErrorNote, Btn } from './goals/goalsUi';
 // Delivered · Hard bounce (down = good) · Spam blocks (down = good) · Human opens · Replies · Meetings. EXPLORER with
 // the email defaults (six delivery layers, 9 weeks, split Mailbox, tall; the band draws because hard bounce / spam are
 // on). WHY (1.6fr) = every live insight as a compact row + Dismissed ▾; MAILBOXES (1fr) = the pulse's tiles; SEQUENCES =
-// the DataTable with per-step rows. The pipeline widgets stay for a workspace without goals_sales (registry; Stage 5).
+// the DataTable with per-step rows. Stage 5 dropped the widget registry: HomeLover is the only Sales workspace.
 const EMAIL_LAYERS = ['sent', 'delivered_rate', 'hard_bounce_rate', 'spam_rate', 'human_open_rate', 'reply_rate'];
 const EXPLORER_DEFAULTS = { layers: EMAIL_LAYERS, show: 'lines', by: 'week', split: 'mailbox', height: 'tall' };
 const fmt = n => (n == null ? '—' : Number(n).toLocaleString('en-US'));
@@ -40,7 +38,7 @@ export const EMAIL_TILES = [
 const relativeTime = iso => agoOf(iso) || 'never';
 const addDays = (d, n) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
 
-export default function AnalyticsView({ businessId, features, canEdit, focusWidget, onFocused }) {
+export default function AnalyticsView({ businessId, canEdit }) {
   const narrow = useMediaQuery('(max-width: 899px)');
   const [period, setPeriod] = useState(DEFAULT_PERIOD);
   const [pulse, setPulse] = useState(null);
@@ -50,7 +48,6 @@ export default function AnalyticsView({ businessId, features, canEdit, focusWidg
   const [allRows, setAllRows] = useState([]);
   const [steps, setSteps] = useState(null);
   const [runs, setRuns] = useState([]);
-  const [extra, setExtra] = useState({ cohortBreakdown: {}, opportunities: [] });
   const [error, setError] = useState('');
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState('');
@@ -58,7 +55,6 @@ export default function AnalyticsView({ businessId, features, canEdit, focusWidg
   const [toolsSlot, setToolsSlot] = useState(null);
   const exportMenuRef = useRef(null);
   useEffect(() => { setToolsSlot(document.getElementById(FRAME_TOOLS_ID)); }, []);
-  const widgets = visibleWidgets(features);
 
   const loadPulse = useCallback(() => {
     setPulseError('');
@@ -69,19 +65,15 @@ export default function AnalyticsView({ businessId, features, canEdit, focusWidg
     setError('');
     try {
       const today = laDateString();
-      const [latestInsights, latestEntities, metrics, latestSteps, latestRuns, breakdown, opps] = await Promise.all([
+      const [latestInsights, latestEntities, metrics, latestSteps, latestRuns] = await Promise.all([
         fetchInsights(businessId).catch(e => ({ error: e.message, insights: [], not_enough_data: [], dismissed: [] })),
         fetchEntities(businessId),
         fetchMetrics(businessId, addDays(today, -14), today),
         fetchSequenceSteps(businessId),
         fetchRuns(businessId, 5),
-        widgets.length ? fetchCohortBreakdown(businessId) : Promise.resolve({ breakdown: {} }),
-        widgets.length ? fetchOpportunities(businessId) : Promise.resolve([]),
       ]);
       setInsights(latestInsights); setEntities(latestEntities); setAllRows(metrics); setSteps(latestSteps); setRuns(latestRuns);
-      setExtra({ cohortBreakdown: breakdown.breakdown || {}, opportunities: opps });
     } catch (e) { setError(e.message); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [businessId]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => {
@@ -90,11 +82,6 @@ export default function AnalyticsView({ businessId, features, canEdit, focusWidg
     document.addEventListener('mousedown', onClick);
     return () => document.removeEventListener('mousedown', onClick);
   }, [exportMenuOpen]);
-  useEffect(() => {
-    if (!focusWidget) return undefined;
-    const t = setTimeout(() => { flashTo(`sa-widget-${focusWidget}`); onFocused?.(); }, 150);
-    return () => clearTimeout(t);
-  }, [focusWidget, onFocused]);
 
   const reloadInsights = useCallback(async () => { setInsights(await fetchInsights(businessId)); }, [businessId]);
   const handleSync = async () => {
@@ -146,12 +133,6 @@ export default function AnalyticsView({ businessId, features, canEdit, focusWidg
         <div id="sa-widget-sequence_leaderboard" style={{ ...card }}>
           <SequenceLeaderboard businessId={businessId} allRows={allRows} entities={entities} steps={steps} canEdit={canEdit} onDataChanged={load} />
         </div>
-        {widgets.map(w => (
-          <div key={w.id} id={`sa-widget-${w.id}`} className="print-avoid-break" style={{ ...card }}>
-            <h2 style={{ margin: '0 0 12px', fontSize: 15, fontWeight: 600, color: SA.text }}>{w.title}</h2>
-            <w.component businessId={businessId} allRows={allRows} periodRows={allRows} prevPeriodRows={[]} period={pulse ? { from: pulse.from, to: pulse.to } : null} prevPeriod={pulse?.prev || null} preset={period} compareEnabled={false} entities={entities} cohortBreakdown={extra.cohortBreakdown} opportunities={extra.opportunities} canEdit={canEdit} widgetId={w.id} />
-          </div>
-        ))}
       </div>
     </div>
   );

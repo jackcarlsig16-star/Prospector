@@ -16,12 +16,15 @@ const allRows = [
   ...counters('s2', { delivered: 316, opened: 121, replied: 4, bounced: 124 }),
   ...counters('s3', { delivered: 4, opened: 0, replied: 0, bounced: 0 }),
   ...counters('s9', { delivered: 900, opened: 90, replied: 9, bounced: 9 }),
+  ...counters('s4', { delivered: 120, opened: 10, replied: 1, bounced: 2 }),
 ];
 const entities = { sequences: [
   { id: 's1', name: 'HomeLover — 5-Step Car Rental', active: true, cohort: 'Car Rental', archived: false, num_steps: 5, is_performing_poorly: true, audience: 'employer', sender_email: 'cyrus@x' },
   { id: 's2', name: 'HomeLover 5-Step · Fitness Employers / Gyms', active: true, cohort: 'Fitness', archived: false, num_steps: 5, is_performing_poorly: false, audience: 'employer', sender_email: 'jack@x' },
   { id: 's3', name: 'VP Total Rewards — Affordability Opener', active: false, cohort: 'Other', archived: false, num_steps: 3, is_performing_poorly: false, audience: 'channel_partner', sender_email: 'jack@x' },
   { id: 's9', name: "Brad's Upside sequence", active: true, cohort: 'Other', archived: false, num_steps: 4, is_performing_poorly: false, audience: 'employer', sender_email: 'brad@upside' },
+  // Stage 5: listed by Apollo with lifetime counters, but no sales_email_daily_counts row from a workspace mailbox - the steps route does not carry it.
+  { id: 's4', name: "Brad's other Upside sequence", active: true, cohort: 'Other', archived: false, num_steps: 2, is_performing_poorly: false, audience: 'employer', sender_email: 'brad@upside' },
 ], mailboxes: [] };
 const steps = { sequences: {
   s1: { own: true, sender_label: 'Cyrus', mailboxes: ['Cyrus'], messages: 809, delivered: 690, steps: [
@@ -30,8 +33,9 @@ const steps = { sequences: {
     { step: 3, messages: 133, delivered: 127, opened: 25, replied: 0, hard_bounced: 6, spam_blocked: 0, open_rate: 0.197, reply_rate: 0, bounce_rate: 0.045 },
   ] },
   s2: { own: true, sender_label: 'Jack', mailboxes: ['Jack'], messages: 1429, delivered: 1403, steps: [{ step: 1, messages: 707, delivered: 682, opened: 8, replied: 0, hard_bounced: 25, spam_blocked: 0, open_rate: 0.012, reply_rate: 0, bounce_rate: 0.035 }] },
+  s3: { own: true, sender_label: 'Jack', mailboxes: ['Jack'], messages: 4, delivered: 4, steps: [] },
   s9: { own: false, sender_label: 'Mailbox 1', mailboxes: ['Mailbox 1'], messages: 950, delivered: 900, steps: [] },
-}, totals: { messages: 2238, delivered: 2093 } };
+}, totals: { messages: 2242, delivered: 2097 } };
 beforeEach(() => { setSequenceAudience.mockResolvedValue({}); });
 afterEach(() => jest.clearAllMocks());
 
@@ -50,6 +54,7 @@ test('Member: own sequences only (Brad\'s out), running by default, counts on ch
   const section = screen.getByRole('region', { name: 'Sequences' });
   expect(section).toHaveTextContent('2 running of 3 · HomeLover\'s own · lifetime');
   expect(screen.queryByText("Brad's Upside sequence")).toBeNull();
+  expect(screen.queryByText("Brad's other Upside sequence")).toBeNull(); // Stage 5: not in the steps route at all = out
   const table = screen.getByRole('table', { name: 'Sequences' });
   expect(within(table).getAllByRole('columnheader').map(h => h.textContent.replace(/[↕↑↓▲▼]/g, '').trim())).toEqual(['Sequence', 'Cohort', 'Sender', 'Steps', 'Delivered', 'Open', 'Reply', 'Bounce', 'Health']);
   const names = () => [...table.querySelectorAll('tbody tr[data-row] td:first-child')].map(td => td.textContent.replace(/^(Show|Hide) details for /, ''));
@@ -81,7 +86,7 @@ test('Member: own sequences only (Brad\'s out), running by default, counts on ch
   expect(names()).toEqual(['HomeLover 5-Step · Fitness Employers / Gyms']);
   fireEvent.change(screen.getByRole('textbox', { name: 'Search sequences' }), { target: { value: '' } });
   fireEvent.click(within(screen.getByRole('group', { name: 'Group by' })).getByRole('button', { name: 'Sender' }));
-  expect([...document.querySelectorAll('.ui-table__gh h3, .ui-table__toggle h3')].map(h => h.textContent).sort()).toEqual(['Cyrus · 1', 'Jack · 1', '— · 1'].sort()); // the paused one has no stored sends, so no sender
+  expect([...document.querySelectorAll('.ui-table__gh h3, .ui-table__toggle h3')].map(h => h.textContent).sort()).toEqual(['Cyrus · 1', 'Jack · 2'].sort());
   fireEvent.click(screen.getByRole('button', { name: 'Export CSV' }));
   expect(exportWidgetCsv).toHaveBeenCalledWith('sequence_leaderboard', expect.any(Array), expect.any(Array));
 });

@@ -29,13 +29,6 @@ export async function fetchEntities(businessId) {
 // computed server-side at read time from the latest accounts snapshot +
 // current tags, so an audience change is reflected the moment this is
 // re-fetched (no sync required). 0 Apollo calls.
-export async function fetchCohortBreakdown(businessId) {
-  const res = await fetch(`/api/sales/${businessId}/cohort-breakdown`);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Failed to load cohort breakdown (${res.status})`);
-  return data;
-}
-
 // sales-sequence-motion-v1 - replaces setSequencePartner({is_partner}).
 // audience must be one of 'employer'|'membership'|'channel_partner'
 // (server validates too - this is just the real call shape).

@@ -37,7 +37,7 @@ const seed = () => fakeSupabase({
   sales_sequenced_accounts: [], partner_domains: [], sales_call_notes: [], web_visits: [], sales_sync_runs: [], microsoft_grants: [], microsoft_sync_runs: [],
   visit_pull_runs: [], sales_tidy_runs: [], research_runs: [], sales_settings: [], sales_people: [], apollo_credit_spend: [], sales_email_daily_counts: [],
   sales_outreach_campaigns: [], sales_outreach_tracks: [], sales_outreach_steps: [], sales_outreach_events: [], sales_outreach_contacts: [], partner_contacts: [],
-  sales_email_messages: [], microsoft_messages: [], microsoft_events: [], sales_mailbox_owners: [],
+  sales_email_messages: [], microsoft_messages: [], microsoft_events: [], sales_mailbox_owners: [], sales_metric_targets: [],
 });
 
 test('openTodosFor: every open to-do whatever its week_start; done / dropped / ticked / flags out; steps attached; owner narrows', async () => {
@@ -82,9 +82,10 @@ test('parity by construction: Needs attention overdue = the overdue to-dos on Ac
   assert.equal(att.counts.overdue_todos, mineOnActions.filter(i => i.overdue).length);
   assert.equal(att.counts.overdue_todos, 1);
   assert.deepEqual(act.groups, { today: 5, week: 1, later: 1, nodate: 2 }, 'today = the overdue waiting row, the flag, the Focus row, two overdue to-dos (mine from September, Cyrus\'s); nodate = mine from October + the unowned one');
-  const dash = await loadDashboard(s, B, { days: 30, owner: null, team: null }, NOW);
-  const jack = dash.todos_per_owner.find(r => r.owner_user_id === JACK);
-  assert.deepEqual([jack.open, jack.overdue, jack.nodate], [4, att.counts.overdue_todos, 1]);
-  assert.deepEqual(dash.todos_per_owner.map(r => [r.name, r.open]), [['Jack Zz', 4], ['Cyrus Yy', 1], ['Unassigned', 1]]);
+  const dash = await loadDashboard(s, B, { owner: null }, NOW);
+  const jack = dash.todos.per_owner.find(r => r.owner_user_id === JACK);
+  assert.deepEqual([jack.open, jack.overdue], [4, att.counts.overdue_todos]);
+  assert.deepEqual(dash.todos.per_owner.map(r => [r.name, r.open]), [['Jack Zz', 4], ['Cyrus Yy', 1], ['Unassigned', 1]]);
+  assert.deepEqual(dash.waiting, { open: 1, overdue: 1, scope: 'team' });
   assert.equal(act.items.filter(i => i.kind === 'focus').length, 1, 'Focus 5 still reads this week');
 });

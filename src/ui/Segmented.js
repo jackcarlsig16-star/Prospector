@@ -3,9 +3,10 @@ import './kitTheme';
 
 // sales-ia-v1 - items: [{ id, label, color?, meta?, icon?, ariaLabel?, title? }]; the pressed item is `value`.
 // icon (priorities-v2): an src/ui/icons.js element before the word; an icon-only item passes label '' + ariaLabel.
-export default function Segmented({ label, items, value, onChange }) {
+// dense (dashboard-v3 Stage 5): 8 px button padding, so the Explorer's four controls share one row at 1440.
+export default function Segmented({ label, items, value, onChange, dense = false }) {
   return (
-    <div role="group" aria-label={label} className="ui-seg">
+    <div role="group" aria-label={label} className={dense ? 'ui-seg ui-seg--dense' : 'ui-seg'}>
       {items.map(it => (
         <button key={it.id} type="button" className="ui-seg__btn" aria-pressed={it.id === value} aria-label={it.ariaLabel} title={it.title} onClick={() => onChange(it.id)}>
           {it.icon}

@@ -24,7 +24,7 @@ export function fakeSupabase(seed, { unique = {}, now = Date.now, triggers = {} 
   const stamped = r => { const at = stamp(); return { id: randomUUID(), created_at: at, recorded_at: at, ...r }; };
   const db = Object.fromEntries(Object.entries(seed).map(([k, v]) => [k, v.map(r => ({ ...r }))]));
   const matches = (row, f) => ({
-    eq: () => row[f.k] === f.v, neq: () => row[f.k] !== f.v, in: () => f.v.includes(row[f.k]), gte: () => row[f.k] >= f.v, lt: () => row[f.k] != null && row[f.k] < f.v,
+    eq: () => row[f.k] === f.v, neq: () => row[f.k] !== f.v, in: () => f.v.includes(row[f.k]), gte: () => row[f.k] >= f.v, lte: () => row[f.k] != null && row[f.k] <= f.v, lt: () => row[f.k] != null && row[f.k] < f.v,
     is: () => (f.v === null ? row[f.k] == null : row[f.k] === f.v), not_is: () => row[f.k] != null,
   })[f.op]();
   const addRow = (table, r) => { (db[table] ||= []).push(stamped(r)); };
@@ -74,7 +74,7 @@ export function fakeSupabase(seed, { unique = {}, now = Date.now, triggers = {} 
     const b = {
       select(cols = '*', opts = {}) { if (q.op === 'select') { q.cols = cols; q.head = !!opts.head; } return b; },
       insert(p) { q.op = 'insert'; q.payload = p; return b; }, upsert(p, o = {}) { q.op = 'upsert'; q.payload = p; q.onConflict = o.onConflict; return b; }, update(p) { q.op = 'update'; q.payload = p; return b; }, delete() { q.op = 'delete'; return b; },
-      eq: f('eq'), neq: f('neq'), in: f('in'), gte: f('gte'), lt: f('lt'), is: f('is'), not(k) { q.filters.push({ op: 'not_is', k }); return b; },
+      eq: f('eq'), neq: f('neq'), in: f('in'), gte: f('gte'), lte: f('lte'), lt: f('lt'), is: f('is'), not(k) { q.filters.push({ op: 'not_is', k }); return b; },
       order(k, o = {}) { q.order.push([k, o.ascending !== false]); return b; }, limit(n) { q.limit = n; return b; }, range(a, z) { q.range = [a, z]; return b; },
       maybeSingle() { q.single = 'maybe'; return b; }, single() { q.single = 'one'; return b; },
       then(res, rej) { return Promise.resolve().then(() => exec(table, q)).then(res, rej); },

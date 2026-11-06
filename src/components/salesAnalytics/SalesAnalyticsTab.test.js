@@ -22,7 +22,7 @@ beforeEach(() => { localStorage.clear(); mockMq.phone = false; mockCampaigns.lis
 test('phone: the frame stacks the sub-view strip over the tools slot, the selected tab scrolls into view; desktop keeps one row', () => {
   const into = jest.fn(); Element.prototype.scrollIntoView = into;
   mockMq.phone = true;
-  const { unmount } = render(<SalesAnalyticsTab businessId="b1" features={{}} />);
+  const { unmount } = render(<SalesAnalyticsTab businessId="b1" />);
   const frame = document.querySelector('[data-sales-frame]');
   expect(frame.getAttribute('data-frame-rows')).toBe('2');
   expect(frame.style.flexDirection).toBe('column');
@@ -34,14 +34,14 @@ test('phone: the frame stacks the sub-view strip over the tools slot, the select
   expect(into).toHaveBeenCalledTimes(1);
   unmount();
   mockMq.phone = false;
-  render(<SalesAnalyticsTab businessId="b1" features={{}} />);
+  render(<SalesAnalyticsTab businessId="b1" />);
   const wide = document.querySelector('[data-sales-frame]');
   expect([wide.getAttribute('data-frame-rows'), wide.style.flexDirection, wide.style.height]).toEqual(['1', '', '44px']);
   expect([...document.querySelectorAll('style')].map(s => s.textContent).join('')).toMatch(/#sales-frame-tools:empty \{ display: none; \}/);
 });
 
 test('Pipeline and Dashboard sub-views render as Tabs level="sub" with icons; picking one sets ?view= (nav unchanged)', async () => {
-  render(<SalesAnalyticsTab businessId="b1" features={{}} />);
+  render(<SalesAnalyticsTab businessId="b1" />);
   const pipe = screen.getByRole('tablist', { name: 'Pipeline views' });
   expect(pipe).toHaveClass('ui-tabs--sub');
   const tabs = within(pipe).getAllByRole('tab');
@@ -67,7 +67,7 @@ test('Pipeline and Dashboard sub-views render as Tabs level="sub" with icons; pi
 
 test('dashboard-v3 A7: Campaigns shows once a campaign exists, with a "new" dot until it is opened once (prospector_campaigns_seen_<id>)', async () => {
   mockCampaigns.list = [{ id: 'c1' }];
-  render(<SalesAnalyticsTab businessId="b1" features={{}} />);
+  render(<SalesAnalyticsTab businessId="b1" />);
   const tab = await within(screen.getByRole('tablist', { name: 'Pipeline views' })).findByRole('tab', { name: /Campaigns/ });
   expect(within(tab).getByLabelText('new')).toBeInTheDocument();
   fireEvent.click(tab);

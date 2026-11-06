@@ -48,6 +48,8 @@ const q = params => new URLSearchParams(Object.entries(params).filter(([, v]) =>
 
 export const goalsApi = {
   members: id => call(id, '/members').then(d => d.members),
+  // dashboard-v3 Stage 5 - Home's small cards (employers by stage, partners by status + owner, we owe / they owe).
+  homeCards: (id, { owner } = {}) => call(id, `/dashboard?${q({ owner })}`),
 
   weekGoals: (id, from, to, kind) => call(id, `/week?${q({ from, to, kind })}`).then(d => d.goals),
   createWeekGoal: (id, body) => call(id, '/week', { method: 'POST', body }).then(d => d.goal),

@@ -30,6 +30,12 @@ test('buildSequenceSteps: per-step sums over every day = the lifetime totals; ra
   assert.equal(r.sequences[''], undefined);
   assert.deepEqual(r.totals, { messages: 237, delivered: 230 }); // own only
   assert.ok(!JSON.stringify(r).includes('@'), 'no address in the payload');
+  // Stage 5 (the Brad-exclusion rule): a sequence with zero stored rows from a workspace mailbox is never own - absent
+  // when it has no rows at all (entities-only), not own when its only rows carry no mailbox.
+  assert.equal(r.sequences.s4, undefined, 'an entities-only sequence has no entry');
+  const r2 = buildSequenceSteps([row('s5', 1, null, { delivered: 9 })], { owned, labels });
+  assert.equal(r2.sequences.s5.own, false);
+  assert.deepEqual(r2.totals, { messages: 0, delivered: 0 });
 });
 
 test('mailboxTiles + weekdaysIn: sends per weekday against the cap, ≥ 95 % = at capacity, 0 = idle, a connection problem = reconnect; sorted by name', () => {

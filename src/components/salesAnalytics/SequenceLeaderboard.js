@@ -13,7 +13,7 @@ import { ToggleChip } from '../../ui/Chip';
 import { numStyle } from './goals/goalsUi';
 
 // dashboard-v3 Stage 4 (M) - Sequences on the kit DataTable, HomeLover's own only (a sequence sent from a mailbox the
-// workspace does not own - Brad's - is left out; GET goals/sequence-steps says which). Cohort chips with counts ·
+// workspace does not own - Brad's - or with no stored send from one is left out; GET goals/sequence-steps says which). Cohort chips with counts ·
 // Running / Paused / All · audience · search · the summary line (delivered unique = Apollo's lifetime counters, messages
 // = the stored daily counts, open / reply / bounce weighted over the shown rows) · Group by Cohort / Sender / None.
 // Columns Sequence · Cohort · Sender (the mailbox's name, never an address) · Steps · Delivered ▼ · Open · Reply · Bounce
@@ -67,7 +67,8 @@ export default function SequenceLeaderboard({ businessId, allRows, entities, ste
   const [saving, setSaving] = useState(null);
   const [error, setError] = useState('');
 
-  const own = useMemo(() => buildSequenceRows(allRows, entities).filter(r => steps?.sequences?.[r.id]?.own !== false), [allRows, entities, steps]);
+  // Stage 5: own = the steps route says so; a sequence it does not list (no stored send from a workspace mailbox) is out.
+  const own = useMemo(() => (steps ? buildSequenceRows(allRows, entities).filter(r => steps.sequences?.[r.id]?.own === true) : []), [allRows, entities, steps]);
   const shown = own.filter(r => (cohorts.has(r.cohort) || r.cohort === 'Unknown') && (audience === 'all' || r.audience === audience)
     && (status === 'all' || (status === 'active' ? r.active !== false : r.active === false)) && (!search.trim() || r.name.toLowerCase().includes(search.trim().toLowerCase())));
   const cohortCount = c => own.filter(r => r.cohort === c && (status === 'all' || (status === 'active' ? r.active !== false : r.active === false))).length;

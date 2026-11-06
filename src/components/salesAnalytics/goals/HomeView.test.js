@@ -8,9 +8,12 @@ jest.mock('./goalsApi', () => ({ goalsApi: { pulse: jest.fn() } }));
 jest.mock('../salesApi', () => ({ fetchInsights: jest.fn() }));
 // The Explorer has its own suite (ExplorerView.test.js); here it is a stand-in that reports what Home hands it.
 jest.mock('./ExplorerView', () => ({ __esModule: true, default: ({ canEdit, context }) => <section aria-label="Explorer" data-explorer={context} data-can-edit={String(!!canEdit)} /> }));
+// The small cards have their own suite (HomeCards.test.js); here a stand-in reports what Home hands them.
+jest.mock('./HomeCards', () => ({ __esModule: true, default: ({ owner }) => <section aria-label="Small cards" data-home-cards-owner={owner || 'team'} /> }));
 
 // dashboard-v3 Stage 2 - Home over an invented pulse: every tile = the route's digit, deltas by direction, the top three
-// insights by severity with one action each, "Nothing to flag", the Explorer mounted with Home's context, a Viewer sees no write control.
+// insights by severity with one action each, "Nothing to flag", the Explorer mounted with Home's context, the small cards
+// (Stage 5) handed the person filter, a Viewer sees no write control.
 const m = (value, prev, series, extra = {}) => ({ value, prev, delta: value == null || prev == null ? null : value - prev, delta_pct: extra.kind === 'rate' || prev == null || prev === 0 || value == null ? null : (value - prev) / prev, series, kind: 'count', better: 'up', source: 'src', ...extra });
 const PULSE = {
   period: 'this_week', label: 'This week', today: '2026-11-05', owner: null, from: '2026-11-02', to: '2026-11-05', prev: { from: '2026-10-26', to: '2026-11-01' },
@@ -96,6 +99,7 @@ test('Home: the title line, seven tiles = the route\'s digits with their directi
   const explorer = screen.getByRole('region', { name: 'Explorer' });
   expect(explorer).toHaveAttribute('data-explorer', 'home');
   expect(explorer).toHaveAttribute('data-can-edit', 'true');
+  expect(screen.getByRole('region', { name: 'Small cards' })).toHaveAttribute('data-home-cards-owner', 'team');
   expect(screen.queryByRole('button', { name: /Dismiss/ })).toBeNull();
 });
 
@@ -115,4 +119,5 @@ test('a period change re-reads the pulse with that period and the person; "Nothi
   expect(screen.queryAllByRole('button')).toHaveLength(0);
   expect(screen.queryByRole('textbox')).toBeNull();
   expect(screen.getByRole('region', { name: 'Explorer' })).toHaveAttribute('data-can-edit', 'false');
+  expect(screen.getByRole('region', { name: 'Small cards' })).toHaveAttribute('data-home-cards-owner', 'u-jack');
 });

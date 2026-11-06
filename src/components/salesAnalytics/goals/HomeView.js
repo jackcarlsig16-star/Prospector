@@ -7,13 +7,15 @@ import { RULE_IDS, actionFor } from '../InsightsPanel';
 import { HOME_TILES, PulseGrid, md, agoOf } from './PulseTiles';
 import { cardStyle, labelStyle, numStyle, ErrorNote, Chip, fmt } from './goalsUi';
 import ExplorerView from './ExplorerView';
+import HomeCards from './HomeCards';
 
 // dashboard-v3 Stage 2 - Dashboard › Home (specs/design/dashboard-v3/Dash.dc.html; the app's sidebar leaves the tiles
 // ~150 px, so the sparkline gets its own line under the delta instead of sitting beside it): the title line, PULSE (seven tiles
 // over GET goals/pulse - every digit is the route's, the delta and its direction too; this file only formats), INSIGHTS
 // (the top three of GET /insights by severity, one action each) and the Explorer (ExplorerView over GET goals/explorer,
-// Stage 3: Sent · Human opens % · Visitors · Replies %, 8 weeks + this week, split Team). Period and Who live in the
-// frame row (GoalsTab); the Explorer's Save view is the only write here (Members).
+// Stage 3: Sent · Human opens % · Visitors · Replies %, 8 weeks + this week, split Team) and the three small cards
+// (HomeCards over GET goals/dashboard, Stage 5). Period and Who live in the frame row (GoalsTab); the Explorer's Save
+// view is the only write here (Members).
 export const PERIODS = [['this_week', 'This week'], ['last_week', 'Last week'], ['4_weeks', '4 weeks'], ['month', 'Month'], ['90_days', '90 days']];
 export const DEFAULT_PERIOD = 'this_week';
 export { HOME_TILES as TILES };
@@ -62,7 +64,7 @@ function Insights({ data, error, syncedAgo, onOpenEmail }) {
   );
 }
 
-export default function HomeView({ businessId, period, owner, canEdit, onOpenEmail }) {
+export default function HomeView({ businessId, period, owner, canEdit, lookup, onOpenEmail, onOpenMap, onOpenActions }) {
   const [pulse, setPulse] = useState(null);
   const [error, setError] = useState('');
   const [insights, setInsights] = useState(null);
@@ -94,6 +96,7 @@ export default function HomeView({ businessId, period, owner, canEdit, onOpenEma
       )}
       <Insights data={insights} error={insightsError} syncedAgo={synced} onOpenEmail={onOpenEmail} />
       <ExplorerView businessId={businessId} canEdit={canEdit} context="home" />
+      <HomeCards businessId={businessId} owner={owner} lookup={lookup} onOpenMap={onOpenMap} onOpenActions={onOpenActions} />
     </div>
   );
 }

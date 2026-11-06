@@ -6,7 +6,9 @@ import { mailboxLabels } from './explorerRoutes.js';
 // day of sales_email_daily_counts (mailbox × sequence × step), the sender named by the mailbox owner (never the
 // address), and `own`: HomeLover's own sequence = every mailbox it sent from is one the workspace owns
 // (sales_mailbox_owners); anything sent from another mailbox in the shared Apollo org (Brad's) is not own and the
-// Sequences table leaves it out. A sequence with no stored sends is own (nothing says otherwise).
+// Sequences table leaves it out. Stage 5: own needs at least one stored send from a workspace mailbox - a sequence the
+// entities list carries with zero daily_counts rows from HomeLover's mailboxes (Brad's, or one never sent) is not in
+// `sequences` at all, and the table leaves it out too.
 const must = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const rate = (n, d) => (d ? n / d : null);
 const FIELDS = ['delivered', 'hard_bounced', 'spam_blocked', 'opened', 'replied'];
@@ -31,7 +33,7 @@ export function buildSequenceSteps(rows, { owned = new Set(), labels = new Map()
       return { step, messages, ...t, open_rate: rate(t.opened, t.delivered), reply_rate: rate(t.replied, t.delivered), bounce_rate: rate(t.hard_bounced + t.spam_blocked, messages) };
     });
     const mailboxes = [...s.mailboxes].sort((a, b) => b[1] - a[1]).map(([email]) => email);
-    const own = mailboxes.every(e => owned.has(e));
+    const own = mailboxes.length > 0 && mailboxes.every(e => owned.has(e));
     const messages = steps.reduce((n, x) => n + x.messages, 0), delivered = steps.reduce((n, x) => n + x.delivered, 0);
     sequences[id] = { own, sender_label: mailboxes.length ? labels.get(mailboxes[0]) || 'Mailbox' : null, mailboxes: mailboxes.map(e => labels.get(e) || 'Mailbox'), messages, delivered, steps };
     if (own) { totals.messages += messages; totals.delivered += delivered; }
