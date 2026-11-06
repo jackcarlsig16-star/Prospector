@@ -5,6 +5,7 @@ import { goalsApi } from './goalsApi';
 jest.mock('./goalsApi', () => ({ goalsApi: {
   visitReport: jest.fn(), visitStatus: jest.fn(), visitPull: jest.fn(), visitSkip: jest.fn(), addVisitSkip: jest.fn(), removeVisitSkip: jest.fn(),
   visitExportUrl: id => `/api/sales/${id}/goals/visits/export`, uploadVisitedPeople: jest.fn(),
+  visitorsExportUrl: (id, p) => `/api/sales/${id}/goals/visits/export-visitors?window=${p.window}&format=csv`, visitorsExport: jest.fn(),
 } }));
 
 const row = (name, priority, extra = {}) => ({
@@ -127,4 +128,44 @@ test('companies-v2 C5 / homelover-flow-v1 F2: the band words come from BAND_WORD
   const src = require('fs').readFileSync(require('path').join(__dirname, 'VisitorReport.js'), 'utf8');
   expect(src).toMatch(/import \{ BAND_WORD \} from '..\/..\/..\/constants\/fitLevels'/);
   expect(src).not.toMatch(/const (PRIORITY|BAND)_WORD\s*=/);
+});
+
+// FIX visitor-email-period-v1 P4 / P5 - the fundraising export: owner / admin only; Window × CSV (the route's file) · PDF
+// (the rows rendered into the print area, then window.print); headcount "unknown" never blank; the headcount-known line.
+test('Export visitors: a Member has no button; an admin picks the window, CSV fetches the route file, PDF renders the print area with the 11 columns + "unknown" headcount + the headcount-known line and prints', async () => {
+  const { unmount } = render(<VisitorReport businessId="b1" canEdit />);
+  await screen.findByRole('table');
+  expect(screen.queryByRole('button', { name: 'Export visitors' })).toBeNull();
+  unmount();
+  global.fetch = jest.fn().mockResolvedValue({ ok: true, blob: () => Promise.resolve(new Blob(['x'])), headers: { get: () => 'attachment; filename="website-visitors-7-2026-11-06.csv"' } });
+  URL.createObjectURL = jest.fn(() => 'blob:x'); URL.revokeObjectURL = jest.fn();
+  const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  window.print = jest.fn();
+  goalsApi.visitorsExport.mockResolvedValue({ title: 'HomeLover website visitors · last 7 days (2026-10-31 – 2026-11-06) · generated 2026-11-06', summary: 'headcount known for 1 of 2 companies', companies: 2, rows: [
+    { company: 'Acme Health', industry: 'NAICS 6216', headcount: '1,250 (typed)', first_seen: '2026-10-20', last_seen: '2026-11-06', days_visited: 2, visits_7d: 6, pages: ['/pricing', '/employers'], people: 2, band: 'P1 · Hot', in_prospector: 'Employer · Contacted' },
+    { company: 'Nobody Co', industry: '—', headcount: 'unknown', first_seen: '2026-11-05', last_seen: '2026-11-06', days_visited: 1, visits_7d: 1, pages: [], people: 0, band: 'P4 · Cold', in_prospector: '—' },
+  ] });
+  render(<VisitorReport businessId="b1" canEdit isAdmin />);
+  await screen.findByRole('table');
+  fireEvent.click(screen.getByRole('button', { name: 'Export visitors' }));
+  const panel = screen.getByRole('region', { name: 'Export visitors' });
+  fireEvent.change(within(panel).getByLabelText('Window'), { target: { value: '7' } });
+  fireEvent.click(within(panel).getByRole('button', { name: 'CSV' }));
+  await waitFor(() => expect(global.fetch).toHaveBeenCalledWith('/api/sales/b1/goals/visits/export-visitors?window=7&format=csv'));
+  await waitFor(() => expect(click).toHaveBeenCalled());
+  expect(document.getElementById('sales-analytics-print-area')).toBeNull();
+  fireEvent.click(within(panel).getByRole('button', { name: 'PDF' }));
+  await waitFor(() => expect(goalsApi.visitorsExport).toHaveBeenCalledWith('b1', '7'));
+  const print = await waitFor(() => { const el = document.getElementById('sales-analytics-print-area'); if (!el) throw new Error('no print area'); return el; });
+  expect(print).toHaveTextContent('HomeLover website visitors · last 7 days (2026-10-31 – 2026-11-06) · generated 2026-11-06');
+  expect(print).toHaveTextContent('headcount known for 1 of 2 companies');
+  for (const h of ['Company', 'Industry', 'Headcount', 'First seen', 'Last seen', 'Days visited', 'Visits (Apollo, rolling 7 d at last seen)', 'Pages (top 3, last pull)', 'People identified', 'Band', 'In Prospector']) expect(within(print).getByRole('columnheader', { name: h })).toBeInTheDocument();
+  expect(within(print).getByText('unknown')).toBeInTheDocument();
+  expect(within(print).getByText('1,250 (typed)')).toBeInTheDocument();
+  expect(within(print).getByText('/pricing, /employers')).toBeInTheDocument();
+  expect(print.closest('.no-print')).toBeNull();
+  await waitFor(() => expect(window.print).toHaveBeenCalledTimes(1));
+  expect(within(panel).getByRole('status')).toHaveTextContent('2 companies · headcount known for 1 of 2 companies');
+  expect(print.textContent).not.toMatch(/@/);
+  click.mockRestore();
 });

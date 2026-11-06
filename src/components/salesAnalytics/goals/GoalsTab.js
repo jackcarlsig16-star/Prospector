@@ -329,7 +329,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddl
           <PrioritiesView businessId={businessId} canEdit={canEdit} isAdmin={isAdmin} meId={meId} onOpenPeople={company => { writePeopleCompany(company); onNav('pipeline', 'people'); }} />
         )}
         {section === 'pipeline' && view === 'companies' && (
-          <PipelineView businessId={businessId} canEdit={canEdit} meId={meId} focusTarget={pipelineTarget}
+          <PipelineView businessId={businessId} canEdit={canEdit} isAdmin={isAdmin} meId={meId} focusTarget={pipelineTarget}
             onOpenPartner={(id, name) => go({ partners: { ids: [id], open: id, label: name } })} onOpenCompanies={w => go({ companies: w })}
             onOpenPeople={company => { writePeopleCompany(company); onNav('pipeline', 'people'); }} />
         )}

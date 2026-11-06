@@ -1,7 +1,7 @@
 import { WEEKDAYS, EVERY_DAY, laClock } from './scheduler.js';
 import { getGrant } from '../../lib/microsoftGrants.js';
 import { sendTeamEmail, loadSettings, loadMembers, senderOf } from './send.js';
-import { loadVisitorData, loadRankedBook, buildVisitorEmail, periodFor } from './visitorEmail.js';
+import { loadVisitorData, loadRankedBook, loadCumulative, buildVisitorEmail, dayWindowFor } from './visitorEmail.js';
 import { dueAlerts, sendClientAlert } from './clientAlert.js';
 
 // homelover-team-emails-v1 T3 - HomeLover's jobs. Times are LA wall clock (REVISABLE). apollo-sync is the 06:00 Apollo
@@ -53,11 +53,12 @@ export async function visitorEmailJob(supabase, businessId, { now = Date.now(), 
     const last = await lastGoodPull(supabase, businessId);
     pullNote = `Visitor pull failed at ${timeLabel(new Date(now).toISOString())} — numbers are from ${last ? timeLabel(last) : 'no earlier pull'}`;
   } else if (recompute) await recompute(supabase, businessId);
-  // FIX visitor-email-top10-v1 V1: list A = since the previous weekday's send; list B = the ranked book right now.
-  const date = laClock(now).date, { since, until } = periodFor(date);
+  // FIX visitor-email-period-v1 P1 / P2: list A = the previous LA calendar day(s) (Monday: Fri + Sat + Sun); list B = the
+  // ranked book right now; CUMULATIVE = every company identified since the first pull.
+  const date = laClock(now).date, window = dayWindowFor(date);
   const members = await loadMembers(supabase, businessId);
-  const [companies, overall] = await Promise.all([loadVisitorData(supabase, businessId, { since, until: Math.max(until, now), members }), loadRankedBook(supabase, businessId, { now, members })]);
-  const mail = buildVisitorEmail(companies, { date, since, pullNote, overall });
+  const [companies, overall, cumulative] = await Promise.all([loadVisitorData(supabase, businessId, { window, members }), loadRankedBook(supabase, businessId, { now, members }), loadCumulative(supabase, businessId)]);
+  const mail = buildVisitorEmail(companies, { date, window, pullNote, overall, cumulative });
   const sent = await sendTeamEmail(supabase, businessId, { kind: 'visitor', subject: mail.subject, html: mail.html, text: mail.text, slot: date, test }, deps);
   return { ...sent, rows: mail.rows, more: mail.more, overall: mail.overall, pull: p };
 }

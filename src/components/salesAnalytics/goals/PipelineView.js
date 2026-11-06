@@ -67,7 +67,7 @@ const CELL_FIELD = { next: 'next_step', due: 'next_step_due' };
 const SIZE_TAG = { research: 'Research', manual: 'Typed', apollo: 'Apollo' };
 const workCell = (n, late, what) => (n ? <span style={{ ...numStyle, color: late ? SA.bad : SA.text }} title={`${n} open ${what}${late ? ` · ${late} overdue` : ''}`}>{n}{late ? ' !' : ''}</span> : <Dim />);
 
-export default function PipelineView({ businessId, canEdit, meId, onOpenPartner, onOpenCompanies, onOpenPeople, focusTarget = null }) {
+export default function PipelineView({ businessId, canEdit, isAdmin = false, meId, onOpenPartner, onOpenCompanies, onOpenPeople, focusTarget = null }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState('');
   const [channel, setChannel] = useState(() => channelFromParam(new URLSearchParams(window.location.search).get('channel')));
@@ -437,7 +437,7 @@ export default function PipelineView({ businessId, canEdit, meId, onOpenPartner,
 
       {visitorsOpen && (
         <SidePanel label="Website visitors" width={1040} onClose={() => { setVisitorsOpen(false); load(); }}>
-          <VisitorReport businessId={businessId} canEdit={canEdit} />
+          <VisitorReport businessId={businessId} canEdit={canEdit} isAdmin={isAdmin} />
         </SidePanel>
       )}
       {peopleOpen && (

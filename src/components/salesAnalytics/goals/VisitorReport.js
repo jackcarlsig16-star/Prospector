@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { SA } from '../theme';
 import { PRIORITY_COLORS } from '../palette';
 import { BAND_WORD } from '../../../constants/fitLevels';
@@ -103,13 +104,78 @@ function SkipList({ businessId, canEdit, onChanged }) {
   );
 }
 
-export default function VisitorReport({ businessId, canEdit }) {
+// FIX visitor-email-period-v1 P4 / P5 - "Export visitors" for fundraising validation (owner / admin): Window × CSV · PDF.
+// CSV = the route's file; PDF = the same rows rendered into the page's print area (SalesAnalyticsTab PRINT_STYLES) and
+// window.print - no new dependency. Company data only: no people's names, no addresses; headcount "unknown" never blank.
+const EXPORT_WINDOWS = [['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['all', 'Since the first pull']];
+const EXPORT_COLUMNS = ['Company', 'Industry', 'Headcount', 'First seen', 'Last seen', 'Days visited', 'Visits (Apollo, rolling 7 d at last seen)', 'Pages (top 3, last pull)', 'People identified', 'Band', 'In Prospector'];
+const exportCells = r => [r.company, r.industry, r.headcount, r.first_seen || '—', r.last_seen || '—', r.days_visited, r.visits_7d, r.pages.join(', ') || '—', r.people, r.band, r.in_prospector];
+function ExportVisitors({ businessId, onNotice }) {
+  const [win, setWin] = useState('30');
+  const [busy, setBusy] = useState('');
+  const [print, setPrint] = useState(null);
+  useEffect(() => {
+    if (!print) return undefined;
+    const t = setTimeout(() => window.print(), 80);
+    return () => clearTimeout(t);
+  }, [print]);
+  const csv = async () => {
+    setBusy('csv'); onNotice('');
+    try {
+      const res = await fetch(goalsApi.visitorsExportUrl(businessId, { window: win }));
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `Export failed (${res.status})`);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(await res.blob());
+      a.download = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '')?.[1] || 'website-visitors.csv';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    } catch (e) { onNotice(e.message); } finally { setBusy(''); }
+  };
+  const pdf = async () => {
+    setBusy('pdf'); onNotice('');
+    try { setPrint(await goalsApi.visitorsExport(businessId, win)); } catch (e) { onNotice(e.message); } finally { setBusy(''); }
+  };
+  const th = { textAlign: 'left', padding: '4px 6px', borderBottom: '1px solid #999', fontWeight: 600, verticalAlign: 'bottom' };
+  const td = { padding: '4px 6px', borderBottom: '1px solid #ddd', verticalAlign: 'top' };
+  return (
+    <>
+      <section aria-label="Export visitors" className="no-print" style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <h3 style={h3Style}>Export visitors</h3>
+        <span style={{ ...subStyle, fontSize: 13 }}>For fundraising validation: one row per company Apollo saw on the site, company data only - no people, no addresses. Headcount reads "unknown" until research or a typed number fills it. PDF prints this page's table; pick "Save as PDF" in the print dialog.</span>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select aria-label="Window" value={win} onChange={e => setWin(e.target.value)} style={{ ...inputStyle, height: 32, width: 'auto', fontSize: 13 }}>
+            {EXPORT_WINDOWS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+          </select>
+          <Btn primary disabled={!!busy} onClick={csv}>{busy === 'csv' ? 'Exporting…' : 'CSV'}</Btn>
+          <Btn disabled={!!busy} onClick={pdf}>{busy === 'pdf' ? 'Preparing…' : 'PDF'}</Btn>
+          {print && <span role="status" style={{ ...subStyle, fontSize: 12 }}>{print.companies} {print.companies === 1 ? 'company' : 'companies'} · {print.summary} · the print dialog opens; Print again reopens it</span>}
+          {print && <button type="button" style={linkBtn} onClick={() => window.print()}>Print again</button>}
+        </div>
+      </section>
+      {print && createPortal(
+        // Portaled to <body>: the Web visitors side panel sits inside a no-print block, which would hide the print area with it.
+        <div id="sales-analytics-print-area" className="print-only" style={{ background: '#fff', color: '#111', fontFamily: 'system-ui, sans-serif', fontSize: 11 }}>
+          <div style={{ fontWeight: 600, fontSize: 13, margin: '0 0 4px' }}>{print.title}</div>
+          <div style={{ margin: '0 0 8px', color: '#444' }}>{print.summary} · company data only, no people · visits are Apollo's rolling 7-day count at the last pull</div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>{EXPORT_COLUMNS.map(h => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
+            <tbody>{print.rows.map((r, i) => <tr key={i} className="print-avoid-break">{exportCells(r).map((v, j) => <td key={j} style={td}>{v}</td>)}</tr>)}</tbody>
+          </table>
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+export default function VisitorReport({ businessId, canEdit, isAdmin = false }) {
   const narrow = useMediaQuery('(max-width: 899px)');
   const [report, setReport] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [showNoise, setShowNoise] = useState(false);
   const [skipOpen, setSkipOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [filters, setFilters] = useState(FILTERS);
   const [uploading, setUploading] = useState(false);
@@ -164,6 +230,7 @@ export default function VisitorReport({ businessId, canEdit }) {
               </label>
             )}
             <Btn onClick={() => setSkipOpen(o => !o)} aria-expanded={skipOpen}>Skip list</Btn>
+            {isAdmin && <Btn onClick={() => setExportOpen(o => !o)} aria-expanded={exportOpen}>Export visitors</Btn>}
             <Btn primary disabled={exporting || !report.rows.length} onClick={exportSheet}>{exporting ? 'Exporting…' : 'Export for Brad (.xlsx)'}</Btn>
           </div>
         </div>
@@ -188,6 +255,7 @@ export default function VisitorReport({ businessId, canEdit }) {
       </section>
 
       {skipOpen && <SkipList businessId={businessId} canEdit={canEdit} onChanged={load} />}
+      {exportOpen && isAdmin && <ExportVisitors businessId={businessId} onNotice={setNotice} />}
 
       <section aria-label="Hot" style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <h3 style={h3Style}>Hot ({hot.length})</h3>
