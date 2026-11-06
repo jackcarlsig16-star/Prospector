@@ -112,6 +112,7 @@ try {
     const PROD = 'https://prospector-chtj.onrender.com';
     const live = await fetch(`${PROD}/api/sales/${HL}/goals/visits/export-visitors?window=7&format=json`, { headers: { cookie } });
     ok(`prod carries this commit: GET export-visitors on prod ${live.status}`, live.status === 200);
+    if (live.status !== 200) throw new Error(`prod is not on this commit yet (export-visitors ${live.status}) - NOT sending; retry once Render is Live`);
     const sendsBefore = (await svc.from('sales_team_email_sends').select('id').eq('business_id', HL)).data.length;
     const t = await fetch(`${PROD}/api/sales/${HL}/goals/team-emails/test`, { method: 'POST', headers: { cookie, 'content-type': 'application/json' }, body: JSON.stringify({ kind: 'visitor' }) }).then(async r => ({ status: r.status, body: await r.json().catch(() => null) }));
     const sendsAfter = (await svc.from('sales_team_email_sends').select('id, kind, test, recipients, status, subject, created_at').eq('business_id', HL).order('created_at', { ascending: false }).limit(3)).data;
