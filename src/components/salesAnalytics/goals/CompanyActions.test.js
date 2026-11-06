@@ -45,9 +45,10 @@ test('homelover-flow-v1 F8: four labelled groups in flow order - Reach · Decide
   expect(row.lastElementChild.textContent).toBe('✦ generated');
 });
 
-test('a target decides with Promote ▾ · Not a fit; a visitor with Add to pipeline ▾ and no Book meeting / Mark contacted (no record yet); an employer past Target gets They replied…; deprioritized = Bring back', () => {
+test('a target decides with Add to pipeline ▾ (primary) · Not a fit; a visitor with Add to pipeline ▾ and no Book meeting / Mark contacted (no record yet); an employer past Target gets They replied…; deprioritized = Bring back', () => {
   const { unmount } = render(<Harness row={TARGET} />);
-  expect(within(screen.getByRole('group', { name: 'Decide' })).getAllByRole('button').map(b => b.textContent)).toEqual(expect.arrayContaining(['↑ Promote ▾', 'Not a fit']));
+  expect(within(screen.getByRole('group', { name: 'Decide' })).getAllByRole('button').map(b => b.textContent)).toEqual(expect.arrayContaining(['Add to pipeline ▾', 'Not a fit']));
+  expect(within(screen.getByRole('group', { name: 'Decide' })).getByRole('button', { name: 'Add to pipeline ▾' })).toHaveClass('ui-btn--primary');
   unmount();
   const r2 = render(<Harness row={VISITOR} />);
   expect(within(screen.getByRole('group', { name: 'Decide' })).getByRole('button', { name: 'Add to pipeline ▾' })).toBeInTheDocument();

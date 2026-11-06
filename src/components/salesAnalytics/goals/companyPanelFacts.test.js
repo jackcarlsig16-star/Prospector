@@ -1,22 +1,25 @@
-import { factsFor, lastTouchText, forwardStages, editControls, showsNotNow, filterPeople, bandText, sourceLabel, sourceText } from './companyPanelFacts';
+import { factsFor, lastTouchText, forwardStages, editControls, showsNotNow, filterPeople, bandText, sourceLabel, sourceText, typeFact, readinessOf, researchNumbers } from './companyPanelFacts';
 import { historyText, sourceBody } from './LeadSource';
 
 // company-panel-v2 L2 / L5 - the facts row and the Edit row per row type (the matrix), pure.
 const base = { name: 'X', stage: 'replied', owner: 'Jack', owner_team: 'homelover', channel: 'import', priority: 1, next_step: 'Send deck', next_step_due: '2026-10-22', last_touch_at: '2026-10-17T10:00:00Z' };
 
-test('partner / employer: the seven facts in order; Last touch says the kind when the touch has one; Next step carries its due date', () => {
+test('partner / employer (company-window-v4 F): Owner · Team · Priority · Employees · Type · Source · Last touch · Next step - no Stage; Last touch says the kind when the touch has one; Next step carries its due date', () => {
   const facts = factsFor({ ...base, type: 'partner' }, { last_touch: { at: '2026-10-17T10:00:00Z', touch_type: 'email' }, next_step: 'Send deck', next_step_due: '2026-10-22' });
   // company-workflow-v1: + Employees (number + source tag).
-  expect(facts.map(f => f[0])).toEqual(['Stage', 'Priority', 'Owner', 'Team', 'Source', 'Last touch', 'Next step', 'Employees']);
-  expect(facts.map(f => f[1])).toEqual(['Replied', 'P1 · Strong', 'Jack', 'HomeLover', 'Import', 'Oct 17 · Email sent', 'Send deck · due Oct 22', '—']);
-  expect(facts.slice(0, 7).every(f => f[2] === false)).toBe(true);
+  expect(facts.map(f => f[0])).toEqual(['Owner', 'Team', 'Priority', 'Employees', 'Type', 'Source', 'Last touch', 'Next step']);
+  expect(facts.map(f => f[1])).toEqual(['Jack', 'HomeLover', 'P1 · Strong', '—', 'Uncategorized', 'Import', 'Oct 17 · Email sent', 'Send deck · due Oct 22']);
+  expect(facts.filter(f => !['Employees', 'Type'].includes(f[0])).every(f => f[2] === false)).toBe(true);
   const employer = factsFor({ ...base, type: 'employer', stage: 'contacted', owner: null, owner_team: null, priority: null, next_step: null, next_step_due: null, last_touch_at: null }, { last_touch: { at: '2026-10-19T10:00:00Z', touch_type: 'done' } });
-  expect(employer.map(f => f[1])).toEqual(['Contacted', '—', 'Unassigned', '—', 'Import', 'Oct 19 · To-do done', '—', '—']);
-  expect(employer.map(f => f[2])).toEqual([false, true, true, true, false, false, true, true]);
+  expect(employer.map(f => f[1])).toEqual(['Unassigned', '—', '—', '—', '—', 'Import', 'Oct 19 · To-do done', '—']);
+  expect(employer.map(f => f[2])).toEqual([true, true, true, true, true, false, false, true]);
+  expect(typeFact({ type: 'employer', org_type: 'membership' }, null)).toEqual(['Type', 'Membership org', false]);
+  expect(typeFact({ type: 'partner', category: '3. Brokers' }, null)).toEqual(['Type', 'Brokers', false]);
+  expect(typeFact({ type: 'target' }, { kind: 'partner' })).toEqual(['Type', 'Partner', false]);
 });
 
-test('target: Stage = status, Owner (a person, company-workflow-v1), Team, Source, Last touch; Apollo-only: In sequence · Apollo; visitor: Priority · Source Website · Last visit', () => {
-  expect(factsFor({ type: 'target', stage: 'researching', owner_team: 'upside', channel: 'scout' }, null).map(f => [f[0], f[1]])).toEqual([['Stage', 'Researching'], ['Owner', 'Unassigned'], ['Team', 'Upside'], ['Source', 'Scout signal'], ['Last touch', 'No touch yet']]);
+test('target: Owner (a person, company-workflow-v1), Team, Type (kind), Source, Last touch - no Stage; Apollo-only keeps In sequence · Apollo (no journey); visitor: Priority · Source Website · Last visit', () => {
+  expect(factsFor({ type: 'target', stage: 'researching', owner_team: 'upside', channel: 'scout', kind: 'employer' }, null).map(f => [f[0], f[1]])).toEqual([['Owner', 'Unassigned'], ['Team', 'Upside'], ['Type', 'Employer'], ['Source', 'Scout signal'], ['Last touch', 'No touch yet']]);
   expect(factsFor({ type: 'apollo', stage: 'sequenced' }, null).map(f => [f[0], f[1]])).toEqual([['Stage', 'In sequence'], ['Source', 'Apollo'], ['Last touch', 'No touch yet']]);
   const v = factsFor({ type: 'visitor', priority: 2, visited: { last_visit: '2026-10-20' } }, null);
   expect(v.map(f => [f[0], f[1]])).toEqual([['Priority', 'P2 · Warm'], ['Source', 'Website'], ['Last visit', 'Oct 20']]);
@@ -39,10 +42,12 @@ test('Edit row: the Stage select lists now + forward only; the matrix picks the 
   expect(ids).toContain('meeting_set');
   expect(forwardStages({ type: 'employer', stage: 'contacted' }).map(s => s.id)).not.toContain('target');
   expect(forwardStages({ type: 'target', stage: 'researching' }).map(s => s.id)).toEqual(['researching']);
-  expect(editControls({ type: 'partner' })).toEqual(['stage', 'owner', 'team', 'priority', 'source']);
+  // company-window-v4 F1: + employees (a reach partner: reach), an employer's type.
+  expect(editControls({ type: 'partner' })).toEqual(['stage', 'owner', 'team', 'priority', 'source', 'employees']);
+  expect(editControls({ type: 'partner', category: '3. PEOs' })).toEqual(['stage', 'owner', 'team', 'priority', 'source', 'employees', 'reach']);
   // FIX headcount-auto-v1 REV2 H7: employers and targets gain "Set domain"; a partner's domains live in Partner domains.
-  expect(editControls({ type: 'employer' })).toEqual(['stage', 'owner', 'team', 'priority', 'source', 'domain']);
-  expect(editControls({ type: 'target' })).toEqual(['stage', 'owner', 'team', 'source', 'domain']);
+  expect(editControls({ type: 'employer' })).toEqual(['stage', 'owner', 'team', 'priority', 'source', 'domain', 'employees', 'type']);
+  expect(editControls({ type: 'target' })).toEqual(['stage', 'owner', 'team', 'source', 'domain', 'employees']);
   expect(editControls({ type: 'visitor' })).toEqual(['priority']);
   expect(editControls({ type: 'apollo' })).toEqual([]);
   expect([showsNotNow({ type: 'partner' }), showsNotNow({ type: 'employer' }), showsNotNow({ type: 'target' }), showsNotNow({ type: 'visitor' }), showsNotNow({ type: 'apollo' })]).toEqual([true, true, true, false, false]);
@@ -70,9 +75,21 @@ test('lead-source-v1: the Source fact is the lead source (kind · partner · rep
 
 test('company-workflow-v1: Employees with its source tag; Reach (covers · clients) only for PEO / HR / platform partners', () => {
   const { sizeFacts, showsReach } = require('./companyPanelFacts');
-  expect(sizeFacts({ type: 'employer' }, { employees: 1200, employees_source: 'research' })).toEqual([['Employees', '1,200', false, 'Research']]);
+  expect(sizeFacts({ type: 'employer' }, { employees: 1200, employees_source: 'research' })).toEqual([['Employees', '1,200', false, 'from research']]);
   expect(sizeFacts({ type: 'partner', category: '3. PEOs' }, { category: '3. PEOs', employees: 300, employees_source: 'manual', reach_employees: 45000, reach_clients: 410, reach_employees_source: 'research' }))
-    .toEqual([['Employees', '300', false, 'Typed'], ['Reach', 'covers 45,000 · 410 clients', false, 'Research']]);
+    .toEqual([['Employees', '300', false, 'typed'], ['Reach', 'covers 45,000 · 410 clients', false, 'from research']]);
   expect(showsReach({ type: 'partner' }, { category: '4. Mid-Market Benefits Brokers' })).toBe(false);
   expect(sizeFacts({ type: 'visitor' }, {})).toEqual([]);
+});
+
+test('company-window-v4 F2: readinessOf lands an open step on its fact with the "Needed before <next step>" title; research numbers come from the latest done run', () => {
+  const step = (id, label, status, extra = {}) => ({ id, label, status, ...extra });
+  const target = { steps: [step('research', 'Research', 'done'), step('site', 'Confirm site', 'skip'), step('size', 'Size & type', 'next', { reach: false }), step('owner', 'Owner', 'todo'), step('add', 'Add to pipeline', 'todo'), step('touch', 'First touch', 'skip')] };
+  expect(readinessOf(target)).toEqual({ Employees: { title: 'Needed before Add to pipeline · Research fills it', word: 'unknown' }, Owner: { title: 'Needed before Add to pipeline', word: 'unassigned' } });
+  const partner = { steps: [step('research', 'Research', 'todo'), step('site', 'Confirm site', 'skip'), step('size', 'Size & type', 'next', { reach: true }), step('owner', 'Owner', 'done'), step('add', 'Add to pipeline', 'skip'), step('touch', 'First touch', 'todo')] };
+  expect(readinessOf(partner)).toEqual({ Employees: { title: 'Needed before First touch · Research fills it', word: 'unknown' }, Reach: { title: 'Needed before First touch · Research fills it', word: 'unknown' } });
+  expect(readinessOf({ steps: [step('owner', 'Owner', 'done'), step('size', 'Size & type', 'running')] })).toEqual({});
+  expect(readinessOf(null)).toEqual({});
+  expect(researchNumbers({ research: { runs: [{ status: 'running' }, { status: 'done', result: { employees_count: 22, reach_clients: 4 } }] } })).toEqual({ employees: 22, reach_employees: null, reach_clients: 4 });
+  expect(researchNumbers(null)).toEqual({ employees: null, reach_employees: null, reach_clients: null });
 });

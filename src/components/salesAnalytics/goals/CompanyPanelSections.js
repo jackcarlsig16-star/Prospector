@@ -24,10 +24,11 @@ const row = { display: 'flex', alignItems: 'flex-start', gap: 10, minHeight: 24,
 const KIND_COLOR = { good: SA.good, warn: SA.warn, link: SA.link, accent: SA.accent };
 const money = c => (c == null ? '' : `$${Number(c).toFixed(3)}`);
 
-export function Card({ label, count, hot, action, testId, children }) {
+// need (company-window-v4 F2): the header glows red dashed with the readiness title - the Intel card while research is open.
+export function Card({ label, count, hot, action, testId, need = null, children }) {
   return (
     <section aria-label={label} data-section={testId} style={{ background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+      <div data-card-head data-need={need ? 'true' : undefined} title={need || undefined} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, ...(need ? { margin: '-6px -8px 0', padding: '6px 8px', borderRadius: 8, border: `1px dashed ${SA.bad}`, boxShadow: `0 0 0 3px color-mix(in srgb, ${SA.bad} 12%, transparent)` } : {}) }}>
         <span className="ui-group-label" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
           {label}
           {count != null && <span style={{ ...numStyle, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minWidth: 18, height: 18, padding: '0 5px', boxSizing: 'border-box', borderRadius: 999, background: hot ? `color-mix(in srgb, ${SA.warn} 12%, ${SA.surface2})` : SA.inset, color: hot ? SA.warn : SA.soft, fontSize: 11, fontWeight: 500, letterSpacing: 0, textTransform: 'none' }}>{count}</span>}
@@ -110,7 +111,7 @@ export function NotesCard({ detail, canEdit, lookup, onForm, flow = [] }) {
 const KV = ({ label, children }) => <><span className="ui-group-label" style={{ paddingTop: 2 }}>{label}</span><div style={{ ...text, minWidth: 0 }}>{children}</div></>;
 const MORE_FIELDS = [['mission', 'Mission'], ['positioning', 'Positioning'], ['housing_perk', 'Housing perk'], ['first_angle', 'First angle'], ['watch_outs', 'Watch-outs'], ['titles', 'Titles to approach']];
 
-export function IntelCard({ businessId, row, detail, canEdit, live = false, onChanged, onToast }) {
+export function IntelCard({ businessId, row, detail, canEdit, live = false, need = false, onChanged, onToast }) {
   const [busy, setBusy] = useState('');
   const latest = detail.research?.runs?.[0] || null;
   const running = latest?.status === 'running';
@@ -122,7 +123,7 @@ export function IntelCard({ businessId, row, detail, canEdit, live = false, onCh
   const status = running ? 'Researching…' : !latest ? 'Not researched yet' : latest.status === 'error' ? `Failed ${when(latest.created_at)}: ${latest.error}` : `Researched ${when(latest.created_at)} · Claude + web${latest.cost_usd != null ? ` · ${money(latest.cost_usd)}` : ''} · ${detail.research.today}/${detail.research.cap} today`;
   const recent = result?.recent?.length ? result.recent : null;
   return (
-    <Card label="Intel" testId="research" action={<span style={{ display: 'inline-flex', gap: 10, alignItems: 'center' }}><span role="status" style={{ fontSize: 12, color: SA.muted }}>{status}</span>{canEdit && !running && <Mini disabled={busy === 'research'} onClick={refresh} title="One Claude call with up to 3 web searches; 5 per company per day">{latest ? 'Refresh' : 'Run research'}</Mini>}</span>}>
+    <Card label="Intel" testId="research" need={need ? 'Needed before the next stage · Run research fills Size and Intel' : null} action={<span style={{ display: 'inline-flex', gap: 10, alignItems: 'center' }}><span role="status" style={{ fontSize: 12, color: SA.muted }}>{status}</span>{canEdit && !running && <Mini disabled={busy === 'research'} onClick={refresh} title="One Claude call with up to 3 web searches; 5 per company per day">{latest ? 'Refresh' : 'Run research'}</Mini>}</span>}>
       <div data-research-card style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {!result && !running && <Empty>Research reads the company's own site and one news source, one Claude call.</Empty>}
         {result?.summary && <p style={{ ...text, margin: 0, lineHeight: 1.5 }}>{result.summary}</p>}

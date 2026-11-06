@@ -2,12 +2,16 @@ import { CHANNEL_LABEL, PRIORITY_WORD } from '../../../constants/salesChannels';
 import { BAND_WORD } from '../../../constants/fitLevels';
 import { TEAM_LABEL } from '../../../constants/ownership';
 import { SOURCE_LABEL } from '../../../constants/leadSources';
-import { stageLabel, stageOptions, needsRecord } from './companyPanelModel';
+import { stageOptions, needsRecord } from './companyPanelModel';
+import { ORG_TYPE_LABELS } from '../pipelineStages';
+import { categoryName } from './partners/partnerTypes';
 
 // company-panel-v2 L2 / L5 / L6 - what the window shows for each row type
 // (pure, unit-tested): the labelled facts row, the Last touch wording, the
 // forward-only Stage choices, which Edit controls a type has, and the People
 // filter. No email or phone ever passes through here.
+// company-window-v4 F: the facts are Owner · Team · Priority · Employees (· Reach) · Type · Source · Last touch · Next
+// step - Stage is not a fact (the journey is the stage); only an Apollo-only row, which has no journey, keeps "In sequence".
 export const md = d => (d ? new Date(`${String(d).slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : '—');
 
 const TOUCH_WORD = { email: 'Email sent', call: 'Call', linkedin: 'LinkedIn', meeting: 'Meeting', event: 'Event', other: 'Touch', stage: 'Stage moved', done: 'To-do done' };
@@ -41,7 +45,8 @@ const sourceFact = (row, source) => {
 // company-workflow-v1 W4/W5 - the size facts: Employees (number + where it came from) and, for PEO / HR / benefit-platform
 // partners (categories 2, 3, 7, 8), Reach = employees it covers across clients · client count.
 const REACH_CATS = [2, 3, 7, 8];
-const SOURCE_TAG = { research: 'Research', manual: 'Typed', apollo: 'Apollo' };
+// company-window-v4: lowercase words, so the tag never reads as the Research action (every label once).
+const SOURCE_TAG = { research: 'from research', manual: 'typed', apollo: 'Apollo' };
 const n = v => Number(v).toLocaleString('en-US');
 export const showsReach = (row, record) => row.type === 'partner' && REACH_CATS.includes(Number(/^(\d+)\./.exec(record?.category || row.category || '')?.[1]));
 export function sizeFacts(row, record) {
@@ -59,7 +64,16 @@ export const priorityText = row => (row.not_a_fit ? 'Not a fit' : row.priority !
 // homelover-flow-v1 F2: a visitor's P is its intent band - Hot · Warm · Cool · Cold, never a time word.
 const visitBandText = row => (row.not_a_fit ? 'Not a fit' : row.priority != null ? `P${row.priority} · ${BAND_WORD[`P${row.priority}`] || ''}`.trim() : '—');
 
-// The seven facts (fewer for the record-less rows), [label, value, muted?, sub?]. source = GET goals/source's
+// The Type fact: an employer's org type (editable), a partner's category, a target's kind.
+const KIND_LABEL = { employer: 'Employer', partner: 'Partner' };
+export function typeFact(row, record) {
+  if (row.type === 'employer') { const t = record?.org_type || row.org_type; return ['Type', t ? ORG_TYPE_LABELS[t] || t : '—', !t]; }
+  if (row.type === 'partner') { const c = record?.category || row.category; return ['Type', c ? categoryName(c) : 'Uncategorized', !c]; }
+  const k = record?.kind || row.kind;
+  return ['Type', k ? KIND_LABEL[k] || k : '—', !k];
+}
+
+// The facts (fewer for the record-less rows), [label, value, muted?, sub?]. source = GET goals/source's
 // source (partner / employer / target only).
 export function factsFor(row, record, source) {
   const touch = lastTouchText(record?.last_touch, row.last_touch_at);
@@ -73,31 +87,57 @@ export function factsFor(row, record, source) {
   }
   if (row.type === 'target') {
     const owner = record?.owner_name || row.owner || null;
-    return [['Stage', stageLabel(row), false], ['Owner', owner || 'Unassigned', !owner], ['Team', row.owner_team ? TEAM_LABEL[row.owner_team] : '—', !row.owner_team], sourceFact(row, source), ['Last touch', touch.text, touch.empty], ...sizeFacts(row, record)];
+    return [['Owner', owner || 'Unassigned', !owner], ['Team', row.owner_team ? TEAM_LABEL[row.owner_team] : '—', !row.owner_team], ...sizeFacts(row, record), typeFact(row, record), sourceFact(row, source), ['Last touch', touch.text, touch.empty]];
   }
   return [
-    ['Stage', stageLabel(row), false],
-    ['Priority', priorityText(row), row.priority == null && !row.not_a_fit],
     ['Owner', row.owner || 'Unassigned', !row.owner],
     ['Team', row.owner_team ? TEAM_LABEL[row.owner_team] : '—', !row.owner_team],
+    ['Priority', priorityText(row), row.priority == null && !row.not_a_fit],
+    ...sizeFacts(row, record),
+    typeFact(row, record),
     sourceFact(row, source),
     ['Last touch', touch.text, touch.empty],
     ['Next step', nextText, !next],
-    ...sizeFacts(row, record),
   ];
+}
+
+// The numbers the latest done research run found (company-workflow-v1 W4), offered as "from research: n · Use".
+export function researchNumbers(detail) {
+  const r = detail?.research?.runs?.find(x => x.status === 'done')?.result || {};
+  return { employees: r.employees_count ?? null, reach_employees: r.reach_employees ?? null, reach_clients: r.reach_clients ?? null };
+}
+
+// company-window-v4 F2 - readiness: which fact a missing companySteps step lands on (owner -> Owner, size -> Employees
+// and, for a reach partner, Reach), with the title text "Needed before <the next stage move still ahead - Add to
+// pipeline for a target, First touch for a record> · Research fills it".
+const STEP_FACTS = { owner: ['Owner'], size: ['Employees'] };
+const STAGE_STEPS = ['add', 'touch'];
+export function readinessOf(steps) {
+  const out = {};
+  const list = steps?.steps || [];
+  const pending = st => st && !['done', 'skip', 'running'].includes(st.status);
+  list.forEach((st, i) => {
+    if (!pending(st) || !STEP_FACTS[st.id]) return;
+    const after = list.slice(i + 1).find(x => STAGE_STEPS.includes(x.id) && pending(x));
+    const title = `Needed before ${after ? after.label : 'the next stage'}${st.id === 'size' ? ' · Research fills it' : ''}`;
+    for (const label of [...STEP_FACTS[st.id], ...(st.id === 'size' && st.reach ? ['Reach'] : [])]) out[label] = { title, word: label === 'Owner' ? 'unassigned' : 'unknown' };
+  });
+  return out;
 }
 
 // L5: the Stage select lists the current stage and forward moves only; Jump
 // to stage (confirm) is the only way back.
 export const forwardStages = row => stageOptions(row).filter(s => s.dir === 'now' || s.dir === 'forward');
 
-// L5 per the matrix: partner / employer all four; target Stage + Team (a target
-// has no owner); visitor Priority only; Apollo-only nothing.
+// L5 per the matrix, company-window-v4 F1: partner / employer owner · team · priority · source · employees (a reach
+// partner: reach too) · type (an employer's org type - the only writable type; a target's kind and a partner's category
+// have no PATCH); target owner · team · source · employees; visitor Priority only; Apollo-only nothing. 'stage' stays
+// for the ⋯ › Jump to stage menu.
 export function editControls(row) {
   // FIX headcount-auto-v1 REV2 H7: employers / targets get "Website" (Set domain) - a partner's domains live in Partner domains.
-  if (row.type === 'partner') return ['stage', 'owner', 'team', 'priority', 'source'];
-  if (row.type === 'employer') return ['stage', 'owner', 'team', 'priority', 'source', 'domain'];
-  if (row.type === 'target') return ['stage', 'owner', 'team', 'source', 'domain'];
+  if (row.type === 'partner') return ['stage', 'owner', 'team', 'priority', 'source', 'employees', ...(showsReach(row, row) ? ['reach'] : [])];
+  if (row.type === 'employer') return ['stage', 'owner', 'team', 'priority', 'source', 'domain', 'employees', 'type'];
+  if (row.type === 'target') return ['stage', 'owner', 'team', 'source', 'domain', 'employees'];
   if (row.type === 'visitor') return ['priority'];
   return [];
 }

@@ -22,9 +22,15 @@ test('shows Intent 72 · P1 with the source and the since-yesterday marker; the 
   await waitFor(() => expect(goalsApi.scoreOf).toHaveBeenCalledTimes(2));
 });
 
-test('no score yet (404) reads "No score yet"; a Viewer gets no Recompute', async () => {
+test('no score yet (404) reads "no score yet · Recompute" for a Member (company-window-v4 T: the link runs it); a Viewer gets no Recompute', async () => {
   goalsApi.scoreOf.mockRejectedValue(new Error('No score yet - recompute'));
-  render(<IntentFact businessId="b1" row={ROW} canEdit={false} />);
-  expect(await screen.findByText('No score yet')).toBeInTheDocument();
+  const { unmount } = render(<IntentFact businessId="b1" row={ROW} canEdit={false} />);
+  expect(await screen.findByText('no score yet')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Recompute' })).not.toBeInTheDocument();
+  unmount();
+  goalsApi.recomputeScores.mockResolvedValue({});
+  render(<IntentFact businessId="b1" row={ROW} canEdit />);
+  expect(await screen.findByText('no score yet')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Recompute' }));
+  await waitFor(() => expect(goalsApi.recomputeScores).toHaveBeenCalledWith('b1', { type: ROW.type, id: ROW.id }));
 });

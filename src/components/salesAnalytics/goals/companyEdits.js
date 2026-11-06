@@ -69,6 +69,18 @@ export default function useCompanyEdits({ businessId, row, members, onPatch, onC
     onChanged();
     onToast({ text: `${row.name}: website ${r.fields?.domain || 'cleared'}` });
   });
+  // company-window-v4 F1: an employer's org type (the Type fact); numbers (Employees · Reach) through the fields route.
+  const changeType = orgType => act('type', async () => {
+    const before = row.org_type || null;
+    await updateOpportunity(businessId, row.id, { org_type: orgType });
+    onPatch({ org_type: orgType }); onChanged();
+    onToast({ text: `${row.name}: type ${orgType}`, undo: async () => { await updateOpportunity(businessId, row.id, { org_type: before }); onPatch({ org_type: before }); onChanged(); } });
+  });
+  const saveNumbers = (body, before) => act('numbers', async () => {
+    await goalsApi.editCompanyFields(businessId, row.type, row.id, body);
+    onChanged();
+    onToast({ text: `${row.name}: size saved`, undo: async () => { await goalsApi.editCompanyFields(businessId, row.type, row.id, before); onChanged(); } });
+  });
   const saveNextStep = (text, before) => act('next', async () => {
     const value = text.trim() || null;
     const write = v => (row.type === 'partner' ? goalsApi.updatePartner(businessId, row.id, { next_step: v }) : updateOpportunity(businessId, row.id, { next_action: v }));
@@ -77,5 +89,5 @@ export default function useCompanyEdits({ businessId, row, members, onPatch, onC
     onChanged();
     onToast({ text: `${row.name}: next step ${value ? 'saved' : 'cleared'}`, undo: async () => { await write(before ?? null); onPatch({ next_step: before ?? null }); onChanged(); } });
   });
-  return { busy, error, setError, changeStage, changeOwner, changeTeam, changePriority, saveDomain, saveNextStep };
+  return { busy, error, setError, changeStage, changeOwner, changeTeam, changePriority, changeType, saveNumbers, saveDomain, saveNextStep };
 }

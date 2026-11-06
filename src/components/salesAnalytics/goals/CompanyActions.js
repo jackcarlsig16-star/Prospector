@@ -14,7 +14,7 @@ import { IconPencil, IconMail, IconCalendar, IconCheck, IconSearch, IconPeople, 
 
 // homelover-flow-v1 F5 / F8 / F9 - the Actions row in four labelled verb groups that follow the flow, one row:
 // REACH Draft email (E) · Log call · Book meeting · Mark contacted (only while behind Contacted) · They replied…
-// (employers past Target) | DECIDE Promote ▾ / Not a fit (targets) · Add to pipeline ▾ (visitor / Apollo) ·
+// (employers past Target) | DECIDE Add to pipeline ▾ (primary: a target's promote form; visitor / Apollo) · Not a fit (targets) ·
 // Deprioritize… / Bring back | CAPTURE Note (N) · To-do (T) · Contact (C) | LEARN Research (R) · Check Apollo.
 // Owner is an editable fact and every stage move is the Progress bar's, so neither has a button here.
 // A live partner (mockup C): PARTNER Add referred client · Log referral · Book check-in · Draft email | CAPTURE |
@@ -216,7 +216,7 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
       <Group id="decide" label="Decide" icon={<IconCheck size={12} />}>
         {needsRecord(row.type) && <button type="button" className={bandShown ? btn : 'ui-btn ui-btn--primary'} aria-expanded={form === 'add'} onClick={() => open('add')}>Add to pipeline ▾</button>}
         {row.type === 'target' && <>
-          <button type="button" className={btn} aria-expanded={form === 'promote'} disabled={b('promote')} onClick={() => open('promote')}>↑ Promote ▾</button>
+          <button type="button" className="ui-btn ui-btn--primary" aria-expanded={form === 'promote'} disabled={b('promote')} onClick={() => open('promote')}>Add to pipeline ▾</button>
           <button type="button" className="ui-btn ui-btn--danger" disabled={b('reject')} onClick={notAFit}>Not a fit</button>
         </>}
         {row.type !== 'apollo' && deprioritizeBtn}
@@ -267,10 +267,10 @@ export default function CompanyActions({ businessId, row, members, meId, form, s
         </div>
       )}
       {form === 'promote' && (
-        <div role="group" aria-label="Promote to" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div role="group" aria-label="Add to pipeline as" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
           <OwnerPicker members={members} value={ownerPick} onChange={setOwner} disabled={b('promote')} />
-          <button type="button" className={btn} disabled={b('promote')} onClick={() => promote('partner')}>Promote to partner</button>
-          <button type="button" className={btn} disabled={b('promote')} onClick={() => promote('employer')}>Promote to employer</button>
+          <button type="button" className={btn} disabled={b('promote')} onClick={() => promote('partner')}>Partner</button>
+          <button type="button" className={btn} disabled={b('promote')} onClick={() => promote('employer')}>Employer</button>
         </div>
       )}
       {form === 'draft-kind' && (

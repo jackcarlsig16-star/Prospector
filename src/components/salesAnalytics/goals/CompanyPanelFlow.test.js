@@ -7,16 +7,17 @@ jest.mock('../pipelineApi', () => ({ updateOpportunity: jest.fn() }));
 jest.mock('../huddleApi', () => ({ updateProspect: jest.fn(), unlinkProspect: jest.fn() }));
 jest.mock('../../../utils/useMediaQuery', () => () => true);
 
-// FIX company-window-subtract-v1 (REV2) - the account card over an invented employer and an invented target: every
-// fact once, every action once, no empty block; doing above reading: the head = title · Interest (while live) ·
-// Actions · facts · stage strip (alone on its line) · SETUP (while incomplete). The invented live partner (homelover-
-// flow-v1 mockup C) is unchanged.
+// FIX company-window-subtract-v1 (REV2) / company-window-v4 Stage 1 - the account card over an invented employer and
+// an invented target: every fact once, every action once, no empty block; doing above reading: the head = title ·
+// Interest (while live) · Actions · facts (Stage is no fact; readiness draws on Owner / Employees, the Intel header) ·
+// stage strip (alone on its line). No SETUP strip, no <select> anywhere. The invented live partner (homelover-flow-v1
+// mockup C) is unchanged.
 const MEMBERS = [{ user_id: 'u-jack', name: 'Jack Zz', role: 'owner', color: '#3DBA8C' }, { user_id: 'u-cyrus', name: 'Cyrus Test', role: 'member', color: '#D9A441' }];
 const EMP = { type: 'employer', id: 'o1', name: 'Zz Acme Health', stage: 'contacted', owner_user_id: 'u-cyrus', owner: 'Cyrus', owner_team: 'homelover', due: 'week', due_date: '2026-11-07', category: null };
 const TGT = { type: 'target', id: 't1', name: 'Zz Fortem', stage: 'researching', owner_user_id: null, owner: null, owner_team: null, category: null };
 const HUB = { type: 'partner', id: 'p1', name: 'Zz HUB', stage: 'live', owner_user_id: 'u-jack', owner_team: 'homelover', category: '4. Brokers & PEOs', next_step: 'Submit joint proposal' };
 const INTEREST = { show: true, strongest: { text: '3 site visits this week', at: '2026-11-03' }, items: [{ text: '3 site visits this week', at: '2026-11-03' }] };
-const detail = (over = {}) => ({ record: { stage: 'contacted', next_step: 'Follow up with the 2 buyers', next_step_due: null, last_touch: { at: '2026-10-29T18:00:00Z', by: 'Cyrus Test', touch_type: 'done', what: 'Contacted Ana' }, site: { domain: 'acmehealth.example', confirmed: false }, employees: 1250, employees_source: 'apollo', client: {}, ...over.record },
+const detail = (over = {}) => ({ record: { stage: 'contacted', org_type: 'employer', next_step: 'Follow up with the 2 buyers', next_step_due: null, last_touch: { at: '2026-10-29T18:00:00Z', by: 'Cyrus Test', touch_type: 'done', what: 'Contacted Ana' }, site: { domain: 'acmehealth.example', confirmed: false }, employees: 1250, employees_source: 'apollo', client: {}, ...over.record },
   todos: [], waiting: [], visits: [{ id: 'v1', visits_7d: 6, top_paths: ['/employers', '/pricing'], first_visit: '2026-10-28', last_visit: '2026-11-03' }], signals: [], recent: [], people: [], research: { runs: [{ status: 'done', created_at: '2026-10-28T00:00:00Z', result: { summary: 'They do healthcare.', sells_to: 'Healthcare services', hq_city: 'Phoenix, AZ', housing_perk: 'no housing perk found' } }], today: 1, cap: 5 }, decisions: [], terms: [], stage_history: [{ stage: 'target', at: '2026-10-21T00:00:00Z' }, { stage: 'contacted', at: '2026-10-24T00:00:00Z' }], steps: null, interest: { show: false }, timeline: [], decision_makers: [], ...over });
 const FIT = { level: 'strong', source: 'computed', score: 78, used: 6, of: 6, hand_level: null, us_footprint: 'mostly_us', overlay: null, axes: [] };
 beforeEach(() => {
@@ -33,12 +34,12 @@ afterEach(() => jest.clearAllMocks());
 const props = { businessId: 'b1', canEdit: true, members: MEMBERS, meId: 'u-jack', onStar: jest.fn(), onPatch: jest.fn(), onChanged: jest.fn(), onToast: jest.fn(), onConvert: jest.fn(), onClose: jest.fn(), onOpenFull: jest.fn(), onOpenPeople: jest.fn() };
 
 // A label's own text (its direct text nodes, so "Research" ignores the kbd hint and never matches "✓ Research" or "Researched").
-const LABELS = { Stage: /^Stage$/, 'Next step': /^Next step$/, Owner: /^Owner$/, Intent: /^Intent$/, 'Mark contacted': /^Mark contacted$/, 'Book meeting': /^Book meeting$/, 'Check Apollo': /^Check Apollo$/, Research: /^Research$/, 'Draft email': /^Draft email$/, Promote: /Promote/, Deprioritize: /Deprioritize/, Note: /^Note$/, 'To-do': /^To-do$/, Contact: /^Contact$/, Employees: /^Employees$/ };
+const LABELS = { Stage: /^Stage$/, 'Next step': /^Next step$/, Owner: /^Owner$/, Intent: /^Intent$/, 'Mark contacted': /^Mark contacted$/, 'Book meeting': /^Book meeting$/, 'Check Apollo': /^Check Apollo$/, Research: /^Research$/, 'Draft email': /^Draft email$/, Promote: /Promote/, 'Add to pipeline': /^Add to pipeline ▾$/, Deprioritize: /Deprioritize/, Note: /^Note$/, 'To-do': /^To-do$/, Contact: /^Contact$/, Employees: /^Employees$/, Type: /^Type$/, Team: /^Team$/, Recompute: /^Recompute$/ };
 const counts = head => Object.fromEntries(Object.entries(LABELS).map(([k, re]) => [k, within(head).queryAllByText(re).length]));
 const headOf = dlg => dlg.querySelector('[data-window-head]');
 const blocks = head => [...head.children].map(el => el.matches('[data-company-panel]') ? 'title' : el.querySelector('[data-facts-row]') ? 'facts' : el.matches('[data-company-progress]') ? 'strip' : el.matches('[data-steps]') ? 'setup' : el.matches('[data-interest-band]') ? 'interest' : el.matches('[data-actions-row]') ? 'actions' : el.tagName.toLowerCase());
 
-test('an employer (Contacted, setup done, live interest): head = title · Interest · Actions · facts · strip; every label once; no Fit, Due or stage chip in the title; no empty card', async () => {
+test('an employer (Contacted, setup done, live interest): head = title · Interest · Actions · facts · strip; every label once; no Fit, Due or stage chip in the title; no empty card; no select; nothing glows', async () => {
   goalsApi.companyDetail.mockResolvedValue(detail({ steps: { next: null, ready: true, last_touch_at: '2026-10-29T18:00:00Z', steps: [] }, interest: INTEREST }));
   render(<CompanyPanel {...props} row={EMP} />);
   const dlg = screen.getByRole('dialog', { name: 'Zz Acme Health' });
@@ -53,7 +54,10 @@ test('an employer (Contacted, setup done, live interest): head = title · Intere
   expect(within(title).queryByText(/Employer · Contacted/)).toBeNull();
   expect(within(title).getByRole('button', { name: /Top/ })).toBeInTheDocument();
   expect(within(title).getByRole('link', { name: /acmehealth\.example/ })).toBeInTheDocument();
-  expect(counts(head)).toEqual({ Stage: 1, 'Next step': 1, Owner: 1, Intent: 1, 'Mark contacted': 0, 'Book meeting': 1, 'Check Apollo': 1, Research: 1, 'Draft email': 1, Promote: 0, Deprioritize: 1, Note: 1, 'To-do': 1, Contact: 1, Employees: 1 });
+  expect(counts(head)).toEqual({ Stage: 0, 'Next step': 1, Owner: 1, Intent: 1, 'Mark contacted': 0, 'Book meeting': 1, 'Check Apollo': 1, Research: 1, 'Draft email': 1, Promote: 0, 'Add to pipeline': 0, Deprioritize: 1, Note: 1, 'To-do': 1, Contact: 1, Employees: 1, Type: 1, Team: 1, Recompute: 1 }); // Recompute = the scored Intent's breakdown button (closed), not a title link
+  expect(head.querySelector('[data-facts-row] select, [data-fact-pop] select, [data-actions-row] select')).toBeNull(); // no select in a fact popover (the Files card's upload form keeps its own)
+  expect(dlg.querySelector('[data-need]')).toBeNull();
+  expect(head.querySelector('[data-fact="Type"] b').textContent).toBe('Employer');
   expect(within(head).queryByText(/^Fit/)).toBeNull();
   expect(within(head).queryByText(/no score yet|nobody known|nothing yet|^Reached$|^Overview$|^Fit at a glance$|^Next step$/i, { selector: 'section > span' })).toBeNull();
   expect(head.querySelector('[data-section]')).toBeNull();
@@ -85,26 +89,40 @@ test('an employer (Contacted, setup done, live interest): head = title · Intere
   expect(screen.getByRole('group', { name: 'Deprioritize' })).toBeInTheDocument();
 });
 
-test('a target (no score, no people, setup incomplete, no interest): head = title · Actions · facts · strip · SETUP; every label once; SETUP done steps carry no value; nothing says "no score yet"', async () => {
+test('a target (no score, no people, research + size + owner open, no interest): head = title · Actions · facts · strip - no SETUP; every label once; the title reads "no score yet · Recompute"; Owner and Employees glow red with their titles, the Intel header glows; Add to pipeline ▾ is DECIDE\'s primary', async () => {
   goalsApi.fitOf.mockResolvedValue(null);
-  goalsApi.companyDetail.mockResolvedValue(detail({ record: { stage: 'researching', next_step: null, last_touch: null, site: null, employees: null, employees_source: null, owner_name: null }, research: { runs: [], today: 0, cap: 5 }, stage_history: [], visits: [],
-    steps: { next: 'size', ready: false, steps: [{ id: 'research', label: 'Research', status: 'done', value: 'Researched 2026-11-05' }, { id: 'site', label: 'Confirm site', status: 'skip' }, { id: 'size', label: 'Size & type', status: 'next', reach: false }, { id: 'owner', label: 'Owner', status: 'todo' }, { id: 'add', label: 'Add to pipeline', status: 'todo' }, { id: 'touch', label: 'First touch', status: 'skip' }] } }));
+  goalsApi.scoreOf.mockResolvedValue(null); // Fortem: no intent score yet
+  goalsApi.companyDetail.mockResolvedValue(detail({ record: { stage: 'researching', next_step: null, last_touch: null, site: null, employees: null, employees_source: null, owner_name: null, kind: 'employer' }, research: { runs: [], today: 0, cap: 5 }, stage_history: [], visits: [],
+    steps: { next: 'research', ready: false, steps: [{ id: 'research', label: 'Research', status: 'next' }, { id: 'site', label: 'Confirm site', status: 'skip' }, { id: 'size', label: 'Size & type', status: 'todo', reach: false }, { id: 'owner', label: 'Owner', status: 'todo' }, { id: 'add', label: 'Add to pipeline', status: 'todo' }, { id: 'touch', label: 'First touch', status: 'skip' }] } }));
   render(<CompanyPanel {...props} row={TGT} />);
   const dlg = screen.getByRole('dialog', { name: 'Zz Fortem' });
-  await within(dlg).findByRole('region', { name: 'Setup' });
   await within(dlg).findByRole('region', { name: 'Actions' });
+  await waitFor(() => expect(dlg.querySelector('[data-fact="Owner"][data-need]')).toBeInTheDocument());
   const head = headOf(dlg);
-  expect(blocks(head)).toEqual(['title', 'actions', 'facts', 'strip', 'setup']);
+  expect(blocks(head)).toEqual(['title', 'actions', 'facts', 'strip']);
   expect(head.querySelector('[data-company-panel] [data-chip]')).toBeNull();
   expect(within(head.querySelector('[data-company-panel]')).queryByText(/Target · Researching/)).toBeNull();
-  expect(counts(head)).toEqual({ Stage: 1, 'Next step': 0, Owner: 1, Intent: 1, 'Mark contacted': 1, 'Book meeting': 1, 'Check Apollo': 1, Research: 1, 'Draft email': 1, Promote: 1, Deprioritize: 1, Note: 1, 'To-do': 1, Contact: 1, Employees: 1 });
+  expect(counts(head)).toEqual({ Stage: 0, 'Next step': 0, Owner: 1, Intent: 1, 'Mark contacted': 1, 'Book meeting': 1, 'Check Apollo': 1, Research: 1, 'Draft email': 1, Promote: 0, 'Add to pipeline': 1, Deprioritize: 1, Note: 1, 'To-do': 1, Contact: 1, Employees: 1, Type: 1, Team: 1, Recompute: 1 });
   expect(within(head).queryByText(/^Fit/)).toBeNull();
-  expect(within(dlg).queryByText(/no score yet|nobody known at this company/i)).toBeNull();
+  expect(within(head.querySelector('[data-company-panel]')).getByText('no score yet')).toBeInTheDocument();
+  expect(within(head.querySelector('[data-company-panel]')).getByRole('button', { name: 'Recompute' })).toBeInTheDocument();
+  expect(within(dlg).queryByText(/nobody known at this company/i)).toBeNull();
   expect(head.querySelector('[data-section]')).toBeNull();
-  const setup = head.querySelector('[data-steps]');
-  expect(setup.querySelector('[data-step="research"]').textContent).toBe('✓ Research');
-  expect(setup.querySelector('[data-step="research"]').getAttribute('title')).toBeNull();
-  expect(setup.querySelector('[data-setup-count]').textContent).toBe('Setup 1/4');
+  expect(head.querySelector('[data-steps]')).toBeNull();
+  expect(head.querySelector('[data-facts-row] select, [data-fact-pop] select, [data-actions-row] select')).toBeNull(); // no select in a fact popover (the Files card's upload form keeps its own)
+  // F2: readiness on the facts and the Intel header, titles from the steps.
+  const owner = head.querySelector('[data-fact="Owner"]'), employees = head.querySelector('[data-fact="Employees"]');
+  expect(owner.getAttribute('title')).toBe('Needed before Add to pipeline'); expect(owner.querySelector('b').textContent).toBe('unassigned');
+  expect(employees.getAttribute('data-need')).toBe('true'); expect(employees.getAttribute('title')).toBe('Needed before Add to pipeline · Research fills it'); expect(employees.querySelector('b').textContent).toBe('unknown');
+  expect(head.querySelector('[data-fact="Team"][data-need]')).toBeNull();
+  expect(within(dlg).getByRole('region', { name: 'Intel' }).querySelector('[data-card-head]').getAttribute('data-need')).toBe('true');
+  expect(head.querySelector('[data-fact="Type"] b').textContent).toBe('Employer');
+  // One click on Owner = the member list with color dots + Unassigned.
+  fireEvent.click(owner);
+  expect(within(screen.getByRole('listbox', { name: 'Owner' })).getAllByRole('option').map(o => o.textContent)).toEqual(['Jack Zz', 'Cyrus Test', 'Unassigned']);
+  fireEvent.pointerDown(document.body);
+  expect(within(within(head).getByRole('group', { name: 'Decide' })).getAllByRole('button').map(b => b.textContent)).toEqual(['Add to pipeline ▾', 'Not a fit', '↓ Deprioritize…']);
+  expect(within(within(head).getByRole('group', { name: 'Decide' })).getByRole('button', { name: 'Add to pipeline ▾' })).toHaveClass('ui-btn--primary');
   // A target's strip has nothing beside the bar (Mark contacted is REACH's); its pills still read.
   const strip = head.querySelector('[data-company-progress]');
   expect([...strip.querySelectorAll('button')].filter(b => !b.closest('[data-progress-bar]'))).toHaveLength(0);
@@ -147,7 +165,7 @@ test('mockup C: a live partner card is unchanged - Partner · category, Live sin
   expect(dlg.querySelector('[data-facts-row]')).toBeNull();
 });
 
-test('a Viewer: plain facts, the strip without buttons, no Actions row, no chips', async () => {
+test('a Viewer: plain facts (readiness still reads, no buttons), the strip without buttons, no Actions row, no chips, no Recompute', async () => {
   goalsApi.companyDetail.mockResolvedValue(detail({ interest: INTEREST }));
   render(<CompanyPanel {...props} canEdit={false} row={EMP} />);
   const dlg = screen.getByRole('dialog', { name: 'Zz Acme Health' });
@@ -156,4 +174,5 @@ test('a Viewer: plain facts, the strip without buttons, no Actions row, no chips
   expect(head.querySelectorAll('[data-fact-button], [data-chip], [data-actions-row], [data-interest-band] button, [data-company-progress] button')).toHaveLength(0);
   expect(within(dlg).getByText(/view access/)).toBeInTheDocument();
   expect(within(head).getByText('Owner')).toBeInTheDocument();
+  expect(within(head).queryByRole('button', { name: 'Recompute' })).toBeNull();
 });

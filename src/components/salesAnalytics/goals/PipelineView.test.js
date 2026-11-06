@@ -391,7 +391,7 @@ test('panel: header chips; body from GET goals/company; Add note goes through th
   fireEvent.click(await screen.findByRole('button', { name: 'Gallagher' }));
   const panel = within(screen.getByRole('dialog', { name: 'Gallagher' }));
   expect(panel.getByText('Brokers & PEOs')).toHaveAttribute('data-type-chip', 'brokers');
-  expect(factText('Gallagher', 'Stage')).toBe('Replied');
+  expect(factText('Gallagher', 'Stage')).toBeNull(); // company-window-v4: Stage is no fact - the strip's pill is the stage
   expect(factText('Gallagher', 'Owner')).toBe('Jack');
   expect(await panel.findByText('Send the deck')).toBeTruthy();
   expect(panel.getByText('Note: Newest note')).toBeTruthy();
@@ -768,7 +768,8 @@ test('interest band: the strongest signal in bold with its date; Follow up + Not
   await waitFor(() => expect(goalsApi.notNow).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', { contact_id: 'c-pat' }));
   fireEvent.click(within(panel.getByRole('group', { name: 'Reach' })).getByRole('button', { name: 'Book meeting' }));
   await waitFor(() => expect(goalsApi.bookMeeting).toHaveBeenCalledWith('b1', 'partner', 'Gallagher', {}));
-  expect(panel.getByRole('button', { name: /^Stage/ })).toHaveAttribute('title', 'Stage only moves forward · saves at once · Undo 10 s');
+  expect(panel.queryByRole('button', { name: /^Stage/ })).toBeNull(); // company-window-v4: the stage moves on the strip, not a fact
+  expect(panel.getByRole('button', { name: /^Owner/ })).toHaveAttribute('aria-haspopup', 'listbox');
   expect(panel.getByRole('region', { name: 'Actions' })).toBeTruthy();
 });
 
@@ -781,7 +782,7 @@ test('Viewer: the band shows the signal but no buttons; the facts row and the ca
   expect(band.getByText('Pat Lee clicked Step 1')).toBeTruthy();
   expect(band.queryByRole('button')).toBeNull();
   expect(panel.queryByRole('group', { name: 'Edit' })).toBeNull();
-  expect(factText('Gallagher', 'Stage')).toBe('Replied');
+  expect(factText('Gallagher', 'Stage')).toBeNull();
   expect(factText('Gallagher', 'Last touch')).toBe('No touch yet');
   expect(panel.queryByRole('button', { name: /^(Stage|Owner|Team|Priority|Source|Next step)/ })).toBeNull(); // company-panel-v3: viewers get plain facts
   expect(panel.queryByRole('button', { name: 'More' })).toBeNull(); // spec Z: no ⋯ for Viewers
@@ -805,7 +806,7 @@ test('visitor: facts are Priority · Source · Last visit; no Edit row but Prior
   expect(factText('Acme Visit', 'Last visit')).toBe('Oct 20');
   expect(factText('Acme Visit', 'Owner')).toBeNull();
   fireEvent.click(panel.getByRole('button', { name: /^Priority/ })); // company-panel-v3: the one editable fact on a visitor
-  expect(panel.getByRole('combobox', { name: 'Priority' })).toBeTruthy();
+  expect(panel.getByRole('listbox', { name: 'Priority' })).toBeTruthy(); // company-window-v4 F1: the popover is the list, no select
   expect(panel.queryByRole('button', { name: /^Stage/ })).toBeNull();
 });
 

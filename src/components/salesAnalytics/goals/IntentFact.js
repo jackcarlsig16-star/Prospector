@@ -9,6 +9,7 @@ import { BAND_WORD } from '../../../constants/fitLevels';
 // referral · +17 visits (6 in 7 d, 3 people) …") and a per-company Recompute (any Member). Reads GET
 // goals/scores/:type/:id; nothing until the first recompute ("No score yet").
 // company-panel-v3 T: compact = the title row's "INTENT 73 · P1 · ● source"; the breakdown opens under it.
+// company-window-v4 T: without a score the title reads "no score yet · Recompute" (the link runs it; Members).
 export default function IntentFact({ businessId, row, canEdit, version = 0, compact = false }) {
   const [score, setScore] = useState(undefined); // undefined = loading, null = none yet
   const [busy, setBusy] = useState(false);
@@ -28,14 +29,16 @@ export default function IntentFact({ businessId, row, canEdit, version = 0, comp
     <details data-intent-fact style={{ fontSize: 13, color: SA.text, ...(compact ? { position: 'relative' } : {}) }}>
       <summary style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
         <span className="ui-group-label">Intent</span>
-        {r ? <b style={{ ...numStyle, fontWeight: 600, textDecoration: 'underline dotted', textDecorationColor: 'var(--sa-muted)', textUnderlineOffset: 4 }}>{r.score} · {(BAND_WORD[r.band] || r.band).toLowerCase()}{r.closed ? ' · closed' : r.live ? ' · live' : ''}{r.trend === 'up' ? ' ▲' : r.trend === 'down' ? ' ▼' : ''}</b> : <span style={{ color: SA.muted }}>No score yet</span>}
+        {r ? <b style={{ ...numStyle, fontWeight: 600, textDecoration: 'underline dotted', textDecorationColor: 'var(--sa-muted)', textUnderlineOffset: 4 }}>{r.score} · {(BAND_WORD[r.band] || r.band).toLowerCase()}{r.closed ? ' · closed' : r.live ? ' · live' : ''}{r.trend === 'up' ? ' ▲' : r.trend === 'down' ? ' ▼' : ''}</b> : <span style={{ color: SA.muted }}>no score yet</span>}
+        {!r && canEdit && <span style={{ color: SA.muted }}>·</span>}
+        {!r && canEdit && <button type="button" className="ui-link" data-recompute disabled={busy} onClick={e => { e.preventDefault(); e.stopPropagation(); recompute(); }}>{busy ? 'Recomputing…' : 'Recompute'}</button>}
         {r && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: SA.muted }}><span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: sourceColor(r.source_label) }} />{SOURCE_LABELS[r.source_label] || r.source_label}</span>}
         {r?.trend && r.band_changed && <span data-trend={r.trend} style={{ fontSize: 12, color: r.trend === 'up' ? SA.good : SA.bad }}>since {(BAND_WORD[r.prev_band] || r.prev_band).toLowerCase()}</span>}
       </summary>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: compact ? 10 : '6px 0 0 4px', ...(compact ? { position: 'absolute', zIndex: 20, top: 'calc(100% + 4px)', left: 0, minWidth: 260, background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.35)' } : {}) }}>
         {(score?.lines || []).map(l => <span key={l} style={{ ...numStyle, fontSize: 12, color: l.startsWith('-') ? SA.bad : SA.text }}>{l}</span>)}
         {r && !score.lines?.length && <span style={{ fontSize: 12, color: SA.muted }}>No points yet</span>}
-        {canEdit && <span><button type="button" className="ui-btn ui-btn--secondary ui-btn--sm" disabled={busy} onClick={recompute}>{busy ? 'Recomputing…' : 'Recompute'}</button></span>}
+        {canEdit && r && <span><button type="button" className="ui-btn ui-btn--secondary ui-btn--sm" disabled={busy} onClick={recompute}>{busy ? 'Recomputing…' : 'Recompute'}</button></span>}
       </div>
     </details>
   );

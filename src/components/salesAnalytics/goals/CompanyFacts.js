@@ -1,40 +1,63 @@
 import { useState, useEffect, useRef } from 'react';
 import { SA } from '../theme';
 import { ErrorNote } from './goalsUi';
+import { memberColor } from '../../../constants/memberColors';
 import { OWNER_TEAMS, TEAM_LABEL } from '../../../constants/ownership';
 import { PRIORITIES, PRIORITY_WORD } from '../../../constants/salesChannels';
 import { NOT_A_FIT, priorityValue } from './priorityActions';
 import { stageOptions } from './companyPanelModel';
-import { forwardStages, editControls } from './companyPanelFacts';
+import { forwardStages, editControls, researchNumbers, readinessOf } from './companyPanelFacts';
+import { ORG_TYPE_ENUM, ORG_TYPE_LABELS } from '../pipelineStages';
 import { priorityColor } from '../palette';
 import { SourceForm } from './LeadSource';
 import useCompanyEdits, { nextStepWritable } from './companyEdits';
 import { IconMore } from '../../../ui/icons';
 
-// company-panel-v3 F / T / D1 / D2 - the facts ARE the edit row: an editable fact (per editControls, + Next step on
-// partners / employers) is a button - label above, value + caret - that opens the same control the v2 Edit row had, as
-// a popover anchored to it (role=dialog, labelled); each change saves at once with the 10 s Undo. Employees, Last touch,
-// Reach, Website never edit here. Viewers get plain facts. The ⋯ menu holds Jump to stage (confirm on the way back),
-// Source (the same form as the Source fact), Website (Set domain) and Copy link; their forms open under the facts.
-const FACT_CONTROL = { Stage: 'stage', Owner: 'owner', Team: 'team', Priority: 'priority', Source: 'source' };
+// company-window-v4 F1 / F2 - a fact's popover IS the list: Owner (members with their color dot + Unassigned), Team,
+// Priority and Type open a role=listbox directly under the fact; a pick closes it and saves at once with the 10 s Undo
+// (the same calls as before). Employees (number + "from research: n · Use") and Reach are small forms, Next step an
+// inline text, Source the existing form under the facts. No <select> anywhere in the window. Readiness rides on the
+// fact: a companySteps step still open (no owner, no size) draws its fact red dashed with "unassigned" / "unknown" in
+// red and the step's "Needed before …" title. Viewers get plain facts. The ⋯ menu holds Jump to stage (confirm on the
+// way back), Source, Website (Set domain) and Copy link; their forms open under the facts.
+const FACT_CONTROL = { Owner: 'owner', Team: 'team', Priority: 'priority', Employees: 'employees', Reach: 'reach', Type: 'type', Source: 'source' };
 export const editableFacts = row => {
   const c = editControls(row);
   return [...Object.keys(FACT_CONTROL).filter(l => c.includes(FACT_CONTROL[l])), ...(nextStepWritable(row) ? ['Next step'] : [])];
 };
 const caret = <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" style={{ flex: 'none', color: 'var(--sa-faint, #5E6773)' }}><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-const pop = { position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 20, minWidth: 220, padding: 10, display: 'flex', flexDirection: 'column', gap: 8, background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.35)' };
-const selectStyle = { height: 32, width: '100%' };
+const pop = { position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 20, minWidth: 200, padding: 6, display: 'flex', flexDirection: 'column', gap: 2, background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.35)' };
+const formPop = { ...pop, minWidth: 240, padding: 10, gap: 8 };
+const NEED = { border: `1px dashed ${SA.bad}`, boxShadow: `0 0 0 3px color-mix(in srgb, ${SA.bad} 12%, transparent)` };
+const num = v => (v == null || v === '' ? null : Number(String(v).replace(/[,\s]/g, '')));
+const fmt = n => Number(n).toLocaleString('en-US');
+const Dot = ({ color }) => <i aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: color, display: 'inline-block', flex: 'none' }} />;
 
-function FactValue({ label, value, muted, sub, editable }) {
+function FactValue({ label, value, muted, sub, editable, dot, need }) {
   return (
     <>
       <span className="ui-group-label">{label}</span>
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-        <b title={typeof value === 'string' ? value : undefined} style={{ fontWeight: 500, fontSize: 13, color: muted ? SA.muted : SA.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: `min(${label === 'Source' || label === 'Next step' ? 360 : 220}px, calc(100vw - 96px))`, ...(editable ? { textDecoration: 'underline dotted', textDecorationColor: 'var(--sa-muted)', textUnderlineOffset: 4 } : {}) }}>{value}</b>
+        {dot && <Dot color={dot} />}
+        <b title={typeof value === 'string' ? value : undefined} style={{ fontWeight: 500, fontSize: 13, color: need ? SA.bad : muted ? SA.muted : SA.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: `min(${label === 'Source' || label === 'Next step' ? 360 : 220}px, calc(100vw - 96px))`, ...(editable && !need ? { textDecoration: 'underline dotted', textDecorationColor: 'var(--sa-muted)', textUnderlineOffset: 4 } : {}) }}>{need ? need.word : value}</b>
         {editable && caret}
-        {sub && <span data-fact-sub style={{ fontSize: 11, color: SA.muted, whiteSpace: 'nowrap' }}>{sub}</span>}
+        {sub && !need && <span data-fact-sub style={{ fontSize: 11, color: SA.muted, whiteSpace: 'nowrap' }}>{sub}</span>}
       </span>
     </>
+  );
+}
+
+// The list under a fact: one click = the pick. options [{ value, label, dot? }].
+function Options({ label, options, value, busy, onPick }) {
+  return (
+    <div role="listbox" aria-label={label} data-fact-pop style={pop}>
+      {options.map(o => (
+        <button key={o.value} type="button" role="option" aria-selected={o.value === value} className="ui-btn ui-btn--tertiary" disabled={busy}
+          style={{ justifyContent: 'flex-start', width: '100%', ...(o.value === value ? { background: SA.inset } : {}) }} onClick={() => onPick(o.value)}>
+          {o.dot && <Dot color={o.dot} />}{o.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -69,7 +92,35 @@ export function MoreMenu({ row, canEdit, onPick }) {
   );
 }
 
-export default function CompanyFacts({ businessId, row, record, facts, canEdit, members, source, panel, setPanel, onPatch, onChanged, onToast }) {
+function NumberForm({ label, fields, record, found, busy, onSave }) {
+  const [draft, setDraft] = useState({});
+  const value = k => (k in draft ? draft[k] : record?.[k] ?? '');
+  const submit = e => {
+    e.preventDefault();
+    const body = Object.fromEntries(fields.filter(([k]) => k in draft).map(([k]) => [k, num(draft[k])]));
+    if (!Object.keys(body).length) return onSave(null);
+    return onSave(body, Object.fromEntries(Object.keys(body).map(k => [k, record?.[k] ?? null])));
+  };
+  return (
+    <form role="dialog" aria-label={label} data-fact-pop onSubmit={submit} style={formPop}>
+      {fields.map(([k, lb]) => {
+        const use = found[k] != null && found[k] !== record?.[k] ? found[k] : null;
+        return (
+          <label key={k} style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: SA.soft }}>
+            {lb}{record?.[`${k}_source`] ? <span style={{ color: SA.muted }}> · {record[`${k}_source`] === 'manual' ? 'typed' : record[`${k}_source`] === 'apollo' ? 'Apollo' : 'from research'}</span> : null}
+            <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input autoFocus={k === fields[0][0]} aria-label={lb} inputMode="numeric" className="ui-input ui-input--sm" value={value(k)} onChange={e => setDraft(d => ({ ...d, [k]: e.target.value }))} style={{ width: 110 }} />
+              {use != null && <span style={{ fontSize: 12, color: SA.muted, whiteSpace: 'nowrap' }}>from research: {fmt(use)} · <button type="button" className="ui-link" onClick={() => setDraft(d => ({ ...d, [k]: String(use) }))}>Use</button></span>}
+            </span>
+          </label>
+        );
+      })}
+      <button type="submit" className="ui-btn ui-btn--primary ui-btn--sm" disabled={busy} style={{ alignSelf: 'flex-start' }}>{busy ? 'Saving…' : 'Save'}</button>
+    </form>
+  );
+}
+
+export default function CompanyFacts({ businessId, row, record, detail, steps, facts, canEdit, members, source, panel, setPanel, onPatch, onChanged, onToast }) {
   const [openFact, setOpenFact] = useState(null);
   const [draft, setDraft] = useState('');
   const edits = useCompanyEdits({ businessId, row, members, onPatch, onChanged, onToast });
@@ -87,18 +138,21 @@ export default function CompanyFacts({ businessId, row, record, facts, canEdit, 
   const busy = w => edits.busy === w;
   const done = ok => { if (ok) setOpenFact(null); };
   const nextBefore = record?.next_step ?? row.next_step ?? null;
+  const need = readinessOf(steps);
+  const people = members.filter(m => m.role !== 'viewer');
+  const colorOf = m => m.color || memberColor(members.indexOf(m));
+  const ownerDot = row.owner_user_id ? colorOf(members.find(m => m.user_id === row.owner_user_id) || {}) : null;
+  const found = researchNumbers(detail);
+  const saveNumbers = async (body, before) => { if (!body) { setOpenFact(null); return; } done(await edits.saveNumbers(body, before)); };
   const control = label => {
-    if (label === 'Stage') return <div role="listbox" aria-label="Stage" style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>{forwardStages(row).map(s => <button key={s.id} type="button" role="option" aria-selected={s.id === row.stage} className="ui-btn ui-btn--tertiary" disabled={busy('stage') || s.id === row.stage} style={{ justifyContent: 'flex-start' }} onClick={async () => done(await edits.changeStage(s.id))}>{s.label}{s.id === row.stage ? ' · now' : ''}</button>)}</div>;
-    if (label === 'Owner') return <select aria-label="Owner" className="ui-filter__select" style={selectStyle} value={row.owner_user_id || ''} disabled={busy('owner')} onChange={async e => done(await edits.changeOwner(e.target.value))}>{[{ value: '', label: 'Unassigned' }, ...members.filter(m => m.role !== 'viewer').map(m => ({ value: m.user_id, label: m.name }))].map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>;
-    if (label === 'Team') return <select aria-label="Team" className="ui-filter__select" style={selectStyle} value={row.owner_team || ''} disabled={busy('team')} onChange={async e => done(await edits.changeTeam(e.target.value))}>{[{ value: '', label: 'None' }, ...OWNER_TEAMS.map(t => ({ value: t, label: TEAM_LABEL[t] }))].map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>;
-    if (label === 'Priority') return (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-        {priorityValue(row) && priorityValue(row) !== NOT_A_FIT && <span className="ui-tag__dot" data-priority-dot aria-hidden="true" style={{ '--tag-color': priorityColor(priorityValue(row)) }} />}
-        <select aria-label="Priority" className="ui-filter__select" style={selectStyle} value={priorityValue(row)} disabled={busy('priority')} onChange={async e => done(await edits.changePriority(e.target.value))}>{[{ value: '', label: '—' }, ...PRIORITIES.map(p => ({ value: String(p), label: `P${p} · ${PRIORITY_WORD[p]}` })), { value: NOT_A_FIT, label: 'Not a fit' }].map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
-      </span>
-    );
+    if (label === 'Owner') return <Options label="Owner" value={row.owner_user_id || ''} busy={busy('owner')} onPick={async v => done(await edits.changeOwner(v))} options={[...people.map(m => ({ value: m.user_id, label: m.name, dot: colorOf(m) })), { value: '', label: 'Unassigned' }]} />;
+    if (label === 'Team') return <Options label="Team" value={row.owner_team || ''} busy={busy('team')} onPick={async v => done(await edits.changeTeam(v))} options={[...OWNER_TEAMS.map(t => ({ value: t, label: TEAM_LABEL[t] })), { value: '', label: 'None' }]} />;
+    if (label === 'Priority') return <Options label="Priority" value={priorityValue(row)} busy={busy('priority')} onPick={async v => done(await edits.changePriority(v))} options={[...PRIORITIES.map(p => ({ value: String(p), label: `P${p} · ${PRIORITY_WORD[p]}`, dot: priorityColor(p) })), { value: NOT_A_FIT, label: 'Not a fit' }, { value: '', label: '—' }]} />;
+    if (label === 'Type') return <Options label="Type" value={record?.org_type || row.org_type || ''} busy={busy('type')} onPick={async v => done(await edits.changeType(v))} options={ORG_TYPE_ENUM.map(t => ({ value: t, label: ORG_TYPE_LABELS[t] }))} />;
+    if (label === 'Employees') return <NumberForm label="Employees" fields={[['employees', 'Employees']]} record={record} found={found} busy={busy('numbers')} onSave={saveNumbers} />;
+    if (label === 'Reach') return <NumberForm label="Reach" fields={[['reach_employees', 'Covers (employees)'], ['reach_clients', 'Clients']]} record={record} found={found} busy={busy('numbers')} onSave={saveNumbers} />;
     if (label === 'Next step') return (
-      <form onSubmit={async e => { e.preventDefault(); done(await edits.saveNextStep(draft, nextBefore)); }} style={{ display: 'flex', gap: 6 }}>
+      <form role="dialog" aria-label="Next step" data-fact-pop onSubmit={async e => { e.preventDefault(); done(await edits.saveNextStep(draft, nextBefore)); }} style={{ ...formPop, flexDirection: 'row', minWidth: 0 }}>
         <input autoFocus aria-label="Next step" className="ui-input ui-input--sm" maxLength={200} placeholder="e.g. Send the one-pager" value={draft} onChange={e => setDraft(e.target.value)} style={{ width: 260 }} />
         <button type="submit" className="ui-btn ui-btn--primary ui-btn--sm" disabled={busy('next')}>{busy('next') ? 'Saving…' : 'Save'}</button>
       </form>
@@ -112,21 +166,23 @@ export default function CompanyFacts({ businessId, row, record, facts, canEdit, 
   };
   return (
     <div ref={rowRef} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div data-facts-row style={{ display: 'flex', gap: '6px 18px', flexWrap: 'wrap' }}>
+      <div data-facts-row style={{ display: 'flex', gap: '6px 14px', flexWrap: 'wrap' }}>
         {facts.map(([label, value, muted, sub]) => {
           const ed = editable.includes(label);
-          const title = label === 'Stage' ? 'Stage only moves forward · saves at once · Undo 10 s' : label === 'Next step' && row.type === 'target' ? 'Set after Add to pipeline' : undefined;
+          const nd = muted && need[label] ? need[label] : null;
+          const title = nd ? nd.title : label === 'Next step' && row.type === 'target' ? 'Set after Add to pipeline' : undefined;
+          const dot = label === 'Owner' && !nd ? ownerDot : null;
           return ed ? (
             <span key={label} style={{ position: 'relative' }}>
-              <button type="button" data-fact={label} data-fact-button aria-haspopup="dialog" aria-expanded={openFact === label || (label === 'Source' && panel === 'source')} title={title} onClick={() => click(label)}
-                className="ui-fact-btn" style={{ all: 'unset', cursor: 'pointer', display: 'inline-flex', flexDirection: 'column', gap: 3, minWidth: 0, padding: '4px 8px', margin: '0 -8px', borderRadius: 8, boxShadow: openFact === label ? `0 0 0 1px ${SA.border}` : undefined, background: openFact === label ? SA.surface2 : undefined }}>
-                <FactValue label={label} value={value} muted={muted} sub={sub} editable />
+              <button type="button" data-fact={label} data-fact-button data-need={nd ? 'true' : undefined} aria-haspopup={['Owner', 'Team', 'Priority', 'Type'].includes(label) ? 'listbox' : 'dialog'} aria-expanded={openFact === label || (label === 'Source' && panel === 'source')} title={title} onClick={() => click(label)}
+                className="ui-fact-btn" style={{ all: 'unset', cursor: 'pointer', display: 'inline-flex', flexDirection: 'column', gap: 3, minWidth: 0, padding: '4px 8px', margin: '0 -8px', borderRadius: 8, border: '1px solid transparent', boxSizing: 'border-box', ...(nd ? NEED : {}), ...(openFact === label ? { boxShadow: `0 0 0 1px ${SA.border}`, background: SA.surface2 } : {}) }}>
+                <FactValue label={label} value={value} muted={muted} sub={sub} editable dot={dot} need={nd} />
               </button>
-              {openFact === label && <div role="dialog" aria-label={label} data-fact-pop style={pop}>{control(label)}</div>}
+              {openFact === label && control(label)}
             </span>
           ) : (
-            <div key={label} data-fact={label} title={title} style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, padding: '4px 0' }}>
-              <FactValue label={label} value={value} muted={muted} sub={sub} />
+            <div key={label} data-fact={label} data-need={nd ? 'true' : undefined} title={title} style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, padding: '4px 8px', margin: '0 -8px', borderRadius: 8, border: '1px solid transparent', boxSizing: 'border-box', ...(nd ? NEED : {}) }}>
+              <FactValue label={label} value={value} muted={muted} sub={sub} dot={dot} need={nd} />
             </div>
           );
         })}
