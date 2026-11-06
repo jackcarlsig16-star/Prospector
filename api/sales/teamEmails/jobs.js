@@ -60,7 +60,7 @@ export async function visitorEmailJob(supabase, businessId, { now = Date.now(), 
   const [companies, overall, cumulative] = await Promise.all([loadVisitorData(supabase, businessId, { window, members }), loadRankedBook(supabase, businessId, { now, members }), loadCumulative(supabase, businessId)]);
   const mail = buildVisitorEmail(companies, { date, window, pullNote, overall, cumulative });
   const sent = await sendTeamEmail(supabase, businessId, { kind: 'visitor', subject: mail.subject, html: mail.html, text: mail.text, slot: date, test }, deps);
-  return { ...sent, rows: mail.rows, more: mail.more, overall: mail.overall, pull: p };
+  return { ...sent, rows: mail.rows, new_rows: mail.new_rows, more: mail.more, overall: mail.overall, pull: p };
 }
 
 export async function clientAlertsJob(supabase, businessId, { now = Date.now(), deps } = {}) {

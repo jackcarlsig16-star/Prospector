@@ -17,7 +17,7 @@ require('dotenv').config({ path: ROOT + '/.env' });
 const { createClient } = require('@supabase/supabase-js');
 const { chromium } = require('playwright');
 const { SESSION_COOKIE } = await import('../../api/lib/authUser.js');
-const { dayWindowFor, windowLabel, loadVisitorData, loadCumulative, loadRankedBook, buildVisitorEmail } = await import('../../api/sales/teamEmails/visitorEmail.js');
+const { dayWindowFor, windowDays, loadVisitorData, loadCumulative, loadRankedBook, buildVisitorEmail } = await import('../../api/sales/teamEmails/visitorEmail.js');
 const { loadMembers } = await import('../../api/sales/teamEmails/send.js');
 const { laClock } = await import('../../api/sales/teamEmails/scheduler.js');
 const { COLUMNS, rowCells } = await import('../../api/sales/visitorsExport.js');
@@ -96,14 +96,14 @@ try {
   const allKeys = new Set(allVisits.map(v => v.company_key)).size;
   const firstPull = (await svc.from('web_visits').select('pulled_on').eq('business_id', HL).order('pulled_on', { ascending: true }).limit(1)).data?.[0]?.pulled_on;
   const winRows = allVisits.filter(v => v.seen_to <= today);
-  ok(`email window for ${today}: "${windowLabel(w)}" (${w.days.length} day${w.days.length === 1 ? '' : 's'}: ${w.days.join(', ')}); subject "${mail.subject}"; visited ${mail.visited} = NEW ${mail.new} + RETURNING ${mail.returning}; CUMULATIVE ${mail.cumulative} = distinct companies in web_visits (${allKeys}) since ${cumulative.since} = the first pull (${firstPull}); legend one line`,
-    w.days.length >= 1 && w.last === laClock(Date.now() - 864e5).date && mail.visited === mail.new + mail.returning && mail.cumulative === allKeys && cumulative.since === firstPull && !mail.text.includes('since the previous weekday send') && mail.text.includes(windowLabel(w)) && mail.text.includes(`CUMULATIVE — companies identified since`));
+  ok(`email window for ${today}: "${windowDays(w)}" (${w.days.length} day${w.days.length === 1 ? '' : 's'}: ${w.days.join(', ')}); subject "${mail.subject}"; visited ${mail.visited} = NEW ${mail.new} + RETURNING ${mail.returning}; CUMULATIVE ${mail.cumulative} = distinct companies in web_visits (${allKeys}) since ${cumulative.since} = the first pull (${firstPull}); legend one line`,
+    w.days.length >= 1 && w.last === laClock(Date.now() - 864e5).date && mail.visited === mail.new + mail.returning && mail.cumulative === allKeys && cumulative.since === firstPull && !mail.text.includes('since the previous weekday send') && mail.text.includes(windowDays(w)) && mail.text.includes(`CUMULATIVE — companies identified since`));
   const labels = ['NEW — first time we\'ve seen them', 'RETURNING — seen before, visited again', 'CUMULATIVE — companies identified since', 'Apollo, rolling 7 d', 'Windows: the list, NEW and RETURNING'];
   ok(`email text carries every window label once in order (${labels.map(l => mail.text.indexOf(l) >= 0).join(', ')}); no "7:00 AM", no "since Thu"; no address (${!PII.test(mail.text + mail.html)})`,
     labels.every((l, i) => mail.text.indexOf(l) >= 0 && (i === 0 || mail.text.indexOf(l) > mail.text.indexOf(labels[i - 1]))) && !/7:00 AM|the previous weekday send|visited since \w{3}\b/.test(mail.text) && !PII.test(mail.text + mail.html));
   // A Monday would read Fri – Sun: the pure rule, shown for the next Monday from today's date.
   const nextMon = (() => { let d = new Date(`${today}T12:00:00Z`); do { d = new Date(d.getTime() + 864e5); } while (d.getUTCDay() !== 1); return d.toISOString().slice(0, 10); })();
-  ok(`next Monday ${nextMon} would cover "${windowLabel(dayWindowFor(nextMon))}" (3 labelled days)`, dayWindowFor(nextMon).days.length === 3);
+  ok(`next Monday ${nextMon} would cover "${windowDays(dayWindowFor(nextMon))}" (3 labelled days)`, dayWindowFor(nextMon).days.length === 3);
 
   // ---- The ONE declared write: Send a test to me only (kind visitor) -> Jack's own mailbox. The local server has no
   // MICROSOFT_TOKEN_KEY, so the send goes through PROD's test route (PROD_SEND=1, after Render is Live on this commit;

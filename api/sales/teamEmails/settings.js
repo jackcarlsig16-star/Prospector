@@ -178,7 +178,7 @@ export async function sendTest(supabase, { businessId, body = {}, isOwner, deps 
   if (!isOwner) return ownerOnly;
   if (body.kind === 'visitor') {
     const r = await visitorEmailJob(supabase, businessId, { pull: null, deps, test: true });
-    return reply(200, { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0 });
+    return reply(200, { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, new_rows: r.new_rows ?? 0 });
   }
   if (body.kind === 'client') {
     if (!UUID.test(body.opportunity_id || '')) return reply(400, { error: 'opportunity_id must be a client' });

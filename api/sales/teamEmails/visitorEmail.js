@@ -2,43 +2,40 @@ import { selectAllPages } from '../../lib/selectAllPages.js';
 import { memberColor } from '../../../src/constants/memberColors.js';
 import { laClock } from './scheduler.js';
 import { lastTouchFor } from '../companyPanel.js';
-import { esc, shell, tiles, table, pill, dot, link, recordUrl, MAP_URL, VISITORS_URL, ACCENT, MUTED, withFooter } from './format.js';
+import { mergeWeights } from '../intentScoreRun.js';
+import { DEFAULT_WEIGHTS } from '../intentScore.js';
+import { esc, recordUrl, MAP_URL, VISITORS_URL, ORIGIN, DARK, BAND_HUE, SANS, MONO, dlink, tagPill, outlinePill, memberDot, tileGrid, dataTable, darkShell } from './format.js';
 
-// homelover-team-emails-v1 T4 (REV2) - the weekday visitor email, redesigned: header, stat tiles, Hot / Warm / Cool /
-// Cold counts, a 6-column table. Pure builder over rows the loader reads; no person names, emails or phones ever reach
-// it (people = a count + job titles). Band words carry no time words (P1..P4 keep their thresholds).
-// FIX visitor-email-top10-v1 V1 - two ranked lists: A = the companies Apollo saw in the window, gated to real intent (a
-// named person, 2+ pages, 2+ unique visitors, or Warm or hotter), ranked buyer-title people first, then unique
-// visitors, pages, intent score, each row saying why; never padded ("4 qualified of 64 visited"). B = the top TOP_N of
-// the whole ranked book (loadRankedBook: the Map's order with live / closed / duplicates / Deprioritized out) with ▲ ▼
-// against the last sales_company_score_days snapshot. A company in both lists appears in both. The subject names #1.
-// FIX visitor-email-period-v1 - P1 the window is the previous CALENDAR day in LA, 00:00–23:59, stated verbatim
-// ("Thu Nov 5 · 12:00 AM – 11:59 PM PT"); Monday's covers Fri + Sat + Sun as labelled days, each row tagged with the
-// day(s) its pull window covered - never a silent merge. The 07:00 send stays; "since the last send" is gone. A row
-// belongs to the window when the pull that produced it asked Apollo for a window starting inside it (seen_from) and
-// ending by the send day (seen_to), so a visit is never reported twice. P2 NEW (no earlier pull window ever saw the
-// company) and RETURNING always both, then CUMULATIVE (every company identified since the first pull - the date read
-// from the data). P3 every label names its window and unit; one-line legend.
+// homelover-team-emails-v1 T4 (REV2) - the weekday visitor email. Pure builder over rows the loader reads; no person
+// names, emails or phones ever reach it (people = a count + job titles).
+// FIX visitor-email-top10-v1 V1 - list A gated to real intent (qualifies: a named person, 2+ pages, 2+ unique visitors,
+// or Warm or hotter), never padded; list B = the top TOP_N of the whole ranked book (loadRankedBook: the Map's order with
+// live / closed / duplicates / Deprioritized out) with ▲ ▼ against the last sales_company_score_days snapshot.
+// FIX visitor-email-period-v1 - P1 the window is the previous CALENDAR day in LA; Monday's covers Fri + Sat + Sun, each
+// row tagged with the day(s) its pull window covered - never a silent merge. A row belongs to the window when the pull
+// that produced it asked Apollo for a window starting inside it (seen_from) and ending by the send day (seen_to), so a
+// visit is never reported twice. is_new = no earlier pull window ever listed the company.
+// FIX visitor-email-v2 - three lists: A0 "New yesterday" (is_new, ranked by intent: score desc, then visitors), A "Worth
+// a look yesterday" (qualifies, the same rank) and B "Top 10 right now - whole book"; NEW / RETURNING as filled tags on
+// every A0 / A row; the stat tiles 2 x 2; the intent line with outlined band pills; "How to read this" with the band
+// thresholds read from the scores route's weights (never constants here - they ride on the ranked book); the dark
+// table-based HTML with % column widths so a 390 phone keeps all four columns.
 export const TOP_N = 10;
 const DAY_MS = 864e5;
 export const qualifies = c => c.people >= 1 || c.pages >= 2 || c.visitors >= 2 || c.band === 'P1' || c.band === 'P2';
-export const GATE_WORDS = 'a named person, 2+ pages, 2+ visitors, or Warm or hotter';
-const TREND = { up: '▲', down: '▼', flat: '–', new: 'new' };
+export const QUALIFIED_WORDS = 'Warm or hotter, a named person, or 2+ visitors or pages';
 export const BANDS = ['P1', 'P2', 'P3', 'P4'];
-export const WINDOW_HOURS = '12:00 AM – 11:59 PM PT';
-export const LEGEND = "Windows: the list, NEW and RETURNING = the calendar day(s) above (PT) · visits and visitors = Apollo's rolling 7-day counts · pages = the paths Apollo reported on this pull · people = those Apollo identified by name on this pull · CUMULATIVE = every company identified since the first pull. Companies = organisations Apollo matched to site traffic; most visitors stay anonymous.";
-export const NEW_WORDS = "NEW — first time we've seen them";
-export const RETURNING_WORDS = 'RETURNING — seen before, visited again';
-export const CUMULATIVE_WORDS = since => `CUMULATIVE — companies identified since ${since ? dayLabel(since) : 'the first pull'}`;
 export const BAND_WORD = { P1: 'Hot', P2: 'Warm', P3: 'Cool', P4: 'Cold' };
-const BAND_COLORS = { P1: ['#9F1D1D', '#FDE2E1'], P2: ['#8A4B08', '#FDEBD3'], P3: ['#1E4E8C', '#DCE8F8'], P4: ['#4B5563', '#ECEEF1'] };
+export const SETTINGS_URL = `${ORIGIN}/?tab=settings&view=team-emails`;
+export const FOOTER_WORDS = 'Sent by Prospector to the HomeLover team · manage recipients · Sales › Settings › Team emails';
 const TYPE = { opportunity: 'employer', target: 'target', partner: 'partner' };
 const KIND_LABEL = { employer: 'Employer', target: 'Target', partner: 'Partner' };
-const titleCase = s => String(s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+const sentence = s => { const t = String(s || '').replace(/_/g, ' ').trim(); return t.charAt(0).toUpperCase() + t.slice(1); };
 const plural = (n, one, many) => `${n.toLocaleString('en-US')} ${n === 1 ? one : many}`;
 const must = r => { if (r.error) throw new Error(r.error.message); return r.data; };
 const dayLabel = date => new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'UTC' }).replace(',', '');
 const wdOf = date => new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' });
+const mdOf = date => new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 const shortDay = iso => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' });
 const addDay = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10);
 const dowOf = d => new Date(`${d}T12:00:00Z`).getUTCDay();
@@ -64,7 +61,6 @@ export function dayWindowFor(date) {
   return { date, days, first: days[0], last: days[days.length - 1] };
 }
 export const windowDays = w => (w.days.length > 1 ? `${dayLabel(w.first)} – ${dayLabel(w.last)}` : dayLabel(w.first));
-export const windowLabel = w => `${windowDays(w)} · ${WINDOW_HOURS}`;
 // A row's day tag inside a multi-day window: the days of its pull window that fall in the email's days ("Fri–Sun", "Sat").
 export function dayTag(row, w) {
   if (w.days.length < 2) return null;
@@ -72,10 +68,14 @@ export function dayTag(row, w) {
   return from === to ? wdOf(from) : `${wdOf(from)}–${wdOf(to)}`;
 }
 
-// List B: the whole ranked book, the Map's order, top `top` rows with their trend since the last daily snapshot.
+// List B: the whole ranked book, the Map's order, top `top` rows with their trend since the last daily snapshot, and
+// the band thresholds the Map scores with (V3: the email reads them from here, never from constants of its own).
 export async function loadRankedBook(supabase, businessId, { now = Date.now(), members, top = TOP_N }) {
   const today = laClock(now).date;
-  const stored = await selectAllPages(() => supabase.from('sales_company_scores').select('company_type, company_id, score, band, closed, flagged_out, duplicate_of, components').eq('business_id', businessId).order('score', { ascending: false }).order('company_id'));
+  const [stored, settings] = await Promise.all([
+    selectAllPages(() => supabase.from('sales_company_scores').select('company_type, company_id, score, band, closed, flagged_out, duplicate_of, components').eq('business_id', businessId).order('score', { ascending: false }).order('company_id')),
+    supabase.from('sales_settings').select('score_weights').eq('business_id', businessId).maybeSingle().then(r => r.data),
+  ]);
   const ranked = stored.filter(s => !s.flagged_out && !s.duplicate_of && !s.closed && s.components?.meta?.fit?.level !== 'deprioritized');
   const picked = ranked.slice(0, top);
   const prevDay = must(await supabase.from('sales_company_score_days').select('day').eq('business_id', businessId).lt('day', today).order('day', { ascending: false }).limit(1))[0]?.day || null;
@@ -94,7 +94,7 @@ export async function loadRankedBook(supabase, businessId, { now = Date.now(), m
       last_touch: lt ? { at: lt.at, by: lt.by ? nameOf.get(lt.by) || null : null, what: TOUCH_WORD[lt.touch_type] || null } : null,
     };
   }));
-  return { rows, total: ranked.length, prev_day: prevDay };
+  return { rows, total: ranked.length, prev_day: prevDay, thresholds: mergeWeights(settings?.score_weights).thresholds };
 }
 
 // P2: every company Prospector has identified, from the first pull on (the start date read from the data).
@@ -136,113 +136,121 @@ export async function loadVisitorData(supabase, businessId, { window: w, members
     const r = type ? rec.get(v.matched_id) : null;
     const ppl = people.filter(p => p.visit_id === v.id);
     const titles = [...new Set([...ppl.filter(p => isBuyer(p.title)), ...ppl].map(p => p.title).filter(Boolean))].slice(0, 3);
+    const paths = Array.isArray(v.top_paths) ? v.top_paths.map(p => String(p?.path || p)).filter(Boolean) : [];
     return {
       company: v.company_name, type, id: v.matched_id || null, visit_id: v.id,
       score: s ? s.score : v.intent_score != null ? Math.round(Number(v.intent_score)) : null, band: s ? s.band : v.priority,
       visits: v.visits_7d || 0, visitors: v.unique_visitors_7d || 0, people: ppl.length, buyers: ppl.filter(p => isBuyer(p.title)).length, titles,
-      pages: Array.isArray(v.top_paths) ? v.top_paths.length : 0,
-      top_page: Array.isArray(v.top_paths) && v.top_paths[0] ? String(v.top_paths[0].path || v.top_paths[0]) : null,
+      pages: paths.length, paths: paths.slice(0, 2), top_page: paths[0] || null,
       stage: r?.stage || null, owner: r?.owner ? nameOf.get(r.owner) || 'Unassigned' : 'Unassigned', owner_color: r?.owner ? colorOf.get(r.owner) || null : null,
       is_new: !seenBefore.has(v.company_key), days: dayTag(v, w), last_touch_at: r?.last_touch_at || null,
     };
   });
-  await Promise.all(rankVisitors(out.filter(qualifies)).slice(0, TOP_N).filter(c => c.type).map(async c => {
+  // Last touch for the rows the two lists can show (A0 = the new, A = the qualified), read for records only.
+  const shown = new Set([...rankVisitors(out.filter(c => c.is_new)).slice(0, TOP_N), ...rankVisitors(out.filter(qualifies)).slice(0, TOP_N)]);
+  await Promise.all([...shown].filter(c => c.type).map(async c => {
     const lt = await lastTouchFor(supabase, businessId, { type: c.type, id: c.id, last_touch_at: c.last_touch_at });
     c.last_touch = lt ? { at: lt.at, by: lt.by ? nameOf.get(lt.by) || null : null, what: TOUCH_WORD[lt.touch_type] || null } : null;
   }));
   return out.map(({ last_touch_at, ...c }) => c);
 }
 
-export const rankVisitors = companies => [...companies].sort((a, b) => (b.buyers || 0) - (a.buyers || 0) || (b.visitors || 0) - (a.visitors || 0) || (b.pages || 0) - (a.pages || 0) || (b.score ?? -1) - (a.score ?? -1) || a.company.localeCompare(b.company));
-// The row's why, each part naming its window: "2 people identified (1 buyer) · VP HR · 4 pages (this pull) · /pricing".
-export const whyOf = c => [
-  c.people ? `${plural(c.people, 'person', 'people')} identified${c.buyers ? ` (${plural(c.buyers, 'buyer', 'buyers')})` : ''}` : null,
-  ...(c.titles || []).slice(0, 2), c.pages >= 2 ? `${plural(c.pages, 'page', 'pages')} (this pull)` : null, c.top_page,
+// V1: both visitor lists rank by intent - score desc, then unique visitors, then pages, then the name.
+export const rankVisitors = companies => [...companies].sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || (b.visitors || 0) - (a.visitors || 0) || (b.pages || 0) - (a.pages || 0) || a.company.localeCompare(b.company));
+const home = p => (p === '/' ? '/ (home)' : p);
+// E9 line 2: "17 visits · 58 people · last 7 days · pages: /partners/realtors · 1 named: VP People".
+export const detailOf = c => [
+  plural(c.visits || 0, 'visit', 'visits'), c.visitors ? plural(c.visitors, 'person', 'people') : null, 'last 7 days',
+  (c.paths || []).length ? `pages: ${c.paths.map(home).join(', ')}${c.pages > c.paths.length ? ` +${c.pages - c.paths.length}` : ''}` : null,
+  c.people ? `${c.people} named: ${(c.titles || []).slice(0, 2).join(', ') || 'title unknown'}` : null,
 ].filter(Boolean).join(' · ');
+export const thresholdWords = t => `Hot ≥ ${t.P1} · Warm ${t.P2}–${t.P1 - 1} · Cool ${t.P3}–${t.P2 - 1} · Cold < ${t.P3}`;
 
-// -> { subject, html, text, rows, more, overall, new, returning, cumulative }. date = the LA date it is sent on; window =
-// dayWindowFor(date); overall = loadRankedBook's result (list B); cumulative = loadCumulative's; pullNote = the "Visitor
-// pull failed …" line.
-export function buildVisitorEmail(companies, { date, window: w = dayWindowFor(date), pullNote = null, overall = null, cumulative = null }) {
+// -> { subject, html, text, rows, new_rows, qualified, visited, more, overall, new, returning, cumulative }. date = the LA
+// date it is sent on; window = dayWindowFor(date); overall = loadRankedBook's result (list B + the thresholds);
+// cumulative = loadCumulative's; pullNote = the "Visitor pull failed …" line.
+export function buildVisitorEmail(companies, { date, window: w = dayWindowFor(date), pullNote = null, overall = null, cumulative = null, thresholds = overall?.thresholds || DEFAULT_WEIGHTS.thresholds }) {
   const sorted = rankVisitors(companies);
-  const bands = Object.fromEntries(BANDS.map(b => [b, sorted.filter(c => c.band === b).length]));
-  const n = sorted.length, hot = bands.P1;
+  const n = sorted.length, multi = w.days.length > 1, days = windowDays(w);
+  const when = multi ? 'Fri–Sun' : 'yesterday', whose = multi ? "Fri–Sun's" : "yesterday's";
+  const fresh = sorted.filter(c => c.is_new), returning = n - fresh.length;
   const qualified = sorted.filter(qualifies), q = qualified.length;
-  const fresh = sorted.filter(c => c.is_new).length, returning = n - fresh;
+  const listNew = fresh.slice(0, TOP_N), listQ = qualified.slice(0, TOP_N);
   const book = overall?.rows || [];
-  const days = windowDays(w), label = windowLabel(w), multi = w.days.length > 1;
-  const head = `${days} — ${q} qualified of ${plural(n, 'company', 'companies')}, ${fresh} new, ${hot} hot`;
-  const subject = `Website visitors — ${days}: ${q} qualified · ${n} visited · ${fresh} new${book[0] ? ` · top overall: ${book[0].company}` : ''}`;
-  const sinceLine = `Companies Apollo identified on our site · ${label}${multi ? ` · ${w.days.length} days after the weekend, each row says which` : ''}`;
-  const top = qualified.slice(0, TOP_N), more = n - top.length;
-  const rest = sorted.filter(c => !top.includes(c));
-  const moreNew = rest.filter(c => c.is_new).length, moreReturning = rest.length - moreNew;
-  const listA = `Top ${TOP_N} qualified — ${days} · ${q} qualified of ${n} visited`, listB = `Top ${TOP_N} — overall right now`;
-  const noneQualified = `No company cleared the bar (${GATE_WORDS}) - ${plural(n, 'company', 'companies')} visited`;
-  const bookLine = overall ? `The whole ranked book (${plural(overall.total, 'company', 'companies')}), the Map's order · ▲ ▼ since ${overall.prev_day ? dayLabel(overall.prev_day) : 'the last snapshot'}` : null;
-  const trendText = c => (c.trend === 'new' ? 'new' : `${TREND[c.trend]}${c.prev_score != null && c.trend !== 'flat' ? ` ${c.prev_score}→${c.score}` : ''}`);
+  const bands = Object.fromEntries(BANDS.map(b => [b, sorted.filter(c => c.band === b).length]));
   const matched = t => sorted.filter(c => c.type === t).length;
-  const notIn = sorted.filter(c => !c.type).length;
-  const cumulativeWords = CUMULATIVE_WORDS(cumulative?.since);
-  const counts = [[NEW_WORDS, plural(fresh, 'company', 'companies')], [RETURNING_WORDS, plural(returning, 'company', 'companies')], [cumulativeWords, cumulative ? cumulative.companies.toLocaleString('en-US') : '—']];
-  const stat = [[n, `${n === 1 ? 'company' : 'companies'} · ${days}`], [fresh, NEW_WORDS, ACCENT], [returning, RETURNING_WORDS], [cumulative ? cumulative.companies : '—', cumulativeWords]];
-  const matchLine = `matched ${plural(matched('employer'), 'employer', 'employers')} · ${plural(matched('target'), 'target', 'targets')} · ${plural(matched('partner'), 'partner', 'partners')} · ${plural(notIn, 'company', 'companies')} not in Prospector`;
-  const bandText = BANDS.map(b => `${BAND_WORD[b]} ${bands[b]}`).join(' · ');
+  const notIn = sorted.filter(c => !c.type).length, newIn = fresh.filter(c => c.type).length;
+  const sentDay = wdOf(date);
+
+  const eyebrow = `HomeLover · Website visitors · ${when}`;
+  const head = `${days} — ${plural(n, 'company', 'companies')} visited, ${fresh.length} for the first time`;
+  const subWords = `Companies Apollo matched to visits on homelover.com, ${multi ? 'Friday through Sunday, ' : ''}midnight to midnight PT. Sent ${sentDay} 7:00 AM.`;
+  const subject = `Website visitors · ${days} — ${fresh.length} new, ${q} worth a look${book[0] ? `, top: ${book[0].company}` : ''}`;
+  const tiles = [[n, 'visited', `companies on the site ${when}`], [fresh.length, 'new', 'never seen before', BAND_HUE.P1], [returning, 'returning', 'seen before, came back', BAND_HUE.P3], [q, 'worth a look', QUALIFIED_WORDS]];
+  const inProspectorWords = `already in Prospector: ${plural(matched('employer'), 'employer', 'employers')} · ${plural(matched('target'), 'target', 'targets')} · ${plural(matched('partner'), 'partner', 'partners')}`;
+  const intentWords = n ? `Intent of ${whose} ${n}: ${BANDS.map(b => `${BAND_WORD[b]} ${bands[b]}`).join(' · ')} · ${inProspectorWords} · ${notIn} not yet` : `No identified visitors ${when} — most traffic stays anonymous.`;
+  const newSub = fresh.length ? `${plural(fresh.length, 'company', 'companies')} we had never seen on the site before. ${newIn ? `${newIn} already in Prospector — Add puts the rest on the Map as targets.` : 'None are in Prospector yet — Add puts them on the Map as a target.'}` : `No new companies ${when}.`;
+  const newFoot = fresh.length > TOP_N ? `Showing ${TOP_N} of ${fresh.length} · all ${fresh.length} on the Map →` : null;
+  const qSub = q ? `${q > TOP_N ? `The ${TOP_N} strongest of the ${q} qualified` : `All ${q} qualified`}, ranked by intent. Qualified = ${QUALIFIED_WORDS}.` : `No company qualified ${when} (${QUALIFIED_WORDS}).`;
+  const qFoot = n ? [q > TOP_N ? `and ${q - TOP_N} more qualified` : null, n - q > 0 ? `${n - q} not qualified` : null, `all ${n} on the Map →`].filter(Boolean).join(' · ') : null;
+  const bookSub = overall ? `All ${overall.total.toLocaleString('en-US')} ranked companies in the Map's order, not just ${whose} visitors. ▲ ▼ = score change since the last email.` : null;
+  const cumulativeWords = cumulative ? `${cumulative.companies.toLocaleString('en-US')} companies identified since ${cumulative.since ? mdOf(cumulative.since) : 'the first pull'}.` : null;
+  const glossary = [
+    ['NEW / RETURNING', `whether we had seen the company on the site before ${when}.`],
+    ['Visits · people', `Apollo's rolling 7-day counts, not just ${when}. Pages — the paths Apollo reported on this pull.`],
+    ['Intent', `the Map's score, 0–100: ${thresholdWords(thresholds)}.`],
+    ['In Prospector', 'the record type and stage, or "Not in Prospector" with an Add link.'],
+  ];
+  const anonymous = `Most visitors stay anonymous; Apollo names a company only when it can match the traffic.${cumulativeWords ? ` ${cumulativeWords}` : ''}`;
+
   const intent = c => (c.band in BAND_WORD ? `${BAND_WORD[c.band]}${c.score != null ? ` ${c.score}` : ''}` : c.score != null ? String(c.score) : '—');
-  const who = c => [`${plural(c.visits, 'visit', 'visits')} (Apollo, rolling 7 d)`, c.visitors ? `${plural(c.visitors, 'visitor', 'visitors')} (7 d)` : null].filter(Boolean).join(' · ');
-  const touch = c => (!c.type ? '—' : c.last_touch?.at ? [shortDay(c.last_touch.at), c.last_touch.by, c.last_touch.what].filter(Boolean).join(' · ') : 'No touch yet');
-  const detail = whyOf;
-  const tagText = c => `${c.is_new ? 'NEW' : 'RETURNING'}${c.days ? ` · ${c.days}` : ''}`;
-  const inProspector = c => (c.type ? `${KIND_LABEL[c.type]}${c.stage ? ` · ${titleCase(c.stage)}` : ''}` : 'Not yet');
+  const tagOf = c => (c.is_new ? 'NEW' : 'RETURNING');
+  const inProspector = c => (c.type ? `${KIND_LABEL[c.type]} · ${c.stage ? sentence(c.stage) : 'No stage'} · ${c.owner || 'Unassigned'}` : 'Not in Prospector');
+  const touch = c => (c.last_touch?.at ? [shortDay(c.last_touch.at), c.last_touch.what].filter(Boolean).join(' · ') : 'No touch yet');
+  const trendText = c => (c.trend === 'up' ? `▲ ${c.prev_score}→${c.score}` : c.trend === 'down' ? `▼ ${c.prev_score}→${c.score}` : c.trend === 'new' ? 'new' : '—');
   const url = c => (c.type ? recordUrl(c.type, c.id) : VISITORS_URL);
-  const empty = `No identified visitors · ${label}`;
-  const moreLine = more > 0 ? `and ${more} more visited · ${moreNew} new · ${moreReturning} returning` : null;
 
-  const text = withFooter([
-    'HomeLover · Website visitors', head, sinceLine, '',
-    ...counts.map(([w2, v]) => `${w2}: ${v}`), '',
-    ...(n ? [
-      bandText, matchLine, '', listA,
-      ...(top.length ? top.map((c, i) => [`${i + 1}. ${c.company} [${tagText(c)}] — ${intent(c)}`, `   ${who(c)}${detail(c) ? ` · ${detail(c)}` : ''}`,
-        `   In Prospector: ${inProspector(c)}${c.type ? '' : ' · Add'} · Owner: ${c.owner} · Last touch: ${touch(c)}`, `   ${url(c)}`].join('\n')) : [noneQualified]),
-      ...(moreLine ? [`${moreLine} · open the Map → ${MAP_URL}`] : []),
-    ] : [empty]),
-    ...(overall ? ['', listB, bookLine, ...(book.length ? book.map(c => [`${c.rank}. ${c.company} — ${intent(c)} · ${trendText(c)}`,
-      `   In Prospector: ${inProspector(c)} · Owner: ${c.owner} · Last touch: ${touch(c)}`, `   ${url(c)}`].join('\n')) : ['No ranked companies yet'])] : []),
-    '', LEGEND,
+  const textRow = (c, i) => [`${i + 1}. ${c.company} [${tagOf(c)}${c.days ? ` · ${c.days}` : ''}] — ${intent(c)} · ${inProspector(c)}${c.type ? '' : ` · Add → ${VISITORS_URL}`} · ${touch(c)}`, `   ${detailOf(c)}`, `   ${url(c)}`].join('\n');
+  const textBook = c => [`${c.rank}. ${c.company} — ${intent(c)} · ${trendText(c)} · ${inProspector(c)} · ${touch(c)}`, `   ${url(c)}`].join('\n');
+  const text = [
+    eyebrow.toUpperCase(), head, `${subWords} Open the Map → ${MAP_URL}`, '',
+    `${n} visited · ${fresh.length} new · ${returning} returning · ${q} worth a look`, intentWords, '',
+    `NEW ${when.toUpperCase()}`, newSub, ...listNew.map(textRow), ...(newFoot ? [`${newFoot} ${MAP_URL}`] : []), '',
+    `WORTH A LOOK ${when.toUpperCase()}`, qSub, ...listQ.map(textRow), ...(qFoot ? [`${qFoot} ${MAP_URL}`] : []),
+    ...(overall ? ['', `TOP ${TOP_N} RIGHT NOW — WHOLE BOOK`, bookSub, ...(book.length ? book.map(textBook) : ['No ranked companies yet'])] : []),
+    '', 'HOW TO READ THIS', ...glossary.map(([k, v]) => `${k} — ${v}`), anonymous,
     ...(pullNote ? ['', pullNote] : []),
-  ].join('\n'));
-
-  const tag = c => `<span style="font-size:11px;font-weight:700;color:${c.is_new ? ACCENT : MUTED}">${esc(tagText(c))}</span>`;
-  const cell = c => [
-    `${link(url(c), c.company, 'font-weight:600')} ${tag(c)}`,
-    c.band in BAND_COLORS ? pill(intent(c), ...BAND_COLORS[c.band]) : esc(intent(c)),
-    `${esc(who(c))}${detail(c) ? `<div style="font-size:12px;color:${MUTED}">${esc(detail(c))}</div>` : ''}`,
-    c.type ? esc(inProspector(c)) : `Not yet · ${link(VISITORS_URL, 'Add')}`,
-    c.owner_color ? `${dot(c.owner_color)}${esc(c.owner)}` : `${dot(null, true)}<span style="color:${MUTED}">Unassigned</span>`,
-    c.type && c.last_touch?.at ? esc(touch(c)) : `<span style="color:${MUTED}">${esc(touch(c))}</span>`,
-  ];
-  const bookCell = c => [
-    `${link(url(c), `${c.rank}. ${c.company}`, 'font-weight:600')}`,
-    c.band in BAND_COLORS ? pill(intent(c), ...BAND_COLORS[c.band]) : esc(intent(c)),
-    `<span style="white-space:nowrap;color:${c.trend === 'up' ? '#1E7F4E' : c.trend === 'down' ? '#9F1D1D' : MUTED}">${esc(trendText(c))}</span>`,
-    esc(inProspector(c)),
-    c.owner_color ? `${dot(c.owner_color)}${esc(c.owner)}` : `${dot(null, true)}<span style="color:${MUTED}">${esc(c.owner)}</span>`,
-    c.last_touch?.at ? esc(touch(c)) : `<span style="color:${MUTED}">${esc(touch(c))}</span>`,
-  ];
-  const h3 = (t, sub = null) => `<div style="font-size:15px;font-weight:700;margin:18px 0 ${sub ? 2 : 8}px">${esc(t)}</div>${sub ? `<div style="font-size:12px;color:${MUTED};margin:0 0 8px">${esc(sub)}</div>` : ''}`;
-  const body = [
-    tiles(stat),
-    ...(n ? [
-      `<div style="margin:0 0 6px">${BANDS.map(b => pill(`${BAND_WORD[b]} ${bands[b]}`, ...BAND_COLORS[b])).join(' ')}</div>`,
-      `<div style="font-size:12px;color:${MUTED};margin:0 0 14px">${esc(matchLine)}</div>`,
-      h3(listA),
-      top.length ? table(['Company', 'Intent', 'Who visited · why', 'In Prospector', 'Owner', 'Last touch'], top.map(cell)) : `<p style="color:${MUTED}">${esc(noneQualified)}</p>`,
-      ...(moreLine ? [`<p style="margin:12px 0 0">${esc(moreLine)} · ${link(MAP_URL, 'open the Map →')}</p>`] : []),
-    ] : [`<p>${esc(empty)}</p>`]),
-    ...(overall ? [h3(listB, bookLine), book.length ? table(['Company', 'Intent', 'Trend', 'In Prospector', 'Owner', 'Last touch'], book.map(bookCell)) : `<p style="color:${MUTED}">No ranked companies yet</p>`] : []),
-    `<p style="font-size:12px;color:${MUTED};margin:12px 0 0">${esc(LEGEND)}</p>`,
+    '', '—', FOOTER_WORDS,
   ].join('\n');
-  const html = shell({ eyebrow: 'HomeLover · Website visitors', title: head, sub: sinceLine, body: body + (pullNote ? `\n<p style="color:${MUTED}"><i>${esc(pullNote)}</i></p>` : '') });
-  return { subject, html, text, rows: top.length, qualified: q, visited: n, more: Math.max(0, more), overall: book.length, new: fresh, returning, cumulative: cumulative?.companies ?? null };
+
+  const h2 = (t, tag = null) => `<div style="font:600 17px ${SANS};color:${DARK.text}">${esc(t)}${tag ? tagPill(tag, tag === 'NEW' ? BAND_HUE.P1 : BAND_HUE.P3) : ''}</div>`;
+  const sub = t => `<div style="font:13px ${SANS};color:${DARK.muted};margin-top:3px">${esc(t)}</div>`;
+  const foot = t => `<div style="font:12.5px ${SANS};color:${DARK.muted};margin-top:10px">${esc(t.replace(/ · all .*$/, ''))}${/ · all /.test(t) ? ` · ${dlink(MAP_URL, t.slice(t.indexOf('all ')))}` : dlink(MAP_URL, t)}</div>`;
+  const section = inner => `<tr><td style="padding:26px 0 0">${inner}</td></tr>`;
+  const pillOf = c => (c.band in BAND_HUE ? outlinePill(intent(c), BAND_HUE[c.band]) : `<span style="color:${DARK.faint}">${esc(intent(c))}</span>`);
+  const whoCell = c => (c.type ? `${esc(`${KIND_LABEL[c.type]} · ${c.stage ? sentence(c.stage) : 'No stage'}`)} · ${memberDot(c.owner_color)}${esc(c.owner || 'Unassigned')}</span>` : `<span style="color:${DARK.muted}">Not in Prospector</span> · ${dlink(VISITORS_URL, 'Add →', true)}`);
+  const touchCell = c => (c.last_touch?.at ? esc(touch(c)) : `<span style="color:${DARK.faint}">No touch yet</span>`);
+  const row = c => [
+    `<div style="font-size:14px;line-height:1.3">${dlink(url(c), c.company, true)}${tagPill(tagOf(c), c.is_new ? BAND_HUE.P1 : BAND_HUE.P3)}${c.days ? ` <span style="font-size:11px;color:${DARK.faint}">· ${esc(c.days)}</span>` : ''}</div><div style="font-size:12px;color:${DARK.muted};line-height:1.45;margin-top:3px">${esc(detailOf(c))}</div>`,
+    pillOf(c), whoCell(c), touchCell(c),
+  ];
+  const bookRow = c => [
+    `<div style="font-size:14px;line-height:1.3">${dlink(url(c), `${c.rank}. ${c.company}`, true)}</div>`, pillOf(c),
+    `<span style="white-space:nowrap;color:${c.trend === 'up' ? DARK.good : c.trend === 'down' ? DARK.bad : DARK.faint}">${esc(trendText(c))}</span>`,
+    whoCell(c), touchCell(c),
+  ];
+  const HEADS = ['Company · why', 'Intent', 'In Prospector · owner', 'Last touch'], WIDTHS = [42, 19, 22, 17];
+  const body = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+<tr><td style="padding:18px 0 0">${tileGrid(tiles)}</td></tr>
+<tr><td style="padding:12px 0 0;font:12.5px ${SANS};color:${DARK.muted}">${n ? `Intent of ${esc(whose)} ${n}: ${BANDS.map(b => outlinePill(`${BAND_WORD[b]} ${bands[b]}`, BAND_HUE[b])).join(' ')} &nbsp;·&nbsp; ${esc(inProspectorWords)} &nbsp;·&nbsp; ${notIn} not yet` : esc(intentWords)}</td></tr>
+${section(`${h2(`New ${when}`, 'NEW')}${sub(newSub)}${listNew.length ? dataTable(HEADS, WIDTHS, listNew.map(row)) : ''}${newFoot ? foot(newFoot) : ''}`)}
+${section(`${h2(`Worth a look ${when}`, 'RETURNING')}${sub(qSub)}${listQ.length ? dataTable(HEADS, WIDTHS, listQ.map(row)) : ''}${qFoot ? foot(qFoot) : ''}`)}
+${overall ? section(`${h2(`Top ${TOP_N} right now — whole book`)}${sub(bookSub)}${book.length ? dataTable(['Company', 'Intent', 'Trend', 'In Prospector · owner', 'Last touch'], [27, 18, 17, 22, 16], book.map(bookRow)) : sub('No ranked companies yet')}`) : ''}
+${pullNote ? `<tr><td style="padding:16px 0 0;font:12.5px ${SANS};color:${DARK.muted}"><i>${esc(pullNote)}</i></td></tr>` : ''}
+<tr><td style="padding:26px 0 0"><div style="border-top:1px solid ${DARK.rule};padding-top:20px"><div style="font:600 11px ${MONO};letter-spacing:.08em;text-transform:uppercase;color:${DARK.faint};margin-bottom:8px">How to read this</div>
+<div style="font:12.5px ${SANS};color:${DARK.muted};line-height:1.55">${glossary.map(([k, v]) => `<b style="color:${DARK.soft}">${esc(k)}</b> — ${esc(v)}`).join('<br>')}<br>${esc(anonymous)}</div>
+<div style="font:12px ${SANS};color:${DARK.faint};margin-top:14px">Sent by Prospector to the HomeLover team · ${dlink(SETTINGS_URL, 'manage recipients')} · Sales › Settings › Team emails</div></div></td></tr>
+</table>`;
+  const html = darkShell({ eyebrow, title: head, sub: `${esc(subWords)} ${dlink(MAP_URL, 'Open the Map →')}`, body });
+  return { subject, html, text, rows: listQ.length, new_rows: listNew.length, qualified: q, visited: n, more: Math.max(0, q - listQ.length), overall: book.length, new: fresh.length, returning, cumulative: cumulative?.companies ?? null };
 }

@@ -7,7 +7,8 @@ import { MICROSOFT_SCOPES, missingScopes, grantedScopes, refreshBody, canSendTea
 import * as sendModule from './send.js';
 import { sendTeamEmail, loadMembers, RECONNECT_NOTE, MAX_RECIPIENTS } from './send.js';
 import { laClock, dueSlots, tick, WEEKDAYS } from './scheduler.js';
-import { dayWindowFor, windowLabel, laInstant, buildVisitorEmail, loadVisitorData, loadRankedBook, loadCumulative, TOP_N, BAND_WORD, LEGEND, NEW_WORDS, RETURNING_WORDS } from './visitorEmail.js';
+import { dayWindowFor, windowDays, laInstant, buildVisitorEmail, loadVisitorData, loadRankedBook, loadCumulative, TOP_N, BAND_WORD, QUALIFIED_WORDS, FOOTER_WORDS, SETTINGS_URL, thresholdWords } from './visitorEmail.js';
+import { DEFAULT_WEIGHTS } from '../intentScore.js';
 import { missedSlots, MISSED_REASON, schedulerState } from './scheduler.js';
 import { EMAIL_CATCHUP_MIN, VISITOR_EMAIL_JOB } from './jobs.js';
 import { sendNow } from './settings.js';
@@ -278,11 +279,11 @@ test('the Apollo sync rides the scheduler daily at 06:00 LA (weekends too); the 
 // Sun as labelled days. A row belongs to the window when its pull window began inside the days and ended by the send day.
 test('P1: Tuesday covers Monday 12:00 AM – 11:59 PM PT; Monday after the fall-back weekend covers Fri Oct 30 – Sun Nov 1 (pure dates: neither DST change moves it); the loader keeps the rows whose pull window began inside the days, tags each with its day(s), and NEW = never listed by an earlier pull', async () => {
   assert.deepEqual(dayWindowFor('2026-11-10'), { date: '2026-11-10', days: ['2026-11-09'], first: '2026-11-09', last: '2026-11-09' });
-  assert.equal(windowLabel(dayWindowFor('2026-11-06')), 'Thu Nov 5 · 12:00 AM – 11:59 PM PT');
+  assert.equal(windowDays(dayWindowFor('2026-11-06')), 'Thu Nov 5');
   const mon = dayWindowFor('2026-11-02'); // Mon Nov 2 2026, the day after the clocks went back
   assert.deepEqual(mon.days, ['2026-10-30', '2026-10-31', '2026-11-01']);
-  assert.equal(windowLabel(mon), 'Fri Oct 30 – Sun Nov 1 · 12:00 AM – 11:59 PM PT');
-  assert.equal(windowLabel(dayWindowFor('2027-03-15')), 'Fri Mar 12 – Sun Mar 14 · 12:00 AM – 11:59 PM PT'); // the spring-forward weekend
+  assert.equal(windowDays(mon), 'Fri Oct 30 – Sun Nov 1');
+  assert.equal(windowDays(dayWindowFor('2027-03-15')), 'Fri Mar 12 – Sun Mar 14'); // the spring-forward weekend
   const mk = (id, n, seen_from, seen_to, pulled_on = seen_to) => ({ id: `00000000-0000-4000-8000-00000000d0${id}`, business_id: B, company_key: `k${n}`, company_name: `Co ${n}`, visits_7d: 1, unique_visitors_7d: 2, top_paths: [], intent_score: 50, priority: 'P3', matched_type: null, matched_id: null, pulled_on, seen_from, seen_to, created_at: `${pulled_on}T14:30:00Z`, updated_at: `${pulled_on}T14:30:00Z` });
   const s = sb({ web_visits: [
     mk('01', 1, '2026-10-30', '2026-11-02'), // Monday's 06:30 pull (Fri -> Mon): in, tagged Fri–Sun
@@ -297,72 +298,82 @@ test('P1: Tuesday covers Monday 12:00 AM – 11:59 PM PT; Monday after the fall-
   const tue = await loadVisitorData(s, B, { window: dayWindowFor('2026-11-03'), members });
   assert.deepEqual(tue.map(r => [r.company, r.days, r.is_new]), [['Co 4', null, true]], 'a weekday row carries no day tag');
   const mail = buildVisitorEmail(rows, { date: '2026-11-02', window: mon, cumulative: await loadCumulative(s, B) });
-  assert.match(mail.text, /Companies Apollo identified on our site · Fri Oct 30 – Sun Nov 1 · 12:00 AM – 11:59 PM PT · 3 days after the weekend, each row says which/);
+  assert.match(mail.text, /^HOMELOVER · WEBSITE VISITORS · FRI–SUN\nFri Oct 30 – Sun Nov 1 — 2 companies visited, 1 for the first time\nCompanies Apollo matched to visits on homelover\.com, Friday through Sunday, midnight to midnight PT\. Sent Mon 7:00 AM\./, 'v2 E1 / E2: the Monday eyebrow and the dated headline');
+  assert.match(mail.html, /HomeLover · Website visitors · Fri–Sun<\/div>/);
+  assert.match(mail.html, /NEW<\/span> <span style="font-size:11px;color:#6B7480">· Sat<\/span>/, 'the day tag beside the tag pill');
+  assert.match(mail.text, /NEW FRI–SUN\n1 company we had never seen on the site before\.[^\n]*\n1\. Co 3 \[NEW · Sat\]/);
   assert.match(mail.text, /1\. Co 1 \[RETURNING · Fri–Sun\]/);
   assert.match(mail.text, /2\. Co 3 \[NEW · Sat\]/);
-  assert.match(mail.text, /CUMULATIVE — companies identified since Wed Oct 21: 4/, 'distinct companies over every pull, the start = the earliest pull day in the data');
+  assert.match(mail.text, /4 companies identified since Oct 21\./, 'distinct companies over every pull, the start = the earliest pull day in the data');
   assert.deepEqual(await loadCumulative(sb({ web_visits: [] }), B), { companies: 0, since: null });
 });
 
-const co = (i, extra = {}) => ({ company: `Company ${String(i).padStart(2, '0')}`, type: null, id: null, score: 100 - i, band: i < 3 ? 'P1' : 'P3', visits: 2, visitors: 2, people: 0, buyers: 0, pages: 1, titles: [], top_page: '/', stage: null, owner: 'Unassigned', is_new: i % 2 === 0, ...extra });
+const co = (i, extra = {}) => ({ company: `Company ${String(i).padStart(2, '0')}`, type: null, id: null, score: 100 - i, band: i < 3 ? 'P1' : 'P3', visits: 2, visitors: 2, people: 0, buyers: 0, pages: 1, paths: ['/'], titles: [], top_page: '/', stage: null, owner: 'Unassigned', is_new: i % 2 === 0, ...extra });
 
-test('REV2 T4 / period-v1 P2: the redesign - header with the calendar day, NEW / RETURNING / CUMULATIVE in that order with the same words, 4 tiles, Hot / Warm / Cool / Cold pills, 6 columns, NEW and RETURNING tags, Add for unmatched; top 10 + "and n more · new · returning"', () => {
+test('v2 E1-E4: eyebrow · dated headline · subhead with the send day; four stat tiles as two rows of 50 % cells; the intent line with outlined band pills and the in-Prospector split; nothing padded', () => {
   const cumulative = { companies: 283, since: '2026-10-20' };
   const big = buildVisitorEmail(Array.from({ length: 14 }, (_, i) => co(i)), { date: '2026-11-04', cumulative });
-  assert.equal(big.subject, 'Website visitors — Tue Nov 3: 14 qualified · 14 visited · 7 new');
-  assert.deepEqual([big.rows, big.new, big.returning, big.cumulative], [TOP_N, 7, 7, 283]);
-  assert.match(big.text, /^HomeLover · Website visitors\nTue Nov 3 — 14 qualified of 14 companies, 7 new, 3 hot\nCompanies Apollo identified on our site · Tue Nov 3 · 12:00 AM – 11:59 PM PT\n\nNEW — first time we've seen them: 7 companies\nRETURNING — seen before, visited again: 7 companies\nCUMULATIVE — companies identified since Tue Oct 20: 283\n/);
-  assert.match(big.text, /matched 0 employers · 0 targets · 0 partners · 14 companies not in Prospector/);
-  assert.match(big.text, /Hot 3 · Warm 0 · Cool 11 · Cold 0/);
-  assert.match(big.text, /and 4 more visited · 2 new · 2 returning · open the Map →/);
-  assert.equal((big.text.match(/^\d+\. /gm) || []).length, 10);
+  assert.equal(big.subject, 'Website visitors · Tue Nov 3 — 7 new, 14 worth a look');
+  assert.deepEqual([big.rows, big.new_rows, big.qualified, big.visited, big.new, big.returning, big.cumulative], [TOP_N, 7, 14, 14, 7, 7, 283]);
+  assert.match(big.text, /^HOMELOVER · WEBSITE VISITORS · YESTERDAY\nTue Nov 3 — 14 companies visited, 7 for the first time\nCompanies Apollo matched to visits on homelover\.com, midnight to midnight PT\. Sent Wed 7:00 AM\. Open the Map → https:\/\/[^\n]+\n\n14 visited · 7 new · 7 returning · 14 worth a look\nIntent of yesterday's 14: Hot 3 · Warm 0 · Cool 11 · Cold 0 · already in Prospector: 0 employers · 0 targets · 0 partners · 14 not yet\n/);
   const h = big.html;
-  assert.equal((h.match(/<td style="border:1px solid/g) || []).length, 4, 'four stat tiles');
-  assert.ok(h.indexOf(esc(NEW_WORDS)) < h.indexOf(esc(RETURNING_WORDS)) && h.indexOf(esc(RETURNING_WORDS)) < h.indexOf('CUMULATIVE — companies identified since Tue Oct 20'), 'the three counts in order');
-  for (const w of Object.values(BAND_WORD)) assert.match(h, new RegExp(`>${w} \\d+</span>`));
-  assert.deepEqual([...h.matchAll(/<th [^>]*>([^<]+)<\/th>/g)].map(m => m[1]), ['Company', 'Intent', 'Who visited · why', 'In Prospector', 'Owner', 'Last touch']);
-  assert.match(h, />NEW</); assert.match(h, />RETURNING</);
-  assert.match(h, /Not yet · <a href="[^"]*channel=website_visit"[^>]*>Add<\/a>/);
-  assert.match(h, /border:1px dashed[^>]*><\/span><span[^>]*>Unassigned/);
+  assert.match(h, /HomeLover · Website visitors · yesterday<\/div>\n<div[^>]*>Tue Nov 3 — 14 companies visited, 7 for the first time<\/div>/);
+  assert.equal((h.match(/<td width="50%"/g) || []).length, 4, 'four tiles as 50 % cells');
+  assert.equal((h.match(/<tr><td width="50%"/g) || []).length, 2, 'in two rows');
+  assert.match(h, />14<\/div><div[^>]*>visited<\/div><div[^>]*>companies on the site yesterday</);
+  assert.match(h, /color:#FF9F57">7<\/div><div[^>]*>new<\/div><div[^>]*>never seen before</);
+  assert.match(h, /color:#4FD1C5">7<\/div><div[^>]*>returning<\/div><div[^>]*>seen before, came back</);
+  assert.match(h, />14<\/div><div[^>]*>worth a look<\/div><div[^>]*>Warm or hotter, a named person, or 2\+ visitors or pages</);
+  for (const [b, w] of Object.entries(BAND_WORD)) assert.match(h, new RegExp(`border:1px solid #[0-9A-F]{6};color:#[0-9A-F]{6};[^"]*">${w} \\d+</span>`), `${b} outlined pill`);
+  assert.ok(h.indexOf('>Hot 3<') < h.indexOf('>Warm 0<') && h.indexOf('>Warm 0<') < h.indexOf('>Cool 11<') && h.indexOf('>Cool 11<') < h.indexOf('>Cold 0<'));
+  assert.match(h, /already in Prospector: 0 employers · 0 targets · 0 partners &nbsp;·&nbsp; 14 not yet/);
   assert.ok(!/<img|pixel|<style|<script/i.test(h));
   assert.ok(!/act today|this week|today|tonight|tomorrow|watch|noise/i.test(big.text.replace(/Website visitors/g, '')), 'no time words');
   const small = buildVisitorEmail(Array.from({ length: 10 }, (_, i) => co(i)), { date: '2026-11-04' });
-  assert.equal(small.rows, 10);
-  assert.ok(!/more visited/.test(small.text));
+  assert.deepEqual([small.rows, small.new_rows], [10, 5]);
+  assert.match(small.text, /WORTH A LOOK YESTERDAY\nAll 10 qualified, ranked by intent\./);
+  assert.ok(!/more qualified|Showing \d+ of/.test(small.text));
   const none = buildVisitorEmail([], { date: '2026-11-04' });
-  assert.match(none.text, /No identified visitors · Tue Nov 3 · 12:00 AM – 11:59 PM PT/);
-  assert.match(none.text, /NEW — first time we've seen them: 0 companies\nRETURNING — seen before, visited again: 0 companies\nCUMULATIVE — companies identified since the first pull: —/, 'the counts never go missing');
-  assert.match(none.text, /Sent by Prospector to the HomeLover team · manage recipients in Sales › Settings › Team emails/);
+  assert.equal(none.subject, 'Website visitors · Tue Nov 3 — 0 new, 0 worth a look');
+  assert.match(none.text, /Tue Nov 3 — 0 companies visited, 0 for the first time\n[^\n]+\n\n0 visited · 0 new · 0 returning · 0 worth a look\nNo identified visitors yesterday — most traffic stays anonymous\.\n\nNEW YESTERDAY\nNo new companies yesterday\.\n\nWORTH A LOOK YESTERDAY\nNo company qualified yesterday \(Warm or hotter, a named person, or 2\+ visitors or pages\)\.\n/, 'the three sections always render');
+  assert.match(none.html, /No identified visitors yesterday — most traffic stays anonymous\./);
+  assert.ok(!/table-layout:fixed/.test(none.html), 'no data table on an empty day');
+  assert.match(none.text, /\n—\nSent by Prospector to the HomeLover team · manage recipients · Sales › Settings › Team emails$/);
 });
 
-test('REV2 T4: singular / plural right, no "0 people", a matched row shows kind · stage title-cased and the owner dot', () => {
-  const one = buildVisitorEmail([co(0, { visits: 1, people: 1, titles: ['VP People'], type: 'employer', id: 'e1', stage: 'proposal_pilot', owner: 'Casey', owner_color: '#C97626' })], { date: '2026-11-04' });
-  assert.equal(one.subject, 'Website visitors — Tue Nov 3: 1 qualified · 1 visited · 1 new');
-  assert.match(one.text, /NEW — first time we've seen them: 1 company\nRETURNING — seen before, visited again: 0 companies/);
-  assert.match(one.text, /matched 1 employer · 0 targets · 0 partners · 0 companies not in Prospector/);
-  assert.match(one.text, /1 visit \(Apollo, rolling 7 d\) · 2 visitors \(7 d\) · 1 person identified · VP People/);
-  assert.match(one.text, /In Prospector: Employer · Proposal Pilot · Owner: Casey/);
-  assert.match(one.html, /background:#C97626[^>]*><\/span>Casey/);
-  const zero = buildVisitorEmail([co(1, { people: 0 })], { date: '2026-11-04' });
-  assert.ok(!/0 people|0 person/.test(zero.text + zero.html));
+test('v2 E9 row format: line 1 = company link + NEW / RETURNING tag + the outlined intent pill; line 2 = visits · people · last 7 days · pages (/ reads "/ (home)") · n named: titles; In Prospector "Kind · Stage · ● owner" or "Not in Prospector · Add →"; no "0 people"', () => {
+  const one = buildVisitorEmail([co(0, { visits: 1, visitors: 3, people: 1, titles: ['VP People'], paths: ['/pricing', '/'], pages: 3, type: 'employer', id: 'e1', stage: 'proposal_pilot', owner: 'Casey', owner_color: '#C97626', last_touch: { at: '2026-11-03T18:00:00Z', by: 'Casey', what: 'email' } })], { date: '2026-11-04' });
+  assert.equal(one.subject, 'Website visitors · Tue Nov 3 — 1 new, 1 worth a look');
+  assert.match(one.text, /1 visited · 1 new · 0 returning · 1 worth a look\nIntent of yesterday's 1: Hot 1 · Warm 0 · Cool 0 · Cold 0 · already in Prospector: 1 employer · 0 targets · 0 partners · 0 not yet/);
+  assert.match(one.text, /1\. Company 00 \[NEW\] — Hot 100 · Employer · Proposal pilot · Casey · Nov 3 · email\n   1 visit · 3 people · last 7 days · pages: \/pricing, \/ \(home\) \+1 · 1 named: VP People\n   https:\/\/[^\n]+open=employer-e1/);
+  assert.match(one.html, /open=employer-e1"[^>]*>Company 00<\/a><span style="[^"]*background:#FF9F57;color:#0B0D10;[^"]*">NEW<\/span><\/div><div[^>]*>1 visit · 3 people · last 7 days · pages: \/pricing, \/ \(home\) \+1 · 1 named: VP People<\/div>/);
+  assert.match(one.html, /border:1px solid #FF9F57;color:#FF9F57;[^"]*">Hot 100<\/span>/);
+  assert.match(one.html, /Employer · Proposal pilot · <span style="white-space:nowrap"><span style="[^"]*background:#C97626;[^"]*"><\/span>Casey<\/span>/);
+  assert.match(one.html, />Nov 3 · email<\/td>/);
+  const two = buildVisitorEmail([co(1, { is_new: false, type: 'target', id: 't1', stage: 'researching', owner: 'Unassigned', owner_color: null }), co(2, { visitors: 0, people: 0 })], { date: '2026-11-04' });
+  assert.match(two.html, /background:#4FD1C5;color:#0B0D10;[^"]*">RETURNING<\/span>/);
+  assert.match(two.html, /Target · Researching · <span style="white-space:nowrap"><span style="[^"]*background:#94A3B8;[^"]*"><\/span>Unassigned<\/span>/, 'a record without an owner: the grey dot');
+  assert.match(two.html, /<span style="color:#A8B2C0">Not in Prospector<\/span> · <a href="[^"]*channel=website_visit"[^>]*>Add →<\/a>/);
+  assert.match(two.html, /<span style="color:#6B7480">No touch yet<\/span>/);
+  assert.match(two.text, /2\. Company 02 \[NEW\] — Hot 98 · Not in Prospector · Add → https:[^\n]+channel=website_visit · No touch yet\n   2 visits · last 7 days · pages: \/ \(home\)\n/);
+  assert.ok(!/0 people|0 person|0 named/.test(two.text + two.html));
 });
 
-test('visitor-email-clarity V1 / V2 / V4 + period-v1 P3: every label names its window and unit, the one-line legend lists the windows, in html and text; zero parts omitted except visits', () => {
-  const m = buildVisitorEmail([co(0, { visits: 0, visitors: 0, people: 0 }), co(1, { visits: 3, visitors: 2, people: 1 })], { date: '2026-11-04' });
-  for (const body of [m.html, m.text]) {
-    assert.ok(body.includes('Companies Apollo identified on our site · Tue Nov 3 · 12:00 AM – 11:59 PM PT'));
-    assert.ok(body.includes(esc(LEGEND)) || body.includes(LEGEND));
-    for (const l of [NEW_WORDS, RETURNING_WORDS, 'not in Prospector', 'Apollo, rolling 7 d']) assert.ok(body.includes(l) || body.includes(esc(l)), l);
-  }
-  for (const w of ['calendar day(s) above (PT)', "Apollo's rolling 7-day counts", 'on this pull', 'since the first pull']) assert.ok(LEGEND.includes(w), w);
-  assert.ok(!LEGEND.includes('\n'), 'one line');
-  assert.ok(m.html.includes('companies · Tue Nov 3'), 'the companies tile names its day');
-  assert.match(m.text, /3 visits \(Apollo, rolling 7 d\) · 2 visitors \(7 d\) · 1 person identified/);
-  assert.match(m.text, /0 visits \(Apollo, rolling 7 d\) · \/\n/, 'visits always shown; 0 visitors / 0 named omitted');
-  assert.ok(!/0 visitors|0 named|0 people/.test(m.text + m.html));
+test('v2 E8 / V3: "How to read this" - four lines, the band thresholds read from the ranked book (the scores route\'s weights, never constants here), the anonymous line with the cumulative count, the footer with the recipients link; html and text', () => {
+  const overall = { rows: [], total: 0, prev_day: null, thresholds: { P1: 70, P2: 45, P3: 20 } };
+  const m = buildVisitorEmail([co(0)], { date: '2026-11-04', overall, cumulative: { companies: 283, since: '2026-10-20' } });
+  assert.match(m.text, /\nHOW TO READ THIS\nNEW \/ RETURNING — whether we had seen the company on the site before yesterday\.\nVisits · people — Apollo's rolling 7-day counts, not just yesterday\. Pages — the paths Apollo reported on this pull\.\nIntent — the Map's score, 0–100: Hot ≥ 70 · Warm 45–69 · Cool 20–44 · Cold < 20\.\nIn Prospector — the record type and stage, or "Not in Prospector" with an Add link\.\nMost visitors stay anonymous; Apollo names a company only when it can match the traffic\. 283 companies identified since Oct 20\.\n\n—\nSent by Prospector to the HomeLover team · manage recipients · Sales › Settings › Team emails$/);
+  assert.match(m.html, /How to read this<\/div>\n<div[^>]*><b style="color:#C9D0D9">NEW \/ RETURNING<\/b> — whether we had seen the company on the site before yesterday\.<br><b[^>]*>Visits · people<\/b> — Apollo&#39;s rolling 7-day counts, not just yesterday\. Pages — the paths Apollo reported on this pull\.<br><b[^>]*>Intent<\/b> — the Map&#39;s score, 0–100: Hot ≥ 70 · Warm 45–69 · Cool 20–44 · Cold &lt; 20\.<br><b[^>]*>In Prospector<\/b> — the record type and stage, or &quot;Not in Prospector&quot; with an Add link\.<br>Most visitors stay anonymous; Apollo names a company only when it can match the traffic\. 283 companies identified since Oct 20\.<\/div>/);
+  assert.ok(m.html.includes(`Sent by Prospector to the HomeLover team · <a href="${esc(SETTINGS_URL)}" style="color:#AFC0FF;text-decoration:none">manage recipients</a> · Sales › Settings › Team emails`), 'the recipients link');
+  assert.equal(thresholdWords(DEFAULT_WEIGHTS.thresholds), 'Hot ≥ 60 · Warm 40–59 · Cool 15–39 · Cold < 15');
+  const plain = buildVisitorEmail([co(0)], { date: '2026-11-04' });
+  assert.match(plain.text, /Intent — the Map's score, 0–100: Hot ≥ 60 · Warm 40–59 · Cool 15–39 · Cold < 15\./, 'no book = the scores route\'s defaults');
+  assert.match(plain.text, /match the traffic\.\n\n—\n/, 'no cumulative = no count sentence');
+  assert.equal(QUALIFIED_WORDS, 'Warm or hotter, a named person, or 2+ visitors or pages');
+  assert.equal(FOOTER_WORDS, 'Sent by Prospector to the HomeLover team · manage recipients · Sales › Settings › Team emails');
 });
 
-test('visitor-email-clarity V3: Last touch = "<Mon d> · <first name> · <what>", "No touch yet", "—" for companies not in Prospector', () => {
+test('v2 E9: Last touch = "<Mon d> · <what>", "No touch yet" faint for a record without one and for a company not in Prospector; every A row has the four cells', () => {
   const at = '2026-11-03T18:00:00Z';
   const rows = [
     co(0, { type: 'partner', id: 'g1', last_touch: { at, by: 'Casey', what: 'email' } }),
@@ -373,14 +384,16 @@ test('visitor-email-clarity V3: Last touch = "<Mon d> · <first name> · <what>"
     co(5),
   ];
   const m = buildVisitorEmail(rows, { date: '2026-11-04' });
-  for (const t of ['Nov 3 · Casey · email', 'Nov 3 · Casey · call', 'Nov 3 · meeting', 'Nov 3 · Casey · note', 'No touch yet']) {
-    assert.ok(m.text.includes(`Last touch: ${t}`), t);
-    assert.ok(m.html.includes(`>${t}<`), `html ${t}`);
+  for (const t of ['Nov 3 · email', 'Nov 3 · call', 'Nov 3 · meeting', 'Nov 3 · note']) {
+    assert.ok(m.text.includes(` · ${t}\n`), t);
+    assert.ok(m.html.includes(`>${t}</td>`), `html ${t}`);
   }
-  assert.ok(m.text.includes('Company 05 [RETURNING] — ') && /Owner: Unassigned · Last touch: —\n/.test(m.text));
-  const body = m.html.split('<tr>').filter(r => r.includes('<td valign'));
-  assert.equal(body.length, 6);
-  for (const r of body) assert.equal((r.match(/<td valign/g) || []).length, 6, 'six cells a row');
+  assert.equal((m.text.match(/ · No touch yet\n/g) || []).length, 3, 'the new employer without a touch in A0 and A, the returning unmatched company in A');
+  assert.equal((m.html.match(/<span style="color:#6B7480">No touch yet<\/span>/g) || []).length, 3);
+  assert.ok(!m.text.includes('Casey'), 'the first name stays out of the touch cell');
+  const body = m.html.split('<tr>').filter(r => r.includes('<td width="42%"'));
+  assert.equal(body.length, 3 + 6, '3 new rows in A0 + 6 qualified rows in A');
+  for (const r of body) assert.equal((r.match(/<td width="\d+%"/g) || []).length, 4, 'four cells a row');
 });
 
 test('visitor-email-clarity V3 loader: last touch comes from the company panel source (partner touch event, employer to-do kind only, never its text)', async () => {
@@ -401,7 +414,7 @@ test('visitor-email-clarity V3 loader: last touch comes from the company panel s
   assert.equal(by['Co 3'], null);
   assert.equal(by['Co 4'], undefined);
   const mail = buildVisitorEmail(rows, { date: '2026-11-04' });
-  assert.ok(mail.text.includes('Last touch: Nov 3 · Casey · call') && mail.text.includes('Last touch: Nov 2 · Casey · to-do') && mail.text.includes('Last touch: No touch yet') && mail.text.includes('Last touch: —'));
+  assert.ok(mail.text.includes(' · Nov 3 · call\n') && mail.text.includes(' · Nov 2 · to-do\n') && mail.text.includes(' · No touch yet\n'));
   assert.ok(!/Jordan|Visitorperson|@|\d{3}-\d{3}-\d{4}/.test(mail.html + mail.text), 'no names, emails or phones');
 });
 
@@ -585,7 +598,7 @@ test('rulings (4): on a cron day (no page load) the 06:30 job pulls visitors AND
   assert.deepEqual(seen.pull, ['cron', 'cron']);
   const body = Buffer.from(g.calls[0].mime.split('\r\n\r\n')[2].split('\r\n--')[0].replace(/\r\n/g, ''), 'base64').toString('utf8');
   assert.match(body, /Globex Benefits/);
-  assert.match(body, /3 visits \(Apollo, rolling 7 d\) · 2 visitors \(7 d\) · 1 person identified · Head of Total Rewards · \/employers/);
+  assert.match(body, /3 visits · 2 people · last 7 days · pages: \/employers · 1 named: Head of Total Rewards/);
   assert.ok(!/Lee|Personname/.test(body));
   const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   assert.match(server, /people: people\.runVisitorPeoplePull/);
@@ -594,30 +607,38 @@ test('rulings (4): on a cron day (no page load) the 06:30 job pulls visitors AND
 // ---- FIX visitor-email-top10-v1 ---------------------------------------------------------------------------------------
 const bookRow = (i, extra = {}) => ({ rank: i + 1, company: `Ranked ${String(i).padStart(2, '0')}`, type: 'employer', id: `00000000-0000-4000-8000-0000000ab0${String(i).padStart(2, '0')}`, score: 90 - i, band: i < 2 ? 'P1' : 'P2', stage: 'contacted', owner: 'Casey', owner_color: '#C97626', trend: ['up', 'down', 'flat', 'new'][i % 4], prev_score: i % 4 === 3 ? null : 90 - i + (i % 4 === 0 ? -5 : i % 4 === 1 ? 5 : 0), last_touch: i % 2 ? null : { at: '2026-11-03T17:00:00Z', by: 'Casey', what: 'call' }, ...extra });
 
-test('V1: two lists - A (since the previous weekday send) then B (overall) with trend, both in html and text; a company in both appears in both; the subject names #1 overall', () => {
-  const overall = { rows: Array.from({ length: 10 }, (_, i) => bookRow(i)), total: 435, prev_day: '2026-11-03' };
-  const both = co(0, { company: 'Ranked 03', type: 'employer', id: overall.rows[3].id, stage: 'contacted', owner: 'Casey', owner_color: '#C97626' });
+test('v2 E5-E7: three lists in order - New yesterday (A0) · Worth a look yesterday (A) · Top 10 right now, whole book (B) - in html and text; a company in all three appears in all three; trend ▲ ▼ — with the hues; the subject per E10', () => {
+  const overall = { rows: Array.from({ length: 10 }, (_, i) => bookRow(i)), total: 435, prev_day: '2026-11-03', thresholds: DEFAULT_WEIGHTS.thresholds };
+  const both = co(0, { company: 'Ranked 03', type: 'employer', id: overall.rows[3].id, stage: 'contacted', owner: 'Casey', owner_color: '#C97626', is_new: true });
   const m = buildVisitorEmail([both, co(1), co(2)], { date: '2026-11-04', overall });
-  assert.equal(m.subject, 'Website visitors — Tue Nov 3: 3 qualified · 3 visited · 2 new · top overall: Ranked 00');
-  assert.equal(m.overall, 10);
+  assert.equal(m.subject, 'Website visitors · Tue Nov 3 — 2 new, 3 worth a look, top: Ranked 00');
+  assert.deepEqual([m.new_rows, m.rows, m.overall], [2, 3, 10]);
   const heads = [...m.html.matchAll(/<th [^>]*>([^<]+)<\/th>/g)].map(x => x[1]);
-  assert.deepEqual(heads, ['Company', 'Intent', 'Who visited · why', 'In Prospector', 'Owner', 'Last touch', 'Company', 'Intent', 'Trend', 'In Prospector', 'Owner', 'Last touch']);
-  assert.match(m.html, /Top 10 qualified — Tue Nov 3 · 3 qualified of 3 visited/); assert.match(m.html, /Top 10 — overall right now/);
-  assert.match(m.html, /The whole ranked book \(435 companies\), the Map&#39;s order · ▲ ▼ since Tue Nov 3/);
-  assert.equal((m.html.match(/Ranked 03/g) || []).length, 2, 'in both lists');
+  assert.deepEqual(heads, ['Company · why', 'Intent', 'In Prospector · owner', 'Last touch', 'Company · why', 'Intent', 'In Prospector · owner', 'Last touch', 'Company', 'Intent', 'Trend', 'In Prospector · owner', 'Last touch']);
+  const h = m.html;
+  assert.ok(h.indexOf('>New yesterday<span') < h.indexOf('>Worth a look yesterday<span') && h.indexOf('>Worth a look yesterday<span') < h.indexOf('>Top 10 right now — whole book</div>'), 'A0, A, B in order');
+  assert.match(h, /New yesterday<span style="[^"]*background:#FF9F57;[^"]*">NEW<\/span>/);
+  assert.match(h, /Worth a look yesterday<span style="[^"]*background:#4FD1C5;[^"]*">RETURNING<\/span>/);
+  assert.match(h, /2 companies we had never seen on the site before\. 1 already in Prospector — Add puts the rest on the Map as targets\./);
+  assert.match(h, /All 3 qualified, ranked by intent\. Qualified = Warm or hotter, a named person, or 2\+ visitors or pages\./);
+  assert.match(h, /All 435 ranked companies in the Map&#39;s order, not just yesterday&#39;s visitors\. ▲ ▼ = score change since the last email\./);
+  assert.equal((h.match(/Ranked 03/g) || []).length, 3, 'in all three lists');
+  assert.match(h, /color:#3DD68C">▲ 85→90</); assert.match(h, /color:#FF7878">▼ 94→89</); assert.match(h, /color:#6B7480">—</); assert.match(h, /color:#6B7480">new</);
+  assert.match(h, /all 3 on the Map →<\/a>/);
   const t = m.text;
-  assert.ok(t.indexOf('Top 10 qualified — Tue Nov 3 · 3 qualified of 3 visited') < t.indexOf('Top 10 — overall right now'));
-  assert.match(t, /1\. Ranked 00 — Hot 90 · ▲ 85→90/);
-  assert.match(t, /2\. Ranked 01 — Hot 89 · ▼ 94→89/);
-  assert.match(t, /3\. Ranked 02 — Warm 88 · –\n/);
-  assert.match(t, /4\. Ranked 03 — Warm 87 · new/);
-  assert.match(t, /Last touch: Nov 3 · Casey · call/);
-  assert.equal((t.match(/^\d+\. /gm) || []).length, 13, '3 in A + 10 in B');
+  assert.ok(t.indexOf('NEW YESTERDAY') < t.indexOf('WORTH A LOOK YESTERDAY') && t.indexOf('WORTH A LOOK YESTERDAY') < t.indexOf('TOP 10 RIGHT NOW — WHOLE BOOK'));
+  assert.match(t, /1\. Ranked 00 — Hot 90 · ▲ 85→90 · Employer · Contacted · Casey · /);
+  assert.match(t, /2\. Ranked 01 — Hot 89 · ▼ 94→89 · /);
+  assert.match(t, /3\. Ranked 02 — Warm 88 · — · /);
+  assert.match(t, /4\. Ranked 03 — Warm 87 · new · /);
+  assert.match(t, / · Nov 3 · call\n/);
+  assert.equal((t.match(/^\d+\. /gm) || []).length, 2 + 3 + 10, '2 in A0 + 3 in A + 10 in B');
   assert.ok(!/@|\d{3}-\d{3}-\d{4}/.test(m.html + m.text), 'no address, no phone');
-  // B alone when nothing visited since the previous send; the legend still closes the mail.
+  // A quiet day keeps all three sections: the two one-liners, then B.
   const quiet = buildVisitorEmail([], { date: '2026-11-04', overall });
-  assert.match(quiet.text, /No identified visitors · Tue Nov 3 · 12:00 AM – 11:59 PM PT[\s\S]*Top 10 — overall right now[\s\S]*Windows: the list, NEW and RETURNING/);
-  assert.equal(quiet.subject, 'Website visitors — Tue Nov 3: 0 qualified · 0 visited · 0 new · top overall: Ranked 00');
+  assert.match(quiet.text, /No identified visitors yesterday[\s\S]*NEW YESTERDAY\nNo new companies yesterday\.\n\nWORTH A LOOK YESTERDAY\nNo company qualified yesterday[\s\S]*TOP 10 RIGHT NOW — WHOLE BOOK[\s\S]*1\. Ranked 00 — Hot 90/);
+  assert.equal(quiet.subject, 'Website visitors · Tue Nov 3 — 0 new, 0 worth a look, top: Ranked 00');
+  assert.equal((quiet.html.match(/table-layout:fixed/g) || []).length, 1, 'only B has a table');
 });
 
 test('V1 loader: the ranked book = the Map order with live / duplicates / closed / Deprioritized out, top 10, trend vs the last snapshot, last touch from the panel source', async () => {
@@ -719,13 +740,13 @@ test('V2 / V1 job: "Send a test to me only" and the 07:00 job both carry list B;
   const mime = g.calls[0].mime;
   assert.deepEqual(toOf(mime), [MAIL.owner]);
   const text = Buffer.from(mime.split('\r\n\r\n')[2].split('\r\n--')[0].replace(/\r\n/g, ''), 'base64').toString('utf8');
-  assert.match(text, /Top 10 — overall right now[\s\S]*1\. Book 0 — Hot 70 · new/);
+  assert.match(text, /TOP 10 RIGHT NOW — WHOLE BOOK[\s\S]*1\. Book 0 — Hot 70 · new/);
   const subject = Buffer.from(mime.match(/Subject: =\?UTF-8\?B\?([^?]+)\?=/)[1], 'base64').toString('utf8');
-  assert.equal(subject, 'Website visitors — Tue Nov 3: 0 qualified · 0 visited · 0 new · top overall: Book 0');
+  assert.equal(subject, 'Website visitors · Tue Nov 3 — 0 new, 0 worth a look, top: Book 0');
 });
 
 // ---- follow-up addition: list A gates, rank, why, never padded; Send to team now (check / again / manual) -----------
-import { qualifies, whyOf, rankVisitors } from './visitorEmail.js';
+import { qualifies, detailOf, rankVisitors } from './visitorEmail.js';
 
 test('gates: a named person, 2+ pages, 2+ visitors, or Warm+ each qualify alone; a bare visit does not', () => {
   const bare = { people: 0, pages: 1, visitors: 1, band: 'P3' };
@@ -738,33 +759,37 @@ test('gates: a named person, 2+ pages, 2+ visitors, or Warm+ each qualify alone;
   assert.equal(qualifies({ ...bare, band: 'P4', pages: 0, visitors: 0 }), false, 'Cold, nothing else');
 });
 
-test('rank: buyer-title people first, then unique visitors, then pages, then intent score; why reads "2 people (1 buyer) · VP HR · 4 pages · /pricing"', () => {
+test('v2 V1 rank: score desc, then unique visitors, then pages, then the name; line 2 reads "2 visits · 3 people · last 7 days · pages: /pricing, / (home) +2 · 2 named: VP HR, Analyst"', () => {
   const rows = [
-    co(0, { company: 'Score only', score: 99, buyers: 0, visitors: 1, pages: 1 }),
-    co(1, { company: 'Pages', score: 10, buyers: 0, visitors: 1, pages: 5 }),
-    co(2, { company: 'Visitors', score: 10, buyers: 0, visitors: 3, pages: 1 }),
-    co(3, { company: 'Buyer', score: 5, buyers: 1, people: 2, visitors: 1, pages: 4, titles: ['VP HR', 'Analyst'], top_page: '/pricing' }),
+    co(0, { company: 'Score only', score: 99, visitors: 1, pages: 1 }),
+    co(1, { company: 'Pages', score: 10, visitors: 1, pages: 5 }),
+    co(2, { company: 'Visitors', score: 10, visitors: 3, pages: 1 }),
+    co(3, { company: 'Buyer', score: 5, buyers: 1, people: 2, visitors: 3, pages: 4, paths: ['/pricing', '/'], titles: ['VP HR', 'Analyst'] }),
+    co(4, { company: 'Also 10', score: 10, visitors: 3, pages: 1 }),
   ];
-  assert.deepEqual(rankVisitors(rows).map(r => r.company), ['Buyer', 'Visitors', 'Pages', 'Score only']);
-  assert.equal(whyOf(rows[3]), '2 people identified (1 buyer) · VP HR · Analyst · 4 pages (this pull) · /pricing');
-  assert.equal(whyOf(co(9, { people: 0, pages: 0, top_page: null })), '');
+  assert.deepEqual(rankVisitors(rows).map(r => r.company), ['Score only', 'Also 10', 'Visitors', 'Pages', 'Buyer']);
+  assert.equal(detailOf(rows[3]), '2 visits · 3 people · last 7 days · pages: /pricing, / (home) +2 · 2 named: VP HR, Analyst');
+  assert.equal(detailOf(co(9, { visitors: 0, people: 0, pages: 0, paths: [] })), '2 visits · last 7 days');
 });
 
-test('never padded: 4 qualify of 14 visited -> 4 rows, "4 qualified of 14 visited", "+10 more visited", subject "4 qualified · 14 visited"; 0 qualify says why', () => {
+test('v2 never padded: 4 qualify of 14 visited -> 4 rows in A under "All 4 qualified", "10 not qualified · all 14 on the Map →"; A0 caps at 10 with "Showing 10 of 14"; 0 qualify says why; the subject counts', () => {
   const rows = Array.from({ length: 14 }, (_, i) => co(i, { visitors: 1, pages: 1, band: i < 4 ? 'P2' : 'P3', people: 0 }));
   const m = buildVisitorEmail(rows, { date: '2026-11-04' });
-  assert.deepEqual([m.rows, m.qualified, m.visited, m.more, m.new, m.returning], [4, 4, 14, 10, 7, 7]);
-  assert.equal(m.subject, 'Website visitors — Tue Nov 3: 4 qualified · 14 visited · 7 new');
-  assert.match(m.text, /^HomeLover · Website visitors\nTue Nov 3 — 4 qualified of 14 companies, 7 new, 0 hot/);
-  assert.match(m.text, /Top 10 qualified — Tue Nov 3 · 4 qualified of 14 visited/);
-  assert.equal((m.text.match(/^\d+\. /gm) || []).length, 4);
-  assert.match(m.text, /and 10 more visited · 5 new · 5 returning · open the Map/, 'the rest split new · returning, and 2 + 5 new = the 7 NEW');
-  assert.match(m.text, /NEW — first time we've seen them: 7 companies/);
+  assert.deepEqual([m.rows, m.new_rows, m.qualified, m.visited, m.more, m.new, m.returning], [4, 7, 4, 14, 0, 7, 7]);
+  assert.equal(m.subject, 'Website visitors · Tue Nov 3 — 7 new, 4 worth a look');
+  assert.match(m.text, /WORTH A LOOK YESTERDAY\nAll 4 qualified, ranked by intent\. Qualified = Warm or hotter, a named person, or 2\+ visitors or pages\.\n1\. /);
+  assert.match(m.text, /\n10 not qualified · all 14 on the Map → https:/);
+  assert.match(m.html, /<div[^>]*>10 not qualified · <a href="[^"]*view=priorities"[^>]*>all 14 on the Map →<\/a><\/div>/);
+  assert.equal((m.text.match(/^\d+\. /gm) || []).length, 7 + 4);
   const none = buildVisitorEmail(rows.map(r => ({ ...r, band: 'P4' })), { date: '2026-11-04' });
   assert.deepEqual([none.rows, none.qualified, none.visited], [0, 0, 14]);
-  assert.match(none.text, /No company cleared the bar \(a named person, 2\+ pages, 2\+ visitors, or Warm or hotter\) - 14 companies visited/);
-  assert.match(none.html, /No company cleared the bar/);
-  assert.equal((none.text.match(/^\d+\. /gm) || []).length, 0);
+  assert.match(none.text, /WORTH A LOOK YESTERDAY\nNo company qualified yesterday \(Warm or hotter, a named person, or 2\+ visitors or pages\)\.\n14 not qualified · all 14 on the Map →/);
+  assert.match(none.html, /No company qualified yesterday/);
+  assert.equal((none.text.match(/^\d+\. /gm) || []).length, 7, 'A0 still lists the new');
+  const many = buildVisitorEmail(Array.from({ length: 14 }, (_, i) => co(i, { is_new: true })), { date: '2026-11-04' });
+  assert.deepEqual([many.new_rows, many.new], [10, 14]);
+  assert.match(many.text, /14 companies we had never seen on the site before\. None are in Prospector yet — Add puts them on the Map as a target\.\n1\. [\s\S]*10\. [^\n]+\n[^\n]+\n[^\n]+\nShowing 10 of 14 · all 14 on the Map → https:/);
+  assert.match(many.html, /Showing 10 of 14 · <a href="[^"]*view=priorities"[^>]*>all 14 on the Map →<\/a>/);
 });
 
 test('loader: pages = top_paths length, buyers from sales_settings.buyer_titles (buyer titles listed first), last touch read for qualified rows only', async () => {
@@ -777,7 +802,8 @@ test('loader: pages = top_paths length, buyers from sales_settings.buyer_titles 
   const rows = await loadVisitorData(s, B, { window: dayWindowFor('2026-11-04'), members: await loadMembers(s, B) });
   const by = Object.fromEntries(rows.map(r => [r.company, r]));
   assert.deepEqual([by['Co 1'].pages, by['Co 1'].people, by['Co 1'].buyers, by['Co 1'].titles], [3, 2, 1, ['VP HR', 'Analyst']]);
-  assert.equal(whyOf(by['Co 1']), '2 people identified (1 buyer) · VP HR · Analyst · 3 pages (this pull) · /pricing');
+  assert.deepEqual(by['Co 1'].paths, ['/pricing', '/about']);
+  assert.equal(detailOf(by['Co 1']), '2 visits · 1 person · last 7 days · pages: /pricing, /about +1 · 2 named: VP HR, Analyst');
   assert.deepEqual([by['Co 2'].pages, by['Co 2'].people, qualifies(by['Co 2'])], [0, 0, false]);
   const mail = buildVisitorEmail(rows, { date: '2026-11-04' });
   assert.deepEqual([mail.rows, mail.qualified, mail.visited], [1, 1, 2]);
@@ -808,4 +834,39 @@ test('Send to team now: check answers sent_today without sending; again = owner 
   assert.deepEqual([first.status, first.body.again, s2.db.sales_job_slots[0].status, s2.db.sales_job_slots[0].detail.manual.again], [200, false, 'ok', false]);
   assert.match(visitorEmailLine({ visitor_on: true }, s2.db.sales_job_slots, NOW + 7 * 3600e3).line, /^Sent Wed 1:00 PM \(manual, Alex\) to 4 recipients$/);
   assert.ok(!JSON.stringify([chk.body, again.body, line]).includes('@'));
+});
+
+// ---- FIX visitor-email-v2 ----------------------------------------------------------------------------------------------
+test('v2: the Nov 5 fixture (25 visited, 9 new, 16 qualified, Hilton on top) reads the E10 subject word for word; the data tables carry % widths only, no <style> / <script> / <img>, no "@"', () => {
+  const rows = Array.from({ length: 25 }, (_, i) => co(i, { is_new: i < 9, visitors: i < 16 ? 2 : 1, pages: 1, band: i < 2 ? 'P1' : i < 23 ? 'P3' : 'P4', score: i < 2 ? 70 - i : 30 - i, ...(i === 9 ? { company: 'Hilton', type: 'employer', id: 'e1', stage: 'contacted', owner: 'Cyrus', owner_color: '#C97626' } : {}) }));
+  const overall = { rows: [{ ...bookRow(0), company: 'Hilton', score: 78, band: 'P1', trend: 'up', prev_score: 76 }, bookRow(1)], total: 401, prev_day: '2026-11-05', thresholds: DEFAULT_WEIGHTS.thresholds };
+  const m = buildVisitorEmail(rows, { date: '2026-11-06', overall, cumulative: { companies: 283, since: '2026-10-20' } });
+  assert.equal(m.subject, 'Website visitors · Thu Nov 5 — 9 new, 16 worth a look, top: Hilton');
+  assert.match(m.text, /^HOMELOVER · WEBSITE VISITORS · YESTERDAY\nThu Nov 5 — 25 companies visited, 9 for the first time\n[^\n]*Sent Fri 7:00 AM\./);
+  assert.match(m.text, /25 visited · 9 new · 16 returning · 16 worth a look\nIntent of yesterday's 25: Hot 2 · Warm 0 · Cool 21 · Cold 2 · already in Prospector: 1 employer · 0 targets · 0 partners · 24 not yet/);
+  assert.match(m.text, /The 10 strongest of the 16 qualified, ranked by intent\./);
+  assert.match(m.text, /\nand 6 more qualified · 9 not qualified · all 25 on the Map → https:/);
+  const tables = m.html.split('<table').slice(1).filter(t => t.includes('table-layout:fixed'));
+  assert.equal(tables.length, 3, 'A0, A, B');
+  for (const t of tables) {
+    const widths = [...t.matchAll(/<t[dh] width="([^"]+)"/g)].map(x => x[1]);
+    assert.ok(widths.length > 0 && widths.every(w => /^\d+%$/.test(w)), `every cell a % width: ${widths.slice(0, 5)}`);
+    assert.ok([...t.split('</table>')[0].matchAll(/<t[dh] [^>]*>/g)].every(x => !/width:\s*\d+px|width="\d+"/.test(x[0])), 'no px width on a cell');
+  }
+  for (const t of tables.slice(0, 2)) { const pct = [...t.split('</tr>')[0].matchAll(/<th width="(\d+)%"/g)].map(x => Number(x[1])); assert.equal(pct.reduce((a, b) => a + b, 0), 100); assert.equal(pct.length, 4); }
+  assert.ok(!/<img|<style|<script/i.test(m.html));
+  assert.ok(!/@/.test(m.html + m.text));
+  assert.ok(!m.html.includes('visits (Apollo, rolling 7 d)') && !m.html.includes('CUMULATIVE') && !m.html.includes('Windows: the list'), 'the old copy is gone');
+});
+
+test('v2 V3 loader: loadRankedBook carries the band thresholds from sales_settings.score_weights (the scores route\'s merge), the defaults without a row', async () => {
+  const id = n => `00000000-0000-4000-8000-0000000ae0${String(n).padStart(2, '0')}`;
+  const scores = [{ business_id: B, company_type: 'employer', company_id: id(1), score: 66, band: 'P1', closed: false, flagged_out: false, duplicate_of: null, components: { meta: { name: 'Co 1' } } }];
+  const members = await loadMembers(sb(), B);
+  const custom = await loadRankedBook(sb({ sales_company_scores: scores, sales_settings: [{ business_id: B, score_weights: { thresholds: { P1: 70, P2: 45, P3: 20 } } }] }), B, { now: NOW, members });
+  assert.deepEqual(custom.thresholds, { P1: 70, P2: 45, P3: 20 });
+  const plain = await loadRankedBook(sb({ sales_company_scores: scores }), B, { now: NOW, members });
+  assert.deepEqual(plain.thresholds, DEFAULT_WEIGHTS.thresholds);
+  const mail = buildVisitorEmail([], { date: '2026-11-04', overall: custom });
+  assert.match(mail.text, /Hot ≥ 70 · Warm 45–69 · Cool 20–44 · Cold < 20/);
 });
