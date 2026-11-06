@@ -6,7 +6,7 @@ import Tabs from '../../ui/Tabs';
 import { IconTable, IconCheck, IconMap, IconPeople, IconFlow, IconMegaphone, IconSource, IconMail, IconHome, IconScorecard } from '../../ui/icons';
 import Tag from '../../ui/Tag';
 import AnalyticsView from './AnalyticsView';
-import DailyHuddle from './DailyHuddle';
+import PeopleTable from './people/PeopleTable';
 import GoalsTab, { homeOf } from './goals/GoalsTab';
 import { goalsApi, OPEN_GOALS_WEEK, OPEN_GOALS_TARGET, OPEN_PIPELINE_RECORD } from './goals/goalsApi';
 import { laDateString } from './periods';
@@ -69,7 +69,7 @@ const PRINT_STYLES = `
 // row (sub-view switch on the left, the screen's own tools portaled into
 // #sales-frame-tools on the right) so switching tabs or toggling filters
 // never moves what sits above. GoalsTab stays the data hub for Actions /
-// Pipeline / Dashboard; Pipeline > People is DailyHuddle (the People table
+// Pipeline / Dashboard; Pipeline > People is people/PeopleTable (people-v2: the one table
 // on its Live tab, Priorities and Done beside it).
 
 const SUB_VIEW_ICON = { companies: IconTable, clients: IconCheck, priorities: IconMap, people: IconPeople, partners: IconFlow, campaigns: IconMegaphone, overview: IconHome, analytics: IconMail, scorecard: IconScorecard, sources: IconSource, 'team-emails': IconMail };
@@ -81,7 +81,6 @@ export default function SalesAnalyticsTab({ businessId }) {
   const view = views[tab] || null;
   const [tabsSlot, setTabsSlot] = useState(null);
   useEffect(() => { setTabsSlot(document.getElementById('workspace-header-tabs')); }, []);
-  const [huddleFocus, setHuddleFocus] = useState(null);
   const [huddleTarget, setHuddleTarget] = useState(null); // { feed } | { flags } from a Goals number
   const [goalsTarget, setGoalsTarget] = useState(null); // { target } a Huddle / Analytics number opens in Goals
   const [pipelineTarget, setPipelineTarget] = useState(null); // { key, section, n } a record the header "+" added (one-plus-button-v1)
@@ -132,7 +131,7 @@ export default function SalesAnalyticsTab({ businessId }) {
     window.addEventListener(OPEN_GOALS_TARGET, open);
     return () => window.removeEventListener(OPEN_GOALS_TARGET, open);
   }, [openGoals]);
-  const openHuddle = target => { setHuddleFocus(null); setHuddleTarget(target ? { ...target } : null); nav('pipeline', 'people'); };
+  const openHuddle = target => { setHuddleTarget(target ? { ...target } : null); nav('pipeline', 'people'); };
   const canEdit = !!me && (me.profile?.is_platform_owner || roleAtLeast(me.memberships?.find(m => m.business_id === businessId)?.role, 'member'));
 
   // call-notes-targets-v1 Stage 3 - Tidy runs once per LA day on a Member's
@@ -215,9 +214,9 @@ export default function SalesAnalyticsTab({ businessId }) {
       {frameRow}
 
       {people
-        ? <DailyHuddle businessId={businessId} focusContactId={huddleFocus} onFocused={() => setHuddleFocus(null)} focusTarget={huddleTarget} onOpenGoals={openGoals} />
+        ? <PeopleTable businessId={businessId} canEdit={canEdit} me={me} initialTarget={huddleTarget} />
         : <GoalsTab businessId={businessId} section={tab} view={view} onNav={nav} initialTarget={goalsTarget} pipelineTarget={pipelineTarget} pageLoadFailures={pageLoadFailures}
-            onOpenHuddle={(contactId, target) => { setHuddleFocus(contactId); setHuddleTarget(target ? { ...target } : null); nav('pipeline', 'people'); }}
+            onOpenHuddle={(contactId, target) => { setHuddleTarget(target ? { ...target } : null); nav('pipeline', 'people'); }}
             analytics={<AnalyticsView businessId={businessId} canEdit={canEdit} />} />}
       </div>
     </div>

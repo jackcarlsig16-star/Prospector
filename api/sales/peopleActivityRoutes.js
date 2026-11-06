@@ -4,7 +4,8 @@ import { laDateString } from './laDate.js';
 import { normName } from './intakeMatch.js';
 import { mergePeople, SOURCE_WORD } from './peopleMerge.js';
 import { cleanText } from './scrubText.js';
-import { isMigrationPending } from './personActivity.js';
+import { isMigrationPending, timelineFor } from './personActivity.js';
+import { readAllViews, writeAllViews, SAVED_VIEWS_MAX } from './scoresRoutes.js';
 import { HEAT_BANDS } from './heatScore.js';
 
 // people-v2 Stage 1 (P5) - GET goals/people/activity?window=7|30|90|all: ONE read for Pipeline › People. The rows are the
@@ -93,7 +94,7 @@ export function buildPeopleTable({ rows, activity = [], visits = [], buyerTitles
   shown.sort((a, b) => (b.heat ?? -1) - (a.heat ?? -1) || String(b.last_email?.at || '').localeCompare(String(a.last_email?.at || '')) || String(a.name).localeCompare(String(b.name)));
   const text = JSON.stringify(shown);
   if (ADDRESS.test(text)) throw new Error('people activity: an address reached the result - refused');
-  return { rows: shown, n: shown.length, total: people.length, counts, window: w, heat_threshold: HEAT_BANDS.hotScore, computed_at: activity.map(a => a.computed_at).filter(Boolean).sort().pop() || null, heat_pending: activity.filter(a => a.heat == null).length };
+  return { rows: shown, n: shown.length, total: people.length, counts, window: w, heat_threshold: HEAT_BANDS.hotScore, heat_rule: { hot: HEAT_BANDS.hotScore, warm: HEAT_BANDS.warmScore, days: HEAT_BANDS.recentDays }, computed_at: activity.map(a => a.computed_at).filter(Boolean).sort().pop() || null, heat_pending: activity.filter(a => a.heat == null).length };
 }
 
 export async function peopleActivity(supabase, businessId, { window: id = 'all', now = Date.now() } = {}) {
@@ -121,3 +122,69 @@ export async function peopleActivityRoute(req, res) {
   try { send(res, await peopleActivity(getSupabase(), req.params.businessId, { window: req.query.window })); }
   catch (e) { res.status(500).json({ error: e.message }); }
 }
+
+// ---- people-v2 Stage 2 (P4): the pinned detail - GET goals/people/activity/:key -> { key, timeline, notes, sources }.
+// A prospect's timeline reads its messages + events; a partner contact's through its Apollo contact id; a
+// visitor-identified or hand-added person has no email rows (an empty timeline) and shows its note. Never an address.
+const KEY = /^(prospect|contact|person):(.+)$/;
+export async function personDetail(supabase, businessId, { key }) {
+  const m = KEY.exec(String(key || ''));
+  if (!m) return reply(400, { error: 'key must be prospect:<contact id> | contact:<id> | person:<id>' });
+  const [, kind, id] = m;
+  let contactId = null, notes = null;
+  if (kind === 'prospect') {
+    const p = must(await supabase.from('sales_prospect_state').select('contact_id, notes').eq('business_id', businessId).eq('contact_id', id).maybeSingle());
+    if (!p) return reply(404, { error: 'person not found' });
+    contactId = p.contact_id; notes = p.notes || null;
+  } else if (kind === 'contact') {
+    const c = must(await supabase.from('partner_contacts').select('id, apollo_contact_id, role_in_notes').eq('business_id', businessId).eq('id', id).maybeSingle());
+    if (!c) return reply(404, { error: 'person not found' });
+    contactId = c.apollo_contact_id || null; notes = c.role_in_notes || null;
+  } else {
+    const p = must(await supabase.from('sales_people').select('id, note').eq('business_id', businessId).eq('id', id).maybeSingle());
+    if (!p) return reply(404, { error: 'person not found' });
+    notes = p.note || null;
+  }
+  const [messages, events] = contactId ? await Promise.all([
+    selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,contact_id,sequence_id,step,delivered_at,replied,reply_class,replied_seen_at,replied_at,subject').eq('business_id', businessId).eq('contact_id', contactId).order('apollo_message_id')),
+    selectAllPages(() => supabase.from('sales_email_activity').select('id,apollo_message_id,contact_id,step,event,occurred_at,user_agent,tracking_service').eq('business_id', businessId).eq('contact_id', contactId).order('id')),
+  ]) : [[], []];
+  const body = { key, timeline: timelineFor(messages, events).map(t => ({ ...t, subject: t.subject ? cleanText(t.subject, 160) : t.subject ?? null })), notes: notes ? cleanText(notes, 500) : null };
+  if (ADDRESS.test(JSON.stringify(body))) throw new Error('people detail: an address reached the result - refused');
+  return reply(200, body);
+}
+export async function personDetailRoute(req, res) {
+  try { send(res, await personDetail(getSupabase(), req.params.businessId, { key: req.params.key })); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+}
+
+// ---- P7 "Share view": saved filters keyed kind 'people' in sales_settings.saved_views, beside the Map's and the Explorer's.
+export const VIEW_CHIPS = ['opened', 'clicked', 'replied', 'sent', 'identified', 'visited_7d', 'buyer', 'hot', 'needs_touch', 'mine'];
+export function cleanViewState(s = {}) {
+  const chips = (Array.isArray(s.chips) ? s.chips : []).map(String).filter(c => VIEW_CHIPS.includes(c));
+  const str = (v, max) => (typeof v === 'string' ? cleanText(v, max) : '');
+  return { chips: [...new Set(chips)], source: str(s.source, 40), stage: str(s.stage, 40), owner: str(s.owner, 60), window: String(s.window) in WINDOWS ? String(s.window) : 'all', q: str(s.q, 120) };
+}
+const PEOPLE_KIND = 'people';
+export async function listPeopleViews(supabase, businessId) { return reply(200, { views: (await readAllViews(supabase, businessId)).filter(v => v.kind === PEOPLE_KIND) }); }
+export async function savePeopleView(supabase, { businessId, userId, body = {}, now = Date.now() }) {
+  const name = cleanText(String(body.name || ''), 60);
+  if (!name) return reply(400, { error: 'name is required (up to 60 characters)' });
+  const all = await readAllViews(supabase, businessId);
+  const mine = all.filter(v => v.kind === PEOPLE_KIND);
+  if (all.length >= SAVED_VIEWS_MAX && !mine.some(v => v.name === name)) return reply(409, { error: `At most ${SAVED_VIEWS_MAX} saved views - delete one first` });
+  const entry = { id: mine.find(v => v.name === name)?.id || `v_${Math.random().toString(36).slice(2, 10)}`, kind: PEOPLE_KIND, name, state: cleanViewState(body.state), created_by: userId, created_at: new Date(now).toISOString() };
+  const views = [...all.filter(v => !(v.kind === PEOPLE_KIND && v.name === name)), entry];
+  await writeAllViews(supabase, businessId, views, now);
+  return reply(201, { view: entry, views: views.filter(v => v.kind === PEOPLE_KIND) });
+}
+export async function deletePeopleView(supabase, { businessId, id, now = Date.now() }) {
+  const all = await readAllViews(supabase, businessId);
+  if (!all.some(v => v.kind === PEOPLE_KIND && v.id === id)) return reply(404, { error: 'view not found' });
+  const views = all.filter(v => v.id !== id);
+  await writeAllViews(supabase, businessId, views, now);
+  return reply(200, { views: views.filter(v => v.kind === PEOPLE_KIND) });
+}
+export async function listPeopleViewsRoute(req, res) { try { send(res, await listPeopleViews(getSupabase(), req.params.businessId)); } catch (e) { res.status(500).json({ error: e.message }); } }
+export async function savePeopleViewRoute(req, res) { try { send(res, await savePeopleView(getSupabase(), { businessId: req.params.businessId, userId: req.auth.user.id, body: req.body || {} })); } catch (e) { res.status(500).json({ error: e.message }); } }
+export async function deletePeopleViewRoute(req, res) { try { send(res, await deletePeopleView(getSupabase(), { businessId: req.params.businessId, id: req.params.id })); } catch (e) { res.status(500).json({ error: e.message }); } }

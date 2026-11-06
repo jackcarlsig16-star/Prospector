@@ -565,3 +565,17 @@ describe('Drawer dense (company window rows)', () => {
     expect(screen.getByText('c')).toBeInTheDocument();
   });
 });
+
+test('DataTable: rowDetail - a click on any cell of the row opens its detail (the detail cell once, never a double toggle); Esc closes', () => {
+  const cols = [{ ...T_COLS[0], detail: true }, T_COLS[1], T_COLS[2]];
+  render(<DataTable label="Rows" columns={cols} groups={T_GROUPS()} rowKey={r => r.name} rowDetail renderDetail={r => <div data-detail-for={r.name}>{r.name} detail</div>} />);
+  const row = document.querySelector('tr[data-row][data-key="Mango"]');
+  fireEvent.click(row.querySelectorAll('td')[1]);
+  expect(document.querySelector('[data-detail-for="Mango"]')).toBeInTheDocument();
+  fireEvent.click(row.querySelectorAll('td')[0]);
+  expect(document.querySelector('[data-detail-for="Mango"]')).toBeNull();
+  fireEvent.click(row.querySelectorAll('td')[0]);
+  expect(document.querySelector('[data-detail-for="Mango"]')).toBeInTheDocument();
+  fireEvent.keyDown(row, { key: 'Escape' });
+  expect(document.querySelector('[data-detail-for="Mango"]')).toBeNull();
+});

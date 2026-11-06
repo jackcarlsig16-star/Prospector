@@ -86,3 +86,16 @@ export async function writePersonActivity(supabase, businessId, { now = Date.now
   }
   return { rows: rows.length, removed: stale.length };
 }
+
+// people-v2 Stage 2 (P4) - one person's email timeline for the pinned detail card: sent / open / click / reply rows,
+// newest first, each open or click flagged automated by the Huddle's own rule (so the card and the counts agree).
+export function timelineFor(messages = [], events = []) {
+  const deliveredById = new Map(messages.map(m => [m.apollo_message_id, m.delivered_at]));
+  const stepById = new Map(messages.map(m => [m.apollo_message_id, m.step]));
+  const rows = [
+    ...events.filter(e => e.event === 'open' || e.event === 'click').map(e => ({ kind: e.event, at: e.occurred_at, step: e.step ?? stepById.get(e.apollo_message_id) ?? null, automated: isAutomated(e, deliveredById.get(e.apollo_message_id), SCANNER_CLICK_WITHIN_SECONDS), message_id: e.apollo_message_id })),
+    ...messages.filter(m => m.replied).map(m => ({ kind: 'reply', at: replyAt(m) || m.delivered_at || null, step: m.step ?? null, automated: false, seen_at_sync: !m.replied_at, reply_class: m.reply_class || null, message_id: m.apollo_message_id })),
+    ...messages.filter(m => m.delivered_at).map(m => ({ kind: 'sent', at: m.delivered_at, step: m.step ?? null, automated: false, subject: m.subject || null, message_id: m.apollo_message_id })),
+  ];
+  return rows.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+}

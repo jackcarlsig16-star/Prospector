@@ -10,7 +10,6 @@ import OwnerPill from '../OwnerPill';
 import SheetUpdateDrawer from './SheetUpdateDrawer';
 import SidePanel from '../SidePanel';
 import VisitorReport from './VisitorReport';
-import PeopleSearch from './PeopleSearch';
 import AddMenu from './AddMenu';
 import AddFlows from './AddFlows';
 import TypeChip, { typeSortValue } from './TypeChip';
@@ -77,7 +76,6 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
   const [chooser, setChooser] = useState(null); // DOMRect of the Columns button while the chooser is open
   const [sheetOpen, setSheetOpen] = useState(false); // phone filter sheet
   const [visitorsOpen, setVisitorsOpen] = useState(false);
-  const [peopleOpen, setPeopleOpen] = useState(false); // visitor-to-record-v1 V3
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [toast, setToast] = useState(null); // { text, undo? }
   const [busyId, setBusyId] = useState(null);
@@ -207,7 +205,7 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
   // A visitor / Apollo-only row became (or already was) a record: show that record's panel.
   const converted = async created => { await load(); setPanelKey(`${created.type}-${created.id}`); };
   // FIX pipeline-quick-fixes-v1 A3: a record added from "+ Add ▾" - its row highlighted + scrolled to, its window open
-  // (on the People card for a person); a parked person has no window, so the toast points at People search.
+  // (on the People card for a person); a parked person has no window, so the toast points at Pipeline › People.
   const added = async (record, { section = null, text = null } = {}) => {
     setAdding(null);
     await load();
@@ -378,7 +376,6 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
         <span className="ui-actions__word" aria-hidden="true">Table</span>
         {channel === 'website' && <button type="button" className="ui-btn ui-btn--secondary" onClick={() => setVisitorsOpen(true)} title="The 7-day visitor report, Export for Brad and the skip list"><Icons.IconGlobe size={14} />Visitor report</button>}
         {!phone && <button type="button" data-column-chooser className="ui-btn ui-btn--secondary" aria-expanded={!!chooser} onClick={e => { const rect = e.currentTarget.getBoundingClientRect(); setChooser(c => (c ? null : rect)); }}><Icons.IconColumns size={14} />Columns</button>}
-        <button type="button" className="ui-btn ui-btn--secondary" onClick={() => setPeopleOpen(true)} title="Everyone Prospector knows, with their company and ties"><Icons.IconPeople size={14} />People search</button>
       </div>
       {canEdit && <>
         <div role="group" aria-label="Sheet" data-action-group="sheet" className="ui-actions__group">
@@ -438,11 +435,6 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
       {visitorsOpen && (
         <SidePanel label="Website visitors" width={1040} onClose={() => { setVisitorsOpen(false); load(); }}>
           <VisitorReport businessId={businessId} canEdit={canEdit} isAdmin={isAdmin} />
-        </SidePanel>
-      )}
-      {peopleOpen && (
-        <SidePanel label="People" width={760} onClose={() => setPeopleOpen(false)}>
-          <PeopleSearch businessId={businessId} canEdit={canEdit} onOpenCompany={c => { setPeopleOpen(false); setPanelKey(`${c.type}-${c.id}`); }} />
         </SidePanel>
       )}
       {canEdit && <AddFlows businessId={businessId} members={members} adding={adding} onClose={() => setAdding(null)} companies={all.filter(r => ['partner', 'employer', 'target'].includes(r.type)).map(r => ({ type: r.type, id: r.id, name: r.name }))}

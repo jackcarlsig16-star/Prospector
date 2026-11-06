@@ -324,13 +324,13 @@ test('+ Add ▾ › Employer opens a blank panel; save creates through the route
   expect((await screen.findByRole('status')).textContent).toBe('Solidcore is already in the pipeline - no new row added.');
 });
 
-test('page actions: TABLE (Columns · People search) · SHEET (Export · Update, full old text as name + title) · + Add; a Viewer gets no SHEET and no + Add', async () => {
+test('page actions: TABLE (Columns) · SHEET (Export · Update, full old text as name + title) · + Add; a Viewer gets no SHEET and no + Add', async () => {
   setup();
   await screen.findByText('Solidcore');
   const bar = document.querySelector('#sales-frame-tools [data-page-actions]');
   expect([...bar.querySelectorAll('[data-action-group]')].map(g => g.dataset.actionGroup)).toEqual(['table', 'sheet', 'add']);
   const table = within(screen.getByRole('group', { name: 'Table' }));
-  expect(table.getAllByRole('button').map(b => b.textContent)).toEqual(['Columns', 'People search']);
+  expect(table.getAllByRole('button').map(b => b.textContent)).toEqual(['Columns']);
   const sheet = within(screen.getByRole('group', { name: 'Sheet' }));
   expect(sheet.getAllByRole('button').map(b => b.textContent)).toEqual(['Export', 'Update']);
   expect(sheet.getByRole('button', { name: 'Export joint sheet' }).title).toMatch(/^Export joint sheet/);
@@ -830,7 +830,7 @@ test('+ Add ▾: five menu items (Employer · Partner · Target · Person · Cli
   expect(btn.getAttribute('aria-expanded')).toBe('false');
 });
 
-test('Person: name, title, company typeahead (board records + parked names), LinkedIn - no email or phone field; a picked record posts { type, id }; the window opens on its People card; a new company posts the name and toasts People search', async () => {
+test('Person: name, title, company typeahead (board records + parked names), LinkedIn - no email or phone field; a picked record posts { type, id }; the window opens on its People card; a new company posts the name and toasts Pipeline › People', async () => {
   setup();
   await screen.findByText('Solidcore');
   goalsApi.people.mockResolvedValue({ people: [{ person_id: 'x', name: 'Pat Parked', company: { type: 'parked', id: null, name: 'Solid Parked Co' }, no_record: true, ties: [] }], n: 1, total: 1 });
@@ -862,7 +862,7 @@ test('Person: name, title, company typeahead (board records + parked names), Lin
   expect(f2.querySelector('[data-company-choice]')).toHaveTextContent('New company "Brand New Co"');
   fireEvent.click(within(f2).getByRole('button', { name: 'Add person' }));
   await waitFor(() => expect(goalsApi.addPerson).toHaveBeenLastCalledWith('b1', { name: 'New Person', company: { name: 'Brand New Co' } }));
-  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('New Person filed under "Brand New Co" with no record yet - find them in People search'));
+  await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('New Person filed under "Brand New Co" with no record yet - find them in Pipeline › People'));
 });
 
 test('Target: name + kind picker + website posts createTarget; the new row is highlighted and its window opens; Partner: the existing Add partner form (dupe check) from the menu', async () => {

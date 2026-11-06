@@ -5,7 +5,7 @@ import { inputStyle, numStyle, ErrorNote } from './goalsUi';
 import { normName } from '../../../utils/normAccount';
 
 // FIX pipeline-quick-fixes-v1 A - "+ Add ▾ › Person": name, title, company (a typeahead over the partners, employers
-// and targets on the board plus the parked company names People search knows; or "New company" -> a parked person),
+// and targets on the board plus the parked company names Pipeline › People knows; or "New company" -> a parked person),
 // optional LinkedIn URL. NO email or phone field, by rule. Files through POST goals/people.
 const MAX_SUGGESTIONS = 8;
 const TYPE_LABEL = { partner: 'Partner', employer: 'Employer', target: 'Target', parked: 'No record yet' };
@@ -67,7 +67,7 @@ export default function AddPersonForm({ businessId, companies = [], onAdded, onC
           </ul>
         )}
       </div>
-      {company && <span data-company-choice style={{ fontSize: 12, color: SA.muted, ...numStyle }}>{company.type === 'new' ? `New company "${company.name}" - filed as a person with no record yet (Add the record later from People search)` : `${TYPE_LABEL[company.type]}: ${company.name}`}</span>}
+      {company && <span data-company-choice style={{ fontSize: 12, color: SA.muted, ...numStyle }}>{company.type === 'new' ? `New company "${company.name}" - filed as a person with no record yet (Add the record later from Pipeline › People)` : `${TYPE_LABEL[company.type]}: ${company.name}`}</span>}
       <input aria-label="LinkedIn URL" placeholder="linkedin.com/in/name (optional)" value={linkedin} maxLength={300} onChange={e => setLinkedin(e.target.value)} style={inputStyle} />
       {error && <ErrorNote message={error} />}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

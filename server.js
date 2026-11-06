@@ -832,6 +832,11 @@ app.post('/api/sales/:businessId/goals/visits/people-pull', salesModuleRoute('./
 app.get('/api/sales/:businessId/goals/people', salesModuleRoute('./api/sales/visitorRoutes.js', 'peopleSearchRoute', 'goals/people'));
 // people-v2 Stage 1 - the one read behind Pipeline › People (the merged union + the materialised email summary + company visits).
 app.get('/api/sales/:businessId/goals/people/activity', salesModuleRoute('./api/sales/peopleActivityRoutes.js', 'peopleActivityRoute', 'goals/people/activity'));
+app.get('/api/sales/:businessId/goals/people/activity/:key', salesModuleRoute('./api/sales/peopleActivityRoutes.js', 'personDetailRoute', 'goals/people/activity/:key'));
+// people-v2 Stage 2 - Share view: saved People filters (kind 'people' in sales_settings.saved_views; save / delete = Members).
+app.get('/api/sales/:businessId/goals/people/views', salesModuleRoute('./api/sales/peopleActivityRoutes.js', 'listPeopleViewsRoute', 'goals/people/views'));
+app.post('/api/sales/:businessId/goals/people/views', salesModuleRoute('./api/sales/peopleActivityRoutes.js', 'savePeopleViewRoute', 'goals/people/views POST'));
+app.delete('/api/sales/:businessId/goals/people/views/:id', salesModuleRoute('./api/sales/peopleActivityRoutes.js', 'deletePeopleViewRoute', 'goals/people/views/:id DELETE'));
 app.post('/api/sales/:businessId/goals/people/:id/add-record', salesModuleRoute('./api/sales/visitorRoutes.js', 'addRecordFromPersonRoute', 'goals/people/:id/add-record POST'));
 app.post('/api/sales/:businessId/goals/people', salesModuleRoute('./api/sales/visitorRoutes.js', 'addPersonRoute', 'goals/people POST'));
 app.post('/api/sales/:businessId/goals/targets', salesModuleRoute('./api/sales/companyPanel.js', 'createTargetRoute', 'goals/targets POST'));

@@ -141,6 +141,10 @@ export const goalsApi = {
   people: (id, params = {}) => call(id, `/people?${q(params)}`),
   // people-v2: the one read behind Pipeline › People.
   peopleActivity: (id, window = 'all') => call(id, `/people/activity?${q({ window })}`),
+  peopleActivityDetail: (id, key) => call(id, `/people/activity/${encodeURIComponent(key)}`),
+  peopleViews: id => call(id, '/people/views').then(d => d.views),
+  savePeopleView: (id, body) => call(id, '/people/views', { method: 'POST', body }),
+  deletePeopleView: (id, viewId) => call(id, `/people/views/${viewId}`, { method: 'DELETE' }).then(d => d.views),
   // V2a follow-up - a parked visitor (no record yet) gets their company filed as an employer target (Members).
   addPersonRecord: (id, personId) => call(id, `/people/${personId}/add-record`, { method: 'POST', body: {} }),
   // FIX pipeline-quick-fixes-v1 A - "+ Add ▾": a person on a record (or parked under a new company name), a target by name.

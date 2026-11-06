@@ -67,7 +67,7 @@ export default function AddFlows({ businessId, members = [], adding, onClose, on
   return (
     <SidePanel label="Add person" width={520} onClose={onClose}>
       <AddPersonForm businessId={businessId} companies={companies || fetched || []} onCancel={onClose}
-        onAdded={r => onAdded(r.company, { section: 'people', text: r.company.id ? `${r.person.name} added to ${r.company.name}` : `${r.person.name} filed under "${r.company.name}" with no record yet - find them in People search` })} />
+        onAdded={r => onAdded(r.company, { section: 'people', text: r.company.id ? `${r.person.name} added to ${r.company.name}` : `${r.person.name} filed under "${r.company.name}" with no record yet - find them in Pipeline › People` })} />
     </SidePanel>
   );
 }

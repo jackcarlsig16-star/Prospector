@@ -53,7 +53,7 @@ function GroupHeading({ group }) {
     : <span className="ui-table__gh">{group.icon}{h}</span>;
 }
 
-export default function DataTable({ columns, groups, rowStyle, rowKey, compact = false, renderCompact, renderDetail, emptyText, label, sort: sortProp, onSort, dense = false, pinUnder = null, onRowClick, serverSort = false, onReachEnd = null }) {
+export default function DataTable({ columns, groups, rowStyle, rowKey, compact = false, renderCompact, renderDetail, emptyText, label, sort: sortProp, onSort, dense = false, pinUnder = null, onRowClick, rowDetail = false, serverSort = false, onReachEnd = null }) {
   const [sortState, setSortState] = useState(null);
   const [openKey, setOpenKey] = useState(null);
   const idBase = useId();
@@ -171,9 +171,9 @@ export default function DataTable({ columns, groups, rowStyle, rowKey, compact =
               {!g.collapsed && !g.rows.length && g.emptyText && <tr><td colSpan={columns.length} className="ui-table__empty">{g.emptyText}</td></tr>}
               {!g.collapsed && ordered(g.rows).map(r => (
                 <React.Fragment key={rowKey(r)}>
-                  <tr data-row data-key={rowKey(r)} style={rowStyle?.(r)} onClick={rowClick(r)}>
+                  <tr data-row data-key={rowKey(r)} style={rowStyle?.(r)} onClick={hasDetail && rowDetail ? onAreaClick(rowKey(r)) : rowClick(r)}>
                     {columns.map(c => (hasDetail && c === detailCol
-                      ? <td key={c.id} className={cellClass(c)} title={c.title?.(r) || undefined} onClick={onAreaClick(rowKey(r))}><span className="ui-table__detail-wrap">{disclose(r)}{c.render(r)}</span></td>
+                      ? <td key={c.id} className={cellClass(c)} title={c.title?.(r) || undefined} onClick={rowDetail ? undefined : onAreaClick(rowKey(r))}><span className="ui-table__detail-wrap">{disclose(r)}{c.render(r)}</span></td>
                       : <td key={c.id} className={cellClass(c)} title={c.title?.(r) || undefined}>{c.render(r)}</td>))}
                   </tr>
                   {hasDetail && openKey === rowKey(r) && <tr className="ui-table__detail-row" data-detail={rowKey(r)}><td id={panelId(rowKey(r))} colSpan={columns.length}><div className="ui-detail">{renderDetail(r)}</div></td></tr>}

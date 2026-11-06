@@ -5,7 +5,7 @@ import { goalsApi } from './goals/goalsApi';
 // companies-v2 C1 - the sub-view row is the kit's second-level Tabs on every Sales tab; the page bodies are stubbed.
 jest.mock('./goals/GoalsTab', () => ({ __esModule: true, default: () => null, homeOf: () => null }));
 jest.mock('./AnalyticsView', () => () => null);
-jest.mock('./DailyHuddle', () => () => null);
+jest.mock('./people/PeopleTable', () => () => null);
 const mockCampaigns = { list: [] };
 jest.mock('./goals/goalsApi', () => ({ goalsApi: { visitPull: jest.fn(), runTidy: jest.fn(), campaigns: jest.fn(() => Promise.resolve(mockCampaigns.list)) }, OPEN_GOALS_WEEK: 'w', OPEN_GOALS_TARGET: 't', OPEN_PIPELINE_RECORD: 'r' }));
 jest.mock('./huddleApi', () => ({ fetchFlags: jest.fn(() => Promise.resolve([])), FLAGS_CHANGED: 'f' }));
