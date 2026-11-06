@@ -393,7 +393,8 @@ test('panel: header chips; body from GET goals/company; Add note goes through th
   expect(panel.getByText('Brokers & PEOs')).toHaveAttribute('data-type-chip', 'brokers');
   expect(factText('Gallagher', 'Stage')).toBeNull(); // company-window-v4: Stage is no fact - the strip's pill is the stage
   expect(factText('Gallagher', 'Owner')).toBe('Jack');
-  expect(await panel.findByText('Send the deck')).toBeTruthy();
+  expect(await panel.findByText(/Send the deck/)).toBeTruthy(); // company-window-v4 Stage 3: the To-dos drawer's preview
+  for (const name of ['Notes & touches', 'Waiting on them']) fireEvent.click(within(panel.getByRole('region', { name })).getByRole('button', { name: new RegExp(`^${name}`) })); // company-window-v4 Stage 3: open the drawers
   expect(panel.getByText('Note: Newest note')).toBeTruthy();
   expect(panel.getByText('Send the one-pager')).toBeTruthy();
   fireEvent.click(panel.getByRole('button', { name: 'Note' }));
@@ -760,6 +761,7 @@ test('interest band: the strongest signal in bold with its date; Follow up + Not
   expect(band.getAllByRole('button').map(b => b.textContent)).toEqual(['Follow up: draft reply', 'Not now']);
   expect(panel.getAllByRole('link', { name: /^gallagher\.example/ }).map(a => a.getAttribute('href'))).toEqual(['https://gallagher.example', 'https://gallagher.example']);
   expect(panel.getByText('✓ confirmed')).toBeTruthy();
+  fireEvent.click(within(panel.getByRole('region', { name: 'People' })).getByRole('button', { name: /^People/ })); // company-window-v4 Stage 3: open the People drawer
   expect(within(panel.getByRole('region', { name: 'People' })).getByText('clicked Step 1')).toBeTruthy();
   expect(within(panel.getByRole('region', { name: 'Signals & visits' })).getByText('Pat Lee clicked Step 1')).toBeTruthy();
   expect(panel.getAllByRole('button', { name: 'Book meeting' })).toHaveLength(1);

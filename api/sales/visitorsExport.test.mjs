@@ -64,7 +64,8 @@ test('CSV: the 11 columns in order, one line per row, quoting, the title + headc
   const csv = toCsv((await visitorsExport(db, B, { window: '30', now: NOW })).report);
   const lines = csv.split('\n');
   assert.equal(lines[0], COLUMNS.map(c => (/,/.test(c) ? `"${c}"` : c)).join(','), 'a header with a comma is quoted');
-  assert.deepEqual(COLUMNS, ['Company', 'Industry', 'Headcount', 'First seen', 'Last seen', 'Days visited', 'Visits (Apollo, rolling 7 d at last seen)', 'Pages (top 3, last pull)', 'People identified', 'Band', 'In Prospector']);
+  assert.equal(lines[0].split(',')[1], 'Industry code (NAICS/SIC)', "Jack's tweak: the header says it is a code");
+  assert.deepEqual(COLUMNS, ['Company', 'Industry code (NAICS/SIC)', 'Headcount', 'First seen', 'Last seen', 'Days visited', 'Visits (Apollo, rolling 7 d at last seen)', 'Pages (top 3, last pull)', 'People identified', 'Band', 'In Prospector']);
   assert.equal(lines[1], 'Acme Health,NAICS 6216,"1,250 (typed)",2026-10-20,2026-11-06,3,6,"/pricing, /employers, /about",2,P1 · Hot,Employer · Contacted', '3 days visited inside the 30-day window');
   assert.equal(lines.length, 1 + 4 + 2, 'four companies inside 30 days: Harbor Lane (Oct 23) is in');
   assert.equal(lines[lines.length - 1], 'HomeLover website visitors · last 30 days (2026-10-08 – 2026-11-06) · generated 2026-11-06 · headcount known for 2 of 4 companies');

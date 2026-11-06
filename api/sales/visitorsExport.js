@@ -11,7 +11,7 @@ import { hasPii } from './scrubText.js';
 // stored (no industry name is stored anywhere). The CSV is built here; the PDF is the same table printed from the
 // page's print area (no new dependency). No Apollo call, no Claude call, no write.
 export const WINDOWS = { 7: 'last 7 days', 30: 'last 30 days', 90: 'last 90 days', all: 'since the first pull' };
-export const COLUMNS = ['Company', 'Industry', 'Headcount', 'First seen', 'Last seen', 'Days visited', 'Visits (Apollo, rolling 7 d at last seen)', 'Pages (top 3, last pull)', 'People identified', 'Band', 'In Prospector'];
+export const COLUMNS = ['Company', 'Industry code (NAICS/SIC)', 'Headcount', 'First seen', 'Last seen', 'Days visited', 'Visits (Apollo, rolling 7 d at last seen)', 'Pages (top 3, last pull)', 'People identified', 'Band', 'In Prospector'];
 const BAND_WORD = { P1: 'Hot', P2: 'Warm', P3: 'Cool', P4: 'Cold' };
 const KIND = { partner: 'Partner', opportunity: 'Employer', target: 'Target' };
 const SCORE_TYPE = { employer: 'opportunity', target: 'target', partner: 'partner' };

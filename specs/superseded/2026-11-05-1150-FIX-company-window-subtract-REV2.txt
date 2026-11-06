@@ -1,0 +1,43 @@
+FIX — company-window-subtract-v1 REVISION 2 (HomeLover company window: same ten cuts, new head ORDER — doing above
+                                               reading; the stage strip on its own full-width line)
+Written Nov 5, 2026 11:50 AM PT against HEAD af207a4 (origin/main). Supersedes 2026-11-05-1050-FIX-company-window-subtract.txt
+(→ specs/superseded/; its build af207a4 stands — this revision is the reorder on top of it). Design note REV 2:
+claude/design-company-window-subtract-2026-11-05.md (Jack 11:37 AM: "progress bar and journey are redundant; the progress
+bar gets cut off by Mark contacted; the actions bar and interest should be at the top"). State after af207a4 (verified on
+the Hilton screenshot): head = title row · facts row · stage strip (with Log reply + More beside it on the right) · SETUP ·
+Interest band · Actions. Every fact and action already appears once; FitRadar/JourneyLine deleted; Owner/Fit/stage chips
+gone from the title row; band = Follow up · Not now; DECIDE without Owner.
+
+## What changes in REVISION 2 (order and the strip's line; nothing else)
+O1 Head order, top to bottom:
+   1. Title row — name · type pill · ★ Top · Intent chip · site ↗ · ⋯ · ✕ (as built).
+   2. Interest band — only while interest is live; Follow up (primary) · Not now (ghost). Directly under the title.
+   3. Actions row — REACH · DECIDE · CAPTURE · LEARN; groups wrap as units; "✦ generated" ends the last line. Directly
+      under the band (under the title when there is no interest).
+   4. Facts row — editable: Stage · Priority · Owner · Team · Source · Employees · Last touch · Next step (as built).
+   5. Stage strip — the one stage control on its OWN full-width line with NOTHING to its right: the "Log reply" /
+      "More ▾" buttons that sit beside it today (af207a4 Hilton shot) move — Log reply is REACH › "They replied…" (already
+      there; remove the strip-side duplicate), and "More ▾" items go to ⋯ in the title row if not already present (Stage 0
+      lists what More holds). 28 px pills; past the viewport the strip scrolls inside its own line with the current stage
+      scrolled into view (never clipped).
+   6. SETUP — only while incomplete (as built).
+   7. Body — unchanged.
+O2 Nothing is added. If "More ▾" holds an action that exists nowhere else, it moves to ⋯ (not a new control); if it
+   duplicates REACH/DECIDE/LEARN, it is deleted.
+O3 Rule stays: every fact once, every action once, empty blocks don't render. The once-only test (af207a4) is extended
+   with the ORDER: it asserts the head's block sequence for Hilton (title, band, actions, facts, strip, setup) and for
+   Fortem Media (title, actions, facts, strip, setup — no band), and that the strip's row contains no button.
+
+Landmines (inlined): stage moves only via the existing paths (applyPartnerSignal with expect / advanceStage with expect);
+every write keeps its 10 s Undo; viewers see no controls; live partners (CompanyPanel.js :39-40) untouched; no contact
+data; account cards frozen; the other workspace never named; 0 Apollo, 0 Claude; live check read-only; verify never
+creates workspaces/users; axe 0; N2 0 px at 1440, 1000 and 390.
+
+## Implementation
+One stage: Stage 0 line (what "More ▾" holds and where each item already lives), then O1–O3; tests; live read-only as Jack
+on HomeLover: Hilton + Fortem Media at 1440, 1000 (strip scrolls, current stage visible) and 390; HUB unchanged; Viewer
+pass; after screenshots. Commit "FIX company-window-subtract-v1 REV2: head order", push, ls-remote, STATUS/RESUME, STOP.
+
+## Verification
+Bar 4 = live check + screenshots + the order test. Bar 5 (Jack, prod): open Hilton — Interest and Actions sit right under
+the name, facts below, the stage strip runs the full width with nothing beside it. "bar 5 ok company-window-subtract".

@@ -11,6 +11,7 @@ import { companyWindowUrl } from '../salesNav';
 import { IconStar, IconExternal, IconClose } from '../../../ui/icons';
 import InterestBand from './InterestBand';
 import { SignalsCard, TodosCard, WaitingCard, NotesCard, IntelCard, PeopleCard, ExtraCards } from './CompanyPanelSections';
+import CompanyDrawers from './CompanyDrawers';
 import { ErrorNote, memberLookup } from './goalsUi';
 import { factsFor } from './companyPanelFacts';
 const mdShort = d => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
@@ -18,7 +19,7 @@ import { needsRecord } from './companyPanelModel';
 import { SourceHistoryCard } from './LeadSource';
 import NetworkCard from './NetworkCard';
 import NetworkTree from './NetworkTree';
-import { ClientCard, FilesCard, MakeClientForm } from './ClientParts';
+import { MakeClientForm } from './ClientParts';
 import SidePanel from '../SidePanel';
 import JourneyStrip from './JourneyStrip';
 import FitRadar from './FitRadar';
@@ -59,6 +60,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
   // homelover-flow-v1: the Stage 1 reads (GET goals/fit · goals/flow) and the live partner's owner menu.
   const [fit, setFit] = useState(null);
   const [score, setScore] = useState(undefined); // GET goals/scores/:type/:id - undefined = loading, null = no score yet
+  const [files, setFiles] = useState(null); // an employer's files, for the Files drawer's count and preview
   const [flow, setFlow] = useState([]);
   const [network, setNetwork] = useState(null);
   const [menu, setMenu] = useState(null); // 'owner'
@@ -95,6 +97,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
     goalsApi.scoreOf(businessId, row.type, row.id).then(d => alive && setScore(d)).catch(() => alive && setScore(null));
     goalsApi.flowEvents(businessId, row.type, row.id).then(d => alive && setFlow(d)).catch(() => alive && setFlow([]));
     if (live) goalsApi.referredBy(businessId, row.id).then(d => alive && setNetwork(d.network || null)).catch(() => alive && setNetwork(null));
+    if (row.type === 'employer') goalsApi.clientFiles(businessId, row.id).then(f => alive && setFiles(f)).catch(() => alive && setFiles([]));
     return () => { alive = false; };
   }, [businessId, row.type, row.id, version, isRecord, live]);
   useEffect(() => {
@@ -218,7 +221,18 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
           {detail.research && <IntelCard {...cardProps} need={researchNeed} onUseEmployees={n => edits.saveNumbers({ employees: n }, { employees: detail.record?.employees ?? null })} />}
         </div>
       )}
-      {detail && (
+      {detail && !live && (
+        <>
+          {row.type === 'partner' && <NetworkCard businessId={businessId} row={row} version={version} canEdit={canEdit}
+            onSetSource={() => setEditPanel('source')} onAddClient={() => setClientSheet({ preset: { source_kind: 'partner_referral', source_partner_id: row.id } })} />}
+          {!isRecord && detail.research && <IntelCard {...cardProps} need={researchNeed} />}
+          <CompanyDrawers businessId={businessId} row={row} detail={detail} canEdit={canEdit} lookup={lookup} flow={flow} files={files} version={version} onForm={setForm} onChanged={changed} onToast={onToast}
+            onOpenPeople={onOpenPeople} onMakeClient={() => setClientSheet({})} initialSection={initialSection} />
+          {sourced && <SourceHistoryCard data={source} links={links} />}
+          <ExtraCards row={row} detail={detail} />
+        </>
+      )}
+      {detail && live && (
         <div data-panel-body style={twoCol}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
             <SignalsCard {...cardProps} onOpenPeople={onOpenPeople} />
@@ -227,12 +241,8 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
             <NotesCard {...cardProps} lookup={lookup} flow={flow} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-            {row.type === 'partner' && !live && <NetworkCard businessId={businessId} row={row} version={version} canEdit={canEdit}
-              onSetSource={() => setEditPanel('source')} onAddClient={() => setClientSheet({ preset: { source_kind: 'partner_referral', source_partner_id: row.id } })} />}
-            {row.type === 'employer' && <ClientCard {...cardProps} onMake={() => setClientSheet({})} />}
-            {row.type === 'employer' && <FilesCard businessId={businessId} row={row} canEdit={canEdit} version={version} onToast={onToast} />}
-            {(live || !isRecord) && detail.research && <IntelCard {...cardProps} need={researchNeed} />}
-            {!needsRecord(row.type) || detail.people.length > 0 ? <div data-section="people" ref={el => { if (el && initialSection === 'people' && !el.dataset.shown) { el.dataset.shown = '1'; el.scrollIntoView({ block: 'start' }); } }}><PeopleCard {...cardProps} /></div> : null}
+            {detail.research && <IntelCard {...cardProps} need={researchNeed} />}
+            <div data-section="people" ref={el => { if (el && initialSection === 'people' && !el.dataset.shown) { el.dataset.shown = '1'; el.scrollIntoView({ block: 'start' }); } }}><PeopleCard {...cardProps} /></div>
             {sourced && <SourceHistoryCard data={source} links={links} />}
             <ExtraCards row={row} detail={detail} />
           </div>

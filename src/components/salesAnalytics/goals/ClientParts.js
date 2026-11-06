@@ -109,13 +109,15 @@ export function MakeClientForm({ businessId, row = null, record = null, source =
 
 // The employer panel's Client card: not a client yet = one "Make client" button (Members); a client = status, lives,
 // dates, the Apollo hint and the next mark.
-export function ClientCard({ businessId, row, detail, canEdit, onMake, onChanged, onToast }) {
+// bare (company-window-v4 B3): inside the Client drawer - the row carries the label and the Make client / Edit link, so
+// the body keeps only the facts plus the Mark <next> step.
+export function ClientCard({ businessId, row, detail, canEdit, onMake, onChanged, onToast, bare = false }) {
   const c = detail?.record?.client || {};
   const [busy, setBusy] = useState(false);
   if (!c.client_status) {
-    return canEdit ? (
-      <Card label="Client" testId="client" action={<button type="button" className="ui-btn ui-btn--secondary" style={{ height: 28, fontSize: 12 }} onClick={onMake}>Make client</button>}>
-        <span style={dim}>Not a client yet. Make client sets status, eligible lives and who referred it.</span>
+    return canEdit || bare ? (
+      <Card label="Client" testId="client" bare={bare} action={<button type="button" className="ui-btn ui-btn--secondary" style={{ height: 28, fontSize: 12 }} onClick={onMake}>Make client</button>}>
+        <span style={dim}>Not a client yet.{canEdit ? ' Make client sets status, eligible lives and who referred it.' : ''}</span>
       </Card>
     ) : null;
   }
@@ -128,13 +130,15 @@ export function ClientCard({ businessId, row, detail, canEdit, onMake, onChanged
     } catch (e) { onToast({ text: e.message }); } finally { setBusy(false); }
   };
   const next = c.client_status === 'launched' ? null : c.client_status === 'signed' ? 'launched' : 'signed';
+  const markNext = next && canEdit ? <button type="button" className="ui-btn ui-btn--secondary" style={{ height: 28, fontSize: 12 }} disabled={busy} onClick={mark(next)}>Mark {next}</button> : null;
   return (
-    <Card label="Client" testId="client" action={canEdit ? <span style={{ display: 'inline-flex', gap: 6 }}>
-      {next && <button type="button" className="ui-btn ui-btn--secondary" style={{ height: 28, fontSize: 12 }} disabled={busy} onClick={mark(next)}>Mark {next}</button>}
+    <Card label="Client" testId="client" bare={bare} action={canEdit ? <span style={{ display: 'inline-flex', gap: 6 }}>
+      {markNext}
       <button type="button" className="ui-btn ui-btn--tertiary" style={{ height: 28, fontSize: 12 }} onClick={onMake}>Edit</button>
     </span> : null}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         <StatusChip status={c.client_status} />
+        {bare && markNext}
         <span style={text}>{livesText(c)} eligible{c.eligible_added_note ? <span style={{ color: SA.muted }}> · +{fmt(c.eligible_added)} {c.eligible_added_note}</span> : null}</span>
       </div>
       <div style={{ ...text, color: SA.soft }}>
@@ -149,7 +153,8 @@ const ACCEPT = Object.keys(CLIENT_FILE_MIMES).join(',');
 const kb = n => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
 // Files (agreements + financials) on an employer: the bytes go straight to the private bucket via a signed upload url.
-export function FilesCard({ businessId, row, canEdit, version, onToast }) {
+// bare (company-window-v4 B3): inside the Files drawer - the upload controls sit at the top of the body.
+export function FilesCard({ businessId, row, canEdit, version, onToast, bare = false }) {
   const [files, setFiles] = useState(null);
   const [kind, setKind] = useState('agreement');
   const [busy, setBusy] = useState('');
@@ -194,14 +199,16 @@ export function FilesCard({ businessId, row, canEdit, version, onToast }) {
       onToast({ text: `${f.title} archived`, undo: async () => { await goalsApi.restoreClientFile(businessId, f.id); setTick(t => t + 1); } });
     } catch (e) { setError(e.message); } finally { setBusy(''); }
   };
-  return (
-    <Card label="Files" count={files ? files.length : null} testId="files" action={canEdit ? <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+  const controls = canEdit ? <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
       <select aria-label="File kind" value={kind} onChange={e => setKind(e.target.value)} className="ui-input" style={{ ...field, width: 'auto', height: 28, fontSize: 12 }}>
         {CLIENT_FILE_KINDS.map(k => <option key={k} value={k}>{CLIENT_FILE_KIND_LABEL[k]}</option>)}
       </select>
       <button type="button" className="ui-btn ui-btn--secondary" style={{ height: 28, fontSize: 12 }} disabled={!!busy} onClick={() => input.current?.click()}>{busy === 'upload' ? 'Uploading…' : '+ Upload'}</button>
       <input ref={input} type="file" accept={ACCEPT} aria-label="Upload a file" onChange={upload} style={{ display: 'none' }} />
-    </span> : null}>
+    </span> : null;
+  return (
+    <Card label="Files" count={files ? files.length : null} testId="files" bare={bare} action={controls}>
+      {bare && controls && <div>{controls}</div>}
       {error && <ErrorNote message={error} />}
       {!files && !error && <span style={dim}>Loading…</span>}
       {files && !files.length && <span style={dim}>No agreements or financials yet. PDF, DOCX, XLSX, PNG or JPG, up to 20 MB.</span>}

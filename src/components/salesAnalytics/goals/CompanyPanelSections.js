@@ -25,7 +25,9 @@ const KIND_COLOR = { good: SA.good, warn: SA.warn, link: SA.link, accent: SA.acc
 const money = c => (c == null ? '' : `$${Number(c).toFixed(3)}`);
 
 // need (company-window-v4 F2): the header glows red dashed with the readiness title - the Intel card while research is open.
-export function Card({ label, count, hot, action, testId, need = null, children }) {
+// bare (company-window-v4 B3): the body alone - the card sits inside a drawer whose row carries the label, count and action.
+export function Card({ label, count, hot, action, testId, need = null, bare = false, children }) {
+  if (bare) return <div data-section={testId} data-bare style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>{children}</div>;
   return (
     <section aria-label={label} data-section={testId} style={{ background: SA.surface2, border: `1px solid ${SA.border}`, borderRadius: 10, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
       <div data-card-head data-need={need ? 'true' : undefined} title={need || undefined} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, ...(need ? { margin: '-6px -8px 0', padding: '6px 8px', borderRadius: 8, border: `1px dashed ${SA.bad}`, boxShadow: `0 0 0 3px color-mix(in srgb, ${SA.bad} 12%, transparent)` } : {}) }}>
@@ -42,7 +44,7 @@ export function Card({ label, count, hot, action, testId, need = null, children 
 const Mini = ({ children, ...rest }) => <button type="button" className="ui-btn ui-btn--tertiary" style={{ height: 24, fontSize: 12 }} {...rest}>{children}</button>;
 const Empty = ({ children }) => <span style={dim}>{children}</span>;
 
-export function SignalsCard({ businessId, row, detail, canEdit, onToast, onForm, onChanged, onOpenPeople }) {
+export function SignalsCard({ businessId, row, detail, canEdit, onToast, onForm, onChanged, onOpenPeople, bare = false }) {
   const items = detail.timeline;
   const findWho = async () => {
     if (row.type === 'visitor' || row.type === 'apollo') return onForm('add');
@@ -50,7 +52,7 @@ export function SignalsCard({ businessId, row, detail, canEdit, onToast, onForm,
   };
   const peopleLink = canEdit && onOpenPeople && (row.type === 'partner' || row.type === 'employer') ? <Mini onClick={() => onOpenPeople({ type: row.type, id: row.id, name: row.name })}>Open in People →</Mini> : null;
   return (
-    <Card label="Signals & visits" count={items.length} hot={detail.interest?.show} action={peopleLink} testId="signals">
+    <Card label="Signals & visits" count={items.length} hot={detail.interest?.show} action={peopleLink} testId="signals" bare={bare}>
       {!items.length && <Empty>No signals yet.</Empty>}
       {items.map(t => {
         const [word, tone] = TIMELINE_KIND[t.kind] || ['Signal', 'accent'];
@@ -71,18 +73,18 @@ export function SignalsCard({ businessId, row, detail, canEdit, onToast, onForm,
   );
 }
 
-export function TodosCard({ detail, canEdit, onForm }) {
+export function TodosCard({ detail, canEdit, onForm, bare = false }) {
   return (
-    <Card label="Open to-dos" count={detail.todos.length} action={canEdit ? <Mini onClick={() => onForm('todo')}>+ Add</Mini> : null} testId="todos">
+    <Card label="Open to-dos" count={detail.todos.length} action={canEdit ? <Mini onClick={() => onForm('todo')}>+ Add</Mini> : null} testId="todos" bare={bare}>
       {!detail.todos.length && <Empty>None open.</Empty>}
       {detail.todos.map(t => <div key={t.id} style={row}><span style={date}>{t.due_date ? md(t.due_date) : '—'}</span><span style={{ ...text, flex: 1 }}>{t.text}</span><span style={dim}>{t.owner ? t.owner.split(' ')[0] : 'Unassigned'}</span></div>)}
     </Card>
   );
 }
 
-export function WaitingCard({ detail }) {
+export function WaitingCard({ detail, bare = false }) {
   return (
-    <Card label="Waiting on them" count={detail.waiting.length} testId="waiting">
+    <Card label="Waiting on them" count={detail.waiting.length} testId="waiting" bare={bare}>
       {!detail.waiting.length && <Empty>Nothing owed.</Empty>}
       {detail.waiting.map(w => <div key={w.id} style={row}><span style={date}>{w.due_date ? md(w.due_date) : '—'}</span><span style={{ ...text, flex: 1 }}>{w.waiting_on ? `${w.waiting_on} · ` : ''}{w.text}</span></div>)}
     </Card>
@@ -92,10 +94,12 @@ export function WaitingCard({ detail }) {
 const RECENT_WORD = { touch: 'Touch', note: 'Note', status: 'Stage', undo: 'Undo', stage: 'Stage', todo_done: 'Done', client: 'Client', flow: 'Flow' };
 // homelover-flow-v1: the flow Activity (deprioritize, bring back, fit, assign, the automatic reply / meeting moves,
 // They replied…, undo) reads here beside the notes and touches, newest first; an undone row says so.
-export function NotesCard({ detail, canEdit, lookup, onForm, flow = [] }) {
-  const rows = [...detail.recent, ...flow.map(f => ({ id: f.id, event: 'flow', at: f.at, text: `${f.text}${f.by_user ? '' : f.kind === 'undo' ? '' : ' · automatic'}${f.undone_at ? ' · undone' : ''}` }))].sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 8);
+export const notesRows = (detail, flow = []) => [...detail.recent, ...flow.map(f => ({ id: f.id, event: 'flow', at: f.at, text: `${f.text}${f.by_user ? '' : f.kind === 'undo' ? '' : ' · automatic'}${f.undone_at ? ' · undone' : ''}` }))].sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 8);
+export const notesText = (e, lookup) => e.text || eventText(e, lookup);
+export function NotesCard({ detail, canEdit, lookup, onForm, flow = [], bare = false }) {
+  const rows = notesRows(detail, flow);
   return (
-    <Card label="Notes & touches" count={rows.length} action={canEdit ? <Mini onClick={() => onForm('note')}>+ Note</Mini> : null} testId="recent">
+    <Card label="Notes & touches" count={rows.length} action={canEdit ? <Mini onClick={() => onForm('note')}>+ Note</Mini> : null} testId="recent" bare={bare}>
       {!rows.length && <Empty>Nothing yet.</Empty>}
       {rows.map(e => (
         <div key={e.id} style={row}>
@@ -160,19 +164,21 @@ export function IntelCard({ businessId, row, detail, canEdit, live = false, need
   );
 }
 
-export function PeopleCard({ businessId, row, detail, canEdit, onForm, onChanged, onToast }) {
+export function PeopleCard({ businessId, row, detail, canEdit, onForm, onChanged, onToast, bare = false }) {
   const [q, setQ] = useState('');
   const people = filterPeople(detail.people, q);
+  const filter = detail.people.length > 5 ? <input type="search" aria-label="Filter people" placeholder="Filter" value={q} onChange={e => setQ(e.target.value)} className="ui-input" style={{ width: 120, minHeight: 26, height: 26, padding: '0 8px', fontSize: 12 }} /> : null;
   const unlink = async p => {
     try { await unlinkProspect(businessId, p.contact_id, row.type === 'partner' ? 'goal' : 'opportunity'); onChanged(); onToast({ text: `${p.name} is no longer linked to ${row.name}` }); } catch (e) { onToast({ text: e.message }); }
   };
   const canUnlink = canEdit && (row.type === 'partner' || row.type === 'employer');
   return (
-    <Card label="People" count={detail.people.length} testId="people" action={
+    <Card label="People" count={detail.people.length} testId="people" bare={bare} action={
       <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-        {detail.people.length > 5 && <input type="search" aria-label="Filter people" placeholder="Filter" value={q} onChange={e => setQ(e.target.value)} className="ui-input" style={{ width: 120, minHeight: 26, height: 26, padding: '0 8px', fontSize: 12 }} />}
+        {filter}
         {canEdit && row.type !== 'visitor' && row.type !== 'apollo' && <Mini onClick={() => onForm('contact')}>+ Contact</Mini>}
       </span>}>
+      {bare && filter && <div>{filter}</div>}
       {!detail.people.length && <Empty>{row.type === 'visitor' || row.type === 'apollo' ? 'Nobody on file - Find who checks Apollo.' : 'None on file.'}</Empty>}
       {people.map(p => (
         <div key={p.id || p.name} data-person={p.contact_id || undefined} title={p.note || undefined} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px', margin: '0 -8px', borderRadius: 6, background: p.signal ? `color-mix(in srgb, ${SA.warn} 8%, transparent)` : 'transparent', fontSize: 13 }}>

@@ -524,3 +524,44 @@ test('DataTable onReachEnd: a sentinel after the last row (table and phone list)
   expect(phone.container.querySelector('li[data-reach-end]')).not.toBeNull();
   expect(made[1].opts.root).toBeNull();
 });
+
+// company-window-v4 D3 (amended) - the Drawer's dense row: ▸ · label · count (warn tone) · preview · the action beside the
+// button, never inside it; controlled open; no "Show ▸" text; the glyph is the state.
+describe('Drawer dense (company window rows)', () => {
+  const Drawer = require('./Drawer').default;
+  test('dense + controlled: glyph, label, count with tone, preview while open too, the action outside the head button, onOpenChange only', () => {
+    const onOpenChange = jest.fn(), onAction = jest.fn();
+    const { rerender } = render(<Drawer dense testId="signals" label="Signals & visits" count={7} countTone="warn" summary="Dani clicked Oct 29" open={false} onOpenChange={onOpenChange} action={<button type="button" onClick={onAction}>Open in People →</button>}><span>body here</span></Drawer>);
+    const sec = screen.getByRole('region', { name: 'Signals & visits' });
+    expect(sec).toHaveClass('ui-drawer--dense');
+    expect(sec.getAttribute('data-drawer')).toBe('signals');
+    const head = screen.getByRole('button', { name: /^Signals & visits/ });
+    expect(head.textContent).toBe('▸Signals & visits7Dani clicked Oct 29');
+    expect(head.querySelector('.ui-drawer__count')).toHaveClass('ui-drawer__count--warn');
+    expect(head.querySelector('.ui-drawer__toggle')).toBeNull();
+    const action = screen.getByRole('button', { name: 'Open in People →' });
+    expect(head.contains(action)).toBe(false);
+    expect(action.closest('.ui-drawer__row')).toBe(head.closest('.ui-drawer__row'));
+    fireEvent.click(action);
+    expect(onAction).toHaveBeenCalled();
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.queryByText('body here')).toBeNull();
+    fireEvent.click(head);
+    expect(onOpenChange).toHaveBeenCalledWith(true);
+    expect(head).toHaveAttribute('aria-expanded', 'false'); // controlled: the parent decides
+    rerender(<Drawer dense testId="signals" label="Signals & visits" count={7} countTone="warn" summary="Dani clicked Oct 29" open onOpenChange={onOpenChange}><span>body here</span></Drawer>);
+    expect(head).toHaveAttribute('aria-expanded', 'true');
+    expect(head.textContent).toBe('▾Signals & visits7Dani clicked Oct 29');
+    expect(screen.getByText('body here')).toBeInTheDocument();
+    expect(document.getElementById('ui-kit-css').textContent).toMatch(/\.ui-drawer--dense \.ui-drawer__row \{ box-sizing:border-box; min-height:40px/);
+  });
+  test('a count of "—" and no tone render plain; an uncontrolled dense drawer toggles itself', () => {
+    render(<Drawer dense label="Client" count="—" summary="Not a client yet"><span>c</span></Drawer>);
+    const head = screen.getByRole('button', { name: /^Client/ });
+    expect(head.querySelector('.ui-drawer__count').textContent).toBe('—');
+    expect(head.querySelector('.ui-drawer__count').className).toBe('ui-drawer__count');
+    fireEvent.click(head);
+    expect(head).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('c')).toBeInTheDocument();
+  });
+});

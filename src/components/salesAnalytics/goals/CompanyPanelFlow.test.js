@@ -221,3 +221,95 @@ test('Intel "Use n →" (B2): an employer with no Employees and a research headc
   await toast.undo();
   expect(goalsApi.editCompanyFields).toHaveBeenLastCalledWith('b1', 'employer', 'o1', { employees: null });
 });
+
+// company-window-v4 Stage 3 (B3 / D2 / D3 amended) - everything below Fit / Intel is seven dense drawer rows on the kit
+// Drawer, in order, with counts, previews and the section's action link; Signals opens itself while interest is live; a
+// click opens the section's card inline (bare) and the choice is remembered per viewer per company; the To-do link opens
+// the capture form; a Viewer gets rows without links; the live partner keeps its cards.
+const DRAWER_ORDER = ['signals', 'people', 'todos', 'waiting', 'notes', 'client', 'files'];
+const rowInfo = (drawers, id) => { const r = drawers.querySelector(`[data-drawer="${id}"]`); return { label: r.querySelector('.ui-drawer__label').textContent, count: r.querySelector('.ui-drawer__count').textContent, warn: r.querySelector('.ui-drawer__count').classList.contains('ui-drawer__count--warn'), preview: r.querySelector('.ui-drawer__summary')?.textContent ?? null, action: r.querySelector('.ui-drawer__action')?.textContent ?? null, open: r.dataset.open, dense: r.classList.contains('ui-drawer--dense') }; };
+const richDetail = () => detail({ interest: INTEREST, timeline: [{ id: 't1', kind: 'visited', text: 'Visited /pricing', at: '2026-11-03T18:00:00Z' }], todos: [{ id: 'td1', text: 'Send the one-pager', due_date: '2026-11-07', owner: 'Cyrus Test' }], people: [{ id: 'p1', name: 'Ana Buyer', title: 'VP People' }, { id: 'p2', name: 'Bo Ops', title: null }, { id: 'p3', name: 'Cy Three', title: null }], steps: { next: null, ready: true, steps: [] } });
+
+test('B3 drawers: seven 40 px rows in order with counts, previews, action links; Signals open (interest live); the open body is the bare card; a click opens People and is remembered per viewer per company; + Add opens the to-do form; every drawer label once', async () => {
+  localStorage.clear();
+  goalsApi.companyDetail.mockResolvedValue(richDetail());
+  goalsApi.clientFiles.mockResolvedValue([{ id: 'f1', kind: 'agreement', title: 'MSA draft', type_label: 'PDF', size_bytes: 2048, uploaded_at: '2026-11-01' }]);
+  render(<CompanyPanel {...props} row={EMP} />);
+  const dlg = screen.getByRole('dialog', { name: 'Zz Acme Health' });
+  const drawers = await waitFor(() => { const el = dlg.querySelector('[data-company-drawers]'); if (!el) throw new Error('no drawers yet'); return el; });
+  await waitFor(() => expect(drawers.querySelector('[data-drawer="files"] .ui-drawer__count').textContent).toBe('1'));
+  expect([...drawers.querySelectorAll('[data-drawer]')].map(r => r.dataset.drawer)).toEqual(DRAWER_ORDER);
+  expect(drawers.previousElementSibling.getAttribute('data-fit-intel')).toBe('true');
+  expect(dlg.querySelector('[data-panel-body]')).toBeNull();
+  expect(rowInfo(drawers, 'signals')).toEqual({ label: 'Signals & visits', count: '1', warn: true, preview: 'Visited /pricing · Nov 3', action: 'Open in People →', open: 'true', dense: true });
+  expect(rowInfo(drawers, 'people')).toEqual({ label: 'People', count: '3', warn: false, preview: 'Ana Buyer · Bo Ops · +1', action: '+ Contact', open: 'false', dense: true });
+  expect(rowInfo(drawers, 'todos')).toEqual({ label: 'Open to-dos', count: '1', warn: false, preview: 'Send the one-pager · due Nov 7', action: '+ Add', open: 'false', dense: true });
+  expect(rowInfo(drawers, 'waiting')).toEqual({ label: 'Waiting on them', count: '0', warn: false, preview: 'Nothing owed', action: null, open: 'false', dense: true });
+  const notes = rowInfo(drawers, 'notes');
+  expect([notes.label, notes.count, notes.action, notes.open]).toEqual(['Notes & touches', '1', '+ Note', 'false']);
+  expect(notes.preview).toMatch(/Reply from Zz Acme Health → Replied · automatic$/);
+  expect(rowInfo(drawers, 'client')).toEqual({ label: 'Client', count: '—', warn: false, preview: 'Not a client yet', action: 'Make client', open: 'false', dense: true });
+  expect(rowInfo(drawers, 'files')).toEqual({ label: 'Files', count: '1', warn: false, preview: 'MSA draft · Nov 1', action: '+ Upload', open: 'false', dense: true });
+  // The open Signals body is the Signals card in bare mode: its content, no second label; the link sits outside the head button.
+  const signals = drawers.querySelector('[data-drawer="signals"]');
+  expect(signals.querySelector('[data-section="signals"][data-bare]')).toBeInTheDocument();
+  expect(within(signals).getAllByText('Signals & visits')).toHaveLength(1);
+  expect(within(signals).getByText('Visited /pricing')).toBeInTheDocument();
+  expect(signals.querySelector('.ui-drawer__head').contains(signals.querySelector('.ui-drawer__action'))).toBe(false);
+  for (const id of DRAWER_ORDER.slice(1)) expect(drawers.querySelector(`[data-drawer="${id}"] .ui-drawer__body`)).toBeNull();
+  // Click People = the row opens with the card's rows; remembered under prospector_company_drawers for this company.
+  fireEvent.click(within(drawers.querySelector('[data-drawer="people"]')).getByRole('button', { name: /^People/ }));
+  const people = drawers.querySelector('[data-drawer="people"]');
+  expect(people.dataset.open).toBe('true');
+  expect(within(people).getByText('Ana Buyer')).toBeInTheDocument();
+  expect(within(people).getByText('Cy Three')).toBeInTheDocument();
+  expect(JSON.parse(localStorage.getItem('prospector_company_drawers'))['employer-o1']).toMatchObject({ people: true });
+  fireEvent.click(within(people).getByRole('button', { name: /^People/ }));
+  expect(people.dataset.open).toBe('false');
+  expect(JSON.parse(localStorage.getItem('prospector_company_drawers'))['employer-o1'].people).toBe(false);
+  // The row's + Add link opens the To-do capture form under Actions (the same form the To-do button opens).
+  fireEvent.click(within(drawers.querySelector('[data-drawer="todos"]')).getByRole('button', { name: '+ Add' }));
+  expect(within(headOf(dlg)).getByRole('button', { name: /^To-do/ })).toHaveAttribute('aria-expanded', 'true');
+  // + Upload opens the Files drawer with the upload control inside.
+  fireEvent.click(within(drawers.querySelector('[data-drawer="files"]')).getByRole('button', { name: '+ Upload' }));
+  const files = drawers.querySelector('[data-drawer="files"]');
+  expect(files.dataset.open).toBe('true');
+  expect(within(files).getByLabelText('File kind')).toBeInTheDocument();
+  expect(await within(files).findByText('MSA draft')).toBeInTheDocument();
+  // Every drawer label once among the rows; the Client row's count is the dash.
+  for (const l of ['Signals & visits', 'People', 'Open to-dos', 'Waiting on them', 'Notes & touches', 'Client', 'Files']) expect(within(drawers).getAllByText(l)).toHaveLength(1);
+});
+
+test('D2: a stored choice reopens on the next visit; the live Interest band opens Signals even when it was stored closed; a Viewer gets the rows without action links; the live partner keeps its cards (no drawers)', async () => {
+  localStorage.setItem('prospector_company_drawers', JSON.stringify({ 'employer-o1': { signals: false, todos: true, _at: 1 } }));
+  goalsApi.companyDetail.mockResolvedValue(richDetail());
+  goalsApi.clientFiles.mockResolvedValue([]);
+  const { unmount } = render(<CompanyPanel {...props} row={EMP} />);
+  let dlg = screen.getByRole('dialog', { name: 'Zz Acme Health' });
+  let drawers = await waitFor(() => { const el = dlg.querySelector('[data-company-drawers]'); if (!el) throw new Error('no drawers yet'); return el; });
+  expect(drawers.querySelector('[data-drawer="signals"]').dataset.open).toBe('true');
+  expect(drawers.querySelector('[data-drawer="todos"]').dataset.open).toBe('true');
+  expect(within(drawers.querySelector('[data-drawer="todos"]')).getByText('Send the one-pager')).toBeInTheDocument();
+  expect(drawers.querySelector('[data-drawer="people"]').dataset.open).toBe('false');
+  unmount();
+  render(<CompanyPanel {...props} canEdit={false} row={EMP} />);
+  dlg = screen.getByRole('dialog', { name: 'Zz Acme Health' });
+  drawers = await waitFor(() => { const el = dlg.querySelector('[data-company-drawers]'); if (!el) throw new Error('no drawers yet'); return el; });
+  expect([...drawers.querySelectorAll('[data-drawer]')].map(r => r.dataset.drawer)).toEqual(DRAWER_ORDER);
+  expect(drawers.querySelectorAll('.ui-drawer__action')).toHaveLength(0);
+  expect(within(drawers).queryByRole('button', { name: /Make client|\+ Upload|\+ Contact|\+ Add|\+ Note|Open in People/ })).toBeNull();
+  expect(rowInfo(drawers, 'client').preview).toBe('Not a client yet');
+  fireEvent.click(within(drawers.querySelector('[data-drawer="client"]')).getByRole('button', { name: /^Client/ }));
+  expect(within(drawers.querySelector('[data-drawer="client"]')).getByText('Not a client yet.')).toBeInTheDocument();
+  expect(within(drawers.querySelector('[data-drawer="client"]')).queryByRole('button', { name: 'Make client' })).toBeNull();
+});
+
+test('mockup C still: the live partner window has no drawers - its cards stay', async () => {
+  goalsApi.companyDetail.mockResolvedValue(detail({ record: { stage: 'live', next_step: 'Submit joint proposal', next_step_due: '2026-11-04', last_touch: null, site: null }, stage_history: [{ stage: 'live', at: '2026-11-03T20:00:00Z' }], steps: { steps: [], next: null, ready: true } }));
+  render(<CompanyPanel {...props} row={HUB} />);
+  const dlg = screen.getByRole('dialog', { name: 'Zz HUB' });
+  await within(dlg).findByText('Live since Nov 3');
+  expect(dlg.querySelector('[data-company-drawers]')).toBeNull();
+  expect(dlg.querySelector('[data-panel-body] [data-section="signals"]:not([data-bare])')).toBeInTheDocument();
+  expect(dlg.querySelector('[data-panel-body] [data-section="people"]')).toBeInTheDocument();
+});

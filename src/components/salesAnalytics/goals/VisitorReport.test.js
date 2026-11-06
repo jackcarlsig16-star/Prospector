@@ -159,7 +159,7 @@ test('Export visitors: a Member has no button; an admin picks the window, CSV fe
   const print = await waitFor(() => { const el = document.getElementById('sales-analytics-print-area'); if (!el) throw new Error('no print area'); return el; });
   expect(print).toHaveTextContent('HomeLover website visitors · last 7 days (2026-10-31 – 2026-11-06) · generated 2026-11-06');
   expect(print).toHaveTextContent('headcount known for 1 of 2 companies');
-  for (const h of ['Company', 'Industry', 'Headcount', 'First seen', 'Last seen', 'Days visited', 'Visits (Apollo, rolling 7 d at last seen)', 'Pages (top 3, last pull)', 'People identified', 'Band', 'In Prospector']) expect(within(print).getByRole('columnheader', { name: h })).toBeInTheDocument();
+  for (const h of ['Company', 'Industry code (NAICS/SIC)', 'Headcount', 'First seen', 'Last seen', 'Days visited', 'Visits (Apollo, rolling 7 d at last seen)', 'Pages (top 3, last pull)', 'People identified', 'Band', 'In Prospector']) expect(within(print).getByRole('columnheader', { name: h })).toBeInTheDocument();
   expect(within(print).getByText('unknown')).toBeInTheDocument();
   expect(within(print).getByText('1,250 (typed)')).toBeInTheDocument();
   expect(within(print).getByText('/pricing, /employers')).toBeInTheDocument();

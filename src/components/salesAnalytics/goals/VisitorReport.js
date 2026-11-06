@@ -108,7 +108,7 @@ function SkipList({ businessId, canEdit, onChanged }) {
 // CSV = the route's file; PDF = the same rows rendered into the page's print area (SalesAnalyticsTab PRINT_STYLES) and
 // window.print - no new dependency. Company data only: no people's names, no addresses; headcount "unknown" never blank.
 const EXPORT_WINDOWS = [['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['all', 'Since the first pull']];
-const EXPORT_COLUMNS = ['Company', 'Industry', 'Headcount', 'First seen', 'Last seen', 'Days visited', 'Visits (Apollo, rolling 7 d at last seen)', 'Pages (top 3, last pull)', 'People identified', 'Band', 'In Prospector'];
+const EXPORT_COLUMNS = ['Company', 'Industry code (NAICS/SIC)', 'Headcount', 'First seen', 'Last seen', 'Days visited', 'Visits (Apollo, rolling 7 d at last seen)', 'Pages (top 3, last pull)', 'People identified', 'Band', 'In Prospector'];
 const exportCells = r => [r.company, r.industry, r.headcount, r.first_seen || '—', r.last_seen || '—', r.days_visited, r.visits_7d, r.pages.join(', ') || '—', r.people, r.band, r.in_prospector];
 function ExportVisitors({ businessId, onNotice }) {
   const [win, setWin] = useState('30');
