@@ -22,12 +22,18 @@ import PersonDetail from './PersonDetail';
 // opens the window. P6: a phone gets stacked cards and a scrolling chip row. P7: CSV of the filtered rows (structured
 // fields only) and Share view (saved filters, kind 'people'). Viewers read: no quick-menu writes, no Share view.
 // The heat band is never computed here - it is the route's (the Huddle's rule), and the footnote states that rule.
+// Stage 3: the column widths sum to 1096 px so the table fits the card at 1440 with no sideways scroll (the card's inner
+// width there is 1100 px); Emails and Company visits are two-line cells and Identified / Buyer are glyph columns.
 const UNDO_MS = 10000;
 const LA = 'America/Los_Angeles';
 const md = iso => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: LA }) : null);
 const mdy = d => (d ? new Date(`${String(d).slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : null);
 const HEAT_COLOR = { hot: SA.bad, warm: SA.warn, cold: SA.muted };
 const Dim = () => <span className="ui-table__dim">—</span>;
+const two = { display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0, fontSize: 12, lineHeight: '15px' };
+const glyphHead = (glyph, label) => <><span aria-hidden="true">{glyph}</span><span className="ui-sr-only">{label}</span></>;
+// "Emails (human opens)" is wider than its column at 1440; the visible head is "Emails", the rest stays in its accessible name.
+const emailsHead = <>Emails<span className="ui-sr-only"> (human opens)</span></>;
 const ell = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' };
 const rowBar = { minHeight: 36, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 };
 const RECORD = ['partner', 'employer', 'target'];
@@ -107,22 +113,36 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
       </span>
     : <Dim />);
   const sourceCell = r => <span className="ui-chip ui-chip--dense" title={r.sources.join(' + ')}>{r.source}{r.sources.length > 1 ? ` +${r.sources.length - 1}` : ''}</span>;
-  const emailsCell = r => <span style={{ ...numStyle, whiteSpace: 'nowrap' }}>{r.emails.sent} <span style={{ color: SA.muted }}>sent</span> · {r.emails.opened} <span style={{ color: SA.muted }}>opened</span> · {r.emails.clicked} <span style={{ color: SA.muted }}>clicked</span> · {r.emails.replied} <span style={{ color: SA.muted }}>replied</span></span>;
-  const lastEmailCell = r => (r.last_email ? <span style={{ whiteSpace: 'nowrap' }}>{md(r.last_email.at)} <span style={{ color: SA.muted }}>· {r.last_email.what}{r.last_email.reply_class ? ` · ${r.last_email.reply_class.replace(/_/g, ' ')}` : ''}</span></span> : <Dim />);
+  const emailsCell = r => (
+    <span style={{ ...two, ...numStyle }}>
+      <span style={ell}>{r.emails.sent} <span style={{ color: SA.muted }}>sent</span> · {r.emails.opened} <span style={{ color: SA.muted }}>opened</span></span>
+      <span style={ell}>{r.emails.clicked} <span style={{ color: SA.muted }}>clicked</span> · {r.emails.replied} <span style={{ color: SA.muted }}>replied</span></span>
+    </span>
+  );
+  const emailsText = r => `${r.emails.sent} sent · ${r.emails.opened} opened (human) · ${r.emails.clicked} clicked · ${r.emails.replied} replied`;
+  const lastEmailText = r => (r.last_email ? `${md(r.last_email.at)} · ${r.last_email.what}${r.last_email.reply_class ? ` · ${r.last_email.reply_class.replace(/_/g, ' ')}` : ''}` : '');
+  const lastEmailCell = r => (r.last_email ? <span style={ell}>{md(r.last_email.at)} <span style={{ color: SA.muted }}>· {r.last_email.what}{r.last_email.reply_class ? ` · ${r.last_email.reply_class.replace(/_/g, ' ')}` : ''}</span></span> : <Dim />);
   const heatCell = r => (r.heat == null ? <span className="ui-table__dim" title="No heat yet - the next Apollo sync computes it">—</span> : <span data-heat-band={r.heat_band} style={{ display: 'inline-flex', alignItems: 'center', height: 20, padding: '0 8px', borderRadius: 999, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', color: HEAT_COLOR[r.heat_band] || SA.text, background: `color-mix(in srgb, ${HEAT_COLOR[r.heat_band] || SA.muted} 14%, transparent)` }}>{r.heat} · {r.heat_band}</span>);
-  const visitsCell = r => (r.visits ? <span style={{ whiteSpace: 'nowrap' }}><b style={numStyle}>{r.visits.visits_7d}</b> <span style={{ color: SA.muted }}>visits 7 d · last {mdy(r.visits.last_visit)}{r.visits.top_page ? ` · ${r.visits.top_page}` : ''}</span></span> : <Dim />);
+  const visitsText = r => (r.visits ? `${r.visits.visits_7d} visits 7 d · last ${mdy(r.visits.last_visit)}${r.visits.top_page ? ` · ${r.visits.top_page}` : ''}` : '');
+  const visitsCell = r => (r.visits
+    ? <span style={two}>
+        <span style={ell}><b style={numStyle}>{r.visits.visits_7d}</b> <span style={{ color: SA.muted }}>visits 7 d</span></span>
+        <span style={{ color: SA.muted, ...ell }}>last {mdy(r.visits.last_visit)}{r.visits.top_page ? ` · ${r.visits.top_page}` : ''}</span>
+      </span>
+    : <Dim />);
   const columns = [
-    { id: 'person', label: 'Person', width: 190, sticky: true, detail: true, sortValue: r => r.name, render: nameCell, title: r => `${r.name}${r.title ? ` · ${r.title}` : ''}` },
-    { id: 'company', label: 'Company', width: 176, sortValue: r => r.company?.name || null, render: companyCell, title: r => r.company?.name },
-    { id: 'source', label: 'Source', width: 130, sortValue: r => r.source, render: sourceCell },
-    { id: 'emails', label: 'Emails (human opens)', width: 262, sortValue: r => r.emails.opened + r.emails.clicked * 2 + r.emails.replied * 4, render: emailsCell },
-    { id: 'last_email', label: 'Last email', width: 158, sortValue: r => r.last_email?.at || null, render: lastEmailCell },
-    { id: 'heat', label: 'Heat', width: 96, sortValue: r => r.heat ?? -1, render: heatCell, title: r => (r.heat == null ? 'no heat yet' : `${r.heat} · ${r.heat_band} - the Huddle's band`) },
-    { id: 'visits', label: 'Company visits', width: 170, sortValue: r => r.visits?.visits_7d ?? -1, render: visitsCell },
-    { id: 'identified', label: 'Identified', width: 90, sortValue: r => r.identified_at || null, render: r => (r.identified_at ? <span style={numStyle}>{mdy(r.identified_at)}</span> : <Dim />) },
-    { id: 'buyer', label: 'Buyer', width: 56, sortValue: r => (r.buyer ? 1 : 0), render: r => (r.buyer ? <span aria-label="buyer title" style={{ color: SA.good }}>✓</span> : <Dim />) },
-    { id: 'last_touch', label: 'Last touch', width: 90, sortValue: r => r.last_touch_at || null, render: r => (r.last_touch_at ? <span style={numStyle}>{md(r.last_touch_at)}</span> : <Dim />) },
+    { id: 'person', label: 'Person', width: 152, sticky: true, detail: true, sortValue: r => r.name, render: nameCell, title: r => `${r.name}${r.title ? ` · ${r.title}` : ''}` },
+    { id: 'company', label: 'Company', width: 126, sortValue: r => r.company?.name || null, render: companyCell, title: r => r.company?.name },
+    { id: 'source', label: 'Source', width: 144, sortValue: r => r.source, render: sourceCell },
+    { id: 'emails', label: 'Emails (human opens)', width: 140, sortValue: r => r.emails.opened + r.emails.clicked * 2 + r.emails.replied * 4, render: emailsCell, title: emailsText },
+    { id: 'last_email', label: 'Last email', width: 110, sortValue: r => r.last_email?.at || null, render: lastEmailCell, title: lastEmailText },
+    { id: 'heat', label: 'Heat', width: 92, sortValue: r => r.heat ?? -1, render: heatCell, title: r => (r.heat == null ? 'no heat yet' : `${r.heat} · ${r.heat_band} - the Huddle's band`) },
+    { id: 'visits', label: 'Company visits', width: 134, sortValue: r => r.visits?.visits_7d ?? -1, render: visitsCell, title: visitsText },
+    { id: 'identified', label: 'Identified', glyph: '◉', width: 46, sortValue: r => r.identified_at || null, render: r => (r.identified_at ? <span data-identified={r.identified_at} aria-label={`Identified ${mdy(r.identified_at)}`} style={{ color: SA.accent }}>◉</span> : <Dim />), title: r => (r.identified_at ? `Identified visitor · first seen ${mdy(r.identified_at)}` : 'Not a visitor-identified person') },
+    { id: 'buyer', label: 'Buyer', glyph: '✓', width: 46, sortValue: r => (r.buyer ? 1 : 0), render: r => (r.buyer ? <span data-buyer aria-label="buyer title" style={{ color: SA.good }}>✓</span> : <Dim />), title: r => (r.buyer ? 'Buyer title (matches Settings › buyer titles)' : 'Not a buyer title') },
+    { id: 'last_touch', label: 'Last touch', width: 106, sortValue: r => r.last_touch_at || null, render: r => (r.last_touch_at ? <span style={numStyle}>{md(r.last_touch_at)}</span> : <Dim />) },
   ];
+  const tableColumns = columns.map(c => (c.glyph ? { ...c, label: glyphHead(c.glyph, c.label) } : c.id === 'emails' ? { ...c, label: emailsHead } : c));
   const sortLabel = sort && columns.find(c => c.id === sort.id)?.label;
   const groups = [{ id: 'people', header: <>{sort ? `Sorted by ${sortLabel}` : 'Heat first, then the last email'} <span className="ui-table__count">{rows.length}</span></>, rows, emptyText: 'No people match these filters.' }];
   const renderDetail = r => <PersonDetail businessId={businessId} row={r} canEdit={canEdit} meId={meId} onToast={setToast} onChanged={changed} onOpenCompany={openCompany} />;
@@ -183,7 +203,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
       {error && <ErrorNote message={error} />}
       {data && (
         <div className="ui-theme-dark">
-          <DataTable label="People" columns={columns} groups={groups} rowKey={r => r.key.replace(/[^A-Za-z0-9_-]/g, '_')} sort={sort} onSort={onSort} dense rowDetail pinUnder="[data-workspace-header]" compact={phone} renderCompact={compactRow} renderDetail={renderDetail} emptyText="No people match these filters." />
+          <DataTable label="People" columns={tableColumns} groups={groups} rowKey={r => r.key.replace(/[^A-Za-z0-9_-]/g, '_')} sort={sort} onSort={onSort} dense rowDetail pinUnder="[data-workspace-header]" compact={phone} renderCompact={compactRow} renderDetail={renderDetail} emptyText="No people match these filters." />
         </div>
       )}
       {data && <p data-heat-footnote style={{ margin: 0, fontSize: 12, color: SA.faint }}>{heatRule(data.heat_rule)}{data.heat_pending ? ` ${data.heat_pending} ${data.heat_pending === 1 ? 'person has' : 'people have'} no heat yet (the next Apollo sync computes it).` : ''} Times are Pacific.</p>}

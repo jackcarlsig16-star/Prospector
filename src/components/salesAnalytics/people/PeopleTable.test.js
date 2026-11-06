@@ -36,7 +36,7 @@ const table = async () => { render(<PeopleTable businessId="b1" canEdit me={ME} 
 
 test('the table: 10 columns, rows in the route\'s order, the heat band from the route (108 · warm above 68 · hot stays warm), chips with counts narrow the set, "Showing n of N" with removable chips, the footnote states the Huddle\'s rule', async () => {
   const t = await table();
-  expect(within(t).getAllByRole('columnheader').map(h => h.textContent.replace(/ [↕▲▼]$/, ''))).toEqual(['Person', 'Company', 'Source', 'Emails (human opens)', 'Last email', 'Heat', 'Company visits', 'Identified', 'Buyer', 'Last touch']);
+  expect(within(t).getAllByRole('columnheader').map(h => h.textContent.replace(/^[◉✓]/, '').replace(/ [↕▲▼]$/, ''))).toEqual(['Person', 'Company', 'Source', 'Emails (human opens)', 'Last email', 'Heat', 'Company visits', 'Identified', 'Buyer', 'Last touch']);
   const names = () => [...t.querySelectorAll('tr[data-row] [data-person-name]')].map(el => el.textContent);
   expect(names()).toEqual(['Crystal Pringle', 'Cristina Torres', 'Bo Ops']);
   const bands = [...t.querySelectorAll('[data-heat-band]')].map(el => `${el.dataset.heatBand}:${el.textContent}`);

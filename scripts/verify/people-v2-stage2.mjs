@@ -136,7 +136,7 @@ try {
     const rows = [...sec.querySelectorAll('[data-row]')].map(el => ({ key: el.dataset.key, name: el.querySelector('[data-person-name]')?.textContent, heat: el.querySelector('[data-heat-band]') ? { band: el.querySelector('[data-heat-band]').dataset.heatBand, text: el.querySelector('[data-heat-band]').textContent } : null }));
     const chips = [...sec.querySelectorAll('[data-people-chips] button')].map(b => b.textContent.trim());
     return {
-      headers: [...sec.querySelectorAll('th')].map(h => h.textContent.replace(/\s*[↕▲▼]\s*$/, '').trim()),
+      headers: [...sec.querySelectorAll('th')].map(h => h.textContent.replace(/^[◉✓]/, '').replace(/\s*[↕▲▼]\s*$/, '').trim()),
       rows, chips,
       showing: (sec.querySelector('[data-active-filters]') || sec.querySelector('.ui-active-filters') || sec.querySelector('[data-active-filter-line]'))?.textContent?.trim() || [...sec.querySelectorAll('span, div')].map(e => e.textContent.trim()).find(t => /^Showing \d+ of \d+/.test(t)) || '',
       footnote: sec.querySelector('[data-heat-footnote]')?.textContent || '',
