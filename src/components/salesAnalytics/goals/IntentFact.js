@@ -10,19 +10,24 @@ import { BAND_WORD } from '../../../constants/fitLevels';
 // goals/scores/:type/:id; nothing until the first recompute ("No score yet").
 // company-panel-v3 T: compact = the title row's "INTENT 73 · P1 · ● source"; the breakdown opens under it.
 // company-window-v4 T: without a score the title reads "no score yet · Recompute" (the link runs it; Members).
-export default function IntentFact({ businessId, row, canEdit, version = 0, compact = false }) {
-  const [score, setScore] = useState(undefined); // undefined = loading, null = none yet
+// company-window-v4 B1: with onRecomputed the parent owns the read (one GET shared with the Fit radar) and passes
+// `score` down; Recompute then tells the parent to re-read instead of fetching here.
+export default function IntentFact({ businessId, row, canEdit, version = 0, compact = false, score: given, onRecomputed = null }) {
+  const [own, setOwn] = useState(undefined); // undefined = loading, null = none yet
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
+  const lifted = !!onRecomputed;
   useEffect(() => {
+    if (lifted) return undefined;
     let live = true;
-    goalsApi.scoreOf(businessId, row.type, row.id).then(d => live && setScore(d)).catch(() => live && setScore(null));
+    goalsApi.scoreOf(businessId, row.type, row.id).then(d => live && setOwn(d)).catch(() => live && setOwn(null));
     return () => { live = false; };
-  }, [businessId, row.type, row.id, version, tick]);
+  }, [businessId, row.type, row.id, version, tick, lifted]);
   const recompute = async () => {
     setBusy(true);
-    try { await goalsApi.recomputeScores(businessId, { type: row.type, id: row.id }); setTick(t => t + 1); } catch { /* the fact keeps its last value */ } finally { setBusy(false); }
+    try { await goalsApi.recomputeScores(businessId, { type: row.type, id: row.id }); if (lifted) onRecomputed(); else setTick(t => t + 1); } catch { /* the fact keeps its last value */ } finally { setBusy(false); }
   };
+  const score = lifted ? given : own;
   if (score === undefined) return null;
   const r = score?.row;
   return (

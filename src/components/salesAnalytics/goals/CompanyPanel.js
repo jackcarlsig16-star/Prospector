@@ -20,7 +20,8 @@ import NetworkCard from './NetworkCard';
 import NetworkTree from './NetworkTree';
 import { ClientCard, FilesCard, MakeClientForm } from './ClientParts';
 import SidePanel from '../SidePanel';
-import CompanyProgress from './CompanyProgress';
+import JourneyStrip from './JourneyStrip';
+import FitRadar from './FitRadar';
 import IntentFact from './IntentFact';
 import { Link } from '../../../ui/Button';
 import { KindStageChip, OwnerChip, LiveChip } from './FlowChips';
@@ -33,8 +34,10 @@ import useCompanyEdits from './companyEdits';
 // FIX company-window-subtract-v1 (REV2): every fact once, every action once, a block with nothing to say does not
 // render; doing sits above reading. company-window-v4 Stage 1: the head reads title row (name · type · Top · Intent ·
 // site · ⋯ · ✕) · Interest band (only while interest is live) · Actions row · facts row (a fact's popover is the list;
-// readiness - no owner, no size - draws on the fact, no research on the Intel header) · stage strip (the journey in
-// Stage 2), then the body cards. The SETUP strip is gone: its steps are the facts' red states and the journey's nodes.
+// readiness - no owner, no size - draws on the fact, no research on the Intel header) · the journey card (Stage 2: the
+// one stage control), then the body: Fit (the radar over the Map's ring components, one GET goals/scores shared with the
+// title's Intent) beside Intel, then the cards. The SETUP strip is gone: its steps are the facts' red states and the
+// journey's nodes.
 // A live partner keeps its own layout: title row (Partner · category, Live since, owner, Intent, site), Next step
 // (+ Add a client they referred) + Came from, Network + the network tree, partner actions. Buttons that don't apply to
 // a state are hidden, not greyed. Every write reloads the board (onChanged) and this body (version). `row` is the
@@ -55,6 +58,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
   const [clientSheet, setClientSheet] = useState(null); // homelover-clients-v1: { preset? } = the Make client sheet
   // homelover-flow-v1: the Stage 1 reads (GET goals/fit · goals/flow) and the live partner's owner menu.
   const [fit, setFit] = useState(null);
+  const [score, setScore] = useState(undefined); // GET goals/scores/:type/:id - undefined = loading, null = no score yet
   const [flow, setFlow] = useState([]);
   const [network, setNetwork] = useState(null);
   const [menu, setMenu] = useState(null); // 'owner'
@@ -88,6 +92,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
     if (!isRecord) return undefined;
     let alive = true;
     goalsApi.fitOf(businessId, row.type, row.id).then(d => alive && setFit(d)).catch(() => alive && setFit(null));
+    goalsApi.scoreOf(businessId, row.type, row.id).then(d => alive && setScore(d)).catch(() => alive && setScore(null));
     goalsApi.flowEvents(businessId, row.type, row.id).then(d => alive && setFlow(d)).catch(() => alive && setFlow([]));
     if (live) goalsApi.referredBy(businessId, row.id).then(d => alive && setNetwork(d.network || null)).catch(() => alive && setNetwork(null));
     return () => { alive = false; };
@@ -120,6 +125,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
     try { await navigator.clipboard.writeText(companyWindowUrl(row)); onToast({ text: `Link to ${row.name} copied` }); } catch { onToast({ text: 'Could not copy the link' }); }
   };
   const act = async (what, fn) => { setBusy(what); try { await fn(); } catch (e) { onToast({ text: e.message }); } finally { setBusy(''); } };
+  const recompute = () => act('recompute', async () => { await goalsApi.recomputeScores(businessId, { type: row.type, id: row.id }); changed(); });
   const bringBack = () => act('bring_back', async () => {
     const r = await goalsApi.bringBack(businessId, row.type, row.id);
     changed();
@@ -153,7 +159,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
       )}
       {!canEdit && row.top && <span aria-label="Top" style={{ color: SA.warn, fontSize: 13 }}>★ Top</span>}
       {ownerChip}
-      {!needsRecord(row.type) && <IntentFact businessId={businessId} row={row} canEdit={canEdit} version={version} compact />}
+      {!needsRecord(row.type) && <IntentFact businessId={businessId} row={row} canEdit={canEdit} compact score={score} onRecomputed={changed} />}
       {site?.domain && <Link href={`https://${site.domain}`} target="_blank" rel="noreferrer" style={{ fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 4 }}>{site.domain}<IconExternal size={12} /></Link>}
     </div>
     <div style={{ display: 'flex', alignItems: 'center', gap: 4, flex: 'none' }}>
@@ -168,8 +174,8 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
   );
   // F2: no fresh research = the Intel card header glows (it owns Run research / Refresh); a row with no record cannot be researched yet.
   const researchNeed = !!detail?.steps?.steps?.find(s => s.id === 'research' && !['done', 'skip', 'running'].includes(s.status) && !s.needs_record);
-  const flowSteps = (row.type === 'employer' || row.type === 'target') && detail
-    ? { research: detail.research?.runs?.find(r => r.status === 'done') || null, owner: row.owner_user_id ? (members.find(m => m.user_id === row.owner_user_id)?.name || '').split(' ')[0] || 'owner' : null, client: detail.record?.client || null }
+  const journeyFlow = (row.type === 'employer' || row.type === 'target') && detail
+    ? { research: detail.research?.runs?.find(r => r.status === 'done') || null, client: detail.record?.client || null }
     : null;
   const head = live
     ? <>{titleRow}{editPanel && editPanels}</>
@@ -179,8 +185,8 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
         {bandShown && <InterestBand businessId={businessId} row={row} interest={detail.interest} canEdit={canEdit} onChanged={changed} onToast={onToast} />}
         {actions}
         {editPanels}
-        {detail && !needsRecord(row.type) && <CompanyProgress businessId={businessId} row={row} detail={detail} canEdit={canEdit} flow={flowSteps} onPatch={onPatch} onChanged={changed} onToast={onToast}
-          onResearch={() => actionsRef.current.research?.()} onOwner={openOwnerFact} onClient={() => setClientSheet({})} />}
+        {detail && !needsRecord(row.type) && <JourneyStrip businessId={businessId} row={row} detail={detail} canEdit={canEdit} flow={journeyFlow} onPatch={onPatch} onChanged={changed} onToast={onToast}
+          onResearch={() => actionsRef.current.research?.()} onAddToPipeline={() => setForm('promote')} onClient={() => setClientSheet({})} />}
       </>
     );
   const cardProps = { businessId, row, detail, canEdit, live, onForm: setForm, onChanged: changed, onToast };
@@ -206,6 +212,12 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
           {actions}
         </>
       )}
+      {detail && isRecord && !live && (
+        <div data-fit-intel style={{ display: 'grid', gridTemplateColumns: wide ? '1fr 1.4fr' : '1fr', gap: 12, alignItems: 'start' }}>
+          <FitRadar score={score ?? null} canEdit={canEdit} busy={busy === 'recompute'} onRecompute={recompute} />
+          {detail.research && <IntelCard {...cardProps} need={researchNeed} onUseEmployees={n => edits.saveNumbers({ employees: n }, { employees: detail.record?.employees ?? null })} />}
+        </div>
+      )}
       {detail && (
         <div data-panel-body style={twoCol}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
@@ -219,7 +231,7 @@ export default function CompanyPanel({ businessId, row, canEdit, members, meId, 
               onSetSource={() => setEditPanel('source')} onAddClient={() => setClientSheet({ preset: { source_kind: 'partner_referral', source_partner_id: row.id } })} />}
             {row.type === 'employer' && <ClientCard {...cardProps} onMake={() => setClientSheet({})} />}
             {row.type === 'employer' && <FilesCard businessId={businessId} row={row} canEdit={canEdit} version={version} onToast={onToast} />}
-            {detail.research && <IntelCard {...cardProps} need={researchNeed} />}
+            {(live || !isRecord) && detail.research && <IntelCard {...cardProps} need={researchNeed} />}
             {!needsRecord(row.type) || detail.people.length > 0 ? <div data-section="people" ref={el => { if (el && initialSection === 'people' && !el.dataset.shown) { el.dataset.shown = '1'; el.scrollIntoView({ block: 'start' }); } }}><PeopleCard {...cardProps} /></div> : null}
             {sourced && <SourceHistoryCard data={source} links={links} />}
             <ExtraCards row={row} detail={detail} />

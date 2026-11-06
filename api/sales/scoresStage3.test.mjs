@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
 import { recomputeScores } from './intentScoreRun.js';
+import { DEFAULT_WEIGHTS } from './intentScore.js';
 import { scoreOf, listViews, saveView, deleteView, SAVED_VIEWS_MAX } from './scoresRoutes.js';
 import { setVisitPriority } from './visitPriority.js';
 import { composeEmail, lintPasted, composeStatus, COMPOSE_DAILY_CAP } from './composeRoutes.js';
@@ -40,6 +41,7 @@ test('scoreOf: 404 before a recompute, then the row + breakdown lines (no meta l
   assert.equal(r.status, 200);
   assert.deepEqual([r.body.row.name, r.body.row.band, 'meta' in r.body.row.components], ['Quarry Labs', 'P1', false]);
   assert.ok(r.body.lines.some(l => /^\+\d+ visits/.test(l)) && r.body.lines.some(l => /people \(VP People\)/.test(l)));
+  assert.deepEqual(r.body.caps, DEFAULT_WEIGHTS.caps); // company-window-v4 B1: the radar's caps = the Map's
   assert.equal((await scoreOf(db, B, { type: 'visitor', id: 'x' })).status, 400);
 });
 

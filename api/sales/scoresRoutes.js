@@ -155,7 +155,10 @@ export async function scoreOf(supabase, businessId, { type, id, now = Date.now()
   const today = laDateString(new Date(now));
   const prev = (await previousSnapshot(supabase, businessId, today)).get(`${type}-${id}`) || null;
   const row = publicRow(s, prev, now);
-  return reply(200, { row, lines: breakdownLines({ components: row.components }), thresholds: DEFAULT_WEIGHTS.thresholds });
+  // company-window-v4 B1: the window's Fit radar reads the same caps as the Map's rings (sales_settings.score_weights).
+  const settings = (await supabase.from('sales_settings').select('score_weights').eq('business_id', businessId).maybeSingle()).data || null;
+  const weights = mergeWeights(settings?.score_weights);
+  return reply(200, { row, lines: breakdownLines({ components: row.components }), thresholds: weights.thresholds, caps: weights.caps });
 }
 export async function scoreOfRoute(req, res) {
   try { send(res, await scoreOf(getSupabase(), req.params.businessId, { type: req.params.type, id: req.params.id })); }

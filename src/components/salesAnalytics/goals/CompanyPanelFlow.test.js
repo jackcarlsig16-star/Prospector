@@ -10,8 +10,9 @@ jest.mock('../../../utils/useMediaQuery', () => () => true);
 // FIX company-window-subtract-v1 (REV2) / company-window-v4 Stage 1 - the account card over an invented employer and
 // an invented target: every fact once, every action once, no empty block; doing above reading: the head = title ·
 // Interest (while live) · Actions · facts (Stage is no fact; readiness draws on Owner / Employees, the Intel header) ·
-// stage strip (alone on its line). No SETUP strip, no <select> anywhere. The invented live partner (homelover-flow-v1
-// mockup C) is unchanged.
+// the journey card (Stage 2: eight nodes, the one stage control). The body opens with Fit (the radar over the Map's ring
+// components) beside Intel ("Use n →" fills an empty Employees fact). No SETUP strip, no <select> anywhere. The invented
+// live partner (homelover-flow-v1 mockup C) is unchanged.
 const MEMBERS = [{ user_id: 'u-jack', name: 'Jack Zz', role: 'owner', color: '#3DBA8C' }, { user_id: 'u-cyrus', name: 'Cyrus Test', role: 'member', color: '#D9A441' }];
 const EMP = { type: 'employer', id: 'o1', name: 'Zz Acme Health', stage: 'contacted', owner_user_id: 'u-cyrus', owner: 'Cyrus', owner_team: 'homelover', due: 'week', due_date: '2026-11-07', category: null };
 const TGT = { type: 'target', id: 't1', name: 'Zz Fortem', stage: 'researching', owner_user_id: null, owner: null, owner_team: null, category: null };
@@ -25,7 +26,7 @@ beforeEach(() => {
   goalsApi.channelLinks.mockResolvedValue([]);
   goalsApi.fitOf.mockResolvedValue(FIT);
   goalsApi.flowEvents.mockResolvedValue([{ id: 'f1', kind: 'reply_move', text: 'Reply from Zz Acme Health → Replied', at: '2026-11-01T00:00:00Z', by_user: null, undone_at: null }]);
-  goalsApi.scoreOf.mockResolvedValue({ row: { score: 37, band: 'P2', source_label: 'website', trend: 'up', band_changed: false }, lines: [] });
+  goalsApi.scoreOf.mockResolvedValue({ row: { score: 37, band: 'P2', source_label: 'website', trend: 'up', band_changed: false, computed_at: '2026-11-05T18:00:00Z', components: { visits: { points: 9 }, people: { points: 0 }, fit: { points: 15 }, research: { points: 10 }, engagement: { points: 3 } } }, lines: [], caps: { visits: 25, people: 15, fit: 15, research: 10, engagement: 10 } });
   goalsApi.referredBy.mockResolvedValue({ total: 1, groups: [], network: { header: { clients: 1, lives: 390, in_pipeline: 0, partners: 0 }, came_from: { kind: 'partner_referral', label: 'Partner referral', partner_not_set: true }, ownership: { team: 'HomeLover', owner: null, co_owner_name: 'Brad' }, groups: [{ key: 'clients', label: 'Clients', total: 1, rows: [{ type: 'employer', id: 'o9', name: 'Momentum', client_status: 'verbal_yes', lives: 390 }], more: 0 }, { key: 'employers', label: 'Employers in pipeline', total: 0, rows: [], more: 0 }] } });
   goalsApi.sourcesNetwork.mockResolvedValue({ roots: [], counts: {} });
   goalsApi.clientFiles.mockResolvedValue([]);
@@ -37,16 +38,16 @@ const props = { businessId: 'b1', canEdit: true, members: MEMBERS, meId: 'u-jack
 const LABELS = { Stage: /^Stage$/, 'Next step': /^Next step$/, Owner: /^Owner$/, Intent: /^Intent$/, 'Mark contacted': /^Mark contacted$/, 'Book meeting': /^Book meeting$/, 'Check Apollo': /^Check Apollo$/, Research: /^Research$/, 'Draft email': /^Draft email$/, Promote: /Promote/, 'Add to pipeline': /^Add to pipeline ▾$/, Deprioritize: /Deprioritize/, Note: /^Note$/, 'To-do': /^To-do$/, Contact: /^Contact$/, Employees: /^Employees$/, Type: /^Type$/, Team: /^Team$/, Recompute: /^Recompute$/ };
 const counts = head => Object.fromEntries(Object.entries(LABELS).map(([k, re]) => [k, within(head).queryAllByText(re).length]));
 const headOf = dlg => dlg.querySelector('[data-window-head]');
-const blocks = head => [...head.children].map(el => el.matches('[data-company-panel]') ? 'title' : el.querySelector('[data-facts-row]') ? 'facts' : el.matches('[data-company-progress]') ? 'strip' : el.matches('[data-steps]') ? 'setup' : el.matches('[data-interest-band]') ? 'interest' : el.matches('[data-actions-row]') ? 'actions' : el.tagName.toLowerCase());
+const blocks = head => [...head.children].map(el => el.matches('[data-company-panel]') ? 'title' : el.querySelector('[data-facts-row]') ? 'facts' : el.matches('[data-journey]') ? 'journey' : el.matches('[data-steps]') ? 'setup' : el.matches('[data-interest-band]') ? 'interest' : el.matches('[data-actions-row]') ? 'actions' : el.tagName.toLowerCase());
 
-test('an employer (Contacted, setup done, live interest): head = title · Interest · Actions · facts · strip; every label once; no Fit, Due or stage chip in the title; no empty card; no select; nothing glows', async () => {
+test('an employer (Contacted, setup done, live interest): head = title · Interest · Actions · facts · journey; every label once; no Fit, Due or stage chip in the title; no empty card; no select; nothing glows; the body opens with the solid Fit radar beside Intel', async () => {
   goalsApi.companyDetail.mockResolvedValue(detail({ steps: { next: null, ready: true, last_touch_at: '2026-10-29T18:00:00Z', steps: [] }, interest: INTEREST }));
   render(<CompanyPanel {...props} row={EMP} />);
   const dlg = screen.getByRole('dialog', { name: 'Zz Acme Health' });
   await within(dlg).findByRole('region', { name: 'Interest' });
   await within(dlg).findByText('37 · warm', { exact: false });
   const head = headOf(dlg);
-  expect(blocks(head)).toEqual(['title', 'interest', 'actions', 'facts', 'strip']);
+  expect(blocks(head)).toEqual(['title', 'interest', 'actions', 'facts', 'journey']);
   expect(dlg.querySelector('[data-layout]').getAttribute('data-layout')).toBe('classic');
   // Title row: name · type pill · Top · Intent · site - no Owner / Fit / Due chip, no "Employer · Contacted".
   const title = head.querySelector('[data-company-panel]');
@@ -61,16 +62,26 @@ test('an employer (Contacted, setup done, live interest): head = title · Intere
   expect(within(head).queryByText(/^Fit/)).toBeNull();
   expect(within(head).queryByText(/no score yet|nobody known|nothing yet|^Reached$|^Overview$|^Fit at a glance$|^Next step$/i, { selector: 'section > span' })).toBeNull();
   expect(head.querySelector('[data-section]')).toBeNull();
-  // The stage strip is the one stage control, alone on its line: 28 px pills that scroll sideways, no "Progress" label
-  // column, no button beside the bar (REV2: Log reply / More ▾ gone - REACH › They replied… and ⋯ › Jump to stage… hold them).
-  const strip = head.querySelector('[data-company-progress]');
-  expect(within(strip).queryByText('Progress')).toBeNull();
-  expect(within(strip).queryByText(/click a stage to jump/)).toBeNull();
-  expect(strip.getAttribute('title')).toBe('Click a stage to jump · Undo 10 s');
-  expect(strip.querySelector('[data-last-touch]')).toBeNull();
-  expect([...strip.querySelectorAll('button')].filter(b => !b.closest('[data-progress-bar]'))).toHaveLength(0);
-  expect(strip.querySelector('[data-progress-bar]').getAttribute('data-nowrap')).toBe('true');
-  expect(strip.querySelector('[data-step="contacted"] button').style.height).toBe('28px');
+  // The journey card is the one stage control: eight nodes on one track - Target ✓ Oct 20, Researched ✓ (the research
+  // run), Contacted now, the later nodes numbered buttons; nothing beside the track, no "Progress" word, no stage pills.
+  const journey = head.querySelector('[data-journey]');
+  expect([...journey.querySelectorAll('[data-node]')].map(li => `${li.dataset.node}:${li.dataset.state}`)).toEqual(['target:done', 'researched:done', 'contacted:now', 'responded:later', 'meeting:later', 'proposal_pilot:later', 'verbal:later', 'launched:later']);
+  expect(journey.querySelector('[data-node="target"] small').textContent).toBe('Oct 20');
+  expect(journey.querySelector('[data-node="researched"] small').textContent).toBe('Oct 27');
+  expect(journey.querySelector('[data-node="contacted"] small').textContent).toBe('now');
+  expect(within(journey).queryByText('Progress')).toBeNull();
+  expect(head.querySelector('[data-progress-bar], [data-step]')).toBeNull();
+  expect([...journey.querySelectorAll('button')].filter(b => !b.closest('[data-journey-track]'))).toHaveLength(0);
+  expect(within(journey).getAllByRole('button').map(b => b.getAttribute('aria-label'))).toEqual(['Replied, not yet', 'Meeting, not yet', 'Pilot, not yet', 'Verbal, not yet', 'Client, not yet']);
+  expect(within(journey).getByText('Click a later stage to move there · Undo 10 s')).toBeInTheDocument();
+  // The body opens with Fit (solid: scored 37, the ring numbers) beside Intel, once each; the right column no longer carries Intel.
+  const fitIntel = dlg.querySelector('[data-fit-intel]');
+  expect([...fitIntel.querySelectorAll('[data-section]')].map(s => s.dataset.section)).toEqual(['fit', 'research']);
+  expect(dlg.querySelectorAll('[data-section="research"]')).toHaveLength(1);
+  expect(fitIntel.querySelector('[data-fit-radar]').getAttribute('data-fit-radar')).toBe('scored');
+  expect([...fitIntel.querySelectorAll('[data-axis]')].map(el => el.textContent)).toEqual(['Visits 9 of 25', 'People 0 of 15', 'Fit 15 of 15', 'Research ✓ 10', 'Engagement 3 of 10']);
+  expect(within(fitIntel).getByText('intent components · score 37 · Nov 5')).toBeInTheDocument();
+  expect(within(fitIntel).queryByRole('button', { name: /^Use /})).toBeNull(); // Employees is set (1,250): no Use n
   // SETUP is gone once every step is done; the Interest band has Follow up + Not now only.
   expect(head.querySelector('[data-steps]')).toBeNull();
   expect(head.querySelector('[data-steps-ready]')).toBeNull();
@@ -89,7 +100,7 @@ test('an employer (Contacted, setup done, live interest): head = title · Intere
   expect(screen.getByRole('group', { name: 'Deprioritize' })).toBeInTheDocument();
 });
 
-test('a target (no score, no people, research + size + owner open, no interest): head = title · Actions · facts · strip - no SETUP; every label once; the title reads "no score yet · Recompute"; Owner and Employees glow red with their titles, the Intel header glows; Add to pipeline ▾ is DECIDE\'s primary', async () => {
+test('a target (no score, no people, research + size + owner open, no interest): head = title · Actions · facts · journey - no SETUP; every label once; the title reads "no score yet · Recompute"; Owner and Employees glow red with their titles, the Intel header glows; Add to pipeline ▾ is DECIDE\'s primary; the journey sits on Target and its later nodes open Add to pipeline; Fit is dashed', async () => {
   goalsApi.fitOf.mockResolvedValue(null);
   goalsApi.scoreOf.mockResolvedValue(null); // Fortem: no intent score yet
   goalsApi.companyDetail.mockResolvedValue(detail({ record: { stage: 'researching', next_step: null, last_touch: null, site: null, employees: null, employees_source: null, owner_name: null, kind: 'employer' }, research: { runs: [], today: 0, cap: 5 }, stage_history: [], visits: [],
@@ -99,7 +110,7 @@ test('a target (no score, no people, research + size + owner open, no interest):
   await within(dlg).findByRole('region', { name: 'Actions' });
   await waitFor(() => expect(dlg.querySelector('[data-fact="Owner"][data-need]')).toBeInTheDocument());
   const head = headOf(dlg);
-  expect(blocks(head)).toEqual(['title', 'actions', 'facts', 'strip']);
+  expect(blocks(head)).toEqual(['title', 'actions', 'facts', 'journey']);
   expect(head.querySelector('[data-company-panel] [data-chip]')).toBeNull();
   expect(within(head.querySelector('[data-company-panel]')).queryByText(/Target · Researching/)).toBeNull();
   expect(counts(head)).toEqual({ Stage: 0, 'Next step': 0, Owner: 1, Intent: 1, 'Mark contacted': 1, 'Book meeting': 1, 'Check Apollo': 1, Research: 1, 'Draft email': 1, Promote: 0, 'Add to pipeline': 1, Deprioritize: 1, Note: 1, 'To-do': 1, Contact: 1, Employees: 1, Type: 1, Team: 1, Recompute: 1 });
@@ -123,11 +134,23 @@ test('a target (no score, no people, research + size + owner open, no interest):
   fireEvent.pointerDown(document.body);
   expect(within(within(head).getByRole('group', { name: 'Decide' })).getAllByRole('button').map(b => b.textContent)).toEqual(['Add to pipeline ▾', 'Not a fit', '↓ Deprioritize…']);
   expect(within(within(head).getByRole('group', { name: 'Decide' })).getByRole('button', { name: 'Add to pipeline ▾' })).toHaveClass('ui-btn--primary');
-  // A target's strip has nothing beside the bar (Mark contacted is REACH's); its pills still read.
-  const strip = head.querySelector('[data-company-progress]');
-  expect([...strip.querySelectorAll('button')].filter(b => !b.closest('[data-progress-bar]'))).toHaveLength(0);
-  expect(strip.querySelector('[data-step="target"][data-state="now"]')).toBeInTheDocument();
+  // A target's journey sits on Target (now), Researched later (no run yet); a later stage node opens Add to pipeline
+  // (the promote form under Actions) - no stage write; Mark contacted is REACH's.
+  const journey = head.querySelector('[data-journey]');
+  expect([...journey.querySelectorAll('button')].filter(b => !b.closest('[data-journey-track]'))).toHaveLength(0);
+  expect(journey.querySelector('[data-node="target"][data-state="now"]')).toBeInTheDocument();
+  expect(journey.querySelector('[data-node="researched"]').dataset.state).toBe('later');
+  expect(within(journey).getByRole('button', { name: 'Contacted, not yet' })).toHaveAttribute('title', 'Add to pipeline first');
+  fireEvent.click(within(journey).getByRole('button', { name: 'Contacted, not yet' }));
+  expect(within(head).getByRole('button', { name: 'Add to pipeline ▾' })).toHaveAttribute('aria-expanded', 'true');
+  expect(within(head).getByRole('button', { name: 'Employer' })).toBeInTheDocument();
   expect(within(within(head).getByRole('group', { name: 'Reach' })).getByRole('button', { name: 'Mark contacted' })).toBeInTheDocument();
+  // Fit: dashed, no score yet, "— of cap" on every axis, Recompute score for a Member.
+  const fit = dlg.querySelector('[data-fit-intel] [data-section="fit"]');
+  expect(fit.querySelector('[data-fit-radar]').getAttribute('data-fit-radar')).toBe('none');
+  expect(fit.querySelector('[data-fit-polygon]').getAttribute('stroke-dasharray')).toBe('4 3');
+  expect(within(fit).getByText('intent components · no score yet')).toBeInTheDocument();
+  expect(within(fit).getByRole('button', { name: 'Recompute score' })).toBeInTheDocument();
 });
 
 test('a deprioritized employer: Decide shows Bring back, no Deprioritize…, no Fit chip anywhere', async () => {
@@ -159,20 +182,42 @@ test('mockup C: a live partner card is unchanged - Partner · category, Live sin
   expect(within(actions).getAllByRole('group').filter(g => g.hasAttribute('data-action-group')).map(g => g.getAttribute('aria-label'))).toEqual(['Partner', 'Capture', 'Decide']);
   expect(within(within(actions).getByRole('group', { name: 'Decide' })).getAllByRole('button').map(b => b.textContent)).toEqual(['Owner: Me ▾', 'Pause…']);
   expect(dlg.querySelector('[data-steps]')).toBeNull();
-  expect(dlg.querySelector('[data-company-progress]')).toBeNull();
+  expect(dlg.querySelector('[data-journey]')).toBeNull();
+  expect(dlg.querySelector('[data-fit-intel]')).toBeNull();
+  expect(dlg.querySelectorAll('[data-section="research"]')).toHaveLength(1);
   expect(within(dlg).queryByRole('button', { name: 'Mark contacted' })).toBeNull();
   expect(within(dlg).queryByRole('button', { name: 'Confirm site' })).toBeNull();
   expect(dlg.querySelector('[data-facts-row]')).toBeNull();
 });
 
-test('a Viewer: plain facts (readiness still reads, no buttons), the strip without buttons, no Actions row, no chips, no Recompute', async () => {
-  goalsApi.companyDetail.mockResolvedValue(detail({ interest: INTEREST }));
+test('a Viewer: plain facts (readiness still reads, no buttons), the journey without buttons or hint, no Actions row, no chips, no Recompute, no Recompute score, no Use n', async () => {
+  goalsApi.companyDetail.mockResolvedValue(detail({ interest: INTEREST, record: { employees: null, employees_source: null }, research: { runs: [{ status: 'done', created_at: '2026-10-28T00:00:00Z', result: { summary: 'They do healthcare.', employees_count: 1300 } }], today: 1, cap: 5 } }));
   render(<CompanyPanel {...props} canEdit={false} row={EMP} />);
   const dlg = screen.getByRole('dialog', { name: 'Zz Acme Health' });
   await within(dlg).findByRole('region', { name: 'Interest' });
   const head = headOf(dlg);
-  expect(head.querySelectorAll('[data-fact-button], [data-chip], [data-actions-row], [data-interest-band] button, [data-company-progress] button')).toHaveLength(0);
+  expect(head.querySelectorAll('[data-fact-button], [data-chip], [data-actions-row], [data-interest-band] button, [data-journey] button, [data-journey-hint]')).toHaveLength(0);
+  expect(head.querySelector('[data-journey] [data-node="contacted"][data-state="now"]')).toBeInTheDocument();
   expect(within(dlg).getByText(/view access/)).toBeInTheDocument();
   expect(within(head).getByText('Owner')).toBeInTheDocument();
   expect(within(head).queryByRole('button', { name: 'Recompute' })).toBeNull();
+  expect(within(dlg).queryByRole('button', { name: 'Recompute score' })).toBeNull();
+  expect(dlg.querySelector('[data-use-employees]')).toBeNull();
+});
+
+test('Intel "Use n →" (B2): an employer with no Employees and a research headcount offers "Use 1,300 →" on the Size line; the click saves it through the fields route with Undo', async () => {
+  goalsApi.editCompanyFields.mockResolvedValue({ fields: { employees: 1300 } });
+  goalsApi.companyDetail.mockResolvedValue(detail({ record: { employees: null, employees_source: null }, research: { runs: [{ status: 'done', created_at: '2026-10-28T00:00:00Z', result: { summary: 'They do healthcare.', size: 'approx. 1,300 employees (est.)', employees_count: 1300 } }], today: 1, cap: 5 } }));
+  render(<CompanyPanel {...props} row={EMP} />);
+  const dlg = screen.getByRole('dialog', { name: 'Zz Acme Health' });
+  const intel = await within(dlg).findByRole('region', { name: 'Intel' });
+  const use = within(intel).getByRole('button', { name: 'Use 1,300 →' });
+  expect(use.closest('[data-fit-intel]')).not.toBeNull();
+  expect(within(intel).getByText(/approx\. 1,300 employees/)).toBeInTheDocument();
+  fireEvent.click(use);
+  await waitFor(() => expect(goalsApi.editCompanyFields).toHaveBeenCalledWith('b1', 'employer', 'o1', { employees: 1300 }));
+  const toast = props.onToast.mock.calls.find(c => /size saved/.test(c[0].text))[0];
+  expect(toast.text).toBe('Zz Acme Health: size saved');
+  await toast.undo();
+  expect(goalsApi.editCompanyFields).toHaveBeenLastCalledWith('b1', 'employer', 'o1', { employees: null });
 });

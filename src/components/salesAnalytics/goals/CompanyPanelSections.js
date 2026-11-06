@@ -4,7 +4,7 @@ import { goalsApi } from './goalsApi';
 import { unlinkProspect } from '../huddleApi';
 import { eventText } from './partners/activityTimeline';
 import { numStyle } from './goalsUi';
-import { md, TIMELINE_KIND, linkedinSearchUrl, filterPeople } from './companyPanelFacts';
+import { md, TIMELINE_KIND, linkedinSearchUrl, filterPeople, researchNumbers } from './companyPanelFacts';
 import { copyFollowUp } from './InterestBand';
 import Tag from '../../../ui/Tag';
 import Drawer from '../../../ui/Drawer';
@@ -111,12 +111,16 @@ export function NotesCard({ detail, canEdit, lookup, onForm, flow = [] }) {
 const KV = ({ label, children }) => <><span className="ui-group-label" style={{ paddingTop: 2 }}>{label}</span><div style={{ ...text, minWidth: 0 }}>{children}</div></>;
 const MORE_FIELDS = [['mission', 'Mission'], ['positioning', 'Positioning'], ['housing_perk', 'Housing perk'], ['first_angle', 'First angle'], ['watch_outs', 'Watch-outs'], ['titles', 'Titles to approach']];
 
-export function IntelCard({ businessId, row, detail, canEdit, live = false, need = false, onChanged, onToast }) {
+// company-window-v4 B2: onUseEmployees(n) - while the Employees fact is empty and research found a headcount, the Size
+// line offers "Use n →" (the old SETUP Size & type step): the parent saves it with Undo and the fact's red state clears.
+export function IntelCard({ businessId, row, detail, canEdit, live = false, need = false, onChanged, onToast, onUseEmployees = null }) {
   const [busy, setBusy] = useState('');
   const latest = detail.research?.runs?.[0] || null;
   const running = latest?.status === 'running';
   const result = latest?.status === 'done' ? latest.result : null;
   const site = detail.record.site;
+  const found = researchNumbers(detail).employees;
+  const useN = canEdit && onUseEmployees && detail.record.employees == null && found != null ? found : null;
   const act = async (what, fn) => { setBusy(what); try { await fn(); onChanged(); } catch (e) { onToast({ text: e.message }); } finally { setBusy(''); } };
   const refresh = () => act('research', async () => { await goalsApi.runCompanyResearch(businessId, row.type, row.id); onToast({ text: `Researching ${row.name} - one Claude call, about a minute` }); });
   const confirmSite = () => act('site', async () => { await goalsApi.addPartnerDomain(businessId, row.id, { domain: site.domain }); onToast({ text: `${site.domain} confirmed for ${row.name}` }); });
@@ -127,10 +131,10 @@ export function IntelCard({ businessId, row, detail, canEdit, live = false, need
       <div data-research-card style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {!result && !running && <Empty>Research reads the company's own site and one news source, one Claude call.</Empty>}
         {result?.summary && <p style={{ ...text, margin: 0, lineHeight: 1.5 }}>{result.summary}</p>}
-        {(result || site) && (
+        {(result || site || useN != null) && (
           <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 14px' }}>
             {result?.hq_city && <KV label="HQ">{result.hq_city}</KV>}
-            {result?.size && <KV label="Size">{result.size}</KV>}
+            {(result?.size || useN != null) && <KV label="Size">{result?.size || `${useN.toLocaleString('en-US')} employees (research)`}{useN != null && <button type="button" className="ui-link" data-use-employees onClick={() => onUseEmployees(useN)} style={{ marginLeft: 8, fontSize: 12 }}>Use {useN.toLocaleString('en-US')} →</button>}</KV>}
             {result?.sells_to && <KV label="Sells to">{result.sells_to}</KV>}
             {site && <KV label="Site"><span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><Link href={`https://${site.domain}`} target="_blank" rel="noreferrer">{site.domain} ↗</Link>{site.confirmed ? <Tag color={SA.good}>✓ confirmed</Tag> : canEdit && row.type === 'partner' && !live ? <Mini disabled={busy === 'site'} onClick={confirmSite}>Confirm site</Mini> : null}</span></KV>}
             {result?.why_homelover && <KV label="Why fit">{result.why_homelover}</KV>}

@@ -435,7 +435,7 @@ test('visitor row: Research first asks to add the company as a target, adds it, 
   expect(goalsApi.pipelineBoard.mock.calls.length).toBeGreaterThanOrEqual(2);
 });
 
-test('stage: the strip\'s next pill sends the status signal with expect and moves the row (Undo = partner undo); nothing beside the bar, no Next: in DECIDE; Jump back confirms and sends allow_backward; Esc / backdrop close and flash the row', async () => {
+test('stage: the journey\'s next node sends the status signal with expect and moves the row (Undo = partner undo); nothing beside the track, no Next: in DECIDE; Jump back confirms and sends allow_backward; Esc / backdrop close and flash the row', async () => {
   // The first load is the fixture; every reload after the move returns the moved row, as the server would.
   goalsApi.pipelineBoard.mockResolvedValueOnce([...ROWS, APOLLO]).mockResolvedValue([...ROWS.map(r => (r.id === 'OneDigital' ? { ...r, stage: 'researching', stage_label: 'Researching' } : r)), APOLLO]);
   goalsApi.partnerSignal.mockResolvedValueOnce({ event: { id: 'ev1' } });
@@ -446,11 +446,11 @@ test('stage: the strip\'s next pill sends the status signal with expect and move
   fireEvent.click(await screen.findByRole('button', { name: 'OneDigital' }));
   const panel = within(screen.getByRole('dialog', { name: 'OneDigital' }));
   expect(panel.queryByRole('button', { name: /^Next:|^Start research$|^More ▾$/ })).toBeNull();
-  const strip = await panel.findByRole('region', { name: 'Progress' });
-  expect([...strip.querySelectorAll('button')].filter(b => !b.closest('[data-progress-bar]'))).toHaveLength(0);
+  const strip = await panel.findByRole('group', { name: 'Journey' });
+  expect([...strip.querySelectorAll('button')].filter(b => !b.closest('[data-journey-track]'))).toHaveLength(0);
   fireEvent.click(within(strip).getByRole('button', { name: /^Researching, not yet/ }));
   await waitFor(() => expect(goalsApi.partnerSignal).toHaveBeenCalledWith('b1', 'OneDigital', { type: 'status', to: 'researching', expect: 'not_started' }));
-  await waitFor(() => expect(panel.getByRole('region', { name: 'Progress' }).querySelector('[data-step="researching"][data-state="now"]')).toBeTruthy());
+  await waitFor(() => expect(panel.getByRole('group', { name: 'Journey' }).querySelector('[data-node="researching"][data-state="now"]')).toBeTruthy());
   const tr = screen.getByText('OneDigital', { selector: 'td button' }).closest('tr');
   expect([...tr.querySelectorAll('td')].map(td => td.textContent)).toContain('Researching');
   const status = (await screen.findAllByRole('status')).find(el => el.textContent.includes('OneDigital: moved to Researching'));
@@ -473,17 +473,17 @@ test('stage: the strip\'s next pill sends the status signal with expect and move
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 
-test('employer at Target: the strip has no primary (Mark contacted is REACH\'s); a later pill moves the stage through PATCH; Jump back confirms and sends allow_backward; DECIDE › Deprioritize… opens the reason sheet; no Fit chip', async () => {
+test('employer at Target: the journey has no primary (Mark contacted is REACH\'s); a later node advances with expect + to; Jump back confirms and sends allow_backward; DECIDE › Deprioritize… opens the reason sheet; no Fit chip', async () => {
   goalsApi.pipelineBoard.mockResolvedValueOnce([...ROWS, APOLLO]).mockResolvedValue([...ROWS.map(r => (r.id === 'Solidcore' ? { ...r, stage: 'contacted', stage_label: 'Contacted' } : r)), APOLLO]);
   goalsApi.companyDetail.mockImplementation((b, type, id) => Promise.resolve({ ...DETAIL, record: { type, id, name: id, stage: 'target', next_step: 'Call' } }));
   setup();
   fireEvent.click(await screen.findByRole('button', { name: 'Solidcore' }));
   const panel = within(screen.getByRole('dialog', { name: 'Solidcore' }));
-  const strip = within(await panel.findByRole('region', { name: 'Progress' }));
+  const strip = within(await panel.findByRole('group', { name: 'Journey' }));
   expect(strip.queryByRole('button', { name: /^Next:|Mark contacted/ })).toBeNull();
   expect(within(panel.getByRole('group', { name: 'Reach' })).getByRole('button', { name: 'Mark contacted' })).toBeInTheDocument();
   fireEvent.click(strip.getByRole('button', { name: /^Contacted, not yet/ }));
-  await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', { stage: 'contacted' }));
+  await waitFor(() => expect(goalsApi.advanceStage).toHaveBeenCalledWith('b1', 'employer', 'Solidcore', 'target', 'contacted'));
   openMore(panel, 'Jump to stage…');
   fireEvent.click(within(panel.getByRole('group', { name: 'Jump to stage' })).getByRole('button', { name: '↩ Target' }));
   await waitFor(() => expect(updateOpportunity).toHaveBeenCalledWith('b1', 'Solidcore', { stage: 'target', allow_backward: true }));

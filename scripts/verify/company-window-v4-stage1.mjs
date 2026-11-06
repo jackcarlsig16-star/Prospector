@@ -115,7 +115,7 @@ try {
   };
   const headInfo = page => page.evaluate(() => {
     const dlg = document.querySelector('[data-center-window]'); const head = dlg.querySelector('[data-window-head]');
-    const blocks = [...head.children].map(el => el.matches('[data-company-panel]') ? 'title' : el.querySelector('[data-facts-row]') ? 'facts' : el.matches('[data-company-progress]') ? 'strip' : el.matches('[data-steps]') ? 'setup' : el.matches('[data-interest-band]') ? 'interest' : el.matches('[data-actions-row]') ? 'actions' : el.tagName.toLowerCase());
+    const blocks = [...head.children].map(el => el.matches('[data-company-panel]') ? 'title' : el.querySelector('[data-facts-row]') ? 'facts' : el.matches('[data-company-progress], [data-journey]') ? 'strip' : el.matches('[data-steps]') ? 'setup' : el.matches('[data-interest-band]') ? 'interest' : el.matches('[data-actions-row]') ? 'actions' : el.tagName.toLowerCase());
     const facts = [...head.querySelectorAll('[data-facts-row] [data-fact]')].map(el => ({ label: el.dataset.fact, need: el.dataset.need === 'true', title: el.getAttribute('title'), value: el.querySelector('b')?.textContent, button: el.tagName === 'BUTTON', dot: !!el.querySelector('i') }));
     const decide = [...(dlg.querySelector('[data-action-group="decide"], [role="group"][aria-label="Decide"]')?.querySelectorAll('button') || [])].map(b => ({ text: b.textContent, primary: b.classList.contains('ui-btn--primary') }));
     const intel = dlg.querySelector('[data-section="research"] [data-card-head]');
