@@ -942,6 +942,8 @@ app.get('/api/sales/:businessId/goals/dashboard', salesModuleRoute('./api/sales/
 app.get('/api/sales/:businessId/goals/pulse', salesModuleRoute('./api/sales/pulseRoutes.js', 'pulseRoute', 'goals/pulse'));
 app.get('/api/sales/:businessId/goals/explorer', salesModuleRoute('./api/sales/explorerRoutes.js', 'explorerRoute', 'goals/explorer'));
 app.get('/api/sales/:businessId/goals/explorer/views', salesModuleRoute('./api/sales/explorerRoutes.js', 'listExplorerViewsRoute', 'goals/explorer/views'));
+// dashboard-v3 Stage 4 - the Sequences table's per-step lifetime rows (stored daily counts, A6).
+app.get('/api/sales/:businessId/goals/sequence-steps', salesModuleRoute('./api/sales/sequenceSteps.js', 'sequenceStepsRoute', 'goals/sequence-steps'));
 app.post('/api/sales/:businessId/goals/explorer/views', salesModuleRoute('./api/sales/explorerRoutes.js', 'saveExplorerViewRoute', 'goals/explorer/views POST'));
 app.delete('/api/sales/:businessId/goals/explorer/views/:id', salesModuleRoute('./api/sales/explorerRoutes.js', 'deleteExplorerViewRoute', 'goals/explorer/views/:id DELETE'));
 // call-notes-targets-v1 REV5 - Nudge a waiting-on item into our own to-do.

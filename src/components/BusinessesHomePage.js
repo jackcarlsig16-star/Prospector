@@ -8,7 +8,7 @@ import Card from '../ui/Card';
 import Button from '../ui/Button';
 import StatusPill from '../ui/StatusPill';
 import { goalsApi } from './salesAnalytics/goals/goalsApi';
-import { weekTouches } from './salesAnalytics/goals/OverviewGoals';
+import { weekTouches } from './salesAnalytics/goals/weekTouches';
 import { isOpenTask } from './salesAnalytics/tasks/LinkedTasks';
 import { laWeekStart } from './salesAnalytics/periods';
 import { addDays } from './salesAnalytics/goals/goalsUi';

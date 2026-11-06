@@ -143,10 +143,12 @@ export function peoplePullLine(settings, peopleRuns = [], parked = 0) {
 
 // FIX headcount-auto-v1 REV2 H5 / H6 - the Headcounts line: the last fill's result line, month-to-date Apollo spend from
 // the shared ledger, failed only when Apollo started charging (paused) or the last run errored.
-export function headcountLine(settings, monthSpent = 0, cap = 500) {
+// dashboard-v3 Stage 4: missing_headcount = sequenced companies with no headcount (every week) - the old Sequenced view's
+// "Missing headcount (n)" chip now lives here as a line.
+export function headcountLine(settings, monthSpent = 0, cap = 500, missingHeadcount = null) {
   const h = settings?.visitor_filters?.headcount || {};
   const status = h.charged ? 'failed' : h.last_error_at && (!h.last_at || h.last_error_at > h.last_at) ? 'failed' : 'ok';
-  return { id: 'headcount', label: 'Headcounts (Apollo)', status, last_at: h.last_at || null, error: h.charged ? h.charged.message : status === 'failed' ? h.last_error : null, line: h.last_line || null, counts: h.last_counts || null, filled: h.last_filled || [], spend: { month: monthSpent, cap, daily_cap: settings?.headcount_daily_credits ?? 25, today: h.today?.day === laDateString(new Date()) ? h.today : null } };
+  return { id: 'headcount', label: 'Headcounts (Apollo)', status, last_at: h.last_at || null, error: h.charged ? h.charged.message : status === 'failed' ? h.last_error : null, line: h.last_line || null, missing_headcount: missingHeadcount, counts: h.last_counts || null, filled: h.last_filled || [], spend: { month: monthSpent, cap, daily_cap: settings?.headcount_daily_credits ?? 25, today: h.today?.day === laDateString(new Date()) ? h.today : null } };
 }
 
 const DRY_RUNS = { apollo: apolloDryRun, outlook: outlookDryRun };
@@ -166,7 +168,7 @@ export async function attention(supabase, { businessId, userId, fresh = false, n
   const at = new Date(now);
   const today = laDateString(at);
   const since = new Date(now - 7 * DAY_MS).toISOString();
-  const [syncRuns, grant, msRuns, allVisitRuns, tidyRuns, researchRuns, overdue, waiting, held, campaign, settings, parked, monthSpent, emailSettings, emailSlots] = await Promise.all([
+  const [syncRuns, grant, msRuns, allVisitRuns, tidyRuns, researchRuns, overdue, waiting, held, campaign, settings, parked, monthSpent, missingHeadcount, emailSettings, emailSlots] = await Promise.all([
     supabase.from('sales_sync_runs').select('status, started_at, finished_at, error_text, counts').eq('business_id', businessId).neq('trigger', 'test').order('started_at', { ascending: false }).limit(20).then(must),
     supabase.from('microsoft_grants').select('user_id, error').eq('user_id', userId).maybeSingle().then(must),
     supabase.from('microsoft_sync_runs').select('folder, started_at, finished_at, error').eq('user_id', userId).eq('dry_run', false).order('started_at', { ascending: false }).limit(6).then(must),
@@ -180,6 +182,7 @@ export async function attention(supabase, { businessId, userId, fresh = false, n
     supabase.from('sales_settings').select('visitor_filters, headcount_daily_credits').eq('business_id', businessId).maybeSingle().then(must),
     supabase.from('sales_people').select('id', { count: 'exact', head: true }).eq('business_id', businessId).eq('company_type', 'parked').is('archived_at', null).then(r => (r.error ? 0 : r.count || 0)),
     monthSpend(supabase, today.slice(0, 7)).catch(() => 0),
+    selectAllPages(() => supabase.from('sales_sequenced_accounts').select('account_id').eq('business_id', businessId).is('employees', null).order('account_id')).then(rows => new Set(rows.map(r => r.account_id)).size).catch(() => null),
     supabase.from('sales_team_email_settings').select('visitor_on').eq('business_id', businessId).maybeSingle().then(must),
     supabase.from('sales_job_slots').select('slot, status, detail, claimed_at, finished_at').eq('job', VISITOR_EMAIL_JOB).eq('scope', businessId).order('slot', { ascending: false }).limit(10).then(must),
   ]);
@@ -191,7 +194,7 @@ export async function attention(supabase, { businessId, userId, fresh = false, n
     apolloLine(syncRuns, now),
     outlookLine(grant, msRuns, now),
     { ...dailyLine('visitors', visitRuns, { now, dateOf: r => r.la_date, startedOf: r => r.updated_at || r.created_at, deadMs: VISITS_DEAD_MS, errorOf: r => r.error }), window: visitWindow(visitRuns, pulled, now), people_pull: peoplePullLine(settings, peopleRuns, parked) },
-    headcountLine(settings, monthSpent, MONTHLY_CREDIT_CAP),
+    headcountLine(settings, monthSpent, MONTHLY_CREDIT_CAP, missingHeadcount),
     dailyLine('tidy', tidyRuns, { now, dateOf: r => laDateString(new Date(r.started_at)), startedOf: r => r.started_at, deadMs: TIDY_STALE_MS, errorOf: r => r.counts?.error }),
     researchLine(researchRuns, now),
     visitorEmailLine(emailSettings, emailSlots, now),

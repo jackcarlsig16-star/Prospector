@@ -81,6 +81,7 @@ function SourceLine({ s, canEdit, isAdmin, busy, onRun }) {
         <span data-headcount-line style={{ fontSize: 12, color: SA.soft, ...numStyle, display: 'flex', flexDirection: 'column', gap: 2 }}>
           <span>{s.line || 'No fill yet - the free paths run on first sight and on page load; Fill headcounts runs them all'}</span>
           {s.spend && <span>Apollo this month: {s.spend.month} of {s.spend.cap} credits · today {s.spend.today?.lookups ?? 0} of {s.spend.daily_cap} lookups</span>}
+          {s.missing_headcount > 0 && <span data-missing-headcount>{s.missing_headcount} sequenced compan{s.missing_headcount === 1 ? 'y has' : 'ies have'} no headcount · the fill paths above add them; the rest are typed in on the company</span>}
         </span>
       )}
       {s.id === 'visitors' && s.people_pull && (

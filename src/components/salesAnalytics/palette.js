@@ -1,6 +1,7 @@
 import { SA } from './theme';
 import { KIT_PRIORITY } from '../../ui/tokens';
 import { COHORT_COLORS } from '../../constants/cohortColors';
+import { BAND } from '../../constants/explorerLayers';
 // dashboard-v2 Stage 3 - single source of truth for every color this
 // feature uses. The same cohort is the same color in every widget, chart,
 // legend, and the PDF - nothing else computes its own color. Color is
@@ -50,9 +51,10 @@ export function cohortColor(cohort) {
 
 // PROPOSED (SPEC) - revisable starting thresholds, flag back rather than
 // silently tuning.
+// dashboard-v3 Stage 4: the bounce lines are the Explorer's band (E): good below 2 %, concerning from 5 % - one source.
 export const HEALTH_THRESHOLDS = {
-  bounceAmber: 0.03,
-  bounceRed: 0.08,
+  bounceAmber: BAND.good,
+  bounceRed: BAND.concerning,
   openAmber: 0.05,
 };
 

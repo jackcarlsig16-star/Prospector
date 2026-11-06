@@ -111,7 +111,7 @@ export const goalsApi = {
   contactDraft: (id, contactId) => call(id, `/campaign-contacts/${contactId}/draft`),
   // dashboard-v3 Stage 2 - Home's Pulse (one read per period / person); Stage 3 - the Explorer's one read (layers,
   // by, split; from / to default to 8 weeks + this week) and its saved views (kind 'explorer'; save / delete = Members).
-  pulse: (id, { period, owner }) => call(id, `/pulse?${q({ period, owner })}`),
+  pulse: (id, { period, owner, scope }) => call(id, `/pulse?${q({ period, owner, scope })}`),
   explorer: (id, { layers, by, split, from, to } = {}) => call(id, `/explorer?${q({ layers, by, split, from, to })}`),
   explorerViews: id => call(id, '/explorer/views').then(d => d.views),
   saveExplorerView: (id, body) => call(id, '/explorer/views', { method: 'POST', body }),

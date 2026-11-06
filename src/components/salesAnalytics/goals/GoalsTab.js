@@ -7,12 +7,10 @@ import { roleAtLeast } from '../../../constants/roles';
 import { fetchMe } from '../../../utils/authSession';
 import useMediaQuery from '../../../utils/useMediaQuery';
 import Segmented from '../../../ui/Segmented';
-import Ring, { RingLegend } from '../charts/Ring';
 import { goalsApi, TODOS_CHANGED } from './goalsApi';
 import ScorecardView from './ScorecardView';
 import { todoStatus } from './todoStatus';
 import PartnersView from './PartnersView';
-import CompaniesView from './CompaniesView';
 import PipelineView from './PipelineView';
 import PrioritiesView from './priorities/PrioritiesView';
 import { writePeopleCompany } from '../salesNav';
@@ -45,10 +43,6 @@ import {
 // localStorage key (per viewer convenience, never shared state):
 //   prospector_goals_owner - last person filter, as a first-name slug
 const OWNER_KEY = 'prospector_goals_owner';
-// Earliest week the missing-headcount list reads from (a Monday, before any
-// synced data) - the list covers every week.
-const ALL_WEEKS_FROM = '2020-01-06';
-
 const readStored = key => { try { return localStorage.getItem(key); } catch { return null; } };
 const writeStored = (key, value) => { try { localStorage.setItem(key, value); } catch { /* private mode */ } };
 const slugOf = name => name.split(' ')[0].toLowerCase();
@@ -84,14 +78,9 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const [me, setMe] = useState(null);
   const [todos, setTodos] = useState([]);
   const [partners, setPartners] = useState([]);
-  const [companies, setCompanies] = useState([]);
-  const [cadences, setCadences] = useState([]);
   const [scorecard, setScorecard] = useState(null);
   const [commitments, setCommitments] = useState([]);
   const [exportOpen, setExportOpen] = useState(false);
-  const [companyOwnerFocus, setCompanyOwnerFocus] = useState(null);
-  const [allCompanies, setAllCompanies] = useState(null);
-  const [missingOpen, setMissingOpen] = useState(false);
   const [partnerFocus, setPartnerFocus] = useState(null); // { stage?, tiers?, owner?, ids?, open? } - a link opening Partners filtered
   const [planOpen, setPlanOpen] = useState(false);
   const [plans, setPlans] = useState(null);
@@ -105,7 +94,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const lookup = useMemo(() => memberLookup(members), [members]);
   const ownerMember = members.find(m => slugOf(m.name) === ownerSlug);
   const owner = ownerMember ? ownerMember.user_id : 'team';
-  const whoLabel = ownerMember ? lookup(owner).first : 'Team';
   const thisWeek = laWeekStart();
   const myRole = me?.memberships?.find(m => m.business_id === businessId)?.role;
   const canEdit = !!me && (me.profile?.is_platform_owner || roleAtLeast(myRole, 'member'));
@@ -124,8 +112,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
     .then(g => { setTodos(g); setError('todos', null); }).catch(e => setError('todos', e)), [businessId, weekStart, setError]);
   const loadScorecard = useCallback(() => goalsApi.scorecard(businessId, monthOf(weekStart), owner === 'team' ? null : owner)
     .then(d => { setScorecard(d); setError('scorecard', null); }).catch(e => { setScorecard(null); setError('scorecard', e); }), [businessId, weekStart, owner, setError]);
-  const loadCompanies = useCallback(() => goalsApi.companies(businessId, weekStart, weekStart)
-    .then(d => { setCompanies(d.companies); setError('companies', null); }).catch(e => setError('companies', e)), [businessId, weekStart, setError]);
 
   const loadCommitments = useCallback(() => goalsApi.weekGoals(businessId, weekStart, weekStart, 'commitment')
     .then(g => { setCommitments(g); setError('commitments', null); }).catch(e => setError('commitments', e)), [businessId, weekStart, setError]);
@@ -143,14 +129,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
     const t = setTimeout(() => setToast(''), 4000);
     return () => clearTimeout(t);
   }, [toast]);
-  useEffect(() => { loadCompanies(); }, [loadCompanies]);
-  useEffect(() => {
-    goalsApi.companies(businessId, ALL_WEEKS_FROM, laWeekStart())
-      .then(d => { setAllCompanies(d.companies); setError('allCompanies', null); }).catch(e => setError('allCompanies', e));
-  }, [businessId, setError]);
-  useEffect(() => {
-    goalsApi.cadences(businessId, weekStart, addDays(weekStart, 14)).then(setCadences).catch(e => setError('cadences', e));
-  }, [businessId, weekStart, setError]);
 
   // The person filter is remembered per viewer and mirrored in the URL
   // (?owner=cyrus); the tab and sub-view are SalesAnalyticsTab's (?tab=, ?view=).
@@ -179,37 +157,10 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
   const liveWeek = weekStart === thisWeek;
   const tasksFor = (type, id) => linkedTo(todos, type, id);
   const myPartners = partners.filter(p => ownedBy(owner, p.owner_user_id));
-  const myCompanies = companies.filter(c => ownedBy(owner, c.sequenced_by));
-  const myAllCompanies = allCompanies && allCompanies.filter(c => ownedBy(owner, c.sequenced_by));
-  const saveEmployees = async (accountId, employees) => {
-    const c = await goalsApi.updateCompany(businessId, accountId, { employees });
-    const patch = list => list && list.map(x => (x.account_id === c.account_id ? { ...x, employees: c.employees } : x));
-    setCompanies(patch);
-    setAllCompanies(patch);
-    loadScorecard();
-  };
-  const myCadences = cadences.filter(c => ownedBy(owner, c.owner_user_id));
   const myCommitments = commitments.filter(c => ownedBy(owner, c.owner_user_id));
 
   const today = laDateString();
   const meId = me?.profile?.id;
-  // Sequenced: "Companies sequenced by owner" ring (Design C - moved from the rail).
-  const ownerParts = [...members.map(m => ({ id: m.user_id, label: lookup(m.user_id).first, count: companies.filter(c => c.sequenced_by === m.user_id).length, color: lookup(m.user_id).color }))];
-  const unowned = companies.filter(c => !members.some(m => m.user_id === c.sequenced_by)).length;
-  if (unowned) ownerParts.push({ id: 'unassigned', label: 'Unassigned', count: unowned, color: lookup(null).color });
-  // The ring counts the whole team, so a slice picks that owner out on Team
-  // (a person filter would hide the other slices).
-  const focusCompanies = id => { setCompanyOwnerFocus(id); if (id) setOwnerSlug('team'); };
-  const peopleSummary = (
-    <section aria-label="Companies sequenced by owner" className="no-print" style={{ display: 'flex', alignItems: 'center', gap: 16, padding: 20, background: SA.surface, border: `1px solid ${SA.border}`, borderRadius: SA_SHAPE.radiusCard }}>
-      <Ring parts={ownerParts} center={String(companies.length)} size={96} stroke={16} track={!companies.length} label="Companies sequenced by owner" onSelect={focusCompanies} selected={companyOwnerFocus} />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <span style={{ ...subStyle, fontSize: 12 }}>Companies sequenced, {weekLabel(weekStart).split(' · ')[0].toLowerCase()}</span>
-        <RingLegend parts={ownerParts} onSelect={focusCompanies} selected={companyOwnerFocus} />
-      </div>
-    </section>
-  );
-
   // Every Goals link goes through here (goals-surface-v1 Stage 4). Targets:
   // 'overview[:<widget>]', 'view:<view>', 'section:<key>', 'missing',
   // 'week:prev', 'score:<metric>', 'huddle[:feed|open|click|reply|flags]',
@@ -231,7 +182,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
     if (target === 'week:prev') setWeekStart(w => addDays(w, -7));
       if (kind === 'section') setTimeout(() => flashTo(`goals-sec-${arg}`), 50);
     if (kind === 'score') setTimeout(() => flashTo(`score-row-${arg}`), 120);
-    if (kind === 'missing') { setMissingOpen(true); setTimeout(() => flashTo('goals-missing'), 80); }
     onNav(home.tab, home.view);
   };
   useEffect(() => {
@@ -255,9 +205,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
       { key: 'next_step', label: 'Next step' }, { key: 'first_email_at', label: '1st email' }, { key: 'last_touch_at', label: 'Last touch' }, { label: 'Hot', value: p => (p.hot ? 'yes' : '') },
       { key: 'champion', label: 'Champion' }, { label: 'Owner', value: p => (p.owner_user_id ? lookup(p.owner_user_id).name : '') }, { key: 'angle', label: 'Angle' },
       { key: 'motto', label: 'Their words' }, { key: 'watch_outs', label: 'Watch out' }, { key: 'do_not_say', label: 'Do not say' }, { key: 'sources', label: 'Sources' }, { key: 'first_email_note', label: 'First email note' }]) },
-    { id: 'companies', label: 'Companies CSV', run: () => exportWidgetCsv('goals_companies', myCompanies, [
-      { key: 'name', label: 'Company' }, { key: 'employees', label: 'Employees' }, { key: 'cohort', label: 'Cohort' },
-      { label: 'Sequenced by', value: c => lookup(c.sequenced_by).name }, { key: 'mailbox_email', label: 'Mailbox' }, { key: 'first_sequenced_at', label: 'First email' }]) },
   ];
 
   // Design C - what the frame row carries per screen (sales-ia-v2 N2: one
@@ -277,7 +224,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
         </Chip>
       )}
       {overview && <Segmented label="Period" items={PERIODS.map(([id, label]) => ({ id, label }))} value={period} onChange={setPeriod} />}
-      {showPeople && <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>{!overview && <span className="ui-group-label" aria-hidden="true">Who</span>}<Segmented label="Filter by person" items={people} value={ownerSlug} onChange={slug => { setOwnerSlug(slug); setCompanyOwnerFocus(null); }} /></div>}
+      {showPeople && <div style={{ flex: 'none', display: 'flex', alignItems: 'center', gap: 8 }}>{!overview && <span className="ui-group-label" aria-hidden="true">Who</span>}<Segmented label="Filter by person" items={people} value={ownerSlug} onChange={setOwnerSlug} /></div>}
       {showWeek && <>
         <Btn aria-label="Previous week" onClick={() => setWeekStart(w => addDays(w, -7))}>
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg>
@@ -293,7 +240,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
       </>}
       {section === 'actions' && me && <AttentionDrawer businessId={businessId} canEdit={canEdit} isAdmin={isAdmin} compact={compact} pageLoadFailures={pageLoadFailures} onNav={onNav} />}
       {section === 'actions' && canEdit && planOwner && <Btn primary onClick={() => setPlanOpen(true)}>Plan this week</Btn>}
-      {section === 'dashboard' && view !== 'scorecard' && <Btn primary id="sales-export-btn" aria-haspopup="menu" aria-expanded={exportOpen} onClick={() => setExportOpen(o => !o)}>Export</Btn>}
+      {section === 'dashboard' && view === 'overview' && <Btn primary id="sales-export-btn" aria-haspopup="menu" aria-expanded={exportOpen} onClick={() => setExportOpen(o => !o)}>Export</Btn>}
     </>
   );
   // The tools row scrolls sideways when narrow, so the Export menu is drawn
@@ -371,16 +318,6 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
             onCreate={async body => { const g = await goalsApi.createPartner(businessId, { ...body, owner_user_id: owner === 'team' ? null : owner }); setPartners(ps => [...ps, g]); }} />
         )}
 
-        {section === 'dashboard' && view === 'sequenced' && <>
-          {peopleSummary}
-          <CompaniesView weekStart={weekStart} companies={myCompanies} cadences={myCadences} lookup={lookup} members={members} owner={owner} whoLabel={whoLabel}
-            canEdit={canEdit} error={errors.companies || errors.cadences}
-            allCompanies={myAllCompanies} allError={errors.allCompanies} missingOpen={missingOpen} onMissingOpen={setMissingOpen}
-            onSaveEmployees={saveEmployees}
-            ownerFocus={companyOwnerFocus} onOwnerFocus={setCompanyOwnerFocus} tasksFor={liveWeek ? tasksFor : null}
-            onCreateCadence={async body => { const c = await goalsApi.createCadence(businessId, body); setCadences(cs => [...cs, c]); }}
-            onDeleteCadence={async cadenceId => { await goalsApi.deleteCadence(businessId, cadenceId); setCadences(cs => cs.filter(c => c.id !== cadenceId)); }} />
-        </>}
         {section === 'pipeline' && view === 'clients' && <ClientsView businessId={businessId} />}
         {section === 'settings' && view === 'team-emails' && me && (
           <TeamEmailsSettings businessId={businessId} meId={meId} isOwner={!!(me.profile?.is_platform_owner || myRole === 'owner')} />
@@ -393,7 +330,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenOverv
         )}
         {section === 'pipeline' && view === 'companies' && (
           <PipelineView businessId={businessId} canEdit={canEdit} meId={meId} focusTarget={pipelineTarget}
-            onOpenPartner={(id, name) => go({ partners: { ids: [id], open: id, label: name } })} onOpenCompanies={w => { setOwnerSlug('team'); go({ companies: w }); }}
+            onOpenPartner={(id, name) => go({ partners: { ids: [id], open: id, label: name } })} onOpenCompanies={w => go({ companies: w })}
             onOpenPeople={company => { writePeopleCompany(company); onNav('pipeline', 'people'); }} />
         )}
       </main>

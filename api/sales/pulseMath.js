@@ -64,8 +64,15 @@ function windowValues(w, { counts, opens, deliveredAt, events, visits, people, n
   const share = humanShare(opens.filter(o => inMs(w, o.occurred_at)), deliveredAt);
   const [weekStartMs, weekEndMs] = msRange(w);
   const pulled = visits.filter(v => inDays(w, v.pulled_on));
+  const winOpens = opens.filter(o => inMs(w, o.occurred_at));
+  const hard_bounced = sum(rows, r => r.hard_bounced), spam_blocked = sum(rows, r => r.spam_blocked);
   return {
-    sent, delivered, opened, replied,
+    sent, delivered, opened, replied, hard_bounced, spam_blocked,
+    hard_bounce_rate: rate(hard_bounced, sent),
+    spam_rate: rate(spam_blocked, sent),
+    opens_tracked: winOpens.length,
+    opens_human: share == null ? 0 : Math.round(share * winOpens.length),
+    rows,
     delivered_rate: rate(delivered, sent),
     apollo_open_rate: rate(opened, delivered),
     human_share: share,
@@ -78,9 +85,9 @@ function windowValues(w, { counts, opens, deliveredAt, events, visits, people, n
   };
 }
 
-const metric = (key, kind, vals, extra = {}) => {
+const metric = (key, kind, vals, extra = {}, prevVals = null) => {
   const series = vals.map(v => v[key]);
-  const value = series[series.length - 1], prev = series[series.length - 2];
+  const value = series[series.length - 1], prev = prevVals ? prevVals[key] : series[series.length - 2];
   const delta = value == null || prev == null ? null : value - prev;
   return { value: value ?? null, prev: prev ?? null, delta, delta_pct: kind === 'count' && delta != null && prev > 0 ? delta / prev : null, series, kind, better: 'up', ...extra };
 };
@@ -103,5 +110,53 @@ export function buildPulse({ period, today, now = Date.now(), owner = null, coun
       visitors: metric('visitors', 'count', vals, { pulled_days: cur.pulled_days, source: 'companies seen · pulls look back 7 d', scope: 'team' }),
       first_touched: metric('first_touched', 'count', vals, { goal: goal?.goal ?? null, unit: goal?.unit || 'people', carried: !!goal?.carried, weeks_in: weeksIn(today), source: `${goal?.unit || 'people'} first-touched · month goal` }),
     },
+  };
+}
+
+// dashboard-v3 Stage 4 (M) - the Email page's Pulse over the same windows: Sent · Delivered · Hard bounce (down = good)
+// · Spam blocks (down = good) · Human opens · Replies · Meetings. "This week" compares to the same weekdays of last week
+// (the title reads "Nov 2 – Nov 5 vs Oct 26 – Oct 29"); every other period to the window before it. Mailbox tiles ride
+// along: per known mailbox in the window - sent, delivered %, spam %, sends per weekday against its cap (the Apollo
+// daily threshold, 50 when unset), a status (reconnect > at capacity ≥ 95 % of cap > idle = 0 sent > healthy) - named
+// by the owner's first name, never the address (mailboxes: [{ email, label, cap, problem }]).
+export const CAP_WARN = 0.95;
+export const DEFAULT_CAP = 50;
+export function weekdaysIn(from, to) { let n = 0; for (let d = from; d <= to; d = addDays(d, 1)) { const dow = new Date(`${d}T12:00:00Z`).getUTCDay(); if (dow >= 1 && dow <= 5) n++; } return n; }
+export function mailboxTiles(rows, mailboxes, from, to) {
+  const weekdays = Math.max(1, weekdaysIn(from, to));
+  return mailboxes.map(m => {
+    const mine = rows.filter(r => r.mailbox === m.email);
+    const sent = sum(mine, r => r.delivered) + sum(mine, r => r.hard_bounced) + sum(mine, r => r.spam_blocked);
+    const delivered = sum(mine, r => r.delivered), spam = sum(mine, r => r.spam_blocked), hard = sum(mine, r => r.hard_bounced);
+    const cap = m.cap || DEFAULT_CAP;
+    const per_weekday = sent / weekdays;
+    const status = m.problem ? 'reconnect' : per_weekday >= cap * CAP_WARN ? 'at_capacity' : sent === 0 ? 'idle' : 'healthy';
+    return { key: m.key, label: m.label, sent, delivered, delivered_rate: rate(delivered, sent), spam_rate: rate(spam, sent), hard_bounce_rate: rate(hard, sent), spam_blocked: spam, per_weekday, cap, weekdays, status, why: m.problem || null };
+  }).sort((a, b) => a.label.localeCompare(b.label));
+}
+
+export function buildEmailPulse({ period, today, now = Date.now(), counts = [], opens = [], deliveredAt = new Map(), events = [], mailboxes = [], synced_at = null, apollo_calls = null }) {
+  const ws = windows(period, today);
+  const ctx = { counts, opens, deliveredAt, events, visits: [], people: [], now };
+  const vals = ws.map(w => windowValues(w, ctx));
+  const last = ws[ws.length - 1];
+  const prevWin = period === 'this_week' ? { from: addDays(last.from, -7), to: addDays(last.to, -7) } : ws[ws.length - 2];
+  const prevVals = windowValues(prevWin, ctx);
+  const cur = vals[vals.length - 1];
+  const tiles = mailboxTiles(cur.rows, mailboxes, last.from, last.to);
+  const spamTop = [...tiles].sort((a, b) => b.spam_blocked - a.spam_blocked)[0];
+  const m = (key, kind, extra) => metric(key, kind, vals, extra, prevVals);
+  return {
+    scope: 'email', period, label: PERIOD_LABEL[period], today, from: last.from, to: last.to, prev: prevWin, windows: ws, synced_at, apollo_calls,
+    metrics: {
+      sent: m('sent', 'count', { delivered: cur.delivered, mailboxes: tiles.filter(t => t.sent > 0).length, source: 'Apollo · by send date' }),
+      delivered_rate: m('delivered_rate', 'rate', { delivered: cur.delivered, sent: cur.sent, source: 'of sent · by send date' }),
+      hard_bounce_rate: m('hard_bounce_rate', 'rate', { better: 'down', hard_bounced: cur.hard_bounced, sent: cur.sent, source: 'of sent · by send date' }),
+      spam_blocks: m('spam_blocked', 'count', { better: 'down', rate: cur.spam_rate, sent: cur.sent, top_mailbox: spamTop && spamTop.spam_blocked > 0 ? spamTop.label : null, source: 'of sent · by send date' }),
+      human_open_rate: m('human_open_rate', 'rate', { apollo_open_rate: cur.apollo_open_rate, human_share: cur.human_share, opens_tracked: cur.opens_tracked, opens_human: cur.opens_human, source: 'tracked, bots hidden' }),
+      reply_rate: m('reply_rate', 'rate', { replied: cur.replied, delivered: cur.delivered, source: 'replies ÷ delivered' }),
+      meetings: m('meetings', 'count', { ...upcomingExternal(events, now), source: 'Outlook · external domain' }),
+    },
+    mailboxes: tiles,
   };
 }

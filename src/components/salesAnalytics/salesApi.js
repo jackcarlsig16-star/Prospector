@@ -75,12 +75,6 @@ export async function pageloadSync(businessId) {
 
 // sales-email-trend-v1 REV2 - stored daily counts and chart events. Both
 // read the DB only; zero Apollo calls.
-export async function fetchEmailCounts(businessId, from) {
-  const res = await fetch(`/api/sales/${businessId}/email-counts${from ? `?from=${from}` : ''}`);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Failed to load email counts (${res.status})`);
-  return data;
-}
 
 export async function fetchSalesEvents(businessId) {
   const res = await fetch(`/api/sales/${businessId}/events`);
@@ -116,18 +110,14 @@ export async function dismissInsight(businessId, payload) {
 
 // overview-home-v1 - the week strip's tracked half (human-open / real-reply
 // estimates, partner meetings), per LA day from `from`. 0 Apollo calls.
-export async function fetchWeekStrip(businessId, from) {
-  const res = await fetch(`/api/sales/${businessId}/week-strip?from=${from}`);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Failed to load week strip (${res.status})`);
-  return data;
-}
 
 // overview-home-v1 Stage 2 - where the hard bounces are, for one sequence
 // or one week (R1's "View bounces").
-export async function fetchBounces(businessId, params) {
-  const res = await fetch(`/api/sales/${businessId}/bounces?${new URLSearchParams(params)}`);
+
+// dashboard-v3 Stage 4 - the Sequences table's per-step lifetime rows + own / sender labels (never an address).
+export async function fetchSequenceSteps(businessId) {
+  const res = await fetch(`/api/sales/${businessId}/goals/sequence-steps`);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `Failed to load bounces (${res.status})`);
+  if (!res.ok) throw new Error(data.error || `Failed to load sequence steps (${res.status})`);
   return data;
 }

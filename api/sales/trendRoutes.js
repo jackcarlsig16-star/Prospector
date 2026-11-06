@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { computeInsights, loadInsightInput } from './insightRules.js';
+import { mailboxLabels } from './explorerRoutes.js';
 
 // sales-email-trend-v1 REV2 - server-only access, same posture as every
 // other sales_* table (RLS enabled, zero policies). Zero Apollo calls:
@@ -76,6 +77,24 @@ export async function createEventRoute(req, res) {
 
 const DISMISS_DAYS = 7;
 
+// dashboard-v3 Stage 4: the rules name mailboxes by address (R2 / R5 / R6); the reply carries the owner's first name
+// instead (mailboxLabels), in every text field and affected label. scope_key keeps the address: it is the dismissal's
+// key and is never shown.
+async function mailboxNames(supabase, businessId, emails) {
+  const [{ data: owners }, { data: members }] = await Promise.all([
+    supabase.from('sales_mailbox_owners').select('mailbox_email, user_id').eq('business_id', businessId),
+    supabase.from('business_members').select('user_id, name, profile:profiles!business_members_user_id_fkey(display_name)').eq('business_id', businessId).not('user_id', 'is', null).order('created_at'),
+  ]);
+  const firsts = (members || []).map(m => ({ user_id: m.user_id, first: (m.profile?.display_name || m.name || '').trim().split(/\s+/)[0] || 'Member' }));
+  const all = [...new Set([...emails, ...(owners || []).map(o => o.mailbox_email)])].filter(Boolean);
+  return new Map(mailboxLabels(all, new Map((owners || []).map(o => [o.mailbox_email, o.user_id])), firsts).map(m => [m.email, m.label]));
+}
+export function nameMailboxes(insights, labels) {
+  if (!labels.size) return insights;
+  const swap = text => (typeof text === 'string' ? [...labels].reduce((t, [email, label]) => t.split(email).join(label), text) : text);
+  return insights.map(i => ({ ...i, title: swap(i.title), evidence: swap(i.evidence), cause: swap(i.cause), action: swap(i.action), affected: (i.affected || []).map(a => ({ ...a, label: swap(a.label) })) }));
+}
+
 // GET /insights - rules run fresh on every request from stored data only.
 // Active dismissals (insight id + scope) are filtered out and counted.
 export async function insightsRoute(req, res) {
@@ -88,9 +107,10 @@ export async function insightsRoute(req, res) {
       .select('insight_id,scope_key,dismissed_until,dismissed_by').eq('business_id', businessId).gt('dismissed_until', new Date().toISOString());
     if (error) throw new Error(error.message);
     const isDismissed = i => dismissals.some(d => d.insight_id === i.id && d.scope_key === i.scope_key);
+    const named = nameMailboxes(fired, await mailboxNames(supabase, businessId, input.mailboxes.map(m => m.email)));
     res.status(200).json({
-      insights: fired.filter(i => !isDismissed(i)),
-      dismissed: fired.filter(isDismissed).map(i => ({ id: i.id, scope_key: i.scope_key, title: i.title })),
+      insights: named.filter(i => !isDismissed(i)),
+      dismissed: named.filter(isDismissed).map(i => ({ id: i.id, scope_key: i.scope_key, title: i.title })),
       not_enough_data: suppressed,
       computed_at: new Date().toISOString(),
     });

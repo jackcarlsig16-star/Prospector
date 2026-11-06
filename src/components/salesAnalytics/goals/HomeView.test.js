@@ -1,5 +1,6 @@
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
-import HomeView, { tileValue, deltaOf, actionFor, topInsights, TILES } from './HomeView';
+import HomeView, { topInsights, TILES } from './HomeView';
+import { tileValue, deltaOf } from './PulseTiles';
 import { goalsApi } from './goalsApi';
 import { fetchInsights } from '../salesApi';
 
@@ -57,14 +58,8 @@ test('tileValue / deltaOf: the route\'s digits, direction from the delta\'s sign
   expect(deltaOf('sent', { ...PULSE.metrics.sent, better: 'down' }, 'this_week').dir).toBe('good');
 });
 
-test('top three by the route\'s order (severity); one action per rule: R1 pauses in Apollo, mailbox rules open Apollo mailboxes, R4 without a real sequence opens Email, R10 none', () => {
+test('top three by the route\'s order (severity)', () => {
   expect(topInsights(INS.insights).map(i => i.id)).toEqual(['R1', 'R5', 'R4']);
-  expect(actionFor(INS.insights[0], jest.fn()).props).toMatchObject({ href: 'https://app.apollo.io/#/sequences/s1', target: '_blank' });
-  expect(actionFor(INS.insights[0], jest.fn()).props.children[0]).toBe('Pause sequence');
-  expect(actionFor(INS.insights[1], jest.fn()).props.href).toBe('https://app.apollo.io/#/settings/mailboxes');
-  expect(actionFor(INS.insights[2], jest.fn()).props.children).toBe('Open Email');
-  expect(actionFor({ id: 'R7', affected: [{ type: 'sequence', id: 's2', label: 'HR' }] }, jest.fn()).props.children[0]).toBe('Review copy');
-  expect(actionFor(INS.insights[4], jest.fn())).toBeNull();
 });
 
 test('Home: the title line, seven tiles = the route\'s digits with their direction, the insights card (3 of 5, "All 5 in Email"), the Explorer mounted for Home', async () => {
