@@ -830,6 +830,8 @@ app.post('/api/sales/:businessId/goals/signals/:id/auto-create', salesModuleRout
 app.post('/api/sales/:businessId/goals/visits/people-csv', salesModuleRoute('./api/sales/visitorRoutes.js', 'uploadVisitedPeopleRoute', 'goals/visits/people-csv POST'));
 app.post('/api/sales/:businessId/goals/visits/people-pull', salesModuleRoute('./api/sales/visitorPeoplePull.js', 'runVisitorPeoplePullRoute', 'goals/visits/people-pull POST'));
 app.get('/api/sales/:businessId/goals/people', salesModuleRoute('./api/sales/visitorRoutes.js', 'peopleSearchRoute', 'goals/people'));
+// people-v2 Stage 1 - the one read behind Pipeline › People (the merged union + the materialised email summary + company visits).
+app.get('/api/sales/:businessId/goals/people/activity', salesModuleRoute('./api/sales/peopleActivityRoutes.js', 'peopleActivityRoute', 'goals/people/activity'));
 app.post('/api/sales/:businessId/goals/people/:id/add-record', salesModuleRoute('./api/sales/visitorRoutes.js', 'addRecordFromPersonRoute', 'goals/people/:id/add-record POST'));
 app.post('/api/sales/:businessId/goals/people', salesModuleRoute('./api/sales/visitorRoutes.js', 'addPersonRoute', 'goals/people POST'));
 app.post('/api/sales/:businessId/goals/targets', salesModuleRoute('./api/sales/companyPanel.js', 'createTargetRoute', 'goals/targets POST'));

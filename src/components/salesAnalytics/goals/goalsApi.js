@@ -139,6 +139,8 @@ export const goalsApi = {
   // visitor-to-record-v1 V2a - the Apollo contacts list "Prospector · Website visitors (export)" pulled into sales_people (Members).
   visitPeoplePull: (id, { force = false } = {}) => call(id, '/visits/people-pull', { method: 'POST', body: { force } }),
   people: (id, params = {}) => call(id, `/people?${q(params)}`),
+  // people-v2: the one read behind Pipeline › People.
+  peopleActivity: (id, window = 'all') => call(id, `/people/activity?${q({ window })}`),
   // V2a follow-up - a parked visitor (no record yet) gets their company filed as an employer target (Members).
   addPersonRecord: (id, personId) => call(id, `/people/${personId}/add-record`, { method: 'POST', body: {} }),
   // FIX pipeline-quick-fixes-v1 A - "+ Add ▾": a person on a record (or parked under a new company name), a target by name.

@@ -11,6 +11,7 @@ import { scheduleRecompute } from './intentScoreRun.js';
 import { refreshRecentWeeks, EMAIL_COUNTS_MAX_CALLS } from './emailCounts.js';
 import { isDeadRun, finalStatus } from './syncRunStatus.js';
 import { syncPartnerContacts, ranToday, PARTNER_CONTACTS_MAX_CALLS } from './partnerContactsSync.js';
+import { writePersonActivity } from './personActivity.js';
 import { runDailyApolloMoves, movesRanToday } from './partnerApolloTouches.js';
 
 // PROPOSED values (SPEC) - sized from real counts in the audit (21
@@ -246,6 +247,7 @@ export async function runSync({ businessId, trigger, maxCalls, partnerPeople }) 
   const activityCtx = { callCounter: { count: 0, max: ACTIVITY_MAX_CALLS }, endpointCounts: {} };
   let activityCounts = null;
   let activityMs = 0;
+  let personActivity = null;
   try {
     const activityStart = Date.now();
     const result = await syncActivity({ ctx: activityCtx, supabase, businessId });
@@ -253,6 +255,8 @@ export async function runSync({ businessId, trigger, maxCalls, partnerPeople }) 
     missingAll.push(...result.missing);
     activityCounts = result.counts;
     scheduleRecompute(supabase, businessId, 'heat');
+    // people-v2 Stage 1: the per-person email summary behind Pipeline › People, rewritten from what this run stored.
+    try { personActivity = await writePersonActivity(supabase, businessId); } catch (err) { adapterErrors.person_activity = String(err.message || err).slice(0, 300); }
     // homelover-flow-v1 F7: an Apollo reply at an employer at Contacted moves it to Responded (never a partner).
     try { const { runEmployerReplyRules } = await import('./replyRules.js'); activityCounts.reply_rules = (await runEmployerReplyRules(supabase, businessId)).counts; }
     catch (err) { adapterErrors.reply_rules = String(err.message || err).slice(0, 300); }
@@ -288,6 +292,8 @@ export async function runSync({ businessId, trigger, maxCalls, partnerPeople }) 
       partnerContactsMs = Date.now() - peopleStart;
       missingAll.push(...result.missing);
       partnerContacts = result.counts;
+      // people-v2 Stage 1: partner contacts carry Apollo contact ids too - refresh their summary rows after their sync.
+      try { personActivity = await writePersonActivity(supabase, businessId); } catch (err) { adapterErrors.person_activity = String(err.message || err).slice(0, 300); }
     }
   } catch (err) {
     adapterErrors.partner_contacts = err instanceof CallCapError ? 'call_cap' : err.message;
@@ -319,6 +325,7 @@ export async function runSync({ businessId, trigger, maxCalls, partnerPeople }) 
     activity: activityCounts,
     email_counts: emailCountWeeks,
     partner_contacts: partnerContacts,
+    person_activity: personActivity,
     apollo_moves: apolloMoves,
     missing: missingAll,
     adapter_errors: adapterErrors,
