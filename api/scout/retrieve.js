@@ -71,7 +71,9 @@ export function parseAsk(q, vocab, { today }) {
 
 const refOf = (entity, id) => `${entity}:${id}`;
 
-// -> { ask, pack, items: Map(ref -> item), stats, glossary, businesses }
+// Each record is cited by a short label [r1]…[rN] (numbered in the order it enters the pack) - a uuid token costs the
+// model ~25 output tokens a record; the label maps back to the record here, never in the prompt.
+// -> { ask, pack, items: Map(label -> item), stats, glossary, businesses }
 export async function buildContext(supabase, registry, { auth, scope, q, now = Date.now() }) {
   const businesses = await scopedBusinesses(supabase, auth, scope);
   const today = laDateString(new Date(now));
@@ -102,13 +104,14 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
     }
   }
   found.sort((a, b) => a.priority - b.priority);
-  const items = new Map(), lines = [], seen = new Set(), rowsByEntity = {};
+  const items = new Map(), labels = new Map(), lines = [], seen = new Set(), rowsByEntity = {};
   let chars = 0, droppedPii = 0, truncated = 0;
   for (const { item, b } of found) {
     const entity = item.entity, id = String(item.id);
-    const body = cleanText(String(item.text || [item.title, item.subtitle, item.date].filter(Boolean).join(' · ')), 400);
+    const body = cleanText(String(item.text || [item.title, item.subtitle, item.date].filter(Boolean).join(' · ')), 700);
     if (hasPii(body)) { droppedPii += 1; continue; }
-    const line = `[${refOf(entity, id)}] ${body}${many ? ` · workspace ${b.name}` : ''}`;
+    const label = labels.get(refOf(entity, id)) || `r${labels.size + 1}`;
+    const line = `[${label}] ${body}${many ? ` · workspace ${b.name}` : ''}`;
     const key = `${refOf(entity, id)}|${body}`;
     if (seen.has(key)) continue;
     seen.add(key);
@@ -116,9 +119,10 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
     chars += line.length + 1;
     lines.push(line);
     rowsByEntity[entity] = (rowsByEntity[entity] || 0) + 1;
-    if (!items.has(refOf(entity, id))) {
+    if (!labels.has(refOf(entity, id))) {
+      labels.set(refOf(entity, id), label);
       const open = registry.openerFor(entity);
-      items.set(refOf(entity, id), { entity, id, title: cleanText(String(item.title || body), 160), workspace_id: b.id, workspace_name: b.name, open: open ? open(id, item) : null, why: body, subtitle: item.subtitle && !hasPii(String(item.subtitle)) ? cleanText(String(item.subtitle), 160) : null, date: item.date || null, score: typeof item.score === 'number' ? item.score : null });
+      items.set(label, { entity, id, title: cleanText(String(item.title || body), 160), workspace_id: b.id, workspace_name: b.name, open: open ? open(id, item) : null, why: body, subtitle: item.subtitle && !hasPii(String(item.subtitle)) ? cleanText(String(item.subtitle), 160) : null, date: item.date || null, score: typeof item.score === 'number' ? item.score : null });
     }
   }
   return { ask, pack: lines.join('\n'), lines, items, glossary: [...new Set(glossary)], businesses, stats: { rows_by_entity: rowsByEntity, reads, dropped_pii: droppedPii, truncated, chars, lines: lines.length, workspaces: [...new Set(per.map(p => p.b.name))] } };

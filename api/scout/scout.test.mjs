@@ -14,6 +14,10 @@ const A = 'aaaaaaaa-0000-4000-8000-000000000001', B = 'bbbbbbbb-0000-4000-8000-0
 const member = { user: { id: 'u-ana', name: 'Ana' }, isPlatformOwner: false, roles: new Map([[A, 'member']]) };
 const owner = { user: { id: 'u-jack', name: 'Jack' }, isPlatformOwner: true, roles: new Map() };
 const businesses = [{ id: A, name: 'Alpha', features: { goals_sales: true } }, { id: B, name: 'Beta', features: { goals_sales: true } }, { id: C, name: 'Gamma', features: { other_module: true } }];
+// The [rN] label a context gave a record / the line in the prompt that carries a text.
+const byRec = (ctx, ref) => [...ctx.items.values()].find(i => `${i.entity}:${i.id}` === ref);
+const labelOf = (ctx, ref) => [...ctx.items.entries()].find(([, i]) => `${i.entity}:${i.id}` === ref)?.[0];
+const labelIn = (content, text) => (new RegExp(`\\[(r\\d+)\\] ${text}`).exec(content) || [])[1];
 const thing = (business_id, i, extra = {}) => ({ id: `t-${business_id.slice(0, 1)}-${i}`, business_id, name: `Thing ${i} of ${business_id.slice(0, 1)}`, note: `note ${i}`, updated_at: `2026-11-0${(i % 5) + 1}T10:00:00Z`, ...extra });
 
 // A stub module: one entity over a `things` table, one intent that lists them when the ask names "things".
@@ -77,13 +81,14 @@ test('context: a line that trips hasPii is dropped and counted; the pack stays u
   assert.ok(c.stats.truncated > 0 && c.lines.length + c.stats.truncated + 2 === 200);
   assert.deepEqual(c.stats.rows_by_entity, { things: c.lines.length });
   assert.deepEqual(c.stats.reads, ['things list']);
-  const first = c.items.get('things:t-a-0');
+  const first = byRec(c, 'things:t-a-0');
+  assert.ok(c.lines.every(l => /^\[r\d+\] /.test(l)) && c.lines.every(l => !l.includes('t-a-')));
   assert.deepEqual(first.open, { page: 'sales', params: { tab: 'pipeline', open: 'thing-t-a-0' } });
   assert.equal(first.workspace_name, 'Alpha');
   // The fallback (no intent): the entity search + the standing context, both named in reads.
   const f = await buildContext(sb, registryWith(['stub', stubModule()]), { auth: member, scope: A, q: 'tell me about note 7' });
   assert.deepEqual(f.stats.reads, ['search things', 'standing']);
-  assert.ok(f.lines.some(l => l.startsWith('[things:standing-1]')));
+  assert.ok(f.lines.some(l => l.startsWith(`[${labelOf(f, 'things:standing-1')}] Standing item`)));
 });
 
 test('parse: "my open tasks", "notes from last week about Equifax", "hot targets Brad referred", "who visited yesterday" read as the spec says', async () => {
@@ -104,17 +109,17 @@ test('parse: "my open tasks", "notes from last week about Equifax", "hot targets
   assert.deepEqual(parseAsk('what do my notes say about "Mission Lane"', vocab, { today }).company, ['Mission Lane']);
 });
 
-test('refs: known [entity:id] tokens become the record title and one item each; unknown tokens are dropped', () => {
-  const items = new Map([['things:1', { entity: 'things', id: '1', title: 'Thing 1' }], ['things:2', { entity: 'things', id: '2', title: 'Thing 2' }]]);
-  const r = resolveRefs('Two records: [things:1] and [things:2], again [things:1]; not [things:9].', items);
-  assert.equal(r.answer_md, 'Two records: Thing 1 and Thing 2, again Thing 1; not .');
-  assert.deepEqual(r.items.map(i => i.id), ['1', '2']);
+test('refs: [rN] labels map back to their records - [r12] is record 12, never [r1] - one item each; unknown labels dropped', () => {
+  const items = new Map(Array.from({ length: 12 }, (_, i) => [`r${i + 1}`, { entity: 'things', id: `id-${i + 1}`, title: `Thing ${i + 1}` }]));
+  const r = resolveRefs('First [r12], then [r1] and [r2], again [r12]; not [r99] or [r1x].', items);
+  assert.equal(r.answer_md, 'First Thing 12, then Thing 1 and Thing 2, again Thing 12; not or [r1x].');
+  assert.deepEqual(r.items.map(i => i.id), ['id-12', 'id-1', 'id-2']);
 });
 
 test('ask: one Claude call with the server prompt, STANDARD, 1200 tokens, thinking off, callType scout_ask -> the usage row; refs resolved; the glossary and filters ride along; 429 at the daily cap; an answer with an address is withheld', async () => {
   const sb = seed(), reg = registryWith(['stub', stubModule()]);
   const calls = [];
-  askDeps.callAnthropic = async args => { calls.push(args); sb.db.business_anthropic_usage.push({ user_id: args.userId, business_id: args.businessId, call_type: args.callType, created_at: new Date().toISOString() }); return { content: [{ type: 'text', text: 'Your things, newest first — [things:t-a-1] then [things:t-a-0] and [things:nope].' }], usage: { input_tokens: 900, output_tokens: 120 } }; };
+  askDeps.callAnthropic = async args => { calls.push(args); sb.db.business_anthropic_usage.push({ user_id: args.userId, business_id: args.businessId, call_type: args.callType, created_at: new Date().toISOString() }); return { content: [{ type: 'text', text: `Your things, newest first — [${labelIn(args.messages.at(-1).content, 'Thing 1 of a')}] then [${labelIn(args.messages.at(-1).content, 'Thing 0 of a')}] and [r999].` }], usage: { input_tokens: 900, output_tokens: 120 } }; };
   const r = await ask(sb, reg, { auth: member, body: { q: 'show me things', scope: A, thread: [{ role: 'user', content: 'hi' }, { role: 'assistant', content: 'hello' }] } });
   assert.equal(r.status, 200);
   assert.equal(calls.length, 1);
@@ -122,7 +127,7 @@ test('ask: one Claude call with the server prompt, STANDARD, 1200 tokens, thinki
   assert.equal(calls[0].businessId, A); assert.equal(calls[0].userId, 'u-ana');
   assert.ok(calls[0].system.startsWith(SYSTEM) && calls[0].system.includes('Band words for Alpha'));
   assert.equal(calls[0].messages.length, 3);
-  assert.ok(calls[0].messages[2].content.includes('CONTEXT (5 lines)') && calls[0].messages[2].content.includes('[things:t-a-0] Thing 0 of a · note 0'));
+  assert.ok(calls[0].messages[2].content.includes('CONTEXT (5 lines)') && /\[r\d+\] Thing 0 of a · note 0/.test(calls[0].messages[2].content) && !calls[0].messages[2].content.includes('t-a-0') && calls[0].system.includes('like [r3]'));
   assert.equal(sb.db.business_anthropic_usage.length, 1);
   assert.equal(sb.db.business_anthropic_usage[0].call_type, 'scout_ask');
   assert.equal(r.body.answer_md, 'Your things, newest first - Thing 1 of a then Thing 0 of a and .');
@@ -139,11 +144,11 @@ test('ask: one Claude call with the server prompt, STANDARD, 1200 tokens, thinki
   const capped = await ask(sb, reg, { auth: member, body: { q: 'show me things', scope: A } });
   assert.equal(capped.status, 429); assert.equal(calls.length, 2); assert.match(capped.body.error, /40 questions/);
   // Another user is not capped; an answer carrying an address is withheld.
-  askDeps.callAnthropic = async args => { calls.push(args); return { content: [{ type: 'text', text: 'Write to jack@example.com about [things:t-a-0]' }], usage: { input_tokens: 10, output_tokens: 5 } }; };
+  askDeps.callAnthropic = async args => { calls.push(args); return { content: [{ type: 'text', text: 'Write to jack@example.com about [r1]' }], usage: { input_tokens: 10, output_tokens: 5 } }; };
   const w = await ask(sb, reg, { auth: owner, body: { q: 'show me things', scope: A } });
   assert.equal(w.status, 200); assert.equal(w.body.withheld, true); assert.ok(!/@/.test(w.body.answer_md)); assert.deepEqual(w.body.items, []);
-  // Stage 3 finding: a uuid in a citation token matches the phone shape - an answer citing records is NOT withheld.
-  askDeps.callAnthropic = async args => { calls.push(args); return { content: [{ type: 'text', text: 'Two: [things:t-a-1] and [things:ccc9016f-05f9-4e67-9876-0672778b36c3].' }], usage: { input_tokens: 10, output_tokens: 5 } }; };
+  // Stage 3 finding: an answer citing records is NOT withheld (the check reads the shown text, labels resolved).
+  askDeps.callAnthropic = async args => { calls.push(args); return { content: [{ type: 'text', text: `Two: [${labelIn(args.messages.at(-1).content, 'Thing 1 of a')}] and [r777].` }], usage: { input_tokens: 10, output_tokens: 5 } }; };
   const ids = await ask(sb, reg, { auth: owner, body: { q: 'show me things', scope: A } });
   assert.equal(ids.body.withheld, false); assert.equal(ids.body.answer_md, 'Two: Thing 1 of a and .'); assert.deepEqual(ids.body.items.map(i => i.id), ['t-a-1']);
   // Validation and a foreign scope.

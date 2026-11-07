@@ -44,6 +44,9 @@ const SCOUT_CSS = `
 .scout-pop { position:absolute; top:calc(100% + 6px); right:0; z-index:410; width:560px; max-width:calc(100vw - 32px); box-sizing:border-box; background:var(--ui-surface); color:var(--ui-text); border:1px solid ${n(35)}; border-radius:12px; box-shadow:0 18px 48px rgba(0,0,0,.55), 0 0 0 1px rgba(0,0,0,.4); overflow:hidden; text-align:left; }
 .scout--plain .scout-pop { left:0; right:auto; width:100%; }
 .scout-pop--answer { width:880px; }
+/* The popover hangs off the sticky header, so the page can't scroll it: a long answer scrolls inside itself. */
+.scout-pop--answer { max-height:calc(100vh - 96px); overflow-y:auto; }
+.scout--sheet .scout-pop--answer { max-height:none; overflow:visible; }
 .scout--sheet .scout-pop { position:static; width:100%; max-width:none; margin-top:10px; }
 .scout-gh { display:flex; align-items:center; gap:8px; height:28px; padding:0 14px; background:var(--ui-inset); border-top:1px solid ${edge(45)}; }
 .scout-gh:first-child { border-top:0; }

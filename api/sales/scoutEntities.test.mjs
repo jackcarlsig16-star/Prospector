@@ -4,6 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
+import { hasPii } from './scrubText.js';
 import { createRegistry } from '../scout/registry.js';
 import { buildContext } from '../scout/retrieve.js';
 import { ENTITIES, VOCABULARY, register } from './scoutEntities.js';
@@ -103,29 +104,32 @@ test('intents route to the existing reads: tasks -> openTodos (mine), hot target
 
   const t = await run('show me my open tasks');
   assert.deepEqual(calls.at(-1)[0], 'openTodosFor'); assert.equal(calls.at(-1)[1][2], u('a'));
-  assert.ok(t.lines[0].startsWith(`[todos:${u('6')}] Call Hilton about the pilot · open to-do · due 2026-11-07 · mine`));
-  assert.deepEqual(t.items.get(`todos:${u('6')}`).open.params, { tab: 'actions', open: `todo:${u('6')}` });
+  assert.ok(t.lines[0].startsWith(`[r1] Call Hilton about the pilot · open to-do · due 2026-11-07 · mine`));
+  assert.deepEqual(t.items.get('r1').id, u('6'));
+  assert.deepEqual(t.items.get('r1').open.params, { tab: 'actions', open: `todo:${u('6')}` });
 
   const h = await run('hot targets Brad referred, sorted by score');
   assert.equal(calls.at(-1)[0], 'listScores');
   assert.deepEqual(calls.at(-1)[1][2], { segment: 'targets', band: 'P1', source: 'upside', owner: '', sort: 'rank' });
-  assert.match(h.lines[0], /^\[targets:.*\] Mission Lane · target · score 72 P1 · rank 1 · source upside \(Brad Pitt\)/);
+  assert.match(h.lines[0], /^\[r1\] Mission Lane · target · score 72 P1 · rank 1 · source upside \(Brad Pitt\)/);
   // Stage 3 finding: "2026-11-04 (2 d)" read as one phone-shaped run and was blanked; the date must survive the scrub.
   assert.match(h.lines[0], /last touch 2026-11-04 · \d+ d ago/); assert.ok(!h.lines[0].includes('[number removed]'));
-  assert.equal(h.items.get(`targets:${u('5')}`).score, 72);
-  assert.deepEqual(h.stats.reads, [`goals/scores {"segment":"targets","band":"P1","source":"upside","owner":"","sort":"rank"} (1 shown)`]);
+  assert.equal(h.items.get('r1').entity, 'targets'); assert.equal(h.items.get('r1').score, 72);
+  assert.deepEqual(h.stats.reads, [`goals/scores {"segment":"targets","band":"P1","source":"upside","owner":"","sort":"rank"} · 1 shown`]);
 
   const v = await run('who visited yesterday and are they in Prospector');
   assert.equal(calls.at(-1)[0], 'loadVisitorData');
   assert.deepEqual(calls.at(-1)[1][2].window.days, ['2026-11-05']);
-  assert.match(v.lines[0], /^\[employers:.*\] Hilton · P1 score 61 · 7 visits · 3 visitors · 2 pages \(\/pricing\) · 1 named people \(VP Benefits\) · returning · in Prospector as employer · contacted · owner Cyrus/);
-  assert.match(v.lines[1], /^\[visitor:v2\] Newco · .* · new to the site · not in Prospector yet/);
+  // Stage 3 re-run: a read that names a date keeps it clear of the count, so it never reads as a phone number on screen.
+  assert.equal(v.stats.reads[0], 'visitors 2026-11-05 · 2 companies'); assert.ok(v.stats.reads.every(r => !hasPii(r)));
+  assert.match(v.lines[0], /^\[r1\] Hilton · P1 score 61 · 7 visits · 3 visitors · 2 pages \(\/pricing\) · 1 named people \(VP Benefits\) · returning · in Prospector as employer · contacted · owner Cyrus/);
+  assert.equal(v.items.get('r2').entity, 'visitor'); assert.match(v.lines[1], /^\[r2\] Newco · .* · new to the site · not in Prospector yet/);
 
   const n = await run('notes from last week about Equifax');
   assert.equal(calls.at(-1)[0], 'companyBrief'); assert.deepEqual(calls.at(-1)[1][1], { businessId: A, type: 'employer', id: u('4') });
-  assert.ok(n.lines.some(l => l === `[employers:${u('4')}] Equifax · employer · intent 55 P2 · next: Send agreement`));
-  assert.ok(n.lines.some(l => l === `[employers:${u('4')}] Equifax · touch: Last touch: 3 days ago`));
-  assert.ok(n.lines.some(l => l.startsWith(`[call_notes:${u('8')}] Equifax kickoff · 2026-10-28`)) && !n.pack.includes('312-555'));
+  assert.ok(n.lines.some(l => /^\[r\d+\] /.test(l) && l.slice(l.indexOf('] ') + 2) === `Equifax · employer · intent 55 P2 · next: Send agreement`));
+  assert.ok(n.lines.some(l => /^\[r\d+\] Equifax · touch: Last touch: 3 days ago$/.test(l)));
+  assert.ok(n.lines.some(l => /^\[r\d+\] Equifax kickoff · 2026-10-28/.test(l)) && !n.pack.includes('312-555') && [...n.items.values()].some(i => i.entity === 'call_notes' && i.id === u('8')));
   assert.ok(n.stats.reads.some(r => r.startsWith('goals/brief/employer/')) && n.stats.reads.some(r => /call notes since 2026-10-26/.test(r)));
   assert.equal((await findCompany(sb, A, 'hilton')).type, 'employer');
   assert.equal((await findCompany(sb, A, 'Hilton Partners')).type, 'partner');
@@ -141,4 +145,18 @@ test('scout-v2 Stage 3: intent-only rows (visitor / pulse / funnel / attention) 
   assert.deepEqual(reg.openerFor('attention')('x'), { page: 'sales', params: { tab: 'actions' }, inline: true });
   assert.equal(reg.openerFor('nothing'), null);
   assert.deepEqual(reg.openerFor('employers')('e1'), { page: 'sales', params: { tab: 'pipeline', view: 'companies', open: 'employer-e1' } });
+});
+
+test('scout-v2 Stage 3 re-run: a call note rides at 600 chars while 10 or fewer notes are in the context, 300 beyond', async () => {
+  const { noteChars, salesIntents } = await import('./scoutIntents.js');
+  assert.equal(noteChars(1), 600); assert.equal(noteChars(10), 600); assert.equal(noteChars(11), 300);
+  const long = 'Pilot scope and the next steps. '.repeat(40);
+  const rows = n => Array.from({ length: n }, (_, i) => ({ id: `n${i}`, business_id: A, title: `Note ${i}`, call_date: '2026-11-03', text: long }));
+  const notes = salesIntents.find(i => i.id === 'notes');
+  for (const [n, max] of [[3, 600], [12, 300]]) {
+    const sb = fakeSupabase({ sales_call_notes: rows(n) });
+    const r = await notes.run(sb, { businessId: A, auth, ask: { since: null, terms: [], company: [] }, now: Date.parse('2026-11-06T18:00:00Z') });
+    const body = r.items[0].text.split(' · ').slice(2).join(' · ');
+    assert.ok(body.length <= max && body.length > max - 40, `${n} notes -> ${body.length} chars (max ${max})`);
+  }
 });

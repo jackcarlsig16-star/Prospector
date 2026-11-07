@@ -20,6 +20,8 @@ export const salesReads = {
 };
 const COMPANY_ENTITIES = new Set([null, 'partners', 'employers', 'targets']);
 const day = v => (v ? String(v).slice(0, 10) : null);
+// A call note's text in the context: 600 chars while 10 or fewer notes ride along, 300 beyond (Jack, Stage 3).
+export const noteChars = n => (n <= 10 ? 600 : 300);
 const daysAgo = (iso, now) => (iso ? Math.max(0, Math.floor((now - Date.parse(iso)) / 864e5)) : null);
 const pat = q => `%${String(q || '').replace(/[%_,()"'\\]/g, ' ').replace(/\s+/g, ' ').trim()}%`;
 const ENTITY_OF = { partner: 'partners', employer: 'employers', target: 'targets' };
@@ -75,7 +77,7 @@ export const salesIntents = [
       const w = { date: today, days, first, last };
       const rows = await salesReads.loadVisitorData(sb, businessId, { window: w, members: await membersOf(sb, businessId) });
       const ranked = [...rows].sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || (b.visitors || 0) - (a.visitors || 0)).slice(0, 40);
-      return { read: `visitors ${first}${last !== first ? ` to ${last}` : ''} (${rows.length} companies)`, items: ranked.map(c => ({ entity: c.type ? ENTITY_OF[c.type] : 'visitor', id: c.type ? c.id : c.visit_id, title: c.company, score: c.score ?? null, text: [c.company, c.band ? `${c.band}${c.score != null ? ` score ${c.score}` : ''}` : null, `${c.visits} visits · ${c.visitors} visitors · ${c.pages} pages${c.paths?.length ? ` (${c.paths.join(', ')})` : ''}`, c.people ? `${c.people} named people${c.titles?.length ? ` (${c.titles.join('; ')})` : ''}` : null, c.is_new ? 'new to the site' : 'returning', c.type ? `in Prospector as ${c.type} · ${c.stage || 'no stage'} · owner ${c.owner}` : 'not in Prospector yet', c.last_touch ? `last touch ${day(c.last_touch.at)}${c.last_touch.what ? ` ${c.last_touch.what}` : ''}` : null].filter(Boolean).join(' · ') })) };
+      return { read: `visitors ${first}${last !== first ? ` to ${last}` : ''} · ${rows.length} companies`, items: ranked.map(c => ({ entity: c.type ? ENTITY_OF[c.type] : 'visitor', id: c.type ? c.id : c.visit_id, title: c.company, score: c.score ?? null, text: [c.company, c.band ? `${c.band}${c.score != null ? ` score ${c.score}` : ''}` : null, `${c.visits} visits · ${c.visitors} visitors · ${c.pages} pages${c.paths?.length ? ` (${c.paths.join(', ')})` : ''}`, c.people ? `${c.people} named people${c.titles?.length ? ` (${c.titles.join('; ')})` : ''}` : null, c.is_new ? 'new to the site' : 'returning', c.type ? `in Prospector as ${c.type} · ${c.stage || 'no stage'} · owner ${c.owner}` : 'not in Prospector yet', c.last_touch ? `last touch ${day(c.last_touch.at)}${c.last_touch.what ? ` ${c.last_touch.what}` : ''}` : null].filter(Boolean).join(' · ') })) };
     } },
   { id: 'ranked', match: ask => COMPANY_ENTITIES.has(ask.entity) && !ask.flags.visitors && !ask.flags.emails && !ask.flags.attention && (ask.flags.ranked || !!ask.band || !!ask.source || (!!ask.entity && (ask.mine || !!ask.since)) || (ask.flags.funnel && !!ask.band)),
     async run(sb, { businessId, auth, ask, now }) {
@@ -85,7 +87,7 @@ export const salesIntents = [
       let rows = r.body.rows;
       if (ask.since) rows = rows.filter(x => x.last_touch_at && day(x.last_touch_at) >= ask.since && (!ask.until || day(x.last_touch_at) <= ask.until));
       rows = rows.slice(0, 40);
-      return { read: `goals/scores ${JSON.stringify(query)}${ask.since ? ` touched since ${ask.since}` : ''} (${r.body.counts.shown} shown)`, items: rows.map(x => ({ entity: ENTITY_OF[x.type], id: x.id, title: x.name, score: x.score ?? null, date: day(x.last_touch_at), text: [x.name, x.type, `score ${x.score} ${x.band}`, `rank ${x.rank}`, x.source_label ? `source ${x.source_label}${x.co_owner_name ? ` (${x.co_owner_name})` : ''}` : null, x.stage ? `stage ${String(x.stage).replace(/_/g, ' ')}` : null, x.owner ? `owner ${x.owner}` : 'unassigned', x.last_touch_at ? `last touch ${day(x.last_touch_at)} · ${daysAgo(x.last_touch_at, now)} d ago` : 'never touched', x.visits_7d ? `${x.visits_7d} visits 7 d` : null, x.due ? `due ${x.due}` : null].filter(Boolean).join(' · ') })) };
+      return { read: `goals/scores ${JSON.stringify(query)}${ask.since ? ` touched since ${ask.since}` : ''} · ${r.body.counts.shown} shown`, items: rows.map(x => ({ entity: ENTITY_OF[x.type], id: x.id, title: x.name, score: x.score ?? null, date: day(x.last_touch_at), text: [x.name, x.type, `score ${x.score} ${x.band}`, `rank ${x.rank}`, x.source_label ? `source ${x.source_label}${x.co_owner_name ? ` (${x.co_owner_name})` : ''}` : null, x.stage ? `stage ${String(x.stage).replace(/_/g, ' ')}` : null, x.owner ? `owner ${x.owner}` : 'unassigned', x.last_touch_at ? `last touch ${day(x.last_touch_at)} · ${daysAgo(x.last_touch_at, now)} d ago` : 'never touched', x.visits_7d ? `${x.visits_7d} visits 7 d` : null, x.due ? `due ${x.due}` : null].filter(Boolean).join(' · ') })) };
     } },
   { id: 'people', match: ask => ask.entity === 'people' || ((ask.flags.opened || ask.flags.replied || ask.flags.clicked) && !ask.flags.emails),
     async run(sb, { businessId, ask }) {
@@ -135,7 +137,7 @@ export const salesIntents = [
       const term = ask.company[0] || ask.terms[0];
       if (term) q = q.or(`title.ilike.${pat(term)},text.ilike.${pat(term)}`);
       const rows = must(await q.order('call_date', { ascending: false }).limit(25));
-      return { read: `call notes${ask.since ? ` since ${ask.since}` : ''}${term ? ` matching "${cleanText(term, 40)}"` : ''} (${rows.length})`, items: rows.map(r => ({ entity: 'call_notes', id: r.id, title: cleanText(r.title || 'Call note', 120), date: day(r.call_date), text: `${cleanText(r.title || 'Call note', 120)} · ${day(r.call_date)} · ${cleanText(r.text, 300)}` })) };
+      return { read: `call notes${ask.since ? ` since ${ask.since}` : ''}${term ? ` matching "${cleanText(term, 40)}"` : ''} · ${rows.length}`, items: rows.map(r => ({ entity: 'call_notes', id: r.id, title: cleanText(r.title || 'Call note', 120), date: day(r.call_date), text: `${cleanText(r.title || 'Call note', 120)} · ${day(r.call_date)} · ${cleanText(r.text, noteChars(rows.length))}` })) };
     } },
 ];
 
@@ -153,7 +155,7 @@ export async function salesStanding(sb, { businessId, auth, today, now }) {
     reads: [`my open to-dos (${todos.total})`, `notes since ${since} (${notes.length})`, `companies touched since ${since} (${touched.length})`],
     items: [
       ...todos.rows.map(r => ({ entity: 'todos', id: r.id, title: cleanText(r.text, 140), date: day(r.due_date), text: [cleanText(r.text, 160), 'my open to-do', r.due_date ? `due ${day(r.due_date)}` : 'no date'].join(' · ') })),
-      ...notes.map(r => ({ entity: 'call_notes', id: r.id, title: cleanText(r.title || 'Call note', 120), date: day(r.call_date), text: `${cleanText(r.title || 'Call note', 120)} · ${day(r.call_date)} · ${cleanText(r.text, 200)}` })),
+      ...notes.map(r => ({ entity: 'call_notes', id: r.id, title: cleanText(r.title || 'Call note', 120), date: day(r.call_date), text: `${cleanText(r.title || 'Call note', 120)} · ${day(r.call_date)} · ${cleanText(r.text, noteChars(notes.length))}` })),
       ...touched.map(x => ({ entity: ENTITY_OF[x.type], id: x.id, title: x.name, text: [x.name, x.type, `score ${x.score} ${x.band}`, `last touch ${day(x.last_touch_at)}${x.last_touch_channel ? ` ${x.last_touch_channel}` : ''}`, x.owner ? `owner ${x.owner}` : null].filter(Boolean).join(' · ') })),
     ],
   };

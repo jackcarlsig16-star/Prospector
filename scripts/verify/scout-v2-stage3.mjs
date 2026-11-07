@@ -1,6 +1,6 @@
 // scout-v2 REV3 Stage 3 - REAL asks, live as Jack (ownerSession) on HomeLover, localhost against the build.
-// Declared scope + cap (Jack, Nov 6): Claude 6 calls (the five spec asks + "who visited yesterday" on All workspaces),
-// hard-refused in the browser past 6; Apollo 0 (the server runs without an Apollo key); writes: exactly one + Task row
+// Declared scope + cap (Jack, Nov 6, re-run): Claude 4 calls (asks 1, 3, 4 + ask 4 on All workspaces), hard-refused in
+// the browser past 4; Apollo 0 (the server runs without an Apollo key); writes: exactly one + Task row
 // (POST goals/week), deleted by id at the end; every other non-GET API call is aborted. Reads: the asks' context reads,
 // a few free searches, the usage rows for the cost check. ~120 s, cap 240 s.
 // Per ask: reads, rows_by_entity, input / output tokens, cost_usd from the usage row (= the reply), withheld, elapsed.
@@ -21,8 +21,15 @@ const OUT = path.join(ROOT, '.screenshots', 'scout-v2-stage3');
 const PORT = 3993, BASE = `http://localhost:${PORT}`;
 const REF = new URL(process.env.SUPABASE_URL).host.split('.')[0];
 const SUPA_HOST = new URL(process.env.SUPABASE_URL).host;
-const CLAUDE_CAP = 6;
-const ASKS = ['show me my open tasks', 'what do my notes say about Hilton', 'which partners did I touch this week', 'who visited yesterday and are they in Prospector', 'hot targets Brad referred, sorted by score'];
+// Re-run (Jack, Nov 6): asks 1, 3, 4 and 6 after the [rN] citations + the three fixes - cap 4.
+// RESUME=1: the first pass spent 3 of the 4 on asks 1/3/4 and stopped at Open (a long answer ran past the screen) -
+// the resume makes the 4th call (ask 6) and opens the to-do / partner kinds on records from asks 1/3's own reads
+// (a context dry-build, no Claude) seeded into the thread.
+const RESUME = process.env.RESUME === '1';
+const CLAUDE_CAP = RESUME ? 1 : 4;
+const ASKS = [['ask1', 'show me my open tasks'], ['ask3', 'which partners did I touch this week'], ['ask4', 'who visited yesterday and are they in Prospector']];
+// The first run's tokens (6bb9654), for the saving column.
+const FIRST = { ask1: [3909, 1200], ask3: [1606, 94], ask4: [2891, 1200], 'ask6-all': [3123, 1171] };
 const svc = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY, { auth: { persistSession: false } });
 const T0 = Date.now();
 const log = (...a) => console.log(`[${Math.round((Date.now() - T0) / 1000)}s]`, ...a);
@@ -47,6 +54,19 @@ const cleanup = require(ROOT + '/scripts/verify/lib/tempGuard.cjs')(teardown, { 
 fs.mkdirSync(OUT, { recursive: true });
 const before = await counts();
 const startIso = new Date().toISOString();
+let seeded = [];
+if (RESUME) {
+  const { ensureRegistry } = await import('../../api/scout/registry.js');
+  const { buildContext } = await import('../../api/scout/retrieve.js');
+  const reg = await ensureRegistry([path.join(ROOT, 'api/sales/scoutEntities.js'), path.join(ROOT, 'api/hk/scoutEntities.js')]);
+  const me = (await svc.from('profiles').select('id').eq('is_platform_owner', true)).data[0];
+  const auth = { user: { id: me.id }, roles: new Map([[HL, 'owner']]), isPlatformOwner: true };
+  for (const [i, q] of [[1, 'show me my open tasks'], [3, 'which partners did I touch this week']]) {
+    const c = await buildContext(svc, reg, { auth, scope: HL, q });
+    seeded.push({ at: Date.now() - (10 - i) * 60000, q, scope: HL, elapsed: null, answer_md: `Records from the same reads as ask ${i} (context dry-build, no Claude).`, items: [...c.items.values()].slice(0, 6), usage: null, ask: c.ask, cap: null, context_stats: { reads: c.stats.reads, rows_by_entity: c.stats.rows_by_entity } });
+  }
+  log(`seeded ${seeded.length} turns from the reads: ${seeded.map(t => `${t.items.length} ${[...new Set(t.items.map(i => i.entity))].join('/')}`).join(' · ')}`);
+}
 log('before', JSON.stringify(before));
 
 try {
@@ -55,11 +75,12 @@ try {
   for (let i = 0; i < 60; i++) { try { await fetch(`${BASE}/`); break; } catch { await new Promise(r => setTimeout(r, 250)); } }
   browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 }, deviceScaleFactor: 1 });
-  await ctx.addInitScript(([k, v, bz, dd]) => {
+  await ctx.addInitScript(([k, v, bz, dd, thread]) => {
     if (sessionStorage.getItem('__s')) return; sessionStorage.setItem('__s', '1'); localStorage.clear(); localStorage.setItem(k, v);
+    if (thread) localStorage.setItem('prospector_scout_thread', thread);
     for (const nme of ['visits', 'tidy', 'apollo_sync']) localStorage.setItem(`prospector_${nme}_ran_${bz}`, dd);
     localStorage.setItem('prospector_auto_assay_disabled', '1');
-  }, [`sb-${REF}-auth-token`, JSON.stringify(owner.session), HL, today]);
+  }, [`sb-${REF}-auth-token`, JSON.stringify(owner.session), HL, today, RESUME ? JSON.stringify({ user: owner.userId, day: today, turns: seeded }) : null]);
   await ctx.route('**/*', async route => {
     const req = route.request(); const u = new URL(req.url());
     if (/anthropic\.com$|apollo\.io$/.test(u.host)) realCalls.push(`${req.method()} ${u.host}`);
@@ -91,29 +112,43 @@ try {
     await page.locator('[data-scout-answer], [data-scout-edge]').first().waitFor({ timeout: 15000 });
     const wall = Math.round((Date.now() - t) / 100) / 10;
     await page.waitForTimeout(400);
-    const ui = await page.evaluate(() => ({ footer: document.querySelector('[data-scout-footer]')?.textContent || '', edge: document.querySelector('[data-scout-edge]')?.dataset.scoutEdge || null, shown: document.querySelector('.scout')?.textContent || '', tags: [...new Set([...document.querySelectorAll('[data-scout-answer] .scout-ws')].map(e => e.textContent))] }));
+    const ui = await page.evaluate(() => ({ footer: document.querySelector('[data-scout-footer]')?.textContent || '', edge: document.querySelector('[data-scout-edge]')?.dataset.scoutEdge || null, shown: (() => { const w = document.createTreeWalker(document.querySelector('.scout'), NodeFilter.SHOW_TEXT); const out = []; while (w.nextNode()) out.push(w.currentNode.nodeValue); return out; })(), tags: [...new Set([...document.querySelectorAll('[data-scout-answer] .scout-ws')].map(e => e.textContent))] }));
     const usageRow = (await svc.from('business_anthropic_usage').select('id, business_id, input_tokens, output_tokens, cost_usd, call_type').eq('call_type', 'scout_ask').eq('user_id', owner.userId).gte('created_at', startIso).order('created_at', { ascending: false }).limit(1)).data?.[0] || null;
     const items = body.items || [];
     const rec = {
       label, q, status: resp.status(), wall_s: wall,
       reads: body.context_stats?.reads || [], rows_by_entity: body.context_stats?.rows_by_entity || {}, dropped_pii: body.context_stats?.dropped_pii ?? null, truncated: body.context_stats?.truncated ?? null, chars: body.context_stats?.chars ?? null,
       input_tokens: body.usage?.input_tokens, output_tokens: body.usage?.output_tokens, cost_usd: body.usage?.cost_usd, withheld: !!body.withheld, items: items.length,
+      hit_cap: (body.usage?.output_tokens || 0) >= 1200, first: FIRST[label] || null,
+      saving: FIRST[label] && body.usage ? { input: FIRST[label][0] - body.usage.input_tokens, output: FIRST[label][1] - body.usage.output_tokens } : null,
       by_entity: items.reduce((m, i) => ({ ...m, [i.entity]: (m[i.entity] || 0) + 1 }), {}), sort: body.ask?.sort || null,
       usage_row: usageRow ? { input_tokens: usageRow.input_tokens, output_tokens: usageRow.output_tokens, cost_usd: Number(usageRow.cost_usd), business: usageRow.business_id === HL ? 'HomeLover' : usageRow.business_id === null ? 'null (all)' : 'other' } : null,
       workspaces: [...new Set(items.map(i => i.workspace_name))], tags: ui.tags, edge: ui.edge,
       titles: items.slice(0, 6).map(i => `${i.entity}: ${i.title}`), answer: body.answer_md || '',
-      pii_shown: hasPii(body.answer_md || '') || items.some(i => hasPii(`${i.title} ${i.subtitle || ''} ${i.why || ''}`)) || hasPii(ui.shown),
+      pii_shown: hasPii(body.answer_md || '') || items.some(i => hasPii(`${i.title} ${i.subtitle || ''} ${i.why || ''}`)) || ui.shown.some(t => hasPii(t)),
       _items: items,
     };
     results.asks.push(rec);
     await page.screenshot({ path: path.join(OUT, `${label}.png`), clip: await page.evaluate(() => { const r = document.querySelector('[data-scout-pop]')?.getBoundingClientRect() || document.body.getBoundingClientRect(); return { x: Math.max(0, r.left - 8), y: 0, width: Math.min(window.innerWidth, r.right + 8) - Math.max(0, r.left - 8), height: r.bottom + 8 }; }) });
     const costMatch = rec.usage_row && rec.cost_usd != null && Math.abs(rec.usage_row.cost_usd - rec.cost_usd) < 1e-6 && rec.usage_row.input_tokens === rec.input_tokens && rec.usage_row.output_tokens === rec.output_tokens;
-    ok(`${label} "${q}": ${rec.status}, ${rec.items} records ${JSON.stringify(rec.by_entity)}, reads [${rec.reads.join(' ; ')}], rows ${JSON.stringify(rec.rows_by_entity)}, tokens ${rec.input_tokens}/${rec.output_tokens}, $${rec.cost_usd} (usage row ${rec.usage_row ? `$${rec.usage_row.cost_usd} · ${rec.usage_row.business}` : 'missing'}), withheld ${rec.withheld}, dropped_pii ${rec.dropped_pii}, ${rec.wall_s} s, sort ${rec.sort}`,
-      rec.status === 200 && costMatch && !rec.pii_shown);
+    ok(`${label} "${q}": ${rec.status}, ${rec.items} records ${JSON.stringify(rec.by_entity)}, reads [${rec.reads.join(' ; ')}], rows ${JSON.stringify(rec.rows_by_entity)}, tokens ${rec.input_tokens}/${rec.output_tokens}, $${rec.cost_usd} (usage row ${rec.usage_row ? `$${rec.usage_row.cost_usd} · ${rec.usage_row.business}` : 'missing'}), hit 1200 cap ${rec.hit_cap}, saving vs first run ${rec.saving ? `in ${rec.saving.input} / out ${rec.saving.output}` : 'n/a'}, withheld ${rec.withheld}, dropped_pii ${rec.dropped_pii}, ${rec.wall_s} s, sort ${rec.sort}`,
+      rec.status === 200 && costMatch && !rec.pii_shown && !rec.withheld);
     return rec;
   };
 
-  for (const [i, q] of ASKS.entries()) await runAsk(q, `ask${i + 1}`);
+  if (!RESUME) for (const [label, q] of ASKS) await runAsk(q, label);
+  const allScopeAsk = async () => {
+    await bar.click(); await page.waitForTimeout(300);
+    await page.locator('[data-scout-scope]').first().click();
+    await page.locator('.scout-scope-list').getByRole('option', { name: 'All workspaces', exact: true }).click();
+    await page.waitForTimeout(300);
+    const rec = await runAsk('who visited yesterday and are they in Prospector', 'ask6-all');
+    await page.locator('[data-scout-scope]').first().click().catch(() => {});
+    await page.locator('.scout-scope-list').getByRole('option', { name: 'HomeLover', exact: true }).click().catch(() => {});
+    return rec;
+  };
+  const all = RESUME ? await allScopeAsk() : null;
+  if (RESUME) for (const t of seeded) results.asks.push({ label: `seeded: ${t.q}`, q: t.q, _items: t.items, seeded: true });
 
   // Open on one item of each kind: reopen its turn from the thread (no new ask), press Open, check the landing.
   const kinds = new Map();
@@ -145,7 +180,8 @@ try {
   // + Task once, on a company-shaped record if one came back (linked), then deleted by id in teardown.
   {
     const all = results.asks.flatMap(a => a._items.map(it => ({ it, q: a.q })));
-    const pick = all.find(x => ['partners', 'employers', 'targets', 'clients'].includes(x.it.entity)) || all[0];
+    const pick = all.find(x => ['partners', 'employers'].includes(x.it.entity));
+    if (!pick) ok('+ Task: no partner or employer record came back to add a linked task on', false);
     if (pick) {
       await bar.click(); await page.waitForTimeout(300);
       const cur = await page.locator('[data-scout-answer] .scout-head').textContent().catch(() => '');
@@ -156,17 +192,14 @@ try {
       createdTodo = j.goal?.id || null;
       const row = createdTodo ? (await svc.from('sales_week_goals').select('kind, status, text, owner_user_id, link_type, link_id').eq('id', createdTodo).maybeSingle()).data : null;
       await page.waitForTimeout(400);
-      ok(`+ Task on ${pick.it.entity} "${pick.it.title}": ${resp.status()}, row ${row ? `${row.kind}/${row.status} "${row.text}" owner=Jack ${row.owner_user_id === owner.userId} link ${row.link_type || 'none'}` : 'missing'}; note "${await page.locator('.scout-note[role=status]').textContent().catch(() => '')}"`, resp.status() < 300 && row && row.owner_user_id === owner.userId);
+      ok(`+ Task on ${pick.it.entity} "${pick.it.title}": ${resp.status()}, row ${row ? `${row.kind}/${row.status} "${row.text}" owner=Jack ${row.owner_user_id === owner.userId} link ${row.link_type || 'none'}${row.link_id === pick.it.id ? ' -> this record' : ''}` : 'missing'}; note "${await page.locator('.scout-note[role=status]').textContent().catch(() => '')}"`, resp.status() < 300 && row && row.owner_user_id === owner.userId && row.link_id === pick.it.id && ['partner', 'opportunity'].includes(row.link_type));
     }
   }
 
-  // All workspaces + "who visited yesterday" (the 6th and last Claude call).
-  await bar.click(); await page.waitForTimeout(300);
-  await page.locator('[data-scout-scope]').first().click();
-  await page.locator('.scout-scope-list').getByRole('option', { name: 'All workspaces', exact: true }).click();
-  await page.waitForTimeout(300);
-  const all = await runAsk('who visited yesterday', 'ask6-all');
-  ok(`All workspaces: answer's workspaces ${all.workspaces.join(' · ')}, Workspace tags on its rows ${all.tags.join(' · ') || 'none'}, usage row business ${all.usage_row?.business}`, all.status === 200 && (all.items === 0 || all.tags.length > 0));
+  // All workspaces + "who visited yesterday ..." (the 4th and last Claude call) - in the resume it ran first.
+  if (!RESUME) Object.assign(results, { all: await allScopeAsk() });
+  const allRec = all || results.all;
+  ok(`All workspaces: answer's workspaces ${allRec.workspaces.join(' · ')}, Workspace tags on its rows ${allRec.tags.join(' · ') || 'none'}, usage row business ${allRec.usage_row?.business}`, allRec.status === 200 && allRec.items > 0 && allRec.tags.length > 0);
   // The other module's rows through a free search on All workspaces (each row's tag comes from its workspace).
   await bar.fill('a'); await bar.fill('co'); await page.locator('[data-scout-row]').first().waitFor({ timeout: 20000 }).catch(() => {});
   await page.waitForTimeout(600);

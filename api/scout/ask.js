@@ -8,7 +8,7 @@ import { buildContext } from './retrieve.js';
 // scout-v2 REV2 Stage 1 (D1 POST, D4, D5) - POST /api/scout/ask { q, scope, thread?, filters? } -> { answer_md, items,
 // usage, context_stats }. The server builds everything (retrieve.js) and calls Claude once with a SERVER system prompt:
 // MODELS.STANDARD, max_tokens MAX_TOKENS, thinking off, callType 'scout_ask' -> a usage row with the observed cost. The
-// model cites records as [entity:id] tokens; the server resolves them to items (unknown refs dropped). The answer is
+// model cites records as [rN] labels; the server resolves them to items (unknown labels dropped). The answer is
 // hasPii-checked: one that trips is withheld and counted. DAILY_CAP asks per user per LA day -> 429.
 export const DAILY_CAP = 40; // REVISABLE (spec D4)
 export const MAX_TOKENS = 1200;
@@ -16,14 +16,14 @@ export const CALL_TYPE = 'scout_ask';
 export const Q_MAX = 500, THREAD_MAX = 6, TURN_MAX = 2000;
 export const SYSTEM = [
   'You are Scout, the assistant inside Prospector, a sales workspace. You answer questions about the user\'s own records.',
-  'Answer ONLY from the CONTEXT lines in the user message. Each line is one record: [entity:id] followed by its fields.',
-  'When the user says "show me" or asks for a list, reply with a short list, one line per record, and cite each record with its token exactly as written, like [partners:abc]. Cite a record whenever you rely on it.',
+  'Answer ONLY from the CONTEXT lines in the user message. Each line is one record: a label like [r1] followed by its fields.',
+  'When the user says "show me" or asks for a list, reply with a short list, one line per record, and cite each record with its label exactly as written, like [r3]. Cite a record whenever you rely on it.',
   'Sort as asked (date, score, heat) and say which sort you used. Otherwise keep the context\'s order.',
   'Never invent a record, a number, a date or a contact detail. Email addresses and phone numbers are never in the context; never guess one.',
   'If the context does not hold what was asked, say so plainly and name the filter, chip, window or workspace that would find it.',
   'Plain prose or bullets. No headings. No em dashes or en dashes: use a comma or a colon instead.',
 ].join('\n');
-const TOKEN = /\[([a-z_]+):([^\]\s]+)\]/g;
+const TOKEN = /\[(r\d+)\]/g;
 export const askDeps = { callAnthropic: null, now: () => Date.now() };
 
 export async function asksToday(supabase, userId, now = Date.now()) {
@@ -36,10 +36,10 @@ export async function asksToday(supabase, userId, now = Date.now()) {
 // The model's text -> { answer_md, items }: known tokens become the record's title, unknown ones are dropped.
 export function resolveRefs(text, items) {
   const used = new Map();
-  const answer = text.replace(TOKEN, (m, entity, id) => {
-    const it = items.get(`${entity}:${id}`);
+  const answer = text.replace(TOKEN, (m, label) => {
+    const it = items.get(label);
     if (!it) return '';
-    if (!used.has(`${entity}:${id}`)) used.set(`${entity}:${id}`, it);
+    if (!used.has(label)) used.set(label, it);
     return it.title;
   }).replace(/[ \t]+\n/g, '\n').replace(/ {2,}/g, ' ');
   return { answer_md: answer.trim(), items: [...used.values()] };
@@ -71,7 +71,7 @@ export async function ask(supabase, registry, { auth, body, now = askDeps.now() 
   if (!askDeps.callAnthropic) askDeps.callAnthropic = (await import('../businesses/shared.js')).callAnthropic;
   const data = await askDeps.callAnthropic({ system, messages, max_tokens: MAX_TOKENS, thinking: false, model: MODELS.STANDARD, supabase, businessId: scope === 'all' ? null : scope, userId: auth.user.id, callType: CALL_TYPE, timeoutMs: 60000 });
   let text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n').replace(/[—–]/g, '-');
-  // Checked after the [entity:id] tokens become titles: an id's digit runs match the phone shape, the shown text doesn't.
+  // Checked after the [rN] labels become titles (the shown text).
   let { answer_md, items } = resolveRefs(text, ctx.items);
   const withheld = hasPii(answer_md);
   if (withheld) { answer_md = 'Answer withheld: it contained an address or phone number.'; items = []; }
