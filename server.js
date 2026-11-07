@@ -411,6 +411,18 @@ app.post('/api/email',         aiLimit, esHandler('./api/email.js'));
 app.post('/api/learn-voice',   aiLimit, esHandler('./api/learn-voice.js'));
 app.post('/api/analyze-voice', aiLimit, esHandler('./api/analyze-voice.js'));
 app.post('/api/meetingprep',   aiLimit, esHandler('./api/meetingprep.js'));
+// scout-v2 REV2 Stage 1 - Scout reads through a registry of module readers: each module registers its own entities,
+// intents and openers from a file in its own folder (named here by path, like every other module route); api/scout
+// names no workspace. Search is a plain read (no Claude), so only ask sits behind aiLimit.
+const SCOUT_MODULES = [path.join(__dirname, 'api/sales/scoutEntities.js'), path.join(__dirname, 'api/hk/scoutEntities.js')];
+const scoutRoute = (file, name) => async (req, res) => {
+  try {
+    await (await import('./api/scout/registry.js')).ensureRegistry(SCOUT_MODULES);
+    return (await import(file))[name](req, res);
+  } catch (err) { console.error(`[scout/${name}] handler error:`, err); if (!res.headersSent) res.status(500).json({ error: err.message }); }
+};
+app.get('/api/scout/search',           scoutRoute('./api/scout/search.js', 'searchRoute'));
+app.post('/api/scout/ask',    aiLimit, scoutRoute('./api/scout/ask.js', 'askRoute'));
 app.post('/api/glean',         esHandler('./api/glean.js'));
 app.post('/api/glean/people',  esHandler('./api/glean-people.js'));
 app.post('/api/gmail-intent',  esHandler('./api/gmail-intent.js'));

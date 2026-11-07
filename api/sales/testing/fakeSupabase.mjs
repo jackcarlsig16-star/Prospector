@@ -23,9 +23,15 @@ export function fakeSupabase(seed, { unique = {}, now = Date.now, triggers = {} 
   const stamp = () => { last = Math.max(now(), last + 1); return new Date(last).toISOString(); };
   const stamped = r => { const at = stamp(); return { id: randomUUID(), created_at: at, recorded_at: at, ...r }; };
   const db = Object.fromEntries(Object.entries(seed).map(([k, v]) => [k, v.map(r => ({ ...r }))]));
+  // scout-v2: ilike (PostgREST % wildcards, case-insensitive), or("a.ilike.%x%,b.eq.y,c.is.null"), contains (array column)
+  // and the json path "data->>name" that Scout's searches use.
+  const col = (row, k) => (k.includes('->>') ? k.split('->>').reduce((o, p) => (o == null ? o : o[p]), row) : row[k]);
+  const likeRe = pat => new RegExp('^' + String(pat).split('%').map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/_/g, '.')).join('.*') + '$', 'is');
+  const parseOr = expr => expr.split(/,(?=[a-z_>-]+\.(?:ilike|eq|is|neq)\.)/).map(part => { const m = /^([^.]+)\.(ilike|eq|is|neq)\.(.*)$/s.exec(part.trim()); return { op: m[2], k: m[1], v: m[2] === 'is' && m[3] === 'null' ? null : m[3] }; });
   const matches = (row, f) => ({
-    eq: () => row[f.k] === f.v, neq: () => row[f.k] !== f.v, in: () => f.v.includes(row[f.k]), gte: () => row[f.k] >= f.v, lte: () => row[f.k] != null && row[f.k] <= f.v, lt: () => row[f.k] != null && row[f.k] < f.v,
-    is: () => (f.v === null ? row[f.k] == null : row[f.k] === f.v), not_is: () => row[f.k] != null,
+    eq: () => col(row, f.k) === f.v, neq: () => col(row, f.k) !== f.v, in: () => f.v.includes(row[f.k]), gte: () => row[f.k] >= f.v, lte: () => row[f.k] != null && row[f.k] <= f.v, lt: () => row[f.k] != null && row[f.k] < f.v,
+    is: () => (f.v === null ? col(row, f.k) == null : col(row, f.k) === f.v), not_is: () => row[f.k] != null,
+    ilike: () => likeRe(f.v).test(String(col(row, f.k) ?? '')), or: () => f.v.some(sub => matches(row, sub)), contains: () => Array.isArray(row[f.k]) && f.v.every(x => row[f.k].includes(x)),
   })[f.op]();
   const addRow = (table, r) => { (db[table] ||= []).push(stamped(r)); };
   const exec = (table, q) => {
@@ -75,6 +81,7 @@ export function fakeSupabase(seed, { unique = {}, now = Date.now, triggers = {} 
       select(cols = '*', opts = {}) { if (q.op === 'select') { q.cols = cols; q.head = !!opts.head; } return b; },
       insert(p) { q.op = 'insert'; q.payload = p; return b; }, upsert(p, o = {}) { q.op = 'upsert'; q.payload = p; q.onConflict = o.onConflict; return b; }, update(p) { q.op = 'update'; q.payload = p; return b; }, delete() { q.op = 'delete'; return b; },
       eq: f('eq'), neq: f('neq'), in: f('in'), gte: f('gte'), lte: f('lte'), lt: f('lt'), is: f('is'), not(k) { q.filters.push({ op: 'not_is', k }); return b; },
+      ilike: f('ilike'), contains: f('contains'), or(expr) { q.filters.push({ op: 'or', v: parseOr(expr) }); return b; },
       order(k, o = {}) { q.order.push([k, o.ascending !== false]); return b; }, limit(n) { q.limit = n; return b; }, range(a, z) { q.range = [a, z]; return b; },
       maybeSingle() { q.single = 'maybe'; return b; }, single() { q.single = 'one'; return b; },
       then(res, rej) { return Promise.resolve().then(() => exec(table, q)).then(res, rej); },

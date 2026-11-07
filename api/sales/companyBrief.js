@@ -14,7 +14,7 @@ import { SOURCE_LABEL } from '../../src/constants/leadSources.js';
 export const BRIEF_TYPES = ['partner', 'employer', 'target'];
 const TABLE = { partner: 'sales_goals', employer: 'sales_opportunities', target: 'sales_targets' };
 const STEP_LABEL = { research: 'Run research', site: 'Confirm the site', size: 'Add the headcount', owner: 'Pick an owner', add: 'Add to the pipeline', touch: 'Make the first touch' };
-const SOURCE_WORD = { upside: 'Brad / Upside', partner_referral: 'Partner referral', person_referral: 'Person referral', campaign: 'Campaign', website: 'Website', inbound: 'Inbound', homelover_outreach: 'HomeLover outreach', scout: 'Scout', other: 'Other' };
+export const SOURCE_WORD = { upside: 'Brad / Upside', partner_referral: 'Partner referral', person_referral: 'Person referral', campaign: 'Campaign', website: 'Website', inbound: 'Inbound', homelover_outreach: 'HomeLover outreach', scout: 'Scout', other: 'Other' };
 const RESEARCH_LINES = [['why_homelover', 'Why HomeLover'], ['first_angle', 'First angle'], ['housing_perk', 'Housing perk'], ['titles', 'Titles to reach'], ['sells_to', 'Sells to'], ['watch_outs', 'Watch out'], ['recent_news', 'Recent news'], ['summary', 'Summary']];
 const PEOPLE_MAX = 8, TASKS_MAX = 5, TOUCHES_MAX = 3;
 const DAY = 864e5;
