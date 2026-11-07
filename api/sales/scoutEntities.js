@@ -37,8 +37,8 @@ export const ENTITIES = [
     } },
   { entity: 'clients', label: 'Clients', open: id => window_({ tab: 'pipeline', view: 'clients', open: `employer-${id}` }),
     async search(sb, { businessId, q, limit }) {
-      const rows = must(await sb.from('sales_opportunities').select('id, organization, client_status, covered_lives, launch_date, updated_at').eq('business_id', businessId).is('archived_at', null).not('client_status', 'is', null).ilike('organization', pat(q)).order('updated_at', { ascending: false }).limit(limit));
-      return rows.map(r => ({ id: r.id, title: r.organization, subtitle: `client · ${r.client_status}`, date: day(r.launch_date || r.updated_at), text: [r.organization, `client ${r.client_status}`, r.covered_lives != null ? `${r.covered_lives} covered lives` : null, r.launch_date ? `launch ${day(r.launch_date)}` : null].filter(Boolean).join(' · ') }));
+      const rows = must(await sb.from('sales_opportunities').select('id, organization, client_status, covered_lives, expected_launch, updated_at').eq('business_id', businessId).is('archived_at', null).not('client_status', 'is', null).ilike('organization', pat(q)).order('updated_at', { ascending: false }).limit(limit));
+      return rows.map(r => ({ id: r.id, title: r.organization, subtitle: `client · ${r.client_status}`, date: day(r.expected_launch || r.updated_at), text: [r.organization, `client ${r.client_status}`, r.covered_lives != null ? `${r.covered_lives} covered lives` : null, r.expected_launch ? `launch ${day(r.expected_launch)}` : null].filter(Boolean).join(' · ') }));
     } },
   { entity: 'people', label: 'People', open: id => window_({ tab: 'pipeline', view: 'people', open: `person:${id}` }),
     async search(sb, { businessId, q, limit }) {

@@ -32,6 +32,7 @@ import { KIT_TABLE } from './tokens';
 //   but the loaded rows are never re-sorted here.
 //   onReachEnd() (opt-in): called when the end of the rows scrolls into view (load the next page); a sentinel after
 //   the last row, watched by IntersectionObserver where the browser has one.
+//   openKey (opt-in): a row key whose detail opens from outside (scout-v2 B7: a Scout record landing on its list).
 
 const compare = (a, b) => (typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }));
 
@@ -53,9 +54,10 @@ function GroupHeading({ group }) {
     : <span className="ui-table__gh">{group.icon}{h}</span>;
 }
 
-export default function DataTable({ columns, groups, rowStyle, rowKey, compact = false, renderCompact, renderDetail, emptyText, label, sort: sortProp, onSort, dense = false, pinUnder = null, onRowClick, rowDetail = false, serverSort = false, onReachEnd = null }) {
+export default function DataTable({ columns, groups, rowStyle, rowKey, compact = false, renderCompact, renderDetail, emptyText, label, sort: sortProp, onSort, dense = false, pinUnder = null, onRowClick, rowDetail = false, serverSort = false, onReachEnd = null, openKey: openKeyProp = null }) {
   const [sortState, setSortState] = useState(null);
-  const [openKey, setOpenKey] = useState(null);
+  const [openKey, setOpenKey] = useState(openKeyProp);
+  useEffect(() => { if (openKeyProp != null) setOpenKey(openKeyProp); }, [openKeyProp]);
   const idBase = useId();
   const sort = onSort ? sortProp : sortState;
   const setSort = onSort ? f => onSort(f(sortProp)) : setSortState;

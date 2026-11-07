@@ -11,6 +11,7 @@ import { memberColor } from '../../../constants/memberColors';
 import useMediaQuery from '../../../utils/useMediaQuery';
 import { toCsv } from '../../../utils/csv';
 import { readPeopleCompany, writePeopleCompany } from '../salesNav';
+import { readOpenKey, openKeyOf, onScoutOpen, clearUrlParam } from '../../scout/scoutOpen';
 import { CHIPS, WINDOW_OPTIONS, SOURCE_OPTIONS, EMPTY_FILTERS, applyFilters, chipCounts, stageOptions, activeFilters, removeFilter, toggleChip, targetToFilters, CSV_COLUMNS, heatRule, readSort, writeSort } from './peopleTableModel';
 import PersonDetail from './PersonDetail';
 
@@ -37,6 +38,7 @@ const emailsHead = <>Emails<span className="ui-sr-only"> (human opens)</span></>
 const ell = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' };
 const rowBar = { minHeight: 36, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 };
 const RECORD = ['partner', 'employer', 'target'];
+const rowKeyOf = r => r.key.replace(/[^A-Za-z0-9_-]/g, '_');
 
 export default function PeopleTable({ businessId, canEdit, me = null, initialTarget = null }) {
   const phone = useMediaQuery('(max-width: 899px)');
@@ -51,6 +53,8 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   const [sharing, setSharing] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [reload, setReload] = useState(0);
+  // scout-v2 B7: ?open=person:<person key> (or a Scout open while on screen) pins that person's card.
+  const [scoutKey, setScoutKey] = useState(() => readOpenKey('person'));
   const meId = me?.profile?.id || null, myName = me?.profile?.display_name || '';
   const load = useCallback(() => goalsApi.peopleActivity(businessId, filters.window).then(d => { setData(d); setError(''); }).catch(e => setError(e.message)), [businessId, filters.window]);
   useEffect(() => { load(); }, [load, reload]);
@@ -64,11 +68,18 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
     const t = setTimeout(() => setToast(null), toast.undo ? UNDO_MS : 4000);
     return () => clearTimeout(t);
   }, [toast]);
+  useEffect(() => onScoutOpen(p => { const k = openKeyOf('person', p.open); if (k) { setFilters(EMPTY_FILTERS); setScoutKey(k); } }), []);
   const ctx = useMemo(() => ({ meId, myName, now: Date.now() }), [meId, myName, data]); // eslint-disable-line react-hooks/exhaustive-deps
   const all = useMemo(() => data?.rows || [], [data]);
   const rows = useMemo(() => applyFilters(all, filters, ctx), [all, filters, ctx]);
   const counts = useMemo(() => chipCounts(all, ctx), [all, ctx]);
   const stages = useMemo(() => stageOptions(all), [all]);
+  const scoutRow = useMemo(() => (scoutKey ? all.find(r => r.key === scoutKey || r.source_keys?.includes(scoutKey)) || null : null), [all, scoutKey]);
+  useEffect(() => {
+    if (!scoutRow) return;
+    clearUrlParam('open');
+    document.querySelector(`[data-key="${rowKeyOf(scoutRow)}"]`)?.scrollIntoView?.({ block: 'center' });
+  }, [scoutRow]);
   const colorOf = uid => { const i = members.findIndex(m => m.user_id === uid); return i >= 0 ? members[i].color || memberColor(i) : null; };
   const openCompany = (c, section = null) => { if (!c?.id || !RECORD.includes(c.type)) return; window.dispatchEvent(new CustomEvent(OPEN_PIPELINE_RECORD, { detail: { key: `${c.type}-${c.id}`, ...(section ? { section } : {}) } })); };
   const changed = () => setReload(n => n + 1);
@@ -203,7 +214,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
       {error && <ErrorNote message={error} />}
       {data && (
         <div className="ui-theme-dark">
-          <DataTable label="People" columns={tableColumns} groups={groups} rowKey={r => r.key.replace(/[^A-Za-z0-9_-]/g, '_')} sort={sort} onSort={onSort} dense rowDetail pinUnder="[data-workspace-header]" compact={phone} renderCompact={compactRow} renderDetail={renderDetail} emptyText="No people match these filters." />
+          <DataTable label="People" columns={tableColumns} groups={groups} rowKey={rowKeyOf} openKey={scoutRow ? rowKeyOf(scoutRow) : null} sort={sort} onSort={onSort} dense rowDetail pinUnder="[data-workspace-header]" compact={phone} renderCompact={compactRow} renderDetail={renderDetail} emptyText="No people match these filters." />
         </div>
       )}
       {data && <p data-heat-footnote style={{ margin: 0, fontSize: 12, color: SA.faint }}>{heatRule(data.heat_rule)}{data.heat_pending ? ` ${data.heat_pending} ${data.heat_pending === 1 ? 'person has' : 'people have'} no heat yet (the next Apollo sync computes it).` : ''} Times are Pacific.</p>}

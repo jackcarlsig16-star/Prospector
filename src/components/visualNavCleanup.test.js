@@ -5,7 +5,8 @@ import { BUSINESS_NAV } from '../constants/businessNav';
 import DailyDigest from './DailyDigest';
 import PersistentScout from './PersistentScout';
 
-jest.mock('./ScoutCommandBar', () => function ScoutCommandBar(props) { return <div data-scout-bar={props.compact ? 'compact' : 'full'} />; });
+jest.mock('../utils/useMediaQuery', () => () => false);
+jest.mock('./ScoutCommandBar', () => function ScoutCommandBar(props) { return <div data-scout-bar={props.mode === 'compact' ? 'compact' : 'full'} />; });
 
 // visual-nav-cleanup-v1 Stage 1 - C1 no Claude call without a click, C2 one Scout bar, C6 Grow.
 test('C1: App.js has no eager brief / week-ahead call; the digest mounted closed calls the Claude proxy never', async () => {
@@ -19,11 +20,11 @@ test('C1: App.js has no eager brief / week-ahead call; the digest mounted closed
 });
 
 test('C2: one Scout bar per page - compact in a workspace header, full elsewhere; never both', () => {
-  const props = { businesses: [], territoryAccounts: [], activeUser: { id: 'u1', name: 'Jack' }, onNav: () => {}, onCreateTask: () => {} };
-  const { unmount } = render(<PersistentScout {...props} compact isBusinessContext={false} />);
+  const props = { businesses: [], me: { profile: { id: 'u1' }, memberships: [] }, onOpen: () => {} };
+  const { unmount } = render(<PersistentScout {...props} compact />);
   expect([...document.querySelectorAll('[data-scout-bar]')].map(b => b.dataset.scoutBar)).toEqual(['compact']);
   unmount();
-  render(<PersistentScout {...props} isBusinessContext={false} />);
+  render(<PersistentScout {...props} />);
   expect([...document.querySelectorAll('[data-scout-bar]')].map(b => b.dataset.scoutBar)).toEqual(['full']);
 });
 

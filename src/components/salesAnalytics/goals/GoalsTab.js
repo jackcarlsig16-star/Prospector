@@ -265,7 +265,7 @@ export default function GoalsTab({ businessId, section, view, onNav, onOpenHuddl
 
         {section === 'actions' && me && <>
           {canEdit && <PlanNudge week={weekStart} ownerId={planOwner} ownerName={lookup(planOwner).first} plans={plans} onPlan={() => setPlanOpen(true)} />}
-          <ActionsView businessId={businessId} canEdit={canEdit} meId={meId} owner={owner} members={members} lookup={lookup}
+          <ActionsView businessId={businessId} canEdit={canEdit} meId={meId} owner={owner} members={members} lookup={lookup} onShowTeam={() => setOwnerSlug('team')}
             onOpenFull={row => go(row.type === 'partner' ? { partners: { ids: [row.id], open: row.id, label: row.name } } : 'view:pipeline')} />
           <GoalsSection businessId={businessId} weekStart={weekStart} members={ownerMember ? [ownerMember] : members} lookup={lookup} commitments={myCommitments} partners={partners} />
           <TrackImprove businessId={businessId} canEdit={canEdit} />

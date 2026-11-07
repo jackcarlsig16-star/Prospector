@@ -14,7 +14,8 @@ import { roleAtLeast } from '../../constants/roles';
 import { fetchFlags, FLAGS_CHANGED } from './huddleApi';
 import { pageloadSync } from './salesApi';
 import { fetchMe } from '../../utils/authSession';
-import { TABS, SUB_VIEWS, DEFAULT_VIEW, readNav, writeNav, normalizeNav } from './salesNav';
+import { TABS, SUB_VIEWS, DEFAULT_VIEW, readNav, writeNav, normalizeNav, readOpenParam } from './salesNav';
+import { onScoutOpen } from '../scout/scoutOpen';
 import { FRAME_ROW_HEIGHT, FRAME_TOOLS_ID, FRAME_CSS } from './salesFrame';
 import useMediaQuery from '../../utils/useMediaQuery';
 
@@ -125,6 +126,13 @@ export default function SalesAnalyticsTab({ businessId }) {
     window.addEventListener(OPEN_PIPELINE_RECORD, open);
     return () => window.removeEventListener(OPEN_PIPELINE_RECORD, open);
   }, [nav]);
+  // scout-v2 B7: a Scout open while this tab is on screen - a company key opens its window (as OPEN_PIPELINE_RECORD
+  // does); anything else moves to its tab / view, whose list reads the rest of the key.
+  useEffect(() => onScoutOpen(p => {
+    const key = readOpenParam(`?open=${encodeURIComponent(p.open || '')}`);
+    if (key) { setPipelineTarget({ key, section: null, n: Date.now() }); nav('pipeline', 'companies'); }
+    else if (p.tab) nav(p.tab, p.view);
+  }), [nav]);
   const openGoals = useCallback(target => { const home = homeOf(target); setGoalsTarget({ target }); nav(home ? home.tab : 'dashboard', home?.view); }, [nav]);
   useEffect(() => {
     const open = e => openGoals(e.detail.target);

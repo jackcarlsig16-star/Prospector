@@ -6,6 +6,7 @@ import AccountsPage from './AccountsPage';
 import CsvImportModal from './CsvImportModal';
 import InfluencerAddModal from './InfluencerAddModal';
 import OutreachMatrix from './OutreachMatrix';
+import { readAccountParam, onScoutOpen, clearUrlParam } from './scout/scoutOpen';
 
 // Every capability false - a member with only view access on the lists in
 // scope gets a real read-only UI, not just a role label (business-lists-and-permissions-v1).
@@ -41,6 +42,9 @@ export default function BusinessAccountsTab({ business, userEmail, fullListAcces
   const [segment, setSegment] = useState('all'); // 'all' | 'business' | 'influencer'
   const [selectedListId, setSelectedListId] = useState(null); // null = all accessible; UNLISTED = zero-list accounts
   const [view, setView] = useState('accounts'); // 'accounts' | 'outreach_matrix'
+  // scout-v2 B7: ?account=<id> (or a Scout open while on screen) expands that account in the list.
+  const [jumpTo, setJumpTo] = useState(readAccountParam);
+  useEffect(() => onScoutOpen(p => { if (p.account) { setView('accounts'); setJumpTo(p.account); } }), []);
   const [accessibleListIds, setAccessibleListIds] = useState(null); // null = owner, no restriction
   const [editableListIds, setEditableListIds] = useState(null);
 
@@ -217,6 +221,8 @@ export default function BusinessAccountsTab({ business, userEmail, fullListAcces
       {OUTREACH_MATRIX_ENABLED && view === 'outreach_matrix' ? <OutreachMatrix accounts={visibleAccounts} business={business} /> : (
       <AccountsPage
         accounts={visibleAccounts}
+        jumpToId={jumpTo && visibleAccounts.some(a => a.id === jumpTo) ? jumpTo : null}
+        onJumped={() => { setJumpTo(null); clearUrlParam('account'); }}
         onSave={canEditCurrentView ? persist : undefined}
         onAddAccount={canEditCurrentView ? handleAdd : undefined}
         onRemoveAccount={canEditCurrentView ? removeAccount : undefined}

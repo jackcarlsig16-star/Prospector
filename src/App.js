@@ -4,7 +4,6 @@ import { staleDays } from './utils/staleness';
 import { URGENCY_OPTIONS, setBdrList } from './components/AccountCard';
 import ToolsPage from './components/ToolsPage';
 import PersistentScout from './components/PersistentScout';
-import { getManagerScopedAccounts, getAeMap } from './utils/managerScope';
 import AssayBanner from './components/AssayBanner';
 import { startBulkAssay } from './utils/bulkAssay';
 import StaleSfdcBanner from './components/StaleSfdcBanner';
@@ -20,6 +19,7 @@ import HandoffsPage from './components/HandoffsPage';
 import { ROLE_PERMS, isAdmin } from './constants/appConfig';
 import { APP_LEVEL_VIEWS, homePage } from './constants/businessNav';
 import { writeNav } from './components/salesAnalytics/salesNav';
+import { PAGE_OF, writeOpenParams, announceOpen } from './components/scout/scoutOpen';
 import useMediaQuery from './utils/useMediaQuery';
 import { trackStat, trackDailyStat } from './utils/stats';
 import { indexAccountThreads } from './utils/threadIndexer';
@@ -1088,28 +1088,6 @@ export default function App({ me }) {
 
   const managerScopedAeId = activeRole === 'Manager' ? selectedAeId : null;
 
-  // scout-global-persistent-v1 — the persistent Scout mount's "Territory"
-  // scope (non-business pages): same accounts a Manager already sees
-  // elsewhere (team + optional single-AE filter via the pill row above),
-  // otherwise the plain territory list unchanged from before consolidation.
-  const scoutTerritoryAccounts = useMemo(
-    () => activeRole === 'Manager' ? getManagerScopedAccounts(accounts, managerTeamAEs, selectedAeId) : accounts,
-    [activeRole, accounts, managerTeamAEs, selectedAeId]
-  );
-  const scoutAeMap = useMemo(
-    () => activeRole === 'Manager' ? getAeMap(managerTeamAEs) : {},
-    [activeRole, managerTeamAEs]
-  );
-  const scoutAllBusinessesConfirmed = !!teamUsers.find(u => u.id === activeUser?.id)?.scoutAllBusinessesConfirmed;
-
-  const updateTeamUser = useCallback((id, patch) => {
-    setTeamUsers(prev => {
-      const next = prev.map(u => u.id === id ? { ...u, ...patch } : u);
-      try { localStorage.setItem("prospector_team_users", JSON.stringify(next)); } catch {}
-      return next;
-    });
-  }, []);
-
   const syncSfdc = async () => {
     const tok  = localStorage.getItem("sfdc_access_token");
     const inst = localStorage.getItem("sfdc_instance_url");
@@ -1222,20 +1200,27 @@ export default function App({ me }) {
   const showTasks=page==="business-detail"&&!!activeBusiness?.features?.goals_sales;
   // shell-facelift-v1 Stage 2 - inside a workspace Scout sits in the page's sticky header row, otherwise above the page.
   const scoutInHeader=page==="business-detail"&&!!activeBusiness&&!APP_LEVEL_VIEWS.includes(businessPage);
+  // scout-v2 REV3 B7 - a Scout record lands by its opener: the params go into the URL (the page reads them as it
+  // mounts); a page already on screen in the same workspace hears SCOUT_OPEN instead.
+  const openScoutItem=item=>{
+    const o=item.open, b=myBusinesses.find(x=>x.id===item.workspace_id)||activeBusiness;
+    if(!o||!b)return;
+    const same=page==="business-detail"&&activeBusiness?.id===b.id;
+    if(o.hash){ window.location.hash=o.hash; setActiveBusiness(b); setBusinessPage('hk-sales'); setPage("business-detail"); return; }
+    const pg=PAGE_OF[o.page]||'sales-analytics';
+    writeOpenParams(o.params);
+    if(pg==='sales-analytics'&&o.params?.tab) writeNav(o.params.tab,o.params.view);
+    if(same&&businessPage===pg){ announceOpen(o); return; }
+    if(!same) setActiveBusiness(b);
+    setBusinessPage(pg); setPage("business-detail");
+  };
   const scoutEl=(
     <PersistentScout
-      plain={page==="businesses-home"||page==="connections"}
       compact={scoutInHeader}
-      isBusinessContext={page==="business-detail"&&!!activeBusiness}
-      activeBusiness={activeBusiness}
+      activeBusiness={page==="business-detail"?activeBusiness:null}
       businesses={myBusinesses}
-      territoryAccounts={scoutTerritoryAccounts}
-      activeUser={activeUser}
-      aeMap={scoutAeMap}
-      allBusinessesConfirmed={scoutAllBusinessesConfirmed}
-      onConfirmAllBusinesses={()=>updateTeamUser(activeUser.id,{scoutAllBusinessesConfirmed:true})}
-      onNav={navTo}
-      onCreateTask={task=>setTasks(ts=>[...ts,task])}
+      me={me}
+      onOpen={openScoutItem}
     />
   );
 

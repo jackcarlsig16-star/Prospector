@@ -12,6 +12,7 @@ import PeopleCompanyPanel from '../PeopleCompanyPanel';
 import { goalsApi, TODOS_CHANGED } from './goalsApi';
 import { completeFlag, announceFlagsChanged, reassignFlag, FLAGS_CHANGED } from '../huddleApi';
 import { numStyle, ErrorNote } from './goalsUi';
+import { readOpenKey, openKeyOf, onScoutOpen, clearUrlParam } from '../../scout/scoutOpen';
 import { KIND_LABEL, KIND_OPTIONS, EMPTY_FILTERS, activeFilterCount, actionsView, priorityText, dueText, readSort, writeSort, readFolded, writeFolded, actionSource, companyLine, datesLine, campaignLine, todoCountsText } from './actionsModel';
 import { contactSlots, PromoteDialog } from './campaigns/ContactActions';
 import { Slots, OwnerSelect, SLOT_W } from './ActionSlots';
@@ -38,7 +39,7 @@ const ellipsis = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'no
 const Dim = () => <span className="ui-table__dim">—</span>;
 const rowKey = it => it.key;
 
-export default function ActionsView({ businessId, canEdit, meId, owner = 'team', members, lookup, onOpenFull }) {
+export default function ActionsView({ businessId, canEdit, meId, owner = 'team', members, lookup, onOpenFull, onShowTeam }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [filters, setFilters] = useState(EMPTY_FILTERS);
@@ -47,6 +48,8 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
   const [editing, setEditing] = useState(null); // { key, text } - the row detail's text being edited
   const [sort, setSort] = useState(readSort);
   const [showDone, setShowDone] = useState(false);
+  // scout-v2 B7: ?open=todo:<id> (or a Scout open while on screen) opens that to-do's detail row.
+  const [scoutTodo, setScoutTodo] = useState(() => readOpenKey('todo'));
   const [sheetOpen, setSheetOpen] = useState(false);
   const [toast, setToast] = useState(null); // { text, undo?, busy?, error? }
   const [company, setCompany] = useState(null); // { company, link } for the company window
@@ -178,6 +181,17 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
   const items = useMemo(() => data?.items || [], [data]);
   const tidyItems = useMemo(() => data?.tidy?.items || [], [data]);
   const view = useMemo(() => actionsView(items, filters, { owner, viewer: !canEdit, tidy: tidyItems }), [items, filters, owner, canEdit, tidyItems]);
+  useEffect(() => onScoutOpen(p => { const k = openKeyOf('todo', p.open); if (k) { setFilters(EMPTY_FILTERS); setScoutTodo(k); } }), []);
+  const scoutItem = useMemo(() => (scoutTodo ? [...view.open, ...view.done].find(it => it.key === `todo-${scoutTodo}`) || null : null), [view, scoutTodo]);
+  // A Scout to-do hidden only by the Who filter (another person's) shows the team's list.
+  const hiddenByOwner = !!scoutTodo && !scoutItem && owner !== 'team' && items.some(it => it.key === `todo-${scoutTodo}`);
+  useEffect(() => { if (hiddenByOwner) onShowTeam?.(); }, [hiddenByOwner]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!scoutItem) return;
+    clearUrlParam('open');
+    if (scoutItem.status === 'done') setShowDone(true);
+    document.querySelector(`[data-key="${scoutItem.key}"]`)?.scrollIntoView?.({ block: 'center' });
+  }, [scoutItem]);
   const set = (k, v) => setFilters(f => ({ ...f, [k]: v }));
   const nFilters = activeFilterCount(filters);
   const onSort = s => { setSort(s); writeSort(s); };
@@ -291,7 +305,7 @@ export default function ActionsView({ businessId, canEdit, meId, owner = 'team',
       {!data && !error && <span style={{ fontSize: 13, color: SA.muted }}>Loading…</span>}
       {data && (
         <div className="ui-theme-dark">
-          <DataTable label="Actions" columns={columns} groups={groups} rowKey={rowKey} rowStyle={rowStyle} sort={sort} onSort={onSort}
+          <DataTable label="Actions" columns={columns} groups={groups} rowKey={rowKey} openKey={scoutItem?.key || null} rowStyle={rowStyle} sort={sort} onSort={onSort}
             dense pinUnder="[data-workspace-header]" compact={phone} renderCompact={compactRow} renderDetail={renderDetail} emptyText="Nothing to act on." />
         </div>
       )}

@@ -118,7 +118,7 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
     rowsByEntity[entity] = (rowsByEntity[entity] || 0) + 1;
     if (!items.has(refOf(entity, id))) {
       const open = registry.openerFor(entity);
-      items.set(refOf(entity, id), { entity, id, title: cleanText(String(item.title || body), 160), workspace_id: b.id, workspace_name: b.name, open: open ? open(id, item) : null, why: body });
+      items.set(refOf(entity, id), { entity, id, title: cleanText(String(item.title || body), 160), workspace_id: b.id, workspace_name: b.name, open: open ? open(id, item) : null, why: body, subtitle: item.subtitle && !hasPii(String(item.subtitle)) ? cleanText(String(item.subtitle), 160) : null, date: item.date || null, score: typeof item.score === 'number' ? item.score : null });
     }
   }
   return { ask, pack: lines.join('\n'), lines, items, glossary: [...new Set(glossary)], businesses, stats: { rows_by_entity: rowsByEntity, reads, dropped_pii: droppedPii, truncated, chars, lines: lines.length, workspaces: [...new Set(per.map(p => p.b.name))] } };

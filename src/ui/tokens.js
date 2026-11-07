@@ -5,6 +5,9 @@
 
 // ── HUD palette (constants/tokens.js `T`) ─────────────────────────────────────
 export const T = {
+  // scout-v2 D8 - neon is Scout's hue, ONE meaning: Scout is listening / thinking / found it (its star, focus ring + glow,
+  // the sweep, matched text, the sort it chose, the keyboard row, its popover edge). Only on Scout, never a button fill,
+  // never text on a light ground; the periwinkle accent stays the one accent everywhere else.
   neon:    '#39FF14',
   amber:   '#FFB800',
   amber2:  '#F59E0B',
