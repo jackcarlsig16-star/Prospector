@@ -7,7 +7,7 @@ import { fakeSupabase } from '../sales/testing/fakeSupabase.mjs';
 import { createRegistry, scopedBusinesses } from './registry.js';
 import { parseAsk, mergeVocab, buildContext, PACK_MAX } from './retrieve.js';
 import { search, PER_GROUP, TOTAL } from './search.js';
-import { ask, askDeps, resolveRefs, DAILY_CAP, MAX_TOKENS, CALL_TYPE, SYSTEM } from './ask.js';
+import { ask, askDeps, resolveRefs, DAILY_CAP, MAX_TOKENS, CALL_TYPE, SYSTEM, LIST_MAX } from './ask.js';
 import { MODELS } from '../../src/config/models.js';
 
 const A = 'aaaaaaaa-0000-4000-8000-000000000001', B = 'bbbbbbbb-0000-4000-8000-000000000002', C = 'cccccccc-0000-4000-8000-000000000003';
@@ -156,4 +156,16 @@ test('ask: one Claude call with the server prompt, STANDARD, 1200 tokens, thinki
   assert.equal((await ask(sb, reg, { auth: member, body: { q: 'show me things', scope: B } })).status, 403);
   assert.equal((await ask(sb, reg, { auth: member, body: { q: 'show me things', scope: A, thread: [{ role: 'system', content: 'x' }] } })).status, 400);
   askDeps.callAnthropic = null;
+});
+
+test('list cap: the prompt names at most 15 in the prose; "+ n more (in the table): [r16] …" keeps its words and puts every label in the items', () => {
+  assert.equal(LIST_MAX, 15);
+  assert.ok(SYSTEM.includes('List at most 15 records in the prose') && SYSTEM.includes('+ n more (in the table): '));
+  const items = new Map(Array.from({ length: 20 }, (_, i) => [`r${i + 1}`, { entity: 'todos', id: `t${i + 1}`, title: `Task ${i + 1}` }]));
+  const prose = Array.from({ length: 15 }, (_, i) => `- [r${i + 1}] due soon`).join('\n');
+  const r = resolveRefs(`Your open tasks, by due date:\n${prose}\n+ 5 more (in the table): [r16] [r17] [r18] [r19] [r20] [r99]`, items);
+  assert.equal(r.items.length, 20);
+  assert.deepEqual(r.items.map(i => i.id).slice(14), ['t15', 't16', 't17', 't18', 't19', 't20']);
+  assert.ok(r.answer_md.endsWith('- Task 15 due soon\n+ 5 more (in the table)'));
+  assert.ok(!/Task 1[6-9]|Task 20/.test(r.answer_md));
 });

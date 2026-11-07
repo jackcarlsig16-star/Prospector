@@ -12,12 +12,14 @@ import { buildContext } from './retrieve.js';
 // hasPii-checked: one that trips is withheld and counted. DAILY_CAP asks per user per LA day -> 429.
 export const DAILY_CAP = 40; // REVISABLE (spec D4)
 export const MAX_TOKENS = 1200;
+export const LIST_MAX = 15; // records named in the prose; the rest ride in the table (Jack, Stage 3)
 export const CALL_TYPE = 'scout_ask';
 export const Q_MAX = 500, THREAD_MAX = 6, TURN_MAX = 2000;
 export const SYSTEM = [
   'You are Scout, the assistant inside Prospector, a sales workspace. You answer questions about the user\'s own records.',
   'Answer ONLY from the CONTEXT lines in the user message. Each line is one record: a label like [r1] followed by its fields.',
   'When the user says "show me" or asks for a list, reply with a short list, one line per record, and cite each record with its label exactly as written, like [r3]. Cite a record whenever you rely on it.',
+  `List at most ${LIST_MAX} records in the prose; when more match, end with one line "+ n more (in the table): " followed by the remaining labels only, like "+ 3 more (in the table): [r16] [r17] [r18]".`,
   'Sort as asked (date, score, heat) and say which sort you used. Otherwise keep the context\'s order.',
   'Never invent a record, a number, a date or a contact detail. Email addresses and phone numbers are never in the context; never guess one.',
   'If the context does not hold what was asked, say so plainly and name the filter, chip, window or workspace that would find it.',
@@ -33,15 +35,20 @@ export async function asksToday(supabase, userId, now = Date.now()) {
   return count || 0;
 }
 
-// The model's text -> { answer_md, items }: known tokens become the record's title, unknown ones are dropped.
+// The model's text -> { answer_md, items }: known labels become the record's title, unknown ones are dropped. The
+// "+ n more (in the table): [r16] …" line keeps its words; its labels join the items (the table) but not the prose.
+const MORE = /^(\s*\+\s*\d+\s+more\s*\(in the table\))\s*:?\s*(.*)$/im;
 export function resolveRefs(text, items) {
   const used = new Map();
-  const answer = text.replace(TOKEN, (m, label) => {
+  const more = MORE.exec(text);
+  const body = more ? text.replace(MORE, '$1') : text;
+  const answer = body.replace(TOKEN, (m, label) => {
     const it = items.get(label);
     if (!it) return '';
     if (!used.has(label)) used.set(label, it);
     return it.title;
   }).replace(/[ \t]+\n/g, '\n').replace(/ {2,}/g, ' ');
+  for (const [, label] of (more?.[2] || '').matchAll(TOKEN)) { const it = items.get(label); if (it && !used.has(label)) used.set(label, it); }
   return { answer_md: answer.trim(), items: [...used.values()] };
 }
 

@@ -255,6 +255,21 @@ test('B1/B6 390: the header shows only the neon star; it opens the sheet (Scout 
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 
+test('list cap: 15 named in the prose + "+ 5 more (in the table)", while the table and Records carry all 20', async () => {
+  const items = Array.from({ length: 20 }, (_, i) => ({ entity: 'todos', id: `t${i + 1}`, title: `Task ${i + 1}`, date: `2026-11-${String(i + 1).padStart(2, '0')}`, workspace_id: 'b1', workspace_name: 'HomeLover', open: { page: 'sales', params: { tab: 'actions', open: `todo:t${i + 1}` } }, why: 'open to-do' }));
+  const prose = `Your open tasks, by due date:\n\n${items.slice(0, 15).map(i => `- ${i.title}`).join('\n')}\n\n+ 5 more (in the table)`;
+  replies.ask = () => json(200, { ...ANSWER, answer_md: prose, items });
+  const { input, container } = mount();
+  type(input, 'show me my open tasks');
+  fireEvent.keyDown(input, { key: 'Enter' });
+  await waitFor(() => expect(container.querySelector('[data-scout-answer]')).toBeTruthy());
+  expect(container.querySelectorAll('[data-scout-prose] li')).toHaveLength(15);
+  expect(container.querySelector('[data-scout-prose]').textContent).toContain('+ 5 more (in the table)');
+  expect(screen.getByRole('table', { name: "Scout's records" }).querySelectorAll('tbody tr[data-row]')).toHaveLength(20);
+  expect(container.querySelectorAll('[data-scout-records] li')).toHaveLength(20);
+  expect(screen.getByText('Records (20)')).toBeTruthy();
+});
+
 test('model: match split, question sense, the sort Scout chose, footer, task body', () => {
   expect(splitMatch('Cloudflare', 'clou')).toEqual([{ text: 'Clou', hit: true }, { text: 'dflare', hit: false }]);
   expect(isQuestion('Clou')).toBe(false);
