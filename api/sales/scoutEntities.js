@@ -86,6 +86,16 @@ export const ENTITIES = [
     } },
 ];
 
+// The intents' rows that aren't searchable entities still open their nearest list (shown inline in Scout too):
+// an unmatched visitor -> Pipeline › Companies on the Website visitors channel; pulse -> Email; funnel -> Sources;
+// needs attention -> Actions.
+export const OPENERS = {
+  visitor: () => window_({ tab: 'pipeline', view: 'companies', channel: 'website_visit' }, true),
+  pulse: () => window_({ tab: 'dashboard', view: 'analytics' }, true),
+  funnel: () => window_({ tab: 'dashboard', view: 'sources' }, true),
+  attention: () => window_({ tab: 'actions' }, true),
+};
+
 export const VOCABULARY = {
   entities: {
     todos: ['task', 'tasks', 'to-do', 'to-dos', 'todo', 'todos', 'to do', 'to dos', 'action items'],
@@ -133,6 +143,6 @@ export async function glossary(sb, { businessId }) {
 }
 
 export async function register(registry) {
-  registry.register('sales', { appliesTo: b => !!b.features?.goals_sales, entities: ENTITIES, intents: salesIntents, standing: salesStanding, glossary, vocabulary: VOCABULARY });
+  registry.register('sales', { appliesTo: b => !!b.features?.goals_sales, entities: ENTITIES, openers: OPENERS, intents: salesIntents, standing: salesStanding, glossary, vocabulary: VOCABULARY });
 }
 export { words };

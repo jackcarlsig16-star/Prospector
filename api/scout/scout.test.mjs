@@ -142,6 +142,10 @@ test('ask: one Claude call with the server prompt, STANDARD, 1200 tokens, thinki
   askDeps.callAnthropic = async args => { calls.push(args); return { content: [{ type: 'text', text: 'Write to jack@example.com about [things:t-a-0]' }], usage: { input_tokens: 10, output_tokens: 5 } }; };
   const w = await ask(sb, reg, { auth: owner, body: { q: 'show me things', scope: A } });
   assert.equal(w.status, 200); assert.equal(w.body.withheld, true); assert.ok(!/@/.test(w.body.answer_md)); assert.deepEqual(w.body.items, []);
+  // Stage 3 finding: a uuid in a citation token matches the phone shape - an answer citing records is NOT withheld.
+  askDeps.callAnthropic = async args => { calls.push(args); return { content: [{ type: 'text', text: 'Two: [things:t-a-1] and [things:ccc9016f-05f9-4e67-9876-0672778b36c3].' }], usage: { input_tokens: 10, output_tokens: 5 } }; };
+  const ids = await ask(sb, reg, { auth: owner, body: { q: 'show me things', scope: A } });
+  assert.equal(ids.body.withheld, false); assert.equal(ids.body.answer_md, 'Two: Thing 1 of a and .'); assert.deepEqual(ids.body.items.map(i => i.id), ['t-a-1']);
   // Validation and a foreign scope.
   assert.equal((await ask(sb, reg, { auth: owner, body: { q: 'x' } })).status, 400);
   assert.equal((await ask(sb, reg, { auth: member, body: { q: 'show me things', scope: B } })).status, 403);

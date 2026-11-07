@@ -71,9 +71,10 @@ export async function ask(supabase, registry, { auth, body, now = askDeps.now() 
   if (!askDeps.callAnthropic) askDeps.callAnthropic = (await import('../businesses/shared.js')).callAnthropic;
   const data = await askDeps.callAnthropic({ system, messages, max_tokens: MAX_TOKENS, thinking: false, model: MODELS.STANDARD, supabase, businessId: scope === 'all' ? null : scope, userId: auth.user.id, callType: CALL_TYPE, timeoutMs: 60000 });
   let text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('\n').replace(/[—–]/g, '-');
-  let withheld = false;
-  if (hasPii(text)) { text = 'Answer withheld: it contained an address or phone number.'; withheld = true; }
-  const { answer_md, items } = resolveRefs(text, ctx.items);
+  // Checked after the [entity:id] tokens become titles: an id's digit runs match the phone shape, the shown text doesn't.
+  let { answer_md, items } = resolveRefs(text, ctx.items);
+  const withheld = hasPii(answer_md);
+  if (withheld) { answer_md = 'Answer withheld: it contained an address or phone number.'; items = []; }
   const usage = { input_tokens: data.usage?.input_tokens ?? null, output_tokens: data.usage?.output_tokens ?? null, cost_usd: data.usage ? estimateCostUsd(MODELS.STANDARD, data.usage) : null };
   return { status: 200, body: { answer_md, items, usage, withheld, ask: { mine: ctx.ask.mine, entity: ctx.ask.entity, since: ctx.ask.since, until: ctx.ask.until, since_kind: ctx.ask.since_kind, band: ctx.ask.band, source: ctx.ask.source, sort: ctx.ask.sort, company: ctx.ask.company }, context_stats: ctx.stats, scope, cap: { used: n + 1, max: DAILY_CAP } } };
 }

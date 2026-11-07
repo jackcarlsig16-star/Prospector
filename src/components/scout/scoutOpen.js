@@ -5,8 +5,8 @@
 // inline: true = no page reads that key, so the item opens its list AND Scout shows the record itself.
 // The params go into the URL (a page that mounts now reads them); a page already on screen hears SCOUT_OPEN.
 export const SCOUT_OPEN = 'prospector:scout-open';
-const PARAMS = ['tab', 'view', 'open', 'account'];
-const STALE = ['company', 'cname', 'channel', 'gview'];
+const PARAMS = ['tab', 'view', 'open', 'account', 'channel'];
+const STALE = ['company', 'cname', 'gview'];
 export const PAGE_OF = { sales: 'sales-analytics', accounts: 'accounts', 'business-intel': 'overview' };
 
 export function writeOpenParams(params = {}) {

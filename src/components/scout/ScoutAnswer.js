@@ -37,7 +37,7 @@ export function WorkingPanel({ q, elapsed }) {
 function RowActions({ item, canTask, onOpen, onTask, taskState }) {
   return (
     <span className="scout-actions">
-      <button type="button" className="scout-btn" onClick={() => onOpen(item)} aria-label={`Open ${item.title}`}><OpenGlyph />Open</button>
+      {item.open && <button type="button" className="scout-btn" onClick={() => onOpen(item)} aria-label={`Open ${item.title}`}><OpenGlyph />Open</button>}
       {canTask(item) && (
         <button type="button" className="scout-btn" onClick={() => onTask(item)} disabled={!!taskState} title="Add as task" aria-label={`Add a task for ${item.title}`}>
           <PlusGlyph />{taskState === 'added' ? 'Added' : taskState === 'busy' ? 'Adding…' : 'Task'}

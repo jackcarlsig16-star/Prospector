@@ -110,6 +110,9 @@ test('intents route to the existing reads: tasks -> openTodos (mine), hot target
   assert.equal(calls.at(-1)[0], 'listScores');
   assert.deepEqual(calls.at(-1)[1][2], { segment: 'targets', band: 'P1', source: 'upside', owner: '', sort: 'rank' });
   assert.match(h.lines[0], /^\[targets:.*\] Mission Lane · target · score 72 P1 · rank 1 · source upside \(Brad Pitt\)/);
+  // Stage 3 finding: "2026-11-04 (2 d)" read as one phone-shaped run and was blanked; the date must survive the scrub.
+  assert.match(h.lines[0], /last touch 2026-11-04 · \d+ d ago/); assert.ok(!h.lines[0].includes('[number removed]'));
+  assert.equal(h.items.get(`targets:${u('5')}`).score, 72);
   assert.deepEqual(h.stats.reads, [`goals/scores {"segment":"targets","band":"P1","source":"upside","owner":"","sort":"rank"} (1 shown)`]);
 
   const v = await run('who visited yesterday and are they in Prospector');
@@ -127,4 +130,15 @@ test('intents route to the existing reads: tasks -> openTodos (mine), hot target
   assert.equal((await findCompany(sb, A, 'hilton')).type, 'employer');
   assert.equal((await findCompany(sb, A, 'Hilton Partners')).type, 'partner');
   assert.equal(await findCompany(sb, A, 'Nobody Inc'), null);
+});
+
+test('scout-v2 Stage 3: intent-only rows (visitor / pulse / funnel / attention) still open their nearest list, inline', async () => {
+  const reg = createRegistry();
+  await register(reg);
+  assert.deepEqual(reg.openerFor('visitor')('v1'), { page: 'sales', params: { tab: 'pipeline', view: 'companies', channel: 'website_visit' }, inline: true });
+  assert.deepEqual(reg.openerFor('pulse')('x'), { page: 'sales', params: { tab: 'dashboard', view: 'analytics' }, inline: true });
+  assert.deepEqual(reg.openerFor('funnel')('x'), { page: 'sales', params: { tab: 'dashboard', view: 'sources' }, inline: true });
+  assert.deepEqual(reg.openerFor('attention')('x'), { page: 'sales', params: { tab: 'actions' }, inline: true });
+  assert.equal(reg.openerFor('nothing'), null);
+  assert.deepEqual(reg.openerFor('employers')('e1'), { page: 'sales', params: { tab: 'pipeline', view: 'companies', open: 'employer-e1' } });
 });

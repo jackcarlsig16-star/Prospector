@@ -16,11 +16,11 @@ export function createRegistry() {
   const modules = [];
   const reg = {
     register(name, def) {
-      modules.push({ name, appliesTo: def.appliesTo || (() => true), entities: def.entities || [], intents: def.intents || [], standing: def.standing || null, glossary: def.glossary || null, vocabulary: def.vocabulary || {} });
+      modules.push({ name, appliesTo: def.appliesTo || (() => true), entities: def.entities || [], openers: def.openers || {}, intents: def.intents || [], standing: def.standing || null, glossary: def.glossary || null, vocabulary: def.vocabulary || {} });
     },
     modulesFor(business) { return modules.filter(m => m.appliesTo(business)); },
     entitiesFor(business) { return reg.modulesFor(business).flatMap(m => m.entities.map(e => ({ ...e, module: m.name }))); },
-    openerFor(entity) { for (const m of modules) { const e = m.entities.find(x => x.entity === entity); if (e?.open) return e.open; } return null; },
+    openerFor(entity) { for (const m of modules) { const e = m.entities.find(x => x.entity === entity); if (e?.open) return e.open; if (m.openers[entity]) return m.openers[entity]; } return null; },
     labelOf(entity) { for (const m of modules) { const e = m.entities.find(x => x.entity === entity); if (e) return e.label; } return entity; },
     modules,
   };
