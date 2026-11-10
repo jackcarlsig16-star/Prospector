@@ -1,7 +1,7 @@
 // people-v2 Stage 2 - the pure half of Pipeline › People (unit-tested): the filter chips and selects (P3), the Mine rule,
-// the old feed links mapped onto chips, the CSV columns (P7, structured fields only - never an address) and the heat
-// rule text, which states the one rule the route sends (heat-v2: band = the number's bracket, one fade schedule) - the
-// band itself is never recomputed here, it arrives from the route.
+// the old feed links mapped onto chips, the CSV columns (P7, structured fields only - never an address) and the band
+// groups (heat-v2 D1: Hot / Warm / Cold in the table's heat order, Cold collapsed) - the band itself is never recomputed
+// here, it arrives from the route.
 import { headcountCsv, headcountSourceWord, sizeCounts, inSizeFilter, sizeLabels } from '../../../constants/headcount';
 
 export const CHIPS = [['opened', 'Opened'], ['clicked', 'Clicked'], ['replied', 'Replied'], ['sent', 'Sent (any)'], ['identified', 'Identified visitor'], ['visited_7d', 'Company visited 7 d'], ['buyer', 'Buyer title'], ['hot', 'Hot'], ['needs_touch', 'Needs a touch'], ['mine', 'Mine']];
@@ -11,7 +11,17 @@ export const NEEDS_TOUCH_DAYS = 14; // REVISABLE (spec P3) - the route's rule
 export const EMPTY_FILTERS = { chips: [], source: '', stage: '', owner: '', window: 'all', q: '', company: null, sizes: [] };
 export const LS_SORT = 'prospector_people_sort'; // { id, dir } | null, per viewer
 
-export const heatRule = (r = { hot: 40, warm: 10, fade: { fresh: 7, mid: 0.5, old: 30, floor: 0.25 } }) => `Heat: the band is the number's bracket, nothing else - hot ≥ ${r.hot} · warm ≥ ${r.warm} · else cold; a warm person is never above a hot one. Older signals fade: whole for ${r.fade.fresh} days, ×${r.fade.mid} to ${r.fade.old} days, then ×${r.fade.floor}. Opens count humans only (scanners and link checkers are excluded); a company visit adds points, a visit alone is warm at most.`;
+// heat-v2 D1: the band groups when the table is in heat order (no sort, or sorted by heat); null when another column
+// sorts the rows (the bands would interleave, one group). A person with no heat yet sits in Cold - no points, no signal.
+export const BANDS = ['hot', 'warm', 'cold'];
+export function bandGroups(rows, sort) {
+  if (sort && sort.id !== 'heat') return null;
+  const by = Object.fromEntries(BANDS.map(b => [b, []]));
+  for (const r of rows) by[r.heat_band && by[r.heat_band] ? r.heat_band : 'cold'].push(r);
+  const order = sort?.dir === 'asc' ? [...BANDS].reverse() : BANDS;
+  return order.map(band => ({ band, rows: by[band] }));
+}
+export const bandRule = (band, r = { hot: 40, warm: 10 }) => (band === 'hot' ? `score ≥ ${r.hot}` : band === 'warm' ? `score ${r.warm}–${r.hot - 1}` : `score < ${r.warm}`);
 
 const DAY = 864e5;
 const slug = name => String(name || '').trim().split(/\s+/)[0].toLowerCase();
@@ -75,7 +85,7 @@ export function removeFilter(f, key) {
 }
 export const toggleChip = (f, chip) => ({ ...f, chips: f.chips.includes(chip) ? f.chips.filter(c => c !== chip) : [...f.chips, chip] });
 
-// The old Huddle links (GoalsTab onOpenHuddle targets): { feed: 'open' | 'click' | 'reply' | null } -> the matching chip,
+// The old feed links (the Goals numbers' open-feed targets): { feed: 'open' | 'click' | 'reply' | null } -> the matching chip,
 // { flags: true } -> Mine. Anything else = no filter.
 export function targetToFilters(target, base = EMPTY_FILTERS) {
   if (!target) return base;

@@ -1,7 +1,8 @@
 import { getSupabase, addDays } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
-import { mergePeople, SOURCE_WORD } from './peopleMerge.js';
+import { mergePeople } from './peopleMerge.js';
+import { SOURCE_WORD } from '../../src/constants/peopleSource.js';
 import { cleanText } from './scrubText.js';
 import { isMigrationPending, timelineFor, summarizePerson } from './personActivity.js';
 import { readAllViews, writeAllViews, SAVED_VIEWS_MAX } from './scoresRoutes.js';
@@ -59,7 +60,8 @@ export function peopleRows({ prospects = [], salesPeople = [], partnerContacts =
 const nz = v => (v == null ? 0 : Number(v));
 
 // Pure: the merged, joined, windowed rows + the chip counts.
-export function buildPeopleTable({ rows, activity = [], visits = [], buyerTitles = [], window: w, now = Date.now() }) {
+// heatAgo: person_key -> the heat stored 7 days ago (sales_person_heat_days), for the table's Δ7 glyph (heat-v2 H5).
+export function buildPeopleTable({ rows, activity = [], visits = [], buyerTitles = [], window: w, now = Date.now(), heatAgo = new Map() }) {
   const today = laDateString(new Date(now));
   const act = new Map();
   for (const a of activity) { act.set(a.person_key, a); if (a.contact_id) act.set(`c:${a.contact_id}`, a); }
@@ -77,7 +79,7 @@ export function buildPeopleTable({ rows, activity = [], visits = [], buyerTitles
     return {
       key: p.key, sources: p.sources.map(s => SOURCE_WORD[s]), source: SOURCE_WORD[p.sources[0]], name: p.name, title: p.title, company: p.company, status: p.status, owner: p.owner,
       emails, last_email: lastEmail ? { at: lastEmail, what: lastEmailWhat, reply_class: a?.reply_class || null } : null,
-      heat: a?.heat ?? null, heat_band: a?.heat_band ?? null, visits: visitsRow,
+      heat: a?.heat ?? null, heat_band: a?.heat_band ?? null, heat_7d_ago: p.source_keys.map(k => heatAgo.get(k)).find(v => v != null) ?? null, visits: visitsRow,
       identified_at: p.identified_at ? String(p.identified_at).slice(0, 10) : null,
       buyer: isBuyerTitle(p.title, buyerTitles), has_email: !!p.has_email, last_touch_at: lastTouch,
       in_window: !sinceIso || (lastEmail && lastEmail >= sinceIso) || (visitsRow?.seen_to && visitsRow.seen_to >= w.since) || (p.identified_at && String(p.identified_at) >= sinceIso),
@@ -115,15 +117,28 @@ export async function peopleActivity(supabase, businessId, { window: id = 'all',
     supabase.from('sales_settings').select('buyer_titles').eq('business_id', businessId).maybeSingle(),
   ]);
   const rows = peopleRows({ prospects, salesPeople, partnerContacts, opportunities: opportunities.filter(o => !o.archived_at), targets, partners });
-  return reply(200, { ...buildPeopleTable({ rows, activity, visits, buyerTitles: must(settings)?.buyer_titles || [], window: w, now }), history_since: await historySince(supabase, businessId) });
+  const [since, heatAgo] = await Promise.all([historySince(supabase, businessId), heatDaysAgo(supabase, businessId, laDateString(new Date(now - 7 * 864e5)))]);
+  return reply(200, { ...buildPeopleTable({ rows, activity, visits, buyerTitles: must(settings)?.buyer_titles || [], window: w, now, heatAgo }), history_since: since });
 }
 
 // heat-v2 R7: the day the heat history starts = the earliest day row, never a constant; null until the first run after
 // the Stage 1 migration (or while that migration is pending).
+const DAYS_PENDING = e => /sales_person_heat_days|42P01|PGRST205/.test(`${e.code} ${e.message}`);
 export async function historySince(supabase, businessId) {
   const { data, error } = await supabase.from('sales_person_heat_days').select('day').eq('business_id', businessId).order('day').limit(1).maybeSingle();
-  if (error) { if (/sales_person_heat_days|42P01|PGRST205/.test(`${error.code} ${error.message}`)) return null; throw new Error(error.message); }
+  if (error) { if (DAYS_PENDING(error)) return null; throw new Error(error.message); }
   return data?.day || null;
+}
+// The heat every person had on one LA day -> Map person_key -> heat (empty until that day has rows).
+export async function heatDaysAgo(supabase, businessId, day) {
+  try { return new Map((await selectAllPages(() => supabase.from('sales_person_heat_days').select('person_key, heat').eq('business_id', businessId).eq('day', day).order('person_key'))).map(r => [r.person_key, r.heat])); }
+  catch (e) { if (DAYS_PENDING(e)) return new Map(); throw e; }
+}
+// H5: one person's last 30 LA days of heat, oldest first -> [{ day, heat, band }] (empty until history exists).
+export async function heatHistory(supabase, businessId, personKey, now = Date.now()) {
+  const since = laDateString(new Date(now - 29 * 864e5));
+  try { return (await selectAllPages(() => supabase.from('sales_person_heat_days').select('day, heat, band').eq('business_id', businessId).eq('person_key', personKey).gte('day', since).order('day'))).map(r => ({ day: r.day, heat: r.heat, band: r.band })); }
+  catch (e) { if (DAYS_PENDING(e)) return []; throw e; }
 }
 
 export async function peopleActivityRoute(req, res) {
@@ -161,8 +176,8 @@ export async function personDetail(supabase, businessId, { key }) {
     selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,contact_id,sequence_id,step,delivered_at,replied,reply_class,replied_seen_at,replied_at,subject,num_opens,num_clicks,last_opened_at,last_clicked_at,bounced').eq('business_id', businessId).eq('contact_id', contactId).order('apollo_message_id')),
     selectAllPages(() => supabase.from('sales_email_activity').select('id,apollo_message_id,contact_id,step,event,occurred_at,user_agent,tracking_service').eq('business_id', businessId).eq('contact_id', contactId).order('id')),
   ]) : [[], []];
-  const heat = await liveHeat(supabase, businessId, { messages, events, company, identifiedAt });
-  const body = { key, timeline: timelineFor(messages, events).map(t => ({ ...t, subject: t.subject ? cleanText(t.subject, 160) : t.subject ?? null })), notes: notes ? cleanText(notes, 500) : null, heat };
+  const [heat, history] = await Promise.all([liveHeat(supabase, businessId, { messages, events, company, identifiedAt }), heatHistory(supabase, businessId, key)]);
+  const body = { key, timeline: timelineFor(messages, events).map(t => ({ ...t, subject: t.subject ? cleanText(t.subject, 160) : t.subject ?? null })), notes: notes ? cleanText(notes, 500) : null, heat, history };
   if (ADDRESS.test(JSON.stringify(body))) throw new Error('people detail: an address reached the result - refused');
   return reply(200, body);
 }

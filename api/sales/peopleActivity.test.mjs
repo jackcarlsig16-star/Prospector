@@ -94,7 +94,14 @@ test('peopleActivity (route): 200 with the table from the fake workspace; 503 mi
   const seed = { sales_prospect_state: prospects, sales_people: salesPeople, partner_contacts: partnerContacts, sales_opportunities: opportunities, sales_targets: targets, sales_goals: partners, web_visits: visits, sales_settings: settings, sales_person_activity: activity };
   const r = await peopleActivity(fakeSupabase(seed), B, { window: '30', now: NOW });
   assert.equal(r.status, 200);
-  assert.deepEqual([r.body.n, r.body.total, r.body.window.id, r.body.rows[0].name, r.body.counts.hot, r.body.history_since], [4, 5, '30', 'Ana Buyer', 1, null], 'history_since is null until a day row exists');
+  assert.deepEqual([r.body.n, r.body.total, r.body.window.id, r.body.rows[0].name, r.body.counts.hot, r.body.history_since, r.body.rows.map(x => x.heat_7d_ago)], [4, 5, '30', 'Ana Buyer', 1, null, [null, null, null, null]], 'history_since and heat_7d_ago are null until day rows exist');
+  // heat-v2 H5: with day rows, heat_7d_ago = the row stored 7 LA days before now (Oct 30 for Nov 6), history_since = the earliest day.
+  const withDays = fakeSupabase({ ...seed, sales_person_heat_days: [
+    { business_id: B, person_key: 'prospect:cA', day: '2026-10-30', heat: 120, band: 'hot' }, { business_id: B, person_key: 'prospect:cA', day: '2026-11-06', heat: 150, band: 'hot' },
+    { business_id: B, person_key: 'prospect:cB', day: '2026-10-29', heat: 0, band: 'cold' }, { business_id: '00000000-0000-4000-8000-0000000000b2', person_key: 'prospect:cA', day: '2026-10-30', heat: 999, band: 'hot' },
+  ] });
+  const r2 = await peopleActivity(withDays, B, { window: '30', now: NOW });
+  assert.deepEqual([r2.body.history_since, Object.fromEntries(r2.body.rows.map(x => [`${x.name}@${x.company?.name}`, x.heat_7d_ago]))], ['2026-10-29', { 'Ana Buyer@Acme Health': 120, 'Bo Ops@Quarry Labs': null, 'Dee Same@Harbor Lane': null, 'Eve Hand@Acme Health': null }], 'Ana: the Oct 30 row; Bo: a row from Oct 29 is not 7 days ago; another workspace never leaks');
   assert.ok(!/@/.test(JSON.stringify(r.body)));
   const db = fakeSupabase(seed);
   const base = db.from.bind(db);

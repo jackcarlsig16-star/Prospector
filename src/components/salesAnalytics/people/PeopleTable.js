@@ -12,37 +12,39 @@ import useMediaQuery from '../../../utils/useMediaQuery';
 import { toCsv } from '../../../utils/csv';
 import { readPeopleCompany, writePeopleCompany } from '../salesNav';
 import { readOpenKey, openKeyOf, onScoutOpen, clearUrlParam } from '../../scout/scoutOpen';
-import { CHIPS, WINDOW_OPTIONS, SOURCE_OPTIONS, EMPTY_FILTERS, applyFilters, chipCounts, sizeChipCounts, peopleCoverage, stageOptions, activeFilters, removeFilter, toggleChip, targetToFilters, CSV_COLUMNS, heatRule, readSort, writeSort } from './peopleTableModel';
+import { CHIPS, WINDOW_OPTIONS, SOURCE_OPTIONS, EMPTY_FILTERS, applyFilters, chipCounts, sizeChipCounts, peopleCoverage, stageOptions, activeFilters, removeFilter, toggleChip, targetToFilters, CSV_COLUMNS, readSort, writeSort, bandGroups, bandRule } from './peopleTableModel';
 import { SIZE_BUCKETS, toggleSize, coverageLine, headcountSortValue, headcountText, HEADCOUNT_SOURCE_GLYPH, HEADCOUNT_SOURCE_WORD } from '../../../constants/headcount';
+import { SOURCE_GLYPH_BY_WORD } from '../../../constants/peopleSource';
+import HeatPill, { HEAT_COLOR, BAND_WORD, delta7 } from './HeatPill';
+import HeatPopover from './HeatPopover';
 import PersonDetail from './PersonDetail';
 
 // people-v2 Stage 2 - Pipeline › People: ONE table of everyone we know (prospects, identified visitors, partner contacts)
-// with their email activity and their company's visits, from GET goals/people/activity (P5: the materialised summary -
-// the Huddle's numbers to the digit) sliced by the filter chips (P3, multi-select with counts), the labeled selects, a
-// search, any-column sort (default = the route's heat desc, then last email). A row click selects it (the pinned card
-// under the row: timeline + quick menu, P4); the name opens the company window on its People card; the company name
-// opens the window. P6: a phone gets stacked cards and a scrolling chip row. P7: CSV of the filtered rows (structured
-// fields only) and Share view (saved filters, kind 'people'). Viewers read: no quick-menu writes, no Share view.
-// The heat band is never computed here - it is the route's (heat-v2: the number's bracket), and the footnote states that rule.
-// Stage 3: the column widths sum to 1096 px so the table fits the card at 1440 with no sideways scroll (the card's inner
-// width there is 1100 px); Emails and Company visits are two-line cells and Identified / Buyer are glyph columns.
-// heat-size-v1 S1: a Size column (the company record's headcount · source glyph, "unknown" never blank; unknown sorts
-// last both ways) and size chips in the chip row; the coverage line beside "Showing n of N" (R5).
+// with their email activity and their company's visits, from GET goals/people/activity (P5: the materialised summary)
+// sliced by the filter chips (P3, multi-select with counts), the labeled selects, a search, any-column sort (default =
+// the route's heat desc, then last email). A row click selects it (the pinned card under the row: timeline + quick
+// menu, P4); the name opens the company window on its People card; the company name opens the window. P6: a phone
+// gets stacked cards and a scrolling chip row. P7: CSV of the filtered rows (structured fields only) and Share view
+// (saved filters, kind 'people'). Viewers read: no quick-menu writes, no Share view.
+// heat-v2 Stage 2 (the Nov 9 design, specs/design/people-v2/PeopleTable-v2.dc.html): the band is the route's (the
+// number's bracket) and the table shows it as the one pill (D1) under Hot / Warm / Cold group headers in heat order,
+// Cold collapsed; Identified is a date column and the buyer title a tag on the name (D2); Source is glyph + word; the
+// footnote is gone - the Heat header's ⓘ opens the popover (D3); the header is two lines, the selects right of the
+// Size row (D4); the Δ7 glyph after the number once 7 days of history exist (H5). Widths sum to 1,082 of the card's
+// 1,100 px at 1440 - no sideways scroll (N2).
 const UNDO_MS = 10000;
 const LA = 'America/Los_Angeles';
 const md = iso => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: LA }) : null);
 const mdy = d => (d ? new Date(`${String(d).slice(0, 10)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : null);
-const HEAT_COLOR = { hot: SA.bad, warm: SA.warn, cold: SA.muted };
 const Dim = () => <span className="ui-table__dim">—</span>;
 const two = { display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0, fontSize: 12, lineHeight: '15px' };
-const glyphHead = (glyph, label) => <><span aria-hidden="true">{glyph}</span><span className="ui-sr-only">{label}</span></>;
-// "Emails (human opens)" is wider than its column at 1440; the visible head is "Emails", the rest stays in its accessible name.
-const emailsHead = <>Emails<span className="ui-sr-only"> (human opens)</span></>;
-const sizeHead = <>Size<span className="ui-sr-only"> (company)</span></>;
+const srHead = (word, rest) => <>{word}<span className="ui-sr-only"> {rest}</span></>;
 const ell = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' };
-const rowBar = { minHeight: 36, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 };
+const rowBar = { minHeight: 36, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minWidth: 0 };
 const RECORD = ['partner', 'employer', 'target'];
 const rowKeyOf = r => r.key.replace(/[^A-Za-z0-9_-]/g, '_');
+const tag = { display: 'inline-flex', alignItems: 'center', height: 16, padding: '0 6px', borderRadius: 999, border: `1px solid ${SA.accent}`, color: SA.accent, fontSize: 9.5, fontWeight: 600, letterSpacing: '.04em', textTransform: 'uppercase', flex: 'none', lineHeight: 1 };
+const BuyerTag = () => <span data-buyer style={tag} title="Buyer title (matches Settings › buyer titles)">buyer</span>;
 
 export default function PeopleTable({ businessId, canEdit, me = null, initialTarget = null }) {
   const phone = useMediaQuery('(max-width: 899px)');
@@ -57,6 +59,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   const [sharing, setSharing] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [reload, setReload] = useState(0);
+  const [coldOpen, setColdOpen] = useState(false);
   // scout-v2 B7: ?open=person:<person key> (or a Scout open while on screen) pins that person's card.
   const [scoutKey, setScoutKey] = useState(() => readOpenKey('person'));
   const meId = me?.profile?.id || null, myName = me?.profile?.display_name || '';
@@ -83,6 +86,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   const scoutRow = useMemo(() => (scoutKey ? all.find(r => r.key === scoutKey || r.source_keys?.includes(scoutKey)) || null : null), [all, scoutKey]);
   useEffect(() => {
     if (!scoutRow) return;
+    if (scoutRow.heat_band === 'cold' || scoutRow.heat == null) setColdOpen(true);
     clearUrlParam('open');
     document.querySelector(`[data-key="${rowKeyOf(scoutRow)}"]`)?.scrollIntoView?.({ block: 'center' });
   }, [scoutRow]);
@@ -119,17 +123,20 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
           ? <button type="button" className="ui-link ui-link--cell" data-person-name title={`Open ${r.company.name} on its People card`} onClick={() => openCompany(r.company, 'people')} style={{ fontWeight: 500, color: SA.text, ...ell }}>{r.name}</button>
           : <span data-person-name style={{ fontWeight: 500, ...ell }}>{r.name}</span>}
         {r.has_email && <span aria-label="address on file" title="An address is on file (never shown)" style={{ color: SA.muted, fontSize: 11, flex: 'none' }}>✉</span>}
+        {r.buyer && <BuyerTag />}
       </span>
       <span style={{ fontSize: 12, color: SA.muted, ...ell }}>{r.title || 'no title'}</span>
     </span>
   );
+  const hasRecord = r => !!(r.company?.id && RECORD.includes(r.company.type));
   const companyCell = r => (r.company
     ? <span style={{ display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0 }}>
-        {r.company.id && RECORD.includes(r.company.type) ? <button type="button" className="ui-link ui-link--cell" title={`Open ${r.company.name}`} onClick={() => openCompany(r.company)} style={ell}>{r.company.name}</button> : <span style={ell}>{r.company.name}</span>}
-        <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 10.5 }}>{r.company.stage && <span className="ui-group-label" style={{ fontSize: 10.5 }}>{String(r.company.stage).replace(/_/g, ' ')}</span>}{r.company.owner_user_id && colorOf(r.company.owner_user_id) && <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: colorOf(r.company.owner_user_id), display: 'inline-block' }} />}</span>
+        {hasRecord(r) ? <button type="button" className="ui-link ui-link--cell" title={`Open ${r.company.name}`} onClick={() => openCompany(r.company)} style={ell}>{r.company.name}</button> : <span style={ell}>{r.company.name}</span>}
+        {hasRecord(r) && (r.company.stage || colorOf(r.company.owner_user_id)) && <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 10.5 }}>{r.company.stage && <span className="ui-group-label" style={{ fontSize: 10.5 }}>{String(r.company.stage).replace(/_/g, ' ')}</span>}{r.company.owner_user_id && colorOf(r.company.owner_user_id) && <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: colorOf(r.company.owner_user_id), display: 'inline-block' }} />}</span>}
       </span>
     : <Dim />);
-  const sourceCell = r => <span className="ui-chip ui-chip--dense" title={r.sources.join(' + ')}>{r.source}{r.sources.length > 1 ? ` +${r.sources.length - 1}` : ''}</span>;
+  const sourceText = r => r.sources.join(' + ');
+  const sourceCell = r => <span data-source={r.source} title={sourceText(r)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}><span aria-hidden="true" style={{ color: SA.muted, fontSize: 11 }}>{SOURCE_GLYPH_BY_WORD[r.source] || ''}</span>{r.source}{r.sources.length > 1 ? <span style={{ color: SA.muted }}> +{r.sources.length - 1}</span> : null}</span>;
   const sizeTitle = r => (r.company?.employees == null ? (r.company?.id ? 'Headcount unknown - type it in the company window (Employees)' : 'No company record - no headcount') : `${headcountText(r.company.employees)} employees · ${HEADCOUNT_SOURCE_WORD[r.company.employees_source] || 'source unknown'}`);
   const sizeCell = r => (r.company?.employees == null
     ? <span data-size="unknown" className="ui-table__dim">unknown</span>
@@ -143,7 +150,8 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   const emailsText = r => `${r.emails.sent} sent · ${r.emails.opened} opened (human) · ${r.emails.clicked} clicked · ${r.emails.replied} replied`;
   const lastEmailText = r => (r.last_email ? `${md(r.last_email.at)} · ${r.last_email.what}${r.last_email.reply_class ? ` · ${r.last_email.reply_class.replace(/_/g, ' ')}` : ''}` : '');
   const lastEmailCell = r => (r.last_email ? <span style={ell}>{md(r.last_email.at)} <span style={{ color: SA.muted }}>· {r.last_email.what}{r.last_email.reply_class ? ` · ${r.last_email.reply_class.replace(/_/g, ' ')}` : ''}</span></span> : <Dim />);
-  const heatCell = r => (r.heat == null ? <span className="ui-table__dim" title="No heat yet - the next Apollo sync computes it">—</span> : <span data-heat-band={r.heat_band} style={{ display: 'inline-flex', alignItems: 'center', height: 20, padding: '0 8px', borderRadius: 999, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', color: HEAT_COLOR[r.heat_band] || SA.text, background: `color-mix(in srgb, ${HEAT_COLOR[r.heat_band] || SA.muted} 14%, transparent)` }}>{r.heat} · {r.heat_band}</span>);
+  const heatTitle = r => (r.heat == null ? 'no heat yet' : `${r.heat} · ${BAND_WORD[r.heat_band] || r.heat_band} - the number's bracket${delta7(r) != null ? ` · ${delta7(r) > 0 ? '+' : ''}${delta7(r)} vs 7 days ago` : ''}`);
+  const heatCell = r => <HeatPill heat={r.heat} band={r.heat_band} delta={delta7(r)} />;
   const visitsText = r => (r.visits ? `${r.visits.visits_7d} visits 7 d · last ${mdy(r.visits.last_visit)}${r.visits.top_page ? ` · ${r.visits.top_page}` : ''}` : '');
   const visitsCell = r => (r.visits
     ? <span style={two}>
@@ -152,39 +160,48 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
       </span>
     : <Dim />);
   const columns = [
-    { id: 'person', label: 'Person', width: 146, sticky: true, detail: true, sortValue: r => r.name, render: nameCell, title: r => `${r.name}${r.title ? ` · ${r.title}` : ''}` },
-    { id: 'company', label: 'Company', width: 120, sortValue: r => r.company?.name || null, render: companyCell, title: r => r.company?.name },
-    { id: 'size', label: 'Company size', width: 84, sortValue: r => headcountSortValue(r.company?.employees), render: sizeCell, title: sizeTitle },
-    { id: 'source', label: 'Source', width: 118, sortValue: r => r.source, render: sourceCell },
-    { id: 'emails', label: 'Emails (human opens)', width: 128, sortValue: r => r.emails.opened + r.emails.clicked * 2 + r.emails.replied * 4, render: emailsCell, title: emailsText },
+    { id: 'person', label: 'Person', width: 190, sticky: true, detail: true, sortValue: r => r.name, render: nameCell, title: r => `${r.name}${r.title ? ` · ${r.title}` : ''}${r.buyer ? ' · buyer title' : ''}` },
+    { id: 'company', label: 'Company', width: 140, sortValue: r => r.company?.name || null, render: companyCell, title: r => r.company?.name },
+    { id: 'size', label: srHead('Size', '(company)'), width: 74, sortValue: r => headcountSortValue(r.company?.employees), render: sizeCell, title: sizeTitle },
+    { id: 'source', label: 'Source', width: 84, sortValue: r => r.source, render: sourceCell },
+    { id: 'emails', label: srHead('Emails', '(human opens)'), width: 132, sortValue: r => r.emails.opened + r.emails.clicked * 2 + r.emails.replied * 4, render: emailsCell, title: emailsText },
     { id: 'last_email', label: 'Last email', width: 104, sortValue: r => r.last_email?.at || null, render: lastEmailCell, title: lastEmailText },
-    { id: 'heat', label: 'Heat', width: 92, sortValue: r => r.heat ?? -1, render: heatCell, title: r => (r.heat == null ? 'no heat yet' : `${r.heat} · ${r.heat_band} - the number's bracket`) },
-    { id: 'visits', label: 'Company visits', width: 126, sortValue: r => r.visits?.visits_7d ?? -1, render: visitsCell, title: visitsText },
-    { id: 'identified', label: 'Identified', glyph: '◉', width: 46, sortValue: r => r.identified_at || null, render: r => (r.identified_at ? <span data-identified={r.identified_at} aria-label={`Identified ${mdy(r.identified_at)}`} style={{ color: SA.accent }}>◉</span> : <Dim />), title: r => (r.identified_at ? `Identified visitor · first seen ${mdy(r.identified_at)}` : 'Not a visitor-identified person') },
-    { id: 'buyer', label: 'Buyer', glyph: '✓', width: 46, sortValue: r => (r.buyer ? 1 : 0), render: r => (r.buyer ? <span data-buyer aria-label="buyer title" style={{ color: SA.good }}>✓</span> : <Dim />), title: r => (r.buyer ? 'Buyer title (matches Settings › buyer titles)' : 'Not a buyer title') },
-    { id: 'last_touch', label: 'Last touch', width: 86, sortValue: r => r.last_touch_at || null, render: r => (r.last_touch_at ? <span style={numStyle}>{md(r.last_touch_at)}</span> : <Dim />) },
+    { id: 'heat', label: 'Heat', width: 104, sortValue: r => r.heat ?? -1, render: heatCell, title: heatTitle, headerExtra: <HeatPopover rule={data?.heat_rule} historySince={data?.history_since} /> },
+    { id: 'visits', label: srHead('Visits', '(company, 7 d)'), width: 108, sortValue: r => r.visits?.visits_7d ?? -1, render: visitsCell, title: visitsText },
+    { id: 'identified', label: 'Identified', width: 76, sortValue: r => r.identified_at || null, render: r => (r.identified_at ? <span data-identified={r.identified_at} style={numStyle}>{mdy(r.identified_at)}</span> : <Dim />), title: r => (r.identified_at ? `Apollo named this person on the site · ${mdy(r.identified_at)}` : 'Not a visitor-identified person') },
+    { id: 'last_touch', label: srHead('Touch', '(last, any channel)'), width: 70, sortValue: r => r.last_touch_at || null, render: r => (r.last_touch_at ? <span style={numStyle}>{md(r.last_touch_at)}</span> : <Dim />) },
   ];
-  const tableColumns = columns.map(c => (c.glyph ? { ...c, label: glyphHead(c.glyph, c.label) } : c.id === 'emails' ? { ...c, label: emailsHead } : c.id === 'size' ? { ...c, label: sizeHead } : c));
-  const sortLabel = sort && columns.find(c => c.id === sort.id)?.label;
-  const groups = [{ id: 'people', header: <>{sort ? `Sorted by ${sortLabel}` : 'Heat first, then the last email'} <span className="ui-table__count">{rows.length}</span></>, rows, emptyText: 'No people match these filters.' }];
-  const renderDetail = r => <PersonDetail businessId={businessId} row={r} canEdit={canEdit} meId={meId} onToast={setToast} onChanged={changed} onOpenCompany={openCompany} />;
+  const sortLabel = sort && columns.find(c => c.id === sort.id)?.id;
+  const bands = bandGroups(rows, sort);
+  const groups = bands
+    ? bands.map(({ band, rows: brows }) => ({
+      id: band,
+      header: <><span style={{ color: HEAT_COLOR[band] }}>{BAND_WORD[band]}</span><span className="ui-table__count" style={{ ...numStyle, fontWeight: 400 }}>{brows.length} · {bandRule(band, data?.heat_rule)}{band === 'cold' && !coldOpen ? ' · collapsed' : ''}</span></>,
+      rows: brows,
+      ...(band === 'cold' ? { collapsed: !coldOpen, onToggle: () => setColdOpen(o => !o) } : {}),
+      emptyText: band === 'hot' ? 'Nobody is hot right now.' : undefined,
+    }))
+    : [{ id: 'people', header: <>Sorted by {sortLabel.replace(/_/g, ' ')} <span className="ui-table__count">{rows.length}</span></>, rows, emptyText: 'No people match these filters.' }];
+  const renderDetail = r => <PersonDetail businessId={businessId} row={r} canEdit={canEdit} meId={meId} onToast={setToast} onChanged={changed} onOpenCompany={openCompany} rule={data?.heat_rule} />;
   const compactRow = r => (
     <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
       <span style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', minWidth: 0 }}>{nameCell(r)}{heatCell(r)}</span>
-      <span style={{ fontSize: 12, color: SA.muted, ...ell }}>{r.company?.name || 'no company'}{r.company?.stage ? ` · ${String(r.company.stage).replace(/_/g, ' ')}` : ''} · <span data-card-size title={sizeTitle(r)}>{r.company?.employees == null ? 'size unknown' : `${headcountText(r.company.employees)} ${HEADCOUNT_SOURCE_GLYPH[r.company.employees_source] || ''}`.trim()}</span></span>
+      <span style={{ fontSize: 12, color: SA.muted, ...ell }}>{r.company?.name || 'no company'}{hasRecord(r) && r.company?.stage ? ` · ${String(r.company.stage).replace(/_/g, ' ')}` : ''} · <span data-card-size title={sizeTitle(r)}>{r.company?.employees == null ? 'size unknown' : `${headcountText(r.company.employees)} ${HEADCOUNT_SOURCE_GLYPH[r.company.employees_source] || ''}`.trim()}</span></span>
       <span style={{ fontSize: 12, display: 'flex', gap: 10, flexWrap: 'wrap', ...numStyle }}><span title="sent">✉ {r.emails.sent}</span><span title="human opens">👁 {r.emails.opened}</span><span title="clicked">🖱 {r.emails.clicked}</span><span title="replied">↩ {r.emails.replied}</span><span style={{ color: SA.muted }}>{r.visits ? `${r.visits.visits_7d} visits 7 d` : 'no visits'}</span></span>
-      <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{sourceCell(r)}{r.buyer && <span className="ui-chip ui-chip--dense">Buyer ✓</span>}{r.identified_at && <span className="ui-chip ui-chip--dense">Identified {mdy(r.identified_at)}</span>}</span>
+      <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}><span className="ui-chip ui-chip--dense">{sourceCell(r)}</span>{r.identified_at && <span className="ui-chip ui-chip--dense">Identified {mdy(r.identified_at)}</span>}</span>
     </div>
   );
   const chipRow = (
     <div data-people-chips role="group" aria-label="Filter chips" style={{ display: 'flex', gap: 6, ...(phone ? { overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: 4 } : { flexWrap: 'wrap' }) }}>
       <h2 className={phone ? 'ui-sr-only' : 'ui-group-label'} style={{ margin: 0, flex: 'none' }}>Filter</h2>
-      {CHIPS.map(([id, label]) => <ToggleChip key={id} pressed={filters.chips.includes(id)} count={data ? `(${counts[id]})` : ''} onClick={() => set(toggleChip(filters, id))} title={id === 'hot' ? `Heat band hot (score ≥ ${data?.heat_rule?.hot ?? 40})` :id === 'needs_touch' ? 'No touch on any channel in 14 days' : undefined}>{label}</ToggleChip>)}
-      <span role="group" aria-label="Size" data-size-chips style={{ display: 'flex', gap: 6, flex: 'none', alignItems: 'center' }}>
-        <span className="ui-group-label" aria-hidden="true" style={{ marginLeft: 4 }}>Size</span>
-        {SIZE_BUCKETS.map(([id, label]) => <ToggleChip key={id} data-size-chip={id} pressed={filters.sizes.includes(id)} count={data ? `(${sizes[id]})` : ''} title={id === 'unknown' ? 'No headcount on the company record (or no record at all)' : `Company headcount ${label}`} onClick={() => set({ sizes: toggleSize(filters.sizes, id) })}>{label}</ToggleChip>)}
-      </span>
+      {CHIPS.map(([id, label]) => <ToggleChip key={id} pressed={filters.chips.includes(id)} count={data ? `(${counts[id]})` : ''} onClick={() => set(toggleChip(filters, id))} style={id === 'hot' ? { color: HEAT_COLOR.hot, borderColor: HEAT_COLOR.hot } : undefined} title={id === 'hot' ? `Heat band hot (score ≥ ${data?.heat_rule?.hot ?? 40})` : id === 'needs_touch' ? 'No touch on any channel in 14 days' : undefined}>{label}</ToggleChip>)}
     </div>
+  );
+  const sizeChips = (
+    <span role="group" aria-label="Size" data-size-chips style={{ display: 'flex', gap: 6, flex: 'none', alignItems: 'center', ...(phone ? { overflowX: 'auto', paddingBottom: 4 } : {}) }}>
+      <span className="ui-group-label" aria-hidden="true">Size</span>
+      {SIZE_BUCKETS.map(([id, label]) => <ToggleChip key={id} data-size-chip={id} pressed={filters.sizes.includes(id)} count={data ? `(${sizes[id]})` : ''} title={id === 'unknown' ? 'No headcount on the company record (or no record at all)' : `Company headcount ${label}`} onClick={() => set({ sizes: toggleSize(filters.sizes, id) })}>{label}</ToggleChip>)}
+    </span>
   );
   const selects = (
     <>
@@ -195,7 +212,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
     </>
   );
   const tools = (
-    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', marginLeft: 'auto', flexWrap: 'wrap' }}>
+    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
       <Button size="sm" disabled={!rows.length} onClick={exportCsv} title="The filtered rows, structured fields only - never an address">CSV</Button>
       {canEdit && <Button size="sm" aria-expanded={sharing} onClick={() => setSharing(s => !s)}>Share view{views.length ? ` (${views.length})` : ''}</Button>}
     </span>
@@ -206,19 +223,20 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   return (
     <section aria-label="People" data-people-table style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0, padding: '0 20px' }}>
       <div data-filter-row style={rowBar}>
-        <input type="search" className="ui-input ui-input--sm" aria-label="Search people" placeholder="Search name, title, company" value={filters.q} onChange={e => set({ q: e.target.value })} style={{ width: phone ? '100%' : 240 }} />
+        <input type="search" className="ui-input ui-input--sm" aria-label="Search people" placeholder="Search name, title, company" value={filters.q} onChange={e => set({ q: e.target.value })} style={{ width: phone ? '100%' : 220 }} />
         {!phone && chipRow}
         {phone && <Button aria-expanded={sheetOpen} onClick={() => setSheetOpen(true)}>Filters{active.length ? ` (${active.length})` : ''}</Button>}
-        {!phone && tools}
       </div>
       {phone && chipRow}
-      {!phone && <div role="group" aria-label="Filters" data-filter-selects style={rowBar}>{selects}</div>}
+      {phone && sizeChips}
+      {!phone && <div role="group" aria-label="Filters" data-filter-selects style={rowBar}>{sizeChips}<span style={{ flex: 1 }} />{selects}{tools}</div>}
       {data && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           {active.length
             ? <ActiveFilterLine summary={`Showing ${rows.length} of ${data.total} ·`} active={active} onRemove={onRemove} onClear={clearAll} />
             : <span data-active-filters style={{ fontSize: 12, color: SA.muted, ...numStyle }}>Showing {rows.length} of {data.total}</span>}
           <span data-coverage style={{ fontSize: 12, color: SA.muted, ...numStyle }}>{coverageLine(coverage)}</span>
+          {data.heat_pending ? <span data-heat-pending style={{ fontSize: 12, color: SA.muted, ...numStyle }}>{data.heat_pending} {data.heat_pending === 1 ? 'person has' : 'people have'} no heat yet (the next Apollo sync computes it)</span> : null}
         </div>
       )}
       {sharing && canEdit && (
@@ -234,10 +252,9 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
       {error && <ErrorNote message={error} />}
       {data && (
         <div className="ui-theme-dark">
-          <DataTable label="People" columns={tableColumns} groups={groups} rowKey={rowKeyOf} openKey={scoutRow ? rowKeyOf(scoutRow) : null} sort={sort} onSort={onSort} dense rowDetail pinUnder="[data-workspace-header]" compact={phone} renderCompact={compactRow} renderDetail={renderDetail} emptyText="No people match these filters." />
+          <DataTable label="People" columns={columns} groups={groups} rowKey={rowKeyOf} openKey={scoutRow ? rowKeyOf(scoutRow) : null} sort={sort} onSort={onSort} dense rowDetail pinUnder="[data-workspace-header]" compact={phone} renderCompact={compactRow} renderDetail={renderDetail} emptyText="No people match these filters." />
         </div>
       )}
-      {data && <p data-heat-footnote style={{ margin: 0, fontSize: 12, color: SA.faint }}>{heatRule(data.heat_rule)}{data.heat_pending ? ` ${data.heat_pending} ${data.heat_pending === 1 ? 'person has' : 'people have'} no heat yet (the next Apollo sync computes it).` : ''} Times are Pacific.</p>}
       {toast && createPortal(
         <div role="status" className="no-print" style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 4005, padding: '10px 16px', borderRadius: 10, background: SA.surface2, border: `1px solid ${SA.border}`, color: SA.text, fontSize: 13, display: 'flex', gap: 12, alignItems: 'center', boxShadow: '0 8px 24px rgba(0,0,0,0.35)' }}>
           <span>{toast.text}</span>

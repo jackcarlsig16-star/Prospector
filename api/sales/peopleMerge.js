@@ -1,14 +1,10 @@
 import { normName } from './intakeMatch.js';
+import { SOURCE_ORDER } from '../../src/constants/peopleSource.js';
 
 // people-v2 P2 - one row per person over the three contact tables. Merge rule: the same Apollo contact id (a prospect's
 // contact_id = a partner contact's apollo_contact_id) is one person; else the same normalised name at the same normalised
 // company is one person; everything else stays apart (the same name at two companies = two people). A merged row lists
 // every source it came from and keeps the richer fields (a title over none, a linked company over a bare name). Pure.
-// heat-v2 R5: the source words and glyphs, in the table's source order (a row with several sources shows the first).
-export const SOURCE_ORDER = ['prospect', 'visitor', 'contact', 'hand', 'upload'];
-export const SOURCE_WORD = { prospect: 'Apollo', visitor: 'Website', contact: 'Partner', hand: 'Typed', upload: 'Upload' };
-export const SOURCE_GLYPH = { prospect: '➤', visitor: '🌐', contact: '⇄', hand: '✎', upload: '⇡' };
-
 const better = (a, b) => (a && String(a).trim() ? a : b || null);
 export const nameKey = (name, company) => { const n = normName(name || ''), c = normName(company || ''); return n && c ? `${n}|${c}` : null; };
 

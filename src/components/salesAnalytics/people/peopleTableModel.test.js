@@ -1,4 +1,4 @@
-import { chipMatches, applyFilters, chipCounts, sizeChipCounts, peopleCoverage, activeFilters, removeFilter, toggleChip, targetToFilters, CSV_COLUMNS, heatRule, EMPTY_FILTERS, stageOptions, activeFilterCount } from './peopleTableModel';
+import { chipMatches, applyFilters, chipCounts, sizeChipCounts, peopleCoverage, activeFilters, removeFilter, toggleChip, targetToFilters, CSV_COLUMNS, bandGroups, bandRule, EMPTY_FILTERS, stageOptions, activeFilterCount } from './peopleTableModel';
 import { toCsv } from '../../../utils/csv';
 
 // people-v2 Stage 2 - the table's pure rules over invented rows (the route's shape).
@@ -47,14 +47,19 @@ test('filters: chips AND together; source / stage / owner / company / search; th
   expect(stageOptions(ROWS)).toEqual(['contacted', 'replied', 'researching']);
 });
 
-test('the old feed links land on chips; the heat rule text states the bracket rule and the fade', () => {
+test('the old feed links land on chips; the band groups follow the heat order and fold when another column sorts', () => {
   expect(targetToFilters({ feed: 'open' }).chips).toEqual(['opened']);
   expect(targetToFilters({ feed: 'click' }).chips).toEqual(['clicked']);
   expect(targetToFilters({ feed: 'reply' }).chips).toEqual(['replied']);
   expect(targetToFilters({ feed: null }).chips).toEqual([]);
   expect(targetToFilters({ flags: true }).chips).toEqual(['mine']);
   expect(targetToFilters(null)).toBe(EMPTY_FILTERS);
-  expect(heatRule({ hot: 40, warm: 10, fade: { fresh: 7, mid: 0.5, old: 30, floor: 0.25 } })).toBe('Heat: the band is the number\'s bracket, nothing else - hot ≥ 40 · warm ≥ 10 · else cold; a warm person is never above a hot one. Older signals fade: whole for 7 days, ×0.5 to 30 days, then ×0.25. Opens count humans only (scanners and link checkers are excluded); a company visit adds points, a visit alone is warm at most.');
+  // heat-v2 D1: Hot / Warm / Cold in heat order (no sort or sorted by heat; asc reverses); a person with no heat sits in Cold.
+  expect(bandGroups(ROWS, null).map(g => [g.band, g.rows.map(r => r.name)])).toEqual([['hot', ['Ana']], ['warm', ['Cy']], ['cold', ['Bo']]]);
+  expect(bandGroups(ROWS, { id: 'heat', dir: 'desc' }).map(g => g.band)).toEqual(['hot', 'warm', 'cold']);
+  expect(bandGroups(ROWS, { id: 'heat', dir: 'asc' }).map(g => g.band)).toEqual(['cold', 'warm', 'hot']);
+  expect(bandGroups(ROWS, { id: 'company', dir: 'asc' })).toBeNull();
+  expect([bandRule('hot'), bandRule('warm'), bandRule('cold'), bandRule('hot', { hot: 50, warm: 20 })]).toEqual(['score ≥ 40', 'score 10–39', 'score < 10', 'score ≥ 50']);
 });
 
 test('CSV: structured fields only, the address a yes / no, Company size = number or unknown + the source word, never an @', () => {

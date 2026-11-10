@@ -77,16 +77,26 @@ test('personDetail.heat: a prospect at a visited employer carries the visit why 
     sales_people: [{ id: 'sp1', business_id: B, note: null, company_type: 'target', target_id: T, source_kind: 'web_visit', created_at: new Date().toISOString() }, { id: 'sp2', business_id: B, note: 'by hand', company_type: 'target', target_id: T, source_kind: null, created_at: '2026-10-01T00:00:00Z' }],
     web_visits: [{ id: 'v1', business_id: B, company_key: 'acme health', matched_type: 'opportunity', matched_id: O, visits_7d: 3, unique_visitors_7d: 2, last_visit: today, seen_to: today, pulled_on: today }],
     sales_email_messages: msgs, sales_email_activity: evs,
+    sales_person_heat_days: [
+      { business_id: B, person_key: 'prospect:A', day: new Date(Date.now() - 40 * 864e5).toISOString().slice(0, 10), heat: 20, band: 'warm' },
+      { business_id: B, person_key: 'prospect:A', day: new Date(Date.now() - 2 * 864e5).toISOString().slice(0, 10), heat: 110, band: 'hot' },
+      { business_id: B, person_key: 'prospect:A', day: today, heat: 114, band: 'hot' },
+      { business_id: B, person_key: 'prospect:Q', day: today, heat: 0, band: 'cold' },
+    ],
   });
   const p = await personDetail(db, B, { key: 'prospect:A' });
   assert.equal(p.status, 200);
+  // heat-v2 H5: the last 30 LA days of day rows, oldest first; a 40-day-old row is out; another person's rows never leak.
+  assert.deepEqual(p.body.history.map(h => [h.heat, h.band]), [[110, 'hot'], [114, 'hot']]);
+  assert.ok(p.body.history.every(h => /^\d{4}-\d{2}-\d{2}$/.test(h.day)));
   assert.ok(p.body.heat.why.includes('Company on the site · 3 visits · 2 people (7 d) +14'), JSON.stringify(p.body.heat));
   assert.ok(p.body.heat.why[0].startsWith('Replied (follow up question) +100'), 'the email lines come first');
   assert.ok(['hot', 'warm'].includes(p.body.heat.band) && p.body.heat.score >= 114);
   const q = await personDetail(db, B, { key: 'prospect:Q' });
   assert.equal(q.body.heat, null, 'no rows, no visit: nothing to say');
+  assert.deepEqual(q.body.history, [{ day: today, heat: 0, band: 'cold' }]);
   const v = await personDetail(db, B, { key: 'person:sp1' });
-  assert.deepEqual([v.body.heat.score, v.body.heat.band, v.body.heat.why], [11, 'warm', ['Identified on the site 0 d ago +11']]);
+  assert.deepEqual([v.body.heat.score, v.body.heat.band, v.body.heat.why, v.body.history], [11, 'warm', ['Identified on the site 0 d ago +11'], []], 'no day rows yet: an empty history');
   const h = await personDetail(db, B, { key: 'person:sp2' });
   assert.equal(h.body.heat, null, 'a hand-added person at a quiet company');
   assert.ok(!/@/.test(JSON.stringify([p.body, v.body])));

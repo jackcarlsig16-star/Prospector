@@ -2,7 +2,7 @@ import { cleanText } from './scrubText.js';
 import { STAGE_ORDER, SIDE_LANES } from './pipelineStages.js';
 import { PIPELINE_STATUSES } from '../../src/constants/partnerPipeline.js';
 import { HEAT, HEAT_BANDS } from './heatScore.js';
-import { SOURCE_WORD as PERSON_SOURCE } from './peopleMerge.js';
+import { SOURCE_WORD as PERSON_SOURCE } from '../../src/constants/peopleSource.js';
 import { sourceDirectory } from './leadSource.js';
 import { memberColors } from './memberColors.js';
 import { salesIntents, salesStanding } from './scoutIntents.js';

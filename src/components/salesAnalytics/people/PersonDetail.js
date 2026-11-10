@@ -6,12 +6,16 @@ import { playbookPrompt, mondayOf } from '../goals/companyPanelModel';
 import { markContacted } from '../goals/companyReach';
 import { updateProspect } from '../huddleApi';
 import Button from '../../../ui/Button';
+import HeatPill from './HeatPill';
+import HeatSparkline from './HeatSparkline';
 
 // people-v2 Stage 2 (P4) - the pinned card under a selected row: the person's email timeline (sent / opened / clicked /
-// replied with dates, automated opens and clicks said so - the Huddle's rule), their company's visit line, their notes,
+// replied with dates, automated opens and clicks said so - the one bot / scanner rule), their company's visit line, their notes,
 // and the quick menu: Open company · Draft email (the REACH copy bundle - Prospector never sends) · Log call · Add to-do ·
 // Mark contacted (company) · Not a fit (a prospect's status, Undo 10 s). Every write goes through the existing paths;
 // a person whose company is not in the pipeline gets the reasons, not greyed mysteries. Viewers: Open company only.
+// heat-v2 Stage 2 (H5): the Heat block shows the one pill, the why lines and a 30-day sparkline from the detail route's
+// history (sales_person_heat_days) - "—" until a day row exists.
 const LINK_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target' };
 const KIND = { sent: ['Sent', SA.muted], open: ['Opened', SA.link], click: ['Clicked', SA.warn], reply: ['Replied', SA.good] };
 const LA = 'America/Los_Angeles';
@@ -20,7 +24,7 @@ const mdy = d => (d ? new Date(`${String(d).slice(0, 10)}T12:00:00Z`).toLocaleDa
 const today = () => new Date().toLocaleDateString('en-CA', { timeZone: LA });
 const field = { height: 30, fontSize: 13, padding: '0 8px' };
 
-export default function PersonDetail({ businessId, row, canEdit, meId, onToast, onChanged, onOpenCompany }) {
+export default function PersonDetail({ businessId, row, canEdit, meId, onToast, onChanged, onOpenCompany, rule = null }) {
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState('');
@@ -97,11 +101,12 @@ export default function PersonDetail({ businessId, row, canEdit, meId, onToast, 
               {!detail && !error && <span style={{ color: SA.muted }}>…</span>}
               {detail && !detail.heat && <span style={{ color: SA.muted }}>No signal yet - no email on record and no company visit.</span>}
               {detail?.heat && <>
-                <b style={numStyle}>{detail.heat.score}</b> · {detail.heat.band}
+                <HeatPill heat={detail.heat.score} band={detail.heat.band} />
                 <ul data-heat-why style={{ listStyle: 'none', margin: '4px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12, color: SA.soft }}>
                   {detail.heat.why.length ? detail.heat.why.map((line, i) => <li key={i}>{line}</li>) : <li style={{ color: SA.muted }}>No points yet - sent, no opens, clicks, replies or visits.</li>}
                 </ul>
               </>}
+              {detail && <div data-heat-history style={{ marginTop: 6 }}><span style={{ fontSize: 11, color: SA.muted }}>Last 30 days</span><HeatSparkline history={detail.history || []} rule={rule || undefined} /></div>}
             </div>
           </div>
           <div><span className="ui-group-label">Emails</span><div style={{ marginTop: 4 }}><b style={numStyle}>{row.emails.sent}</b> sent · <b style={numStyle}>{row.emails.opened}</b> human opens{row.emails.bot_opens ? <span style={{ color: SA.muted }}> ({row.emails.bot_opens} automated)</span> : null} · <b style={numStyle}>{row.emails.clicked}</b> clicked · <b style={numStyle}>{row.emails.replied}</b> replied</div></div>

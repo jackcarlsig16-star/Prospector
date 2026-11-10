@@ -33,6 +33,7 @@ import { KIT_TABLE } from './tokens';
 //   onReachEnd() (opt-in): called when the end of the rows scrolls into view (load the next page); a sentinel after
 //   the last row, watched by IntersectionObserver where the browser has one.
 //   openKey (opt-in): a row key whose detail opens from outside (scout-v2 B7: a Scout record landing on its list).
+//   column.headerExtra (opt-in): a node rendered in the <th> after the sort button (heat-v2 D3: the Heat column's ⓘ).
 
 const compare = (a, b) => (typeof a === 'number' && typeof b === 'number' ? a - b : String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }));
 
@@ -162,6 +163,7 @@ export default function DataTable({ columns, groups, rowStyle, rowKey, compact =
                 {c.sortValue
                   ? <button type="button" className="ui-table__sort" onClick={() => cycle(c)}>{c.label} <span aria-hidden="true">{glyph(c)}</span></button>
                   : <><span className="ui-table__label" aria-hidden="true">{c.headerGlyph ?? ''}</span><span className="ui-sr-only">{c.label}</span></>}
+                {c.headerExtra}
               </th>
             ))}
           </tr>
