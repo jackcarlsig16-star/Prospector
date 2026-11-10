@@ -7,7 +7,7 @@ import { MICROSOFT_SCOPES, missingScopes, grantedScopes, refreshBody, canSendTea
 import * as sendModule from './send.js';
 import { sendTeamEmail, loadMembers, RECONNECT_NOTE, MAX_RECIPIENTS } from './send.js';
 import { laClock, dueSlots, tick, WEEKDAYS } from './scheduler.js';
-import { dayWindowFor, windowDays, laInstant, buildVisitorEmail, loadVisitorData, loadRankedBook, loadCumulative, TOP_N, BAND_WORD, QUALIFIED_WORDS, FOOTER_WORDS, SETTINGS_URL, thresholdWords } from './visitorEmail.js';
+import { dayWindowFor, windowDays, laInstant, buildVisitorEmail, loadVisitorData, loadRankedBook, loadCumulative, TOP_N, BAND_WORD, QUALIFIED_WORDS, FOOTER_WORDS, SETTINGS_URL, thresholdWords, trendStrip, TREND_URL } from './visitorEmail.js';
 import { DEFAULT_WEIGHTS } from '../intentScore.js';
 import { missedSlots, MISSED_REASON, schedulerState } from './scheduler.js';
 import { EMAIL_CATCHUP_MIN, VISITOR_EMAIL_JOB } from './jobs.js';
@@ -938,4 +938,42 @@ test('R5 parity: on the Nov 5 fixture the trend route and the visitor email give
   assert.deepEqual(fromMail, { k1: false, k2: true, k3: false });
   assert.deepEqual(fromTrend, fromMail, 'one rule, one answer');
   assert.deepEqual([trend.companies, trend.new, trend.returning], [3, 1, 2]);
+});
+
+// ---- visitor-trend-v1 Stage 2 (T3).
+test('T3: the 7-window strip - the LAST 7 of the trend route\'s windows as one table row ("Thu 5" over "25 (9 new)" and a bar of % cells: NEW P1 / RETURNING P3 / the rest), every width a %, no px anywhere, the "30-day graph →" link to the report; the text part lists the same windows; no trend = no strip; the job hands the route\'s trend to the builder', async () => {
+  const w = (d, companies, fresh, visits) => ({ start: `2026-10-${d}`, end: `2026-10-${d + 1}`, days: [`2026-10-${d}`], label: `Day ${d}`, merged: 1, companies, new: fresh, returning: companies - fresh, visits_7d: visits, company_keys: [], new_keys: [], record_keys: [] });
+  const windows = [w(20, 4, 4, 9), w(21, 6, 2, 10), w(22, 20, 10, 40), w(23, 0, 0, 0), w(24, 36, 24, 83), w(25, 19, 7, 40), w(26, 32, 16, 71), w(27, 15, 4, 40), w(28, 39, 19, 79)];
+  const strip = trendStrip({ windows });
+  assert.equal(strip.windows, 7);
+  assert.equal((strip.html.match(/<td width="14%"/g) || []).length, 7, 'seven cells of floor(100 / 7) %');
+  assert.ok(!strip.html.includes('>Tue 20<') && !strip.html.includes('>Wed 21<') && strip.html.includes('>Thu 22<') && strip.html.includes('>Wed 28<'), 'the last seven');
+  const widths = [...strip.html.matchAll(/width="([^"]+)"/g)].map(x => x[1]);
+  assert.ok(widths.length > 20 && widths.every(x => /^\d+%$/.test(x)), `every width a %: ${widths.slice(0, 6)}`);
+  assert.ok(!/width:\s*\d+px|width="\d+"/.test(strip.html));
+  // Wed 28: 39 of max 39 -> NEW 19/39 = 49 %, RETURNING 20/39 = 51 %, nothing left; Day 23: 0 companies -> the empty bar only.
+  assert.match(strip.html, /<td width="49%" style="height:8px;background:#FF9F57[^>]*>&nbsp;<\/td><td width="51%" style="height:8px;background:#4FD1C5/);
+  assert.match(strip.html, /<td width="100%" style="height:8px;background:#1E242C/);
+  assert.ok(strip.html.includes(`href="${esc(TREND_URL)}"`) && strip.html.includes('30-day graph →'));
+  assert.ok(TREND_URL.endsWith('&channel=website_visit&visitors=1'));
+  assert.ok(!/<img|<svg|<style|<script/i.test(strip.html));
+  assert.match(strip.text, /^COMPANIES IDENTIFIED · LAST 7 PULL WINDOWS\nDay 22 · 20 companies \(10 new\) · 40 7-day visits\n/);
+  assert.match(strip.text, /Day 28 · 39 companies \(19 new\) · 79 7-day visits\n30-day graph → https:/);
+  assert.equal(trendStrip(null), null);
+  assert.equal(trendStrip({ windows: [] }), null);
+  const m = buildVisitorEmail([], { date: '2026-11-06', trend: { windows } });
+  assert.equal(m.strip, 7);
+  assert.ok(m.html.indexOf('Companies identified · last 7 pull windows') > m.html.indexOf('worth a look') && m.html.indexOf('Companies identified · last 7 pull windows') < m.html.indexOf('New yesterday'), 'under the tiles, above the lists');
+  assert.match(m.text, /COMPANIES IDENTIFIED · LAST 7 PULL WINDOWS/);
+  const none = buildVisitorEmail([], { date: '2026-11-06' });
+  assert.equal(none.strip, 0);
+  assert.ok(!none.html.includes('30-day graph') && !none.text.includes('30-day graph'));
+  // The job: a stored pull window -> one bar in the strip of the test send.
+  const s = sb({ web_visits: [{ id: '00000000-0000-4000-8000-00000000e001', business_id: B, company_key: 'k1', company_name: 'Co 1', visits_7d: 3, unique_visitors_7d: 1, top_paths: [], intent_score: 20, priority: 'P3', matched_type: null, matched_id: null, pulled_on: '2026-11-03', seen_from: '2026-11-02', seen_to: '2026-11-03' }] });
+  const g = graph();
+  const r = await visitorEmailJob(s, B, { now: NOW, pull: null, deps: g.deps, test: true });
+  assert.deepEqual([r.status, r.strip], ['sent', 1]);
+  const text = Buffer.from(g.calls[0].mime.split('\r\n\r\n')[2].split('\r\n--')[0].replace(/\r\n/g, ''), 'base64').toString('utf8');
+  assert.match(text, /COMPANIES IDENTIFIED · LAST 1 PULL WINDOWS\nMon Nov 2 · 1 company \(1 new\) · 3 7-day visits/);
+  assert.ok(!/@/.test(m.html + m.text));
 });

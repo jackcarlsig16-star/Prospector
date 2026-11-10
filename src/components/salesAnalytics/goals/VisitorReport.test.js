@@ -5,8 +5,10 @@ import { goalsApi } from './goalsApi';
 jest.mock('./goalsApi', () => ({ goalsApi: {
   visitReport: jest.fn(), visitStatus: jest.fn(), visitPull: jest.fn(), visitSkip: jest.fn(), addVisitSkip: jest.fn(), removeVisitSkip: jest.fn(),
   visitExportUrl: id => `/api/sales/${id}/goals/visits/export`, uploadVisitedPeople: jest.fn(),
-  visitorsExportUrl: (id, p) => `/api/sales/${id}/goals/visits/export-visitors?window=${p.window}&format=csv`, visitorsExport: jest.fn(),
+  visitorsExportUrl: (id, p) => `/api/sales/${id}/goals/visits/export-visitors?window=${p.window}&format=csv`, visitorsExport: jest.fn(), visitorsTrend: jest.fn(),
 } }));
+// visitor-trend-v1 T2 / T6: the 30-day trend the chart draws and the PDF's summary line reads.
+const TREND = { days: 30, today: '2026-11-06', since: '2026-10-21', windows: [{ start: '2026-11-05', end: '2026-11-06', days: ['2026-11-05'], label: 'Thu Nov 5', merged: 1, companies: 25, new: 9, returning: 16, visits_7d: 68, company_keys: [], new_keys: [], record_keys: [] }], summary: { windows: 1, companies: 25, company_windows: 25, new: 9, returning: 16, visits_7d: 68, busiest: { label: 'Thu Nov 5', start: '2026-11-05', companies: 25 } } };
 
 const row = (name, priority, extra = {}) => ({
   company_key: name.toLowerCase(), company_name: name, domain: `${name.toLowerCase().replace(/\W/g, '')}.example`, priority, priority_rule: 'Rule', maybe_user: false, skipped: false,
@@ -27,12 +29,22 @@ beforeEach(() => {
   goalsApi.visitReport.mockResolvedValue(REPORT);
   goalsApi.visitStatus.mockResolvedValue({ last_run: { la_date: '2026-10-20', status: 'ok' }, paused: null, spent: 0, cap: 500, today: { P1: 1, P2: 0, P3: 1, P4: 1 } });
   goalsApi.visitSkip.mockResolvedValue({ skip: [{ id: 's1', company_key: 'vendor', reason: 'Seed (D10)' }] });
+  goalsApi.visitorsTrend.mockResolvedValue(TREND);
 });
 afterEach(() => jest.clearAllMocks());
 
-test('headline, Hot, Apollo-labeled uniques, P4 hidden until asked', async () => {
-  render(<VisitorReport businessId="b1" canEdit />);
+test('headline, Hot, Apollo-labeled uniques, P4 hidden until asked; the 30-day chart sits between the summary and the lists and hands a bar pick up', async () => {
+  const pick = jest.fn();
+  render(<VisitorReport businessId="b1" canEdit onPickWindow={pick} />);
   const table = await screen.findByRole('table');
+  const chart = await screen.findByRole('region', { name: 'Visitors, last 30 days' });
+  expect(chart.dataset.bars).toBe('1');
+  const regions = [...document.querySelectorAll('[data-visitor-report] > section')].map(s => s.getAttribute('aria-label'));
+  expect(regions.slice(0, 3)).toEqual(['Website visitors summary', 'Visitors, last 30 days', 'Hot']);
+  const svg = chart.querySelector('svg');
+  svg.getBoundingClientRect = () => ({ left: 0, width: 1340 });
+  fireEvent.click(svg, { clientX: 670 });
+  expect(pick).toHaveBeenCalledWith(TREND.windows[0]);
   expect(within(table).getByRole('columnheader', { name: 'Unique visitors (Apollo)' })).toBeInTheDocument();
   expect(within(table).getByRole('columnheader', { name: 'Visits (7 d)' })).toBeInTheDocument();
   expect(screen.getByText("On Brad's list")).toBeInTheDocument();
@@ -159,6 +171,8 @@ test('Export visitors: a Member has no button; an admin picks the window, CSV fe
   const print = await waitFor(() => { const el = document.getElementById('sales-analytics-print-area'); if (!el) throw new Error('no print area'); return el; });
   expect(print).toHaveTextContent('HomeLover website visitors · last 7 days (2026-10-31 – 2026-11-06) · generated 2026-11-06');
   expect(print).toHaveTextContent('headcount known for 1 of 2 companies');
+  expect(print.querySelector('[data-print-trend]')).toHaveTextContent('Last 30 days: 25 companies identified · 9 new · 16 returning · busiest: Thu Nov 5 (25)');
+  expect(print.textContent.indexOf('Last 30 days:')).toBeLessThan(print.textContent.indexOf('headcount known'));
   for (const h of ['Company', 'Industry code (NAICS/SIC)', 'Headcount', 'First seen', 'Last seen', 'Days visited', 'Visits (Apollo, rolling 7 d at last seen)', 'Pages (top 3, last pull)', 'People identified', 'Band', 'In Prospector']) expect(within(print).getByRole('columnheader', { name: h })).toBeInTheDocument();
   expect(within(print).getByText('unknown')).toBeInTheDocument();
   expect(within(print).getByText('1,250 (typed)')).toBeInTheDocument();

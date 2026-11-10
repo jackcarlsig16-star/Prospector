@@ -33,7 +33,7 @@ import { CHANNEL_LABEL, CHANNEL_ICON, PRIORITIES, PRIORITY_WORD } from '../../..
 import { NOT_A_FIT, priorityValue, priorityText, writePriority, undoValue } from './priorityActions';
 import { PRIORITY_TYPES } from './companyPanelModel';
 import {
-  EMPTY_FILTERS, activeFilterCount, channelFromParam, companiesView, inChannel, ownersOf, stagesOf,
+  EMPTY_FILTERS, activeFilterCount, channelFromParam, companiesView, inChannel, ownersOf, stagesOf, readWindowParam, windowParam,
   readHidden, writeHidden, readSort, writeSort, readCollapsed, writeCollapsed, prioritySetLabel, PRIORITY_GROUPS, priorityGroup,
 } from './companiesModel';
 
@@ -71,11 +71,12 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
   const [error, setError] = useState('');
   const [channel, setChannel] = useState(() => channelFromParam(new URLSearchParams(window.location.search).get('channel')));
   const [filters, setFilters] = useState(EMPTY_FILTERS);
+  const [pendingWindow, setPendingWindow] = useState(readWindowParam); // visitor-trend-v1 T2: ?window=<start>_<end> resolves against the trend route
   const [hidden, setHidden] = useState(readHidden);
   const [sort, setSort] = useState(readSort);
   const [chooser, setChooser] = useState(null); // DOMRect of the Columns button while the chooser is open
   const [sheetOpen, setSheetOpen] = useState(false); // phone filter sheet
-  const [visitorsOpen, setVisitorsOpen] = useState(false);
+  const [visitorsOpen, setVisitorsOpen] = useState(() => new URLSearchParams(window.location.search).get('visitors') === '1'); // the email's "30-day graph →" lands on the report
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [toast, setToast] = useState(null); // { text, undo? }
   const [busyId, setBusyId] = useState(null);
@@ -127,6 +128,26 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
     if (channel === 'all') url.searchParams.delete('channel'); else url.searchParams.set('channel', channel);
     window.history.replaceState(window.history.state, '', url);
   }, [channel]);
+  // A copied ?window= link: the window comes from the trend route (its company and record keys), never from the URL alone;
+  // an unknown window is dropped from the URL, so the list never sits on a dead filter.
+  useEffect(() => {
+    if (!pendingWindow) return undefined;
+    let live = true;
+    goalsApi.visitorsTrend(businessId, { days: 90 })
+      .then(t => { if (!live) return; setFilters(f => ({ ...f, window: t.windows.find(x => x.start === pendingWindow.start && x.end === pendingWindow.end) || null })); })
+      .catch(() => {}).finally(() => { if (live) setPendingWindow(null); });
+    return () => { live = false; };
+  }, [businessId, pendingWindow]);
+  useEffect(() => {
+    if (pendingWindow) return;
+    const url = new URL(window.location.href);
+    if (filters.window) url.searchParams.set('window', windowParam(filters.window)); else url.searchParams.delete('window');
+    if (!visitorsOpen) url.searchParams.delete('visitors');
+    window.history.replaceState(window.history.state, '', url);
+  }, [filters.window, pendingWindow, visitorsOpen]);
+  // A bar on the 30-day chart: that window's companies (companiesView shows them whatever the channel), the report closed
+  // so the list is what's on screen.
+  const pickWindow = w => { setFilters(f => ({ ...f, window: w })); setChannel('website'); setVisitorsOpen(false); load(); };
   useEffect(() => {
     if (!chooser) return undefined;
     const close = e => { if (!e.target.closest('[data-column-chooser]')) setChooser(null); };
@@ -434,7 +455,7 @@ export default function PipelineView({ businessId, canEdit, isAdmin = false, meI
 
       {visitorsOpen && (
         <SidePanel label="Website visitors" width={1040} onClose={() => { setVisitorsOpen(false); load(); }}>
-          <VisitorReport businessId={businessId} canEdit={canEdit} isAdmin={isAdmin} />
+          <VisitorReport businessId={businessId} canEdit={canEdit} isAdmin={isAdmin} onPickWindow={pickWindow} />
         </SidePanel>
       )}
       {canEdit && <AddFlows businessId={businessId} members={members} adding={adding} onClose={() => setAdding(null)} companies={all.filter(r => ['partner', 'employer', 'target'].includes(r.type)).map(r => ({ type: r.type, id: r.id, name: r.name }))}

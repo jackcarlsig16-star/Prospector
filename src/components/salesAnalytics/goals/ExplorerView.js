@@ -9,7 +9,7 @@ import { IconHeightCompact, IconHeightStandard, IconHeightTall } from '../../../
 import { goalsApi } from './goalsApi';
 import { exportWidgetCsv } from '../exportCsv';
 import { cardStyle, labelStyle, numStyle, ErrorNote } from './goalsUi';
-import { DEFAULTS, cleanState, readPrefs, writePrefs, fmtValue, heightPx, chipGlyph, scales, ticks, geometry, bucketAt, labelEvery, csvOf } from './explorerModel';
+import { DEFAULTS, cleanState, readPrefs, writePrefs, fmtValue, heightPx, chipGlyph, scales, niceMax, ticks, geometry, bucketAt, labelEvery, csvOf } from './explorerModel';
 
 // dashboard-v3 Stage 3 (E) - the Explorer: one chart, your layers, over GET goals/explorer (every number the route's;
 // this file draws and formats). LAYERS = outlined toggle chips (square = count on the left axis as columns, dash = rate
@@ -30,23 +30,33 @@ function loadHtml2canvas() {
   return new Promise((resolve, reject) => { const s = document.createElement('script'); s.src = HTML2CANVAS; s.onload = () => resolve(window.html2canvas); s.onerror = () => reject(new Error('Could not load the screenshot library')); document.head.appendChild(s); });
 }
 
-export function Chart({ data, show, height, hover, pinned, onHover, onPin }) {
+// visitor-trend-v1 R6 - two props, both default off so the Explorer draws exactly as before: stacked = the count columns
+// stack in one column per bucket (the left axis tops out at the tallest stack); countLine = a count series flagged
+// { line: true } draws as a line on the right axis with count ticks instead of a column (Apollo's rolling 7-day visits
+// beside the companies identified - a line never reads as "visits that day").
+export function Chart({ data, show, height, hover, pinned, onHover, onPin, stacked = false, countLine = false }) {
   const n = data.labels.length;
   const H = heightPx(height);
   const g = geometry(n, H);
-  const sc = scales(data.series);
-  const counts = data.series.filter(s => s.kind === 'count'), rates = data.series.filter(s => s.kind === 'rate');
-  const asColumns = show === 'columns' ? data.series : counts;
-  const asLines = show === 'columns' ? [] : rates;
-  const yOf = s => (v => (s.kind === 'count' ? g.yCount(v, sc.maxCount) : g.yRate(v, sc.maxRate)));
-  const cw = Math.min(g.maxColumn, (g.slot * 0.8) / Math.max(1, asColumns.length));
-  const band = data.series.some(s => LAYERS[s.layer]?.band) && sc.hasRates;
+  const lineCounts = countLine ? data.series.filter(s => s.kind === 'count' && s.line) : [];
+  const plain = data.series.filter(s => !lineCounts.includes(s));
+  const sc = scales(plain);
+  const counts = plain.filter(s => s.kind === 'count'), rates = plain.filter(s => s.kind === 'rate');
+  const asColumns = show === 'columns' ? plain : counts;
+  if (stacked && asColumns.length > 1) sc.maxCount = niceMax(Math.max(0, ...data.labels.map((l, i) => asColumns.reduce((t, s) => t + (s.values[i] || 0), 0))));
+  if (lineCounts.length) { sc.hasRates = true; sc.maxRate = niceMax(Math.max(0, ...lineCounts.flatMap(s => s.values.filter(v => v != null)))); }
+  const rightFmt = lineCounts.length ? v => Number(v).toLocaleString('en-US') : v => `${Math.round(v * 100)}%`;
+  const asLines = [...(show === 'columns' ? [] : rates), ...lineCounts];
+  const yOf = s => (v => (s.kind === 'count' && !s.line ? g.yCount(v, sc.maxCount) : g.yRate(v, sc.maxRate)));
+  const cw = Math.min(g.maxColumn, (g.slot * 0.8) / Math.max(1, stacked ? 1 : asColumns.length));
+  const stackBase = (k, i) => asColumns.slice(0, k).reduce((t, s) => t + (s.values[i] || 0), 0);
+  const band = data.series.some(s => LAYERS[s.layer]?.band) && sc.hasRates && !lineCounts.length;
   const every = labelEvery(n);
   const active = pinned ?? hover;
   const svgRef = useRef(null);
   const toIndex = e => { const r = svgRef.current.getBoundingClientRect(); return bucketAt(((e.clientX - r.left) / r.width) * g.W, g, n); };
   return (
-    <svg ref={svgRef} width="100%" viewBox={`0 0 ${g.W} ${H}`} style={{ display: 'block', cursor: 'crosshair' }} role="img" aria-label={`Explorer: ${data.series.map(s => s.label).join(', ')} by ${data.by}`}
+    <svg ref={svgRef} width="100%" viewBox={`0 0 ${g.W} ${H}`} style={{ display: 'block', cursor: 'crosshair' }} role="img" aria-label={data.label || `Explorer: ${data.series.map(s => s.label).join(', ')} by ${data.by}`}
       data-explorer-chart onMouseMove={e => onHover(toIndex(e))} onMouseLeave={() => onHover(null)} onClick={e => { const i = toIndex(e); if (i != null) onPin(pinned === i ? null : i); }}>
       {band && <>
         <rect x={g.x0} y={g.yRate(Math.min(BAND.good, sc.maxRate), sc.maxRate)} width={g.plotW} height={g.y0 - g.yRate(Math.min(BAND.good, sc.maxRate), sc.maxRate)} fill="rgba(61,214,140,.08)" data-band="good" />
@@ -57,9 +67,11 @@ export function Chart({ data, show, height, hover, pinned, onHover, onPin }) {
         <g key={i}>
           <line x1={g.x0} x2={g.x0 + g.plotW} y1={y} y2={y} stroke={GRID} />
           {sc.hasCounts && <text x={g.x0 - 6} y={y + 3} textAnchor="end" fontSize="10" fill="#6B7480">{Math.round(t * sc.maxCount).toLocaleString('en-US')}</text>}
-          {sc.hasRates && <text x={g.x0 + g.plotW + 6} y={y + 3} fontSize="10" fill="#6B7480">{`${Math.round(t * sc.maxRate * 100)}%`}</text>}
+          {sc.hasRates && <text x={g.x0 + g.plotW + 6} y={y + 3} fontSize="10" fill="#6B7480">{rightFmt(t * sc.maxRate)}</text>}
         </g>); })}
-      {asColumns.map((s, k) => s.values.map((v, i) => v == null ? null : (
+      {asColumns.map((s, k) => s.values.map((v, i) => v == null ? null : stacked ? (
+        <rect key={`${k}-${i}`} x={g.x0 + i * g.slot + (g.slot - cw) / 2} y={yOf(s)(stackBase(k, i) + v)} width={Math.max(1, cw - 1)} height={Math.max(0, yOf(s)(stackBase(k, i)) - yOf(s)(stackBase(k, i) + v))} fill={s.color} fillOpacity=".7" rx={k === asColumns.length - 1 ? 2 : 0} data-col={s.layer} data-stack={k} />
+      ) : (
         <rect key={`${k}-${i}`} x={g.x0 + i * g.slot + (g.slot - cw * asColumns.length) / 2 + k * cw} y={yOf(s)(v)} width={Math.max(1, cw - 1)} height={Math.max(0, g.y0 - yOf(s)(v))} fill={s.color} fillOpacity=".55" rx="2" data-col={s.layer} />
       )))}
       {asLines.map((s, k) => {
@@ -71,7 +83,7 @@ export function Chart({ data, show, height, hover, pinned, onHover, onPin }) {
           <g key={`l${k}`} data-line={s.layer}>
             <path d={d} fill="none" stroke={s.color} strokeWidth="2" />
             {pts.map((p, i) => p && <circle key={i} cx={p[0]} cy={p[1]} r="2.6" fill={s.color} />)}
-            {lastI != null && lastI >= 0 && <text x={g.center(lastI) + 8} y={pts[lastI][1] + 3} fontSize="10.5" fontWeight="600" fill={s.color} data-end-label={s.layer}>{fmtValue('rate', s.values[lastI])}</text>}
+            {lastI != null && lastI >= 0 && <text x={g.center(lastI) + 8} y={pts[lastI][1] + 3} fontSize="10.5" fontWeight="600" fill={s.color} data-end-label={s.layer}>{fmtValue(s.line ? 'count' : 'rate', s.values[lastI])}</text>}
           </g>
         );
       })}

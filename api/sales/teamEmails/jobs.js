@@ -3,6 +3,7 @@ import { getGrant } from '../../lib/microsoftGrants.js';
 import { sendTeamEmail, loadSettings, loadMembers, senderOf } from './send.js';
 import { loadVisitorData, loadRankedBook, loadCumulative, buildVisitorEmail, dayWindowFor } from './visitorEmail.js';
 import { dueAlerts, sendClientAlert } from './clientAlert.js';
+import { visitorsTrend } from '../visitTrend.js';
 
 // homelover-team-emails-v1 T3 - HomeLover's jobs. Times are LA wall clock (REVISABLE). apollo-sync is the 06:00 Apollo
 // sync moved off node-cron (its next-run drifted by an hour when the process stayed up across a DST change).
@@ -71,10 +72,11 @@ export async function visitorEmailJob(supabase, businessId, { now = Date.now(), 
   // ranked book right now; CUMULATIVE = every company identified since the first pull.
   const date = laClock(now).date, window = dayWindowFor(date, { weekendOn: !!settings.weekend_on });
   const members = await loadMembers(supabase, businessId);
-  const [companies, overall, cumulative] = await Promise.all([loadVisitorData(supabase, businessId, { window, members }), loadRankedBook(supabase, businessId, { now, members }), loadCumulative(supabase, businessId)]);
-  const mail = buildVisitorEmail(companies, { date, window, pullNote, overall, cumulative });
+  // visitor-trend-v1 T3: the 7-window strip reads the trend route's series (the same bars the Web visitors page draws).
+  const [companies, overall, cumulative, trend] = await Promise.all([loadVisitorData(supabase, businessId, { window, members }), loadRankedBook(supabase, businessId, { now, members }), loadCumulative(supabase, businessId), visitorsTrend(supabase, businessId, { now }).then(r => r.body)]);
+  const mail = buildVisitorEmail(companies, { date, window, pullNote, overall, cumulative, trend });
   const sent = await sendTeamEmail(supabase, businessId, { kind: 'visitor', subject: mail.subject, html: mail.html, text: mail.text, slot: date, test }, deps);
-  return { ...sent, rows: mail.rows, new_rows: mail.new_rows, more: mail.more, overall: mail.overall, pull: p };
+  return { ...sent, rows: mail.rows, new_rows: mail.new_rows, more: mail.more, overall: mail.overall, strip: mail.strip, pull: p };
 }
 
 export async function clientAlertsJob(supabase, businessId, { now = Date.now(), deps } = {}) {

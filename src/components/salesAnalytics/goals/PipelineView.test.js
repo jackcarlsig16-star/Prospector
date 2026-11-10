@@ -906,3 +906,38 @@ test('search first: the first control after the Filter label is the search box (
   fireEvent.keyDown(owner, { key: '/' });
   expect(document.activeElement).toBe(owner);
 });
+
+// visitor-trend-v1 Stage 2 (T2): ?window=<start>_<end> beside ?channel - the window is read from the trend route (its
+// company and record keys, never the URL alone); the list shows that window's companies under every channel (a visitor
+// row by its company_key, a matched record by type:id); an unknown window is dropped from the URL; the chip removes it.
+test('T2: ?window= filters the Companies list to the trend window\'s companies whatever the channel; the chip names the window; an unknown window is dropped, never a dead filter', async () => {
+  const WIN = { start: '2026-11-05', end: '2026-11-06', days: ['2026-11-05'], label: 'Thu Nov 5', companies: 25, new: 9, returning: 16, visits_7d: 68, merged: 1, company_keys: ['acme visit'], new_keys: [], record_keys: ['partner:Gallagher'] };
+  goalsApi.visitorsTrend = jest.fn().mockResolvedValue({ days: 90, windows: [WIN], summary: {} });
+  window.history.replaceState(null, '', '/?tab=pipeline&channel=website_visit&window=2026-11-05_2026-11-06');
+  goalsApi.pipelineBoard.mockResolvedValue([...ROWS, { ...VISITOR, id: 'acme visit', name: 'Acme Visit' }]);
+  setup();
+  await waitFor(() => expect(goalsApi.visitorsTrend).toHaveBeenCalledWith('b1', { days: 90 }));
+  const chip = await screen.findByRole('button', { name: 'Remove filter Visited Thu Nov 5 · 25 companies in that window' });
+  expect(channelBtn('Website visitors')).toHaveAttribute('aria-pressed', 'true');
+  expect(await screen.findByText('Gallagher')).toBeTruthy();
+  expect(screen.getByText('Acme Visit')).toBeTruthy();
+  expect(screen.queryByText('Solidcore')).toBeNull();
+  expect(screen.queryByText('OneDigital')).toBeNull();
+  expect(window.location.search).toContain('channel=website');
+  expect(window.location.search).toContain('window=2026-11-05_2026-11-06');
+  fireEvent.click(channelBtn('All'));
+  expect(screen.getByText('Acme Visit')).toBeTruthy();
+  expect(screen.queryByText('Solidcore')).toBeNull();
+  fireEvent.click(chip);
+  expect(await screen.findByText('Solidcore')).toBeTruthy();
+  expect(screen.queryByText('Acme Visit')).toBeNull();
+  expect(window.location.search).not.toContain('window=');
+
+  document.body.innerHTML = '';
+  window.history.replaceState(null, '', '/?tab=pipeline&window=2026-01-01_2026-01-02');
+  setup();
+  expect(await screen.findByText('Solidcore')).toBeTruthy();
+  await waitFor(() => expect(window.location.search).not.toContain('window='));
+  expect(screen.queryByRole('button', { name: /^Remove filter Visited/ })).toBeNull();
+  window.history.replaceState(null, '', '/');
+});

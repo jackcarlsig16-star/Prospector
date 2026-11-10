@@ -7,6 +7,7 @@ import useMediaQuery from '../../../utils/useMediaQuery';
 import VisitPullBar from '../tasks/VisitPullBar';
 import { linkBtn } from '../tasks/TaskRow';
 import { goalsApi } from './goalsApi';
+import VisitorTrendChart, { summaryLine } from './VisitorTrendChart';
 import { cardStyle, labelStyle, h2Style, h3Style, subStyle, numStyle, inputStyle, Chip, Btn, ErrorNote } from './goalsUi';
 
 // signals-v1 Stage 5 (D12) - the daily visitor report from Prospector's own
@@ -110,7 +111,7 @@ function SkipList({ businessId, canEdit, onChanged }) {
 const EXPORT_WINDOWS = [['7', 'Last 7 days'], ['30', 'Last 30 days'], ['90', 'Last 90 days'], ['all', 'Since the first pull']];
 const EXPORT_COLUMNS = ['Company', 'Industry code (NAICS/SIC)', 'Headcount', 'First seen', 'Last seen', 'Days visited', 'Visits (Apollo, rolling 7 d at last seen)', 'Pages (top 3, last pull)', 'People identified', 'Band', 'In Prospector'];
 const exportCells = r => [r.company, r.industry, r.headcount, r.first_seen || '—', r.last_seen || '—', r.days_visited, r.visits_7d, r.pages.join(', ') || '—', r.people, r.band, r.in_prospector];
-function ExportVisitors({ businessId, onNotice }) {
+function ExportVisitors({ businessId, onNotice, trendLine }) {
   const [win, setWin] = useState('30');
   const [busy, setBusy] = useState('');
   const [print, setPrint] = useState(null);
@@ -156,6 +157,7 @@ function ExportVisitors({ businessId, onNotice }) {
         // Portaled to <body>: the Web visitors side panel sits inside a no-print block, which would hide the print area with it.
         <div id="sales-analytics-print-area" className="print-only" style={{ background: '#fff', color: '#111', fontFamily: 'system-ui, sans-serif', fontSize: 11 }}>
           <div style={{ fontWeight: 600, fontSize: 13, margin: '0 0 4px' }}>{print.title}</div>
+          {trendLine && <div data-print-trend style={{ margin: '0 0 4px', color: '#111' }}>{trendLine}</div>}
           <div style={{ margin: '0 0 8px', color: '#444' }}>{print.summary} · company data only, no people · visits are Apollo's rolling 7-day count at the last pull</div>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead><tr>{EXPORT_COLUMNS.map(h => <th key={h} scope="col" style={th}>{h}</th>)}</tr></thead>
@@ -168,9 +170,10 @@ function ExportVisitors({ businessId, onNotice }) {
   );
 }
 
-export default function VisitorReport({ businessId, canEdit, isAdmin = false }) {
+export default function VisitorReport({ businessId, canEdit, isAdmin = false, onPickWindow = null }) {
   const narrow = useMediaQuery('(max-width: 899px)');
   const [report, setReport] = useState(null);
+  const [trend, setTrend] = useState(null); // visitor-trend-v1 T6: the PDF's 30-day summary line reads the same trend the chart drew
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [showNoise, setShowNoise] = useState(false);
@@ -254,8 +257,10 @@ export default function VisitorReport({ businessId, canEdit, isAdmin = false }) 
         {notice && <span role="status" style={{ fontSize: 13, color: SA.soft }}>{notice}</span>}
       </section>
 
+      <VisitorTrendChart businessId={businessId} onPickWindow={onPickWindow} onLoaded={setTrend} />
+
       {skipOpen && <SkipList businessId={businessId} canEdit={canEdit} onChanged={load} />}
-      {exportOpen && isAdmin && <ExportVisitors businessId={businessId} onNotice={setNotice} />}
+      {exportOpen && isAdmin && <ExportVisitors businessId={businessId} onNotice={setNotice} trendLine={trend ? summaryLine(trend) : null} />}
 
       <section aria-label="Hot" style={{ ...cardStyle, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <h3 style={h3Style}>Hot ({hot.length})</h3>
@@ -301,7 +306,7 @@ export default function VisitorReport({ businessId, canEdit, isAdmin = false }) 
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
-                <tr>{COLUMNS.map(h => <th key={h} scope="col" style={{ ...labelStyle, textAlign: 'left', padding: '8px 12px', whiteSpace: h.length > 14 ? 'normal' : 'nowrap' }}>{h}</th>)}<th aria-label="Actions" /></tr>
+                <tr>{COLUMNS.map(h => <th key={h} scope="col" style={{ ...labelStyle, textAlign: 'left', padding: '8px 12px', whiteSpace: h.length > 14 ? 'normal' : 'nowrap' }}>{h}</th>)}<th scope="col"><span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>Notes</span></th></tr>
               </thead>
               <tbody>
                 {rows.map(r => (

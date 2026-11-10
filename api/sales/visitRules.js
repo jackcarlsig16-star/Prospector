@@ -132,8 +132,11 @@ export function toWebSignal(v, { businessId, week, userId, match, hint }) {
 }
 
 // visitor-trend-v1 R5 - the ONE "new vs returning" rule, shared by the visitor email (loadVisitorData) and the trend
-// route: a company is new in a window when no web_visits row for it has a pull window starting before the window's
-// first day. rows = any set that holds every earlier row for the keys in question (the builder's prior-rows query, the
-// trend's whole table); a row with no seen_from (none exist since the Oct 27 fix) can never make a company "seen".
-export const seenBeforeKeys = (rows, firstDay) => new Set(rows.filter(r => r.seen_from && r.seen_from < firstDay).map(r => r.company_key));
+// route: a company is new in a window when no web_visits row for it has a pull window that ENDED before the window's
+// first day (Stage 1 choice 1: a window that contains the day is not before it - the hidden Oct 13-27 backfill no
+// longer makes every company of Oct 20-26 "returning"). A pull window covers seen_from .. seen_to - 1, a zero-length one
+// its one day, so "ended before" = seen_from < firstDay and seen_to <= firstDay. rows = any set that holds every earlier
+// row for the keys in question (the builder's prior-rows query, the trend's whole table); a row with no seen_from (none
+// exist since the Oct 27 fix) can never make a company "seen".
+export const seenBeforeKeys = (rows, firstDay) => new Set(rows.filter(r => r.seen_from && r.seen_from < firstDay && (r.seen_to || r.seen_from) <= firstDay).map(r => r.company_key));
 export const isNewCompany = (key, seenBefore) => !seenBefore.has(key);

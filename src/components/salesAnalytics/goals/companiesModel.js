@@ -25,7 +25,14 @@ const CHANNEL_PARAM = { website_visit: 'website' };
 export const channelFromParam = p => CHANNEL_PARAM[p] || (CHANNEL_BUTTONS.some(([id]) => id === p) ? p : 'all');
 
 export const TYPE_OPTIONS = [['partner', 'Partner'], ['employer', 'Employer'], ['target', 'Target'], ['apollo', 'Apollo-only'], ['visitor', 'Visitor'], ['signal', 'Scout signal']];
-export const EMPTY_FILTERS = { owner: '', ownerTeam: '', type: '', stage: '', priority: '', tier: '', visited: false, hasTodo: false, overdue: false, q: '' };
+// visitor-trend-v1 T2: window = one pull window from GET goals/visitors/trend ({ start, end, label, companies, company_keys,
+// record_keys }) - the list shows that window's companies: an unmatched visitor row by its company_key (its id), a
+// matched record by `${type}:${id}`. Read from ?window=<start>_<end> beside ?channel; a bar click sets it.
+export const EMPTY_FILTERS = { owner: '', ownerTeam: '', type: '', stage: '', priority: '', tier: '', visited: false, hasTodo: false, overdue: false, q: '', window: null };
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+export const readWindowParam = (search = window.location.search) => { const [start, end] = (new URLSearchParams(search).get('window') || '').split('_'); return YMD.test(start || '') && YMD.test(end || '') ? { start, end } : null; };
+export const windowParam = w => (w ? `${w.start}_${w.end}` : null);
+export const inWindow = (r, w) => (r.type === 'visitor' ? (w.company_keys || []).includes(r.id) : (w.record_keys || []).includes(`${r.type}:${r.id}`));
 export const activeFilterCount = f => Object.entries(f).filter(([k, v]) => v && v !== EMPTY_FILTERS[k]).length;
 
 const TIER_TEXT = t => (t === 'active' ? 'Active' : `T${t}`);
@@ -39,6 +46,7 @@ export function activeFilters(f) {
     f.priority && { key: 'priority', text: `Priority: ${f.priority === 'none' ? 'No priority' : `P${f.priority}`}` },
     f.tier && { key: 'tier', text: `Tier: ${TIER_TEXT(f.tier)}` },
     f.visited && { key: 'visited', text: 'Visited 7 d' },
+    f.window && { key: 'window', text: `Visited ${f.window.label} · ${f.window.companies} ${f.window.companies === 1 ? 'company' : 'companies'} in that window` },
     f.hasTodo && { key: 'hasTodo', text: 'Has open to-do' },
     f.overdue && { key: 'overdue', text: 'Overdue' },
     f.q && { key: 'q', text: `"${f.q}"` },
@@ -56,6 +64,7 @@ export function matchesCompanyFilters(r, f) {
     && (!f.stage || r.stage_label === f.stage)
     && (!f.priority || (f.priority === 'none' ? r.priority == null : r.priority === Number(f.priority)))
     && (!f.visited || !!r.visited)
+    && (!f.window || inWindow(r, f.window))
     && (!f.hasTodo || (r.work?.todos || 0) > 0)
     && (!f.overdue || (r.work?.todos_overdue || 0) + (r.work?.waiting_overdue || 0) > 0);
 }
@@ -64,10 +73,12 @@ export const inChannel = (r, channel) => (r.channels || []).includes(channel);
 
 // Rows for the table, and the count on every channel button under the same
 // filter row (so a button reads what clicking it would show).
+// A window (T2) names its companies itself, so it shows them whatever the channel: an unmatched visitor sits only under
+// Website visitors, a record visited three weeks ago only under its own channel.
 export function companiesView(rows, channel, filters) {
   const filtered = rows.filter(r => matchesCompanyFilters(r, filters));
   const counts = Object.fromEntries(CHANNEL_BUTTONS.map(([id]) => [id, filtered.filter(r => inChannel(r, id)).length]));
-  return { rows: filtered.filter(r => inChannel(r, channel)), counts };
+  return { rows: filters.window ? filtered : filtered.filter(r => inChannel(r, channel)), counts };
 }
 
 // Filter-row options from what is loaded: owners and stages present.

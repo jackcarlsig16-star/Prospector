@@ -11,7 +11,7 @@ import { seenBeforeKeys, isNewCompany } from './visitRules.js';
 
 const B = '00000000-0000-4000-8000-0000000000b1';
 let n = 0;
-const row = (key, seen_from, seen_to, pulled_on = seen_to, visits_7d = 1) => ({ id: `r${String(++n).padStart(3, '0')}`, business_id: B, company_key: key, pulled_on, seen_from, seen_to, visits_7d });
+const row = (key, seen_from, seen_to, pulled_on = seen_to, visits_7d = 1, match = null) => ({ id: `r${String(++n).padStart(3, '0')}`, business_id: B, company_key: key, pulled_on, seen_from, seen_to, visits_7d, matched_type: match ? match.split(':')[0] : null, matched_id: match ? match.split(':')[1] : null });
 const TODAY = '2026-11-10';
 const ROWS = [
   // The Oct 27 backfill (14 d): hidden from the bars, but it is where a, b, c were first seen.
@@ -23,8 +23,8 @@ const ROWS = [
   // Thu Nov 5 (pulled Fri Nov 6): b returning, e new, 3 visits.
   row('b', '2026-11-05', '2026-11-06', '2026-11-06', 2), row('e', '2026-11-05', '2026-11-06', '2026-11-06', 1),
   // Mon Nov 9: the 06:30 Fri-Sun pull (a, f) and a later same-day re-pull Nov 8 -> 9 (f again with a newer count, g): ONE bar.
-  row('a', '2026-11-06', '2026-11-09', '2026-11-09', 4), row('f', '2026-11-06', '2026-11-09', '2026-11-09', 1),
-  row('f', '2026-11-08', '2026-11-09', '2026-11-09', 7), row('g', '2026-11-08', '2026-11-09', '2026-11-09', 2),
+  row('a', '2026-11-06', '2026-11-09', '2026-11-09', 4, 'opportunity:o-1'), row('f', '2026-11-06', '2026-11-09', '2026-11-09', 1),
+  row('f', '2026-11-08', '2026-11-09', '2026-11-09', 7, 'partner:p-1'), row('g', '2026-11-08', '2026-11-09', '2026-11-09', 2),
   // A Sunday pull (Nov 1, covering Sat Oct 31): its own bar.
   row('c', '2026-10-31', '2026-11-01'),
 ];
@@ -44,29 +44,38 @@ test('coveredDays + windowLabel: a window covers seen_from .. seen_to - 1; a zer
   assert.equal(windowLabel(['2026-10-30', '2026-10-31', '2026-11-01']), 'Fri–Sun Oct 30–Nov 1');
 });
 
-test('R5: the one rule - seen before = any row with seen_from before the first day; a row without seen_from never counts', () => {
-  const rows = [{ company_key: 'a', seen_from: '2026-11-01' }, { company_key: 'b', seen_from: null }, { company_key: 'c', seen_from: '2026-11-05' }];
+test('R5: the one rule - seen before = a row whose pull window ENDED before the first day; a window that contains the day is not before it (Stage 1 choice 1); a row without seen_from never counts', () => {
+  const rows = [{ company_key: 'a', seen_from: '2026-11-01', seen_to: '2026-11-02' }, { company_key: 'b', seen_from: null, seen_to: null }, { company_key: 'c', seen_from: '2026-11-05', seen_to: '2026-11-06' }];
   const seen = seenBeforeKeys(rows, '2026-11-05');
   assert.deepEqual([...seen].sort(), ['a']);
   assert.deepEqual(['a', 'b', 'c', 'x'].map(k => isNewCompany(k, seen)), [false, true, true, true]);
+  // The 14-day backfill (Oct 13 -> 27) contains Oct 21: a company it listed is NEW on Oct 21, RETURNING from Oct 27 on.
+  const bf = [{ company_key: 'k', seen_from: '2026-10-13', seen_to: '2026-10-27' }];
+  assert.deepEqual([seenBeforeKeys(bf, '2026-10-21').has('k'), seenBeforeKeys(bf, '2026-10-26').has('k'), seenBeforeKeys(bf, '2026-10-27').has('k'), seenBeforeKeys(bf, '2026-10-28').has('k')], [false, false, true, true]);
+  // A zero-length window (the pre-Oct-27 daily pulls) covers its one day: before the next day, not before itself.
+  const z = [{ company_key: 'z', seen_from: '2026-10-21', seen_to: '2026-10-21' }, { company_key: 'y', seen_from: '2026-10-20', seen_to: null }];
+  assert.deepEqual([seenBeforeKeys(z, '2026-10-21').has('z'), seenBeforeKeys(z, '2026-10-22').has('z'), seenBeforeKeys(z, '2026-10-21').has('y')], [false, true, true]);
 });
 
 test('buildTrend: windows from the rows (the run rows are never the source), the backfill hidden but seeding first-seen, the Fri-Sun bar, the same-day overlap merge with de-duplicated companies, the zero-length day bar, the Sunday bar, new + returning = companies, since = the first bar', () => {
   const t = buildTrend({ rows: ROWS, runs: RUNS, today: TODAY, days: 30 });
   assert.deepEqual(t.windows.map(w => [w.label, w.start, w.end, w.companies, w.new, w.returning, w.visits_7d, w.merged]), [
     ['Wed Oct 21', '2026-10-21', '2026-10-21', 1, 1, 0, 1, 1],
-    ['Mon Oct 26', '2026-10-26', '2026-10-27', 2, 1, 1, 2, 1],
+    ['Mon Oct 26', '2026-10-26', '2026-10-27', 2, 2, 0, 2, 1],
     ['Sat Oct 31', '2026-10-31', '2026-11-01', 1, 0, 1, 1, 1],
     ['Thu Nov 5', '2026-11-05', '2026-11-06', 2, 1, 1, 3, 1],
     ['Fri–Sun Nov 6–8', '2026-11-06', '2026-11-09', 3, 2, 1, 13, 2],
   ]);
   const mon = t.windows[4];
   assert.deepEqual([mon.company_keys, mon.new_keys, mon.days], [['a', 'f', 'g'], ['f', 'g'], ['2026-11-06', '2026-11-07', '2026-11-08']], 'f once (its newer re-pull row, 7 visits), a returning (the backfill saw it), f + g new');
+  assert.deepEqual(mon.record_keys, ['employer:o-1', 'partner:p-1'], 'T2: the matched Pipeline rows (an opportunity match = the employer row), from the latest row per company');
+  assert.deepEqual(t.windows[0].record_keys, []);
   assert.ok(t.windows.every(w => w.new + w.returning === w.companies && w.companies === w.company_keys.length));
   assert.ok(!t.windows.some(w => w.start === '2026-10-13'), 'the 14-day backfill is not a bar');
-  assert.equal(t.windows[1].returning, 1, 'a on Oct 26 is returning only because the hidden backfill seeded it');
+  assert.equal(t.windows[1].returning, 0, 'a on Oct 26 is NEW: the hidden backfill (Oct 13 -> 27) contains Oct 26, so it is not before it (choice 1)');
+  assert.equal(t.windows[2].returning, 1, 'c on Oct 31 is returning: the backfill ended Oct 27, before it');
   assert.deepEqual([t.since, t.days, t.today], ['2026-10-21', 30, TODAY]);
-  assert.deepEqual(t.summary, { windows: 5, companies: 8, company_windows: 9, new: 5, returning: 4, visits_7d: 20, busiest: { label: 'Fri–Sun Nov 6–8', start: '2026-11-06', companies: 3 } });
+  assert.deepEqual(t.summary, { windows: 5, companies: 8, company_windows: 9, new: 6, returning: 3, visits_7d: 20, busiest: { label: 'Fri–Sun Nov 6–8', start: '2026-11-06', companies: 3 } });
 });
 
 test('buildTrend: the range is window_end >= today - (days - 1); a shorter range drops the old bars and since moves; no rows = no windows, since null', () => {

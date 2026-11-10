@@ -123,3 +123,54 @@ test('Send to team now: a Member never sees the button; Cancel closes the dialog
   expect(goalsApi.teamEmailSendNow).toHaveBeenCalledTimes(1);
   expect(goalsApi.teamEmailSendNow).toHaveBeenCalledWith('b1', { check: true });
 });
+
+// visitor-trend-v1 Stage 2 (T4 / R4): the weekend switch - its copy quotes the month's measured pull runs from the state
+// (never a constant); ON takes two confirms and PATCHes weekend_on only (no test send, no send-now - the switch fires
+// nothing); OFF is one click; a member only reads it; the visitor row's cadence word follows it.
+const RUNS = { month: '2026-11', runs: 8, credits: 0, calls_min: 4, calls_max: 10 };
+test('T4: weekend switch - measured copy, two confirms to turn on, PATCH weekend_on only, one click off, read-only for a member', async () => {
+  goalsApi.teamEmails.mockResolvedValue({ ...owner, weekend_on: false, pull_runs_month: RUNS });
+  goalsApi.updateTeamEmails.mockResolvedValue({});
+  render(<TeamEmailsSettings businessId="b1" isOwner meId="u-owner" />);
+  const box = await screen.findByLabelText('Weekend pulls and emails');
+  expect(box).not.toBeChecked();
+  expect(screen.getByText('Adds Saturday and Sunday pulls and emails · measured 0 Apollo credits per run this month (8 runs, 4–10 API calls each)')).toBeInTheDocument();
+  expect(screen.getByText(/Weekdays at 7:00 AM PT/)).toBeInTheDocument();
+  fireEvent.click(box);
+  expect(goalsApi.updateTeamEmails).not.toHaveBeenCalled();
+  const dlg = await screen.findByRole('dialog', { name: 'Weekend pulls and emails' });
+  expect(dlg.textContent).toMatch(/Turn on weekend pulls and emails\? Adds 2 Apollo pull runs and 2 visitor emails a week \(Saturday and Sunday, 6:30 \/ 7:00 AM PT\) · measured 0 Apollo credits per run this month \(8 runs, 4–10 API calls each\)\./);
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.queryByRole('dialog', { name: 'Weekend pulls and emails' })).toBeNull();
+  expect(goalsApi.updateTeamEmails).not.toHaveBeenCalled();
+  fireEvent.click(box);
+  fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+  expect(goalsApi.updateTeamEmails).not.toHaveBeenCalled();
+  expect(screen.getByRole('dialog', { name: 'Weekend pulls and emails' }).textContent).toMatch(/This changes the schedule only - nothing is pulled or sent right now; the first Saturday run is the check\. Monday’s email then covers Sunday only\. Are you sure\?/);
+  fireEvent.click(screen.getByRole('button', { name: 'Yes, turn on weekends' }));
+  await waitFor(() => expect(goalsApi.updateTeamEmails).toHaveBeenCalledWith('b1', { weekend_on: true }));
+  expect(goalsApi.updateTeamEmails).toHaveBeenCalledTimes(1);
+  expect(goalsApi.teamEmailTest).not.toHaveBeenCalled();
+  expect(goalsApi.teamEmailSendNow).not.toHaveBeenCalled();
+  expect(await screen.findByText(/Weekend pulls and emails on - the schedule changes from Saturday; nothing was pulled or sent now/)).toBeInTheDocument();
+
+  document.body.innerHTML = '';
+  goalsApi.updateTeamEmails.mockClear();
+  goalsApi.teamEmails.mockResolvedValue({ ...owner, weekend_on: true, pull_runs_month: { ...RUNS, runs: 1, credits: 3, calls_min: 6, calls_max: 6 } });
+  render(<TeamEmailsSettings businessId="b1" isOwner meId="u-owner" />);
+  const on = await screen.findByLabelText('Weekend pulls and emails');
+  expect(on).toBeChecked();
+  expect(screen.getByText(/Every day at 7:00 AM PT/)).toBeInTheDocument();
+  expect(screen.getByText('Adds Saturday and Sunday pulls and emails · measured 3 Apollo credits per run this month (1 run, 6 API calls each)')).toBeInTheDocument();
+  fireEvent.click(on);
+  expect(screen.queryByRole('dialog', { name: 'Weekend pulls and emails' })).toBeNull();
+  await waitFor(() => expect(goalsApi.updateTeamEmails).toHaveBeenCalledWith('b1', { weekend_on: false }));
+
+  document.body.innerHTML = '';
+  goalsApi.teamEmails.mockResolvedValue({ ...base, weekend_on: false, pull_runs_month: { ...RUNS, runs: 0, credits: 0, calls_min: 0, calls_max: 0 } });
+  render(<TeamEmailsSettings businessId="b1" isOwner={false} meId="u-m" />);
+  expect(await screen.findByText('Weekend pulls and emails (Sat · Sun)')).toBeInTheDocument();
+  expect(screen.getByText('Adds Saturday and Sunday pulls and emails · no pull runs measured this month yet')).toBeInTheDocument();
+  expect(screen.queryByLabelText('Weekend pulls and emails')).toBeNull();
+  expect(screen.getByText('Off')).toBeInTheDocument();
+});

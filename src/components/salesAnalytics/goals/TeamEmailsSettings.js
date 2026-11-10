@@ -23,6 +23,7 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
   const [clients, setClients] = useState([]);
   const [testClient, setTestClient] = useState('');
   const [sendNow, setSendNow] = useState(null); // FIX visitor-email-top10-v1 follow-up: { step: 'ask' | 'again' | 'again2', sent_at?, recipients? }
+  const [weekendAsk, setWeekendAsk] = useState(null); // visitor-trend-v1 T4: 'ask' | 'sure' - two confirms before weekends turn on
   const undoTimer = useRef(null);
 
   const load = useCallback(() => goalsApi.teamEmails(businessId).then(d => { setData(d); setError(''); }).catch(e => setError(e.message)), [businessId]);
@@ -73,7 +74,7 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
         <div style={{ flex: '1 1 260px', display: 'grid', gap: 2 }}>
           <b style={{ fontSize: 14, color: SA.text, fontWeight: 600 }}>{KIND_LABEL[kind]}</b>
           <span style={small}>
-            {kind === 'visitor' ? 'Weekdays at 7:00 AM PT · ' : 'Once per new client · '}
+            {kind === 'visitor' ? `${data.weekend_on ? 'Every day' : 'Weekdays'} at 7:00 AM PT · ` : 'Once per new client · '}
             {on ? n(c.count, 'recipient', 'recipients') : 'Off'}
             {c.dropped ? ` · ${c.dropped} outside ${domains} skipped` : ''}{c.capped ? ` · ${c.capped} over the ${data.max} cap` : ''}
           </span>
@@ -104,6 +105,38 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
       </div>
     );
   };
+  // T4 / R4: the weekend switch. The copy quotes this month's measured pull runs (the state's pull_runs_month), never a
+  // constant; ON takes two confirms; the switch changes the schedule only - the server fires no pull and no send on it.
+  const prm = data.pull_runs_month || { runs: 0, credits: 0, calls_min: 0, calls_max: 0 };
+  const perRun = prm.runs ? (Number.isInteger(prm.credits / prm.runs) ? prm.credits / prm.runs : (prm.credits / prm.runs).toFixed(1)) : null;
+  const measured = prm.runs ? `measured ${perRun} Apollo ${perRun === 1 ? 'credit' : 'credits'} per run this month (${n(prm.runs, 'run', 'runs')}, ${prm.calls_min === prm.calls_max ? prm.calls_min : `${prm.calls_min}–${prm.calls_max}`} API calls each)` : 'no pull runs measured this month yet';
+  const setWeekend = on => { setWeekendAsk(null); act('weekend', () => goalsApi.updateTeamEmails(businessId, { weekend_on: on }), () => flash(on ? 'Weekend pulls and emails on - the schedule changes from Saturday; nothing was pulled or sent now' : 'Weekend pulls and emails off - Mon–Fri as before')); };
+  const weekendRow = 'weekend_on' in data && (
+    <div data-weekend-row style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', padding: '12px 0', borderTop: `1px solid ${SA.border}` }}>
+      <div style={{ flex: '1 1 260px', display: 'grid', gap: 2 }}>
+        <b style={{ fontSize: 14, color: SA.text, fontWeight: 600 }}>Weekend pulls and emails (Sat · Sun)</b>
+        <span data-weekend-copy style={small}>Adds Saturday and Sunday pulls and emails · {measured}</span>
+      </div>
+      {isOwner ? (
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14, color: SA.text }}>
+          <input type="checkbox" aria-label="Weekend pulls and emails" checked={!!data.weekend_on} disabled={!!busy} onChange={e => (e.target.checked ? setWeekendAsk('ask') : setWeekend(false))} /> On
+        </label>
+      ) : <span style={small}>{data.weekend_on ? 'On' : 'Off'}</span>}
+    </div>
+  );
+  const weekendDialog = weekendAsk && (
+    <div role="dialog" aria-label="Weekend pulls and emails" data-weekend-dialog style={{ display: 'grid', gap: 10, padding: '12px 14px', borderRadius: 8, border: `1px solid ${SA.border}`, background: SA.inset }}>
+      <span style={{ fontSize: 14, color: SA.text }}>
+        {weekendAsk === 'ask' && `Turn on weekend pulls and emails? Adds 2 Apollo pull runs and 2 visitor emails a week (Saturday and Sunday, 6:30 / 7:00 AM PT) · ${measured}.`}
+        {weekendAsk === 'sure' && 'This changes the schedule only - nothing is pulled or sent right now; the first Saturday run is the check. Monday\u2019s email then covers Sunday only. Are you sure?'}
+      </span>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {weekendAsk === 'ask' && <Btn style={{ height: 32 }} onClick={() => setWeekendAsk('sure')}>Continue</Btn>}
+        {weekendAsk === 'sure' && <Btn primary style={{ height: 32 }} onClick={() => setWeekend(true)}>Yes, turn on weekends</Btn>}
+        <Btn style={{ height: 32 }} onClick={() => setWeekendAsk(null)}>Cancel</Btn>
+      </div>
+    </div>
+  );
   const sendNowDialog = sendNow && (
     <div role="dialog" aria-label="Send to team now" data-send-now-dialog style={{ display: 'grid', gap: 10, padding: '12px 14px', borderRadius: 8, border: `1px solid ${SA.border}`, background: SA.inset }}>
       <span style={{ fontSize: 14, color: SA.text }}>
@@ -189,7 +222,8 @@ export default function TeamEmailsSettings({ businessId, isOwner, meId }) {
             : `Scheduler: not running in this server process (Render runs it; its startup log line reads "HomeLover scheduler on: ${data.scheduler.line}")`}
         </span>
       )}
-      <div>{['visitor', 'client'].map(emailRow)}</div>
+      <div>{['visitor', 'client'].map(emailRow)}{weekendRow}</div>
+      {weekendDialog}
       {sendNowDialog}
       {!isOwner && <span style={small}>{n(data.total, 'address is', 'addresses are')} on the list.</span>}
       {recipients}

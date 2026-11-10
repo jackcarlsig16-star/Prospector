@@ -15,6 +15,7 @@ import { seenBeforeKeys, isNewCompany } from './visitRules.js';
 // seen_to, the pre-Oct-27 daily pulls) covers that one day. Windows pulled on the same day whose ranges overlap merge
 // into one bar (companies de-duplicated, new / returning decided once per company). Sunday pulls stay their own bars.
 const DAY = 864e5;
+const RECORD_ROW = { partner: 'partner', opportunity: 'employer', target: 'target' };
 export const DAYS_DEFAULT = 30, DAYS_MIN = 7, DAYS_MAX = 90;
 const reply = (status, body) => ({ status, body });
 const send = (res, r) => res.status(r.status).json(r.body);
@@ -56,6 +57,9 @@ export function buildTrend({ rows, runs = [], today, days = DAYS_DEFAULT }) {
       companies: keys.length, new: fresh.length, returning: keys.length - fresh.length,
       visits_7d: [...latest.values()].reduce((n, r) => n + (r.visits_7d || 0), 0),
       company_keys: keys, new_keys: fresh,
+      // T2: the Pipeline rows these companies matched (the board keys an opportunity match as the employer row), so the
+      // Companies list can filter to the window without a name match of its own; an unmatched visitor is its company_key.
+      record_keys: [...new Set([...latest.values()].filter(r => r.matched_id && RECORD_ROW[r.matched_type]).map(r => `${RECORD_ROW[r.matched_type]}:${r.matched_id}`))].sort(),
     };
   });
   const distinct = new Set(windows.flatMap(w => w.company_keys));
@@ -74,7 +78,7 @@ export const clampDays = v => { const n = Math.trunc(Number(v)); return Number.i
 export async function visitorsTrend(supabase, businessId, { days = DAYS_DEFAULT, now = Date.now() } = {}) {
   const today = laDateString(new Date(now));
   const [rows, runs] = await Promise.all([
-    selectAllPages(() => supabase.from('web_visits').select('id, company_key, pulled_on, seen_from, seen_to, visits_7d').eq('business_id', businessId).order('id')),
+    selectAllPages(() => supabase.from('web_visits').select('id, company_key, pulled_on, seen_from, seen_to, visits_7d, matched_type, matched_id').eq('business_id', businessId).order('id')),
     selectAllPages(() => supabase.from('visit_pull_runs').select('id, la_date, kind, status, window_start, window_end').eq('business_id', businessId).eq('kind', 'backfill').order('id')),
   ]);
   return reply(200, buildTrend({ rows, runs, today, days: clampDays(days) }));
