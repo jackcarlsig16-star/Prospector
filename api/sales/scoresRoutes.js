@@ -9,7 +9,7 @@ import { sourceLabelOf } from './companyBrief.js';
 import { breakdownLines } from './intentScore.js';
 import { dueMap, inFitFilter } from './fitLevel.js';
 import { FIT_LEVELS, DUE_LEVELS } from '../../src/constants/fitLevels.js';
-import { headcountCsv, headcountSourceWord } from '../../src/constants/headcount.js';
+import { headcountCsv, headcountSourceWord, SIZE_BUCKETS, sizeBucketOf } from '../../src/constants/headcount.js';
 
 // intent-score-v1 Stage 2 - GET goals/scores (the ranked rows + components under the S3 filters, with yesterday's band
 // for the ▲ / ▼ markers), POST goals/scores/recompute (owner / admin, optional one company), GET goals/scores/export.csv.
@@ -38,6 +38,8 @@ export function parseFilters(q = {}) {
     fit: typeof q.fit === 'string' && q.fit ? q.fit.split(',').filter(l => FIT_LEVELS.includes(l)) : [],
     due: DUE_LEVELS.includes(q.due) ? q.due : '',
     sort: q.sort === 'newest' ? 'newest' : 'rank',
+    // heat-size-v1 S1: size = bucket ids to show (multi, comma); absent = every size.
+    size: typeof q.size === 'string' && q.size ? q.size.split(',').filter(s => SIZE_BUCKETS.some(([id]) => id === s)) : [],
   };
   return f;
 }
@@ -59,6 +61,7 @@ export function filterScoreRows(rows, f, now = Date.now()) {
     if (f.q && !String(r.name || '').toLowerCase().includes(f.q)) return false;
     if (!inFitFilter(r.fit_level, f.fit || [])) return false;
     if (f.due && r.due !== f.due) return false;
+    if (f.size.length && !f.size.includes(sizeBucketOf(r.employees))) return false;
     return true;
   });
 }
@@ -124,6 +127,9 @@ export async function listScores(supabase, businessId, query = {}, { now = Date.
   counts.fit = Object.fromEntries(FIT_LEVELS.map(l => [l, ranked.filter(r => r.fit_level === l).length]));
   counts.due = Object.fromEntries(DUE_LEVELS.map(l => [l, ranked.filter(r => r.due === l).length]));
   counts.new_today = ranked.filter(r => r.new_today).length;
+  // heat-size-v1 S1 / R5: the size chips' counts over the unfiltered ranked set and the coverage line's numbers.
+  counts.sizes = Object.fromEntries(SIZE_BUCKETS.map(([id]) => [id, ranked.filter(r => sizeBucketOf(r.employees) === id).length]));
+  counts.headcount = { companies: ranked.length, known: ranked.filter(r => r.employees != null).length };
   // priorities-v2 D1: the type chips' counts over the UNFILTERED ranked set (same pass, no second query).
   counts.segments = { all: ranked.length, visitors: ranked.filter(r => r.last_visit).length, partners: ranked.filter(r => r.type === 'partner').length, employers: ranked.filter(r => r.type === 'employer').length, targets: ranked.filter(r => r.type === 'target').length };
   const sources = Object.fromEntries(SOURCE_ORDER.map(k => [k, ranked.filter(r => r.source_label === k).length]));

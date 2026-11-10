@@ -8,6 +8,7 @@ import { BAND_COLOR } from './DotsChart';
 import { ownerChip } from '../flowModel';
 import { FIT_WORD } from '../../../../constants/fitLevels';
 import { md } from '../companyPanelFacts';
+import { headcountSortValue, HEADCOUNT_SOURCE_GLYPH, HEADCOUNT_SOURCE_WORD } from '../../../../constants/headcount';
 
 // priorities-v2 T - the detail table: the chart's rows (same page, legend state and filters) as # · Company · Source ·
 // Intent · Visits · People · Fit · Research · Engagement · Touched · Band (+ Change while "Since yesterday" is on). A row
@@ -20,6 +21,11 @@ const DEFAULT_SORT = { id: 'seen', dir: 'desc' };
 const FIT_COLOR = { strong: SA.good, good: SA.accent, low: SA.muted, deprioritized: SA.bad };
 const touched = r => (r.days_since_touch == null ? '—' : `${r.days_since_touch} d`);
 const n = v => (v == null ? '—' : Number(v).toLocaleString('en-US'));
+// heat-size-v1 S1: the number with its source glyph (◇ Apollo · ✎ typed · ◆ researched), "unknown" never blank.
+export const HeadcountCell = ({ employees, source }) => (employees == null
+  ? <span data-headcount="unknown" style={{ color: SA.muted }}>unknown</span>
+  : <span data-headcount={source || 'none'} style={{ ...numStyle, display: 'inline-flex', gap: 4, alignItems: 'baseline' }}>{n(employees)}{HEADCOUNT_SOURCE_GLYPH[source] && <span style={{ color: SA.muted, fontSize: 11 }}><span aria-hidden="true">{HEADCOUNT_SOURCE_GLYPH[source]}</span><span className="ui-sr-only"> {HEADCOUNT_SOURCE_WORD[source]}</span></span>}</span>);
+export const headcountTitle = r => (r.employees == null ? 'Headcount unknown - type it in the company window (Employees)' : `${n(r.employees)} employees · ${HEADCOUNT_SOURCE_WORD[r.employees_source] || 'source unknown'}`);
 export const BandPill = ({ band }) => (
   <span data-band-pill={band} style={{ display: 'inline-flex', alignItems: 'center', height: 20, padding: '0 7px', borderRadius: 999, border: `1px solid ${BAND_COLOR[band] || SA.border}`, color: BAND_COLOR[band] || SA.muted, font: "500 11px 'Geist Mono', ui-monospace, monospace", letterSpacing: '.06em' }}>{band}</span>
 );
@@ -47,6 +53,7 @@ export default function PrioritiesTable({ rows, live = [], lit, selectedKey, onS
     { id: 'score', label: 'Intent', width: 76, sortValue: r => r.score, render: r => <span style={{ ...numStyle, fontWeight: 600 }}>{r.score}</span> },
     { id: 'visits', label: 'Visits', width: 66, sortValue: r => r.visits_7d, render: r => <span style={numStyle}>{n(r.visits_7d)}</span> },
     { id: 'people', label: 'People', width: 66, sortValue: r => r.people, render: r => <span style={numStyle}>{n(r.people)}</span> },
+    { id: 'employees', label: 'Headcount', width: 100, sortValue: r => headcountSortValue(r.employees), render: r => <HeadcountCell employees={r.employees} source={r.employees_source} />, title: headcountTitle },
     { id: 'fit', label: 'Size pts', width: 70, sortValue: r => r.components?.fit?.points ?? null, render: r => <span style={numStyle}>{r.components?.fit ? `${r.components.fit.points}/${caps.fit ?? DEFAULT_CAPS.fit}` : '—'}</span> },
     { id: 'research', label: 'Research', width: 78, sortValue: r => (hollowness(r) === 'solid' ? 2 : hollowness(r) === 'decayed' ? 1 : 0), render: r => <span title={hollowness(r) === 'decayed' ? 'Research older than 60 days' : undefined} style={{ color: hollowness(r) === 'hollow' ? SA.muted : SA.text }}>{hollowness(r) === 'solid' ? '✓' : hollowness(r) === 'decayed' ? '✓ old' : '—'}</span> },
     { id: 'engagement', label: 'Engagement', width: 92, sortValue: r => r.components?.engagement?.points ?? null, render: r => <span style={numStyle}>{n(r.components?.engagement?.points)}</span> },
@@ -73,7 +80,10 @@ export default function PrioritiesTable({ rows, live = [], lit, selectedKey, onS
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0' }}>
       <span style={{ ...numStyle, color: SA.muted, minWidth: 22 }}>{r.rank ?? ''}</span>
       <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: sourceColor(r.source_label), flex: 'none' }} />
-      <span style={{ flex: 1, minWidth: 0, fontWeight: r.key === selectedKey ? 600 : 500, color: SA.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+      <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <span style={{ fontWeight: r.key === selectedKey ? 600 : 500, color: SA.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
+        <span data-card-size style={{ fontSize: 12, color: SA.muted }} title={headcountTitle(r)}><HeadcountCell employees={r.employees} source={r.employees_source} /></span>
+      </span>
       <span style={{ ...numStyle, fontWeight: 600 }}>{r.score}</span><BandPill band={r.band} />
       <button type="button" className="ui-link" data-row-name aria-label={`Open ${r.name}`} onClick={() => onOpen && onOpen(r)}>Open</button>
     </div>

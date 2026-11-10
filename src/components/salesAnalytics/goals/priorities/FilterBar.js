@@ -5,6 +5,7 @@ import { ToggleChip, ActiveFilterLine } from '../../../../ui/Chip';
 import { IconSearch } from '../../../../ui/icons';
 import { SEGMENTS, WINDOWS, BANDS, EMPTY_FILTERS, FIT_OPTIONS, DEFAULT_FIT, DUE_OPTIONS, toggleFit, sameFit } from './prioritiesModel';
 import { SOURCE_ORDER, SOURCE_LABELS } from '../../palette';
+import { SIZE_BUCKETS, toggleSize, sizeLabels, coverageLine } from '../../../../constants/headcount';
 
 // priorities-v2 F - the FILTER card: what's in the set. Type chips with their counts (counts.segments, over the
 // unfiltered ranked set) · labeled selects (mono label above, 30 px) · min score · Needs a touch · search. A second line
@@ -37,6 +38,7 @@ export function activeFilters(f, { members = [] } = {}) {
     f.q && { key: 'q', text: `"${f.q}"` },
     !sameFit(f.fit || DEFAULT_FIT, DEFAULT_FIT) && { key: 'fit', text: `Fit: ${(f.fit || []).map(l => FIT_OPTIONS.find(([id]) => id === l)?.[1]).join(' + ')}` },
     f.due && { key: 'due', text: `Due: ${DUE_OPTIONS.find(([id]) => id === f.due)?.[1]}` },
+    f.size?.length > 0 && { key: 'size', text: `Size: ${sizeLabels(f.size)}` },
   ].filter(Boolean);
 }
 
@@ -58,6 +60,12 @@ export default function FilterBar({ filters, set, onClear, data, members }) {
             {FIT_OPTIONS.map(([id, label]) => <ToggleChip key={id} data-fit-chip={id} pressed={(filters.fit || DEFAULT_FIT).includes(id)} count={data?.counts?.fit?.[id] ?? ''} title={id === 'deprioritized' ? 'Deprioritized records (hidden by default)' : `Show ${label} fit`} onClick={() => set('fit', toggleFit(filters.fit || DEFAULT_FIT, id))}>{label}</ToggleChip>)}
           </span>
         </div>
+        <div role="group" aria-label="Size" data-size-chips style={{ display: 'inline-flex', flexDirection: 'column', gap: 3 }}>
+          <span className="ui-group-label" aria-hidden="true">Size</span>
+          <span style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            {SIZE_BUCKETS.map(([id, label]) => <ToggleChip key={id} data-size-chip={id} pressed={(filters.size || []).includes(id)} count={data?.counts?.sizes?.[id] ?? ''} title={id === 'unknown' ? 'No headcount on the record yet - type one in the company window (Employees)' : `${label} employees`} onClick={() => set('size', toggleSize(filters.size || [], id))}>{label}</ToggleChip>)}
+          </span>
+        </div>
         <Labeled label="Due" value={filters.due || ''} options={DUE_OPTIONS.map(([value, label]) => ({ value, label: value ? `${label}${data?.counts?.due?.[value] != null ? ` (${data.counts.due[value]})` : ''}` : label }))} onChange={v => set('due', v)} />
         <Labeled label="Owner" value={filters.owner} options={ownerOpts} onChange={v => set('owner', v)} />
         <Labeled label="Source" value={filters.source[0] || ''} options={[{ value: '', label: 'All sources' }, ...SOURCE_ORDER.map(s => ({ value: s, label: SOURCE_LABELS[s] }))]} onChange={v => set('source', v ? [v] : [])} />
@@ -77,7 +85,10 @@ export default function FilterBar({ filters, set, onClear, data, members }) {
           <input type="search" className="ui-input ui-input--sm" aria-label="Search companies" placeholder="Search companies" value={filters.q} onChange={e => set('q', e.target.value)} style={{ width: '100%', height: 30, paddingLeft: 28 }} />
         </span>
       </div>
-      <ActiveFilterLine summary={`Showing ${data?.counts?.shown ?? '…'} of ${data?.counts?.ranked ?? '…'} ·`} active={active} onRemove={k => set(k, EMPTY_FILTERS[k])} onClear={onClear} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+        <ActiveFilterLine summary={`Showing ${data?.counts?.shown ?? '…'} of ${data?.counts?.ranked ?? '…'} ·`} active={active} onRemove={k => set(k, EMPTY_FILTERS[k])} onClear={onClear} />
+        {data?.counts?.headcount && <span data-coverage style={{ ...numStyle, fontSize: 12, color: SA.muted }}>{coverageLine(data.counts.headcount)}</span>}
+      </div>
     </div>
   );
 }

@@ -36,7 +36,12 @@ const table = async () => { render(<PeopleTable businessId="b1" canEdit me={ME} 
 
 test('the table: 10 columns, rows in the route\'s order, the heat band from the route (108 · warm above 68 · hot stays warm), chips with counts narrow the set, "Showing n of N" with removable chips, the footnote states the Huddle\'s rule', async () => {
   const t = await table();
-  expect(within(t).getAllByRole('columnheader').map(h => h.textContent.replace(/^[◉✓]/, '').replace(/ [↕▲▼]$/, ''))).toEqual(['Person', 'Company', 'Source', 'Emails (human opens)', 'Last email', 'Heat', 'Company visits', 'Identified', 'Buyer', 'Last touch']);
+  expect(within(t).getAllByRole('columnheader').map(h => h.textContent.replace(/^[◉✓]/, '').replace(/ [↕▲▼]$/, ''))).toEqual(['Person', 'Company', 'Size (company)', 'Source', 'Emails (human opens)', 'Last email', 'Heat', 'Company visits', 'Identified', 'Buyer', 'Last touch']);
+  // heat-size-v1 S1: every fixture company lacks a headcount -> "unknown" cells, the Unknown chip counts 3, the coverage line (R5).
+  expect([...t.querySelectorAll('[data-size]')].map(el => el.textContent)).toEqual(['unknown', 'unknown', 'unknown']);
+  expect(screen.getByText('headcount known for 0 of 3 companies · 0 people have no company record')).toBeInTheDocument();
+  const sizeChips = within(screen.getByRole('group', { name: 'Size' })).getAllByRole('button');
+  expect(sizeChips.map(b => b.textContent)).toEqual(['Unknown(3)', '< 200(0)', '200–999(0)', '1,000–4,999(0)', '5,000+(0)']);
   const names = () => [...t.querySelectorAll('tr[data-row] [data-person-name]')].map(el => el.textContent);
   expect(names()).toEqual(['Crystal Pringle', 'Cristina Torres', 'Bo Ops']);
   const bands = [...t.querySelectorAll('[data-heat-band]')].map(el => `${el.dataset.heatBand}:${el.textContent}`);
@@ -116,10 +121,14 @@ test('quick menu: Draft email copies the REACH bundle (never sends); Add to-do l
 });
 
 test('a person with no pipeline record: the quick menu says why; a non-prospect cannot be archived', async () => {
-  goalsApi.peopleActivityDetail.mockResolvedValue({ key: 'person:sp1', notes: 'Identified visitor 2026-11-02', timeline: [] });
+  goalsApi.peopleActivityDetail.mockResolvedValue({ key: 'person:sp1', notes: 'Identified visitor 2026-11-02', timeline: [], heat: { score: 11, band: 'hot', why: ['Identified on the site 2 d ago +11'] } });
   const t = await table();
-  fireEvent.click(t.querySelectorAll('tr[data-row] td')[t.querySelectorAll('tr[data-row]').length * 10 - 10]);
+  fireEvent.click(t.querySelectorAll('tr[data-row] td')[t.querySelectorAll('tr[data-row]').length * 11 - 11]);
   const detail = await waitFor(() => { const el = t.querySelector('[data-person-detail="person:sp1"]'); if (!el) throw new Error('no detail'); return el; });
+  // heat-size-v1 Stage 2: the card's heat is the route's live computation - score · band + the why lines.
+  await waitFor(() => expect(detail.querySelector('[data-heat-why]')).toBeTruthy());
+  expect(detail.querySelector('[data-heat-live]').textContent).toContain('11 · hot');
+  expect([...detail.querySelectorAll('[data-heat-why] li')].map(li => li.textContent)).toEqual(['Identified on the site 2 d ago +11']);
   const menu = within(within(detail).getByRole('group', { name: 'Quick menu' }));
   expect(menu.getByRole('button', { name: 'Open company' })).toBeEnabled();
   expect(menu.getByRole('button', { name: 'Draft email' })).toBeEnabled(); // a target is a pipeline record: the REACH bundle works

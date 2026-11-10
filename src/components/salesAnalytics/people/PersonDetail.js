@@ -91,6 +91,19 @@ export default function PersonDetail({ businessId, row, canEdit, meId, onToast, 
         </section>
         <section aria-label="Company and notes" style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div><span className="ui-group-label">Company visits</span><div style={{ marginTop: 4 }}>{row.visits ? <><b style={numStyle}>{row.visits.visits_7d}</b> visits (Apollo, rolling 7 d) · last {mdy(row.visits.last_visit)}{row.visits.top_page ? ` · ${row.visits.top_page}` : ''}</> : <span style={{ color: SA.muted }}>No visits matched to {row.company?.name || 'this company'}.</span>}</div></div>
+          <div>
+            <span className="ui-group-label">Heat</span>
+            <div style={{ marginTop: 4 }} data-heat-live>
+              {!detail && !error && <span style={{ color: SA.muted }}>…</span>}
+              {detail && !detail.heat && <span style={{ color: SA.muted }}>No signal yet - no email on record and no company visit.</span>}
+              {detail?.heat && <>
+                <b style={numStyle}>{detail.heat.score}</b> · {detail.heat.band}
+                <ul data-heat-why style={{ listStyle: 'none', margin: '4px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 2, fontSize: 12, color: SA.soft }}>
+                  {detail.heat.why.length ? detail.heat.why.map((line, i) => <li key={i}>{line}</li>) : <li style={{ color: SA.muted }}>No points yet - sent, no opens, clicks, replies or visits.</li>}
+                </ul>
+              </>}
+            </div>
+          </div>
           <div><span className="ui-group-label">Emails</span><div style={{ marginTop: 4 }}><b style={numStyle}>{row.emails.sent}</b> sent · <b style={numStyle}>{row.emails.opened}</b> human opens{row.emails.bot_opens ? <span style={{ color: SA.muted }}> ({row.emails.bot_opens} automated)</span> : null} · <b style={numStyle}>{row.emails.clicked}</b> clicked · <b style={numStyle}>{row.emails.replied}</b> replied</div></div>
           <div><span className="ui-group-label">Notes</span><div style={{ marginTop: 4, color: detail?.notes ? SA.text : SA.muted, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{detail ? detail.notes || 'None.' : '…'}</div></div>
         </section>

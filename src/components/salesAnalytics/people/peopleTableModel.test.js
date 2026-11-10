@@ -1,4 +1,4 @@
-import { chipMatches, applyFilters, chipCounts, activeFilters, removeFilter, toggleChip, targetToFilters, CSV_COLUMNS, heatRule, EMPTY_FILTERS, stageOptions, activeFilterCount } from './peopleTableModel';
+import { chipMatches, applyFilters, chipCounts, sizeChipCounts, peopleCoverage, activeFilters, removeFilter, toggleChip, targetToFilters, CSV_COLUMNS, heatRule, EMPTY_FILTERS, stageOptions, activeFilterCount } from './peopleTableModel';
 import { toCsv } from '../../../utils/csv';
 
 // people-v2 Stage 2 - the table's pure rules over invented rows (the route's shape).
@@ -66,4 +66,17 @@ test('CSV: structured fields only, the address a yes / no, Company size = number
   expect(lines[2]).toBe('Bo,VP People,Quarry Labs,researching,unknown,,Identified visitor,0,0,0,0,,,,1,2026-10-22,2026-11-02,,yes,');
   expect(toCsv([row('Nil', { company: null })], CSV_COLUMNS).split('\r\n')[1].startsWith('Nil,VP People,,,unknown,,')).toBe(true);
   expect(csv).not.toMatch(/@/);
+});
+
+test('heat-size-v1: the size chips count people by their company headcount (no record = Unknown), the sizes filter narrows, the active chip reads the labels, the coverage counts distinct records', () => {
+  const rows = [row('Ana', { company: { ...ROWS[0].company, employees: 12000, employees_source: 'manual' } }), row('Al', { company: { ...ROWS[0].company, employees: 12000, employees_source: 'manual' } }), ROWS[1], row('Nil', { company: null }), row('Cy', { company: { ...ROWS[2].company, employees: 150, employees_source: 'apollo' } })];
+  expect(sizeChipCounts(rows)).toEqual({ unknown: 2, lt200: 1, '200_999': 0, '1k_4999': 0, '5k': 2 });
+  expect(applyFilters(rows, { ...EMPTY_FILTERS, sizes: ['5k'] }, ctx).map(r => r.name)).toEqual(['Ana', 'Al']);
+  expect(applyFilters(rows, { ...EMPTY_FILTERS, sizes: ['unknown'] }, ctx).map(r => r.name)).toEqual(['Bo', 'Nil']);
+  expect(applyFilters(rows, { ...EMPTY_FILTERS, sizes: ['unknown', 'lt200'] }, ctx).map(r => r.name)).toEqual(['Bo', 'Nil', 'Cy']);
+  expect(activeFilters({ ...EMPTY_FILTERS, sizes: ['5k', 'unknown'] })).toEqual([{ key: 'sizes', text: 'Size: 5,000+ + Unknown' }]);
+  expect(removeFilter({ ...EMPTY_FILTERS, sizes: ['5k'] }, 'sizes').sizes).toEqual([]);
+  expect(activeFilterCount({ ...EMPTY_FILTERS, sizes: ['5k'] })).toBe(1);
+  expect(peopleCoverage(rows)).toEqual({ companies: 3, known: 2, noCompanyPeople: 1 });
+  expect(peopleCoverage([])).toEqual({ companies: 0, known: 0, noCompanyPeople: 0 });
 });

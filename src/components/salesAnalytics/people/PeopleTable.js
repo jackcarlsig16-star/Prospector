@@ -12,7 +12,8 @@ import useMediaQuery from '../../../utils/useMediaQuery';
 import { toCsv } from '../../../utils/csv';
 import { readPeopleCompany, writePeopleCompany } from '../salesNav';
 import { readOpenKey, openKeyOf, onScoutOpen, clearUrlParam } from '../../scout/scoutOpen';
-import { CHIPS, WINDOW_OPTIONS, SOURCE_OPTIONS, EMPTY_FILTERS, applyFilters, chipCounts, stageOptions, activeFilters, removeFilter, toggleChip, targetToFilters, CSV_COLUMNS, heatRule, readSort, writeSort } from './peopleTableModel';
+import { CHIPS, WINDOW_OPTIONS, SOURCE_OPTIONS, EMPTY_FILTERS, applyFilters, chipCounts, sizeChipCounts, peopleCoverage, stageOptions, activeFilters, removeFilter, toggleChip, targetToFilters, CSV_COLUMNS, heatRule, readSort, writeSort } from './peopleTableModel';
+import { SIZE_BUCKETS, toggleSize, coverageLine, headcountSortValue, headcountText, HEADCOUNT_SOURCE_GLYPH, HEADCOUNT_SOURCE_WORD } from '../../../constants/headcount';
 import PersonDetail from './PersonDetail';
 
 // people-v2 Stage 2 - Pipeline › People: ONE table of everyone we know (prospects, identified visitors, partner contacts)
@@ -25,6 +26,8 @@ import PersonDetail from './PersonDetail';
 // The heat band is never computed here - it is the route's (the Huddle's rule), and the footnote states that rule.
 // Stage 3: the column widths sum to 1096 px so the table fits the card at 1440 with no sideways scroll (the card's inner
 // width there is 1100 px); Emails and Company visits are two-line cells and Identified / Buyer are glyph columns.
+// heat-size-v1 S1: a Size column (the company record's headcount · source glyph, "unknown" never blank; unknown sorts
+// last both ways) and size chips in the chip row; the coverage line beside "Showing n of N" (R5).
 const UNDO_MS = 10000;
 const LA = 'America/Los_Angeles';
 const md = iso => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: LA }) : null);
@@ -35,6 +38,7 @@ const two = { display: 'flex', flexDirection: 'column', gap: 1, minWidth: 0, fon
 const glyphHead = (glyph, label) => <><span aria-hidden="true">{glyph}</span><span className="ui-sr-only">{label}</span></>;
 // "Emails (human opens)" is wider than its column at 1440; the visible head is "Emails", the rest stays in its accessible name.
 const emailsHead = <>Emails<span className="ui-sr-only"> (human opens)</span></>;
+const sizeHead = <>Size<span className="ui-sr-only"> (company)</span></>;
 const ell = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block' };
 const rowBar = { minHeight: 36, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 };
 const RECORD = ['partner', 'employer', 'target'];
@@ -73,6 +77,8 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   const all = useMemo(() => data?.rows || [], [data]);
   const rows = useMemo(() => applyFilters(all, filters, ctx), [all, filters, ctx]);
   const counts = useMemo(() => chipCounts(all, ctx), [all, ctx]);
+  const sizes = useMemo(() => sizeChipCounts(all), [all]);
+  const coverage = useMemo(() => peopleCoverage(all), [all]);
   const stages = useMemo(() => stageOptions(all), [all]);
   const scoutRow = useMemo(() => (scoutKey ? all.find(r => r.key === scoutKey || r.source_keys?.includes(scoutKey)) || null : null), [all, scoutKey]);
   useEffect(() => {
@@ -124,6 +130,10 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
       </span>
     : <Dim />);
   const sourceCell = r => <span className="ui-chip ui-chip--dense" title={r.sources.join(' + ')}>{r.source}{r.sources.length > 1 ? ` +${r.sources.length - 1}` : ''}</span>;
+  const sizeTitle = r => (r.company?.employees == null ? (r.company?.id ? 'Headcount unknown - type it in the company window (Employees)' : 'No company record - no headcount') : `${headcountText(r.company.employees)} employees · ${HEADCOUNT_SOURCE_WORD[r.company.employees_source] || 'source unknown'}`);
+  const sizeCell = r => (r.company?.employees == null
+    ? <span data-size="unknown" className="ui-table__dim">unknown</span>
+    : <span data-size={r.company.employees_source || 'none'} style={{ ...numStyle, display: 'inline-flex', gap: 4, alignItems: 'baseline' }}>{headcountText(r.company.employees)}{HEADCOUNT_SOURCE_GLYPH[r.company.employees_source] && <span style={{ color: SA.muted, fontSize: 11 }}><span aria-hidden="true">{HEADCOUNT_SOURCE_GLYPH[r.company.employees_source]}</span><span className="ui-sr-only"> {HEADCOUNT_SOURCE_WORD[r.company.employees_source]}</span></span>}</span>);
   const emailsCell = r => (
     <span style={{ ...two, ...numStyle }}>
       <span style={ell}>{r.emails.sent} <span style={{ color: SA.muted }}>sent</span> · {r.emails.opened} <span style={{ color: SA.muted }}>opened</span></span>
@@ -142,25 +152,26 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
       </span>
     : <Dim />);
   const columns = [
-    { id: 'person', label: 'Person', width: 152, sticky: true, detail: true, sortValue: r => r.name, render: nameCell, title: r => `${r.name}${r.title ? ` · ${r.title}` : ''}` },
-    { id: 'company', label: 'Company', width: 126, sortValue: r => r.company?.name || null, render: companyCell, title: r => r.company?.name },
-    { id: 'source', label: 'Source', width: 144, sortValue: r => r.source, render: sourceCell },
-    { id: 'emails', label: 'Emails (human opens)', width: 140, sortValue: r => r.emails.opened + r.emails.clicked * 2 + r.emails.replied * 4, render: emailsCell, title: emailsText },
-    { id: 'last_email', label: 'Last email', width: 110, sortValue: r => r.last_email?.at || null, render: lastEmailCell, title: lastEmailText },
+    { id: 'person', label: 'Person', width: 146, sticky: true, detail: true, sortValue: r => r.name, render: nameCell, title: r => `${r.name}${r.title ? ` · ${r.title}` : ''}` },
+    { id: 'company', label: 'Company', width: 120, sortValue: r => r.company?.name || null, render: companyCell, title: r => r.company?.name },
+    { id: 'size', label: 'Company size', width: 84, sortValue: r => headcountSortValue(r.company?.employees), render: sizeCell, title: sizeTitle },
+    { id: 'source', label: 'Source', width: 118, sortValue: r => r.source, render: sourceCell },
+    { id: 'emails', label: 'Emails (human opens)', width: 128, sortValue: r => r.emails.opened + r.emails.clicked * 2 + r.emails.replied * 4, render: emailsCell, title: emailsText },
+    { id: 'last_email', label: 'Last email', width: 104, sortValue: r => r.last_email?.at || null, render: lastEmailCell, title: lastEmailText },
     { id: 'heat', label: 'Heat', width: 92, sortValue: r => r.heat ?? -1, render: heatCell, title: r => (r.heat == null ? 'no heat yet' : `${r.heat} · ${r.heat_band} - the Huddle's band`) },
-    { id: 'visits', label: 'Company visits', width: 134, sortValue: r => r.visits?.visits_7d ?? -1, render: visitsCell, title: visitsText },
+    { id: 'visits', label: 'Company visits', width: 126, sortValue: r => r.visits?.visits_7d ?? -1, render: visitsCell, title: visitsText },
     { id: 'identified', label: 'Identified', glyph: '◉', width: 46, sortValue: r => r.identified_at || null, render: r => (r.identified_at ? <span data-identified={r.identified_at} aria-label={`Identified ${mdy(r.identified_at)}`} style={{ color: SA.accent }}>◉</span> : <Dim />), title: r => (r.identified_at ? `Identified visitor · first seen ${mdy(r.identified_at)}` : 'Not a visitor-identified person') },
     { id: 'buyer', label: 'Buyer', glyph: '✓', width: 46, sortValue: r => (r.buyer ? 1 : 0), render: r => (r.buyer ? <span data-buyer aria-label="buyer title" style={{ color: SA.good }}>✓</span> : <Dim />), title: r => (r.buyer ? 'Buyer title (matches Settings › buyer titles)' : 'Not a buyer title') },
-    { id: 'last_touch', label: 'Last touch', width: 106, sortValue: r => r.last_touch_at || null, render: r => (r.last_touch_at ? <span style={numStyle}>{md(r.last_touch_at)}</span> : <Dim />) },
+    { id: 'last_touch', label: 'Last touch', width: 86, sortValue: r => r.last_touch_at || null, render: r => (r.last_touch_at ? <span style={numStyle}>{md(r.last_touch_at)}</span> : <Dim />) },
   ];
-  const tableColumns = columns.map(c => (c.glyph ? { ...c, label: glyphHead(c.glyph, c.label) } : c.id === 'emails' ? { ...c, label: emailsHead } : c));
+  const tableColumns = columns.map(c => (c.glyph ? { ...c, label: glyphHead(c.glyph, c.label) } : c.id === 'emails' ? { ...c, label: emailsHead } : c.id === 'size' ? { ...c, label: sizeHead } : c));
   const sortLabel = sort && columns.find(c => c.id === sort.id)?.label;
   const groups = [{ id: 'people', header: <>{sort ? `Sorted by ${sortLabel}` : 'Heat first, then the last email'} <span className="ui-table__count">{rows.length}</span></>, rows, emptyText: 'No people match these filters.' }];
   const renderDetail = r => <PersonDetail businessId={businessId} row={r} canEdit={canEdit} meId={meId} onToast={setToast} onChanged={changed} onOpenCompany={openCompany} />;
   const compactRow = r => (
     <div style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
       <span style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', minWidth: 0 }}>{nameCell(r)}{heatCell(r)}</span>
-      <span style={{ fontSize: 12, color: SA.muted, ...ell }}>{r.company?.name || 'no company'}{r.company?.stage ? ` · ${String(r.company.stage).replace(/_/g, ' ')}` : ''}</span>
+      <span style={{ fontSize: 12, color: SA.muted, ...ell }}>{r.company?.name || 'no company'}{r.company?.stage ? ` · ${String(r.company.stage).replace(/_/g, ' ')}` : ''} · <span data-card-size title={sizeTitle(r)}>{r.company?.employees == null ? 'size unknown' : `${headcountText(r.company.employees)} ${HEADCOUNT_SOURCE_GLYPH[r.company.employees_source] || ''}`.trim()}</span></span>
       <span style={{ fontSize: 12, display: 'flex', gap: 10, flexWrap: 'wrap', ...numStyle }}><span title="sent">✉ {r.emails.sent}</span><span title="human opens">👁 {r.emails.opened}</span><span title="clicked">🖱 {r.emails.clicked}</span><span title="replied">↩ {r.emails.replied}</span><span style={{ color: SA.muted }}>{r.visits ? `${r.visits.visits_7d} visits 7 d` : 'no visits'}</span></span>
       <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{sourceCell(r)}{r.buyer && <span className="ui-chip ui-chip--dense">Buyer ✓</span>}{r.identified_at && <span className="ui-chip ui-chip--dense">Identified {mdy(r.identified_at)}</span>}</span>
     </div>
@@ -169,6 +180,10 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
     <div data-people-chips role="group" aria-label="Filter chips" style={{ display: 'flex', gap: 6, ...(phone ? { overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: 4 } : { flexWrap: 'wrap' }) }}>
       <h2 className={phone ? 'ui-sr-only' : 'ui-group-label'} style={{ margin: 0, flex: 'none' }}>Filter</h2>
       {CHIPS.map(([id, label]) => <ToggleChip key={id} pressed={filters.chips.includes(id)} count={data ? `(${counts[id]})` : ''} onClick={() => set(toggleChip(filters, id))} title={id === 'hot' ? `Heat band hot (score ≥ ${data?.heat_rule?.hot ?? 40}, or the Huddle's reply / click rule)` : id === 'needs_touch' ? 'No touch on any channel in 14 days' : undefined}>{label}</ToggleChip>)}
+      <span role="group" aria-label="Size" data-size-chips style={{ display: 'flex', gap: 6, flex: 'none', alignItems: 'center' }}>
+        <span className="ui-group-label" aria-hidden="true" style={{ marginLeft: 4 }}>Size</span>
+        {SIZE_BUCKETS.map(([id, label]) => <ToggleChip key={id} data-size-chip={id} pressed={filters.sizes.includes(id)} count={data ? `(${sizes[id]})` : ''} title={id === 'unknown' ? 'No headcount on the company record (or no record at all)' : `Company headcount ${label}`} onClick={() => set({ sizes: toggleSize(filters.sizes, id) })}>{label}</ToggleChip>)}
+      </span>
     </div>
   );
   const selects = (
@@ -198,9 +213,14 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
       </div>
       {phone && chipRow}
       {!phone && <div role="group" aria-label="Filters" data-filter-selects style={rowBar}>{selects}</div>}
-      {data && (active.length
-        ? <ActiveFilterLine summary={`Showing ${rows.length} of ${data.total} ·`} active={active} onRemove={onRemove} onClear={clearAll} />
-        : <span data-active-filters style={{ fontSize: 12, color: SA.muted, ...numStyle }}>Showing {rows.length} of {data.total}</span>)}
+      {data && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          {active.length
+            ? <ActiveFilterLine summary={`Showing ${rows.length} of ${data.total} ·`} active={active} onRemove={onRemove} onClear={clearAll} />
+            : <span data-active-filters style={{ fontSize: 12, color: SA.muted, ...numStyle }}>Showing {rows.length} of {data.total}</span>}
+          <span data-coverage style={{ fontSize: 12, color: SA.muted, ...numStyle }}>{coverageLine(coverage)}</span>
+        </div>
+      )}
       {sharing && canEdit && (
         <div role="group" aria-label="Share view" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '8px 10px', border: `1px solid ${SA.border}`, borderRadius: 10, background: SA.surface2 }}>
           <form onSubmit={saveView} style={{ display: 'inline-flex', gap: 6 }}>

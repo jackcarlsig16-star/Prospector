@@ -236,7 +236,7 @@ test('needs a touch = score >= 40, not closed, no touch in 14 d; parseFilters dr
   assert.equal(needsTouch({ score: 50, closed: false, last_touch_at: ago(13) }, NOW), false);
   assert.equal(needsTouch({ score: 39, closed: false, last_touch_at: null }, NOW), false);
   assert.equal(needsTouch({ score: 90, closed: true, last_touch_at: null }, NOW), false);
-  assert.deepEqual(parseFilters({ segment: 'nope', owner: 'u1', source: 'upside,bogus', band: 'P9', min: '250', window: '14', needs_touch: 'true', q: ' Hi ' }), { segment: 'all', owner: 'u1', source: ['upside'], band: '', needs_touch: true, min: 100, window: null, q: 'hi', fit: [], due: '', sort: 'rank' });
+  assert.deepEqual(parseFilters({ segment: 'nope', owner: 'u1', source: 'upside,bogus', band: 'P9', min: '250', window: '14', needs_touch: 'true', q: ' Hi ' }), { segment: 'all', owner: 'u1', source: ['upside'], band: '', needs_touch: true, min: 100, window: null, q: 'hi', fit: [], due: '', sort: 'rank', size: [] });
   assert.deepEqual(filterScoreRows([{ score: 10, name: 'a', type: 'partner' }], parseFilters({ min: 5 })).length, 1);
 });
 
@@ -298,4 +298,24 @@ test('briefLines is pure and scrubs: an address inside a research field never re
   const lines = briefLines({ type: 'employer', name: 'Acme', score: null, meta: { stage: 'target', owner: null }, sourceRow: { source_kind: 'inbound', source_note: 'mail hr@acme.example' }, detail: { research: { runs: [{ status: 'done', created_at: ago(1), result: { why_homelover: 'ping me at ceo@acme.example' } }] } }, now: NOW });
   assert.ok(!lines.some(l => ADDRESS.test(l.text)), JSON.stringify(lines));
   assert.equal(lines[0].text, 'Acme · employer · stage target · unassigned');
+});
+
+// heat-size-v1 S1: size = bucket ids (multi); the chips' counts over the ranked set and the coverage numbers ride on counts.
+test('GET goals/scores?size=: unknown / 5,000+ buckets narrow the rows; counts.sizes sum to the ranked set; counts.headcount = known of companies; a bad id is ignored', async () => {
+  const db = fakeSupabase(seed());
+  await recomputeScores(db, { businessId: B, trigger: 'test', now: NOW });
+  const all = await listScores(db, B, {}, { now: NOW });
+  const ranked = all.body.counts.ranked;
+  assert.equal(Object.values(all.body.counts.sizes).reduce((a, b) => a + b, 0), ranked, 'every ranked company sits in exactly one bucket');
+  assert.deepEqual(all.body.counts.headcount, { companies: ranked, known: all.body.rows.filter(r => r.employees != null).length });
+  const unknown = await listScores(db, B, { size: 'unknown' }, { now: NOW });
+  assert.ok(unknown.body.rows.length > 0 && unknown.body.rows.every(r => r.employees == null), 'unknown = no headcount');
+  assert.equal(unknown.body.rows.length, all.body.counts.sizes.unknown);
+  const big = await listScores(db, B, { size: '5k,1k_4999' }, { now: NOW });
+  assert.ok(big.body.rows.length > 0 && big.body.rows.every(r => r.employees >= 1000), '5,000+ with 1,000-4,999');
+  assert.equal(big.body.rows.length, all.body.counts.sizes['5k'] + all.body.counts.sizes['1k_4999']);
+  assert.deepEqual(big.body.filters.size, ['5k', '1k_4999']);
+  const junk = await listScores(db, B, { size: 'huge,,' }, { now: NOW });
+  assert.deepEqual([junk.body.filters.size, junk.body.rows.length], [[], all.body.rows.length], 'an unknown bucket id narrows nothing');
+  assert.ok(!/@/.test(JSON.stringify(big.body)));
 });

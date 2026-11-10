@@ -57,9 +57,9 @@ test('pageOf: 40 per page, clamped page, from/to/total', () => {
 
 test('filters <-> query: only the set filters become params; a saved view round-trips; the active count', () => {
   // homelover-flow-v1: fit always goes (Strong + Good by default, never counted as a filter); due only when set.
-  expect(filterParams(EMPTY_FILTERS)).toEqual({ segment: null, owner: null, source: null, band: null, needs_touch: null, min: null, window: null, q: null, fit: 'strong,good', due: null });
+  expect(filterParams(EMPTY_FILTERS)).toEqual({ segment: null, owner: null, source: null, band: null, needs_touch: null, min: null, window: null, q: null, fit: 'strong,good', due: null, size: null });
   const f = { ...EMPTY_FILTERS, segment: 'partners', source: ['upside', 'website'], needs_touch: true, min: 40, window: '7', q: 'ac' };
-  expect(filterParams(f)).toEqual({ segment: 'partners', owner: null, source: 'upside,website', band: null, needs_touch: '1', min: 40, window: '7', q: 'ac', fit: 'strong,good', due: null });
+  expect(filterParams(f)).toEqual({ segment: 'partners', owner: null, source: 'upside,website', band: null, needs_touch: '1', min: 40, window: '7', q: 'ac', fit: 'strong,good', due: null, size: null });
   expect(activeFilterCount(f)).toBe(6);
   expect(activeFilterCount({ ...EMPTY_FILTERS, fit: ['strong'], due: 'today' })).toBe(2);
   expect(filterParams({ ...EMPTY_FILTERS, fit: ['low', 'deprioritized'], due: 'week' })).toMatchObject({ fit: 'low,deprioritized', due: 'week' });

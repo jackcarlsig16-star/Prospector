@@ -2,13 +2,13 @@
 // the old Huddle links mapped onto chips, the CSV columns (P7, structured fields only - never an address) and the heat
 // footnote, which states the Huddle's band rule word for word (heatScore.js huddleSignals) - the band itself is never
 // recomputed here, it arrives from the route.
-import { headcountCsv, headcountSourceWord } from '../../../constants/headcount';
+import { headcountCsv, headcountSourceWord, sizeCounts, inSizeFilter, sizeLabels } from '../../../constants/headcount';
 
 export const CHIPS = [['opened', 'Opened'], ['clicked', 'Clicked'], ['replied', 'Replied'], ['sent', 'Sent (any)'], ['identified', 'Identified visitor'], ['visited_7d', 'Company visited 7 d'], ['buyer', 'Buyer title'], ['hot', 'Hot'], ['needs_touch', 'Needs a touch'], ['mine', 'Mine']];
 export const WINDOW_OPTIONS = [['all', 'All time'], ['7', '7 d'], ['30', '30 d'], ['90', '90 d']];
 export const SOURCE_OPTIONS = ['Apollo sequence', 'Identified visitor', 'Partner contact', 'Added by hand', 'Upload'];
 export const NEEDS_TOUCH_DAYS = 14; // REVISABLE (spec P3) - the route's rule
-export const EMPTY_FILTERS = { chips: [], source: '', stage: '', owner: '', window: 'all', q: '', company: null };
+export const EMPTY_FILTERS = { chips: [], source: '', stage: '', owner: '', window: 'all', q: '', company: null, sizes: [] };
 export const LS_SORT = 'prospector_people_sort'; // { id, dir } | null, per viewer
 
 export const heatRule = (r = { hot: 40, warm: 10, days: 7 }) => `Heat = the Huddle's score and band, from its own function. Replied: hot for ${r.days} days from the reply, then warm unless a human click in the last ${r.days} days. Otherwise hot = score ≥ ${r.hot}, a human click in ${r.days} days, or the company on the site in ${r.days} days with an email sent (an identified visitor counts); warm = score ≥ ${r.warm} or a real open in ${r.days} days; else cold. Opens count humans only (the Huddle's bot rule); a company visit adds points, a visit alone is warm at most.`;
@@ -41,16 +41,27 @@ export function matchesFilters(r, f, ctx = {}) {
   if (f.stage && (r.company?.stage || '') !== f.stage) return false;
   if (f.owner && (f.owner === 'unassigned' ? !!r.company?.owner_user_id : r.company?.owner_user_id !== f.owner)) return false;
   if (f.company && !(r.company && r.company.type === f.company.type && r.company.id === f.company.id)) return false;
+  if (!inSizeFilter(r.company?.employees, f.sizes)) return false;
   if (f.q) { const n = f.q.trim().toLowerCase(); if (n && !`${r.name || ''} ${r.title || ''} ${r.company?.name || ''}`.toLowerCase().includes(n)) return false; }
   return true;
 }
 export const applyFilters = (rows, f, ctx) => rows.filter(r => matchesFilters(r, f, ctx));
 // Chip counts over the window's whole set (like the Map's legend: the count says what the chip would narrow to from everything).
 export const chipCounts = (rows, ctx) => Object.fromEntries(CHIPS.map(([id]) => [id, rows.filter(r => chipMatches(r, id, ctx)).length]));
+// heat-size-v1 S1: the size chips count people by their company's headcount bucket (no company record = Unknown).
+export const sizeChipCounts = rows => sizeCounts(rows, r => r.company?.employees);
+// R5: companies = the distinct records behind the rows; known = those with a headcount; people with no record at all.
+export function peopleCoverage(rows) {
+  const recs = new Map();
+  let noCompanyPeople = 0;
+  for (const r of rows) { if (r.company?.id) recs.set(`${r.company.type}:${r.company.id}`, r.company.employees != null); else noCompanyPeople += 1; }
+  return { companies: recs.size, known: [...recs.values()].filter(Boolean).length, noCompanyPeople };
+}
 export const stageOptions = rows => [...new Set(rows.map(r => r.company?.stage).filter(Boolean))].sort();
-export const activeFilterCount = f => f.chips.length + ['source', 'stage', 'owner', 'q'].filter(k => f[k]).length + (f.window !== 'all' ? 1 : 0) + (f.company ? 1 : 0);
+export const activeFilterCount = f => f.chips.length + ['source', 'stage', 'owner', 'q'].filter(k => f[k]).length + (f.window !== 'all' ? 1 : 0) + (f.company ? 1 : 0) + (f.sizes?.length ? 1 : 0);
 export const activeFilters = (f, { members = [] } = {}) => [
   ...f.chips.map(c => ({ key: `chip:${c}`, text: CHIPS.find(([id]) => id === c)?.[1] || c })),
+  f.sizes?.length > 0 && { key: 'sizes', text: `Size: ${sizeLabels(f.sizes)}` },
   f.source && { key: 'source', text: `Source: ${f.source}` },
   f.stage && { key: 'stage', text: `Stage: ${String(f.stage).replace(/_/g, ' ')}` },
   f.owner && { key: 'owner', text: `Owner: ${f.owner === 'unassigned' ? 'Unassigned' : members.find(m => m.user_id === f.owner)?.name || 'owner'}` },

@@ -3,9 +3,9 @@ import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
 import { mergePeople, SOURCE_WORD } from './peopleMerge.js';
 import { cleanText } from './scrubText.js';
-import { isMigrationPending, timelineFor } from './personActivity.js';
+import { isMigrationPending, timelineFor, summarizePerson } from './personActivity.js';
 import { readAllViews, writeAllViews, SAVED_VIEWS_MAX } from './scoresRoutes.js';
-import { HEAT_BANDS } from './heatScore.js';
+import { HEAT_BANDS, visitSignal } from './heatScore.js';
 import { visitIndex } from './visitJoin.js';
 
 // people-v2 Stage 1 (P5) - GET goals/people/activity?window=7|30|90|all: ONE read for Pipeline › People. The rows are the
@@ -128,27 +128,47 @@ export async function personDetail(supabase, businessId, { key }) {
   const m = KEY.exec(String(key || ''));
   if (!m) return reply(400, { error: 'key must be prospect:<contact id> | contact:<id> | person:<id>' });
   const [, kind, id] = m;
-  let contactId = null, notes = null;
+  let contactId = null, notes = null, company = null, identifiedAt = null;
   if (kind === 'prospect') {
-    const p = must(await supabase.from('sales_prospect_state').select('contact_id, notes').eq('business_id', businessId).eq('contact_id', id).maybeSingle());
+    const p = must(await supabase.from('sales_prospect_state').select('contact_id, notes, opportunity_id, goal_id, company').eq('business_id', businessId).eq('contact_id', id).maybeSingle());
     if (!p) return reply(404, { error: 'person not found' });
     contactId = p.contact_id; notes = p.notes || null;
+    company = p.opportunity_id ? { opportunity_id: p.opportunity_id } : p.goal_id ? { goal_id: p.goal_id } : p.company ? { name: p.company } : null;
   } else if (kind === 'contact') {
-    const c = must(await supabase.from('partner_contacts').select('id, apollo_contact_id, role_in_notes').eq('business_id', businessId).eq('id', id).maybeSingle());
+    const c = must(await supabase.from('partner_contacts').select('id, apollo_contact_id, role_in_notes, goal_id').eq('business_id', businessId).eq('id', id).maybeSingle());
     if (!c) return reply(404, { error: 'person not found' });
     contactId = c.apollo_contact_id || null; notes = c.role_in_notes || null;
+    company = c.goal_id ? { goal_id: c.goal_id } : null;
   } else {
-    const p = must(await supabase.from('sales_people').select('id, note').eq('business_id', businessId).eq('id', id).maybeSingle());
+    const p = must(await supabase.from('sales_people').select('id, note, company_type, opportunity_id, target_id, company_name, source_kind, created_at').eq('business_id', businessId).eq('id', id).maybeSingle());
     if (!p) return reply(404, { error: 'person not found' });
     notes = p.note || null;
+    company = p.company_type === 'employer' && p.opportunity_id ? { opportunity_id: p.opportunity_id } : p.target_id ? { target_id: p.target_id } : p.company_name ? { name: p.company_name } : null;
+    identifiedAt = p.source_kind === 'web_visit' ? p.created_at || null : null;
   }
   const [messages, events] = contactId ? await Promise.all([
-    selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,contact_id,sequence_id,step,delivered_at,replied,reply_class,replied_seen_at,replied_at,subject').eq('business_id', businessId).eq('contact_id', contactId).order('apollo_message_id')),
+    selectAllPages(() => supabase.from('sales_email_messages').select('apollo_message_id,contact_id,sequence_id,step,delivered_at,replied,reply_class,replied_seen_at,replied_at,subject,num_opens,num_clicks,last_opened_at,last_clicked_at,bounced').eq('business_id', businessId).eq('contact_id', contactId).order('apollo_message_id')),
     selectAllPages(() => supabase.from('sales_email_activity').select('id,apollo_message_id,contact_id,step,event,occurred_at,user_agent,tracking_service').eq('business_id', businessId).eq('contact_id', contactId).order('id')),
   ]) : [[], []];
-  const body = { key, timeline: timelineFor(messages, events).map(t => ({ ...t, subject: t.subject ? cleanText(t.subject, 160) : t.subject ?? null })), notes: notes ? cleanText(notes, 500) : null };
+  const heat = await liveHeat(supabase, businessId, { messages, events, company, identifiedAt });
+  const body = { key, timeline: timelineFor(messages, events).map(t => ({ ...t, subject: t.subject ? cleanText(t.subject, 160) : t.subject ?? null })), notes: notes ? cleanText(notes, 500) : null, heat };
   if (ADDRESS.test(JSON.stringify(body))) throw new Error('people detail: an address reached the result - refused');
   return reply(200, body);
+}
+// heat-size-v1 Stage 2 (Stage 1 choice 1): the pinned card's heat is computed live by the writer's own function over the
+// person's rows, their company's latest visit row (the same join as the table) and their identification date - nothing
+// stored, no new column. null when the person has no email row and no visit signal (the table shows "—" for them too).
+async function liveHeat(supabase, businessId, { messages, events, company, identifiedAt }) {
+  let ref = null;
+  if (company?.opportunity_id) { const o = must(await supabase.from('sales_opportunities').select('id, organization').eq('business_id', businessId).eq('id', company.opportunity_id).maybeSingle()); ref = o ? { type: 'employer', id: o.id, name: o.organization } : null; }
+  else if (company?.goal_id) { const g = must(await supabase.from('sales_goals').select('id, name').eq('business_id', businessId).eq('id', company.goal_id).maybeSingle()); ref = g ? { type: 'partner', id: g.id, name: g.name } : null; }
+  else if (company?.target_id) { const t = must(await supabase.from('sales_targets').select('id, name').eq('business_id', businessId).eq('id', company.target_id).maybeSingle()); ref = t ? { type: 'target', id: t.id, name: t.name } : null; }
+  else if (company?.name) ref = { type: 'account', id: null, name: company.name };
+  const visits = ref ? await selectAllPages(() => supabase.from('web_visits').select('id, company_key, matched_type, matched_id, visits_7d, unique_visitors_7d, last_visit, seen_to, pulled_on').eq('business_id', businessId).order('id')) : [];
+  const visit = visitIndex(visits)(ref);
+  if (!messages.length && !events.length && !visitSignal({ visit, identifiedAt })) return null;
+  const s = summarizePerson(messages, events, Date.now(), visit, identifiedAt);
+  return { score: s.heat, band: s.heat_band, why: s.why };
 }
 export async function personDetailRoute(req, res) {
   try { send(res, await personDetail(getSupabase(), req.params.businessId, { key: req.params.key })); }

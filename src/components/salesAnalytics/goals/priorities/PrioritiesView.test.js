@@ -19,7 +19,7 @@ const ROWS = [
   row('employer', 'e1', 'Hilton Example', 49, 'P2', 'upside', { owner_user_id: null, owner: null, owner_team: 'upside', no_double_touch: true, upside_owned: true, touch_locked: true, rank: 2, band_changed: false, trend: 'flat', fit_level: 'strong', fit_score: 78, stage: 'target' }),
   row('partner', 'p1', 'Harbor Lane', 37, 'P3', 'upside', { researched: 'none', components: comp(0, 0, 10, -3, 10), employees: null, rank: 3, days_since_touch: null, last_touch_at: null, band_changed: false }),
 ];
-const DATA = { rows: ROWS, live: [row('partner', 'p2', 'Live Partner', 60, 'P1', 'inbound', { live: true, rank: 0 })], counts: { companies: 4, ranked: 3, shown: 3, live: 1, duplicates: 0, closed: 0, needs_touch: 1, band_changed: 1, segments: { all: 3, visitors: 2, partners: 1, employers: 1, targets: 1 }, P1: 1, P2: 1, P3: 1, P4: 0, new_today: 1, fit: { strong: 1, good: 1, low: 0, deprioritized: 0 }, due: { today: 0, week: 0, later: 0 } },
+const DATA = { rows: ROWS, live: [row('partner', 'p2', 'Live Partner', 60, 'P1', 'inbound', { live: true, rank: 0 })], counts: { companies: 4, ranked: 3, shown: 3, live: 1, duplicates: 0, closed: 0, needs_touch: 1, band_changed: 1, sizes: { unknown: 1, lt200: 0, '200_999': 0, '1k_4999': 0, '5k': 2 }, headcount: { companies: 3, known: 2 }, segments: { all: 3, visitors: 2, partners: 1, employers: 1, targets: 1 }, P1: 1, P2: 1, P3: 1, P4: 0, new_today: 1, fit: { strong: 1, good: 1, low: 0, deprioritized: 0 }, due: { today: 0, week: 0, later: 0 } },
   sources: { upside: 2, partner_referral: 0, person_referral: 0, campaign: 0, website: 1, inbound: 0, homelover_outreach: 0, scout: 0, other: 0 }, owners: [{ user_id: 'u1', name: 'Jack Carlson' }],
   filters: {}, computed_at: '2026-10-27T18:00:00Z', stale: false, today: '2026-10-27', has_previous: true, thresholds: { P1: 60, P2: 40, P3: 15 }, caps: { visits: 25, pages: 10, apollo_intent: 5, people: 15, fit: 15, research: 10, source: 12, engagement: 10, stage: 10, recency: 10 }, needs_touch_rule: { min: 40, days: 14 }, source_order: ['upside', 'partner_referral', 'person_referral', 'campaign', 'website', 'inbound', 'homelover_outreach', 'scout', 'other'] };
 const MEMBERS = [{ user_id: 'u1', name: 'Jack Carlson', role: 'owner', color: '#3DBA8C' }, { user_id: 'u2', name: 'Cyrus Test', role: 'member', color: '#D9A441' }];
@@ -486,7 +486,7 @@ test('filter card: type chips carry counts.segments and filter; labeled selects;
   expect(line).toHaveTextContent(/Showing 1 of 3 ·/);
   expect(within(line).getAllByRole('button').map(b => b.getAttribute('aria-label') || b.textContent)).toEqual(['Remove filter Type: Partners', 'Remove filter Band: P3', 'Clear all']);
   fireEvent.click(within(line).getByRole('button', { name: 'Remove filter Band: P3' }));
-  await waitFor(() => expect(goalsApi.scores).toHaveBeenLastCalledWith('b1', { segment: 'partners', owner: null, source: null, band: null, needs_touch: null, min: null, window: null, q: null, fit: 'strong,good', due: null }));
+  await waitFor(() => expect(goalsApi.scores).toHaveBeenLastCalledWith('b1', { segment: 'partners', owner: null, source: null, band: null, needs_touch: null, min: null, window: null, q: null, fit: 'strong,good', due: null, size: null }));
   // homelover-flow-v1 F4 / F5: Fit chips (Strong + Good pressed by default, Deprioritized off) and the Due select.
   const fitChips = within(screen.getByRole('group', { name: 'Fit' })).getAllByRole('button');
   expect(fitChips.map(b => [b.textContent.replace(/\d+$/, ''), b.getAttribute('aria-pressed')])).toEqual([['Strong', 'true'], ['Good', 'true'], ['Low', 'false'], ['Deprioritized', 'false']]);
@@ -573,7 +573,7 @@ test('detail table under the chart: # · Company · Source · Seen · Owner · F
   expect(card).toHaveTextContent('Top 40 · detail');
   expect(card).toHaveTextContent('Click a dot or a row — they select together');
   const table = within(card).getByRole('table');
-  expect(within(table).getAllByRole('columnheader').map(h => h.textContent.replace(/[▲▼↕\s]+$/, '').trim())).toEqual(['#', 'Company', 'Source', 'Seen', 'Owner', 'Fit', 'Reached', 'Intent', 'Visits', 'People', 'Size pts', 'Research', 'Engagement', 'Touched', 'Band']);
+  expect(within(table).getAllByRole('columnheader').map(h => h.textContent.replace(/[▲▼↕\s]+$/, '').trim())).toEqual(['#', 'Company', 'Source', 'Seen', 'Owner', 'Fit', 'Reached', 'Intent', 'Visits', 'People', 'Headcount', 'Size pts', 'Research', 'Engagement', 'Touched', 'Band']);
   const names = () => [...table.querySelectorAll('[data-row-name]')].map(b => b.textContent);
   expect(names()).toHaveLength(10 + 1); // the first 10 ranked + the Live row
   expect(names().slice(0, 3)).toEqual(['Quarry Labs', 'Hilton Example', 'Harbor Lane']);
@@ -626,4 +626,46 @@ test('axe (jsdom, contrast checked by the dataviz validator): the filter card, c
   fireEvent.click(screen.getByRole('button', { name: 'Table' }));
   await screen.findByRole('table');
   expect(await run()).toEqual([]);
+});
+
+// heat-size-v1 S1 / R5: the Size chips in the filter card (counts.sizes, multi-select, re-query with size=), the Headcount
+// column (number · source glyph, "unknown" never blank, unknown last both ways), the coverage line, the phone card's size line.
+test('heat-size-v1: Size chips carry counts.sizes and re-query; the Headcount column shows the number with its glyph or "unknown" and sorts unknown last both ways; the coverage line reads counts.headcount', async () => {
+  windowMocks();
+  goalsApi.scores.mockImplementation(async (_id, params = {}) => {
+    const rows = ROWS.map((r, i) => ({ ...r, employees: i === 0 ? 800 : i === 1 ? 5000 : null, employees_source: i === 0 ? 'manual' : i === 1 ? 'apollo' : null })).filter(r => !params.size || params.size.split(',').includes(r.employees == null ? 'unknown' : r.employees >= 5000 ? '5k' : r.employees >= 1000 ? '1k_4999' : r.employees >= 200 ? '200_999' : 'lt200'));
+    return { ...DATA, rows, counts: { ...DATA.counts, shown: rows.length, sizes: { unknown: 1, lt200: 0, '200_999': 1, '1k_4999': 0, '5k': 1 }, headcount: { companies: 3, known: 2 } } };
+  });
+  render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+  await waitFor(() => expect(dots()).toHaveLength(3));
+  const size = screen.getByRole('group', { name: 'Size' });
+  expect(within(size).getAllByRole('button').map(b => [b.textContent, b.getAttribute('aria-pressed')])).toEqual([['Unknown1', 'false'], ['< 2000', 'false'], ['200–9991', 'false'], ['1,000–4,9990', 'false'], ['5,000+1', 'false']]);
+  expect(document.querySelector('[data-coverage]').textContent).toBe('headcount known for 2 of 3 companies');
+  const table = within(screen.getByRole('region', { name: 'Detail' })).getByRole('table');
+  const cells = () => [...table.querySelectorAll('tbody tr[data-row]')].map(tr => tr.querySelector('[data-headcount]')?.textContent);
+  expect(cells().slice(0, 3)).toEqual(['800✎ typed', '5,000◇ Apollo', 'unknown']);
+  const head = within(table).getByRole('button', { name: /^Headcount/ });
+  fireEvent.click(head);
+  expect(cells().slice(0, 3)).toEqual(['800✎ typed', '5,000◇ Apollo', 'unknown'], 'ascending: unknown last');
+  fireEvent.click(head);
+  expect(cells().slice(0, 3)).toEqual(['5,000◇ Apollo', '800✎ typed', 'unknown'], 'descending: unknown still last');
+  fireEvent.click(within(size).getByRole('button', { name: /^5,000\+/ }));
+  await waitFor(() => expect(goalsApi.scores).toHaveBeenLastCalledWith('b1', expect.objectContaining({ size: '5k' })));
+  fireEvent.click(within(size).getByRole('button', { name: /^Unknown/ }));
+  await waitFor(() => expect(goalsApi.scores).toHaveBeenLastCalledWith('b1', expect.objectContaining({ size: '5k,unknown' })));
+  const line = document.querySelector('[data-active-filters]');
+  expect(line).toHaveTextContent(/Showing 2 of 3 ·/);
+  expect(within(line).getByRole('button', { name: 'Remove filter Size: 5,000+ + Unknown' })).toBeInTheDocument();
+  fireEvent.click(within(line).getByRole('button', { name: 'Remove filter Size: 5,000+ + Unknown' }));
+  await waitFor(() => expect(goalsApi.scores).toHaveBeenLastCalledWith('b1', expect.objectContaining({ size: null })));
+});
+
+test('heat-size-v1 phone: every card carries its size line (number · glyph or "size unknown")', async () => {
+  const desktop = window.matchMedia;
+  window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+  try {
+    render(<PrioritiesView businessId="b1" canEdit isAdmin meId="u1" />);
+    await waitFor(() => expect(screen.getByText('Hilton Example')).toBeInTheDocument());
+    expect([...document.querySelectorAll('[data-card-size]')].map(el => el.textContent)).toEqual(['5,000', '5,000', 'unknown', '5,000'], 'three ranked cards + the Live row');
+  } finally { window.matchMedia = desktop; }
 });
