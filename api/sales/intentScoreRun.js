@@ -15,7 +15,7 @@ import { fitBlock } from './fitRadar.js';
 // owner, stage, size, visits, touch, research state) so the readers never join the record tables again.
 export const STALE_HOURS = 24;
 export const SNAPSHOT_KEEP_DAYS = 30; // REVISABLE
-export const TRIGGERS = ['manual', 'visit_pull', 'signal', 'research', 'source', 'heat', 'pageload', 'test'];
+export const TRIGGERS = ['manual', 'visit_pull', 'signal', 'research', 'source', 'heat', 'headcount', 'pageload', 'test'];
 export const TOUCH_WINDOWS = { bright: 7, faint: 30, needs: 14 }; // REVISABLE (S3 halo + "Needs a touch")
 export const NEEDS_TOUCH_MIN = 40;
 // visitor-people-follow-record-v1 V3 (REVISABLE, Jack: "partners no" = false): a partner's identified website visitors

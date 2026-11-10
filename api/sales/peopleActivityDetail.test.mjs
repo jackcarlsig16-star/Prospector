@@ -47,9 +47,9 @@ test('personDetail: a prospect reads its own rows + notes; a partner contact thr
 
 test('People views: save (state cleaned to the known chips / selects / window), list only kind people, replace by name, delete; the Map\'s and Explorer\'s views untouched', async () => {
   const db = fakeSupabase({ sales_settings: [{ business_id: B, saved_views: [{ id: 'map1', name: 'Map view', filters: {} }, { id: 'ex1', kind: 'explorer', name: 'Sent', state: {} }] }] });
-  const s = await savePeopleView(db, { businessId: B, userId: U, body: { name: ' Hot buyers ', state: { chips: ['hot', 'buyer', 'junk'], source: 'Apollo sequence', stage: 'contacted', owner: '', window: '30', q: 'acme' } }, now: Date.parse('2026-11-06T18:00:00Z') });
+  const s = await savePeopleView(db, { businessId: B, userId: U, body: { name: ' Hot buyers ', state: { chips: ['hot', 'buyer', 'junk'], source: 'Apollo sequence', stage: 'contacted', owner: '', window: '30', q: 'acme', sizes: ['5k', 'junk', '5k', 'unknown'] } }, now: Date.parse('2026-11-06T18:00:00Z') });
   assert.equal(s.status, 201);
-  assert.deepEqual(s.body.view.state, { chips: ['hot', 'buyer'], source: 'Apollo sequence', stage: 'contacted', owner: '', window: '30', q: 'acme' });
+  assert.deepEqual(s.body.view.state, { chips: ['hot', 'buyer'], source: 'Apollo sequence', stage: 'contacted', owner: '', window: '30', q: 'acme', sizes: ['5k', 'unknown'] });
   assert.deepEqual([s.body.view.kind, s.body.view.name, s.body.view.created_by], ['people', 'Hot buyers', U]);
   const list = await listPeopleViews(db, B);
   assert.deepEqual(list.body.views.map(v => v.name), ['Hot buyers']);
@@ -62,7 +62,7 @@ test('People views: save (state cleaned to the known chips / selects / window), 
   const d = await deletePeopleView(db, { businessId: B, id: s.body.view.id });
   assert.deepEqual([d.status, d.body.views], [200, []]);
   assert.deepEqual(db.db.sales_settings[0].saved_views.map(v => v.id), ['map1', 'ex1']);
-  assert.deepEqual(cleanViewState(undefined), { chips: [], source: '', stage: '', owner: '', window: 'all', q: '' });
+  assert.deepEqual(cleanViewState(undefined), { chips: [], source: '', stage: '', owner: '', window: 'all', q: '', sizes: [] });
 });
 
 // heat-size-v1 Stage 2 (Stage 1 choice 1): the pinned card's heat is computed live by summarizePerson over the person's

@@ -7,6 +7,7 @@ import { isMigrationPending, timelineFor, summarizePerson } from './personActivi
 import { readAllViews, writeAllViews, SAVED_VIEWS_MAX } from './scoresRoutes.js';
 import { HEAT_BANDS, visitSignal } from './heatScore.js';
 import { visitIndex } from './visitJoin.js';
+import { SIZE_BUCKETS } from '../../src/constants/headcount.js';
 
 // people-v2 Stage 1 (P5) - GET goals/people/activity?window=7|30|90|all: ONE read for Pipeline › People. The rows are the
 // union of the three contact tables merged by the P2 rule, each joined to its materialised email summary
@@ -180,7 +181,7 @@ export const VIEW_CHIPS = ['opened', 'clicked', 'replied', 'sent', 'identified',
 export function cleanViewState(s = {}) {
   const chips = (Array.isArray(s.chips) ? s.chips : []).map(String).filter(c => VIEW_CHIPS.includes(c));
   const str = (v, max) => (typeof v === 'string' ? cleanText(v, max) : '');
-  return { chips: [...new Set(chips)], source: str(s.source, 40), stage: str(s.stage, 40), owner: str(s.owner, 60), window: String(s.window) in WINDOWS ? String(s.window) : 'all', q: str(s.q, 120) };
+  return { chips: [...new Set(chips)], source: str(s.source, 40), stage: str(s.stage, 40), owner: str(s.owner, 60), window: String(s.window) in WINDOWS ? String(s.window) : 'all', q: str(s.q, 120), sizes: [...new Set((Array.isArray(s.sizes) ? s.sizes : []).map(String).filter(x => SIZE_BUCKETS.some(([id]) => id === x)))] };
 }
 const PEOPLE_KIND = 'people';
 export async function listPeopleViews(supabase, businessId) { return reply(200, { views: (await readAllViews(supabase, businessId)).filter(v => v.kind === PEOPLE_KIND) }); }

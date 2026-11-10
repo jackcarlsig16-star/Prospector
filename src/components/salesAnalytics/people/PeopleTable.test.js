@@ -140,7 +140,7 @@ test('CSV: the filtered rows, structured fields only, never an address; Share vi
   const texts = [];
   URL.createObjectURL = jest.fn(blob => { const fr = new FileReader(); fr.onload = () => texts.push(fr.result); fr.readAsText(blob); return 'blob:x'; }); URL.revokeObjectURL = jest.fn();
   const click = jest.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
-  goalsApi.savePeopleView.mockResolvedValue({ view: { id: 'v1', name: 'Hot buyers' }, views: [{ id: 'v1', kind: 'people', name: 'Hot buyers', state: { chips: ['hot', 'buyer'], source: '', stage: '', owner: '', window: 'all', q: '' } }] });
+  goalsApi.savePeopleView.mockResolvedValue({ view: { id: 'v1', name: 'Hot buyers' }, views: [{ id: 'v1', kind: 'people', name: 'Hot buyers', state: { chips: ['hot', 'buyer'], source: '', stage: '', owner: '', window: 'all', q: '', sizes: ['5k'] } }] });
   await table();
   fireEvent.click(within(screen.getByRole('group', { name: 'Filter chips' })).getByRole('button', { name: /^Replied/ }));
   fireEvent.click(screen.getByRole('button', { name: 'CSV' }));
@@ -152,9 +152,10 @@ test('CSV: the filtered rows, structured fields only, never an address; Share vi
   fireEvent.click(screen.getByRole('button', { name: 'Share view' }));
   fireEvent.change(screen.getByLabelText('View name'), { target: { value: 'Replied' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save view' }));
-  await waitFor(() => expect(goalsApi.savePeopleView).toHaveBeenCalledWith('b1', { name: 'Replied', state: { chips: ['replied'], source: '', stage: '', owner: '', window: 'all', q: '' } }));
+  await waitFor(() => expect(goalsApi.savePeopleView).toHaveBeenCalledWith('b1', { name: 'Replied', state: { chips: ['replied'], source: '', stage: '', owner: '', window: 'all', q: '', sizes: [] } }));
   fireEvent.click(await screen.findByRole('button', { name: 'Hot buyers' }));
   expect(within(screen.getByRole('group', { name: 'Filter chips' })).getByRole('button', { name: /^Hot/ })).toHaveAttribute('aria-pressed', 'true');
+  expect(screen.getByRole('button', { name: /^5,000\+/ })).toHaveAttribute('aria-pressed', 'true');
   expect(within(screen.getByRole('group', { name: 'Filter chips' })).getByRole('button', { name: /^Replied/ })).toHaveAttribute('aria-pressed', 'false');
   click.mockRestore();
 });

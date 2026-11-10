@@ -106,7 +106,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   const saveView = async e => {
     e.preventDefault();
     const name = viewName.trim(); if (!name) return;
-    try { const r = await goalsApi.savePeopleView(businessId, { name, state: { chips: filters.chips, source: filters.source, stage: filters.stage, owner: filters.owner, window: filters.window, q: filters.q } }); setViews(r.views); setViewName(''); setToast({ text: `View "${name}" saved for the team` }); }
+    try { const r = await goalsApi.savePeopleView(businessId, { name, state: { chips: filters.chips, source: filters.source, stage: filters.stage, owner: filters.owner, window: filters.window, q: filters.q, sizes: filters.sizes } }); setViews(r.views); setViewName(''); setToast({ text: `View "${name}" saved for the team` }); }
     catch (err) { setToast({ text: err.message }); }
   };
   const applyView = v => setFilters({ ...EMPTY_FILTERS, ...v.state, chips: [...(v.state?.chips || [])], company: null });

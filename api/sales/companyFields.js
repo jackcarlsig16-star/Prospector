@@ -2,6 +2,7 @@ import { getSupabase } from './goalsShared.js';
 import { normalizeDomain } from '../../src/constants/partnerDomains.js';
 import { US_FOOTPRINTS } from '../../src/constants/fitLevels.js';
 import { logFlow } from './flowEvents.js';
+import { recomputeScores } from './intentScoreRun.js';
 
 // company-workflow-v1 W3/W4/W5 - the numbers and the owner person on a company record (20261023_company_workflow_v1.sql):
 //   employees (+ _source research | manual, _at) on partners, employers and targets;
@@ -116,6 +117,9 @@ export async function editCompanyFields(supabase, { businessId, type, id, body =
     if ('owner_user_id' in body && !before) return reply(404, { error: `${type} not found` });
     const rows = must(await supabase.from(RECORD_TABLE[type]).update({ ...patch, updated_at: now.toISOString() }).eq('business_id', businessId).eq('id', id).select(select));
     if (!rows.length) return reply(404, { error: `${type} not found` });
+    // The Map reads employees from the stored score row (components.meta, intentScoreRun), so a typed number refreshes
+    // this one company before the reply and the window's reload sorts it into place. Skipped on the test fake.
+    if (!supabase.db && NUMBERS[type].some(k => k in patch)) { try { await recomputeScores(supabase, { businessId, trigger: 'headcount', only: { type, id } }); } catch (e) { console.error('[company/fields] recompute:', e.message); } }
     if (patch.domain) { const { scheduleFirstSight } = await import('./headcountRun.js'); scheduleFirstSight(supabase, { businessId, type, id }); }
     let event = null;
     if (before && (before.owner_user_id || null) !== (patch.owner_user_id || null)) {

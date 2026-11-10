@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
 import { applyResearchNumbers, editCompanyFields, wholeNumber, ownerOrCaller, employerOwner } from './companyFields.js';
 import { parseResearch, researchSystem } from './partnerResearch.js';
+import { TRIGGERS } from './intentScoreRun.js';
 
 // company-workflow-v1 W3/W4/W5. Made-up names; no emails or phones.
 const B = randomUUID(), JACK = randomUUID(), CY = randomUUID(), VIC = randomUUID();
@@ -52,6 +53,7 @@ test('edit: typed numbers are manual (null clears); owner person on employers / 
   assert.equal((await editCompanyFields(s, { businessId: B, type: 'target', id: T, body: { owner_user_id: JACK, employees: 40 } })).status, 200);
   assert.deepEqual([s.db.sales_targets[0].owner_user_id, s.db.sales_targets[0].employees_source], [JACK, 'manual']);
   assert.equal((await editCompanyFields(s, { businessId: B, type: 'partner', id: P, body: { reach_clients: 410 } })).body.fields.reach_clients_source, 'manual');
+  assert.ok(TRIGGERS.includes('headcount'), 'the one-company recompute a typed headcount awaits (and the fill schedules) is a known trigger');
 });
 
 test('ownerOrCaller: the pick when it is a Member, else the caller; a Viewer pick is refused', async () => {
