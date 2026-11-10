@@ -205,10 +205,10 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   );
   const selects = (
     <>
-      <FilterSelect label="Source" value={filters.source} options={[{ value: '', label: 'All' }, ...SOURCE_OPTIONS.map(s => ({ value: s, label: s }))]} onChange={v => set({ source: v })} />
-      <FilterSelect label="Company stage" value={filters.stage} options={[{ value: '', label: 'All' }, ...stages.map(s => ({ value: s, label: String(s).replace(/_/g, ' ') }))]} onChange={v => set({ stage: v })} />
-      <FilterSelect label="Owner" value={filters.owner} options={[{ value: '', label: 'All' }, ...members.filter(m => m.role !== 'viewer').map(m => ({ value: m.user_id, label: m.name })), { value: 'unassigned', label: 'Unassigned' }]} onChange={v => set({ owner: v })} />
-      <FilterSelect label="Window" value={filters.window} options={WINDOW_OPTIONS.map(([value, label]) => ({ value, label }))} onChange={v => set({ window: v })} />
+      <FilterSelect variant="pill" label="Source" value={filters.source} options={[{ value: '', label: 'All' }, ...SOURCE_OPTIONS.map(s => ({ value: s, label: s }))]} onChange={v => set({ source: v })} />
+      <FilterSelect variant="pill" label="Company stage" value={filters.stage} options={[{ value: '', label: 'All' }, ...stages.map(s => ({ value: s, label: String(s).replace(/_/g, ' ') }))]} onChange={v => set({ stage: v })} />
+      <FilterSelect variant="pill" label="Owner" value={filters.owner} options={[{ value: '', label: 'All' }, ...members.filter(m => m.role !== 'viewer').map(m => ({ value: m.user_id, label: m.name })), { value: 'unassigned', label: 'Unassigned' }]} onChange={v => set({ owner: v })} />
+      <FilterSelect variant="pill" label="Window" value={filters.window} options={WINDOW_OPTIONS.map(([value, label]) => ({ value, label }))} onChange={v => set({ window: v })} />
     </>
   );
   const tools = (
