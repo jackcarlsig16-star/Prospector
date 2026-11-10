@@ -9,19 +9,41 @@ import { scopedBusinesses } from './registry.js';
 // dropped and counted), at most PACK_MAX chars. The openers map (D2) rides on every item. Core: names no workspace.
 export const PACK_MAX = 12000; // REVISABLE (spec D1)
 export const SEARCH_LIMIT = 25;
-const STOP = new Set(['show', 'me', 'my', 'mine', 'i', 'the', 'a', 'an', 'of', 'for', 'to', 'in', 'on', 'at', 'and', 'or', 'with', 'about', 'from', 'what', 'which', 'who', 'where', 'when', 'how', 'is', 'are', 'do', 'does', 'did', 'list', 'give', 'find', 'tell', 'all', 'any', 'please', 'scout', 'sorted', 'sort', 'by', 'top', 'this', 'last', 'past', 'week', 'month', 'day', 'days', 'today', 'yesterday', 'they', 'them', 'their', 'our', 'we', 'have', 'has', 'had', 'be', 'been', 'it', 'its', 'that', 'these', 'those', 'say', 'says', 'said', 'touch', 'touched', 'ranked', 'rank', 'score', 'scores', 'hottest', 'newest', 'latest', 'recent', 'date', 'heat', 'open', 'closed', 'done', 'pending', 'new', 'old', 'current', 'active']);
+const STOP = new Set(['show', 'me', 'my', 'mine', 'i', 'the', 'a', 'an', 'of', 'for', 'to', 'in', 'on', 'at', 'and', 'or', 'with', 'about', 'from', 'what', 'which', 'who', 'where', 'when', 'how', 'is', 'are', 'do', 'does', 'did', 'list', 'give', 'find', 'tell', 'all', 'any', 'please', 'scout', 'sorted', 'sort', 'by', 'top', 'this', 'last', 'past', 'week', 'month', 'day', 'days', 'today', 'yesterday', 'they', 'them', 'their', 'our', 'we', 'have', 'has', 'had', 'be', 'been', 'it', 'its', 'that', 'these', 'those', 'say', 'says', 'said', 'touch', 'touched', 'ranked', 'rank', 'score', 'scores', 'hottest', 'newest', 'latest', 'recent', 'date', 'heat', 'open', 'closed', 'done', 'pending', 'new', 'old', 'current', 'active', 'whos', 'whats', 'wheres', 'hows', 'im', 'ive', 'thats', 'theres', 'anyone', 'anybody', 'someone', 'everyone', 'us',
+  // the flag words (opened / replied / visited ...) never become search terms - a name is not "replied"
+  'opened', 'replied', 'replies', 'reply', 'clicked', 'clicks', 'click', 'visited', 'visiting', 'visitor', 'visitors', 'companies', 'company', 'emails', 'email', 'site', 'website', 'web']);
 const CAP_STOP = new Set(['Show', 'What', 'Which', 'Who', 'Where', 'When', 'How', 'My', 'I', 'Me', 'The', 'List', 'Give', 'Find', 'Tell', 'Do', 'Does', 'Did', 'Are', 'Is', 'Scout', 'Hot', 'Warm', 'Cool', 'Cold', 'Yesterday', 'Today', 'This', 'Last', 'Prospector', 'Brad']);
 const phraseIn = (text, phrase) => new RegExp(`(^|[^a-z])${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z]|$)`).test(text);
 
 // Merged vocabulary of the modules in scope (static words + the glossary's dynamic ones).
 export function mergeVocab(parts) {
-  const out = { entities: {}, bands: {}, sources: {} };
+  const out = { entities: {}, bands: {}, sources: {}, stems: {} };
   for (const v of parts.filter(Boolean)) {
     for (const [k, words] of Object.entries(v.entities || {})) out.entities[k] = [...new Set([...(out.entities[k] || []), ...words])];
     Object.assign(out.bands, v.bands || {});
     Object.assign(out.sources, v.sources || {});
+    Object.assign(out.stems, v.stems || {});
   }
   return out;
+}
+
+// FIX scout-ask-routing-v1 A1: a token matches a vocabulary stem when it is the stem plus a word ending, repeated, so
+// "visiting" -> visit, "hottest" -> hot and the fused "hottestperson" -> hot + person; "hotel" and "personal" match
+// nothing. The stems and what they mean ({ entity | band | flag }) are the module's (its vocabulary.stems); core only
+// applies this rule. -> the stems the token is made of (empty when any part is not a stem + ending).
+const ENDINGS = ['', 's', 'es', 'ed', 'ing', 'or', 'ors', 'er', 'ers', 'est', 'test'];
+export function stemHits(token, stems) {
+  const found = new Set();
+  const walk = t => {
+    if (!t) return true;
+    for (const s of stems) {
+      if (!t.startsWith(s)) continue;
+      const rest = t.slice(s.length);
+      for (const end of ENDINGS) if (rest.startsWith(end) && walk(rest.slice(end.length))) { found.add(s); return true; }
+    }
+    return false;
+  };
+  return walk(token) ? found : new Set();
 }
 
 export function sinceOf(text, today) {
@@ -40,18 +62,36 @@ export function sinceOf(text, today) {
 // name wins over the plain "referred"); a sort; capitalised or quoted names as company candidates; the intent flags.
 export function parseAsk(q, vocab, { today }) {
   const raw = String(q || '').trim();
-  const text = raw.toLowerCase();
-  const words = text.replace(/[^\p{L}\p{N}\s'-]/gu, ' ').split(/\s+/).filter(Boolean);
+  // A1: apostrophes go ("who's" -> "whos", a stop word) before any word is read.
+  const text = raw.toLowerCase().replace(/['’]/g, '');
+  const words = text.replace(/[^\p{L}\p{N}\s-]/gu, ' ').split(/\s+/).filter(Boolean);
   const vocabWords = new Set();
-  const entity = Object.entries(vocab.entities || {}).find(([, ws]) => ws.some(w => phraseIn(text, w)))?.[0] || null;
+  const stems = vocab.stems || {};
+  const stemKeys = Object.keys(stems).sort((a, b) => b.length - a.length);
+  const hits = new Set();
+  let superlative = false;
+  for (const w of words) {
+    const h = stemHits(w, stemKeys);
+    if (!h.size) continue;
+    vocabWords.add(w);
+    for (const s of h) {
+      // "hottest" / "warmest" (a band stem in the superlative) asks for a ranking by heat, not for that band alone.
+      if (stems[s].band && w.startsWith(s) && /^t?est/.test(w.slice(s.length))) { superlative = true; continue; }
+      hits.add(s);
+    }
+  }
+  const stemOf = key => [...hits].map(s => stems[s][key]).find(Boolean) || null;
+  // The explicit entity word wins; a stem ("person" inside "hottestperson") stands in when no word matched.
+  const entity = Object.entries(vocab.entities || {}).find(([, ws]) => ws.some(w => phraseIn(text, w)))?.[0] || stemOf('entity');
   for (const ws of Object.values(vocab.entities || {})) ws.forEach(w => vocabWords.add(w));
-  const band = Object.entries(vocab.bands || {}).find(([w]) => phraseIn(text, w))?.[1] || null;
+  const band = Object.entries(vocab.bands || {}).find(([w]) => phraseIn(text, w))?.[1] || (vocab.bands || {})[stemOf('band')] || null;
   Object.keys(vocab.bands || {}).forEach(w => vocabWords.add(w));
+  const stemFlags = new Set([...hits].map(s => stems[s].flag).filter(Boolean));
   const sourceHits = Object.entries(vocab.sources || {}).filter(([w]) => phraseIn(text, w)).sort((a, b) => b[0].length - a[0].length || (b[1] === 'upside') - (a[1] === 'upside'));
   const source = sourceHits.find(([, v]) => v !== 'partner_referral')?.[1] || sourceHits[0]?.[1] || null;
   Object.keys(vocab.sources || {}).forEach(w => vocabWords.add(w));
   const time = sinceOf(text, today);
-  const sort = /\b(by|on) score\b|\bhighest score\b/.test(text) ? 'score' : /\bnewest|latest|most recent|by date\b/.test(text) ? 'date' : /\bby heat\b|\bhottest\b/.test(text) ? 'heat' : null;
+  const sort = /\b(by|on) score\b|\bhighest score\b/.test(text) ? 'score' : /\bnewest|latest|most recent|by date\b/.test(text) ? 'date' : /\bby heat\b|\bhottest\b/.test(text) || superlative ? 'heat' : null;
   const quoted = [...raw.matchAll(/"([^"]{2,80})"|“([^”]{2,80})”/g)].map(m => m[1] || m[2]);
   const caps = [];
   for (const tok of raw.replace(/[",.?!;:()]/g, ' ').split(/\s+/)) {
@@ -61,12 +101,15 @@ export function parseAsk(q, vocab, { today }) {
   }
   const company = [...new Set([...quoted, ...caps.filter(Boolean).map(c => c.join(' '))].filter(Boolean))].slice(0, 3);
   const flags = {
-    visitors: /\bvisit(ed|or|ors|s)?\b/.test(text), ranked: /\brank(ed|ing)?\b|\btop\b|\bscores?\b|\bhottest\b/.test(text), attention: /\battention\b|\bstale\b|\bfailed\b|\bbroken\b/.test(text),
+    visitors: /\bvisit(ed|or|ors|s|ing)?\b/.test(text) || stemFlags.has('visitors'), site: stemFlags.has('site'),
+    ranked: /\brank(ed|ing)?\b|\btop\b|\bscores?\b|\bhottest\b/.test(text) || superlative, attention: /\battention\b|\bstale\b|\bfailed\b|\bbroken\b/.test(text),
     funnel: /\bfunnel\b|\breferr(ed|al|als)\b/.test(text), emails: /\bsequences?\b|\bopen rate\b|\breply rate\b|\bemails? (doing|performing|going)\b|\bhow are (my |our )?emails\b/.test(text),
     opened: /\bopen(ed|s)\b/.test(text), replied: /\brepl(ied|ies|y)\b/.test(text), clicked: /\bclick(ed|s)\b/.test(text),
   };
+  // A3: a band word on a people ask is a heat band (hot / warm / cold), on a company ask the intent band (P1-P4).
+  const bandKind = !band ? null : entity === 'people' || flags.opened || flags.replied || flags.clicked ? 'heat' : 'intent';
   const terms = words.filter(w => !STOP.has(w) && !vocabWords.has(w) && w.length > 1 && !/^\d+$/.test(w));
-  return { q: raw, mine: /\b(my|mine|i|i've|i'm)\b/.test(text), entity, since: time?.since || null, until: time?.until || null, since_kind: time?.kind || null, band, source, sort, company, flags, terms, search: terms.join(' ') };
+  return { q: raw, mine: /\b(my|mine|i|ive|im)\b/.test(text), entity, since: time?.since || null, until: time?.until || null, since_kind: time?.kind || null, band, bandKind, source, sort, company, flags, terms, search: terms.join(' ') };
 }
 
 const refOf = (entity, id) => `${entity}:${id}`;
@@ -89,9 +132,11 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
   const ask = parseAsk(q, vocab, { today });
   const found = []; // { item, b, priority }
   const add = (items, b, entity, priority) => { for (const it of items || []) found.push({ item: { entity, ...it }, b, priority }); };
+  const matchedIds = new Set();
   for (const { b, m } of per) {
     const ctx = { businessId: b.id, business: b, auth, ask, today, now };
     const matched = m.intents.filter(i => i.match(ask));
+    matched.forEach(i => matchedIds.add(i.id));
     for (const i of matched) { const r = await i.run(supabase, ctx); reads.push(many ? `${b.name}: ${r.read}` : r.read); add(r.items, b, null, 1); }
     if (!matched.length) {
       if (ask.search) for (const e of m.entities) {
@@ -106,6 +151,15 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
   found.sort((a, b) => a.priority - b.priority);
   const items = new Map(), labels = new Map(), lines = [], seen = new Set(), rowsByEntity = {};
   let chars = 0, droppedPii = 0, truncated = 0;
+  // A5: no intent in any module matched -> the first context line says so and offers three of the modules' own example
+  // phrasings (each intent declares one; the `suggest` ones first) so the answer can say what was read and how to ask.
+  const intent = matchedIds.size ? [...matchedIds].join('+') : 'none';
+  if (intent === 'none') {
+    const withExample = per.flatMap(({ m }) => m.intents.filter(i => i.example));
+    const examples = [...new Set([...withExample.filter(i => i.suggest), ...withExample.filter(i => !i.suggest)].map(i => i.example))].slice(0, 3);
+    const line = `No specific read matched this question; the context below is the standing summary (${reads.join(' · ') || 'nothing read'}).${examples.length ? ` Try: ${examples.map(e => `'${e}'`).join(' · ')}` : ''}`;
+    lines.push(line); chars += line.length + 1;
+  }
   for (const { item, b } of found) {
     const entity = item.entity, id = String(item.id);
     const body = cleanText(String(item.text || [item.title, item.subtitle, item.date].filter(Boolean).join(' · ')), 700);
@@ -125,5 +179,5 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
       items.set(label, { entity, id, title: cleanText(String(item.title || body), 160), workspace_id: b.id, workspace_name: b.name, open: open ? open(id, item) : null, why: body, subtitle: item.subtitle && !hasPii(String(item.subtitle)) ? cleanText(String(item.subtitle), 160) : null, date: item.date || null, score: typeof item.score === 'number' ? item.score : null });
     }
   }
-  return { ask, pack: lines.join('\n'), lines, items, glossary: [...new Set(glossary)], businesses, stats: { rows_by_entity: rowsByEntity, reads, dropped_pii: droppedPii, truncated, chars, lines: lines.length, workspaces: [...new Set(per.map(p => p.b.name))] } };
+  return { ask, pack: lines.join('\n'), lines, items, glossary: [...new Set(glossary)], businesses, stats: { intent, rows_by_entity: rowsByEntity, reads, dropped_pii: droppedPii, truncated, chars, lines: lines.length, workspaces: [...new Set(per.map(p => p.b.name))] } };
 }

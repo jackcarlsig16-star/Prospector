@@ -100,7 +100,7 @@ export const VOCABULARY = {
   entities: {
     todos: ['task', 'tasks', 'to-do', 'to-dos', 'todo', 'todos', 'to do', 'to dos', 'action items'],
     call_notes: ['note', 'notes', 'call notes', 'call note', 'debrief'],
-    visitors: ['visitor', 'visitors', 'visited', 'visiting', 'website visits', 'web visits'],
+    visitors: ['visitor', 'visitors', 'website visits', 'web visits'],
     people: ['people', 'person', 'contacts', 'contact', 'prospects', 'prospect', 'who opened', 'who replied', 'who clicked'],
     partners: ['partner', 'partners', 'partnership', 'partnerships'],
     clients: ['client', 'clients', 'signed'],
@@ -112,6 +112,10 @@ export const VOCABULARY = {
     emails: ['emails', 'sequences', 'sequence', 'open rate', 'reply rate', 'campaigns'],
   },
   bands: { hot: 'P1', warm: 'P2', cool: 'P3', cold: 'P4' },
+  // FIX scout-ask-routing-v1 A1: word stems core matches with its ending rule (retrieve.js stemHits) - "visiting" and
+  // "visitors" set the visitors flag, "hottest" / "warmest" / "coldest" the band, "person" / "people" the entity
+  // (even fused, "hottestperson"), "site" / "website" / "web" the site flag. Verbs of visiting are flags, not the entity.
+  stems: { hot: { band: 'hot' }, warm: { band: 'warm' }, cold: { band: 'cold' }, cool: { band: 'cool' }, visit: { flag: 'visitors' }, person: { entity: 'people' }, people: { entity: 'people' }, website: { flag: 'site' }, site: { flag: 'site' }, web: { flag: 'site' } },
   sources: { 'partner referral': 'partner_referral', referred: 'partner_referral', referral: 'partner_referral', referrals: 'partner_referral', upside: 'upside', 'person referral': 'person_referral', campaign: 'campaign', inbound: 'inbound', lookalike: 'lookalike', apollo: 'apollo', outreach: 'homelover_outreach' },
 };
 
@@ -131,7 +135,7 @@ export async function glossary(sb, { businessId }) {
   for (const r of reps) { const first = String(r.co_owner_name || '').trim().split(/\s+/)[0]; const rep = dir.rep(first); if (first && rep && ['upside', 'both'].includes(r.owner_team)) repWords[first.toLowerCase()] = 'upside'; }
   const lines = [
     `Company intent bands (the Map's score): ${['P1', 'P2', 'P3', 'P4'].map(b => `${b} = ${BAND_WORD[b]}${b === 'P1' ? ` (score ≥ ${t.P1})` : b === 'P2' ? ` (${t.P2}-${t.P1 - 1})` : b === 'P3' ? ` (${t.P3}-${t.P2 - 1})` : ` (< ${t.P3})`}`).join(', ')}.`,
-    `People heat (email engagement + the company's website visits, the Huddle's rule): hot = score ≥ ${HEAT_BANDS.hotScore}, a human click in ${HEAT_BANDS.recentDays} days, or the company on the site in ${HEAT.visitDays} days with an email sent (an identified visitor counts); warm = score ≥ ${HEAT_BANDS.warmScore} or a real open in ${HEAT_BANDS.recentDays} days; else cold. A visit adds ${HEAT.visitBase} + ${HEAT.visitPerVisitor} per unique visitor (up to ${HEAT.visitVisitorsMax}); a visit alone is warm at most.`,
+    `People heat (email engagement + the company's website visits, the People table's rule, Pipeline › People): hot = score ≥ ${HEAT_BANDS.hotScore}, a human click in ${HEAT_BANDS.recentDays} days, or the company on the site in ${HEAT.visitDays} days with an email sent (an identified visitor counts); warm = score ≥ ${HEAT_BANDS.warmScore} or a real open in ${HEAT_BANDS.recentDays} days; else cold. A visit adds ${HEAT.visitBase} + ${HEAT.visitPerVisitor} per unique visitor (up to ${HEAT.visitVisitorsMax}); a visit alone is warm at most.`,
     `Employer stages in order: ${STAGE_ORDER.join(', ')}; side lanes: ${SIDE_LANES.join(', ')}. Partner stages: ${PIPELINE_STATUSES.map(s => s.label).join(', ')}.`,
     `Source labels: ${Object.entries(SOURCE_WORD).map(([k, v]) => `${k} = ${v}`).join(', ')}.${Object.keys(repWords).length ? ` Reps: ${Object.keys(repWords).map(w => `${w[0].toUpperCase()}${w.slice(1)} refers through Upside`).join(', ')}.` : ''}`,
     names.length ? `Members: ${names.map(m => `${m.name} (${m.role}${m.color ? `, ${m.color}` : ''})`).join(', ')}.` : null,

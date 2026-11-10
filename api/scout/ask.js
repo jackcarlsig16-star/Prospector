@@ -22,7 +22,8 @@ export const SYSTEM = [
   `List at most ${LIST_MAX} records in the prose; when more match, end with one line "+ n more (in the table): " followed by the remaining labels only, like "+ 3 more (in the table): [r16] [r17] [r18]".`,
   'Sort as asked (date, score, heat) and say which sort you used. Otherwise keep the context\'s order.',
   'Never invent a record, a number, a date or a contact detail. Email addresses and phone numbers are never in the context; never guess one.',
-  'If the context does not hold what was asked, say so plainly and name the filter, chip, window or workspace that would find it.',
+  'If the context does not hold what was asked, say so plainly and say what was read. Never direct the user to a screen, page, view, chip or filter: answer from the context, and when it lacks the answer, say what was read.',
+  'When the context opens with "No specific read matched", say in one sentence what was read, that nothing in it answers the question, and offer the example phrasings from that line, as "Try: ...".',
   'Plain prose or bullets. No headings. No em dashes or en dashes: use a comma or a colon instead.',
 ].join('\n');
 const TOKEN = /\[(r\d+)\]/g;
@@ -73,7 +74,7 @@ export async function ask(supabase, registry, { auth, body, now = askDeps.now() 
   try { ctx = await buildContext(supabase, registry, { auth, scope, q: v.q, now }); }
   catch (e) { if (e.status) return { status: e.status, body: { error: e.message } }; throw e; }
   const system = `${SYSTEM}\n\nToday is ${laDateString(new Date(now))} (Pacific).${ctx.glossary.length ? `\n\nHouse vocabulary:\n${ctx.glossary.map(l => `- ${l}`).join('\n')}` : ''}`;
-  const user = `${v.q}\n\nFilters I read from the question: ${JSON.stringify({ mine: ctx.ask.mine, entity: ctx.ask.entity, since: ctx.ask.since, until: ctx.ask.until, band: ctx.ask.band, source: ctx.ask.source, sort: ctx.ask.sort, company: ctx.ask.company })}\n\nCONTEXT (${ctx.lines.length} lines${ctx.stats.truncated ? `, ${ctx.stats.truncated} more cut by the size cap` : ''}):\n${ctx.pack || '(nothing matched)'}`;
+  const user = `${v.q}\n\nFilters I read from the question: ${JSON.stringify({ mine: ctx.ask.mine, entity: ctx.ask.entity, since: ctx.ask.since, until: ctx.ask.until, band: ctx.ask.band, band_kind: ctx.ask.bandKind, source: ctx.ask.source, sort: ctx.ask.sort, company: ctx.ask.company })}\n\nCONTEXT (${ctx.lines.length} lines${ctx.stats.truncated ? `, ${ctx.stats.truncated} more cut by the size cap` : ''}):\n${ctx.pack || '(nothing matched)'}`;
   const messages = [...v.thread.filter((t, i, a) => !(i === 0 && t.role === 'assistant')), { role: 'user', content: user }];
   if (!askDeps.callAnthropic) askDeps.callAnthropic = (await import('../businesses/shared.js')).callAnthropic;
   const data = await askDeps.callAnthropic({ system, messages, max_tokens: MAX_TOKENS, thinking: false, model: MODELS.STANDARD, supabase, businessId: scope === 'all' ? null : scope, userId: auth.user.id, callType: CALL_TYPE, timeoutMs: 60000 });
@@ -83,7 +84,9 @@ export async function ask(supabase, registry, { auth, body, now = askDeps.now() 
   const withheld = hasPii(answer_md);
   if (withheld) { answer_md = 'Answer withheld: it contained an address or phone number.'; items = []; }
   const usage = { input_tokens: data.usage?.input_tokens ?? null, output_tokens: data.usage?.output_tokens ?? null, cost_usd: data.usage ? estimateCostUsd(MODELS.STANDARD, data.usage) : null };
-  return { status: 200, body: { answer_md, items, usage, withheld, ask: { mine: ctx.ask.mine, entity: ctx.ask.entity, since: ctx.ask.since, until: ctx.ask.until, since_kind: ctx.ask.since_kind, band: ctx.ask.band, source: ctx.ask.source, sort: ctx.ask.sort, company: ctx.ask.company }, context_stats: ctx.stats, scope, cap: { used: n + 1, max: DAILY_CAP } } };
+  // A6: the usage row has no json column, so the matched intent is logged beside it (the next real-ask report counts misses).
+  console.log(`[scout/ask] intent=${ctx.stats.intent} reads=${ctx.stats.reads.length} lines=${ctx.lines.length} tokens=${usage.input_tokens}/${usage.output_tokens} user=${String(auth.user.id).slice(0, 8)}`);
+  return { status: 200, body: { answer_md, items, usage, withheld, ask: { mine: ctx.ask.mine, entity: ctx.ask.entity, since: ctx.ask.since, until: ctx.ask.until, since_kind: ctx.ask.since_kind, band: ctx.ask.band, band_kind: ctx.ask.bandKind, source: ctx.ask.source, sort: ctx.ask.sort, company: ctx.ask.company }, context_stats: ctx.stats, scope, cap: { used: n + 1, max: DAILY_CAP } } };
 }
 
 export async function askRoute(req, res) {

@@ -169,3 +169,63 @@ test('list cap: the prompt names at most 15 in the prose; "+ n more (in the tabl
   assert.ok(r.answer_md.endsWith('- Task 15 due soon\n+ 5 more (in the table)'));
   assert.ok(!/Task 1[6-9]|Task 20/.test(r.answer_md));
 });
+
+// FIX scout-ask-routing-v1
+test('A1 parse: apostrophes go, stems match by ending (visiting, hottest, fused "hottestperson"), "hotel" / "personal" match nothing; A3 bandKind is heat on a people ask and intent on a company ask', async () => {
+  const { VOCABULARY } = await import('../sales/scoutEntities.js');
+  const { stemHits } = await import('./retrieve.js');
+  const vocab = mergeVocab([VOCABULARY, { sources: { brad: 'upside' } }]);
+  const today = '2026-11-09';
+  const stems = Object.keys(vocab.stems).sort((a, b) => b.length - a.length);
+  assert.deepEqual(['visiting', 'visitors', 'hottest', 'hottestperson', 'website', 'persons', 'hotel', 'personal', 'webinar'].map(t => [...stemHits(t, stems)].sort().join('+')), ['visit', 'visit', 'hot', 'hot+person', 'website', 'person', '', '', '']);
+  // "hottest" (a band stem in the superlative) ranks by heat; it is not the hot band alone (the live run showed 8 of 19).
+  const a = parseAsk("who's our hottest person visiting the website", vocab, { today });
+  assert.deepEqual([a.entity, a.flags.visitors, a.flags.site, a.band, a.bandKind, a.sort, a.flags.ranked, a.terms, a.mine], ['people', true, true, null, null, 'heat', true, [], false]);
+  const b = parseAsk("who's our hottestperson visiting the website", vocab, { today });
+  assert.deepEqual([b.entity, b.flags.visitors, b.band, b.sort, b.terms], ['people', true, null, 'heat', []]);
+  const c = parseAsk('hottest people on the site this week', vocab, { today });
+  assert.deepEqual([c.entity, c.flags.visitors, c.flags.site, c.band, c.sort, c.since], ['people', false, true, null, 'heat', '2026-11-09']);
+  const w = parseAsk('warm people visiting the site', vocab, { today });
+  assert.deepEqual([w.entity, w.band, w.bandKind, w.sort], ['people', 'P2', 'heat', null]);
+  const d = parseAsk('hot targets Brad referred', vocab, { today });
+  assert.deepEqual([d.entity, d.band, d.bandKind, d.source], ['targets', 'P1', 'intent', 'upside']);
+  const e = parseAsk('whos replied', vocab, { today });
+  assert.deepEqual([e.entity, e.flags.replied, e.terms, e.bandKind], [null, true, [], null]);
+  const f = parseAsk("I've got a hotel question about personal plans", vocab, { today });
+  assert.deepEqual([f.mine, f.band, f.entity], [true, null, null]);
+  assert.deepEqual(parseAsk('who visited yesterday', vocab, { today }).entity, null, 'a visit verb is the flag, not the visitors entity');
+});
+
+test('A5 fallback: no intent matched -> stats.intent "none", the first context line names the standing reads and three example phrasings (the suggest ones first); a matched ask carries its intent id; both ride on the ask body and the model sees the line', async () => {
+  const mod = stubModule();
+  mod.intents = [
+    { id: 'list', example: 'list the things', match: a => a.entity === 'things', async run() { return { read: 'things list', items: [{ entity: 'things', id: 'x', title: 'X', text: 'X · thing' }] }; } },
+    { id: 'two', example: 'second phrasing', suggest: true, match: () => false, async run() { return { read: '', items: [] }; } },
+    { id: 'three', example: 'third phrasing', match: () => false, async run() { return { read: '', items: [] }; } },
+    { id: 'four', example: 'fourth phrasing', match: () => false, async run() { return { read: '', items: [] }; } },
+  ];
+  const reg = registryWith(['stub', mod]);
+  const db = seed();
+  const none = await buildContext(db, reg, { auth: member, scope: A, q: 'what is the weather' });
+  assert.equal(none.stats.intent, 'none');
+  assert.equal(none.lines[0], "No specific read matched this question; the context below is the standing summary (standing). Try: 'second phrasing' · 'list the things' · 'third phrasing'");
+  assert.ok(none.lines.length > 1 && !none.lines[0].startsWith('['), 'the line is not a record');
+  const hit = await buildContext(db, reg, { auth: member, scope: A, q: 'show me the things' });
+  assert.equal(hit.stats.intent, 'list'); assert.ok(!hit.lines.some(l => l.startsWith('No specific read')));
+  let seen = null;
+  askDeps.callAnthropic = async ({ messages }) => { seen = messages.at(-1).content; return { content: [{ type: 'text', text: 'Nothing in those lists answers this.' }], usage: { input_tokens: 10, output_tokens: 5 } }; };
+  const r = await ask(db, reg, { auth: member, body: { q: 'what is the weather', scope: A } });
+  assert.equal(r.status, 200); assert.equal(r.body.context_stats.intent, 'none'); assert.ok(seen.includes('No specific read matched this question'));
+  assert.ok(SYSTEM.includes('Never direct the user to a screen'));
+  askDeps.callAnthropic = null;
+});
+
+test('A4: no Scout file says "Huddle"', async () => {
+  const fs = await import('fs'); const path = await import('path');
+  const root = new URL('../../', import.meta.url).pathname;
+  const dirs = ['api/scout', 'src/components/scout'].flatMap(d => fs.readdirSync(path.join(root, d)).filter(f => f.endsWith('.js')).map(f => `${d}/${f}`));
+  const files = [...dirs, 'api/sales/scoutEntities.js', 'api/sales/scoutIntents.js', 'api/sales/scoutImport.js', 'src/components/ScoutCommandBar.js', 'src/components/PersistentScout.js', 'src/utils/scoutLayers.js', 'src/utils/buildScoutContext.js', 'src/components/ledger/ScoutModal.js', 'src/components/salesAnalytics/tasks/ScoutUpload.js'];
+  const hits = files.filter(f => /Huddle/.test(fs.readFileSync(path.join(root, f), 'utf8')));
+  assert.deepEqual(hits, [], 'the Huddle was deleted by people-v2; Scout must not name it');
+  assert.ok(files.length >= 15);
+});

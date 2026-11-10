@@ -160,3 +160,48 @@ test('scout-v2 Stage 3 re-run: a call note rides at 600 chars while 10 or fewer 
     assert.ok(body.length <= max && body.length > max - 40, `${n} notes -> ${body.length} chars (max ${max})`);
   }
 });
+
+// FIX scout-ask-routing-v1
+test('A2: the 12 phrasings route as the spec says (the first three -> people_visiting); people_visiting lists people whose company visited or who were identified in the window, hottest first, top 25, with a heat-band filter on the band word; every intent declares an example', async () => {
+  const { parseAsk, mergeVocab } = await import('../scout/retrieve.js');
+  const { salesIntents } = await import('./scoutIntents.js');
+  const vocab = mergeVocab([VOCABULARY, { sources: { brad: 'upside' } }]);
+  const today = '2026-11-09';
+  const route = q => salesIntents.filter(i => i.match(parseAsk(q, vocab, { today }))).map(i => i.id).join('+');
+  assert.deepEqual([
+    "who's our hottest person visiting the website", "who's our hottestperson visiting the website", 'hottest people on the site this week', 'who visited yesterday', 'which companies visited this week', 'who opened our emails',
+    'hot targets Brad referred', 'what do my notes say about Hilton', 'show me my open tasks', 'who is warm at Cloudflare', 'whos replied', 'anyone from Hilton on the site',
+  ].map(route), ['people_visiting', 'people_visiting', 'people_visiting', 'visitors', 'visitors', 'people', 'ranked', 'brief+notes', 'todos', 'brief+ranked', 'people', 'brief']);
+  assert.ok(salesIntents.every(i => typeof i.example === 'string' && i.example.length > 5));
+  assert.deepEqual(salesIntents.filter(i => i.suggest).map(i => i.example), ['who visited yesterday', 'hottest people on the site this week', 'notes about Hilton']);
+  const person = (key, name, co, heat, heat_band, extra = {}) => ({ key, name, title: 'VP', company: co ? { name: co, stage: 'contacted' } : null, source: 'Apollo sequence', emails: { sent: 1, opened: 1, clicked: 0, replied: 0 }, heat, heat_band, last_email: null, visits: null, identified_at: null, buyer: false, ...extra });
+  const rows = [
+    person('prospect:a', 'Ann Hot', 'Cloudflare', 46, 'hot', { visits: { visits_7d: 1, last_visit: '2026-11-07', seen_to: '2026-11-08' } }),
+    person('person:b', 'Bo Identified', 'Berklee', 17, 'warm', { identified_at: '2026-11-08' }),
+    person('prospect:c', 'Cy Replied', 'Solidcore', 108, 'warm', { emails: { sent: 1, opened: 4, clicked: 0, replied: 1 } }),
+    person('prospect:d', 'Di Warm', 'Hilton', 12, 'warm', { visits: { visits_7d: 10, last_visit: '2026-11-06', seen_to: '2026-11-08' } }),
+    person('person:e', 'Ed Old', 'Acme', 5, 'cold', { identified_at: '2026-10-01' }),
+  ];
+  const calls = [];
+  salesReads.peopleActivity = async (sb, businessId, opts) => { calls.push(opts); return { status: 200, body: { rows } }; };
+  const pv = salesIntents.find(i => i.id === 'people_visiting');
+  const run = q => pv.run(null, { businessId: A, ask: parseAsk(q, vocab, { today }), today });
+  const all = await run('people visiting the site');
+  assert.deepEqual(calls.at(-1), { window: '7' });
+  assert.equal(all.read, 'people whose company visited (7 d) · 3 · by heat');
+  assert.deepEqual(all.items.map(i => i.title), ['Ann Hot', 'Bo Identified', 'Di Warm'], 'visited or identified in the window, by heat; the replied-only and the old identified stay out');
+  assert.match(all.items[0].text, /^Ann Hot · VP · Cloudflare \(contacted\) · Apollo sequence · 1 sent · 1 opened · 0 clicked · 0 replied · heat 46 hot · company 1 visits 7 d · last 2026-11-07$/);
+  assert.match(all.items[1].text, /identified on the site 2026-11-08$/);
+  const hot = await run("who's our hottest person visiting the website");
+  assert.deepEqual(hot.items.map(i => i.title), ['Ann Hot', 'Bo Identified', 'Di Warm'], '"hottest" ranks by heat, every band stays');
+  assert.deepEqual(calls.at(-1), { window: '7' });
+  const warm = await run('warm people visiting the site');
+  assert.deepEqual(warm.items.map(i => i.title), ['Bo Identified', 'Di Warm'], 'a plain band word on a people ask is the heat band');
+  await run('hottest people on the site in the last 30 days');
+  assert.deepEqual(calls.at(-1), { window: '30' });
+  // 'people' stays for everyone else and no longer takes a visiting ask; "whos replied" filters by the flag, never by the word.
+  const people = salesIntents.find(i => i.id === 'people');
+  assert.equal(people.match(parseAsk("who's our hottest person visiting the website", vocab, { today })), false);
+  const replied = await people.run(null, { businessId: A, ask: parseAsk('whos replied', vocab, { today }) });
+  assert.deepEqual(replied.items.map(i => i.title), ['Cy Replied']);
+});

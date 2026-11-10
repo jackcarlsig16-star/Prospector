@@ -43,8 +43,19 @@ export async function findCompany(sb, businessId, name) {
   return cands.find(c => normName(c.name) === normName(name)) || cands[0] || null;
 }
 
+// A people ask about the site: the entity word plus a visit verb, or site / website with a band word or a heat ranking
+// and no company named ("hottest people on the site this week"); a company named goes to the brief instead.
+export const isPeopleVisiting = ask => ask.entity === 'people' && (ask.flags.visitors || (ask.flags.site && (!!ask.band || ask.sort === 'heat' || ask.flags.ranked) && !ask.company.length));
+// The people activity window the time phrase maps to (the route's 7 | 30 | 90 | all).
+export const peopleWindow = (ask, dflt) => (!ask.since ? dflt : ask.since_kind?.startsWith('last ') && /\d+/.test(ask.since_kind) ? (Number(/\d+/.exec(ask.since_kind)[0]) <= 7 ? '7' : Number(/\d+/.exec(ask.since_kind)[0]) <= 30 ? '30' : '90') : ['today', 'yesterday', 'this week', 'last week'].includes(ask.since_kind) ? '7' : '30');
+// A3: a band word on a people ask is a heat band - parseAsk says so (bandKind), the intent never guesses.
+const HEAT_OF = { P1: 'hot', P2: 'warm', P3: 'cold', P4: 'cold' };
+const heatFilter = (rows, ask) => (ask.band && ask.bandKind === 'heat' ? rows.filter(p => p.heat_band === HEAT_OF[ask.band]) : rows);
+const personItem = p => ({ entity: 'people', id: p.key, title: p.name, score: p.heat ?? null, subtitle: [p.title, p.company?.name].filter(Boolean).join(' · ') || null, text: [p.name, p.title, p.company?.name ? `${p.company.name}${p.company.stage ? ` (${String(p.company.stage).replace(/_/g, ' ')})` : ''}` : null, p.source, `${p.emails.sent} sent · ${p.emails.opened} opened · ${p.emails.clicked} clicked · ${p.emails.replied} replied`, p.heat != null ? `heat ${p.heat} ${p.heat_band}` : null, p.last_email ? `last email ${day(p.last_email.at)} ${p.last_email.what}` : null, p.visits ? `company ${p.visits.visits_7d} visits 7 d${p.visits.last_visit ? ` · last ${day(p.visits.last_visit)}` : ''}` : null, p.identified_at ? `identified on the site ${p.identified_at}` : null, p.buyer ? 'buyer title' : null].filter(Boolean).join(' · ') });
+
+// Each intent declares one example phrasing (A5): the fallback answer offers three, the `suggest` ones first.
 export const salesIntents = [
-  { id: 'brief', match: ask => ask.company.length > 0,
+  { id: 'brief', example: 'what do we know about Hilton', match: ask => ask.company.length > 0,
     async run(sb, { businessId, ask }) {
       const items = [], reads = [];
       for (const name of ask.company.slice(0, 2)) {
@@ -63,13 +74,13 @@ export const salesIntents = [
       }
       return { read: reads.join(' + '), items };
     } },
-  { id: 'todos', match: ask => ask.entity === 'todos',
+  { id: 'todos', example: 'show me my open tasks', match: ask => ask.entity === 'todos',
     async run(sb, { businessId, auth, ask }) {
       const { rows, total } = await salesReads.openTodosFor(sb, businessId, ask.mine ? auth.user.id : null, { cap: 60 });
       const kept = rows.filter(r => !ask.since || (r.due_date && day(r.due_date) >= ask.since) || day(r.created_at) >= ask.since).filter(r => !ask.terms.length || ask.terms.some(t => String(r.text || '').toLowerCase().includes(t)));
       return { read: `openTodos (${total} open${ask.mine ? ', mine' : ''})`, items: kept.map(r => ({ entity: 'todos', id: r.id, title: cleanText(r.text, 140), date: day(r.due_date), text: [cleanText(r.text, 200), 'open to-do', r.due_date ? `due ${day(r.due_date)}` : 'no date', r.owner_user_id ? (r.owner_user_id === auth.user.id ? 'mine' : 'another owner') : 'unassigned', r.steps?.length ? `${r.steps.filter(s => s.done).length}/${r.steps.length} steps` : null].filter(Boolean).join(' · ') })) };
     } },
-  { id: 'visitors', match: ask => ask.flags.visitors && ask.entity !== 'people',
+  { id: 'visitors', example: 'who visited yesterday', suggest: true, match: ask => ask.flags.visitors && ask.entity !== 'people',
     async run(sb, { businessId, ask, today }) {
       const last = ask.until || addDays(today, -1);
       const first = ask.since || last;
@@ -79,7 +90,7 @@ export const salesIntents = [
       const ranked = [...rows].sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || (b.visitors || 0) - (a.visitors || 0)).slice(0, 40);
       return { read: `visitors ${first}${last !== first ? ` to ${last}` : ''} · ${rows.length} companies`, items: ranked.map(c => ({ entity: c.type ? ENTITY_OF[c.type] : 'visitor', id: c.type ? c.id : c.visit_id, title: c.company, score: c.score ?? null, text: [c.company, c.band ? `${c.band}${c.score != null ? ` score ${c.score}` : ''}` : null, `${c.visits} visits · ${c.visitors} visitors · ${c.pages} pages${c.paths?.length ? ` (${c.paths.join(', ')})` : ''}`, c.people ? `${c.people} named people${c.titles?.length ? ` (${c.titles.join('; ')})` : ''}` : null, c.is_new ? 'new to the site' : 'returning', c.type ? `in Prospector as ${c.type} · ${c.stage || 'no stage'} · owner ${c.owner}` : 'not in Prospector yet', c.last_touch ? `last touch ${day(c.last_touch.at)}${c.last_touch.what ? ` ${c.last_touch.what}` : ''}` : null].filter(Boolean).join(' · ') })) };
     } },
-  { id: 'ranked', match: ask => COMPANY_ENTITIES.has(ask.entity) && !ask.flags.visitors && !ask.flags.emails && !ask.flags.attention && (ask.flags.ranked || !!ask.band || !!ask.source || (!!ask.entity && (ask.mine || !!ask.since)) || (ask.flags.funnel && !!ask.band)),
+  { id: 'ranked', example: 'hot targets Brad referred', match: ask => COMPANY_ENTITIES.has(ask.entity) && !ask.flags.visitors && !ask.flags.emails && !ask.flags.attention && (ask.flags.ranked || !!ask.band || !!ask.source || (!!ask.entity && (ask.mine || !!ask.since)) || (ask.flags.funnel && !!ask.band)),
     async run(sb, { businessId, auth, ask, now }) {
       const segment = { partners: 'partners', employers: 'employers', targets: 'targets' }[ask.entity] || 'all';
       const query = { segment, band: ask.band || '', source: ask.source || '', owner: ask.mine ? auth.user.id : '', sort: ask.sort === 'date' ? 'newest' : 'rank' };
@@ -89,18 +100,30 @@ export const salesIntents = [
       rows = rows.slice(0, 40);
       return { read: `goals/scores ${JSON.stringify(query)}${ask.since ? ` touched since ${ask.since}` : ''} · ${r.body.counts.shown} shown`, items: rows.map(x => ({ entity: ENTITY_OF[x.type], id: x.id, title: x.name, score: x.score ?? null, date: day(x.last_touch_at), text: [x.name, x.type, `score ${x.score} ${x.band}`, `rank ${x.rank}`, x.source_label ? `source ${x.source_label}${x.co_owner_name ? ` (${x.co_owner_name})` : ''}` : null, x.stage ? `stage ${String(x.stage).replace(/_/g, ' ')}` : null, x.owner ? `owner ${x.owner}` : 'unassigned', x.last_touch_at ? `last touch ${day(x.last_touch_at)} · ${daysAgo(x.last_touch_at, now)} d ago` : 'never touched', x.visits_7d ? `${x.visits_7d} visits 7 d` : null, x.due ? `due ${x.due}` : null].filter(Boolean).join(' · ') })) };
     } },
-  { id: 'people', match: ask => ask.entity === 'people' || ((ask.flags.opened || ask.flags.replied || ask.flags.clicked) && !ask.flags.emails),
-    async run(sb, { businessId, ask }) {
-      const win = !ask.since ? 'all' : ask.since_kind?.startsWith('last ') && /\d+/.test(ask.since_kind) ? (Number(/\d+/.exec(ask.since_kind)[0]) <= 7 ? '7' : Number(/\d+/.exec(ask.since_kind)[0]) <= 30 ? '30' : '90') : ['today', 'yesterday', 'this week', 'last week'].includes(ask.since_kind) ? '7' : '30';
+  // FIX scout-ask-routing-v1 A2: people whose company is on the site (or who were identified there) in the window,
+  // hottest first - "who's our hottest person visiting the website". Sits between 'visitors' (companies) and 'people'.
+  { id: 'people_visiting', example: 'hottest people on the site this week', suggest: true, match: isPeopleVisiting,
+    async run(sb, { businessId, ask, today }) {
+      const win = peopleWindow(ask, '7');
       const r = await salesReads.peopleActivity(sb, businessId, { window: win });
       if (r.status !== 200) return { read: `goals/people/activity (${r.status})`, items: [] };
-      let rows = r.body.rows;
-      if (ask.band) rows = rows.filter(p => p.heat_band === { P1: 'hot', P2: 'warm', P3: 'cold', P4: 'cold' }[ask.band]);
+      const since = ask.since || addDays(today, -6);
+      let rows = r.body.rows.filter(p => (p.visits && p.visits.visits_7d > 0 && (!p.visits.seen_to || p.visits.seen_to >= since)) || (p.identified_at && p.identified_at >= since));
+      rows = heatFilter(rows, ask);
+      rows.sort((a, b) => (b.heat ?? -1) - (a.heat ?? -1) || String(b.visits?.last_visit || b.identified_at || '').localeCompare(String(a.visits?.last_visit || a.identified_at || '')));
+      return { read: `people whose company visited (${ask.since_kind || '7 d'}) · ${rows.length} · by heat`, items: rows.slice(0, 25).map(personItem) };
+    } },
+  { id: 'people', example: 'who opened our emails', match: ask => !isPeopleVisiting(ask) && (ask.entity === 'people' || ((ask.flags.opened || ask.flags.replied || ask.flags.clicked) && !ask.flags.emails)),
+    async run(sb, { businessId, ask }) {
+      const win = peopleWindow(ask, 'all');
+      const r = await salesReads.peopleActivity(sb, businessId, { window: win });
+      if (r.status !== 200) return { read: `goals/people/activity (${r.status})`, items: [] };
+      let rows = heatFilter(r.body.rows, ask);
       if (ask.flags.replied) rows = rows.filter(p => p.emails.replied > 0); else if (ask.flags.clicked) rows = rows.filter(p => p.emails.clicked > 0); else if (ask.flags.opened) rows = rows.filter(p => p.emails.opened > 0);
       if (ask.terms.length) rows = rows.filter(p => ask.terms.some(t => `${p.name} ${p.title || ''} ${p.company?.name || ''}`.toLowerCase().includes(t)));
-      return { read: `goals/people/activity?window=${win} (${r.body.rows.length} people)`, items: rows.slice(0, 40).map(p => ({ entity: 'people', id: p.key, title: p.name, score: p.heat ?? null, subtitle: [p.title, p.company?.name].filter(Boolean).join(' · ') || null, text: [p.name, p.title, p.company?.name ? `${p.company.name}${p.company.stage ? ` (${String(p.company.stage).replace(/_/g, ' ')})` : ''}` : null, p.source, `${p.emails.sent} sent · ${p.emails.opened} opened · ${p.emails.clicked} clicked · ${p.emails.replied} replied`, p.heat != null ? `heat ${p.heat} ${p.heat_band}` : null, p.last_email ? `last email ${day(p.last_email.at)} ${p.last_email.what}` : null, p.visits ? `company ${p.visits.visits_7d} visits 7 d` : null, p.buyer ? 'buyer title' : null].filter(Boolean).join(' · ') })) };
+      return { read: `goals/people/activity?window=${win} (${r.body.rows.length} people)`, items: rows.slice(0, 40).map(personItem) };
     } },
-  { id: 'emails', match: ask => ask.flags.emails || ask.entity === 'emails',
+  { id: 'emails', example: 'how are our emails doing this month', match: ask => ask.flags.emails || ask.entity === 'emails',
     async run(sb, { businessId, ask, now }) {
       const period = ask.since_kind === 'this week' || ask.since_kind === 'last week' ? 'week' : 'month';
       const p = await salesReads.loadPulse(sb, businessId, { period }, new Date(now));
@@ -109,7 +132,7 @@ export const salesIntents = [
       walk(p, []);
       return { read: `goals/pulse?period=${period}`, items: items.slice(0, 80) };
     } },
-  { id: 'funnel', match: ask => ask.flags.funnel && !ask.band && !ask.company.length && ask.entity !== 'people',
+  { id: 'funnel', example: 'show me the referral funnel', match: ask => ask.flags.funnel && !ask.band && !ask.company.length && ask.entity !== 'people',
     async run(sb, { businessId, now }) {
       const r = await salesReads.sourcesFunnel(sb, { businessId, query: {}, now });
       if (r.status !== 200) return { read: `goals/sources/funnel (${r.status})`, items: [] };
@@ -117,19 +140,19 @@ export const salesIntents = [
       for (const g of [...(r.body.by_rep || []), ...(r.body.by_partner || [])].slice(0, 30)) items.push({ entity: 'funnel', id: g.key || g.label, title: g.label || g.key, text: `funnel ${g.label || g.key} · ${Object.entries(g).filter(([k, v]) => typeof v === 'number').map(([k, v]) => `${k} ${v}`).join(' · ')}` });
       return { read: 'goals/sources/funnel', items };
     } },
-  { id: 'attention', match: ask => ask.flags.attention,
+  { id: 'attention', example: 'what needs attention', match: ask => ask.flags.attention,
     async run(sb, { businessId, auth, now }) {
       const a = await salesReads.attention(sb, { businessId, userId: auth.user.id, now });
       const items = (a.sources || []).map(s => ({ entity: 'attention', id: s.id, title: s.label || s.id, text: `attention ${s.id} · ${s.status}${s.text ? ` · ${cleanText(s.text, 200)}` : ''}` }));
       items.push({ entity: 'attention', id: 'counts', title: 'Needs attention counts', text: `attention counts · ${Object.entries(a.counts || {}).map(([k, v]) => `${k} ${v}`).join(' · ')}` });
       return { read: 'goals/attention', items };
     } },
-  { id: 'clients', match: ask => ask.entity === 'clients' && !ask.company.length,
+  { id: 'clients', example: 'list our clients', match: ask => ask.entity === 'clients' && !ask.company.length,
     async run(sb, { businessId }) {
       const r = await salesReads.listClients(sb, { businessId });
       return { read: `clients (${r.body?.totals?.clients ?? 0})`, items: (r.body?.clients || []).slice(0, 40).map(c => ({ entity: 'clients', id: c.id, title: c.name, text: [c.name, `client ${c.client_status}`, c.covered_lives != null ? `${c.covered_lives} covered lives` : null, c.launch_date ? `launch ${day(c.launch_date)}` : null, c.referred_by?.name ? `referred by ${c.referred_by.name}` : c.source_kind ? `source ${c.source_kind}` : null, c.owner ? `owner ${c.owner}` : null].filter(Boolean).join(' · ') })) };
     } },
-  { id: 'notes', match: ask => ask.entity === 'call_notes',
+  { id: 'notes', example: 'notes about Hilton', suggest: true, match: ask => ask.entity === 'call_notes',
     async run(sb, { businessId, ask }) {
       let q = sb.from('sales_call_notes').select('id, title, call_date, text').eq('business_id', businessId);
       if (ask.since) q = q.gte('call_date', ask.since);
