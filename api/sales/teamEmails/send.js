@@ -20,7 +20,7 @@ export const domainOf = a => { const s = lower(a); const i = s.lastIndexOf('@');
 export const EMAIL_RE = /^[a-z0-9._%+'-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/;
 
 export async function loadSettings(supabase, businessId) {
-  return must(await supabase.from('sales_team_email_settings').select('business_id, sender_user_id, visitor_on, client_on, client_alert_since, allowed_domains, updated_at').eq('business_id', businessId).maybeSingle());
+  return must(await supabase.from('sales_team_email_settings').select('business_id, sender_user_id, visitor_on, client_on, client_alert_since, allowed_domains, weekend_on, updated_at').eq('business_id', businessId).maybeSingle());
 }
 
 // Every member with a user id: { userId, role, email (profile first, else the invite), firstName }.

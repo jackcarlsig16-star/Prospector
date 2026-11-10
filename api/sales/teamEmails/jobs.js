@@ -38,6 +38,20 @@ export async function cronPull(supabase, businessId, { pull, people = null, now 
   return out;
 }
 
+// visitor-trend-v1 T4 (rulings R4): the days a workspace's visitor pull + email run - EVERY_DAY while its weekend switch is
+// on, Mon-Fri otherwise. Read by the scheduler per scope on each tick; turning the switch changes nothing but this answer.
+export async function weekendDaysFor(supabase, businessId) {
+  const settings = await loadSettings(supabase, businessId);
+  return settings?.weekend_on ? EVERY_DAY : WEEKDAYS;
+}
+// The measured cost of this LA month's pull runs (daily + backfill, status ok) - the Settings copy quotes it (R4).
+export async function pullRunsThisMonth(supabase, businessId, now = Date.now()) {
+  const month = laClock(now).date.slice(0, 7);
+  const rows = must(await supabase.from('visit_pull_runs').select('la_date, kind, status, calls, credits').eq('business_id', businessId).eq('status', 'ok').in('kind', ['daily', 'backfill']).gte('la_date', `${month}-01`));
+  const calls = rows.map(r => r.calls || 0);
+  return { month, runs: rows.length, credits: rows.reduce((n, r) => n + (r.credits || 0), 0), calls_min: calls.length ? Math.min(...calls) : 0, calls_max: calls.length ? Math.max(...calls) : 0 };
+}
+
 const lastGoodPull = async (supabase, businessId) =>
   must(await supabase.from('visit_pull_runs').select('updated_at').eq('business_id', businessId).eq('status', 'ok').order('updated_at', { ascending: false }).limit(1))[0]?.updated_at || null;
 
@@ -55,7 +69,7 @@ export async function visitorEmailJob(supabase, businessId, { now = Date.now(), 
   } else if (recompute) await recompute(supabase, businessId);
   // FIX visitor-email-period-v1 P1 / P2: list A = the previous LA calendar day(s) (Monday: Fri + Sat + Sun); list B = the
   // ranked book right now; CUMULATIVE = every company identified since the first pull.
-  const date = laClock(now).date, window = dayWindowFor(date);
+  const date = laClock(now).date, window = dayWindowFor(date, { weekendOn: !!settings.weekend_on });
   const members = await loadMembers(supabase, businessId);
   const [companies, overall, cumulative] = await Promise.all([loadVisitorData(supabase, businessId, { window, members }), loadRankedBook(supabase, businessId, { now, members }), loadCumulative(supabase, businessId)]);
   const mail = buildVisitorEmail(companies, { date, window, pullNote, overall, cumulative });
@@ -87,10 +101,11 @@ export async function teamScopes(supabase, allowlisted) {
 export function hlJobs(d) {
   return [
     { name: 'apollo-sync', at: '06:00', days: EVERY_DAY, scope: 'all', run: () => d.runApolloSync() },
-    { name: 'visitor-pull', at: '06:30', days: WEEKDAYS, scope: 'team', run: ({ supabase, scope, now }) => cronPull(supabase, scope, { pull: d.pull, people: d.people, now }) },
+    // visitor-trend-v1 T4: due every day on the clock; each workspace's weekend_on says whether Sat / Sun run (days_for).
+    { name: 'visitor-pull', at: '06:30', days: EVERY_DAY, days_for: weekendDaysFor, scope: 'team', run: ({ supabase, scope, now }) => cronPull(supabase, scope, { pull: d.pull, people: d.people, now }) },
     // FIX visitor-email-top10-v1 V3a: the email's catch-up runs until 12:00 LA (EMAIL_CATCHUP_MIN); past that the tick
     // writes a 'missed' slot instead, so a late email never lands at 6 PM.
-    { name: 'team-visitor-email', at: '07:00', days: WEEKDAYS, scope: 'team', catchup_min: EMAIL_CATCHUP_MIN, run: async ({ supabase, scope, now }) => {
+    { name: 'team-visitor-email', at: '07:00', days: EVERY_DAY, days_for: weekendDaysFor, scope: 'team', catchup_min: EMAIL_CATCHUP_MIN, run: async ({ supabase, scope, now }) => {
       const r = await visitorEmailJob(supabase, scope, { now, pull: d.pull, people: d.people, recompute: d.recompute, deps: d.deps });
       return { status: r.status, recipients: r.recipients ?? 0, rows: r.rows ?? 0, overall: r.overall ?? 0, pull_calls: r.pull?.calls ?? 0, pull_credits: r.pull?.credits ?? 0, people_credits: r.pull?.people?.credits ?? 0 };
     } },
@@ -98,6 +113,6 @@ export function hlJobs(d) {
   ];
 }
 
-const DAYS_LABEL = days => (days.length === 7 ? 'daily' : days.join() === '1,2,3,4,5' ? 'Mon-Fri' : days.join(','));
+const DAYS_LABEL = (days, perScope) => (perScope ? 'Mon-Fri (+ Sat-Sun by the weekend switch)' : days.length === 7 ? 'daily' : days.join() === '1,2,3,4,5' ? 'Mon-Fri' : days.join(','));
 // The one startup line Render's log shows: "HomeLover scheduler on: apollo-sync 06:00 daily, ... (America/Los_Angeles)".
-export const schedulerLine = jobs => `${jobs.map(j => (j.at ? `${j.name} ${j.at} ${DAYS_LABEL(j.days)}` : `${j.name} each minute`)).join(', ')} (America/Los_Angeles)`;
+export const schedulerLine = jobs => `${jobs.map(j => (j.at ? `${j.name} ${j.at} ${DAYS_LABEL(j.days, !!j.days_for)}` : `${j.name} each minute`)).join(', ')} (America/Los_Angeles)`;

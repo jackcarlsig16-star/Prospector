@@ -42,12 +42,21 @@ async function markMissed(supabase, jobs, scopes, now, log) {
     for (const scope of await scopes(job)) {
       const key = `${job.name}|${scope}|${slot}`;
       if (done.has(key)) continue;
+      if (!(await scopeDue(job, supabase, scope, now))) continue;
       done.add(key);
       const r = await supabase.from('sales_job_slots').insert({ job: job.name, scope, slot, status: 'error', detail: { missed: true, reason: MISSED_REASON }, finished_at: new Date(now).toISOString() }).select('job');
       if (r.error && r.error.code !== '23505') throw new Error(r.error.message);
       if (!r.error) log(`[scheduler] ${job.name} ${slot} missed`);
     }
   }
+}
+
+// visitor-trend-v1 T4: a job may carry days_for(supabase, scope, now) -> the days it runs for that scope (the weekend
+// switch, per workspace). The job's static `days` says when a slot can be due at all; this answers per scope, for the run
+// and for "missed" alike, and reads a setting only - it never fires anything by itself.
+export async function scopeDue(job, supabase, scope, now) {
+  if (!job.days_for) return true;
+  return (await job.days_for(supabase, scope, now)).includes(laClock(now).dow);
 }
 
 // true = this caller owns the slot; false = someone already does.
@@ -65,6 +74,7 @@ export async function tick(supabase, { jobs, scopes, now = Date.now(), log = con
   const ran = [];
   for (const { job, slot } of dueSlots(jobs, now)) {
     for (const scope of await scopes(job)) {
+      if (!(await scopeDue(job, supabase, scope, now))) continue;
       if (!(await claimSlot(supabase, job.name, scope, slot))) continue;
       try {
         const detail = await job.run({ supabase, scope, slot, now });

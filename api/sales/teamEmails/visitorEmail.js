@@ -3,6 +3,7 @@ import { memberColor } from '../../../src/constants/memberColors.js';
 import { laClock } from './scheduler.js';
 import { lastTouchFor } from '../companyPanel.js';
 import { mergeWeights } from '../intentScoreRun.js';
+import { seenBeforeKeys, isNewCompany } from '../visitRules.js';
 import { DEFAULT_WEIGHTS } from '../intentScore.js';
 import { esc, recordUrl, MAP_URL, VISITORS_URL, ORIGIN, DARK, BAND_HUE, SANS, MONO, dlink, tagPill, outlinePill, memberDot, tileGrid, dataTable, darkShell } from './format.js';
 
@@ -55,9 +56,9 @@ export function laInstant(date, hm) {
 
 // P1: the calendar day(s) an email sent on <LA date> covers - yesterday; after a weekend, Friday through Sunday. Pure
 // calendar dates, so a DST change never moves the window.
-export function dayWindowFor(date) {
+export function dayWindowFor(date, { weekendOn = false } = {}) {
   const days = [addDay(date, -1)];
-  while ([0, 6].includes(dowOf(days[0]))) days.unshift(addDay(days[0], -1));
+  while (!weekendOn && [0, 6].includes(dowOf(days[0]))) days.unshift(addDay(days[0], -1));
   return { date, days, first: days[0], last: days[days.length - 1] };
 }
 export const windowDays = w => (w.days.length > 1 ? `${dayLabel(w.first)} – ${dayLabel(w.last)}` : dayLabel(w.first));
@@ -104,14 +105,15 @@ export async function loadCumulative(supabase, businessId) {
 }
 
 // The companies seen in the window w (dayWindowFor): the pull rows whose Apollo window started inside the days and ended
-// by the send day, the latest row per company. is_new = no pull window before the first day ever listed the company.
+// by the send day, the latest row per company. is_new = the one rule in visitRules.js (seenBeforeKeys / isNewCompany,
+// visitor-trend-v1 R5): no pull window before the first day ever listed the company - the query below is the DB prefilter.
 export async function loadVisitorData(supabase, businessId, { window: w, members }) {
   const rows = await selectAllPages(() => supabase.from('web_visits').select('id, company_key, company_name, domain, visits_7d, unique_visitors_7d, top_paths, intent_score, priority, matched_type, matched_id, pulled_on, seen_from, seen_to').eq('business_id', businessId).gte('seen_from', w.first).lte('seen_to', w.date).order('id'));
   const latest = new Map();
   for (const r of rows) { const cur = latest.get(r.company_key); if (!cur || r.pulled_on > cur.pulled_on || (r.pulled_on === cur.pulled_on && r.seen_to > cur.seen_to)) latest.set(r.company_key, r); }
   const visits = [...latest.values()];
   const keys = visits.map(v => v.company_key);
-  const seenBefore = keys.length ? new Set((await selectAllPages(() => supabase.from('web_visits').select('id, company_key').eq('business_id', businessId).in('company_key', keys).lt('seen_from', w.first).order('id'))).map(r => r.company_key)) : new Set();
+  const seenBefore = seenBeforeKeys(keys.length ? await selectAllPages(() => supabase.from('web_visits').select('id, company_key, seen_from').eq('business_id', businessId).in('company_key', keys).lt('seen_from', w.first).order('id')) : [], w.first);
   const ids = t => [...new Set(visits.filter(v => v.matched_type === t && v.matched_id).map(v => v.matched_id))];
   const buyerTitles = ((await supabase.from('sales_settings').select('buyer_titles').eq('business_id', businessId).maybeSingle()).data?.buyer_titles || []).map(b => String(b).toLowerCase());
   const isBuyer = t => { const x = String(t || '').toLowerCase(); return !!x && buyerTitles.some(b => x.includes(b) || b.includes(x)); };
@@ -143,7 +145,7 @@ export async function loadVisitorData(supabase, businessId, { window: w, members
       visits: v.visits_7d || 0, visitors: v.unique_visitors_7d || 0, people: ppl.length, buyers: ppl.filter(p => isBuyer(p.title)).length, titles,
       pages: paths.length, paths: paths.slice(0, 2), top_page: paths[0] || null,
       stage: r?.stage || null, owner: r?.owner ? nameOf.get(r.owner) || 'Unassigned' : 'Unassigned', owner_color: r?.owner ? colorOf.get(r.owner) || null : null,
-      is_new: !seenBefore.has(v.company_key), days: dayTag(v, w), last_touch_at: r?.last_touch_at || null,
+      is_new: isNewCompany(v.company_key, seenBefore), days: dayTag(v, w), last_touch_at: r?.last_touch_at || null,
     };
   });
   // Last touch for the rows the two lists can show (A0 = the new, A = the qualified), read for records only.

@@ -15,7 +15,9 @@ import { sendNow } from './settings.js';
 import { visitorEmailLine } from '../attentionRoutes.js';
 import { esc } from './format.js';
 import { dueAlerts, sendClientAlert, buildClientAlert, lookalikeTag, WAIT_MIN } from './clientAlert.js';
-import { cronPull, visitorEmailJob, clientAlertsJob, hlJobs, schedulerLine } from './jobs.js';
+import { cronPull, visitorEmailJob, clientAlertsJob, hlJobs, schedulerLine, weekendDaysFor, pullRunsThisMonth } from './jobs.js';
+import { scopeDue, EVERY_DAY } from './scheduler.js';
+import { buildTrend } from '../visitTrend.js';
 import { teamEmailState, updateTeamEmails, addRecipient, editRecipient, removeRecipient, undoChange, sendTest, EXPIRED_NOTE, UNDO_MS } from './settings.js';
 import { TRIGGERS } from '../visitPull.js';
 
@@ -265,12 +267,15 @@ test('one run per slot across two instances and a restart; catch-up inside 2 h o
   assert.equal(runs, 2);
 });
 
-test('the Apollo sync rides the scheduler daily at 06:00 LA (weekends too); the others are weekday-only', () => {
+test('the Apollo sync rides the scheduler daily at 06:00 LA (weekends too); the visitor pull + email are on the clock every day but each workspace\'s weekend switch decides Sat / Sun (visitor-trend-v1 T4)', () => {
   const list = hlJobs({ runApolloSync: async () => ({}), pull: async () => ({}), deps: {} });
   const by = Object.fromEntries(list.map(j => [j.name, j]));
   assert.equal(by['apollo-sync'].at, '06:00');
   assert.equal(by['apollo-sync'].days.length, 7);
   assert.deepEqual([by['visitor-pull'].at, by['team-visitor-email'].at], ['06:30', '07:00']);
+  assert.deepEqual([by['visitor-pull'].days, by['visitor-pull'].days_for, by['team-visitor-email'].days_for], [EVERY_DAY, weekendDaysFor, weekendDaysFor]);
+  assert.ok(!by['apollo-sync'].days_for && !by['client-alerts'].days_for);
+  assert.match(schedulerLine(list), /visitor-pull 06:30 Mon-Fri \(\+ Sat-Sun by the weekend switch\), team-visitor-email 07:00 Mon-Fri \(\+ Sat-Sun by the weekend switch\)/);
   assert.ok(dueSlots(list, Date.parse('2026-11-07T14:00:00Z')).some(d => d.job.name === 'apollo-sync')); // Sat 06:00 PST
   assert.ok(TRIGGERS.includes('cron'));
 });
@@ -561,7 +566,7 @@ test('REV2 T2: add / edit / remove validate the domain, the 25 cap and duplicate
 
 test('rulings (2): one startup line, and the only node-cron schedule left in server.js is the SFDC compliance sync', () => {
   const list = hlJobs({ runApolloSync: async () => ({}), pull: async () => ({}), deps: {} });
-  assert.equal(schedulerLine(list), 'apollo-sync 06:00 daily, visitor-pull 06:30 Mon-Fri, team-visitor-email 07:00 Mon-Fri, client-alerts each minute (America/Los_Angeles)');
+  assert.equal(schedulerLine(list), 'apollo-sync 06:00 daily, visitor-pull 06:30 Mon-Fri (+ Sat-Sun by the weekend switch), team-visitor-email 07:00 Mon-Fri (+ Sat-Sun by the weekend switch), client-alerts each minute (America/Los_Angeles)');
   const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
   assert.deepEqual(server.match(/cron\.schedule\(\s*'[^']*'/g), ["cron.schedule('0 */6 * * *'"]);
   assert.equal((server.match(/HomeLover scheduler on: /g) || []).length, 1);
@@ -869,4 +874,68 @@ test('v2 V3 loader: loadRankedBook carries the band thresholds from sales_settin
   assert.deepEqual(plain.thresholds, DEFAULT_WEIGHTS.thresholds);
   const mail = buildVisitorEmail([], { date: '2026-11-04', overall: custom });
   assert.match(mail.text, /Hot ≥ 70 · Warm 45–69 · Cool 20–44 · Cold < 20/);
+});
+
+// ---- visitor-trend-v1 Stage 1 (T4 + R5).
+test('T4: weekend_on OFF (default) - a Saturday tick runs neither the pull nor the email for the workspace and marks nothing missed; ON - both run; the switch itself fires nothing', async () => {
+  let pulls = 0, mails = 0;
+  const jobs = [
+    { name: 'visitor-pull', at: '06:30', days: EVERY_DAY, days_for: weekendDaysFor, scope: 'team', run: async () => { pulls++; return { ok: true }; } },
+    { name: 'team-visitor-email', at: '07:00', days: EVERY_DAY, days_for: weekendDaysFor, scope: 'team', catchup_min: 300, run: async () => { mails++; return { ok: true }; } },
+  ];
+  const sat = Date.parse('2026-11-14T15:05:00Z'); // Sat Nov 14, 07:05 PST: both slots inside their catch-up
+  const s = sb();
+  assert.deepEqual(await weekendDaysFor(s, B), WEEKDAYS);
+  assert.equal(await scopeDue(jobs[0], s, B, sat), false);
+  assert.deepEqual(await tick(s, { jobs, scopes: async () => [B], now: sat, log: () => {} }), []);
+  assert.deepEqual([pulls, mails, s.db.sales_job_slots.length], [0, 0, 0], 'off: no run, no slot row, no missed row');
+  const late = Date.parse('2026-11-14T23:30:00Z'); // 15:30 PST, both windows closed
+  await tick(s, { jobs, scopes: async () => [B], now: late, log: () => {} });
+  assert.equal(s.db.sales_job_slots.length, 0, 'off: a closed Saturday window is not "missed"');
+  // The owner turns it on: a settings write only - no pull, no send.
+  const r = await updateTeamEmails(s, { businessId: B, userId: U.owner, body: { weekend_on: true }, isOwner: true, grantOf: async () => SENDS });
+  assert.deepEqual([r.status, r.body.weekend_on, pulls, mails], [200, true, 0, 0]);
+  assert.deepEqual(await weekendDaysFor(s, B), EVERY_DAY);
+  assert.equal(await scopeDue(jobs[0], s, B, sat), true);
+  const ran = await tick(s, { jobs, scopes: async () => [B], now: sat, log: () => {} });
+  assert.deepEqual([ran.map(x => `${x.job} ${x.status}`), pulls, mails], [['visitor-pull ok', 'team-visitor-email ok'], 1, 1]);
+  // A weekday is unchanged either way; a member cannot flip the switch; a non-boolean is refused.
+  assert.equal(await scopeDue(jobs[0], s, B, Date.parse('2026-11-16T15:05:00Z')), true);
+  assert.equal((await updateTeamEmails(s, { businessId: B, userId: U.m1, body: { weekend_on: false }, isOwner: false })).status, 403);
+  assert.equal((await updateTeamEmails(s, { businessId: B, userId: U.owner, body: { weekend_on: 'yes' }, isOwner: true })).status, 400);
+});
+
+test('T4 / R4: the state carries weekend_on and the measured pull runs this LA month (daily + backfill, ok only); the window a weekend send covers is yesterday only, so Monday covers Sunday', async () => {
+  const s = sb({ visit_pull_runs: [
+    { id: 'p1', business_id: B, la_date: '2026-11-02', kind: 'daily', status: 'ok', calls: 4, credits: 0 }, { id: 'p2', business_id: B, la_date: '2026-11-03', kind: 'daily', status: 'ok', calls: 10, credits: 0 },
+    { id: 'p3', business_id: B, la_date: '2026-11-03', kind: 'people', status: 'ok', calls: 3, credits: 0 }, { id: 'p4', business_id: B, la_date: '2026-10-27', kind: 'backfill', status: 'ok', calls: 5, credits: 0 },
+    { id: 'p5', business_id: B, la_date: '2026-11-04', kind: 'daily', status: 'error', calls: 1, credits: 0 },
+  ] });
+  assert.deepEqual(await pullRunsThisMonth(s, B, NOW), { month: '2026-11', runs: 2, credits: 0, calls_min: 4, calls_max: 10 });
+  const st = await teamEmailState(s, B, U.owner, { isOwner: true, grantOf: async () => SENDS, now: NOW });
+  assert.deepEqual([st.body.weekend_on, st.body.pull_runs_month], [false, { month: '2026-11', runs: 2, credits: 0, calls_min: 4, calls_max: 10 }]);
+  assert.deepEqual(dayWindowFor('2026-11-09', { weekendOn: true }).days, ['2026-11-08'], 'Monday covers Sunday only');
+  assert.deepEqual(dayWindowFor('2026-11-08', { weekendOn: true }).days, ['2026-11-07']);
+  assert.deepEqual(dayWindowFor('2026-11-07', { weekendOn: true }).days, ['2026-11-06']);
+  assert.deepEqual(dayWindowFor('2026-11-09').days, ['2026-11-06', '2026-11-07', '2026-11-08'], 'off: the Monday window is Fri-Sun as before');
+});
+
+test('R5 parity: on the Nov 5 fixture the trend route and the visitor email give the same NEW / RETURNING answer per company', async () => {
+  const mk = (id, n, seen_from, seen_to, pulled_on = seen_to) => ({ id: `00000000-0000-4000-8000-00000000d1${id}`, business_id: B, company_key: `k${n}`, company_name: `Co ${n}`, visits_7d: 1, unique_visitors_7d: 2, top_paths: [], intent_score: 50, priority: 'P3', matched_type: null, matched_id: null, pulled_on, seen_from, seen_to });
+  const rows = [
+    mk('01', 1, '2026-11-05', '2026-11-06'), // Thu Nov 5, Co 1: listed Oct 20 -> RETURNING
+    mk('02', 2, '2026-11-05', '2026-11-06'), // Co 2: never before -> NEW
+    mk('03', 3, '2026-11-05', '2026-11-06'), // Co 3: seen in the Oct 27 backfill -> RETURNING
+    mk('04', 1, '2026-10-20', '2026-10-21'),
+    mk('05', 3, '2026-10-13', '2026-10-27', '2026-10-27'),
+  ];
+  const runs = [{ id: 'bf', business_id: B, la_date: '2026-10-27', kind: 'backfill', status: 'ok', window_start: '2026-10-13', window_end: '2026-10-27' }];
+  const s = sb({ web_visits: rows, visit_pull_runs: runs });
+  const mail = await loadVisitorData(s, B, { window: dayWindowFor('2026-11-06'), members: await loadMembers(s, B) });
+  const trend = buildTrend({ rows, runs, today: '2026-11-10', days: 30 }).windows.find(w => w.label === 'Thu Nov 5');
+  const fromMail = Object.fromEntries(mail.map(r => [r.company.replace('Co ', 'k'), r.is_new]));
+  const fromTrend = Object.fromEntries(trend.company_keys.map(k => [k, trend.new_keys.includes(k)]));
+  assert.deepEqual(fromMail, { k1: false, k2: true, k3: false });
+  assert.deepEqual(fromTrend, fromMail, 'one rule, one answer');
+  assert.deepEqual([trend.companies, trend.new, trend.returning], [3, 1, 2]);
 });

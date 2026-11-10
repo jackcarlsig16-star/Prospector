@@ -4,6 +4,7 @@ import { getGrant, canSendTeamEmail } from '../../lib/microsoftGrants.js';
 import { KINDS, RECONNECT_NOTE, MAX_RECIPIENTS, EMAIL_RE, loadSettings, loadMembers, senderOf, sendTeamEmail, liveRecipients, recipientCounts, allowedDomains, domainOf } from './send.js';
 import { visitorEmailJob, hlJobs, schedulerLine, VISITOR_EMAIL_JOB } from './jobs.js';
 import { schedulerState, laClock } from './scheduler.js';
+import { pullRunsThisMonth } from './jobs.js';
 import { composeAlert, lookalikesOf, ALERT_COLS } from './clientAlert.js';
 
 // homelover-team-emails-v1 T2 (REV2) - Sales › Settings › Team emails. Reads: any member; every write: the owner.
@@ -38,6 +39,9 @@ export async function teamEmailState(supabase, businessId, userId, { isOwner = f
     sender: sender ? { user_id: sender.userId, first_name: sender.firstName } : null,
     senders: members.filter(m => canSendTeamEmail(grants.get(m.userId))).map(m => ({ user_id: m.userId, first_name: m.firstName })),
     visitor_on: settings.visitor_on, client_on: settings.client_on, ready, banner, is_owner: isOwner,
+    // visitor-trend-v1 T4 / R4: the weekend switch (default OFF) and the measured cost of a pull run this LA month - the
+    // Settings copy quotes these numbers, never a constant.
+    weekend_on: !!settings.weekend_on, pull_runs_month: await pullRunsThisMonth(supabase, businessId, now),
     domains, max: MAX_RECIPIENTS, counts: await recipientCounts(supabase, businessId, settings, grant), total: live.length,
     sends: sends.map(s => ({ id: s.id, at: s.created_at, kind: s.kind, test: s.test, recipients: s.recipients, status: s.status, error: s.error })),
     changes: changes.map(c => ({ ...c, undoable: !c.undone_at && c.action !== 'undo' && now - Date.parse(c.at) < UNDO_MS })),
@@ -56,9 +60,9 @@ export async function teamEmailState(supabase, businessId, userId, { isOwner = f
 export async function updateTeamEmails(supabase, { businessId, userId, body = {}, isOwner, grantOf = getGrant }) {
   if (!isOwner) return ownerOnly;
   const keys = Object.keys(body);
-  const bad = keys.filter(k => !['sender_user_id', 'visitor_on', 'client_on'].includes(k));
-  if (bad.length || !keys.length) return reply(400, { error: 'send sender_user_id, visitor_on and / or client_on' });
-  for (const k of ['visitor_on', 'client_on']) if (k in body && typeof body[k] !== 'boolean') return reply(400, { error: `${k} must be true or false` });
+  const bad = keys.filter(k => !['sender_user_id', 'visitor_on', 'client_on', 'weekend_on'].includes(k));
+  if (bad.length || !keys.length) return reply(400, { error: 'send sender_user_id, visitor_on, client_on and / or weekend_on' });
+  for (const k of ['visitor_on', 'client_on', 'weekend_on']) if (k in body && typeof body[k] !== 'boolean') return reply(400, { error: `${k} must be true or false` });
   if ('sender_user_id' in body) {
     const id = body.sender_user_id;
     if (!UUID.test(id || '')) return reply(400, { error: 'sender_user_id must be a member' });
