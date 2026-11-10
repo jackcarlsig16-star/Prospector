@@ -9,6 +9,7 @@ import { sourceLabelOf } from './companyBrief.js';
 import { breakdownLines } from './intentScore.js';
 import { dueMap, inFitFilter } from './fitLevel.js';
 import { FIT_LEVELS, DUE_LEVELS } from '../../src/constants/fitLevels.js';
+import { headcountCsv, headcountSourceWord } from '../../src/constants/headcount.js';
 
 // intent-score-v1 Stage 2 - GET goals/scores (the ranked rows + components under the S3 filters, with yesterday's band
 // for the ▲ / ▼ markers), POST goals/scores/recompute (owner / admin, optional one company), GET goals/scores/export.csv.
@@ -74,7 +75,7 @@ export function publicRow(s, prev, now = Date.now()) {
     owner_user_id: meta.owner_user_id || null, owner: meta.owner || null, owner_team: meta.owner_team || null, co_owner_name: meta.co_owner_name || null,
     no_double_touch: !!meta.no_double_touch, upside_owned: upside, touch_locked: upside && !!meta.no_double_touch,
     closed: !!s.closed, live: !!s.flagged_out, duplicate_of: s.duplicate_of || null, override: s.override || null,
-    stage: meta.stage || null, kind: meta.kind || null, employees: meta.employees ?? null,
+    stage: meta.stage || null, kind: meta.kind || null, employees: meta.employees ?? null, employees_source: meta.employees_source || null,
     visits_7d: meta.visits_7d ?? null, unique_visitors_7d: meta.unique_visitors_7d ?? null, last_visit: meta.last_visit || null, people: meta.people ?? 0,
     last_touch_at: meta.last_touch_at || null, last_touch_who: meta.last_touch_who || null, last_touch_channel: meta.last_touch_channel || null, days_since_touch: daysSince(meta.last_touch_at, now),
     researched: meta.researched || 'none', research_at: meta.research_at || null, computed_at: s.computed_at,
@@ -206,11 +207,12 @@ export async function saveViewRoute(req, res) { try { send(res, await saveView(g
 export async function deleteViewRoute(req, res) { try { send(res, await deleteView(getSupabase(), { businessId: req.params.businessId, id: req.params.id })); } catch (e) { res.status(500).json({ error: e.message }); } }
 
 // CSV: the table's columns, same filters; closed-won / pilot rows under "Live"; quoted; nothing with an "@".
-export const CSV_COLUMNS = ['Company', 'Type', 'Score', 'Band', 'Status', 'Source', 'Owner', 'Visits 7d', 'People', 'Last touch', 'Employees', 'Stage', 'Researched', 'Change'];
+// heat-size-v1 R4: Headcount = the number or "unknown" + its source word.
+export const CSV_COLUMNS = ['Company', 'Type', 'Score', 'Band', 'Status', 'Source', 'Owner', 'Visits 7d', 'People', 'Last touch', 'Headcount', 'Headcount source', 'Stage', 'Researched', 'Change'];
 const cell = v => { const s = cleanText(String(v ?? ''), 200).replace(/"/g, '""'); return /[",\n]/.test(s) ? `"${s}"` : s; };
 export function scoresCsv(rows, live = []) {
   const line = r => [r.name, r.type, r.score, r.band, r.live ? 'Live' : r.closed ? 'Closed' : '', sourceLabelOf(r.source_label), r.owner || 'Unassigned', r.visits_7d ?? '', r.people ?? 0,
-    r.last_touch_at ? String(r.last_touch_at).slice(0, 10) : '', r.employees ?? '', r.stage || '', r.researched, r.trend === 'up' ? 'up' : r.trend === 'down' ? 'down' : ''].map(cell).join(',');
+    r.last_touch_at ? String(r.last_touch_at).slice(0, 10) : '', headcountCsv(r.employees), headcountSourceWord(r.employees, r.employees_source), r.stage || '', r.researched, r.trend === 'up' ? 'up' : r.trend === 'down' ? 'down' : ''].map(cell).join(',');
   return [CSV_COLUMNS.join(','), ...rows.map(line), ...live.map(line)].join('\n') + '\n';
 }
 export async function exportScoresRoute(req, res) {

@@ -1,0 +1,966 @@
+{
+ "note": "heat-size-v1 Stage 1 regression fixture - 10 real HomeLover prospects pulled 2026-11-09 (contact ids anonymised, no names, no addresses); expected = heatScore.js at fdb4bc4 with now = pulled_at. Heat must not change when no visit exists.",
+ "pulled_at": "2026-11-10T00:03:49.003Z",
+ "people": [
+  {
+   "id": "p1",
+   "contact_id": "c1",
+   "expected": {
+    "score": 68,
+    "band": "hot",
+    "why": [
+     "Clicked on 3 days +120",
+     "Opened ×8 +15",
+     "No new signal in 3+ days: clicks/opens ×0.5"
+    ]
+   },
+   "stored": {
+    "heat": 68,
+    "band": "hot"
+   }
+  },
+  {
+   "id": "p2",
+   "contact_id": "c2",
+   "expected": {
+    "score": 48,
+    "band": "hot",
+    "why": [
+     "Clicked on 2 days +80",
+     "Opened ×4 +15",
+     "No new signal in 3+ days: clicks/opens ×0.5"
+    ]
+   },
+   "stored": {
+    "heat": 48,
+    "band": "hot"
+   }
+  },
+  {
+   "id": "p3",
+   "contact_id": "c3",
+   "expected": {
+    "score": 45,
+    "band": "hot",
+    "why": [
+     "Clicked on 2 days +80",
+     "Opened ×2 +10",
+     "No new signal in 3+ days: clicks/opens ×0.5"
+    ]
+   },
+   "stored": {
+    "heat": 45,
+    "band": "hot"
+   }
+  },
+  {
+   "id": "p4",
+   "contact_id": "c4",
+   "expected": {
+    "score": 23,
+    "band": "warm",
+    "why": [
+     "Clicked on 1 day +40",
+     "Opened ×1 +5",
+     "No new signal in 3+ days: clicks/opens ×0.5"
+    ]
+   },
+   "stored": {
+    "heat": 45,
+    "band": "hot"
+   }
+  },
+  {
+   "id": "p5",
+   "contact_id": "c5",
+   "expected": {
+    "score": 108,
+    "band": "warm",
+    "why": [
+     "Replied (follow up question) +100",
+     "Opened ×4 +15",
+     "No new signal in 3+ days: clicks/opens ×0.5"
+    ]
+   },
+   "stored": {
+    "heat": 108,
+    "band": "warm"
+   }
+  },
+  {
+   "id": "p6",
+   "contact_id": "c6",
+   "expected": {
+    "score": 105,
+    "band": "warm",
+    "why": [
+     "Replied (person referral) +100",
+     "Opened ×1 +5"
+    ]
+   },
+   "stored": {
+    "heat": 105,
+    "band": "warm"
+   }
+  },
+  {
+   "id": "p7",
+   "contact_id": "c7",
+   "expected": {
+    "score": 103,
+    "band": "warm",
+    "why": [
+     "Replied (follow up question) +100",
+     "Opened ×1 +5",
+     "No new signal in 3+ days: clicks/opens ×0.5"
+    ]
+   },
+   "stored": {
+    "heat": 103,
+    "band": "warm"
+   }
+  },
+  {
+   "id": "p8",
+   "contact_id": "c8",
+   "expected": {
+    "score": 8,
+    "band": "cold",
+    "why": [
+     "Opened ×3 +15",
+     "No new signal in 3+ days: clicks/opens ×0.5"
+    ]
+   },
+   "stored": {
+    "heat": 8,
+    "band": "cold"
+   }
+  },
+  {
+   "id": "p9",
+   "contact_id": "c9",
+   "expected": {
+    "score": 8,
+    "band": "cold",
+    "why": [
+     "Opened ×7 +15",
+     "No new signal in 3+ days: clicks/opens ×0.5"
+    ]
+   },
+   "stored": {
+    "heat": 8,
+    "band": "cold"
+   }
+  },
+  {
+   "id": "p10",
+   "contact_id": "c10",
+   "expected": {
+    "score": 8,
+    "band": "cold",
+    "why": [
+     "Opened ×3 +15",
+     "No new signal in 3+ days: clicks/opens ×0.5"
+    ]
+   },
+   "stored": {
+    "heat": 8,
+    "band": "cold"
+   }
+  }
+ ],
+ "messages": [
+  {
+   "apollo_message_id": "6a998956ebc6890001df35f1",
+   "contact_id": "c9",
+   "sequence_id": "seq",
+   "step": 2,
+   "delivered_at": "2026-10-16T12:12:24.825+00:00",
+   "replied": false,
+   "reply_class": null,
+   "replied_seen_at": null,
+   "replied_at": null,
+   "num_opens": 2,
+   "num_clicks": 0,
+   "last_opened_at": "2026-10-16T12:22:09+00:00",
+   "last_clicked_at": null,
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6ac96bead2ae6000014fbc70",
+   "contact_id": "c1",
+   "sequence_id": "seq",
+   "step": 4,
+   "delivered_at": "2026-10-14T19:42:29.092+00:00",
+   "replied": false,
+   "reply_class": null,
+   "replied_seen_at": null,
+   "replied_at": null,
+   "num_opens": 2,
+   "num_clicks": 0,
+   "last_opened_at": "2026-10-19T20:18:35+00:00",
+   "last_clicked_at": null,
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6aa40dc8b6eace00018b9d00",
+   "contact_id": "c8",
+   "sequence_id": "seq",
+   "step": 3,
+   "delivered_at": "2026-09-17T14:05:03.497+00:00",
+   "replied": false,
+   "reply_class": null,
+   "replied_seen_at": null,
+   "replied_at": null,
+   "num_opens": 1,
+   "num_clicks": 0,
+   "last_opened_at": "2026-09-23T14:26:55+00:00",
+   "last_clicked_at": null,
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6a99ec4c33f0e500018f3451",
+   "contact_id": "c1",
+   "sequence_id": "seq",
+   "step": 1,
+   "delivered_at": "2026-09-17T22:58:02.299+00:00",
+   "replied": false,
+   "reply_class": null,
+   "replied_seen_at": null,
+   "replied_at": null,
+   "num_opens": 2,
+   "num_clicks": 2,
+   "last_opened_at": "2026-09-23T20:54:50+00:00",
+   "last_clicked_at": "2026-09-23T20:54:50+00:00",
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6adfeaab81486900015751ef",
+   "contact_id": "c9",
+   "sequence_id": "seq",
+   "step": 4,
+   "delivered_at": "2026-10-27T12:04:45.252+00:00",
+   "replied": false,
+   "reply_class": null,
+   "replied_seen_at": null,
+   "replied_at": null,
+   "num_opens": 1,
+   "num_clicks": 0,
+   "last_opened_at": "2026-10-27T12:43:05+00:00",
+   "last_clicked_at": null,
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6a9af12bd48e2c00206779a4",
+   "contact_id": "c6",
+   "sequence_id": "seq",
+   "step": 1,
+   "delivered_at": "2026-09-09T13:32:25.093+00:00",
+   "replied": true,
+   "reply_class": "person_referral",
+   "replied_seen_at": "2026-10-01T17:47:07.168229+00:00",
+   "replied_at": "2026-09-09T13:33:26+00:00",
+   "num_opens": 1,
+   "num_clicks": 0,
+   "last_opened_at": null,
+   "last_clicked_at": null,
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6ad214f5c1bb5b00013b9411",
+   "contact_id": "c9",
+   "sequence_id": "seq",
+   "step": 3,
+   "delivered_at": "2026-10-21T17:30:13.298+00:00",
+   "replied": false,
+   "reply_class": "out_of_office",
+   "replied_seen_at": null,
+   "replied_at": null,
+   "num_opens": 1,
+   "num_clicks": 0,
+   "last_opened_at": "2026-10-21T17:30:42+00:00",
+   "last_clicked_at": null,
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6a98ab00605c9a001c2bc748",
+   "contact_id": "c8",
+   "sequence_id": "seq",
+   "step": 1,
+   "delivered_at": "2026-09-04T14:20:54.668+00:00",
+   "replied": false,
+   "reply_class": null,
+   "replied_seen_at": null,
+   "replied_at": null,
+   "num_opens": 1,
+   "num_clicks": 0,
+   "last_opened_at": "2026-09-11T14:18:19+00:00",
+   "last_clicked_at": null,
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6ae0935ddef2070001354b45",
+   "contact_id": "c9",
+   "sequence_id": "seq",
+   "step": 5,
+   "delivered_at": "2026-10-29T12:00:29.679+00:00",
+   "replied": false,
+   "reply_class": null,
+   "replied_seen_at": null,
+   "replied_at": null,
+   "num_opens": 2,
+   "num_clicks": 0,
+   "last_opened_at": "2026-10-29T12:46:02+00:00",
+   "last_clicked_at": null,
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6aabf40027ffa20001af87cc",
+   "contact_id": "c8",
+   "sequence_id": "seq",
+   "step": 4,
+   "delivered_at": "2026-09-21T22:22:37.675+00:00",
+   "replied": false,
+   "reply_class": null,
+   "replied_seen_at": null,
+   "replied_at": null,
+   "num_opens": 1,
+   "num_clicks": 0,
+   "last_opened_at": "2026-09-23T14:26:55+00:00",
+   "last_clicked_at": null,
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6a98ac3de2f4cd00140a4023",
+   "contact_id": "c9",
+   "sequence_id": "seq",
+   "step": 1,
+   "delivered_at": "2026-09-03T14:50:31.343+00:00",
+   "replied": false,
+   "reply_class": null,
+   "replied_seen_at": null,
+   "replied_at": null,
+   "num_opens": 1,
+   "num_clicks": 0,
+   "last_opened_at": "2026-09-03T14:50:49+00:00",
+   "last_clicked_at": null,
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6ab13b8ebf0907000153a531",
+   "contact_id": "c5",
+   "sequence_id": "seq",
+   "step": 2,
+   "delivered_at": "2026-10-13T14:44:43.914+00:00",
+   "replied": true,
+   "reply_class": "follow_up_question",
+   "replied_seen_at": "2026-10-15T15:00:01.475576+00:00",
+   "replied_at": "2026-10-13T14:49:32+00:00",
+   "num_opens": 3,
+   "num_clicks": 0,
+   "last_opened_at": "2026-11-03T13:57:01+00:00",
+   "last_clicked_at": null,
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6a9af2e9e659c80018bc1fe0",
+   "contact_id": "c5",
+   "sequence_id": "seq",
+   "step": 1,
+   "delivered_at": "2026-09-21T14:11:57.829+00:00",
+   "replied": false,
+   "reply_class": null,
+   "replied_seen_at": null,
+   "replied_at": null,
+   "num_opens": 1,
+   "num_clicks": 0,
+   "last_opened_at": "2026-09-21T14:18:11+00:00",
+   "last_clicked_at": null,
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6a98bcac5d409600205f0756",
+   "contact_id": "c10",
+   "sequence_id": "seq",
+   "step": 1,
+   "delivered_at": "2026-09-08T18:26:38.533+00:00",
+   "replied": false,
+   "reply_class": null,
+   "replied_seen_at": null,
+   "replied_at": null,
+   "num_opens": 3,
+   "num_clicks": 0,
+   "last_opened_at": "2026-09-08T18:46:22+00:00",
+   "last_clicked_at": null,
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6a99a091bcf6ce00012ad0d6",
+   "contact_id": "c3",
+   "sequence_id": "seq",
+   "step": 3,
+   "delivered_at": "2026-09-08T17:17:11.021+00:00",
+   "replied": false,
+   "reply_class": null,
+   "replied_seen_at": null,
+   "replied_at": null,
+   "num_opens": 1,
+   "num_clicks": 2,
+   "last_opened_at": "2026-09-10T20:38:37+00:00",
+   "last_clicked_at": "2026-09-22T19:07:40+00:00",
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6ab43caf7dd8fa000136b9c4",
+   "contact_id": "c1",
+   "sequence_id": "seq",
+   "step": 3,
+   "delivered_at": "2026-10-09T22:32:24.615+00:00",
+   "replied": false,
+   "reply_class": null,
+   "replied_seen_at": null,
+   "replied_at": null,
+   "num_opens": 4,
+   "num_clicks": 6,
+   "last_opened_at": "2026-10-19T20:18:32+00:00",
+   "last_clicked_at": "2026-10-19T20:18:36+00:00",
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6a9a8dae2f1e9000011ff229",
+   "contact_id": "c7",
+   "sequence_id": "seq",
+   "step": 2,
+   "delivered_at": "2026-09-08T08:21:46.467+00:00",
+   "replied": true,
+   "reply_class": "follow_up_question",
+   "replied_seen_at": "2026-10-01T17:47:07.168229+00:00",
+   "replied_at": null,
+   "num_opens": 1,
+   "num_clicks": 0,
+   "last_opened_at": "2026-09-08T08:25:11+00:00",
+   "last_clicked_at": null,
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6aa2c9e0cfccdd0001bcd0ea",
+   "contact_id": "c2",
+   "sequence_id": "seq",
+   "step": 1,
+   "delivered_at": "2026-09-11T15:23:43.46+00:00",
+   "replied": false,
+   "reply_class": null,
+   "replied_seen_at": null,
+   "replied_at": null,
+   "num_opens": 4,
+   "num_clicks": 7,
+   "last_opened_at": "2026-09-11T19:51:28+00:00",
+   "last_clicked_at": "2026-09-13T14:57:56+00:00",
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6aa04345686f9b0001ba810b",
+   "contact_id": "c3",
+   "sequence_id": "seq",
+   "step": 4,
+   "delivered_at": "2026-09-10T20:37:55.062+00:00",
+   "replied": false,
+   "reply_class": null,
+   "replied_seen_at": null,
+   "replied_at": null,
+   "num_opens": 1,
+   "num_clicks": 0,
+   "last_opened_at": "2026-09-22T19:07:40+00:00",
+   "last_clicked_at": null,
+   "bounced": false
+  },
+  {
+   "apollo_message_id": "6aea807b3cd31700186a5286",
+   "contact_id": "c4",
+   "sequence_id": "seq",
+   "step": 1,
+   "delivered_at": "2026-11-06T17:27:09.683+00:00",
+   "replied": false,
+   "reply_class": null,
+   "replied_seen_at": null,
+   "replied_at": null,
+   "num_opens": 1,
+   "num_clicks": 3,
+   "last_opened_at": "2026-11-06T17:27:21+00:00",
+   "last_clicked_at": "2026-11-06T17:27:21+00:00",
+   "bounced": false
+  }
+ ],
+ "events": [
+  {
+   "id": "4872f7f3-32b2-48f4-863a-62258686ee8a",
+   "apollo_message_id": "6a99a091bcf6ce00012ad0d6",
+   "contact_id": "c3",
+   "step": 3,
+   "event": "click",
+   "occurred_at": "2026-09-22T19:07:40+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "7b4fad1c-8e2c-4ae2-a181-dbdad1eb4ce6",
+   "apollo_message_id": "6a99a091bcf6ce00012ad0d6",
+   "contact_id": "c3",
+   "step": 3,
+   "event": "click",
+   "occurred_at": "2026-09-10T20:40:27+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "d63f259e-220c-4aca-a548-3097def7ab2c",
+   "apollo_message_id": "6a99a091bcf6ce00012ad0d6",
+   "contact_id": "c3",
+   "step": 3,
+   "event": "open",
+   "occurred_at": "2026-09-10T20:38:37+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "15ed51dc-9652-470f-950a-8902df2e1c46",
+   "apollo_message_id": "6aa04345686f9b0001ba810b",
+   "contact_id": "c3",
+   "step": 4,
+   "event": "open",
+   "occurred_at": "2026-09-22T19:07:40+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "627c3cca-9c11-495a-8308-d7d7d0cb0e47",
+   "apollo_message_id": "6aabf40027ffa20001af87cc",
+   "contact_id": "c8",
+   "step": 4,
+   "event": "open",
+   "occurred_at": "2026-09-23T14:26:55+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "3d1124c2-4f75-46d3-92f2-1c3f5dd8e3e2",
+   "apollo_message_id": "6aa40dc8b6eace00018b9d00",
+   "contact_id": "c8",
+   "step": 3,
+   "event": "open",
+   "occurred_at": "2026-09-23T14:26:55+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "00135f3a-cd85-4a8e-b321-490b095389ca",
+   "apollo_message_id": "6a98ab00605c9a001c2bc748",
+   "contact_id": "c8",
+   "step": 1,
+   "event": "open",
+   "occurred_at": "2026-09-11T14:18:19+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "7cfec8aa-7d61-4b1a-a0d2-1481ae383534",
+   "apollo_message_id": "6a98ac3de2f4cd00140a4023",
+   "contact_id": "c9",
+   "step": 1,
+   "event": "open",
+   "occurred_at": "2026-09-03T14:50:49+00:00",
+   "user_agent": "Gmail",
+   "tracking_service": null
+  },
+  {
+   "id": "b39d5777-1be8-4bd4-9562-e535e4ed456e",
+   "apollo_message_id": "6ad214f5c1bb5b00013b9411",
+   "contact_id": "c9",
+   "step": 3,
+   "event": "open",
+   "occurred_at": "2026-10-21T17:30:42+00:00",
+   "user_agent": "Gmail",
+   "tracking_service": null
+  },
+  {
+   "id": "e5553c39-79de-4c23-9b3c-857feeffa021",
+   "apollo_message_id": "6a998956ebc6890001df35f1",
+   "contact_id": "c9",
+   "step": 2,
+   "event": "open",
+   "occurred_at": "2026-10-16T12:22:09+00:00",
+   "user_agent": "Gmail",
+   "tracking_service": null
+  },
+  {
+   "id": "97183ba2-b201-420c-b1bc-f7324dd669f4",
+   "apollo_message_id": "6a998956ebc6890001df35f1",
+   "contact_id": "c9",
+   "step": 2,
+   "event": "open",
+   "occurred_at": "2026-10-16T12:12:39+00:00",
+   "user_agent": "Gmail",
+   "tracking_service": null
+  },
+  {
+   "id": "22d75ae9-c671-407b-8956-162404a14c95",
+   "apollo_message_id": "6adfeaab81486900015751ef",
+   "contact_id": "c9",
+   "step": 4,
+   "event": "open",
+   "occurred_at": "2026-10-27T12:43:05+00:00",
+   "user_agent": "Gmail",
+   "tracking_service": null
+  },
+  {
+   "id": "cf279c8c-ef2e-46a4-b84d-8b7e1a93224a",
+   "apollo_message_id": "6ae0935ddef2070001354b45",
+   "contact_id": "c9",
+   "step": 5,
+   "event": "open",
+   "occurred_at": "2026-10-29T12:46:02+00:00",
+   "user_agent": "Gmail",
+   "tracking_service": null
+  },
+  {
+   "id": "4cae7469-7761-4ec6-b5ae-4f0be354d2b4",
+   "apollo_message_id": "6ae0935ddef2070001354b45",
+   "contact_id": "c9",
+   "step": 5,
+   "event": "open",
+   "occurred_at": "2026-10-29T12:03:04+00:00",
+   "user_agent": "Gmail",
+   "tracking_service": null
+  },
+  {
+   "id": "996cc080-9ba6-4497-b07d-040d532e1c11",
+   "apollo_message_id": "6a98bcac5d409600205f0756",
+   "contact_id": "c10",
+   "step": 1,
+   "event": "open",
+   "occurred_at": "2026-09-08T18:46:22+00:00",
+   "user_agent": "Gmail",
+   "tracking_service": null
+  },
+  {
+   "id": "3846a62b-e0be-4b36-b0e3-db1cf7f9eb03",
+   "apollo_message_id": "6a98bcac5d409600205f0756",
+   "contact_id": "c10",
+   "step": 1,
+   "event": "open",
+   "occurred_at": "2026-09-08T18:28:22+00:00",
+   "user_agent": "Gmail",
+   "tracking_service": null
+  },
+  {
+   "id": "9ec8232b-af50-4634-be14-2e95ab812751",
+   "apollo_message_id": "6a98bcac5d409600205f0756",
+   "contact_id": "c10",
+   "step": 1,
+   "event": "open",
+   "occurred_at": "2026-09-08T18:27:10+00:00",
+   "user_agent": "Gmail",
+   "tracking_service": null
+  },
+  {
+   "id": "e838afb5-a904-4b08-ad84-567843a8c5e9",
+   "apollo_message_id": "6a9a8dae2f1e9000011ff229",
+   "contact_id": "c7",
+   "step": 2,
+   "event": "open",
+   "occurred_at": "2026-09-08T08:25:11+00:00",
+   "user_agent": null,
+   "tracking_service": null
+  },
+  {
+   "id": "776578fe-cdb0-4716-a5b5-4396e4c29654",
+   "apollo_message_id": "6a99ec4c33f0e500018f3451",
+   "contact_id": "c1",
+   "step": 1,
+   "event": "open",
+   "occurred_at": "2026-09-23T20:54:50+00:00",
+   "user_agent": "Chrome, macOS",
+   "tracking_service": null
+  },
+  {
+   "id": "2d99ce29-2631-4618-a1ac-41f843d8124b",
+   "apollo_message_id": "6a99ec4c33f0e500018f3451",
+   "contact_id": "c1",
+   "step": 1,
+   "event": "click",
+   "occurred_at": "2026-09-23T20:54:50+00:00",
+   "user_agent": "Chrome, macOS",
+   "tracking_service": null
+  },
+  {
+   "id": "31a98cd1-1f3c-4753-9a72-7f55b6b16aaf",
+   "apollo_message_id": "6a99ec4c33f0e500018f3451",
+   "contact_id": "c1",
+   "step": 1,
+   "event": "open",
+   "occurred_at": "2026-09-23T20:53:46+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "a553c66a-557f-4b30-a77d-6185baa8107d",
+   "apollo_message_id": "6ab43caf7dd8fa000136b9c4",
+   "contact_id": "c1",
+   "step": 3,
+   "event": "click",
+   "occurred_at": "2026-10-14T19:44:14+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "33a931cf-6b6c-4a4a-9213-bfb2aae10d4f",
+   "apollo_message_id": "6ab43caf7dd8fa000136b9c4",
+   "contact_id": "c1",
+   "step": 3,
+   "event": "open",
+   "occurred_at": "2026-10-14T19:44:14+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "61aed5d9-e228-4c32-becc-3329d7c6d212",
+   "apollo_message_id": "6ab43caf7dd8fa000136b9c4",
+   "contact_id": "c1",
+   "step": 3,
+   "event": "open",
+   "occurred_at": "2026-10-14T19:43:11+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "e3c55e2b-0fe0-411c-a44b-7319d767839c",
+   "apollo_message_id": "6ab43caf7dd8fa000136b9c4",
+   "contact_id": "c1",
+   "step": 3,
+   "event": "click",
+   "occurred_at": "2026-10-19T20:18:36+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "6e5b7a3c-b9a1-43ad-8715-6a931d544b1d",
+   "apollo_message_id": "6ab43caf7dd8fa000136b9c4",
+   "contact_id": "c1",
+   "step": 3,
+   "event": "click",
+   "occurred_at": "2026-10-19T20:18:35+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "5325bd22-32df-434a-a9bf-0557caedb553",
+   "apollo_message_id": "6ab43caf7dd8fa000136b9c4",
+   "contact_id": "c1",
+   "step": 3,
+   "event": "open",
+   "occurred_at": "2026-10-19T20:18:32+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "53ae6187-22c6-459a-87fd-25d366c6b4d1",
+   "apollo_message_id": "6ab43caf7dd8fa000136b9c4",
+   "contact_id": "c1",
+   "step": 3,
+   "event": "open",
+   "occurred_at": "2026-10-19T20:17:55+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "698b340b-8af7-4723-9c14-38c469eeb61a",
+   "apollo_message_id": "6ac96bead2ae6000014fbc70",
+   "contact_id": "c1",
+   "step": 4,
+   "event": "open",
+   "occurred_at": "2026-10-19T20:18:35+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "54447879-7c51-48ef-84b9-1e26318cb9f2",
+   "apollo_message_id": "6ac96bead2ae6000014fbc70",
+   "contact_id": "c1",
+   "step": 4,
+   "event": "open",
+   "occurred_at": "2026-10-19T20:17:55+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "e3845f5e-f122-4beb-9c84-49e70a2bf130",
+   "apollo_message_id": "6a9af2e9e659c80018bc1fe0",
+   "contact_id": "c5",
+   "step": 1,
+   "event": "open",
+   "occurred_at": "2026-09-21T14:18:11+00:00",
+   "user_agent": "Gmail",
+   "tracking_service": null
+  },
+  {
+   "id": "9587628d-7061-48c8-b19b-2e2caaaa0f76",
+   "apollo_message_id": "6ab13b8ebf0907000153a531",
+   "contact_id": "c5",
+   "step": 2,
+   "event": "open",
+   "occurred_at": "2026-10-13T15:42:47+00:00",
+   "user_agent": "Chrome, macOS",
+   "tracking_service": null
+  },
+  {
+   "id": "80d0310d-db2a-43ce-b3df-df118774070f",
+   "apollo_message_id": "6ab13b8ebf0907000153a531",
+   "contact_id": "c5",
+   "step": 2,
+   "event": "open",
+   "occurred_at": "2026-10-13T14:48:01+00:00",
+   "user_agent": "Gmail",
+   "tracking_service": null
+  },
+  {
+   "id": "b1632f1c-ceb1-40e0-950e-09d3d392c90e",
+   "apollo_message_id": "6ab13b8ebf0907000153a531",
+   "contact_id": "c5",
+   "step": 2,
+   "event": "open",
+   "occurred_at": "2026-11-03T13:57:01+00:00",
+   "user_agent": "Gmail",
+   "tracking_service": null
+  },
+  {
+   "id": "62f4834f-a1ce-4833-875d-a2ae76b2e97d",
+   "apollo_message_id": "6aa2c9e0cfccdd0001bcd0ea",
+   "contact_id": "c2",
+   "step": 1,
+   "event": "click",
+   "occurred_at": "2026-09-13T14:57:56+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "4777f50f-f4be-47bd-b03b-1a6b91cbfc17",
+   "apollo_message_id": "6aa2c9e0cfccdd0001bcd0ea",
+   "contact_id": "c2",
+   "step": 1,
+   "event": "click",
+   "occurred_at": "2026-09-13T14:57:51+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "57f2467e-b176-4b98-b9ca-61426605aafc",
+   "apollo_message_id": "6aa2c9e0cfccdd0001bcd0ea",
+   "contact_id": "c2",
+   "step": 1,
+   "event": "click",
+   "occurred_at": "2026-09-11T23:14:56+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "0c43aa3a-8445-4cb1-9ca7-70e9e47e7666",
+   "apollo_message_id": "6aa2c9e0cfccdd0001bcd0ea",
+   "contact_id": "c2",
+   "step": 1,
+   "event": "open",
+   "occurred_at": "2026-09-11T19:51:28+00:00",
+   "user_agent": "Chrome, macOS",
+   "tracking_service": null
+  },
+  {
+   "id": "79093ab6-13bd-4a5a-a2b5-8fe3caa3aada",
+   "apollo_message_id": "6aa2c9e0cfccdd0001bcd0ea",
+   "contact_id": "c2",
+   "step": 1,
+   "event": "click",
+   "occurred_at": "2026-09-11T15:39:18+00:00",
+   "user_agent": "Safari, iPhone",
+   "tracking_service": null
+  },
+  {
+   "id": "e18807f1-9ef0-4cfe-97d5-ba3725e170ad",
+   "apollo_message_id": "6aa2c9e0cfccdd0001bcd0ea",
+   "contact_id": "c2",
+   "step": 1,
+   "event": "click",
+   "occurred_at": "2026-09-11T15:39:08+00:00",
+   "user_agent": "Safari, iPhone",
+   "tracking_service": null
+  },
+  {
+   "id": "53ea3c44-a135-4da5-a498-b2864de2bcab",
+   "apollo_message_id": "6aa2c9e0cfccdd0001bcd0ea",
+   "contact_id": "c2",
+   "step": 1,
+   "event": "click",
+   "occurred_at": "2026-09-11T15:39:01+00:00",
+   "user_agent": "Microsoft Edge, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "ec8e2edb-30dc-44db-95e8-807c7f46c24a",
+   "apollo_message_id": "6aa2c9e0cfccdd0001bcd0ea",
+   "contact_id": "c2",
+   "step": 1,
+   "event": "click",
+   "occurred_at": "2026-09-11T15:38:55+00:00",
+   "user_agent": "Microsoft Edge, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "2be39056-1d7b-4408-9061-fcf66bb14798",
+   "apollo_message_id": "6aa2c9e0cfccdd0001bcd0ea",
+   "contact_id": "c2",
+   "step": 1,
+   "event": "open",
+   "occurred_at": "2026-09-11T15:27:35+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "03e7fffb-d1e5-4751-bb5a-e6510494a232",
+   "apollo_message_id": "6aa2c9e0cfccdd0001bcd0ea",
+   "contact_id": "c2",
+   "step": 1,
+   "event": "open",
+   "occurred_at": "2026-09-11T15:26:15+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "b47e5594-0494-4718-8418-7b89b94c00c7",
+   "apollo_message_id": "6aa2c9e0cfccdd0001bcd0ea",
+   "contact_id": "c2",
+   "step": 1,
+   "event": "open",
+   "occurred_at": "2026-09-11T15:24:01+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  },
+  {
+   "id": "6c48e9dc-adb9-4b16-92b5-edbf46194093",
+   "apollo_message_id": "6aea807b3cd31700186a5286",
+   "contact_id": "c4",
+   "step": 1,
+   "event": "click",
+   "occurred_at": "2026-11-06T17:27:21+00:00",
+   "user_agent": null,
+   "tracking_service": null
+  },
+  {
+   "id": "b4b95431-e331-4a8a-a3da-ccb2a673276b",
+   "apollo_message_id": "6aea807b3cd31700186a5286",
+   "contact_id": "c4",
+   "step": 1,
+   "event": "click",
+   "occurred_at": "2026-11-06T17:27:20+00:00",
+   "user_agent": "Chrome, Windows",
+   "tracking_service": null
+  }
+ ]
+}

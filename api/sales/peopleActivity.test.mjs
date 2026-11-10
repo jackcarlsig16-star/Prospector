@@ -26,8 +26,8 @@ const partnerContacts = [
   { id: 'pc1', business_id: B, goal_id: G, name: 'Dee Same', title: 'Partner Lead', email: 'dee@harbor.example', apollo_contact_id: 'cD', last_activity_at: '2026-11-04T10:00:00Z' },
   { id: 'pc2', business_id: B, goal_id: G, name: 'Bo Ops', title: null, email: null, apollo_contact_id: null, last_activity_at: null },
 ];
-const opportunities = [{ id: O, business_id: B, organization: 'Acme Health', stage: 'contacted', owner_user_id: 'u1', archived_at: null }];
-const targets = [{ id: T, business_id: B, name: 'Quarry Labs', status: 'researching', owner_user_id: null }];
+const opportunities = [{ id: O, business_id: B, organization: 'Acme Health', stage: 'contacted', owner_user_id: 'u1', archived_at: null, employees: 5000, employees_source: 'apollo' }];
+const targets = [{ id: T, business_id: B, name: 'Quarry Labs', status: 'researching', owner_user_id: null, employees: null, employees_source: null }];
 const partners = [{ id: G, business_id: B, name: 'Harbor Lane', pipeline_status: 'replied', owner_user_id: 'u2', goal_type: 'partnership' }];
 const activity = [
   { business_id: B, person_key: 'prospect:cA', contact_id: 'cA', sent: 3, opened_h: 2, bot_opens: 1, clicked: 1, replied: 1, last_sent_at: '2026-11-03T12:00:00Z', last_open_at: '2026-11-04T12:00:00Z', last_click_at: '2026-11-04T13:00:00Z', last_reply_at: '2026-11-05T09:00:00Z', reply_class: 'follow_up_question', heat: 150, heat_band: 'hot', computed_at: '2026-11-06T13:00:00Z' },
@@ -64,9 +64,12 @@ test('buildPeopleTable: counts from the summary (by key, or by Apollo id for a m
   const ana = t.rows[0];
   assert.deepEqual([ana.emails, ana.last_email, ana.heat, ana.heat_band, ana.visits, ana.buyer, ana.has_email, ana.identified_at, ana.last_touch_at, ana.sources, ana.source],
     [{ sent: 3, opened: 2, clicked: 1, replied: 1, bot_opens: 1 }, { at: '2026-11-05T09:00:00Z', what: 'replied', reply_class: 'follow_up_question' }, 150, 'hot', { visits_7d: 6, last_visit: '2026-11-05', top_page: '/pricing', seen_to: '2026-11-06' }, true, true, null, '2026-11-05T09:00:00Z', ['Apollo sequence'], 'Apollo sequence']);
-  assert.deepEqual([ana.company.name, ana.company.stage, ana.company.owner_user_id], ['Acme Health', 'contacted', 'u1']);
+  assert.deepEqual([ana.company.name, ana.company.stage, ana.company.owner_user_id, ana.company.employees, ana.company.employees_source], ['Acme Health', 'contacted', 'u1', 5000, 'apollo'], 'heat-size-v1 R6: the company carries its headcount + source');
   const bo = t.rows.find(r => r.name === 'Bo Ops' && r.company.name === 'Quarry Labs');
   assert.deepEqual([bo.emails.sent, bo.emails.bot_opens, bo.heat_band, bo.visits.visits_7d, bo.visits.top_page, bo.identified_at, bo.buyer, bo.last_email.what], [1, 2, 'cold', 1, '/', '2026-11-02', false, 'sent'], 'visits by company name when no record is matched');
+  assert.deepEqual([bo.company.employees, bo.company.employees_source], [null, null], 'an unknown headcount is null, never blank or 0');
+  const parked = t.rows.find(r => r.company?.type === 'account' || r.company?.type === 'parked');
+  if (parked) assert.deepEqual([parked.company.employees, parked.company.employees_source], [null, null]);
   const dee = t.rows.find(r => r.name === 'Dee Same');
   assert.deepEqual([dee.emails.sent, dee.heat, dee.heat_band, dee.last_email.what, dee.last_touch_at, dee.has_email], [2, null, null, 'opened', '2026-11-04T10:00:00Z', true], 'heat pending reads null; the partner touch is the last touch');
   const eve = t.rows.find(r => r.name === 'Eve Hand');

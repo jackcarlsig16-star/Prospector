@@ -1,7 +1,7 @@
 import { cleanText } from './scrubText.js';
 import { STAGE_ORDER, SIDE_LANES } from './pipelineStages.js';
 import { PIPELINE_STATUSES } from '../../src/constants/partnerPipeline.js';
-import { HEAT_BANDS } from './heatScore.js';
+import { HEAT, HEAT_BANDS } from './heatScore.js';
 import { sourceDirectory } from './leadSource.js';
 import { memberColors } from './memberColors.js';
 import { salesIntents, salesStanding } from './scoutIntents.js';
@@ -131,7 +131,7 @@ export async function glossary(sb, { businessId }) {
   for (const r of reps) { const first = String(r.co_owner_name || '').trim().split(/\s+/)[0]; const rep = dir.rep(first); if (first && rep && ['upside', 'both'].includes(r.owner_team)) repWords[first.toLowerCase()] = 'upside'; }
   const lines = [
     `Company intent bands (the Map's score): ${['P1', 'P2', 'P3', 'P4'].map(b => `${b} = ${BAND_WORD[b]}${b === 'P1' ? ` (score ≥ ${t.P1})` : b === 'P2' ? ` (${t.P2}-${t.P1 - 1})` : b === 'P3' ? ` (${t.P3}-${t.P2 - 1})` : ` (< ${t.P3})`}`).join(', ')}.`,
-    `People heat (email engagement, the Huddle's rule): hot = score ≥ ${HEAT_BANDS.hotScore} or a human click in ${HEAT_BANDS.recentDays} days; warm = score ≥ ${HEAT_BANDS.warmScore} or a real open in ${HEAT_BANDS.recentDays} days; else cold.`,
+    `People heat (email engagement + the company's website visits, the Huddle's rule): hot = score ≥ ${HEAT_BANDS.hotScore}, a human click in ${HEAT_BANDS.recentDays} days, or the company on the site in ${HEAT.visitDays} days with an email sent (an identified visitor counts); warm = score ≥ ${HEAT_BANDS.warmScore} or a real open in ${HEAT_BANDS.recentDays} days; else cold. A visit adds ${HEAT.visitBase} + ${HEAT.visitPerVisitor} per unique visitor (up to ${HEAT.visitVisitorsMax}); a visit alone is warm at most.`,
     `Employer stages in order: ${STAGE_ORDER.join(', ')}; side lanes: ${SIDE_LANES.join(', ')}. Partner stages: ${PIPELINE_STATUSES.map(s => s.label).join(', ')}.`,
     `Source labels: ${Object.entries(SOURCE_WORD).map(([k, v]) => `${k} = ${v}`).join(', ')}.${Object.keys(repWords).length ? ` Reps: ${Object.keys(repWords).map(w => `${w[0].toUpperCase()}${w.slice(1)} refers through Upside`).join(', ')}.` : ''}`,
     names.length ? `Members: ${names.map(m => `${m.name} (${m.role}${m.color ? `, ${m.color}` : ''})`).join(', ')}.` : null,

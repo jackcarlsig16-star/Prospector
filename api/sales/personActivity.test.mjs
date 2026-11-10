@@ -30,7 +30,7 @@ test('summarizePerson: the counts = huddle/live\'s (human opens, scanner clicks 
   const s = summarizePerson(a, e, NOW);
   assert.deepEqual([s.sent, s.opened_h, s.bot_opens, s.clicked, s.replied, s.reply_class], [2, 1, 1, 1, 1, 'willing_to_meet']);
   assert.deepEqual([s.last_sent_at, s.last_open_at, s.last_click_at, s.last_reply_at], [at(2), at(1, 5), at(2, 6), at(3)]);
-  const scored = scoreProspect(a, e);
+  const scored = scoreProspect(a, e, null, NOW);
   assert.equal(s.heat, scored.score);
   assert.equal(s.heat_band, huddleSignals(a, e, scored, NOW, SCANNER_CLICK_WITHIN_SECONDS).heat_band);
   assert.equal(s.last_signal_at, scored.last_signal_at);
@@ -45,6 +45,39 @@ test('buildPersonActivity: a row per prospect with messages or events (silent B 
   const rows = buildPersonActivity({ prospects: [{ contact_id: 'A' }, { contact_id: 'B' }, { contact_id: 'C' }], partnerContacts: [{ id: 'pc1', apollo_contact_id: 'C' }, { id: 'pc2', apollo_contact_id: null }, { id: 'pc3', apollo_contact_id: 'Z' }], messages: MESSAGES, events: EVENTS, now: NOW });
   assert.deepEqual(rows.map(r => [r.person_key, r.source_table, r.contact_id, r.sent]), [['prospect:A', 'sales_prospect_state', 'A', 2], ['prospect:C', 'sales_prospect_state', 'C', 1], ['contact:pc1', 'partner_contacts', 'C', 1]]);
   assert.equal(rows[0].computed_at, new Date(NOW).toISOString());
+  assert.ok(!/@/.test(JSON.stringify(rows)));
+});
+
+// heat-size-v1 Stage 1: the company's latest visit row joins by matched record or by name; an identified visitor with no
+// email rows gets a person: row (contact_id null) while the signal lasts; a silent person at a quiet company still has none.
+test('buildPersonActivity: a visit row joins a prospect by matched record and a partner contact by name, an identified visitor gets a person: row, the heat is the Huddle-era number when no visit exists', () => {
+  const O = '00000000-0000-4000-8000-00000000e001', G = '00000000-0000-4000-8000-00000000e003', T = '00000000-0000-4000-8000-00000000e002';
+  const visits = [
+    { id: 'v1', company_key: 'acme health', matched_type: 'opportunity', matched_id: O, visits_7d: 3, unique_visitors_7d: 2, last_visit: '2026-11-05', seen_to: '2026-11-06', pulled_on: '2026-11-06' },
+    { id: 'v2', company_key: 'harbor lane', matched_type: null, matched_id: null, visits_7d: 1, unique_visitors_7d: 1, last_visit: '2026-11-04', seen_to: '2026-11-06', pulled_on: '2026-11-06' },
+    { id: 'v3', company_key: 'quarry labs', matched_type: 'target', matched_id: T, visits_7d: 4, unique_visitors_7d: 9, last_visit: '2026-10-20', seen_to: '2026-10-21', pulled_on: '2026-10-21' },
+  ];
+  const rows = buildPersonActivity({
+    prospects: [{ contact_id: 'A', opportunity_id: O }, { contact_id: 'B', opportunity_id: null, goal_id: null, company: 'Nowhere Inc' }, { contact_id: 'C' }],
+    partnerContacts: [{ id: 'pc1', apollo_contact_id: 'C', goal_id: G }],
+    salesPeople: [
+      { id: 'sp1', company_type: 'target', target_id: T, source_kind: 'web_visit', created_at: at(4), archived_at: null },
+      { id: 'sp2', company_type: 'target', target_id: T, source_kind: 'web_visit', created_at: '2026-10-01T12:00:00Z', archived_at: null },
+      { id: 'sp3', company_type: 'employer', opportunity_id: O, source_kind: null, created_at: '2026-10-01T12:00:00Z', archived_at: null },
+      { id: 'sp4', company_type: 'employer', opportunity_id: O, source_kind: 'web_visit', created_at: at(4), archived_at: '2026-11-05T00:00:00Z' },
+    ],
+    opportunities: [{ id: O, organization: 'Acme Health' }], targets: [{ id: T, name: 'Quarry Labs' }], partners: [{ id: G, name: 'Harbor Lane' }],
+    messages: MESSAGES, events: EVENTS, visits, now: NOW,
+  });
+  const by = Object.fromEntries(rows.map(r => [r.person_key, r]));
+  assert.deepEqual(Object.keys(by).sort(), ['contact:pc1', 'person:sp1', 'person:sp3', 'prospect:A', 'prospect:C'].sort(), 'B silent + no visit, sp2 identified 36 d ago at a quiet company, sp4 archived: no row');
+  const plainA = summarizePerson(MESSAGES.filter(m => m.contact_id === 'A'), EVENTS.filter(x => x.contact_id === 'A'), NOW);
+  assert.equal(by['prospect:A'].heat, plainA.heat + 8 + 3 * 2, 'A: Acme visited (matched record) - 3 visits · 2 people = +14');
+  assert.equal(by['prospect:C'].heat, summarizePerson(MESSAGES.filter(m => m.contact_id === 'C'), EVENTS.filter(x => x.contact_id === 'C'), NOW).heat, 'C as a prospect names no company: the Huddle-era number');
+  assert.deepEqual([by['contact:pc1'].heat, by['contact:pc1'].heat_band], [8 + 3, 'hot'], 'pc1 at Harbor Lane (joined by name, 1 visit · 1 person) with a message sent: Hot (H2)');
+  assert.deepEqual([by['person:sp3'].contact_id, by['person:sp3'].source_table, by['person:sp3'].sent, by['person:sp3'].heat, by['person:sp3'].heat_band], [null, 'sales_people', 0, 14, 'warm'], 'a hand-added employee at a visited company: browse-only, Warm at most');
+  assert.deepEqual([by['person:sp1'].heat, by['person:sp1'].heat_band], [8 + 3, 'hot'], 'sp1 identified Nov 5 (1 d ago) at a quiet company: one visit by one person on created_at, Hot (they are the visit)');
+  assert.ok(rows.every(r => !('why' in r)), 'the stored row has no why column');
   assert.ok(!/@/.test(JSON.stringify(rows)));
 });
 

@@ -1,12 +1,12 @@
 import { getSupabase, addDays } from './goalsShared.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { laDateString } from './laDate.js';
-import { normName } from './intakeMatch.js';
 import { mergePeople, SOURCE_WORD } from './peopleMerge.js';
 import { cleanText } from './scrubText.js';
 import { isMigrationPending, timelineFor } from './personActivity.js';
 import { readAllViews, writeAllViews, SAVED_VIEWS_MAX } from './scoresRoutes.js';
 import { HEAT_BANDS } from './heatScore.js';
+import { visitIndex } from './visitJoin.js';
 
 // people-v2 Stage 1 (P5) - GET goals/people/activity?window=7|30|90|all: ONE read for Pipeline › People. The rows are the
 // union of the three contact tables merged by the P2 rule, each joined to its materialised email summary
@@ -33,16 +33,17 @@ export function windowOf(id, today) {
 // The three tables in one shape (before the merge): { person_key, source, name, title, company, apollo_id, has_email, identified_at, last_touch_at, contact_id }.
 export function peopleRows({ prospects = [], salesPeople = [], partnerContacts = [], opportunities = [], targets = [], partners = [] }) {
   const opp = new Map(opportunities.map(o => [o.id, o])), tgt = new Map(targets.map(t => [t.id, t])), goal = new Map(partners.map(g => [g.id, g]));
-  const company = (type, row) => (row ? { type, id: row.id, name: cleanText(row.organization || row.name, 160), stage: row.stage || row.status || row.pipeline_status || null, owner_user_id: row.owner_user_id || null } : null);
+  // heat-size-v1 R6: the record's headcount rides on the company so the table can sort / filter by size.
+  const company = (type, row) => (row ? { type, id: row.id, name: cleanText(row.organization || row.name, 160), stage: row.stage || row.status || row.pipeline_status || null, owner_user_id: row.owner_user_id || null, employees: row.employees ?? null, employees_source: row.employees_source || null } : null);
   const out = [];
   for (const p of prospects) {
     const o = p.opportunity_id ? opp.get(p.opportunity_id) : null, g = p.goal_id ? goal.get(p.goal_id) : null;
-    out.push({ person_key: `prospect:${p.contact_id}`, source: 'prospect', name: nameOf(p.name), title: cleanText(p.title, 160) || null, company: o ? company('employer', o) : g ? company('partner', g) : p.company ? { type: 'account', id: null, name: cleanText(p.company, 160), stage: null, owner_user_id: null } : null,
+    out.push({ person_key: `prospect:${p.contact_id}`, source: 'prospect', name: nameOf(p.name), title: cleanText(p.title, 160) || null, company: o ? company('employer', o) : g ? company('partner', g) : p.company ? { type: 'account', id: null, name: cleanText(p.company, 160), stage: null, owner_user_id: null, employees: null, employees_source: null } : null,
       apollo_id: p.contact_id, contact_id: p.contact_id, has_email: !!p.email, identified_at: null, last_touch_at: null, status: p.status || null, owner: p.owner || null });
   }
   for (const p of salesPeople) {
     if (p.archived_at) continue;
-    const c = p.company_type === 'employer' && p.opportunity_id ? company('employer', opp.get(p.opportunity_id)) : p.target_id ? company('target', tgt.get(p.target_id)) : p.company_name ? { type: 'parked', id: null, name: cleanText(p.company_name, 160), stage: null, owner_user_id: null } : null;
+    const c = p.company_type === 'employer' && p.opportunity_id ? company('employer', opp.get(p.opportunity_id)) : p.target_id ? company('target', tgt.get(p.target_id)) : p.company_name ? { type: 'parked', id: null, name: cleanText(p.company_name, 160), stage: null, owner_user_id: null, employees: null, employees_source: null } : null;
     const source = p.source_kind === 'web_visit' || p.visit_id ? 'visitor' : p.upload_id ? 'upload' : 'hand';
     out.push({ person_key: `person:${p.id}`, source, name: nameOf(p.name), title: cleanText(p.title, 160) || null, company: c, apollo_id: null, contact_id: null, has_email: false, identified_at: source === 'visitor' ? p.created_at || null : null, last_touch_at: null, status: null, owner: null });
   }
@@ -52,7 +53,6 @@ export function peopleRows({ prospects = [], salesPeople = [], partnerContacts =
   return out.filter(r => r.name);
 }
 
-const latestVisits = visits => { const m = new Map(); for (const v of visits) { const cur = m.get(v.company_key); if (!cur || v.pulled_on > cur.pulled_on) m.set(v.company_key, v); } return m; };
 const nz = v => (v == null ? 0 : Number(v));
 
 // Pure: the merged, joined, windowed rows + the chip counts.
@@ -60,10 +60,7 @@ export function buildPeopleTable({ rows, activity = [], visits = [], buyerTitles
   const today = laDateString(new Date(now));
   const act = new Map();
   for (const a of activity) { act.set(a.person_key, a); if (a.contact_id) act.set(`c:${a.contact_id}`, a); }
-  const byKey = latestVisits(visits);
-  const byMatch = new Map([...byKey.values()].filter(v => v.matched_type && v.matched_id).map(v => [`${v.matched_type}:${v.matched_id}`, v]));
-  const MATCH = { employer: 'opportunity', target: 'target', partner: 'partner' };
-  const visitOf = c => (c ? (c.id && byMatch.get(`${MATCH[c.type]}:${c.id}`)) || byKey.get(normName(c.name)) || null : null);
+  const visitOf = visitIndex(visits);
   const sinceIso = w.since ? `${w.since}T00:00:00` : null;
   const needsSince = new Date(now - NEEDS_TOUCH_DAYS * 864e5).toISOString();
   const people = mergePeople(rows).map(p => {
@@ -108,9 +105,9 @@ export async function peopleActivity(supabase, businessId, { window: id = 'all',
     selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id, name, title, company, opportunity_id, goal_id, status, owner, email').eq('business_id', businessId).order('contact_id')),
     all('sales_people', 'id, company_type, opportunity_id, target_id, name, title, source_kind, visit_id, upload_id, archived_at, created_at, company_name'),
     all('partner_contacts', 'id, goal_id, name, title, email, apollo_contact_id, last_activity_at'),
-    all('sales_opportunities', 'id, organization, stage, owner_user_id, archived_at'),
-    all('sales_targets', 'id, name, status, owner_user_id'),
-    all('sales_goals', 'id, name, pipeline_status, owner_user_id', x => x.eq('goal_type', 'partnership')),
+    all('sales_opportunities', 'id, organization, stage, owner_user_id, archived_at, employees, employees_source'),
+    all('sales_targets', 'id, name, status, owner_user_id, employees, employees_source'),
+    all('sales_goals', 'id, name, pipeline_status, owner_user_id, employees, employees_source', x => x.eq('goal_type', 'partnership')),
     all('web_visits', 'id, company_key, company_name, matched_type, matched_id, visits_7d, last_visit, seen_to, top_paths, pulled_on'),
     supabase.from('sales_settings').select('buyer_titles').eq('business_id', businessId).maybeSingle(),
   ]);

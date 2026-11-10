@@ -28,7 +28,28 @@ export const HEAT = {
   // Gmail's image proxy (Apollo labels its agent "Gmail") fetches images only when the recipient opens the message,
   // so a fast open there is a person, not a scanner: the timing rule doesn't apply (FIX people-apollo-visibility-v1 F1).
   humanUserAgents: [/^gmail$/i],
+  // heat-size-v1 Stage 0 rulings R1-R3 (planner, 2026-11-09; inbox/2026-11-09-1605-heat-size-v1-stage0-rulings.txt):
+  // a company on the site in the last visitDays adds visitBase + visitPerVisitor × min(unique visitors, visitVisitorsMax)
+  // (set B: ceiling 23, under hotScore - a visit ranks people inside a band, a base >= warmScore would park every
+  // identified visitor at Warm). A person identified <= visitDays ago counts as one visit by one person on their
+  // created_at. Visit points decay on their own clock (last_visit / created_at) and never un-decay clicks or opens.
+  visitBase: 8,
+  visitPerVisitor: 3,
+  visitVisitorsMax: 5,
+  visitDays: 7,
 };
+
+// The visit a person's heat reads, from their company's latest web_visits row and (R2) their own identification date.
+// -> { kind: 'company' | 'identified', visits, people, at } | null. The company row counts while its pull window reaches
+// into the last visitDays (seen_to, the same rule as the People table's "Company visits" column).
+export function visitSignal({ visit = null, identifiedAt = null, now = Date.now() } = {}) {
+  const since = laDateString(new Date(now - (HEAT.visitDays - 1) * 864e5));
+  if (visit && Number(visit.visits_7d) > 0 && String(visit.seen_to || visit.pulled_on || '') >= since) {
+    return { kind: 'company', visits: Number(visit.visits_7d), people: Number(visit.unique_visitors_7d ?? 0), at: visit.last_visit || visit.seen_to || visit.pulled_on };
+  }
+  if (identifiedAt && now - Date.parse(identifiedAt) <= HEAT.visitDays * 864e5) return { kind: 'identified', visits: 1, people: 1, at: identifiedAt };
+  return null;
+}
 
 export function isBotOpen(ev, deliveredAt) {
   if (ev.tracking_service) return true;
@@ -39,9 +60,10 @@ export function isBotOpen(ev, deliveredAt) {
 }
 
 // messages: this contact's sales_email_messages rows; events: its
-// sales_email_activity rows. Returns everything the card needs to say
-// *why* it's hot - the UI never computes a score itself.
-export function scoreProspect(messages, events) {
+// sales_email_activity rows; visit: visitSignal()'s result (null = no visit,
+// the Huddle-era score to the digit). Returns everything the card needs to
+// say *why* it's hot - the UI never computes a score itself.
+export function scoreProspect(messages, events, visit = null, now = Date.now()) {
   const deliveredById = new Map(messages.map(m => [m.apollo_message_id, m.delivered_at]));
   const why = [];
   let replyPts = 0;
@@ -75,17 +97,27 @@ export function scoreProspect(messages, events) {
   const lastSignalAt = timed.length ? timed[timed.length - 1] : null;
 
   let decayed = false;
-  if (lastSignalAt && (Date.now() - new Date(lastSignalAt)) / 864e5 > HEAT.decayAfterDays && (clickPts || openPts)) {
+  if (lastSignalAt && (now - new Date(lastSignalAt)) / 864e5 > HEAT.decayAfterDays && (clickPts || openPts)) {
     decayed = true;
     why.push(`No new signal in ${HEAT.decayAfterDays}+ days: clicks/opens ×${HEAT.decayFactor}`);
   }
-  const score = Math.round(replyPts + (clickPts + openPts) * (decayed ? HEAT.decayFactor : 1));
+
+  const visitPtsRaw = visit ? HEAT.visitBase + HEAT.visitPerVisitor * Math.min(visit.people, HEAT.visitVisitorsMax) : 0;
+  const visitDecayed = !!visit && (now - Date.parse(visit.at)) / 864e5 > HEAT.decayAfterDays;
+  if (visit) {
+    why.push(visit.kind === 'company'
+      ? `Company on the site · ${visit.visits} visit${visit.visits === 1 ? '' : 's'} · ${visit.people} ${visit.people === 1 ? 'person' : 'people'} (${HEAT.visitDays} d) +${visitPtsRaw}`
+      : `Identified on the site ${Math.max(0, Math.floor((now - Date.parse(visit.at)) / 864e5))} d ago +${visitPtsRaw}`);
+    if (visitDecayed) why.push(`No new visit in ${HEAT.decayAfterDays}+ days: visit ×${HEAT.decayFactor}`);
+  }
+  const score = Math.round(replyPts + (clickPts + openPts) * (decayed ? HEAT.decayFactor : 1) + visitPtsRaw * (visitDecayed ? HEAT.decayFactor : 1));
 
   return {
     score,
     why,
-    badges: { replied: replyPts > 0, reply_class: replyClass, click_days: clickDays, opens, possible_bot_open: possibleBotOpen },
+    badges: { replied: replyPts > 0, reply_class: replyClass, click_days: clickDays, opens, possible_bot_open: possibleBotOpen, visit: visit ? { kind: visit.kind, visits: visit.visits, people: visit.people, decayed: visitDecayed } : null },
     last_signal_at: lastSignalAt,
+    last_visit_at: visit ? visit.at : null,
     excluded_reply_class: excludedReplyClass,
   };
 }
@@ -99,6 +131,8 @@ export function scoreProspect(messages, events) {
 // (rows from before that column existed) stays Hot.
 // A click is human when it lands more than scannerSeconds after delivery
 // (same rule as nextBestAction.js).
+// heat-size-v1 H2 (rulings R2): a company visit (scored.badges.visit) is Hot only when the person also has an email
+// sent, or is the identified visitor; a contact whose employer merely browsed is Warm at most.
 export const HEAT_BANDS = { hotScore: 40, warmScore: 10, recentDays: 7 };
 
 export function huddleSignals(messages, events, scored, now = Date.now(), scannerSeconds = 120) {
@@ -115,10 +149,15 @@ export function huddleSignals(messages, events, scored, now = Date.now(), scanne
   const latestReply = [...replied].filter(replyAt).sort((a, b) => replyAt(a).localeCompare(replyAt(b))).pop() || null;
   const replySeenAt = latestReply ? replyAt(latestReply) : null;
   const replyHot = replied.length > 0 && (!replySeenAt || now - Date.parse(replySeenAt) <= HEAT_BANDS.recentDays * 864e5);
-  const band = replied.length
+  const visit = scored.badges?.visit || null;
+  const sent = messages.some(m => m.delivered_at);
+  const visitHot = !!visit && (sent || visit.kind === 'identified');
+  const browseOnly = !!visit && !sent && visit.kind !== 'identified';
+  let band = replied.length
     ? (replyHot || humanClicks.some(recent) ? 'hot' : 'warm')
-    : scored.score >= HEAT_BANDS.hotScore || humanClicks.some(recent) ? 'hot'
+    : scored.score >= HEAT_BANDS.hotScore || humanClicks.some(recent) || visitHot ? 'hot'
     : scored.score >= HEAT_BANDS.warmScore || realOpens.some(recent) ? 'warm' : 'cold';
+  if (browseOnly && band === 'hot') band = 'warm';
 
   let last = null;
   if (replied.length) {

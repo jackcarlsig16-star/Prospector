@@ -2,6 +2,8 @@
 // the old Huddle links mapped onto chips, the CSV columns (P7, structured fields only - never an address) and the heat
 // footnote, which states the Huddle's band rule word for word (heatScore.js huddleSignals) - the band itself is never
 // recomputed here, it arrives from the route.
+import { headcountCsv, headcountSourceWord } from '../../../constants/headcount';
+
 export const CHIPS = [['opened', 'Opened'], ['clicked', 'Clicked'], ['replied', 'Replied'], ['sent', 'Sent (any)'], ['identified', 'Identified visitor'], ['visited_7d', 'Company visited 7 d'], ['buyer', 'Buyer title'], ['hot', 'Hot'], ['needs_touch', 'Needs a touch'], ['mine', 'Mine']];
 export const WINDOW_OPTIONS = [['all', 'All time'], ['7', '7 d'], ['30', '30 d'], ['90', '90 d']];
 export const SOURCE_OPTIONS = ['Apollo sequence', 'Identified visitor', 'Partner contact', 'Added by hand', 'Upload'];
@@ -9,7 +11,7 @@ export const NEEDS_TOUCH_DAYS = 14; // REVISABLE (spec P3) - the route's rule
 export const EMPTY_FILTERS = { chips: [], source: '', stage: '', owner: '', window: 'all', q: '', company: null };
 export const LS_SORT = 'prospector_people_sort'; // { id, dir } | null, per viewer
 
-export const heatRule = (r = { hot: 40, warm: 10, days: 7 }) => `Heat = the Huddle's score and band, from its own function. Replied: hot for ${r.days} days from the reply, then warm unless a human click in the last ${r.days} days. Otherwise hot = score ≥ ${r.hot} or a human click in ${r.days} days; warm = score ≥ ${r.warm} or a real open in ${r.days} days; else cold. Opens count humans only (the Huddle's bot rule).`;
+export const heatRule = (r = { hot: 40, warm: 10, days: 7 }) => `Heat = the Huddle's score and band, from its own function. Replied: hot for ${r.days} days from the reply, then warm unless a human click in the last ${r.days} days. Otherwise hot = score ≥ ${r.hot}, a human click in ${r.days} days, or the company on the site in ${r.days} days with an email sent (an identified visitor counts); warm = score ≥ ${r.warm} or a real open in ${r.days} days; else cold. Opens count humans only (the Huddle's bot rule); a company visit adds points, a visit alone is warm at most.`;
 
 const DAY = 864e5;
 const slug = name => String(name || '').trim().split(/\s+/)[0].toLowerCase();
@@ -75,7 +77,9 @@ const md = iso => (iso ? new Date(iso).toLocaleDateString('en-US', { month: 'sho
 // P7: the CSV of the filtered rows - structured fields only (never an address; the ✉ is a yes / no).
 export const CSV_COLUMNS = [
   { label: 'Person', value: r => r.name || '' }, { label: 'Title', value: r => r.title || '' }, { label: 'Company', value: r => r.company?.name || '' },
-  { label: 'Company stage', value: r => r.company?.stage || '' }, { label: 'Source', value: r => r.sources.join(' + ') },
+  { label: 'Company stage', value: r => r.company?.stage || '' },
+  { label: 'Company size', value: r => headcountCsv(r.company?.employees) }, { label: 'Size source', value: r => headcountSourceWord(r.company?.employees, r.company?.employees_source) },
+  { label: 'Source', value: r => r.sources.join(' + ') },
   { label: 'Sent', value: r => r.emails.sent }, { label: 'Opened (human)', value: r => r.emails.opened }, { label: 'Clicked', value: r => r.emails.clicked }, { label: 'Replied', value: r => r.emails.replied },
   { label: 'Last email', value: r => (r.last_email ? `${md(r.last_email.at)} ${r.last_email.what}` : '') },
   { label: 'Heat', value: r => (r.heat == null ? '' : r.heat) }, { label: 'Heat band', value: r => r.heat_band || '' },

@@ -30,13 +30,13 @@ const seed = (extra = {}) => ({
     { id: ID.live, business_id: B, goal_type: 'partnership', name: 'Live Partner', pipeline_status: 'proposal_pilot', owner_user_id: JACK, owner_team: 'homelover', category: '1. x', archived_at: null, last_touch_at: ago(1), source_kind: 'inbound' },
   ],
   sales_opportunities: [
-    { id: ID.hilton, business_id: B, organization: 'Hilton Example', stage: 'contacted', owner_user_id: null, owner_team: 'upside', co_owner_name: null, no_double_touch: true, employees: 5000, archived_at: null, source_kind: 'partner_referral', source_partner_id: ID.upside, source_set_by: null, updated_at: ago(3), created_at: ago(30) },
+    { id: ID.hilton, business_id: B, organization: 'Hilton Example', stage: 'contacted', owner_user_id: null, owner_team: 'upside', co_owner_name: null, no_double_touch: true, employees: 5000, employees_source: 'apollo', archived_at: null, source_kind: 'partner_referral', source_partner_id: ID.upside, source_set_by: null, updated_at: ago(3), created_at: ago(30) },
     { id: ID.ixl, business_id: B, organization: 'IXL Learning, Inc.', stage: 'target', owner_user_id: JACK, owner_team: 'homelover', employees: null, archived_at: null, source_kind: 'partner_referral', source_partner_id: ID.upside, source_set_by: null, updated_at: ago(3), created_at: ago(30) },
     { id: ID.lost, business_id: B, organization: 'Lost Cause', stage: 'on_hold', owner_user_id: JACK, owner_team: 'homelover', employees: 9000, archived_at: null, source_kind: 'inbound', updated_at: ago(3), created_at: ago(30) },
   ],
   sales_targets: [
     { id: ID.ixlTarget, business_id: B, name: 'IXL Learning', kind: 'employer', status: 'proposed', owner_team: 'homelover', source_kind: 'website', created_at: ago(5), updated_at: ago(5) },
-    { id: ID.quarry, business_id: B, name: 'Quarry Labs', kind: 'employer', status: 'researching', owner_user_id: CYRUS, owner_team: 'homelover', employees: 800, source_kind: 'website', created_at: ago(5), updated_at: ago(5) },
+    { id: ID.quarry, business_id: B, name: 'Quarry Labs', kind: 'employer', status: 'researching', owner_user_id: CYRUS, owner_team: 'homelover', employees: 800, employees_source: 'manual', source_kind: 'website', created_at: ago(5), updated_at: ago(5) },
   ],
   web_visits: [
     { id: randomUUID(), business_id: B, company_key: 'quarry labs', company_name: 'Quarry Labs', matched_type: 'target', matched_id: ID.quarry, priority: 'P1', visits_7d: 6, unique_visitors_7d: 3, apollo_intent: 'high', intent_score: 60, top_paths: [{ path: '/pricing' }], maybe_user: false, us_500: true, last_visit: day(1), pulled_on: day(0) },
@@ -254,9 +254,15 @@ test('GET goals/scores/export.csv: the table columns, Live rows marked, every va
   const list = await listScores(db, B, {}, { now: NOW });
   const csv = scoresCsv(list.body.rows, list.body.live);
   const lines = csv.trim().split('\n');
-  assert.equal(lines[0], 'Company,Type,Score,Band,Status,Source,Owner,Visits 7d,People,Last touch,Employees,Stage,Researched,Change');
+  assert.equal(lines[0], 'Company,Type,Score,Band,Status,Source,Owner,Visits 7d,People,Last touch,Headcount,Headcount source,Stage,Researched,Change');
   assert.equal(lines.length, 1 + 5 + 2);
   assert.ok(lines[1].startsWith('Quarry Labs,target,'));
+  // heat-size-v1 R4 / R6: Headcount = number or "unknown" + the source word, through meta.employees_source.
+  const cells = l => l.split(',').slice(-5, -3);
+  assert.deepEqual(cells(lines[1]), ['800', 'typed'], 'Quarry: typed 800');
+  assert.deepEqual(cells(lines.find(l => l.startsWith('Hilton Example,'))), ['5000', 'Apollo']);
+  assert.deepEqual(cells(lines.find(l => l.includes('"IXL Learning, Inc.",employer'))), ['unknown', ''], 'no headcount = unknown, never blank');
+  assert.deepEqual([list.body.rows.find(r => r.name === 'Quarry Labs').employees_source, list.body.rows.find(r => r.name === 'IXL Learning, Inc.').employees_source], ['manual', null], 'the route row carries employees_source');
   assert.ok(lines.some(l => l.includes('"IXL Learning, Inc.",employer')), 'comma-bearing name quoted');
   assert.ok(lines.some(l => l.includes(',Live,')), 'closed-won / pilot under Live');
   assert.ok(lines.some(l => l.includes('Lost Cause,employer') && l.includes(',Closed,')));

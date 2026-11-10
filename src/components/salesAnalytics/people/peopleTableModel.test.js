@@ -54,14 +54,16 @@ test('the old Huddle links land on chips; the heat footnote states the Huddle\'s
   expect(targetToFilters({ feed: null }).chips).toEqual([]);
   expect(targetToFilters({ flags: true }).chips).toEqual(['mine']);
   expect(targetToFilters(null)).toBe(EMPTY_FILTERS);
-  expect(heatRule({ hot: 40, warm: 10, days: 7 })).toBe("Heat = the Huddle's score and band, from its own function. Replied: hot for 7 days from the reply, then warm unless a human click in the last 7 days. Otherwise hot = score ≥ 40 or a human click in 7 days; warm = score ≥ 10 or a real open in 7 days; else cold. Opens count humans only (the Huddle's bot rule).");
+  expect(heatRule({ hot: 40, warm: 10, days: 7 })).toBe("Heat = the Huddle's score and band, from its own function. Replied: hot for 7 days from the reply, then warm unless a human click in the last 7 days. Otherwise hot = score ≥ 40, a human click in 7 days, or the company on the site in 7 days with an email sent (an identified visitor counts); warm = score ≥ 10 or a real open in 7 days; else cold. Opens count humans only (the Huddle's bot rule); a company visit adds points, a visit alone is warm at most.");
 });
 
-test('CSV: structured fields only, the address a yes / no, never an @', () => {
-  const csv = toCsv(ROWS, CSV_COLUMNS);
+test('CSV: structured fields only, the address a yes / no, Company size = number or unknown + the source word, never an @', () => {
+  const rows = [row('Ana', { ...ROWS[0], company: { ...ROWS[0].company, employees: 12000, employees_source: 'manual' } }), ROWS[1], ROWS[2]];
+  const csv = toCsv(rows, CSV_COLUMNS);
   const lines = csv.split('\r\n');
-  expect(lines[0]).toBe('Person,Title,Company,Company stage,Source,Sent,Opened (human),Clicked,Replied,Last email,Heat,Heat band,Company visits 7 d,Last visit,Identified,Buyer title,Address on file,Last touch');
-  expect(lines[1]).toBe('Ana,VP People,Acme Health,contacted,Apollo sequence,3,2,1,1,Nov 3 sent,150,hot,6,2026-11-05,,yes,yes,Nov 3');
-  expect(lines[2]).toBe('Bo,VP People,Quarry Labs,researching,Identified visitor,0,0,0,0,,,,1,2026-10-22,2026-11-02,,yes,');
+  expect(lines[0]).toBe('Person,Title,Company,Company stage,Company size,Size source,Source,Sent,Opened (human),Clicked,Replied,Last email,Heat,Heat band,Company visits 7 d,Last visit,Identified,Buyer title,Address on file,Last touch');
+  expect(lines[1]).toBe('Ana,VP People,Acme Health,contacted,12000,typed,Apollo sequence,3,2,1,1,Nov 3 sent,150,hot,6,2026-11-05,,yes,yes,Nov 3');
+  expect(lines[2]).toBe('Bo,VP People,Quarry Labs,researching,unknown,,Identified visitor,0,0,0,0,,,,1,2026-10-22,2026-11-02,,yes,');
+  expect(toCsv([row('Nil', { company: null })], CSV_COLUMNS).split('\r\n')[1].startsWith('Nil,VP People,,,unknown,,')).toBe(true);
   expect(csv).not.toMatch(/@/);
 });
