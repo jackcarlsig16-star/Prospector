@@ -10,10 +10,6 @@ async function call(url, options, fallback) {
 
 const json = (method, body) => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
-export async function fetchHuddle(businessId) {
-  return call(`/api/sales/${businessId}/huddle`, undefined, 'Failed to load huddle');
-}
-
 export async function updateProspect(businessId, contactId, payload) {
   const data = await call(`/api/sales/${businessId}/prospects/${contactId}`,
     json('PATCH', payload), 'Failed to update prospect');

@@ -1,10 +1,9 @@
 import { ownerOrCaller, employerOwner } from './companyFields.js';
 import { replyAt, replyExact, replyWindow } from './replyTime.js';
 import { createClient } from '@supabase/supabase-js';
-import { stageIndex, ORG_TYPE_ENUM } from './pipelineStages.js';
-import { laDateString } from './laDate.js';
-import { scoreProspect, huddleSignals, isAutomated, HEAT_BANDS } from './heatScore.js';
-import { nextBestAction, SCANNER_CLICK_WITHIN_SECONDS } from './nextBestAction.js';
+import { ORG_TYPE_ENUM } from './pipelineStages.js';
+import { isAutomated } from './heatScore.js';
+import { SCANNER_CLICK_WITHIN_SECONDS } from './nextBestAction.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { findOpportunity, moveForward } from './opportunityMatch.js';
 import { sourceColumns, logSource } from './leadSource.js';
@@ -22,7 +21,6 @@ const OWNERS = ['jack', 'cyrus', 'unassigned'];
 const STATUSES = ['new', 'claimed', 'contacted', 'booked', 'not_now', 'dead'];
 const NEXT_ACTIONS = ['call', 'email', 'linkedin', 'send_collateral', 'wait'];
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const MEETING_INDEX = stageIndex('meeting');
 
 function groupBy(rows, key) {
   const m = new Map();
@@ -31,114 +29,6 @@ function groupBy(rows, key) {
     m.get(r[key]).push(r);
   }
   return m;
-}
-
-// GET /huddle - every prospect with a signal, scored, plus what the page
-// header and the "Done" recap need. Excluded prospects (bounced,
-// unsubscribed, a negative reply class, or already in pipeline at meeting+)
-// are counted by reason rather than silently dropped.
-export async function huddleRoute(req, res) {
-  const supabase = getSupabase();
-  const businessId = req.params.businessId;
-
-  // The three big reads are paged: PostgREST caps a plain select at 1,000
-  // rows, which used to drop signals silently past that size.
-  let paged;
-  try {
-    paged = await Promise.all([
-      selectAllPages(() => supabase.from('sales_prospect_state').select('*').eq('business_id', businessId).order('contact_id')),
-      selectAllPages(() => supabase.from('sales_email_messages').select('*').eq('business_id', businessId).order('apollo_message_id')),
-      selectAllPages(() => supabase.from('sales_email_activity').select('apollo_message_id,contact_id,event,occurred_at,user_agent,tracking_service').eq('business_id', businessId).order('id')),
-    ]);
-  } catch (e) { return res.status(500).json({ error: e.message }); }
-  const [prospects, messages, events] = paged.map(data => ({ data }));
-  const [opps, seqSnap, tags, huddles, statusEvents] = await Promise.all([
-    supabase.from('sales_opportunities').select('id,stage,archived_at').eq('business_id', businessId),
-    supabase.from('sales_raw_snapshots').select('payload').eq('business_id', businessId).eq('entity', 'sequences').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
-    supabase.from('sales_sequence_tags').select('sequence_id,audience').eq('business_id', businessId),
-    supabase.from('sales_huddles').select('huddle_at,started_by').eq('business_id', businessId).order('huddle_at', { ascending: false }).limit(1),
-    supabase.from('sales_prospect_events').select('contact_id,to_value,changed_at,changed_by').eq('business_id', businessId).eq('field', 'status')
-      .in('to_value', ['contacted', 'booked']).or('from_value.is.null,from_value.neq.dead').gte('changed_at', new Date(Date.now() - 3 * 864e5).toISOString()),
-  ]);
-  for (const r of [opps, seqSnap, tags, huddles, statusEvents]) {
-    if (r.error) return res.status(500).json({ error: r.error.message });
-  }
-
-  const seqById = new Map((seqSnap.data?.payload || []).map(s => [s.id, s]));
-  const audienceById = new Map((tags.data || []).map(t => [t.sequence_id, t.audience || 'employer']));
-  const oppById = new Map((opps.data || []).map(o => [o.id, o]));
-  const messagesByContact = groupBy(messages.data || [], 'contact_id');
-  const eventsByContact = groupBy(events.data || [], 'contact_id');
-  const excluded = { bounced: 0, unsubscribed: 0, negative_reply: 0, in_pipeline_meeting_plus: 0 };
-
-  const out = [];
-  const now = Date.now(), staleMs = HEAT_BANDS.recentDays * 864e5;
-  for (const p of prospects.data || []) {
-    const msgs = messagesByContact.get(p.contact_id) || [];
-    const contactEvents = eventsByContact.get(p.contact_id) || [];
-    const scored = scoreProspect(msgs, contactEvents);
-    const opp = p.opportunity_id ? oppById.get(p.opportunity_id) : null;
-
-    if (msgs.some(m => m.bounced)) { excluded.bounced++; continue; }
-    if (p.email_unsubscribed) { excluded.unsubscribed++; continue; }
-    if (scored.excluded_reply_class && !scored.badges.replied) { excluded.negative_reply++; continue; }
-    if (opp && !opp.archived_at && stageIndex(opp.stage) >= MEETING_INDEX) { excluded.in_pipeline_meeting_plus++; continue; }
-
-    const latest = [...msgs].sort((a, b) => (b.delivered_at || '').localeCompare(a.delivered_at || ''))[0] || {};
-    const seq = seqById.get(latest.sequence_id);
-    out.push({
-      ...p,
-      in_pipeline: !!(opp && !opp.archived_at),
-      sequence: latest.sequence_id ? {
-        id: latest.sequence_id,
-        name: seq ? seq.name : null,
-        cohort: seq ? seq.cohort : null,
-        audience: audienceById.get(latest.sequence_id) || 'employer',
-      } : null,
-      step: latest.step ?? null,
-      sender: latest.sender || null,
-      apollo_url: `https://app.apollo.io/#/contacts/${p.contact_id}`,
-      score: scored.score,
-      why: scored.why,
-      badges: scored.badges,
-      last_signal_at: scored.last_signal_at,
-      next_best_action: nextBestAction(msgs, contactEvents, scored),
-      ...huddleSignals(msgs, contactEvents, scored, now, SCANNER_CLICK_WITHIN_SECONDS),
-      // Stale: no signal and nobody touched the row in 7+ days.
-      stale: (!scored.last_signal_at || now - Date.parse(scored.last_signal_at) > staleMs) && now - Date.parse(p.updated_at) > staleMs,
-    });
-  }
-  out.sort((a, b) => b.score - a.score);
-
-  const today = laDateString();
-  const yesterday = laDateString(new Date(Date.now() - 864e5));
-  const done = (statusEvents.data || []).filter(e => [today, yesterday].includes(laDateString(new Date(e.changed_at))));
-
-  // "Since last huddle" strip (sales-huddle-v2). Without a huddle yet: last 24h.
-  const lastHuddle = (huddles.data || [])[0] || null;
-  const sinceIso = lastHuddle?.huddle_at || new Date(now - 864e5).toISOString();
-  const deliveredById = new Map((messages.data || []).map(m => [m.apollo_message_id, m.delivered_at]));
-  const recentEvents = (events.data || []).filter(e => e.occurred_at > sinceIso);
-  const since = { since: sinceIso, replies: 0, real_clicks: 0, real_opens: 0, bot_hidden: 0, done: 0 };
-  for (const e of recentEvents) {
-    if (isAutomated(e, deliveredById.get(e.apollo_message_id), SCANNER_CLICK_WITHIN_SECONDS)) since.bot_hidden++;
-    else if (e.event === 'click') since.real_clicks++;
-    else if (e.event === 'open') since.real_opens++;
-  }
-  since.replies = (messages.data || []).filter(m => m.replied && replyAt(m) && replyAt(m) > sinceIso).length;
-  const { count: doneSince, error: doneErr } = await supabase.from('sales_prospect_events').select('id', { count: 'exact', head: true })
-    .eq('business_id', businessId).eq('field', 'status').in('to_value', ['contacted', 'booked']).or('from_value.is.null,from_value.neq.dead').gt('changed_at', sinceIso);
-  if (doneErr) return res.status(500).json({ error: doneErr.message });
-  since.done = doneSince;
-
-  res.status(200).json({
-    prospects: out,
-    excluded,
-    last_huddle: lastHuddle,
-    since_last_huddle: since,
-    done_recent: done,
-    today,
-  });
 }
 
 // PATCH /prospects/:contactId - only the huddle-owned fields. The DB

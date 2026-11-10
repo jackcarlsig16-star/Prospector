@@ -1,17 +1,17 @@
 // people-v2 Stage 2 - the pure half of Pipeline › People (unit-tested): the filter chips and selects (P3), the Mine rule,
-// the old Huddle links mapped onto chips, the CSV columns (P7, structured fields only - never an address) and the heat
-// footnote, which states the Huddle's band rule word for word (heatScore.js huddleSignals) - the band itself is never
-// recomputed here, it arrives from the route.
+// the old feed links mapped onto chips, the CSV columns (P7, structured fields only - never an address) and the heat
+// rule text, which states the one rule the route sends (heat-v2: band = the number's bracket, one fade schedule) - the
+// band itself is never recomputed here, it arrives from the route.
 import { headcountCsv, headcountSourceWord, sizeCounts, inSizeFilter, sizeLabels } from '../../../constants/headcount';
 
 export const CHIPS = [['opened', 'Opened'], ['clicked', 'Clicked'], ['replied', 'Replied'], ['sent', 'Sent (any)'], ['identified', 'Identified visitor'], ['visited_7d', 'Company visited 7 d'], ['buyer', 'Buyer title'], ['hot', 'Hot'], ['needs_touch', 'Needs a touch'], ['mine', 'Mine']];
 export const WINDOW_OPTIONS = [['all', 'All time'], ['7', '7 d'], ['30', '30 d'], ['90', '90 d']];
-export const SOURCE_OPTIONS = ['Apollo sequence', 'Identified visitor', 'Partner contact', 'Added by hand', 'Upload'];
+export const SOURCE_OPTIONS = ['Apollo', 'Website', 'Partner', 'Typed', 'Upload'];
 export const NEEDS_TOUCH_DAYS = 14; // REVISABLE (spec P3) - the route's rule
 export const EMPTY_FILTERS = { chips: [], source: '', stage: '', owner: '', window: 'all', q: '', company: null, sizes: [] };
 export const LS_SORT = 'prospector_people_sort'; // { id, dir } | null, per viewer
 
-export const heatRule = (r = { hot: 40, warm: 10, days: 7 }) => `Heat = the Huddle's score and band, from its own function. Replied: hot for ${r.days} days from the reply, then warm unless a human click in the last ${r.days} days. Otherwise hot = score ≥ ${r.hot}, a human click in ${r.days} days, or the company on the site in ${r.days} days with an email sent (an identified visitor counts); warm = score ≥ ${r.warm} or a real open in ${r.days} days; else cold. Opens count humans only (the Huddle's bot rule); a company visit adds points, a visit alone is warm at most.`;
+export const heatRule = (r = { hot: 40, warm: 10, fade: { fresh: 7, mid: 0.5, old: 30, floor: 0.25 } }) => `Heat: the band is the number's bracket, nothing else - hot ≥ ${r.hot} · warm ≥ ${r.warm} · else cold; a warm person is never above a hot one. Older signals fade: whole for ${r.fade.fresh} days, ×${r.fade.mid} to ${r.fade.old} days, then ×${r.fade.floor}. Opens count humans only (scanners and link checkers are excluded); a company visit adds points, a visit alone is warm at most.`;
 
 const DAY = 864e5;
 const slug = name => String(name || '').trim().split(/\s+/)[0].toLowerCase();

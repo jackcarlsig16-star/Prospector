@@ -1,21 +1,25 @@
-import { scoreProspect, huddleSignals, isAutomated, visitSignal } from './heatScore.js';
+import { scoreProspect, isAutomated, visitSignal } from './heatScore.js';
 import { SCANNER_CLICK_WITHIN_SECONDS } from './nextBestAction.js';
 import { replyAt } from './replyTime.js';
 import { selectAllPages } from '../lib/selectAllPages.js';
 import { visitIndex } from './visitJoin.js';
+import { laDateString } from './laDate.js';
 
 // people-v2 Stage 1 (P5) - the per-person email summary behind Pipeline › People, materialised in sales_person_activity
 // and refreshed by the Apollo activity sync and the partner-contacts sync (api/sales/sync.js) - never on page load, never
-// a cron. One person = ONE function over their message + activity rows: the Huddle's own score and band (heatScore.js
-// scoreProspect + huddleSignals, imported, so the numbers equal the Huddle's to the digit) and the counts the table shows
-// - human opens only (isAutomated: the Huddle's bot / scanner rule), scanner clicks out. Keys: prospect:<contact_id>
-// (sales_prospect_state), contact:<id> (a partner contact whose Apollo contact id carries messages), person:<id> (a
-// sales_people row with a visit signal - heat-size-v1). Nothing here reads or writes an address.
+// a cron. One person = ONE function over their message + activity rows: the one score and band (heatScore.js
+// scoreProspect) and the counts the table shows - human opens only (isAutomated: the bot / scanner rule), scanner
+// clicks out. Keys: prospect:<contact_id> (sales_prospect_state), contact:<id> (a partner contact whose Apollo contact
+// id carries messages), person:<id> (a sales_people row with a visit signal - heat-size-v1). Nothing here reads or
+// writes an address.
 // heat-size-v1 Stage 1: the company's latest web_visits row (visitJoin, the People table's own join) and the person's
 // identification date go into the one score through heatScore.visitSignal - the visit points live in heatScore.js alone.
+// heat-v2 H4: every run also upserts today's LA day row per person into sales_person_heat_days (last write of the day
+// wins) - the history the sparkline reads. Day rows are never deleted.
 export const CHUNK = 200;
 const MISSING_TABLE = e => ['42P01', 'PGRST205'].includes(e?.code) || /sales_person_activity.*does not exist|relation .* does not exist|Could not find the table .*sales_person_activity|sales_person_activity.*schema cache/i.test(String(e?.message || ''));
 export const isMigrationPending = MISSING_TABLE;
+const MISSING_DAYS_TABLE = e => ['42P01', 'PGRST205'].includes(e?.code) || /sales_person_heat_days/i.test(String(e?.message || ''));
 const last = xs => { const v = xs.filter(Boolean).sort(); return v.length ? v[v.length - 1] : null; };
 
 // visit: the company's latest web_visits row | null; identifiedAt: the person's sales_people created_at when they were
@@ -25,8 +29,7 @@ export function summarizePerson(messages = [], events = [], now = Date.now(), vi
   const oc = events.filter(e => e.event === 'open' || e.event === 'click');
   const tagged = oc.map(e => ({ ...e, automated: isAutomated(e, deliveredById.get(e.apollo_message_id), SCANNER_CLICK_WITHIN_SECONDS) }));
   const real = tagged.filter(e => !e.automated);
-  const scored = scoreProspect(messages, events, visitSignal({ visit, identifiedAt, now }), now);
-  const sig = huddleSignals(messages, events, scored, now, SCANNER_CLICK_WITHIN_SECONDS);
+  const scored = scoreProspect(messages, events, visitSignal({ visit, identifiedAt, now }), now, SCANNER_CLICK_WITHIN_SECONDS);
   const replies = messages.filter(m => m.replied);
   const latestReply = [...replies].sort((a, b) => String(replyAt(b) || b.delivered_at || '').localeCompare(String(replyAt(a) || a.delivered_at || '')))[0] || null;
   return {
@@ -41,9 +44,10 @@ export function summarizePerson(messages = [], events = [], now = Date.now(), vi
     last_reply_at: latestReply ? replyAt(latestReply) || latestReply.delivered_at || null : null,
     reply_class: latestReply?.reply_class || null,
     heat: scored.score,
-    heat_band: sig.heat_band,
+    heat_band: scored.band,
     last_signal_at: scored.last_signal_at,
     why: scored.why,
+    points: scored.points,
   };
 }
 
@@ -62,8 +66,8 @@ export function buildPersonActivity({ prospects = [], partnerContacts = [], sale
     const msgs = contactId ? msgsBy.get(contactId) || [] : [], evs = contactId ? eventsBy.get(contactId) || [] : [];
     const visit = visitOf(company);
     if (!msgs.length && !evs.length && !visitSignal({ visit, identifiedAt, now })) return;
-    const { why, ...summary } = summarizePerson(msgs, evs, now, visit, identifiedAt);
-    rows.push({ person_key: key, source_table, contact_id: contactId, ...summary, computed_at });
+    const { why, points, ...summary } = summarizePerson(msgs, evs, now, visit, identifiedAt);
+    rows.push({ person_key: key, source_table, contact_id: contactId, ...summary, computed_at, points });
   };
   for (const p of prospects) push(`prospect:${p.contact_id}`, 'sales_prospect_state', p.contact_id, p.opportunity_id ? ref('employer', opp.get(p.opportunity_id)) : p.goal_id ? ref('partner', goal.get(p.goal_id)) : p.company ? { type: 'account', id: null, name: p.company } : null);
   for (const c of partnerContacts) if (c.apollo_contact_id) push(`contact:${c.id}`, 'partner_contacts', c.apollo_contact_id, ref('partner', goal.get(c.goal_id)));
@@ -79,8 +83,15 @@ export function buildPersonActivity({ prospects = [], partnerContacts = [], sale
 const MESSAGE_COLS = 'apollo_message_id,contact_id,sequence_id,step,delivered_at,replied,reply_class,replied_seen_at,replied_at,num_opens,num_clicks,last_opened_at,last_clicked_at,bounced';
 const EVENT_COLS = 'id,apollo_message_id,contact_id,step,event,occurred_at,user_agent,tracking_service';
 
-// Rewrites the workspace's rows (upsert) and drops keys that no longer have activity. -> { rows, removed } or
-// { pending: true } when the migration has not run yet (the sync records that and carries on).
+// The day row a person's summary writes (H4): today's LA date, the heat, the band and the faded points per family.
+export const heatDayRow = (businessId, row, now) => ({
+  business_id: businessId, person_key: row.person_key, day: laDateString(new Date(now)), heat: row.heat, band: row.heat_band,
+  reply_pts: row.points.reply, click_pts: row.points.click, open_pts: row.points.open, visit_pts: row.points.visit, computed_at: row.computed_at,
+});
+
+// Rewrites the workspace's rows (upsert), drops keys that no longer have activity, then upserts today's day row per
+// person. -> { rows, removed, days } (days = 'pending' while the heat_days migration has not run) or { pending: true }
+// when the activity migration has not run yet (the sync records that and carries on).
 export async function writePersonActivity(supabase, businessId, { now = Date.now() } = {}) {
   const all = (table, cols, build = x => x) => selectAllPages(() => build(supabase.from(table).select(cols).eq('business_id', businessId)).order('id'));
   const [prospects, partnerContacts, salesPeople, opportunities, targets, partners, visits, messages, events] = await Promise.all([
@@ -94,7 +105,8 @@ export async function writePersonActivity(supabase, businessId, { now = Date.now
     selectAllPages(() => supabase.from('sales_email_messages').select(MESSAGE_COLS).eq('business_id', businessId).order('apollo_message_id')),
     selectAllPages(() => supabase.from('sales_email_activity').select(EVENT_COLS).eq('business_id', businessId).order('id')),
   ]);
-  const rows = buildPersonActivity({ prospects, partnerContacts, salesPeople, opportunities, targets, partners, visits, messages, events, now }).map(r => ({ business_id: businessId, ...r }));
+  const built = buildPersonActivity({ prospects, partnerContacts, salesPeople, opportunities, targets, partners, visits, messages, events, now });
+  const rows = built.map(({ points, ...r }) => ({ business_id: businessId, ...r }));
   let existing;
   try { existing = await selectAllPages(() => supabase.from('sales_person_activity').select('person_key').eq('business_id', businessId).order('person_key')); }
   catch (e) { if (MISSING_TABLE(e)) return { pending: true, rows: rows.length, removed: 0 }; throw e; }
@@ -108,7 +120,12 @@ export async function writePersonActivity(supabase, businessId, { now = Date.now
     const { error } = await supabase.from('sales_person_activity').delete().eq('business_id', businessId).in('person_key', stale.slice(i, i + CHUNK));
     if (error) throw new Error(error.message);
   }
-  return { rows: rows.length, removed: stale.length };
+  const days = built.map(r => heatDayRow(businessId, r, now));
+  for (let i = 0; i < days.length; i += CHUNK) {
+    const { error } = await supabase.from('sales_person_heat_days').upsert(days.slice(i, i + CHUNK), { onConflict: 'business_id,person_key,day' });
+    if (error) { if (MISSING_DAYS_TABLE(error)) return { rows: rows.length, removed: stale.length, days: 'pending' }; throw new Error(error.message); }
+  }
+  return { rows: rows.length, removed: stale.length, days: days.length };
 }
 
 // people-v2 Stage 2 (P4) - one person's email timeline for the pinned detail card: sent / open / click / reply rows,

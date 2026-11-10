@@ -5,18 +5,20 @@ import { mergePeople, SOURCE_WORD } from './peopleMerge.js';
 import { cleanText } from './scrubText.js';
 import { isMigrationPending, timelineFor, summarizePerson } from './personActivity.js';
 import { readAllViews, writeAllViews, SAVED_VIEWS_MAX } from './scoresRoutes.js';
-import { HEAT_BANDS, visitSignal } from './heatScore.js';
+import { HEAT, HEAT_BANDS, visitSignal } from './heatScore.js';
 import { visitIndex } from './visitJoin.js';
 import { SIZE_BUCKETS } from '../../src/constants/headcount.js';
 
 // people-v2 Stage 1 (P5) - GET goals/people/activity?window=7|30|90|all: ONE read for Pipeline › People. The rows are the
 // union of the three contact tables merged by the P2 rule, each joined to its materialised email summary
-// (sales_person_activity - the Huddle's numbers, written by the sync), its company's latest web_visits row, the buyer
+// (sales_person_activity - the one heat rule's numbers, written by the sync), its company's latest web_visits row, the buyer
 // flag (sales_settings.buyer_titles), the identified date (a visitor-identified person's filing date) and the last touch
 // on any channel. The window keeps the rows whose last email signal or whose company's last visit falls inside it; the
 // counts stay lifetime totals (the summary holds totals). Names and titles only - has_email is a boolean, an address never
 // reaches the output (checked). 503 until the Stage 1 migration has run.
 export const WINDOWS = { 7: 'last 7 days', 30: 'last 30 days', 90: 'last 90 days', all: 'all time' };
+// heat-v2 D3/D5: the one rule the popover, the CSV and Scout's glossary describe - brackets + the fade schedule.
+export const heatRuleOf = () => ({ hot: HEAT_BANDS.hotScore, warm: HEAT_BANDS.warmScore, fade: { fresh: HEAT.fadeFresh, mid: HEAT.fadeMid, old: HEAT.fadeOld, floor: HEAT.fadeFloor } });
 export const NEEDS_TOUCH_DAYS = 14; // REVISABLE (spec P3)
 const ADDRESS = /[^\s@<>()"',;=&#]+@[^\s@<>()"',;=&#]+\.[a-z]{2,}/i;
 const must = r => { if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; };
@@ -92,7 +94,7 @@ export function buildPeopleTable({ rows, activity = [], visits = [], buyerTitles
   shown.sort((a, b) => (b.heat ?? -1) - (a.heat ?? -1) || String(b.last_email?.at || '').localeCompare(String(a.last_email?.at || '')) || String(a.name).localeCompare(String(b.name)));
   const text = JSON.stringify(shown);
   if (ADDRESS.test(text)) throw new Error('people activity: an address reached the result - refused');
-  return { rows: shown, n: shown.length, total: people.length, counts, window: w, heat_threshold: HEAT_BANDS.hotScore, heat_rule: { hot: HEAT_BANDS.hotScore, warm: HEAT_BANDS.warmScore, days: HEAT_BANDS.recentDays }, computed_at: activity.map(a => a.computed_at).filter(Boolean).sort().pop() || null, heat_pending: activity.filter(a => a.heat == null).length };
+  return { rows: shown, n: shown.length, total: people.length, counts, window: w, heat_rule: heatRuleOf(), computed_at: activity.map(a => a.computed_at).filter(Boolean).sort().pop() || null, heat_pending: activity.filter(a => a.heat == null).length };
 }
 
 export async function peopleActivity(supabase, businessId, { window: id = 'all', now = Date.now() } = {}) {
@@ -113,7 +115,15 @@ export async function peopleActivity(supabase, businessId, { window: id = 'all',
     supabase.from('sales_settings').select('buyer_titles').eq('business_id', businessId).maybeSingle(),
   ]);
   const rows = peopleRows({ prospects, salesPeople, partnerContacts, opportunities: opportunities.filter(o => !o.archived_at), targets, partners });
-  return reply(200, buildPeopleTable({ rows, activity, visits, buyerTitles: must(settings)?.buyer_titles || [], window: w, now }));
+  return reply(200, { ...buildPeopleTable({ rows, activity, visits, buyerTitles: must(settings)?.buyer_titles || [], window: w, now }), history_since: await historySince(supabase, businessId) });
+}
+
+// heat-v2 R7: the day the heat history starts = the earliest day row, never a constant; null until the first run after
+// the Stage 1 migration (or while that migration is pending).
+export async function historySince(supabase, businessId) {
+  const { data, error } = await supabase.from('sales_person_heat_days').select('day').eq('business_id', businessId).order('day').limit(1).maybeSingle();
+  if (error) { if (/sales_person_heat_days|42P01|PGRST205/.test(`${error.code} ${error.message}`)) return null; throw new Error(error.message); }
+  return data?.day || null;
 }
 
 export async function peopleActivityRoute(req, res) {

@@ -23,7 +23,7 @@ import PersonDetail from './PersonDetail';
 // under the row: timeline + quick menu, P4); the name opens the company window on its People card; the company name
 // opens the window. P6: a phone gets stacked cards and a scrolling chip row. P7: CSV of the filtered rows (structured
 // fields only) and Share view (saved filters, kind 'people'). Viewers read: no quick-menu writes, no Share view.
-// The heat band is never computed here - it is the route's (the Huddle's rule), and the footnote states that rule.
+// The heat band is never computed here - it is the route's (heat-v2: the number's bracket), and the footnote states that rule.
 // Stage 3: the column widths sum to 1096 px so the table fits the card at 1440 with no sideways scroll (the card's inner
 // width there is 1100 px); Emails and Company visits are two-line cells and Identified / Buyer are glyph columns.
 // heat-size-v1 S1: a Size column (the company record's headcount · source glyph, "unknown" never blank; unknown sorts
@@ -158,7 +158,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
     { id: 'source', label: 'Source', width: 118, sortValue: r => r.source, render: sourceCell },
     { id: 'emails', label: 'Emails (human opens)', width: 128, sortValue: r => r.emails.opened + r.emails.clicked * 2 + r.emails.replied * 4, render: emailsCell, title: emailsText },
     { id: 'last_email', label: 'Last email', width: 104, sortValue: r => r.last_email?.at || null, render: lastEmailCell, title: lastEmailText },
-    { id: 'heat', label: 'Heat', width: 92, sortValue: r => r.heat ?? -1, render: heatCell, title: r => (r.heat == null ? 'no heat yet' : `${r.heat} · ${r.heat_band} - the Huddle's band`) },
+    { id: 'heat', label: 'Heat', width: 92, sortValue: r => r.heat ?? -1, render: heatCell, title: r => (r.heat == null ? 'no heat yet' : `${r.heat} · ${r.heat_band} - the number's bracket`) },
     { id: 'visits', label: 'Company visits', width: 126, sortValue: r => r.visits?.visits_7d ?? -1, render: visitsCell, title: visitsText },
     { id: 'identified', label: 'Identified', glyph: '◉', width: 46, sortValue: r => r.identified_at || null, render: r => (r.identified_at ? <span data-identified={r.identified_at} aria-label={`Identified ${mdy(r.identified_at)}`} style={{ color: SA.accent }}>◉</span> : <Dim />), title: r => (r.identified_at ? `Identified visitor · first seen ${mdy(r.identified_at)}` : 'Not a visitor-identified person') },
     { id: 'buyer', label: 'Buyer', glyph: '✓', width: 46, sortValue: r => (r.buyer ? 1 : 0), render: r => (r.buyer ? <span data-buyer aria-label="buyer title" style={{ color: SA.good }}>✓</span> : <Dim />), title: r => (r.buyer ? 'Buyer title (matches Settings › buyer titles)' : 'Not a buyer title') },
@@ -179,7 +179,7 @@ export default function PeopleTable({ businessId, canEdit, me = null, initialTar
   const chipRow = (
     <div data-people-chips role="group" aria-label="Filter chips" style={{ display: 'flex', gap: 6, ...(phone ? { overflowX: 'auto', flexWrap: 'nowrap', paddingBottom: 4 } : { flexWrap: 'wrap' }) }}>
       <h2 className={phone ? 'ui-sr-only' : 'ui-group-label'} style={{ margin: 0, flex: 'none' }}>Filter</h2>
-      {CHIPS.map(([id, label]) => <ToggleChip key={id} pressed={filters.chips.includes(id)} count={data ? `(${counts[id]})` : ''} onClick={() => set(toggleChip(filters, id))} title={id === 'hot' ? `Heat band hot (score ≥ ${data?.heat_rule?.hot ?? 40}, or the Huddle's reply / click rule)` : id === 'needs_touch' ? 'No touch on any channel in 14 days' : undefined}>{label}</ToggleChip>)}
+      {CHIPS.map(([id, label]) => <ToggleChip key={id} pressed={filters.chips.includes(id)} count={data ? `(${counts[id]})` : ''} onClick={() => set(toggleChip(filters, id))} title={id === 'hot' ? `Heat band hot (score ≥ ${data?.heat_rule?.hot ?? 40})` :id === 'needs_touch' ? 'No touch on any channel in 14 days' : undefined}>{label}</ToggleChip>)}
       <span role="group" aria-label="Size" data-size-chips style={{ display: 'flex', gap: 6, flex: 'none', alignItems: 'center' }}>
         <span className="ui-group-label" aria-hidden="true" style={{ marginLeft: 4 }}>Size</span>
         {SIZE_BUCKETS.map(([id, label]) => <ToggleChip key={id} data-size-chip={id} pressed={filters.sizes.includes(id)} count={data ? `(${sizes[id]})` : ''} title={id === 'unknown' ? 'No headcount on the company record (or no record at all)' : `Company headcount ${label}`} onClick={() => set({ sizes: toggleSize(filters.sizes, id) })}>{label}</ToggleChip>)}

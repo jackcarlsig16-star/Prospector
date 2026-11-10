@@ -4,7 +4,10 @@ import { normName } from './intakeMatch.js';
 // contact_id = a partner contact's apollo_contact_id) is one person; else the same normalised name at the same normalised
 // company is one person; everything else stays apart (the same name at two companies = two people). A merged row lists
 // every source it came from and keeps the richer fields (a title over none, a linked company over a bare name). Pure.
-export const SOURCE_WORD = { prospect: 'Apollo sequence', visitor: 'Identified visitor', contact: 'Partner contact', hand: 'Added by hand', upload: 'Upload' };
+// heat-v2 R5: the source words and glyphs, in the table's source order (a row with several sources shows the first).
+export const SOURCE_ORDER = ['prospect', 'visitor', 'contact', 'hand', 'upload'];
+export const SOURCE_WORD = { prospect: 'Apollo', visitor: 'Website', contact: 'Partner', hand: 'Typed', upload: 'Upload' };
+export const SOURCE_GLYPH = { prospect: '➤', visitor: '🌐', contact: '⇄', hand: '✎', upload: '⇡' };
 
 const better = (a, b) => (a && String(a).trim() ? a : b || null);
 export const nameKey = (name, company) => { const n = normName(name || ''), c = normName(company || ''); return n && c ? `${n}|${c}` : null; };
@@ -35,5 +38,6 @@ export function mergePeople(rows) {
     if (k1) byApollo.set(k1, t);
     if (k2) byNameCo.set(k2, t);
   }
+  for (const t of out) t.sources.sort((a, b) => SOURCE_ORDER.indexOf(a) - SOURCE_ORDER.indexOf(b));
   return out;
 }

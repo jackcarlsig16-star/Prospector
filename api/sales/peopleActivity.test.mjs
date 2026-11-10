@@ -59,11 +59,11 @@ test('mergePeople: the same Apollo contact id is one person (sources listed, the
 test('buildPeopleTable: counts from the summary (by key, or by Apollo id for a merged contact), visits by matched record or by name (the latest pull), buyer, identified, last email + last touch, heat pending, chip counts, the sort, no address', () => {
   const rows = peopleRows({ prospects, salesPeople, partnerContacts, opportunities, targets, partners });
   const t = buildPeopleTable({ rows, activity, visits, buyerTitles: settings[0].buyer_titles, window: windowOf('all', '2026-11-06'), now: NOW });
-  assert.deepEqual([t.n, t.total, t.heat_threshold, t.heat_pending, t.computed_at], [5, 5, 40, 1, '2026-11-06T13:00:00Z']);
+  assert.deepEqual([t.n, t.total, t.heat_rule, t.heat_pending, t.computed_at], [5, 5, { hot: 40, warm: 10, fade: { fresh: 7, mid: 0.5, old: 30, floor: 0.25 } }, 1, '2026-11-06T13:00:00Z']);
   assert.deepEqual(t.rows.map(r => r.name), ['Ana Buyer', 'Bo Ops', 'Dee Same', 'Bo Ops', 'Eve Hand'], 'heat desc, then last email, then name');
   const ana = t.rows[0];
   assert.deepEqual([ana.emails, ana.last_email, ana.heat, ana.heat_band, ana.visits, ana.buyer, ana.has_email, ana.identified_at, ana.last_touch_at, ana.sources, ana.source],
-    [{ sent: 3, opened: 2, clicked: 1, replied: 1, bot_opens: 1 }, { at: '2026-11-05T09:00:00Z', what: 'replied', reply_class: 'follow_up_question' }, 150, 'hot', { visits_7d: 6, last_visit: '2026-11-05', top_page: '/pricing', seen_to: '2026-11-06' }, true, true, null, '2026-11-05T09:00:00Z', ['Apollo sequence'], 'Apollo sequence']);
+    [{ sent: 3, opened: 2, clicked: 1, replied: 1, bot_opens: 1 }, { at: '2026-11-05T09:00:00Z', what: 'replied', reply_class: 'follow_up_question' }, 150, 'hot', { visits_7d: 6, last_visit: '2026-11-05', top_page: '/pricing', seen_to: '2026-11-06' }, true, true, null, '2026-11-05T09:00:00Z', ['Apollo'], 'Apollo']);
   assert.deepEqual([ana.company.name, ana.company.stage, ana.company.owner_user_id, ana.company.employees, ana.company.employees_source], ['Acme Health', 'contacted', 'u1', 5000, 'apollo'], 'heat-size-v1 R6: the company carries its headcount + source');
   const bo = t.rows.find(r => r.name === 'Bo Ops' && r.company.name === 'Quarry Labs');
   assert.deepEqual([bo.emails.sent, bo.emails.bot_opens, bo.heat_band, bo.visits.visits_7d, bo.visits.top_page, bo.identified_at, bo.buyer, bo.last_email.what], [1, 2, 'cold', 1, '/', '2026-11-02', false, 'sent'], 'visits by company name when no record is matched');
@@ -73,7 +73,7 @@ test('buildPeopleTable: counts from the summary (by key, or by Apollo id for a m
   const dee = t.rows.find(r => r.name === 'Dee Same');
   assert.deepEqual([dee.emails.sent, dee.heat, dee.heat_band, dee.last_email.what, dee.last_touch_at, dee.has_email], [2, null, null, 'opened', '2026-11-04T10:00:00Z', true], 'heat pending reads null; the partner touch is the last touch');
   const eve = t.rows.find(r => r.name === 'Eve Hand');
-  assert.deepEqual([eve.source, eve.emails.sent, eve.heat, eve.buyer, eve.visits.visits_7d], ['Added by hand', 0, null, true, 6]);
+  assert.deepEqual([eve.source, eve.emails.sent, eve.heat, eve.buyer, eve.visits.visits_7d], ['Typed', 0, null, true, 6]);
   assert.deepEqual(t.counts, { opened: 2, clicked: 1, replied: 1, sent: 3, identified: 1, visited_7d: 2, buyer: 2, hot: 1, needs_touch: 3 }, 'visited 7 d = the two at Acme (Quarry was seen Oct 23); needs a touch = Bo (Sep 20), Bo @ Harbor and Eve (never)');
   assert.ok(!/@|hidden|harbor\.example/.test(JSON.stringify(t)), 'no address, no email host');
 });
@@ -94,7 +94,7 @@ test('peopleActivity (route): 200 with the table from the fake workspace; 503 mi
   const seed = { sales_prospect_state: prospects, sales_people: salesPeople, partner_contacts: partnerContacts, sales_opportunities: opportunities, sales_targets: targets, sales_goals: partners, web_visits: visits, sales_settings: settings, sales_person_activity: activity };
   const r = await peopleActivity(fakeSupabase(seed), B, { window: '30', now: NOW });
   assert.equal(r.status, 200);
-  assert.deepEqual([r.body.n, r.body.total, r.body.window.id, r.body.rows[0].name, r.body.counts.hot], [4, 5, '30', 'Ana Buyer', 1]);
+  assert.deepEqual([r.body.n, r.body.total, r.body.window.id, r.body.rows[0].name, r.body.counts.hot, r.body.history_since], [4, 5, '30', 'Ana Buyer', 1, null], 'history_since is null until a day row exists');
   assert.ok(!/@/.test(JSON.stringify(r.body)));
   const db = fakeSupabase(seed);
   const base = db.from.bind(db);

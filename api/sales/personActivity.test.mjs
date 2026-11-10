@@ -1,12 +1,13 @@
 // node --test api/sales/personActivity.test.mjs
-// people-v2 Stage 1 - the per-person email summary: its score and band ARE the Huddle's (the same functions on the same
-// rows), its human-open / scanner-click counts are huddle/live's, silent people get no row, the writer upserts and drops
-// stale keys, a missing table reads as "migration pending". Invented people, no addresses anywhere.
+// people-v2 Stage 1 - the per-person email summary: its score and band are heatScore.js scoreProspect's (heat-v2: the one
+// rule), its human-open / scanner-click counts are huddle/live's, silent people get no row, the writer upserts and drops
+// stale keys and (heat-v2 H4) upserts today's day row per person, a missing table reads as "migration pending".
+// Invented people, no addresses anywhere.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { fakeSupabase } from './testing/fakeSupabase.mjs';
-import { summarizePerson, buildPersonActivity, writePersonActivity, isMigrationPending } from './personActivity.js';
-import { scoreProspect, huddleSignals } from './heatScore.js';
+import { summarizePerson, buildPersonActivity, writePersonActivity, isMigrationPending, heatDayRow } from './personActivity.js';
+import { scoreProspect } from './heatScore.js';
 import { buildLiveRows } from './huddleLive.js';
 import { SCANNER_CLICK_WITHIN_SECONDS } from './nextBestAction.js';
 
@@ -25,14 +26,15 @@ const EVENTS = [
   ev(5, 'C', 'm3', 'open', at(1, 2), { tracking_service: 'proofpoint' }),
 ];
 
-test('summarizePerson: the counts = huddle/live\'s (human opens, scanner clicks out), the heat = scoreProspect, the band = huddleSignals, the dates', () => {
+test('summarizePerson: the counts = huddle/live\'s (human opens, scanner clicks out), the heat + band + points = scoreProspect, the dates', () => {
   const a = MESSAGES.filter(m => m.contact_id === 'A'), e = EVENTS.filter(x => x.contact_id === 'A');
   const s = summarizePerson(a, e, NOW);
   assert.deepEqual([s.sent, s.opened_h, s.bot_opens, s.clicked, s.replied, s.reply_class], [2, 1, 1, 1, 1, 'willing_to_meet']);
   assert.deepEqual([s.last_sent_at, s.last_open_at, s.last_click_at, s.last_reply_at], [at(2), at(1, 5), at(2, 6), at(3)]);
   const scored = scoreProspect(a, e, null, NOW);
   assert.equal(s.heat, scored.score);
-  assert.equal(s.heat_band, huddleSignals(a, e, scored, NOW, SCANNER_CLICK_WITHIN_SECONDS).heat_band);
+  assert.deepEqual([s.heat_band, s.points], [scored.band, scored.points]);
+  assert.deepEqual([s.heat, s.heat_band, s.points], [140, 'hot', { reply: 100, click: 40, open: 0, visit: 0 }], 'a 2-day-old reply + a human click yesterday, whole');
   assert.equal(s.last_signal_at, scored.last_signal_at);
   const live = buildLiveRows({ prospects: [{ contact_id: 'A', name: 'Zz Person', status: 'new' }], messages: a, events: e, flags: [], members: [], statusEvents: [], seqById: new Map(), oppById: new Map(), now: NOW })[0];
   assert.deepEqual([live.sent, live.real_opens, live.human_clicks, live.replied, live.bot_opens, live.scanner_clicks], [s.sent, s.opened_h, s.clicked, s.replied > 0, s.bot_opens, 1], 'huddle/live and the summary agree');
@@ -74,14 +76,14 @@ test('buildPersonActivity: a visit row joins a prospect by matched record and a 
   const plainA = summarizePerson(MESSAGES.filter(m => m.contact_id === 'A'), EVENTS.filter(x => x.contact_id === 'A'), NOW);
   assert.equal(by['prospect:A'].heat, plainA.heat + 8 + 3 * 2, 'A: Acme visited (matched record) - 3 visits · 2 people = +14');
   assert.equal(by['prospect:C'].heat, summarizePerson(MESSAGES.filter(m => m.contact_id === 'C'), EVENTS.filter(x => x.contact_id === 'C'), NOW).heat, 'C as a prospect names no company: the Huddle-era number');
-  assert.deepEqual([by['contact:pc1'].heat, by['contact:pc1'].heat_band], [8 + 3, 'hot'], 'pc1 at Harbor Lane (joined by name, 1 visit · 1 person) with a message sent: Hot (H2)');
+  assert.deepEqual([by['contact:pc1'].heat, by['contact:pc1'].heat_band, by['contact:pc1'].points], [8 + 3, 'warm', { reply: 0, click: 0, open: 0, visit: 11 }], 'pc1 at Harbor Lane (joined by name, 1 visit · 1 person): 11 is warm - the bracket, no sent-message exception (heat-v2 H2)');
   assert.deepEqual([by['person:sp3'].contact_id, by['person:sp3'].source_table, by['person:sp3'].sent, by['person:sp3'].heat, by['person:sp3'].heat_band], [null, 'sales_people', 0, 14, 'warm'], 'a hand-added employee at a visited company: browse-only, Warm at most');
-  assert.deepEqual([by['person:sp1'].heat, by['person:sp1'].heat_band], [8 + 3, 'hot'], 'sp1 identified Nov 5 (1 d ago) at a quiet company: one visit by one person on created_at, Hot (they are the visit)');
+  assert.deepEqual([by['person:sp1'].heat, by['person:sp1'].heat_band], [8 + 3, 'warm'], 'sp1 identified Nov 5 (1 d ago) at a quiet company: one visit by one person on created_at, 11 = warm');
   assert.ok(rows.every(r => !('why' in r)), 'the stored row has no why column');
   assert.ok(!/@/.test(JSON.stringify(rows)));
 });
 
-test('writePersonActivity: upserts every row, drops keys with no activity left, a second run is idempotent; a missing table = pending (no throw)', async () => {
+test('writePersonActivity: upserts every row, drops keys with no activity left, writes today\'s LA day row per person, a second run is idempotent (last write of the day wins, day rows never deleted); a missing table = pending (no throw)', async () => {
   const db = fakeSupabase({
     sales_prospect_state: [{ business_id: B, contact_id: 'A' }, { business_id: B, contact_id: 'B' }, { business_id: B, contact_id: 'C' }],
     partner_contacts: [{ id: 'pc1', business_id: B, apollo_contact_id: 'C' }],
@@ -89,14 +91,28 @@ test('writePersonActivity: upserts every row, drops keys with no activity left, 
     sales_person_activity: [{ business_id: B, person_key: 'prospect:GONE', source_table: 'sales_prospect_state', contact_id: 'GONE', sent: 1 }, { business_id: '00000000-0000-4000-8000-0000000000b2', person_key: 'prospect:OTHER', source_table: 'sales_prospect_state', contact_id: 'OTHER', sent: 1 }],
   });
   const r = await writePersonActivity(db, B, { now: NOW });
-  assert.deepEqual(r, { rows: 3, removed: 1 });
+  assert.deepEqual(r, { rows: 3, removed: 1, days: 3 });
   const keys = db.db.sales_person_activity.map(x => `${x.business_id === B ? 'B' : 'other'}:${x.person_key}`).sort();
   assert.deepEqual(keys, ['B:contact:pc1', 'B:prospect:A', 'B:prospect:C', 'other:prospect:OTHER']);
   const a = db.db.sales_person_activity.find(x => x.person_key === 'prospect:A');
   assert.deepEqual([a.sent, a.opened_h, a.clicked, a.replied, a.heat_band], [2, 1, 1, 1, 'hot']);
+  const days = db.db.sales_person_heat_days;
+  assert.deepEqual(days.map(d => [d.person_key, d.day, d.heat, d.band, d.reply_pts, d.click_pts, d.open_pts, d.visit_pts]).sort(), [['contact:pc1', '2026-11-06', 0, 'cold', 0, 0, 0, 0], ['prospect:A', '2026-11-06', 140, 'hot', 100, 40, 0, 0], ['prospect:C', '2026-11-06', 0, 'cold', 0, 0, 0, 0]].sort(), 'one day row per person, the LA day, the faded points per family');
+  assert.ok(days.every(d => d.business_id === B && d.computed_at === new Date(NOW).toISOString()));
   const again = await writePersonActivity(db, B, { now: NOW + 1000 });
-  assert.deepEqual(again, { rows: 3, removed: 0 });
+  assert.deepEqual(again, { rows: 3, removed: 0, days: 3 });
   assert.equal(db.db.sales_person_activity.filter(x => x.business_id === B).length, 3);
+  assert.deepEqual([db.db.sales_person_heat_days.length, db.db.sales_person_heat_days.find(d => d.person_key === 'prospect:A').computed_at], [3, new Date(NOW + 1000).toISOString()], 'the same day upserts in place: still 3 rows, the later computed_at wins');
+  const nextDay = await writePersonActivity(db, B, { now: NOW + 864e5 });
+  assert.deepEqual([nextDay.days, db.db.sales_person_heat_days.length, new Set(db.db.sales_person_heat_days.map(d => d.day)).size], [3, 6, 2], 'the next day adds a row per person; yesterday\'s stay');
+  assert.deepEqual(heatDayRow(B, { person_key: 'prospect:Z', heat: 12, heat_band: 'warm', points: { reply: 0, click: 0, open: 5, visit: 7 }, computed_at: 't' }, NOW), { business_id: B, person_key: 'prospect:Z', day: '2026-11-06', heat: 12, band: 'warm', reply_pts: 0, click_pts: 0, open_pts: 5, visit_pts: 7, computed_at: 't' });
+  assert.ok(!/@/.test(JSON.stringify(db.db.sales_person_heat_days)));
+  // The heat_days migration not run yet: the activity rows still land, days reads pending.
+  const noDays = fakeSupabase({ sales_prospect_state: [{ business_id: B, contact_id: 'A' }], partner_contacts: [], sales_email_messages: MESSAGES, sales_email_activity: EVENTS, sales_person_activity: [] });
+  const base0 = noDays.from.bind(noDays);
+  noDays.from = t => (t === 'sales_person_heat_days' ? { upsert: async () => ({ error: { code: '42P01', message: 'relation "public.sales_person_heat_days" does not exist' } }) } : base0(t));
+  assert.deepEqual(await writePersonActivity(noDays, B, { now: NOW }), { rows: 1, removed: 0, days: 'pending' });
+  assert.equal(noDays.db.sales_person_activity.length, 1);
   // Pending: the table is not there yet.
   const pendingDb = fakeSupabase({ sales_prospect_state: [{ business_id: B, contact_id: 'A' }], partner_contacts: [], sales_email_messages: MESSAGES, sales_email_activity: EVENTS });
   const base = pendingDb.from.bind(pendingDb);

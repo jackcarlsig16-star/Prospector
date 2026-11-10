@@ -67,7 +67,7 @@ test('People views: save (state cleaned to the known chips / selects / window), 
 
 // heat-size-v1 Stage 2 (Stage 1 choice 1): the pinned card's heat is computed live by summarizePerson over the person's
 // rows + their company's latest visit row (the table's join) + their identification date; null with no signal at all.
-test('personDetail.heat: a prospect at a visited employer carries the visit why line; a visitor identified today at a quiet company is Hot on their own date; no rows + no visit = null', async () => {
+test('personDetail.heat: a prospect at a visited employer carries the visit why line; a visitor identified today at a quiet company reads 11 · warm on their own date; no rows + no visit = null', async () => {
   const O = '00000000-0000-4000-8000-00000000e001', T = '00000000-0000-4000-8000-00000000e002';
   const today = new Date().toISOString().slice(0, 10);
   const db = fakeSupabase({
@@ -86,7 +86,7 @@ test('personDetail.heat: a prospect at a visited employer carries the visit why 
   const q = await personDetail(db, B, { key: 'prospect:Q' });
   assert.equal(q.body.heat, null, 'no rows, no visit: nothing to say');
   const v = await personDetail(db, B, { key: 'person:sp1' });
-  assert.deepEqual([v.body.heat.score, v.body.heat.band, v.body.heat.why], [11, 'hot', ['Identified on the site 0 d ago +11']]);
+  assert.deepEqual([v.body.heat.score, v.body.heat.band, v.body.heat.why], [11, 'warm', ['Identified on the site 0 d ago +11']]);
   const h = await personDetail(db, B, { key: 'person:sp2' });
   assert.equal(h.body.heat, null, 'a hand-added person at a quiet company');
   assert.ok(!/@/.test(JSON.stringify([p.body, v.body])));

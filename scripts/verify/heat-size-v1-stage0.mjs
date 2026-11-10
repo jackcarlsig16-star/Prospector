@@ -1,3 +1,4 @@
+// Ran at HEAD 5035b3e-era code, before heat-v2 Stage 1 removed huddleSignals - kept as the heat-size Stage 0 record; it no longer runs as is.
 // heat-size-v1 Stage 0 - READ-ONLY (0 writes, 0 Claude, 0 Apollo). HomeLover only. Reads the same tables one
 // GET goals/people/activity + one writePersonActivity read (sales_person_activity, the three contact tables, the three
 // record tables, web_visits, sales_email_messages, sales_email_activity, sales_settings) - once. Prints counts and

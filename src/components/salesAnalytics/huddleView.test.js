@@ -1,4 +1,4 @@
-import { applyFilters, sortProspects, needsAction, onAutopilot, byCompany, dueBucket, weekEnd, signalOf, actionText } from './huddleView';
+import { sortProspects, needsAction, onAutopilot, dueBucket, weekEnd, signalOf, actionText } from './huddleView';
 
 // Tue 2026-10-06; its Mon-Sun week ends Sun 2026-10-11.
 const T = '2026-10-06';
@@ -34,29 +34,11 @@ test('other sorts', () => {
   expect(sortProspects([opener, clicker, quiet], 'activity', T).map(p => p.id)).toEqual(['clicker', 'opener', 'quiet']);
 });
 
-test('filters: person, heat, due buckets, stale', () => {
-  expect(applyFilters(all, { ...F, owner: 'cyrus' }, T).map(p => p.id).sort()).toEqual(['opener', 'reply']);
-  expect(applyFilters(all, { ...F, heat: 'warm' }, T).map(p => p.id).sort()).toEqual(['opener', 'overdue']);
-  expect(applyFilters(all, { ...F, due: 'overdue' }, T).map(p => p.id)).toEqual(['overdue']);
-  expect(applyFilters(all, { ...F, due: 'today' }, T).map(p => p.id)).toEqual(['dueToday']);
-  expect(applyFilters(all, { ...F, due: 'week' }, T).map(p => p.id)).toEqual(['dueToday']);
-  expect(applyFilters(all, { ...F, due: 'none' }, T).length).toBe(6);
-  expect(applyFilters(all, { ...F, stale: true }, T).map(p => p.id)).toEqual(['quiet']);
-});
-
 test('due buckets across the week end', () => {
   expect(weekEnd(T)).toBe('2026-10-11');
   expect(weekEnd('2026-10-11')).toBe('2026-10-11');
   expect(dueBucket(P({ next_action_due: '2026-10-11' }), T)).toBe('week');
   expect(dueBucket(P({ next_action_due: '2026-10-12' }), T)).toBe('later');
-});
-
-test('by company: one group per company, hottest first, people inside sorted', () => {
-  const groups = byCompany([opener, clicker, quiet], 'signal', T);
-  expect(groups.map(g => g.company)).toEqual(['Big', 'Co']);
-  expect(groups[0].people.map(p => p.id)).toEqual(['clicker', 'opener']);
-  expect(groups[0].band).toBe('hot');
-  expect(groups[0].owners.sort()).toEqual(['cyrus', 'jack']);
 });
 
 test('row chip, context and action text', () => {

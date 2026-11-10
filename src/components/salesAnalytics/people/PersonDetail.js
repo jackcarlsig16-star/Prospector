@@ -78,7 +78,7 @@ export default function PersonDetail({ businessId, row, canEdit, meId, onToast, 
           <span className="ui-group-label">Email timeline</span>
           {error && <ErrorNote message={error} />}
           {!detail && !error && <div style={{ color: SA.muted, marginTop: 6 }}>Loading…</div>}
-          {detail && !timeline.length && <div style={{ color: SA.muted, marginTop: 6 }}>{row.sources.includes('Apollo sequence') || row.sources.includes('Partner contact') ? 'No emails on record.' : 'Not in an email sequence - identified on the site, no email activity.'}</div>}
+          {detail && !timeline.length && <div style={{ color: SA.muted, marginTop: 6 }}>{row.sources.includes('Apollo') || row.sources.includes('Partner') ? 'No emails on record.' : 'Not in an email sequence - identified on the site, no email activity.'}</div>}
           {timeline.length > 0 && (
             <ul style={{ listStyle: 'none', margin: '6px 0 0', padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
               {timeline.slice(0, 20).map((t, i) => {

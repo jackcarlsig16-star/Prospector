@@ -68,31 +68,8 @@ export function actionText(p, today) {
   return p.next_action ? NEXT_ACTION_LABELS[p.next_action] : p.next_best_action.label;
 }
 
-// filters: { owner: 'team'|'jack'|'cyrus', heat: 'all'|band, due: 'all'|bucket, stale: bool }
-export function applyFilters(prospects, f, today) {
-  return prospects.filter(p =>
-    (f.owner === 'team' || p.owner === f.owner)
-    && (f.heat === 'all' || p.heat_band === f.heat)
-    && (f.due === 'all' || (f.due === 'week' ? ['today', 'week'].includes(dueBucket(p, today)) : dueBucket(p, today) === f.due))
-    && (!f.stale || p.stale));
-}
-
 export function sortProspects(list, sort, today) {
   return [...list].sort(SORTS[sort].cmp(today));
-}
-
-const BAND_ORDER = { hot: 0, warm: 1, cold: 2 };
-export function byCompany(prospects, sort, today) {
-  const groups = new Map();
-  for (const p of prospects) {
-    const key = (p.company || 'No company').trim();
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(p);
-  }
-  return [...groups.entries()].map(([company, people]) => {
-    const sorted = sortProspects(people, sort, today);
-    return { company, people: sorted, band: sorted.map(p => p.heat_band).sort((a, b) => BAND_ORDER[a] - BAND_ORDER[b])[0], owners: [...new Set(people.map(p => p.owner))] };
-  }).sort((a, b) => BAND_ORDER[a.band] - BAND_ORDER[b.band] || b.people.length - a.people.length || a.company.localeCompare(b.company));
 }
 
 const md = iso => new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' });

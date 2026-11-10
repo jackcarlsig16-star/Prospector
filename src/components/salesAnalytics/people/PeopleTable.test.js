@@ -12,15 +12,15 @@ jest.mock('../../../utils/useMediaQuery', () => () => mockPhone.on);
 // people-v2 Stage 2 - Pipeline › People over invented rows in the route's shape: the 10 columns in the route's order, the
 // chips with counts, select-vs-open (row = the pinned card with the timeline + quick menu; name = the company window on
 // its People card), the quick menu's writes through the existing paths with Undo, CSV without an address, Share view,
-// the Viewer's read-only table, the phone's cards. The heat band is the route's; the footnote states the Huddle's rule.
-const row = (name, over = {}) => ({ key: `prospect:${name.replace(/\s/g, '')}`, sources: ['Apollo sequence'], source: 'Apollo sequence', name, title: 'VP People', company: { type: 'employer', id: 'o1', name: 'Acme Health', stage: 'contacted', owner_user_id: 'u1' }, status: 'new', owner: 'jack',
+// the Viewer's read-only table, the phone's cards. The heat band is the route's; the footnote states the bracket rule.
+const row = (name, over = {}) => ({ key: `prospect:${name.replace(/\s/g, '')}`, sources: ['Apollo'], source: 'Apollo', name, title: 'VP People', company: { type: 'employer', id: 'o1', name: 'Acme Health', stage: 'contacted', owner_user_id: 'u1' }, status: 'new', owner: 'jack',
   emails: { sent: 1, opened: 0, clicked: 0, replied: 0, bot_opens: 0 }, last_email: { at: '2026-11-03T12:00:00Z', what: 'sent', reply_class: null }, heat: 5, heat_band: 'cold', visits: null, identified_at: null, buyer: false, has_email: true, last_touch_at: '2026-11-03T12:00:00Z', ...over });
 const ROWS = [
   row('Crystal Pringle', { emails: { sent: 2, opened: 4, clicked: 0, replied: 1, bot_opens: 0 }, last_email: { at: '2026-11-03T12:00:00Z', what: 'replied', reply_class: 'follow_up_question' }, heat: 108, heat_band: 'warm', buyer: true, visits: { visits_7d: 6, last_visit: '2026-11-05', top_page: '/pricing', seen_to: '2026-11-06' } }),
   row('Cristina Torres', { owner: 'cyrus', emails: { sent: 3, opened: 8, clicked: 4, replied: 0, bot_opens: 1 }, last_email: { at: '2026-10-19T12:00:00Z', what: 'clicked', reply_class: null }, heat: 68, heat_band: 'hot', company: { type: 'employer', id: 'o2', name: 'Equinox', stage: 'target', owner_user_id: 'u2' } }),
-  row('Bo Ops', { key: 'person:sp1', sources: ['Identified visitor'], source: 'Identified visitor', identified_at: '2026-11-02', company: { type: 'target', id: 't1', name: 'Quarry Labs', stage: 'researching', owner_user_id: null }, owner: null, status: null, emails: { sent: 0, opened: 0, clicked: 0, replied: 0, bot_opens: 0 }, last_email: null, heat: null, heat_band: null, has_email: false, last_touch_at: null, visits: { visits_7d: 1, last_visit: '2026-10-22', top_page: '/', seen_to: '2026-10-23' } }),
+  row('Bo Ops', { key: 'person:sp1', sources: ['Website'], source: 'Website', identified_at: '2026-11-02', company: { type: 'target', id: 't1', name: 'Quarry Labs', stage: 'researching', owner_user_id: null }, owner: null, status: null, emails: { sent: 0, opened: 0, clicked: 0, replied: 0, bot_opens: 0 }, last_email: null, heat: null, heat_band: null, has_email: false, last_touch_at: null, visits: { visits_7d: 1, last_visit: '2026-10-22', top_page: '/', seen_to: '2026-10-23' } }),
 ];
-const DATA = { rows: ROWS, n: 3, total: 3, counts: {}, window: { id: 'all', label: 'all time', since: null, until: '2026-11-06' }, heat_threshold: 40, heat_rule: { hot: 40, warm: 10, days: 7 }, computed_at: '2026-11-06T13:00:00Z', heat_pending: 1 };
+const DATA = { rows: ROWS, n: 3, total: 3, counts: {}, window: { id: 'all', label: 'all time', since: null, until: '2026-11-06' }, heat_rule: { hot: 40, warm: 10, fade: { fresh: 7, mid: 0.5, old: 30, floor: 0.25 } }, history_since: null, computed_at: '2026-11-06T13:00:00Z', heat_pending: 1 };
 const ME = { profile: { id: 'u1', display_name: 'Jack Carlson' } };
 const MEMBERS = [{ user_id: 'u1', name: 'Jack Carlson', role: 'owner', color: '#6F8CF0' }, { user_id: 'u2', name: 'Cyrus Test', role: 'member', color: '#C97626' }];
 beforeEach(() => {
@@ -34,7 +34,7 @@ beforeEach(() => {
 afterEach(() => jest.clearAllMocks());
 const table = async () => { render(<PeopleTable businessId="b1" canEdit me={ME} />); return screen.findByRole('table', { name: 'People' }); };
 
-test('the table: 10 columns, rows in the route\'s order, the heat band from the route (108 · warm above 68 · hot stays warm), chips with counts narrow the set, "Showing n of N" with removable chips, the footnote states the Huddle\'s rule', async () => {
+test('the table: 10 columns, rows in the route\'s order, the heat band from the route (108 · warm above 68 · hot stays warm), chips with counts narrow the set, "Showing n of N" with removable chips, the footnote states the bracket rule', async () => {
   const t = await table();
   expect(within(t).getAllByRole('columnheader').map(h => h.textContent.replace(/^[◉✓]/, '').replace(/ [↕▲▼]$/, ''))).toEqual(['Person', 'Company', 'Size (company)', 'Source', 'Emails (human opens)', 'Last email', 'Heat', 'Company visits', 'Identified', 'Buyer', 'Last touch']);
   // heat-size-v1 S1: every fixture company lacks a headcount -> "unknown" cells, the Unknown chip counts 3, the coverage line (R5).
@@ -46,7 +46,7 @@ test('the table: 10 columns, rows in the route\'s order, the heat band from the 
   expect(names()).toEqual(['Crystal Pringle', 'Cristina Torres', 'Bo Ops']);
   const bands = [...t.querySelectorAll('[data-heat-band]')].map(el => `${el.dataset.heatBand}:${el.textContent}`);
   expect(bands).toEqual(['warm:108 · warm', 'hot:68 · hot']);
-  expect(screen.getByText(/Heat = the Huddle's score and band, from its own function\. Replied: hot for 7 days from the reply, then warm unless a human click in the last 7 days\. Otherwise hot = score ≥ 40, a human click in 7 days, or the company on the site in 7 days with an email sent \(an identified visitor counts\); warm = score ≥ 10 or a real open in 7 days; else cold\. Opens count humans only \(the Huddle's bot rule\); a company visit adds points, a visit alone is warm at most\. 1 person has no heat yet/)).toBeInTheDocument();
+  expect(screen.getByText(/^Heat: the band is the number's bracket, nothing else - hot ≥ 40 · warm ≥ 10 · else cold; a warm person is never above a hot one\. Older signals fade: whole for 7 days, ×0\.5 to 30 days, then ×0\.25\. Opens count humans only \(scanners and link checkers are excluded\); a company visit adds points, a visit alone is warm at most\. 1 person has no heat yet \(the next Apollo sync computes it\)\. Times are Pacific\.$/)).toBeInTheDocument();
   expect(screen.getByText('Showing 3 of 3')).toBeInTheDocument();
   const chips = within(screen.getByRole('group', { name: 'Filter chips' }));
   expect(chips.getByRole('button', { name: /^Opened/ })).toHaveTextContent('(2)');
@@ -147,7 +147,7 @@ test('CSV: the filtered rows, structured fields only, never an address; Share vi
   await waitFor(() => expect(texts).toHaveLength(1));
   expect(texts[0].split('\r\n')[0]).toMatch(/^Person,Title,Company,Company stage,Company size,Size source,Source,Sent,Opened \(human\),Clicked,Replied,/);
   expect(texts[0].split('\r\n')).toHaveLength(2);
-  expect(texts[0]).toMatch(/Crystal Pringle,VP People,Acme Health,contacted,unknown,,Apollo sequence,2,4,0,1,/);
+  expect(texts[0]).toMatch(/Crystal Pringle,VP People,Acme Health,contacted,unknown,,Apollo,2,4,0,1,/);
   expect(texts[0]).not.toMatch(/@/);
   fireEvent.click(screen.getByRole('button', { name: 'Share view' }));
   fireEvent.change(screen.getByLabelText('View name'), { target: { value: 'Replied' } });
