@@ -12,6 +12,7 @@ import { refreshRecentWeeks, EMAIL_COUNTS_MAX_CALLS } from './emailCounts.js';
 import { isDeadRun, finalStatus } from './syncRunStatus.js';
 import { syncPartnerContacts, ranToday, PARTNER_CONTACTS_MAX_CALLS } from './partnerContactsSync.js';
 import { writePersonActivity } from './personActivity.js';
+import { writeFunnelDays } from './funnelRoutes.js';
 import { runDailyApolloMoves, movesRanToday } from './partnerApolloTouches.js';
 
 // PROPOSED values (SPEC) - sized from real counts in the audit (21
@@ -279,6 +280,9 @@ export async function runSync({ businessId, trigger, maxCalls, partnerPeople }) 
   } catch (err) {
     adapterErrors.email_counts = err instanceof CallCapError ? 'call_cap' : err.message;
   }
+  // email-funnel-v1 F3: the funnel's day rows, rewritten from what this run stored (delivered, opens, clicks, replies).
+  let funnelDays = null;
+  try { funnelDays = await writeFunnelDays(supabase, businessId); } catch (err) { adapterErrors.funnel_days = String(err.message || err).slice(0, 300); }
 
   // partner-360-v1 Stage 3 - the people Apollo knows at confirmed-domain
   // partners, on its own counter, once per LA day unless forced.
@@ -326,6 +330,7 @@ export async function runSync({ businessId, trigger, maxCalls, partnerPeople }) 
     email_counts: emailCountWeeks,
     partner_contacts: partnerContacts,
     person_activity: personActivity,
+    funnel_days: funnelDays,
     apollo_moves: apolloMoves,
     missing: missingAll,
     adapter_errors: adapterErrors,

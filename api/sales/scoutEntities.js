@@ -122,8 +122,8 @@ export const VOCABULARY = {
 
 // D7: the house words from the data and the constants the screens use - never a hand-written prompt.
 export async function glossary(sb, { businessId }) {
-  const [{ mergeWeights }, { BAND_WORD }, { SOURCE_WORD }, settings, members, colors, reps] = await Promise.all([
-    import('./intentScoreRun.js'), import('./teamEmails/visitorEmail.js'), import('./companyBrief.js'),
+  const [{ mergeWeights }, { BAND_WORD }, { SOURCE_WORD }, { WORDING }, settings, members, colors, reps] = await Promise.all([
+    import('./intentScoreRun.js'), import('./teamEmails/visitorEmail.js'), import('./companyBrief.js'), import('./funnelMath.js'),
     sb.from('sales_settings').select('score_weights, buyer_titles').eq('business_id', businessId).maybeSingle().then(must),
     sb.from('business_members').select('user_id, name, role, profile:profiles!business_members_user_id_fkey(display_name)').eq('business_id', businessId).not('user_id', 'is', null).then(must),
     memberColors(sb, businessId).catch(() => new Map()),
@@ -141,6 +141,7 @@ export async function glossary(sb, { businessId }) {
     `Source labels: ${Object.entries(SOURCE_WORD).map(([k, v]) => `${k} = ${v}`).join(', ')}.${Object.keys(repWords).length ? ` Reps: ${Object.keys(repWords).map(w => `${w[0].toUpperCase()}${w.slice(1)} refers through Upside`).join(', ')}.` : ''}`,
     names.length ? `Members: ${names.map(m => `${m.name} (${m.role}${m.color ? `, ${m.color}` : ''})`).join(', ')}.` : null,
     settings?.buyer_titles?.length ? `Buyer titles: ${settings.buyer_titles.slice(0, 20).join(', ')}.` : null,
+    `Email → site (the funnel route, the daily email's tables): ${WORDING.company} ${WORDING.person} Opens, clicks, replies and meetings are ${WORDING.cohort}. ${WORDING.since}`,
   ].filter(Boolean);
   const sources = { ...repWords };
   for (const [k, v] of Object.entries(SOURCE_WORD)) if (!['other', 'scout', 'website'].includes(k)) for (const w of v.toLowerCase().split(' / ')) sources[w] = k;

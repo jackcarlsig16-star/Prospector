@@ -17,6 +17,7 @@ export const salesReads = {
   sourcesFunnel: lazy('./sourceRoutes.js', 'sourcesFunnel'),
   attention: lazy('./attentionRoutes.js', 'attention'),
   listClients: lazy('./clients.js', 'listClients'),
+  loadFunnel: lazy('./funnelRoutes.js', 'loadFunnel'),
 };
 const COMPANY_ENTITIES = new Set([null, 'partners', 'employers', 'targets']);
 const day = v => (v ? String(v).slice(0, 10) : null);
@@ -80,7 +81,7 @@ export const salesIntents = [
       const kept = rows.filter(r => !ask.since || (r.due_date && day(r.due_date) >= ask.since) || day(r.created_at) >= ask.since).filter(r => !ask.terms.length || ask.terms.some(t => String(r.text || '').toLowerCase().includes(t)));
       return { read: `openTodos (${total} open${ask.mine ? ', mine' : ''})`, items: kept.map(r => ({ entity: 'todos', id: r.id, title: cleanText(r.text, 140), date: day(r.due_date), text: [cleanText(r.text, 200), 'open to-do', r.due_date ? `due ${day(r.due_date)}` : 'no date', r.owner_user_id ? (r.owner_user_id === auth.user.id ? 'mine' : 'another owner') : 'unassigned', r.steps?.length ? `${r.steps.filter(s => s.done).length}/${r.steps.length} steps` : null].filter(Boolean).join(' · ') })) };
     } },
-  { id: 'visitors', example: 'who visited yesterday', suggest: true, match: ask => ask.flags.visitors && ask.entity !== 'people',
+  { id: 'visitors', example: 'who visited yesterday', suggest: true, match: ask => ask.flags.visitors && ask.entity !== 'people' && !ask.flags.email_site,
     async run(sb, { businessId, ask, today }) {
       const last = ask.until || addDays(today, -1);
       const first = ask.since || last;
@@ -123,7 +124,22 @@ export const salesIntents = [
       if (ask.terms.length) rows = rows.filter(p => ask.terms.some(t => `${p.name} ${p.title || ''} ${p.company?.name || ''}`.toLowerCase().includes(t)));
       return { read: `goals/people/activity?window=${win} (${r.body.rows.length} people)`, items: rows.slice(0, 40).map(personItem) };
     } },
-  { id: 'emails', example: 'how are our emails doing this month', match: ask => ask.flags.emails || ask.entity === 'emails',
+  // email-funnel-v1 F7: the two rates and the funnel steps straight from the funnel route (funnelMath, the one function),
+  // so Scout's answer carries the same numbers as the daily email and the Web visitors page.
+  { id: 'email_site', example: "what's our email to site rate", match: ask => ask.flags.email_site,
+    async run(sb, { businessId, now }) {
+      const r = await salesReads.loadFunnel(sb, businessId, { windows: ['yesterday', '7d', '30d'], now });
+      if (r.status !== 200) return { read: `goals/funnel (${r.status})`, items: [] };
+      const pct = x => (x == null ? '—' : `${(100 * x).toFixed(1)} %`);
+      const items = [];
+      for (const w of Object.values(r.body.windows)) {
+        const label = w.key === 'yesterday' ? 'yesterday' : w.key === '7d' ? 'last 7 days' : 'last 30 days';
+        items.push({ entity: 'funnel', id: `email_site:${w.key}`, title: `Email → site, ${label}`, text: `email to site ${label} (${w.from} → ${w.to}) · company rate ${pct(w.company_rate.rate)} = ${w.company_rate.n} of ${w.company_rate.d} companies emailed visited the site in the window (${w.companies_no_record} without a record) · person rate ${pct(w.person_rate.rate)} = ${w.person_rate.n} of ${w.person_rate.d} people emailed were identified on the site · of ${w.delivered} emails delivered, so far: ${w.human_opens} human opens · ${w.human_clicks} clicks · ${w.replies} replies · ${w.meetings} meetings booked${w.companies_visited_names.length ? ` · visited: ${w.companies_visited_names.join(', ')}` : ''}` });
+      }
+      items.push({ entity: 'funnel', id: 'email_site:how', title: 'How the email → site rates are computed', text: `${r.body.wording.company} ${r.body.wording.person} ${r.body.wording.since}${r.body.ready ? '' : ' Delivered rows do not reach that day yet, so no rate is shown in the email.'}` });
+      return { read: 'goals/funnel?windows=yesterday,7d,30d', items };
+    } },
+  { id: 'emails', example: 'how are our emails doing this month', match: ask => !ask.flags.email_site && (ask.flags.emails || ask.entity === 'emails'),
     async run(sb, { businessId, ask, now }) {
       const period = ask.since_kind === 'this week' || ask.since_kind === 'last week' ? 'week' : 'month';
       const p = await salesReads.loadPulse(sb, businessId, { period }, new Date(now));
@@ -132,7 +148,7 @@ export const salesIntents = [
       walk(p, []);
       return { read: `goals/pulse?period=${period}`, items: items.slice(0, 80) };
     } },
-  { id: 'funnel', example: 'show me the referral funnel', match: ask => ask.flags.funnel && !ask.band && !ask.company.length && ask.entity !== 'people',
+  { id: 'funnel', example: 'show me the referral funnel', match: ask => ask.flags.funnel && !ask.flags.email_site && !ask.band && !ask.company.length && ask.entity !== 'people',
     async run(sb, { businessId, now }) {
       const r = await salesReads.sourcesFunnel(sb, { businessId, query: {}, now });
       if (r.status !== 200) return { read: `goals/sources/funnel (${r.status})`, items: [] };

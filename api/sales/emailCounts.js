@@ -68,17 +68,38 @@ export async function fetchStat(ctx, stat, weekStart) {
 
 const SENT_STATS = ['delivered', 'bounced', 'spam_blocked'];
 
+// email-funnel-v1 Stage 1 (R1): one sales_email_delivered row per delivered message the fetch pages through - the
+// funnel's denominator, 0 extra calls. Ids, the sending mailbox, the LA day and the step only; never a name or address.
+export function deliveredRows(messages) {
+  const seen = new Set(), out = [];
+  for (const m of messages) {
+    if (!m.id || !m.contact_id || !m.completed_at || seen.has(m.id)) continue;
+    seen.add(m.id);
+    out.push({ apollo_message_id: String(m.id), contact_id: String(m.contact_id), account_id: m.account_id ? String(m.account_id) : null, mailbox: String(m.from_email || 'unknown').toLowerCase(), delivered_at: m.completed_at, delivered_day: laDateString(new Date(m.completed_at)), sequence_id: m.emailer_campaign_id || '', step: typeof m.campaign_position === 'number' ? m.campaign_position : 0 });
+  }
+  return out;
+}
+const MISSING_DELIVERED = e => ['42P01', 'PGRST205'].includes(e?.code) || /sales_email_delivered/i.test(String(e?.message || ''));
+export async function writeDelivered({ supabase, businessId, rows }) {
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await supabase.from('sales_email_delivered').upsert(rows.slice(i, i + 500).map(r => ({ ...r, business_id: businessId })), { onConflict: 'business_id,apollo_message_id' });
+    if (error) { if (MISSING_DELIVERED(error)) return 'pending'; throw new Error(`email counts: delivered rows failed: ${error.message}`); }
+  }
+  return rows.length;
+}
+
 // Returns the week's rows (one per day x mailbox x sequence x step with any
 // activity), whether every stat was fully paged, and the sent messages'
 // first step-1 touch per company (sales-goals-v1 REV4, no extra calls).
 export async function fetchWeek(ctx, weekStart) {
   const byKey = new Map();
   const truncated = [];
-  const sent = [];
+  const sent = [], deliveredMsgs = [];
   for (const [stat, column] of STATS) {
     const { messages, complete } = await fetchStat(ctx, stat, weekStart);
     if (!complete) truncated.push(stat);
     if (SENT_STATS.includes(stat)) sent.push(...messages);
+    if (stat === 'delivered') deliveredMsgs.push(...messages);
     const seen = new Set();
     for (const m of messages) {
       if (!m.id || seen.has(m.id) || !m.completed_at) continue;
@@ -91,13 +112,13 @@ export async function fetchWeek(ctx, weekStart) {
       byKey.get(key)[column] += 1;
     }
   }
-  return { rows: [...byKey.values()], complete: truncated.length === 0, truncated, touches: firstTouches(sent) };
+  return { rows: [...byKey.values()], complete: truncated.length === 0, truncated, touches: firstTouches(sent), delivered: deliveredRows(deliveredMsgs) };
 }
 
 // Replaces the week wholesale, so a re-fetch never double counts and a
 // combination that dropped to zero disappears. The progress row is written
 // last - if the insert fails, the week stays "not done" and reruns.
-export async function writeWeek({ supabase, businessId, weekStart, rows, complete, truncated, calls }) {
+export async function writeWeek({ supabase, businessId, weekStart, rows, complete, truncated, calls, delivered = [] }) {
   const weekEnd = addDays(weekStart, 6);
   const { error: delErr } = await supabase.from('sales_email_daily_counts').delete()
     .eq('business_id', businessId).gte('day', weekStart).lte('day', weekEnd);
@@ -116,14 +137,15 @@ export async function writeWeek({ supabase, businessId, weekStart, rows, complet
     note: complete ? null : `page cap hit on: ${truncated.join(', ')}`,
   }, { onConflict: 'business_id,week_start' });
   if (progErr) throw new Error(`email counts: progress for ${weekStart} failed: ${progErr.message}`);
-  return { rows: inWeek.length, dropped: rows.length - inWeek.length };
+  const deliveredWritten = await writeDelivered({ supabase, businessId, rows: delivered });
+  return { rows: inWeek.length, dropped: rows.length - inWeek.length, delivered: deliveredWritten };
 }
 
 export async function syncWeek({ ctx, supabase, businessId, weekStart, accountNames }) {
   const before = ctx.callCounter.count;
-  const { rows, complete, truncated, touches } = await fetchWeek(ctx, weekStart);
+  const { rows, complete, truncated, touches, delivered } = await fetchWeek(ctx, weekStart);
   const calls = ctx.callCounter.count - before;
-  const written = await writeWeek({ supabase, businessId, weekStart, rows, complete, truncated, calls });
+  const written = await writeWeek({ supabase, businessId, weekStart, rows, complete, truncated, calls, delivered });
   const sequenced = await recordSequencedAccounts({ supabase, businessId, touches, accountNames });
   return { weekStart, calls, complete, truncated, ...written, sequenced };
 }
@@ -147,4 +169,19 @@ export async function refreshRecentWeeks({ ctx, supabase, businessId, accountNam
     results.push(await syncWeek({ ctx, supabase, businessId, weekStart, accountNames }));
   }
   return results;
+}
+
+// email-funnel-v1 Stage 1 (R1): the declared backfill - the delivered stat alone for the named weeks (one page per
+// 100 messages), written through writeDelivered; the counts and progress rows are untouched. ctx carries the cap.
+export async function backfillDelivered({ ctx, supabase, businessId, weekStarts }) {
+  const out = [];
+  for (const weekStart of weekStarts) {
+    const before = ctx.callCounter.count;
+    const { messages, complete } = await fetchStat(ctx, 'delivered', weekStart);
+    const rows = deliveredRows(messages);
+    const written = await writeDelivered({ supabase, businessId, rows });
+    const days = rows.map(r => r.delivered_day).sort();
+    out.push({ weekStart, calls: ctx.callCounter.count - before, messages: messages.length, rows: rows.length, written, complete, first_day: days[0] || null, last_day: days[days.length - 1] || null });
+  }
+  return out;
 }

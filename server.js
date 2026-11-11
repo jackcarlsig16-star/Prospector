@@ -830,6 +830,7 @@ app.get('/api/sales/:businessId/goals/visits/status', salesModuleRoute('./api/sa
 // signals-v1 Stage 5 - the Website visitors report, Brad's .xlsx, and the skip list.
 app.get('/api/sales/:businessId/goals/visits/report', salesModuleRoute('./api/sales/visitReport.js', 'visitReportRoute', 'goals/visits/report'));
 app.get('/api/sales/:businessId/goals/visitors/trend', salesModuleRoute('./api/sales/visitTrend.js', 'visitorsTrendRoute', 'goals/visitors/trend'));
+app.get('/api/sales/:businessId/goals/funnel', salesModuleRoute('./api/sales/funnelRoutes.js', 'funnelRoute', 'goals/funnel'));
 app.get('/api/sales/:businessId/goals/visits/export', salesModuleRoute('./api/sales/visitReport.js', 'visitExportRoute', 'goals/visits/export'));
 // FIX visitor-email-period-v1 P4 - the fundraising visitors export (CSV, or JSON for the page's print area); owner / admin, checked inside.
 app.get('/api/sales/:businessId/goals/visits/export-visitors', salesModuleRoute('./api/sales/visitorsExport.js', 'visitorsExportRoute', 'goals/visits/export-visitors'));

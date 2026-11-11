@@ -6,6 +6,7 @@ import { mergeWeights } from '../intentScoreRun.js';
 import { seenBeforeKeys, isNewCompany } from '../visitRules.js';
 import { DEFAULT_WEIGHTS } from '../intentScore.js';
 import { esc, recordUrl, MAP_URL, VISITORS_URL, ORIGIN, DARK, BAND_HUE, SANS, MONO, dlink, tagPill, outlinePill, memberDot, tileGrid, dataTable, darkShell } from './format.js';
+import { STEPS, STEP_WORD } from '../funnelMath.js';
 
 // homelover-team-emails-v1 T4 (REV2) - the weekday visitor email. Pure builder over rows the loader reads; no person
 // names, emails or phones ever reach it (people = a count + job titles).
@@ -193,11 +194,59 @@ export function trendStrip(trend) {
 // -> { subject, html, text, rows, new_rows, qualified, visited, more, overall, new, returning, cumulative }. date = the LA
 // date it is sent on; window = dayWindowFor(date); overall = loadRankedBook's result (list B + the thresholds);
 // cumulative = loadCumulative's; pullNote = the "Visitor pull failed …" line.
-export function buildVisitorEmail(companies, { date, window: w = dayWindowFor(date), pullNote = null, overall = null, cumulative = null, trend = null, thresholds = overall?.thresholds || DEFAULT_WEIGHTS.thresholds }) {
+// email-funnel-v1 F4 (rulings R2 / R3 / R5) - the three small tables at the top of the email, from the funnel route's
+// body (funnelMath, the one function): 1 the steps for the send window · last 7 d · last 30 d with their share of
+// delivered (cohort: "of emails sent that day/week, so far"); 2 the two rates with their fractions and the 30-day arrow
+// (absent until 60 days exist); 3 this week vs last week. Nothing here when the delivered rows do not reach the funnel's
+// first day (R5: `ready`). Table-based, % widths, no SVG; the text part = the same three tables aligned.
+export const FUNNEL_WINDOWS = ['7d', '30d', 'this_week', 'last_week'];
+const pctOf = x => (x == null ? '—' : `${(100 * x).toFixed(1)} %`);
+export function funnelTables(funnel, { when = 'yesterday' } = {}) {
+  if (!funnel?.ready || !funnel.windows) return null;
+  const W = funnel.windows, first = W.window || W.yesterday, w7 = W['7d'], w30 = W['30d'], tw = W.this_week, lw = W.last_week;
+  if (!first || !w7 || !w30) return null;
+  const firstLabel = when === 'yesterday' ? 'Yesterday' : 'Fri–Sun';
+  const muted = s => `<span style="color:${DARK.faint}">${esc(s)}</span>`;
+  const bold = s => `<b style="color:${DARK.text}">${esc(s)}</b>`;
+  const heads = ['', firstLabel, 'Last 7 d', 'Last 30 d'], widths = [37, 21, 21, 21];
+  const stepCell = (w, s) => (s === 'delivered' ? bold(w[s].toLocaleString('en-US')) : `<span style="white-space:nowrap">${esc(String(w[s]))} ${muted(`· ${pctOf(w.delivered ? w[s] / w.delivered : null)}`)}</span>`);
+  const stepRows = STEPS.map(s => [esc(STEP_WORD[s]), ...[first, w7, w30].map(w => stepCell(w, s))]);
+  const arrowOf = t => (t ? ` <span style="color:${t.arrow === '▲' ? DARK.good : t.arrow === '▼' ? DARK.bad : DARK.faint}">${t.arrow}</span>` : '');
+  const rateCell = (r, unit, arrow = null) => `<span style="white-space:nowrap">${bold(pctOf(r.rate))}${arrowOf(arrow)}</span> ${muted(`· ${r.n} of ${r.d} ${unit}`)}`;
+  const rateRows = [
+    ['Company rate', ...[first, w7, w30].map((w, i) => rateCell(w.company_rate, 'companies', i === 2 ? funnel.trend_30d : null))],
+    ['Person rate', ...[first, w7, w30].map(w => rateCell(w.person_rate, 'people'))],
+  ];
+  const delta = (a, b) => (a === b ? '—' : a > b ? `+${a - b}` : `−${b - a}`);
+  const WEEK_STEPS = ['delivered', 'companies_visited', 'replies', 'meetings'];
+  const weekRows = tw && lw ? WEEK_STEPS.map(s => [esc(STEP_WORD[s]), bold(String(tw[s])), esc(String(lw[s])), muted(delta(tw[s], lw[s]))]) : null;
+  const h = (t, sub) => `<div style="font:600 11px ${MONO};letter-spacing:.08em;text-transform:uppercase;color:${DARK.faint};margin-top:14px">${esc(t)}</div>${sub ? `<div style="font:11.5px ${SANS};color:${DARK.faint};margin-top:2px;line-height:1.45">${esc(sub)}</div>` : ''}`;
+  const html = [
+    `${h('Email funnel', `Counts with their share of delivered · opens, clicks, replies and meetings are ${funnel.wording.cohort}.`)}${dataTable(heads, widths, stepRows)}`,
+    `${h('Email → site', `${funnel.wording.company} ${funnel.wording.person}`)}${dataTable(heads, widths, rateRows)}`,
+    weekRows ? `${h('This week vs last week', `Mon ${mdOf(tw.from)} → today against Mon ${mdOf(lw.from)} → Sun ${mdOf(lw.to)}.`)}${dataTable(['', 'This week', 'Last week', 'Change'], widths, weekRows)}` : '',
+    `<div style="font:11.5px ${SANS};color:${DARK.faint};margin-top:8px">${esc(funnel.wording.since)}</div>`,
+  ].filter(Boolean).join('\n');
+  const pad = (s, n) => String(s).padEnd(n);
+  const line = (label, cells) => `${pad(label, 20)}${cells.map(c => pad(c, 22)).join('')}`.trimEnd();
+  const text = [
+    `EMAIL FUNNEL · ${firstLabel.toUpperCase()} · LAST 7 D · LAST 30 D (opens, clicks, replies, meetings ${funnel.wording.cohort})`,
+    ...STEPS.map(s => line(STEP_WORD[s], [first, w7, w30].map(w => (s === 'delivered' ? String(w[s]) : `${w[s]} · ${pctOf(w.delivered ? w[s] / w.delivered : null)}`)))),
+    '', 'EMAIL → SITE',
+    line('Company rate', [first, w7, w30].map((w, i) => `${pctOf(w.company_rate.rate)}${i === 2 && funnel.trend_30d ? ` ${funnel.trend_30d.arrow}` : ''} (${w.company_rate.n} of ${w.company_rate.d})`)),
+    line('Person rate', [first, w7, w30].map(w => `${pctOf(w.person_rate.rate)} (${w.person_rate.n} of ${w.person_rate.d})`)),
+    ...(weekRows ? ['', 'THIS WEEK VS LAST WEEK · this · last · change', ...WEEK_STEPS.map(s => line(STEP_WORD[s], [String(tw[s]), String(lw[s]), delta(tw[s], lw[s])]))] : []),
+    funnel.wording.since,
+  ].join('\n');
+  return { html, text, tables: weekRows ? 3 : 2 };
+}
+
+export function buildVisitorEmail(companies, { date, window: w = dayWindowFor(date), pullNote = null, overall = null, cumulative = null, trend = null, funnel = null, thresholds = overall?.thresholds || DEFAULT_WEIGHTS.thresholds }) {
   const strip = trendStrip(trend);
   const sorted = rankVisitors(companies);
   const n = sorted.length, multi = w.days.length > 1, days = windowDays(w);
   const when = multi ? 'Fri–Sun' : 'yesterday', whose = multi ? "Fri–Sun's" : "yesterday's";
+  const funnelT = funnelTables(funnel, { when });
   const fresh = sorted.filter(c => c.is_new), returning = n - fresh.length;
   const qualified = sorted.filter(qualifies), q = qualified.length;
   const listNew = fresh.slice(0, TOP_N), listQ = qualified.slice(0, TOP_N);
@@ -239,6 +288,7 @@ export function buildVisitorEmail(companies, { date, window: w = dayWindowFor(da
   const textBook = c => [`${c.rank}. ${c.company} — ${intent(c)} · ${trendText(c)} · ${inProspector(c)} · ${touch(c)}`, `   ${url(c)}`].join('\n');
   const text = [
     eyebrow.toUpperCase(), head, `${subWords} Open the Map → ${MAP_URL}`, '',
+    ...(funnelT ? [funnelT.text, ''] : []),
     `${n} visited · ${fresh.length} new · ${returning} returning · ${q} worth a look`, intentWords, '',
     ...(strip ? [strip.text, ''] : []),
     `NEW ${when.toUpperCase()}`, newSub, ...listNew.map(textRow), ...(newFoot ? [`${newFoot} ${MAP_URL}`] : []), '',
@@ -267,6 +317,7 @@ export function buildVisitorEmail(companies, { date, window: w = dayWindowFor(da
   ];
   const HEADS = ['Company · why', 'Intent', 'In Prospector · owner', 'Last touch'], WIDTHS = [42, 19, 22, 17];
   const body = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+${funnelT ? `<tr><td style="padding:4px 0 0">${funnelT.html}</td></tr>` : ''}
 <tr><td style="padding:18px 0 0">${tileGrid(tiles)}</td></tr>
 ${strip ? `<tr><td style="padding:0">${strip.html}</td></tr>` : ''}
 <tr><td style="padding:12px 0 0;font:12.5px ${SANS};color:${DARK.muted}">${n ? `Intent of ${esc(whose)} ${n}: ${BANDS.map(b => outlinePill(`${BAND_WORD[b]} ${bands[b]}`, BAND_HUE[b])).join(' ')} &nbsp;·&nbsp; ${esc(inProspectorWords)} &nbsp;·&nbsp; ${notIn} not yet` : esc(intentWords)}</td></tr>
@@ -279,5 +330,5 @@ ${pullNote ? `<tr><td style="padding:16px 0 0;font:12.5px ${SANS};color:${DARK.m
 <div style="font:12px ${SANS};color:${DARK.faint};margin-top:14px">Sent by Prospector to the HomeLover team · ${dlink(SETTINGS_URL, 'manage recipients')} · Sales › Settings › Team emails</div></div></td></tr>
 </table>`;
   const html = darkShell({ eyebrow, title: head, sub: `${esc(subWords)} ${dlink(MAP_URL, 'Open the Map →')}`, body });
-  return { subject, html, text, rows: listQ.length, new_rows: listNew.length, qualified: q, visited: n, more: Math.max(0, q - listQ.length), overall: book.length, new: fresh.length, returning, cumulative: cumulative?.companies ?? null, strip: strip?.windows ?? 0 };
+  return { subject, html, text, rows: listQ.length, new_rows: listNew.length, qualified: q, visited: n, more: Math.max(0, q - listQ.length), overall: book.length, new: fresh.length, returning, cumulative: cumulative?.companies ?? null, strip: strip?.windows ?? 0, funnel: funnelT?.tables ?? 0 };
 }

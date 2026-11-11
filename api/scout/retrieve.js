@@ -105,6 +105,8 @@ export function parseAsk(q, vocab, { today }) {
     ranked: /\brank(ed|ing)?\b|\btop\b|\bscores?\b|\bhottest\b/.test(text) || superlative, attention: /\battention\b|\bstale\b|\bfailed\b|\bbroken\b/.test(text),
     funnel: /\bfunnel\b|\breferr(ed|al|als)\b/.test(text), emails: /\bsequences?\b|\bopen rate\b|\breply rate\b|\bemails? (doing|performing|going)\b|\bhow are (my |our )?emails\b/.test(text),
     opened: /\bopen(ed|s)\b/.test(text), replied: /\brepl(ied|ies|y)\b/.test(text), clicked: /\bclick(ed|s)\b/.test(text),
+    // email-funnel-v1 F7: "email to site rate", "emails -> website visits", "visit rate", "email funnel" -> the funnel route.
+    email_site: /\bemails?\b[^.?!]{0,16}\b(to|into|vs|versus|→|->)\s+(the\s+)?(site|website|web|visits?|visitors)\b|\b(site|website|visit|visitor|conversion) rate\b|\bemail funnel\b|\bfunnel\b[^.?!]{0,12}\bemails?\b/.test(text),
   };
   // A3: a band word on a people ask is a heat band (hot / warm / cold), on a company ask the intent band (P1-P4).
   const bandKind = !band ? null : entity === 'people' || flags.opened || flags.replied || flags.clicked ? 'heat' : 'intent';

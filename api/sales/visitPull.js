@@ -156,12 +156,19 @@ async function store(supabase, { businessId, userId, today, win, all, usIds, fir
 // accounts?, us_ids? } stands in for Apollo's two visitor searches, so the rows go through the same scoring, storage,
 // signals and auto-create as a real pull with 0 visitor calls, no run row and no credit row; only V2b's people search
 // may call Apollo.
+// email-funnel-v1 F3: the visit side of the funnel's day rows, after the rows are stored; a failure never fails the pull.
+async function funnelDaysAfterPull(supabase, businessId, now) {
+  try { const { writeFunnelDays } = await import('./funnelRoutes.js'); return await writeFunnelDays(supabase, businessId, { now }); }
+  catch (e) { console.error('[visits/pull] funnel days', cleanText(String(e.message || ''), 200)); return { error: true }; }
+}
+
 export async function runVisitPull(supabase, { businessId, userId, trigger = 'manual', force = false, backfillDays = null, now = Date.now(), injected = null, deadline = null }) {
   if (injected) {
     const today = laDateString(new Date(now)), win = windowFor(null, today);
     const ctx = { callCounter: { count: 0, max: 0 }, endpointCounts: {} };
     const all = mergeResults({ organizations: injected.organizations || [], accounts: injected.accounts || [] });
     const counts = await store(supabase, { businessId, userId, today, win, all, usIds: new Set(injected.us_ids || []), first: false, now, apollo: ctx });
+    counts.funnel_days = await funnelDaysAfterPull(supabase, businessId, now);
     scheduleRecompute(supabase, businessId, 'visit_pull');
     return reply(200, { ran: true, injected: true, counts, credits: 0, window: win, calls: ctx.callCounter.count });
   }
@@ -196,6 +203,7 @@ export async function runVisitPull(supabase, { businessId, userId, trigger = 'ma
     credits = before - after;
     must(await recordSpend());
     const counts = await store(supabase, { businessId, userId, today, win, all, usIds: new Set(us.map(r => r._org_id)), first: claim.first, now, apollo: ctx });
+    counts.funnel_days = await funnelDaysAfterPull(supabase, businessId, now);
     const run = must(await finish({ status: 'ok', error: null }))[0];
     scheduleRecompute(supabase, businessId, 'visit_pull');
     people();

@@ -977,3 +977,55 @@ test('T3: the 7-window strip - the LAST 7 of the trend route\'s windows as one t
   assert.match(text, /COMPANIES IDENTIFIED · LAST 1 PULL WINDOWS\nMon Nov 2 · 1 company \(1 new\) · 3 7-day visits/);
   assert.ok(!/@/.test(m.html + m.text));
 });
+
+test('email-funnel-v1 F4: the three tables from the funnel route body - steps with their share of delivered (cohort words), the two rates with their fractions, this week vs last week; % widths only, no px, no img / svg, no address; the text part; above the stat tiles in the builder; nothing when delivered rows do not reach Oct 26 (R5); the job hands the route body to the builder and the test send carries the tables', async () => {
+  const { loadFunnel } = await import('../funnelRoutes.js');
+  const { funnelTables } = await import('./visitorEmail.js');
+  const NOW4 = Date.parse('2026-11-04T15:00:00Z'); // Wed Nov 4
+  const del = (id, contact, day, at, account = null) => ({ business_id: B, apollo_message_id: id, contact_id: contact, account_id: account, mailbox: 'box@example.test', delivered_at: at, delivered_day: day, sequence_id: '', step: 1 });
+  const seedFunnel = (ready = true) => ({
+    sales_email_delivered: [...(ready ? [del('f0', 'c0', '2026-10-26', '2026-10-26T15:00:00Z')] : []), del('f1', 'c1', '2026-11-03', '2026-11-03T15:00:00Z', 'a1'), del('f2', 'c2', '2026-11-03', '2026-11-03T15:10:00Z', 'a2'), del('f3', 'c3', '2026-11-03', '2026-11-03T15:20:00Z', 'a3'), del('f4', 'c1', '2026-10-28', '2026-10-28T15:00:00Z', 'a1')],
+    sales_sequenced_accounts: [{ business_id: B, account_id: 'a1', name: 'Co 1' }, { business_id: B, account_id: 'a2', name: 'Co 2' }, { business_id: B, account_id: 'a3', name: 'Co 3' }],
+    web_visits: [{ id: '00000000-0000-4000-8000-00000000e011', business_id: B, company_key: 'co 1', company_name: 'Co 1', visits_7d: 3, unique_visitors_7d: 1, top_paths: [], intent_score: 20, priority: 'P3', matched_type: null, matched_id: null, pulled_on: '2026-11-04', seen_from: '2026-11-03', seen_to: '2026-11-04' }],
+    sales_email_activity: [{ id: 'fe1', business_id: B, apollo_message_id: 'f1', event: 'open', occurred_at: '2026-11-03T18:00:00Z', user_agent: null, tracking_service: null }],
+    sales_email_messages: [{ business_id: B, apollo_message_id: 'f2', delivered_at: '2026-11-03T15:10:00Z', replied: true, reply_class: 'willing_to_meet', replied_at: '2026-11-04T10:00:00Z', replied_seen_at: null }],
+  });
+  const body = (await loadFunnel(sb(seedFunnel()), B, { windows: ['7d', '30d', 'this_week', 'last_week'], custom: { from: '2026-11-03', to: '2026-11-03' }, now: NOW4 })).body;
+  assert.equal(body.ready, true);
+  assert.deepEqual([body.windows.window.delivered, body.windows.window.companies_visited, body.windows.window.human_opens, body.windows.window.replies], [3, 1, 1, 1]);
+  const t = funnelTables(body, { when: 'yesterday' });
+  assert.equal(t.tables, 3);
+  assert.ok(t.html.includes('>Email funnel<') && t.html.includes('>Email → site<') && t.html.includes('>This week vs last week<'));
+  assert.ok(t.html.includes('opens, clicks, replies and meetings are of emails sent that day/week, so far'), 'the cohort words');
+  assert.ok(t.html.includes('>Yesterday<') && t.html.includes('>Last 7 d<') && t.html.includes('>Last 30 d<') && t.html.includes('>This week<') && t.html.includes('>Last week<'));
+  assert.match(t.html, /<b style="color:#E9ECF0">3<\/b>/, 'delivered yesterday');
+  assert.match(t.html, /1 <span style="color:#6B7480">· 33\.3 %<\/span>/, 'a step with its share');
+  assert.match(t.html, /<b style="color:#E9ECF0">33\.3 %<\/b><\/span> <span style="color:#6B7480">· 1 of 3 companies<\/span>/, 'the company rate with its fraction');
+  assert.match(t.html, /· 0 of 3 people<\/span>/);
+  assert.ok(t.html.includes('The funnel starts Oct 26'));
+  assert.ok(!t.html.includes('▲') && !t.html.includes('▼'), 'no arrow until 60 days');
+  const widths = [...t.html.matchAll(/width="([^"]+)"/g)].map(x => x[1]);
+  assert.ok(widths.length >= 12 && widths.every(w => /^\d+%$/.test(w)), `every width a % (${widths.slice(0, 5)})`);
+  assert.ok(!/width:\s*\d+px|width="\d+"/.test(t.html) && !/<img|<svg|<style|<script/i.test(t.html) && !/@/.test(t.html + t.text));
+  assert.match(t.text, /^EMAIL FUNNEL · YESTERDAY · LAST 7 D · LAST 30 D \(opens, clicks, replies, meetings of emails sent that day\/week, so far\)\ndelivered {11}3 {21}3 {21}5/);
+  assert.match(t.text, /\nEMAIL → SITE\nCompany rate {8}33\.3 % \(1 of 3\) {7}33\.3 % \(1 of 3\) {7}33\.3 % \(1 of 3\)\nPerson rate/);
+  assert.match(t.text, /\nTHIS WEEK VS LAST WEEK · this · last · change\ndelivered {11}3 {21}2 {21}\+1\n/);
+  const m = buildVisitorEmail([], { date: '2026-11-04', funnel: body });
+  assert.equal(m.funnel, 3);
+  assert.ok(m.html.indexOf('>Email funnel<') < m.html.indexOf('companies on the site yesterday'), 'above the stat tiles');
+  assert.ok(m.text.indexOf('EMAIL FUNNEL') < m.text.indexOf('0 visited · 0 new'));
+  assert.equal(funnelTables(null), null);
+  const notReady = (await loadFunnel(sb(seedFunnel(false)), B, { windows: ['7d', '30d', 'this_week', 'last_week'], custom: { from: '2026-11-03', to: '2026-11-03' }, now: NOW4 })).body;
+  assert.equal(notReady.ready, false);
+  assert.equal(funnelTables(notReady), null);
+  assert.equal(buildVisitorEmail([], { date: '2026-11-04', funnel: notReady }).funnel, 0);
+  // The job: the route body reaches the builder; the test send's text part opens with the tables.
+  const g = graph();
+  const r = await visitorEmailJob(sb(seedFunnel()), B, { now: NOW4, pull: null, deps: g.deps, test: true });
+  assert.deepEqual([r.status, r.funnel], ['sent', 3]);
+  const text = Buffer.from(g.calls[0].mime.split('\r\n\r\n')[2].split('\r\n--')[0].replace(/\r\n/g, ''), 'base64').toString('utf8');
+  assert.match(text, /EMAIL FUNNEL · YESTERDAY · LAST 7 D · LAST 30 D/);
+  assert.match(text, /Company rate {8}33\.3 % \(1 of 3\)/);
+  const none = await visitorEmailJob(sb(seedFunnel(false)), B, { now: NOW4, pull: null, deps: graph().deps, test: true });
+  assert.equal(none.funnel, 0);
+});

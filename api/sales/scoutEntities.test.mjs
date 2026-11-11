@@ -205,3 +205,33 @@ test('A2: the 12 phrasings route as the spec says (the first three -> people_vis
   const replied = await people.run(null, { businessId: A, ask: parseAsk('whos replied', vocab, { today }) });
   assert.deepEqual(replied.items.map(i => i.title), ['Cy Replied']);
 });
+
+test('email-funnel-v1 F7: "what\'s our email to site rate" (and "emails to website visits", "visit rate", "email funnel") routes to the funnel route alone and the items carry the route\'s numbers to the digit; "how are our emails doing" still goes to the pulse and "the referral funnel" to sources; the glossary carries the two definitions', async () => {
+  const sb = seed();
+  const calls = [];
+  const stub = (name, out) => async (...a) => { calls.push([name, a]); return out; };
+  const w = (key, from, to) => ({ key, from, to, delivered: 56, human_opens: 3, human_clicks: 1, companies_visited: 2, people_identified: 1, replies: 0, meetings: 1, people_emailed: 56, companies_emailed: 27, companies_no_record: 20, company_rate: { n: 2, d: 27, rate: 2 / 27 }, person_rate: { n: 1, d: 56, rate: 1 / 56 }, companies_visited_names: ['Hilton', 'Equifax'] });
+  const body = { status: 200, body: { today: '2026-11-06', since: '2026-10-26', ready: true, wording: { company: 'Company rate: c.', person: 'Person rate: p.', cohort: 'of emails sent that day/week, so far', since: 'The funnel starts Oct 26, the first day website visits were tracked.' }, windows: { yesterday: w('yesterday', '2026-11-05', '2026-11-05'), '7d': w('7d', '2026-10-31', '2026-11-06'), '30d': w('30d', '2026-10-08', '2026-11-06') } } };
+  salesReads.loadFunnel = stub('loadFunnel', body);
+  salesReads.loadPulse = stub('loadPulse', { delivered: 1 });
+  salesReads.sourcesFunnel = stub('sourcesFunnel', { status: 200, body: { totals: { targets: 1 }, by_rep: [], by_partner: [] } });
+  const reg = createRegistry(); await register(reg);
+  const run = q => buildContext(sb, reg, { auth, scope: A, q, now: Date.parse('2026-11-06T20:00:00Z') });
+  for (const q of ["what's our email to site rate", 'emails to website visits this month', 'what is our visit rate', 'show the email funnel']) {
+    calls.length = 0;
+    const c = await run(q);
+    assert.deepEqual(calls.map(x => x[0]), ['loadFunnel'], q);
+    assert.deepEqual(calls[0][1][2].windows, ['yesterday', '7d', '30d']);
+    assert.equal(c.stats.reads[0], 'goals/funnel?windows=yesterday,7d,30d');
+    assert.match(c.lines[0], /^\[r1\] email to site yesterday \(2026-11-05 → 2026-11-05\) · company rate 7\.4 % = 2 of 27 companies emailed visited the site in the window \(20 without a record\) · person rate 1\.8 % = 1 of 56 people emailed were identified on the site · of 56 emails delivered, so far: 3 human opens · 1 clicks · 0 replies · 1 meetings booked · visited: Hilton, Equifax/);
+    assert.match(c.lines[3], /^\[r4\] Company rate: c\. Person rate: p\. The funnel starts Oct 26/);
+    assert.ok(c.lines.every(l => !hasPii(l)));
+  }
+  calls.length = 0; await run('how are our emails doing this month'); assert.deepEqual(calls.map(x => x[0]), ['loadPulse']);
+  calls.length = 0; await run('show me the referral funnel'); assert.deepEqual(calls.map(x => x[0]), ['sourcesFunnel']);
+  const { glossary } = await import('./scoutEntities.js');
+  const g = await glossary(sb, { businessId: A });
+  const line = g.lines.find(l => l.startsWith('Email → site'));
+  assert.ok(line && line.includes('Company rate:') && line.includes('Person rate:') && line.includes('of emails sent that day/week, so far') && line.includes('The funnel starts Oct 26'));
+  assert.ok(reg.modules[0].intents.find(i => i.id === 'email_site').example === "what's our email to site rate");
+});
