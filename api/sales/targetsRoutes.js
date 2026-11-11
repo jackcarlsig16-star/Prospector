@@ -453,6 +453,74 @@ async function targetBundle(supabase, businessId, id, names) {
   return [...head, '', '## Evidence', t(target.evidence) || '- none', '', '## Research notes', t(target.research_notes, 4000) || '- none yet', '', '## Open to-dos', ...todos];
 }
 
+// scout-v3 R12: the Brief's lines (companyBrief.js - score, source, visits, why) folded into this one builder.
+async function briefSection(supabase, businessId, type, id) {
+  try {
+    const { companyBrief } = await import('./companyBrief.js');
+    const r = await companyBrief(supabase, { businessId, type, id });
+    const lines = r.status === 200 ? r.body.lines.filter(l => ['score', 'source', 'visit', 'research', 'touch'].includes(l.kind)).map(l => `- ${t(l.text, 400)}`) : [];
+    return lines.length ? ['', '## Score, visits and why', ...lines] : [];
+  } catch { return []; }
+}
+
+// R12: a person (a People row key) - who they are, their heat and email / site signals, their timeline, then their
+// company's bundle when it has a record. Names, titles, companies only.
+async function personBundle(supabase, businessId, key, names) {
+  const { peopleActivity, personDetail } = await import('./peopleActivityRoutes.js');
+  const all = await peopleActivity(supabase, businessId, { window: 'all', snoozed: 'all' });
+  const p = all.status === 200 ? all.body.rows.find(r => r.key === key) : null;
+  if (!p) throw err(404, 'person not found');
+  const d = await personDetail(supabase, businessId, { key });
+  const timeline = d.status === 200 ? d.body.timeline.filter(x => !x.automated).slice(0, TOUCHES_MAX).map(x => `- ${[when(x.at), x.kind, x.step != null ? `step ${x.step}` : null, x.reply_class, x.subject ? t(x.subject, 160) : null].filter(Boolean).join(' · ')}`) : [];
+  const head = [
+    `# ${t(p.name, 120)} — person`,
+    [p.title ? t(p.title, 160) : null, p.company?.name ? `${t(p.company.name, 160)}${p.company.stage ? ` (${String(p.company.stage).replace(/_/g, ' ')})` : ''}` : 'no company on file', p.source].filter(Boolean).join(' · '),
+    [p.heat != null ? `Heat: ${p.heat_band} (${p.heat})` : 'Heat: none yet', `Emails: ${p.emails.sent} sent, ${p.emails.opened} opened, ${p.emails.clicked} clicked, ${p.emails.replied} replied`, p.last_email ? `last ${p.last_email.what} ${when(p.last_email.at)}` : null].filter(Boolean).join(' · '),
+    p.visits ? `Website: ${p.visits.visits_7d} visits in 7 days${p.visits.last_visit ? `, last ${onDay(String(p.visits.last_visit).slice(0, 10))}` : ''}${p.visits.top_page ? `, top page ${t(p.visits.top_page, 120)}` : ''}` : null,
+    d.status === 200 && d.body.notes ? `Note: ${t(d.body.notes, 400)}` : null,
+  ].filter(Boolean);
+  const company = p.company?.id && BUNDLE_TYPES.includes(p.company.type) ? ['', ...await recordLines(supabase, businessId, p.company.type, p.company.id, names)] : [];
+  return [...head, '', `## Timeline (${timeline.length})`, ...(timeline.length ? timeline : ['- no email activity']), ...company];
+}
+async function recordLines(supabase, businessId, type, id, names) {
+  if (type === 'person') return personBundle(supabase, businessId, id, names);
+  const build = type === 'partner' ? partnerBundle : type === 'employer' ? employerBundle : targetBundle;
+  return [...await build(supabase, businessId, id, names), ...await briefSection(supabase, businessId, type, id)];
+}
+
+// scout-v3 D10 - Copy for Claude from Scout: Question · Scope + date · then each record's bundle. At most PACK_MAX
+// characters: list lines are dropped from the END of the longest section first (lists are newest first, so the
+// oldest excerpts go), never a header. cleanText ran on every string; hasPii on the whole pack - a pack that trips
+// is not returned ({ blocked: true }). -> { text, records, chars, trimmed }.
+export const PACK_MAX = 6000;
+export async function copyPack(supabase, { businessId, question, scope, today, records }) {
+  const names = await memberNames(supabase, businessId);
+  const blocks = [];
+  for (const r of records) {
+    if (r.type !== 'person' && !(BUNDLE_TYPES.includes(r.type) && UUID.test(r.id || ''))) continue;
+    try { blocks.push(await recordLines(supabase, businessId, r.type, r.id, names)); } catch (e) { if (e.status !== 404) throw e; }
+  }
+  if (!blocks.length) throw err(404, 'no record to copy');
+  const head = [`Question: ${t(question, 500) || '(none)'}`, `Scope: ${[scope ? t(scope, 80) : null, today].filter(Boolean).join(' · ')} · ${blocks.length} record${blocks.length === 1 ? '' : 's'}`];
+  // a list = a run of "- " lines; the last line of the longest run (2+ lines) goes first.
+  const size = () => [...head, ...blocks.flatMap(b => ['', ...b])].join('\n').length + 80;
+  let trimmed = 0;
+  while (size() > PACK_MAX) {
+    let best = null;
+    for (const b of blocks) for (let i = 0, n = 0; i <= b.length; i++) {
+      if (i < b.length && b[i].startsWith('- ')) { n += 1; continue; }
+      if (n > 1 && (!best || n > best.n)) best = { b, at: i - 1, n };
+      n = 0;
+    }
+    if (!best) break;
+    best.b.splice(best.at, 1); trimmed += 1;
+  }
+  let text = [...head, ...blocks.flatMap(b => ['', ...b]), ...(trimmed ? ['', `(${trimmed} older lines trimmed to fit)`] : [])].join('\n');
+  if (text.length > PACK_MAX) text = `${text.slice(0, PACK_MAX - 1)}…`;
+  if (hasPii(text)) { console.error('[copy-pack] blocked: scrub left an email or phone shape'); return { blocked: true }; }
+  return { text, records: blocks.length, chars: text.length, trimmed };
+}
+
 // GET /goals/copy-bundle?type=partner|employer|target&id=<uuid> -> { markdown }.
 // Viewer+: everything in it is data they can already see on screen.
 export async function copyBundle(supabase, { businessId, type, id }) {
@@ -460,8 +528,7 @@ export async function copyBundle(supabase, { businessId, type, id }) {
   if (!UUID.test(id || '')) return reply(400, { error: 'id must be a uuid' });
   try {
     const names = await memberNames(supabase, businessId);
-    const build = type === 'partner' ? partnerBundle : type === 'employer' ? employerBundle : targetBundle;
-    const lines = await build(supabase, businessId, id, names);
+    const lines = await recordLines(supabase, businessId, type, id, names);
     const markdown = `${[...lines, '', '## What I need:', ''].join('\n')}\n`;
     if (hasPii(markdown)) {
       console.error(`[copy-bundle] blocked ${type} ${id}: scrub left an email or phone shape`);

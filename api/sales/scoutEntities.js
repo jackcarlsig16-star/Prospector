@@ -1,3 +1,4 @@
+import { salesVerbs, salesMembers, salesPack } from './scoutVerbs.js';
 import { cleanText } from './scrubText.js';
 import { STAGE_ORDER, SIDE_LANES } from './pipelineStages.js';
 import { PIPELINE_STATUSES } from '../../src/constants/partnerPipeline.js';
@@ -99,10 +100,10 @@ export const OPENERS = {
 
 export const VOCABULARY = {
   entities: {
-    todos: ['task', 'tasks', 'to-do', 'to-dos', 'todo', 'todos', 'to do', 'to dos', 'action items'],
+    todos: ['task', 'tasks', 'to-do', 'to-dos', 'todo', 'todos', 'to do', 'to dos', 'action items', 'whats due', 'what is due', 'overdue'],
     call_notes: ['note', 'notes', 'call notes', 'call note', 'debrief'],
     visitors: ['visitor', 'visitors', 'website visits', 'web visits'],
-    people: ['people', 'person', 'contacts', 'contact', 'prospects', 'prospect', 'who opened', 'who replied', 'who clicked'],
+    people: ['people', 'person', 'contacts', 'contact', 'prospects', 'prospect', 'leads', 'lead', 'who opened', 'who replied', 'who clicked'],
     partners: ['partner', 'partners', 'partnership', 'partnerships'],
     clients: ['client', 'clients', 'signed'],
     employers: ['employer', 'employers', 'opportunities', 'opportunity'],
@@ -142,6 +143,8 @@ export async function glossary(sb, { businessId }) {
     names.length ? `Members: ${names.map(m => `${m.name} (${m.role}${m.color ? `, ${m.color}` : ''})`).join(', ')}.` : null,
     settings?.buyer_titles?.length ? `Buyer titles: ${settings.buyer_titles.slice(0, 20).join(', ')}.` : null,
     `Email → site (the funnel route, the daily email's tables): ${WORDING.company} ${WORDING.person} Opens, clicks, replies and meetings are ${WORDING.cohort}. ${WORDING.since}`,
+    // scout-v3 D1: which record a word means.
+    'Prospects, people, contacts, leads and "who" mean PEOPLE (one row per person, Pipeline › People); accounts, companies, employers, partners and targets mean COMPANIES. A lead is a person from any source.',
   ].filter(Boolean);
   const sources = { ...repWords };
   for (const [k, v] of Object.entries(SOURCE_WORD)) if (!['other', 'scout', 'website'].includes(k)) for (const w of v.toLowerCase().split(' / ')) sources[w] = k;
@@ -149,6 +152,6 @@ export async function glossary(sb, { businessId }) {
 }
 
 export async function register(registry) {
-  registry.register('sales', { appliesTo: b => !!b.features?.goals_sales, entities: ENTITIES, openers: OPENERS, intents: salesIntents, standing: salesStanding, glossary, vocabulary: VOCABULARY });
+  registry.register('sales', { appliesTo: b => !!b.features?.goals_sales, entities: ENTITIES, openers: OPENERS, intents: salesIntents, standing: salesStanding, glossary, vocabulary: VOCABULARY, verbs: salesVerbs, members: salesMembers, pack: salesPack });
 }
 export { words };

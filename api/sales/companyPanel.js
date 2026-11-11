@@ -21,6 +21,7 @@ import { contactTarget } from './targetsRoutes.js';
 import { personSignals, byStrength, signalText, INTEREST_DAYS, TIMELINE_DAYS } from './interestSignals.js';
 import { normalizeLinkedinUrl, LINKEDIN_ERROR } from '../lib/linkedinUrl.js';
 import { rematchVisits } from './visitMatch.js';
+import { splitSnoozed } from './snoozed.js';
 
 // sales-ia-v2 P4 - one side panel for every Pipeline row type. GET
 // goals/company?type=&id= returns the body sections (to-dos, waiting on them,
@@ -37,7 +38,7 @@ export const ADD_FROM = ['visitor', 'apollo'];
 export const ADD_TO = ['target', 'partner', 'employer'];
 const RECORD_TYPES = ['partner', 'employer', 'target'];
 const REF_TYPE = { partner: 'partner', employer: 'opportunity', target: 'target' };
-const PROSPECT_COLS = 'contact_id, name, title, company, linkedin_url, status, owner, goal_id, opportunity_id';
+const PROSPECT_COLS = 'contact_id, name, title, company, linkedin_url, status, owner, goal_id, opportunity_id, snooze_until';
 const VISIT_WEEK_DAYS = 7;
 const NOT_NOW_DAYS = 7;
 const DISMISS_DAYS = 90;
@@ -330,7 +331,9 @@ export async function companyDetail(supabase, { businessId, type, id, now = new 
     ]);
     const personSig = personSignals({ messages: email.messages, events: email.events, now: now.getTime() });
     const timelineSig = personSignals({ messages: email.messages, events: email.events, now: now.getTime(), days: TIMELINE_DAYS });
-    const people = await peopleFor(supabase, businessId, record, prospects, personSig);
+    // scout-v3 R6: a snoozed person is out of the window's People until the day; people_snoozed counts them.
+    const awake = splitSnoozed(prospects, laDateString(now));
+    const people = await peopleFor(supabase, businessId, record, awake.shown, personSig);
     const visitRows = visits.map(v => visitOut(v, overrides.get(v.company_key)));
     const scoutSignals = signals.map(s => ({ ...s, signal: cleanText(s.signal, 400), why_now: cleanText(s.why_now, 400) }));
     const { interest, timeline } = await interestFor(supabase, businessId, record, { people, signals: personSig, timelineSignals: timelineSig, visits: visitRows, scoutSignals, now });
@@ -348,7 +351,7 @@ export async function companyDetail(supabase, { businessId, type, id, now = new 
     };
     return reply(200, {
       record: out, interest, timeline, todos, waiting, visits: visitRows, signals: scoutSignals,
-      recent, people, decision_makers: type === 'employer' ? (decision_makers || '').split('\n').map(l => cleanText(l, 200)).filter(Boolean) : [],
+      recent, people, people_snoozed: awake.snoozed.length, decision_makers: type === 'employer' ? (decision_makers || '').split('\n').map(l => cleanText(l, 200)).filter(Boolean) : [],
       research, decisions, terms, stage_history: stages,
       // company-workflow-v1 W1: the guided steps (one "next").
       steps: companySteps({ record: { ...record, last_touch: lastTouch }, research, site, ownerName, now: now.getTime() }),

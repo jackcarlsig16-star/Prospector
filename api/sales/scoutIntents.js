@@ -1,6 +1,8 @@
 import { cleanText } from './scrubText.js';
 import { normName } from './intakeMatch.js';
 import { addDays } from './goalsShared.js';
+import { readType } from './readType.js';
+import { splitSnoozed } from './snoozed.js';
 
 // scout-v2 REV2 Stage 1 (D1 (2)) - the sales module's intents: a parsed ask -> the EXISTING server read that answers it
 // (never a second query layer) -> items for the context pack. Reads are reached through salesReads so tests swap them
@@ -18,8 +20,9 @@ export const salesReads = {
   attention: lazy('./attentionRoutes.js', 'attention'),
   listClients: lazy('./clients.js', 'listClients'),
   loadFunnel: lazy('./funnelRoutes.js', 'loadFunnel'),
+  personDetail: lazy('./peopleActivityRoutes.js', 'personDetail'),
 };
-const COMPANY_ENTITIES = new Set([null, 'partners', 'employers', 'targets']);
+const COMPANY_ENTITIES = new Set([null, 'partners', 'employers', 'targets', 'accounts']);
 const day = v => (v ? String(v).slice(0, 10) : null);
 // A call note's text in the context: 600 chars while 10 or fewer notes ride along, 300 beyond (Jack, Stage 3).
 export const noteChars = n => (n <= 10 ? 600 : 300);
@@ -44,6 +47,14 @@ export async function findCompany(sb, businessId, name) {
   return cands.find(c => normName(c.name) === normName(name)) || cands[0] || null;
 }
 
+// D9: a person named in the question -> their People row (exact normalised name), when no company carries the name.
+export async function findPerson(sb, businessId, name, today) {
+  const r = await salesReads.peopleActivity(sb, businessId, { window: 'all', snoozed: 'all' });
+  if (r.status !== 200) return null;
+  const key = normName(name);
+  return (key && r.body.rows.find(p => normName(p.name) === key)) || null;
+}
+
 // A people ask about the site: the entity word plus a visit verb, or site / website with a band word or a heat ranking
 // and no company named ("hottest people on the site this week"); a company named goes to the brief instead.
 export const isPeopleVisiting = ask => ask.entity === 'people' && (ask.flags.visitors || (ask.flags.site && (!!ask.band || ask.sort === 'heat' || ask.flags.ranked) && !ask.company.length));
@@ -51,35 +62,76 @@ export const isPeopleVisiting = ask => ask.entity === 'people' && (ask.flags.vis
 export const peopleWindow = (ask, dflt) => (!ask.since ? dflt : ask.since_kind?.startsWith('last ') && /\d+/.test(ask.since_kind) ? (Number(/\d+/.exec(ask.since_kind)[0]) <= 7 ? '7' : Number(/\d+/.exec(ask.since_kind)[0]) <= 30 ? '30' : '90') : ['today', 'yesterday', 'this week', 'last week'].includes(ask.since_kind) ? '7' : '30');
 // A3: a band word on a people ask is a heat band - parseAsk says so (bandKind), the intent never guesses.
 const HEAT_OF = { P1: 'hot', P2: 'warm', P3: 'cold', P4: 'cold' };
+const PEOPLE_RULE = 'People ranked by heat, hottest first (email engagement plus the company on the site); snoozed people are hidden.';
+// R6: the people reads hide a snoozed person until the day; the read line counts them.
+const awake = (rows, today) => { const { shown, snoozed } = splitSnoozed(rows, today); return { rows: shown, hidden: snoozed.length ? ` · ${snoozed.length} snoozed hidden` : '' }; };
+// R11: open to-dos by the rule - overdue first (longest overdue first), then due soonest, then undated; yours first on a tie.
+export const TODO_RULE = 'Open to-dos ranked overdue first, then due soonest, then undated; yours first on a tie.';
+export function rankTodos(rows, today, userId) {
+  const group = r => (!r.due_date ? 2 : day(r.due_date) < today ? 0 : 1);
+  return [...rows].sort((a, b) => group(a) - group(b) || String(a.due_date || '').localeCompare(String(b.due_date || '')) || (b.owner_user_id === userId) - (a.owner_user_id === userId) || String(b.created_at || '').localeCompare(String(a.created_at || '')) || String(a.id).localeCompare(String(b.id)));
+}
 const heatFilter = (rows, ask) => (ask.band && ask.bandKind === 'heat' ? rows.filter(p => p.heat_band === HEAT_OF[ask.band]) : rows);
-const personItem = p => ({ entity: 'people', id: p.key, title: p.name, score: p.heat ?? null, subtitle: [p.title, p.company?.name].filter(Boolean).join(' · ') || null, text: [p.name, p.title, p.company?.name ? `${p.company.name}${p.company.stage ? ` (${String(p.company.stage).replace(/_/g, ' ')})` : ''}` : null, p.source, `${p.emails.sent} sent · ${p.emails.opened} opened · ${p.emails.clicked} clicked · ${p.emails.replied} replied`, p.heat != null ? `heat ${p.heat} ${p.heat_band}` : null, p.last_email ? `last email ${day(p.last_email.at)} ${p.last_email.what}` : null, p.visits ? `company ${p.visits.visits_7d} visits 7 d${p.visits.last_visit ? ` · last ${day(p.visits.last_visit)}` : ''}` : null, p.identified_at ? `identified on the site ${p.identified_at}` : null, p.buyer ? 'buyer title' : null].filter(Boolean).join(' · ') });
+// scout-v3 D1: a person is a ROW - name over title, the company link over its stage, heat on the one scale, last
+// visit, last email. company.id is null when the person has no company record (ruling K4).
+export const personRow = p => ({ kind: 'person', key: p.key, name: p.name, title: p.title || null, company: p.company ? { type: readType(p.company.type), id: p.company.id || null, name: p.company.name, stage: p.company.stage || null } : null, heat: p.heat ?? null, heat_band: p.heat_band || null, last_visit: p.visits?.last_visit ? day(p.visits.last_visit) : null, last_email: p.last_email ? { at: day(p.last_email.at), what: p.last_email.what } : null, status: p.status || null, sequenced: String(p.key).startsWith('prospect:') });
+const personItem = p => ({ company: p.company?.name || null, row: personRow(p), entity: 'people', id: p.key, title: p.name, score: p.heat ?? null, subtitle: [p.title, p.company?.name].filter(Boolean).join(' · ') || null, text: [p.name, p.title, p.company?.name ? `${p.company.name}${p.company.stage ? ` (${String(p.company.stage).replace(/_/g, ' ')})` : ''}` : null, p.source, `${p.emails.sent} sent · ${p.emails.opened} opened · ${p.emails.clicked} clicked · ${p.emails.replied} replied`, p.heat != null ? `heat ${p.heat} ${p.heat_band}` : null, p.last_email ? `last email ${day(p.last_email.at)} ${p.last_email.what}` : null, p.visits ? `company ${p.visits.visits_7d} visits 7 d${p.visits.last_visit ? ` · last ${day(p.visits.last_visit)}` : ''}` : null, p.identified_at ? `identified on the site ${p.identified_at}` : null, p.buyer ? 'buyer title' : null].filter(Boolean).join(' · ') });
 
 // Each intent declares one example phrasing (A5): the fallback answer offers three, the `suggest` ones first.
 export const salesIntents = [
-  { id: 'brief', example: 'what do we know about Hilton', match: ask => ask.company.length > 0,
-    async run(sb, { businessId, ask }) {
-      const items = [], reads = [];
+  // scout-v3 D9: a named company - or a named PERSON when no company carries the name - is a brief. A pronoun's
+  // carried companies ("... my tasks for them") never re-open the brief. brief = the one record, for the brief header.
+  { id: 'brief', example: 'what do we know about Hilton', title: 'Brief', rule: 'Everything on file for the record named: score, visits, people, notes and recent email.', match: ask => ask.company.length > 0 && !ask.carried,
+    async run(sb, { businessId, ask, today }) {
+      const items = [], reads = [], records = [];
       for (const name of ask.company.slice(0, 2)) {
         const c = await findCompany(sb, businessId, name);
-        if (!c) { reads.push(`no company named "${cleanText(name, 60)}"`); continue; }
+        if (!c) {
+          const person = await findPerson(sb, businessId, name, today);
+          if (!person) { reads.push(`no company or person named "${cleanText(name, 60)}"`); continue; }
+          reads.push(`goals/people/activity/${person.key}`);
+          records.push({ entity: 'people', id: person.key });
+          items.push(personItem(person));
+          const d = await salesReads.personDetail(sb, businessId, { key: person.key });
+          if (d.status === 200) {
+            for (const t of d.body.timeline.filter(x => !x.automated).slice(0, 8)) items.push({ entity: 'people', id: person.key, title: person.name, text: `${person.name} · ${t.kind}${t.step != null ? ` step ${t.step}` : ''}${t.reply_class ? ` (${t.reply_class})` : ''} · ${day(t.at)}${t.subject ? ` · ${t.subject}` : ''}` });
+            if (d.body.notes) items.push({ entity: 'people', id: person.key, title: person.name, text: `${person.name} · note: ${d.body.notes}` });
+          }
+          continue;
+        }
         const r = await salesReads.companyBrief(sb, { businessId, type: c.type, id: c.id });
         reads.push(`goals/brief/${c.type}/${c.id}`);
         if (r.status !== 200) continue;
         const entity = ENTITY_OF[c.type];
-        items.push({ entity, id: c.id, title: r.body.company.name, text: `${r.body.company.name} · ${c.type}${r.body.score ? ` · intent ${r.body.score.score} ${r.body.score.band}` : ''}${r.body.next_step ? ` · next: ${r.body.next_step}` : ''}` });
+        records.push({ entity, id: c.id });
+        const row = { kind: 'company', type: c.type, id: c.id, name: r.body.company.name, score: r.body.score?.score ?? null, band: r.body.score?.band || null };
+        items.push({ company: r.body.company.name, row, entity, id: c.id, title: r.body.company.name, text: `${r.body.company.name} · ${c.type}${r.body.score ? ` · intent ${r.body.score.score} ${r.body.score.band}` : ''}${r.body.next_step ? ` · next: ${r.body.next_step}` : ''}` });
         for (const l of r.body.lines) items.push({ entity, id: c.id, title: r.body.company.name, text: `${r.body.company.name} · ${l.kind}: ${l.text}` });
         if (c.domain) {
           const msgs = must(await sb.from('microsoft_messages').select('graph_id, subject, direction, occurred_at, external_domains').eq('business_id', businessId).contains('external_domains', [c.domain]).order('occurred_at', { ascending: false }).limit(8));
           for (const m of msgs) items.push({ entity: 'outlook', id: m.graph_id, title: cleanText(m.subject || '(no subject)', 120), date: day(m.occurred_at), text: `${cleanText(m.subject || '(no subject)', 120)} · ${m.direction === 'sent' ? 'email sent' : 'email received'} · ${day(m.occurred_at)} · ${c.domain}` });
         }
       }
-      return { read: reads.join(' + '), items };
+      return { read: reads.join(' + '), items, total: records.length, brief: records.length === 1 ? records[0] : null };
     } },
-  { id: 'todos', example: 'show me my open tasks', match: ask => ask.entity === 'todos',
-    async run(sb, { businessId, auth, ask }) {
-      const { rows, total } = await salesReads.openTodosFor(sb, businessId, ask.mine ? auth.user.id : null, { cap: 60 });
-      const kept = rows.filter(r => !ask.since || (r.due_date && day(r.due_date) >= ask.since) || day(r.created_at) >= ask.since).filter(r => !ask.terms.length || ask.terms.some(t => String(r.text || '').toLowerCase().includes(t)));
-      return { read: `openTodos (${total} open${ask.mine ? ', mine' : ''})`, items: kept.map(r => ({ entity: 'todos', id: r.id, title: cleanText(r.text, 140), date: day(r.due_date), text: [cleanText(r.text, 200), 'open to-do', r.due_date ? `due ${day(r.due_date)}` : 'no date', r.owner_user_id ? (r.owner_user_id === auth.user.id ? 'mine' : 'another owner') : 'unassigned', r.steps?.length ? `${r.steps.filter(s => s.done).length}/${r.steps.length} steps` : null].filter(Boolean).join(' · ') })) };
+  // scout-v3 R11: the open list by the rule, never filtered by the question's leftover words; a company named (or
+  // carried by a pronoun from the part before) narrows it to that company's to-dos - by link, else by its name in the text.
+  { id: 'todos', example: 'show me my open tasks', title: 'Tasks', rule: TODO_RULE, match: ask => ask.entity === 'todos',
+    async run(sb, { businessId, auth, ask, today }) {
+      const { rows, total } = await salesReads.openTodosFor(sb, businessId, ask.mine ? auth.user.id : null);
+      let kept = rows.filter(r => !ask.since || (r.due_date && day(r.due_date) >= ask.since && (!ask.until || day(r.due_date) <= ask.until)) || (!r.due_date && day(r.created_at) >= ask.since));
+      let of = '';
+      if (ask.company.length) {
+        const found = (await Promise.all(ask.company.map(n => findCompany(sb, businessId, n)))).filter(Boolean);
+        const names = ask.company.map(n => n.toLowerCase());
+        kept = kept.filter(r => found.some(c => readType(r.link_type) === c.type && String(r.link_id) === String(c.id)) || names.some(n => String(r.text || '').toLowerCase().includes(n)));
+        of = ` · for ${ask.company.map(n => cleanText(n, 60)).join(', ')}`;
+      }
+      kept = rankTodos(kept, today, auth.user.id);
+      const owner = r => (r.owner_user_id ? (r.owner_user_id === auth.user.id ? 'mine' : 'another owner') : 'unassigned');
+      return { read: `openTodos (${total} open${ask.mine ? ', mine' : ''})${of}`, total: kept.length, items: kept.slice(0, 40).map(r => ({ entity: 'todos', id: r.id, title: cleanText(r.text, 140), date: day(r.due_date),
+        row: { kind: 'task', id: r.id, text: cleanText(r.text, 200), due: day(r.due_date), overdue: !!r.due_date && day(r.due_date) < today, owner: owner(r), link: r.link_type && r.link_id && ['partner', 'employer', 'target'].includes(readType(r.link_type)) ? { type: readType(r.link_type), id: r.link_id } : null },
+        text: [cleanText(r.text, 200), 'open to-do', r.due_date ? `due ${day(r.due_date)}${day(r.due_date) < today ? ' (overdue)' : ''}` : 'no date', owner(r), r.steps?.length ? `${r.steps.filter(x => x.done).length}/${r.steps.length} steps` : null].filter(Boolean).join(' · ') })) };
     } },
   { id: 'visitors', example: 'who visited yesterday', suggest: true, match: ask => ask.flags.visitors && ask.entity !== 'people' && !ask.flags.email_site,
     async run(sb, { businessId, ask, today }) {
@@ -89,7 +141,7 @@ export const salesIntents = [
       const w = { date: today, days, first, last };
       const rows = await salesReads.loadVisitorData(sb, businessId, { window: w, members: await membersOf(sb, businessId) });
       const ranked = [...rows].sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || (b.visitors || 0) - (a.visitors || 0)).slice(0, 40);
-      return { read: `visitors ${first}${last !== first ? ` to ${last}` : ''} · ${rows.length} companies`, items: ranked.map(c => ({ entity: c.type ? ENTITY_OF[c.type] : 'visitor', id: c.type ? c.id : c.visit_id, title: c.company, score: c.score ?? null, text: [c.company, c.band ? `${c.band}${c.score != null ? ` score ${c.score}` : ''}` : null, `${c.visits} visits · ${c.visitors} visitors · ${c.pages} pages${c.paths?.length ? ` (${c.paths.join(', ')})` : ''}`, c.people ? `${c.people} named people${c.titles?.length ? ` (${c.titles.join('; ')})` : ''}` : null, c.is_new ? 'new to the site' : 'returning', c.type ? `in Prospector as ${c.type} · ${c.stage || 'no stage'} · owner ${c.owner}` : 'not in Prospector yet', c.last_touch ? `last touch ${day(c.last_touch.at)}${c.last_touch.what ? ` ${c.last_touch.what}` : ''}` : null].filter(Boolean).join(' · ') })) };
+      return { read: `visitors ${first}${last !== first ? ` to ${last}` : ''} · ${rows.length} companies`, items: ranked.map(c => ({ company: c.company, row: c.type ? { kind: 'company', type: c.type, id: c.id, name: c.company, score: c.score ?? null, band: c.band || null } : null, entity: c.type ? ENTITY_OF[c.type] : 'visitor', id: c.type ? c.id : c.visit_id, title: c.company, score: c.score ?? null, text: [c.company, c.band ? `${c.band}${c.score != null ? ` score ${c.score}` : ''}` : null, `${c.visits} visits · ${c.visitors} visitors · ${c.pages} pages${c.paths?.length ? ` (${c.paths.join(', ')})` : ''}`, c.people ? `${c.people} named people${c.titles?.length ? ` (${c.titles.join('; ')})` : ''}` : null, c.is_new ? 'new to the site' : 'returning', c.type ? `in Prospector as ${c.type} · ${c.stage || 'no stage'} · owner ${c.owner}` : 'not in Prospector yet', c.last_touch ? `last touch ${day(c.last_touch.at)}${c.last_touch.what ? ` ${c.last_touch.what}` : ''}` : null].filter(Boolean).join(' · ') })) };
     } },
   { id: 'ranked', example: 'hot targets Brad referred', match: ask => COMPANY_ENTITIES.has(ask.entity) && !ask.flags.visitors && !ask.flags.emails && !ask.flags.attention && (ask.flags.ranked || !!ask.band || !!ask.source || (!!ask.entity && (ask.mine || !!ask.since)) || (ask.flags.funnel && !!ask.band)),
     async run(sb, { businessId, auth, ask, now }) {
@@ -99,30 +151,32 @@ export const salesIntents = [
       let rows = r.body.rows;
       if (ask.since) rows = rows.filter(x => x.last_touch_at && day(x.last_touch_at) >= ask.since && (!ask.until || day(x.last_touch_at) <= ask.until));
       rows = rows.slice(0, 40);
-      return { read: `goals/scores ${JSON.stringify(query)}${ask.since ? ` touched since ${ask.since}` : ''} · ${r.body.counts.shown} shown`, items: rows.map(x => ({ entity: ENTITY_OF[x.type], id: x.id, title: x.name, score: x.score ?? null, date: day(x.last_touch_at), text: [x.name, x.type, `score ${x.score} ${x.band}`, `rank ${x.rank}`, x.source_label ? `source ${x.source_label}${x.co_owner_name ? ` (${x.co_owner_name})` : ''}` : null, x.stage ? `stage ${String(x.stage).replace(/_/g, ' ')}` : null, x.owner ? `owner ${x.owner}` : 'unassigned', x.last_touch_at ? `last touch ${day(x.last_touch_at)} · ${daysAgo(x.last_touch_at, now)} d ago` : 'never touched', x.visits_7d ? `${x.visits_7d} visits 7 d` : null, x.due ? `due ${x.due}` : null].filter(Boolean).join(' · ') })) };
+      return { read: `goals/scores ${JSON.stringify(query)}${ask.since ? ` touched since ${ask.since}` : ''} · ${r.body.counts.shown} shown`, items: rows.map(x => ({ company: x.name, row: { kind: 'company', type: x.type, id: x.id, name: x.name, score: x.score ?? null, band: x.band || null, owner: x.owner || null, stage: x.stage || null }, entity: ENTITY_OF[x.type], id: x.id, title: x.name, score: x.score ?? null, date: day(x.last_touch_at), text: [x.name, x.type, `score ${x.score} ${x.band}`, `rank ${x.rank}`, x.source_label ? `source ${x.source_label}${x.co_owner_name ? ` (${x.co_owner_name})` : ''}` : null, x.stage ? `stage ${String(x.stage).replace(/_/g, ' ')}` : null, x.owner ? `owner ${x.owner}` : 'unassigned', x.last_touch_at ? `last touch ${day(x.last_touch_at)} · ${daysAgo(x.last_touch_at, now)} d ago` : 'never touched', x.visits_7d ? `${x.visits_7d} visits 7 d` : null, x.due ? `due ${x.due}` : null].filter(Boolean).join(' · ') })) };
     } },
   // FIX scout-ask-routing-v1 A2: people whose company is on the site (or who were identified there) in the window,
   // hottest first - "who's our hottest person visiting the website". Sits between 'visitors' (companies) and 'people'.
-  { id: 'people_visiting', example: 'hottest people on the site this week', suggest: true, match: isPeopleVisiting,
+  { id: 'people_visiting', example: 'hottest people on the site this week', suggest: true, title: 'People on the site', rule: `${PEOPLE_RULE} Only people whose company visited, or who were identified on the site, in the window.`, match: isPeopleVisiting,
     async run(sb, { businessId, ask, today }) {
       const win = peopleWindow(ask, '7');
       const r = await salesReads.peopleActivity(sb, businessId, { window: win });
       if (r.status !== 200) return { read: `goals/people/activity (${r.status})`, items: [] };
       const since = ask.since || addDays(today, -6);
-      let rows = r.body.rows.filter(p => (p.visits && p.visits.visits_7d > 0 && (!p.visits.seen_to || p.visits.seen_to >= since)) || (p.identified_at && p.identified_at >= since));
+      const up = awake(r.body.rows, today);
+      let rows = up.rows.filter(p => (p.visits && p.visits.visits_7d > 0 && (!p.visits.seen_to || p.visits.seen_to >= since)) || (p.identified_at && p.identified_at >= since));
       rows = heatFilter(rows, ask);
       rows.sort((a, b) => (b.heat ?? -1) - (a.heat ?? -1) || String(b.visits?.last_visit || b.identified_at || '').localeCompare(String(a.visits?.last_visit || a.identified_at || '')));
-      return { read: `people whose company visited (${ask.since_kind || '7 d'}) · ${rows.length} · by heat`, items: rows.slice(0, 25).map(personItem) };
+      return { read: `people whose company visited (${ask.since_kind || '7 d'}) · ${rows.length} · by heat${up.hidden}`, total: rows.length, items: rows.slice(0, 25).map(personItem) };
     } },
-  { id: 'people', example: 'who opened our emails', match: ask => !isPeopleVisiting(ask) && (ask.entity === 'people' || ((ask.flags.opened || ask.flags.replied || ask.flags.clicked) && !ask.flags.emails)),
-    async run(sb, { businessId, ask }) {
+  { id: 'people', example: 'who opened our emails', title: 'People', rule: PEOPLE_RULE, match: ask => !isPeopleVisiting(ask) && (ask.entity === 'people' || ((ask.flags.opened || ask.flags.replied || ask.flags.clicked) && !ask.flags.emails)),
+    async run(sb, { businessId, ask, today }) {
       const win = peopleWindow(ask, 'all');
       const r = await salesReads.peopleActivity(sb, businessId, { window: win });
       if (r.status !== 200) return { read: `goals/people/activity (${r.status})`, items: [] };
-      let rows = heatFilter(r.body.rows, ask);
+      const up = awake(r.body.rows, today);
+      let rows = heatFilter(up.rows, ask);
       if (ask.flags.replied) rows = rows.filter(p => p.emails.replied > 0); else if (ask.flags.clicked) rows = rows.filter(p => p.emails.clicked > 0); else if (ask.flags.opened) rows = rows.filter(p => p.emails.opened > 0);
       if (ask.terms.length) rows = rows.filter(p => ask.terms.some(t => `${p.name} ${p.title || ''} ${p.company?.name || ''}`.toLowerCase().includes(t)));
-      return { read: `goals/people/activity?window=${win} (${r.body.rows.length} people)`, items: rows.slice(0, 40).map(personItem) };
+      return { read: `goals/people/activity?window=${win} (${r.body.rows.length} people)${up.hidden}`, total: rows.length, items: rows.slice(0, 40).map(personItem) };
     } },
   // email-funnel-v1 F7: the two rates and the funnel steps straight from the funnel route (funnelMath, the one function),
   // so Scout's answer carries the same numbers as the daily email and the Web visitors page.

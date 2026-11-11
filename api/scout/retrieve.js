@@ -82,7 +82,7 @@ export function parseAsk(q, vocab, { today }) {
   }
   const stemOf = key => [...hits].map(s => stems[s][key]).find(Boolean) || null;
   // The explicit entity word wins; a stem ("person" inside "hottestperson") stands in when no word matched.
-  const entity = Object.entries(vocab.entities || {}).find(([, ws]) => ws.some(w => phraseIn(text, w)))?.[0] || stemOf('entity');
+  let entity = Object.entries(vocab.entities || {}).find(([, ws]) => ws.some(w => phraseIn(text, w)))?.[0] || stemOf('entity');
   for (const ws of Object.values(vocab.entities || {})) ws.forEach(w => vocabWords.add(w));
   const band = Object.entries(vocab.bands || {}).find(([w]) => phraseIn(text, w))?.[1] || (vocab.bands || {})[stemOf('band')] || null;
   Object.keys(vocab.bands || {}).forEach(w => vocabWords.add(w));
@@ -106,15 +106,45 @@ export function parseAsk(q, vocab, { today }) {
     funnel: /\bfunnel\b|\breferr(ed|al|als)\b/.test(text), emails: /\bsequences?\b|\bopen rate\b|\breply rate\b|\bemails? (doing|performing|going)\b|\bhow are (my |our )?emails\b/.test(text),
     opened: /\bopen(ed|s)\b/.test(text), replied: /\brepl(ied|ies|y)\b/.test(text), clicked: /\bclick(ed|s)\b/.test(text),
     // email-funnel-v1 F7: "email to site rate", "emails -> website visits", "visit rate", "email funnel" -> the funnel route.
+    brief: /\bbrief\b|\bintel\b|\bpull\b|\bwhat do we know\b|\btell me about\b|\brecent call\b|\bnotes on\b/.test(text),
     email_site: /\bemails?\b[^.?!]{0,16}\b(to|into|vs|versus|→|->)\s+(the\s+)?(site|website|web|visits?|visitors)\b|\b(site|website|visit|visitor|conversion) rate\b|\bemail funnel\b|\bfunnel\b[^.?!]{0,12}\bemails?\b/.test(text),
   };
+  // scout-v3 D1: "who" with a heat word and no entity word asks for people ("who's hot"); "who visited" stays companies.
+  if (!entity && vocab.entities?.people && /\bwhos?\b/.test(text) && (band || superlative) && !flags.visitors) entity = 'people';
+  // scout-v3 D2 / R11: a count is a limit ("5 most important", "top 3") - never the n of "last n days" or a date's day.
+  const limit = [...text.matchAll(/(?<!\b(?:last|past|in)\s)(?<!\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s)\b(\d{1,2})\b(?!\s*(?:days?|d|weeks?|months?|st|nd|rd|th)\b|[.:/-]\d)/g)].map(m => Number(m[1])).find(n => n >= 1 && n <= 50) || null;
+  const pronoun = /\b(them|they|their|these|those companies|that company)\b/.test(text);
   // A3: a band word on a people ask is a heat band (hot / warm / cold), on a company ask the intent band (P1-P4).
   const bandKind = !band ? null : entity === 'people' || flags.opened || flags.replied || flags.clicked ? 'heat' : 'intent';
   const terms = words.filter(w => !STOP.has(w) && !vocabWords.has(w) && w.length > 1 && !/^\d+$/.test(w));
-  return { q: raw, mine: /\b(my|mine|i|ive|im)\b/.test(text), entity, since: time?.since || null, until: time?.until || null, since_kind: time?.kind || null, band, bandKind, source, sort, company, flags, terms, search: terms.join(' ') };
+  return { q: raw, limit, pronoun, mine: /\b(my|mine|i|ive|im)\b/.test(text), entity, since: time?.since || null, until: time?.until || null, since_kind: time?.kind || null, band, bandKind, source, sort, company, flags, terms, search: terms.join(' ') };
 }
 
 const refOf = (entity, id) => `${entity}:${id}`;
+
+// scout-v3 D2 - the section planner's first half: a multi-part ask -> its parts. Separators: ";", "and show", "and
+// also", "then", a numbered "1. 2."; and the different-clause rule - a bare "and" splits when both sides (3+ words
+// each) match an intent of their own and the two differ (by intents or entity). `signature(ask)` is the caller's view of
+// the modules in scope ('' when no intent matches). At most PARTS_MAX parts; `cut` counts the rest.
+export const PARTS_MAX = 5;
+const SEPARATOR = /\s*;\s*|\s+(?:and\s+then|and\s+also|and\s+show(?:\s+me)?|then(?:\s+show(?:\s+me)?)?|also\s+show(?:\s+me)?)\s+/i;
+export function splitAsk(q, vocab, { today, signature }) {
+  const raw = String(q || '').trim();
+  const numbered = /(?:^|\s)1[.)]\s/.test(raw) ? raw.split(/(?:^|\s)\d{1,2}[.)]\s+/).map(x => x.trim()).filter(Boolean) : [];
+  const pieces = numbered.length > 1 ? numbered : raw.split(SEPARATOR).map(x => x.trim()).filter(Boolean);
+  const words = t => t.split(/\s+/).filter(Boolean).length;
+  const clause = piece => {
+    for (const m of piece.matchAll(/,?\s+and\s+/gi)) {
+      const a = piece.slice(0, m.index).trim(), b = piece.slice(m.index + m[0].length).trim();
+      if (words(a) < 3 || words(b) < 3) continue;
+      const sa = signature(parseAsk(a, vocab, { today })), sb = signature(parseAsk(b, vocab, { today }));
+      if (sa && sb && sa !== sb) return [a, ...clause(b)];
+    }
+    return [piece];
+  };
+  const all = pieces.flatMap(clause);
+  return { parts: all.length ? all.slice(0, PARTS_MAX) : [raw], cut: Math.max(0, all.length - PARTS_MAX) };
+}
 
 // Each record is cited by a short label [r1]…[rN] (numbered in the order it enters the pack) - a uuid token costs the
 // model ~25 output tokens a record; the label maps back to the record here, never in the prompt.
@@ -123,7 +153,7 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
   const businesses = await scopedBusinesses(supabase, auth, scope);
   const today = laDateString(new Date(now));
   const many = businesses.length > 1;
-  const reads = [], glossary = [], vocabParts = [], per = [];
+  const glossary = [], vocabParts = [], per = [];
   for (const b of businesses) for (const m of registry.modulesFor(b)) {
     vocabParts.push(m.vocabulary);
     const g = m.glossary ? await m.glossary(supabase, { businessId: b.id, business: b, auth, today, now }) : null;
@@ -131,55 +161,80 @@ export async function buildContext(supabase, registry, { auth, scope, q, now = D
     per.push({ b, m });
   }
   const vocab = mergeVocab(vocabParts);
-  const ask = parseAsk(q, vocab, { today });
-  const found = []; // { item, b, priority }
-  const add = (items, b, entity, priority) => { for (const it of items || []) found.push({ item: { entity, ...it }, b, priority }); };
-  const matchedIds = new Set();
-  for (const { b, m } of per) {
-    const ctx = { businessId: b.id, business: b, auth, ask, today, now };
-    const matched = m.intents.filter(i => i.match(ask));
-    matched.forEach(i => matchedIds.add(i.id));
-    for (const i of matched) { const r = await i.run(supabase, ctx); reads.push(many ? `${b.name}: ${r.read}` : r.read); add(r.items, b, null, 1); }
-    if (!matched.length) {
-      if (ask.search) for (const e of m.entities) {
-        if (ask.entity && e.entity !== ask.entity) continue;
-        if (e.gate && !e.gate({ words: ask.terms, q: ask.search })) continue;
-        const rows = await e.search(supabase, { ...ctx, q: ask.search, words: ask.terms, limit: SEARCH_LIMIT });
-        if (rows.length) { reads.push(many ? `${b.name}: search ${e.entity}` : `search ${e.entity}`); add(rows, b, e.entity, 2); }
+  const signature = a => { const ids = per.flatMap(({ m }) => m.intents.filter(x => x.match(a)).map(x => x.id)); return ids.length ? `${[...new Set(ids)].join('+')}|${a.entity || ''}` : ''; };
+  const split = splitAsk(q, vocab, { today, signature });
+  const multi = split.parts.length > 1;
+  const budget = Math.floor(PACK_MAX / split.parts.length);
+  const items = new Map(), labels = new Map(), lines = [], seen = new Set(), rowsByEntity = {}, reads = [], matchedAll = [], parts = [];
+  let chars = 0, droppedPii = 0, truncated = 0, carry = [];
+  const push = line => { lines.push(line); chars += line.length + 1; };
+  for (const [pi, text] of split.parts.entries()) {
+    const ask = parseAsk(text, vocab, { today });
+    // D2 / R11: a pronoun carries the previous part's companies ("... and show my tasks for them").
+    if (ask.pronoun && !ask.company.length && carry.length) { ask.company = carry.slice(0, 3); ask.carried = true; }
+    let found = []; // { item, b, priority }
+    const partReads = [], matched = [], rules = [], titles = [];
+    let total = null, brief = null;
+    const add = (list, b, entity, priority) => { for (const it of list || []) found.push({ item: { entity, ...it }, b, priority }); };
+    for (const { b, m } of per) {
+      const ctx = { businessId: b.id, business: b, auth, ask, today, now };
+      const hit = m.intents.filter(i => i.match(ask));
+      for (const i of hit) {
+        const r = await i.run(supabase, ctx);
+        matched.push(i.id); partReads.push(many ? `${b.name}: ${r.read}` : r.read); add(r.items, b, null, 1);
+        const rule = r.rule || (typeof i.rule === 'function' ? i.rule(ask) : i.rule); if (rule) rules.push(rule);
+        const title = typeof i.title === 'function' ? i.title(ask) : i.title; if (title) titles.push(title);
+        if (typeof r.total === 'number') total = (total || 0) + r.total;
+        if (r.brief) brief = r.brief;
       }
-      if (m.standing) { const r = await m.standing(supabase, ctx); reads.push(...(r.reads || []).map(x => (many ? `${b.name}: ${x}` : x))); add(r.items, b, null, 3); }
+      if (!hit.length) {
+        if (ask.search) for (const e of m.entities) {
+          if (ask.entity && e.entity !== ask.entity) continue;
+          if (e.gate && !e.gate({ words: ask.terms, q: ask.search })) continue;
+          const rows = await e.search(supabase, { ...ctx, q: ask.search, words: ask.terms, limit: SEARCH_LIMIT });
+          if (rows.length) { partReads.push(many ? `${b.name}: search ${e.entity}` : `search ${e.entity}`); add(rows, b, e.entity, 2); }
+        }
+        if (m.standing) { const r = await m.standing(supabase, ctx); partReads.push(...(r.reads || []).map(x => (many ? `${b.name}: ${x}` : x))); add(r.items, b, null, 3); }
+      }
     }
-  }
-  found.sort((a, b) => a.priority - b.priority);
-  const items = new Map(), labels = new Map(), lines = [], seen = new Set(), rowsByEntity = {};
-  let chars = 0, droppedPii = 0, truncated = 0;
-  // A5: no intent in any module matched -> the first context line says so and offers three of the modules' own example
-  // phrasings (each intent declares one; the `suggest` ones first) so the answer can say what was read and how to ask.
-  const intent = matchedIds.size ? [...matchedIds].join('+') : 'none';
-  if (intent === 'none') {
-    const withExample = per.flatMap(({ m }) => m.intents.filter(i => i.example));
-    const examples = [...new Set([...withExample.filter(i => i.suggest), ...withExample.filter(i => !i.suggest)].map(i => i.example))].slice(0, 3);
-    const line = `No specific read matched this question; the context below is the standing summary (${reads.join(' · ') || 'nothing read'}).${examples.length ? ` Try: ${examples.map(e => `'${e}'`).join(' · ')}` : ''}`;
-    lines.push(line); chars += line.length + 1;
-  }
-  for (const { item, b } of found) {
-    const entity = item.entity, id = String(item.id);
-    const body = cleanText(String(item.text || [item.title, item.subtitle, item.date].filter(Boolean).join(' · ')), 700);
-    if (hasPii(body)) { droppedPii += 1; continue; }
-    const label = labels.get(refOf(entity, id)) || `r${labels.size + 1}`;
-    const line = `[${label}] ${body}${many ? ` · workspace ${b.name}` : ''}`;
-    const key = `${refOf(entity, id)}|${body}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    if (chars + line.length + 1 > PACK_MAX) { truncated += 1; continue; }
-    chars += line.length + 1;
-    lines.push(line);
-    rowsByEntity[entity] = (rowsByEntity[entity] || 0) + 1;
-    if (!labels.has(refOf(entity, id))) {
-      labels.set(refOf(entity, id), label);
-      const open = registry.openerFor(entity);
-      items.set(label, { entity, id, title: cleanText(String(item.title || body), 160), workspace_id: b.id, workspace_name: b.name, open: open ? open(id, item) : null, why: body, subtitle: item.subtitle && !hasPii(String(item.subtitle)) ? cleanText(String(item.subtitle), 160) : null, date: item.date || null, score: typeof item.score === 'number' ? item.score : null });
+    found.sort((a, b) => a.priority - b.priority);
+    if (ask.limit && matched.length) { const keep = new Set(); found = found.filter(f => { const k = refOf(f.item.entity, f.item.id); if (keep.has(k)) return true; if (keep.size >= ask.limit) return false; keep.add(k); return true; }); }
+    const named = ask.carried ? [] : ask.company.length ? ask.company : [...new Set(found.map(f => f.item.company).filter(Boolean))].slice(0, 5);
+    if (named.length) carry = named;
+    reads.push(...partReads); matchedAll.push(...matched);
+    if (multi) push(`PART ${pi + 1} of ${split.parts.length}: "${cleanText(text, 200)}"`);
+    // A5: no intent in any module matched -> the first context line says so and offers three of the modules' own example
+    // phrasings (each intent declares one; the `suggest` ones first) so the answer can say what was read and how to ask.
+    if (!matched.length) {
+      const withExample = per.flatMap(({ m }) => m.intents.filter(i => i.example));
+      const examples = [...new Set([...withExample.filter(i => i.suggest), ...withExample.filter(i => !i.suggest)].map(i => i.example))].slice(0, 3);
+      push(`No specific read matched this question; the context below is the standing summary (${partReads.join(' · ') || 'nothing read'}).${examples.length ? ` Try: ${examples.map(e => `'${e}'`).join(' · ')}` : ''}`);
     }
+    const start = chars, partLabels = [];
+    for (const { item, b } of found) {
+      const entity = item.entity, id = String(item.id);
+      const body = cleanText(String(item.text || [item.title, item.subtitle, item.date].filter(Boolean).join(' · ')), 700);
+      if (hasPii(body)) { droppedPii += 1; continue; }
+      const label = labels.get(refOf(entity, id)) || `r${labels.size + 1}`;
+      const line = `[${label}] ${body}${many ? ` · workspace ${b.name}` : ''}`;
+      const key = `${pi}|${refOf(entity, id)}|${body}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (chars - start + line.length + 1 > budget) { truncated += 1; continue; }
+      push(line);
+      rowsByEntity[entity] = (rowsByEntity[entity] || 0) + 1;
+      if (!partLabels.includes(label)) partLabels.push(label);
+      if (!labels.has(refOf(entity, id))) {
+        labels.set(refOf(entity, id), label);
+        const open = registry.openerFor(entity);
+        // the row's words are checked, not its ids (a uuid reads as a phone shape)
+        const row = item.row && !hasPii([item.row.name, item.row.title, item.row.text, item.row.company?.name].filter(Boolean).join(' · ')) ? item.row : null;
+        items.set(label, { entity, id, title: cleanText(String(item.title || body), 160), workspace_id: b.id, workspace_name: b.name, open: open ? open(id, item) : null, why: body, subtitle: item.subtitle && !hasPii(String(item.subtitle)) ? cleanText(String(item.subtitle), 160) : null, date: item.date || null, score: typeof item.score === 'number' ? item.score : null, ...(row ? { row } : {}) });
+      }
+    }
+    if (multi && !partLabels.length && matched.length) push('(no rows for this part)');
+    parts.push({ q: text, ask, intent: matched.length ? [...new Set(matched)].join('+') : 'none', title: titles[0] || null, rule: rules.join(' ') || null, read: partReads.join(' · '), labels: partLabels, count: total ?? partLabels.length, brief: ask.flags.brief && brief ? brief : null });
   }
-  return { ask, pack: lines.join('\n'), lines, items, glossary: [...new Set(glossary)], businesses, stats: { intent, rows_by_entity: rowsByEntity, reads, dropped_pii: droppedPii, truncated, chars, lines: lines.length, workspaces: [...new Set(per.map(p => p.b.name))] } };
+  const intent = matchedAll.length ? [...new Set(matchedAll)].join('+') : 'none';
+  return { ask: parts[0].ask, parts, parts_cut: split.cut, pack: lines.join('\n'), lines, items, glossary: [...new Set(glossary)], businesses, stats: { intent, parts: parts.length, rows_by_entity: rowsByEntity, reads, dropped_pii: droppedPii, truncated, chars, lines: lines.length, workspaces: [...new Set(per.map(p => p.b.name))] } };
 }

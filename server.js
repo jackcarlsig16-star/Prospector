@@ -423,6 +423,11 @@ const scoutRoute = (file, name) => async (req, res) => {
 };
 app.get('/api/scout/search',           scoutRoute('./api/scout/search.js', 'searchRoute'));
 app.post('/api/scout/ask',    aiLimit, scoutRoute('./api/scout/ask.js', 'askRoute'));
+// scout-v3 S1 - plan (no write) -> the confirm card -> act (each row through its existing route) -> undo; pack = Copy for Claude. No model call.
+app.post('/api/scout/plan',            scoutRoute('./api/scout/actions.js', 'planRoute'));
+app.post('/api/scout/act',             scoutRoute('./api/scout/actions.js', 'actRoute'));
+app.post('/api/scout/undo',            scoutRoute('./api/scout/actions.js', 'undoRoute'));
+app.post('/api/scout/pack',            scoutRoute('./api/scout/actions.js', 'packRoute'));
 app.post('/api/glean',         esHandler('./api/glean.js'));
 app.post('/api/glean/people',  esHandler('./api/glean-people.js'));
 app.post('/api/gmail-intent',  esHandler('./api/gmail-intent.js'));

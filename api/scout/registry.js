@@ -11,12 +11,16 @@ import { pathToFileURL } from 'url';
 //   intents:  [{ id, match(ask) -> bool, run(supabase, { businessId, auth, ask, today, now }) -> { read, items: [{ entity, id, title, text, date? }] } }]
 //   standing(supabase, ctx)        -> { reads: [], items }   (what every fallback ask carries: the caller's open to-dos, recent notes ...)
 //   glossary(supabase, ctx)        -> { lines: [], vocabulary }  (D7: the house words, built from the data the screens use)
+//   verbs: [{ id, label, done, lead (RegExp on the command's start), accepts: [entity], needs?: 'member' | 'date',
+//             plan(supabase, ctx, targets, args) -> { rows: [{ key, kind, title, from, to, skipped?, blocked?, note?, exec }] } | { cant } | { open, line },
+//             act(supabase, ctx, exec) -> { undo?, to?, skipped? }, undo(supabase, ctx, exec, handle) }]   (scout-v3 S1: /plan, /act, /undo)
+//   members(supabase, businessId) -> [{ id, name }]   pack(supabase, ctx, { q, records }) -> { text, records, chars } | { blocked }
 //   vocabulary: { entities: { <entity>: [words] }, bands: { word: band }, sources: { word: label } } - static words; glossary adds the dynamic ones
 export function createRegistry() {
   const modules = [];
   const reg = {
     register(name, def) {
-      modules.push({ name, appliesTo: def.appliesTo || (() => true), entities: def.entities || [], openers: def.openers || {}, intents: def.intents || [], standing: def.standing || null, glossary: def.glossary || null, vocabulary: def.vocabulary || {} });
+      modules.push({ name, appliesTo: def.appliesTo || (() => true), entities: def.entities || [], openers: def.openers || {}, intents: def.intents || [], standing: def.standing || null, glossary: def.glossary || null, vocabulary: def.vocabulary || {}, verbs: def.verbs || [], members: def.members || null, pack: def.pack || null });
     },
     modulesFor(business) { return modules.filter(m => m.appliesTo(business)); },
     entitiesFor(business) { return reg.modulesFor(business).flatMap(m => m.entities.map(e => ({ ...e, module: m.name }))); },

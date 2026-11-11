@@ -8,6 +8,7 @@ import { isMigrationPending, timelineFor, summarizePerson } from './personActivi
 import { readAllViews, writeAllViews, SAVED_VIEWS_MAX } from './scoresRoutes.js';
 import { HEAT, HEAT_BANDS, visitSignal } from './heatScore.js';
 import { visitIndex } from './visitJoin.js';
+import { isSnoozed } from './snoozed.js';
 import { SIZE_BUCKETS } from '../../src/constants/headcount.js';
 
 // people-v2 Stage 1 (P5) - GET goals/people/activity?window=7|30|90|all: ONE read for Pipeline › People. The rows are the
@@ -43,7 +44,7 @@ export function peopleRows({ prospects = [], salesPeople = [], partnerContacts =
   for (const p of prospects) {
     const o = p.opportunity_id ? opp.get(p.opportunity_id) : null, g = p.goal_id ? goal.get(p.goal_id) : null;
     out.push({ person_key: `prospect:${p.contact_id}`, source: 'prospect', name: nameOf(p.name), title: cleanText(p.title, 160) || null, company: o ? company('employer', o) : g ? company('partner', g) : p.company ? { type: 'account', id: null, name: cleanText(p.company, 160), stage: null, owner_user_id: null, employees: null, employees_source: null } : null,
-      apollo_id: p.contact_id, contact_id: p.contact_id, has_email: !!p.email, identified_at: null, last_touch_at: null, status: p.status || null, owner: p.owner || null });
+      apollo_id: p.contact_id, contact_id: p.contact_id, has_email: !!p.email, identified_at: null, last_touch_at: null, status: p.status || null, owner: p.owner || null, snooze_until: p.snooze_until || null });
   }
   for (const p of salesPeople) {
     if (p.archived_at) continue;
@@ -61,7 +62,8 @@ const nz = v => (v == null ? 0 : Number(v));
 
 // Pure: the merged, joined, windowed rows + the chip counts.
 // heatAgo: person_key -> the heat stored 7 days ago (sales_person_heat_days), for the table's Δ7 glyph (heat-v2 H5).
-export function buildPeopleTable({ rows, activity = [], visits = [], buyerTitles = [], window: w, now = Date.now(), heatAgo = new Map() }) {
+// scout-v3 R6: snoozed = 'hide' (default: a snoozed person is out until the day, counted in `snoozed`) | 'only' | 'all'.
+export function buildPeopleTable({ rows, activity = [], visits = [], buyerTitles = [], window: w, now = Date.now(), heatAgo = new Map(), snoozed: snoozeMode = 'hide' }) {
   const today = laDateString(new Date(now));
   const act = new Map();
   for (const a of activity) { act.set(a.person_key, a); if (a.contact_id) act.set(`c:${a.contact_id}`, a); }
@@ -77,7 +79,7 @@ export function buildPeopleTable({ rows, activity = [], visits = [], buyerTitles
     const lastTouch = [lastEmail, p.last_touch_at].filter(Boolean).sort().pop() || null;
     const visitsRow = v ? { visits_7d: nz(v.visits_7d), last_visit: v.last_visit || v.seen_to || null, top_page: Array.isArray(v.top_paths) && v.top_paths[0] ? cleanText(String(v.top_paths[0].path || v.top_paths[0]), 200) : null, seen_to: v.seen_to || v.pulled_on || null } : null;
     return {
-      key: p.key, sources: p.sources.map(s => SOURCE_WORD[s]), source: SOURCE_WORD[p.sources[0]], name: p.name, title: p.title, company: p.company, status: p.status, owner: p.owner,
+      key: p.key, sources: p.sources.map(s => SOURCE_WORD[s]), source: SOURCE_WORD[p.sources[0]], name: p.name, title: p.title, company: p.company, status: p.status, owner: p.owner, snooze_until: p.snooze_until || null,
       emails, last_email: lastEmail ? { at: lastEmail, what: lastEmailWhat, reply_class: a?.reply_class || null } : null,
       heat: a?.heat ?? null, heat_band: a?.heat_band ?? null, heat_7d_ago: p.source_keys.map(k => heatAgo.get(k)).find(v => v != null) ?? null, visits: visitsRow,
       identified_at: p.identified_at ? String(p.identified_at).slice(0, 10) : null,
@@ -85,7 +87,9 @@ export function buildPeopleTable({ rows, activity = [], visits = [], buyerTitles
       in_window: !sinceIso || (lastEmail && lastEmail >= sinceIso) || (visitsRow?.seen_to && visitsRow.seen_to >= w.since) || (p.identified_at && String(p.identified_at) >= sinceIso),
     };
   });
-  const shown = people.filter(r => r.in_window).map(({ in_window, ...r }) => r);
+  const inWindow = people.filter(r => r.in_window).map(({ in_window, ...r }) => r);
+  const snoozedN = inWindow.filter(r => isSnoozed(r, today)).length;
+  const shown = snoozeMode === 'all' ? inWindow : inWindow.filter(r => isSnoozed(r, today) === (snoozeMode === 'only'));
   const sevenDays = addDays(today, -6);
   const counts = {
     opened: shown.filter(r => r.emails.opened > 0).length, clicked: shown.filter(r => r.emails.clicked > 0).length, replied: shown.filter(r => r.emails.replied > 0).length, sent: shown.filter(r => r.emails.sent > 0).length,
@@ -96,10 +100,10 @@ export function buildPeopleTable({ rows, activity = [], visits = [], buyerTitles
   shown.sort((a, b) => (b.heat ?? -1) - (a.heat ?? -1) || String(b.last_email?.at || '').localeCompare(String(a.last_email?.at || '')) || String(a.name).localeCompare(String(b.name)));
   const text = JSON.stringify(shown);
   if (ADDRESS.test(text)) throw new Error('people activity: an address reached the result - refused');
-  return { rows: shown, n: shown.length, total: people.length, counts, window: w, heat_rule: heatRuleOf(), computed_at: activity.map(a => a.computed_at).filter(Boolean).sort().pop() || null, heat_pending: activity.filter(a => a.heat == null).length };
+  return { rows: shown, n: shown.length, total: people.length, snoozed: snoozedN, counts, window: w, heat_rule: heatRuleOf(), computed_at: activity.map(a => a.computed_at).filter(Boolean).sort().pop() || null, heat_pending: activity.filter(a => a.heat == null).length };
 }
 
-export async function peopleActivity(supabase, businessId, { window: id = 'all', now = Date.now() } = {}) {
+export async function peopleActivity(supabase, businessId, { window: id = 'all', now = Date.now(), snoozed = 'hide' } = {}) {
   const today = laDateString(new Date(now));
   const w = windowOf(id, today);
   const all = (table, cols, build = x => x) => selectAllPages(() => build(supabase.from(table).select(cols).eq('business_id', businessId)).order('id'));
@@ -107,7 +111,7 @@ export async function peopleActivity(supabase, businessId, { window: id = 'all',
   try { activity = await selectAllPages(() => supabase.from('sales_person_activity').select('person_key, contact_id, sent, opened_h, bot_opens, clicked, replied, last_sent_at, last_open_at, last_click_at, last_reply_at, reply_class, heat, heat_band, computed_at').eq('business_id', businessId).order('person_key')); }
   catch (e) { if (isMigrationPending(e)) return reply(503, { error: 'Run supabase/migrations/20261106_people_v2_stage1.sql first (sales_person_activity is missing)', migration_pending: true }); throw e; }
   const [prospects, salesPeople, partnerContacts, opportunities, targets, partners, visits, settings] = await Promise.all([
-    selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id, name, title, company, opportunity_id, goal_id, status, owner, email').eq('business_id', businessId).order('contact_id')),
+    selectAllPages(() => supabase.from('sales_prospect_state').select('contact_id, name, title, company, opportunity_id, goal_id, status, owner, email, snooze_until').eq('business_id', businessId).order('contact_id')),
     all('sales_people', 'id, company_type, opportunity_id, target_id, name, title, source_kind, visit_id, upload_id, archived_at, created_at, company_name'),
     all('partner_contacts', 'id, goal_id, name, title, email, apollo_contact_id, last_activity_at'),
     all('sales_opportunities', 'id, organization, stage, owner_user_id, archived_at, employees, employees_source'),
@@ -118,7 +122,7 @@ export async function peopleActivity(supabase, businessId, { window: id = 'all',
   ]);
   const rows = peopleRows({ prospects, salesPeople, partnerContacts, opportunities: opportunities.filter(o => !o.archived_at), targets, partners });
   const [since, heatAgo] = await Promise.all([historySince(supabase, businessId), heatDaysAgo(supabase, businessId, laDateString(new Date(now - 7 * 864e5)))]);
-  return reply(200, { ...buildPeopleTable({ rows, activity, visits, buyerTitles: must(settings)?.buyer_titles || [], window: w, now, heatAgo }), history_since: since });
+  return reply(200, { ...buildPeopleTable({ rows, activity, visits, buyerTitles: must(settings)?.buyer_titles || [], window: w, now, heatAgo, snoozed: ['only', 'all'].includes(snoozed) ? snoozed : 'hide' }), history_since: since });
 }
 
 // heat-v2 R7: the day the heat history starts = the earliest day row, never a constant; null until the first run after
@@ -142,7 +146,7 @@ export async function heatHistory(supabase, businessId, personKey, now = Date.no
 }
 
 export async function peopleActivityRoute(req, res) {
-  try { send(res, await peopleActivity(getSupabase(), req.params.businessId, { window: req.query.window })); }
+  try { send(res, await peopleActivity(getSupabase(), req.params.businessId, { window: req.query.window, snoozed: req.query.snoozed })); }
   catch (e) { res.status(500).json({ error: e.message }); }
 }
 

@@ -29,6 +29,7 @@ export function mergePeople(rows) {
       t.identified_at = t.identified_at || r.identified_at || null;
       t.last_touch_at = [t.last_touch_at, r.last_touch_at].filter(Boolean).sort().pop() || null;
       t.contact_id = t.contact_id || r.contact_id || null;
+      t.snooze_until = t.snooze_until || r.snooze_until || null;
       t.partner_contact_ids = [...(t.partner_contact_ids || []), ...(r.partner_contact_ids || [])];
     }
     if (k1) byApollo.set(k1, t);

@@ -84,13 +84,16 @@ export async function applyResearchFootprint(supabase, { businessId, type, id, r
 }
 
 // PATCH /goals/company/:type/:id/fields { employees?, reach_employees?, reach_clients?, owner_user_id? } (Members):
-// a typed number is source 'manual' (null clears it); owner_user_id is employers / targets only.
-export async function editCompanyFields(supabase, { businessId, type, id, body = {}, byUser = null, now = new Date() }) {
+// a typed number is source 'manual' (null clears it); owner_user_id is employers / targets only. scout-v3 R8: with
+// expect { owner_user_id } an assign is compare-and-set - 409 { code: 'changed', owner } when the owner moved meanwhile.
+export async function editCompanyFields(supabase, { businessId, type, id, body: input = {}, byUser = null, now = new Date(), origin = null }) {
   try {
     if (!RECORD_TABLE[type]) return reply(400, { error: `type must be one of ${Object.keys(RECORD_TABLE).join('|')}` });
     if (!UUID.test(id || '')) return reply(404, { error: `${type} not found` });
     // FIX headcount-auto-v1 REV2 H7: "Set domain" on an employer / target (source 'manual'; null clears it).
     const allowed = [...NUMBERS[type], ...(type === 'partner' ? [] : ['owner_user_id', 'domain'])];
+    const { expect, ...body } = input || {};
+    if (expect !== undefined && (!expect || typeof expect !== 'object' || Object.keys(expect).some(k => k !== 'owner_user_id') || !('owner_user_id' in body))) return reply(400, { error: 'expect must be { owner_user_id } on an owner change' });
     const keys = Object.keys(body);
     const bad = keys.find(k => !allowed.includes(k));
     if (bad) return reply(400, { error: bad === 'owner_user_id' ? "a partner's owner changes through Assign" : bad === 'domain' ? "a partner's domain lives in Partner domains" : `${bad} can't be set on a ${type}` });
@@ -115,7 +118,11 @@ export async function editCompanyFields(supabase, { businessId, type, id, body =
     // homelover-flow-v1 F1: a Map / panel Assign on an employer or target is Activity + Undo (flow event with the prior owner).
     const before = 'owner_user_id' in body ? must(await supabase.from(RECORD_TABLE[type]).select(`id, owner_user_id${type === 'employer' ? ', owner, organization' : ', name'}`).eq('business_id', businessId).eq('id', id).maybeSingle()) : null;
     if ('owner_user_id' in body && !before) return reply(404, { error: `${type} not found` });
-    const rows = must(await supabase.from(RECORD_TABLE[type]).update({ ...patch, updated_at: now.toISOString() }).eq('business_id', businessId).eq('id', id).select(select));
+    const changed = async owner => reply(409, { error: `owner changed to ${owner ? (await ownerPerson(supabase, businessId, owner))?.name?.split(' ')[0] || 'another member' : 'unassigned'} meanwhile`, code: 'changed', owner_user_id: owner || null });
+    if (expect && (before.owner_user_id || null) !== (expect.owner_user_id || null)) return changed(before.owner_user_id);
+    const upd = supabase.from(RECORD_TABLE[type]).update({ ...patch, updated_at: now.toISOString() }).eq('business_id', businessId).eq('id', id);
+    const rows = must(await (!expect ? upd : expect.owner_user_id ? upd.eq('owner_user_id', expect.owner_user_id) : upd.is('owner_user_id', null)).select(select));
+    if (!rows.length && expect) { const cur = must(await supabase.from(RECORD_TABLE[type]).select('id, owner_user_id').eq('business_id', businessId).eq('id', id).maybeSingle()); if (cur) return changed(cur.owner_user_id); }
     if (!rows.length) return reply(404, { error: `${type} not found` });
     // The Map reads employees from the stored score row (components.meta, intentScoreRun), so a typed number refreshes
     // this one company before the reply and the window's reload sorts it into place. Skipped on the test fake.
@@ -126,7 +133,7 @@ export async function editCompanyFields(supabase, { businessId, type, id, body =
       const set = type === 'employer' ? { owner_user_id: patch.owner_user_id ?? null, owner: patch.owner ?? null } : { owner_user_id: patch.owner_user_id ?? null };
       const prev = Object.fromEntries(Object.keys(set).map(k => [k, before[k] ?? null]));
       const who = patch.owner_user_id ? (await ownerPerson(supabase, businessId, patch.owner_user_id))?.name?.split(' ')[0] || 'a member' : null;
-      try { event = await logFlow(supabase, { businessId, recordType: type, recordId: id, kind: 'assign', text: who ? `Assigned to ${who}` : 'Unassigned', prev, set, meta: { name: before.organization || before.name || null, to_owner: patch.owner_user_id ?? null }, byUser, now }); }
+      try { event = await logFlow(supabase, { businessId, recordType: type, recordId: id, kind: 'assign', text: who ? `Assigned to ${who}` : 'Unassigned', prev, set, meta: { name: before.organization || before.name || null, to_owner: patch.owner_user_id ?? null, ...(origin ? { origin } : {}) }, byUser, now }); }
       catch (e) { console.error('[company/fields] assign activity:', e.message); }
     }
     return reply(200, { fields: rows[0], event: event ? { id: event.id } : null, before: before ? { owner_user_id: before.owner_user_id || null } : undefined });
